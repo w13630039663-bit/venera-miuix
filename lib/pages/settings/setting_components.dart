@@ -30,9 +30,8 @@ class _SwitchSetting extends StatefulWidget {
 }
 
 class _SwitchSettingState extends State<_SwitchSetting> {
-  @override
-  Widget build(BuildContext context) {
-    var value = widget.comicId != null
+  bool _read() {
+    return (widget.comicId != null
         ? appdata.settings.getReaderSetting(
             widget.comicId!,
             widget.comicSource!,
@@ -40,9 +39,41 @@ class _SwitchSettingState extends State<_SwitchSetting> {
           )
         : widget.useDeviceSettings
         ? appdata.settings.getDeviceReaderSetting(widget.settingKey)
-        : appdata.settings[widget.settingKey];
+        : appdata.settings[widget.settingKey]) as bool;
+  }
 
-    assert(value is bool);
+  void _write(bool value) {
+    if (widget.comicId != null) {
+      appdata.settings.setReaderSetting(
+        widget.comicId!,
+        widget.comicSource!,
+        widget.settingKey,
+        value,
+      );
+    } else if (widget.useDeviceSettings) {
+      appdata.settings.setDeviceReaderSetting(widget.settingKey, value);
+    } else {
+      appdata.settings[widget.settingKey] = value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _read();
+
+    if (_useMiuixStyle) {
+      return MiuixSwitchPreference(
+        value: value,
+        title: widget.title,
+        summary: widget.subtitle,
+        onChanged: (v) {
+          setState(() => _write(v));
+          appdata.saveData().then((_) {
+            widget.onChanged?.call();
+          });
+        },
+      );
+    }
 
     return ListTile(
       title: Text(widget.title),
@@ -50,20 +81,7 @@ class _SwitchSettingState extends State<_SwitchSetting> {
       trailing: Switch(
         value: value,
         onChanged: (value) {
-          setState(() {
-            if (widget.comicId != null) {
-              appdata.settings.setReaderSetting(
-                widget.comicId!,
-                widget.comicSource!,
-                widget.settingKey,
-                value,
-              );
-            } else if (widget.useDeviceSettings) {
-              appdata.settings.setDeviceReaderSetting(widget.settingKey, value);
-            } else {
-              appdata.settings[widget.settingKey] = value;
-            }
-          });
+          setState(() => _write(value));
           appdata.saveData().then((_) {
             widget.onChanged?.call();
           });
@@ -104,6 +122,20 @@ class SelectSetting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_useMiuixStyle) {
+      // Miuix 的下拉行自带"标题 + 当前值 + 箭头"，不再需要按宽度分两种
+      // 布局（窄屏双行 / 宽屏末端选择器）。
+      return _MiuixSelectSetting(
+        title: title,
+        settingKey: settingKey,
+        optionTranslation: optionTranslation,
+        onChanged: onChanged,
+        help: help,
+        comicId: comicId,
+        comicSource: comicSource,
+        useDeviceSettings: useDeviceSettings,
+      );
+    }
     return SizedBox(
       width: double.infinity,
       child: LayoutBuilder(
@@ -409,64 +441,67 @@ class _SliderSetting extends StatefulWidget {
 }
 
 class _SliderSettingState extends State<_SliderSetting> {
+  double _read() {
+    return (widget.comicId != null
+            ? appdata.settings.getReaderSetting(
+                widget.comicId!,
+                widget.comicSource!,
+                widget.settingsIndex,
+              )
+            : widget.useDeviceSettings
+            ? appdata.settings.getDeviceReaderSetting(widget.settingsIndex)
+            : appdata.settings[widget.settingsIndex])
+        .toDouble();
+  }
+
+  /// 整数值仍存 int，避免把 `5` 写成 `5.0` 让旧数据/同步格式不兼容。
+  void _write(double value) {
+    final stored = value.toInt() == value ? value.toInt() : value;
+    if (widget.comicId != null) {
+      appdata.settings.setReaderSetting(
+        widget.comicId!,
+        widget.comicSource!,
+        widget.settingsIndex,
+        stored,
+      );
+    } else if (widget.useDeviceSettings) {
+      appdata.settings.setDeviceReaderSetting(widget.settingsIndex, stored);
+    } else {
+      appdata.settings[widget.settingsIndex] = stored;
+    }
+  }
+
+  String _format(double v) =>
+      v.toInt() == v ? v.toInt().toString() : v.toString();
+
   @override
   Widget build(BuildContext context) {
-    var value =
-        (widget.comicId != null
-                ? appdata.settings.getReaderSetting(
-                    widget.comicId!,
-                    widget.comicSource!,
-                    widget.settingsIndex,
-                  )
-                : widget.useDeviceSettings
-                ? appdata.settings.getDeviceReaderSetting(widget.settingsIndex)
-                : appdata.settings[widget.settingsIndex])
-            .toDouble();
+    final value = _read();
+
+    if (_useMiuixStyle) {
+      return MiuixSliderPreference(
+        title: widget.title,
+        value: value,
+        min: widget.min,
+        max: widget.max,
+        steps: ((widget.max - widget.min) / widget.interval).toInt(),
+        valueText: _format(value),
+        onValueChange: (v) {
+          setState(() => _write(v));
+          appdata.saveData();
+          widget.onChanged?.call();
+        },
+      );
+    }
+
     return ListTile(
       title: Text(widget.title, softWrap: true, maxLines: 2),
       trailing: Text(value.toString(), style: ts.s12),
       subtitle: Slider(
         value: value,
         onChanged: (value) {
-          if (value.toInt() == value) {
-            setState(() {
-              if (widget.comicId != null) {
-                appdata.settings.setReaderSetting(
-                  widget.comicId!,
-                  widget.comicSource!,
-                  widget.settingsIndex,
-                  value.toInt(),
-                );
-              } else if (widget.useDeviceSettings) {
-                appdata.settings.setDeviceReaderSetting(
-                  widget.settingsIndex,
-                  value.toInt(),
-                );
-              } else {
-                appdata.settings[widget.settingsIndex] = value.toInt();
-              }
-              appdata.saveData();
-            });
-          } else {
-            setState(() {
-              if (widget.comicId != null) {
-                appdata.settings.setReaderSetting(
-                  widget.comicId!,
-                  widget.comicSource!,
-                  widget.settingsIndex,
-                  value,
-                );
-              } else if (widget.useDeviceSettings) {
-                appdata.settings.setDeviceReaderSetting(
-                  widget.settingsIndex,
-                  value,
-                );
-              } else {
-                appdata.settings[widget.settingsIndex] = value;
-              }
-              appdata.saveData();
-            });
-          }
+          setState(() => _write(value));
+          appdata.saveData();
           widget.onChanged?.call();
         },
         divisions: ((widget.max - widget.min) / widget.interval).toInt(),
@@ -486,6 +521,14 @@ class _PopupWindowSetting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_useMiuixStyle) {
+      return MiuixArrowPreference(
+        title: title,
+        onClick: () {
+          showPopUpWidget(App.rootContext, builder());
+        },
+      );
+    }
     return ListTile(
       title: Text(title),
       trailing: const Icon(Icons.arrow_right),
@@ -712,6 +755,24 @@ class _CallbackSetting extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_useMiuixStyle) {
+      return MiuixArrowPreference(
+        title: title,
+        summary: subtitle,
+        endActions: <Widget>[
+          MiuixButton(
+            onPressed: callback,
+            minHeight: 32,
+            insideMargin: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 6,
+            ),
+            child: MiuixText(actionTitle),
+          ),
+        ],
+        onClick: callback,
+      );
+    }
     return ListTile(
       title: Text(title),
       subtitle: subtitle == null ? null : Text(subtitle!),
@@ -733,6 +794,16 @@ class _SettingPartTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_useMiuixStyle) {
+      // Miuix 的分节标题（SmallTitle）本身不带图标位，图标放到文字前面
+      // 保持信息不丢。
+      return SliverToBoxAdapter(
+        child: MiuixSmallTitle(
+          title,
+          insideMargin: const EdgeInsets.fromLTRB(28, 20, 28, 8),
+        ),
+      );
+    }
     return SliverToBoxAdapter(
       child: Container(
         padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8),
@@ -751,6 +822,96 @@ class _SettingPartTitle extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Miuix 画风的下拉选择行。
+///
+/// 用 [MiuixWindowSpinnerPreference] 而非 `MiuixOverlaySpinnerPreference`：
+/// 设置页这一支并不总在 [Scaffold] 下（底栏模式下由 NaviPane 直接承载），
+/// 窗口级变体走根 Overlay 渲染，不依赖 Scaffold 祖先。
+class _MiuixSelectSetting extends StatefulWidget {
+  const _MiuixSelectSetting({
+    required this.title,
+    required this.settingKey,
+    required this.optionTranslation,
+    this.onChanged,
+    this.help,
+    this.comicId,
+    this.comicSource,
+    this.useDeviceSettings = false,
+  });
+
+  final String title;
+
+  final String settingKey;
+
+  final Map<String, String> optionTranslation;
+
+  final VoidCallback? onChanged;
+
+  final String? help;
+
+  final String? comicId;
+
+  final String? comicSource;
+
+  final bool useDeviceSettings;
+
+  @override
+  State<_MiuixSelectSetting> createState() => _MiuixSelectSettingState();
+}
+
+class _MiuixSelectSettingState extends State<_MiuixSelectSetting> {
+  String _read() {
+    return (widget.comicId != null
+        ? appdata.settings.getReaderSetting(
+            widget.comicId!,
+            widget.comicSource!,
+            widget.settingKey,
+          )
+        : widget.useDeviceSettings
+        ? appdata.settings.getDeviceReaderSetting(widget.settingKey)
+        : appdata.settings[widget.settingKey]) as String;
+  }
+
+  void _write(String value) {
+    if (widget.comicId != null) {
+      appdata.settings.setReaderSetting(
+        widget.comicId!,
+        widget.comicSource!,
+        widget.settingKey,
+        value,
+      );
+    } else if (widget.useDeviceSettings) {
+      appdata.settings.setDeviceReaderSetting(widget.settingKey, value);
+    } else {
+      appdata.settings[widget.settingKey] = value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = widget.optionTranslation.keys.toList();
+    var index = keys.indexOf(_read());
+    if (index < 0) index = 0;
+    return MiuixWindowSpinnerPreference(
+      title: widget.title,
+      // 原来 help 是标题旁的一个问号按钮，Miuix 行没有那个位置；
+      // 放到标题下方的 summary 里，信息不丢且更直观。
+      summary: widget.help,
+      items: <MiuixDropdownItem>[
+        for (final key in keys)
+          MiuixDropdownItem(text: widget.optionTranslation[key]!),
+      ],
+      selectedIndex: index,
+      onSelectedIndexChange: (i) {
+        setState(() => _write(keys[i]));
+        appdata.saveData().then((_) {
+          widget.onChanged?.call();
+        });
+      },
     );
   }
 }

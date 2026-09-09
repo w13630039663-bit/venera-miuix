@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:flutter_reorderable_grid_view/widgets/reorderable_builder.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -30,10 +31,32 @@ part 'about.dart';
 part 'network.dart';
 part 'debug.dart';
 
+/// 用 Miuix 主题包住设置内容。
+///
+/// Miuix 组件一律通过 [MiuixTheme.of] 取色，而它在**没有祖先时会回退到浅色
+/// 默认值** —— 深色模式下会画出浅色卡片，必然穿帮。这里按 App 当前亮度注入
+/// 一套 MiuixThemeData，让设置页跟随系统/用户选择。
+///
+/// 只包设置页，不包 App 根部：其余页面没有 Miuix 组件，包了也是空转。
+Widget _withMiuixTheme(BuildContext context, Widget child) {
+  return MiuixTheme(
+    data: MiuixThemeData.of(Theme.of(context).brightness),
+    child: child,
+  );
+}
+
+/// 设置页是否使用 Miuix 画风（在「外观」里切换）。
+bool get _useMiuixStyle => appdata.settings['settingsStyle'] == 'miuix';
+
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({this.initialPage = -1, super.key});
+  /// [embedded] 为 true 时表示本页是作为底部导航的一个标签页嵌入的，
+  /// 其外层（NaviPane）已经提供了标题栏与系统状态栏留白，
+  /// 因此不再绘制自己的返回按钮与标题，避免出现双标题、双留白。
+  const SettingsPage({this.initialPage = -1, this.embedded = false, super.key});
 
   final int initialPage;
+
+  final bool embedded;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -46,6 +69,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool get enableTwoViews => context.width > 720;
 
+  // 「About」已不再作为独立分类：它的内容（图标/版本/检查更新/项目链接）
+  // 搬到了分类列表顶部的 [_AboutSection]，一进设置就能看到。
   final categories = <String>[
     "Explore",
     "Reading",
@@ -53,7 +78,6 @@ class _SettingsPageState extends State<SettingsPage> {
     "Local Favorites",
     "APP",
     "Network",
-    "About",
     "Debug"
   ];
 
@@ -64,7 +88,6 @@ class _SettingsPageState extends State<SettingsPage> {
     Icons.collections_bookmark_rounded,
     Icons.apps,
     Icons.public,
-    Icons.info,
     Icons.bug_report,
   ];
 
@@ -76,8 +99,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      child: buildBody(),
+    return _withMiuixTheme(
+      context,
+      Material(
+        child: buildBody(),
+      ),
     );
   }
 
@@ -145,40 +171,54 @@ class _SettingsPageState extends State<SettingsPage> {
     return Material(
       child: Column(
         children: [
+          // 系统状态栏留白。底栏模式下 NaviPane 的顶栏已消费该 padding，
+          // 此处从 MediaQuery 读到的值会是 0；侧栏模式下（无顶栏）才是真实高度。
+          // 因此两种情况直接沿用 MediaQuery 的值都是安全的。
           SizedBox(
             height: MediaQuery.of(context).padding.top,
           ),
-          SizedBox(
-            height: 56,
-            child: Row(children: [
-              const SizedBox(
-                width: 8,
-              ),
-              Tooltip(
-                message: "Back",
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: context.pop,
+          if (!widget.embedded) ...[
+            SizedBox(
+              height: 56,
+              child: Row(children: [
+                const SizedBox(
+                  width: 8,
                 ),
-              ),
-              const SizedBox(
-                width: 24,
-              ),
-              Text(
-                "Settings".tl,
-                style: ts.s20,
-              )
-            ]),
-          ),
-          const SizedBox(
-            height: 4,
-          ),
+                Tooltip(
+                  message: "Back",
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: context.pop,
+                  ),
+                ),
+                const SizedBox(
+                  width: 24,
+                ),
+                Text(
+                  "Settings".tl,
+                  style: ts.s20,
+                )
+              ]),
+            ),
+            const SizedBox(
+              height: 4,
+            ),
+          ],
           Expanded(
             child: buildCategories(),
           )
         ],
       ),
     );
+  }
+
+  /// 打开某个分类：宽屏就地切换右栏，窄屏推进二级页。
+  void _openCategory(int id) {
+    if (enableTwoViews) {
+      setState(() => currentPage = id);
+    } else {
+      context.to(() => _SettingsDetailPage(pageIndex: id));
+    }
   }
 
   Widget buildCategories() {
@@ -217,22 +257,45 @@ class _SettingsPageState extends State<SettingsPage> {
             ? const EdgeInsets.fromLTRB(8, 0, 8, 0)
             : EdgeInsets.zero,
         child: InkWell(
-          onTap: () {
-            if (enableTwoViews) {
-              setState(() => currentPage = id);
-            } else {
-              context.to(() => _SettingsDetailPage(pageIndex: id));
-            }
-          },
+          onTap: () => _openCategory(id),
           child: content,
         ).paddingVertical(4),
       );
     }
 
-    return ListView.builder(
+    // Miuix：关于区 + 一张卡片包住所有分类行（卡片内每行自带按压反馈
+    // 与右箭头，靠间距而非分隔线区分）。
+    if (_useMiuixStyle) {
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 16),
+        children: [
+          const _AboutSection(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: MiuixCard(
+              child: Column(
+                children: [
+                  for (var i = 0; i < categories.length; i++)
+                    MiuixArrowPreference(
+                      title: categories[i].tl,
+                      startAction: Icon(icons[i], size: 22),
+                      onClick: () => _openCategory(i),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView(
       padding: EdgeInsets.zero,
-      itemCount: categories.length,
-      itemBuilder: (context, index) => buildItem(categories[index].tl, index),
+      children: [
+        const _AboutSection(),
+        for (var i = 0; i < categories.length; i++)
+          buildItem(categories[i].tl, i),
+      ],
     );
   }
 
@@ -260,8 +323,7 @@ class _SettingsPageState extends State<SettingsPage> {
       3 => const LocalFavoritesSettings(),
       4 => const AppSettings(),
       5 => const NetworkSettings(),
-      6 => const AboutSettings(),
-      7 => const DebugPage(),
+      6 => const DebugPage(),
       _ => throw UnimplementedError()
     };
   }
@@ -275,8 +337,11 @@ class _SettingsDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      child: _buildPage(),
+    return _withMiuixTheme(
+      context,
+      Material(
+        child: _buildPage(),
+      ),
     );
   }
 
@@ -288,8 +353,7 @@ class _SettingsDetailPage extends StatelessWidget {
       3 => const LocalFavoritesSettings(),
       4 => const AppSettings(),
       5 => const NetworkSettings(),
-      6 => const AboutSettings(),
-      7 => const DebugPage(),
+      6 => const DebugPage(),
       _ => throw UnimplementedError()
     };
   }

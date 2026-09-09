@@ -207,7 +207,14 @@ class _ExplorePageState extends State<ExplorePage>
         ),
         Positioned(
           right: 16,
-          bottom: 16,
+          // floating 底栏是悬浮玻璃胶囊（inset + 8/20dp 留白 + 64dp 高），
+          // 会盖住 bottom:16 的 FAB —— 抬到胶囊上方 12dp；其它风格维持原位。
+          bottom: appdata.settings['navBarStyle'] == 'floating'
+              ? MediaQuery.viewPaddingOf(context).bottom +
+                  (MediaQuery.viewPaddingOf(context).bottom != 0 ? 8.0 : 20.0) +
+                  64.0 +
+                  12.0
+              : 16,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 150),
             reverseDuration: const Duration(milliseconds: 150),

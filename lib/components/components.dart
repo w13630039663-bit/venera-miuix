@@ -10,6 +10,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:syntax_highlight/syntax_highlight.dart';
+import 'package:flutter_miuix/miuix.dart';
+import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/app_page_route.dart';
 import 'package:venera/foundation/appdata.dart';
@@ -50,3 +52,4 @@ part 'comic.dart';
 part 'effects.dart';
 part 'gesture.dart';
 part 'code.dart';
+
