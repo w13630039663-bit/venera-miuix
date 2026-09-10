@@ -81,12 +81,42 @@
 
 ---
 
+## 下载安装包
+
+编译好的安装包发布在本仓库的 **Releases** 页面：
+
+- `venera-miuix-<version>-arm64-v8a.apk` —— 绝大多数现代手机选这个；
+- `venera-miuix-<version>-armeabi-v7a.apk` —— 老旧 32 位设备；
+- `venera-miuix-<version>-x86_64.apk` —— 模拟器；
+- `venera-miuix-<version>.apk` —— 通用包（体积最大，不确定机型时用它）。
+
+> 由于**包名与原版 Venera 不同**，本应用与原版可以共存，但**无法覆盖安装原版**；
+> 反之亦然。从原版迁移需要重新登录与配置。
+
+---
+
 ## 从源码构建
+
+### 环境依赖
 
 1. 克隆源码到本地
 2. 安装 Flutter，见 [flutter.dev](https://flutter.dev/docs/get-started/install)
 3. 安装 Rust，见 [rustup.rs](https://rustup.rs/)
-4. 构建对应平台，例如：
+
+### 签名（可选）
+
+`android/key.properties` 不在版本库中（含密钥，已被 `.gitignore` 排除）。
+**不提供它也能构建** —— release 会回退使用 Android 的 debug 签名，产物可安装但
+不能用于正式分发。若要自行签名发布，在 `android/` 下新建 `key.properties`：
+
+```properties
+storeFile=/绝对路径/your-keystore.jks
+storePassword=你的库口令
+keyAlias=你的别名
+keyPassword=你的别名口令
+```
+
+### 构建
 
 ```bash
 flutter build apk --release

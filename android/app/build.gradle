@@ -25,9 +25,21 @@ if (flutterVersionName == null) {
     flutterVersionName = "1.0"
 }
 
+// 签名配置：key.properties 被 .gitignore 排除，不会进仓库，
+// 因此这里**必须容忍文件缺失** —— 否则任何人克隆本仓库后执行
+// `flutter build apk --release` 都会在 Gradle 配置阶段抛
+// FileNotFoundException，直接构建失败。
 def keystorePropertiesFile = rootProject.file("key.properties")
 def keystoreProperties = new Properties()
-keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+def hasSigningConfig = false
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader("UTF-8") { reader ->
+        keystoreProperties.load(reader)
+    }
+    hasSigningConfig = keystoreProperties["storeFile"] != null
+} else {
+    logger.lifecycle("key.properties not found: release builds will use the debug signing key.")
+}
 
 android {
     namespace = "com.github.w13630039663bit.venera.miuix"
@@ -58,17 +70,25 @@ android {
     }
 
     signingConfigs {
-        debug {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-        }
-        release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
+        // 只有提供了 key.properties 时才定义自定义签名。
+        // 缺失时保留 AGP 自带的 debug 签名，release 变体回退到它 ——
+        // 这样「没有密钥的人」也能构建出可安装的包（仅用于本地试用，
+        // 正式分发请务必自备密钥）。
+        if (hasSigningConfig) {
+            // 与原上游行为保持一致：debug 也用同一把密钥签名，
+            // 这样 `flutter run` 可以直接覆盖本机已安装的 release 包。
+            debug {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
+            release {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
 
@@ -89,7 +109,9 @@ android {
             ndk {
                 abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
             }
-            signingConfig signingConfigs.release
+            // 没有 key.properties 时回退到 AGP 自带的 debug 签名，
+            // 保证新克隆的仓库开箱即可构建、可安装。
+            signingConfig hasSigningConfig ? signingConfigs.release : signingConfigs.debug
         }
         debug {
             ndk {
