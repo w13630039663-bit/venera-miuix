@@ -38,6 +38,19 @@
 
 ---
 
+## 界面截图
+
+<p align="center">
+  <img src="screenshots/home.png" height="400" alt="主页">
+  <img src="screenshots/favorites.png" height="400" alt="收藏">
+  <img src="screenshots/categories.png" height="400" alt="分类">
+  <img src="screenshots/settings.png" height="400" alt="设置">
+</p>
+
+<p align="center"><sub>主页 · 收藏 · 分类 · 设置 —— 截图中的作品封面已按「H 是不行的」做过遮蔽处理</sub></p>
+
+---
+
 ## 与原版 Venera 的对比
 
 | 能力 | 原版 Venera | venera-miuix |
