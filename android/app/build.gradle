@@ -30,7 +30,7 @@ def keystoreProperties = new Properties()
 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 android {
-    namespace = "com.github.wgh136.venera"
+    namespace = "com.github.w13630039663bit.venera.miuix"
     compileSdk = flutter.compileSdkVersion
     ndkVersion "28.0.13004108"
 
@@ -73,7 +73,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.github.wgh136.venera"
+        applicationId = "com.github.w13630039663bit.venera.miuix"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdk = flutter.minSdkVersion
@@ -100,21 +100,20 @@ android {
     }
 
     applicationVariants.all { variant ->
+        // 只处理 release：本 fork 不再分发 debug/profile 产物，
+        // debug 变体保留仅为 `flutter run` 服务，不做重命名与 versionCode 覆盖。
+        if (variant.buildType.name != "release") return
         variant.outputs.all { output ->
             def abi = output.getFilter(com.android.build.OutputFile.ABI)
-            if (variant.buildType.name == "release") {
-                if (abi != null) {
-                    outputFileName = "venera-${variant.versionName}-${abi}.apk"
-                    def abiVersionCode = project.ext.abiCodes.get(abi)
-                    if (abiVersionCode != null) {
-                        versionCodeOverride = variant.versionCode * 10 + abiVersionCode
-                    }
-                } else {
-                    outputFileName = "venera-${variant.versionName}.apk"
-                    versionCodeOverride = variant.versionCode * 10
+            if (abi != null) {
+                outputFileName = "venera-miuix-${variant.versionName}-${abi}.apk"
+                def abiVersionCode = project.ext.abiCodes.get(abi)
+                if (abiVersionCode != null) {
+                    versionCodeOverride = variant.versionCode * 10 + abiVersionCode
                 }
-            } else if (variant.buildType.name == "debug") {
-                versionCodeOverride = variant.versionCode * 10 + 4
+            } else {
+                outputFileName = "venera-miuix-${variant.versionName}.apk"
+                versionCodeOverride = variant.versionCode * 10
             }
         }
     }

@@ -267,6 +267,34 @@ class OptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Miuix 画风：选中=主色填充胶囊，未选中=surfaceContainer 胶囊，
+    // 无描边、按压下沉反馈。取色用 MD3 colorScheme（OptionChip 可能
+    // 出现在没有 MiuixTheme 祖先的页面，MiuixTheme.of 会回退浅色默认值）。
+    if (useMiuixStyle) {
+      final colorScheme = context.colorScheme;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: MiuixCard(
+          cornerRadius: 16,
+          insideMargin: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          onPressed: onTap,
+          feedbackType: MiuixPressFeedbackType.sink,
+          colors: MiuixCardColors(
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHigh,
+            contentColor: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      );
+    }
     return AnimatedContainer(
       duration: _fastAnimationDuration,
       decoration: BoxDecoration(

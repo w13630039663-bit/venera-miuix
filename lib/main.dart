@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:venera/foundation/log.dart';
+import 'package:venera/components/background.dart';
 import 'package:venera/pages/auth_page.dart';
 import 'package:venera/pages/main_page.dart';
 import 'package:venera/utils/io.dart';
@@ -170,6 +171,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         brightness: brightness,
         tones: FlexTones.vividBackground(brightness),
       ),
+      // 全部 Scaffold 透明：底色统一由根部的 AppBackground 绘制
+      // （off 模式下它画纯 surface，观感与实心完全一致）。
+      scaffoldBackgroundColor: Colors.transparent,
       fontFamily: font,
       fontFamilyFallback: fallback,
     );
@@ -199,7 +203,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         tertiary = light.tertiary;
       }
       return MaterialApp(
-        title: "venera",
+        title: "venera-miuix",
         home: home,
         debugShowCheckedModeBanner: false,
         theme: getTheme(primary, secondary, tertiary, Brightness.light),
@@ -265,6 +269,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             }
 
             widget = OverlayWidget(widget);
+            // 全局背景层：铺在 Navigator 之下，所有页面透明地叠加其上。
+            widget = Stack(
+              children: [
+                const Positioned.fill(child: AppBackground()),
+                Positioned.fill(child: widget),
+              ],
+            );
             if (App.isDesktop) {
               widget = Shortcuts(
                 shortcuts: {
@@ -279,7 +290,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               );
             }
             return _SystemUiProvider(Material(
-              color: App.isLinux ? Colors.transparent : null,
+              color: Colors.transparent,
               child: widget,
             ));
           }

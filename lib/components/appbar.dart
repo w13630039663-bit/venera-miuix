@@ -130,6 +130,8 @@ class _AppbarState extends State<Appbar> {
 enum AppbarStyle {
   blur,
   shadow,
+  /// 完全透明：用于详情页等沉浸式背景（封面模糊层铺在 body 底层）。
+  transparent,
 }
 
 class SliverAppbar extends StatelessWidget {
@@ -236,6 +238,14 @@ class _MySliverAppBarDelegate extends SliverPersistentHeaderDelegate {
             borderRadius: BorderRadius.circular(radius),
             child: body,
           ),
+        ),
+      );
+    } else if (style == AppbarStyle.transparent) {
+      return SizedBox.expand(
+        child: Material(
+          color: Colors.transparent,
+          elevation: 0,
+          child: body,
         ),
       );
     } else {
@@ -681,6 +691,7 @@ class SliverSearchBar extends StatefulWidget {
     this.onChanged,
     this.action,
     this.focusNode,
+    this.showBackButton = true,
   });
 
   final SearchBarController controller;
@@ -690,6 +701,9 @@ class SliverSearchBar extends StatefulWidget {
   final Widget? action;
 
   final FocusNode? focusNode;
+
+  /// 作为底部标签页使用（搜索 tab）时为 false —— 此时没有「上一层」可返回。
+  final bool showBackButton;
 
   @override
   State<SliverSearchBar> createState() => _SliverSearchBarState();
@@ -730,6 +744,7 @@ class _SliverSearchBarState extends State<SliverSearchBar>
         onChanged: widget.onChanged,
         action: widget.action,
         focusNode: widget.focusNode,
+        showBackButton: widget.showBackButton,
       ),
     );
   }
@@ -748,6 +763,8 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
 
   final FocusNode? focusNode;
 
+  final bool showBackButton;
+
   const _SliverSearchBarDelegate({
     required this.editingController,
     required this.controller,
@@ -755,6 +772,7 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     this.onChanged,
     this.action,
     this.focusNode,
+    this.showBackButton = true,
   });
 
   static const _kAppBarHeight = 52.0;
@@ -762,6 +780,87 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
+    var body = Row(
+      children: [
+        const SizedBox(width: 8),
+        if (showBackButton) const BackButton(),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: buildTextField(context),
+          ),
+        ),
+        ListenableBuilder(
+          listenable: editingController,
+          builder: (context, child) {
+            return editingController.text.isEmpty
+                ? const SizedBox()
+                : IconButton(
+                    iconSize: 20,
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      editingController.clear();
+                      onChanged?.call("");
+                    },
+                  );
+          },
+        ),
+        if (action != null) action!,
+        const SizedBox(width: 8),
+      ],
+    );
+
+    // Miuix 画风：无底部边框线，输入框放进圆角胶囊容器（surfaceContainer）。
+    if (useMiuixStyle) {
+      return Container(
+        height: _kAppBarHeight + topPadding,
+        width: double.infinity,
+        padding: EdgeInsets.only(top: topPadding, left: 12, right: 12),
+        color: Theme.of(context).colorScheme.surface,
+        child: Center(
+          // 尺寸对齐首页搜索框（_SearchBar：高 52、全圆角胶囊）——
+          // 之前这里被 ConstrainedBox(maxHeight: 40) 压成 40 高，比首页明显
+          // 小一圈。改为撑满整条搜索栏高度（52）。
+          child: SizedBox(
+            height: _kAppBarHeight,
+            child: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(_kAppBarHeight / 2),
+              child: Row(
+                children: [
+                  const SizedBox(width: 4),
+                  if (showBackButton) const BackButton(),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: buildTextField(context),
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: editingController,
+                    builder: (context, child) {
+                      return editingController.text.isEmpty
+                          ? const SizedBox()
+                          : IconButton(
+                              iconSize: 20,
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                editingController.clear();
+                                onChanged?.call("");
+                              },
+                            );
+                    },
+                  ),
+                  if (action != null) action!,
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       height: _kAppBarHeight + topPadding,
       width: double.infinity,
@@ -774,46 +873,23 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
           ),
         ),
       ),
-      child: Row(
-        children: [
-          const SizedBox(width: 8),
-          const BackButton(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: TextField(
-                focusNode: focusNode,
-                controller: editingController,
-                decoration: InputDecoration(
-                  hintText: "Search".tl,
-                  border: InputBorder.none,
-                ),
-                onSubmitted: (text) {
-                  controller.onSearch?.call(text);
-                },
-                onChanged: onChanged,
-              ),
-            ),
-          ),
-          ListenableBuilder(
-            listenable: editingController,
-            builder: (context, child) {
-              return editingController.text.isEmpty
-                  ? const SizedBox()
-                  : IconButton(
-                      iconSize: 20,
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        editingController.clear();
-                        onChanged?.call("");
-                      },
-                    );
-            },
-          ),
-          if (action != null) action!,
-          const SizedBox(width: 8),
-        ],
+      child: body,
+    );
+  }
+
+  Widget buildTextField(BuildContext context) {
+    return TextField(
+      focusNode: focusNode,
+      controller: editingController,
+      decoration: InputDecoration(
+        hintText: "Search".tl,
+        border: InputBorder.none,
+        isDense: true,
       ),
+      onSubmitted: (text) {
+        controller.onSearch?.call(text);
+      },
+      onChanged: onChanged,
     );
   }
 
@@ -828,7 +904,8 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     return oldDelegate is! _SliverSearchBarDelegate ||
         editingController != oldDelegate.editingController ||
         controller != oldDelegate.controller ||
-        topPadding != oldDelegate.topPadding;
+        topPadding != oldDelegate.topPadding ||
+        showBackButton != oldDelegate.showBackButton;
   }
 }
 

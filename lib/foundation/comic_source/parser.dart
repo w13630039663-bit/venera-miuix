@@ -165,6 +165,12 @@ class ComicSourceParser {
       _getValue("comic.enableTagsTranslate") ?? false,
       _parseStarRatingFunc(),
       _parseArchiveDownloader(),
+      // 插件声明的内容分级（可选）：safe / mixed / nsfw。老插件没有这个字段时
+      // runCode 返回 null，判定层回退到内置预设表 —— 向后兼容。
+      switch (JsEngine().runCode("this['temp'].contentWarning")) {
+        String value => value,
+        _ => null,
+      },
     );
 
     await source.loadData();

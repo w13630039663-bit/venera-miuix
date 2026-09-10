@@ -73,6 +73,21 @@ class NaviPane extends StatefulWidget {
   static NaviPaneState of(BuildContext context) {
     return context.findAncestorStateOfType<NaviPaneState>()!;
   }
+
+  /// 「内容页接管系统返回」登记处。
+  ///
+  /// 为什么需要它：系统返回（含边缘返回手势）最先到达**根 Navigator**
+  /// （WidgetsApp.didPopRoute → root.maybePop），而只有挂在**根路由**上的
+  /// PopScope 能拦住它。内容页（如搜索页结果态）的 PopScope 挂在内嵌
+  /// Navigator 自己的路由上，拦不住系统返回 —— 那种情况下根路由会被直接
+  /// 弹出、整个 App 退出。
+  ///
+  /// 内容页需要独占返回（返回 = 退回上一状态，而不是退出）时把这里置
+  /// `true`：根级 PopScope 会拒绝弹出根路由，改为把返回转交内嵌 Navigator，
+  /// 最终落到内容页自己的 PopScope 上由它处理。用完整务必置回 `false`
+  /// （内容页 dispose 时也要）。
+  static final ValueNotifier<bool> contentBackOverride =
+      ValueNotifier<bool>(false);
 }
 
 typedef NaviItemTapListener = void Function(int);
@@ -128,8 +143,9 @@ class NaviPaneState extends State<NaviPane>
 
   // ── 悬浮液态玻璃底栏（liquid_glass_easy LiquidGlassTabBar）布局参数 ──
 
-  /// 胶囊（面板）总高度（dp）。对齐 pixez FloatingBottomBar 的 64dp。
-  static const _kGlassBarHeight = 64.0;
+  /// 胶囊（面板）总高度（dp）。56dp 紧凑档 —— 与官方 64dp 同一几何
+  /// 机制（padding 6 / grow 12 / 等比放大），整体按比例收小一号。
+  static const _kGlassBarHeight = 56.0;
 
   /// 胶囊左右外边距（dp）。
   static const _kGlassBarHorizontalPadding = 24.0;
@@ -318,13 +334,23 @@ class NaviPaneState extends State<NaviPane>
   Widget buildMainView() {
     return HeroControllerScope(
       controller: MaterialApp.createMaterialHeroController(),
-      child: PopScope(
-        canPop: _canPop,
-        onPopInvokedWithResult: (didPop, result) {
-          if (didPop) {
-            return;
-          }
-          widget.navigatorKey.currentState?.maybePop(result);
+      child: ValueListenableBuilder<bool>(
+        valueListenable: NaviPane.contentBackOverride,
+        builder: (context, overridden, child) {
+          return PopScope(
+            // 两种情况下都不允许根路由直接弹：内嵌栈还有页面（_canPop ==
+            // false），或内容页登记了返回接管（如搜索页结果态）。统一在回调
+            // 里把返回转交内嵌 Navigator：它会询问自身栈顶路由（内容页挂在
+            // 那上面的 PopScope 就此接手）。
+            canPop: _canPop && !overridden,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) {
+                return;
+              }
+              widget.navigatorKey.currentState?.maybePop(result);
+            },
+            child: child!,
+          );
         },
         child: NotificationListener<NavigationNotification>(
           onNotification: (NavigationNotification notification) {
@@ -368,6 +394,9 @@ class NaviPaneState extends State<NaviPane>
 
   Widget buildTop() {
     return Material(
+      // 背景由根部 AppBackground 绘制；不透明 surface 会在壁纸/氛围光
+      // 上形成黑块（off 模式下根部画 surface，观感不变）。
+      color: Colors.transparent,
       child: Container(
         padding: const EdgeInsets.only(left: 16, right: 16),
         height: _kTopBarHeight,
@@ -875,9 +904,14 @@ class _NaviMainViewState extends State<_NaviMainView> {
     final mq = MediaQuery.of(context);
     // floating 模式把底栏高度并入内容区的 bottom padding，
     // 让页面滚动列表的末尾项可以完整滚出底栏区域。
-    final contentPadding = isFloating
-        ? mq.padding.copyWith(bottom: mq.padding.bottom + state.bottomBarHeight)
-        : mq.padding;
+    // top 置 0：顶栏（buildTop().paddingTop(padding.top)）已消费状态栏
+    // 高度，若保留，各 tab 页里自己加的 paddingTop(padding.top) 会变成
+    // 双倍 —— 这就是「内容离顶栏特别远」的根因。二级页在 Navigator
+    // 层（本子树之外），仍拿到真实 padding，不受影响。
+    final contentPadding = (isFloating
+            ? mq.padding.copyWith(bottom: mq.padding.bottom + state.bottomBarHeight)
+            : mq.padding)
+        .copyWith(top: 0);
 
     // 内容层：撑满全屏；floating 模式不预留底栏占位。
     final content = Column(
@@ -983,23 +1017,60 @@ class _GlassFloatingBar extends StatefulWidget {
 class _GlassFloatingBarState extends State<_GlassFloatingBar>
     with SingleTickerProviderStateMixin {
   // ── 玻璃外观（缓存：build 每帧重建，避免重复构造）──
-  late final LiquidGlassStyle _glassStyle = LiquidGlassStyle(
-    shape: LiquidGlassShape.squircle(
-      // 与 NaviPaneState._kGlassBarCornerRadius 同值（32dp 全圆角胶囊）。
-      cornerRadius: 32,
-      borderWidth: 1.2,
-      lightIntensity: 1.1,
-    ),
-    appearance: LiquidGlassAppearance(
-      color: Colors.white.withValues(alpha: 0.22),
-      blur: const LiquidGlassBlur(sigmaX: 2, sigmaY: 2),
-    ),
-    refraction: const LiquidGlassRefraction(
-      distortion: 0.07,
-      distortionWidth: 28,
-      chromaticAberration: 0.002,
-    ),
-  );
+  // 明暗双配方，依据库 ADAPTIVITY.md：「玻璃要与其背景『气味相投』——
+  // 深色背景上应是烟熏黑（smoked）而非乳白（milky）」，官方深色示例
+  // glassColor = Color(0x33000000)。浅色保持原半透明白配方不变。
+  LiquidGlassStyle? _cachedBarStyle;
+  Brightness? _cachedBarStyleBrightness;
+
+  LiquidGlassStyle _glassStyleOf(BuildContext context) {
+    final b = Theme.of(context).brightness;
+    if (_cachedBarStyle != null && _cachedBarStyleBrightness == b) {
+      return _cachedBarStyle!;
+    }
+    final dark = b == Brightness.dark;
+    final style = LiquidGlassStyle(
+      // 形状照抄库官方导航栏配方
+      // （styled/liquid_glass_styled_nav_bar.dart:613）：全圆角胶囊
+      // （cornerRadius = 栏高一半）+ 光学描边（OpticalBorder）——
+      // borderSolidity 让边缘有一道实心轮廓，栏体与页面内容之间有明确
+      // 分界，不会「糊成一片」。
+      shape: LiquidGlassShape.roundedRectangle(
+        cornerRadius: 28,
+        borderWidth: 1.2,
+        lightIntensity: 1.1,
+        lightDirection: 80,
+        borderType: const OpticalBorder(
+          borderSaturation: 1.2,
+          ambientIntensity: 1.0,
+          borderSolidity: 0.35,
+        ),
+      ),
+      appearance: LiquidGlassAppearance(
+        // 浅色 tint 用库官方导航栏取值 Color(0x16FFFFFF)
+        // （styled_nav_bar.dart:638、tab_bar.dart:178）。
+        // 注意：库注释写的「white, alpha 22」指的是 **alpha 字节 = 22**
+        // （≈8.6% 白），不是 22% —— 这里此前误写成
+        // Colors.white.withValues(alpha: 0.22)（= alpha 字节 56，约 22%），
+        // 比官方白了 2.5 倍，所以整条栏发白、看不见下层内容。
+        color: dark
+            ? const Color(0x33000000) // 深色：烟熏黑（官方深色示例）
+            : const Color(0x16FFFFFF),
+        blur: const LiquidGlassBlur(sigmaX: 2, sigmaY: 2),
+        // 库官方「接触阴影」（nav_bar_style.dart:331 的 _defaultShadow）：
+        // 一圈柔和、略向外扩散的暗环，让玻璃读起来是**浮在内容之上**，
+        // 而不是和页面糊在一起。跟随 flex 形变一起缩放/回弹。
+        shadow: const LiquidGlassShadow(blur: 9, opacity: 0.3, inset: 0),
+      ),
+      refraction: const LiquidGlassRefraction(
+        distortion: 0.07,
+        distortionWidth: 28,
+        chromaticAberration: 0.002,
+      ),
+    );
+    _cachedBarStyleBrightness = b;
+    return _cachedBarStyle = style;
+  }
 
   // ── 高亮胶囊材质：静止端 ↔ 抬起端，按材质抬起进度连续插值 ──
   // 官方 _resolveStyle 用**同一个 lens** 在两端之间插值，不是两个 widget
@@ -1019,15 +1090,23 @@ class _GlassFloatingBarState extends State<_GlassFloatingBar>
     final t = _liftM.clamp(0.0, 1.0);
     final w = _pillW;
     final h = _pillH;
+    final b = Theme.of(context).brightness;
     if (_cachedPillStyle != null &&
         _cachedPillStyleW == w &&
         _cachedPillStyleH == h &&
-        _cachedPillStyleT == t) {
+        _cachedPillStyleT == t &&
+        _cachedPillStyleB == b) {
       return _cachedPillStyle!;
     }
     _cachedPillStyleW = w;
     _cachedPillStyleH = h;
     _cachedPillStyleT = t;
+    _cachedPillStyleB = b;
+    // 静止端 tint：浅色 = 官方 0x26FFFFFF（15% 白）；深色 = 0x1FFFFFFF
+    // （12% 白）—— 烟熏黑栏体上需要更淡的乳白才不会显得发白发闷。
+    // 抬起端 0x1CFFFFFF 两端通用（质感主要来自 blur/rim/折射）。
+    final restColor =
+        b == Brightness.dark ? const Color(0x1FFFFFFF) : const Color(0x26FFFFFF);
     return _cachedPillStyle = LiquidGlassStyle(
       shape: LiquidGlassShape.continuousRoundedRectangle(
         // Apple 胶囊：圆角 = 高度一半，随抬起自动保持胶囊轮廓。
@@ -1038,7 +1117,7 @@ class _GlassFloatingBarState extends State<_GlassFloatingBar>
       ),
       appearance: LiquidGlassAppearance(
         color: Color.lerp(
-          const Color(0x26FFFFFF),
+          restColor,
           const Color(0x1CFFFFFF),
           t,
         )!,
@@ -1091,11 +1170,12 @@ class _GlassFloatingBarState extends State<_GlassFloatingBar>
   /// 每个 cell 的宽度（首次 build 从约束解析）。
   double _cellW = 0;
 
-  // 高亮胶囊样式缓存（尺寸/抬起进度变化时才重建，避免每帧新建 Style）。
+  // 高亮胶囊样式缓存（尺寸/抬起进度/明暗变化时才重建，避免每帧新建 Style）。
   LiquidGlassStyle? _cachedPillStyle;
   double? _cachedPillStyleW;
   double? _cachedPillStyleH;
   double? _cachedPillStyleT;
+  Brightness? _cachedPillStyleB;
 
   // ── 拖动状态 ──
   bool _dragging = false;
@@ -1437,7 +1517,7 @@ class _GlassFloatingBarState extends State<_GlassFloatingBar>
           height: widget.height,
           // 胶囊玻璃 + 图标内容。胶囊 touch flex 驱动整栏软体放大。
           child: LiquidGlassLens(
-            style: _glassStyle,
+            style: _glassStyleOf(context),
             touch: LiquidGlassTouch(flex: _flex),
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1530,9 +1610,9 @@ class _GlassFloatingBarState extends State<_GlassFloatingBar>
       scheme.primary,
       activation,
     )!;
-    // 字号 24 → 26、字重 500 → 700 同步随 activation 变化，扫过时图
-    // 标"鼓起"一点点，强化渐变观感。
-    final iconSize = ui.lerpDouble(24, 26, activation)!;
+    // 字号 21 → 23、字重 500 → 700 同步随 activation 变化，扫过时图
+    // 标"鼓起"一点点，强化渐变观感（56dp 紧凑栏相应缩一号）。
+    final iconSize = ui.lerpDouble(21, 23, activation)!;
     final fontWeight =
         FontWeight.lerp(FontWeight.w500, FontWeight.w700, activation)!;
     // 图标形态也按 activation 插值：t≈0 用 entry.icon，t=1 用 entry.activeIcon。

@@ -370,7 +370,8 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
           });
         }
       },
-      child: body,
+      // 本地/已下载：东西已经在手机里了，遮了纯属骚扰（场景表里的「已下载不遮」）。
+      child: NsfwMaskScope(mask: false, child: body),
     );
   }
 

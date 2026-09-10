@@ -88,8 +88,23 @@ abstract mixin class _ComicPageActions {
 
   void share() {
     var text = comic.title;
-    if (comic.url != null) {
-      text += '\n${comic.url}';
+    var link = comic.url;
+    if (link == null || link.isEmpty) {
+      // 部分源插件的 ComicDetails 不带 url。注意 comicSource.url 是插件
+      // JS 文件的下载地址（cdn.jsdelivr.net/...），并非站点域名，不能
+      // 用来拼链接；只对详情页路径规则确定的源做映射，其余源不拼出
+      // 假链接（退化为仅分享标题）。
+      final key = comicSource.key.toLowerCase();
+      final id = comic.id;
+      link = switch (key) {
+        'nhentai' => 'https://nhentai.net/g/$id/',
+        _ when key.contains('18comic') || key.contains('jm') =>
+          'https://18comic.vip/album/$id',
+        _ => '',
+      };
+    }
+    if (link.isNotEmpty) {
+      text += '\n$link';
     }
     Share.shareText(text);
   }

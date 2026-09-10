@@ -36,14 +36,18 @@ class _MainPageState extends State<MainPage> {
     _navigatorKey!.currentContext!.pop();
   }
 
-  /// 除设置标签页之外的页面数量（Home / Favorites / Explore / Categories）。
-  static const int _kContentPageCount = 4;
+  /// 除设置标签页之外的页面数量（Home / Search / Favorites / Explore /
+  /// Categories）。
+  static const int _kContentPageCount = 5;
 
   /// 页面列表必须**每次 build 动态构建**，不能缓存成字段：
   /// 「外观 → 设置入口位置」切换后 App.forceRebuild 只会 markNeedsBuild
   /// （不重建 State），若列表还是旧值，pageBuilder 会索引越界或与标签错位。
   List<Widget> get _pages => <Widget>[
         const HomePage(),
+        const SearchPage(
+          key: PageStorageKey('search'),
+        ),
         const FavoritesPage(
           key: PageStorageKey('favorites'),
         ),
@@ -78,6 +82,11 @@ class _MainPageState extends State<MainPage> {
           label: 'Home'.tl,
           icon: Icons.home_outlined,
           activeIcon: Icons.home,
+        ),
+        PaneItemEntry(
+          label: 'Search'.tl,
+          icon: Icons.search_outlined,
+          activeIcon: Icons.search,
         ),
         PaneItemEntry(
           label: 'Favorites'.tl,
@@ -152,17 +161,6 @@ class _MainPageState extends State<MainPage> {
             label: 'Settings'.tl,
             iconWidget: _buildSettingsAction(),
             onTap: () => to(() => const SettingsPage(), preventDuplicate: true),
-          ),
-        // 搜索按钮：除首页外的所有内容页（设置标签页不需要）。
-        // 这里不能再用 `_pages.length - 1` 判断 —— 设置入口搬到右上角后
-        // 最后一个标签变成了 Categories，那样会把它的搜索按钮也吞掉。
-        if (index != 0 && index < _kContentPageCount)
-          PaneActionEntry(
-            icon: Icons.search,
-            label: "Search".tl,
-            onTap: () {
-              to(() => const SearchPage(), preventDuplicate: true);
-            },
           ),
       ],
       pageBuilder: (index) {

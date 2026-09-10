@@ -123,6 +123,14 @@ class ComicSource {
   /// Identifier of this source.
   final String key;
 
+  /// 插件自己声明的内容分级：`safe` / `mixed` / `nsfw`，可省略。
+  ///
+  /// 存的是**原始字符串**而不是枚举，避免 foundation 里的两个库互相 import。
+  /// 解释成 [ContentLevel] 的动作在 `content_guard.dart` 里做。
+  ///
+  /// 老插件不写这个字段 → 为 `null` → 判定回退到内置预设表，**完全向后兼容**。
+  final String? contentWarning;
+
   int get intKey {
     return key.hashCode;
   }
@@ -309,6 +317,7 @@ class ComicSource {
     this.enableTagsTranslate,
     this.starRatingFunc,
     this.archiveDownloader,
+    this.contentWarning,
   );
 }
 

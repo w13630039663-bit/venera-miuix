@@ -99,8 +99,14 @@ class _AboutSectionState extends State<_AboutSection> {
                   endActions: const <Widget>[
                     Icon(Icons.open_in_new, size: 18),
                   ],
-                  onClick: () =>
-                      launchUrlString("https://github.com/venera-app/venera"),
+                  onClick: () => launchUrlString(kProjectUrl),
+                ),
+                MiuixArrowPreference(
+                  title: "Original project (venera)".tl,
+                  endActions: const <Widget>[
+                    Icon(Icons.open_in_new, size: 18),
+                  ],
+                  onClick: () => launchUrlString(kUpstreamUrl),
                 ),
                 MiuixArrowPreference(
                   title: "Telegram",
@@ -153,8 +159,8 @@ class _AboutSectionState extends State<_AboutSection> {
           title: Text("Check for updates".tl),
           trailing: Button.filled(
             isLoading: isCheckingUpdate,
-            child: Text("Check".tl),
             onPressed: _checkUpdate,
+            child: Text("Check".tl),
           ).fixHeight(32),
         ),
         _SwitchSetting(
@@ -165,11 +171,18 @@ class _AboutSectionState extends State<_AboutSection> {
           title: const Text("Github"),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
-            launchUrlString("https://github.com/venera-app/venera");
+            launchUrlString(kProjectUrl);
           },
         ),
         ListTile(
-          title: const Text("Telegram"),
+          title: Text("Original project (venera)".tl),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () {
+            launchUrlString(kUpstreamUrl);
+          },
+        ),
+        ListTile(
+          title: Text("Telegram (upstream)".tl),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
             launchUrlString("https://t.me/venera_release");
@@ -180,16 +193,65 @@ class _AboutSectionState extends State<_AboutSection> {
   }
 }
 
-Future<bool> checkUpdate() async {
-  var res = await AppDio()
-      .get("https://cdn.jsdelivr.net/gh/venera-app/venera@master/pubspec.yaml");
-  if (res.statusCode == 200) {
-    var data = loadYaml(res.data);
-    if (data["version"] != null) {
-      return _compareVersion(data["version"].split("+")[0], App.version);
+/// 本分支（venera-miuix）的仓库坐标 —— 检查更新、文档跳转、问题反馈都以它为准。
+///
+/// 上游原项目是 venera-app/venera（GPL-3.0），本分支在其基础上重构与优化，
+/// 因此**代码与文档链接一律指向本仓库**，避免用户按上游的版本号去下载
+/// 与本分支不匹配的安装包。
+///
+/// 只改这三行即可切换到别的仓库（其余代码不依赖具体仓库名）。
+const kProjectSlug = "w13630039663-bit/venera-miuix";
+const kProjectRepoUrl = "https://github.com/$kProjectSlug";
+const kProjectUrl = "$kProjectRepoUrl/tree/master";
+const kProjectReleasesUrl = "$kProjectRepoUrl/releases";
+
+/// 上游原项目（保留版权声明与出处）。
+const kUpstreamUrl = "https://github.com/venera-app/venera";
+
+/// 拉取远端最新版本号（形如 "1.6.3"）。
+///
+/// 两条通道，任一条成功即可：
+/// 1. jsDelivr 上的 `pubspec.yaml` —— 有 CDN 缓存、无频率限制，是主通道；
+/// 2. GitHub Releases API —— 拿 tag_name，覆盖"改了版本号但还没写进 pubspec"
+///    的情况。缺点是有 60 次/小时的匿名频率限制，所以只作兜底。
+Future<String?> _fetchRemoteVersion() async {
+  try {
+    var res = await AppDio().get(
+      "https://cdn.jsdelivr.net/gh/$kProjectSlug@master/pubspec.yaml",
+    );
+    if (res.statusCode == 200) {
+      var data = loadYaml(res.data);
+      var version = data["version"];
+      if (version is String && version.isNotEmpty) {
+        return version.split("+").first;
+      }
     }
+  } catch (e) {
+    Log.error("Check Update", "jsdelivr failed: $e");
   }
-  return false;
+  try {
+    var res = await AppDio().get(
+      "https://api.github.com/repos/$kProjectSlug/releases/latest",
+      options: Options(headers: {"Accept": "application/vnd.github+json"}),
+    );
+    if (res.statusCode == 200 && res.data is Map) {
+      var tag = res.data["tag_name"];
+      if (tag is String && tag.isNotEmpty) {
+        return tag.replaceFirst(RegExp(r"^[vV]"), "").split("+").first;
+      }
+    }
+  } catch (e) {
+    Log.error("Check Update", "github api failed: $e");
+  }
+  return null;
+}
+
+Future<bool> checkUpdate() async {
+  var remote = await _fetchRemoteVersion();
+  if (remote == null) {
+    return false;
+  }
+  return _compareVersion(remote, App.version);
 }
 
 Future<void> checkUpdateUi([bool showMessageIfNoUpdate = true, bool delay = false]) async {
@@ -212,8 +274,7 @@ Future<void> checkUpdateUi([bool showMessageIfNoUpdate = true, bool delay = fals
                 Button.text(
                   onPressed: () {
                     Navigator.pop(context);
-                    launchUrlString(
-                        "https://github.com/venera-app/venera/releases");
+                    launchUrlString(kProjectReleasesUrl);
                   },
                   child: Text("Update".tl),
                 ),
@@ -229,16 +290,28 @@ Future<void> checkUpdateUi([bool showMessageIfNoUpdate = true, bool delay = fals
 }
 
 /// return true if version1 > version2
+///
+/// 逐段比数字。容错处理：允许 "v" 前缀、"-beta" 之类的预发布后缀、
+/// 以及段数不一致（1.7 与 1.7.0）—— 远端 tag 是用户自己打的，
+/// 不能让一次格式随意直接抛异常把「检查更新」打断。
 bool _compareVersion(String version1, String version2) {
-  var v1 = version1.split(".");
-  var v2 = version2.split(".");
-  for (var i = 0; i < v1.length; i++) {
-    if (int.parse(v1[i]) > int.parse(v2[i])) {
-      return true;
-    }
-    if (int.parse(v1[i]) < int.parse(v2[i])) {
-      return false;
-    }
+  List<int> parse(String version) {
+    return version
+        .split(RegExp(r"[-+]"))
+        .first
+        .split(".")
+        .map((e) => int.tryParse(RegExp(r"^\d+").stringMatch(e) ?? "") ?? 0)
+        .toList();
+  }
+
+  var v1 = parse(version1);
+  var v2 = parse(version2);
+  var length = v1.length > v2.length ? v1.length : v2.length;
+  for (var i = 0; i < length; i++) {
+    var a = i < v1.length ? v1[i] : 0;
+    var b = i < v2.length ? v2[i] : 0;
+    if (a > b) return true;
+    if (a < b) return false;
   }
   return false;
 }

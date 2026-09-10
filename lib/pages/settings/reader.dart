@@ -96,6 +96,26 @@ class _ReaderSettingsState extends State<ReaderSettings> {
         !isEnabledSpecificSettings &&
         appdata.settings.isDeviceSpecificSettingsEnabled();
 
+    // 本页会被两个入口打开：设置页（外面已包 MiuixTheme）和**阅读器侧栏**
+    // （`_ReaderScaffold.openSetting` 直接 showSideBar，没有任何包裹层）。
+    // Miuix 组件在没有祖先时 `MiuixTheme.of` 回退到 `MiuixThemeData.light()`，
+    // 深色模式下就是「纯黑文字压在近黑面板上」—— 整块设置几乎看不见。
+    // 这里自己包一层，任何入口进来都拿到与 App 亮度一致的取色。
+    return withMiuixTheme(
+      context,
+      _buildBody(context, comicId, sourceKey, key,
+          isEnabledSpecificSettings, useDeviceSpecificSettings),
+    );
+  }
+
+  Widget _buildBody(
+    BuildContext context,
+    String? comicId,
+    String? sourceKey,
+    String key,
+    bool isEnabledSpecificSettings,
+    bool useDeviceSpecificSettings,
+  ) {
     return SmoothCustomScrollView(
       slivers: [
         SliverAppbar(title: Text("Reading".tl)),
@@ -474,6 +494,13 @@ class __CustomImageProcessingState extends State<_CustomImageProcessing> {
 
   @override
   Widget build(BuildContext context) {
+    // 本页由 ReaderSettings 里 `context.to` 直接推入根 Navigator，不继承
+    // 设置页的 MiuixTheme；内部的 _SwitchSetting 在 Miuix 画风下是 Miuix
+    // 组件，深色模式同样会回退浅色取色，需要自己包一层。
+    return withMiuixTheme(context, _buildScaffold());
+  }
+
+  Widget _buildScaffold() {
     return Scaffold(
       appBar: Appbar(
         title: Text("Custom Image Processing".tl),

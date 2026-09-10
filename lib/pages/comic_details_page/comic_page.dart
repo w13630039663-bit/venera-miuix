@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:shimmer_animation/shimmer_animation.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -174,6 +175,57 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
 
   @override
   Widget buildContent(BuildContext context, ComicDetails data) {
+    Widget scroll = SmoothCustomScrollView(
+      controller: scrollController,
+      slivers: [
+        ...buildTitle(),
+        buildActions(),
+        buildDescription(),
+        buildInfo(),
+        buildChapters(),
+        buildComments(),
+        buildThumbnails(),
+        buildRecommend(),
+        SliverPadding(
+          padding: EdgeInsets.only(
+            bottom: context.padding.bottom + 80,
+          ), // Add additional padding for FAB
+        ),
+      ],
+    );
+    // Miuix 画风：封面高斯模糊 + 暗化铺顶部背景（Apple Music 式沉浸感），
+    // 树内注入 Miuix 主题供 Miuix 组件取色。
+    if (useMiuixStyle) {
+      scroll = withMiuixTheme(context, scroll);
+      return Scaffold(
+        floatingActionButton: showFAB
+            ? FloatingActionButton(
+                onPressed: () {
+                  scrollController.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.ease,
+                  );
+                },
+                child: const Icon(Icons.arrow_upward),
+              )
+            : null,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: _ImmersiveCoverBackground(
+                image: CachedImageProvider(
+                  widget.cover ?? comic.cover,
+                  sourceKey: comic.sourceKey,
+                  cid: comic.id,
+                ),
+              ),
+            ),
+            scroll,
+          ],
+        ),
+      );
+    }
     return Scaffold(
       floatingActionButton: showFAB
           ? FloatingActionButton(
@@ -187,24 +239,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
               child: const Icon(Icons.arrow_upward),
             )
           : null,
-      body: SmoothCustomScrollView(
-        controller: scrollController,
-        slivers: [
-          ...buildTitle(),
-          buildActions(),
-          buildDescription(),
-          buildInfo(),
-          buildChapters(),
-          buildComments(),
-          buildThumbnails(),
-          buildRecommend(),
-          SliverPadding(
-            padding: EdgeInsets.only(
-              bottom: context.padding.bottom + 80,
-            ), // Add additional padding for FAB
-          ),
-        ],
-      ),
+      body: scroll,
     );
   }
 
@@ -278,12 +313,14 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   Iterable<Widget> buildTitle() sync* {
+    // Miuix 沉浸式：Appbar 全透明，让模糊封面背景透出来。
     yield SliverAppbar(
       title: AnimatedOpacity(
         opacity: showAppbarTitle ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
         child: Text(comic.title),
       ),
+      style: useMiuixStyle ? AppbarStyle.transparent : AppbarStyle.blur,
       actions: [
         IconButton(
           onPressed: showMoreActions,
@@ -307,12 +344,12 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
               child: Container(
                 decoration: BoxDecoration(
                   color: context.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(useMiuixStyle ? 12 : 8),
                   boxShadow: [
                     BoxShadow(
-                      color: context.colorScheme.outlineVariant,
-                      blurRadius: 1,
-                      offset: const Offset(0, 1),
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -336,15 +373,27 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(comic.title, style: ts.s18),
+                // 头部位于暗化的模糊背景上，文字统一用亮色保证可读。
+                SelectableText(
+                  comic.title,
+                  style: useMiuixStyle
+                      ? ts.s18.copyWith(color: Colors.white)
+                      : ts.s18,
+                ),
                 if (comic.subTitle != null)
                   SelectableText(
                     comic.subTitle!,
-                    style: ts.s14,
+                    style: useMiuixStyle
+                        ? ts.s14.copyWith(
+                            color: Colors.white.withValues(alpha: 0.78))
+                        : ts.s14,
                   ).paddingVertical(4),
                 Text(
                   (ComicSource.find(comic.sourceKey)?.name) ?? '',
-                  style: ts.s12,
+                  style: useMiuixStyle
+                      ? ts.s12.copyWith(
+                          color: Colors.white.withValues(alpha: 0.6))
+                      : ts.s12,
                 ),
               ],
             ),
@@ -630,6 +679,117 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     bool enableTranslation =
         App.locale.languageCode == 'zh' && comicSource.enableTagsTranslate;
 
+    // ---- Miuix 沉浸式信息区 ----
+    if (useMiuixStyle) {
+      // 元数据键值对（更新时间/页数/上传者等）转轻量双列清单。
+      var metaEntries = <MapEntry<String, String>>[
+        if (comic.uploader != null) MapEntry('Uploader'.tl, comic.uploader!),
+        if (comic.uploadTime != null)
+          MapEntry('Upload Time'.tl, formatTime(comic.uploadTime!)),
+        if (comic.updateTime != null)
+          MapEntry('Update Time'.tl, formatTime(comic.updateTime!)),
+        if (comic.maxPage != null)
+          MapEntry('Pages'.tl, comic.maxPage.toString()),
+      ];
+
+      Widget buildMetaKV(MapEntry<String, String> e) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              e.key,
+              style: ts.s12.copyWith(
+                color: context.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 2),
+            SelectableText(
+              e.value,
+              style: ts.s14,
+            ),
+          ],
+        );
+      }
+
+      return SliverLazyToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(title: Text("Information".tl)),
+            if (comic.stars != null)
+              Row(
+                children: [
+                  StarRating(value: comic.stars!, size: 24, onTap: starRating),
+                  const SizedBox(width: 8),
+                  Text(comic.stars!.toStringAsFixed(2)),
+                ],
+              ).paddingLeft(16).paddingVertical(8),
+            if (metaEntries.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < metaEntries.length; i += 2)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: buildMetaKV(metaEntries[i])),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: i + 1 < metaEntries.length
+                                  ? buildMetaKV(metaEntries[i + 1])
+                                  : const SizedBox(),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            // 内容标签扁平化：组名灰色小字 + 统一微透 Chips。
+            for (var e in comic.tags.entries)
+              if (e.value.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        e.key.ts(comicSource.key),
+                        style: ts.s12.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: context.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        runSpacing: 6,
+                        spacing: 6,
+                        children: [
+                          for (var tag in e.value)
+                            _InfoChip(
+                              text: enableTranslation
+                                  ? TagsTranslation.translationTagWithNamespace(
+                                      tag,
+                                      e.key.toLowerCase(),
+                                    )
+                                  : tag,
+                              onTap: () => onTapTag(tag, e.key),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            const SizedBox(height: 12),
+            const Divider(),
+          ],
+        ),
+      );
+    }
+
     return SliverLazyToBoxAdapter(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,6 +875,31 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   Widget buildRecommend() {
     if (comic.recommend == null || comic.recommend!.isEmpty) {
       return const SliverPadding(padding: EdgeInsets.zero);
+    }
+    // Miuix 画风：横向 Carousel（紧凑卡片展示更多内容）。
+    if (useMiuixStyle) {
+      return SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Builder(builder: (context) {
+              return ListTile(title: Text("Related".tl));
+            }),
+            SizedBox(
+              height: 196,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: comic.recommend!.length,
+                itemBuilder: (context, index) {
+                  return _RelatedComicCard(comic: comic.recommend![index]);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
     }
     return SliverMainAxisGroup(
       slivers: [
@@ -810,6 +995,43 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Miuix 画风：胶囊按钮，surfaceContainerHigh 底、无边框。
+    if (useMiuixStyle) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: context.colorScheme.surfaceContainerHigh,
+        ),
+        child: InkWell(
+          onTap: () {
+            if (!(isLoading ?? false)) {
+              onPressed();
+            }
+          },
+          onLongPress: onLongPressed,
+          borderRadius: BorderRadius.circular(20),
+          child: IconTheme.merge(
+            data: IconThemeData(size: 20, color: iconColor),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isLoading ?? false)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 1.8),
+                  )
+                else
+                  (isActive ?? false) ? (activeIcon ?? icon) : icon,
+                const SizedBox(width: 8),
+                Text(text),
+              ],
+            ).paddingHorizontal(16),
+          ),
+        ),
+      );
+    }
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
@@ -844,6 +1066,177 @@ class _ActionButton extends StatelessWidget {
               Text(text),
             ],
           ).paddingHorizontal(16),
+        ),
+      ),
+    );
+  }
+}
+
+/// 详情页沉浸式背景：封面高斯模糊 + 暗化 + 底部渐入页面背景色。
+class _ImmersiveCoverBackground extends StatelessWidget {
+  const _ImmersiveCoverBackground({required this.image});
+
+  final ImageProvider image;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 放大 1.5 倍防止 blur 边缘发白。
+        Transform.scale(
+          scale: 1.5,
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: AnimatedImage(
+              image: image,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.low,
+            ),
+          ),
+        ),
+        // 暗化层。
+        Container(color: Colors.black.withValues(alpha: 0.5)),
+        // 下半部渐入页面背景色，保证正文区域可读性。
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.3, 0.65, 1.0],
+              colors: [
+                Colors.black.withValues(alpha: 0.15),
+                Colors.black.withValues(alpha: 0.1),
+                context.colorScheme.surface.withValues(alpha: 0.85),
+                context.colorScheme.surface,
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 详情页信息区统一风格 Chip：微透底 + 主题前景色，点击跳转，长按复制。
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.text, this.onTap});
+
+  final String text;
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
+      ),
+      child: Text(
+        text,
+        style: ts.s14,
+      ),
+    );
+    if (onTap == null) {
+      return content;
+    }
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: text));
+        context.showMessage(message: "Copied".tl);
+      },
+      onSecondaryTapDown: (details) {
+        showMenuX(context, details.globalPosition, [
+          MenuEntry(
+            icon: Icons.remove_red_eye,
+            text: "View".tl,
+            onClick: onTap!,
+          ),
+          MenuEntry(
+            icon: Icons.copy,
+            text: "Copy".tl,
+            onClick: () {
+              Clipboard.setData(ClipboardData(text: text));
+              context.showMessage(message: "Copied".tl);
+            },
+          ),
+        ]);
+      },
+      child: content,
+    );
+  }
+}
+
+/// 相关推荐横向 Carousel 卡片：封面在上 + 标题两行。
+class _RelatedComicCard extends StatelessWidget {
+  const _RelatedComicCard({required this.comic});
+
+  final Comic comic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: MiuixCard(
+        cornerRadius: 12,
+        insideMargin: const EdgeInsets.all(6),
+        onPressed: () {
+          App.mainNavigatorKey?.currentContext?.to(
+            () => ComicPage(
+              id: comic.id,
+              sourceKey: comic.sourceKey,
+              cover: comic.cover,
+              title: comic.title,
+            ),
+          );
+        },
+        feedbackType: MiuixPressFeedbackType.sink,
+        child: SizedBox(
+          width: 104,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: context.colorScheme.onSurfaceVariant
+                        .withValues(alpha: 0.12),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: AnimatedImage(
+                    image: CachedImageProvider(
+                      comic.cover,
+                      sourceKey: comic.sourceKey,
+                      cid: comic.id,
+                    ),
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                comic.title.replaceAll('\n', ''),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

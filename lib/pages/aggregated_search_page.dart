@@ -8,9 +8,16 @@ import "package:venera/pages/search_result_page.dart";
 import "package:venera/utils/translations.dart";
 
 class AggregatedSearchPage extends StatefulWidget {
-  const AggregatedSearchPage({super.key, required this.keyword});
+  const AggregatedSearchPage({
+    super.key,
+    required this.keyword,
+    this.embedded = false,
+  });
 
   final String keyword;
+
+  /// 嵌入搜索标签页内渲染（非独立路由）时为 true —— 此时不显示返回键。
+  final bool embedded;
 
   @override
   State<AggregatedSearchPage> createState() => _AggregatedSearchPageState();
@@ -52,7 +59,10 @@ class _AggregatedSearchPageState extends State<AggregatedSearchPage> {
   @override
   Widget build(BuildContext context) {
     return SmoothCustomScrollView(slivers: [
-      SliverSearchBar(controller: controller),
+      SliverSearchBar(
+        controller: controller,
+        showBackButton: !widget.embedded,
+      ),
       SliverList(
         key: ValueKey(_keyword),
         delegate: SliverChildBuilderDelegate(

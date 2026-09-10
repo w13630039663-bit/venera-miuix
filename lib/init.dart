@@ -8,6 +8,7 @@ import 'package:rhttp/rhttp.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/cache_manager.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/foundation/content_guard.dart';
 import 'package:venera/foundation/js_engine.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/network/cookie_jar.dart';
@@ -36,9 +37,14 @@ extension _FutureInit<T> on Future<T> {
 
 Future<void> init() async {
   await App.init().wait();
-  await SingleInstanceCookieJar.createInstance();
+  // 顺序上一句必须等：App.init 定出 cachePath/dataPath，下面的初始化全靠它。
+  // 之后这些互相之间没有依赖，全部并行 —— 串起来等待会让启动时长变成
+  // 各项之和（读 tags.json / opencc 字典 / 起 JS 引擎都是几十毫秒级）。
   try {
     var futures = [
+      // CookieJar 原先在批外单独 await，白等一个串行往返；移进来并行，
+      // 顺带纳入 try —— 它失败时也只会记日志，不该让启动直接崩。
+      SingleInstanceCookieJar.createInstance(),
       Rhttp.init(),
       App.initComponents(),
       SAFTaskWorker().init().wait(),
@@ -46,6 +52,8 @@ Future<void> init() async {
       TagsTranslation.readData().wait(),
       JsEngine().init().wait(),
       ComicSourceManager().init().wait(),
+      // 内容分级预设表：必须早于任何列表渲染（判定层的第一跳）。
+      ContentGuard.init(),
       OpenCC.init(),
     ];
     await Future.wait(futures);
@@ -55,13 +63,23 @@ Future<void> init() async {
   CacheManager().setLimitSize(appdata.settings['cacheSize']);
   _checkOldConfigs();
   if (App.isAndroid) {
+    // 恢复「屏幕防窥」。FLAG_SECURE 是 window 级状态，不随进程存活，
+    // 必须在每次启动时重新设置 —— 这正是设置项副标题写「需重启生效」的原因。
+    if (appdata.settings['secureWindow'] == true) {
+      const MethodChannel('venera/method_channel')
+          .invokeMethod('setSecureWindow', {'set': true});
+    }
     handleLinks();
     handleTextShare();
-    try {
-      await FlutterDisplayMode.setHighRefreshRate();
-    } catch(e) {
-      Log.error("Display Mode", "Failed to set high refresh rate: $e");
-    }
+    // 高刷新率申请不阻塞首帧：它只是一次 platform channel 调用，结果是后续
+    // 帧才受益。放 await 会让启动多等一个往返（冷启动时更明显）。
+    unawaited(
+      FlutterDisplayMode.setHighRefreshRate().then<void>(
+        (_) {},
+        onError: (Object e) =>
+            Log.error("Display Mode", "Failed to set high refresh rate: $e"),
+      ),
+    );
   }
   FlutterError.onError = (details) {
     Log.error("Unhandled Exception", "${details.exception}\n${details.stack}");

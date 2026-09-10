@@ -74,14 +74,24 @@ class SliverGridDelegateWithFixedHeight extends SliverGridDelegate {
 }
 
 class SliverGridDelegateWithComics extends SliverGridDelegate {
-  SliverGridDelegateWithComics();
+  SliverGridDelegateWithComics({this.miuixTwoColumn = false});
+
+  /// Miuix 双列卡片模式（发现页专用）：固定双列（宽屏自适应加列），
+  /// 卡片 = 封面 + 底部标题/副标题。仅在 [useMiuixStyle] 时由调用方启用。
+  final bool miuixTwoColumn;
 
   final bool useBriefMode = appdata.settings['comicDisplayMode'] == 'brief';
 
   final double scale = (appdata.settings['comicTileScale'] as num).toDouble();
 
+  /// 构造时的 Miuix 开关快照（detailed 模式的卡片边距依赖它）。
+  final bool useMiuix = useMiuixStyle;
+
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) {
+    if (miuixTwoColumn) {
+      return getMiuixTwoColumnLayout(constraints);
+    }
     if (useBriefMode) {
       return getBriefModeLayout(
         constraints,
@@ -95,10 +105,36 @@ class SliverGridDelegateWithComics extends SliverGridDelegate {
     }
   }
 
+  /// Miuix 双列卡片网格：每格 = [MiuixComicTile]（外间距 6 + MiuixCard）。
+  ///
+  /// 卡片内部结构（ComicTile._buildMiuixGridMode）：
+  ///   Column [ 封面（宽高比 0.68，左右内缩 6） , 信息区 66dp（标题 2 行 +
+  ///   副标题 1 行） ] —— 封面高度由列宽决定，因此格子高度必须在这里算出。
+  SliverGridLayout getMiuixTwoColumnLayout(SliverConstraints constraints) {
+    const spacing = 12.0;
+    final width = constraints.crossAxisExtent;
+    // 手机双列；宽屏（平板/桌面窗口）按 220dp 一列自适应加列。
+    final crossItems = math.max(2, width ~/ 220);
+    final colW = (width - spacing * (crossItems - 1)) / crossItems;
+    const coverAspect = 0.68;
+    final imgH = (colW - 12) / coverAspect;
+    const infoH = 66.0;
+    final cellH = imgH + infoH;
+    return SliverGridRegularTileLayout(
+      crossAxisCount: crossItems,
+      mainAxisStride: cellH + spacing,
+      crossAxisStride: colW + spacing,
+      childMainAxisExtent: cellH,
+      childCrossAxisExtent: colW,
+      reverseCrossAxis: false,
+    );
+  }
+
   SliverGridLayout getDetailedModeLayout(
       SliverConstraints constraints, double scale) {
+    // Miuix 模式下横向卡片外围有 8dp 边距（MiuixCard 卡片化），格子加高。
+    final itemHeight = 152 * scale + (useMiuixStyle ? 16 : 0);
     const minCrossAxisExtent = 360;
-    final itemHeight = 152 * scale;
     final width = constraints.crossAxisExtent;
     var crossItems = width ~/ minCrossAxisExtent;
     crossItems = math.max(1, crossItems);
@@ -142,7 +178,9 @@ class SliverGridDelegateWithComics extends SliverGridDelegate {
   bool shouldRelayout(covariant SliverGridDelegate oldDelegate) {
     if (oldDelegate is! SliverGridDelegateWithComics) return true;
     if (oldDelegate.scale != scale ||
-        oldDelegate.useBriefMode != useBriefMode) {
+        oldDelegate.useBriefMode != useBriefMode ||
+        oldDelegate.miuixTwoColumn != miuixTwoColumn ||
+        oldDelegate.useMiuix != useMiuix) {
       return true;
     }
     return false;

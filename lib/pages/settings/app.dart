@@ -180,6 +180,19 @@ class _AppSettingsState extends State<AppSettings> {
               }
             },
           ).toSliver(),
+        // 「Debug」分类已移除（fork 不暴露 JS 调试台与调试开关），
+        // 但日志页是排障刚需，挪到这里保留入口。
+        _SettingPartTitle(
+          title: "Troubleshooting".tl,
+          icon: Icons.bug_report_outlined,
+        ),
+        _CallbackSetting(
+          title: "Open Log".tl,
+          actionTitle: "Open".tl,
+          callback: () {
+            context.to(() => const LogsPage());
+          },
+        ).toSliver(),
       ],
     );
   }
@@ -456,7 +469,7 @@ class _WebdavSettingState extends State<_WebdavSetting> {
                                   child: IconButton(
                                     icon: const Icon(Icons.open_in_new),
                                     onPressed: () {
-                                      launchUrlString("https://github.com/venera-app/venera/blob/b08f11f6ac49bd07d34b4fcde233ed07e86efbc9/lib/foundation/appdata.dart#L138");
+                                      launchUrlString("https://github.com/w13630039663-bit/venera-miuix/blob/master/lib/foundation/appdata.dart");
                                     },
                                   ),
                                 ),

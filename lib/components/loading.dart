@@ -122,6 +122,120 @@ class SliverListLoadingIndicator extends StatelessWidget {
   }
 }
 
+/// 漫画卡片网格骨架屏：**直接复用 [SliverGridDelegateWithComics]**，
+/// 保证占位几何与真实卡片（detailed 横排 / brief 海报 / miuix 双列卡）
+/// 完全一致；每个占位元素套 [Shimmer] 做流光动画。
+/// 用作 ComicList 首屏加载的占位。
+class ComicGridSkeleton extends StatelessWidget {
+  const ComicGridSkeleton({this.itemCount = 10, super.key});
+
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      gridDelegate: SliverGridDelegateWithComics(),
+      itemCount: itemCount,
+      itemBuilder: (context, i) => Shimmer(
+        color: dark ? Colors.white : Colors.black,
+        child: _buildPlaceholder(context, dark),
+      ),
+    );
+  }
+
+  Widget _line(Color color, double? width, {double height = 12}) {
+    return Container(
+      width: width,
+      height: height,
+      margin: const EdgeInsets.only(bottom: 7),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(BuildContext context, bool dark) {
+    final color = dark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.black.withValues(alpha: 0.08);
+    final delegate = SliverGridDelegateWithComics();
+    if (useMiuixStyle && delegate.miuixTwoColumn) {
+      // 双列卡：封面占上、两行文字占下。
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _line(color, null, height: 13),
+                  _line(color, 96, height: 11),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (delegate.useBriefMode) {
+      // 海报模式：整格封面。
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+    // detailed 横排：左侧封面 + 右侧多行文字。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 24, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 104,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 6),
+                _line(color, null, height: 15),
+                _line(color, 140),
+                _line(color, 100),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 abstract class LoadingState<T extends StatefulWidget, S extends Object>
     extends State<T> {
   bool isLoading = false;

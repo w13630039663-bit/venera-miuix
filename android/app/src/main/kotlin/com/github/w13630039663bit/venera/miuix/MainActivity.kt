@@ -1,4 +1,4 @@
-package com.github.wgh136.venera
+package com.github.w13630039663bit.venera.miuix
 
 import android.Manifest
 import android.app.Activity
@@ -116,6 +116,24 @@ class MainActivity : FlutterFragmentActivity() {
                         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     } else {
                         window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    res.success(null)
+                }
+
+                // 屏幕防窥：FLAG_SECURE 会同时禁止截屏、并让本应用在「最近任务」
+                // 里的缩略图变成空白。后者才是这个开关的真正目的 —— 防止切到
+                // 多任务时画面被旁人看到。
+                // Android 13(API 33) 起另有 setRecentsScreenshotEnabled(false)，
+                // 可以只关最近任务缩略图而不禁止截屏；两个一起用覆盖面最全。
+                "setSecureWindow" -> {
+                    val set = call.argument<Boolean>("set") ?: false
+                    if (set) {
+                        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        setRecentsScreenshotEnabled(!set)
                     }
                     res.success(null)
                 }

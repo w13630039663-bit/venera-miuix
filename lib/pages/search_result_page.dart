@@ -145,35 +145,39 @@ class _SearchResultPageState extends State<SearchResultPage> {
   @override
   Widget build(BuildContext context) {
     var source = ComicSource.find(sourceKey);
-    return ComicList(
-      key: Key(text + options.toString() + sourceKey),
-      errorLeading: AppSearchBar(
-        controller: controller,
-        action: buildAction(),
+    // 单源搜索结果 = 用户自己选了这个源来搜，属于「进源之后」，不再糊封面。
+    return NsfwMaskScope(
+      mask: false,
+      child: ComicList(
+        key: Key(text + options.toString() + sourceKey),
+        errorLeading: AppSearchBar(
+          controller: controller,
+          action: buildAction(),
+        ),
+        leadingSliver: SliverSearchBar(
+          controller: controller,
+          onChanged: onChanged,
+          action: buildAction(),
+        ),
+        loadPage: source!.searchPageData!.loadPage == null
+            ? null
+            : (i) {
+                return source.searchPageData!.loadPage!(
+                  text,
+                  i,
+                  options,
+                );
+              },
+        loadNext: source.searchPageData!.loadNext == null
+            ? null
+            : (i) {
+                return source.searchPageData!.loadNext!(
+                  text,
+                  i,
+                  options,
+                );
+              },
       ),
-      leadingSliver: SliverSearchBar(
-        controller: controller,
-        onChanged: onChanged,
-        action: buildAction(),
-      ),
-      loadPage: source!.searchPageData!.loadPage == null
-          ? null
-          : (i) {
-              return source.searchPageData!.loadPage!(
-                text,
-                i,
-                options,
-              );
-            },
-      loadNext: source.searchPageData!.loadNext == null
-          ? null
-          : (i) {
-              return source.searchPageData!.loadNext!(
-                text,
-                i,
-                options,
-              );
-            },
     );
   }
 

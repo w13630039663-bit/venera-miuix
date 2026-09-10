@@ -179,6 +179,9 @@ class Settings with ChangeNotifier {
     'navBarStyle': 'floating', // classic, floating, frosted
     'settingsStyle': 'miuix', // miuix, classic
     'settingsEntry': 'topRight', // navBar, topRight
+    'backgroundMode': 'off', // off, ambient, wallpaper
+    'wallpaperPath': '',
+    'wallpaperBlur': '24',
     'newFavoriteAddTo': 'end', // start, end
     'moveFavoriteAfterRead': 'none', // none, end, start
     'proxy': 'system', // direct, system, proxy string
@@ -190,6 +193,34 @@ class Settings with ChangeNotifier {
     'showHistoryStatusOnTile': false,
     'blockedWords': [],
     'blockedCommentWords': [],
+    // ── 「屏蔽与过滤」设置页 ──────────────────────────────────────────
+    // 精确标签屏蔽（与上面模糊的 blockedWords 语义不同，两者并存）
+    'blockedTags': [],
+    // 画师屏蔽（仅在详情页与支持作者标签的源生效）
+    'blockedArtists': [],
+    // 单作品屏蔽，key 为 "sourceKey@id"（与 Comic.toString() 一致）
+    'blockedComics': [],
+    // 三个列表各自的总闸，便于临时关掉排查误伤
+    'enableTagBlock': true,
+    'enableArtistBlock': true,
+    'enableComicBlock': true,
+    // 「H 是不行的」——内容遮蔽。用单一真相源表示开关与强度：
+    // off 即关闭；blur 只模糊；blurReveal 模糊且可点击显示；hide 整条隐藏。
+    'nsfwMaskStrength': 'off',
+    // 遮蔽的覆盖表（key 均为 "sourceKey@id"）：
+    // unlockedComics = 用户点过「显示」，永久豁免；forcedComics = 用户手动标记为敏感。
+    // P0 只做源级判定，这两张表是「误判可撤销」的落点。
+    'unlockedComics': [],
+    'forcedComics': [],
+    // 源级覆盖：sourceKey → 'safe' | 'mixed' | 'nsfw'。优先级高于插件声明与
+    // 内置预设表，是「这个源被预设表判错了」的纠正入口（含「永久放行此源」）。
+    'sourceWarningOverride': <String, dynamic>{},
+    // 屏幕防窥（Android FLAG_SECURE），改动需重启应用生效
+    'secureWindow': false,
+    // AI 作品筛选
+    'blockAiWorks': false,
+    'showAiBadge': true,
+    'aiAction': 'collapse', // badgeOnly / collapse / hide
     'defaultSearchTarget': null,
     'autoPageTurningInterval': 5, // in seconds
     'readerMode': 'galleryLeftToRight', // values of [ReaderMode]
@@ -224,7 +255,6 @@ class Settings with ChangeNotifier {
     'preloadImageCount': 4,
     'followUpdatesFolder': null,
     'initialPage': '0',
-    'comicListDisplayMode': 'paging', // paging, continuous
     'showPageNumberInReader': true,
     'showSingleImageOnFirstPage': false,
     'enableDoubleTapToZoom': true,

@@ -65,11 +65,15 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
         bool canShowAll = showAll;
         if (!showAll) {
           var width = constrains.crossAxisExtent - 16;
-          var crossItems = width ~/ 200;
-          if (width % 200 != 0) {
+          // Miuix 画风：紧凑网格每行 3~4 个，一屏展示更多话数。
+          var rowLimit = useMiuixStyle ? 4 : 8;
+          var crossItems = useMiuixStyle
+              ? (width ~/ 160).clamp(3, 4)
+              : width ~/ 200;
+          if (width % (useMiuixStyle ? 160 : 200) != 0) {
             crossItems += 1;
           }
-          length = math.min(length, crossItems * 8);
+          length = math.min(length, crossItems * rowLimit);
           if (length == chapters.length) {
             canShowAll = true;
           }
@@ -106,15 +110,17 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
                   var value = chapters[key]!;
                   bool visited = (history?.readEpisode ?? {}).contains(i + 1);
                   return Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                    padding: EdgeInsets.all(useMiuixStyle ? 3 : 4),
                     child: Material(
                       color: context.colorScheme.surfaceContainer,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(useMiuixStyle ? 10 : 16),
                       child: InkWell(
                         onTap: () => state.read(i + 1),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius:
+                            BorderRadius.circular(useMiuixStyle ? 10 : 16),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
                           child: Center(
                             child: Text(
                               value,
@@ -122,6 +128,7 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
                               textAlign: TextAlign.center,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                fontSize: useMiuixStyle ? 12.5 : null,
                                 color: visited
                                     ? context.colorScheme.outline
                                     : null,
@@ -134,9 +141,9 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
                   );
                 },
               ),
-              gridDelegate: const SliverGridDelegateWithFixedHeight(
-                maxCrossAxisExtent: 250,
-                itemHeight: 48,
+              gridDelegate: SliverGridDelegateWithFixedHeight(
+                maxCrossAxisExtent: useMiuixStyle ? 160 : 250,
+                itemHeight: useMiuixStyle ? 40 : 48,
               ),
             ).sliverPadding(const EdgeInsets.symmetric(horizontal: 8)),
             if (!canShowAll)
@@ -302,15 +309,17 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
                         history!.readEpisode.contains(rawIndex);
                   }
                   return Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                    padding: EdgeInsets.all(useMiuixStyle ? 3 : 4),
                     child: Material(
                       color: context.colorScheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius:
+                          BorderRadius.circular(useMiuixStyle ? 10 : 12),
                       child: InkWell(
                         onTap: () => state.read(chapterIndex + 1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(useMiuixStyle ? 10 : 12),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
                           child: Center(
                             child: Text(
                               value,
@@ -318,6 +327,7 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
                               textAlign: TextAlign.center,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                fontSize: useMiuixStyle ? 12.5 : null,
                                 color: visited
                                     ? context.colorScheme.outline
                                     : null,
@@ -330,9 +340,9 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
                   );
                 },
               ),
-              gridDelegate: const SliverGridDelegateWithFixedHeight(
-                maxCrossAxisExtent: 250,
-                itemHeight: 48,
+              gridDelegate: SliverGridDelegateWithFixedHeight(
+                maxCrossAxisExtent: useMiuixStyle ? 160 : 250,
+                itemHeight: useMiuixStyle ? 40 : 48,
               ),
             ).sliverPadding(const EdgeInsets.symmetric(horizontal: 8)),
             if (!canShowAll)

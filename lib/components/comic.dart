@@ -1,5 +1,26 @@
 part of 'components.dart';
 
+/// 列表/网格封面的解码宽度（物理像素）。
+///
+/// ## 为什么需要它
+///
+/// 漫画源的封面原图通常是 800×1200 甚至更大，而网格里一张卡片只显示
+/// 100–200dp 宽。不限制解码尺寸时，每张封面都按原分辨率解进 ImageCache
+/// （800×1200 的 RGBA 约 3.7MB），一屏 8 张加预取就是几十上百 MB，滚动时
+/// 反复触发解码与 GC —— 这是列表掉帧最常见的原因。
+///
+/// `AnimatedImage` 通过 `ResizeImage` 把参数透给解码器，解码时就出缩略图，
+/// 既不占显存也不占内存。传「显示宽度 × devicePixelRatio」即可让解码结果
+/// 与屏幕像素基本 1:1，画质无损。
+///
+/// [logicalWidth] 传该封面的**逻辑显示宽度**；不确定时传一个偏大的值
+/// （如 240）也比不传安全。
+int coverDecodeWidth(BuildContext context, double logicalWidth) {
+  final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+  // 上限 1440：够 480dp 宽的大图；下限 64：避免极小卡片解出糊图。
+  return (logicalWidth * dpr).round().clamp(64, 1440);
+}
+
 ImageProvider? _findImageProvider(Comic comic) {
   ImageProvider image;
   if (comic is LocalComic) {
@@ -33,6 +54,7 @@ class ComicTile extends StatelessWidget {
     this.onTap,
     this.onLongPressed,
     this.heroID,
+    this.miuixGrid = false,
   });
 
   final Comic comic;
@@ -48,6 +70,11 @@ class ComicTile extends StatelessWidget {
   final VoidCallback? onLongPressed;
 
   final int? heroID;
+
+  /// Miuix 双列卡片模式：封面在上、标题/副标题在下，外层 MiuixCard。
+  /// 由 [SliverGridComics] 在发现页（Miuix 画风）传入 —— 原单列布局里
+  /// 封面旁的标题信息在此移到封面下方完整保留。
+  final bool miuixGrid;
 
   void _onTap() {
     if (onTap != null) {
@@ -125,18 +152,86 @@ class ComicTile extends StatelessWidget {
           text: 'Block'.tl,
           onClick: () => block(context),
         ),
+        ..._maskMenuEntries(),
         ...?menuOptions,
       ],
     );
+  }
+
+  /// 「H 是不行的」相关的长按菜单项。
+  ///
+  /// 只在总开关打开时出现 —— 关着的时候这些项没有意义，放进菜单只会让长按菜单
+  /// 更啰嗦。每个动作执行后都把判定来源（`preset` / `keyword` / `plugin` /
+  /// `user:source` …）toast 出来：这是「误判可撤销」的最后一环 —— 用户得能问出
+  /// "这条凭什么被遮"，才改得动它。
+  List<MenuEntry> _maskMenuEntries() {
+    if (!ContentGuard.enabled) {
+      return const [];
+    }
+    final verdict = ContentGuard.verdict(comic);
+    final override = ContentGuard.sourceOverride(comic.sourceKey);
+    void notify(String message) =>
+        App.rootContext.showMessage(message: message);
+    return [
+      if (verdict.shouldMask)
+        MenuEntry(
+          icon: Icons.visibility_outlined,
+          text: 'Show this cover'.tl,
+          onClick: () {
+            ContentGuard.unlock(comic);
+            notify("Shown permanently (reason: @r)".tlParams({
+              'r': verdict.origin,
+            }));
+          },
+        ),
+      if (!verdict.shouldMask)
+        MenuEntry(
+          icon: Icons.visibility_off_outlined,
+          text: 'Mark as adult'.tl,
+          onClick: () {
+            ContentGuard.force(comic);
+            notify("Marked as adult".tl);
+          },
+        ),
+      if (override == null)
+        MenuEntry(
+          icon: Icons.shield_outlined,
+          text: 'Always allow this source'.tl,
+          onClick: () {
+            ContentGuard.setSourceOverride(comic.sourceKey, ContentLevel.safe);
+            notify("Covers from this source will not be masked".tl);
+          },
+        )
+      else
+        MenuEntry(
+          icon: Icons.shield_moon_outlined,
+          text: 'Follow preset for this source'.tl,
+          onClick: () {
+            ContentGuard.setSourceOverride(comic.sourceKey, null);
+            notify("This source follows the preset again".tl);
+          },
+        ),
+      if (verdict.origin.startsWith('user:'))
+        MenuEntry(
+          icon: Icons.restart_alt,
+          text: 'Clear content mark'.tl,
+          onClick: () {
+            ContentGuard.clearMarks(comic);
+            notify("Content mark cleared".tl);
+          },
+        ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     var type = appdata.settings['comicDisplayMode'];
 
-    Widget child = type == 'detailed'
-        ? _buildDetailedMode(context)
-        : _buildBriefMode(context);
+    Widget child = miuixGrid
+        ? _buildMiuixGridMode(context)
+        : type == 'detailed'
+            ? _buildDetailedMode(context)
+            : _buildBriefMode(context);
 
     var isFavorite = appdata.settings['showFavoriteStatusOnTile']
         ? LocalFavoritesManager()
@@ -159,8 +254,8 @@ class ComicTile extends StatelessWidget {
           child: child,
         ),
         Positioned(
-          left: type == 'detailed' ? 16 : 6,
-          top: 8,
+          left: miuixGrid ? 12 : (type == 'detailed' ? 16 : 6),
+          top: miuixGrid ? 14 : 8,
           child: Container(
             height: 24,
             decoration: BoxDecoration(
@@ -199,16 +294,30 @@ class ComicTile extends StatelessWidget {
     );
   }
 
-  Widget buildImage(BuildContext context) {
+  /// 封面。三种卡片布局（detailed / brief / miuix 网格）唯一的封面入口 ——
+  /// 遮蔽壳与解码尺寸控制都收在这一处，改一处即全覆盖。
+  ///
+  /// [logicalWidth] 是该封面在屏幕上的逻辑宽度，用来决定解码分辨率
+  /// （见 [coverDecodeWidth]）。三种布局的格子宽度算法不同，由调用方传入。
+  Widget buildImage(BuildContext context, {double? logicalWidth}) {
     var image = _findImageProvider(comic);
     if (image == null) {
       return const SizedBox();
     }
-    return AnimatedImage(
-      image: image,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
+    return NsfwCover(
+      comic: comic,
+      child: AnimatedImage(
+        image: image,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        // 缩略图按显示尺寸解码：800×1200 的原图在 100dp 卡片上白占 3.7MB。
+        cacheWidth: logicalWidth == null
+            ? null
+            : coverDecodeWidth(context, logicalWidth),
+        // 已按 1:1 解码，双线性（low）足够，且省掉 mipmap 的显存与三线性采样。
+        filterQuality: FilterQuality.low,
+      ),
     );
   }
 
@@ -231,13 +340,63 @@ class ComicTile extends StatelessWidget {
           ],
         ),
         clipBehavior: Clip.antiAlias,
-        child: buildImage(context),
+        child: buildImage(context, logicalWidth: height * 0.68),
       );
 
       if (heroID != null) {
         image = Hero(
           tag: "cover$heroID",
           child: image,
+        );
+      }
+
+      Widget row = Row(
+        children: [
+          image,
+          SizedBox.fromSize(
+            size: const Size(16, 5),
+          ),
+          Expanded(
+            child: _ComicDescription(
+              title: comic.maxPage == null
+                  ? comic.title.replaceAll("\n", "")
+                  : "[${comic.maxPage}P]${comic.title.replaceAll("\n", "")}",
+              subtitle: comic.subtitle ?? '',
+              description: comic.description,
+              badge: badge ?? comic.language,
+              tags: comic.tags,
+              maxLines: 2,
+              enableTranslate:
+                  ComicSource.find(comic.sourceKey)?.enableTagsTranslate ??
+                      false,
+              rating: comic.stars,
+            ),
+          ),
+        ],
+      );
+
+      // Miuix 画风：横向卡片包进 MiuixCard（squircle 圆角 + 卡片底色 +
+      // 按压下沉反馈）。外层 8dp 边距与网格 delegate 的加高（+16）对应。
+      if (useMiuixStyle) {
+        return withMiuixTheme(
+          context,
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: MiuixCard(
+              insideMargin: EdgeInsets.zero,
+              onPressed: _onTap,
+              onLongPress:
+                  enableLongPressed ? () => _onLongPressed(context) : null,
+              feedbackType: MiuixPressFeedbackType.sink,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
+                  child: row,
+                ),
+              ),
+            ),
+          ),
         );
       }
 
@@ -248,33 +407,136 @@ class ComicTile extends StatelessWidget {
         onSecondaryTapDown: (detail) => onSecondaryTap(detail, context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 24, 8),
-          child: Row(
-            children: [
-              image,
-              SizedBox.fromSize(
-                size: const Size(16, 5),
-              ),
-              Expanded(
-                child: _ComicDescription(
-                  title: comic.maxPage == null
-                      ? comic.title.replaceAll("\n", "")
-                      : "[${comic.maxPage}P]${comic.title.replaceAll("\n", "")}",
-                  subtitle: comic.subtitle ?? '',
-                  description: comic.description,
-                  badge: badge ?? comic.language,
-                  tags: comic.tags,
-                  maxLines: 2,
-                  enableTranslate:
-                      ComicSource.find(comic.sourceKey)?.enableTagsTranslate ??
-                          false,
-                  rating: comic.stars,
-                ),
-              ),
-            ],
-          ),
+          child: row,
         ),
       );
     });
+  }
+
+  /// Miuix 双列卡片（发现页专用）：MiuixCard = 封面 + 信息区。
+  ///
+  /// 原单列布局里封面**旁边**的标题/副标题，在双列下移到封面**下方**
+  /// 完整保留（标题最多 2 行、副标题 1 行）—— 这是"保留卡片旁标题"的
+  /// 折中形态：信息不丢，布局适应双列。
+  ///
+  /// 格子几何与 [SliverGridDelegateWithComics.getMiuixTwoColumnLayout]
+  /// 严格对应：外间距 6、封面区高 = (格宽-12)/0.68、信息区 66dp。
+  Widget _buildMiuixGridMode(BuildContext context) {
+    // 封面宽度 = 格宽 − 12（表里 Padding 6×2，与
+    // SliverGridDelegateWithComics.getMiuixTwoColumnLayout 对应）。
+    // 用 LayoutBuilder 取实测宽度，交给解码器出对应尺寸的缩略图。
+    Widget image = LayoutBuilder(
+      builder: (context, constraints) => Container(
+        color: context.colorScheme.secondaryContainer,
+        child: buildImage(context, logicalWidth: constraints.maxWidth),
+      ),
+    );
+
+    if (heroID != null) {
+      image = Hero(
+        tag: "cover$heroID",
+        child: image,
+      );
+    }
+
+    final subtitle = comic.subtitle?.replaceAll('\n', '').trim() ?? '';
+
+    return withMiuixTheme(
+      context,
+      // Builder 让取色 context 拿到刚注入的 MiuixTheme（外层 context
+      // 没有 Miuix 祖先，MiuixTheme.of 会回退浅色）。
+      Builder(
+        builder: (context) {
+          final subtitleColor =
+              MiuixTheme.of(context).colors.onSurfaceVariantSummary;
+          return Padding(
+            padding: const EdgeInsets.all(6),
+            child: MiuixCard(
+              insideMargin: EdgeInsets.zero,
+              onPressed: _onTap,
+              onLongPress:
+                  enableLongPressed ? () => _onLongPressed(context) : null,
+              feedbackType: MiuixPressFeedbackType.sink,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            image,
+                            // 半透明毛玻璃角标：页数 / AI，悬浮在封面底部右侧。
+                            Positioned(
+                              right: 7,
+                              bottom: 7,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (comic.maxPage != null &&
+                                      comic.maxPage! > 0)
+                                    _GlassCoverBadge('${comic.maxPage}P'),
+                                  if (comic.tags?.any((t) =>
+                                          t.toLowerCase() == 'ai' ||
+                                          t.toLowerCase() == 'ai-generated') ??
+                                      false) ...[
+                                    if (comic.maxPage != null &&
+                                        comic.maxPage! > 0)
+                                      const SizedBox(width: 4),
+                                    const _GlassCoverBadge('AI'),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 66,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              comic.title.replaceAll('\n', ''),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                height: 1.25,
+                              ),
+                            ),
+                            if (subtitle.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3),
+                                child: Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: subtitleColor,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildBriefMode(BuildContext context) {
@@ -293,7 +555,7 @@ class ComicTile extends StatelessWidget {
             ],
           ),
           clipBehavior: Clip.antiAlias,
-          child: buildImage(context),
+          child: buildImage(context, logicalWidth: constraints.maxWidth),
         );
 
         if (heroID != null) {
@@ -449,12 +711,17 @@ class ComicTile extends StatelessWidget {
       context: App.rootContext,
       builder: (context) {
         var words = <String>[];
-        var all = <String>[];
+        // 拆成两个集合：标签走**精确**的 blockedTags，标题/副标题拆出的词走
+        // **模糊**的 blockedWords。原来这里把两者混在一个列表里、一律存
+        // blockedWords，结果用户想"屏蔽这个标签"实际上变成了"屏蔽任何字段里
+        // 出现这两个字的作品"，误伤面大得多。
+        final tagSet = <String>{...?comic.tags};
+        final all = <String>[];
         all.addAll(_splitText(comic.title));
         if (comic.subtitle != null && comic.subtitle != "") {
           all.add(comic.subtitle!);
         }
-        all.addAll(comic.tags ?? []);
+        all.addAll(tagSet);
         return StatefulBuilder(builder: (context, setState) {
           return ContentDialog(
             title: 'Block'.tl,
@@ -469,7 +736,7 @@ class ComicTile extends StatelessWidget {
                   children: [
                     for (var word in all)
                       OptionChip(
-                        text: (comic.tags?.contains(word) ?? false)
+                        text: tagSet.contains(word)
                             ? word.translateTagIfNeed
                             : word,
                         isSelected: words.contains(word),
@@ -492,7 +759,17 @@ class ComicTile extends StatelessWidget {
                 onPressed: () {
                   context.pop();
                   for (var word in words) {
-                    appdata.settings['blockedWords'].add(word);
+                    if (tagSet.contains(word)) {
+                      final list = appdata.settings['blockedTags'];
+                      if (list is List && !list.contains(word)) {
+                        list.add(word);
+                      }
+                    } else {
+                      final list = appdata.settings['blockedWords'];
+                      if (list is List && !list.contains(word)) {
+                        list.add(word);
+                      }
+                    }
                   }
                   appdata.saveData();
                   context.showMessage(message: 'Blocked'.tl);
@@ -741,7 +1018,8 @@ class SliverGridComics extends StatefulWidget {
       this.menuBuilder,
       this.onTap,
       this.onLongPressed,
-      this.selections});
+      this.selections,
+      this.twoColumnMiuix = false});
 
   final List<Comic> comics;
 
@@ -757,6 +1035,10 @@ class SliverGridComics extends StatefulWidget {
 
   final void Function(Comic, int heroID)? onLongPressed;
 
+  /// Miuix 双列卡片模式（发现页 Miuix 画风专用），见
+  /// [SliverGridDelegateWithComics.getMiuixTwoColumnLayout]。
+  final bool twoColumnMiuix;
+
   @override
   State<SliverGridComics> createState() => _SliverGridComicsState();
 }
@@ -764,6 +1046,10 @@ class SliverGridComics extends StatefulWidget {
 class _SliverGridComicsState extends State<SliverGridComics> {
   List<Comic> comics = [];
   List<int> heroIDs = [];
+
+  /// 当前场景是否参与遮蔽（[NsfwMaskScope]）。缓存成字段是因为过滤发生在
+  /// `initState` / `didUpdateWidget` 里，那里读不到 InheritedWidget。
+  bool _nsfwActive = true;
 
   static int _nextHeroID = 0;
 
@@ -774,16 +1060,32 @@ class _SliverGridComicsState extends State<SliverGridComics> {
     }
   }
 
+  void _refilter() {
+    comics.clear();
+    for (var comic in widget.comics) {
+      if (isBlocked(comic, honorNsfw: _nsfwActive) == null) {
+        comics.add(comic);
+      }
+    }
+    generateHeroID();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final active = NsfwMaskScope.of(context);
+    if (active != _nsfwActive) {
+      _nsfwActive = active;
+      // 场景切换（例如同一个网格被复用到「进源之后」的页面）：立刻重新过滤。
+      // 这里不调 setState —— 依赖变化本身已经安排了这一帧的重建。
+      _refilter();
+    }
+  }
+
   @override
   void didUpdateWidget(covariant SliverGridComics oldWidget) {
     if (!comics.isEqualTo(widget.comics)) {
-      comics.clear();
-      for (var comic in widget.comics) {
-        if (isBlocked(comic) == null) {
-          comics.add(comic);
-        }
-      }
-      generateHeroID();
+      _refilter();
     }
     super.didUpdateWidget(oldWidget);
   }
@@ -807,14 +1109,7 @@ class _SliverGridComicsState extends State<SliverGridComics> {
   }
 
   void update() {
-    setState(() {
-      comics.clear();
-      for (var comic in widget.comics) {
-        if (isBlocked(comic) == null) {
-          comics.add(comic);
-        }
-      }
-    });
+    setState(_refilter);
   }
 
   @override
@@ -828,6 +1123,7 @@ class _SliverGridComicsState extends State<SliverGridComics> {
       menuBuilder: widget.menuBuilder,
       onTap: widget.onTap,
       onLongPressed: widget.onLongPressed,
+      twoColumnMiuix: widget.twoColumnMiuix,
     );
   }
 }
@@ -842,6 +1138,7 @@ class _SliverGridComics extends StatelessWidget {
     this.onTap,
     this.onLongPressed,
     this.selection,
+    this.twoColumnMiuix = false,
   });
 
   final List<Comic> comics;
@@ -859,6 +1156,8 @@ class _SliverGridComics extends StatelessWidget {
   final void Function(Comic, int heroID)? onTap;
 
   final void Function(Comic, int heroID)? onLongPressed;
+
+  final bool twoColumnMiuix;
 
   @override
   Widget build(BuildContext context) {
@@ -882,6 +1181,7 @@ class _SliverGridComics extends StatelessWidget {
               ? () => onLongPressed!(comics[index], heroIDs[index])
               : null,
           heroID: heroIDs[index],
+          miuixGrid: twoColumnMiuix,
         );
         if (selection == null) {
           return comic;
@@ -901,13 +1201,22 @@ class _SliverGridComics extends StatelessWidget {
           child: comic,
         );
       }, childCount: comics.length),
-      gridDelegate: SliverGridDelegateWithComics(),
+      gridDelegate: SliverGridDelegateWithComics(
+        miuixTwoColumn: twoColumnMiuix,
+      ),
     );
   }
 }
 
+/// 扁平屏蔽表里的精确匹配。表本身是 `List<String>`，但从 settings 取出来是
+/// `dynamic`，所以这里统一做类型兜底（脏数据不该让列表页崩掉）。
+bool _inBlockList(String settingKey, String value) {
+  final list = appdata.settings[settingKey];
+  return list is List && list.contains(value);
+}
+
 /// return the first blocked keyword, or null if not blocked
-String? isBlocked(Comic item) {
+String? isBlocked(Comic item, {bool honorNsfw = true}) {
   for (var word in appdata.settings['blockedWords']) {
     if (item.title.contains(word)) {
       return word;
@@ -930,8 +1239,84 @@ String? isBlocked(Comic item) {
       }
     }
   }
+
+  // ── 「屏蔽与过滤」的三张精确表 ────────────────────────────────────────
+  // 与上面的 `blockedWords` 语义不同：那里是**模糊 contains**（拦"某个上传者的
+  // 名字出现在任何字段"），这里是**精确相等**（拦"这个标签"，不会因为标题里
+  // 恰好含这两个字而误伤）。两者并存。
+
+  if (appdata.settings['enableTagBlock'] != false) {
+    for (var tag in item.tags ?? <String>[]) {
+      // 支持带命名空间的写法：e-hentai 的 `female:big breasts`、
+      // `other:ai generated`，命中前缀或裸值都算。
+      final plain = tag.contains(':') ? tag.split(':').sublist(1).join(':') : tag;
+      if (_inBlockList('blockedTags', tag) ||
+          _inBlockList('blockedTags', plain)) {
+        return tag;
+      }
+    }
+  }
+
+  if (appdata.settings['enableArtistBlock'] != false) {
+    final artists = appdata.settings['blockedArtists'];
+    if (artists is List && artists.isNotEmpty) {
+      // ⚠️ 列表层的 `Comic` **没有 author 字段**（只有 title / cover / id /
+      // subtitle / tags / description / sourceKey / maxPage / language）。
+      // 所以这里只能从 subtitle 和带命名空间的作者标签里找 —— 这就是方案里
+      // 说的「画师屏蔽在列表层作用面有限」。这里刻意**不做模糊匹配**：
+      // 列表 tags 里混着题材名和日期，模糊匹配会大面积误伤。
+      final subtitle = item.subtitle;
+      if (subtitle != null && artists.contains(subtitle)) {
+        return subtitle;
+      }
+      for (var tag in item.tags ?? <String>[]) {
+        if (!tag.contains(':')) {
+          continue;
+        }
+        final parts = tag.split(':');
+        final ns = parts.first.toLowerCase();
+        if (ns == 'artist' || ns == 'artists' || ns == 'author' || ns == 'group' || ns == 'circle') {
+          final name = parts.sublist(1).join(':');
+          if (artists.contains(name)) {
+            return name;
+          }
+        }
+      }
+    }
+  }
+
+  if (appdata.settings['enableComicBlock'] != false) {
+    final key = ContentGuard.keyOf(item);
+    if (_inBlockList('blockedComics', key)) {
+      return key;
+    }
+  }
+
+  // 「H 是不行的」强度设为 hide 时，命中遮蔽的条目整条剔除（而不是糊封面）。
+  // 这是用户显式选择的强度，与"程序替用户猜"导致的误删是两码事。
+  //
+  // `honorNsfw = false` 对应「进源之后不遮」的场景（[NsfwMaskScope]）：既然那一屏
+  // 连封面都不糊，条目更不该被剔除 —— 否则用户点进成人源会发现列表一片空白，
+  // 比"糊着"更糟。
+  if (honorNsfw &&
+      ContentGuard.strength == NsfwMaskStrength.hide &&
+      ContentGuard.maskReason(item) != null) {
+    return 'nsfw';
+  }
+
   return null;
 }
+
+/// 列表层统一过滤：把 [isBlocked] 命中的条目**整条剔除**
+/// （屏蔽词 / 标签 / 画师 / 收录作品，以及「H 是不行的」强度设为 hide 时
+/// 命中的条目）。
+///
+/// [SliverGridComics] 内部已经做过这件事，所以走 [ComicList] / [ComicTile] 的
+/// 页面天然生效；但**自己拼卡片**的地方（分类页的排行榜预览、主页的
+/// 今日推荐 / 历史这类横向小卡片流）拿的是原始列表，必须显式过一遍，
+/// 否则屏蔽强度选 hide 时那些卡片照旧出现。
+List<T> filterBlocked<T extends Comic>(Iterable<T> list) =>
+    list.where((item) => isBlocked(item) == null).toList();
 
 class ComicList extends StatefulWidget {
   const ComicList({
@@ -1027,7 +1412,20 @@ class ComicListState extends State<ComicList> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    restoreState(PageStorage.of(context).readState(context));
+    // 仅在开启页面状态持久化时才读 PageStorage。
+    // PageStorage 的同一个 identifier（祖先链上的 PageStorageKey 组合）下，
+    // 存的不止本组件写入的 state —— Scrollable 会把滚动偏移（double）写进
+    // 「同一个 PageStorageKey 子树」的同一 identifier 里。当 ComicList 被嵌进
+    // 带 PageStorageKey 的页面（如搜索标签页）后，readState 可能返回那个
+    // double，直接传给参数类型为 Map<String, dynamic>? 的 restoreState 会抛：
+    //   type 'double' is not a subtype of type 'Map<String, dynamic>?'
+    // 这里既加上「只读自己写的 Map」的类型校验，也让未开启持久化时完全不读。
+    if (enablePageStorage) {
+      final saved = PageStorage.of(context).readState(context);
+      if (saved is Map<String, dynamic>) {
+        restoreState(saved);
+      }
+    }
     widget.refreshHandlerCallback?.call(refresh);
   }
 
@@ -1042,102 +1440,7 @@ class ComicListState extends State<ComicList> {
     setState(() {});
   }
 
-  Widget _buildPageSelector() {
-    return Row(
-      children: [
-        FilledButton(
-          onPressed: _page > 1
-              ? () {
-                  setState(() {
-                    _error = null;
-                    _page--;
-                  });
-                }
-              : null,
-          child: Text("Back".tl),
-        ).fixWidth(84),
-        Expanded(
-          child: Center(
-            child: Material(
-              color: Theme.of(context).colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () {
-                  String value = '';
-                  showDialog(
-                    context: App.rootContext,
-                    builder: (context) {
-                      return ContentDialog(
-                        title: "Jump to page".tl,
-                        content: TextField(
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText: "Page".tl,
-                          ),
-                          inputFormatters: <TextInputFormatter>[
-                            FilteringTextInputFormatter.digitsOnly
-                          ],
-                          onChanged: (v) {
-                            value = v;
-                          },
-                        ).paddingHorizontal(16),
-                        actions: [
-                          Button.filled(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              var page = int.tryParse(value);
-                              if (page == null) {
-                                context.showMessage(message: "Invalid page".tl);
-                              } else {
-                                if (page > 0 &&
-                                    (_maxPage == null || page <= _maxPage!)) {
-                                  setState(() {
-                                    _error = null;
-                                    _page = page;
-                                  });
-                                } else {
-                                  context.showMessage(
-                                      message: "Invalid page".tl);
-                                }
-                              }
-                            },
-                            child: Text("Jump".tl),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Text("Page $_page / ${_maxPage ?? '?'}"),
-                ),
-              ),
-            ),
-          ),
-        ),
-        FilledButton(
-          onPressed: _page < (_maxPage ?? (_page + 1))
-              ? () {
-                  setState(() {
-                    _error = null;
-                    _page++;
-                  });
-                }
-              : null,
-          child: Text("Next".tl),
-        ).fixWidth(84),
-      ],
-    ).paddingVertical(8).paddingHorizontal(16);
-  }
 
-  Widget _buildSliverPageSelector() {
-    return SliverToBoxAdapter(
-      child: _buildPageSelector(),
-    );
-  }
 
   Future<void> _loadPage(int page) async {
     if (widget.loadPage == null && widget.loadNext == null) {
@@ -1207,58 +1510,9 @@ class ComicListState extends State<ComicList> {
 
   @override
   Widget build(BuildContext context) {
-    var type = appdata.settings['comicListDisplayMode'];
-    return type == 'paging' ? buildPagingMode() : buildContinuousMode();
-  }
-
-  Widget buildPagingMode() {
-    if (_error != null) {
-      return Column(
-        children: [
-          if (widget.errorLeading != null) widget.errorLeading!,
-          _buildPageSelector(),
-          Expanded(
-            child: NetworkError(
-              withAppbar: false,
-              message: _error!,
-              retry: () {
-                setState(() {
-                  _error = null;
-                });
-              },
-            ),
-          ),
-        ],
-      );
-    }
-    if (_data[_page] == null) {
-      _loadPage(_page);
-      return Column(
-        children: [
-          if (widget.errorLeading != null) widget.errorLeading!,
-          const Expanded(
-            child: Center(
-              child: CircularProgressIndicator(),
-            ),
-          ),
-        ],
-      );
-    }
-    return SmoothCustomScrollView(
-      key: enablePageStorage ? PageStorageKey('scroll$_page') : null,
-      controller: widget.controller,
-      slivers: [
-        if (widget.leadingSliver != null) widget.leadingSliver!,
-        if (_maxPage != 1) _buildSliverPageSelector(),
-        SliverGridComics(
-          comics: _data[_page] ?? const [],
-          menuBuilder: widget.menuBuilder,
-        ),
-        if (_data[_page]!.length > 6 && _maxPage != 1)
-          _buildSliverPageSelector(),
-        if (widget.trailingSliver != null) widget.trailingSliver!,
-      ],
-    );
+    // 无限滚动模式：滚动到列表末尾时 onLastItemBuild 自动异步加载下一页，
+    // 不再提供「上一页/下一页」手动翻页 UI。
+    return buildContinuousMode();
   }
 
   Widget buildContinuousMode() {
@@ -1266,7 +1520,6 @@ class ComicListState extends State<ComicList> {
       return Column(
         children: [
           if (widget.errorLeading != null) widget.errorLeading!,
-          _buildPageSelector(),
           Expanded(
             child: NetworkError(
               withAppbar: false,
@@ -1283,13 +1536,12 @@ class ComicListState extends State<ComicList> {
     }
     if (_data[1] == null) {
       _loadPage(1);
+      // 首屏加载：骨架屏占位（几何与真实卡片网格一致 + Shimmer 动画）。
       return Column(
         children: [
           if (widget.errorLeading != null) widget.errorLeading!,
           const Expanded(
-            child: Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: ComicGridSkeleton(),
           ),
         ],
       );
@@ -1647,7 +1899,9 @@ class SimpleComicTile extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             fit: BoxFit.cover,
-            filterQuality: FilterQuality.medium,
+            // 卡片固定 98dp 宽（见下方 Container）；按它解码即可。
+            cacheWidth: coverDecodeWidth(context, 98),
+            filterQuality: FilterQuality.low,
           );
 
     child = Container(
@@ -1658,7 +1912,7 @@ class SimpleComicTile extends StatelessWidget {
         color: Theme.of(context).colorScheme.secondaryContainer,
       ),
       clipBehavior: Clip.antiAlias,
-      child: child,
+      child: NsfwCover(comic: comic, child: child),
     );
 
     if (heroID != null) {
@@ -1706,5 +1960,41 @@ class SimpleComicTile extends StatelessWidget {
     }
 
     return child;
+  }
+}
+
+/// 封面底部的角标（页数 / AI 标记），Miuix 双列卡片专用。
+///
+/// ## 为什么不是毛玻璃
+///
+/// 这里原本用 `BackdropFilter` 做雾面玻璃。它在**滚动热路径**上代价很高：
+/// 每个角标都要让渲染器为本帧单独起一次离屏合成（saveLayer）并重新采样
+/// 背板，一屏 6–10 张卡片就是十几次，滚动时明显掉帧。
+///
+/// 角标下面压的只是一张静态封面图，糊与不糊肉眼几乎无从分辨；改用足够深的
+/// 半透明底（黑 45%）即可保证任意封面上白字可读，合成本钱为零。
+class _GlassCoverBadge extends StatelessWidget {
+  const _GlassCoverBadge(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(7),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+        color: Colors.black.withValues(alpha: 0.45),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            height: 1.15,
+          ),
+        ),
+      ),
+    );
   }
 }

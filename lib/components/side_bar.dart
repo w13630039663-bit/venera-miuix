@@ -11,6 +11,10 @@ class SideBarRoute<T> extends PopupRoute<T> {
 
   final Widget widget;
 
+  // 快照必须关：预测返回手势期间 SnapshotWidget 会拍到过期纹理。
+  @override
+  bool get allowSnapshotting => false;
+
   final bool showBarrier;
 
   final bool useSurfaceTintColor;

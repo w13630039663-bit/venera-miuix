@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_miuix/miuix.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
@@ -9,7 +10,6 @@ import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/global_state.dart';
 import 'package:venera/pages/aggregated_search_page.dart';
-import 'package:venera/pages/search_result_page.dart';
 import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/app_links.dart';
 import 'package:venera/utils/ext.dart';
@@ -42,28 +42,44 @@ class _SearchPageState extends State<SearchPage> {
 
   var options = <String>[];
 
+  /// 已提交的搜索词。非 null 表示结果模式 —— 搜索结果显示在本页内，
+  /// 不再 push 第二层页面（返回手势/返回键回到搜索输入页）。
+  String? submittedQuery;
+
   void update() {
     setState(() {});
   }
 
+  /// 切换结果模式（[query] 为 null 表示回到输入态），并同步登记/注销
+  /// 「接管系统返回」。
+  ///
+  /// 系统返回（含返回手势）最先到达**根 Navigator**，只有挂在根路由上的
+  /// PopScope 能拦住它；本页挂在内嵌 Navigator 的路由上，拦不住 —— 不登记
+  /// 的话结果态按返回会直接退出应用。详见 NaviPane.contentBackOverride。
+  void _setResultMode(String? query) {
+    setState(() {
+      submittedQuery = query;
+      if (query != null) {
+        // 结果模式复用同一个搜索栏控制器，输入框内容即已提交的关键词。
+        controller.currentText = query;
+      }
+    });
+    NaviPane.contentBackOverride.value = query != null;
+  }
+
+  /// 提交搜索：结果直接在本页渲染（结果模式），不 push 新路由。
   void search([String? text]) {
-    if (aggregatedSearch) {
-      context
-          .to(
-            () => AggregatedSearchPage(keyword: text ?? controller.text)
-          )
-          .then((_) => update());
-    } else {
-      context
-          .to(
-            () => SearchResultPage(
-              text: text ?? controller.text,
-              sourceKey: searchTarget,
-              options: options,
-            )
-          )
-          .then((_) => update());
+    final query = (text ?? controller.text).trim();
+    if (query.isEmpty) {
+      return;
     }
+    _setResultMode(query);
+    appdata.addSearchHistory(query);
+  }
+
+  /// 退出结果模式，回到搜索输入页（保留关键词）。
+  void exitResult() {
+    _setResultMode(null);
   }
 
   var suggestions = <Pair<String, TranslationType>>[];
@@ -167,6 +183,15 @@ class _SearchPageState extends State<SearchPage> {
   void dispose() {
     focusNode.dispose();
     appdata.settings.removeListener(updateSearchSourcesIfNeeded);
+    // 本页若停在结果态被卸载（切 tab 时 PageView 会销毁页面），必须注销
+    // 返回接管，否则别的标签页按返回会被拦下。
+    // dispose 可能发生在 build 阶段，直接写会触发 NaviPane 的
+    // ValueListenableBuilder 在 build 期 setState，故延到当前任务之后。
+    if (submittedQuery != null) {
+      Future.microtask(() {
+        NaviPane.contentBackOverride.value = false;
+      });
+    }
     super.dispose();
   }
 
@@ -224,12 +249,143 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (submittedQuery != null) {
+      return buildResultView(context);
+    }
     if (searchSources.isEmpty) {
       return buildEmpty();
     }
+    Widget body = SmoothCustomScrollView(
+      slivers: buildSlivers().toList(),
+    );
+    // Miuix 画风：整页注入 Miuix 主题（搜索栏胶囊、OptionChip、历史卡片取色）。
+    if (useMiuixStyle) {
+      body = withMiuixTheme(context, body);
+    }
     return Scaffold(
-      body: SmoothCustomScrollView(
-        slivers: buildSlivers().toList(),
+      body: body,
+    );
+  }
+
+  /// 结果模式：结果直接渲染在本页内（不 push 第二层）。
+  /// 布局沿用原版 SearchResultPage 的做法 —— 顶部标准搜索栏（尺寸与首页
+  /// 搜索框一致）+ 源标签行 + 默认网格，不做双列瀑布流。
+  Widget buildResultView(BuildContext context) {
+    final source = ComicSource.find(searchTarget);
+    Widget body;
+
+    if (aggregatedSearch) {
+      body = AggregatedSearchPage(
+        key: ValueKey('aggregated-$submittedQuery'),
+        keyword: submittedQuery!,
+        embedded: true,
+      );
+    } else if (source == null ||
+        source.searchPageData == null ||
+        (source.searchPageData!.loadPage == null &&
+            source.searchPageData!.loadNext == null)) {
+      body = buildEmpty();
+    } else {
+      final data = source.searchPageData!;
+      // 与原版 SearchResultPage.validateOptions 一致：选项数量对不上时用
+      // 默认值补齐，避免把空/过期 options 传给源导致解析异常。
+      final searchOptions = data.searchOptions ?? const <SearchOptions>[];
+      if (searchOptions.length != options.length) {
+        options = searchOptions.map((e) => e.defaultValue).toList();
+      }
+      body = ComicList(
+        key: ValueKey(
+            'result-$searchTarget-$submittedQuery-${options.join(',')}'),
+        leadingSliver: SliverMainAxisGroup(
+          slivers: [
+            SliverSearchBar(
+              controller: controller,
+              showBackButton: true,
+              action: buildResultAction(),
+            ),
+            buildResultSourceBar(),
+          ],
+        ),
+        loadPage: data.loadPage == null
+            ? null
+            : (page) => data.loadPage!(submittedQuery!, page, options),
+        loadNext: data.loadNext == null
+            ? null
+            : (next) => data.loadNext!(submittedQuery!, next, options),
+      );
+    }
+
+    if (useMiuixStyle) {
+      body = withMiuixTheme(context, body);
+    }
+
+    // 结果模式：返回手势 / 返回键退回搜索输入页。
+    // canPop: false 会关掉本路由的预测返回手势（routes.dart 中
+    // popGestureEnabled 遇 popDisposition == doNotPop 即为 false），系统
+    // 返回于是改为派发 onPopInvokedWithResult —— 实现「在本页面单独响应
+    // 返回手势回到搜索主页」，且完全不涉及路由栈。
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
+        // 从结果里点进漫画详情等会在内嵌导航器上再压一层：此时返回应当
+        // 先弹那一层（由 NaviPane 自带的 PopScope 处理），不能把结果模式
+        // 一起退掉。maybePop 内部 await，弹出发生在微任务里，所以这里读到的
+        // canPop() 仍是真值。
+        if (App.mainNavigatorKey?.currentState?.canPop() ?? false) {
+          return;
+        }
+        exitResult();
+      },
+      child: Scaffold(body: body),
+    );
+  }
+
+  /// 结果模式搜索栏右侧动作：管理搜索源（与原版结果页的调节入口一致）。
+  Widget buildResultAction() {
+    return Tooltip(
+      message: "Search in".tl,
+      child: IconButton(
+        icon: const Icon(Icons.tune),
+        onPressed: manageSearchSources,
+      ),
+    );
+  }
+
+  /// 结果模式下的搜索源标签行（横向滚动，保持原版的多源切换能力）。
+  Widget buildResultSourceBar() {
+    final sources = searchSources.map((e) => ComicSource.find(e)!).toList();
+    if (sources.length <= 1) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 44,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          itemCount: sources.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            return Center(
+              child: OptionChip(
+                text: sources[i].name,
+                isSelected: searchTarget == sources[i].key,
+                onTap: () {
+                  if (searchTarget == sources[i].key) {
+                    return;
+                  }
+                  setState(() {
+                    searchTarget = sources[i].key;
+                    useDefaultOptions();
+                  });
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -241,6 +397,8 @@ class _SearchPageState extends State<SearchPage> {
         findSuggestions();
       },
       focusNode: focusNode,
+      // 搜索已是底部标签页，没有「上一层」可返回。
+      showBackButton: false,
     );
     if (suggestions.isNotEmpty) {
       yield buildSuggestions(context);
@@ -292,14 +450,23 @@ class _SearchPageState extends State<SearchPage> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text("Aggregated Search".tl),
-              leading: Checkbox(
-                value: aggregatedSearch,
-                onChanged: (value) {
-                  setState(() {
-                    aggregatedSearch = value ?? false;
-                  });
-                },
-              ),
+              leading: useMiuixStyle
+                  ? MiuixSwitch(
+                      value: aggregatedSearch,
+                      onChanged: (value) {
+                        setState(() {
+                          aggregatedSearch = value;
+                        });
+                      },
+                    )
+                  : Checkbox(
+                      value: aggregatedSearch,
+                      onChanged: (value) {
+                        setState(() {
+                          aggregatedSearch = value ?? false;
+                        });
+                      },
+                    ),
             ),
           ],
         ),
@@ -672,6 +839,29 @@ class _SearchHistoryState extends State<_SearchHistory> {
     }
 
     return Builder(builder: (context) {
+      // Miuix 画风：历史条目改为胶囊行卡（surfaceContainerHigh + sink 反馈）。
+      if (useMiuixStyle) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: MiuixCard(
+            cornerRadius: 14,
+            insideMargin:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            onPressed: () {
+              widget.search(appdata.searchHistory[index]);
+            },
+            onLongPress: () {
+              var renderBox = context.findRenderObject() as RenderBox;
+              var offset = renderBox.localToGlobal(Offset.zero);
+              showMenu(Offset(
+                offset.dx + renderBox.size.width / 2 - 121,
+                offset.dy + renderBox.size.height - 8,
+              ));
+            },
+            child: Text(appdata.searchHistory[index], style: ts.s14),
+          ),
+        );
+      }
       return InkWell(
         onTap: () {
           widget.search(appdata.searchHistory[index]);
@@ -689,7 +879,6 @@ class _SearchHistoryState extends State<_SearchHistory> {
         },
         child: Container(
           decoration: BoxDecoration(
-            // color: context.colorScheme.surfaceContainer,
             border: Border(
               left: BorderSide(
                 color: context.colorScheme.outlineVariant,

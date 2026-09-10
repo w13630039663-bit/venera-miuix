@@ -10,6 +10,7 @@ import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/cache_manager.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/foundation/content_guard.dart';
 import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/js_engine.dart';
 import 'package:venera/foundation/local.dart';
@@ -23,13 +24,13 @@ import 'package:yaml/yaml.dart';
 
 part 'reader.dart';
 part 'explore_settings.dart';
+part 'blocking_settings.dart';
 part 'setting_components.dart';
 part 'appearance.dart';
 part 'local_favorites.dart';
 part 'app.dart';
 part 'about.dart';
 part 'network.dart';
-part 'debug.dart';
 
 /// 用 Miuix 主题包住设置内容。
 ///
@@ -73,22 +74,22 @@ class _SettingsPageState extends State<SettingsPage> {
   // 搬到了分类列表顶部的 [_AboutSection]，一进设置就能看到。
   final categories = <String>[
     "Explore",
+    "Blocking & Filtering",
     "Reading",
     "Appearance",
     "Local Favorites",
     "APP",
     "Network",
-    "Debug"
   ];
 
   final icons = <IconData>[
     Icons.explore,
+    Icons.filter_alt_outlined,
     Icons.book,
     Icons.color_lens,
     Icons.collections_bookmark_rounded,
     Icons.apps,
     Icons.public,
-    Icons.bug_report,
   ];
 
   @override
@@ -102,6 +103,8 @@ class _SettingsPageState extends State<SettingsPage> {
     return _withMiuixTheme(
       context,
       Material(
+        // 背景由根部 AppBackground 绘制（沉浸式背景/壁纸全局生效）。
+        color: Colors.transparent,
         child: buildBody(),
       ),
     );
@@ -169,6 +172,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget buildLeft() {
     return Material(
+      color: Colors.transparent,
       child: Column(
         children: [
           // 系统状态栏留白。底栏模式下 NaviPane 的顶栏已消费该 padding，
@@ -318,12 +322,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildSettingsContent(int pageIndex) {
     return switch (pageIndex) {
       0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const AppearanceSettings(),
-      3 => const LocalFavoritesSettings(),
-      4 => const AppSettings(),
-      5 => const NetworkSettings(),
-      6 => const DebugPage(),
+      1 => const BlockingSettings(),
+      2 => const ReaderSettings(),
+      3 => const AppearanceSettings(),
+      4 => const LocalFavoritesSettings(),
+      5 => const AppSettings(),
+      6 => const NetworkSettings(),
       _ => throw UnimplementedError()
     };
   }
@@ -340,6 +344,7 @@ class _SettingsDetailPage extends StatelessWidget {
     return _withMiuixTheme(
       context,
       Material(
+        color: Colors.transparent,
         child: _buildPage(),
       ),
     );
@@ -348,12 +353,12 @@ class _SettingsDetailPage extends StatelessWidget {
   Widget _buildPage() {
     return switch (pageIndex) {
       0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const AppearanceSettings(),
-      3 => const LocalFavoritesSettings(),
-      4 => const AppSettings(),
-      5 => const NetworkSettings(),
-      6 => const DebugPage(),
+      1 => const BlockingSettings(),
+      2 => const ReaderSettings(),
+      3 => const AppearanceSettings(),
+      4 => const LocalFavoritesSettings(),
+      5 => const AppSettings(),
+      6 => const NetworkSettings(),
       _ => throw UnimplementedError()
     };
   }

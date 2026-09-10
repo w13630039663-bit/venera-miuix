@@ -129,6 +129,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     final isOnChapterCommentsPage = context.reader.isOnChapterCommentsPage;
     return Stack(
       children: [
+        // 阅读器保持纯黑底：不吃全局沉浸式背景/壁纸，留白处不透光。
+        const Positioned.fill(
+          child: ColoredBox(color: Colors.black),
+        ),
         Positioned.fill(
           child: AbsorbPointer(
             absorbing: context.reader.isPageAnimating,

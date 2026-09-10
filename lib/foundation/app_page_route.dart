@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:venera/components/background.dart';
 import 'package:venera/foundation/app.dart';
 
 const double _kBackGestureWidth = 20.0;
@@ -17,7 +18,12 @@ class AppPageRoute<T> extends PageRoute<T> with _AppRouteTransitionMixin{
     super.settings,
     this.maintainState = true,
     super.fullscreenDialog,
-    super.allowSnapshotting = true,
+    // 快照必须关：预测返回手势期间框架用 SnapshotWidget 把页面离屏
+    // 拍成静态图来播转场（TransitionRoute 默认 true），部分机型/渲染
+    // 引擎上会拍到过期纹理（实测：手势中混出开屏 splash 旧帧、多层
+    // 页面内容叠加，静止时完全正常）。关掉后手势动画直接用实时渲染
+    // 的页面，配合每路由自绘背景观感一致。
+    super.allowSnapshotting = false,
     super.barrierDismissible = false,
     this.enableIOSGesture = true,
     this.preventRebuild = true,
@@ -77,6 +83,34 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
 
   bool get preventRebuild;
 
+  /// 嵌套导航器防「一次返回手势弹两层」。
+  ///
+  /// `PredictiveBackPageTransitionsBuilder` 会为每个路由挂一个全局
+  /// `WidgetsBindingObserver`，认领条件是 `route.isCurrent` —— 但该条件
+  /// 只表示「自己所在 navigator 的栈顶」。本项目是嵌套导航器结构
+  /// （根 Navigator + 主内容区内嵌 Navigator），两个 navigator 的栈顶页
+  /// 会同时认领同一次返回手势：阅读器（根）返回时详情页（内嵌）被连带
+  /// 弹掉直达主页；评论侧栏（根 PopupRoute）打开时每次手势把内嵌栈
+  /// 一层层弹空；下层页还会跟着做返回动画导致背景透掉。
+  ///
+  /// 这里限定全应用同一时刻只有一个路由可认领：内嵌 Navigator 的路由
+  /// 仅当根 Navigator 没有额外页面（只剩 MainPage 底座）时才允许；
+  /// 根 Navigator 的栈顶页本身就是全应用顶，照常允许。
+  @override
+  bool get popGestureEnabled {
+    if (!super.popGestureEnabled) {
+      return false;
+    }
+    final innerNavigator = App.mainNavigatorKey?.currentState;
+    if (innerNavigator != null && identical(navigator, innerNavigator)) {
+      final rootNavigator = App.rootNavigatorKey.currentState;
+      if (rootNavigator != null && rootNavigator.canPop()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Widget? _child;
 
   @override
@@ -117,12 +151,38 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
 
   @override
   Widget buildTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
-    PageTransitionsBuilder builder;
-    if (App.isAndroid) {
-      builder = PredictiveBackPageTransitionsBuilder();
-    } else {
-      builder = SlidePageTransitionBuilder();
-  }
+    // 预测返回手势必须由 PredictiveBackPageTransitionsBuilder 提供 ——
+    // 它在 buildTransitions 内挂 _PredictiveBackGestureDetector 并向
+    // WidgetsBinding 注册 observer
+    // （material/predictive_back_page_transitions_builder.dart:297），是系统
+    // 预测返回事件（handleStartBackGesture / updateBackGestureProgress）的
+    // 唯一接收方。此前换成 SlidePageTransitionBuilder 后事件无人接收，
+    // 边缘滑动全部退化成普通返回 —— 即「预测手势被禁用」。现恢复。
+    //
+    // fallbackColor 透明：框架默认给转场垫 colorScheme.surface（深色≈黑），
+    // 在壁纸/氛围光模式下会闪一下黑；每个路由已自绘背景，无需再垫。
+    final PageTransitionsBuilder builder = App.isAndroid
+        ? const PredictiveBackPageTransitionsBuilder(
+            fallbackColor: Colors.transparent,
+          )
+        : SlidePageTransitionBuilder();
+
+  // 沉浸式背景：兜底实底 surface（最底层）+ 壁纸/氛围光（中间）+ 页面（顶层）。
+  // 兜底 surface 是硬保证：即便 AppBackground 因图片异步解码、构建时机
+  // 异常、模式切换等极端情况出现一帧没铺满，底页也透不出来。壁纸/氛围光
+  // 正常铺满时整个 surface 被覆盖、不可见；异常时透出来兜底，杜绝转场中途
+  // 两页内容互相穿透（主人 03:50 截图复现了氛围光模式漏 fit 的问题）。
+  final content = RepaintBoundary(
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: Theme.of(context).colorScheme.surface),
+        if (AppBackground.enabled)
+          RepaintBoundary(child: AppBackground.buildImmersive(context)),
+        child,
+      ],
+    ),
+  );
 
   return builder.buildTransitions(
         this,
@@ -134,9 +194,9 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
         gestureWidth: _kBackGestureWidth,
         enabledCallback: () => _isPopGestureEnabled<T>(this),
         onStartPopGesture: () => _startPopGesture(this),
-        child: child,
+        child: content,
         )
-      : child);
+      : content);
   }
 
   IOSBackGestureController _startPopGesture(PageRoute<T> route) {
@@ -460,11 +520,16 @@ class SlidePageTransitionBuilder extends PageTransitionsBuilder {
       Widget child) {
     final Animation<double> primaryAnimation = App.isIOS
         ? animation
-        : CurvedAnimation(parent: animation, curve: Curves.ease);
+        : CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
     final Animation<double> secondaryCurve = App.isIOS
         ? secondaryAnimation
-        : CurvedAnimation(parent: secondaryAnimation, curve: Curves.ease);
+        : CurvedAnimation(parent: secondaryAnimation, curve: Curves.easeOutCubic);
 
+    // 纯滑动转场，全过程 alpha=1，杜绝「两页同时半透明 → 内容互透」
+    // （之前 PredictiveBackPageTransitionsBuilder / FadeForwards 出现过，
+    // 主人 03:43 截图复现）。SlideTransition 直接包 child，不再用
+    // PhysicalModel/Material(color: transparent) 包装——后者会让页面
+    // 背景透明，给未来埋雷。
     return SlideTransition(
       position: Tween<Offset>(
         begin: const Offset(1, 0),
@@ -473,15 +538,9 @@ class SlidePageTransitionBuilder extends PageTransitionsBuilder {
       child: SlideTransition(
         position: Tween<Offset>(
           begin: Offset.zero,
-          end: const Offset(-0.4, 0),
+          end: const Offset(-0.3, 0),
         ).animate(secondaryCurve),
-        child: PhysicalModel(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.zero,
-          clipBehavior: Clip.hardEdge,
-          elevation: 6,
-          child: Material(child: child),
-        ),
+        child: child,
       ),
     );
   }

@@ -45,5 +45,15 @@ app.*.map.json
 
 add_translation.py
 
+# Local agent workspace (memory, artifacts, scratch downloads) — never commit
+.workbuddy/
+
+# Local research scratch (third-party sources, screenshots) — never commit
+.research/
+
+# Flutter tool local state
+.flutter_settings
+.flutter_tool_state
+
 */*/generated_*
 */*/Generated*
