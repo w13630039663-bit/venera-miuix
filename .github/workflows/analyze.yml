@@ -9,11 +9,15 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          # 必须显式钉版本：pubspec 的 environment.flutter 写的是 3.41.4，
+          # 用 flutter-version-file 读它会装出 Dart 3.11.1，
+          # 而 flutter_miuix 要求 Dart >=3.12.2 → pub get 解析失败。
+          flutter-version: "3.47.2"
           channel: "stable"
-          flutter-version-file: pubspec.yaml
           architecture: x64
+          cache: true
       - run: flutter pub get
       - uses: invertase/github-action-dart-analyzer@v1
