@@ -1,9 +1,14 @@
 name: Build ALL
 run-name: Build ALL
+
+# 上游 venera 的多平台发布流水线（macOS/iOS/Android/Windows/Linux）。
+# 本分支只发 Android APK（iOS 为附带产物），因此**摘掉 release 自动触发**：
+#   - 它会往同一个 Release 追加 .dmg/.exe/.deb/.zst 等桌面端产物，与本分支的发版口径不符
+#   - 其 Build_IOS 步骤硬编码了上游仓库路径 /Users/runner/work/venera/venera/，在本仓库必失败
+#   - 依赖 CERTIFICATE / ANDROID_KEYSTORE / ACTION_GITHUB_TOKEN 等本仓库未配置的 secrets
+# 需要时仍可从 Actions 页手动运行（workflow_dispatch）。
 on:
   workflow_dispatch: {}
-  release:
-    types: [published]
 
 jobs:
   Build_MacOS:
