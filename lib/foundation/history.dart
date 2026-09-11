@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
-import 'dart:math';
 import 'dart:ffi' as ffi;
 
 import 'package:flutter/foundation.dart';

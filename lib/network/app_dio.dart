@@ -157,7 +157,7 @@ class AppDio with DioMixin {
       options!.headers!.remove('prevent-parallel');
     }
     try {
-      return super.request<T>(
+      return await super.request<T>(
         path,
         data: data,
         queryParameters: queryParameters,

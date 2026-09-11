@@ -20,4 +20,8 @@ jobs:
           architecture: x64
           cache: true
       - run: flutter pub get
-      - uses: invertase/github-action-dart-analyzer@v1
+      # 原 invertase/github-action-dart-analyzer@v1 已废弃（Node 20 与 set-output 均被弃用），
+      # 改用 SDK 自带的 flutter analyze。
+      # --no-fatal-infos：flutter analyze 默认连 info 也判失败，会把 deprecated 提示变成红叉；
+      # error / warning 仍然致命，真正的代码问题不会漏。
+      - run: flutter analyze --no-fatal-infos

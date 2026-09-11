@@ -45,7 +45,7 @@ class CachedImageProvider
     try {
       if(url.startsWith("file://")) {
         var file = File(url.substring(7));
-        return file.readAsBytes();
+        return await file.readAsBytes();
       }
       await for (var progress in ImageDownloader.loadThumbnail(url, sourceKey, cid)) {
         checkStop();
