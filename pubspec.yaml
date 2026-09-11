@@ -2,7 +2,7 @@ name: venera
 description: "venera-miuix — a comic reader with a Miuix-flavored UI, forked from venera-app/venera."
 publish_to: 'none'
 
-version: 1.6.3+163
+version: 1.6.3+1633
 
 environment:
   sdk: '>=3.8.0 <4.0.0'

@@ -66,7 +66,7 @@ class _ExplorePageState extends State<ExplorePage>
   ///   退化为**单列居中**，不会出现「哔咔 | 哔咔」这种重复。
   ///
   /// 键用**原文标题**，取值按 `ComicSource.all()` 顺序取首个命中 —— 与
-  /// [_SingleExplorePageState.initState] / [buildTab] 的解析口径一致
+  /// [SingleExplorePageState.initState] / [buildTab] 的解析口径一致
   /// （不同源出现同名分区时，全 app 都以第一个为准）。
   Map<String, MiuixTabLabel> _tabMeta = {};
 
@@ -131,7 +131,7 @@ class _ExplorePageState extends State<ExplorePage>
     if (index == 2) {
       int page = controller.index;
       String currentPageId = pages[page];
-      GlobalState.find<_SingleExplorePageState>(currentPageId).toTop();
+      GlobalState.find<SingleExplorePageState>(currentPageId).toTop();
     }
   }
 
@@ -176,7 +176,7 @@ class _ExplorePageState extends State<ExplorePage>
   void refresh() {
     int page = controller.index;
     String currentPageId = pages[page];
-    GlobalState.find<_SingleExplorePageState>(currentPageId).refresh();
+    GlobalState.find<SingleExplorePageState>(currentPageId).refresh();
   }
 
   Widget buildFAB() => Material(
@@ -197,7 +197,7 @@ class _ExplorePageState extends State<ExplorePage>
   Widget buildBody(String i) => Material(
         // 背景由根部 AppBackground 绘制（沉浸式背景/壁纸全局生效）。
         color: Colors.transparent,
-        child: _SingleExplorePage(i, key: PageStorageKey(i)),
+        child: SingleExplorePage(i, key: PageStorageKey(i)),
       );
 
   Widget buildEmpty() {
@@ -383,17 +383,17 @@ class _ExplorePageState extends State<ExplorePage>
   bool get wantKeepAlive => true;
 }
 
-class _SingleExplorePage extends StatefulWidget {
-  const _SingleExplorePage(this.title, {super.key});
+class SingleExplorePage extends StatefulWidget {
+  const SingleExplorePage(this.title, {super.key});
 
   final String title;
 
   @override
-  State<_SingleExplorePage> createState() => _SingleExplorePageState();
+  State<SingleExplorePage> createState() => SingleExplorePageState();
 }
 
-class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
-    with AutomaticKeepAliveClientMixin<_SingleExplorePage> {
+class SingleExplorePageState extends AutomaticGlobalState<SingleExplorePage>
+    with AutomaticKeepAliveClientMixin<SingleExplorePage> {
   late final ExplorePageData data;
 
   late final String comicSourceKey;

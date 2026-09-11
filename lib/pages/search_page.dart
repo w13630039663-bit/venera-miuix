@@ -343,13 +343,30 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  /// 结果模式搜索栏右侧动作：管理搜索源（与原版结果页的调节入口一致）。
+  /// 结果模式搜索栏右侧动作：打开搜索设置（切换源 / 调整排序等选项）。
   Widget buildResultAction() {
     return Tooltip(
-      message: "Search in".tl,
+      message: "Settings".tl,
       child: IconButton(
         icon: const Icon(Icons.tune),
-        onPressed: manageSearchSources,
+        onPressed: () async {
+          final result = await showDialog<SearchSettingsResult>(
+            context: context,
+            useRootNavigator: true,
+            builder: (context) => SearchSettingsDialog(
+              initialSourceKey: searchTarget,
+              initialOptions: options,
+            ),
+          );
+          if (result == null) return;
+          if (result.sourceKey != searchTarget ||
+              !result.options.isEqualTo(options)) {
+            setState(() {
+              searchTarget = result.sourceKey;
+              options = result.options;
+            });
+          }
+        },
       ),
     );
   }
@@ -741,6 +758,132 @@ class SearchOptionWidget extends StatelessWidget {
             minWidth: 96,
           )
       ],
+    );
+  }
+}
+
+/// [SearchSettingsDialog] 的返回结果：用户可能同时切换了搜索源与选项。
+class SearchSettingsResult {
+  final String sourceKey;
+  final List<String> options;
+
+  const SearchSettingsResult(this.sourceKey, this.options);
+}
+
+/// 搜索设置弹窗：切换搜索源 + 调整该源的 searchOptions（含排序）。
+///
+/// 从 [SearchResultPage] 与 [SearchPage] 结果模式共用，避免重复实现。
+class SearchSettingsDialog extends StatefulWidget {
+  const SearchSettingsDialog({
+    super.key,
+    required this.initialSourceKey,
+    required this.initialOptions,
+  });
+
+  final String initialSourceKey;
+
+  final List<String> initialOptions;
+
+  @override
+  State<SearchSettingsDialog> createState() => _SearchSettingsDialogState();
+}
+
+class _SearchSettingsDialogState extends State<SearchSettingsDialog> {
+  late String sourceKey;
+
+  late List<String> options;
+
+  @override
+  void initState() {
+    sourceKey = widget.initialSourceKey;
+    options = List.from(widget.initialOptions);
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var sources = ComicSource.all();
+    var enabled = appdata.settings['searchSources'] as List;
+    sources.removeWhere((e) => !enabled.contains(e.key));
+    return ContentDialog(
+      title: "Settings".tl,
+      content: Column(
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: Text("Search in".tl),
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: sources.map((e) {
+              return OptionChip(
+                text: e.name.tl,
+                isSelected: sourceKey == e.key,
+                onTap: () {
+                  setState(() {
+                    sourceKey = e.key;
+                    options.clear();
+                    final searchOptions = ComicSource.find(sourceKey)!
+                            .searchPageData!
+                            .searchOptions ??
+                        <SearchOptions>[];
+                    options = searchOptions.map((e) => e.defaultValue).toList();
+                  });
+                },
+              );
+            }).toList(),
+          ).fixWidth(double.infinity).paddingHorizontal(16),
+          buildSearchOptions(),
+          const SizedBox(height: 24),
+          FilledButton(
+            child: Text("Confirm".tl),
+            onPressed: () {
+              Navigator.pop(
+                context,
+                SearchSettingsResult(sourceKey, options),
+              );
+            },
+          ),
+        ],
+      ).fixWidth(double.infinity),
+    );
+  }
+
+  Widget buildSearchOptions() {
+    var children = <Widget>[];
+
+    final searchOptions =
+        ComicSource.find(sourceKey)!.searchPageData!.searchOptions ??
+            <SearchOptions>[];
+    if (searchOptions.length != options.length) {
+      options = searchOptions.map((e) => e.defaultValue).toList();
+    }
+    if (searchOptions.isEmpty) {
+      return const SizedBox();
+    }
+    for (int i = 0; i < searchOptions.length; i++) {
+      final option = searchOptions[i];
+      children.add(SearchOptionWidget(
+        option: option,
+        value: options[i],
+        onChanged: (value) {
+          setState(() {
+            options[i] = value;
+          });
+        },
+        sourceKey: sourceKey,
+      ));
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
     );
   }
 }

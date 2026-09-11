@@ -193,15 +193,19 @@ class _SearchResultPageState extends State<SearchResultPage> {
 
           var previousOptions = List<String>.from(options);
           var previousSourceKey = sourceKey;
-          await showDialog(
+          final result = await showDialog<SearchSettingsResult>(
             context: context,
             useRootNavigator: true,
-            builder: (context) {
-              return _SearchSettingsDialog(state: this);
-            },
+            builder: (context) => SearchSettingsDialog(
+              initialSourceKey: sourceKey,
+              initialOptions: options,
+            ),
           );
-          if (!previousOptions.isEqualTo(options) ||
-              previousSourceKey != sourceKey) {
+          if (result == null) return;
+          if (!previousOptions.isEqualTo(result.options) ||
+              previousSourceKey != result.sourceKey) {
+            sourceKey = result.sourceKey;
+            options = result.options;
             text = checkAutoLanguage(controller.text);
             controller.currentText = text;
             setState(() {});
@@ -418,119 +422,5 @@ class _SuggestionsState extends State<_Suggestions> {
     controller.text += "$insert ";
     widget.controller.suggestions.clear();
     widget.controller.remove();
-  }
-}
-
-class _SearchSettingsDialog extends StatefulWidget {
-  const _SearchSettingsDialog({required this.state});
-
-  final _SearchResultPageState state;
-
-  @override
-  State<_SearchSettingsDialog> createState() => _SearchSettingsDialogState();
-}
-
-class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
-  late String searchTarget;
-
-  late List<String> options;
-
-  @override
-  void initState() {
-    searchTarget = widget.state.sourceKey;
-    options = widget.state.options;
-    super.initState();
-  }
-
-  void onChanged() {
-    widget.state.sourceKey = searchTarget;
-    widget.state.options = options;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var sources = ComicSource.all();
-    var enabled = appdata.settings['searchSources'] as List;
-    sources.removeWhere((e) {
-      return !enabled.contains(e.key);
-    });
-    return ContentDialog(
-      title: "Settings".tl,
-      content: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: Text("Search in".tl),
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: sources.map((e) {
-              return OptionChip(
-                text: e.name.tl,
-                isSelected: searchTarget == e.key,
-                onTap: () {
-                  setState(() {
-                    searchTarget = e.key;
-                    options.clear();
-                    final searchOptions = ComicSource.find(searchTarget)!
-                            .searchPageData!
-                            .searchOptions ??
-                        <SearchOptions>[];
-                    options = searchOptions.map((e) => e.defaultValue).toList();
-                    onChanged();
-                  });
-                },
-              );
-            }).toList(),
-          ).fixWidth(double.infinity).paddingHorizontal(16),
-          buildSearchOptions(),
-          const SizedBox(height: 24),
-          FilledButton(
-            child: Text("Confirm".tl),
-            onPressed: () {
-              context.pop();
-            },
-          ),
-        ],
-      ).fixWidth(double.infinity),
-    );
-  }
-
-  Widget buildSearchOptions() {
-    var children = <Widget>[];
-
-    final searchOptions =
-        ComicSource.find(searchTarget)!.searchPageData!.searchOptions ??
-            <SearchOptions>[];
-    if (searchOptions.length != options.length) {
-      options = searchOptions.map((e) => e.defaultValue).toList();
-    }
-    if (searchOptions.isEmpty) {
-      return const SizedBox();
-    }
-    for (int i = 0; i < searchOptions.length; i++) {
-      final option = searchOptions[i];
-      children.add(SearchOptionWidget(
-        option: option,
-        value: options[i],
-        onChanged: (value) {
-          setState(() {
-            options[i] = value;
-          });
-        },
-        sourceKey: searchTarget,
-      ));
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
-      ),
-    );
   }
 }

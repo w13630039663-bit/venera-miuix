@@ -16,6 +16,7 @@ import 'package:venera/foundation/log.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/pages/downloading_page.dart';
+import 'package:venera/pages/explore_page.dart';
 import 'package:venera/pages/follow_updates_page.dart';
 import 'package:venera/pages/history_page.dart';
 import 'package:venera/pages/image_favorites_page/image_favorites_page.dart';
@@ -585,7 +586,13 @@ class _SourceCard extends StatelessWidget {
           cornerRadius: 16,
           insideMargin: const EdgeInsets.all(8),
           onPressed: () {
-            context.to(() => const ComicSourcePage());
+            if (source.explorePages.isNotEmpty) {
+              context.to(
+                () => SingleExplorePage(source.explorePages.first.title),
+              );
+            } else {
+              context.to(() => const ComicSourcePage());
+            }
           },
           feedbackType: MiuixPressFeedbackType.sink,
           child: SizedBox(

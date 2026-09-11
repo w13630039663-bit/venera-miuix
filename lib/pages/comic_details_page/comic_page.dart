@@ -320,7 +320,11 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
         duration: const Duration(milliseconds: 200),
         child: Text(comic.title),
       ),
-      style: useMiuixStyle ? AppbarStyle.transparent : AppbarStyle.blur,
+      // Miuix 风格：顶部未滚动时全透明，让沉浸封面背景透出来；
+      // 一旦上滑显示出标题，就切到毛玻璃背景，避免文字/按钮叠在内容上。
+      style: useMiuixStyle
+          ? (showAppbarTitle ? AppbarStyle.blur : AppbarStyle.transparent)
+          : AppbarStyle.blur,
       actions: [
         IconButton(
           onPressed: showMoreActions,
@@ -866,7 +870,13 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   Widget buildThumbnails() {
-    if (comic.thumbnails == null && comicSource.loadComicThumbnail == null) {
+    // 有 thumbnails，或源提供 loadComicThumbnail，或可从首话页面图兜底时，都渲染预览区。
+    final canFallbackPreview = comicSource.loadComicPages != null &&
+        comic.chapters != null &&
+        comic.chapters!.ids.isNotEmpty;
+    if (comic.thumbnails == null &&
+        comicSource.loadComicThumbnail == null &&
+        !canFallbackPreview) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
     return const _ComicThumbnails();
