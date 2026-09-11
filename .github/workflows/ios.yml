@@ -1,0 +1,71 @@
+name: Build iOS (unsigned ipa)
+
+# 产出未签名 .ipa，供 Sideloadly / AltStore 用免费 Apple ID 自行签名安装。
+# 未签名包不能直接装，必须经侧载工具重签。
+
+on:
+  workflow_dispatch:
+    inputs:
+      flutter_version:
+        description: "Flutter version"
+        required: false
+        default: "3.47.2"
+  push:
+    tags:
+      - "v*-miuix"
+
+jobs:
+  build-ios:
+    name: Build unsigned ipa
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ github.event.inputs.flutter_version || '3.47.2' }}
+          channel: stable
+          cache: true
+
+      - name: Verify toolchain
+        run: |
+          flutter --version
+          xcodebuild -version
+          pod --version
+
+      # rhttp 走 cargokit，cargokit 不会自动安装 rustup（util.dart 直接报
+      # "rustup not found in PATH"），必须先备好 Rust 与 iOS target。
+      - name: Setup Rust iOS targets
+        run: |
+          rustup --version || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim || true
+          rustc --version
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned ipa
+        run: |
+          set -e
+          APP="build/ios/iphoneos/Runner.app"
+          test -d "$APP" || { echo "Runner.app not found"; exit 1; }
+          rm -rf /tmp/ipa && mkdir -p /tmp/ipa/Payload
+          cp -R "$APP" /tmp/ipa/Payload/
+          cd /tmp/ipa
+          zip -qry "$GITHUB_WORKSPACE/venera-miuix-ios-unsigned.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/venera-miuix-ios-unsigned.ipa"
+
+      - name: Upload ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: venera-miuix-ios-unsigned
+          path: venera-miuix-ios-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
