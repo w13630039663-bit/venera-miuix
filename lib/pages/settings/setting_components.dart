@@ -915,3 +915,31 @@ class _MiuixSelectSettingState extends State<_MiuixSelectSetting> {
     );
   }
 }
+
+/// 设置页统一分组卡片：圆角 16 + 深色 surfaceContainerHigh 令牌
+/// （铁律 #3，与主页/统计页/详情页同款视觉语言）。
+/// 分组标题（_SettingPartTitle）放在卡片外，卡片内装若干设置行。
+class SettingsSection extends StatelessWidget {
+  const SettingsSection({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: MiuixCard(
+        cornerRadius: 16,
+        colors: isDark
+            ? MiuixCardColors(
+                color: context.colorScheme.surfaceContainerHigh,
+                contentColor: context.colorScheme.onSurface,
+              )
+            : null,
+        insideMargin: const EdgeInsets.symmetric(vertical: 6),
+        child: child,
+      ),
+    );
+  }
+}

@@ -112,7 +112,10 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
                   return Padding(
                     padding: EdgeInsets.all(useMiuixStyle ? 3 : 4),
                     child: Material(
-                      color: context.colorScheme.surfaceContainer,
+                      // miuix：格子用卡片色，与区块卡片同层次。
+                      color: useMiuixStyle
+                          ? comicCardBg(context)
+                          : context.colorScheme.surfaceContainer,
                       borderRadius:
                           BorderRadius.circular(useMiuixStyle ? 10 : 16),
                       child: InkWell(
@@ -161,9 +164,10 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
                   ).paddingTop(12),
                 ),
               ),
-            const SliverToBoxAdapter(
-              child: Divider(),
-            ),
+            if (!useMiuixStyle)
+              const SliverToBoxAdapter(
+                child: Divider(),
+              ),
           ],
         );
       },
@@ -311,7 +315,10 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
                   return Padding(
                     padding: EdgeInsets.all(useMiuixStyle ? 3 : 4),
                     child: Material(
-                      color: context.colorScheme.surfaceContainerLow,
+                      // miuix：格子用卡片色，与区块卡片同层次。
+                      color: useMiuixStyle
+                          ? comicCardBg(context)
+                          : context.colorScheme.surfaceContainerLow,
                       borderRadius:
                           BorderRadius.circular(useMiuixStyle ? 10 : 12),
                       child: InkWell(
@@ -360,9 +367,10 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
                   ).paddingTop(12),
                 ),
               ),
-            const SliverToBoxAdapter(
-              child: Divider(),
-            ),
+            if (!useMiuixStyle)
+              const SliverToBoxAdapter(
+                child: Divider(),
+              ),
           ],
         );
       },

@@ -299,7 +299,13 @@ class _AnimatedImageState extends State<AnimatedImage>
           color: widget.color,
           opacity: widget.opacity,
           colorBlendMode: widget.colorBlendMode,
-          fit: BoxFit.cover,
+          // 必须用调用方传入的 fit。原来这里硬编码 BoxFit.cover，把 fit 参数
+          // 整个吞掉了：详情页预览卡明明传的是 contain，实际按 cover 渲染。
+          // 卡片尺寸小时看不出来，但 Hero 飞行时飞行矩形会从卡片一路拉伸到
+          // 全屏，cover 会把图放大到填满整个矩形再裁切 —— 这正是"打开预览的
+          // 瞬间图片先被放大、落地才恢复正常"的根因。不传 fit 的调用点
+          // （头像等）行为不变。
+          fit: widget.fit ?? BoxFit.cover,
           alignment: widget.alignment,
           repeat: widget.repeat,
           centerSlice: widget.centerSlice,

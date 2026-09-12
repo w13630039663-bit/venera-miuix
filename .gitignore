@@ -57,3 +57,8 @@ add_translation.py
 
 */*/generated_*
 */*/Generated*
+# 本地工作目录（不进库）
+.backup-*/
+.workbuddy/
+.research/
+.zcode/

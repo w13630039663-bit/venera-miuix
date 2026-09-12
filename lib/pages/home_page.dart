@@ -15,6 +15,7 @@ import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/pages/comic_source_page.dart';
+import 'package:venera/pages/stats_page.dart';
 import 'package:venera/pages/downloading_page.dart';
 import 'package:venera/pages/explore_page.dart';
 import 'package:venera/pages/follow_updates_page.dart';
@@ -40,6 +41,7 @@ class HomePage extends StatelessWidget {
         // Classic 画风保留原版 MD3 分区卡片。由「外观 → Settings Style」切换。
         if (useMiuixStyle) ...[
           const _TodayUpdates(),
+          const _MiuixReadingStats(),
           const _MiuixHistory(),
           const _MiuixComicSources(),
           const _MiuixLocal(),
@@ -645,6 +647,102 @@ class _SourceCard extends StatelessWidget {
 }
 
 /// 本地：MiuixCard 行卡 —— 左侧标题 + 文件数，右侧导入按钮。
+/// 阅读统计摘要卡：今日/本周页数 + 连续天数，点击进完整统计页。
+/// 无任何数据时整卡隐藏（不破坏主页 8px 区块节奏）。
+class _MiuixReadingStats extends StatefulWidget {
+  const _MiuixReadingStats();
+
+  @override
+  State<_MiuixReadingStats> createState() => _MiuixReadingStatsState();
+}
+
+class _MiuixReadingStatsState extends State<_MiuixReadingStats> {
+  late final int _today;
+  late final int _week;
+  late final int _streak;
+
+  @override
+  void initState() {
+    super.initState();
+    final hm = HistoryManager();
+    _today = hm.dailyPages(1).values.fold(0, (a, b) => a + b);
+    _week = hm.pagesSince(statsWeekStart(DateTime.now()));
+    _streak = statsStreakDays(hm.readDates());
+  }
+
+  void open() {
+    context.to(() => const ReadingStatsPage());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_today == 0 && _week == 0) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    // 取色用 MD3 主题（同 _MiuixLocal：build 的 context 在 withMiuixTheme
+    // 之外，MiuixTheme.of 会拿到浅色默认值，深色必穿帮）。
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColors = isDark
+        ? MiuixCardColors(
+            color: context.colorScheme.surfaceContainerHigh,
+            contentColor: context.colorScheme.onSurface,
+          )
+        : null;
+    final subtitleColor = context.colorScheme.onSurfaceVariant;
+    return withMiuixTheme(
+      context,
+      SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _MiuixSectionHeader("Reading Stats".tl, onTap: open),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: MiuixCard(
+                cornerRadius: 16,
+                colors: cardColors,
+                insideMargin: const EdgeInsets.symmetric(vertical: 14),
+                onPressed: open,
+                feedbackType: MiuixPressFeedbackType.sink,
+                child: Row(
+                  children: [
+                    _cell("Today".tl, "$_today", subtitleColor),
+                    _verticalDivider(context),
+                    _cell("This Week".tl, "$_week", subtitleColor),
+                    _verticalDivider(context),
+                    _cell("Day Streak".tl, "$_streak", subtitleColor),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cell(String label, String value, Color subtitleColor) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 12, color: subtitleColor)),
+        ],
+      ),
+    );
+  }
+
+  Widget _verticalDivider(BuildContext context) => Container(
+        width: 1,
+        height: 26,
+        color: context.colorScheme.outlineVariant,
+      );
+}
+
 class _MiuixLocal extends StatefulWidget {
   const _MiuixLocal();
 

@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:venera/components/background.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/preview_hero.dart';
 
 const double _kBackGestureWidth = 20.0;
 const int _kMaxDroppedSwipePageForwardAnimationTime = 800;
@@ -27,6 +30,9 @@ class AppPageRoute<T> extends PageRoute<T> with _AppRouteTransitionMixin{
     super.barrierDismissible = false,
     this.enableIOSGesture = true,
     this.preventRebuild = true,
+    this.sharedElementPopTransition = false,
+    this.transitionDuration = const Duration(milliseconds: 300),
+    this.reverseTransitionDuration = const Duration(milliseconds: 300),
   }) {
     assert(opaque);
   }
@@ -57,15 +63,25 @@ class AppPageRoute<T> extends PageRoute<T> with _AppRouteTransitionMixin{
 
   @override
   final bool preventRebuild;
+
+  /// 该路由的"跟手返回"由页面内的共享元素（Hero）自己完成，页面本身不做
+  /// 形变。详见 [_AppRouteTransitionMixin.buildTransitions]。
+  @override
+  final bool sharedElementPopTransition;
+
+  /// 转场时长（默认 300ms）。共享元素路由（阅读器）传更长值以对齐
+  /// demo 的 620ms 光学转场。
+  @override
+  final Duration transitionDuration;
+
+  @override
+  final Duration reverseTransitionDuration;
 }
 
 mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
   /// Builds the primary contents of the route.
   @protected
   Widget buildContent(BuildContext context);
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 300);
 
   @override
   Color? get barrierColor => null;
@@ -82,6 +98,8 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
   bool get enableIOSGesture;
 
   bool get preventRebuild;
+
+  bool get sharedElementPopTransition;
 
   /// 嵌套导航器防「一次返回手势弹两层」。
   ///
@@ -184,24 +202,212 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
     ),
   );
 
-  return builder.buildTransitions(
-        this,
-        context,
-        animation,
-        secondaryAnimation,
-    enableIOSGesture && App.isIOS
+  final Widget transitionChild = enableIOSGesture && App.isIOS
       ? IOSBackGestureDetector(
-        gestureWidth: _kBackGestureWidth,
-        enabledCallback: () => _isPopGestureEnabled<T>(this),
-        onStartPopGesture: () => _startPopGesture(this),
-        child: content,
+          gestureWidth: _kBackGestureWidth,
+          enabledCallback: () => _isPopGestureEnabled<T>(this),
+          onStartPopGesture: () => _startPopGesture(this),
+          child: content,
         )
-      : content);
+      : content;
+
+  // 共享元素路由（阅读器）：真正的"跟手缩回"由页面里的 Hero 那张图完成，
+  // 页面本身不该再形变。PredictiveBackPageTransitionsBuilder 在手势期间会把
+  // 整页缩到 0.9 并加圆角（_PredictiveBackSharedElementPageTransition ——
+  // Android 官方共享元素转场在没有真共享元素时的兜底视觉），而阅读器是深色
+  // 满屏，一缩就露出四周一大块深色、和图片变成两层不同步的缩放。Flutter
+  // 3.47 这个 builder 只有 fallbackColor，没有可换 delegate 的口子。
+  // 所以把「转场壳」套在一个空壳上：只为保住 _PredictiveBackGestureDetector
+  // （系统预测返回事件的唯一接收方，摘了手势就失效），真实页面不做任何形变，
+  // 只随 route.animation 淡出/淡入。预测返回期间 route.animation 就是手指
+  // 进度（handleStartBackGestureProgress 直接驱动它），于是「图跟手缩回 +
+  // 页面跟手淡出」天然同源同步。iOS 走滑动转场，不存在这个问题。
+  if (!(sharedElementPopTransition && App.isAndroid)) {
+    // 被覆盖时不做框架的二级转场：把 secondaryAnimation 换成常量 0，
+    // 本页面保持完全可见，新页面直接盖上来。
+    //
+    // 原因：PredictiveBack builder 在程序化 push 下委托 FadeForwards，它对
+    // 被覆盖页的处理是「前 25% 时长内淡出到全透明 + 左滑 1/4 屏」（
+    // page_transitions_theme.dart:489-510）。本项目 Scaffold 全透明、每个
+    // 路由自绘背景、Navigator 之下没有铺底 —— 旧页一淡出就透出黑色窗口底，
+    // 而新页又在缓慢淡入（阅读器 620ms），中段近 500ms 两层都缺席 → 屏幕
+    // 快速闪一下黑/白（框架本有 ColoredBox 补底，但我们的 fallbackColor
+    // 是透明，保护被关掉，page_transitions_theme.dart:547-552）。
+    // 共享元素转场的设计也是「静态背景 + 飞行前景」，这里一并对齐。
+    return builder.buildTransitions(
+        this, context, animation, kAlwaysDismissedAnimation, transitionChild);
   }
+
+  final Widget shell = builder.buildTransitions(
+      this, context, animation, secondaryAnimation, const SizedBox.expand());
+  return Stack(
+    fit: StackFit.expand,
+    children: [
+      // 动画值在「松手提交」时会被框架重置回 1.0（原因见
+      // _SharedElementPopRestore 的注释），这个 widget 负责把它拉回手指最后
+      // 停下的位置，图片和页面才会从那里接着缩回去，而不是重播一遍。
+      _SharedElementPopRestore(
+        route: this,
+        controller: controller!,
+        enabledCallback: () => isCurrent && popGestureEnabled,
+        // demo 的背景淡出也是 smoothstep(p)（backdrop(e)），页面淡出同源。
+        child: FadeTransition(
+          opacity: const _SmoothStepTween().animate(animation),
+          child: transitionChild,
+        ),
+      ),
+      IgnorePointer(child: shell),
+    ],
+  );
+}
 
   IOSBackGestureController _startPopGesture(PageRoute<T> route) {
     return IOSBackGestureController(route.controller!, route.navigator!);
   }
+}
+
+/// demo 的 smoothstep：pe(p) = p²(3−2p)。用于共享元素路由的页面淡出
+/// （两个方向都是 raw 值的 smoothstep，与 demo backdrop 同源）。
+class _SmoothStepTween extends Animatable<double> {
+  const _SmoothStepTween();
+
+  @override
+  double transform(double t) => t * t * (3 - 2 * t);
+}
+
+/// 修「返回时图片已经跟手缩到卡片了，松手后又整个重播一遍缩回动画」。
+///
+/// 根因在上游：Flutter 3.47 的预测返回提交路径（`TransitionRoute._handleDragEnd`，
+/// 由 PR #154718「Shared element transition for predictive back」改成）在松手
+/// 提交时会先把路由动画**重置回 1.0** 再反向播放：
+///
+/// ```dart
+/// navigator?.pop();
+/// if (_controller?.isAnimating ?? false) {
+///   _controller!.reverse(from: _controller!.upperBound);  // ← 重置
+/// }
+/// ```
+///
+/// 这是给那个规范里的「回弹 + 淡出」用的（commit 之后需要一段完整的 1→0 给
+/// `_PredictiveBackSharedElementPageTransition`），但它同时也把任何
+/// `transitionOnUserGestures` 的 Hero 一起重置了：Hero 的飞行进度就是
+/// `ReverseAnimation(route.animation)`，动画一回到 1.0，图片与页面就跳回全屏，
+/// 再把手指已经拖过的那段重播一遍。框架这条路径没有测试覆盖
+/// （`widgets/heroes_test.dart` 里没有预测返回的手势用例），所以是上游的盲区。
+///
+/// 修法**不碰手势本身**：手势仍由框架的 `PredictiveBackPageTransitionsBuilder`
+/// 驱动（这里只是搭个便车收一份事件，用来记录手指的进度），提交时把动画值拉回
+/// 手指最后给出的位置再让它从那里继续反向。用微任务是为了不依赖两个观察者的
+/// 回调顺序（无论是框架的 detector 还是本 widget 先收到 commit 都成立）；如果
+/// 上游哪天不再重置，`controller.value > anchor` 不成立，这里自动变成空操作。
+class _SharedElementPopRestore extends StatefulWidget {
+  const _SharedElementPopRestore({
+    required this.route,
+    required this.controller,
+    required this.enabledCallback,
+    required this.child,
+  });
+
+  final PageRoute<dynamic> route;
+
+  final AnimationController controller;
+
+  /// 必须与框架 `_PredictiveBackGestureDetector` 的认领条件等价或更严格，
+  /// 否则会出现「我们认领了但框架没认领」——手势被吞掉、返回彻底不动。
+  final bool Function() enabledCallback;
+
+  final Widget child;
+
+  @override
+  State<_SharedElementPopRestore> createState() =>
+      _SharedElementPopRestoreState();
+}
+
+class _SharedElementPopRestoreState extends State<_SharedElementPopRestore>
+    with WidgetsBindingObserver {
+  /// 手指最近一次给出的进度，等于提交前一刻的路由动画值。null 表示当前没有
+  /// 本 widget 认领的手势。
+  double? _gestureValue;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  bool handleStartBackGesture(PredictiveBackEvent backEvent) {
+    // 返回键（非手势）不走预测返回，交回框架默认处理。
+    if (backEvent.isButtonEvent || !widget.enabledCallback()) {
+      return false;
+    }
+    _gestureValue = 1 - backEvent.progress;
+    return true;
+  }
+
+  @override
+  void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
+    _gestureValue = 1 - backEvent.progress;
+  }
+
+  @override
+  void handleCancelBackGesture() {
+    // 取消时框架会把动画正着播回 1.0，不需要我们插手。
+    _gestureValue = null;
+  }
+
+  @override
+  void handleCommitBackGesture() {
+    final double? anchor = _gestureValue;
+    _gestureValue = null;
+    if (anchor == null) {
+      return;
+    }
+    scheduleMicrotask(() {
+      if (!mounted) {
+        return;
+      }
+      final AnimationController controller = widget.controller;
+      // 框架只在 pop 真的发生时才会执行 reverse(from: 1.0) 重置：此刻
+      // controller 处于反向动画中、值被拉回 1.0。pop 没发生的异常路径下
+      // controller 是 completed 且静止 —— 绝不插手，否则会把没弹出的页面
+      // 自己淡出去。（不能用 route.isCurrent 判断「pop 是否发生」：pop()
+      // 是同步的，返回时路由已进入 _RouteLifecycle.popping、不再是
+      // present，isCurrent 恒为 false —— 之前的守卫因此把整个修复
+      // 拦成了死代码。）
+      if (!controller.isAnimating ||
+          controller.status != AnimationStatus.reverse) {
+        return;
+      }
+      // 框架没重置（或已经走到终点）就什么都不用做。
+      if (controller.value <= anchor) {
+        return;
+      }
+      controller.value = anchor;
+      // demo closePanel：时长 = DUR × (0.35 + 0.65×(1−p))，时间曲线
+      // easeOutQuart（快出手长滑行，无过冲）。easeOutQuart 由控制器提供，
+      // tween 那边只做 smoothstep（见 preview_hero.dart 的 _OpticalRectTween），
+      // 合成结果精确等于 demo 的收尾。
+      controller.animateBack(
+        0.0,
+        duration: Duration(
+          milliseconds: (kPreviewFlightDuration.inMilliseconds *
+                  (0.35 + 0.65 * (1 - anchor)))
+              .round(),
+        ),
+        curve: Curves.easeOutQuart,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class IOSBackGestureController {

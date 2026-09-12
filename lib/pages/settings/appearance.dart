@@ -61,44 +61,29 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
         SliverToBoxAdapter(child: _buildColorCard()),
         _section("Navigation Bar".tl),
         SliverToBoxAdapter(
-          child: _buildToggleCard(
-            icon: Icons.dock_outlined,
-            title: "Floating Bottom Bar".tl,
-            subtitle: "Use floating style bottom bar".tl,
-            value: navBarStyle != 'classic',
-            onChanged: (v) => _set('navBarStyle', v ? 'floating' : 'classic'),
-          ),
-        ),
-        // 「液态玻璃」仅在悬浮底栏开启时出现：开 = Floating Glass，关 = Frosted。
-        if (navBarStyle == 'floating' || navBarStyle == 'frosted')
-          SliverToBoxAdapter(
-            child: _buildToggleCard(
-              icon: Icons.water_drop_outlined,
-              title: "Liquid Glass".tl,
-              subtitle: "Enable liquid glass effect".tl,
-              value: navBarStyle == 'floating',
-              onChanged: (v) => _set('navBarStyle', v ? 'floating' : 'frosted'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: MiuixTabRow(
+              tabs: ["Classic".tl, "MD3".tl, "Liquid Glass".tl],
+              selectedTabIndex: switch (navBarStyle) {
+                'md3' => 1,
+                'floating' => 2,
+                _ => 0,
+              },
+              colors: translucentTabRowColors(context),
+              onTabSelected: (i) {
+                _set('navBarStyle', switch (i) {
+                  1 => 'md3',
+                  2 => 'floating',
+                  _ => 'classic',
+                });
+              },
             ),
           ),
-        _section("Settings".tl),
-        SliverToBoxAdapter(
-          child: _buildToggleCard(
-            icon: Icons.auto_awesome_mosaic_outlined,
-            title: "Settings Style".tl,
-            subtitle: "Use Miuix style settings".tl,
-            value: appdata.settings['settingsStyle'] == 'miuix',
-            onChanged: (v) => _set('settingsStyle', v ? 'miuix' : 'classic'),
-          ),
         ),
-        SliverToBoxAdapter(
-          child: _buildToggleCard(
-            icon: Icons.tab_outlined,
-            title: "Settings Entry".tl,
-            subtitle: "Place entry in navigation bar".tl,
-            value: appdata.settings['settingsEntry'] == 'navBar',
-            onChanged: (v) => _set('settingsEntry', v ? 'navBar' : 'topRight'),
-          ),
-        ),
+        // 「Settings Style / Settings Entry」两个开关已移除：
+        // 设置页已全面卡片化（miuix 画风），classic 设置页不再提供切换入口；
+        // 设置入口位置沿用既有存储值。
         _section("Immersive Background".tl),
         SliverToBoxAdapter(
           child: Padding(
@@ -172,28 +157,6 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             "classic": "Classic".tl,
             "floating": "Floating Glass".tl,
             "frosted": "Frosted".tl,
-          },
-          onChanged: () async {
-            App.forceRebuild();
-          },
-        ).toSliver(),
-        SelectSetting(
-          title: "Settings Style".tl,
-          settingKey: "settingsStyle",
-          optionTranslation: {
-            "miuix": "Miuix".tl,
-            "classic": "Classic".tl,
-          },
-          onChanged: () async {
-            App.forceRebuild();
-          },
-        ).toSliver(),
-        SelectSetting(
-          title: "Settings Entry".tl,
-          settingKey: "settingsEntry",
-          optionTranslation: {
-            "topRight": "Top Right Corner".tl,
-            "navBar": "Navigation Bar".tl,
           },
           onChanged: () async {
             App.forceRebuild();
@@ -487,58 +450,6 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
                 });
               },
               onValueChangeFinished: () => appdata.saveData(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// HyperOS 风格开关卡片：图标 + 标题/副标题 + MiuixSwitch。
-  Widget _buildToggleCard({    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: MiuixCard(
-        cornerRadius: 16,
-        insideMargin:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        onPressed: () => onChanged(!value),
-        feedbackType: MiuixPressFeedbackType.sink,
-        child: Row(
-          children: [
-            _IconBadge(icon: icon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            MiuixSwitch(
-              value: value,
-              onChanged: onChanged,
             ),
           ],
         ),

@@ -116,8 +116,17 @@ abstract mixin class _ComicPageActions {
   /// [page] the page number, start from 1
   ///
   /// [group] the chapter group number, start from 1
-  void read([int? ep, int? page, int? group]) {
-    App.rootContext
+  ///
+  /// [previewPlaceholder] 预览卡片那张图（由预览卡传入）。图集要等
+  /// loadComicPages 返回才构建，阅读器首帧只有它可显示；不给就会在转场落地
+  /// 时「闪一下再转圈」。
+  void read([int? ep, int? page, int? group, Widget? previewPlaceholder]) {
+    // 推到「主内容区」的内嵌 Navigator（与详情页同栈），而不是根 Navigator。
+    // Hero 飞行只由发起转场的那个 Navigator 的 HeroController 驱动：详情页
+    // 本身挂在内嵌栈上（comic.dart:84 用 mainNavigatorKey 推入），阅读器必须
+    // 同栈，预览卡片 ⇄ 阅读器的 Hero 才会飞（与页内 cover→CoverViewer 完全
+    // 同一机制）。mainNavigatorKey 尚未就绪时退回根 Navigator，行为同旧版。
+    (App.mainNavigatorKey?.currentContext ?? App.rootContext)
         .to(
       () => Reader(
         type: comic.comicType,
@@ -130,7 +139,17 @@ abstract mixin class _ComicPageActions {
         history: history ?? History.fromModel(model: comic, ep: 0, page: 0),
         author: comic.findAuthor() ?? '',
         tags: comic.plainTags,
-      )
+        previewPlaceholder: previewPlaceholder,
+      ),
+      // 返回时由预览卡 ⇄ 阅读器的共享元素（Hero）跟手缩回，页面本身不缩放
+      // —— 否则阅读器的深色满屏会被 Android 共享元素转场缩成圆角卡片，
+      // 在图片已经缩回去的同时露出一大块深色底（详情见 app_page_route.dart）。
+      sharedElementPopTransition: true,
+      // 光学·径向转场（demo 规格）：打开 620ms；普通返回（非手势）收尾
+      // 300ms smoothstep，手势松手的收尾时长由 _SharedElementPopRestore
+      // 按 demo 公式驱动。
+      transitionDuration: kPreviewFlightDuration,
+      reverseTransitionDuration: const Duration(milliseconds: 300),
     )
         .then((_) {
       onReadEnd();

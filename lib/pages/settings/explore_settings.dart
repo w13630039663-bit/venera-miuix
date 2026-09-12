@@ -13,91 +13,133 @@ class _ExploreSettingsState extends State<ExploreSettings> {
     return SmoothCustomScrollView(
       slivers: [
         SliverAppbar(title: Text("Explore".tl)),
-        SelectSetting(
-          title: "Display mode of comic tile".tl,
-          settingKey: "comicDisplayMode",
-          optionTranslation: {
-            "detailed": "Detailed".tl,
-            "brief": "Brief".tl,
-          },
-        ).toSliver(),
-        _SliderSetting(
-          title: "Size of comic tile".tl,
-          settingsIndex: "comicTileScale",
-          interval: 0.05,
-          min: 0.5,
-          max: 1.5,
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Explore Pages".tl,
-          builder: setExplorePagesWidget,
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Category Pages".tl,
-          builder: setCategoryPagesWidget,
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Network Favorite Pages".tl,
-          builder: setFavoritesPagesWidget,
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Search Sources".tl,
-          builder: setSearchSourcesWidget,
-        ).toSliver(),
-        _SwitchSetting(
-          title: "Show favorite status on comic tile".tl,
-          settingKey: "showFavoriteStatusOnTile",
-        ).toSliver(),
-        _SwitchSetting(
-          title: "Show history on comic tile".tl,
-          settingKey: "showHistoryStatusOnTile",
-        ).toSliver(),
-        _SwitchSetting(
-          title: "Reverse default chapter order".tl,
-          settingKey: "reverseChapterOrder",
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Keyword blocking".tl,
-          builder: () => const _ManageBlockingWordView(),
-        ).toSliver(),
-        _PopupWindowSetting(
-          title: "Comment keyword blocking".tl,
-          builder: () => const _ManageBlockingCommentWordView(),
-        ).toSliver(),
-        SelectSetting(
-          title: "Default Search Target".tl,
-          settingKey: "defaultSearchTarget",
-          optionTranslation: {
-            '_aggregated_': "Aggregated".tl,
-            ...((){
-              var map = <String, String>{};
-              for (var c in ComicSource.all()) {
-                map[c.key] = c.name;
-              }
-              return map;
-            }()),
-          },
-        ).toSliver(),
-        SelectSetting(
-          title: "Auto Language Filters".tl,
-          settingKey: "autoAddLanguageFilter",
-          optionTranslation: {
-            'none': "None".tl,
-            'chinese': "Chinese",
-            'english': "English",
-            'japanese': "Japanese",
-          },
-        ).toSliver(),
-        SelectSetting(
-          title: "Initial Page".tl,
-          settingKey: "initialPage",
-          optionTranslation: {
-            '0': "Home Page".tl,
-            '1': "Favorites Page".tl,
-            '2': "Explore Page".tl,
-            '3': "Categories Page".tl,
-          },
-        ).toSliver(),
+        _SettingPartTitle(title: "Comic Tile".tl, icon: Icons.grid_view_outlined),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                SelectSetting(
+                  title: "Display mode of comic tile".tl,
+                  settingKey: "comicDisplayMode",
+                  optionTranslation: {
+                    "detailed": "Detailed".tl,
+                    "brief": "Brief".tl,
+                  },
+                ),
+                _SliderSetting(
+                  title: "Size of comic tile".tl,
+                  settingsIndex: "comicTileScale",
+                  interval: 0.05,
+                  min: 0.5,
+                  max: 1.5,
+                ),
+                _SwitchSetting(
+                  title: "Show favorite status on comic tile".tl,
+                  settingKey: "showFavoriteStatusOnTile",
+                ),
+                _SwitchSetting(
+                  title: "Show history on comic tile".tl,
+                  settingKey: "showHistoryStatusOnTile",
+                ),
+              ],
+            ),
+          ),
+        ),
+        _SettingPartTitle(title: "Pages".tl, icon: Icons.web_outlined),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                _PopupWindowSetting(
+                  title: "Explore Pages".tl,
+                  builder: setExplorePagesWidget,
+                ),
+                _PopupWindowSetting(
+                  title: "Category Pages".tl,
+                  builder: setCategoryPagesWidget,
+                ),
+                _PopupWindowSetting(
+                  title: "Network Favorite Pages".tl,
+                  builder: setFavoritesPagesWidget,
+                ),
+                _PopupWindowSetting(
+                  title: "Search Sources".tl,
+                  builder: setSearchSourcesWidget,
+                ),
+              ],
+            ),
+          ),
+        ),
+        _SettingPartTitle(
+          title: "Blocking".tl,
+          icon: Icons.block_outlined,
+        ),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                _PopupWindowSetting(
+                  title: "Keyword blocking".tl,
+                  builder: () => const _ManageBlockingWordView(),
+                ),
+                _PopupWindowSetting(
+                  title: "Comment keyword blocking".tl,
+                  builder: () => const _ManageBlockingCommentWordView(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _SettingPartTitle(
+          title: "Search & Defaults".tl,
+          icon: Icons.manage_search,
+        ),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                SelectSetting(
+                  title: "Default Search Target".tl,
+                  settingKey: "defaultSearchTarget",
+                  optionTranslation: {
+                    '_aggregated_': "Aggregated".tl,
+                    ...((){
+                      var map = <String, String>{};
+                      for (var c in ComicSource.all()) {
+                        map[c.key] = c.name;
+                      }
+                      return map;
+                    }()),
+                  },
+                ),
+                SelectSetting(
+                  title: "Auto Language Filters".tl,
+                  settingKey: "autoAddLanguageFilter",
+                  optionTranslation: {
+                    'none': "None".tl,
+                    'chinese': "Chinese",
+                    'english': "English",
+                    'japanese': "Japanese",
+                  },
+                ),
+                SelectSetting(
+                  title: "Initial Page".tl,
+                  settingKey: "initialPage",
+                  optionTranslation: {
+                    '0': "Home Page".tl,
+                    '1': "Favorites Page".tl,
+                    '2': "Explore Page".tl,
+                    '3': "Categories Page".tl,
+                  },
+                ),
+                _SwitchSetting(
+                  title: "Reverse default chapter order".tl,
+                  settingKey: "reverseChapterOrder",
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -11,6 +11,9 @@ on:
         description: "Flutter version"
         required: false
         default: "3.47.2"
+  push:
+    tags:
+      - "v*-miuix"
 
 jobs:
   build-windows:

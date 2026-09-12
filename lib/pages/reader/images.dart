@@ -98,7 +98,34 @@ class _ReaderImagesState extends State<_ReaderImages> {
   Widget build(BuildContext context) {
     if (reader.isLoading) {
       load();
-      return const Center(child: CircularProgressIndicator());
+      // 图集要等 loadComicPages 返回才构建，而 Hero 只在转场首帧之后测量
+      // 一次：加载态里没有同 tag 的 Hero，点预览卡进阅读器时共享元素就配
+      // 不上对、不会飞（返回时图集已在，所以只有返回能飞）。这里给加载态
+      // 挂一个同 tag 的 Hero 作为 push 的目的地。
+      //
+      // 目的地内容用详情页交过来的预览图（previewPlaceholder，与卡片/飞行
+      // 中的内容同一个构建函数）：飞行结束那一刻 overlay 的 shuttle 被摘掉、
+      // 换成目的侧 Hero 的 child —— 之前这里是转圈，于是「图片飞到全屏 → 闪
+      // 一下 → 转圈 → 图集才出来」。用同一张图之后，占位与飞行内容完全一致，
+      // 而占位用的 provider 与图集是同一份解码缓存，图集接上时也不会再解一次。
+      // 没有占位（从章节列表等路径进来）时保持原来的转圈。
+      final placeholder = reader.widget.previewPlaceholder;
+      if (reader.imagesPerPage != 1) {
+        // 双页模式页码会被重映射，标签与预览卡对不上，与图集侧保持一致。
+        return const Center(child: CircularProgressIndicator());
+      }
+      return Hero(
+        tag: previewHeroTag(
+          reader.type.sourceKey,
+          reader.cid,
+          reader.chapter,
+          reader.page,
+        ),
+        transitionOnUserGestures: true,
+        flightShuttleBuilder: previewHeroFlightShuttle,
+        createRectTween: previewHeroCreateRectTween,
+        child: placeholder ?? const Center(child: CircularProgressIndicator()),
+      );
     } else if (error != null) {
       return GestureDetector(
         onTap: () {
@@ -304,7 +331,11 @@ class _GalleryModeState extends State<_GalleryMode>
         }
       },
       child: PhotoViewGallery.builder(
-        backgroundDecoration: BoxDecoration(color: context.colorScheme.surface),
+        // 阅读器留白统一纯黑（scaffold.dart 的设计：留白处不透光）。此前用
+        // colorScheme.surface（浅色=白）：加载态是黑底、图集就绪瞬间切成白
+        // 底 —— 打开转场「快速闪黑白」的元凶。透明让 scaffold 的黑色
+        // ColoredBox 透上来，全模式只有一个底色来源。
+        backgroundDecoration: const BoxDecoration(),
         reverse: reader.mode == ReaderMode.galleryRightToLeft,
         scrollDirection: reader.mode == ReaderMode.galleryTopToBottom
             ? Axis.vertical
@@ -340,6 +371,22 @@ class _GalleryModeState extends State<_GalleryMode>
                   startIndex + 1,
                 ),
                 fit: BoxFit.contain,
+                // 只在单图模式挂 Hero：此时 reader.page == gallery index ==
+                // 图序号，与详情页预览卡片的 tag 精确配对（双页模式会把图
+                // 序号重映射成页码，先不做，避免配对失败静默不飞）。
+                heroAttributes: reader.imagesPerPage == 1
+                    ? PhotoViewHeroAttributes(
+                        tag: previewHeroTag(
+                          reader.type.sourceKey,
+                          reader.cid,
+                          reader.chapter,
+                          index,
+                        ),
+                        transitionOnUserGestures: true,
+                        flightShuttleBuilder: previewHeroFlightShuttle,
+                        createRectTween: previewHeroCreateRectTween,
+                      )
+                    : null,
                 errorBuilder: (_, error, s, retry) {
                   return NetworkError(message: error.toString(), retry: retry);
                 },
@@ -363,9 +410,7 @@ class _GalleryModeState extends State<_GalleryMode>
             initialScale: PhotoViewComputedScale.contained,
             minScale: PhotoViewComputedScale.contained * 1.0,
             maxScale: PhotoViewComputedScale.covered * 10.0,
-            backgroundDecoration: BoxDecoration(
-              color: context.colorScheme.surface,
-            ),
+            backgroundDecoration: const BoxDecoration(),
             child: Center(
               child: SizedBox(
                 width: 20.0,
@@ -871,16 +916,30 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
         ImageProvider image = _createImageProvider(index, context);
 
+        // 连续滚动模式本身就是「一项一图」，index 即页码，直接与预览卡片配对。
+        // 底色透明（纯黑由 scaffold 提供）：此前 surface 白底既与加载态黑底
+        // 冲突，也会让 Hero 飞行时拖着一个白色矩形。
         return ColoredBox(
-          color: context.colorScheme.surface,
-          child: ComicImage(
-            filterQuality: FilterQuality.medium,
-            image: image,
-            width: width,
-            height: height,
-            fit: BoxFit.contain,
-            onInit: (state) => imageStates.add(state),
-            onDispose: (state) => imageStates.remove(state),
+          color: Colors.transparent,
+          child: Hero(
+            tag: previewHeroTag(
+              reader.type.sourceKey,
+              reader.cid,
+              reader.chapter,
+              index,
+            ),
+            transitionOnUserGestures: true,
+            flightShuttleBuilder: previewHeroFlightShuttle,
+            createRectTween: previewHeroCreateRectTween,
+            child: ComicImage(
+              filterQuality: FilterQuality.medium,
+              image: image,
+              width: width,
+              height: height,
+              fit: BoxFit.contain,
+              onInit: (state) => imageStates.add(state),
+              onDispose: (state) => imageStates.remove(state),
+            ),
           ),
         );
       },
@@ -1031,7 +1090,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
     }
 
     return PhotoView.customChild(
-      backgroundDecoration: BoxDecoration(color: context.colorScheme.surface),
+      backgroundDecoration: const BoxDecoration(),
       childSize: Size(width, height),
       minScale: 1.0,
       maxScale: 2.5,

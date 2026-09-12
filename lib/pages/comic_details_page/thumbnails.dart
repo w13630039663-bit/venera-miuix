@@ -23,6 +23,9 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
   /// 兜底模式：本源详情接口未返回 thumbnails，改用首话页面图当预览
   bool _isFallbackMode = false;
 
+  /// 兜底模式使用的首话章节 id（阅读器侧 eid 也是它，图片缓存 key 才能对齐）
+  String? _fallbackChapterId;
+
   bool _previewFallbackLoaded = false;
 
   /// 首话页面数是否超过展示上限（用于显示「查看更多」卡片）
@@ -66,6 +69,7 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
         hasMore = urls.length > previewLimit;
         thumbnails = urls.take(previewLimit).toList();
         _isFallbackMode = true;
+        _fallbackChapterId = epId;
       } else {
         error = res.errorMessage;
         _previewFallbackLoaded = false; // 允许重试
@@ -147,6 +151,30 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
                 }
                 part = ImagePart(x1: x1, y1: y1, x2: x2, y2: y2);
               }
+              // 兜底模式拿的是首话的「页面图」，必须走阅读器那条图片链路：
+              // 图源的解混淆/解密钩子（getImageLoadingConfig 的 modifyImage）
+              // 与全局「自定义图片处理」只在 loadComicImage 里执行，缩略图
+              // 链路（loadThumbnail）不跑 —— 用 CachedImageProvider 会直接
+              // 显示被打乱过的原图（横条撕裂）。cacheKey 与阅读器完全一致，
+              // 顺带把阅读器要用的那张图预热到磁盘缓存。
+              final bool readerPipeline =
+                  _isFallbackMode && _fallbackChapterId != null;
+              final ImageProvider imageProvider = readerPipeline
+                  ? ReaderImageProvider(
+                      thumbnails[index],
+                      state.comic.sourceKey,
+                      state.comic.id,
+                      _fallbackChapterId!,
+                      index + 1,
+                    )
+                  : CachedImageProvider(
+                      url,
+                      sourceKey: state.widget.sourceKey,
+                    );
+              // 阅读器的裁剪/还原全在源侧，ComicImage 也没有 part 参数 —— 走
+              // 阅读器链路时本地不再裁。
+              final ImagePart? cardPart = readerPipeline ? null : part;
+              final outlineColor = Theme.of(context).colorScheme.outline;
               return Padding(
                 padding: context.width < changePoint
                     ? const EdgeInsets.all(4)
@@ -156,31 +184,71 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
                   children: [
                     Expanded(
                       child: InkWell(
-                        onTap: () => state.read(null, index + 1),
+                        // 顺带把卡片这张图交给阅读器当「图集就绪前的占位」——
+                        // 阅读器首帧还没有图，没有占位就会「飞完闪一下再转圈」。
+                        // 占位 = 裸图（previewFlightImage），与卡片 Hero child
+                        // 同一构建函数；卡片框不进阅读器。
+                        onTap: () => state.read(
+                          null,
+                          index + 1,
+                          null,
+                          previewFlightImage(
+                            image: imageProvider,
+                            part: cardPart,
+                            // 占位要铺满全屏，且不带缩放的 provider 与阅读器
+                            // 图集用的是同一份原始解码缓存（BaseImageProvider
+                            // 的 == 按 key 比较，enableResize 也都是 false）。
+                            cacheWidth: null,
+                          ),
+                        ),
                         borderRadius:
                         const BorderRadius.all(Radius.circular(8)),
-                        child: Container(
-                          foregroundDecoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outline,
+                        // 共享元素：点卡片 → 阅读器时，封面从这张卡片的位置
+                        // 连续放大到全屏；阅读器返回时原路缩回。tag 与阅读器
+                        // 侧严格一致（见 preview_hero.dart），否则静默不飞。
+                        //
+                        // Hero child 只放裸图：卡片的圆角 + 描边画在下面的
+                        // Container 上、留在原地。Hero 飞行按插值矩形逐帧重新
+                        // 布局，框若进 Hero 会跟着从卡片「长」到全屏。
+                        //
+                        // PreviewFlightBackdrop：飞行期间本卡片糊+暗+淡
+                        // （demo 的背景退场，e = smoothstep(飞行进度)）。
+                        child: PreviewFlightBackdrop(
+                          child: Container(
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              borderRadius:
+                                  const BorderRadius.all(Radius.circular(8)),
+                              // miuix：格子加卡片底色，与区块卡片同层次。
+                              color: useMiuixStyle
+                                  ? comicCardBg(context)
+                                  : null,
                             ),
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          width: double.infinity,
-                          height: double.infinity,
-                          clipBehavior: Clip.antiAlias,
-                          child: AnimatedImage(
-                            image: CachedImageProvider(
-                              url,
-                              sourceKey: state.widget.sourceKey,
+                            foregroundDecoration: BoxDecoration(
+                              borderRadius:
+                                  const BorderRadius.all(Radius.circular(8)),
+                              border: Border.all(color: outlineColor),
                             ),
-                            fit: BoxFit.contain,
-                            width: double.infinity,
-                            height: double.infinity,
-                            part: part,
+                            child: Hero(
+                              tag: previewHeroTag(
+                                state.comic.sourceKey,
+                                state.comic.id,
+                                1,
+                                index + 1,
+                              ),
+                              transitionOnUserGestures: true,
+                              flightShuttleBuilder: previewHeroFlightShuttle,
+                              createRectTween: previewHeroCreateRectTween,
+                              child: previewFlightImage(
+                                image: imageProvider,
+                                part: cardPart,
+                                // 裁剪参数是原图的像素坐标，做过解码缩放就会裁错
+                                // 位置 —— 只有不带 part 时才限制解码尺寸。
+                                cacheWidth: cardPart == null
+                                    ? coverDecodeWidth(context, 200)
+                                    : null,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -213,9 +281,10 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
           )
         else if (isLoading)
           const SliverListLoadingIndicator(),
-        const SliverToBoxAdapter(
-          child: Divider(),
-        ),
+        if (!useMiuixStyle)
+          const SliverToBoxAdapter(
+            child: Divider(),
+          ),
       ],
     );
   }
@@ -235,6 +304,7 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Theme.of(context).colorScheme.outline),
+            color: useMiuixStyle ? comicCardBg(context) : null,
           ),
           width: double.infinity,
           height: double.infinity,

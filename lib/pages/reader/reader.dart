@@ -30,6 +30,7 @@ import 'package:venera/foundation/image_provider/cached_image.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
+import 'package:venera/foundation/preview_hero.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/pages/settings/settings_page.dart';
@@ -79,6 +80,7 @@ class Reader extends StatefulWidget {
     this.initialChapterGroup,
     required this.author,
     required this.tags,
+    this.previewPlaceholder,
   });
 
   final ComicType type;
@@ -103,6 +105,12 @@ class Reader extends StatefulWidget {
   final int? initialChapterGroup;
 
   final History history;
+
+  /// 图集就绪之前（loadComicPages 还没返回）显示的内容 —— 详情页把它点的那张
+  /// 预览图交给这里。共享元素转场落地那一刻，overlay 里的飞行内容会被换成目
+  /// 的侧 Hero 的 child，占位就是它：给同一个东西才不会在落地时「闪一下再
+  /// 转圈」。
+  final Widget? previewPlaceholder;
 
   @override
   State<Reader> createState() => _ReaderState();
@@ -274,6 +282,16 @@ class _ReaderState extends State<Reader>
       fullscreen();
     }
     autoPageTurningTimer?.cancel();
+    // 本会话阅读页数落库（阅读统计）。强制杀进程会丢掉当次会话，可接受。
+    if (_pagesRead > 0) {
+      HistoryManager().addReadingStats(
+        type: widget.type,
+        cid: widget.cid,
+        pages: _pagesRead,
+        // plainTags（"namespace:tag"），题材分布/标签云用。
+        tags: widget.tags,
+      );
+    }
     focusNode.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     stopVolumeEvent();
@@ -327,6 +345,12 @@ class _ReaderState extends State<Reader>
   /// `HistoryManager().addHistoryAsync` is a high-cost operation because it creates a new isolate.
   Timer? _updateHistoryTimer;
 
+  /// 本会话读过的页数（阅读统计）。updateHistory 每次翻页都会被调（含重复），
+  /// 用上次快照做差值去重：同章前进加差值、跨章/首次加 1、原地重复加 0。
+  int _pagesRead = 0;
+  int? _lastCountedEp;
+  int? _lastCountedPage;
+
   void updateHistory() {
     if (history != null) {
       // page >= maxPage handles both last image page and chapter comments page
@@ -361,6 +385,18 @@ class _ReaderState extends State<Reader>
         history!.ep = chapter;
       }
       history!.time = DateTime.now();
+      // 阅读统计：按快照差值累加本会话页数（局部变量以便类型提升）。
+      final int? lastEp = _lastCountedEp;
+      final int? lastPage = _lastCountedPage;
+      if (lastEp == null || lastPage == null) {
+        _pagesRead += 1;
+      } else if (history!.ep != lastEp) {
+        _pagesRead += 1;
+      } else if (history!.page > lastPage) {
+        _pagesRead += history!.page - lastPage;
+      }
+      _lastCountedEp = history!.ep;
+      _lastCountedPage = history!.page;
       _updateHistoryTimer?.cancel();
       _updateHistoryTimer = Timer(const Duration(seconds: 1), () {
         HistoryManager().addHistoryAsync(history!);

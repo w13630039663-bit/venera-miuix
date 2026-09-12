@@ -17,182 +17,213 @@ class _AppSettingsState extends State<AppSettings> {
           title: "Data".tl,
           icon: Icons.storage,
         ),
-        ListTile(
-          title: Text("Storage Path for local comics".tl),
-          subtitle: Text(LocalManager().path, softWrap: false),
-          trailing: IconButton(
-            icon: const Icon(Icons.copy),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: LocalManager().path));
-              context.showMessage(message: "Path copied to clipboard".tl);
-            },
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                _CallbackSetting(
+                  title: "Storage Path for local comics".tl,
+                  subtitle: LocalManager().path,
+                  actionTitle: "Copy".tl,
+                  callback: () {
+                    Clipboard.setData(ClipboardData(text: LocalManager().path));
+                    context.showMessage(message: "Path copied to clipboard".tl);
+                  },
+                ),
+                _CallbackSetting(
+                  title: "Set New Storage Path".tl,
+                  actionTitle: "Set".tl,
+                  callback: () async {
+                    String? result;
+                    if (App.isAndroid) {
+                      var picker = DirectoryPicker();
+                      result = (await picker.pickDirectory())?.path;
+                    } else if (App.isIOS) {
+                      result = await selectDirectoryIOS();
+                    } else {
+                      result = await selectDirectory();
+                    }
+                    if (result == null) return;
+                    var loadingDialog = showLoadingDialog(
+                      App.rootContext,
+                      barrierDismissible: false,
+                      allowCancel: false,
+                    );
+                    var res = await LocalManager().setNewPath(result);
+                    loadingDialog.close();
+                    if (res != null) {
+                      context.showMessage(message: res);
+                    } else {
+                      context.showMessage(message: "Path set successfully".tl);
+                      setState(() {});
+                    }
+                  },
+                ),
+                _CallbackSetting(
+                  title: "Cache Size".tl,
+                  subtitle:
+                      bytesToReadableString(CacheManager().currentSize),
+                  actionTitle: "Clear".tl,
+                  callback: () async {
+                    var loadingDialog = showLoadingDialog(
+                      App.rootContext,
+                      barrierDismissible: false,
+                      allowCancel: false,
+                    );
+                    await CacheManager().clear();
+                    loadingDialog.close();
+                    context.showMessage(message: "Cache cleared".tl);
+                    setState(() {});
+                  },
+                ),
+                _CallbackSetting(
+                  title: "Cache Limit".tl,
+                  subtitle: "${appdata.settings['cacheSize']} MB",
+                  callback: () {
+                    showInputDialog(
+                      context: context,
+                      title: "Set Cache Limit".tl,
+                      hintText: "Size in MB".tl,
+                      inputValidator: RegExp(r"^\d+$"),
+                      onConfirm: (value) {
+                        appdata.settings['cacheSize'] = int.parse(value);
+                        appdata.saveData();
+                        setState(() {});
+                        CacheManager().setLimitSize(
+                            appdata.settings['cacheSize']);
+                        return null;
+                      },
+                    );
+                  },
+                  actionTitle: 'Set'.tl,
+                ),
+              ],
+            ),
           ),
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Set New Storage Path".tl,
-          actionTitle: "Set".tl,
-          callback: () async {
-            String? result;
-            if (App.isAndroid) {
-              var picker = DirectoryPicker();
-              result = (await picker.pickDirectory())?.path;
-            } else if (App.isIOS) {
-              result = await selectDirectoryIOS();
-            } else {
-              result = await selectDirectory();
-            }
-            if (result == null) return;
-            var loadingDialog = showLoadingDialog(
-              App.rootContext,
-              barrierDismissible: false,
-              allowCancel: false,
-            );
-            var res = await LocalManager().setNewPath(result);
-            loadingDialog.close();
-            if (res != null) {
-              context.showMessage(message: res);
-            } else {
-              context.showMessage(message: "Path set successfully".tl);
-              setState(() {});
-            }
-          },
-        ).toSliver(),
-        ListTile(
-          title: Text("Cache Size".tl),
-          subtitle: Text(bytesToReadableString(CacheManager().currentSize)),
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Clear Cache".tl,
-          actionTitle: "Clear".tl,
-          callback: () async {
-            var loadingDialog = showLoadingDialog(
-              App.rootContext,
-              barrierDismissible: false,
-              allowCancel: false,
-            );
-            await CacheManager().clear();
-            loadingDialog.close();
-            context.showMessage(message: "Cache cleared".tl);
-            setState(() {});
-          },
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Cache Limit".tl,
-          subtitle: "${appdata.settings['cacheSize']} MB",
-          callback: () {
-            showInputDialog(
-              context: context,
-              title: "Set Cache Limit".tl,
-              hintText: "Size in MB".tl,
-              inputValidator: RegExp(r"^\d+$"),
-              onConfirm: (value) {
-                appdata.settings['cacheSize'] = int.parse(value);
-                appdata.saveData();
-                setState(() {});
-                CacheManager().setLimitSize(appdata.settings['cacheSize']);
-                return null;
-              },
-            );
-          },
-          actionTitle: 'Set'.tl,
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Export App Data".tl,
-          callback: () async {
-            var controller = showLoadingDialog(context);
-            var file = await exportAppData(false);
-            await saveFile(filename: "data.venera", file: file);
-            controller.close();
-          },
-          actionTitle: 'Export'.tl,
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Import App Data".tl,
-          callback: () async {
-            var controller = showLoadingDialog(context);
-            var file = await selectFile(ext: ['venera', 'picadata']);
-            if (file != null) {
-              var cacheFile =
-                  File(FilePath.join(App.cachePath, "import_data_temp"));
-              await file.saveTo(cacheFile.path);
-              try {
-                if (file.name.endsWith('picadata')) {
-                  await importPicaData(cacheFile);
-                } else {
-                  await importAppData(cacheFile);
-                }
-              } catch (e, s) {
-                Log.error("Import data", e.toString(), s);
-                context.showMessage(message: "Failed to import data".tl);
-              } finally {
-                cacheFile.deleteIgnoreError();
-                App.forceRebuild();
-              }
-            }
-            controller.close();
-          },
-          actionTitle: 'Import'.tl,
-        ).toSliver(),
-        _CallbackSetting(
-          title: "Data Sync".tl,
-          callback: () async {
-            showPopUpWidget(context, const _WebdavSetting());
-          },
-          actionTitle: 'Set'.tl,
-        ).toSliver(),
+        ),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                _CallbackSetting(
+                  title: "Export App Data".tl,
+                  callback: () async {
+                    var controller = showLoadingDialog(context);
+                    var file = await exportAppData(false);
+                    await saveFile(filename: "data.venera", file: file);
+                    controller.close();
+                  },
+                  actionTitle: 'Export'.tl,
+                ),
+                _CallbackSetting(
+                  title: "Import App Data".tl,
+                  callback: () async {
+                    var controller = showLoadingDialog(context);
+                    var file = await selectFile(ext: ['venera', 'picadata']);
+                    if (file != null) {
+                      var cacheFile = File(
+                          FilePath.join(App.cachePath, "import_data_temp"));
+                      await file.saveTo(cacheFile.path);
+                      try {
+                        if (file.name.endsWith('picadata')) {
+                          await importPicaData(cacheFile);
+                        } else {
+                          await importAppData(cacheFile);
+                        }
+                      } catch (e, s) {
+                        Log.error("Import data", e.toString(), s);
+                        context.showMessage(message: "Failed to import data".tl);
+                      } finally {
+                        cacheFile.deleteIgnoreError();
+                        App.forceRebuild();
+                      }
+                    }
+                    controller.close();
+                  },
+                  actionTitle: 'Import'.tl,
+                ),
+                _CallbackSetting(
+                  title: "Data Sync".tl,
+                  callback: () async {
+                    showPopUpWidget(context, const _WebdavSetting());
+                  },
+                  actionTitle: 'Set'.tl,
+                ),
+              ],
+            ),
+          ),
+        ),
         _SettingPartTitle(
           title: "User".tl,
           icon: Icons.person_outline,
         ),
-        SelectSetting(
-          title: "Language".tl,
-          settingKey: "language",
-          optionTranslation: const {
-            "system": "System",
-            "zh-CN": "简体中文",
-            "zh-TW": "繁體中文",
-            "en-US": "English",
-          },
-          onChanged: () {
-            App.forceRebuild();
-          },
-        ).toSliver(),
-        if (!App.isLinux)
-          _SwitchSetting(
-            title: "Authorization Required".tl,
-            settingKey: "authorizationRequired",
-            onChanged: () async {
-              var current = appdata.settings['authorizationRequired'];
-              if (current) {
-                final auth = LocalAuthentication();
-                final bool canAuthenticateWithBiometrics =
-                    await auth.canCheckBiometrics;
-                final bool canAuthenticate = canAuthenticateWithBiometrics ||
-                    await auth.isDeviceSupported();
-                if (!canAuthenticate) {
-                  context.showMessage(message: "Biometrics not supported".tl);
-                  setState(() {
-                    appdata.settings['authorizationRequired'] = false;
-                  });
-                  appdata.saveData();
-                  return;
-                }
-              }
-            },
-          ).toSliver(),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                SelectSetting(
+                  title: "Language".tl,
+                  settingKey: "language",
+                  optionTranslation: const {
+                    "system": "System",
+                    "zh-CN": "简体中文",
+                    "zh-TW": "繁體中文",
+                    "en-US": "English",
+                  },
+                  onChanged: () {
+                    App.forceRebuild();
+                  },
+                ),
+                if (!App.isLinux)
+                  _SwitchSetting(
+                    title: "Authorization Required".tl,
+                    settingKey: "authorizationRequired",
+                    onChanged: () async {
+                      var current = appdata.settings['authorizationRequired'];
+                      if (current) {
+                        final auth = LocalAuthentication();
+                        final bool canAuthenticateWithBiometrics =
+                            await auth.canCheckBiometrics;
+                        final bool canAuthenticate =
+                            canAuthenticateWithBiometrics ||
+                                await auth.isDeviceSupported();
+                        if (!canAuthenticate) {
+                          context.showMessage(
+                              message: "Biometrics not supported".tl);
+                          setState(() {
+                            appdata.settings['authorizationRequired'] = false;
+                          });
+                          appdata.saveData();
+                          return;
+                        }
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
         // 「Debug」分类已移除（fork 不暴露 JS 调试台与调试开关），
         // 但日志页是排障刚需，挪到这里保留入口。
         _SettingPartTitle(
           title: "Troubleshooting".tl,
           icon: Icons.bug_report_outlined,
         ),
-        _CallbackSetting(
-          title: "Open Log".tl,
-          actionTitle: "Open".tl,
-          callback: () {
-            context.to(() => const LogsPage());
-          },
-        ).toSliver(),
+        SliverToBoxAdapter(
+          child: SettingsSection(
+            child: Column(
+              children: [
+                _CallbackSetting(
+                  title: "Open Log".tl,
+                  actionTitle: "Open".tl,
+                  callback: () {
+                    context.to(() => const LogsPage());
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -4,8 +4,9 @@ part of 'components.dart';
 ///
 /// - [classic]：venera 原有的实心底栏，内容不穿过。
 /// - [floating]：MIUIX 悬浮液态玻璃胶囊，内容从其下方穿过并被折射。
-/// - [frosted]：MIUIX 固定毛玻璃底栏。
-enum NavBarStyle { classic, floating, frosted }
+/// - [md3]：无液态玻璃的 MD3 风格悬浮底栏（surfaceContainer 实底 + 阴影 +
+///   secondaryContainer pill 指示器），几何与 floating 完全一致。
+enum NavBarStyle { classic, floating, md3 }
 
 class PaneItemEntry {
   String label;
@@ -128,13 +129,6 @@ class NaviPaneState extends State<NaviPane>
 
   static const _kBottomBarHeight = 58.0;
 
-  /// 固定毛玻璃底栏的模糊半径（dp）与着色不透明度。
-  /// 对齐 pixez-miuix 的 20dp；不透明度取 0.85 而非其 0.96，
-  /// 以便肉眼能真正看到毛玻璃质感（0.96 时几乎等同实心底栏）。
-  static const _kFrostedBarBlurRadius = 20.0;
-
-  static const _kFrostedBarTintAlpha = 0.85;
-
   static const _kFoldedSideBarWidth = 72.0;
 
   static const _kSideBarWidth = 224.0;
@@ -163,8 +157,10 @@ class NaviPaneState extends State<NaviPane>
     switch (appdata.settings['navBarStyle']) {
       case 'classic':
         return NavBarStyle.classic;
+      case 'md3':
+      // 旧值迁移：frosted（毛玻璃）已被 md3 取代。
       case 'frosted':
-        return NavBarStyle.frosted;
+        return NavBarStyle.md3;
       default:
         return NavBarStyle.floating;
     }
@@ -181,9 +177,8 @@ class NaviPaneState extends State<NaviPane>
   }
 
   double get bottomBarHeight => switch (navBarStyle) {
-        NavBarStyle.floating => _kGlassBarHeight + _glassBarBottomPadding,
-        NavBarStyle.frosted => MiuixNavigationBarDefaults.itemHeight +
-            MediaQuery.of(context).viewPadding.bottom,
+        NavBarStyle.floating ||
+        NavBarStyle.md3 => _kGlassBarHeight + _glassBarBottomPadding,
         NavBarStyle.classic =>
           _kBottomBarHeight + MediaQuery.of(context).padding.bottom,
       };
@@ -428,10 +423,10 @@ class NaviPaneState extends State<NaviPane>
     if (style == NavBarStyle.classic) {
       return _buildClassicBottomBar();
     }
-    if (style == NavBarStyle.floating) {
-      return _buildLiquidBottomTabs();
+    if (style == NavBarStyle.md3) {
+      return _buildMd3BottomBar();
     }
-    return _buildMiuixBottomBar();
+    return _buildLiquidBottomTabs();
   }
 
   /// venera 原有的实心底栏。
@@ -467,27 +462,90 @@ class NaviPaneState extends State<NaviPane>
     ).paddingBottom(MediaQuery.of(context).padding.bottom);
   }
 
-  /// MIUIX 固定毛玻璃底栏（frosted 模式）。
-  Widget _buildMiuixBottomBar() {
+  /// MD3 风格悬浮底栏：与液态玻璃胶囊**完全同一几何**（悬浮、居中、
+  /// 同宽高、同底部留白），但材质是纯 Material 3 —— surfaceContainer
+  /// 实底 + 阴影，无任何 LiquidGlass / BackdropFilter；选中态 =
+  /// secondaryContainer pill 指示器（M3 NavigationBar 规范）。
+  Widget _buildMd3BottomBar() {
+    final mq = MediaQuery.of(context);
     final colorScheme = Theme.of(context).colorScheme;
+    final barW = math.min(
+      _kGlassBarMaxWidth,
+      mq.size.width - _kGlassBarHorizontalPadding * 2,
+    );
+    final bottomPadding = _glassBarBottomPadding + mq.padding.bottom;
     final items = <Widget>[];
     for (var i = 0; i < widget.paneItems.length; i++) {
       final entry = widget.paneItems[i];
       final selected = currentPage == i;
       items.add(
-        MiuixNavigationBarItem(
-          key: ValueKey(i),
-          selected: selected,
-          onPressed: () => updatePage(i),
-          icon: Icon(
-            selected ? entry.activeIcon : entry.icon,
-            size: MiuixNavigationBarDefaults.iconSize,
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(_kGlassBarHeight / 2 - 8),
+            onTap: () => updatePage(i),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // M3 pill 指示器：选中时 secondaryContainer 胶囊包住图标。
+                Container(
+                  height: 30,
+                  padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 0),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colorScheme.secondaryContainer
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    selected ? entry.activeIcon : entry.icon,
+                    size: 22,
+                    color: selected
+                        ? colorScheme.onSecondaryContainer
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  entry.label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: selected
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-          label: entry.label,
         ),
       );
     }
-    return _buildFrostedBar(colorScheme, items);
+    return SizedBox.expand(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: bottomPadding),
+          child: Container(
+            width: barW,
+            height: _kGlassBarHeight,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(_kGlassBarHeight / 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(children: items),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 悬浮液态玻璃底栏 —— 用 liquid_glass_easy 的「单块玻璃」自组装。
@@ -521,28 +579,6 @@ class NaviPaneState extends State<NaviPane>
       width: barW,
       height: _kGlassBarHeight,
       bottomInset: baseMargin + mq.padding.bottom,
-    );
-  }
-
-  Widget _buildFrostedBar(ColorScheme colorScheme, List<Widget> items) {
-    final sigma = _kFrostedBarBlurRadius * 0.45;
-    return RepaintBoundary(
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: MiuixNavigationBar(
-            colors: MiuixNavigationBarColors(
-              background:
-                  colorScheme.surface.withValues(alpha: _kFrostedBarTintAlpha),
-              floatingBackground: colorScheme.surface,
-              content: colorScheme.onSurface,
-              divider: colorScheme.outlineVariant,
-            ),
-            showDivider: true,
-            children: items,
-          ),
-        ),
-      ),
     );
   }
 
@@ -896,10 +932,12 @@ class _NaviMainViewState extends State<_NaviMainView> {
   Widget build(BuildContext context) {
     var shouldShowAppBar = state.controller.value < 2;
 
-    // floating 模式：底栏是悬浮胶囊，内容必须延伸到屏幕底部、从玻璃下方
-    // 穿过（否则玻璃背后没有内容可折射，且视觉上底栏"挡住"内容）。
-    // classic / frosted 模式：底栏通栏固定，内容仍需预留高度。
-    final isFloating = shouldShowAppBar && state.navBarStyle == NavBarStyle.floating;
+    // floating / md3 模式：底栏是悬浮胶囊，内容必须延伸到屏幕底部、从
+    // 底栏下方穿过（否则悬浮底栏"挡住"内容）。
+    // classic 模式：底栏通栏固定，内容仍需预留高度。
+    final isFloating = shouldShowAppBar &&
+        (state.navBarStyle == NavBarStyle.floating ||
+            state.navBarStyle == NavBarStyle.md3);
 
     final mq = MediaQuery.of(context);
     // floating 模式把底栏高度并入内容区的 bottom padding，

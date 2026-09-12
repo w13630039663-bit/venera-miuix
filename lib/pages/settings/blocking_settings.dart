@@ -213,7 +213,7 @@ class _BlockingSettingsState extends State<BlockingSettings> {
   }
 }
 
-/// 一个分区的容器。
+/// 一个分区的容器：统一走 SettingsSection（圆角 16 + 深色令牌）。
 ///
 /// Miuix 画风下包一张 [MiuixCard]（卡片内每行自带按压反馈，靠间距而非分隔线
 /// 区分），Classic 画风下就是一行行平铺 —— 与阅读/浏览设置页保持一致。
@@ -224,16 +224,11 @@ class _BlockingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final column = Column(children: children);
-    if (_useMiuixStyle) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: MiuixCard(child: column),
-        ),
-      );
-    }
-    return SliverToBoxAdapter(child: column);
+    // ⚠️ 必须包 SliverToBoxAdapter：本页把 _BlockingCard 直接放进 slivers，
+    // SettingsSection 是普通 widget 不是 sliver，缺这层会在布局期抛异常。
+    return SliverToBoxAdapter(
+      child: SettingsSection(child: Column(children: children)),
+    );
   }
 }
 

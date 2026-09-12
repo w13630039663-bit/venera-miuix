@@ -224,6 +224,27 @@ class HistoryManager with ChangeNotifier {
       _db.execute("alter table history add column chapter_group int;");
     }
 
+    // 阅读统计：按 (日期, 漫画) 聚合的阅读页数。history 表只有「当前进度」，
+    // 推不出每天的阅读增量，统计页靠这张表。tags 存 JSON 数组（plainTags
+    // 的 "namespace:tag"），供题材分布/标签云聚合（原始写法入库，归一化在
+    // 展示侧做——翻译库将来更新可重算）。
+    _db.execute("""
+        create table if not exists read_stats (
+          date text not null,
+          cid text not null,
+          type int not null,
+          pages int not null,
+          tags text,
+          primary key (date, cid, type)
+        );
+      """);
+
+    // 老库迁移：补 tags 列。
+    var readStatsColumns = _db.select("PRAGMA table_info(read_stats);");
+    if (!readStatsColumns.any((element) => element["name"] == "tags")) {
+      _db.execute("alter table read_stats add column tags text;");
+    }
+
     notifyListeners();
     ImageFavoriteManager().init();
     isInitialized = true;
@@ -405,6 +426,113 @@ void clearUnfavoritedHistory() {
       select count(*) from history;
     """);
     return res.first[0] as int;
+  }
+
+  /// 阅读统计：把一次阅读会话读过的页数累加到当天（按 日期+漫画 聚合）。
+  /// [tags] 为该漫画的 plainTags（"namespace:tag" 列表），题材分布用；
+  /// upsert 时已有行的 tags 不被空值覆盖。
+  void addReadingStats({
+    required ComicType type,
+    required String cid,
+    required int pages,
+    List<String>? tags,
+  }) {
+    if (pages <= 0) return;
+    _db.execute(
+      "insert into read_stats (date, cid, type, pages, tags) values (?, ?, ?, ?, ?) "
+      "on conflict(date, cid, type) do update set pages = pages + excluded.pages, "
+      "tags = coalesce(excluded.tags, tags);",
+      [
+        _formatDate(DateTime.now()),
+        cid,
+        type.value,
+        pages,
+        tags == null || tags.isEmpty ? null : jsonEncode(tags),
+      ],
+    );
+  }
+
+  /// 有标签记录的阅读行（date/pages/tags），供题材分布/标签云/时间轴聚合。
+  List<(String, int, String)> readTagRows(int days) {
+    final rows = _db.select(
+      "select date, pages, tags from read_stats where date >= ? and tags is not null;",
+      [_formatDate(DateTime.now().subtract(Duration(days: days - 1)))],
+    );
+    return [
+      for (final row in rows) (row[0] as String, row[1] as int, row[2] as String),
+    ];
+  }
+
+  static String _formatDate(DateTime d) =>
+      "${d.year.toString().padLeft(4, '0')}-"
+      "${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+
+  /// 最近 [days] 天（含今天）每天的阅读页数，key = 'yyyy-MM-dd'，缺的天补 0。
+  Map<String, int> dailyPages(int days) {
+    final now = DateTime.now();
+    final result = <String, int>{
+      for (var i = 0; i < days; i++) _formatDate(now.subtract(Duration(days: i))): 0,
+    };
+    final rows = _db.select(
+      "select date, sum(pages) from read_stats where date >= ? group by date;",
+      [_formatDate(now.subtract(Duration(days: days - 1)))],
+    );
+    for (final row in rows) {
+      final key = row[0] as String;
+      if (result.containsKey(key)) {
+        result[key] = row[1] as int? ?? 0;
+      }
+    }
+    return result;
+  }
+
+  /// 自 [start]（含当天）以来的累计页数。
+  int pagesSince(DateTime start) {
+    final res = _db.select(
+      "select sum(pages) from read_stats where date >= ?;",
+      [_formatDate(start)],
+    );
+    return res.first[0] as int? ?? 0;
+  }
+
+  /// 有阅读记录的日期集合（连续天数用）。
+  Set<String> readDates() => {
+    for (final row in _db.select("select distinct date from read_stats;"))
+      row[0] as String,
+  };
+
+  /// 最近 [days] 天最常读的漫画（title/cover 从 history 表补全）。
+  List<StatsTopComic> topComics(int days, int limit) {
+    final rows = _db.select(
+      """
+      select s.cid, s.type, sum(s.pages) as pages, h.title, h.cover
+      from read_stats s left join history h on h.id = s.cid and h.type = s.type
+      where s.date >= ?
+      group by s.cid, s.type
+      order by pages desc
+      limit ?;
+      """,
+      [_formatDate(DateTime.now().subtract(Duration(days: days - 1))), limit],
+    );
+    return [
+      for (final row in rows)
+        StatsTopComic(
+          cid: row[0] as String,
+          type: ComicType(row[1] as int),
+          pages: row[2] as int? ?? 0,
+          title: (row[3] as String?) ?? (row[0] as String),
+          cover: row[4] as String?,
+        ),
+    ];
+  }
+
+  /// 最近 [days] 天按来源统计**读过的漫画本数**（去重 cid），降序。
+  List<(int, int)> comicsByType(int days) {
+    final rows = _db.select(
+      "select type, count(distinct cid) from read_stats where date >= ? group by type order by count(distinct cid) desc;",
+      [_formatDate(DateTime.now().subtract(Duration(days: days - 1)))],
+    );
+    return [for (final row in rows) (row[0] as int, row[1] as int)];
   }
 
   void close() {
@@ -591,4 +719,25 @@ class RefreshProgress {
     this.failed,
     this.skipped,
   );
+}
+
+/// 阅读统计里的「最常读漫画」条目。
+class StatsTopComic {
+  StatsTopComic({
+    required this.cid,
+    required this.type,
+    required this.pages,
+    required this.title,
+    this.cover,
+  });
+
+  final String cid;
+
+  final ComicType type;
+
+  final int pages;
+
+  final String title;
+
+  final String? cover;
 }

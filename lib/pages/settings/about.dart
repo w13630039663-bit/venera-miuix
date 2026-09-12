@@ -67,6 +67,12 @@ class _AboutSectionState extends State<_AboutSection> {
           ),
           const SizedBox(height: 12),
           MiuixCard(
+            colors: Theme.of(context).brightness == Brightness.dark
+                ? MiuixCardColors(
+                    color: context.colorScheme.surfaceContainerHigh,
+                    contentColor: context.colorScheme.onSurface,
+                  )
+                : null,
             child: Column(
               children: [
                 MiuixArrowPreference(

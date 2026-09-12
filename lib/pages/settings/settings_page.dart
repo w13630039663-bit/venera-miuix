@@ -92,6 +92,17 @@ class _SettingsPageState extends State<SettingsPage> {
     Icons.public,
   ];
 
+  /// 分类徽章配色（每类一色，34px 圆角方块，appearance 页同款风格）。
+  final badgeColors = <Color>[
+    Colors.blue,
+    Colors.redAccent,
+    Colors.green,
+    Colors.purple,
+    Colors.orange,
+    Colors.cyan,
+    Colors.teal,
+  ];
+
   @override
   void initState() {
     currentPage = widget.initialPage;
@@ -282,7 +293,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   for (var i = 0; i < categories.length; i++)
                     MiuixArrowPreference(
                       title: categories[i].tl,
-                      startAction: Icon(icons[i], size: 22),
+                      // 彩色图标徽章：每类一色的圆角方块（iOS 设置风格）。
+                      startAction: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: badgeColors[i].withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          icons[i],
+                          size: 20,
+                          color: badgeColors[i],
+                        ),
+                      ),
                       onClick: () => _openCategory(i),
                     ),
                 ],
