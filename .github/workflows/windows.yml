@@ -1,0 +1,62 @@
+name: Build Windows (x64)
+
+# 产出便携 zip（exe + dll + data），本机解压双击 venera.exe 即可运行。
+# 与 ios.yml 同模式：Flutter 钉 3.47.2；rhttp 走 cargokit，需要 runner 预装的
+# rustup/rustc（GitHub Windows 镜像自带 stable-msvc）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      flutter_version:
+        description: "Flutter version"
+        required: false
+        default: "3.47.2"
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ github.event.inputs.flutter_version || '3.47.2' }}
+          channel: stable
+          cache: true
+
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          flutter --version
+          rustup --version
+          rustc --version
+          cargo --version
+
+      - name: Flutter pub get
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Build Windows
+        shell: pwsh
+        run: flutter build windows --release
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $release = "build/windows/x64/runner/Release"
+          if (-not (Test-Path "$release/venera.exe")) { throw "venera.exe not found in $release" }
+          Compress-Archive -Path "$release/*" -DestinationPath "venera-miuix-windows-x64.zip" -Force
+          Get-Item "venera-miuix-windows-x64.zip" | Select-Object Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: venera-miuix-windows-x64
+          path: venera-miuix-windows-x64.zip
+          retention-days: 30
+          if-no-files-found: error
