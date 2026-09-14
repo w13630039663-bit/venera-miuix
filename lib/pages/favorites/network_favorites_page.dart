@@ -112,6 +112,7 @@ class _NormalFavoritePageState extends State<_NormalFavoritePage> {
           child: Text(widget.data.title),
         ),
         actions: [
+          const ComicLayoutToggleButton(),
           Tooltip(
             message: "Refresh".tl,
             child: IconButton(

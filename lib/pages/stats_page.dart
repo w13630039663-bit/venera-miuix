@@ -9,6 +9,7 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/pages/aggregated_search_page.dart';
 import 'package:venera/utils/io.dart';
+import 'package:venera/utils/multi_tag_search.dart';
 import 'package:venera/utils/opencc.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'package:venera/utils/translations.dart';
@@ -123,7 +124,10 @@ class _ReadingStatsPageState extends State<ReadingStatsPage> {
   }
 
   void _dig(String tag) {
-    App.rootContext.to(() => AggregatedSearchPage(keyword: tag));
+    // 带 tag: 前缀进入聚合搜索：原生源转站方标签语法，其余源客户端过滤
+    // （lib/utils/multi_tag_search.dart）。编码走 tagQueryOf——含空格的
+    // 标签不加引号会被 TagQuery.parse 拆碎。
+    App.rootContext.to(() => AggregatedSearchPage(keyword: tagQueryOf(tag)));
   }
 
   void _shareSoulTag(String tag) {

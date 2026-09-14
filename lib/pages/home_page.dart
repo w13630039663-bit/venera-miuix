@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -14,10 +17,13 @@ import 'package:venera/foundation/image_provider/history_image_provider.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
+import 'package:venera/network/app_dio.dart';
+import 'package:venera/network/cache.dart';
+import 'package:venera/network/cloudflare.dart';
+import 'package:venera/network/proxy.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/pages/stats_page.dart';
 import 'package:venera/pages/downloading_page.dart';
-import 'package:venera/pages/explore_page.dart';
 import 'package:venera/pages/follow_updates_page.dart';
 import 'package:venera/pages/history_page.dart';
 import 'package:venera/pages/image_favorites_page/image_favorites_page.dart';
@@ -211,6 +217,7 @@ class _TodayCard extends StatelessWidget {
                 title: comic.name,
                 heroID: heroID,
               ),
+              sharedElementPopTransition: true,
             );
           },
           feedbackType: MiuixPressFeedbackType.sink,
@@ -412,6 +419,7 @@ class _HistoryCard extends StatelessWidget {
                 title: comic.title,
                 heroID: heroID,
               ),
+              sharedElementPopTransition: true,
             );
           },
           child: Column(
@@ -420,16 +428,15 @@ class _HistoryCard extends StatelessWidget {
               Expanded(
                 child: Hero(
                   tag: "cover$heroID",
-                  child: Container(
+                  // 与 ComicTile 走同一套封面外观层：历史卡 ⇄ 详情页也走
+                  // Container Transform 的圆角/底色插值（铁律 #7）。
+                  child: CoverHeroChrome(
                     width: double.infinity,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: MiuixTheme.of(context)
-                          .colors
-                          .onSurfaceVariantSummary
-                          .withValues(alpha: 0.12),
-                    ),
-                    clipBehavior: Clip.antiAlias,
+                    background: MiuixTheme.of(context)
+                        .colors
+                        .onSurfaceVariantSummary
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                     // 历史卡片自绘封面（HistoryImageProvider），不走
                     // ComicTile.buildImage，遮蔽壳要自己套。
                     child: NsfwCover(
@@ -476,7 +483,8 @@ class _HistoryCard extends StatelessWidget {
   }
 }
 
-/// 漫画源：横向小方卡，图标用源网站的 favicon（加载失败回退通用图标）。
+/// 漫画源网络状态列表：左侧源图标，右侧网络链接状态。
+/// 绿色 = 网络正常；红色 = 请检查代理（已开代理仍失败 → 漫画源异常）。
 class _MiuixComicSources extends StatefulWidget {
   const _MiuixComicSources();
 
@@ -484,14 +492,28 @@ class _MiuixComicSources extends StatefulWidget {
   State<_MiuixComicSources> createState() => _MiuixComicSourcesState();
 }
 
-class _MiuixComicSourcesState extends State<_MiuixComicSources> {
+enum _SourceCheckStatus { unknown, checking, ok, failed }
+
+class _SourceState {
+  _SourceCheckStatus status = _SourceCheckStatus.unknown;
+  String? message;
+}
+
+class _MiuixComicSourcesState extends State<_MiuixComicSources>
+    with WidgetsBindingObserver {
   late List<ComicSource> sources;
+  final states = <String, _SourceState>{};
+  bool checkingAll = false;
+  DateTime? _lastCheck;
+
+  static const _recheckInterval = Duration(minutes: 1);
 
   void onComicSourceChange() {
     if (mounted) {
       setState(() {
         sources = ComicSource.all();
       });
+      checkAll();
     }
   }
 
@@ -500,12 +522,248 @@ class _MiuixComicSourcesState extends State<_MiuixComicSources> {
     super.initState();
     sources = ComicSource.all();
     ComicSourceManager().addListener(onComicSourceChange);
+    WidgetsBinding.instance.addObserver(this);
+    // 首帧后再跑检测，不阻塞主页首屏。
+    WidgetsBinding.instance.addPostFrameCallback((_) => checkAll());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 回到前台时若检测结果已过期则自动重测——网络断了/恢复了都能及时反映，
+    // 否则列表会一直停留在上次的快照（误报「网络正常」的来源之一）。
+    if (state == AppLifecycleState.resumed &&
+        (_lastCheck == null ||
+            DateTime.now().difference(_lastCheck!) > _recheckInterval)) {
+      checkAll();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ComicSourceManager().removeListener(onComicSourceChange);
     super.dispose();
+  }
+
+  /// 单源检测：GET 源站点地址，收到**任何** HTTP 响应（含 403/405 的
+  /// Cloudflare 质询页）都算「网络通」；连接错误/超时才算失败。
+  Future<void> _checkSource(ComicSource source) async {
+    final key = source.key;
+    void set(_SourceCheckStatus status, [String? message]) {
+      if (mounted) {
+        setState(() {
+          states.putIfAbsent(key, _SourceState.new).status = status;
+          states[key]!.message = message;
+        });
+      }
+    }
+
+    set(_SourceCheckStatus.checking);
+    final target = _probeUrlOf(source);
+    if (target == null) {
+      set(_SourceCheckStatus.unknown);
+      return;
+    }
+    try {
+      final dio = AppDio(BaseOptions(
+        validateStatus: (_) => true,
+        connectTimeout: const Duration(seconds: 8),
+        sendTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+      ));
+      // 探测请求要剥掉两个默认拦截器：
+      // - NetworkCacheManager：磁盘缓存命中会不联网直接返回 200 → 虚报「网络正常」；
+      // - CloudflareInterceptor：它把 403 + `cf-mitigated: challenge` 转成
+      //   CloudflareException 抛出去。但能收到 CF 质询页恰恰说明**网络层是通的**
+      //   （站点被墙时连响应都没有），误判成 failed 会冤枉好源。
+      dio.interceptors.removeWhere(
+        (i) => i is NetworkCacheManager || i is CloudflareInterceptor,
+      );
+      final res = await dio.get(target);
+      // 5xx = 服务端异常（区别于网络层可达）；其余状态码（含 403 的 CF
+      // 质询页）都说明网络层没问题。
+      final status = res.statusCode ?? 0;
+      set(
+        status < 500 ? _SourceCheckStatus.ok : _SourceCheckStatus.failed,
+        status >= 500 ? "Source Error".tl : null,
+      );
+    } catch (_) {
+      // 失败文案按代理状态区分（用户定义的语义）。
+      final proxyOn = await getProxy() != null;
+      set(
+        _SourceCheckStatus.failed,
+        proxyOn ? "Source Error".tl : "Check Proxy".tl,
+      );
+    }
+  }
+
+  /// 探测地址：必须是**源真正请求的那台服务器**，绝不能用 [ComicSource.url]。
+  ///
+  /// 官方源的 `url` 一律是插件脚本自身的下载地址
+  /// （`https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/xxx.js`），
+  /// 拿它探测永远 200 → 源服务器不可达时照样显示「网络正常」。实测 picacg
+  /// 关代理后 API（picaapi.picacomic.com）直连不通、漫画页打不开，但状态一直
+  /// 是绿的——根因就在这里。
+  ///
+  /// 取值顺序：
+  /// 1. 源设置里声明的 API 地址（`base_url` / `api_url` …，用户填过的优先）；
+  /// 2. 插件源码里出现次数最多的站点域名（排除 CDN/统计/社交域名）——官方源
+  ///    实测即真实站点（picacg → picaapi.picacomic.com、ehentai → e-hentai.org、
+  ///    manga_dex → api.mangadex.org）。
+  ///
+  /// 都拿不到返回 null（状态显示「未知」）。
+  String? _probeUrlOf(ComicSource source) =>
+      _probeUrlCache.putIfAbsent(source.key, () => _resolveProbeUrl(source));
+
+  /// 探测地址只依赖插件源码与设置，进程内缓存一次即可（扫描 JS 有 IO 成本）。
+  static final _probeUrlCache = <String, String?>{};
+
+  /// 源设置里可能承载 API 地址的键名（各源插件的约定名）。
+  static const _urlSettingKeys = [
+    'base_url',
+    'baseUrl',
+    'api_url',
+    'api_base_url',
+    'site_url',
+    'server_url',
+    'host',
+    'domain',
+    'site',
+    'url',
+  ];
+
+  String? _resolveProbeUrl(ComicSource source) {
+    final candidates = <String>[];
+    // 用户填过的值优先（自建后端、镜像地址都在这里）。
+    final saved = source.data['settings'];
+    if (saved is Map) {
+      for (final key in _urlSettingKeys) {
+        final v = saved[key];
+        if (v is String && v.trim().startsWith('http')) {
+          candidates.add(v.trim());
+        }
+      }
+    }
+    // 其次是插件声明的默认值（parser 已把 JS 表达式求值成字符串）。
+    final defined = source.settings;
+    if (defined != null) {
+      for (final key in _urlSettingKeys) {
+        final v = defined[key]?['default'];
+        if (v is String && v.trim().startsWith('http')) {
+          candidates.add(v.trim());
+        }
+      }
+    }
+    for (final c in candidates) {
+      if (_probeHostOf(c) != null) {
+        return c;
+      }
+    }
+    return _domainFromSourceJs(source);
+  }
+
+  /// 取 URL 的 host；命中 CDN/统计/社交黑名单时返回 null（这些域名恒可达，
+  /// 拿来探测必然虚报）。[publicOnly] 额外排除本机地址（源码扫描用）。
+  static String? _probeHostOf(String url, {bool publicOnly = false}) {
+    String host;
+    try {
+      host = Uri.parse(url).host.toLowerCase();
+    } catch (_) {
+      return null;
+    }
+    if (host.isEmpty) {
+      return null;
+    }
+    if (publicOnly && (host == 'localhost' || host.startsWith('127.'))) {
+      return null;
+    }
+    for (final blocked in _ignoredHosts) {
+      if (host == blocked || host.endsWith('.$blocked')) {
+        return null;
+      }
+    }
+    return host;
+  }
+
+  /// 恒可达或与站点可用性无关的域名（脚本 CDN、统计、捐赠、社交）。
+  static const _ignoredHosts = {
+    'jsdelivr.net',
+    'github.com',
+    'githubusercontent.com',
+    'github.io',
+    'gitlab.com',
+    'gitee.com',
+    'unpkg.com',
+    'npmjs.com',
+    'google.com',
+    'googleapis.com',
+    'gstatic.com',
+    'googleusercontent.com',
+    'apple.com',
+    'cloudflare.com',
+    'cloudflareinsights.com',
+    'telegram.org',
+    't.me',
+    'discord.com',
+    'discord.gg',
+    'twitter.com',
+    'x.com',
+    'facebook.com',
+    'patreon.com',
+    'afdian.net',
+    'ko-fi.com',
+    'buymeacoffee.com',
+    'paypal.com',
+    'example.com',
+    'w3.org',
+    'schema.org',
+    'sentry.io',
+  };
+
+  /// 兜底：插件源码里出现次数最多的站点域名。
+  ///
+  /// 官方源没有统一的「站点地址」字段，但请求 URL 在 JS 里遍布各处，词频最高
+  /// 的非 CDN 域名就是主站（实测 picacg → picaapi.picacomic.com）。
+  static final _hostPattern = RegExp(
+    r'https?://([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?'
+    r'(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)+)',
+  );
+
+  String? _domainFromSourceJs(ComicSource source) {
+    try {
+      final file = File(source.filePath);
+      if (!file.existsSync()) {
+        return null;
+      }
+      final counts = <String, int>{};
+      for (final m in _hostPattern.allMatches(file.readAsStringSync())) {
+        final host = _probeHostOf('https://${m.group(1)}', publicOnly: true);
+        if (host != null) {
+          counts[host] = (counts[host] ?? 0) + 1;
+        }
+      }
+      if (counts.isEmpty) {
+        return null;
+      }
+      final best = counts.entries.reduce((a, b) => b.value > a.value ? b : a);
+      return 'https://${best.key}';
+    } catch (e) {
+      Log.error("ComicSource", "Failed to resolve probe url: $e");
+      return null;
+    }
+  }
+
+  Future<void> checkAll() async {
+    if (checkingAll) return;
+    checkingAll = true;
+    _lastCheck = DateTime.now();
+    // 每轮全量检测重解析探测地址：用户可能在源设置里换过 API 地址
+    // （自建后端 / 镜像），缓存不清会一直探旧域名。
+    _probeUrlCache.clear();
+    if (mounted) setState(() {});
+    await Future.wait([for (final s in sources) _checkSource(s)]);
+    checkingAll = false;
   }
 
   @override
@@ -513,27 +771,60 @@ class _MiuixComicSourcesState extends State<_MiuixComicSources> {
     if (sources.isEmpty) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
+    final rowHeight = 52.0;
+    final listHeight = math.min(sources.length * rowHeight + 12, 320.0);
     return withMiuixTheme(
       context,
       SliverToBoxAdapter(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _MiuixSectionHeader(
-              "Comic Source".tl,
-              onTap: () {
-                context.to(() => const ComicSourcePage());
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: _MiuixSectionHeader(
+                    "Comic Source".tl,
+                    onTap: () {
+                      context.to(() => const ComicSourcePage());
+                    },
+                  ),
+                ),
+                IconButton(
+                  tooltip: "Refresh".tl,
+                  icon: checkingAll
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, size: 20),
+                  onPressed: checkingAll ? null : checkAll,
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            SizedBox(
-              height: 108,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                itemCount: sources.length,
-                itemBuilder: (context, index) {
-                  return _SourceCard(source: sources[index]);
-                },
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: MiuixCard(
+                cornerRadius: 16,
+                insideMargin: const EdgeInsets.symmetric(vertical: 6),
+                child: SizedBox(
+                  height: listHeight,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: sources.length,
+                    itemBuilder: (context, index) {
+                      final source = sources[index];
+                      return _SourceStatusRow(
+                        source: source,
+                        probeUrl: _probeUrlOf(source),
+                        state: states[source.key] ??
+                            (_SourceState()..status = _SourceCheckStatus.unknown),
+                        onRetest: () => _checkSource(source),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ],
@@ -543,10 +834,24 @@ class _MiuixComicSourcesState extends State<_MiuixComicSources> {
   }
 }
 
-class _SourceCard extends StatelessWidget {
-  const _SourceCard({required this.source});
+/// 单源状态行：图标 + 名称 + 状态点/文案。点击重测该源。
+class _SourceStatusRow extends StatelessWidget {
+  const _SourceStatusRow({
+    required this.source,
+    required this.state,
+    required this.onRetest,
+    this.probeUrl,
+  });
 
   final ComicSource source;
+
+  /// 该源真实站点的地址（见 [_MiuixComicSourcesState._probeUrlOf]）。
+  /// 拿不到时 favicon 退回源名 override 表。
+  final String? probeUrl;
+
+  final _SourceState state;
+
+  final VoidCallback onRetest;
 
   /// 指定源使用其官网 favicon（源插件自带的 url 未必指向真正的官网）。
   /// key 为源名小写并去掉空格/横杠/下划线后的规范化形式。
@@ -562,84 +867,89 @@ class _SourceCard extends StatelessWidget {
     'jmcomic': 'https://18comic.vip/favicon.ico',
   };
 
-  /// 源网站 favicon：优先按源名查覆盖表，否则取 url 的 host 拼标准路径。
   String? get _faviconUrl {
     final normalizedName =
         source.name.toLowerCase().replaceAll(RegExp(r'[\s\-_]'), '');
     final override = _faviconOverrides[normalizedName];
     if (override != null) return override;
-    try {
-      final host = Uri.parse(source.url).host;
-      if (host.isEmpty) return null;
-      return 'https://$host/favicon.ico';
-    } catch (_) {
-      return null;
-    }
+    // ⚠️ 不能用 source.url：它是插件脚本的 CDN 地址（jsdelivr），拿到的
+    // host 与源站毫无关系。用探测地址的 host。
+    final host = probeUrl == null ? null : Uri.tryParse(probeUrl!)?.host;
+    if (host == null || host.isEmpty) return null;
+    return 'https://$host/favicon.ico';
+  }
+
+  (Color, String) _statusUi(BuildContext context) {
+    final colors = context.colorScheme;
+    return switch (state.status) {
+      _SourceCheckStatus.checking => (
+          colors.onSurfaceVariant,
+          "Checking".tl,
+        ),
+      _SourceCheckStatus.ok => (Colors.green, "Network OK".tl),
+      _SourceCheckStatus.failed => (Colors.red, state.message ?? "Check Proxy".tl),
+      _SourceCheckStatus.unknown => (colors.onSurfaceVariant, "Unknown".tl),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final (statusColor, statusText) = _statusUi(context);
     final favicon = _faviconUrl;
-    return withMiuixTheme(
-      context,
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: MiuixCard(
-          cornerRadius: 16,
-          insideMargin: const EdgeInsets.all(8),
-          onPressed: () {
-            if (source.explorePages.isNotEmpty) {
-              context.to(
-                () => SingleExplorePage(source.explorePages.first.title),
-              );
-            } else {
-              context.to(() => const ComicSourcePage());
-            }
-          },
-          feedbackType: MiuixPressFeedbackType.sink,
-          child: SizedBox(
-            width: 84,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: favicon == null
-                      ? Icon(
-                          Icons.public,
-                          size: 32,
-                          color: MiuixTheme.of(context)
-                              .colors
-                              .onSurfaceVariantSummary,
-                        )
-                      : Image(
-                          image: CachedImageProvider(favicon),
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.public,
-                            size: 32,
-                            color: MiuixTheme.of(context)
-                                .colors
-                                .onSurfaceVariantSummary,
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  source.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onRetest,
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: favicon == null
+                  ? Icon(
+                      Icons.public,
+                      size: 26,
+                      color: context.colorScheme.onSurfaceVariant,
+                    )
+                  : Image(
+                      image: CachedImageProvider(favicon),
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.public,
+                        size: 26,
+                        color: context.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                source.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              statusText,
+              style: TextStyle(fontSize: 12, color: statusColor),
+            ),
+            const SizedBox(width: 12),
+          ],
         ),
       ),
     );
@@ -1123,6 +1433,7 @@ class _HistoryState extends State<_History> {
                               title: history[index].title,
                               heroID: heroID,
                             ),
+                            sharedElementPopTransition: true,
                           );
                         },
                       ).paddingHorizontal(8).paddingVertical(2);
@@ -1233,6 +1544,7 @@ class _LocalState extends State<_Local> {
                               title: local[index].title,
                               heroID: heroID,
                             ),
+                            sharedElementPopTransition: true,
                           );
                         },
                       ).paddingHorizontal(8).paddingVertical(2);

@@ -692,6 +692,7 @@ class SliverSearchBar extends StatefulWidget {
     this.action,
     this.focusNode,
     this.showBackButton = true,
+    this.trailing,
   });
 
   final SearchBarController controller;
@@ -704,6 +705,10 @@ class SliverSearchBar extends StatefulWidget {
 
   /// 作为底部标签页使用（搜索 tab）时为 false —— 此时没有「上一层」可返回。
   final bool showBackButton;
+
+  /// 追加在搜索胶囊**同一行内**、清除按钮之前的尾部内容
+  /// （多 tag 搜索的 tag 输入胶囊 + miuix + 号走这里）。
+  final Widget? trailing;
 
   @override
   State<SliverSearchBar> createState() => _SliverSearchBarState();
@@ -745,6 +750,7 @@ class _SliverSearchBarState extends State<SliverSearchBar>
         action: widget.action,
         focusNode: widget.focusNode,
         showBackButton: widget.showBackButton,
+        trailing: widget.trailing,
       ),
     );
   }
@@ -765,6 +771,9 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
 
   final bool showBackButton;
 
+  /// 追加在搜索胶囊同一行内的尾部内容（多 tag 搜索的 tag 胶囊 + miuix + 号）。
+  final Widget? trailing;
+
   const _SliverSearchBarDelegate({
     required this.editingController,
     required this.controller,
@@ -773,6 +782,7 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     this.action,
     this.focusNode,
     this.showBackButton = true,
+    this.trailing,
   });
 
   static const _kAppBarHeight = 52.0;
@@ -805,13 +815,16 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
                   );
           },
         ),
+        if (trailing != null) trailing!,
         if (action != null) action!,
         const SizedBox(width: 8),
       ],
     );
 
-    // Miuix 画风：无底部边框线，输入框放进圆角胶囊容器（surfaceContainer）。
+    // Miuix 画风：无底部边框线，输入框放进圆角胶囊容器（surfaceContainer），
+    // 胶囊内加搜索图标（无返回键的页面以图标打头，视觉更完整）。
     if (useMiuixStyle) {
+      final onVariant = Theme.of(context).colorScheme.onSurfaceVariant;
       return Container(
         height: _kAppBarHeight + topPadding,
         width: double.infinity,
@@ -828,11 +841,18 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
               borderRadius: BorderRadius.circular(_kAppBarHeight / 2),
               child: Row(
                 children: [
-                  const SizedBox(width: 4),
-                  if (showBackButton) const BackButton(),
+                  const SizedBox(width: 8),
+                  if (showBackButton)
+                    const BackButton()
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child:
+                          Icon(Icons.search, size: 20, color: onVariant),
+                    ),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: buildTextField(context),
                     ),
                   ),
@@ -851,6 +871,8 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
                             );
                     },
                   ),
+                  // 多 tag 搜索：+ 号添加标签输入胶囊（miuix 风格，与清除键同款）。
+                  if (trailing != null) trailing!,
                   if (action != null) action!,
                   const SizedBox(width: 4),
                 ],

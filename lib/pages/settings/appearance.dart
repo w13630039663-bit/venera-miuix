@@ -81,6 +81,21 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             ),
           ),
         ),
+        _section("Back Animation".tl),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: MiuixTabRow(
+              tabs: ["AOSP".tl, "MIUIX".tl],
+              selectedTabIndex:
+                  appdata.settings['backAnimStyle'] == 'miuix' ? 1 : 0,
+              colors: translucentTabRowColors(context),
+              onTabSelected: (i) {
+                _set('backAnimStyle', i == 1 ? 'miuix' : 'aosp');
+              },
+            ),
+          ),
+        ),
         // 「Settings Style / Settings Entry」两个开关已移除：
         // 设置页已全面卡片化（miuix 画风），classic 设置页不再提供切换入口；
         // 设置入口位置沿用既有存储值。

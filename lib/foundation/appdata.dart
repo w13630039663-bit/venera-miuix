@@ -177,6 +177,7 @@ class Settings with ChangeNotifier {
     'color': 'system', // red, pink, purple, green, orange, blue
     'theme_mode': 'system', // light, dark, system
     'navBarStyle': 'floating', // classic, floating, frosted
+    'backAnimStyle': 'aosp', // aosp, miuix
     'settingsStyle': 'miuix', // miuix, classic
     'settingsEntry': 'topRight', // navBar, topRight
     'backgroundMode': 'off', // off, ambient, wallpaper

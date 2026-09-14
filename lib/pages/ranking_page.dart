@@ -42,6 +42,7 @@ class _RankingPageState extends State<RankingPage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: Appbar(
+        actions: [const ComicLayoutToggleButton()],
         title: Text("Ranking".tl),
       ),
       body: ComicList(

@@ -58,7 +58,9 @@ add_translation.py
 */*/generated_*
 */*/Generated*
 # 本地工作目录（不进库）
-.backup-*/
+# 注意：写 `.backup-*` 而不是 `.backup-*/`——备份可能是**文件**（改前 `cp x.dart .backup-x.dart`）
+# 也可能是目录，只写 `目录/` 形式会让文件形式漏网、被 `git add .` 误收。
+.backup-*
 .workbuddy/
 .research/
 .zcode/

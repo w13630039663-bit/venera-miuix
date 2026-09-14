@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'package:venera/pages/aggregated_search_page.dart';
 import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/app_links.dart';
 import 'package:venera/utils/ext.dart';
+import 'package:venera/utils/multi_tag_search.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'package:venera/utils/translations.dart';
 
@@ -42,9 +44,23 @@ class _SearchPageState extends State<SearchPage> {
 
   var options = <String>[];
 
+  /// 搜索设置里选中的站方分区（分类限定）。语义为 AND + 精确匹配，在 Dart 侧
+  /// 按列表项的 tags 过滤（仅 [categoryFilterSources] 里的源支持）。
+  var selectedCategories = <String>[];
+
   /// 已提交的搜索词。非 null 表示结果模式 —— 搜索结果显示在本页内，
   /// 不再 push 第二层页面（返回手势/返回键回到搜索输入页）。
   String? submittedQuery;
+
+  /// 多 tag 搜索：已选标签（chips，显示在搜索框内、输入行上方）。
+  /// ⊕ 打开底部抽屉输入，点 chip 上的 × 删除。
+  final tagList = <String>[];
+
+  /// 结果态下改动 chips 后重搜的防抖计时器（连加几个标签只重搜一次）。
+  Timer? _retagDebounce;
+
+  /// 客户端过滤路的连续加载器（MIUIX/AOSP 与之无关，仅单源非原生 tag 源用）。
+  TagFilteredLoader? _tagLoader;
 
   void update() {
     setState(() {});
@@ -68,13 +84,35 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   /// 提交搜索：结果直接在本页渲染（结果模式），不 push 新路由。
+  /// 动态标签输入框（+ 号添加）里的 tag 会与关键词 AND 组合。
   void search([String? text]) {
-    final query = (text ?? controller.text).trim();
+    final tags = [
+      ...{
+        for (final t in tagList)
+          if (t.trim().isNotEmpty) t.trim(),
+      },
+    ];
+    var base = (text ?? controller.text).trim();
+    // 提交后主输入框会被回填成完整关键词（含 tag: 词）。再次搜索时必须先
+    // 拆解、只保留纯文本部分，否则旧 tag 会与 tag 输入框里的重复组合。
+    base = TagQuery.parse(base).text;
+    final query = composeTagQuery(text: base, tags: tags);
     if (query.isEmpty) {
       return;
     }
+    // 先回填 chips 再切结果态：_setResultMode 里的 setState 会在下一帧读它们。
+    _setupTagFields(query);
     _setResultMode(query);
     appdata.addSearchHistory(query);
+  }
+
+  /// 新搜索提交：把关键词里的 tag: 词拆回 chips，并重置过滤加载器。
+  void _setupTagFields(String query) {
+    final q = TagQuery.parse(query);
+    tagList
+      ..clear()
+      ..addAll(q.tags);
+    _tagLoader = null;
   }
 
   /// 退出结果模式，回到搜索输入页（保留关键词）。
@@ -182,6 +220,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void dispose() {
     focusNode.dispose();
+    _retagDebounce?.cancel();
     appdata.settings.removeListener(updateSearchSourcesIfNeeded);
     // 本页若停在结果态被卸载（切 tab 时 PageView 会销毁页面），必须注销
     // 返回接管，否则别的标签页按返回会被拦下。
@@ -293,26 +332,76 @@ class _SearchPageState extends State<SearchPage> {
       if (searchOptions.length != options.length) {
         options = searchOptions.map((e) => e.defaultValue).toList();
       }
-      body = ComicList(
-        key: ValueKey(
-            'result-$searchTarget-$submittedQuery-${options.join(',')}'),
-        leadingSliver: SliverMainAxisGroup(
-          slivers: [
-            SliverSearchBar(
-              controller: controller,
-              showBackButton: true,
-              action: buildResultAction(),
-            ),
-            buildResultSourceBar(),
-          ],
+      // 同理校验分类选择：源更新后消失的分类要剔除，否则过滤条件会把结果搜空。
+      final validCategories = clientFilterCategories(searchTarget);
+      if (selectedCategories.any((e) => !validCategories.contains(e))) {
+        selectedCategories =
+            selectedCategories.where(validCategories.contains).toList();
+        _tagLoader = null;
+      }
+      // 已提交关键词里的 tag: 词就是要过滤/透传的标签（输入页的组合结果）。
+      final q = TagQuery.parse(submittedQuery!);
+      final hasTags = q.tags.isNotEmpty;
+      final isNative = nativeTagSearchSources.contains(searchTarget);
+      // 分类限定与 tag 词同走客户端过滤：稀疏时由加载器连续抓页补齐。
+      final hasCategories = selectedCategories.isNotEmpty;
+      final canClientFilter = (hasTags || hasCategories) && !isNative;
+
+      final List<Widget> leadingSlivers = [
+        SliverSearchBar(
+          controller: controller,
+          showBackButton: true,
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ComicLayoutToggleButton(),
+              buildResultAction(),
+            ],
+          ),
         ),
-        loadPage: data.loadPage == null
-            ? null
-            : (page) => data.loadPage!(submittedQuery!, page, options),
-        loadNext: data.loadNext == null
-            ? null
-            : (next) => data.loadNext!(submittedQuery!, next, options),
-      );
+        // 标签 chips 行：搜索栏下方独立一行，胶囊里的按钮一个不动。
+        buildTagBar(),
+        buildResultSourceBar(),
+      ];
+
+      if (canClientFilter && data.loadPage != null) {
+        // 多 tag / 分类限定客户端过滤：连续抓页加载器（页码/游标由加载器接管）。
+        final key = ValueKey(
+            'result-filtered-$searchTarget-$submittedQuery-${options.join(',')}'
+            '-${selectedCategories.join(',')}');
+        _tagLoader ??= TagFilteredLoader(
+          tags: q.tags,
+          categories: selectedCategories,
+          queryText: q.text,
+          options: options,
+          loadPage: data.loadPage!,
+          loadNext: data.loadNext,
+        );
+        body = ComicList(
+          key: key,
+          leadingSliver: SliverMainAxisGroup(slivers: leadingSlivers),
+          loadPage: (page) => _tagLoader!.serve(),
+        );
+      } else {
+        // 原生 tag 语法源：改写成站方语法透传；无 tag 词 = 原样搜索。
+        final effective = hasTags && isNative
+            ? buildNativeTagQuery(searchTarget, q.tags, q.text)
+            : submittedQuery!;
+        _tagLoader = null;
+        body = ComicList(
+          key: ValueKey(
+              'result-$searchTarget-$effective-${options.join(',')}'),
+          leadingSliver: SliverMainAxisGroup(slivers: leadingSlivers),
+          loadPage: data.loadPage == null
+              ? null
+              : (page) =>
+                  data.loadPage!(effective, page, options),
+          loadNext: data.loadNext == null
+              ? null
+              : (next) =>
+                  data.loadNext!(effective, next, options),
+        );
+      }
     }
 
     if (useMiuixStyle) {
@@ -343,6 +432,40 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
+  /// ⊕：打开「添加标签」底部抽屉，确认后作为新 chip 加入多 tag 条件。
+  Future<void> _openAddTagSheet() async {
+    final text = await showAddTagSheet(context);
+    final label = text?.trim() ?? '';
+    // 去重：同一标签加两次没有意义，TagQuery 的 AND 语义也不会更严格。
+    if (label.isEmpty || tagList.contains(label)) return;
+    setState(() {
+      tagList.add(label);
+    });
+    _scheduleRetag();
+  }
+
+  /// 删除第 [index] 个标签（由 chip 上的 × 触发，退场动画播完后回调）。
+  void _removeTag(int index) {
+    if (index < 0 || index >= tagList.length) return;
+    setState(() {
+      tagList.removeAt(index);
+    });
+    _scheduleRetag();
+  }
+
+  /// 结果态下 chips 变了要立刻反映到结果里——否则 chip 看着像「已生效的条件」，
+  /// 实际过滤条件还是旧的，用户会以为改了没反应。输入页（未提交）不需要，
+  /// 条件等按下搜索键才提交。
+  void _scheduleRetag() {
+    if (submittedQuery == null) return;
+    _retagDebounce?.cancel();
+    _retagDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) {
+        search();
+      }
+    });
+  }
+
   /// 结果模式搜索栏右侧动作：打开搜索设置（切换源 / 调整排序等选项）。
   Widget buildResultAction() {
     return Tooltip(
@@ -356,14 +479,21 @@ class _SearchPageState extends State<SearchPage> {
             builder: (context) => SearchSettingsDialog(
               initialSourceKey: searchTarget,
               initialOptions: options,
+              initialCategories: selectedCategories,
             ),
           );
           if (result == null) return;
+          final categoriesChanged =
+              !result.categories.isEqualTo(selectedCategories);
           if (result.sourceKey != searchTarget ||
-              !result.options.isEqualTo(options)) {
+              !result.options.isEqualTo(options) ||
+              categoriesChanged) {
             setState(() {
               searchTarget = result.sourceKey;
               options = result.options;
+              selectedCategories = result.categories;
+              // 过滤条件（选项/分类）变了，旧的连续加载器持有旧条件，不能复用。
+              _tagLoader = null;
             });
           }
         },
@@ -397,6 +527,8 @@ class _SearchPageState extends State<SearchPage> {
                   setState(() {
                     searchTarget = sources[i].key;
                     useDefaultOptions();
+                    // 分类是源专属的，换源清空。
+                    selectedCategories = <String>[];
                   });
                 },
               ),
@@ -408,6 +540,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Iterable<Widget> buildSlivers() sync* {
+    // 搜索胶囊保持原样：加标签的入口不在它里面，避免挤压输入框。
     yield SliverSearchBar(
       controller: controller,
       onChanged: (s) {
@@ -420,6 +553,9 @@ class _SearchPageState extends State<SearchPage> {
     if (suggestions.isNotEmpty) {
       yield buildSuggestions(context);
     } else {
+      // 标签 chips 行（含「＋ Add」入口）紧跟搜索框 —— 放在最前面，
+      // 不要夹在源列表/搜索选项后面（那样离搜索框太远，不好找）。
+      yield buildTagBar();
       yield buildSearchTarget();
       yield SliverAnimatedPaintExtent(
         duration: const Duration(milliseconds: 200),
@@ -427,6 +563,17 @@ class _SearchPageState extends State<SearchPage> {
       );
       yield _SearchHistory(search);
     }
+  }
+
+  /// 标签 chips 行：显示已选条件 + 「＋ Add」入口；紧贴搜索框下方。
+  Widget buildTagBar() {
+    return SliverToBoxAdapter(
+      child: SearchTagBar(
+        labels: tagList,
+        onRemove: _removeTag,
+        onAdd: _openAddTagSheet,
+      ),
+    );
   }
 
   Widget buildSearchTarget() {
@@ -459,6 +606,8 @@ class _SearchPageState extends State<SearchPage> {
                     setState(() {
                       searchTarget = e.key;
                       useDefaultOptions();
+                      // 分类是源专属的，换源清空。
+                      selectedCategories = <String>[];
                     });
                   },
                 );
@@ -762,12 +911,19 @@ class SearchOptionWidget extends StatelessWidget {
   }
 }
 
-/// [SearchSettingsDialog] 的返回结果：用户可能同时切换了搜索源与选项。
+/// [SearchSettingsDialog] 的返回结果：用户可能同时切换了搜索源、选项与分类。
 class SearchSettingsResult {
   final String sourceKey;
   final List<String> options;
 
-  const SearchSettingsResult(this.sourceKey, this.options);
+  /// 站方分区（分类限定），见 [categoryFilterSources]。
+  final List<String> categories;
+
+  const SearchSettingsResult(
+    this.sourceKey,
+    this.options, [
+    this.categories = const [],
+  ]);
 }
 
 /// 搜索设置弹窗：切换搜索源 + 调整该源的 searchOptions（含排序）。
@@ -778,11 +934,15 @@ class SearchSettingsDialog extends StatefulWidget {
     super.key,
     required this.initialSourceKey,
     required this.initialOptions,
+    this.initialCategories = const [],
   });
 
   final String initialSourceKey;
 
   final List<String> initialOptions;
+
+  /// 已选中的站方分区（分类限定），仅 [categoryFilterSources] 里的源会展示。
+  final List<String> initialCategories;
 
   @override
   State<SearchSettingsDialog> createState() => _SearchSettingsDialogState();
@@ -793,10 +953,13 @@ class _SearchSettingsDialogState extends State<SearchSettingsDialog> {
 
   late List<String> options;
 
+  late List<String> categories;
+
   @override
   void initState() {
     sourceKey = widget.initialSourceKey;
     options = List.from(widget.initialOptions);
+    categories = List.from(widget.initialCategories);
     super.initState();
   }
 
@@ -809,44 +972,129 @@ class _SearchSettingsDialogState extends State<SearchSettingsDialog> {
       title: "Settings".tl,
       content: Column(
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: Text("Search in".tl),
+          _buildSection(
+            "Search in".tl,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: sources.map((e) {
+                return OptionChip(
+                  text: e.name.tl,
+                  isSelected: sourceKey == e.key,
+                  onTap: () {
+                    setState(() {
+                      sourceKey = e.key;
+                      options.clear();
+                      final searchOptions = ComicSource.find(sourceKey)!
+                              .searchPageData!
+                              .searchOptions ??
+                          <SearchOptions>[];
+                      options = searchOptions.map((e) => e.defaultValue).toList();
+                      // 分类是源专属的（且只有白名单源支持），换源必须清空。
+                      categories = <String>[];
+                    });
+                  },
+                );
+              }).toList(),
+            ).fixWidth(double.infinity),
           ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: sources.map((e) {
-              return OptionChip(
-                text: e.name.tl,
-                isSelected: sourceKey == e.key,
-                onTap: () {
-                  setState(() {
-                    sourceKey = e.key;
-                    options.clear();
-                    final searchOptions = ComicSource.find(sourceKey)!
-                            .searchPageData!
-                            .searchOptions ??
-                        <SearchOptions>[];
-                    options = searchOptions.map((e) => e.defaultValue).toList();
-                  });
-                },
-              );
-            }).toList(),
-          ).fixWidth(double.infinity).paddingHorizontal(16),
+          buildCategoryFilter(),
           buildSearchOptions(),
           const SizedBox(height: 24),
-          FilledButton(
-            child: Text("Confirm".tl),
-            onPressed: () {
-              Navigator.pop(
-                context,
-                SearchSettingsResult(sourceKey, options),
-              );
-            },
-          ),
+          _buildConfirmButton(),
         ],
       ).fixWidth(double.infinity),
+    );
+  }
+
+  /// 弹窗分节：Miuix 画风 = 小节标题 + 卡片容器；否则沿用 ListTile 标题 + 平铺。
+  /// [title] 为空时不渲染标题。
+  Widget _buildSection(String title, Widget body) {
+    if (!useMiuixStyle) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (title.isNotEmpty)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: Text(title),
+              ),
+            body,
+          ],
+        ),
+      );
+    }
+    final colorScheme = context.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (title.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          MiuixCard(
+            cornerRadius: 20,
+            insideMargin: const EdgeInsets.all(12),
+            colors: MiuixCardColors(
+              color: colorScheme.surfaceContainerHigh.toOpacity(0.45),
+              contentColor: colorScheme.onSurface,
+            ),
+            child: body,
+          ).fixWidth(double.infinity),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfirmButton() {
+    if (!useMiuixStyle) {
+      return FilledButton(
+        child: Text("Confirm".tl),
+        onPressed: () {
+          Navigator.pop(
+            context,
+            SearchSettingsResult(sourceKey, options, categories),
+          );
+        },
+      );
+    }
+    final colorScheme = context.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: MiuixButton(
+        onPressed: () {
+          Navigator.pop(
+            context,
+            SearchSettingsResult(sourceKey, options, categories),
+          );
+        },
+        minWidth: double.infinity,
+        minHeight: 44,
+        cornerRadius: 22,
+        colors: MiuixButtonColors(
+          color: colorScheme.primary,
+          disabledColor: colorScheme.onSurface.toOpacity(0.12),
+          contentColor: colorScheme.onPrimary,
+          disabledContentColor: colorScheme.onSurface.toOpacity(0.38),
+        ),
+        child: Text("Confirm".tl),
+      ),
     );
   }
 
@@ -876,13 +1124,51 @@ class _SearchSettingsDialogState extends State<SearchSettingsDialog> {
       ));
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
+    return _buildSection(
+      "",
+      SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  /// 「分类限定」多选组。
+  ///
+  /// 只对能把站方分区带进列表 tags 的源显示（[categoryFilterSources]，目前是
+  /// picacg）。选中项不传给源，而是在结果层按 [filterByTags] 做 AND 过滤，
+  /// 因此对不认分类参数的源同样有效。
+  Widget buildCategoryFilter() {
+    final all = clientFilterCategories(sourceKey);
+    if (all.isEmpty) {
+      return const SizedBox();
+    }
+    // 源更新后分类表可能变动，丢掉已失效的选择，避免过滤条件永久卡死。
+    categories.removeWhere((e) => !all.contains(e));
+    return _buildSection(
+      "Categories".tl,
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: all.map((e) {
+          return OptionChip(
+            text: e.ts(sourceKey),
+            isSelected: categories.contains(e),
+            onTap: () {
+              setState(() {
+                if (categories.contains(e)) {
+                  categories.remove(e);
+                } else {
+                  categories.add(e);
+                }
+              });
+            },
+          );
+        }).toList(),
       ),
     );
   }

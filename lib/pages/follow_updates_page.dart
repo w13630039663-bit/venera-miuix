@@ -164,7 +164,10 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
     return Scaffold(
       body: SmoothCustomScrollView(
         slivers: [
-          SliverAppbar(title: Text('Follow Updates'.tl)),
+          SliverAppbar(
+            title: Text('Follow Updates'.tl),
+            actions: [const ComicLayoutToggleButton()],
+          ),
           if (folder == null)
             buildNotConfigured(context)
           else

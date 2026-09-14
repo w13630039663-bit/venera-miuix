@@ -181,6 +181,7 @@ class _HistoryPageState extends State<HistoryPage> {
     ];
 
     List<Widget> normalActions = [
+      const ComicLayoutToggleButton(),
       IconButton(
         icon: const Icon(Icons.refresh),
         tooltip: 'Refresh All Histories'.tl,

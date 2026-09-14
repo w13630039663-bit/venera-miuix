@@ -330,9 +330,20 @@ abstract mixin class _ComicPageActions {
   }
 
   void onTapTag(String tag, String namespace) {
-    var target = comicSource.handleClickTagEvent?.call(namespace, tag);
-    var context = App.mainNavigatorKey!.currentContext!;
-    target?.jump(context);
+    // 点击标签 = 「在这个源里搜这个词」→ 跳**单源搜索结果页**
+    // （SearchResultPage）。不要跳 AggregatedSearchPage：那是多源聚合页，
+    // 会把所有已启用源一起搜一遍，与点标签的意图不符。
+    //
+    // 关键词就是标签名本身（纯文本），**不拼 `tag:` 精确过滤词**：
+    // 标签在搜索框里显示成 `tag:"big breasts"` 很费解，而且多数源不支持
+    // 标签语法、拼过去只会搜出垃圾。用户点标签的预期就是「搜这个词」。
+    // 需要精确过滤时可以在结果页用「＋ Add Tag」追加条件（走 tag: 过滤）。
+    App.mainNavigatorKey!.currentContext!.to(
+      () => SearchResultPage(
+        text: tag,
+        sourceKey: comicSource.key,
+      ),
+    );
   }
 
   void showMoreActions() {

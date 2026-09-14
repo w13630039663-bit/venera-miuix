@@ -5,6 +5,7 @@ import "package:venera/foundation/app.dart";
 import "package:venera/foundation/appdata.dart";
 import "package:venera/foundation/comic_source/comic_source.dart";
 import "package:venera/pages/search_result_page.dart";
+import "package:venera/utils/multi_tag_search.dart";
 import "package:venera/utils/translations.dart";
 
 class AggregatedSearchPage extends StatefulWidget {
@@ -44,6 +45,8 @@ class _AggregatedSearchPageState extends State<AggregatedSearchPage> {
       }
     }
     this.sources = sources.map((e) => ComicSource.find(e)!).toList();
+    // keyword 里的 tag: 词由 wrapSearchPage/wrapSearchNext 解析处理
+    // （多 tag 过滤，见 lib/utils/multi_tag_search.dart）。
     _keyword = widget.keyword;
     controller = SearchBarController(
       currentText: widget.keyword,
@@ -115,7 +118,13 @@ class _SliverSearchResultState extends State<_SliverSearchResult>
     var options =
         (data.searchOptions ?? []).map((e) => e.defaultValue).toList();
     if (data.loadPage != null) {
-      var res = await data.loadPage!(widget.keyword, 1, options);
+      var res = await wrapSearchPage(
+        sourceKey: widget.source.key,
+        keyword: widget.keyword,
+        page: 1,
+        options: options,
+        loadPage: data.loadPage!,
+      );
       if (!res.error) {
         setState(() {
           comics = res.data;
@@ -128,7 +137,13 @@ class _SliverSearchResultState extends State<_SliverSearchResult>
         });
       }
     } else if (data.loadNext != null) {
-      var res = await data.loadNext!(widget.keyword, null, options);
+      var res = await wrapSearchNext(
+        sourceKey: widget.source.key,
+        keyword: widget.keyword,
+        next: null,
+        options: options,
+        loadNext: data.loadNext!,
+      );
       if (!res.error) {
         setState(() {
           comics = res.data;

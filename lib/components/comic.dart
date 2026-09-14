@@ -89,6 +89,7 @@ class ComicTile extends StatelessWidget {
         title: comic.title,
         heroID: heroID,
       ),
+      sharedElementPopTransition: true,
     );
   }
 
@@ -325,21 +326,18 @@ class ComicTile extends StatelessWidget {
     return LayoutBuilder(builder: (context, constrains) {
       final height = constrains.maxHeight - 16;
 
-      Widget image = Container(
+      Widget image = CoverHeroChrome(
         width: height * 0.68,
         height: double.infinity,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: context.colorScheme.outlineVariant,
-              blurRadius: 1,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
+        background: Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+        shadows: [
+          BoxShadow(
+            color: context.colorScheme.outlineVariant,
+            blurRadius: 1,
+            offset: const Offset(0, 1),
+          ),
+        ],
         child: buildImage(context, logicalWidth: height * 0.68),
       );
 
@@ -426,8 +424,12 @@ class ComicTile extends StatelessWidget {
     // SliverGridDelegateWithComics.getMiuixTwoColumnLayout 对应）。
     // 用 LayoutBuilder 取实测宽度，交给解码器出对应尺寸的缩略图。
     Widget image = LayoutBuilder(
-      builder: (context, constraints) => Container(
-        color: context.colorScheme.secondaryContainer,
+      builder: (context, constraints) => CoverHeroChrome(
+        // miuix 双列卡片：封面顶部两角随 MiuixCard 的 squircle（16）走，
+        // 底部两角与下方信息区相连保持直角 —— 与原来由外层 ClipRRect
+        // 提供的静态外观一致。
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        background: context.colorScheme.secondaryContainer,
         child: buildImage(context, logicalWidth: constraints.maxWidth),
       ),
     );
@@ -542,19 +544,16 @@ class ComicTile extends StatelessWidget {
   Widget _buildBriefMode(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        Widget image = Container(
-          decoration: BoxDecoration(
-            color: context.colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.toOpacity(0.2),
-                blurRadius: 2,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
+        Widget image = CoverHeroChrome(
+          background: context.colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(8),
+          shadows: [
+            BoxShadow(
+              color: Colors.black.toOpacity(0.2),
+              blurRadius: 2,
+              offset: const Offset(0, 2),
+            ),
+          ],
           child: buildImage(context, logicalWidth: constraints.maxWidth),
         );
 
@@ -1099,12 +1098,16 @@ class _SliverGridComicsState extends State<SliverGridComics> {
     }
     generateHeroID();
     HistoryManager().addListener(update);
+    // 布局设置（comicDisplayMode/comicTileScale）变更时全局重排——
+    // 列表页的「两列/单列」切换按钮写的就是这个设置。
+    appdata.settings.addListener(update);
     super.initState();
   }
 
   @override
   void dispose() {
     HistoryManager().removeListener(update);
+    appdata.settings.removeListener(update);
     super.dispose();
   }
 
@@ -1904,14 +1907,11 @@ class SimpleComicTile extends StatelessWidget {
             filterQuality: FilterQuality.low,
           );
 
-    child = Container(
+    child = CoverHeroChrome(
       width: 98,
       height: 136,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Theme.of(context).colorScheme.secondaryContainer,
-      ),
-      clipBehavior: Clip.antiAlias,
+      background: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(8),
       child: NsfwCover(comic: comic, child: child),
     );
 
@@ -1934,6 +1934,7 @@ class SimpleComicTile extends StatelessWidget {
                 title: comic.title,
                 heroID: heroID,
               ),
+              sharedElementPopTransition: true,
             );
           },
       child: child,
@@ -1995,6 +1996,34 @@ class _GlassCoverBadge extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 漫画列表「两列 / 单列」布局切换按钮：切换 `comicDisplayMode`
+/// （brief = 两列封面网格 / detailed = 单列大卡）。放在列表页 AppBar
+/// actions 里；所有 [SliverGridComics] 网格监听该设置即时重排。
+class ComicLayoutToggleButton extends StatelessWidget {
+  const ComicLayoutToggleButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: appdata.settings,
+      builder: (context, _) {
+        final isBrief = appdata.settings['comicDisplayMode'] == 'brief';
+        return IconButton(
+          tooltip: isBrief ? "Single Column".tl : "Two Columns".tl,
+          icon: Icon(
+            isBrief ? Icons.view_agenda_outlined : Icons.grid_view_outlined,
+          ),
+          onPressed: () {
+            appdata.settings['comicDisplayMode'] =
+                isBrief ? 'detailed' : 'brief';
+            appdata.saveData();
+          },
+        );
+      },
     );
   }
 }

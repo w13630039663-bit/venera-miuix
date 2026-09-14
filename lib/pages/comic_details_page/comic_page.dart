@@ -25,6 +25,7 @@ import 'package:venera/network/download.dart';
 import 'package:venera/network/cache.dart';
 import 'package:venera/pages/favorites/favorites_page.dart';
 import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/pages/search_result_page.dart';
 import 'package:venera/utils/file_type.dart';
 import 'package:venera/utils/io.dart';
 import 'package:venera/utils/tags_translation.dart';
@@ -372,21 +373,21 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
           onLongPress: () => _saveCover(context),
           child: Hero(
             tag: "cover${widget.heroID}",
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(useMiuixStyle ? 12 : 8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              height: 144,
+            // 列表卡片 ⇄ 详情页封面：飞行中把圆角 / 底色从卡片端插值到这边
+            // （Container Transform），见 foundation/preview_hero.dart。
+            flightShuttleBuilder: coverHeroFlightShuttle,
+            child: CoverHeroChrome(
               width: 144 * 0.72,
-              clipBehavior: Clip.antiAlias,
+              height: 144,
+              background: context.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(useMiuixStyle ? 12 : 8),
+              shadows: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
               child: AnimatedImage(
                 image: CachedImageProvider(
                   widget.cover ?? comic.cover,
@@ -617,6 +618,8 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       required String text,
       VoidCallback? onTap,
       bool isTitle = false,
+      String? rawTag,
+      String? namespace,
     }) {
       Color color;
       if (isTitle) {
@@ -649,8 +652,21 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
             borderRadius: borderRadius,
             onTap: onTap,
             onLongPress: () {
-              Clipboard.setData(ClipboardData(text: text));
-              context.showMessage(message: "Copied".tl);
+              if (rawTag != null) {
+                // 长按 = 加入标签屏蔽列表（与 miuix 分支的 _InfoChip 一致）。
+                final list = appdata.settings['blockedTags'];
+                if (list is! List) return;
+                if (!list.contains(rawTag)) list.add(rawTag);
+                final full = namespace == null || namespace.isEmpty
+                    ? null
+                    : "$namespace:$rawTag";
+                if (full != null && !list.contains(full)) list.add(full);
+                appdata.saveData();
+                context.showMessage(message: "Added to block list".tl);
+              } else {
+                Clipboard.setData(ClipboardData(text: text));
+                context.showMessage(message: "Copied".tl);
+              }
             },
             onSecondaryTapDown: (details) {
               showMenuX(context, details.globalPosition, [
@@ -659,6 +675,23 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                   text: "View".tl,
                   onClick: onTap,
                 ),
+                if (rawTag != null)
+                  MenuEntry(
+                    icon: Icons.block,
+                    text: "Block this tag".tl,
+                    onClick: () {
+                      final list = appdata.settings['blockedTags'];
+                      if (list is! List) return;
+                      if (!list.contains(rawTag)) list.add(rawTag);
+                      final full = namespace == null || namespace.isEmpty
+                          ? null
+                          : "$namespace:$rawTag";
+                      if (full != null && !list.contains(full)) list.add(full);
+                      appdata.saveData();
+                      context.showMessage(
+                          message: "Added to block list".tl);
+                    },
+                  ),
                 MenuEntry(
                   icon: Icons.copy,
                   text: "Copy".tl,
@@ -807,6 +840,8 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                                     e.key.toLowerCase(),
                                   )
                                 : tag,
+                            rawTag: tag,
+                            namespace: e.key,
                             onTap: () => onTapTag(tag, e.key),
                           ),
                       ],
@@ -851,6 +886,8 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                           )
                         : tag,
                     onTap: () => onTapTag(tag, e.key),
+                    rawTag: tag,
+                    namespace: e.key,
                   ),
               ],
             ),
@@ -1112,13 +1149,33 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-/// 详情页信息区统一风格 Chip：微透底 + 主题前景色，点击跳转，长按复制。
+/// 详情页信息区统一风格 Chip：微透底 + 主题前景色。点击跳多 tag 搜索页，
+/// **长按加入标签屏蔽列表**（blockedTags 同时存裸值与 namespace:tag 两种
+/// 形式，与 comic.dart 的命中逻辑对齐），副键菜单保留查看/复制。
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.text, this.onTap});
+  const _InfoChip({required this.text, this.rawTag, this.namespace, this.onTap});
 
   final String text;
 
+  /// 原始标签（未翻译、未带 namespace）——屏蔽列表存这个。
+  final String? rawTag;
+
+  final String? namespace;
+
   final VoidCallback? onTap;
+
+  void _block(BuildContext context) {
+    if (rawTag == null) return;
+    final list = appdata.settings['blockedTags'];
+    if (list is! List) return;
+    if (!list.contains(rawTag)) list.add(rawTag);
+    final full = "$namespace:$rawTag";
+    if (namespace != null && namespace!.isNotEmpty && !list.contains(full)) {
+      list.add(full);
+    }
+    appdata.saveData();
+    context.showMessage(message: "Added to block list".tl);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1139,16 +1196,18 @@ class _InfoChip extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
-      onLongPress: () {
-        Clipboard.setData(ClipboardData(text: text));
-        context.showMessage(message: "Copied".tl);
-      },
+      onLongPress: () => _block(context),
       onSecondaryTapDown: (details) {
         showMenuX(context, details.globalPosition, [
           MenuEntry(
             icon: Icons.remove_red_eye,
             text: "View".tl,
             onClick: onTap!,
+          ),
+          MenuEntry(
+            icon: Icons.block,
+            text: "Block this tag".tl,
+            onClick: () => _block(context),
           ),
           MenuEntry(
             icon: Icons.copy,
@@ -1433,21 +1492,30 @@ class _ComicPageLoadingPlaceHolder extends StatelessWidget {
 
     return Hero(
       tag: "cover$heroID",
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.colorScheme.primaryContainer,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: context.colorScheme.outlineVariant,
-              blurRadius: 1,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        height: 144,
+      // 加载期占位封面必须挂同一个 shuttle —— 详情数据回来之前用户点的就是
+      // 它，不挂的话"卡片形变"在大多数情况下根本不生效。
+      flightShuttleBuilder: coverHeroFlightShuttle,
+      child: CoverHeroChrome(
         width: 144 * 0.72,
-        clipBehavior: Clip.antiAlias,
+        height: 144,
+        background: context.colorScheme.primaryContainer,
+        // 圆角与真实封面保持一致（原来是硬编码 8，miuix 下会与真实头部的
+        // 12 对不上，飞行落地后再跳一次）。
+        borderRadius: BorderRadius.circular(useMiuixStyle ? 12 : 8),
+        // 阴影必须与真实封面端一致（blur 12 / offset(0,4)）。这一端是飞行
+        // 插值的终点，若沿用占位自己的小阴影（blur 1），会出现两个问题：
+        // ① 卡片端阴影同样是 blur 1（网格卡片甚至没有阴影），整段飞行阴影
+        //    从 1 插到 1 —— 全程零变化，"卡片形变"最强的那根视觉线索没了；
+        // ② 落地换真实封面（blur 12）时阴影会"啪"地跳一下。
+        // 注：底色插值其实看不见（图片加载后把 background 完全盖住），
+        // 圆角受两端设计值约束（8→12），所以能感知的形变主要就靠阴影。
+        shadows: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
         child: child,
       ),
     );

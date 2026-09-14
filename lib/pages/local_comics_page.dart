@@ -147,10 +147,12 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
           icon: Icons.chrome_reader_mode_outlined,
           text: "View Detail".tl,
           onClick: () {
-            context.to(() => ComicPage(
-                  id: selectedComics.keys.first.id,
-                  sourceKey: selectedComics.keys.first.sourceKey,
-                ));
+            context.to(
+              () => ComicPage(
+                id: selectedComics.keys.first.id,
+                sourceKey: selectedComics.keys.first.sourceKey,
+              ),
+            );
           },
         ),
       if (selectedComics.isNotEmpty)
@@ -198,6 +200,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     ];
 
     List<Widget> normalActions = [
+      const ComicLayoutToggleButton(),
       Tooltip(
         message: "Search".tl,
         child: IconButton(

@@ -290,21 +290,40 @@ class ContentDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool miuix = useMiuixStyle;
+    final Widget titleWidget = title != null
+        ? (miuix
+            ? // Miuix 画风：居中标题，无关闭按钮（点弹窗外部关闭）。
+              Padding(
+                padding: const EdgeInsets.only(top: 20, bottom: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    title!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: context.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              )
+            : Appbar(
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: dismissible ? context.pop : null,
+                ),
+                title: Text(title!),
+                backgroundColor: Colors.transparent,
+              ))
+        : const SizedBox.shrink();
     var content = SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          title != null
-              ? Appbar(
-            leading: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: dismissible ? context.pop : null,
-            ),
-            title: Text(title!),
-            backgroundColor: Colors.transparent,
-          )
-              : const SizedBox.shrink(),
+          titleWidget,
           this.content,
           const SizedBox(height: 16),
           Row(
@@ -316,18 +335,23 @@ class ContentDialog extends StatelessWidget {
       ),
     );
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: context.brightness == Brightness.dark
-            ? BorderSide(color: context.colorScheme.outlineVariant)
-            : BorderSide.none,
-      ),
+      shape: miuix
+          // Miuix 画风：squircle 大圆角、无描边无投影，层次靠遮罩。
+          ? const MiuixSquircleBorder(cornerRadius: 28)
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: context.brightness == Brightness.dark
+                  ? BorderSide(color: context.colorScheme.outlineVariant)
+                  : BorderSide.none,
+            ),
       insetPadding: context.width < 400
           ? const EdgeInsets.symmetric(horizontal: 4)
           : const EdgeInsets.symmetric(horizontal: 16),
-      elevation: 2,
+      elevation: miuix ? 0 : 2,
       shadowColor: context.colorScheme.shadow,
-      backgroundColor: context.colorScheme.surface,
+      backgroundColor: miuix
+          ? context.colorScheme.surfaceContainerLow
+          : context.colorScheme.surface,
       child: AnimatedSize(
         duration: const Duration(milliseconds: 200),
         alignment: Alignment.topCenter,
@@ -341,10 +365,56 @@ class ContentDialog extends StatelessWidget {
               removeTop: true,
               removeBottom: true,
               context: context,
-              child: content,
+              child: miuix ? _MiuixDialogEntrance(child: content) : content,
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Miuix 弹窗进场动画：缩放 0.92→1 + 淡入。退场走路由默认淡出，不重复做。
+class _MiuixDialogEntrance extends StatefulWidget {
+  const _MiuixDialogEntrance({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_MiuixDialogEntrance> createState() => _MiuixDialogEntranceState();
+}
+
+class _MiuixDialogEntranceState extends State<_MiuixDialogEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+
+  late final Animation<double> _animation = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _animation,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.92, end: 1).animate(_animation),
+        child: widget.child,
       ),
     );
   }

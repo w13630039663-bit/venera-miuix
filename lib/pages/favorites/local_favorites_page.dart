@@ -301,6 +301,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
               child: Text(title),
             ),
             actions: [
+              const ComicLayoutToggleButton(),
               if (networkSource != null && !isAllFolder)
                 Tooltip(
                   message: "Sync".tl,
@@ -584,10 +585,11 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     text: "Jump to Detail".tl,
                     onClick: () {
                       final c = selectedComics.keys.first as FavoriteItem;
-                      App.mainNavigatorKey?.currentContext?.to(() => ComicPage(
-                            id: c.id,
-                            sourceKey: c.sourceKey,
-                          )
+                      App.mainNavigatorKey?.currentContext?.to(
+                        () => ComicPage(
+                          id: c.id,
+                          sourceKey: c.sourceKey,
+                        ),
                       );
                     },
                   ),
@@ -714,7 +716,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     cover: c.cover,
                     title: c.title,
                     heroID: heroID,
-                  )
+                  ),
+                  sharedElementPopTransition: true,
                 );
               } else {
                 App.mainNavigatorKey?.currentContext?.to(

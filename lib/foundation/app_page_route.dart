@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:venera/components/background.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/preview_hero.dart';
 
 const double _kBackGestureWidth = 20.0;
@@ -190,6 +191,10 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
   // 异常、模式切换等极端情况出现一帧没铺满，底页也透不出来。壁纸/氛围光
   // 正常铺满时整个 surface 被覆盖、不可见；异常时透出来兜底，杜绝转场中途
   // 两页内容互相穿透（主人 03:50 截图复现了氛围光模式漏 fit 的问题）。
+  //
+  // 页面（child）外包一层 AOSP 式缩放：被上层覆盖时缩到 0.92，返回揭开时
+  // 放大回 1.0（stock Android 预测返回的下层页动效）。只缩放、**不淡出** ——
+  // 缩小时露出的边缘由底下两层（surface/壁纸）兜住，不会透出窗口黑底。
   final content = RepaintBoundary(
     child: Stack(
       fit: StackFit.expand,
@@ -197,9 +202,29 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
         ColoredBox(color: Theme.of(context).colorScheme.surface),
         if (AppBackground.enabled)
           RepaintBoundary(child: AppBackground.buildImmersive(context)),
-        child,
+        AnimatedBuilder(
+          animation: secondaryAnimation,
+          builder: (context, child) {
+            final t = secondaryAnimation.value.clamp(0.0, 1.0);
+            return Transform.scale(
+              scale: 0.92 + 0.08 * (1 - t),
+              child: child,
+            );
+          },
+          child: child,
+        ),
       ],
     ),
+  );
+
+  // 景深模糊（MIUI 同款）：被下层页覆盖时按覆盖进度实时模糊，返回时随手势
+  // 退去。AOSP / MIUIX 两种返回动画共用；阅读器返回时详情页的景深也来自这里。
+  // 仅动画期间生效（status forward/reverse），完全盖住（被不透明上层遮挡、
+  // 不可见）或完全露出时零 GPU 开销；sigma 按 2px 量化减少 ImageFilter 重建
+  // （BiliPai 用 4px）。
+  final depthBlurred = _DepthBlur(
+    secondaryAnimation: secondaryAnimation,
+    child: content,
   );
 
   final Widget transitionChild = enableIOSGesture && App.isIOS
@@ -207,9 +232,9 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
           gestureWidth: _kBackGestureWidth,
           enabledCallback: () => _isPopGestureEnabled<T>(this),
           onStartPopGesture: () => _startPopGesture(this),
-          child: content,
+          child: depthBlurred,
         )
-      : content;
+      : depthBlurred;
 
   // 共享元素路由（阅读器）：真正的"跟手缩回"由页面里的 Hero 那张图完成，
   // 页面本身不该再形变。PredictiveBackPageTransitionsBuilder 在手势期间会把
@@ -223,17 +248,37 @@ mixin _AppRouteTransitionMixin<T> on PageRoute<T> {
   // 进度（handleStartBackGestureProgress 直接驱动它），于是「图跟手缩回 +
   // 页面跟手淡出」天然同源同步。iOS 走滑动转场，不存在这个问题。
   if (!(sharedElementPopTransition && App.isAndroid)) {
-    // 被覆盖时不做框架的二级转场：把 secondaryAnimation 换成常量 0，
-    // 本页面保持完全可见，新页面直接盖上来。
-    //
-    // 原因：PredictiveBack builder 在程序化 push 下委托 FadeForwards，它对
-    // 被覆盖页的处理是「前 25% 时长内淡出到全透明 + 左滑 1/4 屏」（
-    // page_transitions_theme.dart:489-510）。本项目 Scaffold 全透明、每个
-    // 路由自绘背景、Navigator 之下没有铺底 —— 旧页一淡出就透出黑色窗口底，
-    // 而新页又在缓慢淡入（阅读器 620ms），中段近 500ms 两层都缺席 → 屏幕
-    // 快速闪一下黑/白（框架本有 ColoredBox 补底，但我们的 fallbackColor
-    // 是透明，保护被关掉，page_transitions_theme.dart:547-552）。
-    // 共享元素转场的设计也是「静态背景 + 飞行前景」，这里一并对齐。
+    // 被覆盖时不做框架的二级转场（secondary 换常量 0）：旧页保持完全可见，
+    // 新页直接盖上来 —— 防止框架 FadeForwards 的「旧页淡出」透出黑色窗口底
+    // （详见 git 历史中本段注释的完整分析）。
+    if (App.isAndroid &&
+        appdata.settings['backAnimStyle'] == 'miuix') {
+      // MIUIX：整页从右侧滑入（push）/ 跟手滑出（预测返回手势与返回键），
+      // 下层页由 _DepthBlur 做景深模糊 + 轻视差；commit 重置由
+      // _SharedElementPopRestore 统一修复。
+      //
+      // ⚠️ shell 必须保留：builder 是 _PredictiveBackGestureDetector 的
+      // 挂载点（系统预测返回事件的唯一接收方），丢掉它返回手势就完全失效
+      // （与 sharedElement 分支的空壳同款做法，空壳无视觉不挡交互）。
+      final Widget shell = builder.buildTransitions(this, context, animation,
+          secondaryAnimation, const SizedBox.expand());
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _SharedElementPopRestore(
+            route: this,
+            controller: controller!,
+            enabledCallback: () => isCurrent && popGestureEnabled,
+            child: _MiuixSlideTransition(
+              animation: animation,
+              child: transitionChild,
+            ),
+          ),
+          IgnorePointer(child: shell),
+        ],
+      );
+    }
+    // AOSP：框架 PredictiveBackPageTransitionsBuilder 的缩放 + 圆角 + 横移。
     return builder.buildTransitions(
         this, context, animation, kAlwaysDismissedAnimation, transitionChild);
   }
@@ -748,6 +793,91 @@ class SlidePageTransitionBuilder extends PageTransitionsBuilder {
         ).animate(secondaryCurve),
         child: child,
       ),
+    );
+  }
+}
+
+/// 景深模糊（MIUI 同款）：本路由被上层页覆盖时，按覆盖进度实时模糊自身；
+/// 返回揭开时随手势退去。驱动源 = secondaryAnimation（0 = 未被覆盖，
+/// 1 = 完全被覆盖）。设计参数对齐 BiliPai 的 PredictiveBackBackgroundPolicy：
+/// 仅动画期间生效、量化步长、浅色背景加薄纱防发灰。
+class _DepthBlur extends StatelessWidget {
+  const _DepthBlur({required this.secondaryAnimation, required this.child});
+
+  final Animation<double> secondaryAnimation;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: secondaryAnimation,
+      child: child,
+      builder: (context, child) {
+        final status = secondaryAnimation.status;
+        // 仅过渡动画期间生效：完全盖住（被不透明上层遮挡，模糊不可见）
+        // 或完全露出（无需景深）时都是零 GPU 开销。
+        if (status != AnimationStatus.forward &&
+            status != AnimationStatus.reverse) {
+          return child!;
+        }
+        final t = secondaryAnimation.value.clamp(0.0, 1.0);
+        var sigma = 24.0 * t;
+        sigma = (sigma / 2).roundToDouble() * 2; // 2px 量化
+        if (sigma < 2) {
+          return child!;
+        }
+        Widget page = ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: child,
+        );
+        // MIUIX 模式：下层页随覆盖进度轻微左移（视差，HyperOS 同款层次）。
+        if (appdata.settings['backAnimStyle'] == 'miuix') {
+          page = Transform.translate(
+            offset: Offset(
+              -MediaQuery.of(context).size.width * 0.12 * t,
+              0,
+            ),
+            child: page,
+          );
+        }
+        // 浅色背景叠 5% 白纱，防止大面积模糊后发灰（BiliPai 同款）。
+        if (Theme.of(context).brightness == Brightness.light) {
+          page = ColoredBox(
+            color: Colors.white.withValues(alpha: 0.05 * t),
+            child: page,
+          );
+        }
+        return page;
+      },
+    );
+  }
+}
+
+/// MIUIX 返回动画：整页从右侧滑入（push，t 0→1）/ 跟手滑出（pop，t 1→0），
+/// 一个公式覆盖两个方向。下层页的景深模糊与视差由 [_DepthBlur] 负责。
+class _MiuixSlideTransition extends StatelessWidget {
+  const _MiuixSlideTransition({required this.animation, required this.child});
+
+  final Animation<double> animation;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final t = animation.value.clamp(0.0, 1.0);
+        return Transform.translate(
+          offset: Offset((1 - t) * MediaQuery.of(context).size.width, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24 * (1 - t)),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

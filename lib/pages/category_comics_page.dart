@@ -135,7 +135,10 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: Appbar(title: Text(widget.category)),
+      appBar: Appbar(
+        title: Text(widget.category),
+        actions: [const ComicLayoutToggleButton()],
+      ),
       // 用户是**主动进到这个源的这个分类**里来的，已经知道自己在看什么 ——
       // 这一屏不再糊封面（场景表里的「进源之后不遮」）。
       body: NsfwMaskScope(mask: false, child: body),

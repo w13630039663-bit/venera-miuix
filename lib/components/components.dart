@@ -28,6 +28,9 @@ import 'package:venera/foundation/image_provider/history_image_provider.dart';
 import 'package:venera/foundation/image_provider/local_comic_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
+// 与 preview_hero.dart 互相 import（它要用这里的 CoverHeroChrome）：
+// Dart 允许循环 import，part 体系下这是拿共享外观层最省事的办法。
+import 'package:venera/foundation/preview_hero.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/network/cloudflare.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
@@ -51,7 +54,9 @@ part 'pop_up_widget.dart';
 part 'scroll.dart';
 part 'select.dart';
 part 'side_bar.dart';
+part 'search_tag_bar.dart';
 part 'comic.dart';
+part 'cover_hero.dart';
 part 'nsfw_cover.dart';
 part 'effects.dart';
 part 'gesture.dart';

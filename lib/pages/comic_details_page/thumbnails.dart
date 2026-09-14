@@ -36,11 +36,25 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
     state = context.findAncestorStateOfType<_ComicPageState>()!;
     thumbnails = List.from(state.comic.thumbnails ?? []);
     super.didChangeDependencies();
-    if (thumbnails.isEmpty) {
-      loadFirstChapterPreview();
-    } else {
+    if (thumbnails.isNotEmpty) {
+      // 详情接口已给出首批缩略图，按 token 继续拉更多。
       loadNext();
+    } else if (state.comicSource.loadComicThumbnail != null) {
+      // 源自带官方缩略图接口 → **优先用它**（e-hentai 的 loadThumbnails 抓的是
+      // gallery 页面里的官方预览小图）：一次请求拿一页 HTML 里的全部缩略图，
+      // 比「逐页请求大图」的兜底模式快得多，也不吃站方的图片配额。
+      loadNext();
+    } else {
+      loadFirstChapterPreview();
     }
+  }
+
+  /// 能否用「首话页面图」兜底当预览。
+  bool get canFallbackPreview {
+    final chapters = state.comic.chapters;
+    return state.comicSource.loadComicPages != null &&
+        chapters != null &&
+        chapters.ids.isNotEmpty;
   }
 
   /// 当详情接口没有提供 thumbnails 时，从首话页面图回退生成预览。
@@ -49,13 +63,9 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
 
   void loadFirstChapterPreview() {
     if (_previewFallbackLoaded) return;
+    if (!canFallbackPreview) return;
     final source = state.comicSource;
-    final chapters = state.comic.chapters;
-    if (source.loadComicPages == null ||
-        chapters == null ||
-        chapters.ids.isEmpty) {
-      return;
-    }
+    final chapters = state.comic.chapters!;
     _previewFallbackLoaded = true;
     if (mounted) {
       setState(() {
@@ -83,7 +93,11 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
   }
 
   void loadNext() async {
-    if (state.comicSource.loadComicThumbnail == null) return;
+    if (state.comicSource.loadComicThumbnail == null) {
+      // 没有官方缩略图接口 → 直接用首话页面图兜底。
+      loadFirstChapterPreview();
+      return;
+    }
     if (!isInitialLoading && next == null) {
       return;
     }
@@ -98,8 +112,30 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
       thumbnails.addAll(res.data);
       next = res.subData;
       isInitialLoading = false;
+      // 接口通了却一张图都没解析出来（源改版 / 需要登录）：退回首话兜底，
+      // 否则预览区会停在「既没图也没报错」的空状态。
+      if (thumbnails.isEmpty && next == null) {
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+        loadFirstChapterPreview();
+        return;
+      }
     } else {
       error = res.errorMessage;
+      // 首屏就失败：能兜底就兜底，别让预览区只剩一句报错。
+      if (thumbnails.isEmpty && canFallbackPreview) {
+        error = null;
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+        loadFirstChapterPreview();
+        return;
+      }
     }
     if (mounted) {
       setState(() {

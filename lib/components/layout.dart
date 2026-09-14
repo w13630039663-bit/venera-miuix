@@ -149,21 +149,19 @@ class SliverGridDelegateWithComics extends SliverGridDelegate {
 
   SliverGridLayout getBriefModeLayout(
       SliverConstraints constraints, double scale) {
-    final maxCrossAxisExtent = 192.0 * scale;
+    // 「两列」模式：固定双列（用户要求——按宽度自适应在宽屏/高分辨率
+    // 手机上会算出三列，太多）。scale 仍生效：调大时列宽不变、格子变高
+    // （aspect 除以 scale）。
+    const crossAxisCount = 2;
     const childAspectRatio = 0.64;
     const crossAxisSpacing = 0.0;
-    int crossAxisCount =
-        (constraints.crossAxisExtent / (maxCrossAxisExtent + crossAxisSpacing))
-            .ceil();
-    // Ensure a minimum count of 1, can be zero and result in an infinite extent
-    // below when the window size is 0.
-    crossAxisCount = math.max(1, crossAxisCount);
     final double usableCrossAxisExtent = math.max(
       0.0,
       constraints.crossAxisExtent - crossAxisSpacing * (crossAxisCount - 1),
     );
     final double childCrossAxisExtent = usableCrossAxisExtent / crossAxisCount;
-    final double childMainAxisExtent = childCrossAxisExtent / childAspectRatio;
+    final double childMainAxisExtent =
+        childCrossAxisExtent / (childAspectRatio / scale);
     return SliverGridRegularTileLayout(
       crossAxisCount: crossAxisCount,
       mainAxisStride: childMainAxisExtent,

@@ -272,6 +272,68 @@ class _OpticalRectTween extends RectTween {
 RectTween previewHeroCreateRectTween(Rect? begin, Rect? end) =>
     _OpticalRectTween(begin: begin, end: end);
 
+/// 列表卡片 ⇄ 详情页封面的飞行 shuttle（Container Transform）。
+///
+/// 框架默认的 shuttle 渲染的是**目的** child，所以原来飞行中看到的一直是
+/// 详情页的封面框 —— 卡片自己的圆角与底色从头到尾没有出现过，"卡片形变"
+/// 的感觉因此很弱。这里改成统一渲染 [CoverHeroChrome]，把圆角、底色、阴影
+/// 按进度从卡片端插值到详情端；落地那一帧正好等于详情端静止态，首末帧与
+/// 静止态零差异。
+///
+/// 两端只要有一端不是 [CoverHeroChrome]，就退回默认行为（渲染目的 child）
+/// —— 详情页 ⇄ 封面查看器那条路对面是 photo_view 自己的 Hero，必须不受影响。
+Widget coverHeroFlightShuttle(
+  BuildContext flightContext,
+  Animation<double> animation,
+  HeroFlightDirection flightDirection,
+  BuildContext fromHeroContext,
+  BuildContext toHeroContext,
+) {
+  final Widget fromChild = (fromHeroContext.widget as Hero).child;
+  final Widget toChild = (toHeroContext.widget as Hero).child;
+  if (fromChild is! CoverHeroChrome || toChild is! CoverHeroChrome) {
+    return toChild;
+  }
+  return _CoverMorphShuttle(animation: animation, from: fromChild, to: toChild);
+}
+
+class _CoverMorphShuttle extends StatelessWidget {
+  const _CoverMorphShuttle({
+    required this.animation,
+    required this.from,
+    required this.to,
+  });
+
+  final Animation<double> animation;
+
+  final CoverHeroChrome from;
+
+  final CoverHeroChrome to;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      // child 不随进度变，交给 AnimatedBuilder 缓存，避免每帧重建图片子树。
+      child: to.child,
+      builder: (context, child) {
+        // push：animation 0→1（卡片态 → 详情态）；pop：1→0。两个方向都能
+        // 直接把 animation.value 当插值进度用，不需要判方向。
+        final double t = animation.value.clamp(0.0, 1.0).toDouble();
+        return CoverHeroChrome(
+          borderRadius:
+              BorderRadius.lerp(from.borderRadius, to.borderRadius, t)!,
+          background: Color.lerp(from.background, to.background, t)!,
+          shadows: BoxShadow.lerpList(from.shadows, to.shadows, t) ?? const [],
+          // 内容取**目的端**：两端是同一个 ImageProvider，但详情端的解码尺寸
+          // 更大，用目的端可避免落地瞬间的重新解码闪动。
+          child: child!,
+        );
+      },
+    );
+  }
+}
+
 /// 详情页预览卡的「背景退场」：飞行期间糊 + 暗 + 淡（demo 的 backdrop，
 /// e = smoothstep(p)，两端归零）。挂在每张预览卡外层，RepaintBoundary
 /// 隔离重绘 —— 只在飞行几百毫秒内生效。
