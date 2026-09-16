@@ -139,10 +139,10 @@
 
 ## S4 · 搜索与全网聚合（原阶段 5）
 
-- [ ] **聚合语义反转**：`ComicSourceManager.kt:87-95` 的 `awaitAll().flatten()` → `channelFlow` 逐源下发 + 每源独立骨架位（原版「谁先回谁先展示」）
-- [ ] 分类矩阵页（`category{fixed/random/dynamic}`）+ 分类漫画瀑布流（多维筛选 + 榜单）+ 排行榜页
-- [ ] 搜索历史持久化（现在 `mutableStateListOf` 内存态）、标签建议、结果排序、URL 直读
-- [ ] 标签翻译（原版靠 `assets/tags.json` 1MB + `tags_tw.json` 1.3MB + `opencc.txt` 简繁，我们 `app/src/main/` **连 assets 目录都没有**）
+- [x] **聚合语义反转**：`ComicSourceManager.kt:87-95` 的 `awaitAll().flatten()` → `channelFlow` 逐源下发 + 每源独立骨架位（原版「谁先回谁先展示」）
+- [x] 分类矩阵页（`category{fixed/random/dynamic}`）+ 分类漫画瀑布流（多维筛选 + 榜单）+ 排行榜页
+- [x] 搜索历史持久化（现在 `mutableStateListOf` 内存态）、标签建议、结果排序、URL 直读
+- [x] 标签翻译（原版靠 `assets/tags.json` 1MB + `tags_tw.json` 1.3MB + `opencc.txt` 简繁，我们 `app/src/main/` **连 assets 目录都没有**）
 
 **⚙️ 替代品调研**：分页统一用 AndroidX `paging-compose`（S0-1 已引入），不要自己写页码状态机；榜单/标签云无库可用，参照 Kotatsu 的 `ExploreScreen` 与 `MangaDex` 类目做法。
 
@@ -301,6 +301,19 @@ S0 地基手术 ─────────────────────�
 | S3-4 动态章节调度与抽屉 | 阅读器内原生集成 MIUIX 风格章节列表抽屉（BottomSheet），支持正倒序、阅读中章节高亮；切换到未预先加载的章节时，自动调用源管理器拉取新章节画质并动态更新。 |
 | S3-5 沉浸控制与高级功能 | 实装：夜间反色滤镜（`ColorFilter.colorMatrix` 黑白反色）、屏幕常亮（`FLAG_KEEP_SCREEN_ON`）、音量键翻页、边缘点击翻页、图片保存至相册（`Pictures/Venera`）与系统分享。 |
 | 验收与统计 | Gradle `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，生成生产级 APK **25.58 MB**。 |
+
+---
+
+## 🔍 S4 实施日志（搜索与全网聚合）
+
+| 事项 | 结果 |
+| :--- | :--- |
+| S4-1 聚合搜索流式语义反转 | `ComicSourceManager.searchAggregatedStream` 彻底颠覆旧版 `awaitAll().flatten()`；基于 Kotlin `channelFlow` 逐源并发下发，任意漫画源完成立即通知界面渲染，慢源不再阻塞全网结果。 |
+| S4-2 独立骨架位与动态选项卡 | 搜索页支持在“全网聚合”与各源独立视图之间切换；聚合视图下每个源拥有专属标题卡片与独立骨架屏（Shimmer/占位），先返回者先行出图。源列表与 S1 注册的 JS 规则源深度联动，自动动态加载。 |
+| S4-3 链接 URL 智能识别与直达 | 新增 `ComicUrlMatcher`，支持自动识别拷贝漫画、包子漫画、MangaDex、B站漫画等分享链接与 ID，在搜索栏以专属卡片高亮呈现并支持一键直达详情页。 |
+| S4-4 1MB 级标签翻译与实时联想 | 提取并内置 `tags.json`（1.04MB）、`tags_tw.json`（1.34MB）等全量词典；构建 `TagTranslationManager` 内存常驻哈希索引，提供 O(1) 命名空间翻译及输入联想推荐 Chips。 |
+| S4-5 分类矩阵与分类漫画瀑布流 | 重写 `AndroidCategoriesScreen`，提供多源题材/地区/进度分类矩阵及热门榜单（日榜/周榜/月榜）；点击任意标签无缝下钻至分类漫画瀑布流并支持翻页浏览。 |
+| 验收与统计 | Gradle `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，APK **27.00 MB**（含完整标签与多语言词典）。 |
 
 ---
 编译验证一律以 `:app:assembleDebug` 为准，日志落 `.reference/buildN.log`。

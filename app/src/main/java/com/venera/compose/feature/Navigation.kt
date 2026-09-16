@@ -147,7 +147,7 @@ fun VeneraComposeApp() {
                         AndroidExploreScreen(animatedVisibilityScope = this, onSelect = ::openComic)
                     }
                     composable<CategoriesRoute> {
-                        AndroidCategoriesScreen()
+                        AndroidCategoriesScreen(onSelect = ::openComic)
                     }
                     composable<SettingsRoute> {
                         AndroidSettingsScreen(
