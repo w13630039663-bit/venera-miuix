@@ -32,11 +32,12 @@ class ComicSourceManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val registeredSources = linkedMapOf<String, ComicSource>()
+    private val builtinSources = linkedMapOf<String, ComicSource>()
 
     private val _sourcesFlow = MutableStateFlow<List<ComicSource>>(emptyList())
     val sourcesFlow: StateFlow<List<ComicSource>> = _sourcesFlow.asStateFlow()
 
-    private val _activeSourceKey = MutableStateFlow("manga_dex")
+    private val _activeSourceKey = MutableStateFlow("copy_manga")
     val activeSourceKey: StateFlow<String> = _activeSourceKey.asStateFlow()
 
     private val _latencyMapFlow = MutableStateFlow<Map<String, Long>>(emptyMap())
@@ -56,6 +57,10 @@ class ComicSourceManager private constructor(private val context: Context) {
         val mangaDex = MangaDexSource(context)
         val copyManga = CopyMangaSource(context)
         val baozi = BaoziMangaSource(context)
+
+        builtinSources[mangaDex.key] = mangaDex
+        builtinSources[copyManga.key] = copyManga
+        builtinSources[baozi.key] = baozi
 
         registeredSources[mangaDex.key] = mangaDex
         registeredSources[copyManga.key] = copyManga
@@ -183,7 +188,15 @@ class ComicSourceManager private constructor(private val context: Context) {
         for (source in targets) {
             launch {
                 try {
-                    val res = source.search(keyword, page)
+                    var res = source.search(keyword, page)
+                    // 若检索失败或为空，且有原生内置源实现，自动走原生源重试兜底
+                    if ((!res.isSuccess || res.getOrDefault(emptyList()).isEmpty()) && builtinSources.containsKey(source.key) && source !== builtinSources[source.key]) {
+                        val nativeRes = builtinSources[source.key]?.search(keyword, page)
+                        if (nativeRes?.isSuccess == true && nativeRes.getOrDefault(emptyList()).isNotEmpty()) {
+                            res = nativeRes
+                        }
+                    }
+
                     if (res.isSuccess) {
                         send(
                             SourceSearchResult(
@@ -206,15 +219,32 @@ class ComicSourceManager private constructor(private val context: Context) {
                         )
                     }
                 } catch (e: Exception) {
-                    send(
-                        SourceSearchResult(
-                            sourceKey = source.key,
-                            sourceName = source.name,
-                            comics = emptyList(),
-                            error = e.message ?: "检索异常",
-                            isLoading = false
+                    val fallback = builtinSources[source.key]
+                    val nativeList = if (fallback != null && fallback !== source) {
+                        runCatching { fallback.search(keyword, page).getOrNull() }.getOrNull()
+                    } else null
+
+                    if (!nativeList.isNullOrEmpty()) {
+                        send(
+                            SourceSearchResult(
+                                sourceKey = source.key,
+                                sourceName = source.name,
+                                comics = nativeList,
+                                error = null,
+                                isLoading = false
+                            )
                         )
-                    )
+                    } else {
+                        send(
+                            SourceSearchResult(
+                                sourceKey = source.key,
+                                sourceName = source.name,
+                                comics = emptyList(),
+                                error = e.message ?: "检索异常",
+                                isLoading = false
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -227,14 +257,25 @@ class ComicSourceManager private constructor(private val context: Context) {
         if (sourceKey == "all") {
             val allDeferreds = registeredSources.values.filter { it.key != "all" }.map { source ->
                 async {
-                    source.search(keyword, page).getOrDefault(emptyList())
+                    var list = source.search(keyword, page).getOrDefault(emptyList())
+                    if (list.isEmpty() && builtinSources.containsKey(source.key) && source !== builtinSources[source.key]) {
+                        list = builtinSources[source.key]?.search(keyword, page)?.getOrDefault(emptyList()) ?: emptyList()
+                    }
+                    list
                 }
             }
             val results = allDeferreds.awaitAll().flatten()
             Result.success(results)
         } else {
-            val source = registeredSources[sourceKey] ?: registeredSources.values.first()
-            source.search(keyword, page)
+            val source = registeredSources[sourceKey] ?: builtinSources[sourceKey] ?: registeredSources.values.first()
+            var res = source.search(keyword, page)
+            if ((!res.isSuccess || res.getOrDefault(emptyList()).isEmpty()) && builtinSources.containsKey(sourceKey) && source !== builtinSources[sourceKey]) {
+                val nativeRes = builtinSources[sourceKey]?.search(keyword, page)
+                if (nativeRes?.isSuccess == true && nativeRes.getOrDefault(emptyList()).isNotEmpty()) {
+                    res = nativeRes
+                }
+            }
+            res
         }
     }
 
@@ -242,16 +283,26 @@ class ComicSourceManager private constructor(private val context: Context) {
      * 获取漫画详情
      */
     suspend fun getComicDetails(sourceKey: String, comicId: String): Result<ComicDetails> = withContext(Dispatchers.IO) {
-        val source = registeredSources[sourceKey] ?: registeredSources.values.first()
-        source.getComicDetails(comicId)
+        val source = registeredSources[sourceKey] ?: builtinSources[sourceKey] ?: registeredSources.values.first()
+        var res = source.getComicDetails(comicId)
+        if (!res.isSuccess && builtinSources.containsKey(sourceKey) && source !== builtinSources[sourceKey]) {
+            val nativeRes = builtinSources[sourceKey]?.getComicDetails(comicId)
+            if (nativeRes?.isSuccess == true) res = nativeRes
+        }
+        res
     }
 
     /**
      * 获取章节图片集
      */
     suspend fun getChapterPages(sourceKey: String, comicId: String, chapterId: String): Result<ChapterPages> = withContext(Dispatchers.IO) {
-        val source = registeredSources[sourceKey] ?: registeredSources.values.first()
-        source.getChapterPages(comicId, chapterId)
+        val source = registeredSources[sourceKey] ?: builtinSources[sourceKey] ?: registeredSources.values.first()
+        var res = source.getChapterPages(comicId, chapterId)
+        if (!res.isSuccess && builtinSources.containsKey(sourceKey) && source !== builtinSources[sourceKey]) {
+            val nativeRes = builtinSources[sourceKey]?.getChapterPages(comicId, chapterId)
+            if (nativeRes?.isSuccess == true) res = nativeRes
+        }
+        res
     }
 
     /**

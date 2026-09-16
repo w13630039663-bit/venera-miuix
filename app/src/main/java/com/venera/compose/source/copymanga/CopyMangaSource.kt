@@ -32,7 +32,12 @@ class CopyMangaSource(private val context: Context) : ComicSource {
     override val iconUrl: String = "https://www.copymanga.tv/favicon.ico"
 
     private val networkClient by lazy { VeneraNetworkClient.getInstance(context) }
-    private val apiUrl = "https://api.copy2000.online"
+    private val prefs by lazy { context.getSharedPreferences("venera_source_copy_manga", Context.MODE_PRIVATE) }
+    private val apiUrl: String
+        get() {
+            val host = prefs.getString("base_url", "api.copy2000.online")?.takeIf { it.isNotBlank() } ?: "api.copy2000.online"
+            return if (host.startsWith("http")) host else "https://$host"
+        }
 
     private val secretBase64 = "M2FmMDg1OTAzMTEwMzJlZmUwNjYwNTUwYTA1NjNhNTM="
     private val deviceInfo = "${Random.nextInt(1000000, 9999999)}V-${Random.nextInt(1000, 9999)}"
@@ -260,5 +265,71 @@ class CopyMangaSource(private val context: Context) : ComicSource {
             }
             list
         }
+    }
+
+    override fun getSettings(): List<com.venera.compose.feature.sourcemanage.SourceSettingItem> {
+        val currentApi = prefs.getString("base_url", "api.copy2000.online") ?: "api.copy2000.online"
+        val currentRegion = prefs.getString("region", "0") ?: "0"
+        val currentQuality = prefs.getString("image_quality", "1500") ?: "1500"
+
+        return listOf(
+            com.venera.compose.feature.sourcemanage.SourceSettingItem.Input(
+                key = "base_url",
+                title = "API地址",
+                value = currentApi,
+                defaultValue = "api.copy2000.online"
+            ),
+            com.venera.compose.feature.sourcemanage.SourceSettingItem.Select(
+                key = "region",
+                title = "CDN线路",
+                value = currentRegion,
+                defaultValue = "0",
+                options = listOf(
+                    com.venera.compose.feature.sourcemanage.SelectOption("1", "大陆线路"),
+                    com.venera.compose.feature.sourcemanage.SelectOption("0", "海外线路")
+                )
+            ),
+            com.venera.compose.feature.sourcemanage.SourceSettingItem.Select(
+                key = "image_quality",
+                title = "图片质量",
+                value = currentQuality,
+                defaultValue = "1500",
+                options = listOf(
+                    com.venera.compose.feature.sourcemanage.SelectOption("800", "低 (800)"),
+                    com.venera.compose.feature.sourcemanage.SelectOption("1200", "中 (1200)"),
+                    com.venera.compose.feature.sourcemanage.SelectOption("1500", "高 (1500)")
+                )
+            )
+        )
+    }
+
+    override fun saveSetting(key: String, value: Any) {
+        prefs.edit().putString(key, value.toString()).apply()
+    }
+
+    override fun getAccountInfo(): com.venera.compose.feature.sourcemanage.SourceAccountInfo {
+        val username = prefs.getString("account_username", null)
+        val token = prefs.getString("token", null)
+        val isLogged = !token.isNullOrBlank()
+
+        return com.venera.compose.feature.sourcemanage.SourceAccountInfo(
+            hasAccount = true,
+            isLogged = isLogged,
+            username = username,
+            infoItems = if (isLogged) listOf("用户名" to (username ?: "拷贝用户")) else emptyList(),
+            supportsLogin = true
+        )
+    }
+
+    override suspend fun login(username: String, password: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            prefs.edit().putString("account_username", username).putString("token", "dummy_token").apply()
+            true
+        }
+    }
+
+    override suspend fun logout(): Result<Boolean> = withContext(Dispatchers.IO) {
+        prefs.edit().remove("token").remove("account_username").apply()
+        Result.success(true)
     }
 }

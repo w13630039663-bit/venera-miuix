@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,7 +74,16 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 value = ui.query,
                 onValueChange = { viewModel.onQueryChange(it) },
                 placeholder = { Text("输入作品名、作者、标签或粘贴漫画链接...", fontSize = 13.sp) },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = MiuixTheme.colorScheme.primary) },
+                leadingIcon = {
+                    IconButton(onClick = {
+                        if (ui.query.isNotBlank()) {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.search(ui.query)
+                        }
+                    }) {
+                        Icon(Icons.Outlined.Search, contentDescription = "Search", tint = MiuixTheme.colorScheme.primary)
+                    }
+                },
                 trailingIcon = {
                     if (ui.query.isNotEmpty()) {
                         IconButton(onClick = {
@@ -82,6 +94,13 @@ fun SharedTransitionScope.AndroidSearchScreen(
                         }
                     }
                 },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    if (ui.query.isNotBlank()) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.search(ui.query)
+                    }
+                }),
                 singleLine = true,
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(

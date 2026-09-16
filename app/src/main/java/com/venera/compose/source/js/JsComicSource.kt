@@ -2,6 +2,9 @@ package com.venera.compose.source.js
 
 import com.google.gson.reflect.TypeToken
 import com.venera.compose.engine.VeneraJsEngine
+import com.venera.compose.feature.sourcemanage.SelectOption
+import com.venera.compose.feature.sourcemanage.SourceAccountInfo
+import com.venera.compose.feature.sourcemanage.SourceSettingItem
 import com.venera.compose.source.ComicSource
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
@@ -36,9 +39,9 @@ class JsComicSource(
                     if (!s || !s.search) return { comics: [] };
                     var res = null;
                     if (s.search.load) {
-                        res = await s.search.load(${gson.toJson(keyword)}, null, $page);
+                        res = await s.search.load(${gson.toJson(keyword)}, [], $page);
                     } else if (s.search.loadNext) {
-                        res = await s.search.loadNext(${gson.toJson(keyword)}, null, null);
+                        res = await s.search.loadNext(${gson.toJson(keyword)}, [], null);
                     }
                     return res || { comics: [] };
                 })()
@@ -49,18 +52,34 @@ class JsComicSource(
             if (envelope["success"] != true) {
                 return Result.failure(Exception(envelope["error"]?.toString() ?: "search failed"))
             }
-            val data = envelope["data"] as? Map<*, *> ?: return Result.success(emptyList())
-            val comicsList = data["comics"] as? List<*> ?: return Result.success(emptyList())
+            val rawData = envelope["data"]
+            val comicsList: List<*> = when (rawData) {
+                is List<*> -> rawData
+                is Map<*, *> -> (rawData["comics"] as? List<*>)
+                    ?: (rawData["list"] as? List<*>)
+                    ?: (rawData["results"] as? List<*>)
+                    ?: (rawData["data"] as? List<*>)
+                    ?: emptyList<Any?>()
+                else -> emptyList<Any?>()
+            }
 
             val comics = comicsList.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
-                val id = map["id"]?.toString() ?: return@mapNotNull null
-                val title = map["title"]?.toString() ?: ""
-                val subTitle = map["subTitle"]?.toString() ?: ""
-                val cover = map["cover"]?.toString() ?: ""
-                val desc = map["description"]?.toString() ?: ""
-                val tags = (map["tags"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-                val updateTime = map["updateTime"]?.toString() ?: ""
+                val id = (map["id"] ?: map["path_word"] ?: map["comicId"])?.toString() ?: return@mapNotNull null
+                val title = (map["title"] ?: map["name"])?.toString() ?: ""
+                val subTitle = (map["subTitle"] ?: map["subtitle"] ?: map["author"])?.toString() ?: ""
+                val cover = (map["cover"] ?: map["coverUrl"])?.toString() ?: ""
+                val desc = (map["description"] ?: map["desc"])?.toString() ?: ""
+                val tags = when (val t = map["tags"] ?: map["theme"]) {
+                    is List<*> -> t.mapNotNull {
+                        when (it) {
+                            is Map<*, *> -> it["name"]?.toString()
+                            else -> it?.toString()
+                        }
+                    }
+                    else -> emptyList()
+                }
+                val updateTime = (map["updateTime"] ?: map["datetime_updated"])?.toString() ?: ""
 
                 Comic(
                     id = id,
@@ -443,6 +462,243 @@ class JsComicSource(
             engine.evaluateAsync(script)
             Result.success(true)
         } catch (e: Exception) {
+            Result.success(true)
+        }
+    }
+
+    override fun getSettings(): List<SourceSettingItem> {
+        return try {
+            val script = """
+                (function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.settings) return '[]';
+                    var res = [];
+                    for (var k in s.settings) {
+                        var item = s.settings[k];
+                        if (!item) continue;
+                        res.push({
+                            key: k,
+                            title: item.title || k,
+                            type: item.type || 'input',
+                            default: item.default !== undefined ? item.default : null,
+                            options: item.options || [],
+                            validator: item.validator || null,
+                            buttonText: item.buttonText || '点击执行'
+                        });
+                    }
+                    return JSON.stringify(res);
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluate(script)
+            if (rawJson.isNullOrBlank() || rawJson == "null") return emptyList()
+            val listType = object : TypeToken<List<Map<String, Any?>>>() {}.type
+            val rawList: List<Map<String, Any?>> = gson.fromJson(rawJson, listType) ?: emptyList()
+            val dataStore = engine.dataStore
+
+            rawList.mapNotNull { item ->
+                val itemKey = item["key"]?.toString() ?: return@mapNotNull null
+                val title = item["title"]?.toString() ?: itemKey
+                val type = item["type"]?.toString() ?: "input"
+                val defaultVal = item["default"]
+                val savedVal = dataStore.loadSetting(key, itemKey) ?: defaultVal
+
+                when (type) {
+                    "select" -> {
+                        val rawOptions = item["options"] as? List<*> ?: emptyList<Any?>()
+                        val options = rawOptions.mapNotNull { opt ->
+                            val optMap = opt as? Map<*, *> ?: return@mapNotNull null
+                            val v = optMap["value"]?.toString() ?: return@mapNotNull null
+                            val text = optMap["text"]?.toString() ?: v
+                            SelectOption(value = v, text = text)
+                        }
+                        SourceSettingItem.Select(
+                            key = itemKey,
+                            title = title,
+                            value = savedVal?.toString() ?: (defaultVal?.toString() ?: ""),
+                            defaultValue = defaultVal?.toString() ?: "",
+                            options = options
+                        )
+                    }
+                    "switch" -> {
+                        val isChecked = when (savedVal) {
+                            is Boolean -> savedVal
+                            is Number -> savedVal.toInt() != 0
+                            is String -> savedVal.equals("true", ignoreCase = true)
+                            else -> defaultVal as? Boolean ?: false
+                        }
+                        SourceSettingItem.Switch(
+                            key = itemKey,
+                            title = title,
+                            value = isChecked,
+                            defaultValue = defaultVal as? Boolean ?: false
+                        )
+                    }
+                    "callback" -> {
+                        val btnText = item["buttonText"]?.toString() ?: "点击执行"
+                        SourceSettingItem.Callback(
+                            key = itemKey,
+                            title = title,
+                            buttonText = btnText
+                        )
+                    }
+                    else -> { // input
+                        SourceSettingItem.Input(
+                            key = itemKey,
+                            title = title,
+                            value = savedVal?.toString() ?: (defaultVal?.toString() ?: ""),
+                            defaultValue = defaultVal?.toString() ?: "",
+                            validator = item["validator"]?.toString()
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("JsComicSource", "Failed to getSettings for $key", e)
+            emptyList()
+        }
+    }
+
+    override fun saveSetting(key: String, value: Any) {
+        engine.dataStore.saveSetting(this.key, key, value)
+    }
+
+    override suspend fun executeSettingCallback(key: String): Result<Unit> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['${this.key}'];
+                    if (s && s.settings && s.settings['$key'] && typeof s.settings['$key'].callback === 'function') {
+                        await s.settings['$key'].callback();
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override fun getAccountInfo(): SourceAccountInfo {
+        return try {
+            val script = """
+                (function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.account) return JSON.stringify({ hasAccount: false });
+                    var items = [];
+                    if (s.account.infoItems && Array.isArray(s.account.infoItems)) {
+                        for (var i = 0; i < s.account.infoItems.length; i++) {
+                            var item = s.account.infoItems[i];
+                            var val = "";
+                            if (typeof item.data === 'function') {
+                                try { val = item.data() || ""; } catch(e) {}
+                            } else if (item.data) {
+                                val = item.data.toString();
+                            }
+                            items.push({ title: item.title || "", data: val });
+                        }
+                    }
+                    return JSON.stringify({
+                        hasAccount: true,
+                        supportsLogin: !!s.account.login,
+                        loginWebsite: s.account.loginWebsite || null,
+                        registerWebsite: s.account.registerWebsite || null,
+                        infoItems: items
+                    });
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluate(script)
+            if (rawJson.isNullOrBlank() || rawJson == "null") return SourceAccountInfo(hasAccount = false)
+            val type = object : TypeToken<Map<String, Any?>>() {}.type
+            val map: Map<String, Any?> = gson.fromJson(rawJson, type) ?: emptyMap()
+
+            val hasAccount = map["hasAccount"] == true
+            if (!hasAccount) return SourceAccountInfo(hasAccount = false)
+
+            val isLogged = engine.dataStore.isLogged(key)
+            val accountData = engine.dataStore.getAccount(key)
+            val username = when (accountData) {
+                is List<*> -> accountData.firstOrNull()?.toString()
+                is Map<*, *> -> accountData["username"]?.toString() ?: accountData["name"]?.toString()
+                else -> null
+            }
+
+            val rawInfo = map["infoItems"] as? List<*> ?: emptyList<Any?>()
+            val infoItems = rawInfo.mapNotNull { item ->
+                val itemMap = item as? Map<*, *> ?: return@mapNotNull null
+                val t = itemMap["title"]?.toString() ?: return@mapNotNull null
+                val d = itemMap["data"]?.toString() ?: ""
+                t to d
+            }
+
+            SourceAccountInfo(
+                hasAccount = true,
+                isLogged = isLogged,
+                username = username,
+                infoItems = infoItems,
+                supportsLogin = map["supportsLogin"] == true,
+                loginWebsite = map["loginWebsite"]?.toString(),
+                registerWebsite = map["registerWebsite"]?.toString()
+            )
+        } catch (e: Exception) {
+            SourceAccountInfo(hasAccount = false)
+        }
+    }
+
+    override suspend fun login(username: String, password: String): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.account || !s.account.login) throw new Error("该源不支持密码登录");
+                    var res = await s.account.login(${gson.toJson(username)}, ${gson.toJson(password)});
+                    if (res && res.error) {
+                        throw new Error(res.errorMessage || "登录失败");
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluateAsync(script)
+            val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
+            if (envelope["success"] != true) {
+                return Result.failure(Exception(envelope["error"]?.toString() ?: "登录失败"))
+            }
+            engine.dataStore.saveAccount(key, listOf(username, password))
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun relogin(): Result<Boolean> {
+        val accountData = engine.dataStore.getAccount(key)
+        if (accountData is List<*> && accountData.size >= 2) {
+            val user = accountData[0]?.toString() ?: ""
+            val pwd = accountData[1]?.toString() ?: ""
+            if (user.isNotBlank() && pwd.isNotBlank()) {
+                return login(user, pwd)
+            }
+        }
+        return Result.failure(Exception("未发现已保存的账号密码凭证，请点击【登录】"))
+    }
+
+    override suspend fun logout(): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (s && s.account && typeof s.account.logout === 'function') {
+                        await s.account.logout();
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            engine.dataStore.logout(key)
+            Result.success(true)
+        } catch (e: Exception) {
+            engine.dataStore.logout(key)
             Result.success(true)
         }
     }

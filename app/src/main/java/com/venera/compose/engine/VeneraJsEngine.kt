@@ -205,6 +205,13 @@ class VeneraJsEngine(appContext: Context) : AutoCloseable {
                     val res = dataStore.loadSetting(key, settingKey)
                     gson.toJson(mapOf("__result__" to res))
                 }
+                "save_setting" -> {
+                    val key = map["key"] as? String ?: ""
+                    val settingKey = map["setting_key"] as? String ?: ""
+                    val value = map["value"]
+                    dataStore.saveSetting(key, settingKey, value)
+                    gson.toJson(mapOf("__result__" to null))
+                }
                 "isLogged" -> {
                     val key = map["key"] as? String ?: ""
                     gson.toJson(mapOf("__result__" to dataStore.isLogged(key)))

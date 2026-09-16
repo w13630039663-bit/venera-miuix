@@ -86,4 +86,42 @@ interface ComicSource {
      */
     suspend fun likeComic(comicId: String): Result<Boolean> =
         Result.success(true)
+
+    /**
+     * 获取源的动态设置项列表（用于源管理页面渲染与配置）
+     */
+    fun getSettings(): List<com.venera.compose.feature.sourcemanage.SourceSettingItem> = emptyList()
+
+    /**
+     * 保存源的单项配置
+     */
+    fun saveSetting(key: String, value: Any) {}
+
+    /**
+     * 执行 callback 类型的源设置操作（例如刷新域名列表）
+     */
+    suspend fun executeSettingCallback(key: String): Result<Unit> = Result.success(Unit)
+
+    /**
+     * 获取账号管理状态
+     */
+    fun getAccountInfo(): com.venera.compose.feature.sourcemanage.SourceAccountInfo =
+        com.venera.compose.feature.sourcemanage.SourceAccountInfo()
+
+    /**
+     * 账号登录
+     */
+    suspend fun login(username: String, password: String): Result<Boolean> =
+        Result.failure(UnsupportedOperationException("当前源暂不支持密码登录"))
+
+    /**
+     * 重新登录（若凭证已保存）
+     */
+    suspend fun relogin(): Result<Boolean> =
+        Result.failure(UnsupportedOperationException("暂无保存登录凭据"))
+
+    /**
+     * 退出登录
+     */
+    suspend fun logout(): Result<Boolean> = Result.success(true)
 }

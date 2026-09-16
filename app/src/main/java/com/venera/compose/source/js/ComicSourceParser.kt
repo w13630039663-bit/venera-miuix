@@ -33,6 +33,30 @@ class ComicSourceParser(private val engine: VeneraJsEngine) {
         // Register into global ComicSource.sources[key]
         engine.evaluate("ComicSource.sources['$key'] = window['temp_source']; delete window['temp_source'];")
 
+        // 提取并注册该源定义的默认设置项，确保 init() 或网络请求中 loadSetting 绝不为 null
+        try {
+            val defsJson = engine.evaluate("""
+                (function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.settings) return '{}';
+                    var defs = {};
+                    for (var k in s.settings) {
+                        if (s.settings[k] && s.settings[k].default !== undefined) {
+                            defs[k] = s.settings[k].default;
+                        }
+                    }
+                    return JSON.stringify(defs);
+                })()
+            """.trimIndent())
+            if (!defsJson.isNullOrBlank() && defsJson != "null") {
+                val type = object : com.google.gson.reflect.TypeToken<Map<String, Any?>>() {}.type
+                val defsMap: Map<String, Any?> = engine.gson.fromJson(defsJson, type) ?: emptyMap()
+                engine.dataStore.registerDefaultSettings(key, defsMap)
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ComicSourceParser", "Failed to extract default settings for $key", e)
+        }
+
         // Trigger init() if defined
         engine.evaluate("if (ComicSource.sources['$key'].init) { ComicSource.sources['$key'].init(); }")
 

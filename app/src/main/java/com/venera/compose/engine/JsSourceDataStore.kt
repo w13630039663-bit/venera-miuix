@@ -58,14 +58,63 @@ class JsSourceDataStore(context: Context) {
         persist(sourceKey)
     }
 
+    private val defaultSettings = ConcurrentHashMap<String, MutableMap<String, Any?>>()
+
+    fun registerDefaultSettings(sourceKey: String, defaults: Map<String, Any?>) {
+        defaultSettings.getOrPut(sourceKey) { ConcurrentHashMap() }.putAll(defaults)
+    }
+
     fun loadSetting(sourceKey: String, settingKey: String): Any? {
         val map = getSourceMap(sourceKey)
         val settings = map["settings"] as? Map<*, *>
-        return settings?.get(settingKey)
+        val userVal = settings?.get(settingKey)
+        if (userVal != null) return userVal
+        return defaultSettings[sourceKey]?.get(settingKey)
+    }
+
+    fun saveSetting(sourceKey: String, settingKey: String, value: Any?) {
+        val map = getSourceMap(sourceKey)
+        val settings = (map["settings"] as? Map<*, *>)?.let { HashMap(it) } ?: HashMap()
+        if (value != null) {
+            settings[settingKey] = value
+        } else {
+            settings.remove(settingKey)
+        }
+        map["settings"] = settings
+        persist(sourceKey)
+    }
+
+    fun getAllSettings(sourceKey: String): Map<String, Any?> {
+        val map = getSourceMap(sourceKey)
+        val userSettings = (map["settings"] as? Map<*, *>)?.mapNotNull { (k, v) ->
+            if (k is String) k to v else null
+        }?.toMap() ?: emptyMap()
+        val defaults = defaultSettings[sourceKey] ?: emptyMap()
+        return defaults + userSettings
     }
 
     fun isLogged(sourceKey: String): Boolean {
         val map = getSourceMap(sourceKey)
-        return map["account"] != null
+        val account = map["account"]
+        return account != null && (account is List<*> || account is Map<*, *> || account == "ok" || account == true)
+    }
+
+    fun getAccount(sourceKey: String): Any? {
+        val map = getSourceMap(sourceKey)
+        return map["account"]
+    }
+
+    fun saveAccount(sourceKey: String, accountData: Any?) {
+        val map = getSourceMap(sourceKey)
+        map["account"] = accountData
+        persist(sourceKey)
+    }
+
+    fun logout(sourceKey: String) {
+        val map = getSourceMap(sourceKey)
+        map.remove("account")
+        map.remove("token")
+        map.remove("_cookies")
+        persist(sourceKey)
     }
 }

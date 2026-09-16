@@ -1153,17 +1153,28 @@ class ComicSource {
         })
     }
 
-    /**
-     * load a setting with its key
-     * @param key {string}
-     * @returns {any}
-     */
     loadSetting(key) {
-        return sendMessage({
+        let res = sendMessage({
             method: 'load_setting',
             key: this.key,
             setting_key: key
-        })
+        });
+        if (res !== null && res !== undefined) {
+            return res;
+        }
+        if (this.settings && this.settings[key] && this.settings[key].default !== undefined) {
+            return this.settings[key].default;
+        }
+        return null;
+    }
+
+    saveSetting(key, value) {
+        return sendMessage({
+            method: 'save_setting',
+            key: this.key,
+            setting_key: key,
+            value: value
+        });
     }
 
     /**

@@ -41,10 +41,115 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
     private val _messageEvent = MutableSharedFlow<String>()
     val messageEvent: SharedFlow<String> = _messageEvent.asSharedFlow()
 
+    private val _configBundles = MutableStateFlow<Map<String, SourceConfigBundle>>(emptyMap())
+    val configBundles: StateFlow<Map<String, SourceConfigBundle>> = _configBundles.asStateFlow()
+
     val defaultRepoUrl = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json"
 
     init {
         loadRepo(defaultRepoUrl)
+        viewModelScope.launch {
+            sources.collect { list ->
+                refreshConfigBundles(list)
+            }
+        }
+    }
+
+    fun refreshConfigBundles(currentSources: List<ComicSource> = sources.value) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val map = mutableMapOf<String, SourceConfigBundle>()
+            for (src in currentSources) {
+                val settings = runCatching { src.getSettings() }.getOrDefault(emptyList())
+                val account = runCatching { src.getAccountInfo() }.getOrDefault(SourceAccountInfo())
+                map[src.key] = SourceConfigBundle(
+                    sourceKey = src.key,
+                    sourceName = src.name,
+                    version = src.version,
+                    isJsSource = src is com.venera.compose.source.js.JsComicSource,
+                    settings = settings,
+                    accountInfo = account
+                )
+            }
+            _configBundles.value = map
+        }
+    }
+
+    fun updateSetting(sourceKey: String, settingKey: String, value: Any) {
+        val src = sourceManager.getSource(sourceKey) ?: return
+        src.saveSetting(settingKey, value)
+        refreshConfigBundles()
+        viewModelScope.launch {
+            _messageEvent.emit("已保存设置")
+        }
+    }
+
+    fun executeCallback(sourceKey: String, settingKey: String) {
+        val src = sourceManager.getSource(sourceKey) ?: return
+        viewModelScope.launch {
+            _messageEvent.emit("正在执行操作...")
+            val res = withContext(Dispatchers.IO) {
+                src.executeSettingCallback(settingKey)
+            }
+            if (res.isSuccess) {
+                _messageEvent.emit("执行完成")
+            } else {
+                _messageEvent.emit("执行失败: ${res.exceptionOrNull()?.message}")
+            }
+            refreshConfigBundles()
+        }
+    }
+
+    fun login(sourceKey: String, user: String, pass: String, onComplete: (Boolean, String?) -> Unit) {
+        val src = sourceManager.getSource(sourceKey) ?: return
+        viewModelScope.launch {
+            val res = withContext(Dispatchers.IO) {
+                src.login(user, pass)
+            }
+            if (res.isSuccess) {
+                _messageEvent.emit("登录成功")
+                refreshConfigBundles()
+                onComplete(true, null)
+            } else {
+                val err = res.exceptionOrNull()?.message ?: "登录失败"
+                _messageEvent.emit("登录失败: $err")
+                onComplete(false, err)
+            }
+        }
+    }
+
+    fun relogin(sourceKey: String) {
+        val src = sourceManager.getSource(sourceKey) ?: return
+        viewModelScope.launch {
+            _messageEvent.emit("正在重新登录...")
+            val res = withContext(Dispatchers.IO) {
+                src.relogin()
+            }
+            if (res.isSuccess) {
+                _messageEvent.emit("重新登录成功")
+            } else {
+                _messageEvent.emit("重新登录失败: ${res.exceptionOrNull()?.message}")
+            }
+            refreshConfigBundles()
+        }
+    }
+
+    fun logout(sourceKey: String) {
+        val src = sourceManager.getSource(sourceKey) ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                src.logout()
+            }
+            _messageEvent.emit("已注销登录")
+            refreshConfigBundles()
+        }
+    }
+
+    fun reloadSource(sourceKey: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            sourceManager.loadInstalledJsSources()
+            refreshConfigBundles()
+            _messageEvent.emit("已重新加载源配置")
+        }
     }
 
     fun refreshPings() {
