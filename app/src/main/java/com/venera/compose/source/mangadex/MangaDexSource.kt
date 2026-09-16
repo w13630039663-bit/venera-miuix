@@ -174,7 +174,7 @@ class MangaDexSource(private val context: Context) : ComicSource {
                 ),
                 author = author,
                 status = status,
-                rating = 4.8f,
+                rating = 0f,
                 chapters = chapters,
                 thumbnails = emptyList()
             )

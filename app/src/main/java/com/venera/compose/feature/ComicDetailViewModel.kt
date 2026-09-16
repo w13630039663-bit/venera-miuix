@@ -27,6 +27,12 @@ data class DetailUiState(
     val loadingMessage: String = "",
     val reversed: Boolean = false,
     val error: String? = null,
+    val selectedGroupIndex: Int = 0,
+    val comments: List<com.venera.compose.source.model.Comment> = emptyList(),
+    val isCommentLoading: Boolean = false,
+    val isLiked: Boolean = false,
+    val likesCount: Int = 0,
+    val userRating: Float = 0f
 )
 
 /** 一次性事件：打开阅读器（真链路 or 演示链路） */
@@ -36,12 +42,7 @@ sealed interface ReaderEvent {
 }
 
 /**
- * 详情页 ViewModel（S0-4）。
- *
- * 之前 getComicDetails / getChapterPages 跑在 rememberCoroutineScope 里，
- * 且 loadingMessage、liveDetails、章节反转都是 Composable 内的 remember 状态：
- * 旋转会中断请求、离开页面也停不掉。现在请求归 viewModelScope，
- * 状态归 StateFlow，打开阅读器用事件流下发。
+ * 详情页 ViewModel（S2 深度重构）。
  */
 class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -59,30 +60,52 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     val historyFlow by lazy { historyDao.historyFlow }
 
     private var loadedId: String? = null
+    private var currentComicItem: ComicItem? = null
 
-    /** 拉取真实详情（章节目录等）。同一本漫画重复进入不会二次请求。 */
+    /** 拉取真实详情（章节目录、分卷、推荐等） */
     fun load(comic: ComicItem) {
-        val key = sourceKeyOf(comic.sourceName)
-        val needFetch = comic.chapters.isEmpty() || comic.sourceName in FETCHABLE_SOURCES
-        if (!needFetch || loadedId == comic.id) return
+        currentComicItem = comic
+        if (loadedId == comic.id && _uiState.value.details != null) return
         loadedId = comic.id
+
+        val key = resolveSourceKey(comic.sourceName)
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, loadingMessage = "正在拉取章节目录...", error = null) }
+            _uiState.update { it.copy(isLoading = true, loadingMessage = "正在拉取章节目录与元数据...", error = null) }
             val res = sourceManager.getComicDetails(key, comic.id)
-            _uiState.update {
-                it.copy(
-                    details = res.getOrNull() ?: it.details,
-                    isLoading = false,
-                    loadingMessage = "",
-                    error = res.exceptionOrNull()?.let { e -> "章节加载失败：${e.message ?: e.javaClass.simpleName}" },
-                )
+            val d = res.getOrNull()
+            if (d != null) {
+                _uiState.update {
+                    it.copy(
+                        details = d,
+                        isLoading = false,
+                        loadingMessage = "",
+                        error = null,
+                        isLiked = d.isLiked,
+                        likesCount = d.likesCount,
+                        comments = d.comments
+                    )
+                }
+                // 异步拉取全量评论
+                loadComments(d.comic.id, d.subId, 1)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        loadingMessage = "",
+                        error = res.exceptionOrNull()?.let { e -> "详情加载失败：${e.message ?: e.javaClass.simpleName}" }
+                    )
+                }
             }
         }
     }
 
+    fun selectGroup(index: Int) {
+        _uiState.update { it.copy(selectedGroupIndex = index) }
+    }
+
     fun setReversed(value: Boolean) = _uiState.update { it.copy(reversed = value) }
 
-    /** 收藏/取消收藏（FavoriteDao.toggleFavorite 本身是同步写库，放到 IO 线程执行） */
+    /** 收藏/取消收藏 */
     fun toggleFavorite(comic: ComicItem) {
         viewModelScope.launch(Dispatchers.IO) {
             favoriteDao.toggleFavorite(
@@ -96,19 +119,86 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 解析一章的真实图片地址；失败或源不支持时退回演示章节 */
+    /** 喜欢/点赞漫画 */
+    fun toggleLike() {
+        val details = _uiState.value.details ?: return
+        val key = resolveSourceKey(details.sourceKey)
+        val currentLiked = _uiState.value.isLiked
+        val newCount = if (currentLiked) _uiState.value.likesCount - 1 else _uiState.value.likesCount + 1
+        _uiState.update { it.copy(isLiked = !currentLiked, likesCount = newCount.coerceAtLeast(0)) }
+
+        viewModelScope.launch {
+            val src = sourceManager.getSource(key)
+            src?.likeComic(details.comic.id)
+        }
+    }
+
+    /** 评分 (0.0 - 5.0) */
+    fun rateComic(rating: Float) {
+        val details = _uiState.value.details ?: return
+        val key = resolveSourceKey(details.sourceKey)
+        _uiState.update { it.copy(userRating = rating) }
+
+        viewModelScope.launch {
+            val src = sourceManager.getSource(key)
+            src?.starRating(details.comic.id, rating)
+        }
+    }
+
+    /** 拉取评论 */
+    fun loadComments(comicId: String? = null, subId: String? = null, page: Int = 1) {
+        val details = _uiState.value.details ?: return
+        val targetComicId = comicId ?: details.comic.id
+        val targetSubId = subId ?: details.subId
+        val key = resolveSourceKey(details.sourceKey)
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCommentLoading = true) }
+            val src = sourceManager.getSource(key)
+            val res = src?.loadComments(targetComicId, targetSubId, page)
+            val commentList = res?.getOrNull().orEmpty()
+            _uiState.update {
+                it.copy(
+                    isCommentLoading = false,
+                    comments = if (commentList.isNotEmpty()) commentList else it.comments
+                )
+            }
+        }
+    }
+
+    /** 发送评论 */
+    fun sendComment(content: String, onComplete: (Boolean, String?) -> Unit) {
+        val details = _uiState.value.details ?: return
+        val key = resolveSourceKey(details.sourceKey)
+
+        viewModelScope.launch {
+            val src = sourceManager.getSource(key)
+            val res = src?.sendComment(details.comic.id, details.subId, content)
+            if (res != null && res.isSuccess) {
+                onComplete(true, null)
+                loadComments(page = 1)
+            } else {
+                onComplete(false, res?.exceptionOrNull()?.message ?: "发表失败")
+            }
+        }
+    }
+
+    /** 解析一章的真实图片地址 */
     fun openChapter(comic: ComicItem, chapterId: String, chapterTitle: String, fallbackIdx: Int) {
         viewModelScope.launch {
             _uiState.update { it.copy(loadingMessage = "正在解析章节画质...") }
-            val res = sourceManager.getChapterPages(sourceKeyOf(comic.sourceName), comic.id, chapterId)
+            val key = resolveSourceKey(comic.sourceName)
+            val res = sourceManager.getChapterPages(key, comic.id, chapterId)
             val pagesData = res.getOrNull()
             val pages = pagesData?.pages.orEmpty()
             _uiState.update { it.copy(loadingMessage = "") }
-            // 防盗链头交给图片加载策略（S0-2 接的管道）
+
+            // 防盗链头交给图片加载策略
             pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
                 ImageHeaderPolicy.publishForUrls(pages, hdrs)
                 if (comic.coverUrl.isNotEmpty()) ImageHeaderPolicy.publishForUrls(listOf(comic.coverUrl), hdrs)
             }
+
             if (pages.isNotEmpty()) {
                 _readerEvents.tryEmit(
                     ReaderEvent.Live(
@@ -128,14 +218,9 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    companion object {
-        private val FETCHABLE_SOURCES = listOf("MangaDex", "拷贝漫画", "包子漫画")
-
-        fun sourceKeyOf(sourceName: String): String = when (sourceName) {
-            "MangaDex" -> "manga_dex"
-            "拷贝漫画" -> "copy_manga"
-            "包子漫画" -> "baozi"
-            else -> "manga_dex"
-        }
+    private fun resolveSourceKey(sourceNameOrKey: String): String {
+        return sourceManager.sourcesFlow.value.find {
+            it.key.equals(sourceNameOrKey, ignoreCase = true) || it.name.equals(sourceNameOrKey, ignoreCase = true)
+        }?.key ?: sourceManager.activeSourceKey.value
     }
 }

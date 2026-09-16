@@ -38,4 +38,52 @@ interface ComicSource {
      * 获取探索/热门推荐漫画流
      */
     suspend fun getExploreComics(page: Int = 1): Result<List<Comic>>
+
+    /**
+     * 加载漫画详情评论列表
+     */
+    suspend fun loadComments(comicId: String, subId: String? = null, page: Int = 1): Result<List<com.venera.compose.source.model.Comment>> =
+        Result.success(emptyList())
+
+    /**
+     * 发送漫画详情评论
+     */
+    suspend fun sendComment(comicId: String, subId: String? = null, content: String): Result<Boolean> =
+        Result.failure(UnsupportedOperationException("当前源暂不支持发送评论"))
+
+    /**
+     * 加载章节单话评论列表
+     */
+    suspend fun loadChapterComments(comicId: String, chapterId: String, page: Int = 1): Result<List<com.venera.compose.source.model.Comment>> =
+        Result.success(emptyList())
+
+    /**
+     * 发送章节单话评论
+     */
+    suspend fun sendChapterComment(comicId: String, chapterId: String, content: String): Result<Boolean> =
+        Result.failure(UnsupportedOperationException("当前源暂不支持发送章节评论"))
+
+    /**
+     * 给评论点赞
+     */
+    suspend fun likeComment(commentId: String, comicId: String): Result<Boolean> =
+        Result.success(true)
+
+    /**
+     * 给评论投票（顶/踩）
+     */
+    suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String): Result<Boolean> =
+        Result.success(true)
+
+    /**
+     * 漫画打星评分 (0.0 - 5.0)
+     */
+    suspend fun starRating(comicId: String, rating: Float): Result<Boolean> =
+        Result.success(true)
+
+    /**
+     * 漫画作品点赞
+     */
+    suspend fun likeComic(comicId: String): Result<Boolean> =
+        Result.success(true)
 }

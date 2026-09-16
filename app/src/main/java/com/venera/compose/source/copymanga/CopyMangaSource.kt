@@ -137,7 +137,42 @@ class CopyMangaSource(private val context: Context) : ComicSource {
 
     override suspend fun getComicDetails(comicId: String): Result<ComicDetails> = withContext(Dispatchers.IO) {
         runCatching {
-            // 拉取章节列表
+            // 1. 请求漫画详情基础信息
+            val infoUrl = "$apiUrl/api/v3/comic2/$comicId?in_mainland=true&platform=3"
+            var title = comicId
+            var cover = ""
+            var author = "未知作者"
+            var desc = ""
+            var status = "连载中"
+            val tags = mutableListOf<String>()
+
+            try {
+                val infoRes = networkClient.get(infoUrl, buildHeaders())
+                val infoJson = JSONObject(infoRes)
+                val cObj = infoJson.optJSONObject("results")?.optJSONObject("comic")
+                if (cObj != null) {
+                    title = cObj.optString("name", comicId)
+                    cover = cObj.optString("cover", "")
+                    desc = cObj.optString("brief", "")
+                    val authorArr = cObj.optJSONArray("author")
+                    if (authorArr != null && authorArr.length() > 0) {
+                        author = authorArr.getJSONObject(0).optString("name", author)
+                    }
+                    val themeArr = cObj.optJSONArray("theme")
+                    if (themeArr != null) {
+                        for (j in 0 until themeArr.length()) {
+                            val tName = themeArr.getJSONObject(j).optString("name")
+                            if (tName.isNotEmpty()) tags.add(tName)
+                        }
+                    }
+                    val statusInt = cObj.optInt("status", 1)
+                    status = if (statusInt == 0) "已完结" else "连载中"
+                }
+            } catch (e: Exception) {
+                // 容错降级
+            }
+
+            // 2. 拉取章节列表
             val chaptersUrl = "$apiUrl/api/v3/comic/$comicId/group/default/chapters?limit=100&offset=0"
             val chaptersRes = networkClient.get(chaptersUrl, buildHeaders())
             val chJson = JSONObject(chaptersRes)
@@ -162,13 +197,16 @@ class CopyMangaSource(private val context: Context) : ComicSource {
             ComicDetails(
                 comic = Comic(
                     id = comicId,
-                    title = comicId,
-                    cover = "",
-                    sourceKey = key
+                    title = title,
+                    subTitle = author,
+                    cover = cover,
+                    sourceKey = key,
+                    tags = tags,
+                    description = desc
                 ),
-                author = "拷贝签约作者",
-                status = "连载中",
-                rating = 4.9f,
+                author = author,
+                status = status,
+                rating = 0f,
                 chapters = chapters
             )
         }

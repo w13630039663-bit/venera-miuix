@@ -104,25 +104,50 @@ class JsComicSource(
             val author = res["author"]?.toString() ?: (res["uploader"]?.toString() ?: "")
 
             val rawTags = res["tags"]
+            val tagMap = mutableMapOf<String, List<String>>()
             val tags = when (rawTags) {
-                is List<*> -> rawTags.mapNotNull { it?.toString() }
-                is Map<*, *> -> rawTags.flatMap { (k, v) ->
-                    if (v is List<*>) v.mapNotNull { it?.toString() } else listOfNotNull(v?.toString())
+                is List<*> -> {
+                    val list = rawTags.mapNotNull { it?.toString() }
+                    tagMap["标签"] = list
+                    list
+                }
+                is Map<*, *> -> {
+                    for ((k, v) in rawTags) {
+                        val groupName = k?.toString() ?: "标签"
+                        val groupList = when (v) {
+                            is List<*> -> v.mapNotNull { it?.toString() }
+                            else -> listOfNotNull(v?.toString())
+                        }
+                        tagMap[groupName] = groupList
+                    }
+                    tagMap.values.flatten()
                 }
                 else -> emptyList()
             }
 
             val chapters = mutableListOf<ComicChapter>()
+            val chapterGroups = mutableListOf<com.venera.compose.source.model.ChapterGroup>()
             val rawChapters = res["chapters"]
             if (rawChapters is Map<*, *>) {
-                var order = 0
-                for ((chKey, chVal) in rawChapters) {
-                    if (chVal is Map<*, *>) {
-                        for ((subKey, subVal) in chVal) {
-                            chapters.add(ComicChapter(id = subKey.toString(), title = subVal.toString(), order = order++))
+                var globalOrder = 0
+                for ((groupKey, groupVal) in rawChapters) {
+                    if (groupVal is Map<*, *>) {
+                        val groupChapters = mutableListOf<ComicChapter>()
+                        var orderInGroup = 0
+                        for ((subKey, subVal) in groupVal) {
+                            val ch = ComicChapter(
+                                id = subKey.toString(),
+                                title = subVal.toString(),
+                                order = globalOrder++,
+                                group = groupKey.toString()
+                            )
+                            chapters.add(ch)
+                            groupChapters.add(ch)
                         }
+                        chapterGroups.add(com.venera.compose.source.model.ChapterGroup(name = groupKey.toString(), chapters = groupChapters))
                     } else {
-                        chapters.add(ComicChapter(id = chKey.toString(), title = chVal.toString(), order = order++))
+                        val ch = ComicChapter(id = groupKey.toString(), title = groupVal.toString(), order = globalOrder++)
+                        chapters.add(ch)
                     }
                 }
             } else if (rawChapters is List<*>) {
@@ -135,6 +160,45 @@ class JsComicSource(
                 }
             }
 
+            if (chapterGroups.isEmpty() && chapters.isNotEmpty()) {
+                chapterGroups.add(com.venera.compose.source.model.ChapterGroup(name = "默认", chapters = chapters))
+            }
+
+            // 关联推荐
+            val recommend = (res["recommend"] as? List<*>)?.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                val id = map["id"]?.toString() ?: return@mapNotNull null
+                val recTitle = map["title"]?.toString() ?: ""
+                val recCover = map["cover"]?.toString() ?: ""
+                Comic(id = id, title = recTitle, cover = recCover, sourceKey = key)
+            }.orEmpty()
+
+            // 缩略图
+            val thumbnails = (res["thumbnails"] as? List<*>)?.mapNotNull { it?.toString() }.orEmpty()
+
+            // 预览评论
+            val comments = (res["comments"] as? List<*>)?.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                val userName = map["userName"]?.toString() ?: "读者"
+                val content = map["content"]?.toString() ?: return@mapNotNull null
+                val avatar = map["avatar"]?.toString()
+                val time = map["time"]?.toString()
+                val score = (map["score"] as? Number)?.toInt() ?: 0
+                val vote = (map["voteStatus"] as? Number)?.toInt() ?: 0
+                val chId = map["id"]?.toString() ?: ""
+                val isLiked = map["isLiked"] == true
+                com.venera.compose.source.model.Comment(
+                    id = chId,
+                    userName = userName,
+                    avatar = avatar,
+                    content = content,
+                    time = time,
+                    score = score,
+                    voteStatus = vote,
+                    isLiked = isLiked
+                )
+            }.orEmpty()
+
             val comic = Comic(
                 id = comicId,
                 title = title,
@@ -142,7 +206,9 @@ class JsComicSource(
                 cover = cover,
                 sourceKey = key,
                 tags = tags,
-                description = desc
+                description = desc,
+                updateTime = res["updateTime"]?.toString() ?: "",
+                isFavorite = res["isFavorite"] == true
             )
 
             val details = ComicDetails(
@@ -151,6 +217,22 @@ class JsComicSource(
                 status = res["status"]?.toString() ?: "连载中",
                 rating = (res["stars"] as? Number)?.toFloat() ?: 0f,
                 chapters = chapters,
+                chapterGroups = chapterGroups,
+                thumbnails = thumbnails,
+                recommend = recommend,
+                tagMap = tagMap,
+                uploader = res["uploader"]?.toString() ?: author,
+                uploadTime = res["uploadTime"]?.toString() ?: "",
+                updateTime = res["updateTime"]?.toString() ?: "",
+                url = res["url"]?.toString() ?: "",
+                stars = (res["stars"] as? Number)?.toFloat() ?: 0f,
+                maxPage = (res["maxPage"] as? Number)?.toInt() ?: 1,
+                likesCount = (res["likesCount"] as? Number)?.toInt() ?: 0,
+                isLiked = res["isLiked"] == true,
+                isFavorite = res["isFavorite"] == true,
+                commentCount = (res["commentCount"] as? Number)?.toInt() ?: comments.size,
+                comments = comments,
+                subId = res["subId"]?.toString(),
                 sourceKey = key
             )
             Result.success(details)
@@ -229,6 +311,139 @@ class JsComicSource(
             Result.success(comics)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    override suspend fun loadComments(comicId: String, subId: String?, page: Int): Result<List<com.venera.compose.source.model.Comment>> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.comments) return { comments: [] };
+                    var res = null;
+                    if (s.comments.load) {
+                        res = await s.comments.load(${gson.toJson(comicId)}, ${gson.toJson(subId)}, $page);
+                    } else if (typeof s.comments === 'function') {
+                        res = await s.comments(${gson.toJson(comicId)}, ${gson.toJson(subId)}, $page);
+                    }
+                    return res || { comments: [] };
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluateAsync(script)
+            val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
+            if (envelope["success"] != true) return Result.success(emptyList())
+            val data = envelope["data"]
+            val rawList = when (data) {
+                is List<*> -> data
+                is Map<*, *> -> (data["comments"] as? List<*>) ?: (data["list"] as? List<*>) ?: emptyList<Any?>()
+                else -> emptyList<Any?>()
+            }
+            val comments = rawList.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                com.venera.compose.source.model.Comment(
+                    id = map["id"]?.toString() ?: "",
+                    userName = map["userName"]?.toString() ?: "读者",
+                    avatar = map["avatar"]?.toString(),
+                    content = map["content"]?.toString() ?: return@mapNotNull null,
+                    time = map["time"]?.toString(),
+                    score = (map["score"] as? Number)?.toInt() ?: 0,
+                    voteStatus = (map["voteStatus"] as? Number)?.toInt() ?: 0,
+                    isLiked = map["isLiked"] == true
+                )
+            }
+            Result.success(comments)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun sendComment(comicId: String, subId: String?, content: String): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.comments || !s.comments.send) throw new Error("comments.send not supported");
+                    var res = await s.comments.send(${gson.toJson(comicId)}, ${gson.toJson(subId)}, ${gson.toJson(content)});
+                    return res !== false;
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluateAsync(script)
+            val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
+            if (envelope["success"] == true) Result.success(true) else Result.failure(Exception(envelope["error"]?.toString()))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun likeComment(commentId: String, comicId: String): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (s && s.comments && s.comments.like) {
+                        await s.comments.like(${gson.toJson(commentId)}, ${gson.toJson(comicId)});
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.success(true)
+        }
+    }
+
+    override suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (s && s.comments && s.comments.vote) {
+                        await s.comments.vote(${gson.toJson(commentId)}, ${if (isUpvote) 1 else -1}, ${gson.toJson(comicId)});
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.success(true)
+        }
+    }
+
+    override suspend fun starRating(comicId: String, rating: Float): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (s && s.comic && s.comic.star) {
+                        await s.comic.star(${gson.toJson(comicId)}, $rating);
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.success(true)
+        }
+    }
+
+    override suspend fun likeComic(comicId: String): Result<Boolean> {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (s && s.comic && s.comic.like) {
+                        await s.comic.like(${gson.toJson(comicId)});
+                    }
+                    return true;
+                })()
+            """.trimIndent()
+            engine.evaluateAsync(script)
+            Result.success(true)
+        } catch (e: Exception) {
+            Result.success(true)
         }
     }
 }

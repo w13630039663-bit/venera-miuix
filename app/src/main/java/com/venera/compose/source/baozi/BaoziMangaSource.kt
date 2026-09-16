@@ -102,6 +102,9 @@ class BaoziMangaSource(private val context: Context) : ComicSource {
                 )
             }
 
+            val tags = doc.select("div.tag-list span").map { it.text().trim() }.filter { it.isNotEmpty() }
+            val status = if (tags.any { it.contains("完结") }) "已完结" else "连载中"
+
             ComicDetails(
                 comic = Comic(
                     id = comicId,
@@ -109,11 +112,12 @@ class BaoziMangaSource(private val context: Context) : ComicSource {
                     subTitle = author,
                     cover = cover,
                     sourceKey = key,
+                    tags = tags,
                     description = desc
                 ),
                 author = author,
-                status = "连载中",
-                rating = 4.7f,
+                status = status,
+                rating = 0f,
                 chapters = chapters
             )
         }

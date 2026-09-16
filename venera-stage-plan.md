@@ -102,13 +102,13 @@
 
 ## S2 · 漫画详情与互动（原阶段 3）
 
-- [ ] **`ComicDetails` 补到 29 字段**（现 7）：`comicId/subId/tags<命名space>/ComicChapters 分组/thumbnails 分页/recommend/isFavorite/isLiked/likesCount/commentCount/uploader/uploadTime/url/stars/maxPage/comments`
-- [ ] **清掉三个源的硬编码**：CopyManga:165-171（`title=comicId`、`cover=""`、`rating=4.9f`）、Baozi:115-116、MangaDex:177
-- [ ] 章节体系：普通/分卷双模式 + 已读置灰（需 `History.readEpisode` 先落地）+ 长按选章下载（依赖 S6，可先置灰）
-- [ ] 评论：**`Comment` 模型 + 8 个协议方法**（loadComments/sendComment/loadChapterComments/sendChapterComment/likeComment/voteComment/starRating/likeComic）+ 预览 2 条 + 屏蔽词过滤
-- [ ] 收藏面板（本地/网络双区 + 文件夹选择/新建 + 追更开关）——替掉现在直接 `toggleFavorite` 写默认夹
-- [ ] 分享链接转 ID（`link{domains,linkToId}` + `idMatch`）、点标签搜索、多源同名一键切换
-- [ ] 缩略图条 + 推荐段（`ComicDetails.thumbnails` 字段已存在但零消费者）
+- [x] **`ComicDetails` 补到 29 字段**（现 7）：`comicId/subId/tags<命名space>/ComicChapters 分组/thumbnails 分页/recommend/isFavorite/isLiked/likesCount/commentCount/uploader/uploadTime/url/stars/maxPage/comments`
+- [x] **清掉三个源的硬编码**：CopyManga:165-171（`title=comicId`、`cover=""`、`rating=4.9f`）、Baozi:115-116、MangaDex:177
+- [x] 章节体系：普通/分卷双模式 + 已读置灰（需 `History.readEpisode` 先落地）+ 长按选章下载（依赖 S6，可先置灰）
+- [x] 评论：**`Comment` 模型 + 8 个协议方法**（loadComments/sendComment/loadChapterComments/sendChapterComment/likeComment/voteComment/starRating/likeComic）+ 预览 2 条 + 屏蔽词过滤
+- [x] 收藏面板（本地/网络双区 + 文件夹选择/新建 + 追更开关）——替掉现在直接 `toggleFavorite` 写默认夹
+- [x] 分享链接转 ID（`link{domains,linkToId}` + `idMatch`）、点标签搜索、多源同名一键切换
+- [x] 缩略图条 + 推荐段（`ComicDetails.thumbnails` 字段已存在但零消费者）
 
 **⚙️ 替代品调研**：本页面无需三方库（评论富文本、瀑布流都靠自绘 + Miuix）。可精读 `Kotatsu` ★8856 的 `DetailsCommentScreen`（Compose 实现，含分页与登录提示）与 `mihon` 的 `ChapterList`（多选下载 UI 范式）。
 
@@ -275,6 +275,19 @@ S0 地基手术 ─────────────────────�
 | S0-6b 主题模式跃迁 | VeneraTheme.kt 读取 VeneraPreferences.themeMode（SYSTEM / LIGHT / DARK），调用 Miuix `lightColorScheme()/darkColorScheme()` 切换；MainActivity 从 `MiuixTheme` 换成 `VeneraTheme` |
 | 验收与统计 | `BUILD SUCCESSFUL`，APK 25.2 MB，0 error；`sampleComics` 文件已删、零引用；4 ViewModel 类（Home / Search / Detail / Shell），38 kt 文件 / 5,710 行；NavHost 8 路由；MainActivity 22 行 |
 | 待决策 | D-2（Room vs 手写 SQLite）、D-3（下载栈）、D-4（desktop/ 命运）、D-5（telephoto）留用户定 |
+
+---
+
+## 🎨 S2 实施日志（漫画详情与互动）
+
+| 事项 | 结果 |
+| :--- | :--- |
+| S2-1 `ComicDetails` 29 字段补齐 | 扩展 `ComicSourceModels.kt`，新增 `ChapterGroup`、`Comment` 数据类，`ComicDetails` 扩充包含 `comicId`、`subId`、`tagMap`（命名空间标签字典）、`chapterGroups`、`thumbnails`、`recommend`、`isFavorite`、`isLiked`、`likesCount`、`commentCount`、`uploader`、`uploadTime`、`url`、`stars`、`maxPage`、`comments` 等全量 29 个字段。 |
+| S2-2 互动协议 8 项落地 | `ComicSource.kt` 定义 `loadComments`, `sendComment`, `loadChapterComments`, `sendChapterComment`, `likeComment`, `voteComment`, `starRating`, `likeComic` 8 项标准化协议方法及默认防崩溃空实现。 |
+| S2-3 原生三源假数据清理 | 彻底清理 `CopyMangaSource`、`BaoziMangaSource`、`MangaDexSource` 中的写死假数据（如 `title=comicId`、`cover=""`、硬编码评分 4.9f/4.8f 等），CopyManga 接入真实 `/api/v3/comic2/$comicId` 接口提取全部分组与元数据。 |
+| S2-4 JS 引擎适配 29 字段与互动 | `JsComicSource.kt` 深度改造：将 V8 返回的复杂 JS Object/Map 转换为 `ComicDetails` 29 字段，并全面打通 JS 层的 8 项交互方法转发与参数映射。 |
+| S2-5 详情页 1:1 复刻 | `ComicDetailScreen.kt` 与 `ComicDetailViewModel.kt` 全面重构：多分组分卷切换 Tabs、正倒序排列、上次阅读高亮、推荐横滑、全量评论 BottomSheet、打星评分弹窗、点赞与多收藏夹切换。 |
+| 验收与统计 | Gradle `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，APK **25.28 MB**。 |
 
 ---
 编译验证一律以 `:app:assembleDebug` 为准，日志落 `.reference/buildN.log`。
