@@ -246,44 +246,39 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
                         // Hero child 只放裸图：卡片的圆角 + 描边画在下面的
                         // Container 上、留在原地。Hero 飞行按插值矩形逐帧重新
                         // 布局，框若进 Hero 会跟着从卡片「长」到全屏。
-                        //
-                        // PreviewFlightBackdrop：飞行期间本卡片糊+暗+淡
-                        // （demo 的背景退场，e = smoothstep(飞行进度)）。
-                        child: PreviewFlightBackdrop(
-                          child: Container(
-                            clipBehavior: Clip.antiAlias,
-                            decoration: BoxDecoration(
-                              borderRadius:
-                                  const BorderRadius.all(Radius.circular(8)),
-                              // miuix：格子加卡片底色，与区块卡片同层次。
-                              color: useMiuixStyle
-                                  ? comicCardBg(context)
+                        child: Container(
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            borderRadius:
+                                const BorderRadius.all(Radius.circular(8)),
+                            // miuix：格子加卡片底色，与区块卡片同层次。
+                            color: useMiuixStyle
+                                ? comicCardBg(context)
+                                : null,
+                          ),
+                          foregroundDecoration: BoxDecoration(
+                            borderRadius:
+                                const BorderRadius.all(Radius.circular(8)),
+                            border: Border.all(color: outlineColor),
+                          ),
+                          child: Hero(
+                            tag: previewHeroTag(
+                              state.comic.sourceKey,
+                              state.comic.id,
+                              1,
+                              index + 1,
+                            ),
+                            transitionOnUserGestures: true,
+                            flightShuttleBuilder: previewHeroFlightShuttle,
+                            createRectTween: previewHeroCreateRectTween,
+                            child: previewFlightImage(
+                              image: imageProvider,
+                              part: cardPart,
+                              // 裁剪参数是原图的像素坐标，做过解码缩放就会裁错
+                              // 位置 —— 只有不带 part 时才限制解码尺寸。
+                              cacheWidth: cardPart == null
+                                  ? coverDecodeWidth(context, 200)
                                   : null,
-                            ),
-                            foregroundDecoration: BoxDecoration(
-                              borderRadius:
-                                  const BorderRadius.all(Radius.circular(8)),
-                              border: Border.all(color: outlineColor),
-                            ),
-                            child: Hero(
-                              tag: previewHeroTag(
-                                state.comic.sourceKey,
-                                state.comic.id,
-                                1,
-                                index + 1,
-                              ),
-                              transitionOnUserGestures: true,
-                              flightShuttleBuilder: previewHeroFlightShuttle,
-                              createRectTween: previewHeroCreateRectTween,
-                              child: previewFlightImage(
-                                image: imageProvider,
-                                part: cardPart,
-                                // 裁剪参数是原图的像素坐标，做过解码缩放就会裁错
-                                // 位置 —— 只有不带 part 时才限制解码尺寸。
-                                cacheWidth: cardPart == null
-                                    ? coverDecodeWidth(context, 200)
-                                    : null,
-                              ),
                             ),
                           ),
                         ),

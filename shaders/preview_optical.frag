@@ -23,7 +23,6 @@ uniform float u_radius;    // 当前圆角半径（物理像素，与 Dart 侧 C
 out vec4 fragColor;
 
 const float PI = 3.14159265359;
-const float GA = 2.399963229728653;  // 黄金角（模糊采样螺旋）
 
 void main() {
   vec2 uv = FlutterFragCoord().xy / u_size;
@@ -56,17 +55,18 @@ void main() {
     col = texture(u_texture, tuv);
     wsum = 1.0;
   } else {
-    // 13 次黄金角螺旋高斯近似（同 demo）。
+    // 8 点黄金角螺旋查表高斯展开（兼容 SkSL / Impeller，消除循环与逐像素三角函数开销）
     vec2 radius = vec2(blurPx / u_size.x, blurPx / u_size.y);
-    for (int i = 0; i < 13; i++) {
-      float fi = float(i);
-      float r = sqrt(fi + 0.5) / sqrt(13.0);
-      float th = fi * GA;
-      vec2 o = vec2(r * cos(th), r * sin(th)) * radius;
-      float w = 1.0 - r;
-      col += texture(u_texture, tuv + o) * w;
-      wsum += w;
-    }
+    col += texture(u_texture, tuv + vec2(0.25000, 0.00000) * radius) * 0.75000;
+    col += texture(u_texture, tuv + vec2(-0.31929, 0.29250) * radius) * 0.56699;
+    col += texture(u_texture, tuv + vec2(0.04887, -0.55688) * radius) * 0.44098;
+    col += texture(u_texture, tuv + vec2(0.40244, 0.52492) * radius) * 0.33856;
+    col += texture(u_texture, tuv + vec2(-0.73854, -0.13064) * radius) * 0.25000;
+    col += texture(u_texture, tuv + vec2(0.69960, -0.44503) * radius) * 0.17084;
+    col += texture(u_texture, tuv + vec2(-0.23400, 0.87048) * radius) * 0.09861;
+    col += texture(u_texture, tuv + vec2(-0.44627, -0.85927) * radius) * 0.03175;
+    wsum = 2.64774;
+
     // 色散：沿位移方向拉开 R/B（只在有光程差处出现）。
     vec2 dir = normalize(disp + vec2(1e-5));
     float ca = offN * 2.6 * sizeK;

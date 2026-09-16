@@ -822,9 +822,11 @@ class _DepthBlur extends StatelessWidget {
           return child!;
         }
         final t = secondaryAnimation.value.clamp(0.0, 1.0);
-        var sigma = 24.0 * t;
-        sigma = (sigma / 2).roundToDouble() * 2; // 2px 量化
-        if (sigma < 2) {
+        // 峰值调至 10px（视觉上足矣呈现大光斑景深，但 GPU 卷积采样面积缩小 5 倍以上）；
+        // 3px 阶梯分档量化，极大提升转场过程中的离屏缓存命中率。
+        var sigma = 10.0 * t;
+        sigma = (sigma / 3).roundToDouble() * 3;
+        if (sigma < 3) {
           return child!;
         }
         Widget page = ImageFiltered(
@@ -872,10 +874,13 @@ class _MiuixSlideTransition extends StatelessWidget {
         final t = animation.value.clamp(0.0, 1.0);
         return Transform.translate(
           offset: Offset((1 - t) * MediaQuery.of(context).size.width, 0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24 * (1 - t)),
-            child: child,
-          ),
+          // 飞行中固定 20px 圆角（类 iOS / HyperOS 浮层卡片），落位后完全透传，避免动态每帧重建 Path
+          child: t >= 0.999
+              ? child
+              : ClipRRect(
+                  borderRadius: const BorderRadius.all(Radius.circular(20)),
+                  child: child,
+                ),
         );
       },
     );

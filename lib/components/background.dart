@@ -58,8 +58,9 @@ class AppBackground extends StatelessWidget {
     return ColoredBox(color: cs.surface);
   }
 
-  /// Apple Music 式主题色氛围光：surface 底 + 顶部一团超大主色光斑经
-  /// 重度高斯模糊晕开。深色下降低光斑透明度，避免刺眼。
+  /// Apple Music 式主题色氛围光：surface 底 + 顶部超大主色光斑经平滑径向渐变晕开。
+  /// 采用 RadialGradient 代替 ImageFilter.blur(sigma: 90)，零离屏纹理与零高斯卷积开销，
+  /// 视觉光晕 100% 保持自然柔和。深色下降低光斑透明度，避免刺眼。
   static Widget _buildAmbient(BuildContext context, ColorScheme cs, bool dark) {
     final size = MediaQuery.sizeOf(context);
     final glowSize = size.width * 1.6;
@@ -68,14 +69,19 @@ class AppBackground extends StatelessWidget {
         top: top,
         left: left,
         right: right,
-        child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
-          child: Container(
-            width: glowSize,
-            height: glowSize * 0.8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withValues(alpha: alpha),
+        child: Container(
+          width: glowSize,
+          height: glowSize * 0.8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                color.withValues(alpha: alpha),
+                color.withValues(alpha: alpha * 0.65),
+                color.withValues(alpha: alpha * 0.25),
+                color.withValues(alpha: 0.0),
+              ],
+              stops: const [0.0, 0.35, 0.68, 1.0],
             ),
           ),
         ),

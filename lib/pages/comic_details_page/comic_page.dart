@@ -252,7 +252,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                 child: const Icon(Icons.arrow_upward),
               )
             : null,
-        body: scroll,
+        body: PreviewFlightBackdrop(child: scroll),
       );
     }
     return Scaffold(
@@ -268,7 +268,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
               child: const Icon(Icons.arrow_upward),
             )
           : null,
-      body: scroll,
+      body: PreviewFlightBackdrop(child: scroll),
     );
   }
 

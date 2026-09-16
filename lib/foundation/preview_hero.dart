@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
@@ -188,10 +187,9 @@ class _OpticalShuttleState extends State<_OpticalShuttle> {
         !ui.ImageFilter.isShaderFilterSupported) {
       return content;
     }
-    // 仿官方 stretch_effect：每帧重建 shader 写入 uniform（slot 0-1 是引擎
-    // 填的 u_size，不能写；sampler 不占 float 槽位）。
-    _shader?.dispose();
-    _shader = program.fragmentShader()
+    // 复用 shader 实例并直接更新 uniform（避免每帧创建与销毁原生对象的 GC 抖动）
+    final shader = _shader ??= program.fragmentShader();
+    shader
       ..setFloat(2, p)
       ..setFloat(3, kPreviewOpticalStrength)
       ..setFloat(4, kPreviewBlurMax)
@@ -201,7 +199,7 @@ class _OpticalShuttleState extends State<_OpticalShuttle> {
     // 引擎把被过滤内容（child 光栅）自动绑到第一个 sampler —— demo 里
     // 的 cover 映射/矩形裁剪整段不需要，Flutter 布局已经做了。
     return ImageFiltered(
-      imageFilter: ui.ImageFilter.shader(_shader!),
+      imageFilter: ui.ImageFilter.shader(shader),
       child: content,
     );
   }
@@ -334,9 +332,8 @@ class _CoverMorphShuttle extends StatelessWidget {
   }
 }
 
-/// 详情页预览卡的「背景退场」：飞行期间糊 + 暗 + 淡（demo 的 backdrop，
-/// e = smoothstep(p)，两端归零）。挂在每张预览卡外层，RepaintBoundary
-/// 隔离重绘 —— 只在飞行几百毫秒内生效。
+/// 详情页预览卡的「背景退场」：飞行期间平滑暗化（e = smoothstep(p)）。
+/// 叠层采用纯色半透明遮罩，零 GPU 离屏滤波开销，同时保留视觉层次退场质感。
 class PreviewFlightBackdrop extends StatelessWidget {
   const PreviewFlightBackdrop({super.key, required this.child});
 
@@ -344,32 +341,26 @@ class PreviewFlightBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: ValueListenableBuilder(
-        valueListenable: previewFlightProgress,
-        builder: (context, double p, child) {
-          final double e = smoothstep(p);
-          if (e < 0.01) {
-            return child!;
-          }
-          return Opacity(
-            opacity: 1.0 - 0.5 * e,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 13 * e, sigmaY: 13 * e),
-              child: ColorFiltered(
-                colorFilter: ColorFilter.matrix([
-                  1.0 - 0.62 * e, 0, 0, 0, 0, //
-                  0, 1.0 - 0.62 * e, 0, 0, 0, //
-                  0, 0, 1.0 - 0.62 * e, 0, 0, //
-                  0, 0, 0, 1, 0, //
-                ]),
-                child: child!,
+    return Stack(
+      children: [
+        child,
+        ValueListenableBuilder<double>(
+          valueListenable: previewFlightProgress,
+          builder: (context, double p, _) {
+            final double e = smoothstep(p);
+            if (e < 0.01) {
+              return const SizedBox.shrink();
+            }
+            return Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.45 * e),
+                ),
               ),
-            ),
-          );
-        },
-        child: child,
-      ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
