@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -37,34 +38,46 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+
+    // Compose 基础
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+
+    // S0 地基：导航栈 / ViewModel / 分页
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.paging.compose)
+    implementation(libs.androidx.paging.runtime)
+
+    // 图片：Coil 3 + OkHttp 引擎（按域注入防盗链头）
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Miuix Compose
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4-rc01")
+    implementation(libs.miuix.ui)
 
-    // AndroidX Compose Material3 & UI
-    implementation("androidx.compose.ui:ui:1.7.8")
-    implementation("androidx.compose.ui:ui-graphics:1.7.8")
-    implementation("androidx.compose.material3:material3:1.3.1")
-    implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    // 网络与解析
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.okhttp.dnsoverhttps)
+    implementation(libs.gson)
+    implementation(libs.jsoup)
+    implementation(libs.kotlinx.coroutines.android)
 
-    // Network (OkHttp)
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+    // 类型安全导航的路由参数序列化（navigation-compose 2.8 要求）
+    implementation(libs.kotlinx.serialization.json)
 
-    // JSON Serialization
-    implementation("com.google.code.gson:gson:2.11.0")
+    // 脚本引擎：现有 quickjs-android 无 Promise 微任务泵，S1 将换成 Zipline；
+    // 目前仅用于保留 .js 规则文件解析能力（QuickJsBridge 已标注待替换）。
+    implementation(libs.quickjs.android)
 
-    // HTML Parser
-    implementation("org.jsoup:jsoup:1.18.1")
-
-    // QuickJS Android Engine
-    implementation("app.cash.quickjs:quickjs-android:0.9.2")
-
-    // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
 }

@@ -1,8 +1,11 @@
 package com.venera.compose.source
 
 import android.content.Context
+import com.venera.compose.engine.VeneraJsEngine
 import com.venera.compose.source.baozi.BaoziMangaSource
 import com.venera.compose.source.copymanga.CopyMangaSource
+import com.venera.compose.source.js.ComicSourceParser
+import com.venera.compose.source.js.JsComicSource
 import com.venera.compose.source.mangadex.MangaDexSource
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
@@ -17,15 +20,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * 漫画源核心管理器（单例）
  * 负责各漫画源的注册、活跃源切换、全网并发聚合搜索与网络延迟 (Ping) 周期探测
  */
-class ComicSourceManager private constructor(context: Context) {
+class ComicSourceManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     private val registeredSources = linkedMapOf<String, ComicSource>()
 
     private val _sourcesFlow = MutableStateFlow<List<ComicSource>>(emptyList())
@@ -36,6 +39,15 @@ class ComicSourceManager private constructor(context: Context) {
 
     private val _latencyMapFlow = MutableStateFlow<Map<String, Long>>(emptyMap())
     val latencyMapFlow: StateFlow<Map<String, Long>> = _latencyMapFlow.asStateFlow()
+
+    val jsEngine: VeneraJsEngine by lazy {
+        VeneraJsEngine(context).apply {
+            init()
+            loadStandardLib()
+        }
+    }
+
+    val parser: ComicSourceParser by lazy { ComicSourceParser(jsEngine) }
 
     init {
         // 注册内置主流漫画源
@@ -49,8 +61,77 @@ class ComicSourceManager private constructor(context: Context) {
 
         _sourcesFlow.value = registeredSources.values.toList()
 
-        // 启动后台延迟探测
-        refreshPings()
+        // 异步加载已安装的 .js 规则源
+        scope.launch {
+            loadInstalledJsSources()
+            refreshPings()
+        }
+    }
+
+    fun loadInstalledJsSources() {
+        val dir = File(context.filesDir, "comic_source").apply { mkdirs() }
+        var files = dir.listFiles { f -> f.extension == "js" } ?: emptyArray()
+        if (files.isEmpty()) {
+            listOf("copy_manga.js", "baozi.js", "manga_dex.js").forEach { name ->
+                try {
+                    context.assets.open("sources/$name").bufferedReader().use { reader ->
+                        File(dir, name).writeText(reader.readText())
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("ComicSourceManager", "Failed to unpack asset source: $name", e)
+                }
+            }
+            files = dir.listFiles { f -> f.extension == "js" } ?: emptyArray()
+        }
+        for (file in files) {
+            try {
+                val source = parser.parseFile(file)
+                registeredSources[source.key] = source
+                android.util.Log.i("ComicSourceManager", "Loaded JS ComicSource: ${source.name} (${source.key}) v${source.version}")
+            } catch (e: Exception) {
+                android.util.Log.e("ComicSourceManager", "Failed to parse js source: ${file.name}", e)
+            }
+        }
+        _sourcesFlow.value = registeredSources.values.toList()
+    }
+
+    fun installJsSource(jsContent: String): Result<ComicSource> {
+        return try {
+            val source = parser.parse(jsContent)
+            val dir = File(context.filesDir, "comic_source").apply { mkdirs() }
+            val file = File(dir, "${source.key}.js")
+            file.writeText(jsContent)
+            registeredSources[source.key] = source
+            _sourcesFlow.value = registeredSources.values.toList()
+            Result.success(source)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun deleteJsSource(key: String): Boolean {
+        val file = File(context.filesDir, "comic_source/$key.js")
+        if (file.exists()) file.delete()
+        val dataFile = File(context.filesDir, "comic_source/$key.data")
+        if (dataFile.exists()) dataFile.delete()
+        val fallback = when (key) {
+            "manga_dex" -> MangaDexSource(context)
+            "copy_manga" -> CopyMangaSource(context)
+            "baozi" -> BaoziMangaSource(context)
+            else -> null
+        }
+        if (fallback != null) {
+            registeredSources[key] = fallback
+        } else {
+            registeredSources.remove(key)
+        }
+        _sourcesFlow.value = registeredSources.values.toList()
+        return true
+    }
+
+    fun registerSource(source: ComicSource) {
+        registeredSources[source.key] = source
+        _sourcesFlow.value = registeredSources.values.toList()
     }
 
     fun setActiveSource(key: String) {

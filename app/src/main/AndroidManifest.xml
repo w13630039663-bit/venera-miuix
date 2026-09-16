@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
+        android:name=".VeneraApp"
         android:allowBackup="true"
         android:label="Venera Compose"
         android:supportsRtl="true"

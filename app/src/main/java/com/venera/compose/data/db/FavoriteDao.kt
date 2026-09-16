@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class FavoriteRecord(
@@ -26,12 +29,18 @@ class FavoriteDao(private val dbHelper: VeneraDatabase) {
     private val _favoritesFlow = MutableStateFlow<List<FavoriteRecord>>(emptyList())
     val favoritesFlow: StateFlow<List<FavoriteRecord>> = _favoritesFlow.asStateFlow()
 
+    /**
+     * 全表读取一律放到 IO 线程（S0-5：原实现是 init 里同步查全表，
+     * 而 DAO 是在 Composable 里 remember 出来的 ⇒ 冷启动主线程扫库）。
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         refresh()
     }
 
     fun refresh() {
-        _favoritesFlow.value = getAllFavoritesSync()
+        scope.launch { _favoritesFlow.value = getAllFavoritesSync() }
     }
 
     private fun getAllFavoritesSync(folderName: String? = null): List<FavoriteRecord> {

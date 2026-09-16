@@ -1,4 +1,4 @@
-﻿package com.venera.compose.data.db
+package com.venera.compose.data.db
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -20,7 +20,7 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS comic_history (
-                comic_id TEXT PRIMARY KEY,
+                comic_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 author TEXT,
                 cover_url TEXT NOT NULL,
@@ -29,7 +29,9 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
                 last_chapter_index INTEGER NOT NULL,
                 last_page_index INTEGER NOT NULL,
                 total_pages INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
+                updated_at INTEGER NOT NULL,
+                -- v2：主键必须含 source_name，否则不同源的同 ID 漫画会互相覆盖阅读进度
+                PRIMARY KEY (comic_id, source_name)
             );
             """.trimIndent()
         )
@@ -39,7 +41,7 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS comic_favorite (
-                comic_id TEXT PRIMARY KEY,
+                comic_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 author TEXT,
                 cover_url TEXT NOT NULL,
@@ -48,7 +50,9 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
                 tags TEXT NOT NULL DEFAULT '',
                 has_update INTEGER NOT NULL DEFAULT 0,
                 latest_chapter TEXT,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                -- v2：同样按 (comic_id, source_name) 唯一，收藏不再串源
+                PRIMARY KEY (comic_id, source_name)
             );
             """.trimIndent()
         )
@@ -71,13 +75,26 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
         )
     }
 
+    /**
+     * v1 -> v2：comic_history / comic_favorite 的主键从单列 comic_id 改成
+     * (comic_id, source_name)。SQLite 不支持改主键，只能重建表。
+     *
+     * 复刻阶段没有真实用户数据，因此这里直接重建；
+     * 正式发布前必须换成「建新表 → INSERT SELECT → 改名」的数据保留式迁移。
+     */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // 预留平滑迁移逻辑
+        if (oldVersion < 2) {
+            db.execSQL("DROP TABLE IF EXISTS comic_history;")
+            db.execSQL("DROP TABLE IF EXISTS comic_favorite;")
+            db.execSQL("DROP TABLE IF EXISTS comic_source;")
+            onCreate(db)
+        }
     }
 
     companion object {
         const val DATABASE_NAME = "venera_core.db"
-        const val DATABASE_VERSION = 1
+        // v2: 历史/收藏主键补 source_name（修跨源同 ID 互盖）
+        const val DATABASE_VERSION = 2
 
         @Volatile
         private var INSTANCE: VeneraDatabase? = null

@@ -1,63 +1,62 @@
-﻿# Venera - Compose Multiplatform (Android & Desktop 原生迁移原型)
+# Venera · 纯原生 Jetpack Compose 复刻（compose-migration 分支）
 
-本分支 (compose-migration) 是 Venera 从原有 Flutter 技术栈向 **Jetpack Compose + Compose Multiplatform (CMP)** 原生重构的迁移架构分支。
+本分支把 Venera 从 Flutter 技术栈完整复刻为 **纯原生 Android Jetpack Compose**（Kotlin Coroutines/Flow + Miuix KMP 视觉 + OkHttp + QuickJS 源脚本），并保留一个 **Compose Multiplatform Desktop** 模块用于 PC 上零真机快速调 UI。
 
-## 🌟 核心特性与优势
+- 上游原版 (Flutter)：https://github.com/venera-app/venera （remote `upstream`）
+- 本迁移基准 (Flutter + Miuix 风格)：https://github.com/w13630039663-bit/venera-miuix （`master` 分支 = 原版 Flutter 全量源码）
 
-1. **极致流畅度与超低延迟**
-   - 移除 Flutter 中间渲染与 JNI 桥接开销，直接运行在原生 Android 渲染管道与 Compose 响应式树上。
-   - 彻底解决列表快速滑动和进退详情页时的微卡顿与掉帧。
+## 目录结构（实际现状，不是规划）
 
-2. **原生级 MIUIX 设计语言**
-   - 采用 	op.yukonga.miuix.kmp:miuix-ui 原生 MIUI 风格组件库。
-   - 还原 MIUI 标志性的超级弹簧回弹物理动效 (MIUI Spring Physics)、平滑连续曲率圆角卡片 (Continuous Corner Curves)、流体式搜索栏展开收起。
+```text
+venera-compose/
+├── app/                                # Android 原生模块（复刻主战场）
+│   └── src/main/java/com/venera/compose/
+│       ├── MainActivity.kt             # 全部屏幕 (1814 物理行) —— 待拆分 feature 包
+│       ├── components/                 # VeneraAmbientBackground / VeneraFloatingNavBar
+│       ├── data/
+│       │   ├── db/                     # VeneraDatabase(手写 SQLiteOpenHelper) + History/Favorite/ComicSource Dao
+│       │   ├── prefs/                  # VeneraPreferences (SharedPreferences + StateFlow)
+│       │   └── network/                # VeneraNetworkClient (OkHttp/DoH/代理) + PersistentCookieJar
+│       ├── reader/                     # VeneraReaderScreen / ComicPageSource / ReaderZoomState / BitmapSliceHelper
+│       └── source/                     # ComicSource 抽象 + mangadex/copymanga/baozi + js/QuickJsBridge
+├── desktop/                            # Compose Multiplatform 桌面端（仅 UI 原型，MockData）
+├── .reference/flutter-master/          # 原版 Flutter 只读参照 (143 .dart) + doc/ 协议 + assets/init.js
+├── venera-migration-plan.md            # 总体规划 + 「现实校准」章节
+└── venera-gap-analysis.md              # 逐页/逐模块差距清单与优先级
+```
 
-3. **原生系统级手势与转场 (Predictive Back & Shared Transition)**
-   - Android 14+ 预测性返回手势 (PredictiveBackHandler)：在侧滑返回过程中，整个详情页面跟随手指进度等比例缩放与微调透明度，松手丝滑返回上一层。
-   - 共享元素连续转场 (SharedTransitionScope)：封面图无缝放大进详情页、缩回列表。
+## 构建与运行
 
-4. **双端共享架构 (Android + Desktop)**
-   - **pp/**：Android 原生 Jetpack Compose 模块，支持手机、平板自适应布局。
-   - **desktop/**：Compose Multiplatform Desktop 模块，基于 Skiko DirectX / Vulkan 硬件加速，支持在 Windows PC 桌面端免真机即时调试与运行。
+Android（JDK 17 + Android SDK）：
 
----
+```powershell
+$env:JAVA_HOME = "D:\jdk17\jdk-17.0.20.1+1"
+.\gradlew.bat :app:assembleDebug
+# 产物 app\build\outputs\apk\debug\app-debug.apk（实测 BUILD SUCCESSFUL，24.5 MB）
+```
 
-## 📁 模块目录结构
+Desktop（JDK 21+）：
 
-`	ext
-venera/
-├── app/                               # Android 原生 Jetpack Compose 模块
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       └── java/com/venera/compose/
-│           └── MainActivity.kt        # 包含 6 大主 Tab 完整页面与详情页流体交互
-├── desktop/                           # Compose Multiplatform 桌面端模块
-│   └── src/main/kotlin/com/venera/compose/desktop/
-│       ├── Main.kt                    # PC 桌面端入口 (可独立运行)
-│       ├── models/Models.kt           # 实体模型与模拟数据源
-│       └── ui/
-│           ├── components/Components.kt # 通用 MIUI 风格卡片、角标、骨架与组件
-│           └── screens/               # 各 Tab 页面完整还原 (Home/Search/Explore/Favorites/Categories/Settings)
-├── gradle/
-│   └── libs.versions.toml             # Gradle Version Catalog 依赖统一管理
-├── build.gradle.kts
-├── settings.gradle.kts
-└── README.md
-`
+```powershell
+.\gradlew.bat :desktop:run
+```
 
----
+需要再看原版实现时，随时从 git 对象里解出参照源码（本仓库含 `master` 分支）：
 
-## 🚀 编译与运行
+```powershell
+git archive --format=zip -o ref.zip master lib assets doc shaders
+Expand-Archive ref.zip -DestinationPath .reference\flutter-master
+```
 
-### 1. 运行桌面端 (Windows PC)
-桌面端需要 JDK 21+ 环境：
-`ash
-./gradlew :desktop:run
-`
+> 注意：`.reference/` 只读、已写入 `.git/info/exclude`，不要提交，也不要拿它当构建输入。
 
-### 2. 编译 Android 端 APK
-Android 端构建需要 Android SDK 与 JDK 17：
-`ash
-./gradlew :app:assembleDebug
-`
-生成的 APK 路径：pp/build/outputs/apk/debug/app-debug.apk
+## 当前进度（以代码为准，非愿景）
+
+| 阶段 | 状态 | 说明 |
+| :--- | :--- | :--- |
+| 1 数据与网络基石 | ✅ `00eb2b7` | 手写 SQLite/SharedPreferences/OkHttp+CookieJar（**不是** Room/DataStore） |
+| 2 漫画源引擎 | ✅ `e2303bd` | 3 个硬编码源 + Ping 测速 + 聚合搜索 + 详情/阅读真连网 |
+| 2.5 源脚本协议 | ❌ 未落地 | `QuickJsBridge` 零调用点，官方 33 个 `.js` 规则源覆盖 0/33 |
+| 4 阅读器 | 🟡 地基已在 `a39829b` | 缺 RTL/LTR 翻页、双页拼合、预加载；切片器 `BitmapSliceHelper` 未接线 |
+| 3 / 5 / 6 / 7 / 8 | ⬜ 未开始 | 逐项差距与优先级见 `venera-gap-analysis.md` |
+

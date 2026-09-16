@@ -1,4 +1,4 @@
-﻿package com.venera.compose.data.db
+package com.venera.compose.data.db
 
 import android.content.ContentValues
 import android.content.Context
@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class HistoryRecord(
@@ -26,12 +29,18 @@ class HistoryDao(private val dbHelper: VeneraDatabase) {
     private val _historyFlow = MutableStateFlow<List<HistoryRecord>>(emptyList())
     val historyFlow: StateFlow<List<HistoryRecord>> = _historyFlow.asStateFlow()
 
+    /**
+     * 全表读取一律放到 IO 线程（S0-5：原实现是 init 里同步查全表，
+     * 而 DAO 是在 Composable 里 remember 出来的 ⇒ 冷启动主线程扫库）。
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         refresh()
     }
 
     fun refresh() {
-        _historyFlow.value = getAllHistorySync()
+        scope.launch { _historyFlow.value = getAllHistorySync() }
     }
 
     private fun getAllHistorySync(): List<HistoryRecord> {
