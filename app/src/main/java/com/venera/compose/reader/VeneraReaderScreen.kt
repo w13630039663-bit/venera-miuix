@@ -1,4 +1,4 @@
-﻿package com.venera.compose.reader
+package com.venera.compose.reader
 
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.venera.compose.data.db.HistoryDao
+import com.venera.compose.data.db.HistoryRecord
+import com.venera.compose.data.prefs.VeneraPreferences
 import coil.compose.SubcomposeAsyncImage
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -78,20 +81,27 @@ fun VeneraReaderScreen(
     val currentChapter = session.chapters.getOrNull(currentChapterIndex)
         ?: return
 
+    val prefs = remember { VeneraPreferences.getInstance(context) }
+    val savedModeStr = remember { prefs.defaultReadingMode.value }
+
     // 阅读模式：竖向连续滚动 vs 横向单页翻页
-    var readingMode by remember { mutableStateOf(ReaderReadingMode.VERTICAL_CONTINUOUS) }
+    var readingMode by remember {
+        mutableStateOf(if (savedModeStr == "HORIZONTAL") ReaderReadingMode.HORIZONTAL_PAGE else ReaderReadingMode.VERTICAL_CONTINUOUS)
+    }
 
     // 控制浮层显隐
     var isControlsVisible by remember { mutableStateOf(false) }
 
     // 页面间距 (条漫模式)
-    var pageGapDp by remember { mutableFloatStateOf(8f) }
+    var pageGapDp by remember { mutableFloatStateOf(prefs.pageGapDp.value) }
 
     // 缩放手势状态
     val zoomState = rememberReaderZoomState(currentChapterIndex, readingMode)
 
     // 列表状态 (竖向)
-    val verticalListState = rememberLazyListState()
+    val verticalListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = session.initialPageIndex.coerceIn(0, (currentChapter.pages.size - 1).coerceAtLeast(0))
+    )
 
     // 翻页状态 (横向)
     val horizontalPagerState = rememberPagerState(
@@ -111,6 +121,23 @@ fun VeneraReaderScreen(
     }
 
     // 沉浸式状态栏与导航栏控制
+    LaunchedEffect(currentChapterIndex, currentPageIndex) {
+        HistoryDao.getInstance(context).saveHistory(
+            HistoryRecord(
+                comicId = session.comicId,
+                title = session.comicTitle,
+                author = "",
+                coverUrl = session.coverUrl,
+                sourceName = "拷贝漫画",
+                lastChapterTitle = currentChapter.title,
+                lastChapterIndex = currentChapterIndex,
+                lastPageIndex = currentPageIndex,
+                totalPages = currentChapter.pages.size,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
     DisposableEffect(isControlsVisible) {
         val window = activity?.window
         if (window != null) {
@@ -334,11 +361,13 @@ fun VeneraReaderScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.clickable {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            readingMode = if (readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS) {
+                            val newMode = if (readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS) {
                                 ReaderReadingMode.HORIZONTAL_PAGE
                             } else {
                                 ReaderReadingMode.VERTICAL_CONTINUOUS
                             }
+                            readingMode = newMode
+                            prefs.setDefaultReadingMode(if (newMode == ReaderReadingMode.HORIZONTAL_PAGE) "HORIZONTAL" else "VERTICAL")
                         }
                     ) {
                         Row(

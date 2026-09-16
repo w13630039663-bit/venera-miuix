@@ -1,4 +1,4 @@
-﻿package com.venera.compose.reader
+package com.venera.compose.reader
 
 import java.io.File
 
@@ -77,7 +77,8 @@ object SampleReaderData {
         comicTitle: String,
         coverUrl: String,
         chapterNames: List<String>,
-        initialIndex: Int = 0
+        initialIndex: Int = 0,
+        initialPageIndex: Int = 0
     ): ReaderSession {
         val chapters = chapterNames.mapIndexed { cIndex, cTitle ->
             val pageCount = 12 + (cIndex % 5) * 4
@@ -103,7 +104,7 @@ object SampleReaderData {
             coverUrl = coverUrl,
             chapters = chapters,
             initialChapterIndex = initialIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)),
-            initialPageIndex = 0
+            initialPageIndex = initialPageIndex.coerceAtLeast(0)
         )
     }
 }

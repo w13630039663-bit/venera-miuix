@@ -39,6 +39,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.reader.*
+import com.venera.compose.data.db.*
+import com.venera.compose.data.prefs.*
 
 data class ComicItem(
     val id: String,
@@ -253,14 +255,15 @@ fun VeneraComposeApp() {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             selectedComic = null
                         },
-                        onStartReading = { chapterIndex ->
+                        onStartReading = { chapterIndex, pageIndex ->
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             activeReadingSession = SampleReaderData.createSampleSession(
                                 comicId = targetComic.id,
                                 comicTitle = targetComic.title,
                                 coverUrl = targetComic.coverUrl,
                                 chapterNames = targetComic.chapters,
-                                initialIndex = chapterIndex
+                                initialIndex = chapterIndex,
+                                initialPageIndex = pageIndex
                             )
                         }
                     )
@@ -320,6 +323,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val historyList by HistoryDao.getInstance(context).historyFlow.collectAsState()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -429,23 +435,56 @@ fun SharedTransitionScope.AndroidHomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "历史记录", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = if (historyList.isNotEmpty()) "历史记录 (${historyList.size})" else "历史记录",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Text(text = "›", fontSize = 20.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(sampleComics.take(4)) { comic ->
-                        Card(modifier = Modifier.width(115.dp).clickable { onSelect(comic) }) {
-                            Column(modifier = Modifier.padding(6.dp)) {
-                                AsyncImage(
-                                    model = comic.coverUrl,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
+                    if (historyList.isNotEmpty()) {
+                        items(historyList, key = { "hist-${it.comicId}" }) { record ->
+                            val match = sampleComics.find { it.id == record.comicId }
+                                ?: ComicItem(
+                                    id = record.comicId,
+                                    title = record.title,
+                                    author = record.author,
+                                    coverUrl = record.coverUrl,
+                                    tags = listOf("历史"),
+                                    rating = "9.5",
+                                    description = "上次阅读至 ${record.lastChapterTitle}",
+                                    sourceName = record.sourceName
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(text = comic.title, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                Text(text = "看到第 24 话", fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant, maxLines = 1)
+                            Card(modifier = Modifier.width(115.dp).clickable { onSelect(match) }) {
+                                Column(modifier = Modifier.padding(6.dp)) {
+                                    AsyncImage(
+                                        model = record.coverUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(text = record.title, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                    Text(text = "${record.lastChapterTitle} P.${record.lastPageIndex + 1}", fontSize = 11.sp, color = MiuixTheme.colorScheme.primary, maxLines = 1)
+                                }
+                            }
+                        }
+                    } else {
+                        items(sampleComics.take(4)) { comic ->
+                            Card(modifier = Modifier.width(115.dp).clickable { onSelect(comic) }) {
+                                Column(modifier = Modifier.padding(6.dp)) {
+                                    AsyncImage(
+                                        model = comic.coverUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(text = comic.title, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                    Text(text = "未读", fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant, maxLines = 1)
+                                }
                             }
                         }
                     }
@@ -535,20 +574,61 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(sampleComics) { comic ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comic) }) {
-                Column(modifier = Modifier.padding(8.dp)) {
-                    AsyncImage(model = comic.coverUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = comic.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                    Text(text = "${comic.sourceName} · ${comic.latestChapter}", fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant, maxLines = 1)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val favoriteList by FavoriteDao.getInstance(context).favoritesFlow.collectAsState()
+
+    if (favoriteList.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                Text(text = "⭐", fontSize = 48.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = "暂无收藏漫画", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "在漫画详情页点击「收藏」即可加入书架",
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onBackgroundVariant
+                )
+            }
+        }
+    } else {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(favoriteList, key = { "fav-${it.comicId}" }) { record ->
+                val match = sampleComics.find { it.id == record.comicId }
+                    ?: ComicItem(
+                        id = record.comicId,
+                        title = record.title,
+                        author = record.author,
+                        coverUrl = record.coverUrl,
+                        tags = listOf("本地收藏"),
+                        rating = "9.6",
+                        description = "已收藏至「${record.folderName}」",
+                        sourceName = record.sourceName,
+                        latestChapter = record.latestChapter
+                    )
+                Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(match) }) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        AsyncImage(
+                            model = record.coverUrl,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(10.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(text = record.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                        Text(
+                            text = "${record.sourceName} · ${record.folderName}",
+                            fontSize = 11.sp,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -640,8 +720,19 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     comic: ComicItem,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onBack: () -> Unit,
-    onStartReading: (chapterIndex: Int) -> Unit
+    onStartReading: (chapterIndex: Int, pageIndex: Int) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val view = LocalView.current
+    val favoriteDao = remember { FavoriteDao.getInstance(context) }
+    val historyDao = remember { HistoryDao.getInstance(context) }
+
+    val favorites by favoriteDao.favoritesFlow.collectAsState()
+    val isFav = favorites.any { it.comicId == comic.id }
+
+    val historyList by historyDao.historyFlow.collectAsState()
+    val historyRecord = historyList.find { it.comicId == comic.id }
+
     var isReversed by remember { mutableStateOf(false) }
 
     // 预测性返回支持
@@ -659,6 +750,27 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 navigationIcon = {
                     Box(modifier = Modifier.size(40.dp).clickable { onBack() }, contentAlignment = Alignment.Center) {
                         Text(text = "←", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                },
+                actions = {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                favoriteDao.toggleFavorite(
+                                    comicId = comic.id,
+                                    title = comic.title,
+                                    coverUrl = comic.coverUrl,
+                                    author = comic.author,
+                                    sourceName = comic.sourceName,
+                                    latestChapter = comic.latestChapter
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = if (isFav) "❤️" else "🤍", fontSize = 18.sp)
                     }
                 }
             )
@@ -690,17 +802,71 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(text = "作者: ${comic.author}", fontSize = 13.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
                             Text(text = "源: ${comic.sourceName}", fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+                            if (historyRecord != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "上次至: ${historyRecord.lastChapterTitle} P.${historyRecord.lastPageIndex + 1}",
+                                    fontSize = 11.sp,
+                                    color = MiuixTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
-                        Text(text = "★ ${comic.rating}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB800))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "★ ${comic.rating}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB800))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isFav) Color(0xFFFF4081).copy(alpha = 0.15f) else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    favoriteDao.toggleFavorite(
+                                        comicId = comic.id,
+                                        title = comic.title,
+                                        coverUrl = comic.coverUrl,
+                                        author = comic.author,
+                                        sourceName = comic.sourceName,
+                                        latestChapter = comic.latestChapter
+                                    )
+                                }
+                            ) {
+                                Text(
+                                    text = if (isFav) "❤️ 已收藏" else "🤍 收藏",
+                                    fontSize = 12.sp,
+                                    color = if (isFav) Color(0xFFFF4081) else MiuixTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
             item {
                 Button(
-                    onClick = { onStartReading(0) },
+                    onClick = {
+                        if (historyRecord != null) {
+                            onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
+                        } else {
+                            onStartReading(0, 0)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    content = { Text(text = "开始阅读 (第 1 话)", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                    content = {
+                        Text(
+                            text = if (historyRecord != null) {
+                                "继续阅读 (${historyRecord.lastChapterTitle} 第 ${historyRecord.lastPageIndex + 1} 页)"
+                            } else {
+                                "开始阅读 (第 1 话)"
+                            },
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 )
             }
 
@@ -726,13 +892,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val list = if (isReversed) comic.chapters.reversed() else comic.chapters
-                            list.take(24).forEachIndexed { idx, chapter ->
+                            list.take(36).forEachIndexed { idx, chapter ->
+                                val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
+                                val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    color = if (isCurrentHistoryChapter) MiuixTheme.colorScheme.primary.copy(alpha = 0.2f) else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                                     modifier = Modifier.clickable {
-                                        val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
-                                        onStartReading(actualIdx)
+                                        val pIndex = if (isCurrentHistoryChapter) historyRecord.lastPageIndex else 0
+                                        onStartReading(actualIdx, pIndex)
                                     }
                                 ) {
                                     Text(text = chapter, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))

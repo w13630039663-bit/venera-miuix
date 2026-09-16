@@ -50,4 +50,15 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics:1.7.8")
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
+
+    // Network (OkHttp)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+
+    // JSON Serialization
+    implementation("com.google.code.gson:gson:2.11.0")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
