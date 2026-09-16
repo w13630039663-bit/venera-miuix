@@ -38,6 +38,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.reader.*
 
 data class ComicItem(
     val id: String,
@@ -164,85 +165,106 @@ class MainActivity : ComponentActivity() {
 fun VeneraComposeApp() {
     var currentTab by remember { mutableStateOf(NavTab.HOME) }
     var selectedComic by remember { mutableStateOf<ComicItem?>(null) }
+    var activeReadingSession by remember { mutableStateOf<ReaderSession?>(null) }
     val view = LocalView.current
 
-    SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = selectedComic,
-            transitionSpec = {
-                fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
-                fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
-            },
-            label = "ScreenTransition"
-        ) { targetComic ->
-            if (targetComic == null) {
-                Scaffold(
-                    topBar = {
-                        TopAppBar(
-                            title = when (currentTab) {
-                                NavTab.HOME -> "Venera"
-                                NavTab.SEARCH -> "搜索与发现"
-                                NavTab.FAVORITES -> "我的收藏"
-                                NavTab.EXPLORE -> "全站探索"
-                                NavTab.CATEGORIES -> "分类索引"
-                                NavTab.SETTINGS -> "设置与关于"
+    if (activeReadingSession != null) {
+        VeneraReaderScreen(
+            session = activeReadingSession!!,
+            onBack = {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                activeReadingSession = null
+            }
+        )
+    } else {
+        SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = selectedComic,
+                transitionSpec = {
+                    fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
+                    fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
+                },
+                label = "ScreenTransition"
+            ) { targetComic ->
+                if (targetComic == null) {
+                    Scaffold(
+                        topBar = {
+                            TopAppBar(
+                                title = when (currentTab) {
+                                    NavTab.HOME -> "Venera"
+                                    NavTab.SEARCH -> "搜索与发现"
+                                    NavTab.FAVORITES -> "我的收藏"
+                                    NavTab.EXPLORE -> "全站探索"
+                                    NavTab.CATEGORIES -> "分类索引"
+                                    NavTab.SETTINGS -> "设置与关于"
+                                }
+                            )
+                        },
+                        bottomBar = {
+                            AndroidBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    currentTab = it
+                                }
+                            )
+                        }
+                    ) { paddingValues ->
+                        Box(modifier = Modifier.padding(paddingValues)) {
+                            when (currentTab) {
+                                NavTab.HOME -> AndroidHomeScreen(
+                                    animatedVisibilityScope = this@AnimatedContent,
+                                    onSelect = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        selectedComic = it
+                                    }
+                                )
+                                NavTab.SEARCH -> AndroidSearchScreen(
+                                    animatedVisibilityScope = this@AnimatedContent,
+                                    onSelect = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        selectedComic = it
+                                    }
+                                )
+                                NavTab.FAVORITES -> AndroidFavoritesScreen(
+                                    animatedVisibilityScope = this@AnimatedContent,
+                                    onSelect = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        selectedComic = it
+                                    }
+                                )
+                                NavTab.EXPLORE -> AndroidExploreScreen(
+                                    animatedVisibilityScope = this@AnimatedContent,
+                                    onSelect = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        selectedComic = it
+                                    }
+                                )
+                                NavTab.CATEGORIES -> AndroidCategoriesScreen()
+                                NavTab.SETTINGS -> AndroidSettingsScreen()
                             }
-                        )
-                    },
-                    bottomBar = {
-                        AndroidBottomBar(
-                            currentTab = currentTab,
-                            onTabSelected = {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                currentTab = it
-                            }
-                        )
-                    }
-                ) { paddingValues ->
-                    Box(modifier = Modifier.padding(paddingValues)) {
-                        when (currentTab) {
-                            NavTab.HOME -> AndroidHomeScreen(
-                                animatedVisibilityScope = this@AnimatedContent,
-                                onSelect = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    selectedComic = it
-                                }
-                            )
-                            NavTab.SEARCH -> AndroidSearchScreen(
-                                animatedVisibilityScope = this@AnimatedContent,
-                                onSelect = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    selectedComic = it
-                                }
-                            )
-                            NavTab.FAVORITES -> AndroidFavoritesScreen(
-                                animatedVisibilityScope = this@AnimatedContent,
-                                onSelect = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    selectedComic = it
-                                }
-                            )
-                            NavTab.EXPLORE -> AndroidExploreScreen(
-                                animatedVisibilityScope = this@AnimatedContent,
-                                onSelect = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    selectedComic = it
-                                }
-                            )
-                            NavTab.CATEGORIES -> AndroidCategoriesScreen()
-                            NavTab.SETTINGS -> AndroidSettingsScreen()
                         }
                     }
+                } else {
+                    AndroidComicDetailScreen(
+                        comic = targetComic,
+                        animatedVisibilityScope = this@AnimatedContent,
+                        onBack = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            selectedComic = null
+                        },
+                        onStartReading = { chapterIndex ->
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            activeReadingSession = SampleReaderData.createSampleSession(
+                                comicId = targetComic.id,
+                                comicTitle = targetComic.title,
+                                coverUrl = targetComic.coverUrl,
+                                chapterNames = targetComic.chapters,
+                                initialIndex = chapterIndex
+                            )
+                        }
+                    )
                 }
-            } else {
-                AndroidComicDetailScreen(
-                    comic = targetComic,
-                    animatedVisibilityScope = this@AnimatedContent,
-                    onBack = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        selectedComic = null
-                    }
-                )
             }
         }
     }
@@ -617,7 +639,8 @@ fun AndroidSettingsScreen() {
 fun SharedTransitionScope.AndroidComicDetailScreen(
     comic: ComicItem,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onStartReading: (chapterIndex: Int) -> Unit
 ) {
     var isReversed by remember { mutableStateOf(false) }
 
@@ -675,7 +698,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
             item {
                 Button(
-                    onClick = { },
+                    onClick = { onStartReading(0) },
                     modifier = Modifier.fillMaxWidth(),
                     content = { Text(text = "开始阅读 (第 1 话)", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
                 )
@@ -703,8 +726,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val list = if (isReversed) comic.chapters.reversed() else comic.chapters
-                            list.take(24).forEach { chapter ->
-                                Surface(shape = RoundedCornerShape(8.dp), color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)) {
+                            list.take(24).forEachIndexed { idx, chapter ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.clickable {
+                                        val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
+                                        onStartReading(actualIdx)
+                                    }
+                                ) {
                                     Text(text = chapter, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                                 }
                             }
