@@ -1,66 +1,14 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+﻿*.iml
+.gradle
+/local.properties
+/.idea
 .DS_Store
-.atom/
-.buildlog/
-.history
-.svn/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-.vscode/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-add_translation.py
-
-# Local agent workspace (memory, artifacts, scratch downloads) — never commit
-.workbuddy/
-
-# Local research scratch (third-party sources, screenshots) — never commit
-.research/
-
-# Flutter tool local state
-.flutter_settings
-.flutter_tool_state
-
-*/*/generated_*
-*/*/Generated*
-# 本地工作目录（不进库）
-# 注意：写 `.backup-*` 而不是 `.backup-*/`——备份可能是**文件**（改前 `cp x.dart .backup-x.dart`）
-# 也可能是目录，只写 `目录/` 形式会让文件形式漏网、被 `git add .` 误收。
-.backup-*
-.workbuddy/
-.research/
-.zcode/
+/build
+captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin
+**/build/
+*.apk
+*.aab
