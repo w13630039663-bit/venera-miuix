@@ -1,4 +1,4 @@
-﻿package com.venera.compose.data.prefs
+package com.venera.compose.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -30,6 +30,12 @@ class VeneraPreferences private constructor(context: Context) {
 
     private val _autoCropBorders = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CROP_BORDERS, false))
     val autoCropBorders: StateFlow<Boolean> = _autoCropBorders.asStateFlow()
+
+    private val _nightFilter = MutableStateFlow(prefs.getBoolean(KEY_NIGHT_FILTER, false))
+    val nightFilter: StateFlow<Boolean> = _nightFilter.asStateFlow()
+
+    private val _clickToTurn = MutableStateFlow(prefs.getBoolean(KEY_CLICK_TO_TURN, true))
+    val clickToTurn: StateFlow<Boolean> = _clickToTurn.asStateFlow()
 
     // 外观与主题
     private val _themeMode = MutableStateFlow(ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name))
@@ -74,6 +80,16 @@ class VeneraPreferences private constructor(context: Context) {
         _autoCropBorders.value = enable
     }
 
+    fun setNightFilter(enable: Boolean) {
+        prefs.edit { putBoolean(KEY_NIGHT_FILTER, enable) }
+        _nightFilter.value = enable
+    }
+
+    fun setClickToTurn(enable: Boolean) {
+        prefs.edit { putBoolean(KEY_CLICK_TO_TURN, enable) }
+        _clickToTurn.value = enable
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit { putString(KEY_THEME_MODE, mode.name) }
         _themeMode.value = mode
@@ -103,6 +119,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_KEEP_SCREEN_ON = "pref_keep_screen_on"
         private const val KEY_VOLUME_KEY_TURN = "pref_volume_key_turn"
         private const val KEY_AUTO_CROP_BORDERS = "pref_auto_crop_borders"
+        private const val KEY_NIGHT_FILTER = "pref_night_filter"
+        private const val KEY_CLICK_TO_TURN = "pref_click_to_turn"
         private const val KEY_THEME_MODE = "pref_theme_mode"
         private const val KEY_ENABLE_DOH = "pref_enable_doh"
         private const val KEY_PROXY_TYPE = "pref_proxy_type"

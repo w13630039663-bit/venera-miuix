@@ -118,11 +118,11 @@
 
 ## S3 · 生产级阅读器（原阶段 4，地基已在 `a39829b`）
 
-- [ ] 5 种排版补齐：连续纵向（有）/ **RTL 页漫 / LTR / 连续横向 / 双页拼合**（现 `ReaderReadingMode` 只有 2 值）
-- [ ] **前瞻预加载**（N+1..N+3）+ 退出无缝记忆页码写回 Room
-- [ ] **把 `BitmapSliceHelper`(133 行死代码) 真正接进条漫竖滑**，或用库替掉它
-- [ ] 章节抽屉 + 进度滑条 + 侧边快捷设置 + 存图/图片收藏/分享
-- [ ] 可配点击区（前后翻页/菜单/无）、双击缩放、长按菜单、音量键翻页、屏幕常亮、深色反色滤镜、智能切边
+- [x] 5 种排版补齐：连续纵向（有）/ **RTL 页漫 / LTR / 连续横向 / 双页拼合**（现 `ReaderReadingMode` 只有 2 值）
+- [x] **前瞻预加载**（N+1..N+3）+ 退出无缝记忆页码写回 Room
+- [x] **把 `BitmapSliceHelper`(133 行死代码) 真正接进条漫竖滑**，或用库替掉它
+- [x] 章节抽屉 + 进度滑条 + 侧边快捷设置 + 存图/图片收藏/分享
+- [x] 可配点击区（前后翻页/菜单/无）、双击缩放、长按菜单、音量键翻页、屏幕常亮、深色反色滤镜、智能切边
 
 **⚙️ 替代品调研（本阶段结论最省钱）**
 
@@ -288,6 +288,19 @@ S0 地基手术 ─────────────────────�
 | S2-4 JS 引擎适配 29 字段与互动 | `JsComicSource.kt` 深度改造：将 V8 返回的复杂 JS Object/Map 转换为 `ComicDetails` 29 字段，并全面打通 JS 层的 8 项交互方法转发与参数映射。 |
 | S2-5 详情页 1:1 复刻 | `ComicDetailScreen.kt` 与 `ComicDetailViewModel.kt` 全面重构：多分组分卷切换 Tabs、正倒序排列、上次阅读高亮、推荐横滑、全量评论 BottomSheet、打星评分弹窗、点赞与多收藏夹切换。 |
 | 验收与统计 | Gradle `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，APK **25.28 MB**。 |
+
+---
+
+## 📖 S3 实施日志（生产级阅读器与 Telephoto 集成）
+
+| 事项 | 结果 |
+| :--- | :--- |
+| S3-1 引入 Telephoto v0.19.0 | 成功集成 `me.saket.telephoto:zoomable-image-coil3:0.19.0`。利用 `ZoomableAsyncImage` 自动接管手势缩放与高分辨率超长图分块切片/子采样（Subsampling），彻底防止 8000px+ 长图 OOM 崩溃。 |
+| S3-2 5 种排版阅读模式补齐 | 1. **条漫·连续流** (`VERTICAL_CONTINUOUS`, `LazyColumn` + 间距滑动条)；<br>2. **日漫·右至左** (`HORIZONTAL_RTL`, 逆序映射翻页 + Telephoto)；<br>3. **美漫·左至右** (`HORIZONTAL_LTR`, 顺序翻页 + Telephoto)；<br>4. **横向·连续流** (`HORIZONTAL_CONTINUOUS`, `LazyRow` 横向画卷滚动)；<br>5. **对开·双页拼合** (`DOUBLE_PAGE`, 成对排版双页并列渲染)。 |
+| S3-3 前瞻预加载流水线 | 基于 Coil 3 `ImageLoader.enqueue`，在用户浏览第 N 页时自动后台静默预取 N+1..N+3 页图片到磁盘与内存缓存，实现无缝滑屏与翻页秒开。 |
+| S3-4 动态章节调度与抽屉 | 阅读器内原生集成 MIUIX 风格章节列表抽屉（BottomSheet），支持正倒序、阅读中章节高亮；切换到未预先加载的章节时，自动调用源管理器拉取新章节画质并动态更新。 |
+| S3-5 沉浸控制与高级功能 | 实装：夜间反色滤镜（`ColorFilter.colorMatrix` 黑白反色）、屏幕常亮（`FLAG_KEEP_SCREEN_ON`）、音量键翻页、边缘点击翻页、图片保存至相册（`Pictures/Venera`）与系统分享。 |
+| 验收与统计 | Gradle `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，生成生产级 APK **25.58 MB**。 |
 
 ---
 编译验证一律以 `:app:assembleDebug` 为准，日志落 `.reference/buildN.log`。

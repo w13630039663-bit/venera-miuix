@@ -58,6 +58,7 @@ dependencies {
     // 图片：Coil 3 + OkHttp 引擎（按域注入防盗链头）
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.telephoto.zoomable.image.coil)
 
     // Miuix Compose
     implementation(libs.miuix.ui)

@@ -17,6 +17,7 @@ jsoup = "1.18.1"
 coroutines = "1.8.1"
 serializationJson = "1.11.0"
 miuix = "0.9.4-rc01"
+telephoto = "0.19.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -43,6 +44,7 @@ androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime-kt
 # 图片（Coil 3，总纲要求；含按域自定义 OkHttpClient）
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+telephoto-zoomable-image-coil = { group = "me.saket.telephoto", name = "zoomable-image-coil3", version.ref = "telephoto" }
 
 # 网络 / 解析 / 脚本
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

@@ -200,6 +200,10 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             if (pages.isNotEmpty()) {
+                val state = _uiState.value
+                val currentGroup = state.details?.chapterGroups?.getOrNull(state.selectedGroupIndex)
+                val allChapters = currentGroup?.chapters?.map { it.id to it.title }
+                    ?: state.details?.chapters?.map { it.id to it.title }
                 _readerEvents.tryEmit(
                     ReaderEvent.Live(
                         SampleReaderData.createLiveSession(
@@ -209,6 +213,9 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                             chapterId = chapterId,
                             chapterTitle = chapterTitle,
                             pages = pages,
+                            sourceName = comic.sourceName,
+                            sourceKey = key,
+                            allChapters = allChapters
                         ),
                     ),
                 )

@@ -29,11 +29,34 @@ sealed class ComicPageSource {
 }
 
 /**
- * 阅读模式
+ * 阅读模式（对齐 Flutter 原版 5 种排版）
  */
-enum class ReaderReadingMode(val label: String, val icon: String) {
-    VERTICAL_CONTINUOUS("条漫·连续滚动", "📜"),
-    HORIZONTAL_PAGE("日漫·单页翻页", "📖")
+enum class ReaderReadingMode(
+    val key: String,
+    val label: String,
+    val icon: String,
+    val description: String
+) {
+    VERTICAL_CONTINUOUS("VERTICAL_CONTINUOUS", "条漫·连续", "📜", "竖向无缝流式滚动，适合韩漫/条漫"),
+    HORIZONTAL_RTL("HORIZONTAL_RTL", "日漫·右至左", "📖", "从右往左翻页，传统日漫习惯"),
+    HORIZONTAL_LTR("HORIZONTAL_LTR", "美漫·左至右", "📑", "从左往右翻页，国漫/美漫习惯"),
+    HORIZONTAL_CONTINUOUS("HORIZONTAL_CONTINUOUS", "横向·连续", "↔️", "横向画卷无缝滚动"),
+    DOUBLE_PAGE("DOUBLE_PAGE", "对开·双页", "📰", "双页拼合对开展示，还原实体书阅读");
+
+    companion object {
+        val HORIZONTAL_PAGE = HORIZONTAL_RTL
+
+        fun fromKey(key: String?): ReaderReadingMode {
+            return when (key?.uppercase()) {
+                "VERTICAL_CONTINUOUS", "VERTICAL" -> VERTICAL_CONTINUOUS
+                "HORIZONTAL_RTL", "RTL", "HORIZONTAL", "HORIZONTAL_PAGE" -> HORIZONTAL_RTL
+                "HORIZONTAL_LTR", "LTR" -> HORIZONTAL_LTR
+                "HORIZONTAL_CONTINUOUS", "H_CONTINUOUS" -> HORIZONTAL_CONTINUOUS
+                "DOUBLE_PAGE", "DOUBLE" -> DOUBLE_PAGE
+                else -> VERTICAL_CONTINUOUS
+            }
+        }
+    }
 }
 
 /**
@@ -42,7 +65,8 @@ enum class ReaderReadingMode(val label: String, val icon: String) {
 data class ReaderChapter(
     val id: String,
     val title: String,
-    val pages: List<ComicPageSource>
+    val pages: List<ComicPageSource> = emptyList(),
+    val isLoaded: Boolean = pages.isNotEmpty()
 )
 
 /**
@@ -52,6 +76,8 @@ data class ReaderSession(
     val comicId: String,
     val comicTitle: String,
     val coverUrl: String,
+    val sourceName: String = "",
+    val sourceKey: String = "",
     val chapters: List<ReaderChapter>,
     val initialChapterIndex: Int = 0,
     val initialPageIndex: Int = 0
@@ -115,26 +141,42 @@ object SampleReaderData {
         chapterId: String,
         chapterTitle: String,
         pages: List<String>,
-        initialPageIndex: Int = 0
+        initialPageIndex: Int = 0,
+        sourceName: String = "",
+        sourceKey: String = "",
+        allChapters: List<Pair<String, String>>? = null
     ): ReaderSession {
-        val chapter = ReaderChapter(
-            id = chapterId,
-            title = chapterTitle,
-            pages = pages.mapIndexed { idx, url ->
-                ComicPageSource.Network(
-                    url = url,
-                    pageIndex = idx,
-                    width = 1080,
-                    height = 1600
-                )
+        val mappedPages = pages.mapIndexed { idx, url ->
+            ComicPageSource.Network(
+                url = url,
+                pageIndex = idx,
+                width = 1080,
+                height = 1600
+            )
+        }
+
+        val chaptersList = if (!allChapters.isNullOrEmpty()) {
+            allChapters.map { (cId, cTitle) ->
+                if (cId == chapterId) {
+                    ReaderChapter(id = cId, title = cTitle, pages = mappedPages, isLoaded = true)
+                } else {
+                    ReaderChapter(id = cId, title = cTitle, pages = emptyList(), isLoaded = false)
+                }
             }
-        )
+        } else {
+            listOf(ReaderChapter(id = chapterId, title = chapterTitle, pages = mappedPages, isLoaded = true))
+        }
+
+        val curIdx = chaptersList.indexOfFirst { it.id == chapterId }.coerceAtLeast(0)
+
         return ReaderSession(
             comicId = comicId,
             comicTitle = comicTitle,
             coverUrl = coverUrl,
-            chapters = listOf(chapter),
-            initialChapterIndex = 0,
+            sourceName = sourceName,
+            sourceKey = sourceKey,
+            chapters = chaptersList,
+            initialChapterIndex = curIdx,
             initialPageIndex = initialPageIndex
         )
     }
