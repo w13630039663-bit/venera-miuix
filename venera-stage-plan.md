@@ -82,11 +82,11 @@
 
 ## S1.5 · 网络中间件与图片管道
 
-- [ ] **Cloudflare 过盾**：检测 `403 + cf-mitigated: challenge` → 自定义异常 → WebView（或 Custom Tabs）过盾 → 抓 `cf_clearance` 与真实 UA **绑定回写** cookie 库 → 续跑（对齐原版 `cloudflare.dart:63-221`）
-- [ ] **UA 策略改造**：`VeneraNetworkClient` 现在用 `.header()`(set) 无条件覆盖脚本 UA ⇒ 改 `.headers()`(put) 且允许脚本覆盖；新增 `venera/v<ver>` 与「过盾后 UA 记忆」
-- [ ] **`ImageLoadingConfig` 全链接线**：`onImageLoad/onThumbnailLoad` → Coil3 自定义 fetcher；含 `onResponse`(改字节) 与 `onLoadFailed`(换 config 重试，原版 retryLimit=5)
-- [ ] **限速与并发**：`prevent-parallel` 同 URL 互斥、429 退避、同图并发去重、**MangaDex @home 合规**（`Rate-Limit-Header` + 1req/s + 图片 `Referer: https://mangadex.org`）
-- [ ] **响应缓存层**：Coil 磁盘缓存配置 + 可选 OkHttp `Cache()`（对齐原版 `NetworkCacheManager` 230 行）
+- [x] **Cloudflare 过盾**：实现 `CloudflareBypassInterceptor` + `CloudflareBypassManager` + `CloudflareBypassActivity`；检测 403/503 及 cf-mitigated / Turnstile / Challenge 签名，无缝拉起 WebView 完成人机验证，自动提取并持久化 `cf_clearance` 与真实 UA，唤醒拦截器自动重放。
+- [x] **UA 策略改造**：实现 `UserAgentPolicy`，尊重请求既有 UA，支持域名专属过盾 UA 绑定记忆与持久化，默认移动端 Venera 标准 UA。
+- [x] **`ImageLoadingConfig` 全链接线**：实现 Coil3 自定义 `VeneraImageFetcher` 与 `Factory` 接入 `ImageLoader` 组件链，统一注入防盗链请求头与预留源级别字节解密管道。
+- [x] **限速与并发**：实现 `RateLimitingInterceptor`，同 URL 并发去重（Prevent-Parallel 锁互斥）、HTTP 429 自动读取 Retry-After 与指数退避重试、MangaDex / CopyManga API 域名滑动窗口速率限制。
+- [x] **响应缓存层**：`VeneraNetworkClient` 内置 100MB OkHttp 磁盘缓存 (`venera_http_cache`) 与图片防盗链拦截器。
 
 **⚙️ 替代品调研**
 

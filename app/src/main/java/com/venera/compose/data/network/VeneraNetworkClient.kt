@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  * - 代理默认走 HTTP 代理（SOCKS 场景极少，未来可补）。
  * - 修改偏好后调用 rebuildClient() 使新请求（包括 Coil 图片）走新配置。
  */
-class VeneraNetworkClient private constructor(context: Context) {
+class VeneraNetworkClient private constructor(private val context: Context) {
 
     val cookieJar = PersistentCookieJar(context.applicationContext)
     private val prefs = VeneraPreferences.getInstance(context)
@@ -32,12 +32,20 @@ class VeneraNetworkClient private constructor(context: Context) {
 
     val okHttpClient: OkHttpClient get() = _okHttpClient
 
+    init {
+        UserAgentPolicy.init(context)
+    }
+
     private fun buildClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .cookieJar(cookieJar)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(25, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
+
+        // 100MB 响应缓存层
+        val cacheDir = java.io.File(context.cacheDir, "venera_http_cache")
+        builder.cache(okhttp3.Cache(cacheDir, 100L * 1024 * 1024))
 
         // 代理（S0-6 实装）
         val proxyType = prefs.proxyType.value
@@ -47,27 +55,29 @@ class VeneraNetworkClient private constructor(context: Context) {
             builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port)))
         }
 
-        // DoH（S0-6 预留占位 — okhttp-dnsoverhttps 需要 Gradle 引入，待 S1 加入）
-        // if (prefs.enableDoH.value) {
-        //     builder.dns(DnsOverHttps(...))
-        // }
-
-        // 防盗链头 + UA 默认填充
+        // 1. UA 策略与 Accept-Language 拦截器（尊重既有 UA，优先使用 host 绑定的过盾 UA）
         builder.addInterceptor { chain ->
             val original = chain.request()
             val requestBuilder = original.newBuilder()
             if (original.header("User-Agent") == null) {
-                requestBuilder.header(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 Venera/1.0"
-                )
+                val hostUa = UserAgentPolicy.getUserAgentForHost(original.url.host)
+                requestBuilder.header("User-Agent", hostUa)
             }
             if (original.header("Accept-Language") == null) {
                 requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
             }
             chain.proceed(requestBuilder.build())
         }
+
+        // 2. 限速、429 指数退避与同 URL 并发去重
+        builder.addInterceptor(RateLimitingInterceptor())
+
+        // 3. Cloudflare 挑战拦截与透明过盾
+        builder.addInterceptor(CloudflareBypassInterceptor(context))
+
+        // 4. 图片防盗链 Header 注入
         builder.addInterceptor(ImageHeaderInterceptor())
+
         return builder.build()
     }
 

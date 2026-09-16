@@ -26,11 +26,12 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        val networkClient = VeneraNetworkClient.getInstance(this)
         return ImageLoader.Builder(context)
             .components {
-                // 传客户端引用本身；运行时重建客户端后 Coil 需重启应用才生效（S0-6 暂可接受）
-                val cf: okhttp3.Call.Factory = VeneraNetworkClient.getInstance(this@VeneraApp).okHttpClient
-                add(OkHttpNetworkFetcherFactory(callFactory = cf))
+                // S1.5: 优先接入 Venera 自定义 Fetcher 管道（动态 Header + 字节流处理）
+                add(com.venera.compose.data.network.VeneraImageFetcher.Factory(this@VeneraApp, networkClient.okHttpClient))
+                add(OkHttpNetworkFetcherFactory(callFactory = networkClient.okHttpClient))
             }
             .build()
     }
