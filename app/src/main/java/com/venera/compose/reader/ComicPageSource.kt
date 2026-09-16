@@ -104,7 +104,38 @@ object SampleReaderData {
             coverUrl = coverUrl,
             chapters = chapters,
             initialChapterIndex = initialIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)),
-            initialPageIndex = initialPageIndex.coerceAtLeast(0)
+            initialPageIndex = initialPageIndex
+        )
+    }
+
+    fun createLiveSession(
+        comicId: String,
+        comicTitle: String,
+        coverUrl: String,
+        chapterId: String,
+        chapterTitle: String,
+        pages: List<String>,
+        initialPageIndex: Int = 0
+    ): ReaderSession {
+        val chapter = ReaderChapter(
+            id = chapterId,
+            title = chapterTitle,
+            pages = pages.mapIndexed { idx, url ->
+                ComicPageSource.Network(
+                    url = url,
+                    pageIndex = idx,
+                    width = 1080,
+                    height = 1600
+                )
+            }
+        )
+        return ReaderSession(
+            comicId = comicId,
+            comicTitle = comicTitle,
+            coverUrl = coverUrl,
+            chapters = listOf(chapter),
+            initialChapterIndex = 0,
+            initialPageIndex = initialPageIndex
         )
     }
 }

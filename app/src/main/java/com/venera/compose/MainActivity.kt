@@ -56,6 +56,10 @@ import com.venera.compose.components.VeneraNavTab
 import com.venera.compose.reader.*
 import com.venera.compose.data.db.*
 import com.venera.compose.data.prefs.*
+import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.model.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 data class ComicItem(
     val id: String,
@@ -276,6 +280,10 @@ fun VeneraComposeApp() {
                                     initialIndex = chapterIndex,
                                     initialPageIndex = pageIndex
                                 )
+                            },
+                            onStartLiveReading = { session ->
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                activeReadingSession = session
                             }
                         )
                     }
@@ -321,6 +329,8 @@ fun SharedTransitionScope.AndroidHomeScreen(
 ) {
     val context = LocalContext.current
     val historyList by HistoryDao.getInstance(context).historyFlow.collectAsState()
+    val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    val latencyMap by sourceManager.latencyMapFlow.collectAsState()
     var selectedStatsType by remember { mutableIntStateOf(0) }
 
     LazyColumn(
@@ -509,16 +519,25 @@ fun SharedTransitionScope.AndroidHomeScreen(
         // 分区 4：漫画源网络状态 (_MiuixComicSources)
         item {
             Column {
-                MiuixSectionHeader(title = "漫画源", onTap = { })
+                MiuixSectionHeader(
+                    title = "漫画源网络状态 (点击重新测速)",
+                    onTap = { sourceManager.refreshPings() }
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         listOf(
-                            Triple("拷贝漫画", true, "48ms"),
-                            Triple("哔咔漫画", true, "112ms"),
-                            Triple("MangaDex", true, "186ms"),
-                            Triple("禁漫天堂", false, "超时 (需代理)")
-                        ).forEach { (name, ok, ping) ->
+                            Triple("MangaDex (全球开源API)", "manga_dex", "https://mangadex.org"),
+                            Triple("拷贝漫画 (国内主流)", "copy_manga", "https://api.copy2000.online"),
+                            Triple("包子漫画 (国内免翻)", "baozi", "https://baozimhcn.com")
+                        ).forEach { (name, key, _) ->
+                            val latency = latencyMap[key]
+                            val ok = latency != null && latency > 0
+                            val pingText = when {
+                                latency == null -> "测速中..."
+                                latency > 0 -> "${latency}ms"
+                                else -> "连接超时"
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -530,11 +549,17 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                         modifier = Modifier
                                             .size(8.dp)
                                             .clip(CircleShape)
-                                            .background(if (ok) Color(0xFF4CAF50) else Color(0xFFE53935))
+                                            .background(
+                                                when {
+                                                    !ok -> Color(0xFFE53935)
+                                                    latency!! < 400 -> Color(0xFF4CAF50)
+                                                    else -> Color(0xFFFFA000)
+                                                }
+                                            )
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = ping,
+                                        text = pingText,
                                         fontSize = 12.sp,
                                         color = if (ok) Color(0xFF4CAF50) else Color(0xFFE53935)
                                     )
@@ -685,12 +710,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     comic: ComicItem,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onBack: () -> Unit,
-    onStartReading: (chapterIndex: Int, pageIndex: Int) -> Unit
+    onStartReading: (chapterIndex: Int, pageIndex: Int) -> Unit,
+    onStartLiveReading: (ReaderSession) -> Unit
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val favoriteDao = remember { FavoriteDao.getInstance(context) }
     val historyDao = remember { HistoryDao.getInstance(context) }
+    val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     val favorites by favoriteDao.favoritesFlow.collectAsState()
     val isFav = favorites.any { it.comicId == comic.id }
@@ -699,6 +727,66 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val historyRecord = historyList.find { it.comicId == comic.id }
 
     var isReversed by remember { mutableStateOf(false) }
+    var liveDetails by remember { mutableStateOf<ComicDetails?>(null) }
+    var isLoadingChapters by remember { mutableStateOf(false) }
+    var loadingMessage by remember { mutableStateOf("") }
+
+    val sourceKey = remember(comic.sourceName) {
+        when (comic.sourceName) {
+            "MangaDex" -> "manga_dex"
+            "拷贝漫画" -> "copy_manga"
+            "包子漫画" -> "baozi"
+            else -> "manga_dex"
+        }
+    }
+
+    LaunchedEffect(comic.id) {
+        if (comic.chapters.isEmpty() || comic.sourceName in listOf("MangaDex", "拷贝漫画", "包子漫画")) {
+            isLoadingChapters = true
+            loadingMessage = "正在拉取章节目录..."
+            val res = sourceManager.getComicDetails(sourceKey, comic.id)
+            if (res.isSuccess) {
+                liveDetails = res.getOrNull()
+            }
+            isLoadingChapters = false
+            loadingMessage = ""
+        }
+    }
+
+    fun launchChapter(chapterId: String, chapterTitle: String, fallbackIdx: Int) {
+        loadingMessage = "正在解析章节画质..."
+        coroutineScope.launch {
+            val pagesRes = sourceManager.getChapterPages(sourceKey, comic.id, chapterId)
+            val pages = pagesRes.getOrNull()?.pages ?: emptyList()
+            loadingMessage = ""
+            if (pages.isNotEmpty()) {
+                onStartLiveReading(
+                    SampleReaderData.createLiveSession(
+                        comicId = comic.id,
+                        comicTitle = comic.title,
+                        coverUrl = comic.coverUrl,
+                        chapterId = chapterId,
+                        chapterTitle = chapterTitle,
+                        pages = pages
+                    )
+                )
+            } else {
+                onStartReading(fallbackIdx, 0)
+            }
+        }
+    }
+
+    fun onTriggerRead() {
+        val liveChs = liveDetails?.chapters ?: emptyList()
+        if (liveChs.isNotEmpty()) {
+            val target = liveChs.first()
+            launchChapter(target.id, target.title, 0)
+        } else if (historyRecord != null) {
+            onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
+        } else {
+            onStartReading(0, 0)
+        }
+    }
 
     PredictiveBackHandler { progress ->
         try {
@@ -813,9 +901,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
-                            }
+                            .clickable { onTriggerRead() }
                     ) {
                         Row(
                             modifier = Modifier
@@ -855,13 +941,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             icon = Icons.Outlined.PlayCircleOutline,
                             label = if (historyRecord != null) "继续" else "开始",
                             iconColor = Color(0xFFFF9800),
-                            onClick = {
-                                if (historyRecord != null) {
-                                    onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
-                                } else {
-                                    onStartReading(0, 0)
-                                }
-                            }
+                            onClick = { onTriggerRead() }
                         )
                     }
                     item {
@@ -929,17 +1009,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                         ),
                         content = {
-                            Text(text = "下载", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "下载全本", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     )
                     Button(
-                        onClick = {
-                            if (historyRecord != null) {
-                                onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
-                            } else {
-                                onStartReading(0, 0)
-                            }
-                        },
+                        onClick = { onTriggerRead() },
                         modifier = Modifier.weight(0.6f),
                         content = {
                             Text(
@@ -962,7 +1036,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            comic.tags.forEach { tag ->
+                            val tagsList = liveDetails?.comic?.tags?.ifEmpty { comic.tags } ?: comic.tags
+                            tagsList.forEach { tag ->
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
@@ -986,8 +1061,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(text = "作品简介", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         Spacer(modifier = Modifier.height(8.dp))
+                        val desc = liveDetails?.comic?.description?.ifEmpty { comic.description } ?: comic.description
                         Text(
-                            text = comic.description,
+                            text = desc.ifEmpty { "暂无详细简介" },
                             fontSize = 13.sp,
                             lineHeight = 22.sp,
                             color = MiuixTheme.colorScheme.onSurface
@@ -998,6 +1074,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
             // 7. 章节目录卡片
             item {
+                val liveChs = liveDetails?.chapters ?: emptyList()
+                val totalChapterCount = if (liveChs.isNotEmpty()) liveChs.size else comic.chapters.size
+
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(
@@ -1006,7 +1085,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "章节目录 (共 ${comic.chapters.size} 话)",
+                                text = "章节目录 (共 $totalChapterCount 话)",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
@@ -1023,44 +1102,98 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 )
                             }
                         }
+                        if (loadingMessage.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "⏳ $loadingMessage",
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val list = if (isReversed) comic.chapters.reversed() else comic.chapters
-                            list.take(36).forEachIndexed { idx, chapter ->
-                                val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
-                                val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isCurrentHistoryChapter) {
-                                        MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                    } else {
-                                        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                                    },
-                                    modifier = Modifier.clickable {
-                                        val pIndex = if (isCurrentHistoryChapter) historyRecord.lastPageIndex else 0
-                                        onStartReading(actualIdx, pIndex)
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                            if (liveChs.isNotEmpty()) {
+                                val list = if (isReversed) liveChs.reversed() else liveChs
+                                list.take(60).forEachIndexed { idx, ch ->
+                                    val actualIdx = if (isReversed) liveChs.lastIndex - idx else idx
+                                    val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCurrentHistoryChapter) {
+                                            MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                        } else {
+                                            MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                        },
+                                        modifier = Modifier.clickable {
+                                            launchChapter(ch.id, ch.title, actualIdx)
+                                        }
                                     ) {
-                                        Text(
-                                            text = chapter,
-                                            fontSize = 12.sp,
-                                            color = if (isCurrentHistoryChapter) {
-                                                MiuixTheme.colorScheme.primary
-                                            } else {
-                                                MiuixTheme.colorScheme.onSurface
-                                            },
-                                            fontWeight = if (isCurrentHistoryChapter) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                        if (isCurrentHistoryChapter) {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(text = "•", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = ch.title,
+                                                fontSize = 12.sp,
+                                                color = if (isCurrentHistoryChapter) {
+                                                    MiuixTheme.colorScheme.primary
+                                                } else {
+                                                    MiuixTheme.colorScheme.onSurface
+                                                },
+                                                fontWeight = if (isCurrentHistoryChapter) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            if (isCurrentHistoryChapter) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(text = "•", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                val list = if (isReversed) comic.chapters.reversed() else comic.chapters
+                                list.take(36).forEachIndexed { idx, chapter ->
+                                    val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
+                                    val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCurrentHistoryChapter) {
+                                            MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                        } else {
+                                            MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                        },
+                                        modifier = Modifier.clickable {
+                                            val pIndex = if (isCurrentHistoryChapter) historyRecord.lastPageIndex else 0
+                                            onStartReading(actualIdx, pIndex)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = chapter,
+                                                fontSize = 12.sp,
+                                                color = if (isCurrentHistoryChapter) {
+                                                    MiuixTheme.colorScheme.primary
+                                                } else {
+                                                    MiuixTheme.colorScheme.onSurface
+                                                },
+                                                fontWeight = if (isCurrentHistoryChapter) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            if (isCurrentHistoryChapter) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(text = "•", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                                            }
                                         }
                                     }
                                 }
@@ -1159,10 +1292,41 @@ fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit
 ) {
+    val context = LocalContext.current
+    val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    val coroutineScope = rememberCoroutineScope()
+
     var searchQuery by remember { mutableStateOf("") }
-    var selectedSource by remember { mutableStateOf("拷贝漫画") }
-    val searchSources = listOf("拷贝漫画", "哔咔漫画", "MangaDex", "全网聚合")
-    val searchHistory = remember { mutableStateListOf("芙莉莲", "胆大党", "藤本树", "迷宫饭", "摇滚", "百合") }
+    var selectedSource by remember { mutableStateOf("MangaDex") }
+    val searchSources = listOf("MangaDex", "拷贝漫画", "包子漫画", "全网聚合")
+    val searchHistory = remember { mutableStateListOf("One", "Frieren", "Hero", "芙莉莲", "胆大党") }
+
+    var searchResults by remember { mutableStateOf<List<Comic>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+
+    fun doSearch(query: String) {
+        if (query.isBlank()) {
+            searchResults = emptyList()
+            return
+        }
+        if (!searchHistory.contains(query)) {
+            searchHistory.add(0, query)
+        }
+        isSearching = true
+        searchJob?.cancel()
+        searchJob = coroutineScope.launch {
+            val key = when (selectedSource) {
+                "MangaDex" -> "manga_dex"
+                "拷贝漫画" -> "copy_manga"
+                "包子漫画" -> "baozi"
+                else -> "all"
+            }
+            val res = sourceManager.search(key, query)
+            searchResults = res.getOrDefault(emptyList())
+            isSearching = false
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1173,12 +1337,20 @@ fun SharedTransitionScope.AndroidSearchScreen(
         item {
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("搜索作品、作者、标签...", fontSize = 14.sp) },
+                onValueChange = {
+                    searchQuery = it
+                    if (it.length >= 2) {
+                        doSearch(it)
+                    }
+                },
+                placeholder = { Text("搜索作品、作者、英文名...", fontSize = 14.sp) },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
+                        IconButton(onClick = {
+                            searchQuery = ""
+                            searchResults = emptyList()
+                        }) {
                             Icon(Icons.Outlined.Close, contentDescription = "Clear")
                         }
                     }
@@ -1201,7 +1373,12 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = if (isSelected) MiuixTheme.colorScheme.primaryContainer else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.clickable { selectedSource = source }
+                        modifier = Modifier.clickable {
+                            selectedSource = source
+                            if (searchQuery.isNotEmpty()) {
+                                doSearch(searchQuery)
+                            }
+                        }
                     ) {
                         Text(
                             text = source,
@@ -1234,7 +1411,10 @@ fun SharedTransitionScope.AndroidSearchScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                            modifier = Modifier.clickable { searchQuery = tag }
+                            modifier = Modifier.clickable {
+                                searchQuery = tag
+                                doSearch(tag)
+                            }
                         ) {
                             Text(text = tag, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                         }
@@ -1244,25 +1424,94 @@ fun SharedTransitionScope.AndroidSearchScreen(
         }
 
         // 4. 搜索结果作品列表
-        item {
-            Text(text = "全网热搜作品", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
-        items(sampleComics) { comic ->
-            Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comic) }) {
-                Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = comic.coverUrl,
-                        contentDescription = null,
-                        modifier = Modifier.size(width = 75.dp, height = 100.dp).clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = comic.title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "${comic.author} · ${comic.latestChapter}", fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(text = "★ ${comic.rating}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB800))
+        if (isSearching) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(text = "🔍 正在从 $selectedSource 检索数据...", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary)
+                    }
+                }
+            }
+        } else if (searchResults.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "检索结果 (共 ${searchResults.size} 条)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "来自 $selectedSource", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
+                }
+            }
+            items(searchResults) { comic ->
+                val displaySourceName = when (comic.sourceKey) {
+                    "manga_dex" -> "MangaDex"
+                    "copy_manga" -> "拷贝漫画"
+                    "baozi" -> "包子漫画"
+                    else -> selectedSource
+                }
+                val comicItem = ComicItem(
+                    id = comic.id,
+                    title = comic.title,
+                    author = comic.subTitle.ifEmpty { "知名作者" },
+                    coverUrl = comic.cover.ifEmpty { "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=500&q=80" },
+                    tags = comic.tags.ifEmpty { listOf("连载", "热血") },
+                    rating = "9.8",
+                    description = comic.description.ifEmpty { "暂无简介" },
+                    sourceName = displaySourceName,
+                    latestChapter = "最新连载",
+                    updateTime = comic.updateTime.ifEmpty { "刚刚" },
+                    hasUpdate = false,
+                    chapters = emptyList()
+                )
+                Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comicItem) }) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(
+                            model = comicItem.coverUrl,
+                            contentDescription = null,
+                            modifier = Modifier.size(width = 75.dp, height = 100.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = comicItem.title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 2)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(text = "${comicItem.author} · $displaySourceName", fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant, maxLines = 1)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = "★ ${comicItem.rating}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB800))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = comicItem.updateTime, fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            item {
+                Text(text = "全网热搜精选", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            items(sampleComics) { comic ->
+                Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comic) }) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(
+                            model = comic.coverUrl,
+                            contentDescription = null,
+                            modifier = Modifier.size(width = 75.dp, height = 100.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = comic.title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(text = "${comic.author} · ${comic.latestChapter}", fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(text = "★ ${comic.rating}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB800))
+                        }
                     }
                 }
             }

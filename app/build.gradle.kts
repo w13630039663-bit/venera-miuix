@@ -59,6 +59,12 @@ dependencies {
     // JSON Serialization
     implementation("com.google.code.gson:gson:2.11.0")
 
+    // HTML Parser
+    implementation("org.jsoup:jsoup:1.18.1")
+
+    // QuickJS Android Engine
+    implementation("app.cash.quickjs:quickjs-android:0.9.2")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
