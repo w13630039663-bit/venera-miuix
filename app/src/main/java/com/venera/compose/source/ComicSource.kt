@@ -28,8 +28,17 @@ interface ComicSource {
 
     /**
      * 关键字搜索漫画
+     *
+     * @param options 源声明的搜索筛选值（对齐官方 search.optionList / SearchOptions）；
+     *                null 表示使用源默认值
      */
-    suspend fun search(keyword: String, page: Int = 1): Result<List<Comic>>
+    suspend fun search(keyword: String, page: Int = 1, options: List<String>? = null): Result<List<Comic>>
+
+    /**
+     * 获取源声明的搜索筛选组（对齐官方 SearchPageData.searchOptions）。
+     * 每组含 label 与 LinkedHashMap<key, 显示名>。空列表 = 该源无筛选。
+     */
+    suspend fun getSearchOptions(): List<com.venera.compose.source.model.SearchOptionGroup> = emptyList()
 
     /**
      * 获取漫画完整详情及章节列表

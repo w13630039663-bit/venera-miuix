@@ -57,6 +57,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 @Serializable data object LogViewerRoute
 
 /** 详情页的入口载荷。S2 会改成「带 sourceKey+comicId，由 ViewModel 拉真详情」，现在先保持行为一致。 */
+@Serializable data class CoverViewerRoute(val coverUrl: String, val title: String)
 @Serializable data class DetailRoute(val comicId: String, val sourceName: String)
 
 /** 阅读会话含非序列化对象，交给宿主 ViewModel 暂存（reader 是唯一读它的目的地）。 */
@@ -328,6 +329,19 @@ fun VeneraComposeApp() {
                                 haptic()
                                 navController.navigate(TagSearchRoute(keyword = tag))
                             },
+                            onOpenCoverViewer = { url ->
+                                haptic()
+                                navController.navigate(CoverViewerRoute(coverUrl = url, title = comic.title))
+                            },
+                        )
+                    }
+                    // S8 批次C: 封面全屏查看器
+                    composable<CoverViewerRoute> { entry ->
+                        val cover = entry.toRoute<CoverViewerRoute>()
+                        CoverViewerScreen(
+                            coverUrl = cover.coverUrl,
+                            title = cover.title,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     composable<ReaderRoute> {

@@ -55,7 +55,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     onBack: () -> Unit,
     onStartLiveReading: (ReaderSession) -> Unit,
     /** S8: 点击标签 → 跳转该标签的搜索结果（对齐官方 handleClickTagEvent 默认语义） */
-    onSearchTag: (String) -> Unit = {}
+    onSearchTag: (String) -> Unit = {},
+    /** S8 批次C: 点击封面 → 全屏查看器 */
+    onOpenCoverViewer: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -208,7 +210,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
                     AsyncImage(
                         model = coverUrl,
-                        contentDescription = null,
+                        contentDescription = "封面，点击全屏查看",
                         modifier = Modifier
                             .size(width = 110.dp, height = 152.dp)
                             .sharedElement(
@@ -220,7 +222,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 spotColor = Color.Black.copy(alpha = 0.40f)
                             )
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenCoverViewer(coverUrl) },
                         contentScale = ContentScale.Crop
                     )
                     Spacer(modifier = Modifier.width(14.dp))

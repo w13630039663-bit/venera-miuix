@@ -3,6 +3,8 @@ package com.venera.compose.feature
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -72,6 +75,16 @@ fun SharedTransitionScope.AndroidSearchScreen(
     fun maskStateFor(title: String, author: String, tags: List<String>, id: String) =
         guardManager.coverMaskStateFor(title, author, tags, id)
 
+    // S8 批次B: 搜索筛选弹层状态
+    var showSearchOptionsDialog by remember { mutableStateOf(false) }
+    val searchOptions by viewModel.searchOptions.collectAsStateWithLifecycle()
+    val selectedOptions by viewModel.selectedOptions.collectAsStateWithLifecycle()
+
+    // 源切换时加载该源的筛选组定义
+    LaunchedEffect(ui.selectedSourceKey) {
+        viewModel.loadSearchOptions(ui.selectedSourceKey)
+    }
+
     // S8: 详情页标签点击跳入时自动执行一次搜索
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank()) {
@@ -102,6 +115,13 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     }
                 },
                 trailingIcon = {
+                    // S8 批次B: 搜索筛选入口（对齐官方 tune 图标 + _SearchSettingsDialog）
+                    IconButton(onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        showSearchOptionsDialog = true
+                    }) {
+                        Icon(Icons.Filled.Tune, contentDescription = "搜索筛选", tint = MiuixTheme.colorScheme.onBackgroundVariant)
+                    }
                     if (ui.query.isNotEmpty()) {
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -126,6 +146,76 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // ==================== S8 批次B: 搜索筛选弹层（对齐 _SearchSettingsDialog） ====================
+            if (showSearchOptionsDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showSearchOptionsDialog = false },
+                    title = { Text("搜索筛选", fontSize = 17.sp, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (searchOptions.isEmpty()) {
+                                Text(
+                                    text = "当前源「" + ui.selectedSourceLabel + "」没有搜索筛选选项",
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            } else {
+                                searchOptions.forEachIndexed { groupIdx, group ->
+                                    if (group.label.isNotBlank()) {
+                                        Text(
+                                            text = group.label,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MiuixTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        group.options.entries.forEachIndexed { optIdx, (optKey, optLabel) ->
+                                            val isSelected = selectedOptions.getOrNull(groupIdx) == optKey ||
+                                                    (selectedOptions.getOrNull(groupIdx).isNullOrBlank() && optIdx == 0)
+                                            Surface(
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = if (isSelected) MiuixTheme.colorScheme.primaryContainer
+                                                else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier.clickable {
+                                                    viewModel.setSearchOption(groupIdx, optKey)
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = optLabel,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showSearchOptionsDialog = false
+                            // 筛选变化后重搜（对齐官方 options 变更即刷新）
+                            if (ui.query.isNotBlank()) {
+                                viewModel.search(ui.query)
+                            }
+                        }) { Text("确定并重搜") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSearchOptionsDialog = false }) { Text("取消") }
+                    }
+                )
+            }
         }
 
         // ==================== 2. 漫画链接 URL 识别直达卡片 ====================

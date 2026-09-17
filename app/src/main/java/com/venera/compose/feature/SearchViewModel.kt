@@ -121,11 +121,48 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ==================== S8 批次B：搜索筛选（对齐官方 _SearchSettingsDialog） ====================
+
+    /** 当前源声明的搜索筛选组（空 = 该源无筛选） */
+    private val _searchOptions = MutableStateFlow<List<com.venera.compose.source.model.SearchOptionGroup>>(emptyList())
+    val searchOptions: StateFlow<List<com.venera.compose.source.model.SearchOptionGroup>> = _searchOptions.asStateFlow()
+
+    /** 当前选中的筛选值（索引与 searchOptions 对齐；空串 = 用该组默认） */
+    private val _selectedOptions = MutableStateFlow<List<String>>(emptyList())
+    val selectedOptions: StateFlow<List<String>> = _selectedOptions.asStateFlow()
+
+    /** 源切换或首次进入时加载筛选组定义 */
+    fun loadSearchOptions(sourceKey: String) {
+        viewModelScope.launch {
+            val source = sourceManager.getSourceOrFallback(sourceKey) ?: run {
+                _searchOptions.value = emptyList()
+                _selectedOptions.value = emptyList()
+                return@launch
+            }
+            val groups = source.getSearchOptions()
+            _searchOptions.value = groups
+            // 保留用户已选值；组数变化时重置为默认
+            _selectedOptions.value = if (_selectedOptions.value.size != groups.size) {
+                groups.map { g -> _selectedOptions.value.getOrNull(groups.indexOf(g)) ?: g.defaultKey }
+            } else {
+                _selectedOptions.value
+            }
+        }
+    }
+
+    fun setSearchOption(groupIndex: Int, value: String) {
+        val current = _selectedOptions.value.toMutableList()
+        while (current.size <= groupIndex) current.add("")
+        current[groupIndex] = value
+        _selectedOptions.value = current
+    }
+
     fun search(query: String) {
         if (query.isBlank()) return
         debounceJob?.cancel()
         appendHistory(query)
         val currentKey = _uiState.value.selectedSourceKey
+        val activeOptions = _selectedOptions.value.takeIf { it.any { v -> v.isNotBlank() } }
 
         val matchedUrl = ComicUrlMatcher.match(query)
         if (matchedUrl != null) {
@@ -165,7 +202,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update { it.copy(isSearching = false) }
             } else {
                 // ==================== 单源完整检索 ====================
-                val res = sourceManager.search(currentKey, query)
+                val res = sourceManager.search(currentKey, query, options = activeOptions)
                 val list = guardManager.filterComicModels(res.getOrDefault(emptyList()))
                 val message = res.exceptionOrNull()?.let { err -> "检索异常：${err.message ?: err.javaClass.simpleName}" }
                 _uiState.update {

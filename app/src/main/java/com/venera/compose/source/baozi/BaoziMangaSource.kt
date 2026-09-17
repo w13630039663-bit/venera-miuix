@@ -1,4 +1,4 @@
-package com.venera.compose.source.baozi
+﻿package com.venera.compose.source.baozi
 
 import android.content.Context
 import com.venera.compose.data.network.VeneraNetworkClient
@@ -40,7 +40,7 @@ class BaoziMangaSource(private val context: Context) : ComicSource {
         }
     }
 
-    override suspend fun search(keyword: String, page: Int): Result<List<Comic>> = withContext(Dispatchers.IO) {
+    override suspend fun search(keyword: String, page: Int, options: List<String>?): Result<List<Comic>> = withContext(Dispatchers.IO) {
         runCatching {
             val encoded = URLEncoder.encode(keyword, "UTF-8")
             val html = networkClient.get("$baseUrl/search?q=$encoded")

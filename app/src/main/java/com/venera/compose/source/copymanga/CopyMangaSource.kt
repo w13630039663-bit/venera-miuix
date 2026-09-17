@@ -98,7 +98,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
         }
     }
 
-    override suspend fun search(keyword: String, page: Int): Result<List<Comic>> = withContext(Dispatchers.IO) {
+    override suspend fun search(keyword: String, page: Int, options: List<String>?): Result<List<Comic>> = withContext(Dispatchers.IO) {
         runCatching {
             val offset = (page - 1) * 20
             val encoded = URLEncoder.encode(keyword, "UTF-8")

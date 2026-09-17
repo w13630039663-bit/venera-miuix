@@ -805,19 +805,19 @@ class ComicSourceManager private constructor(private val context: Context) {
         }
     }
 
-    suspend fun search(sourceKey: String, keyword: String, page: Int = 1): Result<List<Comic>> =
+    suspend fun search(sourceKey: String, keyword: String, page: Int = 1, options: List<String>? = null): Result<List<Comic>> =
         withContext(Dispatchers.IO) {
             if (sourceKey == "all") {
                 val results = searchTargets().map { source ->
                     async {
-                        source.search(keyword, page).getOrDefault(emptyList())
+                        source.search(keyword, page, options).getOrDefault(emptyList())
                     }
                 }.awaitAll().flatten()
                 Result.success(results)
             } else {
                 val source = getSourceOrFallback(sourceKey)
                 ?: return@withContext Result.failure(Exception("未找到漫画源: $sourceKey"))
-                var res = source.search(keyword, page)
+                var res = source.search(keyword, page, options)
                 if (res.isFailure || res.getOrDefault(emptyList()).isEmpty()) {
                     val fallback = getSourceOrFallback(sourceKey)
                     if (fallback != null && fallback !== source) {

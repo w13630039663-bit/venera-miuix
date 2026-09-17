@@ -28,6 +28,22 @@ data class ComicChapter(
 )
 
 /**
+ * 搜索筛选组（S8 批次B，对齐官方 SearchOptions）：
+ * 源 search.optionList 声明的单组筛选（如排序/语言/分类）。
+ *
+ * @param label 组标题（空串则不显示标题行）
+ * @param options LinkedHashMap：key 传给源，value 为显示名；首项为默认值
+ */
+data class SearchOptionGroup(
+    val label: String = "",
+    val options: LinkedHashMap<String, String> = LinkedHashMap()
+) {
+    /** 默认选中 key（对齐官方 defaultValue ?? options.keys.first） */
+    val defaultKey: String
+        get() = options.keys.firstOrNull() ?: ""
+}
+
+/**
  * 章节分组（多卷、连载中、单行本、番外篇等）
  */
 data class ChapterGroup(

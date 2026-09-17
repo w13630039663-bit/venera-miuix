@@ -284,18 +284,67 @@ class JsComicSource(
         }
     }
 
-    override suspend fun search(keyword: String, page: Int): Result<List<Comic>> {
+    override suspend fun getSearchOptions(): List<com.venera.compose.source.model.SearchOptionGroup> {
+        return try {
+            val script = """
+                return (function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.search || !s.search.optionList) return [];
+                    var out = [];
+                    var list = s.search.optionList;
+                    for (var i = 0; i < list.length; i++) {
+                        var opt = list[i] || {};
+                        var map = {};
+                        var raw = opt.options || [];
+                        for (var j = 0; j < raw.length; j++) {
+                            var item = String(raw[j]);
+                            if (item.length === 0 || item.indexOf('-') < 0) continue;
+                            var idx = item.indexOf('-');
+                            var k = item.substring(0, idx);
+                            var v = item.substring(idx + 1);
+                            if (!(k in map)) map[k] = v; // LinkedHashMap 语义：首项优先
+                        }
+                        out.push({
+                            label: opt.label || '',
+                            options: map,
+                            defaultKey: (opt['default'] !== undefined && opt['default'] !== null) ? String(opt['default']) : (Object.keys(map)[0] || '')
+                        });
+                    }
+                    return out;
+                })()
+            """.trimIndent()
+            val raw = engine.evaluateAsync(script)
+            val decoded = gson.fromJson(raw, object : TypeToken<List<Map<String, Any?>>>() {}.type) as? List<Map<String, Any?>> ?: return emptyList()
+            decoded.map { item ->
+                val optsRaw = item["options"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
+                val linked = LinkedHashMap<String, String>()
+                // JSON 对象键序已被 shim 的构造顺序保证（首项优先写入）
+                optsRaw.forEach { (k, v) -> linked[k.toString()] = v.toString() }
+                com.venera.compose.source.model.SearchOptionGroup(
+                    label = item["label"]?.toString() ?: "",
+                    options = linked
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    override suspend fun search(keyword: String, page: Int, options: List<String>?): Result<List<Comic>> {
         return try {
             val pageNum = if (page < 1) 1 else page
             // 官方 search.loadNext(keyword, options, next) 的 next 由**搜索页状态**维护：
             // 第 1 页传 null，之后传上一页返回的 res.next。这里用同语义的缓存等价实现。
             val nextToken = if (pageNum == 1) null else nextTokenCache[nextCacheKey(keyword, pageNum - 1)]
+            // S8 批次B: 搜索页传入的筛选值（null 时回退源默认，保持原行为）
+            val optsJson = gson.toJson(options ?: emptyList<String>())
             val script = """
                 return (async function() {
                     var s = ComicSource.sources['$key'];
                     if (!s || !s.search) return { comics: [] };
-                    // 对齐官方 useDefaultOptions()：把 optionList 的默认值原样传给源
-                    var opts = _veneraOptionValues(s.search.optionList);
+                    // S8: 使用搜索页传入的筛选值；未传时对齐官方 useDefaultOptions() 用默认值
+                    var opts = $optsJson;
+                    if (opts.length === 0) opts = _veneraOptionValues(s.search.optionList);
                     var res = null;
                     if (s.search.load) {
                         res = await s.search.load(${gson.toJson(keyword)}, opts, $pageNum);
