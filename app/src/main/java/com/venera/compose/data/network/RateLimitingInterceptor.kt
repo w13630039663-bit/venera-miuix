@@ -34,6 +34,11 @@ class RateLimitingInterceptor : Interceptor {
     /** 同 URL 并发锁，防止同一时刻多个相同请求并发撞车 */
     private val activeUrlLocks = ConcurrentHashMap<String, ReentrantLock>()
 
+    private companion object {
+        /** 连接类失败的重试退避（毫秒） */
+        const val RETRY_BACKOFF_MS = 500L
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val url = request.url.toString()
@@ -72,7 +77,9 @@ class RateLimitingInterceptor : Interceptor {
 
         try {
             var attempt = 0
-            val maxAttempts = 3
+            // 聚合搜索对收敛速度极其敏感：连接类失败只重试 1 次，
+            // 真正的死域名交给外层 HostCircuitBreaker 直接快速失败。
+            val maxAttempts = 2
             var response: Response? = null
 
             while (attempt < maxAttempts) {
@@ -82,7 +89,7 @@ class RateLimitingInterceptor : Interceptor {
                 } catch (e: IOException) {
                     if (attempt >= maxAttempts) throw e
                     try {
-                        Thread.sleep(1000L * attempt)
+                        Thread.sleep(RETRY_BACKOFF_MS)
                     } catch (ie: InterruptedException) {
                         Thread.currentThread().interrupt()
                         throw e

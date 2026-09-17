@@ -28,6 +28,43 @@ object ImageHeaderPolicy {
         "copymanhua.com" to mapOf("Referer" to "https://www.copymanhua.com/"),
         "baozimh.org" to mapOf("Referer" to "https://baozimh.org/"),
         "uc1zali8.com" to mapOf("Referer" to "https://baozimh.org/"),
+        "jmapinodeudzn.net" to mapOf(
+            "Referer" to "https://localhost/",
+            "X-Requested-With" to "com.example.app"
+        ),
+        "18comic.vip" to mapOf(
+            "Referer" to "https://localhost/",
+            "X-Requested-With" to "com.example.app"
+        ),
+        "18comic.org" to mapOf(
+            "Referer" to "https://localhost/",
+            "X-Requested-With" to "com.example.app"
+        ),
+        "hamreus.com" to mapOf("Referer" to "https://www.manhuagui.com/"),
+        "manhuagui.com" to mapOf("Referer" to "https://www.manhuagui.com/"),
+        "manhuaren.com" to mapOf("Referer" to "https://www.manhuaren.com/"),
+        "komiic.com" to mapOf("Referer" to "https://komiic.com/"),
+        "wnacg.com" to mapOf("Referer" to "https://www.wnacg.com/"),
+        "wnacg.org" to mapOf("Referer" to "https://www.wnacg.org/"),
+        "hitomi.la" to mapOf("Referer" to "https://hitomi.la/"),
+        "nhentai.net" to mapOf("Referer" to "https://nhentai.net/"),
+        "picacg.com" to mapOf("User-Agent" to "okhttp/3.8.1"),
+        "ehgt.org" to mapOf(
+            "Referer" to "https://e-hentai.org/",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
+        "e-hentai.org" to mapOf(
+            "Referer" to "https://e-hentai.org/",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
+        "exhentai.org" to mapOf(
+            "Referer" to "https://exhentai.org/",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
+        "hath.network" to mapOf(
+            "Referer" to "https://e-hentai.org/",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        ),
     )
 
     /** 从一批图片 URL 推出各自的 host，并绑定这批请求头 */

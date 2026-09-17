@@ -41,6 +41,34 @@ class VeneraPreferences private constructor(context: Context) {
     private val _themeMode = MutableStateFlow(ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
+    // ---- 收藏（S5，对齐原版 appdata.settings 同名键） ----
+
+    /** 新收藏插入位置：`"start"`（默认，加到开头）或 `"end"`。对应官方 `newFavoriteAddTo`。 */
+    private val _newFavoriteAddTo = MutableStateFlow(prefs.getString(KEY_NEW_FAVORITE_ADD_TO, "start") ?: "start")
+    val newFavoriteAddTo: StateFlow<String> = _newFavoriteAddTo.asStateFlow()
+
+    /** 阅读后把漫画移动到收藏夹的哪一端：`"start"` / `"end"` / null（不动）。对应官方 `moveFavoriteAfterRead`。 */
+    private val _moveFavoriteAfterRead = MutableStateFlow(prefs.getString(KEY_MOVE_FAVORITE_AFTER_READ, null))
+    val moveFavoriteAfterRead: StateFlow<String?> = _moveFavoriteAfterRead.asStateFlow()
+
+    /**
+     * 收藏面板中「本地收藏」分区是否排在「网络收藏」之前。
+     * 对齐官方 `appdata.settings['localFavoritesFirst'] ?? true`。
+     */
+    private val _localFavoritesFirst = MutableStateFlow(prefs.getBoolean(KEY_LOCAL_FAVORITES_FIRST, true))
+    val localFavoritesFirst: StateFlow<Boolean> = _localFavoritesFirst.asStateFlow()
+
+    /**
+     * 长按详情页收藏按钮时的快捷收藏目标夹名。
+     * 对齐官方 `appdata.settings['quickFavorite']`；未设置时为 null（长按退化为打开面板）。
+     */
+    private val _quickFavorite = MutableStateFlow(prefs.getString(KEY_QUICK_FAVORITE, null))
+    val quickFavorite: StateFlow<String?> = _quickFavorite.asStateFlow()
+
+    /** 追更所用的收藏夹（null = 未开启追更）。对应官方 `followUpdatesFolder`。 */
+    private val _followUpdatesFolder = MutableStateFlow(prefs.getString(KEY_FOLLOW_UPDATES_FOLDER, null))
+    val followUpdatesFolder: StateFlow<String?> = _followUpdatesFolder.asStateFlow()
+
     // 网络与安全
     private val _enableDoH = MutableStateFlow(prefs.getBoolean(KEY_ENABLE_DOH, true))
     val enableDoH: StateFlow<Boolean> = _enableDoH.asStateFlow()
@@ -95,6 +123,31 @@ class VeneraPreferences private constructor(context: Context) {
         _themeMode.value = mode
     }
 
+    fun setNewFavoriteAddTo(value: String) {
+        prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
+        _newFavoriteAddTo.value = value
+    }
+
+    fun setMoveFavoriteAfterRead(value: String?) {
+        prefs.edit { putString(KEY_MOVE_FAVORITE_AFTER_READ, value) }
+        _moveFavoriteAfterRead.value = value
+    }
+
+    fun setLocalFavoritesFirst(value: Boolean) {
+        prefs.edit { putBoolean(KEY_LOCAL_FAVORITES_FIRST, value) }
+        _localFavoritesFirst.value = value
+    }
+
+    fun setQuickFavorite(folder: String?) {
+        prefs.edit { putString(KEY_QUICK_FAVORITE, folder) }
+        _quickFavorite.value = folder
+    }
+
+    fun setFollowUpdatesFolder(folder: String?) {
+        prefs.edit { putString(KEY_FOLLOW_UPDATES_FOLDER, folder) }
+        _followUpdatesFolder.value = folder
+    }
+
     fun setEnableDoH(enable: Boolean) {
         prefs.edit { putBoolean(KEY_ENABLE_DOH, enable) }
         _enableDoH.value = enable
@@ -122,6 +175,11 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_NIGHT_FILTER = "pref_night_filter"
         private const val KEY_CLICK_TO_TURN = "pref_click_to_turn"
         private const val KEY_THEME_MODE = "pref_theme_mode"
+        private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
+        private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
+        private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"
+        private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"
+        private const val KEY_FOLLOW_UPDATES_FOLDER = "pref_follow_updates_folder"
         private const val KEY_ENABLE_DOH = "pref_enable_doh"
         private const val KEY_PROXY_TYPE = "pref_proxy_type"
         private const val KEY_PROXY_HOST = "pref_proxy_host"

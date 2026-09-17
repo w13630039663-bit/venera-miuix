@@ -39,20 +39,26 @@ class VeneraNetworkClient private constructor(private val context: Context) {
     private fun buildClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(25, TimeUnit.SECONDS)
+            // 33 源并发检索场景下，超时必须收紧：过长的 connect timeout 会让
+            // 不可达源拖垮整轮搜索（配合 HostCircuitBreaker 快速失败）
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
+            // OkHttp 默认会为连接失败做路由重试，这里关闭以免死域名被重复消耗
+            .retryOnConnectionFailure(false)
 
         // 100MB 响应缓存层
         val cacheDir = java.io.File(context.cacheDir, "venera_http_cache")
         builder.cache(okhttp3.Cache(cacheDir, 100L * 1024 * 1024))
 
-        // 代理（S0-6 实装）
+        // 代理（支持 HTTP / SOCKS5，S0-6 实装）
         val proxyType = prefs.proxyType.value
-        if (proxyType != "NONE") {
+        if (proxyType == "HTTP" || proxyType == "SOCKS") {
             val host = prefs.proxyHost.value.ifEmpty { "127.0.0.1" }
             val port = prefs.proxyPort.value
-            builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port)))
+            val type = if (proxyType == "SOCKS") Proxy.Type.SOCKS else Proxy.Type.HTTP
+            builder.proxy(Proxy(type, InetSocketAddress(host, port)))
         }
 
         // 1. UA 策略与 Accept-Language 拦截器（尊重既有 UA，优先使用 host 绑定的过盾 UA）
@@ -69,13 +75,16 @@ class VeneraNetworkClient private constructor(private val context: Context) {
             chain.proceed(requestBuilder.build())
         }
 
-        // 2. 限速、429 指数退避与同 URL 并发去重
+        // 2. 域名熔断（必须最先判定，让不可达源毫秒级失败）
+        builder.addInterceptor(HostCircuitBreakerInterceptor())
+
+        // 3. 限速、429 指数退避与同 URL 并发去重
         builder.addInterceptor(RateLimitingInterceptor())
 
-        // 3. Cloudflare 挑战拦截与透明过盾
+        // 4. Cloudflare 挑战拦截与透明过盾
         builder.addInterceptor(CloudflareBypassInterceptor(context))
 
-        // 4. 图片防盗链 Header 注入
+        // 5. 图片防盗链 Header 注入
         builder.addInterceptor(ImageHeaderInterceptor())
 
         return builder.build()

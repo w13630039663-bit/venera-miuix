@@ -117,4 +117,21 @@ class JsSourceDataStore(context: Context) {
         map.remove("_cookies")
         persist(sourceKey)
     }
+
+    /**
+     * 丢弃某个源的全部内存态（**并删除其磁盘数据文件**）。
+     *
+     * 必须存在的理由：本类的 [cache] / [defaultSettings] 是纯内存 Map，
+     * 源被卸载时若只删磁盘文件、不清内存，则重新安装同一个源会读到
+     * 上一份残留的 settings / account（幽灵登录态）。
+     */
+    fun evict(sourceKey: String) {
+        cache.remove(sourceKey)
+        defaultSettings.remove(sourceKey)
+        try {
+            File(baseDir, "$sourceKey.data").delete()
+        } catch (e: Exception) {
+            android.util.Log.w("VeneraJS", "Failed to delete data file for source $sourceKey", e)
+        }
+    }
 }

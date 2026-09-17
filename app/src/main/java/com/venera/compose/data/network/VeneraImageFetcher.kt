@@ -31,27 +31,37 @@ class VeneraImageFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult {
-        val reqBuilder = Request.Builder().url(url)
+        val hasSpriteCrop = url.contains("@x=") || url.contains("@y=")
+        val cleanUrl = if (hasSpriteCrop) url.substringBefore('@') else url
+        val cropRange = if (hasSpriteCrop) ImagePipelinePolicy.parseCropRange(url.substringAfter('@')) else null
 
-        // 注入防盗链请求头
-        val dynamicHeaders = ImageHeaderPolicy.headersFor(url)
-        for ((k, v) in dynamicHeaders) {
-            reqBuilder.header(k, v)
+        val (rawBytes, mimeType) = if (hasSpriteCrop) {
+            ImagePipelinePolicy.fetchSpriteSheet(cleanUrl, okHttpClient)
+        } else {
+            val reqBuilder = Request.Builder().url(cleanUrl)
+
+            // 注入防盗链请求头
+            val dynamicHeaders = ImageHeaderPolicy.headersFor(cleanUrl)
+            for ((k, v) in dynamicHeaders) {
+                reqBuilder.header(k, v)
+            }
+
+            val request = reqBuilder.build()
+            val response = okHttpClient.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                response.close()
+                throw IOException("HTTP ${response.code}: Failed to fetch comic image at $cleanUrl")
+            }
+
+            val body = response.body ?: throw IOException("Empty response body for image: $cleanUrl")
+            val bytes = body.bytes()
+            val mime = response.header("Content-Type")?.substringBefore(";")?.trim()
+            bytes to mime
         }
 
-        val request = reqBuilder.build()
-        val response = okHttpClient.newCall(request).execute()
-
-        if (!response.isSuccessful) {
-            response.close()
-            throw IOException("HTTP ${response.code}: Failed to fetch comic image at $url")
-        }
-
-        val body = response.body ?: throw IOException("Empty response body for image: $url")
-        val bytes = body.bytes()
-
-        // 预留 ImageLoadingConfig 管道字节流转换（如 XOR 解密或图片切片还原）
-        val processedBytes = processImageBytes(url, bytes)
+        // 管道字节流转换（JM 去混淆与 EH Sprite 切片还原）
+        val processedBytes = processImageBytes(cleanUrl, rawBytes, cropRange)
 
         val buffer = Buffer().write(processedBytes)
         val imageSource = ImageSource(
@@ -59,18 +69,27 @@ class VeneraImageFetcher(
             fileSystem = FileSystem.SYSTEM
         )
 
-        val mimeType = response.header("Content-Type")?.substringBefore(";")?.trim()
-
         return SourceFetchResult(
             source = imageSource,
-            mimeType = mimeType,
+            mimeType = mimeType ?: "image/jpeg",
             dataSource = DataSource.NETWORK
         )
     }
 
-    private fun processImageBytes(imageUrl: String, rawBytes: ByteArray): ByteArray {
-        // 后续可在此处通过 ImageLoadingConfigTransformer 挂载源级别的解密算法
-        return rawBytes
+    private fun processImageBytes(
+        imageUrl: String,
+        rawBytes: ByteArray,
+        cropRange: ImagePipelinePolicy.CropRange?
+    ): ByteArray {
+        var current = rawBytes
+        val scrambleNum = ImagePipelinePolicy.getScrambleNum(imageUrl)
+        if (scrambleNum > 1) {
+            current = ImagePipelinePolicy.descrambleJmImage(current, scrambleNum)
+        }
+        if (cropRange != null) {
+            current = ImagePipelinePolicy.cropSprite(current, cropRange)
+        }
+        return current
     }
 
     class Factory(

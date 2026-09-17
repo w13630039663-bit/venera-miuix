@@ -135,7 +135,10 @@ class JsConvertHandler {
                     cipher.init(Cipher.DECRYPT_MODE, privateKey)
                     wrapBytes(processCipherBlocks(cipher, valBytes, cipher.blockSize))
                 }
-                else -> null
+                // 与官方 js_engine.dart 的 `default: return value` 保持一致：
+                // 未识别的类型原样返回，而不是返回 null。
+                // 返回 null 会让源脚本把原本可用的值当成空值，进而在 JSON.parse 处崩溃。
+                else -> data["value"]
             }
         } catch (e: Exception) {
             android.util.Log.e("VeneraJS", "Convert error for type: $type", e)
