@@ -17,3 +17,6 @@ local.properties
 build_*.log
 .freebuff/
 .workbuddy/
+
+# 本地验证截图
+home*.png
