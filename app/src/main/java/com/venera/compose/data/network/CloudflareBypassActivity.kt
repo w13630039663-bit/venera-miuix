@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.venera.compose.feature.VeneraTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -68,7 +69,7 @@ class CloudflareBypassActivity : ComponentActivity() {
         }
 
         setContent {
-            MiuixTheme {
+            VeneraTheme {
                 BypassScreen()
             }
         }

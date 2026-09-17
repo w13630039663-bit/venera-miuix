@@ -1,4 +1,4 @@
-﻿package com.venera.compose.components
+package com.venera.compose.components
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
@@ -39,8 +39,9 @@ enum class VeneraNavTab(
     HOME("首页", Icons.Outlined.Home, Icons.Filled.Home),
     SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
+    // 「分类索引」与「全站探索」已合并为统一的「探索」页（见 UnifiedExploreScreen）。
+    // 合并的是页面入口，不是各源的分类体系 —— 每个源仍保留自己的分类 / Tag / 排序。
     EXPLORE("探索", Icons.Outlined.Explore, Icons.Filled.Explore),
-    CATEGORIES("分类", Icons.Outlined.Category, Icons.Filled.Category),
     SETTINGS("设置", Icons.Outlined.Settings, Icons.Filled.Settings)
 }
 

@@ -1,695 +1,372 @@
 package com.venera.compose.feature
 
-import android.view.HapticFeedbackConstants
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
-import com.venera.compose.data.network.ComicUrlMatcher
+import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.ComicMetrics
+import com.venera.compose.components.ComicTileDetailed
+import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.source.model.Comic
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import com.venera.compose.source.model.SearchOptionGroup
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * 工业级搜索与全网聚合界面 (S4 核心升级)
- *
- * 核心特性：
- * 1. 聚合语义反转：全网流式聚合响应，各源独立骨架屏，先返回先渲染
- * 2. 动态源选项卡：集成所有内置源与已注册 JS 扩展源
- * 3. 漫画链接 URL 自动识别：智能识别外部漫画分享链接并支持一键直达
- * 4. 标签翻译与联想推荐：实时匹配 1MB tags.json 字典
- * 5. 多维度结果排序 (默认 / 标题 / 作者)
- */
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
-    /** S8: 详情页标签点击等场景带入的初始搜索词，进页自动触发一次搜索 */
     initialQuery: String = "",
     viewModel: SearchViewModel = viewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
-    val allSources by viewModel.sourcesFlow.collectAsStateWithLifecycle()
-    val view = LocalView.current
-    // S7 分级遮罩：BLUR 模式下命中屏蔽规则的封面打码（数据层已按 HIDE 剔除）
-    val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
-    val nsfwMode by guardManager.nsfwMaskMode.collectAsState()
-    fun maskStateFor(title: String, author: String, tags: List<String>, id: String) =
-        guardManager.coverMaskStateFor(title, author, tags, id)
+    val sources by viewModel.sourcesFlow.collectAsStateWithLifecycle()
+    val groups by viewModel.searchOptions.collectAsStateWithLifecycle()
+    val selected by viewModel.selectedOptions.collectAsStateWithLifecycle()
+    var displayMode by rememberComicListDisplayMode()
+    var showOptions by remember(ui.selectedSourceKey) { mutableStateOf(false) }
+    var showTags by remember { mutableStateOf(false) }
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val nsfwMode by guard.nsfwMaskMode.collectAsStateWithLifecycle()
+    fun mask(comic: Comic): String = guard.coverMaskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
+    fun select(comic: Comic, sourceName: String) = onSelect(ComicItem(
+        id = comic.id, title = comic.title, author = comic.subTitle, coverUrl = comic.cover,
+        sourceName = sourceName, tags = comic.tags, description = comic.description,
+        rating = comic.rating?.toString().orEmpty(), likesCount = comic.likesCount
+    ))
 
-    // S8 批次B: 搜索筛选弹层状态
-    var showSearchOptionsDialog by remember { mutableStateOf(false) }
-    val searchOptions by viewModel.searchOptions.collectAsStateWithLifecycle()
-    val selectedOptions by viewModel.selectedOptions.collectAsStateWithLifecycle()
-
-    // 源切换时加载该源的筛选组定义
-    LaunchedEffect(ui.selectedSourceKey) {
-        viewModel.loadSearchOptions(ui.selectedSourceKey)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var showBackToTop by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { showBackToTop = it > 10 }
     }
-
-    // S8: 详情页标签点击跳入时自动执行一次搜索
-    LaunchedEffect(initialQuery) {
-        if (initialQuery.isNotBlank()) {
-            viewModel.onQueryChange(initialQuery)
-            viewModel.search(initialQuery)
+    // 单源搜索：滑到列表末尾自动加载下一页。
+    LaunchedEffect(listState, ui.canLoadMore, ui.results.size) {
+        androidx.compose.runtime.snapshotFlow {
+            val info = listState.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
+        }.collect { (lastVisible, total) ->
+            if (ui.canLoadMore && !ui.isSearching && !ui.loadingMore &&
+                ui.selectedSourceKey != SearchViewModel.KEY_ALL && total > 0 &&
+                lastVisible >= total - 3) {
+                viewModel.loadMore()
+            }
         }
     }
+    LaunchedEffect(ui.selectedSourceKey) { viewModel.loadSearchOptions(ui.selectedSourceKey) }
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank()) viewModel.search(initialQuery)
+    }
 
+    if (showOptions) SearchOptionsDialog(
+        sourceName = ui.selectedSourceLabel,
+        aggregate = ui.selectedSourceKey == SearchViewModel.KEY_ALL,
+        groups = groups, selected = selected, loading = ui.optionsLoading, error = ui.optionsError,
+        onRetry = { viewModel.loadSearchOptions(ui.selectedSourceKey) },
+        onDismiss = { showOptions = false },
+        onApply = { values -> viewModel.applySearchOptions(ui.selectedSourceKey, values); showOptions = false }
+    )
+    if (showTags) SearchTagDialog(viewModel, onDismiss = { showTags = false })
+
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ==================== 1. MIUI 风格药丸搜索栏 ====================
         item {
             OutlinedTextField(
-                value = ui.query,
-                onValueChange = { viewModel.onQueryChange(it) },
-                placeholder = { Text("输入作品名、作者、标签或粘贴漫画链接...", fontSize = 13.sp) },
-                leadingIcon = {
-                    IconButton(onClick = {
-                        if (ui.query.isNotBlank()) {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            viewModel.search(ui.query)
-                        }
-                    }) {
-                        Icon(Icons.Outlined.Search, contentDescription = "Search", tint = MiuixTheme.colorScheme.primary)
-                    }
-                },
-                trailingIcon = {
-                    // S8 批次B: 搜索筛选入口（对齐官方 tune 图标 + _SearchSettingsDialog）
-                    IconButton(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        showSearchOptionsDialog = true
-                    }) {
-                        Icon(Icons.Filled.Tune, contentDescription = "搜索筛选", tint = MiuixTheme.colorScheme.onBackgroundVariant)
-                    }
-                    if (ui.query.isNotEmpty()) {
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            viewModel.clearQuery()
-                        }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Clear")
-                        }
-                    }
-                },
+                value = ui.query, onValueChange = viewModel::onQueryChange,
+                placeholder = { Text("作品名、作者或漫画链接", fontSize = 13.sp) },
+                leadingIcon = { IconButton(onClick = { viewModel.search(ui.query) }) {
+                    Icon(Icons.Outlined.Search, contentDescription = "搜索")
+                } },
+                trailingIcon = { if (ui.query.isNotEmpty() || ui.tags.isNotEmpty()) {
+                    IconButton(onClick = viewModel::clearQuery) { Icon(Icons.Outlined.Close, contentDescription = "清空搜索条件") }
+                } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    if (ui.query.isNotBlank()) {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        viewModel.search(ui.query)
-                    }
-                }),
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MiuixTheme.colorScheme.primary,
-                    unfocusedBorderColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.15f)
-                ),
-                modifier = Modifier.fillMaxWidth()
+                keyboardActions = KeyboardActions(onSearch = { viewModel.search(ui.query) }),
+                singleLine = true, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()
             )
-
-            // ==================== S8 批次B: 搜索筛选弹层（对齐 _SearchSettingsDialog） ====================
-            if (showSearchOptionsDialog) {
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { showSearchOptionsDialog = false },
-                    title = { Text("搜索筛选", fontSize = 17.sp, fontWeight = FontWeight.Bold) },
-                    text = {
-                        Column(
-                            modifier = Modifier.verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            if (searchOptions.isEmpty()) {
-                                Text(
-                                    text = "当前源「" + ui.selectedSourceLabel + "」没有搜索筛选选项",
-                                    fontSize = 13.sp,
-                                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            } else {
-                                searchOptions.forEachIndexed { groupIdx, group ->
-                                    if (group.label.isNotBlank()) {
-                                        Text(
-                                            text = group.label,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MiuixTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        group.options.entries.forEachIndexed { optIdx, (optKey, optLabel) ->
-                                            val isSelected = selectedOptions.getOrNull(groupIdx) == optKey ||
-                                                    (selectedOptions.getOrNull(groupIdx).isNullOrBlank() && optIdx == 0)
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = if (isSelected) MiuixTheme.colorScheme.primaryContainer
-                                                else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                                modifier = Modifier.clickable {
-                                                    viewModel.setSearchOption(groupIdx, optKey)
-                                                }
-                                            ) {
-                                                Text(
-                                                    text = optLabel,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                                    color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            showSearchOptionsDialog = false
-                            // 筛选变化后重搜（对齐官方 options 变更即刷新）
-                            if (ui.query.isNotBlank()) {
-                                viewModel.search(ui.query)
-                            }
-                        }) { Text("确定并重搜") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSearchOptionsDialog = false }) { Text("取消") }
-                    }
-                )
-            }
-        }
-
-        // ==================== 2. 漫画链接 URL 识别直达卡片 ====================
-        ui.matchedUrlComic?.let { matched ->
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Filled.Link, contentDescription = "链接", tint = MiuixTheme.colorScheme.primary)
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "识别到【${matched.sourceName}】漫画链接",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = MiuixTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "ID: ${matched.comicId}",
-                                    fontSize = 12.sp,
-                                    color = Color.Gray,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                onSelect(
-                                    ComicItem(
-                                        id = matched.comicId,
-                                        title = matched.comicId,
-                                        author = "",
-                                        coverUrl = "",
-                                        sourceName = matched.sourceName
-                                    )
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primary)
-                        ) {
-                            Text("直达详情", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AssistChip(onClick = { showTags = true }, label = { Text("＋ 添加标签") })
+                ui.tags.forEachIndexed { index, tag ->
+                    InputChip(selected = true, onClick = { viewModel.removeTag(index) },
+                        label = { Text(listOf(tag.namespace, tag.label).filter { it.isNotBlank() }.joinToString(":"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = "移除标签", modifier = Modifier.size(16.dp)) })
                 }
             }
-        }
-
-        // ==================== 3. 标签联想建议 Chips ====================
-        if (ui.tagSuggestions.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(text = "💡 标签联想", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ui.tagSuggestions.forEach { (raw, translated) ->
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                modifier = Modifier.clickable {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    viewModel.search(translated)
-                                }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = translated, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.primary)
-                                    if (raw != translated) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(text = "($raw)", fontSize = 10.sp, color = Color.Gray)
-                                    }
-                                }
-                            }
-                        }
-                    }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { showOptions = true }) {
+                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("排序与高级筛选")
                 }
+                Spacer(Modifier.weight(1f))
+                ComicLayoutToggleButton(displayMode = displayMode, onToggle = { displayMode = it })
             }
+            Text(
+                if (ui.selectedSourceKey == SearchViewModel.KEY_ALL) "全网聚合使用各源默认选项；高级筛选请先选择下方漫画源。"
+                else if (ui.optionsLoading) "正在读取源提供的搜索选项…"
+                else if (ui.optionsError != null) ui.optionsError!!
+                else if (groups.isEmpty()) "该源未声明排序或高级筛选选项。"
+                else "已接入源提供的 ${groups.size} 组搜索选项，结果保持源排序。",
+                fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+            )
         }
-
-        // ==================== 4. 漫画源动态选择胶囊条 ====================
         item {
-            val tabs = remember(allSources) {
-                listOf(SearchViewModel.KEY_ALL to SearchViewModel.SOURCE_ALL_LABEL) +
-                        allSources.map { it.key to it.name }
-            }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(tabs) { (key, label) ->
-                    val isSelected = ui.selectedSourceKey == key
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) MiuixTheme.colorScheme.primaryContainer else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.clickable {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            viewModel.onSourceSelected(key, label)
-                        }
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                        )
-                    }
+                val tabs = listOf(SearchViewModel.KEY_ALL to SearchViewModel.SOURCE_ALL_LABEL) + sources.map { it.key to it.name }
+                items(tabs, key = { it.first }) { (key, label) ->
+                    FilterChip(selected = ui.selectedSourceKey == key,
+                        onClick = { viewModel.onSourceSelected(key, label) }, label = { Text(label) })
                 }
             }
         }
-
-        // ==================== 5. 搜索历史 ====================
-        if (ui.history.isNotEmpty() && ui.query.isEmpty()) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "搜索历史", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        viewModel.clearHistory()
-                    }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Outlined.DeleteOutline, contentDescription = "清空", modifier = Modifier.size(18.dp))
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ui.history.forEach { tag ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                            modifier = Modifier.clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                viewModel.onQueryChange(tag)
-                                viewModel.search(tag)
-                            }
-                        ) {
-                            Text(text = tag, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-                        }
+        ui.matchedUrlComic?.let { matched -> item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("识别到【${matched.sourceName}】漫画链接")
+                    TextButton(onClick = { onSelect(ComicItem(id = matched.comicId, title = matched.comicId, author = "", coverUrl = "", sourceName = matched.sourceName)) }) {
+                        Text("直达详情")
                     }
                 }
             }
+        } }
+        if (ui.tagSuggestions.isNotEmpty()) item {
+            Text("标签联想（点击添加原文标签）", fontSize = 13.sp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ui.tagSuggestions.forEach { (raw, label) -> AssistChip(
+                    onClick = { viewModel.addTag(raw, label) }, label = { Text("$label（$raw）", maxLines = 1) }
+                ) }
+            }
         }
-
-        // ==================== 6. 搜索结果展示 ====================
+        if (ui.history.isNotEmpty() && ui.query.isEmpty() && ui.tags.isEmpty()) item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("搜索历史", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                TextButton(onClick = viewModel::clearHistory) { Text("清空历史") }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ui.history.forEach { keyword -> AssistChip(onClick = { viewModel.search(keyword) }, label = { Text(keyword) }) }
+            }
+        }
+        ui.error?.let { error -> item {
+            Text(error, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = { viewModel.search(ui.query) }) { Text("重试搜索") }
+        } }
         if (ui.selectedSourceKey == SearchViewModel.KEY_ALL) {
-            // ----- 全网流式聚合展示 -----
-            if (ui.aggregatedResults.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "全网聚合结果",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                items(ui.aggregatedResults.values.toList(), key = { it.sourceKey }) { event ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        viewModel.onSourceSelected(event.sourceKey, event.sourceName)
-                                    },
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = event.sourceName,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MiuixTheme.colorScheme.primary
-                                    )
-                                    if (event.comics.isNotEmpty()) {
-                                        Text(
-                                            text = " (${event.comics.size} 部)",
-                                            fontSize = 12.sp,
-                                            color = Color.Gray
-                                        )
-                                    }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = "进入源搜索", fontSize = 12.sp, color = Color.Gray)
-                                    Icon(Icons.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Gray)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            when {
-                                event.isLoading -> {
-                                    // 骨架屏占位
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(4) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(100.dp)
-                                                    .height(140.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0xFF222222))
-                                            )
-                                        }
-                                    }
-                                }
-                                event.error != null || event.comics.isEmpty() -> {
-                                    Text(
-                                        text = event.error ?: "未找到相关漫画",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
-                                        modifier = Modifier.padding(vertical = 12.dp)
-                                    )
-                                }
-                                else -> {
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        items(event.comics) { comic ->
-                                            val maskState = remember(comic.id, nsfwMode) {
-                                                maskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
-                                            }
-                                            Column(
-                                                modifier = Modifier
-                                                    .width(104.dp)
-                                                    .clickable {
-                                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                                        onSelect(
-                                                            ComicItem(
-                                                                id = comic.id,
-                                                                title = comic.title,
-                                                                author = comic.subTitle,
-                                                                coverUrl = comic.cover,
-                                                                sourceName = event.sourceName,
-                                                                tags = comic.tags,
-                                                                description = comic.description
-                                                            )
-                                                        )
-                                                    }
-                                            ) {
-                                                AsyncImage(
-                                                    model = comic.cover,
-                                                    contentDescription = comic.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .width(104.dp)
-                                                        .height(144.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(Color(0xFF222222))
-                                                        .then(
-                                                            if (maskState == "BLURRED") Modifier.blur(16.dp) else Modifier
-                                                        )
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    text = comic.title,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = comic.subTitle,
-                                                    fontSize = 10.sp,
-                                                    color = Color.Gray,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+            ui.aggregatedResults.values.forEach { event ->
+                // 聚合区每个 item 都必须有跨源唯一的 key：LazyColumn 按源分组后
+                // 若行用默认 key，不同源的行互相复用，会出现第一个源的卡片
+                // 覆盖后续源内容的错位 bug。
+                if (event.isLoading) item(key = "source:${event.sourceKey}:loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                else if (event.error != null || event.comics.isEmpty()) item(key = "source:${event.sourceKey}:empty") { Text(event.error ?: "未找到相关漫画", fontSize = 13.sp) }
+                else item(key = "source:${event.sourceKey}:row") {
+                    // 每源只展示 5 个，横向滑动浏览——单屏一眼扫过所有源。
+                    Column {
+                        TextButton(onClick = { viewModel.onSourceSelected(event.sourceKey, event.sourceName) }) {
+                            Text("${event.sourceName} · ${event.comics.size} 部 · 进入源搜索", fontSize = 12.sp)
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()) {
+                            items(event.comics.take(5), key = { it.id }) { comic ->
+                                MiniComicCard(comic, nsfwMode, ::mask) { select(comic, event.sourceName) }
                             }
                         }
                     }
                 }
             }
+            if (ui.hasSearched && !ui.isSearching && ui.aggregatedResults.isEmpty() && ui.error == null) item { Text("没有可用的搜索源，请先启用漫画源。") }
         } else {
-            // ----- 单源搜索结果列表 -----
-            if (ui.isSearching) {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MiuixTheme.colorScheme.primary,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(text = "正在检索 ${ui.selectedSourceLabel}...", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary)
-                        }
-                    }
+            if (ui.isSearching) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            if (ui.results.isNotEmpty()) {
+                item { Text("检索结果（${ui.results.size} 条，源排序）", fontWeight = FontWeight.Bold) }
+                items(ui.results.chunked(if (displayMode == "brief") 2 else 1)) { row ->
+                    SearchResultRow(row, displayMode, ui.selectedSourceLabel, nsfwMode, ::mask) { select(it, ui.selectedSourceLabel) }
                 }
-            } else if (ui.results.isNotEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "检索结果 (共 ${ui.results.size} 条)",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            SearchSortBy.values().forEach { sort ->
-                                val isSelected = ui.sortBy == sort
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) MiuixTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.3f),
-                                    modifier = Modifier.clickable { viewModel.setSortBy(sort) }
-                                ) {
-                                    Text(
-                                        text = sort.label,
-                                        fontSize = 10.sp,
-                                        color = if (isSelected) Color.White else Color.Gray,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                items(ui.results, key = { it.id }) { comic ->
-                    val maskState = remember(comic.id, nsfwMode) {
-                        maskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
-                    }
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                onSelect(
-                                    ComicItem(
-                                        id = comic.id,
-                                        title = comic.title,
-                                        author = comic.subTitle,
-                                        coverUrl = comic.cover,
-                                        sourceName = ui.selectedSourceLabel,
-                                        tags = comic.tags,
-                                        description = comic.description
-                                    )
-                                )
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp)
-                        ) {
-                            AsyncImage(
-                                model = comic.cover,
-                                contentDescription = comic.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .width(88.dp)
-                                    .height(120.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF222222))
-                                    .then(
-                                        if (maskState == "BLURRED") Modifier.blur(16.dp) else Modifier
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(120.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(
-                                        text = comic.title,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = comic.subTitle,
-                                        fontSize = 12.sp,
-                                        color = Color.Gray,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                if (comic.tags.isNotEmpty()) {
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                                        maxItemsInEachRow = 3
-                                    ) {
-                                        comic.tags.take(3).forEach { tag ->
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                            ) {
-                                                Text(
-                                                    text = tag,
-                                                    fontSize = 10.sp,
-                                                    color = MiuixTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = ui.selectedSourceLabel,
-                                        fontSize = 11.sp,
-                                        color = MiuixTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(text = "查看详情 ›", fontSize = 11.sp, color = Color.Gray)
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (ui.query.length >= 2 && !ui.isSearching) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 40.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(text = "未找到相关漫画", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(text = "请尝试更换关键字或切换至【全网聚合】检索", fontSize = 12.sp, color = Color.Gray)
-                    }
+            } else if (ui.hasSearched && !ui.isSearching && ui.error == null) item {
+                Text("未找到相关漫画，请调整关键词、标签或源筛选。")
+            }
+            if (ui.selectedSourceKey != SearchViewModel.KEY_ALL && ui.loadingMore) item(key = "loading-more") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("正在加载更多…", fontSize = 12.sp)
                 }
             }
         }
     }
+    // 浮置「回到顶部」：下滑超过一屏后出现，单击回顶。
+    androidx.compose.animation.AnimatedVisibility(visible = showBackToTop, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 110.dp)) {
+        androidx.compose.material3.ExtendedFloatingActionButton(onClick = {
+            scope.launch { listState.animateScrollToItem(0) }
+        }) {
+            Icon(Icons.Filled.ArrowUpward, contentDescription = "回到顶部")
+            Spacer(Modifier.width(4.dp)); Text("顶部", fontSize = 13.sp)
+        }
+    }
+    }
+}
+
+/** 聚合搜索专用迷你卡：固定小尺寸（宽 96dp），在 LazyRow 里横向滑动。 */
+@Composable
+private fun MiniComicCard(
+    comic: Comic, maskMode: String,
+    mask: (Comic) -> String, onSelect: (Comic) -> Unit
+) {
+    val coverMask = remember(comic, maskMode) { mask(comic) }
+    Card(modifier = Modifier.width(96.dp).clickable { onSelect(comic) }) {
+        Column(Modifier.padding(5.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            AsyncImage(model = comic.cover, contentDescription = comic.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(6.dp))
+                    .background(MiuixTheme.colorScheme.surfaceVariant)
+                    .then(if (coverMask == "BLURRED") Modifier.blur(16.dp) else Modifier))
+            Text(comic.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, lineHeight = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun SearchResultRow(
+    comics: List<Comic>, mode: String, sourceName: String, maskMode: String,
+    mask: (Comic) -> String, onSelect: (Comic) -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        comics.forEach { comic ->
+            val coverMask = remember(comic, maskMode) { mask(comic) }
+            Box(Modifier.weight(1f)) {
+                if (mode == "detailed") ComicTileDetailed(
+                    title = comic.title, coverUrl = comic.cover, subtitle = comic.subTitle,
+                    description = comic.description, tags = comic.tags, badge = sourceName,
+                    rating = comic.rating?.toDouble(), likesCount = comic.likesCount,
+                    coverMaskState = coverMask, onClick = { onSelect(comic) }
+                ) else Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comic) }) {
+                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        AsyncImage(model = comic.cover, contentDescription = comic.title, contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(8.dp))
+                                .background(MiuixTheme.colorScheme.surfaceVariant)
+                                .then(if (coverMask == "BLURRED") Modifier.blur(16.dp) else Modifier))
+                        Text(comic.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+                        if (comic.subTitle.isNotBlank()) Text(comic.subTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                        ComicMetrics(rating = comic.rating?.toDouble(), likesCount = comic.likesCount)
+                    }
+                }
+            }
+        }
+        if (mode == "brief" && comics.size == 1) Spacer(Modifier.weight(1f))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SearchOptionsDialog(
+    sourceName: String, aggregate: Boolean, groups: List<SearchOptionGroup>, selected: List<String?>,
+    loading: Boolean, error: String?, onRetry: () -> Unit, onDismiss: () -> Unit, onApply: (List<String?>) -> Unit
+) {
+    var draft by remember(groups, selected) {
+        mutableStateOf(groups.mapIndexed { index, group -> if (index < selected.size) selected[index] else group.defaultKey })
+    }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("$sourceName · 排序与高级筛选") }, text = {
+        Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            when {
+                aggregate -> Text("全网聚合没有统一筛选。请返回页面选择具体漫画源，再设置该源提供的排序和高级选项。")
+                loading -> { CircularProgressIndicator(); Text("正在读取源选项…") }
+                error != null -> { Text(error); TextButton(onClick = onRetry) { Text("重新加载") } }
+                groups.isEmpty() -> Text("该源未声明搜索筛选选项，不会添加不受支持的筛选条件。")
+                else -> {
+                    Text("以下选项由漫画源提供；确定后重新搜索，取消不保存。", fontSize = 12.sp)
+                    TextButton(onClick = { draft = SearchOptionValues.defaults(groups) }) { Text("恢复源默认值") }
+                    groups.forEachIndexed { index, group ->
+                        Text(group.label.ifBlank { "选项 ${index + 1}" }, fontWeight = FontWeight.Bold)
+                        val value = draft.getOrNull(index)
+                        fun setValue(next: String?) { draft = draft.toMutableList().also { it[index] = next } }
+                        when (group.type) {
+                            "select", "multi-select" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                group.options.forEach { (key, label) ->
+                                    val checked = if (group.type == "multi-select") key in SearchOptionValues.selectedKeys(value) else value == key
+                                    FilterChip(selected = checked, onClick = { setValue(SearchOptionValues.toggle(group, value, key)) }, label = { Text(label) })
+                                }
+                            }
+                            "dropdown" -> {
+                                var expanded by remember { mutableStateOf(false) }
+                                Box {
+                                    OutlinedButton(onClick = { expanded = true }) { Text(group.options[value] ?: "未选择") }
+                                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                        DropdownMenuItem(text = { Text("清空选择") }, onClick = { setValue(null); expanded = false })
+                                        DropdownMenuItem(text = { Text("恢复源默认值") }, onClick = { setValue(group.defaultKey); expanded = false })
+                                        group.options.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { setValue(key); expanded = false }) }
+                                    }
+                                }
+                            }
+                            else -> Text("暂不支持此源选项类型：${group.type}，保留源默认值。", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }, confirmButton = {
+        if (!aggregate && groups.isNotEmpty()) TextButton(onClick = { onApply(draft) }, enabled = !loading && error == null) { Text("确定并重搜") }
+        else TextButton(onClick = onDismiss) { Text("知道了") }
+    }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SearchTagDialog(viewModel: SearchViewModel, onDismiss: () -> Unit) {
+    var input by remember { mutableStateOf("") }
+    var namespace by remember { mutableStateOf("") }
+    val suggestions = remember(input) { viewModel.suggestTags(input) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("添加搜索标签") }, text = {
+        Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("中文用于查找和显示；实际提交标签原文，由各源转换查询格式。未声明标签语法的源按普通关键词搜索。", fontSize = 12.sp)
+            OutlinedTextField(value = input, onValueChange = { input = it }, label = { Text("标签原文或中文联想") }, singleLine = true)
+            OutlinedTextField(value = namespace, onValueChange = { namespace = it }, label = { Text("命名空间（可选，如 artist）") }, singleLine = true)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                suggestions.forEach { (raw, label) -> AssistChip(onClick = {
+                    viewModel.addTag(raw, label, namespace); onDismiss()
+                }, label = { Text("$label（$raw）") }) }
+            }
+        }
+    }, confirmButton = { TextButton(enabled = input.isNotBlank(), onClick = {
+        viewModel.addTag(input, namespace = namespace); onDismiss()
+    }) { Text("按原文添加") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }

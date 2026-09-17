@@ -65,6 +65,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
     onOpenImageFavorites: () -> Unit = {},
     /** S8：漫画源分区 → 源管理页 */
     onOpenSourceManage: () -> Unit = {},
+    bottomContentPadding: androidx.compose.ui.unit.Dp = 8.dp,
 ) {
     val context = LocalContext.current
     val viewModel: HomeViewModel = viewModel()
@@ -73,7 +74,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val historyList = ui.history
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
     val latencyMap by sourceManager.latencyMapFlow.collectAsState()
-    val sources = remember { sourceManager.searchTargets() }
+    val registeredSources by sourceManager.sourcesFlow.collectAsStateWithLifecycle()
+    val installedSources by sourceManager.installedMeta.collectAsStateWithLifecycle()
+    val sources = remember(registeredSources, installedSources) { sourceManager.searchTargets() }
     var selectedImgFavType by remember { mutableIntStateOf(0) }
 
     // 进入主页即刷新扩展分区（本地数量/下载任务/图片收藏统计）
@@ -81,7 +84,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // ==================== 分区 1：今日推荐（_TodayUpdates） ====================
@@ -165,7 +168,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
                                             Text(
-                                                text = "NEW",
+                                                text = "更新",
                                                 color = Color.White,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold

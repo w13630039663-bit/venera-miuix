@@ -1,6 +1,5 @@
 package com.venera.compose.feature.sourcemanage
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +66,7 @@ fun SourceEditScreen(
         if (dirty) confirmDiscard = true else onClose()
     }
 
-    BackHandler { tryClose() }
+    // Dialog owns back dismissal; do not register a competing Activity callback.
 
     Dialog(
         onDismissRequest = { tryClose() },

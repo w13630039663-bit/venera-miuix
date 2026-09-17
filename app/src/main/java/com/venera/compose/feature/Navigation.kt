@@ -1,16 +1,37 @@
 package com.venera.compose.feature
 
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -24,6 +45,16 @@ import androidx.navigation.toRoute
 import com.venera.compose.components.VeneraAmbientBackground
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
+import com.venera.compose.components.backdrop.VeneraLiquidGlassNavBar
+import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
+import com.venera.compose.feature.explore.SourceSectionScreen
+import com.venera.compose.feature.explore.UnifiedExploreScreen
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.ui.platform.LocalContext
+import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.VeneraReaderScreen
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
@@ -46,6 +77,21 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 @Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
 @Serializable data object CategoriesRoute
+
+/**
+ * 从「探索」页下钻到某个源的**原生**分类 / Tag 列表。
+ *
+ * 关键：sourceKey 是身份的一部分 —— 同一个 label（如「同人」）在 Picacg 与 nhentai
+ * 下是完全不同的东西，绝不能跨源复用。
+ * unifiedTag 非空表示这是应用层「通用标签」入口（按关键词搜索），与原生分类区分开。
+ */
+@Serializable data class SourceSectionRoute(
+    val sourceKey: String,
+    val sourceTitle: String,
+    val category: String,
+    val param: String? = null,
+    val unifiedTag: String? = null,
+)
 @Serializable data object SettingsRoute
 @Serializable data object ComicSourceManageRoute
 @Serializable data object DownloadRoute
@@ -60,6 +106,17 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 @Serializable data class CoverViewerRoute(val coverUrl: String, val title: String)
 @Serializable data class DetailRoute(val comicId: String, val sourceName: String)
 
+/** 路由是详情身份的唯一依据；内存条目只能补充同一本漫画的展示数据。 */
+internal fun resolveDetailComic(route: DetailRoute, selectedComic: ComicItem?): ComicItem =
+    selectedComic?.takeIf { it.id == route.comicId && it.sourceName == route.sourceName }
+        ?: ComicItem(
+            id = route.comicId,
+            title = "",
+            author = "",
+            coverUrl = "",
+            sourceName = route.sourceName,
+        )
+
 /** 阅读会话含非序列化对象，交给宿主 ViewModel 暂存（reader 是唯一读它的目的地）。 */
 @Serializable data object ReaderRoute
 
@@ -73,7 +130,6 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.SEARCH -> SearchRoute
     VeneraNavTab.FAVORITES -> FavoritesRoute
     VeneraNavTab.EXPLORE -> ExploreRoute
-    VeneraNavTab.CATEGORIES -> CategoriesRoute
     VeneraNavTab.SETTINGS -> SettingsRoute
 }
 
@@ -81,8 +137,7 @@ private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
     VeneraNavTab.SEARCH -> "搜索与发现"
     VeneraNavTab.FAVORITES -> "我的收藏"
-    VeneraNavTab.EXPLORE -> "全站探索"
-    VeneraNavTab.CATEGORIES -> "分类索引"
+    VeneraNavTab.EXPLORE -> "探索"
     VeneraNavTab.SETTINGS -> "设置与偏好"
 }
 
@@ -100,6 +155,12 @@ fun VeneraComposeApp() {
     val navController = rememberNavController()
     val shell: VeneraShellViewModel = viewModel()
     val view = LocalView.current
+    val prefs = VeneraPreferences.getInstance(LocalContext.current)
+    val navigationBarStyle by prefs.navigationBarStyle.collectAsState()
+    // 官方 Backdrop 的 lens 折射用 RuntimeShader，需要 Android 13（TIRAMISU）及以上；
+    // 低版本不创建 backdrop / 录制层，直接退回普通悬浮底栏。
+    val useLiquidGlass = navigationBarStyle == NavigationBarStyle.LIQUID_GLASS &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
 
@@ -109,7 +170,8 @@ fun VeneraComposeApp() {
         destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
-        destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.CATEGORIES
+        // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
+        destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
         destination.hasRoute(SettingsRoute::class) -> VeneraNavTab.SETTINGS
         else -> null
     }
@@ -121,20 +183,38 @@ fun VeneraComposeApp() {
         navController.navigate(DetailRoute(comic.id, comic.sourceName))
     }
 
-    VeneraAmbientBackground {
+    // 录制层只覆盖「背景 + 页面内容」，底栏是它的兄弟节点覆盖在上层，
+    // 因此采样源永远不会递归包含底栏自身（挂到祖先上会触发 RenderNode 无限递归崩溃）。
+    //
+    // onDraw 里先铺不透明底色：官方《Glass Bottom Bar》教程第 2 步指出，只录制页面内容时
+    // 底栏下方会出现透明像素（模糊往外扩散成黑块），必须把背景一并画进 backdrop。
+    val surfaceBase = MiuixTheme.colorScheme.surface
+    val contentLayerBackdrop = if (useLiquidGlass) {
+        rememberLayerBackdrop {
+            drawRect(surfaceBase)
+            drawContent()
+        }
+    } else null
+    Box(modifier = Modifier.fillMaxSize()) {
+        VeneraAmbientBackground {
+        val layoutDirection = LocalLayoutDirection.current
+        val navigationInsets = WindowInsets.navigationBars.asPaddingValues()
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = { if (currentTab != null) TopAppBar(title = titleFor(currentTab!!)) },
                 bottomBar = {
                     if (currentTab != null) {
-                        VeneraFloatingNavBar(
-                            currentTab = currentTab,
-                            onTabSelected = { tab ->
-                                haptic()
-                                navController.gotoTab(tab)
-                            },
-                        )
+                        val barModifier = Modifier.padding(bottom = 12.dp).padding(horizontal = 16.dp)
+                        if (contentLayerBackdrop == null) {
+                            VeneraFloatingNavBar(
+                                currentTab = currentTab,
+                                onTabSelected = { tab ->
+                                    haptic()
+                                    navController.gotoTab(tab)
+                                },
+                            )
+                        }
                     }
                 },
             ) { innerPadding ->
@@ -143,10 +223,57 @@ fun VeneraComposeApp() {
                     startDestination = HomeRoute,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding),
+                        .padding(
+                            if (useLiquidGlass && currentTab != null) PaddingValues(
+                                start = innerPadding.calculateStartPadding(layoutDirection),
+                                top = innerPadding.calculateTopPadding(),
+                                end = innerPadding.calculateEndPadding(layoutDirection),
+                                bottom = navigationInsets.calculateBottomPadding(),
+                            ) else innerPadding
+                        )
+                        .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
+                        // 主页面之间左右滑动切页；只在 5 个主 tab 上生效，
+                        // 详情页/阅读器等子页面不参与（currentTab == null）。
+                        .tabSwipePager(
+                            enabled = currentTab != null,
+                            // 悬浮底栏（64dp）+ 12dp 外边距 + 系统导航栏内边距：
+                            // 这一带的手势属于底栏，翻页必须让开。
+                            bottomExclusionDp = 64 + 12 + navigationInsets.calculateBottomPadding().value.toInt(),
+                            onSwipeForward = {
+                                val tabs = VeneraNavTab.entries
+                                val i = tabs.indexOf(currentTab).coerceAtLeast(0)
+                                if (i < tabs.lastIndex) {
+                                    haptic()
+                                    navController.gotoTab(tabs[i + 1])
+                                }
+                            },
+                            onSwipeBackward = {
+                                val tabs = VeneraNavTab.entries
+                                val i = tabs.indexOf(currentTab).coerceAtLeast(0)
+                                if (i > 0) {
+                                    haptic()
+                                    navController.gotoTab(tabs[i - 1])
+                                }
+                            },
+                        ),
+                    // 预返回跟手：navigation-compose 2.8.9 的 seekable predictive back
+                    // 会在手势进度中驱动 popExit 转场，取消时平滑回弹。
+                    enterTransition = {
+                        slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeOut(animationSpec = tween(300))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeIn(animationSpec = tween(300))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(300))
+                    },
                 ) {
                     composable<HomeRoute> {
                         AndroidHomeScreen(
+                            bottomContentPadding = if (useLiquidGlass) 88.dp else 8.dp,
                             animatedVisibilityScope = this,
                             onSelect = ::openComic,
                             onOpenHistory = {
@@ -196,10 +323,50 @@ fun VeneraComposeApp() {
                         )
                     }
                     composable<ExploreRoute> {
-                        AndroidExploreScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                        UnifiedExploreScreen(
+                            onSelectComic = ::openComic,
+                            onOpenNativeSection = { args ->
+                                haptic()
+                                navController.navigate(
+                                    SourceSectionRoute(
+                                        sourceKey = args.sourceKey,
+                                        sourceTitle = args.sourceTitle,
+                                        category = args.category,
+                                        param = args.param,
+                                        unifiedTag = args.unifiedTag?.name,
+                                    )
+                                )
+                            },
+                        )
                     }
+                    // 旧「分类索引」入口重定向到合并后的探索页。
                     composable<CategoriesRoute> {
-                        AndroidCategoriesScreen(onSelect = ::openComic)
+                        UnifiedExploreScreen(
+                            onSelectComic = ::openComic,
+                            onOpenNativeSection = { args ->
+                                haptic()
+                                navController.navigate(
+                                    SourceSectionRoute(
+                                        sourceKey = args.sourceKey,
+                                        sourceTitle = args.sourceTitle,
+                                        category = args.category,
+                                        param = args.param,
+                                        unifiedTag = args.unifiedTag?.name,
+                                    )
+                                )
+                            },
+                        )
+                    }
+                    composable<SourceSectionRoute> { entry ->
+                        val route = entry.toRoute<SourceSectionRoute>()
+                        SourceSectionScreen(
+                            route = route,
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                            onSelectComic = ::openComic,
+                        )
                     }
                     composable<SettingsRoute> {
                         AndroidSettingsScreen(
@@ -312,7 +479,7 @@ fun VeneraComposeApp() {
                     }
                     composable<DetailRoute> { entry ->
                         val route = entry.toRoute<DetailRoute>()
-                        val comic = shell.selectedComic ?: return@composable
+                        val comic = resolveDetailComic(route, shell.selectedComic)
                         AndroidComicDetailScreen(
                             comic = comic,
                             animatedVisibilityScope = this,
@@ -344,8 +511,14 @@ fun VeneraComposeApp() {
                             onBack = { navController.popBackStack() }
                         )
                     }
-                    composable<ReaderRoute> {
+                    composable<ReaderRoute> { entry ->
                         val session = shell.pendingSession
+                        // 系统 pop / 预测返回不经过 onBack lambda：条目离开组合后统一清理会话。
+                        DisposableEffect(entry) {
+                            onDispose {
+                                if (shell.pendingSession === session) shell.pendingSession = null
+                            }
+                        }
                         if (session == null) {
                             LaunchedEffect(Unit) { navController.popBackStack() }
                         } else {
@@ -361,6 +534,41 @@ fun VeneraComposeApp() {
                     }
                 }
             }
+        }
+        // 玻璃底栏作为覆盖层叠在内容之上，位于录制层之外（Pixez 结构）。
+        // 录制只覆盖页面内容，因此玻璃采样不会递归包含自身。
+        // 用 Box 承担底部对齐：VeneraAmbientBackground 的 content 是普通 lambda，
+        // 不是 BoxScope，直接 .align() 不会生效（底栏会跑到左上角）。
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (currentTab != null && contentLayerBackdrop != null) {
+                val isDark = LocalVeneraDarkTheme.current
+                VeneraLiquidGlassNavBar(
+                    selectedTabIndex = { VeneraNavTab.entries.indexOf(currentTab) },
+                    onTabSelected = { index ->
+                        haptic()
+                        navController.gotoTab(VeneraNavTab.entries[index])
+                    },
+                    backdrop = contentLayerBackdrop,
+                    tabsCount = VeneraNavTab.entries.size,
+                    isLightTheme = !isDark,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth(),
+                ) {
+                    VeneraLiquidNavTabs(
+                        tabs = VeneraNavTab.entries,
+                        currentTab = currentTab,
+                        isDark = isDark,
+                        onTabSelected = { tab ->
+                            haptic()
+                            navController.gotoTab(tab)
+                        },
+                    )
+                }
+            }
+        }
         }
     }
 }

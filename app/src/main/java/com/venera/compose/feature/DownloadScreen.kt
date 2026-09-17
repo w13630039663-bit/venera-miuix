@@ -3,8 +3,9 @@ package com.venera.compose.feature
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.venera.compose.components.*
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
@@ -44,6 +46,7 @@ fun DownloadScreen(
     val context = LocalContext.current
     val downloadManager = remember { DownloadManager.getInstance(context) }
     val tasks by downloadManager.tasks.collectAsState()
+    val displayMode = rememberComicListDisplayMode()
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: 下载中/排队, 1: 已完成
 
@@ -150,6 +153,8 @@ fun DownloadScreen(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                Spacer(modifier = Modifier.weight(1f))
                 if (selectedTab == 0) {
                     TextButton(onClick = { downloadManager.resumeAll() }) {
                         Icon(imageVector = Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -199,14 +204,17 @@ fun DownloadScreen(
                     }
                 }
             } else {
-                LazyColumn(
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
                     modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(currentList, key = { it.taskId }) { task ->
                         DownloadTaskCard(
                             task = task,
+                            detailed = displayMode.value == "detailed",
                             onPause = { downloadManager.pause(task.taskId) },
                             onResume = { downloadManager.resume(task.taskId) },
                             onDelete = { downloadManager.delete(task.taskId, deleteFiles = true) }
@@ -221,149 +229,144 @@ fun DownloadScreen(
 @Composable
 fun DownloadTaskCard(
     task: DownloadTask,
+    detailed: Boolean,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 封面图
-            AsyncImage(
-                model = task.comicCover,
-                contentDescription = task.comicTitle,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(width = 54.dp, height = 74.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // 任务信息与进度
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = task.comicTitle,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = task.chapterTitle,
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                val progress = if (task.totalPages > 0) {
-                    (task.downloadedPages.toFloat() / task.totalPages).coerceIn(0f, 1f)
-                } else 0f
-
-                LinearProgressIndicator(
-                    progress = { progress },
+        ComicCardLayout(
+            detailed = detailed,
+            modifier = Modifier.padding(10.dp),
+            cover = {
+                AsyncImage(
+                    model = task.comicCover,
+                    contentDescription = task.comicTitle,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = when (task.status) {
-                        DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
-                        DownloadStatus.FAILED -> Color(0xFFF44336)
-                        DownloadStatus.PAUSED -> Color(0xFFFF9800)
-                        else -> MiuixTheme.colorScheme.primary
-                    },
-                    trackColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        .height(if (detailed) 180.dp else 200.dp)
+                        .clip(RoundedCornerShape(8.dp))
                 )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val statusText = when (task.status) {
-                        DownloadStatus.DOWNLOADING -> "下载中 ${task.speedText.ifBlank { "" }}"
-                        DownloadStatus.PENDING -> "等待队列中..."
-                        DownloadStatus.PAUSED -> "已暂停"
-                        DownloadStatus.COMPLETED -> "已完成"
-                        DownloadStatus.FAILED -> "下载失败: ${task.errorMsg ?: "网络异常"}"
-                        DownloadStatus.CANCELED -> "已取消"
-                    }
+            },
+            content = {
+                Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 8.dp)) {
                     Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        color = when (task.status) {
-                            DownloadStatus.COMPLETED -> Color(0xFF388E3C)
-                            DownloadStatus.FAILED -> Color(0xFFD32F2F)
-                            DownloadStatus.DOWNLOADING -> MiuixTheme.colorScheme.primary
-                            else -> MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        },
+                        text = task.comicTitle,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = task.chapterTitle,
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val progress = if (task.totalPages > 0) {
+                        (task.downloadedPages.toFloat() / task.totalPages).coerceIn(0f, 1f)
+                    } else 0f
+
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = when (task.status) {
+                            DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
+                            DownloadStatus.FAILED -> Color(0xFFF44336)
+                            DownloadStatus.PAUSED -> Color(0xFFFF9800)
+                            else -> MiuixTheme.colorScheme.primary
+                        },
+                        trackColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
 
-                    if (task.totalPages > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        val statusText = when (task.status) {
+                            DownloadStatus.DOWNLOADING -> "下载中 ${task.speedText.ifBlank { "" }}"
+                            DownloadStatus.PENDING -> "等待队列中..."
+                            DownloadStatus.PAUSED -> "已暂停"
+                            DownloadStatus.COMPLETED -> "已完成"
+                            DownloadStatus.FAILED -> "下载失败: ${task.errorMsg ?: "网络异常"}"
+                            DownloadStatus.CANCELED -> "已取消"
+                        }
                         Text(
-                            text = "${task.downloadedPages}/${task.totalPages}",
+                            text = statusText,
                             fontSize = 11.sp,
-                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = when (task.status) {
+                                DownloadStatus.COMPLETED -> Color(0xFF388E3C)
+                                DownloadStatus.FAILED -> Color(0xFFD32F2F)
+                                DownloadStatus.DOWNLOADING -> MiuixTheme.colorScheme.primary
+                                else -> MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 动作按钮
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                when (task.status) {
-                    DownloadStatus.DOWNLOADING -> {
-                        IconButton(onClick = onPause, modifier = Modifier.size(36.dp)) {
-                            Icon(
-                                imageVector = Icons.Outlined.Pause,
-                                contentDescription = "暂停",
-                                tint = MiuixTheme.colorScheme.primary
+                        if (task.totalPages > 0) {
+                            Text(
+                                text = "${task.downloadedPages}/${task.totalPages}",
+                                fontSize = 11.sp,
+                                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
                     }
-                    DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.PENDING -> {
-                        IconButton(onClick = onResume, modifier = Modifier.size(36.dp)) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // 动作按钮
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when (task.status) {
+                            DownloadStatus.DOWNLOADING -> {
+                                IconButton(onClick = onPause, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Pause,
+                                        contentDescription = "暂停",
+                                        tint = MiuixTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.PENDING -> {
+                                IconButton(onClick = onResume, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PlayArrow,
+                                        contentDescription = "继续",
+                                        tint = MiuixTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            DownloadStatus.COMPLETED -> {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = "已完成",
+                                    tint = Color(0xFF4CAF50),
+                                    modifier = Modifier.size(24.dp).padding(end = 4.dp)
+                                )
+                            }
+                            else -> {}
+                        }
+
+                        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                             Icon(
-                                imageVector = Icons.Outlined.PlayArrow,
-                                contentDescription = "继续",
-                                tint = MiuixTheme.colorScheme.primary
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "删除",
+                                tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
                         }
                     }
-                    DownloadStatus.COMPLETED -> {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = "已完成",
-                            tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(24.dp).padding(end = 4.dp)
-                        )
-                    }
-                    else -> {}
-                }
-
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = "删除",
-                        tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
                 }
             }
-        }
+        )
     }
 }

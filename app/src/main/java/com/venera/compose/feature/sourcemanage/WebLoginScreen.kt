@@ -9,7 +9,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -148,7 +147,7 @@ fun WebLoginScreen(
         }
     }
 
-    BackHandler { onFinish(false) }
+    // Dialog owns back dismissal; do not register a competing Activity callback.
 
     Dialog(
         onDismissRequest = { onFinish(false) },

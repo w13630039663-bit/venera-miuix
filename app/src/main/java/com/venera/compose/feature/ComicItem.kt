@@ -30,7 +30,7 @@ data class ComicItem(
     val author: String,
     val coverUrl: String,
     val tags: List<String> = emptyList(),
-    val rating: String = "0.0",
+    val rating: String = "",
     val description: String = "",
     val sourceName: String = "拷贝漫画",
     /** 最新章节标题；源未提供时为空串（UI 不显示占位符）。 */
@@ -42,6 +42,8 @@ data class ComicItem(
      * 列表接口给出的章节标题（**仅供列表展示**，不是可跳转的章节 id）。
      * 详情页的章节目录一律用源详情的 `chapterGroups` / `chapters`，绝不用它兜底。
      */
-    val chapters: List<String> = emptyList()
+    val chapters: List<String> = emptyList(),
+    /** Actual source-provided likes; never inferred from rating. */
+    val likesCount: Int? = null
 )
 

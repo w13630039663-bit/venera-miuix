@@ -185,7 +185,7 @@ fun ChapterCommentsSheetContent(
                             )
                             Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                                 Spacer(modifier = Modifier.weight(1f))
-                                if (comment.replyCount > 0) {
+                                if ((comment.replyCount ?: 0) > 0) {
                                     Text(text = comment.replyCount.toString() + " 回复", fontSize = 11.sp, color = Color.White.copy(alpha = 0.45f))
                                 }
                             }

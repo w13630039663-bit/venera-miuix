@@ -12,7 +12,9 @@ data class Comic(
     val tags: List<String> = emptyList(),
     val description: String = "",
     val updateTime: String = "",
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val rating: Float? = null,
+    val likesCount: Int? = null
 )
 
 /**
@@ -36,11 +38,17 @@ data class ComicChapter(
  */
 data class SearchOptionGroup(
     val label: String = "",
-    val options: LinkedHashMap<String, String> = LinkedHashMap()
+    val options: LinkedHashMap<String, String> = LinkedHashMap(),
+    val type: String = "select",
+    val defaultValue: String? = null
 ) {
-    /** 默认选中 key（对齐官方 defaultValue ?? options.keys.first） */
-    val defaultKey: String
-        get() = options.keys.firstOrNull() ?: ""
+    /** 多选按协议传 JSON 数组；下拉允许不选，不能偷换成第一项。 */
+    val defaultKey: String?
+        get() = defaultValue ?: when (type) {
+            "multi-select" -> "[]"
+            "dropdown" -> null
+            else -> options.keys.firstOrNull().orEmpty()
+        }
 }
 
 /**
@@ -54,13 +62,17 @@ data class ChapterGroup(
 /**
  * 漫画详情页评论实体（对齐 venera-init.js 中的 Comment 构造函数）
  */
+data class CommentCapabilities(val canLoad: Boolean = false, val canSend: Boolean = false)
+
+data class CommentPage(val comments: List<Comment>, val maxPage: Int? = null)
+
 data class Comment(
     val id: String = "",
     val userName: String,
     val avatar: String? = null,
     val content: String,
     val time: String? = null,
-    val replyCount: Int = 0,
+    val replyCount: Int? = null,
     val isLiked: Boolean = false,
     val score: Int = 0,
     val voteStatus: Int = 0 // 1: upvote, -1: downvote, 0: none

@@ -1,7 +1,6 @@
-﻿package com.venera.compose.components
+package com.venera.compose.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -9,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.venera.compose.feature.LocalVeneraDarkTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -24,7 +24,7 @@ fun VeneraAmbientBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalVeneraDarkTheme.current
     val primaryColor = MiuixTheme.colorScheme.primary
     val surfaceColor = MiuixTheme.colorScheme.surface
     val secondaryColor = MiuixTheme.colorScheme.tertiaryContainer.let {

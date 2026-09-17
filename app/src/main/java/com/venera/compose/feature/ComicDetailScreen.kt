@@ -3,7 +3,6 @@ package com.venera.compose.feature
 import android.content.Intent
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +43,8 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.download.GALLERY_CHAPTER_ID
+import com.venera.compose.download.downloadChapters
 import com.venera.compose.reader.*
 import com.venera.compose.source.model.*
 
@@ -76,11 +77,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
     var isDescExpanded by remember { mutableStateOf(false) }
     var showCommentSheet by remember { mutableStateOf(false) }
-    var newCommentText by remember { mutableStateOf("") }
-    var isSendingComment by remember { mutableStateOf(false) }
+    var newCommentText by remember(comic.sourceName, comic.id, detailState.replyTo?.id) { mutableStateOf("") }
+    val isSendingComment = detailState.isSendingComment
     var showDownloadDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(comic.id) {
+    LaunchedEffect(comic.sourceName, comic.id) {
         viewModel.load(comic)
         viewModel.syncLocalFav(comic)
     }
@@ -123,7 +124,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         } else if (liveDetails != null) {
             // 无章节源（EH 图库等）：整本即一章。对齐官方 reader.dart 的 eid 语义
             // `chapters?.ids.elementAtOrNull(chapter - 1) ?? '0'` —— 无章节时 eid 固定为 '0'。
-            launchChapter("0", comic.title, 0)
+            launchChapter(GALLERY_CHAPTER_ID, comic.title, 0)
         } else {
             // 详情尚未解析出章节列表 → 如实提示。
             // （历史上这里会打开「演示会话」，用硬编码占位图冒充漫画内容。）
@@ -131,12 +132,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         }
     }
 
-    PredictiveBackHandler { progress ->
-        try {
-            progress.collect { }
-            onBack()
-        } catch (_: Exception) { }
-    }
+    // Route back is owned by NavHost, including its seekable predictive transition.
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -778,7 +774,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { launchChapter("0", comic.title, 0) }
+                                            .clickable { launchChapter(GALLERY_CHAPTER_ID, comic.title, 0) }
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -895,9 +891,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         }
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        if (comments.isEmpty()) {
+                        CommentLoadStatus(
+                            thread = detailState.commentThread,
+                            supported = detailState.commentCapabilities.canLoad,
+                            onRetry = { viewModel.loadComments(loadMore = detailState.commentThread.requestedPage > 1) }
+                        )
+                        if (comments.isEmpty() && detailState.commentThread.loaded &&
+                            !detailState.commentThread.isLoading && detailState.commentThread.error == null) {
                             Text(
-                                text = "暂无评论，快来抢首评吧~",
+                                text = "暂无评论",
                                 fontSize = 12.sp,
                                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                                 modifier = Modifier.padding(vertical = 8.dp)
@@ -945,89 +947,103 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         }
     }
 
-    // 评论全量浏览与发表 Sheet
+    // Root comments and reply threads share a sheet but never overwrite one another.
     if (showCommentSheet) {
+        val thread = detailState.activeCommentThread
+        val replyTo = detailState.replyTo
         ModalBottomSheet(
-            onDismissRequest = { showCommentSheet = false },
+            onDismissRequest = { showCommentSheet = false; viewModel.closeReplies() },
             containerColor = MiuixTheme.colorScheme.surface
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .imePadding()
+                modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding()
             ) {
-                Text(
-                    text = "全部评论 (${detailState.comments.size})",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 输入框
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = newCommentText,
-                        onValueChange = { newCommentText = it },
-                        placeholder = { Text("说点什么吧...", fontSize = 13.sp) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            unfocusedContainerColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (replyTo != null) {
+                        TextButton(onClick = { viewModel.closeReplies() }, enabled = !isSendingComment) {
+                            Text("返回评论")
+                        }
+                    }
+                    Text(
+                        text = if (replyTo == null) "全部评论 (${thread.items.size})" else "回复 ${replyTo.userName}",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            if (newCommentText.isNotBlank() && !isSendingComment) {
-                                isSendingComment = true
-                                viewModel.sendComment(newCommentText) { success, errMsg ->
-                                    isSendingComment = false
-                                    if (success) {
-                                        newCommentText = ""
-                                        Toast.makeText(context, "评论发表成功", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, errMsg ?: "发表失败", Toast.LENGTH_SHORT).show()
-                                    }
+                    if (detailState.commentCapabilities.canLoad) {
+                        TextButton(
+                            onClick = { viewModel.loadComments(replyId = replyTo?.id) },
+                            enabled = !thread.isLoading
+                        ) { Text("刷新") }
+                    }
+                }
+                if (replyTo != null) {
+                    Text(replyTo.content, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (detailState.commentCapabilities.canSend) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        TextField(
+                            value = newCommentText,
+                            onValueChange = { newCommentText = it },
+                            enabled = !isSendingComment,
+                            placeholder = { Text(if (replyTo == null) "说点什么吧..." else "回复这条评论...", fontSize = 13.sp) },
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp, max = 140.dp),
+                            maxLines = 5,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                unfocusedContainerColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            enabled = newCommentText.isNotBlank() && !isSendingComment,
+                            onClick = {
+                                viewModel.sendComment(newCommentText, replyTo?.id) { success, errMsg ->
+                                    if (success) newCommentText = ""
+                                    Toast.makeText(context, if (success) "评论发表成功" else errMsg ?: "发表失败", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        },
-                        content = {
-                            Text(text = if (isSendingComment) "发送中" else "发送", fontSize = 13.sp)
-                        }
-                    )
+                        ) { Text(if (isSendingComment) "发送中" else "发送", fontSize = 13.sp) }
+                    }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 评论列表
+                Spacer(modifier = Modifier.height(12.dp))
+                CommentLoadStatus(
+                    thread = thread,
+                    supported = detailState.commentCapabilities.canLoad,
+                    onRetry = { viewModel.loadComments(loadMore = thread.requestedPage > 1, replyId = replyTo?.id) }
+                )
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(detailState.comments) { c ->
+                    if (thread.loaded && thread.items.isEmpty() && !thread.isLoading && thread.error == null) {
+                        item { Text("暂无评论", fontSize = 13.sp) }
+                    }
+                    items(thread.items) { c ->
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = c.userName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = c.userName, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                 Text(text = c.time.orEmpty(), fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(text = c.content, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurface)
+                            // Missing replyCount means unsupported; an explicit zero still allows replies.
+                            if (c.replyCount != null && c.id.isNotBlank() && detailState.commentCapabilities.canLoad) {
+                                TextButton(onClick = { viewModel.openReplies(c) }, enabled = !isSendingComment) {
+                                    Text("查看 / 回复 (${c.replyCount})", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                    if (thread.loaded && thread.hasMore && !thread.isLoading && thread.error == null) {
+                        item {
+                            TextButton(onClick = { viewModel.loadComments(loadMore = true, replyId = replyTo?.id) }) {
+                                Text("加载更多评论")
+                            }
                         }
                     }
                 }
@@ -1048,13 +1064,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
     // 批量离线下载对话框 (S6)
     if (showDownloadDialog) {
-        val groups = liveDetails?.chapterGroups ?: emptyList()
-        val allChs = if (groups.isNotEmpty()) {
-            val group = groups.getOrNull(detailState.selectedGroupIndex) ?: groups.first()
-            group.chapters
-        } else {
-            liveDetails?.chapters ?: emptyList()
-        }
+        val allChs = downloadChapters(liveDetails, detailState.selectedGroupIndex)
+        val isGallery = liveDetails != null && liveDetails.chapters.isEmpty() &&
+            liveDetails.chapterGroups.all { it.chapters.isEmpty() }
         var selectedIds by remember(allChs) { mutableStateOf(allChs.map { it.id }.toSet()) }
 
         AlertDialog(
@@ -1065,7 +1077,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(if (isGallery) "下载整本" else "选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     TextButton(onClick = {
                         selectedIds = if (selectedIds.size == allChs.size) emptySet() else allChs.map { it.id }.toSet()
                     }) {
@@ -1075,7 +1087,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             },
             text = {
                 if (allChs.isEmpty()) {
-                    Text("暂无可下载章节", fontSize = 13.sp)
+                    Text(if (liveDetails == null) "详情尚未加载完成，请稍后重试" else "当前分组暂无可下载章节", fontSize = 13.sp)
                 } else {
                     LazyColumn(
                         modifier = Modifier
@@ -1118,8 +1130,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         if (toDownload.isNotEmpty()) {
                             val dlMgr = com.venera.compose.download.DownloadManager.getInstance(context)
                             dlMgr.enqueue(
-                                sourceKey = liveDetails?.sourceKey ?: comic.sourceName,
-                                comicId = comic.id,
+                                sourceKey = viewModel.currentSourceKey(),
+                                comicId = liveDetails?.comic?.id ?: comic.id,
                                 comicTitle = liveDetails?.comic?.title ?: comic.title,
                                 comicCover = liveDetails?.comic?.cover ?: comic.coverUrl,
                                 chapters = toDownload
@@ -1139,6 +1151,22 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun CommentLoadStatus(thread: DetailCommentState, supported: Boolean, onRetry: () -> Unit) {
+    when {
+        thread.isLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("评论加载中…", fontSize = 12.sp)
+        }
+        thread.error != null -> Column {
+            Text(thread.error, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onRetry) { Text("重试") }
+        }
+        !supported && thread.items.isEmpty() -> Text("该源未提供评论加载功能", fontSize = 12.sp)
     }
 }
 

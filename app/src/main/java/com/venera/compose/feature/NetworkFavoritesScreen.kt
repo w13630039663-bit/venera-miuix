@@ -8,6 +8,8 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.components.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -131,6 +133,7 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
 
 @Composable
 private fun NetworkTopBar(level: Int, title: String, onBack: () -> Unit, onRefresh: () -> Unit) {
+    val displayMode = rememberComicListDisplayMode()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -148,6 +151,7 @@ private fun NetworkTopBar(level: Int, title: String, onBack: () -> Unit, onRefre
             color = MiuixTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
         )
+        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
         IconBox(Icons.Filled.Refresh, "刷新") { onRefresh() }
     }
 }
@@ -381,8 +385,14 @@ private fun NetworkComicGrid(
         return
     }
 
+    val displayMode = rememberComicListDisplayMode()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val metricsCache = remember(context) { com.venera.compose.data.prefs.ComicMetricsCache(context) }
+    androidx.compose.runtime.LaunchedEffect(comics) {
+        comics.forEach { metricsCache.put(it.sourceKey, it.id, it.rating?.toDouble(), it.likesCount) }
+    }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -391,6 +401,7 @@ private fun NetworkComicGrid(
         gridItems(comics, key = { it.id }) { comic ->
             NetworkComicCard(
                 comic = comic,
+                detailed = displayMode.value == "detailed",
                 onClick = { onSelect(comic.toComicItem()) },
                 onLongClick = { onDelete(comic) },
             )
@@ -420,13 +431,13 @@ private fun NetworkComicGrid(
 }
 
 @Composable
-private fun NetworkComicCard(comic: Comic, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun NetworkComicCard(comic: Comic, detailed: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+        ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
             AsyncImage(
                 model = comic.cover,
                 contentDescription = null,
@@ -436,7 +447,9 @@ private fun NetworkComicCard(comic: Comic, onClick: () -> Unit, onLongClick: () 
                     .clip(RoundedCornerShape(10.dp)),
                 contentScale = ContentScale.Crop,
             )
+        }) {
             Spacer(Modifier.height(6.dp))
+            ComicMetrics(comic.rating?.toDouble(), comic.likesCount)
             Text(text = comic.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
             Text(
                 text = comic.description,
@@ -492,13 +505,7 @@ private fun ErrorHint(message: String, onRetry: () -> Unit) {
 
 @Composable
 private fun NetScrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.4f))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center,
-    ) {
+    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = MiuixTheme.colorScheme.surface,
@@ -596,5 +603,6 @@ private fun Comic.toComicItem() = ComicItem(
     description = description,
     sourceName = sourceKey,
     updateTime = updateTime,
-    hasUpdate = isFavorite,
+    rating = rating?.toString().orEmpty(),
+    likesCount = likesCount,
 )

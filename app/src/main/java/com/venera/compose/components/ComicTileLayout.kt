@@ -3,12 +3,8 @@ package com.venera.compose.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.Icon
@@ -18,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +34,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 
 /** 单列大卡：对齐原版 ComicTile._buildDetailedMode。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ComicTileDetailed(
     title: String,
@@ -51,7 +47,8 @@ fun ComicTileDetailed(
     onClick: () -> Unit,
     coverContent: (@Composable BoxScope.() -> Unit)? = null,
     /** S7 分级遮罩：外部传入 "VISIBLE"/"BLURRED"/"HIDDEN"（调用方用 ContentGuard 判定） */
-    coverMaskState: String = "VISIBLE"
+    coverMaskState: String = "VISIBLE",
+    likesCount: Int? = null
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -85,99 +82,88 @@ fun ComicTileDetailed(
             Spacer(modifier = Modifier.width(14.dp))
 
             // 右侧信息区：对齐原版 _ComicDescription
-            Column(modifier = Modifier.weight(1f).height(180.dp)) {
-                Text(
-                    text = title.replace("\n", ""),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 18.sp
-                )
-                if (subtitle.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+            Column(
+                modifier = Modifier.weight(1f).heightIn(min = 180.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
                     Text(
-                        text = subtitle,
-                        fontSize = 10.sp,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = title.replace("\n", ""),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp
                     )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
+                    if (subtitle.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = subtitle,
+                            fontSize = 10.sp,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                // 标签 Wrap 徽章（对齐原版 secondaryContainer 圆角 8 徽章流，最多 2 行）
+                    ComicMetrics(rating = rating, likesCount = likesCount)
+
+                    // 描述（有标签时 2 行，无标签 3 行，对齐原版 maxLines 规则）
+                    if (description.isNotBlank()) {
+                        Text(
+                            text = description,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            maxLines = if (tags.isEmpty()) 3 else 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 15.sp
+                        )
+                    }
+
+                    // 语言/类型徽章（对齐原版 badge Container）
+                    if (badge.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .align(Alignment.End)
+                        ) {
+                            Text(text = badge, fontSize = 10.sp, color = MiuixTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                // 标签占用右侧底部空间；内容较多时允许卡片增高，避免挤压或遮挡。
                 if (tags.isNotEmpty()) {
-                    val displayTags = tags.take(6)
-                    Row(modifier = Modifier.horizontalScrollIfLong()) {
-                        displayTags.forEach { tag ->
-                            Box(
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        maxLines = 3
+                    ) {
+                        tags.take(10).forEach { tag ->
+                            Text(
+                                text = tag.substringAfter(':'),
                                 modifier = Modifier
-                                    .padding(end = 4.dp, bottom = 3.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f))
-                                    .padding(horizontal = 5.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = tag.substringAfter(':'),
-                                    fontSize = 11.sp,
-                                    color = MiuixTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                // 评分星（对齐原版 StarRating size 18）
-                if (rating != null && rating > 0) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        repeat(5) { i ->
-                            Icon(
-                                imageVector = if (i < (rating / 2).toInt().coerceAtMost(5)) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                contentDescription = null,
-                                tint = Color(0xFFFFB300),
-                                modifier = Modifier.size(14.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-                    Spacer(modifier = Modifier.height(3.dp))
-                }
-
-                // 描述（有标签时 2 行，无标签 3 行，对齐原版 maxLines 规则）
-                if (description.isNotBlank()) {
-                    Text(
-                        text = description,
-                        fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        maxLines = if (tags.isEmpty()) 3 else 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 15.sp
-                    )
-                }
-
-                // 语言/类型徽章（对齐原版 badge Container）
-                if (badge.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                            .align(Alignment.End)
-                    ) {
-                        Text(text = badge, fontSize = 10.sp, color = MiuixTheme.colorScheme.primary)
                     }
                 }
             }
         }
     }
 }
-
-private fun Modifier.horizontalScrollIfLong(): Modifier = this
 
 /**
  * 列表页 AppBar 的「单列/双列」切换按钮。

@@ -8,19 +8,26 @@ import com.venera.compose.data.network.ComicUrlMatcher
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
+import com.venera.compose.source.model.SearchOptionGroup
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-enum class SearchSortBy(val label: String) {
-    DEFAULT("默认排序"),
-    TITLE("作品名称"),
-    AUTHOR("作者/艺术家")
-}
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.coroutineContext
 
 data class SearchUiState(
     val query: String = "",
@@ -29,195 +36,255 @@ data class SearchUiState(
     val results: List<Comic> = emptyList(),
     val aggregatedResults: Map<String, ComicSourceManager.SourceSearchResult> = emptyMap(),
     val isSearching: Boolean = false,
+    val hasSearched: Boolean = false,
     val history: List<String> = emptyList(),
     val tagSuggestions: List<Pair<String, String>> = emptyList(),
+    val tags: List<SearchTag> = emptyList(),
     val matchedUrlComic: ComicUrlMatcher.MatchedComic? = null,
-    val sortBy: SearchSortBy = SearchSortBy.DEFAULT,
-    val error: String? = null
+    val optionsLoading: Boolean = false,
+    val optionsError: String? = null,
+    val error: String? = null,
+    val loadingMore: Boolean = false,
+    val canLoadMore: Boolean = false
 )
 
-/**
- * 工业级搜索与全网聚合 ViewModel (S4 核心重构)
- *
- * 核心能力：
- * 1. 全网聚合搜索流式响应 (channelFlow 逐源极速下发，告别慢源卡顿)
- * 2. 规则源动态发现与分类切换 (内置源 + 所有 S1 注册的 JS 规则源)
- * 3. 漫画链接 URL 自动识别与直达 (识别拷贝/包子/MangaDex等链接一键打开)
- * 4. 亿级标签翻译与实时输入联想 (基于 1MB tags.json 字典)
- * 5. 搜索历史持久化存储与一键清空
- */
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
-
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val metricsCache = com.venera.compose.data.prefs.ComicMetricsCache(app)
     private val sourceManager by lazy { ComicSourceManager.getInstance(app) }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
+    private val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(app)
     private var searchJob: Job? = null
     private var debounceJob: Job? = null
-
+    private var optionsJob: Job? = null
+    private val optionsMutex = Mutex()
+    private val optionsStore = SearchOptionsStore()
+    private var loadedSourceKey: String? = null
+    private var currentPage = 1
     val sourcesFlow = sourceManager.sourcesFlow
-
-    // S7 内容守卫：搜索结果统一过屏蔽规则（单源流与全网聚合流共用）
-    private val appContext = getApplication<Application>()
-    private val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(appContext)
-
     private val _uiState = MutableStateFlow(SearchUiState(history = readHistory()))
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+    private val _searchOptions = MutableStateFlow<List<SearchOptionGroup>>(emptyList())
+    val searchOptions = _searchOptions.asStateFlow()
+    private val _selectedOptions = MutableStateFlow<List<String?>>(emptyList())
+    val selectedOptions = _selectedOptions.asStateFlow()
+
+    fun suggestTags(value: String) = tagManager.suggestTags(value, limit = 12)
 
     fun onQueryChange(value: String) {
-        val matchedUrl = ComicUrlMatcher.match(value)
-        val suggestions = if (value.isNotBlank() && matchedUrl == null) {
-            tagManager.suggestTags(value, limit = 8)
-        } else emptyList()
-
-        _uiState.update {
-            it.copy(
-                query = value,
-                matchedUrlComic = matchedUrl,
-                tagSuggestions = suggestions
-            )
-        }
-
-        // 输入防抖：旧实现在 length>=2 时**每敲一个字符**就立即发起一次全网聚合搜索，
-        // 33 源 × 每次击键 = 巨量请求排队，队列永远排不完，表现为"搜不到"。
         debounceJob?.cancel()
-        if (value.length >= MIN_QUERY && matchedUrl == null) {
+        searchJob?.cancel()
+        val matched = ComicUrlMatcher.match(value)
+        _uiState.update { it.copy(query = value, matchedUrlComic = matched,
+            tagSuggestions = if (matched == null) suggestTags(value) else emptyList(),
+            isSearching = false, hasSearched = false, error = null,
+            results = emptyList(), aggregatedResults = emptyMap()) }
+        if ((value.length >= MIN_QUERY || _uiState.value.tags.isNotEmpty()) && matched == null) {
             debounceJob = viewModelScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
                 search(value)
             }
-        } else if (value.isBlank()) {
-            _uiState.update { it.copy(results = emptyList(), aggregatedResults = emptyMap()) }
         }
+    }
+
+    fun addTag(raw: String, label: String = raw, namespace: String = "") {
+        if (raw.isBlank()) return
+        val tag = SearchTag(namespace.trim(), raw.trim(), label.trim())
+        _uiState.update { state -> state.copy(tags = (state.tags + tag).distinctBy { it.namespace to it.raw }, tagSuggestions = emptyList()) }
+        search(_uiState.value.query)
+    }
+
+    fun removeTag(index: Int) {
+        _uiState.update { it.copy(tags = it.tags.filterIndexed { i, _ -> i != index }) }
+        if (_uiState.value.query.isNotBlank() || _uiState.value.tags.isNotEmpty()) search(_uiState.value.query)
+        else clearQuery()
     }
 
     fun onSourceSelected(key: String, label: String) {
-        _uiState.update { it.copy(selectedSourceKey = key, selectedSourceLabel = label) }
-        _uiState.value.query.takeIf { it.length >= MIN_QUERY }?.let { search(it) }
-    }
-
-    fun setSortBy(sortBy: SearchSortBy) {
-        _uiState.update { state ->
-            val sortedList = when (sortBy) {
-                SearchSortBy.DEFAULT -> state.results
-                SearchSortBy.TITLE -> state.results.sortedBy { it.title }
-                SearchSortBy.AUTHOR -> state.results.sortedBy { it.subTitle }
-            }
-            state.copy(sortBy = sortBy, results = sortedList)
-        }
+        if (key == _uiState.value.selectedSourceKey) return
+        debounceJob?.cancel()
+        searchJob?.cancel()
+        optionsJob?.cancel()
+        loadedSourceKey = null
+        _searchOptions.value = emptyList()
+        _selectedOptions.value = emptyList()
+        _uiState.update { it.copy(selectedSourceKey = key, selectedSourceLabel = label,
+            results = emptyList(), aggregatedResults = emptyMap(), isSearching = false,
+            hasSearched = false, optionsError = null, optionsLoading = key != KEY_ALL) }
+        loadSearchOptions(key)
+        if (_uiState.value.query.isNotBlank() || _uiState.value.tags.isNotEmpty()) search(_uiState.value.query)
     }
 
     fun clearQuery() {
+        debounceJob?.cancel()
         searchJob?.cancel()
-        _uiState.update {
-            it.copy(
-                query = "",
-                results = emptyList(),
-                aggregatedResults = emptyMap(),
-                isSearching = false,
-                matchedUrlComic = null,
-                tagSuggestions = emptyList(),
-                error = null
-            )
-        }
+        _uiState.update { it.copy(query = "", tags = emptyList(), results = emptyList(),
+            aggregatedResults = emptyMap(), isSearching = false, hasSearched = false,
+            matchedUrlComic = null, tagSuggestions = emptyList(), error = null) }
     }
 
-    // ==================== S8 批次B：搜索筛选（对齐官方 _SearchSettingsDialog） ====================
-
-    /** 当前源声明的搜索筛选组（空 = 该源无筛选） */
-    private val _searchOptions = MutableStateFlow<List<com.venera.compose.source.model.SearchOptionGroup>>(emptyList())
-    val searchOptions: StateFlow<List<com.venera.compose.source.model.SearchOptionGroup>> = _searchOptions.asStateFlow()
-
-    /** 当前选中的筛选值（索引与 searchOptions 对齐；空串 = 用该组默认） */
-    private val _selectedOptions = MutableStateFlow<List<String>>(emptyList())
-    val selectedOptions: StateFlow<List<String>> = _selectedOptions.asStateFlow()
-
-    /** 源切换或首次进入时加载筛选组定义 */
     fun loadSearchOptions(sourceKey: String) {
-        viewModelScope.launch {
-            val source = sourceManager.getSourceOrFallback(sourceKey) ?: run {
-                _searchOptions.value = emptyList()
-                _selectedOptions.value = emptyList()
-                return@launch
-            }
-            val groups = source.getSearchOptions()
-            _searchOptions.value = groups
-            // 保留用户已选值；组数或组定义变化时重置为各默认值
-            _selectedOptions.value = if (
-                _selectedOptions.value.size == groups.size &&
-                _searchOptions.value.let { old -> old.size == groups.size }
-            ) {
-                _selectedOptions.value.mapIndexed { i, v ->
-                    if (groups[i].options.containsKey(v)) v else groups[i].defaultKey
+        optionsJob?.cancel()
+        optionsJob = viewModelScope.launch {
+            try { ensureOptions(sourceKey) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (_uiState.value.selectedSourceKey == sourceKey) {
+                    _uiState.update { it.copy(optionsLoading = false, optionsError = "筛选加载失败：${e.message ?: "未知错误"}") }
                 }
-            } else {
-                groups.map { it.defaultKey }
             }
         }
     }
 
-    fun setSearchOption(groupIndex: Int, value: String) {
-        val current = _selectedOptions.value.toMutableList()
-        while (current.size <= groupIndex) current.add("")
-        current[groupIndex] = value
-        _selectedOptions.value = current
+    private suspend fun ensureOptions(sourceKey: String) = optionsMutex.withLock {
+        if (_uiState.value.selectedSourceKey != sourceKey || loadedSourceKey == sourceKey) return@withLock
+        if (sourceKey == KEY_ALL) {
+            _searchOptions.value = emptyList()
+            _selectedOptions.value = emptyList()
+            loadedSourceKey = sourceKey
+            _uiState.update { it.copy(optionsLoading = false, optionsError = null) }
+            return@withLock
+        }
+        _uiState.update { it.copy(optionsLoading = true, optionsError = null) }
+        val source = sourceManager.getSource(sourceKey) ?: error("漫画源不可用")
+        val groups = source.getSearchOptions()
+        coroutineContext.ensureActive()
+        if (_uiState.value.selectedSourceKey == sourceKey) {
+            _searchOptions.value = groups
+            _selectedOptions.value = optionsStore.load(sourceKey, groups)
+            loadedSourceKey = sourceKey
+            _uiState.update { it.copy(optionsLoading = false, optionsError = null) }
+        }
+    }
+
+    /** Dialog changes remain local until Apply; Cancel cannot change requests. */
+    fun applySearchOptions(sourceKey: String, values: List<String?>) {
+        if (sourceKey != _uiState.value.selectedSourceKey || loadedSourceKey != sourceKey) return
+        _selectedOptions.value = optionsStore.apply(sourceKey, _searchOptions.value, values)
+        if (_uiState.value.query.isNotBlank() || _uiState.value.tags.isNotEmpty()) search(_uiState.value.query)
     }
 
     fun search(query: String) {
-        if (query.isBlank()) return
         debounceJob?.cancel()
-        appendHistory(query)
-        val currentKey = _uiState.value.selectedSourceKey
-        val activeOptions = _selectedOptions.value.takeIf { it.any { v -> v.isNotBlank() } }
-
-        val matchedUrl = ComicUrlMatcher.match(query)
-        if (matchedUrl != null) {
-            _uiState.update { it.copy(matchedUrlComic = matchedUrl) }
+        val snapshot = _uiState.value
+        if (query.isBlank() && snapshot.tags.isEmpty()) {
+            clearQuery()
             return
         }
-
         searchJob?.cancel()
-        _uiState.update { it.copy(isSearching = true, error = null, tagSuggestions = emptyList()) }
-
+        val matched = ComicUrlMatcher.match(query)
+        if (matched != null) {
+            _uiState.update { it.copy(query = query, matchedUrlComic = matched, isSearching = false) }
+            return
+        }
+        if (query.isNotBlank()) appendHistory(query)
+        val currentKey = snapshot.selectedSourceKey
+        currentPage = 1
+        _uiState.update { it.copy(query = query, isSearching = true, hasSearched = true,
+            results = emptyList(), aggregatedResults = emptyMap(), error = null, tagSuggestions = emptyList()) }
         searchJob = viewModelScope.launch {
-            if (currentKey == KEY_ALL) {
-                // ==================== 全网聚合流式下发 ====================
-                // 只对**已启用**的源建骨架屏，禁用源不参与检索
-                val availableSources = sourceManager.searchTargets()
-                val initialMap = availableSources.associate { src ->
-                    src.key to ComicSourceManager.SourceSearchResult(
-                        sourceKey = src.key,
-                        sourceName = src.name,
-                        comics = emptyList(),
-                        isLoading = true
-                    )
-                }
-                _uiState.update { it.copy(aggregatedResults = initialMap, results = emptyList()) }
-
-                sourceManager.searchAggregatedStream(query).collect { event ->
-                    // 每个源的流式结果在进入 UI 前剔除命中屏蔽规则的条目
-                    val filteredEvent = if (event.comics.isNotEmpty()) {
-                        event.copy(comics = guardManager.filterComicModels(event.comics))
-                    } else event
-                    _uiState.update { state ->
-                        val updated = state.aggregatedResults.toMutableMap()
-                        updated[filteredEvent.sourceKey] = filteredEvent
-                        state.copy(aggregatedResults = updated)
+            try {
+                if (currentKey == KEY_ALL) {
+                    val targets = sourceManager.searchTargets()
+                    _uiState.update { it.copy(aggregatedResults = targets.associate { source ->
+                        source.key to ComicSourceManager.SourceSearchResult(source.key, source.name, emptyList(), isLoading = true)
+                    }) }
+                    val semaphore = Semaphore(4)
+                    coroutineScope {
+                        targets.forEach { source -> launch {
+                            val event = try {
+                                semaphore.withPermit { withContext(Dispatchers.IO) { withTimeout(30_000L) {
+                                    val request = TagSearchPolicy.requestKeyword(source.key, query, snapshot.tags, source::formatSearchTag)
+                                    val defaults = SearchOptionValues.defaults(source.getSearchOptions()).takeIf { it.isNotEmpty() }
+                                    val comics = source.search(request, options = defaults).getOrThrow()
+                                    coroutineContext.ensureActive()
+                                    cacheMetrics(source.key, comics)
+                                    // 原生标签源结果已由站方精确过滤；其余源在客户端按标签过滤。
+                                    val tagFiltered = if (TagSearchPolicy.isNativeTagSource(source.key)) comics
+                                        else TagSearchPolicy.filterByTags(comics, snapshot.tags)
+                                    ComicSourceManager.SourceSearchResult(source.key, source.name, guardManager.filterComicModels(tagFiltered), isLoading = false)
+                                } } }
+                            } catch (e: TimeoutCancellationException) {
+                                ComicSourceManager.SourceSearchResult(source.key, source.name, error = "检索超时，请进入该源重试")
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { ComicSourceManager.SourceSearchResult(source.key, source.name, emptyList(), isLoading = false, error = e.message ?: "检索失败") }
+                            coroutineContext.ensureActive()
+                            _uiState.update { it.copy(aggregatedResults = it.aggregatedResults + (source.key to event)) }
+                        } }
                     }
+                    _uiState.update { it.copy(isSearching = false) }
+                } else {
+                    ensureOptions(currentKey)
+                    val source = sourceManager.getSource(currentKey) ?: error("漫画源不可用")
+                    val request = TagSearchPolicy.requestKeyword(currentKey, query, snapshot.tags, source::formatSearchTag)
+                    if (request.isBlank() && snapshot.tags.isNotEmpty()) {
+                        // 该源不认识标签语法且没有纯文本关键词：明确提示而不是静默空结果。
+                        _uiState.update { it.copy(results = emptyList(), isSearching = false,
+                            error = "当前源不支持标签搜索：请输入关键词，或选择 EHentai 等原生标签源。") }
+                        return@launch
+                    }
+                    val result = sourceManager.search(currentKey, request, options = _selectedOptions.value.takeIf { it.isNotEmpty() })
+                    coroutineContext.ensureActive()
+                    val comics = result.getOrThrow()
+                    cacheMetrics(source.key, comics)
+                    val tagFiltered = if (TagSearchPolicy.isNativeTagSource(currentKey)) comics
+                        else TagSearchPolicy.filterByTags(comics, snapshot.tags)
+                    _uiState.update { it.copy(results = guardManager.filterComicModels(tagFiltered), isSearching = false,
+                        canLoadMore = comics.isNotEmpty()) }
                 }
-                _uiState.update { it.copy(isSearching = false) }
-            } else {
-                // ==================== 单源完整检索 ====================
-                val res = sourceManager.search(currentKey, query, options = activeOptions)
-                val list = guardManager.filterComicModels(res.getOrDefault(emptyList()))
-                val message = res.exceptionOrNull()?.let { err -> "检索异常：${err.message ?: err.javaClass.simpleName}" }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                coroutineContext.ensureActive()
+                _uiState.update { it.copy(isSearching = false, optionsLoading = false,
+                    optionsError = if (loadedSourceKey != currentKey && currentKey != KEY_ALL) "筛选加载失败，可重试" else it.optionsError,
+                    error = "检索异常：${e.message ?: "未知错误"}") }
+            }
+        }
+    }
+
+    private fun cacheMetrics(sourceKey: String, comics: List<Comic>) {
+        comics.forEach { comic ->
+            metricsCache.put(sourceKey, comic.id, comic.rating?.toDouble(), comic.likesCount)
+        }
+    }
+
+    /**
+     * 单源搜索的「加载更多」：关键词与筛选保持不变，页码 +1，结果追加到列表。
+     * 聚合模式不支持翻页（各源默认选项 + 30s 超时，追加语义不成立）。
+     */
+    fun loadMore() {
+        val snapshot = _uiState.value
+        if (snapshot.selectedSourceKey == KEY_ALL || !snapshot.canLoadMore ||
+            snapshot.isSearching || snapshot.loadingMore) return
+        if (snapshot.query.isBlank() && snapshot.tags.isEmpty()) return
+        searchJob?.cancel()
+        val currentKey = snapshot.selectedSourceKey
+        val nextPage = currentPage + 1
+        _uiState.update { it.copy(loadingMore = true, error = null) }
+        searchJob = viewModelScope.launch {
+            try {
+                ensureOptions(currentKey)
+                val source = sourceManager.getSource(currentKey) ?: error("漫画源不可用")
+                val request = TagSearchPolicy.requestKeyword(currentKey, snapshot.query, snapshot.tags, source::formatSearchTag)
+                val result = sourceManager.search(currentKey, request, page = nextPage,
+                    options = _selectedOptions.value.takeIf { it.isNotEmpty() })
+                coroutineContext.ensureActive()
+                val comics = result.getOrThrow()
+                cacheMetrics(source.key, comics)
+                val tagFiltered = if (TagSearchPolicy.isNativeTagSource(currentKey)) comics
+                    else TagSearchPolicy.filterByTags(comics, snapshot.tags)
+                val fresh = guardManager.filterComicModels(tagFiltered)
+                    .filter { next -> _uiState.value.results.none { it.id == next.id && it.sourceKey == next.sourceKey } }
                 _uiState.update {
-                    it.copy(
-                        results = list,
-                        aggregatedResults = emptyMap(),
-                        isSearching = false,
-                        error = message
-                    )
+                    it.copy(results = it.results + fresh, loadingMore = false,
+                        canLoadMore = comics.isNotEmpty())
                 }
+                if (comics.isNotEmpty()) currentPage = nextPage
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                coroutineContext.ensureActive()
+                _uiState.update { it.copy(loadingMore = false, canLoadMore = false,
+                    error = "加载更多失败：${e.message ?: "未知错误"}") }
             }
         }
     }
@@ -228,29 +295,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun appendHistory(query: String) {
-        val current = readHistory()
-        if (current.firstOrNull() == query) return
-        val next = (listOf(query) + current).distinct().take(HISTORY_MAX)
+        val next = (listOf(query) + readHistory()).distinct().take(HISTORY_MAX)
         prefs.edit().putString(KEY_HISTORY, next.joinToString("\u001F")).apply()
         _uiState.update { it.copy(history = next) }
     }
 
-    private fun readHistory(): List<String> =
-        prefs.getString(KEY_HISTORY, null)
-            ?.split('\u001F')
-            ?.filter { it.isNotBlank() }
-            .orEmpty()
+    private fun readHistory(): List<String> = prefs.getString(KEY_HISTORY, null)
+        ?.split('\u001F')?.filter { it.isNotBlank() }.orEmpty()
 
     companion object {
         const val KEY_ALL = "all"
         const val SOURCE_ALL_LABEL = "全网聚合"
-
         private const val PREFS = "venera_search"
         private const val KEY_HISTORY = "history"
         private const val HISTORY_MAX = 20
         private const val MIN_QUERY = 2
-
-        /** 输入防抖窗口（毫秒） */
         private const val SEARCH_DEBOUNCE_MS = 400L
     }
 }

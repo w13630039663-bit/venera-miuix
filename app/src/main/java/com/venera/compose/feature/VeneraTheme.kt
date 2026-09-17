@@ -1,40 +1,61 @@
 package com.venera.compose.feature
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.ThemeMode
 import com.venera.compose.data.prefs.VeneraPreferences
+import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
+import androidx.compose.material3.darkColorScheme as materialDarkColorScheme
+import androidx.compose.material3.lightColorScheme as materialLightColorScheme
 
-/**
- * Venera 主题壳（S0-6）。
- *
- * 原来 EntranceActivity/MainActivity 写死 MiuixTheme()，themeMode 偏好虽然能存 SharedPreferences
- * 但从未被消费过。现在这样才构成闭环：偏好 → 主题色 → UI。
- *
- * 注意 Miuix 自带 Monet 取色系统（ColorSchemeMode.MonetSystem/MonetLight/MonetDark），
- * 原版 Venera 也用了它。本包选择了「跟随系统或用户显式切换亮/暗」的简化路径；
- * Monet 取色（ColorSchemeMode.MonetSystem）作为 S1 后的可选项。
- */
+val LocalVeneraDarkTheme = staticCompositionLocalOf { false }
+val LocalAppearanceStyle = staticCompositionLocalOf { AppearanceStyle.MIUIX }
+
+/** One palette for both component families; MD3 uses wallpaper colors on Android 12+. */
 @Composable
 fun VeneraTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val prefs = VeneraPreferences.getInstance(context)
     val mode by prefs.themeMode.collectAsState()
-
+    val appearance by prefs.appearanceStyle.collectAsState()
     val isDark = when (mode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
+    val nativeMiuix = if (isDark) darkColorScheme() else lightColorScheme()
+    // Do not cache only by Context: configuration/wallpaper overlays can change in-place.
+    val materialColors = when {
+        appearance == AppearanceStyle.MIUIX -> nativeMiuix.toMaterialColors(isDark)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        isDark -> materialDarkColorScheme()
+        else -> materialLightColorScheme()
+    }
+    val miuixColors = if (appearance == AppearanceStyle.MIUIX) nativeMiuix
+        else materialColors.toMiuixColors(nativeMiuix)
 
-    val colors = if (isDark) darkColorScheme() else lightColorScheme()
-
-    MiuixTheme(colors = colors, content = content)
+    CompositionLocalProvider(
+        LocalVeneraDarkTheme provides isDark,
+        LocalAppearanceStyle provides appearance,
+        LocalContentColor provides miuixColors.onBackground,
+        androidx.compose.material3.LocalContentColor provides materialColors.onBackground,
+    ) {
+        MiuixTheme(colors = miuixColors) {
+            MaterialTheme(colorScheme = materialColors, content = content)
+        }
+    }
 }

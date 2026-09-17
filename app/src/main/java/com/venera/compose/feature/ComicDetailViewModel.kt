@@ -9,10 +9,15 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.prefs.ComicMetricsCache
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.ReaderSessionFactory
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.Comment
+import com.venera.compose.source.model.CommentCapabilities
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +29,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Root comments and reply threads keep independent cursors and errors. */
+data class DetailCommentState(
+    val items: List<Comment> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val page: Int = 0,
+    val requestedPage: Int = 1,
+    val maxPage: Int? = null,
+    val hasMore: Boolean = true,
+    val loaded: Boolean = false,
+) {
+    fun received(comments: List<Comment>, requestedPage: Int, maximumPage: Int?): DetailCommentState = copy(
+        items = if (requestedPage == 1) comments else items + comments,
+        isLoading = false,
+        error = null,
+        page = requestedPage,
+        maxPage = maximumPage ?: if (requestedPage == 1) null else maxPage,
+        hasMore = comments.isNotEmpty() && requestedPage < (maximumPage ?: if (requestedPage == 1) Int.MAX_VALUE else maxPage ?: Int.MAX_VALUE),
+        loaded = true,
+    )
+}
+
 /** 详情页 UI 状态 */
 data class DetailUiState(
     val details: ComicDetails? = null,
@@ -32,8 +59,11 @@ data class DetailUiState(
     val reversed: Boolean = false,
     val error: String? = null,
     val selectedGroupIndex: Int = 0,
-    val comments: List<com.venera.compose.source.model.Comment> = emptyList(),
-    val isCommentLoading: Boolean = false,
+    val commentThread: DetailCommentState = DetailCommentState(),
+    val replyThread: DetailCommentState = DetailCommentState(),
+    val replyTo: Comment? = null,
+    val commentCapabilities: CommentCapabilities = CommentCapabilities(),
+    val isSendingComment: Boolean = false,
     val isLiked: Boolean = false,
     val likesCount: Int = 0,
     val userRating: Float = 0f,
@@ -46,7 +76,11 @@ data class DetailUiState(
     val thumbnailError: String? = null,
     /** 预览缩略图所属章节 ID（点击缩略图直接开读该章节该页）。 */
     val previewChapterId: String = ""
-)
+) {
+    val comments: List<Comment> get() = commentThread.items
+    val isCommentLoading: Boolean get() = commentThread.isLoading
+    val activeCommentThread: DetailCommentState get() = if (replyTo == null) commentThread else replyThread
+}
 
 /**
  * 一次性事件：打开阅读器。
@@ -123,6 +157,10 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     val historyFlow by lazy { historyDao.historyFlow }
 
     private var loadedId: String? = null
+    private var detailJob: Job? = null
+    private var commentJob: Job? = null
+    private var replyJob: Job? = null
+    private var detailGeneration = 0
     private var currentComicItem: ComicItem? = null
 
     /** 预览图分页游标与状态（对齐官方 thumbnails.dart 的 `next` / `isInitialLoading`）。 */
@@ -153,8 +191,14 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     /** 拉取真实详情（章节目录、分卷、推荐等） */
     fun load(comic: ComicItem) {
         currentComicItem = comic
-        if (loadedId == comic.id && _uiState.value.details != null) return
-        loadedId = comic.id
+        val identity = "${resolveSourceKey(comic.sourceName)}:${comic.id}"
+        if (loadedId == identity && (_uiState.value.details != null || _uiState.value.isLoading)) return
+        loadedId = identity
+        val generation = ++detailGeneration
+        detailJob?.cancel()
+        commentJob?.cancel()
+        replyJob?.cancel()
+        _uiState.value = DetailUiState(isLoading = true)
         // 换作品：重置预览图分页游标
         thumbnailNext = null
         thumbnailStarted = false
@@ -162,7 +206,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         fallbackChapterPages = emptyList()
 
         val key = resolveSourceKey(comic.sourceName)
-        viewModelScope.launch {
+        detailJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -176,8 +220,14 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             val res = sourceManager.getComicDetails(key, comic.id)
+            if (generation != detailGeneration) return@launch
             val d = res.getOrNull()
             if (d != null) {
+                cacheMetrics(d, key)
+                val capabilities = withContext(Dispatchers.IO) {
+                    sourceManager.getSource(key)?.getCommentCapabilities() ?: CommentCapabilities()
+                }
+                if (generation != detailGeneration) return@launch
                 val initialPreviewChId = d.chapters.firstOrNull()?.id
                     ?: d.chapterGroups.firstOrNull()?.chapters?.firstOrNull()?.id
                     ?: ""
@@ -189,14 +239,15 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                         error = null,
                         isLiked = d.isLiked,
                         likesCount = d.likesCount,
-                        comments = d.comments,
+                        commentThread = DetailCommentState(items = d.comments),
+                        commentCapabilities = capabilities,
                         // 部分源的详情接口自带首批缩略图（EH 不带，走 loadThumbnails）
                         thumbnails = d.thumbnails,
                         previewChapterId = initialPreviewChId
                     )
                 }
                 // 异步拉取全量评论
-                loadComments(d.comic.id, d.subId, 1)
+                if (capabilities.canLoad) loadComments()
                 // 预览图：详情自带首批时先展示，否则调源接口分页拉
                 if (d.thumbnails.isNotEmpty()) thumbnailStarted = true else loadThumbnails()
             } else {
@@ -211,6 +262,12 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    private fun cacheMetrics(details: ComicDetails, key: String = currentSourceKey()) {
+        ComicMetricsCache(getApplication()).put(
+            key, details.comic.id, details.comic.rating?.toDouble(), details.comic.likesCount
+        )
     }
 
     /** 重新计算「是否已本地收藏」（进入页面时调用一次）。 */
@@ -231,6 +288,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 打开收藏面板：读本地收藏夹 + 该漫画已加入的夹，再异步拉网络收藏夹。 */
     fun openFavoritePanel(comic: ComicItem) {
+        _uiState.value.details?.let { cacheMetrics(it) }
         currentComicItem = comic
         val key = resolveSourceKey(comic.sourceName)
         _favPanel.value = FavoritePanelState(visible = true)
@@ -382,6 +440,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
      * 加入设置的快捷夹；未设置快捷夹时退化为打开收藏面板。
      */
     fun quickFavorite(comic: ComicItem) {
+        _uiState.value.details?.let { cacheMetrics(it) }
         val target = prefs.quickFavorite.value?.takeIf { it.isNotBlank() }
             ?: favoritesManager.folders.value.firstOrNull()
         if (target == null) {
@@ -516,40 +575,106 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 拉取评论 */
-    fun loadComments(comicId: String? = null, subId: String? = null, page: Int = 1) {
-        val details = _uiState.value.details ?: return
-        val targetComicId = comicId ?: details.comic.id
-        val targetSubId = subId ?: details.subId
-        val key = resolveSourceKey(details.sourceKey)
+    /** Use the resolved source key for comments and downloads, not its display name. */
+    fun currentSourceKey(): String = resolveSourceKey(
+        _uiState.value.details?.sourceKey?.takeIf { it.isNotBlank() }
+            ?: currentComicItem?.sourceName.orEmpty()
+    )
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCommentLoading = true) }
-            val src = sourceManager.getSource(key)
-            val res = src?.loadComments(targetComicId, targetSubId, page)
-            val commentList = res?.getOrNull().orEmpty()
-            _uiState.update {
-                it.copy(
-                    isCommentLoading = false,
-                    comments = if (commentList.isNotEmpty()) commentList else it.comments
-                )
-            }
-        }
+    fun openReplies(comment: Comment) {
+        if (comment.id.isBlank() || !_uiState.value.commentCapabilities.canLoad) return
+        replyJob?.cancel()
+        _uiState.update { it.copy(replyTo = comment, replyThread = DetailCommentState()) }
+        loadComments(replyId = comment.id)
     }
 
-    /** 发送评论 */
-    fun sendComment(content: String, onComplete: (Boolean, String?) -> Unit) {
-        val details = _uiState.value.details ?: return
-        val key = resolveSourceKey(details.sourceKey)
+    fun closeReplies() {
+        replyJob?.cancel()
+        _uiState.update { it.copy(replyTo = null, replyThread = DetailCommentState()) }
+    }
 
+    /** Refresh replaces even an empty result; only successful pages advance the cursor. */
+    fun loadComments(loadMore: Boolean = false, replyId: String? = null) {
+        val state = _uiState.value
+        val details = state.details ?: return
+        if (!state.commentCapabilities.canLoad) return
+        if (replyId != null && state.replyTo?.id != replyId) return
+        val thread = if (replyId == null) state.commentThread else state.replyThread
+        if (thread.isLoading || (loadMore && !thread.hasMore)) return
+        val requestedPage = if (loadMore) thread.page + 1 else 1
+        val generation = detailGeneration
+        val key = currentSourceKey()
+        fun updateThread(transform: (DetailCommentState) -> DetailCommentState) {
+            if (generation != detailGeneration) return
+            _uiState.update { current ->
+                if (replyId == null) current.copy(commentThread = transform(current.commentThread))
+                else if (current.replyTo?.id == replyId) current.copy(replyThread = transform(current.replyThread))
+                else current
+            }
+        }
+        updateThread { it.copy(isLoading = true, error = null, requestedPage = requestedPage) }
+        val job = viewModelScope.launch {
+            try {
+                val page = withContext(Dispatchers.IO) {
+                    val source = sourceManager.getSource(key) ?: error("找不到对应漫画源")
+                    source.loadCommentsPage(details.comic.id, details.subId, requestedPage, replyId).getOrThrow()
+                }
+                updateThread { it.received(page.comments, requestedPage, page.maxPage) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateThread { it.copy(isLoading = false, error = e.message ?: "评论加载失败") }
+            }
+        }
+        if (replyId == null) commentJob = job else replyJob = job
+    }
+
+    /** Preserve subId and pass replyId separately, as the Flutter/JS protocol requires. */
+    fun sendComment(content: String, replyId: String? = null, onComplete: (Boolean, String?) -> Unit) {
+        val state = _uiState.value
+        val details = state.details
+        val validationError = when {
+            details == null -> "详情尚未加载完成"
+            !state.commentCapabilities.canSend -> "当前源暂不支持发送评论"
+            content.isBlank() -> "评论不能为空"
+            state.isSendingComment -> "评论正在发送中"
+            replyId != null && state.replyTo?.id != replyId -> "回复对象已改变，请重试"
+            else -> null
+        }
+        if (validationError != null || details == null) {
+            onComplete(false, validationError ?: "详情尚未加载完成")
+            return
+        }
+        val generation = detailGeneration
+        val key = currentSourceKey()
+        _uiState.update { it.copy(isSendingComment = true) }
         viewModelScope.launch {
-            val src = sourceManager.getSource(key)
-            val res = src?.sendComment(details.comic.id, details.subId, content)
-            if (res != null && res.isSuccess) {
+            try {
+                val success = withContext(Dispatchers.IO) {
+                    val source = sourceManager.getSource(key) ?: error("找不到对应漫画源")
+                    source.sendComment(details.comic.id, details.subId, content, replyId).getOrThrow()
+                }
+                if (generation != detailGeneration) return@launch
+                if (!success) {
+                    onComplete(false, "源拒绝了评论，请重试")
+                    return@launch
+                }
                 onComplete(true, null)
-                loadComments(page = 1)
-            } else {
-                onComplete(false, res?.exceptionOrNull()?.message ?: "发表失败")
+                // Cancel an in-flight pre-send load so it cannot replace the fresh result.
+                commentJob?.cancel()
+                _uiState.update { it.copy(commentThread = it.commentThread.copy(isLoading = false)) }
+                loadComments()
+                if (replyId != null && _uiState.value.replyTo?.id == replyId) {
+                    replyJob?.cancel()
+                    _uiState.update { it.copy(replyThread = it.replyThread.copy(isLoading = false)) }
+                    loadComments(replyId = replyId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == detailGeneration) onComplete(false, e.message ?: "发表失败")
+            } finally {
+                if (generation == detailGeneration) _uiState.update { it.copy(isSendingComment = false) }
             }
         }
     }

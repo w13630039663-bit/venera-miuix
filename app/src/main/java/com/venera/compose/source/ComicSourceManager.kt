@@ -29,6 +29,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.venera.compose.source.explore.SourceExploration
+import com.venera.compose.source.explore.SourceExplorationFactory
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
@@ -805,7 +807,7 @@ class ComicSourceManager private constructor(private val context: Context) {
         }
     }
 
-    suspend fun search(sourceKey: String, keyword: String, page: Int = 1, options: List<String>? = null): Result<List<Comic>> =
+    suspend fun search(sourceKey: String, keyword: String, page: Int = 1, options: List<String?>? = null): Result<List<Comic>> =
         withContext(Dispatchers.IO) {
             if (sourceKey == "all") {
                 val results = searchTargets().map { source ->
@@ -972,6 +974,29 @@ class ComicSourceManager private constructor(private val context: Context) {
         val source = getSourceOrFallback(sourceKey)
             ?: return@withContext Result.failure(Exception("未找到漫画源: $sourceKey"))
         source.loadExplorePage(pageIndex, page)
+    }
+
+    /**
+     * 每个已启用源各自一份【探索能力 + 原生分类体系】。
+     *
+     * 这是「探索」页唯一的数据入口：把 explore 页面与分类矩阵按 **源** 聚合，
+     * 不做任何跨源合并 —— 每个源保留自己的分类 / Tag / 排序 / 能力。
+     *
+     * 单个源失败不影响其他源（该源降级为空能力，而不是让整页崩掉）；
+     * 将来新增漫画源只要脚本声明标准字段就会自动出现，无需改 UI。
+     */
+    suspend fun getSourceExplorations(): List<SourceExploration> = withContext(Dispatchers.IO) {
+        val sources = registeredSources.values.filter { isSourceEnabled(it.key) }
+        sources.map { source ->
+            val explorePages = source.getExplorePages().getOrDefault(emptyList())
+            val categoryData = source.getCategoryData().getOrNull()
+            SourceExplorationFactory.build(
+                sourceKey = source.key,
+                sourceName = source.name,
+                explorePages = explorePages,
+                categoryData = categoryData,
+            )
+        }.filter { !it.isEmpty }
     }
 
     /**

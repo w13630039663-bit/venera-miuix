@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil3.compose.AsyncImage
+import com.venera.compose.components.*
 import com.venera.compose.download.LocalChapter
 import com.venera.compose.download.LocalComic
 import com.venera.compose.download.LocalComicManager
@@ -59,6 +60,7 @@ fun LocalComicScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val displayMode = rememberComicListDisplayMode()
     val localComicManager = remember { LocalComicManager.getInstance(context) }
 
     var comics by remember { mutableStateOf<List<LocalComic>>(emptyList()) }
@@ -133,9 +135,12 @@ fun LocalComicScreen(
                     text = "本地离线书架",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.weight(1f))
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 Button(
                     onClick = {
                         importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
@@ -189,7 +194,7 @@ fun LocalComicScreen(
 
                 else -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -198,6 +203,7 @@ fun LocalComicScreen(
                         items(comics, key = { it.rootPath }) { comic ->
                             LocalComicCard(
                                 comic = comic,
+                                detailed = displayMode.value == "detailed",
                                 onClick = {
                                     scope.launch {
                                         val chapters = localComicManager.getLocalChapters(comic)
@@ -369,6 +375,7 @@ private fun openChapterSession(
 @Composable
 fun LocalComicCard(
     comic: LocalComic,
+    detailed: Boolean,
     onClick: () -> Unit,
     onExportCbz: () -> Unit,
     onDelete: () -> Unit
@@ -380,99 +387,103 @@ fun LocalComicCard(
             .fillMaxWidth()
             .clickable { onClick() }
     ) {
-        Column(modifier = Modifier.padding(6.dp)) {
-            Box {
-                AsyncImage(
-                    model = comic.coverPath,
-                    contentDescription = comic.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.72f)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-
-                // 更多选项按钮
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                ) {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "选项",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("导出标准 CBZ") },
-                            onClick = {
-                                showMenu = false
-                                onExportCbz()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Outlined.FileUpload, contentDescription = null)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("删除离线文件", color = Color(0xFFE53935)) },
-                            onClick = {
-                                showMenu = false
-                                onDelete()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFE53935))
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = comic.title,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${comic.chapterCount} 话 · ${comic.totalPages}P",
-                    fontSize = 10.sp,
-                    color = MiuixTheme.colorScheme.primary
-                )
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                ) {
-                    Text(
-                        text = comic.sourceName.ifBlank { "离线" },
-                        fontSize = 9.sp,
-                        color = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+        ComicCardLayout(
+            detailed = detailed,
+            modifier = Modifier.padding(6.dp),
+            cover = {
+                Box {
+                    AsyncImage(
+                        model = comic.coverPath,
+                        contentDescription = comic.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (detailed) Modifier.height(180.dp) else Modifier.aspectRatio(0.72f))
+                            .clip(RoundedCornerShape(8.dp))
                     )
+
+                    // 更多选项按钮
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "选项",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("导出标准 CBZ") },
+                                onClick = {
+                                    showMenu = false
+                                    onExportCbz()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.FileUpload, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("删除离线文件", color = Color(0xFFE53935)) },
+                                onClick = {
+                                    showMenu = false
+                                    onDelete()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFE53935))
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            content = {
+                Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 6.dp)) {
+                    Text(
+                        text = comic.title,
+                        fontSize = if (detailed) 14.sp else 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = "${comic.chapterCount} 话 · ${comic.totalPages}P",
+                        fontSize = 11.sp,
+                        color = MiuixTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                    ) {
+                        Text(
+                            text = comic.sourceName.ifBlank { "离线" },
+                            fontSize = 10.sp,
+                            color = MiuixTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
-        }
+        )
     }
 }

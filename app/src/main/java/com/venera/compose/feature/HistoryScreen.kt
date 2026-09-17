@@ -41,14 +41,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.venera.compose.components.*
 import com.venera.compose.data.db.HistoryRecord
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -65,14 +68,19 @@ fun AndroidHistoryScreen(
 ) {
     val vm: HistoryViewModel = viewModel()
     val records by vm.history.collectAsState()
+    val displayMode = rememberComicListDisplayMode()
     var showClearMenu by remember { mutableStateOf(false) }
+    val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
+        enabled = vm.multiSelectMode && !showClearMenu,
+    ) { vm.exitMultiSelect() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .graphicsLayer { alpha = 1f - selectionBack.progress },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -90,6 +98,7 @@ fun AndroidHistoryScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 if (vm.multiSelectMode) {
                     Text(
                         text = "全选",
@@ -130,7 +139,7 @@ fun AndroidHistoryScreen(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
                     contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -139,6 +148,7 @@ fun AndroidHistoryScreen(
                     items(records, key = { "${it.comicId}-${it.sourceName}" }) { record ->
                         HistoryCard(
                             record = record,
+                            detailed = displayMode.value == "detailed",
                             selected = (record.comicId to record.sourceName) in vm.selected,
                             multiSelectMode = vm.multiSelectMode,
                             onClick = {
@@ -169,6 +179,7 @@ fun AndroidHistoryScreen(
 @Composable
 private fun HistoryCard(
     record: HistoryRecord,
+    detailed: Boolean,
     selected: Boolean,
     multiSelectMode: Boolean,
     onClick: () -> Unit,
@@ -180,36 +191,52 @@ private fun HistoryCard(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box {
-            Column(modifier = Modifier.padding(6.dp)) {
-                AsyncImage(
-                    model = record.coverUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop,
-                )
-                Spacer(modifier = Modifier.height(5.dp))
-                Text(text = record.title, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                Text(
-                    text = record.progressDescription(),
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-                Text(
-                    text = record.sourceName,
-                    fontSize = 10.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
-                    maxLines = 1,
-                )
-            }
+            ComicCardLayout(
+                detailed = detailed,
+                modifier = Modifier.padding(6.dp),
+                cover = {
+                    AsyncImage(
+                        model = record.coverUrl,
+                        contentDescription = record.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (detailed) 180.dp else 200.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                },
+                content = {
+                    Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 5.dp, end = if (detailed && multiSelectMode) 26.dp else 0.dp)) {
+                        Text(
+                            text = record.title,
+                            fontSize = if (detailed) 14.sp else 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = record.progressDescription(),
+                            fontSize = 11.sp,
+                            color = MiuixTheme.colorScheme.primary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = record.sourceName,
+                            fontSize = 10.sp,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+            )
             if (multiSelectMode) {
                 Icon(
                     imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                     contentDescription = null,
-                    tint = if (selected) MiuixTheme.colorScheme.primary else Color.White,
+                    tint = if (selected) MiuixTheme.colorScheme.primary else if (detailed) MiuixTheme.colorScheme.onSurface else Color.White,
                     modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(20.dp),
                 )
             }
@@ -223,13 +250,7 @@ private fun ClearHistoryMenu(
     onClearUnfavorited: () -> Unit,
     onClearAll: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
-    ) {
+    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Card(modifier = Modifier.padding(horizontal = 28.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(text = "清空历史记录", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)

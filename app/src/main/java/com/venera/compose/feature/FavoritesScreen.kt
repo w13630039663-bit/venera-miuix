@@ -7,6 +7,8 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.components.*
+
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -50,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -74,6 +77,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     onSelect: (ComicItem) -> Unit,
 ) {
     val vm: FavoritesViewModel = viewModel()
+    val displayMode = rememberComicListDisplayMode()
     val folders by vm.folders.collectAsState()
     val counts by vm.counts.collectAsState()
 
@@ -82,6 +86,9 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     var searchMode by remember { mutableStateOf(false) }
     // 网络收藏置于首位并作为默认入口
     var mode by remember { mutableStateOf(FavoritesMode.Network) }
+    val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
+        enabled = mode == FavoritesMode.Local && vm.multiSelectMode && !showMenu && dialog == null,
+    ) { vm.exitMultiSelect() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -91,6 +98,9 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             )
 
             if (mode == FavoritesMode.Local) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                }
                 FolderChipRow(
                     folders = folders,
                     counts = counts,
@@ -122,7 +132,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 onMove = { dialog = FolderDialog.Move },
                 onCopy = { dialog = FolderDialog.Copy },
                 onDelete = { vm.deleteSelected() },
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                    translationY = size.height * selectionBack.progress
+                    alpha = 1f - selectionBack.progress
+                },
             )
         }
     }
@@ -415,8 +428,9 @@ private fun FavoriteGrid(
         return
     }
 
+    val displayMode = rememberComicListDisplayMode()
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -425,6 +439,7 @@ private fun FavoriteGrid(
         gridItems(vm.comics, key = { "${it.id}-${it.type}" }) { item ->
             FavoriteCard(
                 item = item,
+                detailed = displayMode.value == "detailed",
                 selected = (item.id to item.type) in vm.selected,
                 multiSelectMode = vm.multiSelectMode,
                 onClick = {
@@ -444,18 +459,20 @@ private fun FavoriteGrid(
 @Composable
 private fun FavoriteCard(
     item: com.venera.compose.data.db.FavoriteItem,
+    detailed: Boolean,
     selected: Boolean,
     multiSelectMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val metrics by rememberCachedComicMetrics(item.sourceKey, item.id)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box {
-            Column(modifier = Modifier.padding(8.dp)) {
+            ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
                 AsyncImage(
                     model = item.coverPath,
                     contentDescription = null,
@@ -465,7 +482,9 @@ private fun FavoriteCard(
                         .clip(RoundedCornerShape(10.dp)),
                     contentScale = ContentScale.Crop,
                 )
+            }) {
                 Spacer(modifier = Modifier.height(6.dp))
+                ComicMetrics(metrics.rating, metrics.likesCount)
                 Text(text = item.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 Text(
                     text = item.description,
@@ -582,13 +601,7 @@ private fun ActionChip(
 
 @Composable
 private fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center,
-    ) {
+    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Box(modifier = Modifier.clickable(enabled = false) {}) {
             Card(modifier = Modifier.padding(horizontal = 28.dp)) { content() }
         }

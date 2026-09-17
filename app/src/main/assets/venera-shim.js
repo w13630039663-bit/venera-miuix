@@ -130,7 +130,7 @@ function _deserializeResult(obj) {
  *
  * 因此每个元素要么是 null，要么是"JSON 编码后的字符串"：
  *   - multi-select 源拿到 '["0","1"]'，可 JSON.parse（ehentai 正是如此）
- *   - select      源拿到 '"value"'（含引号，官方行为如此，保持一致）
+ *   - select      源拿到原始选项键，不额外添加 JSON 引号
  *   - 无 default  时回退到 options **首个插入键**（可能是空串，如 "-<none>"）
  *
  * ★ 早前实现直接传 []，导致 ehentai 的 JSON.parse(options[0]) 抛
@@ -162,7 +162,12 @@ function _veneraOptionValues(optionList) {
 
         var value;
         if (opt['default'] !== undefined && opt['default'] !== null) {
-            value = JSON.stringify(opt['default']);
+            value = opt.type === 'multi-select' && Array.isArray(opt['default'])
+                ? JSON.stringify(opt['default']) : String(opt['default']);
+        } else if (opt.type === 'multi-select') {
+            value = '[]';
+        } else if (opt.type === 'dropdown') {
+            value = null;
         } else {
             value = keys.length > 0 ? keys[0] : "";
         }

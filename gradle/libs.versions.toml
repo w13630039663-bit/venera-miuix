@@ -25,6 +25,11 @@ serializationJson = "1.11.0"
 miuix = "0.9.4-rc01"
 telephoto = "0.19.0"
 work = "2.9.1"
+# Kyant0/AndroidLiquidGlass 官方液态玻璃库（Compose Multiplatform）
+# https://github.com/Kyant0/AndroidLiquidGlass  docs: https://kyant.gitbook.io/backdrop
+backdrop = "2.0.1"
+# Backdrop 的 shape 体系（Capsule / RoundedRectangularShape）；lens 需要它提供圆角半径
+kyantShapes = "1.2.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -66,6 +71,13 @@ quickjs-android = { group = "app.cash.quickjs", name = "quickjs-android", versio
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "miuix" }
+
+miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur", version.ref = "miuix" }
+
+# 官方液态玻璃（Kyant0/AndroidLiquidGlass）。提供 Backdrop / drawBackdrop / lens / blur 等。
+# Android 12+ 才能生效 RenderEffect，lens（RuntimeShader）需要 Android 13+。
+backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
+kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyantShapes" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

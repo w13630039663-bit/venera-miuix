@@ -14,11 +14,16 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.PredictiveBackHandler
+import com.venera.compose.components.rememberPredictiveBackState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -72,6 +77,7 @@ import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,9 +114,15 @@ private const val PRELOAD_AHEAD_PAGES = 5
  * 4. 动态章节调度与抽屉：支持任意章节跳转与未载入章节按需拉取
  * 5. 全面沉浸式控制层：夜间反色滤镜、音量键翻页、屏幕常亮、边缘点击翻页、保存相册与分享
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VeneraReaderScreen(
+fun VeneraReaderScreen(session: ReaderSession, onBack: () -> Unit) {
+    // A new book/session must not inherit remembered chapters, gestures or open panels.
+    key(session) { ReaderSessionContent(session, onBack) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ReaderSessionContent(
     session: ReaderSession,
     onBack: () -> Unit
 ) {
@@ -146,13 +158,13 @@ fun VeneraReaderScreen(
     var clickToTurn by remember { mutableStateOf(prefs.clickToTurn.value) }
 
     // 控制浮层显隐
-    var isControlsVisible by remember { mutableStateOf(false) }
+    var isControlsVisible by rememberSaveable { mutableStateOf(false) }
 
     // 弹窗状态
-    var showChapterDrawer by remember { mutableStateOf(false) }
-    var showSettingsSheet by remember { mutableStateOf(false) }
-    // S8: 章节评论（对齐官方 reader/chapter_comments）
-    var showChapterCommentsSheet by remember { mutableStateOf(false) }
+    var activePanel by rememberSaveable { mutableStateOf(ReaderPanel.NONE) }
+    val showChapterDrawer = activePanel == ReaderPanel.CHAPTERS
+    val showSettingsSheet = activePanel == ReaderPanel.SETTINGS
+    val showChapterCommentsSheet = activePanel == ReaderPanel.COMMENTS
     var isChapterLoading by remember { mutableStateOf(false) }
 
     // 焦点捕获器（供音量键监听）
@@ -191,7 +203,7 @@ fun VeneraReaderScreen(
     )
 
     // 当前可视页码推导 (0-indexed)
-    val currentPageIndex by remember {
+    val currentPageIndex by remember(currentChapter) {
         derivedStateOf {
             if (currentChapter.pages.isEmpty()) return@derivedStateOf 0
             when (readingMode) {
@@ -240,17 +252,24 @@ fun VeneraReaderScreen(
         }
     }
 
-    // 页面跳转统一函数
-    fun jumpToPage(targetPage: Int) {
-        val page = targetPage.coerceIn(0, (currentChapter.pages.size - 1).coerceAtLeast(0))
-        scope.launch {
-            when (readingMode) {
-                ReaderReadingMode.VERTICAL_CONTINUOUS -> verticalListState.scrollToItem(page)
-                ReaderReadingMode.HORIZONTAL_CONTINUOUS -> horizontalListState.scrollToItem(page)
-                ReaderReadingMode.HORIZONTAL_LTR -> ltrPagerState.scrollToPage(page)
-                ReaderReadingMode.HORIZONTAL_RTL -> rtlPagerState.scrollToPage(currentChapter.pages.lastIndex - page)
-                ReaderReadingMode.DOUBLE_PAGE -> doublePagerState.scrollToPage(page / 2)
-            }
+    // Chapter switching must wait for composition to publish the new pager count.
+    var pendingChapterPage by remember { mutableStateOf<Int?>(null) }
+    suspend fun scrollToPage(targetPage: Int) {
+        if (currentChapter.pages.isEmpty()) return
+        val page = targetPage.coerceIn(0, currentChapter.pages.lastIndex)
+        when (readingMode) {
+            ReaderReadingMode.VERTICAL_CONTINUOUS -> verticalListState.scrollToItem(page)
+            ReaderReadingMode.HORIZONTAL_CONTINUOUS -> horizontalListState.scrollToItem(page)
+            ReaderReadingMode.HORIZONTAL_LTR -> ltrPagerState.scrollToPage(page)
+            ReaderReadingMode.HORIZONTAL_RTL -> rtlPagerState.scrollToPage(currentChapter.pages.lastIndex - page)
+            ReaderReadingMode.DOUBLE_PAGE -> doublePagerState.scrollToPage(page / 2)
+        }
+    }
+    fun jumpToPage(targetPage: Int) { scope.launch { scrollToPage(targetPage) } }
+    LaunchedEffect(currentChapter, pendingChapterPage) {
+        pendingChapterPage?.let { target ->
+            scrollToPage(target)
+            pendingChapterPage = null
         }
     }
 
@@ -272,47 +291,50 @@ fun VeneraReaderScreen(
 
     // 动态章节加载与切换
     fun switchToChapter(newChapterIndex: Int, initialPage: Int = 0) {
-        if (newChapterIndex !in chaptersState.indices) return
+        if (isChapterLoading || newChapterIndex !in chaptersState.indices) return
         val targetCh = chaptersState[newChapterIndex]
         if (targetCh.isLoaded && targetCh.pages.isNotEmpty()) {
             currentChapterIndex = newChapterIndex
-            jumpToPage(initialPage)
+            pendingChapterPage = initialPage
         } else {
             // 需要联网拉取该章节页面
+            isChapterLoading = true
             scope.launch {
-                isChapterLoading = true
-                val key = session.sourceKey.ifBlank { "copymanga" }
-                val res = sourceManager.getChapterPages(key, session.comicId, targetCh.id)
-                val pagesData = res.getOrNull()
-                val pageUrls = pagesData?.pages.orEmpty()
-                if (pageUrls.isNotEmpty()) {
-                    val useKeys = pagesData?.useOnImageLoad == true
-                    if (!useKeys) {
-                        pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
-                            ImageHeaderPolicy.publishForUrls(pageUrls, hdrs)
+                try {
+                    val key = session.sourceKey.ifBlank { "copymanga" }
+                    val res = sourceManager.getChapterPages(key, session.comicId, targetCh.id)
+                    val pagesData = res.getOrNull()
+                    val pageUrls = pagesData?.pages.orEmpty()
+                    if (pageUrls.isNotEmpty()) {
+                        val useKeys = pagesData?.useOnImageLoad == true
+                        if (!useKeys) {
+                            pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
+                                ImageHeaderPolicy.publishForUrls(pageUrls, hdrs)
+                            }
                         }
-                    }
-                    val mappedPages = pageUrls.mapIndexed { idx, u ->
-                        if (useKeys) {
-                            // 图片键模式：真实地址由源 JS onImageLoad 逐页解析
-                            ComicPageSource.DynamicNetwork(
-                                imageKey = u,
-                                pageIndex = idx,
-                                sourceKey = key,
-                                comicId = session.comicId,
-                                epId = targetCh.id
-                            )
-                        } else {
-                            ComicPageSource.Network(url = u, pageIndex = idx)
+                        val mappedPages = pageUrls.mapIndexed { idx, u ->
+                            if (useKeys) {
+                                // 图片键模式：真实地址由源 JS onImageLoad 逐页解析
+                                ComicPageSource.DynamicNetwork(
+                                    imageKey = u,
+                                    pageIndex = idx,
+                                    sourceKey = key,
+                                    comicId = session.comicId,
+                                    epId = targetCh.id
+                                )
+                            } else {
+                                ComicPageSource.Network(url = u, pageIndex = idx)
+                            }
                         }
+                        chaptersState[newChapterIndex] = targetCh.copy(pages = mappedPages, isLoaded = true)
+                        currentChapterIndex = newChapterIndex
+                        pendingChapterPage = initialPage
+                    } else {
+                        Toast.makeText(context, "加载章节失败：${res.exceptionOrNull()?.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
                     }
-                    chaptersState[newChapterIndex] = targetCh.copy(pages = mappedPages, isLoaded = true)
-                    currentChapterIndex = newChapterIndex
-                    jumpToPage(initialPage)
-                } else {
-                    Toast.makeText(context, "加载章节失败：${res.exceptionOrNull()?.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isChapterLoading = false
                 }
-                isChapterLoading = false
             }
         }
     }
@@ -355,7 +377,8 @@ fun VeneraReaderScreen(
 
     // ==================== 历史记录无缝写回 ====================
     LaunchedEffect(currentChapterIndex, currentPageIndex) {
-        withContext(Dispatchers.IO) {
+        // Finish an already-started save even when NavHost disposes this destination.
+        withContext(NonCancellable + Dispatchers.IO) {
             HistoryDao.getInstance(context).saveHistory(
                 HistoryRecord(
                     comicId = session.comicId,
@@ -387,13 +410,13 @@ fun VeneraReaderScreen(
     }
 
     // ==================== 沉浸式全屏与导航栏 ====================
-    DisposableEffect(isControlsVisible) {
+    DisposableEffect(isControlsVisible, activePanel) {
         val window = activity?.window
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
             insetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (!isControlsVisible) {
+            if (!isControlsVisible && activePanel == ReaderPanel.NONE) {
                 insetsController.hide(WindowInsetsCompat.Type.systemBars())
             } else {
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
@@ -407,18 +430,12 @@ fun VeneraReaderScreen(
         }
     }
 
-    // 返回键拦截
-    PredictiveBackHandler(enabled = true) { progress ->
-        try {
-            progress.collect { }
-            if (isControlsVisible) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                isControlsVisible = false
-            } else {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onBack()
-            }
-        } catch (_: Exception) { }
+    // Sheets own their window's back gesture, then controls, then NavHost's route pop.
+    val controlsBack = rememberPredictiveBackState(
+        enabled = activePanel == ReaderPanel.NONE && isControlsVisible,
+    ) {
+        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        isControlsVisible = false
     }
 
     // 反色滤镜
@@ -437,8 +454,25 @@ fun VeneraReaderScreen(
         } else null
     }
 
+    // pointerInput(Unit) must use the latest chapter/page callbacks, not its first composition.
+    val onReaderTap by rememberUpdatedState<(Float) -> Unit> { fraction ->
+        when (readerTapAction(fraction, readingMode, clickToTurn, activePanel)) {
+            ReaderTapAction.TOGGLE_CONTROLS -> {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                isControlsVisible = !isControlsVisible
+            }
+            ReaderTapAction.NEXT_PAGE -> turnToNextPage()
+            ReaderTapAction.PREVIOUS_PAGE -> turnToPrevPage()
+            ReaderTapAction.NONE -> Unit
+        }
+    }
+
     // 当前显示的图片源
     val currentImageSource = currentChapter.pages.getOrNull(currentPageIndex)
+
+    LaunchedEffect(activePanel) {
+        if (activePanel == ReaderPanel.NONE) focusRequester.requestFocus()
+    }
 
     Box(
         modifier = Modifier
@@ -447,7 +481,7 @@ fun VeneraReaderScreen(
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { keyEvent ->
-                if (volumeKeyTurn && keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                if (activePanel == ReaderPanel.NONE && volumeKeyTurn && keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                     when (keyEvent.nativeKeyEvent.keyCode) {
                         KeyEvent.KEYCODE_VOLUME_DOWN -> {
                             if (!turnToNextPage()) {
@@ -471,47 +505,13 @@ fun VeneraReaderScreen(
                 } else false
             }
     ) {
-        LaunchedEffect(Unit) {
-            focusRequester.requestFocus()
-        }
-
         // ==================== 5 种模式阅读视图 ====================
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(readingMode, clickToTurn) {
-                    detectTapGestures(
-                        onTap = { offset ->
-                            val width = size.width
-                            if (clickToTurn && readingMode != ReaderReadingMode.VERTICAL_CONTINUOUS) {
-                                when {
-                                    offset.x < width * 0.25f -> {
-                                        // 点击左侧 25%
-                                        if (readingMode == ReaderReadingMode.HORIZONTAL_RTL) {
-                                            turnToNextPage()
-                                        } else {
-                                            turnToPrevPage()
-                                        }
-                                    }
-                                    offset.x > width * 0.75f -> {
-                                        // 点击右侧 25%
-                                        if (readingMode == ReaderReadingMode.HORIZONTAL_RTL) {
-                                            turnToPrevPage()
-                                        } else {
-                                            turnToNextPage()
-                                        }
-                                    }
-                                    else -> {
-                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        isControlsVisible = !isControlsVisible
-                                    }
-                                }
-                            } else {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                isControlsVisible = !isControlsVisible
-                            }
-                        }
-                    )
+                .pointerInput(Unit) {
+                    // Only unconsumed taps reach here; Telephoto owns its own single/double taps.
+                    detectTapGestures(onTap = { offset -> onReaderTap(offset.x / size.width.coerceAtLeast(1)) })
                 }
         ) {
             when (readingMode) {
@@ -565,9 +565,7 @@ fun VeneraReaderScreen(
                                 page = page,
                                 index = pageIdx,
                                 colorFilter = nightColorFilter,
-                                onDoubleTap = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                }
+                                onTap = onReaderTap
                             )
                         }
                     }
@@ -585,9 +583,7 @@ fun VeneraReaderScreen(
                                 page = page,
                                 index = realIdx,
                                 colorFilter = nightColorFilter,
-                                onDoubleTap = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                }
+                                onTap = onReaderTap
                             )
                         }
                     }
@@ -643,7 +639,10 @@ fun VeneraReaderScreen(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { -it },
             exit = fadeOut() + slideOutVertically { -it },
-            modifier = Modifier.align(Alignment.TopCenter)
+            modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
+                translationY = -size.height * controlsBack.progress
+                alpha = 1f - controlsBack.progress
+            }
         ) {
             Surface(
                 color = Color.Black.copy(alpha = 0.88f),
@@ -701,7 +700,7 @@ fun VeneraReaderScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.clickable {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            showSettingsSheet = true
+                            activePanel = ReaderPanel.SETTINGS
                         }
                     ) {
                         Row(
@@ -727,7 +726,10 @@ fun VeneraReaderScreen(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                translationY = size.height * controlsBack.progress
+                alpha = 1f - controlsBack.progress
+            }
         ) {
             Surface(
                 color = Color.Black.copy(alpha = 0.90f),
@@ -770,11 +772,11 @@ fun VeneraReaderScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 动作条：上一话、目录抽屉、存图、分享、设置、下一话
-                    Row(
+                    // 窄屏固定分成两行，避免末尾设置按钮被八个操作挤出屏幕。
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        maxItemsInEachRow = 4
                     ) {
                         // 上一话
                         Surface(
@@ -796,7 +798,7 @@ fun VeneraReaderScreen(
                         // 目录抽屉
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            showChapterDrawer = true
+                            activePanel = ReaderPanel.CHAPTERS
                         }) {
                             Icon(Icons.Outlined.Menu, contentDescription = "章节列表", tint = Color.White)
                         }
@@ -834,7 +836,7 @@ fun VeneraReaderScreen(
                         // 章节评论 (S8，对齐官方 reader/chapter_comments)
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            showChapterCommentsSheet = true
+                            activePanel = ReaderPanel.COMMENTS
                         }) {
                             Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "本章评论", tint = Color.White)
                         }
@@ -842,7 +844,7 @@ fun VeneraReaderScreen(
                         // 设置
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            showSettingsSheet = true
+                            activePanel = ReaderPanel.SETTINGS
                         }) {
                             Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = Color.White)
                         }
@@ -868,10 +870,22 @@ fun VeneraReaderScreen(
             }
         }
 
+        // Failed images own a retry tap. Keep settings reachable without stealing zoom/drag gestures.
+        if (!isControlsVisible && activePanel == ReaderPanel.NONE) {
+            IconButton(
+                onClick = { activePanel = ReaderPanel.SETTINGS },
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                    .padding(8.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = Color.White)
+            }
+        }
+
         // ==================== 章节列表抽屉 (BottomSheet) ====================
         if (showChapterDrawer) {
             ModalBottomSheet(
-                onDismissRequest = { showChapterDrawer = false },
+                onDismissRequest = { activePanel = ReaderPanel.NONE },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = Color(0xFF1E1E1E),
                 contentColor = Color.White,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -939,7 +953,7 @@ fun VeneraReaderScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        showChapterDrawer = false
+                                        activePanel = ReaderPanel.NONE
                                         switchToChapter(origIdx, 0)
                                     }
                             ) {
@@ -984,7 +998,8 @@ fun VeneraReaderScreen(
         // ==================== 阅读设置面板 (BottomSheet) ====================
         if (showSettingsSheet) {
             ModalBottomSheet(
-                onDismissRequest = { showSettingsSheet = false },
+                onDismissRequest = { activePanel = ReaderPanel.NONE },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = Color(0xFF1E1E1E),
                 contentColor = Color.White,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -992,6 +1007,7 @@ fun VeneraReaderScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .padding(bottom = 36.dp)
                 ) {
@@ -1200,7 +1216,8 @@ fun VeneraReaderScreen(
         // ==================== 章节评论 Sheet (S8，对齐官方 reader/chapter_comments) ====================
         if (showChapterCommentsSheet) {
             ModalBottomSheet(
-                onDismissRequest = { showChapterCommentsSheet = false },
+                onDismissRequest = { activePanel = ReaderPanel.NONE },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = Color(0xFF1E1E1E),
                 contentColor = Color.White,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -1483,10 +1500,11 @@ private fun ReaderTelephotoPageItem(
     page: ComicPageSource,
     index: Int,
     colorFilter: ColorFilter?,
-    onDoubleTap: () -> Unit
+    onTap: (Float) -> Unit
 ) {
+    var pageWidth by remember { mutableIntStateOf(1) }
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onSizeChanged { pageWidth = it.width.coerceAtLeast(1) },
         contentAlignment = Alignment.Center
     ) {
         val zoomState = rememberZoomableState()
@@ -1498,6 +1516,7 @@ private fun ReaderTelephotoPageItem(
                     model = page.url,
                     contentDescription = "第 ${index + 1} 页",
                     state = zoomableImageState,
+                    onClick = { offset -> onTap(offset.x / pageWidth) },
                     colorFilter = colorFilter,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
@@ -1516,6 +1535,7 @@ private fun ReaderTelephotoPageItem(
                             .build(),
                         contentDescription = "第 ${index + 1} 页",
                         state = zoomableImageState,
+                        onClick = { offset -> onTap(offset.x / pageWidth) },
                         colorFilter = colorFilter,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
@@ -1546,6 +1566,7 @@ private fun ReaderTelephotoPageItem(
                     model = page.file,
                     contentDescription = "第 ${index + 1} 页",
                     state = zoomableImageState,
+                    onClick = { offset -> onTap(offset.x / pageWidth) },
                     colorFilter = colorFilter,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()

@@ -3,6 +3,8 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.components.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,8 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -54,6 +57,7 @@ fun AndroidFollowUpdatesScreen(
     onSelect: (ComicItem) -> Unit,
 ) {
     val vm: FollowUpdatesViewModel = viewModel()
+    val displayMode = rememberComicListDisplayMode()
     var showFolderPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.refresh() }
@@ -79,6 +83,7 @@ fun AndroidFollowUpdatesScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 Icon(
                     imageVector = Icons.Filled.Refresh,
                     contentDescription = "立即检查",
@@ -140,13 +145,19 @@ fun AndroidFollowUpdatesScreen(
                         }
                     }
                 } else {
-                    LazyColumn(
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(vm.updates, key = { "${it.item.id}-${it.item.type}" }) { entry ->
+                            val metrics by rememberCachedComicMetrics(entry.item.sourceKey, entry.item.id)
                             UpdateRow(
+                                detailed = displayMode.value == "detailed",
+                                rating = metrics.rating,
+                                likesCount = metrics.likesCount,
                                 title = entry.item.name,
                                 cover = entry.item.coverPath,
                                 sourceName = entry.item.sourceKey,
@@ -183,6 +194,9 @@ fun AndroidFollowUpdatesScreen(
 
 @Composable
 private fun UpdateRow(
+    detailed: Boolean,
+    rating: Double?,
+    likesCount: Int?,
     title: String,
     cover: String,
     sourceName: String,
@@ -190,42 +204,24 @@ private fun UpdateRow(
     onClick: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        ComicCardLayout(detailed = detailed, modifier = Modifier.padding(10.dp), cover = {
             AsyncImage(
                 model = cover,
-                contentDescription = null,
-                modifier = Modifier
-                    .width(64.dp)
-                    .height(88.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                contentDescription = title,
+                modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop,
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = buildString {
-                        append(sourceName)
-                        if (!updateTime.isNullOrBlank()) append(" · $updateTime")
-                    },
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
-                    maxLines = 1,
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MiuixTheme.colorScheme.primaryContainer,
-            ) {
-                Text(
-                    text = "NEW",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                )
-            }
+        }) {
+            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            ComicMetrics(rating, likesCount)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = listOfNotNull(sourceName, updateTime?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+                maxLines = 2,
+            )
+            Text(text = "NEW", fontSize = 10.sp, color = MiuixTheme.colorScheme.primary)
         }
     }
 }
@@ -239,13 +235,7 @@ private fun FollowFolderPicker(
     val vm: FollowUpdatesViewModel = viewModel()
     val folders by vm.folderList().collectAsState(initial = emptyList())
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
-    ) {
+    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Card(modifier = Modifier.padding(horizontal = 28.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(text = "选择追更收藏夹", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)

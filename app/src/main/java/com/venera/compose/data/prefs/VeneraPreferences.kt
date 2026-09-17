@@ -11,6 +11,14 @@ enum class ThemeMode {
     SYSTEM, LIGHT, DARK
 }
 
+enum class AppearanceStyle {
+    MIUIX, MD3
+}
+
+enum class NavigationBarStyle {
+    MD3, LIQUID_GLASS
+}
+
 class VeneraPreferences private constructor(context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -38,8 +46,18 @@ class VeneraPreferences private constructor(context: Context) {
     val clickToTurn: StateFlow<Boolean> = _clickToTurn.asStateFlow()
 
     // 外观与主题
-    private val _themeMode = MutableStateFlow(ThemeMode.valueOf(prefs.getString(KEY_THEME_MODE, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name))
+    private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    private val _appearanceStyle = MutableStateFlow(readEnum(KEY_APPEARANCE_STYLE, AppearanceStyle.MIUIX))
+    val appearanceStyle: StateFlow<AppearanceStyle> = _appearanceStyle.asStateFlow()
+
+    private val _navigationBarStyle = MutableStateFlow(readEnum(KEY_NAVIGATION_BAR_STYLE, NavigationBarStyle.MD3))
+    val navigationBarStyle: StateFlow<NavigationBarStyle> = _navigationBarStyle.asStateFlow()
+
+    // Unknown values from backups/newer versions must not prevent the app from opening.
+    private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T =
+        enumValues<T>().firstOrNull { it.name == prefs.getString(key, null) } ?: fallback
 
     // ---- 收藏（S5，对齐原版 appdata.settings 同名键） ----
 
@@ -138,6 +156,16 @@ class VeneraPreferences private constructor(context: Context) {
         _themeMode.value = mode
     }
 
+    fun setAppearanceStyle(style: AppearanceStyle) {
+        prefs.edit { putString(KEY_APPEARANCE_STYLE, style.name) }
+        _appearanceStyle.value = style
+    }
+
+    fun setNavigationBarStyle(style: NavigationBarStyle) {
+        prefs.edit { putString(KEY_NAVIGATION_BAR_STYLE, style.name) }
+        _navigationBarStyle.value = style
+    }
+
     fun setNewFavoriteAddTo(value: String) {
         prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
         _newFavoriteAddTo.value = value
@@ -190,6 +218,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_NIGHT_FILTER = "pref_night_filter"
         private const val KEY_CLICK_TO_TURN = "pref_click_to_turn"
         private const val KEY_THEME_MODE = "pref_theme_mode"
+        private const val KEY_APPEARANCE_STYLE = "pref_appearance_style"
+        private const val KEY_NAVIGATION_BAR_STYLE = "pref_navigation_bar_style"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"

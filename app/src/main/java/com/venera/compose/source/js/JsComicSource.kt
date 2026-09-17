@@ -257,7 +257,9 @@ class JsComicSource(
                 sourceKey = key,
                 tags = tags,
                 description = desc,
-                updateTime = updateTime
+                updateTime = updateTime,
+                rating = SourcePayloadParser.rating(map),
+                likesCount = SourcePayloadParser.likesCount(map)
             )
         }
     }
@@ -272,7 +274,7 @@ class JsComicSource(
      */
     private val nextTokenCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    private fun nextCacheKey(keyword: String, page: Int) = "$keyword\u0000$page"
+    private fun nextCacheKey(keyword: String, options: List<String?>?, page: Int) = gson.toJson(listOf(keyword, options, page))
 
     override suspend fun ping(): Long {
         val start = System.currentTimeMillis()
@@ -285,57 +287,30 @@ class JsComicSource(
     }
 
     override suspend fun getSearchOptions(): List<com.venera.compose.source.model.SearchOptionGroup> {
-        return try {
-            val script = """
-                return (function() {
-                    var s = ComicSource.sources['$key'];
-                    if (!s || !s.search || !s.search.optionList) return [];
-                    var out = [];
-                    var list = s.search.optionList;
-                    for (var i = 0; i < list.length; i++) {
-                        var opt = list[i] || {};
-                        var map = {};
-                        var raw = opt.options || [];
-                        for (var j = 0; j < raw.length; j++) {
-                            var item = String(raw[j]);
-                            if (item.length === 0 || item.indexOf('-') < 0) continue;
-                            var idx = item.indexOf('-');
-                            var k = item.substring(0, idx);
-                            var v = item.substring(idx + 1);
-                            if (!(k in map)) map[k] = v; // LinkedHashMap 语义：首项优先
-                        }
-                        out.push({
-                            label: opt.label || '',
-                            options: map,
-                            defaultKey: (opt['default'] !== undefined && opt['default'] !== null) ? String(opt['default']) : (Object.keys(map)[0] || '')
-                        });
-                    }
-                    return out;
-                })()
-            """.trimIndent()
-            val raw = engine.evaluateAsync(script)
-            val decoded = gson.fromJson(raw, object : TypeToken<List<Map<String, Any?>>>() {}.type) as? List<Map<String, Any?>> ?: return emptyList()
-            decoded.map { item ->
-                val optsRaw = item["options"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
-                val linked = LinkedHashMap<String, String>()
-                // JSON 对象键序已被 shim 的构造顺序保证（首项优先写入）
-                optsRaw.forEach { (k, v) -> linked[k.toString()] = v.toString() }
-                com.venera.compose.source.model.SearchOptionGroup(
-                    label = item["label"]?.toString() ?: "",
-                    options = linked
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        val raw = engine.evaluateAsync("""
+            var s = ComicSource.sources[${gson.toJson(key)}];
+            return s && s.search ? (s.search.optionList || []) : [];
+        """.trimIndent())
+        return SourcePayloadParser.searchOptions(SourcePayloadParser.data(raw))
     }
 
-    override suspend fun search(keyword: String, page: Int, options: List<String>?): Result<List<Comic>> {
+    override suspend fun formatSearchTag(namespace: String, tag: String): String {
+        val raw = engine.evaluateAsync("""
+            var s = ComicSource.sources[${gson.toJson(key)}];
+            if (s && s.search && typeof s.search.onTagSuggestionSelected === 'function') {
+                return await s.search.onTagSuggestionSelected(${gson.toJson(namespace)}, ${gson.toJson(tag)});
+            }
+            return ${gson.toJson(if (namespace.isBlank()) tag else "$namespace:$tag")};
+        """.trimIndent())
+        return SourcePayloadParser.data(raw)?.toString() ?: super.formatSearchTag(namespace, tag)
+    }
+
+    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<List<Comic>> {
         return try {
             val pageNum = if (page < 1) 1 else page
             // 官方 search.loadNext(keyword, options, next) 的 next 由**搜索页状态**维护：
             // 第 1 页传 null，之后传上一页返回的 res.next。这里用同语义的缓存等价实现。
-            val nextToken = if (pageNum == 1) null else nextTokenCache[nextCacheKey(keyword, pageNum - 1)]
+            val nextToken = if (pageNum == 1) null else nextTokenCache[nextCacheKey(keyword, options, pageNum - 1)]
             // S8 批次B: 搜索页传入的筛选值（null 时回退源默认，保持原行为）
             val optsJson = gson.toJson(options ?: emptyList<String>())
             val script = """
@@ -365,7 +340,7 @@ class JsComicSource(
             if (rawData is Map<*, *>) {
                 val next = rawData["next"]?.toString()
                 if (!next.isNullOrBlank() && next != "null") {
-                    nextTokenCache[nextCacheKey(keyword, pageNum)] = next
+                    nextTokenCache[nextCacheKey(keyword, options, pageNum)] = next
                 }
             }
             val comicsList: List<*> = when (rawData) {
@@ -404,7 +379,9 @@ class JsComicSource(
                     sourceKey = key,
                     tags = tags,
                     description = desc,
-                    updateTime = updateTime
+                    updateTime = updateTime,
+                    rating = SourcePayloadParser.rating(map),
+                    likesCount = SourcePayloadParser.likesCount(map)
                 )
             }
             Result.success(comics)
@@ -505,7 +482,7 @@ class JsComicSource(
                 val id = map["id"]?.toString() ?: return@mapNotNull null
                 val recTitle = map["title"]?.toString() ?: ""
                 val recCover = map["cover"]?.toString() ?: ""
-                Comic(id = id, title = recTitle, cover = recCover, sourceKey = key)
+                Comic(id = id, title = recTitle, cover = recCover, sourceKey = key, rating = SourcePayloadParser.rating(map), likesCount = SourcePayloadParser.likesCount(map))
             }.orEmpty()
 
             // 缩略图
@@ -513,25 +490,7 @@ class JsComicSource(
 
             // 预览评论
             val comments = (res["comments"] as? List<*>)?.mapNotNull { item ->
-                val map = item as? Map<*, *> ?: return@mapNotNull null
-                val userName = map["userName"]?.toString() ?: "读者"
-                val content = map["content"]?.toString() ?: return@mapNotNull null
-                val avatar = map["avatar"]?.toString()
-                val time = map["time"]?.toString()
-                val score = (map["score"] as? Number)?.toInt() ?: 0
-                val vote = (map["voteStatus"] as? Number)?.toInt() ?: 0
-                val chId = map["id"]?.toString() ?: ""
-                val isLiked = map["isLiked"] == true
-                com.venera.compose.source.model.Comment(
-                    id = chId,
-                    userName = userName,
-                    avatar = avatar,
-                    content = content,
-                    time = time,
-                    score = score,
-                    voteStatus = vote,
-                    isLiked = isLiked
-                )
+                (item as? Map<*, *>)?.let(SourcePayloadParser::comment)
             }.orEmpty()
 
             val comic = Comic(
@@ -543,7 +502,9 @@ class JsComicSource(
                 tags = tags,
                 description = desc,
                 updateTime = res["updateTime"]?.toString() ?: "",
-                isFavorite = res["isFavorite"] == true
+                isFavorite = res["isFavorite"] == true,
+                rating = SourcePayloadParser.rating(res),
+                likesCount = SourcePayloadParser.likesCount(res)
             )
 
             val details = ComicDetails(
@@ -836,7 +797,9 @@ class JsComicSource(
                     subTitle = subTitle,
                     cover = cover,
                     sourceKey = key,
-                    tags = tags
+                    tags = tags,
+                    rating = SourcePayloadParser.rating(comicObj),
+                    likesCount = SourcePayloadParser.likesCount(comicObj)
                 )
             }
 
@@ -1089,7 +1052,9 @@ class JsComicSource(
                     subTitle = subTitle,
                     cover = cover,
                     sourceKey = key,
-                    tags = tags
+                    tags = tags,
+                    rating = SourcePayloadParser.rating(m),
+                    likesCount = SourcePayloadParser.likesCount(m)
                 )
             }
             Result.success(CategoryComicsResult(comics = comics, maxPage = maxPage, next = next))
@@ -1128,7 +1093,7 @@ class JsComicSource(
                 val title = m["title"]?.toString() ?: m["name"]?.toString() ?: ""
                 val subTitle = m["subTitle"]?.toString() ?: m["author"]?.toString() ?: ""
                 val cover = m["cover"]?.toString() ?: ""
-                Comic(id = id, title = title, subTitle = subTitle, cover = cover, sourceKey = key)
+                Comic(id = id, title = title, subTitle = subTitle, cover = cover, sourceKey = key, rating = SourcePayloadParser.rating(m), likesCount = SourcePayloadParser.likesCount(m))
             }
             Result.success(comics)
         } catch (e: Exception) {
@@ -1136,101 +1101,98 @@ class JsComicSource(
         }
     }
 
-    override suspend fun loadComments(comicId: String, subId: String?, page: Int): Result<List<com.venera.compose.source.model.Comment>> {
+    override suspend fun getCommentCapabilities(): com.venera.compose.source.model.CommentCapabilities {
+        val script = """
+            return (async function() {
+                var s = ComicSource.sources[${gson.toJson(key)}];
+                return {
+                    canLoad: !!s && (typeof s.comic?.loadComments === 'function' || typeof s.comments?.load === 'function' || typeof s.comments === 'function'),
+                    canSend: !!s && (typeof s.comic?.sendComment === 'function' || typeof s.comments?.send === 'function')
+                };
+            })()
+        """.trimIndent()
+        return try {
+            val data = SourcePayloadParser.data(engine.evaluateAsync(script)) as? Map<*, *>
+            com.venera.compose.source.model.CommentCapabilities(data?.get("canLoad") == true, data?.get("canSend") == true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("JsComicSource", "Unable to read comment capabilities for $key", e)
+            com.venera.compose.source.model.CommentCapabilities()
+        }
+    }
+
+    override suspend fun loadComments(comicId: String, subId: String?, page: Int, replyId: String?): Result<List<com.venera.compose.source.model.Comment>> =
+        loadCommentsPage(comicId, subId, page, replyId).map { it.comments }
+
+    override suspend fun loadCommentsPage(comicId: String, subId: String?, page: Int, replyId: String?): Result<com.venera.compose.source.model.CommentPage> {
         return try {
             val script = """
                 return (async function() {
-                    var s = ComicSource.sources['$key'];
-                    if (!s || !s.comments) return { comments: [] };
-                    var res = null;
-                    if (s.comments.load) {
-                        res = await s.comments.load(${gson.toJson(comicId)}, ${gson.toJson(subId)}, $page);
-                    } else if (typeof s.comments === 'function') {
-                        res = await s.comments(${gson.toJson(comicId)}, ${gson.toJson(subId)}, $page);
-                    }
-                    return res || { comments: [] };
+                    var s = ComicSource.sources[${gson.toJson(key)}];
+                    var args = [${gson.toJson(comicId)}, ${gson.toJson(subId)}, $page, ${gson.toJson(replyId)}];
+                    if (typeof s?.comic?.loadComments === 'function') return await s.comic.loadComments(...args);
+                    if (typeof s?.comments?.load === 'function') return await s.comments.load(...args);
+                    if (typeof s?.comments === 'function') return await s.comments(...args);
+                    throw new Error("当前源暂不支持加载评论");
                 })()
             """.trimIndent()
-            val rawJson = engine.evaluateAsync(script)
-            val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
-            if (envelope["success"] != true) return Result.success(emptyList())
-            val data = envelope["data"]
+            val data = SourcePayloadParser.data(engine.evaluateAsync(script))
+            val map = data as? Map<*, *>
             val rawList = when (data) {
                 is List<*> -> data
-                is Map<*, *> -> (data["comments"] as? List<*>) ?: (data["list"] as? List<*>) ?: emptyList<Any?>()
-                else -> emptyList<Any?>()
+                is Map<*, *> -> (data["comments"] ?: data["list"]) as? List<*> ?: error("评论响应缺少列表")
+                else -> error("评论响应格式错误")
             }
-            val comments = rawList.mapNotNull { item ->
-                val map = item as? Map<*, *> ?: return@mapNotNull null
-                com.venera.compose.source.model.Comment(
-                    id = map["id"]?.toString() ?: "",
-                    userName = map["userName"]?.toString() ?: "读者",
-                    avatar = map["avatar"]?.toString(),
-                    content = map["content"]?.toString() ?: return@mapNotNull null,
-                    time = map["time"]?.toString(),
-                    score = (map["score"] as? Number)?.toInt() ?: 0,
-                    voteStatus = (map["voteStatus"] as? Number)?.toInt() ?: 0,
-                    isLiked = map["isLiked"] == true
-                )
-            }
-            Result.success(comments)
+            val comments = rawList.mapNotNull { (it as? Map<*, *>)?.let(SourcePayloadParser::comment) }
+            val maxPage = map?.get("maxPage")?.toString()?.toDoubleOrNull()?.toInt()?.takeIf { it >= 0 }
+            Result.success(com.venera.compose.source.model.CommentPage(comments, maxPage))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun sendComment(comicId: String, subId: String?, content: String): Result<Boolean> {
-        return try {
-            val script = """
-                return (async function() {
-                    var s = ComicSource.sources['$key'];
-                    if (!s || !s.comments || !s.comments.send) throw new Error("comments.send not supported");
-                    var res = await s.comments.send(${gson.toJson(comicId)}, ${gson.toJson(subId)}, ${gson.toJson(content)});
-                    return res !== false;
-                })()
-            """.trimIndent()
-            val rawJson = engine.evaluateAsync(script)
-            val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
-            if (envelope["success"] == true) Result.success(true) else Result.failure(Exception(envelope["error"]?.toString()))
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    override suspend fun sendComment(comicId: String, subId: String?, content: String, replyId: String?): Result<Boolean> = commentAction(
+        """
+            var args = [${gson.toJson(comicId)}, ${gson.toJson(subId)}, ${gson.toJson(content)}, ${gson.toJson(replyId)}];
+            if (typeof s?.comic?.sendComment === 'function') return await s.comic.sendComment(...args);
+            if (typeof s?.comments?.send === 'function') return await s.comments.send(...args);
+            throw new Error("当前源暂不支持发送评论");
+        """.trimIndent()
+    )
 
-    override suspend fun likeComment(commentId: String, comicId: String): Result<Boolean> {
-        return try {
-            val script = """
-                return (async function() {
-                    var s = ComicSource.sources['$key'];
-                    if (s && s.comments && s.comments.like) {
-                        await s.comments.like(${gson.toJson(commentId)}, ${gson.toJson(comicId)});
-                    }
-                    return true;
-                })()
-            """.trimIndent()
-            engine.evaluateAsync(script)
-            Result.success(true)
-        } catch (e: Exception) {
-            Result.success(true)
-        }
-    }
+    override suspend fun likeComment(commentId: String, comicId: String, subId: String?, isLike: Boolean): Result<Boolean> = commentAction(
+        """
+            if (typeof s?.comic?.likeComment === 'function') return await s.comic.likeComment(${gson.toJson(comicId)}, ${gson.toJson(subId)}, ${gson.toJson(commentId)}, $isLike);
+            if (typeof s?.comments?.like === 'function') return await s.comments.like(${gson.toJson(commentId)}, ${gson.toJson(comicId)}, ${gson.toJson(subId)}, $isLike);
+            throw new Error("当前源暂不支持评论点赞");
+        """.trimIndent()
+    )
 
-    override suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String): Result<Boolean> {
-        return try {
-            val script = """
-                return (async function() {
-                    var s = ComicSource.sources['$key'];
-                    if (s && s.comments && s.comments.vote) {
-                        await s.comments.vote(${gson.toJson(commentId)}, ${if (isUpvote) 1 else -1}, ${gson.toJson(comicId)});
-                    }
-                    return true;
-                })()
-            """.trimIndent()
-            engine.evaluateAsync(script)
-            Result.success(true)
-        } catch (e: Exception) {
-            Result.success(true)
-        }
+    override suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String, subId: String?, isCancel: Boolean): Result<Boolean> = commentAction(
+        """
+            if (typeof s?.comic?.voteComment === 'function') return await s.comic.voteComment(${gson.toJson(comicId)}, ${gson.toJson(subId)}, ${gson.toJson(commentId)}, $isUpvote, $isCancel);
+            if (typeof s?.comments?.vote === 'function') return await s.comments.vote(${gson.toJson(commentId)}, ${if (isUpvote) 1 else -1}, ${gson.toJson(comicId)}, ${gson.toJson(subId)}, $isCancel);
+            throw new Error("当前源暂不支持评论投票");
+        """.trimIndent()
+    )
+
+    /** JS actions may return void or a numeric score; errors must never become success. */
+    private suspend fun commentAction(body: String): Result<Boolean> = try {
+        val script = """
+            return (async function() {
+                var s = ComicSource.sources[${gson.toJson(key)}];
+                var result = await (async function() { $body })();
+                return result !== false;
+            })()
+        """.trimIndent()
+        Result.success(SourcePayloadParser.data(engine.evaluateAsync(script)) == true)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
     override suspend fun starRating(comicId: String, rating: Float): Result<Boolean> {

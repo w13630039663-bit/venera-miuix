@@ -32,13 +32,16 @@ interface ComicSource {
      * @param options 源声明的搜索筛选值（对齐官方 search.optionList / SearchOptions）；
      *                null 表示使用源默认值
      */
-    suspend fun search(keyword: String, page: Int = 1, options: List<String>? = null): Result<List<Comic>>
+    suspend fun search(keyword: String, page: Int = 1, options: List<String?>? = null): Result<List<Comic>>
 
     /**
      * 获取源声明的搜索筛选组（对齐官方 SearchPageData.searchOptions）。
      * 每组含 label 与 LinkedHashMap<key, 显示名>。空列表 = 该源无筛选。
      */
     suspend fun getSearchOptions(): List<com.venera.compose.source.model.SearchOptionGroup> = emptyList()
+
+    suspend fun formatSearchTag(namespace: String, tag: String): String =
+        if (namespace.isBlank()) tag else "$namespace:$tag"
 
     /**
      * 获取漫画完整详情及章节列表
@@ -99,13 +102,19 @@ interface ComicSource {
     /**
      * 加载漫画详情评论列表
      */
-    suspend fun loadComments(comicId: String, subId: String? = null, page: Int = 1): Result<List<com.venera.compose.source.model.Comment>> =
+    suspend fun loadComments(comicId: String, subId: String? = null, page: Int = 1, replyId: String? = null): Result<List<com.venera.compose.source.model.Comment>> =
         Result.success(emptyList())
+
+    suspend fun getCommentCapabilities(): com.venera.compose.source.model.CommentCapabilities =
+        com.venera.compose.source.model.CommentCapabilities()
+
+    suspend fun loadCommentsPage(comicId: String, subId: String? = null, page: Int = 1, replyId: String? = null): Result<com.venera.compose.source.model.CommentPage> =
+        loadComments(comicId, subId, page, replyId).map { com.venera.compose.source.model.CommentPage(it) }
 
     /**
      * 发送漫画详情评论
      */
-    suspend fun sendComment(comicId: String, subId: String? = null, content: String): Result<Boolean> =
+    suspend fun sendComment(comicId: String, subId: String? = null, content: String, replyId: String? = null): Result<Boolean> =
         Result.failure(UnsupportedOperationException("当前源暂不支持发送评论"))
 
     /**
@@ -123,13 +132,13 @@ interface ComicSource {
     /**
      * 给评论点赞
      */
-    suspend fun likeComment(commentId: String, comicId: String): Result<Boolean> =
+    suspend fun likeComment(commentId: String, comicId: String, subId: String? = null, isLike: Boolean = true): Result<Boolean> =
         Result.success(true)
 
     /**
      * 给评论投票（顶/踩）
      */
-    suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String): Result<Boolean> =
+    suspend fun voteComment(commentId: String, isUpvote: Boolean, comicId: String, subId: String? = null, isCancel: Boolean = false): Result<Boolean> =
         Result.success(true)
 
     /**

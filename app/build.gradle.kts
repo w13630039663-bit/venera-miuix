@@ -6,16 +6,14 @@ plugins {
 
 android {
     namespace = "com.venera.compose"
-    // S8: compileSdk 锁定 37 —— Miuix 0.9.4-rc01 / Coil 3.6.2 / material3 1.5.0-alpha22
-    // 全生态 AAR 均按 SDK 37 编译发布（AAR 元数据强制要求），低于 37 无法解析；
-    // targetSdk 保持 34（运行时行为取向与 compileSdk 可分离，官方文档明示）。
-    // 原「37/34 不一致」的真实风险在于 API 误用，用 lint abortOnError + 依赖矩阵注释管控。
+    // Android 13 (API 33) 起可安装，按 Android 17 (API 37) 编译并声明目标版本。
+    // 不设置 maxSdk，避免阻止后续 Android 版本安装；各系统行为仍需真机回归。
     compileSdk = 37
 
     defaultConfig {
         applicationId = "com.venera.compose"
-        minSdk = 26
-        targetSdk = 34
+        minSdk = 33
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -71,6 +69,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -88,6 +87,11 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.animation)
+    implementation(libs.miuix.blur)
+    // 官方液态玻璃库（Kyant0/AndroidLiquidGlass）：底栏的 blur + lens + vibrancy 由它提供
+    implementation(libs.backdrop)
+    // Backdrop 的 Capsule / RoundedRectangularShape（lens 的 shape 参数需要）
+    implementation(libs.kyant.shapes)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
 

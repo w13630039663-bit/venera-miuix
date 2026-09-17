@@ -26,3 +26,8 @@ home*.png
 .ref_*.dart
 
 err_*.log
+
+# 本地调试截图与日志
+.*.png
+.logcat-*.txt
+
