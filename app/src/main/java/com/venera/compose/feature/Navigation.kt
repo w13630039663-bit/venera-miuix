@@ -153,6 +153,18 @@ fun VeneraComposeApp() {
                             onOpenStats = {
                                 haptic()
                                 navController.navigate(StatsRoute)
+                            },
+                            onOpenLocal = {
+                                haptic()
+                                navController.navigate(LocalComicRoute)
+                            },
+                            onOpenImageFavorites = {
+                                haptic()
+                                navController.navigate(FavoriteImagesRoute)
+                            },
+                            onOpenSourceManage = {
+                                haptic()
+                                navController.navigate(ComicSourceManageRoute)
                             }
                         )
                     }

@@ -9,11 +9,14 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /** 首页各分区的数据（全部来自本地库，不再有 sampleComics 兜底） */
 data class HomeUiState(
@@ -26,6 +29,17 @@ data class HomeUiState(
     val tagStats: List<Pair<String, Int>> = emptyList(),
     val authorStats: List<Pair<String, Int>> = emptyList(),
     val comicStats: List<Pair<String, Int>> = emptyList(),
+    /** S8: 本地漫画数量（LocalComicManager 真实扫描） */
+    val localComicCount: Int = 0,
+    /** S8: 下载中任务数（DownloadManager 队列） */
+    val downloadingCount: Int = 0,
+    /** S8: 图片收藏统计（favorite_images 真表）：标签/画师/作品 Top 条形图数据 */
+    val imageFavTags: List<Pair<String, Int>> = emptyList(),
+    val imageFavAuthors: List<Pair<String, Int>> = emptyList(),
+    val imageFavComics: List<Pair<String, Int>> = emptyList(),
+    /** 图片收藏总数（"从 a 部作品收藏了 b 张图片" 文案） */
+    val imageFavTotal: Int = 0,
+    val imageFavComicCount: Int = 0,
 )
 
 /**
@@ -43,6 +57,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
     private val historyDao = HistoryDao.getInstance(app)
+    private val appContext = app
 
     /**
      * 收藏条目流（S5 修正）。
@@ -58,6 +73,46 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<HomeUiState> =
         combine(favoritesFlow, historyDao.historyFlow) { favs, hist -> build(favs, hist) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /** 刷新 S8 新增分区数据（本地漫画数 / 下载任务数 / 图片收藏统计），主页进入时调用 */
+    fun refreshExtras() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val localCount = com.venera.compose.download.LocalComicManager.getInstance(appContext)
+                .getLocalComics().size
+            val dlCount = com.venera.compose.download.DownloadManager.getInstance(appContext)
+                .tasks.value.count { it.status != com.venera.compose.download.DownloadStatus.COMPLETED }
+            val imgs = com.venera.compose.feature.favoriteimages.FavoriteImagesManager.getInstance(appContext)
+                .getAllFavorites()
+            // 标签/画师：用收藏库按作品名反查元数据后聚合；作品：直接按标题聚合
+            val favByTitle = favoritesManager.getAllComics().associateBy { it.name }
+            val tagAgg = mutableMapOf<String, Int>()
+            val authorAgg = mutableMapOf<String, Int>()
+            imgs.forEach { img ->
+                favByTitle[img.comicTitle]?.let { fav ->
+                    fav.tags.filter { it.isNotBlank() }
+                        .forEach { tagAgg.merge(it, 1, Int::plus) }
+                    fav.author.takeIf { it.isNotBlank() }
+                        ?.let { authorAgg.merge(it, 1, Int::plus) }
+                }
+            }
+            val comicAgg = imgs.groupingBy { it.comicTitle }.eachCount()
+            _uiStateExtra.value = HomeUiState(
+                localComicCount = localCount,
+                downloadingCount = dlCount,
+                imageFavTotal = imgs.size,
+                imageFavComicCount = imgs.map { it.comicTitle }.filter { it.isNotBlank() }.distinct().size,
+                imageFavTags = tagAgg.entries.sortedByDescending { it.value }.take(8).map { it.key to it.value },
+                imageFavAuthors = authorAgg.entries.sortedByDescending { it.value }.take(8).map { it.key to it.value },
+                imageFavComics = comicAgg.entries.sortedByDescending { it.value }.take(8).map { it.key to it.value },
+            )
+        }
+    }
+
+    /** S8 扩展区数据（与主 uiState 分流，避免整表重算） */
+    private val _uiStateExtra = MutableStateFlow(
+        HomeUiState(localComicCount = -1) // -1 = 尚未加载
+    )
+    val uiStateExtra: StateFlow<HomeUiState> = _uiStateExtra.asStateFlow()
 
     private fun build(favs: List<FavoriteRecord>, hist: List<HistoryRecord>): HomeUiState {
         val dayMs = 24L * 60 * 60 * 1000
