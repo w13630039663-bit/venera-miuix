@@ -376,6 +376,11 @@ private fun CategoryComicsScreen(
     val guardManager = remember { com.venera.compose.security.guard.ContentGuardManager.getInstance(context) }
     val guardRules by guardManager.rules.collectAsState()
 
+    // S8: 列表布局模式（brief=双列 / detailed=单列大卡）
+    val prefs = remember { com.venera.compose.data.prefs.VeneraPreferences.getInstance(context) }
+    val comicDisplayMode by prefs.comicDisplayMode.collectAsState()
+    val nsfwModeD by guardManager.nsfwMaskMode.collectAsState()
+
     var optionsList by remember { mutableStateOf<List<CategoryComicsOption>>(emptyList()) }
     var selectedOptions by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -447,7 +452,7 @@ private fun CategoryComicsScreen(
                 )
             }
             Spacer(modifier = Modifier.width(6.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = args.category,
                     fontSize = 18.sp,
@@ -461,6 +466,10 @@ private fun CategoryComicsScreen(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
+            com.venera.compose.components.ComicLayoutToggleButton(
+                displayMode = comicDisplayMode,
+                onToggle = { prefs.setComicDisplayMode(it) }
+            )
             IconButton(
                 onClick = { loadComics(currentPage) },
                 modifier = Modifier.size(36.dp)
@@ -575,6 +584,7 @@ private fun CategoryComicsScreen(
                 }
 
                 else -> {
+                    val isDetailed = comicDisplayMode == "detailed"
                     val chunked = remember(comics) { comics.chunked(2) }
 
                     LazyColumn(
@@ -582,7 +592,36 @@ private fun CategoryComicsScreen(
                         contentPadding = PaddingValues(top = 6.dp, bottom = 90.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(chunked) { rowComics ->
+                        if (isDetailed) {
+                            // S8 单列大卡：左封面 + 右侧标题/标签/描述（对齐原版 detailed）
+                            items(comics, key = { "cd-" + it.id }) { comic ->
+                                val maskStateD = remember(comic.id, nsfwModeD) {
+                                    guardManager.coverMaskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
+                                }
+                                com.venera.compose.components.ComicTileDetailed(
+                                    title = comic.title,
+                                    coverUrl = comic.cover,
+                                    subtitle = comic.subTitle,
+                                    description = comic.description,
+                                    tags = comic.tags,
+                                    coverMaskState = maskStateD,
+                                    onClick = {
+                                        onSelect(
+                                            ComicItem(
+                                                id = comic.id,
+                                                title = comic.title,
+                                                author = comic.subTitle,
+                                                coverUrl = comic.cover,
+                                                tags = comic.tags,
+                                                description = comic.description,
+                                                sourceName = args.sourceTitle.ifBlank { comic.sourceKey },
+                                                updateTime = comic.updateTime
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                        } else items(chunked) { rowComics ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)

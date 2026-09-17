@@ -63,6 +63,10 @@ fun SharedTransitionScope.AndroidExploreScreen(
     // 屏蔽规则变化时重新对已加载分区执行过滤（S7 内容守卫实际生效点）
     val guardRules by guardManager.rules.collectAsState()
 
+    // S8: 列表布局模式（brief=双列网格 / detailed=单列大卡），AppBar 按钮即时切换
+    val prefs = remember { com.venera.compose.data.prefs.VeneraPreferences.getInstance(context) }
+    val comicDisplayMode by prefs.comicDisplayMode.collectAsState()
+
     var explorePages by remember { mutableStateOf<List<ExplorePageData>>(emptyList()) }
     var selectedIndex by remember { mutableIntStateOf(0) }
     var isInitialLoading by remember { mutableStateOf(true) }
@@ -186,6 +190,11 @@ fun SharedTransitionScope.AndroidExploreScreen(
             } else {
                 Spacer(modifier = Modifier.weight(1f))
             }
+
+            com.venera.compose.components.ComicLayoutToggleButton(
+                displayMode = comicDisplayMode,
+                onToggle = { prefs.setComicDisplayMode(it) }
+            )
 
             IconButton(
                 onClick = {
@@ -311,6 +320,7 @@ fun SharedTransitionScope.AndroidExploreScreen(
                             ExploreSectionView(
                                 part = part,
                                 sourceName = currentSourceName,
+                                displayMode = comicDisplayMode,
                                 onSelect = onSelect
                             )
                         }
@@ -364,6 +374,7 @@ fun SharedTransitionScope.AndroidExploreScreen(
 private fun ExploreSectionView(
     part: ExplorePagePart,
     sourceName: String,
+    displayMode: String,
     onSelect: (ComicItem) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -391,40 +402,71 @@ private fun ExploreSectionView(
             }
         }
 
-        // 2列流式排列漫画卡片
+        // S8: detailed = 单列大卡（左封面+右标签/描述，对齐原版 detailed 模式）；
+        // brief = 双列卡片网格（默认）
         val comics = part.comics
-        val chunked = remember(comics) { comics.chunked(2) }
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            for (rowComics in chunked) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    for (comic in rowComics) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            ExploreComicCard(
-                                comic = comic,
-                                sourceName = sourceName,
-                                onClick = {
-                                    onSelect(
-                                        ComicItem(
-                                            id = comic.id,
-                                            title = comic.title,
-                                            author = comic.subTitle,
-                                            coverUrl = comic.cover,
-                                            tags = comic.tags,
-                                            description = comic.description,
-                                            sourceName = sourceName.ifBlank { comic.sourceKey },
-                                            updateTime = comic.updateTime
-                                        )
-                                    )
-                                }
+        if (displayMode == "detailed") {
+            val context = LocalContext.current
+            val guardManagerLocal = remember { com.venera.compose.security.guard.ContentGuardManager.getInstance(context) }
+            val nsfwModeD by guardManagerLocal.nsfwMaskMode.collectAsState()
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                comics.forEach { comic ->
+                    val maskState = guardManagerLocal.coverMaskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
+                    com.venera.compose.components.ComicTileDetailed(
+                        title = comic.title,
+                        coverUrl = comic.cover,
+                        subtitle = comic.subTitle,
+                        description = comic.description,
+                        tags = comic.tags,
+                        coverMaskState = maskState,
+                        onClick = {
+                            onSelect(
+                                ComicItem(
+                                    id = comic.id,
+                                    title = comic.title,
+                                    author = comic.subTitle,
+                                    coverUrl = comic.cover,
+                                    tags = comic.tags,
+                                    description = comic.description,
+                                    sourceName = sourceName.ifBlank { comic.sourceKey },
+                                    updateTime = comic.updateTime
+                                )
                             )
                         }
-                    }
-                    if (rowComics.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
+                    )
+                }
+            }
+        } else {
+            // 双列流式排列漫画卡片（brief 默认模式）
+            val chunked = remember(comics) { comics.chunked(2) }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (rowComics in chunked) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        for (comic in rowComics) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                ExploreComicCard(
+                                    comic = comic,
+                                    sourceName = sourceName,
+                                    onClick = {
+                                        onSelect(
+                                            ComicItem(
+                                                id = comic.id,
+                                                title = comic.title,
+                                                author = comic.subTitle,
+                                                coverUrl = comic.cover,
+                                                tags = comic.tags,
+                                                description = comic.description,
+                                                sourceName = sourceName.ifBlank { comic.sourceKey },
+                                                updateTime = comic.updateTime
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -82,6 +82,21 @@ class VeneraPreferences private constructor(context: Context) {
     private val _proxyPort = MutableStateFlow(prefs.getInt(KEY_PROXY_PORT, 7890))
     val proxyPort: StateFlow<Int> = _proxyPort.asStateFlow()
 
+    // ---- 漫画列表布局（S8，对齐原版 appdata.settings['comicDisplayMode']） ----
+
+    /**
+     * 漫画列表展示模式：[MODE_BRIEF] = 双列封面网格；[MODE_DETAILED] = 单列大卡
+     * （左封面 + 右侧标题/副标题/标签/评分/描述，对齐原版 ComicTile detailed 模式）。
+     * 列表页 AppBar 的切换按钮读写此键，全部网格页监听即时重排。
+     */
+    private val _comicDisplayMode = MutableStateFlow(prefs.getString(KEY_COMIC_DISPLAY_MODE, MODE_BRIEF) ?: MODE_BRIEF)
+    val comicDisplayMode: StateFlow<String> = _comicDisplayMode.asStateFlow()
+
+    fun setComicDisplayMode(mode: String) {
+        prefs.edit { putString(KEY_COMIC_DISPLAY_MODE, mode) }
+        _comicDisplayMode.value = mode
+    }
+
     // 写入方法
     fun setDefaultReadingMode(mode: String) {
         prefs.edit { putString(KEY_DEFAULT_READING_MODE, mode) }
@@ -184,6 +199,12 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_PROXY_TYPE = "pref_proxy_type"
         private const val KEY_PROXY_HOST = "pref_proxy_host"
         private const val KEY_PROXY_PORT = "pref_proxy_port"
+        private const val KEY_COMIC_DISPLAY_MODE = "pref_comic_display_mode"
+
+        /** 双列封面网格（默认）。 */
+        const val MODE_BRIEF = "brief"
+        /** 单列大卡（左封面 + 右侧完整信息含标签）。 */
+        const val MODE_DETAILED = "detailed"
 
         @Volatile
         private var INSTANCE: VeneraPreferences? = null
