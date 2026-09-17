@@ -1,6 +1,0 @@
-﻿.\gradlew.bat : e: file:///D:/venera-compose/app/src/main/java/com/venera/compose/feature/CoverViewerScreen.kt:24:14 Un
-    + CategoryInfo          : NotSpecified: (e: file:///D:/v...ence 'context'.:String) [], RemoteException
-e: file:///D:/venera-compose/app/src/main/java/com/venera/compose/feature/CoverViewerScreen.kt:75:17 Unresolved referen
-e: file:///D:/venera-compose/app/src/main/java/com/venera/compose/feature/CoverViewerScreen.kt:110:68 Unresolved refere
-e: file:///D:/venera-compose/app/src/main/java/com/venera/compose/feature/SearchScreen.kt:122:43 Unresolved reference. 
-e: file:///D:/venera-compose/app/src/main/java/com/venera/compose/feature/SearchScreen.kt:122:108 Unresolved reference 

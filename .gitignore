@@ -24,3 +24,5 @@ home*.png
 .reference_*.dart
 
 .ref_*.dart
+
+err_*.log
