@@ -141,11 +141,16 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             }
             val groups = source.getSearchOptions()
             _searchOptions.value = groups
-            // 保留用户已选值；组数变化时重置为默认
-            _selectedOptions.value = if (_selectedOptions.value.size != groups.size) {
-                groups.map { g -> _selectedOptions.value.getOrNull(groups.indexOf(g)) ?: g.defaultKey }
+            // 保留用户已选值；组数或组定义变化时重置为各默认值
+            _selectedOptions.value = if (
+                _selectedOptions.value.size == groups.size &&
+                _searchOptions.value.let { old -> old.size == groups.size }
+            ) {
+                _selectedOptions.value.mapIndexed { i, v ->
+                    if (groups[i].options.containsKey(v)) v else groups[i].defaultKey
+                }
             } else {
-                _selectedOptions.value
+                groups.map { it.defaultKey }
             }
         }
     }
