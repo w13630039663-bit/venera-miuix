@@ -16,6 +16,32 @@ sealed class ComicPageSource {
         val height: Int = 1600
     ) : ComicPageSource()
 
+    /**
+     * 动态解析页 —— 源声明了 `comic.onImageLoad` 时，`pages` 里的每一项是「图片键」，
+     * 展示前须经 JS `onImageLoad(imageKey, comicId, epId)` 解析成真实地址
+     * （对齐官方 `GetImageLoadingConfigFunc` 语义；EH 图库整本即此形态，
+     * jm/nhentai 等源则借此做 URL 重写与防盗链加签）。
+     */
+    data class DynamicNetwork(
+        val imageKey: String,
+        override val pageIndex: Int,
+        val sourceKey: String,
+        val comicId: String,
+        val epId: String,
+        val width: Int = 1080,
+        val height: Int = 1600
+    ) : ComicPageSource() {
+        /**
+         * 图片缓存键 —— 与官方 `network/images.dart` 的
+         * `cacheKey = "$imageKey@$sourceKey@$cid@$eid"` 完全同构。
+         *
+         * 关键：源每次解析出的真实 URL 可能带临时签名/token（EH 尤甚），
+         * 若拿 URL 当缓存键，同一页每次翻回来都会被判定为「新图」而重新下载。
+         * 用 imageKey 作键，翻回旧页才能命中 Coil 的磁盘缓存。
+         */
+        val cacheKey: String get() = "$sourceKey@$comicId@$epId@$imageKey"
+    }
+
     data class LocalFile(
         val file: File,
         override val pageIndex: Int
@@ -84,55 +110,16 @@ data class ReaderSession(
 )
 
 /**
- * 生成演示/测试章节页面数据
+ * 阅读会话构造器 —— **只从真实数据源构造**。
+ *
+ * 页面地址一律来自源脚本对章节的解析结果（[createLiveSession] 的 `pages`）。
+ *
+ * ⚠️ 历史遗留已清除：这里曾有一个 `createSampleSession()`，用 8 张硬编码的
+ * Unsplash 通用图伪造整章页面，并在「章节图片解析失败」时被**静默回退**使用
+ * ——结果用户会读到与作品完全无关的图片，且不报错、难以察觉。
+ * 现在解析失败一律如实上报错误，**绝不伪造内容**。
  */
-object SampleReaderData {
-    private val sampleUrls = listOf(
-        "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1080&q=80",
-        "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1080&q=80",
-        "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1080&q=80",
-        "https://images.unsplash.com/photo-1563089145-599997674d42?w=1080&q=80",
-        "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1080&q=80",
-        "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1080&q=80",
-        "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=1080&q=80",
-        "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&q=80"
-    )
-
-    fun createSampleSession(
-        comicId: String,
-        comicTitle: String,
-        coverUrl: String,
-        chapterNames: List<String>,
-        initialIndex: Int = 0,
-        initialPageIndex: Int = 0
-    ): ReaderSession {
-        val chapters = chapterNames.mapIndexed { cIndex, cTitle ->
-            val pageCount = 12 + (cIndex % 5) * 4
-            val pages = (0 until pageCount).map { pIndex ->
-                val url = sampleUrls[(cIndex * 3 + pIndex) % sampleUrls.size]
-                ComicPageSource.Network(
-                    url = url,
-                    pageIndex = pIndex,
-                    width = 1080,
-                    height = if (pIndex % 4 == 0) 3200 else 1600
-                )
-            }
-            ReaderChapter(
-                id = "ch_${cIndex + 1}",
-                title = cTitle,
-                pages = pages
-            )
-        }
-
-        return ReaderSession(
-            comicId = comicId,
-            comicTitle = comicTitle,
-            coverUrl = coverUrl,
-            chapters = chapters,
-            initialChapterIndex = initialIndex.coerceIn(0, (chapters.size - 1).coerceAtLeast(0)),
-            initialPageIndex = initialPageIndex
-        )
-    }
+object ReaderSessionFactory {
 
     fun createLiveSession(
         comicId: String,
@@ -144,15 +131,27 @@ object SampleReaderData {
         initialPageIndex: Int = 0,
         sourceName: String = "",
         sourceKey: String = "",
-        allChapters: List<Pair<String, String>>? = null
+        allChapters: List<Pair<String, String>>? = null,
+        useOnImageLoad: Boolean = false
     ): ReaderSession {
-        val mappedPages = pages.mapIndexed { idx, url ->
-            ComicPageSource.Network(
-                url = url,
-                pageIndex = idx,
-                width = 1080,
-                height = 1600
-            )
+        val mappedPages = pages.mapIndexed { idx, urlOrKey ->
+            if (useOnImageLoad) {
+                // 图片键模式：真实地址由阅读器逐页经源 JS onImageLoad 解析
+                ComicPageSource.DynamicNetwork(
+                    imageKey = urlOrKey,
+                    pageIndex = idx,
+                    sourceKey = sourceKey,
+                    comicId = comicId,
+                    epId = chapterId
+                )
+            } else {
+                ComicPageSource.Network(
+                    url = urlOrKey,
+                    pageIndex = idx,
+                    width = 1080,
+                    height = 1600
+                )
+            }
         }
 
         val chaptersList = if (!allChapters.isNullOrEmpty()) {

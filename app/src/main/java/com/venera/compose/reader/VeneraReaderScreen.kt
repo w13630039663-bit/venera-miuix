@@ -72,6 +72,7 @@ import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
@@ -88,6 +89,14 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+
+/**
+ * 前瞻预加载页数：当前页之后并发预取多少页。
+ *
+ * 动态页（源 `onImageLoad`）每页都要跨 WebView 调一次源 JS 并由源发起网络请求，
+ * 单页数百毫秒；串行预取会把翻页等待线性叠加，因此这里并发发出。
+ */
+private const val PRELOAD_AHEAD_PAGES = 5
 
 /**
  * Venera 生产级 Jetpack Compose 工业级漫画阅读器 (S3 升级)
@@ -203,6 +212,32 @@ fun VeneraReaderScreen(
         }
     }
 
+    // 阅读统计记录 (S7)
+    val sessionStartTime = remember { System.currentTimeMillis() }
+    var maxPageReached by remember { mutableIntStateOf(session.initialPageIndex + 1) }
+
+    LaunchedEffect(currentPageIndex) {
+        if (currentPageIndex + 1 > maxPageReached) {
+            maxPageReached = currentPageIndex + 1
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            val durationSec = ((System.currentTimeMillis() - sessionStartTime) / 1000).coerceAtLeast(1)
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                com.venera.compose.stats.ReadingStatsManager.getInstance(context).recordSession(
+                    comicId = session.comicId,
+                    comicTitle = session.comicTitle,
+                    sourceName = session.sourceName,
+                    chapterTitle = currentChapter.title,
+                    pagesRead = maxPageReached,
+                    durationSeconds = durationSec
+                )
+            }
+        }
+    }
+
     // 页面跳转统一函数
     fun jumpToPage(targetPage: Int) {
         val page = targetPage.coerceIn(0, (currentChapter.pages.size - 1).coerceAtLeast(0))
@@ -249,11 +284,25 @@ fun VeneraReaderScreen(
                 val pagesData = res.getOrNull()
                 val pageUrls = pagesData?.pages.orEmpty()
                 if (pageUrls.isNotEmpty()) {
-                    pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
-                        ImageHeaderPolicy.publishForUrls(pageUrls, hdrs)
+                    val useKeys = pagesData?.useOnImageLoad == true
+                    if (!useKeys) {
+                        pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
+                            ImageHeaderPolicy.publishForUrls(pageUrls, hdrs)
+                        }
                     }
                     val mappedPages = pageUrls.mapIndexed { idx, u ->
-                        ComicPageSource.Network(url = u, pageIndex = idx)
+                        if (useKeys) {
+                            // 图片键模式：真实地址由源 JS onImageLoad 逐页解析
+                            ComicPageSource.DynamicNetwork(
+                                imageKey = u,
+                                pageIndex = idx,
+                                sourceKey = key,
+                                comicId = session.comicId,
+                                epId = targetCh.id
+                            )
+                        } else {
+                            ComicPageSource.Network(url = u, pageIndex = idx)
+                        }
                     }
                     chaptersState[newChapterIndex] = targetCh.copy(pages = mappedPages, isLoaded = true)
                     currentChapterIndex = newChapterIndex
@@ -266,23 +315,37 @@ fun VeneraReaderScreen(
         }
     }
 
-    // ==================== 前瞻预加载流水线 (N+1..N+3) ====================
+    // ==================== 前瞻预加载流水线 (N+1..N+5，并发发出) ====================
     LaunchedEffect(currentPageIndex, currentChapterIndex) {
         val pages = currentChapter.pages
         if (pages.isEmpty()) return@LaunchedEffect
         val imageLoader = context.imageLoader
-        for (offset in 1..3) {
-            val nextIdx = currentPageIndex + offset
-            if (nextIdx in pages.indices) {
+        // 并发预取。此前是 `for (offset in 1..3)` 串行等待：动态页每页都要跨 WebView
+        // 调一次源 JS 再由源发起网络请求（EH 每次几百毫秒），串行 3 页就把「翻到下一页」
+        // 的等待叠成 1 秒以上。并发后总耗时约等于最慢的一页。
+        // 同一页被预取与当前页渲染同时请求时，由 ComicSourceManager 的并发去重兜住，
+        // 不会重复解析、也不会重复下载（同一 cacheKey）。
+        coroutineScope {
+            for (offset in 1..PRELOAD_AHEAD_PAGES) {
+                val nextIdx = currentPageIndex + offset
+                if (nextIdx !in pages.indices) continue
                 val page = pages[nextIdx]
-                if (page is ComicPageSource.Network) {
-                    val req = ImageRequest.Builder(context)
-                        .data(page.url)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .allowHardware(true)
-                        .build()
-                    imageLoader.enqueue(req)
+                launch {
+                    when (page) {
+                        is ComicPageSource.Network -> {
+                            val req = ImageRequest.Builder(context)
+                                .data(page.url)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .allowHardware(true)
+                                .build()
+                            imageLoader.enqueue(req)
+                        }
+                        // 动态页：走源 JS onImageLoad 解析（含 nl 换源重试）并落缓存
+                        is ComicPageSource.DynamicNetwork ->
+                            resolveDynamicPageUrl(context, sourceManager, page)
+                        else -> {}
+                    }
                 }
             }
         }
@@ -744,6 +807,20 @@ fun VeneraReaderScreen(
                             Icon(Icons.Outlined.SaveAlt, contentDescription = "保存当前页", tint = Color.White)
                         }
 
+                        // 单页插图收藏 (S7)
+                        IconButton(onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            favoriteCurrentPage(
+                                context = context,
+                                session = session,
+                                chapterTitle = currentChapter.title,
+                                pageIndex = currentPageIndex,
+                                pageSource = currentImageSource
+                            )
+                        }) {
+                            Icon(Icons.Outlined.BookmarkBorder, contentDescription = "收藏当前插图", tint = Color.White)
+                        }
+
                         // 分享
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1138,6 +1215,97 @@ fun VeneraReaderScreen(
 }
 
 /**
+ * 「动态页」解析状态：真实 URL、失败标志与手动重试计数
+ */
+private class DynamicPageState {
+    var url by mutableStateOf<String?>(null)
+    var failed by mutableStateOf(false)
+    var attempt by mutableIntStateOf(0)
+}
+
+/**
+ * 解析「动态页」并预取进图片缓存，返回可直接展示的 URL；全部重试失败返回 null。
+ *
+ * 对齐官方 `network/images.dart:_loadComicImage`：
+ * 先调源 JS `onImageLoad(imageKey, cid, eid)` 拿 `{url, headers, nl}`；
+ * 下载失败带上 `nl` 重新解析（等价官方执行 onLoadFailed 闭包），上限 5 次。
+ * 解析出的真实 URL + headers 会发布进 [ImageHeaderPolicy]（Referer 防盗链）。
+ *
+ * 图片请求用 [ComicPageSource.DynamicNetwork.cacheKey]（`imageKey@sourceKey@cid@eid`）
+ * 作缓存键 —— 与官方 `network/images.dart` 一致。源解析出的真实 URL 往往带临时
+ * 签名（EH 尤甚），若用 URL 当键，翻回旧页会被当成新图重新下载；用 imageKey 作键
+ * 才能命中缓存，也让「解析出的地址已过期」时能靠磁盘缓存兜住。
+ *
+ * @param forceRefresh 绕过解析缓存强制重新解析（手动重试 / 上一轮已下载失败时用）
+ */
+private suspend fun resolveDynamicPageUrl(
+    context: Context,
+    sourceManager: ComicSourceManager,
+    page: ComicPageSource.DynamicNetwork,
+    maxAttempts: Int = 5,
+    forceRefresh: Boolean = false
+): String? {
+    var nl: String? = null
+    repeat(maxAttempts) { round ->
+        val cfg = sourceManager
+            .resolveImageLoadingConfig(
+                page.sourceKey, page.comicId, page.epId, page.imageKey, nl,
+                // 首轮可吃解析缓存；进入第二轮说明上一轮拿到的地址下载失败了
+                // （多半是临时签名过期）→ 必须强制重新解析，否则会拿着同一份
+                // 失效地址空转满 5 次。
+                forceRefresh = forceRefresh || round > 0
+            )
+            .getOrNull() ?: return null
+        if (cfg.url.isBlank()) {
+            nl = cfg.nl
+            return@repeat
+        }
+        cfg.headers.takeIf { it.isNotEmpty() }?.let {
+            ImageHeaderPolicy.publishForUrls(listOf(cfg.url), it)
+        }
+        val req = ImageRequest.Builder(context)
+            .data(cfg.url)
+            .memoryCacheKey(page.cacheKey)
+            .diskCacheKey(page.cacheKey)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .allowHardware(true)
+            .build()
+        if (context.imageLoader.execute(req) is SuccessResult) return cfg.url
+        nl = cfg.nl
+    }
+    return null
+}
+
+/**
+ * 在组合内解析动态页：进入可视范围才调源 JS（与官方懒加载一致），
+ * 失败后由 UI 触发 [DynamicPageState.attempt] 自增重试。
+ */
+@Composable
+private fun rememberDynamicPageResolution(page: ComicPageSource.DynamicNetwork): DynamicPageState {
+    val context = LocalContext.current
+    val state = remember(page) { DynamicPageState() }
+    LaunchedEffect(page, state.attempt) {
+        if (state.url == null) {
+            state.failed = false
+            val url = resolveDynamicPageUrl(
+                context,
+                ComicSourceManager.getInstance(context),
+                page,
+                // 用户点按重试说明上一轮解析出的地址已经不可用 → 绕过解析缓存重来
+                forceRefresh = state.attempt > 0
+            )
+            if (url != null) {
+                state.url = url
+            } else {
+                state.failed = true
+            }
+        }
+    }
+    return state
+}
+
+/**
  * 单页渲染单元 (用于连续流与对开拼合)
  */
 @Composable
@@ -1185,6 +1353,75 @@ private fun ReaderSinglePageItem(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = contentScale
                 )
+            }
+            is ComicPageSource.DynamicNetwork -> {
+                val dyn = rememberDynamicPageResolution(page)
+                val resolvedUrl = dyn.url
+                when {
+                    resolvedUrl != null -> SubcomposeAsyncImage(
+                        // 用 imageKey 组合键作缓存键（对齐官方 network/images.dart）：
+                        // 源签发的真实地址会变，拿 URL 当键会让翻回旧页被判成新图重新下载。
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(resolvedUrl)
+                            .memoryCacheKey(page.cacheKey)
+                            .diskCacheKey(page.cacheKey)
+                            .build(),
+                        contentDescription = "第 ${index + 1} 页",
+                        colorFilter = colorFilter,
+                        loading = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(320.dp)
+                                    .background(Color(0xFF161616)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        color = MiuixTheme.colorScheme.primary,
+                                        modifier = Modifier.size(32.dp),
+                                        strokeWidth = 3.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "加载中 (${index + 1}/$total)...",
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = contentScale
+                    )
+                    dyn.failed -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .background(Color(0xFF161616))
+                            .clickable { dyn.attempt++ },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "第 ${index + 1} 页加载失败，点按重试",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    else -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp)
+                            .background(Color(0xFF161616)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp
+                        )
+                    }
+                }
             }
             is ComicPageSource.LocalFile -> {
                 SubcomposeAsyncImage(
@@ -1239,6 +1476,44 @@ private fun ReaderTelephotoPageItem(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+            is ComicPageSource.DynamicNetwork -> {
+                val dyn = rememberDynamicPageResolution(page)
+                val resolvedUrl = dyn.url
+                when {
+                    resolvedUrl != null -> ZoomableAsyncImage(
+                        // 同单页组件：缓存键用 imageKey 组合键，避免地址变化导致重复下载
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(resolvedUrl)
+                            .memoryCacheKey(page.cacheKey)
+                            .diskCacheKey(page.cacheKey)
+                            .build(),
+                        contentDescription = "第 ${index + 1} 页",
+                        state = zoomableImageState,
+                        colorFilter = colorFilter,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    dyn.failed -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { dyn.attempt++ },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "第 ${index + 1} 页加载失败，点按重试",
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                    }
+                    else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            color = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp
+                        )
+                    }
+                }
+            }
             is ComicPageSource.LocalFile -> {
                 ZoomableAsyncImage(
                     model = page.file,
@@ -1268,6 +1543,9 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
         try {
             val urlOrFile = when (pageSource) {
                 is ComicPageSource.Network -> pageSource.url
+                // 动态页先解析出真实地址再取图
+                is ComicPageSource.DynamicNetwork ->
+                    resolveDynamicPageUrl(context, ComicSourceManager.getInstance(context), pageSource)
                 is ComicPageSource.LocalFile -> pageSource.file.absolutePath
                 else -> null
             }
@@ -1317,6 +1595,44 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
                 Toast.makeText(context, "保存图片失败：${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+}
+
+/**
+ * 收藏当前单页为插图 (S7)
+ */
+private fun favoriteCurrentPage(
+    context: Context,
+    session: ReaderSession,
+    chapterTitle: String,
+    pageIndex: Int,
+    pageSource: ComicPageSource?
+) {
+    if (pageSource == null) return
+    val coroutineScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO)
+    coroutineScope.launch {
+        try {
+            val urlOrFile = when (pageSource) {
+                is ComicPageSource.Network -> pageSource.url
+                is ComicPageSource.DynamicNetwork -> resolveDynamicPageUrl(context, com.venera.compose.source.ComicSourceManager.getInstance(context), pageSource)
+                is ComicPageSource.LocalFile -> pageSource.file.absolutePath
+                else -> null
+            }
+            if (urlOrFile.isNullOrBlank()) return@launch
+
+            com.venera.compose.feature.favoriteimages.FavoriteImagesManager.getInstance(context).addFavorite(
+                comicId = session.comicId,
+                comicTitle = session.comicTitle,
+                sourceName = session.sourceName,
+                chapterTitle = chapterTitle,
+                pageIndex = pageIndex,
+                imageUrl = urlOrFile,
+                localPath = if (pageSource is ComicPageSource.LocalFile) urlOrFile else ""
+            )
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "已收藏当前单页至「插图收藏」", Toast.LENGTH_SHORT).show()
+            }
+        } catch (_: Exception) {}
     }
 }
 

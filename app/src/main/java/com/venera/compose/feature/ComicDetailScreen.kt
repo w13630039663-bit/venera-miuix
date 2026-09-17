@@ -8,6 +8,8 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -51,7 +53,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     comic: ComicItem,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onBack: () -> Unit,
-    onStartReading: (chapterIndex: Int, pageIndex: Int) -> Unit,
     onStartLiveReading: (ReaderSession) -> Unit
 ) {
     val context = LocalContext.current
@@ -59,8 +60,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val viewModel: ComicDetailViewModel = viewModel()
     val detailState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val favorites by viewModel.favoritesFlow.collectAsState()
-    val isFav = favorites.any { it.comicId == comic.id }
+    val isFav by viewModel.isLocalFav.collectAsStateWithLifecycle()
+    val favPanel by viewModel.favPanel.collectAsStateWithLifecycle()
 
     val historyList by viewModel.historyFlow.collectAsState()
     val historyRecord = historyList.find { it.comicId == comic.id }
@@ -73,20 +74,34 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     var showCommentSheet by remember { mutableStateOf(false) }
     var newCommentText by remember { mutableStateOf("") }
     var isSendingComment by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(comic.id) { viewModel.load(comic) }
+    LaunchedEffect(comic.id) {
+        viewModel.load(comic)
+        viewModel.syncLocalFav(comic)
+    }
+
+    // 收藏面板的一次性提示
+    LaunchedEffect(favPanel.toast) {
+        favPanel.toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.consumeToast()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.readerEvents.collect { event ->
             when (event) {
                 is ReaderEvent.Live -> onStartLiveReading(event.session)
-                is ReaderEvent.Sample -> onStartReading(event.chapterIndex, event.pageIndex)
+                // 解析不出图片就如实报错（历史上会悄悄打开一整套占位图）
+                is ReaderEvent.Failed ->
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    fun launchChapter(chapterId: String, chapterTitle: String, fallbackIdx: Int) {
-        viewModel.openChapter(comic, chapterId, chapterTitle, fallbackIdx)
+    fun launchChapter(chapterId: String, chapterTitle: String, fallbackIdx: Int, initialPage: Int = 0) {
+        viewModel.openChapter(comic, chapterId, chapterTitle, fallbackIdx, initialPage)
     }
 
     fun onTriggerRead() {
@@ -101,10 +116,14 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         if (chs.isNotEmpty()) {
             val target = chs.first()
             launchChapter(target.id, target.title, 0)
-        } else if (historyRecord != null) {
-            onStartReading(historyRecord.lastChapterIndex, historyRecord.lastPageIndex)
+        } else if (liveDetails != null) {
+            // 无章节源（EH 图库等）：整本即一章。对齐官方 reader.dart 的 eid 语义
+            // `chapters?.ids.elementAtOrNull(chapter - 1) ?? '0'` —— 无章节时 eid 固定为 '0'。
+            launchChapter("0", comic.title, 0)
         } else {
-            onStartReading(0, 0)
+            // 详情尚未解析出章节列表 → 如实提示。
+            // （历史上这里会打开「演示会话」，用硬编码占位图冒充漫画内容。）
+            Toast.makeText(context, "章节列表尚未加载完成，请稍后再试", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -153,6 +172,34 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             contentPadding = PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // 0. 详情加载失败横幅（此前 error 只写进 state 不渲染，用户无从得知失败原因）
+            detailState.error?.let { err ->
+                item(key = "detail-error") {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = err,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             // 1. 顶部封面与作品标题信息 (S2 扩展字段对齐)
             item {
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -210,18 +257,21 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
-                                val statusText = liveDetails?.status ?: "连载中"
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (statusText.contains("完结")) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFFFF9800).copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = statusText,
-                                        fontSize = 11.sp,
-                                        color = if (statusText.contains("完结")) Color(0xFF388E3C) else Color(0xFFE65100),
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
+                                // 状态标签：源给了才显示（EH 等无连载概念的源不再被安上"连载中"）
+                                val statusText = liveDetails?.status.orEmpty()
+                                if (statusText.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (statusText.contains("完结")) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFFFF9800).copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = statusText,
+                                            fontSize = 11.sp,
+                                            color = if (statusText.contains("完结")) Color(0xFF388E3C) else Color(0xFFE65100),
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -321,9 +371,13 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             label = if (isFav) "已收藏" else "收藏",
                             iconColor = Color(0xFF9C27B0),
                             isActive = isFav,
+                            onLongClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                viewModel.quickFavorite(comic)
+                            },
                             onClick = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                viewModel.toggleFavorite(comic)
+                                viewModel.openFavoritePanel(comic)
                             }
                         )
                     }
@@ -367,14 +421,14 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Button(
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            Toast.makeText(context, "批量下载功能已加入下载队列 (S6)", Toast.LENGTH_SHORT).show()
+                            showDownloadDialog = true
                         },
                         modifier = Modifier.weight(0.4f),
                         colors = ButtonDefaults.buttonColors(
                             color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                         ),
                         content = {
-                            Text(text = "下载全本", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = "离线下载", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     )
                     Button(
@@ -497,25 +551,77 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 7. 章节全景画廊/缩略图 (thumbnails)
-            val thumbnails = liveDetails?.thumbnails.orEmpty()
-            if (thumbnails.isNotEmpty()) {
+            // 7. 官方预览图（对齐官方 comic_details_page/thumbnails.dart：
+            //    网格铺排 + 分页加载 + 点任意一张从该页开读）
+            val thumbnails = detailState.thumbnails.ifEmpty { liveDetails?.thumbnails.orEmpty() }
+            if (thumbnails.isNotEmpty() || detailState.isLoadingThumbnails) {
                 item {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(14.dp)) {
-                            Text(text = "精彩画廊 (${thumbnails.size} 页)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Spacer(modifier = Modifier.height(10.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(thumbnails) { thumbUrl ->
-                                    AsyncImage(
-                                        model = thumbUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(width = 80.dp, height = 110.dp)
-                                            .clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (thumbnails.isEmpty()) "预览" else "预览 (${thumbnails.size} 页)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                if (detailState.isLoadingThumbnails) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // 三列网格（末行不足三张时补空位，避免被拉伸变形）
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                thumbnails.chunked(3).forEachIndexed { rowIdx, rowItems ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        rowItems.forEachIndexed { colIdx, thumbUrl ->
+                                            val pageIndex = rowIdx * 3 + colIdx
+                                            val targetChId = detailState.previewChapterId.ifBlank {
+                                                liveDetails?.chapters?.firstOrNull()?.id ?: "0"
+                                            }
+                                            val targetChTitle = liveDetails?.chapters?.firstOrNull { it.id == targetChId }?.title
+                                                ?: comic.title
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .aspectRatio(0.7f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable { launchChapter(targetChId, targetChTitle, 0, pageIndex) }
+                                            ) {
+                                                AsyncImage(
+                                                    model = thumbUrl,
+                                                    contentDescription = "第 ${pageIndex + 1} 页",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                        }
+                                        repeat(3 - rowItems.size) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+
+                            detailState.thumbnailError?.let { err ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(text = err, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                            }
+
+                            if (detailState.hasMoreThumbnails) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { viewModel.loadThumbnails(loadMore = true) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                    ),
+                                    content = { Text(text = "加载更多预览", fontSize = 13.sp) }
+                                )
                             }
                         }
                     }
@@ -531,32 +637,38 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 } else {
                     liveDetails?.chapters ?: emptyList()
                 }
-                val totalChapterCount = if (currentChapters.isNotEmpty()) currentChapters.size else comic.chapters.size
+                // 真实章节数：只数源详情给出的章节，**不再回退**列表页那份 comic.chapters
+                // （那份数据的默认值曾是硬编码的 60 个假章节，会导致 EH 等无章节源
+                //   显示一份凭空捏造的目录）。
+                val totalChapterCount = currentChapters.size
+                val hasRealChapters = currentChapters.isNotEmpty()
 
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        // 标题与正倒序切换
+                        // 标题与正倒序切换（无章节可排时不显示排序按钮）
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "章节目录 (共 $totalChapterCount 话)",
+                                text = if (hasRealChapters) "章节目录 (共 $totalChapterCount 话)" else "章节目录",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                modifier = Modifier.clickable { viewModel.setReversed(!isReversed) }
-                            ) {
-                                Text(
-                                    text = if (isReversed) "正序 ↑" else "倒序 ↓",
-                                    fontSize = 12.sp,
-                                    color = MiuixTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                            if (hasRealChapters) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                    modifier = Modifier.clickable { viewModel.setReversed(!isReversed) }
+                                ) {
+                                    Text(
+                                        text = if (isReversed) "正序 ↑" else "倒序 ↓",
+                                        fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -607,7 +719,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (currentChapters.isNotEmpty()) {
+                            if (hasRealChapters) {
                                 val list = if (isReversed) currentChapters.reversed() else currentChapters
                                 list.take(80).forEachIndexed { idx, ch ->
                                     val actualIdx = if (isReversed) currentChapters.lastIndex - idx else idx
@@ -644,44 +756,64 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         }
                                     }
                                 }
-                            } else {
-                                val list = if (isReversed) comic.chapters.reversed() else comic.chapters
-                                list.take(36).forEachIndexed { idx, chapter ->
-                                    val actualIdx = if (isReversed) comic.chapters.lastIndex - idx else idx
-                                    val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
+                            } else if (liveDetails != null) {
+                                // 无章节源（EH 图库等）：整本即一章，给出**真实**的阅读入口。
+                                // 对齐官方 reader.dart 的 eid 语义（无章节时 eid 固定 '0'）。
+                                //
+                                // 这里此前回退渲染 comic.chapters —— 而它的默认值是硬编码的
+                                // 60 个假章节（"第 60 话"…"第 1 话"），点进去只会弹
+                                // 「章节信息未加载完成」。任何无章节概念的源都会因此显示
+                                // 一份凭空捏造的目录。
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "本作没有章节目录，整本一次读完。",
+                                        fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.onBackgroundVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    val totalPages = liveDetails?.maxPage ?: 0
                                     Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isCurrentHistoryChapter) {
-                                            MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                        } else {
-                                            MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                                        },
-                                        modifier = Modifier.clickable {
-                                            val pIndex = if (isCurrentHistoryChapter) historyRecord.lastPageIndex else 0
-                                            onStartReading(actualIdx, pIndex)
-                                        }
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { launchChapter("0", comic.title, 0) }
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = chapter,
-                                                fontSize = 12.sp,
-                                                color = if (isCurrentHistoryChapter) {
-                                                    MiuixTheme.colorScheme.primary
-                                                } else {
-                                                    MiuixTheme.colorScheme.onSurface
-                                                },
-                                                fontWeight = if (isCurrentHistoryChapter) FontWeight.Bold else FontWeight.Normal
+                                            Icon(
+                                                imageVector = Icons.Outlined.PlayCircleOutline,
+                                                contentDescription = null,
+                                                tint = MiuixTheme.colorScheme.primary
                                             )
-                                            if (isCurrentHistoryChapter) {
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(text = "•", color = MiuixTheme.colorScheme.primary, fontSize = 12.sp)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    text = "阅读整本",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MiuixTheme.colorScheme.primary
+                                                )
+                                                if (totalPages > 1) {
+                                                    Text(
+                                                        text = "共 $totalPages 页",
+                                                        fontSize = 11.sp,
+                                                        color = MiuixTheme.colorScheme.onBackgroundVariant
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            } else {
+                                // 详情尚未返回：如实说明，不伪造任何内容
+                                Text(
+                                    text = "章节信息加载中…",
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onBackgroundVariant
+                                )
                             }
                         }
                     }
@@ -900,5 +1032,400 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
         }
+    }
+
+    // 收藏面板（对齐官方 _FavoritePanel：本地 + 网络双分区，互不同步）
+    if (favPanel.visible) {
+        FavoritePanelSheet(
+            state = favPanel,
+            onDismiss = { viewModel.closeFavoritePanel() },
+            onToggleLocal = { folder -> viewModel.toggleLocalFavorite(comic, folder) },
+            onCreateFolder = { name, onErr -> viewModel.createLocalFolder(name, onErr) },
+            onToggleNetwork = { folderId, isAdded -> viewModel.toggleNetworkFavorite(comic, folderId, isAdded) },
+        )
+    }
+
+    // 批量离线下载对话框 (S6)
+    if (showDownloadDialog) {
+        val groups = liveDetails?.chapterGroups ?: emptyList()
+        val allChs = if (groups.isNotEmpty()) {
+            val group = groups.getOrNull(detailState.selectedGroupIndex) ?: groups.first()
+            group.chapters
+        } else {
+            liveDetails?.chapters ?: emptyList()
+        }
+        var selectedIds by remember(allChs) { mutableStateOf(allChs.map { it.id }.toSet()) }
+
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = {
+                        selectedIds = if (selectedIds.size == allChs.size) emptySet() else allChs.map { it.id }.toSet()
+                    }) {
+                        Text(if (selectedIds.size == allChs.size) "全不选" else "全选", fontSize = 12.sp)
+                    }
+                }
+            },
+            text = {
+                if (allChs.isEmpty()) {
+                    Text("暂无可下载章节", fontSize = 13.sp)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 340.dp)
+                    ) {
+                        items(allChs, key = { it.id }) { ch ->
+                            val isChecked = selectedIds.contains(ch.id)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedIds = if (isChecked) selectedIds - ch.id else selectedIds + ch.id
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { checked ->
+                                        selectedIds = if (checked) selectedIds + ch.id else selectedIds - ch.id
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = ch.title,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDownload = allChs.filter { selectedIds.contains(it.id) }
+                        if (toDownload.isNotEmpty()) {
+                            val dlMgr = com.venera.compose.download.DownloadManager.getInstance(context)
+                            dlMgr.enqueue(
+                                sourceKey = liveDetails?.sourceKey ?: comic.sourceName,
+                                comicId = comic.id,
+                                comicTitle = liveDetails?.comic?.title ?: comic.title,
+                                comicCover = liveDetails?.comic?.cover ?: comic.coverUrl,
+                                chapters = toDownload
+                            )
+                            Toast.makeText(context, "已将 ${toDownload.size} 话加入下载队列", Toast.LENGTH_SHORT).show()
+                        }
+                        showDownloadDialog = false
+                    },
+                    enabled = selectedIds.isNotEmpty()
+                ) {
+                    Text("开始下载 (${selectedIds.size})")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+// ==================== 详情页收藏面板 ====================
+
+/** 分区标题（对齐官方 `_LocalSection` / `_NetworkSection` 的小标题）。 */
+@Composable
+private fun FavSectionTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MiuixTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp),
+    )
+}
+
+/** 收藏夹行右侧的「收藏 / 移除」胶囊（对齐官方 `_HoverButton`）。 */
+@Composable
+private fun FavToggleChip(
+    isAdded: Boolean,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    onToggle: () -> Unit,
+) {
+    if (loading) {
+        Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+        return
+    }
+    val bg = when {
+        !enabled -> MiuixTheme.colorScheme.surfaceVariant
+        isAdded -> Color(0xFFE53935)
+        else -> MiuixTheme.colorScheme.primary
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        modifier = Modifier.clickable(enabled = enabled) { onToggle() },
+    ) {
+        Text(
+            text = if (isAdded) "移除" else "收藏",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) Color.White else MiuixTheme.colorScheme.onBackgroundVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** 一个收藏夹条目：名字 + （可选）已添加徽标 + 右侧动作。 */
+@Composable
+private fun FavRow(
+    title: String,
+    added: Boolean,
+    trailing: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            fontSize = 14.sp,
+            color = MiuixTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (added) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MiuixTheme.colorScheme.primary.copy(alpha = 0.15f),
+            ) {
+                Text(
+                    text = "已添加",
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        trailing()
+    }
+}
+
+/**
+ * 收藏面板内容。
+ *
+ * 官方结构：本地分区永远显示；网络分区只在「源声明了 favorites 且已登录」时出现，
+ * 两者由一个分隔线隔开，顺序由设置项 `localFavoritesFirst` 决定（默认本地在前）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FavoritePanelSheet(
+    state: FavoritePanelState,
+    onDismiss: () -> Unit,
+    onToggleLocal: (String) -> Unit,
+    onCreateFolder: (String, (String) -> Unit) -> Unit,
+    onToggleNetwork: (folderId: String, isAdded: Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var showNewFolder by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MiuixTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                text = "收藏",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MiuixTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // ---------- 本地收藏分区 ----------
+            FavSectionTitle("本地收藏")
+            state.localFolders.forEach { folder ->
+                val added = folder in state.localAdded
+                FavRow(title = folder, added = added) {
+                    FavToggleChip(
+                        isAdded = added,
+                        loading = folder in state.pending,
+                        onToggle = { onToggleLocal(folder) },
+                    )
+                }
+            }
+
+            // 新建收藏夹（对齐官方 `_LocalSection` 末尾那行）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { showNewFolder = true }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                    tint = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "新建收藏夹", fontSize = 14.sp, color = MiuixTheme.colorScheme.primary)
+            }
+
+            // ---------- 网络收藏分区 ----------
+            if (state.hasNetwork) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.25f))
+                Spacer(modifier = Modifier.height(4.dp))
+                FavSectionTitle("网络收藏")
+
+                when {
+                    state.isLoadingNetwork -> {
+                        repeat(2) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.12f)),
+                                )
+                                Spacer(modifier = Modifier.width(60.dp))
+                            }
+                        }
+                    }
+
+                    state.networkError != null -> {
+                        Text(
+                            text = "网络收藏加载失败：${state.networkError}",
+                            fontSize = 13.sp,
+                            color = Color(0xFFE53935),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+
+                    // 多收藏夹源
+                    state.networkMultiFolder -> {
+                        if (state.networkFolders.isEmpty()) {
+                            Text(
+                                text = "该账号下还没有网络收藏夹",
+                                fontSize = 13.sp,
+                                color = MiuixTheme.colorScheme.onBackgroundVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                        }
+                        state.networkFolders.forEach { (id, name) ->
+                            val added = id in state.networkAdded
+                            // 只允许单夹的源：已进别的夹时，其余夹的「收藏」按钮禁用
+                            val enabled = !(state.singleFolderForSingleComic && state.networkAdded.isNotEmpty() && !added)
+                            FavRow(title = name, added = added) {
+                                FavToggleChip(
+                                    isAdded = added,
+                                    enabled = enabled,
+                                    loading = "net:$id" in state.pending,
+                                    onToggle = { onToggleNetwork(id, added) },
+                                )
+                            }
+                        }
+                    }
+
+                    // 单收藏夹源：一个整体开关（folderId 传 ""，对齐官方）
+                    else -> {
+                        val added = state.networkSingleAdded
+                        FavRow(title = "网络收藏", added = added) {
+                            FavToggleChip(
+                                isAdded = added,
+                                loading = "net:" in state.pending,
+                                onToggle = { onToggleNetwork("", added) },
+                            )
+                        }
+                    }
+                }
+            } else if (state.localFolders.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "该漫画源未登录或不支持网络收藏，当前仅能收藏到本地",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+        }
+    }
+
+    if (showNewFolder) {
+        var folderName by remember { mutableStateOf("") }
+        var nameError by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showNewFolder = false },
+            title = { Text("新建收藏夹", fontSize = 17.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = folderName,
+                        onValueChange = {
+                            folderName = it
+                            nameError = null
+                        },
+                        singleLine = true,
+                        label = { Text("收藏夹名") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    nameError?.let {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(text = it, fontSize = 12.sp, color = Color(0xFFE53935))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (folderName.isBlank()) {
+                            nameError = "收藏夹名不能为空"
+                        } else {
+                            onCreateFolder(folderName) { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                            showNewFolder = false
+                        }
+                    },
+                ) { Text("创建") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFolder = false }) { Text("取消") }
+            },
+        )
     }
 }

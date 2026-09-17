@@ -4,8 +4,10 @@
 package com.venera.compose.feature
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,20 +33,24 @@ import com.venera.compose.source.model.*
 
 /**
  * 详情页彩色圆形动作按钮 (_ActionButton)
+ *
+ * @param onLongClick 长按回调（收藏按钮用它做「快捷收藏」，对齐官方 `quickFavorite`）
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DetailActionButton(
     icon: ImageVector,
     label: String,
     iconColor: Color,
     isActive: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Box(
