@@ -9,6 +9,7 @@ import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,8 +52,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val sourceManager by lazy { ComicSourceManager.getInstance(app) }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
     private var searchJob: Job? = null
+    private var debounceJob: Job? = null
 
     val sourcesFlow = sourceManager.sourcesFlow
+
+    // S7 内容守卫：搜索结果统一过屏蔽规则（单源流与全网聚合流共用）
+    private val appContext = getApplication<Application>()
+    private val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(appContext)
 
     private val _uiState = MutableStateFlow(SearchUiState(history = readHistory()))
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
@@ -71,8 +77,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
+        // 输入防抖：旧实现在 length>=2 时**每敲一个字符**就立即发起一次全网聚合搜索，
+        // 33 源 × 每次击键 = 巨量请求排队，队列永远排不完，表现为"搜不到"。
+        debounceJob?.cancel()
         if (value.length >= MIN_QUERY && matchedUrl == null) {
-            search(value)
+            debounceJob = viewModelScope.launch {
+                delay(SEARCH_DEBOUNCE_MS)
+                search(value)
+            }
         } else if (value.isBlank()) {
             _uiState.update { it.copy(results = emptyList(), aggregatedResults = emptyMap()) }
         }
@@ -111,6 +123,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     fun search(query: String) {
         if (query.isBlank()) return
+        debounceJob?.cancel()
         appendHistory(query)
         val currentKey = _uiState.value.selectedSourceKey
 
@@ -126,7 +139,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             if (currentKey == KEY_ALL) {
                 // ==================== 全网聚合流式下发 ====================
-                val availableSources = sourceManager.sourcesFlow.value.filter { it.key != "all" }
+                // 只对**已启用**的源建骨架屏，禁用源不参与检索
+                val availableSources = sourceManager.searchTargets()
                 val initialMap = availableSources.associate { src ->
                     src.key to ComicSourceManager.SourceSearchResult(
                         sourceKey = src.key,
@@ -138,9 +152,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update { it.copy(aggregatedResults = initialMap, results = emptyList()) }
 
                 sourceManager.searchAggregatedStream(query).collect { event ->
+                    // 每个源的流式结果在进入 UI 前剔除命中屏蔽规则的条目
+                    val filteredEvent = if (event.comics.isNotEmpty()) {
+                        event.copy(comics = guardManager.filterComicModels(event.comics))
+                    } else event
                     _uiState.update { state ->
                         val updated = state.aggregatedResults.toMutableMap()
-                        updated[event.sourceKey] = event
+                        updated[filteredEvent.sourceKey] = filteredEvent
                         state.copy(aggregatedResults = updated)
                     }
                 }
@@ -148,7 +166,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 // ==================== 单源完整检索 ====================
                 val res = sourceManager.search(currentKey, query)
-                val list = res.getOrDefault(emptyList())
+                val list = guardManager.filterComicModels(res.getOrDefault(emptyList()))
                 val message = res.exceptionOrNull()?.let { err -> "检索异常：${err.message ?: err.javaClass.simpleName}" }
                 _uiState.update {
                     it.copy(
@@ -189,5 +207,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         private const val KEY_HISTORY = "history"
         private const val HISTORY_MAX = 20
         private const val MIN_QUERY = 2
+
+        /** 输入防抖窗口（毫秒） */
+        private const val SEARCH_DEBOUNCE_MS = 400L
     }
 }

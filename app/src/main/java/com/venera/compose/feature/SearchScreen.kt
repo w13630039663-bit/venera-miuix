@@ -19,12 +19,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +64,11 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val allSources by viewModel.sourcesFlow.collectAsStateWithLifecycle()
     val view = LocalView.current
+    // S7 分级遮罩：BLUR 模式下命中屏蔽规则的封面打码（数据层已按 HIDE 剔除）
+    val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val nsfwMode by guardManager.nsfwMaskMode.collectAsState()
+    fun maskStateFor(title: String, author: String, tags: List<String>, id: String) =
+        guardManager.coverMaskStateFor(title, author, tags, id)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -353,6 +360,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
                                 else -> {
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                         items(event.comics) { comic ->
+                                            val maskState = remember(comic.id, nsfwMode) {
+                                                maskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
+                                            }
                                             Column(
                                                 modifier = Modifier
                                                     .width(104.dp)
@@ -380,6 +390,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
                                                         .height(144.dp)
                                                         .clip(RoundedCornerShape(8.dp))
                                                         .background(Color(0xFF222222))
+                                                        .then(
+                                                            if (maskState == "BLURRED") Modifier.blur(16.dp) else Modifier
+                                                        )
                                                 )
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
@@ -460,6 +473,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 }
 
                 items(ui.results, key = { it.id }) { comic ->
+                    val maskState = remember(comic.id, nsfwMode) {
+                        maskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
+                    }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -492,6 +508,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
                                     .height(120.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Color(0xFF222222))
+                                    .then(
+                                        if (maskState == "BLURRED") Modifier.blur(16.dp) else Modifier
+                                    )
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(
