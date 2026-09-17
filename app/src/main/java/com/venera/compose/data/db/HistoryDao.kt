@@ -128,9 +128,33 @@ class HistoryDao(private val dbHelper: VeneraDatabase) {
         }
     }
 
-    suspend fun deleteHistory(comicId: String) = withContext(Dispatchers.IO) {
+    /**
+     * 删除单条历史。
+     *
+     * ⚠️ v2 起主键是 `(comic_id, source_name)`，不同源的同 ID 漫画是两条独立记录，
+     * 因此**必须带 sourceName**，否则会把其他源的进度一起删掉。
+     */
+    suspend fun deleteHistory(comicId: String, sourceName: String) = withContext(Dispatchers.IO) {
         val db = dbHelper.writableDatabase
-        db.delete("comic_history", "comic_id = ?", arrayOf(comicId))
+        db.delete("comic_history", "comic_id = ? AND source_name = ?", arrayOf(comicId, sourceName))
+        refresh()
+    }
+
+    suspend fun batchDeleteHistory(records: List<HistoryRecord>) = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        db.beginTransaction()
+        try {
+            records.forEach {
+                db.delete(
+                    "comic_history",
+                    "comic_id = ? AND source_name = ?",
+                    arrayOf(it.comicId, it.sourceName)
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
         refresh()
     }
 

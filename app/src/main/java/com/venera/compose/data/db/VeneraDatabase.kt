@@ -73,28 +73,123 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
             );
             """.trimIndent()
         )
+        // 4. 阅读统计表 (S7)
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS reading_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                comic_id TEXT NOT NULL,
+                comic_title TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '',
+                chapter_title TEXT NOT NULL,
+                pages_read INTEGER NOT NULL DEFAULT 0,
+                duration_seconds INTEGER NOT NULL DEFAULT 0,
+                read_date TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(read_date);")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_comic ON reading_stats(comic_id, source_name);")
+
+        // 5. 单页/图片收藏表 (S7)
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS favorite_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                comic_id TEXT NOT NULL,
+                comic_title TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                chapter_title TEXT NOT NULL,
+                page_index INTEGER NOT NULL,
+                image_url TEXT NOT NULL,
+                local_path TEXT,
+                created_at INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_favorite_images_created ON favorite_images(created_at DESC);")
+
+        // 6. 屏蔽过滤规则表 (S7)
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS content_guard_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_type TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                is_regex INTEGER NOT NULL DEFAULT 0,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL
+            );
+            """.trimIndent()
+        )
     }
 
-    /**
-     * v1 -> v2：comic_history / comic_favorite 的主键从单列 comic_id 改成
-     * (comic_id, source_name)。SQLite 不支持改主键，只能重建表。
-     *
-     * 复刻阶段没有真实用户数据，因此这里直接重建；
-     * 正式发布前必须换成「建新表 → INSERT SELECT → 改名」的数据保留式迁移。
-     */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL("DROP TABLE IF EXISTS comic_history;")
             db.execSQL("DROP TABLE IF EXISTS comic_favorite;")
             db.execSQL("DROP TABLE IF EXISTS comic_source;")
             onCreate(db)
+            return
+        }
+        if (oldVersion < 3) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS reading_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    comic_id TEXT NOT NULL,
+                    comic_title TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    tags TEXT NOT NULL DEFAULT '',
+                    chapter_title TEXT NOT NULL,
+                    pages_read INTEGER NOT NULL DEFAULT 0,
+                    duration_seconds INTEGER NOT NULL DEFAULT 0,
+                    read_date TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(read_date);")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_comic ON reading_stats(comic_id, source_name);")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS favorite_images (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    comic_id TEXT NOT NULL,
+                    comic_title TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    chapter_title TEXT NOT NULL,
+                    page_index INTEGER NOT NULL,
+                    image_url TEXT NOT NULL,
+                    local_path TEXT,
+                    created_at INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_favorite_images_created ON favorite_images(created_at DESC);")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS content_guard_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rule_type TEXT NOT NULL,
+                    pattern TEXT NOT NULL,
+                    is_regex INTEGER NOT NULL DEFAULT 0,
+                    is_enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
         }
     }
 
     companion object {
         const val DATABASE_NAME = "venera_core.db"
-        // v2: 历史/收藏主键补 source_name（修跨源同 ID 互盖）
-        const val DATABASE_VERSION = 2
+        // v3: 新增阅读统计 (reading_stats)、单页收藏 (favorite_images)、内容屏蔽 (content_guard_rules)
+        const val DATABASE_VERSION = 3
 
         @Volatile
         private var INSTANCE: VeneraDatabase? = null
