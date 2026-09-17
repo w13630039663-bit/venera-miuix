@@ -80,3 +80,40 @@
 
 # ---------- 防止 R8 对 Enum/values/valueOf 的隐式依赖报警 ----------
 -dontwarn androidx.compose.**
+
+# ---------- S8 闪退排查加固（release 闪退后追加） ----------
+# R8 full mode / 激进优化对 Compose alpha 库与协程桥的已知风险兜底：
+# 1) 保留所有 Kotlin 协程状态机的调试信息与合成方法
+-keepclassmembers class com.venera.compose.**$*WhenMappings { *; }
+-keepclassmembers class com.venera.compose.** { synthetic <methods>; }
+
+# 2) Kotlin 序列化完整兜底（路由参数崩溃高发）
+-keep class kotlinx.serialization.** { *; }
+-keepclassmembers class com.venera.compose.** {
+    *** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-if @kotlinx.serialization.Serializable class **
+-keepclassmembers class <1> {
+    static <1>$Companion Companion;
+}
+
+# 3) Gson 模型全量保留字段表 + 构造器（防字段重命名/删除导致的静默数据丢失）
+-keepclassmembers class com.venera.compose.** {
+    <fields>;
+    <init>(...);
+}
+
+# 4) Coil 自定义 Fetcher 组件（Coil 通过接口注册表调用，防合成桥接方法被剥离）
+-keep class com.venera.compose.data.network.VeneraImageFetcher$* { *; }
+-keep class com.venera.compose.data.network.VeneraImageFetcher { *; }
+
+# 5) 协程内部机制（CoroutineSuspendTag 缺失会启动即崩）
+-dontwarn kotlinx.coroutines.debug.**
+-keepclassmembers class kotlinx.coroutines.**$* { *; }
+
+# 6) 枚举 values/valueOf 反射兜底（SettingsScreen 主题枚举等）
+-keepclassmembers enum com.venera.compose.** {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
