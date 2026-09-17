@@ -10,6 +10,8 @@ import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ComicDetails
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -57,6 +59,11 @@ class CopyMangaSource(private val context: Context) : ComicSource {
         val sdf = SimpleDateFormat("yyyy.MM.dd", Locale.getDefault())
         val dt = sdf.format(Date())
 
+        // 官方 copy_manga.js：authorization = `Token${token ? " " + token : ""}`
+        // 未登录时就是裸 "Token"，登录后必须带上 token，否则账号态请求全部按游客处理。
+        val token = prefs.getString("token", null)?.takeIf { it.isNotBlank() }
+        val authorization = if (token != null) "Token $token" else "Token"
+
         return mapOf(
             "User-Agent" to "COPY/3.0.6",
             "source" to "copyApp",
@@ -69,7 +76,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
             "pseudoid" to pseudoId,
             "Accept" to "application/json",
             "region" to "0",
-            "authorization" to "Token",
+            "authorization" to authorization,
             "umstring" to "b4c89ca4104ea9a97750314d791520ac",
             "x-auth-timestamp" to ts,
             "x-auth-signature" to sig
@@ -317,13 +324,59 @@ class CopyMangaSource(private val context: Context) : ComicSource {
             isLogged = isLogged,
             username = username,
             infoItems = if (isLogged) listOf("用户名" to (username ?: "拷贝用户")) else emptyList(),
-            supportsLogin = true
+            supportsPasswordLogin = true
         )
     }
 
+    /**
+     * 账密登录，严格对齐官方 `copy_manga.js` 的 `account.login`：
+     *
+     * ```
+     * POST {apiUrl}/api/v3/login
+     * Content-Type: application/x-www-form-urlencoded;charset=utf-8
+     * body: username={账号}&password={base64(密码-salt)}&salt={salt}&authorization=Token+
+     * ```
+     *
+     * 其中 `salt` 为 1000..9999 的随机数，`password` 用**标准 base64（无换行）**，
+     * 服务端返回 `results.token` 后作为后续请求的 `authorization: Token <token>`。
+     *
+     * ⚠️ 历史遗留：这里曾把登录写成「存一个写死的 `dummy_token` 然后返回成功」——
+     * 纯假登录，账号根本没通过验证。已改为真实请求。
+     */
     override suspend fun login(username: String, password: String): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
-            prefs.edit().putString("account_username", username).putString("token", "dummy_token").apply()
+            val salt = Random.nextInt(1000, 9999)
+            val encodedPwd = Base64.encodeToString(
+                "$password-$salt".toByteArray(Charsets.UTF_8),
+                Base64.NO_WRAP
+            )
+            // 注意 `authorization=Token+`：`+` 在 form 编码里就是空格，与原版一致
+            val formBody = "username=$username&password=$encodedPwd\n&salt=$salt&authorization=Token+"
+
+            val request = okhttp3.Request.Builder()
+                .url("$apiUrl/api/v3/login")
+                .post(formBody.toRequestBody("application/x-www-form-urlencoded;charset=utf-8".toMediaType()))
+                .apply { buildHeaders().forEach { (k, v) -> header(k, v) } }
+                .build()
+
+            val responseText = withContext(Dispatchers.IO) {
+                networkClient.okHttpClient.newCall(request).execute().use { resp ->
+                    resp.body?.string() ?: ""
+                }
+            }
+            val json = JSONObject(responseText)
+            val code = json.optInt("code", -1)
+            if (code != 200) {
+                val msg = json.optString("message").ifBlank { json.optString("msg") }
+                throw Exception(msg.ifBlank { "登录失败（服务端 code=$code）" })
+            }
+            val token = json.optJSONObject("results")?.optString("token").orEmpty()
+            if (token.isBlank()) throw Exception("登录响应里没有 token")
+
+            prefs.edit()
+                .putString("token", token)
+                .putString("account_username", username)
+                .apply()
             true
         }
     }

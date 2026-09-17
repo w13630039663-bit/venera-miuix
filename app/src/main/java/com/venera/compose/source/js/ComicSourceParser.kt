@@ -30,6 +30,10 @@ class ComicSourceParser(private val engine: VeneraJsEngine) {
         val version = engine.evaluate("window['temp_source'] ? window['temp_source'].version : null")?.trim('"', '\'')
             ?.takeIf { it.isNotBlank() && it != "null" } ?: "1.0.0"
 
+        // 源声明的更新地址（官方 this['temp'].url）。为空表示不支持「按 URL 更新」。
+        val url = engine.evaluate("window['temp_source'] ? window['temp_source'].url : null")?.trim('"', '\'')
+            ?.takeIf { it.isNotBlank() && it != "null" } ?: ""
+
         // Register into global ComicSource.sources[key]
         engine.evaluate("ComicSource.sources['$key'] = window['temp_source']; delete window['temp_source'];")
 
@@ -65,7 +69,8 @@ class ComicSourceParser(private val engine: VeneraJsEngine) {
             key = key,
             name = name,
             version = version,
-            iconUrl = null
+            iconUrl = null,
+            url = url
         )
     }
 

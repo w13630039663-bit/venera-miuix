@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -32,7 +33,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.venera.compose.source.ComicSource
+import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.js.JsComicSource
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -57,18 +60,33 @@ fun ComicSourceScreen(
     viewModel: ComicSourceViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val sources by viewModel.sources.collectAsStateWithLifecycle()
+    val sourceRows by viewModel.sourceRows.collectAsStateWithLifecycle()
     val activeKey by viewModel.activeSourceKey.collectAsStateWithLifecycle()
     val latencyMap by viewModel.latencyMap.collectAsStateWithLifecycle()
     val repoItems by viewModel.repoItems.collectAsStateWithLifecycle()
     val isLoadingRepo by viewModel.isLoadingRepo.collectAsStateWithLifecycle()
-    val installingKeys by viewModel.installingKeys.collectAsStateWithLifecycle()
+    val installingFileNames by viewModel.installingFileNames.collectAsStateWithLifecycle()
+    val installAllProgress by viewModel.installAllProgress.collectAsStateWithLifecycle()
+    val testingKeys by viewModel.testingKeys.collectAsStateWithLifecycle()
+    val unreachableHosts by viewModel.unreachableHosts.collectAsStateWithLifecycle()
     val configBundles by viewModel.configBundles.collectAsStateWithLifecycle()
+    val checkingUpdates by viewModel.checkingUpdates.collectAsStateWithLifecycle()
+    val updateCandidates by viewModel.updateCandidates.collectAsStateWithLifecycle()
+    val batchUpdateProgress by viewModel.batchUpdateProgress.collectAsStateWithLifecycle()
+    val repoUrlValue by viewModel.repoUrl.collectAsStateWithLifecycle()
+
+    // 已安装源数量（仅统计启用项，这才是真正参与聚合搜索的数量）
+    val enabledCount = sourceRows.count { it.enabled }
+
+    // collectAsStateWithLifecycle() 返回的是委托属性，Kotlin 不允许对其做智能转换，
+    // 因此这里先取到局部变量再在分支中使用。
+    val syncProgress = installAllProgress
 
     var showRepoDialog by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
-    var deleteConfirmKey by remember { mutableStateOf<String?>(null) }
+    var repoUrlInput by remember { mutableStateOf("") }
+    var deleteConfirmRow by remember { mutableStateOf<SourceRow?>(null) }
     var logoutConfirmKey by remember { mutableStateOf<String?>(null) }
 
     // 编辑 Input 设置弹窗状态
@@ -77,6 +95,15 @@ fun ComicSourceScreen(
     var editingSelectSetting by remember { mutableStateOf<Pair<String, SourceSettingItem.Select>?>(null) }
     // 登录弹窗状态 (sourceKey)
     var loginTargetSourceKey by remember { mutableStateOf<String?>(null) }
+
+    // 内嵌 WebView 网页登录目标 (sourceKey to account.loginWithWebview.url)
+    var webLoginTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // 手填 Cookie 登录目标 (sourceKey)
+    var cookieLoginTargetKey by remember { mutableStateOf<String?>(null) }
+    // 源脚本编辑目标 (fileName to displayName)
+    var editTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    val scope = rememberCoroutineScope()
 
     // 监听 Toast 消息
     LaunchedEffect(Unit) {
@@ -149,7 +176,7 @@ fun ComicSourceScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "已启用 ${sources.size} 个漫画源",
+                                    text = "已启用 $enabledCount / ${sourceRows.size} 个漫画源",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -168,6 +195,31 @@ fun ComicSourceScreen(
                             }
                         }
 
+                        // 网络受限提示：熔断中的域名说明当前网络直连不可达，需要代理
+                        if (unreachableHosts.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFA000).copy(alpha = 0.15f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = "⚠️ ${unreachableHosts.size} 个站点当前网络不可达，其源已自动熔断跳过",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFFFA000),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "如需使用这些源，请在设置中配置 HTTP/SOCKS 代理",
+                                        fontSize = 10.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(10.dp))
                         HorizontalDivider(thickness = 0.5.dp, color = Color.DarkGray.copy(alpha = 0.3f))
                         Spacer(modifier = Modifier.height(10.dp))
@@ -182,7 +234,11 @@ fun ComicSourceScreen(
                                 color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable { showRepoDialog = true }
+                                    .clickable {
+                                        // 每次打开都用当前值回填，避免显示上一次编辑到一半的内容
+                                        repoUrlInput = repoUrlValue
+                                        showRepoDialog = true
+                                    }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(vertical = 8.dp),
@@ -260,17 +316,103 @@ fun ComicSourceScreen(
                                     )
                                 }
                             }
+
+                            // 检查更新（对齐官方 _CheckUpdatesButton）
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.DarkGray.copy(alpha = 0.25f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable(enabled = !checkingUpdates) { viewModel.checkUpdates() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (checkingUpdates) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MiuixTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Update,
+                                            contentDescription = null,
+                                            tint = MiuixTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "检查更新",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 一键同步全部 33 个官方源（已装且版本一致会自动跳过）
+                        val total = syncProgress?.second ?: repoItems.size
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (syncProgress != null) Color.DarkGray.copy(alpha = 0.35f)
+                            else MiuixTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = syncProgress == null) {
+                                    viewModel.installAll()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 9.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (syncProgress != null) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MiuixTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "正在同步 ${syncProgress.first}/$total ...",
+                                        fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.onSurface
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CloudDownload,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "一键安装 / 更新全部官方源",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
             // ==================== 2. 漫画源专属配置卡片列表 (对齐截图) ====================
-            items(sources, key = { it.key }) { source ->
-                val bundle = configBundles[source.key]
-                val isActive = source.key == activeKey
-                val ping = latencyMap[source.key]
-                val isJsSource = source is JsComicSource
+            items(sourceRows, key = { it.key }) { row ->
+                val bundle = configBundles[row.key]
+                val isActive = row.key == activeKey
+                val isTesting = testingKeys.contains(row.key)
+                val latency = latencyMap[row.key]
 
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(vertical = 12.dp)) {
@@ -285,10 +427,21 @@ fun ComicSourceScreen(
                                 modifier = Modifier.weight(1f),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (row.pinned) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Star,
+                                        contentDescription = "已置顶",
+                                        tint = Color(0xFFFFC107),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
                                 Text(
-                                    text = source.name,
+                                    text = row.name,
                                     fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (row.enabled) MiuixTheme.colorScheme.onSurface
+                                    else MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 // 版本胶囊
@@ -297,71 +450,213 @@ fun ComicSourceScreen(
                                     color = Color(0xFF2C2C2E)
                                 ) {
                                     Text(
-                                        text = source.version,
+                                        text = row.version,
                                         fontSize = 12.sp,
                                         color = Color(0xFFD1D1D6),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                     )
                                 }
-                            }
-
-                            // 右侧三个操作图标
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                // 设为活跃快捷指示
-                                if (isActive) {
+                                // 有新版本（对应官方 availableUpdates 命中的 "New Version" 胶囊）
+                                row.latestVersion?.let { newVersion ->
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                                        modifier = Modifier.padding(end = 4.dp)
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                                     ) {
                                         Text(
-                                            text = "活跃",
-                                            fontSize = 10.sp,
-                                            color = MiuixTheme.colorScheme.primary,
+                                            text = "New v$newVersion",
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
+                                            color = MiuixTheme.colorScheme.primary,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
-                                } else {
+                                }
+                                // 连通性指示
+                                if (latency != null) {
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "设为活跃",
+                                        text = if (latency >= 0) "${latency}ms" else "不可达",
                                         fontSize = 11.sp,
-                                        color = Color.Gray,
-                                        modifier = Modifier
-                                            .clickable { viewModel.setActiveSource(source.key) }
-                                            .padding(end = 4.dp)
+                                        color = if (latency in 0..3000) Color(0xFF4CAF50) else Color(0xFFE53935)
                                     )
                                 }
+                            }
 
-                                // 刷新/重载
+                            // 右侧操作区
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                // 可用性测试（真实发一次请求）
                                 IconButton(
-                                    onClick = { viewModel.reloadSource(source.key) },
+                                    onClick = { viewModel.testSource(row) },
+                                    enabled = !isTesting,
                                     modifier = Modifier.size(32.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Refresh,
-                                        contentDescription = "刷新配置",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                // 删除（仅限 JS 扩展源）
-                                if (isJsSource) {
-                                    IconButton(
-                                        onClick = { deleteConfirmKey = source.key },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
+                                    if (isTesting) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MiuixTheme.colorScheme.primary
+                                        )
+                                    } else {
                                         Icon(
-                                            imageVector = Icons.Outlined.Delete,
-                                            contentDescription = "删除源",
-                                            tint = Color(0xFFE53935),
+                                            imageVector = Icons.Outlined.Speed,
+                                            contentDescription = "连通性测试",
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
+
+                                // 启用 / 禁用开关
+                                Switch(
+                                    checked = row.enabled,
+                                    onCheckedChange = { checked ->
+                                        row.fileName?.let { viewModel.setEnabled(it, checked) }
+                                    },
+                                    modifier = Modifier
+                                        .padding(horizontal = 2.dp)
+                                        .height(28.dp)
+                                        .width(44.dp)
+                                )
+                            }
+                        }
+
+                        // 第二行：活跃源 / 排序 / 刷新 / 卸载
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isActive) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                ) {
+                                    Text(
+                                        text = "活跃",
+                                        fontSize = 10.sp,
+                                        color = MiuixTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "设为活跃",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier
+                                        .clickable { viewModel.setActiveSource(row.key) }
+                                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            // 置顶
+                            IconButton(
+                                onClick = { row.fileName?.let { viewModel.setPinned(it, !row.pinned) } },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (row.pinned) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                    contentDescription = "置顶",
+                                    tint = if (row.pinned) Color(0xFFFFC107) else Color.Gray,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // 上移 / 下移
+                            IconButton(
+                                onClick = { row.fileName?.let { viewModel.moveSource(true, it) } },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowUp,
+                                    contentDescription = "上移",
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { row.fileName?.let { viewModel.moveSource(false, it) } },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = "下移",
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // 重载配置
+                            IconButton(
+                                onClick = { viewModel.reloadSource(row.key) },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Refresh,
+                                    contentDescription = "刷新配置",
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // 编辑 .js 原文（仅限 JS 扩展源）
+                            if (row.isJs && row.fileName != null) {
+                                IconButton(
+                                    onClick = { editTarget = row.fileName to row.name },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.EditNote,
+                                        contentDescription = "编辑源脚本",
+                                        tint = MiuixTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // 按 source.url 单独更新该源（仅限 JS 扩展源）
+                            if (row.isJs && row.fileName != null) {
+                                val updating = installingFileNames.contains(row.fileName)
+                                IconButton(
+                                    onClick = { viewModel.updateSource(row.fileName) },
+                                    enabled = !updating,
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    if (updating) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(15.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MiuixTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Update,
+                                            contentDescription = "更新该源",
+                                            tint = if (row.hasUpdate) Color(0xFFFFA000) else Color.Gray,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 卸载 / 删除漫画源（支持全部内置源与 JS 扩展源）
+                            IconButton(
+                                onClick = { deleteConfirmRow = row },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = "删除源",
+                                    tint = Color(0xFFE53935),
+                                    modifier = Modifier.size(17.dp)
+                                )
                             }
                         }
 
@@ -379,7 +674,7 @@ fun ComicSourceScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    editingInputSetting = Triple(source.key, item, item.value)
+                                                    editingInputSetting = Triple(row.key, item, item.value)
                                                 }
                                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -402,7 +697,7 @@ fun ComicSourceScreen(
                                             }
                                             IconButton(
                                                 onClick = {
-                                                    editingInputSetting = Triple(source.key, item, item.value)
+                                                    editingInputSetting = Triple(row.key, item, item.value)
                                                 },
                                                 modifier = Modifier.size(30.dp)
                                             ) {
@@ -437,7 +732,7 @@ fun ComicSourceScreen(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = Color(0xFF2C2C2E),
                                                 modifier = Modifier.clickable {
-                                                    editingSelectSetting = Pair(source.key, item)
+                                                    editingSelectSetting = Pair(row.key, item)
                                                 }
                                             ) {
                                                 Row(
@@ -478,7 +773,7 @@ fun ComicSourceScreen(
                                             Switch(
                                                 checked = item.value,
                                                 onCheckedChange = { checked ->
-                                                    viewModel.updateSetting(source.key, item.key, checked)
+                                                    viewModel.updateSetting(row.key, item.key, checked)
                                                 }
                                             )
                                         }
@@ -498,7 +793,7 @@ fun ComicSourceScreen(
                                                 fontWeight = FontWeight.Medium
                                             )
                                             Button(
-                                                onClick = { viewModel.executeCallback(source.key, item.key) },
+                                                onClick = { viewModel.executeCallback(row.key, item.key) },
                                                 colors = ButtonDefaults.buttonColors(color = Color(0xFF2C2C2E))
                                             ) {
                                                 Text(
@@ -521,7 +816,7 @@ fun ComicSourceScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { loginTargetSourceKey = source.key }
+                                        .clickable { loginTargetSourceKey = row.key }
                                         .padding(horizontal = 14.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
@@ -557,7 +852,7 @@ fun ComicSourceScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { viewModel.relogin(source.key) }
+                                        .clickable { viewModel.relogin(row.key) }
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
@@ -567,7 +862,7 @@ fun ComicSourceScreen(
                                         Text(text = "点击此处如果登录已过期", fontSize = 11.sp, color = Color.Gray)
                                     }
                                     IconButton(
-                                        onClick = { viewModel.relogin(source.key) },
+                                        onClick = { viewModel.relogin(row.key) },
                                         modifier = Modifier.size(30.dp)
                                     ) {
                                         Icon(
@@ -582,14 +877,14 @@ fun ComicSourceScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { logoutConfirmKey = source.key }
+                                        .clickable { logoutConfirmKey = row.key }
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(text = "注销", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE53935))
                                     IconButton(
-                                        onClick = { logoutConfirmKey = source.key },
+                                        onClick = { logoutConfirmKey = row.key },
                                         modifier = Modifier.size(30.dp)
                                     ) {
                                         Icon(
@@ -610,9 +905,18 @@ fun ComicSourceScreen(
 
     // ==================== 对话框组件区域 ====================
 
-    // 1. Input 设置项编辑弹窗
+    // 1. Input 设置项编辑弹窗（含官方 inputValidator 正则校验）
     editingInputSetting?.let { (sourceKey, item, currentVal) ->
         var tempValue by remember { mutableStateOf(currentVal) }
+        var errorText by remember { mutableStateOf<String?>(null) }
+
+        // 官方 `inputValidator: RegExp(validator)` —— 编译失败时按「无校验」处理，
+        // 不因为源写了个坏正则就让用户无法保存设置。
+        val validator: Regex? = remember(item.key) {
+            item.validator?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { Regex(it) }.getOrNull() }
+        }
+
         Dialog(onDismissRequest = { editingInputSetting = null }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -624,10 +928,18 @@ fun ComicSourceScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                     OutlinedTextField(
                         value = tempValue,
-                        onValueChange = { tempValue = it },
+                        onValueChange = {
+                            tempValue = it
+                            errorText = null
+                        },
                         singleLine = true,
+                        isError = errorText != null,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    errorText?.let { err ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(text = err, fontSize = 11.sp, color = Color(0xFFE53935))
+                    }
                     Spacer(modifier = Modifier.height(18.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { editingInputSetting = null }) {
@@ -635,6 +947,12 @@ fun ComicSourceScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = {
+                            // 官方用的是 `inputValidator.hasMatch(text)`（**子串匹配**，
+                            // 不是全匹配）—— 不匹配则显示 errorText 且**不关闭**弹窗。
+                            if (validator != null && !validator.containsMatchIn(tempValue)) {
+                                errorText = "Invalid input"
+                                return@Button
+                            }
                             viewModel.updateSetting(sourceKey, item.key, tempValue.trim())
                             editingInputSetting = null
                         }) {
@@ -688,7 +1006,8 @@ fun ComicSourceScreen(
         }
     }
 
-    // 3. 登录弹窗 (账号密码 / 网页登录 / 注册外链)
+    // 3. 登录弹窗（对齐官方 _LoginPage：只呈现该源真正声明的登录方式，
+    //    避免给「仅支持网页登录」的源展示无意义的账密表单）
     loginTargetSourceKey?.let { sourceKey ->
         val bundle = configBundles[sourceKey]
         val accountInfo = bundle?.accountInfo
@@ -710,68 +1029,96 @@ fun ComicSourceScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text("用户名 / 账号") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    if (accountInfo?.loginUnavailable == true) {
+                        Text(
+                            text = "该源未在脚本中声明登录方式",
+                            fontSize = 13.sp,
+                            color = Color.Gray
+                        )
+                    }
 
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text("密码") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
+                    // ---- 账号密码登录（官方 account.login(account, pwd)）----
+                    if (accountInfo?.supportsPasswordLogin == true) {
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text("用户名 / 账号") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Button(
-                        onClick = {
-                            if (username.isBlank() || password.isBlank()) {
-                                Toast.makeText(context, "用户名与密码不能为空", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            isLoggingIn = true
-                            viewModel.login(sourceKey, username.trim(), password.trim()) { success, _ ->
-                                isLoggingIn = false
-                                if (success) {
-                                    loginTargetSourceKey = null
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            label = { Text("密码") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Button(
+                            onClick = {
+                                if (username.isBlank() || password.isBlank()) {
+                                    Toast.makeText(context, "用户名与密码不能为空", Toast.LENGTH_SHORT).show()
+                                    return@Button
                                 }
+                                isLoggingIn = true
+                                viewModel.login(sourceKey, username.trim(), password.trim()) { success, _ ->
+                                    isLoggingIn = false
+                                    if (success) {
+                                        loginTargetSourceKey = null
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoggingIn
+                        ) {
+                            if (isLoggingIn) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
+                            } else {
+                                Text("继续登录")
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoggingIn
-                    ) {
-                        if (isLoggingIn) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
-                        } else {
-                            Text("继续登录")
                         }
                     }
 
-                    // 网页登录 (loginWebsite)
+                    // ---- 内嵌 WebView 网页登录（官方 account.loginWithWebview）----
                     accountInfo?.loginWebsite?.takeIf { it.isNotBlank() }?.let { webUrl ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(
+                        if (accountInfo.supportsPasswordLogin) Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
                             onClick = {
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(webUrl))
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "无法打开网页: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
+                                // 交给内嵌 WebView：只有它才能同时拿到 cookie 与 localStorage
+                                webLoginTarget = sourceKey to webUrl
+                                loginTargetSourceKey = null
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("通过网页登录 (WebView)")
+                            Icon(
+                                imageVector = Icons.Outlined.Language,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("通过网页登录")
                         }
                     }
 
-                    // 注册账号 (registerWebsite)
+                    // ---- 手填 Cookie 登录（官方 account.loginWithCookies）----
+                    if (accountInfo?.supportsCookieLogin == true) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = {
+                                cookieLoginTargetKey = sourceKey
+                                loginTargetSourceKey = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("手动填写 Cookie")
+                        }
+                    }
+
+                    // ---- 注册外链（官方 account.registerWebsite）----
                     accountInfo?.registerWebsite?.takeIf { it.isNotBlank() }?.let { regUrl ->
                         Spacer(modifier = Modifier.height(4.dp))
                         TextButton(
@@ -797,6 +1144,93 @@ fun ComicSourceScreen(
         }
     }
 
+    // 4. Cookie 直填登录弹窗（官方 account.loginWithCookies.fields / .validate）
+    cookieLoginTargetKey?.let { sourceKey ->
+        val bundle = configBundles[sourceKey]
+        val fields = bundle?.accountInfo?.cookieFields.orEmpty()
+        val values = remember(sourceKey) {
+            mutableStateListOf<String>().apply { repeat(fields.size) { add("") } }
+        }
+        var submitting by remember { mutableStateOf(false) }
+
+        Dialog(onDismissRequest = { if (!submitting) cookieLoginTargetKey = null }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MiuixTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(text = "填写 Cookie 登录", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "请从浏览器开发者工具中复制对应的 Cookie 值",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        itemsIndexed(fields) { index, name ->
+                            OutlinedTextField(
+                                value = values.getOrElse(index) { "" },
+                                onValueChange = { if (index < values.size) values[index] = it },
+                                label = { Text(name) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { cookieLoginTargetKey = null }, enabled = !submitting) {
+                            Text("取消")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                submitting = true
+                                scope.launch {
+                                    val res = viewModel.loginWithCookies(sourceKey, values.toList())
+                                    submitting = false
+                                    Toast.makeText(
+                                        context,
+                                        if (res.isSuccess) "登录成功"
+                                        else (res.exceptionOrNull()?.message ?: "登录失败"),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    if (res.isSuccess) cookieLoginTargetKey = null
+                                }
+                            },
+                            enabled = !submitting
+                        ) {
+                            if (submitting) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                            } else {
+                                Text("登录")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. 内嵌 WebView 网页登录（官方 account.loginWithWebview）
+    //    只有内嵌 WebView 才能在登录成功后回抓 cookie 与 localStorage。
+    webLoginTarget?.let { (sourceKey, loginUrl) ->
+        WebLoginScreen(
+            loginUrl = loginUrl,
+            sourceName = configBundles[sourceKey]?.sourceName ?: sourceKey,
+            onCheckLogin = { url, title -> viewModel.checkWebLogin(sourceKey, url, title) },
+            onComplete = { cookieHeader, localStorageJson, url ->
+                viewModel.completeWebLogin(sourceKey, cookieHeader, localStorageJson, url)
+            },
+            onFinish = { webLoginTarget = null }
+        )
+    }
+
     // 4. 注销确认 Dialog
     logoutConfirmKey?.let { sourceKey ->
         AlertDialog(
@@ -820,28 +1254,28 @@ fun ComicSourceScreen(
     }
 
     // 5. 删除源确认 Dialog
-    deleteConfirmKey?.let { key ->
+    deleteConfirmRow?.let { row ->
         AlertDialog(
-            onDismissRequest = { deleteConfirmKey = null },
+            onDismissRequest = { deleteConfirmRow = null },
             title = { Text("确认删除") },
-            text = { Text("确认彻底删除该漫画源扩展吗？删除后相关本地缓存将被清理。") },
+            text = { Text("确认删除「${row.name}」漫画源吗？删除后相关本地缓存与配置将被清理。") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.deleteSource(key)
-                    deleteConfirmKey = null
+                    viewModel.deleteSource(row.key, row.fileName)
+                    deleteConfirmRow = null
                 }) {
                     Text("删除", color = Color(0xFFE53935))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteConfirmKey = null }) {
+                TextButton(onClick = { deleteConfirmRow = null }) {
                     Text("取消")
                 }
             }
         )
     }
 
-    // 6. 官方清单弹窗 (33源)
+    // 8. 官方清单弹窗 (33源)
     if (showRepoDialog) {
         Dialog(onDismissRequest = { showRepoDialog = false }) {
             Surface(
@@ -857,7 +1291,7 @@ fun ComicSourceScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "官方源仓库清单 (33条)",
+                            text = "官方源仓库清单 (${repoItems.size}条)",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
@@ -867,12 +1301,69 @@ fun ComicSourceScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Repo URL：可编辑 + Refresh（对齐官方仓库清单顶部卡片，
+                    // 上游这里就是一个输入框而不是只读说明文字）
+                    OutlinedTextField(
+                        value = repoUrlInput,
+                        onValueChange = { repoUrlInput = it },
+                        label = { Text("Repo URL") },
+                        placeholder = { Text("https://.../index.json") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "数据源: venera-configs@main",
-                        fontSize = 11.sp,
+                        text = "地址应指向仓库的 index.json；留空则回退官方默认地址",
+                        fontSize = 10.sp,
                         color = Color.Gray
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { repoUrlInput = viewModel.defaultRepoUrl }) {
+                            Text("恢复默认")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { viewModel.setRepoUrl(repoUrlInput) },
+                            enabled = !isLoadingRepo
+                        ) {
+                            if (isLoadingRepo) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text("Refresh")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 一键同步入口
+                    Button(
+                        onClick = { viewModel.installAll() },
+                        enabled = syncProgress == null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (syncProgress != null) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("同步中 ${syncProgress.first}/${syncProgress.second}")
+                        } else {
+                            Text("一键安装 / 更新全部")
+                        }
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
 
                     if (isLoadingRepo) {
@@ -889,9 +1380,13 @@ fun ComicSourceScreen(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(repoItems) { item ->
-                                val installed = sources.find { it.key == item.key }
-                                val isInstalling = installingKeys.contains(item.key)
+                            items(repoItems, key = { it.fileName }) { item ->
+                                // 安装状态必须按 fileName 判定：copy_manga.js 与
+                                // copy_manga_multi_accounts.js 共用同一个 key
+                                val installedRow = sourceRows.find { it.fileName == item.fileName }
+                                val isInstalling = installingFileNames.contains(item.fileName)
+                                val hasUpdate = installedRow != null &&
+                                        ComicSourceManager.compareVersion(item.version, installedRow.version) > 0
 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
@@ -930,22 +1425,29 @@ fun ComicSourceScreen(
                                         }
 
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        if (isInstalling) {
-                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                        } else if (installed != null) {
-                                            Surface(
+                                        when {
+                                            isInstalling -> CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            hasUpdate -> Button(
+                                                onClick = { viewModel.installFromRepo(item) },
+                                                colors = ButtonDefaults.buttonColors(color = Color(0xFFFFA000))
+                                            ) {
+                                                Text("更新", fontSize = 11.sp, color = Color.White)
+                                            }
+                                            installedRow != null -> Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = Color(0xFF4CAF50).copy(alpha = 0.15f)
                                             ) {
                                                 Text(
-                                                    text = "已安装",
+                                                    text = "已安装 v${installedRow.version}",
                                                     fontSize = 11.sp,
                                                     color = Color(0xFF4CAF50),
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                                 )
                                             }
-                                        } else {
-                                            Button(
+                                            else -> Button(
                                                 onClick = { viewModel.installFromRepo(item) },
                                                 colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primary)
                                             ) {
@@ -962,7 +1464,7 @@ fun ComicSourceScreen(
         }
     }
 
-    // 7. 链接安装 Dialog
+    // 9. 链接安装 Dialog
     if (showUrlDialog) {
         Dialog(onDismissRequest = { showUrlDialog = false }) {
             Surface(
@@ -998,6 +1500,92 @@ fun ComicSourceScreen(
                     }
                 }
             }
+        }
+    }
+
+    // 10. 检查更新结果弹窗（对齐官方 showUpdateDialog：列出 name: version 并可一键全更）
+    updateCandidates?.takeIf { it.isNotEmpty() }?.let { candidates ->
+        val progress = batchUpdateProgress
+        AlertDialog(
+            onDismissRequest = { if (progress == null) viewModel.dismissUpdateCandidates() },
+            title = { Text("发现 ${candidates.size} 个可更新源") },
+            text = {
+                Column {
+                    LazyColumn(modifier = Modifier.heightIn(max = 260.dp)) {
+                        items(candidates) { (name, newVersion) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = name,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "→ v$newVersion",
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    progress?.let { (done, total) ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "正在更新 $done/$total ...",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.updateAllAvailable() },
+                    enabled = progress == null
+                ) {
+                    Text("全部更新")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissUpdateCandidates() },
+                    enabled = progress == null
+                ) {
+                    Text("稍后")
+                }
+            }
+        )
+    }
+
+    // 11. 源脚本编辑页（对齐官方 _EditFilePage）
+    editTarget?.let { (fileName, sourceName) ->
+        // 官方源脚本多为 10~60KB，同步读取足够，也少一层 loading 态
+        val initialText = remember(fileName) { viewModel.readSourceText(fileName) }
+        if (initialText == null) {
+            LaunchedEffect(fileName) {
+                Toast.makeText(context, "无法读取源文件: $fileName", Toast.LENGTH_SHORT).show()
+                editTarget = null
+            }
+        } else {
+            SourceEditScreen(
+                fileName = fileName,
+                sourceName = sourceName,
+                initialText = initialText,
+                onSave = { content, cb -> viewModel.saveSourceText(fileName, content, cb) },
+                onClose = { editTarget = null }
+            )
         }
     }
 }

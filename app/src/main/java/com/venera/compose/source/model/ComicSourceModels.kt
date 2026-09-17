@@ -56,7 +56,8 @@ data class Comment(
 data class ComicDetails(
     val comic: Comic,
     val author: String = "",
-    val status: String = "连载中",
+    /** 作品状态；源未提供时为空串（UI 不显示该标签，绝不臆造"连载中"）。 */
+    val status: String = "",
     val rating: Float = 0f,
     val chapters: List<ComicChapter> = emptyList(),
     val chapterGroups: List<ChapterGroup> = emptyList(),
@@ -86,5 +87,111 @@ data class ChapterPages(
     val chapterId: String,
     val chapterTitle: String = "",
     val pages: List<String> = emptyList(),
-    val headers: Map<String, String> = emptyMap()
+    val headers: Map<String, String> = emptyMap(),
+    /**
+     * [pages] 是否为「图片键」而非最终 URL。
+     *
+     * 对齐官方 `GetImageLoadingConfigFunc` 语义（parser.dart:1069）：源声明了
+     * `comic.onImageLoad` 时，`loadEp` 返回的每一项都必须经
+     * `onImageLoad(imageKey, comicId, epId)` 解析成真实 `{url, headers}` 才能展示
+     * —— EH 图库的 loadEp 返回页码、jm/nhentai 等则做 URL 重写或加签，皆属此类。
+     */
+    val useOnImageLoad: Boolean = false
+)
+
+/**
+ * `comic.onImageLoad` 对单个图片键的解析结果（对齐官方 `network/images.dart` 的 configs）。
+ *
+ * [nl] 是 EH 图库分发 API 的换源参数：下载失败时带上它重新解析，
+ * 等价于官方调用源脚本返回的 `onLoadFailed` 闭包（我们跨不出 JS 闭包，改为显式传参）。
+ */
+data class ResolvedImageConfig(
+    val url: String,
+    val headers: Map<String, String> = emptyMap(),
+    val nl: String? = null,
+    val modifyImage: String? = null
+)
+
+/**
+ * 源 `comic.loadThumbnails(id, next)` 的一页返回值。
+ *
+ * 对齐官方 `parser.dart:_parseThumbnailLoader` —— 该接口是**分页**的：
+ * 返回本页缩略图与下一页 token（官方 `Res(data, subData: res['next'])`），
+ * `next == null` 表示没有更多。EH 用它抓 gallery 页面里的官方预览小图，
+ * 一次请求拿一页 HTML 里的全部缩略图，比逐页请求大图快得多。
+ */
+data class ThumbnailPage(
+    val thumbnails: List<String> = emptyList(),
+    /** 下一页 token；null 表示已到末页。 */
+    val next: String? = null
+)
+
+/**
+ * 探索页面元数据（对齐原版 ExplorePageData）
+ */
+data class ExplorePageData(
+    val title: String,
+    val type: String = "multiPageComicList",
+    val sourceKey: String,
+    val sourceName: String,
+    val pageIndex: Int = 0
+)
+
+/**
+ * 探索页面的具体分区（对齐原版 ExplorePagePart，如 "推荐", "热门", "今日排行" 等）
+ */
+data class ExplorePagePart(
+    val title: String,
+    val comics: List<Comic>,
+    val viewMore: PageJumpTarget? = null
+)
+
+/**
+ * 页面跳转目标（对齐原版 PageJumpTarget）
+ */
+data class PageJumpTarget(
+    val sourceKey: String,
+    val page: String, // "search", "category"
+    val attributes: Map<String, Any?>? = null
+)
+
+/**
+ * 分类页面元数据（对齐原版 CategoryData）
+ */
+data class CategoryData(
+    val title: String,
+    val key: String,
+    val enableRankingPage: Boolean = false,
+    val parts: List<CategoryPart> = emptyList(),
+    val buttons: List<CategoryButtonData> = emptyList(),
+    val sourceKey: String = ""
+)
+
+data class CategoryButtonData(
+    val label: String,
+    val action: String = ""
+)
+
+data class CategoryPart(
+    val name: String,
+    val type: String = "fixed", // "fixed", "random", "dynamic"
+    val items: List<CategoryItem> = emptyList()
+)
+
+data class CategoryItem(
+    val label: String,
+    val target: PageJumpTarget
+)
+
+data class CategoryComicsOption(
+    val label: String,
+    val options: Map<String, String>, // value -> label
+    val notShowWhen: List<String> = emptyList(),
+    val showWhen: List<String>? = null
+)
+
+data class CategoryComicsResult(
+    val comics: List<Comic>,
+    val maxPage: Int? = null,
+    val next: String? = null
 )
