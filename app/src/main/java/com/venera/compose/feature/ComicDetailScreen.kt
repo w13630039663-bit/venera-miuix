@@ -53,7 +53,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     comic: ComicItem,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onBack: () -> Unit,
-    onStartLiveReading: (ReaderSession) -> Unit
+    onStartLiveReading: (ReaderSession) -> Unit,
+    /** S8: 点击标签 → 跳转该标签的搜索结果（对齐官方 handleClickTagEvent 默认语义） */
+    onSearchTag: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -474,9 +476,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                                 Surface(
                                                     shape = RoundedCornerShape(8.dp),
                                                     color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                                    modifier = Modifier.clickable {
-                                                        Toast.makeText(context, "搜索标签: $tag", Toast.LENGTH_SHORT).show()
-                                                    }
+                                                    modifier = Modifier.clickable { onSearchTag(tag) }
                                                 ) {
                                                     Text(
                                                         text = tag,
@@ -499,9 +499,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
                                         color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                        modifier = Modifier.clickable {
-                                            Toast.makeText(context, "搜索标签: $tag", Toast.LENGTH_SHORT).show()
-                                        }
+                                        modifier = Modifier.clickable { onSearchTag(tag) }
                                     ) {
                                         Text(
                                             text = tag,

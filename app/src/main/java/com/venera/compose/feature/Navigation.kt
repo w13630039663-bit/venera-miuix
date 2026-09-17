@@ -40,6 +40,8 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 
 @Serializable data object HomeRoute
 @Serializable data object SearchRoute
+    /** S8: 详情页标签点击的搜索直达（携带预填关键词） */
+    @Serializable data class TagSearchRoute(val keyword: String)
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
@@ -170,6 +172,15 @@ fun VeneraComposeApp() {
                     }
                     composable<SearchRoute> {
                         AndroidSearchScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                    }
+                    // S8: 标签直达搜索（详情页标签点击跳入，自动执行搜索）
+                    composable<TagSearchRoute> { backStackEntry ->
+                        val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+                        AndroidSearchScreen(
+                            animatedVisibilityScope = this,
+                            onSelect = ::openComic,
+                            initialQuery = keyword
+                        )
                     }
                     composable<FavoritesRoute> {
                         AndroidFavoritesScreen(animatedVisibilityScope = this, onSelect = ::openComic)
@@ -312,6 +323,10 @@ fun VeneraComposeApp() {
                                 haptic()
                                 shell.pendingSession = session
                                 navController.navigate(ReaderRoute)
+                            },
+                            onSearchTag = { tag ->
+                                haptic()
+                                navController.navigate(TagSearchRoute(keyword = tag))
                             },
                         )
                     }

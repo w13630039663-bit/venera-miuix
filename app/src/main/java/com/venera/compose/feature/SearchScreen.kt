@@ -59,6 +59,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
+    /** S8: 详情页标签点击等场景带入的初始搜索词，进页自动触发一次搜索 */
+    initialQuery: String = "",
     viewModel: SearchViewModel = viewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,6 +71,14 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val nsfwMode by guardManager.nsfwMaskMode.collectAsState()
     fun maskStateFor(title: String, author: String, tags: List<String>, id: String) =
         guardManager.coverMaskStateFor(title, author, tags, id)
+
+    // S8: 详情页标签点击跳入时自动执行一次搜索
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank()) {
+            viewModel.onQueryChange(initialQuery)
+            viewModel.search(initialQuery)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),

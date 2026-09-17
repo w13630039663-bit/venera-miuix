@@ -151,6 +151,8 @@ fun VeneraReaderScreen(
     // 弹窗状态
     var showChapterDrawer by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    // S8: 章节评论（对齐官方 reader/chapter_comments）
+    var showChapterCommentsSheet by remember { mutableStateOf(false) }
     var isChapterLoading by remember { mutableStateOf(false) }
 
     // 焦点捕获器（供音量键监听）
@@ -829,6 +831,14 @@ fun VeneraReaderScreen(
                             Icon(Icons.Outlined.Share, contentDescription = "分享当前页", tint = Color.White)
                         }
 
+                        // 章节评论 (S8，对齐官方 reader/chapter_comments)
+                        IconButton(onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            showChapterCommentsSheet = true
+                        }) {
+                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "本章评论", tint = Color.White)
+                        }
+
                         // 设置
                         IconButton(onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1184,6 +1194,23 @@ fun VeneraReaderScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // ==================== 章节评论 Sheet (S8，对齐官方 reader/chapter_comments) ====================
+        if (showChapterCommentsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showChapterCommentsSheet = false },
+                containerColor = Color(0xFF1E1E1E),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            ) {
+                ChapterCommentsSheetContent(
+                    sourceKey = session.sourceKey,
+                    comicId = session.comicId,
+                    chapterId = currentChapter.id,
+                    chapterTitle = currentChapter.title
+                )
             }
         }
 
