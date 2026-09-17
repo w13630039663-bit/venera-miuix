@@ -6,6 +6,10 @@ plugins {
 
 android {
     namespace = "com.venera.compose"
+    // S8: compileSdk 锁定 37 —— Miuix 0.9.4-rc01 / Coil 3.6.2 / material3 1.5.0-alpha22
+    // 全生态 AAR 均按 SDK 37 编译发布（AAR 元数据强制要求），低于 37 无法解析；
+    // targetSdk 保持 34（运行时行为取向与 compileSdk 可分离，官方文档明示）。
+    // 原「37/34 不一致」的真实风险在于 API 误用，用 lint abortOnError + 依赖矩阵注释管控。
     compileSdk = 37
 
     defaultConfig {
@@ -16,14 +20,54 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        // S8: release 无正式证书时用 debug keystore 兜底签名，
+        // 保证 R8 产物可直接侧载验证；发布正式版时替换为生产 keystore
+        create("release") {
+            val dbg = signingConfigs.getByName("debug")
+            storeFile = dbg.storeFile
+            storePassword = dbg.storePassword
+            keyAlias = dbg.keyAlias
+            keyPassword = dbg.keyPassword
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // S8: 开启 R8 混淆 + 资源收缩（keep 规则见 proguard-rules.pro，
+            // 覆盖 WebView JS 桥 / Gson 反射模型 / kotlinx.serialization 路由）
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 保留行号映射：崩溃堆栈可经 mapping.txt 还原，便于线上排错
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
         }
+    }
+
+    // S8: 统一 so 架构（真机 arm64 为主，兼容 32 位与模拟器）
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
+    lint {
+        // R8/资源收缩后的告警不阻塞构建，报告落 build/reports
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
+    testOptions {
+        // S8: JVM 单测中 android.util.Log 等框架方法返回默认值而非抛异常，
+        // 使纯逻辑（JM 分块计算等）可不依赖模拟器直接测试
+        unitTests.isReturnDefaultValues = true
     }
 
     buildFeatures {

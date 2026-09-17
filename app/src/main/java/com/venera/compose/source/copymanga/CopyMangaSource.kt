@@ -263,7 +263,8 @@ class CopyMangaSource(private val context: Context) : ComicSource {
                     Comic(
                         id = item.optString("path_word"),
                         title = item.optString("name"),
-                        subTitle = "🔥 今日榜单",
+                        // S8: 移除硬编码假副标题「🔥 今日榜单」，如实用更新时间展示
+                        subTitle = item.optString("datetime_updated").take(10),
                         cover = item.optString("cover"),
                         sourceKey = key,
                         updateTime = item.optString("datetime_updated").take(10)

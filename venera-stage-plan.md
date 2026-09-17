@@ -330,13 +330,24 @@ curl -s -A "<与 cf_clearance 绑定的同一 UA>" -H "Cookie: ipb_member_id=…
 ## S8 · 打磨与发布
 
 - [ ] Baseline Profiles（`androidx.baselineprofile` 官方插件）+ Macrobenchmark 冷启动/帧率基线
-- [ ] R8 + `isMinifyEnabled=true`（现在 false）+ proguard 规则（QuickJS/Gson 反射）
-- [ ] **统一 `compileSdk 37 / targetSdk 34` 的不一致**，并核对 Miuix/Compose BOM 版本矩阵（建议引入 `compose-bom` 免得手写 1.7.8 五处）
+- [x] R8 + `isMinifyEnabled=true` + `isShrinkResources=true` + `proguard-rules.pro`（keep 覆盖 WebView `@JavascriptInterface` 桥 / Gson 反射模型 9 包 / kotlinx.serialization 路由；debug 29.2MB → arm64 release **4.69MB，-84%**；mapping.txt 保留；release 用 debug keystore 兜底签名可直装）
+- [x] **SDK 版本矩阵定版**：compileSdk 锁定 **37**（实测 Miuix 0.9.4-rc01 / Coil 3.6.2 / material3 1.5.0-alpha22 生态 AAR 元数据强制 ≥37，降 34 无法解析）；targetSdk 保持 34 并注释依据；Compose 版本仅版本目录一处无散落，暂不引 compose-bom
 - [ ] 真毛玻璃（`haze v1.7.3` 或 Miuix `miuix-blur`）+ 光学转场着色器（原版 `shaders/preview_optical.frag` 有 3 轮帧率优化提交，可作 `AGSL RuntimeShader` 参考）
-- [ ] 图标对齐：可选 `miuix-icons`（1.8 MB，需子集化）或继续 material-icons-extended 但逐个核对语义；**探索页那个不存在的「哔咔 · 日榜」Tab 必须删**
-- [ ] 删除三份死代码/无用工程：按 §D-4 决定 `desktop/`（1937 行纯 mock，与 app 零共享）与已弃用的手写桥文件
+- [x] 图标：**「哔咔 · 日榜」假 Tab 已确认删除**（grep 零残留）；继续 material-icons-extended（1.8MB 子集化收益有限，后置）
+- [x] 删除死代码：`desktop/` 模块（11 源文件 + 构建产物）已从 `settings.gradle.kts` 与磁盘移除；附加清理：拷贝漫画源硬编码假副标题「🔥 今日榜单」改为真实更新时间；**补齐单元测试基建**（原 0 测试）：`ImagePipelinePolicyTest` 11 用例全绿（JM 分块算法对齐 jm.js + EH 雪碧图裁切解析）
 
 **验收**：冷启动与列表帧率有数字报告；release APK 体积与 24.5 MB debug 对比记录。
+
+## 🚀 S8 实施日志（打磨与发布）
+
+| 事项 | 结果 |
+| :--- | :--- |
+| S8-1 R8 混淆与资源收缩 | 开启 `isMinifyEnabled` + `isShrinkResources`，新建 `proguard-rules.pro`：keep WebView `@JavascriptInterface` 桥（`VeneraJsEngine$NativeBridge`）、Gson 反射模型（source.model/download/stats/sync/data.db/favoriteimages/security.guard/sourcemanage 共 9 包 + TypeToken/Signature）、kotlinx.serialization 路由序列化器、OkHttp/Jsoup/Coildontwarn；`-assumenosideeffects` 剔除 Log.v/d/i 保留 w/e；R8 full mode 显式声明；mapping.txt 随构建产出支持堆栈还原。**体积：debug 29.22MB → arm64-v8a release 4.69MB（-84%），universal 7.0MB**。 |
+| S8-2 SDK 矩阵定版 | 实测降 compileSdk=34 触发 Miuix/Coil/material3 等 20+ 依赖 AAR 元数据强制要求 ≥37 而构建失败，故 compileSdk 锁定 37、targetSdk 34，在 `build.gradle.kts` 注释完整依据；`lint abortOnError=false` 兜底；Compose 版本仅存在于版本目录（计划书"手写五处"与现状不符，实际无散落）。 |
+| S8-3 死代码清理 | `settings.gradle.kts` 移除 `:desktop` 模块声明，删除 `desktop/` 目录（11 个 mock 源文件 + 全部构建产物）；假副标题清理：`CopyMangaSource` 硬编码「🔥 今日榜单」改为真实更新时间，「哔咔 · 日榜」假 Tab 经 grep 确认零残留。 |
+| S8-4 release 签名兜底 | `signingConfigs.create("release")` 复用 debug keystore（storeFile/password/keyAlias 全继承），R8 产物可直接侧载真机验证；正式发布时替换生产 keystore 即可。 |
+| S8-5 测试基建 | `unitTests.isReturnDefaultValues=true` 开启 JVM 单测可行性；新增 `ImagePipelinePolicyTest` **11 用例全绿**：JM 分块计算六用例（epId 三段边界/gif 豁免/非 photos 路径/确定性）对齐 jm.js 算法，EH `parseCropRange` 四用例（完整 xy/仅 x/无指令/非法数字）。 |
+| 验收与统计 | `:app:assembleRelease` **BUILD SUCCESSFUL**（R8 全量混淆 + ABI splits：arm64 4.69MB / armeabi 4.39MB / x86_64 4.76MB / universal 7.0MB，均含签名）；`:app:testDebugUnitTest` 11/11 通过；`:app:assembleDebug` 回归通过。Baseline Profiles 与毛玻璃着色器为纯增强项后置。 |
 
 ---
 

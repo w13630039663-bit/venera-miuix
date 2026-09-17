@@ -23,5 +23,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "venera-compose"
 include(":app")
-include(":desktop")
 
