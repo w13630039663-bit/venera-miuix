@@ -63,6 +63,9 @@ dependencies {
     // Miuix Compose
     implementation(libs.miuix.ui)
 
+    // S5-5 追更：周期检查任务
+    implementation(libs.androidx.work.runtime.ktx)
+
     // 网络与解析
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)

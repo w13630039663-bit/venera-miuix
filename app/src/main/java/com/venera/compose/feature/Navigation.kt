@@ -24,7 +24,7 @@ import androidx.navigation.toRoute
 import com.venera.compose.components.VeneraAmbientBackground
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
-import com.venera.compose.reader.SampleReaderData
+import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.VeneraReaderScreen
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
 import kotlinx.serialization.Serializable
@@ -41,10 +41,18 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 @Serializable data object HomeRoute
 @Serializable data object SearchRoute
 @Serializable data object FavoritesRoute
+@Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
 @Serializable data object CategoriesRoute
 @Serializable data object SettingsRoute
 @Serializable data object ComicSourceManageRoute
+@Serializable data object DownloadRoute
+@Serializable data object LocalComicRoute
+@Serializable data object StatsRoute
+@Serializable data object FavoriteImagesRoute
+@Serializable data object ContentGuardRoute
+@Serializable data object SyncBackupRoute
+@Serializable data object LogViewerRoute
 
 /** 详情页的入口载荷。S2 会改成「带 sourceKey+comicId，由 ViewModel 拉真详情」，现在先保持行为一致。 */
 @Serializable data class DetailRoute(val comicId: String, val sourceName: String)
@@ -135,13 +143,33 @@ fun VeneraComposeApp() {
                         .padding(innerPadding),
                 ) {
                     composable<HomeRoute> {
-                        AndroidHomeScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                        AndroidHomeScreen(
+                            animatedVisibilityScope = this,
+                            onSelect = ::openComic,
+                            onOpenHistory = {
+                                haptic()
+                                navController.navigate(HistoryRoute)
+                            },
+                            onOpenStats = {
+                                haptic()
+                                navController.navigate(StatsRoute)
+                            }
+                        )
                     }
                     composable<SearchRoute> {
                         AndroidSearchScreen(animatedVisibilityScope = this, onSelect = ::openComic)
                     }
                     composable<FavoritesRoute> {
                         AndroidFavoritesScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                    }
+                    composable<HistoryRoute> {
+                        AndroidHistoryScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                            onSelect = ::openComic,
+                        )
                     }
                     composable<ExploreRoute> {
                         AndroidExploreScreen(animatedVisibilityScope = this, onSelect = ::openComic)
@@ -154,12 +182,105 @@ fun VeneraComposeApp() {
                             onNavigateToSourceManage = {
                                 haptic()
                                 navController.navigate(ComicSourceManageRoute)
+                            },
+                            onNavigateToDownloads = {
+                                haptic()
+                                navController.navigate(DownloadRoute)
+                            },
+                            onNavigateToLocalComics = {
+                                haptic()
+                                navController.navigate(LocalComicRoute)
+                            },
+                            onNavigateToStats = {
+                                haptic()
+                                navController.navigate(StatsRoute)
+                            },
+                            onNavigateToFavoriteImages = {
+                                haptic()
+                                navController.navigate(FavoriteImagesRoute)
+                            },
+                            onNavigateToGuard = {
+                                haptic()
+                                navController.navigate(ContentGuardRoute)
+                            },
+                            onNavigateToSync = {
+                                haptic()
+                                navController.navigate(SyncBackupRoute)
+                            },
+                            onNavigateToLogs = {
+                                haptic()
+                                navController.navigate(LogViewerRoute)
                             }
                         )
                     }
                     composable<ComicSourceManageRoute> {
                         ComicSourceScreen(
                             onNavigateBack = {
+                                haptic()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<DownloadRoute> {
+                        DownloadScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                            onNavigateToLocalLibrary = {
+                                haptic()
+                                navController.navigate(LocalComicRoute)
+                            }
+                        )
+                    }
+                    composable<LocalComicRoute> {
+                        LocalComicScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                            onOpenLocalSession = { session ->
+                                haptic()
+                                shell.pendingSession = session
+                                navController.navigate(ReaderRoute)
+                            }
+                        )
+                    }
+                    composable<StatsRoute> {
+                        StatsScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<FavoriteImagesRoute> {
+                        FavoriteImagesScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<ContentGuardRoute> {
+                        ContentGuardScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<SyncBackupRoute> {
+                        SyncBackupScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable<LogViewerRoute> {
+                        LogViewerScreen(
+                            onBack = {
                                 haptic()
                                 navController.popBackStack()
                             }
@@ -174,18 +295,6 @@ fun VeneraComposeApp() {
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
-                            },
-                            onStartReading = { chapterIndex, pageIndex ->
-                                haptic()
-                                shell.pendingSession = SampleReaderData.createSampleSession(
-                                    comicId = comic.id,
-                                    comicTitle = comic.title,
-                                    coverUrl = comic.coverUrl,
-                                    chapterNames = comic.chapters,
-                                    initialIndex = chapterIndex,
-                                    initialPageIndex = pageIndex,
-                                )
-                                navController.navigate(ReaderRoute)
                             },
                             onStartLiveReading = { session ->
                                 haptic()

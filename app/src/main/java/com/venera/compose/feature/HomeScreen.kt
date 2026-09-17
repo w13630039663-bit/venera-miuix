@@ -42,7 +42,11 @@ import com.venera.compose.source.model.*
 @Composable
 fun SharedTransitionScope.AndroidHomeScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
-    onSelect: (ComicItem) -> Unit
+    onSelect: (ComicItem) -> Unit,
+    /** S5-4：历史分区标题点击 → 完整历史页 */
+    onOpenHistory: () -> Unit = {},
+    /** S7：阅读统计分区点击 → 完整统计分析页 */
+    onOpenStats: () -> Unit = {}
 ) {
     val context = LocalContext.current
     // S0-4/S0-5：首页数据统一由 HomeViewModel 从本地库算（原来是 DAO 直连 + 一片写死字面量）
@@ -117,7 +121,11 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                         )
                                         Spacer(modifier = Modifier.height(3.dp))
                                         Text(
-                                            text = "${comic.sourceName} · ${comic.latestChapter}",
+                                            // 最新章节缺失时只显示源名，不留下孤零零的分隔符
+                                            // （latestChapter 默认值已从假的"第 128 话"改为空串）
+                                            text = listOf(comic.sourceName, comic.latestChapter)
+                                                .filter { it.isNotBlank() }
+                                                .joinToString(" · "),
                                             fontSize = 12.sp,
                                             color = MiuixTheme.colorScheme.onBackgroundVariant,
                                             maxLines = 1
@@ -158,9 +166,13 @@ fun SharedTransitionScope.AndroidHomeScreen(
         // 分区 2：阅读统计 (_MiuixReadingStats)
         item {
             Column {
-                MiuixSectionHeader(title = "阅读统计", onTap = { })
+                MiuixSectionHeader(title = "阅读统计 (点击查看详细趋势)", onTap = onOpenStats)
                 Spacer(modifier = Modifier.height(4.dp))
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenStats() }
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -194,7 +206,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
             Column {
                 MiuixSectionHeader(
                     title = if (historyList.isNotEmpty()) "历史记录 (${historyList.size})" else "历史记录",
-                    onTap = { }
+                    onTap = onOpenHistory
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

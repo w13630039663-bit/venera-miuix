@@ -1,4 +1,4 @@
-﻿*.iml
+*.iml
 .gradle
 /local.properties
 /.idea
@@ -12,3 +12,8 @@ local.properties
 **/build/
 *.apk
 *.aab
+
+# 本地构建日志与工具会话目录
+build_*.log
+.freebuff/
+.workbuddy/

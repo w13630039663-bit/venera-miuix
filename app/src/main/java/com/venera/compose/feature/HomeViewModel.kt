@@ -3,13 +3,16 @@ package com.venera.compose.feature
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.data.db.FavoriteDao
+import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.FavoriteRecord
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
+import com.venera.compose.data.db.LocalFavoritesManager
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** 首页各分区的数据（全部来自本地库，不再有 sampleComics 兜底） */
@@ -38,11 +41,22 @@ data class HomeUiState(
  */
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val favoriteDao = FavoriteDao.getInstance(app)
+    private val favoritesManager = LocalFavoritesManager.getInstance(app)
     private val historyDao = HistoryDao.getInstance(app)
 
+    /**
+     * 收藏条目流（S5 修正）。
+     *
+     * 数据源必须是 S5 的 [LocalFavoritesManager]——它与收藏页、追更同源。
+     * 早期这里读的是已废弃的旧单表 `comic_favorite`，而详情页现在写进动态夹表，
+     * 于是「详情页收藏了，首页书架却是空的」。
+     * 这里把 [FavoriteItem] 适配回 [FavoriteRecord]，[build] 的统计逻辑保持不变。
+     */
+    private val favoritesFlow: Flow<List<FavoriteRecord>> =
+        favoritesManager.version.map { favoritesManager.getAllComics().map { it.toLegacyRecord() } }
+
     val uiState: StateFlow<HomeUiState> =
-        combine(favoriteDao.favoritesFlow, historyDao.historyFlow) { favs, hist -> build(favs, hist) }
+        combine(favoritesFlow, historyDao.historyFlow) { favs, hist -> build(favs, hist) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     private fun build(favs: List<FavoriteRecord>, hist: List<HistoryRecord>): HomeUiState {
@@ -93,6 +107,21 @@ internal fun FavoriteRecord.toComicItem() = ComicItem(
     updateTime = "",
     hasUpdate = hasUpdate,
     chapters = emptyList(),
+)
+
+/**
+ * 适配层：S5 动态夹表的 [FavoriteItem] → 首页沿用的 [FavoriteRecord]。
+ * 首页只需要展示字段，忽略收藏夹与追更列。
+ */
+private fun FavoriteItem.toLegacyRecord() = FavoriteRecord(
+    comicId = id,
+    title = name,
+    author = author,
+    coverUrl = coverPath,
+    sourceName = sourceKey,
+    tags = tags.joinToString(","),
+    hasUpdate = false,
+    latestChapter = "",
 )
 
 internal fun HistoryRecord.toComicItem() = ComicItem(
