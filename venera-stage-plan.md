@@ -348,6 +348,7 @@ curl -s -A "<与 cf_clearance 绑定的同一 UA>" -H "Cookie: ipb_member_id=…
 | S8-4 release 签名兜底 | `signingConfigs.create("release")` 复用 debug keystore（storeFile/password/keyAlias 全继承），R8 产物可直接侧载真机验证；正式发布时替换生产 keystore 即可。 |
 | S8-5 测试基建 | `unitTests.isReturnDefaultValues=true` 开启 JVM 单测可行性；新增 `ImagePipelinePolicyTest` **11 用例全绿**：JM 分块计算六用例（epId 三段边界/gif 豁免/非 photos 路径/确定性）对齐 jm.js 算法，EH `parseCropRange` 四用例（完整 xy/仅 x/无指令/非法数字）。 |
 | 验收与统计 | `:app:assembleRelease` **BUILD SUCCESSFUL**（R8 全量混淆 + ABI splits：arm64 4.69MB / armeabi 4.39MB / x86_64 4.76MB / universal 7.0MB，均含签名）；`:app:testDebugUnitTest` 11/11 通过；`:app:assembleDebug` 回归通过。Baseline Profiles 与毛玻璃着色器为纯增强项后置。 |
+| S8-FIX release 闪退修复 | 首版 R8 full mode 产物真机闪退，修复三板斧：① `android.enableR8.fullMode=false` 退回兼容模式（full mode 会删除仅被反射引用的合成方法与构造器，对 Compose alpha 库/协程桥风险高）；② `proguard-rules.pro` 加固：协程状态机与合成方法、kotlinx.serialization 完整（Companion/serializer）、Gson 模型 `<fields>`+`<init>` 全保留、Coil 自定义 Fetcher、枚举 values/valueOf；③ 真机（PJZ110）验证：安装 → 冷启动两次 → 滑动/点击交互 → **零 FATAL/零 ANR，进程稳定，内存 127MB 正常，topResumedActivity 正常渲染**。arm64 产物 5.22MB。已提交 `ddf0ec9` 推送远端。 |
 
 ---
 
