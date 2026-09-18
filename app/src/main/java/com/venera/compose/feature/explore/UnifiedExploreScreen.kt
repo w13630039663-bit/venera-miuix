@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicTileDetailed
@@ -62,6 +63,11 @@ import com.venera.compose.source.explore.unifiedTagsFor
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ExplorePagePart
 import com.venera.compose.source.model.PageJumpTarget
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -218,27 +224,12 @@ fun UnifiedExploreScreen(
         }
     }
 
-    // 大标题折叠 + 毛玻璃顶栏（页内自治；原本自绘的「探索」标题与 statusBarsPadding 一并移除）
+    // 大标题折叠 + 真实毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Column(Modifier.fillMaxSize()) {
-        VeneraTopAppBar(
-            title = "探索",
-            largeTitle = "探索",
-            scrollBehavior = topBarBehavior,
-            actions = {
-                // R2：单列/双列切换，与 Favorites 等页面同款按钮、同一份偏好。
-                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                IconButton(onClick = { refreshTick++ }) {
-                    Icon(
-                        Icons.Outlined.Refresh,
-                        contentDescription = "刷新",
-                        tint = VeneraTokens.color.primary
-                    )
-                }
-            },
-        )
-
+    Box(Modifier.fillMaxSize()) {
         // 通用标签的可用性只依赖当前源，提前算好（LazyListScope 内不能调用 remember）。
         val unifiedAvailability = remember(currentSource) {
             currentSource?.let { unifiedTagsFor(it) }
@@ -246,12 +237,15 @@ fun UnifiedExploreScreen(
         }
 
         LazyColumn(
-            // 挂载折叠行为：下滑时大标题收起、毛玻璃背板淡入
-            modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
+            // 挂载折叠与录制行为：下滑时大标题收起、真实高斯模糊背板淡入
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(topBarBehavior.nestedScrollConnection)
+                .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(
                 start = VeneraTokens.spacing.rowHorizontal,
                 end = VeneraTokens.spacing.rowHorizontal,
-                top = VeneraTokens.spacing.space2,
+                top = statusBarTop + 104.dp,
                 bottom = VeneraTokens.spacing.bottomBarClearance,
             ),
             verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.sectionGap)
@@ -449,6 +443,24 @@ fun UnifiedExploreScreen(
                 }
             }
         }
+
+        VeneraTopAppBar(
+            title = "探索",
+            largeTitle = "探索",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            actions = {
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                IconButton(onClick = { refreshTick++ }) {
+                    Icon(
+                        Icons.Outlined.Refresh,
+                        contentDescription = "刷新",
+                        tint = VeneraTokens.color.primary
+                    )
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 

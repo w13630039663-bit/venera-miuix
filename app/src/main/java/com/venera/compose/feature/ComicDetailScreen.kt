@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.draw.drawBehind
@@ -55,6 +56,15 @@ import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.components.venera.VeneraTagChip
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.download.GALLERY_CHAPTER_ID
 import com.venera.compose.download.downloadChapters
 import com.venera.compose.reader.*
@@ -152,84 +162,21 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     // Route back is owned by NavHost, including its seekable predictive transition.
     val tokens = VeneraTokens
     val listState = rememberLazyListState()
+    val detailBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            // ── 详情页专属顶栏：顶置时返回/分享为微磨砂圆形胶囊，下滑过渡为全宽高斯模糊 ──
-            // 不复用通用 VeneraTopAppBar：详情页没有「大标题」，且需要悬浮胶囊形态
-            // （头部封面区要完整可见，顶栏绝不能占位形成空白荒漠）。
-            val collapsed by remember(listState) {
-                derivedStateOf { listState.firstVisibleItemIndex > 0 }
-            }
-            Box(modifier = Modifier.fillMaxWidth()) {
-                // 全宽高斯模糊背板：仅在滑动后淡入（顶置时 100% 通透，封面不被遮挡）
-                DetailTopBarBackdrop(
-                    visible = { collapsed },
-                    modifier = Modifier.matchParentSize(),
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .height(48.dp)
-                        .padding(horizontal = tokens.spacing.space2),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    // 返回：微磨砂圆形胶囊（顶置时保证压在任何封面上都可读）
-                    DetailOverlayIconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = tokens.color.textPrimary,
-                        )
-                    }
-                    // 下滑后标题居中淡入（顶置时标题已在封面右侧展示，不重复）
-                    AnimatedVisibility(
-                        visible = collapsed,
-                        modifier = Modifier.weight(1f).padding(horizontal = tokens.spacing.space2),
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                    ) {
-                        Text(
-                            text = liveDetails?.comic?.title ?: comic.title,
-                            fontSize = tokens.type.itemTitle,
-                            fontWeight = tokens.type.weightBold,
-                            color = tokens.color.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (!collapsed) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                    DetailOverlayIconButton(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        val shareIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, shareText(liveDetails, comic))
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "分享漫画"))
-                    }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = "分享",
-                            tint = tokens.color.textPrimary,
-                        )
-                    }
-                }
-            }        }
-    ) { paddingValues ->
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(tokens.spacing.rowHorizontal),
+                .blurBackdropSource(detailBackdrop),
+            contentPadding = PaddingValues(
+                start = tokens.spacing.rowHorizontal,
+                end = tokens.spacing.rowHorizontal,
+                top = statusBarTop + 56.dp,
+                bottom = tokens.spacing.space8,
+            ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap)
         ) {
             // 0. 详情加载失败横幅（此前 error 只写进 state 不渲染，用户无从得知失败原因）
@@ -1019,6 +966,82 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 Spacer(modifier = Modifier.height(tokens.spacing.space9))
             }
         }
+
+        // ── 2. 详情页专属顶栏：悬浮在 LazyColumn 之上 ──
+        val collapsed by remember(listState) {
+            derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 40 }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+        ) {
+            DetailTopBarBackdrop(
+                visible = { collapsed },
+                backdrop = detailBackdrop,
+                modifier = Modifier.matchParentSize(),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .height(48.dp)
+                    .padding(horizontal = tokens.spacing.space2),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                // 返回：顶置时微磨砂半透黑底白色图标，折叠后转为顶栏纯图标
+                DetailOverlayIconButton(
+                    collapsed = collapsed,
+                    onClick = onBack,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = if (collapsed) tokens.color.textPrimary else Color.White,
+                    )
+                }
+                // 下滑后标题居中淡入（顶置时标题已在封面右侧展示，不重复）
+                AnimatedVisibility(
+                    visible = collapsed,
+                    modifier = Modifier.weight(1f).padding(horizontal = tokens.spacing.space2),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Text(
+                        text = liveDetails?.comic?.title ?: comic.title,
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (!collapsed) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                DetailOverlayIconButton(
+                    collapsed = collapsed,
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        val shareIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText(liveDetails, comic))
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "分享漫画"))
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "分享",
+                        tint = if (collapsed) tokens.color.textPrimary else Color.White,
+                    )
+                }
+            }
+        }
     }
 
 
@@ -1655,14 +1678,13 @@ private fun FavoritePanelSheet(
  * ------------------------------------------------------------------ */
 
 /**
- * 详情页顶栏图标按钮：**微磨砂圆形胶囊**背景。
- *
- * 为什么必须带底：顶置时顶栏是透明的，图标直接压在封面图上；
- * 封面颜色不可控（可能纯白/纯黑/高饱和插画），只有固定深色底板
- * 才能保证返回/分享图标在任何封面上都可读（与 SourceBadge 同理）。
+ * 详情页顶栏图标按钮：
+ * - 顶置展开态（在封面上）：微磨砂半透黑底（35% 黑）+ 白色图标，保证在任何浅色/深色封面上清晰可读；
+ * - 下滑折叠态（在顶栏上）：底色透明，对齐系统标准 TopAppBar 图标，绝无突兀黑圈。
  */
 @Composable
 private fun DetailOverlayIconButton(
+    collapsed: Boolean,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -1671,50 +1693,66 @@ private fun DetailOverlayIconButton(
         modifier = Modifier
             .size(tokens.spacing.iconButtonSize)
             .clip(CircleShape)
-            .background(StatusColors.BadgeSurface)
+            .background(
+                if (collapsed) Color.Transparent
+                else Color.Black.copy(alpha = 0.35f),
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
 
 /**
- * 详情页顶栏模糊背板：滑动后由透明平滑过渡到全宽高斯模糊。
- *
- * - Android 12+：RenderEffect 真实高斯模糊（含状态栏区域，融为一体）；
- * - Android 12 以下：降级 surface 88% 半透明（Modifier.blur 在部分设备静默失效）。
- *
- * @param visible 是否已滑动（绘制期读取，不触发重组）。
+ * 详情页顶栏渐变高斯模糊背板（对齐 pixez-miuix 规范）：
+ * - 滑动后由透明平滑过渡到全宽 HyperOS 渐变式高斯模糊；
+ * - 底色 30% alpha 通透微调，彻底消除纯白死板色块。
  */
 @Composable
 private fun DetailTopBarBackdrop(
     visible: () -> Boolean,
+    backdrop: Backdrop? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    val surfaceColor = tokens.color.surface
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val blurRadiusPx = with(density) { 20.dp.toPx() }
-    val supportsRenderEffect = remember { android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S }
-    // 平滑插值：0 → 1 的淡入由 animateFloatAsState 驱动，避免滑动时生硬闪现。
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val textPrimary = tokens.color.textPrimary
     val target = if (visible()) 1f else 0f
     val fraction by androidx.compose.animation.core.animateFloatAsState(
         targetValue = target,
-        animationSpec = androidx.compose.animation.core.tween(180),
+        animationSpec = androidx.compose.animation.core.tween(200),
         label = "DetailTopBarBlur",
     )
-    Box(modifier = modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = if (supportsRenderEffect) fraction else fraction * 0.88f
-                    if (supportsRenderEffect && fraction > 0f) {
-                        renderEffect = android.graphics.RenderEffect
-                            .createBlurEffect(blurRadiusPx, blurRadiusPx, android.graphics.Shader.TileMode.CLAMP)
-                            .asComposeRenderEffect()
-                    }
+    if (fraction <= 0f) return
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = fraction
+            }
+            .then(
+                if (backdrop != null && isRuntimeShaderSupported()) {
+                    Modifier.progressiveTextureBlur(
+                        backdrop = backdrop,
+                        shape = RectangleShape,
+                        gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
+                        blurRadius = 10f,
+                        colors = BlurDefaults.blurColors(
+                            blendColors = listOf(
+                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.3f)),
+                            ),
+                        ),
+                    )
+                } else {
+                    Modifier.background(surfaceColor.copy(alpha = 0.85f))
                 }
-                .drawBehind { drawRect(color = surfaceColor) },
-        )
-    }
+            )
+            .drawBehind {
+                drawRect(
+                    color = textPrimary.copy(alpha = 0.08f * fraction),
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 0.5.dp.toPx()),
+                    size = androidx.compose.ui.geometry.Size(size.width, 0.5.dp.toPx()),
+                )
+            },
+    )
 }

@@ -1,8 +1,6 @@
 package com.venera.compose.components.venera
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,10 +12,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -27,35 +23,31 @@ import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Venera 统一顶栏（大标题折叠 + 高斯模糊毛玻璃）。
- *
- * ── 交互契约（对齐 pixez-miuix 的顶栏风格）──
- *  - 顶置态（collapsedFraction == 0）：背景 100% 透明、无模糊，大标题靠左、画面通透；
- *  - 下滑中（0 < fraction < 1）：模糊背板随 fraction 淡入，小标题居中自下而上升起；
- *  - 折叠态（fraction == 1）：全宽高斯模糊 + 底部微弱分割线，小标题居中定格。
- *
- * ── 为什么要自己叠一层模糊背板 ──
- * miuix TopAppBar 的 color 会被直接 background() 铺满整条（含状态栏内边距），
- * 且是不透明铺底、不参与任何透明度插值。想做到「顶置通透 → 下滑磨砂」，
- * 只能把 color 传 Color.Transparent，再由本组件叠一层跟随 collapsedFraction
- * 插值的背板 —— 这样状态栏区域也一起被磨砂覆盖，时间/电量与顶栏融为一体。
- *
- * ── 模糊实现的两条路径 ──
- *  - Android 12+：RenderEffect.createBlurEffect（真实高斯模糊，走 GPU）；
- *  - Android 12 以下：降级为 surface.copy(alpha = 0.88f) 半透明背板
- *    （与 VeneraCover 的降级策略一致：Modifier.blur 在部分老设备/关闭硬件加速时
- *    会静默失效，绝不作为唯一手段）。
+ * Venera 统一顶栏（对齐 pixez-miuix 规范）：
+ * - 顶置时大标题靠左底衬全通透；
+ * - 下滑时大标题自动折叠居中，并淡入 HyperOS 渐变式高斯模糊（从状态栏向内容区平滑衰减，无硬切边缘）；
+ * - 优雅降级：不支持 RuntimeShader 时平滑降级为 surface 半透明。
  *
  * @param title 折叠后居中的小标题。
  * @param largeTitle 顶置时靠左的大标题；默认与 [title] 相同。
  * @param subtitle 大标题下方副标题（可选）。
- * @param scrollBehavior 由 rememberVeneraTopAppBarBehavior() 创建，需同时挂到内容列表的
- *   Modifier.nestedScroll(...) 上才会随滚动折叠。
- * @param navigationIcon 左侧导航图标（返回箭头等）。
- * @param actions 右侧操作图标。
- * @param bottomContent 顶栏下方常驻内容（如收藏页的分类胶囊），随顶栏一起折叠。
+ * @param scrollBehavior 滚动行为控制器，需挂载到列表的 nestedScroll 上。
+ * @param backdrop 采样源，由 [rememberTopBarBackdrop] 提供并挂载到列表上。
+ * @param navigationIcon 左侧导航图标。
+ * @param actions 右侧操作图标集合。
+ * @param bottomContent 顶栏下方常驻内容（如分类 Tab 等）。
  */
 @Composable
 fun VeneraTopAppBar(
@@ -64,33 +56,67 @@ fun VeneraTopAppBar(
     largeTitle: String = title,
     subtitle: String = "",
     scrollBehavior: ScrollBehavior? = null,
+    backdrop: Backdrop? = null,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
 ) {
     val tokens = VeneraTokens
-    val dividerColor = tokens.color.textPrimary.copy(alpha = 0.08f)
+    val density = LocalDensity.current
+    val surfaceColor = MiuixTheme.colorScheme.surface
 
-    // collapsedFraction 只在布局/绘制期读取，避免每帧重组整条顶栏。
-    val collapsedFraction = remember(scrollBehavior) {
-        derivedStateOf { scrollBehavior?.state?.collapsedFraction ?: 0f }
+    // 动态淡入进度：仅根据 contentOffset（下滑 48dp 线性淡入），对齐 pixez-miuix 规范。
+    // 不使用 collapsedFraction——它在大标题折叠动画中会快速跳至 1.0，导致模糊背板过早 100% 不透明（白色覆盖）。
+    val scrollProgress = remember(scrollBehavior) {
+        derivedStateOf {
+            val state = scrollBehavior?.state ?: return@derivedStateOf 0f
+            val thresholdPx = with(density) { 48.dp.toPx() }
+            if (thresholdPx > 0f) (-state.contentOffset / thresholdPx).coerceIn(0f, 1f) else 0f
+        }
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
-        // ── 模糊背板：跟随 collapsedFraction 淡入，覆盖顶栏 + 状态栏 ──
-        TopBarBlurBackdrop(
-            fraction = { collapsedFraction.value },
-            modifier = Modifier.matchParentSize(),
-        )
+        // ── 真实渐变高斯模糊背板（对齐 pixez-miuix 规范）──
+        if (backdrop != null && isRuntimeShaderSupported()) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        alpha = scrollProgress.value
+                    }
+                    .progressiveTextureBlur(
+                        backdrop = backdrop,
+                        shape = RectangleShape,
+                        // 从状态栏开始 100% 强度模糊，底部平滑衰减至 0，curve = 2.2f 杜绝硬切边缘
+                        gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
+                        blurRadius = 10f,
+                        colors = BlurDefaults.blurColors(
+                            blendColors = listOf(
+                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.3f)),
+                            ),
+                        ),
+                    ),
+            )
+        } else {
+            // 降级兜底：不支持 RuntimeShader 时显示半透明底色
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        alpha = scrollProgress.value
+                    }
+                    .background(surfaceColor.copy(alpha = 0.85f)),
+            )
+        }
 
-        // ── 底部分割线：alpha = 0.08 * fraction（折叠越深越明显，顶置时不可见）──
+        // ── 底部分割线：alpha = 0.08 * fraction（折叠越深越明显，顶置时完全透明不可见）──
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(0.5.dp)
-                .graphicsLayer { alpha = 0.08f * collapsedFraction.value }
-                .drawBehind { drawDivider(dividerColor) }
-                .align(androidx.compose.ui.Alignment.BottomStart),
+                .graphicsLayer { alpha = 0.08f * scrollProgress.value }
+                .background(tokens.color.textPrimary)
+                .align(Alignment.BottomStart),
         )
 
         // ── 顶栏本体：miuix TopAppBar，底色透明，由背板负责视觉背景 ──
@@ -110,53 +136,30 @@ fun VeneraTopAppBar(
     }
 }
 
-/** 分割线绘制：主文字色 8% 的一条极细分割线。 */
-private fun DrawScope.drawDivider(dividerColor: Color) {
-    drawRect(color = dividerColor)
-}
-
 /**
- * 模糊背板：Android 12+ 走 RenderEffect 真实高斯模糊，低版本降级半透明 surface。
+ * 带有底色保护与平台着色器能力检测的 Backdrop 采样源。
  *
- * @param fraction 折叠进度提供者（在绘制期读取，不触发重组）。
+ * 1. 运行时熔断：若硬件/平台不支持 RuntimeShader (Android < API 33) 或主动禁用模糊，返回 null；
+ * 2. 底色注入：在 onDraw 最底层绘制 surfaceColor，确保采样源在透明区域有不透明背景支撑，杜绝 Skia 高斯模糊边缘采样透明导致的暗黑伪影与噪点。
  */
 @Composable
-private fun TopBarBlurBackdrop(
-    fraction: () -> Float,
-    modifier: Modifier = Modifier,
-) {
-    val surfaceColor = VeneraTokens.color.surface
-    val density = LocalDensity.current
-    val blurRadiusPx = with(density) { 20.dp.toPx() }
-    val supportsRenderEffect = remember { Build.VERSION.SDK_INT >= Build.VERSION_CODES.S }
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        // 底色层：两种路径共用。RenderEffect 模糊的就是这一层自身，
-        // 低版本则直接以 0.88 半透明充当毛玻璃替代品。
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = if (supportsRenderEffect) fraction() else fraction() * 0.88f
-                    if (supportsRenderEffect) {
-                        // 真实高斯模糊，走 GPU；CLAMP 避免边缘透明渗色。
-                        renderEffect = RenderEffect
-                            .createBlurEffect(blurRadiusPx, blurRadiusPx, Shader.TileMode.CLAMP)
-                            .asComposeRenderEffect()
-                    }
-                }
-                .drawBehind { drawRect(color = surfaceColor) },
-        )
+fun rememberTopBarBackdrop(enableBlur: Boolean = true): LayerBackdrop? {
+    if (!enableBlur || !isRuntimeShaderSupported()) return null
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    return rememberLayerBackdrop {
+        drawRect(surfaceColor)
+        drawContent()
     }
 }
 
 /**
+ * 方便内容列表快捷挂载 Backdrop 采样源。
+ */
+fun Modifier.blurBackdropSource(backdrop: LayerBackdrop?): Modifier =
+    if (backdrop != null) this.layerBackdrop(backdrop) else this
+
+/**
  * 创建与 VeneraTopAppBar 配套的滚动行为。
- *
- * 用法：
- *   val behavior = rememberVeneraTopAppBarBehavior()
- *   VeneraTopAppBar(title = "历史", largeTitle = "历史", scrollBehavior = behavior)
- *   LazyColumn(modifier = Modifier.nestedScroll(behavior.nestedScrollConnection)) { ... }
  */
 @Composable
 fun rememberVeneraTopAppBarBehavior(

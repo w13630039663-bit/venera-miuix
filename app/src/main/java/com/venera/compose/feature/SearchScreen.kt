@@ -35,11 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +58,10 @@ import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.components.venera.VeneraTagChip
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.SearchOptionGroup
@@ -153,6 +160,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val tokenSet = tokens.current
     val colorSet = tokens.color
 
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -160,7 +168,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
             contentPadding = PaddingValues(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
-                top = tokens.spacing.space4,
+                top = statusBarTop + tokens.spacing.space4,
                 // 统一契约：主 Tab 避让底栏；下钻子页仅保留自身滚动留白。
                 bottom = if (consumesBottomBarClearance) VeneraSpacing.bottomBarClearance else tokens.spacing.space8,
             ),

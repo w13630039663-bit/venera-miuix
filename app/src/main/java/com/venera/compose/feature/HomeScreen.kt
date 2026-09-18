@@ -45,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
@@ -125,65 +127,21 @@ fun SharedTransitionScope.AndroidHomeScreen(
     // 进入主页即刷新扩展分区（本地数量/下载任务/图片收藏统计）—— 逻辑未改
     LaunchedEffect(Unit) { viewModel.refreshExtras() }
 
-    // 大标题折叠 + 毛玻璃顶栏（页内自治）
+    // 大标题折叠 + 真实毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        VeneraTopAppBar(
-            title = "首页",
-            largeTitle = "首页",
-            scrollBehavior = topBarBehavior,
-            actions = {
-                // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）
-                Box {
-                    IconButton(onClick = { onOpenSourceManage() }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Extension,
-                            contentDescription = "源管理",
-                            tint = tokens.color.textSecondary,
-                        )
-                    }
-                    if (updateCount > 0) {
-                        Surface(
-                            shape = CircleShape,
-                            color = StatusColors.Degraded,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1),
-                        ) {
-                            Text(
-                                text = updateCount.toString(),
-                                fontSize = tokens.type.badge,
-                                fontWeight = tokens.type.weightBold,
-                                color = StatusColors.OnBadgeSurface,
-                                modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding),
-                            )
-                        }
-                    }
-                }
-                IconButton(onClick = { sourceManager.refreshPings() }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Refresh,
-                        contentDescription = "刷新",
-                        tint = tokens.color.textSecondary,
-                    )
-                }
-                IconButton(onClick = { onOpenSettings() }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Settings,
-                        contentDescription = "设置",
-                        tint = tokens.color.textSecondary,
-                    )
-                }
-            },
-        )
-
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(topBarBehavior.nestedScrollConnection),
+                .nestedScroll(topBarBehavior.nestedScrollConnection)
+                .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
-                top = tokens.spacing.space4,
+                top = statusBarTop + 104.dp,
                 bottom = bottomContentPadding,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
@@ -464,7 +422,56 @@ fun SharedTransitionScope.AndroidHomeScreen(
         // 底部留白由 Navigation 通过 bottomContentPadding = bottomBarClearance 统一提供，
         // 页面再叠一次就会造成双重留白（这正是 Round 2.5 修复的问题）。
     }
-        }
+
+    VeneraTopAppBar(
+        title = "首页",
+        largeTitle = "首页",
+        scrollBehavior = topBarBehavior,
+        backdrop = topBarBackdrop,
+        actions = {
+            // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）
+            Box {
+                IconButton(onClick = { onOpenSourceManage() }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Extension,
+                        contentDescription = "源管理",
+                        tint = tokens.color.textSecondary,
+                    )
+                }
+                if (updateCount > 0) {
+                    Surface(
+                        shape = CircleShape,
+                        color = StatusColors.Degraded,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1),
+                    ) {
+                        Text(
+                            text = updateCount.toString(),
+                            fontSize = tokens.type.badge,
+                            fontWeight = tokens.type.weightBold,
+                            color = StatusColors.OnBadgeSurface,
+                            modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding),
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = { sourceManager.refreshPings() }) {
+                Icon(
+                    imageVector = Icons.Outlined.Refresh,
+                    contentDescription = "刷新",
+                    tint = tokens.color.textSecondary,
+                )
+            }
+            IconButton(onClick = { onOpenSettings() }) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "设置",
+                    tint = tokens.color.textSecondary,
+                )
+            }
+        },
+        modifier = Modifier.align(Alignment.TopCenter),
+    )
+}
 }
 
 /* ------------------------------------------------------------------ *

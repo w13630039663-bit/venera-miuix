@@ -18,6 +18,10 @@ import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraTagChip
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -32,15 +36,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items as rowItems
@@ -111,99 +119,84 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     ) { vm.exitMultiSelect() }
     // 大标题折叠 + 毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
-    var showSortMenuTop by remember { mutableStateOf(false) }
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val topPadding = statusBarTop + 104.dp + 48.dp + if (mode == FavoritesMode.Local && vm.multiSelectMode) 76.dp else 0.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // ── 统一顶栏：actions = 排序 / 布局切换 / 更多；bottomContent = 模式切换 + 文件夹胶囊 ──
-            VeneraTopAppBar(
-                title = "收藏",
-                largeTitle = "收藏",
-                scrollBehavior = topBarBehavior,
-                actions = {
-                    if (mode == FavoritesMode.Local) {
-                        FavoritesSortMenu(
-                            sortOrder = vm.sortOrder,
-                            onSortOrderChange = { vm.updateSortOrder(it) },
+        if (mode == FavoritesMode.Local) {
+            FavoriteGrid(
+                vm = vm,
+                folders = folders,
+                counts = counts,
+                searchMode = searchMode,
+                topPadding = topPadding,
+                onSelect = onSelect,
+                scrollConnection = topBarBehavior.nestedScrollConnection,
+                backdrop = topBarBackdrop,
+            )
+        } else {
+            AndroidNetworkFavoritesScreen(
+                onSelect = onSelect,
+                scrollConnection = topBarBehavior.nestedScrollConnection,
+                backdrop = topBarBackdrop,
+                topPadding = topPadding,
+            )
+        }
+
+        // ── 统一顶栏：置于前景层，毛玻璃对底层内容进行物理级模糊 ──
+        VeneraTopAppBar(
+            title = "收藏",
+            largeTitle = "收藏",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            actions = {
+                if (mode == FavoritesMode.Local) {
+                    FavoritesSortMenu(
+                        sortOrder = vm.sortOrder,
+                        onSortOrderChange = { vm.updateSortOrder(it) },
+                    )
+                    IconButton(onClick = { searchMode = !searchMode }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = "搜索收藏",
+                            tint = tokens.color.textSecondary,
                         )
-                        IconButton(onClick = { searchMode = !searchMode }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Search,
-                                contentDescription = "搜索收藏",
-                                tint = tokens.color.textSecondary,
-                            )
-                        }
-                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "收藏夹操作",
-                                tint = tokens.color.textSecondary,
-                            )
-                        }
-                    } else {
-                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                     }
-                },
-                bottomContent = {
-                    // 模式切换（网络/本地）常驻顶栏下方，随顶栏一起折叠
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "收藏夹操作",
+                            tint = tokens.color.textSecondary,
+                        )
+                    }
+                } else {
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                }
+            },
+            bottomContent = {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     FavoritesModeToggle(
                         mode = mode,
                         onModeChange = { mode = it },
                     )
-                },
-            )
-
-            // 顶部二级工具条（多选态展开）：替代旧贴底 MultiSelectActionBar——
-            // 旧实现 BottomCenter overlay 被悬浮底栏压住，操作按钮不可点。
-            androidx.compose.animation.AnimatedContent(
-                targetState = mode == FavoritesMode.Local && vm.multiSelectMode,
-                modifier = Modifier.fillMaxWidth().graphicsLayer {
-                    // 预测返回手势：跟手淡出工具条（取消回弹时平滑恢复）。
-                    alpha = 1f - selectionBack.progress
-                },
-                transitionSpec = {
-                    (androidx.compose.animation.slideInVertically { -it / 2 } + androidx.compose.animation.fadeIn())
-                        .togetherWith(androidx.compose.animation.slideOutVertically { -it / 2 } + androidx.compose.animation.fadeOut())
-                },
-                label = "FavMultiSelectBar",
-            ) { showBar ->
-                if (showBar) {
-                    MultiSelectActionBar(
-                        selectedCount = vm.selected.size,
-                        onExit = { vm.exitMultiSelect() },
-                        onSelectAll = { vm.selectAll() },
-                        onMove = { dialog = FolderDialog.Move },
-                        onCopy = { dialog = FolderDialog.Copy },
-                        onDelete = { vm.deleteSelected() },
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(1.dp))
+                    if (mode == FavoritesMode.Local && vm.multiSelectMode) {
+                        MultiSelectActionBar(
+                            selectedCount = vm.selected.size,
+                            onExit = { vm.exitMultiSelect() },
+                            onSelectAll = { vm.selectAll() },
+                            onMove = { dialog = FolderDialog.Move },
+                            onCopy = { dialog = FolderDialog.Copy },
+                            onDelete = { vm.deleteSelected() },
+                            modifier = Modifier.graphicsLayer {
+                                alpha = 1f - selectionBack.progress
+                            },
+                        )
+                    }
                 }
-            }
-            if (mode == FavoritesMode.Local) {
-                // 文件夹胶囊：排序/布局/更多已提升至顶栏 actions，这里只留「选夹」本体
-                FolderChipRow(
-                    folders = folders,
-                    counts = counts,
-                    current = vm.currentFolder,
-                    onSelectFolder = { vm.selectFolder(it) },
-                )
-
-                if (searchMode) {
-                    SearchField(
-                        keyword = vm.keyword,
-                        onKeywordChange = { vm.updateKeyword(it) },
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                    )
-                }
-
-                FavoriteGrid(vm = vm, onSelect = onSelect, scrollConnection = topBarBehavior.nestedScrollConnection)
-            } else {
-                AndroidNetworkFavoritesScreen(onSelect = onSelect)
-            }
-        }
-
+            },
+        )
     }
 
     if (showMenu) {
@@ -422,25 +415,16 @@ private fun SearchField(
 @Composable
 private fun FavoriteGrid(
     vm: FavoritesViewModel,
+    folders: List<String>,
+    counts: Map<String, Int>,
+    searchMode: Boolean,
+    topPadding: androidx.compose.ui.unit.Dp,
     onSelect: (ComicItem) -> Unit,
     /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
     scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
+    backdrop: LayerBackdrop? = null,
 ) {
-    if (vm.comics.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            VeneraEmptyView(
-                title = if (vm.keyword.isBlank()) "暂无收藏漫画" else "没有匹配的收藏",
-                message = if (vm.keyword.isBlank()) {
-                    "在漫画详情页点击「收藏」即可加入收藏夹"
-                } else {
-                    "试试其他关键词"
-                },
-                icon = Icons.Outlined.StarBorder,
-            )
-        }
-        return
-    }
-
+    val tokens = VeneraTokens
     val displayMode = rememberComicListDisplayMode()
     // HIDE 模式：命中守卫判定链的条目整条剔除（UI 层过滤，不落数据库）。
     val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
@@ -452,32 +436,77 @@ private fun FavoriteGrid(
             ).let { it == "HIDDEN" }
         }
     } else vm.comics
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = VeneraSpacing.bottomBarClearance),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = if (scrollConnection != null) {
-            Modifier.fillMaxSize().nestedScroll(scrollConnection)
-        } else {
-            Modifier.fillMaxSize()
-        },
+        contentPadding = PaddingValues(
+            start = tokens.spacing.rowHorizontal,
+            end = tokens.spacing.rowHorizontal,
+            top = topPadding,
+            bottom = VeneraSpacing.bottomBarClearance,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
+            .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
     ) {
-        gridItems(visibleComics, key = { "${it.id}-${it.type}" }) { item ->
-            FavoriteCard(
-                item = item,
-                detailed = displayMode.value == "detailed",
-                selected = (item.id to item.type) in vm.selected,
-                multiSelectMode = vm.multiSelectMode,
-                onClick = {
-                    if (vm.multiSelectMode) {
-                        vm.toggleSelect(item)
-                    } else {
-                        onSelect(item.toComicItem())
-                    }
-                },
-                onLongClick = { vm.enterMultiSelect(item) },
+        item(span = { GridItemSpan(maxLineSpan) }, key = "fav-folders") {
+            FolderChipRow(
+                folders = folders,
+                counts = counts,
+                current = vm.currentFolder,
+                onSelectFolder = { vm.selectFolder(it) },
             )
+        }
+
+        if (searchMode) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "fav-search") {
+                SearchField(
+                    keyword = vm.keyword,
+                    onKeywordChange = { vm.updateKeyword(it) },
+                    modifier = Modifier.padding(vertical = tokens.spacing.space1),
+                )
+            }
+        }
+
+        if (visibleComics.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "fav-empty") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    VeneraEmptyView(
+                        title = if (vm.keyword.isBlank()) "暂无收藏漫画" else "没有匹配的收藏",
+                        message = if (vm.keyword.isBlank()) {
+                            "在漫画详情页点击「收藏」即可加入收藏夹"
+                        } else {
+                            "试试其他关键词"
+                        },
+                        icon = Icons.Outlined.StarBorder,
+                    )
+                }
+            }
+        } else {
+            gridItems(visibleComics, key = { "${it.id}-${it.type}" }) { item ->
+                FavoriteCard(
+                    item = item,
+                    detailed = displayMode.value == "detailed",
+                    selected = (item.id to item.type) in vm.selected,
+                    multiSelectMode = vm.multiSelectMode,
+                    onClick = {
+                        if (vm.multiSelectMode) {
+                            vm.toggleSelect(item)
+                        } else {
+                            onSelect(item.toComicItem())
+                        }
+                    },
+                    onLongClick = { vm.enterMultiSelect(item) },
+                )
+            }
         }
     }
 }
@@ -589,15 +618,16 @@ private fun MultiSelectActionBar(
     onMove: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // 顶部二级工具条（对齐 HistoryScreen 模式）：底部 overlay 版本会被悬浮底栏遮挡。
     val tokens = com.venera.compose.ui.tokens.VeneraTokens
     Surface(
         shape = RoundedCornerShape(tokens.shape.medium),
         color = MiuixTheme.colorScheme.surface,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.rowHorizontal),
+            .padding(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space2),
     ) {
         Column(modifier = Modifier.padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space2)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

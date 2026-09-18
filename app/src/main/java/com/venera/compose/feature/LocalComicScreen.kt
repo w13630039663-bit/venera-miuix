@@ -35,8 +35,13 @@ import androidx.core.content.FileProvider
 import com.venera.compose.components.*
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
-import com.venera.compose.components.venera.VeneraSourceBadge
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
@@ -154,134 +159,51 @@ fun LocalComicScreen(
 
     // 统一顶栏：大标题折叠 + 毛玻璃；多选态由 actions 平滑接管
     val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            com.venera.compose.components.venera.VeneraTopAppBar(
-                title = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地书架",
-                largeTitle = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地离线书架",
-                scrollBehavior = topBarBehavior,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = tokens.color.textPrimary
-                        )
-                    }
-                },
-                actions = {
-                    if (isSelectionMode) {
-                        // ── 多选态：全选 / 全不选 · 批量删除 · 退出 ──
-                        TextButton(onClick = {
-                            selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
-                                emptySet()
-                            } else {
-                                filteredComics.map { it.rootPath }.toSet()
-                            }
-                        }) {
-                            Text(
-                                text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.primary
-                            )
-                        }
-                        IconButton(
-                            onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
-                            enabled = selectedComicPaths.isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Delete,
-                                contentDescription = "批量删除",
-                                tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled
-                            )
-                        }
-                        IconButton(onClick = {
-                            isSelectionMode = false
-                            selectedComicPaths = emptySet()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "退出多选",
-                                tint = tokens.color.textPrimary
-                            )
-                        }
-                    } else {
-                        // ── 普通态：多选入口 · 布局切换 · 下载中心(带徽章) · 导入 CBZ ──
-                        IconButton(onClick = { isSelectionMode = true }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Checklist,
-                                contentDescription = "多选模式",
-                                tint = tokens.color.textPrimary
-                            )
-                        }
-                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                        Box {
-                            IconButton(onClick = onNavigateToDownloads) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Download,
-                                    contentDescription = "下载中心",
-                                    tint = tokens.color.textPrimary
-                                )
-                            }
-                            if (activeDownloadTasks.isNotEmpty()) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = StatusColors.Degraded,
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1)
-                                ) {
-                                    Text(
-                                        text = activeDownloadTasks.size.toString(),
-                                        fontSize = tokens.type.badge,
-                                        fontWeight = tokens.type.weightBold,
-                                        color = StatusColors.OnBadgeSurface,
-                                        modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding)
-                                    )
-                                }
-                            }
-                        }
-                        IconButton(onClick = {
-                            importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
-                        }) {
-                            Icon(
-                                imageVector = Icons.Outlined.FileDownload,
-                                contentDescription = "导入 CBZ",
-                                tint = tokens.color.primary
-                            )
-                        }
-                    }
-                },
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when {
-                isLoading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
-                    }
-                }
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-                comics.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        VeneraEmptyView(
-                            icon = Icons.Outlined.MenuBook,
-                            title = "暂无本地离线漫画",
-                            message = "可以在漫画详情页下载章节，或点击右上角导入外部 CBZ 归档",
-                        )
-                    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarTop + 104.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
                 }
+            }
 
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
-                        contentPadding = PaddingValues(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space4),
-                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-                    ) {
+            comics.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarTop + 104.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    VeneraEmptyView(
+                        icon = Icons.Outlined.MenuBook,
+                        title = "暂无本地离线漫画",
+                        message = "可以在漫画详情页下载章节，或点击右上角导入外部 CBZ 归档",
+                    )
+                }
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(topBarBehavior.nestedScrollConnection)
+                        .blurBackdropSource(topBarBackdrop),
+                    contentPadding = PaddingValues(
+                        start = tokens.spacing.rowHorizontal,
+                        end = tokens.spacing.rowHorizontal,
+                        top = statusBarTop + 104.dp,
+                        bottom = VeneraSpacing.bottomBarClearance,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                ) {
                         // ── 正在下载任务横幅（点击直达下载中心）──
                         if (activeDownloadTasks.isNotEmpty()) {
                             item(key = "downloading-banner") {
@@ -536,9 +458,105 @@ fun LocalComicScreen(
                             )
                         }
                     }
-                }
             }
         }
+
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地书架",
+            largeTitle = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地离线书架",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            },
+            actions = {
+                if (isSelectionMode) {
+                    // ── 多选态：全选 / 全不选 · 批量删除 · 退出 ──
+                    TextButton(onClick = {
+                        selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
+                            emptySet()
+                        } else {
+                            filteredComics.map { it.rootPath }.toSet()
+                        }
+                    }) {
+                        Text(
+                            text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.primary,
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
+                        enabled = selectedComicPaths.isNotEmpty(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "批量删除",
+                            tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled,
+                        )
+                    }
+                    IconButton(onClick = {
+                        isSelectionMode = false
+                        selectedComicPaths = emptySet()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "退出多选",
+                            tint = tokens.color.textPrimary,
+                        )
+                    }
+                } else {
+                    // ── 普通态：多选入口 · 布局切换 · 下载中心(带徽章) · 导入 CBZ ──
+                    IconButton(onClick = { isSelectionMode = true }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Checklist,
+                            contentDescription = "多选模式",
+                            tint = tokens.color.textPrimary,
+                        )
+                    }
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                    Box {
+                        IconButton(onClick = onNavigateToDownloads) {
+                            Icon(
+                                imageVector = Icons.Outlined.Download,
+                                contentDescription = "下载中心",
+                                tint = tokens.color.textPrimary,
+                            )
+                        }
+                        if (activeDownloadTasks.isNotEmpty()) {
+                            Surface(
+                                shape = CircleShape,
+                                color = StatusColors.Degraded,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1),
+                            ) {
+                                Text(
+                                    text = activeDownloadTasks.size.toString(),
+                                    fontSize = tokens.type.badge,
+                                    fontWeight = tokens.type.weightBold,
+                                    color = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding),
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = {
+                        importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Outlined.FileDownload,
+                            contentDescription = "导入 CBZ",
+                            tint = tokens.color.primary,
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

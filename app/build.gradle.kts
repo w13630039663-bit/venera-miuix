@@ -113,6 +113,7 @@ dependencies {
 
     // Miuix Compose
     implementation(libs.miuix.ui)
+    implementation(libs.miuix.blur)
 
     // S5-5 追更：周期检查任务
     implementation(libs.androidx.work.runtime.ktx)

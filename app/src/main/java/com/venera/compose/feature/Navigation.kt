@@ -218,19 +218,17 @@ fun VeneraComposeApp() {
                 //  - bottomBar 100% 作为 overlay 承载（见下方 Box），避免 Bar 高度被计入 innerPadding
                 //    而 Liquid Glass 走 overlay 不计入 —— 那正是两条路径几何不一致的根因。
                 // 因此这里显式提供 contentWindowInsets，让页面拿到正确的状态栏/导航栏内边距基准。
-                contentWindowInsets = WindowInsets.systemBars,
+                contentWindowInsets = WindowInsets.navigationBars,
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
                     startDestination = HomeRoute,
                     modifier = Modifier
                         .fillMaxSize()
-                        // 统一契约：innerPadding 现在只含**系统 insets**（topBar slot 已移交页面，
-                        // bottomBar slot 已弃用）。
-                        // 页面自行消费：VeneraTopAppBar 内部处理顶部 inset，
-                        // 底部用 bottomBarClearance 表达「底栏占位」。
-                        // 不再有 useLiquidGlass 分支 —— 两条路径几何完全相同。
-                        .padding(innerPadding)
+                        // 统一契约：顶部不加 padding，让 NavHost 直达屏幕物理顶部 (0,0)，
+                        // 页面顶栏才能覆盖状态栏并实现内容自状态栏下方穿过。
+                        // 底部由 innerPadding 消费 navigationBars inset。
+                        .padding(bottom = innerPadding.calculateBottomPadding())
                         .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
                         // 主页面之间左右滑动切页；只在 5 个主 tab 上生效，
                         // 详情页/阅读器等子页面不参与（currentTab == null）。

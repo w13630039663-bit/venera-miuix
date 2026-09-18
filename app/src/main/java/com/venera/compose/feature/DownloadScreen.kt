@@ -29,7 +29,14 @@ import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.components.venera.blurBackdropSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
@@ -63,168 +70,174 @@ fun DownloadScreen(
     }
 
     // 统一顶栏：大标题折叠 + 毛玻璃（二级子页面同款）
-    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            com.venera.compose.components.venera.VeneraTopAppBar(
-                title = "离线下载",
-                largeTitle = "离线下载管理",
-                scrollBehavior = topBarBehavior,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = tokens.color.textPrimary
-                        )
-                    }
-                },
-                actions = {
-                    TextButton(onClick = onNavigateToLocalLibrary) {
-                        Icon(
-                            imageVector = Icons.Outlined.Folder,
-                            contentDescription = "本地书架",
-                            tint = tokens.color.primary,
-                            modifier = Modifier.size(tokens.spacing.chipIconSize + 2.dp)
-                        )
-                        Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                        Text(
-                            text = "本地书架",
-                            fontSize = tokens.type.sectionTitle,
-                            color = tokens.color.primary
-                        )
-                    }
-                },
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Tab 切换条：胶囊分段规范（选中 primary 实底 + onPrimary，未选 surfaceVariant）
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space3),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (selectedTab == 0) tokens.color.primary
-                            else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedTab = 0 }
-                ) {
-                    Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "下载队列 (${activeTasks.size})",
-                            fontSize = tokens.type.sectionTitle,
-                            fontWeight = if (selectedTab == 0) tokens.type.weightBold else tokens.type.weightRegular,
-                            color = if (selectedTab == 0) tokens.color.onPrimary else tokens.color.textSecondary
-                        )
-                    }
-                }
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val topPadding = statusBarTop + 104.dp + 92.dp
+    val currentList = if (selectedTab == 0) activeTasks else completedTasks
 
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (selectedTab == 1) tokens.color.primary
-                            else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedTab = 1 }
-                ) {
-                    Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "已完成 (${completedTasks.size})",
-                            fontSize = tokens.type.sectionTitle,
-                            fontWeight = if (selectedTab == 1) tokens.type.weightBold else tokens.type.weightRegular,
-                            color = if (selectedTab == 1) tokens.color.onPrimary else tokens.color.textSecondary
-                        )
-                    }
-                }
-            }
-
-            // 控制条（全部开始/全部暂停/清空）
-            Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (currentList.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(top = topPadding, bottom = 60.dp),
+                contentAlignment = Alignment.Center
             ) {
-                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                Spacer(modifier = Modifier.weight(1f))
                 if (selectedTab == 0) {
-                    TextButton(onClick = { downloadManager.resumeAll() }) {
-                        Icon(imageVector = Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(text = "全部继续", fontSize = 12.sp)
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    TextButton(onClick = { downloadManager.pauseAll() }) {
-                        Icon(imageVector = Icons.Outlined.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(text = "全部暂停", fontSize = 12.sp)
-                    }
+                    VeneraEmptyView(
+                        icon = Icons.Outlined.CloudDownload,
+                        message = "下载队列为空",
+                        title = "暂无下载任务",
+                    )
                 } else {
-                    TextButton(onClick = {
-                        downloadManager.clearCompleted()
-                        Toast.makeText(context, "已清空已完成记录", Toast.LENGTH_SHORT).show()
-                    }) {
-                        Icon(imageVector = Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(text = "清空记录", fontSize = 12.sp)
-                    }
+                    VeneraEmptyView(
+                        icon = Icons.Outlined.DoneAll,
+                        message = "暂无已完成的离线章节",
+                        title = "还没有完成的下载",
+                    )
                 }
             }
-
-            val currentList = if (selectedTab == 0) activeTasks else completedTasks
-
-            if (currentList.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 60.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (selectedTab == 0) {
-                        VeneraEmptyView(
-                            icon = Icons.Outlined.CloudDownload,
-                            message = "下载队列为空",
-                            title = "暂无下载任务",
-                        )
-                    } else {
-                        VeneraEmptyView(
-                            icon = Icons.Outlined.DoneAll,
-                            message = "暂无已完成的离线章节",
-                            title = "还没有完成的下载",
-                        )
-                    }
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
-                    modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(currentList, key = { it.taskId }) { task ->
-                        DownloadTaskCard(
-                            task = task,
-                            detailed = displayMode.value == "detailed",
-                            onPause = { downloadManager.pause(task.taskId) },
-                            onResume = { downloadManager.resume(task.taskId) },
-                            onDelete = { downloadManager.delete(task.taskId, deleteFiles = true) }
-                        )
-                    }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    .blurBackdropSource(topBarBackdrop),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = topPadding,
+                    bottom = VeneraSpacing.bottomBarClearance,
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(currentList, key = { it.taskId }) { task ->
+                    DownloadTaskCard(
+                        task = task,
+                        detailed = displayMode.value == "detailed",
+                        onPause = { downloadManager.pause(task.taskId) },
+                        onResume = { downloadManager.resume(task.taskId) },
+                        onDelete = { downloadManager.delete(task.taskId, deleteFiles = true) }
+                    )
                 }
             }
         }
+
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = "离线下载",
+            largeTitle = "离线下载管理",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary
+                    )
+                }
+            },
+            actions = {
+                TextButton(onClick = onNavigateToLocalLibrary) {
+                    Icon(
+                        imageVector = Icons.Outlined.Folder,
+                        contentDescription = "本地书架",
+                        tint = tokens.color.primary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize + 2.dp)
+                    )
+                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
+                    Text(
+                        text = "本地书架",
+                        fontSize = tokens.type.sectionTitle,
+                        color = tokens.color.primary
+                    )
+                }
+            },
+            bottomContent = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Tab 切换条：胶囊分段规范（选中 primary 实底 + onPrimary，未选 surfaceVariant）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space3),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (selectedTab == 0) tokens.color.primary
+                                    else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedTab = 0 }
+                        ) {
+                            Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "下载队列 (${activeTasks.size})",
+                                    fontSize = tokens.type.sectionTitle,
+                                    fontWeight = if (selectedTab == 0) tokens.type.weightBold else tokens.type.weightRegular,
+                                    color = if (selectedTab == 0) tokens.color.onPrimary else tokens.color.textSecondary
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (selectedTab == 1) tokens.color.primary
+                                    else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedTab = 1 }
+                        ) {
+                            Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "已完成 (${completedTasks.size})",
+                                    fontSize = tokens.type.sectionTitle,
+                                    fontWeight = if (selectedTab == 1) tokens.type.weightBold else tokens.type.weightRegular,
+                                    color = if (selectedTab == 1) tokens.color.onPrimary else tokens.color.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // 控制条（全部开始/全部暂停/清空）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (selectedTab == 0) {
+                            TextButton(onClick = { downloadManager.resumeAll() }) {
+                                Icon(imageVector = Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(text = "全部继续", fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            TextButton(onClick = { downloadManager.pauseAll() }) {
+                                Icon(imageVector = Icons.Outlined.Pause, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(text = "全部暂停", fontSize = 12.sp)
+                            }
+                        } else {
+                            TextButton(onClick = {
+                                downloadManager.clearCompleted()
+                                Toast.makeText(context, "已清空已完成记录", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(imageVector = Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(text = "清空记录", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 }
 

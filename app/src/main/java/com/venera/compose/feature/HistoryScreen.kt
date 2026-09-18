@@ -66,6 +66,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.venera.compose.components.ComicCardLayout
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.VeneraEmptyView
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.comicListColumnCount
@@ -96,51 +101,89 @@ fun AndroidHistoryScreen(
     val selectionBack = rememberPredictiveBackState(
         enabled = vm.multiSelectMode && !showClearMenu,
     ) { vm.exitMultiSelect() }
-    // 大标题折叠 + 毛玻璃顶栏（页内自治）
+    // 大标题折叠 + 真实毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // ── 统一顶栏：大标题「历史」折叠为居中小标题；操作直接收进 actions ──
-            VeneraTopAppBar(
-                title = "历史",
-                largeTitle = "历史",
-                scrollBehavior = topBarBehavior,
-                actions = {
-                    if (vm.multiSelectMode) {
-                        // 多选态：顶栏右侧切换为多选操作
-                        TopBarAction(text = "全选", onClick = { vm.selectAll(records) })
-                        TopBarAction(
-                            text = "删除",
-                            tint = com.venera.compose.ui.tokens.StatusColors.Failing,
-                            onClick = { vm.deleteSelected() },
-                        )
-                    } else {
-                        IconButton(onClick = { showClearMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "清空选项",
-                                tint = tokens.color.textSecondary,
-                            )
-                        }
-                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                    }
-                },
-            )
-
-            // ── 多选态提示条：操作已上顶栏，这里只保留「退出 + 计数」状态行 ──
-            AnimatedContent(
-                targetState = vm.multiSelectMode,
+        if (records.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer { alpha = 1f - selectionBack.progress },
-                transitionSpec = {
-                    (slideInVertically { it / 2 } + fadeIn())
-                        .togetherWith(slideOutVertically { it / 2 } + fadeOut())
-                },
-                label = "HistoryToolbar",
-            ) { multiSelect ->
-                if (multiSelect) {
+                    .fillMaxSize()
+                    .padding(top = statusBarTop + 104.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                VeneraEmptyView(
+                    title = "还没有阅读记录",
+                    message = "去随便翻两页吧",
+                    icon = Icons.Outlined.History,
+                )
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+                contentPadding = PaddingValues(
+                    start = tokens.spacing.rowHorizontal,
+                    end = tokens.spacing.rowHorizontal,
+                    top = statusBarTop + 104.dp + if (vm.multiSelectMode) 44.dp else 0.dp,
+                    bottom = VeneraSpacing.bottomBarClearance,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+                // 挂载折叠与录制行为：下滑时大标题收起、真实高斯模糊背板淡入
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    .blurBackdropSource(topBarBackdrop),
+            ) {
+                items(records, key = { "${it.comicId}-${it.sourceName}" }) { record ->
+                    HistoryCard(
+                        record = record,
+                        detailed = displayMode.value == "detailed",
+                        selected = (record.comicId to record.sourceName) in vm.selected,
+                        multiSelectMode = vm.multiSelectMode,
+                        onClick = {
+                            if (vm.multiSelectMode) {
+                                vm.toggleSelect(record)
+                            } else {
+                                onSelect(record.toComicItem())
+                            }
+                        },
+                        onLongClick = { vm.enterMultiSelect(record) },
+                    )
+                }
+            }
+        }
+
+        // ── 统一顶栏：置于前景层，毛玻璃对底层 LazyVerticalGrid 进行物理级模糊 ──
+        VeneraTopAppBar(
+            title = "历史",
+            largeTitle = "历史",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            actions = {
+                if (vm.multiSelectMode) {
+                    TopBarAction(text = "全选", onClick = { vm.selectAll(records) })
+                    TopBarAction(
+                        text = "删除",
+                        tint = com.venera.compose.ui.tokens.StatusColors.Failing,
+                        onClick = { vm.deleteSelected() },
+                    )
+                } else {
+                    IconButton(onClick = { showClearMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "清空选项",
+                            tint = tokens.color.textSecondary,
+                        )
+                    }
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                }
+            },
+            bottomContent = {
+                // 多选提示条放在 bottomContent 中，跟随 TopAppBar 一同悬浮折叠
+                if (vm.multiSelectMode) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -165,52 +208,10 @@ fun AndroidHistoryScreen(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                } else {
-                    Spacer(modifier = Modifier.height(1.dp))
                 }
-            }
-
-            if (records.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    VeneraEmptyView(
-                        title = "还没有阅读记录",
-                        message = "去随便翻两页吧",
-                        icon = Icons.Outlined.History,
-                    )
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
-                    contentPadding = PaddingValues(
-                        start = tokens.spacing.rowHorizontal,
-                        end = tokens.spacing.rowHorizontal,
-                        top = tokens.spacing.space2,
-                        bottom = VeneraSpacing.bottomBarClearance,
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
-                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
-                    // 挂载折叠行为：下滑时大标题收起、模糊背板淡入
-                    modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
-                ) {
-                    items(records, key = { "${it.comicId}-${it.sourceName}" }) { record ->
-                        HistoryCard(
-                            record = record,
-                            detailed = displayMode.value == "detailed",
-                            selected = (record.comicId to record.sourceName) in vm.selected,
-                            multiSelectMode = vm.multiSelectMode,
-                            onClick = {
-                                if (vm.multiSelectMode) {
-                                    vm.toggleSelect(record)
-                                } else {
-                                    onSelect(record.toComicItem())
-                                }
-                            },
-                            onLongClick = { vm.enterMultiSelect(record) },
-                        )
-                    }
-                }
-            }
-        }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 
     if (showClearMenu) {

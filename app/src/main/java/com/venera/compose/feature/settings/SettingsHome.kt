@@ -19,7 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.ui.tokens.SettingsBadgeColors
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -65,41 +72,55 @@ internal fun SettingsHome(
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     var stack by rememberSaveable { mutableStateOf(listOf("home")) }
     fun push(page: String) { if (stack.last() != page) stack = stack + page }
-    // 外层顶栏：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
-    // 统一 VeneraTopAppBar：与全站二级页同款「大标题折叠 + 毛玻璃」。
-    if (stack.last() == "home") {
-        com.venera.compose.components.venera.VeneraTopAppBar(
-            title = "设置",
-            largeTitle = "设置与偏好",
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = VeneraTokens.color.textPrimary,
-                    )
-                }
-            },
-        )
-    }
-    PredictiveBackStack(
-        entries = stack,
-        onBack = { if (stack.size > 1) stack = stack.dropLast(1) },
-        modifier = Modifier.fillMaxSize(),
-        entryKey = { it },
-    ) { route ->
-        // A retained/preview page must never pop the current page via a stale callback.
-        fun back() { if (stack.last() == route && stack.size > 1) stack = stack.dropLast(1) }
-        when {
-            route == "home" -> SettingsHomeContent(prefs, ::push)
-            route == "explore" -> ExploreSettings(::back, onSources, { push("rules/KEYWORD") })
-            route == "blocking" -> BlockingSettings(::back, { push("rules/$it") }, onGuard)
-            route.startsWith("rules/") -> BlockingRulesSettings(route.substringAfter("/"), ::back)
-            route == "reader" -> ReaderSettings(prefs, ::back, onImages, onStats)
-            route == "appearance" -> AppearanceSettings(prefs, ::back)
-            route == "favorites" -> LocalFavoritesSettings(prefs, ::back)
-            route == "app" -> AppSettings(prefs, ::back, onSync, onLogs, onDownloads, onLocalComics)
-            route == "network" -> NetworkSettings(prefs, ::back)
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        PredictiveBackStack(
+            entries = stack,
+            onBack = { if (stack.size > 1) stack = stack.dropLast(1) },
+            modifier = Modifier.fillMaxSize(),
+            entryKey = { it },
+        ) { route ->
+            // A retained/preview page must never pop the current page via a stale callback.
+            fun back() { if (stack.last() == route && stack.size > 1) stack = stack.dropLast(1) }
+            when {
+                route == "home" -> SettingsHomeContent(
+                    prefs = prefs,
+                    onPush = ::push,
+                    scrollConnection = topBarBehavior.nestedScrollConnection,
+                    backdrop = topBarBackdrop,
+                    topPadding = statusBarTop + 104.dp,
+                )
+                route == "explore" -> ExploreSettings(::back, onSources, { push("rules/KEYWORD") })
+                route == "blocking" -> BlockingSettings(::back, { push("rules/$it") }, onGuard)
+                route.startsWith("rules/") -> BlockingRulesSettings(route.substringAfter("/"), ::back)
+                route == "reader" -> ReaderSettings(prefs, ::back, onImages, onStats)
+                route == "appearance" -> AppearanceSettings(prefs, ::back)
+                route == "favorites" -> LocalFavoritesSettings(prefs, ::back)
+                route == "app" -> AppSettings(prefs, ::back, onSync, onLogs, onDownloads, onLocalComics)
+                route == "network" -> NetworkSettings(prefs, ::back)
+            }
+        }
+
+        // 外层顶栏：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
+        if (stack.last() == "home") {
+            com.venera.compose.components.venera.VeneraTopAppBar(
+                title = "设置",
+                largeTitle = "设置与偏好",
+                scrollBehavior = topBarBehavior,
+                backdrop = topBarBackdrop,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = VeneraTokens.color.textPrimary,
+                        )
+                    }
+                },
+            )
         }
     }
 }
@@ -113,15 +134,24 @@ internal fun SettingsHome(
  *  - 页面底部留白取 [VeneraTokens.spacing.bottomBarClearance]，避免最后一项被悬浮导航栏压住。
  */
 @Composable
-private fun SettingsHomeContent(prefs: VeneraPreferences, onPush: (String) -> Unit) {
+private fun SettingsHomeContent(
+    prefs: VeneraPreferences,
+    onPush: (String) -> Unit,
+    scrollConnection: NestedScrollConnection? = null,
+    backdrop: LayerBackdrop? = null,
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp,
+) {
     val tokens = VeneraTokens
     Column(
         Modifier
             .fillMaxSize()
+            .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
+            .blurBackdropSource(backdrop)
             .verticalScroll(rememberScrollState())
             .padding(
                 start = tokens.spacing.screenHorizontal,
                 end = tokens.spacing.screenHorizontal,
+                top = topPadding,
                 bottom = tokens.spacing.bottomBarClearance,
             )
     ) {

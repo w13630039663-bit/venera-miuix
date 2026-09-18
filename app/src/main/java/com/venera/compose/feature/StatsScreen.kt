@@ -28,6 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.ui.tokens.VeneraSpacing
+import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.stats.ComicStatItem
 import com.venera.compose.stats.DailyTrendItem
 import com.venera.compose.stats.ReadingStatsManager
@@ -71,38 +75,34 @@ fun StatsScreen(
     }
 
     // 统一顶栏：大标题折叠 + 毛玻璃（二级子页面同款）
+    val tokens = VeneraTokens
     val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            com.venera.compose.components.venera.VeneraTopAppBar(
-                title = "阅读统计",
-                largeTitle = "阅读足迹与统计",
-                scrollBehavior = topBarBehavior,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MiuixTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = statusBarTop + 104.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .nestedScroll(topBarBehavior.nestedScrollConnection),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    .blurBackdropSource(topBarBackdrop),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = statusBarTop + 104.dp,
+                    bottom = VeneraSpacing.bottomBarClearance,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 // 1. 核心数据四格大卡
                 item {
@@ -313,6 +313,22 @@ fun StatsScreen(
                 }
             }
         }
+
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = "阅读统计",
+            largeTitle = "阅读足迹与统计",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            },
+        )
     }
 }
 

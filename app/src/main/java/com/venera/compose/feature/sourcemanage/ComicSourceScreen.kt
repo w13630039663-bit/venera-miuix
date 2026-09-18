@@ -47,7 +47,14 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.components.venera.blurBackdropSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 
 /**
@@ -133,32 +140,17 @@ fun ComicSourceScreen(
         }
     }
 
-    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
-    Scaffold(
-        topBar = {
-            // 统一顶栏：大标题折叠 + 毛玻璃，带返回导航（全站二级页同款）
-            com.venera.compose.components.venera.VeneraTopAppBar(
-                title = "漫画源",
-                largeTitle = "漫画源",
-                scrollBehavior = topBarBehavior,
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MiuixTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .nestedScroll(topBarBehavior.nestedScrollConnection),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
+                .nestedScroll(topBarBehavior.nestedScrollConnection)
+                .blurBackdropSource(topBarBackdrop),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + 104.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (sourceRows.isEmpty()) {
@@ -946,6 +938,22 @@ fun ComicSourceScreen(
                 }
             }
         }
+
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = "漫画源",
+            largeTitle = "漫画源",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            }
+        )
     }
 
     // ==================== 对话框组件区域 ====================

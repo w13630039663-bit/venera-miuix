@@ -68,12 +68,23 @@ import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.unit.Dp
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
+fun AndroidNetworkFavoritesScreen(
+    onSelect: (ComicItem) -> Unit,
+    scrollConnection: NestedScrollConnection? = null,
+    backdrop: LayerBackdrop? = null,
+    topPadding: Dp = 0.dp,
+) {
     val tokens = VeneraTokens
     val vm: NetworkFavoritesViewModel = viewModel()
     val sources by vm.sourcesFlow.collectAsState()
@@ -106,11 +117,14 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
         modifier = Modifier.fillMaxSize(),
     ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
+            .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
         contentPadding = PaddingValues(
             start = tokens.spacing.rowHorizontal,
             end = tokens.spacing.rowHorizontal,
-            top = tokens.spacing.space2,
+            top = topPadding,
             bottom = VeneraSpacing.bottomBarClearance,
         ),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
