@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -39,12 +40,15 @@ import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.js.JsComicSource
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraTokens
 
 /**
  * 漫画源管理与专属配置界面
@@ -60,6 +64,7 @@ fun ComicSourceScreen(
     viewModel: ComicSourceViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val tokens = VeneraTokens
     val sourceRows by viewModel.sourceRows.collectAsStateWithLifecycle()
     val activeKey by viewModel.activeSourceKey.collectAsStateWithLifecycle()
     val latencyMap by viewModel.latencyMap.collectAsStateWithLifecycle()
@@ -151,10 +156,19 @@ fun ComicSourceScreen(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (sourceRows.isEmpty()) {
+                item(key = "src-empty") {
+                    VeneraEmptyView(
+                        title = "还没有漫画源",
+                        message = "点击上方「一键安装 / 更新全部官方源」或「本地导入」添加你的第一个源",
+                    )
+                }
+            }
+
             // ==================== 1. 顶部操作概览卡片 ====================
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                VeneraCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(tokens.spacing.space7)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -177,20 +191,21 @@ fun ComicSourceScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "已启用 $enabledCount / ${sourceRows.size} 个漫画源",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = tokens.type.itemTitle,
+                                    fontWeight = tokens.type.weightBold,
+                                    color = tokens.color.textPrimary
                                 )
                                 Text(
                                     text = "当前默认: $activeKey",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
+                                    fontSize = tokens.type.overline,
+                                    color = tokens.color.textTertiary
                                 )
                             }
                             IconButton(onClick = { viewModel.refreshPings() }) {
                                 Icon(
                                     imageVector = Icons.Outlined.Refresh,
                                     contentDescription = "网络测速",
-                                    tint = MiuixTheme.colorScheme.primary
+                                    tint = tokens.color.primary
                                 )
                             }
                         }
@@ -199,29 +214,29 @@ fun ComicSourceScreen(
                         if (unreachableHosts.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFA000).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = StatusColors.Degraded.copy(alpha = 0.15f),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(
                                         text = "⚠️ ${unreachableHosts.size} 个站点当前网络不可达，其源已自动熔断跳过",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFFFA000),
-                                        fontWeight = FontWeight.SemiBold
+                                        fontSize = tokens.type.overline,
+                                        color = StatusColors.Degraded,
+                                        fontWeight = tokens.type.weightSemibold
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "如需使用这些源，请在设置中配置 HTTP/SOCKS 代理",
-                                        fontSize = 10.sp,
-                                        color = Color.Gray
+                                        fontSize = tokens.type.badge,
+                                        color = tokens.color.textTertiary
                                     )
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(thickness = 0.5.dp, color = Color.DarkGray.copy(alpha = 0.3f))
+                        HorizontalDivider(thickness = 0.5.dp, color = tokens.color.divider)
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // 快捷操作按钮组
@@ -230,8 +245,8 @@ fun ComicSourceScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = tokens.color.primaryContainer.copy(alpha = 0.35f),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable {
@@ -248,22 +263,22 @@ fun ComicSourceScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.CloudDownload,
                                         contentDescription = null,
-                                        tint = MiuixTheme.colorScheme.primary,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = tokens.color.primary,
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "官方清单",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MiuixTheme.colorScheme.primary
+                                        fontSize = tokens.type.overline,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.primary
                                     )
                                 }
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.DarkGray.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { showUrlDialog = true }
@@ -276,22 +291,22 @@ fun ComicSourceScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.Link,
                                         contentDescription = null,
-                                        tint = MiuixTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = tokens.color.textSecondary,
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "链接安装",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MiuixTheme.colorScheme.onSurface
+                                        fontSize = tokens.type.overline,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.textSecondary
                                     )
                                 }
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.DarkGray.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { filePicker.launch("*/*") }
@@ -304,23 +319,23 @@ fun ComicSourceScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.FolderOpen,
                                         contentDescription = null,
-                                        tint = MiuixTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = tokens.color.textSecondary,
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "本地导入",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MiuixTheme.colorScheme.onSurface
+                                        fontSize = tokens.type.overline,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.textSecondary
                                     )
                                 }
                             }
 
                             // 检查更新（对齐官方 _CheckUpdatesButton）
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.DarkGray.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable(enabled = !checkingUpdates) { viewModel.checkUpdates() }
@@ -332,24 +347,24 @@ fun ComicSourceScreen(
                                 ) {
                                     if (checkingUpdates) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(14.dp),
+                                            modifier = Modifier.size(tokens.spacing.chipIconSize),
                                             strokeWidth = 2.dp,
-                                            color = MiuixTheme.colorScheme.primary
+                                            color = tokens.color.primary
                                         )
                                     } else {
                                         Icon(
                                             imageVector = Icons.Outlined.Update,
                                             contentDescription = null,
-                                            tint = MiuixTheme.colorScheme.onSurface,
-                                            modifier = Modifier.size(15.dp)
+                                            tint = tokens.color.textSecondary,
+                                            modifier = Modifier.size(tokens.spacing.chipIconSize)
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "检查更新",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MiuixTheme.colorScheme.onSurface
+                                        fontSize = tokens.type.overline,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.textSecondary
                                     )
                                 }
                             }
@@ -360,9 +375,9 @@ fun ComicSourceScreen(
                         // 一键同步全部 33 个官方源（已装且版本一致会自动跳过）
                         val total = syncProgress?.second ?: repoItems.size
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (syncProgress != null) Color.DarkGray.copy(alpha = 0.35f)
-                            else MiuixTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = if (syncProgress != null) tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+                            else tokens.color.primary,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = syncProgress == null) {
@@ -376,29 +391,29 @@ fun ComicSourceScreen(
                             ) {
                                 if (syncProgress != null) {
                                     CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize),
                                         strokeWidth = 2.dp,
-                                        color = MiuixTheme.colorScheme.primary
+                                        color = tokens.color.primary
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(tokens.spacing.space4))
                                     Text(
                                         text = "正在同步 ${syncProgress.first}/$total ...",
-                                        fontSize = 12.sp,
-                                        color = MiuixTheme.colorScheme.onSurface
+                                        fontSize = tokens.type.caption,
+                                        color = tokens.color.textSecondary
                                     )
                                 } else {
                                     Icon(
                                         imageVector = Icons.Outlined.CloudDownload,
                                         contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = StatusColors.OnBadgeSurface,
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "一键安装 / 更新全部官方源",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        fontSize = tokens.type.caption,
+                                        fontWeight = tokens.type.weightBold,
+                                        color = StatusColors.OnBadgeSurface
                                     )
                                 }
                             }
@@ -414,8 +429,8 @@ fun ComicSourceScreen(
                 val isTesting = testingKeys.contains(row.key)
                 val latency = latencyMap[row.key]
 
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                VeneraCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(vertical = tokens.spacing.space2)) {
                         // 1. 源头部：标题、版本胶囊与操作图标
                         Row(
                             modifier = Modifier
@@ -431,55 +446,77 @@ fun ComicSourceScreen(
                                     Icon(
                                         imageVector = Icons.Filled.Star,
                                         contentDescription = "已置顶",
-                                        tint = Color(0xFFFFC107),
-                                        modifier = Modifier.size(14.dp)
+                                        tint = StatusColors.Degraded,
+                                        modifier = Modifier.size(tokens.spacing.chipIconSize)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
                                 }
                                 Text(
                                     text = row.name,
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (row.enabled) MiuixTheme.colorScheme.onSurface
-                                    else MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                    fontSize = tokens.type.itemTitle,
+                                    fontWeight = tokens.type.weightBold,
+                                    color = if (row.enabled) tokens.color.textPrimary
+                                    else tokens.color.textDisabled
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 // 版本胶囊
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFF2C2C2E)
+                                    shape = RoundedCornerShape(tokens.shape.small),
+                                    color = StatusColors.BadgeSurface
                                 ) {
                                     Text(
                                         text = row.version,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFFD1D1D6),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        fontSize = tokens.type.caption,
+                                        color = StatusColors.OnBadgeSurface,
+                                        modifier = Modifier.padding(horizontal = tokens.spacing.chipHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
                                     )
                                 }
                                 // 有新版本（对应官方 availableUpdates 命中的 "New Version" 胶囊）
                                 row.latestVersion?.let { newVersion ->
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                        shape = RoundedCornerShape(tokens.shape.small),
+                                        color = tokens.color.primaryContainer.copy(alpha = 0.45f)
                                     ) {
                                         Text(
                                             text = "New v$newVersion",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MiuixTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            fontSize = tokens.type.overline,
+                                            fontWeight = tokens.type.weightBold,
+                                            color = tokens.color.primary,
+                                            modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
                                         )
                                     }
                                 }
                                 // 连通性指示
                                 if (latency != null) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (latency >= 0) "${latency}ms" else "不可达",
-                                        fontSize = 11.sp,
-                                        color = if (latency in 0..3000) Color(0xFF4CAF50) else Color(0xFFE53935)
-                                    )
+                                    Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        // 测速延迟色阶圆点 + 文字：Healthy/Degraded/Failing/Unknown 全走语义色板
+                                        Box(
+                                            modifier = Modifier
+                                                .size(tokens.spacing.statusDotSize)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    when {
+                                                        latency < 0 -> StatusColors.Failing
+                                                        latency <= 800 -> StatusColors.Healthy
+                                                        latency <= 3000 -> StatusColors.Degraded
+                                                        else -> StatusColors.Failing
+                                                    }
+                                                )
+                                        )
+                                        Spacer(modifier = Modifier.width(tokens.spacing.space1))
+                                        Text(
+                                            text = if (latency >= 0) "${latency}ms" else "不可达",
+                                            fontSize = tokens.type.overline,
+                                            color = when {
+                                                latency < 0 -> StatusColors.Failing
+                                                latency <= 800 -> StatusColors.Healthy
+                                                latency <= 3000 -> StatusColors.Degraded
+                                                else -> StatusColors.Failing
+                                            }
+                                        )
+                                    }
                                 }
                             }
 
@@ -533,22 +570,22 @@ fun ComicSourceScreen(
                         ) {
                             if (isActive) {
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    shape = RoundedCornerShape(tokens.shape.extraSmall),
+                                    color = tokens.color.primaryContainer.copy(alpha = 0.3f)
                                 ) {
                                     Text(
                                         text = "活跃",
-                                        fontSize = 10.sp,
-                                        color = MiuixTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        fontSize = tokens.type.badge,
+                                        color = tokens.color.primary,
+                                        fontWeight = tokens.type.weightBold,
+                                        modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
                                     )
                                 }
                             } else {
                                 Text(
                                     text = "设为活跃",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray,
+                                    fontSize = tokens.type.overline,
+                                    color = tokens.color.textTertiary,
                                     modifier = Modifier
                                         .clickable { viewModel.setActiveSource(row.key) }
                                         .padding(vertical = 4.dp, horizontal = 2.dp)
@@ -565,7 +602,7 @@ fun ComicSourceScreen(
                                 Icon(
                                     imageVector = if (row.pinned) Icons.Filled.Star else Icons.Outlined.StarBorder,
                                     contentDescription = "置顶",
-                                    tint = if (row.pinned) Color(0xFFFFC107) else Color.Gray,
+                                    tint = if (row.pinned) StatusColors.Degraded else tokens.color.textDisabled,
                                     modifier = Modifier.size(17.dp)
                                 )
                             }
@@ -578,7 +615,7 @@ fun ComicSourceScreen(
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowUp,
                                     contentDescription = "上移",
-                                    tint = Color.Gray,
+                                    tint = tokens.color.textDisabled,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -589,7 +626,7 @@ fun ComicSourceScreen(
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowDown,
                                     contentDescription = "下移",
-                                    tint = Color.Gray,
+                                    tint = tokens.color.textDisabled,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -639,7 +676,7 @@ fun ComicSourceScreen(
                                         Icon(
                                             imageVector = Icons.Outlined.Update,
                                             contentDescription = "更新该源",
-                                            tint = if (row.hasUpdate) Color(0xFFFFA000) else Color.Gray,
+                                            tint = if (row.hasUpdate) StatusColors.Degraded else tokens.color.textDisabled,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -654,7 +691,7 @@ fun ComicSourceScreen(
                                 Icon(
                                     imageVector = Icons.Outlined.Delete,
                                     contentDescription = "删除源",
-                                    tint = Color(0xFFE53935),
+                                    tint = StatusColors.Failing,
                                     modifier = Modifier.size(17.dp)
                                 )
                             }
@@ -662,7 +699,7 @@ fun ComicSourceScreen(
 
                         // 分割线
                         Spacer(modifier = Modifier.height(8.dp))
-                        HorizontalDivider(thickness = 0.5.dp, color = Color.DarkGray.copy(alpha = 0.25f))
+                        HorizontalDivider(thickness = 0.5.dp, color = tokens.color.divider)
 
                         // ==================== 2. 源专属设置项 (settings) ====================
                         val settings = bundle?.settings.orEmpty()
@@ -683,14 +720,15 @@ fun ComicSourceScreen(
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = item.title,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Medium
+                                                    fontSize = tokens.type.body,
+                                                    fontWeight = tokens.type.weightMedium,
+                                                    color = tokens.color.textPrimary
                                                 )
-                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Spacer(modifier = Modifier.height(tokens.spacing.space1))
                                                 Text(
                                                     text = item.value.ifBlank { item.defaultValue.ifBlank { "未设置" } },
-                                                    fontSize = 12.sp,
-                                                    color = Color.Gray,
+                                                    fontSize = tokens.type.caption,
+                                                    color = tokens.color.textTertiary,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -705,7 +743,7 @@ fun ComicSourceScreen(
                                                     imageVector = Icons.Outlined.Edit,
                                                     contentDescription = "编辑",
                                                     modifier = Modifier.size(18.dp),
-                                                    tint = Color.Gray
+                                                    tint = tokens.color.textDisabled
                                                 )
                                             }
                                         }
@@ -724,32 +762,33 @@ fun ComicSourceScreen(
                                         ) {
                                             Text(
                                                 text = item.title,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Medium
+                                                fontSize = tokens.type.body,
+                                                fontWeight = tokens.type.weightMedium,
+                                                color = tokens.color.textPrimary
                                             )
 
                                             Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color(0xFF2C2C2E),
+                                                shape = RoundedCornerShape(tokens.shape.small),
+                                                color = StatusColors.BadgeSurface,
                                                 modifier = Modifier.clickable {
                                                     editingSelectSetting = Pair(row.key, item)
                                                 }
                                             ) {
                                                 Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                    modifier = Modifier.padding(horizontal = tokens.spacing.chipHorizontalPadding, vertical = tokens.spacing.chipVerticalPadding),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Text(
                                                         text = displayText,
-                                                        fontSize = 13.sp,
-                                                        color = Color(0xFFF2F2F7),
-                                                        fontWeight = FontWeight.Medium
+                                                        fontSize = tokens.type.sectionTitle,
+                                                        color = StatusColors.OnBadgeSurface,
+                                                        fontWeight = tokens.type.weightMedium
                                                     )
-                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Spacer(modifier = Modifier.width(tokens.spacing.badgeHorizontalPadding))
                                                     Icon(
                                                         imageVector = Icons.Default.ArrowDropDown,
                                                         contentDescription = null,
-                                                        tint = Color.Gray,
+                                                        tint = StatusColors.OnBadgeSurface,
                                                         modifier = Modifier.size(18.dp)
                                                     )
                                                 }
@@ -789,17 +828,18 @@ fun ComicSourceScreen(
                                         ) {
                                             Text(
                                                 text = item.title,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Medium
+                                                fontSize = tokens.type.body,
+                                                fontWeight = tokens.type.weightMedium,
+                                                color = tokens.color.textPrimary
                                             )
                                             Button(
                                                 onClick = { viewModel.executeCallback(row.key, item.key) },
-                                                colors = ButtonDefaults.buttonColors(color = Color(0xFF2C2C2E))
+                                                colors = ButtonDefaults.buttonColors(color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha))
                                             ) {
                                                 Text(
                                                     text = item.buttonText,
-                                                    fontSize = 12.sp,
-                                                    color = Color.White
+                                                    fontSize = tokens.type.caption,
+                                                    color = tokens.color.textPrimary
                                                 )
                                             }
                                         }
@@ -823,14 +863,14 @@ fun ComicSourceScreen(
                                 ) {
                                     Text(
                                         text = "登录",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MiuixTheme.colorScheme.primary
+                                        fontSize = tokens.type.body,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.primary
                                     )
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                         contentDescription = "登录",
-                                        tint = Color.Gray
+                                        tint = tokens.color.textDisabled
                                     )
                                 }
                             } else {
@@ -843,8 +883,8 @@ fun ComicSourceScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                        Text(text = data, fontSize = 13.sp, color = Color.Gray)
+                                        Text(text = title, fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = tokens.color.textPrimary)
+                                        Text(text = data, fontSize = tokens.type.sectionTitle, color = tokens.color.textTertiary)
                                     }
                                 }
 
@@ -858,8 +898,8 @@ fun ComicSourceScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text(text = "重新登录", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                        Text(text = "点击此处如果登录已过期", fontSize = 11.sp, color = Color.Gray)
+                                        Text(text = "重新登录", fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = tokens.color.textPrimary)
+                                        Text(text = "点击此处如果登录已过期", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
                                     }
                                     IconButton(
                                         onClick = { viewModel.relogin(row.key) },
@@ -882,7 +922,7 @@ fun ComicSourceScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(text = "注销", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE53935))
+                                    Text(text = "注销", fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = StatusColors.Failing)
                                     IconButton(
                                         onClick = { logoutConfirmKey = row.key },
                                         modifier = Modifier.size(30.dp)
@@ -890,7 +930,7 @@ fun ComicSourceScreen(
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                                             contentDescription = "注销",
-                                            tint = Color(0xFFE53935),
+                                            tint = StatusColors.Failing,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -918,14 +958,10 @@ fun ComicSourceScreen(
         }
 
         Dialog(onDismissRequest = { editingInputSetting = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(text = item.title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
+            VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space9)) {
+                    Text(text = item.title, fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                    Spacer(modifier = Modifier.height(tokens.spacing.space7))
                     OutlinedTextField(
                         value = tempValue,
                         onValueChange = {
@@ -938,7 +974,7 @@ fun ComicSourceScreen(
                     )
                     errorText?.let { err ->
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(text = err, fontSize = 11.sp, color = Color(0xFFE53935))
+                        Text(text = err, fontSize = tokens.type.overline, color = StatusColors.Failing)
                     }
                     Spacer(modifier = Modifier.height(18.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -967,14 +1003,10 @@ fun ComicSourceScreen(
     // 2. Select 设置项选择单选弹窗
     editingSelectSetting?.let { (sourceKey, item) ->
         Dialog(onDismissRequest = { editingSelectSetting = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(text = item.title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
+            VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space9)) {
+                    Text(text = item.title, fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                    Spacer(modifier = Modifier.height(tokens.spacing.space7))
                     LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
                         items(item.options) { option ->
                             val isSelected = option.value == item.value
@@ -1016,18 +1048,15 @@ fun ComicSourceScreen(
         var isLoggingIn by remember { mutableStateOf(false) }
 
         Dialog(onDismissRequest = { if (!isLoggingIn) loginTargetSourceKey = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+            VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space9)) {
                     Text(
                         text = "登录 ${bundle?.sourceName ?: ""}",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(tokens.spacing.space6))
 
                     if (accountInfo?.loginUnavailable == true) {
                         Text(
@@ -1154,18 +1183,14 @@ fun ComicSourceScreen(
         var submitting by remember { mutableStateOf(false) }
 
         Dialog(onDismissRequest = { if (!submitting) cookieLoginTargetKey = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(text = "填写 Cookie 登录", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
+            VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space9)) {
+                    Text(text = "填写 Cookie 登录", fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                    Spacer(modifier = Modifier.height(tokens.spacing.space2))
                     Text(
                         text = "请从浏览器开发者工具中复制对应的 Cookie 值",
-                        fontSize = 11.sp,
-                        color = Color.Gray
+                        fontSize = tokens.type.overline,
+                        color = tokens.color.textTertiary
                     )
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -1242,7 +1267,7 @@ fun ComicSourceScreen(
                     viewModel.logout(sourceKey)
                     logoutConfirmKey = null
                 }) {
-                    Text("注销", color = Color(0xFFE53935))
+                    Text("注销", color = StatusColors.Failing)
                 }
             },
             dismissButton = {
@@ -1264,7 +1289,7 @@ fun ComicSourceScreen(
                     viewModel.deleteSource(row.key, row.fileName)
                     deleteConfirmRow = null
                 }) {
-                    Text("删除", color = Color(0xFFE53935))
+                    Text("删除", color = StatusColors.Failing)
                 }
             },
             dismissButton = {
@@ -1278,22 +1303,17 @@ fun ComicSourceScreen(
     // 8. 官方清单弹窗 (33源)
     if (showRepoDialog) {
         Dialog(onDismissRequest = { showRepoDialog = false }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.85f)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            VeneraCard(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space6)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "官方源仓库清单 (${repoItems.size}条)",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = tokens.type.itemTitle,
+                            fontWeight = tokens.type.weightBold,
+                            color = tokens.color.textPrimary,
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = { showRepoDialog = false }) {
@@ -1316,8 +1336,8 @@ fun ComicSourceScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "地址应指向仓库的 index.json；留空则回退官方默认地址",
-                        fontSize = 10.sp,
-                        color = Color.Gray
+                        fontSize = tokens.type.badge,
+                        color = tokens.color.textTertiary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -1389,8 +1409,8 @@ fun ComicSourceScreen(
                                         ComicSourceManager.compareVersion(item.version, installedRow.version) > 0
 
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color.DarkGray.copy(alpha = 0.15f)
+                                    shape = RoundedCornerShape(tokens.shape.medium),
+                                    color = tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -1402,22 +1422,23 @@ fun ComicSourceScreen(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Text(
                                                     text = item.name,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontSize = tokens.type.body,
+                                                    fontWeight = tokens.type.weightBold,
+                                                    color = tokens.color.textPrimary
                                                 )
-                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Spacer(modifier = Modifier.width(tokens.spacing.badgeHorizontalPadding))
                                                 Text(
                                                     text = "v${item.version}",
-                                                    fontSize = 11.sp,
-                                                    color = Color.Gray
+                                                    fontSize = tokens.type.overline,
+                                                    color = tokens.color.textTertiary
                                                 )
                                             }
                                             if (!item.description.isNullOrBlank()) {
                                                 Spacer(modifier = Modifier.height(2.dp))
                                                 Text(
                                                     text = item.description,
-                                                    fontSize = 11.sp,
-                                                    color = Color.Gray,
+                                                    fontSize = tokens.type.overline,
+                                                    color = tokens.color.textTertiary,
                                                     maxLines = 2,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -1432,26 +1453,26 @@ fun ComicSourceScreen(
                                             )
                                             hasUpdate -> Button(
                                                 onClick = { viewModel.installFromRepo(item) },
-                                                colors = ButtonDefaults.buttonColors(color = Color(0xFFFFA000))
+                                                colors = ButtonDefaults.buttonColors(color = StatusColors.Degraded)
                                             ) {
-                                                Text("更新", fontSize = 11.sp, color = Color.White)
+                                                Text("更新", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface)
                                             }
                                             installedRow != null -> Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                                shape = RoundedCornerShape(tokens.shape.extraSmall),
+                                                color = StatusColors.Healthy.copy(alpha = 0.15f)
                                             ) {
                                                 Text(
                                                     text = "已安装 v${installedRow.version}",
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF4CAF50),
+                                                    fontSize = tokens.type.overline,
+                                                    color = StatusColors.Healthy,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                                 )
                                             }
                                             else -> Button(
                                                 onClick = { viewModel.installFromRepo(item) },
-                                                colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primary)
+                                                colors = ButtonDefaults.buttonColors(color = tokens.color.primary)
                                             ) {
-                                                Text("安装", fontSize = 11.sp, color = Color.White)
+                                                Text("安装", fontSize = tokens.type.overline, color = tokens.color.onPrimary)
                                             }
                                         }
                                     }
@@ -1467,14 +1488,10 @@ fun ComicSourceScreen(
     // 9. 链接安装 Dialog
     if (showUrlDialog) {
         Dialog(onDismissRequest = { showUrlDialog = false }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(text = "通过 JS 规则网络链接安装", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
+            VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                Column(modifier = Modifier.padding(tokens.spacing.space9)) {
+                    Text(text = "通过 JS 规则网络链接安装", fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                    Spacer(modifier = Modifier.height(tokens.spacing.space7))
                     OutlinedTextField(
                         value = urlInput,
                         onValueChange = { urlInput = it },

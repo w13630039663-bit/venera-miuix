@@ -90,6 +90,8 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraTokens
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -128,6 +130,7 @@ private fun ReaderSessionContent(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
     val activity = context as? ComponentActivity
 
@@ -644,9 +647,10 @@ private fun ReaderSessionContent(
                 alpha = 1f - controlsBack.progress
             }
         ) {
+            // HUD 半透明底板：统一走 BadgeSurface 语义（固定深色、压任何画面可读）
             Surface(
-                color = Color.Black.copy(alpha = 0.88f),
-                shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                color = StatusColors.BadgeSurface,
+                shape = RoundedCornerShape(bottomStart = tokens.shape.extraLarge, bottomEnd = tokens.shape.extraLarge),
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
@@ -654,7 +658,7 @@ private fun ReaderSessionContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space6),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -672,22 +676,22 @@ private fun ReaderSessionContent(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = StatusColors.OnBadgeSurface)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
                                 text = session.comicTitle,
-                                color = Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
+                                color = StatusColors.OnBadgeSurface,
+                                fontSize = tokens.type.body,
+                                fontWeight = tokens.type.weightBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = currentChapter.title,
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
+                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.7f),
+                                fontSize = tokens.type.caption,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -696,8 +700,8 @@ private fun ReaderSessionContent(
 
                     // 模式快捷选择胶囊
                     Surface(
-                        color = MiuixTheme.colorScheme.primary.copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(12.dp),
+                        color = tokens.color.primary.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(tokens.shape.small),
                         modifier = Modifier.clickable {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             activePanel = ReaderPanel.SETTINGS
@@ -707,13 +711,13 @@ private fun ReaderSessionContent(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = readingMode.icon, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = readingMode.icon, fontSize = tokens.type.body)
+                            Spacer(modifier = Modifier.width(tokens.spacing.space1))
                             Text(
                                 text = readingMode.label,
-                                color = MiuixTheme.colorScheme.primary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                color = tokens.color.primary,
+                                fontSize = tokens.type.caption,
+                                fontWeight = tokens.type.weightSemibold
                             )
                         }
                     }
@@ -732,8 +736,8 @@ private fun ReaderSessionContent(
             }
         ) {
             Surface(
-                color = Color.Black.copy(alpha = 0.90f),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = StatusColors.BadgeSurface,
+                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge),
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -741,15 +745,15 @@ private fun ReaderSessionContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                        .padding(horizontal = tokens.spacing.space9, vertical = tokens.spacing.space7),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // 页码气泡
                     Text(
                         text = "${currentPageIndex + 1} / ${currentChapter.pages.size.coerceAtLeast(1)}",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        color = StatusColors.OnBadgeSurface,
+                        fontSize = tokens.type.body,
+                        fontWeight = tokens.type.weightBold
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -763,9 +767,9 @@ private fun ReaderSessionContent(
                         valueRange = 0f..(currentChapter.pages.size - 1).coerceAtLeast(1).toFloat(),
                         steps = (currentChapter.pages.size - 2).coerceAtLeast(0),
                         colors = SliderDefaults.colors(
-                            thumbColor = MiuixTheme.colorScheme.primary,
-                            activeTrackColor = MiuixTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.25f)
+                            thumbColor = tokens.color.primary,
+                            activeTrackColor = tokens.color.primary,
+                            inactiveTrackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.25f)
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -780,8 +784,8 @@ private fun ReaderSessionContent(
                     ) {
                         // 上一话
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (currentChapterIndex > 0) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = if (currentChapterIndex > 0) StatusColors.OnBadgeSurface.copy(alpha = 0.15f) else StatusColors.OnBadgeSurface.copy(alpha = 0.05f),
                             modifier = Modifier.clickable(enabled = currentChapterIndex > 0) {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 switchToChapter(currentChapterIndex - 1, 0)
@@ -789,9 +793,9 @@ private fun ReaderSessionContent(
                         ) {
                             Text(
                                 text = "⏮ 上一话",
-                                color = if (currentChapterIndex > 0) Color.White else Color.Gray,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                color = if (currentChapterIndex > 0) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
+                                fontSize = tokens.type.caption,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space4)
                             )
                         }
 
@@ -800,7 +804,7 @@ private fun ReaderSessionContent(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             activePanel = ReaderPanel.CHAPTERS
                         }) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "章节列表", tint = Color.White)
+                            Icon(Icons.Outlined.Menu, contentDescription = "章节列表", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 存图
@@ -808,7 +812,7 @@ private fun ReaderSessionContent(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             saveCurrentImage(context, currentImageSource)
                         }) {
-                            Icon(Icons.Outlined.SaveAlt, contentDescription = "保存当前页", tint = Color.White)
+                            Icon(Icons.Outlined.SaveAlt, contentDescription = "保存当前页", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 单页插图收藏 (S7)
@@ -822,7 +826,7 @@ private fun ReaderSessionContent(
                                 pageSource = currentImageSource
                             )
                         }) {
-                            Icon(Icons.Outlined.BookmarkBorder, contentDescription = "收藏当前插图", tint = Color.White)
+                            Icon(Icons.Outlined.BookmarkBorder, contentDescription = "收藏当前插图", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 分享
@@ -830,7 +834,7 @@ private fun ReaderSessionContent(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             shareCurrentImage(context, currentImageSource, session.comicTitle, currentChapter.title, currentPageIndex + 1)
                         }) {
-                            Icon(Icons.Outlined.Share, contentDescription = "分享当前页", tint = Color.White)
+                            Icon(Icons.Outlined.Share, contentDescription = "分享当前页", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 章节评论 (S8，对齐官方 reader/chapter_comments)
@@ -838,7 +842,7 @@ private fun ReaderSessionContent(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             activePanel = ReaderPanel.COMMENTS
                         }) {
-                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "本章评论", tint = Color.White)
+                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "本章评论", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 设置
@@ -846,13 +850,13 @@ private fun ReaderSessionContent(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             activePanel = ReaderPanel.SETTINGS
                         }) {
-                            Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = Color.White)
+                            Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = StatusColors.OnBadgeSurface)
                         }
 
                         // 下一话
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (currentChapterIndex < chaptersState.lastIndex) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = if (currentChapterIndex < chaptersState.lastIndex) StatusColors.OnBadgeSurface.copy(alpha = 0.15f) else StatusColors.OnBadgeSurface.copy(alpha = 0.05f),
                             modifier = Modifier.clickable(enabled = currentChapterIndex < chaptersState.lastIndex) {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 switchToChapter(currentChapterIndex + 1, 0)
@@ -860,9 +864,9 @@ private fun ReaderSessionContent(
                         ) {
                             Text(
                                 text = "下一话 ⏭",
-                                color = if (currentChapterIndex < chaptersState.lastIndex) Color.White else Color.Gray,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                color = if (currentChapterIndex < chaptersState.lastIndex) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
+                                fontSize = tokens.type.caption,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space4)
                             )
                         }
                     }
@@ -875,9 +879,9 @@ private fun ReaderSessionContent(
             IconButton(
                 onClick = { activePanel = ReaderPanel.SETTINGS },
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(8.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                    .padding(tokens.spacing.space4).background(StatusColors.BadgeSurface, CircleShape)
             ) {
-                Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = Color.White)
+                Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = StatusColors.OnBadgeSurface)
             }
         }
 
@@ -886,9 +890,9 @@ private fun ReaderSessionContent(
             ModalBottomSheet(
                 onDismissRequest = { activePanel = ReaderPanel.NONE },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = Color(0xFF1E1E1E),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                containerColor = StatusColors.BadgeSurface,
+                contentColor = StatusColors.OnBadgeSurface,
+                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge)
             ) {
                 var isDesc by remember { mutableStateOf(false) }
                 val displayChapters = remember(chaptersState, isDesc) {
@@ -909,9 +913,9 @@ private fun ReaderSessionContent(
                     ) {
                         Text(
                             text = "章节目录 (${chaptersState.size}话)",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontSize = tokens.type.itemTitle,
+                            fontWeight = tokens.type.weightBold,
+                            color = StatusColors.OnBadgeSurface
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -929,9 +933,9 @@ private fun ReaderSessionContent(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (isDesc) "倒序" else "正序",
-                                fontSize = 13.sp,
-                                color = MiuixTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
+                                fontSize = tokens.type.sectionTitle,
+                                color = tokens.color.primary,
+                                fontWeight = tokens.type.weightMedium
                             )
                         }
                     }
@@ -947,8 +951,8 @@ private fun ReaderSessionContent(
                         itemsIndexed(displayChapters, key = { _, pair -> pair.second.id }) { _, (origIdx, ch) ->
                             val isActive = origIdx == currentChapterIndex
                             Surface(
-                                color = if (isActive) MiuixTheme.colorScheme.primary.copy(alpha = 0.2f) else Color(0xFF282828),
-                                shape = RoundedCornerShape(12.dp),
+                                color = if (isActive) tokens.color.primary.copy(alpha = 0.2f) else StatusColors.OnBadgeSurface.copy(alpha = 0.06f),
+                                shape = RoundedCornerShape(tokens.shape.small),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -966,8 +970,8 @@ private fun ReaderSessionContent(
                                 ) {
                                     Text(
                                         text = ch.title,
-                                        fontSize = 14.sp,
-                                        color = if (isActive) MiuixTheme.colorScheme.primary else Color.White,
+                                        fontSize = tokens.type.body,
+                                        color = if (isActive) tokens.color.primary else StatusColors.OnBadgeSurface,
                                         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -975,15 +979,15 @@ private fun ReaderSessionContent(
                                     )
                                     if (isActive) {
                                         Surface(
-                                            color = MiuixTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(8.dp)
+                                            color = tokens.color.primary,
+                                            shape = RoundedCornerShape(tokens.shape.extraSmall)
                                         ) {
                                             Text(
                                                 text = "阅读中",
-                                                color = Color.White,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                color = tokens.color.onPrimary,
+                                                fontSize = tokens.type.badge,
+                                                fontWeight = tokens.type.weightBold,
+                                                modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
                                             )
                                         }
                                     }
@@ -1000,9 +1004,9 @@ private fun ReaderSessionContent(
             ModalBottomSheet(
                 onDismissRequest = { activePanel = ReaderPanel.NONE },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = Color(0xFF1E1E1E),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                containerColor = StatusColors.BadgeSurface,
+                contentColor = StatusColors.OnBadgeSurface,
+                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge)
             ) {
                 Column(
                     modifier = Modifier
@@ -1013,17 +1017,17 @@ private fun ReaderSessionContent(
                 ) {
                     Text(
                         text = "阅读器设置",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = StatusColors.OnBadgeSurface
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
                         text = "排版翻页模式",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.6f)
+                        fontSize = tokens.type.sectionTitle,
+                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.6f)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1035,8 +1039,8 @@ private fun ReaderSessionContent(
                         ReaderReadingMode.values().take(3).forEach { mode ->
                             val isSelected = readingMode == mode
                             Surface(
-                                color = if (isSelected) MiuixTheme.colorScheme.primary else Color(0xFF2C2C2C),
-                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) tokens.color.primary else StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(tokens.shape.small),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable {
@@ -1046,16 +1050,16 @@ private fun ReaderSessionContent(
                                     }
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    modifier = Modifier.padding(vertical = tokens.spacing.space5),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Text(text = mode.icon, fontSize = 16.sp)
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = mode.icon, fontSize = tokens.type.itemTitle)
+                                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
                                     Text(
                                         text = mode.label.substringBefore("·"),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) Color.White else Color.LightGray
+                                        fontSize = tokens.type.caption,
+                                        fontWeight = tokens.type.weightSemibold,
+                                        color = if (isSelected) tokens.color.onPrimary else StatusColors.OnBadgeSurface.copy(alpha = 0.75f)
                                     )
                                 }
                             }
@@ -1069,8 +1073,8 @@ private fun ReaderSessionContent(
                         ReaderReadingMode.values().drop(3).forEach { mode ->
                             val isSelected = readingMode == mode
                             Surface(
-                                color = if (isSelected) MiuixTheme.colorScheme.primary else Color(0xFF2C2C2C),
-                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) tokens.color.primary else StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(tokens.shape.small),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable {
@@ -1080,16 +1084,16 @@ private fun ReaderSessionContent(
                                     }
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    modifier = Modifier.padding(vertical = tokens.spacing.space5),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Text(text = mode.icon, fontSize = 16.sp)
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = mode.icon, fontSize = tokens.type.itemTitle)
+                                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
                                     Text(
                                         text = mode.label.substringBefore("·"),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) Color.White else Color.LightGray
+                                        fontSize = tokens.type.caption,
+                                        fontWeight = tokens.type.weightSemibold,
+                                        color = if (isSelected) tokens.color.onPrimary else StatusColors.OnBadgeSurface.copy(alpha = 0.75f)
                                     )
                                 }
                             }
@@ -1105,8 +1109,8 @@ private fun ReaderSessionContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "页面间隔", fontSize = 14.sp, color = Color.White)
-                            Text(text = "${pageGapDp.toInt()} dp", fontSize = 13.sp, color = MiuixTheme.colorScheme.primary)
+                            Text(text = "页面间隔", fontSize = tokens.type.body, color = StatusColors.OnBadgeSurface)
+                            Text(text = "${pageGapDp.toInt()} dp", fontSize = tokens.type.sectionTitle, color = tokens.color.primary)
                         }
                         Slider(
                             value = pageGapDp,
@@ -1116,8 +1120,8 @@ private fun ReaderSessionContent(
                             },
                             valueRange = 0f..32f,
                             colors = SliderDefaults.colors(
-                                thumbColor = MiuixTheme.colorScheme.primary,
-                                activeTrackColor = MiuixTheme.colorScheme.primary
+                                thumbColor = tokens.color.primary,
+                                activeTrackColor = tokens.color.primary
                             )
                         )
                     }
@@ -1132,7 +1136,7 @@ private fun ReaderSessionContent(
                     ) {
                         Column {
                             Text(text = "夜间反色滤镜", fontSize = 14.sp, color = Color.White)
-                            Text(text = "黑白互换保护夜间视力", fontSize = 11.sp, color = Color.Gray)
+                            Text(text = "黑白互换保护夜间视力", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         Switch(
                             checked = isNightFilter,
@@ -1154,7 +1158,7 @@ private fun ReaderSessionContent(
                     ) {
                         Column {
                             Text(text = "保持屏幕常亮", fontSize = 14.sp, color = Color.White)
-                            Text(text = "阅读时不自动锁屏", fontSize = 11.sp, color = Color.Gray)
+                            Text(text = "阅读时不自动锁屏", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         Switch(
                             checked = keepScreenOn,
@@ -1176,7 +1180,7 @@ private fun ReaderSessionContent(
                     ) {
                         Column {
                             Text(text = "音量键翻页", fontSize = 14.sp, color = Color.White)
-                            Text(text = "音量下键下一页，音量上键上一页", fontSize = 11.sp, color = Color.Gray)
+                            Text(text = "音量下键下一页，音量上键上一页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         Switch(
                             checked = volumeKeyTurn,
@@ -1198,7 +1202,7 @@ private fun ReaderSessionContent(
                     ) {
                         Column {
                             Text(text = "点击屏幕边缘翻页", fontSize = 14.sp, color = Color.White)
-                            Text(text = "左右两侧快速点击翻页", fontSize = 11.sp, color = Color.Gray)
+                            Text(text = "左右两侧快速点击翻页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         Switch(
                             checked = clickToTurn,
@@ -1218,9 +1222,9 @@ private fun ReaderSessionContent(
             ModalBottomSheet(
                 onDismissRequest = { activePanel = ReaderPanel.NONE },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = Color(0xFF1E1E1E),
-                contentColor = Color.White,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                containerColor = StatusColors.BadgeSurface,
+                contentColor = StatusColors.OnBadgeSurface,
+                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge)
             ) {
                 ChapterCommentsSheetContent(
                     sourceKey = session.sourceKey,
@@ -1240,9 +1244,9 @@ private fun ReaderSessionContent(
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
-                    color = Color(0xFF222222),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.padding(24.dp)
+                    color = StatusColors.BadgeSurface,
+                    shape = RoundedCornerShape(tokens.shape.large),
+                    modifier = Modifier.padding(tokens.spacing.space9)
                 ) {
                     Column(
                         modifier = Modifier.padding(24.dp),
@@ -1250,7 +1254,7 @@ private fun ReaderSessionContent(
                     ) {
                         CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = "正在载入章节画质...", color = Color.White, fontSize = 14.sp)
+                        Text(text = "正在载入章节画质...", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.body)
                     }
                 }
             }
@@ -1376,7 +1380,7 @@ private fun ReaderSinglePageItem(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(320.dp)
-                                .background(Color(0xFF161616)),
+                                .background(StatusColors.BadgeSurface),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1417,7 +1421,7 @@ private fun ReaderSinglePageItem(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(320.dp)
-                                    .background(Color(0xFF161616)),
+                                    .background(StatusColors.BadgeSurface),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1442,7 +1446,7 @@ private fun ReaderSinglePageItem(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(320.dp)
-                            .background(Color(0xFF161616))
+                            .background(StatusColors.BadgeSurface)
                             .clickable { dyn.attempt++ },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1456,7 +1460,7 @@ private fun ReaderSinglePageItem(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(320.dp)
-                            .background(Color(0xFF161616)),
+                            .background(StatusColors.BadgeSurface),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
@@ -1481,7 +1485,7 @@ private fun ReaderSinglePageItem(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(300.dp)
-                        .background(Color.DarkGray),
+                        .background(StatusColors.BadgeSurface),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = "ZIP: ${page.entryName}", color = Color.White)
