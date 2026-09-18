@@ -111,6 +111,9 @@ import java.util.*
  */
 private const val PRELOAD_AHEAD_PAGES = 5
 
+/** 翻页模式（美漫 LTR / 日漫 RTL）Auto-Scroll 的自动翻页间隔（秒）。 */
+private const val AUTO_SCROLL_PAGE_INTERVAL_SEC = 4f
+
 /**
  * Venera 生产级 Jetpack Compose 工业级漫画阅读器 (S3 升级)
  *
@@ -446,12 +449,19 @@ private fun ReaderSessionContent(
     }
 
     // Sheets own their window's back gesture, then controls, then NavHost's route pop.
+    // 手势提交关闭后置位 suppressHudExit：controlsBack.progress 已把 HUD 跟手推出去，
+    // 若再走 AnimatedVisibility 默认 exit（slideOut+fadeOut）会「返回动画跑两遍」。
+    // 置位后用 ExitTransition.None 跳过第二段，仅本帧组合（下帧 visible=false 位移由 progress 保持）。
+    var suppressHudExit by remember { mutableStateOf(false) }
     val controlsBack = rememberPredictiveBackState(
         enabled = activePanel == ReaderPanel.NONE && isControlsVisible,
     ) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        suppressHudExit = true
         isControlsVisible = false
     }
+    // 非手势路径（点空白收起/模式切换）恢复默认 exit
+    LaunchedEffect(isControlsVisible) { if (isControlsVisible) suppressHudExit = false }
 
     // 反色滤镜
     val nightColorFilter = remember(isNightFilter) {
@@ -486,19 +496,41 @@ private fun ReaderSessionContent(
     // 帧率无关（60/90/120Hz 屏速度一致）；暂停/模式切走/换章自动停。
     LaunchedEffect(isAutoScrolling, readingMode) {
         if (!isAutoScrolling) return@LaunchedEffect
-        if (readingMode != ReaderReadingMode.VERTICAL_CONTINUOUS) {
-            isAutoScrolling = false
-            return@LaunchedEffect
-        }
-        var lastFrame = 0L
-        while (isActive) {
-            withFrameNanos { now ->
-                val dt = if (lastFrame == 0L) 0f else (now - lastFrame) / 1_000_000_000f
-                lastFrame = now
-                dt
-            }.let { dt ->
-                if (dt > 0f) verticalListState.scrollBy(scrollSpeed * dt)
+        when (readingMode) {
+            // 条漫：逐帧匀速滚动（帧率无关）
+            ReaderReadingMode.VERTICAL_CONTINUOUS -> {
+                var lastFrame = 0L
+                while (isActive) {
+                    withFrameNanos { now ->
+                        val dt = if (lastFrame == 0L) 0f else (now - lastFrame) / 1_000_000_000f
+                        lastFrame = now
+                        dt
+                    }.let { dt ->
+                        if (dt > 0f) verticalListState.scrollBy(scrollSpeed * dt)
+                    }
+                }
             }
+            // 美漫 LTR / 日漫 RTL：每 4 秒自动翻到下一页（复用 turnToNextPage，
+            // RTL 的镜像索引映射在其内部处理）；到末页自动停。
+            ReaderReadingMode.HORIZONTAL_LTR, ReaderReadingMode.HORIZONTAL_RTL -> {
+                var acc = 0f
+                var lastFrame = 0L
+                while (isActive) {
+                    withFrameNanos { now ->
+                        val dt = if (lastFrame == 0L) 0f else (now - lastFrame) / 1_000_000_000f
+                        lastFrame = now
+                        dt
+                    }.let { dt ->
+                        acc += dt
+                        if (acc >= AUTO_SCROLL_PAGE_INTERVAL_SEC) {
+                            acc = 0f
+                            if (!turnToNextPage()) isAutoScrolling = false
+                        }
+                    }
+                }
+            }
+            // 其余模式（横向连续流/双页）不支持巡航
+            else -> isAutoScrolling = false
         }
     }
 
@@ -687,7 +719,8 @@ private fun ReaderSessionContent(
         AnimatedVisibility(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { -it },
-            exit = fadeOut() + slideOutVertically { -it },
+            // 手势关闭时跳过第二段 exit（controlsBack 已跟手播完），其他路径走默认
+            exit = if (suppressHudExit) ExitTransition.None else fadeOut() + slideOutVertically { -it },
             modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
                 translationY = -size.height * controlsBack.progress
                 alpha = 1f - controlsBack.progress
@@ -779,7 +812,7 @@ private fun ReaderSessionContent(
         AnimatedVisibility(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it },
+            exit = if (suppressHudExit) ExitTransition.None else fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
                 translationY = size.height * controlsBack.progress
                 alpha = 1f - controlsBack.progress
@@ -882,8 +915,10 @@ private fun ReaderSessionContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3)
                     ) {
-                        // 自动播放（仅条漫连续流模式生效；点按进入巡航并收起控制栏）
-                        val autoScrollEnabled = readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS
+                        // 自动播放：条漫逐帧滚动，美漫/日漫每 4 秒翻页；点按进入巡航并收起控制栏
+                        val autoScrollEnabled = readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS ||
+                            readingMode == ReaderReadingMode.HORIZONTAL_LTR ||
+                            readingMode == ReaderReadingMode.HORIZONTAL_RTL
                         Surface(
                             shape = RoundedCornerShape(tokens.shape.small),
                             color = if (autoScrollEnabled) tokens.color.primary.copy(alpha = 0.30f) else StatusColors.OnBadgeSurface.copy(alpha = 0.05f),
@@ -970,6 +1005,35 @@ private fun ReaderSessionContent(
                             }
                         }
 
+                        // 分享当前页图片
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    shareCurrentImage(context, currentImageSource, session.comicTitle, currentChapter.title, currentPageIndex + 1)
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Share,
+                                    contentDescription = "分享当前页",
+                                    tint = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                                )
+                                Text(
+                                    text = "分享",
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+
                         // 阅读设置
                         Surface(
                             shape = RoundedCornerShape(tokens.shape.small),
@@ -1033,49 +1097,46 @@ private fun ReaderSessionContent(
                             Text(text = "⏸", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.caption)
                         }
                     }
-                    // 减速
-                    Surface(
-                        shape = CircleShape,
-                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
-                        modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
-                            scrollSpeed = (scrollSpeed - 15f).coerceAtLeast(15f)
+                    // 减速 / 加速（仅条漫滚动模式有意义；翻页模式固定 4s/页）
+                    if (readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS) {
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                            modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                                scrollSpeed = (scrollSpeed - 15f).coerceAtLeast(15f)
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Text(text = "−", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                            }
                         }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(text = "−", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                            modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                                scrollSpeed = (scrollSpeed + 15f).coerceAtMost(480f)
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Text(text = "+", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                            }
                         }
+                        // 当前速度
+                        Text(
+                            text = scrollSpeed.toInt().toString() + " px/s",
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
+                            fontSize = tokens.type.badge,
+                            modifier = Modifier.padding(end = tokens.spacing.space1)
+                        )
+                    } else {
+                        Text(
+                            text = "4s/页",
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
+                            fontSize = tokens.type.badge,
+                            modifier = Modifier.padding(end = tokens.spacing.space1)
+                        )
                     }
-                    // 加速
-                    Surface(
-                        shape = CircleShape,
-                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
-                        modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
-                            scrollSpeed = (scrollSpeed + 15f).coerceAtMost(480f)
-                        }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(text = "+", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
-                        }
-                    }
-                    // 当前速度
-                    Text(
-                        text = scrollSpeed.toInt().toString() + " px/s",
-                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
-                        fontSize = tokens.type.badge,
-                        modifier = Modifier.padding(end = tokens.spacing.space1)
-                    )
                 }
-            }
-        }
-
-        // Failed images own a retry tap. Keep settings reachable without stealing zoom/drag gestures.
-        if (!isControlsVisible && activePanel == ReaderPanel.NONE) {
-            IconButton(
-                onClick = { activePanel = ReaderPanel.SETTINGS },
-                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(tokens.spacing.space4).background(StatusColors.BadgeSurface, CircleShape)
-            ) {
-                Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = StatusColors.OnBadgeSurface)
             }
         }
 
