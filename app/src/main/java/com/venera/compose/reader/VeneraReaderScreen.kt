@@ -14,7 +14,7 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import com.venera.compose.components.rememberPredictiveBackState
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -40,6 +40,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -449,22 +450,12 @@ private fun ReaderSessionContent(
     }
 
     // Sheets own their window's back gesture, then controls, then NavHost's route pop.
-    // 手势提交关闭后置位 suppressHudExit：controlsBack.progress 已把 HUD 跟手推出去，
-    // 若再走 AnimatedVisibility 默认 exit（slideOut+fadeOut）会「返回动画跑两遍」。
-    // 置位后用 ExitTransition.None 跳过第二段，仅本帧组合（下帧 visible=false 位移由 progress 保持）。
-    var suppressHudExit by remember { mutableStateOf(false) }
-    // 手势关闭路径：HUD 立即从组合移除（零 exit 动画）——移除前 progress 已把它推到屏幕外。
-    // 非手势路径（点空白）仍走 AnimatedVisibility 的默认 exit 淡出。
-    val hudShown = isControlsVisible && !suppressHudExit
-    val controlsBack = rememberPredictiveBackState(
-        enabled = activePanel == ReaderPanel.NONE && isControlsVisible,
-    ) {
+    // HUD 收起用官方 BackHandler：与「点空白收起」走完全相同的动画管线
+    // （isControlsVisible = false → AnimatedVisibility 的标准 exit），杜绝二次动画。
+    BackHandler(enabled = activePanel == ReaderPanel.NONE && isControlsVisible) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        suppressHudExit = true
         isControlsVisible = false
     }
-    // 非手势路径（点空白收起/模式切换）恢复默认 exit
-    LaunchedEffect(isControlsVisible) { if (isControlsVisible) suppressHudExit = false }
 
     // 反色滤镜
     val nightColorFilter = remember(isNightFilter) {
@@ -720,13 +711,10 @@ private fun ReaderSessionContent(
 
         // ==================== 顶部悬浮胶囊岛（Floating Pill Island）====================
         AnimatedVisibility(
-            visible = hudShown,
+            visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { -it },
             exit = fadeOut() + slideOutVertically { -it },
-            modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
-                translationY = -size.height * controlsBack.progress
-                alpha = 1f - controlsBack.progress
-            }
+            modifier = Modifier.align(Alignment.TopCenter)
         ) {
             // 四边留白悬浮药丸：不再是贴顶直角黑条。shadow 提供浮起感，
             // 24dp 大圆角 + 92% BadgeSurface + 微光描边外框。
@@ -761,7 +749,7 @@ private fun ReaderSessionContent(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = StatusColors.OnBadgeSurface)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = StatusColors.OnBadgeSurface)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
@@ -812,13 +800,10 @@ private fun ReaderSessionContent(
 
         // ==================== 底部悬浮控制岛（Floating Control Island）====================
         AnimatedVisibility(
-            visible = hudShown,
+            visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
-                translationY = size.height * controlsBack.progress
-                alpha = 1f - controlsBack.progress
-            }
+            modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             // 底部居中悬浮岛：16/12dp 四边留白 + 28dp 大圆角 + 16dp 阴影 + 微光描边。
             // 两行结构：上一话/Slider/下一话 + 功能键行（自动播放/目录/存图/设置）。
