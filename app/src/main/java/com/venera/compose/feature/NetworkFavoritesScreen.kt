@@ -95,6 +95,20 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
     // 首屏判定：只有「尚无任何内容」的加载才全屏 Loader；loadMore 期间列表原地不动。
     val firstLoading = isLoading && comics.isEmpty()
 
+    // 自动刷新：回到本页（ON_RESUME）时重拉当前展开源的内容。
+    // 详情页收藏/取消收藏后返回、或从其他 Tab 切回时，无需手动下拉即可看到最新收藏。
+    // 只在「展开态且有内容可刷」时触发：折叠态无意义，加载中/出错时避免请求风暴。
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (selectedKey != null && !isLoading && error == null) vm.refresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(

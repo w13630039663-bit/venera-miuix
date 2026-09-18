@@ -1109,6 +1109,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     if (favPanel.visible) {
         FavoritePanelSheet(
             state = favPanel,
+            sourceName = comic.sourceName,
             onDismiss = { viewModel.closeFavoritePanel() },
             onToggleLocal = { folder -> viewModel.toggleLocalFavorite(comic, folder) },
             onCreateFolder = { name, onErr -> viewModel.createLocalFolder(name, onErr) },
@@ -1371,6 +1372,8 @@ private fun FavRow(
 @Composable
 private fun FavoritePanelSheet(
     state: FavoritePanelState,
+    /** 漫画所属源（显示名，与网络分区摘要对齐）。 */
+    sourceName: String,
     onDismiss: () -> Unit,
     onToggleLocal: (String) -> Unit,
     onCreateFolder: (String, (String) -> Unit) -> Unit,
@@ -1438,6 +1441,33 @@ private fun FavoritePanelSheet(
                 HorizontalDivider(color = tokens.color.divider)
                 Spacer(modifier = Modifier.height(tokens.spacing.space2))
                 FavSectionTitle("网络收藏")
+                // 源归属与收藏状态摘要：该漫画来自哪个源、在源账号上是否已被收藏。
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = tokens.spacing.space2, top = tokens.spacing.space1),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "漫画源：" + sourceName,
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textSecondary,
+                    )
+                    Spacer(modifier = Modifier.width(tokens.spacing.space4))
+                    val added = if (state.networkMultiFolder) state.networkAdded.isNotEmpty() else state.networkSingleAdded
+                    if (state.isLoadingNetwork) {
+                        Text(
+                            text = "查询中…",
+                            fontSize = tokens.type.overline,
+                            color = tokens.color.textTertiary,
+                        )
+                    } else {
+                        Text(
+                            text = if (added) "已在 " + sourceName + " 收藏" else "尚未在 " + sourceName + " 收藏",
+                            fontSize = tokens.type.overline,
+                            color = if (added) StatusColors.Healthy else tokens.color.textTertiary,
+                            fontWeight = if (added) tokens.type.weightSemibold else tokens.type.weightRegular,
+                        )
+                    }
+                }
 
                 when {
                     state.isLoadingNetwork -> {
@@ -1509,7 +1539,7 @@ private fun FavoritePanelSheet(
             } else if (state.localFolders.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(tokens.spacing.space5))
                 Text(
-                    text = "该漫画源未登录或不支持网络收藏，当前仅能收藏到本地",
+                    text = "" + sourceName + "未登录或不支持网络收藏，当前仅能收藏到本地",
                     fontSize = tokens.type.caption,
                     color = tokens.color.textSecondary,
                     modifier = Modifier.padding(horizontal = tokens.spacing.space2),
