@@ -6,6 +6,7 @@ import com.venera.compose.feature.settings.SettingsHome
 /** 外部导航契约保持兼容；分类及下级页面由设置中心自己的返回栈承载。 */
 @Composable
 fun AndroidSettingsScreen(
+    onBack: () -> Unit = {},
     onNavigateToSourceManage: () -> Unit = {},
     onNavigateToDownloads: () -> Unit = {},
     onNavigateToLocalComics: () -> Unit = {},
@@ -17,5 +18,5 @@ fun AndroidSettingsScreen(
 ) = SettingsHome(
     onNavigateToSourceManage, onNavigateToDownloads, onNavigateToLocalComics,
     onNavigateToStats, onNavigateToFavoriteImages, onNavigateToGuard,
-    onNavigateToSync, onNavigateToLogs
+    onNavigateToSync, onNavigateToLogs, onBack
 )

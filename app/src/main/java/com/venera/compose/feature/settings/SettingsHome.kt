@@ -7,7 +7,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -43,17 +48,46 @@ private val categories = listOf(
     SettingsCategory("network", "网络", Icons.Filled.Public, SettingsBadgeColors.Connectivity),
 )
 
-/** 独立且可保存的页栈，不修改应用 Navigation，也不把分类页变成弹窗。 */
+/**
+ * 独立且可保存的页栈，不把分类页变成弹窗。
+ *
+ * Stage 0~2 信息架构调整：设置从底栏 Tab 收口为顶栏齿轮进入的子页，
+ * 因此新增外层返回箭头 [onBack]（pop 回来源主 Tab）；分类页内部返回仍由
+ * [PredictiveBackStack] 承载，两层返回互不干扰。
+ */
 @Composable
 internal fun SettingsHome(
     onSources: () -> Unit, onDownloads: () -> Unit, onLocalComics: () -> Unit,
     onStats: () -> Unit, onImages: () -> Unit, onGuard: () -> Unit,
-    onSync: () -> Unit, onLogs: () -> Unit
+    onSync: () -> Unit, onLogs: () -> Unit, onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     var stack by rememberSaveable { mutableStateOf(listOf("home")) }
     fun push(page: String) { if (stack.last() != page) stack = stack + page }
+    // 外层返回行：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
+    if (stack.last() == "home") {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = VeneraTokens.spacing.space2, vertical = VeneraTokens.spacing.space2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = VeneraTokens.color.textPrimary,
+                )
+            }
+            Text(
+                text = "设置与偏好",
+                fontSize = VeneraTokens.type.screenTitle,
+                fontWeight = VeneraTokens.type.weightBold,
+                color = VeneraTokens.color.textPrimary,
+            )
+        }
+    }
     PredictiveBackStack(
         entries = stack,
         onBack = { if (stack.size > 1) stack = stack.dropLast(1) },

@@ -1,13 +1,14 @@
 /**
- * 主页 —— 对齐原项目 venera-miuix home_page.dart 的六分区结构：
- * 今日推荐 / 阅读统计 / 历史 / 漫画源状态 / 本地 / 图片收藏。
+ * 主页 —— 对齐原项目 venera-miuix home_page.dart 的分区结构：
+ * 阅读统计 / 历史 / 漫画源状态 / 本地 / 图片收藏。
+ * （今日推荐分区已按信息架构调整移除。）
  * 数据全部来自真实库（收藏/历史/下载/本地扫描/favorite_images 表），无硬编码。
  *
  * 本轮（HomeScreen 专项）只改视觉层：
  *  - 所有颜色 / 字号 / 字重 / 间距 / 圆角 / alpha 走 ui/tokens Token。
  *  - 空数据统一使用 VeneraEmptyView，消除大面积空白。
  *  - 统计数字提升视觉等级、说明文字降级、分隔线弱化。
- *  - 历史卡片与今日推荐统一圆角 Token，标题两行 ellipsis，进度用次要文字色。
+ *  - 历史卡片统一圆角 Token，标题两行 ellipsis，进度用次要文字色。
  *  - 源状态按 Connected / Degraded / Failing / Unknown 四态着色。
  * 数据流、导航回调、ViewModel、分页与业务逻辑均未改动。
  */
@@ -120,112 +121,6 @@ fun SharedTransitionScope.AndroidHomeScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
     ) {
-        // ==================== 分区 1：今日推荐 ====================
-        item {
-            Column {
-                MiuixSectionHeader(title = "今日推荐", onTap = onOpenHistory)
-                Spacer(Modifier.height(tokens.spacing.space2))
-                if (ui.shelfTop.isEmpty()) {
-                    // 无数据：统一空状态，不留大片空白
-                    VeneraEmptyView(
-                        title = "还没有可推荐的更新",
-                        message = "收藏漫画后，有更新的作品会出现在这里",
-                        icon = Icons.Outlined.AutoAwesome,
-                    )
-                } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6)) {
-                        items(ui.shelfTop, key = { "shelf-" + it.id }) { comic ->
-                            Card(
-                                modifier = Modifier
-                                    .width(tokens.spacing.heroCardWidth)
-                                    .height(tokens.spacing.heroCardHeight)
-                                    .clickable { onSelect(comic) },
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(tokens.spacing.space4),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    AsyncImage(
-                                        model = comic.coverUrl,
-                                        contentDescription = comic.title,
-                                        modifier = Modifier
-                                            .size(
-                                                width = tokens.spacing.heroCoverWidth,
-                                                height = tokens.spacing.heroCoverHeight,
-                                            )
-                                            .sharedElement(
-                                                sharedContentState = rememberSharedContentState(key = "image-" + comic.id),
-                                                animatedVisibilityScope = animatedVisibilityScope,
-                                            )
-                                            .clip(RoundedCornerShape(tokens.shape.medium)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                    Spacer(Modifier.width(tokens.spacing.space5))
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight(),
-                                        verticalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = comic.title,
-                                                fontSize = tokens.type.body,
-                                                fontWeight = tokens.type.weightMedium,
-                                                color = tokens.color.textPrimary,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Spacer(Modifier.height(tokens.spacing.space2))
-                                            Text(
-                                                text = listOf(comic.sourceName, comic.latestChapter)
-                                                    .filter { it.isNotBlank() }
-                                                    .joinToString(" · "),
-                                                fontSize = tokens.type.caption,
-                                                color = tokens.color.textSecondary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            // 更新角标：底色为 StatusColors.AccentBadge（自带透明度）
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(tokens.shape.extraSmall))
-                                                    .background(StatusColors.AccentBadge)
-                                                    .padding(
-                                                        horizontal = tokens.spacing.space3,
-                                                        vertical = tokens.spacing.space1,
-                                                    )
-                                            ) {
-                                                Text(
-                                                    text = "更新",
-                                                    color = Color.White,
-                                                    fontSize = tokens.type.badge,
-                                                    fontWeight = tokens.type.weightBold,
-                                                )
-                                            }
-                                            Text(
-                                                text = comic.updateTime,
-                                                fontSize = tokens.type.overline,
-                                                color = tokens.color.textTertiary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // ==================== 分区 2：阅读统计 ====================
         if (ui.todayPages > 0 || ui.weekPages > 0) {
             item {
@@ -722,43 +617,6 @@ private fun HomePreviewContent() {
             .padding(tokens.spacing.rowHorizontal),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
     ) {
-        // 今日推荐
-        MiuixSectionHeader(title = "今日推荐", onTap = {})
-        Spacer(Modifier.height(tokens.spacing.space2))
-        Card(
-            modifier = Modifier
-                .width(tokens.spacing.heroCardWidth)
-                .height(tokens.spacing.heroCardHeight),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(tokens.spacing.space4),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(tokens.spacing.heroCoverWidth, tokens.spacing.heroCoverHeight)
-                        .clip(RoundedCornerShape(tokens.shape.medium))
-                        .background(tokens.color.surfaceVariant),
-                )
-                Spacer(Modifier.width(tokens.spacing.space5))
-                Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
-                    Text(
-                        text = "示例漫画标题",
-                        fontSize = tokens.type.body,
-                        fontWeight = tokens.type.weightMedium,
-                        color = tokens.color.textPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "示例源 · 第 12 话",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textSecondary,
-                    )
-                }
-            }
-        }
-
         // 阅读统计
         MiuixSectionHeader(title = "阅读统计", onTap = {})
         Spacer(Modifier.height(tokens.spacing.space2))

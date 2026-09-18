@@ -3,9 +3,23 @@
  *
  * 原版是**网格** + 多选删除 + 清空（全部 / 仅未收藏），并没有「今天/昨天/更早」
  * 的时间分组（那是分阶段任务书里的设想）。这里按官方实现：网格 + 多选 + 清空。
+ *
+ * Batch 2 规范化重构（Stage 0~2 信息架构调整后作为主 Tab 运行）：
+ *  - 空态统一 VeneraEmptyView（消除硬编码 emoji 与字面值字号）。
+ *  - 卡片容器 VeneraCard，字号/间距/圆角全部 VeneraTokens。
+ *  - 顶部二级工具条：普通态 = 布局切换 + 清空菜单入口；多选态 = Close /
+ *    已选 N 项 / 全选 / 删除（动画平滑切换，颜色走 Token）。
+ *  - 手势：selectionBack（多选退出）+ PredictiveBackOverlay（清空确认弹窗）保持联动；
+ *    系统返回在多选态先退多选、非多选态由壳层处理 Tab 返回语义。
  */
 package com.venera.compose.feature
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -26,124 +40,148 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
-import com.venera.compose.components.*
+import com.venera.compose.components.ComicCardLayout
+import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberComicListDisplayMode
+import com.venera.compose.components.rememberPredictiveBackState
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.data.db.HistoryRecord
+import com.venera.compose.ui.tokens.VeneraSpacing
+import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AndroidHistoryScreen(
-    onBack: () -> Unit,
     onSelect: (ComicItem) -> Unit,
 ) {
+    val tokens = VeneraTokens
     val vm: HistoryViewModel = viewModel()
     val records by vm.history.collectAsState()
     val displayMode = rememberComicListDisplayMode()
     var showClearMenu by remember { mutableStateOf(false) }
-    val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
+    val selectionBack = rememberPredictiveBackState(
         enabled = vm.multiSelectMode && !showClearMenu,
     ) { vm.exitMultiSelect() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // ── 二级工具条：普通态 = 布局切换 + 清空入口；多选态 = 退出/全选/删除。──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(
+                        horizontal = tokens.spacing.rowHorizontal,
+                        vertical = tokens.spacing.space2,
+                    )
                     .graphicsLayer { alpha = 1f - selectionBack.progress },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = if (vm.multiSelectMode) Icons.Filled.Close else Icons.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = MiuixTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(22.dp).clickable {
-                        if (vm.multiSelectMode) vm.exitMultiSelect() else onBack()
+                AnimatedContent(
+                    targetState = vm.multiSelectMode,
+                    modifier = Modifier.fillMaxWidth(),
+                    transitionSpec = {
+                        (slideInVertically { it / 2 } + fadeIn())
+                            .togetherWith(slideOutVertically { it / 2 } + fadeOut())
                     },
-                )
-                Spacer(modifier = Modifier.width(14.dp))
-                Text(
-                    text = if (vm.multiSelectMode) "已选择 ${vm.selected.size} 项" else "历史记录",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                if (vm.multiSelectMode) {
-                    Text(
-                        text = "全选",
-                        fontSize = 14.sp,
-                        color = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { vm.selectAll(records) }.padding(6.dp),
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "删除",
-                        fontSize = 14.sp,
-                        color = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { vm.deleteSelected() }.padding(6.dp),
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "更多",
-                        tint = MiuixTheme.colorScheme.onBackground,
-                        modifier = Modifier.size(20.dp).clickable { showClearMenu = true },
-                    )
+                    label = "HistoryToolbar",
+                ) { multiSelect ->
+                    if (multiSelect) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "退出多选",
+                                tint = tokens.color.textPrimary,
+                                modifier = Modifier
+                                    .size(tokens.spacing.iconButtonSize)
+                                    .clickable { vm.exitMultiSelect() }
+                                    .padding(tokens.spacing.space2),
+                            )
+                            Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                            Text(
+                                text = "已选择 ${vm.selected.size} 项",
+                                fontSize = tokens.type.body,
+                                fontWeight = tokens.type.weightMedium,
+                                color = tokens.color.textPrimary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            ToolbarAction(text = "全选", onClick = { vm.selectAll(records) })
+                            ToolbarAction(text = "删除", onClick = { vm.deleteSelected() })
+                        }
+                    } else {
+                        // 普通态：清空入口 + 布局切换，整体靠右对齐。
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "清空选项",
+                                tint = tokens.color.textSecondary,
+                                modifier = Modifier
+                                    .size(tokens.spacing.iconButtonSize)
+                                    .clip(RoundedCornerShape(tokens.shape.small))
+                                    .clickable { showClearMenu = true }
+                                    .padding(tokens.spacing.space2),
+                            )
+                            ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                        }
+                    }
                 }
             }
 
             if (records.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "🕘", fontSize = 46.sp)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(text = "还没有阅读记录", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "去随便翻两页吧",
-                            fontSize = 13.sp,
-                            color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        )
-                    }
+                    VeneraEmptyView(
+                        title = "还没有阅读记录",
+                        message = "去随便翻两页吧",
+                        icon = Icons.Outlined.History,
+                    )
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
-                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+                    contentPadding = PaddingValues(
+                        start = tokens.spacing.rowHorizontal,
+                        end = tokens.spacing.rowHorizontal,
+                        top = tokens.spacing.space2,
+                        bottom = VeneraSpacing.bottomBarClearance,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(records, key = { "${it.comicId}-${it.sourceName}" }) { record ->
@@ -186,7 +224,8 @@ private fun HistoryCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    Card(
+    val tokens = VeneraTokens
+    VeneraCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
@@ -194,7 +233,7 @@ private fun HistoryCard(
         Box {
             ComicCardLayout(
                 detailed = detailed,
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.padding(tokens.spacing.space3),
                 cover = {
                     // 内容守卫：BLUR 命中打码（源级预设 + 用户规则）；HIDE 已在数据层兜底。
                     val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
@@ -208,34 +247,39 @@ private fun HistoryCard(
                         url = record.coverUrl,
                         contentDescription = record.title,
                         shimmerWhileLoading = false,
-                        mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
-                               else com.venera.compose.components.venera.VeneraCoverMask.Masked,
+                        mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(if (detailed) 180.dp else 200.dp),
+                            .height(if (detailed) tokens.spacing.historyCoverHeight else tokens.spacing.historyCoverHeight + tokens.spacing.space9),
                     )
                 },
                 content = {
-                    Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 5.dp, end = if (detailed && multiSelectMode) 26.dp else 0.dp)) {
+                    Column(
+                        modifier = Modifier.padding(
+                            top = if (detailed) tokens.spacing.none else tokens.spacing.space1,
+                            end = if (detailed && multiSelectMode) tokens.spacing.badgeSize else tokens.spacing.none,
+                        )
+                    ) {
                         Text(
                             text = record.title,
-                            fontSize = if (detailed) 14.sp else 12.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontSize = if (detailed) tokens.type.body else tokens.type.caption,
+                            fontWeight = tokens.type.weightMedium,
+                            color = tokens.color.textPrimary,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(tokens.spacing.space2))
                         Text(
                             text = record.progressDescription(),
-                            fontSize = 11.sp,
-                            color = MiuixTheme.colorScheme.primary,
+                            fontSize = tokens.type.overline,
+                            color = tokens.color.primary,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = record.sourceName,
-                            fontSize = 10.sp,
-                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                            fontSize = tokens.type.badge,
+                            color = tokens.color.textTertiary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -246,12 +290,33 @@ private fun HistoryCard(
                 Icon(
                     imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                     contentDescription = null,
-                    tint = if (selected) MiuixTheme.colorScheme.primary else if (detailed) MiuixTheme.colorScheme.onSurface else Color.White,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(20.dp),
+                    tint = if (selected) tokens.color.primary else if (detailed) tokens.color.textPrimary else Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(tokens.spacing.space2)
+                        .size(tokens.spacing.badgeSize),
                 )
             }
         }
     }
+}
+
+/** 二级工具条文字按钮（全选 / 删除）：Token 化字号与内距，无涟漪。 */
+@Composable
+private fun ToolbarAction(text: String, onClick: () -> Unit) {
+    val tokens = VeneraTokens
+    Text(
+        text = text,
+        fontSize = tokens.type.caption,
+        color = tokens.color.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(tokens.shape.small))
+            .clickable(onClick = onClick)
+            .padding(
+                horizontal = tokens.spacing.space3,
+                vertical = tokens.spacing.space2,
+            ),
+    )
 }
 
 @Composable
@@ -260,23 +325,28 @@ private fun ClearHistoryMenu(
     onClearUnfavorited: () -> Unit,
     onClearAll: () -> Unit,
 ) {
+    val tokens = VeneraTokens
     com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
-        Card(modifier = Modifier.padding(horizontal = 28.dp)) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(text = "清空历史记录", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
+        Card(modifier = Modifier.padding(horizontal = tokens.spacing.space9)) {
+            Column(modifier = Modifier.padding(tokens.spacing.space8)) {
+                Text(
+                    text = "清空历史记录",
+                    fontSize = tokens.type.itemTitle,
+                    fontWeight = tokens.type.weightSemibold,
+                )
+                Spacer(modifier = Modifier.height(tokens.spacing.space5))
                 Text(
                     text = "「清空未收藏」会保留仍在你收藏夹里的漫画的阅读进度。",
-                    fontSize = 13.sp,
+                    fontSize = tokens.type.caption,
                     color = MiuixTheme.colorScheme.onBackgroundVariant,
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Spacer(modifier = Modifier.height(tokens.spacing.space7))
+                Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)) {
                     Button(
                         onClick = { onClearUnfavorited(); onDismiss() },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                            color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
                         ),
                     ) { Text("清空未收藏") }
                     Button(
@@ -284,17 +354,15 @@ private fun ClearHistoryMenu(
                         modifier = Modifier.weight(1f),
                     ) { Text("全部清空") }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(tokens.spacing.space5))
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        color = tokens.color.surfaceVariant.copy(alpha = VeneraTokens.current.placeholderAlpha)
                     ),
                 ) { Text("取消") }
             }
         }
     }
 }
-
-/** 无涟漪点击，用于图标/文字这类小目标。 */

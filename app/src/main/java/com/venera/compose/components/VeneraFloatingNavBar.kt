@@ -37,12 +37,14 @@ enum class VeneraNavTab(
     val filledIcon: ImageVector
 ) {
     HOME("首页", Icons.Outlined.Home, Icons.Filled.Home),
-    SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
+    // 历史提升为主 Tab（Stage 0~2 信息架构调整）：高频操作进底栏；
+    // 设置为低频操作，收口到壳顶栏右上角齿轮入口。
+    HISTORY("历史", Icons.Outlined.History, Icons.Filled.History),
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
+    SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
     // 「分类索引」与「全站探索」已合并为统一的「探索」页（见 UnifiedExploreScreen）。
     // 合并的是页面入口，不是各源的分类体系 —— 每个源仍保留自己的分类 / Tag / 排序。
-    EXPLORE("探索", Icons.Outlined.Explore, Icons.Filled.Explore),
-    SETTINGS("设置", Icons.Outlined.Settings, Icons.Filled.Settings)
+    EXPLORE("探索", Icons.Outlined.Explore, Icons.Filled.Explore)
 }
 
 /**

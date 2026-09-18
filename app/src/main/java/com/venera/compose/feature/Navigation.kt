@@ -62,6 +62,10 @@ import com.venera.compose.feature.sourcemanage.ComicSourceScreen
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 /**
  * S0-3 导航骨架。
@@ -128,18 +132,18 @@ class VeneraShellViewModel : ViewModel() {
 
 private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
-    VeneraNavTab.SEARCH -> SearchRoute
+    VeneraNavTab.HISTORY -> HistoryRoute
     VeneraNavTab.FAVORITES -> FavoritesRoute
+    VeneraNavTab.SEARCH -> SearchRoute
     VeneraNavTab.EXPLORE -> ExploreRoute
-    VeneraNavTab.SETTINGS -> SettingsRoute
 }
 
 private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
-    VeneraNavTab.SEARCH -> "搜索与发现"
+    VeneraNavTab.HISTORY -> "历史"
     VeneraNavTab.FAVORITES -> "我的收藏"
+    VeneraNavTab.SEARCH -> "搜索与发现"
     VeneraNavTab.EXPLORE -> "探索"
-    VeneraNavTab.SETTINGS -> "设置与偏好"
 }
 
 private fun NavHostController.gotoTab(tab: VeneraNavTab) {
@@ -168,12 +172,14 @@ fun VeneraComposeApp() {
     val currentTab: VeneraNavTab? = when {
         destination == null -> null
         destination.hasRoute(HomeRoute::class) -> VeneraNavTab.HOME
-        destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
+        destination.hasRoute(HistoryRoute::class) -> VeneraNavTab.HISTORY
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
+        destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
         destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
-        destination.hasRoute(SettingsRoute::class) -> VeneraNavTab.SETTINGS
+        // SettingsRoute 不再是主 Tab：作为顶栏齿轮进入的子页（currentTab = null，
+        // 底栏与壳顶栏隐藏），按返回键 / 预测返回退回来源 Tab。
         else -> null
     }
 
@@ -203,7 +209,26 @@ fun VeneraComposeApp() {
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             Scaffold(
                 containerColor = Color.Transparent,
-                topBar = { if (currentTab != null) TopAppBar(title = titleFor(currentTab!!)) },
+                topBar = {
+                    if (currentTab != null) {
+                        TopAppBar(
+                            title = titleFor(currentTab!!),
+                            actions = {
+                                // 低频操作收口：设置从底栏移到顶栏右上角齿轮。
+                                IconButton(onClick = {
+                                    haptic()
+                                    navController.navigate(SettingsRoute)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Settings,
+                                        contentDescription = "设置",
+                                        tint = MiuixTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                },
                 // 不再使用 bottomBar slot：底栏 100% 作为 overlay 承载（见下方 Box）。
                 // 理由：Scaffold 的 bottomBar slot 会把 Bar 高度计入 innerPadding，
                 // 而 Liquid Glass 走 overlay 不计入 —— 这正是两条路径几何不一致的根因。
@@ -273,7 +298,8 @@ fun VeneraComposeApp() {
                             onSelect = ::openComic,
                             onOpenHistory = {
                                 haptic()
-                                navController.navigate(HistoryRoute)
+                                // 历史已是主 Tab：分区头直达 = 切 Tab（不压栈，返回语义不变）。
+                                navController.gotoTab(VeneraNavTab.HISTORY)
                             },
                             onOpenStats = {
                                 haptic()
@@ -316,11 +342,8 @@ fun VeneraComposeApp() {
                         AndroidFavoritesScreen(animatedVisibilityScope = this, onSelect = ::openComic)
                     }
                     composable<HistoryRoute> {
+                        // 主 Tab：底栏常驻，无返回语义。
                         AndroidHistoryScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
                             onSelect = ::openComic,
                         )
                     }
@@ -371,7 +394,12 @@ fun VeneraComposeApp() {
                         )
                     }
                     composable<SettingsRoute> {
+                        // 子页形态：顶栏齿轮进入，返回退回来源主 Tab。
                         AndroidSettingsScreen(
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
                             onNavigateToSourceManage = {
                                 haptic()
                                 navController.navigate(ComicSourceManageRoute)
