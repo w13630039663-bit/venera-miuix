@@ -76,6 +76,72 @@ object ComicUrlMatcher {
             )
         }
 
+        // 5. 禁漫 JMComic:
+        // https://18comic.vip/photo/{id} / 18comic.org/album/{id} / jmcomic.me/album/{id}
+        // 及各镜像域（jmapinode 等）
+        val jmRegex = Regex("""(?:18comic|jmcomic|jmapinode)[^/]+/(?:album|photo)/(\d+)""")
+        val jmMatch = jmRegex.find(trimmed)
+        if (jmMatch != null) {
+            return MatchedComic(
+                sourceKey = "jm",
+                sourceName = "禁漫天堂",
+                comicId = jmMatch.groupValues[1],
+                originalUrl = trimmed
+            )
+        }
+
+        // 6. E-Hentai / ExHentai:
+        // https://e-hentai.org/g/{gid}/{token}
+        val ehRegex = Regex("""(?:e-hentai|exhentai)\.org/g/(\d+)/([a-zA-Z0-9]+)""")
+        val ehMatch = ehRegex.find(trimmed)
+        if (ehMatch != null) {
+            return MatchedComic(
+                sourceKey = "ehentai",
+                sourceName = "E-Hentai",
+                comicId = ehMatch.groupValues[1],
+                originalUrl = trimmed
+            )
+        }
+
+        // 7. NHentai:
+        // https://nhentai.net/g/{id}
+        val nhRegex = Regex("""nhentai\.net/g/(\d+)""")
+        val nhMatch = nhRegex.find(trimmed)
+        if (nhMatch != null) {
+            return MatchedComic(
+                sourceKey = "nhentai",
+                sourceName = "nhentai",
+                comicId = nhMatch.groupValues[1],
+                originalUrl = trimmed
+            )
+        }
+
+        // 8. Wnacg:
+        // https://wnacg.com/photos-index-aid-{id}.html
+        val wnacgRegex = Regex("""wnacg\.[^/]+/photos-(?:index|slide)-aid-(\d+)""")
+        val wnacgMatch = wnacgRegex.find(trimmed)
+        if (wnacgMatch != null) {
+            return MatchedComic(
+                sourceKey = "wnacg",
+                sourceName = "绅士漫画",
+                comicId = wnacgMatch.groupValues[1],
+                originalUrl = trimmed
+            )
+        }
+
+        // 9. Hitomi:
+        // https://hitomi.la/reader/{id}.html 或 /galleries/{id}.html
+        val hitomiRegex = Regex("""hitomi\.[^/]+/(?:reader|galleries)/(\d+)""")
+        val hitomiMatch = hitomiRegex.find(trimmed)
+        if (hitomiMatch != null) {
+            return MatchedComic(
+                sourceKey = "hitomi",
+                sourceName = "Hitomi",
+                comicId = hitomiMatch.groupValues[1],
+                originalUrl = trimmed
+            )
+        }
+
         return null
     }
 }

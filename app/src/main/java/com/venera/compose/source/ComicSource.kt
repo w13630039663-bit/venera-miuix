@@ -148,9 +148,10 @@ interface ComicSource {
         Result.success(true)
 
     /**
-     * 漫画作品点赞
+     * 漫画作品点赞 / 取消点赞（isLike=false 为取消）。
+     * 返回源是否真实支持该操作（未声明 likeComic/like 的源返回 false）。
      */
-    suspend fun likeComic(comicId: String): Result<Boolean> =
+    suspend fun likeComic(comicId: String, isLike: Boolean = true): Result<Boolean> =
         Result.success(true)
 
     /**

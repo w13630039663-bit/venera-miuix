@@ -49,6 +49,37 @@ class JsComicSource(
 
     private val gson = engine.gson
 
+    /**
+     * 源声明的多语言字典（translation['zh_CN'] / translation['zh']），
+     * 惰性提取一次：探索 Tab 名 / 分类分区标题经 [translate] 原生中文化。
+     */
+    private val translationMap: Map<String, String> by lazy { loadTranslationMap() }
+
+    /** 查字典翻译；未命中返回原文。 */
+    fun translate(text: String): String = translationMap[text] ?: text
+
+    private fun loadTranslationMap(): Map<String, String> {
+        return runCatching {
+            val script = """
+                JSON.stringify((function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.translation) return {};
+                    // 优先 zh_CN，退回 zh（对齐官方 parser.dart 的取字典顺序）
+                    var dict = s.translation['zh_CN'] || s.translation['zh'] || {};
+                    return dict;
+                })())
+            """.trimIndent()
+            val raw = engine.evaluate(script)
+            @Suppress("UNCHECKED_CAST")
+            val map = gson.fromJson<Map<String, Any?>>(raw, object : TypeToken<Map<String, Any?>>() {}.type)
+                ?: return@runCatching emptyMap<String, String>()
+            map.entries.mapNotNull { (k, v) ->
+                val value = v?.toString() ?: return@mapNotNull null
+                k to value
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
     override val favoriteData: FavoriteData? by lazy { loadFavoriteData() }
 
     /**
@@ -733,7 +764,8 @@ class JsComicSource(
             val list = envelope["data"] as? List<*> ?: return Result.success(emptyList())
             val pages = list.mapNotNull { item ->
                 val m = item as? Map<*, *> ?: return@mapNotNull null
-                val title = m["title"]?.toString() ?: name
+                // 探索 Tab 名走源字典翻译（如 EH 的 "Non-H" / JM 的 "weekly"）
+                val title = translate(m["title"]?.toString() ?: name)
                 val type = m["type"]?.toString() ?: "multiPageComicList"
                 val idx = (m["pageIndex"] as? Number)?.toInt() ?: 0
                 ExplorePageData(
@@ -907,18 +939,20 @@ class JsComicSource(
                 return Result.success(null)
             }
             val data = envelope["data"] as? Map<*, *> ?: return Result.success(null)
-            val title = data["title"]?.toString() ?: name
+            // 分类页标题同样走字典翻译
+            val title = translate(data["title"]?.toString() ?: name)
             val keyStr = data["key"]?.toString() ?: key
             val enableRanking = data["enableRankingPage"] == true
             val rawParts = (data["parts"] as? List<*>) ?: emptyList<Any>()
             val parts = rawParts.mapNotNull { p ->
                 val pm = p as? Map<*, *> ?: return@mapNotNull null
-                val partName = pm["name"]?.toString() ?: ""
+                // 分区名 / 条目 label 走源字典翻译，分类网格原生中文呈现
+                val partName = translate(pm["name"]?.toString() ?: "")
                 val partType = pm["type"]?.toString() ?: "fixed"
                 val rawItems = (pm["items"] as? List<*>) ?: emptyList<Any>()
                 val items = rawItems.mapNotNull { item ->
                     val im = item as? Map<*, *> ?: return@mapNotNull null
-                    val label = im["label"]?.toString() ?: return@mapNotNull null
+                    val label = translate(im["label"]?.toString() ?: return@mapNotNull null)
                     val tm = im["target"] as? Map<*, *>
                     val targetPage = tm?.get("page")?.toString() ?: "category"
                     @Suppress("UNCHECKED_CAST")
@@ -1213,21 +1247,29 @@ class JsComicSource(
         }
     }
 
-    override suspend fun likeComic(comicId: String): Result<Boolean> {
+    override suspend fun likeComic(comicId: String, isLike: Boolean): Result<Boolean> {
         return try {
+            // 对齐官方 JS 规范：优先 likeComic(id, isLike)，退回 like(id, isLike)；
+            // 两者都未声明的源如实返回 false（UI 不伪造成功）。
             val script = """
                 return (async function() {
                     var s = ComicSource.sources['$key'];
-                    if (s && s.comic && s.comic.like) {
-                        await s.comic.like(${gson.toJson(comicId)});
+                    if (!s || !s.comic) return false;
+                    if (typeof s.comic.likeComic === 'function') {
+                        await s.comic.likeComic(${gson.toJson(comicId)}, $isLike);
+                        return true;
+                    } else if (typeof s.comic.like === 'function') {
+                        await s.comic.like(${gson.toJson(comicId)}, $isLike);
+                        return true;
                     }
-                    return true;
+                    return false;
                 })()
             """.trimIndent()
-            engine.evaluateAsync(script)
-            Result.success(true)
+            val rawJson = engine.evaluateAsync(script)
+            val success = SourcePayloadParser.data(rawJson) == true
+            Result.success(success)
         } catch (e: Exception) {
-            Result.success(true)
+            Result.failure(e)
         }
     }
 

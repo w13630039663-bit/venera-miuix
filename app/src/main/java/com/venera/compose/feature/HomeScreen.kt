@@ -38,6 +38,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
@@ -102,8 +103,15 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val extra by viewModel.uiStateExtra.collectAsStateWithLifecycle()
     val historyList = ui.history
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    // 静默触发一次源更新检测：让可更新角标数据保持实时有效（结果落 availableUpdates 流）
+    LaunchedEffect(Unit) {
+        runCatching { sourceManager.checkUpdates() }
+    }
     val latencyMap by sourceManager.latencyMapFlow.collectAsState()
     val registeredSources by sourceManager.sourcesFlow.collectAsStateWithLifecycle()
+    // 可更新源数量（fileName -> 远端版本号）
+    val availableUpdates by sourceManager.availableUpdates.collectAsStateWithLifecycle()
+    val updateCount = availableUpdates.size
     val installedSources by sourceManager.installedMeta.collectAsStateWithLifecycle()
     val sources = remember(registeredSources, installedSources) { sourceManager.searchTargets() }
     var selectedImgFavType by remember { mutableIntStateOf(0) }
@@ -199,12 +207,35 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             color = tokens.color.textPrimary,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = { onOpenSourceManage() }) {
-                            Icon(
-                                Icons.Outlined.Settings,
-                                contentDescription = "管理源",
-                                tint = tokens.color.textSecondary,
-                            )
+                        // 可更新源数量徽章：>0 时显示橙色角标，点击直达源管理
+                        Box {
+                            IconButton(onClick = { onOpenSourceManage() }) {
+                                Icon(
+                                    Icons.Outlined.Settings,
+                                    contentDescription = "管理源",
+                                    tint = tokens.color.textSecondary,
+                                )
+                            }
+                            if (updateCount > 0) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = StatusColors.Degraded,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(tokens.spacing.space1)
+                                ) {
+                                    Text(
+                                        text = updateCount.toString(),
+                                        fontSize = tokens.type.badge,
+                                        fontWeight = tokens.type.weightBold,
+                                        color = StatusColors.OnBadgeSurface,
+                                        modifier = Modifier.padding(
+                                            horizontal = tokens.spacing.badgeHorizontalPadding,
+                                            vertical = 0.dp,
+                                        )
+                                    )
+                                }
+                            }
                         }
                         IconButton(onClick = { sourceManager.refreshPings() }) {
                             Icon(

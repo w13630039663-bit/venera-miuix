@@ -321,7 +321,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             val src = sourceManager.getSource(key)
             val (fd, logged) = withContext(Dispatchers.IO) {
                 val f = src?.favoriteData
-                f to (f != null && src!!.getAccountInfo().isLogged)
+                f to (f != null && src.getAccountInfo().isLogged)
             }
             if (fd == null || !logged) {
                 _favPanel.update { it.copy(hasNetwork = false, isLoadingNetwork = false) }
@@ -487,17 +487,36 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
     // endregion
 
-    /** 喜欢/点赞漫画 */
+    /** 喜欢/点赞漫画（乐观更新 + 失败回滚） */
     fun toggleLike() {
         val details = _uiState.value.details ?: return
         val key = resolveSourceKey(details.sourceKey)
         val currentLiked = _uiState.value.isLiked
-        val newCount = if (currentLiked) _uiState.value.likesCount - 1 else _uiState.value.likesCount + 1
-        _uiState.update { it.copy(isLiked = !currentLiked, likesCount = newCount.coerceAtLeast(0)) }
+        val newCount = (if (currentLiked) _uiState.value.likesCount - 1 else _uiState.value.likesCount + 1).coerceAtLeast(0)
+        // 1) 乐观更新：先让 UI 即时响应
+        _uiState.update { it.copy(isLiked = !currentLiked, likesCount = newCount) }
 
         viewModelScope.launch {
             val src = sourceManager.getSource(key)
-            src?.likeComic(details.comic.id)
+            val result = src?.likeComic(details.comic.id, isLike = !currentLiked)
+            val supported = result?.getOrDefault(false) == true
+            if (result == null || result.isFailure || !supported) {
+                // 2) 失败 / 源不支持：回滚本地状态并如实提示
+                _uiState.update {
+                    it.copy(isLiked = currentLiked, likesCount = _uiState.value.likesCount.let { c ->
+                        if (currentLiked) c - 1 else c + 1
+                    }.coerceAtLeast(0))
+                }
+                _uiState.update {
+                    it.copy(
+                        error = when {
+                            result == null -> "点赞失败：找不到对应漫画源"
+                            result.isFailure -> "点赞失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
+                            else -> "该源不支持作品点赞"
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -765,7 +784,8 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             // 防盗链头交给图片加载策略。注意动态页（useOnImageLoad）的 pages 是
             // 「图片键」不是 URL，不能按 URL 预发布 —— 真实头由阅读器逐页解析后发布
             pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
-                if (pagesData?.useOnImageLoad != true) ImageHeaderPolicy.publishForUrls(pages, hdrs)
+                val pd = pagesData
+                if (pd != null && !pd.useOnImageLoad) ImageHeaderPolicy.publishForUrls(pages, hdrs)
                 if (comic.coverUrl.isNotEmpty()) ImageHeaderPolicy.publishForUrls(listOf(comic.coverUrl), hdrs)
             }
 

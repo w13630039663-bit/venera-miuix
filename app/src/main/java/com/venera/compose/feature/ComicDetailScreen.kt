@@ -43,6 +43,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
@@ -816,7 +817,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     color = tokens.color.textSecondary
                                 )
                                 Spacer(modifier = Modifier.height(tokens.spacing.space5))
-                                val totalPages = liveDetails?.maxPage ?: 0
+                                val totalPages = liveDetails.maxPage
                                 Surface(
                                     shape = RoundedCornerShape(tokens.shape.medium),
                                     color = tokens.color.primaryContainer.copy(alpha = 0.5f),
@@ -985,10 +986,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(tokens.spacing.space2))
-                                Text(
-                                    text = c.content,
-                                    fontSize = tokens.type.caption,
-                                    color = tokens.color.textSecondary
+                                RichCommentContent(
+                                    content = c.content,
+                                    modifier = Modifier.padding(vertical = 2.dp),
                                 )
                             }
                             HorizontalDivider(
@@ -1091,7 +1091,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 Text(text = c.time.orEmpty(), fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
                             }
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text(text = c.content, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurface)
+                            RichCommentContent(content = c.content)
                             // Missing replyCount means unsupported; an explicit zero still allows replies.
                             if (c.replyCount != null && c.id.isNotBlank() && detailState.commentCapabilities.canLoad) {
                                 TextButton(onClick = { viewModel.openReplies(c) }, enabled = !isSendingComment) {

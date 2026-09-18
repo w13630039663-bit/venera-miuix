@@ -173,16 +173,12 @@ fun ChapterCommentsSheetContent(
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (comment.time != null) {
-                                    Text(text = comment.time ?: "", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                                    Text(text = comment.time, fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
                                 }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = comment.content,
-                                fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.9f),
-                                lineHeight = 17.sp
-                            )
+                            // 富文本渲染：表情图 / <br> 换行 / 标签剥壳
+                            com.venera.compose.components.RichCommentContent(content = comment.content)
                             Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                                 Spacer(modifier = Modifier.weight(1f))
                                 if ((comment.replyCount ?: 0) > 0) {
