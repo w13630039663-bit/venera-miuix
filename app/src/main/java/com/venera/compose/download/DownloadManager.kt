@@ -389,13 +389,6 @@ class DownloadManager private constructor(private val context: Context) {
             val pageFileName = "${(idx + 1).toString().padStart(4, '0')}.jpg"
             val targetFile = File(chapterDir, pageFileName)
 
-            // 如果文件已存在且大小正常，视为已下载
-            if (targetFile.exists() && targetFile.length() > 1024) {
-                downloaded++
-                updateTaskProgress(taskId, downloaded = downloaded, total = totalCount)
-                continue
-            }
-
             // 解析真实 URL（如果源声明了 useOnImageLoad）
             var pageHeaders = chapterPages.headers
             val realUrl = if (chapterPages.useOnImageLoad && source is com.venera.compose.source.js.JsComicSource) {
@@ -416,6 +409,19 @@ class DownloadManager private constructor(private val context: Context) {
                 }
             } else {
                 item
+            }
+
+            // 断点续下判定：文件已存在且大小正常才跳过。
+            // ⚠️ 历史缺陷：旧版本把混淆未还原的原始字节直接落盘，这些坏图 >1KB，
+            // 会被短路跳过导致重试永远无法治愈。因此对「JM 混淆源图片」
+            // 不做存在性跳过 —— 一律重新下载覆盖（落盘前已去混淆），
+            // 历史坏图在下一次重试时自动治愈；非混淆图保持原跳过逻辑。
+            // 判定必须在 realUrl 解析之后（useOnImageLoad 源的 item 是 imageKey，非 URL）。
+            val isScrambledImage = ImagePipelinePolicy.getScrambleNum(realUrl) > 1
+            if (!isScrambledImage && targetFile.exists() && targetFile.length() > 1024) {
+                downloaded++
+                updateTaskProgress(taskId, downloaded = downloaded, total = totalCount)
+                continue
             }
 
             var downloadSuccess = false

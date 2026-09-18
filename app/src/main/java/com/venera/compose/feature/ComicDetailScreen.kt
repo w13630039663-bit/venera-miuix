@@ -1128,9 +1128,17 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     // 批量离线下载对话框 (S6)
     if (showDownloadDialog) {
         val allChs = downloadChapters(liveDetails, detailState.selectedGroupIndex)
+        val downloadManager = com.venera.compose.download.DownloadManager.getInstance(context)
+        val detailSourceKey = viewModel.currentSourceKey()
+        val detailComicId = liveDetails?.comic?.id ?: comic.id
         val isGallery = liveDetails != null && liveDetails.chapters.isEmpty() &&
             liveDetails.chapterGroups.all { it.chapters.isEmpty() }
-        var selectedIds by remember(allChs) { mutableStateOf(allChs.map { it.id }.toSet()) }
+        // 默认仅选中「尚未下载」的章节，避免重复下载已离线内容
+        val undownloadedIds = allChs
+            .filterNot { downloadManager.isChapterDownloaded(detailSourceKey, detailComicId, it.id) }
+            .map { it.id }
+            .toSet()
+        var selectedIds by remember(allChs) { mutableStateOf(undownloadedIds) }
 
         AlertDialog(
             onDismissRequest = { showDownloadDialog = false },
@@ -1142,9 +1150,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 ) {
                     Text(if (isGallery) "下载整本" else "选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     TextButton(onClick = {
-                        selectedIds = if (selectedIds.size == allChs.size) emptySet() else allChs.map { it.id }.toSet()
+                        selectedIds = if (selectedIds.size == undownloadedIds.size) emptySet() else undownloadedIds
                     }) {
-                        Text(if (selectedIds.size == allChs.size) "全不选" else "全选", fontSize = 12.sp)
+                        Text(
+                            if (undownloadedIds.isNotEmpty() && selectedIds.size == undownloadedIds.size) "全不选" else "全选未下载",
+                            fontSize = 12.sp
+                        )
                     }
                 }
             },
@@ -1179,8 +1190,23 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     text = ch.title,
                                     fontSize = 13.sp,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                // 已下载章节：绿色「已下载」徽章（避免重复下载）
+                                if (downloadManager.isChapterDownloaded(detailSourceKey, detailComicId, ch.id)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(tokens.shape.extraSmall),
+                                        color = StatusColors.Healthy.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "已下载",
+                                            color = StatusColors.Healthy,
+                                            fontSize = tokens.type.badge,
+                                            modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

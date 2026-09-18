@@ -4,6 +4,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,7 +67,8 @@ import java.io.File
 fun LocalComicScreen(
     onBack: () -> Unit,
     onOpenLocalSession: (ReaderSession) -> Unit,
-    onNavigateToDownloads: () -> Unit = {}
+    onNavigateToDownloads: () -> Unit = {},
+    onOpenComicDetail: (ComicItem) -> Unit = {}
 ) {
     val context = LocalContext.current
     val tokens = VeneraTokens
@@ -87,6 +90,11 @@ fun LocalComicScreen(
     val failedDownloadTasks = remember(downloadTasks) {
         downloadTasks.filter { it.status == DownloadStatus.FAILED }
     }
+    // ── 多选批量删除状态 ──
+    var isSelectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedComicPaths by remember { mutableStateOf(setOf<String>()) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
     // 源分类过滤："全部" + 书架实际包含的源标签
     var selectedCategory by remember { mutableStateOf("全部") }
     val categories = remember(comics) {
@@ -160,16 +168,70 @@ fun LocalComicScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                Text(
-                    text = "本地离线书架",
-                    fontSize = tokens.type.screenTitle,
-                    fontWeight = tokens.type.weightBold,
-                    color = tokens.color.textPrimary,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                if (isSelectionMode) {
+                    // ── 多选态顶栏：已选计数 + 全选/全不选 + 批量删除 + 退出 ──
+                    Text(
+                        text = "已选 " + selectedComicPaths.size + " 部",
+                        fontSize = tokens.type.screenTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    TextButton(onClick = {
+                        selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
+                            emptySet()
+                        } else {
+                            filteredComics.map { it.rootPath }.toSet()
+                        }
+                    }) {
+                        Text(
+                            text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.primary
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
+                        enabled = selectedComicPaths.isNotEmpty()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "批量删除",
+                            tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled
+                        )
+                    }
+                    IconButton(onClick = {
+                        isSelectionMode = false
+                        selectedComicPaths = emptySet()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "退出多选",
+                            tint = tokens.color.textPrimary
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "本地离线书架",
+                        fontSize = tokens.type.screenTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(onClick = { isSelectionMode = true }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Checklist,
+                            contentDescription = "多选模式",
+                            tint = tokens.color.textPrimary
+                        )
+                    }
+                }
+                if (!isSelectionMode) {
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 Spacer(modifier = Modifier.width(tokens.spacing.space2))
                 // 下载中心入口：带正在下载数量徽章（任务数 > 0 时显示）
                 Box {
@@ -211,6 +273,7 @@ fun LocalComicScreen(
                     Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, tint = tokens.color.onPrimary, modifier = Modifier.size(tokens.spacing.chipIconSize))
                     Spacer(modifier = Modifier.width(tokens.spacing.space1))
                     Text(text = "导入 CBZ", color = tokens.color.onPrimary, fontSize = tokens.type.caption)
+                }
                 }
             }
         }
@@ -282,16 +345,26 @@ fun LocalComicScreen(
                                             LocalComicCard(
                                 comic = comic,
                                 detailed = displayMode.value == "detailed",
+                                isSelected = isSelectionMode && comic.rootPath in selectedComicPaths,
                                 onClick = {
-                                    scope.launch {
-                                        val chapters = localComicManager.getLocalChapters(comic)
-                                        if (chapters.size == 1) {
-                                            // 单章节直接秒开
-                                            openChapterSession(comic, chapters.first(), chapters, onOpenLocalSession)
+                                    if (isSelectionMode) {
+                                        // 多选态：点击切换选中，不触发阅读
+                                        selectedComicPaths = if (comic.rootPath in selectedComicPaths) {
+                                            selectedComicPaths - comic.rootPath
                                         } else {
-                                            // 多章节弹窗选章
-                                            selectedComicForChapters = comic
-                                            comicChapters = chapters
+                                            selectedComicPaths + comic.rootPath
+                                        }
+                                    } else {
+                                        scope.launch {
+                                            val chapters = localComicManager.getLocalChapters(comic)
+                                            if (chapters.size == 1) {
+                                                // 单章节直接秒开
+                                                openChapterSession(comic, chapters.first(), chapters, onOpenLocalSession)
+                                            } else {
+                                                // 多章节弹窗选章
+                                                selectedComicForChapters = comic
+                                                comicChapters = chapters
+                                            }
                                         }
                                     }
                                 },
@@ -327,11 +400,73 @@ fun LocalComicScreen(
                                         Toast.makeText(context, "已删除本地漫画", Toast.LENGTH_SHORT).show()
                                         refresh()
                                     }
-                                }
+                                },
+                                onOpenComicDetail = if (!comic.isExternal && comic.sourceName.isNotBlank() && comic.sourceName != "local") {
+                                    { ->
+                                        onOpenComicDetail(
+                                            ComicItem(
+                                                id = comic.id,
+                                                title = comic.title,
+                                                coverUrl = comic.coverPath,
+                                                author = "",
+                                                sourceName = comic.sourceName,
+                                            )
+                                        )
+                                    }
+                                } else null
                                             )
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 批量删除确认对话框（VeneraCard 风格）
+            if (showDeleteConfirmDialog) {
+                androidx.compose.ui.window.Dialog(onDismissRequest = { showDeleteConfirmDialog = false }) {
+                    VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
+                        Column(modifier = Modifier.padding(tokens.spacing.space9)) {
+                            Text(
+                                text = "批量删除",
+                                fontSize = tokens.type.itemTitle,
+                                fontWeight = tokens.type.weightBold,
+                                color = tokens.color.textPrimary,
+                            )
+                            Spacer(modifier = Modifier.height(tokens.spacing.space5))
+                            Text(
+                                text = "确定删除选中的 " + selectedComicPaths.size + " 部漫画及所有离线文件吗？此操作不可逆",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.textSecondary,
+                            )
+                            Spacer(modifier = Modifier.height(tokens.spacing.space7))
+                            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)) {
+                                top.yukonga.miuix.kmp.basic.Button(
+                                    onClick = { showDeleteConfirmDialog = false },
+                                    modifier = Modifier.weight(1f),
+                                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
+                                        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+                                    ),
+                                ) { Text("取消", color = tokens.color.textPrimary) }
+                                top.yukonga.miuix.kmp.basic.Button(
+                                    onClick = {
+                                        showDeleteConfirmDialog = false
+                                        scope.launch {
+                                            val targets = comics.filter { it.rootPath in selectedComicPaths }
+                                            targets.forEach { localComicManager.deleteLocalComic(it) }
+                                            Toast.makeText(context, "已删除 " + targets.size + " 部本地漫画", Toast.LENGTH_SHORT).show()
+                                            selectedComicPaths = emptySet()
+                                            isSelectionMode = false
+                                            refresh()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
+                                        color = StatusColors.Failing
+                                    ),
+                                ) { Text("删除", color = StatusColors.OnBadgeSurface) }
                             }
                         }
                     }
@@ -468,9 +603,11 @@ private fun openChapterSession(
 fun LocalComicCard(
     comic: LocalComic,
     detailed: Boolean,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onExportCbz: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenComicDetail: (() -> Unit)? = null
 ) {
     val tokens = VeneraTokens
     var showMenu by remember { mutableStateOf(false) }
@@ -479,7 +616,8 @@ fun LocalComicCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
     ) {
-        ComicCardLayout(
+        Box {
+            ComicCardLayout(
             detailed = detailed,
             modifier = Modifier.padding(tokens.spacing.cardContentPadding),
             cover = {
@@ -515,6 +653,19 @@ fun LocalComicCard(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            // 本地导入/外部归档无源可跳，隐藏在线详情入口
+                            if (onOpenComicDetail != null) {
+                                DropdownMenuItem(
+                                    text = { Text("查看在线详情") },
+                                    onClick = {
+                                        showMenu = false
+                                        onOpenComicDetail?.invoke()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.Language, contentDescription = null)
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("导出标准 CBZ") },
                                 onClick = {
@@ -582,6 +733,34 @@ fun LocalComicCard(
                 }
             }
         )
+
+            // 多选态选中反馈：主色边框高亮 + 左上角勾选框
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .border(
+                            width = 2.dp,
+                            color = tokens.color.primary,
+                            shape = RoundedCornerShape(tokens.shape.card),
+                        ),
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = tokens.color.primary,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(tokens.spacing.space2)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "已选中",
+                        tint = tokens.color.onPrimary,
+                        modifier = Modifier.padding(tokens.spacing.space1)
+                    )
+                }
+            }
+        }
     }
 }
 

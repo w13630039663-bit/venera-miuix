@@ -1714,11 +1714,42 @@ private fun ReaderSinglePageItem(
                 }
             }
             is ComicPageSource.LocalFile -> {
+                // 本地文件同样配齐加载占位与失败提示：避免磁盘卡顿/文件损坏时整屏塌陷白屏
                 SubcomposeAsyncImage(
                     model = page.file,
                     contentDescription = "第 ${index + 1} 页",
                     colorFilter = colorFilter,
-                    modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp)
+                                .background(StatusColors.BadgeSurface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = MiuixTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp),
+                                strokeWidth = 3.dp
+                            )
+                        }
+                    },
+                    error = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp)
+                                .background(StatusColors.BadgeSurface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "第 ${index + 1} 页读取失败",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 12.sp
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                     contentScale = contentScale
                 )
             }

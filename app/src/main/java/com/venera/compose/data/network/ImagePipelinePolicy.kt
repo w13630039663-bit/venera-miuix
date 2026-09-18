@@ -53,13 +53,19 @@ object ImagePipelinePolicy {
     private fun isJmPhotoUrl(url: String): Boolean {
         if (url.endsWith(".gif", ignoreCase = true)) return false
         val lower = url.lowercase()
-        val isJmDomain = lower.contains("jmapinodeudzn.net") ||
+        val hasPhotoPath = lower.contains("/media/photos/")
+        val isJmDomain = lower.contains("jmapinode") ||
+                lower.contains("jmapic") ||
                 lower.contains("18comic") ||
                 lower.contains("cdntwice.org") ||
                 lower.contains("cdnsha.org") ||
                 lower.contains("cdnaspa.cc") ||
-                lower.contains("cdnntr.cc")
-        return isJmDomain && lower.contains("/media/photos/")
+                lower.contains("cdnntr.cc") ||
+                lower.contains("asjmapic")
+        // JM CDN 动态分流节点（cdn-msp.jmapic.net 等）域名难以穷举：
+        // 只要路径是 /media/photos/ 且域名命中任一已知 JM 段，或显式带 cdn-msp 前缀，
+        // 一律按禁漫混淆图片处理（分块数再由 epId 算法精确判定，误判代价仅一次位运算）。
+        return hasPhotoPath && (isJmDomain || lower.contains("cdn-msp"))
     }
 
     /**

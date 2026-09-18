@@ -468,6 +468,11 @@ fun VeneraComposeApp() {
                             onNavigateToDownloads = {
                                 haptic()
                                 navController.navigate(DownloadRoute)
+                            },
+                            onOpenComicDetail = { item ->
+                                haptic()
+                                shell.selectedComic = item
+                                navController.navigate(DetailRoute(comicId = item.id, sourceName = item.sourceName))
                             }
                         )
                     }
