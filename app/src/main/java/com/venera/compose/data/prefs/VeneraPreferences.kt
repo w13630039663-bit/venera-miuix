@@ -115,6 +115,22 @@ class VeneraPreferences private constructor(context: Context) {
         _comicDisplayMode.value = mode
     }
 
+    // ---- 本地收藏夹排序（名称 / 时间 / 自定义） ----
+
+    /**
+     * 本地收藏列表排序规则（存 [FavoriteSortOrder] 的枚举名）。
+     * 默认「最新收藏」，与官方收藏页首次进入的观感一致。
+     */
+    private val _favoriteSortOrder = MutableStateFlow(
+        prefs.getString(KEY_FAVORITE_SORT_ORDER, "TIME_DESC") ?: "TIME_DESC"
+    )
+    val favoriteSortOrder: StateFlow<String> = _favoriteSortOrder.asStateFlow()
+
+    fun setFavoriteSortOrder(order: String) {
+        prefs.edit { putString(KEY_FAVORITE_SORT_ORDER, order) }
+        _favoriteSortOrder.value = order
+    }
+
     // 写入方法
     fun setDefaultReadingMode(mode: String) {
         prefs.edit { putString(KEY_DEFAULT_READING_MODE, mode) }
@@ -230,6 +246,7 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_PROXY_HOST = "pref_proxy_host"
         private const val KEY_PROXY_PORT = "pref_proxy_port"
         private const val KEY_COMIC_DISPLAY_MODE = "pref_comic_display_mode"
+        private const val KEY_FAVORITE_SORT_ORDER = "pref_favorite_sort_order"
 
         /** 双列封面网格（默认）。 */
         const val MODE_BRIEF = "brief"

@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.data.prefs.VeneraPreferences
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -20,6 +21,20 @@ import kotlinx.coroutines.launch
 const val LOCAL_ALL_FOLDER = "^_^[%local_all%]^_^"
 
 /**
+ * 本地收藏列表的排序规则。
+ *
+ * [CUSTOM] 走数据库的 `display_order`（用户拖动过的顺序，也是官方的默认语义），
+ * 其余四种是只读视图层的排序，不写库。
+ */
+enum class FavoriteSortOrder(val label: String) {
+    TIME_DESC("最新收藏"),
+    TIME_ASC("最早收藏"),
+    NAME_ASC("名称 (A-Z)"),
+    NAME_DESC("名称 (Z-A)"),
+    CUSTOM("自定义排序")
+}
+
+/**
  * 收藏页 ViewModel（S5-3）。
  *
  * 数据全部来自 [LocalFavoritesManager]，ViewModel 只负责：
@@ -28,6 +43,7 @@ const val LOCAL_ALL_FOLDER = "^_^[%local_all%]^_^"
 class FavoritesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val manager = LocalFavoritesManager.getInstance(application)
+    private val prefs = VeneraPreferences.getInstance(application)
 
     val folders: StateFlow<List<String>> = manager.folders
     val counts: StateFlow<Map<String, Int>> = manager.counts
@@ -40,6 +56,14 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
         private set
 
     var keyword: String by mutableStateOf("")
+        private set
+
+    /** 当前排序规则（持久化于偏好，跨会话保留）。 */
+    var sortOrder: FavoriteSortOrder by mutableStateOf(
+        runCatching {
+            FavoriteSortOrder.valueOf(prefs.favoriteSortOrder.value)
+        }.getOrDefault(FavoriteSortOrder.TIME_DESC)
+    )
         private set
 
     var isLoading: Boolean by mutableStateOf(false)
@@ -83,13 +107,40 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
     fun loadComics() {
         viewModelScope.launch {
             isLoading = true
-            comics = if (keyword.isBlank()) {
+            val loaded = if (keyword.isBlank()) {
                 if (currentFolder == LOCAL_ALL_FOLDER) manager.getAllComics() else manager.getFolderComics(currentFolder)
             } else {
                 if (currentFolder == LOCAL_ALL_FOLDER) manager.search(keyword) else manager.searchInFolder(currentFolder, keyword)
             }
+            // 统一经排序管线后再赋值：切换排序 / 刷新 / 搜索都走同一条路径
+            comics = applySorting(loaded)
             isLoading = false
         }
+    }
+
+    /**
+     * 切换排序规则：立即重排当前列表并写入偏好持久化。
+     */
+    fun updateSortOrder(order: FavoriteSortOrder) {
+        if (sortOrder == order) return
+        sortOrder = order
+        prefs.setFavoriteSortOrder(order.name)
+        comics = applySorting(comics)
+    }
+
+    /**
+     * 排序管线（纯函数，不写库）。
+     *
+     * - 时间：`time` 是 `yyyy-MM-dd HH:mm:ss` 定长字符串，字典序等价于时间序，可直接比较；
+     * - 名称：忽略大小写比较，中文按 Unicode 序（与官方 `compareTo` 行为一致）；
+     * - 自定义：走 `displayOrder`（拖动排序结果）。
+     */
+    private fun applySorting(items: List<FavoriteItem>): List<FavoriteItem> = when (sortOrder) {
+        FavoriteSortOrder.TIME_DESC -> items.sortedByDescending { it.time }
+        FavoriteSortOrder.TIME_ASC -> items.sortedBy { it.time }
+        FavoriteSortOrder.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+        FavoriteSortOrder.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+        FavoriteSortOrder.CUSTOM -> items.sortedBy { it.displayOrder }
     }
 
     // region ---- 多选 ----

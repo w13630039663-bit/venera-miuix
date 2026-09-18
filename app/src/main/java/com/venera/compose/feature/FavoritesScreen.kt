@@ -42,6 +42,8 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -52,6 +54,8 @@ import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -142,6 +146,8 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     onSelectFolder = { vm.selectFolder(it) },
                     onSearchClick = { searchMode = !searchMode },
                     onMenuClick = { showMenu = true },
+                    sortOrder = vm.sortOrder,
+                    onSortOrderChange = { vm.updateSortOrder(it) },
                     trailing = { ComicLayoutToggleButton(displayMode.value) { displayMode.value = it } },
                 )
 
@@ -310,9 +316,14 @@ private fun FolderChipRow(
     onSelectFolder: (String) -> Unit,
     onSearchClick: () -> Unit,
     onMenuClick: () -> Unit,
+    /** 当前排序规则（供排序菜单高亮）。 */
+    sortOrder: FavoriteSortOrder,
+    onSortOrderChange: (FavoriteSortOrder) -> Unit,
     /** 行尾额外操作槽（如单双列切换按钮），与 chips 同行避免多余空行。 */
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
+    var showSortMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -345,12 +356,52 @@ private fun FolderChipRow(
             tint = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
             modifier = Modifier.size(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipIconSize).clickable { onSearchClick() },
         )
-        Spacer(modifier = Modifier.width(com.venera.compose.ui.tokens.VeneraTokens.spacing.space6))
+        Spacer(modifier = Modifier.width(tokens.spacing.space6))
+        // 排序入口：名称 / 时间 / 自定义排序（当前项主色勾选）
+        Box {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Sort,
+                contentDescription = "排序方式",
+                tint = if (sortOrder == FavoriteSortOrder.CUSTOM) tokens.color.textSecondary else tokens.color.primary,
+                modifier = Modifier.size(tokens.spacing.chipIconSize).clickable { showSortMenu = true },
+            )
+            DropdownMenu(
+                expanded = showSortMenu,
+                onDismissRequest = { showSortMenu = false },
+            ) {
+                FavoriteSortOrder.entries.forEach { order ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = order.label,
+                                fontSize = tokens.type.body,
+                                color = if (order == sortOrder) tokens.color.primary else tokens.color.textPrimary,
+                            )
+                        },
+                        trailingIcon = if (order == sortOrder) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "当前排序",
+                                    tint = tokens.color.primary,
+                                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                                )
+                            }
+                        } else null,
+                        onClick = {
+                            showSortMenu = false
+                            onSortOrderChange(order)
+                        },
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.width(tokens.spacing.space6))
         Icon(
             imageVector = Icons.Filled.MoreVert,
             contentDescription = "收藏夹操作",
-            tint = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
-            modifier = Modifier.size(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipIconSize).clickable { onMenuClick() },
+            tint = tokens.color.textSecondary,
+            modifier = Modifier.size(tokens.spacing.chipIconSize).clickable { onMenuClick() },
         )
         trailing?.invoke()
     }

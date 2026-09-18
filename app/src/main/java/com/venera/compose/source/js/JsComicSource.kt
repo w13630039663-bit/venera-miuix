@@ -1273,6 +1273,33 @@ class JsComicSource(
         }
     }
 
+    /**
+     * 标签联想被点击时的源级回调（官方 `search.onTagSuggestionSelected`）。
+     *
+     * 部分源需要把「命名空间 + 标签」转换成源自己的检索语法
+     * （如 Hitomi 的 `series:xxx` / `type:xxx`）；返回 null 表示该源没有专用规则，
+     * 由 App 侧退化为「把标签作为搜索条件加入」。
+     */
+    suspend fun onTagSuggestionSelected(namespace: String, tag: String): String? {
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s) return null;
+                    var fn = (s.search && s.search.onTagSuggestionSelected) || s.onTagSuggestionSelected;
+                    if (typeof fn === 'function') {
+                        return await fn(${gson.toJson(namespace)}, ${gson.toJson(tag)});
+                    }
+                    return null;
+                })()
+            """.trimIndent()
+            val rawJson = engine.evaluateAsync(script)
+            SourcePayloadParser.data(rawJson)?.toString()?.takeIf { it.isNotBlank() && it != "null" }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override fun getSettings(): List<SourceSettingItem> {
         return try {
             val script = """

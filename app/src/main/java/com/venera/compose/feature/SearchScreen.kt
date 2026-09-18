@@ -248,16 +248,31 @@ fun SharedTransitionScope.AndroidSearchScreen(
 
             if (ui.tagSuggestions.isNotEmpty()) {
                 item(key = "tag-suggest") {
-                    Column {
-                        Text(
-                            text = "标签联想",
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.textSecondary,
-                            modifier = Modifier.padding(bottom = tokens.spacing.space2),
-                        )
-                        FlowChips {
-                            ui.tagSuggestions.forEach { (raw, label) ->
-                                VeneraTagChip(text = label, onClick = { viewModel.addTag(raw, label) })
+                    // 联想面板：轻量底色 + 圆角，紧贴搜索框下方（吸顶感）
+                    androidx.compose.material3.Surface(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(tokens.shape.medium),
+                        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.padding(tokens.spacing.space4)) {
+                            Text(
+                                text = "标签联想",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.textSecondary,
+                                modifier = Modifier.padding(bottom = tokens.spacing.space2),
+                            )
+                            FlowChips {
+                                ui.tagSuggestions.forEach { (raw, label) ->
+                                    // 有中文翻译时以「中文 (原文)」呈现，语义清晰；
+                                    // 无翻译则直接用原文。namespace 交给源级回调解析。
+                                    val display = if (label.isNotBlank() && !label.equals(raw, ignoreCase = true)) {
+                                        label + " (" + raw + ")"
+                                    } else raw
+                                    VeneraTagChip(
+                                        text = display,
+                                        onClick = { viewModel.selectTagSuggestion(raw = raw, label = label, namespace = "") },
+                                    )
+                                }
                             }
                         }
                     }
@@ -705,7 +720,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
                 // 单源失败只影响该源，不把整页拖进错误态。
                 when {
                     event.error != null -> VeneraEmptyView(
-                        message = event.error ?: "该源暂不可用",
+                        message = event.error,
                         actionText = "重试",
                         onAction = onRetry,
                     )

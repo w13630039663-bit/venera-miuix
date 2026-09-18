@@ -94,6 +94,37 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         search(_uiState.value.query)
     }
 
+    /**
+     * 点击联想标签：优先走源级 `onTagSuggestionSelected` 专用转换规则，
+     * 源未声明（返回 null/空）时退化为「标签作为检索条件加入」。
+     */
+    fun selectTagSuggestion(raw: String, label: String, namespace: String = "") {
+        viewModelScope.launch {
+            val currentKey = _uiState.value.selectedSourceKey
+            val source = if (currentKey != KEY_ALL) {
+                sourceManager.getSource(currentKey) as? com.venera.compose.source.js.JsComicSource
+            } else null
+            val mappedKeyword = source?.onTagSuggestionSelected(namespace, raw)
+            if (!mappedKeyword.isNullOrBlank()) {
+                // 源提供了专用转换规则（如 Hitomi 的 "series:xxx" / "type:xxx"）：
+                // 直接把转换结果作为查询词并立刻检索。
+                _uiState.update {
+                    it.copy(
+                        query = mappedKeyword,
+                        tagSuggestions = emptyList(),
+                        matchedUrlComic = null,
+                        results = emptyList(),
+                        aggregatedResults = emptyMap(),
+                        hasSearched = false,
+                    )
+                }
+                search(mappedKeyword)
+            } else {
+                addTag(raw = raw, label = label, namespace = namespace)
+            }
+        }
+    }
+
     fun removeTag(index: Int) {
         _uiState.update { it.copy(tags = it.tags.filterIndexed { i, _ -> i != index }) }
         if (_uiState.value.query.isNotBlank() || _uiState.value.tags.isNotEmpty()) search(_uiState.value.query)
