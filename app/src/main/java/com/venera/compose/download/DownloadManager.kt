@@ -411,14 +411,17 @@ class DownloadManager private constructor(private val context: Context) {
                 item
             }
 
-            // 断点续下判定：文件已存在且大小正常才跳过。
-            // ⚠️ 历史缺陷：旧版本把混淆未还原的原始字节直接落盘，这些坏图 >1KB，
-            // 会被短路跳过导致重试永远无法治愈。因此对「JM 混淆源图片」
-            // 不做存在性跳过 —— 一律重新下载覆盖（落盘前已去混淆），
-            // 历史坏图在下一次重试时自动治愈；非混淆图保持原跳过逻辑。
+            // 断点续下判定：文件已存在且**内容确实是图片**才跳过。
+            // ⚠️ 历史缺陷两连：①旧版本把混淆未还原的原始字节落盘；②显式 Accept-Encoding
+            // 导致 OkHttp 关闭透明解压，落盘的是 Brotli/GZIP 压缩包 —— 两类坏图都 >1KB，
+            // 会被大小检查短路跳过，重试永远无法治愈。
+            // 修复：跳过前读取文件头做魔数校验，非图片一律重新下载覆盖；
+            // JM 混淆图恒定不跳过（落盘前已去混淆，重下即治愈历史坏图）。
             // 判定必须在 realUrl 解析之后（useOnImageLoad 源的 item 是 imageKey，非 URL）。
             val isScrambledImage = ImagePipelinePolicy.getScrambleNum(realUrl) > 1
-            if (!isScrambledImage && targetFile.exists() && targetFile.length() > 1024) {
+            val existingValid = targetFile.exists() && targetFile.length() > 1024 &&
+                runCatching { isValidImageBytes(targetFile.readBytes()) }.getOrDefault(false)
+            if (!isScrambledImage && existingValid) {
                 downloaded++
                 updateTaskProgress(taskId, downloaded = downloaded, total = totalCount)
                 continue
@@ -464,9 +467,18 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     private fun downloadSingleImage(url: String, extraHeaders: Map<String, String>, targetFile: File): Long {
-        val headers = ImageHeaderPolicy.headersFor(url) + extraHeaders
+        // 关键修复：绝不能向 OkHttp 传入显式 Accept-Encoding（禁漫源 JS 的 getImgHeaders
+        // 携带 "gzip, deflate, br, zstd"），否则 OkHttp 会关闭自动透明解压，
+        // body.byteStream() 拿到的是原始 Brotli/GZIP 压缩包，BitmapFactory 无法解码，
+        // 落盘全变「读取失败」的坏图。剥离后 OkHttp 自动加 Accept-Encoding: gzip
+        // 并透明解压，拿到的是真实图片字节。
+        // 过滤放在**合并之后**：ImageHeaderPolicy（JS 源 publish 的防盗链头）与
+        // extraHeaders（resolveImageLoadingConfig 返回的头）两条路都可能携带
+        // Accept-Encoding，只过滤单路会漏。
+        val mergedHeaders = (ImageHeaderPolicy.headersFor(url) + extraHeaders)
+            .filterKeys { !it.equals("Accept-Encoding", ignoreCase = true) }
         val reqBuilder = Request.Builder().url(url)
-        headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+        mergedHeaders.forEach { (k, v) -> reqBuilder.header(k, v) }
 
         val tmpFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
         val response = networkClient.okHttpClient.newCall(reqBuilder.build()).execute()
@@ -482,6 +494,12 @@ class DownloadManager private constructor(private val context: Context) {
         val rawBytes = body.byteStream().use { it.readBytes() }
         response.close()
         if (rawBytes.isEmpty()) throw IOException("Empty image body: $url")
+
+        // 校验真实图片魔数（JPEG/PNG/GIF/WebP）：防范代理 403 HTML 页、
+        // 压缩残留或任何非图片数据被当图落盘 —— 校验失败即抛错走重试。
+        if (!isValidImageBytes(rawBytes)) {
+            throw IOException("Invalid image content received (length=${rawBytes.size})")
+        }
 
         val scrambleNum = ImagePipelinePolicy.getScrambleNum(url)
         val finalBytes = if (scrambleNum > 1) {
@@ -499,6 +517,21 @@ class DownloadManager private constructor(private val context: Context) {
             tmpFile.delete()
         }
         return finalBytes.size.toLong()
+    }
+
+    /** 校验是否为合法的图片数据头（JPEG / PNG / WebP / GIF）。 */
+    private fun isValidImageBytes(bytes: ByteArray): Boolean {
+        if (bytes.size < 12) return false
+        // JPEG: FF D8 FF
+        if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) return true
+        // PNG: 89 50 4E 47
+        if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()) return true
+        // GIF: 47 49 46 38
+        if (bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x38.toByte()) return true
+        // WebP: RIFF....WEBP
+        if (bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+            bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() && bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte()) return true
+        return false
     }
 
     private fun formatSpeed(bytesPerSec: Float): String {
