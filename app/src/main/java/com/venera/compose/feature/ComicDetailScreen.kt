@@ -1739,7 +1739,8 @@ private fun DetailTopBarBackdrop(
                         blurRadius = 10f,
                         colors = BlurDefaults.blurColors(
                             blendColors = listOf(
-                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.3f)),
+                                // 与 VeneraTopAppBar 同步：轻补底保文字对比，玻璃色交给采样层氛围光。
+                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.16f)),
                             ),
                         ),
                     )

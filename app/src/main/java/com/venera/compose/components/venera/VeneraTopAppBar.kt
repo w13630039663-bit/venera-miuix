@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.drawVeneraAmbient
+import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
@@ -92,7 +94,10 @@ fun VeneraTopAppBar(
                         blurRadius = 10f,
                         colors = BlurDefaults.blurColors(
                             blendColors = listOf(
-                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.3f)),
+                                // 低强度补底：只负责提升文字对比，不再把玻璃推向白色。
+                                // 泛白的主因曾是采样层缺氛围光（见 rememberTopBarBackdrop），
+                                // 修掉后这里只需要很轻的一层。
+                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.16f)),
                             ),
                         ),
                     ),
@@ -140,14 +145,27 @@ fun VeneraTopAppBar(
  * 带有底色保护与平台着色器能力检测的 Backdrop 采样源。
  *
  * 1. 运行时熔断：若硬件/平台不支持 RuntimeShader (Android < API 33) 或主动禁用模糊，返回 null；
- * 2. 底色注入：在 onDraw 最底层绘制 surfaceColor，确保采样源在透明区域有不透明背景支撑，杜绝 Skia 高斯模糊边缘采样透明导致的暗黑伪影与噪点。
+ * 2. 氛围光注入：采样层必须复刻 [com.venera.compose.components.drawVeneraAmbient] 的
+ *    页面背景（surface 底色 + primary/secondary 取色光斑 + 浅色压暗）。
+ *    毛玻璃模糊的是**采样层**而非屏幕像素——若采样层只铺纯 surface，玻璃会比
+ *    实际页面背景偏白，与 MD3 动态取色脱节（「模糊玻璃变白」的用户报告根因）。
  */
 @Composable
 fun rememberTopBarBackdrop(enableBlur: Boolean = true): LayerBackdrop? {
     if (!enableBlur || !isRuntimeShaderSupported()) return null
+    val isDark = LocalVeneraDarkTheme.current
+    val primary = MiuixTheme.colorScheme.primary
+    val secondary = MiuixTheme.colorScheme.tertiaryContainer.let {
+        if (it != Color.Unspecified) it else Color(0xFF6750A4)
+    }
     val surfaceColor = MiuixTheme.colorScheme.surface
     return rememberLayerBackdrop {
-        drawRect(surfaceColor)
+        drawVeneraAmbient(
+            primary = primary,
+            secondary = secondary,
+            surface = surfaceColor,
+            isDark = isDark,
+        )
         drawContent()
     }
 }
