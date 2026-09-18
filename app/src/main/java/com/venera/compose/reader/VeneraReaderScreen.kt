@@ -25,13 +25,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +47,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -79,6 +83,7 @@ import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
@@ -162,6 +167,11 @@ private fun ReaderSessionContent(
 
     // 控制浮层显隐
     var isControlsVisible by rememberSaveable { mutableStateOf(false) }
+
+    // ── Auto-Scroll 自动巡航（Kotatsu 特色，仅条漫连续流生效）──
+    // 播放中按 px/s 匀速下滑；触碰屏幕/手动滑动即暂停。速度不持久化：巡航是临时态。
+    var isAutoScrolling by remember { mutableStateOf(false) }
+    var scrollSpeed by remember { mutableFloatStateOf(60f) }
 
     // 弹窗状态
     var activePanel by rememberSaveable { mutableStateOf(ReaderPanel.NONE) }
@@ -295,6 +305,8 @@ private fun ReaderSessionContent(
     // 动态章节加载与切换
     fun switchToChapter(newChapterIndex: Int, initialPage: Int = 0) {
         if (isChapterLoading || newChapterIndex !in chaptersState.indices) return
+        // 换章即退出自动巡航（新章节从页首开始，续播语义不成立）
+        isAutoScrolling = false
         val targetCh = chaptersState[newChapterIndex]
         if (targetCh.isLoaded && targetCh.pages.isNotEmpty()) {
             currentChapterIndex = newChapterIndex
@@ -470,6 +482,39 @@ private fun ReaderSessionContent(
         }
     }
 
+    // Auto-Scroll 巡航协程：withFrameNanos 逐帧推进 scrollBy(speed * dt)，
+    // 帧率无关（60/90/120Hz 屏速度一致）；暂停/模式切走/换章自动停。
+    LaunchedEffect(isAutoScrolling, readingMode) {
+        if (!isAutoScrolling) return@LaunchedEffect
+        if (readingMode != ReaderReadingMode.VERTICAL_CONTINUOUS) {
+            isAutoScrolling = false
+            return@LaunchedEffect
+        }
+        var lastFrame = 0L
+        while (isActive) {
+            withFrameNanos { now ->
+                val dt = if (lastFrame == 0L) 0f else (now - lastFrame) / 1_000_000_000f
+                lastFrame = now
+                dt
+            }.let { dt ->
+                if (dt > 0f) verticalListState.scrollBy(scrollSpeed * dt)
+            }
+        }
+    }
+
+    // 用户触碰屏幕 → 自动暂停巡航（Kotatsu 语义：人一介入就交还控制权）。
+    // 用 awaitFirstDown(requireUnconsumed = false) 纯被动观察：不消费事件，
+    // 不干扰 Telephoto 缩放/翻页手势；触摸按下（含拖动起点）即暂停。
+    // 注意不能用 isScrollInProgress 判定：巡航自己的 scrollBy 每帧也会短暂置位它。
+    val pauseAutoScrollOnTouch = Modifier.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitFirstDown(requireUnconsumed = false)
+                isAutoScrolling = false
+            }
+        }
+    }
+
     // 当前显示的图片源
     val currentImageSource = currentChapter.pages.getOrNull(currentPageIndex)
 
@@ -512,6 +557,7 @@ private fun ReaderSessionContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(pauseAutoScrollOnTouch)
                 .pointerInput(Unit) {
                     // Only unconsumed taps reach here; Telephoto owns its own single/double taps.
                     detectTapGestures(onTap = { offset -> onReaderTap(offset.x / size.width.coerceAtLeast(1)) })
@@ -637,7 +683,7 @@ private fun ReaderSessionContent(
             }
         }
 
-        // ==================== 顶部悬浮控制栏 ====================
+        // ==================== 顶部悬浮胶囊岛（Floating Pill Island）====================
         AnimatedVisibility(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { -it },
@@ -647,13 +693,17 @@ private fun ReaderSessionContent(
                 alpha = 1f - controlsBack.progress
             }
         ) {
-            // HUD 半透明底板：统一走 BadgeSurface 语义（固定深色、压任何画面可读）
+            // 四边留白悬浮药丸：不再是贴顶直角黑条。shadow 提供浮起感，
+            // 24dp 大圆角 + 92% BadgeSurface + 微光描边外框。
             Surface(
-                color = StatusColors.BadgeSurface,
-                shape = RoundedCornerShape(bottomStart = tokens.shape.extraLarge, bottomEnd = tokens.shape.extraLarge),
+                color = StatusColors.BadgeSurface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(24.dp),
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
                     .statusBarsPadding()
+                    .fillMaxWidth()
+                    .shadow(12.dp, RoundedCornerShape(24.dp))
+                    .border(0.5.dp, StatusColors.OnBadgeSurface.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
             ) {
                 Row(
                     modifier = Modifier
@@ -725,7 +775,7 @@ private fun ReaderSessionContent(
             }
         }
 
-        // ==================== 底部悬浮控制栏 ====================
+        // ==================== 底部悬浮控制岛（Floating Control Island）====================
         AnimatedVisibility(
             visible = isControlsVisible,
             enter = fadeIn() + slideInVertically { it },
@@ -735,52 +785,28 @@ private fun ReaderSessionContent(
                 alpha = 1f - controlsBack.progress
             }
         ) {
+            // 底部居中悬浮岛：16/12dp 四边留白 + 28dp 大圆角 + 16dp 阴影 + 微光描边。
+            // 两行结构：上一话/Slider/下一话 + 功能键行（自动播放/目录/存图/设置）。
             Surface(
-                color = StatusColors.BadgeSurface,
-                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge),
+                color = StatusColors.BadgeSurface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(28.dp),
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .navigationBarsPadding()
+                    .fillMaxWidth()
+                    .shadow(16.dp, RoundedCornerShape(28.dp))
+                    .border(0.5.dp, StatusColors.OnBadgeSurface.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = tokens.spacing.space9, vertical = tokens.spacing.space7),
+                        .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 页码气泡
-                    Text(
-                        text = "${currentPageIndex + 1} / ${currentChapter.pages.size.coerceAtLeast(1)}",
-                        color = StatusColors.OnBadgeSurface,
-                        fontSize = tokens.type.body,
-                        fontWeight = tokens.type.weightBold
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // 进度滑块
-                    Slider(
-                        value = currentPageIndex.toFloat(),
-                        onValueChange = { targetPage ->
-                            jumpToPage(targetPage.toInt())
-                        },
-                        valueRange = 0f..(currentChapter.pages.size - 1).coerceAtLeast(1).toFloat(),
-                        steps = (currentChapter.pages.size - 2).coerceAtLeast(0),
-                        colors = SliderDefaults.colors(
-                            thumbColor = tokens.color.primary,
-                            activeTrackColor = tokens.color.primary,
-                            inactiveTrackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.25f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // 窄屏固定分成两行，避免末尾设置按钮被八个操作挤出屏幕。
-                    FlowRow(
+                    // ── 第一行：上一话 | Slider（页码气泡浮于其上） | 下一话 ──
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        maxItemsInEachRow = 4
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         // 上一话
                         Surface(
@@ -792,66 +818,43 @@ private fun ReaderSessionContent(
                             }
                         ) {
                             Text(
-                                text = "⏮ 上一话",
+                                text = "⏮",
                                 color = if (currentChapterIndex > 0) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
-                                fontSize = tokens.type.caption,
-                                modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space4)
+                                fontSize = tokens.type.body,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.space3, vertical = tokens.spacing.space2)
                             )
                         }
 
-                        // 目录抽屉
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            activePanel = ReaderPanel.CHAPTERS
-                        }) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "章节列表", tint = StatusColors.OnBadgeSurface)
-                        }
+                        Spacer(modifier = Modifier.width(tokens.spacing.space3))
 
-                        // 存图
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            saveCurrentImage(context, currentImageSource)
-                        }) {
-                            Icon(Icons.Outlined.SaveAlt, contentDescription = "保存当前页", tint = StatusColors.OnBadgeSurface)
-                        }
-
-                        // 单页插图收藏 (S7)
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            favoriteCurrentPage(
-                                context = context,
-                                session = session,
-                                chapterTitle = currentChapter.title,
-                                pageIndex = currentPageIndex,
-                                pageSource = currentImageSource
+                        Column(modifier = Modifier.weight(1f)) {
+                            // 实时页码气泡：悬浮于 Slider 上方居中
+                            Text(
+                                text = (currentPageIndex + 1).toString() + " / " + currentChapter.pages.size.coerceAtLeast(1),
+                                color = StatusColors.OnBadgeSurface,
+                                fontSize = tokens.type.overline,
+                                fontWeight = tokens.type.weightBold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
                             )
-                        }) {
-                            Icon(Icons.Outlined.BookmarkBorder, contentDescription = "收藏当前插图", tint = StatusColors.OnBadgeSurface)
+                            Spacer(modifier = Modifier.height(tokens.spacing.space1))
+                            Slider(
+                                value = currentPageIndex.toFloat(),
+                                onValueChange = { targetPage ->
+                                    jumpToPage(targetPage.toInt())
+                                },
+                                valueRange = 0f..(currentChapter.pages.size - 1).coerceAtLeast(1).toFloat(),
+                                steps = (currentChapter.pages.size - 2).coerceAtLeast(0),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = tokens.color.primary,
+                                    activeTrackColor = tokens.color.primary,
+                                    inactiveTrackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
-                        // 分享
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            shareCurrentImage(context, currentImageSource, session.comicTitle, currentChapter.title, currentPageIndex + 1)
-                        }) {
-                            Icon(Icons.Outlined.Share, contentDescription = "分享当前页", tint = StatusColors.OnBadgeSurface)
-                        }
-
-                        // 章节评论 (S8，对齐官方 reader/chapter_comments)
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            activePanel = ReaderPanel.COMMENTS
-                        }) {
-                            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "本章评论", tint = StatusColors.OnBadgeSurface)
-                        }
-
-                        // 设置
-                        IconButton(onClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            activePanel = ReaderPanel.SETTINGS
-                        }) {
-                            Icon(Icons.Outlined.Settings, contentDescription = "阅读设置", tint = StatusColors.OnBadgeSurface)
-                        }
+                        Spacer(modifier = Modifier.width(tokens.spacing.space3))
 
                         // 下一话
                         Surface(
@@ -863,13 +866,204 @@ private fun ReaderSessionContent(
                             }
                         ) {
                             Text(
-                                text = "下一话 ⏭",
+                                text = "⏭",
                                 color = if (currentChapterIndex < chaptersState.lastIndex) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
-                                fontSize = tokens.type.caption,
-                                modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space4)
+                                fontSize = tokens.type.body,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.space3, vertical = tokens.spacing.space2)
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(tokens.spacing.space2))
+
+                    // ── 第二行：功能按键行（均分宽度四键）──
+                    // [▶ 自动播放]（仅条漫生效）｜[📑 章节目录]｜[💾 存图]｜[⚙️ 阅读设置]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3)
+                    ) {
+                        // 自动播放（仅条漫连续流模式生效；点按进入巡航并收起控制栏）
+                        val autoScrollEnabled = readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = if (autoScrollEnabled) tokens.color.primary.copy(alpha = 0.30f) else StatusColors.OnBadgeSurface.copy(alpha = 0.05f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(enabled = autoScrollEnabled) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    isAutoScrolling = true
+                                    isControlsVisible = false
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (autoScrollEnabled) "▶" else "▶",
+                                    color = if (autoScrollEnabled) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
+                                    fontSize = tokens.type.body
+                                )
+                                Text(
+                                    text = "自动播放",
+                                    color = if (autoScrollEnabled) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+
+                        // 章节目录
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    activePanel = ReaderPanel.CHAPTERS
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Menu,
+                                    contentDescription = "章节列表",
+                                    tint = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                                )
+                                Text(
+                                    text = "目录",
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+
+                        // 存图
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    saveCurrentImage(context, currentImageSource)
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.SaveAlt,
+                                    contentDescription = "保存当前页",
+                                    tint = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                                )
+                                Text(
+                                    text = "存图",
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+
+                        // 阅读设置
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    activePanel = ReaderPanel.SETTINGS
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Settings,
+                                    contentDescription = "阅读设置",
+                                    tint = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                                )
+                                Text(
+                                    text = "设置",
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==================== Auto-Scroll 迷你悬浮控制器（播放时显示于右下）====================
+        if (isAutoScrolling && !isControlsVisible && activePanel == ReaderPanel.NONE) {
+            Surface(
+                color = StatusColors.BadgeSurface.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+                    .shadow(8.dp, RoundedCornerShape(20.dp))
+                    .border(0.5.dp, StatusColors.OnBadgeSurface.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = tokens.spacing.space3, vertical = tokens.spacing.space2),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)
+                ) {
+                    // 暂停
+                    Surface(
+                        shape = CircleShape,
+                        color = tokens.color.primary.copy(alpha = 0.35f),
+                        modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            isAutoScrolling = false
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(text = "⏸", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.caption)
+                        }
+                    }
+                    // 减速
+                    Surface(
+                        shape = CircleShape,
+                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                        modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                            scrollSpeed = (scrollSpeed - 15f).coerceAtLeast(15f)
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(text = "−", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                        }
+                    }
+                    // 加速
+                    Surface(
+                        shape = CircleShape,
+                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                        modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                            scrollSpeed = (scrollSpeed + 15f).coerceAtMost(480f)
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(text = "+", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                        }
+                    }
+                    // 当前速度
+                    Text(
+                        text = scrollSpeed.toInt().toString() + " px/s",
+                        color = StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
+                        fontSize = tokens.type.badge,
+                        modifier = Modifier.padding(end = tokens.spacing.space1)
+                    )
                 }
             }
         }
