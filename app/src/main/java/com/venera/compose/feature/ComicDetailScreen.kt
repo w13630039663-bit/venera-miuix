@@ -1453,14 +1453,18 @@ private fun FavoritePanelSheet(
                     )
                     Spacer(modifier = Modifier.width(tokens.spacing.space4))
                     val added = if (state.networkMultiFolder) state.networkAdded.isNotEmpty() else state.networkSingleAdded
-                    if (state.isLoadingNetwork) {
-                        Text(
+                    when {
+                        state.isLoadingNetwork -> Text(
                             text = "查询中…",
                             fontSize = tokens.type.overline,
                             color = tokens.color.textTertiary,
                         )
-                    } else {
-                        Text(
+                        state.networkError != null -> Text(
+                            text = "查询失败",
+                            fontSize = tokens.type.overline,
+                            color = StatusColors.Degraded,
+                        )
+                        else -> Text(
                             text = if (added) "已在 " + sourceName + " 收藏" else "尚未在 " + sourceName + " 收藏",
                             fontSize = tokens.type.overline,
                             color = if (added) StatusColors.Healthy else tokens.color.textTertiary,

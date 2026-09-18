@@ -319,6 +319,10 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                     networkMultiFolder = fd.loadFolders != null,
                     singleFolderForSingleComic = fd.singleFolderForSingleComic,
                     isLoadingNetwork = fd.loadFolders != null,
+                    // 单夹源没有 loadFolders 查询通道（哔咔/JM 单夹等），此前 state 恒为默认
+                    // false → 永远显示「尚未收藏」。改用源详情自带的 isFavorite（picacg 的
+                    // isFavourite / jm 的 is_favorite 等，loadComic info 已带回）作为初始态。
+                    networkSingleAdded = fd.loadFolders == null && (_uiState.value.details?.isFavorite == true),
                     networkError = null,
                 )
             }

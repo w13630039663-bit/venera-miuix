@@ -95,20 +95,16 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
     // 首屏判定：只有「尚无任何内容」的加载才全屏 Loader；loadMore 期间列表原地不动。
     val firstLoading = isLoading && comics.isEmpty()
 
-    // 自动刷新：回到本页（ON_RESUME）时重拉当前展开源的内容。
-    // 详情页收藏/取消收藏后返回、或从其他 Tab 切回时，无需手动下拉即可看到最新收藏。
-    // 只在「展开态且有内容可刷」时触发：折叠态无意义，加载中/出错时避免请求风暴。
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                if (selectedKey != null && !isLoading && error == null) vm.refresh()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
+    // 下拉手动刷新：仅展开源时生效（折叠态无内容可刷）。
+    // isRefreshing 由 VM 的 isLoading 驱动：拉取中显示指示器，完成后自动收起。
+    val pullState = androidx.compose.material3.pulltorefresh.PullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = isLoading,
+        onRefresh = { if (selectedKey != null) vm.refresh() },
+        state = pullState,
+        modifier = Modifier.fillMaxSize(),
+    ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -216,6 +212,8 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
                 LoadMoreFooter(isLoading = vm.isLoading)
             }
         }
+    }
+
     }
 
     // 长按移除确认弹窗（补回）：破坏性操作必须二次确认。
