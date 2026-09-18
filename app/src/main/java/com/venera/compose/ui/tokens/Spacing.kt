@@ -135,6 +135,22 @@ data class VeneraSpacingTokens(
     val gridGap: Dp = 12.dp,
     /** 列表模式左侧封面宽度。 */
     val listCoverWidth: Dp = 92.dp,
+
+    // ── 详情页头部与操作区尺寸（对齐 hero/history 既有页面级尺寸先例）──
+    /** 详情页封面宽度。 */
+    val detailCoverWidth: Dp = 110.dp,
+    /** 详情页右侧信息列高度（与封面等高对齐）。 */
+    val detailCoverHeight: Dp = 152.dp,
+    /** 详情页主操作胶囊按钮高度。 */
+    val detailPrimaryButtonHeight: Dp = 56.dp,
+    /** 详情页「标签与分类」分组名列宽。 */
+    val detailCategoryLabelWidth: Dp = 56.dp,
+    /** 详情页章节胶囊最小宽度。 */
+    val detailChapterChipMinWidth: Dp = 96.dp,
+    /** 详情页相关推荐封面宽度。 */
+    val detailRecommendWidth: Dp = 90.dp,
+    /** 详情页相关推荐封面高度。 */
+    val detailRecommendCoverHeight: Dp = 120.dp,
 )
 
 /**

@@ -126,4 +126,15 @@ internal object StatusColors {
     val BadgeSurface = Color(0xCC1F1F1F)
     /** SourceBadge 上的文字色；与 [BadgeSurface] 对比度 ≈ 12:1，远超 WCAG AA。 */
     val OnBadgeSurface = Color(0xFFF5F5F5)
+    // ── 详情页动作语义色（原 ComicDetailScreen 字面量归位；色值保持不变）──
+    /** 收藏动作。 */
+    val Favorite = Color(0xFF9C27B0)
+    /** 点赞动作。 */
+    val Like = Color(0xFFE91E63)
+    /** 评论动作。 */
+    val Comment = Color(0xFF4CAF50)
+    /** 分享动作。 */
+    val Share = Color(0xFF2196F3)
+    /** 评分星标。 */
+    val RatingStar = Color(0xFFFFB800)
 }
