@@ -6,9 +6,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,6 +35,9 @@ import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.download.DownloadManager
+import com.venera.compose.download.DownloadStatus
+import com.venera.compose.download.DownloadTask
 import com.venera.compose.download.LocalChapter
 import com.venera.compose.download.LocalComic
 import com.venera.compose.download.LocalComicManager
@@ -59,7 +64,8 @@ import java.io.File
 @Composable
 fun LocalComicScreen(
     onBack: () -> Unit,
-    onOpenLocalSession: (ReaderSession) -> Unit
+    onOpenLocalSession: (ReaderSession) -> Unit,
+    onNavigateToDownloads: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val tokens = VeneraTokens
@@ -71,6 +77,25 @@ fun LocalComicScreen(
     var isLoading by remember { mutableStateOf(true) }
     var selectedComicForChapters by remember { mutableStateOf<LocalComic?>(null) }
     var comicChapters by remember { mutableStateOf<List<LocalChapter>>(emptyList()) }
+
+    // ── 下载中心联动：观察任务流 + 源分类过滤 ──
+    val downloadManager = remember { DownloadManager.getInstance(context) }
+    val downloadTasks by downloadManager.tasks.collectAsState()
+    val activeDownloadTasks = remember(downloadTasks) {
+        downloadTasks.filter { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PENDING }
+    }
+    val failedDownloadTasks = remember(downloadTasks) {
+        downloadTasks.filter { it.status == DownloadStatus.FAILED }
+    }
+    // 源分类过滤："全部" + 书架实际包含的源标签
+    var selectedCategory by remember { mutableStateOf("全部") }
+    val categories = remember(comics) {
+        (listOf("全部") + comics.map { it.sourceName.ifBlank { "本地导入" } }.distinct()).sortedBy { if (it == "全部") "" else it }
+    }
+    val filteredComics = remember(comics, selectedCategory) {
+        if (selectedCategory == "全部") comics
+        else comics.filter { it.sourceName.ifBlank { "本地导入" } == selectedCategory }
+    }
 
     var isExporting by remember { mutableStateOf(false) }
     var exportProgress by remember { mutableFloatStateOf(0f) }
@@ -146,6 +171,37 @@ fun LocalComicScreen(
                 )
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                // 下载中心入口：带正在下载数量徽章（任务数 > 0 时显示）
+                Box {
+                    IconButton(onClick = onNavigateToDownloads) {
+                        Icon(
+                            imageVector = Icons.Outlined.Download,
+                            contentDescription = "下载中心",
+                            tint = tokens.color.textPrimary
+                        )
+                    }
+                    if (activeDownloadTasks.isNotEmpty()) {
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.Degraded,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(tokens.spacing.space1)
+                        ) {
+                            Text(
+                                text = activeDownloadTasks.size.toString(),
+                                fontSize = tokens.type.badge,
+                                fontWeight = tokens.type.weightBold,
+                                color = StatusColors.OnBadgeSurface,
+                                modifier = Modifier.padding(
+                                    horizontal = tokens.spacing.badgeHorizontalPadding,
+                                    vertical = 0.dp,
+                                )
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
                 Button(
                     onClick = {
                         importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
@@ -182,15 +238,48 @@ fun LocalComicScreen(
                 }
 
                 else -> {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxSize()
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space4),
+                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                     ) {
-                        items(comics, key = { it.rootPath }) { comic ->
-                            LocalComicCard(
+                        // ── 正在下载任务横幅（点击直达下载中心）──
+                        if (activeDownloadTasks.isNotEmpty()) {
+                            item(key = "downloading-banner") {
+                                DownloadingBanner(
+                                    tasks = activeDownloadTasks,
+                                    onClick = onNavigateToDownloads,
+                                )
+                            }
+                        }
+                        // ── 失败任务警告横幅（红色警告 + 如实错误详情 + 一键重试）──
+                        if (failedDownloadTasks.isNotEmpty()) {
+                            item(key = "failed-banner") {
+                                FailedTasksBanner(
+                                    tasks = failedDownloadTasks,
+                                    onRetry = { task -> downloadManager.resume(task.taskId) },
+                                    onClick = onNavigateToDownloads,
+                                )
+                            }
+                        }
+                        // ── 源分类过滤胶囊条 ──
+                        if (categories.size > 1) {
+                            item(key = "category-bar") {
+                                CategoryFilterBar(
+                                    categories = categories,
+                                    selected = selectedCategory,
+                                    onSelect = { selectedCategory = it },
+                                )
+                            }
+                        }
+                        // ── 书架网格（按源过滤后的列表，行级 chunked 保持双列语义）──
+                        val columns = if (displayMode.value == "detailed") 1 else 2
+                        filteredComics.chunked(columns).forEachIndexed { rowIdx, row ->
+                            item(key = "comic-row-" + rowIdx + "-" + (row.firstOrNull()?.rootPath ?: "")) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap)) {
+                                    row.forEach { comic ->
+                                        Box(Modifier.weight(1f)) {
+                                            LocalComicCard(
                                 comic = comic,
                                 detailed = displayMode.value == "detailed",
                                 onClick = {
@@ -239,7 +328,11 @@ fun LocalComicScreen(
                                         refresh()
                                     }
                                 }
-                            )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -489,5 +582,179 @@ fun LocalComicCard(
                 }
             }
         )
+    }
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 下载中心联动组件：正在下载横幅 / 失败警告横幅 / 源分类过滤条
+ * ------------------------------------------------------------------ */
+
+/** 正在下载任务横幅：漫画名 + 进度 + 速度，点击直达下载中心。 */
+@Composable
+private fun DownloadingBanner(tasks: List<DownloadTask>, onClick: () -> Unit) {
+    val tokens = VeneraTokens
+    VeneraCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = null,
+                    tint = tokens.color.primary,
+                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                )
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                Text(
+                    text = "正在下载 " + tasks.size + " 个任务",
+                    fontSize = tokens.type.body,
+                    fontWeight = tokens.type.weightSemibold,
+                    color = tokens.color.textPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "查看 ›",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.primary
+                )
+            }
+            tasks.take(2).forEach { task ->
+                Spacer(modifier = Modifier.height(tokens.spacing.space2))
+                Column {
+                    Text(
+                        text = task.comicTitle + " · " + task.chapterTitle,
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val progress = if (task.totalPages > 0) {
+                            task.downloadedPages.toFloat() / task.totalPages
+                        } else 0f
+                        LinearProgressIndicator(
+                            progress = { progress.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(tokens.spacing.barHeight)
+                                .clip(RoundedCornerShape(tokens.spacing.space1)),
+                            color = tokens.color.primary,
+                            trackColor = tokens.color.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Spacer(modifier = Modifier.width(tokens.spacing.space3))
+                        Text(
+                            text = task.downloadedPages.toString() + "/" + task.totalPages + " 页" +
+                                (if (task.speedText.isNotBlank()) " · " + task.speedText else ""),
+                            fontSize = tokens.type.badge,
+                            color = tokens.color.textTertiary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 失败任务警告横幅：红色警告态 + 如实错误详情 + 一键重试。 */
+@Composable
+private fun FailedTasksBanner(
+    tasks: List<DownloadTask>,
+    onRetry: (DownloadTask) -> Unit,
+    onClick: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    VeneraCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.ErrorOutline,
+                    contentDescription = null,
+                    tint = StatusColors.Failing,
+                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                )
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                Text(
+                    text = tasks.size.toString() + " 个任务下载失败",
+                    fontSize = tokens.type.body,
+                    fontWeight = tokens.type.weightSemibold,
+                    color = StatusColors.Failing,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "管理 ›",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.primary
+                )
+            }
+            tasks.take(2).forEach { task ->
+                Spacer(modifier = Modifier.height(tokens.spacing.space2))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = task.comicTitle + " · " + task.chapterTitle,
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        // 如实展示详细错误（网络状态码 / 超时 / 具体页码重试失败原因）
+                        Text(
+                            text = task.errorMsg ?: "未知错误",
+                            fontSize = tokens.type.badge,
+                            color = StatusColors.Failing,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(tokens.spacing.space3))
+                    Surface(
+                        shape = RoundedCornerShape(tokens.shape.small),
+                        color = tokens.color.primary,
+                        modifier = Modifier.clickable { onRetry(task) }
+                    ) {
+                        Text(
+                            text = "重试",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.onPrimary,
+                            modifier = Modifier.padding(
+                                horizontal = tokens.spacing.space4,
+                                vertical = tokens.spacing.space2,
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 源分类过滤胶囊条（对齐收藏页药丸样式）。 */
+@Composable
+private fun CategoryFilterBar(categories: List<String>, selected: String, onSelect: (String) -> Unit) {
+    val tokens = VeneraTokens
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)
+    ) {
+        items(categories.size) { idx ->
+            val name = categories[idx]
+            val isSelected = name == selected
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (isSelected) tokens.color.primaryContainer
+                        else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                modifier = Modifier.clickable { onSelect(name) }
+            ) {
+                Text(
+                    text = name,
+                    fontSize = tokens.type.caption,
+                    fontWeight = if (isSelected) tokens.type.weightSemibold else tokens.type.weightMedium,
+                    color = if (isSelected) tokens.color.onPrimaryContainer else tokens.color.textSecondary,
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.space6,
+                        vertical = tokens.spacing.space2,
+                    )
+                )
+            }
+        }
     }
 }

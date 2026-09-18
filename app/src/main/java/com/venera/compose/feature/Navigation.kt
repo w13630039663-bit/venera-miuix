@@ -464,6 +464,10 @@ fun VeneraComposeApp() {
                                 haptic()
                                 shell.pendingSession = session
                                 navController.navigate(ReaderRoute)
+                            },
+                            onNavigateToDownloads = {
+                                haptic()
+                                navController.navigate(DownloadRoute)
                             }
                         )
                     }

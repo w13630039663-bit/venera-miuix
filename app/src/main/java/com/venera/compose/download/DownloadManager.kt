@@ -1,8 +1,17 @@
 package com.venera.compose.download
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.venera.compose.data.network.ImageHeaderPolicy
+import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.ComicChapter
@@ -56,10 +65,82 @@ class DownloadManager private constructor(private val context: Context) {
     private val activeJobs = mutableMapOf<String, Job>()
 
     init {
+        createNotificationChannel()
         loadTasksFromDisk()
         // 启动后台队列监控调度循环
         scope.launch {
             processQueueLoop()
+        }
+    }
+
+    // ================================= 系统前台下载通知 =================================
+
+    /** 低打扰下载进度渠道（Channel ID: venera_download）。 */
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "离线下载",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "漫画离线下载进度与完成状态"
+                setShowBadge(false)
+            }
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.createNotificationChannel(channel)
+        }
+    }
+
+    /** Android 13+ 通知运行时权限（未授予时静默跳过，不打扰用户）。 */
+    private fun canPostNotification(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** 每个任务一条进度通知（taskId 尾部哈希作 notificationId，互不覆盖）。 */
+    private fun notifyTaskProgress(task: DownloadTask) {
+        if (!canPostNotification()) return
+        try {
+            val notificationId = task.taskId.hashCode()
+            val text = "${task.downloadedPages}/${task.totalPages} 页" +
+                (if (task.speedText.isNotBlank()) " · ${task.speedText}" else "")
+            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle("正在下载：${task.comicTitle} - ${task.chapterTitle}")
+                .setContentText(text)
+                .setOngoing(true)
+                .setSilent(true)
+            if (task.totalPages > 0) {
+                builder.setProgress(task.totalPages, task.downloadedPages, false)
+            }
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        } catch (e: Exception) {
+            Log.w(tag, "notifyTaskProgress failed", e)
+        }
+    }
+
+    /** 任务完成/失败：更新对应通知并转为可清除。 */
+    private fun notifyTaskFinished(task: DownloadTask) {
+        if (!canPostNotification()) return
+        try {
+            val notificationId = task.taskId.hashCode()
+            val (title, icon) = if (task.status == DownloadStatus.COMPLETED) {
+                "下载完成：${task.comicTitle} - ${task.chapterTitle}" to android.R.drawable.stat_sys_download_done
+            } else {
+                "下载失败：${task.errorMsg ?: "未知错误"}" to android.R.drawable.stat_notify_error
+            }
+            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(icon)
+                .setContentTitle(title)
+                .setContentText("${task.comicTitle} - ${task.chapterTitle}")
+                .setOngoing(false)
+                .setAutoCancel(true)
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        } catch (e: Exception) {
+            Log.w(tag, "notifyTaskFinished failed", e)
         }
     }
 
@@ -372,6 +453,7 @@ class DownloadManager private constructor(private val context: Context) {
 
         if (downloaded >= totalCount) {
             updateTaskStatus(taskId, DownloadStatus.COMPLETED)
+            _tasks.value.find { it.taskId == taskId }?.let { notifyTaskFinished(it) }
         }
     }
 
@@ -388,22 +470,29 @@ class DownloadManager private constructor(private val context: Context) {
         }
 
         val body = response.body ?: throw IOException("Empty response body")
-        var bytesCopied = 0L
-        body.byteStream().use { input ->
-            FileOutputStream(tmpFile).use { output ->
-                val buffer = ByteArray(8192)
-                var bytes = input.read(buffer)
-                while (bytes >= 0) {
-                    output.write(buffer, 0, bytes)
-                    bytesCopied += bytes
-                    bytes = input.read(buffer)
-                }
-            }
+        // 禁漫（JMComic）等源的图片是分块混淆打乱的：在线阅读由 ImagePipelinePolicy 在
+        // 解码前动态还原，但下载必须**落盘前还原**，否则本地书架读到的永远是乱序二进制，
+        // 点进去无法解码或整页空白。这里读全量字节 → 按 scrambleNum 还原 → 再写盘。
+        val rawBytes = body.byteStream().use { it.readBytes() }
+        response.close()
+        if (rawBytes.isEmpty()) throw IOException("Empty image body: $url")
+
+        val scrambleNum = ImagePipelinePolicy.getScrambleNum(url)
+        val finalBytes = if (scrambleNum > 1) {
+            ImagePipelinePolicy.descrambleJmImage(rawBytes, scrambleNum)
+        } else {
+            rawBytes
         }
-        if (tmpFile.exists() && bytesCopied > 0) {
-            tmpFile.renameTo(targetFile)
+
+        FileOutputStream(tmpFile).use { output -> output.write(finalBytes) }
+
+        // 原子安全落地：rename 失败（跨分区/占用等）时降级 copy，绝不留下 .tmp 孤儿
+        if (targetFile.exists()) targetFile.delete()
+        if (!tmpFile.renameTo(targetFile)) {
+            tmpFile.copyTo(targetFile, overwrite = true)
+            tmpFile.delete()
         }
-        return bytesCopied
+        return finalBytes.size.toLong()
     }
 
     private fun formatSpeed(bytesPerSec: Float): String {
@@ -440,11 +529,15 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     private fun updateTaskProgress(taskId: String, downloaded: Int, total: Int) {
-        val list = _tasks.value.map {
+        val updated = _tasks.value.map {
             if (it.taskId == taskId) it.copy(downloadedPages = downloaded, totalPages = total, updateTime = System.currentTimeMillis())
             else it
         }
-        _tasks.value = list
+        _tasks.value = updated
+        // 下载中任务同步系统通知（进度条 + 速度）
+        updated.find { it.taskId == taskId }?.let { task ->
+            if (task.status == DownloadStatus.DOWNLOADING) notifyTaskProgress(task)
+        }
     }
 
     private fun updateTaskSpeed(taskId: String, speedText: String) {
@@ -462,6 +555,7 @@ class DownloadManager private constructor(private val context: Context) {
         }
         _tasks.value = list
         saveTasksToDisk()
+        list.find { it.taskId == taskId }?.let { notifyTaskFinished(it) }
     }
 
     // ================================= 任务持久化 =================================
@@ -535,6 +629,9 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     companion object {
+        /** 系统通知渠道 ID（低打扰下载进度）。 */
+        private const val NOTIFICATION_CHANNEL_ID = "venera_download"
+
         @Volatile
         private var INSTANCE: DownloadManager? = null
 
