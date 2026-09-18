@@ -23,14 +23,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.venera.compose.components.*
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -44,6 +47,7 @@ fun DownloadScreen(
     onNavigateToLocalLibrary: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val tokens = VeneraTokens
     val downloadManager = remember { DownloadManager.getInstance(context) }
     val tasks by downloadManager.tasks.collectAsState()
     val displayMode = rememberComicListDisplayMode()
@@ -63,36 +67,36 @@ fun DownloadScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space4),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        tint = MiuixTheme.colorScheme.onSurface
+                        tint = tokens.color.textPrimary
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(tokens.spacing.space1))
                 Text(
                     text = "离线下载管理",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface
+                    fontSize = tokens.type.screenTitle,
+                    fontWeight = tokens.type.weightBold,
+                    color = tokens.color.textPrimary
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onNavigateToLocalLibrary) {
                     Icon(
                         imageVector = Icons.Outlined.Folder,
                         contentDescription = "本地书架",
-                        tint = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
+                        tint = tokens.color.primary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize + 2.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
                     Text(
                         text = "本地书架",
-                        fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.primary
+                        fontSize = tokens.type.sectionTitle,
+                        color = tokens.color.primary
                     )
                 }
             }
@@ -103,43 +107,45 @@ fun DownloadScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Tab 切换条
+            // Tab 切换条：胶囊分段规范（选中 primary 实底 + onPrimary，未选 surfaceVariant）
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space3),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)
             ) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (selectedTab == 0) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(50),
+                    color = if (selectedTab == 0) tokens.color.primary
+                            else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                     modifier = Modifier
                         .weight(1f)
                         .clickable { selectedTab = 0 }
                 ) {
-                    Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
                         Text(
                             text = "下载队列 (${activeTasks.size})",
-                            fontSize = 13.sp,
-                            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 0) Color.White else MiuixTheme.colorScheme.onSurface
+                            fontSize = tokens.type.sectionTitle,
+                            fontWeight = if (selectedTab == 0) tokens.type.weightBold else tokens.type.weightRegular,
+                            color = if (selectedTab == 0) tokens.color.onPrimary else tokens.color.textSecondary
                         )
                     }
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (selectedTab == 1) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(50),
+                    color = if (selectedTab == 1) tokens.color.primary
+                            else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                     modifier = Modifier
                         .weight(1f)
                         .clickable { selectedTab = 1 }
                 ) {
-                    Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.padding(vertical = tokens.spacing.space5), contentAlignment = Alignment.Center) {
                         Text(
                             text = "已完成 (${completedTasks.size})",
-                            fontSize = 13.sp,
-                            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 1) Color.White else MiuixTheme.colorScheme.onSurface
+                            fontSize = tokens.type.sectionTitle,
+                            fontWeight = if (selectedTab == 1) tokens.type.weightBold else tokens.type.weightRegular,
+                            color = if (selectedTab == 1) tokens.color.onPrimary else tokens.color.textSecondary
                         )
                     }
                 }
@@ -188,18 +194,17 @@ fun DownloadScreen(
                         .padding(bottom = 60.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = if (selectedTab == 0) Icons.Outlined.CloudDownload else Icons.Outlined.DoneAll,
-                            contentDescription = null,
-                            modifier = Modifier.size(54.dp),
-                            tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    if (selectedTab == 0) {
+                        VeneraEmptyView(
+                            icon = Icons.Outlined.CloudDownload,
+                            message = "下载队列为空",
+                            title = "暂无下载任务",
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (selectedTab == 0) "当前没有正在下载的任务" else "暂无已完成的离线章节",
-                            fontSize = 14.sp,
-                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    } else {
+                        VeneraEmptyView(
+                            icon = Icons.Outlined.DoneAll,
+                            message = "暂无已完成的离线章节",
+                            title = "还没有完成的下载",
                         )
                     }
                 }
@@ -234,36 +239,34 @@ fun DownloadTaskCard(
     onResume: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val tokens = VeneraTokens
+    VeneraCard(modifier = Modifier.fillMaxWidth()) {
         ComicCardLayout(
             detailed = detailed,
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.padding(tokens.spacing.cardContentPadding),
             cover = {
-                AsyncImage(
-                    model = task.comicCover,
+                VeneraCover(
+                    url = task.comicCover,
                     contentDescription = task.comicTitle,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(if (detailed) 180.dp else 200.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                    shimmerWhileLoading = false,
+                    modifier = Modifier.height(if (detailed) 180.dp else 200.dp)
                 )
             },
             content = {
                 Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 8.dp)) {
                     Text(
                         text = task.comicTitle,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MiuixTheme.colorScheme.onSurface,
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
                     Text(
                         text = task.chapterTitle,
-                        fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -280,12 +283,12 @@ fun DownloadTaskCard(
                             .height(5.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = when (task.status) {
-                            DownloadStatus.COMPLETED -> Color(0xFF4CAF50)
-                            DownloadStatus.FAILED -> Color(0xFFF44336)
-                            DownloadStatus.PAUSED -> Color(0xFFFF9800)
-                            else -> MiuixTheme.colorScheme.primary
+                            DownloadStatus.COMPLETED -> StatusColors.Healthy
+                            DownloadStatus.FAILED -> StatusColors.Failing
+                            DownloadStatus.PAUSED, DownloadStatus.PENDING -> StatusColors.Degraded
+                            else -> tokens.color.primary
                         },
-                        trackColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        trackColor = tokens.color.surfaceVariant.copy(alpha = 0.5f)
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -301,12 +304,12 @@ fun DownloadTaskCard(
                         }
                         Text(
                             text = statusText,
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = when (task.status) {
-                                DownloadStatus.COMPLETED -> Color(0xFF388E3C)
-                                DownloadStatus.FAILED -> Color(0xFFD32F2F)
-                                DownloadStatus.DOWNLOADING -> MiuixTheme.colorScheme.primary
-                                else -> MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                DownloadStatus.COMPLETED -> StatusColors.Healthy
+                                DownloadStatus.FAILED -> StatusColors.Failing
+                                DownloadStatus.DOWNLOADING -> tokens.color.primary
+                                else -> tokens.color.textSecondary
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -315,8 +318,8 @@ fun DownloadTaskCard(
                         if (task.totalPages > 0) {
                             Text(
                                 text = "${task.downloadedPages}/${task.totalPages}",
-                                fontSize = 11.sp,
-                                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                fontSize = tokens.type.badge,
+                                color = tokens.color.textTertiary
                             )
                         }
                     }
@@ -350,7 +353,7 @@ fun DownloadTaskCard(
                                 Icon(
                                     imageVector = Icons.Filled.CheckCircle,
                                     contentDescription = "已完成",
-                                    tint = Color(0xFF4CAF50),
+                                    tint = StatusColors.Healthy,
                                     modifier = Modifier.size(24.dp).padding(end = 4.dp)
                                 )
                             }

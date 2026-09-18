@@ -27,8 +27,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import coil3.compose.AsyncImage
 import com.venera.compose.components.*
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraSourceBadge
+import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.download.LocalChapter
 import com.venera.compose.download.LocalComic
 import com.venera.compose.download.LocalComicManager
@@ -38,7 +42,6 @@ import com.venera.compose.reader.ReaderSession
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -59,6 +62,7 @@ fun LocalComicScreen(
     onOpenLocalSession: (ReaderSession) -> Unit
 ) {
     val context = LocalContext.current
+    val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
     val displayMode = rememberComicListDisplayMode()
     val localComicManager = remember { LocalComicManager.getInstance(context) }
@@ -120,36 +124,37 @@ fun LocalComicScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space4),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        tint = MiuixTheme.colorScheme.onSurface
+                        tint = tokens.color.textPrimary
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(tokens.spacing.space1))
                 Text(
                     text = "本地离线书架",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface,
+                    fontSize = tokens.type.screenTitle,
+                    fontWeight = tokens.type.weightBold,
+                    color = tokens.color.textPrimary,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
                 Button(
                     onClick = {
                         importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
                     },
-                    colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primary)
+                    colors = ButtonDefaults.buttonColors(color = tokens.color.primary)
                 ) {
-                    Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "导入 CBZ", color = Color.White, fontSize = 12.sp)
+                    Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, tint = tokens.color.onPrimary, modifier = Modifier.size(tokens.spacing.chipIconSize))
+                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
+                    Text(text = "导入 CBZ", color = tokens.color.onPrimary, fontSize = tokens.type.caption)
                 }
             }
         }
@@ -168,27 +173,11 @@ fun LocalComicScreen(
 
                 comics.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Outlined.MenuBook,
-                                contentDescription = null,
-                                modifier = Modifier.size(56.dp),
-                                tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "暂无本地离线漫画",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MiuixTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "可以在漫画详情页点击下载章节，或点击右上角导入 CBZ 归档",
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        }
+                        VeneraEmptyView(
+                            icon = Icons.Outlined.MenuBook,
+                            title = "暂无本地离线漫画",
+                            message = "可以在漫画详情页下载章节，或点击右上角导入外部 CBZ 归档",
+                        )
                     }
                 }
 
@@ -276,25 +265,26 @@ fun LocalComicScreen(
                                             openChapterSession(c, ch, comicChapters, onOpenLocalSession)
                                             selectedComicForChapters = null
                                         }
-                                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                                        .padding(vertical = tokens.spacing.space5, horizontal = tokens.spacing.space2),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = ch.title,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        fontSize = tokens.type.body,
+                                        fontWeight = tokens.type.weightMedium,
+                                        color = tokens.color.textPrimary,
                                         modifier = Modifier.weight(1f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "${ch.pageCount} 页",
-                                        fontSize = 12.sp,
-                                        color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        fontSize = tokens.type.caption,
+                                        color = tokens.color.textSecondary
                                     )
                                 }
-                                HorizontalDivider(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                HorizontalDivider(color = tokens.color.divider)
                             }
                         }
                     },
@@ -314,23 +304,32 @@ fun LocalComicScreen(
                         .padding(bottom = 80.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Card(modifier = Modifier.padding(24.dp)) {
+                    VeneraCard(modifier = Modifier.padding(tokens.spacing.space9)) {
                         Column(
-                            modifier = Modifier.padding(20.dp),
+                            modifier = Modifier.padding(tokens.spacing.space9),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("正在打包导出 CBZ...", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                "正在打包导出 CBZ...",
+                                fontSize = tokens.type.body,
+                                fontWeight = tokens.type.weightBold,
+                                color = tokens.color.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(tokens.spacing.space7))
                             LinearProgressIndicator(
                                 progress = { exportProgress },
                                 modifier = Modifier
                                     .width(200.dp)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = MiuixTheme.colorScheme.primary
+                                    .height(tokens.spacing.barHeight)
+                                    .clip(RoundedCornerShape(tokens.spacing.space1)),
+                                color = tokens.color.primary
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("${(exportProgress * 100).toInt()} %", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(tokens.spacing.space4))
+                            Text(
+                                "${(exportProgress * 100).toInt()} %",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.primary
+                            )
                         }
                     }
                 }
@@ -380,26 +379,25 @@ fun LocalComicCard(
     onExportCbz: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val tokens = VeneraTokens
     var showMenu by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
+    VeneraCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         ComicCardLayout(
             detailed = detailed,
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(tokens.spacing.cardContentPadding),
             cover = {
                 Box {
-                    AsyncImage(
-                        model = comic.coverPath,
+                    VeneraCover(
+                        url = comic.coverPath,
                         contentDescription = comic.title,
-                        contentScale = ContentScale.Crop,
+                        shimmerWhileLoading = false,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .then(if (detailed) Modifier.height(180.dp) else Modifier.aspectRatio(0.72f))
-                            .clip(RoundedCornerShape(8.dp))
+                            .then(if (detailed) Modifier.height(180.dp) else Modifier)
                     )
 
                     // 更多选项按钮
@@ -435,13 +433,13 @@ fun LocalComicCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("删除离线文件", color = Color(0xFFE53935)) },
+                                text = { Text("删除离线文件", color = StatusColors.Failing) },
                                 onClick = {
                                     showMenu = false
                                     onDelete()
                                 },
                                 leadingIcon = {
-                                    Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFE53935))
+                                    Icon(Icons.Outlined.Delete, contentDescription = null, tint = StatusColors.Failing)
                                 }
                             )
                         }
@@ -449,37 +447,43 @@ fun LocalComicCard(
                 }
             },
             content = {
-                Column(modifier = Modifier.padding(top = if (detailed) 0.dp else 6.dp)) {
+                Column(modifier = Modifier.padding(top = if (detailed) 0.dp else tokens.spacing.space2)) {
                     Text(
                         text = comic.title,
-                        fontSize = if (detailed) 14.sp else 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
+                        fontSize = if (detailed) tokens.type.body else tokens.type.caption,
+                        fontWeight = tokens.type.weightMedium,
+                        color = tokens.color.textPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
 
+                    // 话数/P 数徽标：badge 字号 + primary 弱化色
                     Text(
                         text = "${comic.chapterCount} 话 · ${comic.totalPages}P",
-                        fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.primary,
+                        fontSize = tokens.type.badge,
+                        color = tokens.color.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
+                    // 源标识徽章：BadgeSurface 固定深色语义（压任何底色可读），badge 字号
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                        shape = RoundedCornerShape(tokens.shape.extraSmall),
+                        color = StatusColors.BadgeSurface,
                     ) {
                         Text(
                             text = comic.sourceName.ifBlank { "离线" },
-                            fontSize = 10.sp,
-                            color = MiuixTheme.colorScheme.primary,
+                            fontSize = tokens.type.badge,
+                            fontWeight = tokens.type.weightSemibold,
+                            color = StatusColors.OnBadgeSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(
+                                horizontal = tokens.spacing.badgeHorizontalPadding,
+                                vertical = tokens.spacing.badgeVerticalPadding,
+                            ),
                         )
                     }
                 }

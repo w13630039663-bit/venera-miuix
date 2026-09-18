@@ -12,6 +12,7 @@
 | HistoryScreen.kt | 🧊 **FROZEN**（2026-09-18 第二批） |
 | FavoritesScreen.kt | 🧊 **FROZEN**（2026-09-18 第三批） |
 | NetworkFavoritesScreen.kt | 🧊 **FROZEN**（2026-09-18 第三批） |
+| HomeScreen.kt | 🧊 **FROZEN**（2026-09-18 第四批） |
 
 允许：修实际 Bug、修明确回归。
 禁止：无明确需求的视觉重构、架构重构、顺手拆文件、顺手改其他页面。
@@ -40,6 +41,12 @@
 - **NetworkFavoritesScreen.kt**：网络收藏「三级整屏下钻 → 单开手风琴」信息架构升级完成（唯一 LazyColumn + 行级虚拟化、触底自动加载、长按移除二次确认、VeneraEmptyView/Token 化）并验收冻结；配套 NetworkFavoritesViewModel 的 expandSource/collapseSource 手风琴状态机一并冻结。
 - **共享组件连带改动**：VeneraCard 增加 onLongClick（miuix Card 官方可点击重载，外层叠 combinedClickable 会被 squircle 裁剪吞掉长按——真机实测教训）；ComicTileDetailed 增加 onLongClick；VeneraLiquidGlassNavBar 宿主回写抑制标志修复双震动。
 - 至此**底栏 5 大主 Tab 页面（首页 / 历史 / 收藏 / 搜索 / 探索）全部实现冻结闭环**。
+
+## 第四批冻结（2026-09-18）
+
+> 真机验收：首页卡片全量 VeneraCard 化 ✅ ｜ 源健康度 StatusColors 四态 ✅ ｜ miuix Card 残留清零 ✅
+
+- **HomeScreen.kt**：阅读统计/漫画源状态/本地/图片收藏卡片全部换装 `VeneraCard`（可点击卡走 onClick 重载）；源连通性 Connected/Degraded/Failing/Unknown 四态严格对齐 `StatusColors`（Healthy/Degraded/Failing/Unknown）。至此**底栏 5 大主 Tab 全部冻结闭环**（首页加入后闭环完成）。
 
 ## 冻结豁免记录（2026-09-18）
 

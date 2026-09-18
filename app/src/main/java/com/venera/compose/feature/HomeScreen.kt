@@ -42,13 +42,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import com.venera.compose.ui.tokens.VeneraTokens
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -127,10 +127,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
                 Column {
                     MiuixSectionHeader(title = "阅读统计", onTap = onOpenStats)
                     Spacer(Modifier.height(tokens.spacing.space2))
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenStats() },
+                    VeneraCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onOpenStats() },
                     ) {
                         Row(
                             modifier = Modifier
@@ -216,7 +215,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         }
                     }
                     Spacer(Modifier.height(tokens.spacing.space2))
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    VeneraCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(
                                 horizontal = tokens.spacing.space6,
@@ -241,10 +240,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
             Column {
                 MiuixSectionHeader(title = "本地", onTap = onOpenLocal)
                 Spacer(Modifier.height(tokens.spacing.space2))
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenLocal() },
+                VeneraCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onOpenLocal() },
                 ) {
                     Row(
                         modifier = Modifier
@@ -293,10 +291,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
             Column {
                 MiuixSectionHeader(title = "图片收藏", onTap = onOpenImageFavorites)
                 Spacer(Modifier.height(tokens.spacing.space2))
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenImageFavorites() },
+                VeneraCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onOpenImageFavorites() },
                 ) {
                     Column(modifier = Modifier.padding(tokens.spacing.rowHorizontal)) {
                         if (extra.imageFavTotal > 0) {
@@ -620,7 +617,7 @@ private fun HomePreviewContent() {
         // 阅读统计
         MiuixSectionHeader(title = "阅读统计", onTap = {})
         Spacer(Modifier.height(tokens.spacing.space2))
-        Card(modifier = Modifier.fillMaxWidth()) {
+        VeneraCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.rowVertical),
                 verticalAlignment = Alignment.CenterVertically,
