@@ -154,6 +154,16 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _isLocalFav = MutableStateFlow(false)
     val isLocalFav: StateFlow<Boolean> = _isLocalFav.asStateFlow()
 
+    /**
+     * 该漫画在**源账号**（网络收藏）上是否已收藏。
+     * 权威来源是源详情自带的 isFavorite（EH 的 comic.isFavorite / 哔咔 isFavourite /
+     * jm 的 is_favorite，getComicDetails 时已解析到手）——不依赖面板里那条脆弱的
+     * loadFolders 二次查询（EH 该查询内部还要再跑一次 loadInfo，易失败）。
+     * 面板查询成功只会把它置 true 增强，绝不因查询失败回退成 false。
+     */
+    private val _isNetworkFav = MutableStateFlow(false)
+    val isNetworkFav: StateFlow<Boolean> = _isNetworkFav.asStateFlow()
+
     val historyFlow by lazy { historyDao.historyFlow }
 
     private var loadedId: String? = null
@@ -199,6 +209,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         commentJob?.cancel()
         replyJob?.cancel()
         _uiState.value = DetailUiState(isLoading = true)
+        _isNetworkFav.value = false
         // 换作品：重置预览图分页游标
         thumbnailNext = null
         thumbnailStarted = false
@@ -246,6 +257,8 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                         previewChapterId = initialPreviewChId
                     )
                 }
+                // 源端收藏状态：详情返回即种子（EH/哔咔/jm 均自带），收藏图标与面板摘要据此标深
+                _isNetworkFav.value = d.isFavorite
                 // 异步拉取全量评论
                 if (capabilities.canLoad) loadComments()
                 // 预览图：详情自带首批时先展示，否则调源接口分页拉
@@ -298,6 +311,8 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     localFolders = favoritesManager.folders.value,
                     localAdded = favoritesManager.find(comic.id, key).toSet(),
+                    // 摘要行先用详情已知的源端状态兜底（单夹源此后不再有二次查询）
+                    networkSingleAdded = _isNetworkFav.value,
                 )
             }
 
@@ -322,7 +337,6 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                     // 单夹源没有 loadFolders 查询通道（哔咔/JM 单夹等），此前 state 恒为默认
                     // false → 永远显示「尚未收藏」。改用源详情自带的 isFavorite（picacg 的
                     // isFavourite / jm 的 is_favorite 等，loadComic info 已带回）作为初始态。
-                    networkSingleAdded = fd.loadFolders == null && (_uiState.value.details?.isFavorite == true),
                     networkError = null,
                 )
             }
@@ -330,11 +344,17 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             val loader = fd.loadFolders ?: return@launch
             loader(comic.id)
                 .onSuccess { res ->
-                    _favPanel.update {
-                        it.copy(
+                    // EH 等多夹源的 favorited 查询成功 → 增强已知状态（写入 isNetworkFav，
+                    // 让收藏图标也能标深）；空结果不回退详情已判定的 true，防二次查询
+                    // 抖动把真实状态冲掉。
+                    if (res.favorited.isNotEmpty()) {
+                        _isNetworkFav.value = true
+                    }
+                    _favPanel.update { st ->
+                        st.copy(
                             networkFolders = res.folders,
                             networkAdded = res.favorited.toSet(),
-                            networkSingleAdded = res.favorited.isNotEmpty(),
+                            networkSingleAdded = if (res.favorited.isNotEmpty()) true else st.networkSingleAdded,
                             isLoadingNetwork = false,
                         )
                     }
@@ -420,13 +440,16 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess {
                     _favPanel.update { st ->
                         val added = if (isAdded) st.networkAdded - folderId else st.networkAdded + folderId
+                        val nowAdded = if (folderId.isEmpty()) !isAdded else added.isNotEmpty()
                         st.copy(
                             networkAdded = added,
-                            networkSingleAdded = if (folderId.isEmpty()) !isAdded else added.isNotEmpty(),
+                            networkSingleAdded = nowAdded,
                             pending = st.pending - entryKey,
                             toast = if (isAdded) "已从网络收藏移除" else "已加入网络收藏",
                         )
                     }
+                    // 网络收藏变动同步到详情页收藏图标（标深/褪色）
+                    _isNetworkFav.value = if (isAdded) false else true
                 }
                 .onFailure { e ->
                     _favPanel.update { it.copy(pending = it.pending - entryKey, toast = e.message ?: "操作失败") }

@@ -76,6 +76,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val detailState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isFav by viewModel.isLocalFav.collectAsStateWithLifecycle()
+    // 源账号（网络收藏）上的收藏状态：参与收藏图标标深与摘要判定
+    val isNetworkFav by viewModel.isNetworkFav.collectAsStateWithLifecycle()
     val favPanel by viewModel.favPanel.collectAsStateWithLifecycle()
 
     val historyList by viewModel.historyFlow.collectAsState()
@@ -436,10 +438,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     DetailActionButton(
-                        icon = if (isFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                        label = if (isFav) "已收藏" else "收藏",
+                        icon = if (isFav || isNetworkFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        label = when {
+                            isFav && isNetworkFav -> "本地+源"
+                            isFav -> "已收藏"
+                            isNetworkFav -> "源已藏"
+                            else -> "收藏"
+                        },
                         iconColor = StatusColors.Favorite,
-                        isActive = isFav,
+                        isActive = isFav || isNetworkFav,
                         onLongClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                             viewModel.quickFavorite(comic)
@@ -1110,6 +1117,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         FavoritePanelSheet(
             state = favPanel,
             sourceName = comic.sourceName,
+            networkFavHint = isNetworkFav,
             onDismiss = { viewModel.closeFavoritePanel() },
             onToggleLocal = { folder -> viewModel.toggleLocalFavorite(comic, folder) },
             onCreateFolder = { name, onErr -> viewModel.createLocalFolder(name, onErr) },
@@ -1374,6 +1382,8 @@ private fun FavoritePanelSheet(
     state: FavoritePanelState,
     /** 漫画所属源（显示名，与网络分区摘要对齐）。 */
     sourceName: String,
+    /** 源账号上是否已收藏（详情 isFavorite 判定，摘要兜底用）。 */
+    networkFavHint: Boolean,
     onDismiss: () -> Unit,
     onToggleLocal: (String) -> Unit,
     onCreateFolder: (String, (String) -> Unit) -> Unit,
@@ -1452,7 +1462,10 @@ private fun FavoritePanelSheet(
                         color = tokens.color.textSecondary,
                     )
                     Spacer(modifier = Modifier.width(tokens.spacing.space4))
-                    val added = if (state.networkMultiFolder) state.networkAdded.isNotEmpty() else state.networkSingleAdded
+                    // 详情 isFavorite 与面板查询结果取或：任一来源确认为真即显示已收藏，
+                    // EH 的二次查询失败也不会把真实状态打回「尚未收藏」。
+                    val added = networkFavHint ||
+                        (if (state.networkMultiFolder) state.networkAdded.isNotEmpty() else state.networkSingleAdded)
                     when {
                         state.isLoadingNetwork -> Text(
                             text = "查询中…",
