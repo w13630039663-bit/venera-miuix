@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -71,12 +72,18 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -123,6 +130,16 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topPadding = statusBarTop + 104.dp + 48.dp + if (mode == FavoritesMode.Local && vm.multiSelectMode) 76.dp else 0.dp
 
+    // 顶栏折叠判定：沿用 miuix TopAppBar 自己的阈值（collapsedFraction * 3 >= 1，
+    // 即 smallTitle 出现的同一时刻），保证「分段切换器收起」与「小标题淡入」严格同步。
+    val topBarCollapsed by remember(topBarBehavior) {
+        derivedStateOf { topBarBehavior.state.collapsedFraction * 3f >= 1f }
+    }
+    // 当前面板的列表滚动状态（由子面板上抛）：是否已下滑、以及回到顶部的动作。
+    // 用回调而非持有 ListState，避免 LazyListState / LazyGridState 两种类型互相污染。
+    var favHasScrolled by remember { mutableStateOf(false) }
+    var favScrollToTop by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (mode == FavoritesMode.Local) {
             FavoriteGrid(
@@ -134,6 +151,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 onSelect = onSelect,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
+                onScrollStateChange = { _, hasScrolled, scrollToTop ->
+                    favHasScrolled = hasScrolled
+                    favScrollToTop = scrollToTop
+                },
             )
         } else {
             AndroidNetworkFavoritesScreen(
@@ -141,6 +162,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 topPadding = topPadding,
+                onScrollStateChange = { _, hasScrolled, scrollToTop ->
+                    favHasScrolled = hasScrolled
+                    favScrollToTop = scrollToTop
+                },
             )
         }
 
@@ -177,10 +202,20 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             },
             bottomContent = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    FavoritesModeToggle(
-                        mode = mode,
-                        onModeChange = { mode = it },
-                    )
+                    // 分段切换器只在顶置（未下滑）时出现：下滑折叠后顶栏不再同时挂着
+                    // 「网络收藏 / 本地收藏」两个按钮，让折叠态顶栏保持干净。
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = !topBarCollapsed,
+                        enter = androidx.compose.animation.fadeIn() +
+                            androidx.compose.animation.expandVertically(),
+                        exit = androidx.compose.animation.fadeOut() +
+                            androidx.compose.animation.shrinkVertically(),
+                    ) {
+                        FavoritesModeToggle(
+                            mode = mode,
+                            onModeChange = { mode = it },
+                        )
+                    }
                     if (mode == FavoritesMode.Local && vm.multiSelectMode) {
                         MultiSelectActionBar(
                             selectedCount = vm.selected.size,
@@ -197,6 +232,50 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 }
             },
         )
+
+        // 右下角「顶置」按钮：下滑一段距离后淡入，点击回到列表顶部。
+        // 底部让位沿用与其他页面一致的契约（底栏 clearanc + 额外留白），不手写 magic number。
+        val favBackToTopBottom = VeneraSpacing.bottomBarClearance + VeneraSpacing.space9
+        androidx.compose.animation.AnimatedVisibility(
+            visible = favHasScrolled,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = tokens.spacing.space8,
+                    bottom = favBackToTopBottom,
+                ),
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(tokens.shape.large),
+                color = tokens.color.primaryContainer,
+                modifier = Modifier.clickable {
+                    favScrollToTop?.invoke()
+                },
+            ) {
+                Row(
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.chipHorizontalPadding,
+                        vertical = tokens.spacing.chipVerticalPadding,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowUpward,
+                        contentDescription = "回到顶部",
+                        tint = tokens.color.onPrimaryContainer,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                    Text(
+                        text = "顶部",
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.onPrimaryContainer,
+                    )
+                }
+            }
+        }
     }
 
     if (showMenu) {
@@ -423,9 +502,23 @@ private fun FavoriteGrid(
     /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
     scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
+    /** 把内部列表的滚动位置上抛（能否回到顶部 / 是否已下滑），供外壳渲染顶置按钮。 */
+    onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit = { _, _, _ -> },
 ) {
     val tokens = VeneraTokens
     val displayMode = rememberComicListDisplayMode()
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0
+        }.collect { hasScrolled ->
+            onScrollStateChange(
+                gridState.canScrollBackward,
+                hasScrolled,
+            ) { scope.launch { gridState.animateScrollToItem(0) } }
+        }
+    }
     // HIDE 模式：命中守卫判定链的条目整条剔除（UI 层过滤，不落数据库）。
     val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
     val visibleComics = if (guardManager.nsfwMaskMode.collectAsState().value == "HIDE") {
@@ -438,6 +531,7 @@ private fun FavoriteGrid(
     } else vm.comics
 
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
         contentPadding = PaddingValues(
             start = tokens.spacing.rowHorizontal,

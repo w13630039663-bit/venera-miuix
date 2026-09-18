@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +44,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,9 +88,23 @@ fun AndroidNetworkFavoritesScreen(
     scrollConnection: NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
     topPadding: Dp = 0.dp,
+    /** 把内部列表的滚动位置上抛（是否已下滑 / 回到顶部动作），供外壳渲染顶置按钮。 */
+    onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit = { _, _, _ -> },
 ) {
     val tokens = VeneraTokens
     val vm: NetworkFavoritesViewModel = viewModel()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+        }.collect { hasScrolled ->
+            onScrollStateChange(
+                listState.canScrollBackward,
+                hasScrolled,
+            ) { scope.launch { listState.animateScrollToItem(0) } }
+        }
+    }
     val sources by vm.sourcesFlow.collectAsState()
     val displayMode = rememberComicListDisplayMode()
 
@@ -117,6 +135,7 @@ fun AndroidNetworkFavoritesScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
