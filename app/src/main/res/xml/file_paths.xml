@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分享图片用：cacheDir/shared_images 经 FileProvider 暴露给外部应用读取 -->
+<paths>
+    <cache-path name="shared_images" path="shared_images/" />
+</paths>

@@ -453,6 +453,9 @@ private fun ReaderSessionContent(
     // 若再走 AnimatedVisibility 默认 exit（slideOut+fadeOut）会「返回动画跑两遍」。
     // 置位后用 ExitTransition.None 跳过第二段，仅本帧组合（下帧 visible=false 位移由 progress 保持）。
     var suppressHudExit by remember { mutableStateOf(false) }
+    // 手势关闭路径：HUD 立即从组合移除（零 exit 动画）——移除前 progress 已把它推到屏幕外。
+    // 非手势路径（点空白）仍走 AnimatedVisibility 的默认 exit 淡出。
+    val hudShown = isControlsVisible && !suppressHudExit
     val controlsBack = rememberPredictiveBackState(
         enabled = activePanel == ReaderPanel.NONE && isControlsVisible,
     ) {
@@ -717,10 +720,9 @@ private fun ReaderSessionContent(
 
         // ==================== 顶部悬浮胶囊岛（Floating Pill Island）====================
         AnimatedVisibility(
-            visible = isControlsVisible,
+            visible = hudShown,
             enter = fadeIn() + slideInVertically { -it },
-            // 手势关闭时跳过第二段 exit（controlsBack 已跟手播完），其他路径走默认
-            exit = if (suppressHudExit) ExitTransition.None else fadeOut() + slideOutVertically { -it },
+            exit = fadeOut() + slideOutVertically { -it },
             modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
                 translationY = -size.height * controlsBack.progress
                 alpha = 1f - controlsBack.progress
@@ -810,9 +812,9 @@ private fun ReaderSessionContent(
 
         // ==================== 底部悬浮控制岛（Floating Control Island）====================
         AnimatedVisibility(
-            visible = isControlsVisible,
+            visible = hudShown,
             enter = fadeIn() + slideInVertically { it },
-            exit = if (suppressHudExit) ExitTransition.None else fadeOut() + slideOutVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
                 translationY = size.height * controlsBack.progress
                 alpha = 1f - controlsBack.progress
@@ -1944,7 +1946,9 @@ private fun favoriteCurrentPage(
 }
 
 /**
- * 分享当前页图片
+ * 分享当前页**图片**：从 Coil 缓存解码 bitmap → 写入 cacheDir 经 FileProvider 暴露 →
+ * ACTION_SEND image/jpeg（StreamImagePayload）。附文案标题。
+ * 动态页复用 resolveDynamicPageUrl 解析（带缓存），LocalFile 直接读文件。
  */
 private fun shareCurrentImage(
     context: Context,
@@ -1954,14 +1958,52 @@ private fun shareCurrentImage(
     pageNumber: Int
 ) {
     if (pageSource == null) return
-    val shareText = "《$comicTitle》$chapterTitle 第 $pageNumber 页\n来自 Venera 漫画阅读器"
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "$comicTitle - $chapterTitle")
-        putExtra(Intent.EXTRA_TEXT, when (pageSource) {
-            is ComicPageSource.Network -> "$shareText\n${pageSource.url}"
-            else -> shareText
-        })
+    val coroutineScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO)
+    coroutineScope.launch {
+        try {
+            val urlOrFile = when (pageSource) {
+                is ComicPageSource.Network -> pageSource.url
+                is ComicPageSource.DynamicNetwork ->
+                    resolveDynamicPageUrl(context, ComicSourceManager.getInstance(context), pageSource)
+                is ComicPageSource.LocalFile -> pageSource.file.absolutePath
+                else -> null
+            }
+            if (urlOrFile == null) return@launch
+
+            val req = ImageRequest.Builder(context)
+                .data(urlOrFile)
+                .allowHardware(false) // 分享前要 compress，必须拿到软件位图
+                .build()
+            val result = context.imageLoader.execute(req)
+            val bitmap = (result as? SuccessResult)?.image.let { img ->
+                (img as? coil3.BitmapImage)?.bitmap ?: (img as? BitmapDrawable)?.bitmap
+            } ?: return@launch
+
+            // 写入 cacheDir/shared_images，经 FileProvider 授予读权限
+            val shareDir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val imageFile = File(shareDir, "Venera_${stamp}_p$pageNumber.jpg")
+            imageFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+
+            val sharedUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                context.packageName + ".fileprovider",
+                imageFile
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, sharedUri)
+                putExtra(Intent.EXTRA_SUBJECT, "$comicTitle - $chapterTitle")
+                putExtra(Intent.EXTRA_TEXT, "《$comicTitle》$chapterTitle 第 $pageNumber 页\n来自 Venera 漫画阅读器")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            withContext(Dispatchers.Main) {
+                context.startActivity(Intent.createChooser(intent, "分享漫画单页"))
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
-    context.startActivity(Intent.createChooser(intent, "分享漫画单页"))
 }
