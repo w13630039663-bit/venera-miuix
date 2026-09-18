@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -97,6 +99,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
     onNavigateBack: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
+    val density = LocalDensity.current
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val sources by viewModel.sourcesFlow.collectAsStateWithLifecycle()
     val groups by viewModel.searchOptions.collectAsStateWithLifecycle()
@@ -126,6 +129,22 @@ fun SharedTransitionScope.AndroidSearchScreen(
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect { showBackToTop = it > 10 }
     }
+    // 统一顶栏：大标题折叠 + 毛玻璃（与其他页面保持一致）。
+    // 搜索框仍留在列表首项（随滚动隐藏）；顶栏右侧搜索图标在搜索框滚出视口后淡入，
+    // 提供不打断阅读的快捷重搜入口。
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+
+    // 顶栏搜索图标的淡入进度：与 VeneraTopAppBar 的背板同一套 contentOffset/48dp 契约，
+    // 保证「毛玻璃出现」与「快捷入口出现」在视觉上同步，不会一个先一个后。
+    val searchActionAlpha = remember {
+        derivedStateOf {
+            val offset = topBarBehavior.state.contentOffset
+            val thresholdPx = with(density) { 48.dp.toPx() }
+            if (thresholdPx > 0f) (-offset / thresholdPx).coerceIn(0f, 1f) else 0f
+        }
+    }
+    var showSearchDialog by remember { mutableStateOf(false) }
     // 单源搜索：滑到接近底部自动加载下一页。
     // 网格已逐行挂载（每行 = 一个 LazyItem），totalItemsCount 真实反映行数，
     // 倒数第 2 行进入可视区即触发，平滑且不会滥发请求。
@@ -161,14 +180,20 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val colorSet = tokens.color
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp），与 SourceSectionScreen 同契约。
+    val baseTopPadding = statusBarTop + 104.dp
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(topBarBehavior.nestedScrollConnection)
+                .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
-                top = statusBarTop + tokens.spacing.space4,
+                top = baseTopPadding,
                 // 统一契约：主 Tab 避让底栏；下钻子页仅保留自身滚动留白。
                 bottom = if (consumesBottomBarClearance) VeneraSpacing.bottomBarClearance else tokens.spacing.space8,
             ),
@@ -181,7 +206,6 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     onQueryChange = viewModel::onQueryChange,
                     onSubmit = { viewModel.search(ui.query) },
                     onClear = { viewModel.clearQuery() },
-                    onBack = onNavigateBack,
                 )
             }
 
@@ -324,7 +348,168 @@ fun SharedTransitionScope.AndroidSearchScreen(
             },
             onClick = { scope.launch { listState.animateScrollToItem(0) } },
         )
+
+        // 顶栏浮层：大标题折叠 + 毛玻璃。导航图标仅在子页面（下钻）出现，
+        // 与列表内搜索框的返回按钮保持同一条可见性契约（主 Tab 不产生重复返回）。
+        VeneraTopAppBar(
+            title = "搜索",
+            largeTitle = "搜索",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                if (onNavigateBack != null) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = tokens.color.textPrimary,
+                        )
+                    }
+                }
+            },
+            actions = {
+                // 搜索框滚出视口后淡入，避免与列表首项里的搜索框视觉重复。
+                val actionAlpha by searchActionAlpha
+                if (actionAlpha > 0.01f) {
+                    IconButton(
+                        onClick = { showSearchDialog = true },
+                        modifier = Modifier
+                            .size(tokens.spacing.iconButtonSize)
+                            .graphicsLayer { alpha = actionAlpha },
+                    ) {
+                        Icon(
+                            Icons.Outlined.Search,
+                            contentDescription = "搜索",
+                            tint = tokens.color.primary,
+                        )
+                    }
+                }
+            },
+        )
+
+        // 快捷搜索弹窗：复用同一份查询状态与源选择，确认后回到顶部展示新结果。
+        if (showSearchDialog) {
+            SearchQuickDialog(
+                query = ui.query,
+                onQueryChange = viewModel::onQueryChange,
+                sourceLabel = ui.selectedSourceLabel,
+                onDismiss = { showSearchDialog = false },
+                onConfirm = {
+                    showSearchDialog = false
+                    viewModel.search(ui.query)
+                    scope.launch { listState.animateScrollToItem(0) }
+                },
+            )
+        }
     }
+}
+
+/**
+ * 顶栏快捷搜索弹窗。
+ *
+ * 刻意只做「输入 + 确认」两件事：源选择与高级筛选仍由页面内的 SourceSelector /
+ * SearchControls 负责，避免同一个能力出现两套入口而行为不一致。
+ * 输入直接写回 viewModel.query，与列表内搜索框共享同一份状态。
+ */
+@Composable
+private fun SearchQuickDialog(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    sourceLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "搜索",
+                fontSize = tokens.type.itemTitle,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "当前源：" + sourceLabel,
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(tokens.spacing.space4))
+                Surface(
+                    shape = RoundedCornerShape(tokens.shape.large),
+                    color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                    modifier = Modifier.fillMaxWidth().height(tokens.spacing.searchFieldHeight),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = tokens.spacing.fieldHorizontalPadding),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = null,
+                            tint = tokens.color.textTertiary,
+                            modifier = Modifier.size(tokens.spacing.chipIconSize),
+                        )
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    text = "搜索作品、作者或标签",
+                                    fontSize = tokens.type.body,
+                                    color = tokens.color.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            BasicTextField(
+                                value = query,
+                                onValueChange = onQueryChange,
+                                singleLine = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = tokens.type.body,
+                                    color = tokens.color.textPrimary,
+                                ),
+                                cursorBrush = SolidColor(tokens.color.primary),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { onConfirm() }),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Text(
+                text = "搜索",
+                fontSize = tokens.type.body,
+                fontWeight = tokens.type.weightMedium,
+                color = tokens.color.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(tokens.shape.small))
+                    .clickable(onClick = onConfirm)
+                    .padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space3),
+            )
+        },
+        dismissButton = {
+            Text(
+                text = "取消",
+                fontSize = tokens.type.body,
+                color = tokens.color.textSecondary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(tokens.shape.small))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space3),
+            )
+        },
+    )
 }
 /* ================================================================== *
  * Search 私有 UI 组件
@@ -333,7 +518,10 @@ fun SharedTransitionScope.AndroidSearchScreen(
  * ================================================================== */
 
 /**
- * 搜索头部：返回（可选）+ 输入框 + 清空。
+ * 搜索头部：输入框 + 清空。
+ *
+ * 返回 affordance 由 VeneraTopAppBar 承担（常驻、不随列表滚走），因此本组件不再渲染返回，
+ * 避免同一屏出现两个返回按钮。
  *
  * 输入框用 BasicTextField 自绘而非 M3 OutlinedTextField，原因：
  *  - M3 TextField 携带完整 Material 交互语义（容器色、label 动画、指示线），
@@ -347,7 +535,6 @@ private fun SearchHeader(
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
-    onBack: (() -> Unit)?,
 ) {
     val tokens = VeneraTokens
     Row(
@@ -355,14 +542,6 @@ private fun SearchHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
     ) {
-        // 仅在子页面（下钻）显示返回；主 Tab 不产生重复的返回 affordance。
-        if (onBack != null) {
-            SearchIconAction(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                onClick = onBack,
-            )
-        }
         Surface(
             shape = RoundedCornerShape(tokens.shape.large),
             color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
