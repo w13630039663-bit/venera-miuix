@@ -6,6 +6,8 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.venera.compose.data.network.VeneraNetworkClient
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * 应用入口容器（S0-2；S0-6：Coil 改用 lambda Call.Factory，不再持有刚构建时的快照）。
@@ -23,6 +25,15 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         // 预热统一网络引擎（内含持久化 CookieJar）
         VeneraNetworkClient.getInstance(this)
+        // 内容守卫：注册「源显示名 -> sourceKey」别名，供历史记录等以显示名存储的
+        // 本地数据走源级预设判定（历史表 source_name 列存显示名）。
+        val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(this)
+        val sourceManager = com.venera.compose.source.ComicSourceManager.getInstance(this)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            sourceManager.sourcesFlow.collect { sources ->
+                guard.registerSourceNameAliases(sources.associate { it.name to it.key })
+            }
+        }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

@@ -6,28 +6,29 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.ComicTileDetailed
+import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberComicListDisplayMode
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,15 +37,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraChip
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.feature.ComicItem
 import com.venera.compose.feature.SourceSectionRoute
 import com.venera.compose.source.ComicSourceManager
@@ -52,21 +52,31 @@ import com.venera.compose.source.explore.UnifiedTag
 import com.venera.compose.source.model.CategoryComicsOption
 import com.venera.compose.source.model.Comic
 import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 /**
  * 某个漫画源的**原生**分类 / Tag 下钻页。
  *
- * 与旧 CategoriesScreen 的区别：
- *  - 这里是「某一个源」的视图，标题始终带你选的源名，不会串源。
- *  - 该分类有源自定义的 optionList（受众 / 排序 / 状态…）时按源声明渲染，不硬编码筛选项。
- *  - 若入口来自应用层「通用标签」，则退化为按关键词搜索该源，不触碰源的原生分类。
+ * Batch 1：
+ *  - 卡片统一 VeneraCard + VeneraCover(mask) + 封面覆盖层 VeneraSourceBadge（V5/V6/R6 兜底打码）；
+ *  - optionList 筛选项改用 VeneraChip（selected 态由组件统一表达）；
+ *  - 错误态 / 空内容态统一 VeneraEmptyView（R4/V7，清除硬编码颜色）；
+ *  - 视觉全部走 VeneraTokens，不再出现字面值。
+ * Batch 2：
+ *  - R2 顶栏 ComicLayoutToggleButton（与一级页共用全局 displayMode 偏好）；
+ *  - V4 列数 = comicListColumnCount(displayMode)，逐行 items 挂载（行级回收，
+ *    绝不在 LazyColumn item 内嵌套同向 LazyVerticalGrid）；
+ *  - detailed 单列复用 ComicTileDetailed（打码状态同步传递）。
  */
 @Composable
 fun SourceSectionScreen(
@@ -79,6 +89,9 @@ fun SourceSectionScreen(
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
     val guardManager = remember { ContentGuardManager.getInstance(context) }
     val guardRules by guardManager.rules.collectAsState()
+    val nsfwMaskMode by guardManager.nsfwMaskMode.collectAsState()
+    // R2：全局布局偏好唯一真源（与一级页 / Favorites 等一致）。
+    val displayMode = rememberComicListDisplayMode()
 
     val unifiedTag = remember(route.unifiedTag) {
         route.unifiedTag?.let { name -> UnifiedTag.entries.firstOrNull { it.name == name } }
@@ -112,12 +125,12 @@ fun SourceSectionScreen(
             }
             result.fold(
                 onSuccess = { (list, mp) ->
-                    comics = guardManager.filterComicModels(list)
+                    // HIDE：命中条目整条剔除；BLUR：保留条目交由卡片打码；OFF：原样。
+                    comics = if (nsfwMaskMode == "HIDE") guardManager.filterComicModels(list) else list
                     maxPage = mp
                     page = targetPage
                 },
                 onFailure = { e ->
-                    // 排行榜先用分类接口；失败时退回关键词搜索，避免整页空白。
                     error = e.message ?: "加载失败"
                 },
             )
@@ -141,85 +154,78 @@ fun SourceSectionScreen(
     }
 
     // 屏蔽规则变化时重放过滤。
-    LaunchedEffect(guardRules) {
-        if (comics.isNotEmpty()) comics = guardManager.filterComicModels(comics)
+    // 屏蔽规则 / 打码模式变化时重放（仅 HIDE 才物理剔除；BLUR 依赖卡片级重算打码）。
+    LaunchedEffect(guardRules, nsfwMaskMode) {
+        if (comics.isNotEmpty() && nsfwMaskMode == "HIDE") comics = guardManager.filterComicModels(comics)
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = VeneraTokens.spacing.rowHorizontal)) {
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(vertical = VeneraTokens.spacing.space2),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(VeneraTokens.spacing.iconButtonSize)) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回探索",
-                    tint = MiuixTheme.colorScheme.onSurface
+                    tint = VeneraTokens.color.textPrimary
                 )
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(VeneraTokens.spacing.space2))
             Column(Modifier.weight(1f)) {
                 Text(
                     route.category,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface,
+                    fontSize = VeneraTokens.type.itemTitle,
+                    fontWeight = VeneraTokens.type.weightBold,
+                    color = VeneraTokens.color.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     // 源名始终可见：让用户明确「这是哪个源的分类」。
                     route.sourceTitle + if (unifiedTag != null) " · 通用标签搜索" else "",
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    fontSize = VeneraTokens.type.overline,
+                    color = VeneraTokens.color.textSecondary,
                 )
             }
-            IconButton(onClick = { reloadTick++ }, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "刷新", tint = MiuixTheme.colorScheme.primary)
+            // R2：单列/双列切换，与一级页同款按钮、同一份偏好。
+            ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+            IconButton(onClick = { reloadTick++ }, modifier = Modifier.size(VeneraTokens.spacing.iconButtonSize)) {
+                Icon(Icons.Outlined.Refresh, contentDescription = "刷新", tint = VeneraTokens.color.primary)
             }
         }
 
         if (unifiedTag != null) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    "「" + unifiedTag.label + "」是应用层通用标签，正在以关键词搜索 " + route.sourceTitle +
-                        "；它不会修改该源的任何原生分类。",
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+            NoticeBanner(
+                text = "「" + unifiedTag.label + "」是应用层通用标签，正在以关键词搜索 " + route.sourceTitle +
+                    "；它不会修改该源的任何原生分类。",
+            )
+            Spacer(Modifier.height(VeneraTokens.spacing.space2))
         }
 
         if (options.isNotEmpty()) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth().padding(vertical = VeneraTokens.spacing.space2),
+                verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space2),
             ) {
                 options.forEachIndexed { groupIdx, group ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         if (group.label.isNotBlank()) {
                             Text(
                                 group.label + ":",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier.padding(end = 8.dp)
+                                fontSize = VeneraTokens.type.caption,
+                                fontWeight = VeneraTokens.type.weightSemibold,
+                                color = VeneraTokens.color.textSecondary,
+                                modifier = Modifier.padding(end = VeneraTokens.spacing.space2),
                             )
                         }
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space2)) {
                             items(group.options.entries.toList()) { (key, label) ->
                                 val selected = selectedOptions.getOrNull(groupIdx) == key
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (selected) MiuixTheme.colorScheme.primaryContainer
-                                    else MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.clickable {
+                                VeneraChip(
+                                    text = label,
+                                    selected = selected,
+                                    onClick = {
                                         if (!selected) {
                                             val next = selectedOptions.toMutableList()
                                             while (next.size <= groupIdx) next.add("")
@@ -227,17 +233,8 @@ fun SourceSectionScreen(
                                             selectedOptions = next
                                             load(1)
                                         }
-                                    }
-                                ) {
-                                    Text(
-                                        label,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (selected) MiuixTheme.colorScheme.primary
-                                        else MiuixTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
+                                    },
+                                )
                             }
                         }
                     }
@@ -245,80 +242,76 @@ fun SourceSectionScreen(
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(VeneraTokens.spacing.space2))
 
         Box(Modifier.fillMaxSize()) {
             when {
                 isLoading && comics.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
+                    CenteredLoader()
                 }
                 error != null && comics.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Card(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("加载失败", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(6.dp))
-                            Text(error.orEmpty(), fontSize = 12.sp, color = Color(0xFFE53935))
-                            Spacer(Modifier.height(14.dp))
-                            Button(
-                                onClick = { load(1) },
-                                colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primary)
-                            ) { Text("重试", color = Color.White) }
-                        }
-                    }
-                }
-                comics.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "该分类下暂无漫画",
-                        fontSize = 14.sp,
-                        color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    VeneraEmptyView(
+                        title = "加载失败",
+                        message = error.orEmpty(),
+                        actionText = "重试",
+                        onAction = { load(1) },
                     )
                 }
+                comics.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    VeneraEmptyView(message = "该分类下暂无漫画")
+                }
                 else -> {
-                    val rows = remember(comics) { comics.chunked(2) }
+                    // V4：列数与全局布局偏好同源（brief 双列 / detailed 单列），
+                    // 逐行 items 挂载，行级内存复用，不嵌套同向 Lazy 组件。
+                    val isDetailed = displayMode.value == "detailed"
+                    val columns = comicListColumnCount(displayMode.value)
+                    val rows = remember(comics, columns) { comics.chunked(columns) }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 6.dp, bottom = 90.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(
+                            top = VeneraTokens.spacing.space2,
+                            bottom = VeneraTokens.spacing.bottomBarClearance,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.gridGap),
                     ) {
-                        itemsIndexed(rows) { _, row ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                row.forEach { comic ->
-                                    Box(Modifier.weight(1f)) {
-                                        SectionComicCard(comic, route.sourceTitle, onSelectComic)
+                        if (isDetailed) {
+                            itemsIndexed(comics, key = { _, c -> "sc-${c.id}" }) { _, comic ->
+                                SectionDetailedCard(comic, route.sourceTitle, guardManager, nsfwMaskMode, onSelectComic)
+                            }
+                        } else {
+                            itemsIndexed(
+                                rows,
+                                key = { _, row -> "srow-${row.firstOrNull()?.id}" },
+                            ) { _, row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.gridGap)) {
+                                    row.forEach { comic ->
+                                        Box(Modifier.weight(1f)) {
+                                            SectionComicCard(comic, route.sourceTitle, guardManager, nsfwMaskMode, onSelectComic)
+                                        }
                                     }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
                                 }
-                                if (row.size == 1) Spacer(Modifier.weight(1f))
                             }
                         }
                         item {
                             Row(
-                                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                Modifier.fillMaxWidth().padding(vertical = VeneraTokens.spacing.space6),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (page > 1) {
-                                    Button(
-                                        onClick = { load(page - 1) },
-                                        colors = ButtonDefaults.buttonColors(
-                                            color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    ) { Text("上一页", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface) }
-                                    Spacer(Modifier.width(16.dp))
+                                    PagerButton(text = "上一页", enabled = !isLoading) { load(page - 1) }
+                                    Spacer(Modifier.width(VeneraTokens.spacing.space7))
                                 }
                                 Text(
                                     "第 " + page + " 页" + (maxPage?.let { " / " + it } ?: ""),
-                                    fontSize = 13.sp,
-                                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    fontSize = VeneraTokens.type.caption,
+                                    color = VeneraTokens.color.textSecondary,
                                 )
                                 val canNext = maxPage == null || page < maxPage!!
                                 if (canNext) {
-                                    Spacer(Modifier.width(16.dp))
-                                    Button(
-                                        onClick = { load(page + 1) },
-                                        colors = ButtonDefaults.buttonColors(
-                                            color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    ) { Text("下一页", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface) }
+                                    Spacer(Modifier.width(VeneraTokens.spacing.space7))
+                                    PagerButton(text = "下一页", enabled = !isLoading) { load(page + 1) }
                                 }
                             }
                         }
@@ -330,13 +323,60 @@ fun SourceSectionScreen(
 }
 
 @Composable
-private fun SectionComicCard(
+private fun CenteredLoader() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = VeneraTokens.color.primary)
+    }
+}
+
+@Composable
+private fun NoticeBanner(text: String) {
+    Surface(
+        shape = RoundedCornerShape(VeneraTokens.shape.small),
+        color = VeneraTokens.color.surfaceVariant.copy(alpha = VeneraTokens.current.placeholderAlpha),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text,
+            fontSize = VeneraTokens.type.overline,
+            color = VeneraTokens.color.textSecondary,
+            modifier = Modifier.padding(horizontal = VeneraTokens.spacing.space5, vertical = VeneraTokens.spacing.space2),
+        )
+    }
+}
+
+@Composable
+private fun PagerButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        colors = ButtonDefaults.buttonColors(color = VeneraTokens.color.surfaceVariant.copy(alpha = VeneraTokens.current.selectedSurfaceAlpha)),
+    ) { Text(text, fontSize = VeneraTokens.type.caption, color = VeneraTokens.color.textPrimary) }
+}
+
+/** 单列大卡（detailed）：复用 ComicTileDetailed，打码状态同步传给封面。 */
+@Composable
+private fun SectionDetailedCard(
     comic: Comic,
     sourceName: String,
+    guardManager: ContentGuardManager,
+    nsfwMaskMode: String,
     onSelectComic: (ComicItem) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable {
+    // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
+    // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
+    val maskState = guardManager.coverMaskStateFor(comic)
+    ComicTileDetailed(
+        title = comic.title,
+        coverUrl = comic.cover,
+        subtitle = comic.subTitle,
+        description = comic.description,
+        tags = comic.tags,
+        rating = comic.rating?.toDouble(),
+        likesCount = comic.likesCount,
+        badge = sourceName,
+        coverMaskState = maskState,
+        onClick = {
             onSelectComic(
                 ComicItem(
                     id = comic.id,
@@ -351,24 +391,56 @@ private fun SectionComicCard(
                     updateTime = comic.updateTime,
                 )
             )
-        }
+        },
+    )
+}
+
+@Composable
+private fun SectionComicCard(
+    comic: Comic,
+    sourceName: String,
+    guardManager: ContentGuardManager,
+    nsfwMaskMode: String,
+    onSelectComic: (ComicItem) -> Unit,
+) {
+    // R6：HIDE 模式下命中条目已在数据层剔除（兜底）；BLUR 模式保留条目、在此打码。
+    // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
+    // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
+    val maskState = guardManager.coverMaskStateFor(comic)
+    VeneraCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = {
+            onSelectComic(
+                ComicItem(
+                    id = comic.id,
+                    title = comic.title,
+                    author = comic.subTitle,
+                    coverUrl = comic.cover,
+                    tags = comic.tags,
+                    description = comic.description,
+                    sourceName = sourceName,
+                    rating = comic.rating?.toString().orEmpty(),
+                    likesCount = comic.likesCount,
+                    updateTime = comic.updateTime,
+                )
+            )
+        },
     ) {
-        Column(Modifier.padding(8.dp)) {
-            AsyncImage(
-                model = comic.cover,
-                contentDescription = comic.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                comic.title,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+        VeneraCover(
+            url = comic.cover,
+            contentDescription = comic.title,
+            mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
+        ) {
+            VeneraSourceBadge(name = sourceName)
         }
+        Spacer(Modifier.height(VeneraTokens.spacing.cardCoverGap))
+        Text(
+            text = comic.title,
+            fontSize = VeneraTokens.type.caption,
+            fontWeight = VeneraTokens.type.weightSemibold,
+            color = VeneraTokens.color.textPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

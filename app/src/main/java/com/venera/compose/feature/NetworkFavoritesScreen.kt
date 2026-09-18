@@ -8,7 +8,10 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.ui.tokens.VeneraSpacing
+
 import com.venera.compose.components.*
+import com.venera.compose.components.venera.VeneraTagChip
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -391,14 +395,19 @@ private fun NetworkComicGrid(
     androidx.compose.runtime.LaunchedEffect(comics) {
         comics.forEach { metricsCache.put(it.sourceKey, it.id, it.rating?.toDouble(), it.likesCount) }
     }
+    // HIDE 模式：命中守卫判定链的条目整条剔除（UI 层过滤）。
+    val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(context)
+    val visibleComics = if (guardManager.nsfwMaskMode.collectAsState().value == "HIDE") {
+        comics.filter { guardManager.coverMaskStateFor(it) != "HIDDEN" }
+    } else comics
     LazyVerticalGrid(
         columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = VeneraSpacing.bottomBarClearance),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        gridItems(comics, key = { it.id }) { comic ->
+        gridItems(visibleComics, key = { it.id }) { comic ->
             NetworkComicCard(
                 comic = comic,
                 detailed = displayMode.value == "detailed",
@@ -432,20 +441,21 @@ private fun NetworkComicGrid(
 
 @Composable
 private fun NetworkComicCard(comic: Comic, detailed: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    // 内容守卫：BLUR 命中打码（源级预设 + 用户规则），HIDE 命中在数据层已剔除、此处兜底。
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val maskState = guard.coverMaskStateFor(comic)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
-            AsyncImage(
-                model = comic.cover,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-                    .clip(RoundedCornerShape(10.dp)),
-                contentScale = ContentScale.Crop,
+            com.venera.compose.components.venera.VeneraCover(
+                url = comic.cover,
+                contentDescription = comic.title,
+                shimmerWhileLoading = false,
+                mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
+                       else com.venera.compose.components.venera.VeneraCoverMask.Masked,
             )
         }) {
             Spacer(Modifier.height(6.dp))
@@ -457,6 +467,21 @@ private fun NetworkComicCard(comic: Comic, detailed: Boolean, onClick: () -> Uni
                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                 maxLines = 1,
             )
+            // 同本地收藏卡：复用 searchVisibleTags，最多 2 个，空 tags 不渲染。
+            val netVisibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
+            if (netVisibleTags.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    netVisibleTags.take(2).forEach { tag ->
+                        Box(Modifier.weight(1f, fill = false)) {
+                            VeneraTagChip(text = tag, onClick = null)
+                        }
+                    }
+                }
+            }
         }
     }
 }

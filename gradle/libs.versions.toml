@@ -74,6 +74,10 @@ miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "
 
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur", version.ref = "miuix" }
 
+# Compose Preview 支持（tooling 仅 debug 打包；preview 注解编译期需要）
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "compose" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
+
 # 官方液态玻璃（Kyant0/AndroidLiquidGlass）。提供 Backdrop / drawBackdrop / lens / blur 等。
 # Android 12+ 才能生效 RenderEffect，lens（RuntimeShader）需要 Android 13+。
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }

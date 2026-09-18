@@ -87,6 +87,9 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.animation)
+    // @Preview 注解（Home 的 LIGHT/DARK × MIUIX/MD3 预览）
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.miuix.blur)
     // 官方液态玻璃库（Kyant0/AndroidLiquidGlass）：底栏的 blur + lens + vibrancy 由它提供
     implementation(libs.backdrop)

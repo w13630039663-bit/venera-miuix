@@ -31,3 +31,6 @@ err_*.log
 .*.png
 .logcat-*.txt
 
+
+# QA 排错日志（本地产物不入库）
+.qa-*.txt

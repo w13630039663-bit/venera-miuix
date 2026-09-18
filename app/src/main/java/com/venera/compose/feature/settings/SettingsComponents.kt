@@ -20,41 +20,94 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/**
+ * 设置页通用组件。
+ *
+ * 本轮改造目标（A2 / A3.1）：
+ *  - 清零所有硬编码：颜色走 VeneraTokens.color，字号走 VeneraTokens.type，
+ *    间距走 VeneraTokens.spacing，圆角走 VeneraTokens.shape。
+ *  - 组件来源统一为 miuix-compose（Card / Text）+ Material3 补齐
+ *    （IconButton / Switch / Slider / AlertDialog —— miuix 侧对应组件签名不同，
+ *     为避免同页混用两套语义，此处保持「容器用 miuix、控件用 M3」的既有边界，不新增混用）。
+ */
 
 /** 对应原版 SettingsSection：标题在卡片外，行靠留白区分。 */
 @Composable
 internal fun SettingsGroup(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    if (title != null) Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-        color = MiuixTheme.colorScheme.onSurface.copy(alpha = .6f),
-        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp))
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), content = content)
+    val tokens = VeneraTokens
+    if (title != null) {
+        Text(
+            text = title,
+            fontSize = tokens.type.sectionTitle,
+            fontWeight = tokens.type.weightSemibold,
+            color = tokens.color.textSecondary,
+            modifier = Modifier.padding(
+                start = tokens.spacing.rowHorizontal,
+                top = tokens.spacing.rowHorizontal,
+                bottom = tokens.spacing.space3,
+            ),
+        )
     }
-    Spacer(Modifier.height(8.dp))
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space2),
+            content = content,
+        )
+    }
+    Spacer(Modifier.height(tokens.spacing.space4))
 }
 
 @Composable
 private fun RowScope.SettingLabel(title: String, summary: String?, enabled: Boolean = true) {
+    val tokens = VeneraTokens
     Column(Modifier.weight(1f)) {
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-            color = MiuixTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f))
-        if (!summary.isNullOrBlank()) Text(summary, fontSize = 12.sp,
-            color = MiuixTheme.colorScheme.onSurface.copy(alpha = .55f), modifier = Modifier.padding(top = 3.dp))
+        Text(
+            text = title,
+            fontSize = tokens.type.itemTitle,
+            fontWeight = tokens.type.weightMedium,
+            color = if (enabled) tokens.color.textPrimary else tokens.color.textDisabled,
+        )
+        if (!summary.isNullOrBlank()) {
+            Text(
+                text = summary,
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+                modifier = Modifier.padding(top = tokens.spacing.space1),
+            )
+        }
     }
 }
 
 @Composable
-internal fun SettingsAction(title: String, summary: String? = null, enabled: Boolean = true, onClick: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled && onClick != null) { onClick?.invoke() }
-        .padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+internal fun SettingsAction(
+    title: String,
+    summary: String? = null,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
+    val tokens = VeneraTokens
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled && onClick != null) { onClick?.invoke() }
+            .padding(
+                horizontal = tokens.spacing.rowHorizontal,
+                vertical = tokens.spacing.rowVertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         SettingLabel(title, summary, enabled)
-        if (enabled && onClick != null) Text("›", fontSize = 22.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .4f))
+        if (enabled && onClick != null) {
+            Text(
+                text = "›",
+                fontSize = tokens.type.chevron,
+                color = tokens.color.textTertiary,
+            )
+        }
     }
 }
 
@@ -64,58 +117,142 @@ internal fun UnsupportedSetting(title: String, reason: String) =
     SettingsAction(title, "暂不支持：$reason", enabled = false)
 
 @Composable
-internal fun SettingsToggle(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit,
-    summary: String? = null, enabled: Boolean = true) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onCheckedChange(!checked) }
-        .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+internal fun SettingsToggle(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    summary: String? = null,
+    enabled: Boolean = true,
+) {
+    val tokens = VeneraTokens
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(
+                horizontal = tokens.spacing.rowHorizontal,
+                vertical = tokens.spacing.space5,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         SettingLabel(title, summary, enabled)
-        Switch(checked = checked, onCheckedChange = if (enabled) onCheckedChange else null, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = if (enabled) onCheckedChange else null,
+            enabled = enabled,
+        )
     }
 }
 
 @Composable
-internal fun SettingsSelect(title: String, value: String, options: List<Pair<String, String>>,
-    onSelected: (String) -> Unit, summary: String? = null) {
+internal fun SettingsSelect(
+    title: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    onSelected: (String) -> Unit,
+    summary: String? = null,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
     val label = options.firstOrNull { it.first == value }?.second ?: "未识别的已保存值：$value"
     SettingsAction(title, listOfNotNull(label, summary).joinToString("\n")) { open = true }
-    if (open) AlertDialog(
-        onDismissRequest = { open = false }, title = { Text(title) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                options.forEach { (key, text) ->
-                    SettingsAction(text, if (value == key) "已选择" else null) {
-                        onSelected(key)
-                        open = false
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(title) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    options.forEach { (key, text) ->
+                        SettingsAction(text, if (value == key) "已选择" else null) {
+                            onSelected(key)
+                            open = false
+                        }
                     }
                 }
-            }
-        }, confirmButton = { TextButton(onClick = { open = false }) { Text("取消") } }
-    )
+            },
+            confirmButton = { TextButton(onClick = { open = false }) { Text("取消") } },
+        )
+    }
 }
 
 @Composable
-internal fun SettingsSlider(title: String, value: Float, range: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit, steps: Int = 0, suffix: String = "") {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text("$title · "+ (if (value % 1f == 0f) value.toInt().toString() else value.toString()) + suffix, fontSize = 15.sp)
-        Slider(value = value.coerceIn(range), onValueChange = onValueChange, valueRange = range, steps = steps)
+internal fun SettingsSlider(
+    title: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    steps: Int = 0,
+    suffix: String = "",
+) {
+    val tokens = VeneraTokens
+    Column(
+        Modifier.padding(
+            horizontal = tokens.spacing.rowHorizontal,
+            vertical = tokens.spacing.space5,
+        )
+    ) {
+        Text(
+            text = "$title · " + (if (value % 1f == 0f) value.toInt().toString() else value.toString()) + suffix,
+            fontSize = tokens.type.itemTitle,
+        )
+        Slider(
+            value = value.coerceIn(range),
+            onValueChange = onValueChange,
+            valueRange = range,
+            steps = steps,
+        )
     }
 }
 
 @Composable
 internal fun SettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val tokens = VeneraTokens
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = MiuixTheme.colorScheme.onSurface) }
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = tokens.spacing.space2,
+                    vertical = tokens.spacing.space2,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = tokens.color.textPrimary,
+                )
+            }
+            Text(
+                text = title,
+                fontSize = tokens.type.screenTitle,
+                fontWeight = tokens.type.weightBold,
+                color = tokens.color.textPrimary,
+            )
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 80.dp), content = content)
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = tokens.spacing.screenHorizontal,
+                    end = tokens.spacing.screenHorizontal,
+                    bottom = tokens.spacing.bottomBarClearance,
+                ),
+            content = content,
+        )
     }
 }
 
 @Composable
 internal fun SectionIconBadge(color: Color, content: @Composable () -> Unit) {
-    Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = .15f)),
-        contentAlignment = Alignment.Center, content = { content() })
+    val tokens = VeneraTokens
+    Box(
+        Modifier
+            .size(tokens.spacing.badgeSize)
+            .clip(RoundedCornerShape(tokens.shape.badge))
+            .background(color.copy(alpha = tokens.current.badgeAlpha)),
+        contentAlignment = Alignment.Center,
+        content = { content() },
+    )
 }

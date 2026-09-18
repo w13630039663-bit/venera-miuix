@@ -7,7 +7,10 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.ui.tokens.VeneraSpacing
+
 import com.venera.compose.components.*
+import com.venera.compose.components.venera.VeneraTagChip
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -429,14 +433,24 @@ private fun FavoriteGrid(
     }
 
     val displayMode = rememberComicListDisplayMode()
+    // HIDE 模式：命中守卫判定链的条目整条剔除（UI 层过滤，不落数据库）。
+    val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val visibleComics = if (guardManager.nsfwMaskMode.collectAsState().value == "HIDE") {
+        vm.comics.filter { item ->
+            !guardManager.coverMaskStateFor(
+                sourceKey = item.sourceKey, title = item.name, author = item.author,
+                tags = item.tags, comicId = item.id, description = item.description,
+            ).let { it == "HIDDEN" }
+        }
+    } else vm.comics
     LazyVerticalGrid(
         columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = VeneraSpacing.bottomBarClearance),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        gridItems(vm.comics, key = { "${it.id}-${it.type}" }) { item ->
+        gridItems(visibleComics, key = { "${it.id}-${it.type}" }) { item ->
             FavoriteCard(
                 item = item,
                 detailed = displayMode.value == "detailed",
@@ -466,6 +480,17 @@ private fun FavoriteCard(
     onLongClick: () -> Unit,
 ) {
     val metrics by rememberCachedComicMetrics(item.sourceKey, item.id)
+    // 内容守卫：带 sourceKey 走全量判定链（源级预设 + 用户规则 + 显式标记），
+    // BLUR 命中打码；HIDE 命中在数据层已剔除，此处兜底。
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val maskState = guard.coverMaskStateFor(
+        sourceKey = item.sourceKey,
+        title = item.name,
+        author = item.author,
+        tags = item.tags,
+        comicId = item.id,
+        description = item.description,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -473,14 +498,12 @@ private fun FavoriteCard(
     ) {
         Box {
             ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
-                AsyncImage(
-                    model = item.coverPath,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(10.dp)),
-                    contentScale = ContentScale.Crop,
+                com.venera.compose.components.venera.VeneraCover(
+                    url = item.coverPath,
+                    contentDescription = item.name,
+                    shimmerWhileLoading = false,
+                    mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
+                           else com.venera.compose.components.venera.VeneraCoverMask.Masked,
                 )
             }) {
                 Spacer(modifier = Modifier.height(6.dp))
@@ -492,6 +515,22 @@ private fun FavoriteCard(
                     color = MiuixTheme.colorScheme.onBackgroundVariant,
                     maxLines = 1,
                 )
+                // 复用现成的 Tag 截断/归一化逻辑（searchVisibleTags），不另写一套。
+                // 最多 2 个，空 tags 时整段不渲染（不产生空白区域）。
+                val visibleTags = com.venera.compose.feature.searchVisibleTags(item.tags, emptyList())
+                if (visibleTags.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        visibleTags.take(2).forEach { tag ->
+                            Box(Modifier.weight(1f, fill = false)) {
+                                VeneraTagChip(text = tag, onClick = null)
+                            }
+                        }
+                    }
+                }
             }
             if (multiSelectMode) {
                 Icon(

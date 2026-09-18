@@ -54,6 +54,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.VeneraReaderScreen
@@ -203,42 +204,32 @@ fun VeneraComposeApp() {
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = { if (currentTab != null) TopAppBar(title = titleFor(currentTab!!)) },
-                bottomBar = {
-                    if (currentTab != null) {
-                        val barModifier = Modifier.padding(bottom = 12.dp).padding(horizontal = 16.dp)
-                        if (contentLayerBackdrop == null) {
-                            VeneraFloatingNavBar(
-                                currentTab = currentTab,
-                                onTabSelected = { tab ->
-                                    haptic()
-                                    navController.gotoTab(tab)
-                                },
-                            )
-                        }
-                    }
-                },
+                // 不再使用 bottomBar slot：底栏 100% 作为 overlay 承载（见下方 Box）。
+                // 理由：Scaffold 的 bottomBar slot 会把 Bar 高度计入 innerPadding，
+                // 而 Liquid Glass 走 overlay 不计入 —— 这正是两条路径几何不一致的根因。
+                // 统一为 overlay 后，innerPadding 只含 topBar + 系统 insets，
+                // 底部几何完全由 bottomBarClearance 契约表达。
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
                     startDestination = HomeRoute,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(
-                            if (useLiquidGlass && currentTab != null) PaddingValues(
-                                start = innerPadding.calculateStartPadding(layoutDirection),
-                                top = innerPadding.calculateTopPadding(),
-                                end = innerPadding.calculateEndPadding(layoutDirection),
-                                bottom = navigationInsets.calculateBottomPadding(),
-                            ) else innerPadding
-                        )
+                        // 统一契约：innerPadding 现在只含 topBar + 系统 insets（bottomBar slot 已弃用）。
+                        // 页面再各自消费 bottomBarClearance 表达「底栏占位」。
+                        // 不再有 useLiquidGlass 分支 —— 两条路径几何完全相同。
+                        .padding(innerPadding)
                         .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
                         // 主页面之间左右滑动切页；只在 5 个主 tab 上生效，
                         // 详情页/阅读器等子页面不参与（currentTab == null）。
                         .tabSwipePager(
                             enabled = currentTab != null,
-                            // 悬浮底栏（64dp）+ 12dp 外边距 + 系统导航栏内边距：
-                            // 这一带的手势属于底栏，翻页必须让开。
-                            bottomExclusionDp = 64 + 12 + navigationInsets.calculateBottomPadding().value.toInt(),
+                            // 底栏手势排除带 = 契约 clearanc + 系统 navigationBars inset。
+                            // 不再手写 64 + 12 这类几何 magic number。
+                            bottomExclusionDp = (
+                                VeneraSpacing.bottomBarClearance +
+                                    navigationInsets.calculateBottomPadding()
+                                ).value.toInt(),
                             onSwipeForward = {
                                 val tabs = VeneraNavTab.entries
                                 val i = tabs.indexOf(currentTab).coerceAtLeast(0)
@@ -273,7 +264,11 @@ fun VeneraComposeApp() {
                 ) {
                     composable<HomeRoute> {
                         AndroidHomeScreen(
-                            bottomContentPadding = if (useLiquidGlass) 88.dp else 8.dp,
+                            // 统一契约：页面只消费 bottomBarClearance（底栏高度 + 底栏底部间距）。
+                            // 系统 navigationBars inset 由上面的 NavHost padding 统一提供，
+                            // 页面**不得**再自行叠加 —— 此前 Liquid 88dp / fallback 8dp 的路径差异
+                            // 叠加 Home 内部 80dp Spacer，正是 168dp 双重留白的根因。
+                            bottomContentPadding = VeneraSpacing.bottomBarClearance,
                             animatedVisibilityScope = this,
                             onSelect = ::openComic,
                             onOpenHistory = {
@@ -299,15 +294,22 @@ fun VeneraComposeApp() {
                         )
                     }
                     composable<SearchRoute> {
-                        AndroidSearchScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                        // 主 Tab：底栏显示，需要避让。
+                        AndroidSearchScreen(
+                            animatedVisibilityScope = this,
+                            onSelect = ::openComic,
+                            consumesBottomBarClearance = true,
+                        )
                     }
                     // S8: 标签直达搜索（详情页标签点击跳入，自动执行搜索）
                     composable<TagSearchRoute> { backStackEntry ->
                         val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+                        // 下钻子页：底栏不显示，只保留自身滚动留白。
                         AndroidSearchScreen(
                             animatedVisibilityScope = this,
                             onSelect = ::openComic,
-                            initialQuery = keyword
+                            initialQuery = keyword,
+                            consumesBottomBarClearance = false,
                         )
                     }
                     composable<FavoritesRoute> {
@@ -553,8 +555,13 @@ fun VeneraComposeApp() {
                     isLightTheme = !isDark,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        // 底栏自己负责它与系统 inset 的关系（navigationBars inset 由它消费）：
                         .navigationBarsPadding()
-                        .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
+                        .padding(
+                            bottom = VeneraSpacing.bottomBarBottomGap,
+                            start = VeneraSpacing.space8,
+                            end = VeneraSpacing.space8,
+                        )
                         .fillMaxWidth(),
                 ) {
                     VeneraLiquidNavTabs(
@@ -567,6 +574,28 @@ fun VeneraComposeApp() {
                         },
                     )
                 }
+            } else if (currentTab != null) {
+                // Fallback：普通悬浮底栏，作为**同样的 overlay** 承载。
+                //
+                // 关键：它与 Liquid Glass 共用完全相同的几何修饰符链
+                // （align(BottomCenter) + navigationBarsPadding + bottomBarBottomGap + 相同水平边距），
+                // 因此两条路径的 bottomBarClearance 契约天然一致 —— 不存在
+                // 「Liquid 正确、Floating 多留一块空白」的情况。
+                // 差异仅在于视觉实现（纯色胶囊 vs 玻璃折射），几何零差异。
+                VeneraFloatingNavBar(
+                    currentTab = currentTab,
+                    onTabSelected = { tab ->
+                        haptic()
+                        navController.gotoTab(tab)
+                    },
+                    // VeneraFloatingNavBar 自带 .padding(bottom = 12.dp)（== bottomBarBottomGap）
+                    // 且 barWidth 已内含 28dp 两侧边距，因此这里**只补系统 navigationBars inset**，
+                    // 不再叠加任何底部/水平间距 —— 否则会与内建值重复。
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .fillMaxWidth(),
+                )
             }
         }
         }

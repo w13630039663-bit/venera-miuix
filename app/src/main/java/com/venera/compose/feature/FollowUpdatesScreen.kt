@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -160,7 +161,10 @@ fun AndroidFollowUpdatesScreen(
                                 likesCount = metrics.likesCount,
                                 title = entry.item.name,
                                 cover = entry.item.coverPath,
-                                sourceName = entry.item.sourceKey,
+                                sourceKey = entry.item.sourceKey,
+                                tags = entry.item.tags,
+                                author = entry.item.author,
+                                comicId = entry.item.id,
                                 updateTime = entry.updateTime,
                                 onClick = {
                                     onSelect(
@@ -199,24 +203,38 @@ private fun UpdateRow(
     likesCount: Int?,
     title: String,
     cover: String,
-    sourceName: String,
+    sourceKey: String,
+    tags: List<String>,
+    author: String,
+    comicId: String,
     updateTime: String?,
     onClick: () -> Unit,
 ) {
+    // 内容守卫：BLUR 命中打码（sourceKey 直查源级预设），HIDE 由调用方列表过滤兜底。
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    val maskState = guard.coverMaskStateFor(
+        sourceKey = sourceKey,
+        title = title,
+        author = author,
+        tags = tags,
+        comicId = comicId,
+    )
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         ComicCardLayout(detailed = detailed, modifier = Modifier.padding(10.dp), cover = {
-            AsyncImage(
-                model = cover,
+            com.venera.compose.components.venera.VeneraCover(
+                url = cover,
                 contentDescription = title,
-                modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop,
+                shimmerWhileLoading = false,
+                mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
+                       else com.venera.compose.components.venera.VeneraCoverMask.Masked,
+                modifier = Modifier.fillMaxWidth().height(180.dp),
             )
         }) {
             Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
             ComicMetrics(rating, likesCount)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = listOfNotNull(sourceName, updateTime?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                text = listOfNotNull(sourceKey, updateTime?.takeIf { it.isNotBlank() }).joinToString(" · "),
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                 maxLines = 2,

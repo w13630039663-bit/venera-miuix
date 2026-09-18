@@ -1,0 +1,425 @@
+﻿Venera Android UI 重构
+完整工作流程 & AI Agent 继续开发手册
+用于在新 AI 会话中恢复项目背景、执行方法与当前进度
+项目：Venera  |  分支：compose-migration  |  Package：com.venera.compose
+这份文档解决什么问题
+新 AI 不应该只知道“现在改到了哪里”，还必须知道我们整个 UI 重构是怎样推进、为什么这样推进、什么已经冻结、什么不能随便改，以及每一页应该按照什么流程实施。
+|
+1. 项目总目标
+Venera 是一个多漫画源聚合阅读 App。当前工作不是重写业务，而是在保持既有功能与 Source 能力的前提下，逐步建立统一、可维护、可扩展的 Compose UI 系统，并逐页完成 UI Migration。
+核心目标
+统一视觉语言，但不强迫不同漫画源拥有相同能力；UI 重构必须尽量保持 Feature Parity，视觉升级不能以丢功能为代价。
+|
+1.1 项目技术上下文
+项目项
+| 当前信息
+|
+项目
+| Venera
+|
+Package
+| com.venera.compose
+|
+分支
+| compose-migration
+|
+主要 UI
+| Jetpack Compose + miuix-compose + Material3
+|
+其他核心技术
+| Navigation Compose / Coil / SQLDelight / Paging / QuickJS Android / JS Manga Sources
+|
+业务特性
+| 多漫画源聚合；不同 Source 的搜索、Tag、分类、Option 能力可能不同
+|
+1.2 最重要的产品原则
+统一视觉，不统一不存在的业务能力。
+Source-native capability 优先：Source 有什么能力就展示什么，没有就不要伪造。
+UI Migration 优先于业务重写。不要为了页面视觉重构去修改 ViewModel、数据模型、Source、网络层。
+每一页都经历“审计 → 设计 → 实施 → 编译/测试 → 真机 QA → Freeze”的完整闭环。
+Agent 只执行当前任务范围，完成后停止，禁止顺手扩展其他页面。
+2. 我们完整的标准工作流
+这是当前项目最重要的流程。以后任何新页面（Explore、History、ComicSource、Detail 等）原则上都按照这一套推进。
+阶段
+| 目标
+| 主要产物
+| 是否允许进入下一阶段
+|
+0. 上下文确认
+| 确认页面旧功能、架构和限制
+| 页面 Feature Parity Checklist
+| 完成后
+|
+1. 旧页面审计
+| 找出真实功能和现有 UI 实现
+| 功能清单 + 文件入口 + 风险清单
+| 完成后
+|
+2. Capability 审计
+| 识别 Source-native 能力与统一能力边界
+| Capability Matrix
+| 完成后
+|
+3. Design System Mapping
+| 把页面需求映射到现有 Venera Components / Tokens
+| 组件映射表 + Token 计划
+| 完成后
+|
+4. 页面结构设计
+| 确定页面层次、滚动结构、状态结构
+| 页面结构方案
+| 完成后
+|
+5. Agent 实施
+| 限定范围进行代码改造
+| 代码变更
+| 编译通过后
+|
+6. Static QA
+| 代码、类型、依赖、旧功能回归检查
+| 审计报告
+| 完成后
+|
+7. Build QA
+| 编译、单测、APK
+| BUILD SUCCESSFUL
+| 完成后
+|
+8. 真机 QA
+| 视觉与交互验证
+| 设备检查结果
+| 通过后
+|
+9. Freeze
+| 锁定页面，避免无意义继续重构
+| Page Frozen
+| 进入下一页面
+|
+3. 阶段 0～2：页面审计流程
+3.1 先找旧页面，不要先画新页面
+第一步不是“这个页面应该长什么样”，而是“旧页面到底有什么功能”。尤其 Venera 是多 Source 应用，UI 设计必须建立在真实能力上。
+定位当前页面入口、Route、ViewModel、主要 Composable、状态来源。
+查看旧版 Git 版本：必要时使用 git show HEAD:<path> 对比新旧行为。
+记录所有用户可见功能：搜索、筛选、排序、分页、Tag、错误、空状态、Loading、History、Source 等。
+区分“UI 外观”与“业务语义”：例如 dropdown 的清空/恢复默认不能因为 UI 改成 Chip 就被丢掉。
+记录已有问题和已知回归，防止新一轮重构把旧 Bug 修复结果再次覆盖。
+3.2 Feature Parity Checklist 模板
+类别
+| 必须记录
+|
+入口
+| Route、Navigation 参数、Back 行为
+|
+输入
+| TextField、IME、Focus、Clear、Debounce、Submit
+|
+筛选
+| Tag、Dropdown、Select、Multi-select、source optionList
+|
+展示
+| Grid/List、Card、Cover、SourceBadge、Metadata
+|
+状态
+| Loading、Empty、Error、Retry、Disabled
+|
+数据
+| Paging、Load more、All-source aggregation、Source-native data
+|
+交互
+| 点击、长按、删除、选择、恢复默认、返回
+|
+系统约束
+| BottomBar clearance、Insets、字体缩放、宽度适配
+|
+4. Design System 设计规则
+4.1 一套 Component System + 两套 Visual Style
+Venera Components
+↓
+统一实现
+↓
+Visual Style = MIUIX / MD3
+Appearance = LIGHT / DARK / SYSTEM
+不要建立“MIUIX Components + Material3 Components”两套平行组件库。Visual Style 主要通过 Token 改变颜色、Shape、Typography 等视觉层，不通过复制整套 Composable 实现。
+4.2 当前冻结的核心组件
+VeneraCard
+VeneraCover / CoverShimmer / CoverMask
+VeneraChip / VeneraTagChip
+VeneraSourceBadge
+VeneraShimmer
+VeneraEmptyView
+组件纪律
+Venera Components 中禁止使用 Material3 完整 UI Component 作为业务组件。Material3 Icon 可以作为纯绘图实现细节。不要为了单页效果创建第二套 Card / Chip / Tag。
+|
+4.3 Token 原则
+只把“设计决策”进入 Token。
+不要把 system inset、aspectRatio、weight、network timeout、业务分页参数等非视觉参数强行 Token 化。
+优先 semantic token，而不是 searchXXX / homeXXX 等页面专属 Token。
+层级：Generic Design Token → Component Token → 页面使用。
+页面遇到视觉问题时，优先回到 Component / Token 层解决，而不是在页面内写死颜色。
+5. Navigation / BottomBar 基础设施
+项
+| 当前规则
+|
+bottomBarHeight
+| 64dp
+|
+bottomBarBottomGap
+| 12dp
+|
+bottomBarClearance
+| 76dp，不包含 system navigationBars inset
+|
+BottomBar 实现
+| Floating 与 LiquidGlass 都采用 overlay-based
+|
+System inset
+| 由 Navigation Shell 负责
+|
+重复 clearance 审计
+| 已确认 0 个重复消费者
+|
+冻结规则
+Navigation / BottomBar 已完成基础审计。除非出现实际 Bug，不要在页面重构中重新修改这一层。
+|
+6. 阶段 3～5：页面设计与 Agent 实施流程
+6.1 Design System Mapping
+在开始写代码前，先把旧页面的 UI 元素映射到现有组件，而不是直接创建新组件。
+旧页面需求
+| 优先映射到
+|
+漫画卡片
+| VeneraCard + VeneraCover
+|
+来源标记
+| VeneraSourceBadge
+|
+普通 Tag
+| VeneraTagChip
+|
+筛选/选择
+| VeneraChip，必要时 private page composable
+|
+空数据
+| VeneraEmptyView
+|
+Loading
+| VeneraShimmer / 对应 skeleton
+|
+统一视觉参数
+| Color / Shape / Spacing / Typography / semantic component Token
+|
+6.2 页面结构设计
+优先确定唯一 vertical viewport，避免嵌套 LazyColumn / LazyVerticalGrid 带来的滚动、insets 和性能问题。
+先确定状态结构：Loading / Empty / Error / Content，而不是最后再补。
+先确认 BottomBar clearance，再安排内容底部 padding。
+Grid 要根据可用宽度动态计算列数，不要为几个固定设备宽度写死。
+如果能力来自 Source optionList，则 UI 只渲染 Source 真正提供的 option。
+6.3 Agent 实施的边界
+只修改当前页面和完成任务所必需的 private helper。
+尽量不改 ViewModel / Data Model / Source / Network / Reader / Navigation / BottomBar。
+不新增 public Component，除非经过明确架构讨论。
+不要顺手重构其他页面。
+不要为了 UI 统一而删除旧功能。
+完成后必须停止，不自动进入下一个页面。
+7. 阶段 6～8：QA 闭环
+7.1 Static QA
+检查修改是否超出 scope。
+对照旧版确认功能语义没有丢失。
+检查是否出现 Material3 完整 UI Component 混入。
+检查 Token 是否放错层级。
+检查 Source capability 是否被伪造。
+检查 Grid/List、Empty/Error/Loading 等分支。
+7.2 Build QA
+:app:compileDebugKotlin
+:app:testDebugUnitTest
+:app:assembleDebug
+三项至少都要通过。Agent 报告必须写明 BUILD SUCCESSFUL，而不是只说“应该没问题”。
+7.3 真机 QA
+静态代码检查不能替代真实设备视觉与交互验证。每页至少要验证：
+LIGHT / DARK；必要时 SYSTEM。
+常见宽度：约 360 / 393 / 412dp，以及较大宽度设备。
+字体放大后的溢出与布局。
+输入焦点、光标、IME。
+点击、返回、菜单、Dialog、Dropdown 等真实交互。
+BottomBar clearance 与 system inset。
+Loading / Empty / Error / Retry。
+长文本、长 Tag、空数据。
+8. Search：当前项目采用的完整示范流程
+Search 是目前已经走完整个闭环的页面，可以作为以后 Explore / History / Detail 等页面的参考样板。
+8.1 Search 已完成的核心工作
+单一外层 LazyColumn，Grid 不再嵌套 LazyVerticalGrid。
+Grid 动态列数计算；minCard≈130dp，gap≈12dp。
+Grid / List 共用结果语义。
+保留搜索、Tag、History、Source、All-source、URL→Detail、Paging、Error/Retry、NSFW、Back-to-top 等能力。
+恢复 List / Grid Tag。
+Favorites Grid/List 已同步补 Tag。
+dropdown option 按 group.type 恢复 source-native 语义。
+8.2 Search 曾发生的严重事故：必须记住
+No NavigationEventDispatcherOwner provided
+→ rememberNavigationEventDispatcherOwner(...)
+→ SearchOptionsSheet(...)
+原因与 NavigationEvent + Miuix Dialog 独立 Window 的 CompositionLocal 边界有关。最终恢复旧版 AlertDialog Host，并移除 navigationevent-compose。你已经真机确认这个 Crash 修复有效。
+以后不要这样做
+Dialog / BottomSheet Host 不是单纯视觉组件。不要为了“更漂亮”随便把稳定的 AlertDialog 改成 OverlayBottomSheet，也不要重新引入 navigationevent workaround。
+|
+8.3 Search 当前剩余 QA
+项目
+| 状态
+|
+架构 / Components / Single Scroll
+| ✅
+|
+Feature Parity
+| ✅ 基本完成
+|
+Crash 修复
+| ✅ 已真机确认
+|
+Favorites Tag
+| ✅
+|
+Dropdown 语义恢复
+| ✅ 代码完成
+|
+Tag = 0.90 + outlineVariant
+| ✅ 代码完成
+|
+Dark Mode Tag 实机视觉
+| ⏳
+|
+真实 dropdown Source 交互
+| ⏳
+|
+最终 Search Regression
+| ⏳
+|
+9. 阶段 9：页面 Freeze 机制
+页面通过真机 QA 后，不应继续让 Agent“顺手优化”。页面进入冻结状态。
+Page Status = FROZEN
+允许：修实际 Bug、修明确回归
+禁止：无明确需求的视觉重构、架构重构、顺手拆文件、顺手改其他页面
+冻结的目的是防止出现“改视觉 → 顺手改 Host → 功能回归 → Crash → 再修”的循环。
+10. 下一阶段：Explore 的正确启动流程
+不要直接让 Agent“重做 Explore UI”
+Explore 应该先从旧功能和 Source capability 开始审计，再设计页面。
+|
+第一步：定位旧 Explore Route、Screen、ViewModel 和相关 Source capability。
+第二步：完整列出旧功能，形成 Feature Parity Checklist。
+第三步：建立 Capability Matrix：哪些能力是统一的，哪些是 Source-native。
+第四步：确定页面结构、滚动结构、状态结构。
+第五步：把 UI 元素映射到现有 Venera Components。
+第六步：Agent 实施，严格限制 Scope。
+第七步：Compile / Unit Test / APK。
+第八步：真机 QA。
+第九步：Explore FROZEN。
+11. Source Capability 原则
+这是 Venera 区别于普通单源漫画 App 的核心。
+场景
+| 正确做法
+| 错误做法
+|
+排序
+| 使用 Source optionList 真实排序项
+| 强行生成 relevance / latest / hot
+|
+标签
+| 显示 Source 真实 Tag，做最少必要规范化
+| UI 自行翻译、合并、重写 Source Tag
+|
+高级筛选
+| 只展示当前模型和 Source 真正支持的能力
+| 假造 Year / Language / Pages 等
+|
+分类
+| 根据 Source 能力展示
+| 假设所有 Source 都有统一 Genre 树
+|
+All-source
+| 使用聚合能力支持的公共字段
+| 伪造所有 Source 都支持的高级能力
+|
+12. 给 AI Agent 下任务的标准模板
+下面这份模板以后可以直接复制，每次只替换“任务目标”和“页面”。
+继续 Venera UI 重构。
+【本轮任务】
+只处理：<页面 / 功能>
+【目标】
+1. ……
+2. ……
+【先做审计】
+- 对比当前代码与旧版行为；
+- 如有必要使用 git show HEAD:<path>；
+- 先列出功能差异，再实施。
+【架构约束】
+- 使用现有 Venera Components；
+- 不建立第二套 Component System；
+- 不用 Material3 完整 UI Component；
+- Source-native capability 优先；
+- 不伪造 Source 不提供的功能。
+【严格禁止】
+- 不修改 ViewModel；
+- 不修改 Data Model；
+- 不修改 Source / JS scripts / Network；
+- 不修改 Reader；
+- 不修改 Navigation / BottomBar；
+- 不修改其他页面；
+- 不顺手重构无关代码；
+- 不改变已稳定的 Dialog / Sheet Host，除非本任务明确要求。
+【验证】
+- compileDebugKotlin
+- testDebugUnitTest
+- assembleDebug
+- 输出修改文件和每个修改点；
+- 输出功能 parity 检查；
+- 明确说明是否完成真机验证。
+【停止条件】
+本轮完成后立即停止，不继续自动扩展其他任务。
+13. 当前项目状态总览
+模块
+| 状态
+| 下一步
+|
+Design System
+| ✅ 基本定型
+| 维护，避免大改
+|
+Navigation / BottomBar
+| ✅ 冻结
+| 仅修实际 Bug
+|
+Home
+| ✅ 完成
+| 视觉 QA
+|
+Search
+| 🟡 最终 QA
+| 真机确认 Tag + Dropdown + 回归后 Freeze
+|
+Favorites Tag
+| ✅ 完成
+| 无需继续改
+|
+Explore
+| ⏳ 尚未开始本轮重构
+| 先旧功能审计 + Capability Matrix
+|
+ComicSource / History / Detail 等
+| ⏳
+| 按同一标准流程逐页推进
+|
+Source Health semantic
+| ⏳ 单独专题
+| 不要在无关页面里顺手修
+|
+14. 最终工作准则（给新 AI 的最高优先级）
+先理解，再修改；先审计，再设计。
+先保护业务语义，再追求视觉统一。
+统一组件，不统一不存在的 Source 能力。
+页面问题优先在 Venera Component / Token 层解决，不在页面里复制样式。
+交互架构改动要视为高风险修改，尤其 Dialog、BottomSheet、Navigation、BottomBar。
+每轮任务必须有明确 Scope 和 Stop Condition。
+编译通过不等于真机通过；视觉与交互必须最终在设备确认。
+一个页面通过完整 QA 后冻结，再进入下一个页面。
+当前真正的下一步
+安装最新 APK → 看 Dark Mode Tag → 找真实 dropdown Source 做交互回归 → 做一次 Search 快速完整回归 → Search Freeze → 开始 Explore 的旧功能审计。
+|

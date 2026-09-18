@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -195,14 +196,23 @@ private fun HistoryCard(
                 detailed = detailed,
                 modifier = Modifier.padding(6.dp),
                 cover = {
-                    AsyncImage(
-                        model = record.coverUrl,
+                    // 内容守卫：BLUR 命中打码（源级预设 + 用户规则）；HIDE 已在数据层兜底。
+                    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+                    val maskState = guard.coverMaskStateFor(
+                        sourceKey = record.sourceName,
+                        title = record.title,
+                        author = record.author,
+                        comicId = record.comicId,
+                    )
+                    com.venera.compose.components.venera.VeneraCover(
+                        url = record.coverUrl,
                         contentDescription = record.title,
+                        shimmerWhileLoading = false,
+                        mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
+                               else com.venera.compose.components.venera.VeneraCoverMask.Masked,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(if (detailed) 180.dp else 200.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop,
+                            .height(if (detailed) 180.dp else 200.dp),
                     )
                 },
                 content = {

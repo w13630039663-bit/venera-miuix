@@ -3,7 +3,7 @@ package com.venera.compose.feature
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,361 +12,1402 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
-import com.venera.compose.components.ComicLayoutToggleButton
-import com.venera.compose.components.ComicMetrics
-import com.venera.compose.components.ComicTileDetailed
+import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraChip
+import com.venera.compose.components.venera.VeneraChipVariant
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraShimmer
+import com.venera.compose.components.venera.VeneraSourceBadge
+import com.venera.compose.components.venera.VeneraTagChip
+import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.SearchOptionGroup
-import top.yukonga.miuix.kmp.basic.Card
+import com.venera.compose.ui.tokens.VeneraSpacing
+import com.venera.compose.ui.tokens.VeneraTokens
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalLayoutApi::class)
+/**
+ * 搜索页（SearchRoute 与 TagSearchRoute **共享同一套 UI**）。
+ *
+ * 两个 Route 的唯一差异：
+ *  - [consumesBottomBarClearance]：SearchRoute 为 true（主 Tab，底栏显示），
+ *    TagSearchRoute 为 false（详情页下钻，底栏不显示）。
+ *  - [onNavigateBack]：TagSearchRoute 提供返回 affordance；SearchRoute 传 null（主 Tab 无需返回）。
+ * 除此之外视觉与交互完全一致，不存在第二套布局。
+ *
+ * 设计原则（服从项目真实能力）：
+ *  - Source-native capability 优先于统一假设：排序入口内容随当前源 optionList 变化，
+ *    源未声明排序时不伪造能力。
+ *  - 不制造不存在的业务能力：条件 BottomSheet 只提供 Tag；年份/语言/页数因
+ *    数据模型无可靠支持而不显示（记录为 Search Capability 专项）。
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
     initialQuery: String = "",
     viewModel: SearchViewModel = viewModel(),
+    consumesBottomBarClearance: Boolean = true,
+    onNavigateBack: (() -> Unit)? = null,
 ) {
+    val tokens = VeneraTokens
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val sources by viewModel.sourcesFlow.collectAsStateWithLifecycle()
     val groups by viewModel.searchOptions.collectAsStateWithLifecycle()
     val selected by viewModel.selectedOptions.collectAsStateWithLifecycle()
     var displayMode by rememberComicListDisplayMode()
     var showOptions by remember(ui.selectedSourceKey) { mutableStateOf(false) }
-    var showTags by remember { mutableStateOf(false) }
-    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    var showConditions by remember { mutableStateOf(false) }
+
+    val guard = ContentGuardManager.getInstance(LocalContext.current)
     val nsfwMode by guard.nsfwMaskMode.collectAsStateWithLifecycle()
-    fun mask(comic: Comic): String = guard.coverMaskStateFor(comic.title, comic.subTitle, comic.tags, comic.id)
-    fun select(comic: Comic, sourceName: String) = onSelect(ComicItem(
-        id = comic.id, title = comic.title, author = comic.subTitle, coverUrl = comic.cover,
-        sourceName = sourceName, tags = comic.tags, description = comic.description,
-        rating = comic.rating?.toString().orEmpty(), likesCount = comic.likesCount
-    ))
+    // 带 Comic 走守卫 LRU 判定（含源级预设）：jm/哔咔等整站源在搜索结果里同样整站打码。
+    fun mask(comic: Comic): VeneraCoverMask =
+        if (guard.coverMaskStateFor(comic) == "BLURRED")
+            VeneraCoverMask.Masked else VeneraCoverMask.Visible
+
+    fun select(comic: Comic, sourceName: String) = onSelect(
+        ComicItem(
+            id = comic.id, title = comic.title, author = comic.subTitle, coverUrl = comic.cover,
+            sourceName = sourceName, tags = comic.tags, description = comic.description,
+            rating = comic.rating?.toString().orEmpty(), likesCount = comic.likesCount,
+        )
+    )
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     var showBackToTop by remember { mutableStateOf(false) }
     LaunchedEffect(listState) {
-        androidx.compose.runtime.snapshotFlow { listState.firstVisibleItemIndex }
-            .collect { showBackToTop = it > 10 }
+        snapshotFlow { listState.firstVisibleItemIndex }.collect { showBackToTop = it > 10 }
     }
-    // 单源搜索：滑到列表末尾自动加载下一页。
+    // 单源搜索：滑到接近底部自动加载下一页。
+    // 网格已逐行挂载（每行 = 一个 LazyItem），totalItemsCount 真实反映行数，
+    // 倒数第 2 行进入可视区即触发，平滑且不会滥发请求。
     LaunchedEffect(listState, ui.canLoadMore, ui.results.size) {
-        androidx.compose.runtime.snapshotFlow {
+        snapshotFlow {
             val info = listState.layoutInfo
             (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
         }.collect { (lastVisible, total) ->
             if (ui.canLoadMore && !ui.isSearching && !ui.loadingMore &&
                 ui.selectedSourceKey != SearchViewModel.KEY_ALL && total > 0 &&
-                lastVisible >= total - 3) {
-                viewModel.loadMore()
-            }
+                lastVisible >= total - 2
+            ) viewModel.loadMore()
         }
     }
     LaunchedEffect(ui.selectedSourceKey) { viewModel.loadSearchOptions(ui.selectedSourceKey) }
-    LaunchedEffect(initialQuery) {
-        if (initialQuery.isNotBlank()) viewModel.search(initialQuery)
-    }
+    LaunchedEffect(initialQuery) { if (initialQuery.isNotBlank()) viewModel.search(initialQuery) }
 
-    if (showOptions) SearchOptionsDialog(
+    if (showOptions) SearchOptionsSheet(
         sourceName = ui.selectedSourceLabel,
         aggregate = ui.selectedSourceKey == SearchViewModel.KEY_ALL,
         groups = groups, selected = selected, loading = ui.optionsLoading, error = ui.optionsError,
         onRetry = { viewModel.loadSearchOptions(ui.selectedSourceKey) },
         onDismiss = { showOptions = false },
-        onApply = { values -> viewModel.applySearchOptions(ui.selectedSourceKey, values); showOptions = false }
+        onApply = { values -> viewModel.applySearchOptions(ui.selectedSourceKey, values); showOptions = false },
     )
-    if (showTags) SearchTagDialog(viewModel, onDismiss = { showTags = false })
+    if (showConditions) SearchConditionSheet(
+        viewModel = viewModel,
+        onDismiss = { showConditions = false },
+    )
+
+    // LazyColumn 的 content lambda 不是 @Composable，因此把 Token 提前取出。
+    val tokenSet = tokens.current
+    val colorSet = tokens.color
 
     Box(Modifier.fillMaxSize()) {
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            OutlinedTextField(
-                value = ui.query, onValueChange = viewModel::onQueryChange,
-                placeholder = { Text("作品名、作者或漫画链接", fontSize = 13.sp) },
-                leadingIcon = { IconButton(onClick = { viewModel.search(ui.query) }) {
-                    Icon(Icons.Outlined.Search, contentDescription = "搜索")
-                } },
-                trailingIcon = { if (ui.query.isNotEmpty() || ui.tags.isNotEmpty()) {
-                    IconButton(onClick = viewModel::clearQuery) { Icon(Icons.Outlined.Close, contentDescription = "清空搜索条件") }
-                } },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.search(ui.query) }),
-                singleLine = true, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                AssistChip(onClick = { showTags = true }, label = { Text("＋ 添加标签") })
-                ui.tags.forEachIndexed { index, tag ->
-                    InputChip(selected = true, onClick = { viewModel.removeTag(index) },
-                        label = { Text(listOf(tag.namespace, tag.label).filter { it.isNotBlank() }.joinToString(":"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = "移除标签", modifier = Modifier.size(16.dp)) })
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = tokens.spacing.rowHorizontal,
+                end = tokens.spacing.rowHorizontal,
+                top = tokens.spacing.space4,
+                // 统一契约：主 Tab 避让底栏；下钻子页仅保留自身滚动留白。
+                bottom = if (consumesBottomBarClearance) VeneraSpacing.bottomBarClearance else tokens.spacing.space8,
+            ),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap),
+        ) {
+            item(key = "header") {
+                SearchHeader(
+                    query = ui.query,
+                    hasConditions = ui.tags.isNotEmpty(),
+                    onQueryChange = viewModel::onQueryChange,
+                    onSubmit = { viewModel.search(ui.query) },
+                    onClear = { viewModel.clearQuery() },
+                    onBack = onNavigateBack,
+                )
+            }
+
+            // 常驻：即使还没有条件，也要有「+ 添加标签」入口。
+            // （旧实现把它放在 AssistChip 常显；本轮改成条件区常驻，语义更清晰。）
+            item(key = "conditions") {
+                ActiveConditions(
+                    tags = ui.tags,
+                    onRemove = { viewModel.removeTag(it) },
+                    onClearAll = { viewModel.clearQuery() },
+                    onAdd = { showConditions = true },
+                )
+            }
+
+            if (ui.history.isNotEmpty() && ui.query.isEmpty() && ui.tags.isEmpty()) {
+                item(key = "history") {
+                    SearchHistory(
+                        history = ui.history,
+                        onPick = { viewModel.search(it) },
+                        onClear = viewModel::clearHistory,
+                    )
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { showOptions = true }) {
-                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("排序与高级筛选")
-                }
-                Spacer(Modifier.weight(1f))
-                ComicLayoutToggleButton(displayMode = displayMode, onToggle = { displayMode = it })
-            }
-            Text(
-                if (ui.selectedSourceKey == SearchViewModel.KEY_ALL) "全网聚合使用各源默认选项；高级筛选请先选择下方漫画源。"
-                else if (ui.optionsLoading) "正在读取源提供的搜索选项…"
-                else if (ui.optionsError != null) ui.optionsError!!
-                else if (groups.isEmpty()) "该源未声明排序或高级筛选选项。"
-                else "已接入源提供的 ${groups.size} 组搜索选项，结果保持源排序。",
-                fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-            )
-        }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val tabs = listOf(SearchViewModel.KEY_ALL to SearchViewModel.SOURCE_ALL_LABEL) + sources.map { it.key to it.name }
-                items(tabs, key = { it.first }) { (key, label) ->
-                    FilterChip(selected = ui.selectedSourceKey == key,
-                        onClick = { viewModel.onSourceSelected(key, label) }, label = { Text(label) })
+
+            if (sources.isNotEmpty()) {
+                item(key = "sources") {
+                    SourceSelector(
+                        sources = sources,
+                        selectedKey = ui.selectedSourceKey,
+                        allLabel = SearchViewModel.SOURCE_ALL_LABEL,
+                        onSelect = { key, label -> viewModel.onSourceSelected(key, label) },
+                    )
                 }
             }
-        }
-        ui.matchedUrlComic?.let { matched -> item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("识别到【${matched.sourceName}】漫画链接")
-                    TextButton(onClick = { onSelect(ComicItem(id = matched.comicId, title = matched.comicId, author = "", coverUrl = "", sourceName = matched.sourceName)) }) {
-                        Text("直达详情")
+
+            item(key = "controls") {
+                SearchControls(
+                    groups = groups,
+                    isAggregate = ui.selectedSourceKey == SearchViewModel.KEY_ALL,
+                    optionsLoading = ui.optionsLoading,
+                    optionsError = ui.optionsError,
+                    displayMode = displayMode,
+                    onToggleDisplayMode = { displayMode = it },
+                    onOpenSort = { showOptions = true },
+                )
+            }
+
+            ui.matchedUrlComic?.let { matched ->
+                item(key = "url-match") {
+                    VeneraCard(onClick = {
+                        onSelect(
+                            ComicItem(
+                                id = matched.comicId, title = matched.comicId, author = "",
+                                coverUrl = "", sourceName = matched.sourceName,
+                            )
+                        )
+                    }) {
+                        Text(
+                            text = "识别到【" + matched.sourceName + "】漫画链接",
+                            fontSize = tokens.type.body,
+                            color = tokens.color.textPrimary,
+                        )
+                        Spacer(Modifier.height(tokens.spacing.space2))
+                        Text(
+                            text = "点击直达详情",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.primary,
+                        )
                     }
                 }
             }
-        } }
-        if (ui.tagSuggestions.isNotEmpty()) item {
-            Text("标签联想（点击添加原文标签）", fontSize = 13.sp)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ui.tagSuggestions.forEach { (raw, label) -> AssistChip(
-                    onClick = { viewModel.addTag(raw, label) }, label = { Text("$label（$raw）", maxLines = 1) }
-                ) }
-            }
-        }
-        if (ui.history.isNotEmpty() && ui.query.isEmpty() && ui.tags.isEmpty()) item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("搜索历史", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                TextButton(onClick = viewModel::clearHistory) { Text("清空历史") }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ui.history.forEach { keyword -> AssistChip(onClick = { viewModel.search(keyword) }, label = { Text(keyword) }) }
-            }
-        }
-        ui.error?.let { error -> item {
-            Text(error, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = { viewModel.search(ui.query) }) { Text("重试搜索") }
-        } }
-        if (ui.selectedSourceKey == SearchViewModel.KEY_ALL) {
-            ui.aggregatedResults.values.forEach { event ->
-                // 聚合区每个 item 都必须有跨源唯一的 key：LazyColumn 按源分组后
-                // 若行用默认 key，不同源的行互相复用，会出现第一个源的卡片
-                // 覆盖后续源内容的错位 bug。
-                if (event.isLoading) item(key = "source:${event.sourceKey}:loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                else if (event.error != null || event.comics.isEmpty()) item(key = "source:${event.sourceKey}:empty") { Text(event.error ?: "未找到相关漫画", fontSize = 13.sp) }
-                else item(key = "source:${event.sourceKey}:row") {
-                    // 每源只展示 5 个，横向滑动浏览——单屏一眼扫过所有源。
+
+            if (ui.tagSuggestions.isNotEmpty()) {
+                item(key = "tag-suggest") {
                     Column {
-                        TextButton(onClick = { viewModel.onSourceSelected(event.sourceKey, event.sourceName) }) {
-                            Text("${event.sourceName} · ${event.comics.size} 部 · 进入源搜索", fontSize = 12.sp)
-                        }
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()) {
-                            items(event.comics.take(5), key = { it.id }) { comic ->
-                                MiniComicCard(comic, nsfwMode, ::mask) { select(comic, event.sourceName) }
+                        Text(
+                            text = "标签联想",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textSecondary,
+                            modifier = Modifier.padding(bottom = tokens.spacing.space2),
+                        )
+                        FlowChips {
+                            ui.tagSuggestions.forEach { (raw, label) ->
+                                VeneraTagChip(text = label, onClick = { viewModel.addTag(raw, label) })
                             }
                         }
                     }
                 }
             }
-            if (ui.hasSearched && !ui.isSearching && ui.aggregatedResults.isEmpty() && ui.error == null) item { Text("没有可用的搜索源，请先启用漫画源。") }
-        } else {
-            if (ui.isSearching) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            if (ui.results.isNotEmpty()) {
-                item { Text("检索结果（${ui.results.size} 条，源排序）", fontWeight = FontWeight.Bold) }
-                items(ui.results.chunked(if (displayMode == "brief") 2 else 1)) { row ->
-                    SearchResultRow(row, displayMode, ui.selectedSourceLabel, nsfwMode, ::mask) { select(it, ui.selectedSourceLabel) }
-                }
-            } else if (ui.hasSearched && !ui.isSearching && ui.error == null) item {
-                Text("未找到相关漫画，请调整关键词、标签或源筛选。")
+
+            if (ui.selectedSourceKey == SearchViewModel.KEY_ALL) {
+                this@LazyColumn.AggregatedResults(
+                    ui = ui,
+                    tokens = tokenSet,
+                    colors = colorSet,
+                    mask = ::mask,
+                    displayMode = displayMode,
+                    onSelect = { comic, sourceName -> select(comic, sourceName) },
+                    onOpenSource = { key, label -> viewModel.onSourceSelected(key, label) },
+                    onRetry = { viewModel.search(ui.query) },
+                )
+            } else {
+                this@LazyColumn.SingleSourceResults(
+                    ui = ui,
+                    tokens = tokenSet,
+                    colors = colorSet,
+                    displayMode = displayMode,
+                    mask = ::mask,
+                    onSelect = { select(it, ui.selectedSourceLabel) },
+                    onRetry = { viewModel.search(ui.query) },
+                )
             }
-            if (ui.selectedSourceKey != SearchViewModel.KEY_ALL && ui.loadingMore) item(key = "loading-more") {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text("正在加载更多…", fontSize = 12.sp)
+
+            item(key = "tail") { Spacer(Modifier.height(tokens.spacing.space2)) }
+        }
+
+        // 回到顶部：位置基于契约计算，不手工猜底栏高度。
+        SearchBackToTop(
+            visible = showBackToTop,
+            modifier = Modifier.align(Alignment.BottomEnd),
+            bottomOffset = if (consumesBottomBarClearance) {
+                VeneraSpacing.bottomBarClearance + VeneraSpacing.space9
+            } else {
+                VeneraSpacing.space10
+            },
+            onClick = { scope.launch { listState.animateScrollToItem(0) } },
+        )
+    }
+}
+/* ================================================================== *
+ * Search 私有 UI 组件
+ *
+ * 刻意保持 private：除 Search 外无页面需要，不提升到 components/。
+ * ================================================================== */
+
+/**
+ * 搜索头部：返回（可选）+ 输入框 + 清空。
+ *
+ * 输入框用 BasicTextField 自绘而非 M3 OutlinedTextField，原因：
+ *  - M3 TextField 携带完整 Material 交互语义（容器色、label 动画、指示线），
+ *    与统一 Venera 表面冲突；
+ *  - 自绘可让 placeholder / focus / 圆角完全走 Token。
+ */
+@Composable
+private fun SearchHeader(
+    query: String,
+    hasConditions: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClear: () -> Unit,
+    onBack: (() -> Unit)?,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+    ) {
+        // 仅在子页面（下钻）显示返回；主 Tab 不产生重复的返回 affordance。
+        if (onBack != null) {
+            SearchIconAction(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(tokens.shape.large),
+            color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+            modifier = Modifier.weight(1f).height(tokens.spacing.searchFieldHeight),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = tokens.spacing.fieldHorizontalPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = null,
+                    tint = tokens.color.textTertiary,
+                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                )
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "搜索作品、作者或标签",
+                            fontSize = tokens.type.body,
+                            color = tokens.color.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    BasicTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = tokens.type.body,
+                            color = tokens.color.textPrimary,
+                        ),
+                        cursorBrush = SolidColor(tokens.color.primary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (query.isNotEmpty() || hasConditions) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "清空搜索条件",
+                        tint = tokens.color.textTertiary,
+                        modifier = Modifier
+                            .size(tokens.spacing.chipIconSize)
+                            .clickable(onClick = onClear),
+                    )
                 }
             }
         }
-    }
-    // 浮置「回到顶部」：下滑超过一屏后出现，单击回顶。
-    androidx.compose.animation.AnimatedVisibility(visible = showBackToTop, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 110.dp)) {
-        androidx.compose.material3.ExtendedFloatingActionButton(onClick = {
-            scope.launch { listState.animateScrollToItem(0) }
-        }) {
-            Icon(Icons.Filled.ArrowUpward, contentDescription = "回到顶部")
-            Spacer(Modifier.width(4.dp)); Text("顶部", fontSize = 13.sp)
-        }
-    }
     }
 }
 
-/** 聚合搜索专用迷你卡：固定小尺寸（宽 96dp），在 LazyRow 里横向滑动。 */
+/** 轻量图标动作按钮（替代 TextButton 的图标场景）。 */
 @Composable
-private fun MiniComicCard(
-    comic: Comic, maskMode: String,
-    mask: (Comic) -> String, onSelect: (Comic) -> Unit
+private fun SearchIconAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
 ) {
-    val coverMask = remember(comic, maskMode) { mask(comic) }
-    Card(modifier = Modifier.width(96.dp).clickable { onSelect(comic) }) {
-        Column(Modifier.padding(5.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            AsyncImage(model = comic.cover, contentDescription = comic.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(6.dp))
-                    .background(MiuixTheme.colorScheme.surfaceVariant)
-                    .then(if (coverMask == "BLURRED") Modifier.blur(16.dp) else Modifier))
-            Text(comic.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, lineHeight = 13.sp)
+    val tokens = VeneraTokens
+    Icon(
+        imageVector = icon,
+        contentDescription = contentDescription,
+        tint = tokens.color.textPrimary,
+        modifier = Modifier
+            .size(tokens.spacing.iconButtonSize)
+            .clip(RoundedCornerShape(tokens.shape.small))
+            .clickable(onClick = onClick)
+            .padding(tokens.spacing.space5),
+    )
+}
+
+/** 轻量文字动作（替代 TextButton）。 */
+@Composable
+private fun SearchTextAction(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = VeneraTokens
+    Text(
+        text = text,
+        fontSize = tokens.type.caption,
+        fontWeight = tokens.type.weightMedium,
+        color = if (enabled) tokens.color.primary else tokens.color.textDisabled,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(tokens.shape.extraSmall))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = tokens.spacing.space3, vertical = tokens.spacing.space2),
+    )
+}
+
+/** 自动换行的 Chip 容器（避免直接依赖 M3 FlowRow 的语义）。 */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun FlowChips(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    val tokens = VeneraTokens
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+        modifier = Modifier.fillMaxWidth(),
+        content = content,
+    )
+}
+
+/**
+ * 当前生效的搜索条件。
+ *
+ * 搜索源**不是**条件（Source identity ≠ Tag identity），因此不在本区展示。
+ */
+@Composable
+private fun ActiveConditions(
+    tags: List<SearchTag>,
+    onRemove: (Int) -> Unit,
+    onClearAll: () -> Unit,
+    onAdd: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    Column {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "搜索条件",
+                fontSize = tokens.type.caption,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            // 没有条件时不显示「清除全部」，避免无意义的可点项
+            if (tags.isNotEmpty()) {
+                SearchTextAction(text = "清除全部", onClick = onClearAll)
+            }
+        }
+        FlowChips {
+            tags.forEachIndexed { index, tag ->
+                VeneraTagChip(
+                    text = listOf(tag.namespace, tag.label)
+                        .filter { it.isNotBlank() }
+                        .joinToString(":"),
+                    selected = true,
+                    onClick = { onRemove(index) },
+                )
+            }
+            // 与旧版「＋ 添加标签」等价的常驻入口。
+            // 使用 Tag variant（实底 surfaceVariant）而非 Assist（透明底 + 细描边）：
+            // 后者在 MIUIX/MD3 某些配色下 outline 与表面色过于接近，按钮几乎看不见 ——
+            // 这正是"添加入口消失"报告的真实成因。视觉更重，但语义仍是同一组件。
+            VeneraChip(
+                text = "添加标签",
+                leadingIcon = Icons.Outlined.Add,
+                onClick = onAdd,
+                variant = VeneraChipVariant.Tag,
+            )
         }
     }
 }
 
+/** 搜索历史：最多 5 条，无内容时不渲染（调用方已保证）。 */
 @Composable
-private fun SearchResultRow(
-    comics: List<Comic>, mode: String, sourceName: String, maskMode: String,
-    mask: (Comic) -> String, onSelect: (Comic) -> Unit
+private fun SearchHistory(
+    history: List<String>,
+    onPick: (String) -> Unit,
+    onClear: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        comics.forEach { comic ->
-            val coverMask = remember(comic, maskMode) { mask(comic) }
+    val tokens = VeneraTokens
+    Column {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "最近搜索",
+                fontSize = tokens.type.caption,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            SearchTextAction(text = "清空", onClick = onClear)
+        }
+        FlowChips {
+            // 只展示最近 5 条；不新增独立历史页面。
+            history.take(5).forEach { keyword ->
+                VeneraChip(text = keyword, onClick = { onPick(keyword) })
+            }
+        }
+    }
+}
+/**
+ * 漫画源选择器。
+ *
+ * 与 [VeneraSourceBadge] 的区别是刻意的：
+ *  - SourceBadge 用于卡片封面左上角的身份标记（overlay）；
+ *  - 本组件是**选择器**，用 VeneraChip 承载，选中态用强调容器色。
+ * 二者语义不同，因此不共用实现。
+ *
+ * 横向滚动由实际内容宽度决定，不限制"最多几个"。
+ */
+@Composable
+private fun SourceSelector(
+    sources: List<com.venera.compose.source.ComicSource> ,
+    selectedKey: String,
+    allLabel: String,
+    onSelect: (String, String) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Column {
+        Text(
+            text = "漫画源",
+            fontSize = tokens.type.caption,
+            fontWeight = tokens.type.weightSemibold,
+            color = tokens.color.textSecondary,
+            modifier = Modifier.padding(bottom = tokens.spacing.space2),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+            itemsIndexed(sources, key = { _, s -> "src-" + s.key }) { _, source ->
+                VeneraChip(
+                    text = source.name,
+                    selected = selectedKey == source.key,
+                    onClick = { onSelect(source.key, source.name) },
+                )
+            }
+            item(key = "src-all") {
+                // 全网聚合置于末尾，视觉上不抢具体源的注意力
+                VeneraChip(
+                    text = allLabel,
+                    selected = selectedKey == SearchViewModel.KEY_ALL,
+                    onClick = { onSelect(SearchViewModel.KEY_ALL, allLabel) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 排序与视图控制。
+ *
+ * 排序入口**不写死三档**：内容完全来自当前源的 optionList。
+ *  - 全网聚合：无统一排序语义 -> 入口禁用（不伪造）。
+ *  - 当前源无 optionList -> 入口禁用（不伪造）。
+ *  - 有 optionList -> 可点击，打开该源的排序/高级筛选。
+ */
+@Composable
+private fun SearchControls(
+    groups: List<SearchOptionGroup>,
+    isAggregate: Boolean,
+    optionsLoading: Boolean,
+    optionsError: String?,
+    displayMode: String,
+    onToggleDisplayMode: (String) -> Unit,
+    onOpenSort: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    /*
+     * 排序入口**始终可点击**。
+     *
+     * 为什么不是"无能力就禁用"：旧实现的入口始终可用，点开后由面板本身说明情况
+     * （全网聚合 / 正在读取 / 读取失败 / 该源未声明选项）。禁用的灰色按钮既不告诉
+     * 用户"为什么不能点"，也让人以为整个功能被删掉了 —— 那正是本次回归的成因。
+     *
+     * 仍然不伪造排序能力：面板内容**完全**来自当前源的 optionList，
+     * 无选项时展示的是说明而不是假的 相关度/最新/热度。
+     */
+    val sortAvailable = true
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+    ) {
+        // 高级选择 / 排序入口：真实能力驱动。
+        // 使用 VeneraChip(Tag variant) 实底呈现 —— 半透明 Surface + 细描边在某些配色下
+        // 几乎不可见，这正是"高级选择入口消失"报告的真实成因。
+        // 文案沿用原实现的语义（排序与高级筛选），不重新设计功能。
+        VeneraChip(
+            text = "排序与高级筛选",
+            leadingIcon = Icons.Filled.Tune,
+            onClick = onOpenSort,
+            enabled = sortAvailable,
+            variant = VeneraChipVariant.Tag,
+        )
+        Spacer(Modifier.weight(1f))
+        // 视图切换：Grid（默认）/ List
+        SearchIconAction(
+            icon = if (displayMode == "detailed") Icons.Outlined.GridView else Icons.Outlined.ViewAgenda,
+            contentDescription = if (displayMode == "detailed") "切换网格" else "切换列表",
+            onClick = { onToggleDisplayMode(if (displayMode == "detailed") "brief" else "detailed") },
+        )
+    }
+}
+
+/** 结果区标题。统一文案，不暴露内部实现细节。 */
+@Composable
+private fun ResultHeader(count: Int) {
+    val tokens = VeneraTokens
+    Text(
+        text = "检索结果（" + count + " 条）",
+        fontSize = tokens.type.itemTitle,
+        fontWeight = tokens.type.weightSemibold,
+        color = tokens.color.textPrimary,
+    )
+}
+/* ================================================================== *
+ * 结果区
+ * ================================================================== */
+
+/** 全网聚合：按 Source 分组，保留 Source identity，绝不合并各源数据体系。 */
+private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
+    ui: SearchUiState,
+    tokens: com.venera.compose.ui.tokens.VeneraTokenSet,
+    colors: com.venera.compose.ui.tokens.VeneraColorTokens,
+    mask: (Comic) -> VeneraCoverMask,
+    displayMode: String,
+    onSelect: (Comic, String) -> Unit,
+    onOpenSource: (String, String) -> Unit,
+    onRetry: () -> Unit,
+) {
+    if (ui.aggregatedResults.isEmpty()) {
+        when {
+            ui.isSearching -> item(key = "agg-loading") { ResultSkeleton() }
+            ui.hasSearched -> item(key = "agg-empty") {
+                VeneraEmptyView(
+                    title = "没有可用的搜索源",
+                    message = "请先在漫画源管理中启用至少一个源",
+                )
+            }
+            else -> item(key = "agg-idle") {
+                VeneraEmptyView(
+                    title = "开始搜索",
+                    message = "输入关键词，或从上方选择一个漫画源",
+                )
+            }
+        }
+        return
+    }
+    // 注意：本函数是 LazyListScope 扩展（非 @Composable），
+    // 所有 Composable 调用都必须包在 item { } / items { } 里。
+
+    ui.aggregatedResults.values.forEach { event ->
+        // 每个 item 必须有跨源唯一 key，否则不同源的行会互相复用导致内容错位。
+        item(key = "src:" + event.sourceKey) {
+            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = event.sourceName,
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightSemibold,
+                        color = colors.textPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (event.comics.isNotEmpty()) {
+                        SearchTextAction(
+                            text = "查看全部",
+                            onClick = { onOpenSource(event.sourceKey, event.sourceName) },
+                        )
+                    }
+                }
+                // 单源失败只影响该源，不把整页拖进错误态。
+                when {
+                    event.error != null -> VeneraEmptyView(
+                        message = event.error ?: "该源暂不可用",
+                        actionText = "重试",
+                        onAction = onRetry,
+                    )
+                    event.isLoading -> ResultSkeleton()
+                    event.comics.isEmpty() -> VeneraEmptyView(
+                        message = "该源未找到相关漫画",
+                    )
+                    else -> LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+                    ) {
+                        items(event.comics, key = { it.id }) { comic ->
+                            Box(Modifier.width(tokens.spacing.comicCardMinWidth)) {
+                                SearchResultCard(
+                                    comic = comic,
+                                    sourceName = event.sourceName,
+                                    mask = mask(comic),
+                                    onClick = { onSelect(comic, event.sourceName) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 单源结果：网格 / 列表 + 分页加载。 */
+private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
+    ui: SearchUiState,
+    tokens: com.venera.compose.ui.tokens.VeneraTokenSet,
+    colors: com.venera.compose.ui.tokens.VeneraColorTokens,
+    displayMode: String,
+    mask: (Comic) -> VeneraCoverMask,
+    onSelect: (Comic) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val detailed = displayMode == "detailed"
+
+    when {
+        // 首次加载：骨架，不用全屏 Spinner
+        ui.isSearching && ui.results.isEmpty() -> item(key = "ss-loading") { ResultSkeleton() }
+
+        ui.error != null && ui.results.isEmpty() -> item(key = "ss-error") {
+            VeneraEmptyView(
+                title = "搜索失败",
+                message = ui.error,
+                actionText = "重试",
+                onAction = onRetry,
+            )
+        }
+
+        ui.results.isEmpty() && ui.hasSearched -> item(key = "ss-empty") {
+            VeneraEmptyView(
+                title = "未找到相关漫画",
+                message = "试试调整关键词、标签或切换漫画源",
+            )
+        }
+
+        ui.results.isEmpty() -> item(key = "ss-idle") {
+            VeneraEmptyView(
+                title = "开始搜索",
+                message = "输入关键词，或从上方选择一个漫画源",
+            )
+        }
+
+        else -> {
+            item(key = "ss-header") { ResultHeader(count = ui.results.size) }
+            if (detailed) {
+                itemsIndexed(ui.results, key = { _, c -> "r-" + c.id }) { _, comic ->
+                    SearchResultRowItem(
+                        comic = comic,
+                        mask = mask(comic),
+                        onClick = { onSelect(comic) },
+                    )
+                }
+            } else {
+                // 网格：与 Explore 相同的逐行挂载（对齐 Explore 的成熟做法）。
+                // 列数在外层按可用宽度推导（与 GridCells.Adaptive 同语义），
+                // 每行 = 一个独立 LazyItem，行级虚拟化回收——滑出屏幕立即释放，
+                // 杜绝把成百上千张封面堆进单个普通 Column 导致的内存堆积与切页假死。
+                val columns = comicListColumnCount(displayMode).coerceAtLeast(2)
+                ui.results.chunked(columns).forEachIndexed { rowIndex, row ->
+                    item(key = "srow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
+                        ComicGridRow(
+                            row = row,
+                            columnCount = columns,
+                            mask = mask,
+                            onSelect = onSelect,
+                        )
+                    }
+                }
+            }
+            // 加载更多时保留已有内容，只在末尾提示。
+            if (ui.loadingMore) item(key = "ss-more") { ResultSkeleton(compact = true) }
+        }
+    }
+}
+
+/** 网格中的一行：等宽卡片 + 尾部补空，保证最后一行左对齐。 */
+@Composable
+private fun ComicGridRow(
+    row: List<Comic>,
+    columnCount: Int,
+    mask: (Comic) -> VeneraCoverMask,
+    onSelect: (Comic) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        row.forEach { comic ->
             Box(Modifier.weight(1f)) {
-                if (mode == "detailed") ComicTileDetailed(
-                    title = comic.title, coverUrl = comic.cover, subtitle = comic.subTitle,
-                    description = comic.description, tags = comic.tags, badge = sourceName,
-                    rating = comic.rating?.toDouble(), likesCount = comic.likesCount,
-                    coverMaskState = coverMask, onClick = { onSelect(comic) }
-                ) else Card(modifier = Modifier.fillMaxWidth().clickable { onSelect(comic) }) {
-                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        AsyncImage(model = comic.cover, contentDescription = comic.title, contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).clip(RoundedCornerShape(8.dp))
-                                .background(MiuixTheme.colorScheme.surfaceVariant)
-                                .then(if (coverMask == "BLURRED") Modifier.blur(16.dp) else Modifier))
-                        Text(comic.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-                        if (comic.subTitle.isNotBlank()) Text(comic.subTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
-                        ComicMetrics(rating = comic.rating?.toDouble(), likesCount = comic.likesCount)
-                    }
+                SearchResultCard(
+                    comic = comic,
+                    sourceName = comic.sourceKey,
+                    mask = mask(comic),
+                    onClick = { onSelect(comic) },
+                )
+            }
+        }
+        // 末行不足时用等宽 Spacer 占位，避免卡片被拉伸成不等宽
+        repeat(columnCount - row.size) {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+/* ================================================================== *
+ * 结果卡片与状态
+ * ================================================================== */
+
+/**
+ * 漫画结果卡。
+ *
+ * 信息优先级：标题 > 作者·来源 > 可选 Metadata > 最多两个 Tag。
+ * 缺失字段直接不渲染（不显示 0 likes / — / N/A / 空占位）。
+ */
+@Composable
+private fun SearchResultCard(
+    comic: Comic,
+    sourceName: String,
+    mask: VeneraCoverMask,
+    onClick: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    VeneraCard(onClick = onClick) {
+        VeneraCover(
+            url = comic.cover,
+            contentDescription = comic.title,
+            mask = mask,
+        ) {
+            VeneraSourceBadge(name = sourceName.ifBlank { comic.sourceKey })
+        }
+        Spacer(Modifier.height(tokens.spacing.cardCoverGap))
+        Text(
+            text = comic.title,
+            fontSize = tokens.type.caption,
+            fontWeight = tokens.type.weightMedium,
+            color = tokens.color.textPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val byline = listOf(comic.subTitle, sourceName)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(" · ")
+        if (byline.isNotBlank()) {
+            Text(
+                text = byline,
+                fontSize = tokens.type.overline,
+                color = tokens.color.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        OptionalMetadata(comic)
+        val tags = searchVisibleTags(comic.tags, emptyList())
+        if (tags.isNotEmpty()) {
+            Spacer(Modifier.height(tokens.spacing.space2))
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
+                tags.take(2).forEach { tag ->
+                    VeneraTagChip(text = tag, onClick = null)
                 }
             }
         }
-        if (mode == "brief" && comics.size == 1) Spacer(Modifier.weight(1f))
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** 列表模式的单行卡：左封面 + 右信息。 */
 @Composable
-private fun SearchOptionsDialog(
-    sourceName: String, aggregate: Boolean, groups: List<SearchOptionGroup>, selected: List<String?>,
-    loading: Boolean, error: String?, onRetry: () -> Unit, onDismiss: () -> Unit, onApply: (List<String?>) -> Unit
+private fun SearchResultRowItem(
+    comic: Comic,
+    mask: VeneraCoverMask,
+    onClick: () -> Unit,
 ) {
-    var draft by remember(groups, selected) {
-        mutableStateOf(groups.mapIndexed { index, group -> if (index < selected.size) selected[index] else group.defaultKey })
-    }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("$sourceName · 排序与高级筛选") }, text = {
-        Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            when {
-                aggregate -> Text("全网聚合没有统一筛选。请返回页面选择具体漫画源，再设置该源提供的排序和高级选项。")
-                loading -> { CircularProgressIndicator(); Text("正在读取源选项…") }
-                error != null -> { Text(error); TextButton(onClick = onRetry) { Text("重新加载") } }
-                groups.isEmpty() -> Text("该源未声明搜索筛选选项，不会添加不受支持的筛选条件。")
-                else -> {
-                    Text("以下选项由漫画源提供；确定后重新搜索，取消不保存。", fontSize = 12.sp)
-                    TextButton(onClick = { draft = SearchOptionValues.defaults(groups) }) { Text("恢复源默认值") }
-                    groups.forEachIndexed { index, group ->
-                        Text(group.label.ifBlank { "选项 ${index + 1}" }, fontWeight = FontWeight.Bold)
-                        val value = draft.getOrNull(index)
-                        fun setValue(next: String?) { draft = draft.toMutableList().also { it[index] = next } }
-                        when (group.type) {
-                            "select", "multi-select" -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                group.options.forEach { (key, label) ->
-                                    val checked = if (group.type == "multi-select") key in SearchOptionValues.selectedKeys(value) else value == key
-                                    FilterChip(selected = checked, onClick = { setValue(SearchOptionValues.toggle(group, value, key)) }, label = { Text(label) })
-                                }
-                            }
-                            "dropdown" -> {
-                                var expanded by remember { mutableStateOf(false) }
-                                Box {
-                                    OutlinedButton(onClick = { expanded = true }) { Text(group.options[value] ?: "未选择") }
-                                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                        DropdownMenuItem(text = { Text("清空选择") }, onClick = { setValue(null); expanded = false })
-                                        DropdownMenuItem(text = { Text("恢复源默认值") }, onClick = { setValue(group.defaultKey); expanded = false })
-                                        group.options.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { setValue(key); expanded = false }) }
-                                    }
-                                }
-                            }
-                            else -> Text("暂不支持此源选项类型：${group.type}，保留源默认值。", fontSize = 12.sp)
+    val tokens = VeneraTokens
+    VeneraCard(onClick = onClick) {
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6)) {
+            Box(Modifier.width(tokens.spacing.listCoverWidth)) {
+                VeneraCover(
+                    url = comic.cover,
+                    contentDescription = comic.title,
+                    mask = mask,
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = comic.title,
+                    fontSize = tokens.type.body,
+                    fontWeight = tokens.type.weightMedium,
+                    color = tokens.color.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (comic.subTitle.isNotBlank()) {
+                    Text(
+                        text = comic.subTitle,
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                OptionalMetadata(comic)
+                if (comic.description.isNotBlank()) {
+                    Text(
+                        text = comic.description,
+                        fontSize = tokens.type.overline,
+                        color = tokens.color.textTertiary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // 列表模式补回 Tag（与网格模式保持信息对称）。
+                // 数据仍来自结果自身的 comic.tags，未做任何业务层映射；
+                // 复用与网格相同的去重逻辑，最多 2 个，超出的不渲染。
+                val listTags = searchVisibleTags(comic.tags, emptyList())
+                if (listTags.isNotEmpty()) {
+                    Spacer(Modifier.height(tokens.spacing.space2))
+                    Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
+                        listTags.take(2).forEach { tag ->
+                            VeneraTagChip(text = tag, onClick = null)
                         }
                     }
                 }
             }
         }
-    }, confirmButton = {
-        if (!aggregate && groups.isNotEmpty()) TextButton(onClick = { onApply(draft) }, enabled = !loading && error == null) { Text("确定并重搜") }
-        else TextButton(onClick = onDismiss) { Text("知道了") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+    }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * 可选 Metadata 行。
+ *
+ * 只渲染**确实存在**的字段；任一字段缺失即整段省略，
+ * 绝不输出 0 likes / — / N/A / 空占位符。
+ */
 @Composable
-private fun SearchTagDialog(viewModel: SearchViewModel, onDismiss: () -> Unit) {
+private fun OptionalMetadata(comic: Comic) {
+    val tokens = VeneraTokens
+    val parts = buildList {
+        comic.likesCount?.takeIf { it > 0 }?.let { add(it.toString() + " 赞") }
+        comic.rating?.takeIf { it > 0f }?.let { add("★ " + it) }
+        comic.updateTime.takeIf { it.isNotBlank() }?.let { add(it) }
+    }
+    if (parts.isEmpty()) return
+    Text(
+        text = parts.joinToString(" · "),
+        fontSize = tokens.type.overline,
+        color = tokens.color.textTertiary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = tokens.spacing.space1),
+    )
+}
+
+/** 结果骨架（替代全屏 Spinner）。 */
+@Composable
+private fun ResultSkeleton(compact: Boolean = false) {
+    val tokens = VeneraTokens
+    if (compact) {
+        VeneraShimmer(
+            Modifier.fillMaxWidth().height(tokens.spacing.barHeight),
+        )
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        repeat(2) {
+            Box(Modifier.weight(1f)) {
+                VeneraCard {
+                    VeneraShimmer(
+                        Modifier.fillMaxWidth().aspectRatio(tokens.spacing.coverAspectRatio),
+                    )
+                    Spacer(Modifier.height(tokens.spacing.cardCoverGap))
+                    VeneraShimmer(Modifier.fillMaxWidth().height(tokens.spacing.barHeight))
+                }
+            }
+        }
+    }
+}
+
+/** 回到顶部。 */
+@Composable
+private fun SearchBackToTop(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    bottomOffset: Dp,
+    onClick: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier.padding(
+            end = tokens.spacing.space8,
+            bottom = bottomOffset,
+        ),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(tokens.shape.large),
+            color = tokens.color.primaryContainer,
+            modifier = Modifier.clickable(onClick = onClick),
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = tokens.spacing.chipHorizontalPadding,
+                    vertical = tokens.spacing.chipVerticalPadding,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowUpward,
+                    contentDescription = "回到顶部",
+                    tint = tokens.color.onPrimaryContainer,
+                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                )
+                Text(
+                    text = "顶部",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.onPrimaryContainer,
+                )
+            }
+        }
+    }
+}
+/* ================================================================== *
+ * 条件 / 排序 面板
+ * ================================================================== */
+
+/**
+ * 添加条件面板。
+ *
+ * 本轮**只提供 Tag**。年份 / 语言 / 页数区间因 SearchTag 与数据模型
+ * 无可靠支持而不显示 —— 不制造 fake filter / fake data / UI-only pseudo filtering。
+ * 记录为后续 Search Capability / Query Model 专项。
+ *
+ * 使用 Compose 内置 AlertDialog 承载（旧版 SearchTagDialog 同 host）；
+ * 内部全部走 Venera 组件与 Token。
+ */
+@Composable
+private fun SearchConditionSheet(
+    viewModel: SearchViewModel,
+    onDismiss: () -> Unit,
+) {
+    val tokens = VeneraTokens
     var input by remember { mutableStateOf("") }
     var namespace by remember { mutableStateOf("") }
     val suggestions = remember(input) { viewModel.suggestTags(input) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("添加搜索标签") }, text = {
-        Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("中文用于查找和显示；实际提交标签原文，由各源转换查询格式。未声明标签语法的源按普通关键词搜索。", fontSize = 12.sp)
-            OutlinedTextField(value = input, onValueChange = { input = it }, label = { Text("标签原文或中文联想") }, singleLine = true)
-            OutlinedTextField(value = namespace, onValueChange = { namespace = it }, label = { Text("命名空间（可选，如 artist）") }, singleLine = true)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                suggestions.forEach { (raw, label) -> AssistChip(onClick = {
-                    viewModel.addTag(raw, label, namespace); onDismiss()
-                }, label = { Text("$label（$raw）") }) }
+
+    // 用 Compose 内置 AlertDialog 承载（与旧版 SearchTagDialog 同 host）。
+    // 不用 miuix OverlayBottomSheet：它的内容渲染在独立窗口，CompositionLocal
+    // 无法跨窗口传播，miuix 内部的 NavigationBackHandler 读不到
+    // LocalNavigationEventDispatcherOwner 而抛 IllegalStateException（真机复现）。
+    // 这里保留本轮的新视觉内容，只换回稳定的 Dialog host。
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "添加条件",
+                fontSize = tokens.type.itemTitle,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+            )
+        },
+        text = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(tokens.spacing.rowHorizontal),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+        ) {
+            Text(
+                text = "标签",
+                fontSize = tokens.type.itemTitle,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+            )
+            Text(
+                text = "中文用于查找与显示；提交的是标签原文，由各源自行转换查询格式。" +
+                    "未声明标签语法的源按普通关键词搜索。",
+                fontSize = tokens.type.caption,
+                color = tokens.color.textSecondary,
+            )
+            SearchTextField(
+                value = input,
+                onValueChange = { input = it },
+                placeholder = "标签原文或中文联想",
+            )
+            SearchTextField(
+                value = namespace,
+                onValueChange = { namespace = it },
+                placeholder = "命名空间（可选，如 artist）",
+            )
+            if (suggestions.isNotEmpty()) {
+                FlowChips {
+                    suggestions.forEach { (raw, label) ->
+                        VeneraTagChip(
+                            text = label + "（" + raw + "）",
+                            onClick = {
+                                viewModel.addTag(raw, label, namespace)
+                                onDismiss()
+                            },
+                        )
+                    }
+                }
             }
         }
-    }, confirmButton = { TextButton(enabled = input.isNotBlank(), onClick = {
-        viewModel.addTag(input, namespace = namespace); onDismiss()
-    }) { Text("按原文添加") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+    },
+        confirmButton = {
+            SearchTextAction(
+                text = "按原文添加",
+                enabled = input.isNotBlank(),
+                onClick = {
+                    viewModel.addTag(input, namespace = namespace)
+                    onDismiss()
+                },
+            )
+        },
+        dismissButton = {
+            SearchTextAction(text = "取消", onClick = onDismiss)
+        },
+    )
 }
+
+/** Sheet 内使用的单行输入框（复用 Search Header 的视觉语言）。 */
+@Composable
+private fun SearchTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+) {
+    val tokens = VeneraTokens
+    Surface(
+        shape = RoundedCornerShape(tokens.shape.medium),
+        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+        modifier = Modifier.fillMaxWidth().height(tokens.spacing.searchFieldHeight),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = tokens.spacing.fieldHorizontalPadding),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (value.isEmpty()) {
+                Text(
+                    text = placeholder,
+                    fontSize = tokens.type.body,
+                    color = tokens.color.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    fontSize = tokens.type.body,
+                    color = tokens.color.textPrimary,
+                ),
+                cursorBrush = SolidColor(tokens.color.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/**
+ * 排序与高级筛选面板（内容完全来自当前源的 optionList）。
+ *
+ * 全网聚合或无 optionList 时不展示任何伪造选项。
+ */
+@Composable
+private fun SearchOptionsSheet(
+    sourceName: String,
+    aggregate: Boolean,
+    groups: List<SearchOptionGroup>,
+    selected: List<String?>,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    onApply: (List<String?>) -> Unit,
+) {
+    val tokens = VeneraTokens
+    var draft by remember(groups, selected) {
+        mutableStateOf(
+            groups.mapIndexed { index, group ->
+                if (index < selected.size) selected[index] else group.defaultKey
+            }
+        )
+    }
+
+    // 同 SearchConditionSheet：换回 Compose 内置 AlertDialog（旧版 SearchOptionsDialog 同 host），
+    // 规避 miuix OverlayBottomSheet 独立窗口读不到 LocalNavigationEventDispatcherOwner 的崩溃。
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = sourceName + " · 排序与筛选",
+                fontSize = tokens.type.itemTitle,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+            )
+        },
+        text = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(tokens.spacing.rowHorizontal),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+        ) {
+            when {
+                aggregate -> VeneraEmptyView(
+                    message = "全网聚合没有统一排序。请先选择一个具体漫画源。",
+                )
+                loading -> ResultSkeleton(compact = true)
+                error != null -> VeneraEmptyView(
+                    message = error,
+                    actionText = "重新加载",
+                    onAction = onRetry,
+                )
+                groups.isEmpty() -> VeneraEmptyView(
+                    message = "该源未声明排序或高级筛选选项。",
+                )
+                else -> {
+                    groups.forEachIndexed { index, group ->
+                        Column {
+                            Text(
+                                text = group.label.ifBlank { "选项 " + (index + 1) },
+                                fontSize = tokens.type.caption,
+                                fontWeight = tokens.type.weightSemibold,
+                                color = tokens.color.textSecondary,
+                                modifier = Modifier.padding(bottom = tokens.spacing.space2),
+                            )
+                            val value = draft.getOrNull(index)
+                            when (group.type) {
+                                "dropdown" -> SearchDropdownOption(
+                                    group = group,
+                                    value = value,
+                                    onValueChange = { next ->
+                                        draft = draft.toMutableList().also { it[index] = next }
+                                    },
+                                )
+                                "select", "multi-select" -> FlowChips {
+                                    group.options.forEach { (key, label) ->
+                                        val checked = if (group.type == "multi-select") {
+                                            key in SearchOptionValues.selectedKeys(value)
+                                        } else {
+                                            value == key
+                                        }
+                                        VeneraChip(
+                                            text = label,
+                                            selected = checked,
+                                            onClick = {
+                                                draft = draft.toMutableList().also {
+                                                    it[index] = SearchOptionValues.toggle(group, value, key)
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                                else -> {
+                                    // 不支持的类型：保留源默认值，不生成伪造选项（与旧版一致）。
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+        confirmButton = {
+            SearchTextAction(text = "确定并重搜", onClick = { onApply(draft) })
+        },
+        dismissButton = {
+            SearchTextAction(text = "取消", onClick = onDismiss)
+        },
+    )
+}
+
+/**
+ * source-native `dropdown` 类型筛选项（SearchScreen 内部私有组件）。
+ *
+ * 完整恢复旧版 SearchOptionsDialog 中 group.type == "dropdown" 的语义：
+ *  1. 选择一个 option（值来自 group.options，不伪造）
+ *  2. 保持「未选择」（value == null 时显示「未选择」——Chip flow 无法表达）
+ *  3. 清空选择（写回 null）
+ *  4. 恢复源默认值（写回 group.defaultKey）
+ *
+ * @param group 源声明的筛选组。
+ * @param value 当前选中 key；null 表示未选择。
+ * @param onValueChange 写回回调；null 表示清空。
+ */
+@Composable
+private fun SearchDropdownOption(
+    group: SearchOptionGroup,
+    value: String?,
+    onValueChange: (String?) -> Unit,
+) {
+    val tokens = VeneraTokens
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Surface(
+            shape = RoundedCornerShape(tokens.shape.small),
+            color = tokens.color.surfaceVariant.copy(alpha = tokens.current.tagContainerAlpha),
+            border = BorderStroke(tokens.spacing.space1 / 2, tokens.color.outlineVariant),
+            modifier = Modifier.clickable { expanded = true },
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = tokens.spacing.chipHorizontalPadding,
+                    vertical = tokens.spacing.chipVerticalPadding,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+            ) {
+                Text(
+                    text = group.options[value] ?: "未选择",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = Icons.Filled.ArrowDropDown,
+                    contentDescription = null,
+                    tint = tokens.color.textTertiary,
+                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                )
+            }
+        }
+
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(text = "清空选择", fontSize = tokens.type.caption) },
+                onClick = { onValueChange(null); expanded = false },
+            )
+            DropdownMenuItem(
+                text = { Text(text = "恢复源默认值", fontSize = tokens.type.caption) },
+                onClick = { onValueChange(group.defaultKey); expanded = false },
+            )
+            group.options.forEach { (key, label) ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = label,
+                            fontSize = tokens.type.caption,
+                            color = if (value == key) tokens.color.primary else tokens.color.textPrimary,
+                        )
+                    },
+                    onClick = { onValueChange(key); expanded = false },
+                )
+            }
+        }
+    }
+}
+
+/* ================================================================== *
+ * UI 层标签归一化（只作用于展示，不改任何源数据）
+ * ================================================================== */
+
+internal fun searchVisibleTags(tags: List<String>, exclude: List<String>): List<String> {
+    val excluded = exclude.map { normalizeTagKey(it) }.toSet()
+    val seen = mutableSetOf<String>()
+    val result = mutableListOf<String>()
+    tags.forEach { raw ->
+        val key = normalizeTagKey(raw)
+        if (key.isEmpty()) return@forEach
+        if (key in excluded) return@forEach
+        if (seen.add(key)) result.add(raw.trim())
+    }
+    return result
+}
+
+internal fun normalizeTagKey(value: String): String =
+    value.trim().replace(WHITESPACE_RUN, " ").lowercase()
+
+private val WHITESPACE_RUN = Regex("\\s+")
