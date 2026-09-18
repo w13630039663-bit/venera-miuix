@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +42,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
@@ -144,50 +144,71 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
     // Route back is owned by NavHost, including its seekable predictive transition.
     val tokens = VeneraTokens
+    val listState = rememberLazyListState()
 
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            // 顶栏收敛：只留返回 + 分享。作品标题只在封面右侧显示一次 ——
-            // 此前「顶栏大标题 + 卡片标题」上下两个一模一样的标题是双重冗余。
-            TopAppBar(
-                title = "",
-                navigationIcon = {
-                    Box(
-                        modifier = Modifier
-                            .size(tokens.spacing.iconButtonSize)
-                            .clickable { onBack() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MiuixTheme.colorScheme.onBackground
-                        )
-                    }
-                },
-                actions = {
-                    Box(
-                        modifier = Modifier
-                            .size(tokens.spacing.iconButtonSize)
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                val shareIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, shareText(liveDetails, comic))
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "分享漫画"))
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(imageVector = Icons.Outlined.Share, contentDescription = "分享", tint = MiuixTheme.colorScheme.onBackground)
-                    }
+            // 顶栏收敛：只留返回 + 分享（上滑时标题淡入）。
+            // 不用 Miuix TopAppBar(title = "")——它在底层仍预留 60+dp 大标题位，
+            // 详情页顶部会出现巨大的空白荒漠；这里改为自绘 48dp 紧凑单行顶栏。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .height(48.dp)
+                    .padding(horizontal = tokens.spacing.space2),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                    )
                 }
-            )
+                // 上滑时标题淡入，在顶部时保持通透（标题已在封面右侧展示）
+                AnimatedVisibility(
+                    visible = listState.firstVisibleItemIndex > 0,
+                    modifier = Modifier.weight(1f).padding(horizontal = tokens.spacing.space2),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Text(
+                        text = liveDetails?.comic?.title ?: comic.title,
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = tokens.color.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (listState.firstVisibleItemIndex == 0) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                IconButton(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        val shareIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText(liveDetails, comic))
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "分享漫画"))
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "分享",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
@@ -328,45 +349,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 2. 历史进度横幅
-            if (historyRecord != null) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(tokens.shape.extraLarge),
-                        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onTriggerRead() }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = tokens.spacing.space7, vertical = tokens.spacing.space5),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = "📖", fontSize = tokens.type.body)
-                                Spacer(modifier = Modifier.width(tokens.spacing.space4))
-                                Text(
-                                    text = "上次阅读至 " + historyRecord.lastChapterTitle + " 第 " + (historyRecord.lastPageIndex + 1) + " 页",
-                                    fontSize = tokens.type.caption,
-                                    fontWeight = tokens.type.weightMedium,
-                                    color = tokens.color.textPrimary
-                                )
-                            }
-                            Text(
-                                text = "继续阅读 ›",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.primary,
-                                fontWeight = tokens.type.weightSemibold
-                            )
-                        }
-                    }
-                }
-            }
 
-            // 3. 主操作条：唯一大号胶囊「开始/继续阅读」+「离线下载」。
+            // 2. 主操作条：唯一大号胶囊「开始/继续阅读」+「离线下载」。
             //    废除旧的「彩色圆钮条里的开始/分享」与旧双按钮 —— 分享收口顶栏，阅读只此一处。
             item {
                 Row(
@@ -445,7 +429,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 4. 辅助操作行：收藏 / 点赞 / 评论 / 分享 四联功能钮（语义色走语义色板）
+            // 3. 辅助操作行：收藏 / 点赞 / 评论 / 分享 四联功能钮（语义色走语义色板）
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -502,7 +486,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 5. 分类与命名空间标签卡片：VeneraTagChip + 点击直达标签搜索
+            // 4. 分类与命名空间标签卡片：VeneraTagChip + 点击直达标签搜索
             item {
                 val tagMap = liveDetails?.tagMap.orEmpty()
                 val flatTags = liveDetails?.comic?.tags?.ifEmpty { comic.tags } ?: comic.tags
@@ -560,7 +544,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 6. 作品简介卡片 (支持折叠展开)
+            // 5. 作品简介卡片 (支持折叠展开)
             item {
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -596,7 +580,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 7. 官方预览图（对齐官方 comic_details_page/thumbnails.dart：
+            // 6. 官方预览图（对齐官方 comic_details_page/thumbnails.dart：
             //    网格铺排 + 分页加载 + 点任意一张从该页开读）
             val thumbnails = detailState.thumbnails.ifEmpty { liveDetails?.thumbnails.orEmpty() }
             if (thumbnails.isNotEmpty() || detailState.isLoadingThumbnails) {
@@ -687,7 +671,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 8. 章节目录卡片（多分组 Tabs + 排序切换 + 已读标记）
+            // 7. 章节目录卡片（多分组 Tabs + 排序切换 + 已读标记）
             item {
                 val groups = liveDetails?.chapterGroups ?: emptyList()
                 val currentChapters = if (groups.isNotEmpty()) {
@@ -866,7 +850,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 9. 关联推荐作品 (recommend)
+            // 8. 关联推荐作品 (recommend)
             val recommendList = liveDetails?.recommend.orEmpty()
             if (recommendList.isNotEmpty()) {
                 item {
@@ -920,7 +904,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 10. 真实评论区卡片
+            // 9. 真实评论区卡片
             item {
                 val comments = detailState.comments
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
