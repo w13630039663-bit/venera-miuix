@@ -1,77 +1,83 @@
 /**
- * S5 网络收藏夹（对齐官方 `pages/favorites/network_favorites_page.dart` + `side_bar.dart`）。
+ * S5 网络收藏夹 —— 手风琴原地展开交互（Stage 0~2 信息架构升级）。
  *
- * 三层导航（手机单栏适配，等价原版侧栏维度）：
- *   源列表 → 某源的文件夹列表（multiFolder）/ 漫画网格（单文件夹）→ 某文件夹的漫画网格。
- * 所有网络调用走 [NetworkFavoritesViewModel] → [com.venera.compose.source.FavoriteData]，
- * 内部已含「未登录拦截 / 登录过期自动重登」(retryZone)。
+ * 旧交互是三级整屏下钻（源列表 → 文件夹 → 漫画网格），看其他源要反复返回；
+ * 新交互为**单开手风琴**：所有支持网络收藏的源以折叠卡头纵向排列，点击某源
+ * 原地展开其收藏网格（多文件夹源在展开区顶部挂横向 FolderChip 原地切夹），
+ * 再点一次收起；点开新源自动收起旧源（内存紧凑、列表轻快）。
+ *
+ * 虚拟化契约：全页唯一 LazyColumn，展开区漫画按 chunked(columns) 逐行挂载
+ * （行 = LazyItem 参与回收），绝不嵌套同向 Lazy 组件（Infinity constraints 崩溃）。
+ * 所有网络调用走 [NetworkFavoritesViewModel] → FavoriteData（retryZone 自动重登）。
  */
 package com.venera.compose.feature
 
-import com.venera.compose.ui.tokens.VeneraSpacing
-
-import com.venera.compose.components.*
-import com.venera.compose.components.venera.VeneraTagChip
-
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
+import com.venera.compose.components.ComicCardLayout
+import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.ComicTileDetailed
+import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberComicListDisplayMode
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraChip
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraSourceBadge
+import com.venera.compose.components.venera.VeneraTagChip
+import com.venera.compose.source.model.Comic
+import com.venera.compose.ui.tokens.StatusColors
+import com.venera.compose.ui.tokens.VeneraSpacing
+import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.venera.compose.source.model.Comic
 
 @Composable
 fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
+    val tokens = VeneraTokens
     val vm: NetworkFavoritesViewModel = viewModel()
     val sources by vm.sourcesFlow.collectAsState()
+    val displayMode = rememberComicListDisplayMode()
 
     val selectedKey = vm.selectedSourceKey
     val isMulti = vm.isMultiFolder
@@ -81,543 +87,368 @@ fun AndroidNetworkFavoritesScreen(onSelect: (ComicItem) -> Unit) {
     val isLoading = vm.isLoading
     val isFolderLoading = vm.isFolderLoading
     val error = vm.error
+    val columns = comicListColumnCount(displayMode.value)
+    val isDetailed = displayMode.value == "detailed"
+    // 待确认的移除请求（长按卡片触发，二次确认后执行删除）。
+    var pendingDelete by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Comic?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        val level = when {
-            selectedKey == null -> 0
-            isMulti && currentFolder == null -> 1
-            else -> 2
-        }
-        val title = when {
-            selectedKey == null -> "网络收藏"
-            isMulti && currentFolder == null -> sources.find { it.key == selectedKey }?.name ?: selectedKey
-            else -> folders?.get(currentFolder) ?: "收藏"
-        }
-        NetworkTopBar(
-            level = level,
-            title = title,
-            onBack = {
-                when {
-                    selectedKey == null -> {}
-                    isMulti && currentFolder != null -> vm.backToFolders()
-                    else -> vm.backToSources()
-                }
-            },
-            onRefresh = { vm.refresh() },
-        )
+    // 首屏判定：只有「尚无任何内容」的加载才全屏 Loader；loadMore 期间列表原地不动。
+    val firstLoading = isLoading && comics.isEmpty()
 
-        when {
-            selectedKey == null -> SourceList(
-                sources = sources,
-                onItemClick = { vm.selectSource(it) },
-            )
-            isMulti && currentFolder == null -> FolderList(
-                folders = folders,
-                isLoading = isFolderLoading,
-                error = error,
-                canCreate = vm.favoriteData?.addFolder != null,
-                canDelete = vm.favoriteData?.deleteFolder != null,
-                onOpen = { vm.enterFolder(it) },
-                onCreate = { vm.createFolder(it) },
-                onDelete = { vm.deleteFolder(it) },
-                onRefresh = { vm.loadFolders() },
-            )
-            else -> NetworkComicGrid(
-                comics = comics,
-                isLoading = isLoading,
-                error = error,
-                hasMore = vm.hasMore,
-                onSelect = onSelect,
-                onLoadMore = { vm.loadMore() },
-                onDelete = { comic -> vm.deleteComic(comic.id, currentFolder ?: "", null) { _, _ -> } },
-            )
-        }
-    }
-}
-
-@Composable
-private fun NetworkTopBar(level: Int, title: String, onBack: () -> Unit, onRefresh: () -> Unit) {
-    val displayMode = rememberComicListDisplayMode()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (level > 0) {
-            IconBox(Icons.Filled.ArrowBack, "返回") { onBack() }
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(
-            text = title,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = MiuixTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f),
-        )
-        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-        IconBox(Icons.Filled.Refresh, "刷新") { onRefresh() }
-    }
-}
-
-@Composable
-private fun IconBox(imageVector: ImageVector, desc: String, onClick: () -> Unit) {
-    Icon(
-        imageVector = imageVector,
-        contentDescription = desc,
-        tint = MiuixTheme.colorScheme.onBackground,
-        modifier = Modifier
-            .size(22.dp)
-            .clickable { onClick() },
-    )
-}
-
-// region ---- 源列表 ----
-
-@Composable
-private fun SourceList(
-    sources: List<NetSourceUi>,
-    onItemClick: (String) -> Unit,
-) {
-    if (sources.isEmpty()) {
-        EmptyHint("暂无支持网络收藏的源", "在「源管理」中登录账号后，这里会显示对应的网络收藏夹")
-        return
-    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(
+            start = tokens.spacing.rowHorizontal,
+            end = tokens.spacing.rowHorizontal,
+            top = tokens.spacing.space2,
+            bottom = VeneraSpacing.bottomBarClearance,
+        ),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
     ) {
-        items(sources, key = { it.key }) { src ->
-            SourceRow(
-                name = src.name,
-                logged = src.logged,
-                onClick = { onItemClick(src.key) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SourceRow(name: String, logged: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(if (logged) Color(0xFF4CAF50) else Color.Gray, CircleShape),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f),
-            )
-            if (!logged) {
-                Text(
-                    text = "未登录",
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+        if (sources.isEmpty()) {
+            item(key = "nf-empty") {
+                VeneraEmptyView(
+                    title = "暂无支持网络收藏的源",
+                    message = "在「源管理」中登录账号后，这里会显示对应的网络收藏夹",
                 )
-                Spacer(Modifier.width(8.dp))
             }
-            Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.onBackgroundVariant,
-                modifier = Modifier.size(20.dp),
-            )
         }
-    }
-}
 
-// endregion
+        // ── 顶部横向源切换栏 + 单双列切换：同行排布，无多余空行。──
+        item(key = "nf-source-bar") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    TopSourceBar(
+                        sources = sources,
+                        selectedKey = selectedKey,
+                        onSelect = { key ->
+                            if (key != selectedKey) vm.expandSource(key) else vm.collapseSource()
+                        },
+                    )
+                }
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+            }
+        }
 
-// region ---- 文件夹列表 ----
+        // ── 当前源内容（未选源时给引导空态）。──
+        val current = sources.firstOrNull { it.key == selectedKey }
+        if (current == null) {
+            item(key = "nf-idle") {
+                VeneraEmptyView(
+                    title = "选择一个漫画源",
+                    message = "点击上方的源药丸，即可原地查看该源的网络收藏",
+                )
+            }
+            return@LazyColumn
+        }
 
-@Composable
-private fun FolderList(
-    folders: Map<String, String>?,
-    isLoading: Boolean,
-    error: String?,
-    canCreate: Boolean,
-    canDelete: Boolean,
-    onOpen: (String) -> Unit,
-    onCreate: (String) -> Unit,
-    onDelete: (String) -> Unit,
-    onRefresh: () -> Unit,
-) {
-    var showCreate by remember { mutableStateOf(false) }
-    // 待确认的删除请求：(文件夹 id, 名称)。对齐官方 _FolderTile —— 删除前必须二次确认
-    var pendingDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (canCreate) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "新建文件夹",
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { showCreate = true },
+        // 多文件夹源：内容区顶部紧跟横滑文件夹 Chips（原地切夹）。
+        if (isMulti) {
+            item(key = "nf-chips") {
+                FolderChipRow(
+                    folders = folders,
+                    current = currentFolder,
+                    isLoading = isFolderLoading,
+                    onSelect = { vm.enterFolder(it) },
                 )
             }
         }
 
         when {
-            isLoading -> LoadingHint()
-            error != null -> ErrorHint(error) { onRefresh() }
-            folders == null || folders.isEmpty() -> EmptyHint("暂无收藏夹", "点击右上角「新建文件夹」")
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(folders.toList(), key = { it.first }) { (id, name) ->
-                    FolderRow(
-                        name = name,
-                        canDelete = canDelete,
-                        onOpen = { onOpen(id) },
-                        onDelete = { pendingDelete = id to name },
+            // 修复：全屏 Loader 仅首屏（无内容时）；loadMore 期间列表原地保持。
+            firstLoading -> item(key = "nf-loading") { AccordionLoader() }
+            error != null && comics.isEmpty() -> item(key = "nf-error") {
+                VeneraEmptyView(
+                    title = "收藏加载失败",
+                    message = error,
+                    actionText = "重试",
+                    onAction = { vm.refresh() },
+                )
+            }
+            comics.isEmpty() -> item(key = "nf-folder-empty") {
+                VeneraEmptyView(message = "该收藏夹暂无漫画")
+            }
+            isDetailed -> {
+                items(
+                    comics,
+                    key = { "ncard-" + it.id },
+                ) { comic ->
+                    NetComicDetailedCard(comic, current.name, onSelect,
+                        onDelete = { pendingDelete = comic },
                     )
                 }
             }
-        }
-    }
-
-    if (showCreate) {
-        NetInputDialog(
-            title = "新建文件夹",
-            hint = "文件夹名称",
-            confirmText = "创建",
-            onDismiss = { showCreate = false },
-            onConfirm = { name ->
-                showCreate = false
-                onCreate(name)
-            },
-        )
-    }
-
-    pendingDelete?.let { (id, name) ->
-        NetConfirmDialog(
-            title = "删除文件夹",
-            message = "确定要删除「$name」吗？",
-            confirmText = "删除",
-            onDismiss = { pendingDelete = null },
-            onConfirm = {
-                pendingDelete = null
-                onDelete(id)
-            },
-        )
-    }
-}
-
-@Composable
-private fun FolderRow(name: String, canDelete: Boolean, onOpen: () -> Unit, onDelete: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f),
-            )
-            if (canDelete) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = "删除文件夹",
-                    tint = MiuixTheme.colorScheme.onBackgroundVariant,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clickable { onDelete() },
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.onBackgroundVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-    }
-}
-
-// endregion
-
-// region ---- 漫画网格 ----
-
-@Composable
-private fun NetworkComicGrid(
-    comics: List<Comic>,
-    isLoading: Boolean,
-    error: String?,
-    hasMore: Boolean,
-    onSelect: (ComicItem) -> Unit,
-    onLoadMore: () -> Unit,
-    onDelete: (Comic) -> Unit,
-) {
-    if (comics.isEmpty() && !isLoading) {
-        if (error != null) ErrorHint(error) { onLoadMore() }
-        else EmptyHint("暂无收藏", "这个收藏夹里还没有漫画")
-        return
-    }
-
-    val displayMode = rememberComicListDisplayMode()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val metricsCache = remember(context) { com.venera.compose.data.prefs.ComicMetricsCache(context) }
-    androidx.compose.runtime.LaunchedEffect(comics) {
-        comics.forEach { metricsCache.put(it.sourceKey, it.id, it.rating?.toDouble(), it.likesCount) }
-    }
-    // HIDE 模式：命中守卫判定链的条目整条剔除（UI 层过滤）。
-    val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(context)
-    val visibleComics = if (guardManager.nsfwMaskMode.collectAsState().value == "HIDE") {
-        comics.filter { guardManager.coverMaskStateFor(it) != "HIDDEN" }
-    } else comics
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = VeneraSpacing.bottomBarClearance),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        gridItems(visibleComics, key = { it.id }) { comic ->
-            NetworkComicCard(
-                comic = comic,
-                detailed = displayMode.value == "detailed",
-                onClick = { onSelect(comic.toComicItem()) },
-                onLongClick = { onDelete(comic) },
-            )
-        }
-        if (hasMore) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isLoading) {
-                        Text("加载中…", fontSize = 13.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
-                    } else {
-                        Text(
-                            text = "加载更多",
-                            fontSize = 13.sp,
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { onLoadMore() },
+            else -> {
+                // 行级虚拟化：每行 = 一个 LazyItem，滑出屏幕立即回收。
+                comics.chunked(columns).forEachIndexed { rowIndex, row ->
+                    item(key = "nrow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
+                        ComicGridRow(
+                            row = row,
+                            sourceName = current.name,
+                            onSelect = onSelect,
+                            onDelete = { pendingDelete = it },
                         )
                     }
                 }
             }
         }
+
+        // 触底自动加载：loadMore 期间 footer 显示动画，列表原地不动。
+        if (vm.hasMore && !isLoading && error == null && comics.isNotEmpty()) {
+            item(key = "nmore") {
+                LaunchedEffect(currentFolder) {
+                    if (!vm.isLoading) vm.loadMore()
+                }
+                LoadMoreFooter(isLoading = vm.isLoading)
+            }
+        }
+    }
+
+    // 长按移除确认弹窗（补回）：破坏性操作必须二次确认。
+    pendingDelete?.let { comic ->
+        NetRemoveConfirmDialog(
+            comicTitle = comic.title,
+            onDismiss = { pendingDelete = null },
+            onConfirm = {
+                vm.deleteComic(comic.id, currentFolder ?: "", null) { _, _ -> }
+                pendingDelete = null
+            },
+        )
     }
 }
 
+/* ------------------------------------------------------------------ *
+ * 手风琴折叠卡头
+ * ------------------------------------------------------------------ */
+
 @Composable
-private fun NetworkComicCard(comic: Comic, detailed: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
-    // 内容守卫：BLUR 命中打码（源级预设 + 用户规则），HIDE 命中在数据层已剔除、此处兜底。
-    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
-    val maskState = guard.coverMaskStateFor(comic)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-    ) {
-        ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
-            com.venera.compose.components.venera.VeneraCover(
-                url = comic.cover,
-                contentDescription = comic.title,
-                shimmerWhileLoading = false,
-                mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
-                       else com.venera.compose.components.venera.VeneraCoverMask.Masked,
-            )
-        }) {
-            Spacer(Modifier.height(6.dp))
-            ComicMetrics(comic.rating?.toDouble(), comic.likesCount)
-            Text(text = comic.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-            Text(
-                text = comic.description,
-                fontSize = 11.sp,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
-                maxLines = 1,
-            )
-            // 同本地收藏卡：复用 searchVisibleTags，最多 2 个，空 tags 不渲染。
-            val netVisibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
-            if (netVisibleTags.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
+private fun TopSourceBar(sources: List<NetSourceUi>, selectedKey: String?, onSelect: (String) -> Unit) {
+    val tokens = VeneraTokens
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+        items(sources, key = { it.key }) { src ->
+            val selected = src.key == selectedKey
+            // 大号源药丸：登录态圆点 + 源名；选中高亮 primaryContainer。
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (selected) tokens.color.primaryContainer
+                        else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                modifier = Modifier.clickable { onSelect(src.key) },
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.space6,
+                        vertical = tokens.spacing.space3,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    netVisibleTags.take(2).forEach { tag ->
-                        Box(Modifier.weight(1f, fill = false)) {
-                            VeneraTagChip(text = tag, onClick = null)
-                        }
-                    }
+                    Box(
+                        modifier = Modifier
+                            .size(tokens.spacing.statusDotSize)
+                            .clip(CircleShape)
+                            .background(if (src.logged) StatusColors.Healthy else tokens.color.textDisabled),
+                    )
+                    Spacer(Modifier.width(tokens.spacing.space2))
+                    Text(
+                        text = src.name,
+                        fontSize = tokens.type.caption,
+                        fontWeight = if (selected) tokens.type.weightSemibold else tokens.type.weightMedium,
+                        color = if (selected) tokens.color.onPrimaryContainer else tokens.color.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
     }
 }
 
-// endregion
-
-// region ---- 通用：提示 / 对话框 ----
+/* ------------------------------------------------------------------ *
+ * 展开区：文件夹 chips / 加载态 / 网格行 / 触底 footer
+ * ------------------------------------------------------------------ */
 
 @Composable
-private fun EmptyHint(title: String, sub: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(text = "📂", fontSize = 48.sp)
-            Spacer(Modifier.height(12.dp))
-            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Text(text = sub, fontSize = 13.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoading: Boolean, onSelect: (String) -> Unit) {
+    val tokens = VeneraTokens
+    when {
+        isLoading -> Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space2),
+            horizontalArrangement = Arrangement.Center,
+        ) { CircularProgressIndicator(color = tokens.color.primary) }
+        folders.isNullOrEmpty() -> {}
+        else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+            items(folders.toList(), key = { it.first }) { (id, name) ->
+                VeneraChip(
+                    text = name,
+                    selected = current == id,
+                    onClick = { if (current != id) onSelect(id) },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun LoadingHint() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = "加载中…", fontSize = 14.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+private fun AccordionLoader() {
+    val tokens = VeneraTokens
+    Box(Modifier.fillMaxWidth().padding(tokens.spacing.space9), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = tokens.color.primary)
     }
 }
 
+/** 双列网格行：等宽卡片 + 尾部补空，一个 Row 就是一个 LazyItem。 */
 @Composable
-private fun ErrorHint(message: String, onRetry: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(text = "⚠️", fontSize = 40.sp)
-            Spacer(Modifier.height(10.dp))
-            Text(text = message, fontSize = 14.sp, color = MiuixTheme.colorScheme.primary)
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "点击重试",
-                fontSize = 13.sp,
-                color = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.clickable { onRetry() },
-            )
+private fun ComicGridRow(
+    row: List<Comic>,
+    sourceName: String,
+    onSelect: (ComicItem) -> Unit,
+    onDelete: (Comic) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        row.forEach { comic ->
+            Box(Modifier.weight(1f)) {
+                NetComicCard(comic = comic, sourceName = sourceName,
+                    onClick = { onSelect(comic.toComicItem()) },
+                    onLongClick = { onDelete(comic) },
+                )
+            }
         }
+        if (row.size == 1) Spacer(Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun NetScrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MiuixTheme.colorScheme.surface,
-            modifier = Modifier
-                .padding(24.dp)
-                .clickable { },
+private fun NetComicDetailedCard(comic: Comic, sourceName: String, onSelect: (ComicItem) -> Unit, onDelete: () -> Unit) {
+    val maskState = netMaskState(comic)
+    ComicTileDetailed(
+        title = comic.title,
+        coverUrl = comic.cover,
+        subtitle = comic.subTitle,
+        description = comic.description,
+        tags = comic.tags,
+        rating = comic.rating?.toDouble(),
+        likesCount = comic.likesCount,
+        badge = sourceName,
+        coverMaskState = maskState,
+        onClick = { onSelect(comic.toComicItem()) },
+        onLongClick = onDelete,
+    )
+}
+
+@Composable
+private fun NetComicCard(comic: Comic, sourceName: String, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val tokens = VeneraTokens
+    val maskState = netMaskState(comic)
+    VeneraCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        onLongClick = onLongClick,
+    ) {
+        com.venera.compose.components.venera.VeneraCover(
+            url = comic.cover,
+            contentDescription = comic.title,
+            shimmerWhileLoading = false,
+            mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
         ) {
-            content()
+            VeneraSourceBadge(name = sourceName)
         }
-    }
-}
-
-@Composable
-private fun NetInputDialog(
-    title: String,
-    hint: String,
-    initialValue: String = "",
-    confirmText: String = "确定",
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var text by remember(initialValue) { mutableStateOf(initialValue) }
-    NetScrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(12.dp))
-            TextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
+        Spacer(Modifier.height(tokens.spacing.cardCoverGap))
+        Text(
+            text = comic.title,
+            fontSize = tokens.type.caption,
+            fontWeight = tokens.type.weightSemibold,
+            color = tokens.color.textPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val visibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
+        if (visibleTags.isNotEmpty()) {
+            Spacer(Modifier.height(tokens.spacing.space1))
+            Text(
+                text = visibleTags.take(2).joinToString(" · "),
+                fontSize = tokens.type.overline,
+                color = tokens.color.textTertiary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (text.isBlank()) {
-                Spacer(Modifier.height(4.dp))
-                Text(text = hint, fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
-            }
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-                ) { Text("取消") }
-                Button(
-                    onClick = {
-                        if (text.isNotBlank()) {
-                            onConfirm(text)
-                            onDismiss()
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text(confirmText) }
-            }
         }
     }
 }
 
-/** 二次确认弹窗（删除等破坏性操作）。对齐官方 ContentDialog 的 Confirm 语义。 */
+/** 内容守卫：BLUR 命中打码（源级预设 + 用户规则）；HIDE 已在数据层剔除、此处兜底。 */
 @Composable
-private fun NetConfirmDialog(
-    title: String,
-    message: String,
-    confirmText: String,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    NetScrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(10.dp))
-            Text(text = message, fontSize = 14.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
+private fun netMaskState(comic: Comic): String {
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    return guard.coverMaskStateFor(comic)
+}
+
+@Composable
+private fun LoadMoreFooter(isLoading: Boolean) {
+    val tokens = VeneraTokens
+    Box(
+        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space5),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(color = tokens.color.primary)
+        } else {
+            Text(
+                text = "上滑加载更多",
+                fontSize = tokens.type.overline,
+                color = tokens.color.textTertiary,
+            )
+        }
+    }
+}
+
+/** 长按移除确认弹窗（系统级 Dialog：独立窗口层级，绝无被遮挡/不渲染的可能）。 */
+@Composable
+private fun NetRemoveConfirmDialog(comicTitle: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val tokens = VeneraTokens
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        VeneraCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.space10),
+        ) {
+            Text(
+                text = "移除漫画",
+                fontSize = tokens.type.itemTitle,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+            )
+            Spacer(Modifier.height(tokens.spacing.space5))
+            Text(
+                text = "是否从网络收藏夹中移除《" + comicTitle + "》？",
+                fontSize = tokens.type.caption,
+                color = tokens.color.textSecondary,
+            )
+            Spacer(Modifier.height(tokens.spacing.space7))
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)) {
+                top.yukonga.miuix.kmp.basic.Button(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
+                        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+                    ),
                 ) { Text("取消") }
-                Button(
+                top.yukonga.miuix.kmp.basic.Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
-                ) { Text(confirmText) }
+                    colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.buttonColors(
+                        color = StatusColors.Failing
+                    ),
+                ) { Text("移除", color = androidx.compose.ui.graphics.Color.White) }
             }
         }
     }
 }
-
-// endregion
 
 private fun Comic.toComicItem() = ComicItem(
     id = id,

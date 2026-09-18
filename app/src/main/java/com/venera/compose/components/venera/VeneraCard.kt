@@ -1,6 +1,5 @@
 package com.venera.compose.components.venera
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,22 +22,27 @@ import top.yukonga.miuix.kmp.basic.Card
  *    已把 Material 色板桥接进 Miuix，因此表面同样正确。
  *  - 圆角取 shape.card（MD3 16dp / MIUIX 18dp），通过 miuix Card 的 cornerRadius 参数传入。
  *
- * @param onClick 可空；提供时整卡可点击，未提供时纯展示。
+ * 手势：onClick / onLongClick 走 miuix Card 官方可点击重载（内部 squircleSurface +
+ * combinedClickable，press 反馈由 miuix 统一处理）。**不要**把 combinedClickable
+ * 挂到外层 modifier 上再叠一层——squircle 裁剪层级会吞掉长按手势（真机实测）。
+ *
+ * @param onClick 可空；提供时整卡可点击。
+ * @param onLongClick 可空；提供时整卡响应长按（如多选/移除确认）。
  */
 @Composable
 fun VeneraCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = VeneraTokens
-    val clickModifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-
+    // miuix Card 可点击重载：仅在提供了任一回调用才启用手势。
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(clickModifier),
+        modifier = modifier,
         cornerRadius = tokens.shape.card,
+        onClick = onClick,
+        onLongPress = onLongClick,
     ) {
         Column(
             modifier = Modifier

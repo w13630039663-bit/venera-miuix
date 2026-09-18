@@ -120,12 +120,13 @@ class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(app
         private set
 
     /**
-     * 选中某个源，进入其网络收藏。
+     * 手风琴展开某个源（单开模式：展开新源即收起旧源——本方法本身是幂等切换，
+     * 「点自己收起」由 UI 层判断 expandedKey == key 时改调 [collapseSource]）。
      *
      * 注意：`favoriteData` 会同步跑 JS 引擎，绝不能在主线程（点击回调里）直接取，
      * 因此优先走 [favCache]（扫描列表时已备好），未命中才切到 IO 线程解析。
      */
-    fun selectSource(key: String) {
+    fun expandSource(key: String) {
         val cached = favCache[key]
         if (cached != null) {
             applySource(key, cached)
@@ -150,6 +151,9 @@ class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(app
         isMultiFolder = fd.multiFolder
         resetComicState()
         folders = null
+        // ⚠️ 必须清空：切源时残留上一源的 folderId 会让 loadFolders 的
+        // 「未选夹则自动进首夹」判定失效，多文件夹源首屏直接空白。
+        currentFolderId = null
         if (fd.multiFolder) {
             loadFolders()
         } else {
@@ -166,8 +170,8 @@ class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(app
         error = null
     }
 
-    /** 返回「源列表」视图 */
-    fun backToSources() {
+    /** 手风琴收起：回到全部源折叠态 */
+    fun collapseSource() {
         selectedSourceKey = null
         favoriteData = null
         isMultiFolder = false
@@ -187,7 +191,19 @@ class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(app
                 return@launch
             }
             loader(null)
-                .onSuccess { res -> folders = res.folders }
+                .onSuccess { res ->
+                    folders = res.folders
+                    // 手风琴适配：多文件夹源切入后 100% 自动进入默认分组并完成首屏加载——
+                    // 优先取 key 为 "-1"（源协议全部夹，见 JsComicSource.ALL_FOLDER_ID）
+                    // 或名称含 "all"（大小写不敏感）的分组，否则退回首夹。
+                    // 绝不出现「该收藏夹暂无漫画」的假空态。
+                    if (currentFolderId == null && res.folders.isNotEmpty()) {
+                        val allEntry = res.folders.entries.firstOrNull { (id, name) ->
+                            id == "-1" || name.contains("all", ignoreCase = true)
+                        }
+                        enterFolder(allEntry?.key ?: res.folders.keys.first())
+                    }
+                }
                 .onFailure { error = it.message ?: "加载文件夹失败" }
             isFolderLoading = false
         }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -142,10 +143,17 @@ fun VeneraLiquidGlassNavBar(
         // 在 snapshotFlow 里恒为常量、永不发射，药丸就会卡在原地不动（就是之前那个 bug）。
         val selectedIndex = selectedTabIndex()
         var currentIndex by remember { mutableIntStateOf(selectedIndex) }
+        // 双震动修复：区分「宿主回写」与「内部手势」。
+        // 宿主导航导致的 selectedIndex 变化会同步进 currentIndex，若不抑制，
+        // 下方 snapshotFlow 会把这次回写再回调给宿主 —— 宿主再 haptic/goto 一次
+        //（launchSingleTop 无导航动作但震动照发），形成点击双重震动。
+        // 点击/拖拽等内部手势不置位本标志，通知照常发出。
+        var suppressNextNotification by remember { mutableStateOf(false) }
         // 外部导航是权威来源：一旦宿主的下标变了，药丸立即跟过去。
         // 拖拽期间由内部驱动（下方 drag 回调），松手时回调宿主，形成单一数据流。
         LaunchedEffect(selectedIndex) {
             if (currentIndex != selectedIndex) {
+                suppressNextNotification = true
                 currentIndex = selectedIndex
             }
         }
@@ -188,11 +196,16 @@ fun VeneraLiquidGlassNavBar(
             }
         }
         // 拖拽松手后 currentIndex 由 onDragStopped 写入，这里负责通知宿主切换页面。
+        // 宿主回写引发的变更被 suppressNextNotification 拦下（清标志、不回调）。
         LaunchedEffect(dampedDragAnimation) {
             snapshotFlow { currentIndex }
                 .drop(1)
                 .collectLatest { index ->
-                    onTabSelected(index)
+                    if (suppressNextNotification) {
+                        suppressNextNotification = false
+                    } else {
+                        onTabSelected(index)
+                    }
                 }
         }
 

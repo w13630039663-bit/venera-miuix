@@ -2,6 +2,8 @@ package com.venera.compose.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,7 +36,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 
 /** 单列大卡：对齐原版 ComicTile._buildDetailedMode。 */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun ComicTileDetailed(
     title: String,
@@ -45,6 +47,8 @@ fun ComicTileDetailed(
     rating: Double? = null,
     badge: String = "",
     onClick: () -> Unit,
+    /** 长按回调（如网络收藏的移除确认）；null 时不响应长按。 */
+    onLongClick: (() -> Unit)? = null,
     coverContent: (@Composable BoxScope.() -> Unit)? = null,
     /** S7 分级遮罩：外部传入 "VISIBLE"/"BLURRED"/"HIDDEN"（调用方用 ContentGuard 判定） */
     coverMaskState: String = "VISIBLE",
@@ -54,7 +58,7 @@ fun ComicTileDetailed(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(start = 12.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

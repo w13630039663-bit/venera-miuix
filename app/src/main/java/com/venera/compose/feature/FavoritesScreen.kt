@@ -10,11 +10,16 @@ package com.venera.compose.feature
 import com.venera.compose.ui.tokens.VeneraSpacing
 
 import com.venera.compose.components.*
+import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraChip
+import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraTagChip
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -46,6 +51,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -101,10 +107,34 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 onModeChange = { mode = it },
             )
 
-            if (mode == FavoritesMode.Local) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+            // 顶部二级工具条（多选态展开）：替代旧贴底 MultiSelectActionBar——
+            // 旧实现 BottomCenter overlay 被悬浮底栏压住，操作按钮不可点。
+            androidx.compose.animation.AnimatedContent(
+                targetState = mode == FavoritesMode.Local && vm.multiSelectMode,
+                modifier = Modifier.fillMaxWidth().graphicsLayer {
+                    // 预测返回手势：跟手淡出工具条（取消回弹时平滑恢复）。
+                    alpha = 1f - selectionBack.progress
+                },
+                transitionSpec = {
+                    (androidx.compose.animation.slideInVertically { -it / 2 } + androidx.compose.animation.fadeIn())
+                        .togetherWith(androidx.compose.animation.slideOutVertically { -it / 2 } + androidx.compose.animation.fadeOut())
+                },
+                label = "FavMultiSelectBar",
+            ) { showBar ->
+                if (showBar) {
+                    MultiSelectActionBar(
+                        selectedCount = vm.selected.size,
+                        onExit = { vm.exitMultiSelect() },
+                        onSelectAll = { vm.selectAll() },
+                        onMove = { dialog = FolderDialog.Move },
+                        onCopy = { dialog = FolderDialog.Copy },
+                        onDelete = { vm.deleteSelected() },
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(1.dp))
                 }
+            }
+            if (mode == FavoritesMode.Local) {
                 FolderChipRow(
                     folders = folders,
                     counts = counts,
@@ -112,6 +142,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     onSelectFolder = { vm.selectFolder(it) },
                     onSearchClick = { searchMode = !searchMode },
                     onMenuClick = { showMenu = true },
+                    trailing = { ComicLayoutToggleButton(displayMode.value) { displayMode.value = it } },
                 )
 
                 if (searchMode) {
@@ -128,20 +159,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             }
         }
 
-        if (mode == FavoritesMode.Local && vm.multiSelectMode) {
-            MultiSelectActionBar(
-                selectedCount = vm.selected.size,
-                onExit = { vm.exitMultiSelect() },
-                onSelectAll = { vm.selectAll() },
-                onMove = { dialog = FolderDialog.Move },
-                onCopy = { dialog = FolderDialog.Copy },
-                onDelete = { vm.deleteSelected() },
-                modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer {
-                    translationY = size.height * selectionBack.progress
-                    alpha = 1f - selectionBack.progress
-                },
-            )
-        }
     }
 
     if (showMenu) {
@@ -212,19 +229,27 @@ private fun FavoritesModeToggle(
     mode: FavoritesMode,
     onModeChange: (FavoritesMode) -> Unit,
 ) {
+    // 分段选择药丸容器（Segmented Control）：44dp 高、完全胶囊圆角、弱底色，
+    // 选中项高亮药丸 + 触控反馈。大目标易点，替代此前过小的 VeneraChip。
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(
+                horizontal = tokens.spacing.rowHorizontal,
+                vertical = tokens.spacing.space3,
+            )
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha))
+            .padding(tokens.spacing.space1),
     ) {
-        SegmentChip(
+        SegmentOption(
             text = "网络收藏",
             selected = mode == FavoritesMode.Network,
             onClick = { onModeChange(FavoritesMode.Network) },
             modifier = Modifier.weight(1f),
         )
-        SegmentChip(
+        SegmentOption(
             text = "本地收藏",
             selected = mode == FavoritesMode.Local,
             onClick = { onModeChange(FavoritesMode.Local) },
@@ -233,31 +258,34 @@ private fun FavoritesModeToggle(
     }
 }
 
+/** 分段选择容器里的单段：44dp 高、居中、选中高亮药丸。 */
 @Composable
-private fun SegmentChip(
+private fun SegmentOption(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) {
-            MiuixTheme.colorScheme.primaryContainer
-        } else {
-            MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        },
-        modifier = modifier.clickable(onClick = onClick),
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
+    val bg by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) tokens.color.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+        animationSpec = androidx.compose.animation.core.tween(180),
+        label = "SegmentBg",
+    )
+    Row(
+        modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(vertical = tokens.spacing.space6),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = text,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 9.dp),
+            fontSize = tokens.type.body,
+            fontWeight = tokens.type.weightSemibold,
+            color = if (selected) tokens.color.onPrimaryContainer else tokens.color.textSecondary,
         )
     }
 }
@@ -282,84 +310,49 @@ private fun FolderChipRow(
     onSelectFolder: (String) -> Unit,
     onSearchClick: () -> Unit,
     onMenuClick: () -> Unit,
+    /** 行尾额外操作槽（如单双列切换按钮），与 chips 同行避免多余空行。 */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .padding(horizontal = com.venera.compose.ui.tokens.VeneraTokens.spacing.rowHorizontal, vertical = com.venera.compose.ui.tokens.VeneraTokens.spacing.space3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
             modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipSpacing),
         ) {
             item {
-                FolderChip(
-                    name = "全部",
-                    count = counts.values.sum(),
+                VeneraChip(
+                    text = "全部 · " + counts.values.sum(),
                     selected = current == LOCAL_ALL_FOLDER,
                     onClick = { onSelectFolder(LOCAL_ALL_FOLDER) },
                 )
             }
             rowItems(folders, key = { it }) { folder ->
-                FolderChip(
-                    name = folder,
-                    count = counts[folder] ?: 0,
+                VeneraChip(
+                    text = folder + " · " + (counts[folder] ?: 0),
                     selected = current == folder,
                     onClick = { onSelectFolder(folder) },
                 )
             }
         }
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(com.venera.compose.ui.tokens.VeneraTokens.spacing.space2))
         Icon(
             imageVector = Icons.Outlined.Search,
             contentDescription = "搜索收藏",
-            tint = MiuixTheme.colorScheme.onBackground,
-            modifier = Modifier.size(20.dp).clickable { onSearchClick() },
+            tint = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
+            modifier = Modifier.size(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipIconSize).clickable { onSearchClick() },
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(com.venera.compose.ui.tokens.VeneraTokens.spacing.space6))
         Icon(
             imageVector = Icons.Filled.MoreVert,
             contentDescription = "收藏夹操作",
-            tint = MiuixTheme.colorScheme.onBackground,
-            modifier = Modifier.size(20.dp).clickable { onMenuClick() },
+            tint = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
+            modifier = Modifier.size(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipIconSize).clickable { onMenuClick() },
         )
-    }
-}
-
-@Composable
-private fun FolderChip(
-    name: String,
-    count: Int,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) {
-            MiuixTheme.colorScheme.primaryContainer
-        } else {
-            MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        },
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = name,
-                fontSize = 12.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = count.toString(),
-                fontSize = 11.sp,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
-            )
-        }
+        trailing?.invoke()
     }
 }
 
@@ -406,28 +399,15 @@ private fun FavoriteGrid(
 ) {
     if (vm.comics.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(24.dp),
-            ) {
-                Text(text = "⭐", fontSize = 48.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = if (vm.keyword.isBlank()) "暂无收藏漫画" else "没有匹配的收藏",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = if (vm.keyword.isBlank()) {
-                        "在漫画详情页点击「收藏」即可加入收藏夹"
-                    } else {
-                        "试试其他关键词"
-                    },
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
-                )
-            }
+            VeneraEmptyView(
+                title = if (vm.keyword.isBlank()) "暂无收藏漫画" else "没有匹配的收藏",
+                message = if (vm.keyword.isBlank()) {
+                    "在漫画详情页点击「收藏」即可加入收藏夹"
+                } else {
+                    "试试其他关键词"
+                },
+                icon = Icons.Outlined.StarBorder,
+            )
         }
         return
     }
@@ -491,13 +471,14 @@ private fun FavoriteCard(
         comicId = item.id,
         description = item.description,
     )
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
+    com.venera.compose.components.venera.VeneraCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        onLongClick = onLongClick,
     ) {
         Box {
-            ComicCardLayout(detailed = detailed, modifier = Modifier.padding(8.dp), cover = {
+            ComicCardLayout(detailed = detailed, modifier = Modifier.padding(tokens.spacing.space2), cover = {
                 com.venera.compose.components.venera.VeneraCover(
                     url = item.coverPath,
                     contentDescription = item.name,
@@ -506,23 +487,29 @@ private fun FavoriteCard(
                            else com.venera.compose.components.venera.VeneraCoverMask.Masked,
                 )
             }) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(tokens.spacing.space3))
                 ComicMetrics(metrics.rating, metrics.likesCount)
-                Text(text = item.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                Text(
+                    text = item.name,
+                    fontWeight = tokens.type.weightBold,
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textPrimary,
+                    maxLines = 1,
+                )
                 Text(
                     text = item.description,
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                    fontSize = tokens.type.overline,
+                    color = tokens.color.textTertiary,
                     maxLines = 1,
                 )
                 // 复用现成的 Tag 截断/归一化逻辑（searchVisibleTags），不另写一套。
                 // 最多 2 个，空 tags 时整段不渲染（不产生空白区域）。
                 val visibleTags = com.venera.compose.feature.searchVisibleTags(item.tags, emptyList())
                 if (visibleTags.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(tokens.spacing.space3))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
                     ) {
                         visibleTags.take(2).forEach { tag ->
                             Box(Modifier.weight(1f, fill = false)) {
@@ -536,11 +523,11 @@ private fun FavoriteCard(
                 Icon(
                     imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                     contentDescription = null,
-                    tint = if (selected) MiuixTheme.colorScheme.primary else Color.White,
+                    tint = if (selected) tokens.color.primary else Color.White,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(22.dp),
+                        .padding(tokens.spacing.space5)
+                        .size(tokens.spacing.badgeSize),
                 )
             }
         }
@@ -569,41 +556,50 @@ private fun MultiSelectActionBar(
     onMove: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
+    // 顶部二级工具条（对齐 HistoryScreen 模式）：底部 overlay 版本会被悬浮底栏遮挡。
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
     Surface(
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shape = RoundedCornerShape(tokens.shape.medium),
         color = MiuixTheme.colorScheme.surface,
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = tokens.spacing.rowHorizontal),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space2)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "已选择 $selectedCount 项", fontSize = 14.sp)
+                Text(
+                    text = "已选择 $selectedCount 项",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textPrimary,
+                )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     text = "全选",
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { onSelectAll() }.padding(6.dp),
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.primary,
+                    modifier = Modifier.clickable { onSelectAll() }.padding(tokens.spacing.space2),
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "退出多选",
-                    tint = MiuixTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(20.dp).clickable { onExit() },
+                    tint = tokens.color.textPrimary,
+                    modifier = Modifier
+                        .size(tokens.spacing.chipIconSize)
+                        .clickable { onExit() },
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(modifier = Modifier.height(tokens.spacing.space3))
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
                 ActionChip(icon = {
-                    Icon(Icons.Outlined.DriveFileMove, null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.DriveFileMove, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
                 }, label = "移动到", modifier = Modifier.weight(1f), onClick = onMove)
                 ActionChip(icon = {
-                    Icon(Icons.Outlined.ContentCopy, null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.ContentCopy, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
                 }, label = "复制到", modifier = Modifier.weight(1f), onClick = onCopy)
                 ActionChip(icon = {
-                    Icon(Icons.Filled.Delete, null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Delete, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
                 }, label = "删除", modifier = Modifier.weight(1f), onClick = onDelete)
             }
         }
@@ -617,19 +613,20 @@ private fun ActionChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val tokens = com.venera.compose.ui.tokens.VeneraTokens
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(tokens.shape.small),
+        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
         modifier = modifier.clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space5),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             icon()
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text = label, fontSize = 12.sp)
+            Spacer(modifier = Modifier.width(tokens.spacing.space3))
+            Text(text = label, fontSize = tokens.type.caption, color = tokens.color.textPrimary)
         }
     }
 }
@@ -642,7 +639,7 @@ private fun ActionChip(
 private fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Box(modifier = Modifier.clickable(enabled = false) {}) {
-            Card(modifier = Modifier.padding(horizontal = 28.dp)) { content() }
+            Card(modifier = Modifier.padding(horizontal = com.venera.compose.ui.tokens.VeneraTokens.spacing.space10)) { content() }
         }
     }
 }
@@ -658,8 +655,8 @@ private fun InputDialog(
 ) {
     var text by remember(initialValue) { mutableStateOf(initialValue) }
     Scrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
+            Text(text = title, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
             Spacer(modifier = Modifier.height(12.dp))
             TextField(
                 value = text,
@@ -675,7 +672,7 @@ private fun InputDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.buttonColors(color = com.venera.compose.ui.tokens.VeneraTokens.color.surfaceVariant.copy(alpha = com.venera.compose.ui.tokens.VeneraTokens.current.selectedSurfaceAlpha)),
                 ) { Text("取消") }
                 Button(
                     onClick = {
@@ -699,14 +696,14 @@ private fun FolderPickerDialog(
     onPick: (String) -> Unit,
 ) {
     Scrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
+            Text(text = title, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
             Spacer(modifier = Modifier.height(10.dp))
             if (folders.isEmpty()) {
                 Text(
                     text = "没有其他收藏夹，请先新建一个",
                     fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                    color = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
                 )
             } else {
                 Column {
@@ -729,7 +726,7 @@ private fun FolderPickerDialog(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                colors = ButtonDefaults.buttonColors(color = com.venera.compose.ui.tokens.VeneraTokens.color.surfaceVariant.copy(alpha = com.venera.compose.ui.tokens.VeneraTokens.current.selectedSurfaceAlpha)),
             ) { Text("取消") }
         }
     }
@@ -754,8 +751,8 @@ private fun ReorderDialog(
     }
 
     Scrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = "调整收藏夹顺序", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
+            Text(text = "调整收藏夹顺序", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
             Spacer(modifier = Modifier.height(10.dp))
             Column {
                 order.value.forEachIndexed { i, folder ->
@@ -788,7 +785,7 @@ private fun ReorderDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.buttonColors(color = com.venera.compose.ui.tokens.VeneraTokens.color.surfaceVariant.copy(alpha = com.venera.compose.ui.tokens.VeneraTokens.current.selectedSurfaceAlpha)),
                 ) { Text("取消") }
                 Button(
                     onClick = {
@@ -808,8 +805,8 @@ private fun ExportDialog(
     onDismiss: () -> Unit,
 ) {
     Scrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(text = "导出收藏夹", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
+            Text(text = "导出收藏夹", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = if (folder == LOCAL_ALL_FOLDER) {
@@ -818,7 +815,7 @@ private fun ExportDialog(
                     "「$folder」的导出功能将在 S7（同步/备份）阶段与 WebDAV 一同落地。"
                 },
                 fontSize = 13.sp,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
+                color = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
             )
             Spacer(modifier = Modifier.height(14.dp))
             Button(
@@ -841,7 +838,7 @@ private fun FolderMenuSheet(
     onExport: () -> Unit,
 ) {
     Scrim(onDismiss = onDismiss) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
             Text(
                 text = if (canEditFolder) folderName else "收藏夹操作",
                 fontSize = 17.sp,
@@ -859,7 +856,7 @@ private fun FolderMenuSheet(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                colors = ButtonDefaults.buttonColors(color = com.venera.compose.ui.tokens.VeneraTokens.color.surfaceVariant.copy(alpha = com.venera.compose.ui.tokens.VeneraTokens.current.selectedSurfaceAlpha)),
             ) { Text("取消") }
         }
     }
