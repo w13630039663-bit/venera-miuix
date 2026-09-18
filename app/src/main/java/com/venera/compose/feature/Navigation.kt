@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -61,7 +62,6 @@ import com.venera.compose.reader.VeneraReaderScreen
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -207,41 +207,28 @@ fun VeneraComposeApp() {
         val layoutDirection = LocalLayoutDirection.current
         val navigationInsets = WindowInsets.navigationBars.asPaddingValues()
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+            // ── 顶栏控制权已交还各页面（页内自治）──
+            // 外壳不再挂 TopAppBar：统一顶栏 = 各页自身的 VeneraTopAppBar（大标题折叠 + 毛玻璃），
+            // 彻底消灭「全局顶栏 + 页面二级工具栏」的双层汉堡包割裂结构。
+            // 外壳只负责：内容层的系统 insets 与底栏 overlay 几何。
             Scaffold(
                 containerColor = Color.Transparent,
-                topBar = {
-                    if (currentTab != null) {
-                        TopAppBar(
-                            title = titleFor(currentTab!!),
-                            actions = {
-                                // 低频操作收口：设置从底栏移到顶栏右上角齿轮。
-                                IconButton(onClick = {
-                                    haptic()
-                                    navController.navigate(SettingsRoute)
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Settings,
-                                        contentDescription = "设置",
-                                        tint = MiuixTheme.colorScheme.onSurface,
-                                    )
-                                }
-                            },
-                        )
-                    }
-                },
-                // 不再使用 bottomBar slot：底栏 100% 作为 overlay 承载（见下方 Box）。
-                // 理由：Scaffold 的 bottomBar slot 会把 Bar 高度计入 innerPadding，
-                // 而 Liquid Glass 走 overlay 不计入 —— 这正是两条路径几何不一致的根因。
-                // 统一为 overlay 后，innerPadding 只含 topBar + 系统 insets，
-                // 底部几何完全由 bottomBarClearance 契约表达。
+                // 不再使用 topBar / bottomBar slot：
+                //  - topBar 由各页面自绘（页内自治，见 VeneraTopAppBar）；
+                //  - bottomBar 100% 作为 overlay 承载（见下方 Box），避免 Bar 高度被计入 innerPadding
+                //    而 Liquid Glass 走 overlay 不计入 —— 那正是两条路径几何不一致的根因。
+                // 因此这里显式提供 contentWindowInsets，让页面拿到正确的状态栏/导航栏内边距基准。
+                contentWindowInsets = WindowInsets.systemBars,
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
                     startDestination = HomeRoute,
                     modifier = Modifier
                         .fillMaxSize()
-                        // 统一契约：innerPadding 现在只含 topBar + 系统 insets（bottomBar slot 已弃用）。
-                        // 页面再各自消费 bottomBarClearance 表达「底栏占位」。
+                        // 统一契约：innerPadding 现在只含**系统 insets**（topBar slot 已移交页面，
+                        // bottomBar slot 已弃用）。
+                        // 页面自行消费：VeneraTopAppBar 内部处理顶部 inset，
+                        // 底部用 bottomBarClearance 表达「底栏占位」。
                         // 不再有 useLiquidGlass 分支 —— 两条路径几何完全相同。
                         .padding(innerPadding)
                         .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
@@ -316,6 +303,11 @@ fun VeneraComposeApp() {
                             onOpenSourceManage = {
                                 haptic()
                                 navController.navigate(ComicSourceManageRoute)
+                            },
+                            // 设置齿轮从外壳迁入首页顶栏（页内自治）
+                            onOpenSettings = {
+                                haptic()
+                                navController.navigate(SettingsRoute)
                             }
                         )
                     }

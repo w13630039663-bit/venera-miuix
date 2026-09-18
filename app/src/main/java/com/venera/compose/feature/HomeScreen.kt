@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.source.ComicSourceManager
@@ -94,6 +98,8 @@ fun SharedTransitionScope.AndroidHomeScreen(
     onOpenImageFavorites: () -> Unit = {},
     /** S8：漫画源分区 → 源管理页 */
     onOpenSourceManage: () -> Unit = {},
+    /** 低频操作收口：设置从外壳顶栏迁入首页顶栏齿轮（页内自治）。 */
+    onOpenSettings: () -> Unit = {},
     bottomContentPadding: androidx.compose.ui.unit.Dp = VeneraTokens.spacing.space4,
 ) {
     val tokens = VeneraTokens
@@ -119,16 +125,69 @@ fun SharedTransitionScope.AndroidHomeScreen(
     // 进入主页即刷新扩展分区（本地数量/下载任务/图片收藏统计）—— 逻辑未改
     LaunchedEffect(Unit) { viewModel.refreshExtras() }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = tokens.spacing.rowHorizontal,
-            end = tokens.spacing.rowHorizontal,
-            top = tokens.spacing.space4,
-            bottom = bottomContentPadding,
-        ),
-        verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
-    ) {
+    // 大标题折叠 + 毛玻璃顶栏（页内自治）
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        VeneraTopAppBar(
+            title = "首页",
+            largeTitle = "首页",
+            scrollBehavior = topBarBehavior,
+            actions = {
+                // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）
+                Box {
+                    IconButton(onClick = { onOpenSourceManage() }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Extension,
+                            contentDescription = "源管理",
+                            tint = tokens.color.textSecondary,
+                        )
+                    }
+                    if (updateCount > 0) {
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.Degraded,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1),
+                        ) {
+                            Text(
+                                text = updateCount.toString(),
+                                fontSize = tokens.type.badge,
+                                fontWeight = tokens.type.weightBold,
+                                color = StatusColors.OnBadgeSurface,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding),
+                            )
+                        }
+                    }
+                }
+                IconButton(onClick = { sourceManager.refreshPings() }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Refresh,
+                        contentDescription = "刷新",
+                        tint = tokens.color.textSecondary,
+                    )
+                }
+                IconButton(onClick = { onOpenSettings() }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Settings,
+                        contentDescription = "设置",
+                        tint = tokens.color.textSecondary,
+                    )
+                }
+            },
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(topBarBehavior.nestedScrollConnection),
+            contentPadding = PaddingValues(
+                start = tokens.spacing.rowHorizontal,
+                end = tokens.spacing.rowHorizontal,
+                top = tokens.spacing.space4,
+                bottom = bottomContentPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
+        ) {
         // ==================== 分区 2：阅读统计 ====================
         if (ui.todayPages > 0 || ui.weekPages > 0) {
             item {
@@ -405,6 +464,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
         // 底部留白由 Navigation 通过 bottomContentPadding = bottomBarClearance 统一提供，
         // 页面再叠一次就会造成双重留白（这正是 Round 2.5 修复的问题）。
     }
+        }
 }
 
 /* ------------------------------------------------------------------ *

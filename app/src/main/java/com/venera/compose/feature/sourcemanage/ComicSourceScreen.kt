@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -43,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
@@ -133,10 +133,14 @@ fun ComicSourceScreen(
         }
     }
 
+    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
     Scaffold(
         topBar = {
-            TopAppBar(
+            // 统一顶栏：大标题折叠 + 毛玻璃，带返回导航（全站二级页同款）
+            com.venera.compose.components.venera.VeneraTopAppBar(
                 title = "漫画源",
+                largeTitle = "漫画源",
+                scrollBehavior = topBarBehavior,
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -152,7 +156,8 @@ fun ComicSourceScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .nestedScroll(topBarBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {

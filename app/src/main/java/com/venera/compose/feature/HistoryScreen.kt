@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -64,6 +66,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.venera.compose.components.ComicCardLayout
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.rememberPredictiveBackState
@@ -92,74 +96,77 @@ fun AndroidHistoryScreen(
     val selectionBack = rememberPredictiveBackState(
         enabled = vm.multiSelectMode && !showClearMenu,
     ) { vm.exitMultiSelect() }
+    // 大标题折叠 + 毛玻璃顶栏（页内自治）
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // ── 二级工具条：普通态 = 布局切换 + 清空入口；多选态 = 退出/全选/删除。──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = tokens.spacing.rowHorizontal,
-                        vertical = tokens.spacing.space2,
-                    )
-                    .graphicsLayer { alpha = 1f - selectionBack.progress },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AnimatedContent(
-                    targetState = vm.multiSelectMode,
-                    modifier = Modifier.fillMaxWidth(),
-                    transitionSpec = {
-                        (slideInVertically { it / 2 } + fadeIn())
-                            .togetherWith(slideOutVertically { it / 2 } + fadeOut())
-                    },
-                    label = "HistoryToolbar",
-                ) { multiSelect ->
-                    if (multiSelect) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "退出多选",
-                                tint = tokens.color.textPrimary,
-                                modifier = Modifier
-                                    .size(tokens.spacing.iconButtonSize)
-                                    .clickable { vm.exitMultiSelect() }
-                                    .padding(tokens.spacing.space2),
-                            )
-                            Spacer(modifier = Modifier.width(tokens.spacing.space2))
-                            Text(
-                                text = "已选择 ${vm.selected.size} 项",
-                                fontSize = tokens.type.body,
-                                fontWeight = tokens.type.weightMedium,
-                                color = tokens.color.textPrimary,
-                                modifier = Modifier.weight(1f),
-                            )
-                            ToolbarAction(text = "全选", onClick = { vm.selectAll(records) })
-                            ToolbarAction(text = "删除", onClick = { vm.deleteSelected() })
-                        }
+            // ── 统一顶栏：大标题「历史」折叠为居中小标题；操作直接收进 actions ──
+            VeneraTopAppBar(
+                title = "历史",
+                largeTitle = "历史",
+                scrollBehavior = topBarBehavior,
+                actions = {
+                    if (vm.multiSelectMode) {
+                        // 多选态：顶栏右侧切换为多选操作
+                        TopBarAction(text = "全选", onClick = { vm.selectAll(records) })
+                        TopBarAction(
+                            text = "删除",
+                            tint = com.venera.compose.ui.tokens.StatusColors.Failing,
+                            onClick = { vm.deleteSelected() },
+                        )
                     } else {
-                        // 普通态：清空入口 + 布局切换，整体靠右对齐。
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        IconButton(onClick = { showClearMenu = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
                                 contentDescription = "清空选项",
                                 tint = tokens.color.textSecondary,
-                                modifier = Modifier
-                                    .size(tokens.spacing.iconButtonSize)
-                                    .clip(RoundedCornerShape(tokens.shape.small))
-                                    .clickable { showClearMenu = true }
-                                    .padding(tokens.spacing.space2),
                             )
-                            ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                         }
+                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                     }
+                },
+            )
+
+            // ── 多选态提示条：操作已上顶栏，这里只保留「退出 + 计数」状态行 ──
+            AnimatedContent(
+                targetState = vm.multiSelectMode,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = 1f - selectionBack.progress },
+                transitionSpec = {
+                    (slideInVertically { it / 2 } + fadeIn())
+                        .togetherWith(slideOutVertically { it / 2 } + fadeOut())
+                },
+                label = "HistoryToolbar",
+            ) { multiSelect ->
+                if (multiSelect) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space2),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "退出多选",
+                            tint = tokens.color.textPrimary,
+                            modifier = Modifier
+                                .size(tokens.spacing.iconButtonSize)
+                                .clickable { vm.exitMultiSelect() }
+                                .padding(tokens.spacing.space2),
+                        )
+                        Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                        Text(
+                            text = "已选择 ${vm.selected.size} 项",
+                            fontSize = tokens.type.body,
+                            fontWeight = tokens.type.weightMedium,
+                            color = tokens.color.textPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(1.dp))
                 }
             }
 
@@ -182,7 +189,8 @@ fun AndroidHistoryScreen(
                     ),
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
                     verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
-                    modifier = Modifier.fillMaxSize(),
+                    // 挂载折叠行为：下滑时大标题收起、模糊背板淡入
+                    modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
                 ) {
                     items(records, key = { "${it.comicId}-${it.sourceName}" }) { record ->
                         HistoryCard(
@@ -365,4 +373,24 @@ private fun ClearHistoryMenu(
             }
         }
     }
+}
+
+/** 顶栏内的文字操作按钮（多选态「全选 / 删除」用）。 */
+@Composable
+private fun TopBarAction(
+    text: String,
+    onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color? = null,
+) {
+    val tokens = VeneraTokens
+    Text(
+        text = text,
+        fontSize = tokens.type.body,
+        fontWeight = tokens.type.weightMedium,
+        color = tint ?: tokens.color.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(tokens.shape.small))
+            .clickable(onClick = onClick)
+            .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space2),
+    )
 }

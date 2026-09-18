@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -151,131 +152,106 @@ fun LocalComicScreen(
         }
     }
 
+    // 统一顶栏：大标题折叠 + 毛玻璃；多选态由 actions 平滑接管
+    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space4),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = tokens.color.textPrimary
-                    )
-                }
-                Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                if (isSelectionMode) {
-                    // ── 多选态顶栏：已选计数 + 全选/全不选 + 批量删除 + 退出 ──
-                    Text(
-                        text = "已选 " + selectedComicPaths.size + " 部",
-                        fontSize = tokens.type.screenTitle,
-                        fontWeight = tokens.type.weightBold,
-                        color = tokens.color.textPrimary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    TextButton(onClick = {
-                        selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
-                            emptySet()
-                        } else {
-                            filteredComics.map { it.rootPath }.toSet()
-                        }
-                    }) {
-                        Text(
-                            text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.primary
-                        )
-                    }
-                    IconButton(
-                        onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
-                        enabled = selectedComicPaths.isNotEmpty()
-                    ) {
+            com.venera.compose.components.venera.VeneraTopAppBar(
+                title = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地书架",
+                largeTitle = if (isSelectionMode) "已选 " + selectedComicPaths.size + " 部" else "本地离线书架",
+                scrollBehavior = topBarBehavior,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = "批量删除",
-                            tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled
-                        )
-                    }
-                    IconButton(onClick = {
-                        isSelectionMode = false
-                        selectedComicPaths = emptySet()
-                    }) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "退出多选",
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
                             tint = tokens.color.textPrimary
                         )
                     }
-                } else {
-                    Text(
-                        text = "本地离线书架",
-                        fontSize = tokens.type.screenTitle,
-                        fontWeight = tokens.type.weightBold,
-                        color = tokens.color.textPrimary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    IconButton(onClick = { isSelectionMode = true }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Checklist,
-                            contentDescription = "多选模式",
-                            tint = tokens.color.textPrimary
-                        )
-                    }
-                }
-                if (!isSelectionMode) {
-                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                Spacer(modifier = Modifier.width(tokens.spacing.space2))
-                // 下载中心入口：带正在下载数量徽章（任务数 > 0 时显示）
-                Box {
-                    IconButton(onClick = onNavigateToDownloads) {
-                        Icon(
-                            imageVector = Icons.Outlined.Download,
-                            contentDescription = "下载中心",
-                            tint = tokens.color.textPrimary
-                        )
-                    }
-                    if (activeDownloadTasks.isNotEmpty()) {
-                        Surface(
-                            shape = CircleShape,
-                            color = StatusColors.Degraded,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(tokens.spacing.space1)
-                        ) {
+                },
+                actions = {
+                    if (isSelectionMode) {
+                        // ── 多选态：全选 / 全不选 · 批量删除 · 退出 ──
+                        TextButton(onClick = {
+                            selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
+                                emptySet()
+                            } else {
+                                filteredComics.map { it.rootPath }.toSet()
+                            }
+                        }) {
                             Text(
-                                text = activeDownloadTasks.size.toString(),
-                                fontSize = tokens.type.badge,
-                                fontWeight = tokens.type.weightBold,
-                                color = StatusColors.OnBadgeSurface,
-                                modifier = Modifier.padding(
-                                    horizontal = tokens.spacing.badgeHorizontalPadding,
-                                    vertical = 0.dp,
+                                text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.primary
+                            )
+                        }
+                        IconButton(
+                            onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
+                            enabled = selectedComicPaths.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "批量删除",
+                                tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled
+                            )
+                        }
+                        IconButton(onClick = {
+                            isSelectionMode = false
+                            selectedComicPaths = emptySet()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "退出多选",
+                                tint = tokens.color.textPrimary
+                            )
+                        }
+                    } else {
+                        // ── 普通态：多选入口 · 布局切换 · 下载中心(带徽章) · 导入 CBZ ──
+                        IconButton(onClick = { isSelectionMode = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Checklist,
+                                contentDescription = "多选模式",
+                                tint = tokens.color.textPrimary
+                            )
+                        }
+                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                        Box {
+                            IconButton(onClick = onNavigateToDownloads) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Download,
+                                    contentDescription = "下载中心",
+                                    tint = tokens.color.textPrimary
                                 )
+                            }
+                            if (activeDownloadTasks.isNotEmpty()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = StatusColors.Degraded,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(tokens.spacing.space1)
+                                ) {
+                                    Text(
+                                        text = activeDownloadTasks.size.toString(),
+                                        fontSize = tokens.type.badge,
+                                        fontWeight = tokens.type.weightBold,
+                                        color = StatusColors.OnBadgeSurface,
+                                        modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding)
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = {
+                            importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
+                        }) {
+                            Icon(
+                                imageVector = Icons.Outlined.FileDownload,
+                                contentDescription = "导入 CBZ",
+                                tint = tokens.color.primary
                             )
                         }
                     }
-                }
-                Spacer(modifier = Modifier.width(tokens.spacing.space2))
-                Button(
-                    onClick = {
-                        importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
-                    },
-                    colors = ButtonDefaults.buttonColors(color = tokens.color.primary)
-                ) {
-                    Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, tint = tokens.color.onPrimary, modifier = Modifier.size(tokens.spacing.chipIconSize))
-                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                    Text(text = "导入 CBZ", color = tokens.color.onPrimary, fontSize = tokens.type.caption)
-                }
-                }
-            }
+                },
+            )
         }
     ) { innerPadding ->
         Box(
@@ -302,7 +278,7 @@ fun LocalComicScreen(
 
                 else -> {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
                         contentPadding = PaddingValues(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space4),
                         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                     ) {

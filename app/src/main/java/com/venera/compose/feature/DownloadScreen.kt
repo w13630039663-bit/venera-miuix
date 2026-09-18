@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,45 +62,41 @@ fun DownloadScreen(
         tasks.filter { it.status == DownloadStatus.COMPLETED }.sortedByDescending { it.updateTime }
     }
 
+    // 统一顶栏：大标题折叠 + 毛玻璃（二级子页面同款）
+    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space4),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = tokens.color.textPrimary
-                    )
-                }
-                Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                Text(
-                    text = "离线下载管理",
-                    fontSize = tokens.type.screenTitle,
-                    fontWeight = tokens.type.weightBold,
-                    color = tokens.color.textPrimary
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onNavigateToLocalLibrary) {
-                    Icon(
-                        imageVector = Icons.Outlined.Folder,
-                        contentDescription = "本地书架",
-                        tint = tokens.color.primary,
-                        modifier = Modifier.size(tokens.spacing.chipIconSize + 2.dp)
-                    )
-                    Spacer(modifier = Modifier.width(tokens.spacing.space1))
-                    Text(
-                        text = "本地书架",
-                        fontSize = tokens.type.sectionTitle,
-                        color = tokens.color.primary
-                    )
-                }
-            }
+            com.venera.compose.components.venera.VeneraTopAppBar(
+                title = "离线下载",
+                largeTitle = "离线下载管理",
+                scrollBehavior = topBarBehavior,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = tokens.color.textPrimary
+                        )
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onNavigateToLocalLibrary) {
+                        Icon(
+                            imageVector = Icons.Outlined.Folder,
+                            contentDescription = "本地书架",
+                            tint = tokens.color.primary,
+                            modifier = Modifier.size(tokens.spacing.chipIconSize + 2.dp)
+                        )
+                        Spacer(modifier = Modifier.width(tokens.spacing.space1))
+                        Text(
+                            text = "本地书架",
+                            fontSize = tokens.type.sectionTitle,
+                            color = tokens.color.primary
+                        )
+                    }
+                },
+            )
         }
     ) { innerPadding ->
         Column(
@@ -211,7 +208,7 @@ fun DownloadScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)

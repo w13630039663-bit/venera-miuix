@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -69,30 +70,25 @@ fun StatsScreen(
         isLoading = false
     }
 
+    // 统一顶栏：大标题折叠 + 毛玻璃（二级子页面同款）
+    val topBarBehavior = com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = MiuixTheme.colorScheme.onSurface
-                    )
+            com.venera.compose.components.venera.VeneraTopAppBar(
+                title = "阅读统计",
+                largeTitle = "阅读足迹与统计",
+                scrollBehavior = topBarBehavior,
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "阅读足迹与统计",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface
-                )
-            }
+            )
         }
     ) { innerPadding ->
         if (isLoading) {
@@ -103,7 +99,8 @@ fun StatsScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .nestedScroll(topBarBehavior.nestedScrollConnection),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {

@@ -8,6 +8,7 @@
 package com.venera.compose.feature
 
 import com.venera.compose.ui.tokens.VeneraSpacing
+import com.venera.compose.ui.tokens.VeneraTokens
 
 import com.venera.compose.components.*
 import com.venera.compose.components.venera.VeneraCard
@@ -15,6 +16,8 @@ import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraTagChip
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -36,6 +39,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -57,6 +61,7 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +95,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
 ) {
+    val tokens = VeneraTokens
     val vm: FavoritesViewModel = viewModel()
     val displayMode = rememberComicListDisplayMode()
     val folders by vm.folders.collectAsState()
@@ -103,12 +109,49 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
         enabled = mode == FavoritesMode.Local && vm.multiSelectMode && !showMenu && dialog == null,
     ) { vm.exitMultiSelect() }
+    // 大标题折叠 + 毛玻璃顶栏（页内自治）
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    var showSortMenuTop by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            FavoritesModeToggle(
-                mode = mode,
-                onModeChange = { mode = it },
+            // ── 统一顶栏：actions = 排序 / 布局切换 / 更多；bottomContent = 模式切换 + 文件夹胶囊 ──
+            VeneraTopAppBar(
+                title = "收藏",
+                largeTitle = "收藏",
+                scrollBehavior = topBarBehavior,
+                actions = {
+                    if (mode == FavoritesMode.Local) {
+                        FavoritesSortMenu(
+                            sortOrder = vm.sortOrder,
+                            onSortOrderChange = { vm.updateSortOrder(it) },
+                        )
+                        IconButton(onClick = { searchMode = !searchMode }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = "搜索收藏",
+                                tint = tokens.color.textSecondary,
+                            )
+                        }
+                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "收藏夹操作",
+                                tint = tokens.color.textSecondary,
+                            )
+                        }
+                    } else {
+                        ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                    }
+                },
+                bottomContent = {
+                    // 模式切换（网络/本地）常驻顶栏下方，随顶栏一起折叠
+                    FavoritesModeToggle(
+                        mode = mode,
+                        onModeChange = { mode = it },
+                    )
+                },
             )
 
             // 顶部二级工具条（多选态展开）：替代旧贴底 MultiSelectActionBar——
@@ -139,16 +182,12 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 }
             }
             if (mode == FavoritesMode.Local) {
+                // 文件夹胶囊：排序/布局/更多已提升至顶栏 actions，这里只留「选夹」本体
                 FolderChipRow(
                     folders = folders,
                     counts = counts,
                     current = vm.currentFolder,
                     onSelectFolder = { vm.selectFolder(it) },
-                    onSearchClick = { searchMode = !searchMode },
-                    onMenuClick = { showMenu = true },
-                    sortOrder = vm.sortOrder,
-                    onSortOrderChange = { vm.updateSortOrder(it) },
-                    trailing = { ComicLayoutToggleButton(displayMode.value) { displayMode.value = it } },
                 )
 
                 if (searchMode) {
@@ -159,7 +198,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     )
                 }
 
-                FavoriteGrid(vm = vm, onSelect = onSelect)
+                FavoriteGrid(vm = vm, onSelect = onSelect, scrollConnection = topBarBehavior.nestedScrollConnection)
             } else {
                 AndroidNetworkFavoritesScreen(onSelect = onSelect)
             }
@@ -314,16 +353,8 @@ private fun FolderChipRow(
     counts: Map<String, Int>,
     current: String,
     onSelectFolder: (String) -> Unit,
-    onSearchClick: () -> Unit,
-    onMenuClick: () -> Unit,
-    /** 当前排序规则（供排序菜单高亮）。 */
-    sortOrder: FavoriteSortOrder,
-    onSortOrderChange: (FavoriteSortOrder) -> Unit,
-    /** 行尾额外操作槽（如单双列切换按钮），与 chips 同行避免多余空行。 */
-    trailing: (@Composable () -> Unit)? = null,
 ) {
     val tokens = com.venera.compose.ui.tokens.VeneraTokens
-    var showSortMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -349,61 +380,6 @@ private fun FolderChipRow(
                 )
             }
         }
-        Spacer(modifier = Modifier.width(com.venera.compose.ui.tokens.VeneraTokens.spacing.space2))
-        Icon(
-            imageVector = Icons.Outlined.Search,
-            contentDescription = "搜索收藏",
-            tint = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
-            modifier = Modifier.size(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipIconSize).clickable { onSearchClick() },
-        )
-        Spacer(modifier = Modifier.width(tokens.spacing.space6))
-        // 排序入口：名称 / 时间 / 自定义排序（当前项主色勾选）
-        Box {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.Sort,
-                contentDescription = "排序方式",
-                tint = if (sortOrder == FavoriteSortOrder.CUSTOM) tokens.color.textSecondary else tokens.color.primary,
-                modifier = Modifier.size(tokens.spacing.chipIconSize).clickable { showSortMenu = true },
-            )
-            DropdownMenu(
-                expanded = showSortMenu,
-                onDismissRequest = { showSortMenu = false },
-            ) {
-                FavoriteSortOrder.entries.forEach { order ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = order.label,
-                                fontSize = tokens.type.body,
-                                color = if (order == sortOrder) tokens.color.primary else tokens.color.textPrimary,
-                            )
-                        },
-                        trailingIcon = if (order == sortOrder) {
-                            {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = "当前排序",
-                                    tint = tokens.color.primary,
-                                    modifier = Modifier.size(tokens.spacing.chipIconSize),
-                                )
-                            }
-                        } else null,
-                        onClick = {
-                            showSortMenu = false
-                            onSortOrderChange(order)
-                        },
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.width(tokens.spacing.space6))
-        Icon(
-            imageVector = Icons.Filled.MoreVert,
-            contentDescription = "收藏夹操作",
-            tint = tokens.color.textSecondary,
-            modifier = Modifier.size(tokens.spacing.chipIconSize).clickable { onMenuClick() },
-        )
-        trailing?.invoke()
     }
 }
 
@@ -447,6 +423,8 @@ private fun SearchField(
 private fun FavoriteGrid(
     vm: FavoritesViewModel,
     onSelect: (ComicItem) -> Unit,
+    /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
+    scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
 ) {
     if (vm.comics.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -479,7 +457,11 @@ private fun FavoriteGrid(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = VeneraSpacing.bottomBarClearance),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = if (scrollConnection != null) {
+            Modifier.fillMaxSize().nestedScroll(scrollConnection)
+        } else {
+            Modifier.fillMaxSize()
+        },
     ) {
         gridItems(visibleComics, key = { "${it.id}-${it.type}" }) { item ->
             FavoriteCard(
@@ -935,3 +917,54 @@ private fun MenuItem(
 // endregion
 
 // ==================== 5. 探索页 (ExplorePage) 1:1 复刻 ====================
+
+/**
+ * 顶栏排序菜单：名称 / 时间 / 自定义排序，当前项主色勾选。
+ *
+ * 从 FolderChipRow 行内提升到顶栏 actions —— 与「布局切换 / 更多」并列，
+ * 消除原二级工具条的横向拥挤。
+ */
+@Composable
+private fun FavoritesSortMenu(
+    sortOrder: FavoriteSortOrder,
+    onSortOrderChange: (FavoriteSortOrder) -> Unit,
+) {
+    val tokens = VeneraTokens
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Sort,
+                contentDescription = "排序方式",
+                tint = if (sortOrder == FavoriteSortOrder.CUSTOM) tokens.color.textSecondary else tokens.color.primary,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            FavoriteSortOrder.entries.forEach { order ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = order.label,
+                            fontSize = tokens.type.body,
+                            color = if (order == sortOrder) tokens.color.primary else tokens.color.textPrimary,
+                        )
+                    },
+                    trailingIcon = if (order == sortOrder) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = "当前排序",
+                                tint = tokens.color.primary,
+                                modifier = Modifier.size(tokens.spacing.chipIconSize),
+                            )
+                        }
+                    } else null,
+                    onClick = {
+                        expanded = false
+                        onSortOrderChange(order)
+                    },
+                )
+            }
+        }
+    }
+}

@@ -65,28 +65,22 @@ internal fun SettingsHome(
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     var stack by rememberSaveable { mutableStateOf(listOf("home")) }
     fun push(page: String) { if (stack.last() != page) stack = stack + page }
-    // 外层返回行：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
+    // 外层顶栏：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
+    // 统一 VeneraTopAppBar：与全站二级页同款「大标题折叠 + 毛玻璃」。
     if (stack.last() == "home") {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = VeneraTokens.spacing.space2, vertical = VeneraTokens.spacing.space2),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = VeneraTokens.color.textPrimary,
-                )
-            }
-            Text(
-                text = "设置与偏好",
-                fontSize = VeneraTokens.type.screenTitle,
-                fontWeight = VeneraTokens.type.weightBold,
-                color = VeneraTokens.color.textPrimary,
-            )
-        }
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = "设置",
+            largeTitle = "设置与偏好",
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = VeneraTokens.color.textPrimary,
+                    )
+                }
+            },
+        )
     }
     PredictiveBackStack(
         entries = stack,

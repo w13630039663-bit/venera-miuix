@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -62,6 +62,8 @@ import com.venera.compose.source.explore.unifiedTagsFor
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ExplorePagePart
 import com.venera.compose.source.model.PageJumpTarget
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
@@ -216,27 +218,26 @@ fun UnifiedExploreScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = VeneraTokens.spacing.rowHorizontal),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "探索",
-                fontSize = VeneraTokens.type.itemTitle,
-                fontWeight = VeneraTokens.type.weightBold,
-                modifier = Modifier.weight(1f)
-            )
-            // R2：单列/双列切换，与 Favorites 等页面同款按钮、同一份偏好。
-            ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-            IconButton(onClick = { refreshTick++ }) {
-                Icon(
-                    Icons.Outlined.Refresh,
-                    contentDescription = "刷新",
-                    tint = VeneraTokens.color.primary
-                )
-            }
-        }
+    // 大标题折叠 + 毛玻璃顶栏（页内自治；原本自绘的「探索」标题与 statusBarsPadding 一并移除）
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+
+    Column(Modifier.fillMaxSize()) {
+        VeneraTopAppBar(
+            title = "探索",
+            largeTitle = "探索",
+            scrollBehavior = topBarBehavior,
+            actions = {
+                // R2：单列/双列切换，与 Favorites 等页面同款按钮、同一份偏好。
+                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                IconButton(onClick = { refreshTick++ }) {
+                    Icon(
+                        Icons.Outlined.Refresh,
+                        contentDescription = "刷新",
+                        tint = VeneraTokens.color.primary
+                    )
+                }
+            },
+        )
 
         // 通用标签的可用性只依赖当前源，提前算好（LazyListScope 内不能调用 remember）。
         val unifiedAvailability = remember(currentSource) {
@@ -245,7 +246,8 @@ fun UnifiedExploreScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            // 挂载折叠行为：下滑时大标题收起、毛玻璃背板淡入
+            modifier = Modifier.fillMaxSize().nestedScroll(topBarBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
                 start = VeneraTokens.spacing.rowHorizontal,
                 end = VeneraTokens.spacing.rowHorizontal,
