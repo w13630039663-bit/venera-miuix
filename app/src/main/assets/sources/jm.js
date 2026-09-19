@@ -209,11 +209,15 @@ class JM extends ComicSource {
         let description = comic.description ?? ""
         let cover = this.getCoverUrl(id)
         let tags =[]
-        if(comic["category"]["title"]) {
-            tags.push(comic["category"]["title"])
+        // JM 某些条目（短篇/部分同人本）不返回 category / category_sub，
+        // 直接取 ["title"] 会抛 TypeError 并让整页解析失败。先判对象再取字段。
+        let category = comic["category"]
+        if (category && category["title"]) {
+            tags.push(category["title"])
         }
-        if(comic["category_sub"]["title"]) {
-            tags.push(comic["category_sub"]["title"])
+        let categorySub = comic["category_sub"]
+        if (categorySub && categorySub["title"]) {
+            tags.push(categorySub["title"])
         }
         return new Comic({
             id: id,
