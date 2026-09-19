@@ -46,6 +46,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -182,6 +183,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp），与 SourceSectionScreen 同契约。
     val baseTopPadding = statusBarTop + 104.dp
+    // 标签译文显示器：只改药丸文本，点击与请求仍走源生原文（见 rememberTagDisplayLabel 注释）。
+    // 在屏幕顶层取一次再往下传，避免每张卡片各自订阅字典加载状态。
+    val tagLabel = rememberTagDisplayLabel()
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -318,6 +322,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     colors = colorSet,
                     mask = ::mask,
                     displayMode = displayMode,
+                    tagLabel = tagLabel,
                     onSelect = { comic, sourceName -> select(comic, sourceName) },
                     onOpenSource = { key, label -> viewModel.onSourceSelected(key, label) },
                     onRetry = { viewModel.search(ui.query) },
@@ -328,6 +333,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     tokens = tokenSet,
                     colors = colorSet,
                     displayMode = displayMode,
+                    tagLabel = tagLabel,
                     mask = ::mask,
                     onSelect = { select(it, ui.selectedSourceLabel) },
                     onRetry = { viewModel.search(ui.query) },
@@ -860,6 +866,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
     colors: com.venera.compose.ui.tokens.VeneraColorTokens,
     mask: (Comic) -> VeneraCoverMask,
     displayMode: String,
+    tagLabel: (String) -> String,
     onSelect: (Comic, String) -> Unit,
     onOpenSource: (String, String) -> Unit,
     onRetry: () -> Unit,
@@ -924,6 +931,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
                                     comic = comic,
                                     sourceName = event.sourceName,
                                     mask = mask(comic),
+                                    tagLabel = tagLabel,
                                     onClick = { onSelect(comic, event.sourceName) },
                                 )
                             }
@@ -941,6 +949,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
     tokens: com.venera.compose.ui.tokens.VeneraTokenSet,
     colors: com.venera.compose.ui.tokens.VeneraColorTokens,
     displayMode: String,
+    tagLabel: (String) -> String,
     mask: (Comic) -> VeneraCoverMask,
     onSelect: (Comic) -> Unit,
     onRetry: () -> Unit,
@@ -981,6 +990,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
                     SearchResultRowItem(
                         comic = comic,
                         mask = mask(comic),
+                        tagLabel = tagLabel,
                         onClick = { onSelect(comic) },
                     )
                 }
@@ -996,6 +1006,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
                             row = row,
                             columnCount = columns,
                             mask = mask,
+                            tagLabel = tagLabel,
                             onSelect = onSelect,
                         )
                     }
@@ -1013,6 +1024,7 @@ private fun ComicGridRow(
     row: List<Comic>,
     columnCount: Int,
     mask: (Comic) -> VeneraCoverMask,
+    tagLabel: (String) -> String,
     onSelect: (Comic) -> Unit,
 ) {
     val tokens = VeneraTokens
@@ -1026,6 +1038,7 @@ private fun ComicGridRow(
                     comic = comic,
                     sourceName = comic.sourceKey,
                     mask = mask(comic),
+                    tagLabel = tagLabel,
                     onClick = { onSelect(comic) },
                 )
             }
@@ -1051,6 +1064,7 @@ private fun SearchResultCard(
     comic: Comic,
     sourceName: String,
     mask: VeneraCoverMask,
+    tagLabel: (String) -> String,
     onClick: () -> Unit,
 ) {
     val tokens = VeneraTokens
@@ -1085,7 +1099,7 @@ private fun SearchResultCard(
             )
         }
         OptionalMetadata(comic)
-        val tags = searchVisibleTags(comic.tags, emptyList())
+        val tags = searchVisibleTags(comic.tags, emptyList(), tagLabel)
         if (tags.isNotEmpty()) {
             Spacer(Modifier.height(tokens.spacing.space2))
             Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
@@ -1098,10 +1112,12 @@ private fun SearchResultCard(
 }
 
 /** 列表模式的单行卡：左封面 + 右信息。 */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun SearchResultRowItem(
     comic: Comic,
     mask: VeneraCoverMask,
+    tagLabel: (String) -> String,
     onClick: () -> Unit,
 ) {
     val tokens = VeneraTokens
@@ -1143,13 +1159,21 @@ private fun SearchResultRowItem(
                     )
                 }
                 // 列表模式补回 Tag（与网格模式保持信息对称）。
-                // 数据仍来自结果自身的 comic.tags，未做任何业务层映射；
-                // 复用与网格相同的去重逻辑，最多 2 个，超出的不渲染。
-                val listTags = searchVisibleTags(comic.tags, emptyList())
+                // 数据仍来自结果自身的 comic.tags，未做任何业务层映射。
+                // 单列卡有整行宽度可用，所以放开到 5 个（网格小卡仍 2 个）；
+                // 用 FlowRow 而非 Row 承载 —— 5 个标签在 360dp 窄屏必然超一行，
+                // Row 会把超出的直接裁掉，这里改为换行且最多两行。
+                val listTags = searchVisibleTags(comic.tags, emptyList(), tagLabel)
                 if (listTags.isNotEmpty()) {
                     Spacer(Modifier.height(tokens.spacing.space2))
-                    Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
-                        listTags.take(2).forEach { tag ->
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                        maxLines = 2,
+                        // overflow 留默认（Clip）：新版 foundation 的 FlowRowOverflow 只提供
+                        // Clip / expandIndicator，省略号指示要额外交互态，这里不引入。
+                    ) {
+                        listTags.take(5).forEach { tag ->
                             VeneraTagChip(text = tag, onClick = null)
                         }
                     }
@@ -1596,20 +1620,47 @@ private fun SearchDropdownOption(
  * UI 层标签归一化（只作用于展示，不改任何源数据）
  * ================================================================== */
 
-internal fun searchVisibleTags(tags: List<String>, exclude: List<String>): List<String> {
-    val excluded = exclude.map { normalizeTagKey(it) }.toSet()
-    val seen = mutableSetOf<String>()
-    val result = mutableListOf<String>()
-    tags.forEach { raw ->
-        val key = normalizeTagKey(raw)
-        if (key.isEmpty()) return@forEach
-        if (key in excluded) return@forEach
-        if (seen.add(key)) result.add(raw.trim())
+/**
+ * 结果卡上要显示的标签文本。
+ *
+ * 折叠规则严格对应方案 §4.1 的「只合并字面同义」：
+ * - 大小写 / 空白差异 → 同一枚（`Full Color` 与 `full  color`）；
+ * - **裸词**与其**带命名空间**写法 → 留带命名空间那个（`chinese` 让位给 `language:chinese`）；
+ * - **两个不同命名空间**下的同名值 → 各留一枚。真机图里 `東方: 靈夢` 这类前缀就是这种形态；
+ *   早期版本只拿「去前缀后的值」当唯一键，会把 `female:dog` 与 `parody:dog` 错误并成一枚。
+ * - 语义同义（`chinese` 与 `translated`）一律不合并 —— 它们是不同检索面词，合并等于丢功能。
+ *
+ * 存活下来的原文才是发给源的词，所以这里只会减少重复药丸，不可能改变搜索结果。
+ */
+internal fun searchVisibleTags(
+    tags: List<String>,
+    exclude: List<String>,
+    display: (String) -> String = { it },
+): List<String> {
+    val excluded = exclude.map { conceptKey(it) }.toSet()
+    val entries = tags.map { it.trim() }
+        .filter { it.isNotEmpty() && conceptKey(it) !in excluded }
+    // 已被带命名空间写法认领的概念，裸词不再单独出现。
+    val claimedByQualified = entries.filter { ':' in it }.map { conceptKey(it) }.toSet()
+    val seen = HashSet<String>()
+    val survivors = ArrayList<String>()
+    entries.forEach { raw ->
+        if (':' !in raw && conceptKey(raw) in claimedByQualified) return@forEach
+        // 带前缀的按完整字面键去重（不同前缀互不吞并），裸词按概念键去重（只并大小写/空白）。
+        val key = if (':' in raw) literalKey(raw) else conceptKey(raw)
+        if (seen.add(key)) survivors.add(raw)
     }
-    return result
+    return survivors.map(display)
 }
 
-internal fun normalizeTagKey(value: String): String =
-    value.trim().replace(WHITESPACE_RUN, " ").lowercase()
+/** 概念键：小写 + 折叠全部空白 + 去命名空间前缀。 */
+private fun conceptKey(value: String): String {
+    val literal = literalKey(value)
+    return literal.substringAfter(':', literal)
+}
+
+/** 字面键：小写 + 折叠全部空白，保留命名空间前缀。 */
+private fun literalKey(value: String): String =
+    value.trim().lowercase().replace(WHITESPACE_RUN, "")
 
 private val WHITESPACE_RUN = Regex("\\s+")

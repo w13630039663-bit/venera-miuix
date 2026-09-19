@@ -19,6 +19,11 @@ enum class NavigationBarStyle {
     MD3, LIQUID_GLASS
 }
 
+/** 标签译文显示模式。SYSTEM = 由系统语言同时决定「译不译」与「译成简还是繁」。 */
+enum class TagTranslationMode {
+    SYSTEM, SIMPLIFIED, TRADITIONAL, OFF
+}
+
 class VeneraPreferences private constructor(context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -54,6 +59,9 @@ class VeneraPreferences private constructor(context: Context) {
 
     private val _navigationBarStyle = MutableStateFlow(readEnum(KEY_NAVIGATION_BAR_STYLE, NavigationBarStyle.MD3))
     val navigationBarStyle: StateFlow<NavigationBarStyle> = _navigationBarStyle.asStateFlow()
+
+    private val _tagTranslationMode = MutableStateFlow(readEnum(KEY_TAG_TRANSLATION_MODE, TagTranslationMode.SYSTEM))
+    val tagTranslationMode: StateFlow<TagTranslationMode> = _tagTranslationMode.asStateFlow()
 
     // Unknown values from backups/newer versions must not prevent the app from opening.
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T =
@@ -182,6 +190,11 @@ class VeneraPreferences private constructor(context: Context) {
         _navigationBarStyle.value = style
     }
 
+    fun setTagTranslationMode(mode: TagTranslationMode) {
+        prefs.edit { putString(KEY_TAG_TRANSLATION_MODE, mode.name) }
+        _tagTranslationMode.value = mode
+    }
+
     fun setNewFavoriteAddTo(value: String) {
         prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
         _newFavoriteAddTo.value = value
@@ -236,6 +249,7 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_THEME_MODE = "pref_theme_mode"
         private const val KEY_APPEARANCE_STYLE = "pref_appearance_style"
         private const val KEY_NAVIGATION_BAR_STYLE = "pref_navigation_bar_style"
+        private const val KEY_TAG_TRANSLATION_MODE = "pref_tag_translation_mode"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"

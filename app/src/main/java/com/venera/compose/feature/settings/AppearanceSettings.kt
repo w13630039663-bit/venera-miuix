@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.data.prefs.TagTranslationMode
 import com.venera.compose.data.prefs.ThemeMode
 import com.venera.compose.data.prefs.VeneraPreferences
 import top.yukonga.miuix.kmp.basic.Text
@@ -22,6 +23,7 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
     val navigationBar by prefs.navigationBarStyle.collectAsState()
+    val tagTranslation by prefs.tagTranslationMode.collectAsState()
     SettingsPage("外观", onBack) {
         // 对照原版顶部手机模型，直接跟随真实 Miuix 色板。
         Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
@@ -71,6 +73,24 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             Text(
                 "Liquid Glass 基于 Kyant0/AndroidLiquidGlass（Backdrop）官方实现：背景模糊 + 折射透镜 + 高光，" +
                     "拖拽指示器带色散与形变。需要 Android 13 及以上（RuntimeShader 折射）。",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        SettingsGroup("标签") {
+            SettingsSelect("标签译文显示", tagTranslation.name,
+                listOf(
+                    "SYSTEM" to "跟随系统语言",
+                    "SIMPLIFIED" to "始终简体",
+                    "TRADITIONAL" to "始终繁体",
+                    "OFF" to "关闭（显示原文）",
+                ),
+                { prefs.setTagTranslationMode(TagTranslationMode.valueOf(it)) })
+            Text(
+                "命中的英文标签显示为「译文 (原文)」，括号里始终附原文 —— 字典覆盖不到的中文站标签" +
+                    "会退回原文，隐藏原文就无从判断这枚药丸对应站点上的哪个词。" +
+                    "发给各源的查询词与已选标签筛选仍用站点原文，不受此开关影响。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

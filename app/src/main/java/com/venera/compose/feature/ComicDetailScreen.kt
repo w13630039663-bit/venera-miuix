@@ -50,6 +50,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.data.tags.TagTranslationManager
+import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
@@ -88,6 +90,10 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val context = LocalContext.current
     val view = LocalView.current
     val viewModel: ComicDetailViewModel = viewModel()
+    // 标签译文只改药丸显示文本；onSearchTag 仍收到站点原文，点击语义与翻译无关。
+    val tagLabel = rememberTagDisplayLabel()
+    // 分组名（命名空间）中文化用同一本字典的 rows；字典没有的键原样显示，不做猜测翻译。
+    val tagDict = remember(context) { TagTranslationManager.getInstance(context) }
     val detailState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isFav by viewModel.isLocalFav.collectAsStateWithLifecycle()
@@ -477,7 +483,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     verticalAlignment = Alignment.Top
                                 ) {
                                     Text(
-                                        text = "$category:",
+                                        // 字典 rows 覆盖 12 个命名空间（female→女性、parody→原作…），
+                                        // 源自造的键（JM 的 Author/Work/View）查不到就原样显示。
+                                        text = "${tagDict.getNamespaceName(category)}:",
                                         fontSize = tokens.type.caption,
                                         fontWeight = tokens.type.weightBold,
                                         color = tokens.color.textSecondary,
@@ -489,8 +497,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     ) {
                                         tags.forEach { tag ->
                                             VeneraTagChip(
-                                                text = tag,
-                                                onClick = { onSearchTag(tag) }
+                                                // 译文只用于显示；点击仍把站点原文交给 onSearchTag。
+                                                // 纯数值（JM 的 View=浏览量）不是可检索标签，点击等于
+                                                // 拿"3132"去搜索 —— 保留展示，取消点击。
+                                                text = tagLabel(tag),
+                                                onClick = if (NUMERIC_ONLY_VALUE.matches(tag)) {
+                                                    null
+                                                } else {
+                                                    { onSearchTag(tag) }
+                                                }
                                             )
                                         }
                                     }
@@ -504,7 +519,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         ) {
                             flatTags.forEach { tag ->
                                 VeneraTagChip(
-                                    text = tag,
+                                    text = tagLabel(tag),
                                     onClick = { onSearchTag(tag) }
                                 )
                             }
@@ -1279,6 +1294,13 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         )
     }
 }
+
+/**
+ * 纯数值标签（浏览量/点赞数这类计数）—— 它们不是可检索的标签词，
+ * 点击只会把数字当关键词发给源。刻意只认「数字 + 千分位分隔符」，
+ * 避免把 `24小时`、`801` 这类真实标签误判成计数。
+ */
+private val NUMERIC_ONLY_VALUE = Regex("^[0-9][0-9.,\\s]*$")
 
 /** 分享文案（顶栏与辅助行共用，消除重复实现）。 */
 private fun shareText(
