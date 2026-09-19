@@ -112,9 +112,6 @@ import java.util.*
  */
 private const val PRELOAD_AHEAD_PAGES = 5
 
-/** 翻页模式（美漫 LTR / 日漫 RTL）Auto-Scroll 的自动翻页间隔（秒）。 */
-private const val AUTO_SCROLL_PAGE_INTERVAL_SEC = 4f
-
 /**
  * Venera 生产级 Jetpack Compose 工业级漫画阅读器 (S3 升级)
  *
@@ -156,18 +153,16 @@ private fun ReaderSessionContent(
     val currentChapter = chaptersState.getOrNull(currentChapterIndex)
         ?: return
 
-    // 阅读模式配置 (默认读取偏好)
-    val savedModeKey by prefs.defaultReadingMode.collectAsState()
-    var readingMode by remember {
-        mutableStateOf(ReaderReadingMode.fromKey(savedModeKey))
-    }
-
-    // 设置项
-    var pageGapDp by remember { mutableFloatStateOf(prefs.pageGapDp.value) }
-    var isNightFilter by remember { mutableStateOf(prefs.nightFilter.value) }
-    var keepScreenOn by remember { mutableStateOf(prefs.keepScreenOn.value) }
-    var volumeKeyTurn by remember { mutableStateOf(prefs.volumeKeyTurn.value) }
-    var clickToTurn by remember { mutableStateOf(prefs.clickToTurn.value) }
+    // 阅读模式与设置项**直接订阅偏好**：本文件里每一处本地改动都紧跟一次 prefs.setX(...)，
+    // 再另存一份本地副本只会造成"设置页改完必须重开阅读器"这一个后果，没有别的好处。
+    // （此前正是如此：pageGap/夜间滤镜/常亮/音量键/点击翻页全部一次性取值。）
+    val modeKey by prefs.defaultReadingMode.collectAsState()
+    val readingMode = ReaderReadingMode.fromKey(modeKey)
+    val pageGapDp by prefs.pageGapDp.collectAsState()
+    val isNightFilter by prefs.nightFilter.collectAsState()
+    val keepScreenOn by prefs.keepScreenOn.collectAsState()
+    val volumeKeyTurn by prefs.volumeKeyTurn.collectAsState()
+    val clickToTurn by prefs.clickToTurn.collectAsState()
 
     // 控制浮层显隐
     var isControlsVisible by rememberSaveable { mutableStateOf(false) }
@@ -516,7 +511,8 @@ private fun ReaderSessionContent(
                         dt
                     }.let { dt ->
                         acc += dt
-                        if (acc >= AUTO_SCROLL_PAGE_INTERVAL_SEC) {
+                        // 间隔读偏好实时值而非启动时快照：设置页或面板改完，下一页就生效。
+                        if (acc >= prefs.autoScrollPageIntervalSec.value) {
                             acc = 0f
                             if (!turnToNextPage()) isAutoScrolling = false
                         }
@@ -1287,7 +1283,6 @@ private fun ReaderSessionContent(
                                     .weight(1f)
                                     .clickable {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        readingMode = mode
                                         prefs.setDefaultReadingMode(mode.key)
                                     }
                             ) {
@@ -1321,7 +1316,6 @@ private fun ReaderSessionContent(
                                     .weight(1f)
                                     .clickable {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        readingMode = mode
                                         prefs.setDefaultReadingMode(mode.key)
                                     }
                             ) {
@@ -1357,7 +1351,6 @@ private fun ReaderSessionContent(
                         Slider(
                             value = pageGapDp,
                             onValueChange = {
-                                pageGapDp = it
                                 prefs.setPageGapDp(it)
                             },
                             valueRange = 0f..32f,
@@ -1383,7 +1376,6 @@ private fun ReaderSessionContent(
                         Switch(
                             checked = isNightFilter,
                             onCheckedChange = {
-                                isNightFilter = it
                                 prefs.setNightFilter(it)
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
@@ -1405,7 +1397,6 @@ private fun ReaderSessionContent(
                         Switch(
                             checked = keepScreenOn,
                             onCheckedChange = {
-                                keepScreenOn = it
                                 prefs.setKeepScreenOn(it)
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
@@ -1427,7 +1418,6 @@ private fun ReaderSessionContent(
                         Switch(
                             checked = volumeKeyTurn,
                             onCheckedChange = {
-                                volumeKeyTurn = it
                                 prefs.setVolumeKeyTurn(it)
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
@@ -1449,7 +1439,6 @@ private fun ReaderSessionContent(
                         Switch(
                             checked = clickToTurn,
                             onCheckedChange = {
-                                clickToTurn = it
                                 prefs.setClickToTurn(it)
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)

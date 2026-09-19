@@ -96,12 +96,8 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        SettingsGroup("返回动画") { UnsupportedSetting("返回动画样式", "路由返回已内置预返回跟手的滑动转场；尚未提供如原版多套动画样式的可选偏好") }
-        SettingsGroup("沉浸式背景") {
-            UnsupportedSetting("沉浸式背景", "关闭／氛围／壁纸模式尚未实现")
-            UnsupportedSetting("自定义壁纸", "尚无壁纸持久化与全局背景渲染")
-            UnsupportedSetting("模糊强度", "依赖尚未实现的壁纸背景")
-        }
+        // 审计后删除 4 条不打算做的灰行：返回动画样式、沉浸式背景、自定义壁纸、模糊强度。
+        // 壁纸/背景体系是独立工程，缺口清单见 settings-audit-2026-09.md，不拿设置页当 TODO。
     }
 }
 

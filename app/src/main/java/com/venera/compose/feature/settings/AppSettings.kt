@@ -11,7 +11,6 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import java.io.File
 
 /** Follows app.dart: data, user, troubleshooting, then existing offline entry points. */
-@Suppress("UNUSED_PARAMETER")
 @Composable
 fun AppSettings(
     prefs: VeneraPreferences,
@@ -36,17 +35,17 @@ fun AppSettings(
                     Toast.makeText(context, "路径已复制", Toast.LENGTH_SHORT).show()
                 }
             )
-            UnsupportedSetting("设置新的存储路径", "当前本地漫画管理器使用固定内部目录，尚未实现目录迁移。")
+            // 保留为近期候选：OkHttp Cache 的 maxSize 运行时可改、目录大小可统计，
+            // 引擎侧能力都在，只差一个入口（见 settings-audit-2026-09.md §5）。
             UnsupportedSetting("缓存大小与清理", "尚无统一缓存统计与清理管理器，不能将网络缓存等同于全部缓存。")
             UnsupportedSetting("缓存上限", "网络缓存目前固定为 100 MB，尚无可持久化并生效的上限设置。")
-        }
-        SettingsGroup {
-            SettingsAction("导出应用数据", "前往同步与备份页面导出本地备份", onClick = onSync)
-            SettingsAction("导入应用数据", "前往同步与备份页面恢复本地备份", onClick = onSync)
+            // 审计发现原行名"导出应用数据"是过度承诺：BackupManager 只打包
+            // history / favorite / stats / guard_rules，不含偏好、cookie 与已装源。
+            SettingsAction("导出阅读与收藏数据", "前往同步与备份页面导出本地备份（阅读历史、收藏、统计、屏蔽规则；不含偏好设置、Cookie 与已装漫画源）", onClick = onSync)
+            SettingsAction("导入阅读与收藏数据", "前往同步与备份页面恢复本地备份（覆盖上述四类数据，不影响偏好与源）", onClick = onSync)
             SettingsAction("数据同步", "配置 WebDAV 同步与备份", onClick = onSync)
         }
         SettingsGroup(title = "用户") {
-            UnsupportedSetting("语言", "尚未实现应用语言持久化与界面语言切换。")
             UnsupportedSetting("需要身份验证", "尚未接入应用解锁与生物识别验证流程。")
         }
         SettingsGroup(title = "故障排查") {

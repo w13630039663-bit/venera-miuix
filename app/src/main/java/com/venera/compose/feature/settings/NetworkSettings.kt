@@ -38,7 +38,6 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val proxyType by prefs.proxyType.collectAsState()
     val proxyHost by prefs.proxyHost.collectAsState()
     val proxyPort by prefs.proxyPort.collectAsState()
-    val doh by prefs.enableDoH.collectAsState()
     var showProxy by rememberSaveable { mutableStateOf(false) }
     val proxySummary = if (proxyType == "HTTP" || proxyType == "SOCKS") {
         "${proxyOptions.first { it.first == proxyType }.second} · ${proxyHost.ifBlank { "127.0.0.1" }}:$proxyPort"
@@ -49,7 +48,9 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     SettingsPage(title = "网络", onBack = onBack) {
         SettingsGroup {
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
-            UnsupportedSetting("DNS 覆盖", "尚无域名与地址覆盖表、启用开关和服务器名称指示配置；加密域名解析已保存为" + if (doh) "开启，但尚未接入网络。" else "关闭，且尚未接入网络。")
+            // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
+            // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
+            // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
             UnsupportedSetting("下载线程", "下载管理器使用固定并发配置，尚未接入原版 1–16 线程的持久化设置。")
         }
         SettingsGroup("现有网络诊断") {

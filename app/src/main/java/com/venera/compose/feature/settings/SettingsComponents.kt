@@ -192,6 +192,7 @@ internal fun SettingsSlider(
     onValueChange: (Float) -> Unit,
     steps: Int = 0,
     suffix: String = "",
+    summary: String = "",
 ) {
     val tokens = VeneraTokens
     Column(
@@ -210,6 +211,13 @@ internal fun SettingsSlider(
             valueRange = range,
             steps = steps,
         )
+        if (summary.isNotBlank()) {
+            Text(
+                text = summary,
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+            )
+        }
     }
 }
 

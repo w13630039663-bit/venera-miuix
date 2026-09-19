@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -18,6 +19,8 @@ import top.yukonga.miuix.kmp.basic.Text
 internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onGuard: () -> Unit) {
     val context = LocalContext.current
     val guard = remember(context) { ContentGuardManager.getInstance(context) }
+    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val secureScreen by prefs.secureScreen.collectAsState()
     val mode by guard.nsfwMaskMode.collectAsState()
     val rules by guard.rules.collectAsState()
     SettingsPage("屏蔽与过滤", onBack) {
@@ -31,7 +34,11 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onG
                 summary = "命中规则后如何处理。原版的「点击后揭示模糊」尚未实现；" +
                     "隐藏条目仅在支持逐源判定的列表页完全生效。",
             )
-            UnsupportedSetting("屏幕防窥", "尚无持久化安全窗口开关，无法保证重启后禁止截图与任务缩略图")
+            // FLAG_SECURE 由 MainActivity 订阅同一个偏好应用到窗口，拨一下当前界面即刻生效。
+            SettingsToggle(
+                "屏幕防窥", secureScreen, prefs::setSecureScreen,
+                summary = "禁止截图、录屏与任务列表缩略图；重启后保持。开启后系统自带的长截屏也会失效。",
+            )
             // 逐源预设其实已经生效（assets/source_content_warning.json，33 源），
             // 原占位文案说"尚无预设"与实现不符；真正缺的是逐源用户覆盖与选择 UI。
             UnsupportedSetting("源分级", "逐源预设已生效（33 源 safe/mixed/nsfw），缺的是逐源用户覆盖存储与选择界面")

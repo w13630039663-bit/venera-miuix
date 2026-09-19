@@ -16,7 +16,6 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val folders by manager.folders.collectAsState()
     val newFavoriteAddTo by prefs.newFavoriteAddTo.collectAsState()
     val quickFavorite by prefs.quickFavorite.collectAsState()
-    val localFirst by prefs.localFavoritesFirst.collectAsState()
     val moveAfterRead by prefs.moveFavoriteAfterRead.collectAsState()
     val favoriteSort by prefs.favoriteSortOrder.collectAsState()
     // Empty folder names are rejected/renamed by the manager, so "" is a safe None key.
@@ -30,10 +29,10 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     }
 
     SettingsPage(title = "本地收藏", onBack = onBack) {
-        // Keep the seven settings in the same order as local_favorites.dart.
+        // 审计后删掉「在网络收藏前显示本地收藏」：键与 setter 都在，但没有任何消费者
+        // （收藏面板顺序是硬编码的），留着就是一个改不动也无效的假开关。
+        // 「点击收藏时」一并删除：需要新的行为分支与偏好，不属于补入口。
         SettingsGroup {
-            SettingsToggle("在网络收藏前显示本地收藏", localFirst, prefs::setLocalFavoritesFirst,
-                summary = "显示已保存值；暂不支持更改，收藏面板尚未消费此偏好。", enabled = false)
             UnsupportedSetting("操作后自动关闭收藏面板", "尚无对应的持久化设置与自动关闭逻辑。")
             SettingsSelect(
                 title = "新收藏添加到",
@@ -50,7 +49,6 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 summary = quickSummary
             )
             UnsupportedSetting("删除所有不可用的本地收藏条目", "尚无不可用条目判定与清理方法；不会以清空全部收藏代替。")
-            UnsupportedSetting("点击收藏时", "当前点击进入详情页，尚无可持久化并生效的直接阅读选项。")
         }
         SettingsGroup("收藏列表") {
             // 偏好早已真实生效（FavoritesViewModel 读写），但此前只能在收藏页顶栏改，

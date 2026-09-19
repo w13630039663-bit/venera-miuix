@@ -224,3 +224,26 @@
 - **阅读器设置不热更新**（§4-1）：一行可修（`remember{mutableStateOf(prefs.X.value)}` → `collectAsStateWithLifecycle`），但同样落在阅读器保护域，等授权。
 
 验证状态：`:app:compileDebugKotlin` / `:app:testDebugUnitTest` / `:app:assembleDebug` 三项 BUILD SUCCESSFUL；**真机未验**（设备在装包前掉线）。
+
+## 9. 第二批已实施（2026-09-19，同日）
+
+| 项 | 改动 | 位置 |
+|---|---|---|
+| **屏幕防窥** | 从占位灰行变成真实开关：新增 `pref_secure_screen`，`MainActivity` 以 `repeatOnLifecycle(STARTED)` 订阅并 `setFlags/clearFlags(FLAG_SECURE)`，拨一下当前窗口即刻生效、重启保持 | `data/prefs/VeneraPreferences.kt`、`MainActivity.kt:34-58`、`settings/BlockingSettings.kt:29-33` |
+| **导出/导入文案诚实化** | 「导出应用数据」→「导出阅读与收藏数据」，并在 summary 里写明不含偏好/Cookie/已装源（`BackupManager` 实际只打包四类） | `settings/AppSettings.kt:39-45` |
+| **阅读器设置热更新** | 6 项本地副本（阅读模式/页间距/夜间滤镜/常亮/音量键/点击翻页）改为直接订阅偏好。依据：面板里每处本地赋值都紧跟一次 `prefs.setX(...)`，本地副本纯属冗余且是"改设置要重开阅读器"的唯一成因 | `reader/VeneraReaderScreen.kt:158-166` 及其面板 7 处 |
+| **自动翻页间隔** | 占位灰行 → 真 slider：新增 `pref_auto_scroll_interval_sec`（默认 4s，1–15s），替换原硬编码常量；循环内读 `.value`，改完下一页即生效 | `reader/VeneraReaderScreen.kt`、`settings/ReaderSettings.kt:33-37` |
+| `SettingsSlider` 增加可选 `summary` | 默认空串，不影响既有调用 | `settings/SettingsComponents.kt:188-232` |
+
+**删除的占位行：54 → 22（删 32 条）**，判据是"引擎已在、只差一个键"的保留，需要新子系统的删。删除明细：
+
+- 外观 4：返回动画样式、沉浸式背景、自定义壁纸、模糊强度
+- 阅读 15：设备专属设置、重复的模式说明、翻页动画、横/竖屏每屏图数、首图单张、鼠标滚动速度、限制图片宽度、时间电池/状态栏/页码、快速收藏图片、自定义图片处理、章节评论两处
+- 探索 7：卡片大小、卡片收藏徽章、卡片历史徽章、探索/分类/网络收藏三类页面排序存储、自动语言筛选
+- 本地收藏 2：「在网络收藏前显示本地收藏」（键与 setter 俱在但**无任何消费者**，收藏面板顺序硬编码，属假开关）、「点击收藏时」
+- 应用 2：设置新的存储路径（需 SAF 迁移）、语言（需应用内 locale 切换工程）
+- 网络 1：DNS 覆盖 —— **主动决定不做**：DoH 客户端虽已 import，但强制 DoH 在国内网络下可能整体不可达，属高风险网络变更，不是"差一个开关"
+
+§2 的 6 处隐形缺口、§3 的其余僵尸键（`comicDisplayMode`、`enableDoH`、`setMoveFavoriteAfterRead`、`autoCropBorders`、`localFavoritesFirst`）**本批未清理**，仍按原计划另行处理。
+
+验证状态：三项 Build QA **BUILD SUCCESSFUL**；单测全通过。**真机未验**，且本批动了阅读器，回归优先级最高：翻页/连续/双页三种模式的滚动、页间距实时变化、夜间滤镜、常亮、音量键与点击翻页、自动巡航启停。

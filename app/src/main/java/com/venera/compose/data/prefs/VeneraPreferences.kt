@@ -50,6 +50,15 @@ class VeneraPreferences private constructor(context: Context) {
     private val _clickToTurn = MutableStateFlow(prefs.getBoolean(KEY_CLICK_TO_TURN, true))
     val clickToTurn: StateFlow<Boolean> = _clickToTurn.asStateFlow()
 
+    /** 翻页模式下自动巡航的每页停留秒数。条漫连续流用的是 px/s 速度，不走这个值。 */
+    private val _autoScrollPageIntervalSec = MutableStateFlow(prefs.getFloat(KEY_AUTO_SCROLL_INTERVAL_SEC, 4f))
+    val autoScrollPageIntervalSec: StateFlow<Float> = _autoScrollPageIntervalSec.asStateFlow()
+
+    // 隐私
+    /** 屏幕防窥：置位后禁止截图、录屏与任务列表缩略图（窗口级 FLAG_SECURE）。 */
+    private val _secureScreen = MutableStateFlow(prefs.getBoolean(KEY_SECURE_SCREEN, false))
+    val secureScreen: StateFlow<Boolean> = _secureScreen.asStateFlow()
+
     // 外观与主题
     private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -195,6 +204,17 @@ class VeneraPreferences private constructor(context: Context) {
         _tagTranslationMode.value = mode
     }
 
+    fun setAutoScrollPageIntervalSec(sec: Float) {
+        val clamped = sec.coerceIn(1f, 15f)
+        prefs.edit { putFloat(KEY_AUTO_SCROLL_INTERVAL_SEC, clamped) }
+        _autoScrollPageIntervalSec.value = clamped
+    }
+
+    fun setSecureScreen(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_SECURE_SCREEN, enabled) }
+        _secureScreen.value = enabled
+    }
+
     fun setNewFavoriteAddTo(value: String) {
         prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
         _newFavoriteAddTo.value = value
@@ -250,6 +270,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_APPEARANCE_STYLE = "pref_appearance_style"
         private const val KEY_NAVIGATION_BAR_STYLE = "pref_navigation_bar_style"
         private const val KEY_TAG_TRANSLATION_MODE = "pref_tag_translation_mode"
+        private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
+        private const val KEY_SECURE_SCREEN = "pref_secure_screen"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"

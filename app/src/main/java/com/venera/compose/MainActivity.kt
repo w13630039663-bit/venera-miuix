@@ -1,9 +1,14 @@
 package com.venera.compose
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +33,29 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.getBooleanExtra("run_engine_diagnostic", false)) {
             runEngineDiagnostic()
+        }
+        applySecureScreen()
+    }
+
+    /**
+     * 屏幕防窥（设置 → 屏蔽与过滤）。FLAG_SECURE 是窗口属性，必须挂在 Activity 的
+     * window 上；订阅偏好而不是只在 onCreate 读一次，用户拨开关当下就生效。
+     */
+    private fun applySecureScreen() {
+        val prefs = VeneraPreferences.getInstance(applicationContext)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                prefs.secureScreen.collect { secure ->
+                    if (secure) {
+                        window.setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                        )
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                }
+            }
         }
     }
 
