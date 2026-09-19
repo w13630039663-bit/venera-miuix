@@ -6,6 +6,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -20,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
@@ -206,40 +216,43 @@ internal fun SettingsSlider(
 @Composable
 internal fun SettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val tokens = VeneraTokens
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = tokens.spacing.space2,
-                    vertical = tokens.spacing.space2,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = tokens.color.textPrimary,
-                )
-            }
-            Text(
-                text = title,
-                fontSize = tokens.type.screenTitle,
-                fontWeight = tokens.type.weightBold,
-                color = tokens.color.textPrimary,
-            )
-        }
+    val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    val topBarBackdrop = rememberTopBarBackdrop()
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Box(Modifier.fillMaxSize()) {
         Column(
             Modifier
-                .weight(1f)
+                .fillMaxSize()
+                .nestedScroll(topBarBehavior.nestedScrollConnection)
+                .blurBackdropSource(topBarBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = tokens.spacing.screenHorizontal,
                     end = tokens.spacing.screenHorizontal,
+                    // 顶栏浮层占位（状态栏 + 折叠顶栏），内容自状态栏下方开始，不被遮挡。
+                    top = statusBarTop + 104.dp,
                     bottom = tokens.spacing.bottomBarClearance,
                 ),
             content = content,
+        )
+
+        // 顶栏浮层：与设置首页 / 其余页面同契约（大标题折叠 + 毛玻璃）。
+        // 此前这里是纯 Column 自带标题行，没有状态栏内边距处理，
+        // 导致二级页顶栏被系统状态栏压住。
+        VeneraTopAppBar(
+            title = title,
+            largeTitle = title,
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            },
         )
     }
 }
