@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.i(logTag, "Testing baozi search('鬼灭之刃')...")
                 val searchRes = baoziSource.search("鬼灭之刃", 1)
                 if (searchRes.isSuccess) {
-                    val list = searchRes.getOrNull().orEmpty()
+                    val list = searchRes.getOrNull()?.comics.orEmpty()
                     android.util.Log.i(logTag, "baozi search success! Found ${list.size} comics")
                     if (list.isNotEmpty()) {
                         val first = list[0]
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
                 android.util.Log.i(logTag, "Testing copy_manga search('进击的巨人')...")
                 val searchRes = copySource.search("进击的巨人", 1)
                 if (searchRes.isSuccess) {
-                    val list = searchRes.getOrNull().orEmpty()
+                    val list = searchRes.getOrNull()?.comics.orEmpty()
                     android.util.Log.i(logTag, "copy_manga search success! Found ${list.size} comics")
                     if (list.isNotEmpty()) {
                         val first = list[0]

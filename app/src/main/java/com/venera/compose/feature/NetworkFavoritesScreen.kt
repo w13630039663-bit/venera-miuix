@@ -12,6 +12,7 @@
  */
 package com.venera.compose.feature
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -38,7 +39,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,10 +49,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -125,13 +129,61 @@ fun AndroidNetworkFavoritesScreen(
     val firstLoading = isLoading && comics.isEmpty()
 
 
-    // 下拉手动刷新：仅展开源时生效（折叠态无内容可刷）。
-    // isRefreshing 由 VM 的 isLoading 驱动：拉取中显示指示器，完成后自动收起。
-    val pullState = androidx.compose.material3.pulltorefresh.PullToRefreshState()
+    // ── 下拉手动刷新（本轮改造）──
+    // 取消 M3 顶栏那枚圆形箭头（indicator = {}）：它浮在状态栏区域，和折叠顶栏抢位置。
+    // 改为「源栏正下方一行波浪环」，行高由下拉进度 1:1 驱动 —— 下拉时卡片跟手下移，
+    // 放手后刷新中停在满高，刷新完成收回，卡片上移露出新内容。
+    //
+    // isRefreshing 不再直接吃 VM 的 isLoading：那个标志同时被 loadMore 复用
+    //（NetworkFavoritesViewModel:242 / :274），照搬会把「滚到底加载更多」也点亮成刷新。
+    // 这里在屏幕侧记一次「由用户下拉发起」，等 VM 的 loading 起落后再收回。
+    val pullState = rememberPullToRefreshState()
+    var pullInFlight by remember { androidx.compose.runtime.mutableStateOf(false) }
+    // 必须「先见过 loading 起来、再落下」才算这次刷新结束：立刻收回，不留延迟。
+    // 之前用固定 delay(250) 收尾，会让环在数据已经回来后还多挂 250ms 才塌 —— 真机看到的就是这一下「闪」。
+    var pullSawLoading by remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(pullInFlight, isLoading, isFolderLoading) {
+        if (!pullInFlight) {
+            pullSawLoading = false
+            return@LaunchedEffect
+        }
+        if (isLoading || isFolderLoading) {
+            pullSawLoading = true
+            return@LaunchedEffect
+        }
+        if (!pullSawLoading) {
+            // refresh() 可能同步早退（favoriteData 为空，或走的是 loadFolders 之外的分支），
+            // 兜一个上限，避免环永远挂着收不回来。
+            delay(600)
+            if (pullInFlight && !isLoading && !isFolderLoading && !pullSawLoading) pullInFlight = false
+        } else {
+            pullInFlight = false
+        }
+    }
+    val pullProgress = if (pullInFlight) 1f else pullState.distanceFraction.coerceIn(0f, 1f)
+    val pullRowHeight by animateDpAsState(
+        targetValue = tokens.spacing.pullRefreshRowHeight * pullProgress,
+        label = "nf-pull-row-height",
+    )
+    // 刷新期间把旧卡片留在原位：VM 的 refresh() 一进来就 `comics = emptyList()`
+    //（NetworkFavoritesViewModel:165），跟着清空会变成「卡片消失 → 转圈 → 卡片回来」的硬切。
+    // ⚠️ 快照必须在调用 refresh() **之前**抓：onRefresh 是普通 lambda，refresh() 里的
+    // resetComicState() 是同步执行的，等到 LaunchedEffect（重组之后）再抓，拿到的已经是空表。
+    var pullSnapshot by remember { androidx.compose.runtime.mutableStateOf<List<Comic>>(emptyList()) }
+    val shownComics = if (pullInFlight && comics.isEmpty()) pullSnapshot else comics
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-        isRefreshing = isLoading,
-        onRefresh = { if (selectedKey != null) vm.refresh() },
+        isRefreshing = pullInFlight,
+        onRefresh = {
+            if (selectedKey != null) {
+                pullSnapshot = comics
+                pullSawLoading = false
+                pullInFlight = true
+                vm.refresh()
+            }
+        },
         state = pullState,
+        enabled = selectedKey != null,
+        indicator = {},
         modifier = Modifier.fillMaxSize(),
     ) {
     LazyColumn(
@@ -173,6 +225,29 @@ fun AndroidNetworkFavoritesScreen(
             }
         }
 
+        // ── 下拉刷新指示行：源栏正下方。行高跟手（0 → 48dp），刷新中满高旋转，
+        //    完成后收回 0 高 —— 卡片随之上移。高度归零时整行不挂载，避免留下空档。──
+        if (pullRowHeight > 0.dp) {
+            item(key = "nf-pull-indicator") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(pullRowHeight)
+                        .clipToBounds()
+                        // 随下拉进度淡入，而不是被行高从中间切一半
+                        .graphicsLayer { alpha = pullProgress },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularWavyProgressIndicator(
+                        // 直径小于行高，收回过程中不会被裁成一条线
+                        modifier = Modifier.size(tokens.spacing.loaderInline),
+                        color = tokens.color.primary,
+                        trackColor = tokens.color.surfaceVariant,
+                    )
+                }
+            }
+        }
+
         // ── 当前源内容（未选源时给引导空态）。──
         val current = sources.firstOrNull { it.key == selectedKey }
         if (current == null) {
@@ -199,8 +274,9 @@ fun AndroidNetworkFavoritesScreen(
 
         when {
             // 修复：全屏 Loader 仅首屏（无内容时）；loadMore 期间列表原地保持。
-            firstLoading -> item(key = "nf-loading") { AccordionLoader() }
-            error != null && comics.isEmpty() -> item(key = "nf-error") {
+            // 下拉刷新中不切 Loader —— 进度由源栏下方那行波浪环单独表达。
+            firstLoading && !pullInFlight -> item(key = "nf-loading") { AccordionLoader() }
+            error != null && shownComics.isEmpty() -> item(key = "nf-error") {
                 VeneraEmptyView(
                     title = "收藏加载失败",
                     message = error,
@@ -208,12 +284,17 @@ fun AndroidNetworkFavoritesScreen(
                     onAction = { vm.refresh() },
                 )
             }
-            comics.isEmpty() -> item(key = "nf-folder-empty") {
-                VeneraEmptyView(message = "该收藏夹暂无漫画")
+            // 刷新中且没有旧内容可留（首次展开就下拉）：什么都不画，只留上方波浪环。
+            shownComics.isEmpty() -> {
+                if (!pullInFlight) {
+                    item(key = "nf-folder-empty") {
+                        VeneraEmptyView(message = "该收藏夹暂无漫画")
+                    }
+                }
             }
             isDetailed -> {
                 items(
-                    comics,
+                    shownComics,
                     key = { "ncard-" + it.id },
                 ) { comic ->
                     NetComicDetailedCard(comic, current.name, onSelect,
@@ -223,7 +304,7 @@ fun AndroidNetworkFavoritesScreen(
             }
             else -> {
                 // 行级虚拟化：每行 = 一个 LazyItem，滑出屏幕立即回收。
-                comics.chunked(columns).forEachIndexed { rowIndex, row ->
+                shownComics.chunked(columns).forEachIndexed { rowIndex, row ->
                     item(key = "nrow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
                         ComicGridRow(
                             row = row,
@@ -318,7 +399,13 @@ private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoa
         isLoading -> Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space2),
             horizontalArrangement = Arrangement.Center,
-        ) { CircularProgressIndicator(color = tokens.color.primary) }
+        ) {
+            CircularWavyProgressIndicator(
+                modifier = Modifier.size(tokens.spacing.loaderInline),
+                color = tokens.color.primary,
+                trackColor = tokens.color.surfaceVariant,
+            )
+        }
         folders.isNullOrEmpty() -> {}
         else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
             items(folders.toList(), key = { it.first }) { (id, name) ->
@@ -336,7 +423,11 @@ private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoa
 private fun AccordionLoader() {
     val tokens = VeneraTokens
     Box(Modifier.fillMaxWidth().padding(tokens.spacing.space9), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = tokens.color.primary)
+        CircularWavyProgressIndicator(
+            modifier = Modifier.size(tokens.spacing.loaderPage),
+            color = tokens.color.primary,
+            trackColor = tokens.color.surfaceVariant,
+        )
     }
 }
 
@@ -438,7 +529,11 @@ private fun LoadMoreFooter(isLoading: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         if (isLoading) {
-            CircularProgressIndicator(color = tokens.color.primary)
+            CircularWavyProgressIndicator(
+                modifier = Modifier.size(tokens.spacing.loaderInline),
+                color = tokens.color.primary,
+                trackColor = tokens.color.surfaceVariant,
+            )
         } else {
             Text(
                 text = "上滑加载更多",

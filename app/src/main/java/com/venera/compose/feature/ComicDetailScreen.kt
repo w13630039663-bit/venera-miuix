@@ -4,6 +4,8 @@ import android.content.Intent
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,6 +59,7 @@ import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.components.venera.VeneraTagChip
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -189,7 +192,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             contentPadding = PaddingValues(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
-                top = statusBarTop + 56.dp,
+                top = statusBarTop + tokens.spacing.detailTopBarClearance,
                 bottom = tokens.spacing.space8,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap)
@@ -337,6 +340,13 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6)
                 ) {
                     // 大号胶囊「开始阅读 / 继续阅读（带历史进度提示）」
+                    // 章节进度线：胶囊底边一条细线，替代「读到哪了」的第二次文字解释。
+                    // 章节总数未知时不给线 —— 没有分母的百分比是假数据。
+                    val totalChapters = liveDetails?.chapters?.size ?: 0
+                    val readProgress = historyRecord
+                        ?.takeIf { totalChapters > 0 }
+                        ?.let { ((it.lastChapterIndex + 1f) / totalChapters).coerceIn(0f, 1f) }
+                        ?: 0f
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = tokens.color.primary,
@@ -345,31 +355,53 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             .height(tokens.spacing.detailPrimaryButtonHeight)
                             .clickable { onTriggerRead() },
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(50))
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.PlayCircleOutline,
-                                contentDescription = null,
-                                tint = tokens.color.onPrimary,
-                                modifier = Modifier.size(tokens.spacing.badgeIconSize)
-                            )
-                            Spacer(modifier = Modifier.width(tokens.spacing.space3))
-                            Column {
-                                Text(
-                                    text = if (historyRecord != null) "继续阅读" else "开始阅读",
-                                    fontSize = tokens.type.body,
-                                    fontWeight = tokens.type.weightBold,
-                                    color = tokens.color.onPrimary
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PlayCircleOutline,
+                                    contentDescription = null,
+                                    tint = tokens.color.onPrimary,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
                                 )
-                                if (historyRecord != null) {
+                                Spacer(modifier = Modifier.width(tokens.spacing.space3))
+                                Column {
                                     Text(
-                                        text = "继续 " + historyRecord.lastChapterTitle + " · 第 " + (historyRecord.lastPageIndex + 1) + " 页",
-                                        fontSize = tokens.type.overline,
-                                        color = tokens.color.onPrimary.copy(alpha = 0.8f),
-                                        maxLines = 1
+                                        text = if (historyRecord != null) "继续阅读" else "开始阅读",
+                                        fontSize = tokens.type.body,
+                                        fontWeight = tokens.type.weightBold,
+                                        color = tokens.color.onPrimary
+                                    )
+                                    if (historyRecord != null) {
+                                        Text(
+                                            text = "继续 " + historyRecord.lastChapterTitle + " · 第 " + (historyRecord.lastPageIndex + 1) + " 页",
+                                            fontSize = tokens.type.overline,
+                                            color = tokens.color.onPrimary.copy(alpha = 0.8f),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            if (readProgress > 0f) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .fillMaxWidth()
+                                        .height(tokens.spacing.space1)
+                                        .background(tokens.color.onPrimary.copy(alpha = 0.28f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(readProgress)
+                                            .fillMaxSize()
+                                            .background(tokens.color.onPrimary.copy(alpha = 0.9f))
                                     )
                                 }
                             }
@@ -408,7 +440,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 3. 辅助操作行：收藏 / 点赞 / 评论 / 分享 四联功能钮（语义色走语义色板）
+            // 3. 辅助操作行：收藏 / 点赞 / 评论 / 分享 四联功能钮（MD3 下自动取色，MIUIX 下固定语义色）
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -422,7 +454,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             isNetworkFav -> "源已藏"
                             else -> "收藏"
                         },
-                        iconColor = StatusColors.Favorite,
+                        iconColor = tokens.color.actionFavorite,
                         isActive = isFav || isNetworkFav,
                         onLongClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -435,8 +467,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     )
                     DetailActionButton(
                         icon = if (detailState.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        label = if (detailState.likesCount > 0) "" + detailState.likesCount else "点赞",
-                        iconColor = StatusColors.Like,
+                        // 数字必须带名词：光秃秃的「7」只能靠图标颜色猜是什么计数
+                        label = if (detailState.likesCount > 0) "点赞 " + detailState.likesCount else "点赞",
+                        iconColor = tokens.color.actionLike,
                         isActive = detailState.isLiked,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -446,8 +479,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     val commentCount = liveDetails?.commentCount ?: detailState.comments.size
                     DetailActionButton(
                         icon = Icons.Outlined.Comment,
-                        label = if (commentCount > 0) "$commentCount" else "评论",
-                        iconColor = StatusColors.Comment,
+                        label = if (commentCount > 0) "评论 $commentCount" else "评论",
+                        iconColor = tokens.color.actionComment,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             showCommentSheet = true
@@ -456,7 +489,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     DetailActionButton(
                         icon = Icons.Outlined.Share,
                         label = "分享",
-                        iconColor = StatusColors.Share,
+                        iconColor = tokens.color.actionShare,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             val shareIntent = Intent().apply {
@@ -493,14 +526,23 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 ) {
                                     Text(
                                         // 字典 rows 覆盖 12 个命名空间（female→女性、parody→原作…），
-                                        // 源自造的键（JM 的 Author/Work/View）查不到就原样显示。
+                                        // 源自造的键（Author / Chinese Team / Work…）走源原生兜底表；
+                                        // 都不在表里才原样显示。
                                         text = "${tagDict.getNamespaceName(category)}:",
                                         fontSize = tokens.type.caption,
                                         fontWeight = tokens.type.weightBold,
                                         color = tokens.color.textSecondary,
-                                        modifier = Modifier.width(tokens.spacing.detailCategoryLabelWidth)
+                                        // 组名列只给最小宽度且禁止折行：定宽会把长键从单词中间截断
+                                        // （真机出现过「Categorie / s:」），列宽随内容增长才成词。
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .widthIn(min = tokens.spacing.detailCategoryLabelWidth)
+                                            .padding(end = tokens.spacing.space2)
                                     )
                                     FlowRow(
+                                        modifier = Modifier.weight(1f),
                                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
                                         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3)
                                     ) {
@@ -539,6 +581,10 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
             // 5. 作品简介卡片 (支持折叠展开)
             item {
+                val desc = liveDetails?.comic?.description?.ifBlank { comic.description } ?: comic.description
+                // 「展开」只在文字确实被截断时才挂出来：一行简介配一个展开按钮是假开关。
+                // 折叠态下由 onTextLayout 判定；展开后不再回写，否则「收起」会自己消失。
+                var descOverflows by remember(desc) { mutableStateOf(false) }
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
@@ -553,14 +599,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             fontSize = tokens.type.sectionTitle,
                             color = tokens.color.textPrimary
                         )
-                        Text(
-                            text = if (isDescExpanded) "收起 ↑" else "展开 ↓",
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.primary
-                        )
+                        if (descOverflows) {
+                            Text(
+                                text = if (isDescExpanded) "收起 ↑" else "展开 ↓",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.primary
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(tokens.spacing.space4))
-                    val desc = liveDetails?.comic?.description?.ifBlank { comic.description } ?: comic.description
                     Text(
                         text = desc.ifBlank { "暂无详细简介" },
                         fontSize = tokens.type.caption,
@@ -568,6 +615,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         color = tokens.color.textSecondary,
                         maxLines = if (isDescExpanded) Int.MAX_VALUE else 3,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { result ->
+                            if (!isDescExpanded && result.lineCount > 0) {
+                                descOverflows = result.isLineEllipsized(result.lineCount - 1)
+                            }
+                        },
                         modifier = Modifier.clickable { isDescExpanded = !isDescExpanded }
                     )
                 }
@@ -591,10 +643,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 color = tokens.color.textPrimary
                             )
                             if (detailState.isLoadingThumbnails) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(tokens.spacing.statusDotSize * 2),
-                                    strokeWidth = 2.dp,
-                                    color = tokens.color.primary
+                                // 波浪环低于 ~24dp 就看不出波浪了，所以从原来的 16dp 提到 loaderInline
+                                CircularWavyProgressIndicator(
+                                    modifier = Modifier.size(tokens.spacing.loaderInline),
+                                    color = tokens.color.primary,
+                                    trackColor = tokens.color.surfaceVariant,
                                 )
                             }
                         }
@@ -611,18 +664,68 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         }
                                         val targetChTitle = liveDetails?.chapters?.firstOrNull { it.id == targetChId }?.title
                                             ?: comic.title
+                                        // 加载/失败双标志，判据与 VeneraCover 一致
+                                        var thumbLoaded by remember(thumbUrl) { mutableStateOf(false) }
+                                        var thumbFailed by remember(thumbUrl) { mutableStateOf(false) }
+                                        // 真图淡入：0 → 1，同时把骨架微光反向淡出
+                                        val thumbAlpha by animateFloatAsState(
+                                            targetValue = if (thumbLoaded) 1f else 0f,
+                                            animationSpec = tween(tokens.motion.imageFadeInMillis),
+                                            label = "preview-thumb-fade",
+                                        )
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .aspectRatio(0.7f)
                                                 .clip(RoundedCornerShape(tokens.shape.small))
+                                                // 占位底色与 VeneraCover 同源：图未到时不留「洞」
+                                                .background(
+                                                    tokens.color.surfaceVariant.copy(
+                                                        alpha = tokens.current.placeholderAlpha
+                                                    )
+                                                )
                                                 .clickable { launchChapter(targetChId, targetChTitle, 0, pageIndex) }
                                         ) {
+                                            // 骨架微光：与真图**反向淡出**做交叉过渡，
+                                            // 否则骨架会突然消失、露出灰底闪一下再进图。
+                                            // alpha 到 1 后整层卸载，不让 12 个无限动画一直跑。
+                                            // 加载失败则直接不画 —— 骨架在死图上继续呼吸 = 假装还在加载。
+                                            if (!thumbFailed && thumbAlpha < 1f) {
+                                                VeneraShimmer(
+                                                    Modifier
+                                                        .fillMaxSize()
+                                                        .graphicsLayer { alpha = 1f - thumbAlpha }
+                                                )
+                                            }
+                                            // 真图：加载完成后 200ms 淡入
                                             AsyncImage(
                                                 model = thumbUrl,
                                                 contentDescription = "第 " + (pageIndex + 1) + " 页",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .graphicsLayer { alpha = thumbAlpha },
+                                                contentScale = ContentScale.Crop,
+                                                onSuccess = { thumbLoaded = true },
+                                                onError = { thumbFailed = true },
+                                            )
+                                            // 页码角标：预览页常是白页/纯色页，没有角标时读起来像加载失败，
+                                            // 而且「点任意一张从该页开读」这个能力原本完全不可见。
+                                            Text(
+                                                text = (pageIndex + 1).toString(),
+                                                fontSize = tokens.type.badge,
+                                                fontWeight = tokens.type.weightBold,
+                                                color = StatusColors.OnBadgeSurface,
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .padding(tokens.spacing.badgeInset)
+                                                    .background(
+                                                        StatusColors.BadgeSurface,
+                                                        RoundedCornerShape(tokens.shape.extraSmall)
+                                                    )
+                                                    .padding(
+                                                        horizontal = tokens.spacing.badgeHorizontalPadding,
+                                                        vertical = tokens.spacing.badgeVerticalPadding
+                                                    )
                                             )
                                         }
                                     }
@@ -736,10 +839,29 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Spacer(modifier = Modifier.height(tokens.spacing.space6))
 
                     when {
-                        // 详情加载中：标准空态组件，不再是一行裸文字
-                        liveDetails == null && detailState.isLoading -> VeneraEmptyView(
-                            message = "章节信息加载中…"
-                        )
+                        // 详情加载中：真·不定进度指示器 + 文案。
+                        // 原先复用 VeneraEmptyView，它顶着一枚静态 Inbox 图标 —— 读起来是
+                        // 「这里没有内容」而不是「还在拉」。改用 M3 Expressive 的波浪形圆环
+                        // （material3 1.5.0-alpha22 已解析到；Miuix 0.9.4-rc01 无此组件）。
+                        liveDetails == null && detailState.isLoading -> Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = tokens.spacing.space9),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularWavyProgressIndicator(
+                                modifier = Modifier.size(tokens.spacing.space11),
+                                color = tokens.color.primary,
+                                trackColor = tokens.color.surfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.width(tokens.spacing.space5))
+                            Text(
+                                text = "章节信息加载中…",
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.textSecondary,
+                            )
+                        }
                         // 详情加载失败：标准空态组件 + 重试
                         liveDetails == null && detailState.error != null -> VeneraEmptyView(
                             title = "章节信息加载失败",
@@ -1009,12 +1131,14 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .height(48.dp)
-                    .padding(horizontal = tokens.spacing.space2),
+                    .height(tokens.spacing.detailTopBarHeight)
+                    // 与 LazyColumn 的 contentPadding 同值：悬浮钮此前用 4dp，比封面/卡片左边缘
+                    // 外凸 10dp，读起来像贴屏幕边（真机反馈）。
+                    .padding(horizontal = tokens.spacing.rowHorizontal),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                // 返回：顶置时微磨砂半透黑底白色图标，折叠后转为顶栏纯图标
+                // 返回：顶置时次级表面胶囊底，折叠后转为顶栏纯图标（底色透明）
                 DetailOverlayIconButton(
                     collapsed = collapsed,
                     onClick = onBack,
@@ -1022,7 +1146,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
-                        tint = if (collapsed) tokens.color.textPrimary else Color.White,
+                        tint = tokens.color.textPrimary,
                     )
                 }
                 // 下滑后标题居中淡入（顶置时标题已在封面右侧展示，不重复）
@@ -1061,7 +1185,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Icon(
                         imageVector = Icons.Outlined.Share,
                         contentDescription = "分享",
-                        tint = if (collapsed) tokens.color.textPrimary else Color.White,
+                        tint = tokens.color.textPrimary,
                     )
                 }
             }
@@ -1710,7 +1834,9 @@ private fun FavoritePanelSheet(
 
 /**
  * 详情页顶栏图标按钮：
- * - 顶置展开态（在封面上）：微磨砂半透黑底（35% 黑）+ 白色图标，保证在任何浅色/深色封面上清晰可读；
+ * - 顶置展开态（悬浮在页面背景上）：次级表面胶囊底（与「离线下载」同一语义）+ 主文字色图标。
+ *   原先是 35% 半透黑底配白图标 —— 那是为「压在封面上」设计的，但按钮实际悬浮在页面背景上，
+ *   浅色主题下就成了一块发灰的脏色，故改走主题 Token；
  * - 下滑折叠态（在顶栏上）：底色透明，对齐系统标准 TopAppBar 图标，绝无突兀黑圈。
  */
 @Composable
@@ -1726,7 +1852,7 @@ private fun DetailOverlayIconButton(
             .clip(CircleShape)
             .background(
                 if (collapsed) Color.Transparent
-                else Color.Black.copy(alpha = 0.35f),
+                else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

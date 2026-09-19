@@ -8,6 +8,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.SearchPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -98,15 +99,19 @@ class CopyMangaSource(private val context: Context) : ComicSource {
         }
     }
 
-    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<List<Comic>> = withContext(Dispatchers.IO) {
+    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<SearchPage> = withContext(Dispatchers.IO) {
         runCatching {
-            val offset = (page - 1) * 20
+            val pageSize = 20
+            val offset = (page - 1) * pageSize
             val encoded = URLEncoder.encode(keyword, "UTF-8")
-            val url = "$apiUrl/api/v3/search/comic?limit=20&offset=$offset&q=$encoded"
+            val url = "$apiUrl/api/v3/search/comic?limit=$pageSize&offset=$offset&q=$encoded"
             val responseText = networkClient.get(url, buildHeaders())
             val json = JSONObject(responseText)
             val resultsObj = json.optJSONObject("results") ?: JSONObject()
             val listArr = resultsObj.optJSONArray("list") ?: JSONArray()
+            // 上游给了 total 才能算总页数；字段缺失或为 0 就留 null，让 UI 显示「未知」而不是猜一个。
+            val searchMaxPage = resultsObj.optInt("total", 0).takeIf { it > 0 }
+                ?.let { (it + pageSize - 1) / pageSize }
             val list = mutableListOf<Comic>()
 
             for (i in 0 until listArr.length()) {
@@ -143,7 +148,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
                     )
                 )
             }
-            list
+            SearchPage(list, searchMaxPage)
         }
     }
 

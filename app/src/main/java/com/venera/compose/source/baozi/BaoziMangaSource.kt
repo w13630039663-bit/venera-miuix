@@ -7,6 +7,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.SearchPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -40,7 +41,7 @@ class BaoziMangaSource(private val context: Context) : ComicSource {
         }
     }
 
-    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<List<Comic>> = withContext(Dispatchers.IO) {
+    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<SearchPage> = withContext(Dispatchers.IO) {
         runCatching {
             val encoded = URLEncoder.encode(keyword, "UTF-8")
             val html = networkClient.get("$baseUrl/search?q=$encoded")
@@ -70,7 +71,8 @@ class BaoziMangaSource(private val context: Context) : ComicSource {
                     )
                 )
             }
-            list
+            // 包子是 HTML 抓取，页面上没有总数/总页数可依据 —— 留 null，UI 不猜。
+            SearchPage(list)
         }
     }
 

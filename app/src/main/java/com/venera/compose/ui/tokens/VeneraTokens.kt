@@ -145,6 +145,10 @@ object VeneraTokens {
             val m = MaterialTheme.colorScheme
             val miuixSurface = MiuixTheme.colorScheme.surface
             val miuixOnSurface = MiuixTheme.colorScheme.onSurface
+            // 动作色只在 MD3 风格下取色。MIUIX 色板实际只有一个主蓝：
+            // toMaterialColors 把 tertiary 映成 onTertiaryContainer、secondary 也贴着主色，
+            // 跟着取色会让四个钮退化成同色系，反而不如固定语义色可辨。
+            val fixedActions = LocalVeneraTokens.current.appearance != AppearanceStyle.MD3
             return VeneraColorTokens(
                 background = m.background,
                 onBackground = m.onBackground,
@@ -171,6 +175,11 @@ object VeneraTokens {
 
                 pressedOverlay = m.onSurface.copy(alpha = 0.06f),
                 badgeTint = if (miuixSurface == Color.Unspecified) m.surface else miuixOnSurface,
+
+                actionFavorite = if (fixedActions) StatusColors.Favorite else m.primary,
+                actionLike = if (fixedActions) StatusColors.Like else m.error,
+                actionComment = if (fixedActions) StatusColors.Comment else m.tertiary,
+                actionShare = if (fixedActions) StatusColors.Share else m.secondary,
             )
         }
 }

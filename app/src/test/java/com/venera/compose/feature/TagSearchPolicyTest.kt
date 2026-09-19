@@ -38,4 +38,12 @@ class TagSearchPolicyTest {
             Comic(id = "1", title = "t", tags = listOf("big breasts")),
             listOf(SearchTag(raw = "female:Big  Breasts"))))
     }
+
+    @Test fun variantLayerIsWhatMakesSimplifiedTagMatchTraditionalCard() {
+        val comic = Comic(id = "1", title = "t", tags = listOf("Female: 蘿莉"))
+        val tags = listOf(SearchTag(namespace = "female", raw = "萝莉"))
+        // 不给繁简那一级就不匹配 —— 这正是「整页被 AND 清空 → 降级成未过滤」的来源
+        assertFalse(TagSearchPolicy.matchesTagFilter(comic, tags))
+        assertTrue(TagSearchPolicy.matchesTagFilter(comic, tags) { it.replace('蘿', '萝') })
+    }
 }

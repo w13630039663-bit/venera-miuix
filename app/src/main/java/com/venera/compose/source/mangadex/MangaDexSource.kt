@@ -7,6 +7,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.SearchPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -41,14 +42,18 @@ class MangaDexSource(private val context: Context) : ComicSource {
         }
     }
 
-    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<List<Comic>> = withContext(Dispatchers.IO) {
+    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<SearchPage> = withContext(Dispatchers.IO) {
         runCatching {
-            val offset = (page - 1) * 20
+            val pageSize = 20
+            val offset = (page - 1) * pageSize
             val encodedTitle = URLEncoder.encode(keyword, "UTF-8")
-            val url = "$baseUrl/manga?title=$encodedTitle&limit=20&offset=$offset&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&order[relevance]=desc"
+            val url = "$baseUrl/manga?title=$encodedTitle&limit=$pageSize&offset=$offset&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&order[relevance]=desc"
             val responseText = networkClient.get(url)
             val json = JSONObject(responseText)
             val dataArray = json.optJSONArray("data") ?: JSONArray()
+            // MangaDex 在顶层给 total；缺失时留 null，UI 显示「未知」而不是估一个。
+            val searchMaxPage = json.optInt("total", 0).takeIf { it > 0 }
+                ?.let { (it + pageSize - 1) / pageSize }
             val list = mutableListOf<Comic>()
 
             for (i in 0 until dataArray.length()) {
@@ -91,7 +96,7 @@ class MangaDexSource(private val context: Context) : ComicSource {
                     )
                 )
             }
-            list
+            SearchPage(list, searchMaxPage)
         }
     }
 

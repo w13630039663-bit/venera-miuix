@@ -3,8 +3,13 @@ package com.venera.compose.stats
 import android.content.ContentValues
 import android.content.Context
 import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.tags.ChineseVariantConverter
+import com.venera.compose.data.tags.TagNormalizer
+import com.venera.compose.data.tags.TagTranslationManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -44,7 +49,7 @@ class ReadingStatsManager private constructor(private val context: Context) {
                 put("comic_id", comicId)
                 put("comic_title", comicTitle)
                 put("source_name", sourceName)
-                put("tags", tags.joinToString(","))
+                put("tags", tags.joinToString(TAG_SEPARATOR))
                 put("chapter_title", chapterTitle)
                 put("pages_read", pagesRead)
                 put("duration_seconds", durationSeconds)
@@ -193,28 +198,133 @@ class ReadingStatsManager private constructor(private val context: Context) {
     }
 
     /**
-     * 获取常看题材标签统计
+     * 题材分布：取最近 [days] 天带标签的阅读行，逐条过 [TagNormalizer] 归一，按**页数**加权。
+     *
+     * 与旧版 `getTopTags` 的四处本质差别（旧实现即使喂上数据也会产出错统计，已删）：
+     *  - 权重是页数而非记录条数 —— 翻 200 页的本子比翻 2 页就退的更该上榜；
+     *  - 走归一化管线，`lolicon` / `蘿莉` / `萝莉` 合成一个桶；
+     *  - 按 [TAG_SEPARATOR] 取原值，不再按空格与逗号切（`big breasts` 会被劈成两半）；
+     *  - 去掉 `length in 2..10` 的字符数闸门（它会把带命名空间的 `female:lolicon` 整条丢掉）。
+     *
+     * 与原版的一处**有意**分歧：原版把「所有带 tags 的行」都计入分母 `taggedPages`，
+     * 包括标签全被管线滤掉的行；这里只计**至少贡献了一个桶**的行 —— 否则占比条的分母
+     * 会被「只有作者/分类词的本子」灌水，读起来像「题材很分散」。
      */
-    suspend fun getTopTags(limit: Int = 12): List<Pair<String, Int>> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
-        val counts = mutableMapOf<String, Int>()
+    suspend fun getTagStats(days: Int): TagStats = withContext(Dispatchers.IO) {
+        val startKey = dateFormat.format(
+            Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -(days - 1)) }.time
+        )
+        val normalizer = buildNormalizer()
+        val buckets = HashMap<String, TagBucketAccumulator>()
+        val monthly = HashMap<String, HashMap<String, Int>>()
+        var taggedPages = 0
 
-        val cursor = db.rawQuery("SELECT tags FROM reading_stats WHERE tags != ''", null)
+        val cursor = dbHelper.readableDatabase.rawQuery(
+            "SELECT read_date, pages_read, tags FROM reading_stats " +
+                "WHERE read_date >= ? AND tags != ''",
+            arrayOf(startKey)
+        )
         cursor.use {
+            val dateIdx = it.getColumnIndex("read_date")
+            val pagesIdx = it.getColumnIndex("pages_read")
             val tagsIdx = it.getColumnIndex("tags")
             while (it.moveToNext()) {
-                val raw = it.getString(tagsIdx)
-                val split = raw.split(',', '，', '、', ' ')
-                for (t in split) {
-                    val clean = t.trim()
-                    if (clean.length in 2..10) {
-                        counts[clean] = (counts[clean] ?: 0) + 1
-                    }
+                val pages = it.getInt(pagesIdx)
+                if (pages <= 0) continue
+                val month = it.getString(dateIdx).take(MONTH_KEY_LENGTH)
+                var contributed = false
+                for (plainTag in it.getString(tagsIdx).split(TAG_SEPARATOR)) {
+                    val display = normalizer.normalize(plainTag) ?: continue
+                    contributed = true
+                    val acc = buckets.getOrPut(display) { TagBucketAccumulator() }
+                    acc.pages += pages
+                    acc.originals[plainTag] = (acc.originals[plainTag] ?: 0) + 1
+                    val monthCounts = monthly.getOrPut(month) { HashMap() }
+                    monthCounts[display] = (monthCounts[display] ?: 0) + pages
                 }
+                if (contributed) taggedPages += pages
             }
         }
 
-        counts.entries.sortedByDescending { it.value }.take(limit).map { it.key to it.value }
+        val sorted = buckets.entries.sortedWith(
+            compareByDescending<Map.Entry<String, TagBucketAccumulator>> { it.value.pages }
+                .thenBy { it.key }
+        )
+        TagStats(
+            buckets = sorted.map { (display, acc) ->
+                val (namespace, raw) = acc.pickOriginal()
+                TagStatBucket(
+                    display = display,
+                    pages = acc.pages,
+                    searchNamespace = namespace,
+                    searchRaw = raw,
+                )
+            },
+            taggedPages = taggedPages,
+            monthlyTop = monthly.entries.sortedByDescending { it.key }
+                .take(if (days > 30) 12 else 6)
+                .map { (month, counts) ->
+                    MonthlyTagTop(
+                        month = month,
+                        tags = counts.entries
+                            .sortedWith(
+                                compareByDescending<Map.Entry<String, Int>> { it.value }
+                                    .thenBy { it.key }
+                            )
+                            .take(MONTHLY_TOP_TAGS)
+                            .map { it.key to it.value },
+                    )
+                },
+        )
+    }
+
+    /**
+     * 组装归一化器：等字典到位 + 读简繁表。
+     *
+     * 简体字典是 `TagTranslationManager` 构造时**异步**加载的，第一次进统计页很可能还没好，
+     * 所以最多等 [DICT_WAIT_TIMEOUT_MS]。超时也照常返回 —— 少字典只是不把英文键折成中文规范名，
+     * 标签仍会按原值成桶，比整块不显示好。
+     */
+    private suspend fun buildNormalizer(): TagNormalizer {
+        val tagManager = TagTranslationManager.getInstance(context)
+        val converter = ChineseVariantConverter.getInstance(context)
+        // 两者都是构造即异步自加载，第一次进统计页很可能都没好；共享同一份等待预算，
+        // 超时也照常返回。
+        withTimeoutOrNull(DICT_WAIT_TIMEOUT_MS) {
+            tagManager.loadedLanguages.first { TagTranslationManager.LANGUAGE_SIMPLIFIED in it }
+            converter.ready.first { it }
+        }
+        return TagNormalizer(
+            dictionary = TagNormalizer.buildDictionary(
+                tagManager.topicEntries(TagNormalizer.TOPIC_NAMESPACES)
+            ),
+            toSimplified = converter::traditionalToSimplified,
+            hasTraditional = converter::hasChineseTraditional,
+        )
+    }
+
+    /** 一个题材桶的累加器。 */
+    private class TagBucketAccumulator {
+        var pages = 0
+
+        /** 归到本桶的**原始** `namespace:tag` → 出现次数，用于挑一个可检索的原值。 */
+        val originals = HashMap<String, Int>()
+
+        /**
+         * 取出现次数最高的原始标签；并列时按字典序取最小，保证同一份数据每次算出的结果一致
+         * （否则「这次点进去搜 A、下次搜 B」这种不可复现的行为会留在统计页）。
+         */
+        fun pickOriginal(): Pair<String, String> {
+            val plain = originals.entries.sortedWith(
+                compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
+            ).firstOrNull()?.key ?: return "" to ""
+            val idx = plain.indexOf(':')
+            return if (idx > 0) {
+                plain.substring(0, idx).trim() to plain.substring(idx + 1).trim()
+            } else {
+                "" to plain.trim()
+            }
+        }
     }
 
     private fun calculateStreakDays(db: android.database.sqlite.SQLiteDatabase): Int {
@@ -257,6 +367,27 @@ class ReadingStatsManager private constructor(private val context: Context) {
     }
 
     companion object {
+        /**
+         * `tags` 列的多值分隔符：ASCII 单元分隔符 `U+001F`。
+         *
+         * 为什么不用逗号：源标签里空格很常见（`big breasts`、`sole female`，e-hentai /
+         * nhentai 尤其多），旧实现按 `,，、空格` 一起 split，等于把这类标签**劈成两个假题材**；
+         * 而 `\u001F` 不可能出现在标签里，往返即无损。
+         *
+         * 不需要数据迁移：`tags` 列此前**从没有写入者**（`recordSession` 的 `tags` 形参无调用方
+         * 传值），库里存量行恒为空串，没有需要按旧规则解读的数据。
+         */
+        private const val TAG_SEPARATOR = "\u001F"
+
+        /** `read_date` 形如 "yyyy-MM-dd"，取前 7 位即月份键。 */
+        private const val MONTH_KEY_LENGTH = 7
+
+        /** 时间轴每个月展示几个题材。 */
+        private const val MONTHLY_TOP_TAGS = 2
+
+        /** 等标签字典异步加载的上限；超时只是不合中文规范名，不阻断统计。 */
+        private const val DICT_WAIT_TIMEOUT_MS = 3000L
+
         @Volatile
         private var INSTANCE: ReadingStatsManager? = null
 

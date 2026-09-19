@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,7 +60,6 @@ import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
-import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.components.venera.VeneraTagChip
 import com.venera.compose.components.venera.VeneraTopAppBar
@@ -96,6 +96,16 @@ fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
     initialQuery: String = "",
+    /**
+     * 详情页点标签跳进来时携带的**所属漫画源显示名**；非空则先把搜索目标切到该源再搜。
+     * 只传名字不传 key：DetailRoute 本身就只有 sourceName（见 Navigation.kt）。
+     */
+    initialSourceName: String = "",
+    /**
+     * 统计页题材云下钻携带的**结构化标签**（详情页点标签仍走 [initialQuery] 那条纯文本路径）。
+     * 只有走 SearchTag，非原生标签语法源才会改吃客户端过滤而不是把 `tag:xxx` 当关键字。
+     */
+    initialTag: SearchTag? = null,
     viewModel: SearchViewModel = viewModel(),
     consumesBottomBarClearance: Boolean = true,
     onNavigateBack: (() -> Unit)? = null,
@@ -175,7 +185,20 @@ fun SharedTransitionScope.AndroidSearchScreen(
             }
         }
     }
-    LaunchedEffect(initialQuery) { if (initialQuery.isNotBlank()) viewModel.search(initialQuery) }
+    // 详情页标签下钻：先把搜索目标切到那本漫画**所属的源**，再用同一个词搜。
+    // 顺序不能反 —— search() 读的是 selectedSourceKey 的快照，先搜就会落在全网聚合上。
+    // 名字在源列表里解不到就保持默认目标，绝不凭名字猜一个 key（同名异源是真实存在的）。
+    LaunchedEffect(initialQuery, initialSourceName, initialTag) {
+        if (initialSourceName.isNotBlank()) {
+            sources.find { it.name == initialSourceName }?.let {
+                viewModel.onSourceSelected(it.key, it.name)
+            }
+        }
+        // 先挂标签再搜：search() 取的是 tags 的快照，反过来这一发就不带标签了。
+        // addTag 内部自带一次 search，所以纯标签下钻时**不能**再补一发（会双发请求、结果闪一下）。
+        initialTag?.let { tag -> viewModel.addTag(raw = tag.raw, label = tag.label, namespace = tag.namespace) }
+        if (initialQuery.isNotBlank()) viewModel.search(initialQuery)
+    }
 
     if (showOptions) SearchOptionsSheet(
         sourceName = ui.selectedSourceLabel,
@@ -351,6 +374,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     mask = ::mask,
                     onSelect = { select(it, ui.selectedSourceLabel) },
                     onRetry = { viewModel.search(ui.query) },
+                    onLoadMore = { viewModel.loadMore() },
                 )
             }
 
@@ -858,12 +882,38 @@ private fun SearchControls(
     }
 }
 
-/** 结果区标题。统一文案，不暴露内部实现细节。 */
+/**
+ * 「结果未按所选标签精确过滤」提示。
+ *
+ * 只在严格 AND 过滤会把整页清空、于是退回未过滤结果时出现。不写这句就等于把
+ * 「没过滤」伪装成「过滤后就这么多样」，是假信息；写出来用户至少知道该换源或改关键词。
+ */
 @Composable
-private fun ResultHeader(count: Int) {
+private fun TagFilterRelaxedNotice() {
     val tokens = VeneraTokens
     Text(
-        text = "检索结果（" + count + " 条）",
+        text = "所选标签在该源的结果里没有对得上的项，以下结果没有按标签精确过滤。" +
+            "（多数源的列表项不带完整标签；繁简写法不同也判为不匹配。）",
+        fontSize = tokens.type.overline,
+        lineHeight = tokens.type.caption * 1.5f,
+        color = tokens.color.textSecondary,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/**
+ * 结果区标题：「已加载 N · 约 M」，源不声明页数时显示「总数未知」。
+ *
+ * 「约」不能省：33 个源里 **0 个** 往外返回条目总数（jm 内部有 `data.total`，但它的
+ * `search.load` 只吐 `maxPage`），所以 M 只能用 `maxPage × 首页条数` 估，
+ * 而且只会高估不会低估。编一个看起来精确的数比不显示更糟。
+ */
+@Composable
+private fun ResultHeader(loaded: Int, estimatedTotal: Int?) {
+    val tokens = VeneraTokens
+    Text(
+        text = "检索结果（已加载 $loaded 个" +
+            (if (estimatedTotal != null) " · 约 $estimatedTotal 个" else " · 总数未知") + "）",
         fontSize = tokens.type.itemTitle,
         fontWeight = tokens.type.weightSemibold,
         color = tokens.color.textPrimary,
@@ -887,7 +937,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
 ) {
     if (ui.aggregatedResults.isEmpty()) {
         when {
-            ui.isSearching -> item(key = "agg-loading") { ResultSkeleton() }
+            ui.isSearching -> item(key = "agg-loading") { SearchLoadingIndicator() }
             ui.hasSearched -> item(key = "agg-empty") {
                 VeneraEmptyView(
                     title = "没有可用的搜索源",
@@ -925,6 +975,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
                         )
                     }
                 }
+                // 该源的卡片标签对不上所选标签、已退回未过滤结果 —— 必须说出来，
+                // 否则这一栏看起来像是"过滤后只剩这些"。
+                if (event.tagFilterRelaxed) TagFilterRelaxedNotice()
                 // 单源失败只影响该源，不把整页拖进错误态。
                 when {
                     event.error != null -> VeneraEmptyView(
@@ -932,7 +985,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
                         actionText = "重试",
                         onAction = onRetry,
                     )
-                    event.isLoading -> ResultSkeleton()
+                    event.isLoading -> SearchLoadingIndicator(compact = true)
                     event.comics.isEmpty() -> VeneraEmptyView(
                         message = "该源未找到相关漫画",
                     )
@@ -967,12 +1020,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
     mask: (Comic) -> VeneraCoverMask,
     onSelect: (Comic) -> Unit,
     onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     val detailed = displayMode == "detailed"
 
     when {
-        // 首次加载：骨架，不用全屏 Spinner
-        ui.isSearching && ui.results.isEmpty() -> item(key = "ss-loading") { ResultSkeleton() }
+        // 首次加载：居中波浪环（原先是两张 shimmer 空卡，看着像真搜到了空漫画）
+        ui.isSearching && ui.results.isEmpty() -> item(key = "ss-loading") { SearchLoadingIndicator() }
 
         ui.error != null && ui.results.isEmpty() -> item(key = "ss-error") {
             VeneraEmptyView(
@@ -998,7 +1052,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
         }
 
         else -> {
-            item(key = "ss-header") { ResultHeader(count = ui.results.size) }
+            item(key = "ss-header") {
+                ResultHeader(loaded = ui.results.size, estimatedTotal = ui.estimatedTotal)
+            }
+            if (ui.tagFilterRelaxed) {
+                item(key = "ss-tag-relaxed") { TagFilterRelaxedNotice() }
+            }
             if (detailed) {
                 itemsIndexed(ui.results, key = { _, c -> "r-" + c.id }) { _, comic ->
                     SearchResultRowItem(
@@ -1026,8 +1085,60 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
                     }
                 }
             }
-            // 加载更多时保留已有内容，只在末尾提示。
-            if (ui.loadingMore) item(key = "ss-more") { ResultSkeleton(compact = true) }
+            // 翻页落点：触底自动加载（见上方 LaunchedEffect）保留，但**必须可见** ——
+            // 只有自动触发时，用户不知道下面还有货，也不知道自己为什么停住了。
+            if (ui.loadingMore) {
+                item(key = "ss-more") {
+                    SearchLoadingIndicator(compact = true, label = "正在加载更多…")
+                }
+            } else if (ui.canLoadMore) {
+                item(key = "ss-more-button") {
+                    Surface(
+                        shape = RoundedCornerShape(tokens.shape.small),
+                        color = colors.surfaceVariant.copy(alpha = tokens.selectedSurfaceAlpha),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onLoadMore() },
+                    ) {
+                        Text(
+                            text = "加载更多",
+                            fontSize = tokens.type.caption,
+                            color = colors.textSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(vertical = tokens.spacing.space5),
+                        )
+                    }
+                }
+            }
+            // 加载更多失败的原因原先被吞掉：ui.error 只在 results 为空时渲染（上面的 ss-error 分支），
+            // 于是「已经有一屏结果、再翻页失败」这种情况界面上什么都不说。
+            ui.error?.let { reason ->
+                if (ui.results.isNotEmpty() && !ui.isSearching) {
+                    item(key = "ss-more-error") {
+                        VeneraEmptyView(
+                            message = reason,
+                            actionText = "重试",
+                            onAction = onLoadMore,
+                        )
+                    }
+                }
+            }
+            // 到底提示。源声明了 maxPage 时这个判定是**精确**的（VM 用 nextPage < maxPage
+            // 算 canLoadMore，不会再发一次注定为空的请求）；游标型源只能在某页返回空之后确定。
+            // 有翻页错误时不显示 —— 那不是"没有了"，是"失败了"，上面已经说了。
+            if (!ui.canLoadMore && !ui.loadingMore && ui.hasSearched && ui.error == null) {
+                item(key = "ss-end") {
+                    Text(
+                        text = "已经没有了",
+                        fontSize = tokens.type.overline,
+                        color = colors.textTertiary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = tokens.spacing.space6),
+                    )
+                }
+            }
         }
     }
 }
@@ -1222,31 +1333,49 @@ private fun OptionalMetadata(comic: Comic) {
     )
 }
 
-/** 结果骨架（替代全屏 Spinner）。 */
+/**
+ * 搜索页统一的加载指示（M3 Expressive 波浪圆环）。
+ *
+ * 前身是「双列 shimmer 卡片骨架」—— 真机反馈那两张空卡看起来像**真的搜到了两张空漫画**，
+ * 而不是在加载。加载态不该伪造结果形状，故整页换成一枚居中波浪环。
+ *
+ * @param compact 行内小环（触底「加载更多」、筛选加载）；否则整页居中大环。
+ * @param label 小环右侧的说明文字（翻页时用，避免只有一个圈不知道在干什么）。
+ */
 @Composable
-private fun ResultSkeleton(compact: Boolean = false) {
+private fun SearchLoadingIndicator(compact: Boolean = false, label: String? = null) {
     val tokens = VeneraTokens
     if (compact) {
-        VeneraShimmer(
-            Modifier.fillMaxWidth().height(tokens.spacing.barHeight),
-        )
-        return
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
-    ) {
-        repeat(2) {
-            Box(Modifier.weight(1f)) {
-                VeneraCard {
-                    VeneraShimmer(
-                        Modifier.fillMaxWidth().aspectRatio(tokens.spacing.coverAspectRatio),
-                    )
-                    Spacer(Modifier.height(tokens.spacing.cardCoverGap))
-                    VeneraShimmer(Modifier.fillMaxWidth().height(tokens.spacing.barHeight))
-                }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space4),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularWavyProgressIndicator(
+                modifier = Modifier.size(tokens.spacing.loaderInline),
+                color = tokens.color.primary,
+                trackColor = tokens.color.surfaceVariant,
+            )
+            if (label != null) {
+                Spacer(modifier = Modifier.width(tokens.spacing.space4))
+                Text(
+                    text = label,
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textSecondary,
+                )
             }
         }
+        return
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space9),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularWavyProgressIndicator(
+            modifier = Modifier.size(tokens.spacing.loaderPage),
+            color = tokens.color.primary,
+            trackColor = tokens.color.surfaceVariant,
+        )
     }
 }
 
@@ -1487,7 +1616,7 @@ private fun SearchOptionsSheet(
                 aggregate -> VeneraEmptyView(
                     message = "全网聚合没有统一排序。请先选择一个具体漫画源。",
                 )
-                loading -> ResultSkeleton(compact = true)
+                loading -> SearchLoadingIndicator(compact = true)
                 error != null -> VeneraEmptyView(
                     message = error,
                     actionText = "重新加载",

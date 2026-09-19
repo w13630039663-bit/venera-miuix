@@ -108,6 +108,24 @@ data class ComicDetails(
 )
 
 /**
+ * 一页搜索结果。
+ *
+ * 之所以不直接返回 `List<Comic>`：搜索页要告诉用户「已加载多少 / 大约还有多少」，
+ * 而这件事只有源自己知道。
+ *
+ * [maxPage] **只在源自己声明时非空**。实测 33 个源：26 个返回 `maxPage`，
+ * 7 个（含 ehentai / nhentai / lanraragi）连它都不给；游标型（`loadNext`）源在协议上
+ * 就没有「总页数」这个概念，只有「还有下一页吗」。
+ *
+ * 刻意**没有** total 字段：33 个源里 0 个返回条目总数（jm 内部有 `data.total`，
+ * 但它的 `search.load` 只往外返回 `maxPage`）。所以条目总数只能估算，不能当事实显示。
+ */
+data class SearchPage(
+    val comics: List<Comic> = emptyList(),
+    val maxPage: Int? = null,
+)
+
+/**
  * 章节全量漫画图片列表（用于阅读器）
  */
 data class ChapterPages(

@@ -120,8 +120,11 @@ fun SourceSectionScreen(
             isLoading = true
             error = null
             val result = if (unifiedTag != null) {
+                // 只取条目：本页维持改造前的行为（maxPage 传 null，即"页数未知"）。
+                // 接口现在能给出真实 maxPage 了，但启用它会改变这个冻结页的分页判定，
+                // 属于另一件事，要改请单独评审。
                 sourceManager.search(route.sourceKey, unifiedTag.label, targetPage, null)
-                    .map { list -> list to null }
+                    .map { page -> page.comics to null }
             } else {
                 sourceManager.loadCategoryComics(
                     sourceKey = route.sourceKey,

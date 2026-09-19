@@ -3,6 +3,7 @@ package com.venera.compose.source
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.SearchPage
 
 /**
  * 漫画源核心抽象接口
@@ -31,8 +32,9 @@ interface ComicSource {
      *
      * @param options 源声明的搜索筛选值（对齐官方 search.optionList / SearchOptions）；
      *                null 表示使用源默认值
+     * @return 一页结果 + 源自己声明的总页数（多数源没有，见 [SearchPage.maxPage]）
      */
-    suspend fun search(keyword: String, page: Int = 1, options: List<String?>? = null): Result<List<Comic>>
+    suspend fun search(keyword: String, page: Int = 1, options: List<String?>? = null): Result<SearchPage>
 
     /**
      * 获取源声明的搜索筛选组（对齐官方 SearchPageData.searchOptions）。

@@ -54,6 +54,23 @@ data class VeneraColorTokens(
     // 交互反馈
     val pressedOverlay: Color,
     val badgeTint: Color,
+
+    // ── 详情页动作色 ──
+    /**
+     * 收藏 / 点赞 / 评论 / 分享 四个动作钮的着色。
+     *
+     * **MD3 风格下由主题色板派生**（Android 12+ 即壁纸取色），MIUIX 风格下仍用
+     * [StatusColors] 的固定四色 —— 映射见 [VeneraTokens.color]，理由与代价：
+     *  - 动态色板只给 3 个壁纸色相（primary/secondary/tertiary）+ 1 个不随壁纸的
+     *    error 红，凑不出「四色互异且保留原语义」，所以只能按角色分配；
+     *  - 点赞吃 error：error 不参与壁纸取色，恒为红族，心形语义得以保留；
+     *  - 分享吃 secondary：动态色板里 secondary 是刻意低饱和的，真机上可能偏灰、
+     *    看起来像次要动作 —— 这是选了四角色映射的已知代价，不是缺陷。
+     */
+    val actionFavorite: Color,
+    val actionLike: Color,
+    val actionComment: Color,
+    val actionShare: Color,
 )
 
 /**

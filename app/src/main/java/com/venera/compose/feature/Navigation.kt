@@ -76,8 +76,26 @@ import androidx.compose.material3.IconButton
 
 @Serializable data object HomeRoute
 @Serializable data object SearchRoute
-    /** S8: 详情页标签点击的搜索直达（携带预填关键词） */
-    @Serializable data class TagSearchRoute(val keyword: String)
+    /**
+     * S8: 详情页标签点击的搜索直达（携带预填关键词）。
+     *
+     * `sourceName` = 那本漫画所属的源；搜索页据此把目标切到同一个源再搜。
+     * 用名字而不是 key：DetailRoute 本身就只携带 sourceName，且同名异源由搜索页
+     * 在源列表里精确匹配后决定，解不到就退回默认目标，不猜。
+     *
+     * `tagNamespace` + `tagRaw` 非空时，这个词以**结构化标签**（[SearchTag]）而不是纯文本
+     * 进入搜索页 —— 统计页的题材云下钻必须走这条。差别是实质性的：只有走结构化标签，
+     * `TagSearchPolicy` 才会在「非原生标签语法源」上改走客户端过滤；把 `tag:萝莉` 当纯文本
+     * 发出去，这些源会拿它当关键字，一条都搜不到。
+     * `tagLabel` 只用于已选标签胶囊上的显示（可以是中文规范名）。
+     */
+    @Serializable data class TagSearchRoute(
+        val keyword: String,
+        val sourceName: String = "",
+        val tagNamespace: String = "",
+        val tagRaw: String = "",
+        val tagLabel: String = "",
+    )
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
@@ -323,12 +341,24 @@ fun VeneraComposeApp() {
                     }
                     // S8: 标签直达搜索（详情页标签点击跳入，自动执行搜索）
                     composable<TagSearchRoute> { backStackEntry ->
-                        val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+                        val args = backStackEntry.arguments
+                        val keyword = args?.getString("keyword") ?: ""
+                        val sourceName = args?.getString("sourceName") ?: ""
+                        val tagNamespace = args?.getString("tagNamespace") ?: ""
+                        val tagRaw = args?.getString("tagRaw") ?: ""
+                        val tagLabel = args?.getString("tagLabel") ?: ""
                         // 下钻子页：底栏不显示，只保留自身滚动留白。
                         AndroidSearchScreen(
                             animatedVisibilityScope = this,
                             onSelect = ::openComic,
                             initialQuery = keyword,
+                            initialSourceName = sourceName,
+                            initialTag = if (tagRaw.isBlank()) null
+                                else SearchTag(
+                                    namespace = tagNamespace,
+                                    raw = tagRaw,
+                                    label = tagLabel.ifBlank { tagRaw },
+                                ),
                             consumesBottomBarClearance = false,
                         )
                     }
@@ -475,7 +505,20 @@ fun VeneraComposeApp() {
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
-                            }
+                            },
+                            // 题材下钻：带的是该桶的**源生原值**（searchNamespace/searchRaw），
+                            // 不是中文显示名 —— 站方标签源认的是英文原词。
+                            // 不锁源：一个桶可能来自多个源，锁到任意一个都是猜。
+                            onDigTag = { bucket ->
+                                navController.navigate(
+                                    TagSearchRoute(
+                                        keyword = "",
+                                        tagNamespace = bucket.searchNamespace,
+                                        tagRaw = bucket.searchRaw,
+                                        tagLabel = bucket.display,
+                                    )
+                                )
+                            },
                         )
                     }
                     composable<FavoriteImagesRoute> {
@@ -527,7 +570,11 @@ fun VeneraComposeApp() {
                             },
                             onSearchTag = { tag ->
                                 haptic()
-                                navController.navigate(TagSearchRoute(keyword = tag))
+                                // 带上这本漫画的源：点标签应该「在同源里搜这个词」，
+                                // 而不是掉回全网聚合 —— 标签词本来就是源生的。
+                                navController.navigate(
+                                    TagSearchRoute(keyword = tag, sourceName = comic.sourceName)
+                                )
                             },
                             onOpenCoverViewer = { url ->
                                 haptic()

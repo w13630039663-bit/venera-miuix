@@ -143,7 +143,23 @@ data class VeneraSpacingTokens(
     val detailCoverHeight: Dp = 152.dp,
     /** 详情页主操作胶囊按钮高度。 */
     val detailPrimaryButtonHeight: Dp = 56.dp,
-    /** 详情页「标签与分类」分组名列宽。 */
+    /** 详情页悬浮顶栏（返回 / 标题 / 分享所在行）高度。 */
+    val detailTopBarHeight: Dp = 48.dp,
+    /**
+     * 详情页首个内容项需要为悬浮顶栏让出的净高度（= [detailTopBarHeight] + 呼吸间距 24dp）。
+     *
+     * 独立成 Token 的原因：真机反馈封面行紧贴返回/分享钮（原值 48+8 太挤），
+     * 而这个数只能表达成「顶栏高 + 间距」，写死在页面里就成了没人看得懂的 56dp。
+     * 不含系统 statusBars inset —— 那部分由 WindowInsets 提供。
+     */
+    val detailTopBarClearance: Dp = detailTopBarHeight + 24.dp,
+    /**
+     * 详情页「标签与分类」分组名列宽。
+     *
+     * 是**最小**列宽而非定宽：定宽会把 `Chinese Team:` 这类长键从单词中间截断换行，
+     * 列宽随内容增长才能保住「组名成词」。译成中文后（作者/汉化组/分类/标签）
+     * 多数落在 56dp 内，各行仍对齐。
+     */
     val detailCategoryLabelWidth: Dp = 56.dp,
     /** 详情页章节胶囊最小宽度。 */
     val detailChapterChipMinWidth: Dp = 96.dp,
@@ -151,6 +167,20 @@ data class VeneraSpacingTokens(
     val detailRecommendWidth: Dp = 90.dp,
     /** 详情页相关推荐封面高度。 */
     val detailRecommendCoverHeight: Dp = 120.dp,
+
+    // ── 下拉刷新（网络收藏页落地，语义通用）──
+    /**
+     * 下拉刷新指示行的**满展开行高**。
+     *
+     * 行高由下拉进度 1:1 驱动，所以这个数就是「跟手下移的最大距离」；
+     * 放手后刷新中保持满高，刷新完成收回 → 卡片自然上移露出新内容。
+     */
+    val pullRefreshRowHeight: Dp = 48.dp,
+    // ── 加载指示器尺寸（波浪环；M3 Expressive 的振幅/波长按大尺寸调，小于此会糊）──
+    /** 整页 / 区块居中的加载环。 */
+    val loaderPage: Dp = 48.dp,
+    /** 行内加载环：下拉刷新那一行、分区头、触底 footer 都用它。低于 24dp 波浪就看不出来了。 */
+    val loaderInline: Dp = 28.dp,
 )
 
 /**
@@ -179,6 +209,14 @@ data class VeneraMotionTokens(
     val short: Int = 120,
     val medium: Int = 220,
     val long: Int = 320,
+    /**
+     * 网络图片「占位层 → 真图」的淡入时长。
+     *
+     * 独立于 [short]/[medium]：那两个服务界面转场，这个服务**内容替换**。
+     * 内容替换要慢到足以让人意识到「图换掉了」，又不能慢到让滚动显得黏；
+     * 200ms 是真机观感定下来的值，和转场阶梯分开调才不会互相牵制。
+     */
+    val imageFadeInMillis: Int = 200,
 )
 
 /** 静态间距实例：两套主题共用。 */

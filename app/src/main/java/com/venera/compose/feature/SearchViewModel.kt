@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.network.ComicUrlMatcher
+import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
@@ -45,11 +46,36 @@ data class SearchUiState(
     val optionsError: String? = null,
     val error: String? = null,
     val loadingMore: Boolean = false,
-    val canLoadMore: Boolean = false
+    val canLoadMore: Boolean = false,
+    /**
+     * 源自己声明的总页数。null = 该源不声明（游标型 `loadNext` 源，或压根不返回 maxPage 的源）。
+     * 实测 33 个源里 26 个声明、7 个不声明。
+     */
+    val sourceMaxPage: Int? = null,
+    /**
+     * 「约 N 个」= [sourceMaxPage] × 首页条数。
+     *
+     * 刻意带「约」：33 个源里 0 个往外返回条目总数（jm 内部有 `data.total`，但它的
+     * `search.load` 只返回 maxPage），所以只能估算，且**只会高估不会低估**
+     * （jm 是 `ceil(total/80)`，误差上限一个页长）。源没声明时保持 null，UI 显示「未知」。
+     */
+    val estimatedTotal: Int? = null,
+    /**
+     * true = 所选标签在**这一批结果里**一个都对不上（多数源卡片不带完整标签，
+     * 或源用繁体而用户选了简体），严格 AND 过滤会把整页清空；于是退回未过滤结果。
+     * UI 必须据此说明"下面的结果没有按所选标签精确过滤"，不能装作过滤生效了。
+     */
+    val tagFilterRelaxed: Boolean = false
 )
 
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /**
+     * 客户端标签过滤要吃**同一张**简繁字级表：源里繁简混写时，简体标签必须能认繁体卡片标签，
+     * 否则 AND 交集为空、整页降级成「未过滤」。表在构造时异步自加载，没就绪前是恒等转换。
+     */
+    private val variantConverter = ChineseVariantConverter.getInstance(app)
     private val metricsCache = com.venera.compose.data.prefs.ComicMetricsCache(app)
     private val sourceManager by lazy { ComicSourceManager.getInstance(app) }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
@@ -212,7 +238,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         val currentKey = snapshot.selectedSourceKey
         currentPage = 1
         _uiState.update { it.copy(query = query, isSearching = true, hasSearched = true,
-            results = emptyList(), aggregatedResults = emptyMap(), error = null, tagSuggestions = emptyList()) }
+            results = emptyList(), aggregatedResults = emptyMap(), error = null,
+            sourceMaxPage = null, estimatedTotal = null, canLoadMore = false,
+            tagFilterRelaxed = false,
+            tagSuggestions = emptyList()) }
         searchJob = viewModelScope.launch {
             try {
                 if (currentKey == KEY_ALL) {
@@ -227,13 +256,34 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                                 semaphore.withPermit { withContext(Dispatchers.IO) { withTimeout(30_000L) {
                                     val request = TagSearchPolicy.requestKeyword(source.key, query, snapshot.tags, source::formatSearchTag)
                                     val defaults = SearchOptionValues.defaults(source.getSearchOptions()).takeIf { it.isNotEmpty() }
-                                    val comics = source.search(request, options = defaults).getOrThrow()
-                                    coroutineContext.ensureActive()
-                                    cacheMetrics(source.key, comics)
-                                    // 原生标签源结果已由站方精确过滤；其余源在客户端按标签过滤。
-                                    val tagFiltered = if (TagSearchPolicy.isNativeTagSource(source.key)) comics
-                                        else TagSearchPolicy.filterByTags(comics, snapshot.tags)
-                                    ComicSourceManager.SourceSearchResult(source.key, source.name, guardManager.filterComicModels(tagFiltered), isLoading = false)
+                                    if (request.isBlank() && snapshot.tags.isNotEmpty()) {
+                                        // 非原生标签源会剥掉全部标签词、只留纯文本；纯文本也为空就等于
+                                        // 拿 "" 去搜。单源分支早就拦了这一步，聚合分支漏了 —— 于是二十几个
+                                        // 源各报一次空结果，用户看到的就是"什么都不显示"且没有原因。
+                                        ComicSourceManager.SourceSearchResult(
+                                            source.key, source.name, emptyList(), isLoading = false,
+                                            error = "该源不支持纯标签搜索：请输入关键词，或改用 EHentai 等原生标签源。",
+                                        )
+                                    } else {
+                                        val page = source.search(request, options = defaults).getOrThrow()
+                                        val comics = page.comics
+                                        coroutineContext.ensureActive()
+                                        cacheMetrics(source.key, comics)
+                                        // 原生标签源结果已由站方精确过滤；其余源在客户端按标签过滤。
+                                        val filtered = if (TagSearchPolicy.isNativeTagSource(source.key)) {
+                                            TagSearchPolicy.TagFilterOutcome(comics, relaxed = false)
+                                        } else {
+                                            TagSearchPolicy.filterByTagsWithFallback(
+                                                comics, snapshot.tags,
+                                                variantConverter::traditionalToSimplified)
+                                        }
+                                        ComicSourceManager.SourceSearchResult(
+                                            source.key, source.name,
+                                            guardManager.filterComicModels(filtered.comics),
+                                            isLoading = false,
+                                            tagFilterRelaxed = filtered.relaxed,
+                                        )
+                                    }
                                 } } }
                             } catch (e: TimeoutCancellationException) {
                                 ComicSourceManager.SourceSearchResult(source.key, source.name, error = "检索超时，请进入该源重试")
@@ -256,12 +306,24 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     val result = sourceManager.search(currentKey, request, options = _selectedOptions.value.takeIf { it.isNotEmpty() })
                     coroutineContext.ensureActive()
-                    val comics = result.getOrThrow()
+                    val firstPage = result.getOrThrow()
+                    val comics = firstPage.comics
                     cacheMetrics(source.key, comics)
-                    val tagFiltered = if (TagSearchPolicy.isNativeTagSource(currentKey)) comics
-                        else TagSearchPolicy.filterByTags(comics, snapshot.tags)
-                    _uiState.update { it.copy(results = guardManager.filterComicModels(tagFiltered), isSearching = false,
-                        canLoadMore = comics.isNotEmpty()) }
+                    val filtered = if (TagSearchPolicy.isNativeTagSource(currentKey)) {
+                        TagSearchPolicy.TagFilterOutcome(comics, relaxed = false)
+                    } else {
+                        TagSearchPolicy.filterByTagsWithFallback(
+                            comics, snapshot.tags, variantConverter::traditionalToSimplified)
+                    }
+                    _uiState.update { it.copy(results = guardManager.filterComicModels(filtered.comics), isSearching = false,
+                        tagFilterRelaxed = filtered.relaxed,
+                        // 源声明了页数就按页数判「还有下一页」，省掉一次注定为空的请求；
+                        // 没声明（游标型源）才退回原来的「这页非空 = 也许还有」。
+                        canLoadMore = firstPage.maxPage?.let { mp -> mp > 1 } ?: comics.isNotEmpty(),
+                        sourceMaxPage = firstPage.maxPage,
+                        estimatedTotal = firstPage.maxPage
+                            ?.takeIf { mp -> mp > 0 && comics.isNotEmpty() }
+                            ?.let { mp -> mp * comics.size }) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
@@ -300,15 +362,24 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 val result = sourceManager.search(currentKey, request, page = nextPage,
                     options = _selectedOptions.value.takeIf { it.isNotEmpty() })
                 coroutineContext.ensureActive()
-                val comics = result.getOrThrow()
+                val page = result.getOrThrow()
+                val comics = page.comics
                 cacheMetrics(source.key, comics)
-                val tagFiltered = if (TagSearchPolicy.isNativeTagSource(currentKey)) comics
-                    else TagSearchPolicy.filterByTags(comics, snapshot.tags)
-                val fresh = guardManager.filterComicModels(tagFiltered)
+                val filtered = if (TagSearchPolicy.isNativeTagSource(currentKey)) {
+                    TagSearchPolicy.TagFilterOutcome(comics, relaxed = false)
+                } else {
+                    TagSearchPolicy.filterByTagsWithFallback(
+                        comics, snapshot.tags, variantConverter::traditionalToSimplified)
+                }
+                val fresh = guardManager.filterComicModels(filtered.comics)
                     .filter { next -> _uiState.value.results.none { it.id == next.id && it.sourceKey == next.sourceKey } }
                 _uiState.update {
                     it.copy(results = it.results + fresh, loadingMore = false,
-                        canLoadMore = comics.isNotEmpty())
+                        // 任一页触发过降级，提示就要一直留着 —— 否则用户以为后面的页是精确的。
+                        tagFilterRelaxed = it.tagFilterRelaxed || filtered.relaxed,
+                        // 源声明了页数就以页数为准（到底了不用再发一次空请求）；
+                        // 游标型源退回「这页非空 = 也许还有下一页」。
+                        canLoadMore = page.maxPage?.let { mp -> nextPage < mp } ?: comics.isNotEmpty())
                 }
                 if (comics.isNotEmpty()) currentPage = nextPage
             } catch (e: CancellationException) { throw e }

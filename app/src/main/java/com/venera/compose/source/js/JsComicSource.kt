@@ -14,6 +14,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ResolvedImageConfig
+import com.venera.compose.source.model.SearchPage
 import com.venera.compose.source.model.ThumbnailPage
 import com.venera.compose.source.FavComicNext
 import com.venera.compose.source.FavComicPage
@@ -336,7 +337,7 @@ class JsComicSource(
         return SourcePayloadParser.data(raw)?.toString() ?: super.formatSearchTag(namespace, tag)
     }
 
-    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<List<Comic>> {
+    override suspend fun search(keyword: String, page: Int, options: List<String?>?): Result<SearchPage> {
         return try {
             val pageNum = if (page < 1) 1 else page
             // 官方 search.loadNext(keyword, options, next) 的 next 由**搜索页状态**维护：
@@ -368,11 +369,14 @@ class JsComicSource(
             }
             val rawData = envelope["data"]
             // 记录下一页游标：loadNext 型源返回 res.next，load 型源返回 res.maxPage
+            // maxPage 此前被丢掉（返回类型只有 List<Comic>），现在交给搜索页做「约 N 个」。
+            var searchMaxPage: Int? = null
             if (rawData is Map<*, *>) {
                 val next = rawData["next"]?.toString()
                 if (!next.isNullOrBlank() && next != "null") {
                     nextTokenCache[nextCacheKey(keyword, options, pageNum)] = next
                 }
+                searchMaxPage = (rawData["maxPage"] as? Number)?.toInt()?.takeIf { it > 0 }
             }
             val comicsList: List<*> = when (rawData) {
                 is List<*> -> rawData
@@ -415,7 +419,7 @@ class JsComicSource(
                     likesCount = SourcePayloadParser.likesCount(map)
                 )
             }
-            Result.success(comics)
+            Result.success(SearchPage(comics, searchMaxPage))
         } catch (e: Exception) {
             Result.failure(e)
         }

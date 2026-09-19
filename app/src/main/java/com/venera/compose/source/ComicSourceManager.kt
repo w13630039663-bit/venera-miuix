@@ -17,6 +17,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.ResolvedImageConfig
+import com.venera.compose.source.model.SearchPage
 import com.venera.compose.source.model.ThumbnailPage
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.network.registrableDomain
@@ -758,7 +759,9 @@ class ComicSourceManager private constructor(private val context: Context) {
         val sourceName: String,
         val comics: List<Comic> = emptyList(),
         val error: String? = null,
-        val isLoading: Boolean = false
+        val isLoading: Boolean = false,
+        /** true = 该源的卡片标签不足以支撑所选标签的精确过滤，已退回未过滤结果，UI 必须说明。 */
+        val tagFilterRelaxed: Boolean = false,
     )
 
     /**
@@ -779,17 +782,19 @@ class ComicSourceManager private constructor(private val context: Context) {
                         }
                         var finalRes = res
                         // JS 源失败或为空时，回退到原生实现
-                        if ((finalRes.isFailure || finalRes.getOrDefault(emptyList()).isEmpty())) {
+                        if ((finalRes.isFailure || finalRes.getOrNull()?.comics.isNullOrEmpty())) {
                             val fallback = builtinSources[source.key]
                             if (fallback != null && fallback !== source) {
                                 val nativeRes = runCatching { fallback.search(keyword, page) }.getOrNull()
-                                if (nativeRes != null && nativeRes.isSuccess && nativeRes.getOrDefault(emptyList()).isNotEmpty()) {
+                                if (nativeRes != null && nativeRes.isSuccess &&
+                                    !nativeRes.getOrNull()?.comics.isNullOrEmpty()
+                                ) {
                                     finalRes = nativeRes
                                 }
                             }
                         }
                         if (finalRes.isSuccess) {
-                            SourceSearchResult(source.key, source.name, finalRes.getOrDefault(emptyList()))
+                            SourceSearchResult(source.key, source.name, finalRes.getOrNull()?.comics.orEmpty())
                         } else {
                             SourceSearchResult(
                                 source.key, source.name, emptyList(),
@@ -807,24 +812,33 @@ class ComicSourceManager private constructor(private val context: Context) {
         }
     }
 
-    suspend fun search(sourceKey: String, keyword: String, page: Int = 1, options: List<String?>? = null): Result<List<Comic>> =
+    /**
+     * 一页搜索结果。
+     *
+     * `sourceKey == "all"` 时**故意不合并 maxPage** —— 每个源各有自己的页数，
+     * 加起来既不是"总页数"也不是"总条数"，只会变成一个看起来对其实是假的数。
+     * 聚合视图因此显示「总数未知」。
+     */
+    suspend fun search(sourceKey: String, keyword: String, page: Int = 1, options: List<String?>? = null): Result<SearchPage> =
         withContext(Dispatchers.IO) {
             if (sourceKey == "all") {
                 val results = searchTargets().map { source ->
                     async {
-                        source.search(keyword, page, options).getOrDefault(emptyList())
+                        source.search(keyword, page, options).getOrNull()?.comics.orEmpty()
                     }
                 }.awaitAll().flatten()
-                Result.success(results)
+                Result.success(SearchPage(results, null))
             } else {
                 val source = getSourceOrFallback(sourceKey)
                 ?: return@withContext Result.failure(Exception("未找到漫画源: $sourceKey"))
                 var res = source.search(keyword, page, options)
-                if (res.isFailure || res.getOrDefault(emptyList()).isEmpty()) {
+                if (res.isFailure || res.getOrNull()?.comics.isNullOrEmpty()) {
                     val fallback = getSourceOrFallback(sourceKey)
                     if (fallback != null && fallback !== source) {
                         val nativeRes = runCatching { fallback.search(keyword, page) }.getOrNull()
-                        if (nativeRes != null && nativeRes.isSuccess && nativeRes.getOrDefault(emptyList()).isNotEmpty()) {
+                        if (nativeRes != null && nativeRes.isSuccess &&
+                            !nativeRes.getOrNull()?.comics.isNullOrEmpty()
+                        ) {
                             res = nativeRes
                         }
                     }

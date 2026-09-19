@@ -149,6 +149,30 @@ class TagTranslationManager private constructor(private val context: Context) {
     }
 
     /**
+     * 取若干命名空间的「英文键 → 中文译名」词条，**按传入顺序**拼接，返回的键已去掉 `"ns:"` 前缀。
+     *
+     * 为什么是函数而不是直接把 map 交出去：`LangDict.scoped` 是 HashMap（无序），而题材归一化
+     * 需要一个**确定的先后顺序** —— 同一英文键在不同命名空间下译法可能不同（实测 403 条歧义），
+     * 谁在前决定了最终规范名。所以顺序由调用方给，这里只负责过滤 + 去前缀。
+     *
+     * 字典是异步加载的（见 [init]）：未就绪时返回空表，调用方据此退化。
+     */
+    fun topicEntries(
+        namespaces: List<String>,
+        language: String = LANGUAGE_SIMPLIFIED,
+    ): List<Pair<String, String>> {
+        val scoped = dicts[language]?.scoped ?: return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        for (namespace in namespaces) {
+            val prefix = namespace.lowercase() + ":"
+            for ((key, value) in scoped) {
+                if (key.startsWith(prefix)) out.add(key.substring(prefix.length) to value)
+            }
+        }
+        return out
+    }
+
+    /**
      * 翻译单标签。如果带命名空间（如 "parody:touhou project"），优先按命名空间检索
      */
     fun translate(tag: String, namespace: String? = null): String {
@@ -163,9 +187,13 @@ class TagTranslationManager private constructor(private val context: Context) {
 
     /**
      * 获取命名空间中文展示名 (如 "female" -> "女性")
+     *
+     * 两级：先查字典 rows（EhTag 的 12 个命名空间），未命中再查源原生键兜底表，
+     * 都没有才原样返回 —— 宁可不译也不臆造一个错的组名。
      */
     fun getNamespaceName(namespace: String): String {
-        return namespaceMap[namespace.lowercase()] ?: namespace
+        val lower = namespace.lowercase()
+        return namespaceMap[lower] ?: sourceNamespaceLabel(lower) ?: namespace
     }
 
     /**
@@ -199,3 +227,43 @@ class TagTranslationManager private constructor(private val context: Context) {
         }
     }
 }
+
+/**
+ * 源原生命名空间键的中文兜底表（键一律小写；`tags.json` 的 rows 优先，未命中才查这里）。
+ *
+ * 为什么需要：字典 rows 只覆盖 EhTag 那 12 个命名空间，而多数中文源写的是自己造的键
+ * （哔咔的 `Chinese Team`、禁漫的 `Work`/`View`…），于是详情页在中文界面里裸显
+ * `Author:` / `Categories:`，读起来像没加载完。
+ *
+ * 表项**全部来自 `app/src/main/assets/sources` 下各 .js 源里实际写出的键**，不是推测：
+ * jm.js（Author/Tag/Work/Actor/View）、picacg.js（Author/Chinese Team/Categories/Tags）、
+ * manga_dex.js（Status/Authors/Artists/Tags）、lanraragi.js（Tags/Pages/Extension）、
+ * nhentai.js（Categories/Tags）、shonen_jump_plus.js（Update）。
+ * goda/mh18/hcomic 直接写中文键，走原样返回即可。
+ *
+ * 刻意**不**走 `JsComicSource.translate()`：那份字典服务的是探索页分类名
+ * （见 venera-tag-multilang-plan.md §1.3「与标签无关，别混用」），且从 UI 取源实例要碰
+ * Source / ViewModel 两个保护域。这里只是组名显示，点击检索仍携带源生原词，请求不变。
+ */
+private val SOURCE_NAMESPACE_LABELS = mapOf(
+    "author" to "作者",
+    "authors" to "作者",
+    "artists" to "艺术家",
+    "chinese team" to "汉化组",
+    "tag" to "标签",
+    "tags" to "标签",
+    "category" to "分类",
+    "categories" to "分类",
+    "work" to "原作",
+    "actor" to "出演",
+    "status" to "状态",
+    "update" to "更新",
+    "view" to "浏览",
+    "pages" to "页数",
+    "extension" to "扩展",
+)
+
+/** 源原生命名空间键 → 中文组名；不在表内返回 null。 */
+internal fun sourceNamespaceLabel(namespace: String): String? =
+    SOURCE_NAMESPACE_LABELS[namespace.lowercase().trim()]
+
