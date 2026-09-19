@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.feature.FavoriteSortOrder
 
 @Composable
 fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
@@ -17,6 +18,7 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val quickFavorite by prefs.quickFavorite.collectAsState()
     val localFirst by prefs.localFavoritesFirst.collectAsState()
     val moveAfterRead by prefs.moveFavoriteAfterRead.collectAsState()
+    val favoriteSort by prefs.favoriteSortOrder.collectAsState()
     // Empty folder names are rejected/renamed by the manager, so "" is a safe None key.
     val quickOptions = remember(folders) {
         listOf("" to "未设置") + folders.map { it to it }
@@ -49,6 +51,17 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             )
             UnsupportedSetting("删除所有不可用的本地收藏条目", "尚无不可用条目判定与清理方法；不会以清空全部收藏代替。")
             UnsupportedSetting("点击收藏时", "当前点击进入详情页，尚无可持久化并生效的直接阅读选项。")
+        }
+        SettingsGroup("收藏列表") {
+            // 偏好早已真实生效（FavoritesViewModel 读写），但此前只能在收藏页顶栏改，
+            // 设置树里没有行 —— 这里补的是入口，不是新能力，两处共用同一个键。
+            SettingsSelect(
+                title = "收藏夹排序",
+                value = favoriteSort,
+                options = FavoriteSortOrder.entries.map { it.name to it.label },
+                onSelected = prefs::setFavoriteSortOrder,
+                summary = "与收藏页顶栏的排序共用同一偏好，任一处修改即同步。",
+            )
         }
     }
 }

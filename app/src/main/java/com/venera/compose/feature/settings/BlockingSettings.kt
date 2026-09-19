@@ -22,11 +22,19 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onG
     val rules by guard.rules.collectAsState()
     SettingsPage("屏蔽与过滤", onBack) {
         SettingsGroup("隐私") {
-            SettingsToggle("不允许成人内容", mode != "OFF", { guard.setNsfwMaskMode(if (it) "BLUR" else "OFF") },
-                summary = "当前：" + when (mode) { "BLUR" -> "模糊封面"; "HIDE" -> "隐藏条目"; else -> "未启用" } +
-                    "。当前仅依据用户规则，不具备原版源级成人分级判定。")
+            // 原来是二态 toggle：当前为 HIDE 时关一下再开会被静默改写成 BLUR，且 HIDE 只能绕到
+            // 守卫页才选得到。改成三态直选，模式集合与 ContentGuardManager 判定链一致。
+            SettingsSelect(
+                "成人内容处理", mode,
+                listOf("OFF" to "不处理", "BLUR" to "模糊封面", "HIDE" to "隐藏条目"),
+                { guard.setNsfwMaskMode(it) },
+                summary = "命中规则后如何处理。原版的「点击后揭示模糊」尚未实现；" +
+                    "隐藏条目仅在支持逐源判定的列表页完全生效。",
+            )
             UnsupportedSetting("屏幕防窥", "尚无持久化安全窗口开关，无法保证重启后禁止截图与任务缩略图")
-            UnsupportedSetting("源分级", "尚无逐源分级预设、判定来源与用户覆盖存储")
+            // 逐源预设其实已经生效（assets/source_content_warning.json，33 源），
+            // 原占位文案说"尚无预设"与实现不符；真正缺的是逐源用户覆盖与选择 UI。
+            UnsupportedSetting("源分级", "逐源预设已生效（33 源 safe/mixed/nsfw），缺的是逐源用户覆盖存储与选择界面")
         }
         listOf("TAG" to "标签", "AUTHOR" to "画师", "COMIC_ID" to "作品").forEach { (type, title) ->
             SettingsGroup(title) {
@@ -48,6 +56,7 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
     val rules by manager.rules.collectAsState()
     val scope = rememberCoroutineScope()
     var input by rememberSaveable { mutableStateOf("") }
+    var regexMode by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Long?>(null) }
@@ -61,18 +70,27 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                 else -> "当前按标题关键词包含匹配，不区分大小写。"
             })
             Column(Modifier.padding(16.dp)) {
+                // 守卫页早就有正则开关（ContentGuardScreen），而这里恒按字面添加，
+                // 两页能力不一致；addRule 本身已支持 isRegex，这里只是把入口补上。
+                SettingsToggle(
+                    "按正则匹配", regexMode, { regexMode = it; error = null },
+                    summary = "关闭＝按字面包含匹配；开启＝按正则匹配（与完整内容守卫页一致）",
+                )
                 OutlinedTextField(input, { input = it; error = null }, label = { Text("添加屏蔽项") },
                     isError = error != null, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !busy)
                 if (error != null) Text(error!!)
                 TextButton(enabled = !busy && input.isNotBlank(), onClick = {
                     val pattern = input.trim()
-                    if (rules.any { it.type == type && it.pattern.equals(pattern, true) }) {
+                    if (regexMode && runCatching { Regex(pattern) }.isFailure) {
+                        // 正则在写库前校验：坏模式会静默永不命中，比报错更难查。
+                        error = "正则表达式无法编译"
+                    } else if (rules.any { it.type == type && it.pattern.equals(pattern, true) }) {
                         error = "该屏蔽项已经存在"
                     } else {
                         busy = true
                         scope.launch {
                             try {
-                                if (manager.addRule(type, pattern) >= 0) input = "" else error = "保存失败，请重试"
+                                if (manager.addRule(type, pattern, regexMode) >= 0) input = "" else error = "保存失败，请重试"
                             } finally { busy = false }
                         }
                     }
