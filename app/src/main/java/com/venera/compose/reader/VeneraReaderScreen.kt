@@ -253,6 +253,7 @@ private fun ReaderSessionContent(
                     comicId = session.comicId,
                     comicTitle = session.comicTitle,
                     sourceName = session.sourceName,
+                    tags = session.tags,
                     chapterTitle = currentChapter.title,
                     pagesRead = maxPageReached,
                     durationSeconds = durationSec
@@ -1480,7 +1481,7 @@ private fun ReaderSessionContent(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
+                        ReaderWavyIndicator(modifier = Modifier.size(48.dp))
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(text = "正在载入章节画质...", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.body)
                     }
@@ -1612,11 +1613,7 @@ private fun ReaderSinglePageItem(
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(
-                                    color = MiuixTheme.colorScheme.primary,
-                                    modifier = Modifier.size(32.dp),
-                                    strokeWidth = 3.dp
-                                )
+                                ReaderWavyIndicator()
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "加载中 (${index + 1}/$total)...",
@@ -1653,11 +1650,7 @@ private fun ReaderSinglePageItem(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(
-                                        color = MiuixTheme.colorScheme.primary,
-                                        modifier = Modifier.size(32.dp),
-                                        strokeWidth = 3.dp
-                                    )
+                                    ReaderWavyIndicator()
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
                                         text = "加载中 (${index + 1}/$total)...",
@@ -1691,11 +1684,7 @@ private fun ReaderSinglePageItem(
                             .background(StatusColors.BadgeSurface),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp),
-                            strokeWidth = 3.dp
-                        )
+                        ReaderWavyIndicator()
                     }
                 }
             }
@@ -1713,11 +1702,7 @@ private fun ReaderSinglePageItem(
                                 .background(StatusColors.BadgeSurface),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                color = MiuixTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp),
-                                strokeWidth = 3.dp
-                            )
+                            ReaderWavyIndicator()
                         }
                     },
                     error = {
@@ -1816,11 +1801,7 @@ private fun ReaderTelephotoPageItem(
                         )
                     }
                     else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            color = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp),
-                            strokeWidth = 3.dp
-                        )
+                        ReaderWavyIndicator()
                     }
                 }
             }
@@ -2008,4 +1989,20 @@ private fun shareCurrentImage(
             }
         }
     }
+}
+
+/**
+ * 阅读器加载占位的波浪圆环（M3 Expressive）。
+ *
+ * 收敛成一处而不是 6 份重复调用：阅读器所有加载态都压在 [StatusColors.BadgeSurface]
+ * 这块固定深色底板上，轨道色必须是浅色半透，散着写迟早有一份配错。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderWavyIndicator(modifier: Modifier = Modifier.size(32.dp)) {
+    CircularWavyProgressIndicator(
+        modifier = modifier,
+        color = MiuixTheme.colorScheme.primary,
+        trackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.22f),
+    )
 }

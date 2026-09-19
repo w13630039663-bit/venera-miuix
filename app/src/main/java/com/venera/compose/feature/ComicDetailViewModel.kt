@@ -806,6 +806,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                             sourceName = comic.sourceName,
                             sourceKey = key,
                             allChapters = allChapters,
+                            tags = comic.tags,
                             useOnImageLoad = pagesData?.useOnImageLoad == true,
                             initialPageIndex = initialPageIndex
                         ),

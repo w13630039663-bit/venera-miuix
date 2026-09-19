@@ -104,6 +104,12 @@ data class ReaderSession(
     val coverUrl: String,
     val sourceName: String = "",
     val sourceKey: String = "",
+    /**
+     * 源生标签原值（`namespace:tag`）。阅读器退出时随阅读会话一起落进
+     * `reading_stats.tags`，供统计页做题材归一 —— 只有这里能拿到「读的是哪本、带什么标签」，
+     * 所以标签必须穿过会话模型；详情页另写一张表会造出两处真相。
+     */
+    val tags: List<String> = emptyList(),
     val chapters: List<ReaderChapter>,
     val initialChapterIndex: Int = 0,
     val initialPageIndex: Int = 0
@@ -132,6 +138,7 @@ object ReaderSessionFactory {
         sourceName: String = "",
         sourceKey: String = "",
         allChapters: List<Pair<String, String>>? = null,
+        tags: List<String> = emptyList(),
         useOnImageLoad: Boolean = false
     ): ReaderSession {
         val mappedPages = pages.mapIndexed { idx, urlOrKey ->
@@ -174,6 +181,7 @@ object ReaderSessionFactory {
             coverUrl = coverUrl,
             sourceName = sourceName,
             sourceKey = sourceKey,
+            tags = tags,
             chapters = chaptersList,
             initialChapterIndex = curIdx,
             initialPageIndex = initialPageIndex
