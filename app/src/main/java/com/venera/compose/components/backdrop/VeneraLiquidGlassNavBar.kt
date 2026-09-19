@@ -81,11 +81,14 @@ private val HorizontalPadding = 4.dp
 //   refractionAmount ∈ [0, size.minDimension]
 // 官方《Glass Bottom Sheet》外壳示范值：blur 4dp + lens(24dp, 48dp, depthEffect = true)。
 //
-// 之前用 blur 8dp + lens(24,24) 且不开 depthEffect：模糊过重把背景洗成灰色，
-// 折射量又只有高度的一半 —— 于是只剩「毛」没有「玻璃」。这里按官方示范重调。
-private val ShellBlurRadius = 4.dp
+// 按官方 catalog 原值：blur 8dp + lens(24dp, 24dp)，且**不开 depthEffect**。
+//
+// 曾尝试过 blur 4dp + lens(24dp, 48dp, depthEffect = true)：折射量取到高度 2 倍再叠深度效果，
+// 实际观感折射/形变过强（用户反馈「反射效果有点过了」）。回到官方值，
+// 折射量 = 高度的一半，玻璃感来自「vibrancy ⇒ blur ⇒ lens」的顺序而非加码折射。
+private val ShellBlurRadius = 8.dp
 private val ShellRefractionHeight = 24.dp
-private val ShellRefractionAmount = 48.dp
+private val ShellRefractionAmount = 24.dp
 
 // 指示器药丸：官方数值 lens(10dp, 14dp, dispersion)，且**乘 pressProgress**。
 // 静止时折射为 0（干净），按下时才出现折射 + 色散。
@@ -233,15 +236,12 @@ fun VeneraLiquidGlassNavBar(
                     shape = { Capsule() },
                     effects = {
                         // 官方《Backdrop effects》：效果顺序必须是 color filter ⇒ blur ⇒ lens。
-                        // 官方《Glass Bottom Sheet》外壳用的是 lens(24dp, 48dp, depthEffect=true) —— 
-                        // 折射量取高度的 2 倍并开启 depthEffect，玻璃才有「鼓起/放大镜」的液态感；
-                        // 之前写成 24dp/24dp 且不开 depthEffect，所以看着又平又糊。
+                        // 外壳取官方 catalog 原值：vibrancy + blur(8dp) + lens(24dp, 24dp)，不开 depthEffect。
                         vibrancy()
                         blur(ShellBlurRadius.toPx())
                         lens(
                             ShellRefractionHeight.toPx(),
                             ShellRefractionAmount.toPx(),
-                            depthEffect = true,
                         )
                     },
                     layerBlock = {

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -58,6 +59,10 @@ fun RowScope.VeneraLiquidNavTab(
     Column(
         modifier = modifier
             .weight(1f)
+            // 对齐官方 LiquidBottomTab：撑满 56dp 内容层高度后再整体居中，
+            // 缺了 fillMaxHeight 时 Column 只有内容高度、垂直居中基准不牢，
+            // 图标会相对药丸中心偏上（尤其按下放大时更明显）。
+            .fillMaxHeight()
             .selectable(
                 selected = selected,
                 role = Role.Tab,
@@ -70,7 +75,9 @@ fun RowScope.VeneraLiquidNavTab(
                 scaleY = tabScale
             },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        // 官方用 spacedBy(2.dp, CenterVertically) 而非 Arrangement.Center + 手写 Spacer：
+        // 排版由 Column 统一负责，图标与标签作为整体垂直居中。
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         Icon(
             imageVector = if (selected) tab.filledIcon else tab.outlinedIcon,
@@ -78,7 +85,6 @@ fun RowScope.VeneraLiquidNavTab(
             tint = contentColor,
             modifier = Modifier.size(if (selected) 23.dp else 21.dp)
         )
-        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = tab.title,
             fontSize = 10.sp,
