@@ -50,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.components.venera.VeneraCard
@@ -135,6 +136,14 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 is ReaderEvent.Failed ->
                     Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    // 「默认倒序排列章节」：偏好只作进入详情页时的初值，用户在本页的手动切换优先，
+    // 因此只在首次组合应用一次，不订阅后续偏好变化。
+    LaunchedEffect(Unit) {
+        if (VeneraPreferences.getInstance(context).reverseChapterOrder.value) {
+            viewModel.setReversed(true)
         }
     }
 

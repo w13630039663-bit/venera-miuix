@@ -59,6 +59,39 @@ class VeneraPreferences private constructor(context: Context) {
     private val _secureScreen = MutableStateFlow(prefs.getBoolean(KEY_SECURE_SCREEN, false))
     val secureScreen: StateFlow<Boolean> = _secureScreen.asStateFlow()
 
+    // 审计后从灰行转正的开关（见 settings-audit-2026-09.md §9）
+    /** 翻页前额外预加载的页数。原为编译期常量 5。 */
+    private val _preloadImageCount = MutableStateFlow(prefs.getInt(KEY_PRELOAD_COUNT, 5))
+    val preloadImageCount: StateFlow<Int> = _preloadImageCount.asStateFlow()
+
+    /** 反转点击翻页的左右方向（左利手友好）。 */
+    private val _reverseTapDirection = MutableStateFlow(prefs.getBoolean(KEY_REVERSE_TAP, false))
+    val reverseTapDirection: StateFlow<Boolean> = _reverseTapDirection.asStateFlow()
+
+    /** 双击图片切换缩放。telephoto 的 ZoomableAsyncImage 已在用，这里只控制该手势。 */
+    private val _doubleTapZoom = MutableStateFlow(prefs.getBoolean(KEY_DOUBLE_TAP_ZOOM, true))
+    val doubleTapZoom: StateFlow<Boolean> = _doubleTapZoom.asStateFlow()
+
+    /** 进入搜索页时预选的源；空串表示"不预设，保持会话内选择"。 */
+    private val _defaultSearchTarget = MutableStateFlow(prefs.getString(KEY_DEFAULT_SEARCH_TARGET, "") ?: "")
+    val defaultSearchTarget: StateFlow<String> = _defaultSearchTarget.asStateFlow()
+
+    /** 启动后停留的主 Tab（VeneraNavTab 名）；默认首页。 */
+    private val _startPage = MutableStateFlow(prefs.getString(KEY_START_PAGE, "HOME") ?: "HOME")
+    val startPage: StateFlow<String> = _startPage.asStateFlow()
+
+    /** 章节列表默认倒序（新章在前）。原为详情页会话内状态。 */
+    private val _reverseChapterOrder = MutableStateFlow(prefs.getBoolean(KEY_REVERSE_CHAPTERS, false))
+    val reverseChapterOrder: StateFlow<Boolean> = _reverseChapterOrder.asStateFlow()
+
+    /** 下载并发数。DownloadManager 已是 Semaphore 队列，只差这个参数入口。 */
+    private val _downloadThreads = MutableStateFlow(prefs.getInt(KEY_DOWNLOAD_THREADS, 2))
+    val downloadThreads: StateFlow<Int> = _downloadThreads.asStateFlow()
+
+    /** 网络响应缓存上限（MB）。OkHttp Cache.maxSize 运行时可改。 */
+    private val _httpCacheMaxMb = MutableStateFlow(prefs.getInt(KEY_HTTP_CACHE_MAX_MB, 100))
+    val httpCacheMaxMb: StateFlow<Int> = _httpCacheMaxMb.asStateFlow()
+
     // 外观与主题
     private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -215,6 +248,49 @@ class VeneraPreferences private constructor(context: Context) {
         _secureScreen.value = enabled
     }
 
+    fun setPreloadImageCount(count: Int) {
+        val v = count.coerceIn(0, 20)
+        prefs.edit { putInt(KEY_PRELOAD_COUNT, v) }
+        _preloadImageCount.value = v
+    }
+
+    fun setReverseTapDirection(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_REVERSE_TAP, enabled) }
+        _reverseTapDirection.value = enabled
+    }
+
+    fun setDoubleTapZoom(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_DOUBLE_TAP_ZOOM, enabled) }
+        _doubleTapZoom.value = enabled
+    }
+
+    fun setDefaultSearchTarget(key: String) {
+        prefs.edit { putString(KEY_DEFAULT_SEARCH_TARGET, key) }
+        _defaultSearchTarget.value = key
+    }
+
+    fun setStartPage(tab: String) {
+        prefs.edit { putString(KEY_START_PAGE, tab) }
+        _startPage.value = tab
+    }
+
+    fun setReverseChapterOrder(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_REVERSE_CHAPTERS, enabled) }
+        _reverseChapterOrder.value = enabled
+    }
+
+    fun setDownloadThreads(threads: Int) {
+        val v = threads.coerceIn(1, 16)
+        prefs.edit { putInt(KEY_DOWNLOAD_THREADS, v) }
+        _downloadThreads.value = v
+    }
+
+    fun setHttpCacheMaxMb(mb: Int) {
+        val v = mb.coerceIn(16, 1024)
+        prefs.edit { putInt(KEY_HTTP_CACHE_MAX_MB, v) }
+        _httpCacheMaxMb.value = v
+    }
+
     fun setNewFavoriteAddTo(value: String) {
         prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
         _newFavoriteAddTo.value = value
@@ -272,6 +348,14 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_TAG_TRANSLATION_MODE = "pref_tag_translation_mode"
         private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
         private const val KEY_SECURE_SCREEN = "pref_secure_screen"
+        private const val KEY_PRELOAD_COUNT = "pref_preload_image_count"
+        private const val KEY_REVERSE_TAP = "pref_reverse_tap_direction"
+        private const val KEY_DOUBLE_TAP_ZOOM = "pref_double_tap_zoom"
+        private const val KEY_DEFAULT_SEARCH_TARGET = "pref_default_search_target"
+        private const val KEY_START_PAGE = "pref_start_page"
+        private const val KEY_REVERSE_CHAPTERS = "pref_reverse_chapter_order"
+        private const val KEY_DOWNLOAD_THREADS = "pref_download_threads"
+        private const val KEY_HTTP_CACHE_MAX_MB = "pref_http_cache_max_mb"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"

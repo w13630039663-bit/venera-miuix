@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.ComicChapter
@@ -60,7 +61,9 @@ class DownloadManager private constructor(private val context: Context) {
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
     val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
 
-    private var maxConcurrency = 2
+    // 并发数走偏好（默认 2，1–16）。semaphore 是 lazy 的，因此首次下载时取当时值；
+    // 改完偏好在下一轮下载队列启动时生效，不强行打断进行中的任务。
+    private var maxConcurrency = VeneraPreferences.getInstance(context).downloadThreads.value
     private val semaphore by lazy { Semaphore(maxConcurrency) }
     private val activeJobs = mutableMapOf<String, Job>()
 

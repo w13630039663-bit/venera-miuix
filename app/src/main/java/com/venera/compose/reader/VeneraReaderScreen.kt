@@ -104,13 +104,9 @@ import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * 前瞻预加载页数：当前页之后并发预取多少页。
- *
- * 动态页（源 `onImageLoad`）每页都要跨 WebView 调一次源 JS 并由源发起网络请求，
- * 单页数百毫秒；串行预取会把翻页等待线性叠加，因此这里并发发出。
- */
-private const val PRELOAD_AHEAD_PAGES = 5
+// 前瞻预加载页数已改为偏好 pref_preload_image_count（默认 5）：
+// 动态页每页都要跨 WebView 调一次源 JS 再由源发起网络请求，串行预取会把翻页等待线性叠加，
+// 因此预取循环保持并发（见 preloadPages）。
 
 /**
  * Venera 生产级 Jetpack Compose 工业级漫画阅读器 (S3 升级)
@@ -163,6 +159,7 @@ private fun ReaderSessionContent(
     val keepScreenOn by prefs.keepScreenOn.collectAsState()
     val volumeKeyTurn by prefs.volumeKeyTurn.collectAsState()
     val clickToTurn by prefs.clickToTurn.collectAsState()
+    val reverseTap by prefs.reverseTapDirection.collectAsState()
 
     // 控制浮层显隐
     var isControlsVisible by rememberSaveable { mutableStateOf(false) }
@@ -364,7 +361,7 @@ private fun ReaderSessionContent(
         // 同一页被预取与当前页渲染同时请求时，由 ComicSourceManager 的并发去重兜住，
         // 不会重复解析、也不会重复下载（同一 cacheKey）。
         coroutineScope {
-            for (offset in 1..PRELOAD_AHEAD_PAGES) {
+            for (offset in 1..prefs.preloadImageCount.value) {
                 val nextIdx = currentPageIndex + offset
                 if (nextIdx !in pages.indices) continue
                 val page = pages[nextIdx]
@@ -470,7 +467,7 @@ private fun ReaderSessionContent(
 
     // pointerInput(Unit) must use the latest chapter/page callbacks, not its first composition.
     val onReaderTap by rememberUpdatedState<(Float) -> Unit> { fraction ->
-        when (readerTapAction(fraction, readingMode, clickToTurn, activePanel)) {
+        when (readerTapAction(fraction, readingMode, clickToTurn, activePanel, reverseTap)) {
             ReaderTapAction.TOGGLE_CONTROLS -> {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 isControlsVisible = !isControlsVisible

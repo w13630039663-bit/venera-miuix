@@ -247,3 +247,35 @@
 §2 的 6 处隐形缺口、§3 的其余僵尸键（`comicDisplayMode`、`enableDoH`、`setMoveFavoriteAfterRead`、`autoCropBorders`、`localFavoritesFirst`）**本批未清理**，仍按原计划另行处理。
 
 验证状态：三项 Build QA **BUILD SUCCESSFUL**；单测全通过。**真机未验**，且本批动了阅读器，回归优先级最高：翻页/连续/双页三种模式的滚动、页间距实时变化、夜间滤镜、常亮、音量键与点击翻页、自动巡航启停。
+
+## 10. 第三批：A 类转正 + 灰行形态改造（2026-09-19）
+
+### A 类转正（原「引擎已在、只差一个键」）
+
+| 项 | 新增偏好 | 消费者 |
+|---|---|---|
+| 预加载图片数量 | `pref_preload_image_count`（默认 5，0–20） | `VeneraReaderScreen` 预取循环（原编译期常量 `PRELOAD_AHEAD_PAGES` 已删） |
+| 反转点击翻页方向 | `pref_reverse_tap_direction` | `ReaderInteractionPolicy.readerTapAction(reversed=…)`，与 RTL 镜像可叠加；6 条单测钉死四种组合 |
+| 默认搜索目标 | `pref_default_search_target` | `SearchScreen` 首次进入时 `onSourceSelected` 预选一次，不自动搜索 |
+| 启动页面 | `pref_start_page` | `Navigation.kt` 的 `startDestination`，非法值回落首页 |
+| 默认倒序排列章节 | `pref_reverse_chapter_order` | `ComicDetailScreen` 进页时 `viewModel.setReversed(true)` 一次（会话内手动切换优先） |
+| 下载并发 | `pref_download_threads`（1–16） | `DownloadManager.maxConcurrency` |
+| 网络缓存上限 | `pref_http_cache_max_mb`（16–1024） | `VeneraNetworkClient.buildClient()`，改后 `rebuildClient()` |
+| 网络缓存占用与清理 | — | 新增 `httpCacheSizeBytes()` / `clearHttpCache()`；设置页显示实时占用并可清空 |
+
+### 灰行形态改造
+
+- 新增 `SettingsFutureGroup`：**默认折叠**的「尚未实现」区块，替代原先满屏灰色不可点行。
+- B/C 类未实现项全部迁入折叠区：源分级、分类总开关、评论关键词屏蔽、双击缩放、自动裁剪白边、章节评论默认展开、操作后自动关闭面板、阅读后移动收藏、删除不可用条目、需要身份验证。
+- 代理对话框内的「强制直连」「用户名与密码」**保留原位**：它们属于代理表单的上下文，挪到页面底部折叠区反而找不到。
+- **自动裁剪白边**原先是"看得到、点不动"的禁用开关，按零容忍假开关的原则移入折叠区并说明原因。
+
+### 顶栏一致性
+
+全站下钻页都是「短标题折叠 + 长标题展开」两级（`DownloadScreen.kt:130-131`、`LocalComicScreen.kt:465-466`、设置首页「设置」/「设置与偏好」），而 `SettingsPage` 此前是 `title = largeTitle`，7 个二级页展开态只有一个词、大标题折叠没有视觉变化。现给 `SettingsPage` 增加 `largeTitle` 参数并逐页赋值：外观/外观与主题、阅读/阅读设置、探索/探索与卡片、屏蔽/屏蔽与过滤、收藏/本地收藏、应用/应用与数据、网络/网络与代理。
+
+### 未做（诚实记录）
+
+**双击缩放**：telephoto 0.19 只暴露 `EnabledZoomGestures`（`None / PanOnly / ZoomOnly / ZoomAndPan`）这组粗粒度组合，从 class 文件里看不到"只关双击、保留捏合"的入口。没有确证 API 就不写 —— 用总开关冒充双击开关是假实现。留在折叠区并注明原因。
+
+验证状态：三项 Build QA **BUILD SUCCESSFUL**，单测 **76 项全通过**（新增 6 条点击策略）。**真机未验**；本批动了阅读器与导航起点，回归清单见 §9 末段，另需加验：冷启动落点、进搜索页的源预选、详情页章节初始顺序、下载并发、缓存清理。

@@ -45,13 +45,17 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         "系统默认（不指定应用代理）"
     }
 
-    SettingsPage(title = "网络", onBack = onBack) {
+    val threads by prefs.downloadThreads.collectAsState()
+
+    SettingsPage(title = "网络", onBack = onBack, largeTitle = "网络与代理") {
         SettingsGroup {
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
+            SettingsSlider("下载并发", threads.toFloat(), 1f..16f,
+                { prefs.setDownloadThreads(it.toInt()) }, steps = 14, suffix = " 线程",
+                summary = "下载队列同时拉取的章节数。改完在下一轮队列生效，不打断进行中的任务。")
             // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
             // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
             // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
-            UnsupportedSetting("下载线程", "下载管理器使用固定并发配置，尚未接入原版 1–16 线程的持久化设置。")
         }
         SettingsGroup("现有网络诊断") {
             SettingsAction("重置网络熔断", "清除失败主机的临时熔断记录") {

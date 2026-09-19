@@ -24,7 +24,7 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val appearance by prefs.appearanceStyle.collectAsState()
     val navigationBar by prefs.navigationBarStyle.collectAsState()
     val tagTranslation by prefs.tagTranslationMode.collectAsState()
-    SettingsPage("外观", onBack) {
+    SettingsPage("外观", onBack, largeTitle = "外观与主题") {
         // 对照原版顶部手机模型，直接跟随真实 Miuix 色板。
         Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
             Column(Modifier.size(196.dp, 296.dp).clip(RoundedCornerShape(28.dp))

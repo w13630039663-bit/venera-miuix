@@ -8,13 +8,15 @@ internal fun readerTapAction(
     xFraction: Float,
     mode: ReaderReadingMode,
     clickToTurn: Boolean,
-    panel: ReaderPanel
+    panel: ReaderPanel,
+    /** 左右半屏语义互换（左利手）。与 RTL 的镜像是两回事，二者可叠加。 */
+    reversed: Boolean = false,
 ): ReaderTapAction {
     if (panel != ReaderPanel.NONE) return ReaderTapAction.NONE
     if (!clickToTurn || mode == ReaderReadingMode.VERTICAL_CONTINUOUS ||
         xFraction in 0.25f..0.75f || !xFraction.isFinite()) {
         return ReaderTapAction.TOGGLE_CONTROLS
     }
-    val next = (xFraction > 0.75f) != (mode == ReaderReadingMode.HORIZONTAL_RTL)
-    return if (next) ReaderTapAction.NEXT_PAGE else ReaderTapAction.PREVIOUS_PAGE
+    val rightIsNext = (xFraction > 0.75f) != (mode == ReaderReadingMode.HORIZONTAL_RTL)
+    return if (rightIsNext != reversed) ReaderTapAction.NEXT_PAGE else ReaderTapAction.PREVIOUS_PAGE
 }

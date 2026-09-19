@@ -46,6 +46,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -110,6 +111,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
     var showConditions by remember { mutableStateOf(false) }
 
     val guard = ContentGuardManager.getInstance(LocalContext.current)
+    // 一次性读偏好值（不订阅）：只作进入页面时的源预选，之后交给会话内选择。
+    val defaultSearchTarget = VeneraPreferences.getInstance(LocalContext.current)
+        .defaultSearchTarget.value
     val nsfwMode by guard.nsfwMaskMode.collectAsStateWithLifecycle()
     // 带 Comic 走守卫 LRU 判定（含源级预设）：jm/哔咔等整站源在搜索结果里同样整站打码。
     fun mask(comic: Comic): VeneraCoverMask =
@@ -161,6 +165,16 @@ fun SharedTransitionScope.AndroidSearchScreen(
         }
     }
     LaunchedEffect(ui.selectedSourceKey) { viewModel.loadSearchOptions(ui.selectedSourceKey) }
+    // 「默认搜索目标」：偏好只在首次进入时预选一次源，之后完全交给会话内的选择，
+    // 不订阅后续变化、也不自动发起搜索。
+    LaunchedEffect(Unit) {
+        val target = defaultSearchTarget
+        if (target.isNotBlank()) {
+            viewModel.sourcesFlow.value.find { it.key == target }?.let {
+                viewModel.onSourceSelected(it.key, it.name)
+            }
+        }
+    }
     LaunchedEffect(initialQuery) { if (initialQuery.isNotBlank()) viewModel.search(initialQuery) }
 
     if (showOptions) SearchOptionsSheet(

@@ -23,7 +23,7 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onG
     val secureScreen by prefs.secureScreen.collectAsState()
     val mode by guard.nsfwMaskMode.collectAsState()
     val rules by guard.rules.collectAsState()
-    SettingsPage("屏蔽与过滤", onBack) {
+    SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤") {
         SettingsGroup("隐私") {
             // 原来是二态 toggle：当前为 HIDE 时关一下再开会被静默改写成 BLUR，且 HIDE 只能绕到
             // 守卫页才选得到。改成三态直选，模式集合与 ContentGuardManager 判定链一致。
@@ -40,17 +40,21 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onG
                 summary = "禁止截图、录屏与任务列表缩略图；重启后保持。开启后系统自带的长截屏也会失效。",
             )
             // 逐源预设其实已经生效（assets/source_content_warning.json，33 源），
-            // 原占位文案说"尚无预设"与实现不符；真正缺的是逐源用户覆盖与选择 UI。
-            UnsupportedSetting("源分级", "逐源预设已生效（33 源 safe/mixed/nsfw），缺的是逐源用户覆盖存储与选择界面")
+            // 缺的是逐源用户覆盖与选择 UI —— 移入底部「尚未实现」折叠区，不占主区。
         }
         listOf("TAG" to "标签", "AUTHOR" to "画师", "COMIC_ID" to "作品").forEach { (type, title) ->
             SettingsGroup(title) {
                 SettingsAction(title, "已保存 "+ rules.count { it.type == type } +" 条规则", onClick = { onRules(type) })
-                UnsupportedSetting("启用$title 屏蔽", "规则管理器没有分类总开关；已添加规则持续生效，可进入列表删除撤销")
             }
         }
         SettingsGroup("现有内容守卫") {
             SettingsAction("完整内容守卫", "保留现有分级遮罩模式与规则管理入口", onClick = onGuard)
+        }
+        SettingsFutureGroup {
+            UnsupportedSetting("源分级", "逐源预设已生效（33 源 safe/mixed/nsfw），" +
+                "缺的是逐源用户覆盖存储与选择界面")
+            UnsupportedSetting("分类总开关（标签/画师/作品）", "规则管理器只有单条规则的 isEnabled，" +
+                "没有分类级总开关；已添加规则持续生效，可进入列表逐条删除")
         }
     }
 }
@@ -68,7 +72,7 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Long?>(null) }
     val title = when (type) { "TAG" -> "屏蔽标签"; "AUTHOR" -> "屏蔽画师"; "COMIC_ID" -> "屏蔽作品"; else -> "关键词屏蔽" }
-    SettingsPage(title, onBack) {
+    SettingsPage(title, onBack, largeTitle = title) {
         SettingsGroup {
             SettingsAction("匹配说明", when(type) {
                 "TAG" -> "当前按标签包含匹配，与原版标签精确匹配不同。"

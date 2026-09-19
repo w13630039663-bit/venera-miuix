@@ -71,6 +71,58 @@ internal fun SettingsGroup(title: String? = null, content: @Composable ColumnSco
     Spacer(Modifier.height(tokens.spacing.space4))
 }
 
+/**
+ * 「尚未实现」折叠区。
+ *
+ * 设置页不再拿一排灰色不可点行当 TODO 看板 —— 既占视觉，又让用户误以为可以改。
+ * 未实现项统一收进这个默认折叠的区块；保留/删除判据见 settings-audit-2026-09.md。
+ */
+@Composable
+internal fun SettingsFutureGroup(content: @Composable ColumnScope.() -> Unit) {
+    val tokens = VeneraTokens
+    var open by rememberSaveable { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { open = !open }
+                    .padding(
+                        horizontal = tokens.spacing.rowHorizontal,
+                        vertical = tokens.spacing.space5,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "尚未实现",
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightMedium,
+                        color = tokens.color.textSecondary,
+                    )
+                    Text(
+                        text = if (open) "点击收起" else "点击展开查看缺口清单",
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textTertiary,
+                    )
+                }
+                Text(
+                    text = if (open) "▲" else "▼",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textTertiary,
+                )
+            }
+            if (open) {
+                Column(
+                    Modifier.fillMaxWidth().padding(bottom = tokens.spacing.space2),
+                    content = content,
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(tokens.spacing.space4))
+}
+
 @Composable
 private fun RowScope.SettingLabel(title: String, summary: String?, enabled: Boolean = true) {
     val tokens = VeneraTokens
@@ -222,7 +274,14 @@ internal fun SettingsSlider(
 }
 
 @Composable
-internal fun SettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun SettingsPage(
+    title: String,
+    onBack: () -> Unit,
+    /** 展开态大标题。全站顶栏都是"短标题折叠 + 长标题展开"两级（见 DownloadScreen /
+     *  LocalComicScreen / SettingsHome），缺了它大标题折叠就没有视觉变化。 */
+    largeTitle: String = title,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val tokens = VeneraTokens
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
@@ -249,7 +308,7 @@ internal fun SettingsPage(title: String, onBack: () -> Unit, content: @Composabl
         // 导致二级页顶栏被系统状态栏压住。
         VeneraTopAppBar(
             title = title,
-            largeTitle = title,
+            largeTitle = largeTitle,
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {

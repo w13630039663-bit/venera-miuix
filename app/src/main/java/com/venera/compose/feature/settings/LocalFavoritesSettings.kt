@@ -28,19 +28,17 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         else -> "原收藏夹「$quickFavorite」已不存在，请重新选择"
     }
 
-    SettingsPage(title = "本地收藏", onBack = onBack) {
+    SettingsPage(title = "收藏", onBack = onBack, largeTitle = "本地收藏") {
         // 审计后删掉「在网络收藏前显示本地收藏」：键与 setter 都在，但没有任何消费者
         // （收藏面板顺序是硬编码的），留着就是一个改不动也无效的假开关。
         // 「点击收藏时」一并删除：需要新的行为分支与偏好，不属于补入口。
         SettingsGroup {
-            UnsupportedSetting("操作后自动关闭收藏面板", "尚无对应的持久化设置与自动关闭逻辑。")
             SettingsSelect(
                 title = "新收藏添加到",
                 value = newFavoriteAddTo,
                 options = listOf("start" to "开头", "end" to "末尾"),
                 onSelected = prefs::setNewFavoriteAddTo
             )
-            UnsupportedSetting("阅读后移动收藏", "已保存：" + when (moveAfterRead) { "start" -> "开头"; "end" -> "末尾"; else -> "不移动" } + "；阅读流程尚未调用管理器的移动方法。")
             SettingsSelect(
                 title = "快捷收藏",
                 value = quickFavorite ?: "",
@@ -48,7 +46,6 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 onSelected = { prefs.setQuickFavorite(it.takeIf { name -> name.isNotEmpty() }) },
                 summary = quickSummary
             )
-            UnsupportedSetting("删除所有不可用的本地收藏条目", "尚无不可用条目判定与清理方法；不会以清空全部收藏代替。")
         }
         SettingsGroup("收藏列表") {
             // 偏好早已真实生效（FavoritesViewModel 读写），但此前只能在收藏页顶栏改，
@@ -60,6 +57,13 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 onSelected = prefs::setFavoriteSortOrder,
                 summary = "与收藏页顶栏的排序共用同一偏好，任一处修改即同步。",
             )
+        }
+        SettingsFutureGroup {
+            UnsupportedSetting("操作后自动关闭收藏面板", "尚无对应的持久化设置与自动关闭逻辑。")
+            UnsupportedSetting("阅读后移动收藏", "已保存：" + when (moveAfterRead) {
+                "start" -> "开头"; "end" -> "末尾"; else -> "不移动"
+            } + "；管理器的 onRead() 已实现，但阅读流程尚未调用它。")
+            UnsupportedSetting("删除所有不可用的本地收藏条目", "尚无不可用条目判定与清理方法；不会以清空全部收藏代替。")
         }
     }
 }

@@ -48,9 +48,9 @@ class VeneraNetworkClient private constructor(private val context: Context) {
             // OkHttp 默认会为连接失败做路由重试，这里关闭以免死域名被重复消耗
             .retryOnConnectionFailure(false)
 
-        // 100MB 响应缓存层
+        // 响应缓存层：上限走偏好（默认 100MB），改完由 rebuildClient() 生效。
         val cacheDir = java.io.File(context.cacheDir, "venera_http_cache")
-        builder.cache(okhttp3.Cache(cacheDir, 100L * 1024 * 1024))
+        builder.cache(okhttp3.Cache(cacheDir, prefs.httpCacheMaxMb.value * 1024L * 1024L))
 
         // 代理（支持 HTTP / SOCKS5，S0-6 实装）
         val proxyType = prefs.proxyType.value
@@ -93,6 +93,24 @@ class VeneraNetworkClient private constructor(private val context: Context) {
     /** 在网络偏好变更后调用，使后续请求走新客户端 */
     fun rebuildClient() {
         _okHttpClient = buildClient()
+    }
+
+    /**
+     * HTTP 响应缓存当前占用字节数。
+     *
+     * 只统计网络响应缓存，不含 Coil 图片磁盘缓存与下载目录 —— 设置页的文案必须
+     * 说清这一点，否则"缓存"会被用户理解成应用占用的全部空间。
+     */
+    fun httpCacheSizeBytes(): Long = _okHttpClient.cache?.let { c ->
+        runCatching { c.size() }.getOrDefault(0L)
+    } ?: 0L
+
+    /** 清空 HTTP 响应缓存，返回清理前的字节数（用于提示文案）。 */
+    fun clearHttpCache(): Long {
+        val c = _okHttpClient.cache ?: return 0L
+        val before = runCatching { c.size() }.getOrDefault(0L)
+        runCatching { c.evictAll() }
+        return before
     }
 
     suspend fun get(url: String, headers: Map<String, String>? = null): String = withContext(Dispatchers.IO) {

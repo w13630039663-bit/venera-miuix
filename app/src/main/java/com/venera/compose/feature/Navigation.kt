@@ -162,6 +162,7 @@ fun VeneraComposeApp() {
     val view = LocalView.current
     val prefs = VeneraPreferences.getInstance(LocalContext.current)
     val navigationBarStyle by prefs.navigationBarStyle.collectAsState()
+    val startTab by prefs.startPage.collectAsState()
     // 官方 Backdrop 的 lens 折射用 RuntimeShader，需要 Android 13（TIRAMISU）及以上；
     // 低版本不创建 backdrop / 录制层，直接退回普通悬浮底栏。
     val useLiquidGlass = navigationBarStyle == NavigationBarStyle.LIQUID_GLASS &&
@@ -222,7 +223,10 @@ fun VeneraComposeApp() {
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
-                    startDestination = HomeRoute,
+                    // 「启动页面」偏好：只决定冷启动落在哪个主 Tab，非法值回落首页。
+                    startDestination = routeFor(
+                        runCatching { VeneraNavTab.valueOf(startTab) }.getOrDefault(VeneraNavTab.HOME)
+                    ),
                     modifier = Modifier
                         .fillMaxSize()
                         // 统一契约：顶部不加 padding，让 NavHost 直达屏幕物理顶部 (0,0)，
