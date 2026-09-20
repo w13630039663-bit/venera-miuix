@@ -55,9 +55,14 @@ class JsHttpHandler(private val context: Context) {
             builder.header(k, v)
         }
         if (!hasUa) {
+            // 与官方 js_engine.dart:_http 一致 —— 脚本没写 UA 时注入桌面 webUA
+            //（值取自官方 consts.dart 的 `webUA` 原样）。这条不是风格问题：
+            // wnacg 这类按 UA 分模板的站会据此发「移動版」页面，而规则源的选择器
+            // 全是照桌面模板写的，移动端 UA 下整页选择器一个都命中不了，
+            // 详情加载直接炸成 `Cannot read properties of null (reading 'text')`。
             builder.header(
                 "User-Agent",
-                "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             )
         }
 

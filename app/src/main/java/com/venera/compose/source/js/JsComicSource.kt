@@ -51,6 +51,18 @@ class JsComicSource(
     private val gson = engine.gson
 
     /**
+     * 本进程内由 [getComicDetails] 自己补出来的「占位章节」（comicId + 分隔符 + chapterId）。
+     *
+     * getChapterPages 要靠它区分「源给的章节恰好与漫画同 id」和「端口替源兜底的单章」：
+     * 只有后者才该还原成官方的 `epId = null`。用 id 相等来猜会把前者一起误伤 ——
+     * jm.js 对没有 series 的单本就是这么写的（`chapters.set(id, '第1話')`，id 即漫画 id），
+     * 一旦被当成占位章传 null，请求就变成 `/chapter?id=null`，源抛 `Invalid Data`。
+     */
+    private val placeholderChapters = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun placeholderKey(comicId: String, chapterId: String) = "$comicId#$chapterId"
+
+    /**
      * 源声明的多语言字典（translation['zh_CN'] / translation['zh']），
      * 惰性提取一次：探索 Tab 名 / 分类分区标题经 [translate] 原生中文化。
      */
@@ -507,6 +519,22 @@ class JsComicSource(
                 }
             }
 
+            // 源完全没给 chapters（wnacg 这类「一部作品就是一章」的图库）时，
+            // 补一个单章占位。**不能留空**：详情页没有章节就渲染不出章节目录，
+            // 点预览图开读时 chapterId 也会退化成 "0"，loadEp 拿到的 epId 与源
+            // 期望的语义不符。占位章沿用漫画 id，并在 placeholderChapters 里登记，
+            // 由 getChapterPages 还原成源期望的 `epId = null`。
+            if (chapters.isEmpty()) {
+                chapters.add(
+                    ComicChapter(
+                        id = comicId,
+                        title = title.ifBlank { "全一话" },
+                        order = 0
+                    )
+                )
+                placeholderChapters.add(placeholderKey(comicId, comicId))
+            }
+
             if (chapterGroups.isEmpty() && chapters.isNotEmpty()) {
                 chapterGroups.add(com.venera.compose.source.model.ChapterGroup(name = "默认", chapters = chapters))
             }
@@ -579,11 +607,18 @@ class JsComicSource(
 
     override suspend fun getChapterPages(comicId: String, chapterId: String): Result<ChapterPages> {
         return try {
+            // 只有**端口替源兜底的占位章**才还原成 null（官方对「无章节」的源传的就是
+            // undefined/null）；源自己给的章节原样透传 —— 判据见 placeholderChapters。
+            val epIdLiteral = if (placeholderKey(comicId, chapterId) in placeholderChapters) {
+                "null"
+            } else {
+                gson.toJson(chapterId)
+            }
             val script = """
                 return (async function() {
                     var s = ComicSource.sources['$key'];
                     if (!s || !s.comic || !s.comic.loadEp) throw new Error("loadEp not implemented");
-                    var res = await s.comic.loadEp(${gson.toJson(comicId)}, ${gson.toJson(chapterId)});
+                    var res = await s.comic.loadEp(${gson.toJson(comicId)}, $epIdLiteral);
                     // 官方语义（parser.dart:_parseImageLoadingConfigFunc）：源声明了
                     // comic.onImageLoad 时，loadEp 的每一项都是「图片键」，展示前必须
                     // 经 onImageLoad 解析成真实地址 —— EH 返回页码，其余源多用于改写/加签。
