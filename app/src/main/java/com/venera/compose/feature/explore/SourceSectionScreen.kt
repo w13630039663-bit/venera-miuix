@@ -23,7 +23,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -37,11 +37,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicTileDetailed
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
@@ -105,14 +109,17 @@ fun SourceSectionScreen(
         route.unifiedTag?.let { name -> UnifiedTag.entries.firstOrNull { it.name == name } }
     }
 
-    var comics by remember { mutableStateOf<List<Comic>>(emptyList()) }
-    var options by remember { mutableStateOf<List<CategoryComicsOption>>(emptyList()) }
-    var selectedOptions by remember { mutableStateOf<List<String>>(emptyList()) }
-    var page by remember { mutableIntStateOf(1) }
-    var maxPage by remember { mutableStateOf<Int?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var reloadTick by remember { mutableIntStateOf(0) }
+    // 状态放 ViewModel：进详情会销毁本条目组合，remember 的字段全部重建 → 每次返回都
+    // 重拉第 1 页并回到默认排序。理由与字段说明见 SourceSectionViewModel。
+    val vm: SourceSectionViewModel = viewModel()
+    var comics by vm::comics
+    var options by vm::options
+    var selectedOptions by vm::selectedOptions
+    var page by vm::page
+    var maxPage by vm::maxPage
+    var isLoading by vm::isLoading
+    var error by vm::error
+    var reloadTick by vm::reloadTick
 
     // 通用标签入口 -> 按关键词搜索；原生入口 -> 走分类接口。
     fun load(targetPage: Int) {
@@ -151,8 +158,16 @@ fun SourceSectionScreen(
 
     // 初始化：读取该分类的源自定义筛选项。
     LaunchedEffect(route.sourceKey, route.category, route.param, reloadTick) {
+        // 从详情页返回时本 effect 会随组合重建再跑一次。没按过刷新、筛选项也没变、且手里
+        // 已经有数据，就直接返回 —— 否则每次返回都会重拉第 1 页并回到默认排序。
+        if (vm.loadedForTick == reloadTick && vm.loadedOptions == selectedOptions && comics.isNotEmpty()) {
+            isLoading = false
+            return@LaunchedEffect
+        }
         if (unifiedTag != null) {
             options = emptyList()
+            vm.loadedForTick = reloadTick
+            vm.loadedOptions = selectedOptions
             load(1)
             return@LaunchedEffect
         }
@@ -161,6 +176,8 @@ fun SourceSectionScreen(
         options = opts
         // CategoryComicsOption 的默认值就是 options 的第一项（协议约定，无单独 defaultKey 字段）。
         selectedOptions = opts.map { it.options.keys.firstOrNull().orEmpty() }
+        vm.loadedForTick = reloadTick
+        vm.loadedOptions = selectedOptions
         load(1)
     }
 
@@ -174,8 +191,13 @@ fun SourceSectionScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp）
-    val baseTopPadding = statusBarTop + 104.dp
+    // 顶栏的 bottomContent（源自定义筛选项那排药丸）是**浮层**，不参与列表排版；
+    // 只按 104.dp 留白的话，有排序项的源（picacg 那 4 个药丸）会把第一行卡片压在药丸底下。
+    // 所以量出浮层实际高度并计入内容顶部留白。
+    var chipsHeight by remember { mutableStateOf(0.dp) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp）+ 顶栏底部浮层高度
+    val baseTopPadding = statusBarTop + 104.dp + chipsHeight
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
@@ -308,6 +330,8 @@ fun SourceSectionScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // 挂在 padding 之前，量到的高度才包含自身上下留白
+                            .onSizeChanged { chipsHeight = with(density) { it.height.toDp() } }
                             .padding(horizontal = VeneraTokens.spacing.rowHorizontal, vertical = VeneraTokens.spacing.space2),
                         verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space2),
                     ) {
@@ -352,7 +376,12 @@ fun SourceSectionScreen(
 @Composable
 private fun CenteredLoader() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = VeneraTokens.color.primary)
+        // 全站加载指示统一走 M3 Expressive 波浪环（与收藏/搜索/探索一级页同一口径）。
+        CircularWavyProgressIndicator(
+            modifier = Modifier.size(VeneraTokens.spacing.loaderInline),
+            color = VeneraTokens.color.primary,
+            trackColor = VeneraTokens.color.surfaceVariant,
+        )
     }
 }
 
@@ -403,6 +432,12 @@ private fun SectionDetailedCard(
         likesCount = comic.likesCount,
         badge = sourceName,
         coverMaskState = maskState,
+        // key 用交给详情页 ComicItem 的那个 sourceName（本页传的是源标题），两端必然同串；
+        // 打码命中不飞。
+        coverModifier = Modifier.coverSharedElement(
+            key = ComicSharedTransition.coverKey(sourceName, comic.id),
+            allowFly = maskState == "VISIBLE",
+        ),
         onClick = {
             onSelectComic(
                 ComicItem(
@@ -456,6 +491,10 @@ private fun SectionComicCard(
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,
+            modifier = Modifier.coverSharedElement(
+                key = ComicSharedTransition.coverKey(sourceName, comic.id),
+                allowFly = maskState == "VISIBLE",
+            ),
             mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
         ) {
             VeneraSourceBadge(name = sourceName)

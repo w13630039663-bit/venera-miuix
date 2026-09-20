@@ -22,7 +22,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -37,10 +37,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.style.TextOverflow
 import com.venera.compose.components.ComicLayoutToggleButton
+import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicTileDetailed
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
@@ -117,34 +121,43 @@ fun UnifiedExploreScreen(
     val guardManager = remember { ContentGuardManager.getInstance(context) }
     val guardRules by guardManager.rules.collectAsState()
     val nsfwMaskMode by guardManager.nsfwMaskMode.collectAsState()
-    val state = remember { ExploreUiState() }
+    // 页面状态整体搬到 ViewModel：进详情会把本条目组合销毁，remember 的字段会全部重建，
+    // 于是每次返回都重拉源列表 + 跳回第一个源的默认探索方式（详见 ExploreViewModel）。
+    val vm: ExploreViewModel = viewModel()
+    val state = vm.ui
     // R2：全局布局偏好唯一真源（与 Favorites / NetworkFavorites / History 一致）。
     val displayMode = rememberComicListDisplayMode()
 
-    var explorations by remember { mutableStateOf<List<SourceExploration>>(emptyList()) }
-    var isLoadingSources by remember { mutableStateOf(true) }
-    var sourceError by remember { mutableStateOf<String?>(null) }
-    var refreshTick by rememberSaveable { mutableIntStateOf(0) }
+    var explorations by vm::explorations
+    var isLoadingSources by vm::isLoadingSources
+    var sourceError by vm::sourceError
+    var refreshTick by vm::refreshTick
 
-    var content by remember { mutableStateOf<ExploreContent>(ExploreContent.Empty) }
-    var isLoadingContent by remember { mutableStateOf(false) }
-    var contentError by remember { mutableStateOf<String?>(null) }
+    var content by vm::content
+    var isLoadingContent by vm::isLoadingContent
+    var contentError by vm::contentError
 
     // 探索方式切换计数器：让下面的 LaunchedEffect 重新执行（不重载源列表）。
-    var modeTick by remember { mutableIntStateOf(0) }
+    var modeTick by vm::modeTick
 
     // ── R1 分页状态 ──
-    var currentPage by remember { mutableIntStateOf(1) }
-    var hasMore by remember { mutableStateOf(false) }
-    var isLoadingMore by remember { mutableStateOf(false) }
-    var loadMoreError by remember { mutableStateOf<String?>(null) }
+    var currentPage by vm::currentPage
+    var hasMore by vm::hasMore
+    var isLoadingMore by vm::isLoadingMore
+    var loadMoreError by vm::loadMoreError
     /** 跨页累计的原始分区（未过滤），分页追加与去重的唯一数据源。 */
-    var accumulatedParts by remember { mutableStateOf<List<ExplorePagePart>>(emptyList()) }
+    var accumulatedParts by vm::accumulatedParts
     /** 展示形态：true = 按分区渲染（singlePageWithMultiPart），false = 平铺列表。 */
-    var showAsSections by remember { mutableStateOf(false) }
+    var showAsSections by vm::showAsSections
 
     // ── 加载每个源的探索能力 ──
     LaunchedEffect(refreshTick) {
+        // 从详情页返回时本 effect 会随组合重建再跑一次。手动刷新没发生（refreshTick 未变）
+        // 且这一轮已经拉过，就直接返回 —— 否则「每次返回都自动刷新」就是这么来的。
+        if (vm.sourcesLoadedForTick == refreshTick && explorations.isNotEmpty()) {
+            isLoadingSources = false
+            return@LaunchedEffect
+        }
         isLoadingSources = true
         sourceError = null
         try {
@@ -152,6 +165,7 @@ fun UnifiedExploreScreen(
             explorations = list
             val kept = state.selectedSourceKey?.takeIf { key -> list.any { it.sourceKey == key } }
             state.selectedSourceKey = kept ?: list.firstOrNull()?.sourceKey
+            vm.sourcesLoadedForTick = refreshTick
         } catch (e: Exception) {
             sourceError = e.message ?: "加载漫画源失败"
         } finally {
@@ -161,14 +175,39 @@ fun UnifiedExploreScreen(
 
     val currentSource = explorations.firstOrNull { it.sourceKey == state.selectedSourceKey }
 
-    // ── 切换源 / 切换探索方式 -> 重新拉第 1 页 ──
-    LaunchedEffect(currentSource?.sourceKey, currentSource?.modes, refreshTick, modeTick) {
+    /**
+     * 拉某一页的原始分区 —— 探索内容与「通用标签页内筛选」共用同一条渲染管线。
+     *
+     * 选了通用标签时走该源的**搜索**接口，结果包成单个无标题分区喂给现有渲染：
+     * 守卫过滤、单双列、分页、封面共享元素 key 全部复用，不再另起一套列表。
+     */
+    suspend fun fetchPageParts(
+        src: SourceExploration,
+        mode: ExploreMode,
+        targetPage: Int,
+    ): List<ExplorePagePart> {
+        val filter = vm.unifiedFilter ?: return fetchModeParts(sourceManager, src, mode, targetPage)
+        // 失败原样抛出：交给外层 try 显示真实原因，不静默变成「该探索方式暂无内容」。
+        val found = sourceManager.search(src.sourceKey, filter.label, targetPage, null).getOrThrow()
+        return listOf(ExplorePagePart(title = "", comics = found.comics))
+    }
+
+    // ── 切换源 / 切换探索方式 / 选或清通用标签 -> 重新拉第 1 页 ──
+    LaunchedEffect(currentSource?.sourceKey, currentSource?.modes, refreshTick, modeTick, vm.unifiedFilter) {
         val src = currentSource
         val mode = src?.let { state.resolveMode(it.sourceKey, it.modes) }
         if (src == null || mode == null) {
             content = ExploreContent.Empty
             accumulatedParts = emptyList()
             hasMore = false
+            return@LaunchedEffect
+        }
+        // 返回本条目时（同一个源 + 同一个探索方式/筛选标签 + 没按过刷新）不再重拉第 1 页；
+        // refreshTick 参与 key，所以手动刷新与错误重试照常强制重发。
+        val scopeLabel = vm.unifiedFilter?.let { "tag:${it.name}" } ?: "mode:${mode.id}"
+        val loadKey = "$refreshTick|${src.sourceKey}|$scopeLabel"
+        if (vm.contentLoadedKey == loadKey && accumulatedParts.isNotEmpty()) {
+            isLoadingContent = false
             return@LaunchedEffect
         }
         isLoadingContent = true
@@ -178,14 +217,18 @@ fun UnifiedExploreScreen(
         hasMore = false
         content = ExploreContent.Empty
         try {
-            val raw = fetchModeParts(sourceManager, src, mode, 1)
+            val raw = fetchPageParts(src, mode, 1)
             accumulatedParts = raw
             currentPage = 1
-            showAsSections = mode.kind == ExploreMode.Kind.EXPLORE_MULTI_PART &&
+            // 筛选结果是平铺列表，永远不按分区渲染。
+            showAsSections = vm.unifiedFilter == null &&
+                mode.kind == ExploreMode.Kind.EXPLORE_MULTI_PART &&
                 !(raw.size == 1 && raw.first().title.isBlank())
-            // 旧版口径：singlePageWithMultiPart 是单页结构，永远没有下一页。
-            hasMore = mode.kind != ExploreMode.Kind.EXPLORE_MULTI_PART && raw.any { it.comics.isNotEmpty() }
+            // 旧版口径：singlePageWithMultiPart 是单页结构，永远没有下一页；筛选结果可翻页。
+            hasMore = (vm.unifiedFilter != null || mode.kind != ExploreMode.Kind.EXPLORE_MULTI_PART) &&
+                raw.any { it.comics.isNotEmpty() }
             content = buildExploreContent(guardManager, raw, showAsSections, 1, hasMore, nsfwMaskMode)
+            vm.contentLoadedKey = loadKey
         } catch (e: Exception) {
             contentError = e.message ?: "加载失败"
         } finally {
@@ -204,7 +247,7 @@ fun UnifiedExploreScreen(
             loadMoreError = null
             try {
                 val next = currentPage + 1
-                val raw = fetchModeParts(sourceManager, src, mode, next)
+                val raw = fetchPageParts(src, mode, next)
                 accumulatedParts = mergeExploreParts(accumulatedParts, raw)
                 currentPage = next
                 hasMore = raw.isNotEmpty() && raw.any { it.comics.isNotEmpty() }
@@ -235,6 +278,22 @@ fun UnifiedExploreScreen(
             currentSource?.let { unifiedTagsFor(it) }
                 ?: com.venera.compose.source.explore.UnifiedTagAvailability(emptyList())
         }
+        // 「本源分类」的首屏截断：按组顺序消耗入口预算，预算用尽后的组整组不渲染
+        // （同组内切一半会比切整组更难读）。源脚本自带顺序即官方重要性顺序。
+        val allSections = currentSource?.nativeSections.orEmpty()
+        val visibleSections = remember(allSections, vm.sectionsExpanded) {
+            if (vm.sectionsExpanded) allSections
+            else buildList {
+                var used = 0
+                for (section in allSections) {
+                    if (used >= ExploreViewModel.SECTION_ENTRY_BUDGET) break
+                    add(section)
+                    used += section.items.size
+                }
+            }
+        }
+        val hiddenEntryCount = allSections.sumOf { it.items.size } -
+            visibleSections.sumOf { it.items.size }
 
         LazyColumn(
             // 挂载折叠与录制行为：下滑时大标题收起、真实高斯模糊背板淡入
@@ -256,7 +315,12 @@ fun UnifiedExploreScreen(
                         sources = explorations,
                         selectedKey = currentSource?.sourceKey,
                         enabled = !isLoadingSources,
-                        onSelect = { state.selectedSourceKey = it },
+                        onSelect = { key ->
+                            state.selectedSourceKey = key
+                            // 筛选是「源内」的（走本源搜索接口），切源必须清掉，
+                            // 否则会拿着上一个源的标签在新源里瞎搜。
+                            vm.unifiedFilter = null
+                        },
                     )
                 }
             }
@@ -279,6 +343,11 @@ fun UnifiedExploreScreen(
             }
 
             val src = currentSource ?: return@LazyColumn
+            val activeFilter = vm.unifiedFilter
+
+            // ══ 上方区块：通用 / 跨源快捷筛选 ══
+            // 这里的每一项都**不跳转**，点了直接刷新本页内容区，方便和探索方式组合着用。
+            item(key = "quick-filter-header-" + src.sourceKey) { SectionHeader("快捷筛选") }
 
             if (src.modes.isNotEmpty()) {
                 item(key = "modes-" + src.sourceKey) {
@@ -287,29 +356,69 @@ fun UnifiedExploreScreen(
                         selectedId = state.resolveMode(src.sourceKey, src.modes)?.id,
                         onSelect = { mode ->
                             state.selectMode(src.sourceKey, mode.id)
+                            // 选探索方式即退出标签筛选 —— 否则两个数据来源同时生效，
+                            // 用户看不出下面这份列表到底是从哪来的。
+                            vm.unifiedFilter = null
                             modeTick++
                         },
                     )
                 }
             }
 
-            if (src.nativeSections.isNotEmpty()) {
-                itemsIndexed(
-                    src.nativeSections,
-                    key = { index, section -> "sec-" + src.sourceKey + "-" + index + "-" + section.name }
-                ) { _, section ->
-                    NativeSectionBlock(
-                        section = section,
-                        onEntryClick = { entry ->
-                            onOpenNativeSection(
-                                NativeSectionArgs(
-                                    sourceKey = src.sourceKey,
-                                    sourceTitle = src.sourceName,
-                                    category = entry.label,
-                                    param = entry.param,
-                                )
-                            )
+            if (!unifiedAvailability.isEmpty) {
+                item(key = "unified-" + src.sourceKey) {
+                    UnifiedTagBlock(
+                        tags = unifiedAvailability.available,
+                        selectedTag = activeFilter,
+                        onTagClick = { tag ->
+                            // 再点一次同一个标签 = 取消筛选。
+                            vm.unifiedFilter = if (activeFilter == tag) null else tag
                         },
+                    )
+                }
+            }
+
+            if (activeFilter != null) {
+                item(key = "unified-filter-active-" + src.sourceKey) {
+                    FilterActiveBar(
+                        label = activeFilter.label,
+                        onClear = { vm.unifiedFilter = null },
+                    )
+                }
+            }
+
+            // ══ 下方区块：本源专属分类入口 ══
+            // 这些入口一律跳二级列表页（与现有习惯一致）。默认只露前
+            // ExploreViewModel.SECTION_ENTRY_BUDGET 个入口，其余收进「更多分类」。
+            if (visibleSections.isNotEmpty() || src.hasRanking) {
+                item(key = "sections-header-" + src.sourceKey) { SectionHeader("本源分类") }
+            }
+
+            itemsIndexed(
+                visibleSections,
+                key = { index, section -> "sec-" + src.sourceKey + "-" + index + "-" + section.name }
+            ) { _, section ->
+                NativeSectionBlock(
+                    section = section,
+                    onEntryClick = { entry ->
+                        onOpenNativeSection(
+                            NativeSectionArgs(
+                                sourceKey = src.sourceKey,
+                                sourceTitle = src.sourceName,
+                                category = entry.label,
+                                param = entry.param,
+                            )
+                        )
+                    },
+                )
+            }
+
+            if (hiddenEntryCount > 0 || vm.sectionsExpanded) {
+                item(key = "sections-more-" + src.sourceKey) {
+                    SectionMoreButton(
+                        hiddenCount = hiddenEntryCount,
+                        expanded = vm.sectionsExpanded,
+                        onClick = { vm.sectionsExpanded = !vm.sectionsExpanded },
                     )
                 }
             }
@@ -332,26 +441,9 @@ fun UnifiedExploreScreen(
                 }
             }
 
-            if (!unifiedAvailability.isEmpty) {
-                item(key = "unified-" + src.sourceKey) {
-                    UnifiedTagBlock(
-                        tags = unifiedAvailability.available,
-                        onTagClick = { tag ->
-                            onOpenNativeSection(
-                                NativeSectionArgs(
-                                    sourceKey = src.sourceKey,
-                                    sourceTitle = src.sourceName,
-                                    category = tag.label,
-                                    param = null,
-                                    unifiedTag = tag,
-                                )
-                            )
-                        },
-                    )
-                }
+            item(key = "content-header-" + src.sourceKey) {
+                SectionHeader(if (activeFilter != null) "筛选结果" else "内容")
             }
-
-            item(key = "content-header-" + src.sourceKey) { SectionHeader("内容") }
 
             val columns = comicListColumnCount(displayMode.value)
             val isDetailed = displayMode.value == "detailed"
@@ -572,7 +664,12 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun CenteredLoader() {
     Box(Modifier.fillMaxWidth().padding(VeneraTokens.spacing.space10), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = VeneraTokens.color.primary)
+        // 全站加载指示统一走 M3 Expressive 波浪环（与收藏/搜索/网络收藏同一口径）。
+        CircularWavyProgressIndicator(
+            modifier = Modifier.size(VeneraTokens.spacing.loaderInline),
+            color = VeneraTokens.color.primary,
+            trackColor = VeneraTokens.color.surfaceVariant,
+        )
     }
 }
 
@@ -660,11 +757,14 @@ private fun RankingEntry(sourceName: String, onClick: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UnifiedTagBlock(tags: List<UnifiedTag>, onTagClick: (UnifiedTag) -> Unit) {
+private fun UnifiedTagBlock(
+    tags: List<UnifiedTag>,
+    selectedTag: UnifiedTag?,
+    onTagClick: (UnifiedTag) -> Unit,
+) {
     Column {
-        SectionHeader("通用标签 · 跨源快捷筛选")
         Text(
-            "应用层映射，不修改各源原生 Tag；点击后按关键词搜索当前源。",
+            "跨源快捷筛选：点击即在下方筛当前源，再点一次取消。",
             fontSize = VeneraTokens.type.overline,
             color = VeneraTokens.color.textTertiary,
             modifier = Modifier.padding(bottom = VeneraTokens.spacing.space2),
@@ -674,10 +774,54 @@ private fun UnifiedTagBlock(tags: List<UnifiedTag>, onTagClick: (UnifiedTag) -> 
             verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
         ) {
             tags.forEach { tag ->
-                VeneraTagChip(text = tag.label, onClick = { onTagClick(tag) })
+                VeneraTagChip(
+                    text = tag.label,
+                    selected = tag == selectedTag,
+                    onClick = { onTagClick(tag) },
+                )
             }
         }
     }
+}
+
+/** 页内筛选生效时的状态条：说清列表是哪来的，并给一个明确的清除入口。 */
+@Composable
+private fun FilterActiveBar(label: String, onClear: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space3),
+    ) {
+        Text(
+            text = "正在按「$label」筛选当前源",
+            fontSize = VeneraTokens.type.caption,
+            color = VeneraTokens.color.textSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "清除",
+            fontSize = VeneraTokens.type.caption,
+            fontWeight = VeneraTokens.type.weightSemibold,
+            color = VeneraTokens.color.primary,
+            modifier = Modifier.clickable(onClick = onClear),
+        )
+    }
+}
+
+/** 「本源分类」的展开 / 收起入口（默认只露前 8 个入口，避免首屏被分类占满）。 */
+@Composable
+private fun SectionMoreButton(hiddenCount: Int, expanded: Boolean, onClick: () -> Unit) {
+    Text(
+        text = if (expanded) "收起分类" else "更多分类（还有 $hiddenCount 个）",
+        fontSize = VeneraTokens.type.caption,
+        fontWeight = VeneraTokens.type.weightSemibold,
+        color = VeneraTokens.color.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(VeneraTokens.shape.medium))
+            .clickable(onClick = onClick)
+            .padding(vertical = VeneraTokens.spacing.space3),
+    )
 }
 
 /* ------------------------------------------------------------------ *
@@ -753,6 +897,12 @@ private fun ExploreDetailedCard(
         likesCount = comic.likesCount,
         badge = sourceName,
         coverMaskState = maskState,
+        // key 用交给详情页 ComicItem 的那个 sourceName（本页传的是显示名），两端必然同串；
+        // 打码命中不飞。
+        coverModifier = Modifier.coverSharedElement(
+            key = ComicSharedTransition.coverKey(sourceName, comic.id),
+            allowFly = maskState == "VISIBLE",
+        ),
         onClick = {
             onSelectComic(
                 ComicItem(
@@ -805,6 +955,10 @@ private fun ExploreComicCard(
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,
+            modifier = Modifier.coverSharedElement(
+                key = ComicSharedTransition.coverKey(sourceName, comic.id),
+                allowFly = maskState == "VISIBLE",
+            ),
             mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
         ) {
             VeneraSourceBadge(name = sourceName)
@@ -840,9 +994,11 @@ private fun LoadMoreFooter(isLoading: Boolean, error: String?, onRetry: () -> Un
         contentAlignment = Alignment.Center,
     ) {
         when {
-            isLoading -> CircularProgressIndicator(
+            isLoading -> CircularWavyProgressIndicator(
+                // 用 loaderInline(28dp) 而不是 badgeSize —— 波浪环直径小于 24dp 会糊成一团。
                 color = VeneraTokens.color.primary,
-                modifier = Modifier.size(VeneraTokens.spacing.badgeSize),
+                trackColor = VeneraTokens.color.surfaceVariant,
+                modifier = Modifier.size(VeneraTokens.spacing.loaderInline),
             )
             error != null -> Text(
                 text = "加载失败：$error · 点击重试",
