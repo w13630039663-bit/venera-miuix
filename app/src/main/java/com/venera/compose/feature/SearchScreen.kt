@@ -53,6 +53,8 @@ import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.ComicRowCard
+import com.venera.compose.components.ComicRowMetadata
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.venera.VeneraCard
@@ -1236,102 +1238,44 @@ private fun SearchResultCard(
     }
 }
 
-/** 列表模式的单行卡：左封面 + 右信息。 */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+/**
+ * 列表模式的单行卡：左封面 + 右信息。
+ *
+ * 实现已抽到 `components.ComicRowCard`（逐行原样搬走，尺寸/颜色未改），
+ * 因为收藏页两条路径也要同一形态 —— 各自画一套就会同页多种高度。
+ */
 @Composable
 private fun SearchResultRowItem(
     comic: Comic,
     mask: VeneraCoverMask,
     tagLabel: (String) -> String,
     onClick: () -> Unit,
-) {
-    val tokens = VeneraTokens
-    VeneraCard(onClick = onClick) {
-        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6)) {
-            Box(Modifier.width(tokens.spacing.listCoverWidth)) {
-                VeneraCover(
-                    url = comic.cover,
-                    contentDescription = comic.title,
-                    mask = mask,
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = comic.title,
-                    fontSize = tokens.type.body,
-                    fontWeight = tokens.type.weightMedium,
-                    color = tokens.color.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (comic.subTitle.isNotBlank()) {
-                    Text(
-                        text = comic.subTitle,
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                OptionalMetadata(comic)
-                if (comic.description.isNotBlank()) {
-                    Text(
-                        text = comic.description,
-                        fontSize = tokens.type.overline,
-                        color = tokens.color.textTertiary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                // 列表模式补回 Tag（与网格模式保持信息对称）。
-                // 数据仍来自结果自身的 comic.tags，未做任何业务层映射。
-                // 单列卡有整行宽度可用，所以放开到 5 个（网格小卡仍 2 个）；
-                // 用 FlowRow 而非 Row 承载 —— 5 个标签在 360dp 窄屏必然超一行，
-                // Row 会把超出的直接裁掉，这里改为换行且最多两行。
-                val listTags = searchVisibleTags(comic.tags, emptyList(), tagLabel)
-                if (listTags.isNotEmpty()) {
-                    Spacer(Modifier.height(tokens.spacing.space2))
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
-                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
-                        maxLines = 2,
-                        // overflow 留默认（Clip）：新版 foundation 的 FlowRowOverflow 只提供
-                        // Clip / expandIndicator，省略号指示要额外交互态，这里不引入。
-                    ) {
-                        listTags.take(5).forEach { tag ->
-                            VeneraTagChip(text = tag, onClick = null)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+) = ComicRowCard(
+    title = comic.title,
+    coverUrl = comic.cover,
+    subtitle = comic.subTitle,
+    description = comic.description,
+    tags = comic.tags,
+    mask = mask,
+    onClick = onClick,
+    likesCount = comic.likesCount,
+    rating = comic.rating,
+    updateTime = comic.updateTime,
+    tagLabel = tagLabel,
+)
 
 /**
  * 可选 Metadata 行。
  *
  * 只渲染**确实存在**的字段；任一字段缺失即整段省略，
- * 绝不输出 0 likes / — / N/A / 空占位符。
+ * 绝不输出 0 likes / — / N/A / 空占位符。实现与 [ComicRowCard] 共用一份。
  */
 @Composable
-private fun OptionalMetadata(comic: Comic) {
-    val tokens = VeneraTokens
-    val parts = buildList {
-        comic.likesCount?.takeIf { it > 0 }?.let { add(it.toString() + " 赞") }
-        comic.rating?.takeIf { it > 0f }?.let { add("★ " + it) }
-        comic.updateTime.takeIf { it.isNotBlank() }?.let { add(it) }
-    }
-    if (parts.isEmpty()) return
-    Text(
-        text = parts.joinToString(" · "),
-        fontSize = tokens.type.overline,
-        color = tokens.color.textTertiary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(top = tokens.spacing.space1),
-    )
-}
+private fun OptionalMetadata(comic: Comic) = ComicRowMetadata(
+    likesCount = comic.likesCount,
+    rating = comic.rating,
+    updateTime = comic.updateTime,
+)
 
 /**
  * 搜索页统一的加载指示（M3 Expressive 波浪圆环）。

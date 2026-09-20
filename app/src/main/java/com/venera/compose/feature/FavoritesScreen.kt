@@ -79,6 +79,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -119,8 +120,11 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     var showMenu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<FolderDialog?>(null) }
     var searchMode by remember { mutableStateOf(false) }
-    // 网络收藏置于首位并作为默认入口
-    var mode by remember { mutableStateOf(FavoritesMode.Network) }
+    // 网络收藏置于首位并作为默认入口。
+    // **必须 rememberSaveable**：从详情页返回时导航条目是重建的，普通 remember 会把
+    // 这里打回默认值 —— 真机实测「从本地收藏点进详情，返回却落在网络收藏」。
+    // 它同时是封面共享元素返回时闪一下的根因之一：目的地那一支整支没被组合出来。
+    var mode by rememberSaveable { mutableStateOf(FavoritesMode.Network) }
     val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
         enabled = mode == FavoritesMode.Local && vm.multiSelectMode && !showMenu && dialog == null,
     ) { vm.exitMultiSelect() }
@@ -149,6 +153,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 searchMode = searchMode,
                 topPadding = topPadding,
                 onSelect = onSelect,
+                animatedVisibilityScope = animatedVisibilityScope,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 onScrollStateChange = { _, hasScrolled, scrollToTop ->
@@ -159,6 +164,8 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         } else {
             AndroidNetworkFavoritesScreen(
                 onSelect = onSelect,
+                sharedTransitionScope = this@AndroidFavoritesScreen,
+                animatedVisibilityScope = animatedVisibilityScope,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 topPadding = topPadding,
@@ -491,14 +498,17 @@ private fun SearchField(
 
 // region ---- 内容网格 ----
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-private fun FavoriteGrid(
+private fun SharedTransitionScope.FavoriteGrid(
     vm: FavoritesViewModel,
     folders: List<String>,
     counts: Map<String, Int>,
     searchMode: Boolean,
     topPadding: androidx.compose.ui.unit.Dp,
     onSelect: (ComicItem) -> Unit,
+    /** 详情页共享元素转场：由 [AndroidFavoritesScreen] 从 NavHost 条目透传。 */
+    animatedVisibilityScope: AnimatedVisibilityScope,
     /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
     scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
@@ -591,6 +601,7 @@ private fun FavoriteGrid(
                     detailed = displayMode.value == "detailed",
                     selected = (item.id to item.type) in vm.selected,
                     multiSelectMode = vm.multiSelectMode,
+                    animatedVisibilityScope = animatedVisibilityScope,
                     onClick = {
                         if (vm.multiSelectMode) {
                             vm.toggleSelect(item)
@@ -605,13 +616,15 @@ private fun FavoriteGrid(
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
-private fun FavoriteCard(
+private fun SharedTransitionScope.FavoriteCard(
     item: com.venera.compose.data.db.FavoriteItem,
     detailed: Boolean,
     selected: Boolean,
     multiSelectMode: Boolean,
+    /** 详情页共享元素转场：由 [FavoriteGrid] 从 NavHost 条目透传。 */
+    animatedVisibilityScope: AnimatedVisibilityScope,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -628,6 +641,58 @@ private fun FavoriteCard(
         description = item.description,
     )
     val tokens = com.venera.compose.ui.tokens.VeneraTokens
+    val coverMask = if (maskState == "VISIBLE") {
+        com.venera.compose.components.venera.VeneraCoverMask.Visible
+    } else {
+        com.venera.compose.components.venera.VeneraCoverMask.Masked
+    }
+    // 打码命中不挂共享元素：飞行内容会渲染进 SharedTransitionLayout 的 overlay，
+    // 等于绕开页面级裁剪 —— 遮罩不能有机会被揭开。
+    val coverModifier = if (maskState == "VISIBLE") {
+        Modifier.sharedElement(
+            sharedContentState = rememberSharedContentState(
+                key = com.venera.compose.components.ComicSharedTransition.coverKey(item.sourceKey, item.id)
+            ),
+            animatedVisibilityScope = animatedVisibilityScope,
+            boundsTransform = com.venera.compose.components.ComicSharedTransition.CoverBounds,
+            placeholderSize = com.venera.compose.components.ComicSharedTransition.CoverPlaceholderSize,
+        )
+    } else {
+        Modifier
+    }
+
+    // 单列形态直接共用搜索页那套行卡（components.ComicRowCard）：收藏页与搜索页
+    // 从此同一份实现，不会再各页一种高度、改一处忘一处。
+    if (detailed) {
+        Box {
+            com.venera.compose.components.ComicRowCard(
+                title = item.name,
+                coverUrl = item.coverPath,
+                subtitle = item.author,
+                description = item.description,
+                tags = item.tags,
+                mask = coverMask,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                likesCount = metrics.likesCount,
+                rating = metrics.rating?.toFloat(),
+                coverModifier = coverModifier,
+            )
+            if (multiSelectMode) {
+                Icon(
+                    imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (selected) tokens.color.primary else Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(tokens.spacing.space5)
+                        .size(tokens.spacing.badgeSize),
+                )
+            }
+        }
+        return
+    }
+
     com.venera.compose.components.venera.VeneraCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
@@ -639,8 +704,8 @@ private fun FavoriteCard(
                     url = item.coverPath,
                     contentDescription = item.name,
                     shimmerWhileLoading = false,
-                    mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
-                           else com.venera.compose.components.venera.VeneraCoverMask.Masked,
+                    modifier = coverModifier,
+                    mask = coverMask,
                 )
             }) {
                 Spacer(modifier = Modifier.height(tokens.spacing.space3))
