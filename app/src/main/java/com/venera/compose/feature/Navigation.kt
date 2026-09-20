@@ -400,55 +400,63 @@ fun VeneraComposeApp() {
                     }
                     composable<HistoryRoute> {
                         // 主 Tab：底栏常驻，无返回语义。
-                        AndroidHistoryScreen(
-                            onSelect = ::openComic,
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            AndroidHistoryScreen(
+                                onSelect = ::openComic,
+                            )
+                        }
                     }
                     composable<ExploreRoute> {
-                        UnifiedExploreScreen(
-                            onSelectComic = ::openComic,
-                            onOpenNativeSection = { args ->
-                                haptic()
-                                navController.navigate(
-                                    SourceSectionRoute(
-                                        sourceKey = args.sourceKey,
-                                        sourceTitle = args.sourceTitle,
-                                        category = args.category,
-                                        param = args.param,
-                                        unifiedTag = args.unifiedTag?.name,
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            UnifiedExploreScreen(
+                                onSelectComic = ::openComic,
+                                onOpenNativeSection = { args ->
+                                    haptic()
+                                    navController.navigate(
+                                        SourceSectionRoute(
+                                            sourceKey = args.sourceKey,
+                                            sourceTitle = args.sourceTitle,
+                                            category = args.category,
+                                            param = args.param,
+                                            unifiedTag = args.unifiedTag?.name,
+                                        )
                                     )
-                                )
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                     // 旧「分类索引」入口重定向到合并后的探索页。
                     composable<CategoriesRoute> {
-                        UnifiedExploreScreen(
-                            onSelectComic = ::openComic,
-                            onOpenNativeSection = { args ->
-                                haptic()
-                                navController.navigate(
-                                    SourceSectionRoute(
-                                        sourceKey = args.sourceKey,
-                                        sourceTitle = args.sourceTitle,
-                                        category = args.category,
-                                        param = args.param,
-                                        unifiedTag = args.unifiedTag?.name,
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            UnifiedExploreScreen(
+                                onSelectComic = ::openComic,
+                                onOpenNativeSection = { args ->
+                                    haptic()
+                                    navController.navigate(
+                                        SourceSectionRoute(
+                                            sourceKey = args.sourceKey,
+                                            sourceTitle = args.sourceTitle,
+                                            category = args.category,
+                                            param = args.param,
+                                            unifiedTag = args.unifiedTag?.name,
+                                        )
                                     )
-                                )
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                     composable<SourceSectionRoute> { entry ->
                         val route = entry.toRoute<SourceSectionRoute>()
-                        SourceSectionScreen(
-                            route = route,
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                            onSelectComic = ::openComic,
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            SourceSectionScreen(
+                                route = route,
+                                onBack = {
+                                    haptic()
+                                    navController.popBackStack()
+                                },
+                                onSelectComic = ::openComic,
+                            )
+                        }
                     }
                     composable<SettingsRoute> {
                         // 子页形态：顶栏齿轮进入，返回退回来源主 Tab。

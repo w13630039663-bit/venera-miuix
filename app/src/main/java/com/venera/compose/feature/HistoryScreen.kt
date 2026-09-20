@@ -64,6 +64,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.venera.compose.components.ComicCardLayout
+import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.VeneraEmptyView
 import androidx.compose.foundation.layout.WindowInsets
@@ -258,6 +260,13 @@ private fun HistoryCard(
                         shimmerWhileLoading = false,
                         mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
                         modifier = Modifier
+                            // 与详情页封面配对的共享元素：key 用 record.sourceName —— 交给
+                            // 详情的 HistoryRecord.toComicItem() 填的正是同一个串，两端必然一致。
+                            // 打码命中不飞（飞行内容渲染进 overlay，等于绕开页面裁剪）。
+                            .coverSharedElement(
+                                key = ComicSharedTransition.coverKey(record.sourceName, record.comicId),
+                                allowFly = maskState == "VISIBLE",
+                            )
                             .fillMaxWidth()
                             .height(if (detailed) tokens.spacing.historyCoverHeight else tokens.spacing.historyCoverHeight + tokens.spacing.space9),
                     )

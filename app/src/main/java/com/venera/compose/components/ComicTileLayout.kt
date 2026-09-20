@@ -52,6 +52,11 @@ fun ComicTileDetailed(
     coverContent: (@Composable BoxScope.() -> Unit)? = null,
     /** S7 分级遮罩：外部传入 "VISIBLE"/"BLURRED"/"HIDDEN"（调用方用 ContentGuard 判定） */
     coverMaskState: String = "VISIBLE",
+    /**
+     * 共享元素转场：调用方在封面容器上挂 `Modifier.sharedElement(...)`。
+     * 默认 `Modifier` —— 不传就与接入前逐像素一致；打码命中的卡必须不挂。
+     */
+    coverModifier: Modifier = Modifier,
     likesCount: Int? = null
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -64,7 +69,7 @@ fun ComicTileDetailed(
         ) {
             // 封面：高 186dp，宽 = 高×0.68 ≈ 127dp（对齐原版 height * 0.68）
             Box(
-                modifier = Modifier
+                modifier = coverModifier
                     .width(122.dp)
                     .height(180.dp)
                     .clip(RoundedCornerShape(12.dp))
