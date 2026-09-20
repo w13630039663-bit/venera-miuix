@@ -55,6 +55,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.ComicRowCard
 import com.venera.compose.components.ComicRowMetadata
+import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.venera.VeneraCard
@@ -135,7 +137,12 @@ fun SharedTransitionScope.AndroidSearchScreen(
     fun select(comic: Comic, sourceName: String) = onSelect(
         ComicItem(
             id = comic.id, title = comic.title, author = comic.subTitle, coverUrl = comic.cover,
-            sourceName = sourceName, tags = comic.tags, description = comic.description,
+            // 一律以 comic.sourceKey 为准：卡片那侧的共享元素 key 就是用它拼的，
+            // 这里若塞显示名（聚合结果的 event.sourceName 就是显示名），两端 key
+            // 对不上，飞行会静默失效 —— 不报错，只是什么都不飞。
+            // 详情页吃 sourceKey 是已验证可用的口径（网络收藏/本地收藏都这么交）。
+            sourceName = comic.sourceKey.ifBlank { sourceName },
+            tags = comic.tags, description = comic.description,
             rating = comic.rating?.toString().orEmpty(), likesCount = comic.likesCount,
         )
     )
@@ -192,7 +199,10 @@ fun SharedTransitionScope.AndroidSearchScreen(
     // 名字在源列表里解不到就保持默认目标，绝不凭名字猜一个 key（同名异源是真实存在的）。
     LaunchedEffect(initialQuery, initialSourceName, initialTag) {
         if (initialSourceName.isNotBlank()) {
-            sources.find { it.name == initialSourceName }?.let {
+            // 这个入参历史上不统一：从搜索页进详情时是**显示名**，从收藏页进详情时是
+            // **sourceKey**（Comic.toComicItem / FavoriteItem.toComicItem 都填 sourceKey）。
+            // 只按 name 匹配的话，收藏页 → 详情 → 点标签这条路的源预选会静默失效。
+            sources.find { it.key == initialSourceName || it.name == initialSourceName }?.let {
                 viewModel.onSourceSelected(it.key, it.name)
             }
         }
@@ -1199,6 +1209,11 @@ private fun SearchResultCard(
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,
+            // 双列网格卡也参与飞行；打码命中不飞（见 Modifier.coverSharedElement）。
+            modifier = Modifier.coverSharedElement(
+                key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+                allowFly = mask == VeneraCoverMask.Visible,
+            ),
             mask = mask,
         ) {
             VeneraSourceBadge(name = sourceName.ifBlank { comic.sourceKey })
@@ -1262,6 +1277,10 @@ private fun SearchResultRowItem(
     rating = comic.rating,
     updateTime = comic.updateTime,
     tagLabel = tagLabel,
+    coverModifier = Modifier.coverSharedElement(
+        key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+        allowFly = mask == VeneraCoverMask.Visible,
+    ),
 )
 
 /**

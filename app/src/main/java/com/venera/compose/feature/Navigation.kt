@@ -2,8 +2,10 @@ package com.venera.compose.feature
 
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +46,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.venera.compose.components.CoverTransitionScopes
+import com.venera.compose.components.LocalCoverTransitionScopes
 import com.venera.compose.components.VeneraAmbientBackground
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
@@ -142,6 +147,25 @@ internal fun resolveDetailComic(route: DetailRoute, selectedComic: ComicItem?): 
 
 /** 阅读会话含非序列化对象，交给宿主 ViewModel 暂存（reader 是唯一读它的目的地）。 */
 @Serializable data object ReaderRoute
+
+/**
+ * 把封面共享元素所需的两个作用域交给页面深处的卡片。
+ *
+ * 卡片埋在「页面 → 分组 → 行 → 卡」的第四层（搜索页正是如此），逐层灌参数会把每一层
+ * 的签名都污染一遍；在导航条目这一层 provide 一次就够。没有 provide 的页面（历史/下载）
+ * 读到 null，封面就是不参与飞行的普通封面，照常渲染。
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun SharedTransitionScope.CoverTransitionHost(
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(
+        LocalCoverTransitionScopes provides CoverTransitionScopes(this, animatedVisibilityScope),
+        content = content,
+    )
+}
 
 class VeneraShellViewModel : ViewModel() {
     var pendingSession: com.venera.compose.reader.ReaderSession? = null
@@ -333,11 +357,13 @@ fun VeneraComposeApp() {
                     }
                     composable<SearchRoute> {
                         // 主 Tab：底栏显示，需要避让。
-                        AndroidSearchScreen(
-                            animatedVisibilityScope = this,
-                            onSelect = ::openComic,
-                            consumesBottomBarClearance = true,
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            AndroidSearchScreen(
+                                animatedVisibilityScope = this,
+                                onSelect = ::openComic,
+                                consumesBottomBarClearance = true,
+                            )
+                        }
                     }
                     // S8: 标签直达搜索（详情页标签点击跳入，自动执行搜索）
                     composable<TagSearchRoute> { backStackEntry ->
@@ -348,22 +374,29 @@ fun VeneraComposeApp() {
                         val tagRaw = args?.getString("tagRaw") ?: ""
                         val tagLabel = args?.getString("tagLabel") ?: ""
                         // 下钻子页：底栏不显示，只保留自身滚动留白。
-                        AndroidSearchScreen(
-                            animatedVisibilityScope = this,
-                            onSelect = ::openComic,
-                            initialQuery = keyword,
-                            initialSourceName = sourceName,
-                            initialTag = if (tagRaw.isBlank()) null
-                                else SearchTag(
-                                    namespace = tagNamespace,
-                                    raw = tagRaw,
-                                    label = tagLabel.ifBlank { tagRaw },
-                                ),
-                            consumesBottomBarClearance = false,
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            AndroidSearchScreen(
+                                animatedVisibilityScope = this,
+                                onSelect = ::openComic,
+                                initialQuery = keyword,
+                                initialSourceName = sourceName,
+                                initialTag = if (tagRaw.isBlank()) null
+                                    else SearchTag(
+                                        namespace = tagNamespace,
+                                        raw = tagRaw,
+                                        label = tagLabel.ifBlank { tagRaw },
+                                    ),
+                                consumesBottomBarClearance = false,
+                            )
+                        }
                     }
                     composable<FavoritesRoute> {
-                        AndroidFavoritesScreen(animatedVisibilityScope = this, onSelect = ::openComic)
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            AndroidFavoritesScreen(
+                                animatedVisibilityScope = this,
+                                onSelect = ::openComic,
+                            )
+                        }
                     }
                     composable<HistoryRoute> {
                         // 主 Tab：底栏常驻，无返回语义。

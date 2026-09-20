@@ -153,7 +153,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 searchMode = searchMode,
                 topPadding = topPadding,
                 onSelect = onSelect,
-                animatedVisibilityScope = animatedVisibilityScope,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 onScrollStateChange = { _, hasScrolled, scrollToTop ->
@@ -164,8 +163,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         } else {
             AndroidNetworkFavoritesScreen(
                 onSelect = onSelect,
-                sharedTransitionScope = this@AndroidFavoritesScreen,
-                animatedVisibilityScope = animatedVisibilityScope,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 topPadding = topPadding,
@@ -498,17 +495,14 @@ private fun SearchField(
 
 // region ---- 内容网格 ----
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-private fun SharedTransitionScope.FavoriteGrid(
+private fun FavoriteGrid(
     vm: FavoritesViewModel,
     folders: List<String>,
     counts: Map<String, Int>,
     searchMode: Boolean,
     topPadding: androidx.compose.ui.unit.Dp,
     onSelect: (ComicItem) -> Unit,
-    /** 详情页共享元素转场：由 [AndroidFavoritesScreen] 从 NavHost 条目透传。 */
-    animatedVisibilityScope: AnimatedVisibilityScope,
     /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
     scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
@@ -601,7 +595,6 @@ private fun SharedTransitionScope.FavoriteGrid(
                     detailed = displayMode.value == "detailed",
                     selected = (item.id to item.type) in vm.selected,
                     multiSelectMode = vm.multiSelectMode,
-                    animatedVisibilityScope = animatedVisibilityScope,
                     onClick = {
                         if (vm.multiSelectMode) {
                             vm.toggleSelect(item)
@@ -616,15 +609,13 @@ private fun SharedTransitionScope.FavoriteGrid(
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun SharedTransitionScope.FavoriteCard(
+private fun FavoriteCard(
     item: com.venera.compose.data.db.FavoriteItem,
     detailed: Boolean,
     selected: Boolean,
     multiSelectMode: Boolean,
-    /** 详情页共享元素转场：由 [FavoriteGrid] 从 NavHost 条目透传。 */
-    animatedVisibilityScope: AnimatedVisibilityScope,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -646,20 +637,12 @@ private fun SharedTransitionScope.FavoriteCard(
     } else {
         com.venera.compose.components.venera.VeneraCoverMask.Masked
     }
-    // 打码命中不挂共享元素：飞行内容会渲染进 SharedTransitionLayout 的 overlay，
+    // 打码命中不飞行：飞行内容会渲染进 SharedTransitionLayout 的 overlay，
     // 等于绕开页面级裁剪 —— 遮罩不能有机会被揭开。
-    val coverModifier = if (maskState == "VISIBLE") {
-        Modifier.sharedElement(
-            sharedContentState = rememberSharedContentState(
-                key = com.venera.compose.components.ComicSharedTransition.coverKey(item.sourceKey, item.id)
-            ),
-            animatedVisibilityScope = animatedVisibilityScope,
-            boundsTransform = com.venera.compose.components.ComicSharedTransition.CoverBounds,
-            placeholderSize = com.venera.compose.components.ComicSharedTransition.CoverPlaceholderSize,
-        )
-    } else {
-        Modifier
-    }
+    val coverModifier = Modifier.coverSharedElement(
+        key = com.venera.compose.components.ComicSharedTransition.coverKey(item.sourceKey, item.id),
+        allowFly = maskState == "VISIBLE",
+    )
 
     // 单列形态直接共用搜索页那套行卡（components.ComicRowCard）：收藏页与搜索页
     // 从此同一份实现，不会再各页一种高度、改一处忘一处。

@@ -67,6 +67,7 @@ import com.venera.compose.components.ComicCardLayout
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicRowCard
 import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
@@ -90,18 +91,9 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AndroidNetworkFavoritesScreen(
     onSelect: (ComicItem) -> Unit,
-    /**
-     * 封面 → 详情页共享元素转场需要的两个作用域。
-     *
-     * 本函数不是 `SharedTransitionScope` 扩展，而 `Modifier.sharedElement` 只能在该作用域里
-     * 构造，所以必须由调用方（收藏页已经是 SharedTransitionLayout 的子树）显式传进来。
-     */
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     scrollConnection: NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
     topPadding: Dp = 0.dp,
@@ -311,8 +303,6 @@ fun AndroidNetworkFavoritesScreen(
                     key = { "ncard-" + it.id },
                 ) { comic ->
                     NetComicDetailedCard(comic, onSelect,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
                         onDelete = { pendingDelete = comic },
                     )
                 }
@@ -471,34 +461,20 @@ private fun ComicGridRow(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun NetComicDetailedCard(
     comic: Comic,
     onSelect: (ComicItem) -> Unit,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     onDelete: () -> Unit,
 ) {
     val maskState = netMaskState(comic)
-    // 打码命中不挂共享元素（飞行内容会渲染进 overlay，等于绕开页面裁剪）。
-    // 两端比例现在同为 0.72（行卡封面就是 listCoverWidth + coverAspectRatio），
-    // 所以挂 sharedElement 即可；真机对照过：不同构时改挂 sharedBounds + RemeasureToBounds
+    // 打码命中不飞行；两端比例同为 0.72（行卡封面 = listCoverWidth + coverAspectRatio），
+    // 所以 sharedElement 足够 —— 真机对照过：不同构时改挂 sharedBounds + RemeasureToBounds
     // 会在落地那一帧重测内容，观感就是「封面闪一下」。
-    val coverModifier = if (maskState == "VISIBLE") {
-        with(sharedTransitionScope) {
-            Modifier.sharedElement(
-                sharedContentState = rememberSharedContentState(
-                    key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id)
-                ),
-                animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform = ComicSharedTransition.CoverBounds,
-                placeholderSize = ComicSharedTransition.CoverPlaceholderSize,
-            )
-        }
-    } else {
-        Modifier
-    }
+    val coverModifier = Modifier.coverSharedElement(
+        key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+        allowFly = maskState == "VISIBLE",
+    )
     // 与搜索页单列、本地收藏单列共用 components.ComicRowCard —— 全应用一种行卡形态。
     // 原先的右上角源名徽章不再传：搜索页行卡本来就没这个元素，且源名已在手风琴分区标题上。
     ComicRowCard(
@@ -530,6 +506,11 @@ private fun NetComicCard(comic: Comic, sourceName: String, onClick: () -> Unit, 
             url = comic.cover,
             contentDescription = comic.title,
             shimmerWhileLoading = false,
+            // 双列同样参与飞行：源名徽章在封面的内容槽里，会随封面一起飞、落地后消失。
+            modifier = Modifier.coverSharedElement(
+                key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+                allowFly = maskState == "VISIBLE",
+            ),
             mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
         ) {
             VeneraSourceBadge(name = sourceName)

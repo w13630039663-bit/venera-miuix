@@ -1,10 +1,15 @@
 package com.venera.compose.components
 
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 
 /**
@@ -35,11 +40,50 @@ object ComicSharedTransition {
     /**
      * 落地槽位用**跟随飞行动画的尺寸**，而不是等到卡片真出现才定尺寸。
      *
-     * 返回时收藏页那棵子树是从零重组的（导航条目重建，真机实测连 `mode` 都被打回默认值），
-     * 落地那张卡会晚一到数帧才存在；槽位若在最后一刻才从「无」跳成「122×169」，
-     * 观感就是「封面闪一下才归位」。AnimatedSize 让占位随飞行一起收敛，跳变被吸收掉。
+     * 返回时列表页那棵子树是从零重组的（导航条目重建），落地那张卡会晚一到数帧才存在；
+     * 槽位若在最后一刻才从「无」跳成目标尺寸，观感就是「封面闪一下才归位」。
+     * AnimatedSize 让占位随飞行一起收敛，跳变被吸收掉。
      */
     @OptIn(ExperimentalSharedTransitionApi::class)
     val CoverPlaceholderSize: SharedTransitionScope.PlaceholderSize =
         SharedTransitionScope.PlaceholderSize.AnimatedSize
+}
+
+/** 列表页 → 详情页封面飞行所需的两个作用域。 */
+@Immutable
+data class CoverTransitionScopes(
+    val shared: SharedTransitionScope,
+    val visibility: AnimatedVisibilityScope,
+)
+
+/**
+ * 由页面根处 provide 一次，深层卡片直接读。
+ *
+ * 为什么走 CompositionLocal：作用域只有 NavHost 那个条目里有，而卡片埋在
+ * 「页面 → 分组 → 行 → 卡」第四层（搜索页就是这样），逐层灌参数会把每一层的签名
+ * 都污染一遍。读不到时返回 null —— 那时封面就是不参与飞行的普通封面，页面照常工作，
+ * 转场是增强，不该成为渲染前提。
+ */
+val LocalCoverTransitionScopes =
+    staticCompositionLocalOf<CoverTransitionScopes?> { null }
+
+/**
+ * 给封面容器挂上「列表 → 详情」共享元素。
+ *
+ * @param allowFly 打码命中的封面必须传 false：飞行内容会被渲染进
+ *   SharedTransitionLayout 的 overlay，等于绕开页面级裁剪，遮罩不能有机会被揭开。
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.coverSharedElement(key: String, allowFly: Boolean = true): Modifier {
+    val scopes = LocalCoverTransitionScopes.current
+    if (scopes == null || !allowFly) return this
+    return with(scopes.shared) {
+        this@coverSharedElement.sharedElement(
+            sharedContentState = rememberSharedContentState(key = key),
+            animatedVisibilityScope = scopes.visibility,
+            boundsTransform = ComicSharedTransition.CoverBounds,
+            placeholderSize = ComicSharedTransition.CoverPlaceholderSize,
+        )
+    }
 }
