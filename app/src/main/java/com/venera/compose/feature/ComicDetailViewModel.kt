@@ -75,12 +75,39 @@ data class DetailUiState(
     /** 首屏就失败且一张图都没有时的错误（已有图时不打扰用户）。 */
     val thumbnailError: String? = null,
     /** 预览缩略图所属章节 ID（点击缩略图直接开读该章节该页）。 */
-    val previewChapterId: String = ""
+    val previewChapterId: String = "",
+    /**
+     * 用户是否已点开「查看更多预览」。
+     *
+     * 与分页游标 [hasMoreThumbnails] **互相独立**：详情自带全量预览图的源
+     * （nhentai 一次返回整本等）根本没有「下一页」，若只靠 [hasMoreThumbnails]
+     * 判定，折叠后按钮会消失、用户再也展不开。
+     */
+    val thumbnailsExpanded: Boolean = false
 ) {
+    /** 折叠态下实际渲染的预览图（最多 [PREVIEW_LIMIT] 张）。 */
+    val visibleThumbnails: List<String>
+        get() = if (thumbnailsExpanded) thumbnails else thumbnails.take(PREVIEW_LIMIT)
+
+    /** 是否被折叠 —— 只表示「有图没显示出来」，与 [hasMoreThumbnails] 无关。 */
+    val thumbnailsCollapsed: Boolean
+        get() = !thumbnailsExpanded && thumbnails.size > PREVIEW_LIMIT
+
     val comments: List<Comment> get() = commentThread.items
     val isCommentLoading: Boolean get() = commentThread.isLoading
     val activeCommentThread: DetailCommentState get() = if (replyTo == null) commentThread else replyThread
 }
+
+/**
+ * 预览图默认最多渲染的张数。
+ *
+ * 为什么要有这个上限：**详情接口自带全量预览图的源会一次返回整本**
+ * （nhentai 的 `data.pages`、hitomi 等，动辄两三百张）。全量铺进详情页有两个
+ * 实测代价：一次性发起几百个图片请求把带宽和内存吃光；详情页被预览图撑成
+ * 一条几千 dp 的长列表，章节列表要翻很久才看得到。
+ * 超出部分收进「查看更多预览」按钮，用户显式点击才展开。
+ */
+const val PREVIEW_LIMIT = 10
 
 /**
  * 一次性事件：打开阅读器。
@@ -227,7 +254,8 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                     isLoadingThumbnails = false,
                     hasMoreThumbnails = false,
                     thumbnailError = null,
-                    previewChapterId = ""
+                    previewChapterId = "",
+                    thumbnailsExpanded = false
                 )
             }
             val res = sourceManager.getComicDetails(key, comic.id)
@@ -621,6 +649,28 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 展开被 [PREVIEW_LIMIT] 折叠的预览图。
+     *
+     * 展开是纯粹的 UI 操作：已到手的图直接放出来，不做网络请求。
+     * 只有源真的还有下一页（[DetailUiState.hasMoreThumbnails]）且用户
+     * 还没拉过时，才顺带补一次分页 —— 否则光展开会漏掉后面的页。
+     */
+    fun expandThumbnails() {
+        val state = _uiState.value
+        if (state.thumbnailsExpanded) return
+        _uiState.update { it.copy(thumbnailsExpanded = true) }
+        // 折叠期间没拉过的后续分页，展开时补齐；已经在拉/已到末页则不重复触发。
+        if (state.hasMoreThumbnails && !state.isLoadingThumbnails) {
+            loadThumbnails(loadMore = true)
+        }
+    }
+
+    /** 收起预览图，回到最多 [PREVIEW_LIMIT] 张的折叠态。 */
+    fun collapseThumbnails() {
+        _uiState.update { it.copy(thumbnailsExpanded = false) }
+    }
+
     /** Use the resolved source key for comments and downloads, not its display name. */
     fun currentSourceKey(): String = resolveSourceKey(
         _uiState.value.details?.sourceKey?.takeIf { it.isNotBlank() }
@@ -784,8 +834,8 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             // 防盗链头交给图片加载策略。注意动态页（useOnImageLoad）的 pages 是
             // 「图片键」不是 URL，不能按 URL 预发布 —— 真实头由阅读器逐页解析后发布
             pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
-                val pd = pagesData
-                if (pd != null && !pd.useOnImageLoad) ImageHeaderPolicy.publishForUrls(pages, hdrs)
+                // 外层 ?.let 已保证 pagesData 非空，这里不必再判一次（原先的 pd != null 恒真）
+                if (!pagesData.useOnImageLoad) ImageHeaderPolicy.publishForUrls(pages, hdrs)
                 if (comic.coverUrl.isNotEmpty()) ImageHeaderPolicy.publishForUrls(listOf(comic.coverUrl), hdrs)
             }
 
@@ -806,7 +856,12 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                             sourceName = comic.sourceName,
                             sourceKey = key,
                             allChapters = allChapters,
-                            tags = comic.tags,
+                            // 题材统计的标签来源。**必须优先用详情的 tagMap 打平结果**：列表接口
+                            // 给的 tags 是裸词（picacg / jm / 拷贝漫画都是），而归一化按原口径会
+                            // 丢掉所有不带 namespace 的标签 —— 真机实测「只有 EH 记录得到标签」就是因为
+                            // EH 的列表项恰好自带 "female:xxx"，其余源全军覆没。
+                            // 并上 comic.tags 是为了详情还没加载完就进阅读器的场景（EH 列表串在那时是唯一数据）。
+                            tags = (state.details?.plainTags.orEmpty() + comic.tags).distinct(),
                             useOnImageLoad = pagesData?.useOnImageLoad == true,
                             initialPageIndex = initialPageIndex
                         ),

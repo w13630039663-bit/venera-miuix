@@ -239,13 +239,26 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         comicId = comic.id,
                     )
                     // 封面容器：VeneraCover 的 fillMaxWidth + aspectRatio 契约由定宽 Box 表达，
-                    // sharedElement 挂在外层 Box 上（与列表页卡片同一 shared key，过渡照常）。
+                    // sharedElement 挂在外层 Box 上。key 与列表卡片同一口径
+                    //（ComicSharedTransition.coverKey，一律 sourceKey —— 真机探针已核对两端逐字相同）。
+                    // 打码命中时不挂：共享元素会被渲染进 SharedTransitionLayout 的 overlay，
+                    // 不能给遮罩留任何绕开页面裁剪的机会。
+                    val coverSharedKey = remember(comic.sourceName, comic.id) {
+                        com.venera.compose.components.ComicSharedTransition.coverKey(comic.sourceName, comic.id)
+                    }
                     Box(
                         modifier = Modifier
                             .width(tokens.spacing.detailCoverWidth)
-                            .sharedElement(
-                                sharedContentState = rememberSharedContentState(key = "image-" + comic.id),
-                                animatedVisibilityScope = animatedVisibilityScope
+                            .then(
+                                if (maskState == "VISIBLE") {
+                                    Modifier.sharedElement(
+                                        sharedContentState = rememberSharedContentState(key = coverSharedKey),
+                                        animatedVisibilityScope = animatedVisibilityScope,
+                                        boundsTransform = com.venera.compose.components.ComicSharedTransition.CoverBounds,
+                                    )
+                                } else {
+                                    Modifier
+                                }
                             )
                     ) {
                         VeneraCover(
@@ -628,6 +641,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             // 6. 官方预览图（对齐官方 comic_details_page/thumbnails.dart：
             //    网格铺排 + 分页加载 + 点任意一张从该页开读）
             val thumbnails = detailState.thumbnails.ifEmpty { liveDetails?.thumbnails.orEmpty() }
+            // 折叠态下只渲染前 PREVIEW_LIMIT 张：详情自带全量预览的源（nhentai 等）
+            // 会把整本几百张一次塞进来，不拦就会同时发起几百个图片请求。
+            // 注意判据用 detailState 的展开标志 —— liveDetails 兜底时没有该状态。
+            val shownThumbnails = if (detailState.thumbnailsExpanded) thumbnails
+                else thumbnails.take(PREVIEW_LIMIT)
             if (thumbnails.isNotEmpty() || detailState.isLoadingThumbnails) {
                 item {
                     VeneraCard(modifier = Modifier.fillMaxWidth()) {
@@ -655,7 +673,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
 
                         // 三列网格（末行不足三张时补空位，避免被拉伸变形）
                         Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
-                            thumbnails.chunked(3).forEachIndexed { rowIdx, rowItems ->
+                            shownThumbnails.chunked(3).forEachIndexed { rowIdx, rowItems ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
                                     rowItems.forEachIndexed { colIdx, thumbUrl ->
                                         val pageIndex = rowIdx * 3 + colIdx
@@ -745,17 +763,55 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             )
                         }
 
-                        if (detailState.hasMoreThumbnails) {
+                        // 折叠 / 展开预览图。两种「还有更多」必须都算上，缺一个就点不动：
+                        //  - thumbnailsCollapsed：本地已有 > PREVIEW_LIMIT 张被折叠（nhentai 全量返回）
+                        //  - hasMoreThumbnails：源还有未拉取的分页（EH 的 loadThumbnails 分页）
+                        val collapsed = !detailState.thumbnailsExpanded && thumbnails.size > PREVIEW_LIMIT
+                        val canLoadMore = detailState.hasMoreThumbnails
+                        if (collapsed || canLoadMore) {
                             Spacer(modifier = Modifier.height(tokens.spacing.space5))
+                            val hidden = (thumbnails.size - PREVIEW_LIMIT).coerceAtLeast(0)
+                            // 折叠的本地图与「源还有下一页」是两件事，文案要分别说清，
+                            // 否则用户点开后发现又多出一批会以为界面在骗人。
+                            val label = when {
+                                collapsed && canLoadMore -> "查看更多预览（已显示 $PREVIEW_LIMIT / ${thumbnails.size}+ 张）"
+                                collapsed -> "查看更多预览（还有 $hidden 张）"
+                                canLoadMore -> "加载更多预览"
+                                else -> "查看更多预览"
+                            }
                             Surface(
                                 shape = RoundedCornerShape(tokens.shape.small),
                                 color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.loadThumbnails(loadMore = true) },
+                                    .clickable {
+                                        // 展开时把已到手的图直接放出来（expandThumbnails 内部
+                                        // 只在该源确实还有下一页时才顺带补一次分页）。
+                                        if (collapsed || canLoadMore) viewModel.expandThumbnails()
+                                    },
                             ) {
                                 Text(
-                                    text = "加载更多预览",
+                                    text = label,
+                                    fontSize = tokens.type.caption,
+                                    color = tokens.color.textSecondary,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = tokens.spacing.space5)
+                                )
+                            }
+                        }
+
+                        // 已展开且图很多时给一个收起入口，否则展开后详情页会被撑得过长
+                        if (detailState.thumbnailsExpanded && thumbnails.size > PREVIEW_LIMIT) {
+                            Spacer(modifier = Modifier.height(tokens.spacing.space4))
+                            Surface(
+                                shape = RoundedCornerShape(tokens.shape.small),
+                                color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.collapseThumbnails() },
+                            ) {
+                                Text(
+                                    text = "收起预览",
                                     fontSize = tokens.type.caption,
                                     color = tokens.color.textSecondary,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
