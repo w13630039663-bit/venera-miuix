@@ -345,7 +345,6 @@ class ManWaBa extends ComicSource {
       let data = await this.fetchJson(url, { payload: undefined }).then(
         (res) => res.data
       );
-      this.logger.warn(`loadInfo: ${data}`);
       let chapterId = data.id;
       let chapterApi = `${this.api}/comic/chapter`;
       let params = {
@@ -354,7 +353,9 @@ class ManWaBa extends ComicSource {
         pageSize: 1,
       };
       let pageRes = await this.fetchJson(chapterApi, { params });
-      let total = pageRes.pagination.total;
+      // pagination 缺失时 total 为 undefined，会把 pageSize=undefined 传给后端拉到错误分页。
+      let total = pageRes && pageRes.pagination ? pageRes.pagination.total : 1;
+      if (!total || total < 1) total = 1;
 
       let chapterRes = await this.fetchJson(chapterApi, {
         params: {
@@ -362,23 +363,25 @@ class ManWaBa extends ComicSource {
           pageSize: total,
         },
       });
-      let chapterList = chapterRes.data;
+      let chapterList = chapterRes.data || [];
       let chapters = new Map();
       chapterList.forEach((item) => {
-        chapters.set(item.id.toString(), item.title.toString());
+        // item.id / item.title 为 null 时 .toString() 直接抛，整章目录连带详情页一起失败。
+        if (item.id === undefined || item.id === null) return;
+        chapters.set(String(item.id), item.title === undefined || item.title === null ? "" : String(item.title));
       });
 
       return new ComicDetails({
-        title: data.title.toString(),
-        subTitle: data.author.toString(),
-        cover: data.cover,
+        title: data.title === undefined || data.title === null ? "" : String(data.title),
+        subTitle: data.author === undefined || data.author === null ? "" : String(data.author),
+        cover: data.cover || "",
         tags: {
-          类型: data.tags.split(","),
+          类型: (data.tags || "").split(",").filter((t) => t),
           状态: data.status == 0 ? "连载中" : "已完结",
         },
         chapters,
-        description: data.intro,
-        updateTime: new Date(data.editTime * 1000).toLocaleDateString(),
+        description: data.intro || "",
+        updateTime: data.editTime ? new Date(data.editTime * 1000).toLocaleDateString() : "",
       });
     },
     /**

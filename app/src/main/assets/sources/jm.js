@@ -791,7 +791,7 @@ class JM extends ComicSource {
                 chapters.set(id, '第1話')
             }
             let tags = data.tags ?? []
-            let related = data["related_list"].map((e) => new Comic({
+            let related = (data["related_list"] ?? []).map((e) => new Comic({
                 id: e.id.toString(),
                 title: e.name,
                 subtitle: e.author ?? "",

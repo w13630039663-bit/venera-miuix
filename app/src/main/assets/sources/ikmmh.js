@@ -1172,34 +1172,35 @@ class Ikm extends ComicSource {
         throw new Error(`章节数据格式异常`);
       }
 
-      let title = document.querySelector(
-        "div.book-hero__detail > div.title"
-      ).text;
+      // 以下选择器任一失配都会让整个详情页崩掉（title 为 null 时下一行 .replace 还会二次崩）。
+      let titleEl = document.querySelector("div.book-hero__detail > div.title");
+      let title = titleEl ? titleEl.text : "";
       let escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      let thumb =
-        document
-          .querySelector("div.coverimg")
-          .attributes["style"].match(/\((.*?)\)/)?.[1] || "";
-      let desc = document
-        .querySelector("article.book-container__detail")
-        .text.match(
-          new RegExp(
-            `漫画名：${escapedTitle}(?:(?:[^。]*?(?:简介|漫画简介)\\s*[:：]?\\s*)|(?:[^。]*?))([\\s\\S]+?)\\.\\.\\.。`
+      let coverEl = document.querySelector("div.coverimg");
+      let coverStyle = coverEl && coverEl.attributes ? coverEl.attributes["style"] : null;
+      let thumb = coverStyle ? (coverStyle.match(/\((.*?)\)/)?.[1] || "") : "";
+      let detailEl = document.querySelector("article.book-container__detail");
+      let desc = detailEl
+        ? detailEl.text.match(
+            new RegExp(
+              `漫画名：${escapedTitle}(?:(?:[^。]*?(?:简介|漫画简介)\\s*[:：]?\\s*)|(?:[^。]*?))([\\s\\S]+?)\\.\\.\\.。`
+            )
           )
-        );
+        : null;
       let intro = desc?.[1]?.trim().replace(/\s+/g, " ") || "";
+
+      let authorEl = document.querySelector("div.book-container__author");
+      let authorText = authorEl ? authorEl.text : "";
+      let authorParts = authorText.split("作者：");
+      let updateEl = document.querySelector("div.update > a > em");
 
       return {
         title: title.split("~")[0],
         cover: thumb,
         description: intro,
         tags: {
-          "作者": [
-            document
-              .querySelector("div.book-container__author")
-              .text.split("作者：")[1],
-          ],
-          "更新": [document.querySelector("div.update > a > em").text],
+          "作者": [authorParts.length > 1 ? authorParts[1] : authorText],
+          "更新": [updateEl ? updateEl.text : ""],
           "标签": document
             .querySelectorAll("div.book-hero__detail > div.tags > a")
             .map((e) => e.text.trim())
@@ -1208,11 +1209,19 @@ class Ikm extends ComicSource {
         chapters: eps,
         recommend: document
           .querySelectorAll("div.module-guessu > div.item")
-          .map((e) => ({
-            title: e.querySelector("div.title").text.split("~")[0],
-            cover: e.querySelector("div.thumb_img").attributes["data-src"],
-            id: `${Ikm.baseUrl}${e.querySelector("a").attributes["href"]}`,
-          })),
+          .map((e) => {
+            // 推荐位卡片结构可能不同，逐项判空并丢弃残缺项
+            let rTitle = e.querySelector("div.title");
+            let rImg = e.querySelector("div.thumb_img");
+            let rLink = e.querySelector("a");
+            if (!rTitle || !rLink || !rLink.attributes || !rLink.attributes["href"]) return null;
+            return {
+              title: rTitle.text.split("~")[0],
+              cover: (rImg && rImg.attributes && rImg.attributes["data-src"]) || "",
+              id: `${Ikm.baseUrl}${rLink.attributes["href"]}`,
+            };
+          })
+          .filter((e) => e),
         isFavorite: isFavorite,
       };
     },

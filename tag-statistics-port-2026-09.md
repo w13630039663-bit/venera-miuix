@@ -207,3 +207,53 @@ Build QA：`:app:compileDebugKotlin` + `:app:testDebugUnitTest` + `:app:assemble
 5. **不做数据迁移**：`tags` 列此前没有任何写入者（`recordSession` 的 `tags` 形参无人传值），存量行恒为空串，没有需要按旧逗号规则解读的数据。
 6. **空态必须说话**：新增 `TopicEmptyCard`。因为「不带 namespace 的裸标签不参与统计」是照搬的原版口径，jm 这类只给分类词的源会**合法地**归不出桶 —— 不解释就会被当成 bug 报回来。
 
+## 8. 全源标签形态普查（真机 QA 反馈后补，33 个源逐个查）
+
+真机反馈：**只有 ehentai 记录得到标签，禁漫 / 哔咔都没有**。查完 33 个源，根因与影响面如下。
+
+### 8.1 根因（一条，不是多条）
+
+写入侧取的是 `ComicItem.tags` —— 那是**列表接口**的标签，而不是详情的 `tagMap`。列表标签对多数源是**裸词**（无 `namespace:`），而 `TagNormalizer` 按原版口径 `idx <= 0` 一律丢弃 → 整源零贡献。EH 之所以能出数纯属巧合：`ehentai.js` 的列表项直接把 DOM 的 title（`female:lolicon`）当标签字符串用，自带了冒号前缀。
+
+第二个坑在解析层：`JsComicSource:470` 对 Map 形态的 tags 交出的是 `tagMap.values.flatten()` —— **命名空间在这一步就丢了**，所以即便去用 `details.comic.tags` 也一样是裸串。必须用 `tagMap` 自己打平，故新增 `ComicDetails.plainTags`（值已自带 `:` 时不重复加前缀，避免拼出 `标签:female:lolicon`）。
+
+> 顺带证伪一个我差点写出去的结论：5 个源的详情 tags 是 JS `new Map()`（ehentai / nhentai / hitomi / wnacg / mycomic / jcomic / comic_walker），看着像会被 `JSON.stringify` 打成 `{}`，但 `venera-shim.js:74-83` 的 `_serializeMessage` 显式把 `Map`→对象、`Set`→数组 —— 桥是好的，这些源的 tagMap 确实到了 Kotlin。
+
+### 8.2 逐源结果（分组键抄自 `app/src/main/assets/sources/*.js` 的 `loadInfo`）
+
+| 源 | 详情 `tags` 分组键 | 存活（参与统计） | 会被排除表挡掉 | 修好后 |
+|---|---|---|---|---|
+| ehentai | 动态（= EhTag 原生命名空间 female/male/parody/character/…） | female/male/parody/character/mixed/other | group/artist/language/misc | ✅ **信息量最大** |
+| nhentai | 动态（= `tag.type`） | tag/parody/character | artist/group/language/category | ✅ |
+| hitomi | type/groups/series/characters/females/males/others/artists/language | type/series/characters/females/males/others | artists/language/groups | ✅（值自带 `f:`/`m:` 前缀） |
+| picacg | Author / Chinese Team / Categories / Tags | Tags、**Chinese Team** | Author/Categories | ✅ 但会混进汉化组桶 |
+| jm | Author / Tag / Work / Actor / View | Tag、**Actor** | Author/Work/View | ✅ 但会混进角色名桶 |
+| copy_manga / copy_manga_multi_accounts / hot_manga | 作者/更新/标签/状态 | 标签 | 其余三项 | ✅ |
+| baozi / ccc / ikmmh / komiic / manhuaren / mh1234 / zaimanhua / goda / mh18 / comick / happy / manwaba / mxs / manga_dex / wnacg / hcomic / mycomic / kavita / komga / lanraragi / manhuagui | 多为 `作者`+`标签`/`题材`/`类型` 组合 | 标签/標籤/Tags/题材/类型 | 作者/状态/更新/語言/分類 | ✅ 见 8.3 的垃圾桶列 |
+| comic_walker | 动态 `a.role` + Labels | Labels | 作者类 role | ⚠️ 只有 Labels |
+| jcomic | authors / categories | —— | 两项全在排除表 | ❌ **零贡献** |
+| shonen_jump_plus | Author / Update | —— | 两项全在排除表 | ❌ **零贡献** |
+| ykmh | 源直接返回 `tags: []` | —— | —— | ❌ **零贡献** |
+
+**结论：修好后 30/33 个源会出数，3 个结构性零贡献**（jcomic / shonen_jump_plus / ykmh —— 前两个是源只给作者与更新，第三个是源脚本本身没填 tags）。这不是移植缺陷，是源的数据面。
+
+### 8.3 普查顺带查出的垃圾桶键（排除表该补但**尚未**补）
+
+以下分组会活着进统计，但值不是题材：
+
+| 键 | 出处 | 值示例 | 判断 |
+|---|---|---|---|
+| `日期` | hcomic.js | `2023-04-12` | 明确该排 |
+| `頁數` | wnacg.js | `32` | 明确该排 |
+| `Pages` / `Extension` | lanraragi.js | `24P` / `.zip` | 明确该排 |
+| `提示` | kavita.js / komga.js | 服务端提示语 | 明确该排 |
+| `Chinese Team` / `汉化组` | picacg.js | 社团名 | 该排（与已排的 `group`/`社团` 同义） |
+| `Actor` / `出演` | jm.js | 角色名 | 存疑：角色算不算「题材偏好」？原版排了 `work`(原作) 却没排角色 |
+| `地区` | mxs / mycomic / manhuagui | `日本`/`韩国` | 存疑：是偏好但不是题材 |
+| `年代` | manhuagui | `80年代` | 存疑：与已排的 `date`/`时间` 同类 |
+| `系列` / `series` | komga / hitomi | 作品系列名 | 存疑：与已排的 `work` 同类，但 hitomi 的 series 常被当萌属性用 |
+
+前三行是**确定该排**（数值/扩展名/提示语，进统计纯属噪声）；后六行是语义判断，需要拍板。
+
+
+

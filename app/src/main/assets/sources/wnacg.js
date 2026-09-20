@@ -639,13 +639,29 @@ class Wnacg extends ComicSource {
                 throw `Invalid Status Code ${res.status}`
             }
             let document = new HtmlDocument(res.body)
-            let title = document.querySelector("div.userwrap > h2").text
-            let cover = document.querySelector("div.userwrap > div.asTB > div.asTBcell.uwthumb > img").attributes["src"]
-            cover = 'https:' + cover
-            cover = cover.substring(0, 6) + cover.substring(8)
+            // 紳士漫畫的詳情模板有多套（行動版 / 未登入 / 改版），任一選擇器失配都會
+            // 讓 `null.text` 直接炸掉整個詳情頁。整段查詢一律判空，取不到就給空字串。
+            let titleEl = document.querySelector("div.userwrap > h2")
+            let title = titleEl ? titleEl.text : ""
+            let coverEl = document.querySelector("div.userwrap > div.asTB > div.asTBcell.uwthumb > img")
+            let cover = coverEl ? coverEl.attributes["src"] : ""
+            if (cover) {
+                cover = 'https:' + cover
+                cover = cover.substring(0, 6) + cover.substring(8)
+            }
             let labels = document.querySelectorAll("div.asTBcell.uwconn > label")
-            let category = labels[0].text.split("：")[1]
-            let pages = labels[1].text.split("：")[1];
+            // labels 是數組，元素個數由頁面模板決定：直接 labels[0].text / labels[1].text
+            // 在標籤數不足時是 undefined.text，必崩。逐個判空取值。
+            let category = ""
+            let pages = ""
+            if (labels.length > 0 && labels[0] && labels[0].text) {
+                let parts = labels[0].text.split("：")
+                category = parts.length > 1 ? parts[1] : labels[0].text
+            }
+            if (labels.length > 1 && labels[1] && labels[1].text) {
+                let parts = labels[1].text.split("：")
+                pages = parts.length > 1 ? parts[1] : labels[1].text
+            }
             let tagsDom = document.querySelectorAll("a.tagshow");
             let tags = new Map()
             tags.set("頁數", [pages])
@@ -653,8 +669,17 @@ class Wnacg extends ComicSource {
             if (tagsDom.length > 0) {
                 tags.set("標籤", tagsDom.map((e) => e.text))
             }
-            let description = document.querySelector("div.asTBcell.uwconn > p").text;
-            let uploader = document.querySelector("div.asTBcell.uwuinfo > a > p").text;
+            let descEl = document.querySelector("div.asTBcell.uwconn > p")
+            let description = descEl ? descEl.text : "";
+            let uploaderEl = document.querySelector("div.asTBcell.uwuinfo > a > p")
+            let uploader = uploaderEl ? uploaderEl.text : "";
+
+            // 紳士漫畫一部作品就是一本畫廊（loadEp 不需要章節號），但**仍要顯式給出
+            // chapters**：詳情頁的章節卡片、以及點預覽圖開讀時用的 chapterId 都源於此。
+            // 此前不給，UI 只能靠 Kotlin 側的佔位章兜底，章節名會退化成漫畫標題。
+            let chapters = new Map()
+            let totalPages = Number(pages)
+            chapters.set(String(id), (totalPages > 0 ? totalPages + " 頁" : "") || title)
 
             return new ComicDetails({
                 id: id,
@@ -662,6 +687,7 @@ class Wnacg extends ComicSource {
                 cover: cover,
                 pages: pages,
                 tags: tags,
+                chapters: chapters,
                 description: description,
                 uploader: uploader,
             })

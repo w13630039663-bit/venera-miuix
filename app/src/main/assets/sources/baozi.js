@@ -388,12 +388,13 @@ class Baozi extends ComicSource {
       }
       let document = new HtmlDocument(res.body);
 
-      let title = document.querySelector("h1.comics-detail__title").text.trim();
-      let cover = document.querySelector("div.l-content > div > div > amp-img")
-        .attributes["src"];
-      let author = document
-        .querySelector("h2.comics-detail__author")
-        .text.trim();
+      // 任一选择器失配都会 null.text 崩掉详情页，逐项判空。
+      let titleEl = document.querySelector("h1.comics-detail__title");
+      let title = titleEl ? titleEl.text.trim() : "";
+      let coverEl = document.querySelector("div.l-content > div > div > amp-img");
+      let cover = coverEl && coverEl.attributes ? coverEl.attributes["src"] : "";
+      let authorEl = document.querySelector("h2.comics-detail__author");
+      let author = authorEl ? authorEl.text.trim() : "";
       let tags = document
         .querySelectorAll("div.tag-list > span")
         .map((e) => e.text.trim());
@@ -424,9 +425,8 @@ class Baozi extends ComicSource {
         };
         updateTime = getLastChapterText();
       }
-      let description = document
-        .querySelector("p.comics-detail__desc")
-        .text.trim();
+      let descEl = document.querySelector("p.comics-detail__desc");
+      let description = descEl ? descEl.text.trim() : "";
       let chapters = new Map();
       let i = 0;
       for (let c of document.querySelectorAll(
@@ -454,14 +454,17 @@ class Baozi extends ComicSource {
       let recommend = [];
       for (let c of document.querySelectorAll("div.recommend--item")) {
         if (c.querySelectorAll("div.tag-comic").length > 0) {
-          let title = c.querySelector("span").text.trim();
-          let cover = c.querySelector("amp-img").attributes["src"];
-          let url = c.querySelector("a").attributes["href"];
-          let id = url.split("/").pop();
+          // 上面的条件只保证有这个标记块，并不保证 span/amp-img/a 存在。
+          let spanEl = c.querySelector("span");
+          let imgEl = c.querySelector("amp-img");
+          let linkEl = c.querySelector("a");
+          if (!spanEl || !linkEl || !linkEl.attributes) continue;
+          let url = linkEl.attributes["href"];
+          if (!url) continue;
           recommend.push({
-            id: id,
-            title: title,
-            cover: cover,
+            id: url.split("/").pop(),
+            title: spanEl.text.trim(),
+            cover: (imgEl && imgEl.attributes && imgEl.attributes["src"]) || "",
           });
         }
       }

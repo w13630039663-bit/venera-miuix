@@ -192,6 +192,11 @@ class ComicWalker extends ComicSource {
         `${this.api_base}/v2/screens/comics/${id}`,
         this.headers,
       );
+      // res.resources 可能是 null/undefined（接口降级或返回错误体），
+      // 直接取 .detail 会抛 "Cannot read properties of null (reading 'detail')"。
+      if (!res || !res.resources || !res.resources.detail) {
+        throw "comic_walker: 接口未返回漫画详情";
+      }
       const detail = res.resources.detail;
 
       const totalCount = res.resources.episode_total_count || 0;

@@ -248,42 +248,77 @@ class MH18 extends ComicSource {
         throw `Invalid status code: ${res.status}`;
       }
       const document = new HtmlDocument(res.body);
-      const title = document.querySelector(".text-xl").text.trim().split("   ")[0]
-      const cover = document.querySelector(".object-cover").attributes["src"];
-      const description = document.querySelector("p.text-medium").text;
+      // 与 goda.js 保持同一套判空写法（两者页面结构同源，这里是未回灌修复的旧副本）：
+      // 任一选择器失配都不该让整个详情页崩掉。
+      const titleEl = document.querySelector(".text-xl");
+      const title = titleEl ? (titleEl.text || "").trim().split("   ")[0] : "";
+
+      const coverEl = document.querySelector(".object-cover");
+      const cover = (coverEl && coverEl.attributes && coverEl.attributes["src"]) || "";
+
+      const descEl = document.querySelector("p.text-medium");
+      const description = descEl ? (descEl.text || "") : "";
+
       const infos = document.querySelectorAll("div.py-1");
       const tags = { "作者": [], "类型": [], "标签": [] };
-      for (let author of infos[0].querySelectorAll("a > span")) {
-        let author_name = author.text.trim();
-        if (author_name.endsWith(",")) {
-          author_name = author_name.slice(0, -1).trim();
+      // infos 永远是个数组（可能为空），infos[0]/[1]/[2] 越界时是 undefined。
+      if (infos && infos.length >= 3) {
+        if (infos[0]) {
+          for (let author of infos[0].querySelectorAll("a > span")) {
+            let author_name = (author.text || "").trim();
+            if (author_name.endsWith(",")) {
+              author_name = author_name.slice(0, -1).trim();
+            }
+            if (author_name) tags["作者"].push(author_name);
+          }
         }
-        tags["作者"].push(author_name);
-      }
-      for (let category of infos[1].querySelectorAll("a > span")) {
-        let category_name = category.text.trim();
-        if (category_name.endsWith(",")) {
-          category_name = category_name.slice(0, -1).trim();
+        if (infos[1]) {
+          for (let category of infos[1].querySelectorAll("a > span")) {
+            let category_name = (category.text || "").trim();
+            if (category_name.endsWith(",")) {
+              category_name = category_name.slice(0, -1).trim();
+            }
+            if (category_name) tags["类型"].push(category_name);
+          }
         }
-        tags["类型"].push(category_name);
+        if (infos[2]) {
+          for (let tag of infos[2].querySelectorAll("a")) {
+            const tagText = (tag.text || "").replace("\n", "").replaceAll(" ", "").replace("#", "");
+            if (tagText) tags["标签"].push(tagText);
+          }
+        }
       }
-      for (let tag of infos[2].querySelectorAll("a")) {
-        tags["标签"].push(tag.text.replace("\n", "").replaceAll(" ", "").replace("#", ""));
+
+      const mangaEl = document.querySelector("#mangachapters");
+      const mangaId = mangaEl && mangaEl.attributes ? mangaEl.attributes["data-mid"] : null;
+      if (!mangaId) {
+        throw "无法获取漫画ID";
       }
-      const mangaId = document.querySelector("#mangachapters").attributes["data-mid"];
       const chapterRes = await Network.get(`${this.baseUrl}/manga/get?mid=${mangaId}&mode=all&t=${Date.now()}`, this.headers);
       const chapterDoc = new HtmlDocument(chapterRes.body);
       const chapters = {};
       for (let ch of chapterDoc.querySelectorAll(".chapteritem")) {
         const info = ch.querySelector("a");
-        chapters[`${info.attributes["data-ms"]}@${info.attributes["data-cs"]}`] = ch.querySelector(".chaptertitle").text;
+        if (!info || !info.attributes) continue;
+        const ms = info.attributes["data-ms"];
+        const cs = info.attributes["data-cs"];
+        if (ms === undefined || cs === undefined) continue;
+        const titleEl2 = ch.querySelector(".chaptertitle");
+        chapters[`${ms}@${cs}`] = titleEl2 ? (titleEl2.text || "").trim() : "";
       }
       const recommend = [];
       for (let item of document.querySelectorAll("div.cardlist > div.pb-2")) {
+        // 推荐位卡片结构可能与主卡不同，逐项判空——任一破损不该牵连整个详情页
+        const rLink = item.querySelector("a");
+        const rTitle = item.querySelector("h3");
+        const rImg = item.querySelector("img");
+        if (!rLink || !rLink.attributes || !rTitle) continue;
+        const rHref = rLink.attributes["href"];
+        if (!rHref) continue;
         recommend.push(new Comic({
-          id: item.querySelector("a").attributes["href"],
-          title: item.querySelector("h3").text,
-          cover: item.querySelector("img").attributes["src"]
+          id: rHref,
+          title: rTitle.text,
+          cover: (rImg && rImg.attributes && rImg.attributes["src"]) || ""
         }));
       }
       return new ComicDetails({

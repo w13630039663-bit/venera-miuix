@@ -557,7 +557,7 @@ class Happy extends ComicSource {
             // 从HTML解析信息
             const title = doc.querySelector(".mg-title")?.text.trim()
             const subTitle = doc.querySelector(".mg-sub-title")?.text.replace(/,/g, "／").trim()
-            const cover = doc.querySelector("mip-img").attributes.src
+            const cover = doc.querySelector("mip-img")?.attributes?.src
             const authorRaw = doc.querySelectorAll(".mg-sub-title a").map(a => a.text.trim()).join(",")
             const authors = this.formatAuthor(authorRaw)
             const author = authors.join(" | ")

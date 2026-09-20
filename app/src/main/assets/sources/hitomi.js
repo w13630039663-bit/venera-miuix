@@ -1455,20 +1455,23 @@ class Hitomi extends ComicSource {
     loadInfo: async (id) => {
       const data = await get_gallery_detail(id);
 
+      // 字段缺失时 .length 会抛。上半段用了 "type" in data 防守、下半段却直接 .length，
+      // 标准不一致；统一按「有该字段且非空」处理。
       const tags = new Map();
+      const hasItems = (v) => Array.isArray(v) && v.length > 0;
       if ("type" in data && data.type) tags.set("type", [data.type]);
-      if (data.groups.length) tags.set("groups", data.groups);
-      if (data.artists.length) tags.set("artists", data.artists);
+      if (hasItems(data.groups)) tags.set("groups", data.groups);
+      if (hasItems(data.artists)) tags.set("artists", data.artists);
       if ("language" in data && data.language)
         tags.set("language", [data.language]);
-      if (data.series.length) tags.set("series", data.series);
-      if (data.characters.length) tags.set("characters", data.characters);
-      if (data.females.length) tags.set("females", data.females);
-      if (data.males.length) tags.set("males", data.males);
-      if (data.others.length) tags.set("others", data.others);
+      if (hasItems(data.series)) tags.set("series", data.series);
+      if (hasItems(data.characters)) tags.set("characters", data.characters);
+      if (hasItems(data.females)) tags.set("females", data.females);
+      if (hasItems(data.males)) tags.set("males", data.males);
+      if (hasItems(data.others)) tags.set("others", data.others);
 
       let recommend = undefined;
-      if (data.related_gids.length) {
+      if (hasItems(data.related_gids)) {
         recommend = (await get_galleryblocks(data.related_gids)).map((n) =>
           this._mapGalleryBlockInfoToComic(n)
         );
@@ -1476,12 +1479,23 @@ class Hitomi extends ComicSource {
 
       this.galleryCache = data;
 
+      // 一部畫廊即一章，但**仍要顯式給出 chapters**：詳情頁的章節卡片、以及點預覽圖
+      // 開讀時用的 chapterId 都源於此。此前不給，只能靠 Kotlin 側佔位章兜底，
+      // 章節名會退化成畫廊標題。對齊同為圖庫模式的 hcomic.js / lanraragi.js 寫法。
+      const chapters = new Map();
+      if (data.files && data.files.length > 0) {
+        chapters.set(String(id), data.files.length + " 頁");
+      } else {
+        chapters.set(String(id), data.title || String(id));
+      }
+
       return new ComicDetails({
         title: data.title,
         cover: get_thumbnail_url_from_hash(data.thumbnail_hash, true),
         tags,
         maxPage: data.files.length,
-        thumbnails: data.files.map((n) => get_thumbnail_url_from_hash(n.hash)),
+        thumbnails: (data.files || []).map((n) => get_thumbnail_url_from_hash(n.hash)),
+        chapters,
         uploadTime: formatDate(data.posted_time),
         url: data.url,
         recommend,

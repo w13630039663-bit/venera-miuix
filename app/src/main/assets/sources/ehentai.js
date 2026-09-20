@@ -714,21 +714,27 @@ class Ehentai extends ComicSource {
 
             let tags = new Map();
             for(let tr of document.querySelectorAll("div#taglist > table > tbody > tr")) {
-                tags.set(
-                    tr.children[0].text.substring(0, tr.children[0].text.length - 1),
-                    tr.children[1].children.map((e) =>
-                        e.children[0]
-                        .attributes["onclick"]
-                        .split(":")[1]
-                        .split("'")[0]
-                    )
-                )
+                // children[0]/[1] 越界时是 undefined；onclick 缺失则 split 崩。
+                if (!tr.children || tr.children.length < 2) continue;
+                let keyEl = tr.children[0];
+                let valEl = tr.children[1];
+                if (!keyEl || !valEl) continue;
+                let keyText = keyEl.text || "";
+                let vals = valEl.children.map((e) => {
+                    let inner = e.children && e.children[0];
+                    let onclick = inner && inner.attributes ? inner.attributes["onclick"] : null;
+                    if (!onclick) return "";
+                    let parts = onclick.split(":");
+                    return parts.length > 1 ? parts[1].split("'")[0] : "";
+                }).filter((v) => v);
+                tags.set(keyText.substring(0, Math.max(0, keyText.length - 1)), vals)
             }
 
             let maxPage = "1"
             for(let element of document.querySelectorAll("td.gdt2")) {
-                if (element.text.includes("page")) {
-                    maxPage = element.text.match(/\d+/)[0];
+                if (element.text && element.text.includes("page")) {
+                    let m = element.text.match(/\d+/);
+                    if (m) maxPage = m[0];
                 }
             }
 
@@ -738,39 +744,69 @@ class Ehentai extends ComicSource {
             }
             let folder = null
             if(isFavorited) {
-                let position = document
-                    .querySelector("div#fav")
-                    .children[0]
-                    .attributes["style"]
-                    .split("background-position:0px -")[1]
-                    .split("px;")[0];
-                folder = (Number(position-2) / 19).toString()
+                // 这串 5 层解引用是本文件最容易崩的地方：收藏夹面板没渲染、
+                // 或 style 里没有 background-position 时，任一层失配都会炸掉详情页。
+                // 收藏夹编号只是展示信息，取不到就该是 null 而不是致命错误。
+                try {
+                    let favEl = document.querySelector("div#fav");
+                    let posEl = favEl && favEl.children ? favEl.children[0] : null;
+                    let style = posEl && posEl.attributes ? posEl.attributes["style"] : null;
+                    if (style) {
+                        let after = style.split("background-position:0px -")[1];
+                        if (after) {
+                            let position = after.split("px;")[0];
+                            let num = Number(position);
+                            if (!Number.isNaN(num)) {
+                                folder = (Number(num - 2) / 19).toString()
+                            }
+                        }
+                    }
+                } catch (e) {
+                    folder = null
+                }
             }
 
-            let coverPath = document.querySelector("div#gleft > div#gd1 > div").attributes["style"];
-            coverPath = RegExp("https?://([-a-zA-Z0-9.]+(/\\S*)?\\.(?:jpg|jpeg|gif|png|webp))").exec(coverPath)[0];
+            let coverStyleEl = document.querySelector("div#gleft > div#gd1 > div");
+            let coverStyle = coverStyleEl && coverStyleEl.attributes ? coverStyleEl.attributes["style"] : null;
+            let coverPath = "";
+            if (coverStyle) {
+                // exec 未命中返回 null，直接 [0] 会抛 "reading \"0\""。
+                let m = RegExp("https?://([-a-zA-Z0-9.]+(/\\S*)?\\.(?:jpg|jpeg|gif|png|webp))").exec(coverStyle);
+                if (m) coverPath = m[0];
+            }
 
             let uploader = document.getElementById("gdn")?.children[0]?.text
 
             let stars = Number(document.getElementById("rating_label")?.text?.split(':')?.at(1)?.trim());
 
-            let category = document.querySelector("div.cs").text;
+            let categoryEl = document.querySelector("div.cs");
+            let category = categoryEl ? categoryEl.text : "";
             tags.set("Category", [category])
 
             if (uploader) {
                 tags.set("uploader", [uploader]);
             }
             
-            let time = document.querySelector("div#gdd > table > tbody > tr > td.gdt2").text
+            let timeEl = document.querySelector("div#gdd > table > tbody > tr > td.gdt2");
+            let time = timeEl ? timeEl.text : ""
 
-            let script = document.querySelectorAll("script").find((e) => e.text.includes("var token"));
-            let reg = RegExp("var\\s+(\\w+)\\s*=\\s*(.*?);", "g");
+            // find() 未命中返回 undefined，undefined.text 直接抛。nhentai 对同一模式
+            // 包了 try/catch，这里此前漏了 —— token 脚本缺失（未登录/改版）即整页崩。
             let variables = new Map();
-            for(let match of script.text.matchAll(reg)) {
-                variables.set(match[1], match[2]);
+            try {
+                let script = document.querySelectorAll("script").find((e) => e.text && e.text.includes("var token"));
+                if (script) {
+                    let reg = RegExp("var\\s+(\\w+)\\s*=\\s*(.*?);", "g");
+                    for(let match of script.text.matchAll(reg)) {
+                        variables.set(match[1], match[2]);
+                    }
+                }
+            } catch (e) {
+                // token 变量缺失不阻断详情展示，后续依赖它的操作会各自报错
             }
 
-            let title = document.querySelector("h1#gn").text;
+            let titleEl = document.querySelector("h1#gn");
+            let title = titleEl ? titleEl.text : "";
             let subtitle = document.querySelector("h1#gj")?.text;
             if(subtitle != null && subtitle.trim() === "") {
                 subtitle = null;

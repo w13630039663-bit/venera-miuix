@@ -947,7 +947,7 @@ class CopyManga extends ComicSource {
             ])
 
             if (results[0].status !== 200) {
-                throw `Invalid status code: ${res.status}`;
+                throw `Invalid status code: ${results[0].status}`;
             }
 
             let data = JSON.parse(results[0].body).results;
@@ -955,18 +955,21 @@ class CopyManga extends ComicSource {
 
             let title = comicData.name;
             let cover = comicData.cover;
-            let authors = comicData.author.map(e => e.name);
+            // author / theme 可能是 null（无作者、无题材的作品），直接 .map 会崩掉详情页。
+            let authorList = comicData.author || [];
+            let themeList = comicData.theme || [];
+            let authors = authorList.map(e => e.name);
             // author_path_word_dict长度限制为最大100
             if (Object.keys(this.author_path_word_dict).length > 100) {
                 this.author_path_word_dict = {};
             }
             // 储存author对应的path_word
-            comicData.author.forEach(e => (this.author_path_word_dict[e.name] = e.path_word));
-            let tags = comicData.theme.map(e => e?.name).filter(name => name !== undefined && name !== null);
+            authorList.forEach(e => (this.author_path_word_dict[e.name] = e.path_word));
+            let tags = themeList.map(e => e?.name).filter(name => name !== undefined && name !== null);
             let updateTime = comicData.datetime_updated ? comicData.datetime_updated : "";
             let description = comicData.brief;
             let chapters = await getChapters(id, data.groups);
-            let status = comicData.status.display;
+            let status = comicData.status ? comicData.status.display : "";
 
             return {
                 title: title,

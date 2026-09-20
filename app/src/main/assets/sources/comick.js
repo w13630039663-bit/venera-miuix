@@ -598,7 +598,9 @@ class Comick extends ComicSource {
             //填充文章id：
             this.comic.id = id;
             let document = new HtmlDocument(res.body)
-            let jsonData = JSON.parse(document.getElementById('comic-data').text);
+            let dataEl = document.getElementById('comic-data');
+            if (!dataEl) throw new Error('comic-data element not found');
+            let jsonData = JSON.parse(dataEl.text);
             let comicData = jsonData;
             let authorData = comicData.authors || [];
             let title = cTitle || comicData?.title || "未知标题";

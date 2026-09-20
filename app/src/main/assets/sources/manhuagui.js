@@ -858,43 +858,66 @@ class ManHuaGui extends ComicSource {
       let document = await this.getHtml(url);
 
       // ANCHOR 基本信息
+      // book 是所有后续查询的根：站点改版导致 .book-cont 缺失时，
+      // 下面每一处都会变成 null.querySelector(...) 级联崩溃。先判根节点。
       let book = document.querySelector(".book-cont");
-      let title = book
-        .querySelector(".book-title")
-        .querySelector("h1")
-        .text.trim();
-      let subtitle = book
-        .querySelector(".book-title")
-        .querySelector("h2")
-        .text.trim();
-      let cover = book.querySelector(".hcover").querySelector("img").attributes[
-        "src"
-      ];
-      cover = `https:${cover}`;
-      let description = book
-        .querySelector("#intro-all")
-        .querySelectorAll("p")
-        .map((e) => e.text.trim())
-        .join("\n");
+      if (!book) {
+        throw "解析失败：未找到漫画详情区块 (.book-cont)，站点可能已改版";
+      }
+      // 每一层都可能 miss，用可选链兜底，取不到就是空串而不是 TypeError。
+      let titleEl = book.querySelector(".book-title")?.querySelector("h1");
+      let title = titleEl ? titleEl.text.trim() : "";
+      let subtitleEl = book.querySelector(".book-title")?.querySelector("h2");
+      let subtitle = subtitleEl ? subtitleEl.text.trim() : "";
+      let coverEl = book.querySelector(".hcover")?.querySelector("img");
+      let cover = coverEl ? coverEl.attributes["src"] : "";
+      if (cover) {
+        cover = `https:${cover}`;
+      }
+      let descEl = book.querySelector("#intro-all");
+      let description = descEl
+        ? descEl.querySelectorAll("p").map((e) => e.text.trim()).join("\n")
+        : "";
       //   log("warn", this.name, { title, subtitle, cover, description });
 
       let detail_list = book.querySelectorAll(".detail-list span");
 
       function parseDetail(idx) {
-        let ele = detail_list[idx].querySelectorAll("a");
+        let node = detail_list[idx];
+        if (!node) return [""];
+        let ele = node.querySelectorAll("a");
         if (ele.length > 0) {
           return ele.map((e) => e.text.trim());
         }
         return [""];
       }
-      let createYear = parseDetail(0);
-      let area = parseDetail(1);
-      let genre = parseDetail(3);
-      let author = parseDetail(4);
+      // 按下标取值本身就脆：`.detail-list span` 是站点字段列表，增删一个字段
+      // 后面全体错位。先按标签文本找，找不到再退回原来的下标。
+      let findDetailByLabel = (label) => {
+        for (let i = 0; i < detail_list.length; i++) {
+          let t = detail_list[i] ? detail_list[i].text : "";
+          if (t && t.includes(label)) return i;
+        }
+        return -1;
+      };
+      let parseDetailAt = (label, fallback) => {
+        let i = findDetailByLabel(label);
+        return parseDetail(i >= 0 ? i : fallback);
+      };
+      let textAt = (label, fallback) => {
+        let i = findDetailByLabel(label);
+        if (i < 0) i = fallback;
+        let node = detail_list[i];
+        return node ? node.text.trim() : "";
+      };
+      let createYear = parseDetailAt("年代", 0);
+      let area = parseDetailAt("地区", 1);
+      let genre = parseDetailAt("类型", 3);
+      let author = parseDetailAt("作者", 4);
       // let alias = parseDetail(5);
 
       //   let lastChapter = parseDetail(6);
-      let status = detail_list[7].text.trim();
+      let status = textAt("状态", 7);
 
       let tags = {
         年代: createYear,
@@ -903,7 +926,7 @@ class ManHuaGui extends ComicSource {
         地区: area,
         类型: genre,
       };
-      let updateTime = detail_list[8].text.trim();
+      let updateTime = textAt("更新", 8);
 
       let chapterDocument = document;
       let isAdultWarning = document.querySelector("#checkAdult");
@@ -952,8 +975,13 @@ class ManHuaGui extends ComicSource {
             let lis = chapterList.querySelectorAll("li");
             for (let li of lis) {
               let a = li.querySelector("a");
-              let id = a.attributes["href"].split("/").pop().replace(".html", "");
-              let title = a.querySelector("span").text.trim();
+              if (!a) continue;
+              let href = a.attributes["href"];
+              if (!href) continue;
+              let id = href.split("/").pop().replace(".html", "");
+              // 章节项没有 <span> 时（站点改版）不能让整个目录加载失败
+              let span = a.querySelector("span");
+              let title = span ? span.text.trim() : id;
               groupChapters.set(id, title);
             }
             
@@ -979,8 +1007,11 @@ class ManHuaGui extends ComicSource {
             for (let li of lis) {
               let a = li.querySelector("a");
               if (a) {
-                let id = a.attributes["href"].split("/").pop().replace(".html", "");
-                let title = a.querySelector("span").text.trim();
+                let href = a.attributes["href"];
+                if (!href) continue;
+                let id = href.split("/").pop().replace(".html", "");
+                let span = a.querySelector("span");
+                let title = span ? span.text.trim() : id;
                 groupChapters.set(id, title);
               }
             }

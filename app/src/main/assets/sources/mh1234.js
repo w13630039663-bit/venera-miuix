@@ -262,32 +262,46 @@ class MH1234 extends ComicSource {
                 throw `Invalid status code: ${res.status}`;
             }
             const doc = new HtmlDocument(res.body);
-            const title = doc.querySelector(".BarTit").text;
-            const cover = doc.querySelector(".pic").querySelector("img").attributes["src"];
-            const description = doc.querySelector("#full-des")?.text;
+            // 站点改版时任一选择器失配，原先都是直接 null.text 崩掉整个详情页。
+            const titleEl = doc.querySelector(".BarTit");
+            const title = titleEl ? titleEl.text : "";
+            const coverImg = doc.querySelector(".pic")?.querySelector("img");
+            const cover = coverImg && coverImg.attributes ? coverImg.attributes["src"] : "";
+            const descriptionEl = doc.querySelector("#full-des");
+            const description = descriptionEl ? descriptionEl.text : "";
             const infos = doc.querySelectorAll(".txtItme");
-            const tags = [];
-            for (let tag of doc.querySelector(".sub_r").querySelectorAll("a")) {
-                const tag_name = tag.text;
-                if (tag_name.length > 0) {
-                    tags.push(tag_name);
+            let tags = [];
+            const subR = doc.querySelector(".sub_r");
+            if (subR) {
+                for (let tag of subR.querySelectorAll("a")) {
+                    const tag_name = tag.text;
+                    if (tag_name && tag_name.length > 0) {
+                        tags.push(tag_name);
+                    }
                 }
             }
             const chapters = {};
             const chapterElements = doc.querySelector(".chapter-warp")?.querySelectorAll("li");
             if (chapterElements) {
                 for (let ch of chapterElements) {
-                    const id = ch.querySelector("a").attributes["href"].replace("/comic/", "").replace(".html", "").split("/").join("_");
-                    chapters[id] = ch.querySelector("span").text;
+                    const a = ch.querySelector("a");
+                    if (!a || !a.attributes || !a.attributes["href"]) continue;
+                    const id = a.attributes["href"].replace("/comic/", "").replace(".html", "").split("/").join("_");
+                    const span = ch.querySelector("span");
+                    chapters[id] = span ? span.text : id;
                 }
             }
+            // infos[0]/[3] 是硬编码下标：元素不足 4 个时越界为 undefined。
+            const info0 = infos && infos.length > 0 ? infos[0] : null;
+            const info3 = infos && infos.length > 3 ? infos[3] : null;
+            const dateEl = info3 ? info3.querySelector(".date") : null;
             return {
                 title: title,
                 cover: cover,
                 description: description,
                 tags: {
-                    "作者": [infos[0].text.replaceAll("\n", "").replaceAll("\r", "").trim()],
-                    "更新": [infos[3].querySelector(".date").text],
+                    "作者": [info0 ? info0.text.replaceAll("\n", "").replaceAll("\r", "").trim() : ""],
+                    "更新": [dateEl ? dateEl.text : ""],
                     "标签": tags.slice(0,-1)
                 },
                 chapters: chapters,

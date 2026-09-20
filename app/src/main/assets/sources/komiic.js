@@ -405,22 +405,33 @@ class Komiic extends ComicSource {
                 getChapter.call()
             ])
 
+            // pop() 在数组为空时返回 undefined，随后 info.title 立即崩。
             let info = results[0].comics.pop()
+            if (!info) {
+                throw new Error("komiic: 未取到漫画详情")
+            }
+
+            // 字段名必须与上面 comicByIds 的 GraphQL 选择集一致：
+            // 该查询只请求了 imageUrl / authors / categories / lastChapterUpdate，
+            // 此前读的 info.cover / subTitle / tags / updateTime **全部不存在**，
+            // 导致封面、作者、标签、更新时间静默为空（不报错，只是永远空着）。
+            let authorNames = (info.authors || []).map((a) => a.name).filter((n) => n)
+            let categoryNames = (info.categories || []).map((c) => c.name).filter((n) => n)
 
             return {
                 // string 标题
                 title: info.title,
                 // string 封面url
-                cover: info.cover,
+                cover: info.imageUrl || "",
                 // map<string, string[]> 标签
                 tags: {
-                    "作者": [info.subTitle],
-                    "标签": info.tags
+                    "作者": authorNames,
+                    "标签": categoryNames
                 },
                 // map<string, string>?, key为章节id, value为章节名称
                 chapters: results[1],
                 recommend: results[0].comics,
-                updateTime: info.updateTime,
+                updateTime: info.lastChapterUpdate || "",
             }
         },
         // 获取章节图片

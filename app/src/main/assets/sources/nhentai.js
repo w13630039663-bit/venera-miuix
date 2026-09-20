@@ -908,7 +908,9 @@ class Nhentai extends ComicSource {
                 }
             }
             for (let field of document.querySelectorAll("div.tag-container")) {
-                let name = field.nodes[0].text.trim().replaceAll(':', '')
+                // nodes 可能为空数组，nodes[0] 是 undefined，.text 会抛。
+                if (!field.nodes || !field.nodes[0]) continue;
+                let name = (field.nodes[0].text || "").trim().replaceAll(':', '')
                 if(name === "Uploaded") {
                     continue;
                 }

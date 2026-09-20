@@ -105,7 +105,23 @@ data class ComicDetails(
     val comments: List<Comment> = emptyList(),
     val subId: String? = null,
     val sourceKey: String = comic.sourceKey
-)
+) {
+    /**
+     * 打平成 `namespace:tag` 的源生标签（对齐 master 分支 `Comic.plainTags`）。
+     *
+     * 为什么不能用 [comic] 的 tags：`JsComicSource` 解析源返回的 Map 形态 tags 时交出来的是
+     * `tagMap.values.flatten()` —— **命名空间在那一步就丢了**。而题材归一化的第一级判据
+     * 正是命名空间（作者/状态/分类词不参与统计），且管线按原口径**丢弃所有不带 `:` 的裸标签**，
+     * 所以拿扁平的 tags 去统计会得到「一个桶都没有」。
+     *
+     * 值里已经自带命名空间（`hitomi` 会写 `"f:" + 标签`、`ehentai` 列表项是 `female:xxx`）时
+     * 不再重复加前缀，否则会拼出 `标签:female:lolicon` 这种两头都不像的键。
+     */
+    val plainTags: List<String>
+        get() = tagMap.flatMap { (namespace, values) ->
+            values.map { value -> if (value.contains(':')) value else "$namespace:$value" }
+        }.distinct()
+}
 
 /**
  * 一页搜索结果。
