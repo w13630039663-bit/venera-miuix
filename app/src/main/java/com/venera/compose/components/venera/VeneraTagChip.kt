@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
  * @param text 标签文本（单行 + Ellipsis）。
  * @param selected 选中态（选中时提升为强调容器色）。
  * @param onClick 可空；为 null 时纯展示（如卡片上的只读标签）。
+ * @param onLongClick 可空；长按菜单等场景用。传了它即使 [onClick] 为 null 也算可交互。
  * @param enabled false 时降透明度且不可点击。
  */
 @Composable
@@ -22,6 +23,7 @@ fun VeneraTagChip(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     enabled: Boolean = true,
 ) {
     VeneraChip(
@@ -29,6 +31,7 @@ fun VeneraTagChip(
         modifier = modifier,
         selected = selected,
         onClick = onClick,
+        onLongClick = onLongClick,
         enabled = enabled,
         variant = VeneraChipVariant.Tag,
     )

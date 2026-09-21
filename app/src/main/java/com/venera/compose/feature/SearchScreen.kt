@@ -150,6 +150,20 @@ fun SharedTransitionScope.AndroidSearchScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
     var showBackToTop by remember { mutableStateOf(false) }
+    // 滚动位置存在 ViewModel 里：从详情页返回会重建整个组合，`rememberLazyListState()`
+    // 没有恢复来源（导航条目没开 saveState），不补这一手就会跳回顶部。
+    // 先 `remember` 取快照，再让记录器开始写 —— 否则记录器的首次发射会把待恢复值冲成 (0,0)。
+    val pendingAnchor = remember { viewModel.listAnchor }
+    LaunchedEffect(listState) {
+        pendingAnchor?.let { (index, offset) ->
+            if (index != 0 || offset != 0) listState.scrollToItem(index, offset)
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { viewModel.listAnchor = it }
+    }
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect { showBackToTop = it > 10 }
     }
@@ -187,6 +201,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
     // 「默认搜索目标」：偏好只在首次进入时预选一次源，之后完全交给会话内的选择，
     // 不订阅后续变化、也不自动发起搜索。
     LaunchedEffect(Unit) {
+        // 从详情页返回会重建整个组合，这个 effect 会再跑一遍 —— 不守卫就会把用户
+        // 在会话里选的源改回默认目标并触发重搜（表现为「返回时搜索页又刷新」）。
+        if (!viewModel.shouldApplyEntryParam("default-target")) return@LaunchedEffect
         val target = defaultSearchTarget
         if (target.isNotBlank()) {
             viewModel.sourcesFlow.value.find { it.key == target }?.let {
@@ -198,6 +215,8 @@ fun SharedTransitionScope.AndroidSearchScreen(
     // 顺序不能反 —— search() 读的是 selectedSourceKey 的快照，先搜就会落在全网聚合上。
     // 名字在源列表里解不到就保持默认目标，绝不凭名字猜一个 key（同名异源是真实存在的）。
     LaunchedEffect(initialQuery, initialSourceName, initialTag) {
+        // 一次性：入参只认第一次消费，组合重建（进详情再返回）时不得重搜。
+        if (!viewModel.shouldApplyEntryParam("drill-down")) return@LaunchedEffect
         if (initialSourceName.isNotBlank()) {
             // 这个入参历史上不统一：从搜索页进详情时是**显示名**，从收藏页进详情时是
             // **sourceKey**（Comic.toComicItem / FavoriteItem.toComicItem 都填 sourceKey）。

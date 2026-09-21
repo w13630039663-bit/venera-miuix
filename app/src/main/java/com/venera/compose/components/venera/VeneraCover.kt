@@ -53,6 +53,9 @@ enum class VeneraCoverMask { Visible, Masked }
  *
  * @param url 封面地址；空串时直接显示占位，不发起请求。
  * @param contentDescription 无障碍描述（通常是作品标题）。
+ * @param preserveAspectRatio 封面是否自持 [VeneraTokens] 的封面比例。
+ *   默认 true（列表/详情那套「宽度定死、高度自算」的用法）。轮播这类**宽高都由外部槽位给定**
+ *   的场景要传 false，否则 aspectRatio 会在固定高度里把图横向收窄，卡片两侧留缝。
  */
 @Composable
 fun VeneraCover(
@@ -61,6 +64,7 @@ fun VeneraCover(
     modifier: Modifier = Modifier,
     mask: VeneraCoverMask = VeneraCoverMask.Visible,
     shimmerWhileLoading: Boolean = true,
+    preserveAspectRatio: Boolean = true,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val tokens = VeneraTokens
@@ -73,8 +77,14 @@ fun VeneraCover(
 
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(tokens.spacing.coverAspectRatio)
+            .then(
+                if (preserveAspectRatio) {
+                    Modifier.fillMaxWidth().aspectRatio(tokens.spacing.coverAspectRatio)
+                } else {
+                    // 外部已给死宽高（轮播槽位）：再叠 aspectRatio 会横向收窄留缝
+                    Modifier.fillMaxSize()
+                }
+            )
             .clip(shape)
             // 占位底色：与 VeneraCoverShimmer 观感一致，避免闪白
             .background(tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha)),

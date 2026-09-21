@@ -103,6 +103,19 @@ class TagNormalizerTest {
     }
 
     @Test
+    fun languageAndTranslationValuesNeverBecomeTopicBuckets() {
+        // 禁漫把语言/汉化塞在兜底 namespace（Tag:）下 —— 第 1 级的 namespace 排除拦不住，
+        // 只能值级拦。否则「中文」会成一个题材桶，首页推荐会拿它当关键词去搜本子。
+        val n = normalizer()
+        assertNull(n.normalize("Tag:中文"))
+        assertNull(n.normalize("Tag:简体中文"))
+        assertNull(n.normalize("Tag:禁漫汉化组"))
+        assertNull(n.normalize("tag:English"))
+        // 值级排除不吃掉正常题材：兜底 namespace 下的合法题材仍要成桶
+        assertEquals("萝莉", n.normalize("Tag:萝莉"))
+    }
+
+    @Test
     fun openccTableParsesOnlyCharLevelPairs() {
         val (s2t, t2s) = ChineseVariantConverter.parseLines(
             sequenceOf(

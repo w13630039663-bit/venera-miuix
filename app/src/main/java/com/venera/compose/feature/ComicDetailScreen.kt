@@ -1,11 +1,15 @@
 package com.venera.compose.feature
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -98,6 +103,31 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val tagLabel = rememberTagDisplayLabel()
     // 分组名（命名空间）中文化用同一本字典的 rows；字典没有的键原样显示，不做猜测翻译。
     val tagDict = remember(context) { TagTranslationManager.getInstance(context) }
+    // 标签长按菜单的两个动作。**复制的是显示名**（所见即所复制），
+    // **屏蔽的是站点原值** —— TAG 规则对「ns:value」与裸 value 双路命中，存原值两种写法都盖得住；
+    // 存译文会因字典更新而失效（屏蔽列表里出现中文键）。
+    val guardForTags = remember(context) {
+        com.venera.compose.security.guard.ContentGuardManager.getInstance(context)
+    }
+    val tagActionScope = rememberCoroutineScope()
+    val copyTag: (String) -> Unit = { raw ->
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("tag", tagLabel(raw)))
+        Toast.makeText(context, "已复制「${tagLabel(raw)}」", Toast.LENGTH_SHORT).show()
+    }
+    val blockTag: (String) -> Unit = { raw ->
+        tagActionScope.launch {
+            val exists = guardForTags.rules.value
+                .any { it.type == "TAG" && it.pattern.equals(raw, ignoreCase = true) }
+            when {
+                exists -> Toast.makeText(context, "「${tagLabel(raw)}」已在屏蔽列表", Toast.LENGTH_SHORT).show()
+                guardForTags.addRule("TAG", raw) >= 0 -> Toast.makeText(
+                    context, "已屏蔽「${tagLabel(raw)}」，可在设置 → 内容屏蔽管理", Toast.LENGTH_SHORT
+                ).show()
+                else -> Toast.makeText(context, "屏蔽失败，请重试", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     val detailState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isFav by viewModel.isLocalFav.collectAsStateWithLifecycle()
@@ -560,16 +590,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3)
                                     ) {
                                         tags.forEach { tag ->
-                                            VeneraTagChip(
+                                            DetailTagChip(
                                                 // 译文只用于显示；点击仍把站点原文交给 onSearchTag。
                                                 // 纯数值（JM 的 View=浏览量）不是可检索标签，点击等于
                                                 // 拿"3132"去搜索 —— 保留展示，取消点击。
-                                                text = tagLabel(tag),
-                                                onClick = if (NUMERIC_ONLY_VALUE.matches(tag)) {
-                                                    null
-                                                } else {
-                                                    { onSearchTag(tag) }
-                                                }
+                                                label = tagLabel(tag),
+                                                searchable = !NUMERIC_ONLY_VALUE.matches(tag),
+                                                onClick = { onSearchTag(tag) },
+                                                onCopy = { copyTag(tag) },
+                                                onBlock = { blockTag(tag) },
                                             )
                                         }
                                     }
@@ -582,9 +611,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)
                         ) {
                             flatTags.forEach { tag ->
-                                VeneraTagChip(
-                                    text = tagLabel(tag),
-                                    onClick = { onSearchTag(tag) }
+                                DetailTagChip(
+                                    label = tagLabel(tag),
+                                    onClick = { onSearchTag(tag) },
+                                    onCopy = { copyTag(tag) },
+                                    onBlock = { blockTag(tag) },
                                 )
                             }
                         }
@@ -1490,6 +1521,55 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
  * 避免把 `24小时`、`801` 这类真实标签误判成计数。
  */
 private val NUMERIC_ONLY_VALUE = Regex("^[0-9][0-9.,\\s]*$")
+
+/**
+ * 详情页标签药丸：点击 = 直达该标签搜索；长按 = 弹出「复制 / 屏蔽」。
+ *
+ * 菜单锚点必须逐项各挂一个 —— 标签是 FlowRow 排布，共用锚会让菜单永远从
+ * 第一个药丸的位置弹出来。按压反馈仍由 [VeneraTagChip] 统一持有，这里只给回调。
+ */
+@Composable
+private fun DetailTagChip(
+    label: String,
+    onClick: () -> Unit,
+    onCopy: () -> Unit,
+    onBlock: () -> Unit,
+    searchable: Boolean = true,
+) {
+    val tokens = VeneraTokens
+    val view = LocalView.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box {
+        VeneraTagChip(
+            text = label,
+            onClick = if (searchable) onClick else null,
+            onLongClick = {
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                menuExpanded = true
+            },
+        )
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            DropdownMenuItem(
+                text = {
+                    Text("复制「$label」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
+                },
+                onClick = {
+                    menuExpanded = false
+                    onCopy()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text("屏蔽该标签", fontSize = tokens.type.caption, color = StatusColors.Failing)
+                },
+                onClick = {
+                    menuExpanded = false
+                    onBlock()
+                },
+            )
+        }
+    }
+}
 
 /** 分享文案（顶栏与辅助行共用，消除重复实现）。 */
 private fun shareText(

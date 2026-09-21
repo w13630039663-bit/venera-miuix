@@ -87,6 +87,26 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val optionsStore = SearchOptionsStore()
     private var loadedSourceKey: String? = null
     private var currentPage = 1
+
+    /**
+     * 「只在进页时做一次」的动作的去重表（源预选、标签/关键词下钻）。
+     *
+     * 搜索页的组合会在「进详情再返回」时被整体销毁重建（导航条目行为），届时的
+     * `LaunchedEffect(initialQuery, initialSourceName, initialTag)` 会重新执行 ——
+     * 用户看到的就是「返回时整个搜索页又刷了一遍，还闪回加载态」。标志放在 ViewModel
+     * 里（与导航条目同生命周期，不随组合销毁），所以入参只认第一次。
+     */
+    private val entryParamsApplied = mutableSetOf<String>()
+    fun shouldApplyEntryParam(key: String): Boolean = entryParamsApplied.add(key)
+
+    /**
+     * 结果列表的滚动锚点（firstVisibleItemIndex + 项内偏移）。
+     *
+     * 组合销毁重建时 `rememberLazyListState()` 没有恢复来源（导航条目没开 saveState），
+     * 不把它记在比组合更长命的地方，返回时就会跳回顶部 —— 那也是「搜索页被刷新」观感的一部分。
+     */
+    var listAnchor: Pair<Int, Int>? = null
+
     val sourcesFlow = sourceManager.sourcesFlow
     private val _uiState = MutableStateFlow(SearchUiState(history = readHistory()))
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()

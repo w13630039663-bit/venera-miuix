@@ -28,23 +28,36 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.venera.compose.components.ComicSharedTransition
+import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
@@ -52,10 +65,14 @@ import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.model.Comic
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlin.math.roundToInt
+import kotlin.random.Random
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -109,6 +126,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val viewModel: HomeViewModel = viewModel()
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val extra by viewModel.uiStateExtra.collectAsStateWithLifecycle()
+    val recommend by viewModel.recommend.collectAsStateWithLifecycle()
     val historyList = ui.history
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
     // 静默触发一次源更新检测：让可更新角标数据保持实时有效（结果落 availableUpdates 流）
@@ -126,11 +144,27 @@ fun SharedTransitionScope.AndroidHomeScreen(
 
     // 进入主页即刷新扩展分区（本地数量/下载任务/图片收藏统计）—— 逻辑未改
     LaunchedEffect(Unit) { viewModel.refreshExtras() }
+    // 启动应用与回到首页（从详情页返回、Tab 切回）自动刷新推荐。
+    // 两条路径都要覆盖：① 进程起来时条目生命周期从头同步，会补发 ON_START/ON_RESUME；
+    // ② 从详情页返回时首页条目组合重建，addObserver 同样会补发这两个事件。
+    // VM 内部按并发锁 + 60s 节流收敛，所以这里重复触发是安全的。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                viewModel.autoRefreshRecommend()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // 大标题折叠 + 真实毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 避让口径与历史/收藏/搜索完全一致（`statusBarTop + 104.dp`）。真机诊断实测这个留白
+    // 本身没问题（pad=149dp、顶栏 ho=0 全展开），首页那几轮「重叠」另有原因，见下方 stats 项。
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -147,8 +181,12 @@ fun SharedTransitionScope.AndroidHomeScreen(
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
         ) {
         // ==================== 分区 2：阅读统计 ====================
-        if (ui.todayPages > 0 || ui.weekPages > 0) {
-            item {
+        // 这一项**恒定存在**，只有内容按数据判空。让条件去决定「项存在与否」时，冷启动
+        // `ui.todayPages` 还是 0 → 该项不存在，Room 数据到达那一刻它插到列表头部，
+        // LazyList 随即把视口锚到下一项（idx 1），第 0 项被画进 contentPadding 留白里 ——
+        // 真机表现就是「阅读统计先贴在顶栏上、再自己跳下来」那一闪，以及滑一下才好。
+        item(key = "stats") {
+            if (ui.todayPages > 0 || ui.weekPages > 0) {
                 Column {
                     MiuixSectionHeader(title = "阅读统计", onTap = onOpenStats)
                     Spacer(Modifier.height(tokens.spacing.space2))
@@ -185,27 +223,107 @@ fun SharedTransitionScope.AndroidHomeScreen(
             }
         }
 
+        // ====== 分区 2.5：可能你感兴趣（最近 30 天读得最多的题材 → 禁漫天堂）======
+        // 空态与失败只留一行说明，绝不铺假封面占位；刷新按钮重随机换一批。
+        if (recommend.loading || recommend.comics.isNotEmpty() || recommend.note != null) {
+            item(key = "recommend") {
+                // 整块登记成「左右滑不切页」：这一区自己吃横滑（轮播抽卡），
+                // 起手点落在这里就不该被外壳的左右滑切页抢走。
+                Column(modifier = Modifier.tabSwipeExcluded()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            MiuixSectionHeader(title = "可能你感兴趣", onTap = onOpenStats)
+                        }
+                        // 换一批 = 重新随机页码与排序再拉一次（页内完成，不跳走）
+                        IconButton(
+                            onClick = { viewModel.loadRecommend(force = true) },
+                            enabled = !recommend.loading,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = "换一批",
+                                tint = tokens.color.textSecondary,
+                            )
+                        }
+                    }
+                    if (recommend.tags.isNotEmpty()) {
+                        Text(
+                            text = "按你最近 30 天读得最多的题材：" +
+                                recommend.tags.joinToString(" · ") { it.display },
+                            fontSize = tokens.type.overline,
+                            color = tokens.color.textTertiary,
+                        )
+                    }
+                    Spacer(Modifier.height(tokens.spacing.space2))
+                    when {
+                        // 刷新中（含首拉）：整排灰骨架呼吸，不铺假封面也不留白。
+                        // 放在 comics 判断之前 —— 「换一批」期间也要走骨架，不能拿旧批次挡着。
+                        recommend.loading -> RecommendSkeleton()
+                        recommend.comics.isNotEmpty() -> RecommendCarousel(
+                            comics = recommend.comics,
+                            batch = recommend.batch,
+                            onOpen = { comic ->
+                                onSelect(
+                                    ComicItem(
+                                        id = comic.id,
+                                        title = comic.title,
+                                        author = comic.subTitle,
+                                        coverUrl = comic.cover,
+                                        tags = comic.tags,
+                                        description = comic.description,
+                                        // 一律 sourceKey：与卡片共享元素 key 同一个口径，
+                                        // 交显示名会让封面静默不飞（搜索页踩过）。
+                                        sourceName = comic.sourceKey,
+                                        likesCount = comic.likesCount,
+                                    )
+                                )
+                            },
+                        )
+                        else -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+                        ) {
+                            Text(
+                                text = recommend.note.orEmpty(),
+                                fontSize = tokens.type.caption,
+                                color = tokens.color.textSecondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (recommend.canRetry) {
+                                Text(
+                                    text = "重试",
+                                    fontSize = tokens.type.caption,
+                                    fontWeight = tokens.type.weightSemibold,
+                                    color = tokens.color.primary,
+                                    modifier = Modifier.clickable {
+                                        viewModel.loadRecommend(force = true)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ==================== 分区 3：历史记录 ====================
         if (historyList.isNotEmpty()) {
             item {
                 Column {
                     MiuixSectionHeader(title = "历史记录", onTap = onOpenHistory)
                     Spacer(Modifier.height(tokens.spacing.space2))
-                    // 对齐原版：横向滚动的两行网格（crossAxisCount=2）
-                    val chunked = remember(historyList) { historyList.chunked(2) }
+                    // 横向单行，最多 4 张 —— 原先是两行网格（chunked(2)），首屏被历史占太高。
+                    val historyStrip = remember(historyList) { historyList.take(4) }
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                     ) {
-                        chunked.forEach { row ->
-                            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
-                                row.forEach { record ->
-                                    HistoryCardHome(
-                                        record = record,
-                                        onClick = { onSelect(record.toComicItem()) },
-                                    )
-                                }
-                            }
+                        historyStrip.forEach { record ->
+                            HistoryCardHome(
+                                record = record,
+                                onClick = { onSelect(record.toComicItem()) },
+                            )
                         }
                     }
                 }
@@ -586,6 +704,177 @@ private fun HistoryCardHome(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 推荐轮播：material3 的 **MD3 标准「中央 Hero」轮播**（`HorizontalCenteredHeroCarousel`）——
+ * 一张主卡在正中，左右各挂一张缩窄的侧卡；主卡从两侧平滑滑入中心，两侧同时反向缩放，
+ * 全部由组件自带的 keyline 插值完成（不引第三方库、不做真 3D 变换）。
+ *
+ * 尺寸口径照 material3 官方 sample：`maxItemWidth` 不指定 → 主卡吃掉「视口 − 两张侧卡」，
+ * 侧卡目标宽是主卡的 1/3，再用 min/max 把它压在 64~96dp（约主卡的 0.6 倍，贴近设计稿的
+ * 1.5:1 观感）。侧卡宽必须留在视口 1/3 以内，否则求解器会排成「两张大卡」而不是一个 Hero。
+ *
+ * 交互沿用 MD3 约定：点焦点卡进详情，点侧卡先把焦点滚过去。
+ * 标题只给焦点卡（单独摆在轮播下方）—— 卡片宽度边滑边变，文字放在卡里会跟着重排抖动。
+ * 「换一批」后随机落一个焦点位，让刷新在视觉上也真的是新一批；首次进入仍从第 0 张看起。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecommendCarousel(
+    comics: List<Comic>,
+    batch: Int,
+    onOpen: (Comic) -> Unit,
+) {
+    val tokens = VeneraTokens
+    val state = rememberCarouselState { comics.size }
+    val animScope = rememberCoroutineScope()
+    val initialBatch = remember { batch }
+    LaunchedEffect(batch) {
+        if (batch == initialBatch || comics.size < 2) return@LaunchedEffect
+        state.animateScrollToItem(Random.nextInt(comics.size))
+    }
+    HorizontalCenteredHeroCarousel(
+        state = state,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(tokens.spacing.recommendHeroHeight)
+            // 排除区挂在 padding **之前** —— 量到的是含两侧 24dp 让位的整行，才盖得住屏幕边缘热区
+            .systemGestureExclusionBand()
+            // 两侧各让开 24dp：一是 MD3 官方 sample 就是这么摆 Hero 的，二是让横拖的落点
+            // 离开系统「边缘返回」热区（边缘热区内的触摸应用收不到，只能靠让位 + 排除区两招）。
+            .padding(horizontal = tokens.spacing.space10),
+        itemSpacing = tokens.spacing.space4,
+        minSmallItemWidth = tokens.spacing.recommendSideMinWidth,
+        maxSmallItemWidth = tokens.spacing.recommendSideMaxWidth,
+    ) { index ->
+        val comic = comics[index]
+        val focused = state.currentItem == index
+        RecommendCarouselItem(
+            comic = comic,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clickable {
+                    if (focused) onOpen(comic) else animScope.launch { state.animateScrollToItem(index) }
+                }
+                .maskClip(RoundedCornerShape(tokens.shape.extraLarge)),
+        )
+    }
+    val focal = comics.getOrNull(state.currentItem)
+    if (focal != null) {
+        // 标题与作者都居中：Hero 在正中，左对齐的文字会让整块看起来往左倒。
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(tokens.spacing.space3))
+            Text(
+                text = focal.title,
+                fontSize = tokens.type.caption,
+                fontWeight = tokens.type.weightMedium,
+                color = tokens.color.textPrimary,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (focal.subTitle.isNotBlank()) {
+                Text(
+                    text = focal.subTitle,
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textSecondary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 轮播单张卡：宽高都由轮播的 keyline 给（焦点卡宽、侧卡窄），内容只做封面 + 遮罩圆角。
+ * 封面参与「→ 详情页」共享元素飞行；打码命中一律不飞（飞行层会绕开页面裁剪）。
+ */
+@Composable
+private fun RecommendCarouselItem(comic: Comic, modifier: Modifier) {
+    val tokens = VeneraTokens
+    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
+    // 直接传 Comic 走守卫 LRU 判定链（源级预设 + 用户规则）
+    val maskState = guard.coverMaskStateFor(comic)
+    Box(
+        modifier = modifier.background(
+            tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha)
+        ),
+    ) {
+        com.venera.compose.components.venera.VeneraCover(
+            url = comic.cover,
+            contentDescription = comic.title,
+            shimmerWhileLoading = false,
+            mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
+                   else com.venera.compose.components.venera.VeneraCoverMask.Masked,
+            // 槽位宽高都由轮播给，封面不能再自持比例（否则固定高度里会横向留缝）
+            preserveAspectRatio = false,
+            modifier = Modifier
+                .fillMaxSize()
+                .coverSharedElement(
+                    key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+                    allowFly = maskState == "VISIBLE",
+                ),
+        )
+    }
+}
+
+/**
+ * 刷新中的占位：与轮播同高同圆角的灰块 + 呼吸脉冲。
+ * 复用全站那套 [VeneraShimmer]（它本来就只做 alpha 呼吸，不引 shader），不新造动画。
+ */
+@Composable
+private fun RecommendSkeleton() {
+    val tokens = VeneraTokens
+    Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+        repeat(3) {
+            VeneraShimmer(
+                modifier = Modifier
+                    .width(tokens.spacing.historyCardWidth)
+                    .height(tokens.spacing.recommendHeroHeight),
+                shape = RoundedCornerShape(tokens.shape.extraLarge),
+            )
+        }
+    }
+}
+
+/**
+ * 把这一条横滑区域登记成**系统手势排除区**。
+ *
+ * 全面屏手势下，屏幕左右边缘的横拖被系统判成「返回」，轮播贴到边缘就永远滑不动 ——
+ * 真机症状是「想抽卡却退出了页面」。排除区只是给系统的提示（OEM 可忽略），
+ * 且每条边最多 200dp 高，所以只挂在这一行，不是整页。
+ */
+@Composable
+private fun Modifier.systemGestureExclusionBand(): Modifier {
+    val view = LocalView.current
+    var band by remember { mutableStateOf<android.graphics.Rect?>(null) }
+    DisposableEffect(view) {
+        onDispose { view.systemGestureExclusionRects = emptyList() }
+    }
+    LaunchedEffect(band) {
+        val rect = band ?: return@LaunchedEffect
+        view.systemGestureExclusionRects = listOf(rect)
+    }
+    return this.onGloballyPositioned { coords ->
+        val position = coords.positionInRoot()
+        val size = coords.size
+        // 量化到 16px：列表滚动时每像素都改排除区，等于给渲染线程挂一条持续重算。
+        val top = (position.y / 16f).roundToInt() * 16
+        val next = android.graphics.Rect(
+            position.x.roundToInt(),
+            top,
+            (position.x + size.width).roundToInt(),
+            top + size.height,
+        )
+        if (next != band) band = next
     }
 }
 

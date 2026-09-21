@@ -250,6 +250,10 @@ fun VeneraComposeApp() {
         val layoutDirection = LocalLayoutDirection.current
         val navigationInsets = WindowInsets.navigationBars.asPaddingValues()
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+            // 左右滑切页的「让位带」登记表：外壳与页面必须共用同一个实例。
+            // 首页推荐轮播那一整块自己吃横滑，起手点落在它里面就不许翻页。
+            val swipeExclusions = remember { TabSwipeExclusionRegistry() }
+            CompositionLocalProvider(LocalTabSwipeExclusions provides swipeExclusions) {
             // ── 顶栏控制权已交还各页面（页内自治）──
             // 外壳不再挂 TopAppBar：统一顶栏 = 各页自身的 VeneraTopAppBar（大标题折叠 + 毛玻璃），
             // 彻底消灭「全局顶栏 + 页面二级工具栏」的双层汉堡包割裂结构。
@@ -280,6 +284,7 @@ fun VeneraComposeApp() {
                         // 详情页/阅读器等子页面不参与（currentTab == null）。
                         .tabSwipePager(
                             enabled = currentTab != null,
+                            exclusions = swipeExclusions,
                             // 底栏手势排除带 = 契约 clearanc + 系统 navigationBars inset。
                             // 不再手写 64 + 12 这类几何 magic number。
                             bottomExclusionDp = (
@@ -319,41 +324,43 @@ fun VeneraComposeApp() {
                     },
                 ) {
                     composable<HomeRoute> {
-                        AndroidHomeScreen(
-                            // 统一契约：页面只消费 bottomBarClearance（底栏高度 + 底栏底部间距）。
-                            // 系统 navigationBars inset 由上面的 NavHost padding 统一提供，
-                            // 页面**不得**再自行叠加 —— 此前 Liquid 88dp / fallback 8dp 的路径差异
-                            // 叠加 Home 内部 80dp Spacer，正是 168dp 双重留白的根因。
-                            bottomContentPadding = VeneraSpacing.bottomBarClearance,
-                            animatedVisibilityScope = this,
-                            onSelect = ::openComic,
-                            onOpenHistory = {
-                                haptic()
-                                // 历史已是主 Tab：分区头直达 = 切 Tab（不压栈，返回语义不变）。
-                                navController.gotoTab(VeneraNavTab.HISTORY)
-                            },
-                            onOpenStats = {
-                                haptic()
-                                navController.navigate(StatsRoute)
-                            },
-                            onOpenLocal = {
-                                haptic()
-                                navController.navigate(LocalComicRoute)
-                            },
-                            onOpenImageFavorites = {
-                                haptic()
-                                navController.navigate(FavoriteImagesRoute)
-                            },
-                            onOpenSourceManage = {
-                                haptic()
-                                navController.navigate(ComicSourceManageRoute)
-                            },
-                            // 设置齿轮从外壳迁入首页顶栏（页内自治）
-                            onOpenSettings = {
-                                haptic()
-                                navController.navigate(SettingsRoute)
-                            }
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            AndroidHomeScreen(
+                                // 统一契约：页面只消费 bottomBarClearance（底栏高度 + 底栏底部间距）。
+                                // 系统 navigationBars inset 由上面的 NavHost padding 统一提供，
+                                // 页面**不得**再自行叠加 —— 此前 Liquid 88dp / fallback 8dp 的路径差异
+                                // 叠加 Home 内部 80dp Spacer，正是 168dp 双重留白的根因。
+                                bottomContentPadding = VeneraSpacing.bottomBarClearance,
+                                animatedVisibilityScope = this,
+                                onSelect = ::openComic,
+                                onOpenHistory = {
+                                    haptic()
+                                    // 历史已是主 Tab：分区头直达 = 切 Tab（不压栈，返回语义不变）。
+                                    navController.gotoTab(VeneraNavTab.HISTORY)
+                                },
+                                onOpenStats = {
+                                    haptic()
+                                    navController.navigate(StatsRoute)
+                                },
+                                onOpenLocal = {
+                                    haptic()
+                                    navController.navigate(LocalComicRoute)
+                                },
+                                onOpenImageFavorites = {
+                                    haptic()
+                                    navController.navigate(FavoriteImagesRoute)
+                                },
+                                onOpenSourceManage = {
+                                    haptic()
+                                    navController.navigate(ComicSourceManageRoute)
+                                },
+                                // 设置齿轮从外壳迁入首页顶栏（页内自治）
+                                onOpenSettings = {
+                                    haptic()
+                                    navController.navigate(SettingsRoute)
+                                }
+                            )
+                        }
                     }
                     composable<SearchRoute> {
                         // 主 Tab：底栏显示，需要避让。
@@ -715,6 +722,7 @@ fun VeneraComposeApp() {
                         .navigationBarsPadding()
                         .fillMaxWidth(),
                 )
+            }
             }
         }
         }

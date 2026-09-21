@@ -4,7 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -59,17 +60,21 @@ enum class VeneraChipVariant { Assist, Selected, Tag }
  * @param text 显示文本（单行 + Ellipsis）。
  * @param selected 选中态。
  * @param onClick 可空；为 null 时不可点击（纯展示），此时也不产生按压反馈。
+ * @param onLongClick 可空；长按（如弹出「复制 / 屏蔽」菜单）。传了它即使 [onClick] 为 null
+ *   也算可交互 —— 按压反馈仍由本组件统一持有，页面不要自行叠 combinedClickable。
  * @param leadingIcon 前置图标（如「＋」）。
  * @param trailingIcon 后置图标（如「×」移除）。
  * @param enabled false 时降透明度且不可点击。
  * @param variant 视觉变体；[VeneraChipVariant.Tag] 用于标签语义。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VeneraChip(
     text: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
     enabled: Boolean = true,
@@ -83,7 +88,7 @@ fun VeneraChip(
     val pressed by interactionSource.collectIsPressedAsState()
     val focused by interactionSource.collectIsFocusedAsState()
 
-    val interactive = onClick != null && enabled
+    val interactive = (onClick != null || onLongClick != null) && enabled
     val isPressed = interactive && pressed
 
     // 轻量动画：只有 scale 与 alpha，均走 spring，无涟漪/模糊。
@@ -150,11 +155,12 @@ fun VeneraChip(
             }
             .then(
                 if (interactive) {
-                    Modifier.clickable(
+                    Modifier.combinedClickable(
                         interactionSource = interactionSource,
                         indication = null, // 反馈由上面的 graphicsLayer 统一表达，避免涟漪叠加
                         enabled = true,
-                        onClick = onClick!!,
+                        onClick = onClick ?: {},
+                        onLongClick = onLongClick,
                     )
                 } else {
                     // 仍然提供 interactionSource，使无障碍/键盘焦点可被观测

@@ -214,12 +214,12 @@ class ComicSourceManager private constructor(private val context: Context) {
             if (File(sourceDir, m.fileName).exists()) valid.add(m) else changed = true
         }
 
-        // 2. 首次启动：把 assets 内置源写入本地（仅包子/拷贝/MangaDex 作为开箱可用）。
+        // 2. 内置开箱源：首次启动整批写入；已 bootstrap 过的设备走「增量补装」。
         //    用一次性标记 [KEY_BOOTSTRAPPED] 保证「用户主动卸载全部源」后重启不会被重新塞回——
         //    空列表既可能是首次安装，也可能是用户的选择，仅凭 isEmpty() 无法区分。
         if (!prefs.getBoolean(KEY_BOOTSTRAPPED, false)) {
             if (valid.isEmpty()) {
-                val bootstrapped = bootstrapBundledSources()
+                val bootstrapped = bootstrapBundledSources(emptySet())
                 if (bootstrapped.isNotEmpty()) {
                     valid.addAll(bootstrapped)
                     changed = true
@@ -227,6 +227,15 @@ class ComicSourceManager private constructor(private val context: Context) {
             }
             // 无论本次是否真的写入，都记为已 bootstrap（老版本升级时 valid 非空也走这里）
             prefs.edit { putBoolean(KEY_BOOTSTRAPPED, true) }
+        } else {
+            // 增量补装：默认清单后来加过 jm.js，只补「本机没有」的那几个。
+            // 不补的话，老设备的首页推荐区会永久判「未启用该源」。
+            // 用户主动删过的内置源由 deletedBuiltinKeys 拦住，不会被塞回。
+            val added = bootstrapBundledSources(valid.map { it.fileName }.toSet())
+            if (added.isNotEmpty()) {
+                valid.addAll(added)
+                changed = true
+            }
         }
 
         // 3. 顺序解析并注册
@@ -257,13 +266,20 @@ class ComicSourceManager private constructor(private val context: Context) {
         _sourcesFlow.value = registeredSources.values.toList()
     }
 
-    /** 首次启动时从 assets 解包少量开箱即用源 */
-    private fun bootstrapBundledSources(): List<InstalledSourceMeta> {
+    /**
+     * 从 assets 解包开箱即用源。
+     *
+     * @param installedFiles 本机元数据里已有的 fileName，用于增量补装时跳过；
+     *   首次启动传 emptySet()。
+     */
+    private fun bootstrapBundledSources(installedFiles: Set<String>): List<InstalledSourceMeta> {
         val result = mutableListOf<InstalledSourceMeta>()
-        val defaultFiles = listOf("baozi.js", "copy_manga.js", "manga_dex.js")
+        // 禁漫天堂一并预装：首页「可能你感兴趣」推荐区取数靠它，且它免登录可搜。
+        val defaultFiles = listOf("baozi.js", "copy_manga.js", "manga_dex.js", "jm.js")
         val repoIndex = readBundledRepoIndex().associateBy { it.fileName }
         val deleted = getDeletedBuiltinKeys()
         for (name in defaultFiles) {
+            if (name in installedFiles) continue
             try {
                 val content = context.assets.open("sources/$name").bufferedReader().use { it.readText() }
                 val source = parser.parse(content)

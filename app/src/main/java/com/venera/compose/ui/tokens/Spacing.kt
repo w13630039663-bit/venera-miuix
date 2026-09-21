@@ -77,6 +77,17 @@ data class VeneraSpacingTokens(
     val historyCardWidth: Dp = 124.dp,
     /** 历史卡片封面高度。 */
     val historyCoverHeight: Dp = 170.dp,
+    /**
+     * 推荐轮播（中央 Hero）整块高度。
+     *
+     * 手机宽下 Hero 实宽约 143dp，配 170dp 高就是 0.84 的「矮胖」比例；
+     * 封面本身是 0.72 竖幅，所以这块要明显高于历史卡才不显肥。
+     */
+    val recommendHeroHeight: Dp = 220.dp,
+    /** 推荐轮播侧卡宽度下限（MD3 目标：侧卡 = 主卡 1/3，这里只做夹取）。 */
+    val recommendSideMinWidth: Dp = 64.dp,
+    /** 推荐轮播侧卡宽度上限。压到 88dp 是为了让主卡吃到 ~143dp，别退化成两张大卡。 */
+    val recommendSideMaxWidth: Dp = 88.dp,
     /** 源状态行首字母徽章尺寸。 */
     val sourceAvatarSize: Dp = 34.dp,
     /** 状态圆点尺寸。 */
