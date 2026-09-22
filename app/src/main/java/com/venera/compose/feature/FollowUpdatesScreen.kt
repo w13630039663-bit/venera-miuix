@@ -146,12 +146,15 @@ fun AndroidFollowUpdatesScreen(
                         }
                     }
                 } else {
+                    val (gridWidth, gridWidthModifier) = rememberContentWidth(14.dp * 2)
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+                        columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(gridWidthModifier),
                     ) {
                         items(vm.updates, key = { "${it.item.id}-${it.item.type}" }) { entry ->
                             val metrics by rememberCachedComicMetrics(entry.item.sourceKey, entry.item.id)

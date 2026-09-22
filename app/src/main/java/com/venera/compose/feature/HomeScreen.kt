@@ -61,6 +61,8 @@ import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
+import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.data.db.HistoryRecord
@@ -115,8 +117,6 @@ fun SharedTransitionScope.AndroidHomeScreen(
     onOpenStats: () -> Unit = {},
     /** S8：本地分区 → 本地书架页 */
     onOpenLocal: () -> Unit = {},
-    /** S8：图片收藏分区 → 插画收藏页 */
-    onOpenImageFavorites: () -> Unit = {},
     /** S8：漫画源分区 → 源管理页 */
     onOpenSourceManage: () -> Unit = {},
     /** 低频操作收口：设置从外壳顶栏迁入首页顶栏齿轮（页内自治）。 */
@@ -142,9 +142,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val updateCount = availableUpdates.size
     val installedSources by sourceManager.installedMeta.collectAsStateWithLifecycle()
     val sources = remember(registeredSources, installedSources) { sourceManager.searchTargets() }
-    var selectedImgFavType by remember { mutableIntStateOf(0) }
-
-    // 进入主页即刷新扩展分区（本地数量/下载任务/图片收藏统计）—— 逻辑未改
+    // 进入主页即刷新扩展分区（本地数量 / 下载任务数）—— 逻辑未改
     LaunchedEffect(Unit) { viewModel.refreshExtras() }
     // 启动应用与回到首页（从详情页返回、Tab 切回）自动刷新推荐。
     // 两条路径都要覆盖：① 进程起来时条目生命周期从头同步，会补发 ON_START/ON_RESUME；
@@ -261,10 +259,14 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         // 刷新中（含首拉）：整排灰骨架呼吸，不铺假封面也不留白。
                         // 放在 comics 判断之前 —— 「换一批」期间也要走骨架，不能拿旧批次挡着。
                         recommend.loading -> RecommendSkeleton()
-                        recommend.comics.isNotEmpty() -> RecommendCarousel(
-                            comics = recommend.comics,
-                            batch = recommend.batch,
-                            onOpen = { comic ->
+                        recommend.comics.isNotEmpty() -> {
+                            // 宽屏档不用 Hero 轮播：1280dp 上 hero 会被算成约 1040×220，
+                            // 竖版封面横向裁成一坨放大碎片。改按漫画网格同一口径排单行封面卡
+                            // （comicListColumnCount：每 220dp 一列 → 1280dp 上 5 列）。
+                            // 手机档 columns 恒为 2 → 仍走下面的轮播，几何与交互零改动。
+                            val (blockWidth, blockWidthModifier) = rememberContentWidth()
+                            val gridColumns = comicListColumnCount("brief", blockWidth)
+                            val openComic: (Comic) -> Unit = { comic ->
                                 onSelect(
                                     ComicItem(
                                         id = comic.id,
@@ -279,8 +281,22 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                         likesCount = comic.likesCount,
                                     )
                                 )
-                            },
-                        )
+                            }
+                            if (gridColumns >= 3) {
+                                RecommendGridRow(
+                                    comics = recommend.comics.take(gridColumns),
+                                    columns = gridColumns,
+                                    onOpen = openComic,
+                                    modifier = blockWidthModifier,
+                                )
+                            } else {
+                                RecommendCarousel(
+                                    comics = recommend.comics,
+                                    batch = recommend.batch,
+                                    onOpen = openComic,
+                                )
+                            }
+                        }
                         else -> Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -454,90 +470,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
             }
         }
 
-        // ==================== 分区 6：图片收藏 ====================
-        item {
-            Column {
-                MiuixSectionHeader(title = "图片收藏", onTap = onOpenImageFavorites)
-                Spacer(Modifier.height(tokens.spacing.space2))
-                VeneraCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onOpenImageFavorites() },
-                ) {
-                    Column(modifier = Modifier.padding(tokens.spacing.rowHorizontal)) {
-                        if (extra.imageFavTotal > 0) {
-                            Text(
-                                text = "从 " + extra.imageFavComicCount + " 部作品中收藏了 " +
-                                    extra.imageFavTotal + " 张图片",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.textSecondary,
-                            )
-                        } else if (extra.localComicCount >= 0) {
-                            Text(
-                                text = "暂无图片收藏 · 阅读时在菜单里可收藏当前页",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.textSecondary,
-                            )
-                        }
-                        if (extra.imageFavTotal > 0) {
-                            Spacer(Modifier.height(tokens.spacing.space5))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-                            ) {
-                                listOf("标签", "画师", "作品").forEachIndexed { idx, typeName ->
-                                    val selected = selectedImgFavType == idx
-                                    Surface(
-                                        shape = RoundedCornerShape(tokens.shape.extraLarge),
-                                        color = if (selected) tokens.color.primaryContainer
-                                        else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { selectedImgFavType = idx },
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.padding(vertical = tokens.spacing.space3),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                text = typeName,
-                                                fontSize = tokens.type.caption,
-                                                fontWeight = if (selected) tokens.type.weightSemibold
-                                                else tokens.type.weightRegular,
-                                                color = if (selected) tokens.color.primary
-                                                else tokens.color.textPrimary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(tokens.spacing.space6))
-                            val statsList = when (selectedImgFavType) {
-                                0 -> extra.imageFavTags
-                                1 -> extra.imageFavAuthors
-                                else -> extra.imageFavComics
-                            }
-                            if (statsList.isEmpty()) {
-                                Text(
-                                    text = "该维度暂无统计数据",
-                                    fontSize = tokens.type.caption,
-                                    color = tokens.color.textSecondary,
-                                )
-                            } else {
-                                val maxCount = statsList.maxOf { it.second }
-                                statsList.forEach { (label, count) ->
-                                    StatBarRow(
-                                        label = label,
-                                        count = count,
-                                        maxCount = maxCount,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        // 图片收藏已整体并入收藏页（第三个分段），主页不再挂这一区。
         // 注意：此处**故意不再**添加底部 Spacer。
         // 底部留白由 Navigation 通过 bottomContentPadding = bottomBarClearance 统一提供，
         // 页面再叠一次就会造成双重留白（这正是 Round 2.5 修复的问题）。
@@ -794,6 +727,63 @@ private fun RecommendCarousel(
                 )
             }
         }
+    }
+}
+
+/**
+ * 宽屏档的推荐区形态：按全站漫画网格同一列宽口径排**单行**封面卡。
+ *
+ * 只做一行 —— 首页首屏厚度是定过的（历史记录那一区正是从两行改成单行才不压首屏），
+ * 推荐区没理由更厚，所以宽屏取 columns 张铺满一行就收。
+ * 封面比例复用应用内现成的 historyCardWidth : historyCoverHeight（124 : 170），不新造数；
+ * 卡片本体仍走 [RecommendCarouselItem]，共享元素飞行与封面遮罩判定因此和轮播完全一致。
+ */
+@Composable
+private fun RecommendGridRow(
+    comics: List<Comic>,
+    columns: Int,
+    onOpen: (Comic) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        comics.forEach { comic ->
+            Column(modifier = Modifier.weight(1f)) {
+                RecommendCarouselItem(
+                    comic = comic,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(tokens.spacing.historyCardWidth / tokens.spacing.historyCoverHeight)
+                        .clickable { onOpen(comic) }
+                        // maskClip 是轮播 CarouselItemScope 的成员扩展，网格这里用不上；
+                        // 卡片不滚动变形，普通 clip 足够。
+                        .clip(RoundedCornerShape(tokens.shape.extraLarge)),
+                )
+                Spacer(Modifier.height(tokens.spacing.cardCoverGap))
+                Text(
+                    text = comic.title,
+                    fontSize = tokens.type.caption,
+                    fontWeight = tokens.type.weightMedium,
+                    color = tokens.color.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (comic.subTitle.isNotBlank()) {
+                    Text(
+                        text = comic.subTitle,
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        // 末批不足一行时用等宽空位补齐，卡片不会被 weight 拉宽
+        repeat(columns - comics.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 

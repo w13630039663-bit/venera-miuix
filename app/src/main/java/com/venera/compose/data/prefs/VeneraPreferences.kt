@@ -3,6 +3,7 @@ package com.venera.compose.data.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.venera.compose.ui.tokens.ThemeSeedPresets
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,16 @@ enum class AppearanceStyle {
 
 enum class NavigationBarStyle {
     MD3, LIQUID_GLASS
+}
+
+/**
+ * 色板来源。仅在 [AppearanceStyle.MD3] 下有意义 —— Miuix 风格用的是它自己设计好的固定色板。
+ *
+ * WALLPAPER = 系统壁纸动态取色（`DynamicColors`，Android 12+）；
+ * CUSTOM = 用户选定的种子色，经 MaterialKolor 展开成整套 MD3 色板。
+ */
+enum class ThemeColorSource {
+    WALLPAPER, CUSTOM
 }
 
 /** 标签译文显示模式。SYSTEM = 由系统语言同时决定「译不译」与「译成简还是繁」。 */
@@ -92,6 +103,20 @@ class VeneraPreferences private constructor(context: Context) {
     private val _httpCacheMaxMb = MutableStateFlow(prefs.getInt(KEY_HTTP_CACHE_MAX_MB, 100))
     val httpCacheMaxMb: StateFlow<Int> = _httpCacheMaxMb.asStateFlow()
 
+    /**
+     * 本地漫画存储根目录的绝对路径；空串表示用应用私有内部存储的默认位置。
+     *
+     * 这里只存路径本身：可写性一律以 [com.venera.compose.download.ComicStorageRoot.probeWritable]
+     * 的实测为准，「有权限」和「写得进去」在分区存储下不等价，权限也可能被用户随时撤销。
+     */
+    private val _comicStoragePath = MutableStateFlow(prefs.getString(KEY_COMIC_STORAGE_PATH, "") ?: "")
+    val comicStoragePath: StateFlow<String> = _comicStoragePath.asStateFlow()
+
+    fun setComicStoragePath(path: String) {
+        prefs.edit { putString(KEY_COMIC_STORAGE_PATH, path) }
+        _comicStoragePath.value = path
+    }
+
     // 外观与主题
     private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
@@ -104,6 +129,13 @@ class VeneraPreferences private constructor(context: Context) {
 
     private val _tagTranslationMode = MutableStateFlow(readEnum(KEY_TAG_TRANSLATION_MODE, TagTranslationMode.SYSTEM))
     val tagTranslationMode: StateFlow<TagTranslationMode> = _tagTranslationMode.asStateFlow()
+
+    private val _themeColorSource = MutableStateFlow(readEnum(KEY_THEME_COLOR_SOURCE, ThemeColorSource.WALLPAPER))
+    val themeColorSource: StateFlow<ThemeColorSource> = _themeColorSource.asStateFlow()
+
+    /** 自定义取色的种子色（ARGB）。只有 [themeColorSource] 为 CUSTOM 时才参与色板生成。 */
+    private val _themeSeedColor = MutableStateFlow(prefs.getInt(KEY_THEME_SEED_COLOR, ThemeSeedPresets.DefaultArgb))
+    val themeSeedColor: StateFlow<Int> = _themeSeedColor.asStateFlow()
 
     // Unknown values from backups/newer versions must not prevent the app from opening.
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T =
@@ -181,6 +213,28 @@ class VeneraPreferences private constructor(context: Context) {
         _favoriteSortOrder.value = order
     }
 
+    // ---- 关于 / 检查更新（对齐 master 分支 appdata 的同名键与默认值） ----
+
+    /** 启动时是否检查更新。默认关，与 master 分支 `appdata.dart` 的 `checkUpdateOnStart: false` 一致。 */
+    private val _checkUpdateOnStart = MutableStateFlow(prefs.getBoolean(KEY_CHECK_UPDATE_ON_START, false))
+    val checkUpdateOnStart: StateFlow<Boolean> = _checkUpdateOnStart.asStateFlow()
+
+    fun setCheckUpdateOnStart(enable: Boolean) {
+        prefs.edit { putBoolean(KEY_CHECK_UPDATE_ON_START, enable) }
+        _checkUpdateOnStart.value = enable
+    }
+
+    /**
+     * 上次「启动检查」的时刻。master 存在 `implicitData` 而不是 `settings`，
+     * 这里同样只当账本、不当偏好：24 小时节流，并且**发请求前先占坑** ——
+     * 一次断网不该让之后每次冷启动都再打一遍发布通道。
+     */
+    var lastUpdateCheckAt: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK_AT, 0L)
+        set(value) {
+            prefs.edit { putLong(KEY_LAST_UPDATE_CHECK_AT, value) }
+        }
+
     // 写入方法
     fun setDefaultReadingMode(mode: String) {
         prefs.edit { putString(KEY_DEFAULT_READING_MODE, mode) }
@@ -225,6 +279,16 @@ class VeneraPreferences private constructor(context: Context) {
     fun setAppearanceStyle(style: AppearanceStyle) {
         prefs.edit { putString(KEY_APPEARANCE_STYLE, style.name) }
         _appearanceStyle.value = style
+    }
+
+    fun setThemeColorSource(source: ThemeColorSource) {
+        prefs.edit { putString(KEY_THEME_COLOR_SOURCE, source.name) }
+        _themeColorSource.value = source
+    }
+
+    fun setThemeSeedColor(argb: Int) {
+        prefs.edit { putInt(KEY_THEME_SEED_COLOR, argb) }
+        _themeSeedColor.value = argb
     }
 
     fun setNavigationBarStyle(style: NavigationBarStyle) {
@@ -346,6 +410,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_APPEARANCE_STYLE = "pref_appearance_style"
         private const val KEY_NAVIGATION_BAR_STYLE = "pref_navigation_bar_style"
         private const val KEY_TAG_TRANSLATION_MODE = "pref_tag_translation_mode"
+        private const val KEY_THEME_COLOR_SOURCE = "pref_theme_color_source"
+        private const val KEY_THEME_SEED_COLOR = "pref_theme_seed_color"
         private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
         private const val KEY_SECURE_SCREEN = "pref_secure_screen"
         private const val KEY_PRELOAD_COUNT = "pref_preload_image_count"
@@ -356,6 +422,7 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_REVERSE_CHAPTERS = "pref_reverse_chapter_order"
         private const val KEY_DOWNLOAD_THREADS = "pref_download_threads"
         private const val KEY_HTTP_CACHE_MAX_MB = "pref_http_cache_max_mb"
+        private const val KEY_COMIC_STORAGE_PATH = "pref_comic_storage_path"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"
@@ -367,6 +434,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_PROXY_PORT = "pref_proxy_port"
         private const val KEY_COMIC_DISPLAY_MODE = "pref_comic_display_mode"
         private const val KEY_FAVORITE_SORT_ORDER = "pref_favorite_sort_order"
+        private const val KEY_CHECK_UPDATE_ON_START = "pref_check_update_on_start"
+        private const val KEY_LAST_UPDATE_CHECK_AT = "pref_last_update_check_at"
 
         /** 双列封面网格（默认）。 */
         const val MODE_BRIEF = "brief"

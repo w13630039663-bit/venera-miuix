@@ -325,8 +325,8 @@ function _runAsync(callbackId, promiseOrValue) {
     });
 }
 
-// 注入全局应用版本号
-var appVersion = "1.0.0";
+// 注入全局应用版本号（单一来源：安装包。桥取不到时宁可给空串，也不留一份会过期的字面量）
+var appVersion = _venera.getVersion();
 
 // Console 拦截与输出到 Logcat
 if (typeof console === "undefined" || !console.log) {

@@ -105,11 +105,19 @@ data class VeneraSpacingTokens(
     /** 漫画封面宽高比（3:4 竖版）。 */
     val coverAspectRatio: Float = 0.72f,
     /**
-     * 网格中漫画卡片的**最小宽度**（dp）。
+     * 平板档插图卡的**宽高比下限** = 1 / 1.1，等价于"卡高不超过列宽的 1.1 倍"。
      *
-     * 供 GridCells.Adaptive 使用：列数由实际可用宽度推导，不写死"2 列"。
-     * 360dp 屏 → 2 列；412dp → 2 列；600dp+ 平板 → 3 列；折叠屏 → 更多。
-     * 130dp 的取值保证 360dp 屏两列 + 间距后仍有余量。
+     * 瀑布流的卡高由图片真实比例决定，平板三列时一张竖页能撑到列宽的 1.4 倍，
+     * 一屏只放得下一行半（用户真机口径「还要更小、两行能看全」）。比例下限是唯一不需要
+     * 实测列宽的封顶写法：高 = 宽 / 比例，把比例抬到 1/1.1 就把高压在 1.1 倍列宽内，
+     * 超出部分由 ContentScale.Crop 裁掉 —— 点开灯箱看的仍是全图。手机档不封顶。
+     */
+    val favoriteImageMinRatio: Float = 0.91f,
+    /**
+     * 卡片预览/骨架的参考宽度（不是列数依据）。
+     *
+     * 列数不在这里定：由 `components.comicListColumnCount` 按网格实测可用宽推导，
+     * 口径照抄 master（brief 每 220dp 一列、detailed 每 360dp 一列）。
      */
     val comicCardMinWidth: Dp = 130.dp,
     /** Chip 内文字左右内边距。 */
@@ -120,6 +128,29 @@ data class VeneraSpacingTokens(
     val chipSpacing: Dp = 8.dp,
     /** Chip 前置/后置图标尺寸。 */
     val chipIconSize: Dp = 16.dp,
+    /** 1dp 发丝线：MD3 组件描边/分隔线口径（分段控制器容器描边、单元分隔线）。 */
+    val hairline: Dp = 1.dp,
+    /** 0.5dp 极细线：分段控制器容器描边（用户拍板「0.5dp 实线」）。 */
+    val hairlineThin: Dp = 0.5.dp,
+    /** 图源/文件夹筛选胶囊的统一高度（用户拍板 32dp，比 Chip 更矮更紧凑）。 */
+    val filterChipHeight: Dp = 32.dp,
+    /**
+     * MD3 Segmented Button 规范高度（48dp，组件默认档）。
+     * 用户手机真机反馈原拍板的 40dp「紧凑」档同样太矮细弱，升回 MD3 默认。
+     */
+    val segmentedHeight: Dp = 48.dp,
+    /**
+     * 宽屏档（isWideScreen，>600dp）的分段控制器高度：用户拍板「平板上 40dp 太矮太细弱」。
+     * 手机档不读这个值，compact 零回归线不破。
+     */
+    val segmentedHeightWide: Dp = 56.dp,
+    /** MD3 Segmented Button 单元间隙（4dp，同时是分隔线在两格之间的居中量）。 */
+    val segmentedGap: Dp = 4.dp,
+    /**
+     * 折叠态顶栏（小标题行）高度：与 Miuix `TopAppBarDefaults.CollapsedHeight`
+     * 同值的本地镜像（该常量在库内是 internal，读不到只能照抄）。
+     */
+    val topBarCollapsedHeight: Dp = 52.dp,
     /** SourceBadge 内文字左右内边距。 */
     val badgeHorizontalPadding: Dp = 6.dp,
     /** SourceBadge 内文字纵向内边距。 */
@@ -130,8 +161,12 @@ data class VeneraSpacingTokens(
     val cardContentPadding: Dp = 8.dp,
     /** 卡片封面与文字之间的间距。 */
     val cardCoverGap: Dp = 6.dp,
-    /** Shimmer 动画一个周期的周期时长（毫秒）。 */
-    val shimmerPeriodMillis: Int = 1200,
+    /**
+     * 骨架屏流光一个周期的时长（毫秒）。
+     * 3000 = master 用的 `shimmer_animation` 包的 duration 默认值
+     * （包内另有 Interval(0, 0.6) 让行程只占前 60%，后 40% 停一拍）。
+     */
+    val shimmerPeriodMillis: Int = 3000,
 
     // ── 通用控件尺寸（跨页面复用，非 Search 专属）──
     /** 单行输入框 / 搜索框高度。 */

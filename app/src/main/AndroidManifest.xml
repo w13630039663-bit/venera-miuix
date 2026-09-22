@@ -5,13 +5,20 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ 下载进度通知运行时权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        把漫画库放进用户自选的公共目录（含外置卡）需要它：分区存储下 java.io.File
+        写不了公共目录，而下载/续下/扫描/CBZ 整条链都是 File 语义。
+        应用不默认持有该权限，只在用户选完目录、探针实测写不进时才引导去系统页开。
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
         android:name=".VeneraApp"
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true"
-        android:label="Venera Compose"
+        android:label="venera-miuix"
         android:supportsRtl="true"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"

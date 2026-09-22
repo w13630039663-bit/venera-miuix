@@ -376,8 +376,11 @@ class ReadingStatsManager private constructor(private val context: Context) {
          *
          * 不需要数据迁移：`tags` 列此前**从没有写入者**（`recordSession` 的 `tags` 形参无调用方
          * 传值），库里存量行恒为空串，没有需要按旧规则解读的数据。
+         *
+         * internal 而非 private：插图收藏卡片要按 comic_id 反查作者（`Author:` 命名空间），
+         * 那是同一列的另一种读法 —— 分隔符只能有一处真相。
          */
-        private const val TAG_SEPARATOR = "\u001F"
+        internal const val TAG_SEPARATOR = "\u001F"
 
         /** `read_date` 形如 "yyyy-MM-dd"，取前 7 位即月份键。 */
         private const val MONTH_KEY_LENGTH = 7

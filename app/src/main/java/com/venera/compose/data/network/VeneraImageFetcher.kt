@@ -1,14 +1,18 @@
 package com.venera.compose.data.network
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import coil3.ImageLoader
 import coil3.Uri
+import coil3.asImage
 import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
+import coil3.fetch.ImageFetchResult
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
+import coil3.size.Dimension
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.Buffer
@@ -60,10 +64,42 @@ class VeneraImageFetcher(
             bytes to mime
         }
 
-        // 管道字节流转换（JM 去混淆与 EH Sprite 切片还原）
-        val processedBytes = processImageBytes(cleanUrl, rawBytes, cropRange)
+        // 需要字节级变换的两条路（JM 去混淆 / EH 雪碧图裁剪）直接交位图给 Coil：
+        // 旧实现把重排结果 JPEG 重编码、再让 Coil 解一次，每张白走一遍编解码往返，
+        // 而且重编码出来的字节拿不到 Coil 解码器的降采样（所以这里自己补 sampleSize）。
+        // 两条路互斥：`@x=` 裁剪后缀只由 EH 雪碧图挂上，JM 的 /media/photos/ 不会带，
+        // 所以命中去混淆时可以直接 return，不必再裁。
+        val scrambleNum = ImagePipelinePolicy.getScrambleNum(cleanUrl)
+        if (scrambleNum > 1) {
+            // 边界映射要按**原图高**算（服务端那份切块依据），所以 bounds 在这里解一次，
+            // 同时喂给降采样决策和去混淆 —— 别再让去混淆自己拿降采样高重新除。
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
+            // 第二次按原尺寸重试 = 本次改动前的行为。宁可慢，也绝不能把未还原的字节往下交：
+            // 下面那条 SourceFetchResult 会让 Coil 原样解码，观感就是条状撕裂图，
+            // 而且这张错图还会按 cacheKeyFor 的 key 进内存缓存被锁死。
+            val descrambled = ImagePipelinePolicy.decodeAndDescramble(
+                rawBytes, scrambleNum, sampleSizeFor(bounds, scrambleNum), bounds.outHeight,
+            ) ?: ImagePipelinePolicy.decodeAndDescramble(rawBytes, scrambleNum, 1, bounds.outHeight)
+                ?: throw IOException("JM 去混淆失败（$cleanUrl, num=$scrambleNum），不交未还原字节")
+            return ImageFetchResult(
+                image = descrambled.asImage(),
+                isSampled = true,
+                dataSource = DataSource.NETWORK,
+            )
+        }
+        if (cropRange != null) {
+            val cropped = ImagePipelinePolicy.cropToBitmap(rawBytes, cropRange)
+            if (cropped != null) {
+                return ImageFetchResult(
+                    image = cropped.asImage(),
+                    isSampled = false,
+                    dataSource = DataSource.NETWORK,
+                )
+            }
+        }
 
-        val buffer = Buffer().write(processedBytes)
+        val buffer = Buffer().write(rawBytes)
         val imageSource = ImageSource(
             source = buffer,
             fileSystem = FileSystem.SYSTEM
@@ -76,20 +112,39 @@ class VeneraImageFetcher(
         )
     }
 
-    private fun processImageBytes(
-        imageUrl: String,
-        rawBytes: ByteArray,
-        cropRange: ImagePipelinePolicy.CropRange?
-    ): ByteArray {
-        var current = rawBytes
-        val scrambleNum = ImagePipelinePolicy.getScrambleNum(imageUrl)
-        if (scrambleNum > 1) {
-            current = ImagePipelinePolicy.descrambleJmImage(current, scrambleNum)
+    /**
+     * 2 的幂降采样自己定（位图短路把 Coil 的解码器整个绕过了，不补就会按原尺寸解，
+     * 预览一次进来十张 7 MiB 的位图）。三条硬约束，每条都对应一次"图又裂成条"：
+     *  1. 盒子必须是正数像素。0（首帧未测量、动画起手的 0 高容器）或拿不到像素维度时
+     *     一律返回 1 —— 覆盖式 while 循环在 box<=0 时条件恒真，sample 会一路翻倍到 Int
+     *     溢出：要么 `sample*2` 归零后除零崩，要么把负数送进 inSampleSize 解不出图。
+     *     （实测 box=0x0 与 -1x-1 时旧写法都走到溢出。）
+     *  2. 封顶 [MaxSample]：BitmapFactory 只有 1/2/4/8 是 IDCT 真降采样，再大只是白算一遍。
+     *  3. 降完还要给 num 个块各留 [MinScrambleBlockPx] 高，否则重排无从谈起。
+     *     （块边界不再靠这条兜着 —— 旧写法以为漂移不超过 sample 像素，实际会逐块累加；
+     *     现在边界按原图高映射，误差钉在 1 像素内，见 ImagePipelinePolicy.reorderBlocksBottomUp。）
+     */
+    private fun sampleSizeFor(bounds: BitmapFactory.Options, num: Int): Int {
+        val boxW = (options.size.width as? Dimension.Pixels)?.px ?: return 1
+        val boxH = (options.size.height as? Dimension.Pixels)?.px ?: return 1
+        if (boxW <= 0 || boxH <= 0) return 1
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return 1
+        var sample = 1
+        while (sample < MaxSample &&
+            bounds.outWidth / (sample * 2) >= boxW &&
+            bounds.outHeight / (sample * 2) >= boxH
+        ) {
+            sample *= 2
         }
-        if (cropRange != null) {
-            current = ImagePipelinePolicy.cropSprite(current, cropRange)
+        while (sample > 1 && bounds.outHeight / sample < num * MinScrambleBlockPx) {
+            sample /= 2
         }
-        return current
+        return sample
+    }
+
+    private companion object {
+        const val MaxSample = 8
+        const val MinScrambleBlockPx = 8
     }
 
     class Factory(

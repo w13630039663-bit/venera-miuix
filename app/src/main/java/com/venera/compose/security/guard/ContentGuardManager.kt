@@ -23,6 +23,51 @@ data class GuardRule(
 )
 
 /**
+ * AI 标签词。归一（繁转简 + 小写）后**精确等值**。
+ *
+ * 出处：`ai` / `ai-generated` 逐字同 master 卡片 AI 角标的判据
+ * （`lib/components/comic.dart:485-487`）；`ai生成` / `ai绘图` 取自本仓
+ * [com.venera.compose.data.tags.TagNormalizer] 已归类好的中文形态（`:84`）。
+ * 刻意不加"含 ai 字样就算"——那会误伤角色名与英文单词，master 也没这么做。
+ */
+private val AiTagKeys = setOf("ai", "ai-generated", "ai生成", "ai绘图")
+
+/**
+ * AI 标签判据的纯函数部分（不含繁转简，那一步要 Context 与语言表，测不到）。
+ *
+ * 刻意**不剥** `female:` / `tag:` 这类命名空间前缀 —— master 的角标判据就是整串小写等值
+ * （`comic.dart:485-487`）。剥了会把 `female:ai`（角色名 AI）也算成 AI 生成，
+ * 属于误伤；宁可漏也不错杀整本正常漫画。
+ */
+internal fun isAiTagValue(raw: String): Boolean =
+    raw.trim().lowercase() in AiTagKeys
+
+/**
+ * 标题里的 AI 标记（预编译：判定在列表滚动时每帧都跑，绝不能在调用点 new Regex，
+ * 与本文件 [explicitPatterns] 同一约定）。
+ *
+ * 为什么需要它：e-hentai 把标记写在标题里（`[AI Generated]` / `[AI Art]`），
+ * tags 里**没有** ai —— 纯标签判据会把整批漏掉（2026-09-22 实测截图）。
+ *
+ * 刻意只用「词组」与「括号独立词」两类，**不匹配裸 ai** —— 那会连 `openai`、
+ * `AI少女`（角色名）、`waiting` 一起误杀。
+ */
+private val AiTitlePatterns = listOf(
+    Regex("ai[\\s\\-_]?generated", RegexOption.IGNORE_CASE),   // AI Generated / AI-Generated / AIGenerated
+    Regex("ai[\\s\\-_]?(生成|绘图|繪圖|作画|作畫)", RegexOption.IGNORE_CASE),   // 简繁两套都要写进模式，见下方说明
+    Regex("ai[\\s\\-_]?art\\b", RegexOption.IGNORE_CASE),      // [AI Art] / AI-Art
+    Regex("[\\[【(（]\\s*ai\\s*[\\]】)）]", RegexOption.IGNORE_CASE),            // [AI] 【AI】 (AI)：独立成词才算
+)
+
+/**
+ * 标题判据**不**过繁转简表：那是逐字符查表，跑在每帧的列表判定上不划算，
+ * 所以把简体/繁体两种写法直接写进模式里。
+ */
+internal fun isAiTitleMarked(title: String): Boolean =
+    title.isNotBlank() && AiTitlePatterns.any { it.containsMatchIn(title) }
+
+
+/**
  * 全局内容屏蔽与分级安全守卫 (S7)
  *
  * 判定链（对齐原版 venera-miuix ContentGuard，命中即停）：
@@ -54,6 +99,12 @@ class ContentGuardManager private constructor(private val context: Context) {
     /** sourceKey -> "safe" | "mixed" | "nsfw"；未收录的源不在 map 中。 */
     private val sourcePresets = HashMap<String, String>()
 
+    /**
+     * 用户规则的正则按 pattern 记忆。[match] 在列表滚动里是「每项 × 每规则 × 每字段」
+     * 的调用密度，现场 new Regex 与本文件既有的「绝不能在调用点 new Regex」约定相悖。
+     */
+    private val userRegexes = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
     // ── 显式成人标记（预编译：判定在列表滚动时每帧都会跑，绝不能在调用点 new Regex）──
     private val explicitPatterns = listOf(
         Regex("r[\\s\\-_]?18", RegexOption.IGNORE_CASE),   // R18 / R-18 / R 18
@@ -81,6 +132,34 @@ class ContentGuardManager private constructor(private val context: Context) {
         prefs.edit().putString("nsfw_mode", mode).apply()
         _nsfwMaskMode.value = mode
         invalidate()
+    }
+
+    private val _blockAiComics = MutableStateFlow(prefs.getBoolean("block_ai", false))
+
+    /** 「屏蔽 AI 生成漫画」开关。与 R18 的三档模式**互不相关**：命中 AI 一律物理剔除。 */
+    val blockAiComics: kotlinx.coroutines.flow.StateFlow<Boolean> = _blockAiComics.asStateFlow()
+
+    fun setBlockAiComics(enabled: Boolean) {
+        prefs.edit().putBoolean("block_ai", enabled).apply()
+        _blockAiComics.value = enabled
+        invalidate()
+    }
+
+    /**
+     * AI 标记词。归一（繁转简 + 小写）后**精确等值**，不扫标题也不扫描述。
+     *
+     * 出处：`ai` / `ai-generated` 逐字同 master 卡片 AI 角标的判据
+     * （`lib/components/comic.dart:485-487`）；`ai生成` / `ai绘图` 取自本仓
+     * [com.venera.compose.data.tags.TagNormalizer] 已归类好的中文形态（`:84`）。
+     * 这里刻意不加"含 ai 字样就算"——那会误伤角色名与英文单词，master 也没这么做。
+     */
+
+    /** 源是否把这条标成了 AI 生成：标签（繁转简后等值）或标题（预编译词组）任一命中。 */
+    private fun isAiMarked(title: String, tags: List<String>): Boolean =
+        isAiTitleMarked(title) || tags.any { isAiTagValue(variantConverter.traditionalToSimplified(it)) }
+
+    private val variantConverter by lazy {
+        com.venera.compose.data.tags.ChineseVariantConverter.getInstance(context)
     }
 
     fun loadRules() {
@@ -245,8 +324,10 @@ class ContentGuardManager private constructor(private val context: Context) {
     fun filterComicModels(comics: List<Comic>): List<Comic> {
         val activeRules = _rules.value.filter { it.isEnabled }
         val hideMode = _nsfwMaskMode.value == "HIDE"
-        if (activeRules.isEmpty() && !hideMode) return comics
-        return comics.filterNot { comic ->
+        val blockAi = _blockAiComics.value
+        if (activeRules.isEmpty() && !hideMode && !blockAi) return comics
+        val dropped = ArrayList<Comic>(4)
+        val kept = comics.filter { comic ->
             val userBlocked = isComicBlocked(
                 title = comic.title,
                 author = comic.subTitle,
@@ -256,8 +337,19 @@ class ContentGuardManager private constructor(private val context: Context) {
             )
             val nsfwHide = hideMode &&
                 maskStateInternal(comic.sourceKey, comic.title, comic.subTitle, comic.tags, comic.id, comic.description)
-            userBlocked || nsfwHide
+            val aiHide = blockAi && isAiMarked(comic.title, comic.tags)
+            if (userBlocked || nsfwHide || aiHide) dropped.add(comic)
+            !(userBlocked || nsfwHide || aiHide)
         }
+        // 逐源剔除量：这是"屏蔽到底有没有生效"的唯一客观读数。只记源键与条数，不落标题到 logcat。
+        if (dropped.isNotEmpty()) {
+            val bySource = dropped.groupingBy { it.sourceKey.ifBlank { "?" } }.eachCount()
+            android.util.Log.i(
+                "VeneraGuard",
+                "剔除 ${dropped.size}/${comics.size} 条 mode=${_nsfwMaskMode.value} ai=$blockAi rules=${activeRules.size} $bySource"
+            )
+        }
+        return kept
     }
 
     /**
@@ -267,7 +359,7 @@ class ContentGuardManager private constructor(private val context: Context) {
     fun filterExploreParts(parts: List<ExplorePagePart>): List<ExplorePagePart> {
         val activeRules = _rules.value.filter { it.isEnabled }
         val hideMode = _nsfwMaskMode.value == "HIDE"
-        if (activeRules.isEmpty() && !hideMode) return parts
+        if (activeRules.isEmpty() && !hideMode && !_blockAiComics.value) return parts
         return parts.mapNotNull { part ->
             val filtered = filterComicModels(part.comics)
             if (filtered.isEmpty()) null else part.copy(comics = filtered)
@@ -282,6 +374,9 @@ class ContentGuardManager private constructor(private val context: Context) {
      * - "HIDE" → 命中判定链 → HIDDEN（列表剔除已在数据层完成，此处兜底）
      */
     fun coverMaskStateFor(title: String, author: String = "", tags: List<String> = emptyList(), comicId: String = "", description: String = ""): String {
+        // AI 屏蔽与 R18 的三档模式无关，且必须排在 "OFF" 早退**之前** ——
+        // 否则用户把分级遮罩关掉时，AI 屏蔽会被一起关掉（一个开关管两件事 = 假开关）。
+        if (_blockAiComics.value && isAiMarked(title, tags)) return "HIDDEN"
         val mode = _nsfwMaskMode.value
         if (mode == "OFF") return "VISIBLE"
         // 无 sourceKey 的重载路径：不走 LRU（调用方未提供源身份，逐次判定即可）。
@@ -302,6 +397,7 @@ class ContentGuardManager private constructor(private val context: Context) {
         comicId: String = "",
         description: String = "",
     ): String {
+        if (_blockAiComics.value && isAiMarked(title, tags)) return "HIDDEN"
         val mode = _nsfwMaskMode.value
         if (mode == "OFF") return "VISIBLE"
         val key = sourceKey + "@" + comicId
@@ -320,6 +416,7 @@ class ContentGuardManager private constructor(private val context: Context) {
 
     /** 带 [Comic] 的判定入口（走 LRU 缓存，列表场景优先使用）。 */
     fun coverMaskStateFor(comic: Comic): String {
+        if (_blockAiComics.value && isAiMarked(comic.title, comic.tags)) return "HIDDEN"
         val mode = _nsfwMaskMode.value
         if (mode == "OFF") return "VISIBLE"
         val key = comic.sourceKey + "@" + comic.id
@@ -374,7 +471,9 @@ class ContentGuardManager private constructor(private val context: Context) {
     private fun match(rule: GuardRule, target: String): Boolean {
         return try {
             if (rule.isRegex) {
-                Regex(rule.pattern, RegexOption.IGNORE_CASE).containsMatchIn(target)
+                userRegexes.getOrPut(rule.pattern) {
+                    Regex(rule.pattern, RegexOption.IGNORE_CASE)
+                }.containsMatchIn(target)
             } else {
                 target.contains(rule.pattern, ignoreCase = true)
             }

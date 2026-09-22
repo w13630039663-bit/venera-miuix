@@ -191,9 +191,14 @@ fun LocalComicScreen(
             }
 
             else -> {
+                val (gridWidth, gridWidthModifier) =
+                    rememberContentWidth(tokens.spacing.rowHorizontal * 2)
+                // 列数按实测宽推（宽屏加列）；chunked 要的是列数，不是网格自己
+                val columns = comicListColumnCount(displayMode.value, gridWidth)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(gridWidthModifier)
                         .nestedScroll(topBarBehavior.nestedScrollConnection)
                         .blurBackdropSource(topBarBackdrop),
                     contentPadding = PaddingValues(
@@ -234,7 +239,6 @@ fun LocalComicScreen(
                             }
                         }
                         // ── 书架网格（按源过滤后的列表，行级 chunked 保持双列语义）──
-                        val columns = if (displayMode.value == "detailed") 1 else 2
                         filteredComics.chunked(columns).forEachIndexed { rowIdx, row ->
                             item(key = "comic-row-" + rowIdx + "-" + (row.firstOrNull()?.rootPath ?: "")) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap)) {

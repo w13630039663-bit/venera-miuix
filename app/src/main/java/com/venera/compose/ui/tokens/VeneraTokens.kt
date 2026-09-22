@@ -1,9 +1,11 @@
 package com.venera.compose.ui.tokens
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -132,54 +134,81 @@ object VeneraTokens {
         @Composable @ReadOnlyComposable get() = LocalVeneraTokens.current.appearance
 
     /**
-     * 颜色 Token。
-     *
-     * 刻意**同时**读取 MiuixTheme 与 MaterialTheme：
-     * VeneraTheme 已保证两者指向同一套语义（MIUIX 模式下 material 由 miuix 色板派生，
-     * MD3 模式下 miuix 由 material 色板派生），因此这里取哪边都一致，
-     * 取 MaterialTheme 是因为它的槽位命名更完整、且被动态取色驱动。
+     * 颜色 Token。取值口径见 [buildVeneraColorTokens]；
+     * 正常路径上是主题根 remember 好的那一份（[LocalVeneraColorTokens]），读取不再新建对象。
      */
     val color: VeneraColorTokens
         @Composable @ReadOnlyComposable
-        get() {
-            val m = MaterialTheme.colorScheme
-            val miuixSurface = MiuixTheme.colorScheme.surface
-            val miuixOnSurface = MiuixTheme.colorScheme.onSurface
-            // 动作色只在 MD3 风格下取色。MIUIX 色板实际只有一个主蓝：
-            // toMaterialColors 把 tertiary 映成 onTertiaryContainer、secondary 也贴着主色，
-            // 跟着取色会让四个钮退化成同色系，反而不如固定语义色可辨。
-            val fixedActions = LocalVeneraTokens.current.appearance != AppearanceStyle.MD3
-            return VeneraColorTokens(
-                background = m.background,
-                onBackground = m.onBackground,
-                surface = m.surface,
-                onSurface = m.onSurface,
-                surfaceVariant = m.surfaceVariant,
-                onSurfaceVariant = m.onSurfaceVariant,
-
-                primary = m.primary,
-                onPrimary = m.onPrimary,
-                primaryContainer = m.primaryContainer,
-                onPrimaryContainer = m.onPrimaryContainer,
-
-                outline = m.outline,
-                outlineVariant = m.outlineVariant,
-                divider = m.outlineVariant,
-
-                // 文字层级：统一以 onSurface 为基准，用透明度表达层级，
-                // 避免 MD3 与 MIUIX 对「次要文字」的定义差异泄漏到页面。
-                textPrimary = m.onSurface,
-                textSecondary = m.onSurface.copy(alpha = 0.70f),
-                textTertiary = m.onSurface.copy(alpha = 0.45f),
-                textDisabled = m.onSurface.copy(alpha = 0.30f),
-
-                pressedOverlay = m.onSurface.copy(alpha = 0.06f),
-                badgeTint = if (miuixSurface == Color.Unspecified) m.surface else miuixOnSurface,
-
-                actionFavorite = if (fixedActions) StatusColors.Favorite else m.primary,
-                actionLike = if (fixedActions) StatusColors.Like else m.error,
-                actionComment = if (fixedActions) StatusColors.Comment else m.tertiary,
-                actionShare = if (fixedActions) StatusColors.Share else m.secondary,
-            )
-        }
+        get() = LocalVeneraColorTokens.current ?: buildVeneraColorTokens(
+            m = MaterialTheme.colorScheme,
+            miuixSurface = MiuixTheme.colorScheme.surface,
+            miuixOnSurface = MiuixTheme.colorScheme.onSurface,
+            fixedActions = LocalVeneraTokens.current.appearance != AppearanceStyle.MD3,
+        )
 }
+
+/**
+ * 颜色 Token 的缓存位（由主题根提供，见 [buildVeneraColorTokens]）。
+ *
+ * 为什么要缓存：[VeneraTokens.color] 原先**每次读取**都新建一份 23 字段的
+ * [VeneraColorTokens]，全仓 412 个读取点，列表/网格里一个卡片就读 3~5 次 ——
+ * 每次重组都要重抄一遍色板。
+ *
+ * 缓存成立的前提（已核实）：全仓只有 `VeneraTheme` 与 `VeneraPreviewTheme` 两个主题根，
+ * 没有任何局部 `MaterialTheme(...)` / `MiuixTheme(...)` 覆盖，所以"当前色板"在
+ * 组合树里处处等于主题根那一份，值不会因读取位置而异。新增主题根时必须同样 provide。
+ *
+ * 用 `compositionLocalOf` 而不是 `staticCompositionLocalOf`：static 的提供者换值时
+ * **不会**让读取方重组，切深色/切风格会留下一屏旧颜色。
+ */
+val LocalVeneraColorTokens = compositionLocalOf<VeneraColorTokens?> { null }
+
+/**
+ * 颜色 Token。
+ *
+ * 刻意**同时**读取 Miuix 与 Material 两套色板：
+ * VeneraTheme 已保证两者指向同一套语义（MIUIX 模式下 material 由 miuix 色板派生，
+ * MD3 模式下 miuix 由 material 色板派生），因此这里取哪边都一致，
+ * 取 MaterialTheme 是因为它的槽位命名更完整、且被动态取色驱动。
+ *
+ * @param fixedActions 动作色只在 MD3 风格下取色。MIUIX 色板实际只有一个主蓝：
+ *   toMaterialColors 把 tertiary 映成 onTertiaryContainer、secondary 也贴着主色，
+ *   跟着取色会让四个钮退化成同色系，反而不如固定语义色可辨。
+ */
+fun buildVeneraColorTokens(
+    m: ColorScheme,
+    miuixSurface: Color,
+    miuixOnSurface: Color,
+    fixedActions: Boolean,
+): VeneraColorTokens = VeneraColorTokens(
+    background = m.background,
+    onBackground = m.onBackground,
+    surface = m.surface,
+    onSurface = m.onSurface,
+    surfaceVariant = m.surfaceVariant,
+    onSurfaceVariant = m.onSurfaceVariant,
+
+    primary = m.primary,
+    onPrimary = m.onPrimary,
+    primaryContainer = m.primaryContainer,
+    onPrimaryContainer = m.onPrimaryContainer,
+
+    outline = m.outline,
+    outlineVariant = m.outlineVariant,
+    divider = m.outlineVariant,
+
+    // 文字层级：统一以 onSurface 为基准，用透明度表达层级，
+    // 避免 MD3 与 MIUIX 对「次要文字」的定义差异泄漏到页面。
+    textPrimary = m.onSurface,
+    textSecondary = m.onSurface.copy(alpha = 0.70f),
+    textTertiary = m.onSurface.copy(alpha = 0.45f),
+    textDisabled = m.onSurface.copy(alpha = 0.30f),
+
+    pressedOverlay = m.onSurface.copy(alpha = 0.06f),
+    badgeTint = if (miuixSurface == Color.Unspecified) m.surface else miuixOnSurface,
+
+    actionFavorite = if (fixedActions) StatusColors.Favorite else m.primary,
+    actionLike = if (fixedActions) StatusColors.Like else m.error,
+    actionComment = if (fixedActions) StatusColors.Comment else m.tertiary,
+    actionShare = if (fixedActions) StatusColors.Share else m.secondary,
+)

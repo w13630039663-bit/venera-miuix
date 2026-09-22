@@ -42,12 +42,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.style.TextOverflow
+import com.venera.compose.components.ComicCardContextMenu
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicTileDetailed
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
@@ -295,10 +297,16 @@ fun UnifiedExploreScreen(
         val hiddenEntryCount = allSections.sumOf { it.items.size } -
             visibleSections.sumOf { it.items.size }
 
+        // 列数按列表实测可用宽推（宽屏加列，master 口径），左右内边距要先扣掉
+        val (listWidth, listWidthModifier) =
+            rememberContentWidth(VeneraTokens.spacing.rowHorizontal * 2)
+        val columns = comicListColumnCount(displayMode.value, listWidth)
+
         LazyColumn(
             // 挂载折叠与录制行为：下滑时大标题收起、真实高斯模糊背板淡入
             modifier = Modifier
                 .fillMaxSize()
+                .then(listWidthModifier)
                 .nestedScroll(topBarBehavior.nestedScrollConnection)
                 .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(
@@ -445,7 +453,6 @@ fun UnifiedExploreScreen(
                 SectionHeader(if (activeFilter != null) "筛选结果" else "内容")
             }
 
-            val columns = comicListColumnCount(displayMode.value)
             val isDetailed = displayMode.value == "detailed"
 
             when {
@@ -482,16 +489,15 @@ fun UnifiedExploreScreen(
                             )
                         }
                         if (isDetailed) {
-                            items(
-                                part.comics,
-                                key = { "dcard-$partIndex-${it.id}" },
-                            ) { comic ->
-                                ExploreDetailedCard(comic, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                            part.comics.chunked(columns).forEachIndexed { rowIndex, row ->
+                                item(key = "prowd-$partIndex-$rowIndex-${row.firstOrNull()?.id}") {
+                                    ExploreDetailedRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                                }
                             }
                         } else {
                             part.comics.chunked(columns).forEachIndexed { rowIndex, row ->
                                 item(key = "prow-$partIndex-$rowIndex-${row.firstOrNull()?.id}") {
-                                    ExploreCardRow(row, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                                    ExploreCardRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
                                 }
                             }
                         }
@@ -501,16 +507,15 @@ fun UnifiedExploreScreen(
                     val listContent = content as ExploreContent.ComicList
                     val flatComics: List<Comic> = listContent.comics
                     if (isDetailed) {
-                        items(
-                            flatComics,
-                            key = { "dcard-${it.id}" },
-                        ) { comic ->
-                            ExploreDetailedCard(comic, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                        flatComics.chunked(columns).forEachIndexed { rowIndex, row ->
+                            item(key = "crowd-$rowIndex-${row.firstOrNull()?.id}") {
+                                ExploreDetailedRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                            }
                         }
                     } else {
                         flatComics.chunked(columns).forEachIndexed { rowIndex, row ->
                             item(key = "crow-$rowIndex-${row.firstOrNull()?.id}") {
-                                ExploreCardRow(row, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
+                                ExploreCardRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
                             }
                         }
                     }
@@ -853,10 +858,11 @@ private fun PartHeader(part: ExplorePagePart, onViewMore: (PageJumpTarget) -> Un
     }
 }
 
-/** 双列（或按宽度自适应列数）卡片行：一个 Row 就是一个 LazyItem，参与行级回收。 */
+/** 网格行（列数按可用宽推）：一个 Row 就是一个 LazyItem，参与行级回收。 */
 @Composable
 private fun ExploreCardRow(
     row: List<Comic>,
+    columns: Int,
     sourceName: String,
     guardManager: ContentGuardManager,
     nsfwMaskMode: String,
@@ -871,7 +877,31 @@ private fun ExploreCardRow(
                 ExploreComicCard(comic, sourceName, guardManager, nsfwMaskMode, onSelectComic)
             }
         }
-        if (row.size == 1) Spacer(Modifier.weight(1f))
+        // 末行不足时补等宽空位，否则尾卡被拉伸
+        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+    }
+}
+
+/** 详细模式的行卡按列数并排（宽窗每 360dp 一列，同 master）。 */
+@Composable
+private fun ExploreDetailedRow(
+    row: List<Comic>,
+    columns: Int,
+    sourceName: String,
+    guardManager: ContentGuardManager,
+    nsfwMaskMode: String,
+    onSelectComic: (ComicItem) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.gridGap),
+    ) {
+        row.forEach { comic ->
+            Box(Modifier.weight(1f)) {
+                ExploreDetailedCard(comic, sourceName, guardManager, nsfwMaskMode, onSelectComic)
+            }
+        }
+        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -887,6 +917,25 @@ private fun ExploreDetailedCard(
     // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
     // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
     val maskState = guardManager.coverMaskStateFor(comic)
+    val openComic = {
+        onSelectComic(
+            ComicItem(
+                id = comic.id,
+                title = comic.title,
+                author = comic.subTitle,
+                coverUrl = comic.cover,
+                tags = comic.tags,
+                description = comic.description,
+                sourceName = sourceName,
+                rating = comic.rating?.toString().orEmpty(),
+                likesCount = comic.likesCount,
+                updateTime = comic.updateTime,
+            )
+        )
+    }
+    // 长按菜单在两种显示模式下都要在 —— 只有双列能长按是另一种假一致。
+    var cardMenu by remember { mutableStateOf(false) }
+    Box {
     ComicTileDetailed(
         title = comic.title,
         coverUrl = comic.cover,
@@ -903,23 +952,16 @@ private fun ExploreDetailedCard(
             key = ComicSharedTransition.coverKey(sourceName, comic.id),
             allowFly = maskState == "VISIBLE",
         ),
-        onClick = {
-            onSelectComic(
-                ComicItem(
-                    id = comic.id,
-                    title = comic.title,
-                    author = comic.subTitle,
-                    coverUrl = comic.cover,
-                    tags = comic.tags,
-                    description = comic.description,
-                    sourceName = sourceName,
-                    rating = comic.rating?.toString().orEmpty(),
-                    likesCount = comic.likesCount,
-                    updateTime = comic.updateTime,
-                )
-            )
-        },
+        onClick = openComic,
+        onLongClick = { cardMenu = true },
     )
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = openComic,
+        )
+    }
 }
 
 @Composable
@@ -933,25 +975,34 @@ private fun ExploreComicCard(
     // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
     // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
     val maskState = guardManager.coverMaskStateFor(comic)
+    val openComic = {
+        onSelectComic(
+            ComicItem(
+                id = comic.id,
+                title = comic.title,
+                author = comic.subTitle,
+                coverUrl = comic.cover,
+                tags = comic.tags,
+                description = comic.description,
+                sourceName = sourceName,
+                rating = comic.rating?.toString().orEmpty(),
+                likesCount = comic.likesCount,
+                updateTime = comic.updateTime,
+            )
+        )
+    }
+    var cardMenu by remember { mutableStateOf(false) }
     VeneraCard(
         modifier = Modifier.fillMaxWidth(),
-        onClick = {
-            onSelectComic(
-                ComicItem(
-                    id = comic.id,
-                    title = comic.title,
-                    author = comic.subTitle,
-                    coverUrl = comic.cover,
-                    tags = comic.tags,
-                    description = comic.description,
-                    sourceName = sourceName,
-                    rating = comic.rating?.toString().orEmpty(),
-                    likesCount = comic.likesCount,
-                    updateTime = comic.updateTime,
-                )
-            )
-        },
+        onClick = openComic,
+        onLongClick = { cardMenu = true },
     ) {
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = openComic,
+        )
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,

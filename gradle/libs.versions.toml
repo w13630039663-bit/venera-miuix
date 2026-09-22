@@ -30,6 +30,11 @@ work = "2.9.1"
 backdrop = "2.0.1"
 # Backdrop 的 shape 体系（Capsule / RoundedRectangularShape）；lens 需要它提供圆角半径
 kyantShapes = "1.2.1"
+# Material Motion 转场规格的 Compose 实现（soup.compose.material.motion，EhViewer 同款）。
+# 坐标见 Maven Central: io/github/fornewid/material-motion-compose-core
+materialMotion = "2.0.1"
+# 种子色生成 MD3 色板（自定义取色用）；版本取自 Maven Central 当前 release
+materialKolor = "5.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -71,6 +76,9 @@ quickjs-android = { group = "app.cash.quickjs", name = "quickjs-android", versio
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "miuix" }
+# Miuix 官方图标集（GridView / ListView 等）。依赖面已核 .module：只拉 miuix-core + compose foundation，
+# **不引用 material3**，因此不会顶掉被 Miuix 钉住的 material3 1.5.0-alpha22。
+miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons", version.ref = "miuix" }
 
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur", version.ref = "miuix" }
 
@@ -82,6 +90,11 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 # Android 12+ 才能生效 RenderEffect，lens（RuntimeShader）需要 Android 13+。
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
 kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyantShapes" }
+# 只 requires compose 1.6.x，不会把本项目的 Compose/material3 版本顶来顶去（已核 .module 的 version.requires）
+material-motion-core = { group = "io.github.fornewid", name = "material-motion-compose-core", version.ref = "materialMotion" }
+# 种子色 → 整套 MD3 色板。Android 自带的 DynamicColors 只吃系统壁纸，喂不进自定义种子。
+# 坐标见 Maven Central: com/materialkolor/material-kolor（5.0.1 为当前 release）
+material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "materialKolor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

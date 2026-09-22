@@ -28,6 +28,8 @@ import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
 import com.venera.compose.feature.settings.ReaderSettings
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
+import com.venera.compose.feature.favoriteimages.FavoriteImageItem
+import com.venera.compose.feature.favoriteimages.toComicItem
 import com.venera.compose.reader.ReaderSession
 
 /**
@@ -38,7 +40,13 @@ import com.venera.compose.reader.ReaderSession
  */
 sealed interface SettingsEscape {
     data class ReadLocal(val session: ReaderSession) : SettingsEscape
+
+    /** 详情页普通打开。 */
     data class OpenComic(val comic: ComicItem) : SettingsEscape
+
+    /** 详情页打开并立刻读到某一页（插图收藏长按）：一条记录同时给出漫画身份与页码。 */
+    data class ReadPage(val image: FavoriteImageItem) : SettingsEscape
+
     data class DigTag(
         val namespace: String,
         val raw: String,
@@ -86,7 +94,6 @@ enum class SettingsSubScreen {
     LOCAL_COMICS,
     STATS,
     FAVORITE_IMAGES,
-    GUARD,
     SYNC,
     LOGS,
 }
@@ -154,7 +161,6 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             SettingsSubScreen.BLOCKING -> BlockingSettings(
                 onBack = ::back,
                 onRules = { open(SettingsSubScreen.BLOCKING_RULES, it) },
-                onGuard = { open(SettingsSubScreen.GUARD) },
             )
             SettingsSubScreen.BLOCKING_RULES -> BlockingRulesSettings(
                 // 缺 arg 只会来自编码错误，交给 Activity 侧的 error() 拦，这里不再兜底。
@@ -199,8 +205,11 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                     )
                 },
             )
-            SettingsSubScreen.FAVORITE_IMAGES -> FavoriteImagesScreen(onBack = ::back)
-            SettingsSubScreen.GUARD -> ContentGuardScreen(onBack = ::back)
+            SettingsSubScreen.FAVORITE_IMAGES -> FavoriteImagesScreen(
+                onBack = ::back,
+                onOpenComicDetail = { item -> escape(SettingsEscape.OpenComic(item.toComicItem())) },
+                onReadFromPage = { item -> escape(SettingsEscape.ReadPage(item)) },
+            )
             SettingsSubScreen.SYNC -> SyncBackupScreen(onBack = ::back)
             SettingsSubScreen.LOGS -> LogViewerScreen(onBack = ::back)
         }
@@ -238,6 +247,18 @@ internal fun NavHostController.consumeSettingsEscape(shell: VeneraShellViewModel
         is SettingsEscape.OpenComic -> {
             shell.selectedComic = escape.comic
             navigate(DetailRoute(comicId = escape.comic.id, sourceName = escape.comic.sourceName))
+        }
+        is SettingsEscape.ReadPage -> {
+            // 与 MainActivity 侧 readFavoriteImage 同一套动作：标题/作者先由收藏记录顶上，
+            // 「读到哪一章哪一页」交给详情页在目录就绪后找回。
+            shell.selectedComic = escape.image.toComicItem()
+            shell.pendingReadTarget = ReadTarget(escape.image)
+            navigate(
+                DetailRoute(
+                    comicId = escape.image.comicId,
+                    sourceName = escape.image.sourceName,
+                )
+            )
         }
         is SettingsEscape.DigTag -> navigate(
             TagSearchRoute(

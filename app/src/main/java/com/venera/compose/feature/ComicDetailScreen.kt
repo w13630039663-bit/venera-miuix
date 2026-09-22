@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -56,7 +58,10 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.RichCommentContent
+import com.venera.compose.components.comicPreviewColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.data.tags.rememberTagDisplayLabel
@@ -84,6 +89,9 @@ import com.venera.compose.source.model.*
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 
+/** 章节胶囊首屏上限；超出后给「显示全部」出口，不静默裁掉。 */
+private const val CHAPTER_CHIP_LIMIT = 80
+
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SharedTransitionScope.AndroidComicDetailScreen(
@@ -91,6 +99,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onBack: () -> Unit,
     onStartLiveReading: (ReaderSession) -> Unit,
+    /**
+     * 进这一页后要立刻打开的那一页（插图收藏长按带来的）。
+     * null = 普通进入。非空时本页会在**源详情目录就绪后**按章节标题找回章节并推阅读器；
+     * 标题对不上时如实提示并留在详情页，绝不随手开第一章糊弄。
+     */
+    readTarget: ReadTarget? = null,
     /** S8: 点击标签 → 跳转该标签的搜索结果（对齐官方 handleClickTagEvent 默认语义） */
     onSearchTag: (String) -> Unit = {},
     /** S8 批次C: 点击封面 → 全屏查看器 */
@@ -148,6 +162,27 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val isSendingComment = detailState.isSendingComment
     var showDownloadDialog by remember { mutableStateOf(false) }
 
+    // ── 预览图挂载窗口 ──
+    // 折叠态只渲染前 PREVIEW_LIMIT 张：详情自带全量预览的源（nhentai、hitomi）一次返回整本
+    // 两三百张，不拦就是几百个图片请求同时发出 + 几百项长期挂在组合里（每张封面还带一个
+    // VeneraShimmer 无限动画，未加载完之前每帧都在跑）。「查看更多预览」每点一次窗口翻倍，
+    // 于是每轮的组合量与并发取图数都被限在"和上一轮同量级"，而不是一口气全挂。
+    var previewMount by remember(comic.id) { mutableIntStateOf(PREVIEW_LIMIT) }
+    // 预览格宽上限 200dp（master thumbnails.dart 的 maxCrossAxisExtent），手机上原本
+    // 就是 3 列，所以 3 是下限：大屏只许加列，不许把已定稿的手机三列改窄。
+    val (previewWidth, previewWidthModifier) = rememberContentWidth()
+    val previewColumns = comicPreviewColumnCount(previewWidth)
+    val previewThumbnails = remember(
+        detailState.thumbnails, liveDetails, detailState.thumbnailsExpanded, previewMount,
+    ) {
+        val all = detailState.thumbnails.ifEmpty { liveDetails?.thumbnails.orEmpty() }
+        if (detailState.thumbnailsExpanded) all.take(previewMount) else all.take(PREVIEW_LIMIT)
+    }
+    // chunked 每次都会新建两层 List，不 remember 就是每次重组换引用，把这一块的强跳过打掉。
+    val previewRows = remember(previewThumbnails, previewColumns) {
+        previewThumbnails.chunked(previewColumns)
+    }
+
     LaunchedEffect(comic.sourceName, comic.id) {
         viewModel.load(comic)
         viewModel.syncLocalFav(comic)
@@ -204,6 +239,48 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             // 详情尚未解析出章节列表 → 如实提示。
             // （历史上这里会打开「演示会话」，用硬编码占位图冒充漫画内容。）
             Toast.makeText(context, "章节列表尚未加载完成，请稍后再试", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ── 插图收藏「从该页开始阅读」 ──
+    // 收藏里落下的是章节**标题**（章节 id 当年没入库），而阅读会话只能在详情就绪后由源
+    // 解析目录构造，所以这条只能在页内找回章节。跨**所有**分组找：jm 这类源一本书几十个
+    // 分组，只看当前选中分组会稳定找不回来。目录迟迟不来的失败态如实说，不开第一章冒充。
+    var readTargetFired by remember { mutableStateOf(false) }
+    LaunchedEffect(readTarget, liveDetails, detailState.error) {
+        val target = readTarget
+        val details = liveDetails
+        if (target == null || readTargetFired) return@LaunchedEffect
+        if (details == null) {
+            val error = detailState.error
+            if (error != null) {
+                readTargetFired = true
+                Toast.makeText(context, "详情加载失败，没能定位到「${target.chapterTitle}」：$error", Toast.LENGTH_LONG)
+                    .show()
+            }
+            return@LaunchedEffect
+        }
+        when (val hit = findReadTargetChapter(details, target.chapterTitle)) {
+            is ReadChapterHit.Found -> {
+                readTargetFired = true
+                // 先把该章所在分组切过去：openChapter 取的 allChapters 是「当前分组」的兄弟章，
+                // 不切的话阅读器里的上下章会串到别的分组去。
+                hit.groupIndex?.let { viewModel.selectGroup(it) }
+                launchChapter(hit.chapter.id, hit.chapter.title, hit.indexInGroup, target.pageIndex)
+            }
+            // 无章节目录的源（EH 图库等）：整本即一章，与 onTriggerRead 同一口径。
+            is ReadChapterHit.WholeComic -> {
+                readTargetFired = true
+                launchChapter(GALLERY_CHAPTER_ID, target.chapterTitle, 0, target.pageIndex)
+            }
+            is ReadChapterHit.NotFound -> {
+                readTargetFired = true
+                Toast.makeText(
+                    context,
+                    "目录里已无「${target.chapterTitle}」，请在章节列表里手动选择",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
         }
     }
 
@@ -348,18 +425,28 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             }
                         }
 
-                        // 评分与更新时间
+                        // 评分与更新时间。**已提交的评分必须优先显示** ——
+                        // 否则交完评分界面还是源里的旧均值，用户读到的是「点了没反应」。
+                        var showRatingDialog by remember { mutableStateOf(false) }
+                        val myRating = detailState.userRating
+                        val stars = if (myRating > 0f) myRating
+                            else liveDetails?.stars ?: liveDetails?.rating ?: 0f
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            val stars = liveDetails?.stars ?: liveDetails?.rating ?: 0f
                             Text(
-                                text = if (stars > 0f) "★ " + kotlin.String.format(java.util.Locale.ROOT, "%.1f", stars) else "★ 暂无评分",
+                                text = (if (stars > 0f) "★ " + kotlin.String.format(java.util.Locale.ROOT, "%.1f", stars) else "★ 暂无评分") +
+                                    if (myRating > 0f) " 我的评分" else "",
                                 fontSize = tokens.type.body,
                                 fontWeight = tokens.type.weightBold,
-                                color = StatusColors.RatingStar
+                                color = StatusColors.RatingStar,
+                                // 只有源支持评分才可点：无 starRating 的源调用会静默失败。
+                                modifier = if (liveDetails != null) Modifier
+                                    .clickable { showRatingDialog = true }
+                                    .padding(vertical = tokens.spacing.space2)
+                                else Modifier,
                             )
                             val updateTime = liveDetails?.updateTime ?: comic.latestChapter
                             if (updateTime.isNotBlank()) {
@@ -369,6 +456,35 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     color = tokens.color.textTertiary
                                 )
                             }
+                        }
+                        if (showRatingDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showRatingDialog = false },
+                                title = { Text("给本作评分") },
+                                text = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)) {
+                                        (1..5).forEach { n ->
+                                            Text(
+                                                text = "$n★",
+                                                fontSize = tokens.type.itemTitle,
+                                                fontWeight = tokens.type.weightBold,
+                                                color = if (myRating >= n) StatusColors.RatingStar
+                                                    else tokens.color.textTertiary,
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        viewModel.rateComic(n.toFloat())
+                                                        showRatingDialog = false
+                                                    }
+                                                    .padding(tokens.spacing.space2),
+                                            )
+                                        }
+                                    }
+                                },
+                                confirmButton = {},
+                                dismissButton = {
+                                    TextButton(onClick = { showRatingDialog = false }) { Text("取消") }
+                                },
+                            )
                         }
                     }
                 }
@@ -672,11 +788,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             // 6. 官方预览图（对齐官方 comic_details_page/thumbnails.dart：
             //    网格铺排 + 分页加载 + 点任意一张从该页开读）
             val thumbnails = detailState.thumbnails.ifEmpty { liveDetails?.thumbnails.orEmpty() }
-            // 折叠态下只渲染前 PREVIEW_LIMIT 张：详情自带全量预览的源（nhentai 等）
-            // 会把整本几百张一次塞进来，不拦就会同时发起几百个图片请求。
-            // 注意判据用 detailState 的展开标志 —— liveDetails 兜底时没有该状态。
-            val shownThumbnails = if (detailState.thumbnailsExpanded) thumbnails
-                else thumbnails.take(PREVIEW_LIMIT)
+            // 实际渲染的是 previewThumbnails（挂载窗口在函数顶部算，
+            // LazyColumn 的内容 lambda 不是组合上下文）。
             if (thumbnails.isNotEmpty() || detailState.isLoadingThumbnails) {
                 item {
                     VeneraCard(modifier = Modifier.fillMaxWidth()) {
@@ -702,12 +815,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         }
                         Spacer(modifier = Modifier.height(tokens.spacing.space5))
 
-                        // 三列网格（末行不足三张时补空位，避免被拉伸变形）
-                        Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
-                            shownThumbnails.chunked(3).forEachIndexed { rowIdx, rowItems ->
+                        // 列数按卡片实测宽推（宽屏加列）；末行不足补空位，避免被拉伸变形
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                            modifier = Modifier.then(previewWidthModifier),
+                        ) {
+                            previewRows.forEachIndexed { rowIdx, rowItems ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
                                     rowItems.forEachIndexed { colIdx, thumbUrl ->
-                                        val pageIndex = rowIdx * 3 + colIdx
+                                        val pageIndex = rowIdx * previewColumns + colIdx
                                         val targetChId = detailState.previewChapterId.ifBlank {
                                             liveDetails?.chapters?.firstOrNull()?.id ?: "0"
                                         }
@@ -747,8 +863,19 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                                 )
                                             }
                                             // 真图：加载完成后 200ms 淡入
+                                            // 预览这批 URL 从没走 comic.onImageLoad，只拿得到「URL 推导」的块数，
+                                            // key 带上块数，避免它和源脚本那份还原结果共用同一条内存缓存。
+                                            val previewCtx = LocalContext.current
+                                            val previewModel = remember(thumbUrl) {
+                                                val previewKey = ImagePipelinePolicy.cacheKeyFor(thumbUrl)
+                                                ImageRequest.Builder(previewCtx)
+                                                    .data(thumbUrl)
+                                                    .memoryCacheKey(previewKey)
+                                                    .diskCacheKey(previewKey)
+                                                    .build()
+                                            }
                                             AsyncImage(
-                                                model = thumbUrl,
+                                                model = previewModel,
                                                 contentDescription = "第 " + (pageIndex + 1) + " 页",
                                                 modifier = Modifier
                                                     .fillMaxSize()
@@ -778,7 +905,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                             )
                                         }
                                     }
-                                    repeat(3 - rowItems.size) {
+                                    repeat(previewColumns - rowItems.size) {
                                         Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
@@ -794,17 +921,21 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             )
                         }
 
-                        // 折叠 / 展开预览图。两种「还有更多」必须都算上，缺一个就点不动：
+                        // 折叠 / 展开预览图。三种「还有更多」必须都算上，缺一个就点不动：
                         //  - thumbnailsCollapsed：本地已有 > PREVIEW_LIMIT 张被折叠（nhentai 全量返回）
                         //  - hasMoreThumbnails：源还有未拉取的分页（EH 的 loadThumbnails 分页）
+                        //  - 已展开但本轮只挂载了一部分（previewMount 翻倍放出的窗口还没吃完）
                         val collapsed = !detailState.thumbnailsExpanded && thumbnails.size > PREVIEW_LIMIT
                         val canLoadMore = detailState.hasMoreThumbnails
-                        if (collapsed || canLoadMore) {
+                        val moreMounted = detailState.thumbnailsExpanded &&
+                                previewThumbnails.size < thumbnails.size
+                        if (collapsed || canLoadMore || moreMounted) {
                             Spacer(modifier = Modifier.height(tokens.spacing.space5))
                             val hidden = (thumbnails.size - PREVIEW_LIMIT).coerceAtLeast(0)
                             // 折叠的本地图与「源还有下一页」是两件事，文案要分别说清，
                             // 否则用户点开后发现又多出一批会以为界面在骗人。
                             val label = when {
+                                moreMounted -> "查看更多预览（已显示 ${previewThumbnails.size} / ${thumbnails.size} 张）"
                                 collapsed && canLoadMore -> "查看更多预览（已显示 $PREVIEW_LIMIT / ${thumbnails.size}+ 张）"
                                 collapsed -> "查看更多预览（还有 $hidden 张）"
                                 canLoadMore -> "加载更多预览"
@@ -816,9 +947,22 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        // 展开时把已到手的图直接放出来（expandThumbnails 内部
-                                        // 只在该源确实还有下一页时才顺带补一次分页）。
-                                        if (collapsed || canLoadMore) viewModel.expandThumbnails()
+                                        when {
+                                            // 已展开、只是窗口没放完：本地翻倍，不发请求。
+                                            moreMounted ->
+                                                previewMount = (previewMount * 2).coerceAtMost(thumbnails.size)
+                                            collapsed -> {
+                                                // 首次展开：窗口放到两批，同时让 VM 补该源的分页
+                                                //（expandThumbnails 内部只在该源确实还有下一页时才拉）。
+                                                previewMount = PREVIEW_LIMIT * 2
+                                                viewModel.expandThumbnails()
+                                            }
+                                            // 已展开且本地窗口放完，源还有下一页。这里**不能**再走
+                                            // expandThumbnails() —— 它在已展开时直接 return，
+                                            // 按钮会变成按了没反应的死控件（EH 第 3 页永远拿不到）。
+                                            canLoadMore -> viewModel.loadThumbnails(loadMore = true)
+                                            else -> viewModel.expandThumbnails()
+                                        }
                                     },
                             ) {
                                 Text(
@@ -839,7 +983,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.collapseThumbnails() },
+                                    .clickable {
+                                        // 收起要把挂载窗口一起收回折叠量，否则下次展开
+                                        // 直接落回上一轮的大窗口，等于没收起。
+                                        previewMount = PREVIEW_LIMIT
+                                        viewModel.collapseThumbnails()
+                                    },
                             ) {
                                 Text(
                                     text = "收起预览",
@@ -868,6 +1017,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 //   显示一份凭空捏造的目录）。
                 val totalChapterCount = currentChapters.size
                 val hasRealChapters = currentChapters.isNotEmpty()
+                // 章节胶囊一次性全组合出来会拖垮详情页（当初就是为此截断的），
+                // 但截断必须留出口 —— 否则 >80 章的本子后面的章节**静默不可达**。
+                var showAllChapters by rememberSaveable { mutableStateOf(false) }
 
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
                     // 标题与正倒序切换（无章节可排时不显示排序按钮）
@@ -957,13 +1109,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             onAction = { viewModel.load(comic) }
                         )
                         hasRealChapters -> {
+                            val list = if (isReversed) currentChapters.reversed() else currentChapters
+                            val visibleChapters =
+                                if (showAllChapters) list else list.take(CHAPTER_CHIP_LIMIT)
                             // 章节网格：VeneraCard 胶囊 + 已读/未读对比度走 Token
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)
                             ) {
-                                val list = if (isReversed) currentChapters.reversed() else currentChapters
-                                list.take(80).forEachIndexed { idx, ch ->
+                                visibleChapters.forEachIndexed { idx, ch ->
                                     val actualIdx = if (isReversed) currentChapters.lastIndex - idx else idx
                                     val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
                                     VeneraCard(
@@ -997,6 +1151,18 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         }
                                     }
                                 }
+                            }
+                            // 出口文案直说还剩多少，别只写「显示全部」让人猜是不是被裁了。
+                            if (!showAllChapters && list.size > CHAPTER_CHIP_LIMIT) {
+                                Text(
+                                    text = "显示全部 ${list.size} 章（已列出 $CHAPTER_CHIP_LIMIT 章）",
+                                    fontSize = tokens.type.caption,
+                                    fontWeight = tokens.type.weightMedium,
+                                    color = tokens.color.primary,
+                                    modifier = Modifier
+                                        .padding(top = tokens.spacing.space4)
+                                        .clickable { showAllChapters = true },
+                                )
                             }
                         }
                         liveDetails != null -> {
@@ -2049,4 +2215,45 @@ private fun DetailTopBarBackdrop(
                 )
             },
     )
+}
+
+/**
+ * 「收藏那一页」在详情目录里的落点。
+ *
+ * 用 sealed 而不是可空三元组：`null` 只能表达"没找到"，分不清"本源根本没有章节目录"
+ * （EH / nhentai 这类图库，整本就是一章，照旧该开阅读器）。
+ */
+private sealed interface ReadChapterHit {
+    /** groupIndex 为 null 表示该源不分组，章节在平铺的 details.chapters 里。 */
+    data class Found(val groupIndex: Int?, val indexInGroup: Int, val chapter: ComicChapter) : ReadChapterHit
+
+    /** 目录为空：图库类源，整本即一章。 */
+    data object WholeComic : ReadChapterHit
+
+    /** 有目录但已经没有这一章（源端改名或下架）。 */
+    data object NotFound : ReadChapterHit
+}
+
+/**
+ * 按**标题**找回收藏时那一页所在的章节。
+ *
+ * 跨所有分组找，不看当前选中分组：jm 这类源一本书有几十个分组，只扫首组会稳定找不回来。
+ * 只做全等比较 —— 章节标题当年就是从这份目录里取的原值，模糊匹配反而会挑错章。
+ */
+private fun findReadTargetChapter(details: ComicDetails, chapterTitle: String): ReadChapterHit {
+    val groups = details.chapterGroups
+    if (groups.isNotEmpty()) {
+        groups.forEachIndexed { gi, group ->
+            group.chapters.forEachIndexed { ci, ch ->
+                if (ch.title == chapterTitle) return ReadChapterHit.Found(gi, ci, ch)
+            }
+        }
+    } else if (details.chapters.isNotEmpty()) {
+        details.chapters.forEachIndexed { ci, ch ->
+            if (ch.title == chapterTitle) return ReadChapterHit.Found(null, ci, ch)
+        }
+    } else {
+        return ReadChapterHit.WholeComic
+    }
+    return ReadChapterHit.NotFound
 }

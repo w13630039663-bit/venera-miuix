@@ -111,13 +111,13 @@
 
 | 项 | 位置 | 状态 | 实际写入 / 消费者 |
 |---|---|---|---|
-| 本地漫画存储路径（点击复制） | `:30` | ✅ | 显示 `filesDir/downloads`（`:26` 硬编码）+ 复制剪贴板 |
+| 本地漫画存储路径 | `:30` | ✅ **2026-09-22 换成自选目录** | 原为「显示硬编码 `filesDir/downloads` + 点击复制」。现在点是系统目录选择器，真实路径经守卫+写探针后才切；复制路径独立成一行。消费者 `download/ComicStorageRoot.kt`（见 storage-path-selection-2026-09.md） |
 | 打开日志 / 下载管理 / 本地漫画 | `:53` `:56` `:57` | ✅ | 纯导航 → `LogViewerRoute` / `DownloadRoute` / `LocalComicRoute` |
 | 数据同步（WebDAV） | `:46` | ✅ | 纯导航 → `SyncBackupRoute`，配置/上传/恢复真实存在（`feature/SyncBackupScreen.kt:164-300`） |
-| 导出应用数据 / 导入应用数据 | `:44` `:45` | ⚠️ **名不副实** | ① `sync/BackupManager.kt:44-47` 只打包 history/favorite/stats/guard_rules，**不含 prefs、cookie、已装源**；② 与「数据同步」三行共用同一个**无参** `onSync`（`SettingsHome.kt:102`）⇒ 不执行导出、也不直达对应区块（导出按钮在 `SyncBackupScreen.kt:356`） |
+| 导出数据 / 导入数据 | `:44` `:45` | ✅ **2026-09-22 换成直接动作** | 原来是与「数据同步」共用同一个**无参** `onSync` 的三行跳转（名不副实）。现在导出走系统「保存为」自选位置与文件名、导入走系统文件选择器，两条都经 `sync/BackupTransfers.kt`。备份包仍只含 history/favorite/stats/guard_rules，**不含 prefs、cookie、已装源** —— 文案已按实际覆盖面写 |
 | 缓存大小与清理 | `:40` | 🚧 | 无统计/清理入口，但底层 API 全在（见 §5） |
 | 缓存上限 | `:41` | 🚧 | `data/network/VeneraNetworkClient.kt:53` 写死 `100L*1024*1024`；OkHttp `Cache.maxSize()` 运行时可改 |
-| 设置新的存储路径 | `:39` | 🚧 | 需 SAF 迁移 |
+| 设置新的存储路径 | `:39` | ✅ 2026-09-22 | 见上「本地漫画存储路径」行与 `storage-path-selection-2026-09.md`：SAF 选目录 + 真实路径写探针 + 迁移确认 |
 | 语言 | `:49` | 🚧 | 无 locale 持久化 |
 | 需要身份验证 | `:50` | 🚧 | 无 Biometric 流程 |
 | **WebDAV「跳过指定字段」+「自动同步」** | — | ❌ | 原版 `app.dart:482` `disableSyncFields`（键 `appdata.dart:241`）、`app.dart:522` 自动同步。`SyncBackupScreen.kt` 亦无 |

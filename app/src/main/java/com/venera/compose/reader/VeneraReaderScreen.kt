@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +77,8 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import com.venera.compose.components.WideScreenDrawerWidth
+import com.venera.compose.components.wideScreenChromeMaxWidth
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.ImageHeaderPolicy
@@ -135,6 +138,23 @@ private fun ReaderSessionContent(
     val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
     val activity = context as? ComponentActivity
+
+    // 宽屏档收口：顶栏与底部控制岛在 >600dp 时与底栏共用同一个 540dp 口径并居中，
+    // 手机档拿到 null、仍走 fillMaxWidth，几何零改动（口径出处见 WideScreenPolicy）。
+    val chromeWidth = wideScreenChromeMaxWidth(LocalConfiguration.current.screenWidthDp.dp)
+    val chromeWidthModifier = if (chromeWidth == null) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.width(chromeWidth)
+    }
+    // 抽屉内容限宽：master 给章节目录与阅读设置抽屉的是定宽 400（scaffold.dart:662,727）。
+    // 手机档仍 fillMaxWidth；宽档用 wrapContentSize 把 400 宽的内容摆到中间，
+    // sheet 本体保持通栏 —— 不动 material3 抽屉的进出场动画与下拉手势。
+    val drawerWidthModifier = if (chromeWidth == null) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier.fillMaxWidth().wrapContentSize(Alignment.TopCenter).width(WideScreenDrawerWidth)
+    }
 
     val prefs = remember { VeneraPreferences.getInstance(context) }
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
@@ -718,7 +738,7 @@ private fun ReaderSessionContent(
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .statusBarsPadding()
-                    .fillMaxWidth()
+                    .then(chromeWidthModifier)
                     .shadow(12.dp, RoundedCornerShape(24.dp))
                     .border(0.5.dp, StatusColors.OnBadgeSurface.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
             ) {
@@ -807,7 +827,7 @@ private fun ReaderSessionContent(
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .navigationBarsPadding()
-                    .fillMaxWidth()
+                    .then(chromeWidthModifier)
                     .shadow(16.dp, RoundedCornerShape(28.dp))
                     .border(0.5.dp, StatusColors.OnBadgeSurface.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
             ) {
@@ -986,6 +1006,39 @@ private fun ReaderSessionContent(
                             }
                         }
 
+                        // 收藏当前页为插图。`favoriteCurrentPage` 早就写好了，
+                        // 只是从来没有按钮调它 —— 插图收藏页因此永远是空的。
+                        Surface(
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    favoriteCurrentPage(
+                                        context, session, currentChapter.title,
+                                        currentPageIndex, currentImageSource
+                                    )
+                                }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = tokens.spacing.space2).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "收藏当前页为插图",
+                                    tint = StatusColors.OnBadgeSurface,
+                                    modifier = Modifier.size(tokens.spacing.badgeIconSize)
+                                )
+                                Text(
+                                    text = "插图",
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.badge
+                                )
+                            }
+                        }
+
                         // 分享当前页图片
                         Surface(
                             shape = RoundedCornerShape(tokens.shape.small),
@@ -1138,7 +1191,7 @@ private fun ReaderSessionContent(
 
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .then(drawerWidthModifier)
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 32.dp)
                 ) {
@@ -1246,7 +1299,7 @@ private fun ReaderSessionContent(
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .then(drawerWidthModifier)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .padding(bottom = 36.dp)
@@ -1630,15 +1683,20 @@ private fun ReaderSinglePageItem(
             is ComicPageSource.DynamicNetwork -> {
                 val dyn = rememberDynamicPageResolution(page)
                 val resolvedUrl = dyn.url
+                val requestContext = LocalContext.current
                 when {
                     resolvedUrl != null -> SubcomposeAsyncImage(
                         // 用 imageKey 组合键作缓存键（对齐官方 network/images.dart）：
                         // 源签发的真实地址会变，拿 URL 当键会让翻回旧页被判成新图重新下载。
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(resolvedUrl)
-                            .memoryCacheKey(page.cacheKey)
-                            .diskCacheKey(page.cacheKey)
-                            .build(),
+                        // 必须 remember：ImageRequest 没有值相等，每次重组 Coil 都判"模型换了"，
+                        // 于是取消在飞请求重发 —— 整条 下载+去混淆 链在阅读器里被反复重启。
+                        model = remember(resolvedUrl, page.cacheKey) {
+                            ImageRequest.Builder(requestContext)
+                                .data(resolvedUrl)
+                                .memoryCacheKey(page.cacheKey)
+                                .diskCacheKey(page.cacheKey)
+                                .build()
+                        },
                         contentDescription = "第 ${index + 1} 页",
                         colorFilter = colorFilter,
                         loading = {
@@ -1773,14 +1831,18 @@ private fun ReaderTelephotoPageItem(
             is ComicPageSource.DynamicNetwork -> {
                 val dyn = rememberDynamicPageResolution(page)
                 val resolvedUrl = dyn.url
+                val zoomRequestContext = LocalContext.current
                 when {
                     resolvedUrl != null -> ZoomableAsyncImage(
-                        // 同单页组件：缓存键用 imageKey 组合键，避免地址变化导致重复下载
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(resolvedUrl)
-                            .memoryCacheKey(page.cacheKey)
-                            .diskCacheKey(page.cacheKey)
-                            .build(),
+                        // 同单页组件：缓存键用 imageKey 组合键，避免地址变化导致重复下载。
+                        // 同样必须 remember，否则每次重组都重启整条取图链。
+                        model = remember(resolvedUrl, page.cacheKey) {
+                            ImageRequest.Builder(zoomRequestContext)
+                                .data(resolvedUrl)
+                                .memoryCacheKey(page.cacheKey)
+                                .diskCacheKey(page.cacheKey)
+                                .build()
+                        },
                         contentDescription = "第 ${index + 1} 页",
                         state = zoomableImageState,
                         onClick = { offset -> onTap(offset.x / pageWidth) },
@@ -1892,6 +1954,10 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
 
 /**
  * 收藏当前单页为插图 (S7)
+ *
+ * 网络页在写表之前先把**去混淆后的原画**落到 filesDir/favorite_images/：
+ * 只存 URL 的收藏墙拿到的是混淆原图（禁漫）+ 会过期的签名地址（EH）+ 离线裂图，
+ * 这三条一起由落盘解决。本地漫画页的 localPath 本来就指向书本体，不再复制。
  */
 private fun favoriteCurrentPage(
     context: Context,
@@ -1904,29 +1970,80 @@ private fun favoriteCurrentPage(
     val coroutineScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO)
     coroutineScope.launch {
         try {
+            val manager = com.venera.compose.feature.favoriteimages.FavoriteImagesManager
+                .getInstance(context)
             val urlOrFile = when (pageSource) {
                 is ComicPageSource.Network -> pageSource.url
+                // 动态页先解析出真实地址再取图
                 is ComicPageSource.DynamicNetwork -> resolveDynamicPageUrl(context, com.venera.compose.source.ComicSourceManager.getInstance(context), pageSource)
                 is ComicPageSource.LocalFile -> pageSource.file.absolutePath
                 else -> null
             }
-            if (urlOrFile.isNullOrBlank()) return@launch
+            if (urlOrFile.isNullOrBlank()) {
+                // 地址都没解析出来 —— 说清楚，别静默返回让人以为"点了没反应"。
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "插图收藏失败：这一页还没有可用的图片地址", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
 
-            com.venera.compose.feature.favoriteimages.FavoriteImagesManager.getInstance(context).addFavorite(
+            var localPath = if (pageSource is ComicPageSource.LocalFile) urlOrFile else ""
+            if (localPath.isBlank()) {
+                // 不 recycle：这份位图就是 Coil 内存缓存里的那一个（阅读器正在显示它），
+                // 回收它等于把缓存里的图挖掉，下一页翻回来就是"使用已回收位图"。
+                decodePageAtOriginalSize(context, urlOrFile)?.let { bitmap ->
+                    localPath = manager.persistPage(bitmap, session.comicId, pageIndex) ?: ""
+                }
+            }
+            val rowId = manager.addFavorite(
                 comicId = session.comicId,
                 comicTitle = session.comicTitle,
                 sourceName = session.sourceName,
                 chapterTitle = chapterTitle,
                 pageIndex = pageIndex,
                 imageUrl = urlOrFile,
-                localPath = if (pageSource is ComicPageSource.LocalFile) urlOrFile else ""
+                localPath = localPath
             )
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "已收藏当前单页至「插图收藏」", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    when {
+                        // addFavorite 失败返回 -1（它内部吞异常），这里不判就是假成功。
+                        rowId < 0 -> "插图收藏失败：写入收藏表未成功"
+                        localPath.isBlank() ->
+                            "已收藏，但原画没能存下来：离线或该源地址失效时这一条会显示不出"
+                        else -> "已收藏当前单页至「插图收藏」"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // 静默失败会被读成"点了没反应"，进而判成假按钮 —— 存不下来必须说。
+            val reason = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "插图收藏失败：$reason", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }
+
+/**
+ * 按**原始尺寸**取当前页的位图（收藏落盘专用）。
+ *
+ * `Size.ORIGINAL` 是这条的关键：请求盒子决定去混淆时的降采样倍数，盒子越大降得越少，
+ * ORIGINAL 直接不降 —— 存下来的就是与服务端切块边界完全对齐的那一份。
+ * 另外位图短路只交 Bitmap 给 Coil，拿不到硬件位图就得 allowHardware(false) 才能 compress。
+ */
+private suspend fun decodePageAtOriginalSize(context: Context, urlOrFile: String): Bitmap? =
+    runCatching {
+        val request = ImageRequest.Builder(context)
+            .data(urlOrFile)
+            .size(coil3.size.Size.ORIGINAL)
+            .allowHardware(false)
+            .build()
+        val result = context.imageLoader.execute(request)
+        (result.image as? coil3.BitmapImage)?.bitmap ?: (result.image as? BitmapDrawable)?.bitmap
+    }.getOrNull()
 
 /**
  * 分享当前页**图片**：从 Coil 缓存解码 bitmap → 写入 cacheDir 经 FileProvider 暴露 →

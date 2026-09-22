@@ -66,8 +66,8 @@ fun VeneraFloatingNavBar(
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
 
-    // 胶囊底栏自适应宽度：在大屏与平板上收拢为适中药丸，在手机上留出 16dp 两侧边距
-    val barWidth = if (screenWidth > 600.dp) 480.dp else (screenWidth - 28.dp)
+    // 宽屏档走共享口径（WideScreenPolicy）；手机档保持 screenWidth - 28dp 的现定稿观感。
+    val barWidth = wideScreenChromeMaxWidth(screenWidth) ?: (screenWidth - 28.dp)
     val tabCount = tabs.size
     val selectedIndex = tabs.indexOf(currentTab).coerceAtLeast(0)
 

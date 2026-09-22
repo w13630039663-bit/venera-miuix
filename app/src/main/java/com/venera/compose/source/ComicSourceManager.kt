@@ -648,6 +648,9 @@ class ComicSourceManager private constructor(private val context: Context) {
     private val _availableUpdates = MutableStateFlow<Map<String, String>>(emptyMap())
     val availableUpdates: StateFlow<Map<String, String>> = _availableUpdates.asStateFlow()
 
+    /** 静默「检查更新」的上次触发时刻（占坑即写入，防并发进首页时重复发请求） */
+    private val lastSilentUpdateCheckAt = java.util.concurrent.atomic.AtomicLong(0L)
+
     fun clearAvailableUpdate(fileName: String) {
         _availableUpdates.value = _availableUpdates.value - fileName
     }
@@ -735,9 +738,33 @@ class ComicSourceManager private constructor(private val context: Context) {
     /**
      * 检查更新（对齐官方 `checkComicSourceUpdate`）。
      *
-     * @return 可更新的源数量；`-1` 表示网络失败（与官方同语义，UI 据此提示"网络错误"）
+     * 首页每次进入都会静默调一次本函数取「可更新角标」。而首页的组合重建很频繁
+     * （从详情返回、Tab 切回都会重跑条目组合），不加闸门就是"每次落地一次仓库索引
+     * 请求 + 一次全量版本比对"，正好压在转场那几百毫秒上。
+     * 节流口径与首页推荐的自动刷新一致（2 分钟，见 HomeViewModel 同名常量）；
+     * 用户主动点「检查更新」走 [force] = true，永远立即生效。
+     *
+     * @param force true = 用户显式触发，无视节流。
+     * @return 可更新的源数量；`-1` 表示网络失败（与官方同语义，UI 据此提示"网络错误"）；
+     *   被节流跳过时返回 `0` —— 只有静默路径会被跳，而它不读返回值。
      */
-    suspend fun checkUpdates(repoUrl: String = DEFAULT_REPO_URL): Int = withContext(Dispatchers.IO) {
+    suspend fun checkUpdates(
+        repoUrl: String = DEFAULT_REPO_URL,
+        force: Boolean = false,
+    ): Int {
+        if (force) {
+            lastSilentUpdateCheckAt.set(System.currentTimeMillis())
+        } else {
+            val now = System.currentTimeMillis()
+            val prev = lastSilentUpdateCheckAt.get()
+            if (now - prev < SILENT_UPDATE_CHECK_INTERVAL_MS) return 0
+            // 先占坑再发请求：并发进首页时只有一个调用通过，其余直接跳过。
+            if (!lastSilentUpdateCheckAt.compareAndSet(prev, now)) return 0
+        }
+        return checkUpdatesNow(repoUrl)
+    }
+
+    private suspend fun checkUpdatesNow(repoUrl: String): Int = withContext(Dispatchers.IO) {
         val entries = try {
             val req = Request.Builder().url(repoUrl).build()
             val resp = VeneraNetworkClient.getInstance(context).okHttpClient.newCall(req).execute()
@@ -1264,6 +1291,9 @@ class ComicSourceManager private constructor(private val context: Context) {
 
         /** 单源检索硬超时 */
         private const val SOURCE_TIMEOUT_MS = 20_000L
+
+        /** 静默检查更新的最小间隔，口径与首页推荐自动刷新一致 */
+        private const val SILENT_UPDATE_CHECK_INTERVAL_MS = 120_000L
 
         /** 版本号比较：a > b 返回正数 */
         fun compareVersion(a: String, b: String): Int {

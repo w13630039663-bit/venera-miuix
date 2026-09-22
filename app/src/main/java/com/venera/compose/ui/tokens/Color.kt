@@ -155,3 +155,61 @@ internal object StatusColors {
     /** 评分星标。 */
     val RatingStar = Color(0xFFFFB800)
 }
+
+/**
+ * 「自定义取色」的预设种子色板。
+ *
+ * 出处：逐字抄自 `jay3-yy/BiliPai` 的 `design-system/.../core/theme/Color.kt`
+ * （那边是 `ThemeColors` + `ThemeColorNames` 两条按下标对齐的表，靠单测才钉住等长；
+ * 这里合成一条，长度错位在结构上就不可能发生）。
+ *
+ * 校准：BiliPai 的 樱花粉 = `0xFFFA7298`，与用户截图里界面显示的 `#FA7298` 逐字相同 ——
+ * 证明表里存的是**种子色本身**，不是网格上那圈渐变渲染后的像素值。
+ *
+ * 存 `argb: Int` 而不是 `Color`：落盘走 SharedPreferences 的 Int 键，
+ * `data.prefs` 那层不该依赖 Compose 类型。
+ */
+data class ThemeSeedPreset(val name: String, val argb: Int) {
+    val color: Color get() = Color(argb)
+}
+
+object ThemeSeedPresets {
+    /** 网格列数，同 BiliPai 的 `ThemeColors.chunked(5)`。 */
+    const val Columns = 5
+
+    /** 未命中预设时显示的名字（手输 #RRGGBB 会落到这里）。 */
+    const val CustomName = "自定义"
+
+    val All = listOf(
+        ThemeSeedPreset("经典蓝", 0xFF007AFF.toInt()),
+        ThemeSeedPreset("樱花粉", 0xFFFA7298.toInt()),
+        ThemeSeedPreset("天空蓝", 0xFF00A1D6.toInt()),
+        ThemeSeedPreset("薄荷绿", 0xFF34C759.toInt()),
+        ThemeSeedPreset("梦幻紫", 0xFFAF52DE.toInt()),
+        ThemeSeedPreset("活力橙", 0xFFFF5722.toInt()),
+        ThemeSeedPreset("静谧蓝灰", 0xFF607D8B.toInt()),
+        ThemeSeedPreset("珊瑚红", 0xFFFF6B6B.toInt()),
+        ThemeSeedPreset("靛蓝", 0xFF5856D6.toInt()),
+        ThemeSeedPreset("翡翠青", 0xFF00BFA5.toInt()),
+        ThemeSeedPreset("炽焰红", 0xFFF44336.toInt()),
+        ThemeSeedPreset("绯樱粉", 0xFFE91E63.toInt()),
+        ThemeSeedPreset("星云紫", 0xFF9C27B0.toInt()),
+        ThemeSeedPreset("暮影紫", 0xFF673AB7.toInt()),
+        ThemeSeedPreset("靛空蓝", 0xFF3F51B5.toInt()),
+        ThemeSeedPreset("晴空蓝", 0xFF2196F3.toInt()),
+        ThemeSeedPreset("极光青", 0xFF00BCD4.toInt()),
+        ThemeSeedPreset("海沫绿", 0xFF009688.toInt()),
+        ThemeSeedPreset("新叶绿", 0xFF4CAF50.toInt()),
+        ThemeSeedPreset("日光黄", 0xFFFFEB3B.toInt()),
+        ThemeSeedPreset("琥珀金", 0xFFFFC107.toInt()),
+        ThemeSeedPreset("暖阳橙", 0xFFFF9800.toInt()),
+        ThemeSeedPreset("可可棕", 0xFF795548.toInt()),
+        ThemeSeedPreset("雾霭蓝灰", 0xFF607D8F.toInt()),
+        ThemeSeedPreset("晨曦粉", 0xFFFF9CA8.toInt()),
+    )
+
+    /** 默认种子 = 表首（经典蓝），同 BiliPai 的 `theme_color_index` 默认 0。 */
+    val DefaultArgb: Int = All.first().argb
+
+    fun nameOf(argb: Int): String = All.firstOrNull { it.argb == argb }?.name ?: CustomName
+}

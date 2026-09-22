@@ -26,13 +26,16 @@ import java.util.zip.ZipOutputStream
 class LocalComicManager private constructor(private val context: Context) {
 
     private val tag = "LocalComicManager"
-    private val downloadsRootDir = File(context.filesDir, "downloads")
+
+    /** 与 DownloadManager 同一个存储根，现读现取：用户改目录后不必重启进程。 */
+    private fun downloadsRootDir(): File = ComicStorageRoot.resolve(context)
 
     /**
      * 扫描本地已下载的所有漫画
      */
     suspend fun getLocalComics(): List<LocalComic> = withContext(Dispatchers.IO) {
         val results = mutableListOf<LocalComic>()
+        val downloadsRootDir = downloadsRootDir()
         if (!downloadsRootDir.exists()) return@withContext results
 
         val sourceDirs = downloadsRootDir.listFiles { f -> f.isDirectory } ?: return@withContext results
@@ -221,7 +224,8 @@ class LocalComicManager private constructor(private val context: Context) {
 
             val title = customTitle?.ifBlank { null } ?: archiveFile.nameWithoutExtension
             val safeTitle = title.replace(Regex("[/\\\\:*?\"<>|]"), "_")
-            val targetDir = File(File(downloadsRootDir, "imported"), safeTitle).apply {
+            ComicStorageRoot.ensureRoot(downloadsRootDir())
+            val targetDir = File(File(downloadsRootDir(), "imported"), safeTitle).apply {
                 if (!exists()) mkdirs()
             }
 

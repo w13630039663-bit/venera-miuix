@@ -49,19 +49,23 @@ class RateLimitingInterceptor : Interceptor {
             .firstOrNull { host.endsWith(it.key) }?.value ?: 0L
 
         if (minInterval > 0) {
-            synchronized(hostLastRequestTime) {
-                val lastTime = hostLastRequestTime[host] ?: 0L
+            // 槽位在锁内**预约**，等待挪到锁外。monitor 加在共享 map 上，旧写法在
+            // Thread.sleep 期间会把**所有域名**（不只是被限流那一个）的限速判定全堵住，
+            // 图片与元数据请求一起排在锁上 —— 页面切换时表现为整屏取图延迟。
+            // 预约语义与原来等价：slot = max(now, 上次槽位 + 间隔)，_spacing 仍逐笔拉开。
+            val waitMs = synchronized(hostLastRequestTime) {
+                val last = hostLastRequestTime[host] ?: 0L
                 val now = System.currentTimeMillis()
-                val diff = now - lastTime
-                if (diff < minInterval) {
-                    val waitTime = minInterval - diff
-                    try {
-                        Thread.sleep(waitTime)
-                    } catch (e: InterruptedException) {
-                        Thread.currentThread().interrupt()
-                    }
+                val slot = maxOf(now, last + minInterval)
+                hostLastRequestTime[host] = slot
+                slot - now
+            }
+            if (waitMs > 0) {
+                try {
+                    Thread.sleep(waitMs)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
                 }
-                hostLastRequestTime[host] = System.currentTimeMillis()
             }
         }
 

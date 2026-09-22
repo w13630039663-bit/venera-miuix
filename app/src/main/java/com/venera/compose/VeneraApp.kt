@@ -34,6 +34,19 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
                 guard.registerSourceNameAliases(sources.associate { it.name to it.key })
             }
         }
+        // 追更检查的排程跟着「追更收藏夹」这一个真相走：选定即排上每日检查，取消即撤掉。
+        // StateFlow 会立刻重放当前值，所以冷启动时已开启的追更也会补排一次。
+        // 不放进 VeneraPreferences 的 setter —— 偏好层不该顺手启动后台任务。
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            com.venera.compose.data.prefs.VeneraPreferences.getInstance(this@VeneraApp)
+                .followUpdatesFolder.collect { folder ->
+                    if (folder != null) {
+                        com.venera.compose.data.db.FollowUpdatesScheduler.enable(this@VeneraApp)
+                    } else {
+                        com.venera.compose.data.db.FollowUpdatesScheduler.disable(this@VeneraApp)
+                    }
+                }
+        }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {

@@ -7,27 +7,45 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.feature.favoriteimages.FavoriteImageItem
+import com.venera.compose.feature.favoriteimages.toComicItem
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 
 import com.venera.compose.components.*
 import com.venera.compose.components.venera.VeneraCard
-import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraFilterPill
+import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.components.venera.VeneraTagChip
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurColors
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.icon.extended.ListView
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,26 +95,29 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -110,6 +131,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun SharedTransitionScope.AndroidFavoritesScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
+    /** 图片收藏长按「从该页开始阅读」：宿主负责推详情页并带上定位请求。 */
+    onReadFavoriteImage: (FavoriteImageItem) -> Unit,
 ) {
     val tokens = VeneraTokens
     val vm: FavoritesViewModel = viewModel()
@@ -132,7 +155,15 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topPadding = statusBarTop + 104.dp + 48.dp + if (mode == FavoritesMode.Local && vm.multiSelectMode) 76.dp else 0.dp
+    // 分段器所在行（FavoritesModeToggle：上下 space3 + 分段高度，宽屏档换 56dp）的真实高度，
+    // 由 token 推导而非写死，顶栏加高时内容避让自动跟随。
+    val segmentedRowHeight =
+        (if (isWideScreen(LocalConfiguration.current.screenWidthDp.dp)) {
+            tokens.spacing.segmentedHeightWide
+        } else {
+            tokens.spacing.segmentedHeight
+        }) + tokens.spacing.space3 * 2
+    val topPadding = statusBarTop + 104.dp + segmentedRowHeight + if (mode == FavoritesMode.Local && vm.multiSelectMode) 76.dp else 0.dp
 
     // 顶栏折叠判定：沿用 miuix TopAppBar 自己的阈值（collapsedFraction * 3 >= 1，
     // 即 smallTitle 出现的同一时刻），保证「分段切换器收起」与「小标题淡入」严格同步。
@@ -160,12 +191,26 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     favScrollToTop = scrollToTop
                 },
             )
+        } else if (mode == FavoritesMode.Images) {
+            // 图片收藏（单页插图）：与设置页那条入口共用 FavoriteImagesBody 一份实现。
+            FavoriteImagesBody(
+                topPadding = topPadding,
+                scrollConnection = topBarBehavior.nestedScrollConnection,
+                backdrop = topBarBackdrop,
+                onOpenComicDetail = { item -> onSelect(item.toComicItem()) },
+                onReadFromPage = onReadFavoriteImage,
+                onScrollStateChange = { _, hasScrolled, scrollToTop ->
+                    favHasScrolled = hasScrolled
+                    favScrollToTop = scrollToTop
+                },
+            )
         } else {
             AndroidNetworkFavoritesScreen(
                 onSelect = onSelect,
                 scrollConnection = topBarBehavior.nestedScrollConnection,
                 backdrop = topBarBackdrop,
                 topPadding = topPadding,
+                showLayoutToggle = false,
                 onScrollStateChange = { _, hasScrolled, scrollToTop ->
                     favHasScrolled = hasScrolled
                     favScrollToTop = scrollToTop
@@ -180,28 +225,35 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             actions = {
-                if (mode == FavoritesMode.Local) {
-                    FavoritesSortMenu(
-                        sortOrder = vm.sortOrder,
-                        onSortOrderChange = { vm.updateSortOrder(it) },
+                    if (mode == FavoritesMode.Local) {
+                        FavoritesSortMenu(
+                            sortOrder = vm.sortOrder,
+                            onSortOrderChange = { vm.updateSortOrder(it) },
+                        )
+                        IconButton(onClick = { searchMode = !searchMode }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = "搜索收藏",
+                                tint = tokens.color.textSecondary,
+                            )
+                        }
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "收藏夹操作",
+                                tint = tokens.color.textSecondary,
+                            )
+                        }
+                    }
+                // 布局切换钮收进顶栏 actions：跟随大标题折叠与毛玻璃、常驻右上角
+                // （用户拍板「跟随顶栏在右上角」，不再悬浮于折叠顶栏下缘）。
+                // 图片收藏段是固定两列瀑布流，单双列切换对它无意义 —— 不摆假开关。
+                if (mode != FavoritesMode.Images) {
+                    FloatingLayoutToggle(
+                        displayMode = displayMode.value,
+                        onToggle = { displayMode.value = it },
+                        backdrop = topBarBackdrop,
                     )
-                    IconButton(onClick = { searchMode = !searchMode }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Search,
-                            contentDescription = "搜索收藏",
-                            tint = tokens.color.textSecondary,
-                        )
-                    }
-                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "收藏夹操作",
-                            tint = tokens.color.textSecondary,
-                        )
-                    }
-                } else {
-                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                 }
             },
             bottomContent = {
@@ -245,7 +297,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(
-                    end = tokens.spacing.space8,
+                    end = tokens.spacing.space9,
                     bottom = favBackToTopBottom,
                 ),
             enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
@@ -342,77 +394,171 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     }
 }
 
-/** 收藏页模式：本地收藏（本地数据库）/ 网络收藏（各漫画源账号）。对齐原版侧栏的两个并列入口。 */
-private enum class FavoritesMode { Local, Network }
+/** 收藏页模式：网络收藏（各漫画源账号）/ 图片收藏（单页插图）/ 本地收藏（本地数据库）。 */
+private enum class FavoritesMode { Local, Network, Images }
 
 @Composable
 private fun FavoritesModeToggle(
     mode: FavoritesMode,
     onModeChange: (FavoritesMode) -> Unit,
 ) {
-    // 分段选择药丸容器（Segmented Control）：44dp 高、完全胶囊圆角、弱底色，
-    // 选中项高亮药丸 + 触控反馈。大目标易点，替代此前过小的 VeneraChip。
-    val tokens = com.venera.compose.ui.tokens.VeneraTokens
-    Row(
+    // MD3 分段控制器：整条描边药丸 + 一颗实心主题色「小药丸」弹性滑动（药丸中的药丸）。
+    // 手机档收成居中一小条（用户真机反馈「太宽太散」）；平板档维持全宽不动。
+    val modes = remember { favoritesModesNetworkFirst }
+    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                horizontal = tokens.spacing.rowHorizontal,
-                vertical = tokens.spacing.space3,
-            )
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-            .background(tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha))
-            .padding(tokens.spacing.space1),
+            .padding(vertical = VeneraTokens.spacing.space3),
+        contentAlignment = Alignment.Center,
     ) {
-        SegmentOption(
-            text = "网络收藏",
-            selected = mode == FavoritesMode.Network,
-            onClick = { onModeChange(FavoritesMode.Network) },
-            modifier = Modifier.weight(1f),
-        )
-        SegmentOption(
-            text = "本地收藏",
-            selected = mode == FavoritesMode.Local,
-            onClick = { onModeChange(FavoritesMode.Local) },
-            modifier = Modifier.weight(1f),
+        VeneraSegmentedButton(
+            options = remember { favoritesModeEntriesWithNetworkFirst },
+            selectedIndex = modes.indexOf(mode),
+            onSelect = { onModeChange(modes[it]) },
+            // 手机档宽度按「每一段占屏宽 25%」推导：用户当初对**两段**控制器定的口径是
+            // 整条 50% 居中，段数变三就是 3×25%。此前宽度写死 50% 没跟着段数走，
+            // 三段各分 16.7% 屏宽，四个字的标签全被削成「网…图…本…」。
+            modifier = if (wide) Modifier.fillMaxWidth()
+            else Modifier.fillMaxWidth(segmentedCellWidthFraction * modes.size),
         )
     }
 }
 
-/** 分段选择容器里的单段：44dp 高、居中、选中高亮药丸。 */
+/** 手机档分段控制器**单段**占屏宽的比例（源自用户「整条 50% ÷ 两段」的口径）。 */
+private const val segmentedCellWidthFraction = 0.25f
+
+/** 模式顺序即分段器段序：网络第一、图片第二、本地第三（用户拍板）。与标签列表严格同序。 */
+private val favoritesModesNetworkFirst =
+    listOf(FavoritesMode.Network, FavoritesMode.Images, FavoritesMode.Local)
+
+/** 网络收藏优先排序（用户拍板）。 */
+val favoritesModeEntriesWithNetworkFirst = listOf(
+    "网络收藏",
+    "图片收藏",
+    "本地收藏"
+)
+
+/**
+ * 布局切换悬浮小钮（用户拍板）：36dp 圆形 + 半透明底（非纯白补丁）+ 主题色 20dp 图标。
+ *
+ * 变形 = 图标在「网格 / 列表」间淡入淡出交叉，同时整枚图标以累积 90° 的旋转扫过，
+ * 旋转与淡变都走阻尼 0.62 的 spring，与 VeneraSegmentedButton 的滑动 spring 同族。
+ * 长按弹一枚自绘 Tooltip 气泡（刻意不用 material3 实验性 TooltipBox——该 alpha 版本
+ * 的 TooltipPlacement/PlainTooltip 解析不稳，且会引入额外实验面）。
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun SegmentOption(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun FloatingLayoutToggle(
+    displayMode: String,
+    onToggle: (String) -> Unit,
+    /** 顶栏那份内容采样层：底座与顶栏同源，磨砂出来的颜色才和它背后那条一致。 */
+    backdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
 ) {
-    val tokens = com.venera.compose.ui.tokens.VeneraTokens
-    val bg by androidx.compose.animation.animateColorAsState(
-        targetValue = if (selected) tokens.color.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
-        animationSpec = androidx.compose.animation.core.tween(180),
-        label = "SegmentBg",
-    )
-    Row(
-        modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(vertical = tokens.spacing.space6),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = text,
-            fontSize = tokens.type.body,
-            fontWeight = tokens.type.weightSemibold,
-            color = if (selected) tokens.color.onPrimaryContainer else tokens.color.textSecondary,
-        )
+    val tokens = VeneraTokens
+    var showTip by remember { mutableStateOf(false) }
+    // 累积旋转量：每次切换 +90°，animateFloatAsState 负责弹簧扫过（不取模，避免回卷反旋）。
+    var spinDeg by remember { mutableFloatStateOf(0f) }
+    val spin by animateFloatAsState(spinDeg, spring(0.62f, Spring.StiffnessMediumLow), label = "LayoutSpin")
+    LaunchedEffect(showTip) {
+        if (showTip) {
+            delay(1600)
+            showTip = false
+        }
+    }
+    val circle = RoundedCornerShape(percent = 50)
+    // 官方 Backdrop 的 lens 折射要 Android 13+；不支持时退回半透明底 + 描边，不静默变平。
+    val frosted = backdrop != null && isRuntimeShaderSupported()
+    Box(modifier = modifier, contentAlignment = Alignment.TopEnd) {
+        Box(
+            // Box 默认 TopStart：换成 Box 后必须显式居中，否则图标会贴到圆座左上角。
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                // 容器保持 40dp 触达档，图标收到 16dp：此前「显大」的真因是底座
+                // 在浅色背景上完全看不出来，只剩一团实心粉浮着，而不是图标真的大。
+                .size(tokens.spacing.iconButtonSize)
+                .clip(circle)
+                .then(
+                    if (frosted) {
+                        Modifier.textureBlur(
+                            backdrop = backdrop!!,
+                            shape = circle,
+                            // 半径与补底色都取 VeneraTopAppBar 的现成配方，两处玻璃同一档。
+                            blurRadius = 10f,
+                            colors = BlurColors(
+                                blendColors = listOf(
+                                    BlendColorEntry(color = tokens.color.surface.copy(alpha = 0.16f)),
+                                ),
+                            ),
+                        )
+                    } else {
+                        Modifier.background(tokens.color.surface.copy(alpha = tokens.current.selectedSurfaceAlpha))
+                    },
+                )
+                .border(tokens.spacing.hairline, tokens.color.outlineVariant, circle)
+                .combinedClickable(
+                    onClick = {
+                        spinDeg += 90f
+                        onToggle(if (displayMode == "detailed") "brief" else "detailed")
+                    },
+                    onLongClick = { showTip = true },
+                ),
+        ) {
+            androidx.compose.animation.AnimatedContent(
+                targetState = displayMode,
+                transitionSpec = {
+                    val morph = spring<Float>(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
+                    (fadeIn(morph) + scaleIn(morph, initialScale = 0.4f)) togetherWith
+                        (fadeOut(morph) + scaleOut(morph, targetScale = 1.6f))
+                },
+                contentAlignment = Alignment.Center,
+                label = "LayoutToggleMorph",
+            ) { mode ->
+                Icon(
+                    // Miuix 官方图标集：单/双列语义正好有 ListView / GridView 这一对，
+                    // 线宽与圆角和应用内其余 Miuix chrome 同源（material 的 GridView 偏重）。
+                    imageVector = if (mode == "brief") MiuixIcons.ListView else MiuixIcons.GridView,
+                    contentDescription = if (mode == "brief") "切换单列" else "切换双列",
+                    tint = tokens.color.primary,
+                    modifier = Modifier
+                        .size(tokens.spacing.chipIconSize)
+                        .graphicsLayer { rotationZ = spin },
+                )
+            }
+        }
+        // 长按气泡走 Popup 独立窗口：钮已收进顶栏 actions，气泡若画在栏内会被
+        // TopAppBar 的 Surface/毛玻璃裁掉，Popup 不受父级裁剪。
+        if (showTip) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                offset = IntOffset(
+                    0,
+                    with(LocalDensity.current) { tokens.spacing.space2.roundToPx() },
+                ),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(tokens.shape.medium),
+                    color = tokens.color.primaryContainer,
+                ) {
+                    Text(
+                        text = "切换列表/网格视图",
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.onPrimaryContainer,
+                        modifier = Modifier.padding(
+                            horizontal = tokens.spacing.space5,
+                            vertical = tokens.spacing.space2,
+                        ),
+                    )
+                }
+            }
+        }
     }
 }
 
 /** 收藏夹操作类型。 */
 private sealed interface FolderDialog {
+
     data object Create : FolderDialog
     data object Rename : FolderDialog
     data object Move : FolderDialog
@@ -434,22 +580,22 @@ private fun FolderChipRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = com.venera.compose.ui.tokens.VeneraTokens.spacing.rowHorizontal, vertical = com.venera.compose.ui.tokens.VeneraTokens.spacing.space3),
+            .padding(horizontal = tokens.spacing.space9, vertical = tokens.spacing.space3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
             modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(com.venera.compose.ui.tokens.VeneraTokens.spacing.chipSpacing),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
         ) {
             item {
-                VeneraChip(
+                VeneraFilterPill(
                     text = "全部 · " + counts.values.sum(),
                     selected = current == LOCAL_ALL_FOLDER,
                     onClick = { onSelectFolder(LOCAL_ALL_FOLDER) },
                 )
             }
             rowItems(folders, key = { it }) { folder ->
-                VeneraChip(
+                VeneraFilterPill(
                     text = folder + " · " + (counts[folder] ?: 0),
                     selected = current == folder,
                     onClick = { onSelectFolder(folder) },
@@ -534,29 +680,36 @@ private fun FavoriteGrid(
         }
     } else vm.comics
 
+    val (gridWidth, gridWidthModifier) = rememberContentWidth(tokens.spacing.space9 * 2)
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+        columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
         contentPadding = PaddingValues(
-            start = tokens.spacing.rowHorizontal,
-            end = tokens.spacing.rowHorizontal,
+            start = tokens.spacing.space9,
+            end = tokens.spacing.space9,
             top = topPadding,
             bottom = VeneraSpacing.bottomBarClearance,
         ),
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+        // 用户拍板：横向列间距 16dp、纵向行间距 12dp（横 ≈ 纵的 1.5 倍，消除「横散纵挤」）。
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space8),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
         modifier = Modifier
             .fillMaxSize()
+            .then(gridWidthModifier)
             .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
             .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }, key = "fav-folders") {
-            FolderChipRow(
-                folders = folders,
-                counts = counts,
-                current = vm.currentFolder,
-                onSelectFolder = { vm.selectFolder(it) },
-            )
+        // 一个收藏夹都没有时整行不渲染：只剩「全部 · N」一颗 pill 不提供任何选择，
+        // 挂在网格顶部就像多出来的一块（用户真机反馈，与网络收藏侧同一处置）。
+        if (folders.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "fav-folders") {
+                FolderChipRow(
+                    folders = folders,
+                    counts = counts,
+                    current = vm.currentFolder,
+                    onSelectFolder = { vm.selectFolder(it) },
+                )
+            }
         }
 
         if (searchMode) {
@@ -698,7 +851,8 @@ private fun FavoriteCard(
                     fontWeight = tokens.type.weightBold,
                     fontSize = tokens.type.caption,
                     color = tokens.color.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Text(
                     text = item.description,

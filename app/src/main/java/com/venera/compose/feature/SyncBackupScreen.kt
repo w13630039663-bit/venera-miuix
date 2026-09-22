@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.venera.compose.sync.BackupManager
+import com.venera.compose.sync.BackupTransfers
 import com.venera.compose.sync.WebDavConfig
 import com.venera.compose.sync.WebDavFileItem
 import com.venera.compose.sync.WebDavSyncManager
@@ -36,7 +37,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -64,39 +64,23 @@ fun SyncBackupScreen(
 
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
-    // 本地备份文件导入器
+    // 本地备份文件导入器（与设置页共用搬运链：拷进缓存 → 解包 → 删缓存）
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             scope.launch {
-                try {
-                    isOperating = true
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    if (inputStream != null) {
-                        val tempFile = File(context.cacheDir, "import_backup.venera")
-                        tempFile.outputStream().use { output ->
-                            inputStream.copyTo(output)
-                        }
-                        inputStream.close()
-
-                        val res = backupManager.importBackup(tempFile)
-                        tempFile.delete()
-                        if (res.isSuccess) {
-                            val sum = res.getOrNull()!!
-                            Toast.makeText(
-                                context,
-                                "恢复完成！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部，统计 ${sum.statsCount} 条",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(context, "导入失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "读取备份异常: ${e.message}", Toast.LENGTH_LONG).show()
-                } finally {
-                    isOperating = false
+                isOperating = true
+                val res = BackupTransfers.importBackupFrom(context, uri)
+                isOperating = false
+                res.onSuccess { sum ->
+                    Toast.makeText(
+                        context,
+                        "恢复完成！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部，统计 ${sum.statsCount} 条",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }.onFailure {
+                    Toast.makeText(context, "导入失败: ${it.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }

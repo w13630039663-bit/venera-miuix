@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -63,6 +65,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
+import com.venera.compose.components.wideScreenChromeMaxWidth
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -118,8 +121,19 @@ fun VeneraLiquidGlassNavBar(
 ) {
     val tabsBackdrop = rememberLayerBackdrop()
 
+    // 宽屏收口与悬浮胶囊共用同一口径（WideScreenPolicy）：Navigation.kt 承诺两条底栏
+    // 路径「几何零差异」，只给胶囊加宽屏上限就会漂移。手机档 cap 为 null，几何与现在完全一致。
+    //
+    // 必须用 requiredWidth 而不是 widthIn：宿主传进来的 modifier 以 .fillMaxWidth() 结尾，
+    // 它把子约束钉成 min == max == 可用宽，widthIn 会被这层 min 约束顶回去（收口无效）；
+    // requiredWidth 走 fixedWidth，直接改写约束，且父级仍按实测宽度做 BottomCenter 居中。
+    val capScreenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val cap = wideScreenChromeMaxWidth(capScreenWidth)
+        ?.let { Modifier.requiredWidth(it) }
+        ?: Modifier
+
     BoxWithConstraints(
-        modifier,
+        modifier.then(cap),
         contentAlignment = Alignment.CenterStart
     ) {
         val density = LocalDensity.current

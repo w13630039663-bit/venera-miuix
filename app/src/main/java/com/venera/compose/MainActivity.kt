@@ -11,6 +11,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
+import com.venera.compose.feature.settings.StartupUpdateHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +30,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             VeneraTheme {
                 VeneraComposeApp()
+                // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
+                StartupUpdateHost()
             }
         }
         if (intent.getBooleanExtra("run_engine_diagnostic", false)) {

@@ -55,8 +55,18 @@ fun VeneraPreviewTheme(
         }
     }
 
+    val colorTokens = remember(m3, miuix, appearance) {
+        buildVeneraColorTokens(
+            m = m3,
+            miuixSurface = miuix.surface,
+            miuixOnSurface = miuix.onSurface,
+            fixedActions = appearance != AppearanceStyle.MD3,
+        )
+    }
+
     CompositionLocalProvider(
         LocalVeneraTokens provides tokens,
+        LocalVeneraColorTokens provides colorTokens,
         LocalContentColor provides miuix.onBackground,
         androidx.compose.material3.LocalContentColor provides m3.onBackground,
     ) {

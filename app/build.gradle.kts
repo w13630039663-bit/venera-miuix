@@ -11,11 +11,14 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.venera.compose"
+        // 安装身份与本仓库 master 分支（Flutter 版 venera-miuix）逐字一致：
+        // 本包要接管该仓库的发布线，用户按 releases 下载时才是同一个应用。
+        // 代码包名（namespace）仍是 com.venera.compose，不随之改动。
+        applicationId = "com.github.w13630039663bit.venera.miuix"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 1800
+        versionName = "1.8"
     }
 
     signingConfigs {
@@ -95,8 +98,12 @@ dependencies {
     implementation(libs.backdrop)
     // Backdrop 的 Capsule / RoundedRectangularShape（lens 的 shape 参数需要）
     implementation(libs.kyant.shapes)
+    // 页面转场取官方 Material Motion 的 shared axis X（300ms / 30dp / 0.35 错峰淡入都在库里，不本地加码）
+    implementation(libs.material.motion.core)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    // 自定义取色：种子色 → 整套 MD3 色板（Android 自带 DynamicColors 只吃系统壁纸，喂不进种子）
+    implementation(libs.material.kolor)
 
     // S0 地基：导航栈 / ViewModel / 分页
     implementation(libs.androidx.navigation.compose)
@@ -114,6 +121,7 @@ dependencies {
     // Miuix Compose
     implementation(libs.miuix.ui)
     implementation(libs.miuix.blur)
+    implementation(libs.miuix.icons)
 
     // S5-5 追更：周期检查任务
     implementation(libs.androidx.work.runtime.ktx)

@@ -46,16 +46,17 @@ class DownloadManager private constructor(private val context: Context) {
     private val networkClient = VeneraNetworkClient.getInstance(context)
     private val sourceManager = ComicSourceManager.getInstance(context)
 
-    private val downloadsRootDir: File by lazy {
-        File(context.filesDir, "downloads").apply {
-            if (!exists()) mkdirs()
-            // 自动注入 .nomedia 防止污染相册
-            File(this, ".nomedia").let { if (!it.exists()) it.createNewFile() }
-        }
-    }
+    /**
+     * 当前存储根：每次现读，用户在设置里改目录后无需重启进程即生效。
+     * 建根与 .nomedia 注入也在这里，保证无论落在哪块存储上都不污染相册。
+     */
+    private val downloadsRootDir: File
+        get() = ComicStorageRoot.resolve(context).also { ComicStorageRoot.ensureRoot(it) }
 
+    // 任务清单恒定留在应用私有目录，不跟随漫画数据搬家：
+    // 否则换一次存储根就让进行中的下载队列整体失联，已完成任务也会被判定成未下载。
     private val tasksConfigFile: File by lazy {
-        File(downloadsRootDir, "download_tasks.json")
+        ComicStorageRoot.tasksFile(context).apply { parentFile?.mkdirs() }
     }
 
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -321,6 +322,26 @@ class DownloadManager private constructor(private val context: Context) {
         return File(File(downloadsRootDir, safeKey), safeId).apply {
             if (!exists()) mkdirs()
         }
+    }
+
+    /**
+     * 存储根搬家后把任务里记的绝对路径前缀换到新根，否则已完成章节会被
+     * [isChapterDownloaded] 判成未下载、点一下就直接重下一遍。
+     */
+    fun relocateTasks(oldRoot: File, newRoot: File): Int {
+        val oldPrefix = oldRoot.absolutePath.trimEnd('/')
+        var changed = 0
+        val updated = _tasks.value.map { task ->
+            if (task.directoryPath.startsWith(oldPrefix + "/")) {
+                changed++
+                task.copy(directoryPath = newRoot.absolutePath + task.directoryPath.removePrefix(oldPrefix))
+            } else task
+        }
+        if (changed > 0) {
+            _tasks.value = updated
+            saveTasksToDisk()
+        }
+        return changed
     }
 
     // ================================= 内部队列与下载执行 =================================

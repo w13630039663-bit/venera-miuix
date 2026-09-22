@@ -467,7 +467,9 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _checkingUpdates.value = true
             val count = withContext(Dispatchers.IO) {
-                sourceManager.checkUpdates(sourceManager.repoUrl.value)
+                // force：这是用户点按钮触发的，绝不能吃节流 —— 被跳过会返回 0，
+                // 而下面的分支会把 0 播报成"已是最新版本"，等于一次假成功。
+                sourceManager.checkUpdates(sourceManager.repoUrl.value, force = true)
             }
             _checkingUpdates.value = false
             when {

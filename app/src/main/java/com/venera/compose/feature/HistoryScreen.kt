@@ -76,6 +76,7 @@ import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.rememberPredictiveBackState
 import com.venera.compose.components.venera.VeneraCard
@@ -107,6 +108,9 @@ fun AndroidHistoryScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 列数按网格实测可用宽推（宽屏加列），左右内边距要从可用宽里扣掉
+    val (gridWidth, gridWidthModifier) =
+        rememberContentWidth(tokens.spacing.rowHorizontal * 2)
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (records.isEmpty()) {
@@ -124,7 +128,7 @@ fun AndroidHistoryScreen(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(comicListColumnCount(displayMode.value)),
+                columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
                 contentPadding = PaddingValues(
                     start = tokens.spacing.rowHorizontal,
                     end = tokens.spacing.rowHorizontal,

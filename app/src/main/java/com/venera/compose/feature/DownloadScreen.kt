@@ -99,10 +99,12 @@ fun DownloadScreen(
                 }
             }
         } else {
+            val (gridWidth, gridWidthModifier) = rememberContentWidth(14.dp * 2)
             LazyVerticalGrid(
-                columns = GridCells.Fixed(if (displayMode.value == "detailed") 1 else 2),
+                columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(gridWidthModifier)
                     .nestedScroll(topBarBehavior.nestedScrollConnection)
                     .blurBackdropSource(topBarBackdrop),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

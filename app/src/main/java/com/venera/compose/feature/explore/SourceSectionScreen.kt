@@ -43,12 +43,14 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.ComicCardContextMenu
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicTileDetailed
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
@@ -102,6 +104,7 @@ fun SourceSectionScreen(
     val guardManager = remember { ContentGuardManager.getInstance(context) }
     val guardRules by guardManager.rules.collectAsState()
     val nsfwMaskMode by guardManager.nsfwMaskMode.collectAsState()
+    val blockAi by guardManager.blockAiComics.collectAsState()
     // R2：全局布局偏好唯一真源（与一级页 / Favorites 等一致）。
     val displayMode = rememberComicListDisplayMode()
 
@@ -143,8 +146,11 @@ fun SourceSectionScreen(
             }
             result.fold(
                 onSuccess = { (list, mp) ->
-                    // HIDE：命中条目整条剔除；BLUR：保留条目交由卡片打码；OFF：原样。
-                    comics = if (nsfwMaskMode == "HIDE") guardManager.filterComicModels(list) else list
+                    // 直接交给 filterComicModels 自己分流：它内部只在「HIDE 命中」或
+                    // 「用户黑名单命中」或「AI 屏蔽命中」时剔除，BLUR 一律保留交卡片打码。
+                    // 原先这里再套一层 `nsfwMaskMode == "HIDE"` 会把 AI 屏蔽一起 gate 掉 ——
+                    // R18 模式为 OFF 时该页永远不执行过滤（已加开关实测到的洞）。
+                    comics = guardManager.filterComicModels(list)
                     maxPage = mp
                     page = targetPage
                 },
@@ -181,10 +187,11 @@ fun SourceSectionScreen(
         load(1)
     }
 
-    // 屏蔽规则变化时重放过滤。
-    // 屏蔽规则 / 打码模式变化时重放（仅 HIDE 才物理剔除；BLUR 依赖卡片级重算打码）。
-    LaunchedEffect(guardRules, nsfwMaskMode) {
-        if (comics.isNotEmpty() && nsfwMaskMode == "HIDE") comics = guardManager.filterComicModels(comics)
+    // 屏蔽规则 / 打码模式 / AI 屏蔽开关变化时重放过滤。
+    // 剔除与保留的分流交给 filterComicModels 自己判（它内部才懂 HIDE/黑名单/AI 各自的条件），
+    // 这里再套一层 `== "HIDE"` 会让 AI 屏蔽在 R18 模式为 OFF 时完全不生效。
+    LaunchedEffect(guardRules, nsfwMaskMode, blockAi) {
+        if (comics.isNotEmpty()) comics = guardManager.filterComicModels(comics)
     }
 
     // 统一顶栏：大标题折叠 + 毛玻璃（与其他页面保持一致）
@@ -225,14 +232,17 @@ fun SourceSectionScreen(
                 VeneraEmptyView(message = "该分类下暂无漫画")
             }
             else -> {
-                // V4：列数与全局布局偏好同源（brief 双列 / detailed 单列），
+                // V4：列数与全局布局偏好同源且按列表实测可用宽推导（宽屏加列，master 口径），
                 // 逐行 items 挂载，行级内存复用，不嵌套同向 Lazy 组件。
                 val isDetailed = displayMode.value == "detailed"
-                val columns = comicListColumnCount(displayMode.value)
+                val (listWidth, listWidthModifier) =
+                    rememberContentWidth(VeneraTokens.spacing.rowHorizontal * 2)
+                val columns = comicListColumnCount(displayMode.value, listWidth)
                 val rows = remember(comics, columns) { comics.chunked(columns) }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(listWidthModifier)
                         .nestedScroll(topBarBehavior.nestedScrollConnection)
                         .blurBackdropSource(topBarBackdrop),
                     contentPadding = PaddingValues(
@@ -254,8 +264,18 @@ fun SourceSectionScreen(
                     }
 
                     if (isDetailed) {
-                        itemsIndexed(comics, key = { _, c -> "sc-${c.id}" }) { _, comic ->
-                            SectionDetailedCard(comic, route.sourceTitle, guardManager, nsfwMaskMode, onSelectComic)
+                        itemsIndexed(
+                            rows,
+                            key = { _, row -> "sdrow-${row.firstOrNull()?.id}" },
+                        ) { _, row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.gridGap)) {
+                                row.forEach { comic ->
+                                    Box(Modifier.weight(1f)) {
+                                        SectionDetailedCard(comic, route.sourceTitle, guardManager, nsfwMaskMode, onSelectComic)
+                                    }
+                                }
+                                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
                     } else {
                         itemsIndexed(
@@ -268,7 +288,7 @@ fun SourceSectionScreen(
                                         SectionComicCard(comic, route.sourceTitle, guardManager, nsfwMaskMode, onSelectComic)
                                     }
                                 }
-                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
@@ -422,6 +442,25 @@ private fun SectionDetailedCard(
     // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
     // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
     val maskState = guardManager.coverMaskStateFor(comic)
+    val openComic = {
+        onSelectComic(
+            ComicItem(
+                id = comic.id,
+                title = comic.title,
+                author = comic.subTitle,
+                coverUrl = comic.cover,
+                tags = comic.tags,
+                description = comic.description,
+                sourceName = sourceName,
+                rating = comic.rating?.toString().orEmpty(),
+                likesCount = comic.likesCount,
+                updateTime = comic.updateTime,
+            )
+        )
+    }
+    // 长按菜单在两种显示模式下都要在 —— 只有双列能长按是另一种假一致。
+    var cardMenu by remember { mutableStateOf(false) }
+    Box {
     ComicTileDetailed(
         title = comic.title,
         coverUrl = comic.cover,
@@ -438,23 +477,16 @@ private fun SectionDetailedCard(
             key = ComicSharedTransition.coverKey(sourceName, comic.id),
             allowFly = maskState == "VISIBLE",
         ),
-        onClick = {
-            onSelectComic(
-                ComicItem(
-                    id = comic.id,
-                    title = comic.title,
-                    author = comic.subTitle,
-                    coverUrl = comic.cover,
-                    tags = comic.tags,
-                    description = comic.description,
-                    sourceName = sourceName,
-                    rating = comic.rating?.toString().orEmpty(),
-                    likesCount = comic.likesCount,
-                    updateTime = comic.updateTime,
-                )
-            )
-        },
+        onClick = openComic,
+        onLongClick = { cardMenu = true },
     )
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = openComic,
+        )
+    }
 }
 
 @Composable
@@ -469,25 +501,34 @@ private fun SectionComicCard(
     // 直接传 Comic 走守卫内部 LRU 判定缓存；每次组合重算保证规则/模式变化即时生效
     // （守卫设置变更会 invalidate，remember 反而可能读到过期值）。
     val maskState = guardManager.coverMaskStateFor(comic)
+    val openComic = {
+        onSelectComic(
+            ComicItem(
+                id = comic.id,
+                title = comic.title,
+                author = comic.subTitle,
+                coverUrl = comic.cover,
+                tags = comic.tags,
+                description = comic.description,
+                sourceName = sourceName,
+                rating = comic.rating?.toString().orEmpty(),
+                likesCount = comic.likesCount,
+                updateTime = comic.updateTime,
+            )
+        )
+    }
+    var cardMenu by remember { mutableStateOf(false) }
     VeneraCard(
         modifier = Modifier.fillMaxWidth(),
-        onClick = {
-            onSelectComic(
-                ComicItem(
-                    id = comic.id,
-                    title = comic.title,
-                    author = comic.subTitle,
-                    coverUrl = comic.cover,
-                    tags = comic.tags,
-                    description = comic.description,
-                    sourceName = sourceName,
-                    rating = comic.rating?.toString().orEmpty(),
-                    likesCount = comic.likesCount,
-                    updateTime = comic.updateTime,
-                )
-            )
-        },
+        onClick = openComic,
+        onLongClick = { cardMenu = true },
     ) {
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = openComic,
+        )
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,

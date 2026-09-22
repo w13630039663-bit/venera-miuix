@@ -12,21 +12,17 @@
  */
 package com.venera.compose.feature
 
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,9 +35,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -58,25 +51,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.venera.compose.components.ComicCardLayout
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicRowCard
 import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.venera.VeneraCard
-import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraFilterPill
 import com.venera.compose.components.venera.VeneraSourceBadge
-import com.venera.compose.components.venera.VeneraTagChip
 import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -89,7 +82,6 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun AndroidNetworkFavoritesScreen(
@@ -99,6 +91,8 @@ fun AndroidNetworkFavoritesScreen(
     topPadding: Dp = 0.dp,
     /** 把内部列表的滚动位置上抛（是否已下滑 / 回到顶部动作），供外壳渲染顶置按钮。 */
     onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit = { _, _, _ -> },
+    /** 收藏页外壳已把布局切换收纳为右上角悬浮小钮，此处让位不再内联；其他入口默认保留。 */
+    showLayoutToggle: Boolean = true,
 ) {
     val tokens = VeneraTokens
     val vm: NetworkFavoritesViewModel = viewModel()
@@ -125,7 +119,8 @@ fun AndroidNetworkFavoritesScreen(
     val isLoading = vm.isLoading
     val isFolderLoading = vm.isFolderLoading
     val error = vm.error
-    val columns = comicListColumnCount(displayMode.value)
+    val (gridWidth, gridWidthModifier) = rememberContentWidth(tokens.spacing.rowHorizontal * 2)
+    val columns = comicListColumnCount(displayMode.value, gridWidth)
     val isDetailed = displayMode.value == "detailed"
     // 待确认的移除请求（长按卡片触发，二次确认后执行删除）。
     var pendingDelete by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Comic?>(null) }
@@ -195,6 +190,7 @@ fun AndroidNetworkFavoritesScreen(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
+            .then(gridWidthModifier)
             .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
             .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
         contentPadding = PaddingValues(
@@ -214,7 +210,7 @@ fun AndroidNetworkFavoritesScreen(
             }
         }
 
-        // ── 顶部横向源切换栏 + 单双列切换：同行排布，无多余空行。──
+        // ── 顶部横向源切换栏（+ 可选内联单双列切换）。──
         item(key = "nf-source-bar") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
@@ -226,7 +222,9 @@ fun AndroidNetworkFavoritesScreen(
                         },
                     )
                 }
-                ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                if (showLayoutToggle) {
+                    ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
+                }
             }
         }
 
@@ -298,13 +296,16 @@ fun AndroidNetworkFavoritesScreen(
                 }
             }
             isDetailed -> {
-                items(
-                    shownComics,
-                    key = { "ncard-" + it.id },
-                ) { comic ->
-                    NetComicDetailedCard(comic, onSelect,
-                        onDelete = { pendingDelete = comic },
-                    )
+                // 宽屏下详细模式同样加列（master：每 360dp 一列），行级挂载与 brief 同构
+                shownComics.chunked(columns).forEachIndexed { rowIndex, row ->
+                    item(key = "nfrow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
+                        ComicDetailedRow(
+                            row = row,
+                            columns = columns,
+                            onSelect = onSelect,
+                            onDelete = { pendingDelete = it },
+                        )
+                    }
                 }
             }
             else -> {
@@ -313,6 +314,7 @@ fun AndroidNetworkFavoritesScreen(
                     item(key = "nrow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
                         ComicGridRow(
                             row = row,
+                            columns = columns,
                             sourceName = current.name,
                             onSelect = onSelect,
                             onDelete = { pendingDelete = it },
@@ -357,38 +359,12 @@ private fun TopSourceBar(sources: List<NetSourceUi>, selectedKey: String?, onSel
     val tokens = VeneraTokens
     LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
         items(sources, key = { it.key }) { src ->
-            val selected = src.key == selectedKey
-            // 大号源药丸：登录态圆点 + 源名；选中高亮 primaryContainer。
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = if (selected) tokens.color.primaryContainer
-                        else tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-                modifier = Modifier.clickable { onSelect(src.key) },
-            ) {
-                Row(
-                    modifier = Modifier.padding(
-                        horizontal = tokens.spacing.space6,
-                        vertical = tokens.spacing.space3,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(tokens.spacing.statusDotSize)
-                            .clip(CircleShape)
-                            .background(if (src.logged) StatusColors.Healthy else tokens.color.textDisabled),
-                    )
-                    Spacer(Modifier.width(tokens.spacing.space2))
-                    Text(
-                        text = src.name,
-                        fontSize = tokens.type.caption,
-                        fontWeight = if (selected) tokens.type.weightSemibold else tokens.type.weightMedium,
-                        color = if (selected) tokens.color.onPrimaryContainer else tokens.color.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            VeneraFilterPill(
+                text = src.name,
+                selected = src.key == selectedKey,
+                logged = src.logged,
+                onClick = { onSelect(src.key) },
+            )
         }
     }
 }
@@ -411,10 +387,13 @@ private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoa
                 trackColor = tokens.color.surfaceVariant,
             )
         }
-        folders.isNullOrEmpty() -> {}
+        // 只有 0 或 1 个文件夹时整行不渲染：单个「全部」pill 不提供任何选择，
+        // 挂在源栏下方就像多出来的一块（用户真机反馈）。
+        folders == null || folders.size <= 1 -> {}
         else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
             items(folders.toList(), key = { it.first }) { (id, name) ->
-                VeneraChip(
+                // 与源栏同一套 VeneraFilterPill：文件夹胶囊样式与源药丸完全一致。
+                VeneraFilterPill(
                     text = name,
                     selected = current == id,
                     onClick = { if (current != id) onSelect(id) },
@@ -436,10 +415,11 @@ private fun AccordionLoader() {
     }
 }
 
-/** 双列网格行：等宽卡片 + 尾部补空，一个 Row 就是一个 LazyItem。 */
+/** 一行 N 个等宽条目；不足 N 个补空位，避免尾行被拉伸。一个 Row 就是一个 LazyItem。 */
 @Composable
 private fun ComicGridRow(
     row: List<Comic>,
+    columns: Int,
     sourceName: String,
     onSelect: (ComicItem) -> Unit,
     onDelete: (Comic) -> Unit,
@@ -457,7 +437,33 @@ private fun ComicGridRow(
                 )
             }
         }
-        if (row.size == 1) Spacer(Modifier.weight(1f))
+        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+    }
+}
+
+/** 详细模式的行卡同样按列数并排（卡片自身已是整行形态，这里只做等宽切分）。 */
+@Composable
+private fun ComicDetailedRow(
+    row: List<Comic>,
+    columns: Int,
+    onSelect: (ComicItem) -> Unit,
+    onDelete: (Comic) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        row.forEach { comic ->
+            Box(Modifier.weight(1f)) {
+                NetComicDetailedCard(
+                    comic = comic,
+                    onSelect = onSelect,
+                    onDelete = { onDelete(comic) },
+                )
+            }
+        }
+        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 

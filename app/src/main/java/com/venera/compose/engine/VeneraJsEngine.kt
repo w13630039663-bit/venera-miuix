@@ -10,6 +10,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.update.AppUpdateChecker
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -354,8 +355,9 @@ class VeneraJsEngine(appContext: Context) : AutoCloseable {
             Log.d(TAG, message)
         }
 
+        /** 版本号单一来源是安装包 —— 别再抄第二份字面量，两份口径迟早会分叉。 */
         @JavascriptInterface
-        fun getVersion(): String = "1.0.0"
+        fun getVersion(): String = com.venera.compose.data.update.AppUpdateChecker.localVersion(context) ?: ""
     }
 
     private fun publishAsyncResult(reqId: String, payload: String) {

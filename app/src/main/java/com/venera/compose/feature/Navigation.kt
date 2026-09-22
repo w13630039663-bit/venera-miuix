@@ -10,11 +10,6 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
@@ -61,6 +56,8 @@ import com.venera.compose.components.backdrop.VeneraLiquidGlassNavBar
 import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
+import com.venera.compose.feature.favoriteimages.FavoriteImageItem
+import com.venera.compose.feature.favoriteimages.toComicItem
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -72,6 +69,9 @@ import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.VeneraReaderScreen
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.Scaffold
+import soup.compose.material.motion.animation.materialSharedAxisXIn
+import soup.compose.material.motion.animation.materialSharedAxisXOut
+import soup.compose.material.motion.animation.rememberSlideDistance
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -147,6 +147,27 @@ internal fun resolveDetailComic(route: DetailRoute, selectedComic: ComicItem?): 
 @Serializable data object ReaderRoute
 
 /**
+ * 「读到某一页」的定位请求。
+ *
+ * 只有插图收藏这条来源：`favorite_images` 表存的是**章节标题**而不是章节 id，
+ * 而章节 id 必须等源详情解析出目录才拿得到。所以这里只能带标题 + 页码过去，
+ * 由详情页在目录就绪时按标题找回章节并打开阅读器 —— 见 ComicDetailScreen。
+ */
+data class ReadTarget(
+    val comicId: String,
+    val sourceName: String,
+    val chapterTitle: String,
+    val pageIndex: Int,
+) {
+    constructor(item: FavoriteImageItem) : this(
+        comicId = item.comicId,
+        sourceName = item.sourceName,
+        chapterTitle = item.chapterTitle,
+        pageIndex = item.pageIndex,
+    )
+}
+
+/**
  * 把封面共享元素所需的两个作用域交给页面深处的卡片。
  *
  * 卡片埋在「页面 → 分组 → 行 → 卡」的第四层（搜索页正是如此），逐层灌参数会把每一层
@@ -168,6 +189,8 @@ private fun SharedTransitionScope.CoverTransitionHost(
 class VeneraShellViewModel : ViewModel() {
     var pendingSession: com.venera.compose.reader.ReaderSession? = null
     var selectedComic: com.venera.compose.feature.ComicItem? = null
+    /** 进详情页后要立刻打开的那一页；详情页取用一次即清。 */
+    var pendingReadTarget: ReadTarget? = null
 }
 
 /**
@@ -181,44 +204,54 @@ private fun predictiveBackDirection(swipeEdge: Int): Int =
     if (swipeEdge == NavigationEvent.EDGE_RIGHT) -1 else 1
 
 /*
- * 横滑转场一族的单一配方。MainActivity 的壳 NavHost 与 SettingsActivity 的设置 NavHost
- * 共用这四个函数 —— 配方复制成两份必然飘（时长、视差比各改一处就不同步）。
- * 时长 300ms 与视差比 1/4 都是本文件既有值，不是新造的数。
+ * 页面转场一族的单一配方 = 官方 Material Motion 的 **shared axis X**
+ * （`io.github.fornewid:material-motion-compose-core`，EhViewer 用的就是它）。
+ *
+ * 为什么换：旧配方是整屏宽横推 + 全程淡入淡出，那读起来像「换了一页」，而列表→详情是
+ * 「同一本书换个容器」；封面又在按自己的 400ms 曲线飞，两套动作并行就散。
+ * shared axis X 只推 30dp、淡入按 0.35 阈值错峰，页面几乎不动，封面成为主语。
+ * 时长 300ms 与本文件原值一致，滑动距离/错峰比/曲线全取库内官方值，不做本地加码。
+ *
+ * 现在只有 MainActivity 的壳 NavHost 一个消费者（设置子树已改跨 Activity）。
  */
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraEnter(): EnterTransition =
-    slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300))
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraEnter(
+    slideDistance: Int,
+): EnterTransition = materialSharedAxisXIn(forward = true, slideDistance = slideDistance)
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraExit(): ExitTransition =
-    slideOutHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeOut(animationSpec = tween(300))
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraExit(
+    slideDistance: Int,
+): ExitTransition = materialSharedAxisXOut(forward = true, slideDistance = slideDistance)
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopEnter(): EnterTransition =
-    slideInHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeIn(animationSpec = tween(300))
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopEnter(
+    slideDistance: Int,
+): EnterTransition = materialSharedAxisXIn(forward = false, slideDistance = slideDistance)
 
-internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopExit(): ExitTransition =
-    slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(300))
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopExit(
+    slideDistance: Int,
+): ExitTransition = materialSharedAxisXOut(forward = false, slideDistance = slideDistance)
 
 /**
  * 预测式返回**跟手**转场：navigation 2.10.1 的 NavHostEventHandler 把系统手势进度喂给
  * SeekableTransitionState.seekTo()，并用 swipeEdge 作 lambda 入参告诉我们是左边缘还是
- * 右边缘起手 —— 所以退出方向能跟随手势。形状一律沿用上面 popEnter / popExit 那一族，
- * 不引入新数字：左边缘时两条分支逐参数相同，松手提交才不会跳形。
+ * 右边缘起手 —— 所以退出方向能跟随手势。形状一律与上面 popEnter / popExit 同族：
+ * 左边缘时 `forward = false`，与点击返回逐参数相同，松手提交不会跳形。
  */
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveEnter(
     swipeEdge: Int,
-): EnterTransition {
-    val dir = predictiveBackDirection(swipeEdge)
-    return slideInHorizontally(animationSpec = tween(300)) { -it / 4 * dir } +
-        fadeIn(animationSpec = tween(300))
-}
+    slideDistance: Int,
+): EnterTransition = materialSharedAxisXIn(
+    forward = predictiveBackDirection(swipeEdge) < 0,
+    slideDistance = slideDistance,
+)
 
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveExit(
     swipeEdge: Int,
-): ExitTransition {
-    val dir = predictiveBackDirection(swipeEdge)
-    return slideOutHorizontally(animationSpec = tween(300)) { it * dir } +
-        fadeOut(animationSpec = tween(300))
-}
+    slideDistance: Int,
+): ExitTransition = materialSharedAxisXOut(
+    forward = predictiveBackDirection(swipeEdge) < 0,
+    slideDistance = slideDistance,
+)
 
 private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
@@ -286,6 +319,20 @@ fun VeneraComposeApp() {
         navController.navigate(DetailRoute(comic.id, comic.sourceName))
     }
 
+    /**
+     * 插图收藏长按「从该页开始阅读」。
+     *
+     * 阅读器打不开这一页 —— 它要的 ReaderSession 必须由源解析章节图片，而收藏里只存了
+     * 章节标题。所以这里推的是**详情页**，附带一条 pendingReadTarget：详情页解析出目录后
+     * 按标题找回章节，再自行推阅读器。标题对不上时详情页会如实提示，不会随手开第一章糊弄。
+     */
+    fun readFavoriteImage(item: FavoriteImageItem) {
+        haptic()
+        shell.selectedComic = item.toComicItem()
+        shell.pendingReadTarget = ReadTarget(item)
+        navController.navigate(DetailRoute(item.comicId, item.sourceName))
+    }
+
     // 录制层只覆盖「背景 + 页面内容」，底栏是它的兄弟节点覆盖在上层，
     // 因此采样源永远不会递归包含底栏自身（挂到祖先上会触发 RenderNode 无限递归崩溃）。
     //
@@ -302,6 +349,8 @@ fun VeneraComposeApp() {
         VeneraAmbientBackground {
         val layoutDirection = LocalLayoutDirection.current
         val navigationInsets = WindowInsets.navigationBars.asPaddingValues()
+        // shared axis X 的 30dp 要换成 px，由库的 rememberSlideDistance 负责 density 取整。
+        val slideDistance = rememberSlideDistance()
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             // 左右滑切页的「让位带」登记表：外壳与页面必须共用同一个实例。
             // 首页推荐轮播那一整块自己吃横滑，起手点落在它里面就不许翻页。
@@ -361,14 +410,13 @@ fun VeneraComposeApp() {
                                 }
                             },
                         ),
-                    // 转场配方见文件顶部 veneraEnter/Exit/PopEnter/PopExit 一组：
-                    // 与 SettingsActivity 的设置 NavHost 共用同一份，不在这里各写一遍。
-                    enterTransition = { veneraEnter() },
-                    exitTransition = { veneraExit() },
-                    popEnterTransition = { veneraPopEnter() },
-                    popExitTransition = { veneraPopExit() },
-                    predictivePopEnterTransition = { swipeEdge -> veneraPredictiveEnter(swipeEdge) },
-                    predictivePopExitTransition = { swipeEdge -> veneraPredictiveExit(swipeEdge) },
+                    // 转场配方见文件顶部 veneraEnter/Exit/PopEnter/PopExit 一组（官方 shared axis X）。
+                    enterTransition = { veneraEnter(slideDistance) },
+                    exitTransition = { veneraExit(slideDistance) },
+                    popEnterTransition = { veneraPopEnter(slideDistance) },
+                    popExitTransition = { veneraPopExit(slideDistance) },
+                    predictivePopEnterTransition = { swipeEdge -> veneraPredictiveEnter(swipeEdge, slideDistance) },
+                    predictivePopExitTransition = { swipeEdge -> veneraPredictiveExit(swipeEdge, slideDistance) },
                 ) {
                     composable<HomeRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
@@ -395,10 +443,7 @@ fun VeneraComposeApp() {
                                     haptic()
                                     context.openSettingsSubScreen(SettingsSubScreen.LOCAL_COMICS)
                                 },
-                                onOpenImageFavorites = {
-                                    haptic()
-                                    context.openSettingsSubScreen(SettingsSubScreen.FAVORITE_IMAGES)
-                                },
+                                // 图片收藏已并入收藏页第三个分段，主页那个入口随之删除。
                                 onOpenSourceManage = {
                                     haptic()
                                     context.openSettingsSubScreen(SettingsSubScreen.SOURCE_MANAGE)
@@ -455,6 +500,7 @@ fun VeneraComposeApp() {
                             AndroidFavoritesScreen(
                                 animatedVisibilityScope = this,
                                 onSelect = ::openComic,
+                                onReadFavoriteImage = ::readFavoriteImage,
                             )
                         }
                     }
@@ -555,9 +601,22 @@ fun VeneraComposeApp() {
                     composable<DetailRoute> { entry ->
                         val route = entry.toRoute<DetailRoute>()
                         val comic = resolveDetailComic(route, shell.selectedComic)
+                        // 与 pendingSession 同一条纪律：只在进入这一条时取一次，退场动画期间
+                        // 重组不回读，否则同一页会被再推一次。取完即从壳里摘掉，所有权交给本条目。
+                        val readTarget = remember {
+                            shell.pendingReadTarget?.takeIf {
+                                it.comicId == route.comicId && it.sourceName == route.sourceName
+                            }
+                        }
+                        LaunchedEffect(readTarget) {
+                            if (readTarget != null && shell.pendingReadTarget === readTarget) {
+                                shell.pendingReadTarget = null
+                            }
+                        }
                         AndroidComicDetailScreen(
                             comic = comic,
                             animatedVisibilityScope = this,
+                            readTarget = readTarget,
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
@@ -591,7 +650,13 @@ fun VeneraComposeApp() {
                         )
                     }
                     composable<ReaderRoute> { entry ->
-                        val session = shell.pendingSession
+                        // 会话**只在进入这一条时取一次**，之后不再回读：
+                        //  1) 退场动画期间条目仍会被重组，若那时回读到 null 就会翻进下面的
+                        //     自动退出分支 —— LaunchedEffect(Unit) 作为新进入组合的节点再 pop
+                        //     一次，把详情页一起弹掉（实测：点左上角箭头直达首页，
+                        //     而系统返回手势正常，差别正是 onBack 里那次写 null）。
+                        //  2) 同时也保证动画期间内容不会先变空白。
+                        val session = remember { shell.pendingSession }
                         // 系统 pop / 预测返回不经过 onBack lambda：条目离开组合后统一清理会话。
                         DisposableEffect(entry) {
                             onDispose {
@@ -603,9 +668,11 @@ fun VeneraComposeApp() {
                         } else {
                             VeneraReaderScreen(
                                 session = session,
+                                // 这里**不**清 pendingSession：清的理由只有"下一次进入前别复用旧会话"，
+                                // 而那件事已由上面的 onDispose 兜住。在 pop 之前清它，
+                                // 就是上面那条双弹的起因。
                                 onBack = {
                                     haptic()
-                                    shell.pendingSession = null
                                     navController.popBackStack()
                                 },
                             )

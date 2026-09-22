@@ -59,10 +59,19 @@ class TagNormalizer(
         val TOPIC_NAMESPACES: List<String> =
             listOf("female", "male", "mixed", "other", "parody", "character")
 
-        /** 与「题材」无关的 namespace。清单抄自原版，而原版注释称其来自 20 个真实源 JS 的 tags 键名普查。 */
-        val EXCLUDED_NAMESPACES: Set<String> = setOf(
-            // 作者类
+        /**
+         * 作者类 namespace。
+         *
+         * 对「题材统计」而言要排除（画师不是题材），但「画师统计」恰恰要靠它 ——
+         * 有些源不把作者写进 `author` 字段，只给 `Author:xxx` / `作者:xxx` 这类标签。
+         * 提成单一来源，排除表与 [resolveAuthor] 共用，避免两处各写一份而飘。
+         */
+        val AUTHOR_NAMESPACES: Set<String> = setOf(
             "作者", "author", "authors", "artists", "artist", "画师", "插画",
+        )
+
+        /** 与「题材」无关的 namespace。清单抄自原版，而原版注释称其来自 20 个真实源 JS 的 tags 键名普查。 */
+        val EXCLUDED_NAMESPACES: Set<String> = AUTHOR_NAMESPACES + setOf(
             // 状态 / 元信息类
             "状态", "status", "连载中", "更新", "update", "date", "时间", "热度",
             "view", "work", "misc",
@@ -71,6 +80,26 @@ class TagNormalizer(
             // 社团 / 上传者
             "group", "社团", "uploader", "上传", "上传者", "cosplayer", "reclass",
         )
+
+        /**
+         * 解析一本漫画的画师：优先 `author` 字段，为空时回落到作者类标签的 value。
+         *
+         * 真机反馈「画师一栏统计不到」的根因：部分源（含禁漫）不把作者写进 author 字段，
+         * 只给 `Author:xxx` / `作者:xxx` 标签；只读 author 就会整本为空。
+         * namespace 比对一律先 lowercase —— 各源大小写不统一（`Author:` / `artists:`）。
+         */
+        fun resolveAuthor(author: String, tags: List<String>): String? {
+            author.trim().takeIf { it.isNotEmpty() }?.let { return it }
+            tags.forEach { tag ->
+                val namespace = tag.substringBefore(':', missingDelimiterValue = "").trim().lowercase()
+                if (namespace.isNotEmpty() && namespace in AUTHOR_NAMESPACES) {
+                    tag.substringAfter(':', missingDelimiterValue = "").trim()
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { return it }
+                }
+            }
+            return null
+        }
 
         /** 字典未覆盖的同义写法（规范化后的英文 key → 规范英文 key）。 */
         val ALIASES: Map<String, String> = mapOf(

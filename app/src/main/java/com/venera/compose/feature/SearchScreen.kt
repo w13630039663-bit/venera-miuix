@@ -52,6 +52,7 @@ import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.venera.compose.components.ComicCardContextMenu
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.ComicRowCard
 import com.venera.compose.components.ComicRowMetadata
@@ -59,6 +60,7 @@ import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
+import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
@@ -130,9 +132,11 @@ fun SharedTransitionScope.AndroidSearchScreen(
         .defaultSearchTarget.value
     val nsfwMode by guard.nsfwMaskMode.collectAsStateWithLifecycle()
     // 带 Comic 走守卫 LRU 判定（含源级预设）：jm/哔咔等整站源在搜索结果里同样整站打码。
+    // 判定非 VISIBLE 一律打码 —— 原来只认 "BLURRED"，把 AI 屏蔽的 "HIDDEN" 映射成了**不打码**，
+    // 与其余各页（VISIBLE 之外一律 Masked）口径不一致；列表未重新检索时就会露出封面。
     fun mask(comic: Comic): VeneraCoverMask =
-        if (guard.coverMaskStateFor(comic) == "BLURRED")
-            VeneraCoverMask.Masked else VeneraCoverMask.Visible
+        if (guard.coverMaskStateFor(comic) == "VISIBLE")
+            VeneraCoverMask.Visible else VeneraCoverMask.Masked
 
     fun select(comic: Comic, sourceName: String) = onSelect(
         ComicItem(
@@ -255,11 +259,16 @@ fun SharedTransitionScope.AndroidSearchScreen(
     // 在屏幕顶层取一次再往下传，避免每张卡片各自订阅字典加载状态。
     val tagLabel = rememberTagDisplayLabel()
 
+    // 结果网格列数按列表实测可用宽推（宽屏加列，master 口径），左右内边距要先扣掉
+    val (listWidth, listWidthModifier) = rememberContentWidth(tokens.spacing.rowHorizontal * 2)
+    val resultColumns = comicListColumnCount(displayMode, listWidth)
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .then(listWidthModifier)
                 .nestedScroll(topBarBehavior.nestedScrollConnection)
                 .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(
@@ -401,6 +410,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                     tokens = tokenSet,
                     colors = colorSet,
                     displayMode = displayMode,
+                    columns = resultColumns,
                     tagLabel = tagLabel,
                     mask = ::mask,
                     onSelect = { select(it, ui.selectedSourceLabel) },
@@ -1047,6 +1057,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
     tokens: com.venera.compose.ui.tokens.VeneraTokenSet,
     colors: com.venera.compose.ui.tokens.VeneraColorTokens,
     displayMode: String,
+    columns: Int,
     tagLabel: (String) -> String,
     mask: (Comic) -> VeneraCoverMask,
     onSelect: (Comic) -> Unit,
@@ -1090,20 +1101,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
                 item(key = "ss-tag-relaxed") { TagFilterRelaxedNotice() }
             }
             if (detailed) {
-                itemsIndexed(ui.results, key = { _, c -> "r-" + c.id }) { _, comic ->
-                    SearchResultRowItem(
-                        comic = comic,
-                        mask = mask(comic),
-                        tagLabel = tagLabel,
-                        onClick = { onSelect(comic) },
-                    )
+                // 详细模式同样加列（master：宽窗每 360dp 一列），行级挂载与网格分支同构
+                ui.results.chunked(columns).forEachIndexed { rowIndex, row ->
+                    item(key = "srowd-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
+                        ComicDetailedRow(
+                            row = row,
+                            columnCount = columns,
+                            mask = mask,
+                            tagLabel = tagLabel,
+                            onSelect = onSelect,
+                        )
+                    }
                 }
             } else {
                 // 网格：与 Explore 相同的逐行挂载（对齐 Explore 的成熟做法）。
                 // 列数在外层按可用宽度推导（与 GridCells.Adaptive 同语义），
                 // 每行 = 一个独立 LazyItem，行级虚拟化回收——滑出屏幕立即释放，
                 // 杜绝把成百上千张封面堆进单个普通 Column 导致的内存堆积与切页假死。
-                val columns = comicListColumnCount(displayMode).coerceAtLeast(2)
                 ui.results.chunked(columns).forEachIndexed { rowIndex, row ->
                     item(key = "srow-" + rowIndex + "-" + (row.firstOrNull()?.id ?: "")) {
                         ComicGridRow(
@@ -1205,6 +1219,36 @@ private fun ComicGridRow(
         }
     }
 }
+
+/** 详细模式的行卡按列数并排；补位规则与 [ComicGridRow] 一致。 */
+@Composable
+private fun ComicDetailedRow(
+    row: List<Comic>,
+    columnCount: Int,
+    mask: (Comic) -> VeneraCoverMask,
+    tagLabel: (String) -> String,
+    onSelect: (Comic) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
+    ) {
+        row.forEach { comic ->
+            Box(Modifier.weight(1f)) {
+                SearchResultRowItem(
+                    comic = comic,
+                    mask = mask(comic),
+                    tagLabel = tagLabel,
+                    onClick = { onSelect(comic) },
+                )
+            }
+        }
+        repeat(columnCount - row.size) {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
 /* ================================================================== *
  * 结果卡片与状态
  * ================================================================== */
@@ -1224,7 +1268,14 @@ private fun SearchResultCard(
     onClick: () -> Unit,
 ) {
     val tokens = VeneraTokens
-    VeneraCard(onClick = onClick) {
+    var cardMenu by remember { mutableStateOf(false) }
+    VeneraCard(onClick = onClick, onLongClick = { cardMenu = true }) {
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = onClick,
+        )
         VeneraCover(
             url = comic.cover,
             contentDescription = comic.title,
@@ -1284,23 +1335,36 @@ private fun SearchResultRowItem(
     mask: VeneraCoverMask,
     tagLabel: (String) -> String,
     onClick: () -> Unit,
-) = ComicRowCard(
-    title = comic.title,
-    coverUrl = comic.cover,
-    subtitle = comic.subTitle,
-    description = comic.description,
-    tags = comic.tags,
-    mask = mask,
-    onClick = onClick,
-    likesCount = comic.likesCount,
-    rating = comic.rating,
+) {
+    // 列表模式也要长按：只有网格能长按是另一种假一致。
+    var cardMenu by remember { mutableStateOf(false) }
+    Box {
+    ComicRowCard(
+        title = comic.title,
+        coverUrl = comic.cover,
+        subtitle = comic.subTitle,
+        description = comic.description,
+        tags = comic.tags,
+        mask = mask,
+        onClick = onClick,
+        onLongClick = { cardMenu = true },
+        likesCount = comic.likesCount,
+        rating = comic.rating,
     updateTime = comic.updateTime,
     tagLabel = tagLabel,
     coverModifier = Modifier.coverSharedElement(
         key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
         allowFly = mask == VeneraCoverMask.Visible,
     ),
-)
+    )
+        ComicCardContextMenu(
+            comic = comic,
+            expanded = cardMenu,
+            onDismiss = { cardMenu = false },
+            onOpenDetail = onClick,
+        )
+    }
+}
 
 /**
  * 可选 Metadata 行。

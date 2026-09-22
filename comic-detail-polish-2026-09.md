@@ -126,3 +126,46 @@
 未新增 public 组件，未新增第二套 Card/Chip，未改 ViewModel / Source / JS / Network / Navigation。
 
 **提交拆分建议**：Reader 那一个文件单独成提交（真机若出问题便于二分）。
+
+---
+
+## 7. 「列表 → 详情」转场换成官方 shared axis X（2026-09-22 追加，用户点名参考 EhViewer）
+
+### 7.1 参考对象的实测结论（读源码，不是印象）
+
+`FooIbar/EhViewer`（blobless sparse clone，`app` + `core` 模块）：
+
+- 单 Activity：`ui/MainActivity.kt:467` 一个 `SharedTransitionLayout` 包住导航图 —— 与本项目同构，**它的封面飞入也是同组合内**的共享元素，没有跨窗口魔法。
+- 页面转场：`ui/Theme.kt:51` `rememberEhNavAnim()` 四格全交给官方 Material Motion 库
+  `io.github.fornewid:material-motion-compose-core:2.0.1`（`soup.compose.material.motion.animation`）：
+  `enter = materialSharedAxisXIn(true, slideDistance)` / `exit = …Out(true)` / `popEnter = …In(false)` / `popExit = …Out(false)`。
+- 飞行元素：`core/ui/.../SharedElementTransition.kt:58` 的 `SharedElementBox(key, shape)`
+  = **`Modifier.sharedBounds(key).clip(shape)`**，用的是 `sharedBounds` 而不是我们这种 `sharedElement`；
+  进出场默认 `fadeIn()/fadeOut()`，**不传 `boundsTransform`** → 吃库默认
+  `SharedTransitionDefaults.BoundsTransform = BoundsTransform { _, _ -> DefaultSpring }`（已核 animation 1.12.0-rc01 源码 `SharedTransitionScope.kt:1684`），也就是飞行跟随页面时间轴，不另钉一个时长。
+- 配对 key：`SETNodeGenerator` + `connectTo` 给「列表里这一张」和「详情里那一个」生成同一个 `syntheticKey`，`onDispose` 即回收 —— 解决同一本书同时出现在历史/收藏/搜索多个列表时的错配。
+
+### 7.2 为什么原先观感差（对得上代码的两条）
+
+1. 旧配方 `veneraEnter` 是**整屏宽横推**（`slideInHorizontally { it }`）+ 全程淡入，读起来像「换了另一页」；
+   而列表→详情实际是「同一本书换个容器」。shared axis X 官方口径只推 **30dp** 并配错峰淡入，页面几乎不动，封面才成为主语。
+2. 旧配方与封面飞行**两套时间轴**：页面 `tween(300)`，封面 `BoundsTransform = tween(400, CubicBezier(0.2f,0f,0f,1f))`，
+   并行时是「一张图另外飞」而不是一个动作。
+
+### 7.3 本轮落地
+
+- 新增依赖 `material-motion-compose-core:2.0.1`（已核 `requires` 只有 compose 1.6.x，实跑确认 `androidx.compose.animation:animation` 仍解析为 **1.12.0**，未被顶版本）。
+- `Navigation.kt` 那一族配方全部改调 `materialSharedAxisXIn/Out`，`slideDistance` 由库的 `rememberSlideDistance()` 在组合期取 px（30dp → px 的 density 换算不由我们写）；
+  删掉 `slideIn/OutHorizontally`、`fadeIn/Out`、`tween` 五个此刻已无消费者的 import。
+- predictive 分支保持「与 pop 同族」：`forward = predictiveBackDirection(swipeEdge) < 0`，
+  左边缘与三键返回时 `forward = false`，与 `popEnter/popExit` 逐参数相同 → 松手提交帧换分支不跳形（2.10.1 的三分支选择逻辑见 `predictive-back-transition-2026-09.md`）。
+- **时长 300ms 与原值一致**，本轮没有新增任何观感数字：300 / 30dp / 0.35 错峰 / FastOutSlowIn 与 LinearOutSlowIn、FastOutLinearIn 三条曲线全在库里。
+- 卡片飞入完全未动（`coverSharedElement` 仍挂在封面上，打码不飞那条规则也保留）。
+
+### 7.4 下一根杆子（真机看完再决定，别提前做）
+
+1. **封面飞行时长**：页面 300ms、封面 400ms 仍不同轴。要么把 `ComicSharedTransition.CoverBounds` 对齐 300ms，
+   要么像 EhViewer 那样干脆不传 `boundsTransform` 吃默认 spring。400ms 那句「再短就退化成跳变」是上一轮写的判断，需要真机重判。
+2. **`sharedElement` → `sharedBounds` + `clip(shape)`**：EhViewer 用后者，好处是飞行途中两侧各自渲染、不做位图提层放大（列表小图放大到详情尺寸会糊）。
+   换之前要先验一件事：`sharedBounds` 在飞行期间是否也把内容画进 overlay —— 若是，打码封面「不飞行」那条安全规则得重新推。
+3. **多列表错配**：同一本书现在在历史/收藏/搜索共用同一串 key，EhViewer 用 syntheticKey 隔离。本项目是否真会错配，取决于同时刻是否有两个同 key 的参与者在线。

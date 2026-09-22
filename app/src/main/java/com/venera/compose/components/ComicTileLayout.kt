@@ -74,7 +74,10 @@ fun ComicTileDetailed(
                     .height(180.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.1f))
-                    .then(if (coverMaskState == "BLURRED") Modifier.blur(18.dp) else Modifier)
+                    // 「HIDDEN」也必须打码：物理剔除只发生在调用 filterComicModels 的列表里，
+                    // 而本卡片拿到的只是判定结果。原来只认 BLURRED，导致探索页**单列**模式下
+                    // AI 命中（判定恒为 HIDDEN）完全不打码，而同页双列模式是打码的。
+                    .then(if (coverMaskState != "VISIBLE") Modifier.blur(18.dp) else Modifier)
             ) {
                 if (coverContent != null) {
                     coverContent()

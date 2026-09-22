@@ -16,39 +16,48 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 @Composable
-internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit, onGuard: () -> Unit) {
+internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
     val context = LocalContext.current
     val guard = remember(context) { ContentGuardManager.getInstance(context) }
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     val secureScreen by prefs.secureScreen.collectAsState()
     val mode by guard.nsfwMaskMode.collectAsState()
+    val blockAi by guard.blockAiComics.collectAsState()
     val rules by guard.rules.collectAsState()
     SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤") {
         SettingsGroup("隐私") {
-            // 原来是二态 toggle：当前为 HIDE 时关一下再开会被静默改写成 BLUR，且 HIDE 只能绕到
-            // 守卫页才选得到。改成三态直选，模式集合与 ContentGuardManager 判定链一致。
-            SettingsSelect(
-                "成人内容处理", mode,
-                listOf("OFF" to "不处理", "BLUR" to "模糊封面", "HIDE" to "隐藏条目"),
-                { guard.setNsfwMaskMode(it) },
-                summary = "命中规则后如何处理。原版的「点击后揭示模糊」尚未实现；" +
-                    "隐藏条目仅在支持逐源判定的列表页完全生效。",
-            )
             // FLAG_SECURE 由 MainActivity 订阅同一个偏好应用到窗口，拨一下当前界面即刻生效。
             SettingsToggle(
                 "屏幕防窥", secureScreen, prefs::setSecureScreen,
                 summary = "禁止截图、录屏与任务列表缩略图；重启后保持。开启后系统自带的长截屏也会失效。",
             )
+        }
+        // 原「成人内容处理」与本组这条是**同一个偏好**（nsfwMaskMode）在两页各摆了一份，
+        // 措辞还不一样（不处理/模糊封面/隐藏条目 vs 不过滤/封面打码/彻底隐藏）。
+        // 现在只留守卫页这一份措辞，二级页整体搬进来。
+        SettingsGroup("内容守卫") {
+            SettingsSelect(
+                "R18 敏感内容分级遮罩", mode,
+                listOf("OFF" to "不过滤", "BLUR" to "封面打码", "HIDE" to "彻底隐藏"),
+                { guard.setNsfwMaskMode(it) },
+                summary = "命中判定链（用户规则 > 源级预设 > 显式标记）后如何展现。" +
+                    "原版的「点击后揭示模糊」尚未实现；隐藏条目仅在支持逐源判定的列表页完全生效。",
+            )
+            SettingsToggle(
+                "屏蔽 AI 生成漫画", blockAi, guard::setBlockAiComics,
+                summary = "整条隐藏，与上面的遮罩模式互不影响。" +
+                    "判据：tags 等值命中 ai / ai-generated / ai生成 / ai绘图，" +
+                    "或标题带 [AI Generated] / [AI Art] / 【AI】 这类标记；不匹配裸「ai」字样以免误杀。",
+            )
             // 逐源预设其实已经生效（assets/source_content_warning.json，33 源），
             // 缺的是逐源用户覆盖与选择 UI —— 移入底部「尚未实现」折叠区，不占主区。
         }
-        listOf("TAG" to "标签", "AUTHOR" to "画师", "COMIC_ID" to "作品").forEach { (type, title) ->
+        // KEYWORD 原先只有守卫二级页能进；页面合并后必须在这里补上入口，
+        // 否则已保存的关键词规则就没地方查看和删除了。
+        listOf("KEYWORD" to "关键词", "TAG" to "标签", "AUTHOR" to "画师", "COMIC_ID" to "作品").forEach { (type, title) ->
             SettingsGroup(title) {
                 SettingsAction(title, "已保存 "+ rules.count { it.type == type } +" 条规则", onClick = { onRules(type) })
             }
-        }
-        SettingsGroup("现有内容守卫") {
-            SettingsAction("完整内容守卫", "保留现有分级遮罩模式与规则管理入口", onClick = onGuard)
         }
         SettingsFutureGroup {
             UnsupportedSetting("源分级", "逐源预设已生效（33 源 safe/mixed/nsfw），" +
@@ -81,8 +90,8 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                 else -> "当前按标题关键词包含匹配，不区分大小写。"
             })
             Column(Modifier.padding(16.dp)) {
-                // 守卫页早就有正则开关（ContentGuardScreen），而这里恒按字面添加，
-                // 两页能力不一致；addRule 本身已支持 isRegex，这里只是把入口补上。
+                // 原守卫页就有正则开关，而这里恒按字面添加，两页能力不一致；
+                // addRule 本身已支持 isRegex，这里只是把入口补上。
                 SettingsToggle(
                     "按正则匹配", regexMode, { regexMode = it; error = null },
                     summary = "关闭＝按字面包含匹配；开启＝按正则匹配（与完整内容守卫页一致）",
