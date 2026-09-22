@@ -12,15 +12,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.Layout
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Real system gesture progress; never a timer simulating the user's drag. */
 @Stable
@@ -99,55 +96,3 @@ fun PredictiveBackOverlay(
     }
 }
 
-/**
- * A small internal stack, not a second NavController. All stacked pages stay composed so
- * their remember state, scroll positions and running requests survive push/cancel/pop.
- * Only the top page is placed normally; the preceding page is placed during a back preview.
- * Hidden pages cannot draw, receive pointer input, or participate in accessibility hit tests.
- * Keys must be unique, Bundle-saveable entry IDs. Removed entries retain saveable state.
- */
-@Composable
-fun <T : Any> PredictiveBackStack(
-    entries: List<T>,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-    entryKey: (T) -> String,
-    content: @Composable (T) -> Unit,
-) {
-    require(entries.isNotEmpty())
-    val state = rememberPredictiveBackState(
-        enabled = entries.size > 1,
-        gestureKey = entries.map(entryKey),
-        onBack = onBack,
-    )
-    val savedState = rememberSaveableStateHolder()
-    val surface = MiuixTheme.colorScheme.background
-    Layout(
-        modifier = modifier,
-        content = {
-            entries.forEachIndexed { index, entry ->
-                key(entryKey(entry)) {
-                    savedState.SaveableStateProvider(entryKey(entry)) {
-                        Box(Modifier.fillMaxSize().graphicsLayer {
-                            val direction = if (state.fromRightEdge) -1f else 1f
-                            val p = state.progress
-                            translationX = when (index) {
-                                entries.lastIndex -> size.width * p * direction
-                                entries.lastIndex - 1 -> -size.width * .25f * (1f - p) * direction
-                                else -> 0f
-                            }
-                        }.background(surface)) { content(entry) }
-                    }
-                }
-            }
-        },
-    ) { measurables, constraints ->
-        val pages = measurables.map { it.measure(constraints) }
-        val width = pages.maxOfOrNull { it.width } ?: constraints.minWidth
-        val height = pages.maxOfOrNull { it.height } ?: constraints.minHeight
-        layout(width, height) {
-            if (state.progress > 0f && pages.size > 1) pages[pages.lastIndex - 1].place(0, 0)
-            pages.lastOrNull()?.place(0, 0)
-        }
-    }
-}

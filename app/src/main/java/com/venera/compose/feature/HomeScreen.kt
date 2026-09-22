@@ -75,6 +75,8 @@ import kotlin.random.Random
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
+import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 
 /** 源连通性四态（UI 语义，不改动 source 数据模型）。 */
 private enum class SourceHealth { Connected, Degraded, Failing, Unknown }
@@ -547,10 +549,12 @@ fun SharedTransitionScope.AndroidHomeScreen(
         scrollBehavior = topBarBehavior,
         backdrop = topBarBackdrop,
         actions = {
-            // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）
+            // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）。
+            // 三个动作钮走 miuix IconButton（40dp squircle 圆 + 库自带按压高亮），
+            // 不再是 material3 的涟漪圆 —— 顶栏其余部分本来就是 miuix 的。
             Box {
-                IconButton(onClick = { onOpenSourceManage() }) {
-                    Icon(
+                MiuixIconButton(onClick = { onOpenSourceManage() }) {
+                    MiuixIcon(
                         imageVector = Icons.Outlined.Extension,
                         contentDescription = "源管理",
                         tint = tokens.color.textSecondary,
@@ -572,15 +576,15 @@ fun SharedTransitionScope.AndroidHomeScreen(
                     }
                 }
             }
-            IconButton(onClick = { sourceManager.refreshPings() }) {
-                Icon(
+            MiuixIconButton(onClick = { sourceManager.refreshPings() }) {
+                MiuixIcon(
                     imageVector = Icons.Outlined.Refresh,
                     contentDescription = "刷新",
                     tint = tokens.color.textSecondary,
                 )
             }
-            IconButton(onClick = { onOpenSettings() }) {
-                Icon(
+            MiuixIconButton(onClick = { onOpenSettings() }) {
+                MiuixIcon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = "设置",
                     tint = tokens.color.textSecondary,

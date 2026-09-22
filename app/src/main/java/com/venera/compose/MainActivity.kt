@@ -34,29 +34,7 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra("run_engine_diagnostic", false)) {
             runEngineDiagnostic()
         }
-        applySecureScreen()
-    }
-
-    /**
-     * 屏幕防窥（设置 → 屏蔽与过滤）。FLAG_SECURE 是窗口属性，必须挂在 Activity 的
-     * window 上；订阅偏好而不是只在 onCreate 读一次，用户拨开关当下就生效。
-     */
-    private fun applySecureScreen() {
-        val prefs = VeneraPreferences.getInstance(applicationContext)
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                prefs.secureScreen.collect { secure ->
-                    if (secure) {
-                        window.setFlags(
-                            WindowManager.LayoutParams.FLAG_SECURE,
-                            WindowManager.LayoutParams.FLAG_SECURE,
-                        )
-                    } else {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                    }
-                }
-            }
-        }
+        applySecureScreenPreference()
     }
 
     private fun runEngineDiagnostic() {
@@ -128,6 +106,31 @@ class MainActivity : ComponentActivity() {
             }
 
             android.util.Log.i(logTag, "========== S1 JS ENGINE END-TO-END TEST FINISHED ==========")
+        }
+    }
+}
+
+/**
+ * 屏幕防窥（设置 → 屏蔽与过滤）。FLAG_SECURE 是窗口属性，必须挂在每个 Activity 的
+ * window 上；订阅偏好而不是只在 onCreate 读一次，用户拨开关当下就生效。
+ *
+ * 抽成扩展是因为设置子树搬进 SettingsActivity 后有了第二个宿主：本地漫画 / 收藏图这类
+ * 会露出封面的页面跟着一起搬走了，只挂 MainActivity 等于把那两页的防窥丢掉。
+ */
+internal fun ComponentActivity.applySecureScreenPreference() {
+    val prefs = VeneraPreferences.getInstance(applicationContext)
+    lifecycleScope.launch {
+        repeatOnLifecycle(Lifecycle.State.STARTED) {
+            prefs.secureScreen.collect { secure ->
+                if (secure) {
+                    window.setFlags(
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                    )
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
         }
     }
 }

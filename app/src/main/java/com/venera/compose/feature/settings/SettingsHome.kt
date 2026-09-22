@@ -1,6 +1,5 @@
 package com.venera.compose.feature.settings
 
-import com.venera.compose.components.PredictiveBackStack
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +13,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,12 +26,14 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.feature.SettingsSubScreen
+import com.venera.compose.feature.openSettingsSubScreen
 import com.venera.compose.ui.tokens.SettingsBadgeColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 
 private data class SettingsCategory(
-    val route: String,
+    val screen: SettingsSubScreen,
     val title: String,
     val icon: ImageVector,
     val color: Color,
@@ -46,82 +46,56 @@ private data class SettingsCategory(
  * listOf 在顶层求值，因此这里读的是编译期常量，不涉及 Compose 运行时。
  */
 private val categories = listOf(
-    SettingsCategory("explore", "探索", Icons.Filled.Explore, SettingsBadgeColors.Discovery),
-    SettingsCategory("blocking", "屏蔽与过滤", Icons.Filled.FilterAlt, SettingsBadgeColors.Moderation),
-    SettingsCategory("reader", "阅读", Icons.Filled.Book, SettingsBadgeColors.Reading),
-    SettingsCategory("appearance", "外观", Icons.Filled.ColorLens, SettingsBadgeColors.Theming),
-    SettingsCategory("favorites", "本地收藏", Icons.Filled.CollectionsBookmark, SettingsBadgeColors.Library),
-    SettingsCategory("app", "应用", Icons.Filled.Apps, SettingsBadgeColors.Application),
-    SettingsCategory("network", "网络", Icons.Filled.Public, SettingsBadgeColors.Connectivity),
+    SettingsCategory(SettingsSubScreen.EXPLORE, "探索", Icons.Filled.Explore, SettingsBadgeColors.Discovery),
+    SettingsCategory(SettingsSubScreen.BLOCKING, "屏蔽与过滤", Icons.Filled.FilterAlt, SettingsBadgeColors.Moderation),
+    SettingsCategory(SettingsSubScreen.READER, "阅读", Icons.Filled.Book, SettingsBadgeColors.Reading),
+    SettingsCategory(SettingsSubScreen.APPEARANCE, "外观", Icons.Filled.ColorLens, SettingsBadgeColors.Theming),
+    SettingsCategory(SettingsSubScreen.LOCAL_FAVORITES, "本地收藏", Icons.Filled.CollectionsBookmark, SettingsBadgeColors.Library),
+    SettingsCategory(SettingsSubScreen.APP, "应用", Icons.Filled.Apps, SettingsBadgeColors.Application),
+    SettingsCategory(SettingsSubScreen.NETWORK, "网络", Icons.Filled.Public, SettingsBadgeColors.Connectivity),
 )
 
 /**
- * 独立且可保存的页栈，不把分类页变成弹窗。
+ * 设置主页。
  *
- * Stage 0~2 信息架构调整：设置从底栏 Tab 收口为顶栏齿轮进入的子页，
- * 因此新增外层返回箭头 [onBack]（pop 回来源主 Tab）；分类页内部返回仍由
- * [PredictiveBackStack] 承载，两层返回互不干扰。
+ * 原先这里挂着一套自研的页面内部栈（`PredictiveBackStack` + `stack`），7 个分区在同一个
+ * Activity 内换内容渲染。那带来两个后果：转场是自绘的、观感比系统那套生硬，而且窗口层面
+ * 根本没有换页，所以拿不到 blur-behind。现在分区改成跨 Activity
+ * （见 [com.venera.compose.SettingsSubActivity]），本页只剩「首页内容 + 外层顶栏」，
+ * 因此也不再需要往外透传各叶子页的跳转回调 —— 那些都由子页宿主自己构造。
  */
 @Composable
-internal fun SettingsHome(
-    onSources: () -> Unit, onDownloads: () -> Unit, onLocalComics: () -> Unit,
-    onStats: () -> Unit, onImages: () -> Unit, onGuard: () -> Unit,
-    onSync: () -> Unit, onLogs: () -> Unit, onBack: () -> Unit = {}
-) {
+internal fun SettingsHome(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
-    var stack by rememberSaveable { mutableStateOf(listOf("home")) }
-    fun push(page: String) { if (stack.last() != page) stack = stack + page }
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        PredictiveBackStack(
-            entries = stack,
-            onBack = { if (stack.size > 1) stack = stack.dropLast(1) },
-            modifier = Modifier.fillMaxSize(),
-            entryKey = { it },
-        ) { route ->
-            // A retained/preview page must never pop the current page via a stale callback.
-            fun back() { if (stack.last() == route && stack.size > 1) stack = stack.dropLast(1) }
-            when {
-                route == "home" -> SettingsHomeContent(
-                    prefs = prefs,
-                    onPush = ::push,
-                    scrollConnection = topBarBehavior.nestedScrollConnection,
-                    backdrop = topBarBackdrop,
-                    topPadding = statusBarTop + 104.dp,
-                )
-                route == "explore" -> ExploreSettings(::back, onSources, { push("rules/KEYWORD") })
-                route == "blocking" -> BlockingSettings(::back, { push("rules/$it") }, onGuard)
-                route.startsWith("rules/") -> BlockingRulesSettings(route.substringAfter("/"), ::back)
-                route == "reader" -> ReaderSettings(prefs, ::back, onImages, onStats)
-                route == "appearance" -> AppearanceSettings(prefs, ::back)
-                route == "favorites" -> LocalFavoritesSettings(prefs, ::back)
-                route == "app" -> AppSettings(prefs, ::back, onSync, onLogs, onDownloads, onLocalComics)
-                route == "network" -> NetworkSettings(prefs, ::back)
-            }
-        }
+        SettingsHomeContent(
+            prefs = prefs,
+            onOpen = { screen -> context.openSettingsSubScreen(screen) },
+            scrollConnection = topBarBehavior.nestedScrollConnection,
+            backdrop = topBarBackdrop,
+            topPadding = statusBarTop + 104.dp,
+        )
 
-        // 外层顶栏：仅设置首页显示（分类子页有自己的返回箭头，避免双重返回入口）。
-        if (stack.last() == "home") {
-            com.venera.compose.components.venera.VeneraTopAppBar(
-                title = "设置",
-                largeTitle = "设置与偏好",
-                scrollBehavior = topBarBehavior,
-                backdrop = topBarBackdrop,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = VeneraTokens.color.textPrimary,
-                        )
-                    }
-                },
-            )
-        }
+        com.venera.compose.components.venera.VeneraTopAppBar(
+            title = "设置",
+            largeTitle = "设置与偏好",
+            scrollBehavior = topBarBehavior,
+            backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = VeneraTokens.color.textPrimary,
+                    )
+                }
+            },
+        )
     }
 }
 
@@ -136,7 +110,7 @@ internal fun SettingsHome(
 @Composable
 private fun SettingsHomeContent(
     prefs: VeneraPreferences,
-    onPush: (String) -> Unit,
+    onOpen: (SettingsSubScreen) -> Unit,
     scrollConnection: NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
     topPadding: androidx.compose.ui.unit.Dp = 0.dp,
@@ -161,7 +135,7 @@ private fun SettingsHomeContent(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onPush(category.route) }
+                        .clickable { onOpen(category.screen) }
                         .padding(
                             horizontal = tokens.spacing.rowHorizontal,
                             vertical = tokens.spacing.rowVertical,

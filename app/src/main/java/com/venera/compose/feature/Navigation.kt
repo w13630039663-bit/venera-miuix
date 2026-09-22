@@ -1,8 +1,12 @@
 package com.venera.compose.feature
 
+import android.content.Intent
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -35,9 +39,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -45,7 +49,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigationevent.NavigationEvent
 import androidx.navigation.toRoute
+import com.venera.compose.SettingsActivity
 import com.venera.compose.components.CoverTransitionScopes
 import com.venera.compose.components.LocalCoverTransitionScopes
 import com.venera.compose.components.VeneraAmbientBackground
@@ -64,7 +70,6 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.VeneraReaderScreen
-import com.venera.compose.feature.sourcemanage.ComicSourceScreen
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.Scaffold
 import androidx.compose.material.icons.Icons
@@ -120,15 +125,8 @@ import androidx.compose.material3.IconButton
     val param: String? = null,
     val unifiedTag: String? = null,
 )
-@Serializable data object SettingsRoute
-@Serializable data object ComicSourceManageRoute
 @Serializable data object DownloadRoute
 @Serializable data object LocalComicRoute
-@Serializable data object StatsRoute
-@Serializable data object FavoriteImagesRoute
-@Serializable data object ContentGuardRoute
-@Serializable data object SyncBackupRoute
-@Serializable data object LogViewerRoute
 
 /** 详情页的入口载荷。S2 会改成「带 sourceKey+comicId，由 ViewModel 拉真详情」，现在先保持行为一致。 */
 @Serializable data class CoverViewerRoute(val coverUrl: String, val title: String)
@@ -172,6 +170,56 @@ class VeneraShellViewModel : ViewModel() {
     var selectedComic: com.venera.compose.feature.ComicItem? = null
 }
 
+/**
+ * 预测式返回手势的起手势边缘 → 上层退出方向。
+ *
+ * 左边缘（以及三键返回这种 EDGE_NONE）手势是向右推，与点击返回同向，取 +1；
+ * 右边缘镜像。返回 1 时两个 predictive lambda 与既有 popEnter / popExit
+ * 逐参数相同，所以提交帧换分支时不会产生形状跳变。
+ */
+private fun predictiveBackDirection(swipeEdge: Int): Int =
+    if (swipeEdge == NavigationEvent.EDGE_RIGHT) -1 else 1
+
+/*
+ * 横滑转场一族的单一配方。MainActivity 的壳 NavHost 与 SettingsActivity 的设置 NavHost
+ * 共用这四个函数 —— 配方复制成两份必然飘（时长、视差比各改一处就不同步）。
+ * 时长 300ms 与视差比 1/4 都是本文件既有值，不是新造的数。
+ */
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraEnter(): EnterTransition =
+    slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300))
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraExit(): ExitTransition =
+    slideOutHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeOut(animationSpec = tween(300))
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopEnter(): EnterTransition =
+    slideInHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeIn(animationSpec = tween(300))
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopExit(): ExitTransition =
+    slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(300))
+
+/**
+ * 预测式返回**跟手**转场：navigation 2.10.1 的 NavHostEventHandler 把系统手势进度喂给
+ * SeekableTransitionState.seekTo()，并用 swipeEdge 作 lambda 入参告诉我们是左边缘还是
+ * 右边缘起手 —— 所以退出方向能跟随手势。形状一律沿用上面 popEnter / popExit 那一族，
+ * 不引入新数字：左边缘时两条分支逐参数相同，松手提交才不会跳形。
+ */
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveEnter(
+    swipeEdge: Int,
+): EnterTransition {
+    val dir = predictiveBackDirection(swipeEdge)
+    return slideInHorizontally(animationSpec = tween(300)) { -it / 4 * dir } +
+        fadeIn(animationSpec = tween(300))
+}
+
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveExit(
+    swipeEdge: Int,
+): ExitTransition {
+    val dir = predictiveBackDirection(swipeEdge)
+    return slideOutHorizontally(animationSpec = tween(300)) { it * dir } +
+        fadeOut(animationSpec = tween(300))
+}
+
 private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
     VeneraNavTab.HISTORY -> HistoryRoute
@@ -201,8 +249,12 @@ private fun NavHostController.gotoTab(tab: VeneraNavTab) {
 fun VeneraComposeApp() {
     val navController = rememberNavController()
     val shell: VeneraShellViewModel = viewModel()
+    // 设置 Activity 的三个越界出口（阅读器 / 详情 / 标签搜索）在另一个 Activity 里发起，
+    // 目标页只在本图上有：落地时消费一次交接槽，消费即清，避免重建时重复推页。
+    LaunchedEffect(Unit) { navController.consumeSettingsEscape(shell) }
     val view = LocalView.current
-    val prefs = VeneraPreferences.getInstance(LocalContext.current)
+    val context = LocalContext.current
+    val prefs = VeneraPreferences.getInstance(context)
     val navigationBarStyle by prefs.navigationBarStyle.collectAsState()
     val startTab by prefs.startPage.collectAsState()
     // 官方 Backdrop 的 lens 折射用 RuntimeShader，需要 Android 13（TIRAMISU）及以上；
@@ -221,12 +273,13 @@ fun VeneraComposeApp() {
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
         destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
-        // SettingsRoute 不再是主 Tab：作为顶栏齿轮进入的子页（currentTab = null，
-        // 底栏与壳顶栏隐藏），按返回键 / 预测返回退回来源 Tab。
+        // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
+        // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
         else -> null
     }
 
     fun haptic() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
     fun openComic(comic: ComicItem) {
         haptic()
         shell.selectedComic = comic
@@ -308,20 +361,14 @@ fun VeneraComposeApp() {
                                 }
                             },
                         ),
-                    // 预返回跟手：navigation-compose 2.8.9 的 seekable predictive back
-                    // 会在手势进度中驱动 popExit 转场，取消时平滑回弹。
-                    enterTransition = {
-                        slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(animationSpec = tween(300))
-                    },
-                    exitTransition = {
-                        slideOutHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeOut(animationSpec = tween(300))
-                    },
-                    popEnterTransition = {
-                        slideInHorizontally(animationSpec = tween(300)) { -it / 4 } + fadeIn(animationSpec = tween(300))
-                    },
-                    popExitTransition = {
-                        slideOutHorizontally(animationSpec = tween(300)) { it } + fadeOut(animationSpec = tween(300))
-                    },
+                    // 转场配方见文件顶部 veneraEnter/Exit/PopEnter/PopExit 一组：
+                    // 与 SettingsActivity 的设置 NavHost 共用同一份，不在这里各写一遍。
+                    enterTransition = { veneraEnter() },
+                    exitTransition = { veneraExit() },
+                    popEnterTransition = { veneraPopEnter() },
+                    popExitTransition = { veneraPopExit() },
+                    predictivePopEnterTransition = { swipeEdge -> veneraPredictiveEnter(swipeEdge) },
+                    predictivePopExitTransition = { swipeEdge -> veneraPredictiveExit(swipeEdge) },
                 ) {
                     composable<HomeRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
@@ -338,26 +385,32 @@ fun VeneraComposeApp() {
                                     // 历史已是主 Tab：分区头直达 = 切 Tab（不压栈，返回语义不变）。
                                     navController.gotoTab(VeneraNavTab.HISTORY)
                                 },
+                                // 以下四个入口一律跨 Activity，与齿轮同一口径：只有跨过 Activity
+                                // 边界，系统才施加预测式返回动画与返回模糊。
                                 onOpenStats = {
                                     haptic()
-                                    navController.navigate(StatsRoute)
+                                    context.openSettingsSubScreen(SettingsSubScreen.STATS)
                                 },
                                 onOpenLocal = {
                                     haptic()
-                                    navController.navigate(LocalComicRoute)
+                                    context.openSettingsSubScreen(SettingsSubScreen.LOCAL_COMICS)
                                 },
                                 onOpenImageFavorites = {
                                     haptic()
-                                    navController.navigate(FavoriteImagesRoute)
+                                    context.openSettingsSubScreen(SettingsSubScreen.FAVORITE_IMAGES)
                                 },
                                 onOpenSourceManage = {
                                     haptic()
-                                    navController.navigate(ComicSourceManageRoute)
+                                    context.openSettingsSubScreen(SettingsSubScreen.SOURCE_MANAGE)
                                 },
-                                // 设置齿轮从外壳迁入首页顶栏（页内自治）
+                                // 设置齿轮从外壳迁入首页顶栏（页内自治）。
+                                // 跨 Activity 而不是 NavHost 目的地：只有跨过 Activity 边界，
+                                // 系统才会施加 AOSP 跨 activity 预测式返回动画。
                                 onOpenSettings = {
                                     haptic()
-                                    navController.navigate(SettingsRoute)
+                                    context.startActivity(
+                                        Intent(context, SettingsActivity::class.java),
+                                    )
                                 }
                             )
                         }
@@ -465,55 +518,6 @@ fun VeneraComposeApp() {
                             )
                         }
                     }
-                    composable<SettingsRoute> {
-                        // 子页形态：顶栏齿轮进入，返回退回来源主 Tab。
-                        AndroidSettingsScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                            onNavigateToSourceManage = {
-                                haptic()
-                                navController.navigate(ComicSourceManageRoute)
-                            },
-                            onNavigateToDownloads = {
-                                haptic()
-                                navController.navigate(DownloadRoute)
-                            },
-                            onNavigateToLocalComics = {
-                                haptic()
-                                navController.navigate(LocalComicRoute)
-                            },
-                            onNavigateToStats = {
-                                haptic()
-                                navController.navigate(StatsRoute)
-                            },
-                            onNavigateToFavoriteImages = {
-                                haptic()
-                                navController.navigate(FavoriteImagesRoute)
-                            },
-                            onNavigateToGuard = {
-                                haptic()
-                                navController.navigate(ContentGuardRoute)
-                            },
-                            onNavigateToSync = {
-                                haptic()
-                                navController.navigate(SyncBackupRoute)
-                            },
-                            onNavigateToLogs = {
-                                haptic()
-                                navController.navigate(LogViewerRoute)
-                            }
-                        )
-                    }
-                    composable<ComicSourceManageRoute> {
-                        ComicSourceScreen(
-                            onNavigateBack = {
-                                haptic()
-                                navController.popBackStack()
-                            }
-                        )
-                    }
                     composable<DownloadRoute> {
                         DownloadScreen(
                             onBack = {
@@ -545,59 +549,6 @@ fun VeneraComposeApp() {
                                 haptic()
                                 shell.selectedComic = item
                                 navController.navigate(DetailRoute(comicId = item.id, sourceName = item.sourceName))
-                            }
-                        )
-                    }
-                    composable<StatsRoute> {
-                        StatsScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                            // 题材下钻：带的是该桶的**源生原值**（searchNamespace/searchRaw），
-                            // 不是中文显示名 —— 站方标签源认的是英文原词。
-                            // 不锁源：一个桶可能来自多个源，锁到任意一个都是猜。
-                            onDigTag = { bucket ->
-                                navController.navigate(
-                                    TagSearchRoute(
-                                        keyword = "",
-                                        tagNamespace = bucket.searchNamespace,
-                                        tagRaw = bucket.searchRaw,
-                                        tagLabel = bucket.display,
-                                    )
-                                )
-                            },
-                        )
-                    }
-                    composable<FavoriteImagesRoute> {
-                        FavoriteImagesScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-                    composable<ContentGuardRoute> {
-                        ContentGuardScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-                    composable<SyncBackupRoute> {
-                        SyncBackupScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-                    composable<LogViewerRoute> {
-                        LogViewerScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
                             }
                         )
                     }

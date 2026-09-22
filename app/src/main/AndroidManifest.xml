@@ -22,6 +22,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+            设置子树独立成 Activity：只有跨过 Activity 边界，系统才会施加 AOSP
+            跨 activity 预测式返回动画；返回模糊走该窗口的 blur-behind。
+        -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!--
+            设置二级页统一宿主：8 个页面共用一个类，靠 extra 分发。
+            每页真的换一个 Activity，系统才会施加 AOSP 跨 activity 预测式返回动画。
+        -->
+        <activity
+            android:name=".SettingsSubActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <activity
             android:name=".data.network.CloudflareBypassActivity"
             android:exported="false"
