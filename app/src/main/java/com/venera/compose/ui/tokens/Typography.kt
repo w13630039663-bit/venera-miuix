@@ -66,19 +66,22 @@ val Md3Typography = VeneraTypographyTokens(
 )
 
 /**
- * MIUIX 字号阶梯：整体略大、行距更松，符合 miuix 的「大字号易读」取向。
- * 这也是本次双主题改造在**排版**上的主要差异点。
+ * MIUIX 字号阶梯：每个值都取 miuix `TextStyles` 的官方原值，不造库外数字。
+ * 官方尺寸全集 {11, 13, 14, 16, 17, 18, 20, 24, 32}；对账见 font-scale-pixez-alignment-2026-09.md 第 4 节。
+ *
+ * body 14 与 caption 13 只差 1sp 是库本身的档位限制（body2 / footnote1），不是笔误：
+ * 这一层靠 weightMedium/weightBold 拉层级，与官方 subtitle（14 + Bold）同构。
  */
 val MiuixTypography = VeneraTypographyTokens(
     screenTitle = 24.sp,
     itemTitle = 17.sp,
-    body = 15.sp,
+    body = 14.sp,
     caption = 13.sp,
-    overline = 12.sp,
+    overline = 11.sp,
     sectionTitle = 14.sp,
     chevron = 16.sp,
-    display = 30.sp,
-    statNumber = 22.sp,
+    display = 32.sp,
+    statNumber = 20.sp,
     badge = 11.sp,
     weightRegular = FontWeight.Normal,
     weightMedium = FontWeight.Medium,
