@@ -24,6 +24,14 @@ object ComicSharedTransition {
     fun coverKey(sourceKey: String, comicId: String) = "cover-$sourceKey-$comicId"
 
     /**
+     * 插图收藏卡 ↔ 插图预览页那对共享元素的 key。
+     *
+     * 单页插图没有「源+漫画」这一层身份，但它自己那条 `favorite_images` 行就是身份，
+     * 直接用行 id —— 全局唯一、两端都拿得到（列表项与预览目的地都带着同一行）。
+     */
+    fun favoriteImageKey(itemId: Long) = "fav-image-$itemId"
+
+    /**
      * M-B 曲线：快出慢进，400ms。
      *
      * compose animation 1.12 的 [BoundsTransform] 签名是 `(initialBounds, targetBounds) -> AnimationSpec<Rect>`

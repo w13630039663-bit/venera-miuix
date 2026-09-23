@@ -14,6 +14,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
+/**
+ * 一条插图收藏。
+ *
+ * 刻意**不**拿它当导航参数：type-safe 导航只认内建类型，自定义对象（哪怕标了 `@Serializable`）
+ * 得靠 safeargs 插件生成 NavType，本仓库没装 —— 真机实测直接崩在建图阶段
+ * （`could not find any NavType for argument item ... typeMap received was {}`），
+ * 表现为冷启动即闪。载荷放 `VeneraShellViewModel` 的表里，路由只带行 id。
+ */
 data class FavoriteImageItem(
     val id: Long,
     val comicId: String,

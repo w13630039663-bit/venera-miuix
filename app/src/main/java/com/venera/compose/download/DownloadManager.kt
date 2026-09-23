@@ -501,7 +501,11 @@ class DownloadManager private constructor(private val context: Context) {
         // Accept-Encoding，只过滤单路会漏。
         val mergedHeaders = (ImageHeaderPolicy.headersFor(url) + extraHeaders)
             .filterKeys { !it.equals("Accept-Encoding", ignoreCase = true) }
-        val reqBuilder = Request.Builder().url(url)
+        val reqBuilder = Request.Builder()
+            .url(url)
+            // 图片取流不进域名熔断口径（理由见 ImageFetchTag）：下载失败该由下载任务自己重试，
+            // 而不是顺手把整站拉黑 60s，连带元数据与在线封面一起失败。
+            .tag(com.venera.compose.data.network.ImageFetchTag::class.java, com.venera.compose.data.network.ImageFetchTag())
         mergedHeaders.forEach { (k, v) -> reqBuilder.header(k, v) }
 
         val tmpFile = File(targetFile.parentFile, "${targetFile.name}.tmp")

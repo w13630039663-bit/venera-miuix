@@ -98,18 +98,33 @@ object HostCircuitBreaker {
 }
 
 /**
+ * 打上这个 tag 的请求 = 取图片字节流，**整个绕过域名熔断**。
+ *
+ * 熔断器是为「聚合搜索 30+ 个源里那些真死域名」造的（见上面那段），而图片与它口径相反：
+ * 图片 CDN 偶发几张超时是常态，一旦计入就按域名拉黑 60s —— 真机表现是历史页/收藏页整屏
+ * 空白封面（`AsyncImage` 没有 error 占位，抛错就等于什么都不画），且半开后再次被两笔超时拉黑，
+ * 变成"经常显示不出图"。
+ * 反向也被污染：图片请求成功会 `recordSuccess` 把该 host 的失败计数清零，
+ * 等于让真死的源重新慢起来 —— 所以图片既不快败、也不计数。
+ */
+class ImageFetchTag
+
+/**
  * 熔断拦截器：必须挂在拦截器链的**最外层**，
  * 这样死域名的快速失败发生在限速/重试/过盾之前，不会浪费线程与时间。
  *
  * ⚠️ 计数口径刻意收窄为「真正的连不上」（DNS 解析失败 / 连接被拒 / 读写超时）。
- * 若把任意 IOException 或 5xx 都计为失败，图片 CDN 偶尔几张图 404/超时就会
- * 触发整站熔断，反而造成大面积的图片加载失败。
+ * 任意 IOException 或 5xx 都不算 —— 站点偶尔一个 404 就把整站拉黑，代价远大于收益。
+ * 图片取流则**整条不参与**，见 [ImageFetchTag]。
  */
 class HostCircuitBreakerInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val host = request.url.host
+
+        // 图片取流不参与熔断（见 [ImageFetchTag]）。
+        if (request.tag(ImageFetchTag::class.java) != null) return chain.proceed(request)
 
         val remain = HostCircuitBreaker.remainingOpenMs(host)
         if (remain > 0) {

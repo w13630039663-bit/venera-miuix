@@ -144,8 +144,14 @@ data class VeneraSpacingTokens(
      * 手机档不读这个值，compact 零回归线不破。
      */
     val segmentedHeightWide: Dp = 56.dp,
-    /** MD3 Segmented Button 单元间隙（4dp，同时是分隔线在两格之间的居中量）。 */
-    val segmentedGap: Dp = 4.dp,
+    /**
+     * MD3 Segmented Button 单元间隙，同时是分隔线在两格之间的居中量。
+     *
+     * 取现成的 space5 而不是 MD3 规范里的 4dp：这个值原本是 4dp，但组件把它当像素用了
+     * （见 VeneraSegmentedButton 的 px/dp 对账），真机上实际渲染出的"药丸中的药丸"环宽
+     * 是 4×密度 ≈ 10.5dp。单位修正后要让观感停在用户已拍板的那一档，就写 10dp。
+     */
+    val segmentedGap: Dp = space5,
     /**
      * 折叠态顶栏（小标题行）高度：与 Miuix `TopAppBarDefaults.CollapsedHeight`
      * 同值的本地镜像（该常量在库内是 internal，读不到只能照抄）。

@@ -78,11 +78,20 @@ class HistoryDao(private val dbHelper: VeneraDatabase) {
 
     suspend fun saveHistory(record: HistoryRecord) = withContext(Dispatchers.IO) {
         val db = dbHelper.writableDatabase
+        // CONFLICT_REPLACE 是「删掉整行再插」，不是逐列更新 —— 入口数据不全时（阅读器只有
+        // id/章节/页码，封面可能为空）会把这行原本已有的好封面一起抹掉，且之后不会自愈。
+        // 所以空值一律沿用旧值。
+        val coverUrl = record.coverUrl.ifBlank {
+            db.query(
+                "comic_history", arrayOf("cover_url"), "comic_id = ?",
+                arrayOf(record.comicId), null, null, null
+            ).use { if (it.moveToFirst()) it.getString(0) else "" }
+        }
         val values = ContentValues().apply {
             put("comic_id", record.comicId)
             put("title", record.title)
             put("author", record.author)
-            put("cover_url", record.coverUrl)
+            put("cover_url", coverUrl)
             put("source_name", record.sourceName)
             put("last_chapter_title", record.lastChapterTitle)
             put("last_chapter_index", record.lastChapterIndex)

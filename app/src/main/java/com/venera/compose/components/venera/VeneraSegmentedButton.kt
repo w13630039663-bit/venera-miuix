@@ -46,7 +46,7 @@ import top.yukonga.miuix.kmp.basic.Text
  *    宽屏档（isWideScreen，>600dp）再加高到 spacing.segmentedHeightWide（56dp）
  *    并升字号到 itemTitle——用户平板演示拍板「大屏上又扁又细弱」；
  *  - 容器全胶囊 + hairlineThin（0.5dp）描边，颜色走 outlineVariant（浅色 #E0E0E0 / 深色 #404040 的令牌等价）；
- *  - 单元间隙 segmentedGap（4dp），相邻**未选中**单元之间画一根 hairline 竖分隔线
+ *  - 单元间隙 spacing.segmentedGap（10dp，取现成的 space5），相邻**未选中**单元之间画一根 hairline 竖分隔线
  *    （MD3 规定选中段两侧的分隔线让位）；
  *  - 文字 14sp（type.body）Medium；
  *  - 选中块 = **实心 primary**（主题色，动态色板驱动，不写死 #E91E63）+ 文字转 onPrimary（白）。
@@ -66,7 +66,12 @@ fun VeneraSegmentedButton(
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
     val barHeight = if (wide) tokens.spacing.segmentedHeightWide else tokens.spacing.segmentedHeight
     val labelSize = if (wide) tokens.type.itemTitle else tokens.type.body
-    val gapPx = with(density) { tokens.spacing.segmentedGap.toPx() }
+    val gap = tokens.spacing.segmentedGap
+    // 只给位移算式用的像素值。布局侧一律用 [gap]（Dp）：此前 padding/spacedBy 也写成
+    // `gapPx.dp`，等于把像素当 dp 再乘一次密度 —— 排布按 4×密度 dp 让位、块位移按 4dp
+    // 算，两者差着密度倍，选中块就落在格子偏左处（第 0 段恰好为 0 所以看不出来，
+    // 段数越多偏得越远，index 2 已偏出 ~34px）。
+    val gapPx = with(density) { gap.toPx() }
     val shape = RoundedCornerShape(percent = 50)
 
     // 单元实测宽（各段等宽，取第 0 段测量值）；测得前块宽为 0，不会满宽闪跳。
@@ -90,7 +95,7 @@ fun VeneraSegmentedButton(
         border = BorderStroke(tokens.spacing.hairlineThin, tokens.color.outlineVariant),
     ) {
         // 外层 padding = 单元间隙：分隔线挂在单元末端即自然落在两格正中间。
-        Box(Modifier.fillMaxSize().padding(gapPx.dp)) {
+        Box(Modifier.fillMaxSize().padding(gap)) {
             // 果冻选中块：实心主题色，先于单元渲染（背景层），文字压在其上。
             Box(
                 Modifier
@@ -102,7 +107,7 @@ fun VeneraSegmentedButton(
             )
             Row(
                 Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(gapPx.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 options.forEachIndexed { index, label ->
                     val selected = index == selectedIndex

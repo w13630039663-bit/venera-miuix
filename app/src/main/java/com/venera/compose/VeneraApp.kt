@@ -52,6 +52,7 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         val networkClient = VeneraNetworkClient.getInstance(this)
         return ImageLoader.Builder(context)
+            .logger(com.venera.compose.data.network.VeneraImageLogger)
             .components {
                 // S1.5: 优先接入 Venera 自定义 Fetcher 管道（动态 Header + 字节流处理）
                 add(com.venera.compose.data.network.VeneraImageFetcher.Factory(this@VeneraApp, networkClient.okHttpClient))

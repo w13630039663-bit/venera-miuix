@@ -42,7 +42,10 @@ class VeneraImageFetcher(
         val (rawBytes, mimeType) = if (hasSpriteCrop) {
             ImagePipelinePolicy.fetchSpriteSheet(cleanUrl, okHttpClient)
         } else {
-            val reqBuilder = Request.Builder().url(cleanUrl)
+            val reqBuilder = Request.Builder()
+                .url(cleanUrl)
+                // 图片取流不进域名熔断口径：两笔超时就把整站封面拉黑 60s（理由见 ImageFetchTag）。
+                .tag(ImageFetchTag::class.java, ImageFetchTag())
 
             // 注入防盗链请求头
             val dynamicHeaders = ImageHeaderPolicy.headersFor(cleanUrl)

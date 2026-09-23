@@ -308,7 +308,10 @@ object ImagePipelinePolicy {
 
         val deferred = spriteInflight.computeIfAbsent(cleanUrl) {
             async(Dispatchers.IO) {
-                val reqBuilder = Request.Builder().url(cleanUrl)
+                val reqBuilder = Request.Builder()
+                    .url(cleanUrl)
+                    // 图片取流不进域名熔断口径（理由见 ImageFetchTag）。
+                    .tag(ImageFetchTag::class.java, ImageFetchTag())
                 for ((k, v) in ImageHeaderPolicy.headersFor(cleanUrl)) {
                     reqBuilder.header(k, v)
                 }

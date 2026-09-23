@@ -47,6 +47,9 @@ sealed interface SettingsEscape {
     /** 详情页打开并立刻读到某一页（插图收藏长按）：一条记录同时给出漫画身份与页码。 */
     data class ReadPage(val image: FavoriteImageItem) : SettingsEscape
 
+    /** 插图收藏 → 预览页。设置那侧不飞：跨 Activity，共享元素接不上（见 consumeSettingsEscape）。 */
+    data class PreviewPage(val image: FavoriteImageItem) : SettingsEscape
+
     data class DigTag(
         val namespace: String,
         val raw: String,
@@ -207,6 +210,7 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             )
             SettingsSubScreen.FAVORITE_IMAGES -> FavoriteImagesScreen(
                 onBack = ::back,
+                onPreviewImage = { item -> escape(SettingsEscape.PreviewPage(item)) },
                 onOpenComicDetail = { item -> escape(SettingsEscape.OpenComic(item.toComicItem())) },
                 onReadFromPage = { item -> escape(SettingsEscape.ReadPage(item)) },
             )
@@ -259,6 +263,13 @@ internal fun NavHostController.consumeSettingsEscape(shell: VeneraShellViewModel
                     sourceName = escape.image.sourceName,
                 )
             )
+        }
+        is SettingsEscape.PreviewPage -> {
+            // 与 MainActivity 侧 openFavoriteImagePreview 同一套动作。差别只在：这条是从
+            // 另一个 Activity 交回来的，收藏页那张卡不在当前导航栈里，共享元素接不上 ——
+            // 预览页照常打开，只是不飞。
+            shell.favoriteImagePayloads[escape.image.id] = escape.image
+            navigate(FavoriteImageRoute(itemId = escape.image.id))
         }
         is SettingsEscape.DigTag -> navigate(
             TagSearchRoute(

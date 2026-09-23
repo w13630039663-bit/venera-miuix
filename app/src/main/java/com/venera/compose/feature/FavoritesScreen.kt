@@ -70,6 +70,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items as rowItems
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Sort
@@ -109,6 +112,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -131,6 +135,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun SharedTransitionScope.AndroidFavoritesScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
+    /** 点插图卡 → 预览页（那张图与预览页之间是一条共享元素飞行）。 */
+    onPreviewFavoriteImage: (FavoriteImageItem) -> Unit,
     /** 图片收藏长按「从该页开始阅读」：宿主负责推详情页并带上定位请求。 */
     onReadFavoriteImage: (FavoriteImageItem) -> Unit,
 ) {
@@ -148,6 +154,32 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     // 这里打回默认值 —— 真机实测「从本地收藏点进详情，返回却落在网络收藏」。
     // 它同时是封面共享元素返回时闪一下的根因之一：目的地那一支整支没被组合出来。
     var mode by rememberSaveable { mutableStateOf(FavoritesMode.Network) }
+    // 三块面板现在是一个 pager 的三页：本页的横滑只切「网络 / 图片 / 本地」这三段
+    // （主 tab 那条横滑在收藏页已整体禁用，见 Navigation.kt 的 tabSwipePager enabled）。
+    // 跟手位移、过阈值提交、不到阈值弹簧回弹，全是 pager 自带的行为。
+    val pagerState = rememberPagerState(
+        initialPage = favoritesModesNetworkFirst.indexOf(mode),
+    ) { favoritesModesNetworkFirst.size }
+    // 滑动 → mode：只在**停稳**之后落。拖到一半就改 mode 会让顶栏 actions、
+    // 内容避让高度、分段小药丸三处同时跟着跳，看着像整页在抖。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { mode = favoritesModesNetworkFirst[it] }
+    }
+    // mode → 滑动：点分段器走与手滑同一条欠阻尼弹簧，两条路径观感一致。
+    LaunchedEffect(mode) {
+        val index = favoritesModesNetworkFirst.indexOf(mode)
+        if (pagerState.settledPage != index) {
+            pagerState.animateScrollToPage(
+                page = index,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        }
+    }
     val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
         enabled = mode == FavoritesMode.Local && vm.multiSelectMode && !showMenu && dialog == null,
     ) { vm.exitMultiSelect() }
@@ -172,51 +204,72 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     }
     // 当前面板的列表滚动状态（由子面板上抛）：是否已下滑、以及回到顶部的动作。
     // 用回调而非持有 ListState，避免 LazyListState / LazyGridState 两种类型互相污染。
-    var favHasScrolled by remember { mutableStateOf(false) }
-    var favScrollToTop by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // **按页各存一份**：三块面板现在同时活在 pager 里，共用一格会被相邻页的
+    // 「未滚动」覆盖掉，顶置按钮就在切页后消失。
+    val panelScrollSlots = remember {
+        List(favoritesModesNetworkFirst.size) {
+            mutableStateOf<Pair<Boolean, (() -> Unit)?>?>(null)
+        }
+    }
+    val settledSlot = panelScrollSlots[pagerState.currentPage].value
+    val favHasScrolled = settledSlot?.first ?: false
+    val favScrollToTop = settledSlot?.second
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (mode == FavoritesMode.Local) {
-            FavoriteGrid(
-                vm = vm,
-                folders = folders,
-                counts = counts,
-                searchMode = searchMode,
-                topPadding = topPadding,
-                onSelect = onSelect,
-                scrollConnection = topBarBehavior.nestedScrollConnection,
-                backdrop = topBarBackdrop,
-                onScrollStateChange = { _, hasScrolled, scrollToTop ->
-                    favHasScrolled = hasScrolled
-                    favScrollToTop = scrollToTop
-                },
-            )
-        } else if (mode == FavoritesMode.Images) {
-            // 图片收藏（单页插图）：与设置页那条入口共用 FavoriteImagesBody 一份实现。
-            FavoriteImagesBody(
-                topPadding = topPadding,
-                scrollConnection = topBarBehavior.nestedScrollConnection,
-                backdrop = topBarBackdrop,
-                onOpenComicDetail = { item -> onSelect(item.toComicItem()) },
-                onReadFromPage = onReadFavoriteImage,
-                onScrollStateChange = { _, hasScrolled, scrollToTop ->
-                    favHasScrolled = hasScrolled
-                    favScrollToTop = scrollToTop
-                },
-            )
-        } else {
-            AndroidNetworkFavoritesScreen(
-                onSelect = onSelect,
-                scrollConnection = topBarBehavior.nestedScrollConnection,
-                backdrop = topBarBackdrop,
-                topPadding = topPadding,
-                showLayoutToggle = false,
-                onScrollStateChange = { _, hasScrolled, scrollToTop ->
-                    favHasScrolled = hasScrolled
-                    favScrollToTop = scrollToTop
-                },
-            )
-        }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            // 回弹：库默认用无阻尼弹簧收尾（到位就停）。这里换成欠阻尼，松手过阈值后
+            // 会冲过头再收回来一点 —— 用户要的"回弹滑动"就是这个过冲。
+            // 与分段小药丸那条 0.7 同族、只更松一档，不是一弹三跳的高弹。
+            flingBehavior = PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ),
+            // 页外的面板不参与毛玻璃采样：三块同时往同一个 LayerBackdrop 里录制，
+            // 顶栏模糊到底糊谁就成了未定义行为。只喂当前这一页。
+            pageContent = { page ->
+                val backdrop = if (pagerState.currentPage == page) topBarBackdrop else null
+                val reportScroll: (Boolean, Boolean, () -> Unit) -> Unit = { _, hasScrolled, scrollToTop ->
+                    panelScrollSlots[page].value = hasScrolled to scrollToTop
+                }
+                when (favoritesModesNetworkFirst[page]) {
+                    FavoritesMode.Local -> FavoriteGrid(
+                        vm = vm,
+                        folders = folders,
+                        counts = counts,
+                        searchMode = searchMode,
+                        topPadding = topPadding,
+                        onSelect = onSelect,
+                        scrollConnection = topBarBehavior.nestedScrollConnection,
+                        backdrop = backdrop,
+                        onScrollStateChange = reportScroll,
+                    )
+
+                    FavoritesMode.Images -> FavoriteImagesBody(
+                        topPadding = topPadding,
+                        scrollConnection = topBarBehavior.nestedScrollConnection,
+                        backdrop = backdrop,
+                        onPreviewImage = onPreviewFavoriteImage,
+                        onOpenComicDetail = { item -> onSelect(item.toComicItem()) },
+                        onReadFromPage = onReadFavoriteImage,
+                        onScrollStateChange = reportScroll,
+                    )
+
+                    FavoritesMode.Network -> AndroidNetworkFavoritesScreen(
+                        onSelect = onSelect,
+                        scrollConnection = topBarBehavior.nestedScrollConnection,
+                        backdrop = backdrop,
+                        topPadding = topPadding,
+                        showLayoutToggle = false,
+                        onScrollStateChange = reportScroll,
+                    )
+                }
+            },
+        )
 
         // ── 统一顶栏：置于前景层，毛玻璃对底层内容进行物理级模糊 ──
         VeneraTopAppBar(

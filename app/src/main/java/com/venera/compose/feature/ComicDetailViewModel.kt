@@ -790,6 +790,14 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             val key = resolveSourceKey(comic.sourceName)
+            // 封面优先用详情解析出来的那一张，其次才是入口带的。必须在这里定：
+            // ReaderSession.coverUrl 会被阅读器原样写进 comic_history.cover_url，
+            // 而从插图收藏进来的入口 coverUrl 恒为空串（FavoriteImageItem.toComicItem 有意
+            // 留空、真封面由详情页自己拉），照抄入口值就等于给历史页留一个永久空白框 ——
+            // url 为空连请求都不发，Coil 那边一条错误日志都不会有。
+            // 口径与 ComicDetailScreen 头部封面那一处保持一致。
+            val sessionCover =
+                _uiState.value.details?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
 
             // S6: 优先检查本地离线下载文件，已下载章节实现秒开与无网离线阅读
             val dlMgr = com.venera.compose.download.DownloadManager.getInstance(getApplication())
@@ -813,7 +821,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                         com.venera.compose.reader.ReaderSession(
                             comicId = comic.id,
                             comicTitle = comic.title,
-                            coverUrl = comic.coverUrl,
+                            coverUrl = sessionCover,
                             sourceName = comic.sourceName,
                             sourceKey = key,
                             chapters = listOf(readerChapter),
@@ -836,7 +844,9 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             pagesData?.headers?.takeIf { it.isNotEmpty() }?.let { hdrs ->
                 // 外层 ?.let 已保证 pagesData 非空，这里不必再判一次（原先的 pd != null 恒真）
                 if (!pagesData.useOnImageLoad) ImageHeaderPolicy.publishForUrls(pages, hdrs)
-                if (comic.coverUrl.isNotEmpty()) ImageHeaderPolicy.publishForUrls(listOf(comic.coverUrl), hdrs)
+                // 用 sessionCover 而不是 comic.coverUrl：picacg 这类站的封面必须带防盗头，
+                // 入口封面为空时若跳过这一步，详情拉到的真封面就没发布过头 → 取图 403 → 空白。
+                if (sessionCover.isNotEmpty()) ImageHeaderPolicy.publishForUrls(listOf(sessionCover), hdrs)
             }
 
             if (pages.isNotEmpty()) {
@@ -849,7 +859,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                         ReaderSessionFactory.createLiveSession(
                             comicId = comic.id,
                             comicTitle = comic.title,
-                            coverUrl = comic.coverUrl,
+                            coverUrl = sessionCover,
                             chapterId = chapterId,
                             chapterTitle = chapterTitle,
                             pages = pages,

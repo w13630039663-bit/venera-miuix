@@ -147,6 +147,15 @@ internal fun resolveDetailComic(route: DetailRoute, selectedComic: ComicItem?): 
 @Serializable data object ReaderRoute
 
 /**
+ * 插图预览页。
+ *
+ * 路由只带**行 id**（`Long` 是导航内建类型）。整条 `FavoriteImageItem` 进参数这条路走不通：
+ * type-safe 导航对自定义对象要 safeargs 生成 NavType，本仓库没装，真机上直接崩在建图阶段
+ * （详见 FavoriteImageItem 顶部注释）。载荷放 [VeneraShellViewModel.favoriteImagePayloads]。
+ */
+@Serializable data class FavoriteImageRoute(val itemId: Long)
+
+/**
  * 「读到某一页」的定位请求。
  *
  * 只有插图收藏这条来源：`favorite_images` 表存的是**章节标题**而不是章节 id，
@@ -188,9 +197,17 @@ private fun SharedTransitionScope.CoverTransitionHost(
 
 class VeneraShellViewModel : ViewModel() {
     var pendingSession: com.venera.compose.reader.ReaderSession? = null
-    var selectedComic: com.venera.compose.feature.ComicItem? = null
+    var selectedComic: ComicItem? = null
     /** 进详情页后要立刻打开的那一页；详情页取用一次即清。 */
     var pendingReadTarget: ReadTarget? = null
+    /**
+     * 预览页的载荷表：行 id → 那一条收藏。**故意不"取用一次即清"**。
+     *
+     * 预览页不是叶子目的地 —— 它下面还能压详情页，从详情页返回时这条目的地会重新进组合、
+     * 重新回读载荷。谁在这时候清过它（`pendingSession` 那套一次性槽位的写法），返回就变成
+     * "整屏 UI 消失再按一次才回得来"。表随 Activity 一起没，量级是每条几百字节。
+     */
+    val favoriteImagePayloads = mutableMapOf<Long, FavoriteImageItem>()
 }
 
 /**
@@ -333,6 +350,13 @@ fun VeneraComposeApp() {
         navController.navigate(DetailRoute(item.comicId, item.sourceName))
     }
 
+    /** 点插图收藏卡 → 预览页。卡片那张图与预览页之间是一条共享元素飞行。 */
+    fun openFavoriteImagePreview(item: FavoriteImageItem) {
+        haptic()
+        shell.favoriteImagePayloads[item.id] = item
+        navController.navigate(FavoriteImageRoute(item.id))
+    }
+
     // 录制层只覆盖「背景 + 页面内容」，底栏是它的兄弟节点覆盖在上层，
     // 因此采样源永远不会递归包含底栏自身（挂到祖先上会触发 RenderNode 无限递归崩溃）。
     //
@@ -384,8 +408,10 @@ fun VeneraComposeApp() {
                         .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
                         // 主页面之间左右滑动切页；只在 5 个主 tab 上生效，
                         // 详情页/阅读器等子页面不参与（currentTab == null）。
+                        // 收藏页单独排除：它自己那一层横滑是切「网络/图片/本地」三段的（用户拍板），
+                        // 同一条手势不能既切段又切主 tab。
                         .tabSwipePager(
-                            enabled = currentTab != null,
+                            enabled = currentTab != null && currentTab != VeneraNavTab.FAVORITES,
                             exclusions = swipeExclusions,
                             // 底栏手势排除带 = 契约 clearanc + 系统 navigationBars inset。
                             // 不再手写 64 + 12 这类几何 magic number。
@@ -500,8 +526,33 @@ fun VeneraComposeApp() {
                             AndroidFavoritesScreen(
                                 animatedVisibilityScope = this,
                                 onSelect = ::openComic,
+                                onPreviewFavoriteImage = ::openFavoriteImagePreview,
                                 onReadFavoriteImage = ::readFavoriteImage,
                             )
+                        }
+                    }
+                    composable<FavoriteImageRoute> { entry ->
+                        val route = entry.toRoute<FavoriteImageRoute>()
+                        // **每次重组都回读**，不套 remember、也不在退场时清：这条目的地下面还能压
+                        // 详情页，从详情页返回时它会重新进组合 —— 旧的一次性槽位写法就是在这里读到
+                        // null，既画不出内容（整屏空）又自行 pop 一次，真机报的"返回两次 UI 消失"。
+                        val item = shell.favoriteImagePayloads[route.itemId]
+                        if (item == null) {
+                            // 只剩进程被杀后恢复这一种可能：VM 没了、表也空了。如实退回，
+                            // 不摆一张没有内容的预览页。
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            CoverTransitionHost(animatedVisibilityScope = this) {
+                                FavoriteImagePreviewScreen(
+                                    item = item,
+                                    onBack = {
+                                        haptic()
+                                        navController.popBackStack()
+                                    },
+                                    onOpenComicDetail = { openComic(it.toComicItem()) },
+                                    onReadFromPage = ::readFavoriteImage,
+                                )
+                            }
                         }
                     }
                     composable<HistoryRoute> {
