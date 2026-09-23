@@ -103,13 +103,16 @@ object SourceExplorationFactory {
     ): SourceExploration {
         val modes = buildModes(sourceKey, explorePages, categoryData)
         val sections = categoryData?.parts.orEmpty().map { it.toNativeSection() }
+        // 有排行能力 = 声明了 enableRankingPage **且**真给了档位：
+        // 只有前者就出入口的话，点上去没有任何可请求的 option，等于摆一个死按钮。
+        val hasRanking = categoryData?.enableRankingPage == true && categoryData.rankingOptions.isNotEmpty()
         return SourceExploration(
             sourceKey = sourceKey,
             sourceName = sourceName,
             modes = modes,
             nativeSections = sections,
-            hasRanking = categoryData?.enableRankingPage == true,
-            hasCategoryPage = sections.isNotEmpty() || categoryData?.enableRankingPage == true,
+            hasRanking = hasRanking,
+            hasCategoryPage = sections.isNotEmpty() || hasRanking,
         )
     }
 
@@ -134,14 +137,20 @@ object SourceExplorationFactory {
             )
         }
 
-        // 排行榜：只有源声明了 enableRankingPage 才出现，否则连按钮都不渲染。
+        // 排行榜：**档位逐条来自源自己声明的 `categoryComics.ranking.options`**。
+        // 原先这里硬编码一个 mode、option 写死 "day" —— 那是我们臆造的值：哔咔的合法档位是
+        // H24/D7/D30（picacg.js:360-364），禁漫是 mv/mv_m/mv_w/mv_t（jm.js），EH 是 15/13/12/11。
+        // 发出去的 `tt=day` 要么被源判非法、要么静默空榜（错误此前还被吞成空列表）。
+        // 现在一档一个入口；源没声明档位就不出入口（本类型的既有契约：不伪造按钮）。
         if (categoryData?.enableRankingPage == true) {
-            modes += ExploreMode(
-                id = "$sourceKey:ranking:day",
-                label = "排行榜",
-                kind = ExploreMode.Kind.RANKING,
-                rankingOption = "day",
-            )
+            categoryData.rankingOptions.forEach { opt ->
+                modes += ExploreMode(
+                    id = "$sourceKey:ranking:${opt.key}",
+                    label = "排行·${opt.label}",
+                    kind = ExploreMode.Kind.RANKING,
+                    rankingOption = opt.key,
+                )
+            }
         }
         return modes.distinctBy { it.id }
     }

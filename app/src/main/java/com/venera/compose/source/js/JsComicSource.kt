@@ -32,6 +32,7 @@ import com.venera.compose.source.model.CategoryPart
 import com.venera.compose.source.model.ExplorePageData
 import com.venera.compose.source.model.ExplorePagePart
 import com.venera.compose.source.model.PageJumpTarget
+import com.venera.compose.source.model.RankingOption
 
 class JsComicSource(
     private val engine: VeneraJsEngine,
@@ -1069,6 +1070,12 @@ class JsComicSource(
                     var parts = (cat.parts || []).map(function(p) {
                         var categories = p.categories || [];
                         var params = p.categoryParams || [];
+                        // groupParam 整组覆盖 categoryParams（master parser.dart:490-492 同口径）。
+                        // 少这一条时 nhentai 语言分区（nhentai.js:544 groupParam:"language"）的
+                        // param 会整组丢成 null —— 点 Chinese/English/Japanese 进不了语言维度。
+                        if (p.groupParam !== undefined && p.groupParam !== null) {
+                            params = categories.map(function() { return p.groupParam; });
+                        }
                         var itemType = p.itemType || "category";
                         var items = [];
                         for (var i = 0; i < categories.length; i++) {
@@ -1099,10 +1106,26 @@ class JsComicSource(
                     var buttons = (cat.buttons || []).map(function(b) {
                         return { label: b.label || "", action: b.action || "" };
                     });
+                    // 排行榜档位：源声明在 categoryComics.ranking.options，形如 "H24-Day"。
+                    // 按**第一个** '-' 拆成 key/Label（Label 里可以再有 '-'），没有 '-' 的条目跳过
+                    // —— 逐字对齐 master parser.dart:613-622。key 才是要回传给 ranking.load 的值。
+                    var rankingOptions = [];
+                    var rk = (s.categoryComics && s.categoryComics.ranking) ? s.categoryComics.ranking : null;
+                    if (rk && rk.options) {
+                        var ro = rk.options || [];
+                        for (var j = 0; j < ro.length; j++) {
+                            var opt = (ro[j] === undefined || ro[j] === null) ? "" : String(ro[j]);
+                            if (opt === "") continue;
+                            var at = opt.indexOf("-");
+                            if (at < 0) continue;
+                            rankingOptions.push({ key: opt.substring(0, at), label: opt.substring(at + 1) });
+                        }
+                    }
                     return {
                         title: cat.title || s.name,
                         key: cat.title || s.name,
                         enableRankingPage: !!cat.enableRankingPage,
+                        rankingOptions: rankingOptions,
                         parts: parts,
                         buttons: buttons,
                         sourceKey: s.key
@@ -1152,11 +1175,20 @@ class JsComicSource(
                     action = bm["action"]?.toString() ?: ""
                 )
             }
+            // 档位 Label 与分区名同一套字典翻译（"Day" -> 源自己给的中文，没有就原样）；
+            // key 绝不能翻 —— 它是要回传给源的请求参数。
+            val rawRanking = (data["rankingOptions"] as? List<*>).orEmpty().mapNotNull { o ->
+                val om = o as? Map<*, *> ?: return@mapNotNull null
+                val key = om["key"]?.toString() ?: return@mapNotNull null
+                val label = translate(om["label"]?.toString() ?: "")
+                if (label.isBlank()) null else RankingOption(key = key, label = label)
+            }
             Result.success(
                 CategoryData(
                     title = title,
                     key = keyStr,
                     enableRankingPage = enableRanking,
+                    rankingOptions = rawRanking,
                     parts = parts,
                     buttons = buttons,
                     sourceKey = key
@@ -1290,7 +1322,13 @@ class JsComicSource(
             """.trimIndent()
             val rawJson = engine.evaluateAsync(script)
             val envelope = gson.fromJson<Map<String, Any?>>(rawJson, object : TypeToken<Map<String, Any?>>() {}.type)
-            if (envelope["success"] != true) return Result.success(emptyList())
+            // 源报错要冒出来，不能退成空列表：master 那条是 `Res.error(e)`（parser.dart:640-643），
+            // 而我们原先写 `Result.success(emptyList())` —— 于是"登录过期 / 档位非法 / 网络失败"
+            // 在界面上统统表现成一个**空排行榜**，用户没有任何线索去修它。
+            // 只有"这个源压根没有 ranking 块"（脚本里 return []）才该是空成功。
+            if (envelope["success"] != true) {
+                return Result.failure(Exception(envelope["error"]?.toString() ?: "排行榜加载失败"))
+            }
             val res = envelope["data"]
             val rawList = when (res) {
                 is Map<*, *> -> res["comics"] as? List<*>

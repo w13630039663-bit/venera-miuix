@@ -436,14 +436,16 @@ fun UnifiedExploreScreen(
                     RankingEntry(
                         sourceName = src.sourceName,
                         onClick = {
-                            onOpenNativeSection(
-                                NativeSectionArgs(
-                                    sourceKey = src.sourceKey,
-                                    sourceTitle = src.sourceName,
-                                    category = "排行",
-                                    param = "ranking",
-                                )
-                            )
+                            // 原先这里跳 SourceSectionScreen(category="排行", param="ranking")，
+                            // 而那一页只会调 `loadCategoryComics` —— **走的是分类端点**，
+                            // 对哔咔发出去的是 `&ranking=排行`，压根不是排行接口。
+                            // 排行现在由上方芯片逐档提供，这张卡只做「选中第一档」，不发错请求。
+                            val rankingMode = src.modes.firstOrNull { it.kind == ExploreMode.Kind.RANKING }
+                            if (rankingMode != null) {
+                                state.selectMode(src.sourceKey, rankingMode.id)
+                                vm.unifiedFilter = null
+                                modeTick++
+                            }
                         },
                     )
                 }

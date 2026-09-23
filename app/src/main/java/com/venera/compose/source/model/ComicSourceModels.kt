@@ -251,9 +251,24 @@ data class CategoryData(
     val title: String,
     val key: String,
     val enableRankingPage: Boolean = false,
+    /**
+     * 源声明的排行榜档位，来自 `categoryComics.ranking.options`。
+     *
+     * 协议里那是一串 `"key-Label"`，**按第一个 `-` 拆**（Label 里可以再有 `-`）——
+     * 依据是 master 的 `parser.dart:611-622`（`split.removeAt(0)` + `join("-")`）。
+     * 传给 `ranking.load(option, page)` 的是 **key**，不是整串、也不是我们臆造的值。
+     * 例：picacg `H24-Day` → key `H24`；manhuagui `-最新发布` → key 空串（源用它表示默认排序）。
+     */
+    val rankingOptions: List<RankingOption> = emptyList(),
     val parts: List<CategoryPart> = emptyList(),
     val buttons: List<CategoryButtonData> = emptyList(),
     val sourceKey: String = ""
+)
+
+/** 一个排行榜档位：[key] 交给源，[label] 给人看。 */
+data class RankingOption(
+    val key: String,
+    val label: String
 )
 
 data class CategoryButtonData(
