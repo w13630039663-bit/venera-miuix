@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.data.network.ComicUrlMatcher
+import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
@@ -41,7 +41,7 @@ data class SearchUiState(
     val history: List<String> = emptyList(),
     val tagSuggestions: List<Pair<String, String>> = emptyList(),
     val tags: List<SearchTag> = emptyList(),
-    val matchedUrlComic: ComicUrlMatcher.MatchedComic? = null,
+    val matchedUrlComic: ComicUrlTable.MatchedComic? = null,
     val optionsLoading: Boolean = false,
     val optionsError: String? = null,
     val error: String? = null,
@@ -115,12 +115,27 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val _selectedOptions = MutableStateFlow<List<String?>>(emptyList())
     val selectedOptions = _selectedOptions.asStateFlow()
 
+    /**
+     * 「识别到漫画链接」这张卡只在**本机装着那个源**时才出现。
+     *
+     * 双向表里有条目（哔哩哔哩漫画）在本仓库压根没有对应源。照旧显示的话，点下去会走
+     * `ComicDetailViewModel.resolveSourceKey` 的回落（名字匹配不上就用当前活动源），
+     * 等于拿另一个源的同 id 漫画开详情、且零提示 —— 那是静默交错，不是降级。
+     * 与入站链接那侧（ComicLinkResolver.SourceMissing）同一判据。
+     */
+    private fun matchedInstalled(input: String): ComicUrlTable.MatchedComic? =
+        ComicUrlTable.match(input)?.takeIf { m ->
+            sourcesFlow.value.any {
+                it.key.equals(m.sourceKey, ignoreCase = true) || it.name.equals(m.sourceName, ignoreCase = true)
+            }
+        }
+
     fun suggestTags(value: String) = tagManager.suggestTags(value, limit = 12)
 
     fun onQueryChange(value: String) {
         debounceJob?.cancel()
         searchJob?.cancel()
-        val matched = ComicUrlMatcher.match(value)
+        val matched = matchedInstalled(value)
         _uiState.update { it.copy(query = value, matchedUrlComic = matched,
             tagSuggestions = if (matched == null) suggestTags(value) else emptyList(),
             isSearching = false, hasSearched = false, error = null,
@@ -249,7 +264,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         searchJob?.cancel()
-        val matched = ComicUrlMatcher.match(query)
+        val matched = matchedInstalled(query)
         if (matched != null) {
             _uiState.update { it.copy(query = query, matchedUrlComic = matched, isSearching = false) }
             return

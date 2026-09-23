@@ -1,5 +1,6 @@
 package com.venera.compose
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -9,6 +10,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.feature.EntryIntent
+import com.venera.compose.feature.EntryIntentHandoff
 import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
 import com.venera.compose.feature.settings.StartupUpdateHost
@@ -34,10 +37,44 @@ class MainActivity : ComponentActivity() {
                 StartupUpdateHost()
             }
         }
+        handleEntryIntent(intent)
         if (intent.getBooleanExtra("run_engine_diagnostic", false)) {
             runEngineDiagnostic()
         }
         applySecureScreenPreference()
+    }
+
+    /**
+     * 从浏览器/别的 app 跳进来时走这里（`launchMode="singleTop"`，所以**不新建 Activity**）。
+     *
+     * `setIntent` 不能省：不调它 `getIntent()` 仍是冷启动那条旧 intent，进程被系统回收后
+     * 重建 Activity 会把用户送回第一次那个链接上（或反过来丢掉本次链接）。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleEntryIntent(intent)
+    }
+
+    /**
+     * 外部入口意图 → [EntryIntentHandoff] 的交接通道。
+     *
+     * 不在这里导航：导航要等 NavHost 进组合，而 onCreate 时它还没建；热启动时又要能被
+     * 已经在跑的 collect 端立刻接住。两种意图各发各的消息，消费侧分开认（一条是"跳哪本
+     * 漫画"，一条是"搜什么词"）。
+     */
+    private fun handleEntryIntent(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_VIEW ->
+                intent.dataString?.takeIf { it.isNotBlank() }
+                    ?.let { EntryIntentHandoff.send(EntryIntent.ComicLink(it)) }
+
+            Intent.ACTION_SEND -> if (intent.type == "text/plain") {
+                intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { EntryIntentHandoff.send(EntryIntent.SearchText(it)) }
+            }
+        }
     }
 
     private fun runEngineDiagnostic() {

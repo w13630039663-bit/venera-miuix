@@ -15,6 +15,7 @@ import com.venera.compose.source.js.JsComicSource
 import com.venera.compose.source.mangadex.MangaDexSource
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
+import com.venera.compose.source.model.ComicLinkHit
 import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.ResolvedImageConfig
 import com.venera.compose.source.model.SearchPage
@@ -1064,6 +1065,39 @@ class ComicSourceManager private constructor(private val context: Context) {
         out
     }
 
+    /**
+     * 用各源自己声明的 `comic.link.linkToId` 认一条入站链接（应用链接 / 搜索框粘贴）。
+     *
+     * 只起**一次** JS 往返：脚本读的是引擎里的 `ComicSource.sources`（全部已注册源），
+     * 随便挑一个 JsComicSource 实例问就行 —— 按源逐个问等于把主线程往返乘以源数。
+     * 一个源都没装着时直接回空，不去敲引擎。
+     *
+     * @return 命中列表（可能有多个源认同一条链接）；空 = 没有任何源认得它。**不是错误**。
+     */
+    suspend fun resolveComicLink(url: String): List<ComicLinkHit> = withContext(Dispatchers.IO) {
+        val jsSource = _sourcesFlow.value.filterIsInstance<JsComicSource>().firstOrNull()
+            ?: return@withContext emptyList()
+        val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase()
+            ?.takeIf { it.isNotBlank() } ?: return@withContext emptyList()
+        val hosts = listOf(host, host.removePrefix("www.")).filter { it.isNotBlank() }.distinct()
+        val res = try {
+            withTimeoutOrNull(COMIC_LINK_TIMEOUT_MS) { jsSource.resolveComicLinkHits(url, hosts) }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("VeneraDebug", "resolveComicLink threw", e)
+            null
+        }
+        if (res == null) {
+            android.util.Log.w("VeneraDebug", "linkToId 无结果（超时或抛错）：$url")
+            return@withContext emptyList()
+        }
+        res.getOrElse {
+            android.util.Log.w("VeneraDebug", "linkToId 失败: ${it.message}")
+            emptyList()
+        }
+    }
+
     suspend fun getExploreComics(sourceKey: String, page: Int = 1): Result<List<Comic>> =
         withContext(Dispatchers.IO) {
             val source = getSourceOrFallback(sourceKey)
@@ -1362,6 +1396,15 @@ class ComicSourceManager private constructor(private val context: Context) {
          * 那种情况算进去了；超时就按原样请求，预览条不该被一个 optional 钩子拖空。
          */
         private const val THUMBNAIL_CONFIG_TIMEOUT_MS = 8_000L
+
+        /**
+         * 入站链接解析（`comic.link.linkToId`）的硬超时。
+         *
+         * 口径与 [THUMBNAIL_CONFIG_TIMEOUT_MS] 一致：那也是一次"扫全部已注册源"的同步纯计算，
+         * 而引擎在主线程串行。区别只在失败后果 —— 那条退化成一排裸请求，这条是**这一跳不进去**，
+         * 所以调用方必须把空结果如实提示出来，不能静默停在首页。
+         */
+        private const val COMIC_LINK_TIMEOUT_MS = 8_000L
 
         /** 静默检查更新的最小间隔，口径与首页推荐自动刷新一致 */
         private const val SILENT_UPDATE_CHECK_INTERVAL_MS = 120_000L

@@ -204,6 +204,18 @@ data class ResolvedThumbnailConfig(
 )
 
 /**
+ * 源 `comic.link.linkToId(url)` 认出一条入站链接的结果：哪个源 + 那本的 id。
+ *
+ * 与 [ResolvedThumbnailConfig] 不同族：那是"取图要怎么取"，这是"这条链接是谁"。
+ * 协议里 `comic.link` 是 optional（`doc/comic_source.md:637-654`），只有声明了
+ * `domains` 的源才可能命中。
+ */
+data class ComicLinkHit(
+    val sourceKey: String,
+    val comicId: String
+)
+
+/**
  * 探索页面元数据（对齐原版 ExplorePageData）
  */
 data class ExplorePageData(

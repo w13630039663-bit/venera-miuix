@@ -20,13 +20,148 @@
         android:supportsRtl="true"
         android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <!--
+            应用链接（App Links）：一个源一个 intent-filter，让系统的「打开支持的链接」
+            清单按站点分组，用户可逐域开关。
+            ⚠️ 刻意**不写 android:autoVerify**：验证要求域名的所有者在
+            https://<host>/.well-known/assetlinks.json 发布本 app 的签名指纹，而下面这些站
+            都不是我们的域名 —— 写了只会得到一个永远失败的验证状态，直达能力一条不加。
+            master 同样一条没写。未验证域由用户在系统设置里手动关联，链接照样能跳进来。
+            host 清单必须与 ComicUrlTable.appLinkScopes 逐条对齐（有单测把 XML 和表对着读）。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 拷贝漫画 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="copymanga.tv" android:pathPrefix="/comic" />
+                <data android:host="www.copymanga.tv" android:pathPrefix="/comic" />
+                <data android:host="copymanga.site" android:pathPrefix="/comic" />
+                <data android:host="www.copymanga.site" android:pathPrefix="/comic" />
+                <data android:host="mangacopy.com" android:pathPrefix="/comic" />
+                <data android:host="www.mangacopy.com" android:pathPrefix="/comic" />
+            </intent-filter>
+
+            <!-- 包子漫画 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="baozimh.com" android:pathPrefix="/comic" />
+                <data android:host="www.baozimh.com" android:pathPrefix="/comic" />
+                <data android:host="cn.baozimh.com" android:pathPrefix="/comic" />
+            </intent-filter>
+
+            <!-- MangaDex -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="mangadex.org" android:pathPrefix="/title" />
+                <data android:host="www.mangadex.org" android:pathPrefix="/title" />
+            </intent-filter>
+
+            <!-- 哔哩哔哩漫画 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="manga.bilibili.com" android:pathPrefix="/detail" />
+            </intent-filter>
+
+            <!-- 禁漫天堂：站内 album 与 photo 两种本子路径都要认（master 只声明了 /g 一档） -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="18comic.vip" android:pathPrefix="/album" />
+                <data android:host="18comic.vip" android:pathPrefix="/photo" />
+                <data android:host="www.18comic.vip" android:pathPrefix="/album" />
+                <data android:host="www.18comic.vip" android:pathPrefix="/photo" />
+                <data android:host="18comic.org" android:pathPrefix="/album" />
+                <data android:host="18comic.org" android:pathPrefix="/photo" />
+                <data android:host="www.18comic.org" android:pathPrefix="/album" />
+                <data android:host="www.18comic.org" android:pathPrefix="/photo" />
+                <data android:host="jmcomic.me" android:pathPrefix="/album" />
+                <data android:host="jmcomic.me" android:pathPrefix="/photo" />
+                <data android:host="www.jmcomic.me" android:pathPrefix="/album" />
+                <data android:host="www.jmcomic.me" android:pathPrefix="/photo" />
+            </intent-filter>
+
+            <!-- E-Hentai / ExHentai -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="e-hentai.org" android:pathPrefix="/g" />
+                <data android:host="exhentai.org" android:pathPrefix="/g" />
+            </intent-filter>
+
+            <!-- nhentai -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="nhentai.net" android:pathPrefix="/g" />
+                <data android:host="www.nhentai.net" android:pathPrefix="/g" />
+            </intent-filter>
+
+            <!-- 绅士漫画 wnacg -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="wnacg.com" android:pathPrefix="/photos-" />
+                <data android:host="www.wnacg.com" android:pathPrefix="/photos-" />
+                <data android:host="wnacg.org" android:pathPrefix="/photos-" />
+            </intent-filter>
+
+            <!-- Hitomi -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="hitomi.la" android:pathPrefix="/reader" />
+                <data android:host="hitomi.la" android:pathPrefix="/galleries" />
+                <data android:host="www.hitomi.la" android:pathPrefix="/reader" />
+                <data android:host="www.hitomi.la" android:pathPrefix="/galleries" />
+            </intent-filter>
+
+            <!-- 哔咔 PicaWeb：单本详情是 /comic/<24位hex>（单数；/comics/* 全是列表页）。
+                 pathPrefix 带尾斜杠，才不会把 /comics/creator/... 那种列表页也吸进来。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="manhuabika.com" android:pathPrefix="/comic/" />
+                <data android:host="www.manhuabika.com" android:pathPrefix="/comic/" />
+            </intent-filter>
+
+            <!-- 别的 app 分享纯文本给 Venera → 直接进搜索（master 的 handle_text_share 口径） -->
+            <intent-filter android:label="搜索">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
         <!--

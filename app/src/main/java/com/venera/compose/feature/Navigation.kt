@@ -58,6 +58,7 @@ import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.feature.favoriteimages.toComicItem
+import com.venera.compose.source.ComicLinkResolver
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -195,6 +196,84 @@ private fun SharedTransitionScope.CoverTransitionHost(
     )
 }
 
+/** 外部入口（应用链接 / 别的 app 分享文本）要做的两件事。 */
+sealed interface EntryIntent {
+    /** ACTION_VIEW：浏览器或别的 app 点进来的一条漫画链接。 */
+    data class ComicLink(val url: String) : EntryIntent
+
+    /** ACTION_SEND(text/plain)：分享进来的纯文本，当关键词去搜（master 的 handle_text_share 口径）。 */
+    data class SearchText(val text: String) : EntryIntent
+}
+
+/**
+ * 外部意图的交接通道。
+ *
+ * 为什么不是「一次性 var 槽位 + `LaunchedEffect(Unit)` 读一次」（`SettingsEscapeHandoff` 那套）：
+ * `launchMode="singleTop"` 下热启动走 `onNewIntent`，**不会重新进组合**，那个 Effect 不会再跑 ——
+ * 槽位写了也没人读，表现为"app 开着的时候点链接没反应，只有冷启动那一次有效"。
+ * 通道两个方向都覆盖：冷启动时消息先排在缓冲里，NavHost 开始 collect 就取到。
+ *
+ * 容量 UNLIMITED：发送方是 Activity 回调线程，不该阻塞；也不用 CONFLATED ——
+ * 两条意图各自都要落地一次，合并会丢一跳。
+ */
+object EntryIntentHandoff {
+    private val _intents = kotlinx.coroutines.channels.Channel<EntryIntent>(
+        capacity = kotlinx.coroutines.channels.Channel.UNLIMITED,
+    )
+
+    val intents: kotlinx.coroutines.channels.ReceiveChannel<EntryIntent> = _intents
+
+    fun send(intent: EntryIntent) {
+        _intents.trySend(intent)
+    }
+}
+
+/**
+ * 落一条外部意图：链接→详情页，文本→搜索页。
+ *
+ * @return 是否真的推了页。没推的三种原因都要用户看得见 —— 静默停在首页等于白点一次链接。
+ */
+internal suspend fun NavHostController.handleEntryIntent(
+    intent: EntryIntent,
+    context: android.content.Context,
+): Boolean = when (intent) {
+    is EntryIntent.ComicLink ->
+        when (val outcome = ComicLinkResolver.getInstance(context).resolve(intent.url)) {
+            is ComicLinkResolver.Outcome.Resolved -> {
+                // sourceName 传**已核实装着的那个源的显示名**：详情侧 resolveSourceKey 按
+                // key/name 两种写法匹配，与列表点击同一口径；能走到这里说明回落分支碰不上。
+                navigate(DetailRoute(comicId = outcome.comicId, sourceName = outcome.sourceName))
+                true
+            }
+
+            else -> {
+                android.widget.Toast.makeText(
+                    context,
+                    entryLinkMessage(outcome, intent.url),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+                false
+            }
+        }
+
+    is EntryIntent.SearchText -> {
+        // 复用标签下钻那条目的地：它已带 initialQuery→viewModel.search 的一次性入参链，
+        // 且默认聚合（KEY_ALL）正好对上 master 的 AggregatedSearchPage。
+        navigate(TagSearchRoute(keyword = intent.text))
+        true
+    }
+}
+
+/** 三种没跳成的原因说人话。 */
+private fun entryLinkMessage(outcome: ComicLinkResolver.Outcome, url: String): String = when (outcome) {
+    is ComicLinkResolver.Outcome.SourceMissing ->
+        "未安装漫画源「${outcome.sourceKeyOrName}」，这条链接打不开"
+
+    is ComicLinkResolver.Outcome.SourcesNotReady -> "漫画源还没加载完，请稍后再点这条链接"
+    is ComicLinkResolver.Outcome.Unrecognized -> "认不出这条链接里的漫画：$url"
+    is ComicLinkResolver.Outcome.Resolved -> ""
+}
+
 class VeneraShellViewModel : ViewModel() {
     var pendingSession: com.venera.compose.reader.ReaderSession? = null
     var selectedComic: ComicItem? = null
@@ -299,11 +378,18 @@ private fun NavHostController.gotoTab(tab: VeneraNavTab) {
 fun VeneraComposeApp() {
     val navController = rememberNavController()
     val shell: VeneraShellViewModel = viewModel()
+    val view = LocalView.current
+    val context = LocalContext.current
     // 设置 Activity 的三个越界出口（阅读器 / 详情 / 标签搜索）在另一个 Activity 里发起，
     // 目标页只在本图上有：落地时消费一次交接槽，消费即清，避免重建时重复推页。
     LaunchedEffect(Unit) { navController.consumeSettingsEscape(shell) }
-    val view = LocalView.current
-    val context = LocalContext.current
+    // 外部入口（应用链接 / 收文本）常驻接收：冷启动那条排在缓冲里，开始收就取到；
+    // 热启动由 onNewIntent 直接投进来 —— 这里**不能**只读一次槽位，singleTop 不重新进组合。
+    LaunchedEffect(Unit) {
+        for (entry in EntryIntentHandoff.intents) {
+            navController.handleEntryIntent(entry, context)
+        }
+    }
     val prefs = VeneraPreferences.getInstance(context)
     val navigationBarStyle by prefs.navigationBarStyle.collectAsState()
     val startTab by prefs.startPage.collectAsState()

@@ -13,6 +13,7 @@ import com.venera.compose.source.ComicSource
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
+import com.venera.compose.source.model.ComicLinkHit
 import com.venera.compose.source.model.ResolvedImageConfig
 import com.venera.compose.source.model.ResolvedThumbnailConfig
 import com.venera.compose.source.model.SearchPage
@@ -848,6 +849,70 @@ class JsComicSource(
             throw e
         } catch (e: Exception) {
             Log.e("VeneraDebug", "resolveThumbnailLoadingConfigs($key, n=${urls.size}) exception", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 让**所有**已注册源各自的 `comic.link.linkToId(url)` 试一条链接 —— 一条脚本内遍历完，
+     * 一次主线程往返（引擎是 WebView，`evaluateJavascript` 全 post 主线程，见
+     * `engine/VeneraJsEngine.kt:243-272`）。
+     *
+     * 任意一个 JsComicSource 实例都能问全表：脚本里的 `ComicSource.sources` 是引擎内
+     * **所有**源的注册表，不是 `this`。所以这条只能走"一次问全部"，不能按源起 N 次。
+     *
+     * 与 master 的两处刻意差异：
+     * - master 在第一个"域名匹配但 linkToId 返回 null"的源上直接 `return false` 中断整循环
+     *   （`utils/app_links.dart:27`），后面的源再也轮不到。这里收**全部**命中交回 Kotlin 侧挑。
+     * - master 只拿 `uri.host` 精确比对 `domains`；而域名清单多半写裸域（`hitomi.la`），
+     *   `www.` 变体就静默认不出。这里把去 `www.` 的变体一起喂进去。
+     *
+     * @param hosts 参与比对的 host 变体（原样 + 去掉前导 `www.`），由调用方算好。
+     * @return 命中列表，保持 JS 侧的源遍历顺序；没有任何源认这条链接时为空列表（**不是错误**）。
+     */
+    suspend fun resolveComicLinkHits(url: String, hosts: List<String>): Result<List<ComicLinkHit>> {
+        return try {
+            val script = """
+                return (async function() {
+                    var url = ${gson.toJson(url)};
+                    var hosts = ${gson.toJson(hosts)};
+                    var all = ComicSource.sources;
+                    var out = [];
+                    for (var k in all) {
+                        try {
+                            var link = all[k] && all[k].comic && all[k].comic.link;
+                            if (!link || !link.domains || !link.linkToId) continue;
+                            var owned = false;
+                            for (var i = 0; i < hosts.length; i++) {
+                                if (link.domains.indexOf(hosts[i]) >= 0) { owned = true; break; }
+                            }
+                            if (!owned) continue;
+                            var id = link.linkToId(url);
+                            if (id && typeof id.then === 'function') id = await id;
+                            if (id) out.push({ key: k, id: String(id) });
+                        } catch (e) {}
+                    }
+                    return { hits: out };
+                })()
+            """.trimIndent()
+            val envelope = evaluateEnvelope(script)
+            if (envelope["success"] != true) {
+                return Result.failure(Exception(envelope["error"]?.toString() ?: "linkToId failed"))
+            }
+            val data = envelope["data"] as? Map<*, *>
+                ?: return Result.failure(Exception("linkToId 返回了无效数据"))
+            val hits = (data["hits"] as? List<*>).orEmpty().mapNotNull { raw ->
+                val item = raw as? Map<*, *> ?: return@mapNotNull null
+                val key = item["key"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val id = item["id"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ComicLinkHit(sourceKey = key, comicId = id)
+            }
+            Result.success(hits)
+        } catch (e: CancellationException) {
+            // 见 getComicDetails：取消是控制流，不是错误
+            throw e
+        } catch (e: Exception) {
+            Log.e("VeneraDebug", "resolveComicLinkHits($key) exception", e)
             Result.failure(e)
         }
     }

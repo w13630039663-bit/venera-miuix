@@ -62,6 +62,7 @@ import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.comicPreviewColumnCount
 import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.VeneraEmptyView
+import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.tags.TagTranslationManager
@@ -680,6 +681,27 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 putExtra(Intent.EXTRA_TEXT, shareText(liveDetails, comic))
                             }
                             context.startActivity(Intent.createChooser(shareIntent, "分享漫画"))
+                        }
+                    )
+                    DetailActionButton(
+                        icon = Icons.Outlined.Link,
+                        label = "复制链接",
+                        iconColor = tokens.color.actionShare,
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            val link = shareLink(liveDetails, comic)
+                            if (link == null) {
+                                // 如实说没有链接：把空串写进剪贴板再弹"已复制"就是假反馈。
+                                Toast.makeText(
+                                    context,
+                                    "这个源没有提供漫画页地址，只能分享标题",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } else {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("漫画链接", link))
+                                Toast.makeText(context, "已复制链接", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     )
                 }
@@ -1765,12 +1787,29 @@ private fun DetailTagChip(
     }
 }
 
-/** 分享文案（顶栏与辅助行共用，消除重复实现）。 */
+/**
+ * 分享用的原站链接，两层取值（口径与 master 的 `comic_details_page/actions.dart:89-110` 同族）：
+ * ① 详情里源自己回的 `url`；② 缺了才按「源 + 漫画 id」查 [ComicUrlTable] 的分享模板。
+ *
+ * 两层都没有就返回 null —— 只分享标题。**不拿源根地址或站内搜索页凑一个"看起来像链接"的东西**，
+ * 那是假链接：点进去不是这本。
+ */
+private fun shareLink(
+    details: ComicDetails?,
+    comic: ComicItem,
+): String? =
+    details?.url?.takeIf { it.isNotBlank() }
+        ?: ComicUrlTable.shareUrlFor(comic.sourceName, comic.id)
+
+/** 分享文案（顶栏与辅助行共用，消除重复实现）。无链接时不留尾随空行。 */
 private fun shareText(
     details: ComicDetails?,
     comic: ComicItem,
-): String =
-    "【" + (details?.comic?.title ?: comic.title) + "】\n作者：" + (details?.author ?: comic.author) + "\n" + (details?.url ?: "")
+): String = buildString {
+    append("【").append(details?.comic?.title ?: comic.title).append("】")
+    append('\n').append("作者：").append(details?.author ?: comic.author)
+    shareLink(details, comic)?.let { append('\n').append(it) }
+}
 
 /** 内容守卫判定（详情页封面用；sourceKey 传显示名，走守卫别名解析链）。 */
 private fun detailMaskState(
