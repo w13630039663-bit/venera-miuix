@@ -44,6 +44,14 @@ sealed interface SettingsEscape {
     /** 详情页普通打开。 */
     data class OpenComic(val comic: ComicItem) : SettingsEscape
 
+    /**
+     * 设置首页 → 阅读历史。
+     *
+     * 历史 2026-09-23 从主 Tab 降回二级页后，它只挂在 MainActivity 的图上，
+     * 而设置主页是另一个 Activity —— 所以这条必须走越界交接，不能在设置侧 navigate。
+     */
+    data object OpenHistory : SettingsEscape
+
     /** 详情页打开并立刻读到某一页（插图收藏长按）：一条记录同时给出漫画身份与页码。 */
     data class ReadPage(val image: FavoriteImageItem) : SettingsEscape
 
@@ -236,6 +244,13 @@ fun VeneraSettingsHost() {
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             (context as? Activity)?.finish()
         },
+        // 历史页只挂在 MainActivity 的图上，这里 navigate 不到 —— 与阅读器/详情那两个出口
+        // 同一条路：填越界交接槽 + 拉起 MainActivity（消费即清见 consumeSettingsEscape）。
+        onOpenHistory = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            SettingsEscapeHandoff.pending = SettingsEscape.OpenHistory
+            context.startActivity(Intent(context, MainActivity::class.java))
+        },
     )
 }
 
@@ -271,6 +286,7 @@ internal fun NavHostController.consumeSettingsEscape(shell: VeneraShellViewModel
             shell.favoriteImagePayloads[escape.image.id] = escape.image
             navigate(FavoriteImageRoute(itemId = escape.image.id))
         }
+        is SettingsEscape.OpenHistory -> navigate(HistoryRoute)
         is SettingsEscape.DigTag -> navigate(
             TagSearchRoute(
                 keyword = "",

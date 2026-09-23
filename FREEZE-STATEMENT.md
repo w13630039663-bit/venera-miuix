@@ -260,3 +260,69 @@
 否则已保存的关键词规则将无法查看与删除。
 
 文件可从 `7c0cc68` 取回：`git checkout 7c0cc68 -- app/src/main/java/com/venera/compose/feature/ContentGuardScreen.kt`
+
+## 信息架构改判：历史从主 Tab 降回二级页（2026-09-23 决策 / 2026-09-24 落地，用户点名）
+
+本节就是第二批冻结里那条「Tab 枚举顺序、路由映射与顶栏齿轮入口**不允许顺手变更**（改动需重新评审）」所要求的**那次重新评审**。
+用户原话：「我觉得可以把底栏的历史去掉放回二级界面，然后新增一个画廊的页面」。本轮只做**腾位**这一步；
+画廊本体按 `gallery-module-isolation-plan-2026-09.md` 由另一条线实现。
+
+### 反掉的是第二批冻结里的两条
+- ❌「信息架构决策记录：历史 = 高频主 Tab」 → ✅ 历史是**二级页**：底栏不常驻、有返回语义。
+- ❌ Tab 枚举顺序 `HOME → HISTORY → FAVORITES → SEARCH → EXPLORE` → ✅ `HOME → FAVORITES → SEARCH → EXPLORE`（4 项）。
+  枚举顺序同时是**底栏顺序**与 `tabSwipePager` 左右横滑翻页顺序（单一真相 `VeneraNavTab.entries`）。
+  **第 3 位（收藏右侧）预留给画廊** —— 插入位已写进 `VeneraFloatingNavBar.kt` 的注释，别插成第 5 位。
+- `HISTORY` 是**从枚举里物理删除**，不是留着不用。留着它，`VeneraNavTab.valueOf("HISTORY")` 就还是合法值，
+  旧存档会被静默当成「用户还要历史页当启动页」，那是一条没人会发现的死分支。
+- **顶栏齿轮入口未动**（那三项里的第三项）。
+
+### 改了哪些文件（8 个）
+| 文件 | 改动 | 冻结身份 |
+|---|---|---|
+| `components/VeneraFloatingNavBar.kt` | 删 `HISTORY` 枚举项 + 记改判出处与画廊插入位 | 导航层（保护域） |
+| `feature/Navigation.kt` | `routeFor`/`titleFor` 去 HISTORY 分支；`currentTab` 不再把 `HistoryRoute` 认作主 Tab；首页分区头 `gotoTab(HISTORY)` → `navigate(HistoryRoute)`（压栈、可返回）；`composable<HistoryRoute>` 补 `onBack`；`ReaderRoute` 传 `onOpenHistory` | 保护域 |
+| `feature/HistoryScreen.kt` | 加 `onBack` 参数 + 顶栏返回箭头（多选态下该位置的动作仍是「退出多选」） | 🧊 **FROZEN**，用户点名本轮必需 |
+| `reader/VeneraReaderScreen.kt` | `VeneraReaderScreen`/`ReaderSessionContent` 加 `onOpenHistory`；顶部胶囊岛在「模式快捷胶囊」左侧加一个 40dp 圆形 History 位（几何照返回键） | 未冻 |
+| `feature/SettingsHost.kt` | 新增 `SettingsEscape.OpenHistory` + `consumeSettingsEscape` 分支 + 宿主回调 | 保护域 |
+| `feature/SettingsScreen.kt` | `AndroidSettingsScreen` 透传 `onOpenHistory` | — |
+| `feature/settings/SettingsHome.kt` | 抽出 `SettingsEntryRow`（七个分区行与历史行同一几何）；新增**单独一组**「阅读历史」 | — |
+| `feature/settings/ExploreSettings.kt` | 「启动页面」下拉去掉 `HISTORY` 选项 | — |
+
+三处刻意的设计选择：
+- **阅读器那条入口放顶栏、不放底部功能键行**：那一行已经是 6 个 `weight(1f)` 键（自动播放/目录/存图/插图/分享/设置），
+  第 7 个会把「自动播放」这种四字标签压断行。
+- **设置里的历史必须走越界交接**：历史页只挂在 MainActivity 的图上，设置主页是另一个 Activity，`navigate` 不到 ——
+  与本地漫画 / 阅读器 / 题材下钻那三条出口同一条路（填槽 + 拉起 MainActivity，消费即清见 `consumeSettingsEscape`）。
+- **历史不混进那七个「设置分区」**：它不是偏好项，点下去是跳回 MainActivity，与「在本 Activity 内换页」语义不同，所以单独一组。
+
+### 存量 `"HISTORY"` 启动偏好的处置（用户拍板：静默回落）
+- 启动侧：`runCatching { VeneraNavTab.valueOf(startTab) }.getOrDefault(HOME)`（`Navigation.kt:485`）→ 回落首页。
+  **这条 runCatching 是唯一防线**，正因为枚举项已删它才成立。
+- 设置侧：那一行显示现成的「未识别的已保存值：HISTORY」（`SettingsComponents.kt:218`），**不做静默改写** ——
+  用户改过的偏好被动了要说得出来。
+- 「启动页面」这一项本身留着：在 4 个主 Tab 里选启动页，功能仍在，不是假开关。
+
+### 未动
+- 底栏组件的几何与玻璃层、`bottomBarClearance` 契约。历史页网格的 `bottom = bottomBarClearance`
+  与下载 / 图片收藏 / 本地漫画 / 统计那四个二级页同口径，**不改**（改了反而不一致）。
+- `HistoryViewModel` / `HistoryDao`（数据层，本来也未冻）。
+- 首页「历史记录」分区的取数与卡片结构：只换了那条落点的导航语义。
+- `tabSwipePager` 实现本体、顶栏齿轮入口。
+
+### 已知代价（未真机验证，别当已验收）
+**阅读器 → 历史 → 返回**是这条新路径上唯一有状态风险的。阅读器留在栈里，`NavBackStackEntry` 的 SavedStateRegistry
+保住的是 `rememberSaveable` 那批：控制层显隐、抽屉态、以及 `rememberLazyListState` / `rememberPagerState`（**页码会回来**）。
+保不住的是纯 `remember`：**`currentChapterIndex`（`VeneraReaderScreen.kt:170`）**与 `chaptersState` 里按需补进来的页码表。
+→ 预测症状：**跳过话之后**再去看历史，回来会掉回「开书时那一话」，页码却按掉回前的页号定位；同话内看历史不受影响。
+本轮**不**顺手改：把 `currentChapterIndex` 转 `rememberSaveable` 之前，得先确认「恢复到的那一话页码表尚未加载」时
+`switchToChapter` 的加载链会不会被绕过 —— 那是进度记忆逻辑，超出腾位范围。真机若证实，按「导航条目组合重建」那条老根因另开一轮。
+
+### 验收口径（真机，只读不代点）
+1. 底栏 4 个 Tab，顺序 首页 / 收藏 / 搜索 / 探索。
+2. 首页「历史记录」分区头 → 历史页 → **返回能回首页**（与旧行为最大差别：以前是切 Tab，返回等于退应用）。
+3. 历史页底栏**隐藏**；多选态下点返回箭头 = 退出多选，再点才返回。
+4. 设置首页「阅读历史」→ 设置 Activity 收起、落到 MainActivity 的历史页；从那里返回应回**首页**，不是回设置。
+5. 阅读器顶栏 History 图标 → 历史页 → 返回 → 回阅读器，同话内页码不跳（跨话那条见上「已知代价」）。
+6. 横滑切主 Tab 只在 4 个之间循环；落在历史页时横滑不切页（`currentTab == null`）。
+7. 存过 `"HISTORY"` 的设备冷启动落首页，且设置里那行显示「未识别的已保存值：HISTORY」。
+8. 构建侧（2026-09-24）：`:app:compileDebugKotlin` / `:app:testDebugUnitTest` / `:app:assembleDebug` 全绿。

@@ -65,7 +65,11 @@ private val categories = listOf(
  * 因此也不再需要往外透传各叶子页的跳转回调 —— 那些都由子页宿主自己构造。
  */
 @Composable
-internal fun SettingsHome(onBack: () -> Unit) {
+internal fun SettingsHome(
+    onBack: () -> Unit,
+    /** 跳回 MainActivity 的图看阅读历史（走越界交接，见 [SettingsEscape.OpenHistory]）。 */
+    onOpenHistory: () -> Unit,
+) {
     val context = LocalContext.current
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
@@ -76,6 +80,7 @@ internal fun SettingsHome(onBack: () -> Unit) {
         SettingsHomeContent(
             prefs = prefs,
             onOpen = { screen -> context.openSettingsSubScreen(screen) },
+            onOpenHistory = onOpenHistory,
             scrollConnection = topBarBehavior.nestedScrollConnection,
             backdrop = topBarBackdrop,
             topPadding = statusBarTop + 104.dp,
@@ -111,6 +116,7 @@ internal fun SettingsHome(onBack: () -> Unit) {
 private fun SettingsHomeContent(
     prefs: VeneraPreferences,
     onOpen: (SettingsSubScreen) -> Unit,
+    onOpenHistory: () -> Unit,
     scrollConnection: NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
     topPadding: androidx.compose.ui.unit.Dp = 0.dp,
@@ -132,38 +138,66 @@ private fun SettingsHomeContent(
         AboutSection()
         SettingsGroup {
             categories.forEach { category ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpen(category.screen) }
-                        .padding(
-                            horizontal = tokens.spacing.rowHorizontal,
-                            vertical = tokens.spacing.rowVertical,
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SectionIconBadge(category.color) {
-                        Icon(
-                            imageVector = category.icon,
-                            contentDescription = null,
-                            tint = category.color,
-                            modifier = Modifier.size(tokens.spacing.badgeIconSize),
-                        )
-                    }
-                    Spacer(Modifier.width(tokens.spacing.rowHorizontal))
-                    Text(
-                        text = category.title,
-                        fontSize = tokens.type.itemTitle,
-                        color = tokens.color.textPrimary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "›",
-                        fontSize = tokens.type.chevron,
-                        color = tokens.color.textTertiary,
-                    )
-                }
+                SettingsEntryRow(
+                    icon = category.icon,
+                    badgeColor = category.color,
+                    title = category.title,
+                    onClick = { onOpen(category.screen) },
+                )
             }
         }
+        // 阅读历史单独一组，不混进上面那七个「设置分区」：它不是偏好项，而是
+        // 2026-09-23 从主 Tab 降回二级页后保留的直达入口，点下去是**跳回 MainActivity 的图**
+        // （走 SettingsEscape.OpenHistory），与分区那种在本 Activity 内换页语义不同。
+        SettingsGroup {
+            SettingsEntryRow(
+                icon = Icons.Filled.History,
+                badgeColor = SettingsBadgeColors.Reading,
+                title = "阅读历史",
+                onClick = onOpenHistory,
+            )
+        }
+    }
+}
+
+/** 设置首页的一行入口：图标徽标 + 标题 + 右尖角。分区与历史入口共用同一几何。 */
+@Composable
+private fun SettingsEntryRow(
+    icon: ImageVector,
+    badgeColor: Color,
+    title: String,
+    onClick: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(
+                horizontal = tokens.spacing.rowHorizontal,
+                vertical = tokens.spacing.rowVertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SectionIconBadge(badgeColor) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = badgeColor,
+                modifier = Modifier.size(tokens.spacing.badgeIconSize),
+            )
+        }
+        Spacer(Modifier.width(tokens.spacing.rowHorizontal))
+        Text(
+            text = title,
+            fontSize = tokens.type.itemTitle,
+            color = tokens.color.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "›",
+            fontSize = tokens.type.chevron,
+            color = tokens.color.textTertiary,
+        )
     }
 }

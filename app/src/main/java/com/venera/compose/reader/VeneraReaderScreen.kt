@@ -122,16 +122,21 @@ import java.util.*
  * 5. 全面沉浸式控制层：夜间反色滤镜、音量键翻页、屏幕常亮、边缘点击翻页、保存相册与分享
  */
 @Composable
-fun VeneraReaderScreen(session: ReaderSession, onBack: () -> Unit) {
+fun VeneraReaderScreen(
+    session: ReaderSession,
+    onBack: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
     // A new book/session must not inherit remembered chapters, gestures or open panels.
-    key(session) { ReaderSessionContent(session, onBack) }
+    key(session) { ReaderSessionContent(session, onBack, onOpenHistory) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ReaderSessionContent(
     session: ReaderSession,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenHistory: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -784,6 +789,23 @@ private fun ReaderSessionContent(
                             )
                         }
                     }
+
+                    // 历史：底栏让出主 Tab 后，阅读器是"读到一半想换一本"的最高频出口，
+                    // 所以走顶栏胶囊位（与返回键同一 40dp 圆形口径），不挤底部功能键行。
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onOpenHistory()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.History, contentDescription = "阅读历史", tint = StatusColors.OnBadgeSurface)
+                    }
+
+                    Spacer(modifier = Modifier.width(tokens.spacing.space3))
 
                     // 模式快捷选择胶囊
                     Surface(

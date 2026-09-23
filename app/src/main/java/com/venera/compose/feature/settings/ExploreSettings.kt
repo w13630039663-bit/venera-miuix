@@ -48,12 +48,17 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             SettingsSelect(
                 "启动页面", startPage,
                 listOf(
-                    "HOME" to "首页", "HISTORY" to "历史", "FAVORITES" to "我的收藏",
+                    "HOME" to "首页", "FAVORITES" to "我的收藏",
                     "SEARCH" to "搜索与发现", "EXPLORE" to "探索",
                 ),
                 prefs::setStartPage,
                 summary = "下次冷启动时停留的主标签。",
             )
+            // 2026-09-23 历史降回二级页 → 这一项同时撤掉「历史」选项：留着它就是假开关
+            // （选了之后启动仍回首页）。老用户存的 "HISTORY" 不在上面的表里，
+            // 启动侧按 Navigation.kt 的 getOrDefault(HOME) 回落首页，
+            // 设置这行则显示现成的「未识别的已保存值：HISTORY」（SettingsComponents.kt:218），
+            // 不做静默改写 —— 用户改过的偏好被动了要说得出来。
             SettingsToggle("默认倒序排列章节", reverseChapters, prefs::setReverseChapterOrder,
                 summary = "作为进入作品详情页时的初值；页面上的「正序/倒序」按钮仍可临时改。")
         }

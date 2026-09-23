@@ -351,7 +351,6 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveE
 
 private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
-    VeneraNavTab.HISTORY -> HistoryRoute
     VeneraNavTab.FAVORITES -> FavoritesRoute
     VeneraNavTab.SEARCH -> SearchRoute
     VeneraNavTab.EXPLORE -> ExploreRoute
@@ -359,7 +358,6 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
 
 private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
-    VeneraNavTab.HISTORY -> "历史"
     VeneraNavTab.FAVORITES -> "我的收藏"
     VeneraNavTab.SEARCH -> "搜索与发现"
     VeneraNavTab.EXPLORE -> "探索"
@@ -403,7 +401,8 @@ fun VeneraComposeApp() {
     val currentTab: VeneraNavTab? = when {
         destination == null -> null
         destination.hasRoute(HomeRoute::class) -> VeneraNavTab.HOME
-        destination.hasRoute(HistoryRoute::class) -> VeneraNavTab.HISTORY
+        // 历史不再是主 Tab（2026-09-23 降回二级页）→ 落在这条路由上时 currentTab 为 null，
+        // 底栏与壳顶栏随之隐藏，与其它二级页同一口径。
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
@@ -492,7 +491,7 @@ fun VeneraComposeApp() {
                         // 底部由 innerPadding 消费 navigationBars inset。
                         .padding(bottom = innerPadding.calculateBottomPadding())
                         .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
-                        // 主页面之间左右滑动切页；只在 5 个主 tab 上生效，
+                        // 主页面之间左右滑动切页；只在主 tab 上生效（当前 4 个，见 VeneraNavTab），
                         // 详情页/阅读器等子页面不参与（currentTab == null）。
                         // 收藏页单独排除：它自己那一层横滑是切「网络/图片/本地」三段的（用户拍板），
                         // 同一条手势不能既切段又切主 tab。
@@ -542,8 +541,9 @@ fun VeneraComposeApp() {
                                 onSelect = ::openComic,
                                 onOpenHistory = {
                                     haptic()
-                                    // 历史已是主 Tab：分区头直达 = 切 Tab（不压栈，返回语义不变）。
-                                    navController.gotoTab(VeneraNavTab.HISTORY)
+                                    // 历史已降回二级页：分区头直达 = 压栈，能返回（原先是切 Tab 不压栈，
+                                    // 那套返回语义随主 Tab 一起撤掉了）。
+                                    navController.navigate(HistoryRoute)
                                 },
                                 // 以下四个入口一律跨 Activity，与齿轮同一口径：只有跨过 Activity
                                 // 边界，系统才施加预测式返回动画与返回模糊。
@@ -642,10 +642,14 @@ fun VeneraComposeApp() {
                         }
                     }
                     composable<HistoryRoute> {
-                        // 主 Tab：底栏常驻，无返回语义。
+                        // 二级页（2026-09-23 起）：有返回语义，从首页分区头 / 设置 / 阅读器三处进来。
                         CoverTransitionHost(animatedVisibilityScope = this) {
                             AndroidHistoryScreen(
                                 onSelect = ::openComic,
+                                onBack = {
+                                    haptic()
+                                    navController.popBackStack()
+                                },
                             )
                         }
                     }
@@ -811,6 +815,10 @@ fun VeneraComposeApp() {
                                 onBack = {
                                     haptic()
                                     navController.popBackStack()
+                                },
+                                onOpenHistory = {
+                                    haptic()
+                                    navController.navigate(HistoryRoute)
                                 },
                             )
                         }

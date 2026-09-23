@@ -11,4 +11,7 @@ import com.venera.compose.feature.settings.SettingsHome
  * 就地构造（见 [VeneraSettingsSubHost]），这里只剩一个返回。
  */
 @Composable
-fun AndroidSettingsScreen(onBack: () -> Unit = {}) = SettingsHome(onBack = onBack)
+fun AndroidSettingsScreen(
+    onBack: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
+) = SettingsHome(onBack = onBack, onOpenHistory = onOpenHistory)

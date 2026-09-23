@@ -41,6 +41,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
@@ -95,6 +96,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun AndroidHistoryScreen(
     onSelect: (ComicItem) -> Unit,
+    /** 二级页返回。多选态下这个位置的动作是「退出多选」，与系统预测返回同语义。 */
+    onBack: () -> Unit,
 ) {
     val tokens = VeneraTokens
     val vm: HistoryViewModel = viewModel()
@@ -168,6 +171,17 @@ fun AndroidHistoryScreen(
             largeTitle = "历史",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
+            navigationIcon = {
+                IconButton(
+                    onClick = { if (vm.multiSelectMode) vm.exitMultiSelect() else onBack() }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = if (vm.multiSelectMode) "退出多选" else "返回",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            },
             actions = {
                 if (vm.multiSelectMode) {
                     TopBarAction(text = "全选", onClick = { vm.selectAll(records) })

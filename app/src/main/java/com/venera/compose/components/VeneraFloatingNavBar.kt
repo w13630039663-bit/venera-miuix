@@ -37,9 +37,12 @@ enum class VeneraNavTab(
     val filledIcon: ImageVector
 ) {
     HOME("首页", Icons.Outlined.Home, Icons.Filled.Home),
-    // 历史提升为主 Tab（Stage 0~2 信息架构调整）：高频操作进底栏；
-    // 设置为低频操作，收口到壳顶栏右上角齿轮入口。
-    HISTORY("历史", Icons.Outlined.History, Icons.Filled.History),
+    // 2026-09-23 信息架构改判（用户点名，评审记录见 FREEZE-STATEMENT.md 同名条目）：
+    // 历史从主 Tab 降回二级页。撤这一项**不是删功能**，入口换成三处 ——
+    // 首页「历史记录」分区头、设置首页一条、阅读器顶栏胶囊一条。
+    // ⚠️ 枚举顺序就是底栏顺序，也是左右横滑翻页顺序（Navigation.kt 的 tabSwipePager
+    // 与 VeneraNavTab.entries 单一真相）。画廊进来时占第 3 位（收藏之后），见
+    // gallery-module-isolation-plan-2026-09.md §三。
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
     SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
     // 「分类索引」与「全站探索」已合并为统一的「探索」页（见 UnifiedExploreScreen）。
