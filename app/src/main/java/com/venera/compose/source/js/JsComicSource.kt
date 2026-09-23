@@ -14,6 +14,7 @@ import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ComicChapter
 import com.venera.compose.source.model.ResolvedImageConfig
+import com.venera.compose.source.model.ResolvedThumbnailConfig
 import com.venera.compose.source.model.SearchPage
 import com.venera.compose.source.model.ThumbnailPage
 import com.venera.compose.source.FavComicNext
@@ -776,6 +777,77 @@ class JsComicSource(
             throw e
         } catch (e: Exception) {
             Log.e("VeneraDebug", "loadThumbnails($key, cid=$comicId, next=$next) exception", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 批量解析缩略图的加载配置 —— 对齐官方 `parser.dart:1085-1099` 的 `comic.onThumbnailLoad`。
+     *
+     * **一次 JS 调用换算整批，不是逐张调**：引擎是 WebView，所有 `evaluateJavascript` 都 post 到
+     * 主线程（`engine/VeneraJsEngine.kt:252`），JS 侧单线程串行 —— 一屏 12 张逐个调就是 12 次
+     * 主线程往返，正好砸在刚做完掉帧审计的详情页上。循环留在 JS 里。
+     *
+     * 三条语义逐条对齐 master：
+     * - 源没实现该钩子 → 成功返回**空列表**（官方 `_checkExists` 为 false 时返回 null 加载器，
+     *   这是"该源没有缩略图特殊配置"，不是错误，不该冒失败）。
+     * - 单张钩子抛错 → 只退化那一张（回原 url、无头）。原 url 就是今天的现状，退化方向安全。
+     * - `modifyImage` / `onLoadFailed` 按协议忽略，只取 `url` 与 `headers`。
+     *
+     * ⚠️ 这个钩子**不换小图**（实测 34 个内置源里 14 个实现，无一例外只回"原 url + 防盗头"，
+     *   EH 那个改 url 的是换成同分辨率镜像域）。它的价值是让缩略图请求带上源要求的
+     *   referer/UA —— 见 [ResolvedThumbnailConfig] 的注释。
+     *
+     * @return 与 [urls] 等长、同序的配置列表；源不支持时为空列表。
+     */
+    suspend fun resolveThumbnailLoadingConfigs(urls: List<String>): Result<List<ResolvedThumbnailConfig>> {
+        if (urls.isEmpty()) return Result.success(emptyList())
+        return try {
+            val script = """
+                return (async function() {
+                    var s = ComicSource.sources['$key'];
+                    if (!s || !s.comic || !s.comic.onThumbnailLoad)
+                        return { supported: false, items: [] };
+                    var urls = ${gson.toJson(urls)};
+                    var out = [];
+                    for (var i = 0; i < urls.length; i++) {
+                        var u = urls[i];
+                        try {
+                            var c = s.comic.onThumbnailLoad(u);
+                            if (c && typeof c.then === 'function') c = await c;
+                            if (!c) { out.push({ url: u }); continue; }
+                            out.push({ url: c.url ? c.url : u, headers: c.headers ? c.headers : {} });
+                        } catch (e) {
+                            out.push({ url: u });
+                        }
+                    }
+                    return { supported: true, items: out };
+                })()
+            """.trimIndent()
+            val envelope = evaluateEnvelope(script)
+            if (envelope["success"] != true) {
+                return Result.failure(Exception(envelope["error"]?.toString() ?: "onThumbnailLoad failed"))
+            }
+            val data = envelope["data"] as? Map<*, *>
+                ?: return Result.failure(Exception("onThumbnailLoad 返回了无效数据"))
+            if (data["supported"] != true) return Result.success(emptyList())
+            val items = (data["items"] as? List<*>).orEmpty()
+            Result.success(urls.mapIndexed { index, original ->
+                val item = items.getOrNull(index) as? Map<*, *>
+                val rawUrl = item?.get("url")?.toString()?.takeIf { it.isNotBlank() } ?: original
+                val headers = (item?.get("headers") as? Map<*, *>)
+                    ?.mapNotNull { (k, v) -> if (k != null && v != null) k.toString() to v.toString() else null }
+                    ?.toMap() ?: emptyMap()
+                ResolvedThumbnailConfig(
+                    url = if (rawUrl.startsWith("//")) "https:$rawUrl" else rawUrl,
+                    headers = headers
+                )
+            })
+        } catch (e: CancellationException) {
+            // 见 getComicDetails：取消是控制流，不是错误
+            throw e
+        } catch (e: Exception) {
+            Log.e("VeneraDebug", "resolveThumbnailLoadingConfigs($key, n=${urls.size}) exception", e)
             Result.failure(e)
         }
     }

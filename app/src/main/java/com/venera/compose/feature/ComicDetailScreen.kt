@@ -57,6 +57,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.CoverHeroBackdrop
 import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.comicPreviewColumnCount
 import com.venera.compose.components.rememberContentWidth
@@ -181,6 +182,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     // chunked 每次都会新建两层 List，不 remember 就是每次重组换引用，把这一块的强跳过打掉。
     val previewRows = remember(previewThumbnails, previewColumns) {
         previewThumbnails.chunked(previewColumns)
+    }
+    // 只换算**挂载窗口**这批的缩略图配置（源 comic.onThumbnailLoad：给防盗头、可能换镜像域）。
+    // 挂在窗口变化上而不是 load 完成时一次算全 —— 详情自带全量预览的源一次返回整本两三百张，
+    // 全算等于把 JS 主线程往返按整本长度放大。VM 侧按 url 记一次，展开时只补新增的那批。
+    LaunchedEffect(previewThumbnails) {
+        viewModel.ensureThumbnailConfigs(previewThumbnails)
     }
 
     LaunchedEffect(comic.sourceName, comic.id) {
@@ -333,18 +340,33 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             }
             // 1. 顶部封面与作品标题信息 (S2 扩展字段对齐)
             item {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
-                    // 内容守卫：详情页同样走判定链（JM/哔咔/R18 等命中 → 毛玻璃打码 + R18 角标）。
-                    // sourceKey 传显示名 comic.sourceName，由守卫别名解析链（显示名 → sourceKey）对齐源级预设。
-                    val guard = ContentGuardManager.getInstance(context)
-                    val maskState = guard.coverMaskStateFor(
-                        sourceKey = comic.sourceName,
-                        title = liveDetails?.comic?.title ?: comic.title,
-                        author = liveDetails?.author ?: comic.author,
-                        tags = liveDetails?.comic?.tags ?: comic.tags,
-                        comicId = comic.id,
-                    )
+                val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
+                // 内容守卫：详情页同样走判定链（JM/哔咔/R18 等命中 → 毛玻璃打码 + R18 角标）。
+                // sourceKey 传显示名 comic.sourceName，由守卫别名解析链（显示名 → sourceKey）对齐源级预设。
+                val guard = ContentGuardManager.getInstance(context)
+                val maskState = guard.coverMaskStateFor(
+                    sourceKey = comic.sourceName,
+                    title = liveDetails?.comic?.title ?: comic.title,
+                    author = liveDetails?.author ?: comic.author,
+                    tags = liveDetails?.comic?.tags ?: comic.tags,
+                    comicId = comic.id,
+                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    // Hero 背景：模糊放大的封面铺满头部，并**出血**到屏幕左/右/上三条边
+                    // （左右消掉列表 contentPadding 留下的两条边，上边顶穿状态栏与顶栏）。
+                    // 出血量由 CoverHeroBackdrop 用绘制层变换实现 —— 这里不能给 Modifier.padding
+                    // 传负值，Compose 硬校验，运行时直接 "Padding must be non-negative" 闪退。
+                    // ⚠️ 打码命中时**整层不画**：前景那张封面被模糊 + 暗遮罩 + R18 角标三重压住，
+                    // 背景再铺一张同图的放大模糊版，等于把打码绕过一半。
+                    if (maskState == "VISIBLE") {
+                        CoverHeroBackdrop(
+                            coverUrl = coverUrl,
+                            modifier = Modifier.matchParentSize(),
+                            bleedHorizontal = tokens.spacing.rowHorizontal,
+                            bleedTop = statusBarTop + tokens.spacing.detailTopBarClearance,
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
                     // 封面容器：VeneraCover 的 fillMaxWidth + aspectRatio 契约由定宽 Box 表达，
                     // sharedElement 挂在外层 Box 上。key 与列表卡片同一口径
                     //（ComicSharedTransition.coverKey，一律 sourceKey —— 真机探针已核对两端逐字相同）。
@@ -486,6 +508,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 },
                             )
                         }
+                    }
                     }
                 }
             }
@@ -866,10 +889,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                             // 预览这批 URL 从没走 comic.onImageLoad，只拿得到「URL 推导」的块数，
                                             // key 带上块数，避免它和源脚本那份还原结果共用同一条内存缓存。
                                             val previewCtx = LocalContext.current
-                                            val previewModel = remember(thumbUrl) {
+                                            // 源 comic.onThumbnailLoad 声明的地址优先（EH 会换成镜像域，
+                                            // 多数源是原址返回）。cacheKey **仍按原 url** 算 —— 对齐 master
+                                            // images.dart:15-24 的口径，否则换域前后会各存一份缓存。
+                                            val previewUrl =
+                                                detailState.thumbnailConfigs[thumbUrl]?.url ?: thumbUrl
+                                            val previewModel = remember(thumbUrl, previewUrl) {
                                                 val previewKey = ImagePipelinePolicy.cacheKeyFor(thumbUrl)
                                                 ImageRequest.Builder(previewCtx)
-                                                    .data(thumbUrl)
+                                                    .data(previewUrl)
                                                     .memoryCacheKey(previewKey)
                                                     .diskCacheKey(previewKey)
                                                     .build()

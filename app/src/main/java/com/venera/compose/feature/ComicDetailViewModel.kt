@@ -16,6 +16,7 @@ import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.Comment
 import com.venera.compose.source.model.CommentCapabilities
+import com.venera.compose.source.model.ResolvedThumbnailConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,13 @@ data class DetailUiState(
     val thumbnailError: String? = null,
     /** 预览缩略图所属章节 ID（点击缩略图直接开读该章节该页）。 */
     val previewChapterId: String = "",
+    /**
+     * 预览图的原 url → 源声明的加载配置（`comic.onThumbnailLoad`）。
+     *
+     * 只覆盖**已换算过**的那些 url；缺项就按原样请求。源没实现该钩子时整张表为空，
+     * 预览条的行为与接线前完全一致。
+     */
+    val thumbnailConfigs: Map<String, ResolvedThumbnailConfig> = emptyMap(),
     /**
      * 用户是否已点开「查看更多预览」。
      *
@@ -669,6 +677,39 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     /** 收起预览图，回到最多 [PREVIEW_LIMIT] 张的折叠态。 */
     fun collapseThumbnails() {
         _uiState.update { it.copy(thumbnailsExpanded = false) }
+    }
+
+    /**
+     * 已经问过 `onThumbnailLoad` 的 url。每个 url **只问一次**：
+     * 源没实现这个钩子时拿不到任何结果，不记一笔就会在每次预览窗口变化时重跑一遍 JS
+     * （引擎在主线程串行，那是纯浪费）。超时的那次同样不再重试 —— 预览条退回今天的行为，
+     * 比反复堵主线程划算。
+     */
+    private val thumbnailConfigAsked = mutableSetOf<String>()
+
+    /**
+     * 为**当前挂载的那批**预览图换算源声明的加载配置（`comic.onThumbnailLoad`）。
+     * 由屏幕侧在预览窗口变化时调用，所以一次只有几十个 url，不会把整本两三百张塞进一次 JS。
+     *
+     * ⚠️ 这个钩子**不换小图**，只回 url + 防盗头（实测与依据见 [ResolvedThumbnailConfig]）。
+     * 拿到头就按 host 记进 [ImageHeaderPolicy]：预览条原先只有「首话页面图兜底」那一条发过
+     * 头（[loadThumbnails] 里的 publishForUrls），详情自带 thumbnails 与 loadThumbnails
+     * 两条**一处都没发**，于是内置表覆盖不到的 host 就是一排 403 空白。
+     */
+    fun ensureThumbnailConfigs(urls: List<String>) {
+        val pending = urls.filter { it.isNotBlank() && thumbnailConfigAsked.add(it) }
+        if (pending.isEmpty()) return
+        viewModelScope.launch {
+            val configs = sourceManager.resolveThumbnailConfigs(currentSourceKey(), pending)
+            if (configs.isEmpty()) return@launch
+            configs.forEach { (_, cfg) ->
+                // 按**实际要请求的那个 url** 的 host 记账（EH 会换成镜像域 ehgt.org）。
+                if (cfg.headers.isNotEmpty()) {
+                    ImageHeaderPolicy.publishForUrls(listOf(cfg.url), cfg.headers)
+                }
+            }
+            _uiState.update { it.copy(thumbnailConfigs = it.thumbnailConfigs + configs) }
+        }
     }
 
     /** Use the resolved source key for comments and downloads, not its display name. */

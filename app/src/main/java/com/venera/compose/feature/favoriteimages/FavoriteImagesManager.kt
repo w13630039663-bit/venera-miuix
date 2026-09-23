@@ -145,6 +145,35 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * 批量取消收藏。语义与 [removeFavorite] 逐条一致：**先读路径、再删行**，
+     * 且只删 [persistedDir] 内的副本（本地漫画页的 `local_path` 指向的是书本体，
+     * 取消收藏不能把用户的书删了）。
+     *
+     * 一次 SQL 删完，不在 UI 侧循环调单条版 —— 几十张图就是几十次事务。
+     * 返回真正删掉的行数：调用方拿 0 要如实提示，不能报"已移除"。
+     */
+    suspend fun removeFavorites(ids: List<Long>): Int = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext 0
+        try {
+            val db = dbHelper.writableDatabase
+            val placeholders = ids.joinToString(",") { "?" }
+            val args = ids.map { it.toString() }.toTypedArray()
+            val paths = runCatching {
+                db.rawQuery(
+                    "SELECT local_path FROM favorite_images WHERE id IN ($placeholders)",
+                    args,
+                ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+            }.getOrDefault(emptyList())
+            val removed = db.delete("favorite_images", "id IN ($placeholders)", args)
+            if (removed > 0) paths.forEach { deletePersistedFile(it) }
+            removed
+        } catch (e: Exception) {
+            android.util.Log.e("FavoriteImages", "removeFavorites(n=${ids.size}) failed", e)
+            0
+        }
+    }
+
     suspend fun isFavorited(imageUrl: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val db = dbHelper.readableDatabase

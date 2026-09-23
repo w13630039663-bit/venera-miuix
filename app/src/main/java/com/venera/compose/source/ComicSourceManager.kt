@@ -19,6 +19,7 @@ import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.ResolvedImageConfig
 import com.venera.compose.source.model.SearchPage
 import com.venera.compose.source.model.ThumbnailPage
+import com.venera.compose.source.model.ResolvedThumbnailConfig
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.network.registrableDomain
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
@@ -1003,6 +1005,65 @@ class ComicSourceManager private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * 缩略图加载配置缓存，key = `sourceKey|原始url`。
+     *
+     * 与 [imageConfigCache] 分开两张表：钩子口径不同（`onThumbnailLoad` 只给 url+headers，
+     * 没有 nl 换源与 modifyImage 解混淆），混在一张表里会让阅读器解析出来的解混淆注册
+     * 被预览条复用，反之也会让缩略图的裸配置被阅读器当成完整配置用。
+     * 键用**原始 url**（对齐 master `images.dart:15-24`：命中缓存就不跑钩子）。
+     */
+    private val thumbnailConfigCache = LruCache<String, ResolvedThumbnailConfig>(512)
+
+    /**
+     * 批量解析详情页预览条要用的缩略图配置（源 `comic.onThumbnailLoad`）。
+     *
+     * 只给**没缓存的那部分 url** 起一次 JS 调用（[JsComicSource.resolveThumbnailLoadingConfigs]
+     * 内部一次往返算完整批，不逐张调 —— JS 引擎在主线程串行）。
+     *
+     * ⚠️ 超时/失败一律回**空结果**而不是冒失败：预览条没有这层配置就是今天的行为
+     * （裸头请求，能出图的照常出），绝不能因为一个 optional 钩子把预览条整个打空。
+     * 但会留一条 Warn —— 静默退化是查不出来的。
+     */
+    suspend fun resolveThumbnailConfigs(
+        sourceKey: String,
+        urls: List<String>
+    ): Map<String, ResolvedThumbnailConfig> = withContext(Dispatchers.IO) {
+        if (urls.isEmpty()) return@withContext emptyMap()
+        val out = HashMap<String, ResolvedThumbnailConfig>(urls.size)
+        val missing = ArrayList<String>(urls.size)
+        for (url in urls) {
+            val hit = thumbnailConfigCache.get("$sourceKey|$url")
+            if (hit != null) out[url] = hit else missing.add(url)
+        }
+        if (missing.isEmpty()) return@withContext out
+
+        val source = getSourceOrFallback(sourceKey)
+        if (source !is JsComicSource) return@withContext out
+        val res = try {
+            withTimeoutOrNull(THUMBNAIL_CONFIG_TIMEOUT_MS) {
+                source.resolveThumbnailLoadingConfigs(missing)
+            }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("VeneraDebug", "resolveThumbnailConfigs($sourceKey) threw", e)
+            null
+        }
+        if (res == null) {
+            android.util.Log.w(
+                "VeneraDebug",
+                "onThumbnailLoad($sourceKey, n=${missing.size}) 无结果，预览条按原样请求"
+            )
+            return@withContext out
+        }
+        res.getOrNull()?.forEachIndexed { index, config ->
+            thumbnailConfigCache.put("$sourceKey|${missing[index]}", config)
+            out[missing[index]] = config
+        }
+        out
+    }
+
     suspend fun getExploreComics(sourceKey: String, page: Int = 1): Result<List<Comic>> =
         withContext(Dispatchers.IO) {
             val source = getSourceOrFallback(sourceKey)
@@ -1291,6 +1352,16 @@ class ComicSourceManager private constructor(private val context: Context) {
 
         /** 单源检索硬超时 */
         private const val SOURCE_TIMEOUT_MS = 20_000L
+
+        /**
+         * 缩略图配置钩子（`comic.onThumbnailLoad`）的硬超时。
+         *
+         * 不能沿用 [SOURCE_TIMEOUT_MS]：那是给"跨源检索要等网络"用的。这个钩子按协议是
+         * **同步纯计算**（14 个实现它的内置源无一例外只拼 headers），而 JS 引擎在主线程串行，
+         * 挂住就是把详情页的取图与交互一起堵住。给 8s 已经是把"源写成了 async 还发请求"
+         * 那种情况算进去了；超时就按原样请求，预览条不该被一个 optional 钩子拖空。
+         */
+        private const val THUMBNAIL_CONFIG_TIMEOUT_MS = 8_000L
 
         /** 静默检查更新的最小间隔，口径与首页推荐自动刷新一致 */
         private const val SILENT_UPDATE_CHECK_INTERVAL_MS = 120_000L

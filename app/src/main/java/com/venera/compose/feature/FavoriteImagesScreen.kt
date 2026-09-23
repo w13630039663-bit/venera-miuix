@@ -2,6 +2,7 @@ package com.venera.compose.feature
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,8 +12,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Share
@@ -151,11 +154,27 @@ fun FavoriteImagesBody(
      */
     val ratios = remember { mutableStateMapOf<Long, Float>() }
 
+    // ── 批量整理（多选）──
+    // 工具条刻意做在**本面板内部**，不塞进收藏页顶栏：顶栏归 FavoritesScreen，
+    // 而它在冻结声明第三批标了验收冻结 —— 这一轮只读不改它。
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<Long>()) }
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+    // 系统返回先退多选，不要把整个收藏 tab 弹掉。
+    BackHandler(enabled = selectionMode) { exitSelection() }
+
     fun refresh() {
         scope.launch {
             isLoading = true
             images = manager.getAllFavorites()
             isLoading = false
+            // 选中项可能已被删掉（含另一条入口那侧删的）—— 按最新列表收敛，别留幽灵选择。
+            selectedIds = selectedIds.intersect(images.mapTo(mutableSetOf()) { it.id })
+            // 一张不剩时自动退出多选，否则工具条挂在空列表上还报"已选择 N 项"。
+            if (images.isEmpty()) selectionMode = false
         }
     }
 
@@ -220,8 +239,19 @@ fun FavoriteImagesBody(
                         // （真机实测教训，见 VeneraCard 的分层注释与冻结声明同批记录）。
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { onPreviewImage(item) },
-                            onLongPress = { menuImage = item },
+                            // 多选态下点整张卡就是**勾选** —— 只让人去点那个小圆圈太费劲。
+                            // 长按菜单在多选态让位（勾完就勾完，不再叠一层弹层）。
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedIds =
+                                        if (item.id in selectedIds) selectedIds - item.id
+                                        else selectedIds + item.id
+                                    if (selectedIds.isEmpty()) selectionMode = false
+                                } else {
+                                    onPreviewImage(item)
+                                }
+                            },
+                            onLongPress = { if (!selectionMode) menuImage = item },
                         ) {
                             Column(modifier = Modifier.padding(tokens.spacing.space3)) {
                                 AsyncImage(
@@ -270,21 +300,45 @@ fun FavoriteImagesBody(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    IconButton(
-                                        onClick = {
-                                            scope.launch {
-                                                manager.removeFavorite(item.id)
-                                                refresh()
-                                            }
-                                        },
-                                        modifier = Modifier.size(tokens.spacing.space9),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Delete,
-                                            contentDescription = "删除",
-                                            tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(tokens.spacing.space5),
-                                        )
+                                    if (selectionMode) {
+                                        // 勾选圈放在原先垃圾桶的位置：同一格换语义，
+                                        // 不额外占高度，也不去碰上面那支共享元素图的几何。
+                                        val checked = item.id in selectedIds
+                                        IconButton(
+                                            onClick = {
+                                                selectedIds =
+                                                    if (checked) selectedIds - item.id
+                                                    else selectedIds + item.id
+                                                if (selectedIds.isEmpty()) selectionMode = false
+                                            },
+                                            modifier = Modifier.size(tokens.spacing.space9),
+                                        ) {
+                                            Icon(
+                                                imageVector = if (checked) Icons.Filled.CheckCircle
+                                                else Icons.Outlined.Circle,
+                                                contentDescription = if (checked) "取消选择" else "选择",
+                                                tint = if (checked) tokens.color.primary
+                                                else MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(tokens.spacing.space5),
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    manager.removeFavorite(item.id)
+                                                    refresh()
+                                                }
+                                            },
+                                            modifier = Modifier.size(tokens.spacing.space9),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Delete,
+                                                contentDescription = "删除",
+                                                tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(tokens.spacing.space5),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -295,6 +349,85 @@ fun FavoriteImagesBody(
                             onDismiss = { menuImage = null },
                             onOpenComicDetail = onOpenComicDetail,
                             onReadFromPage = onReadFromPage,
+                            onMultiSelect = {
+                                selectionMode = true
+                                selectedIds = setOf(it.id)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (selectionMode) {
+            // 面板内浮层工具条（不动收藏页顶栏那条冻结线）。底部留白把最后两行抬起来，
+            // 否则瀑布流末尾的卡片会被它压住点不到。
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = tokens.spacing.screenHorizontal,
+                        end = tokens.spacing.screenHorizontal,
+                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                    ),
+                shape = RoundedCornerShape(tokens.shape.large),
+                color = MiuixTheme.colorScheme.surfaceVariant,
+            ) {
+                Row(
+                    modifier = Modifier.padding(
+                        start = tokens.spacing.space5,
+                        end = tokens.spacing.space2,
+                        top = tokens.spacing.space1,
+                        bottom = tokens.spacing.space1,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "已选择 ${selectedIds.size} 项",
+                        fontSize = tokens.type.caption,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = {
+                            selectedIds = if (selectedIds.size == images.size) emptySet()
+                            else images.mapTo(mutableSetOf()) { it.id }
+                        },
+                    ) {
+                        Text(
+                            text = if (selectedIds.size == images.size) "取消全选" else "全选",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.primary,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            val ids = selectedIds.toList()
+                            if (ids.isEmpty()) return@TextButton
+                            scope.launch {
+                                // 如实报数：removeFavorites 返回真正删掉的行数，0 就是没删成，
+                                // 不能照旧弹「已移除」（那是假反馈）。
+                                val removed = manager.removeFavorites(ids)
+                                Toast.makeText(
+                                    context,
+                                    if (removed > 0) "已移除 $removed 张插图收藏" else "移除失败",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                exitSelection()
+                                refresh()
+                            }
+                        },
+                    ) {
+                        Text(
+                            text = "移除",
+                            fontSize = tokens.type.caption,
+                            color = StatusColors.AccentBadge,
+                        )
+                    }
+                    TextButton(onClick = { exitSelection() }) {
+                        Text(
+                            text = "关闭",
+                            fontSize = tokens.type.caption,
+                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         )
                     }
                 }
@@ -478,6 +611,7 @@ private fun FavoriteImageMenu(
     onDismiss: () -> Unit,
     onOpenComicDetail: (FavoriteImageItem) -> Unit,
     onReadFromPage: (FavoriteImageItem) -> Unit,
+    onMultiSelect: (FavoriteImageItem) -> Unit,
 ) {
     if (!expanded) return
     val tokens = VeneraTokens
@@ -510,6 +644,18 @@ private fun FavoriteImageMenu(
                 )
             },
             onClick = { onDismiss(); onOpenComicDetail(item) },
+        )
+        // 进多选的入口挂在长按菜单里：长按已经归"操作菜单"所有，不能再拿长按当多选开关，
+        // 而卡片本身在多选态下整卡可勾，所以这里只需要一个"起手"入口。
+        DropdownMenuItem(
+            text = {
+                Text(
+                    text = "多选",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textPrimary,
+                )
+            },
+            onClick = { onDismiss(); onMultiSelect(item) },
         )
     }
 }

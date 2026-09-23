@@ -189,6 +189,21 @@ data class ThumbnailPage(
 )
 
 /**
+ * 源 `comic.onThumbnailLoad(url)` 对单个缩略图的解析结果。
+ *
+ * ⚠️ 别把它当成"换成小图"的钩子：实测 34 个内置源里 14 个实现了它，
+ * **没有一个是把页面地址换成低分辨率变体**，全部是"原 url 原样回 + 加防盗头"
+ * （唯一的例外是 EH，把 `s.exhentai.org` 换成同分辨率镜像域 `ehgt.org`）。
+ * 它就是缩略图版的 [ResolvedImageConfig]，作用是让缩略图请求带上源要求的
+ * referer/UA，以及 nhentai 那类地址修正。协议原文里 `modifyImage` 与
+ * `onLoadFailed` 被明确忽略，所以这里也不带那两项。
+ */
+data class ResolvedThumbnailConfig(
+    val url: String,
+    val headers: Map<String, String> = emptyMap()
+)
+
+/**
  * 探索页面元数据（对齐原版 ExplorePageData）
  */
 data class ExplorePageData(
