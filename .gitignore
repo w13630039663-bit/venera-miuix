@@ -18,7 +18,7 @@ build_*.log
 .freebuff/
 .workbuddy/
 
-# ������֤��ͼ
+# 本地验证截图
 home*.png
 
 .reference_*.dart
@@ -27,10 +27,13 @@ home*.png
 
 err_*.log
 
-# ���ص��Խ�ͼ����־
+# 本地调试截图与日志
 .*.png
 .logcat-*.txt
 
-
 # QA 排错日志（本地产物不入库）
 .qa-*.txt
+
+# DSH 工具产物（视觉路由素材与运行目录）与本地调试日志
+.dsh-vision-router/
+debug.log
