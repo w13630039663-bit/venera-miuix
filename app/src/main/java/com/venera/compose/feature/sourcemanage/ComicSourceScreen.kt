@@ -162,6 +162,14 @@ fun ComicSourceScreen(
                 }
             }
 
+            // ==================== 0. 画廊站点账号 ====================
+            // Danbooru / yande.re 是原生客户端（不走 JS 源脚本），所以在下面那份"源清单"里
+            // 没有它们的条目；但账号这件事在用户心里与"源"是同一类配置，整仓也只有这一页
+            // 是"各站点配置"的落点 —— 所以只在顶部多摆一张卡，不为它单开一个设置入口。
+            item(key = "gallery-account") {
+                GalleryAccountCard()
+            }
+
             // ==================== 1. 顶部操作概览卡片 ====================
             item {
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
