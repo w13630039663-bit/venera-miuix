@@ -21,10 +21,13 @@ import java.io.IOException
  * 2. **代价在别的线程上**。这里是 `runBlocking` 等一个人机交互，跑在 Coil 的取图线程上：
  *    一张图能把一个 worker 挂到用户点"取消"为止，同屏其余图片全排队。
  * 所以图片撞盾 = 原样抛错，由调用方说一句话（画廊 HD 档就是这么报的）。
+ *
+ * 除图片外，[NoInteractiveBypassTag] 也走这一条 —— 那是画廊日榜这类
+ * "整屏等结果"的 API 流量：等一个人机交互会把它挂死（详见那个 tag 的注释）。
  * API/网页流量照旧走交互式过盾 —— 那条链对它有效（拿到 `cf_clearance` 后重放确实通）。
  */
 internal fun offersInteractiveBypass(request: Request): Boolean =
-    request.tag(ImageFetchTag::class.java) == null
+    request.tag(ImageFetchTag::class.java) == null && request.tag(NoInteractiveBypassTag::class.java) == null
 
 /**
  * Cloudflare 智能过盾拦截器。
@@ -54,8 +57,9 @@ class CloudflareBypassInterceptor(private val context: Context) : Interceptor {
                 val host = request.url.host
 
                 if (!offersInteractiveBypass(request)) {
-                    // 图片取流撞上盾：**原样把 403 交回**，调用方（Coil）抛错、UI 报一句话。
-                    Log.w(tag, "图片流量不弹过盾窗口，直接失败: $urlString")
+                    // 不弹过盾窗口的流量（图片 / 日榜这类整屏等待）：**原样把 403 交回**，
+                    // 调用方抛错、UI 报一句话。挂在这里等交互会把整屏挂死。
+                    Log.w(tag, "该请求不弹过盾窗口，直接失败: $urlString")
                     return response
                 }
 

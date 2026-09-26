@@ -87,8 +87,10 @@ import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -166,26 +168,58 @@ fun GalleryScreen(
      * 只有这一条路径，没有"加载更多"：日榜是一屏到底的固定池子（实测 yande.re 固定 40 条、
      * `page`/`limit` 被忽略；Gelbooru 100 条里抽 20）。
      */
-    fun loadDaily() {
-        if (vm.isLoadingFeed) return
+    /**
+     * 取一次两站的热门池并合成整屏（两站口径不同，见 GalleryFeedSource）。
+     *
+     * 只有这一条路径，没有"加载更多"：日榜是一屏到底的固定池子（实测 yande.re 固定 40 条、
+     * `page`/`limit` 被忽略；Gelbooru 100 条里抽 20）。
+     *
+     * @param force true = 用户主动要求的那一轮（「刷新」「重试」），**忽略**在途标志。
+     *
+     * ## ⚠️ 那个"永久转圈"的缺陷（2026-09-26 修）
+     *
+     * 旧写法：`isLoadingFeed = true` 之后，只有协程**自己跑完**才在末尾清回 false。
+     * 而这笔协程跑在 [rememberCoroutineScope] 里 —— 转圈期间切走 Tab / 转屏 →
+     * 组合销毁 → 协程被取消 → **标志永远停在 true**。
+     * 标志住在 [GalleryViewModel]（条目作用域，跨组合重建存活），于是回来时：
+     * - `LaunchedEffect(refreshTick)` 的 loadedKey 守卫放行（因为没写凭证），
+     * - 但本函数开头的 `if (vm.isLoadingFeed) return` 直接拦死，
+     * 屏上只剩一个波浪环。更糟的是「重试」走 `retryFromUser() → vm.refresh()` 又落回
+     * 同一行 early return —— **刷新与重试两个按钮当场变假按钮**，
+     * 正是 `GalleryViewModel.refreshTick` 那段注释要防的东西。
+     *
+     * 两条修法，缺一不可：
+     * 1. **用 try/finally + NonCancellable 清标志**：取消也要清，否则取消路径就是漏的那一条；
+     *    NonCancellable 是必须的 —— 已取消的协程里再写 State 会被取消语义吃掉。
+     * 2. **用户主动那一轮绕过标志**（[force]）：即便标志因某种残留卡住，
+     *    显式重试也必须真发请求 —— "重试"按下去没有任何行为，是最坏的一种假按钮。
+     */
+    fun loadDaily(force: Boolean = false) {
+        if (vm.isLoadingFeed && !force) return
         vm.feedError = null
         vm.isLoadingFeed = true
         scope.launch {
-            source.loadDaily(seed = vm.seed)
-                .onSuccess { daily ->
-                    vm.accept(
-                        list = daily.merged.posts,
-                        day = daily.date,
-                        notice = daily.failures.entries
-                            .joinToString(" · ") { "${it.key.displayName}：${it.value}" }
-                            .takeIf { daily.failures.isNotEmpty() },
-                    )
-                    // 成功才写凭证：从错误态点重试要能真发请求。
-                    vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"
-                }.onFailure { e ->
-                    vm.feedError = e.message ?: "加载失败"
+            try {
+                source.loadDaily(seed = vm.seed)
+                    .onSuccess { daily ->
+                        vm.accept(
+                            list = daily.merged.posts,
+                            day = daily.date,
+                            notice = daily.failures.entries
+                                .joinToString(" · ") { "${it.key.displayName}：${it.value}" }
+                                .takeIf { daily.failures.isNotEmpty() },
+                        )
+                        // 成功才写凭证：从错误态点重试要能真发请求。
+                        vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"
+                    }.onFailure { e ->
+                        vm.feedError = e.message ?: "加载失败"
+                    }
+            } finally {
+                // 取消路径也要清：见上面那段"永久转圈"的说明。
+                withContext(NonCancellable) {
+                    vm.isLoadingFeed = false
                 }
-            vm.isLoadingFeed = false
+            }
         }
     }
 
@@ -200,15 +234,39 @@ fun GalleryScreen(
      * "熔断中，Ns 后重试"，那就是个假按钮。
      * 顺带换种子（在 [GalleryViewModel.refresh] 里），所以刷新确实会换一批、换个顺序。
      */
+    /**
+     * 下一轮取数要不要 [loadDaily] 的 force 语义。由 [retryFromUser] 置位、由下面的
+     * `LaunchedEffect(vm.refreshTick)` 消费并复位。
+     *
+     * 用 `remember` 而不是 VM 字段：它只描述"这一次 effect 触发是不是用户点的"，
+     * 属于页面内的瞬时意图，不需要跨组合重建存活（VM 那些字段才需要）。
+     */
+    var forceNextLoad by remember { mutableStateOf(false) }
+
+    /**
+     * 用户主动要求重来一次。
+     *
+     * 必须先清两站的域名熔断：连续两笔失败会把 host 拉黑 60 秒（`HostCircuitBreaker`），
+     * 那期间任何请求都毫秒级快速失败 —— 不清的话「刷新」和「重试」按下去必然还是同一句
+     * "熔断中，Ns 后重试"，那就是个假按钮。
+     * 顺带换种子（在 [GalleryViewModel.refresh] 里），所以刷新确实会换一批、换个顺序。
+     *
+     * ⚠️ 置 [forceNextLoad]：这一轮**必须**忽略在途标志（见 [loadDaily] 的 force 参数）。
+     * 否则「刷新 / 重试」若撞上残留的 `isLoadingFeed`，就成了按下去毫无行为的假按钮 ——
+     * 正是那两个按钮存在的意义要防的东西。
+     */
     fun retryFromUser() {
         resetBreakers()
+        forceNextLoad = true
         vm.refresh()
     }
 
     // 条目组合重建后这个 effect 会再跑一次，靠 loadedKey 挡住"返回即重拉"。
     LaunchedEffect(vm.refreshTick) {
         if (vm.feedLoadedKey == "feed#${vm.refreshTick}|${vm.seed}" && vm.posts.isNotEmpty()) return@LaunchedEffect
-        loadDaily()
+        val force = forceNextLoad
+        forceNextLoad = false
+        loadDaily(force = force)
     }
 
     /**

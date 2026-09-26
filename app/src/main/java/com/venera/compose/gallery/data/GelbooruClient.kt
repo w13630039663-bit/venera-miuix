@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.network.NoInteractiveBypassTag
 import com.venera.compose.data.network.VeneraNetworkClient
 import java.io.IOException
 import java.net.URLEncoder
@@ -172,12 +173,18 @@ class GelbooruClient private constructor(context: Context) {
      * 凭据是 query 参数（官方 wiki 的写法），**不是** Authorization 头。
      * 两个都空时照发 —— 让站方回 401，比在这里编一句"未登录"更接近事实
      * （用户可能是只填了一半）。
+     *
+     * ⚠️ 打 [NoInteractiveBypassTag]：这一站的流量供"整屏等结果"的日榜用，
+     * 不能弹过盾窗口 —— 那是 `runBlocking` 等一个人机交互且没有超时，
+     * 用户 Home 掉窗口就会把取数线程永久挂住（详见那个 tag 的注释）。
+     * 撞盾时这里拿回 403，由 [failure] 翻成一句话，这一轮这一站缺席。
      */
     private fun requestBuilder(url: String): Request.Builder {
         val builder = Request.Builder()
             .url(withCredentials(url))
             .header("Accept", "application/json")
             .header("User-Agent", API_USER_AGENT)
+            .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
         return builder
     }
 

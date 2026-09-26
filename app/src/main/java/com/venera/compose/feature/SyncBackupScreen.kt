@@ -329,7 +329,12 @@ fun SyncBackupScreen(
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 }
                                                 context.startActivity(Intent.createChooser(share, "分享/保存备份文件"))
-                                            } catch (_: Exception) {}
+                                            } catch (e: Exception) {
+                                                // 不吞：同 LocalComicScreen 那条 —— 落点不在
+                                                // file_paths 里时这里必抛却被静默，
+                                                // 表现为"导出成功"但分享从未发生。
+                                                Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_LONG).show()
+                                            }
                                         } else {
                                             Toast.makeText(context, "导出失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                         }

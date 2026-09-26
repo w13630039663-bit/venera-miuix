@@ -290,7 +290,13 @@ fun LocalComicScreen(
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 }
                                                 context.startActivity(Intent.createChooser(shareIntent, "分享/保存 CBZ 漫画"))
-                                            } catch (_: Exception) {}
+                                            } catch (e: Exception) {
+                                                // 不吞：以前这里是 `catch (_: Exception) {}`，
+                                                // 而落点不在 file_paths 里时 getUriForFile 必抛
+                                                // IllegalArgumentException —— 于是"导出成功"弹了、
+                                                // 分享面板从没出现过，且没有任何线索。
+                                                Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_LONG).show()
+                                            }
                                         } else {
                                             Toast.makeText(context, "导出失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                         }

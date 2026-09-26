@@ -92,8 +92,12 @@ import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.math.roundToInt
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
@@ -159,6 +163,8 @@ fun GalleryPostScreen(
     var showChrome by rememberSaveable(site.name, postId) { mutableStateOf(true) }
     var infoOpen by rememberSaveable(site.name, postId) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    /** 分享在途：视频原片可能几十 MB，防重复点击并发下载同一份。 */
+    var sharing by remember { mutableStateOf(false) }
     // 逐张记 HD。用 `ArrayList<String>` 而不是 `mutableStateMapOf`：map 那套进不了
     // `rememberSaveable`（Bundle 认的是 Serializable / Parcelable 这一族），旋转一下就丢，
     // 而"翻回来 HD 还亮着"是这张图上唯一可见的档位状态，不该丢。
@@ -276,21 +282,69 @@ fun GalleryPostScreen(
         showChrome = !showChrome
     }
 
+    /**
+     * 分享一条**原档**（图或视频），并把单页链接一并带上。
+     *
+     * ## 为什么直接给字节而不是给 URL
+     *
+     * 旧实现只发一行文本 `"站名 #id URL"` —— 用户拿到的不是图，是链接。
+     * 现在取 `file_url` 的真实字节写入 `cacheDir/shared_images/`，
+     * 经 FileProvider 以 `ACTION_SEND` 交给外部应用（附 `EXTRA_TEXT` 单页链接）。
+     *
+     * ## 三条口径，都是沿用既有裁决
+     *
+     * - **取原档**（`GallerySaver.fetchBytes`），与「保存」那条路同源同档 ——
+     *   分享出去的和保存下来的必须是同一份。
+     * - **原样落字节，不解码不重编码**：不用阅读器那条 `bitmap.compress(JPEG, 95)`，
+     *   那会洗掉 png 的 alpha 并把原图降质（`GallerySaver` 顶部注释已明令禁止这条路）。
+     * - **MIME 按站方扩展名**（`GallerySaver.mimeOf`），未知扩展名退 `application/octet-stream`
+     *   而不是猜一个。
+     *
+     * ## 视频
+     *
+     * 视频条目**照原片分享**（mp4/webm）。不把它换成"分享链接"—— 那枚钮在两种条目上
+     * 长得一样，行为却不同，用户会以为按钮坏了。
+     *
+     * ⚠️ 视频原片实测 16~26 MB，分享前要真下载一次（不命中 Coil 缓存），
+     * 所以走 [sharing] 标志防重入，并由 Toast 报失败原因 —— 静默失败最坏。
+     */
     fun share(target: GalleryPost) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_SEND)
-                    .apply {
-                        type = "text/plain"
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            "${target.site.displayName} #${target.id} ${target.pageUrl}",
-                        )
+        if (sharing) return
+        sharing = true
+        scope.launch {
+            GallerySaver.fetchBytes(context, target)
+                .onSuccess { bytes ->
+                    val uri = runCatching {
+                        val dir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
+                        val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
+                        val file = File(dir, name)
+                        file.outputStream().use { it.write(bytes) }
+                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    }.onFailure { e ->
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                        return@onSuccess
                     }
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }.onFailure { Toast.makeText(context, "分享没打开：${it.message}", Toast.LENGTH_SHORT).show() }
+                    runCatching {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = GallerySaver.mimeOf(target)
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_TEXT, "${target.site.displayName} #${target.id} ${target.pageUrl}")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "分享图片"))
+                    }.onFailure { e ->
+                        Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .onFailure { e ->
+                    Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+            sharing = false
+        }
     }
 
     fun download(target: GalleryPost) {

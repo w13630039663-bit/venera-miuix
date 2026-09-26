@@ -10,6 +10,9 @@ import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 一次取数：两站各要**一批热门** → 交给 [GalleryMerge.mix] 去重、抽样、打乱。
@@ -29,6 +32,17 @@ import kotlinx.coroutines.coroutineScope
  * 因此 [Daily.date] 只对 yande.re 那一路有意义，页面上不能拿它去描述 Gelbooru ——
  * 那会写成"Gelbooru 这一天的热门"，而站方根本不提供按天的视图。
  * Gelbooru 那一路的说明文案见 [GalleryMerge] 与页面页尾。
+ *
+ * ## 每站一笔独立的时间预算（2026-09-26）
+ *
+ * 旧写法把两站 `async` 之后依次 `await()`，整屏耗时 = max(两站)；
+ * 而单站最坏能拖到 40s 级（readTimeout 20s → RateLimiting 失败重试一次 → 再 20s，
+ * callTimeout 45s 封顶）。UI 那头只有「posts 为空 → 满屏波浪环」一种表达，
+ * 于是"某一站慢"必然表现为**整屏空等** —— 用户既看不出是哪一站，也拿不到图。
+ *
+ * 现在每站套 [PER_SITE_TIMEOUT_MS]：超时的那站按"这一轮没给内容"交出去，
+ * 由页面挂进 `sourceNotice` 明说，**另一站照旧出图**。
+ * 取舍：慢的那一站这一轮缺席（会被说出来），换来快的那站立刻画出来（空等不会说）。
  */
 class GalleryFeedSource private constructor(context: Context) {
 
@@ -48,8 +62,8 @@ class GalleryFeedSource private constructor(context: Context) {
     suspend fun loadDaily(seed: Long): Result<Daily> {
         val date = yesterdayString()
         val (yande, gelbooru) = coroutineScope {
-            val y = async { guarded(GallerySite.YANDERE) { YandeReClient.getInstance(appContext).fetchDailyPopular() } }
-            val g = async { guarded(GallerySite.GELBOORU) { GelbooruClient.getInstance(appContext).fetchTopScored() } }
+            val y = async { guardedWithBudget(GallerySite.YANDERE) { YandeReClient.getInstance(appContext).fetchDailyPopular() } }
+            val g = async { guardedWithBudget(GallerySite.GELBOORU) { GelbooruClient.getInstance(appContext).fetchTopScored() } }
             y.await() to g.await()
         }
         val failures = listOf(yande, gelbooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
@@ -81,7 +95,43 @@ class GalleryFeedSource private constructor(context: Context) {
         return SiteResult(site, posts, reason)
     }
 
+    /**
+     * [guarded] + 一笔时间预算。
+     *
+     * 超时**不是失败**，而是"这一站这一轮没赶上" —— 交给调用方按"没给内容"处理，
+     * 于是它会走到既有的 `failures` / `sourceNotice` 那条路上，页面上被明说出来。
+     *
+     * ⚠️ [withTimeoutOrNull] 会取消 [block] 内部的协程，那个取消是**预期内**的：
+     * 请求该停就停，别让一个没人等的 socket 继续占着连接池。
+     */
+    private suspend fun guardedWithBudget(
+        site: GallerySite,
+        block: suspend () -> Result<List<GalleryPost>>,
+    ): SiteResult {
+        val result = withTimeoutOrNull(PER_SITE_TIMEOUT_MS) { block() }
+        if (result == null) {
+            // 超时**不是失败**，是"这一站这一轮没赶上" —— 交回调用方按"没给内容"处理，
+            // 于是它会走到既有的 `failures` / `sourceNotice` 那条路上被明说出来。
+            return SiteResult(site, emptyList(), "超过 ${PER_SITE_TIMEOUT_MS / 1000}s 没返回")
+        }
+        val posts = result.getOrDefault(emptyList())
+        val reason = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+            ?: "这一轮没有返回内容".takeIf { posts.isEmpty() }
+        return SiteResult(site, posts, reason)
+    }
+
     companion object {
+        /**
+         * 每一站的时间预算（毫秒）。
+         *
+         * 12s 的来由：本机实测正常态 TTFB 1.1~3.8s（yande.re 日榜 / gelbooru 同形状请求），
+         * 取 3~4 倍作尾部余量；同时明显低于单站最坏的 40s 级，
+         * 好让"某一站拖住"不至于变成"整屏空等"。
+         * ⚠️ 这是**观感取舍**不是正确性判据 —— 慢的那一站这一轮缺席（会被说出来），
+         * 换来快的那站立刻出图。
+         */
+        const val PER_SITE_TIMEOUT_MS = 12_000L
+
         /**
          * "上一天"的 `yyyy-MM-dd`，按**设备本地**日历算。
          *

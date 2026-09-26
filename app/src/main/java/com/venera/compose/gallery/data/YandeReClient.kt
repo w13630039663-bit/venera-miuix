@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.network.NoInteractiveBypassTag
 import com.venera.compose.data.network.VeneraNetworkClient
 import java.io.IOException
 import java.net.URLEncoder
@@ -76,6 +77,8 @@ class YandeReClient private constructor(context: Context) {
                 val request = Request.Builder()
                     .url("$BASE/tag.json?name=${enc(term.trim() + "*")}&order=count&limit=$limit")
                     .header("Accept", "application/json")
+                    // 补全也是"用户在等"的流量，同样不弹过盾窗口。
+                    .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
                     .build()
                 VeneraNetworkClient.getInstance(appContext).okHttpClient
                     .newCall(request).execute().use { response ->
@@ -107,6 +110,9 @@ class YandeReClient private constructor(context: Context) {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
+            // 与 Gelbooru 同一条理由：日榜是"整屏等结果"的流量，不能弹过盾窗口
+            // （那个 await 没有超时，挂住就是永久转圈）。撞盾拿回 403，下面按失败报一句话。
+            .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
         // 与漫画侧共用连接池 / Cookie / CF 过盾（方案 §二"复用基础设施"那一列）。
         val client = VeneraNetworkClient.getInstance(appContext).okHttpClient

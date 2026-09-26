@@ -50,6 +50,24 @@ import kotlinx.coroutines.withContext
  */
 object GallerySaver {
 
+    /**
+     * 取一条的**原档字节**（`file_url`），不落盘。
+     *
+     * 给「分享」用：与 [save] 是同一条取字节链路、同一档（原图/原片），
+     * 所以分享出去的东西和保存下来的**是同一份**，不会出现"分享的和保存的不一样"。
+     * 单独抽出来是因为分享只需要字节、不需要算落点/重名/MediaStore 那一串。
+     *
+     * 0 字节同样抛错（OkHttp 这条路上它是"成功但空 body"）。
+     */
+    suspend fun fetchBytes(context: Context, post: GalleryPost): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(post.fileUrl)
+                if (bytes.isEmpty()) throw IOException("站方给了 0 字节")
+                bytes
+            }
+        }
+
     /** @param path 真实落点的绝对路径（给 UI 如实报位置）；@param bytesSaved 实际落盘字节数。 */
     data class Saved(val path: String, val bytesSaved: Long)
 
