@@ -180,6 +180,18 @@
             android:name=".SettingsSubActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+        <!--
+            画廊大图页：独立 Activity 才有系统跨 activity 预测式返回，
+            也只有窗口真的透（Translucent + 透明窗口底）才露得出 blur-behind 糊好的那一屏。
+            用 Material.NoActionBar 的话会被基类那层氛围底盖成不透明，等于白挂。
+            主题用本仓库自己那一份（`res/values/themes.xml`）而不是平台的
+            `Theme.Translucent.NoTitleBar`：后者不画系统栏底，状态栏那一条会被系统压成黑带，
+            糊好的背景就只到状态栏下沿为止（四条理由写在那份注释里）。
+        -->
+        <activity
+            android:name=".GalleryPostActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Venera.GlassOverlay" />
         <activity
             android:name=".data.network.CloudflareBypassActivity"
             android:exported="false"

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        画廊大图页那一层"浮在毛玻璃上"的窗口主题。
+
+        平台自带的 `@android:style/Theme.Translucent.NoTitleBar` 只管"窗口透"这一件事，
+        它 `windowDrawsSystemBarBackgrounds=false` —— 于是状态栏那一条**不由本窗口画**，
+        系统就在上面补一层不透明的黑色底（真机表现：糊好的背景到状态栏下沿齐刷刷断掉，
+        头顶一条黑带）。用户 2026-09-25 点名的就是这条："通知栏那里改成一样显示背景模糊"。
+
+        这四条把它请回来：
+        - `windowDrawsSystemBarBackgrounds` + 两条透明色：这两栏改由本窗口画，且画的是透明，
+          于是 blur-behind 糊好的那一屏能一路铺到屏幕上下两条边。
+        - `enforceStatusBarContrast` / `enforceNavigationBarContrast` = false：Android 10 起，
+          透明栏 + 边到边时系统会自作主张压一层渐变黑（"保证图标可读"）。这里图标颜色由
+          `GalleryPostScreen` 里那处 `isAppearanceLightStatusBars=false` 翻成浅色，
+          不需要系统再压一层。
+        - `windowLayoutInDisplayCutoutMode=shortEdges`：刘海屏上让内容伸进刘海区，
+          否则那一条又是黑的。
+
+        刻意**不设** `windowBackground`：父主题已经是透明，写了反而容易被后面的人当成
+        "这里可以塞个底色"。
+    -->
+    <style name="Theme.Venera.GlassOverlay" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
