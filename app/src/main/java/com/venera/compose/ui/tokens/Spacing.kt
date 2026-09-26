@@ -157,6 +157,23 @@ data class VeneraSpacingTokens(
      * 同值的本地镜像（该常量在库内是 internal，读不到只能照抄）。
      */
     val topBarCollapsedHeight: Dp = 52.dp,
+    /**
+     * 大标题 / 小标题的左内边距：Miuix `TopAppBarDefaults.TitlePadding` 的本地镜像。
+     *
+     * 结果态把搜索条件胶囊吸附到顶栏左上角时，横向起点要与大标题**同一个 x**，
+     * 否则那行胶囊读起来是"飘在标题左前方"而不是"接替了标题的位置"。
+     */
+    val topBarTitlePadding: Dp = 26.dp,
+    /**
+     * 吸附态那行条件胶囊的最大宽度 = 屏宽 × 本比例。
+     *
+     * 上限的由来：顶栏的小标题是**居中**的（Miuix 的 TopAppBar 把 title 摆在
+     * `(屏宽 − 标题宽) / 2` 处），左侧净空只有 (屏宽 − 标题宽) / 2。
+     * 标题实宽随系统字体缩放变，算不准，所以取一个任何屏宽下都留得住居中标题的比例：
+     * 最窄的 393dp 屏也给标题与胶囊之间留下约 8dp。胶囊再多也不越过这条线 ——
+     * 超出部分在行内横滑，而不是把标题挤走。
+     */
+    val collapsedChipWidthFraction: Float = 0.34f,
     /** SourceBadge 内文字左右内边距。 */
     val badgeHorizontalPadding: Dp = 6.dp,
     /** SourceBadge 内文字纵向内边距。 */
@@ -177,8 +194,24 @@ data class VeneraSpacingTokens(
     // ── 通用控件尺寸（跨页面复用，非 Search 专属）──
     /** 单行输入框 / 搜索框高度。 */
     val searchFieldHeight: Dp = 48.dp,
+    /**
+     * MD3 **docked search bar** 的高度。
+     *
+     * 与上面那枚 48dp 不是一回事：48dp 是"表单里的单行输入框"，这一档是搜索条本体
+     * （胶囊 + 内部图标 + 右侧动作位）。数值取 MD3 规范原值 56dp，
+     * 圆角用它的一半（走 [VeneraShapeTokens.extraLarge]，MD3 档实测就是 28dp）。
+     */
+    val dockedSearchBarHeight: Dp = 56.dp,
     /** 单行输入框内文字左右内边距。 */
     val fieldHorizontalPadding: Dp = 14.dp,
+    /**
+     * MD3 **单行列表项**的最小高度（补全行、历史行）。
+     *
+     * 48dp 是 MD3 列表项触达位的规范值。此前的补全行纵向只有 4dp 内边距，
+     * 整行约 24dp —— 远低于触达位下限，手指按不准，还容易连带误触相邻那一行。
+     * 定成**最小**高度而不是定高：标签名过长换行时行该能长高，而不是把文字裁掉。
+     */
+    val listRowMinHeight: Dp = 48.dp,
     /** 图标按钮的触达尺寸。 */
     val iconButtonSize: Dp = 40.dp,
     /** 结果区顶部/区块之间的标准间距。 */

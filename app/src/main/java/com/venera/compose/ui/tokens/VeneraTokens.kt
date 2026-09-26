@@ -105,6 +105,13 @@ data class VeneraElevationTokens(
     val card: Dp = 1.dp,
     /** 悬浮元素（FAB / 浮层）。 */
     val floating: Dp = 6.dp,
+    /**
+     * 贴附在内容之上的输入面（MD3 docked search bar 的 elevation3）。
+     *
+     * 比 [card] 高一档、又明显低于 [floating]：它要读出"这是一块可以按的面"，
+     * 但不能像 FAB 那样浮起来离开页面。取 MD3 规范原值 3dp，不另造数字。
+     */
+    val attached: Dp = 3.dp,
 )
 
 /** 由 VeneraTheme 提供；默认值保证预览/单测无需主题也能取到合法 Token。 */
@@ -197,11 +204,15 @@ fun buildVeneraColorTokens(
     onSurface = m.onSurface,
     surfaceVariant = m.surfaceVariant,
     onSurfaceVariant = m.onSurfaceVariant,
+    surfaceContainerHigh = m.surfaceContainerHigh,
 
     primary = m.primary,
     onPrimary = m.onPrimary,
     primaryContainer = m.primaryContainer,
     onPrimaryContainer = m.onPrimaryContainer,
+
+    secondaryContainer = m.secondaryContainer,
+    onSecondaryContainer = m.onSecondaryContainer,
 
     outline = m.outline,
     outlineVariant = m.outlineVariant,

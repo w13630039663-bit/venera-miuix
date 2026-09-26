@@ -27,11 +27,31 @@ data class VeneraColorTokens(
     val surfaceVariant: Color,
     val onSurfaceVariant: Color,
 
+    /**
+     * MD3 色调表面档 `surfaceContainerHigh`。
+     *
+     * 为什么要单独一档而不是 [surfaceVariant]：MD3 的"贴附输入面"（docked search bar）与
+     * 无描边的 tonal chip 都指定吃这一档，它比 `surfaceVariant` 更"实"、又比 surface 更"退"。
+     * 两套主题都桥得上（MIUIX 模式下 `Colors.toMaterialColors` 与 MD3→Miuix 双向都映射了
+     * `surfaceContainerHigh`），所以这里只是把已有语义槽位**摆到 token 层**，页面不越层取色板。
+     */
+    val surfaceContainerHigh: Color,
+
     // 强调
     val primary: Color,
     val onPrimary: Color,
     val primaryContainer: Color,
     val onPrimaryContainer: Color,
+
+    /**
+     * 次级容器对（MD3 `secondaryContainer` / `onSecondaryContainer`）。
+     *
+     * 用途是 **filter chip 的选中态**：MD3 规范里选中的 filter chip 填 secondaryContainer，
+     * 而不是 primaryContainer —— 后者是"主行动"的色，选中一枚筛选条件不该那么响。
+     * 动态取色下它是色板里刻意低饱和的一族，正好承担"已选但不抢眼"。
+     */
+    val secondaryContainer: Color,
+    val onSecondaryContainer: Color,
 
     // 分隔与描边
     val outline: Color,
@@ -154,6 +174,50 @@ internal object StatusColors {
     val Share = Color(0xFF2196F3)
     /** 评分星标。 */
     val RatingStar = Color(0xFFFFB800)
+}
+
+/**
+ * 图站标签**分类语义色**（补全行右侧那枚分类名用的就是它）。
+ *
+ * ── 为什么需要 ──
+ * Danbooru / yande.re 的标签有 6 个数字档（0 通用 / 1 画师 / 3 作品 / 4 角色 / 5 元数据），
+ * 站方 CSS 给每档配了专属色（`tag-type-0` 蓝 / `1` 红 / `3` 紫 / `4` 绿 / `5` 橙）。
+ * 这是图站用户扫补全时**最强的辨识信号** —— 「这行是画师还是角色」一眼就分得开，
+ * 比读中文档位名快得多。不摆出来等于白丢站方已经给好的信息。
+ *
+ * ── 为什么不照抄站方原色 ──
+ * 站方那几个值是配「白底 + 大号带下划线的链接文字」用的，`#0f0`（角色档）在白底上
+ * 对比度只有 1.4:1 —— 站方自己都靠下划线兜底。这里作为 12sp 的元信息文字，
+ * 必须满足 WCAG AA 小字档（4.5:1），所以按 Material 色板各取一档重配，
+ * 亮暗各一套（口径同 [SettingsBadgeColors]：功能性固定色，不跟壁纸取色）。
+ *
+ * 索引 = 站方的数字档本身（两站共用同一套命名空间，见 `galleryTagCategoryLabel`）。
+ * 取不到就返回 null，由调用方退到中性文字色 —— **不硬安一个色相**：
+ * 给一个我们没记录的编号配上颜色，等于宣称它属于某个已知分类。
+ */
+internal object GalleryTagCategoryColors {
+    /** 亮色主题：Material 800/900 档（白底上 ≥ 4.5:1）。 */
+    private val OnLight = listOf(
+        Color(0xFF1565C0), // 0 通用   Blue 800
+        Color(0xFFC62828), // 1 画师   Red 800
+        Color(0xFF616161), // 2 未知   Grey 700（站方保留档，实测少见）
+        Color(0xFF6A1B9A), // 3 作品   Purple 800
+        Color(0xFF2E7D32), // 4 角色   Green 800
+        Color(0xFFE65100), // 5 元数据 Orange 900
+    )
+
+    /** 暗色主题：Material 200/300 档（在 ~#1C1B1F 上 ≥ 4.5:1）。 */
+    private val OnDark = listOf(
+        Color(0xFF90CAF9), // 0 通用   Blue 200
+        Color(0xFFEF9A9A), // 1 画师   Red 200
+        Color(0xFFBDBDBD), // 2 未知   Grey 400
+        Color(0xFFCE93D8), // 3 作品   Purple 200
+        Color(0xFFA5D6A7), // 4 角色   Green 200
+        Color(0xFFFFCC80), // 5 元数据 Orange 200
+    )
+
+    /** 这一档的分类色；站方给了我们没记录的编号时返回 null。 */
+    fun of(category: Int, dark: Boolean): Color? = (if (dark) OnDark else OnLight).getOrNull(category)
 }
 
 /**

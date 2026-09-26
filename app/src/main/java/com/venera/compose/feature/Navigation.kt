@@ -50,12 +50,15 @@ import com.venera.compose.SettingsActivity
 import com.venera.compose.components.CoverTransitionScopes
 import com.venera.compose.components.LocalCoverTransitionScopes
 import com.venera.compose.components.VeneraAmbientBackground
+import android.app.Activity
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
 import com.venera.compose.components.backdrop.VeneraLiquidGlassNavBar
 import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
+import com.venera.compose.openGalleryPost
+import com.venera.compose.gallery.ui.GalleryScreen
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.feature.favoriteimages.toComicItem
 import com.venera.compose.source.ComicLinkResolver
@@ -111,6 +114,18 @@ import androidx.compose.material3.IconButton
 @Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
 @Serializable data object CategoriesRoute
+
+/** 画廊主 Tab（两站月度热门混合池，与漫画侧完全隔离的独立模块，见 gallery/ 包）。 */
+@Serializable data object GalleryRoute
+
+/**
+ * 画廊二级（单张大图）。
+ *
+ * `siteKey` 走字符串而不是枚举：导航这版对"Serializable 路由类里嵌枚举"的支持不稳
+ * （同一位置塞自定义对象时 `generateRoutePattern` 直接编译失败），字符串键最稳。
+ * 两站 id 各自独立编号，所以**站别必须进路由** —— 只带 postId 会拿 A 站的号去 B 站取图，
+ * 静默看到另一张不相干的画。
+ */
 
 /**
  * 从「探索」页下钻到某个源的**原生**分类 / Tag 列表。
@@ -353,6 +368,7 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
     VeneraNavTab.FAVORITES -> FavoritesRoute
     VeneraNavTab.SEARCH -> SearchRoute
+    VeneraNavTab.GALLERY -> GalleryRoute
     VeneraNavTab.EXPLORE -> ExploreRoute
 }
 
@@ -360,6 +376,7 @@ private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
     VeneraNavTab.FAVORITES -> "我的收藏"
     VeneraNavTab.SEARCH -> "搜索与发现"
+    VeneraNavTab.GALLERY -> "画廊"
     VeneraNavTab.EXPLORE -> "探索"
 }
 
@@ -405,6 +422,7 @@ fun VeneraComposeApp() {
         // 底栏与壳顶栏随之隐藏，与其它二级页同一口径。
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
+        destination.hasRoute(GalleryRoute::class) -> VeneraNavTab.GALLERY
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
         destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
@@ -652,6 +670,18 @@ fun VeneraComposeApp() {
                                 },
                             )
                         }
+                    }
+                    composable<GalleryRoute> {
+                        // 大图页**不再是本图的目的地**：2026-09-25 起它是独立 Activity
+                        // （`GalleryPostActivity`）—— 只有跨过 Activity 边界，系统才会
+                        // ① 实时糊掉后面这一屏（blur-behind 背景模糊）、② 施加 AOSP 跨 activity
+                        // 预测式返回动画。向上滑入期间垫着的那一帧由 GalleryScreen 在点击那一刻截好。
+                        // 单击的震动反馈在 GalleryScreen 里已经做过，这里不再 haptic()。
+                        GalleryScreen(
+                            onOpenPost = { site, postId ->
+                                (view.context as? Activity)?.openGalleryPost(site, postId)
+                            },
+                        )
                     }
                     composable<ExploreRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
