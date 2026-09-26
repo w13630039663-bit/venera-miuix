@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
@@ -83,6 +84,7 @@ import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
+import com.venera.compose.gallery.domain.GalleryRecommendation
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GalleryTagFilter
@@ -141,6 +143,10 @@ import java.util.Locale
 @Composable
 fun GallerySearchArea(
     svm: GallerySearchViewModel,
+    /** 「根据你的收藏」抽出来的标签集，按站一份。成因三种，见 [RecommendationRows]。 */
+    recommendations: Map<GallerySite, GalleryRecommendation>,
+    /** 点一枚推荐 = 把那一站的这串条件装好并开搜。 */
+    onPickRecommendation: (GallerySite, List<String>) -> Unit,
     /** 区域真实高度回给页面：网格顶部避让按它算，展开 / 收起时网格才被平滑推下去。 */
     onSizeChanged: (IntSize) -> Unit,
 ) {
@@ -521,6 +527,12 @@ fun GallerySearchArea(
                                     )
                                 }
                             } else {
+                                // 「根据你的收藏」排在历史**上面**：它是"我们替你算出来的"，
+                                // 历史是"你自己搜过的"，前者要用户先知道有这条路。
+                                RecommendationRows(
+                                    recommendations = recommendations,
+                                    onPick = onPickRecommendation,
+                                )
                                 if (svm.history.isNotEmpty()) {
                                     HistoryHeader(onClearAll = { svm.clearHistory() })
                                     Spacer(modifier = Modifier.height(tokens.spacing.space1))
@@ -784,6 +796,97 @@ private fun SuggestionRow(
  * 标题**不放进限高的列表里**：放进去它会占掉 4 行里的 1 行，于是可见的历史只剩 3 条。
  * 单独一行也让它读起来像"这一栏在说什么"，而不是一条可以点的记录。
  */
+/**
+ * 「根据你的收藏」那一栏。
+ *
+ * ## 一枚条目 = **整串条件**，不是一枚标签一行
+ *
+ * 这几枚标签的价值全在"它们在同一张收藏里**一起出现过**"那条共现约束上
+ * （判据见 `GalleryRecommendations.pickTags`）。拆成单枚标签摆，用户点下去就是
+ * "搜一个高频词" —— 那正是这套算法要避开的 `1girl solo long_hair` 式废组合。
+ * 所以行上写的那串，就是点下去发出去的搜索串：读起来什么样，点下去就什么样。
+ *
+ * ## 两种"没有推荐"分开说（不许静默交错）
+ *
+ * - 一站都没收藏 → 引导去收藏；
+ * - 有收藏但标签全被屏蔽规则挡完（或标签本身是空的）→ 点名是哪一站、为什么。
+ *   这一种**不能**退化成上面那句"快去收藏" —— 那是把我们的缺陷说成用户没干活。
+ */
+@Composable
+private fun RecommendationRows(
+    recommendations: Map<GallerySite, GalleryRecommendation>,
+    onPick: (GallerySite, List<String>) -> Unit,
+) {
+    val tokens = VeneraTokens
+    val picks = recommendations.entries.mapNotNull { entry ->
+        (entry.value as? GalleryRecommendation.Tags)?.tags?.let { entry.key to it }
+    }
+    if (picks.isEmpty()) {
+        val blockedOut = recommendations.entries.filter { it.value is GalleryRecommendation.NoUsableTags }
+        Text(
+            text = if (blockedOut.isEmpty()) {
+                "还没有画廊收藏。收藏几张图，这里会长出「按你的口味」的入口。"
+            } else {
+                blockedOut.joinToString("、") {
+                    "${it.key.displayName}：你收藏的那些标签都被屏蔽规则挡完了（或标签本身是空的），算不出推荐"
+                }
+            },
+            fontSize = tokens.type.caption,
+            color = tokens.color.textTertiary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = tokens.spacing.space4),
+        )
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "根据你的收藏",
+            fontSize = tokens.type.caption,
+            color = tokens.color.textTertiary,
+            modifier = Modifier.padding(bottom = tokens.spacing.space1),
+        )
+        picks.forEach { (site, tags) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = tokens.spacing.listRowMinHeight)
+                    .clip(RoundedCornerShape(tokens.shape.small))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(),
+                    ) { onPick(site, tags) }
+                    .padding(start = tokens.spacing.space4, end = tokens.spacing.space1),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = tokens.color.textTertiary,
+                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                )
+                Spacer(modifier = Modifier.width(tokens.spacing.space6))
+                Text(
+                    // 走 queryOf 而不是自己 join：这一串**就是**要发出去的搜索条件，
+                    // 拼法必须与真正发请求那处同一个来源，否则会出现"看着一样、搜出来不一样"。
+                    text = GallerySearch.queryOf(tags.map { GalleryTagFilter(it) }),
+                    fontSize = tokens.type.body,
+                    color = tokens.color.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = site.displayName,
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textTertiary,
+                    modifier = Modifier.padding(start = tokens.spacing.space6),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HistoryHeader(onClearAll: () -> Unit) {
     val tokens = VeneraTokens

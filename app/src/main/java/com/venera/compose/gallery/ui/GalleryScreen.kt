@@ -77,11 +77,13 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.network.HostCircuitBreaker
+import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryGuard
+import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.ui.tokens.StatusColors
@@ -154,6 +156,21 @@ fun GalleryScreen(
     val guard = remember { ContentGuardManager.getInstance(context) }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     val rules by guard.rules.collectAsState()
+
+    /**
+     * 「根据你的收藏」的标签集。判据全在 `GalleryRecommendations`（纯函数、有单测），
+     * 这里只做三件事：喂收藏、注入**与那面墙同一把**屏蔽判据、把 `vm.seed` 交下去。
+     *
+     * ⚠️ 用 [GalleryViewModel.seed] 而不是另造一个随机源 —— 同一屏的"换一批"必须
+     * 只有刷新这一个入口，否则返回时组合重建会重跑出一批不一样的推荐标签
+     * （那条根因见记忆「导航条目会重建组合」）。
+     */
+    val galleryFavorites by GalleryFavoritesStore.getInstance(context).favorites.collectAsState()
+    val recommendations = remember(galleryFavorites, rules, vm.seed) {
+        GalleryRecommendations.recommendBySite(galleryFavorites, seed = vm.seed) { tag ->
+            guard.findGalleryBlockedRule(author = "", tags = listOf(tag)) != null
+        }
+    }
 
     val gridState = rememberLazyStaggeredGridState()
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
@@ -674,6 +691,10 @@ fun GalleryScreen(
                 ) {
                     GallerySearchArea(
                         svm = svm,
+                        recommendations = recommendations,
+                        // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
+                        // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
+                        onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
                         onSizeChanged = { areaSize = it },
                     )
                 }
