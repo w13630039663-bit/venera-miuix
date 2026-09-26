@@ -8,8 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.gallery.data.DanbooruAccount
-import com.venera.compose.gallery.data.DanbooruClient
+import com.venera.compose.gallery.data.GelbooruAccount
+import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
@@ -60,7 +60,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     var active by mutableStateOf(false)
 
     /** 一次只搜一个站（用户 2026-09-25 拍板）：两站词表不通、标签预算也不同。 */
-    var site by mutableStateOf(GallerySite.DANBOORU)
+    var site by mutableStateOf(GallerySite.GELBOORU)
         internal set
 
     var mode by mutableStateOf(GallerySearchMode.INPUT)
@@ -130,27 +130,28 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 这一站一次要多少条（也是"到底"判据里的那个 requestedLimit）。 */
     fun pageSizeFor(site: GallerySite): Int = when (site) {
-        GallerySite.DANBOORU -> DanbooruClient.POOL_SIZE
+        GallerySite.GELBOORU -> GelbooruClient.POOL_SIZE
         GallerySite.YANDERE -> com.venera.compose.gallery.data.YandeReClient.SEARCH_PAGE_SIZE
     }
 
-    private val danbooruAccount = DanbooruAccount.getInstance(app)
+    private val gelbooruAccount = GelbooruAccount.getInstance(app)
 
     /**
-     * Danbooru 账号等级；null = 未登录。
+     * Gelbooru **配没配账号**。
      *
-     * 两处读数挂在它上面：**标签预算**（[effectiveFilters]）与
-     * **"这批受管制标签的图看不到"**（[noImageNotice] / [censoredQueryNotice]）——
-     * 后者的门槛是 Gold(30)，与"6 枚标签"同一档。
-     * 订阅 [DanbooruAccount.identity]（StateFlow）而不是读一次快照：设置页登录完
-     * 或校准完等级，退回画廊这边要**立刻**跟着变，而不是等重启。
+     * ⚠️ 这一站与 yande.re 有个根本差别：DAPI **匿名一律 401**，
+     * 所以没有账号时它**一张图都取不到**（不是少几档权限）。所以这个读数是
+     * **能不能用这一站**的开关，页面据此在搜索前就直说，而不是让它静静长出"没有结果"。
+     *
+     * 订阅 [GelbooruAccount.identity]（StateFlow）而不是读一次快照：设置页配好
+     * 或注销之后，退回画廊这边要**立刻**跟着变，而不是等重启。
      */
-    var danbooruLevel by mutableStateOf(danbooruAccount.identity.value?.level)
+    var gelbooruConfigured by mutableStateOf(gelbooruAccount.identity.value != null)
         internal set
 
     init {
         viewModelScope.launch {
-            danbooruAccount.identity.collect { danbooruLevel = it?.level }
+            gelbooruAccount.identity.collect { gelbooruConfigured = it != null }
         }
     }
 
@@ -158,19 +159,21 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 本次真正要发出去的条件 —— **预算内的前 N 枚**。
      *
      * 与 [filters] 分开是有意的：胶囊是"我要搜什么"（用户自己攒的，一条都不能替他丢），
-     * 而这一份是"这一站这次能问什么"。Danbooru 匿名 / Member 只有 2 枚，yande.re 不限，
-     * 所以同一排胶囊换站之后能不能全发出去是**不一样的**，绝不能拿一个数去蒙两站。
+     * 而这一份是"这一站这次能问什么"。
+     * 两站实测**都不限标签数**（Gelbooru 7 枚一次通过、yande.re 更无限制），
+     * 所以现在恒等于 [filters] —— 但这一层留着：预算是会变的，
+     * 而"发请求之前先按预算截断"这个动作只该有一处落点。
      */
     fun effectiveFilters(): List<GalleryTagFilter> {
-        val budget = GallerySearch.tagBudget(site, danbooruLevel) ?: return filters
+        val budget = GallerySearch.tagBudget(site) ?: return filters
         return filters.take(budget)
     }
 
     /**
      * 换站。
      *
-     * **标签留着**（用户 2026-09-26 改判）：两站词表不通这条仍然成立（Danbooru 的
-     * `1girl` / yande.re 的 `1girl` 之类能共用，而 `rating:general` 这种只在 Danbooru 有意义），
+     * **标签留着**（用户 2026-09-26 改判）：两站词表不通这条仍然成立（Gelbooru 的
+     * `1girl` / yande.re 的 `1girl` 之类能共用，而 `rating:general` 这种只在 Gelbooru 有意义），
      * 但实测用户真正在做的动作是"这串标签换个站再看看"，此前一句
      * `filters = emptyList()` 把他刚选好的条件整片抹掉、还得重敲一遍。
      * 换站是换**数据源**，不是换"我要找什么"。
@@ -198,7 +201,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         searchError = null
         loadMoreError = null
         droppedNoImage = 0
-        droppedNoImageCensored = 0
         // reSearch = false 只有 [applyHistory] 用：它自己会装条件 + 开搜 + 收条，
         // 这里再动一下就是同一轮发两笔请求。
         if (!reSearch) return
@@ -296,7 +298,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         var rejected = false
         parsed.forEach { filter ->
             if (next.any { it.name == filter.name }) return@forEach
-            if (!GallerySearch.fitsTagBudget(site, next.size + 1, danbooruLevel)) {
+            if (!GallerySearch.fitsTagBudget(site, next.size + 1)) {
                 rejected = true
                 return@forEach
             }
@@ -313,7 +315,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         }
         // 预算那句话必须在**开搜之后**写：[beginSearch] 会把 notice 清掉，
         // 先写等于没写（提交多个标签时的预算提示此前就是这么被吃掉的）。
-        if (rejected) notice = GallerySearch.budgetNotice(site, danbooruLevel)
+        if (rejected) notice = GallerySearch.budgetNotice(site)
     }
 
     /**
@@ -383,20 +385,8 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         history = entries
     }
 
-    /** 站方给了行、但**没给可摆的图**而被跳过的张数（含各成因，见 [noImageNotice]）。 */
+    /** 站方给了行、但**没给可摆的图**而被跳过的张数（见 [noImageNotice]）。 */
     var droppedNoImage by mutableIntStateOf(0)
-        internal set
-
-    /**
-     * 其中**带着站方受管制标签**（`loli` / `shota`）的张数 —— 值得单独说，因为它的出路
-     * 与"被删 / 还在审核"完全不同：那几条是站方**按规则封的**，等级不到就是看不到，
-     * 换搜索词也绕不过（标签长在那张图上）。
-     *
-     * 这个字段从前叫 `droppedNoImageAdult`，数的是"成人分级" —— 那是个**错判**
-     * （2026-09-26 复核实测：`cat rating:e` 匿名取回 5/5 都带图，成人分级根本不被挡；
-     * 当年被抹的那批是 `loli`，成因挂在分级上了）。见 [DanbooruClient.CENSORED_TAGS]。
-     */
-    var droppedNoImageCensored by mutableIntStateOf(0)
         internal set
 
     /** 这一轮用的每页张数（重试/续页要按同一口径判到底）。 */
@@ -407,7 +397,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 开始一轮新搜索：整片替换结果，翻页游标回到第 1 页。
      *
      * **刻意不碰 [mode]**：开搜不等于"用户改完了"。内联形态下用户加了一枚标签之后
-     * 往往还要接着加第二枚（Danbooru 预算就是 2 枚），这里一开搜就把区收成一条的话，
+     * 往往还要接着加第二枚，这里一开搜就把区收成一条的话，
      * 那条补全列表会在眼前消失再等他敲下一个字才回来 —— 正是此前"选完第一枚标签后
      * 补全再也出不来"的同一条断流。收起由用户的动作决定（键盘收起 / 系统返回），
      * 不替用户决定。
@@ -420,17 +410,16 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         loadMoreError = null
         notice = null
         droppedNoImage = 0
-        droppedNoImageCensored = 0
+        droppedNoImage = 0
         pageSize = limit
         isSearching = true
     }
 
     fun appendPage(list: List<GalleryPost>, nextPage: Int, done: Boolean) {
-        // 站方给了行不等于给了图：带 `loli` / `shota` 的条目，站方把四支 URL 键整片删掉，
-        // 原样摆上去就是一屏尺寸正确、内容全空的灰卡。跳过并**按成因计数报出来**，不静默吞。
+        // 站方给了行不等于给了图：没给可用图片地址的条目原样摆上去，
+        // 就是一屏尺寸正确、内容全空的灰卡。跳过并**把张数报出来**，不静默吞。
         val (kept, unusable) = list.partition { GalleryMerge.isDisplayable(it) }
         droppedNoImage += unusable.size
-        droppedNoImageCensored += unusable.count { DanbooruClient.hasCensoredTag(it) }
         // 第 1 页**替换**而不是追加：从错误态重试时旧的那一片可能还是半截的。
         results = if (nextPage == 1) kept else results + kept
         page = nextPage
@@ -455,8 +444,8 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     fun addTag(suggestion: GalleryTagSuggestion): Boolean {
         if (filters.any { it.name == suggestion.name }) return false
-        if (!GallerySearch.fitsTagBudget(site, filters.size + 1, danbooruLevel)) {
-            notice = GallerySearch.budgetNotice(site, danbooruLevel)
+        if (!GallerySearch.fitsTagBudget(site, filters.size + 1)) {
+            notice = GallerySearch.budgetNotice(site)
             return false
         }
         notice = null
@@ -493,16 +482,32 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         if (nextPage == 1) {
             beginSearch(limit)
             // 提示必须写在 [beginSearch] **之后** —— 它会把 notice 清成 null。
-            // 两条提示互斥地取一条：条件被砍那一件事更要紧（它改变了实际发出去的东西）。
-            notice = trimmedNotice(sent) ?: censoredQueryNotice(sent)
+            notice = trimmedNotice(sent)
         } else {
             isLoadingMore = true
             loadMoreError = null
         }
+        /*
+         * **发车前拦住"这一站现在根本不能用"的情况**（只有 Gelbooru 会这样）。
+         *
+         * 它的 DAPI 匿名一律 401，所以没配账号时发出去必然拿回一句 401。
+         * 那本来也会被下面的 onFailure 翻成人话，但**观感完全不同**：
+         * 让用户等一轮网络往返，然后在一个"没有可摆的图"的空态上读一句凭据错误，
+         * 他会先怀疑是标签写错了、再怀疑网络。这里直接说清"要去哪里配"，
+         * 一次请求都不发。
+         *
+         * ⚠️ 只在**第 1 页**拦：续页时账号刚被注销的情况交给正常的失败路径，
+         * 那时已经有一屏图在，不该因为续页失败把屏上的东西换成错误页。
+         */
+        if (nextPage == 1 && siteAtRequest == GallerySite.GELBOORU && !gelbooruConfigured) {
+            searchError = NEEDS_GELBOORU_ACCOUNT
+            isSearching = false
+            return
+        }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val result = when (siteAtRequest) {
-                    GallerySite.DANBOORU -> DanbooruClient.getInstance(app).searchPosts(query, nextPage, limit)
+                    GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limit)
                     GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limit)
                 }
                 // 站已换：这一笔属于上一个站，落地就是脏数据（chips 是新的、图是旧站的）——整笔丢掉。
@@ -560,7 +565,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             val siteAtRequest = site
             try {
                 val result = when (siteAtRequest) {
-                    GallerySite.DANBOORU -> DanbooruClient.getInstance(app).searchTags(term)
+                    GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchTags(term)
                     GallerySite.YANDERE -> YandeReClient.getInstance(app).searchTags(term)
                 }
                 // 站已换 → 这笔候选属于上一个站，作废。
@@ -647,26 +652,17 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * "站方给了行但没给图"那句读数；没有跳过就 null。
      *
-     * 成因必须**点到站方那条规则本身**，不能含糊成"这几条已被删除"：
-     * 2026-09-26 复核确认，带 `loli` / `shota` 的条目是站方按 wiki `help:censored_tags`
-     * **成批封掉的**（Member 与未登录一律取不到图，Gold / Builder / Platinum 才行），
-     * 而且**换搜索词绕不过** —— 标签就长在那张图上。
-     * 说成"被删 / 还在审核"会让人白等一个永不到来的结果，也把"规则如此"误当成站方抽风。
+     * ⚠️ 这里**刻意只说到"站方没给图"为止**，不再去归因（从前会断言"是受管制标签封的、
+     * 要 Gold 才行"）。那条断言是 Danbooru 独有的站方规则，Gelbooru 没有对应机制
+     * （四个分级 `general`/`sensitive`/`questionable`/`explicit` 都正常可看）。
+     * 换站之后**留着旧站的归因**就成了编造的诊断 —— 而这条读数的作用是
+     * "让屏上少掉的张数有个交代"，不是"解释站方为什么这么做"。所以：
+     * 说清跳了几张、并指出这多半是删除或审核中（唯一可由本站数据支持的解释），
+     * 把"到底是什么原因"留给用户自己去站上看。宁可少说，不可说错。
      */
     fun noImageNotice(): String? = when {
         droppedNoImage == 0 -> null
-        // 主因是受管制标签，且这一档看不到 —— 唯一需要解释清楚的一种。
-        // "登录解锁不了"这半句是必须写的：用户的默认推断就是"登个号就好了"，
-        // 而这条规则对 Member 与未登录一视同仁，不点破就会变成一次白折腾的注册。
-        droppedNoImageCensored > 0 && !DanbooruClient.canViewCensoredTags(danbooruLevel) ->
-            "跳过 $droppedNoImage 张，其中 $droppedNoImageCensored 张带 loli / shota：" +
-                "站方把这两枚列为受管制标签，会员与未登录一样取不到图（登录解锁不了它），" +
-                "要 Gold / Builder / Platinum 才行。换搜索词也绕不过 —— 标签就在那张图上"
-        // 等级本来就看得到管制标签，那"没给图"就真的只剩被删 / 审核中这类原因。
-        droppedNoImageCensored > 0 ->
-            "跳过 $droppedNoImage 张（其中 $droppedNoImageCensored 张带 loli / shota，" +
-                "你这个等级本该看得到，多半已被删除或还在审核）"
-        else -> "跳过 $droppedNoImage 张（站方没给图，多半已被删除或还在审核）"
+        else -> "跳过 $droppedNoImage 张（站方给了条目但没给可用的图，多半已被删除或还在审核）"
     }
 
     /**
@@ -688,26 +684,24 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         return "换到 ${site.displayName} 后这一站一次最多发 ${sent.size} 枚，" +
             "本次只发了 ${sent.joinToString("、") { it.token }}；" +
             "没发出去的是 ${dropped.joinToString("、") { it.token }}（删掉多余的，或换个站再搜）。" +
-            GallerySearch.budgetNotice(site, danbooruLevel).orEmpty()
+            GallerySearch.budgetNotice(site).orEmpty()
     }
 
-    /**
-     * "这一串条件必然搜不出图"那句**发车前**的提示；没有这种情况就 null。
-     *
-     * 为什么值得在发请求之前说：命中的查询不是"标签冷门"，是站方对这批条目**成批封了**，
-     * 拿回来必然 0 张可摆（实测 `loli` 200 条一条都没有 URL）。让用户等 200 条跑完、
-     * 再在空态上读一长句"跳过 200 张"，不如在条件装上的那一刻就说清是为什么。
-     *
-     * 与页尾那句分工：这里说"会搜不出来、为什么"，页尾说"这一轮实际跳了多少张"。
-     * 两句都由 [DanbooruClient.CENSORED_TAGS] 这条规则派生，口径不会分叉。
-     */
-    private fun censoredQueryNotice(sent: List<GalleryTagFilter>): String? {
-        val hits = GallerySearch.censoredTagsIn(site, sent)
-        if (hits.isEmpty()) return null
-        val names = hits.joinToString(" / ")
-        // 已经是看得到管制标签的等级（Gold 起）就不用警告了 —— 那时它只是一枚普通标签。
-        if (DanbooruClient.canViewCensoredTags(danbooruLevel)) return null
-        return "$names 是站方的受管制标签：带它的条目对会员与未登录一律不给图" +
-            "（登录解锁不了，要 Danbooru 的 Gold 起），这一轮多半是空的。"
+    companion object {
+        /**
+         * Gelbooru 没配账号时给用户看的那句话。
+         *
+         * 措辞的三个要点，都不是随便写的：
+         * - **说清"完全用不了"而不是"效果差一点"**：它的接口匿名一律 401，
+         *   不是少几档权限。写成"登录后体验更好"会让用户以为不配也能凑合用；
+         * - **指出在哪儿配**（漫画源管理页顶部那张卡）—— 只说"需要账号"等于把问题
+         *   丢回给用户去找入口；
+         * - **不说 yande.re 也受影响**：这一站挂了不影响另一站，说清边界，
+         *   否则用户会以为整个画廊都瘫了。
+         */
+        const val NEEDS_GELBOORU_ACCOUNT: String =
+            "Gelbooru 需要先配置账号才能用：它的接口对匿名请求一律拒绝（401）。" +
+                "到「漫画源管理」页顶部的「画廊站点账号」卡里填 User ID 与 API Key 即可；" +
+                "yande.re 不受影响，照常能搜。"
     }
 }

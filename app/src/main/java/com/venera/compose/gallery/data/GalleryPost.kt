@@ -1,41 +1,53 @@
 package com.venera.compose.gallery.data
 
 /**
- * 画廊的**归一**图片条目：两站官方 JSON 的字段名几乎全不同（对照表见
+ * 画廊的**归一**图片条目：两站官方 API 的字段名几乎全不同（对照表见
  * `gallery-dual-source-hot-pool-plan-2026-09.md` §三），所以这里只留"用途"，
  * 站方的字段名各自的 DTO 里去翻译，UI 层不再出现任何单站专属字段。
  *
  * **四档地址按用途各取一档，不要混用**：
  * [previewUrl] 给网格、[fastUrl] 给大图页**开门那一档**、[largeUrl] 给大图页中档、
- * [fileUrl] 原图只给 HD 钮。两站实测（2026-09-26，yande.re #600000 与 Danbooru #6000000，
- * 每档逐个 HEAD 取 `Content-Length`）：
+ * [fileUrl] 原图只给 HD 钮。
+ *
+ * ⚠️ 两站各档**来自不同的字段、而且缺档的处理也不同**（都是实测）：
  *
  * | 站 | 开门档 [fastUrl] | 中档 [largeUrl] | 原档 [fileUrl] |
  * |---|---|---|---|
- * | yande.re | `preview_url` 300×212 / **13.7 KB** | `sample_url` 1500×1060 / **209 KB** | 原图 6.6 MB（PNG） |
- * | Danbooru | `360x360` 242×360 / **28.8 KB** | `sample` 850×1265 / **164 KB** | 原图 360 KB |
+ * | yande.re | `preview_url` 300×212 | `sample_url` 1500×1060 | 原图（PNG 可达 6.6 MB） |
+ * | Gelbooru | `preview_url` 350px 级 | `sample_url` 850×… ；**小图/视频时为空串** | `file_url` |
  *
- * ⚠️ **yande.re 的中档曾经错挂 `jpeg_url`**（旧对照表里那句"中档 = jpeg_url"是站方语义读错了）：
+ * **yande.re 的中档曾经错挂 `jpeg_url`**（旧对照表里那句"中档 = jpeg_url"是站方语义读错了）：
  * 实测 30/30 条 `jpeg_width/height` **恒等于** `width/height` —— 它不是降档，
  * 而是**原分辨率的 JPEG 重编码**（同一份池子里见过 9600×5400、10240×5760，单条 3 MB 级）。
  * 拿它当中档，打开一张图要先等一个原图大小的文件，观感就是"骨架图停在那儿半天"，
  * 而且每次翻回来都重来一次。站方真正的中档是 `sample_url`：长边 ≤1500，
  * 原图本来就比 sample 小的时候它回落成 `/image/` 原图 —— **实测 70/70 条非空、无 404 风险**。
+ *
+ * Gelbooru 的中档同理取 `sample_url`，但那边的空值形态是**空串**（不是缺键、也不是 404），
+ * 所以翻译时兜底到 `file_url`，见 `GelbooruDto.toPost`。
  */
 data class GalleryPost(
     val site: GallerySite,
     val id: Long,
-    /** 空格分隔的标签串。yande.re 不带命名空间前缀，Danbooru 带（`artist:` / `copyright:` …）。 */
+    /** 空格分隔的标签串。两站都**不带**命名空间前缀（都是平铺的下划线标识符）。 */
     val tags: String = "",
-    /** 站方显式分级。yande.re 是 `s`/`q`/`e`，Danbooru 多一档 `g`（general）。 */
+    /**
+     * 站方显式分级。⚠️ **两站不同形**：
+     * yande.re 是单字母 `s`/`q`/`e`，Gelbooru 是**单词** `general`/`sensitive`/`questionable`/`explicit`。
+     * 所以这里存的是站方原样值，判据在 [isAdultMarked] 里按"只认安全的那两档"统一处理。
+     */
     val rating: String = "",
     val score: Int = 0,
     /**
-     * 收藏数。**yande.re 的 JSON 里没有这个字段**（实测 44 个键不含 `fav_count`），
-     * 所以是 nullable 而不是 0 —— 加权时把"不知道"当 0 会把整站系统性压到最低档。
+     * 收藏数。**两站的 JSON 里都没有这个字段**（yande.re 实测 44 个键不含 `fav_count`；
+     * Gelbooru 实测字段表里也没有），所以是 nullable 而不是 0 ——
+     * 加权时把"不知道"当 0 会把整站系统性压到最低档。
      */
     val favCount: Int? = null,
-    /** 画师。Danbooru 没有 `author` 字段，从 `tag_string_artist` 翻译过来。 */
+    /**
+     * 画师。两站都没有 `author` 字段：yande.re 靠 tags 里的画师档推、
+     * Gelbooru 用它的 `owner`（**上传者**，与"画师"不是一回事，所以这里取的是上传者名）。
+     */
     val author: String = "",
     /** 画师自己的出处链接（不是本站单页地址，那个见 [pageUrl]）。 */
     val source: String = "",
@@ -49,17 +61,15 @@ data class GalleryPost(
      * 大图页的**第一档**：打开那一瞬间就把画面填上的那一张（预览的上一档）。
      *
      * 为什么不直接拿 [previewUrl] 顶：yande.re 的预览 300×212 铺满屏还行，
-     * 而 Danbooru 的预览只有 121×180（实测 9.3 KB）—— 铺满一屏是 9 倍放大的一块糊。
-     * 站方另给了 `360x360`（242×360 / 28.8 KB），同样是"秒出"的量级，却清楚一倍。
-     * 所以两站各取自己那份"最便宜且铺满屏还认得出"的档：
-     * yande.re = `preview_url`（顺带与网格卡片同址，磁盘/内存缓存直接命中），
-     * Danbooru = `360x360`。
+     * 而 Gelbooru 的预览是 350px 级、比例可能很长（实测一条 254×350 的竖图）——
+     * 铺满一屏会糊。两站各取自己那份"最便宜且铺满屏还认得出"的档：
+     * 两站都用 `preview_url`（顺带与网格卡片同址，磁盘/内存缓存直接命中）。
      *
      * 取不到时留空串（站方变体缺项），由 UI 降级成"直接等 [largeUrl]"。
      * **绝不留一个编出来的地址**。
      */
     val fastUrl: String = "",
-    /** 大图页中档：两站都取站方的 `sample` 档。 */
+    /** 大图页中档：两站都取站方的 `sample_url`。⚠️ Gelbooru 会给空串，翻译时已兜底。 */
     val largeUrl: String = "",
     val largeWidth: Int = 0,
     val largeHeight: Int = 0,
@@ -71,15 +81,19 @@ data class GalleryPost(
     /**
      * 标签按**站方给的分类**分好桶，给「关于这张图」那面板用。
      *
-     * 两站的能力差得很远，所以桶数不一样（实测）：
-     * - Danbooru 直接给五串 `tag_string_general/character/copyright/artist/meta` → 五桶；
-     * - yande.re 的 44 个键里**没有任何分类字段**，只有一个平铺 `tags` → 只能一桶「标签」。
-     * 这是站方数据面的天花板，不是这里少写。空桶不进列表（摆一个空的"角色"区比不摆更糟）。
+     * ⚠️ 两站的 **post 端点都不给分类**（实测）：
+     * - yande.re 的 44 个键里没有任何分类字段，只有一个平铺 `tags`；
+     * - Gelbooru 也只有一串平铺 `tags`（没有 `tag_string_*` 那五串）。
+     *
+     * 所以两站**都只能一桶**「标签」。这是站方数据面的天花板，不是这里少写。
+     * 空桶不进列表（摆一个空的"角色"区比不摆更糟）。
+     *
+     * （分类信息在它们的 **tag 端点**上有 —— 见 [GalleryTagSuggestion.category]，
+     * 那是补全行用的，与"这张画"无关。别把两者混起来。）
      */
     val tagGroups: List<GalleryTagGroup> = emptyList(),
     /**
-     * 视频时长（秒）。站方只在 `media_asset.duration` 给（实测顶层**没有** `duration` 键），
-     * yande.re 根本没这个字段、Danbooru 的图片条目也没有 → 一律 null，不当 0。
+     * 视频时长（秒）。两站的 JSON 里**都没有**这个字段 → 一律 null，不当 0。
      */
     val durationSeconds: Double? = null,
 ) {
@@ -102,12 +116,18 @@ data class GalleryPost(
     /**
      * 站方把 `questionable` 也算成人内容：与漫画侧「源级预设 = nsfw」同一档处理。
      *
-     * 判据写成「只有 `s` / `g` 才算安全」而不是「`e`/`q` 才算成人」——
+     * 判据写成「只有安全的那两档才算安全」而不是「`e`/`q` 才算成人」——
      * 未知值或空串一旦放行，就是把内容**静默**放到已经开了打码的界面上。方向要反过来：宁可错打码。
-     * `g`（general）是接 Danbooru 才出现的一档（实测最"新"的那批 20 条里 8 条是 g），
-     * 沿用第一轮 `rating != "s"` 会把这档最干净的内容**误打码**。
+     *
+     * ⚠️ 两站的"安全档"**字形不同**（实测），所以这里两种都认：
+     * - yande.re 单字母：`s`（safe）；
+     * - Gelbooru 单词：`general` / `sensitive`。
+     *
+     * 沿用第一轮 `rating != "s"` 会把 Gelbooru 的 `general` 那批最干净的内容**误打码**，
+     * 而只认单词又会让 yande.re 整站都被打码 —— 所以判据必须同时覆盖两套字形。
      */
-    val isAdultMarked: Boolean get() = rating != "s" && rating != "g"
+    val isAdultMarked: Boolean
+        get() = rating.lowercase() !in SAFE_RATINGS
 
     /** 本站单页地址。已删除的条目会 404，那是站方语义，不是我们的缺陷。 */
     val pageUrl: String get() = site.pageUrlPrefix + id
@@ -139,8 +159,23 @@ data class GalleryPost(
 
     companion object {
         /**
-         * 要引进来的视频扩展名。实测 Danbooru 日榜只有 `mp4`，
-         * yande.re 侧历史上是 `webm`（这两档之外的一律当"不能摆"滤掉，比如 `zip`）。
+         * 归一成"安全"的分级值（**小写**，两站字形都收）。
+         *
+         * 这是全仓唯一一处写死分级字符串的地方 —— 加新站时只改这里。
+         * 之所以用白名单（而不是列成人档）：未知值必须落进"成人"，
+         * 放行一个没见过的分级 = 把内容静默放到已开打码的界面上。
+         */
+        val SAFE_RATINGS: Set<String> = setOf(
+            "s",          // yande.re：safe
+            "safe",       // 别名，防站方改写法
+            "general",    // Gelbooru：一般
+            "sensitive",  // Gelbooru：敏感（不露骨，仍算安全档）
+        )
+
+        /**
+         * 要引进来的视频扩展名。实测两站都有 `mp4`（yande.re 侧历史上是 `webm`，
+         * Gelbooru 会把上传的 webm 转码成 mp4，见 `GelbooruClient` 的字段说明）——
+         * 这两档之外的一律当"不能摆"滤掉（比如 `zip`）。
          */
         val VIDEO_EXTS: Set<String> = setOf("mp4", "webm")
     }

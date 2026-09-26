@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.venera.compose.components.venera.VeneraCard
-import com.venera.compose.gallery.data.DanbooruAccount
+import com.venera.compose.gallery.data.GelbooruAccount
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -54,44 +54,42 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *
  * ## 为什么摆在漫画源管理里
  *
- * Danbooru / yande.re 这两站是**原生客户端**（直接打官方 JSON API，不走 JS 源脚本），
+ * Gelbooru / yande.re 这两站是**原生客户端**（直接打官方 API，不走 JS 源脚本），
  * 所以它们没有"源"可以挂在那个列表里。但账号这一档事在用户心里与"源"是同一件事
  * （"我要给某个站点配个号"），而且整仓只有这一页是"各站点的配置"的落点 ——
  * 摆在这儿最容易被找到，也不用在设置首页多开一条只放一个条目的入口。
  *
- * ## 登录换来的是什么（只有一件，其余都别指望）
+ * ## ⚠️ Gelbooru 的账号是**必需**，不是加分
  *
- * **一次能搜几枚标签**：按账号等级算 —— 匿名与 Member **都是 2 枚**，Gold 6 枚，
- * Platinum 及以上不限。**免费注册不放宽这 2 枚**，所以卡上必须写清楚，
- * 否则"登录了怎么还是 2 枚"会变成一次没必要的投诉。
+ * 这一条与从前 Danbooru 那套**根本不同**，卡上必须写在最显眼处：
+ * 它的 DAPI **匿名一律 401**（2026-09-26 实测 posts 与 tag 两条端点都不例外），
+ * 所以**没配账号时 Gelbooru 在画廊里一张图都取不到**。
+ * 从前那张卡的文案是"登录换来的是「一次可搜的标签数」"—— 那个说法在这里是**错的**：
+ * 不配就连基本取图都不成立。所以这里的措辞是"配置"而不是"登录之后更好"。
  *
- * ⚠️ **登录不解锁成人图**。这里从前写着"成人分级匿名看不到、登录后可见"，那是个错判：
- * 2026-09-26 复核，`cat rating:e` 匿名取回 5/5 都带图（成人分级本来就不挡）；
- * 真正被挡的是**带 `loli` / `shota` 的条目**，而站方对 Member 与未登录**一视同仁地封**
- * （wiki `help:censored_tags`：要 Gold / Builder / Platinum）。详见
- * [com.venera.compose.gallery.data.DanbooruClient.CENSORED_TAGS]。
- * 这条结论要是不写在这儿，用户会为了一个"登录就能看到"的错觉去注册、去验证邮箱。
+ * yande.re 那一路**不需要账号**，照旧能用 —— 卡上写明，免得用户以为整个画廊都瘫了。
  *
  * ## 凭据怎么填
  *
- * 用户名 + **API Key**（不是登录密码）。站方的两条正规路之一 —— HTTP Basic
- * `base64(用户名:API Key)` —— 走的是这一条。卡里直接给一枚「去生成 API Key」，
- * 落点是站方的个人页（`danbooru.donmai.us/profile`），Key 就在那一页生成。
+ * **User ID（纯数字）+ API Key**，两样都在站方账号选项页。
+ * ⚠️ 这与 Danbooru 那套（用户名 + API Key 走 HTTP Basic）不是一回事：
+ * Gelbooru 是把这两个值当 **query 参数**发出去的（`&api_key=&user_id=`）。
+ * 所以输入框是"User ID"而不是"用户名" —— 填用户名会 401，而站方**不会告诉你哪里错了**
+ * （实测三种错法回的都是同一个空 body 的 401）。卡里给一枚「去账号页拿 Key」。
  */
 @Composable
 fun GalleryAccountCard() {
     val tokens = VeneraTokens
     val context = LocalContext.current
-    val account = remember { DanbooruAccount.getInstance(context) }
+    val account = remember { GelbooruAccount.getInstance(context) }
     val identity by account.identity.collectAsStateWithLifecycle()
 
     var loginOpen by remember { mutableStateOf(false) }
     var logoutConfirm by remember { mutableStateOf(false) }
 
-    // 打开这张卡顺手**校准一次等级**：这里显示的是登录那一刻记下的值，而站方会变
-    // （最日常的一条：注册走了 VPN / 代理 → Restricted(10)，验证邮箱后才升 Member）。
-    // 成功了下面的 StateFlow 自己会把文字刷成新值；失败**不提示也不注销** ——
-    // 屏上继续显示上次问到的等级，那是当时为真的事实，而一次网络抽风不该把人登出。
+    // 打开这张卡顺手**验一次凭据**还在不在有效：站方的 Key 可以被吊销、账号也可能被停。
+    // 成功了下面的 StateFlow 自己会刷新；失败**不提示也不注销** ——
+    // 一次网络抽风不该把用户的配置抹掉，那比留着更糟（他得重新去站上找 Key）。
     LaunchedEffect(Unit) { account.refresh() }
 
     VeneraCard(modifier = Modifier.fillMaxWidth()) {
@@ -123,7 +121,7 @@ fun GalleryAccountCard() {
                         color = tokens.color.textPrimary,
                     )
                     Text(
-                        text = "Danbooru（yande.re 不需要账号）",
+                        text = "Gelbooru 必须配置（yande.re 不需要账号）",
                         fontSize = tokens.type.overline,
                         color = tokens.color.textTertiary,
                     )
@@ -132,21 +130,22 @@ fun GalleryAccountCard() {
 
             Spacer(modifier = Modifier.height(tokens.spacing.space5))
             Text(
-                text = "登录换来的是「一次可搜的标签数」（按等级：会员与匿名都是 2 枚，Gold 6 枚，" +
-                    "Platinum 及以上不限）。它不解锁图：带 loli / shota 的条目站方对会员也一律封，要 Gold 起。",
+                text = "Gelbooru 的接口要求凭据：不配置就一张图都取不到（不是少几档权限，是完全用不了）。" +
+                    "配置后两站都能正常出图 —— 它不改变能看到什么内容，" +
+                    "四个分级（一般 / 敏感 / 存疑 / 露骨）照常都能看。",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textSecondary,
             )
 
             Spacer(modifier = Modifier.height(tokens.spacing.space5))
 
-            val signedIn = identity
+            val configured = identity
             Surface(
                 shape = RoundedCornerShape(tokens.shape.small),
                 color = tokens.color.primaryContainer.copy(alpha = 0.35f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { if (signedIn == null) loginOpen = true else logoutConfirm = true },
+                    .clickable { if (configured == null) loginOpen = true else logoutConfirm = true },
             ) {
                 Row(
                     modifier = Modifier.padding(vertical = tokens.spacing.space5),
@@ -154,17 +153,17 @@ fun GalleryAccountCard() {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = if (signedIn == null) Icons.Outlined.AccountCircle else Icons.Outlined.Logout,
+                        imageVector = if (configured == null) Icons.Outlined.AccountCircle else Icons.Outlined.Logout,
                         contentDescription = null,
                         tint = tokens.color.primary,
                         modifier = Modifier.size(tokens.spacing.chipIconSize),
                     )
                     Spacer(modifier = Modifier.width(tokens.spacing.space4))
                     Text(
-                        text = if (signedIn == null) {
-                            "登录 Danbooru"
+                        text = if (configured == null) {
+                            "配置 Gelbooru 账号"
                         } else {
-                            "已登录 ${signedIn.name}（${danbooruLevelLabel(signedIn.level)}）· 点此注销"
+                            "已配置 User ID ${configured.userId} · 点此清除"
                         },
                         fontSize = tokens.type.overline,
                         fontWeight = tokens.type.weightMedium,
@@ -176,7 +175,7 @@ fun GalleryAccountCard() {
     }
 
     if (loginOpen) {
-        DanbooruLoginDialog(
+        GelbooruLoginDialog(
             account = account,
             onDismiss = { loginOpen = false },
         )
@@ -187,15 +186,16 @@ fun GalleryAccountCard() {
             VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
                 Column(modifier = Modifier.padding(tokens.spacing.space9)) {
                     Text(
-                        text = "注销 Danbooru 账号？",
+                        text = "清除 Gelbooru 账号？",
                         fontSize = tokens.type.itemTitle,
                         fontWeight = tokens.type.weightBold,
                         color = tokens.color.textPrimary,
                     )
                     Spacer(modifier = Modifier.height(tokens.spacing.space5))
                     Text(
-                        text = "本机保存的用户名与 API Key 会被删掉，一次可搜的标签数回到匿名的 2 枚" +
-                            "（会员本来也是 2 枚）。带 loli / shota 的图仍然看不到 —— 那与登不登录无关。",
+                        text = "本机保存的 User ID 与 API Key 会被删掉。" +
+                            "⚠️ 删掉之后 Gelbooru 就完全不能用了（它的接口要求凭据，匿名一律被拒）——" +
+                            "画廊里只剩 yande.re 那一路出图。",
                         fontSize = tokens.type.body,
                         color = tokens.color.textSecondary,
                     )
@@ -210,10 +210,10 @@ fun GalleryAccountCard() {
                             onClick = {
                                 account.signOut()
                                 logoutConfirm = false
-                                Toast.makeText(context, "已注销 Danbooru", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "已清除 Gelbooru 账号", Toast.LENGTH_SHORT).show()
                             },
                         ) {
-                            Text("注销", color = tokens.color.actionFavorite)
+                            Text("清除", color = tokens.color.actionFavorite)
                         }
                     }
                 }
@@ -223,28 +223,33 @@ fun GalleryAccountCard() {
 }
 
 /**
- * 登录弹窗：用户名 + API Key。
+ * 配置弹窗：**User ID + API Key**。
  *
- * 两个字段都必须年落**站方核实过**才算登录成功（[DanbooruAccount.signIn] 走 `/profile.json`）：
- * 只把输入存下来就是"看起来登录了、其实每笔请求还是匿名"——那种假登录比不登录更坏。
+ * 两样都必须经**站方核实过**才算配置成功（[GelbooruAccount.signIn] 会实打一次最小请求）：
+ * 只把输入存下来就是"看起来配好了、其实每笔请求还是被 401 拒" —— 那种假配置比不配更坏，
+ * 因为用户会以为是自己网络的问题。
+ *
+ * ⚠️ 第一个框是 **User ID**（纯数字），不是用户名。这一条与旧实现不同，
+ * 也是用户最容易填错的地方：填了用户名会 401，而站方**不会说明是哪个字段错**
+ * （实测三种错法回的都是同一个空 body 的 401），所以标签与提示都要点明"数字"。
  */
 @Composable
-private fun DanbooruLoginDialog(
-    account: DanbooruAccount,
+private fun GelbooruLoginDialog(
+    account: GelbooruAccount,
     onDismiss: () -> Unit,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // 用户名回填上次那一个（换 Key 时不用重敲名字）；API Key 一律留空，不预填密钥。
-    var login by remember { mutableStateOf(account.loginName) }
+    // User ID 回填上次那个（换 Key 时不用重敲）；API Key 一律留空，不预填密钥。
+    var userId by remember { mutableStateOf(account.loginUserId) }
     var apiKey by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
-    fun openApiKeyPage() {
+    fun openAccountPage() {
         runCatching {
             context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(DanbooruAccount.API_KEY_PAGE)),
+                Intent(Intent.ACTION_VIEW, Uri.parse(GelbooruAccount.ACCOUNT_PAGE)),
             )
         }.onFailure {
             Toast.makeText(context, "打不开浏览器：${it.message}", Toast.LENGTH_SHORT).show()
@@ -255,24 +260,24 @@ private fun DanbooruLoginDialog(
         VeneraCard(modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space8)) {
             Column(modifier = Modifier.padding(tokens.spacing.space9)) {
                 Text(
-                    text = "登录 Danbooru",
+                    text = "配置 Gelbooru",
                     fontSize = tokens.type.itemTitle,
                     fontWeight = tokens.type.weightBold,
                     color = tokens.color.textPrimary,
                 )
                 Spacer(modifier = Modifier.height(tokens.spacing.space3))
                 Text(
-                    text = "填站方的用户名与 API Key（不是登录密码）。" +
-                        "Key 在 Danbooru 个人页生成，本站只把它存在本机、只用于这一站的请求。",
+                    text = "填站方的 User ID 与 API Key（都在账号选项页，User ID 是一串数字、不是用户名）。" +
+                        "本站只把它们存在本机、只用于这一站的请求。",
                     fontSize = tokens.type.caption,
                     color = tokens.color.textSecondary,
                 )
                 Spacer(modifier = Modifier.height(tokens.spacing.space6))
 
                 OutlinedTextField(
-                    value = login,
-                    onValueChange = { login = it },
-                    label = { Text("用户名") },
+                    value = userId,
+                    onValueChange = { userId = it },
+                    label = { Text("User ID（数字）") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -287,43 +292,42 @@ private fun DanbooruLoginDialog(
                 )
 
                 Spacer(modifier = Modifier.height(tokens.spacing.space3))
-                TextButton(onClick = { openApiKeyPage() }) {
+                TextButton(onClick = { openAccountPage() }) {
                     Icon(
                         imageVector = Icons.Outlined.Link,
                         contentDescription = null,
                         modifier = Modifier.size(tokens.spacing.chipIconSize),
                     )
                     Spacer(modifier = Modifier.width(tokens.spacing.space3))
-                    Text("去生成 API Key")
+                    Text("去账号页拿 Key")
                 }
 
                 Spacer(modifier = Modifier.height(tokens.spacing.space5))
                 Button(
                     onClick = {
-                        if (login.isBlank() || apiKey.isBlank()) {
-                            Toast.makeText(context, "用户名与 API Key 都不能为空", Toast.LENGTH_SHORT).show()
+                        if (userId.isBlank() || apiKey.isBlank()) {
+                            Toast.makeText(context, "User ID 与 API Key 都不能为空", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
                         busy = true
                         scope.launch {
-                            account.signIn(login, apiKey)
+                            account.signIn(userId, apiKey)
                                 .onSuccess { identity ->
                                     busy = false
                                     onDismiss()
                                     Toast.makeText(
                                         context,
-                                        "已登录 ${identity.name}" +
-                                            "（${danbooruLevelLabel(identity.level)}）",
+                                        "已配置 Gelbooru（User ID ${identity.userId}）",
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 }
                                 .onFailure { e ->
                                     busy = false
                                     // 原样转达站方的答案（401 / 403 / 网络错误各自可分辨），
-                                    // 不统一糊成一句"登录失败"。
+                                    // 不统一糊成一句"配置失败"。
                                     Toast.makeText(
                                         context,
-                                        e.message ?: "登录失败",
+                                        e.message ?: "配置失败",
                                         Toast.LENGTH_LONG,
                                     ).show()
                                 }
@@ -338,24 +342,10 @@ private fun DanbooruLoginDialog(
                             color = Color.White,
                         )
                     } else {
-                        Text("登录")
+                        Text("保存")
                     }
                 }
             }
         }
     }
-}
-
-/**
- * 站方等级 → 人话。
- *
- * 只翻**已经核实过**的那几档（`/profile.json` 回的 `level`）：20 Member、30 Gold、31+
- * Platinum 及以上，其余（0/10）归到"受限账号"—— 受限账号的行为与匿名一致
- * （站方 `help:users` 里写明"验证邮箱前与未注册用户相同"），所以标签上限也是 2。
- */
-private fun danbooruLevelLabel(level: Int): String = when {
-    level >= 31 -> "Platinum 及以上"
-    level >= 30 -> "Gold"
-    level >= 20 -> "Member"
-    else -> "受限账号"
 }

@@ -37,7 +37,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import coil3.ImageLoader
 import com.venera.compose.data.network.UserAgentPolicy
-import com.venera.compose.gallery.data.DanbooruClient
+import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -64,8 +64,11 @@ fun GalleryVideoViewer(
     val tokens = VeneraTokens
     val context = LocalContext.current
     val request = remember(post.uid) { galleryLargeRequest(context, post) }
-    // 视频条目的 largeUrl 在翻译时就换成了静帧（见 DanbooruClient.toPost），
-    // 所以这张底图永远拿得到，且和三级用的是同一个 cache key。
+    // 视频条目的底图取哪一档，两站**不一样**（都是实测）：
+    // - yande.re：翻译时把 largeUrl 换成了 `jpeg_url` 静帧，所以拿得到一张图；
+    // - Gelbooru：站方对视频的 `sample_url` 给**空串**，于是 `sampleUrl.ifBlank { fileUrl }`
+    //   兜底成**原片 mp4** —— 这张"底图"Coil 解不了，会走占位。
+    // 所以下面不能假设"底图永远拿得到"：拿不到时退回封面比例占位，由播放器顶上。
     var started by rememberSaveable(post.uid) { mutableStateOf(false) }
     val ratio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
 
@@ -114,15 +117,19 @@ fun GalleryVideoViewer(
 }
 
 /**
- * 两站的 UA **不能共用**：
- * - Danbooru 挂在 Cloudflare 上，实测**浏览器型 UA 一律 403 + `cf-mitigated`**，只认非浏览器串；
- * - yande.re 那侧图片/接口一直走的是全局默认 UA（移动端 Chrome 串）且实测正常。
+ * 两站播放时各带什么 UA。
+ *
+ * - Gelbooru：用它自己的非浏览器串（与 JSON 接口那边同串）。
+ *   ⚠️ 这一条**不是**从 Danbooru 那份"浏览器串必 403"的实测搬过来的 ——
+ *   那条强判据是 Danbooru 特有的，Gelbooru 侧本轮**没有实测到**同样形态。
+ *   这里保持一致只是省事：同一站的接口与 CDN 用同一个串，将来要调也只调一处。
+ * - yande.re：图片/接口一直走全局默认 UA（移动端 Chrome 串）且实测正常。
  *
  * media3 用自己的 HTTP 栈，既不过 `VeneraNetworkClient` 也拿不到 `ImageHeaderPolicy` 的内置表，
  * 所以这一层必须自己带 —— 不带就会出现"缩略图看得到、点开播不了"那种最难查的错。
  */
 private fun userAgentFor(post: GalleryPost): String = when (post.site) {
-    GallerySite.DANBOORU -> DanbooruClient.API_USER_AGENT
+    GallerySite.GELBOORU -> GelbooruClient.API_USER_AGENT
     GallerySite.YANDERE -> UserAgentPolicy.DEFAULT_USER_AGENT
 }
 

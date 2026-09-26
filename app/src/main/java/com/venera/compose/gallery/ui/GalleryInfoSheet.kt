@@ -89,9 +89,10 @@ fun GalleryInfoSheet(
     val blockTag: (String) -> Unit = { tag ->
         tagScope.launch {
             // 一律存成 TAG 规则，且存**站点原值**（译文会随字典更新失效）。选 TAG 而不是 KEYWORD
-            // 是量出来的：画廊那面墙的屏蔽判据只喂 `post.tagList`，而 Danbooru 的 `tag_string`
-            // 实测正是那五桶的合集、yande.re 那一桶就是 `tags` —— 所以这里每一枚 chip 的原串
-            // 都必然在 tagList 里，规则加下去一定挡得住（用 KEYWORD 会连作者名一起误伤）。
+            // 是量出来的：画廊那面墙的屏蔽判据只喂 `post.tagList`，而两站的 `tags`
+            // 就是那一串平铺标签（Gelbooru 实测没有 `tag_string_*` 那种分桶串）——
+            // 所以这里每一枚 chip 的原串都必然在 tagList 里，规则加下去一定挡得住
+            // （用 KEYWORD 会连作者名一起误伤）。
             val exists = guard.rules.value
                 .any { it.type == "TAG" && it.pattern.equals(tag, ignoreCase = true) }
             when {
@@ -108,7 +109,7 @@ fun GalleryInfoSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // 桶多的条目（Danbooru 五个桶）会顶到窗口上限，靠滚动看全；
+                // 标签多的条目会顶到窗口上限，靠滚动看全；
                 // 这里不另定最大高度 —— M3 的 sheet 自己会裁到窗口内，造一个数字只会比它更矮。
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = tokens.spacing.screenHorizontal),
@@ -137,8 +138,8 @@ fun GalleryInfoSheet(
                 // 与"站方没给"是两回事。
                 post.favCount?.let { InfoRow("收藏", it.toString()) }
                 post.durationSeconds?.let { InfoRow("时长", "${it.toInt()} 秒") }
-                // Danbooru 的画师在下面「画师」那一桶里已经列全，不再重复一行；
-                // yande.re 没有分桶，只有 author 这一个字段。
+                // 作者单独一行（两站都只有一桶标签，画师不会在桶里另列一遍，
+                // 所以这一行不是重复信息）。
                 if (post.tagGroups.none { it.label == "画师" }) {
                     InfoRow("作者", post.author.ifBlank { "—" })
                 }
@@ -294,9 +295,10 @@ private fun LinkRow(label: String, value: String, onClick: () -> Unit) {
 /**
  * 标签区，**按站方给的分类分桶**（截图里 `Character` / `Copyright` 那种分组）。
  *
- * 桶数两站不一样：Danbooru 实测五串全给（`tag_string_general/character/copyright/artist/meta`），
- * yande.re 的 44 个键里**没有任何分类字段** → 只能一桶「标签」。
- * 这里不硬造分组（见 `GalleryPost.tagGroups` 的说明）。
+ * ⚠️ 两站的 **post 端点都不给分类**（实测）：yande.re 的 44 个键里没有任何分类字段，
+ * Gelbooru 也只有一串平铺 `tags`（没有 `tag_string_*` 那五串）→ **两站都只能一桶**「标签」。
+ * 这里不硬造分组（见 `GalleryPost.tagGroups` 的说明）——硬按标签名猜分类
+ * 会在下一版站方数据变化时静默分错，比不分更坏。
  *
  * chips 是**可点的**（用户 2026-09-25 点名，语义与漫画详情页那枚药丸一模一样）：
  * 点击=用这枚标签去画廊搜索，长按=「搜索 / 复制 / 屏蔽」三项菜单。
@@ -400,11 +402,22 @@ private fun GalleryTagChip(
     }
 }
 
-internal fun ratingLabel(rating: String): String = when (rating) {
-    "s" -> "安全 (s)"
-    "g" -> "一般 (g)"   // Danbooru 独有的一档（实测 yande.re 只有 s/q/e）
-    "q" -> "存疑 (q)"
-    "e" -> "成人 (e)"
+/**
+ * 分级值 → 人话。
+ *
+ * ⚠️ **两站的字形不同**（实测），所以这张表要同时收两套：
+ * - yande.re：单字母 `s` / `q` / `e`；
+ * - Gelbooru：单词 `general` / `sensitive` / `questionable` / `explicit`。
+ *
+ * 只认单字母的话，Gelbooru 的每一条都会显示成「未知」—— 那不是"数据缺失"，
+ * 是我们没认出来，属于最没必要的一种显示瑕疵。
+ */
+internal fun ratingLabel(rating: String): String = when (rating.lowercase()) {
+    "s", "safe" -> "安全 (s)"
+    "g", "general" -> "一般 (general)"
+    "sensitive" -> "敏感 (sensitive)"
+    "q", "questionable" -> "存疑 (questionable)"
+    "e", "explicit" -> "成人 (explicit)"
     else -> "未知 (${rating.ifBlank { "空" }})"
 }
 

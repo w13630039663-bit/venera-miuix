@@ -465,7 +465,7 @@ private enum class FavoritesMode { Local, Network, Images }
  * 「图片收藏」这一档内部的**两块**（用户 2026-09-26 点名要分开）。
  *
  * - [Comics] —— 阅读器里收入的单页插图（原有能力，[FavoriteImagesBody]）；
- * - [Gallery] —— 图站（yande.re / Danbooru）收藏的整张画（[GalleryFavoritesBody]）。
+ * - [Gallery] —— 图站（yande.re / Gelbooru）收藏的整张画（[GalleryFavoritesBody]）。
  *
  * 两者**不合并成一格**：来源不同、点开之后的去处不同（预览页 / 图站大图页）、
  * 能对它们做的事也不同（"从该页开始阅读"对一张画廊图没有意义）。

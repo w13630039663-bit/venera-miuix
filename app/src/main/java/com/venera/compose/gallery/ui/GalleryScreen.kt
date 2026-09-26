@@ -93,9 +93,13 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 画廊主 Tab（第 4 位，搜索右侧）。落地档 = **两站上一天的热门各 20 张打乱**：
- * `yande.re/post/popular_recent?period=1d` 与 `danbooru/explore/posts/popular?scale=day`，
+ * 画廊主 Tab（第 4 位，搜索右侧）。落地档 = **两站热门各 20 张打乱**：
+ * yande.re 走官方日榜 `popular_recent?period=1d`，Gelbooru 没有日榜端点、
+ * 走 `sort:score:desc` 的全站高分池（两站口径的差别见 `GalleryFeedSource`），
  * 抽样与打乱都锁在同一个种子上（见 `GalleryMerge`），一屏到底、没有翻页。
+ *
+ * ⚠️ **Gelbooru 那一路需要账号**（DAPI 匿名一律 401）。没配时这一屏只剩 yande.re 出图，
+ * 页尾会如实写出原因 —— 不允许它长成"Gelbooru 今天没图"那种假读数。
  *
  * 与漫画侧的关系：只共用 OkHttpClient、VeneraCover/空态/波浪环这些技术层，
  * 取数、缓存、图片预算各自独立（边界见 `gallery-module-isolation-plan-2026-09.md` §二）。
@@ -134,9 +138,9 @@ fun GalleryScreen(
     LaunchedEffect(GallerySearchHandoff.pending) {
         val request = GallerySearchHandoff.consume() ?: return@LaunchedEffect
         // **整片换掉**而不是往现有 chips 上加：那是另一张图带来的上下文，留着旧的会让用户
-        // 以为搜的还是刚才那串；Danbooru 匿名预算只有 2 枚，多留一枚还可能当场顶满。
-        // 切站 + 装条件 + 开搜是**一步**（见 acceptHandoff）：本轮的换站会顺手重搜一次，
-        // 拆成 setSite + setFilters 就会先拿旧条件在新站发一笔，同一轮两个请求。
+        // 以为搜的还是刚才那串。切站 + 装条件 + 开搜是**一步**（见 acceptHandoff）：
+        // 本轮的换站会顺手重搜一次，拆成 setSite + setFilters 就会先拿旧条件在新站发一笔，
+        // 同一轮两个请求。
         svm.acceptHandoff(request.site, request.tags)
     }
 
@@ -157,10 +161,10 @@ fun GalleryScreen(
     val columnCount = if (isWideScreen(LocalConfiguration.current.screenWidthDp.dp)) 3 else 2
 
     /**
-     * 取一次两站的日榜并合成整屏。
+     * 取一次两站的热门池并合成整屏（两站口径不同，见 GalleryFeedSource）。
      *
      * 只有这一条路径，没有"加载更多"：日榜是一屏到底的固定池子（实测 yande.re 固定 40 条、
-     * `page`/`limit` 被忽略；Danbooru 200 条里抽 20）。
+     * `page`/`limit` 被忽略；Gelbooru 100 条里抽 20）。
      */
     fun loadDaily() {
         if (vm.isLoadingFeed) return
@@ -212,8 +216,8 @@ fun GalleryScreen(
      *
      * 遮罩判定在滚动里是"每项每次重组"的密度，所以按输入记忆；HIDDEN 直接不落进列表。
      * 两个"少了"的成因**分开记**：命中黑名单是用户自己的规则，按分级收起是模式选择 ——
-     * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 Danbooru 整站空白，
-     * 当时页尾还写着「Danbooru 20」，就是这里没记造成的假读数）。
+     * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 某一站 整站空白，
+     * 当时页尾还写着「那站     * 
      */
     val wall = remember(vm.posts, maskMode, rules) {
         buildGalleryWall(vm.posts, maskMode) { post ->
@@ -402,13 +406,14 @@ fun GalleryScreen(
             }
 
             // 搜完 0 张：成因必须点名。最常见的一种不是"没有这个标签"，而是
-            // **站方给了行却没给图**（Danbooru 把带 `loli` / `shota` 的条目的四支 URL 键整片删掉）——
-            // 成因由 `svm.noImageNotice()` 如实说。
+            // **站方给了行却没给图**（条目本身取不到可用的图片地址）——
+            // 具体张数由 `svm.noImageNotice()` 如实说。
             //
             // 这里曾经还有一枚「排掉成人分级再搜一次」的出口，2026-09-26 已删：它的前提是错的。
-            // 实测成人分级（`rating:e`）匿名本来就看得见（`cat rating:e` 5/5 有图），
-            // 被封的是**标签**，而 `loli -rating:e` 依旧 0 张有图 —— 那枚按钮按下去是白按，
+            // 实测成人分级匿名本来就看得见，那枚按钮按下去是白按，
             // 比没有更糟（它同时在暗示一个不存在的原因）。剩下的正确出口只有一个：改条件。
+            // ⚠️ 换到 Gelbooru 之后这条判断**更成立**：它四个分级都正常可看，
+            // 没有任何"排掉某一档就能出图"的情形。
             searchWallActive && searchWall.cards.isEmpty() && !svm.isSearching -> Box(
                 // 中心不按整屏算：展开着的搜索区 + 键盘会把整屏中心推得很低，按钮就够不着了。
                 modifier = Modifier
@@ -423,7 +428,19 @@ fun GalleryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 VeneraEmptyView(
-                    title = if (svm.searchError != null) "这一轮没搜成" else "这一串标签没有可摆的图",
+                    /*
+                     * 标题分三档而不是两档：**"这一站现在用不了"与"这一轮搜失败了"是不同的事**。
+                     * 前者（目前只有 Gelbooru 未配账号）一次请求都没发出去，说成"没搜成"
+                     * 会让用户去重试、去改网络 —— 而他该做的是去配置页填两个字段。
+                     * 判据用 `searchError` 是否就是那句固定文案，而不是再加一个状态位：
+                     * 那句话本身就是"发车前被拦住"的唯一来源，多一个旗标就多一处会不同步的状态。
+                     */
+                    title = when {
+                        svm.searchError == GallerySearchViewModel.NEEDS_GELBOORU_ACCOUNT ->
+                            "这一站还不能用"
+                        svm.searchError != null -> "这一轮没搜成"
+                        else -> "这一串标签没有可摆的图"
+                    },
                     message = svm.searchError
                         ?: listOfNotNull(
                             "条件：${GallerySearch.queryOf(svm.effectiveFilters())}",
@@ -471,7 +488,7 @@ fun GalleryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 // 刻意不说"没有图"：两站的日榜这一轮明明有内容
-                // （实测 yande.re 40 条、Danbooru 200 条），是被用户的规则或分级模式剔完了。
+                // （实测 yande.re 40 条、Gelbooru 100 条），是被用户的规则或分级模式剔完了。
                 // 报成空态就是在掩盖判定链的效果（假空态），所以把**是哪几条规则**念出来。
                 VeneraEmptyView(
                     title = "这一屏被你的规则挡完了",
@@ -673,8 +690,8 @@ private const val LOAD_MORE_AHEAD = 4
  *
  * 遮罩判定在滚动里是"每项每次重组"的密度，所以按输入记忆；HIDDEN 直接不落进列表。
  * 两个"少了"的成因**分开记**：命中黑名单是用户自己的规则，按分级收起是模式选择 ——
- * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 Danbooru 整站空白，
- * 当时页尾还写着「Danbooru 20」，就是这里没记造成的假读数）。
+ * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 某一站 整站空白，
+ * 当时页尾还写着「那站 * 
  *
  * @param blockedRuleOf 这条被哪条用户规则挡了（返回规则原文，给页面念出来）。
  *   判据由调用方给：画廊侧是 [ContentGuardManager.findGalleryBlockedRule]，
@@ -902,12 +919,17 @@ private fun GallerySourceNotice(text: String) {
  * 页尾那一行「已经到底了」。
  *
  * 样式照搜索页的 `ss-end`（overline + textTertiary + 居中），不另造口径。
- * 内容要报三件事：看的是**哪天**的热门、各站**实际摆上屏**几张、其中几个是视频；
+ * 内容要报三件事：各站**实际摆上屏**几张、其中几个是视频、看的是哪一天；
  * 少掉的张数按成因分开报（规则 / 分级），因为这两件事用户能做的处置完全不同。
  *
  * 各站张数**含 0 也照报**：以前这一行读的是守卫之前的 `vm.posts`，
- * 于是"整站被一条规则清空"时它写着「Danbooru 20」而屏上一张没有 —— 那是假读数，
+ * 于是"整站被一条规则清空"时它照样写出那站的张数、而屏上一张没有 —— 那是假读数，
  * 也正是这次定位真机反馈的唯一线索被抹掉的原因。
+ *
+ * ⚠️ **日期的措辞要小心**：那两站的"热门"口径不同（yande.re 是官方日榜，
+ * Gelbooru 是 `sort:score` 的全站高分池、**没有按天的视图**）。
+ * 所以这里写「$date 的热门」时不含站名 —— 一旦写成"Gelbooru 这一天的热门"，
+ * 就是在描述一个站方根本不提供的东西。日期只对日榜那一路成立。
  */
 @Composable
 private fun GalleryFeedEnd(wall: GalleryWall, date: String) {

@@ -10,13 +10,19 @@ import org.junit.Test
  * 画廊侧遮罩判定的口径锁。
  *
  * 为什么值得单测：yande.re 实测**人气前 120 条里 e=84 / q=30 / s=6**，
- * Danbooru 月榜 200 条里 **e=85 / s=75 / q=39 / g=1**，
+ * Gelbooru 实测**四档都有**（`general` / `sensitive` / `questionable` / `explicit`），
  * 也就是这两页天然就是成人内容页。判据写歪一格，要么把应用里现成的
  * 「成人内容处理」开关变成摆设，要么把用户显式加的黑名单变成摆设 —— 两个都是假开关。
+ *
+ * ⚠️ 两站的分级**字形不同**（yande.re 单字母、Gelbooru 单词），
+ * 而 [GalleryPost.isAdultMarked] 要同时吃两套 —— 下面两组用例分别钉住。
  */
 class GalleryGuardTest {
 
     private fun post(rating: String) = GalleryPost(site = GallerySite.YANDERE, id = 1, rating = rating)
+
+    private fun gelbooruPost(rating: String) =
+        GalleryPost(site = GallerySite.GELBOORU, id = 1, rating = rating)
 
     @Test
     fun `站方安全档永远可见`() {
@@ -42,13 +48,25 @@ class GalleryGuardTest {
     }
 
     @Test
-    fun `Danbooru 的 general 档算安全`() {
-        // `g` 是接 Danbooru 才多出的一档（yande.re 只有 s/q/e）。
-        // 沿用第一轮 `rating != "s"` 会把这档最干净的内容**误打码** —— 那是错打码方向，
-        // 但同样是守卫判据失真，要有测试钉住。
-        val g = GalleryPost(site = GallerySite.DANBOORU, id = 2, rating = "g")
-        assertEquals(GalleryGuard.VISIBLE, GalleryGuard.maskStateFor(g, "BLUR", false))
-        assertEquals(GalleryGuard.VISIBLE, GalleryGuard.maskStateFor(g, "HIDE", false))
+    fun `Gelbooru 的 general 与 sensitive 两档算安全`() {
+        // ⚠️ Gelbooru 的分级是**单词**，与 yande.re 的单字母不是同一套字形。
+        // 判据若只认 "s"，这一站最干净的两档会被**误打码**（错打码方向，
+        // 但同样是守卫判据失真，要有测试钉住）。
+        for (rating in listOf("general", "sensitive")) {
+            val p = gelbooruPost(rating)
+            assertEquals(GalleryGuard.VISIBLE, GalleryGuard.maskStateFor(p, "BLUR", false))
+            assertEquals(GalleryGuard.VISIBLE, GalleryGuard.maskStateFor(p, "HIDE", false))
+        }
+    }
+
+    @Test
+    fun `Gelbooru 的 questionable 与 explicit 照常算成人`() {
+        // 反向也要钉：单词那两档不能因为"只认单字母的成人档"而漏放。
+        for (rating in listOf("questionable", "explicit")) {
+            val p = gelbooruPost(rating)
+            assertEquals(GalleryGuard.BLURRED, GalleryGuard.maskStateFor(p, "BLUR", false))
+            assertEquals(GalleryGuard.HIDDEN, GalleryGuard.maskStateFor(p, "HIDE", false))
+        }
     }
 
     @Test

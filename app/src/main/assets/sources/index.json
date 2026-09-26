@@ -201,5 +201,12 @@
         "key": "mycomic",
         "version": "1.1.0",
         "description": "mycomic.com漫画源, 遇到Cloudflare验证请在源设置中登录"
+    },
+    {
+        "name": "Gelbooru",
+        "fileName": "gelbooru.js",
+        "key": "gelbooru",
+        "version": "1.0.0",
+        "description": "图站源：每条图一条目。匿名可用（走 HTML 列表页，不需要 API Key）"
     }
 ]

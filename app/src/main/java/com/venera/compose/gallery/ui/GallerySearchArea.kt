@@ -491,7 +491,7 @@ fun GallerySearchArea(
                             Spacer(modifier = Modifier.height(tokens.spacing.space3))
                             SearchNoticeLine(
                                 "点标签改成排除（前面加 -），点标签上的 × 删掉" +
-                                    (GallerySearch.budgetNotice(svm.site, svm.danbooruLevel)?.let { "。$it" } ?: ""),
+                                    (GallerySearch.budgetNotice(svm.site)?.let { "。$it" } ?: ""),
                             )
                         }
 
@@ -932,7 +932,7 @@ private fun SearchNoticeLine(text: String) {
  * 结果墙页尾那一行读数。样式照日榜的 `GalleryFeedEnd`（overline + textTertiary + 居中）。
  *
  * 刻意**不报"共 N 条"**：两站都没有总数端点（实测 404），报总数就是编。
- * "站方给了行但没给图"那一支也要报出来（[noImage]）—— 那正是"Danbooru 搜不出图"的真实成因，
+ * "站方给了行但没给图"那一支也要报出来（[noImage]）—— 那正是"搜得出条数却屏上没图"的真实成因，
  * 不点名就会被当成网络问题去查。
  */
 @Composable

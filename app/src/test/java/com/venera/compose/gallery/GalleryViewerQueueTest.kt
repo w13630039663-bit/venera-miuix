@@ -44,18 +44,18 @@ class GalleryViewerQueueTest {
         GalleryViewerQueue.set(listOf(post(GallerySite.YANDERE, 777)))
 
         // 两站 id 各自独立编号，逐站比对才挡得住"站变了、id 撞上了"。
-        assertTrue(GalleryViewerQueue.snapshot(GallerySite.DANBOORU, 777).isEmpty())
+        assertTrue(GalleryViewerQueue.snapshot(GallerySite.GELBOORU, 777).isEmpty())
     }
 
     @Test
     fun `两站同号互不串台`() {
         val wall = listOf(
-            post(GallerySite.DANBOORU, 123),
-            post(GallerySite.DANBOORU, 456),
+            post(GallerySite.GELBOORU, 123),
+            post(GallerySite.GELBOORU, 456),
         )
         GalleryViewerQueue.set(wall)
 
-        assertEquals(2, GalleryViewerQueue.snapshot(GallerySite.DANBOORU, 123).size)
+        assertEquals(2, GalleryViewerQueue.snapshot(GallerySite.GELBOORU, 123).size)
         assertTrue(GalleryViewerQueue.snapshot(GallerySite.YANDERE, 123).isEmpty())
     }
 

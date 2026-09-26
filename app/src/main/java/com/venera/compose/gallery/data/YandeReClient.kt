@@ -23,8 +23,9 @@ import okhttp3.Request
  *   **静默忽略**、返回一整页默认列表（状态还是 200）—— 用后者会把"看这一张"
  *   变成"看一屏无关的图"。这是最容易写错、错了又不报错的坑。
  *
- * 分级只有 `s`/`q`/`e`（没有 Danbooru 那档 `g`）；`webm` 条目的 `jpeg_url` 就是它的静帧，
- * 所以本站翻译完不需要为视频特殊处理。
+ * 分级只有 `s`/`q`/`e` 三档（本站没有"一般"那一档 —— Gelbooru 那边是四个单词、
+ * 而且字形完全不同，见 [GalleryPost.SAFE_RATINGS] 的归一处理）；
+ * `webm` 条目的 `jpeg_url` 就是它的静帧，所以本站翻译完不需要为视频特殊处理。
  *
  * 另外两条实测结论留在这里，省得下一个人重新踩：`/post/hot.json` 在本站 **404**；
  * `/post/popular_by_month.json` 可读但**固定 40 条、忽略 limit、没有 page**；
@@ -122,8 +123,11 @@ class YandeReClient private constructor(context: Context) {
         val SITE: GallerySite = GallerySite.YANDERE
 
         /**
-         * 搜索结果每页取多少张（用户 2026-09-25 拍板"Danbooru 200 / yande.re 100"）。
+         * 搜索结果每页取多少张（用户 2026-09-25 拍板"两站各按自己的天花板来"）。
          * 站方 `limit` 天花板实测 320，100 够一屏半，又不至于让一次翻页解 100 张 preview。
+         *
+         * （另一站是 Gelbooru，它的每页上限是 **100**（官方 wiki 写明硬上限），
+         * 见 `GelbooruClient.POOL_SIZE` —— 两站的数不一样，别互相照抄。）
          *
          * （这里原先挂着一个 `PAGE_SIZE = 30`，是落地流还"两站交错"那版的遗留，
          * 日榜改成一屏到底之后**零调用点** —— 顺手清掉，不留没人读的常量。）

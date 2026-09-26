@@ -33,7 +33,7 @@ class GallerySearchPaginationTest {
     @Test
     fun `历史往返带站点`() {
         val entries = listOf(
-            entry(GallerySite.DANBOORU, "hime_cut -ai_generated"),
+            entry(GallerySite.GELBOORU, "hime_cut -ai_generated"),
             entry(GallerySite.YANDERE, "hime"),
         )
         assertEquals(entries, decodeGallerySearchHistory(encodeGallerySearchHistory(entries)))
@@ -42,15 +42,15 @@ class GallerySearchPaginationTest {
     @Test
     fun `查询里带等号也不被拆掉`() {
         // 只在**第一个** `=` 处拆：routeKey 是死串绝不含 `=`，而标签串可能含（source=xxx 这类）。
-        val entries = listOf(entry(GallerySite.DANBOORU, "source=https://a/?x=1"))
+        val entries = listOf(entry(GallerySite.GELBOORU, "source=https://a/?x=1"))
         assertEquals(entries, decodeGallerySearchHistory(encodeGallerySearchHistory(entries)))
     }
 
     @Test
     fun `认不出的站点整条丢掉而不是硬归某一站`() {
-        val raw = "pixiv=hime\ndanbooru=hime_cut\n=只有查询\nyandere="
+        val raw = "pixiv=hime\ngelbooru=hime_cut\n=只有查询\nyandere="
         val out = decodeGallerySearchHistory(raw)
-        assertEquals(listOf(entry(GallerySite.DANBOORU, "hime_cut")), out)
+        assertEquals(listOf(entry(GallerySite.GELBOORU, "hime_cut")), out)
     }
 
     @Test
@@ -61,13 +61,13 @@ class GallerySearchPaginationTest {
 
     @Test
     fun `新条目排最前并按整串去重`() {
-        val a = entry(GallerySite.DANBOORU, "hime")
+        val a = entry(GallerySite.GELBOORU, "hime")
         val b = entry(GallerySite.YANDERE, "hime")
         var history = listOf(a, b)
         history = pushGallerySearchHistory(history, a)
         // 同标签串换站算另一条（两站词表不通），所以 b 留着；a 被提到最前且不重复。
         assertEquals(listOf(a, b), history)
-        history = pushGallerySearchHistory(history, entry(GallerySite.DANBOORU, "hime -ai_generated"))
+        history = pushGallerySearchHistory(history, entry(GallerySite.GELBOORU, "hime -ai_generated"))
         assertEquals(3, history.size)
         assertEquals("hime -ai_generated", history.first().query)
     }

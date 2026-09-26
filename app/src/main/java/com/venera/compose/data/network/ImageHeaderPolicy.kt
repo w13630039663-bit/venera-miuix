@@ -52,8 +52,16 @@ object ImageHeaderPolicy {
         // Danbooru 挂在 Cloudflare 上，而本项目的全局默认 UA 是**移动端 Chrome 串** ——
         // 实测拿它去打 cdn.donmai.us，连 180×180 的缩略图都回 403 + cf-mitigated: challenge
         // （5.9 KB 挑战页 HTML 而不是图片）。非浏览器 UA 同一个 URL 就 200。
-        // 这串要与 gallery 侧 `DanbooruClient.API_USER_AGENT` 保持一致（那边是 JSON 接口）。
+        // ⚠️ 这条是 donmai.us **独有**的强判据，别当成"所有图站都这样"往外推。
         "donmai.us" to mapOf("User-Agent" to "Venera/1.0 (Android)"),
+        // Gelbooru 的图片 CDN。
+        //
+        // ⚠️ 这一条**不是**实测出来的必需项：本轮（2026-09-26）用默认 UA 取它的
+        // `img4.gelbooru.com` 缩略图与样本都是 200，**没有复现** donmai.us 那种挑战页。
+        // 加上它只是为了"同一站的接口与 CDN 用同一个串"（接口侧见
+        // `GelbooruClient.API_USER_AGENT`），将来真要调也只调一处。
+        // 也就是说：**不要**把这条当成"浏览器串会被拦"的证据去引用。
+        "gelbooru.com" to mapOf("User-Agent" to "Venera/1.0 (Android)"),
         "ehgt.org" to mapOf(
             "Referer" to "https://e-hentai.org/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"

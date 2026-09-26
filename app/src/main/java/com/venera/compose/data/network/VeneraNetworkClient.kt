@@ -157,7 +157,7 @@ class VeneraNetworkClient private constructor(private val context: Context) {
  * 2. **[ImageHeaderPolicy] 给该 host 钉的 UA**（`donmai.us` 那一串 `Venera/1.0 (Android)`）。
  *    ⚠️ 这一层在 2026-09-26 之前**从来没生效过**：本拦截器排在 `ImageHeaderInterceptor`
  *    外层，先把全局 Chrome 串填上，里层「只补请求里还没有的头」再看到 UA 已存在就跳过 ——
- *    于是「浏览器串打 danbooru 的 CDN 回 403 + `cf-mitigated: challenge`、非浏览器串回 200」
+ *    于是「浏览器串打某些图站的 CDN 回 403 + `cf-mitigated: challenge`、非浏览器串回 200」
  *    这条实测结论一行都没落地，**反而正是下载必然撞盾的成因**：下载走的是裸
  *    `Request.Builder()`（不带 UA），拿到的就是那串必然 403 的 Chrome UA。
  * 3. 全局默认（移动端 Chrome 串）。

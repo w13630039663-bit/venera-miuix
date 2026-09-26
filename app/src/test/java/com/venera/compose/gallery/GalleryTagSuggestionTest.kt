@@ -19,7 +19,7 @@ import org.junit.Test
 class GalleryTagSuggestionTest {
 
     private fun tag(name: String, count: Int = 1, category: Int = 0, deprecated: Boolean = false) =
-        GalleryTagSuggestion(GallerySite.DANBOORU, name, count, category, deprecated)
+        GalleryTagSuggestion(GallerySite.GELBOORU, name, count, category, deprecated)
 
     @Test
     fun `站方回错数据时按输入前缀丢掉不相干的`() {

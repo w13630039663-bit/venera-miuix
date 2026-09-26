@@ -79,12 +79,12 @@ import coil3.size.Precision
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.feature.LocalVeneraDarkTheme
-import com.venera.compose.gallery.data.DanbooruClient
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.security.guard.ContentGuardManager
@@ -240,7 +240,7 @@ fun GalleryPostScreen(
         // 为一处分支抽"通用图库站接口"会把只有一站会用的参数（favCount）拖进抽象层。
         val result = when (site) {
             GallerySite.YANDERE -> YandeReClient.getInstance(context).fetchById(postId)
-            GallerySite.DANBOORU -> DanbooruClient.getInstance(context).fetchById(postId)
+            GallerySite.GELBOORU -> GelbooruClient.getInstance(context).fetchById(postId)
         }
         result.onSuccess { loaded ->
             // 取到了空 = 站方没有这条（被删/合并），要说话，不要留一屏黑。
@@ -651,7 +651,7 @@ private fun GalleryViewerMedia(
                         .zoomable(state = zoomState, onClick = { onImageTap() })
                         .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                 ) {
-                    // 底：开门档。13.7 KB（yande.re）/ 28.8 KB（Danbooru），
+                    // 底：开门档（两站都用各自的 preview_url）。
                     // 打开那一瞬间就有画面，用户看到的不再是一整块骨架。
                     if (fastRequest != null) {
                         AsyncImage(
@@ -762,7 +762,7 @@ private const val BACKDROP_SCRIM_ALPHA = 0.45f
 /**
  * 缓存 key 口径（原三级与二级共用，现在满屏那两层图共用）。
  *
- * **必须带站点**：两站 id 各自独立编号，只按 id 做 key 会让 Danbooru #123 直接命中
+ * **必须带站点**：两站 id 各自独立编号，只按 id 做 key 会让另一站的同号条目直接命中
  * yande.re #123 的缓存位 —— 那是"点这张看到那张"的静默错图。
  */
 internal fun galleryCacheKey(kind: String, post: GalleryPost) = "gallery-$kind-${post.site.routeKey}-${post.id}"
@@ -780,7 +780,14 @@ internal fun galleryFastRequest(context: Context, url: String): ImageRequest =
         .data(url)
         .build()
 
-/** large 档（yande.re 的 `sample_url` / Danbooru 的 sample 变体），写死 cache key 供别处当底图。 */
+/**
+ * large 档（yande.re 的 `sample_url` / Gelbooru 的 `sample_url`），写死 cache key 供别处当底图。
+ *
+ * ⚠️ 拿它当**视频**的底图时要留个心：Gelbooru 对视频的 `sample_url` 给空串，
+ * 而翻译时兜底成了 `file_url`（原片 mp4）—— Coil 解不了视频，那张底图会落空。
+ * 视频页对此已有处理（见 `GalleryVideoViewer`），这里不改判据：
+ * 「中档兜底到原图」对**图片**是对的（那正是站方"小图不需要样本"的语义）。
+ */
 internal fun galleryLargeRequest(context: Context, post: GalleryPost): ImageRequest =
     ImageRequest.Builder(context)
         .data(post.largeUrl)

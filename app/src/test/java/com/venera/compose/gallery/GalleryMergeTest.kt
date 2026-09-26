@@ -46,28 +46,28 @@ class GalleryMergeTest {
 
     private fun mix(
         yandere: List<GalleryPost> = emptyList(),
-        danbooru: List<GalleryPost> = emptyList(),
+        gelbooru: List<GalleryPost> = emptyList(),
         seed: Long = 20260925L,
     ) = GalleryMerge.mix(
-        pools = mapOf(GallerySite.YANDERE to yandere, GallerySite.DANBOORU to danbooru),
+        pools = mapOf(GallerySite.YANDERE to yandere, GallerySite.GELBOORU to gelbooru),
         seed = seed,
     )
 
     @Test
     fun `两站各取 20 张 一屏满量 40`() {
-        val merged = mix(list(GallerySite.YANDERE, 40), list(GallerySite.DANBOORU, 200)).getOrThrow()
+        val merged = mix(list(GallerySite.YANDERE, 40), list(GallerySite.GELBOORU, 200)).getOrThrow()
 
         assertEquals(40, merged.posts.size)
-        assertEquals(mapOf(GallerySite.YANDERE to 20, GallerySite.DANBOORU to 20), merged.perSite)
+        assertEquals(mapOf(GallerySite.YANDERE to 20, GallerySite.GELBOORU to 20), merged.perSite)
     }
 
     @Test
     fun `同一种子必得同一序列`() {
         val yande = list(GallerySite.YANDERE, 40)
-        val danbooru = list(GallerySite.DANBOORU, 200)
+        val gelbooru = list(GallerySite.GELBOORU, 200)
 
-        val first = mix(yande, danbooru, seed = 7L).getOrThrow().posts
-        val second = mix(yande, danbooru, seed = 7L).getOrThrow().posts
+        val first = mix(yande, gelbooru, seed = 7L).getOrThrow().posts
+        val second = mix(yande, gelbooru, seed = 7L).getOrThrow().posts
 
         // 点进大图再返回会重跑这段逻辑；两次结果不同就是"整屏顺序变了"。
         assertEquals(first.map { it.uid }, second.map { it.uid })
@@ -76,10 +76,10 @@ class GalleryMergeTest {
     @Test
     fun `换种子就换顺序`() {
         val yande = list(GallerySite.YANDERE, 40)
-        val danbooru = list(GallerySite.DANBOORU, 200)
+        val gelbooru = list(GallerySite.GELBOORU, 200)
 
-        val a = mix(yande, danbooru, seed = 1L).getOrThrow().posts.map { it.uid }
-        val b = mix(yande, danbooru, seed = 2L).getOrThrow().posts.map { it.uid }
+        val a = mix(yande, gelbooru, seed = 1L).getOrThrow().posts.map { it.uid }
+        val b = mix(yande, gelbooru, seed = 2L).getOrThrow().posts.map { it.uid }
 
         // 打乱真在起作用（不是固定顺序的假打乱），「刷新换一批」才是真按钮。
         assertTrue("两个种子的序列完全一致，打乱没生效", a != b)
@@ -87,7 +87,7 @@ class GalleryMergeTest {
 
     @Test
     fun `打乱之后两站是混着的 不是一站连着一站`() {
-        val posts = mix(list(GallerySite.YANDERE, 40), list(GallerySite.DANBOORU, 200)).getOrThrow().posts
+        val posts = mix(list(GallerySite.YANDERE, 40), list(GallerySite.GELBOORU, 200)).getOrThrow().posts
 
         val switches = posts.zip(posts.drop(1)).count { (x, y) -> x.site != y.site }
         assertTrue("站点切换只有 $switches 次，不像打乱过的序列", switches >= 10)
@@ -97,7 +97,7 @@ class GalleryMergeTest {
     fun `mp4 现在要进屏`() {
         val merged = mix(
             yandere = list(GallerySite.YANDERE, 5),
-            danbooru = list(GallerySite.DANBOORU, 20) + post(GallerySite.DANBOORU, 900, ext = "mp4"),
+            gelbooru = list(GallerySite.GELBOORU, 20) + post(GallerySite.GELBOORU, 900, ext = "mp4"),
         ).getOrThrow()
 
         assertTrue(merged.posts.any { it.isVideo })
@@ -108,7 +108,7 @@ class GalleryMergeTest {
     fun `zip 这类不可摆的扩展名继续滤掉`() {
         val merged = mix(
             yandere = list(GallerySite.YANDERE, 5),
-            danbooru = list(GallerySite.DANBOORU, 5) + post(GallerySite.DANBOORU, 901, ext = "zip"),
+            gelbooru = list(GallerySite.GELBOORU, 5) + post(GallerySite.GELBOORU, 901, ext = "zip"),
         ).getOrThrow()
 
         assertEquals(0, merged.posts.count { it.fileExt == "zip" })
@@ -120,7 +120,7 @@ class GalleryMergeTest {
     fun `没有预览地址的条目不摆`() {
         val merged = mix(
             yandere = list(GallerySite.YANDERE, 5),
-            danbooru = list(GallerySite.DANBOORU, 5) + post(GallerySite.DANBOORU, 902, preview = "  "),
+            gelbooru = list(GallerySite.GELBOORU, 5) + post(GallerySite.GELBOORU, 902, preview = "  "),
         ).getOrThrow()
 
         assertEquals(10, merged.posts.size)
@@ -130,14 +130,14 @@ class GalleryMergeTest {
     fun `同一份内容只留一条`() {
         val byMd5 = mix(
             yandere = list(GallerySite.YANDERE, 1),
-            danbooru = list(GallerySite.DANBOORU, 1) { post(GallerySite.DANBOORU, it.toLong(), md5 = "yandere-1") },
+            gelbooru = list(GallerySite.GELBOORU, 1) { post(GallerySite.GELBOORU, it.toLong(), md5 = "yandere-1") },
         ).getOrThrow()
         assertEquals(1, byMd5.posts.size)
         assertEquals(1, byMd5.droppedDuplicates)
 
         val bySource = mix(
             yandere = listOf(post(GallerySite.YANDERE, 1, source = "https://PXIMG.NET/a/123.png")),
-            danbooru = listOf(post(GallerySite.DANBOORU, 2, source = "https://www.pximg.net/a/123.png")),
+            gelbooru = listOf(post(GallerySite.GELBOORU, 2, source = "https://www.pximg.net/a/123.png")),
         ).getOrThrow()
         assertEquals(1, bySource.posts.size)
     }
@@ -146,29 +146,29 @@ class GalleryMergeTest {
     fun `两站同 id 是两张不同的图`() {
         val posts = mix(
             yandere = list(GallerySite.YANDERE, 2) { post(GallerySite.YANDERE, 4L + it) },
-            danbooru = list(GallerySite.DANBOORU, 2) { post(GallerySite.DANBOORU, 4L + it) },
+            gelbooru = list(GallerySite.GELBOORU, 2) { post(GallerySite.GELBOORU, 4L + it) },
         ).getOrThrow().posts
 
-        assertEquals(setOf("yandere:5", "yandere:6", "danbooru:5", "danbooru:6"), posts.map { it.uid }.toSet())
+        assertEquals(setOf("yandere:5", "yandere:6", "gelbooru:5", "gelbooru:6"), posts.map { it.uid }.toSet())
     }
 
     @Test
     fun `某站不足 20 条时全进 不硬凑`() {
         val merged = mix(
             yandere = list(GallerySite.YANDERE, 3),
-            danbooru = list(GallerySite.DANBOORU, 200),
+            gelbooru = list(GallerySite.GELBOORU, 200),
         ).getOrThrow()
 
         assertEquals(23, merged.posts.size)
         assertEquals(3, merged.perSite.getValue(GallerySite.YANDERE))
-        assertEquals(20, merged.perSite.getValue(GallerySite.DANBOORU))
+        assertEquals(20, merged.perSite.getValue(GallerySite.GELBOORU))
     }
 
     @Test
     fun `站方给了内容却滤光要炸出来 不能交回空屏`() {
         val onlyUnusable = list(GallerySite.YANDERE, 30) { post(GallerySite.YANDERE, it.toLong(), ext = "zip") }
 
-        val failure = mix(yandere = onlyUnusable, danbooru = list(GallerySite.DANBOORU, 30)).exceptionOrNull()
+        val failure = mix(yandere = onlyUnusable, gelbooru = list(GallerySite.GELBOORU, 30)).exceptionOrNull()
 
         assertNotNull(failure)
         assertTrue(failure!!.message!!.contains("扩展名白名单判据要复查"))
@@ -176,7 +176,7 @@ class GalleryMergeTest {
 
     @Test
     fun `只剩一站时不报错但也不假装是双源`() {
-        val merged = mix(danbooru = list(GallerySite.DANBOORU, 200)).getOrThrow()
+        val merged = mix(gelbooru = list(GallerySite.GELBOORU, 200)).getOrThrow()
 
         assertEquals(20, merged.posts.size)
         assertFalse(GallerySite.YANDERE in merged.perSite)

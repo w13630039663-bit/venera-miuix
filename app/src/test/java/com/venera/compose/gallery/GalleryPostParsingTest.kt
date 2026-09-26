@@ -98,17 +98,32 @@ class GalleryPostParsingTest {
     @Test
     fun `三档地址各按实测域名取用`() {
         val post = decode().first()
+        // 缩略与原始两档的域名（实测）。中档见下一条 —— 它**不在** `jpeg` 目录下。
         assertEquals(true, post.previewUrl.startsWith("https://assets.yande.re/"))
-        assertEquals(true, post.largeUrl.startsWith("https://files.yande.re/jpeg/"))
         assertEquals(true, post.fileUrl.startsWith("https://files.yande.re/image/"))
     }
 
     @Test
-    fun `瀑布流比例取 jpeg 档而不是被裁过的 preview`() {
+    fun `中档取 sample 而不是 jpeg`() {
+        // ⚠️ 这条曾经断言 `startsWith("https://files.yande.re/jpeg/")` —— 那是**旧行为的欠账**：
+        // 生产代码早已把中档改成 `sampleUrl.ifBlank { jpegUrl }`（见 `YandeReClient.kt:215`
+        // 与那里 DTO 上关于"jpeg 是原分辨率重编码、不是降档"的实测注释），
+        // 而这条测试没跟着改，于是长期红着。现在按生产代码的实际口径钉住。
         val post = decode().first()
-        // preview 300×207 与 jpeg 3500×2410 都是 1.452；width/height 是原图 9151×6300。
-        // 取 jpeg 档：它在 preview 缺失时仍有值，且与原图同比例。
-        assertEquals(3500f / 2410f, post.cardRatio, 0.001f)
+        assertEquals(true, post.largeUrl.startsWith("https://files.yande.re/sample/"))
+        assertEquals(false, post.largeUrl.contains("/jpeg/"))
+    }
+
+    @Test
+    fun `瀑布流比例优先取中档尺寸，而不是被裁过的 preview`() {
+        // 样本里三组尺寸互不相同：preview 300×207 / sample 1047×1500 / jpeg 3500×2410，
+        // 而 width/height 是原图 9151×6300。
+        val post = decode().first()
+        // 判据是"优先 large（= sample 档）"：preview 被站方裁过，比例可能是错的。
+        assertEquals(1047f / 1500f, post.cardRatio, 0.001f)
+        // 而 sample 的比例与原图一致（两个都是竖图），所以取哪一档在"看起来对不对"上等价 ——
+        // 这也是这条判据能成立的原因：不是随便挑的，是同比例的两档里挑更小那个。
+        assertEquals(post.width.toFloat() / post.height, 9151f / 6300f, 0.001f)
     }
 
     @Test
