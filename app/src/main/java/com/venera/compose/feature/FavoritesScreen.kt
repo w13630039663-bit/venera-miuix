@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -100,6 +101,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -211,6 +213,23 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     val topBarCollapsed by remember(topBarBehavior) {
         derivedStateOf { topBarBehavior.state.collapsedFraction * 3f >= 1f }
     }
+    /**
+     * 顶栏**此刻**的真实高度（像素）。miuix 的 `TopAppBar` 内部自己挂了
+     * `windowInsetsPadding(systemBars.only(Top))`，所以这个值**已经含状态栏** ——
+     * 用它的时候不能再加一次 `statusBarTop`（加了就是与顶栏错位，那条老账）。
+     *
+     * 为什么只有「图片收藏」要用它：那一屏的「漫画收藏 / 画廊收藏」分段器**在滚动区外面**
+     * （`ImageFavoritesPanel` 里那个静态 Box），它的让位不会被滚动消耗掉 ——
+     * 于是顶栏一折叠，分段器上面就留下一条空带（用户 2026-09-27 报的"上滑就这样"）。
+     * 另外两屏把让位放进网格的 `contentPadding`，滚动会把它吃掉，常量地板在那边是对的，
+     * **不动它们**，免得把没坏的地方改坏。
+     */
+    var topBarHeightPx by remember { mutableIntStateOf(0) }
+    // 第一帧还没量到：先吃旧口径那一档常量，量到后立刻换成真实值（最多差一帧）。
+    val imagesTopPadding = with(LocalDensity.current) {
+        if (topBarHeightPx > 0) topBarHeightPx.toDp()
+        else statusBarTop + 104.dp + segmentedRowHeight
+    }
     // 当前面板的列表滚动状态（由子面板上抛）：是否已下滑、以及回到顶部的动作。
     // 用回调而非持有 ListState，避免 LazyListState / LazyGridState 两种类型互相污染。
     // **按页各存一份**：三块面板现在同时活在 pager 里，共用一格会被相邻页的
@@ -259,7 +278,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     )
 
                     FavoritesMode.Images -> ImageFavoritesPanel(
-                        topPadding = topPadding,
+                        topPadding = imagesTopPadding,
                         section = imageSection,
                         onSectionChange = { imageSection = it },
                         scrollConnection = topBarBehavior.nestedScrollConnection,
@@ -288,6 +307,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             largeTitle = "收藏",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
+            modifier = Modifier.onSizeChanged { topBarHeightPx = it.height },
             actions = {
                     if (mode == FavoritesMode.Local) {
                         FavoritesSortMenu(
@@ -486,12 +506,18 @@ private const val subSegmentedCellWidthFraction = 0.22f
  * 读不出谁是主谁是次。放在内容里、宽度再收一档，从属关系就出来了 ——
  * MD3 里同级控件靠**尺寸与位置**表达层级，不靠再加一层描边。
  *
- * 让位也因此只在这一层算一次：分段器吃掉 [topPadding]（= 顶栏地板），
- * 下面两面墙都按 0 起排（它们的 `topPadding` 默认值就是 0）。
+ * 让位也因此只在这一层算一次：分段器吃掉 [topPadding]，下面两面墙都按 0 起排
+ * （它们的 `topPadding` 默认值就是 0）。
  *
- * 分段器**不跟顶栏折叠**：顶栏那条"网络/图片/本地"会在下滑时收起（`bottomContent` 里那层
- * AnimatedVisibility），而这一条留着 —— 让它跟着收，下面的墙会在收起的瞬间整体上跳一格
- * （顶栏的让位高度是常量，不跟 `collapsedFraction` 走）。
+ * ⚠️ 这里的 [topPadding] **必须是顶栏此刻的真实高度**（宿主用 `onSizeChanged` 量出来的），
+ * 不能是常量。分段器在滚动区**外面**，它的让位不会被滚动消耗掉：写常量就等于按"展开态"
+ * 预留，顶栏一折叠就多出一条空带 —— 用户 2026-09-27 报的"上滑就这样"正是这个。
+ * 旧注释说"让位是常量，否则墙会整体上跳一格"，那个两难是假的：量出来的值是**逐帧连续**
+ * 变化的（`bottomContent` 那条 AnimatedVisibility 自己就在动），所以既不留空带、
+ * 也没有"瞬间跳一格"。
+ *
+ * 分段器本身**不跟顶栏折叠**（顶栏那条"网络/图片/本地"会在下滑时收起，这一条留着）：
+ * 它是这一屏的控制器，收掉就没法切回另一面墙了。
  */
 @Composable
 private fun ImageFavoritesPanel(
