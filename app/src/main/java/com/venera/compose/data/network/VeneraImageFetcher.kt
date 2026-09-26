@@ -47,9 +47,14 @@ class VeneraImageFetcher(
                 // 图片取流不进域名熔断口径：两笔超时就把整站封面拉黑 60s（理由见 ImageFetchTag）。
                 .tag(ImageFetchTag::class.java, ImageFetchTag())
 
-            // 注入防盗链请求头
+            // 注入防盗链请求头。
+            // **UA 除外**：它交给 `VeneraNetworkClient.userAgentFor` 那一条优先级链
+            // （过盾绑定的 host UA > ImageHeaderPolicy 钉的 UA > 全局默认）。
+            // 在这里显式塞上钉的那串，会让"过完盾之后的图片请求"带着**与 `cf_clearance` 不配对的 UA**
+            // —— 盾会当场再拦一次，这条链就永远收不了尾。
             val dynamicHeaders = ImageHeaderPolicy.headersFor(cleanUrl)
             for ((k, v) in dynamicHeaders) {
+                if (k.equals("User-Agent", ignoreCase = true)) continue
                 reqBuilder.header(k, v)
             }
 

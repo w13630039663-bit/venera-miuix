@@ -465,7 +465,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 fontSize = tokens.type.body,
                                 fontWeight = tokens.type.weightBold,
                                 color = StatusColors.RatingStar,
-                                // 只有源支持评分才可点：无 starRating 的源调用会静默失败。
+                                // 源不支持评分时也能点开：评完会如实收到"该源不支持作品评分"，
+                                // 本地星级同时回滚（见 ComicDetailViewModel.rateComic）。
                                 modifier = if (liveDetails != null) Modifier
                                     .clickable { showRatingDialog = true }
                                     .padding(vertical = tokens.spacing.space2)

@@ -326,3 +326,508 @@
 6. 横滑切主 Tab 只在 4 个之间循环；落在历史页时横滑不切页（`currentTab == null`）。
 7. 存过 `"HISTORY"` 的设备冷启动落首页，且设置里那行显示「未识别的已保存值：HISTORY」。
 8. 构建侧（2026-09-24）：`:app:compileDebugKotlin` / `:app:testDebugUnitTest` / `:app:assembleDebug` 全绿。
+
+## 2026-09-24 追加：底栏第 5 项 GALLERY（画廊 / yande.re）—— 同一处冻结项的第二次评审
+
+用户点名「先把 yande.re 的源接入项目，就拿画廊，放在搜索右侧第四个导航页，先显示人气，按瀑布流做卡片」。
+本节接上一节：上一节腾出来的那个真位，本轮由画廊填上，所以**评审对象仍是 `:32` 那条**
+（Tab 枚举顺序、路由映射、顶栏齿轮入口）。顶栏齿轮入口本轮未碰。
+
+**改口记录**：09-23 腾位时我在上一节写的是「第 3 位（收藏右侧）预留给画廊」，
+09-24 用户改成「放搜索右侧第四个」。**以本节为准**，上一节那句按此重读；旧正文不改写。
+最终顺序：`HOME → FAVORITES → SEARCH → GALLERY → EXPLORE`（5 项）。
+
+### 改了哪些文件（7 个，其中 3 个是导航层保护域）
+| 文件 | 改动 |
+|---|---|
+| `components/VeneraFloatingNavBar.kt` | 枚举加 `GALLERY("画廊", Icons.Outlined.Image, Icons.Filled.Image)` 于 **SEARCH 之后**；更正上一轮那条「第 3 位预留」注释 |
+| `feature/Navigation.kt` | 新增 `GalleryRoute` / `GalleryPostRoute(postId: Long)`；`routeFor`/`titleFor` 各加分支（`titleFor` 现在是零调用点的穷举负担，仍加）；`currentTab` 认 `GalleryRoute`；两个 composable 条目（大图页在同一个壳图里，返回走 `popBackStack`） |
+| `feature/settings/ExploreSettings.kt` | 「启动页面」下拉加 `"GALLERY" to "画廊"` —— **不加就是假开关**（选了不能生效），加了才是 5 个主 Tab 选启动页 |
+| `components/venera/VeneraCover.kt` | 加可选 `imageLoader: ImageLoader? = null`（null = 应用级单例，与现状逐字等价）。画廊自带缓存预算，不能把几百张 preview 灌进漫画侧的默认缓存 |
+| `gallery/**`（7 个新文件，全在独立包） | `data/GalleryPost.kt` `data/YandeReClient.kt` `data/GalleryImageLoader.kt` `domain/GalleryGuard.kt` `ui/GalleryScreen.kt` `ui/GalleryViewModel.kt` `ui/GalleryPostScreen.kt` |
+| `test/.../gallery/GalleryGuardTest.kt` `GalleryPostParsingTest.kt` | 判据与解析口径各锁一组 |
+
+**漫画侧数据层零改动**（隔离裁决的验收标准）：不碰 `VeneraDatabase` / `favorite_images` /
+`ComicSource` / JS 源脚本链 / `DownloadManager` / 阅读器。本轮**没建任何表** —— 浏览不写库，
+建了没人读就是「实现了但零调用点」。
+
+### 三条实测换来的设计（不是推断，探针记录在 gallery 方案 §五）
+- `/post/hot.json`（Danbooru 的人气端点）在 yande.re **404** → 人气只能 `tags=order:score`，实测翻到 700 页有效。
+- `/post/{id}.json` **404**、`/post.json?id=N` **200 但参数被静默忽略**（回一整页别人的图）
+  → 单条只能 `tags=id:N`。这条如果照 Danbooru 抄，会做成"点一张看一屏无关图"且没有任何报错。
+- 人气前 120 条 `e=84/q=30/s=6` → **分级守卫从 P1 提前到本轮**：只读共享那份「成人内容处理」偏好
+  与用户屏蔽规则，判据 `rating != "s"`（未知值宁可错打码），黑名单排在分级模式之前。
+
+### 一处被单测抓到的自身缺陷（已修，记口径）
+第一版 `isAdultMarked = rating == "e" || rating == "q"` → 未知/空 rating **静默放行**。
+`GalleryGuardTest` 断言失败暴露它，改成 `rating != "s"`。方向性判据：在一个天然出成人内容的站上，
+未知值默认按成人处理，而不是默认安全。
+
+### 未动
+- 顶栏齿轮入口；`tabSwipePager` 实现本体（它按 `VeneraNavTab.entries` 取，自动多一格）；
+  `VeneraApp.newImageLoader()` 那一行（漫画侧继续吃 Coil 默认预算，一个字没改）。
+- `FavoriteImagesScreen` 的收藏墙：画廊卡片复用的是 `VeneraCover` + miuix `Card` + 瀑布流几何口径，
+  没有从收藏页搬代码，也就没有改到它。
+
+### 尚未真机验证（别当已验收）
+1. 底栏 **5 项**、画廊在第 4 格；横滑切主 Tab 的循环里多了画廊。
+2. 进画廊 Tab 首屏出**人气瀑布流**（两列、大图 3 列），卡片高度**不跳动**（比例来自 JSON 的 jpeg 档宽高，不是加载后回填）。
+3. 触底自动翻页；失败时页脚是「加载失败：原因 · 点击重试」，不是静默变短列表。
+4. 点卡片 → 大图页只出**那一张**（若出一屏别的图，就是 `tags=id:` 那条又写错了）；大图可双指缩放。
+5. 「成人内容处理」三档逐一验：不过滤=全部可见；封面打码=网格与大图都打码且带 R18 角标；彻底隐藏=`e`/`q` 条目整条消失，且**空了要说"被你的规则挡完了"**而不是"没有图"。
+6. 加一条 TAG 屏蔽规则（值取某张人气图的 tag）→ 该条在画廊里消失，且此时把分级模式调成「不过滤」**仍然消失**（黑名单不被分级开关覆盖）。
+7. 设置「启动页面」出现「画廊」，选它冷启动落画廊。
+8. 隔离核对：`adb shell run-as <包名> du cache` 下应出现独立的 `gallery_img/` 目录，漫画封面缓存不受画廊刷图影响。
+9. 构建侧（2026-09-24）：`compileDebugKotlin` / `testDebugUnitTest`（134 例）/ `assembleDebug` 全绿。
+
+### 同日追加：点图改成**三级**（照 PixEz 的图片播放器）
+
+用户点名「参考 pixez 这个图片播放器，首页点击图片后跳转到二级播放器，再点击一次跳转到三级高清大图」，
+并逐条拍了四个板（三级吃原图 / 二级照 pixez 的信息密度 / 顶栏先不放收藏与下载 / 标签先不可点）。
+比对过的 PixEz 源码就在 `build/pixez/`（`compose-miuix/shared/.../ui/screens/IllustDetailScreen.kt`
+与 `ui/components/IllustFullScreenViewer.kt`）。
+
+| 档 | 我们的实现 | PixEz 对应 | 地址档位（实测字节） |
+|---|---|---|---|
+| 一级 | `GalleryScreen` 瀑布流 | `IllustStaggeredGrid` | `preview_url` ~20 KB |
+| 二级 | `GalleryPostScreen`（**路由** `GalleryPostRoute`） | `IllustDetailScreen`（真路由） | `jpeg_url` 0.7~1.4 MB |
+| 三级 | `GalleryFullViewer`（**overlay，不是路由**） | `IllustFullScreenViewer`（同样不是路由） | `file_url` 原图 4~32 MB |
+
+**三级为什么是 overlay 而不是路由** —— 这条与 PixEz 的选择一致，但理由在我们仓库里更硬：
+压路由会把本页的组合销毁,裸 `remember` 的状态全没（记忆「导航条目会重建组合」）。
+overlay 天然保住二级滚动位置与信息卡,系统返回用 `BackHandler(enabled = hdOpen)` 抢先关三级。
+
+**原图那 87 MB 的三条防护**（口径抄 PixEz 的注释理由，落在 `galleryFileRequest`）：
+`size(4096)+INEXACT` 挡巨幅瞬间撑爆堆（注意 Coil 的 `size` 是**下限**语义，别指望它降内存）；
+`memoryCachePolicy(READ_ONLY)` 让 87 MB 位图**不进内存缓存**、页面一关即可回收；
+`placeholderMemoryCacheKey(jpeg key)` 拿二级那张当过渡底图,所以三级**刻意没有加载指示器**
+（telephoto 那支 `ZoomableAsyncImage` 也没暴露 `onSuccess` 可挂 —— 造观察不到的状态就是假控件）。
+
+**二级信息卡只摆站方真给的字段**：`score` / `width×height` / `rating` / `author` / `source` / `file_size` / `md5`。
+参考截图那行「👁 9289」是 pixiv 的浏览量，**yande.re 响应里没有这个字段**，不照抄一个假数。
+
+新增/改动文件：`gallery/ui/GalleryFullViewer.kt`（新）、`gallery/ui/GalleryPostScreen.kt`（重写为二级 + 三级宿主）。
+漫画侧本轮零改动；`VeneraCover` 未再动。构建：`compileDebugKotlin` / `testDebugUnitTest` / `assembleDebug` 全绿（2026-09-24）。
+真机待验：一级点图→二级只出这一张、二级点图→三级无 chrome 可缩放、三级单击切顶栏、
+三级按系统返回只关三级不弹二级、开原图后回二级不重刷、分级打码档在二三级同样生效。
+
+### 真机第一轮反馈（2026-09-25，用户截图三条：图片问题很大 / 没有骨架 / 顶栏要统一）
+
+三条都成立，根因如下（**其中第二条是我上一轮自己做的错误决定**）：
+
+1. **三级图被顶到屏幕上方、下面一大片黑**。根因：`ZoomableAsyncImage` 我**没给 `fillMaxSize`**，
+   它不像 `AsyncImage` 那样自带填充语义，于是那一层退化成"按位图尺寸包一层"、贴在 Box 顶部。
+   修：两层图都显式 `Modifier.fillMaxSize()`。
+2. **加载没有骨架**。根因不是漏画，是我上一轮的判断错了：telephoto 那支 `ZoomableAsyncImage`
+   **不转发 `onLoading`/`onSuccess` 回调**（从 0.19.0 sources 核过），我当时把"拿不到回调"
+   当成了"所以不该挂指示器"，还写进注释自洽。正解是**换实现而不是砍反馈**：
+   改用 `Modifier.zoomable(state, onClick)` + 自家 `AsyncImage(onLoading/onSuccess)`，
+   于是二级铺全站骨架 `VeneraShimmer`、三级在底图上叠原图并在右下挂波浪环。
+   连带撤掉 `placeholderMemoryCacheKey`：placeholder 会让 `onSuccess` 在底图命中缓存时**先响一次**，
+   骨架状态就再也读不准 —— 改成自己铺一层二级 jpeg 当底图，语义明确。
+3. **顶栏不是本应用样式**。根因：我照 PixEz 搭了一层半透明黑浮层（`Color.Black.copy(0.35f)` + 白图标），
+   而本应用所有页面早已是"页内自治的 `VeneraTopAppBar`（大标题 + 折叠 + 毛玻璃背板）"。
+   修：二级换成 `VeneraTopAppBar` + `rememberVeneraTopAppBarBehavior` + `rememberTopBarBackdrop`
+   + `blurBackdropSource`，内容避让 `statusBarTop + 104.dp`，与首页/探索/历史同一口径。
+   三级仍保持黑底浮层药丸（那是全屏看图，与阅读器控制岛同类），但补了 `statusBarsPadding`
+   —— 截图里那颗返回键压在状态栏上。
+
+顺带一处措辞：信息卡的「上传」改成「作者」。
+一级网格的骨架本来就有（走 `VeneraCover` 内置 shimmer）；若反馈指的是那一屏，需要再看一张一级截图。
+构建：`compileDebugKotlin` / `testDebugUnitTest` / `assembleDebug` 全绿（2026-09-25 00:12 出包）。
+**仍未真机验证**：二级顶栏观感是否与首页/探索一致、三级图是否居中、原图加载期间右下的环、返回只关三级。
+
+## 2026-09-25 追加：画廊接第二站（Danbooru）+ 落地流改「月榜池 + 带权随机」
+
+用户点名的一轮。方案与全部实测数据在 `gallery-dual-source-hot-pool-plan-2026-09.md`，这里只记冻结面与判断。
+
+### 三条实测换来的设计（探针 2026-09-25）
+
+1. **UA 会把整站挡死**。`UserAgentPolicy.DEFAULT_USER_AGENT` 是移动端 Chrome 串，
+   而 Danbooru 挂在 Cloudflare 上：拿它去打，**API 和 CDN 都回 403 + `cf-mitigated: challenge`**
+   （连 180×180 缩略图都是 5.9 KB 的挑战页 HTML）。换 `Venera/1.0 (Android)` 同一 URL 就 200。
+   → 图片那一路走 `ImageHeaderPolicy.builtin` 加一条 `"donmai.us"`（与仓内既有的
+   `"picacg.com" → okhttp/3.8.1` 同型），JSON 那一路由 `DanbooruClient` 自己带。
+   **故意没动** `UserAgentPolicy` 的全局默认：那是 33 个漫画源共用的网络身份。
+2. **两站的"月度热门"形态完全不同**：Danbooru `order:rank` 实测 200 条 `created_at` **全在当月**、可深翻、
+   带 `fav_count`；yande.re `popular_by_month` **固定 40 条 / 忽略 limit / 无 page**，而且
+   **整个字段表里没有 `fav_count`**。→ 加权必须在**各站池内**算分位（实测分数中位 731 vs 30，差 24 倍，
+   绝对分跨站比会把一站清零），且缺维**摊权重**而不是当 0（当 0 = 把整站当成"零收藏"）。
+3. **`rating` 多一档 `g`**（general，yande.re 只有 s/q/e）。第一轮判据 `rating != "s"` 接第二站后
+   会把最干净的一档**误打码** → 改成只放行 `s`/`g`，未知值仍然宁可打码。
+
+### 用户要求里被实测推翻的一条（已确认不做）
+
+「最好加图片感知哈希」：跨站 160×200 条比三种键 **md5 / 规范化出处链接 / pixiv_id 交集全是 0**，
+Danbooru 自家月榜 200 条两两 128-bit `pixel_hash` Hamming **≤14 的对数也是 0**，
+而 yande.re **根本没有** `pixel_hash` 字段（单边有、无法互比）。自建哈希要为每张候选图额外下载
+2.8~31.9 MB 原图，换来的实测收益是 0 条。用户看后选「不做 pHash」，去重只留零成本的三键。
+
+### 改了哪些文件（12 个）
+
+| 文件 | 动作 | 冻结面 |
+|---|---|---|
+| `gallery/data/GallerySite.kt` | 新增：站点身份（显示名 / 单页前缀 / 路由键） | 画廊内 |
+| `gallery/data/GalleryPost.kt` | 由"站方字段直译"改成**归一模型**（site / favCount 可空 / large 档 / uid / sourceKey） | 画廊内 |
+| `gallery/data/YandeReClient.kt` | 站方字段名收进 `YandeReDto`；加 `fetchMonthlyHot()` | 画廊内 |
+| `gallery/data/DanbooruClient.kt` | 新增：月榜 + 单条 + DTO；403 带 CF 特征时报"被 Cloudflare 拦截（需要非浏览器 UA）" | 画廊内 |
+| `gallery/domain/GalleryPool.kt` | 新增（纯函数）：滤非图片 / 三键去重 / 站内分位 / ES 带权不放回 / 动态配比夹 0.3~0.7 / 首屏锁头部 / 两站交错 | 画廊内 |
+| `gallery/domain/GalleryFeedSource.kt` | 新增：两站并发一轮 + 缺哪站的原因 | 画廊内 |
+| `gallery/ui/GalleryViewModel.kt` | `round` / `seedBase` / `sourceNotice` / `shownKeys()` / `accept()` | 画廊内 |
+| `gallery/ui/GalleryScreen.kt` | 双源取数、`uid` 做列表 key、左下来源胶囊、单源退化提示条、空态文案按两站实测改写 | 画廊内 |
+| `gallery/ui/GalleryPostScreen.kt` / `GalleryFullViewer.kt` | `site` 进签名与**缓存 key**；信息卡"收藏"一行只在站方给了才摆；`g` 档标签 | 画廊内 |
+| `feature/Navigation.kt` | `GalleryPostRoute` 由 `(postId)` 变 `(siteKey, postId)` | **保护域**。只给一个既有路由加必填参数 + 一个 import，**未改** Tab 枚举顺序、路由映射表与顶栏齿轮入口（与 09-19 加 `sourceName` 同类） |
+| `data/network/ImageHeaderPolicy.kt` | 内置表加一条 `"donmai.us"` | 漫画侧共用基础设施，但这是该表设计出来就有的用途（"按 host 绑头"），未改任何判定逻辑 |
+| `gallery/ui/GalleryScreen.kt` 内 `GallerySourcePill` | 画廊私有胶囊 | **没有**动被漫画侧 6 页共用的 `VeneraSourceBadge`（那枚口径是左上小圆角） |
+
+### 两处被自己抓住的缺陷（写代码当期就修，未进单测）
+
+1. 去重表初版只把 `uid` 登记进 map、却用 `keys.any { it in deduped }` 查 md5/source —— **永远查不中**，
+   等于跨站去重整条是摆设。改成维护一个收录全部键的 `seenKeys` 集合。
+2. 交错函数初版每一拍 `out.count { … }`，是 O(n²)；换成"取当前剩余最长队列"。
+   另外 `allocateQuota` 里一个装站点列表的变量被我叫成 `rnd`，与随机数无关，已改名。
+
+### 一处与方案的刻意偏差
+
+§6.3 原写的"新鲜度衰减"**没实现**：Danbooru 那一路本身就是当月池（衰减是空操作），
+yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"本月人气"），两站语义不对称，
+加这层只会把混合池推向一边。要做要先统一"月龄"口径，留待有需求。
+
+### 未动
+
+漫画侧一切数据层与 UI；`ContentGuardManager`（只读共享）；`UserAgentPolicy` 全局默认；
+`VeneraSourceBadge`；`build/` 下任何第三方参考工程；画廊**仍未建表**（浏览不写盘，P3 收藏那条还悬着）。
+
+### 尚未真机验证（别当已验收）
+
+构建面 `compileDebugKotlin` / `testDebugUnitTest`（156 条，画廊 32 条）/ `assembleDebug` 全绿。
+但本轮**一条真机项都没跑过**，尤其是：
+1. 两站的图在设备上是否都出得来（UA 那条只在开发机出口验过，手机出口 IP 不同）；
+2. 连点两次"换一批"是否两屏不同、且都是眼熟的好图（带权随机 + 头部锁定）；
+3. 上滑翻页不出现重复图（`exclude` 与种子序列）；
+4. 卡片左下胶囊两站都显示、压深色图仍可辨；
+5. 点 Danbooru 的图进二级/三级，标题里的站点与 id 是否就是那一张（`siteKey` 进路由之后）；
+6. 打码模式下 `g` 不被糊、`e`/`q` 被糊；
+7. 只有一站给上内容时，页面是否真的把缺的那站说出来（不是变成单源还看不出来）。
+
+### 同日第二次修正：月榜换成用户点名的 Explore 端点
+
+用户反馈"我看还是没有 donmai 的源"并给出 `danbooru.donmai.us/explore/posts/popular?...&scale=month`。
+两问分开答：
+
+- **为什么没看到**：`adb devices` 为空，手机上装的还是这一轮之前的包（本轮包 02:16 才出）。
+  这既不是代码坏的证据、也不是代码没坏的证据 —— 真机一条都没跑过。
+- **端点实测（换成它了）**：`/explore/posts/popular.json?date=<当天>&scale=month&page=&limit=200`
+  匿名 200、返回**与 `/posts.json` 同一套字段**的完整 post 数组（现有 DTO 零改动复用）、
+  page 1/2/7 **相邻两页零重叠**、第 1 页 score 827~299 / `fav_count` 274~793。
+  比原先的 `posts.json?tags=order:rank` 更对：那份是排名副产物（当月分数尾巴 9 分的也带进来），
+  这份是站方 Explore 页**明写的"这个月最火的"**口径，正是用户原话要的"月度热门排行"。
+- **两条新实测**：explore 月榜第 1 页 200 条里 **`mp4` 占 40 条（20%，不是 order:rank 那份的 4%）**、
+  且 **52 条没有 `sample` 变体** → 客户端扩展名白名单与"sample → `large_file_url`"两级兜底都不是可选的。
+- **连带改的**：yande.re 月榜实测固定 40 条不可翻页，所以第一轮改取**当月 + 上月两份**（80 条）
+  —— 只取当月会在配比里被 Danbooru 的 200 条压没，"两站混合"就名存实亡了。
+- 方案文档 §一/§二/§6.1/§6.2 里基于 `order:rank` 的数值已全部改成 explore 的；
+  原先那句"两站分数差 24 倍"随端点失效，改成"两个不是同一个量（全站历史累计分 vs 当月位次分）"，
+  **加权必须走池内分位**这条结论不变。
+- 代码面：`DanbooruClient.fetchMonthlyHot` 换端点、`YandeReClient.fetchMonthlyHot(monthsAgo)` 加参数、
+  `GalleryFeedSource` 第一轮多取一份上月。漫画侧与 UI 层零改动。
+- 构建：`testDebugUnitTest`（156 条，0 失败）/ `assembleDebug` 全绿（02:16 出包）。真机仍未验。
+
+### 同日第三次改判：权重与月榜**全部删掉**，改成两站最新混搭
+
+用户原话两条：「删掉之前我说的权重，和月度榜，改成 `danbooru.donmai.us` 和 `yande.re/post`
+这两个最新图片的混搭，比例均匀点就行」，以及「**不采用严格交替**。总体数量比例保持接近均衡，
+单一来源允许连续出现 3~4 张，但避免长时间连续来自同一来源」。
+
+- **作废面**：候选池 / 站内分位归一 / 四维加权 / Efraimidis–Spirakis 抽样 / 首屏锁头部 /
+  动态配比夹 0.3~0.7 / 随机种子 / 三个月度端点调用（Danbooru `explore/posts/popular.json`、
+  `posts.json?tags=order:rank`、yande.re `popular_by_month.json`）。
+  `domain/GalleryPool.kt` 与其 14 条单测整体删除，换成 `domain/GalleryMerge.kt`。
+  方案文档 §五~§六 从此只是证据，不是实现依据。
+- **现行排法**：两站各 30 条，每一拍给两边**同样长**的一段（段长固定序列 `[2,1,3,1,2,3,1,2]`，
+  平均 2、最长 3）→ 总量恒等、有连出但不长。拍内固定"先 yande 后 Danbooru"是**有意的**：
+  改成两站轮流先出会在拍缝拼出 4 连（被 `单源连出不超过三张` 那条单测抓到，已按此定型）。
+  **无随机、无分数** → 同输入必得同序列，翻页/返回重建/重试都是同一屏。
+- **仍然保留的两条判据**（与权重无关，都是实测换来的）：扩展名白名单
+  （Danbooru 列表会混 `mp4`，月榜那份实测 20%；站方 `type:jpg` 实测返回 0 条 → 只能客户端滤，
+  且整站被滤光时报错而不是交回空列表）；去重三键 `uid`/`md5`/规范化 `source` + 翻页 `exclude`
+  （最新流是新图往前插的，第 2 页与第 1 页会漂移重叠）。
+- **`g` 放行这一版更要紧**：实测 Danbooru **最新 30 条里 `g` 占 15 条**，沿用第一轮
+  `rating != "s"` 会白糊半屏。`fav_count` 不再参与排序，只留二级信息卡那一行（站方给了才摆）。
+- 新实测（各 30 条 × 2 页）：两站默认列表都是 `created_at`/`id` 双递减、相邻两页零重叠；
+  Danbooru 分级 g15/e7/q3/s5、扩展名 jpg16/png14；yande.re 分级 e6/q12/s12、扩展名 png19/jpg10/webp1。
+- 漫画侧与 UI 结构零改动；底栏枚举未动（仍然 `HOME → FAVORITES → SEARCH → GALLERY → EXPLORE`）。
+- 构建：`testDebugUnitTest` 全仓 154 条 0 失败 / `assembleDebug` 全绿（02:34 出包）。**真机仍未验**。
+
+## 2026-09-25 追加：离开画廊线，修两条既有缺口（备份漏真实收藏库 / 评分假成功）
+
+用户原话：「**先修下其他吧，图片先不理了**」。画廊线（含"设备上 Danbooru 基本没有"的排查、
+`GalleryTagResolver` 的可行性后续）**整条挂起**，本节与图片无关。
+
+候选来源：让子代理把根目录 30+ 份方案/审计文档里的待修项扫成清单并**逐条回代码核实**
+（本项目有过"文档写已落地但代码里没有"的先例），得 8 条非画廊缺口；用户勾选两条先修。
+
+### 一、备份/恢复走真实收藏库（`official-gap-analysis-round2.md` G-1）
+
+- **核实**：`grep comic_favorite` 只剩三类命中 —— 建表/迁移、`FavoriteDao`（**自身零调用点**，
+  注释还写着"详情页现在写进动态夹表"）、`BackupManager` 一出一入。即备份读的是迁移后被
+  `migrateLegacyFavorites()` 清空的死表 → 导出恒 0 条收藏，恢复也写进没人读的表，全程不报错。
+- **改法**：收藏这一路整体改走 `LocalFavoritesManager` 公开 API，归档升到 **v4**
+  （`favorites.json` 每行带 `folder`；新增 `favorite_folders.json` 存夹子清单 + 网络夹绑定）。
+  为备份新增的唯一公开接口是 `currentFolders()`（实时读库；`folders` 缓存刚启动时是空的，
+  导出用它就会"备份 0 个夹子"，与本条要修的毛病同源）。
+- **自己抓住的一处设计回退**：第一版恢复是裸 SQL 直插动态表。两处会静默坏：
+  ① 不调 `notifyChanged()` → 恢复完的收藏要重启才看得见，等于把"看不见"往后推一格；
+  ② 追更那三列是 `prepareTableForFollowUpdates` 按需 ALTER 的，新设备的夹子没这些列，
+  照备份原样写会抛 `has no column named ...` 把**整笔导入**回滚。改走 Manager 后两条一起消失。
+- **旧格式必须继续认**：v3 的 `favorite.json` 是旧单表列名（`comic_id`/`cover_url`/`source_name`/
+  `folder_name`/`created_at`）。不认的后果不是报错而是"导入成功 0 条收藏"（`id` 取不到 → 整行跳掉）。
+  判别用「有 `comic_id` 且没有 `id`」，两套列名实测互不重叠。
+  旧行**不给 `display_order`**（交 `null` 给 `addComic` 按偏好递增），硬填 0 会让一次导入的所有条目同值。
+- **能测的都抽出来了**：新增 `sync/FavoriteBackupRows.kt`（纯 JVM 编解码判据）+ 9 条单测。
+  理由写在类注释里 —— 本项目单测**没有 Robolectric**，android 的 `org.json`/SQLite 在 JVM 测试里
+  全是返回默认值的桩，逻辑一沾它们就测不了；而"列名对不上"恰恰是不抛异常、只恢复出空白条目的那种错。
+- **刻意没做**（不静默扩面）：`favorite_images` 不入备份（库里只有本地路径，归档没有图片文件，
+  导进去就是一列表打不开的图）；`comic_source`/设置/Cookie 仍缺（= G-10 未闭合）；
+  跨库仍是两笔事务（收藏在 `local_favorite.db`，其余在 `venera_core.db`，做不到同一事务），
+  缓解是"整包先解析进内存再动库"。导入语义是**合并**：本机已有而备份里没有的夹子排到后面，不删任何东西。
+
+### 二、漫画评分假成功（G-14 里的 star 一条）
+
+三层叠出来的，一处比一处隐蔽：`JsComicSource.starRating` ① 丢了 `evaluateAsync` 的返回值恒回 `true`
+（源没声明 `comic.star` 也算成功）、② `catch` 里再 `Result.success(true)`；③ 接口默认实现本身
+就写 `Result.success(true)`；④ `ComicDetailViewModel.rateComic` 乐观写入 `userRating` 后
+**连结果都不看**，不回滚不提示。
+- **修法全部用仓内既有写法**，不发明新机制：JS 侧照同文件已修好的 `likeComic`
+  （没声明接口 → `false`；异常 → `failure`）；接口默认改回 `false`；ViewModel 照 `toggleLike` 的
+  "乐观更新 + 失败/不支持回滚 + 分三种情况如实提示"。
+- **同族未修，等点名**：`ComicSource.kt:143-156` 里 `voteComment` 与 `likeComic` 的**默认实现**
+  仍回 `success(true)` —— 非 JS 源（`BaoziMangaSource` 不覆写它们）点赞/评论投票会报成功而什么都没发生。
+
+### 未动
+
+底栏枚举、`Navigation.kt`、画廊包、`comic_favorite` 旧表本身（老设备升级还要靠它做一次性迁移）。
+
+### 构建
+
+`:app:testDebugUnitTest` **163 条 0 失败**（新增 9 条）/ `:app:assembleDebug` BUILD SUCCESSFUL（10:27 出包）。
+**真机仍未验** —— 且备份这一条本来就验不了闭环：要么两台设备，要么手上一份真 `.venera` 归档。
+用户侧要看的点是：详情页给一本**不支持评分**的书打分，是否立刻收到"该源不支持作品评分"且星数退回。
+
+## 2026-09-25 追加二：搜索页「到底了还显示加载更多」
+
+用户报「到底后还是显示加载更多,无法分析是已经加载完了还是需要继续加载」,点名搜索页。
+**先更正我自己**：我给用户的候选清单表里,搜索页被标成"三态齐全、唯一的正解先例"—— 那是照文档
+`search-page-loading-pagination-2026-09.md` §1 第 6 行的措辞读的,没回代码看判据。三态**在**,
+但其中一态的**进入条件**是错的。
+
+- **根因**（详版见该方案文档 §7）：翻页判定写成 `page.maxPage?.let { nextPage < it } ?: comics.isNotEmpty()`,
+  源一声明页数,「这一页是空的」这条硬证据就被否决；而 §3.1 的实测早就给出 `maxPage` 是
+  `ceil(total/页长)` 的**上界**、33 个源里 0 个给总数。翻到真尽头时 `nextPage < maxPage` 仍成立,
+  又因 `currentPage` 只在非空时推进 → 点「加载更多」原地重复同一页请求。
+- **修法**：判据抽成纯函数 `feature/SearchPagination.kt`,三条按证据强度排 —— 零新条目即到底；
+  页数只用来提前收手、不否决前者；游标型源只能靠前者。首页与翻页共用它。
+- **顺带抓住的一处误判方向相反的错**：翻页结果是「先过屏蔽规则、后排重」,于是 HIDE 规则剔空一整页
+  会被当成"这页没新东西"而**误判到底**。改成先排重、判据取守卫前的新条目数。
+- **代价如实记**：源虚报页数时现在**会**多发一次返回空的需求 —— 它是判定到底的唯一证据,
+  方案文档 §4 第 10 条那句"不会再多发一次空请求"已按此改写,不是我把要求降低了。
+- `ss-end` 那一行加了 `results.isNotEmpty()`,搜索无结果时不再和「没有搜索结果」叠成两行。
+- 构建：`testDebugUnitTest` 全仓 **170 条 0 失败**（新增 `SearchPaginationTest` 7 例）/
+  `assembleDebug` 绿（10:52 出包）。**真机未验**；「HIDE 恰好剔空整页」那条真机难构造,只由单测守住。
+- **同族未修,等点名**：探索页排行榜把 `maxPage` 丢在接口类型上（`ComicSource.kt:101`）、
+  详情页评论页数未知时用 `Int.MAX_VALUE`（`ComicDetailViewModel.kt:50`）、
+  冻结页 `SourceSectionScreen.kt:133-137` 故意压 null。
+
+## 2026-09-25 追加三：画廊落地流改成「两站上一天热门各 20 张打乱」+ 引入 mp4
+
+用户原话：「画廊改成 `yande.re/post/popular_recent?period=1d` 和 `danbooru/explore/posts/popular?date=&scale=day`
+上一天的热门 **各取 20 张然后打乱**，如果 donmai 有 mp4 就引入 mp4」。
+上一节刚说"图片先不理"，这节是用户主动重新点名，不算自作主张扩面。详版在
+`gallery-dual-source-hot-pool-plan-2026-09.md` §十三（含全量实测表与落地记录）。
+
+- **实测换来的三条**：① yande.re `popular_recent.json` **固定 40 条**、`limit`/`page` 无效、
+  不认的 `period` 值静默退回 `1d`（`1d` 与 `1mo` 实测 40/40 同一批，而 `1w` 只重叠 2 条）；
+  ② Danbooru `scale=day` **不带 `date` 静默回 0 条**（状态仍 200）→ 两站都把空列表当失败抛出；
+  ③ 视频字段与图片不同：`has_large=false`、`large_file_url` 就是原片 mp4，
+  `variants` 只有静帧 + 原片、**没有更小的视频转码档**（样本 16.1 MB / 42.8 秒），
+  时长只在 `media_asset.duration`，顶层连 `type` 键都没有。
+- **翻译层必须为视频改道**：中间档换成 `720x720` 静帧，否则二级把 `.mp4` 交给 Coil，
+  观感就是"一张永远加载失败的图"。
+- **删掉的**：两站 `fetchLatest(page)`、`GalleryMerge` 的交错额度与 `RUN_PATTERN`、翻页 `exclude`、
+  `hasMore/isLoadingMore/loadMoreError/round/shownKeys`、页尾「上滑加载更多」。
+  日榜是一屏到底的固定池子，留着那套状态机必然产出「到底了还显示加载更多」——
+  与搜索页刚修的是同一个病，这次从源头没有下一页。
+- **新增的可见读数**：页尾一行「{日期} 的热门已全部显示（yande.re 20 · Danbooru 20，含 N 个视频）」，
+  样式照搜索页 `ss-end`；卡片右下角 `▶ N″` 角标（不打标它就是一张看着正常、点开不会动的图）。
+- **打乱锁种子**：种子存在 `GalleryViewModel`，组合重建后重跑 `mix` 得到同一序列；只有「刷新」换种子。
+  裸 `shuffle()` 会变成"点进大图再返回整屏换序"（本项目导航条目会重建组合）。
+- **新依赖**：`androidx.media3:media3-exoplayer` + `media3-ui` **1.11.1**（版本号现查 maven-metadata）。
+  APK（universal）93,710,048 → 98,110,389 = **+4.20 MB**（11:34 那次出包是 97,459,067，差 651 KB 是 dex 重排的抖动，以最终包为准）。播放器按站点带 UA
+  （Danbooru 只认非浏览器串；yande.re 走全局默认串），因为 media3 不过 `VeneraNetworkClient`
+  也拿不到 `ImageHeaderPolicy`。
+- 构建：`testDebugUnitTest` **178 条 0 失败**（`GalleryMergeTest` 重写 13 条、Danbooru 解析 7→11、
+  新增 `GalleryFeedDateTest` 3 条）/ `assembleDebug` 绿。**真机未验**：视频能否播、
+  yande.re 的 `webm` 那侧 UA 假设、移动网络下首帧等待、打码态视频画面是否真被糊。
+
+## 2026-09-25 追加四：画廊「yande 只 13 张 / Danbooru 零张」的归因与判据修正
+
+用户真机反馈两个数（13 / 0）并附一个油猴脚本怀疑站方藏图。**两个都不是我原先猜的网络问题**，
+拉了设备的库与两站当天日榜回放才定位：
+
+- 设备 `nsfw_mode = OFF`（不是分级隐藏）；但 `content_guard_rules` 里有 4 条启用规则，含**非正则关键字 `ai`**。
+  `isComicBlocked` 的非正则分支是 `contains()`，画廊把整条 tag 列表喂进去 →
+  `long_hair`(144) `hair_ornament`(49) `tail`(39) 全部命中。
+  实测回放：yande **12/40** 被挡、Danbooru **199/200** 被挡；抽样期望上屏 14.1 / 0.1，与真机 13 / 0 对上。
+  **两站请求都成功**，所以顶部来源提示为空 —— 这解释了"为什么没有任何报错"。
+- 油猴脚本实测**零网络请求**，只是 `classList.remove` 放掉 HTML 列表里被 CSS 藏掉的条目；
+  对应字段是 JSON 里的 `is_shown_in_index`（今天 40 条中有 2 条 `false`）。我们走 JSON 且**从不读该字段**
+  → 那 2 张本来就上屏，客户端无事可做。`is_banned` 一类匿名响应里根本没有，站方没给就取不回。
+
+**改了什么（用户拍板：只有画廊走整词，漫画侧一字不动）**：
+新增 `GalleryBlockMatch`（tag 整串或 `: _ - 空格` 词元整词相等；正则用 `matches()` 整词；author 仍子串；
+坏正则返回 false；`COMIC_ID` 不参与），经 `ContentGuardManager.findGalleryBlockedRule` 返回**命中的那条规则**，
+一级与二级同源（`GalleryPostScreen` 一起换掉，避免"墙上被挡、点进来全裸"的分叉）。
+预期：同一批规则下 yande 0/40、Danbooru 0/200 被挡 → **20 + 20 全上屏**。
+
+**公开纠正我自己上一条判断**：第十三节我写的「真机未验②两站日榜是否都真给上内容」，
+以及本轮我先入为主的"Danbooru 可能是 CF 按 IP 挑战/域名熔断"，都是**错的** ——
+站侧探针（yande 40 条全 png/jpg、Danbooru 200 条字段齐全）与设备 HTTP 缓存里零 donmai 条目
+（`Cache-Control: max-age=0, private, must-revalidate` 本就不可缓存，那条"证据"无效）已经足够否掉。
+成因一直在我自己的判定链里。
+
+**同时修掉一条假读数**：`GalleryFeedEnd` 原先统计守卫**之前**的 `vm.posts`，
+所以只摆 13 张时它写「yande.re 20 · Danbooru 20」，而且某站为 0 时被 `mapNotNull` 整段省略 ——
+唯一线索就这样被抹掉了。现在吃新的 `GalleryWall`：报**实际落屏**条数（含 0 照报）、
+并按成因分开报「N 张命中屏蔽规则 {原文}」与「M 张按成人内容处理收起」；
+全被挡完的空态把规则原文念出来。
+
+构建：`testDebugUnitTest` **185 条 0 失败**（新增 `GalleryBlockMatchTest` 7 条）/
+`assembleDebug` 绿，universal 包 98,110,389 → **98,118,361**。
+**待真机复看**：画廊应显示 20 + 20，且页尾那行数得与屏上一致。
+
+## 2026-09-25 追加五：画廊线恢复，连做四轮（工具条+InfoSheet / 满屏合并 / 独立 Activity / 搜索）
+
+「先修下其他吧，图片先不理了」那条挂起**已被用户自己解除**（同日回来复看真机并继续提需求）。
+本节只更正状态，细节全在两份文档里：
+
+- `gallery-viewer-toolbar-and-infosheet-2026-09.md` §八~§十二：
+  二级+三级合并成**一层满屏播放器**、Dock 一条（HD/下载/信息/分享）、`(i)` 拉 `GalleryInfoSheet`
+  取代原来那两张滚动卡、大图页搬进**独立 Activity**（实时 blur-behind + 跨 activity 预测式返回 +
+  进场**向上滑入**）、HD 撞 Cloudflare 改为"图片流量不弹过盾 + 失败如实报"、
+  状态栏黑带改由本仓库第一份自有主题 `Theme.Venera.GlassOverlay` 处理。
+- `gallery-search-2026-09.md`：**画廊搜索**（入口=顶栏右上角图标）。§〇 那张两站检索面实测表是这一节的根据：官方 autocomplete 路由两站都 404、
+  前缀参数写错会被**静默给错数据**、Danbooru 匿名只有 2 枚标签预算、两站都没有总数端点、
+  `[]`+200 是合法的"查无此标签"。
+  **形态已被真机第二轮改判两次**：先拍成全高 `ModalBottomSheet` 并照那样落地，用户看过后改成
+  **画廊页内的搜索头**（顶栏整条换成搜索头部、结果墙与日榜同一面、可退回原画廊），见其 §一 / §十。
+
+状态账：`Navigation.kt` 与底栏枚举仍然一个字没动（搜索是画廊页内的一种模式，大图页是 Activity）；
+`GalleryPostRoute` 这个目的地已在追加四之后删除。
+构建：`testDebugUnitTest` **209 条 0 失败** / `assembleDebug` 绿。
+**待真机验**的清单分别写在 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.6 与
+`gallery-search-2026-09.md` §十。
+
+## 2026-09-25 追加六：真机二/三轮反馈三条（Danbooru 不出图 / 搜索改内嵌头 / 标签可交互）
+
+三条反馈与处置都记在文档里，本节只登账与两处**公开纠正**：
+
+1. **「Danbooru 搜索不出图」不是网络问题**：站方对匿名请求会把 `rating=e` 那批行的
+   `file_url / large_file_url / preview_file_url / md5` **四支键整条抹掉**（实测 `tags=loli` 4 条全 `e`
+   且四键全缺；yande.re 同查询键齐全）。结果侧现在按日榜那把同一判据 `GalleryMerge.isDisplayable`
+   过滤 + **计数报出来** + 给一个**由用户点**的「排掉成人分级再搜一次」出口（不自动往查询里塞条件）。
+2. **纠正我自己中途的判断**：我以为 `posts.json?search[tags]=…` 是官方给的解法（它返回带全 URL 的行），
+   拿不存在的 tag 与 `id:` 复跑才发现它**根本不过滤** —— 是红鲱鱼，用它做检索会得到"搜什么都是一屏"，
+   比空屏更坏。已写进 `gallery-search-2026-09.md` §〇 那张表防伪踩。
+3. **纠正我自己写的 fixture**：`GalleryDanbooruParsingTest` 那条 fixture 的 `tag_string` 原本按
+   "它只是 general 那一串"的想当然少写了两支。实测 60 条 / 五桶 2280 个 tag 串**没有一个**不在
+   `tag_string` 里 —— 这条差别不是整理癖：它是 InfoSheet 那个「屏蔽」按钮**不是假开关**的前提
+   （`TAG` 规则只拿 `post.tagList` 比）。已按实测校正并上单测钉住。
+4. **大图页 `(i)` 里的标签现在可交互**：点击=回画廊搜这一枚（跨 Activity 走新增的一次性交接槽
+   `GallerySearchHandoff`），长按=「搜索 / 复制 / 屏蔽」菜单，画法照漫画详情页 `DetailTagChip`。
+   `GalleryInfoSheet` 里那句"chips 刻意不可点，因为 `/tag.json` 还没实测"的前提已作废。
+
+状态账：`Navigation.kt`、底栏枚举仍然一个字没动。第一版那份全高 sheet
+`GallerySearchSheet.kt` 按可逆清理路径移到 `build/_trash-from-repo/`（没有硬删）。
+构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿，增量 universal 包 101,825,633
+（**增量数不可与干净基线相减**，口径见 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §10.4）。
+**待真机验**：`gallery-search-2026-09.md` §十三（12 条）、
+`gallery-viewer-toolbar-and-infosheet-2026-09.md` §13.5（3 条）。
+
+
+## 2026-09-25 追加七：画廊搜索区按 MD3 重做 —— 一次**可见的 token 层与基础组件契约扩张**
+
+第四轮真机反馈：「现在的搜索页是一个单独的页面或占满了顶部空间…搜索按钮（淡紫色）对比度太低」，
+并给了逐条 MD3 口径。形态从"替换标题栏的自绘头部 + Hero 模糊底"改成
+**顶栏常驻 + 顶栏 `bottomContent` 里的内联展开搜索区**；细节全在 `gallery-search-2026-09.md` §十四/§十五。
+
+本节单列一条：**这一轮动了 token 层与 `VeneraChip`**，属于组件契约变更，必须在这里看得见 ——
+
+- `ui/tokens/Color.kt`：`VeneraColorTokens` 增 **3 个语义槽位**
+  `surfaceContainerHigh` / `secondaryContainer` / `onSecondaryContainer`。
+  取值只在 `buildVeneraColorTokens(m = MaterialTheme.colorScheme)` 一处填，
+  两套主题都桥得上（`feature/ThemeColorBridge.kt` 的 `toMiuixColors` / `toMaterialColors`
+  **双向都已映射** `surfaceContainerHigh` 与 `secondaryContainer`，所以 MIUIX 模式下不会拿到
+  MD3 默认紫灰）；页面一律走槽位，没有一处越层直接读 `MaterialTheme.colorScheme`。
+- `ui/tokens/VeneraTokens.kt`：`VeneraElevationTokens` 增 `attached = 3.dp`（MD3 elevation3，
+  给"贴附在内容之上的输入面"）。
+- `ui/tokens/Spacing.kt`：增 `dockedSearchBarHeight = 56.dp`（MD3 docked search bar 原值）。
+  与既有 `searchFieldHeight = 48.dp` **分档**：那枚是表单里的单行输入框，这枚是搜索条本体，
+  合成一个数会让某一侧的观感不对。
+- `components/venera/VeneraChip.kt`：**加性**扩张 —— `VeneraChipVariant` 增 `Filter`
+  （未选 `outline` 描边 / 选中 `secondaryContainer` 填充，MD3 filter chip 那一档）与 `Neutral`
+  （无描边、填 `surfaceContainerHigh`）；新增可选参数 `leadingText`（chip 里的次要前缀，
+  小一档 + tertiary，用于历史 chip 的站点名）。**默认值与既有分支一字未改**，
+  仓内其余调用点行为不变。之所以扩展它而不是新写一枚 chip：组件自己的 KDoc 明写
+  "这是唯一的 Chip 实现，禁止再复制一套 UI"。
+
+三条拍板（AskUserQuestion）：Hero 模糊底**去掉**；收起入口=搜索框右侧 X **兼任**
+（有字先清空、空了再点收起）；源切换**仍单选**。
+
+一处**没有照抄用户清单**：上一版头部右上角的 ✕ 动作是「清空全部条件」，这一轮那个位置被输入框的
+清空/收起占了 —— 动作搬进 chips 行末尾一枚「清空」Assist chip。**换地方可以，丢掉不行**
+（yande.re 不限标签数，只能一枚一枚长按删是惩罚用户）。
+
+一处**刻意收掉**的东西：搜索态下顶栏不再摆「换一批」。它只作用于日榜那片池子，
+搜索结果在屏时按它看不见任何效果 = 假按钮。
+
+构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿。
+`gallery/ui/GallerySearchHeader.kt`（第二轮那版）按可逆清理路径移到
+`build/_trash-from-repo/GallerySearchHeader.kt.replaced`。
+**待真机验** 10 条见 `gallery-search-2026-09.md` §十五（重点：网格被"平滑推下去"而不是跳、
+提交钮可点/不可点两态的对比度、历史点击只填框不自动搜、`imePadding` 换了所在层之后的键盘避让）。
+
+## 2026-09-25 追加八：画廊搜索第五轮 —— 胶囊进框 + 同步搜索，`VeneraChip` 第二次加性扩张
+
+用户拿三张真机截图判「效果有点差」，并给了新口径：
+**「不要这样搜索的方法，弹出预测词选中后直接在搜索框内用胶囊显示标签，同步搜索」**。
+细节全在 `gallery-search-2026-09.md` §十六。**先量再改**：搜索区实测 **≈201dp**（约屏幕 1/4）、
+顶栏玻璃带与搜索区不透明底之间那道硬边切在 **y≈268px≈97dp**、一屏 **两枚 ✕** 职责还不同。
+
+四条改判（AskUserQuestion 全选推荐项）：去掉提交钮（加/删标签即搜）；胶囊自带 × + 退格删最后一枚；
+收起只归顶栏 ✕（框里那枚只管往回退）；历史改单行横滑 + 提示行只在必要时。
+另外**撤掉搜索区自己的不透明底**，让顶栏那层 progressive blur 一路延续 —— 硬边的根因是同一块面板涂了两种材质。
+
+**本节单列一条必须看见的：基础组件契约第二次扩张。**
+
+- `components/venera/VeneraChip.kt` 新增可选参数 **`onRemoveClick`** —— 给 `trailingIcon` 单独一个动作。
+  成因：这一形态下**整枚胶囊的点击被"改成排除"占了**，"删掉这枚"只能挂在 × 那一小块上；
+  否则要么两个动作打架，要么画一个按不动的 ×（假开关）。× 的触达位往外扩一档
+  （`chipIconSize` 原尺寸零内边距在真机上基本按不准，会连整枚点击一起误触发）。
+  默认 `null` 时行为与之前**一字不差**，仓内其余调用点不受影响。
+- 同文件 `Row` 的横向间隙在带 `leadingText` 时收一档（`space2 → space1`）：
+  那两段文字是一体的（站点名 + 关键词），留出"两个独立元素"的间距会把一枚 chip 读成两枚。
+
+**推翻上一轮自己的一颗钮**：追加七 刚按用户口径把提交钮做成 MD3 Filled Button，第五轮该口径被覆盖
+—— 那颗钮整颗去掉，提交由状态变化自己完成（防抖 250ms，且第 1 页**可打断**在跑的那一笔，
+否则连选两枚标签时屏上留下上一串的结果，看着就是"点了没反应"）。
+
+**删掉一处零调用点**：`GallerySearchViewModel.clearConditions`（「清空」chip 随条件行一起消失，
+每枚胶囊自带 × 之后它不再值一行高度）。
+
+**数据面收窄一条**：补全上限 `SUGGEST_ROWS` 8 → 6，且候选行从"套一枚 VeneraCard（≈56dp）"
+改成单行紧凑项（≈32dp）—— 8 行卡片会把这块内联区顶到半屏以上。
+
+保护域仍然一个字没动：`Navigation.kt`、底栏枚举。
+构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿，并已在包内 dex 逐串复核新文案
+（「删掉最后一枚标签」「点标签改成排除」「最近搜索」）。
+**待真机验** 10 条见 `gallery-search-2026-09.md` §16.4。

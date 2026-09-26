@@ -20,8 +20,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import coil3.imageLoader
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 
@@ -56,6 +59,9 @@ enum class VeneraCoverMask { Visible, Masked }
  * @param preserveAspectRatio 封面是否自持 [VeneraTokens] 的封面比例。
  *   默认 true（列表/详情那套「宽度定死、高度自算」的用法）。轮播这类**宽高都由外部槽位给定**
  *   的场景要传 false，否则 aspectRatio 会在固定高度里把图横向收窄，卡片两侧留缝。
+ * @param imageLoader 取图用的 ImageLoader；null = 应用级单例（现状，所有既有调用点不变）。
+ *   画廊这类自带独立缓存预算的链路要显式传自己的实例，否则会挤掉漫画侧的封面缓存
+ *   （理由与字节数见 `gallery/data/GalleryImageLoader.kt`）。
  */
 @Composable
 fun VeneraCover(
@@ -65,11 +71,14 @@ fun VeneraCover(
     mask: VeneraCoverMask = VeneraCoverMask.Visible,
     shimmerWhileLoading: Boolean = true,
     preserveAspectRatio: Boolean = true,
+    imageLoader: ImageLoader? = null,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val tokens = VeneraTokens
+    val context = LocalContext.current
     val shape = RoundedCornerShape(tokens.shape.medium)
     val isMasked = mask == VeneraCoverMask.Masked
+    val loader = imageLoader ?: remember(context) { context.imageLoader }
 
     // 是否有过成功加载：用于区分「首次加载」与「加载失败」。
     var hadError by remember(url) { mutableStateOf(false) }
@@ -97,6 +106,7 @@ fun VeneraCover(
             AsyncImage(
                 model = url,
                 contentDescription = contentDescription,
+                imageLoader = loader,
                 contentScale = ContentScale.Crop,
                 onSuccess = { loaded = true },
                 onError = { hadError = true },

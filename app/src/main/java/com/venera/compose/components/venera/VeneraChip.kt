@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
@@ -34,8 +36,11 @@ import top.yukonga.miuix.kmp.basic.Text
  * - [Assist]   : 未选中的动作型（描边 + 透明底）
  * - [Selected] : 选中态（强调容器色）
  * - [Tag]      : 标签语义（比 Assist 更轻，用于卡片上的 tag）
+ * - [Filter]   : MD3 filter chip —— 未选中只有描边，选中填 **secondaryContainer**
+ *   （不是 primaryContainer：选中一枚筛选条件不该有"主行动"那么响，规范里两者分档）
+ * - [Neutral]  : MD3 tonal chip —— **无描边**、填 surfaceContainerHigh，用于"最近搜索"这类次要项
  */
-enum class VeneraChipVariant { Assist, Selected, Tag }
+enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral }
 
 /**
  * Venera 基础 Chip（基础层）。
@@ -64,6 +69,13 @@ enum class VeneraChipVariant { Assist, Selected, Tag }
  *   也算可交互 —— 按压反馈仍由本组件统一持有，页面不要自行叠 combinedClickable。
  * @param leadingIcon 前置图标（如「＋」）。
  * @param trailingIcon 后置图标（如「×」移除）。
+ * @param onRemoveClick 给 [trailingIcon] 单独一个动作（胶囊自带的 ×）。
+ *   **为什么要有它**：整枚胶囊的点击常被别的语义占着（标签胶囊点一下=改成排除），
+ *   此时"删掉这枚"必须挂在 × 那一小块上，不能靠整枚 —— 否则要么两个动作打架，
+ *   要么画了个按不动的 ×（假开关）。只在 [trailingIcon] 非空时生效。
+ * @param leadingText 前置**次要文字**（如历史 chip 里那枚站点名）：比 [text] 小一档、吃
+ *   [VeneraColorTokens.textTertiary]，让主文字（关键词）赢过它。摆这个而不摆图标是为了
+ *   "同一枚 chip 里两段文字两种层级"这种需求 —— 别再为它复制一套 chip UI。
  * @param enabled false 时降透明度且不可点击。
  * @param variant 视觉变体；[VeneraChipVariant.Tag] 用于标签语义。
  */
@@ -77,6 +89,8 @@ fun VeneraChip(
     onLongClick: (() -> Unit)? = null,
     leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
+    leadingText: String? = null,
+    onRemoveClick: (() -> Unit)? = null,
     enabled: Boolean = true,
     variant: VeneraChipVariant = VeneraChipVariant.Assist,
 ) {
@@ -103,10 +117,15 @@ fun VeneraChip(
         label = "VeneraChipPressAlpha",
     )
 
-    // ── 颜色决策：disabled > selected > Tag > Assist ──
+    // ── 颜色决策：disabled > selected > Neutral > Tag > Assist ──
     val container = when {
         !enabled -> tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+        // Filter 的选中态吃 secondaryContainer（MD3 给 filter chip 的就是这一档，比
+        // primaryContainer 退一级）；其余变体的选中仍是主色容器。
+        selected && variant == VeneraChipVariant.Filter -> tokens.color.secondaryContainer
         selected -> tokens.color.primaryContainer
+        // Neutral：无描边的 tonal 面，靠底色本身与背景分层，不画轮廓。
+        variant == VeneraChipVariant.Neutral -> tokens.color.surfaceContainerHigh
         // Tag：使用**专用**语义 Token，不再用两个 alpha 相加拼凑。
         // 这让 Tag 成为一个可辨识的「块」，同时仍是 surfaceVariant（非 primary），
         // 因而弱于 SourceBadge 的实底深色，满足 Title > SourceBadge > Tag > Metadata。
@@ -116,6 +135,7 @@ fun VeneraChip(
     }
     val contentColor = when {
         !enabled -> tokens.color.textDisabled
+        selected && variant == VeneraChipVariant.Filter -> tokens.color.onSecondaryContainer
         selected -> tokens.color.onPrimaryContainer
         // Tag 文字提到 textPrimary（原为 textSecondary 70%）——
         // 在 0.72f 的容器上，100% 文字才能保证 Light/Dark 均达到 WCAG AA。
@@ -123,7 +143,7 @@ fun VeneraChip(
         else -> tokens.color.textPrimary
     }
 
-    // ── 描边：Assist 未选中时用弱描边；focused 时转主色以提供焦点可见性 ──
+    // ── 描边：Assist / Filter 未选中时用弱描边；focused 时转主色以提供焦点可见性 ──
     val border = when {
         !enabled -> null
         focused && interactive -> BorderStroke(tokens.spacing.space1, tokens.color.primary)
@@ -133,7 +153,9 @@ fun VeneraChip(
         // 避免与 selected Chip（实底 primaryContainer）混淆。
         variant == VeneraChipVariant.Tag && !selected ->
             BorderStroke(tokens.spacing.space1 / 2, tokens.color.outlineVariant)
-        variant == VeneraChipVariant.Assist && !selected ->
+        // Assist 与 Filter 未选中态同形：只有一层 outline 描边（MD3 filter chip 的默认档）。
+        // Neutral 刻意不描边 —— 它靠 surfaceContainerHigh 的底色分层，再加轮廓就成了两层装饰。
+        (variant == VeneraChipVariant.Assist || variant == VeneraChipVariant.Filter) && !selected ->
             BorderStroke(tokens.spacing.space1 / 2, tokens.color.outline)
         else -> null
     }
@@ -173,7 +195,11 @@ fun VeneraChip(
                 horizontal = tokens.spacing.chipHorizontalPadding,
                 vertical = tokens.spacing.chipVerticalPadding,
             ),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+            // 带次要前缀时收一档间隙：那两段文字是一体的（站点名 + 关键词），
+            // 留出"两个独立元素"的间距会把一枚 chip 读成两枚。
+            horizontalArrangement = Arrangement.spacedBy(
+                if (leadingText == null) tokens.spacing.space2 else tokens.spacing.space1,
+            ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (leadingIcon != null) {
@@ -184,6 +210,17 @@ fun VeneraChip(
                     modifier = Modifier.size(tokens.spacing.chipIconSize),
                 )
             }
+            // 次要前缀：小一档 + 退到 tertiary，让主文字赢过它（历史 chip 里的站点名就是这个用法）。
+            // 它跟着 contentColor 走会一起变响，所以这里**不**吃 contentColor。
+            if (leadingText != null) {
+                Text(
+                    text = leadingText,
+                    fontSize = tokens.type.overline,
+                    color = tokens.color.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 text = text,
                 fontSize = tokens.type.caption,
@@ -192,12 +229,39 @@ fun VeneraChip(
                 overflow = TextOverflow.Ellipsis,
             )
             if (trailingIcon != null) {
-                Icon(
-                    imageVector = trailingIcon,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(tokens.spacing.chipIconSize),
-                )
+                // × 单独可点（删这枚）时，触达位往外扩一档：图标本身只有 chipIconSize，
+                // 原尺寸 + 零内边距在真机上基本按不准（会连整枚的 onClick 一起误触发）。
+                // 没给 onRemoveClick 就保持原样，不加任何按不动的假触达位。
+                val removable = onRemoveClick != null
+                Box(
+                    modifier = if (removable) {
+                        Modifier.padding(
+                            start = tokens.spacing.space2,
+                            end = if (onLongClick != null || onClick != null) tokens.spacing.space1 else 0.dp,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ) {
+                    Icon(
+                        imageVector = trailingIcon,
+                        contentDescription = if (removable) "移除" else null,
+                        tint = contentColor,
+                        modifier = Modifier
+                            .size(tokens.spacing.chipIconSize)
+                            .then(
+                                if (removable) {
+                                    Modifier.combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = onRemoveClick ?: {},
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                    )
+                }
             }
         }
     }

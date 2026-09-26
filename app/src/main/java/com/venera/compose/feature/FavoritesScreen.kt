@@ -7,7 +7,10 @@
  */
 package com.venera.compose.feature
 
+import android.app.Activity
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
+import com.venera.compose.gallery.ui.GalleryFavoritesBody
+import com.venera.compose.openGalleryPost
 import com.venera.compose.feature.favoriteimages.toComicItem
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -106,6 +109,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -119,6 +123,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -154,6 +159,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     // 这里打回默认值 —— 真机实测「从本地收藏点进详情，返回却落在网络收藏」。
     // 它同时是封面共享元素返回时闪一下的根因之一：目的地那一支整支没被组合出来。
     var mode by rememberSaveable { mutableStateOf(FavoritesMode.Network) }
+    // 「图片收藏」那一档内部的两块：**漫画**（阅读器里收入的单页插图）/ **画廊**（图站收藏）。
+    // 放在这里而不是顶栏里：顶栏那三枚是"页面级目的地"，这两枚是同一块面板内部的视图切换，
+    // 层级不同就该在不同的位置上（见 ImageFavoritesPanel）。
+    var imageSection by rememberSaveable { mutableStateOf(ImageSection.Comics) }
     // 三块面板现在是一个 pager 的三页：本页的横滑只切「网络 / 图片 / 本地」这三段
     // （主 tab 那条横滑在收藏页已整体禁用，见 Navigation.kt 的 tabSwipePager enabled）。
     // 跟手位移、过阈值提交、不到阈值弹簧回弹，全是 pager 自带的行为。
@@ -249,8 +258,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                         onScrollStateChange = reportScroll,
                     )
 
-                    FavoritesMode.Images -> FavoriteImagesBody(
+                    FavoritesMode.Images -> ImageFavoritesPanel(
                         topPadding = topPadding,
+                        section = imageSection,
+                        onSectionChange = { imageSection = it },
                         scrollConnection = topBarBehavior.nestedScrollConnection,
                         backdrop = backdrop,
                         onPreviewImage = onPreviewFavoriteImage,
@@ -449,6 +460,109 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
 
 /** 收藏页模式：网络收藏（各漫画源账号）/ 图片收藏（单页插图）/ 本地收藏（本地数据库）。 */
 private enum class FavoritesMode { Local, Network, Images }
+
+/**
+ * 「图片收藏」这一档内部的**两块**（用户 2026-09-26 点名要分开）。
+ *
+ * - [Comics] —— 阅读器里收入的单页插图（原有能力，[FavoriteImagesBody]）；
+ * - [Gallery] —— 图站（yande.re / Danbooru）收藏的整张画（[GalleryFavoritesBody]）。
+ *
+ * 两者**不合并成一格**：来源不同、点开之后的去处不同（预览页 / 图站大图页）、
+ * 能对它们做的事也不同（"从该页开始阅读"对一张画廊图没有意义）。
+ * 混成一面墙之后，"点这张会发生什么"就没有统一答案了。
+ */
+private enum class ImageSection { Comics, Gallery }
+
+private val imageSectionEntries = listOf("漫画收藏", "画廊收藏")
+
+/** 手机档二级分段**单段**占屏宽的比例：比一级那三枚（0.25）再收一档，一眼看出是从属关系。 */
+private const val subSegmentedCellWidthFraction = 0.22f
+
+/**
+ * 图片收藏面板的宿主：上面一条二级分段器，下面接对应的那一面墙。
+ *
+ * 分段器**放在内容里**（而不是塞进收藏页顶栏的 `bottomContent`）：顶栏那一条是
+ * "网络 / 图片 / 本地"三个页面级目的地，再摞一条同款药丸，两条一模一样的控件上下叠着，
+ * 读不出谁是主谁是次。放在内容里、宽度再收一档，从属关系就出来了 ——
+ * MD3 里同级控件靠**尺寸与位置**表达层级，不靠再加一层描边。
+ *
+ * 让位也因此只在这一层算一次：分段器吃掉 [topPadding]（= 顶栏地板），
+ * 下面两面墙都按 0 起排（它们的 `topPadding` 默认值就是 0）。
+ *
+ * 分段器**不跟顶栏折叠**：顶栏那条"网络/图片/本地"会在下滑时收起（`bottomContent` 里那层
+ * AnimatedVisibility），而这一条留着 —— 让它跟着收，下面的墙会在收起的瞬间整体上跳一格
+ * （顶栏的让位高度是常量，不跟 `collapsedFraction` 走）。
+ */
+@Composable
+private fun ImageFavoritesPanel(
+    topPadding: Dp,
+    section: ImageSection,
+    onSectionChange: (ImageSection) -> Unit,
+    scrollConnection: NestedScrollConnection?,
+    backdrop: LayerBackdrop?,
+    onPreviewImage: (FavoriteImageItem) -> Unit,
+    onOpenComicDetail: (FavoriteImageItem) -> Unit,
+    onReadFromPage: (FavoriteImageItem) -> Unit,
+    onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit,
+) {
+    val context = LocalContext.current
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = topPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            ImageSectionToggle(section = section, onSectionChange = onSectionChange)
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            when (section) {
+                ImageSection.Comics -> FavoriteImagesBody(
+                    scrollConnection = scrollConnection,
+                    backdrop = backdrop,
+                    onPreviewImage = onPreviewImage,
+                    onOpenComicDetail = onOpenComicDetail,
+                    onReadFromPage = onReadFromPage,
+                    onScrollStateChange = onScrollStateChange,
+                )
+
+                ImageSection.Gallery -> GalleryFavoritesBody(
+                    scrollConnection = scrollConnection,
+                    backdrop = backdrop,
+                    onOpenPost = { post ->
+                        // 与画廊一级点卡片走**同一条**路：跨 Activity 才有实时 blur-behind 与
+                        // 预测式返回；滑入垫着的那一帧由 GalleryCardsGrid 在点击那一刻截好。
+                        (context as? Activity)?.openGalleryPost(post.site, post.id)
+                    },
+                    onScrollStateChange = onScrollStateChange,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageSectionToggle(
+    section: ImageSection,
+    onSectionChange: (ImageSection) -> Unit,
+) {
+    val modes = remember { ImageSection.entries.toList() }
+    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = VeneraTokens.spacing.space3),
+        contentAlignment = Alignment.Center,
+    ) {
+        VeneraSegmentedButton(
+            options = remember { imageSectionEntries },
+            selectedIndex = modes.indexOf(section),
+            onSelect = { onSectionChange(modes[it]) },
+            modifier = if (wide) Modifier.fillMaxWidth()
+            else Modifier.fillMaxWidth(subSegmentedCellWidthFraction * modes.size),
+        )
+    }
+}
 
 @Composable
 private fun FavoritesModeToggle(

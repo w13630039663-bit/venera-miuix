@@ -352,9 +352,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     _uiState.update { it.copy(results = guardManager.filterComicModels(filtered.comics), isSearching = false,
                         tagFilterRelaxed = filtered.relaxed,
-                        // 源声明了页数就按页数判「还有下一页」，省掉一次注定为空的请求；
-                        // 没声明（游标型源）才退回原来的「这页非空 = 也许还有」。
-                        canLoadMore = firstPage.maxPage?.let { mp -> mp > 1 } ?: comics.isNotEmpty(),
+                        // 判据与翻页那一路共用（见 SearchPagination）：首页就是空也算到底，
+                        // 不能只看源声明的 maxPage —— 它常常比这个关键词真能翻到的页数大得多。
+                        canLoadMore = SearchPagination.canLoadMore(
+                            declaredMaxPage = firstPage.maxPage,
+                            pageJustFetched = 1,
+                            unseenItemsOnPage = comics.size,
+                        ),
                         sourceMaxPage = firstPage.maxPage,
                         estimatedTotal = firstPage.maxPage
                             ?.takeIf { mp -> mp > 0 && comics.isNotEmpty() }
@@ -406,15 +410,21 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                     TagSearchPolicy.filterByTagsWithFallback(
                         comics, snapshot.tags, variantConverter::traditionalToSimplified)
                 }
-                val fresh = guardManager.filterComicModels(filtered.comics)
-                    .filter { next -> _uiState.value.results.none { it.id == next.id && it.sourceKey == next.sourceKey } }
+                // 先排重、再过屏蔽规则。顺序反过来的话，「这一页被 HIDE 规则剔空」就会被
+                // 当成「这一页没有新条目」，进而误判成到底 —— 而源其实还有下一页。
+                val unseen = filtered.comics.filter { next ->
+                    _uiState.value.results.none { it.id == next.id && it.sourceKey == next.sourceKey }
+                }
+                val fresh = guardManager.filterComicModels(unseen)
                 _uiState.update {
                     it.copy(results = it.results + fresh, loadingMore = false,
                         // 任一页触发过降级，提示就要一直留着 —— 否则用户以为后面的页是精确的。
                         tagFilterRelaxed = it.tagFilterRelaxed || filtered.relaxed,
-                        // 源声明了页数就以页数为准（到底了不用再发一次空请求）；
-                        // 游标型源退回「这页非空 = 也许还有下一页」。
-                        canLoadMore = page.maxPage?.let { mp -> nextPage < mp } ?: comics.isNotEmpty())
+                        canLoadMore = SearchPagination.canLoadMore(
+                            declaredMaxPage = page.maxPage,
+                            pageJustFetched = nextPage,
+                            unseenItemsOnPage = unseen.size,
+                        ))
                 }
                 if (comics.isNotEmpty()) currentPage = nextPage
             } catch (e: CancellationException) { throw e }

@@ -18,13 +18,44 @@
 - **修复**：新增 `resolveDetailComic(route, selectedComic)`（`feature/Navigation.kt`）——内存条目仅当 id+源名与路由一致时使用，否则以路由参数构造最小条目重新拉详情。
 - **验证**：新增 `app/src/test/java/com/venera/compose/feature/DetailRouteTest.kt` 4 个用例（恢复、命中缓存、异书拒用、异源拒用）全部通过；`:app:assembleDebug` BUILD SUCCESSFUL（15 个单测 0 失败）。
 
+## 一之二、2026-09-25 补修（G-1 全条 + G-14 的评分部分）
+
+### F-6 备份/恢复漏掉真实收藏库（G-1）⭐已修
+- **问题复述**：`BackupManager` 导出走 `comic_favorite`、恢复也写 `comic_favorite`，而那张表在
+  `LocalFavoritesManager.migrateLegacyFavorites()` 迁移完即被清空、运行期零写入 ⇒ 导出的收藏恒 0 条，
+  恢复写进一张没有 UI 会读的表。全程不报错。
+- **修复**：收藏这一路整体改走 `LocalFavoritesManager` 公开 API（`currentFolders` / `getFolderComics` /
+  `createFolder` / `updateOrder` / `linkFolderToNetwork` / `addComic`）。两个必要性：① 每次写完
+  `notifyChanged()` 刷新 `folders`/`counts` 缓存，直接写库的话恢复出来的收藏要等重启才看得见；
+  ② 归档格式与「一表一行」解耦，不再受 `prepareTableForFollowUpdates` 按需 ALTER 的列数影响。
+- **新增** `sync/FavoriteBackupRows.kt`：编解码判据抽成纯 JVM 函数（本项目单测无 Robolectric，
+  android 的 `org.json` 在 JVM 测试里全是返回默认值的桩，沾上 JSONObject 就测不了）。
+- **归档格式 v4**：`favorites.json`（每行带 `folder`，字段名同 `FavoriteItem`）+ `favorite_folders.json`
+  （夹子清单，含网络夹绑定）。**v3 的 `favorite.json` 照样认**（靠"有 `comic_id` 且没有 `id`"判别），
+  否则老备份文件在新版上会"导入成功 0 条收藏"。
+- **验证**：`FavoriteBackupRowsTest` 9 例（往返、旧列名、tags 三种写法、缺夹名、缺排序列、
+  JSON 数字是 Long、缺主键行、空 time）。`:app:testDebugUnitTest` 163 条 0 失败 / `assembleDebug` 绿（10:27 出包）。
+- **仍未修**（诚实边界）：`favorite_images`（插图收藏）不入备份——库里只有本地路径，归档没有图片文件，
+  导进去就是一列表打不开的图；`comic_source`/设置/Cookie 仍缺，即 G-10 未闭合。
+  跨库原子性也仍是两笔（收藏在 `local_favorite.db`，其余在 `venera_core.db`，同一事务做不到）；
+  缓解手段是"整包先解析进内存再动库"，格式错误在写库前就失败。
+
+### F-7 漫画评分假成功（G-14 里的 star 一条）⭐已修
+- **问题**：`JsComicSource.starRating` 丢弃 `evaluateAsync` 的返回值恒回 `true`，且 `catch` 里再回
+  `Result.success(true)`；接口默认实现也是 `success(true)`；`rateComic` 乐观写入 `userRating` 后
+  连结果都不看 ⇒ 一本不支持评分的书也提示"评分成功"，且星级留着不回滚。
+- **修复**：判据与同文件已修好的 `likeComic` 对齐（源没声明 `comic.star` → `false`；异常 → `failure`）；
+  接口默认回 `false`；`rateComic` 照 `toggleLike` 的"乐观更新 + 失败/不支持回滚 + 如实提示"重写。
+- **同族未修**：`likeComic` 的**接口默认实现**仍回 `success(true)`（非 JS 源如 `BaoziMangaSource`
+  不覆写它 ⇒ 点赞报成功但什么都没发生）；`voteComment` 三条同形。**未列入本轮，等点名。**
+
 ## 二、确定的功能缺失 / 断点（高置信，双侧行号）
 
 ### P0（核心数据丢失或功能出口断开）
 
 | # | 发现 | 当前证据 (A) | 官方证据 (O) | 影响 |
 |---|---|---|---|---|
-| G-1 | **备份漏掉真实收藏库**：备份仍读写已迁移清空的旧 `comic_favorite` 表 | `sync/BackupManager.kt:44-65,114-134`；真实库在 `data/db/LocalFavoriteDatabase.kt`（`LocalFavoritesManager.kt:29`；`:706-775` 迁移后清空旧表） | `utils/data.dart:28-40,75-81` 打包/恢复 `local_favorite.db` | 备份可能导出 0 部收藏；换设备恢复丢全部收藏及文件夹数据 |
+| G-1 | ~~**备份漏掉真实收藏库**~~ **已修 2026-09-25，见 §一之二 F-6** | `sync/BackupManager.kt`（现走 `LocalFavoritesManager`）；真实库在 `data/db/LocalFavoriteDatabase.kt` | `utils/data.dart:28-40,75-81` 打包/恢复 `local_favorite.db` | 修复前：备份导出 0 部收藏、恢复写进没人读的死表 |
 | G-2 | **导出分享出口断开**：先 Toast「导出成功」，再调用未注册的 FileProvider 且异常吞掉 | `feature/LocalComicScreen.kt:225-234`、`feature/SyncBackupScreen.kt:339-348`；`AndroidManifest.xml` 无 provider 声明（合并清单仅 androidx.startup） | `pages/local_comics_page.dart:503-508`、`utils/io.dart:331-348`（真保存对话框） | CBZ/.venera 只写进私有 cache，用户拿不到文件；假成功提示 |
 | G-3 | **CBZ 导入固定目录覆盖混书**：一律复制成 `import_temp.cbz` 且不传标题 | `feature/LocalComicScreen.kt:93-99`；`download/LocalComicManager.kt:222-249`（按文件名建 `imported/import_temp`，从 0001 覆盖） | `utils/cbz.dart:101-109,140-143`（按原文件名/元数据建独立目录，同名拒绝） | 导第二本必撞书：同号页覆盖、短书残留旧尾页 |
 | G-4 | **官方 .venera 备份不兼容且零数据报成功**：只认 4 种 JSON，全部 `getEntry` 可选，无格式校验 | `sync/BackupManager.kt:81-92,177-195` | `utils/data.dart:28-40,58-108`（history.db/local_favorite.db/appdata/cookie/source） | 导入官方备份「恢复完成」实为 0 条；反向亦不互认 |
@@ -42,7 +73,7 @@
 | G-11 | **重复恢复累加 + 无版本防倒灌**：stats/guard 每次恢复都 insert | `sync/BackupManager.kt:137-173`；`WebDavSyncManager.kt:105-122` 按 mtime 挑文件 | `utils/data.dart:62-81`、`data_sync.dart:204-216` 有 dataVersion 拒旧 | 同一备份反复恢复数据翻倍；旧云包可覆盖较新阅读进度 |
 | G-12 | **WebDAV 自动同步无调度**：仅字段存取，无启动/变更监听（注意：UI 上本来就没有该开关，不是「开关失效」） | `sync/WebDavSyncManager.kt:24-41`、`WebDavModels.kt:8` | `utils/data_sync.dart:19-36,79-83` | 只有手动上传/恢复 |
 | G-13 | **归档下载协议缺失**：无 archiveDownloader/ArchiveDownloadTask 对应实现 | `download/DownloadManager.kt:287-345` 仅逐页 GET | `pages/comic_details_page/actions.dart:145-238`、`network/download.dart:656-802` | 声明归档能力的源（如 EH）无官方下载路径 |
-| G-14 | **JS 协议缺口（源能力面）**：`handleClickTagEvent`/`onTagSuggestionSelected`/`linkHandler`/`idMatch`/`translations` 未接 Kotlin 层；JS UI 对话框 API 返回 null；like/vote/star 异常时仍返回 success(true) 掩盖失败 | `data/network/ComicUrlMatcher.kt`（4 源硬编码）；`engine/VeneraJsEngine.kt:646-653`；`source/js/JsComicSource.kt:1200-1270`（catch 后 `Result.success(true)`） | `parser.dart:1112-1268`、`components/js_ui.dart:21-61` | 链接直达、标签跳转语义、源内翻译、JS 弹窗输入均不工作；点赞/评论点赞失败无感知 |
+| G-14 | **JS 协议缺口（源能力面）**：`handleClickTagEvent`/`onTagSuggestionSelected`/`linkHandler`/`idMatch`/`translations` 未接 Kotlin 层；JS UI 对话框 API 返回 null；like/vote/star 异常时仍返回 success(true) 掩盖失败。**2026-09-25 进度**：`starRating` 一条已修（见 §一之二 F-7），余下是**接口默认实现**（`source/ComicSource.kt:143-156` 的 `voteComment`/`likeComic` 仍回 `success(true)`）与 JS 弹窗 | `data/network/ComicUrlMatcher.kt`（4 源硬编码）；`engine/VeneraJsEngine.kt:646-653`；`source/js/JsComicSource.kt:1200-1270`（catch 后 `Result.success(true)`） | `parser.dart:1112-1268`、`components/js_ui.dart:21-61` | 链接直达、标签跳转语义、源内翻译、JS 弹窗输入均不工作；点赞/评论点赞失败无感知 |
 
 ### UI / 界面与官方不一致（要「一模一样」需逐项对齐）
 
@@ -71,7 +102,7 @@
 
 ## 三、建议修复顺序
 
-1. **P0 数据安全**：G-1 备份改读 LocalFavoriteDatabase → G-2 注册 FileProvider（+ xml paths）→ G-3 导入目录按文件名隔离 → G-4 官方格式校验/明确拒绝。
+1. **P0 数据安全**：~~G-1 备份改读 LocalFavoriteDatabase~~（2026-09-25 已修）→ G-2 注册 FileProvider（+ xml paths）→ G-3 导入目录按文件名隔离 → G-4 官方格式校验/明确拒绝。
 2. **交互断点**：G-7 双页步长（小改动：next 目标应为 `(pair+1)`、末组判定用 pairCount）→ G-6 完成校验 → G-5 jpeg 扫描。
 3. **补功能**：G-8 自动翻页 → G-9 隐私锁 → G-14 JS 协议缺口。
 4. **UI 对齐**：U-1/U-3/U-4/U-7 优先（用户感知最强）。

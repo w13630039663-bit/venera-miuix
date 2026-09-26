@@ -49,6 +49,11 @@ object ImageHeaderPolicy {
         "hitomi.la" to mapOf("Referer" to "https://hitomi.la/"),
         "nhentai.net" to mapOf("Referer" to "https://nhentai.net/"),
         "picacg.com" to mapOf("User-Agent" to "okhttp/3.8.1"),
+        // Danbooru 挂在 Cloudflare 上，而本项目的全局默认 UA 是**移动端 Chrome 串** ——
+        // 实测拿它去打 cdn.donmai.us，连 180×180 的缩略图都回 403 + cf-mitigated: challenge
+        // （5.9 KB 挑战页 HTML 而不是图片）。非浏览器 UA 同一个 URL 就 200。
+        // 这串要与 gallery 侧 `DanbooruClient.API_USER_AGENT` 保持一致（那边是 JSON 接口）。
+        "donmai.us" to mapOf("User-Agent" to "Venera/1.0 (Android)"),
         "ehgt.org" to mapOf(
             "Referer" to "https://e-hentai.org/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"

@@ -49,7 +49,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
                 "启动页面", startPage,
                 listOf(
                     "HOME" to "首页", "FAVORITES" to "我的收藏",
-                    "SEARCH" to "搜索与发现", "EXPLORE" to "探索",
+                    "SEARCH" to "搜索与发现", "GALLERY" to "画廊", "EXPLORE" to "探索",
                 ),
                 prefs::setStartPage,
                 summary = "下次冷启动时停留的主标签。",

@@ -41,10 +41,13 @@ enum class VeneraNavTab(
     // 历史从主 Tab 降回二级页。撤这一项**不是删功能**，入口换成三处 ——
     // 首页「历史记录」分区头、设置首页一条、阅读器顶栏胶囊一条。
     // ⚠️ 枚举顺序就是底栏顺序，也是左右横滑翻页顺序（Navigation.kt 的 tabSwipePager
-    // 与 VeneraNavTab.entries 单一真相）。画廊进来时占第 3 位（收藏之后），见
-    // gallery-module-isolation-plan-2026-09.md §三。
+    // 与 VeneraNavTab.entries 单一真相）。腾出来的那个位置给了画廊（下面 GALLERY）——
+    // 09-23 我按「收藏右侧第 3 位」预留，09-24 用户改口「放搜索右侧第四个」，以这里为准。
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
     SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
+    // 画廊：yande.re 图站，与漫画侧完全隔离的独立模块（gallery/ 包，
+    // 边界与实测端点见 gallery-module-isolation-plan-2026-09.md）。
+    GALLERY("画廊", Icons.Outlined.Image, Icons.Filled.Image),
     // 「分类索引」与「全站探索」已合并为统一的「探索」页（见 UnifiedExploreScreen）。
     // 合并的是页面入口，不是各源的分类体系 —— 每个源仍保留自己的分类 / Tag / 排序。
     EXPLORE("探索", Icons.Outlined.Explore, Icons.Filled.Explore)

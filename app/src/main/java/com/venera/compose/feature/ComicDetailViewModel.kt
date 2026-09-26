@@ -556,15 +556,31 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 评分 (0.0 - 5.0) */
+    /** 评分 (0.0 - 5.0)：乐观更新 + 失败或源不支持时回滚并如实提示（与 toggleLike 同一套）。 */
     fun rateComic(rating: Float) {
         val details = _uiState.value.details ?: return
         val key = resolveSourceKey(details.sourceKey)
+        val previousRating = _uiState.value.userRating
+        // 1) 乐观更新：先让星级立刻变
         _uiState.update { it.copy(userRating = rating) }
 
         viewModelScope.launch {
             val src = sourceManager.getSource(key)
-            src?.starRating(details.comic.id, rating)
+            val result = src?.starRating(details.comic.id, rating)
+            val supported = result?.getOrDefault(false) == true
+            if (result == null || result.isFailure || !supported) {
+                // 2) 失败 / 源不支持：回滚星级并说明原因，不能留着"已经评上了"的假象
+                _uiState.update {
+                    it.copy(
+                        userRating = previousRating,
+                        error = when {
+                            result == null -> "评分失败：找不到对应漫画源"
+                            result.isFailure -> "评分失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
+                            else -> "该源不支持作品评分"
+                        }
+                    )
+                }
+            }
         }
     }
 

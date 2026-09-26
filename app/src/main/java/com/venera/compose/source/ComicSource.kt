@@ -144,10 +144,11 @@ interface ComicSource {
         Result.success(true)
 
     /**
-     * 漫画打星评分 (0.0 - 5.0)
+     * 漫画打星评分 (0.0 - 5.0)。
+     * 返回源是否真实支持该操作（未声明评分接口的源返回 false，UI 据此如实提示而不是报成功）。
      */
     suspend fun starRating(comicId: String, rating: Float): Result<Boolean> =
-        Result.success(true)
+        Result.success(false)
 
     /**
      * 漫画作品点赞 / 取消点赞（isLike=false 为取消）。

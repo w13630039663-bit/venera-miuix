@@ -1445,19 +1445,21 @@ class JsComicSource(
 
     override suspend fun starRating(comicId: String, rating: Float): Result<Boolean> {
         return try {
+            // 判据与下面的 likeComic 一致：源没声明 comic.star 就如实返回 false，
+            // 求值异常交给调用方处理。此前这里是「丢弃返回值恒回 true，且 catch 掉异常再
+            // success(true)」，于是一本根本不支持评分的书也会提示评分成功。
             val script = """
                 return (async function() {
                     var s = ComicSource.sources['$key'];
-                    if (s && s.comic && s.comic.star) {
-                        await s.comic.star(${gson.toJson(comicId)}, $rating);
-                    }
+                    if (!s || !s.comic || typeof s.comic.star !== 'function') return false;
+                    await s.comic.star(${gson.toJson(comicId)}, $rating);
                     return true;
                 })()
             """.trimIndent()
-            engine.evaluateAsync(script)
-            Result.success(true)
+            val rawJson = engine.evaluateAsync(script)
+            Result.success(SourcePayloadParser.data(rawJson) == true)
         } catch (e: Exception) {
-            Result.success(true)
+            Result.failure(e)
         }
     }
 

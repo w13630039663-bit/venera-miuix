@@ -122,6 +122,16 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         notifyChanged()
     }
 
+    /**
+     * 实时读一遍收藏夹清单（按 `folder_order`）。
+     *
+     * 与 [folders] 缓存的区别：缓存要等 [init] 的那次协程跑完才有值，刚启动时读它是空的。
+     * 备份导出这种"必须拿到当下真值"的场合用这个；UI 仍用 [folders]。
+     */
+    suspend fun currentFolders(): List<String> = withContext(Dispatchers.IO) {
+        dbHelper.folderNames(dbHelper.readableDatabase)
+    }
+
     suspend fun folderComics(folder: String): Int = withContext(Dispatchers.IO) {
         countInternal(dbHelper.readableDatabase, folder)
     }

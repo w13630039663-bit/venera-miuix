@@ -277,6 +277,17 @@ class ContentGuardManager private constructor(private val context: Context) {
     }
 
     /**
+     * 画廊条目的黑名单判定，命中就**把那条规则交回去** —— 页面要说得出"是哪条规则挡的"，
+     * 不能只让屏上凭空少几张（2026-09-25 真机就是这样：规则 `ai` 把 Danbooru 整天清空，
+     * 而页尾仍写着「Danbooru 20」，那是一条假读数）。
+     *
+     * 不走 [isComicBlocked] 的原因见 [GalleryBlockMatch]：图站 tag 是下划线标识符，
+     * 子串匹配会让 `ai` 命中 `long_hair`。漫画侧那一份判据一字未动。
+     */
+    fun findGalleryBlockedRule(author: String, tags: List<String>): GuardRule? =
+        _rules.value.filter { it.isEnabled }.firstOrNull { GalleryBlockMatch.blocked(it, author, tags) }
+
+    /**
      * 检查单本漫画是否命中「用户屏蔽规则」。
      * 注意：源级预设 / 显式标记判定不在本方法内 —— 它们只参与遮蔽判定链
      * （[coverMaskStateFor]），不应影响用户显式黑名单的语义。

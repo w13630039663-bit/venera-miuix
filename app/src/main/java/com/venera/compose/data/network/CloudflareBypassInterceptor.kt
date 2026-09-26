@@ -4,13 +4,33 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
+import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+
+/**
+ * 这条请求**能不能**弹过盾窗口要用户手动过。
+ *
+ * 图片取流（[ImageFetchTag]）一律不能，两条实测理由：
+ * 1. **弹了也白弹**。过盾成功后 [CloudflareBypassManager.onBypassSuccess] 会把 WebView 那串
+ *    真实浏览器 UA 绑到该 host 上，拦截器再拿它重放原请求。而 Cloudflare 对 donmai 的判定
+ *    实测是**按指纹不按 UA**：同一张 `/original/` 图，`Venera/1.0 (Android)` 回 200，
+ *    换成 Chrome 移动串（哪怕补全 `Sec-Fetch-*`）回 403 + `cf-mitigated: challenge` ——
+ *    一个自称 Chrome 却没有 Chrome TLS/H2 指纹的请求，bot 分数比老实报自己是谁的还高。
+ *    也就是说"过盾 → 换浏览器 UA → 重放"这条链在图片上必然自相矛盾，越治越死。
+ * 2. **代价在别的线程上**。这里是 `runBlocking` 等一个人机交互，跑在 Coil 的取图线程上：
+ *    一张图能把一个 worker 挂到用户点"取消"为止，同屏其余图片全排队。
+ * 所以图片撞盾 = 原样抛错，由调用方说一句话（画廊 HD 档就是这么报的）。
+ * API/网页流量照旧走交互式过盾 —— 那条链对它有效（拿到 `cf_clearance` 后重放确实通）。
+ */
+internal fun offersInteractiveBypass(request: Request): Boolean =
+    request.tag(ImageFetchTag::class.java) == null
 
 /**
  * Cloudflare 智能过盾拦截器。
  * 拦截 403/503，检测 Cloudflare 特征，若触发则挂起拉起 WebView 过盾，
  * 通关后注入最新 cf_clearance 与 UA 并自动重放请求。
+ * 图片取流不在此列，判据见 [offersInteractiveBypass]。
  */
 class CloudflareBypassInterceptor(private val context: Context) : Interceptor {
 
@@ -32,6 +52,12 @@ class CloudflareBypassInterceptor(private val context: Context) : Interceptor {
                 Log.w(tag, "Cloudflare challenge detected on: ${request.url}")
                 val urlString = request.url.toString()
                 val host = request.url.host
+
+                if (!offersInteractiveBypass(request)) {
+                    // 图片取流撞上盾：**原样把 403 交回**，调用方（Coil）抛错、UI 报一句话。
+                    Log.w(tag, "图片流量不弹过盾窗口，直接失败: $urlString")
+                    return response
+                }
 
                 // 挂起启动过盾流程
                 val bypassSuccess = runBlocking {

@@ -66,8 +66,7 @@ class VeneraNetworkClient private constructor(private val context: Context) {
             val original = chain.request()
             val requestBuilder = original.newBuilder()
             if (original.header("User-Agent") == null) {
-                val hostUa = UserAgentPolicy.getUserAgentForHost(original.url.host)
-                requestBuilder.header("User-Agent", hostUa)
+                requestBuilder.header("User-Agent", userAgentFor(original.url))
             }
             if (original.header("Accept-Language") == null) {
                 requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
@@ -148,4 +147,23 @@ class VeneraNetworkClient private constructor(private val context: Context) {
             }
         }
     }
+}
+
+/**
+ * 一次请求该用哪一串 UA。三层，从强到弱：
+ *
+ * 1. **该 host 过盾时绑定的真实 UA**（[UserAgentPolicy]）—— 它必须与 CookieJar 里的
+ *    `cf_clearance` 严格配对，换掉就等于把刚过完的盾当场作废；
+ * 2. **[ImageHeaderPolicy] 给该 host 钉的 UA**（`donmai.us` 那一串 `Venera/1.0 (Android)`）。
+ *    ⚠️ 这一层在 2026-09-26 之前**从来没生效过**：本拦截器排在 `ImageHeaderInterceptor`
+ *    外层，先把全局 Chrome 串填上，里层「只补请求里还没有的头」再看到 UA 已存在就跳过 ——
+ *    于是「浏览器串打 danbooru 的 CDN 回 403 + `cf-mitigated: challenge`、非浏览器串回 200」
+ *    这条实测结论一行都没落地，**反而正是下载必然撞盾的成因**：下载走的是裸
+ *    `Request.Builder()`（不带 UA），拿到的就是那串必然 403 的 Chrome UA。
+ * 3. 全局默认（移动端 Chrome 串）。
+ */
+private fun userAgentFor(url: okhttp3.HttpUrl): String {
+    val bound = UserAgentPolicy.getUserAgentForHost(url.host)
+    if (bound != UserAgentPolicy.DEFAULT_USER_AGENT) return bound
+    return ImageHeaderPolicy.headersFor(url.toString())["User-Agent"] ?: bound
 }

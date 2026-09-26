@@ -1171,7 +1171,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
             // 到底提示。源声明了 maxPage 时这个判定是**精确**的（VM 用 nextPage < maxPage
             // 算 canLoadMore，不会再发一次注定为空的请求）；游标型源只能在某页返回空之后确定。
             // 有翻页错误时不显示 —— 那不是"没有了"，是"失败了"，上面已经说了。
-            if (!ui.canLoadMore && !ui.loadingMore && ui.hasSearched && ui.error == null) {
+            // 结果本来为空时也不显示：那一行说的是"没有搜索结果"，再补一句"已经没有了"是重复。
+            if (!ui.canLoadMore && !ui.loadingMore && ui.hasSearched &&
+                ui.error == null && ui.results.isNotEmpty()
+            ) {
                 item(key = "ss-end") {
                     Text(
                         text = "已经没有了",

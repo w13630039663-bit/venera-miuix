@@ -14,7 +14,7 @@
 | 3 | 加载失败要显示原因 | `SingleSourceResults` | **这是既存缺陷修复**：`ui.error` 原先只在 `results.isEmpty()` 时渲染（`ss-error` 分支），所以「已经有一屏结果、再翻页失败」时 VM 写进 `error` 的 `"加载更多失败：…"` 被整个吞掉，界面什么都不说。现在在网格之后单独渲染原因 + 重试（重试走 `loadMore`，不是重新搜索） |
 | 4 | 详情页点 tag 跳搜索要自动切到对应漫画源 | `Navigation.kt` + `SearchScreen.kt` | `TagSearchRoute` 加可选字段 `sourceName`；详情页 `onSearchTag` 传 `comic.sourceName`；搜索页 `LaunchedEffect(initialQuery, initialSourceName)` **先 `onSourceSelected` 再 `search`** |
 | 5 | 表头要区分「已加载」与「总数」 | `SearchViewModel` + `SearchScreen.ResultHeader` | 「检索结果（已加载 N 个 · 约 M 个）」，源不声明页数时「… · 总数未知」。详见 §3.1（跨 Source / Model / ViewModel 三个保护域） |
-| 6 | 拉到底要给「已经没有了」 | `SingleSourceResults` | `!canLoadMore && !loadingMore && hasSearched && error == null` 时在末尾显示居中「已经没有了」。源声明了 maxPage 时这个判定是**精确**的（VM 直接按 `nextPage < maxPage` 算，不再多发一次空请求）；有翻页错误时不显示，避免把「失败了」说成「没有了」 |
+| 6 | 拉到底要给「已经没有了」 | `SingleSourceResults` | `!canLoadMore && !loadingMore && hasSearched && error == null && results.isNotEmpty()` 时在末尾显示居中「已经没有了」；结果本来为空时不显示（上面已有「没有搜索结果」，再补一句是重复）。**判定本身在 2026-09-25 被推翻重做过，见 §7 —— 本行原写的「源声明了 maxPage 时这个判定是精确的」是错的** |
 
 ### 4 的实现口径（为什么传名字而不是 key）
 
@@ -57,7 +57,7 @@
 | `source/js/JsComicSource.kt` | 解析 `res["maxPage"]`（此前被丢掉）并随 `SearchPage` 返回 |
 | `source/baozi` / `copymanga` / `mangadex` | 三个原生源迁移。copymanga 读 `results.total`、mangadex 读顶层 `total`，都用 `optInt(…, 0)` 兜底 —— **字段缺失就留 null，不猜**；baozi 是 HTML 抓取，无总数概念，直接 `SearchPage(list)` |
 | `source/ComicSourceManager.kt` | `search()` 返回 `SearchPage`；`all` 分支**故意不合并 maxPage**（各源页数加总既不是总页数也不是总条数）；`searchAggregatedStream` 相应解包 |
-| `feature/SearchViewModel.kt` | `SearchUiState` 加 `sourceMaxPage` / `estimatedTotal`；`canLoadMore` 改为 **`nextPage < maxPage`**（源声明页数时），不再靠"多发一次空请求"才发现到底了；游标型源退回 `comics.isNotEmpty()` |
+| `feature/SearchViewModel.kt` | `SearchUiState` 加 `sourceMaxPage` / `estimatedTotal`；`canLoadMore` 改由 `SearchPagination.canLoadMore` 判（见 §7），**不再单靠页数、也不再靠"多发一次空请求"才发现到底了** |
 | `MainActivity.kt` ×2 | 自检代码解包 `.comics` |
 | `feature/explore/SourceSectionScreen.kt` | **冻结页，只做保住原行为的最小适配**：`.map { page -> page.comics to null }`。接口现在能给真 maxPage，但启用它会改变该页的分页判定，属另一件事 |
 
@@ -79,7 +79,7 @@
 7. LIGHT / DARK、360dp 窄屏、字体放大一档；列表与网格两种显示模式各测。
 8. 表头「约 M 个」：挑一个声明 maxPage 的源（jm / picacg / copy_manga）确认有「约 N 个」；挑 **ehentai 或 nhentai** 确认显示「总数未知」而不是 0，也不是硬编一个数。
 9. jm 的估算误差：jm 页长 80，`maxPage×80` 会比真实 total 最多多 79 —— 确认「约」字在，且不会被读成精确值。
-10. 「已经没有了」：单源翻到最后一页后应出现，且**不会**再多发一次空请求（看 logcat 的网络计数）；游标型源（ehentai）则要等某页返回空后才出现；翻页失败时应显示失败原因而**不是**「已经没有了」。
+10. 「已经没有了」：单源翻到最后一页后应出现；翻页失败时应显示失败原因而**不是**「已经没有了」；搜索无结果时**只**显示「没有搜索结果」那一行，不叠「已经没有了」。⚠️ §7 之后本条不再要求"绝不多发一次空请求"：源虚报页数时，那一次空请求正是判定到底的唯一证据（见 §7 验收第 2 点）。
 11. 探索页 `SourceSectionScreen`（冻结页）：按统一标签下钻那条路径行为应与改造前完全一致（它仍把 maxPage 当 null 处理）。
 
 ## 5. 改动文件
@@ -104,3 +104,46 @@
 本轮开工前，`ComicSource.kt` / `JsComicSource.kt` / `ComicSourceModels.kt` 已被**另一个会话**改到一半：接口换成了 `Result<SearchPage>`，但 `JsComicSource` 漏 import、三个原生源与 `ComicSourceManager` 未迁，**整个工作区编译不过**。判据：上一次构建是绿的，而新 `SearchPage` 的 KDoc 原样引用了我上一条消息的实测数字。
 
 → 处置：经用户确认那边已停手后接手补完，并把接口变更扩散到的 `MainActivity`（自检块）与冻结页 `SourceSectionScreen` 一并适配。冻结页那处只改到能编译、**不启用**新能力。
+
+## 7. 2026-09-25 更正：「到底」不能只信源声明的页数
+
+用户报告：「**到底后还是显示加载更多，这样无法分析是已经加载完了还是需要继续加载**」，点名搜索页。
+
+**根因是 §1 第 6 行和 §5 那行写下的一个假设**：「源声明了 `maxPage` 时判定是精确的」。
+旧表达式 `page.maxPage?.let { nextPage < it } ?: comics.isNotEmpty()` 里，只要源给了页数，
+**「这一页是空的」这条硬证据就被完全否决**。而 §3.1 自己的实测就是反例：33 个源里
+**0 个提供总数**、26 个只有 `maxPage`，且它是 `ceil(total / 页长)` 算出的**上界**
+（jm 页长 80 ⇒ 最多虚报 79 条；更多源的 `maxPage` 压根是本分类的量级而不是本关键词能翻到的页数）。
+于是翻到真尽头时 `nextPage < maxPage` 依旧成立 → 「加载更多」永挂在页尾；
+又因为 `currentPage` 只在非空时才推进（`SearchViewModel.kt:419`），点它只是把同一页空结果再要一遍 —— 原地打转。
+「越界把末页原样回吐」的那类源同理：条目被排重掉、列表不再长，按钮却还在。
+
+**现行判据**：`feature/SearchPagination.kt`（纯函数，可单测），按证据强度三条——
+
+1. 这一页没给出任何**未见过**的条目就算到底（空页算，越界回吐末页被排重成零新条目的也算）；
+2. 源声明了页数时，页数只用来**提前收手、省掉一次注定为空的请求**，不拿来否决第 1 条；
+3. 游标型／不声明页数的源只能靠第 1 条。
+
+**顺带修的两处同族问题**：
+
+- **顺序**：翻页结果是「先排重、再过屏蔽规则」。旧顺序先过守卫，于是 *HIDE 规则或用户黑名单把整整一页剔空*
+  会被当成「这一页没有新条目」，进而**误判到底** —— 而源其实还有下一页。探索页的
+  `buildExploreContent` 注释里早就记过同一个坑，这次是排重先做、判据取守卫**之前**的新条目数。
+- **首页**：`mp > 1 ?: comics.isNotEmpty()` 并进同一个函数（旧写法在「首页就是空但源声明页数 &gt; 1」时提示还能加载更多）。
+- **文案叠行**：`ss-end` 加 `results.isNotEmpty()`，搜索无结果时只留「没有搜索结果」一行。
+
+**代价如实记在这里**：源虚报页数时，现在**会**多发那一次返回空的需求 —— 而它正是判定到底的唯一证据。
+§4 验收第 10 条原先那句「不会再多发一次空请求」已按此改写。
+
+**验证**：`SearchPaginationTest` 7 例（虚报页数的空页、页数未到、翻到声明末页、游标型非空、
+越界回吐、屏蔽规则剔空不等于到底、首页即空）；`:app:testDebugUnitTest` 全仓 **170 条 0 失败** /
+`:app:assembleDebug` BUILD SUCCESSFUL（10:52 出包）。**真机未验**。
+
+真机判定点：① 挑 §3.1 里声明页数的源（jm / picacg / copy_manga）翻到尽头，应停住并出现「已经没有了」，
+不再原地重复；② 挑 ehentai / nhentai（总数未知）确认是"某页为空之后"才收；
+③ 「HIDE 规则恰好剔空一整页」这条构造成本高，真机难验，只由单测守住。
+
+**本轮未动**（同族但不同页，等点名）：探索页的排行榜端点把源声明的 `maxPage` 丢在类型上
+（`ComicSource.loadCategoryRanking: Result<List<Comic>>`，JS 侧 `:1308-1348` 明明读到了）；
+`ComicDetailViewModel.kt:50` 评论在页数未知时用 `Int.MAX_VALUE` ⇒ 第一页之后 `hasMore` 恒真；
+冻结页 `SourceSectionScreen.kt:133-137` 仍故意把通用标签入口的 `maxPage` 压成 `null`。
