@@ -125,8 +125,13 @@ object GalleryMerge {
         )
     }
 
-    /** 站内身份 → 文件指纹 → 上游出处，三个都是零成本的键。 */
-    private fun GalleryPost.dedupKeys(): List<String> =
+    /**
+     * 站内身份 → 文件指纹 → 上游出处，三个都是零成本的键。
+     *
+     * `internal`（不是 private）：`GalleryForYouMerge` 那面分页墙要用**同一把**去重键 ——
+     * 两处各写一份就会长成"日榜认得出重复、推荐页认不出"的分叉。
+     */
+    internal fun GalleryPost.dedupKeys(): List<String> =
         listOf(uid, if (md5.isNotBlank()) "md5:$md5" else "", if (sourceKey.isNotBlank()) "src:$sourceKey" else "")
             .filter { it.isNotEmpty() }
 }
