@@ -79,9 +79,16 @@ class CloudflareBypassInterceptor(private val context: Context) : Interceptor {
                         .build()
 
                     val retried = chain.proceed(newRequest)
+                    // **两档都记**，不只记失败：这条链到底通不通，判据是"过盾后那一笔是 200 还是 403"，
+                    // 只记 403 就没法证明"曾经通过过"。本机应用层 logcat 读不到，所以同时落证据文件。
+                    CfBypassEvidence.record(
+                        context,
+                        "post-bypass-retry host=$host code=${retried.code} " +
+                            "ua=${updatedUa.take(40)} server=${retried.header("Server") ?: "-"} " +
+                            "mitigated=${retried.header("cf-mitigated") ?: "-"}",
+                    )
                     // 重试**仍然**是被挡的样子，说明带过去的 cookie / UA 组合不被认账
                     // （最常见是那枚 cf_clearance 从未被真正激活，或站点还要求 __cf_bm）。
-                    // 这一行是"过盾成功了却还是 403"这类状态里唯一说得清事实的读数。
                     if (retried.code == 403 || retried.code == 503) {
                         Log.w(
                             tag,

@@ -129,8 +129,26 @@ object CloudflareBypassManager {
                     }
                 }
                 cookieJar.saveFromResponse(httpUrl, okHttpCookies)
-                Log.i(TAG, "Saved ${okHttpCookies.size} cookies from WebView for $host (includes cf_clearance)")
+                // ⚠️ 这里以前是一句无条件的 `"... (includes cf_clearance)"` —— 它断言了一件
+                // 没人验过的事，而 cf_clearance 是 HttpOnly、getCookie() 按规范取不到。
+                // 现在把**实际取到的名字清单**报出来，让"过盾成功却还 403"这类状态能被判定。
+                val names = CfBypassEvidence.cookieNames(cookieString)
+                Log.i(
+                    TAG,
+                    "Saved ${okHttpCookies.size} cookies from WebView for $host; names=$names, " +
+                        "cf_clearance=${if ("cf_clearance" in names) "present" else "缺失"}",
+                )
+                CfBypassEvidence.record(
+                    context,
+                    "bypass-success host=$host url=$url webViewPairs=${okHttpCookies.size} " +
+                        "names=$names cf_clearance=${if ("cf_clearance" in names) "present" else "缺失"} " +
+                        "jarSize=${cookieJar.loadForRequest(httpUrl).size}",
+                )
             }
+        } else {
+            // 另一种得单独记：getCookie 整串是空的。那说明 WebView 与 OkHttp 两套 cookie
+            // 存储之间根本没通 —— 与"通着但 HttpOnly 那枚取不到"是两条不同的病因。
+            CfBypassEvidence.record(context, "bypass-success host=$host url=$url webViewCookieString=EMPTY")
         }
 
         // 3. 唤醒所有排队等待该 host 的协程
