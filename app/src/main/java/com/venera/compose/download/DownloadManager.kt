@@ -265,29 +265,29 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     /**
-     * 判断某个章节是否已经下载完毕
+     * 判断某个章节是否已经下载完毕。
+     *
+     * ⚠️ "有图"不等于"下完"：旧判据就是前者，而 `chapter.json` 在开下载**之前**就写，
+     * 于是下到 5/40 被取消的章也算"已下载" —— 详情页挂绿色徽章、批量下载把它从默认选中里
+     * 排除、阅读器拿本地文件当整章读。三处一起把一本截断的书当成完整书，且永不重下。
      */
-    fun isChapterDownloaded(sourceKey: String, comicId: String, chapterId: String): Boolean {
-        val task = _tasks.value.find { it.sourceKey == sourceKey && it.comicId == comicId && it.chapterId == chapterId }
-        if (task?.status == DownloadStatus.COMPLETED) return true
+    fun isChapterDownloaded(sourceKey: String, comicId: String, chapterId: String): Boolean =
+        chapterOffline(sourceKey, comicId, chapterId) == ChapterOffline.COMPLETE
 
-        // 检查磁盘目录是否存在且包含有效图片
+    /**
+     * 这一章的离线完成态 —— 页面要按三档说话，不能只问"有没有"。
+     *
+     * PARTIAL 必须能被 UI 区分出来：徽章要写成「离线不全」而不是「已下载」，
+     * 批量下载的默认选中也要把它算进去（它确实没下完）。
+     */
+    internal fun chapterOffline(sourceKey: String, comicId: String, chapterId: String): ChapterOffline {
+        val task = _tasks.value.find { it.sourceKey == sourceKey && it.comicId == comicId && it.chapterId == chapterId }
+        if (task?.status == DownloadStatus.COMPLETED) return ChapterOffline.COMPLETE
+
         val comicDir = getComicDir(sourceKey, comicId)
-        if (!comicDir.exists()) return false
-        val chapterDirs = comicDir.listFiles { f -> f.isDirectory } ?: return false
-        for (dir in chapterDirs) {
-            val infoFile = File(dir, "chapter.json")
-            if (infoFile.exists()) {
-                try {
-                    val json = JSONObject(infoFile.readText())
-                    if (json.optString("chapterId") == chapterId) {
-                        val images = dir.listFiles { f -> f.isFile && isPageImage(f.name) }
-                        return !images.isNullOrEmpty()
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-        return false
+        if (!comicDir.exists()) return ChapterOffline.NONE
+        val chapterDirs = comicDir.listFiles { f -> f.isDirectory } ?: return ChapterOffline.NONE
+        return chapterDirs.firstNotNullOfOrNull { stateOfChapterDir(it, chapterId) } ?: ChapterOffline.NONE
     }
 
     /**
@@ -306,6 +306,9 @@ class DownloadManager private constructor(private val context: Context) {
         }
 
         if (targetDir != null && targetDir.exists()) {
+            // 只下一半的章**不能交出去**：调用方拿到列表就当整章用（阅读器会直接开离线，
+            // 在线那一路就不走了）。返回 null 让它退回在线取全页 —— 宁可慢，不要静默少页。
+            if (stateOfChapterDir(targetDir, chapterId) == ChapterOffline.PARTIAL) return null
             val files = targetDir.listFiles { f ->
                 f.isPageImageFile()
             }?.sortedBy { it.name }
@@ -314,6 +317,25 @@ class DownloadManager private constructor(private val context: Context) {
             }
         }
         return null
+    }
+
+    /**
+     * 单个章节目录对这一章的完成态；null = 这个目录不是这一章（或没有可读的元数据）。
+     *
+     * 没有 `chapter.json` 的目录也返回 null：那是导入/手工放书留下的裸目录，
+     * 页数是唯一可依据，硬判"齐不齐"会把它误判成没下完。
+     */
+    private fun stateOfChapterDir(dir: File, chapterId: String): ChapterOffline? {
+        val json = runCatching { JSONObject(File(dir, "chapter.json").readText()) }.getOrNull() ?: return null
+        if (json.optString("chapterId") != chapterId) return null
+        val pages = dir.listFiles { f -> f.isFile && isPageImage(f.name) }?.size ?: 0
+        // optInt 分不出"写了 0"与"没写"，所以先 has 再取。
+        val expected = if (json.has("expectedPages")) json.getInt("expectedPages") else null
+        return chapterOfflineState(
+            expectedPages = expected,
+            complete = json.optBoolean("complete", false),
+            pageCount = pages,
+        )
     }
 
     fun getComicDir(sourceKey: String, comicId: String): File {
@@ -374,14 +396,9 @@ class DownloadManager private constructor(private val context: Context) {
         val task = _tasks.value.find { it.taskId == taskId } ?: return
         val chapterDir = File(task.directoryPath).apply { if (!exists()) mkdirs() }
 
-        // 写入章节元数据
-        File(chapterDir, "chapter.json").writeText(
-            JSONObject().apply {
-                put("chapterId", task.chapterId)
-                put("title", task.chapterTitle)
-                put("order", task.chapterOrder)
-            }.toString()
-        )
+        // 写入章节元数据。**此刻还不知道有几页** —— expectedPages 要等页列表取到再补写，
+        // 所以这一份先不带标记（读侧按"标记不可信"处理，见 chapterOfflineState）。
+        writeChapterMeta(chapterDir, task, expectedPages = null, complete = false)
 
         val source = sourceManager.getSource(task.sourceKey)
         if (source == null) {
@@ -401,6 +418,9 @@ class DownloadManager private constructor(private val context: Context) {
         val pageUrlsOrKeys = chapterPages.pages
         val totalCount = pageUrlsOrKeys.size
         updateTaskProgress(taskId, downloaded = 0, total = totalCount)
+        // 现在知道"这一章该有几页"了 —— 补写进元数据。没有这个数，
+        // 下一半就取消的章与下完的章在磁盘上**长得一模一样**（都是"目录里有图"）。
+        writeChapterMeta(chapterDir, task, expectedPages = totalCount, complete = false)
 
         // 2. 逐图下载与重试
         var downloaded = 0
@@ -485,8 +505,38 @@ class DownloadManager private constructor(private val context: Context) {
         }
 
         if (downloaded >= totalCount) {
+            // 完成标记落盘：读侧据此区分"齐了"与"只下一半"。写在状态之前 ——
+            // 万一这里崩了，任务停在未完成态，重下会走"跳过已存在有效文件"那条路，代价只是再扫一遍。
+            writeChapterMeta(chapterDir, task, expectedPages = totalCount, complete = true)
             updateTaskStatus(taskId, DownloadStatus.COMPLETED)
             _tasks.value.find { it.taskId == taskId }?.let { notifyTaskFinished(it) }
+        }
+    }
+
+    /**
+     * 写 `chapter.json`。
+     *
+     * 先写临时文件再改名：这个文件现在 carrying 着"这一章齐不齐"的判据，
+     * 写到一半被杀会把它变成半个 JSON —— 读侧解析失败就当"没这一章"，
+     * 用户看到的是"下完的书不见了"。
+     */
+    private fun writeChapterMeta(chapterDir: File, task: DownloadTask, expectedPages: Int?, complete: Boolean) {
+        val target = File(chapterDir, "chapter.json")
+        val content = JSONObject().apply {
+            put("chapterId", task.chapterId)
+            put("title", task.chapterTitle)
+            put("order", task.chapterOrder)
+            if (expectedPages != null) put("expectedPages", expectedPages)
+            if (complete) put("complete", true)
+        }.toString()
+        val tmp = File(chapterDir, "chapter.json.tmp")
+        // writeText 返回 Unit，所以两步分开写、以 rename 的成败为准。
+        val atomic = runCatching { tmp.writeText(content); tmp.renameTo(target) }.getOrNull() == true
+        if (!atomic) {
+            // 改不了名就直写目标文件：宁可没有原子性，也不要"标记根本没写进去"。
+            tmp.delete()
+            runCatching { target.writeText(content) }
+                .onFailure { android.util.Log.w(tag, "chapter.json 写入失败: ${target.absolutePath}", it) }
         }
     }
 

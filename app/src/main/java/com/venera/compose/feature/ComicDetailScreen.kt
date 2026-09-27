@@ -1682,19 +1682,32 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
-                                // 已下载章节：绿色「已下载」徽章（避免重复下载）
-                                if (downloadManager.isChapterDownloaded(detailSourceKey, detailComicId, ch.id)) {
+                                @Composable
+                                fun BadgeChip(text: String, color: androidx.compose.ui.graphics.Color) {
                                     Surface(
                                         shape = RoundedCornerShape(tokens.shape.extraSmall),
-                                        color = StatusColors.Healthy.copy(alpha = 0.15f)
+                                        color = color.copy(alpha = 0.15f)
                                     ) {
                                         Text(
-                                            text = "已下载",
-                                            color = StatusColors.Healthy,
+                                            text = text,
+                                            color = color,
                                             fontSize = tokens.type.badge,
                                             modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
                                         )
                                     }
+                                }
+
+                                // 离线状态分两档说：**齐了**才是绿色「已下载」，
+                                // 只下一半的挂黄色「离线不全」—— 挂绿徽章等于把它从默认选中里排除，
+                                // 那本截断的书就永远不会被重下（旧写法正是这样，判据是"目录里有图"）。
+                                when (downloadManager.chapterOffline(detailSourceKey, detailComicId, ch.id)) {
+                                    com.venera.compose.download.ChapterOffline.COMPLETE ->
+                                        BadgeChip("已下载", StatusColors.Healthy)
+
+                                    com.venera.compose.download.ChapterOffline.PARTIAL ->
+                                        BadgeChip("离线不全", StatusColors.Degraded)
+
+                                    else -> Unit
                                 }
                             }
                         }
