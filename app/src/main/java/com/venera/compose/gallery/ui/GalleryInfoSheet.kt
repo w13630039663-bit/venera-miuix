@@ -143,11 +143,18 @@ fun GalleryInfoSheet(
                 if (post.tagGroups.none { it.label == "画师" }) {
                     InfoRow("作者", post.author.ifBlank { "—" })
                 }
-                // 原图那一档的体积与指纹：站方真给的两个字段，也是"下载会拿到多大"的预告。
-                InfoRow(
-                    if (post.isVideo) "视频" else "原图",
-                    "${post.fileSize / 1024 / 1024} MB · md5 ${post.md5.take(8)}",
+                // 原图那一档的体积与指纹。**读数没有就不摆**：Gelbooru 的 post JSON 根本没有
+                // file_size（`GelbooruClient.kt:62` 记着这条天花板，也写了"UI 那边没这个读数就不显示"），
+                // 解析处只能一律填 0 —— 旧写法于是每张 Gelbooru 图都写着「0 MB」，
+                // 看着像"这文件是空的"。同一处判据 `GalleryVideoViewer.kt:130` 早修过，这是漏网的第二份。
+                // 有值也必须走一位小数：整数除法会把 yande.re 上不到 1.5 MB 的真文件也压成「0 MB」。
+                val fileFacts = listOfNotNull(
+                    post.fileSize.takeIf { it > 0 }?.let { "%.1f MB".format(it / 1024.0 / 1024.0) },
+                    post.md5.takeIf { it.isNotBlank() }?.let { "md5 ${it.take(8)}" },
                 )
+                if (fileFacts.isNotEmpty()) {
+                    InfoRow(if (post.isVideo) "视频" else "原图", fileFacts.joinToString(" · "))
+                }
             }
 
             // 可复制的两行：上游出处 + 本站单页地址。出处为空就整块不摆。
