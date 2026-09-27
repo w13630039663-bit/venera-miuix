@@ -169,6 +169,7 @@ fun ComicSourceScreen(
             // ⚠️ 这张卡现在对 Gelbooru 是**必需**的（DAPI 匿名 401），不是可选优化。
             item(key = "gallery-account") {
                 GalleryAccountCard()
+                SauceNaoKeyCard()
             }
 
             // ==================== 1. 顶部操作概览卡片 ====================

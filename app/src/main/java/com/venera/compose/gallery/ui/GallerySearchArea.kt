@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -37,7 +38,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
@@ -65,6 +68,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
@@ -149,9 +153,14 @@ fun GallerySearchArea(
     onPickRecommendation: (GallerySite, List<String>) -> Unit,
     /** 区域真实高度回给页面：网格顶部避让按它算，展开 / 收起时网格才被平滑推下去。 */
     onSizeChanged: (IntSize) -> Unit,
+    /** 「以图搜图」那一层。开着时**同一张卡原地形变**成反搜的输入形态（2026-09-28 改，见下）。 */
+    rvm: GalleryReverseViewModel,
+    /** 与那面墙同一把的分级判据，直接透传给 SauceNAO 的 `hide` 参数。 */
+    allowNsfw: Boolean,
 ) {
     val tokens = VeneraTokens
     val focusRequester = remember { FocusRequester() }
+    val reverseFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val expanded = svm.mode == GallerySearchMode.INPUT
     // 键盘在不在，直接决定列表能给多高 —— 也就决定下面的网格还剩多少地方（见 LIST_MAX_ROWS_*）。
@@ -171,7 +180,11 @@ fun GallerySearchArea(
     //
     // 收成一条时**把焦点一并放掉**：焦点若留在一条已经收起来的框上，再点卡不会触发
     // onFocusChanged，就展不开了 —— 那正是"点了没反应"。
-    LaunchedEffect(expanded) {
+    //
+    // ⚠️ 反搜开着时**这条整个让位**：焦点该归反搜框（见下面 LaunchedEffect(rvm.open)）。
+    // 两条 effect 同帧抢焦点的话，谁后跑谁赢 —— 焦点就会在两个框之间闪。
+    LaunchedEffect(expanded, rvm.open) {
+        if (rvm.open) return@LaunchedEffect
         if (expanded) {
             delay(FOCUS_REQUEST_DELAY_MS)
             runCatching { focusRequester.requestFocus() }
@@ -189,13 +202,31 @@ fun GallerySearchArea(
             imeWasVisible = true
         } else if (imeWasVisible) {
             imeWasVisible = false
-            svm.collapseToResults()
+            // 反搜开着时**不收**：那一具身体没有"收成一条"的形态（它本来就只有两行），
+            // 而用户从系统相册挑图回来必然伴随一次键盘下落 —— 在那一刻把反搜条收掉是错的。
+            if (!rvm.open) svm.collapseToResults()
         }
     }
 
     // 区被移出组合（关搜索）时把在途补全掐掉：补全协程挂在 ViewModel 上，
     // 不会随本区销毁自动取消，落地后会往一个已经关掉的区里写候选。
     DisposableEffect(Unit) { onDispose { svm.clearSuggestions() } }
+
+    // ── 形变切换时的焦点交接 ──
+    //
+    // 两种形态的输入框是**同一个位置的两套绑定**，切过去时必须：
+    // - 反搜 → 标签：焦点还给标签框（弹键盘，用户接着打标签）；
+    // - 标签 → 反搜：焦点交给反搜框（弹键盘，直接能贴链接）。
+    // 不做这一步的话，点搜图钮之后键盘会收起、要点一下框才能输入 ——
+    // "形变"就变成了"换了个样子但没法打字"。
+    //
+    // 同样**等一小段**再要焦点：AnimatedVisibility 的内容 attach 完成前
+    // requestFocus 会撞 "FocusRequester is not initialized"，与上面那条同因。
+    LaunchedEffect(rvm.open) {
+        if (!rvm.open) return@LaunchedEffect   // 切回标签态由上面 LaunchedEffect(expanded) 接手
+        delay(FOCUS_REQUEST_DELAY_MS)
+        runCatching { reverseFocusRequester.requestFocus() }
+    }
 
     // ── 补全：防抖 250ms，且只在展开时跑 ──
     // 收成一条时输入框还在（就在卡里），不门控的话"看着结果"那一段也会偷发请求。
@@ -295,12 +326,21 @@ fun GallerySearchArea(
                     ),
                 verticalArrangement = Arrangement.Center,
             ) {
-                // ── 已选条件 ──
+                // ── 已选条件（标签态专属；反搜态没有标签胶囊，整行收起）──
                 // 两态都摆，但形态不同：
                 //  - 展开态用 FlowRow（放得下就让它换行，顺势占满整卡宽）；
                 //  - 收成一条时用**单行横滑**，条件再多也不许把卡撑高 —— 那一态的全部意义
                 //    就是"用最少的屏高把'我在搜什么'说出来"。
-                if (svm.filters.isNotEmpty()) {
+                //
+                // 2026-09-28 形变改造：套 AnimatedVisibility 让它在切去反搜时**收拢**而不是消失 ——
+                // 卡高跟着平滑变化，下面那块（反搜区）同时在长开，这是"形变"的下半支。
+                AnimatedVisibility(
+                    visible = !rvm.open && svm.filters.isNotEmpty(),
+                    enter = expandVertically(animationSpec = tween(tokens.motion.medium)) +
+                        fadeIn(animationSpec = tween(tokens.motion.medium)),
+                    exit = shrinkVertically(animationSpec = tween(tokens.motion.medium)) +
+                        fadeOut(animationSpec = tween(tokens.motion.medium)),
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -346,11 +386,21 @@ fun GallerySearchArea(
                     }
                 }
 
-                // ── 输入行：**只在展开态** ──
-                // 收成一条时不画这一行，是这一轮的改动要点：它曾经让"收成一条"实际占掉 ~96dp
-                // （胶囊行 + 输入行），用户下滑看图时那一段一直占着（真机截图反馈）。
-                // 去掉之后那一态只剩一行胶囊，屏高让出来一半。
-                if (expanded) {
+                // ── 输入行：**两种形态共用同一条槽，原地形变**（2026-09-28 改）──
+                //
+                // 这是整个形变的锚点。标签态与反搜态都有"图标 + 文本槽 + 尾随钮"这一行，
+                // 结构相同、身份不同 —— 让它**永远在组**（只要 expanded），内部按 rvm.open
+                // 换绑定与图标，Crossfade 只作用在会变的那几件小件上。
+                // 视觉上就是"这一行自己变成了另一副样子"，而不是"一行消失、另一行出现"。
+                //
+                // 仍旧只在 expanded 时画（收成一条那一态没有键盘这件事，理由见上面那段历史注释）；
+                // 反搜态没有"收成一条"的形态（它的身体本来就只有两行，见 imeWasVisible 那条注释），
+                // 所以 `rvm.open` 时这一行同样在组 —— `expanded || rvm.open`。
+                //
+                // 为什么不摆两个 TextField 互相 Crossfade：那会在过渡中丢焦点/丢键盘，
+                // 光标位置也 crossfade 不了。一个槽、按形态换内容绑定，焦点连续性由
+                // openLayer/closeLayer 之后的 LaunchedEffect 管。
+                if (expanded || rvm.open) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -364,90 +414,150 @@ fun GallerySearchArea(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Search,
-                                contentDescription = null,
-                                tint = tokens.color.onSurfaceVariant,
-                                modifier = Modifier.size(tokens.spacing.chipIconSize),
-                            )
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                                if (svm.term.isEmpty()) {
-                                    Text(
-                                        text = "在 ${svm.site.displayName} 搜标签",
-                                        fontSize = tokens.type.body,
-                                        color = tokens.color.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                BasicTextField(
-                                    value = svm.term,
-                                    onValueChange = {
-                                        svm.ensureInputMode()
-                                        svm.term = it
-                                    },
-                                    singleLine = true,
-                                    textStyle = TextStyle(
-                                        fontSize = tokens.type.body,
-                                        color = tokens.color.textPrimary,
-                                    ),
-                                    cursorBrush = SolidColor(tokens.color.primary),
-                                    keyboardOptions = KeyboardOptions(
-                                        // 图站标签是小写下划线串，自动首字母大写会凭空造出搜不到的词。
-                                        capitalization = KeyboardCapitalization.None,
-                                        imeAction = ImeAction.Search,
-                                    ),
-                                    keyboardActions = KeyboardActions(onSearch = {
-                                        // 回车：首行候选**还没进框**就选中它（"回车选首行"那条路径保留）；
-                                        // 否则把框里那串字当标签提交。
-                                        //
-                                        // 首行已经在框里时必须走后者 —— 直接 addTag 会撞上去重判断
-                                        // 静默返回，那就是真机上"点历史装回条件后按键盘搜索键没反应"
-                                        // 的成因（那时框里和首行都是刚装回来的那枚标签）。
-                                        val first = svm.suggestions.firstOrNull()
-                                        if (first != null && svm.filters.none { it.name == first.name }) {
-                                            addTag(first)
-                                        } else {
-                                            svm.submitTerm()
-                                        }
-                                    }),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(focusRequester)
-                                        .onFocusChanged { if (it.isFocused) svm.ensureInputMode() }
-                                        // 退格删最后一枚胶囊：只在框里没字时接管这次按键。
-                                        // 这是"顺手"那一档，主入口仍是胶囊上的 × —— 软键盘的退格事件
-                                        // 不是每个输入法都送进 Compose，不能把删除只押在它身上。
-                                        .onPreviewKeyEvent { event ->
-                                            if (event.key == Key.Backspace &&
-                                                event.type == KeyEventType.KeyDown &&
-                                                svm.term.isEmpty() &&
-                                                svm.filters.isNotEmpty()
-                                            ) {
-                                                svm.removeLastFilter()
-                                                true
-                                            } else {
-                                                false
-                                            }
-                                        },
+                            // ── 引导图标：Search ↔ ImageSearch，原地小过渡 ──
+                            Crossfade(
+                                targetState = rvm.open,
+                                animationSpec = tween(tokens.motion.medium),
+                                label = "leadIcon",
+                            ) { reverse ->
+                                Icon(
+                                    imageVector = if (reverse) Icons.Outlined.ImageSearch else Icons.Outlined.Search,
+                                    contentDescription = null,
+                                    tint = if (reverse) tokens.color.primary else tokens.color.onSurfaceVariant,
+                                    modifier = Modifier.size(tokens.spacing.chipIconSize),
                                 )
                             }
-                            // 只在"有东西可退"时出现：清空输入 → 删最后一枚胶囊 → 都没了这枚就消失。
-                            if (svm.term.isNotEmpty() || svm.filters.isNotEmpty()) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Close,
-                                    contentDescription = if (svm.term.isNotEmpty()) "清空输入" else "删掉最后一枚标签",
-                                    tint = tokens.color.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .size(tokens.spacing.chipIconSize)
-                                        .clickable {
-                                            if (svm.term.isNotEmpty()) {
-                                                svm.term = ""
-                                            } else {
-                                                svm.removeLastFilter()
-                                            }
+
+                            // ── 文本槽：同一个位置，按形态换内容绑定 ──
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                if (rvm.open) {
+                                    // 反搜态：贴链接 / 本机挑图
+                                    val picked = rvm.picked
+                                    val fieldText = when {
+                                        rvm.url.isNotEmpty() -> rvm.url
+                                        picked != null -> picked.name
+                                        else -> ""
+                                    }
+                                    if (fieldText.isEmpty()) {
+                                        Text(
+                                            text = "贴一个图片链接 · 或从本机挑一张",
+                                            fontSize = tokens.type.body,
+                                            color = tokens.color.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = rvm.url,
+                                        onValueChange = { rvm.onUrlChange(it) },
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            fontSize = tokens.type.body,
+                                            color = tokens.color.textPrimary,
+                                        ),
+                                        cursorBrush = SolidColor(tokens.color.primary),
+                                        keyboardOptions = KeyboardOptions(
+                                            // 图片链接里大小写与转义都是内容，
+                                            // 自动首字母大写会凭空造出抓不到的 URL。
+                                            capitalization = KeyboardCapitalization.None,
+                                            imeAction = ImeAction.Search,
+                                        ),
+                                        keyboardActions = KeyboardActions(
+                                            onSearch = { rvm.submit(allowNsfw) }
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .focusRequester(reverseFocusRequester),
+                                    )
+                                } else {
+                                    // 标签态（原样保留，含退格删胶囊）
+                                    if (svm.term.isEmpty()) {
+                                        Text(
+                                            text = "在 ${svm.site.displayName} 搜标签",
+                                            fontSize = tokens.type.body,
+                                            color = tokens.color.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = svm.term,
+                                        onValueChange = {
+                                            svm.ensureInputMode()
+                                            svm.term = it
                                         },
-                                )
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            fontSize = tokens.type.body,
+                                            color = tokens.color.textPrimary,
+                                        ),
+                                        cursorBrush = SolidColor(tokens.color.primary),
+                                        keyboardOptions = KeyboardOptions(
+                                            // 图站标签是小写下划线串，自动首字母大写会凭空造出搜不到的词。
+                                            capitalization = KeyboardCapitalization.None,
+                                            imeAction = ImeAction.Search,
+                                        ),
+                                        keyboardActions = KeyboardActions(onSearch = {
+                                            // 回车：首行候选**还没进框**就选中它（"回车选首行"那条路径保留）；
+                                            // 否则把框里那串字当标签提交。
+                                            //
+                                            // 首行已经在框里时必须走后者 —— 直接 addTag 会撞上去重判断
+                                            // 静默返回，那就是真机上"点历史装回条件后按键盘搜索键没反应"
+                                            // 的成因（那时框里和首行都是刚装回来的那枚标签）。
+                                            val first = svm.suggestions.firstOrNull()
+                                            if (first != null && svm.filters.none { it.name == first.name }) {
+                                                addTag(first)
+                                            } else {
+                                                svm.submitTerm()
+                                            }
+                                        }),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .focusRequester(focusRequester)
+                                            .onFocusChanged { if (it.isFocused) svm.ensureInputMode() }
+                                            // 退格删最后一枚胶囊：只在框里没字时接管这次按键。
+                                            // 这是"顺手"那一档，主入口仍是胶囊上的 × —— 软键盘的退格事件
+                                            // 不是每个输入法都送进 Compose，不能把删除只押在它身上。
+                                            .onPreviewKeyEvent { event ->
+                                                if (event.key == Key.Backspace &&
+                                                    event.type == KeyEventType.KeyDown &&
+                                                    svm.term.isEmpty() &&
+                                                    svm.filters.isNotEmpty()
+                                                ) {
+                                                    svm.removeLastFilter()
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            },
+                                    )
+                                }
+                            }
+
+                            // ── 尾随钮：按形态给不同的"现在能退掉什么"，原地过渡 ──
+                            Crossfade(
+                                targetState = rvm.open,
+                                animationSpec = tween(tokens.motion.medium),
+                                label = "trailing",
+                            ) { reverse ->
+                                if (reverse) {
+                                    ReverseTrailingActions(rvm)
+                                } else if (svm.term.isNotEmpty() || svm.filters.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = if (svm.term.isNotEmpty()) "清空输入" else "删掉最后一枚标签",
+                                        tint = tokens.color.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .size(tokens.spacing.chipIconSize)
+                                            .clickable {
+                                                if (svm.term.isNotEmpty()) {
+                                                    svm.term = ""
+                                                } else {
+                                                    svm.removeLastFilter()
+                                                }
+                                            },
+                                    )
+                                }
                             }
                         }
                     }
@@ -457,8 +567,12 @@ fun GallerySearchArea(
                 // 高度由内容决定，外面的 `onSizeChanged` 每帧拿到真实高度，
                 // 网格避让跟着它走 —— 所以这里用 AnimatedVisibility 让它**长开**而不是跳变，
                 // 网格才是被"推下去"的。
+                //
+                // 2026-09-28 形变改造：反搜开着时这一整块收拢（站点选择 / 补全 / 历史都是
+                // 标签态专属），与下面那块反搜区的长开**同时进行** —— 卡高一收一放，
+                // 观感是"搜索框自己变成了另一副样子"。
                 AnimatedVisibility(
-                    visible = expanded,
+                    visible = !rvm.open && expanded,
                     enter = expandVertically(
                         animationSpec = tween(durationMillis = tokens.motion.medium),
                     ) + fadeIn(animationSpec = tween(tokens.motion.medium)),
@@ -475,16 +589,39 @@ fun GallerySearchArea(
                                 bottom = tokens.spacing.space6,
                             ),
                     ) {
-                        // 站点切换：MD3 对 2~5 个互斥选项的标准件是 Segmented Button，
+                        // 站点切换 + 以图搜图入口，同一行。
+                        //
+                        // 站点那半：MD3 对 2~5 个互斥选项的标准件是 Segmented Button，
                         // 不是一排可横滑的 filter chip（两个站用横滑容器是空转的）。
-                        VeneraSegmentedButton(
-                            options = GallerySite.entries.map { it.displayName },
-                            selectedIndex = GallerySite.entries.indexOf(svm.site).coerceAtLeast(0),
-                            onSelect = { index ->
-                                GallerySite.entries.getOrNull(index)?.let { svm.setSite(it) }
-                            },
+                        //
+                        // 反搜那半为什么**贴在这里**而不是另起一行：它和"选哪一站"是同一层
+                        // 决定 —— 都在回答"这一轮按什么条件去取图"。另起一行就要多占 48dp，
+                        // 而这一屏每一行都在抢卡片的高度（那面墙才是这一屏的主角）。
+                        // 站点选择器因此从满宽让成 weight(1f)：两枚选项 + 一枚图标钮，
+                        // 1080px 宽的机器上各段仍容得下 "Gelbooru" 全名。
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                        ) {
+                            VeneraSegmentedButton(
+                                options = GallerySite.entries.map { it.displayName },
+                                selectedIndex = GallerySite.entries.indexOf(svm.site).coerceAtLeast(0),
+                                onSelect = { index ->
+                                    GallerySite.entries.getOrNull(index)?.let { svm.setSite(it) }
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.ImageSearch,
+                                contentDescription = "以图搜图",
+                                tint = if (rvm.open) tokens.color.primary else tokens.color.textSecondary,
+                                modifier = Modifier
+                                    .size(tokens.spacing.chipIconSize)
+                                    .clip(RoundedCornerShape(tokens.shape.small))
+                                    .clickable { rvm.openLayer() },
+                            )
+                        }
 
                         svm.notice?.let {
                             Spacer(modifier = Modifier.height(tokens.spacing.space3))
@@ -552,8 +689,74 @@ fun GallerySearchArea(
                         }
                     }
                 }
+
+                // ═══ 反搜态专属区：隐私提示 + 动作 chips + 预览 ═══
+                //
+                // 与上面那块标签区是**同一时长的对偶动画**：这块长开时那块收拢，
+                // 卡高是两个方向的动画叠加 —— 加上输入行的原地形变（图标/占位/尾随钮
+                // 都在原地过渡），整体观感才是"搜索框自己变成了另一副样子"，
+                // 而不是"A 淡出、B 淡入"。
+                //
+                // 内容本体在 [GalleryReverseSearchArea]（它自己的头部注释讲了三条取舍）；
+                // 这里**刻意不再套 cardModifier 那层壳** —— 它已经住在这张卡里了。
+                AnimatedVisibility(
+                    visible = rvm.open,
+                    enter = expandVertically(animationSpec = tween(tokens.motion.medium)) +
+                        fadeIn(animationSpec = tween(tokens.motion.medium)),
+                    exit = shrinkVertically(animationSpec = tween(tokens.motion.medium)) +
+                        fadeOut(animationSpec = tween(tokens.motion.medium)),
+                ) {
+                    GalleryReverseSearchArea(rvm = rvm, allowNsfw = allowNsfw)
+                }
             }
         }
+    }
+}
+
+/**
+ * 反搜输入行尾随的那一枚钮：按"现在有什么可退"给不同动作，三档互斥。
+ *
+ * 从反搜卡自己的那具身体里**原样搬过来**（挑中的图 → 撤图；链接 → 清空；
+ * 都没有 → 粘贴）—— 两具身体必须给同一个位置的同一枚钮同样的语义，
+ * 否则形变前后"这一格会干什么"就变了，那是形变做出来最隐蔽的一种坏。
+ */
+@Composable
+private fun ReverseTrailingActions(rvm: GalleryReverseViewModel) {
+    val tokens = VeneraTokens
+    val clipboard = LocalClipboardManager.current
+    val picked = rvm.picked
+    when {
+        picked != null -> Icon(
+            imageVector = Icons.Outlined.Close,
+            contentDescription = "撤掉这张图",
+            tint = tokens.color.onSurfaceVariant,
+            modifier = Modifier
+                .size(tokens.spacing.chipIconSize)
+                .clickable { rvm.clearInput() },
+        )
+        rvm.url.isNotEmpty() -> Icon(
+            imageVector = Icons.Outlined.Close,
+            contentDescription = "清空链接",
+            tint = tokens.color.onSurfaceVariant,
+            modifier = Modifier
+                .size(tokens.spacing.chipIconSize)
+                .clickable { rvm.clearInput() },
+        )
+        else -> Icon(
+            imageVector = Icons.Outlined.ContentPaste,
+            contentDescription = "粘贴链接",
+            tint = tokens.color.primary,
+            modifier = Modifier
+                .size(tokens.spacing.chipIconSize)
+                .clickable {
+                    val text = clipboard.getText()?.text?.trim().orEmpty()
+                    if (text.isEmpty()) {
+                        rvm.notice = "剪贴板里是空的"
+                    } else {
+                        rvm.onUrlChange(text)
+                    }
+                },
+        )
     }
 }
 
@@ -1021,7 +1224,7 @@ private fun historyQueryLabel(query: String, tertiary: Color): AnnotatedString =
 private fun formatTagCount(count: Int): String = String.format(Locale.US, "%,d", count)
 
 @Composable
-private fun SearchNoticeLine(text: String) {
+internal fun SearchNoticeLine(text: String) {
     val tokens = VeneraTokens
     Text(
         text = text,

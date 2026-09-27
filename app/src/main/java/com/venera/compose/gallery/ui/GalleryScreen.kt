@@ -121,6 +121,9 @@ fun GalleryScreen(
     // 搜索层的状态与日榜分开两个 ViewModel：结果要跨"点进大图再返回"活下来，
     // 而日榜那份状态每次刷新都是整片替换，混在一起会互相清掉。
     val svm: GallerySearchViewModel = viewModel()
+    // 「以图搜图」是第三个宿主状态，与日榜 / 搜索各自独立（分三个的理由见该类头注）。
+    // 它也住 ViewModel：反搜结果要活过"点进大图页再返回"。
+    val rvm: GalleryReverseViewModel = viewModel()
     // 系统返回**两级**：展开态先收成一条（接着看图），收成一条之后才关掉整个搜索回日榜。
     // 展开着、而且一枚条件都没有时退无可退，直接关掉 —— 否则会剩一张空搜索卡停在一屏日榜上，
     // 用户不知道刚才那一下干了什么。
@@ -129,10 +132,12 @@ fun GalleryScreen(
     // 那一档由搜索区自己看着 IME 收起去收条（见 `GallerySearchArea`）。
     // chips 与结果**不清**：再点搜索图标回到原上下文，不用重新搜。
     BackHandler(enabled = svm.active) {
-        if (svm.mode == GallerySearchMode.INPUT && svm.filters.isNotEmpty()) {
-            svm.collapseToResults()
-        } else {
-            svm.closeSearch()
+        when {
+            // 反搜排在最前：它开着时屏上是"一张图 → 一批相似图"，返回要先退回标签搜索
+            // 那一具身体，而不是一下子把人丢回日榜。
+            rvm.open -> rvm.closeLayer()
+            svm.mode == GallerySearchMode.INPUT && svm.filters.isNotEmpty() -> svm.collapseToResults()
+            else -> svm.closeSearch()
         }
     }
 
@@ -155,6 +160,9 @@ fun GalleryScreen(
     // 分级与屏蔽**只读共享**漫画侧那一份，不新造开关（理由见 GalleryGuard）。
     val guard = remember { ContentGuardManager.getInstance(context) }
     val maskMode by guard.nsfwMaskMode.collectAsState()
+    // 反搜要的是**同一把**分级判据，不是第二份开关：「成人内容处理」选了不过滤，
+    // 才让 SauceNAO 把成人内容也带回来（站方的 `hide` 参数与解析期的 hidden 过滤两道同源）。
+    val allowNsfw = maskMode == "OFF"
     val rules by guard.rules.collectAsState()
 
     /**
@@ -458,6 +466,19 @@ fun GalleryScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
+            // 反搜开着 → 这一屏摆的是"这张图像哪些图"。它与日榜 / 标签搜索互斥，
+            // 所以必须排在所有分支**最前**：否则日榜那一面墙会在它底下同时存在，
+            // 变成"两层内容叠着、只有上面那层收得到点击"。
+            rvm.open -> GalleryReverseResults(
+                rvm = rvm,
+                topPadding = gridTopPadding,
+                allowNsfw = allowNsfw,
+                onOpenPost = onOpenPost,
+                modifier = Modifier
+                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    .blurBackdropSource(topBarBackdrop),
+            )
+
             // 第 1 页还在飞：这一屏什么都还没有，摆一行"已摆出 0 张；上滑继续取"是假读数
             // （此刻上滑确实什么也不会发生，续页 effect 正被 isSearching 挡着）。
             // 从大图页点标签交接过来时这一帧最容易撞见，所以给整页级波浪环 —— 与日榜那一屏同一条口径。
@@ -639,7 +660,12 @@ fun GalleryScreen(
                 // 那是键盘收起与系统返回的事（见 `GallerySearchArea`），三态塞进一枚图标谁也读不出来。
                 IconButton(onClick = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    if (svm.active) svm.closeSearch() else svm.openSearch()
+                    if (svm.active) {
+                        // 关搜索要把反搜那一层一起关掉：它的输入挂在搜索卡里，
+                        // 只关搜索会留下"卡片没了但墙还在摆反搜结果"这种孤儿态。
+                        rvm.closeLayer()
+                        svm.closeSearch()
+                    } else svm.openSearch()
                 }) {
                     Icon(
                         imageVector = if (svm.active) Icons.Outlined.Close else Icons.Outlined.Search,
@@ -696,6 +722,8 @@ fun GalleryScreen(
                         // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
                         onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
                         onSizeChanged = { areaSize = it },
+                        rvm = rvm,
+                        allowNsfw = allowNsfw,
                     )
                 }
             },
