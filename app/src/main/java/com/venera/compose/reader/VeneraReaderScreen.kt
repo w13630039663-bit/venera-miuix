@@ -309,19 +309,17 @@ private fun ReaderSessionContent(
     }
 
     fun turnToNextPage(): Boolean {
-        if (currentPageIndex < currentChapter.pages.lastIndex) {
-            jumpToPage(currentPageIndex + 1)
-            return true
-        }
-        return false
+        // 步长归 readerPageStep：双页一组两页，写死 +1 会被 scrollToPage 的 /2 收回同一组
+        // （现象就是"点右下没反应"，而页码气泡与进度条一起冻在偶数页）。
+        val next = nextPageIndex(currentPageIndex, readingMode, currentChapter.pages.lastIndex) ?: return false
+        jumpToPage(next)
+        return true
     }
 
     fun turnToPrevPage(): Boolean {
-        if (currentPageIndex > 0) {
-            jumpToPage(currentPageIndex - 1)
-            return true
-        }
-        return false
+        val prev = previousPageIndex(currentPageIndex, readingMode) ?: return false
+        jumpToPage(prev)
+        return true
     }
 
     // 动态章节加载与切换
