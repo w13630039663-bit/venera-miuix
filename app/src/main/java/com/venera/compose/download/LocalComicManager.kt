@@ -65,7 +65,7 @@ class LocalComicManager private constructor(private val context: Context) {
                 val validChapters = mutableListOf<LocalChapter>()
                 for (chDir in chapterDirs) {
                     val images = chDir.listFiles { f ->
-                        f.isFile && (f.extension == "jpg" || f.extension == "png" || f.extension == "webp") && f.length() > 0
+                        f.isPageImageFile()
                     }?.sortedBy { it.name } ?: emptyList()
 
                     if (images.isNotEmpty()) {
@@ -133,7 +133,7 @@ class LocalComicManager private constructor(private val context: Context) {
 
         for (chDir in chapterDirs) {
             val images = chDir.listFiles { f ->
-                f.isFile && (f.extension == "jpg" || f.extension == "png" || f.extension == "webp") && f.length() > 0
+                f.isPageImageFile()
             }?.sortedBy { it.name } ?: emptyList()
 
             if (images.isNotEmpty()) {
@@ -239,9 +239,11 @@ class LocalComicManager private constructor(private val context: Context) {
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
                 if (entry.isDirectory) continue
-                val nameLower = entry.name.lowercase()
-                if (nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") || nameLower.endsWith(".webp")) {
-                    val ext = nameLower.substringAfterLast('.')
+                // 判据与扫描侧**同一份**（pageImageExtensions）：以前这里多收一个 .jpeg，
+                // 扫描侧不收 → 纯 JPEG 的书导入报成功、书架上却找不到，全程不报错。
+                if (isPageImage(entry.name)) {
+                    // jpeg 归一成 jpg：文件名要参与按名排序的页序，同一本书里混两种后缀是隐患。
+                    val ext = pageImageExtensionOf(entry.name)
                     val outFileName = "${pageIdx.toString().padStart(4, '0')}.$ext"
                     val outFile = File(chapterDir, outFileName)
 

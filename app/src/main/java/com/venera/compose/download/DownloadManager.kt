@@ -281,7 +281,7 @@ class DownloadManager private constructor(private val context: Context) {
                 try {
                     val json = JSONObject(infoFile.readText())
                     if (json.optString("chapterId") == chapterId) {
-                        val images = dir.listFiles { f -> f.isFile && (f.extension == "jpg" || f.extension == "png" || f.extension == "webp") }
+                        val images = dir.listFiles { f -> f.isFile && isPageImage(f.name) }
                         return !images.isNullOrEmpty()
                     }
                 } catch (_: Exception) {}
@@ -307,7 +307,7 @@ class DownloadManager private constructor(private val context: Context) {
 
         if (targetDir != null && targetDir.exists()) {
             val files = targetDir.listFiles { f ->
-                f.isFile && (f.extension == "jpg" || f.extension == "png" || f.extension == "webp") && f.length() > 0
+                f.isPageImageFile()
             }?.sortedBy { it.name }
             if (!files.isNullOrEmpty()) {
                 return files
