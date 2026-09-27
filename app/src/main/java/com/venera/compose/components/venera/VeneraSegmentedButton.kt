@@ -1,57 +1,53 @@
 package com.venera.compose.components.venera
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.ui.tokens.VeneraTokens
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * MD3 Segmented Button（用户拍板定制版）：整条大药丸 + 一段果冻滑动的实心选中块。
+ * 分段选择器：**每枚选项各自一颗药丸**，没有外框。
  *
- * 用户设计口径（覆盖 MD3 默认的 secondaryContainer@12% 弱填充）：
- *  - 高 48dp（spacing.segmentedHeight，MD3 组件默认档；用户真机反馈 40dp 太矮细弱后升档）；
- *    宽屏档（isWideScreen，>600dp）再加高到 spacing.segmentedHeightWide（56dp）
- *    并升字号到 itemTitle——用户平板演示拍板「大屏上又扁又细弱」；
- *  - 容器全胶囊 + hairlineThin（0.5dp）描边，颜色走 outlineVariant（浅色 #E0E0E0 / 深色 #404040 的令牌等价）；
- *  - 单元间隙 spacing.segmentedGap（10dp，取现成的 space5），相邻**未选中**单元之间画一根 hairline 竖分隔线
- *    （MD3 规定选中段两侧的分隔线让位）；
- *  - 文字 14sp（type.body）Medium；
- *  - 选中块 = **实心 primary**（主题色，动态色板驱动，不写死 #E91E63）+ 文字转 onPrimary（白）。
+ * 2026-09-28 换掉旧形态（用户点名照 pixez-miuix 动态页那排「全部 / 公开 / 私密」改）。
+ * 旧版是 MD3 的"药丸中的药丸"：整条大药丸描一根 0.5dp hairline，里面一颗实心块滑动。
+ * 那个结构在**实时模糊的玻璃顶栏**上不成立 —— 容器描边贴在亮画作上时几乎看不见，
+ * 于是整条读起来像一个断掉的框（真机截图：画廊两页切换与收藏页图片收藏那一行都这样）。
+ * 每颗自己带底就不依赖描边了，背后是什么内容都读得清。
  *
- * 滑动用阻尼 0.7 的 spring（用户拍板），几何按实测像素跟随（折叠/分栏改宽自动重排）。
+ * 保留的既有口径（这些是历轮真机反馈定的，不随这次改动）：
+ *  - 高 48dp（`spacing.segmentedHeight`；用户真机反馈 40dp 太矮细弱后升档），
+ *    宽屏档 `segmentedHeightWide`（56dp）并升字号到 `itemTitle`（用户平板演示拍板）；
+ *  - 单元间隙 `spacing.segmentedGap`（10dp，取现成的 space5）；
+ *  - 文字 14sp（`type.body`）Medium，单行省略；
+ *  - 选中 = **实心 primary**（主题色，动态色板驱动，不写死色值）+ `onPrimary` 文字；
+ *  - 整条宽度仍由**调用方**按"单段占屏宽 25%"推导（用户"太宽太散"那条反馈），本组件不自己定宽。
+ *
+ * 未选中档：`surfaceVariant` 叠现成的 `selectedSurfaceAlpha`（0.5，VeneraChip 禁用态同一档）。
+ * 刻意**半透明**而不是涂实底 —— 玻璃顶栏上涂不透明底会拉出一条横贯屏幕的硬边（已拍板那条）。
+ *
+ * 动画：旧那颗滑动的果冻块依附容器才成立，取消；换成每颗自己的底色淡变 + 轻微弹性缩放，
+ * 阻尼仍取 0.7 那一族（与旧滑动块、布局小钮同族，别另起一档手感）。
  */
 @Composable
 fun VeneraSegmentedButton(
@@ -61,91 +57,52 @@ fun VeneraSegmentedButton(
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    val density = LocalDensity.current
-    // 档位判定走 WideScreenPolicy 的唯一阈值（master changePoint），手机档保持 40dp+body 原样。
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
     val barHeight = if (wide) tokens.spacing.segmentedHeightWide else tokens.spacing.segmentedHeight
     val labelSize = if (wide) tokens.type.itemTitle else tokens.type.body
-    val gap = tokens.spacing.segmentedGap
-    // 只给位移算式用的像素值。布局侧一律用 [gap]（Dp）：此前 padding/spacedBy 也写成
-    // `gapPx.dp`，等于把像素当 dp 再乘一次密度 —— 排布按 4×密度 dp 让位、块位移按 4dp
-    // 算，两者差着密度倍，选中块就落在格子偏左处（第 0 段恰好为 0 所以看不出来，
-    // 段数越多偏得越远，index 2 已偏出 ~34px）。
-    val gapPx = with(density) { gap.toPx() }
     val shape = RoundedCornerShape(percent = 50)
 
-    // 单元实测宽（各段等宽，取第 0 段测量值）；测得前块宽为 0，不会满宽闪跳。
-    var cellWidthPx by remember { mutableFloatStateOf(0f) }
-    // 选中块目标 x。内容区已被外层 padding 让出一个 gap，单元之间又各有 gap，
-    // 所以第 i 段的左边缘就在 i*(cellW+gap) —— 此前多算了一个 gap，
-    // 选中块会整体右溢、顶到容器描边上，看着就是「直角矩形撑满半边」而非药丸。
-    val targetOffsetPx = selectedIndex * (cellWidthPx + gapPx)
-    val slide = remember { Animatable(targetOffsetPx) }
-    LaunchedEffect(targetOffsetPx) {
-        slide.animateTo(
-            targetOffsetPx,
-            spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
-        )
-    }
-
-    Surface(
+    Row(
         modifier = modifier.height(barHeight),
-        shape = shape,
-        color = Color.Transparent,
-        border = BorderStroke(tokens.spacing.hairlineThin, tokens.color.outlineVariant),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.segmentedGap),
     ) {
-        // 外层 padding = 单元间隙：分隔线挂在单元末端即自然落在两格正中间。
-        Box(Modifier.fillMaxSize().padding(gap)) {
-            // 果冻选中块：实心主题色，先于单元渲染（背景层），文字压在其上。
-            Box(
-                Modifier
-                    .offset { IntOffset(slide.value.toInt(), 0) }
-                    .width(with(density) { cellWidthPx.toDp() })
-                    .fillMaxHeight()
-                    .clip(shape)
-                    .background(tokens.color.primary),
+        options.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            // 缩放只影响绘制，不动布局：三颗的宽度不会因为哪颗在缩而互相推挤。
+            val scale by animateFloatAsState(
+                targetValue = if (selected) 1f else 0.96f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+                label = "segmentedCellScale",
             )
-            Row(
-                Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(gap),
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .scale(scale)
+                    .clip(shape)
+                    .background(
+                        if (selected) {
+                            tokens.color.primary
+                        } else {
+                            tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+                        },
+                    )
+                    .clickable { onSelect(index) },
+                contentAlignment = Alignment.Center,
             ) {
-                options.forEachIndexed { index, label ->
-                    val selected = index == selectedIndex
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .onSizeChanged { size ->
-                                if (index == 0) cellWidthPx = size.width.toFloat()
-                            }
-                            .clip(shape)
-                            .clickable { onSelect(index) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = labelSize,
-                            fontWeight = tokens.type.weightMedium,
-                            color = if (selected) tokens.color.onPrimary else tokens.color.textPrimary,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = tokens.spacing.space5),
-                        )
-                        // 相邻未选中单元之间的竖分隔线（选中段两侧让位）。
-                        // 单元之间现在真有 gap，故要右移半个 gap 才落在间隙正中。
-                        if (!selected && index != options.lastIndex && index + 1 != selectedIndex) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .offset { IntOffset((gapPx / 2f).toInt(), 0) }
-                                    .width(tokens.spacing.hairline)
-                                    .fillMaxHeight()
-                                    .background(tokens.color.divider),
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = label,
+                    fontSize = labelSize,
+                    fontWeight = tokens.type.weightMedium,
+                    color = if (selected) tokens.color.onPrimary else tokens.color.textPrimary,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.space5),
+                )
             }
         }
     }

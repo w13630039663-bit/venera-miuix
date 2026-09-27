@@ -588,7 +588,8 @@ private fun FavoritesModeToggle(
     mode: FavoritesMode,
     onModeChange: (FavoritesMode) -> Unit,
 ) {
-    // MD3 分段控制器：整条描边药丸 + 一颗实心主题色「小药丸」弹性滑动（药丸中的药丸）。
+    // 分段控制器：每颗选项自持一颗药丸（选中 = 实心主题色，未选中 = 半透明底），没有外框。
+    // 形态出处见 VeneraSegmentedButton 的头注（2026-09-28 换掉了旧的"药丸中的药丸"容器描边）。
     // 手机档收成居中一小条（用户真机反馈「太宽太散」）；平板档维持全宽不动。
     val modes = remember { favoritesModesNetworkFirst }
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)

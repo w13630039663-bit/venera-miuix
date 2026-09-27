@@ -145,11 +145,14 @@ data class VeneraSpacingTokens(
      */
     val segmentedHeightWide: Dp = 56.dp,
     /**
-     * MD3 Segmented Button 单元间隙，同时是分隔线在两格之间的居中量。
+     * 分段控制器**每颗药丸之间**的间隙。
      *
      * 取现成的 space5 而不是 MD3 规范里的 4dp：这个值原本是 4dp，但组件把它当像素用了
-     * （见 VeneraSegmentedButton 的 px/dp 对账），真机上实际渲染出的"药丸中的药丸"环宽
-     * 是 4×密度 ≈ 10.5dp。单位修正后要让观感停在用户已拍板的那一档，就写 10dp。
+     * （见 VeneraSegmentedButton 的 px/dp 对账），真机上实际渲染出的环宽是 4×密度 ≈ 10.5dp。
+     * 单位修正后要让观感停在用户已拍板的那一档，就写 10dp。
+     *
+     * 2026-09-28 组件换成"每颗自持药丸、没有外框"之后，这一档不再兼任
+     * "分隔线在两格之间居中"的职责（分隔线随容器一起取消了）。
      */
     val segmentedGap: Dp = space5,
     /**
