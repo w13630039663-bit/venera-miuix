@@ -68,7 +68,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -101,7 +100,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -214,22 +212,18 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         derivedStateOf { topBarBehavior.state.collapsedFraction * 3f >= 1f }
     }
     /**
-     * 顶栏**此刻**的真实高度（像素）。miuix 的 `TopAppBar` 内部自己挂了
-     * `windowInsetsPadding(systemBars.only(Top))`，所以这个值**已经含状态栏** ——
-     * 用它的时候不能再加一次 `statusBarTop`（加了就是与顶栏错位，那条老账）。
+     * 「图片收藏」那一屏的顶栏比另外两屏**多一条常驻分段器**（漫画收藏 / 画廊收藏）。
+     * 它挂在 `bottomContent` 里且**不跟折叠收起**（收掉就没法切另一面墙），所以这一屏的让位
+     * 要在通用地板上再加一行分段器的高度。
      *
-     * 为什么只有「图片收藏」要用它：那一屏的「漫画收藏 / 画廊收藏」分段器**在滚动区外面**
-     * （`ImageFavoritesPanel` 里那个静态 Box），它的让位不会被滚动消耗掉 ——
-     * 于是顶栏一折叠，分段器上面就留下一条空带（用户 2026-09-27 报的"上滑就这样"）。
-     * 另外两屏把让位放进网格的 `contentPadding`，滚动会把它吃掉，常量地板在那边是对的，
-     * **不动它们**，免得把没坏的地方改坏。
+     * 让位是**常量**、并且交给网格的 `contentPadding`（不是把整面墙往下顶）：折叠时顶栏从
+     * 682px 收到 426px，而墙的视口始终满屏，卡片只跟着手指走 —— 与另外两屏同一套契约。
+     * 真机实测（2026-09-27，PJZ110）：上一版改用 `onSizeChanged` 逐帧量顶栏真实高度，
+     * 空带确实归零（分段器起点 524px / 268px 与顶栏底边分毫不差），但换来两个新问题：
+     * 玻璃在顶栏底边留一条横贯全屏的硬边，分段器孤零零坐在硬边之外的裸背景上；
+     * 且视口高度跟着顶栏变，折叠那 98px 行程里内容额外多走 256px。归进 chrome 一起解决。
      */
-    var topBarHeightPx by remember { mutableIntStateOf(0) }
-    // 第一帧还没量到：先吃旧口径那一档常量，量到后立刻换成真实值（最多差一帧）。
-    val imagesTopPadding = with(LocalDensity.current) {
-        if (topBarHeightPx > 0) topBarHeightPx.toDp()
-        else statusBarTop + 104.dp + segmentedRowHeight
-    }
+    val imagesTopPadding = topPadding + segmentedRowHeight
     // 当前面板的列表滚动状态（由子面板上抛）：是否已下滑、以及回到顶部的动作。
     // 用回调而非持有 ListState，避免 LazyListState / LazyGridState 两种类型互相污染。
     // **按页各存一份**：三块面板现在同时活在 pager 里，共用一格会被相邻页的
@@ -280,7 +274,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     FavoritesMode.Images -> ImageFavoritesPanel(
                         topPadding = imagesTopPadding,
                         section = imageSection,
-                        onSectionChange = { imageSection = it },
                         scrollConnection = topBarBehavior.nestedScrollConnection,
                         backdrop = backdrop,
                         onPreviewImage = onPreviewFavoriteImage,
@@ -307,7 +300,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             largeTitle = "收藏",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
-            modifier = Modifier.onSizeChanged { topBarHeightPx = it.height },
             actions = {
                     if (mode == FavoritesMode.Local) {
                         FavoritesSortMenu(
@@ -354,6 +346,29 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                         FavoritesModeToggle(
                             mode = mode,
                             onModeChange = { mode = it },
+                        )
+                    }
+                    // 「漫画收藏 / 画廊收藏」这一条**常驻**，而且必须挂在 chrome 里。
+                    // 它是这一屏的控制器，顶栏折叠后仍要能切墙，所以不能跟上面那条一起收起；
+                    // 而它一旦被钉在顶栏**外面**，顶栏一收就必然出状况 —— 真机实测过两种：
+                    // 让位写常量 → 玻璃底边与药丸之间多一条空带；让位改成逐帧量顶栏高度 →
+                    // 空带归零，但玻璃在底边留一条横贯全屏的硬边，药丸孤零零坐在硬边之外的裸背景上。
+                    // 挂进 bottomContent 之后它就是顶栏的一部分：跟着走、被同一块玻璃罩住，
+                    // 两种毛病同时不可能发生，也不需要任何测量。
+                    //
+                    // 门控用 `mode`（横滑**停稳**才落）而不是 `currentPage`（过半就翻）：
+                    // 后者会在拖动中途把这一条抽掉，顶栏当场跳一下。
+                    // 外面照上面那条同款 AnimatedVisibility 包一层，切页时它是收/长出来的，不是消失的。
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = mode == FavoritesMode.Images,
+                        enter = androidx.compose.animation.fadeIn() +
+                            androidx.compose.animation.expandVertically(),
+                        exit = androidx.compose.animation.fadeOut() +
+                            androidx.compose.animation.shrinkVertically(),
+                    ) {
+                        ImageSectionToggle(
+                            section = imageSection,
+                            onSectionChange = { imageSection = it },
                         )
                     }
                     if (mode == FavoritesMode.Local && vm.multiSelectMode) {
@@ -499,31 +514,19 @@ private val imageSectionEntries = listOf("漫画收藏", "画廊收藏")
 private const val subSegmentedCellWidthFraction = 0.22f
 
 /**
- * 图片收藏面板的宿主：上面一条二级分段器，下面接对应的那一面墙。
+ * 图片收藏面板的宿主：只做两件事 —— 选哪面墙、把顶栏让位交给墙自己的 `contentPadding`。
  *
- * 分段器**放在内容里**（而不是塞进收藏页顶栏的 `bottomContent`）：顶栏那一条是
- * "网络 / 图片 / 本地"三个页面级目的地，再摞一条同款药丸，两条一模一样的控件上下叠着，
- * 读不出谁是主谁是次。放在内容里、宽度再收一档，从属关系就出来了 ——
- * MD3 里同级控件靠**尺寸与位置**表达层级，不靠再加一层描边。
+ * 二级分段器（漫画收藏 / 画廊收藏）**不在这一层**，它在收藏页顶栏的 `bottomContent` 里，
+ * 理由与"为什么不能留在内容里"都写在那一处。因此这里既没有静态 `padding(top=)`，
+ * 也没有 `weight(1f)` 那种会被顶栏高度推着变的视口：两面墙都是**满屏视口 + contentPadding 让位**，
+ * 与「网络收藏」「本地收藏」完全同一套契约 —— 顶栏折叠时视口不动，卡片只跟着手指走。
  *
- * 让位也因此只在这一层算一次：分段器吃掉 [topPadding]，下面两面墙都按 0 起排
- * （它们的 `topPadding` 默认值就是 0）。
- *
- * ⚠️ 这里的 [topPadding] **必须是顶栏此刻的真实高度**（宿主用 `onSizeChanged` 量出来的），
- * 不能是常量。分段器在滚动区**外面**，它的让位不会被滚动消耗掉：写常量就等于按"展开态"
- * 预留，顶栏一折叠就多出一条空带 —— 用户 2026-09-27 报的"上滑就这样"正是这个。
- * 旧注释说"让位是常量，否则墙会整体上跳一格"，那个两难是假的：量出来的值是**逐帧连续**
- * 变化的（`bottomContent` 那条 AnimatedVisibility 自己就在动），所以既不留空带、
- * 也没有"瞬间跳一格"。
- *
- * 分段器本身**不跟顶栏折叠**（顶栏那条"网络/图片/本地"会在下滑时收起，这一条留着）：
- * 它是这一屏的控制器，收掉就没法切回另一面墙了。
+ * [topPadding] 因此可以是常量（宿主那一处推导）。
  */
 @Composable
 private fun ImageFavoritesPanel(
     topPadding: Dp,
     section: ImageSection,
-    onSectionChange: (ImageSection) -> Unit,
     scrollConnection: NestedScrollConnection?,
     backdrop: LayerBackdrop?,
     onPreviewImage: (FavoriteImageItem) -> Unit,
@@ -532,38 +535,28 @@ private fun ImageFavoritesPanel(
     onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = topPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            ImageSectionToggle(section = section, onSectionChange = onSectionChange)
-        }
-        Box(modifier = Modifier.weight(1f)) {
-            when (section) {
-                ImageSection.Comics -> FavoriteImagesBody(
-                    scrollConnection = scrollConnection,
-                    backdrop = backdrop,
-                    onPreviewImage = onPreviewImage,
-                    onOpenComicDetail = onOpenComicDetail,
-                    onReadFromPage = onReadFromPage,
-                    onScrollStateChange = onScrollStateChange,
-                )
+    when (section) {
+        ImageSection.Comics -> FavoriteImagesBody(
+            topPadding = topPadding,
+            scrollConnection = scrollConnection,
+            backdrop = backdrop,
+            onPreviewImage = onPreviewImage,
+            onOpenComicDetail = onOpenComicDetail,
+            onReadFromPage = onReadFromPage,
+            onScrollStateChange = onScrollStateChange,
+        )
 
-                ImageSection.Gallery -> GalleryFavoritesBody(
-                    scrollConnection = scrollConnection,
-                    backdrop = backdrop,
-                    onOpenPost = { post ->
-                        // 与画廊一级点卡片走**同一条**路：跨 Activity 才有实时 blur-behind 与
-                        // 预测式返回；滑入垫着的那一帧由 GalleryCardsGrid 在点击那一刻截好。
-                        (context as? Activity)?.openGalleryPost(post.site, post.id)
-                    },
-                    onScrollStateChange = onScrollStateChange,
-                )
-            }
-        }
+        ImageSection.Gallery -> GalleryFavoritesBody(
+            topPadding = topPadding,
+            scrollConnection = scrollConnection,
+            backdrop = backdrop,
+            onOpenPost = { post ->
+                // 与画廊一级点卡片走**同一条**路：跨 Activity 才有实时 blur-behind 与
+                // 预测式返回；滑入垫着的那一帧由 GalleryCardsGrid 在点击那一刻截好。
+                (context as? Activity)?.openGalleryPost(post.site, post.id)
+            },
+            onScrollStateChange = onScrollStateChange,
+        )
     }
 }
 
