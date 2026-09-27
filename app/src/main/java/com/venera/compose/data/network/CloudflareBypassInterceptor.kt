@@ -78,7 +78,18 @@ class CloudflareBypassInterceptor(private val context: Context) : Interceptor {
                         .header("User-Agent", updatedUa)
                         .build()
 
-                    return chain.proceed(newRequest)
+                    val retried = chain.proceed(newRequest)
+                    // 重试**仍然**是被挡的样子，说明带过去的 cookie / UA 组合不被认账
+                    // （最常见是那枚 cf_clearance 从未被真正激活，或站点还要求 __cf_bm）。
+                    // 这一行是"过盾成功了却还是 403"这类状态里唯一说得清事实的读数。
+                    if (retried.code == 403 || retried.code == 503) {
+                        Log.w(
+                            tag,
+                            "过盾后重试仍被拒: $host code=${retried.code} " +
+                                "ua=${updatedUa.take(40)}... server=${retried.header("Server") ?: "-"}",
+                        )
+                    }
+                    return retried
                 } else {
                     Log.w(tag, "Bypass cancelled or failed for $urlString")
                 }
