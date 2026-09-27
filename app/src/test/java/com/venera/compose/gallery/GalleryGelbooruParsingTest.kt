@@ -1,10 +1,12 @@
 package com.venera.compose.gallery
 
+import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GelbooruPostEnvelopeDto
 import com.venera.compose.gallery.data.GelbooruTagEnvelopeDto
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -137,8 +139,33 @@ class GalleryGelbooruParsingTest {
         val post = postsOf(videoEntry).single()
         assertEquals("mp4", post.fileExt)
         assertTrue(post.isVideo)
-        // 中档同样是空串兜底到原片 —— 视频底图会落空，这一条由 UI 那边处理（见 GalleryVideoViewer）。
+        // 中档同样是空串兜底到原片 —— 所以**中档不能当视频底图**，见下面两条。
         assertEquals(post.fileUrl, post.largeUrl)
+    }
+
+    @Test
+    fun `视频底图档绝不能是原片`() {
+        // 旧测试在第 140 行写着"视频底图由 UI 那边处理"，而 UI 并没有处理：
+        // `GalleryVideoViewer` 直接把 `largeUrl` 喂给 Coil —— 对 Gelbooru 视频那就是
+        // 拿一条 mp4 当图解码：先白下几十 MB，再解不出来，那一屏什么都没有。
+        val post = postsOf(videoEntry).single()
+        assertNotEquals(post.fileUrl, post.videoPosterUrl)
+        assertEquals(post.previewUrl, post.videoPosterUrl)
+    }
+
+    @Test
+    fun `站方给了静帧时视频底图要用静帧而不是缩略图`() {
+        // yande.re 那一路 large 档本来就是原分辨率的 jpg 静帧（与 fileUrl 不同址），
+        // 它比 350px 缩略图清楚，所以判据是"large 与原片同址才退档"，不是"视频一律用缩略图"。
+        val still = GalleryPost(
+            site = GallerySite.YANDERE,
+            id = 1,
+            fileExt = "webm",
+            previewUrl = "https://assets.yande.re/data/preview/8b/e5/x.jpg",
+            largeUrl = "https://files.yande.re/jpeg/8b/e5/yande.re%201%20jpeg.jpg",
+            fileUrl = "https://files.yande.re/data/8b/e5/x.webm",
+        )
+        assertEquals(still.largeUrl, still.videoPosterUrl)
     }
 
     @Test

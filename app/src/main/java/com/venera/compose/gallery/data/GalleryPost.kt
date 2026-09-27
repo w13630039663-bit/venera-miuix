@@ -141,6 +141,22 @@ data class GalleryPost(
     /** 可播放的原片地址。实测两站都**没有**更小的视频转码档，所以只能直接吃 [fileUrl]。 */
     val videoUrl: String get() = fileUrl
 
+    /**
+     * 视频条目**当底图用**的那一档（播放器顶上那一屏画面）。
+     *
+     * 不能直接用 [largeUrl]：Gelbooru 对视频条目的 `sample_url` 给**空串**，
+     * 翻译时按"小图/视频都要有地址"兜底成了 [fileUrl]（原片 mp4，实测 16~26 MB）。
+     * 把 mp4 交给 Coil 的结果是**先白下几十 MB 再解码失败**，
+     * 而失败之前那一屏什么都没有 —— 真机现象就是"视频条目黑屏"。
+     *
+     * 判据是「large 档与原片同址 = 站方没有静帧」，此时才退到 [previewUrl]
+     * （实测这一档**恒非空**）。yande.re 那一路 large 档本来就是 jpg 静帧、
+     * 与原片不同址，所以保留它 —— 它比 350px 缩略图清楚得多。
+     * 两条各有一个用例锁住（`GalleryGelbooruParsingTest`）。
+     */
+    val videoPosterUrl: String
+        get() = largeUrl.takeUnless { it.isBlank() || it == fileUrl } ?: previewUrl
+
     /** 时长角标。站方没给时长时返回空串而不是 "0″" —— 编一个看不出来的数比不写更糟。 */
     val durationLabel: String
         get() = durationSeconds?.takeIf { it > 0.0 }?.let { "${it.toInt()}″" } ?: ""

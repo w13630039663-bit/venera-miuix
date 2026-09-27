@@ -492,3 +492,166 @@ WebView 直接渲染 JPG 时 Chrome 给的页面标题）。也就是说：图�
    再长按同一枚点屏蔽应说"已在屏蔽列表"；
 ③ sheet 里再开一层 `DropdownMenu`（弹层里的弹层）在 ColorOS 上有没有被裁 ——
    被裁就调 `DropdownMenu` 的 offset/overflow 参数，而不是另造一套 UI。
+
+## 十四、2026-09-27：分享「一次都没成功过」的真因 + Gelbooru 视频那一摊
+
+用户真机一张截图定案：`分享没打开：Parcelable encountered IOException writing serializable
+object (name = kotlin.Result)`。上一轮（§cd9a1d2）的提交信息写着"把分享换成真图片"，
+但那条路**从来没通过** —— 又一次印证「commit/文档写已落地要回代码核」。
+
+### 1. 分享：`Result<Uri>` 被当成 `Uri` 塞进了 Intent
+
+`runCatching { … }.onFailure { … }` 交出的是 **`Result<Uri>`**，不是 `Uri`
+（`onFailure` 返回 `this`）。于是 `putExtra(Intent.EXTRA_STREAM, uri)` 在编译期
+静默挑中了 `putExtra(String, Serializable)` 那个重载 —— `kotlin.Result` 声明了
+`java.io.Serializable`，所以**类型检查放行**；运行期 Parcel 用 `ObjectOutputStream`
+写它才炸。表现就是：图片、视频、两站，**每一次分享都失败**，且失败得像是"分享面板打不开"。
+
+修法两条，缺一不可：
+- `.onFailure{}` → **`.getOrElse{}`**（真的把 `Uri` 取出来）；
+- **显式写类型** `val uri: Uri = …` —— 这一条才是防复发：下次再有人把 `Result` 赋给
+  一个要当 `Uri` 用的 val，编译器直接拦下，而不是落在用户手上。
+
+顺手同一条：落盘那三步（`mkdirs` + 写 16~26 MB + `getUriForFile`）原先跑在
+`Main.immediate` 的续点上 = 拿主线程写几十兆，能卡出 ANR，已挪进 `withContext(Dispatchers.IO)`。
+
+**没有加运行时回归用例**：本仓单测是纯 JVM（无 Robolectric），`Intent` 在测试类路径上是
+会抛的桩，Parcel 那一层测不到。真正的防线是调用点那句**显式类型** `val uri: Uri = …`。
+另加了 `GalleryShareResultTrapTest`（3 例）把**成因的两条前提**钉住：
+`onFailure` 返回 `Result` 而不是值、`getOrElse` 才交值、`kotlin.Result` 声明了 `Serializable`
+（所以重载选择在编译期不报错）。它测不到那次崩溃本身，测的是"为什么编译器不拦"。
+
+### 2. 分享在途没有任何反馈
+
+`sharing` 标志早就有（防重入），但工具条没接它 —— 视频原片要先下一次，
+那几秒里点一下什么也不动，读起来就是"按钮坏了"。现在与「下载」同一形态：
+进行中把图标换成波浪环并吃掉点击。
+
+### 3. Gelbooru 视频的底图档 = 原片 mp4（先白下几十 MB，再解不出来）
+
+`GalleryGelbooruParsingTest` 第 140 行原本写着"视频底图会落空，这一条由 UI 那边处理"，
+而 **UI 并没有处理**：`GalleryVideoViewer` 直接把 `largeUrl` 喂给 Coil。
+Gelbooru 对视频的 `sample_url` 给空串 → 翻译时兜底成 `file_url`（原片 mp4）→
+Coil 先下十几二十 MB、再解码失败、失败之前那一屏什么都没有。
+
+修法：新增 `GalleryPost.videoPosterUrl`，判据是**「large 档与原片同址 = 站方没给静帧」**，
+只有那种情况才退到 `preview_url`（实测恒非空）；yande.re 那一路 large 档本来就是
+jpg 静帧，保留它（比 350px 缩略图清楚）。两条各一个用例锁住 —— 先按**今天的实现**
+（`= largeUrl`）跑红，确认用例不是空的，再改判据跑绿。
+
+⚠️ **缓存键必须一起分开**（视频用 `poster`、图片用 `large`）：Coil 的显式键不认地址，
+那个键下已经存过 mp4 字节，只换判据的话真机还会命中那份坏数据 ——
+就是"修好了但黑屏依旧"。旧条目交给那 512 MB 的 LRU 收拾。
+
+### 4. 两处假读数与一处静默失败
+
+- 播放钮文案原本恒等于 `播放 · ${fileSize/1024/1024} MB`，而 **Gelbooru 的 JSON 没有
+  `file_size`**（实测，翻译为 0）→ 每条视频都写着"播放 · 0 MB"。改成读数没有就不摆。
+- 时长同样按 `> 0` 判，不再对 null 编数。
+- `GalleryPlayer` 原来**没有任何错误监听**：media3 走自己的 HTTP 栈（不过
+  `VeneraNetworkClient`、拿不到防盗链那张表），所以"缩略图看得到、点开播不了"最容易
+  在这层发作，而表现是一块黑框、零线索。现在 `onPlayerError` 报一句
+  `errorCodeName + message`，并把播放钮还回去（不留假状态）。
+
+### 5. 视频播不出来的真因：防盗链那个 302 被 media3 当成媒体在解析（真机读数定案）
+
+新加的报错出口第一次发作就抓到读数：`这条播不出来：ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+Source error` —— **不是 403、不是网络**，是"拿到字节了但那个容器不认识"。
+
+拿测试夹具里那条真实视频地址复现（2026-09-27，本机 curl）：
+
+| 送出去的请求 | 站方回 |
+|---|---|
+| 只有 UA（= 旧实现的全部） | `302 → https://gelbooru.com/hotlink.php?hash=/images/…`，`Content-Type: text/html` |
+| 加 `Referer: https://gelbooru.com/` | `206 video/mp4`，前 12 字节 `\0\0\0 ftypisom`，Range 正常（能 seek） |
+
+media3 会**跟着那个 302 走**，然后把 hotlink 页的 HTML 交给 extractor 当容器解析 ——
+报出来正是那个码。gzip 也排除了：同一地址带 `Accept-Encoding: gzip` 照样回裸字节 + 206。
+
+**这张表里早就有正确条目**：`ImageHeaderPolicy` 的 `gelbooru.com` = `Referer` + `User-Agent`，
+注释里还记着图片侧同一个坑（302→hotlink.php、以及"这不是地域封禁"那段弯路，见 cfc965d）。
+视频这一层当时**只搬了 UA、没搬 Referer** —— 而它自己的注释恰好预言了
+"不带就会出现'缩略图看得到、点开播不了'那种最难查的错"，预言中了却没接。
+
+修法：删掉本地那把按站别 switch 的 `userAgentFor(post)`，改成 `videoRequestHeaders(url)`
+**直接吃整张表**；表里没有 UA 的站（yande.re 就是）补全局默认串 —— 只交表里那几点
+等于把现在能正常播的那一路改成"不带 UA"，那是修一个坏一个。
+从此图片与视频共用一把判据，不会再各修各的。
+
+⚠️ API 名：media3 1.11.1 上是 **`setDefaultRequestProperties`**，没有 `setRequestProperties`
+（按旧名写直接编译不过 —— 这一版是靠编译器而不是靠记忆定的）。
+
+### 6. 本轮仍**没做**的
+
+- 视频进度条样式、M3 Expressive 形变播放键（§六 第 7 项）仍归"视频控件那一轮"。
+
+### 7. 验证
+
+`testDebugUnitTest` **228 例全绿**（新增 5 例：视频底图 2 例先按今天的实现跑红、确认用例
+不是空的再改判据跑绿；分享成因 3 例）、`assembleDebug` ✅（01:38 那份起修好分享，
+01:56 那份起修好视频播放）。
+真机归用户：① 图片条目分享应真把图发出去；② 视频条目分享原片、且那几秒有波浪环；
+③ Gelbooru 视频条目点播放 —— 底图应是缩略图而不是黑屏，播不了要报一句话。
+
+## 十五、2026-09-27 第二轮：视频"点了没反应 / 起播慢 / 没有全屏钮"
+
+用户一次报三条，三条各自的根因不同，分开记。
+
+### 1. 缓冲中没有任何读数（"点了没反应"）
+
+快门色是**透明**的（起播前不闪黑），所以首帧之前屏上看到的**就是底图那张静帧** ——
+"正在缓冲"和"什么都没发生"长得一模一样。
+现在 `GalleryPlayer` 自己持两枚独立读数：`buffering`（只认 `STATE_BUFFERING`，
+`ENDED` 不算，否则片尾会挂着一枚假"加载中"）与 `firstFrame`（`onRenderedFirstFrame`）。
+首帧之前、或中途 rebuffer 时，画面正中挂全站口径的波浪环 + 一行字（缓冲中 / 重新缓冲中）。
+
+### 2. "加载完了还停在预览，得再点一下才动"
+
+`playWhenReady = true` 在 `prepare()` 之前就设了，所以"进 READY 却没在播"只可能是被压住
+（音频焦点 / 恢复策略）。现在在**首帧之前**那次进 READY 时补一次 `player.play()`；
+不在首帧之后补，否则用户自己暂停后一次 seek 就被替他按了播放。
+同时每次状态变化写一条 `Log.d("GalleryVideo", state/playing/suppressed/buffered)` ——
+若真机还犯，这条读数直接指出是哪一个压住的。**这一条我没能自己定案**（要人手点一次），
+所以它是"补一手 + 留读数"，不是"已证实根因"。
+
+### 3. 起播慢：不是 faststart，是 media3 默认的起播缓冲
+
+先量了再改（免得照着传闻去治一个不存在的病）：
+```
+Range 0-262143 → Content-Range: bytes 0-262143/2493372
+偏移 36   = ftyp   偏移 36    = moov（在前 48 KB 内）
+偏移 48413 = mdat
+吞吐：256 KB / 3.06s ≈ 84 KB/s
+```
+→ 这些 mp4 **是 faststart**，`moov` 在最前面，不存在"整片下完才播"那种成因，
+所以**没有**去动什么"预取 moov"的歪路。
+
+真凶是 `DefaultLoadControl` 的默认 `bufferForPlaybackMs = 2500` —— 它攒的是
+**2.5 秒"媒体时长"**，而实测这条 26.3 秒 / 2.4 MB 的流媒体码率约 92 KB/s，
+2.5 秒就是两百多 KB；池子里那些 16~26 MB 的原片要先攒好几 MB 才肯动。
+84 KB/s 的吞吐下，光这一段就够"很慢"。
+现在改成 `10s / 30s / 500ms / 1.5s`（min/max/起播/rebuffer 后）。
+代价：慢网下更容易中途 rebuffer —— 那有 §1 那枚"重新缓冲中"的环在说，不是静默。
+
+### 4. 全屏钮：media3 一直带着它，是我们没设监听器
+
+`javap` + 抄 aar 的 `res/layout/exo_player_control_view.xml` 确认：
+`PlayerControlView` 里有 `fullscreenButton` / `minimalFullscreenButton`，
+可见性按"设过 `FullscreenButtonClickListener`"判 —— 我们从没设过，所以那枚钮**一直不存在**。
+现在设了（`setFullscreenButtonClickListener` + `setFullscreenButtonState` 翻图标）。
+
+⚠️ 一个几何事实，差点在这里做出一个假开关：**FIT 下把容器扩大不会让画面变大** ——
+画面尺寸由受限的那一边定，而竖屏看横屏视频时那一边本来就是屏宽（实测 639×470 已铺满宽度）。
+所以只扩框 = 点了没反应。现在这枚钮同时换 `resizeMode`：
+**裁切铺满（ZOOM）↔ 还原（FIT）**，代价写在了代码注释里 —— 竖屏看横屏视频时 ZOOM 只留中间那一条。
+
+**没做的另一半**：真·横屏全屏（藏系统栏 + 请求 landscape）。它才是"画面明显变大且不裁"的那条路，
+但 `GalleryPostActivity` 没设 `configChanges`，转屏会重建组合 → 播放器重建 + 重新缓冲，
+要先处理那一层才谈得上。要不要做请拍板。
+
+### 5. 验证与待验
+
+`testDebugUnitTest` 228 例全绿、`assembleDebug` ✅（02:17 那份起）。
+真机三条：① 点播放应立刻看到波浪环（不是"没反应"）；② 起播应明显快于上一版；
+③ 控制器右下角应有全屏钮，点了画面会裁切铺满。
+若②仍慢或②里"停在预览"还犯，我读 `adb logcat -s GalleryVideo` 就能定，不用再猜。

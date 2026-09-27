@@ -3,6 +3,7 @@ package com.venera.compose.gallery.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -315,16 +316,25 @@ fun GalleryPostScreen(
         scope.launch {
             GallerySaver.fetchBytes(context, target)
                 .onSuccess { bytes ->
-                    val uri = runCatching {
-                        val dir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
-                        val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
-                        val file = File(dir, name)
-                        file.outputStream().use { it.write(bytes) }
-                        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    }.onFailure { e ->
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
+                    // 类型**写死成 Uri**，并且用 getOrElse 而不是 onFailure：
+                    // `runCatching{…}.onFailure{…}` 交出的是 `Result<Uri>` 而**不是** `Uri`，
+                    // 于是下面那句 `putExtra(EXTRA_STREAM, uri)` 静默挑中了
+                    // `putExtra(String, Serializable)` 那个重载（kotlin.Result 声明了 Serializable）——
+                    // 编译通过、真机当场 "Parcelable encountered IOException writing serializable
+                    // object (name = kotlin.Result)"，分享**一次都没有成功过**。
+                    // 显式类型 + getOrElse 让这一类错落在编译期，而不是落在用户手上。
+                    val uri: Uri = runCatching {
+                        // 落盘要在 IO 上：视频原片实测 16~26 MB，
+                        // 跟在 Main.immediate 的续点上写就是拿主线程写几十兆，能卡出 ANR。
+                        withContext(Dispatchers.IO) {
+                            val dir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
+                            val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
+                            val file = File(dir, name)
+                            file.outputStream().use { it.write(bytes) }
+                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                         }
+                    }.getOrElse { e ->
+                        Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
                         return@onSuccess
                     }
                     runCatching {
@@ -477,6 +487,7 @@ fun GalleryPostScreen(
                             preferHd = preferHd,
                             isFavorite = favorites.any { it.uid == target.uid },
                             saving = saving,
+                            sharing = sharing,
                             onToggleFavorite = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 scope.launch { favoritesStore.toggle(target) }
@@ -663,8 +674,19 @@ private fun GalleryViewerMedia(
 
         if (post.isVideo) {
             // 视频没有"再高一档"可切，静帧到位即算落位（滑入不用等原片缓冲完）。
-            Box(Modifier.size(boxWidth, boxHeight)) {
-                GalleryVideoViewer(post = post, masked = masked, imageLoader = imageLoader)
+            // 全屏状态**握在这里、不放进播放器**：要改的是"这一页给视频多大一块框"，
+            // 那是下面那段定框逻辑的事，播放器自己扩不出去。
+            var videoFullscreen by rememberSaveable(post.uid) { mutableStateOf(false) }
+            Box(
+                if (videoFullscreen) Modifier.fillMaxSize() else Modifier.size(boxWidth, boxHeight)
+            ) {
+                GalleryVideoViewer(
+                    post = post,
+                    masked = masked,
+                    imageLoader = imageLoader,
+                    fullscreen = videoFullscreen,
+                    onToggleFullscreen = { videoFullscreen = it },
+                )
                 LaunchedEffect(post.uid) { onReadyChange(true) }
             }
         } else {
@@ -842,12 +864,18 @@ internal fun galleryFastRequest(context: Context, url: String): ImageRequest =
  * 视频页对此已有处理（见 `GalleryVideoViewer`），这里不改判据：
  * 「中档兜底到原图」对**图片**是对的（那正是站方"小图不需要样本"的语义）。
  */
-internal fun galleryLargeRequest(context: Context, post: GalleryPost): ImageRequest =
-    ImageRequest.Builder(context)
-        .data(post.largeUrl)
-        .memoryCacheKey(galleryCacheKey("large", post))
-        .diskCacheKey(galleryCacheKey("large", post))
+internal fun galleryLargeRequest(context: Context, post: GalleryPost): ImageRequest {
+    // 视频条目这一档要换成 [GalleryPost.videoPosterUrl]，并且**缓存键也要分开**：
+    // 旧写法用同一个 `large` 键，而那个键下已经存过被兜底成原片的 **mp4 字节**
+    // （Coil 的显式键不认地址，只认键名），换了判据还会命中那份坏数据 ——
+    // 结果是"修好了真机上依旧黑屏"。分开键就绕开它，旧条目交给那 512 MB 的 LRU 收拾。
+    val kind = if (post.isVideo) "poster" else "large"
+    return ImageRequest.Builder(context)
+        .data(if (post.isVideo) post.videoPosterUrl else post.largeUrl)
+        .memoryCacheKey(galleryCacheKey(kind, post))
+        .diskCacheKey(galleryCacheKey(kind, post))
         .build()
+}
 
 /**
  * `file_url` 原图档。两条防护（口径抄 PixEz 的注释理由）：

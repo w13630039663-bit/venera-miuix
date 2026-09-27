@@ -41,7 +41,10 @@ import com.venera.compose.ui.tokens.VeneraTokens
  * - `下载` —— 原样存下来（[com.venera.compose.gallery.data.GallerySaver]），
  *   进行中把图标换成波浪环并吃掉点击，避免出现"点了没反应"的那一下。
  * - `信息` —— 拉起 [GalleryInfoSheet]（顶栏没了，"在站点打开"也搬进那里）。
- * - `分享` —— 系统分享面板，带本站单页地址。
+ * - `分享` —— 系统分享面板，交出去的是**原档字节**（图或视频，与「下载」同档），
+ *   外加一条单页地址。原档要先落一次盘，所以它与「下载」同一形态：
+ *   进行中把图标换成波浪环并吃掉点击 —— 视频 16~26 MB 那几秒里，
+ *   一个没有任何反馈的钮就是"点了没反应"。
  *
  * 心形**排在最前**：它是这一条里唯一的"状态"钮（其余四个都是"做一件事"），
  * 单独一格也和内容动作区分开。
@@ -52,6 +55,7 @@ fun GalleryViewerToolbar(
     preferHd: Boolean,
     isFavorite: Boolean,
     saving: Boolean,
+    sharing: Boolean,
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
     onDownload: () -> Unit,
@@ -122,12 +126,23 @@ fun GalleryViewerToolbar(
                     tint = tokens.color.textPrimary,
                 )
             }
-            IconButton(onClick = onShare) {
-                Icon(
-                    imageVector = Icons.Outlined.Share,
-                    contentDescription = "分享这张图",
-                    tint = tokens.color.textPrimary,
-                )
+            IconButton(onClick = onShare, enabled = !sharing) {
+                if (sharing) {
+                    // 与「下载」同一形态：原档要先下再落盘，那几秒必须有个在做事的读数。
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularWavyProgressIndicator(
+                            modifier = Modifier.size(tokens.spacing.loaderInline),
+                            color = tokens.color.primary,
+                            trackColor = tokens.color.surfaceVariant,
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "分享这张图",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
             }
         }
     }
