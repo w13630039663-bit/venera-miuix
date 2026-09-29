@@ -101,65 +101,6 @@ internal fun SettingsGroupTitle(title: String) {
     )
 }
 
-/**
- * 「尚未实现」折叠区。
- *
- * 设置页不再拿一排灰色不可点行当 TODO 看板 —— 既占视觉，又让用户误以为可以改。
- * 未实现项统一收进这个默认折叠的区块；保留/删除判据见 settings-audit-2026-09.md。
- */
-@Composable
-internal fun SettingsFutureGroup(content: @Composable ColumnScope.() -> Unit) {
-    val tokens = VeneraTokens
-    var open by rememberSaveable { mutableStateOf(false) }
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 圆角取 CardDefaults.CornerRadius（miuix Card 这处本来就用默认值 16dp），
-            // 不是 tokens.shape.card —— 玻璃必须裁在同一圈上，否则 SOLID 档会先变一次圆角。
-            .veneraGlassSurface(VeneraGlassRole.SETTINGS_GROUP, CardDefaults.CornerRadius),
-        colors = veneraGlassCardColors(),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { open = !open }
-                    .padding(
-                        horizontal = tokens.spacing.rowHorizontal,
-                        vertical = tokens.spacing.space5,
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "尚未实现",
-                        fontSize = tokens.type.itemTitle,
-                        fontWeight = tokens.type.weightMedium,
-                        color = tokens.color.textSecondary,
-                    )
-                    Text(
-                        text = if (open) "点击收起" else "点击展开查看缺口清单",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textTertiary,
-                    )
-                }
-                Text(
-                    text = if (open) "▲" else "▼",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textTertiary,
-                )
-            }
-            if (open) {
-                Column(
-                    Modifier.fillMaxWidth().padding(bottom = tokens.spacing.space2),
-                    content = content,
-                )
-            }
-        }
-    }
-    Spacer(Modifier.height(tokens.spacing.space4))
-}
-
 @Composable
 private fun RowScope.SettingLabel(title: String, summary: String?, enabled: Boolean = true) {
     val tokens = VeneraTokens
@@ -210,11 +151,6 @@ internal fun SettingsAction(
     }
 }
 
-/** 未实现的设置不分配虚构默认值，直接说明能力缺口。 */
-@Composable
-internal fun UnsupportedSetting(title: String, reason: String) =
-    SettingsAction(title, "暂不支持：$reason", enabled = false)
-
 @Composable
 internal fun SettingsToggle(
     title: String,
@@ -252,7 +188,7 @@ internal fun SettingsSelect(
     summary: String? = null,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val label = options.firstOrNull { it.first == value }?.second ?: "未识别的已保存值：$value"
+    val label = options.firstOrNull { it.first == value }?.second ?: "存的值认不出来：$value"
     SettingsAction(title, listOfNotNull(label, summary).joinToString("\n")) { open = true }
     VeneraDialog(
         show = open,

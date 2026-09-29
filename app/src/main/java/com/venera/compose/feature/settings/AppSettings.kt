@@ -89,7 +89,7 @@ fun AppSettings(
         pendingGrantPath = null
         val ok = withContext(Dispatchers.IO) { ComicStorageRoot.probeWritable(File(path)) }
         if (!ok) {
-            Toast.makeText(context, "$path 仍写入不了，权限可能还没生效", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "$path 还是写不进去，权限可能没生效", Toast.LENGTH_LONG).show()
         } else {
             commitOrAskTarget(context, prefs, path) { t, c -> askMigration(t, c) }
         }
@@ -155,9 +155,9 @@ fun AppSettings(
             SettingsAction(
                 title = "本地漫画存储路径",
                 summary = when {
-                    !storageWritable -> "$storagePath（当前不可写：需要「所有文件访问」权限）"
-                    configuredPath.isBlank() -> "$storagePath（应用私有目录，随应用卸载一起清除）"
-                    else -> "$storagePath（自定义目录）"
+                    !storageWritable -> "$storagePath（当前写不进去，缺所有文件访问权限）"
+                    configuredPath.isBlank() -> "$storagePath（应用私有目录，卸载应用时会一起删掉）"
+                    else -> "$storagePath（自己选的目录）"
                 },
                 enabled = !busy,
                 onClick = { pickDirLauncher.launch(null) }
@@ -165,7 +165,7 @@ fun AppSettings(
             if (!storageWritable) {
                 SettingsAction(
                     "开启「所有文件访问」权限",
-                    "授予后回到本页会自动重测；未授予时下载会直接失败，不会偷偷写到别处",
+                    "回到本页会自动重新检测。没给权限时下载会直接失败，不会写到别的地方",
                     onClick = { showGrantPrompt = storagePath }
                 )
             }
@@ -197,11 +197,11 @@ fun AppSettings(
                     network.rebuildClient()
                 },
                 steps = 62, suffix = " MB",
-                summary = "仅 HTTP 响应缓存（漫画源接口与网页），不含图片磁盘缓存与下载目录。",
+                summary = "只统计漫画源接口和网页的缓存，不含下载下来的图片。",
             )
             SettingsAction(
                 "网络缓存占用与清理",
-                if (cacheBytes < 0) "正在统计…" else "当前 ${formatMib(cacheBytes)} · 点击清空（不影响下载与收藏）",
+                if (cacheBytes < 0) "正在统计…" else "当前 ${formatMib(cacheBytes)} · 点击清空（不影响已下载和收藏）",
                 onClick = {
                     if (cacheBytes >= 0) {
                         cacheBytes = -1L
@@ -218,29 +218,25 @@ fun AppSettings(
             // 备份包只含四张表（history/favorite/stats/guard_rules），文案不许超过这个覆盖面。
             SettingsAction(
                 "导出数据",
-                "自选保存位置与文件名，导出阅读历史、收藏、阅读统计、屏蔽规则；" +
-                    "不含偏好设置、Cookie 与已装漫画源",
+                "自己选保存位置。导出阅读历史、收藏、阅读统计、屏蔽规则，" +
+                    "不包括偏好设置、Cookie 和已装的漫画源",
                 enabled = !busy,
                 onClick = { exportLauncher.launch(BackupTransfers.suggestedFileName()) }
             )
             SettingsAction(
                 "导入数据",
-                "自选 .venera 备份文件，覆盖恢复上述四类数据（不影响偏好与漫画源）",
+                "选择 .venera 备份文件，覆盖上面那四类数据，不影响偏好设置和漫画源",
                 enabled = !busy,
                 onClick = { importLauncher.launch(arrayOf("*/*")) }
             )
-            SettingsAction("数据同步", "配置 WebDAV 同步与备份", onClick = onSync)
+            SettingsAction("数据同步", "用 WebDAV 同步和备份", onClick = onSync)
         }
         SettingsGroup(title = "故障排查") {
-            SettingsAction("打开日志", "查看运行日志与诊断信息", onClick = onLogs)
+            SettingsAction("打开日志", "查看运行日志", onClick = onLogs)
         }
         SettingsGroup(title = "离线与本地漫画") {
             SettingsAction("下载管理", "管理下载队列与离线章节", onClick = onDownloads)
             SettingsAction("本地漫画", "浏览、导入和管理本地漫画", onClick = onLocalComics)
-        }
-        SettingsFutureGroup {
-            UnsupportedSetting("需要身份验证", "尚未接入应用解锁与生物识别验证流程；" +
-                "需要先定「生物识别不可用时的兜底解锁」，不做半套。")
         }
     }
 
@@ -252,10 +248,9 @@ fun AppSettings(
             title = "需要「所有文件访问」权限",
             content = {
                 Text(
-                    "Android 11 起的分区存储不允许应用直接用文件接口写公共目录，" +
-                        "实测往「$path」写入失败。\n\n" +
-                        "开启后本应用才能把漫画库放进你自己选的目录（含外置卡）。" +
-                        "该开关只影响文件读写，可在系统设置里随时撤销。"
+                    "Android 11 之后应用不能直接往公共目录写文件，刚才往「$path」写入失败了。\n\n" +
+                        "开了这个权限才能把漫画库放在你自己选的目录（包括内存卡）。" +
+                        "它只影响文件读写，随时可以在系统设置里关掉。"
                 )
             },
             confirmText = "打开系统设置",
@@ -279,10 +274,10 @@ fun AppSettings(
             content = {
                 Text(
                     "新目录：$target\n\n" +
-                        "当前目录里有 $comics 部漫画 / $chapters 章。\n" +
+                        "当前目录里有 $comics 部漫画、$chapters 章。\n" +
                         "· 移动到所选目录：把这些内容搬过去，旧目录清空。\n" +
-                        "· 仅对新下载生效：旧目录内容不再出现在本地书架，已下载判定也会转" +
-                        "「未下载」，再点会重新拉取。"
+                        "· 只对新下载生效：旧目录里的内容不再出现在本地书架，已下载的会变成" +
+                        "未下载，再点会重新下。"
                 )
             },
             confirmText = "移动到所选目录",
@@ -323,8 +318,8 @@ internal sealed interface DirChoice {
 internal fun evaluatePickedDir(context: Context, uri: Uri): DirChoice {
     val path = ComicStorageRoot.resolveTreePath(context, uri)
         ?: return DirChoice.Reject(
-            "系统选择器给的是虚拟目录，换算不出真实路径。请在选择器里进入「内部存储」或 SD 卡，" +
-                "选一个普通文件夹（例如 Download/漫画）"
+            "系统选择器给的是虚拟地址，换算不出真实路径。请在里面进入「内部存储」或 SD 卡，" +
+                "选一个普通文件夹，比如 Download/漫画"
         )
     ComicStorageRoot.rejectReason(path)?.let { return DirChoice.Reject(it) }
     if (!ComicStorageRoot.probeWritable(File(path))) return DirChoice.NeedsPermission(path)
@@ -383,7 +378,7 @@ private suspend fun applyStoragePath(
         val tail = if (migrate) "，已迁移 $dirs 个源目录" else "，已有内容留在原目录"
         Toast.makeText(context, "存储目录已切换$tail", Toast.LENGTH_LONG).show()
     }.onFailure {
-        Toast.makeText(context, "切换失败：${it.message}（存储目录未改动）", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "切换失败：${it.message}（存储目录没有改动）", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -403,7 +398,7 @@ private fun openAllFilesSettings(context: Context) {
     if (!opened) {
         Toast.makeText(
             context,
-            "打不开系统设置页，请在「设置 → 应用 → 特殊应用权限 → 所有文件访问」里手动开启本应用",
+            "打不开系统设置页。请在「设置 → 应用 → 特殊应用权限 → 所有文件访问」里手动打开",
             Toast.LENGTH_LONG,
         ).show()
     }

@@ -95,13 +95,12 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             }
             Text(
                 text = when {
-                    appearance == AppearanceStyle.MIUIX -> "使用 Miuix 浅色／深色色板。"
+                    appearance == AppearanceStyle.MIUIX -> "用 Miuix 自带的浅色/深色配色。"
                     colorSource == ThemeColorSource.CUSTOM ->
-                        "按选定的种子色生成整套 MD3 色板；现有 Miuix 控件同步取色，形状与交互仍保留原样。" +
-                            "种子色只是起点 —— 展开后看到的色块是种子，不是最终配色。"
+                        "按你选的这个颜色算出一整套配色。上面看到的色块是种子色，不是最后的效果。"
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                        "使用系统壁纸动态色板；现有 Miuix 控件同步取色，形状与交互仍保留原样。"
-                    else -> "此 Android 版本不支持壁纸动态取色，使用 MD3 静态色板；现有 Miuix 控件同步取色。"
+                        "跟随系统壁纸取色，所有页面一起变。"
+                    else -> "这个 Android 版本不支持跟随壁纸取色，改用固定的一套 MD3 配色。"
                 },
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
@@ -116,12 +115,9 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     "LIQUID_GLASS" to "Miuix 液态悬浮玻璃",
                 ),
                 { prefs.setSurfaceMaterial(SurfaceMaterial.valueOf(it)) },
-                summary = "这一档管的是**内容层表面**：卡片、设置分组、按钮、胶囊要不要浮在一层" +
-                    "采样自氛围光的玻璃上。它与上面「界面风格」**互不隶属** —— " +
-                    "风格那枚决定色板与形状字号从哪来，这一枚只决定表面透不透，四种组合都成立。" +
-                    "切回「实色」后两套风格与今天**逐像素一致**（玻璃的录制层整个不建）。" +
-                    "底栏的形态仍由下面「导航栏样式」单独决定，两枚**不联动**；" +
-                    "两枚玻璃同时开会多一层全屏离屏采样，低配机建议只开一枚。",
+                summary = "卡片、分组、按钮这些表面要不要半透明浮起来。这里只管透明度，" +
+                    "配色和形状还是由上面的界面风格决定，两边互不影响。选实色时没有任何透明效果。" +
+                    "底部导航栏由下面的导航栏样式单独决定。两处都开透明会多一层全屏模糊，配置低的机器可能掉帧。",
             )
         }
         SettingsGroup("导航栏") {
@@ -129,8 +125,7 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 listOf("MD3" to "Miuix 悬浮栏（默认）", "LIQUID_GLASS" to "Liquid Glass 液态玻璃"),
                 { prefs.setNavigationBarStyle(NavigationBarStyle.valueOf(it)) })
             Text(
-                "Liquid Glass 基于 Kyant0/AndroidLiquidGlass（Backdrop）官方实现：背景模糊 + 折射透镜 + 高光，" +
-                    "拖拽指示器带色散与形变。需要 Android 13 及以上（RuntimeShader 折射）。",
+                "把底栏做成玻璃质感：背景模糊、边缘折射和高光，拖动时还有形变效果。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -146,9 +141,9 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 ),
                 { prefs.setTagTranslationMode(TagTranslationMode.valueOf(it)) })
             Text(
-                "命中的英文标签显示为「译文 (原文)」，括号里始终附原文 —— 字典覆盖不到的中文站标签" +
-                    "会退回原文，隐藏原文就无从判断这枚药丸对应站点上的哪个词。" +
-                    "发给各源的查询词与已选标签筛选仍用站点原文，不受此开关影响。",
+                "命中的英文标签会同时给出译文和原文，括号里是原文。" +
+                    "词典里没有的标签（多数是中文站的词）只显示原文。" +
+                    "搜索时发给各源的词还是原文，不受这里影响。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

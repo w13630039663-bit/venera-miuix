@@ -41,7 +41,7 @@ internal fun AboutSection() {
 
     fun open(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            .onFailure { Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(context, "没找到可用的浏览器", Toast.LENGTH_SHORT).show() }
     }
 
     fun checkUpdate() {
@@ -51,8 +51,8 @@ internal fun AboutSection() {
             when (val result = AppUpdateChecker.check(context)) {
                 is UpdateCheck.Available -> availableVersion = result.remoteVersion
                 // 拿不到远端版本 ≠ 没有更新，播报必须分开，否则一次断网就是一次假成功
-                UpdateCheck.UpToDate -> notice = "已是最新版本"
-                UpdateCheck.Failed -> notice = "检查失败：拿不到 ${ProjectChannel.SLUG} 的发布记录"
+                UpdateCheck.UpToDate -> notice = "已经是最新版"
+                UpdateCheck.Failed -> notice = "找不到 ${ProjectChannel.SLUG} 的发布记录，稍后再试"
             }
             checking = false
         }
@@ -66,7 +66,7 @@ internal fun AboutSection() {
             contentScale = ContentScale.Crop,
         )
         Text("版本 $version", fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
-        Text("免费、开源的漫画阅读应用", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        Text("免费开源的漫画阅读应用", fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
             color = MiuixTheme.colorScheme.onSurface.copy(alpha = .6f))
         SettingsGroup {
             SettingsAction(
@@ -78,11 +78,11 @@ internal fun AboutSection() {
                 title = "启动时检查更新",
                 checked = checkOnStart,
                 onCheckedChange = prefs::setCheckUpdateOnStart,
-                summary = "距上次检查不满 24 小时不再请求",
+                summary = "24 小时内不重复检查",
             )
-            SettingsAction("项目仓库与发布") { open(ProjectChannel.REPO_URL) }
+            SettingsAction("项目主页与发布页") { open(ProjectChannel.REPO_URL) }
             SettingsAction("原始项目", "保留上游出处") { open("https://github.com/venera-app/venera") }
-            SettingsAction("上游发布频道") { open("https://t.me/venera_release") }
+            SettingsAction("上游发布渠道") { open("https://t.me/venera_release") }
         }
     }
 

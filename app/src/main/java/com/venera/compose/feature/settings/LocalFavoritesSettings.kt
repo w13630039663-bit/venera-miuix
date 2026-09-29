@@ -16,16 +16,15 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val folders by manager.folders.collectAsState()
     val newFavoriteAddTo by prefs.newFavoriteAddTo.collectAsState()
     val quickFavorite by prefs.quickFavorite.collectAsState()
-    val moveAfterRead by prefs.moveFavoriteAfterRead.collectAsState()
     val favoriteSort by prefs.favoriteSortOrder.collectAsState()
     // Empty folder names are rejected/renamed by the manager, so "" is a safe None key.
     val quickOptions = remember(folders) {
         listOf("" to "未设置") + folders.map { it to it }
     }
     val quickSummary = when {
-        quickFavorite == null -> "未设置；长按收藏按钮时打开收藏面板"
-        quickFavorite in folders -> "当前：$quickFavorite；长按收藏按钮快速加入此收藏夹"
-        else -> "原收藏夹「$quickFavorite」已不存在，请重新选择"
+        quickFavorite == null -> "未设置。长按收藏按钮会打开收藏面板"
+        quickFavorite in folders -> "当前：$quickFavorite。长按收藏按钮直接加进这个收藏夹"
+        else -> "原来的收藏夹 $quickFavorite 已经不存在了，重新选一个"
     }
 
     SettingsPage(title = "收藏", onBack = onBack, largeTitle = "本地收藏") {
@@ -55,15 +54,8 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 value = favoriteSort,
                 options = FavoriteSortOrder.entries.map { it.name to it.label },
                 onSelected = prefs::setFavoriteSortOrder,
-                summary = "与收藏页顶栏的排序共用同一偏好，任一处修改即同步。",
+                summary = "这里改和收藏页顶栏改是同一个设置。",
             )
-        }
-        SettingsFutureGroup {
-            UnsupportedSetting("操作后自动关闭收藏面板", "尚无对应的持久化设置与自动关闭逻辑。")
-            UnsupportedSetting("阅读后移动收藏", "已保存：" + when (moveAfterRead) {
-                "start" -> "开头"; "end" -> "末尾"; else -> "不移动"
-            } + "；管理器的 onRead() 已实现，但阅读流程尚未调用它。")
-            UnsupportedSetting("删除所有不可用的本地收藏条目", "尚无不可用条目判定与清理方法；不会以清空全部收藏代替。")
         }
     }
 }

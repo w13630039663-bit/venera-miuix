@@ -10,8 +10,8 @@ import com.venera.compose.reader.ReaderReadingMode
  * 2026-09-19 设置审计后：预加载数、反转点击方向、自动翻页间隔从灰行转正；
  * 删掉 15 条"需要新子系统"的灰行（设备专属、翻页动画、每屏图数、首图单张、
  * 鼠标滚速、限宽、时间/状态栏/页码、快速收藏、自定义图片处理、章节评论两处）；
- * 剩下的未实现项收进底部「尚未实现」折叠区。原先那个"看得到、点不动"的
- * 自动裁剪白边开关也移了进去 —— 不保留无效开关。
+ * 2026-09-30 用户拍板：剩下的未实现项**连标题一起撤**，底部那个「尚未实现」折叠区已删除 ——
+ * 双击缩放、自动裁剪白边、章节评论默认展开三条不再出现在设置页。
  * 完整判据与清单见 settings-audit-2026-09.md。
  */
 @Composable
@@ -33,19 +33,18 @@ internal fun ReaderSettings(prefs: VeneraPreferences, onBack: () -> Unit, onImag
                     "DOUBLE_PAGE" to "对开双页"), prefs::setDefaultReadingMode)
             SettingsToggle("点击翻页", tap, prefs::setClickToTurn)
             SettingsToggle("反转点击翻页方向", reverseTap, prefs::setReverseTapDirection,
-                summary = "左右半屏语义互换，方便左利手。与「从右到左」模式的镜像互不干扰，可叠加。")
+                summary = "左右两半屏的作用互换。日漫模式本身的反向不受影响。")
             // 条漫连续流用的是阅读器面板里的 px/s 速度（临时态，不持久化）；
             // 这个间隔只对翻页模式（美漫 LTR / 日漫 RTL）的自动巡航生效。
             SettingsSlider("自动翻页间隔", autoInterval, 1f..15f,
                 prefs::setAutoScrollPageIntervalSec, steps = 13, suffix = " 秒",
-                summary = "仅翻页模式的自动巡航使用；条漫连续流请在阅读器内调滚动速度。")
+                summary = "只在翻页模式下自动翻页。连续滚动请在阅读器面板里调速度。")
         }
         SettingsGroup("图片") {
-            SettingsSlider("页间距", gap, 0f..32f, prefs::setPageGapDp, steps = 31, suffix = " 像素密度单位")
+            SettingsSlider("页间距", gap, 0f..32f, prefs::setPageGapDp, steps = 31, suffix = " dp")
             SettingsSlider("预加载图片数量", preload.toFloat(), 0f..20f,
                 { prefs.setPreloadImageCount(it.toInt()) }, steps = 19, suffix = " 页",
-                summary = "当前页之后并发预取的页数。动态页源每页都要跨 WebView 请求，" +
-                    "调大会增加流量与内存；0 表示只加载当前页。")
+                summary = "往后多加载几页。有的源每页都要单独请求，调大更费流量和内存；0 是只加载当前页。")
         }
         SettingsGroup("显示") {
             SettingsToggle("音量键翻页", volume, prefs::setVolumeKeyTurn)
@@ -55,14 +54,6 @@ internal fun ReaderSettings(prefs: VeneraPreferences, onBack: () -> Unit, onImag
         SettingsGroup("入口") {
             SettingsAction("单页与插图收藏", onClick = onImages)
             SettingsAction("阅读足迹与统计", onClick = onStats)
-        }
-        SettingsFutureGroup {
-            UnsupportedSetting("双击缩放", "telephoto 0.19 只暴露 EnabledZoomGestures" +
-                "（None / PanOnly / ZoomOnly / ZoomAndPan）这组粗粒度开关，未确证可单独关掉" +
-                "双击而保留捏合缩放；确认签名后再接，不用总开关冒充双击开关。")
-            UnsupportedSetting("自动裁剪白边", "偏好已存但阅读器未接入裁剪处理，" +
-                "原先是「看得到、点不动」的禁用开关；移入此处，不保留无效开关。")
-            UnsupportedSetting("章节评论默认展开", "已有章节评论入口，但没有默认显示开关。")
         }
     }
 }

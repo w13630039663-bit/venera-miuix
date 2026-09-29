@@ -233,14 +233,14 @@ fun ComicSourceScreen(
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text(
-                                        text = "⚠️ ${unreachableHosts.size} 个站点当前网络不可达，其源已自动熔断跳过",
+                                        text = "${unreachableHosts.size} 个站点连不上，已经跳过这些源",
                                         fontSize = tokens.type.overline,
                                         color = StatusColors.Degraded,
                                         fontWeight = tokens.type.weightSemibold
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "如需使用这些源，请在设置中配置 HTTP/SOCKS 代理",
+                                        text = "要用这些源的话，在设置 → 网络 里配代理",
                                         fontSize = tokens.type.badge,
                                         color = tokens.color.textTertiary
                                     )

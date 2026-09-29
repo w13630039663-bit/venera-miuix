@@ -95,14 +95,14 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 is DirChoice.Reject -> Toast.makeText(context, outcome.reason, Toast.LENGTH_LONG).show()
                 is DirChoice.NeedsPermission -> Toast.makeText(
                     context,
-                    "${outcome.path} 写不进去：需要「所有文件访问」权限（可先在「应用 → 本地漫画存储路径」" +
-                        "那一步授予，回来再挑）",
+                    "${outcome.path} 写不进去，需要所有文件访问权限。可以先在 应用 → 本地漫画存储路径 里授予，" +
+                        "再回到这里重新选目录）",
                     Toast.LENGTH_LONG,
                 ).show()
 
                 is DirChoice.Accept -> {
                     prefs.setGalleryDownloadPath(outcome.path)
-                    Toast.makeText(context, "画廊下载目录：${outcome.path}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "下载到：${outcome.path}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -125,17 +125,17 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryColumnMode.THREE.name to "三列",
                 ),
                 { prefs.setGalleryColumnMode(GalleryColumnMode.valueOf(it)) },
-                summary = "自动那一档按屏宽定，平板上觉得格子太大就手动选两列。",
+                summary = "自动按屏幕宽度决定。平板上觉得格子太大就手动选两列。",
             )
             SettingsSelect(
                 "预览清晰度", previewQuality.name,
                 listOf(
-                    GalleryPreviewQuality.PREVIEW.name to "标准（站方缩略档，几十 KB 一张）",
-                    GalleryPreviewQuality.LARGE.name to "更清晰（站方 sample 档，一屏流量按十倍计）",
+                    GalleryPreviewQuality.PREVIEW.name to "标准（站方缩略图，一张几十 KB）",
+                    GalleryPreviewQuality.LARGE.name to "更清晰（站方 sample 图，流量大约十倍）",
                 ),
                 { prefs.setGalleryPreviewQuality(GalleryPreviewQuality.valueOf(it)) },
-                summary = "只改**墙上那一格**。大图页仍是三档叠画（开门档→中档→原图），" +
-                    "那一套的判据在条目地址表里，不归这一档管。",
+                summary = "只影响列表里的小图。点开大图仍然按中档、原图两步加载，" +
+                    "不受这里影响。",
             )
         }
 
@@ -148,9 +148,9 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     prefs.setGalleryCacheMaxMb(mb)
                     // 上限只在构造 DiskCache 时读一次，不丢实例重建就是个假开关。
                     scope.launch(Dispatchers.IO) { GalleryImageLoader.reset(context) }
-                    Toast.makeText(context, "已按 $mb MB 重建画廊图片缓存", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "图片缓存已按 $mb MB 重建", Toast.LENGTH_SHORT).show()
                 },
-                summary = "超出上限时自动淘汰最久没再用的那些（LRU，不用手动收拾）。",
+                summary = "超过上限会自动淘汰最久没用过的，不用手动清理。",
             )
             SettingsAction(
                 "立即清除图片缓存",
@@ -160,7 +160,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                         val cleared = GalleryImageLoader.clearDiskCache(context)
                         Toast.makeText(
                             context,
-                            "已清除画廊图片缓存 ${cleared / 1_000_000} MB",
+                            "已清除 ${cleared / 1_000_000} MB",
                             Toast.LENGTH_SHORT,
                         ).show()
                         cacheTick++
@@ -172,110 +172,102 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         SettingsGroup("下载") {
             SettingsAction(
                 "下载目录",
-                if (customDownloadPath.isBlank()) "$downloadPath（沿用本地漫画存储根下的「图库」）" else "$downloadPath（画廊自选）",
+                if (customDownloadPath.isBlank()) "$downloadPath（沿用漫画存储目录下的 图库 子目录）" else "$downloadPath（自己选的目录）",
                 onClick = { pickDirLauncher.launch(null) },
             )
             if (customDownloadPath.isNotBlank()) {
-                SettingsAction("改回沿用漫画库", "当前：$customDownloadPath") {
+                SettingsAction("改回沿用漫画目录", "当前：$customDownloadPath") {
                     prefs.setGalleryDownloadPath("")
-                    Toast.makeText(context, "已改回沿用漫画存储根下的「图库」", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已改回用漫画存储目录下的 图库", Toast.LENGTH_SHORT).show()
                 }
             }
             SettingsSelect(
                 "文件名规则", saveNaming.name,
                 listOf(
                     GallerySaveNaming.SITE_ID.name to "站名-编号（yandere-1234567.png）",
-                    GallerySaveNaming.ORIGINAL.name to "原图文件名（站方那个名字，多半是一串哈希）",
+                    GallerySaveNaming.ORIGINAL.name to "原图文件名（站方给的名字，通常是一串乱码）",
                     GallerySaveNaming.ARTIST_ID.name to "画师_编号（wlop_1234567.png）",
                     GallerySaveNaming.TIMESTAMP.name to "时间戳（20260929-113045.png）",
                 ),
                 { prefs.setGallerySaveNaming(GallerySaveNaming.valueOf(it)) },
-                summary = "取不到画师时「画师_编号」会退回「站名-编号」，不编一个名字出来。" +
-                    "重名一律让位成「名字 (1).jpg」。",
+                summary = "取不到画师时改用站名-编号；文件名撞了会自动加 (1)。",
             )
         }
 
         SettingsGroup("大图页") {
             SettingsToggle(
                 "屏幕常亮", keepScreenOn, { prefs.setGalleryKeepScreenOn(it) },
-                summary = "停在大图页时不让屏幕熄灭。退出那一页时这条 flag 一并撤掉，" +
-                    "不会让整台机器跟着不睡。",
+                summary = "看大图时不让屏幕熄灭，离开这一页就恢复。",
             )
             SettingsToggle(
                 "音量键翻页", volumeKeyTurn, { prefs.setGalleryVolumeKeyTurn(it) },
-                summary = "音量下 = 下一张、音量上 = 上一张，到底就停、不循环。" +
-                    "关着的时候按音量键还是系统的音量条 —— 这一档默认是关的。",
+                summary = "音量键向下是下一张、向上是上一张，到头就停，不循环。" +
+                    "关闭时音量键还是系统的音量条。",
             )
             SettingsSlider(
                 "自动连播间隔", autoPlaySec.toFloat(), 0f..30f,
                 { prefs.setGalleryAutoPlaySec(it.toInt()) }, steps = 29, suffix = " 秒",
-                summary = "沿当前那面墙自动翻到下一张，到底就停（0 = 关闭连播）。" +
-                    "信息面板开着、正在放大、或那一条是视频时都不走 —— " +
-                    "连播不该替人决定什么时候起播视频、什么时候出声。" +
-                    "大图页底栏那颗 ▶ 可以**当场**改这个间隔（长按它出滑条），" +
-                    "那一调只活在那一屏，退出仍回到这里设的值。",
+                summary = "在当前列表里自动翻到下一张，翻到头就停，填 0 关闭。" +
+                    "信息面板开着、放大看、或者这一张是视频的时候不会自动翻。" +
+                    "大图页底栏的播放按钮可以临时改间隔（长按出滑条），离开那一页就恢复成这里的设置。",
             )
             SettingsSelect(
-                "智能预加载", preloadMode.name,
+                "预加载", preloadMode.name,
                 listOf(
-                    GalleryPreloadMode.OFF.name to "关闭（只取当前这一张）",
-                    GalleryPreloadMode.NEXT.name to "预加载下一张",
-                    GalleryPreloadMode.BOTH_TWO.name to "预加载前后两张",
+                    GalleryPreloadMode.OFF.name to "关闭",
+                    GalleryPreloadMode.NEXT.name to "提前加载下一张",
+                    GalleryPreloadMode.BOTH_TWO.name to "提前加载前后各两张",
                 ),
                 { prefs.setGalleryPreload(GalleryPreloadMode.valueOf(it)) },
-                summary = "这一档管的是「提前把隔壁那几张的中档拉进缓存」。" +
-                    "选「关闭」**不等于没有流量**：当前这一张自己的三档（开门→中档→原图）照旧会发，" +
-                    "而且翻页时隔壁要现组合，会白闪一下。调大则流量与那份图片缓存都跟着涨。",
+                summary = "决定翻页之前先把旁边几张的中档图取进缓存。" +
+                    "关闭时当前这张照常加载，但翻过去时旁边的要现取，会白一下。" +
+                    "调大更跟手，也更费流量和缓存。",
             )
             SettingsSelect(
                 "动图自动播放", animatedMode.name,
                 listOf(
-                    GalleryAnimatedMode.WIFI_ONLY.name to "仅 Wi-Fi（不计费网络才解动画）",
+                    GalleryAnimatedMode.WIFI_ONLY.name to "仅 Wi-Fi",
                     GalleryAnimatedMode.ALWAYS.name to "始终",
-                    GalleryAnimatedMode.NEVER.name to "从不（动图停在首帧）",
+                    GalleryAnimatedMode.NEVER.name to "从不（停在第一帧）",
                 ),
                 { prefs.setGalleryAnimated(GalleryAnimatedMode.valueOf(it)) },
-                summary = "只管**大图页**那一张：墙上的卡片一律静帧 —— 一屏动图同时解动画" +
-                    "就是今天那条闪退读数的形状（256 MB 堆只剩 52 MB）。" +
-                    "「不计费」按系统的网络能力判，拿不到读数时按计费处理（宁可不动，不偷跑流量）；" +
-                    "这一屏只在**打开时问一次**，中途切网络不会让眼前的图忽动忽静。",
+                summary = "只影响大图页里的这一张，列表中的动图一直显示第一帧，" +
+                    "一屏同时解很多动画会很占内存。" +
+                    "是不是计费网络按系统判断，判断不了就按计费网络处理，不自动播。" +
+                    "进入这一页时判断一次，中途换网络不会让动画忽开忽停。",
             )
             SettingsSelect(
                 "大图页背景", backdrop.name,
                 listOf(
-                    GalleryViewerBackdrop.GLASS.name to "现状（模糊背后那面墙 + 压暗）",
+                    GalleryViewerBackdrop.GLASS.name to "模糊 + 压暗（默认）",
                     GalleryViewerBackdrop.BLACK.name to "纯黑",
                     GalleryViewerBackdrop.DARK_GRAY.name to "深灰",
                     GalleryViewerBackdrop.WHITE.name to "纯白",
                 ),
                 { prefs.setGalleryBackdrop(GalleryViewerBackdrop.valueOf(it)) },
-                summary = "没有「跟随图片主色调」那一档：仓库里做过一次，真机否了" +
-                    "（深色主题下头部变成一块边缘清晰的紫色矩形），依赖也已经回退。" +
-                    "选不透明那三档时背景**立刻**盖住窗口模糊；改回「现状」要重进大图页才恢复模糊" +
-                    "（窗口那条 flag 是页面起来时挂的）。",
+                summary = "没有跟随图片主色调这一项：试过，深色主题下顶部会出现一块颜色很硬的色块，已经撤掉。" +
+                    "选纯黑、深灰或纯白时背景会马上挡住后面的模糊；" +
+                    "改回模糊那一档要重新进入大图页才生效。",
             )
         }
 
         SettingsGroup("内容与屏蔽") {
             SettingsToggle(
                 "屏蔽 AI 生成的条目", blockAi, { prefs.setGalleryBlockAi(it) },
-                summary = "画廊**自己这一把**，与「屏蔽与过滤」里那枚漫画侧的 AI 开关各走各的" +
-                    "（用户 2026-09-29 拍板：画廊和漫画分开）。命中的判据是站方打的标签" +
-                    "（`ai-generated` 与 `ai_generated` 两种写法都认），" +
-                    "不是「看着像 AI」那种主观判据 —— 没有标签就不算。" +
-                    "裸标签 `ai` **不算**：yande.re 上那 19 条是角色名（《Artery Gear》的 AI），" +
-                    "把它算进来就是把 19 张手工插画判成 AI 画。",
+                summary = "图库单独的开关，和屏蔽与过滤里漫画那一侧互不影响。" +
+                    "只认站方标的 ai-generated 或 ai_generated 标签，没有标签就不算，" +
+                    "也不按看起来像不像来判断。单独的 ai 标签不算：它在 yande.re 上是一个角色名，" +
+                    "算进来会把 19 张手工图误判成 AI。",
             )
             SettingsToggle(
                 "给 AI 条目摆角标", aiBadge, { prefs.setGalleryAiBadge(it) },
-                summary = "卡片左上角一枚「AI」。屏蔽开着时它没什么可摆的（那些条目根本不上屏），" +
-                    "真正的用途只有一件：屏蔽关掉、图照旧上屏时，让人看得出来哪张是 AI 画的。",
+                summary = "在卡片左上角标一个 AI。开着屏蔽时基本看不到（那些条目不会上屏），" +
+                    "用处是关掉屏蔽以后还能分辨哪张是 AI 画的。",
             )
             SettingsAction(
                 "分级遮罩与屏蔽规则在「屏蔽与过滤」里改",
-                "那两样仍是漫画与画廊**共用**的一把判据，不在这里另摆一份开关 —— " +
-                    "两处各设一遍迟早会不一致，出现「墙上被挡掉、搜索结果里全裸」那种分叉。" +
-                    "（AI 这一把是例外：它按上面的决定分家了，但**词表仍是同一份**。）",
+                "那两样漫画和图库共用一份设置，这里不重复摆开关，免得两边不一致。" +
+                    "AI 这一条是例外：两边分开设置，但用的词表是同一份。",
             )
         }
     }

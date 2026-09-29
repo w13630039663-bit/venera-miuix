@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Text
 
-private val proxyOptions = listOf("NONE" to "系统默认（不指定应用代理）", "HTTP" to "HTTP", "SOCKS" to "SOCKS5")
+private val proxyOptions = listOf("NONE" to "跟随系统默认", "HTTP" to "HTTP", "SOCKS" to "SOCKS5")
 
 @Composable
 fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
@@ -42,7 +42,7 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val proxySummary = if (proxyType == "HTTP" || proxyType == "SOCKS") {
         "${proxyOptions.first { it.first == proxyType }.second} · ${proxyHost.ifBlank { "127.0.0.1" }}:$proxyPort"
     } else {
-        "系统默认（不指定应用代理）"
+        "跟随系统默认"
     }
 
     val threads by prefs.downloadThreads.collectAsState()
@@ -52,15 +52,15 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
             SettingsSlider("下载并发", threads.toFloat(), 1f..16f,
                 { prefs.setDownloadThreads(it.toInt()) }, steps = 14, suffix = " 线程",
-                summary = "下载队列同时拉取的章节数。改完在下一轮队列生效，不打断进行中的任务。")
+                summary = "同时下载几章。改完对新排进队列的任务生效，不影响正在下的。")
             // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
             // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
             // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
         }
-        SettingsGroup("现有网络诊断") {
-            SettingsAction("重置网络熔断", "清除失败主机的临时熔断记录") {
+        SettingsGroup("网络诊断") {
+            SettingsAction("重置失败记录", "清除暂时连不上的站点记录，这些站点会马上重新尝试") {
                 com.venera.compose.data.network.HostCircuitBreaker.resetAll()
-                Toast.makeText(context, "已清除网络熔断记录", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "已清除失败记录", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -103,12 +103,11 @@ private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit)
                 } else {
                     Text("正在保存代理配置…")
                 }
-                UnsupportedSetting("强制直连", "当前客户端的 NONE 使用系统默认代理选择器，尚不支持忽略系统代理。")
                 if (manual) {
                     OutlinedTextField(
                         value = host,
                         onValueChange = { host = it; error = null },
-                        label = { Text("主机（不含协议或端口）") },
+                        label = { Text("主机地址") },
                         singleLine = true,
                         enabled = !saving,
                         isError = !validHost,
@@ -117,14 +116,13 @@ private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit)
                     OutlinedTextField(
                         value = port,
                         onValueChange = { port = it; error = null },
-                        label = { Text("端口（1–65535）") },
+                        label = { Text("端口") },
                         singleLine = true,
                         enabled = !saving,
                         isError = validPort == null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    UnsupportedSetting("用户名与密码", "当前代理配置未实现凭据持久化与代理认证。")
                 }
                 error?.let { Text(it) }
             }
@@ -141,12 +139,12 @@ private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit)
                                 prefs.setProxy(type, host.trim(), validPort ?: prefs.proxyPort.value)
                                 VeneraNetworkClient.getInstance(context).rebuildClient()
                             }
-                            Toast.makeText(context, "代理已保存，对后续请求生效", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "代理已保存，之后的请求生效", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            error = "应用代理配置失败：${failure.message ?: "未知错误"}"
+                            error = "代理配置生效失败：${failure.message ?: "未知错误"}"
                         } finally {
                             saving = false
                         }
