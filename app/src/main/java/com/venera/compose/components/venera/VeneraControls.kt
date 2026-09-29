@@ -37,6 +37,7 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox as MiuixCheckbox
@@ -134,7 +135,17 @@ fun VeneraIconButton(
         Modifier
     }
     if (useMiuixWidgets) {
-        MiuixIconButton(onClick = onClick, modifier = modifier.then(glassModifier), enabled = enabled) { content() }
+        // 48dp 不是新造的数：它就是 M3 `IconButton` 的默认触达尺寸，也是 Android 无障碍的触达位下限。
+        // miuix 的 `IconButtonDefaults.MinWidth/MinHeight` 是 40dp，直接吃默认会让全仓每一颗图标按钮
+        // 的触摸区悄悄缩掉 8dp（源管理列表那排最先被看出来）。尺寸只在**这一个出口**钉住，
+        // 别在各调用点各写一遍。
+        MiuixIconButton(
+            onClick = onClick,
+            modifier = modifier.then(glassModifier),
+            enabled = enabled,
+            minWidth = 48.dp,
+            minHeight = 48.dp,
+        ) { content() }
     } else {
         Md3IconButton(onClick = onClick, modifier = modifier.then(glassModifier), enabled = enabled) { content() }
     }

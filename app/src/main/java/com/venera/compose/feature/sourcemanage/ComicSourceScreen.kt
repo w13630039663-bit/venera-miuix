@@ -558,16 +558,15 @@ fun ComicSourceScreen(
                                     }
                                 }
 
-                                // 启用 / 禁用开关
+                                // 启用 / 禁用开关：尺寸交给转发件的两家后端各自决定。
+                                // 这里原本钉着 44×28dp（M3 开关的压缩版），而 miuix 的轨道是 49×28dp，
+                                // 于是 Miuix 档下整颗被压扁 —— 观感尺寸用现成口径，不自己造数。
                                 VeneraSwitch(
                                     checked = row.enabled,
                                     onCheckedChange = { checked ->
                                         row.fileName?.let { viewModel.setEnabled(it, checked) }
                                     },
-                                    modifier = Modifier
-                                        .padding(horizontal = 2.dp)
-                                        .height(28.dp)
-                                        .width(44.dp)
+                                    modifier = Modifier.padding(horizontal = 2.dp)
                                 )
                             }
                         }
