@@ -5,6 +5,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+// 整块登记保留 M3：这是阅读器自绘的**深色浮层**，输入框与按钮的配色全靠 M3 的
+// shape/colors 覆盖表达（focused/unfocused 两套边框 + 白字），miuix 侧没有同形参数面。
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Button

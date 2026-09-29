@@ -13,8 +13,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +30,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.data.prefs.VeneraPreferences
@@ -181,53 +180,49 @@ fun GalleryFavoritesBody(
     }
 
     pendingRemove?.let { post ->
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { pendingRemove = null },
-            title = { Text("从画廊收藏移除？") },
-            text = {
+            title = "从画廊收藏移除？",
+            content = {
                 Text(
                     "${post.site.displayName} #${post.id}" +
                         if (post.author.isBlank()) "" else "\n${post.author}",
                     fontSize = tokens.type.body,
                 )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val uid = post.uid
-                    pendingRemove = null
-                    // 不弹"已移除"提示：卡片当场从墙上消失，本身就是最清楚的反馈。
-                    scope.launch { store.remove(uid) }
-                }) {
-                    Text("移除", color = tokens.color.actionFavorite)
-                }
+            confirmText = "移除",
+            confirmDestructive = true,
+            onConfirm = {
+                val uid = post.uid
+                pendingRemove = null
+                // 不弹"已移除"提示：卡片当场从墙上消失，本身就是最清楚的反馈。
+                scope.launch { store.remove(uid) }
             },
-            dismissButton = {
-                TextButton(onClick = { pendingRemove = null }) { Text("取消") }
-            },
+            dismissText = "取消",
+            onDismiss = { pendingRemove = null },
         )
     }
 
     if (clearConfirm) {
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { clearConfirm = false },
-            title = { Text("清空画廊收藏？") },
-            text = {
+            title = "清空画廊收藏？",
+            content = {
                 Text(
                     "${favorites.size} 张会从收藏里全部移除，图片本身不受影响。",
                     fontSize = tokens.type.body,
                 )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    clearConfirm = false
-                    scope.launch { store.clear() }
-                }) {
-                    Text("清空", color = tokens.color.actionFavorite)
-                }
+            confirmText = "清空",
+            confirmDestructive = true,
+            onConfirm = {
+                clearConfirm = false
+                scope.launch { store.clear() }
             },
-            dismissButton = {
-                TextButton(onClick = { clearConfirm = false }) { Text("取消") }
-            },
+            dismissText = "取消",
+            onDismiss = { clearConfirm = false },
         )
     }
 }

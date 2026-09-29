@@ -70,7 +70,10 @@ private fun miuixHighlight(preset: VeneraGlassHighlight): Highlight = when (pres
  *    （Backdrop / LayerBackdrop / rememberLayerBackdrop / drawBackdrop / Highlight），混 import 会在
  *    编译期就指错库。Kyant 那一家的出处**限定在 `components/backdrop/` 目录内**
  *    （2026-09-29 实数：`VeneraLiquidGlassNavBar.kt` 与 `InteractiveHighlight.kt` 两个文件），
- *    目录外任何文件出现 `import com.kyant` 就是违规。自查命令要**按 import 行匹配**，
+ *    目录外任何文件出现 `import com.kyant` 就是违规。**唯一在册例外**：保护域 `feature/Navigation.kt`
+ *    自 `4270487`（官方 Liquid Glass 底栏接入那一轮）就 import 它，那是底栏录制层的接线处、
+ *    属未获豁免不得动的文件 —— 别把它当违规去"清理"，也别拿它当先例往别的文件加 Kyant。
+ *    自查命令要**按 import 行匹配**，
  *    别用 `grep com\.kyant` —— 那样会把 `androidx.compose.material3.Text` 之类的包名也算成命中
  *    （我自己就是这么误报过一次，白查一轮）。
  *

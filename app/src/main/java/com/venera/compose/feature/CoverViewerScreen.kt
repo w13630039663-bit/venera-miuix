@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 封面全屏查看器 (S8 批次C, 对齐官方 comic_details_page/cover_viewer.dart):
@@ -68,7 +68,7 @@ fun CoverViewerScreen(
                     .padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回", tint = Color.White)
                 }
                 Text(
@@ -80,7 +80,7 @@ fun CoverViewerScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = {
+                VeneraIconButton(onClick = {
                     scope.launch(Dispatchers.IO) {
                         val ok = saveCoverToGallery(context, coverUrl, title)
                         withContext(Dispatchers.Main) {

@@ -28,8 +28,6 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraSlider
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.math.roundToInt
@@ -117,7 +117,7 @@ fun GalleryViewerToolbar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("连播", fontSize = tokens.type.caption, color = tokens.color.textSecondary)
-                Slider(
+                VeneraSlider(
                     value = autoPlaySec.toFloat().coerceIn(AUTOPLAY_MIN_SEC.toFloat(), AUTOPLAY_MAX_SEC.toFloat()),
                     onValueChange = { onAutoPlaySecChange(it.roundToInt().coerceIn(AUTOPLAY_MIN_SEC, AUTOPLAY_MAX_SEC)) },
                     valueRange = AUTOPLAY_MIN_SEC.toFloat()..AUTOPLAY_MAX_SEC.toFloat(),
@@ -137,7 +137,7 @@ fun GalleryViewerToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space1),
         ) {
-            IconButton(onClick = onToggleFavorite) {
+            VeneraIconButton(onClick = onToggleFavorite) {
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = if (isFavorite) "取消收藏" else "收藏这张图",
@@ -148,7 +148,7 @@ fun GalleryViewerToolbar(
                 )
             }
             if (!post.isVideo) {
-                IconButton(onClick = onToggleHd) {
+                VeneraIconButton(onClick = onToggleHd) {
                     Icon(
                         imageVector = Icons.Outlined.HighQuality,
                         contentDescription = if (preferHd) "切回清晰档" else "看原图档",
@@ -158,7 +158,7 @@ fun GalleryViewerToolbar(
                     )
                 }
             }
-            IconButton(onClick = onDownload, enabled = !saving) {
+            VeneraIconButton(onClick = onDownload, enabled = !saving) {
                 if (saving) {
                     Box(contentAlignment = Alignment.Center) {
                         CircularWavyProgressIndicator(
@@ -175,14 +175,14 @@ fun GalleryViewerToolbar(
                     )
                 }
             }
-            IconButton(onClick = onInfo) {
+            VeneraIconButton(onClick = onInfo) {
                 Icon(
                     imageVector = Icons.Outlined.Info,
                     contentDescription = "关于这张图",
                     tint = tokens.color.textPrimary,
                 )
             }
-            IconButton(onClick = onShare, enabled = !sharing) {
+            VeneraIconButton(onClick = onShare, enabled = !sharing) {
                 if (sharing) {
                     // 与「下载」同一形态：原档要先下再落盘，那几秒必须有个在做事的读数。
                     Box(contentAlignment = Alignment.Center) {

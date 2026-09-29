@@ -1380,3 +1380,61 @@ outlined 轮廓不同，种子色输入框与"添加屏蔽项"那两行要在真
 Miuix 档下形态要看一眼；② 评论 sheet 里三颗 `VeneraTextButton` 的原生最小尺寸 58×40dp 会不会把
 列表撑疏；③ 破坏性按钮统一到 error 色后，"清除/注销/删除"三处的观感；④ 详情页评分弹窗与新建
 收藏夹弹窗改走 `WindowDialog` 后的进出场与遮挡。
+
+---
+
+## 批次 F（2026-09-30）：B6 阅读器 + 画廊迁移，外加"按钮小了"两处成因
+
+### 用户看图报的两条尺寸成因（先记账，因为它们是全仓性的）
+
+| 症状 | 根因（一句话） | 修法 |
+|---|---|---|
+| 图标按钮偏小 | `VeneraIconButton` 吃了 miuix 的 `IconButtonDefaults.MinWidth/MinHeight = 40dp`，而 M3 `IconButton` 默认 **48dp**（也是 Android 触达位下限）⇒ 换后端那一刻全仓每一颗图标按钮触摸区各缩 8dp | 尺寸钉在**唯一出口**（转发件内部传 `minWidth/minHeight = 48.dp`），不在 14+ 个调用点各写一遍 |
+| 源管理那颗启用开关被压扁 | 调用点把它显式约束成 `44×28dp`（M3 开关的压缩版），而 miuix 轨道是 `49×28dp` | 删掉约束，尺寸交回各家原生 |
+
+同族第三条：画廊搜索区的 4 处 `clickable(indication = ripple())` —— **`MiuixTheme` 自己
+provide 了 `LocalIndication = MiuixIndication`**（`theme/MiuixTheme.kt:36`），显式写 `ripple()`
+等于在 Miuix 主题上强按一层 M3 水波。改成不传，交回环境。
+
+### 转发件本次扩的色位（两家各有落点，不是单侧忽略）
+
+- `VeneraSwitch(checkedThumbColor: Color? = null)`：M3 `SwitchDefaults.colors(checkedThumbColor=…)`
+  ↔ miuix `switchColors().copy(checkedThumbColor=…)` —— **两家字段同名**，这是运气好。
+- `VeneraSlider(thumbColor / activeTrackColor / inactiveTrackColor)`：M3 的 active/inactive
+  就是 miuix 的 `foregroundColor`/`backgroundColor`（名字不同、语义同）。
+  实现细节记一笔：miuix 的 `SliderColors`/`SwitchColors` 字段是 **`private val`**，
+  读不到 `base.thumbColor`，所以只能"逐位 copy"，不能 `?: base.xxx`；
+  M3 侧反过来可以直接把 null 翻成 `Color.Unspecified`（它的工厂认这个哨兵）。
+- null 一律 = 用各家默认，转发件**不自带任何色值**，否则另一档会被连带改脸。
+
+### 迁移量与剩余缺口
+
+- 画廊：`IconButton` 11 → `VeneraIconButton`、`Slider` 1 → `VeneraSlider`、
+  收藏墙两枚 `AlertDialog` → `VeneraDialog`（"移除/清空"原来各用 `actionFavorite` 色，
+  现统一到 `colorScheme.error`，与批次 E 那三颗同一条口径）、`Surface` 1 → 换 miuix import。
+- 阅读器：`Switch` 4 + `Slider` 2 → 转发件（带上面的色位），并清掉一枚没人用的 `Tab` 导入。
+- 登记保留（各有理由，写在文件导入区）：
+  阅读器 3 枚 `ModalBottomSheet`；画廊信息 sheet 的 `ModalBottomSheet` + `DropdownMenu`；
+  "看哪一期"弹窗的 `DatePicker`（miuix 只有 `NumberPicker`，日历没有对应物，整枚弹窗含内部两颗按钮一起留）；
+  `ChapterCommentsSheet` 整块（阅读器自绘深色浮层，边框/文字色全靠 M3 的 `shape`/`colors` 覆盖表达）；
+  各页 `Icon` 与加载指示器沿用既有裁决。
+- 全站 M3 直连（同一逐词口径）：**474 → 418 → 384**。B4/B6 域内已无可迁件，剩余全是登记缺口 + `Icon` + 指示器。
+
+### 规则更正一条
+
+`VeneraGlass.kt` 头注写的"Kyant 只准出现在 `components/backdrop/`"与实况不符：
+保护域 `feature/Navigation.kt` 自 `4270487` 起就 import Kyant（底栏录制层接线）。
+已把头注改成"唯一在册例外"，并写明**别拿它当先例往别的文件加 Kyant、也别当违规去清理**。
+
+### 自查又犯一次的那类错
+
+批量脚本插 import 时用了 `findIndex(...) < 0 ? 0 : i` 这类兜底 —— 锚点没找到就往**文件头/文件尾**插，
+`CoverViewerScreen.kt` 被插进函数体第 124 行、`VeneraReaderScreen.kt` 被插到 `package` 之前。
+编译期才现形。已写一条全仓扫描（"import 行不得出现在 import 块之外"）并顺手发现：
+`ComicSourceDao.kt` / `PersistentCookieJar.kt` / `ReaderZoomState.kt` 三个文件带 **UTF-8 BOM**，
+按 `^package` 匹配会把它们误判成异常 —— 扫描脚本要容忍 BOM。
+
+构建：`testDebugUnitTest` **55 套 / 402 条 / 0 失败 / 0 错误** / `assembleDebug` 绿；
+material3 与 miuix 版本未动；全仓无文件同时 import 两家 blur。
+真机待验在批次 E 那 4 条之上再加 3 条：① 图标按钮回到 48dp 后，大图页工具栏五颗并排是否挤；
+② 阅读器开关滑块改为主题主色（Miuix 档）后的对比度；③ 画廊收藏墙两枚确认弹窗的进出场。

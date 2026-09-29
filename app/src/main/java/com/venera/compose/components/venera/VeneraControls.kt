@@ -23,6 +23,10 @@ import androidx.compose.material3.AlertDialog as Md3AlertDialog
 import androidx.compose.material3.IconButton as Md3IconButton
 import androidx.compose.material3.Slider as Md3Slider
 import androidx.compose.material3.Switch as Md3Switch
+import androidx.compose.material3.SliderDefaults as Md3SliderDefaults
+import androidx.compose.material3.SwitchDefaults as Md3SwitchDefaults
+import top.yukonga.miuix.kmp.basic.SliderDefaults as MiuixSliderDefaults
+import top.yukonga.miuix.kmp.basic.SwitchDefaults as MiuixSwitchDefaults
 import androidx.compose.material3.TextButton as Md3TextButton
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
 import top.yukonga.miuix.kmp.basic.Slider as MiuixSlider
@@ -69,11 +73,28 @@ fun VeneraSwitch(
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    checkedThumbColor: Color? = null,
 ) {
     if (useMiuixWidgets) {
-        MiuixSwitch(checked = checked, onCheckedChange = onCheckedChange, modifier = modifier, enabled = enabled)
+        MiuixSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = modifier,
+            enabled = enabled,
+            colors = checkedThumbColor?.let {
+                MiuixSwitchDefaults.switchColors().copy(checkedThumbColor = it)
+            } ?: MiuixSwitchDefaults.switchColors(),
+        )
     } else {
-        Md3Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = modifier, enabled = enabled)
+        Md3Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = modifier,
+            enabled = enabled,
+            colors = checkedThumbColor?.let {
+                Md3SwitchDefaults.colors(checkedThumbColor = it)
+            } ?: Md3SwitchDefaults.colors(),
+        )
     }
 }
 
@@ -90,8 +111,21 @@ fun VeneraSlider(
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
     onValueChangeFinished: (() -> Unit)? = null,
+    thumbColor: Color? = null,
+    activeTrackColor: Color? = null,
+    inactiveTrackColor: Color? = null,
 ) {
+    // 三家同义的位子在两家里名字不同：M3 的 active/inactiveTrackColor 就是 miuix 的
+    // foreground/background（miuix `SliderColors` 只有前景/背景轨道两色）。
+    // 传 null 一律落回**各自后端的默认值**，转发件不自带色值 —— 否则另一档会被连带改脸。
     if (useMiuixWidgets) {
+        // miuix 的 SliderColors 字段是 private val，读不到只能逐位 copy（copy 的形参是公开的）。
+        val base = MiuixSliderDefaults.sliderColors()
+        val withThumb = if (thumbColor != null) base.copy(thumbColor = thumbColor) else base
+        val withActive =
+            if (activeTrackColor != null) withThumb.copy(foregroundColor = activeTrackColor) else withThumb
+        val miuixColors =
+            if (inactiveTrackColor != null) withActive.copy(backgroundColor = inactiveTrackColor) else withActive
         MiuixSlider(
             value = value,
             onValueChange = onValueChange,
@@ -100,8 +134,10 @@ fun VeneraSlider(
             valueRange = valueRange,
             steps = steps,
             onValueChangeFinished = onValueChangeFinished,
+            colors = miuixColors,
         )
     } else {
+        // M3 的工厂自己认 `Color.Unspecified` = 用主题默认，所以 null 直接翻成它即可。
         Md3Slider(
             value = value,
             onValueChange = onValueChange,
@@ -110,6 +146,11 @@ fun VeneraSlider(
             valueRange = valueRange,
             steps = steps,
             onValueChangeFinished = onValueChangeFinished,
+            colors = Md3SliderDefaults.colors(
+                thumbColor = thumbColor ?: Color.Unspecified,
+                activeTrackColor = activeTrackColor ?: Color.Unspecified,
+                inactiveTrackColor = inactiveTrackColor ?: Color.Unspecified,
+            ),
         )
     }
 }

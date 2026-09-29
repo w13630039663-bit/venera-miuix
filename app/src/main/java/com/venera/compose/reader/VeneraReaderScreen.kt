@@ -47,12 +47,12 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+// ── 阅读器仍保留的 M3 直连（登记在册，不是漏做）──
+// · ModalBottomSheet ×3（章节表 / 阅读设置 / 亮度色彩调节）：miuix 无窗口级底部面板件。
+// · Icon ×8：玻璃挂外壳不挂图标；指示器沿用「统一走波浪环」的既有裁决。
+// 本屏的开关与滑条已走 VeneraSwitch / VeneraSlider（含 checkedThumbColor 与三档轨道色，
+// 两家各有落点，见 components/venera/VeneraControls.kt）。
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -118,6 +118,8 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import com.venera.compose.components.venera.VeneraSlider
+import com.venera.compose.components.venera.VeneraSwitch
 
 // 前瞻预加载页数已改为偏好 pref_preload_image_count（默认 5）：
 // 动态页每页都要跨 WebView 调一次源 JS 再由源发起网络请求，串行预取会把翻页等待线性叠加，
@@ -904,18 +906,16 @@ private fun ReaderSessionContent(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(modifier = Modifier.height(tokens.spacing.space1))
-                            Slider(
+                            VeneraSlider(
                                 value = currentPageIndex.toFloat(),
                                 onValueChange = { targetPage ->
                                     jumpToPage(targetPage.toInt())
                                 },
                                 valueRange = 0f..(currentChapter.pages.size - 1).coerceAtLeast(1).toFloat(),
                                 steps = (currentChapter.pages.size - 2).coerceAtLeast(0),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = tokens.color.primary,
-                                    activeTrackColor = tokens.color.primary,
-                                    inactiveTrackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.25f)
-                                ),
+                                thumbColor = tokens.color.primary,
+                                activeTrackColor = tokens.color.primary,
+                                inactiveTrackColor = StatusColors.OnBadgeSurface.copy(alpha = 0.25f),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1431,16 +1431,14 @@ private fun ReaderSessionContent(
                             Text(text = "页面间隔", fontSize = tokens.type.body, color = StatusColors.OnBadgeSurface)
                             Text(text = "${pageGapDp.toInt()} dp", fontSize = tokens.type.sectionTitle, color = tokens.color.primary)
                         }
-                        Slider(
+                        VeneraSlider(
                             value = pageGapDp,
                             onValueChange = {
                                 prefs.setPageGapDp(it)
                             },
                             valueRange = 0f..32f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = tokens.color.primary,
-                                activeTrackColor = tokens.color.primary
-                            )
+                            thumbColor = tokens.color.primary,
+                            activeTrackColor = tokens.color.primary
                         )
                     }
 
@@ -1456,12 +1454,12 @@ private fun ReaderSessionContent(
                             Text(text = "夜间反色滤镜", fontSize = 14.sp, color = Color.White)
                             Text(text = "黑白互换保护夜间视力", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
-                        Switch(
+                        VeneraSwitch(
                             checked = isNightFilter,
                             onCheckedChange = {
                                 prefs.setNightFilter(it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
                         )
                     }
 
@@ -1477,12 +1475,12 @@ private fun ReaderSessionContent(
                             Text(text = "保持屏幕常亮", fontSize = 14.sp, color = Color.White)
                             Text(text = "阅读时不自动锁屏", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
-                        Switch(
+                        VeneraSwitch(
                             checked = keepScreenOn,
                             onCheckedChange = {
                                 prefs.setKeepScreenOn(it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
                         )
                     }
 
@@ -1498,12 +1496,12 @@ private fun ReaderSessionContent(
                             Text(text = "音量键翻页", fontSize = 14.sp, color = Color.White)
                             Text(text = "音量下键下一页，音量上键上一页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
-                        Switch(
+                        VeneraSwitch(
                             checked = volumeKeyTurn,
                             onCheckedChange = {
                                 prefs.setVolumeKeyTurn(it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
                         )
                     }
 
@@ -1519,12 +1517,12 @@ private fun ReaderSessionContent(
                             Text(text = "点击屏幕边缘翻页", fontSize = 14.sp, color = Color.White)
                             Text(text = "左右两侧快速点击翻页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
-                        Switch(
+                        VeneraSwitch(
                             checked = clickToTurn,
                             onCheckedChange = {
                                 prefs.setClickToTurn(it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MiuixTheme.colorScheme.primary)
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
                         )
                     }
                 }

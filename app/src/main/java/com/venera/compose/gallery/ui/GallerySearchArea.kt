@@ -46,16 +46,20 @@ import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
+// ── 本文件仍保留的 M3 直连（登记在册）──
+// · DatePicker + rememberDatePickerState：miuix 只有 NumberPicker，日历面没有对应物，
+//   所以"看哪一期"整枚弹窗（含它内部的两颗按钮）保持 M3 —— 换后端会静默丢掉日历。
+// · DropdownMenu / DropdownMenuItem：miuix 只有弹层模型不同的 ListPopup。
+// · 按压反馈这里**不再写死 ripple()**：MiuixTheme 自己 provide 了 LocalIndication = MiuixIndication，
+//   显式传 ripple() 等于在 Miuix 主题上强按一层 M3 水波，所以交回环境。
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
+import top.yukonga.miuix.kmp.basic.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,6 +96,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
@@ -1234,7 +1239,7 @@ private fun SuggestionRow(
             .heightIn(min = tokens.spacing.listRowMinHeight)
             .clip(shape)
             .background(if (highlighted) tokens.color.surfaceVariant else Color.Transparent)
-            .clickable(interactionSource = interactionSource, indication = ripple()) { onPick(suggestion) }
+            .clickable(interactionSource = interactionSource) { onPick(suggestion) }
             .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space2),
     ) {
         Text(
@@ -1338,7 +1343,6 @@ private fun RecommendationRows(
                     .clip(RoundedCornerShape(tokens.shape.small))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = ripple(),
                     ) { onPick(site, tags) }
                     .padding(start = tokens.spacing.space4, end = tokens.spacing.space1),
             ) {
@@ -1391,7 +1395,6 @@ private fun HistoryHeader(onClearAll: () -> Unit) {
                 .clip(RoundedCornerShape(tokens.shape.small))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(),
                 ) { onClearAll() }
                 .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4),
         )
@@ -1446,7 +1449,7 @@ private fun HistoryRow(
             .fillMaxWidth()
             .heightIn(min = tokens.spacing.listRowMinHeight)
             .clip(shape)
-            .clickable(interactionSource = interactionSource, indication = ripple()) { onPick() }
+            .clickable(interactionSource = interactionSource) { onPick() }
             .padding(start = tokens.spacing.space4, end = tokens.spacing.space1),
     ) {
         Icon(
@@ -1471,7 +1474,7 @@ private fun HistoryRow(
             color = tokens.color.textTertiary,
             maxLines = 1,
         )
-        IconButton(onClick = onRemove) {
+        VeneraIconButton(onClick = onRemove) {
             Icon(
                 imageVector = Icons.Outlined.Close,
                 contentDescription = "删掉这条历史",
