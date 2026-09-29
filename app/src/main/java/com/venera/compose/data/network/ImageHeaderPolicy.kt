@@ -118,7 +118,18 @@ object ImageHeaderPolicy {
 
     fun clear() = perHost.clear()
 
-    /** 取某个 URL 应附加的请求头（运行时发布优先于内置；长后缀赢） */
+    /**
+     * 取某个 URL 应附加的请求头（运行时发布优先于内置；长后缀赢）。
+     *
+     * **`Accept-Encoding` 在这里一律剔除**，因为这张表的产物只有一类消费者：
+     * 往 OkHttp 请求上贴头。而 OkHttp 的透明解压有个前提 —— 只有当这个头是**它自己**补的，
+     * 它才会在响应侧拆掉 `Content-Encoding`；调用方（这里是源 JS 照抄的浏览器头）自己写上，
+     * OkHttp 就当作"编码你自己负责"，把 **gzip 字节原样交出来**。
+     * 2026-09-29 真机读数：禁漫正文页首 4 字节 `1f8b08`、`inJustDecodeBounds` 读出 `-1x-1`，
+     * 于是每张图都倒在"去混淆失败"那一句上 —— 病根从来不在混淆算法。
+     * 剔除放在这个函数而不是三个贴头点各写一遍：漏一处就复发一次（下载侧 2026 修过同类病，
+     * 当时取图侧没跟着修，就是"各写一遍"的代价）。
+     */
     fun headersFor(url: String): Map<String, String> {
         val host = hostOf(url)?.lowercase() ?: return emptyMap()
         val runtime = perHost.entries
@@ -130,7 +141,7 @@ object ImageHeaderPolicy {
             .sortedByDescending { it.key.length }
             .firstOrNull()?.value
         val merged = base.orEmpty() + runtime.orEmpty()
-        return merged
+        return merged.filterKeys { !it.equals("Accept-Encoding", ignoreCase = true) }
     }
 
     /**

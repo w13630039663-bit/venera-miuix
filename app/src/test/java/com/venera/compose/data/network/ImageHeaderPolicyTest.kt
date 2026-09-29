@@ -57,4 +57,53 @@ class ImageHeaderPolicyTest {
         assertTrue(ImageHeaderPolicy.headersFor("not-a-url").isEmpty())
         assertTrue(ImageHeaderPolicy.headersFor("https://example.com/x.jpg").isEmpty())
     }
+
+    @Test
+    fun `源 JS 发布的 Accept-Encoding 不能流进图片请求`() {
+        // 2026-09-29 真机读数：禁漫正文页每张都报 "JM 去混淆失败"，
+        // 首 4 字节是 `1f8b08`（gzip 魔数）、inJustDecodeBounds 读出 -1x-1。
+        // 根因不在去混淆算法：禁漫源 JS 的 getImgHeaders 照抄浏览器头，里面有
+        // `Accept-Encoding: gzip`。OkHttp 只在**它自己**补这个头时才顺手透明解压；
+        // 调用方自己写上，它就当作"用户自理"，把压缩字节原样交出来 ——
+        // 于是 BitmapFactory 解不出尺寸，图一张都出不来。
+        // 下载侧早已按同一口径修过（DownloadManager 里那句"绝不能传入显式 Accept-Encoding"），
+        // 取图侧当时漏了，这条把不变量钉在**唯一的出口**上，免得再漏第三处。
+        try {
+            ImageHeaderPolicy.publish(
+                "cdn-msp2.jmapiproxy1.cc",
+                mapOf(
+                    "Referer" to "https://localhost/",
+                    "Accept-Encoding" to "gzip",
+                    "User-Agent" to "UA/1",
+                ),
+            )
+            val h = ImageHeaderPolicy.headersFor(
+                "https://cdn-msp2.jmapiproxy1.cc/media/photos/1467503/00005.webp"
+            )
+            assertTrue("防盗链表被剔除逻辑误伤：Referer 没了，实际=$h", h.containsKey("Referer"))
+            assertTrue(
+                "UA 优先级链（VeneraNetworkClient:168）靠这张表取 UA，它必须还在",
+                h.containsKey("User-Agent"),
+            )
+            assertTrue("编码协商头漏进来了，实际=$h", h.keys.none { it.equals("Accept-Encoding", true) })
+        } finally {
+            ImageHeaderPolicy.clear()
+        }
+    }
+
+    @Test
+    fun `编码头的剔除不分大小写`() {
+        // 头名是大小写不敏感的；只挡 "Accept-Encoding" 这一种写法等于没挡。
+        try {
+            for (name in listOf("Accept-Encoding", "accept-encoding", "ACCEPT-ENCODING")) {
+                ImageHeaderPolicy.clear()
+                ImageHeaderPolicy.publish("x.test", mapOf(name to "gzip, br", "Referer" to "https://x.test/"))
+                val h = ImageHeaderPolicy.headersFor("https://x.test/a.jpg")
+                assertTrue("$name 没被剔除，实际=$h", h.keys.none { it.equals("Accept-Encoding", true) })
+                assertTrue("$name 那轮的 Referer 被误伤", h.containsKey("Referer"))
+            }
+        } finally {
+            ImageHeaderPolicy.clear()
+        }
+    }
 }

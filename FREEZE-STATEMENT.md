@@ -1246,3 +1246,26 @@ C2 四条**没有一条在真机上跑过**，待验清单见方案 §七末尾�
 否则没有采样源、两档看起来一样会被误读成"玻璃没生效"。
 **本轮 B1~B3 一次都没在真机上看过**：七条待验清单（含"玻璃透不透""切回 SOLID 无残影""长按还能进多选"
 "MIUIX 档弹窗的返回键归属"）列在方案 §八。
+
+## 2026-09-29 追加（修复）：禁漫正文页全失败 = 源 JS 的 `Accept-Encoding` 关掉了 OkHttp 透明解压
+
+用户读数：**只有禁漫坏，进阅读器后全部页加载失败**，别的源正常。
+
+**根因从来不在混淆算法**。定死它的是第一轮成因日志（`2758c2d` 那笔只加读数、没改行为）：
+`Content-Type=image/webp` 而**首 4 字节 = `1f8b08`**（gzip 魔数）、`inJustDecodeBounds` 读出 `-1x-1`。
+禁漫源 JS 的 `getImgHeaders` 照抄浏览器头，内含 `Accept-Encoding: gzip`；OkHttp 只在
+**这个头是它自己补的**时才在响应侧拆掉 `Content-Encoding`，调用方自己写上就等于宣告"编码我自己负责"，
+于是 gzip 字节原样落到 `BitmapFactory` → 解不出尺寸 → `decodeAndDescramble` 两条调用都返回 null
+→ 取流层按"绝不把未还原字节交下去"抛错 → 全本每页失败。
+**为什么只有禁漫坏**：下载侧 2026 年已为同一类病修过（`DownloadManager:544` 那句
+"绝不能向 OkHttp 传入显式 `Accept-Encoding`"），当时**取图侧三个贴头点没跟着改**。
+
+修在**唯一出口** `ImageHeaderPolicy.headersFor`，不在三处各写一遍过滤（`VeneraImageFetcher:57`、
+`ImagePipelinePolicy:331`、`ImageHeaderInterceptor:172` 都从它取；"各写一遍"正是上一次漏修的原因）。
+`headersFor` 仍保留 `Referer`/`User-Agent`——UA 优先级链（`VeneraNetworkClient:168`）依赖这张表取 UA。
+
+TDD 走的是先红后绿：新增两条用例（`源 JS 发布的 Accept-Encoding 不能流进图片请求`、
+`剔除不分大小写`）先跑红，实现后转绿；原有 4 条 host 匹配用例没被误伤。
+构建：**53 套 / 391 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+真机（PJZ110，`lastUpdateTime 22:49:43`）：用户判读"正常了"，且 22:49 之后**新进程 0 条**"去混淆失败"
+（旧 200 条全在 22:40:58 那个修复前进程上）。
