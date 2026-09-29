@@ -215,12 +215,18 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         sitesDone = mutableSetOf()
         val round = seed
         loadJob = viewModelScope.launch(Dispatchers.IO) {
+            // 先抓住"这一笔自身的 Job"再进 finally：`withContext(NonCancellable)` 会把
+            // `coroutineContext[Job]` 换成 `NonCancellable` **本身**，在块里现读现比就是
+            // 拿一个恒不相等的东西比 → 标志永远清不掉。2026-09-29 那三条真机读数
+            // （下拉环转不停 / 同时两枚加载图标 / 墙上只摆 40 张）同一根因，
+            // 库行为钉在 `NonCancellableJobIdentityTest`。
+            val self = coroutineContext[Job]
             try {
                 val outcome = fetchPage(nextPage = 1, round = round, queries = queries)
                 applyPage(outcome, nextPage = 1, round = round)
             } finally {
                 withContext(NonCancellable) {
-                    if (loadJob === coroutineContext[Job]) isLoading = false
+                    if (loadJob === self) isLoading = false
                 }
             }
         }
@@ -243,11 +249,13 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         loadMoreError = null
         val round = seed
         moreJob = viewModelScope.launch(Dispatchers.IO) {
+            // 同一处坑、同一修法，理由见上面 load() 里那段。
+            val self = coroutineContext[Job]
             try {
                 applyPage(fetchPage(nextPage, round, queries), nextPage = nextPage, round = round)
             } finally {
                 withContext(NonCancellable) {
-                    if (moreJob === coroutineContext[Job]) isLoadingMore = false
+                    if (moreJob === self) isLoadingMore = false
                 }
             }
         }

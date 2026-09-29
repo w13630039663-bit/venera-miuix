@@ -412,8 +412,6 @@ internal data class GelbooruDto(
             fileSize = 0,
             md5 = md5,
             fileExt = ext,
-            // 本站只有一串平铺 tags，没有分类字段（实测）→ 只能一桶，与 yande.re 同理。
-            tagGroups = listOfNotNull(galleryTagGroup("标签", decodeHtmlEntities(tags))),
             // 站方不 video 时长（实测字段表里没有 duration）→ null，不当 0。
             durationSeconds = null,
         )

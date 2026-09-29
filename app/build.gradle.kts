@@ -116,6 +116,8 @@ dependencies {
     // 图片：Coil 3 + OkHttp 引擎（按域注入防盗链头）
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    // GIF 解码器：只挂到画廊那把 ImageLoader 上（漫画侧那把一个字不改，隔离裁决）。
+    implementation(libs.coil.gif)
     // 画廊的 mp4 播放（Danbooru 日榜里约 5% 是视频）。只要 exoplayer + ui 两个件，
     // 不引 media3-session / cast / downloader —— 那些会白背一截包体。
     implementation(libs.media3.exoplayer)

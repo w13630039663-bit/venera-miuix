@@ -2,14 +2,14 @@ package com.venera.compose.feature.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
 import kotlinx.coroutines.launch
@@ -99,22 +99,26 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                 OutlinedTextField(input, { input = it; error = null }, label = { Text("添加屏蔽项") },
                     isError = error != null, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !busy)
                 if (error != null) Text(error!!)
-                TextButton(enabled = !busy && input.isNotBlank(), onClick = {
-                    val pattern = input.trim()
-                    if (regexMode && runCatching { Regex(pattern) }.isFailure) {
-                        // 正则在写库前校验：坏模式会静默永不命中，比报错更难查。
-                        error = "正则表达式无法编译"
-                    } else if (rules.any { it.type == type && it.pattern.equals(pattern, true) }) {
-                        error = "该屏蔽项已经存在"
-                    } else {
-                        busy = true
-                        scope.launch {
-                            try {
-                                if (manager.addRule(type, pattern, regexMode) >= 0) input = "" else error = "保存失败，请重试"
-                            } finally { busy = false }
+                VeneraTextButton(
+                    text = if (busy) "正在保存" else "添加",
+                    enabled = !busy && input.isNotBlank(),
+                    onClick = {
+                        val pattern = input.trim()
+                        if (regexMode && runCatching { Regex(pattern) }.isFailure) {
+                            // 正则在写库前校验：坏模式会静默永不命中，比报错更难查。
+                            error = "正则表达式无法编译"
+                        } else if (rules.any { it.type == type && it.pattern.equals(pattern, true) }) {
+                            error = "该屏蔽项已经存在"
+                        } else {
+                            busy = true
+                            scope.launch {
+                                try {
+                                    if (manager.addRule(type, pattern, regexMode) >= 0) input = "" else error = "保存失败，请重试"
+                                } finally { busy = false }
+                            }
                         }
-                    }
-                }) { Text(if (busy) "正在保存" else "添加") }
+                    },
+                )
             }
         }
         SettingsGroup("已保存的屏蔽项") {
@@ -126,10 +130,23 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
         }
     }
     val id = deleting
-    if (id != null) AlertDialog(onDismissRequest = { deleting = null }, title = { Text("删除屏蔽项？") },
-        text = { Text("删除后该规则将不再拦截匹配内容。") },
-        confirmButton = { TextButton(onClick = {
-            deleting = null
-            scope.launch { if (!manager.deleteRule(id)) Toast.makeText(context, "删除失败，请重试", Toast.LENGTH_SHORT).show() }
-        }) { Text("删除") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } })
+    if (id != null) {
+        VeneraDialog(
+            show = true,
+            onDismissRequest = { deleting = null },
+            title = "删除屏蔽项？",
+            content = { Text("删除后该规则将不再拦截匹配内容。") },
+            confirmText = "删除",
+            onConfirm = {
+                deleting = null
+                scope.launch {
+                    if (!manager.deleteRule(id)) {
+                        Toast.makeText(context, "删除失败，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            dismissText = "取消",
+            onDismiss = { deleting = null },
+        )
+    }
 }

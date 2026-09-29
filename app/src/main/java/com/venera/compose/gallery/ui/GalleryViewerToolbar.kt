@@ -1,12 +1,21 @@
 package com.venera.compose.gallery.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -14,17 +23,26 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.Text
 
 /**
  * 满屏播放器底部那一整条 **Dock**（用户 2026-09-25：去掉顶栏，
@@ -45,6 +63,12 @@ import com.venera.compose.ui.tokens.VeneraTokens
  *   外加一条单页地址。原档要先落一次盘，所以它与「下载」同一形态：
  *   进行中把图标换成波浪环并吃掉点击 —— 视频 16~26 MB 那几秒里，
  *   一个没有任何反馈的钮就是"点了没反应"。
+ * - `▶ / ⏸` —— 自动连播的开关（**点**），与这一屏的速度（**长按**展开一条滑条）。
+ *   开启时染主色（与 HD 同一约定）。这一颗改的是**本次浏览**的速度，
+ *   退出大图页就回到「设置 → 画廊 → 大图页 → 自动连播间隔」那一条的默认值 ——
+ *   用户 2026-09-29 拍板：底栏这颗不写回偏好，免得随手一调就把默认值污染了。
+ *   判据在 `GalleryAutoPlay`：到底停、信息面板开着不走、放大态不走、**视频页不走**
+ *   （所以停在视频上时这颗不会自己起播，这是刻意的，不是漏了）。
  *
  * 心形**排在最前**：它是这一条里唯一的"状态"钮（其余四个都是"做一件事"），
  * 单独一格也和内容动作区分开。
@@ -56,6 +80,9 @@ fun GalleryViewerToolbar(
     isFavorite: Boolean,
     saving: Boolean,
     sharing: Boolean,
+    autoPlaySec: Int,
+    onToggleAutoPlay: () -> Unit,
+    onAutoPlaySecChange: (Int) -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
     onDownload: () -> Unit,
@@ -63,7 +90,9 @@ fun GalleryViewerToolbar(
     onShare: () -> Unit,
 ) {
     val tokens = VeneraTokens
-    Row(
+    // 速度面板的开关只属于这条 dock：它不跨页、不进存档，关掉面板不影响连播本身。
+    var speedOpen by remember { mutableStateOf(false) }
+    Column(
         modifier = Modifier
             .navigationBarsPadding()
             .padding(
@@ -71,8 +100,35 @@ fun GalleryViewerToolbar(
                 end = tokens.spacing.screenHorizontal,
                 bottom = tokens.spacing.space5,
             ),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.Start,
     ) {
+        // ── 长按播放钮展开的那一条：只在需要时占位，平时这条 dock 还是原来那一截 ──
+        AnimatedVisibility(
+            visible = speedOpen,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(bottom = tokens.spacing.space2)
+                    .clip(RoundedCornerShape(tokens.shape.extraLarge))
+                    .background(tokens.color.surface)
+                    .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("连播", fontSize = tokens.type.caption, color = tokens.color.textSecondary)
+                Slider(
+                    value = autoPlaySec.toFloat().coerceIn(AUTOPLAY_MIN_SEC.toFloat(), AUTOPLAY_MAX_SEC.toFloat()),
+                    onValueChange = { onAutoPlaySecChange(it.roundToInt().coerceIn(AUTOPLAY_MIN_SEC, AUTOPLAY_MAX_SEC)) },
+                    valueRange = AUTOPLAY_MIN_SEC.toFloat()..AUTOPLAY_MAX_SEC.toFloat(),
+                    steps = AUTOPLAY_MAX_SEC - AUTOPLAY_MIN_SEC - 1,
+                    modifier = Modifier
+                        .width(160.dp)
+                        .padding(horizontal = tokens.spacing.space3),
+                )
+                Text("${autoPlaySec} 秒", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
+            }
+        }
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(tokens.shape.extraLarge))
@@ -144,6 +200,34 @@ fun GalleryViewerToolbar(
                     )
                 }
             }
+            // ── 自动连播：点 = 开/关，长按 = 展开上面那条速度 ──
+            // 这颗不用 IconButton：那个不吃 onLongClick。同尺寸的 Box + combinedClickable
+            // 是仓库里已有的做法（`components/ComicTileLayout.kt:66` 那颗长按钮同一形）。
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        onClick = onToggleAutoPlay,
+                        onLongClick = { speedOpen = !speedOpen },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (autoPlaySec > 0) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                    contentDescription = if (autoPlaySec > 0) "停止连播（长按可调速度）" else "开始连播（长按可调速度）",
+                    // 与 HD 那颗同一条约定：图标自己没有开关形态，不染色就读不出现在是开还是关。
+                    tint = if (autoPlaySec > 0) tokens.color.primary else tokens.color.textPrimary,
+                )
+            }
         }
     }
 }
+
+/**
+ * 连播速度的上下界（秒）。地板 1 秒：再快就不是"看图"而是放幻灯片；
+ * 上限 15 秒比设置页那条（0~30，0=关）窄 —— 底栏这颗是"看着看着顺手调快调慢"，
+ * 不是拿它当"每半分钟翻一张"的定时器，那种需求归设置页。
+ */
+private const val AUTOPLAY_MIN_SEC = 1
+private const val AUTOPLAY_MAX_SEC = 15

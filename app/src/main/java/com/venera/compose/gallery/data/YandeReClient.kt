@@ -229,8 +229,5 @@ internal data class YandeReDto(
         fileSize = fileSize,
         md5 = md5,
         fileExt = fileExt,
-        // 本站**没有**分类字段（实测 44 个键里不含 tag_string_*），所以只出「标签」一桶。
-        // 不硬造"通用/角色"那种假分组 —— 摆出来就是骗人。
-        tagGroups = listOfNotNull(galleryTagGroup("标签", tags)),
     )
 }

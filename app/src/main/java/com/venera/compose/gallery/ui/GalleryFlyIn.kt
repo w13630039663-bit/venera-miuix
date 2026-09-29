@@ -21,14 +21,26 @@ import androidx.compose.ui.graphics.asImageBitmap
  * 而卡片是 Composable，框架会去搬整个 `ComposeView`（不是一张图）。所以只能自带一层。
  *
  * 与 §九 被否掉的"一次性截图当背景"不是一回事：背景要的是**活的**那一屏（交给窗口
- * blur-behind 实时糊），而这里要的**本来就是起点那一帧**，冻结才是对的 ——
- * 它只负责"整页从屏幕下沿升上来"那半秒里画面不空，大图一到位就换掉。
+ * blur-behind 实时糊），而这里要的**本来就是起点那一帧**，冻结才是对的。
+ * 2026-09-29 第四轮起它多带一个 [origin]：那一帧不再只是"垫着不空"，而是**从卡片原位
+ * 飞到大图位置**的那个飞行体 —— 跨窗口做不了真共享元素，那就把它的两样输入
+ * （起点那一帧 + 起点矩形）自己递过去，落地后交叉淡入真图，观感同一条。
  *
  * 只截卡片那一块矩形（画布平移后整屏只写进这张小位图），不占整屏内存。
  */
 object GalleryFlyIn {
 
     var payload by mutableStateOf<ImageBitmap?>(null)
+        private set
+
+    /**
+     * 起点那张卡在**窗口坐标**里的矩形 —— 共享元素那一头要的"从哪儿飞过来"。
+     *
+     * 两个窗口都是 edge-to-edge 全屏（`VeneraSubActivityBase` 与 MainActivity 同一套），
+     * 所以这一串坐标在对面那扇窗口里可以直接用。真机上若发现整体偏了一档状态栏高度，
+     * 问题就在这一条假设上，改这里而不是在对面加偏移。
+     */
+    var origin by mutableStateOf<Rect?>(null)
         private set
 
     /**
@@ -49,11 +61,13 @@ object GalleryFlyIn {
             canvas.translate(-left.toFloat(), -top.toFloat())
             view.draw(canvas)
             payload = bitmap.asImageBitmap()
+            origin = cardBounds
         }
     }
 
     /** 大图那一档到位就交还，别把这张位图一直攥在手里。 */
     fun consume() {
         payload = null
+        origin = null
     }
 }

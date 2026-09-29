@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -20,8 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.data.prefs.SurfaceMaterial
 import com.venera.compose.data.prefs.TagTranslationMode
 import com.venera.compose.data.prefs.ThemeColorSource
 import com.venera.compose.data.prefs.ThemeMode
@@ -36,6 +37,7 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
     val navigationBar by prefs.navigationBarStyle.collectAsState()
+    val material by prefs.surfaceMaterial.collectAsState()
     val tagTranslation by prefs.tagTranslationMode.collectAsState()
     val colorSource by prefs.themeColorSource.collectAsState()
     val seedArgb by prefs.themeSeedColor.collectAsState()
@@ -104,6 +106,22 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        SettingsGroup("界面材质") {
+            SettingsSelect(
+                "界面材质", material.name,
+                listOf(
+                    "SOLID" to "实色（默认）",
+                    "LIQUID_GLASS" to "Miuix 液态悬浮玻璃",
+                ),
+                { prefs.setSurfaceMaterial(SurfaceMaterial.valueOf(it)) },
+                summary = "这一档管的是**内容层表面**：卡片、设置分组、按钮、胶囊要不要浮在一层" +
+                    "采样自氛围光的玻璃上。它与上面「界面风格」**互不隶属** —— " +
+                    "风格那枚决定色板与形状字号从哪来，这一枚只决定表面透不透，四种组合都成立。" +
+                    "切回「实色」后两套风格与今天**逐像素一致**（玻璃的录制层整个不建）。" +
+                    "底栏的形态仍由下面「导航栏样式」单独决定，两枚**不联动**；" +
+                    "两枚玻璃同时开会多一层全屏离屏采样，低配机建议只开一枚。",
             )
         }
         SettingsGroup("导航栏") {
@@ -267,10 +285,14 @@ private fun ThemeSeedHexInput(onApplied: (Int) -> Unit) {
             isError = error != null,
             modifier = Modifier.weight(1f),
         )
-        TextButton(enabled = text.isNotBlank(), onClick = {
-            val parsed = parseThemeSeedHex(text)
-            if (parsed == null) error = "请输入 6 位十六进制色值" else { error = null; onApplied(parsed) }
-        }) { Text("应用") }
+        VeneraTextButton(
+            text = "应用",
+            enabled = text.isNotBlank(),
+            onClick = {
+                val parsed = parseThemeSeedHex(text)
+                if (parsed == null) error = "请输入 6 位十六进制色值" else { error = null; onApplied(parsed) }
+            },
+        )
     }
     if (error != null) {
         Text(

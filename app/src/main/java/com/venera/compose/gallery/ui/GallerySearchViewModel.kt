@@ -15,13 +15,21 @@ import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
+import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryMerge
+import com.venera.compose.gallery.domain.GalleryRanking
+import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.compose.gallery.domain.GallerySearch
+import com.venera.compose.gallery.domain.GallerySearchContext
+import com.venera.compose.gallery.domain.GallerySearchContextStack
 import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GalleryTagFilter
 import com.venera.compose.gallery.domain.decodeGallerySearchHistory
 import com.venera.compose.gallery.domain.encodeGallerySearchHistory
+import com.venera.compose.gallery.domain.isStaleContext
 import com.venera.compose.gallery.domain.pushGallerySearchHistory
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -61,6 +69,25 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 一次只搜一个站（用户 2026-09-25 拍板）：两站词表不通、标签预算也不同。 */
     var site by mutableStateOf(GallerySite.GELBOORU)
+        internal set
+
+    /**
+     * 当前**排行档**（默认 / 天 / 周 / 月 / 年 / 全部）。
+     *
+     * 它是"怎么看"而不是"搜什么"，所以**不进胶囊、不进历史**（那两处仍只放用户自己选的条件）。
+     * 换档 = 原地重搜，不压上下文栈：栈那一格记的是"换了另一轮搜索"，改排序不算。
+     */
+    var ranking by mutableStateOf(GalleryRanking.NEWEST)
+        internal set
+
+    /**
+     * 月/年档看的是**哪一期**（null = 本期）。
+     *
+     * 只有 [GalleryRankings.supportsHistory] 为真的档会被写进来（日期弹层那一步在
+     * [pickPeriod] 里把关）；换档一律清回本期 —— 从"2024 年 3 月"点「按年排行」，
+     * 用户要的是今年，不是接着看 2024。
+     */
+    var periodAnchor by mutableStateOf<LocalDate?>(null)
         internal set
 
     var mode by mutableStateOf(GallerySearchMode.INPUT)
@@ -121,6 +148,52 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     var searchGeneration by mutableIntStateOf(0)
         internal set
+
+    /**
+     * 用户此刻在这面墙上看到第几张 —— 页面在滚动变化时写进来（[recordScroll]）。
+     *
+     * 只需要"当前这一轮"的那一个数：换轮时 [snapshot] 会把它抄进被压栈的那一份。
+     */
+    private var currentScrollIndex by mutableIntStateOf(0)
+
+    /**
+     * 下一次"结果换了一轮"要把网格放到第几张；null = 回顶部。
+     *
+     * 只有 [popContext] 会写它（弹回上一轮时抄那一轮存下的位置），[beginSearch] 会清掉它
+     * （真发了一笔新查询就该从第 1 张看起）。页面用 [consumeScrollRestore] 取一次即清 ——
+     * 不清就会跟着下一次搜索跑，把新那轮的第 1 页停在旧深处。
+     */
+    private var pendingScrollRestore by mutableStateOf<Int?>(null)
+
+    /** 页面把网格实时位置报回来。 */
+    fun recordScroll(index: Int) {
+        currentScrollIndex = index
+    }
+
+    /** 取走并清空"这一轮该落在第几张"。 */
+    fun consumeScrollRestore(): Int? = pendingScrollRestore.also { pendingScrollRestore = null }
+
+    /**
+     * 「返回能回去的上一轮」栈，**栈顶在前一格**（[GallerySearchContextStack] 里 append 在尾、
+     * 弹出取尾 —— 那个方向由它自己的判据定死，这里只是把它端出来）。
+     *
+     * 为什么要这一格：从前"换一轮上下文"（大图页点标签、点历史、点推荐标签行）都是**整片覆盖**，
+     * 于是搜了 touhou → 点图 → 点画师 wowoguni → 返回，touhou 那 100 张已经不存在了，
+     * 用户怎么按返回都回不去。压栈之后返回逐级回退。
+     *
+     * 顶层页面不摆任何"上一轮"的 affordance —— 这条路径只靠返回键走（见方案 §三·明确不做）。
+     */
+    var contexts by mutableStateOf<List<GallerySearchContext>>(emptyList())
+        internal set
+
+    /**
+     * 第几"轮"上下文。开一轮、弹一轮都 +1。
+     *
+     * 在途响应落地前拿它比对（见 [runSearch] 末尾那道闸）：**只认站点拦不住弹栈之后的串台** ——
+     * touhou 正在飞第 2 页 → 交接进 wowoguni → 返回弹回 touhou，站没变，
+     * 旧那笔若照常落地就会把 100 张来自错误一轮的图接在正确的墙上。
+     */
+    private var contextRound by mutableIntStateOf(0)
 
     /** 一次性提示（标签预算满了、这一站不限预算之类），由页面在动作发生时写。 */
     var notice by mutableStateOf<String?>(null)
@@ -189,6 +262,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // **在途请求要一并掐掉**：不掐的话，旧站那笔响应落地时会把它的结果 append 到新站的上下文里
         // （chips 是新的、图是旧站的），而且补全也会被旧站词表回填 —— 站名与内容对不上最难被发现。
         site = next
+        // 换站后手上这一档在新站**可能压根不存在**（Gelbooru 只有默认与全部两档是真的）。
+        // 不落回默认档就会出现：胶囊上写着「周」、发出去的是全站历年高分 —— 假开关最坏的长相。
+        if (!GalleryRankings.supports(next, ranking)) {
+            ranking = GalleryRanking.NEWEST
+            periodAnchor = null
+        }
         searchJob?.cancel()
         suggestJob?.cancel()
         isSearching = false
@@ -253,27 +332,144 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 大图页点标签递回来时的入口：切站 + 装条件 + 立刻按新条件搜一遍。
      *
+     * 2026-09-28 起它**不再把上一轮覆盖掉**，而是走 [openContext] 把上一轮压栈
+     * （真机报的"搜了 touhou → 点图 → 点画师 → 返回掉回每日推荐、touhou 再也回不去"，
+     * 病因就是这里原先的整片替换 + 返回那一格到底）。
+     *
      * **不拆成两步**（先 [setSite] 再 [setFilters]）：本轮的换站改成"留条件并顺手重搜"之后，
      * 那两步会先拿**上一次那排胶囊**在新站发一笔、紧接着又用新的这排发一笔 ——
      * 同一轮两个请求，正是 [applyFilters] 注释里记的那类返祖现场。
      * 这里一次装到位：条件是新的，只发一笔。
-     *
-     * 装条件绕开 [applyFilters] 的短路（`next == filters` 直接 return）：
-     * 交接的语义就是"换一批条件重搜"，撞上"看起来一样"时也必须真发一次。
      */
-    fun acceptHandoff(site: GallerySite, tags: List<String>) {
-        switchSite(site, reSearch = false)
+    fun acceptHandoff(site: GallerySite, tags: List<String>) =
+        openContext(site, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+
+    /**
+     * **换一轮搜索上下文**的唯一落点（交接、点历史、点推荐标签行三条入口都走这里）。
+     *
+     * 顺序是刻意的：先按 [GallerySearchContextStack.plan] 处置上一轮，再清场装新的。
+     * 反过来写就会出现"屏上已经是新的一轮、上一轮却没存下来"—— 正是本轮要修的那条缺陷。
+     *
+     * @param thenCollapse 装完之后收成一条（[GallerySearchMode.RESULTS]）还是保持当前那一面。
+     *   点历史要收条（用户 2026-09-26 拍板"点历史直接跑并收成一条"）；交接由调用方那侧的
+     *   IME/返回逻辑去收，这里不替用户决定。
+     *
+     * 装条件之后**直接 [runSearch]**、不绕 [applyFilters]：它有一条 `next == filters` 的短路，
+     * 撞上"看起来一样"（连点同一条历史、同一枚标签点两次）就会被短路掉 —— 那正是"点了没反应"
+     * 的另一种长相。[GalleryContextPlan.RESEARCH_IN_PLACE] 那一档依赖的正是这件事。
+     */
+    private fun openContext(nextSite: GallerySite, next: List<GalleryTagFilter>, thenCollapse: Boolean) {
+        when (GallerySearchContextStack.plan(site, filters, nextSite, next)) {
+            GalleryContextPlan.PUSH -> contexts = GallerySearchContextStack.push(contexts, snapshot())
+            // 与当前这一轮逐枚相等：不压栈，只再跑一次。压了就会"白按一次返回"——
+            // 那一屏与上一屏一模一样，用户读不出那一下干了什么。
+            GalleryContextPlan.RESEARCH_IN_PLACE -> Unit
+            // 还没搜过（一枚胶囊都没有）：屏上没有"上一轮"可留，压进去就是一格空壳。
+            GalleryContextPlan.SKIP_EMPTY -> Unit
+        }
+        switchSite(nextSite, reSearch = false)
         active = true
+        // 轮次一 +1：在途那笔（可能是上一轮的续页）落地时会被 [isStaleContext] 作废。
+        contextRound++
         term = ""
         suggestions = emptyList()
         suggestError = null
         notice = null
-        filters = tags.map { GalleryTagFilter(it) }
+        // 新条件 = 新一轮 = 回到默认档：用户点的是"这串标签的结果"，不是"照刚才那个排法再看一遍"。
+        // 上一轮的档级存在快照里，弹栈会带回来。
+        ranking = GalleryRanking.NEWEST
+        periodAnchor = null
+        filters = next
         if (filters.isEmpty()) {
+            // 空条件没有"这一轮"可装（站方对空 tags 回的是"最新一批"，那不是搜索结果）。
             mode = GallerySearchMode.INPUT
             return
         }
+        if (thenCollapse) mode = GallerySearchMode.RESULTS
         runSearch(1)
+    }
+
+    /** 当前这一屏的可逆快照。只读，不改任何东西。 */
+    private fun snapshot() = GallerySearchContext(
+        site = site,
+        filters = filters,
+        results = results,
+        page = page,
+        exhausted = exhausted,
+        droppedNoImage = droppedNoImage,
+        pageSize = pageSize,
+        ranking = ranking,
+        periodAnchor = periodAnchor,
+        scrollIndex = currentScrollIndex,
+    )
+
+    /** 还有没有"上一轮"可回（页面那侧的返回分支按这一档决定弹栈还是关搜索）。 */
+    fun canPopContext(): Boolean = contexts.isNotEmpty()
+
+    /**
+     * 当前排行档的读数，如「周（2026-09-21 ~ 2026-09-28）」；默认档返回 null（没什么可念的）。
+     *
+     * 页尾与空态都念这一句 —— 它同时回答"按什么排的"和"窗口是哪几天"，
+     * 而"本周"这种词不带日期就是说不出对错的读数。
+     */
+    fun rankingReading(): String? {
+        if (ranking == GalleryRanking.NEWEST) return null
+        val label = GalleryRankings.windowLabel(ranking, periodAnchor, LocalDate.now(ZoneOffset.UTC))
+        return if (label == null) ranking.shortLabel else "${ranking.shortLabel}（$label）"
+    }
+
+    /**
+     * 这一屏是不是"设了时间窗口"的档。
+     *
+     * 空态要用它换一句读数：窗口内 0 条与"这一串标签根本搜不到东西"是两件事
+     * （实测两站对**不认识的**伪标签也回空数组，所以"空"本身不指向原因）。
+     */
+    fun rankingWindowActive(): Boolean =
+        GalleryRankings.windowBounds(
+            ranking,
+            periodAnchor,
+            LocalDate.now(ZoneOffset.UTC),
+        ) != null
+
+    /**
+     * 返回弹回**上一轮**：把快照逐字段抄回去，**不发请求**。
+     *
+     * "不发请求"是这一档的全部意义 —— 用户回到自己刚才那面墙，不该先转两秒圈、
+     * 也不该把翻页游标重置掉。轮次仍然要 +1：那是给上一轮的在途响应判死刑用的。
+     * [searchGeneration] 一并 +1，让墙按"结果换过一轮"那条既有通路重绘；
+     * 但落点不再是顶部 —— 那一轮离开时看到第几张，回来就在第几张（[pendingScrollRestore]，
+     * 2026-09-29 真机反馈「返回会自动回到最上面，不保存之前的进度」）。
+     */
+    fun popContext() {
+        val popped = GallerySearchContextStack.pop(contexts) ?: return
+        searchJob?.cancel()
+        suggestJob?.cancel()
+        contexts = popped.second
+        val ctx = popped.first
+        pendingScrollRestore = ctx.scrollIndex
+        currentScrollIndex = ctx.scrollIndex
+        site = ctx.site
+        filters = ctx.filters
+        results = ctx.results
+        page = ctx.page
+        exhausted = ctx.exhausted
+        droppedNoImage = ctx.droppedNoImage
+        pageSize = ctx.pageSize
+        // 档级一起回来：不然弹栈后屏上还是那一墙图，排序却变了，而用户看不出哪里变了。
+        ranking = ctx.ranking
+        periodAnchor = ctx.periodAnchor
+        isSearching = false
+        isLoadingMore = false
+        searchError = null
+        loadMoreError = null
+        notice = null
+        term = ""
+        suggestions = emptyList()
+        suggestError = null
+        // 一律回"看墙"那一态：用户离开那一轮是去别处看图，回来该看到墙，不是键盘。
+        mode = GallerySearchMode.RESULTS
+        contextRound++
+        searchGeneration++
     }
 
     /** 退格删最后一枚（输入框里没字时）。返回是否真删了，页面据此决定要不要吃掉这次按键。 */
@@ -356,6 +552,45 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
+     * 换排行档：**原地重搜**，不压上下文栈。
+     *
+     * 理由与「同站同条件不压栈」同一条 —— 排序这件事不是"另一轮搜索"，压栈会让返回
+     * 先弹回"同样的条件、只是换了排序"的一屏，白按一次。
+     * 但**轮次计数器要 +1**：不加的话，上一档正在飞的续页会落进这一档的墙上
+     * （站没变、条件没变，[isStaleContext] 那两道都拦不住，只有轮次拦得住）。
+     *
+     * [GalleryRankings.supports] 判为"本站没有"的档这里再挡一道：菜单那一侧已经不列这一档，
+     * 但入口不止菜单一个（弹栈回来的快照、以后可能加的快捷入口），判据得落在状态层。
+     */
+    fun setRanking(next: GalleryRanking) {
+        if (next == ranking && periodAnchor == null) return
+        if (!GalleryRankings.supports(site, next)) return
+        ranking = next
+        // 换档 = 回到本期：从"2024 年 3 月"点「按年排行」，用户要的是今年。
+        periodAnchor = null
+        contextRound++
+        searchJob?.cancel()
+        if (filters.isNotEmpty()) runSearch(1)
+    }
+
+    /**
+     * 选**具体哪一期**（日期弹层那一步确认时调）。
+     *
+     * 一并把档定到 [target]（月或年）：弹层里选了粒度又选了日期，这两件是一件事的两半，
+     * 分成两次调用就会出现"档还是周、锚点却是某个月"这种说不清的中间态。
+     * 历史期只有月/年开放（用户 2026-09-29 拍板），[GalleryRankings.supportsHistory] 不认的直接不理。
+     */
+    fun pickPeriod(target: GalleryRanking, anchor: LocalDate?) {
+        if (!GalleryRankings.supportsHistory(target)) return
+        if (target == ranking && anchor == periodAnchor) return
+        ranking = target
+        periodAnchor = anchor
+        contextRound++
+        searchJob?.cancel()
+        if (filters.isNotEmpty()) runSearch(1)
+    }
+
+    /**
      * 关掉搜索（顶栏那枚 ✕，以及系统返回时已经收成一条的那一态）。
      *
      * chips 与结果**不清**：再点开搜索图标回到原上下文，用户不用重新搜一遍。
@@ -410,9 +645,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         loadMoreError = null
         notice = null
         droppedNoImage = 0
-        droppedNoImage = 0
         pageSize = limit
         isSearching = true
+        // 真发了一笔新查询 = 从第 1 张看起。留着上一轮的落点会让下一次 generation 递增
+        // 把新结果停在旧深处 —— 那正是"搜出来一堆不相干的图"的观感来源。
+        pendingScrollRestore = null
     }
 
     fun appendPage(list: List<GalleryPost>, nextPage: Int, done: Boolean) {
@@ -475,9 +712,18 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 站与查询都在发车前**定死**：在途期间用户可能换站或改条件，
         // 落地时用它们比对，对不上就整笔作废（见下面的站比对与 query 的使用处）。
         val siteAtRequest = site
+        val roundAtRequest = contextRound
+        val rankingAtRequest = ranking
+        // 锚点与"今天"都在发车前定死：在途跨了 UTC 零点、或用户中途换了期，这一笔仍按发起那一刻查。
+        val anchorAtRequest = periodAnchor
         // 发出去的是**预算内那几枚**，不是胶囊全部（见 [effectiveFilters]）。
         val sent = effectiveFilters()
-        val query = GallerySearch.queryOf(sent)
+        // ⚠️ **两串要分开**：`visibleQuery` 是用户看到的那一排（胶囊、历史都走它），
+        // `query` 才是发出去的那一串（多一排排行伪标签）。把它们混成一串，
+        // 历史里就会存下 `order:score` 这种东西，用户点历史时它被拆回胶囊 ——
+        // 那正是 `GalleryRankingTest` 里"胶囊串永远不含伪标签"那条用例防的事。
+        val visibleQuery = GallerySearch.queryOf(sent)
+        val todayUtc = LocalDate.now(ZoneOffset.UTC)
         val limit = pageSizeFor(siteAtRequest)
         if (nextPage == 1) {
             beginSearch(limit)
@@ -506,17 +752,27 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                val query = GalleryRankings.searchQuery(
+                    siteAtRequest,
+                    sent,
+                    rankingAtRequest,
+                    anchorAtRequest,
+                    todayUtc,
+                )
                 val result = when (siteAtRequest) {
                     GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limit)
                     GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limit)
                 }
-                // 站已换：这一笔属于上一个站，落地就是脏数据（chips 是新的、图是旧站的）——整笔丢掉。
-                if (siteAtRequest != site) return@launch
+                // 站已换 **或** 已经不是发车那一轮：这一笔属于别处，落地就是脏数据
+                // （chips 是新的、图是旧站的 / 旧一轮的）—— 整笔丢掉。
+                // 为什么光比站点不够：见 [isStaleContext]（返回弹栈那条路上站恰好没变）。
+                if (isStaleContext(roundAtRequest, siteAtRequest, contextRound, site)) return@launch
                 result.onSuccess { list ->
                     searchError = null
                     loadMoreError = null
                     appendPage(list, nextPage, GallerySearch.isExhausted(list.size, limit))
-                    if (nextPage == 1) saveHistory(GallerySearchEntry(siteAtRequest, query))
+                    // 历史存的是**用户那一排**（不带排行伪标签），见 [visibleQuery] 上方那段说明。
+                    if (nextPage == 1) saveHistory(GallerySearchEntry(siteAtRequest, visibleQuery))
                 }.onFailure { e ->
                     val message = e.message ?: "搜索失败"
                     // 第 1 页失败 → 交给整屏空态说；续页失败 → 只在页尾说。
@@ -631,23 +887,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      *
      * 搜这一笔**不绕 [applyFilters]**：它有一条 `next == filters` 的短路，
      * 连点同一条历史时条件没变，会被短路掉 —— 那正是"点了没反应"的另一种长相。
+     *
+     * 2026-09-28 起它与大图页交接走**同一条路径**（[openContext]）：点历史之前那一轮先压栈，
+     * 返回能回到点历史之前那面墙。三条"换一轮上下文"的入口口径必须一致，
+     * 否则同屏里出现两种语义（点标签能回退、点历史不能），下一轮一定被当成缺陷再报一次。
      */
-    fun applyHistory(entry: GallerySearchEntry) {
-        // 切站但**不重搜**：下面立刻会装条件并跑一笔，这里再搜一次就是同一轮发两笔。
-        switchSite(entry.site, reSearch = false)
-        filters = entry.filters
-        term = ""
-        suggestions = emptyList()
-        suggestError = null
-        notice = null
-        if (filters.isEmpty()) {
-            // 历史里不该有空条件（只有搜成功才写历史），真碰上就当"没条件"处理，别开一笔空搜。
-            mode = GallerySearchMode.INPUT
-            return
-        }
-        runSearch(1)
-        mode = GallerySearchMode.RESULTS
-    }
+    fun applyHistory(entry: GallerySearchEntry) =
+        openContext(entry.site, entry.filters, thenCollapse = true)
 
     /**
      * "站方给了行但没给图"那句读数；没有跳过就 null。

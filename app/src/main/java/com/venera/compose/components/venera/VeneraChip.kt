@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
@@ -164,11 +165,26 @@ fun VeneraChip(
     // 提前取值：graphicsLayer 的 lambda 不是 @Composable，不能在内部读 tokens.current
     val disabledAlpha = tokens.current.chipDisabledAlpha
 
+    // ── 玻璃档位：只有"本来就是空底"的形态才值得换材质 ──
+    // selected 刻意不上玻璃：选中态靠 primaryContainer / secondaryContainer 的**实底**表达
+    // "这条已经生效"，玻璃的半透明容器会把这层语义洗成"看起来没选"（比不统一更糟）。
+    // disabled 同理，Neutral 本来就靠 surfaceContainerHigh 的底色分层，也不换。
+    // Tag 走**点缀档**（只染色、不建模糊）：卡片上一屏可能二十枚，逐个离屏采样就是层数炸弹。
+    val glassRole = when {
+        !enabled || selected -> null
+        variant == VeneraChipVariant.Tag -> VeneraGlassRole.BADGE
+        variant == VeneraChipVariant.Neutral -> null
+        else -> VeneraGlassRole.CHIP
+    }
+
     Surface(
         shape = shape,
         color = container,
         border = border,
         modifier = modifier
+            // 挂在 graphicsLayer **之前**：按压缩放与 alpha 要一起作用在玻璃上，
+            // 否则会出现"文字缩了、底板没缩"的脱层。
+            .then(if (glassRole != null) Modifier.veneraGlass(glassRole, shape) else Modifier)
             // 按压/焦点反馈统一由 Chip 处理，页面不参与
             .graphicsLayer {
                 scaleX = pressScale

@@ -3,9 +3,7 @@ package com.venera.compose.feature.settings
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.update.AppUpdateChecker
 import com.venera.compose.data.update.ProjectChannel
@@ -31,22 +30,23 @@ private const val STARTUP_CHECK_DELAY_MS = 2_000L
 @Composable
 internal fun UpdateAvailableDialog(remoteVersion: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    AlertDialog(
+    VeneraDialog(
+        show = true,
         onDismissRequest = onDismiss,
-        title = { Text("发现新版本") },
-        text = { Text("${ProjectChannel.SLUG} 发布了 v$remoteVersion，现在去下载？") },
-        confirmButton = {
-            TextButton(onClick = {
-                onDismiss()
-                val ok = runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(ProjectChannel.RELEASES_URL)),
-                    )
-                }.isSuccess
-                if (!ok) Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
-            }) { Text("更新") }
+        title = "发现新版本",
+        content = { Text("${ProjectChannel.SLUG} 发布了 v$remoteVersion，现在去下载？") },
+        confirmText = "更新",
+        onConfirm = {
+            onDismiss()
+            val ok = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(ProjectChannel.RELEASES_URL)),
+                )
+            }.isSuccess
+            if (!ok) Toast.makeText(context, "没有可用的浏览器", Toast.LENGTH_SHORT).show()
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("以后再说") } },
+        dismissText = "以后再说",
+        onDismiss = onDismiss,
     )
 }
 

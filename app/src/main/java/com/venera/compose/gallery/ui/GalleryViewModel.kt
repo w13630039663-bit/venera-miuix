@@ -1,12 +1,23 @@
 package com.venera.compose.gallery.ui
 
+import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.venera.compose.gallery.data.GalleryFeedCache
+import com.venera.compose.gallery.data.GalleryFeedSnapshot
 import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.data.toFavorite
+import com.venera.compose.gallery.data.toPost
+import com.venera.compose.gallery.domain.GalleryFeedRefreshPolicy
+import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlinx.coroutines.launch
 
 /**
  * 画廊日榜流的**状态持有者**。
@@ -19,8 +30,14 @@ import com.venera.compose.gallery.data.GalleryPost
  * 2026-09-25 起这一屏是**两站上一天热门各 20 张打乱**，一屏到底：
  * 所以这里没有 `hasMore` / `round` / 翻页 `exclude` 那一套了 —— 日榜没有下一页，
  * 留着"还有更多"的状态机只会产出「到底了还显示加载更多」那类假象（搜索页同一个病）。
+ *
+ * 2026-09-29 第四轮起**多带一份离线快照**（[GalleryFeedCache]）：冷启动第一帧就摆上次那一屏，
+ * 同一天之内不再自动联网，要新内容靠下拉或那枚「刷新」。改走 `AndroidViewModel` 就是为了拿
+ * Context 读那份档（与搜索层同一理由）。
  */
-class GalleryViewModel : ViewModel() {
+class GalleryViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app: Context = application
 
     var posts by mutableStateOf<List<GalleryPost>>(emptyList())
         internal set
@@ -62,6 +79,40 @@ class GalleryViewModel : ViewModel() {
      */
     var feedLoadedKey by mutableStateOf<String?>(null)
 
+    /**
+     * 屏上这一屏是**从缓存铺出来的**、本轮还没成功取过。
+     *
+     * 与 [feedLoadedKey] 分开记是必须的：那份凭证"只在成功后写"，从错误态点重试要靠它为空才放行；
+     * 而缓存那一屏谈不上"成功"（它不是本轮取来的），写进那份凭证里就会连带把「重试」也变成假按钮。
+     */
+    private var hydratedFromCache by mutableStateOf(false)
+
+    /** 缓存写于哪一天（epochDay）；null = 没有缓存。 */
+    private var cachedOnEpochDay by mutableStateOf<Long?>(null)
+
+    init {
+        // 同步读，为的是让下面那次判断有结果可用（理由见 [GalleryFeedCache.read]）。
+        val snapshot = GalleryFeedCache.read(app)
+        if (snapshot != null) {
+            // 认不出站点键的行当场摘掉（与收藏那头同一条口径）：留着它就是一格永远点不开的卡。
+            posts = snapshot.posts.mapNotNull { fav -> fav.site?.let { fav.toPost(it) } }
+            date = snapshot.date
+            sourceNotice = snapshot.notice
+            cachedOnEpochDay = snapshot.savedEpochDay
+            hydratedFromCache = posts.isNotEmpty()
+        }
+    }
+
+    /**
+     * 页面问"这一轮要不要自己去联网取"。
+     *
+     * 答案是"不要"的唯一情形：屏上摆着缓存那一屏，而它就是今天存的。跨了天必须补拉 ——
+     * 日榜按天换，让它永远是缓存等于让用户看不到今天的热门（判据与"补拉不清屏"的理由都在
+     * [GalleryFeedRefreshPolicy]）。
+     */
+    fun shouldAutoLoad(todayEpochDay: Long = LocalDate.now(ZoneOffset.UTC).toEpochDay()): Boolean =
+        !hydratedFromCache || GalleryFeedRefreshPolicy.shouldRefetch(cachedOnEpochDay, todayEpochDay)
+
     fun refresh() {
         refreshTick++
         seed = System.currentTimeMillis()
@@ -69,6 +120,9 @@ class GalleryViewModel : ViewModel() {
         date = ""
         sourceNotice = null
         feedLoadedKey = null
+        // 用户明确要"换一批"：缓存那一屏当场作废，下一次判断必须放行去取。
+        hydratedFromCache = false
+        cachedOnEpochDay = null
     }
 
     /** 收下本轮产出（整屏替换，不是追加 —— 日榜只有一轮）。 */
@@ -76,5 +130,16 @@ class GalleryViewModel : ViewModel() {
         posts = list
         date = day
         sourceNotice = notice
+        hydratedFromCache = false
+        cachedOnEpochDay = null
+        // 只有拿到内容那一轮才落盘：错误态与空屏不存，否则下次冷启动铺一屏空。
+        if (list.isEmpty()) return
+        val snapshot = GalleryFeedSnapshot(
+            savedEpochDay = LocalDate.now(ZoneOffset.UTC).toEpochDay(),
+            date = day,
+            notice = notice,
+            posts = list.map { it.toFavorite() },
+        )
+        viewModelScope.launch { GalleryFeedCache.write(app, snapshot) }
     }
 }

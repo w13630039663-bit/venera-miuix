@@ -54,9 +54,10 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
         return ImageLoader.Builder(context)
             .logger(com.venera.compose.data.network.VeneraImageLogger)
             .components {
-                // S1.5: 优先接入 Venera 自定义 Fetcher 管道（动态 Header + 字节流处理）
+                // 只有需要改写字节的两条路（JM 去混淆 / EH 雪碧图）走自定义 fetcher；
+                // 其余图片走 Coil 自带的网络 fetcher —— 它会流式写进磁盘缓存并以文件源解码。
                 add(com.venera.compose.data.network.VeneraImageFetcher.Factory(this@VeneraApp, networkClient.okHttpClient))
-                add(OkHttpNetworkFetcherFactory(callFactory = networkClient.okHttpClient))
+                add(OkHttpNetworkFetcherFactory(callFactory = com.venera.compose.data.network.ImageFetchCallFactory(networkClient.okHttpClient)))
             }
             .build()
     }

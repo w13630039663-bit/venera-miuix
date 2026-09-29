@@ -35,17 +35,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -70,6 +79,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -87,15 +97,22 @@ import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.domain.GalleryRecommendation
+import com.venera.compose.gallery.domain.GalleryRanking
+import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchEntry
+import com.venera.compose.gallery.domain.GallerySearchCollapse
 import com.venera.compose.gallery.domain.GalleryTagFilter
 import com.venera.compose.ui.tokens.GalleryTagCategoryColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Text
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Locale
 
 /**
@@ -171,6 +188,17 @@ fun GallerySearchArea(
         if (imeVisible) LIST_MAX_ROWS_TYPING else LIST_MAX_ROWS_IDLE
     val cardShape = RoundedCornerShape(tokens.shape.extraLarge)
 
+    /*
+     * 排行菜单与选期弹层的开关**记在这里，不记在芯片里**。
+     *
+     * 记在芯片里会出这条 bug：展开态点「排行：默认」→ 焦点离开输入框 → 键盘下落 →
+     * 下面那道"键盘收起就收成一条"的 effect 把整块收掉 → 芯片从 `FlowRow` 那一支换到
+     * `Row` 那一支，组合位置一变就是**新实例**，`remember` 归零 → 菜单闪一下就没了。
+     * 提到两种形态之上之后，收条照收，菜单只是改挂到收条那一颗芯片上，不会自己关掉。
+     */
+    var rankingMenuOpen by remember { mutableStateOf(false) }
+    var periodPickerOpen by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) { svm.restoreHistoryIfNeeded() }
 
     // 展开 = 一步到键盘（MD3 SearchView 的标准行为）。
@@ -196,15 +224,23 @@ fun GallerySearchArea(
     // 键盘收起 → 收成一条。
     // 只在**确实见过键盘起来**之后才收（`imeWasVisible` 记的就是那次上升沿）：
     // 展开那一帧键盘还没弹起来，不设这道闸会当场把刚展开的区收掉。
+    //
+    // ⚠️ effect 的 key **只有 `imeVisible`**，两个弹层开关是在 effect 里"就地读"的。
+    // 把开关也写进 key 会引入另一条 bug：菜单关掉那一刻 key 变了 → effect 重跑 →
+    // 于是"补一次收起"，用户看到的是关完菜单卡片突然跳走。判据本身见 [GallerySearchCollapse]。
     var imeWasVisible by remember { mutableStateOf(false) }
     LaunchedEffect(imeVisible) {
         if (imeVisible) {
             imeWasVisible = true
-        } else if (imeWasVisible) {
+        } else if (
+            GallerySearchCollapse.shouldCollapseOnImeHidden(
+                imeWasVisible = imeWasVisible,
+                popupOpen = rankingMenuOpen || periodPickerOpen,
+                reverseOpen = rvm.open,
+            )
+        ) {
             imeWasVisible = false
-            // 反搜开着时**不收**：那一具身体没有"收成一条"的形态（它本来就只有两行），
-            // 而用户从系统相册挑图回来必然伴随一次键盘下落 —— 在那一刻把反搜条收掉是错的。
-            if (!rvm.open) svm.collapseToResults()
+            svm.collapseToResults()
         }
     }
 
@@ -366,6 +402,13 @@ fun GallerySearchArea(
                                         onRemove = { removeFilter(filter) },
                                     )
                                 }
+                                RankingChip(
+                                    svm = svm,
+                                    menuOpen = rankingMenuOpen,
+                                    onMenuOpen = { rankingMenuOpen = it },
+                                    pickerOpen = periodPickerOpen,
+                                    onPickerOpen = { periodPickerOpen = it },
+                                )
                             }
                         } else {
                             Row(
@@ -381,6 +424,15 @@ fun GallerySearchArea(
                                         onRemove = { removeFilter(filter) },
                                     )
                                 }
+                                // 排行档跟着胶囊走到底：收成一条那一态它也在，
+                                // 否则"这一墙是按什么排的"在下拉看图时就没了落点。
+                                RankingChip(
+                                    svm = svm,
+                                    menuOpen = rankingMenuOpen,
+                                    onMenuOpen = { rankingMenuOpen = it },
+                                    pickerOpen = periodPickerOpen,
+                                    onPickerOpen = { periodPickerOpen = it },
+                                )
                             }
                         }
                     }
@@ -816,6 +868,221 @@ private fun FilterChipItem(
 }
 
 /**
+ * 排行档那枚胶囊 + 六行下拉（2026-09-29）。
+ *
+ * ## 为什么挂在胶囊行**末尾**而不是另起一行
+ *
+ * 这一屏每一行都在抢卡片的高度（玻璃顶栏那三条硬约束与 `GallerySearchArea` 头注都记着这条口径），
+ * 而这一行本来就在：展开态是 `FlowRow`（放不下就换行），收成一条态是单行横滑。
+ * 于是卡片的两个形态里"这批图按什么排的"都常驻可见，**零新增高度**。
+ *
+ * ⚠️ 下滑之后压在顶栏那一行的**吸附胶囊层**（`GallerySearchCollapsedChips`）刻意不跟着加 ——
+ * 那一行宽度封在屏宽 34% 之内、要和居中的标题抢位，多塞一颗就把用户自己的条件挤掉了。
+ * 想看当前档，回到顶部（卡片长回来）或点开胶囊行末尾这枚。
+ *
+ * ## 文字为什么只念一小截
+ *
+ * 胶囊上写「排行：周」（`shortLabel`），完整档名与**实际日期区间**在菜单里 ——
+ * 胶囊行是横滑的，每一颗都在跟用户自己攒的条件抢宽度。
+ *
+ * ## 选中态
+ *
+ * 非默认档才亮（`selected`）：默认档就是"没开排行"，让它一直亮着等于把常态画成异常态。
+ *
+ * ## 行**照站画**：本站没有的档不列出
+ *
+ * Gelbooru 给不了时间窗口（成因一半在站方 DAPI、一半在我们当时的探测预算，见
+ * [GalleryRankings.supports] 的注释与 `gallery-ranking-windows-2026-09.md` §十一）。
+ * 那四行原本"留着但 `enabled = false` 并写'本站没有'"，同日第五轮用户点名改成不列出：
+ * 「只留『默认』与『全部排行』，其他删掉」。判据仍然只有一把，变的只是不再画不参与的行。
+ *
+ * ## 末行「选具体哪一期…」
+ *
+ * 月/年档可以翻历史期（yande.re 原生认 `date:A..B`，任意一期都是**一笔请求**，见 §十二）。
+ * 入口放在同一个下拉的末尾而不是另起一行：这一屏每一行都在抢卡片高度，同一条口径。
+ * 给不出时间窗的站连这一行也不出现（[GalleryRankings.supportsPeriodPicker]）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RankingChip(
+    svm: GallerySearchViewModel,
+    menuOpen: Boolean,
+    onMenuOpen: (Boolean) -> Unit,
+    pickerOpen: Boolean,
+    onPickerOpen: (Boolean) -> Unit,
+) {
+    val tokens = VeneraTokens
+    // 日切按 UTC，与站方 created_at 同一时区（判据在 GalleryRankings，这里只取读数）。
+    val todayUtc = LocalDate.now(ZoneOffset.UTC)
+    Box {
+        VeneraChip(
+            text = buildString {
+                append("排行：${svm.ranking.shortLabel}")
+                // 历史期把期次直接标在胶囊上：「排行：月 2024-03」——
+                // 不点开下拉也读得出看的是哪一期，不然"这一墙为什么全是三年前的图"没法解释。
+                GalleryRankings.periodShortLabel(svm.ranking, svm.periodAnchor)?.let { append(" $it") }
+            },
+            selected = svm.ranking != GalleryRanking.NEWEST,
+            variant = VeneraChipVariant.Filter,
+            onClick = { onMenuOpen(true) },
+        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
+            // 本站没有的档**不列出**（2026-09-29 用户点名：「只留『默认』与『全部排行』，其他删掉」）。
+            // 这里原先的口径是"留着行但置灰 + 写'本站没有'"，理由是让用户分清"这站没有"和"我们没做"；
+            // 实际观感是六行里四行点不动，比少两行更烦。判据仍然只有一把（[GalleryRankings.supports]），
+            // 变的只是"不参与判据的行不再画出来"。
+            GalleryRanking.entries
+                .filter { GalleryRankings.supports(svm.site, it) }
+                .forEach { ranking ->
+                    val range = GalleryRankings.windowLabel(ranking, todayUtc)
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = ranking.label + if (range != null) "　$range" else "",
+                                fontSize = tokens.type.body,
+                                // 当前档给主色：菜单里几行长得一样，不点亮就读不出"现在是哪一档"。
+                                color = if (ranking == svm.ranking) tokens.color.primary else Color.Unspecified,
+                            )
+                        },
+                        trailingIcon = {
+                            if (ranking == svm.ranking) Icon(imageVector = Icons.Outlined.Check, contentDescription = null)
+                        },
+                        onClick = {
+                            onMenuOpen(false)
+                            // 选中即重查（这套 UI 没有"提交"那一步）。
+                            svm.setRanking(ranking)
+                        },
+                    )
+                }
+            // 「选哪一期」只在给得出时间窗的站出现：Gelbooru 连"本期"的档都没有，
+            // 摆一个点开只会翻出空墙的入口就是假开关（判据与上面同一把）。
+            if (GalleryRankings.supportsPeriodPicker(svm.site)) {
+                DropdownMenuItem(
+                    text = { Text(text = "选具体哪一期…　月 / 年", fontSize = tokens.type.body) },
+                    onClick = {
+                        onMenuOpen(false)
+                        onPickerOpen(true)
+                    },
+                )
+            }
+        }
+        if (pickerOpen) RankingPeriodDialog(svm = svm, todayUtc = todayUtc, onDismiss = { onPickerOpen(false) })
+    }
+}
+
+/**
+ * 「看哪一期」的弹层（2026-09-29 第二轮，同日晚些按第四轮反馈改形状）。
+ *
+ * 粒度只有 月 / 年 两枚：用户拍板"天/周回看是上一天/上一周那种一步的事，
+ * 为它开一层弹层不值"。
+ *
+ * 两枚各配一种控件，**不共用日历**：
+ * - **按月** = 日历，点任意一天取它所在的那一月（与 moebooru 的日期选择器同一口径）；
+ * - **按年** = 年份列表，点一个年份取那一整年。
+ *
+ * 为什么按年不共用日历：Material3 1.5.0-alpha22 的年份选择器是 `private`（读源码确认，
+ * `showModeToggle` 只切"日历 ↔ 数字输入"），拿不到 —— 于是共用日历那版的长相就是
+ * "选了按年，下面还是一屏天数"，用户 2026-09-29 原话。自己列一排年份比逼日历换个形状便宜。
+ *
+ * 年份范围钉在 **2007..今年**：那是 yande.re 存档的实测起点（`date:..2006-06-01` 已经回 0 条），
+ * 给一个翻得出空页的年份就是假入口。往后的年份不给选（窗口终点恒被今天钉住，
+ * 真点出去只会得到 `date:2026-12-01..2026-09-29` 这种起在止之后的串）。
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun RankingPeriodDialog(
+    svm: GallerySearchViewModel,
+    todayUtc: LocalDate,
+    onDismiss: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    var target by remember {
+        mutableStateOf(
+            if (GalleryRankings.supportsHistory(svm.ranking)) svm.ranking else GalleryRanking.MONTH,
+        )
+    }
+    val byYear = target == GalleryRanking.YEAR
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = (svm.periodAnchor ?: todayUtc).toEpochDay() * MILLIS_PER_DAY,
+        yearRange = GalleryRankings.EARLIEST_PERIOD.year..todayUtc.year,
+    )
+    // 年份那一档另存一份选中值：与日历的 `selectedDateMillis` 分开，
+    // 否则"在日历上点过的某一天"会冒充"选过的那一年"。
+    var pickedYear by remember { mutableStateOf(svm.periodAnchor?.year) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("看哪一期") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = if (byYear) "点一个年份，就取那一整年。" else "日历里点任意一天，就取它所在的这一月。",
+                    fontSize = tokens.type.caption,
+                    color = tokens.color.textSecondary,
+                )
+                Spacer(modifier = Modifier.height(tokens.spacing.space3))
+                Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3)) {
+                    VeneraChip(
+                        text = "按月",
+                        selected = target == GalleryRanking.MONTH,
+                        variant = VeneraChipVariant.Filter,
+                        onClick = { target = GalleryRanking.MONTH },
+                    )
+                    VeneraChip(
+                        text = "按年",
+                        selected = target == GalleryRanking.YEAR,
+                        variant = VeneraChipVariant.Filter,
+                        onClick = { target = GalleryRanking.YEAR },
+                    )
+                }
+                Spacer(modifier = Modifier.height(tokens.spacing.space3))
+                if (byYear) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                    ) {
+                        GalleryRankings.yearChoices(todayUtc).forEach { year ->
+                            VeneraChip(
+                                text = year.toString(),
+                                selected = year == pickedYear,
+                                variant = VeneraChipVariant.Filter,
+                                onClick = { pickedYear = year },
+                            )
+                        }
+                    }
+                } else {
+                    DatePicker(state = pickerState)
+                }
+                if (svm.periodAnchor != null) {
+                    // 回到本期单独一枚：那是一句"我选错了，撤销"，不该藏在再点一次同一档里。
+                    TextButton(onClick = {
+                        onDismiss()
+                        svm.pickPeriod(target, null)
+                    }) { Text("回到本期") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val picked = if (byYear) {
+                    // 一年都没挑 = 打开看了一眼，这不是"改期"，一笔请求都不该发（与日历那档同一条口径）。
+                    pickedYear?.let { LocalDate.of(it, 1, 1) }
+                } else {
+                    pickerState.selectedDateMillis
+                        ?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                }
+                onDismiss()
+                if (picked == null) return@TextButton
+                svm.pickPeriod(target, picked)
+            }) { Text("就看这一期") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+private const val MILLIS_PER_DAY = 86_400_000L
+
+/**
  * 吸附态：结果态下拉看图时，条件胶囊"接替大标题的位置"停在顶栏左上角。
  *
  * ── 为什么要单独画一层（2026-09-26 第九轮）──
@@ -892,6 +1159,15 @@ private fun SuggestionList(
     site: GallerySite,
     onPick: (GalleryTagSuggestion) -> Unit,
 ) {
+    val context = LocalContext.current
+    // 补全行的中文译名：**整表一次查**，不给每行各查一次（八行就是八笔主键查，纯属白给）。
+    // 查不到的那一行原样显示站方给的词 —— 宁可不译，不猜一个看着像的。
+    var translations by remember(suggestions) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(suggestions) {
+        translations = if (suggestions.isEmpty()) emptyMap() else GalleryTagDictionary
+            .getInstance(context)
+            .translations(suggestions.map { it.name })
+    }
     val tokens = VeneraTokens
     if (suggestions.isEmpty()) {
         Column(
@@ -928,6 +1204,8 @@ private fun SuggestionList(
         itemsIndexed(suggestions, key = { _, item -> item.name }) { index, suggestion ->
             SuggestionRow(
                 suggestion = suggestion,
+                label = translations[suggestion.name.lowercase()]
+                    ?.let { "$it (${suggestion.name})" } ?: suggestion.name,
                 // 首项高亮 = 标出"回车会选这一行"，此前那条回车路径没有任何视觉锚点，
                 // 框里敲着 `loli`、列表第一行也是 `loli`，用户不知道按回车会发生什么。
                 highlighted = index == 0,
@@ -940,6 +1218,7 @@ private fun SuggestionList(
 @Composable
 private fun SuggestionRow(
     suggestion: GalleryTagSuggestion,
+    label: String,
     highlighted: Boolean,
     onPick: (GalleryTagSuggestion) -> Unit,
 ) {
@@ -959,7 +1238,8 @@ private fun SuggestionRow(
             .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space2),
     ) {
         Text(
-            text = suggestion.name,
+            // 译文只改显示：点这一行交出去的仍是 [GalleryTagSuggestion.name]（见 onPick）。
+            text = label,
             fontSize = tokens.type.body,
             color = tokens.color.textPrimary,
             maxLines = 1,
@@ -1254,6 +1534,13 @@ fun GallerySearchEnd(
     videos: Int,
     noImage: String?,
     /**
+     * 当前排行档的读数（含日期区间）；默认档传 null，那一档就是站方原序，没什么可念的。
+     *
+     * 页尾必须带上它：这行报的是"这面墙是怎么来的"，只报条件不报排法，
+     * 用户切完档在页尾读不出区别，就会怀疑那一下没生效。
+     */
+    ranking: String? = null,
+    /**
      * 这一站把条件砍过（预算装不下全部胶囊）时的读数；没砍就 null。
      *
      * 必须摆在这儿而不是只摆在展开区：收成一条之后展开区整个不画了，
@@ -1272,6 +1559,7 @@ fun GallerySearchEnd(
         Text(
             text = buildString {
                 append("「$query」已摆出 $cards 张")
+                ranking?.let { append(" · 排行 $it") }
                 if (page > 1) append(" · 第 $page 页")
                 if (videos > 0) append(" · 含 $videos 个视频")
                 if (blockedCount > 0) append("；另有 $blockedCount 张命中屏蔽规则 ${blockedRules.joinToString("、")}")

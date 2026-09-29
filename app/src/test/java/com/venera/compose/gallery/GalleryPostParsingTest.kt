@@ -87,12 +87,13 @@ class GalleryPostParsingTest {
     }
 
     @Test
-    fun `本站没有分类字段，标签只出一桶`() {
+    fun `站方给的 tags 原样收下，不在解析期造任何分组`() {
         val post = decode().first()
-        // 实测 44 个键里不含 `tag_string_*`（Danbooru 才有那五串），
-        // 所以这里**不硬造**"通用/角色"那种假分组 —— 分不出来就是分不出来。
-        assertEquals(listOf("标签"), post.tagGroups.map { it.label })
-        assertEquals(post.tagList, post.tagGroups.first().tags)
+        // 实测 44 个键里不含 `tag_string_*`（Danbooru 才有那五串），所以解析期**不硬造**
+        // "通用/角色"那种假分组 —— 分不出来就是分不出来。
+        // 分桶这件事 2026-09-28 起搬到渲染期（站方判定只在那张帖的 HTML 上），
+        // 这里锁住的是"解析期一个桶名都不产生"，别让它又长回来。
+        assertEquals(listOf("aria_blue", "entergram", "ricol", "seifuku", "sweater", "tagme"), post.tagList)
     }
 
     @Test

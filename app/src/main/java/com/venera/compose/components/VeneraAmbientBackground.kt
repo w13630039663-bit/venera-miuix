@@ -4,12 +4,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.venera.compose.components.venera.LocalGlassBackdrop
+import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.veneraGlassEnabled
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -94,8 +100,24 @@ fun VeneraAmbientBackground(
         if (it != Color.Unspecified) it else Color(0xFF6750A4)
     }
 
+    // 全站玻璃的**唯一采样源**（2026-09-29 拍板：采静态氛围层，不采页面内容层）。
+    //
+    // 为什么是这一层：下面那个 Canvas 与 content 是**兄弟节点**（Canvas 在底），所以卡片采它
+    // 不会自引用 —— 反过来采"页面内容层"就是 `feature/Navigation.kt:504` 注释里记过的那个形状
+    // （玻璃挂在录制层的后代里 ⇒ RenderNode 无限递归）。而氛围光不随滚动变 ⇒ 录制层不失效
+    // ⇒ **滚动时不重捕**，这正是全站贴玻璃还不忘减帧的前提。
+    //
+    // 代价如实记着：本文件头注自称的"零离屏纹理"性质**只在 LIQUID_GLASS 档失去**，
+    // 所以录制器必须条件安装 —— 实色档一份都不建。
+    val glass = veneraGlassEnabled()
+    val ambientBackdrop: LayerBackdrop? = if (glass) rememberLayerBackdrop { drawContent() } else null
+
     Box(modifier = modifier.fillMaxSize()) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            Modifier
+                .blurBackdropSource(ambientBackdrop)
+                .fillMaxSize()
+        ) {
             drawVeneraAmbient(
                 primary = primaryColor,
                 secondary = secondaryColor,
@@ -105,6 +127,8 @@ fun VeneraAmbientBackground(
         }
 
         // 页面实际内容铺在氛围光之上
-        content()
+        CompositionLocalProvider(LocalGlassBackdrop provides ambientBackdrop) {
+            content()
+        }
     }
 }

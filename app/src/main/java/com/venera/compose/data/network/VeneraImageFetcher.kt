@@ -20,12 +20,14 @@ import okio.FileSystem
 import java.io.IOException
 
 /**
- * Coil 3 自定义漫画图片加载器 (Fetcher)。
+ * 漫画图片的**字节管道** Fetcher —— 只服务"必须改写二进制"的两条路。
  *
- * 核心功能：
- * 1. 接管漫画图片的网络请求，统一应用防盗链 (ImageHeaderPolicy)、动态 UA 与过盾 Cookie。
- * 2. 字节管道处理 (ImageLoadingConfig)：支持对下载后的图片二进制流进行解密、去混淆与切片转换。
- * 3. 失败重试：提供重试保障机制。
+ * 1. JM 去混淆、2. EH 雪碧图裁剪：这两条要把整张图解开重排，只能先把字节读进内存，
+ *    结果直接以位图交回 Coil（见 [ImagePipelinePolicy.needsBytePipeline] 与 [Factory] 的接管条件）。
+ * 3. 顺带统一应用防盗链 ([ImageHeaderPolicy])、动态 UA 与过盾 Cookie —— 但这些共享客户端
+ *    上的拦截器本来就做，**普通图片（画廊、封面）已不再走这里**，改由 Coil 的
+ *    `OkHttpNetworkFetcherFactory` + [ImageFetchCallFactory] 取流：流式落盘、文件源解码、
+ *    每主机并发有上限。别把这条改回去 —— 一屏动图在旧路上要占两三份堆内字节，会 OOM。
  */
 class VeneraImageFetcher(
     private val url: String,
@@ -163,6 +165,10 @@ class VeneraImageFetcher(
         override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
             val scheme = data.scheme?.lowercase()
             if (scheme != "http" && scheme != "https") return null
+            // 不改字节的图片一律交回 Coil 的 NetworkFetcher（注册在本 factory 之后）。
+            // 判据与下面两条分支共用同一个函数，理由见 ImagePipelinePolicy.needsBytePipeline：
+            // 这条路上每张图在 Java 堆里要留两三份编码字节，一屏动图足够把 256 MB 堆吃穿。
+            if (!ImagePipelinePolicy.needsBytePipeline(data.toString())) return null
             return VeneraImageFetcher(
                 url = data.toString(),
                 options = options,

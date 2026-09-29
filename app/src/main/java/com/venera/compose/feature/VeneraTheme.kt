@@ -22,6 +22,7 @@ import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.ThemeColorSource
 import com.venera.compose.data.prefs.ThemeMode
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.ui.tokens.LocalSurfaceMaterial
 import com.venera.compose.ui.tokens.LocalVeneraColorTokens
 import com.venera.compose.ui.tokens.LocalVeneraTokens
 import com.venera.compose.ui.tokens.Md3Shapes
@@ -41,7 +42,7 @@ import androidx.compose.material3.darkColorScheme as materialDarkColorScheme
 import androidx.compose.material3.lightColorScheme as materialLightColorScheme
 
 val LocalVeneraDarkTheme = staticCompositionLocalOf { false }
-val LocalAppearanceStyle = staticCompositionLocalOf { AppearanceStyle.MIUIX }
+
 
 /** One palette for both component families; MD3 uses wallpaper colors on Android 12+. */
 @Composable
@@ -50,6 +51,7 @@ fun VeneraTheme(content: @Composable () -> Unit) {
     val prefs = VeneraPreferences.getInstance(context)
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
+    val material by prefs.surfaceMaterial.collectAsState()
     val isDark = when (mode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
@@ -120,7 +122,10 @@ fun VeneraTheme(content: @Composable () -> Unit) {
 
     CompositionLocalProvider(
         LocalVeneraDarkTheme provides isDark,
-        LocalAppearanceStyle provides appearance,
+        // 原先这里 provide 的是 `LocalAppearanceStyle`，但**全仓没有任何读取点**（声明 + provide，
+        // 零读者）—— 风格那一路已由 `VeneraTokens.appearance`（走 LocalVeneraTokens）对外暴露，
+        // 留两个入口只会让下一个人以为有差别。悬空 Local 删掉，换上真正有人读的这一条。
+        LocalSurfaceMaterial provides material,
         LocalVeneraTokens provides tokens,
         LocalVeneraColorTokens provides colorTokens,
         LocalContentColor provides miuixColors.onBackground,

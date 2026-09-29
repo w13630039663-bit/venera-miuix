@@ -68,6 +68,11 @@ UA 一律 `Venera/1.0 (Android)`（换浏览器串会被 CF 挡，实测与推�
 三条不变的旧结论仍然成立，理由没被第二轮改判推翻：
 
 - **不动 `Navigation.kt`**（保护域），不再开 Activity、不加 `GallerySearchRoute`。
+  2026-09-28 为第 2 项**又评估过一次**"搜索另开一页"，结论是**仍然不加**：要修的其实是
+  "返回回到上一轮"，那一轮在 `GallerySearchViewModel` 里压栈就够；加成目的地反而带进来三条硬墙
+  （几百条结果进不了导航参数、per-entry VM 会推翻"再点 🔍 回到原上下文"那条拍板、
+  nav 栈只能从顶上 pop 所以中间那条删不掉）。压栈的落地与判据见
+  `gallery-tag-category-translation-and-nav-2026-09.md` §7.4.3。
 - 状态放独立的 `GallerySearchViewModel`：导航条目被下一页覆盖时**组合会销毁**，
   裸 `remember` 会让"点进大图再返回"把整片搜索结果丢掉（同一根因见记忆「导航条目会重建组合」）。
 - 输入框仍用 `BasicTextField`（与漫画搜索同一取舍），IME 不自建焦点（不自动弹键盘）——

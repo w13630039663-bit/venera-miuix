@@ -24,6 +24,7 @@ import com.venera.compose.feature.settings.AppSettings
 import com.venera.compose.feature.settings.BlockingRulesSettings
 import com.venera.compose.feature.settings.BlockingSettings
 import com.venera.compose.feature.settings.ExploreSettings
+import com.venera.compose.feature.settings.GallerySettings
 import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
 import com.venera.compose.feature.settings.ReaderSettings
@@ -89,8 +90,9 @@ object SettingsEscapeHandoff {
  * [BLOCKING_RULES] 需要额外参数（规则类型），见 [EXTRA_ARG]。
  */
 enum class SettingsSubScreen {
-    // 设置首页下的 7 个分区（原 PredictiveBackStack 内部栈的 entries）
+    // 设置首页下的 8 个分区（原 PredictiveBackStack 内部栈的 entries）
     EXPLORE,
+    GALLERY,
     BLOCKING,
     BLOCKING_RULES,
     READER,
@@ -169,6 +171,7 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onSources = { open(SettingsSubScreen.SOURCE_MANAGE) },
                 onKeywords = { open(SettingsSubScreen.BLOCKING_RULES, "KEYWORD") },
             )
+            SettingsSubScreen.GALLERY -> GallerySettings(prefs = prefs, onBack = ::back)
             SettingsSubScreen.BLOCKING -> BlockingSettings(
                 onBack = ::back,
                 onRules = { open(SettingsSubScreen.BLOCKING_RULES, it) },

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.SettingsSubScreen
@@ -47,6 +47,7 @@ private data class SettingsCategory(
  */
 private val categories = listOf(
     SettingsCategory(SettingsSubScreen.EXPLORE, "探索", Icons.Filled.Explore, SettingsBadgeColors.Discovery),
+    SettingsCategory(SettingsSubScreen.GALLERY, "画廊", Icons.Filled.Image, SettingsBadgeColors.Gallery),
     SettingsCategory(SettingsSubScreen.BLOCKING, "屏蔽与过滤", Icons.Filled.FilterAlt, SettingsBadgeColors.Moderation),
     SettingsCategory(SettingsSubScreen.READER, "阅读", Icons.Filled.Book, SettingsBadgeColors.Reading),
     SettingsCategory(SettingsSubScreen.APPEARANCE, "外观", Icons.Filled.ColorLens, SettingsBadgeColors.Theming),
@@ -92,7 +93,7 @@ internal fun SettingsHome(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

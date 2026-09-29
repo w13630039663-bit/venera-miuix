@@ -45,6 +45,8 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,13 +87,16 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.network.HostCircuitBreaker
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryFeedSource
+import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryRecommendations
+import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.ui.tokens.StatusColors
@@ -164,19 +169,27 @@ fun GalleryScreen(
             )
         }
     }
-    // 系统返回**两级**：展开态先收成一条（接着看图），收成一条之后才关掉整个搜索回日榜。
+    // 系统返回**逐级**：反搜 → 展开态收成一条（接着看图）→ 上一轮搜索上下文 → 关掉整个搜索回日榜。
+    //
+    // 2026-09-28 之前这里只有两档、而且最后一档就是 `closeSearch()`：搜了 touhou → 点进大图 →
+    // 点一枚画师标签回来 → 按一次返回掉回每日推荐，touhou 那一轮再也回不去。
+    // 原因是两条按设计执行的语义叠在一起：交接把上一轮**覆盖**了，返回又一格到底。
+    // 现在上一轮压在 `svm.contexts` 里，返回先弹它（不发请求、不重转圈）。
     // 展开着、而且一枚条件都没有时退无可退，直接关掉 —— 否则会剩一张空搜索卡停在一屏日榜上，
     // 用户不知道刚才那一下干了什么。
     //
     // 注意：**键盘起着时返回键被输入法吃掉**，那种返回落不到这里 ——
     // 那一档由搜索区自己看着 IME 收起去收条（见 `GallerySearchArea`）。
-    // chips 与结果**不清**：再点搜索图标回到原上下文，不用重新搜。
+    // chips 与结果**不清**：再点搜索图标回到原上下文，不用重新搜（底下压着的那几轮也一并还在，
+    // 顶栏那枚 ✕ 只关这一层、不清栈）。
     BackHandler(enabled = svm.active) {
         when {
             // 反搜排在最前：它开着时屏上是"一张图 → 一批相似图"，返回要先退回标签搜索
             // 那一具身体，而不是一下子把人丢回日榜。
             rvm.open -> rvm.closeLayer()
             svm.mode == GallerySearchMode.INPUT && svm.filters.isNotEmpty() -> svm.collapseToResults()
+            // 上一轮（"搜 touhou 那会儿的 100 张"）：整片从快照抄回来。
+            svm.canPopContext() -> svm.popContext()
             else -> svm.closeSearch()
         }
     }
@@ -184,10 +197,19 @@ fun GalleryScreen(
     // 大图页里点了某枚标签（跨 Activity 的交接槽，见 [GallerySearchHandoff]）：
     // 切进搜索态、按那枚标签直接开搜。key 读的是快照字段，所以写入方在另一个 Activity 里
     // 也能立刻把这边叫醒 —— 不靠 onResume（大图页是透明窗，底下这屏只是 paused）。
+    //
+    // 这条链 2026-09-28 被报过"返回后回到画廊首页、回不到最初那串标签"，当时装了只读探针取现场。
+    // 读数证明 ViewModel 全程同一个实例、每次写入都有消费 —— 但**据此判"缺陷没重现出来、
+    // 没有代码要改"是错的**：病因从来不是链断，而是这一句把上一轮**整片覆盖**
+    // （`filters=[touhou] results=100` → `filters=[wowoguni] results=0`，同一个实例、没换 VM），
+    // 再叠上返回那一格到底。那张"四种病因 ↔ 四种读数形状"表仍留在
+    // `gallery-tag-category-translation-and-nav-2026-09.md` §7.4，当作再犯时的取证手册
+    // （但它只答"链断在哪一环"，答不了"链通着而行为不对" —— 后者要读状态跳变）。
     LaunchedEffect(GallerySearchHandoff.pending) {
         val request = GallerySearchHandoff.consume() ?: return@LaunchedEffect
-        // **整片换掉**而不是往现有 chips 上加：那是另一张图带来的上下文，留着旧的会让用户
-        // 以为搜的还是刚才那串。切站 + 装条件 + 开搜是**一步**（见 acceptHandoff）：
+        // chips 装的是**这一轮**那一串（那是另一张图带来的上下文，留着旧的会让用户以为搜的
+        // 还是刚才那串），而上一轮**压进栈里**、不丢 —— 见 GallerySearchViewModel.openContext。
+        // 切站 + 装条件 + 开搜是**一步**（见 acceptHandoff）：
         // 本轮的换站会顺手重搜一次，拆成 setSite + setFilters 就会先拿旧条件在新站发一笔，
         // 同一轮两个请求。
         svm.acceptHandoff(request.site, request.tags)
@@ -204,6 +226,10 @@ fun GalleryScreen(
     // 才让 SauceNAO 把成人内容也带回来（站方的 `hide` 参数与解析期的 hidden 过滤两道同源）。
     val allowNsfw = maskMode == "OFF"
     val rules by guard.rules.collectAsState()
+    // 画廊**自己那把** AI 屏蔽开关（批次 C2，用户拍板"画廊和漫画分开"）。
+    // 与守卫页的 block_ai 是两枚开关、共用一份词表（判据在 GalleryAi）；
+    // 它进的是三面墙的同一个 remember 键 —— 键里不带上它，改完开关要重进页面才生效，就是假开关。
+    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
 
     /**
      * 「根据你的收藏」的标签集。判据全在 `GalleryRecommendations`（纯函数、有单测），
@@ -232,8 +258,10 @@ fun GalleryScreen(
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 大屏三列、手机两列 —— 与图片收藏那面墙同一口径（用户真机反馈「平板上两列偏大」定的）。
+    // 这一档现在能被「画廊设置 → 网格列数」盖掉（AUTO 才继续按屏宽定）。
+    val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
-    val columnCount = if (wide) 3 else 2
+    val columnCount = GallerySettingsModel.gridColumns(columnMode, wide)
     /**
      * 分段器所在行的让位高度：`segmentedHeight(48dp) / segmentedHeightWide(56dp) + space3 × 2`。
      *
@@ -367,6 +395,9 @@ fun GalleryScreen(
         if (vm.feedLoadedKey == "feed#${vm.refreshTick}|${vm.seed}" && vm.posts.isNotEmpty()) return@LaunchedEffect
         val force = forceNextLoad
         forceNextLoad = false
+        // 冷启动那一屏是**今天**存的缓存 → 不联网（用户 2026-09-29：「每次进入应用画廊都会刷新
+        // 加载，很不好」）。`force` 一律放行：用户点过刷新/重试却什么都没发生，是最坏的一种假按钮。
+        if (!force && !vm.shouldAutoLoad()) return@LaunchedEffect
         loadDaily(force = force)
     }
 
@@ -378,8 +409,8 @@ fun GalleryScreen(
      * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 某一站 整站空白，
      * 当时页尾还写着「那站     * 
      */
-    val wall = remember(vm.posts, maskMode, rules) {
-        buildGalleryWall(vm.posts, maskMode) { post ->
+    val wall = remember(vm.posts, maskMode, rules, blockAi) {
+        buildGalleryWall(vm.posts, maskMode, blockAi = blockAi) { post ->
             guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
@@ -416,15 +447,15 @@ fun GalleryScreen(
         }
     }
 
-    val searchWall = remember(svm.results, maskMode, rules) {
-        buildGalleryWall(svm.results, maskMode) { post ->
+    val searchWall = remember(svm.results, maskMode, rules, blockAi) {
+        buildGalleryWall(svm.results, maskMode, blockAi = blockAi) { post ->
             guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
     // 猜你喜欢那一面墙**同一把判据**（`buildGalleryWall`）：否则会出现"日榜上被挡、
     // 推荐页全裸"的分叉 —— 同一张图在同一个页面的两页上待遇不同，是最难解释的一种不一致。
-    val forYouWall = remember(fvm.posts, maskMode, rules) {
-        buildGalleryWall(fvm.posts, maskMode) { post ->
+    val forYouWall = remember(fvm.posts, maskMode, rules, blockAi) {
+        buildGalleryWall(fvm.posts, maskMode, blockAi = blockAi) { post ->
             guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
@@ -448,17 +479,30 @@ fun GalleryScreen(
     )
 
     /**
-     * 新一轮结果落地 → 滚回顶部。
+     * 新一轮结果落地 → 滚回**该去的那一格**。
      *
      * 不滚的后果有两个，都实际发生：用户落在"上一轮滚到的深处"，看到的是新结果的中段
      * （第一眼像是"搜出来一堆不相干的图"）；同时续页判定会当场认为已经到底、顺手把第 2 页也取了。
      * 用 [GallerySearchViewModel.searchGeneration] 而不是 `results.size` 当信号：两轮条数相同就观察不到。
+     *
+     * 落点由 ViewModel 定：真发过一笔新查询 → 顶部；弹栈回到上一轮 → 那一轮离开时看到的那一张
+     * （[GallerySearchViewModel.consumeScrollRestore]，2026-09-29 反馈「返回会自动回到最上面」）。
      */
     var scrolledGeneration by remember { mutableIntStateOf(0) }
     LaunchedEffect(svm.searchGeneration) {
         if (svm.searchGeneration == 0) return@LaunchedEffect
-        gridState.scrollToItem(0)
+        gridState.scrollToItem(svm.consumeScrollRestore() ?: 0)
         scrolledGeneration = svm.searchGeneration
+    }
+
+    // 网格实时位置报回当前这一轮：压栈时 [GallerySearchViewModel.snapshot] 抄的就是这个值，
+    // 于是"返回上一轮"能把人放回原处而不是顶部。
+    // 挂在 snapshotFlow 上而不是 `onScroll`：滚动停下、程序滚动、条目增删都会反映到布局信息里，
+    // 三条来源共用一份判据（`onScroll` 漏掉后两条，程序滚回顶部就会把 0 记成一轮的深处）。
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0 }
+            .distinctUntilChanged()
+            .collect { svm.recordScroll(it) }
     }
 
     // 结果滚到离底几张以内就续下一页；到底了就不再发（页尾那行会说出来）。
@@ -575,6 +619,8 @@ fun GalleryScreen(
                 hiddenByRating = searchWall.hiddenByRating,
                 videos = searchWall.cards.count { it.post.isVideo },
                 noImage = svm.noImageNotice(),
+                // 排法与日期区间一起念：切了档而页尾读不出区别，用户只会怀疑那一下没生效。
+                ranking = svm.rankingReading(),
                 // 条件被预算砍过也要在这儿说一遍：收成一条之后展开区不画了，
                 // 那句提示只在展开态看得见，页尾得自己承担这个交代。
                 trimmedNote = svm.budgetTrimNotice(),
@@ -662,11 +708,18 @@ fun GalleryScreen(
                         svm.searchError == GallerySearchViewModel.NEEDS_GELBOORU_ACCOUNT ->
                             "这一站还不能用"
                         svm.searchError != null -> "这一轮没搜成"
+                        // 窗口内 0 条 ≠ 这一串标签搜不到东西（实测两站对不认识的伪标签也回空表），
+                        // 所以设了窗口的档要用另一句读数，免得用户去怀疑自己写的标签。
+                        // 历史期那句不能说"新增"：2024 年 3 月那一月里搜不到东西，与"本期没有新增"是两件事。
+                        svm.rankingWindowActive() ->
+                            if (svm.periodAnchor == null) "这一档里没有新增命中" else "这一期里没有命中的图"
                         else -> "这一串标签没有可摆的图"
                     },
                     message = svm.searchError
                         ?: listOfNotNull(
                             "条件：${GallerySearch.queryOf(svm.effectiveFilters())}",
+                            // 排行档连日期区间一起念 —— "本周"不带日期就是说不出对错的读数。
+                            svm.rankingReading()?.let { "排行：$it" },
                             svm.budgetTrimNotice(),
                             svm.noImageNotice(),
                             if (searchWall.blockedRules.isNotEmpty()) {
@@ -708,70 +761,87 @@ fun GalleryScreen(
             // ── 两页都归 pager ──
             // 日榜那一屏的行为逐字不变（同一面墙、同一个页尾读数、同一枚重试）；
             // 猜你喜欢那一页另持一把网格状态、另一个队列、另一套空态。
-            else -> HorizontalPager(
-                state = pagerState,
-                key = { GalleryPage.entries[it].name },
-                beyondViewportPageCount = 1,
-                // 搜索卡展开着（含输入法起着）时禁横滑：那一态用户的拇指在打字，
-                // 一划就把背后的墙换成另一面，读起来像"图自己变了"。
-                // （对应参照物 Breadboard 那处 `userScrollEnabled = !shouldShowLargeImage` 的门控精神。）
-                userScrollEnabled = !svm.active,
-                // 回弹换成欠阻尼：松手过阈值会冲过头再收回来一点，与分段小药丸那条 0.7 同族。
-                // 库默认的无阻尼弹簧到位就停，读起来是"啪"地贴上，没有跟手感。
-                flingBehavior = PagerDefaults.flingBehavior(
-                    state = pagerState,
-                    snapAnimationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMediumLow,
-                    ),
-                ),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(topBarBehavior.nestedScrollConnection),
-                pageContent = { index ->
-                    // 页外的面板不参与毛玻璃采样：两页同时往同一个 LayerBackdrop 里录制，
-                    // 顶栏模糊到底糊谁就成了未定义行为（收藏页那条原样适用）。
-                    val backdrop = if (pagerState.currentPage == index) topBarBackdrop else null
-                    when (GalleryPage.entries[index]) {
-                        GalleryPage.Daily -> GalleryDailyPage(
-                            hasPosts = vm.posts.isNotEmpty(),
-                            wall = wall,
-                            date = vm.date,
-                            sourceNotice = vm.sourceNotice,
-                            isLoading = vm.isLoadingFeed,
-                            error = vm.feedError,
-                            imageLoader = imageLoader,
-                            columnCount = columnCount,
-                            state = gridState,
-                            topPadding = gridTopPadding,
-                            backdrop = backdrop,
-                            onOpen = { post ->
-                                GalleryViewerQueue.set(wall.cards.map { it.post })
-                                onOpenPost(post.site, post.id)
-                            },
-                            onRetry = { retryFromUser() },
-                        )
-
-                        GalleryPage.ForYou -> GalleryForYouPage(
-                            fvm = fvm,
-                            wall = forYouWall,
-                            // 空态那句"有 N 张收藏却抽不出标签"要说得出张数 —— 不说就与"你还没收藏"分不开。
-                            favoriteCount = galleryFavorites.size,
-                            imageLoader = imageLoader,
-                            columnCount = columnCount,
-                            state = forYouGridState,
-                            topPadding = gridTopPadding,
-                            backdrop = backdrop,
-                            onOpen = { post ->
-                                GalleryViewerQueue.set(forYouWall.cards.map { it.post })
-                                onOpenPost(post.site, post.id)
-                            },
-                            onRetry = { retryForYouFromUser() },
-                            onGoToDaily = { galleryPage = GalleryPage.Daily },
-                        )
-                    }
+            //
+            // 整片套一层**下拉刷新**（2026-09-29 第四轮）：既然同一天之内不再自动联网，
+            // "我要新内容"就必须有一个说得出口的动作。两页共用这一层，动作按当前那一页分发
+            // —— 走的是既有的两条用户主动路径（清熔断 + force），不是另造一套取数。
+            else -> PullToRefreshBox(
+                // 绑**当前这一页**的在途标志。原先写的是两页的并集（`||`），而 `onRefresh`
+                // 只派发给当前那一页 —— 两页是同时被组合的（beyondViewportPageCount = 1），
+                // 于是"在日榜下拉、环却等另一页取完才停"，看上去就是"已经加载好了还在转"。
+                // 同一处还造成第二枚图标：另一页自己的加载环跟着一起转。
+                isRefreshing = if (galleryPage == GalleryPage.Daily) vm.isLoadingFeed else fvm.isLoading,
+                onRefresh = {
+                    if (galleryPage == GalleryPage.Daily) retryFromUser() else retryForYouFromUser()
                 },
-            )
+                state = rememberPullToRefreshState(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    key = { GalleryPage.entries[it].name },
+                    beyondViewportPageCount = 1,
+                    // 搜索卡展开着（含输入法起着）时禁横滑：那一态用户的拇指在打字，
+                    // 一划就把背后的墙换成另一面，读起来像"图自己变了"。
+                    // （对应参照物 Breadboard 那处 `userScrollEnabled = !shouldShowLargeImage` 的门控精神。）
+                    userScrollEnabled = !svm.active,
+                    // 回弹换成欠阻尼：松手过阈值会冲过头再收回来一点，与分段小药丸那条 0.7 同族。
+                    // 库默认的无阻尼弹簧到位就停，读起来是"啪"地贴上，没有跟手感。
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(topBarBehavior.nestedScrollConnection),
+                    pageContent = { index ->
+                        // 页外的面板不参与毛玻璃采样：两页同时往同一个 LayerBackdrop 里录制，
+                        // 顶栏模糊到底糊谁就成了未定义行为（收藏页那条原样适用）。
+                        val backdrop = if (pagerState.currentPage == index) topBarBackdrop else null
+                        when (GalleryPage.entries[index]) {
+                            GalleryPage.Daily -> GalleryDailyPage(
+                                hasPosts = vm.posts.isNotEmpty(),
+                                wall = wall,
+                                date = vm.date,
+                                sourceNotice = vm.sourceNotice,
+                                isLoading = vm.isLoadingFeed,
+                                error = vm.feedError,
+                                imageLoader = imageLoader,
+                                columnCount = columnCount,
+                                state = gridState,
+                                topPadding = gridTopPadding,
+                                backdrop = backdrop,
+                                onOpen = { post ->
+                                    GalleryViewerQueue.set(wall.cards.map { it.post })
+                                    onOpenPost(post.site, post.id)
+                                },
+                                onRetry = { retryFromUser() },
+                            )
+
+                            GalleryPage.ForYou -> GalleryForYouPage(
+                                fvm = fvm,
+                                wall = forYouWall,
+                                // 空态那句"有 N 张收藏却抽不出标签"要说得出张数 —— 不说就与"你还没收藏"分不开。
+                                favoriteCount = galleryFavorites.size,
+                                imageLoader = imageLoader,
+                                columnCount = columnCount,
+                                state = forYouGridState,
+                                topPadding = gridTopPadding,
+                                backdrop = backdrop,
+                                onOpen = { post ->
+                                    GalleryViewerQueue.set(forYouWall.cards.map { it.post })
+                                    onOpenPost(post.site, post.id)
+                                },
+                                onRetry = { retryForYouFromUser() },
+                                onGoToDaily = { galleryPage = GalleryPage.Daily },
+                            )
+                        }
+                    },
+                )
+            }
         }
 
         // 顶栏**一直在**（用户 2026-09-25 第四轮：不跳页、也不替换标题栏）。
@@ -894,6 +964,7 @@ fun GalleryScreen(
                         recommendations = recommendations,
                         // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
                         // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
+                        // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
                         onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
                         onSizeChanged = { areaSize = it },
                         rvm = rvm,
@@ -977,10 +1048,15 @@ private const val LOAD_MORE_AHEAD = 4
  * @param blockedRuleOf 这条被哪条用户规则挡了（返回规则原文，给页面念出来）。
  *   判据由调用方给：画廊侧是 [ContentGuardManager.findGalleryBlockedRule]，
  *   日榜与搜索必须**同一个调用**，否则会出现"墙上被挡、搜索结果里全裸"的分叉。
+ * @param blockAi 画廊那一把**独立的** AI 屏蔽开关（批次 C2，用户拍板"画廊和漫画分开"）。
+ *   命中的条目按"命中一条屏蔽规则"记账，规则名写死成 `AI 生成` —— 页尾与空态那两处读数
+ *   本来就会把 `blockedRules` 念出来，这样"AI 挡了几张、为什么挡"是同一句真话，
+ *   不需要再造第三个计数器（第三个计数器意味着第三套文案，那才是会漂的地方）。
  */
 internal fun buildGalleryWall(
     posts: List<GalleryPost>,
     maskMode: String,
+    blockAi: Boolean = false,
     blockedRuleOf: (GalleryPost) -> String?,
 ): GalleryWall {
     val kept = ArrayList<GalleryCard>(posts.size)
@@ -989,6 +1065,7 @@ internal fun buildGalleryWall(
     var hiddenByRating = 0
     posts.forEach { post ->
         val blocked = blockedRuleOf(post)
+            ?: if (blockAi && GalleryAi.isAiMarked(post.tagList)) AI_BLOCKED_RULE else null
         when (GalleryGuard.maskStateFor(post, maskMode, blockedByUser = blocked != null)) {
             GalleryGuard.HIDDEN -> if (blocked != null) {
                 blockedCount++
@@ -1086,6 +1163,11 @@ private fun GalleryPostCard(
 ) {
     val tokens = VeneraTokens
     val post = card.post
+    // 墙上摆哪一档由「画廊设置 → 预览清晰度」定（判据与"取不到就退回 preview"那条都在
+    // GallerySettingsModel.wallUrl）。按卡片各读一次：它是整面墙唯一的消费点，
+    // 往下透传要改四个调用方（日榜/搜索/推荐/收藏），往上提又要改 GalleryWall 的派生 —— 都不值。
+    val quality by VeneraPreferences.getInstance(LocalContext.current)
+        .galleryPreviewQuality.collectAsState()
     var bounds by remember { mutableStateOf(Rect.Zero) }
     // 高度在**摆放前**就知道：两站的 JSON 都直接带中间档宽高，
     // 不像本地插图那样要靠加载成功回填 —— 所以这里不会有"各列先等分再集体跳动"。
@@ -1102,7 +1184,7 @@ private fun GalleryPostCard(
         onLongPress = onLongPress,
     ) {
         VeneraCover(
-            url = post.previewUrl,
+            url = GallerySettingsModel.wallUrl(post, quality),
             contentDescription = "${post.site.displayName} #${post.id}",
             // 宽高由外部 aspectRatio 定死，封面再自持 3:4 会在槽位里横向留缝（轮播那条同因）。
             preserveAspectRatio = false,
@@ -1117,6 +1199,13 @@ private fun GalleryPostCard(
             // 视频唯一的例外：不标出来，它就是一张"加载失败的图"（缩略图是站方的静帧 jpg）。
             // 摆右下角，免得和来源胶囊抢位置。
             if (post.isVideo) GalleryVideoPill(post.durationLabel)
+            // AI 角标（批次 C2）：命中站方 AI 标签才摆，摆不摆由画廊自己那枚开关管
+            // （与漫画守卫页的 block_ai 是两把，词表仍是同一份）。
+            // 屏蔽开着时这条根本不会上屏，所以角标的真正用途是"我不屏蔽，但我要看得出来"。
+            // 偏好读法与上面「预览清晰度」同一条口径：按卡片各读一次，不往下透传四个调用方。
+            val aiBadgeOn by VeneraPreferences.getInstance(LocalContext.current)
+                .galleryAiBadge.collectAsState()
+            if (aiBadgeOn && GalleryAi.isAiMarked(post.tagList)) GalleryAiPill()
             overlay?.invoke(this, post)
         }
     }
@@ -1142,6 +1231,21 @@ private fun BoxScope.GallerySourcePill(name: String) {
 private fun BoxScope.GalleryVideoPill(durationLabel: String) {
     GalleryCornerPill(if (durationLabel.isEmpty()) "▶" else "▶ $durationLabel", Alignment.BottomEnd)
 }
+
+/**
+ * AI 角标：一枚「AI」。
+ *
+ * 摆**左上角** —— 左下是来源、右下是视频、右上是 VeneraCover 自己的 R18 位，四个角只剩这一个空着。
+ * 判据与"没有信号就不摆"这条硬口径同一条：站方没打 AI 标签的条目一律不摆，
+ * 不靠"画风像 AI"编一个读数出来。
+ */
+@Composable
+private fun BoxScope.GalleryAiPill() {
+    GalleryCornerPill("AI", Alignment.TopStart)
+}
+
+/** 被画廊那把 AI 开关收起时，页尾念出来的"规则名"。它不是一条文本规则，是一枚开关。 */
+const val AI_BLOCKED_RULE = "AI 生成"
 
 /**
  * 卡片角上那枚小胶囊。
@@ -1355,19 +1459,33 @@ internal fun GalleryDailyPage(
             wallModifier.padding(horizontal = tokens.spacing.screenHorizontal),
             contentAlignment = Alignment.Center,
         ) {
-            // 刻意不说"没有图"：两站的日榜这一轮明明有内容
-            // （实测 yande.re 40 条、Gelbooru 100 条），是被用户的规则或分级模式剔完了。
-            // 报成空态就是在掩盖判定链的效果（假空态），所以把**是哪几条规则**念出来。
+            /*
+             * 归因**只按实际剔掉的张数说**。此前这一支只要墙空着就说"被你的规则挡完了"，
+             * 而墙空着还有第三种可能：站方这一轮本来就什么都没回（当天零新增、源被限）。
+             * 把"没有"说成"被挡住"是假归因 —— 用户会去收规则，而收完还是空的，
+             * 于是他把一条正常链当成坏了。（2026-09-29 真机报出来的。）
+             */
+            val blocked = wall.blockedCount
+            val hidden = wall.hiddenByRating
             VeneraEmptyView(
-                title = "这一屏被你的规则挡完了",
+                title = when {
+                    blocked > 0 || hidden > 0 -> "这一屏被你的规则挡完了"
+                    else -> "这一轮没有可摆的图"
+                },
                 message = buildString {
-                    if (wall.blockedRules.isNotEmpty()) {
-                        append("命中屏蔽规则：${wall.blockedRules.joinToString("、")}")
+                    if (blocked > 0) {
+                        append("$blocked 张命中屏蔽规则：${wall.blockedRules.joinToString("、")}")
                         append("。图站的 tag 是 `long_hair`、`tail` 这类下划线标识符，")
                         append("短关键字很容易整站命中 —— 想看到内容就把那条规则收掉或改长。")
-                    } else {
-                        append("「成人内容处理」选了「彻底隐藏」，这一轮的图全被判为成人内容。")
-                        append("想看到内容，去设置里改成「封面打码」或「不过滤」。")
+                    }
+                    if (hidden > 0) {
+                        if (blocked > 0) append("\n")
+                        append("$hidden 张被「成人内容处理」收起。想看到内容，去设置里改成「封面打码」或「不过滤」。")
+                    }
+                    if (blocked == 0 && hidden == 0) {
+                        // 不说"两站都没有"：哪几站参与了的实情由下面那行 sourceNotice 念。
+                        append("站方这一轮没有回内容。一张也没被剔掉，所以不是屏蔽规则的事 —— ")
+                        append("稍后再刷一次，或换一天（日榜是按站方那一天算的）。")
                     }
                     if (sourceNotice != null) append("\n$sourceNotice")
                 },

@@ -40,8 +40,8 @@ enum class VeneraNavTab(
     // 2026-09-23 信息架构改判（用户点名，评审记录见 FREEZE-STATEMENT.md 同名条目）：
     // 历史从主 Tab 降回二级页。撤这一项**不是删功能**，入口换成三处 ——
     // 首页「历史记录」分区头、设置首页一条、阅读器顶栏胶囊一条。
-    // ⚠️ 枚举顺序就是底栏顺序，也是左右横滑翻页顺序（Navigation.kt 的 tabSwipePager
-    // 与 VeneraNavTab.entries 单一真相）。腾出来的那个位置给了画廊（下面 GALLERY）——
+    // ⚠️ 枚举顺序就是底栏顺序（09-29 起页面内容不再左右滑切 tab，横滑只剩底栏这一处，
+    // 顺序仍由 VeneraNavTab.entries 单一真相决定）。腾出来的那个位置给了画廊（下面 GALLERY）——
     // 09-23 我按「收藏右侧第 3 位」预留，09-24 用户改口「放搜索右侧第四个」，以这里为准。
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
     SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),

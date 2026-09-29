@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 
@@ -37,10 +38,13 @@ fun VeneraCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = VeneraTokens
-    // miuix Card 可点击重载：仅在提供了任一回调用才启用手势。
+    val cornerRadius = tokens.shape.card
+    // 要不要玻璃、容器色透不透明，都由 veneraGlassSurface / veneraGlassCardColors 那一处决定
+    // （设置页分组卡走同一对），这里不留第二份判断。
     Card(
-        modifier = modifier,
-        cornerRadius = tokens.shape.card,
+        modifier = modifier.veneraGlassSurface(VeneraGlassRole.CARD, cornerRadius),
+        cornerRadius = cornerRadius,
+        colors = veneraGlassCardColors(),
         onClick = onClick,
         onLongPress = onLongClick,
     ) {

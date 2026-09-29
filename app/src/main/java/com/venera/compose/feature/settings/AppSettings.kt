@@ -9,14 +9,13 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
@@ -247,10 +246,11 @@ fun AppSettings(
 
     // 探针失败 → 讲清代价再给唯一出口（系统设置页），不做静默回落
     showGrantPrompt?.let { path ->
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { showGrantPrompt = null },
-            title = { Text("需要「所有文件访问」权限") },
-            text = {
+            title = "需要「所有文件访问」权限",
+            content = {
                 Text(
                     "Android 11 起的分区存储不允许应用直接用文件接口写公共目录，" +
                         "实测往「$path」写入失败。\n\n" +
@@ -258,26 +258,25 @@ fun AppSettings(
                         "该开关只影响文件读写，可在系统设置里随时撤销。"
                 )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingGrantPath = path
-                    showGrantPrompt = null
-                    openAllFilesSettings(context)
-                }) { Text("打开系统设置") }
+            confirmText = "打开系统设置",
+            onConfirm = {
+                pendingGrantPath = path
+                showGrantPrompt = null
+                openAllFilesSettings(context)
             },
-            dismissButton = {
-                TextButton(onClick = { showGrantPrompt = null }) { Text("取消") }
-            },
+            dismissText = "取消",
+            onDismiss = { showGrantPrompt = null },
         )
     }
 
     // 旧根非空才问；两个选项的差别在文案里写实，不美化
     pendingTarget?.let { target ->
         val (comics, chapters) = pendingCounts
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { pendingTarget = null },
-            title = { Text("切换存储目录") },
-            text = {
+            title = "切换存储目录",
+            content = {
                 Text(
                     "新目录：$target\n\n" +
                         "当前目录里有 $comics 部漫画 / $chapters 章。\n" +
@@ -286,38 +285,42 @@ fun AppSettings(
                         "「未下载」，再点会重新拉取。"
                 )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingTarget = null
-                    busy = true
-                    scope.launch {
-                        applyStoragePath(context, prefs, target, migrate = true)
-                        busy = false
-                    }
-                }) { Text("移动到所选目录") }
+            confirmText = "移动到所选目录",
+            onConfirm = {
+                pendingTarget = null
+                busy = true
+                scope.launch {
+                    applyStoragePath(context, prefs, target, migrate = true)
+                    busy = false
+                }
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    pendingTarget = null
-                    busy = true
-                    scope.launch {
-                        applyStoragePath(context, prefs, target, migrate = false)
-                        busy = false
-                    }
-                }) { Text("仅对新下载生效") }
+            dismissText = "仅对新下载生效",
+            onDismiss = {
+                pendingTarget = null
+                busy = true
+                scope.launch {
+                    applyStoragePath(context, prefs, target, migrate = false)
+                    busy = false
+                }
             },
         )
     }
 }
 
-private sealed interface DirChoice {
+/**
+ * 选目录的三档结果。
+ *
+ * `internal` 而不是 `private`：画廊设置的「下载目录」那一行走的是**同一套**三道关
+ * （换算真实路径 → 准入守卫 → 实写探针）。留两份实现必然漂，而漂的那一半通常是守卫那份。
+ */
+internal sealed interface DirChoice {
     data class Accept(val path: String) : DirChoice
     data class NeedsPermission(val path: String) : DirChoice
     data class Reject(val reason: String) : DirChoice
 }
 
 /** 三道关：换算真实路径 → 目录准入守卫 → 实写探针。任一不过就把理由交回用户。 */
-private fun evaluatePickedDir(context: Context, uri: Uri): DirChoice {
+internal fun evaluatePickedDir(context: Context, uri: Uri): DirChoice {
     val path = ComicStorageRoot.resolveTreePath(context, uri)
         ?: return DirChoice.Reject(
             "系统选择器给的是虚拟目录，换算不出真实路径。请在选择器里进入「内部存储」或 SD 卡，" +

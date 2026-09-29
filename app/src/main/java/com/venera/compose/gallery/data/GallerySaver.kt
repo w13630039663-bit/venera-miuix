@@ -7,21 +7,31 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
+import com.venera.compose.gallery.domain.GallerySettingsModel
 import java.io.File
 import java.io.IOException
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
  * 把画廊的一条**原图/原片原样**存下来。
  *
- * ## 落点：`<本地漫画存储根>/图库`
+ * ## 落点：画廊设置里另设的目录，没设时是 `<本地漫画存储根>/图库`
  *
  * 用户 2026-09-26 的口径：跟着漫画库走，在同一层新建一个 `图库` 文件夹。
  * 默认漫画根是应用私有的 `files/downloads`，用户已把它设成
  * `/storage/emulated/0/Download/漫画`（设置 → 本地漫画存储路径），
- * 所以实际落点是 `/storage/emulated/0/Download/漫画/图库/<site>-<id>.<ext>`。
+ * 所以不设时的实际落点是 `/storage/emulated/0/Download/漫画/图库/<site>-<id>.<ext>`。
+ * 2026-09-29 起这一档可以被**画廊自己的下载目录**盖掉（只盖目录，不改上面那条默认）。
+ *
+ * ## 文件名由「命名规则」那一档定
+ *
+ * 判据是纯函数（`GallerySettingsModel.fileName`，有用例钉着），这里只负责取偏好值与时间戳。
+ * 默认那一档就是原来那个 `<site>-<id>.<ext>`，所以不改设置的用户看不到任何变化。
  *
  * ## 两条写入路径（先试 MediaStore，落点不被接受才直写文件）
  *
@@ -79,9 +89,13 @@ object GallerySaver {
 
             val mime = mimeOf(post)
             val dir = GallerySaveTarget.directory(context)
+            val naming = VeneraPreferences.getInstance(context).gallerySaveNaming.value
+            // 文件名规则由画廊设置那一档定（判据与被钉住的用例见 GallerySettingsModel）。
+            val stamp = LocalDateTime.now().format(TIMESTAMP)
+            val wanted = GallerySettingsModel.fileName(post, naming, stamp)
             // 重名由我们**先**处理掉（`name (1).jpg`）：MediaStore 自己也会改名，
             // 但它改完的名字我们只能再查一次才拿得到，"存到哪了"就会变成一句猜的话。
-            val name = GallerySaveTarget.uniqueName(dir, "${post.site.routeKey}-${post.id}.${post.fileExt.ifBlank { "bin" }}")
+            val name = GallerySaveTarget.uniqueName(dir, wanted)
             val path = saveToAlbum(context, dir, name, mime, bytes)
                 ?: saveToFile(context, dir, name, mime, bytes)
             Saved(path, bytes.size.toLong())
@@ -169,7 +183,7 @@ object GallerySaver {
 }
 
 /**
- * 下载落点：**本地漫画存储根 + `图库`**。
+ * 下载落点：画廊设置里另设的目录，没设时是**本地漫画存储根 + `图库`**。
  *
  * 只做路径换算与建目录，不碰字节 —— 落地点与"怎么写进去"（MediaStore / File）
  * 是两件事，混在一起就会出现"为了用 MediaStore 而偷偷改目录"。
@@ -178,8 +192,17 @@ internal object GallerySaveTarget {
 
     const val DIR_NAME = "图库"
 
-    /** 恒定落点。漫画根为空时 `ComicStorageRoot.resolve` 会给应用私有默认根。 */
-    fun directory(context: Context): File = File(ComicStorageRoot.resolve(context), DIR_NAME)
+    /**
+     * 落点。
+     *
+     * 优先用户为画廊**另设**的目录（画廊设置 → 下载 → 下载目录）；没设时沿用
+     * 「本地漫画存储根 + `图库`」—— 不设第二份默认值，否则改了漫画根这边会悄悄不跟。
+     */
+    fun directory(context: Context): File {
+        val custom = VeneraPreferences.getInstance(context).galleryDownloadPath.value
+        if (custom.isNotBlank()) return File(custom)
+        return File(ComicStorageRoot.resolve(context), DIR_NAME)
+    }
 
     /**
      * 目录换成 MediaStore 的 `RELATIVE_PATH`（形如 `Download/漫画/图库`）。
@@ -214,3 +237,6 @@ internal object GallerySaveTarget {
         }
     }
 }
+
+/** 「时间戳」那一档用的形状：`20260929-113045`（秒级、可直接按名字排序）。 */
+private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")

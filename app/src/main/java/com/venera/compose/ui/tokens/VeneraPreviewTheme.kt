@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.prefs.SurfaceMaterial
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDark
@@ -28,6 +29,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLight
 fun VeneraPreviewTheme(
     appearance: AppearanceStyle,
     dark: Boolean = isSystemInDarkTheme(),
+    material: SurfaceMaterial = SurfaceMaterial.SOLID,
     content: @Composable () -> Unit,
 ) {
     val m3 = if (dark) darkColorScheme() else lightColorScheme()
@@ -65,6 +67,11 @@ fun VeneraPreviewTheme(
     }
 
     CompositionLocalProvider(
+        // 注意：这里**没有** provide `LocalVeneraDarkTheme`（它在 feature/VeneraTheme.kt 里声明，
+        // 而 ui/tokens 从不反向 import feature；补上要么引反向依赖，要么改 8 个读取点的 import，
+        // 其中若干在 FROZEN 名单里）。后果如实记着：深色预览里那些读它的元素（氛围光背景、
+        // 玻璃描边的明暗选择）仍按浅色算 —— 这是既有的缺口，不是这一轮引入的。
+        LocalSurfaceMaterial provides material,
         LocalVeneraTokens provides tokens,
         LocalVeneraColorTokens provides colorTokens,
         LocalContentColor provides miuix.onBackground,

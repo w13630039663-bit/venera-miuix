@@ -164,7 +164,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     // 层级不同就该在不同的位置上（见 ImageFavoritesPanel）。
     var imageSection by rememberSaveable { mutableStateOf(ImageSection.Comics) }
     // 三块面板现在是一个 pager 的三页：本页的横滑只切「网络 / 图片 / 本地」这三段
-    // （主 tab 那条横滑在收藏页已整体禁用，见 Navigation.kt 的 tabSwipePager enabled）。
+    // （09-29 起主 tab 那条内容横滑已经整体撤掉，见 _trash/tab-swipe-pager-2026-09-29/）。
     // 跟手位移、过阈值提交、不到阈值弹簧回弹，全是 pager 自带的行为。
     val pagerState = rememberPagerState(
         initialPage = favoritesModesNetworkFirst.indexOf(mode),

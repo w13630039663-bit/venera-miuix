@@ -869,3 +869,380 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 
 构建：`testDebugUnitTest` **265 条 0 失败** / `assembleDebug` 绿。
 **待真机验**：三档主题（MD3 / MIUIX / 深色）下未选中那几颗的对比度，以及贴在亮画作上是否仍读得出"这是一排可点的段"。
+
+## 2026-09-28 追加二：画廊标签三项（分桶画师栏位 / 标签汉化词典 / 点标签返回逐级回退）
+
+方案与实测底账在 `gallery-tag-category-translation-and-nav-2026-09.md`（§〇 底账、§一~§三 设计、
+§七 落地记录，含 §7.4 那份**探针误判与更正**）。这一节只记冻结面。
+
+### 保护域
+
+`Navigation.kt`、底栏枚举、`currentTab` / 主 Tab 横滑**一个字没动**。
+第 2 项评估过"搜索另开一页"（用户提的），结论是不加 `GallerySearchRoute` ——
+要修的"返回回到上一轮"靠 `GallerySearchViewModel` 里的上下文栈就够，
+理由与那三条硬墙记在 `gallery-search-2026-09.md` §不变结论那一段（2026-09-28 补注）。
+改动全在 `gallery/` 包 + 两份 assets + 一个构建脚本。
+
+### 新增的资产与许可（体积账要认）
+
+- `app/src/main/assets/gallery_tags_79415.sqlite` —— ffdkj Danbooru 汉英词典表（**MIT**，
+  `post_count≥100` 或本身是中文/画师档的那 79,415 行），落盘 3.26 MB、进包 1.74 MB（Deflate 47%）。
+  文件名带行数 = 版本：换表就是换文件名，运行期按"文件名里的行数取最新"挑，旧的副本自然失效。
+- `app/src/main/assets/licenses/ehtagtranslation-LICENSE.md`（CC BY-NC-SA 3.0 中国大陆）、
+  `.../ffdkj-danbooru-tags-LICENSE.txt` —— `tags.json` 一直在包里而许可**从没登记过**，这笔漏记与
+  选不选它无关，一起补了。
+- `scripts/build_tag_dictionaries.mjs` —— 两份词典的**构建期出处**（线上库 → assets），
+  头注写死"`tags_tw.json` 刻意不刷新"（EhTag 的仓库只有简体）。
+- `assets/tags.json` 34,956 → **44,344** 条（刷新线上库）。⚠️ 这条会同时改变漫画侧：
+  题材统计命中的键变多。下一轮如果有人报"题材统计数字变了"，先想到这里。
+
+### 归一模型的一处删减（有意，不是遗漏）
+
+`GalleryPost.tagGroups` 这个字段**删了**，`galleryTagGroup()` 那个 helper 一起删。
+理由：两站 post 端点都不给分类（实测 yande.re 44 个键无分类字段、Gelbooru 只有一串平铺 tags），
+留着它就只有两种写法 —— 解析期硬造假分组，或永远填一桶「标签」让下一个人以为分类数据不存在。
+分类的真出处在那张帖的 HTML（站方给每枚标签标了 `tag-type-*` 类名），改由
+`GalleryTagCategories` 在「关于这张图」打开时另取一笔、渲染期 `buildGalleryTagBuckets(...)` 分桶。
+降级口径守住"宁可少摆不可摆错"：认不出类名 → 交 null → 只用词典兜「画师」一栏，
+其余一律进「标签」而**不是**「通用」。
+
+### 搜索返回的语义变更（本轮唯一的行为改判）
+
+"换一轮搜索上下文"从**整片覆盖**改为**压栈**，返回逐级回退（wowoguni → touhou → 每日推荐）；
+三条入口（大图页点标签 / 点历史 / 点推荐标签行）收敛到 `openContext()` 一个落点。
+`closeSearch()` 与顶栏 ✕ 的既有拍板没动（chips 与结果不清、✕ 只关一层不清栈）。
+配套把 `runSearch` 落地那道闸从"只比站点"改成 `isStaleContext(轮次, 站, …)` ——
+**认轮次也认站点**，站点那一半留着是因为顶栏换站不转轮次。
+判据全在新增的 `gallery/domain/GallerySearchContext.kt`（9 条单测锁），
+ViewModel 只做抄字段那层薄接线。
+
+构建：`testDebugUnitTest` **307 条 0 失败** / `compileDebugKotlin` 绿 / `assembleDebug` 绿。
+**待真机验**：第 1 项的画师行与分桶、第 3 项的「译名 (原词)」双显示，以及第 2 项那一串逐级返回
+（完整清单在方案文档 §六 与 §7.4.3；设备由用户操作，我只读截图与 logcat）。
+
+## 2026-09-29 追加：画廊搜索的时间窗口排行（六档 + Gelbooru 定界器）
+
+> ⚠️ **这一节已被同日「第二轮」那一节取代**（Gelbooru 撤档、新增月/年选期）。
+> 留着不删是历史，但里面的"六档""326 条""定界器"都不是当前形状，别照它读代码。
+
+方案、实测底账与落地记录都在 `gallery-ranking-windows-2026-09.md`（§〇 五批探针、
+§0.4 记着我自己的三处探针设计错误、§十 偏离与 QA）。这一节只记冻结面与行为改判。
+
+### 保护域
+
+`Navigation.kt`、底栏枚举、`currentTab` / 主 Tab 横滑**照旧一个字没动**。
+改动全在 `gallery/` 包内（新增 2 个域文件 + 1 个 data 文件 + 3 处接线）。
+
+### 顶栏 chrome：一行都没加
+
+排行控件挂在**已有的**胶囊行末尾（`VeneraChip` 的 `Filter` 变体，探索页快捷筛选同一件），
+点开是 `DropdownMenu`（收藏页 `FavoritesSortMenu` 同式）。
+玻璃那三条既有硬约束原样适用：不涂不透明底板、避让只用常量、`bottomContent` 那格不加第三支。
+下滑后的**吸附胶囊层刻意不加**这一颗 —— 那一行宽度封在屏宽 34% 内、与居中标题抢位。
+
+### 两条行为改判（用户 2026-09-29 拍板）
+
+1. **`GallerySearchContext` 快照多一个 `ranking` 字段**：弹栈要连档级一起带回。
+   上一轮那条"快照只存搜什么"的口径因此扩了一点 —— 不扩就会出现
+   「按周排行看着 → 点标签 → 返回 → 屏上还是那批图而档变回默认」那种读不出原因的错位。
+2. **历史仍只存用户那一排条件**（`visibleQuery`），排序与窗口伪标签**不进历史、不进胶囊**。
+   页尾与空态改念"发出去的是哪一串 + 当前档的日期区间"，两串各有一条单测锁着。
+
+### 一处刻意的"能做但先不装"
+
+`GelbooruClient.stampBefore` 依赖 **DAPI 认 `id:`** 这个前提，而它本机验不了
+（匿名一律 401，§0.2 的证据来自站内 HTML）。功能照用户要求本轮就上，但失败必须有出口：
+定不出边界就**不发那一笔**，屏上是「这一档没开起来」的解释空态，
+绝不"当没设窗口"发一次全站查询。真机第一次点 Gelbooru 时间档就是这一前提的判决（方案 §八.6）。
+
+构建：`testDebugUnitTest` **326 条 0 失败** / `compileDebugKotlin` 绿 / `assembleDebug` 绿。
+**待真机验**：方案 §八 那 9 条（含第 1 项画师栏位、第 3 项标签汉化那两条仍未验的）。
+
+## 2026-09-29 追加（第二轮）：Gelbooru 时间档撤下 + 月/年可选具体一期
+
+同一份方案的第二轮（真机读数之后），细节在 `gallery-ranking-windows-2026-09.md` §十一、§十二。
+
+### 保护域
+
+`Navigation.kt`、底栏枚举、`currentTab` / 主 Tab 横滑**照旧一个字没动**。
+排行与选期都挂在**已有的**那一排胶囊末尾，日期弹层是模态的、不占内容高度 ——
+玻璃顶栏那三条硬约束（不涂不透明底、`bottomContent` 不加第三支、避让只用常量）原样适用。
+
+### 行为改判（三条，全部用户当场拍板）
+
+1. **Gelbooru 只留「默认」与「全部排行」**。天/周/月/年四行在下拉里留着但点不动，写「本站没有」。
+   判据一把在 `GalleryRankings.supports(site, ranking)`，菜单画行 / `setRanking` / 换站三处共用 ——
+   出现"点得动、发出去是全站结果"的那种假开关，就是因为这类判据散成多把。
+2. **月/年档可以选具体哪一期**（yande.re 原生 `date:A..B`，任意历史期都是一笔请求的成本）。
+   入口是同一个下拉的第七行 → 日期弹层（粒度两枚 + 日历，年份范围 2007..今年）。
+   `GallerySearchContext` 快照再加一项 `periodAnchor`：翻到 2024-03 之后点一枚标签再返回，
+   屏上若还是那批三年前的图而读数写着本期，就是上一轮 `ranking` 那条错位的重演。
+3. **每日推荐的空态不再默认甩锅屏蔽规则**。原来只要墙空着就写「这一屏被你的规则挡完了」，
+   池子本来就空的时候还会补一句"全被判为成人内容"——那是凭空编的成因。
+   现在按实际张数说：`blockedCount > 0` 才提规则、`hiddenByRating > 0` 才提分级，
+   两个都是 0 就说「站方这一轮没有回内容」。
+
+### 一处公开纠正（影响过决策，必须留字）
+
+撤档时我在代码注释里写过"DAPI 真机读数不认 `id:>=`"—— **那句是我替用户补的，不是他的读数**。
+他的原话是"周和全部正常，月年不行"，即 DAPI **认** `id:>=`，机制是通的；
+月/年失败是我把定界器的探测预算定在 24 次（那站约 1.2 万 id/天，月档跨 ~36 万 id，
+拓界 6 + 二分 22 ≈ 28 次才收口）。撤下的代码镜像在
+`_trash/gallery-gelbooru-boundary-2026-09-29/`（含 README 写明恢复只需改那一个常数）。
+用户是在"以为整条机制死了"的前提下面选的撤档 —— 这一条下次拍板前必须先说清。
+
+### 仍未真机验的
+
+日期弹层（M3 `DatePicker` 第一次进本项目）的**观感**没验：弹层高度在小屏上是否要滚、
+粒度那两枚芯片与日历的间距、以及"点任意一天=取它所在那一期"这条口径读不读得懂。
+构建：`testDebugUnitTest` **325 条 0 失败 0 错误**（45 套件）/ `compileDebugKotlin` 绿 /
+`assembleDebug` 绿，universal 103,669,063 B（无新资产，尺寸与上一轮同一字节数）。
+
+## 2026-09-29 追加（第三轮）：主页面内容区横滑切 tab 整体撤下（保护域豁免）
+
+用户原话：「取消所有主页面的任意位置左右滑动切换页面导航栏的，但是要保留导航栏的左右滑动」。
+**这是对 `Navigation.kt` 保护域的显式授权变更**，不是顺手改 —— 记录在此。
+
+### 撤了什么
+
+- `feature/TabSwipePager.kt` 整个文件（`tabSwipePager` 修饰符 + `TabSwipeExclusionRegistry`
+  + `LocalTabSwipeExclusions` + `tabSwipeExcluded`）→ 镜像到 `_trash/tab-swipe-pager-2026-09-29/`。
+- `Navigation.kt` 里 NavHost 上唯一那一处 `.tabSwipePager(...)` 调用，以及只为它存在的
+  `swipeExclusions` 登记表与外层 `CompositionLocalProvider`、`navigationInsets` 局部量。
+- `HomeScreen.kt` 首页推荐轮播那一块的 `Modifier.tabSwipeExcluded()`（登记方没了，让位带也无意义）。
+- 两处**注释**里"枚举顺序就是左右横滑翻页顺序"的口径改写（`VeneraFloatingNavBar.kt`、
+  `FavoritesScreen.kt`）—— 留着会指到一个已经不存在的实现。
+
+### 留了什么（一条都没动）
+
+- **底栏自己那条拖动**：`VeneraLiquidGlassNavBar` 的 `DampedDragAnimation` → `onTabSelected` → `gotoTab`。
+  它与刚撤掉的那条本来就是两套实现（旧的还专门写了"起手点在底栏区域内就不接管"来避开它）。
+- `VeneraNavTab` **枚举顺序、路由映射表、顶栏齿轮入口**：一个字没动（冻结面原样有效）。
+- 所有**页内**pager：收藏三段、画廊日榜/推荐两页、大图页左右翻、阅读器 LTR/RTL/双页、首页推荐轮播。
+
+### 同轮另外两条（不涉保护域）
+
+- 排行菜单的状态从芯片里提到 `GallerySearchArea`：修的是"展开态点排行，菜单闪一下就没了"
+  （组合位置一变 = 新实例 = `remember` 归零），方案 §13.1。
+- 「关于这张图」改两列：画师/角色/作品与尺寸卡并排，`ArtistRow` 删除，方案 §13.2。
+
+构建：`testDebugUnitTest` **325 条 0 失败 0 错误** / `compileDebugKotlin` 绿 / `assembleDebug` 绿。
+
+## 2026-09-29 追加（第四轮）：切 Tab 方向化滑入（保护域第二次豁免）+ 画廊设置分区
+
+细节在 `gallery-round4-and-settings-2026-09.md`。用户一次回 8 条，其中两条落在保护域或冻结面上。
+
+### 保护域第二次点名豁免：`Navigation.kt` 的转场方向
+
+用户原话：「切换页面的时候水平平滑滑动效果：如果从"首页"切到"收藏"，页面从右侧滑入；
+从"收藏"切回"首页"，页面从左侧滑出。Tab 顺序与滑动方向一一对应」。
+
+改的只有 `NavHost` 的 `enterTransition` / `exitTransition` 两行 → 各加一个分支：
+两端**都是主 Tab** 时走整页 `slideIn/OutHorizontally`（方向 = 目标序号 − 起始序号），
+其余目的地仍走官方 shared axis X（列表→详情是"同一本书换个容器"，封面在按自己的曲线飞）。
+
+- `VeneraNavTab` 枚举顺序、路由映射表、底栏拖动：**照旧一个字没动**。
+- `popEnter/popExit` 与预测式返回那四个 lambda：没动。
+- 与第三轮那条不冲突：第三轮撤的是**手势**，这一轮加的是**动画**。
+
+### 冻结文件的外观改动（走"记豁免"那条路）
+
+- `feature/settings/SettingsComponents.kt`：`SettingsGroup` 的标题那一段抽成
+  `SettingsGroupTitle`（样式仍只有一份实现）。为的是画廊设置里"账号与密钥"那一组摆的
+  两张卡本身已是 `VeneraCard`，再套一层 Card 就是卡里嵌卡。
+- `feature/settings/AppSettings.kt`：`DirChoice` + `evaluatePickedDir` 从 `private` 提 `internal`，
+  画廊的「下载目录」复用那三道关，而不是抄第二份（漂的那一半通常是被抄的那份）。
+
+### 上一轮那条修法的另一半要补一句
+
+第三轮把 `rankingMenuOpen` / `periodPickerOpen` 提到两种形态之上，堵的是
+"组合位置一变 = 新实例 = `remember` 归零"。真机第四轮反馈"还是直接消失"——
+**另一半从来不是状态归属**：弹层抢焦点导致 IME 下落 → 那道"键盘收起就收成一条"的 effect
+把整块搜索区移出组合 → **菜单的锚点没了**。本轮把判据抽成 `GallerySearchCollapse` 并钉了用例。
+
+构建：`testDebugUnitTest` **48 套 / 344 条 / 0 失败 / 0 错误** / `compileDebugKotlin` 绿 / `assembleDebug` 绿。
+新增依赖 `io.coil-kt.coil3:coil-gif:3.6.2`（只挂画廊那把 ImageLoader，漫画侧不动）。
+
+## 2026-09-29 追加（第五轮）：图片取流改道（全应用面）+ Gelbooru 排行只列两档
+
+用户指令：「Gelbooru 排行只留『默认』与『全部排行』，其他删掉，另外 gif 同屏加载过多会闪退，
+检查下，处理好了直接推进 批次B」。（批次 B 本会话内已落完，见上一节，所以这条不产生新工作。）
+
+### 撤掉的是"行"，不是判据
+
+`RankingChip` 里 Gelbooru 那四档时间窗从"置灰 + 写'本站没有'"改成**不列出**（第四轮我为那条
+置灰写法在文档里留过理由，当晚被否：四行点不动比少四行更烦）。
+`GalleryRankings.supports` 一个字没改；末行「选具体哪一期」新增按站点收口
+（`supportsPeriodPicker(site) = supports(site, MONTH)`，定义挂在原判据上，不会漂成某站多一个假入口）。
+
+### 图片取流：一次动了**漫画与画廊两条链**的改道
+
+真机 OOM 读数（adb 只读）：`target footprint 268435456 / growth limit 268435456`、
+`<1% of heap free after GC`，而打开 `GalleryPostActivity` 那一刻只剩 52 MB ——
+堆是被**墙上的编码字节**吃光的，栈顶那个 104 字节的 Compose 分配只是受害者。
+
+- 旧状：`VeneraImageFetcher` 接管所有 http 图片，一张图在 Java 堆里留三份编码字节
+  （`body.bytes()` + `Buffer().write` + 动图解码器 `squashToDirectByteBuffer` 那份直连缓冲），
+  并且它用**同步** `execute()`，绕开 OkHttp `Dispatcher` 的每主机并发闸。
+- 改后：只有**真的需要改字节**的两条路（JM 去混淆 / EH 雪碧图裁剪）还归它，判据抽成
+  `ImagePipelinePolicy.needsBytePipeline(url)`；其余图片交回 Coil 的 `OkHttpNetworkFetcherFactory`
+  —— 流式写盘、文件源解码（可降采样）、异步调用（并发有上限）。
+- 接管条件一收窄，`ImageFetchTag` 就没人打了（Coil 自己造的 Request 不带 tag，`extras` 不映射成
+  tag），所以新增 `ImageFetchCallFactory` 这一层专门补标记。**没有**把图片放回熔断/过盾口径。
+- 与冻结声明早前那条「`VeneraApp.newImageLoader()` 那一行未动」（画廊初建轮的记录）的关系：
+  本轮**动了它的 components**，但**预算仍然一个字没改**（漫画侧照吃 Coil 默认值）。
+  动的只有：自定义 fetcher 的接管范围、以及那行 `callFactory` 换成带标记的包装。
+- 顺带一条 `wallUrl` 的自身缺陷：批次 B 那枚「清晰预览」把 `largeUrl` 搬上了墙，
+  而视频条目两站都不给更小的转码档（Gelbooru 的 `sample_url` 空串、翻译时兜底成原片 16~26 MB）
+  → 现补 `post.isVideo` 一律走 `videoPosterUrl`（静帧），与大图页底图同一把判据。
+
+### 公开纠正一条影响过验收的假开关
+
+批次 B 交付时写的「独立目录 + 独立预算 / 缓存上限档位」**当时只成立一半**：
+`GalleryImageLoader` 那把 `DiskCache` 没有任何路径往里写（写盘是 `NetworkFetcher` 的活，
+而图片全被自定义 fetcher 截在前面），所以"当前占用"恒 0、档位恒无效果。本轮改道后才第一次真生效。
+
+构建：`testDebugUnitTest` **49 套 / 356 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+详见 `gallery-round4-and-settings-2026-09.md` §五。
+
+## 2026-09-29 追加（批次 C1）：大图页四条行为档位
+
+用户「批次c」→ 四条拍板（背景不做取色 / 动图三档只管动图 / AI 那把画廊与漫画分开 / 分两批先做低风险的）
+→「同意，按 C1 方案开工」。方案文档：`gallery-batch-c-viewer-2026-09.md`（含 C2 已定口径）。
+
+新增设置组「大图页」（`GallerySettings.kt:191` 起）+ 四条偏好（`VeneraPreferences.kt:177-227`）：
+屏幕常亮（默认开）、音量键翻页（**默认关**）、自动连播间隔（默认 0=关）、智能预加载（默认 NEXT=今天的实际行为）。
+
+- **没有动**：冻结文件、保护域（`Navigation.kt` 与底栏枚举）、`GalleryImageLoader` 的预算、依赖表。
+- 判据全抽进 `gallery/domain/GalleryViewerPolicies.kt`（12 条用例），composable 里一律不自己算。
+- 音量键默认关的理由要说清：阅读器那把默认开，但画廊这页在**透明玻璃窗 Activity** 里、
+  根节点此前没有任何 focus 件 —— 默认开等于把系统音量键抢过来走一条没在真机验过的链。
+  这条是 C1 里唯一"照抄了但环境不同"的，真机待验第一位。
+- 预加载复用 `galleryLargeRequest`（带着 memory/disk 双 cacheKey，视频换 `poster` 键），
+  不另造 `ImageRequest`：两个键 = 白下一遍。
+- `GalleryPreloadMode.OFF` 的 summary 明写"**不等于没有流量**"（关的是主动预取与邻居预组合，
+  当前页自己的三档照旧发）—— 不写这一句它就是假开关。
+- 常亮那条没有算式可抽 → **没有单测点**，这条如实记在方案 §一.1，不含糊过去。
+
+构建：`testDebugUnitTest` **50 套 / 368 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+
+## 2026-09-29 追加（C1 真机第六轮）：一条恒假守卫 = 三条读数
+
+用户带截图回：连播翻页停在半页、底栏要能控连播、两枚加载图标 + 下拉环转不停、
+"猜你喜欢他只摆了 40 张"。
+
+- **一条根因**：`withContext(NonCancellable)` 把 `coroutineContext[Job]` 换成 `NonCancellable` 本身，
+  于是 `if (loadJob === coroutineContext[Job]) isLoading = false` **恒不成立** →
+  在途标志永不清零 → 环转不停 + 页尾第二枚环 + `loadMore()` 那道闸永远进不去（40 = 两站各 20）。
+  库行为钉在 `NonCancellableJobIdentityTest`；修法是在进块之前把自身 Job 抓成局部量。
+  同形写法在 `GallerySearchViewModel` 里没这个毛病（裸 `finally`），所以只有猜你喜欢停住 —— 这个对照是定位关键。
+- **另一条独立成因**（我上一轮引入的）：连播那个 `LaunchedEffect` 的 key 含 `currentPage`，
+  动画滚过 50% 时 key 变 → effect 重启 → **把自己发起的 `animateScrollToPage` 取消了** → pager 冻在半页。
+  改成"计时归 effect、动画归页面 scope"。
+- `isRefreshing` 原先绑两页的并集（`onRefresh` 却只派发当前页）→ 按当前页绑。
+- 底栏加第 6 颗 `▶/⏸`（点=开关、长按=dock 上方展开 1~15 秒滑条）。
+  **速度只管本次这一屏**（用户拍板）：不写回 `pref_gallery_autoplay_sec`，退出即回到设置值。
+- "无限滑动"没做成新需求：翻页链路本来就在，卡住的就是那个永真标志；真到底时页尾照旧如实念"已经到底"。
+
+构建：`testDebugUnitTest` **51 套 / 369 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+详见 `gallery-batch-c-viewer-2026-09.md` §六。
+
+## 2026-09-29 追加（批次 C2）：动图三档 / 背景四档 / 画廊侧 AI 两枚
+
+用户「做好后接着做 c2」。四条口径全部沿用 §〇 的拍板，没有重开问题。
+判据仍在 `gallery/domain`（`GalleryMotion` / `GalleryAi` / `GalleryViewerBackdrop`，12 条用例）。
+
+三处**动了以往冻结面**的事实，单独列出来，别被"只是加设置项"这个印象盖过去：
+
+- **manifest 新增 `ACCESS_NETWORK_STATE`**（普通权限、不弹运行时窗）：`ConnectivityManager` 全仓此前
+  零使用，"仅 Wi-Fi 那一档"没有现成读数可借。拿不到读数一律按**计费**处理（宁可不动，不偷跑流量）。
+- **`GalleryImageLoader` 的解码链换人**：不再裸注册 `AnimatedImageDecoder.Factory()`，
+  链上坐的是 `GalleryAnimationGate`（请求没表态就返回 `null`）。这条是"从不"能成立的前提 ——
+  若闸门在 `never` 档改派一个静态解码器，两个内置静态解码器对动图会**双双拒绝**，
+  请求顺链仍会落到动图解码器上，"从不"当场变成假开关。
+- **动/静只分内存键不分磁盘键**（`large` ↔ `large-a`、`file` ↔ `file-a`）：磁盘那份是编码字节，
+  分两份就是白占一倍 512 MB 预算；内存那份是解出来的 `AnimatedImage` 或位图，
+  共用一条键就会出"从『始终』改到『从不』之后那张图还在动"。
+
+其余口径：
+
+- 墙上卡片**恒静帧**，与设置里那三档无关（一屏动图同时解动画就是当天那条 OOM 读数的形状）；
+  视频照旧点击才播，`animated` 对视频条目一律不表态。
+- 网络读数**每屏只问一次**（`remember`）：逐张问的后果是同一面墙里忽动忽静。
+- 背景四档**没有取色那一档**（2026-09 做过一次被真机否）；深灰取全仓唯一现成口径 `0xFF121212`。
+  三档不透明底靠"盖住"模糊、不靠运行时改 `FLAG_BLUR_BEHIND`（那两个覆写项是 Activity 起来时读一次的），
+  代价如实写进设置页文案：**改回"现状"要重进大图页才恢复模糊**。
+- AI：**分家的是开关，不是词表**（`AiTagKeys` 改 `internal`，画廊侧以它为准**只收窄**）。
+  命中的 AI 条目按"命中一条屏蔽规则"记账，不新增第三个计数器；角标复用既有 `GalleryCornerPill`。
+  四面墙（日榜/搜索/推荐/收藏）同一把 `buildGalleryWall`，`blockAi` 进 `remember` 键。
+- **撤回一条本轮自己记错的读数**：`GalleryAi` 头注原先写"实测 yande.re 只有 `ai-generated`（83 条）"，
+  收尾复探针**复现不出来** —— yande.re 上 `ai-generated` / `ai_generated` / `generated_by_ai` / `ai_drawn`
+  四种写法现在**全是 0 条**（不带 tags 的对照请求正常返回数据）。而那一站的裸标签 `ai` 有 19 条，
+  标签串是 `ai maid ... suzuhira_hiro tick_tack` = **角色名**（《Artery Gear》的 AI）。
+  所以画廊侧判据**剔掉裸 `ai`**（漫画侧保留，EH 那系要用），钉在两条断言上。
+  Gelbooru 两种写法各 9 张卡片、阴性对照 0 张 → `_`↔`-` 归一保留。
+  完整读数表在方案 §七。
+
+构建：`testDebugUnitTest` **52 套 / 381 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+过程中一次先红后绿：`buildGalleryWall` 的新参数加在函数类型参数**后面**，
+四处尾随 lambda 因此不再绑到 `blockedRuleOf`（尾随 lambda 只能绑最后一个参数）→ 四个调用点全炸，改放到前面。
+C2 四条**没有一条在真机上跑过**，待验清单见方案 §七末尾（其中"墙上恒静帧"与"改档后那张图立刻静下来"
+是这一批里最可能做错的两句）。
+
+
+## 2026-09-29 追加（批次 D · B1~B3）：外观第三轴 `SurfaceMaterial` + 设置域控件收口
+
+用户两句诉求叠在一起：「让整个项目的 UI 完全符合 Miuix 设计规范」+「优化界面性能，目前一卡一卡的」。
+方案档 `miuix-glass-surface-material-2026-09.md`，批准稿在 `~/.qoder-cn/plans/humble-river-moose.md`。
+本轮深度按拍板只做 B1~B3，B4~B6 挂账；FROZEN 名单一个都没碰（用户明确不给豁免）。
+
+**这是组件契约变更，必须看得见**：
+
+- 新增第三轴 `SurfaceMaterial { SOLID, LIQUID_GLASS }`（键 `pref_surface_material`，**默认 SOLID**）。
+  判据抽成零 Android 依赖的纯函数 `ui/tokens/SurfaceMaterialPolicy.kt`（本项目无 Robolectric，不是纯函数就测不到），
+  新单测 8 条。`LocalSurfaceMaterial` 用 `compositionLocalOf`，**没有**给 `VeneraTokenSet` 加字段——
+  加了就必须同步改 `VeneraTheme.kt` 的 `remember(appearance)` 键，漏改正是 token 注释警告过的"切档留旧值"。
+- **顺手清掉一处悬空 Local**：`LocalAppearanceStyle` 全仓零读取点，已删除（不留没读者的 Local）。
+- 全站玻璃唯一修饰符 `components/venera/VeneraGlass.kt`；唯一采样源装在 `VeneraAmbientBackground`
+  那张静态 Canvas 上（**兄弟节点、不采内容层** ⇒ 不递归、滚动不重捕）。
+  `Navigation.kt` 与 `VeneraSubActivityBase.kt` 两个调用点签名不变 ⇒ **未获也未需要保护域豁免**。
+  该文件自称的"零离屏纹理"性质只在 LIQUID_GLASS 档失去，录制器条件安装，实色档一份都不建。
+- **`VeneraChip` / `VeneraFilterPill` 的判据从"全贴"改成"该透的才透"**：选中态与禁用态**不上玻璃**
+  （它们的语义就靠实底板表达），`Tag` 降为点缀档（只染色不建模糊），`Neutral` 保持 tonal 底色。
+  `VeneraSourceBadge` **整枚不参与材质轴**——那块固定深色底板是"压在任意封面图上都可读"的唯一凭据。
+- **设置域控件从此跟外观轴走**（`SettingsComponents.kt` 头注原有那句"容器用 miuix、控件用 M3 的既有边界"已改写）：
+  这是 2026-09-29 用户改判「一起迁，分批推」的结果。代价说清楚：`AppearanceStyle` 默认 MIUIX，
+  所以 Miuix 档下开关/滑条/图标按钮/弹窗**确实换成 Miuix 形态**；"逐像素零变化"现在只对
+  **材质轴的 SOLID 档**与 **MD3 档**成立，不再覆盖外观轴切到 MIUIX 那一格。
+- **动过冻结先例的位置**（沿 `:1048` 那条"外观改动记豁免"的做法补记）：`feature/settings/SettingsComponents.kt`
+  两张分组卡贴玻璃、`SettingsSelect` 的弹层与两颗按钮改走转发件；`SettingsHome.kt` 返回键改 `VeneraIconButton`；
+  `AppearanceSettings.kt` 插入「界面材质」组（三轴各管什么写进 summary）；`BlockingSettings` / `AppSettings` ×2 /
+  `UpdateCheckUi` 的确认框改走 `VeneraDialog`。
+
+三条**主动不做**，都是"宁可空着也不假统一"：
+
+1. `NetworkSettings` 的代理表单弹窗整枚留在 M3 `AlertDialog`（含它内部两颗按钮，保持一枚弹窗自洽）：
+   它正文里嵌 `SettingsSelect`，外层再换 `VeneraDialog`（miuix 后端 = 独立 `Dialog` 窗口）就成了 Dialog 套 Dialog，
+   预测式返回与焦点归属真机未验。
+2. `VeneraTextField` 转发件未建（miuix `TextField` 无 `isError`、label 模型不同）。
+3. `components/ComicTileLayout.kt:190` 的 M3 `IconButton` 是主框架最后一处控制族直连，
+   但调用点含探索页 `:552` 与历史页 `:201`（FROZEN）⇒ **按"本轮不给豁免"没动，待拍板**。
+
+一条**纠正已批准稿**的记录：miuix 弹窗后端最初判成 `OverlayDialog`，实为接不通——
+`MiuixPopupUtils.DialogLayout` 只注册状态，绘制由 miuix `Scaffold` 内的 `MiuixPopupHost()` 承担，
+而设置页链路没有 miuix Scaffold ⇒ 会得到"点了没反应的假弹窗"。能用的窗口级件叫 `WindowDialog`。
+同时记一条**物理限制**防后来者补统一：玻璃采宿主窗口的 RenderNode，弹窗在独立窗口 ⇒ 玻璃档的弹窗只能保持实底。
+
+性能这条按用户裁决收住（「算了别测这个了，我感觉还行」），但测清了一件事，别再往反方向查：
+`dumpsys display` 的 `modeId 4 / renderFrameRate 120` 只是 DisplayManager 侧的渲染档位名；SF 空闲报
+`activeMode={id=5, 60.00 Hz}`，**应用回前台有绘制后立刻变 `{id=4, 120.00 Hz}`**，且应用投票本来就是 120
+（`AppRequestRefreshRates: [120.00 Hz - modeId 4]`）⇒ **"强制 120Hz 开关"没有对象，确定不做**。
+滚动段没有读数，所以计划里的 `miuix-glass-perf-baseline-2026-09.md` **没建**（不放没测过的值）。
+
+构建：`testDebugUnitTest` **53 套 / 389 条 / 0 失败 / 0 错误** / `assembleDebug` 绿 /
+`debugRuntimeClasspath` 里 material3 仍 `1.5.0-alpha22`、miuix 仍 `0.9.4-rc01`（**没为玻璃动版本**，
+`ModalBottomSheet` 那条 `NoSuchMethodError` 风险未触发）/ 全仓无文件混 import 两家 blur。
+预览面 4 张 → **8 张**（材质 × 明暗 × 外观），根节点改套 `VeneraAmbientBackground`，
+否则没有采样源、两档看起来一样会被误读成"玻璃没生效"。
+**本轮 B1~B3 一次都没在真机上看过**：七条待验清单（含"玻璃透不透""切回 SOLID 无残影""长按还能进多选"
+"MIUIX 档弹窗的返回键归属"）列在方案 §八。

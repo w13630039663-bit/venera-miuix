@@ -116,6 +116,8 @@ data class VeneraColorTokens(
 internal object SettingsBadgeColors {
     /** 探索/发现域。 */
     val Discovery = Color(0xFF2196F3)
+    /** 画廊（图站）域。Indigo 500：与 Theming 那枚紫分开，两区同色相会读混。 */
+    val Gallery = Color(0xFF3F51B5)
     /** 屏蔽与内容过滤域。 */
     val Moderation = Color(0xFFEF5350)
     /** 阅读体验域。 */

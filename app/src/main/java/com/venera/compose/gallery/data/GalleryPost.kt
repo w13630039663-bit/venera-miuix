@@ -79,19 +79,21 @@ data class GalleryPost(
     val md5: String = "",
     val fileExt: String = "",
     /**
-     * 标签按**站方给的分类**分好桶，给「关于这张图」那面板用。
+     * 分类归哪儿：`tagGroups` 这一项 2026-09-28 **从归一模型里去掉了**，而且是有意的。
      *
-     * ⚠️ 两站的 **post 端点都不给分类**（实测）：
-     * - yande.re 的 44 个键里没有任何分类字段，只有一个平铺 `tags`；
-     * - Gelbooru 也只有一串平铺 `tags`（没有 `tag_string_*` 那五串）。
+     * 两站的 post 端点确实都不给分类（实测：yande.re 的 44 个键里没有任何分类字段，
+     * Gelbooru 只有一串平铺 tags，没有 `tag_string_*` 那五串）。
+     * 留着这一项就只有两种写法：要么在解析期硬造一个假分组，要么永远填一桶「标签」
+     * 而让下一个人以为分类数据根本不存在 —— 两种都是骗人。
      *
-     * 所以两站**都只能一桶**「标签」。这是站方数据面的天花板，不是这里少写。
-     * 空桶不进列表（摆一个空的"角色"区比不摆更糟）。
+     * 分类的真出处在那张帖的 HTML 上（站方给每一枚标签标了 tag-type-* 类名）：
+     * 由 [GalleryTagCategories] 在「关于这张图」打开时另取一笔，渲染期用
+     * buildGalleryTagBuckets(post.tagList, …) 分桶；空桶不产出那条口径仍在那边守着。
+     * 取不到时只兜「画师」一栏，判据与实测数字都写在那两个文件里。
      *
-     * （分类信息在它们的 **tag 端点**上有 —— 见 [GalleryTagSuggestion.category]，
-     * 那是补全行用的，与"这张画"无关。别把两者混起来。）
+     * （补全行吃的是另一条链 —— tag 端点上的 type，与「这张画」无关，
+     *  见 [GalleryTagSuggestion.category]。别把两者混起来。）
      */
-    val tagGroups: List<GalleryTagGroup> = emptyList(),
     /**
      * 视频时长（秒）。两站的 JSON 里**都没有**这个字段 → 一律 null，不当 0。
      */
@@ -203,7 +205,3 @@ data class GalleryTagGroup(val label: String, val tags: List<String>)
 /** 站方那串空格分隔的 tag → 词表。切分口径全仓只有这一处（[GalleryPost.tagList] 也走它）。 */
 internal fun splitGalleryTags(raw: String): List<String> =
     raw.trim().split(' ').map { it.trim() }.filter { it.isNotEmpty() }
-
-/** 切成一桶，**空桶直接不产出** —— 摆一个空的"角色"区比不摆更糟。 */
-internal fun galleryTagGroup(label: String, raw: String): GalleryTagGroup? =
-    splitGalleryTags(raw).takeIf { it.isNotEmpty() }?.let { GalleryTagGroup(label, it) }

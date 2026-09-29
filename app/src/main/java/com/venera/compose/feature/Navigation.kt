@@ -10,6 +10,10 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
@@ -37,6 +41,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -372,6 +377,42 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.EXPLORE -> ExploreRoute
 }
 
+/**
+ * 这条目的地是第几个主 Tab；不是 Tab 就返回 null。
+ *
+ * 判据与 [VeneraComposeApp] 里 `currentTab` 那串 `hasRoute` 同源（含 CategoriesRoute 那条
+ * 重定向到探索的旧路由）—— 两处若走了两套口径，就会出现"底栏点亮了、切页动画却没有方向"
+ * 这种读不出来的不一致。
+ */
+private fun NavDestination.tabIndex(): Int? {
+    val tab = when {
+        hasRoute(HomeRoute::class) -> VeneraNavTab.HOME
+        hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
+        hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
+        hasRoute(GalleryRoute::class) -> VeneraNavTab.GALLERY
+        hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
+        hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
+        else -> return null
+    }
+    return VeneraNavTab.entries.indexOf(tab)
+}
+
+/**
+ * 切 Tab 的滑动方向：+1 = 往 Tab 序列后面走，-1 = 往前，null = 两端不全是 Tab。
+ *
+ * 用户 2026-09-29 的口径是「Tab 顺序与滑动方向一一对应」：首页→收藏新页从右滑入，
+ * 收藏→首页镜像。只有**两端都是主 Tab**才这样画 —— 列表→详情、二级页仍走官方 shared axis X，
+ * 那是"同一本书换个容器"的形状，封面共享元素按自己的曲线在飞，不能被整页横推盖掉。
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabSlideDirection(): Int? {
+    val from = initialState.destination.tabIndex() ?: return null
+    val to = targetState.destination.tabIndex() ?: return null
+    return to.compareTo(from).takeIf { it != 0 }
+}
+
+/** 整页横推的时长：与 shared axis 那族同值（本文件原值 300ms），只换形状不换节奏。 */
+private const val TAB_SLIDE_DURATION_MS = 300
+
 private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
     VeneraNavTab.FAVORITES -> "我的收藏"
@@ -475,14 +516,9 @@ fun VeneraComposeApp() {
     Box(modifier = Modifier.fillMaxSize()) {
         VeneraAmbientBackground {
         val layoutDirection = LocalLayoutDirection.current
-        val navigationInsets = WindowInsets.navigationBars.asPaddingValues()
         // shared axis X 的 30dp 要换成 px，由库的 rememberSlideDistance 负责 density 取整。
         val slideDistance = rememberSlideDistance()
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
-            // 左右滑切页的「让位带」登记表：外壳与页面必须共用同一个实例。
-            // 首页推荐轮播那一整块自己吃横滑，起手点落在它里面就不许翻页。
-            val swipeExclusions = remember { TabSwipeExclusionRegistry() }
-            CompositionLocalProvider(LocalTabSwipeExclusions provides swipeExclusions) {
             // ── 顶栏控制权已交还各页面（页内自治）──
             // 外壳不再挂 TopAppBar：统一顶栏 = 各页自身的 VeneraTopAppBar（大标题折叠 + 毛玻璃），
             // 彻底消灭「全局顶栏 + 页面二级工具栏」的双层汉堡包割裂结构。
@@ -508,40 +544,29 @@ fun VeneraComposeApp() {
                         // 页面顶栏才能覆盖状态栏并实现内容自状态栏下方穿过。
                         // 底部由 innerPadding 消费 navigationBars inset。
                         .padding(bottom = innerPadding.calculateBottomPadding())
-                        .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier)
-                        // 主页面之间左右滑动切页；只在主 tab 上生效（当前 4 个，见 VeneraNavTab），
-                        // 详情页/阅读器等子页面不参与（currentTab == null）。
-                        // 收藏页单独排除：它自己那一层横滑是切「网络/图片/本地」三段的（用户拍板），
-                        // 同一条手势不能既切段又切主 tab。
-                        .tabSwipePager(
-                            enabled = currentTab != null && currentTab != VeneraNavTab.FAVORITES,
-                            exclusions = swipeExclusions,
-                            // 底栏手势排除带 = 契约 clearanc + 系统 navigationBars inset。
-                            // 不再手写 64 + 12 这类几何 magic number。
-                            bottomExclusionDp = (
-                                VeneraSpacing.bottomBarClearance +
-                                    navigationInsets.calculateBottomPadding()
-                                ).value.toInt(),
-                            onSwipeForward = {
-                                val tabs = VeneraNavTab.entries
-                                val i = tabs.indexOf(currentTab).coerceAtLeast(0)
-                                if (i < tabs.lastIndex) {
-                                    haptic()
-                                    navController.gotoTab(tabs[i + 1])
-                                }
-                            },
-                            onSwipeBackward = {
-                                val tabs = VeneraNavTab.entries
-                                val i = tabs.indexOf(currentTab).coerceAtLeast(0)
-                                if (i > 0) {
-                                    haptic()
-                                    navController.gotoTab(tabs[i - 1])
-                                }
-                            },
-                        ),
+                        .then(if (contentLayerBackdrop != null) Modifier.layerBackdrop(contentLayerBackdrop) else Modifier),
                     // 转场配方见文件顶部 veneraEnter/Exit/PopEnter/PopExit 一组（官方 shared axis X）。
-                    enterTransition = { veneraEnter(slideDistance) },
-                    exitTransition = { veneraExit(slideDistance) },
+                    // 唯一例外是**主 Tab 之间**：整页水平滑动、方向跟着 Tab 顺序走（判据见 tabSlideDirection）。
+                    enterTransition = {
+                        val dir = tabSlideDirection()
+                        if (dir != null) {
+                            slideInHorizontally(
+                                animationSpec = tween(TAB_SLIDE_DURATION_MS, easing = FastOutSlowInEasing),
+                            ) { fullWidth -> fullWidth * dir }
+                        } else {
+                            veneraEnter(slideDistance)
+                        }
+                    },
+                    exitTransition = {
+                        val dir = tabSlideDirection()
+                        if (dir != null) {
+                            slideOutHorizontally(
+                                animationSpec = tween(TAB_SLIDE_DURATION_MS, easing = FastOutSlowInEasing),
+                            ) { fullWidth -> -fullWidth * dir }
+                        } else {
+                            veneraExit(slideDistance)
+                        }
+                    },
                     popEnterTransition = { veneraPopEnter(slideDistance) },
                     popExitTransition = { veneraPopExit(slideDistance) },
                     predictivePopEnterTransition = { swipeEdge -> veneraPredictiveEnter(swipeEdge, slideDistance) },
@@ -915,7 +940,6 @@ fun VeneraComposeApp() {
                         .navigationBarsPadding()
                         .fillMaxWidth(),
                 )
-            }
             }
         }
         }

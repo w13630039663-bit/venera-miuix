@@ -83,6 +83,13 @@ private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit)
     val validHost = host.isNotBlank() && host.none { it.isWhitespace() || it == '/' || it == '@' }
     val valid = type == "NONE" || (manual && validHost && validPort != null)
 
+    // ⚠️ 这一枚**刻意留在 M3 AlertDialog**，不是漏迁（2026-09-29 拍板）：
+    // 它是"表单弹窗"，正文里嵌着 SettingsSelect —— 而 SettingsSelect 现在已经走
+    // VeneraDialog（miuix 后端 = WindowDialog，自己起一个 Dialog 窗口）。外层若也换成
+    // VeneraDialog，就变成 Dialog 套 Dialog，预测式返回与焦点归属在真机上没测过；
+    // 拿"UI 统一"去赌一条没人验过的窗口链，正是本仓禁止的假统一。留作下一批带真机验证的独立项。
+    // 连带：它自己的两颗按钮（下方 confirmButton/dismissButton）也**一起留在 M3**，
+    // 让这一个弹窗内部自洽 —— 一半 miuix 一半 M3 比整枚 M3 更难解释。
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
         title = { Text("代理") },

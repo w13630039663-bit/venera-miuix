@@ -227,9 +227,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
         // 空态与失败只留一行说明，绝不铺假封面占位；刷新按钮重随机换一批。
         if (recommend.loading || recommend.comics.isNotEmpty() || recommend.note != null) {
             item(key = "recommend") {
-                // 整块登记成「左右滑不切页」：这一区自己吃横滑（轮播抽卡），
-                // 起手点落在这里就不该被外壳的左右滑切页抢走。
-                Column(modifier = Modifier.tabSwipeExcluded()) {
+                Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             MiuixSectionHeader(title = "可能你感兴趣", onTap = onOpenStats)

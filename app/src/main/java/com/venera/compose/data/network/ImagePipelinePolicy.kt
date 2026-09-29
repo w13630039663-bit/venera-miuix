@@ -68,6 +68,22 @@ object ImagePipelinePolicy {
         return 0
     }
 
+    /**
+     * 这笔图片请求要不要由 [VeneraImageFetcher] 接管。
+     *
+     * 只有**真的需要改字节**的两条路（JM 去混淆 / EH 雪碧图裁剪）才接管，其余一律交回
+     * Coil 的 `NetworkFetcher`。理由不是洁癖而是内存：接管的那条路必须把整张图吸进
+     * Java 堆（`body.bytes()`）再拷一份 `okio.Buffer` 才能往下交，动图解码器在没有文件源时
+     * 还会再 `ByteBuffer.allocateDirect` 拷第三份 —— 2026-09-29 画廊一屏 GIF 直接把 256 MB
+     * 堆吃空（实测打开大图页时只剩 52 MB）。而"普通图片"根本不需要这些：
+     * 交给 Coil 之后它流式写进自己的磁盘缓存、以文件源解码（可降采样），
+     * 并且走 OkHttp 的**异步**调用，每主机并发受 dispatcher 上限约束。
+     *
+     * 判据与 fetcher 内部分支共用同一个函数，避免出现"接管了但不处理"或"处理时没接管"。
+     */
+    fun needsBytePipeline(url: String): Boolean =
+        url.contains("@x=") || url.contains("@y=") || getScrambleNum(url) > 1
+
     private fun isJmPhotoUrl(url: String): Boolean {
         if (url.endsWith(".gif", ignoreCase = true)) return false
         val lower = url.lowercase()

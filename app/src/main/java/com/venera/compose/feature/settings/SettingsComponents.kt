@@ -11,18 +11,19 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraSlider
+import com.venera.compose.components.venera.VeneraSwitch
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.components.venera.veneraGlassCardColors
+import com.venera.compose.components.venera.veneraGlassSurface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -30,8 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
@@ -40,35 +43,62 @@ import top.yukonga.miuix.kmp.basic.Text
  * 本轮改造目标（A2 / A3.1）：
  *  - 清零所有硬编码：颜色走 VeneraTokens.color，字号走 VeneraTokens.type，
  *    间距走 VeneraTokens.spacing，圆角走 VeneraTokens.shape。
- *  - 组件来源统一为 miuix-compose（Card / Text）+ Material3 补齐
- *    （IconButton / Switch / Slider / AlertDialog —— miuix 侧对应组件签名不同，
- *     为避免同页混用两套语义，此处保持「容器用 miuix、控件用 M3」的既有边界，不新增混用）。
+ *  - 组件来源：容器一律 miuix（Card / Text）；**控件一律走 `Venera*` 转发件**
+ *    （VeneraSwitch / VeneraSlider / VeneraIconButton / VeneraTextButton），由转发件按
+ *    [com.venera.compose.data.prefs.AppearanceStyle] 选后端。
+ *    这里原来写的是"保持「容器用 miuix、控件用 M3」的既有边界"—— 2026-09-29 用户改判
+ *    「整个项目 UI 完全符合 Miuix 设计规范」，所以控件这一半从此跟风格轴走；
+ *    MD3 档仍然拿到 M3 控件（那是"现状"那一档，逐像素不变）。
+ *  - 材质轴（[com.venera.compose.data.prefs.SurfaceMaterial]）只决定分组卡要不要玻璃，
+ *    由 `veneraGlassSurface` / `veneraGlassCardColors` 那一处决定，本文件不留第二份判断。
+ *  - 弹层已从 `AlertDialog` 收进 [com.venera.compose.components.venera.VeneraDialog]。
+ *    记一条走过的错路以免重演：miuix 侧最初判成 `OverlayDialog`，实际**接不通** ——
+ *    它的 `DialogLayout` 只把状态注册进 `LocalDialogStates`，真正绘制由 miuix `Scaffold` 内的
+ *    `MiuixPopupHost()` 负责，而设置页整条链（`VeneraSettingsHost` → `AndroidSettingsScreen`）
+ *    没有 miuix Scaffold，接上就得到"点了没反应的假弹窗"。能用的窗口级件叫 `WindowDialog`。
  */
 
 /** 对应原版 SettingsSection：标题在卡片外，行靠留白区分。 */
 @Composable
 internal fun SettingsGroup(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    val tokens = VeneraTokens
-    if (title != null) {
-        Text(
-            text = title,
-            fontSize = tokens.type.sectionTitle,
-            fontWeight = tokens.type.weightSemibold,
-            color = tokens.color.textSecondary,
-            modifier = Modifier.padding(
-                start = tokens.spacing.rowHorizontal,
-                top = tokens.spacing.rowHorizontal,
-                bottom = tokens.spacing.space3,
-            ),
-        )
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    if (title != null) SettingsGroupTitle(title)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 圆角取 CardDefaults.CornerRadius（miuix Card 这处本来就用默认值 16dp），
+            // 不是 tokens.shape.card —— 玻璃必须裁在同一圈上，否则 SOLID 档会先变一次圆角。
+            .veneraGlassSurface(VeneraGlassRole.SETTINGS_GROUP, CardDefaults.CornerRadius),
+        colors = veneraGlassCardColors(),
+    ) {
         Column(
-            Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space2),
+            Modifier.fillMaxWidth().padding(vertical = VeneraTokens.spacing.space2),
             content = content,
         )
     }
-    Spacer(Modifier.height(tokens.spacing.space4))
+    Spacer(Modifier.height(VeneraTokens.spacing.space4))
+}
+
+/**
+ * 只有分组标题、没有卡片容器。
+ *
+ * 抽出来给"分组里摆的是自绘卡片"的那种分区用（画廊设置的账号区就是 —— 那两张卡本身
+ * 已经是 VeneraCard，再套一层 SettingsGroup 的 Card 就是卡里嵌卡）。
+ * 标题样式仍由 [SettingsGroup] 走这一处，两份实现必然漂的毛病从这里就不存在。
+ */
+@Composable
+internal fun SettingsGroupTitle(title: String) {
+    val tokens = VeneraTokens
+    Text(
+        text = title,
+        fontSize = tokens.type.sectionTitle,
+        fontWeight = tokens.type.weightSemibold,
+        color = tokens.color.textSecondary,
+        modifier = Modifier.padding(
+            start = tokens.spacing.rowHorizontal,
+            top = tokens.spacing.rowHorizontal,
+            bottom = tokens.spacing.space3,
+        ),
+    )
 }
 
 /**
@@ -81,7 +111,14 @@ internal fun SettingsGroup(title: String? = null, content: @Composable ColumnSco
 internal fun SettingsFutureGroup(content: @Composable ColumnScope.() -> Unit) {
     val tokens = VeneraTokens
     var open by rememberSaveable { mutableStateOf(false) }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 圆角取 CardDefaults.CornerRadius（miuix Card 这处本来就用默认值 16dp），
+            // 不是 tokens.shape.card —— 玻璃必须裁在同一圈上，否则 SOLID 档会先变一次圆角。
+            .veneraGlassSurface(VeneraGlassRole.SETTINGS_GROUP, CardDefaults.CornerRadius),
+        colors = veneraGlassCardColors(),
+    ) {
         Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier
@@ -198,7 +235,7 @@ internal fun SettingsToggle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingLabel(title, summary, enabled)
-        Switch(
+        VeneraSwitch(
             checked = checked,
             onCheckedChange = if (enabled) onCheckedChange else null,
             enabled = enabled,
@@ -217,23 +254,22 @@ internal fun SettingsSelect(
     var open by rememberSaveable { mutableStateOf(false) }
     val label = options.firstOrNull { it.first == value }?.second ?: "未识别的已保存值：$value"
     SettingsAction(title, listOfNotNull(label, summary).joinToString("\n")) { open = true }
-    if (open) {
-        AlertDialog(
-            onDismissRequest = { open = false },
-            title = { Text(title) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    options.forEach { (key, text) ->
-                        SettingsAction(text, if (value == key) "已选择" else null) {
-                            onSelected(key)
-                            open = false
-                        }
+    VeneraDialog(
+        show = open,
+        onDismissRequest = { open = false },
+        title = title,
+        confirmText = "取消",
+        content = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                options.forEach { (key, text) ->
+                    SettingsAction(text, if (value == key) "已选择" else null) {
+                        onSelected(key)
+                        open = false
                     }
                 }
-            },
-            confirmButton = { TextButton(onClick = { open = false }) { Text("取消") } },
-        )
-    }
+            }
+        },
+    )
 }
 
 @Composable
@@ -257,7 +293,7 @@ internal fun SettingsSlider(
             text = "$title · " + (if (value % 1f == 0f) value.toInt().toString() else value.toString()) + suffix,
             fontSize = tokens.type.itemTitle,
         )
-        Slider(
+        VeneraSlider(
             value = value.coerceIn(range),
             onValueChange = onValueChange,
             valueRange = range,
@@ -312,7 +348,7 @@ internal fun SettingsPage(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

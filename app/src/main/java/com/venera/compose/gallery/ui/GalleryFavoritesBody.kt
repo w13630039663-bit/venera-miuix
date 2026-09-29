@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
@@ -90,6 +91,9 @@ fun GalleryFavoritesBody(
     val favorites by store.favorites.collectAsState()
     val guard = remember { ContentGuardManager.getInstance(context) }
     val maskMode by guard.nsfwMaskMode.collectAsState()
+    // 收藏那一面墙也走**同一把** AI 屏蔽判据（批次 C2）：不同墙各判一次，
+    // 就会出"日榜上被 AI 挡掉的那张，在收藏里全裸"这种最难解释的分叉。
+    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
     val imageLoader = remember { GalleryImageLoader.get(context) }
     val gridState = rememberLazyStaggeredGridState()
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
@@ -104,11 +108,11 @@ fun GalleryFavoritesBody(
         store.consumeNotice()?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
     }
 
-    // 存档 → 卡片墙。两个输入都进 key：收藏变了要重排，用户在设置里改了「成人内容处理」
-    // 回到这一屏也必须立刻跟着变。
-    val wall = remember(favorites, maskMode) {
+    // 存档 → 卡片墙。三个输入都进 key：收藏变了要重排，用户在设置里改了「成人内容处理」或
+    // 画廊那把 AI 屏蔽开关，回到这一屏都必须立刻跟着变（键里少一个就是"改了要重进才生效"的假开关）。
+    val wall = remember(favorites, maskMode, blockAi) {
         val posts = favorites.mapNotNull { fav -> fav.site?.let { fav.toPost(it) } }
-        buildGalleryWall(posts, maskMode) { post ->
+        buildGalleryWall(posts, maskMode, blockAi = blockAi) { post ->
             guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
         }
     }

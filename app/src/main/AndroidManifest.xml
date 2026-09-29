@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 画廊动图「仅 Wi-Fi」那一档要问"这条网络计不计费"（GalleryConnectivity）。普通权限，不弹运行时窗。 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ 下载进度通知运行时权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

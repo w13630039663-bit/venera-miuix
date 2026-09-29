@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
@@ -46,11 +47,20 @@ fun VeneraFilterPill(
     logged: Boolean? = null,
 ) {
     val tokens = VeneraTokens
+    val shape = RoundedCornerShape(percent = 50)
+    // 与 VeneraChip 同一判据：**只有本来就是空底（未选中）的形态才换材质**。
+    // 选中态是实心主题色，那枚"已选中"的分量正是它存在的理由，铺玻璃会把它洗淡；
+    // 源栏一屏十几颗，全部走 CONTROL 档意味着十几次离屏采样 —— 所以选中那颗维持实底，
+    // 未选中的才浮在氛围光上（实色材质档下 veneraGlass 原样返回 this，观感零变化）。
     Surface(
         modifier = modifier
+            .then(
+                if (selected) Modifier
+                else Modifier.veneraGlass(VeneraGlassRole.CHIP, shape)
+            )
             .height(tokens.spacing.filterChipHeight)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(percent = 50),
+        shape = shape,
         color = if (selected) tokens.color.primary else Color.Transparent,
         border = if (selected) null else BorderStroke(tokens.spacing.hairline, tokens.color.outline),
     ) {

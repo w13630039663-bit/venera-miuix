@@ -19,7 +19,7 @@ const val GALLERY_TAG_SUGGESTION_LIMIT = 20
  * 数字命名空间**是同一套**（0 通用 / 1 画师 / 3 作品 / 4 角色 / 5 元数据），
  * 所以档位标签共用下面那张表，不各造一份。
  *
- * ⚠️ 与 [GalleryPost.tagGroups] 不是一回事：那边是"这张画带了哪些分类的 tag"，
+ * ⚠️ 与 [GalleryPost] 那份**渲染期分桶**不是一回事：那边是"这张画带了哪些分类的 tag"，
  * 而两站的 **post 里都没有**分类字段（yande.re 44 个键实测不含 `tag_string_*`；
  * Gelbooru 只有一串平铺 `tags`），只能一桶；
  * 但它们的 **tag 端点有** `type` —— 所以补全行两站都能标档位，别反过来推断"post 也没有分类"。

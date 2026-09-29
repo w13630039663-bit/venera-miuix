@@ -70,9 +70,10 @@ data class GalleryFavorite(
 /**
  * 收藏记录 → 画廊条目。
  *
- * `tagGroups` 不在这里复原：它由详情页按 `site + id` **重新取一次**（`GalleryPostScreen`
- * 本来就是这么做的），记录里那串 [GalleryFavorite.tags] 足够给卡片与搜索用。
- * 硬编一份分类桶反而会造出一份过期数据。
+ * 标签的**分类**不在这里存，也不在这里复原：它由详情页在那一面板打开时
+ * 按那张帖的站方页面重新取一次（`GalleryPostScreen` + `GalleryTagCategories`）。
+ * 存进 JSON 反而更坏 —— 分类是站方的判定，站方改了以后存档里那份就成了不会自愈的旧读数。
+ * 存档里那串 [GalleryFavorite.tags] 足够给卡片与搜索用。
  */
 fun GalleryFavorite.toPost(site: GallerySite): GalleryPost = GalleryPost(
     site = site,

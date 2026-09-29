@@ -5,18 +5,22 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -59,10 +63,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,15 +90,24 @@ import coil3.request.ImageRequest
 import coil3.size.Precision
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryFavoritesStore
+import com.venera.compose.gallery.data.GalleryConnectivity
+import com.venera.compose.gallery.data.allowAnimatedImage
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GalleryTagCategories
+import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.YandeReClient
+import com.venera.compose.gallery.domain.GalleryAutoPlay
 import com.venera.compose.gallery.domain.GalleryGuard
+import com.venera.compose.gallery.domain.GalleryMotion
+import com.venera.compose.gallery.domain.GalleryPreload
+import com.venera.compose.gallery.domain.GalleryVolumeKeys
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -95,9 +115,13 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.math.roundToInt
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.rememberZoomableState
@@ -143,6 +167,33 @@ fun GalleryPostScreen(
     val guard = remember { ContentGuardManager.getInstance(context) }
     val maskMode by guard.nsfwMaskMode.collectAsState()
 
+    // ── 大图页的四条行为档位（批次 C1，2026-09-29；方案 §一）──
+    // 全都在 `GalleryViewerPolicies` 里算，这里只读档 + 接线：那三条判据要能上单测。
+    val prefs = remember { VeneraPreferences.getInstance(context) }
+    val keepScreenOn by prefs.galleryKeepScreenOn.collectAsState()
+    val volumeKeyTurn by prefs.galleryVolumeKeyTurn.collectAsState()
+    val autoPlaySec by prefs.galleryAutoPlaySec.collectAsState()
+    val preloadMode by prefs.galleryPreload.collectAsState()
+    // ── 批次 C2：动图该不该解动画、背景那一层画什么 ──
+    val animatedMode by prefs.galleryAnimated.collectAsState()
+    val backdrop by prefs.galleryBackdrop.collectAsState()
+    /**
+     * 网络读数**只在这一屏打开时问一次**。
+     * 逐张问的后果是同一面墙里忽动忽静（翻到第 3 张时切了网络），那是最难解释的一种表现；
+     * 而"重进大图页才按新网络判"这条边界用户看得见、也说得清。
+     */
+    val unmetered = remember { GalleryConnectivity.isUnmetered(context) }
+    val animateGifs = GalleryMotion.animates(animatedMode, unmetered)
+    val focusRequester = remember { FocusRequester() }
+
+    // 底栏那颗 ▶ 调的是**本次这一屏**的速度：进页时取偏好的默认值，页内改动不写回偏好
+    // （用户 2026-09-29 拍板：随手一调不该污染设置里的默认值）。所以用 remember 而不是 saveable
+    // —— 退出大图页就丢，重进回到「设置 → 画廊 → 大图页」那一条。
+    var autoPlaySecNow by remember(site.name, postId) { mutableIntStateOf(autoPlaySec) }
+    var autoPlayLastSec by remember(site.name, postId) {
+        mutableIntStateOf(if (autoPlaySec > 0) autoPlaySec else AUTOPLAY_DEFAULT_SEC)
+    }
+
     // ── 左右翻页的上下文（用户 2026-09-26）──
     // 点开那一面墙的条目列表由 `GalleryCardsGrid` 在点击那一刻交过来（[GalleryViewerQueue]）：
     // 有它 = 可以左右翻，翻的就是刚才屏上那批、同一个顺序；没有它（深链进来、
@@ -178,6 +229,75 @@ fun GalleryPostScreen(
     val currentUid = current?.uid
     val preferHd = currentUid != null && hdUids.contains(currentUid)
     val zoomedIn = currentUid != null && zoomedPages[currentUid] == true
+
+    // ── 屏幕常亮（C1.1）：口径逐字照抄阅读器那段（VeneraReaderScreen 的常亮块）。 ──
+    // 没有算式可抽，所以这一条**没有单测点**：验点只能在真机上停一张图等它灭。
+    DisposableEffect(keepScreenOn) {
+        val window = (view.context as? Activity)?.window
+        if (keepScreenOn) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    // 音量键要走进来，得先有焦点。弹层开着的时候不抢 —— 那会儿按键该归弹层。
+    LaunchedEffect(infoOpen) { if (!infoOpen) focusRequester.requestFocus() }
+
+    // ── 自动连播（C1.3）：key 带着当前页 = 翻一页计时器自己重来，不做"暂停后恢复"那份额外状态 ──
+    LaunchedEffect(pagerState.currentPage, autoPlaySecNow, infoOpen, zoomedIn, current?.isVideo, pages.size) {
+        if (autoPlaySecNow <= 0) return@LaunchedEffect
+        delay(autoPlaySecNow * 1000L)
+        // 等着的这几秒里人可能已经放大、打开弹层、或自己翻走了 —— 走之前**再判一次**，
+        // 按旧读数把人翻走是最难查的那类"它自己在动"。
+        if (!GalleryAutoPlay.shouldAdvance(
+                seconds = autoPlaySecNow,
+                infoOpen = infoOpen,
+                isVideo = current?.isVideo == true,
+                zoomed = zoomedIn,
+                currentPage = pagerState.currentPage,
+                pageCount = pages.size,
+            )) return@LaunchedEffect
+        // 翻页这一步**不能跑在本 effect 的协程里**：`currentPage` 与 `current?.isVideo` 都是本 effect
+        // 的 key，而动画滚过 50% 那一刻它们就变 → effect 重启 → 正在跑的 animateScrollToPage 被取消
+        // → pager 冻在两页中间（2026-09-29 真机读数：卡片间一大片空白、谁都没贴边）。
+        // 交给页面作用域的 scope：计时归 effect（key 变就重来），动画归 scope（跑完为止）。
+        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+    }
+
+    // ── 智能预加载（C1.4）：主动把前后那几页的 large 档拉进缓存 ──
+    // 必须复用 galleryLargeRequest 而不是自造一份请求：它同时带着 memory/disk 两个 cacheKey
+    // （视频条目还会换成 `poster` 那个键）。自造 = 预加载与显示两个键 = 白下一遍。
+    LaunchedEffect(pagerState.currentPage, pages, preloadMode, animateGifs) {
+        GalleryPreload.plan(preloadMode, pagerState.currentPage, pages.size).forEach { index ->
+            val post = pages.getOrNull(index) ?: return@forEach
+            imageLoader.enqueue(galleryLargeRequest(context, post, animateGifs))
+        }
+    }
+
+    // ── 「关于这张图」要的三份额外数据：站方分类 / 画师兜底 / 标签译名 ──
+    // 为什么不能像别的字段一样在解析期就挂在 GalleryPost 上：两站的 post JSON **都不给分类**
+    // （实测 yande.re 44 个键里没有、Gelbooru 只有一串平铺 tags），站方对"这张画"的判定
+    // 只在它那张帖的 HTML 上 —— 而那一笔只在用户真的打开面板时才值得发（理由见 GalleryTagCategories）。
+    // 键取 currentUid：翻到下一张重取，翻回来由那一层 LruCache 接住，不会再发。
+    var tagCategories by remember(currentUid) { mutableStateOf<Map<String, Int>?>(null) }
+    var fallbackArtists by remember(currentUid) { mutableStateOf<Set<String>>(emptySet()) }
+    var tagTranslations by remember(currentUid) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(currentUid, infoOpen) {
+        val post = current ?: return@LaunchedEffect
+        // 面板没开时不做这件事：一次翻页浏览都只为了看画，没有谁在等一个分组。
+        if (!infoOpen) return@LaunchedEffect
+        val dictionary = GalleryTagDictionary.getInstance(context)
+        tagTranslations = dictionary.translations(post.tagList)
+        val categories = GalleryTagCategories.getInstance(context).fetch(post.pageUrl)
+        tagCategories = categories
+        // **兜底只在站方判定没拿到时才查**，而且只兜画师一栏：那份离线表对 yande.re 只有 73%
+        // 的名称覆盖，拿它补满五桶会把两三成标签挂进错桶；而它"判成画师而站方不判"实测 0 例。
+        // 两套判据混在同一桶里是最难发现的一类错，所以这里宁可二选一。
+        fallbackArtists = if (categories.isNullOrEmpty()) dictionary.artistNames(post.tagList)
+        else emptySet()
+    }
 
     // ── 收藏 ──
     // 直接读那份存档（不另存一份本地状态）：收藏页与这里读的是同一个 StateFlow，
@@ -220,17 +340,53 @@ fun GalleryPostScreen(
         }
     }
 
-    // ── 向上滑入（照 Breadboard 的 `OffsetBasedLargeImageView`：整页从屏幕下沿抬上来）──
+    // ── 进场：卡片那一帧**飞**到大图的位置（2026-09-29 第四轮，用户点名要共享元素）──
     // 平台没有跨 activity 的共享图像 API（实测本机 android.jar 33~36 里只有启动图那套），
-    // 所以抬上来的这一层由 GalleryFlyIn 递过来的"卡片那一帧"占位，大图到位就换掉；
-    // 系统那套"打开"转场已在 openGalleryPost 里压掉，免得两套动画叠着跑。
-    // 弹簧与下面的下滑关闭同一档（StiffnessMediumLow）：进与出手感对称，且不另造数字。
+    // 所以这里自己把它的两样输入递过来：起点那一帧（[GalleryFlyIn.payload]）+ 起点矩形
+    // （[GalleryFlyIn.origin]），落点由画面那一框回报（[GalleryViewerPage] 的 onImageBounds）。
+    // 到位后淡出、交棒给画面框里那一帧占位，再被真图盖掉 —— 全程没有空帧。
+    //
+    // 原来的"整页从屏幕下沿抬上来"在这种形状下会与之抢戏（两套动作并行就是散，
+    // 漫画侧换 shared axis 时同一条理由），所以能飞的时候**不抬页**，只让内容淡进来。
+    // 拿不到起点矩形（收藏页、反搜那些没有"墙上那一张卡"的入口）时**照旧抬页** ——
+    // 退路必须存在，不能因为飞不起来就白屏。
     val cardFrame = GalleryFlyIn.payload
+    val flyOrigin = GalleryFlyIn.origin
+    /** 两样输入齐了才飞（缺一样就退回抬页那一档）。 */
+    val canFly = cardFrame != null && flyOrigin != null
+    var imageBounds by remember { mutableStateOf<Rect?>(null) }
     val entrance = remember { Animatable(1f) }
+    val fly = remember { Animatable(0f) }
     var contentReady by remember(site, postId) { mutableStateOf(false) }
+    /** 飞行结束（或压根不飞）：画面框里那一帧占位从这一刻起才接管。 */
+    var flightDone by remember(site, postId) { mutableStateOf(!canFly) }
+    // token 要在组合期取（`VeneraTokens.motion` 是 @Composable 读法），effect 里摸不到。
+    val entranceFadeMs = tokens.motion.short
     LaunchedEffect(site, postId) {
+        if (!canFly) {
+            // 退路：整页从屏幕下沿抬上来（收藏页、反搜那些入口压根没有"墙上那一张卡"）。
+            flightDone = true
+            entrance.snapTo(1f)
+            entrance.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+            return@LaunchedEffect
+        }
+        // 页面淡进来，**不等落点**：落点要等画面那一框量出来，页面不该跟着一起延迟显形。
         entrance.snapTo(1f)
-        entrance.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+        launch { entrance.animateTo(0f, tween(entranceFadeMs)) }
+        // 落点最多等 FLY_WAIT_MS。等不到就干脆不飞 —— 把飞行体停在原地半路放弃，
+        // 比一开始就不飞难看。
+        val target = withTimeoutOrNull(FLY_WAIT_MS) {
+            snapshotFlow { imageBounds }.filterNotNull().first()
+        }
+        if (target == null) {
+            fly.snapTo(1f)
+            flightDone = true
+            return@LaunchedEffect
+        }
+        fly.snapTo(0f)
+        // 与下滑关闭同一档弹簧：进与出手感对称，且不另造数字。
+        fly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+        flightDone = true
     }
     // 占位那一帧**换到位才交还**：早交会在"页到位"与"图加载好"之间露出一块玻璃，
     // 观感就是闪一下。取不到详情时也要交 —— 不然这张位图一直攥在手里没人再消费它。
@@ -380,21 +536,54 @@ fun GalleryPostScreen(
 
     Box(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            // ── 音量键翻页（C1.2）：焦点件与那对 modifier 照抄阅读器（:570-597）──
+            // 关掉的时候 targetPage 返回 null → 这里回 false → 事件交回系统，
+            // 所以"关"是真的关（按音量键还是音量条），不是半吃。
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onKeyEvent false
+                val isDown = event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                if (!isDown && event.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_VOLUME_UP) {
+                    return@onKeyEvent false
+                }
+                val target = GalleryVolumeKeys.targetPage(
+                    enabled = volumeKeyTurn,
+                    isVolumeDown = isDown,
+                    currentPage = pagerState.currentPage,
+                    pageCount = pages.size,
+                ) ?: return@onKeyEvent false
+                scope.launch { pagerState.animateScrollToPage(target) }
+                true
+            },
     ) {
-        // 背景**不画东西**：这一页在独立 Activity 里，窗口是透的，
-        // 系统 blur-behind 已经把后面那一屏一级列表实时糊好了（[GalleryPostActivity]）。
-        // 这里只补一层压暗 —— 只糊不压暗时，照片墙花花绿绿会把主体那张图吃掉。
+        // 背景那一层按档位画（批次 C2）：
+        // - 现状（默认）= **不画东西**，这一页在独立 Activity 里、窗口是透的，
+        //   系统 blur-behind 已经把后面那一屏一级列表实时糊好了（[GalleryPostActivity]），
+        //   这里只补一层压暗 —— 只糊不压暗时，照片墙花花绿绿会把主体那张图吃掉。
+        // - 纯黑 / 深灰 / 纯白 = 一层**不透明**底，它自然盖住窗口模糊，所以不需要在运行时
+        //   去动 `FLAG_BLUR_BEHIND`（那半只在"从这三档改回现状"时才要重进页面才恢复模糊，
+        //   这条如实写进了设置页文案）。
         // 这一层**不参与滑入**：玻璃是"后面那一屏"，页面向上抬时它当然不动，
         // 动的只有浮在上面的那些，这才是"图从玻璃后面升起来"的感觉。
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_SCRIM_ALPHA)))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    backdrop.argb?.let { Color(it) }
+                        ?: Color.Black.copy(alpha = BACKDROP_SCRIM_ALPHA)
+                ),
+        )
 
         Box(
             Modifier
                 .fillMaxSize()
-                // `entrance.value` 在 graphicsLayer 的 lambda 里读 = 绘制阶段读，
+                // `entrance.value` / `fly.value` 在 graphicsLayer 的 lambda 里读 = 绘制阶段读，
                 // 每帧只重绘不重组；拿到组合里读会让整页每帧重走一遍组合。
-                .graphicsLayer { translationY = entrance.value * screenHeightPx },
+                .graphicsLayer {
+                    if (canFly) alpha = 1f - entrance.value else translationY = entrance.value * screenHeightPx
+                },
         ) {
             when {
                 current != null -> {
@@ -423,12 +612,14 @@ fun GalleryPostScreen(
                         // 横向翻与纵向下滑分属两个方向，各自被各自的 Orientation 锁住，不会互相抢；
                         // 放大之后 telephoto 会吃掉单指拖拽，那时翻页自然让位（正在看图的人不该被翻走）。
                         //
-                        // `beyondViewportPageCount = 1`：把左右邻页也组出来开始取图，
-                        // 翻过去就能接上（第一档永远命中隔壁页刚下好的缓存）。
+                        // `beyondViewportPageCount` 跟着「智能预加载」那一档走（C1.4）：
+                        // 把左右邻页也组出来开始取图，翻过去就能接上（第一档永远命中隔壁页刚下好的缓存）。
+                        // ⚠️ 这个参数是**对称**的，所以"下一张"那一档仍会把上一张组出来 ——
+                        // 不对称的那一半在 GalleryPreload.plan() 里：我们只主动预取前方。
                         // key 用 uid：两站 id 会撞，key 也跟着撞的话翻页时状态会串。
                         HorizontalPager(
                             state = pagerState,
-                            beyondViewportPageCount = 1,
+                            beyondViewportPageCount = GalleryPreload.beyondPages(preloadMode),
                             key = { index -> pages.getOrNull(index)?.uid ?: index },
                             modifier = Modifier.weight(1f),
                         ) { page ->
@@ -437,10 +628,18 @@ fun GalleryPostScreen(
                                 post = pagePost,
                                 masked = maskedOf(pagePost),
                                 preferHd = hdUids.contains(pagePost.uid),
+                                animated = animateGifs,
                                 imageLoader = imageLoader,
                                 // 垫着的那一帧只属于**打开时那一张**：翻到别处它已经不成立了。
-                                cardFrame = if (page == initialIndex) cardFrame else null,
+                                // 而且只在飞行**结束之后**才摆进画面框 —— 途中它正该在手指点过的那张卡的位置上，
+                                // 框里同时摆一份就会看见"两个起点"。
+                                cardFrame = if (page == initialIndex && flightDone) cardFrame else null,
                                 onReady = { if (page == initialIndex) contentReady = true },
+                                onImageBounds = if (page == initialIndex) {
+                                    { imageBounds = it }
+                                } else {
+                                    null
+                                },
                                 onZoomedChange = { zoomedPages[pagePost.uid] = it },
                                 onHdError = { reason ->
                                     // HD 档取不到要说出来，并且**把钮拨回去**：
@@ -488,6 +687,22 @@ fun GalleryPostScreen(
                             isFavorite = favorites.any { it.uid == target.uid },
                             saving = saving,
                             sharing = sharing,
+                            autoPlaySec = autoPlaySecNow,
+                            onToggleAutoPlay = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                if (autoPlaySecNow > 0) {
+                                    // 关的时候记住这一档：再点开要回到刚才的速度，
+                                    // 弹回默认值会读成"我刚才调的那一下没生效"。
+                                    autoPlayLastSec = autoPlaySecNow
+                                    autoPlaySecNow = 0
+                                } else {
+                                    autoPlaySecNow = autoPlayLastSec
+                                }
+                            },
+                            onAutoPlaySecChange = { sec ->
+                                autoPlaySecNow = sec
+                                autoPlayLastSec = sec
+                            },
                             onToggleFavorite = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 scope.launch { favoritesStore.toggle(target) }
@@ -532,9 +747,41 @@ fun GalleryPostScreen(
             // 原来挂在顶栏的"在站点打开"没有丢，搬进了 GalleryInfoSheet 那一行。
         }
 
+        // ── 飞行途中的那一帧（共享元素的"主体"）──
+        // 画在整页之上、sheet 之下：它只负责"卡片原位 → 大图位置"那一段。
+        // `fly.value` 与 `imageBounds` 都在 drawBehind 的 lambda 里读 = 绘制阶段读，
+        // 每帧只重绘这一块，不把整页拖进重组（与上面 graphicsLayer 同一条口径）。
+        val frame = cardFrame
+        val startRect = flyOrigin
+        if (frame != null && startRect != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val end = imageBounds ?: return@drawBehind
+                        val t = fly.value.coerceIn(0f, 1f)
+                        val left = startRect.left + (end.left - startRect.left) * t
+                        val top = startRect.top + (end.top - startRect.top) * t
+                        val width = startRect.width + (end.width - startRect.width) * t
+                        val height = startRect.height + (end.height - startRect.height) * t
+                        drawImage(
+                            image = frame,
+                            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+                            dstSize = IntSize(width.roundToInt(), height.roundToInt()),
+                            // 最后四分之一程淡出，交棒给画面框里那份同样的占位 ——
+                            // 此刻两者位置重合，读起来是"停住并变清晰"，不是"换了一张图"。
+                            alpha = ((1f - t) / 0.25f).coerceIn(0f, 1f),
+                        )
+                    },
+            )
+        }
+
         if (infoOpen && current != null) {
             GalleryInfoSheet(
                 post = current,
+                categories = tagCategories,
+                fallbackArtistNames = fallbackArtists,
+                tagTranslations = tagTranslations,
                 onDismiss = { infoOpen = false },
                 // 点标签 = 回一级画廊搜这一枚。这里负责"离开本页"，把结果那一屏留给画廊：
                 // 搜索结果归 [GallerySearchViewModel] 持有，在本页另起一份就变成两处各存一半。
@@ -566,6 +813,8 @@ private fun GalleryViewerPage(
     post: GalleryPost,
     masked: Boolean,
     preferHd: Boolean,
+    /** 这一屏该不该把动图解成动画（大图页按档位与网络算出来，见 GalleryMotion）。 */
+    animated: Boolean,
     imageLoader: ImageLoader,
     /** 一级卡片那一帧（窗口坐标裁出来的位图）。只有"打开时那一张"才拿得到。 */
     cardFrame: ImageBitmap?,
@@ -574,6 +823,8 @@ private fun GalleryViewerPage(
     onReady: () -> Unit,
     onHdError: (String) -> Unit,
     onZoomedChange: (Boolean) -> Unit,
+    /** 画面那一框在**窗口坐标**里的矩形，回报给宿主算飞行的落点（只有打开那一张要用）。 */
+    onImageBounds: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val zoomState = rememberZoomableState()
@@ -586,12 +837,14 @@ private fun GalleryViewerPage(
         post = post,
         masked = masked,
         preferHd = preferHd,
+        animated = animated,
         imageLoader = imageLoader,
         zoomState = zoomState,
         cardFrame = cardFrame,
         onImageTap = onImageTap,
         onReadyChange = { onReady() },
         onHdError = onHdError,
+        onImageBounds = onImageBounds,
         modifier = modifier,
     )
 }
@@ -630,6 +883,14 @@ private fun GalleryViewerPageCounter(page: Int, total: Int) {
 private const val PAGE_COUNTER_BG_ALPHA = 0.72f
 
 /**
+ * 等画面那一框报回落点的最长时间。
+ *
+ * 落点要等详情到位、那一面页组出来、量完布局才有 —— 通常就在头几帧。等不到时放弃飞行、
+ * 直接摆占位框，比让一个飞行体停在半路好收拾。
+ */
+private const val FLY_WAIT_MS = 400L
+
+/**
  * 满屏的画面：按真实比例定框、圆角贴着图、缩放挂在容器上。
  *
  * **三档叠画**（用户 2026-09-26 点名改的形态）：开门档 → 中档 → 原档，谁先到谁先显形。
@@ -649,6 +910,8 @@ private fun GalleryViewerMedia(
     post: GalleryPost,
     masked: Boolean,
     preferHd: Boolean,
+    /** 这一屏该不该把动图解成动画（判据 `GalleryMotion`，墙上永远传 false）。 */
+    animated: Boolean,
     imageLoader: ImageLoader,
     zoomState: ZoomableState,
     onImageTap: () -> Unit,
@@ -658,11 +921,20 @@ private fun GalleryViewerMedia(
     onReadyChange: (Boolean) -> Unit,
     /** HD 档取不到。调用方要把 HD 钮拨回原档并说一句话，不能静默换档。 */
     onHdError: (String) -> Unit,
+    /** 画面那一框的窗口矩形 → 宿主拿它当共享元素的**落点**。null = 没人要（翻页后的各页）。 */
+    onImageBounds: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
     val ratio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
+    // 共享元素的落点回报。挂在布局回调上而不是自己算：那一框的尺寸是下面"按真实比例定框"
+    // 那段逻辑的产物，复制一份算式就是第二处真相（改圆角/改留白时必然漂）。
+    val boundsReporter = if (onImageBounds == null) {
+        Modifier
+    } else {
+        Modifier.onGloballyPositioned { onImageBounds(it.boundsInWindow()) }
+    }
 
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         // 定框：横图按高铺满、竖图按宽铺满，另一个方向留白。
@@ -678,7 +950,8 @@ private fun GalleryViewerMedia(
             // 那是下面那段定框逻辑的事，播放器自己扩不出去。
             var videoFullscreen by rememberSaveable(post.uid) { mutableStateOf(false) }
             Box(
-                if (videoFullscreen) Modifier.fillMaxSize() else Modifier.size(boxWidth, boxHeight)
+                (if (videoFullscreen) Modifier.fillMaxSize() else Modifier.size(boxWidth, boxHeight))
+                    .then(boundsReporter)
             ) {
                 GalleryVideoViewer(
                     post = post,
@@ -694,8 +967,8 @@ private fun GalleryViewerMedia(
             val fastRequest = remember(post.uid, fastUrl) {
                 if (fastUrl.isBlank()) null else galleryFastRequest(context, fastUrl)
             }
-            val largeRequest = remember(post.uid) { galleryLargeRequest(context, post) }
-            val fileRequest = remember(post.uid) { galleryFileRequest(context, post) }
+            val largeRequest = remember(post.uid, animated) { galleryLargeRequest(context, post, animated) }
+            val fileRequest = remember(post.uid, animated) { galleryFileRequest(context, post, animated) }
 
             // 三档各自的落地读数。`onLoading` 必须把值打回 false：切 HD、翻回来重取都要
             // 重新点亮加载态，一次置位就再也不灭的读数等于没有加载态。
@@ -713,6 +986,7 @@ private fun GalleryViewerMedia(
             Box(
                 Modifier
                     .size(boxWidth, boxHeight)
+                    .then(boundsReporter)
                     .clip(RoundedCornerShape(tokens.shape.large)),
             ) {
                 // 三档叠画（用户 2026-09-26 点名）：谁先到谁先显形，后到的直接盖上去。
@@ -864,16 +1138,21 @@ internal fun galleryFastRequest(context: Context, url: String): ImageRequest =
  * 视频页对此已有处理（见 `GalleryVideoViewer`），这里不改判据：
  * 「中档兜底到原图」对**图片**是对的（那正是站方"小图不需要样本"的语义）。
  */
-internal fun galleryLargeRequest(context: Context, post: GalleryPost): ImageRequest {
+internal fun galleryLargeRequest(context: Context, post: GalleryPost, animated: Boolean = false): ImageRequest {
     // 视频条目这一档要换成 [GalleryPost.videoPosterUrl]，并且**缓存键也要分开**：
     // 旧写法用同一个 `large` 键，而那个键下已经存过被兜底成原片的 **mp4 字节**
     // （Coil 的显式键不认地址，只认键名），换了判据还会命中那份坏数据 ——
     // 结果是"修好了真机上依旧黑屏"。分开键就绕开它，旧条目交给那 512 MB 的 LRU 收拾。
     val kind = if (post.isVideo) "poster" else "large"
+    // 动/静两种解法**只分内存键，不分磁盘键**：磁盘上存的是编码字节（与解法无关，共用不浪费），
+    // 内存里存的却是解出来的 `AnimatedImage` 或位图 —— 共用一条键就会出"从'始终'改成'从不'
+    // 之后那张图还在动"（旧条目还在内存里等着）。
+    val memoryKind = if (animated && !post.isVideo) "$kind-a" else kind
     return ImageRequest.Builder(context)
         .data(if (post.isVideo) post.videoPosterUrl else post.largeUrl)
-        .memoryCacheKey(galleryCacheKey(kind, post))
+        .memoryCacheKey(galleryCacheKey(memoryKind, post))
         .diskCacheKey(galleryCacheKey(kind, post))
+        .allowAnimatedImage(animated && !post.isVideo)
         .build()
 }
 
@@ -886,14 +1165,17 @@ internal fun galleryLargeRequest(context: Context, post: GalleryPost): ImageRequ
  *   3907×5600 解码后约 87 MB）。关掉写入，页面一关这块就能被回收，
  *   否则它会长期占着画廊那 64 MB 预算、把一级的缩略图全挤出去。
  */
-internal fun galleryFileRequest(context: Context, post: GalleryPost): ImageRequest =
+internal fun galleryFileRequest(context: Context, post: GalleryPost, animated: Boolean = false): ImageRequest =
     ImageRequest.Builder(context)
         .data(post.fileUrl)
-        .memoryCacheKey(galleryCacheKey("file", post))
+        .memoryCacheKey(galleryCacheKey(if (animated) "file-a" else "file", post))
         .diskCacheKey(galleryCacheKey("file", post))
         .size(HD_DECODE_EDGE_PX, HD_DECODE_EDGE_PX)
         .precision(Precision.INEXACT)
         .memoryCachePolicy(CachePolicy.READ_ONLY)
+        // 原图档是**唯一可能整片吃下动图原档**的那一层（站方没有更小的动图转码档），
+        // 所以"要不要解动画"在这里同样要表态 —— 不表态就是静帧，与闸门默认一致。
+        .allowAnimatedImage(animated)
         .build()
 
 /** 解码边长上限，口径同 PixEz 的 `loadOriginalSize`（注释理由：防巨幅撑爆堆）。 */
@@ -931,3 +1213,9 @@ private fun GalleryTierLoadingRing(size: Dp, modifier: Modifier = Modifier) {
  * 更淡则轨道在白底图上消失（环就只剩一段孤零零的弧），更浓则一眼像个双环控件。
  */
 private const val TIER_RING_TRACK_ALPHA = 0.24f
+
+/**
+ * 底栏那颗 ▶ 从"关"切回"开"时，若这一屏还没调过速度、设置里也是 0，就用这个默认间隔。
+ * 5 秒是用户原话里给的那个数（「比如每 5 秒切一张」），不另造一个。
+ */
+private const val AUTOPLAY_DEFAULT_SEC = 5

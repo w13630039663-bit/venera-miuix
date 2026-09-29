@@ -15,7 +15,9 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.venera.compose.components.VeneraAmbientBackground
 import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.prefs.SurfaceMaterial
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
@@ -23,7 +25,7 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * 组件层统一 Preview 矩阵。
  *
- * 覆盖：MIUIX Light / MIUIX Dark / MD3 Light / MD3 Dark。
+ * 覆盖：**三轴里的两轴** × 明暗 = 8 张 —— {MIUIX, MD3} × {SOLID, LIQUID_GLASS} × {Light, Dark}。
  * 每个组合展示关键状态：normal / selected / disabled / loading。
  *
  * 关于 error 状态：VeneraCover 的错误态需要真实网络失败才能触发，
@@ -116,11 +118,30 @@ private fun CardAndCoverRow() {
 
 @Composable
 private fun ComponentMatrix() {
-    Column(Modifier.fillMaxWidth()) {
-        ChipRow()
-        CardAndCoverRow()
+    // 必须套 VeneraAmbientBackground：它就是全站玻璃唯一采样源的**安装点**。
+    // 不套它，LIQUID_GLASS 档的预览永远只会走"没有录制层 ⇒ no-op"那条分支，
+    // 于是"两档看起来一样"会被误读成"玻璃没生效"——其实只是没人装采样层。
+    VeneraAmbientBackground {
+        Column(Modifier.fillMaxWidth()) {
+            ChipRow()
+            CardAndCoverRow()
+        }
     }
 }
+
+/*
+ * ── 这组「材质」预览能证明什么、不能证明什么（写在这里，别拿它当玻璃观感的验收）──
+ *
+ * ✅ 能证明：SOLID 那四张与改动前逐像素同形（转发件与 veneraGlass 在关闭档返回入参 Modifier
+ *    本身，不建 Highlight、不 remember 任何东西）；LIQUID_GLASS 那四张**不崩、不改度量**
+ *    （卡片尺寸、行高、胶囊高度两档一致 ⇒ 玻璃没有偷偷占布局）。
+ * ❌ 不能证明：模糊/染色/描边高光到底透不透。`drawBackdrop` 内部先过 `isRuntimeShaderSupported()`，
+ *    而预览渲染器（layoutlib）有没有 RuntimeShader 我**没有实测过** —— 不支持时它整段静默跳过，
+ *    预览里看到的就是"实色"。所以"玻璃透得出氛围光、卡片不泛白、标题读得清"这三条只能在真机判。
+ * ⚠️ 深色那两张还有一处已知失真：`VeneraPreviewTheme` 没有 provide `LocalVeneraDarkTheme`
+ *    （补它要么引反向依赖要么改 8 个读取点，含 FROZEN 文件），于是深色预览里的氛围层
+ *    按**浅色**光斑强度画 —— 别在预览里判深色玻璃的明暗。
+ */
 
 @Preview(name = "Components MIUIX Light", showBackground = true, widthDp = 400)
 @Composable
@@ -144,4 +165,36 @@ private fun VeneraComponentsMd3Light() {
 @Composable
 private fun VeneraComponentsMd3Dark() {
     VeneraPreviewTheme(AppearanceStyle.MD3, dark = true) { ComponentMatrix() }
+}
+
+@Preview(name = "Components MIUIX Light · 液态玻璃", showBackground = true, widthDp = 400)
+@Composable
+private fun VeneraComponentsMiuixLightGlass() {
+    VeneraPreviewTheme(AppearanceStyle.MIUIX, dark = false, material = SurfaceMaterial.LIQUID_GLASS) {
+        ComponentMatrix()
+    }
+}
+
+@Preview(name = "Components MIUIX Dark · 液态玻璃", showBackground = true, widthDp = 400)
+@Composable
+private fun VeneraComponentsMiuixDarkGlass() {
+    VeneraPreviewTheme(AppearanceStyle.MIUIX, dark = true, material = SurfaceMaterial.LIQUID_GLASS) {
+        ComponentMatrix()
+    }
+}
+
+@Preview(name = "Components MD3 Light · 液态玻璃", showBackground = true, widthDp = 400)
+@Composable
+private fun VeneraComponentsMd3LightGlass() {
+    VeneraPreviewTheme(AppearanceStyle.MD3, dark = false, material = SurfaceMaterial.LIQUID_GLASS) {
+        ComponentMatrix()
+    }
+}
+
+@Preview(name = "Components MD3 Dark · 液态玻璃", showBackground = true, widthDp = 400)
+@Composable
+private fun VeneraComponentsMd3DarkGlass() {
+    VeneraPreviewTheme(AppearanceStyle.MD3, dark = true, material = SurfaceMaterial.LIQUID_GLASS) {
+        ComponentMatrix()
+    }
 }
