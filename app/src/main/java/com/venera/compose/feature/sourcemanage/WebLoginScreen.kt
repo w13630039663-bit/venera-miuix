@@ -24,8 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import com.venera.compose.components.venera.VeneraIconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -166,7 +166,7 @@ fun WebLoginScreen(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { onFinish(false) }) {
+                    VeneraIconButton(onClick = { onFinish(false) }) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "关闭",

@@ -118,11 +118,24 @@
 7. 弹窗（`VeneraDialog`）在 MIUIX 档：进出场、点外部取消、返回键归属都正常；
    尤其 `SettingsSelect` 在 `BlockingSettings` 表单区里弹起时不重叠错位。
 
-## 九、挂账
+## 九、挂账与进度（2026-09-29 深夜更新）
 
-- 前置机械 PR：9 个 `import androidx.compose.material3.*` 通配拆显式 import（未做，动的是 B4~B6 的文件）。
-- B4 详情+源管理 ~107 处；B5 首页/收藏/历史/搜索/图片收藏 ~39 处（全部 FROZEN，本轮未获豁免）；
-  B6 阅读器+画廊 ~53 处（含 3 个 `ModalBottomSheet`，全仓最高风险）。
+- ✅ 前置机械 PR 已做（`ec48c08`）：9 个 `import androidx.compose.material3.*` 通配拆成显式 import。
+  踩到一条通用坑：**通配拆显式不是行为中性的** —— 显式导入优先于通配，拆错会让原本解析到
+  miuix 的 `Text`/`Surface`/`Card` 悄悄换家，第一版就是这么炸出 364 个编译错的。
+- ✅ **B4 详情+源管理已迁完**（批次 E，见 `FREEZE-STATEMENT.md`）。计数口径统一一次：
+  按符号逐词匹配调用点（不含注解、不含 `Foo.Switch` 这类成员访问）后，B4 域是 **147 处 gross /
+  107 处去掉 `Icon`**，迁完剩 **82**（全是登记缺口 + `Icon` + 指示器）；
+  全站从 **474 → 418**。方案里那个"~107"是"排除图标件"的口径，"267"不可复现（更早一次
+  只数交互件的结果），用户报的 127 两种口径都没复现 —— 已在批次 E 表里逐条如实写。
+- ⏳ B5 首页/收藏/历史/搜索/图片收藏：全部 FROZEN 主 Tab 屏，未获豁免。
+  （按同一口径重数：LocalComic 31、FavoriteImages 22、Favorites 19、Search 19、History 6、Home 6。）
+- ⏳ B6 阅读器+画廊：含 `ModalBottomSheet` —— 全站共 **6 枚**（详情 2 已随 B4 登记留 M3、
+  阅读器 3、画廊 1），方案里"3 个"的归属写漏了详情页那两枚，已在批次 E 更正。
 - `DropdownMenu`（8 文件/21 项）、`DatePicker`、`SegmentedControl` 三条**没有 miuix 对应物**，只做外层贴玻璃、不换后端。
+  批次 E 又补两条同族缺口：miuix 无描边按钮（`OutlinedButton`）、文字按钮没有槽位（带图标的 `TextButton`）。
+- ⏳ 容器级玻璃**没有铺满详情/源管理**：两页共 15 处 `VeneraCard` 自动带 CONTAINER 玻璃，
+  但详情页另有 12 枚 miuix `Surface(` 面板未贴 —— 贴上去会把单屏 CONTAINER 数推过"每屏 ≤6"的预算，
+  而批次 D 那 9 条真机待验还没跑。等真机读数回来再决定。
 - 采氛围层拿到的玻璃 = **模糊 + 染色 + 描边高光，不含折射透镜**（`lens` 在 miuix-blur 里不存在，只有底栏用 Kyant 实现）。
   对外描述别说内容区会"折"。设备倾斜高光本轮不上（新增传感器与每帧重算，与减帧目标反着走）。

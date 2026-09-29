@@ -21,8 +21,9 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material3.CircularProgressIndicator
+import com.venera.compose.components.venera.VeneraTextButton
+import com.venera.compose.components.venera.VeneraTextField
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -204,17 +205,17 @@ fun GalleryAccountCard() {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
                     ) {
-                        TextButton(onClick = { logoutConfirm = false }) { Text("取消") }
+                        VeneraTextButton(text = "取消", onClick = { logoutConfirm = false })
                         Spacer(modifier = Modifier.width(tokens.spacing.space3))
-                        TextButton(
+                        VeneraTextButton(
+                            text = "清除",
+                            destructive = true,
                             onClick = {
                                 account.signOut()
                                 logoutConfirm = false
                                 Toast.makeText(context, "已清除 Gelbooru 账号", Toast.LENGTH_SHORT).show()
                             },
-                        ) {
-                            Text("清除", color = tokens.color.actionFavorite)
-                        }
+                        )
                     }
                 }
             }
@@ -274,18 +275,18 @@ private fun GelbooruLoginDialog(
                 )
                 Spacer(modifier = Modifier.height(tokens.spacing.space6))
 
-                OutlinedTextField(
+                VeneraTextField(
                     value = userId,
                     onValueChange = { userId = it },
-                    label = { Text("User ID（数字）") },
+                    label = "User ID（数字）",
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(modifier = Modifier.height(tokens.spacing.space5))
-                OutlinedTextField(
+                VeneraTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
-                    label = { Text("API Key") },
+                    label = "API Key",
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),

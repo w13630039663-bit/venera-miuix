@@ -14,13 +14,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.venera.compose.components.venera.VeneraButton
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,7 +85,7 @@ fun SourceEditScreen(
                         .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { tryClose() }, enabled = !saving) {
+                    VeneraIconButton(onClick = { tryClose() }, enabled = !saving) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
@@ -113,7 +113,7 @@ fun SourceEditScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                     }
-                    Button(
+                    VeneraButton(
                         onClick = {
                             saving = true
                             errorText = null
@@ -153,7 +153,7 @@ fun SourceEditScreen(
                 }
 
                 // ---------------- 编辑器本体 ----------------
-                OutlinedTextField(
+                VeneraTextField(
                     value = text,
                     onValueChange = {
                         text = it
@@ -162,18 +162,21 @@ fun SourceEditScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 8.dp, vertical = 6.dp),
+                    placeholder = "JavaScript 源脚本",
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurface
                     ),
-                    placeholder = { Text("JavaScript 源脚本", fontSize = 12.sp) }
                 )
             }
         }
     }
 
     if (confirmDiscard) {
+        // 登记在册、刻意不换后端：本屏整体已经是一个 Dialog 窗口，这枚确认框是**弹窗套弹窗**。
+        // miuix 那侧走 WindowDialog（独立 compose 窗口），两枚窗口叠在一起时的预测式返回与焦点归属
+        // 还没在真机上验过 —— 与 NetworkSettings 代理表单弹窗同一条裁决，先保持 M3。
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("放弃修改？") },

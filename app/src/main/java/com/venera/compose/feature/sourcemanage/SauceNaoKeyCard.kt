@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
+import com.venera.compose.components.venera.VeneraTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -119,10 +119,10 @@ fun SauceNaoKeyCard() {
 
             if (editing) {
                 Spacer(modifier = Modifier.height(tokens.spacing.space5))
-                OutlinedTextField(
+                VeneraTextField(
                     value = draft,
                     onValueChange = { draft = it },
-                    label = { Text("SauceNAO API Key") },
+                    label = "SauceNAO API Key",
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),

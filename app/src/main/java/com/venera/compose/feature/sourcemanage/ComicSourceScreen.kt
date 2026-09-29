@@ -20,15 +20,11 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,6 +52,11 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraSwitch
+import com.venera.compose.components.venera.VeneraTextButton
+import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.blurBackdropSource
@@ -212,7 +213,7 @@ fun ComicSourceScreen(
                                     color = tokens.color.textTertiary
                                 )
                             }
-                            IconButton(onClick = { viewModel.refreshPings() }) {
+                            VeneraIconButton(onClick = { viewModel.refreshPings() }) {
                                 Icon(
                                     imageVector = Icons.Outlined.Refresh,
                                     contentDescription = "网络测速",
@@ -537,7 +538,7 @@ fun ComicSourceScreen(
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 // 可用性测试（真实发一次请求）
-                                IconButton(
+                                VeneraIconButton(
                                     onClick = { viewModel.testSource(row) },
                                     enabled = !isTesting,
                                     modifier = Modifier.size(32.dp)
@@ -558,7 +559,7 @@ fun ComicSourceScreen(
                                 }
 
                                 // 启用 / 禁用开关
-                                Switch(
+                                VeneraSwitch(
                                     checked = row.enabled,
                                     onCheckedChange = { checked ->
                                         row.fileName?.let { viewModel.setEnabled(it, checked) }
@@ -606,7 +607,7 @@ fun ComicSourceScreen(
                             Spacer(modifier = Modifier.weight(1f))
 
                             // 置顶
-                            IconButton(
+                            VeneraIconButton(
                                 onClick = { row.fileName?.let { viewModel.setPinned(it, !row.pinned) } },
                                 modifier = Modifier.size(30.dp)
                             ) {
@@ -619,7 +620,7 @@ fun ComicSourceScreen(
                             }
 
                             // 上移 / 下移
-                            IconButton(
+                            VeneraIconButton(
                                 onClick = { row.fileName?.let { viewModel.moveSource(true, it) } },
                                 modifier = Modifier.size(30.dp)
                             ) {
@@ -630,7 +631,7 @@ fun ComicSourceScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-                            IconButton(
+                            VeneraIconButton(
                                 onClick = { row.fileName?.let { viewModel.moveSource(false, it) } },
                                 modifier = Modifier.size(30.dp)
                             ) {
@@ -643,7 +644,7 @@ fun ComicSourceScreen(
                             }
 
                             // 重载配置
-                            IconButton(
+                            VeneraIconButton(
                                 onClick = { viewModel.reloadSource(row.key) },
                                 modifier = Modifier.size(30.dp)
                             ) {
@@ -656,7 +657,7 @@ fun ComicSourceScreen(
 
                             // 编辑 .js 原文（仅限 JS 扩展源）
                             if (row.isJs && row.fileName != null) {
-                                IconButton(
+                                VeneraIconButton(
                                     onClick = { editTarget = row.fileName to row.name },
                                     modifier = Modifier.size(30.dp)
                                 ) {
@@ -672,7 +673,7 @@ fun ComicSourceScreen(
                             // 按 source.url 单独更新该源（仅限 JS 扩展源）
                             if (row.isJs && row.fileName != null) {
                                 val updating = installingFileNames.contains(row.fileName)
-                                IconButton(
+                                VeneraIconButton(
                                     onClick = { viewModel.updateSource(row.fileName) },
                                     enabled = !updating,
                                     modifier = Modifier.size(30.dp)
@@ -695,7 +696,7 @@ fun ComicSourceScreen(
                             }
 
                             // 卸载 / 删除漫画源（支持全部内置源与 JS 扩展源）
-                            IconButton(
+                            VeneraIconButton(
                                 onClick = { deleteConfirmRow = row },
                                 modifier = Modifier.size(30.dp)
                             ) {
@@ -744,7 +745,7 @@ fun ComicSourceScreen(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                            IconButton(
+                                            VeneraIconButton(
                                                 onClick = {
                                                     editingInputSetting = Triple(row.key, item, item.value)
                                                 },
@@ -820,7 +821,7 @@ fun ComicSourceScreen(
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Medium
                                             )
-                                            Switch(
+                                            VeneraSwitch(
                                                 checked = item.value,
                                                 onCheckedChange = { checked ->
                                                     viewModel.updateSetting(row.key, item.key, checked)
@@ -912,7 +913,7 @@ fun ComicSourceScreen(
                                         Text(text = "重新登录", fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = tokens.color.textPrimary)
                                         Text(text = "点击此处如果登录已过期", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
                                     }
-                                    IconButton(
+                                    VeneraIconButton(
                                         onClick = { viewModel.relogin(row.key) },
                                         modifier = Modifier.size(30.dp)
                                     ) {
@@ -934,7 +935,7 @@ fun ComicSourceScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(text = "注销", fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = StatusColors.Failing)
-                                    IconButton(
+                                    VeneraIconButton(
                                         onClick = { logoutConfirmKey = row.key },
                                         modifier = Modifier.size(30.dp)
                                     ) {
@@ -959,7 +960,7 @@ fun ComicSourceScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onNavigateBack) {
+                VeneraIconButton(onClick = onNavigateBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -989,7 +990,7 @@ fun ComicSourceScreen(
                 Column(modifier = Modifier.padding(tokens.spacing.space9)) {
                     Text(text = item.title, fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
                     Spacer(modifier = Modifier.height(tokens.spacing.space7))
-                    OutlinedTextField(
+                    VeneraTextField(
                         value = tempValue,
                         onValueChange = {
                             tempValue = it
@@ -1005,9 +1006,7 @@ fun ComicSourceScreen(
                     }
                     Spacer(modifier = Modifier.height(18.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { editingInputSetting = null }) {
-                            Text("取消")
-                        }
+                        VeneraTextButton(text = "取消", onClick = { editingInputSetting = null })
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = {
                             // 官方用的是 `inputValidator.hasMatch(text)`（**子串匹配**，
@@ -1095,19 +1094,19 @@ fun ComicSourceScreen(
 
                     // ---- 账号密码登录（官方 account.login(account, pwd)）----
                     if (accountInfo?.supportsPasswordLogin == true) {
-                        OutlinedTextField(
+                        VeneraTextField(
                             value = username,
                             onValueChange = { username = it },
-                            label = { Text("用户名 / 账号") },
+                            label = "用户名 / 账号",
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        OutlinedTextField(
+                        VeneraTextField(
                             value = password,
                             onValueChange = { password = it },
-                            label = { Text("密码") },
+                            label = "密码",
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth()
@@ -1142,6 +1141,8 @@ fun ComicSourceScreen(
                     // ---- 内嵌 WebView 网页登录（官方 account.loginWithWebview）----
                     accountInfo?.loginWebsite?.takeIf { it.isNotBlank() }?.let { webUrl ->
                         if (accountInfo.supportsPasswordLogin) Spacer(modifier = Modifier.height(8.dp))
+                        // 登记在册的外观缺口：miuix 的 ButtonColors 没有描边位，"描边按钮"换后端会连描边一起丢，
+                        // 所以这两处（本文件的 OutlinedButton 与下面带图标的 TextButton）保持 M3 直连。
                         OutlinedButton(
                             onClick = {
                                 // 交给内嵌 WebView：只有它才能同时拿到 cookie 与 localStorage
@@ -1163,15 +1164,14 @@ fun ComicSourceScreen(
                     // ---- 手填 Cookie 登录（官方 account.loginWithCookies）----
                     if (accountInfo?.supportsCookieLogin == true) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(
+                        VeneraTextButton(
+                            text = "手动填写 Cookie",
                             onClick = {
                                 cookieLoginTargetKey = sourceKey
                                 loginTargetSourceKey = null
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("手动填写 Cookie")
-                        }
+                        )
                     }
 
                     // ---- 注册外链（官方 account.registerWebsite）----
@@ -1223,10 +1223,10 @@ fun ComicSourceScreen(
 
                     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
                         itemsIndexed(fields) { index, name ->
-                            OutlinedTextField(
+                            VeneraTextField(
                                 value = values.getOrElse(index) { "" },
                                 onValueChange = { if (index < values.size) values[index] = it },
-                                label = { Text(name) },
+                                label = name,
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1236,9 +1236,7 @@ fun ComicSourceScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { cookieLoginTargetKey = null }, enabled = !submitting) {
-                            Text("取消")
-                        }
+                        VeneraTextButton(text = "取消", onClick = { cookieLoginTargetKey = null }, enabled = !submitting)
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
@@ -1285,45 +1283,37 @@ fun ComicSourceScreen(
 
     // 4. 注销确认 Dialog
     logoutConfirmKey?.let { sourceKey ->
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { logoutConfirmKey = null },
-            title = { Text("确认注销") },
-            text = { Text("确定要退出该漫画源的账号登录状态吗？已保存的凭证将被清除。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.logout(sourceKey)
-                    logoutConfirmKey = null
-                }) {
-                    Text("注销", color = StatusColors.Failing)
-                }
+            title = "确认注销",
+            content = { Text("确定要退出该漫画源的账号登录状态吗？已保存的凭证将被清除。") },
+            confirmText = "注销",
+            confirmDestructive = true,
+            onConfirm = {
+                viewModel.logout(sourceKey)
+                logoutConfirmKey = null
             },
-            dismissButton = {
-                TextButton(onClick = { logoutConfirmKey = null }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消",
+            onDismiss = { logoutConfirmKey = null },
         )
     }
 
     // 5. 删除源确认 Dialog
     deleteConfirmRow?.let { row ->
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { deleteConfirmRow = null },
-            title = { Text("确认删除") },
-            text = { Text("确认删除「${row.name}」漫画源吗？删除后相关本地缓存与配置将被清理。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteSource(row.key, row.fileName)
-                    deleteConfirmRow = null
-                }) {
-                    Text("删除", color = StatusColors.Failing)
-                }
+            title = "确认删除",
+            content = { Text("确认删除「${row.name}」漫画源吗？删除后相关本地缓存与配置将被清理。") },
+            confirmText = "删除",
+            confirmDestructive = true,
+            onConfirm = {
+                viewModel.deleteSource(row.key, row.fileName)
+                deleteConfirmRow = null
             },
-            dismissButton = {
-                TextButton(onClick = { deleteConfirmRow = null }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消",
+            onDismiss = { deleteConfirmRow = null },
         )
     }
 
@@ -1343,7 +1333,7 @@ fun ComicSourceScreen(
                             color = tokens.color.textPrimary,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = { showRepoDialog = false }) {
+                        VeneraIconButton(onClick = { showRepoDialog = false }) {
                             Icon(Icons.Default.Close, contentDescription = "关闭")
                         }
                     }
@@ -1352,11 +1342,11 @@ fun ComicSourceScreen(
 
                     // Repo URL：可编辑 + Refresh（对齐官方仓库清单顶部卡片，
                     // 上游这里就是一个输入框而不是只读说明文字）
-                    OutlinedTextField(
+                    VeneraTextField(
                         value = repoUrlInput,
                         onValueChange = { repoUrlInput = it },
-                        label = { Text("Repo URL") },
-                        placeholder = { Text("https://.../index.json") },
+                        label = "Repo URL",
+                        placeholder = "https://.../index.json",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1372,9 +1362,7 @@ fun ComicSourceScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = { repoUrlInput = viewModel.defaultRepoUrl }) {
-                            Text("恢复默认")
-                        }
+                        VeneraTextButton(text = "恢复默认", onClick = { repoUrlInput = viewModel.defaultRepoUrl })
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = { viewModel.setRepoUrl(repoUrlInput) },
@@ -1519,18 +1507,16 @@ fun ComicSourceScreen(
                 Column(modifier = Modifier.padding(tokens.spacing.space9)) {
                     Text(text = "通过 JS 规则网络链接安装", fontSize = tokens.type.itemTitle, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
                     Spacer(modifier = Modifier.height(tokens.spacing.space7))
-                    OutlinedTextField(
+                    VeneraTextField(
                         value = urlInput,
                         onValueChange = { urlInput = it },
-                        placeholder = { Text("https://.../source.js") },
+                        placeholder = "https://.../source.js",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(18.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { showUrlDialog = false }) {
-                            Text("取消")
-                        }
+                        VeneraTextButton(text = "取消", onClick = { showUrlDialog = false })
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(onClick = {
                             if (urlInput.isNotBlank()) {
@@ -1550,10 +1536,11 @@ fun ComicSourceScreen(
     // 10. 检查更新结果弹窗（对齐官方 showUpdateDialog：列出 name: version 并可一键全更）
     updateCandidates?.takeIf { it.isNotEmpty() }?.let { candidates ->
         val progress = batchUpdateProgress
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { if (progress == null) viewModel.dismissUpdateCandidates() },
-            title = { Text("发现 ${candidates.size} 个可更新源") },
-            text = {
+            title = "发现 ${candidates.size} 个可更新源",
+            content = {
                 Column {
                     LazyColumn(modifier = Modifier.heightIn(max = 260.dp)) {
                         items(candidates) { (name, newVersion) ->
@@ -1594,22 +1581,11 @@ fun ComicSourceScreen(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = { viewModel.updateAllAvailable() },
-                    enabled = progress == null
-                ) {
-                    Text("全部更新")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { viewModel.dismissUpdateCandidates() },
-                    enabled = progress == null
-                ) {
-                    Text("稍后")
-                }
-            }
+            confirmText = "全部更新",
+            onConfirm = { viewModel.updateAllAvailable() },
+            dismissText = "稍后",
+            onDismiss = { viewModel.dismissUpdateCandidates() },
+            buttonsEnabled = progress == null,
         )
     }
 

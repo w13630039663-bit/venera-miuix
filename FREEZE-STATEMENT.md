@@ -1301,3 +1301,82 @@ TDD 走的是先红后绿：新增两条用例（`源 JS 发布的 Accept-Encodi
 （转发件的 content 是普通 lambda，M3 侧没塞 `Row`，测量应与改动前同）；
 ② `VeneraTextField` 在 miuix 后端的 **label 呈现口径**（浮动标签 vs 占位符）与 M3 的
 outlined 轮廓不同，种子色输入框与"添加屏蔽项"那两行要在真机上看过才算数。
+
+---
+
+## 批次 E（2026-09-29 深夜）：B4 详情页 + 源管理控件族迁移
+
+### 计数对账（先把自己方案的数字纠正一遍）
+
+三方数字都对不上，现用同一口径重数（**按符号逐词匹配调用点**，不含注解 opt-in，
+`SourceSettingItem.Switch` 这类成员访问已排除）：
+
+| 口径 | 数值 | 说明 |
+|---|---|---|
+| 全站 M3 直连调用点 | **418**（迁移前 474） | 方案里写的"267"不可复现 —— 那个数是更早一次**只数交互件**的结果，不是同一口径 |
+| B4 域 gross（6 个文件） | **147** → 迁移后 **82** | 详情页 36→20、ComicSourceScreen 78→39、SourceEdit 17→13、GalleryAccount 9→5、WebLogin 5→4、SauceNao 2→1 |
+| B4 域去掉 `Icon` | **107** | 与方案里"~107"吻合，说明那个数的口径本来就是"排除图标件" |
+| 用户给的 127 | — | 未复现。最接近的是 gross 147 与去 Icon 107 之间，差值正好是 `Icon`(39)/`CircularProgressIndicator` 一类；已按现数上报，不凑数 |
+
+### 对我方案「无对应物清单」的一处公开纠正
+
+方案里写"`Checkbox`、`Divider` 之类要看 miuix 有没有对应物"，实际读了 0.9.4-rc01 的 sources jar：
+
+- `basic/Checkbox.kt:60` **有** —— 只是模型不同（`state: ToggleableState` + `onClick: (() -> Unit)?`，
+  M3 是 `checked: Boolean` + `onCheckedChange`）⇒ 新建 `VeneraCheckbox`，映射写成两个纯函数
+  （`veneraToggleState` / `veneraCheckClick`）。
+- `basic/Divider.kt:30` **有 `HorizontalDivider`**，且名字与参数（`modifier/thickness/color`）同形 ⇒
+  直接换 import，不建转发件（两家都画 0.75dp 一条线，调用点本来就自己给了 thickness+color）。
+- `basic/Dropdown.kt` 只是 ListPopup 的行渲染件，**没有**锚点式 `DropdownMenu` ⇒ 方案这条判断成立，保留登记。
+- miuix `ButtonColors`/`TextButtonColors` **没有描边位** ⇒ M3 的 `OutlinedButton`（源管理登录弹窗 1 处）
+  换过去会连描边一起丢 ⇒ 登记，不换。
+
+新增第三件转发件 `VeneraButton`（两家 content **都是 `RowScope` 槽**，真交集）：
+建它的唯一动因是"提交按钮里要塞进度条"，`VeneraTextButton` 走 `text: String` 表达不了。
+
+### 转发件本次扩的参数（全部两家都认，不是单侧静默忽略）
+
+- `VeneraTextButton(destructive = …)`：M3 侧 `textButtonColors(contentColor = error)`、
+  miuix 侧 `textButtonColors().copy(textColor = error)`。常规色**各回各的默认**（primary /
+  onSecondaryVariant），所以 `ButtonColors` 不是 data class 这一点不会咬到 M3 侧。
+- `VeneraDialog(confirmDestructive, buttonsEnabled)`：原站点用 `StatusColors.Failing`/硬编码
+  `0xFFE53935`/`actionFavorite` 三种色表达"这是破坏性动作"，现统一到 `colorScheme.error` 一条口径。
+- `VeneraTextField(placeholder, visualTransformation, textStyle)`：
+  ① miuix 只有 label 一个文本槽 ⇒ `veneraFieldLabelSlot` 定规则（有标签用标签；无标签时占位符顶上去）；
+  ② `visualTransformation` 两家同形，密码/密钥三类输入全靠它，丢了就是明文上屏；
+  ③ `textStyle` 可空是刻意的 —— 两家的默认字面各来自自己主题，转发件不替调用点决定默认值。
+
+### 本批留下的缺口（全部有理由，不是漏）
+
+- 详情页：**DropdownMenu**（标签长按菜单）、**ModalBottomSheet**（评论 sheet，含它自己的
+  `TextField`+`TextFieldDefaults` 评论框）、**章节下载 AlertDialog**（标题槽里挂了"全选未下载"
+  这颗交互按钮，而 miuix 对话框标题是 `String`，换过去会静默丢件）⇒ 三处整块留 M3，
+  登记注释就写在 ComicDetailScreen 的导入区。弹窗**内部**的两颗按钮与列表复选框已经走转发件。
+- 源管理：`OutlinedButton` 1 处、带图标的 `TextButton` 1 处（miuix 的文字按钮没有槽位）。
+- 源脚本编辑页的"放弃修改"确认框：它本身就是**弹窗套弹窗**（整屏是一个 `Dialog` 窗口），
+  与 NetworkSettings 代理表单同一条裁决 —— `WindowDialog` 叠窗口的预测式返回与焦点归属
+  未真机验过，先保持 M3。
+- 全仓的 `Icon`(156) 与加载指示器不在本批口径内：玻璃挂外壳不挂图标；指示器沿用
+  「统一走波浪环」的既有裁决。
+- **容器级玻璃本批不扩**：详情页 15 处 `VeneraCard` 已经自动带 CONTAINER 玻璃（批次 D 的封装件），
+  但页面里还有 ~12 枚 miuix `Surface(` 面板；给它们贴玻璃会把单屏 CONTAINER 数量推到
+  方案风险表写的"每屏 ≤6"之外。批次 D 的 9 条真机待验还没跑，先不把观感风险面摊大。
+
+### 自查教训（本轮自己的错）
+
+- node 脚本 `split("\r\n")` 遇上**纯 LF 文件**会得到"整个文件一行"，于是 `findIndex` 返回 -1、
+  `splice(0,0,…)` 把 import 插到了 `package` 之前，而 `filter` 又没删掉该删的导入 —— 
+  SourceEditScreen 被这样处理过一次，靠 `sed -n '1,26p'` 现形才修回。
+  **规则：脚本改文件前先 `.replace(/\r\n/g,"\n")` 再 split，写回后打印首行确认。**
+- 通配 import 拆分**不是行为中性**的（批次 D 已记一次），本轮再确认一次：ComicSourceScreen 的
+  `Button`/`Text`/`Scaffold`/`Surface` 一直解析到 miuix，所以那几件**本来就已经是 Miuix 后端**，
+  计数里不该把它们当 M3 —— 上面的 gross 147 是按显式 M3 导入逐符号数出来的，已排除这种情况。
+
+构建：`testDebugUnitTest` **55 套 / 402 条 / 0 失败 / 0 错误**（新增 `VeneraWidgetMappingTest` 8 条，
+先红后绿：红的时候报的就是 5 个未实现的映射名）/ `assembleDebug` 绿；
+`material3 1.5.0-alpha22`、`miuix 0.9.4-rc01` 版本未动。
+
+真机**未验**（本批 4 条新口径）：① 源管理列表开关被显式约束成 44×28dp，而 miuix 原生是 49×28dp，
+Miuix 档下形态要看一眼；② 评论 sheet 里三颗 `VeneraTextButton` 的原生最小尺寸 58×40dp 会不会把
+列表撑疏；③ 破坏性按钮统一到 error 色后，"清除/注销/删除"三处的观感；④ 详情页评分弹窗与新建
+收藏夹弹窗改走 `WindowDialog` 后的进出场与遮挡。

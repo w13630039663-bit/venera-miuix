@@ -28,20 +28,27 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
+// ── 本文件仍保留的 M3 直连，全部是"miuix 0.9.4-rc01 没有对应物"的登记缺口，不是漏做 ──
+// · DropdownMenu / DropdownMenuItem：miuix 只有弹层模型不同的 ListPopup，锚点语义接不上。
+// · ModalBottomSheet（评论 sheet）：miuix 无底部面板件，换后端等于重做一层窗口。
+// · 章节下载弹窗的 AlertDialog：它的标题槽里挂了一颗交互按钮（全选切换），
+//   而 miuix 的对话框标题只是 String —— 换过去会静默丢掉那颗按钮，所以整枚留 M3。
+//   （弹窗内部的两颗按钮与列表里的复选框已经走转发件，不受这条影响。）
+// · TextField + TextFieldDefaults：评论输入框自带 shape/colors 定制，属同一枚 sheet 的一部分。
+// · Icon / CircularProgressIndicator / CircularWavyProgressIndicator：玻璃挂外壳不挂图标；
+//   加载指示器沿用「统一走波浪环」的既有裁决。
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -82,6 +89,10 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.data.tags.rememberTagDisplayLabel
 import com.venera.compose.components.venera.VeneraCard
+import com.venera.compose.components.venera.VeneraCheckbox
+import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraTextField
+import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -496,10 +507,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             }
                         }
                         if (showRatingDialog) {
-                            AlertDialog(
+                            VeneraDialog(
+                                show = true,
                                 onDismissRequest = { showRatingDialog = false },
-                                title = { Text("给本作评分") },
-                                text = {
+                                title = "给本作评分",
+                                content = {
                                     Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5)) {
                                         (1..5).forEach { n ->
                                             Text(
@@ -518,10 +530,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         }
                                     }
                                 },
-                                confirmButton = {},
-                                dismissButton = {
-                                    TextButton(onClick = { showRatingDialog = false }) { Text("取消") }
-                                },
+                                dismissText = "取消",
+                                onDismiss = { showRatingDialog = false },
                             )
                         }
                     }
@@ -1524,9 +1534,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (replyTo != null) {
-                        TextButton(onClick = { viewModel.closeReplies() }, enabled = !isSendingComment) {
-                            Text("返回评论")
-                        }
+                        VeneraTextButton(text = "返回评论", onClick = { viewModel.closeReplies() }, enabled = !isSendingComment)
                     }
                     Text(
                         text = if (replyTo == null) "全部评论 (" + thread.items.size + ")" else "回复 " + replyTo.userName,
@@ -1535,10 +1543,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                     if (detailState.commentCapabilities.canLoad) {
-                        TextButton(
+                        VeneraTextButton(
+                            text = "刷新",
                             onClick = { viewModel.loadComments(replyId = replyTo?.id) },
                             enabled = !thread.isLoading
-                        ) { Text("刷新") }
+                        )
                     }
                 }
                 if (replyTo != null) {
@@ -1597,17 +1606,17 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             RichCommentContent(content = c.content)
                             // Missing replyCount means unsupported; an explicit zero still allows replies.
                             if (c.replyCount != null && c.id.isNotBlank() && detailState.commentCapabilities.canLoad) {
-                                TextButton(onClick = { viewModel.openReplies(c) }, enabled = !isSendingComment) {
-                                    Text("查看 / 回复 (" + c.replyCount + ")", fontSize = 12.sp)
-                                }
+                                VeneraTextButton(
+                                    text = "查看 / 回复 (" + c.replyCount + ")",
+                                    onClick = { viewModel.openReplies(c) },
+                                    enabled = !isSendingComment,
+                                )
                             }
                         }
                     }
                     if (thread.loaded && thread.hasMore && !thread.isLoading && thread.error == null) {
                         item {
-                            TextButton(onClick = { viewModel.loadComments(loadMore = true, replyId = replyTo?.id) }) {
-                                Text("加载更多评论")
-                            }
+                            VeneraTextButton(text = "加载更多评论", onClick = { viewModel.loadComments(loadMore = true, replyId = replyTo?.id) })
                         }
                     }
                 }
@@ -1652,14 +1661,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(if (isGallery) "下载整本" else "选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = {
-                        selectedIds = if (selectedIds.size == undownloadedIds.size) emptySet() else undownloadedIds
-                    }) {
-                        Text(
-                            if (undownloadedIds.isNotEmpty() && selectedIds.size == undownloadedIds.size) "全不选" else "全选未下载",
-                            fontSize = 12.sp
-                        )
-                    }
+                    VeneraTextButton(
+                        text = if (undownloadedIds.isNotEmpty() && selectedIds.size == undownloadedIds.size) "全不选" else "全选未下载",
+                        onClick = {
+                            selectedIds = if (selectedIds.size == undownloadedIds.size) emptySet() else undownloadedIds
+                        },
+                    )
                 }
             },
             text = {
@@ -1682,7 +1689,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Checkbox(
+                                VeneraCheckbox(
                                     checked = isChecked,
                                     onCheckedChange = { checked ->
                                         selectedIds = if (checked) selectedIds + ch.id else selectedIds - ch.id
@@ -1751,9 +1758,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDownloadDialog = false }) {
-                    Text("取消")
-                }
+                VeneraTextButton(text = "取消", onClick = { showDownloadDialog = false })
             }
         )
     }
@@ -1878,9 +1883,7 @@ private fun CommentLoadStatus(thread: DetailCommentState, supported: Boolean, on
                 fontSize = tokens.type.caption,
                 color = StatusColors.Failing
             )
-            TextButton(onClick = onRetry) {
-                Text("重试", color = tokens.color.primary)
-            }
+            VeneraTextButton(text = "重试", onClick = onRetry)
         }
         !supported && thread.items.isEmpty() -> Text(
             "该源未提供评论加载功能",
@@ -2183,19 +2186,21 @@ private fun FavoritePanelSheet(
     if (showNewFolder) {
         var folderName by remember { mutableStateOf("") }
         var nameError by remember { mutableStateOf<String?>(null) }
-        AlertDialog(
+        VeneraDialog(
+            show = true,
             onDismissRequest = { showNewFolder = false },
-            title = { Text("新建收藏夹", fontSize = 17.sp, fontWeight = FontWeight.Bold) },
-            text = {
+            title = "新建收藏夹",
+            content = {
                 Column {
-                    OutlinedTextField(
+                    VeneraTextField(
                         value = folderName,
                         onValueChange = {
                             folderName = it
                             nameError = null
                         },
                         singleLine = true,
-                        label = { Text("收藏夹名") },
+                        label = "收藏夹名",
+                        isError = nameError != null,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     nameError?.let {
@@ -2204,23 +2209,19 @@ private fun FavoritePanelSheet(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (folderName.isBlank()) {
-                            nameError = "收藏夹名不能为空"
-                        } else {
-                            onCreateFolder(folderName) { msg ->
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
-                            showNewFolder = false
-                        }
-                    },
-                ) { Text("创建") }
+            confirmText = "创建",
+            onConfirm = {
+                if (folderName.isBlank()) {
+                    nameError = "收藏夹名不能为空"
+                } else {
+                    onCreateFolder(folderName) { msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                    showNewFolder = false
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { showNewFolder = false }) { Text("取消") }
-            },
+            dismissText = "取消",
+            onDismiss = { showNewFolder = false },
         )
     }
 }
