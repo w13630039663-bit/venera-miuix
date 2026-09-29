@@ -91,7 +91,20 @@ class VeneraImageFetcher(
             val descrambled = ImagePipelinePolicy.decodeAndDescramble(
                 rawBytes, scrambleNum, sampleSizeFor(bounds, scrambleNum), bounds.outHeight,
             ) ?: ImagePipelinePolicy.decodeAndDescramble(rawBytes, scrambleNum, 1, bounds.outHeight)
-                ?: throw IOException("JM 去混淆失败（$cleanUrl, num=$scrambleNum），不交未还原字节")
+                ?: run {
+                    // 成因必须能分辨。`decodeAndDescramble` 有三条**静默**返回 null 的路
+                    // （ BitmapFactory 解不出来 / 原高不够切 num 块 / 尺寸非法），
+                    // 三条的修法两两相反，只写"去混淆失败"就等于让下一个人重新猜一遍。
+                    // 首 4 字节的魔数是最硬的一条：真图会是 RIFF/ffd8/8950，
+                    // 若是 3cXX（'<'）就说明 CDN 给回来的是 HTML 拦截页而不是图。
+                    val magic = rawBytes.take(4).joinToString("") { "%02x".format(it) }
+                    throw IOException(
+                        "JM 去混淆失败（$cleanUrl, num=$scrambleNum）：" +
+                            "服务端 Content-Type=$mimeType 魔数=$magic 字节=${rawBytes.size} " +
+                            "inJustDecodeBounds 读出 原尺寸=${bounds.outWidth}x${bounds.outHeight} " +
+                            "每块高=${if (bounds.outHeight > 0) bounds.outHeight / scrambleNum else -1}，不交未还原字节",
+                    )
+                }
             return ImageFetchResult(
                 image = descrambled.asImage(),
                 isSampled = true,

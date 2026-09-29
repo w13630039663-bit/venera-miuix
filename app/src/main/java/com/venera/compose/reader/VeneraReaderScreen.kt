@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -74,6 +75,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.SubcomposeAsyncImage
 import coil3.imageLoader
 import coil3.request.CachePolicy
+import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -82,6 +84,7 @@ import com.venera.compose.components.wideScreenChromeMaxWidth
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.ImageHeaderPolicy
+import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.Dispatchers
@@ -1565,6 +1568,14 @@ private fun ReaderSessionContent(
 }
 
 /**
+ * 正文页取图的成因为什么要落 logcat：这一段的失败在 UI 上只有一句
+ * 「第 N 页加载失败，点按重试」，而**源 JS 拒绝解析**、**解析给了空 url（要换 nl 源）**、
+ * **地址有效但下载失败**、**满 5 轮仍未成功**是四种完全不同的病，处置方向两两相反
+ * （前三条分别指向源脚本、站点分流、防盗链/字节链）。没有成因就只能靠猜。
+ */
+private const val PAGE_LOAD_TAG = "ReaderPageLoad"
+
+/**
  * 「动态页」解析状态：真实 URL、失败标志与手动重试计数
  */
 private class DynamicPageState {
@@ -1597,7 +1608,7 @@ private suspend fun resolveDynamicPageUrl(
 ): String? {
     var nl: String? = null
     repeat(maxAttempts) { round ->
-        val cfg = sourceManager
+        val resolved = sourceManager
             .resolveImageLoadingConfig(
                 page.sourceKey, page.comicId, page.epId, page.imageKey, nl,
                 // 首轮可吃解析缓存；进入第二轮说明上一轮拿到的地址下载失败了
@@ -1605,8 +1616,23 @@ private suspend fun resolveDynamicPageUrl(
                 // 失效地址空转满 5 次。
                 forceRefresh = forceRefresh || round > 0
             )
-            .getOrNull() ?: return null
+        val cfg = resolved.getOrNull()
+        if (cfg == null) {
+            // 成因必须留痕。这里原本是一句 `?: return null`，于是"源 JS 拒绝"与
+            // "地址拿到了但下载挂了"这两种完全相反的病，在屏幕上长得一模一样
+            // （都只剩"第 N 页加载失败"），排查只能靠猜。
+            Log.w(
+                PAGE_LOAD_TAG,
+                "解析失败 src=${page.sourceKey} ep=${page.epId} img=${page.imageKey} nl=$nl round=$round",
+                resolved.exceptionOrNull(),
+            )
+            return null
+        }
         if (cfg.url.isBlank()) {
+            Log.w(
+                PAGE_LOAD_TAG,
+                "解析返回空 url，按 nl 换源重试 src=${page.sourceKey} ep=${page.epId} img=${page.imageKey} nl=${cfg.nl}",
+            )
             nl = cfg.nl
             return@repeat
         }
@@ -1621,9 +1647,19 @@ private suspend fun resolveDynamicPageUrl(
             .diskCachePolicy(CachePolicy.ENABLED)
             .allowHardware(true)
             .build()
-        if (context.imageLoader.execute(req) is SuccessResult) return cfg.url
+        val result = context.imageLoader.execute(req)
+        if (result is SuccessResult) return cfg.url
+        // 只记**不带 query 的**地址：JM 的签名 token 常在 query 上，整串进 logcat 等于往日志里落凭据。
+        val downloadDiag = "下载失败 url=${cfg.url.substringBefore('?')} " +
+            "走字节链=${ImagePipelinePolicy.needsBytePipeline(cfg.url)} " +
+            "JM块数=${ImagePipelinePolicy.getScrambleNum(cfg.url)} 头=${cfg.headers.keys} round=$round"
+        when (result) {
+            is ErrorResult -> Log.w(PAGE_LOAD_TAG, downloadDiag, result.throwable)
+            else -> Log.w(PAGE_LOAD_TAG, "$downloadDiag 且 Coil 未给出异常（${result::class.simpleName}）")
+        }
         nl = cfg.nl
     }
+    Log.w(PAGE_LOAD_TAG, "满 $maxAttempts 轮仍未成功 src=${page.sourceKey} ep=${page.epId} img=${page.imageKey}")
     return null
 }
 
