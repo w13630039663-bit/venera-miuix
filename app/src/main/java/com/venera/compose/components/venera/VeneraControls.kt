@@ -10,6 +10,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.material3.Text
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
+import androidx.compose.material3.MaterialTheme as Md3MaterialTheme
+import androidx.compose.material3.OutlinedTextField as Md3OutlinedTextField
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -136,6 +141,74 @@ fun VeneraTextButton(
         MiuixTextButton(text = text, onClick = onClick, modifier = modifier, enabled = enabled)
     } else {
         Md3TextButton(onClick = onClick, modifier = modifier, enabled = enabled) { Text(text) }
+    }
+}
+
+/**
+ * `isError` → 描边色。单独抽成纯函数只为一件事：这个参数**只有 M3 后端原生支持**，
+ * miuix 侧必须有人显式映射，否则它会变成一个"编译得过、传得进去、屏幕上没有"的假开关。
+ * 错误态一律赢（调用点会把"禁用灰"当 default 传进来，见 `VeneraTextFieldMappingTest` 第三条）。
+ */
+fun veneraFieldBorderColor(defaultBorder: Color, errorBorder: Color, isError: Boolean): Color =
+    if (isError) errorBorder else defaultBorder
+
+/**
+ * 输入框。签名只取两家交集：`value/onValueChange/modifier/enabled/label/singleLine/
+ * leadingIcon/trailingIcon`（miuix `TextField.kt:294` 那一个重载就是 `String` 版，
+ * 它的 `label: String`、图标是 `@Composable (() -> Unit)?`，与 M3 `OutlinedTextField` 同形）。
+ *
+ * 唯一不对等的是 `isError`：miuix 没有这个参数，这里映射成**描边换错误色**（见
+ * [veneraFieldBorderColor]），不是"忽略掉"。错误**文字**本来就在外层由调用点自己画
+ * （设置页三处都是 `Text(error)`），转发件不重复表达。
+ *
+ * `label` 用空串表示"没有标签"：miuix 的 label 是 `String` 而非可空槽位，
+ * 两家都以空白串为无标签，调用点不必各写一套 null 判断。
+ */
+@Composable
+fun VeneraTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    label: String = "",
+    singleLine: Boolean = false,
+    isError: Boolean = false,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) {
+    if (useMiuixWidgets) {
+        val baseColors = TextFieldDefaults.textFieldColors()
+        MiuixTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier,
+            enabled = enabled,
+            label = label,
+            singleLine = singleLine,
+            leadingIcon = leadingIcon,
+            trailingIcon = trailingIcon,
+            colors = baseColors.copy(
+                borderColor = veneraFieldBorderColor(
+                    defaultBorder = baseColors.borderColor,
+                    errorBorder = Md3MaterialTheme.colorScheme.error,
+                    isError = isError,
+                ),
+            ),
+        )
+    } else {
+        Md3OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier,
+            enabled = enabled,
+            singleLine = singleLine,
+            isError = isError,
+            leadingIcon = leadingIcon,
+            trailingIcon = trailingIcon,
+            label = if (label.isBlank()) null else {
+                { Text(label) }
+            },
+        )
     }
 }
 

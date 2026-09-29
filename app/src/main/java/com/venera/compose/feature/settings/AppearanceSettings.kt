@@ -9,7 +9,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -19,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.NavigationBarStyle
@@ -277,10 +277,10 @@ private fun ThemeSeedHexInput(onApplied: (Int) -> Unit) {
             .padding(horizontal = tokens.spacing.rowHorizontal),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
+        VeneraTextField(
             value = text,
             onValueChange = { text = it; error = null },
-            label = { Text("或输入自定义色值 #RRGGBB") },
+            label = "或输入自定义色值 #RRGGBB",
             singleLine = true,
             isError = error != null,
             modifier = Modifier.weight(1f),

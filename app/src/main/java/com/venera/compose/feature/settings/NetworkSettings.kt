@@ -88,7 +88,7 @@ private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit)
     // VeneraDialog（miuix 后端 = WindowDialog，自己起一个 Dialog 窗口）。外层若也换成
     // VeneraDialog，就变成 Dialog 套 Dialog，预测式返回与焦点归属在真机上没测过；
     // 拿"UI 统一"去赌一条没人验过的窗口链，正是本仓禁止的假统一。留作下一批带真机验证的独立项。
-    // 连带：它自己的两颗按钮（下方 confirmButton/dismissButton）也**一起留在 M3**，
+    // 连带：**它内部的两颗按钮与两个输入框也一起留在 M3**（`VeneraTextField` 已存在但这里不用），
     // 让这一个弹窗内部自洽 —— 一半 miuix 一半 M3 比整枚 M3 更难解释。
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },

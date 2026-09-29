@@ -1269,3 +1269,35 @@ TDD 走的是先红后绿：新增两条用例（`源 JS 发布的 Accept-Encodi
 构建：**53 套 / 391 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
 真机（PJZ110，`lastUpdateTime 22:49:43`）：用户判读"正常了"，且 22:49 之后**新进程 0 条**"去混淆失败"
 （旧 200 条全在 22:40:58 那个修复前进程上）。
+
+### 批次 D 续（2026-09-29 深夜）：控件族最后两件 —— 布局切换钮与输入框
+
+**这一条是冻结面外观豁免**（沿 `:1048` 与批次 D 节同一做法）：
+`components/ComicTileLayout.kt` 的 `ComicLayoutToggleButton` 由 M3 `IconButton` 改走
+`VeneraIconButton`。组件本身不在名单内，但它的调用点含**探索页 `UnifiedExploreScreen:552`
+与历史页 `HistoryScreen:201`**（都在 FROZEN 名单），而转发件默认按 `AppearanceStyle.MIUIX`
+换后端 ⇒ 这一改**会改变两个冻结屏的观感**。豁免来自用户当句「该动的就动吧」（2026-09-29）。
+批次 D 原先"按不给豁免没动"的那条待拍板项，至此清账。
+
+`VeneraTextField` 落地，纠正批准稿一处 + 记一次自己的失误：
+
+- miuix 那个文件里其实有**三个 `TextField` 重载**：`state: TextFieldState`(`:82`)、
+  `value: TextFieldValue`(`:188`)、`value: String`(`:294`)。签名能对上的是**第三个**，
+  且 `label` 是 `String` 不是槽位 ⇒ 转发件统一用 `label: String`，空串表示无标签
+  （否则调用点要各写一套 null 判断）。
+- `isError` **只有 M3 有**。没有把它"两家各传一遍、miuix 那边默默吃掉"，
+  而是抽成纯函数 `veneraFieldBorderColor(default, error, isError)` 映射到 `colors.borderColor`
+  （`TextFieldColors` 是 data class，`borderColor` 是它的字段），
+  并先写 3 条单测跑红再实现 —— 这是本仓最反对的那类假开关的**唯一防线**：编译得过、
+  参数传得进去、屏幕上什么都没有。
+- 自己的失误留痕：加 `VeneraTextField` 那次 Edit 用整个 `VeneraTextButton` 函数体当
+  `old_string`，把它**整块替换掉了**。靠 `grep "fun Venera"` 数函数才发现并补回。
+  教训：往文件里插东西时，`old_string` 要用"锚点注释行"，不要拿邻居函数全体当锚。
+- 连带不做（保持一枚弹窗内部自洽）：`NetworkSettings` 代理表单弹窗**内的两个输入框**
+  跟着它自己的两颗按钮一起留在 M3 —— 见上一节那条"Dialog 套 Dialog"的理由。
+
+构建：`testDebugUnitTest` **54 套 / 394 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
+真机仍**未验**：新增待验两条 —— ① MIUIX 档下布局切换钮在探索页/历史页顶栏的位置与触达
+（转发件的 content 是普通 lambda，M3 侧没塞 `Row`，测量应与改动前同）；
+② `VeneraTextField` 在 miuix 后端的 **label 呈现口径**（浮动标签 vs 占位符）与 M3 的
+outlined 轮廓不同，种子色输入框与"添加屏蔽项"那两行要在真机上看过才算数。

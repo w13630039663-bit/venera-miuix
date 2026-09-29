@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.venera.compose.components.venera.VeneraIconButton
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -187,7 +187,7 @@ fun ComicLayoutToggleButton(
     displayMode: String,
     onToggle: (String) -> Unit
 ) {
-    IconButton(onClick = { onToggle(if (displayMode == "detailed") "brief" else "detailed") }) {
+    VeneraIconButton(onClick = { onToggle(if (displayMode == "detailed") "brief" else "detailed") }) {
         Icon(
             imageVector = if (displayMode == "brief") Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
             contentDescription = if (displayMode == "brief") "切换单列" else "切换双列",

@@ -2,13 +2,13 @@ package com.venera.compose.feature.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
@@ -96,8 +96,15 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                     "按正则匹配", regexMode, { regexMode = it; error = null },
                     summary = "关闭＝按字面包含匹配；开启＝按正则匹配（与完整内容守卫页一致）",
                 )
-                OutlinedTextField(input, { input = it; error = null }, label = { Text("添加屏蔽项") },
-                    isError = error != null, modifier = Modifier.fillMaxWidth(), singleLine = true, enabled = !busy)
+                VeneraTextField(
+                    value = input,
+                    onValueChange = { input = it; error = null },
+                    label = "添加屏蔽项",
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !busy,
+                )
                 if (error != null) Text(error!!)
                 VeneraTextButton(
                     text = if (busy) "正在保存" else "添加",
