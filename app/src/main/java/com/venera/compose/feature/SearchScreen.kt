@@ -85,7 +85,7 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 搜索页（SearchRoute 与 TagSearchRoute **共享同一套 UI**）。
@@ -449,7 +449,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
             backdrop = topBarBackdrop,
             navigationIcon = {
                 if (onNavigateBack != null) {
-                    VeneraIconButton(onClick = onNavigateBack) {
+                    VeneraTopBarPill(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
@@ -462,7 +462,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 // 搜索框滚出视口后淡入，避免与列表首项里的搜索框视觉重复。
                 val actionAlpha by searchActionAlpha
                 if (actionAlpha > 0.01f) {
-                    VeneraIconButton(
+                    VeneraTopBarPill(
                         onClick = { showSearchDialog = true },
                         modifier = Modifier
                             .size(tokens.spacing.iconButtonSize)

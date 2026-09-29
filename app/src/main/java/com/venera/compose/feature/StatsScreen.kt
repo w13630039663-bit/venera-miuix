@@ -49,7 +49,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 生产级阅读统计看板 (S7)
@@ -330,7 +330,7 @@ fun StatsScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

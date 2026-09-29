@@ -65,8 +65,9 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraTextButton
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 生产级本地离线书架 (S6)
@@ -483,7 +484,7 @@ fun LocalComicScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -504,7 +505,7 @@ fun LocalComicScreen(
                             }
                         },
                     )
-                    VeneraIconButton(
+                    VeneraTopBarPill(
                         onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
                         enabled = selectedComicPaths.isNotEmpty(),
                     ) {
@@ -514,7 +515,7 @@ fun LocalComicScreen(
                             tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled,
                         )
                     }
-                    VeneraIconButton(onClick = {
+                    VeneraTopBarPill(onClick = {
                         isSelectionMode = false
                         selectedComicPaths = emptySet()
                     }) {
@@ -526,7 +527,7 @@ fun LocalComicScreen(
                     }
                 } else {
                     // ── 普通态：多选入口 · 布局切换 · 下载中心(带徽章) · 导入 CBZ ──
-                    VeneraIconButton(onClick = { isSelectionMode = true }) {
+                    VeneraTopBarPill(onClick = { isSelectionMode = true }) {
                         Icon(
                             imageVector = Icons.Outlined.Checklist,
                             contentDescription = "多选模式",
@@ -535,7 +536,7 @@ fun LocalComicScreen(
                     }
                     ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                     Box {
-                        VeneraIconButton(onClick = onNavigateToDownloads) {
+                        VeneraTopBarPill(onClick = onNavigateToDownloads) {
                             Icon(
                                 imageVector = Icons.Outlined.Download,
                                 contentDescription = "下载中心",
@@ -558,7 +559,7 @@ fun LocalComicScreen(
                             }
                         }
                     }
-                    VeneraIconButton(onClick = {
+                    VeneraTopBarPill(onClick = {
                         importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
                     }) {
                         Icon(

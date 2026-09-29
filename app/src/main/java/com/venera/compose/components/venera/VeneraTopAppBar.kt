@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -35,6 +37,17 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/**
+ * 顶栏这一侧的采样层，供 [VeneraTopBarPill] 直接取用。
+ *
+ * 为什么要走 CompositionLocal 而不是逐屏传参：`navigationIcon` / `actions` / `bottomContent`
+ * 都是 [VeneraTopAppBar] **内部求值**的 composable lambda，而它自己已经收了 `backdrop` 参数——
+ * 在这里 provide 一次，13 个调用点一行都不用改。
+ * 用 `compositionLocalOf` 不用 static：这个值会随能力检测与 `enableBlur` 在 null↔非 null 之间切，
+ * static 会让切换不重组（正是 `VeneraTokens.kt` 那条"切档留旧值"的病的形状）。
+ */
+val LocalTopBarBackdrop = compositionLocalOf<Backdrop?> { null }
 
 /**
  * Venera 统一顶栏（对齐 pixez-miuix 规范）：
@@ -125,19 +138,23 @@ fun VeneraTopAppBar(
         )
 
         // ── 顶栏本体：miuix TopAppBar，底色透明，由背板负责视觉背景 ──
-        TopAppBar(
-            title = title,
-            largeTitle = largeTitle,
-            subtitle = subtitle,
-            color = Color.Transparent,
-            titleColor = tokens.color.textPrimary,
-            largeTitleColor = tokens.color.textPrimary,
-            subtitleColor = tokens.color.textSecondary,
-            navigationIcon = navigationIcon,
-            actions = actions,
-            scrollBehavior = scrollBehavior,
-            bottomContent = bottomContent,
-        )
+        // 顶栏里的图标按钮（VeneraTopBarPill）要磨砂就得拿到**同一份**采样层，
+        // 否则它会采到别层内容、颜色与背后那条对不上（收藏页那颗当初就是这么对齐的）。
+        CompositionLocalProvider(LocalTopBarBackdrop provides backdrop) {
+            TopAppBar(
+                title = title,
+                largeTitle = largeTitle,
+                subtitle = subtitle,
+                color = Color.Transparent,
+                titleColor = tokens.color.textPrimary,
+                largeTitleColor = tokens.color.textPrimary,
+                subtitleColor = tokens.color.textSecondary,
+                navigationIcon = navigationIcon,
+                actions = actions,
+                scrollBehavior = scrollBehavior,
+                bottomContent = bottomContent,
+            )
+        }
     }
 }
 

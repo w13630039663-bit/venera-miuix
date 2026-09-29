@@ -21,10 +21,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.venera.compose.components.venera.VeneraIconButton
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import com.venera.compose.components.venera.VeneraTopBarPill
+import com.venera.compose.ui.tokens.VeneraTokens
+import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.icon.extended.ListView
 
 /**
  * 漫画列表「双列网格 / 单列大卡」布局系统（S8，对齐原版 ComicTile 三模式中的
@@ -178,20 +198,85 @@ fun ComicTileDetailed(
 }
 
 /**
- * 列表页 AppBar 的「单列/双列」切换按钮。
- * 对齐原版 ComicLayoutToggleButton：brief 显示 ViewAgenda（点击切单列），
- * detailed 显示 GridView（点击切双列）。
+ * 单列/双列切换钮 —— 全应用**唯一**一份（收藏页原来私有复制过一份，已删）。
+ * brief 显示 ListView（点击切单列），detailed 显示 GridView（点击切双列）。
+ *
+ * 外壳走 [VeneraTopBarPill]：顶栏里有它的那些屏自动获得磨砂，
+ * 没有采样层的屏（如追更页）自动拿到可见回落（半透明底 + 描边），不会静默变平。
+ * 形变动画（图标 morph + 累积 90° 弹簧旋转）挂在这颗上，因为只有它有双态。
+ *
+ * 刻意不收 `modifier` 参数：七个调用点全部用尾随 lambda 写法
+ * `ComicLayoutToggleButton(mode) { … }`，一旦尾位多出第三个参数，尾随 lambda 就会
+ * 悄悄绑到那个参数上（编译期报"缺 onToggle"，人容易误读成调用点少传了东西）。
  */
 @Composable
 fun ComicLayoutToggleButton(
     displayMode: String,
-    onToggle: (String) -> Unit
+    onToggle: (String) -> Unit,
 ) {
-    VeneraIconButton(onClick = { onToggle(if (displayMode == "detailed") "brief" else "detailed") }) {
-        Icon(
-            imageVector = if (displayMode == "brief") Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
-            contentDescription = if (displayMode == "brief") "切换单列" else "切换双列",
-            tint = MiuixTheme.colorScheme.onSurface
-        )
+    val tokens = VeneraTokens
+    var showTip by remember { mutableStateOf(false) }
+    // 累积旋转量：每次切换 +90°，animateFloatAsState 负责弹簧扫过（不取模，避免回卷反旋）。
+    var spinDeg by remember { mutableFloatStateOf(0f) }
+    val spin by animateFloatAsState(spinDeg, spring(0.62f, Spring.StiffnessMediumLow), label = "LayoutSpin")
+    LaunchedEffect(showTip) {
+        if (showTip) {
+            delay(1600)
+            showTip = false
+        }
+    }
+    Box(contentAlignment = Alignment.TopEnd) {
+        VeneraTopBarPill(
+            onClick = {
+                spinDeg += 90f
+                onToggle(if (displayMode == "detailed") "brief" else "detailed")
+            },
+            onLongClick = { showTip = true },
+        ) {
+            AnimatedContent(
+                targetState = displayMode,
+                transitionSpec = {
+                    val morph = spring<Float>(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
+                    (fadeIn(morph) + scaleIn(morph, initialScale = 0.4f)) togetherWith
+                        (fadeOut(morph) + scaleOut(morph, targetScale = 1.6f))
+                },
+                contentAlignment = Alignment.Center,
+                label = "LayoutToggleMorph",
+            ) { mode ->
+                Icon(
+                    // Miuix 官方图标集：单/双列语义正好有 ListView / GridView 这一对，
+                    // 线宽与圆角和应用内其余 Miuix chrome 同源（material 的 GridView 偏重）。
+                    imageVector = if (mode == "brief") MiuixIcons.ListView else MiuixIcons.GridView,
+                    contentDescription = if (mode == "brief") "切换单列" else "切换双列",
+                    tint = tokens.color.primary,
+                    modifier = Modifier
+                        .size(tokens.spacing.chipIconSize)
+                        .graphicsLayer { rotationZ = spin },
+                )
+            }
+        }
+        // 长按气泡走 Popup 独立窗口：钮已收进顶栏 actions，气泡若画在栏内会被
+        // TopAppBar 的 Surface/毛玻璃裁掉，Popup 不受父级裁剪。
+        if (showTip) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                offset = IntOffset(0, with(LocalDensity.current) { tokens.spacing.space2.roundToPx() }),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(tokens.shape.medium),
+                    color = tokens.color.primaryContainer,
+                ) {
+                    Text(
+                        text = "切换列表/网格视图",
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.onPrimaryContainer,
+                        modifier = Modifier.padding(
+                            horizontal = tokens.spacing.space5,
+                            vertical = tokens.spacing.space2,
+                        ),
+                    )
+                }
+            }
+        }
     }
 }

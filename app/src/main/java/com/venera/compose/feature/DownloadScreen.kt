@@ -50,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraIconButton
 
 /**
@@ -140,7 +141,7 @@ fun DownloadScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

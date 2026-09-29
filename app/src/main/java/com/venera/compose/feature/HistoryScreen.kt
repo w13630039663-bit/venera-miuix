@@ -90,7 +90,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -172,7 +172,7 @@ fun AndroidHistoryScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(
+                VeneraTopBarPill(
                     onClick = { if (vm.multiSelectMode) vm.exitMultiSelect() else onBack() }
                 ) {
                     Icon(
@@ -191,7 +191,7 @@ fun AndroidHistoryScreen(
                         onClick = { vm.deleteSelected() },
                     )
                 } else {
-                    VeneraIconButton(onClick = { showClearMenu = true }) {
+                    VeneraTopBarPill(onClick = { showClearMenu = true }) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = "清空选项",

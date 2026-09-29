@@ -78,6 +78,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraIconButton
 
 /** 源连通性四态（UI 语义，不改动 source 数据模型）。 */
@@ -481,10 +482,10 @@ fun SharedTransitionScope.AndroidHomeScreen(
         backdrop = topBarBackdrop,
         actions = {
             // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）。
-            // 三个动作钮走 miuix IconButton（40dp squircle 圆 + 库自带按压高亮），
-            // 不再是 material3 的涟漪圆 —— 顶栏其余部分本来就是 miuix 的。
+            // 三个动作钮走 VeneraTopBarPill（40dp 磨砂圆座 + 48dp 触达），与收藏页那颗同源；
+            // 图标本体仍是 miuix 的 MiuixIcon，线宽与顶栏其余 chrome 一致。
             Box {
-                MiuixIconButton(onClick = { onOpenSourceManage() }) {
+                VeneraTopBarPill(onClick = { onOpenSourceManage() }) {
                     MiuixIcon(
                         imageVector = Icons.Outlined.Extension,
                         contentDescription = "源管理",
@@ -507,14 +508,14 @@ fun SharedTransitionScope.AndroidHomeScreen(
                     }
                 }
             }
-            MiuixIconButton(onClick = { sourceManager.refreshPings() }) {
+            VeneraTopBarPill(onClick = { sourceManager.refreshPings() }) {
                 MiuixIcon(
                     imageVector = Icons.Outlined.Refresh,
                     contentDescription = "刷新",
                     tint = tokens.color.textSecondary,
                 )
             }
-            MiuixIconButton(onClick = { onOpenSettings() }) {
+            VeneraTopBarPill(onClick = { onOpenSettings() }) {
                 MiuixIcon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = "设置",

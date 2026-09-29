@@ -133,7 +133,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -306,14 +306,14 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                             sortOrder = vm.sortOrder,
                             onSortOrderChange = { vm.updateSortOrder(it) },
                         )
-                        VeneraIconButton(onClick = { searchMode = !searchMode }) {
+                        VeneraTopBarPill(onClick = { searchMode = !searchMode }) {
                             Icon(
                                 imageVector = Icons.Outlined.Search,
                                 contentDescription = "搜索收藏",
                                 tint = tokens.color.textSecondary,
                             )
                         }
-                        VeneraIconButton(onClick = { showMenu = true }) {
+                        VeneraTopBarPill(onClick = { showMenu = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
                                 contentDescription = "收藏夹操作",
@@ -325,10 +325,9 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 // （用户拍板「跟随顶栏在右上角」，不再悬浮于折叠顶栏下缘）。
                 // 图片收藏段是固定两列瀑布流，单双列切换对它无意义 —— 不摆假开关。
                 if (mode != FavoritesMode.Images) {
-                    FloatingLayoutToggle(
+                    ComicLayoutToggleButton(
                         displayMode = displayMode.value,
                         onToggle = { displayMode.value = it },
-                        backdrop = topBarBackdrop,
                     )
                 }
             },
@@ -626,122 +625,6 @@ val favoritesModeEntriesWithNetworkFirst = listOf(
     "本地收藏"
 )
 
-/**
- * 布局切换悬浮小钮（用户拍板）：36dp 圆形 + 半透明底（非纯白补丁）+ 主题色 20dp 图标。
- *
- * 变形 = 图标在「网格 / 列表」间淡入淡出交叉，同时整枚图标以累积 90° 的旋转扫过，
- * 旋转与淡变都走阻尼 0.62 的 spring，与 VeneraSegmentedButton 的滑动 spring 同族。
- * 长按弹一枚自绘 Tooltip 气泡（刻意不用 material3 实验性 TooltipBox——该 alpha 版本
- * 的 TooltipPlacement/PlainTooltip 解析不稳，且会引入额外实验面）。
- */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun FloatingLayoutToggle(
-    displayMode: String,
-    onToggle: (String) -> Unit,
-    /** 顶栏那份内容采样层：底座与顶栏同源，磨砂出来的颜色才和它背后那条一致。 */
-    backdrop: LayerBackdrop?,
-    modifier: Modifier = Modifier,
-) {
-    val tokens = VeneraTokens
-    var showTip by remember { mutableStateOf(false) }
-    // 累积旋转量：每次切换 +90°，animateFloatAsState 负责弹簧扫过（不取模，避免回卷反旋）。
-    var spinDeg by remember { mutableFloatStateOf(0f) }
-    val spin by animateFloatAsState(spinDeg, spring(0.62f, Spring.StiffnessMediumLow), label = "LayoutSpin")
-    LaunchedEffect(showTip) {
-        if (showTip) {
-            delay(1600)
-            showTip = false
-        }
-    }
-    val circle = RoundedCornerShape(percent = 50)
-    // 官方 Backdrop 的 lens 折射要 Android 13+；不支持时退回半透明底 + 描边，不静默变平。
-    val frosted = backdrop != null && isRuntimeShaderSupported()
-    Box(modifier = modifier, contentAlignment = Alignment.TopEnd) {
-        Box(
-            // Box 默认 TopStart：换成 Box 后必须显式居中，否则图标会贴到圆座左上角。
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                // 容器保持 40dp 触达档，图标收到 16dp：此前「显大」的真因是底座
-                // 在浅色背景上完全看不出来，只剩一团实心粉浮着，而不是图标真的大。
-                .size(tokens.spacing.iconButtonSize)
-                .clip(circle)
-                .then(
-                    if (frosted) {
-                        Modifier.textureBlur(
-                            backdrop = backdrop!!,
-                            shape = circle,
-                            // 半径与补底色都取 VeneraTopAppBar 的现成配方，两处玻璃同一档。
-                            blurRadius = 10f,
-                            colors = BlurColors(
-                                blendColors = listOf(
-                                    BlendColorEntry(color = tokens.color.surface.copy(alpha = 0.16f)),
-                                ),
-                            ),
-                        )
-                    } else {
-                        Modifier.background(tokens.color.surface.copy(alpha = tokens.current.selectedSurfaceAlpha))
-                    },
-                )
-                .border(tokens.spacing.hairline, tokens.color.outlineVariant, circle)
-                .combinedClickable(
-                    onClick = {
-                        spinDeg += 90f
-                        onToggle(if (displayMode == "detailed") "brief" else "detailed")
-                    },
-                    onLongClick = { showTip = true },
-                ),
-        ) {
-            androidx.compose.animation.AnimatedContent(
-                targetState = displayMode,
-                transitionSpec = {
-                    val morph = spring<Float>(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
-                    (fadeIn(morph) + scaleIn(morph, initialScale = 0.4f)) togetherWith
-                        (fadeOut(morph) + scaleOut(morph, targetScale = 1.6f))
-                },
-                contentAlignment = Alignment.Center,
-                label = "LayoutToggleMorph",
-            ) { mode ->
-                Icon(
-                    // Miuix 官方图标集：单/双列语义正好有 ListView / GridView 这一对，
-                    // 线宽与圆角和应用内其余 Miuix chrome 同源（material 的 GridView 偏重）。
-                    imageVector = if (mode == "brief") MiuixIcons.ListView else MiuixIcons.GridView,
-                    contentDescription = if (mode == "brief") "切换单列" else "切换双列",
-                    tint = tokens.color.primary,
-                    modifier = Modifier
-                        .size(tokens.spacing.chipIconSize)
-                        .graphicsLayer { rotationZ = spin },
-                )
-            }
-        }
-        // 长按气泡走 Popup 独立窗口：钮已收进顶栏 actions，气泡若画在栏内会被
-        // TopAppBar 的 Surface/毛玻璃裁掉，Popup 不受父级裁剪。
-        if (showTip) {
-            Popup(
-                alignment = Alignment.BottomEnd,
-                offset = IntOffset(
-                    0,
-                    with(LocalDensity.current) { tokens.spacing.space2.roundToPx() },
-                ),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(tokens.shape.medium),
-                    color = tokens.color.primaryContainer,
-                ) {
-                    Text(
-                        text = "切换列表/网格视图",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.onPrimaryContainer,
-                        modifier = Modifier.padding(
-                            horizontal = tokens.spacing.space5,
-                            vertical = tokens.spacing.space2,
-                        ),
-                    )
-                }
-            }
-        }
-    }
-}
 
 /** 收藏夹操作类型。 */
 private sealed interface FolderDialog {
@@ -1445,7 +1328,7 @@ private fun FavoritesSortMenu(
     val tokens = VeneraTokens
     var expanded by remember { mutableStateOf(false) }
     Box {
-        VeneraIconButton(onClick = { expanded = true }) {
+        VeneraTopBarPill(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.Sort,
                 contentDescription = "排序方式",

@@ -79,7 +79,7 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 统一「探索」页。
@@ -550,7 +550,7 @@ fun UnifiedExploreScreen(
             backdrop = topBarBackdrop,
             actions = {
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                VeneraIconButton(onClick = { refreshTick++ }) {
+                VeneraTopBarPill(onClick = { refreshTick++ }) {
                     Icon(
                         Icons.Outlined.Refresh,
                         contentDescription = "刷新",

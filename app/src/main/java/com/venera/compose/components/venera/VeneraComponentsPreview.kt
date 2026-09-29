@@ -1,23 +1,33 @@
 package com.venera.compose.components.venera
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import com.venera.compose.components.VeneraAmbientBackground
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
@@ -197,4 +207,113 @@ private fun VeneraComponentsMd3DarkGlass() {
     VeneraPreviewTheme(AppearanceStyle.MD3, dark = true, material = SurfaceMaterial.LIQUID_GLASS) {
         ComponentMatrix()
     }
+}
+
+/**
+ * 顶栏圆座矩阵：[provideSource] 决定 `LocalTopBarBackdrop` 给不给，等价于真机上
+ * 「这一屏接没接 `rememberTopBarBackdrop()`」——追更页那类自绘 chrome 就是不给的那档。
+ *
+ * 每颗都挂到真实配方上：普通（textPrimary 图标）/ 低频（textSecondary）/ 高亮（primary）/
+ * 禁用 / 带角标。角标由**调用点**用 Box 叠，不在圆座内部 —— 与首页、本地书架两处一致。
+ */
+@Composable
+private fun TopBarPillMatrix(provideSource: Boolean) {
+    val tokens = VeneraTokens
+    val source = if (provideSource) rememberTopBarBackdrop() else null
+    VeneraAmbientBackground(modifier = Modifier.blurBackdropSource(source)) {
+        CompositionLocalProvider(LocalTopBarBackdrop provides source) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(tokens.spacing.space6),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VeneraTopBarPill(onClick = {}) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = tokens.color.textPrimary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                }
+                VeneraTopBarPill(onClick = {}) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = "低频动作",
+                        tint = tokens.color.textSecondary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                }
+                VeneraTopBarPill(onClick = {}, enabled = false) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "禁用态",
+                        tint = tokens.color.textDisabled,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                }
+                // 高亮态 + 角标：与"下载中心/源更新"那两处同构
+                Box {
+                    VeneraTopBarPill(onClick = {}) {
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = "高亮态",
+                            tint = tokens.color.primary,
+                            modifier = Modifier.size(tokens.spacing.chipIconSize),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(tokens.spacing.space1)
+                            .clip(CircleShape)
+                            .background(StatusColors.Degraded),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "12",
+                            fontSize = tokens.type.badge,
+                            color = StatusColors.OnBadgeSurface,
+                            modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/*
+ * ── 这组「顶栏圆座」预览能证明什么、不能证明什么（别拿它当磨砂观感的验收）──
+ *
+ * ✅ 能证明：40dp 圆座 + 48dp 触达盒的几何、hairline 描边在明暗两档都看得见、角标贴位、
+ *    以及**回落态一定有底板**（provideSource=false 那两张是半透明 surface + 描边，不是裸图标）。
+ * ❌ 不能证明磨砂本身：`textureBlur` 内部先过 `isRuntimeShaderSupported()`，而预览渲染器
+ *    （layoutlib）有没有 RuntimeShader **没有实测过**；不支持时 true/false 两张会长得一模一样，
+ *    那**不代表**真机上也一样。
+ * ❌ 不能证明按压缩放：pressed 需要真实指针事件，静态预览里 `collectIsPressedAsState` 恒 false。
+ * 唯一的凭据是真机逐屏走一遍（结论记在 FREEZE-STATEMENT.md 批次 H）。
+ */
+
+@Preview(name = "顶栏圆座 MIUIX Light · 有采样层", showBackground = true, widthDp = 400)
+@Composable
+private fun TopBarPillMiuixLightWithSource() {
+    VeneraPreviewTheme(AppearanceStyle.MIUIX, dark = false) { TopBarPillMatrix(provideSource = true) }
+}
+
+@Preview(name = "顶栏圆座 MIUIX Light · 无采样层(回落)", showBackground = true, widthDp = 400)
+@Composable
+private fun TopBarPillMiuixLightFallback() {
+    VeneraPreviewTheme(AppearanceStyle.MIUIX, dark = false) { TopBarPillMatrix(provideSource = false) }
+}
+
+@Preview(name = "顶栏圆座 MIUIX Dark · 有采样层", showBackground = true, widthDp = 400)
+@Composable
+private fun TopBarPillMiuixDarkWithSource() {
+    VeneraPreviewTheme(AppearanceStyle.MIUIX, dark = true) { TopBarPillMatrix(provideSource = true) }
+}
+
+@Preview(name = "顶栏圆座 MD3 Dark · 无采样层(回落)", showBackground = true, widthDp = 400)
+@Composable
+private fun TopBarPillMd3DarkFallback() {
+    VeneraPreviewTheme(AppearanceStyle.MD3, dark = true) { TopBarPillMatrix(provideSource = false) }
 }

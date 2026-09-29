@@ -73,7 +73,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 某个漫画源的**原生**分类 / Tag 下钻页。
@@ -326,7 +326,7 @@ fun SourceSectionScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回探索",
@@ -337,7 +337,7 @@ fun SourceSectionScreen(
             actions = {
                 // R2：单列/双列切换，与一级页同款按钮、同一份偏好。
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                VeneraIconButton(
+                VeneraTopBarPill(
                     onClick = { reloadTick++ },
                     modifier = Modifier.size(VeneraTokens.spacing.iconButtonSize),
                 ) {

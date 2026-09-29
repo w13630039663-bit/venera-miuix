@@ -1490,3 +1490,91 @@ material3 与 miuix 版本未动；无文件同时 import 两家 blur。
 真机待验在批次 F 的 16 条之上再加 3 条：① 六个主 Tab 屏顶栏图标按钮换 Miuix 后端后的按压反馈
 （Miuix 是 `pressable`/SinkFeedback，不是水波）；② 同步备份页四枚输入框在 Miuix 档的标签/占位符呈现；
 ③ 本地漫画章节选择弹窗换成 `WindowDialog` 后，360dp 高的章节列表滚动与关闭位置。
+
+---
+
+## 批次 H（2026-09-30）：顶栏图标按钮统一成磨砂圆座 `VeneraTopBarPill`
+
+### 用户诉求与原话里的两处不实前提（已当面纠正）
+
+原话：「所有页面顶栏的按钮，能不能都改成收藏 网络收藏 右上角那种按钮样式，带有模糊的而且动画效果，自己看下核实下」。
+核实结果两条与提问不符：
+
+1. **「收藏和网络收藏右上角那颗」不是同一颗的两份实现，而是只有一份**：`FavoritesScreen` 里私有的
+   `FloatingLayoutToggle`（未导出）。网络收藏（`NetworkFavoritesScreen`）用的是 `components/ComicLayoutToggleButton`，
+   无背板、无 morph、不吃采样层。同名页面两种形态本身就是不一致。
+2. **「顶栏的按钮」不是同质的东西**：分两族。**A 族 13 屏**走 `VeneraTopAppBar`（内部已有栏级
+   `progressiveTextureBlur`，且已 `rememberTopBarBackdrop()` 挂到列表上）；**B 族 5 处自绘 chrome**
+   （阅读器顶胶囊岛、封面查看、追更页、源编辑页、网页登录页）**根本没有采样层**，磨砂在那里物理上拿不到
+   —— 玻璃采的是**录制层**不是屏幕像素，给它们套外壳只会得到一层假磨砂。
+
+### 三条拍板（AskUserQuestion，全选推荐项）
+
+统一面 = A 族 13 屏 + 网络收藏那颗（B 族 5 处保持现状）；层数 = 顶栏每颗都磨砂（内容区图标按钮不动）；
+触达 = **视觉 40dp + 触摸区 48dp**（上一轮刚因"按钮小了"被退回，这次不能再缩）。
+
+### 落了什么
+
+- 新组件 `components/venera/VeneraTopBarPill.kt`：磨砂圆座，配方**逐字抄参考件**不自造数字
+  （圆座 `tokens.spacing.iconButtonSize` 40dp、`textureBlur blurRadius = 10f`、补底 `surface @ 0.16f`
+  与 `VeneraTopAppBar` 栏级背板同档、描边 `hairline` + `outlineVariant`）。
+  判据抽成纯函数 `veneraPillFrosted(backdropPresent, shaderSupported)`，回落态是**半透明底 + 描边**，
+  绝不静默变裸图标。按压自己做（scale 1→0.96、alpha 1→0.88，与 `VeneraChip` 同口径）并把 `indication` 关掉：
+  默认高亮画在 48dp 外层会溢到 40dp 圆座外圈成一层光晕。
+- `VeneraTopAppBar.kt` 新增 `LocalTopBarBackdrop`（`compositionLocalOf<Backdrop?>`）并在 `TopAppBar(...)`
+  外面 provide 一次。走 CompositionLocal 而不是逐屏传参的理由：`navigationIcon`/`actions`/`bottomContent`
+  本来就是**在它内部求值**的 composable lambda，于是 13 个调用点一行都不用改。
+  用非 static 是因为这个值会随能力检测与 `enableBlur` 在 null↔非 null 之间切。
+- 布局切换钮**收口成一份**：`components/ComicTileLayout.kt` 的 `ComicLayoutToggleButton` 内部改用
+  `VeneraTopBarPill` 当底座，并把参考件的 `AnimatedContent` 图标 morph（阻尼 0.62 spring、
+  `scaleIn(0.4f)` togetherWith `scaleOut(1.6f)`）+ 累积 90° 弹簧旋转 + 长按 `Popup` 提示搬进去；
+  `FavoritesScreen` 那份 private 复制件（116 行）**删除**，调用点改指统一实现。
+  形变动画只挂在这颗上：返回键没有第二态，给其它按钮硬造 morph 就是假动画。
+- A 族顶栏 **27 颗调用点**换成圆座（另有 1 处是 `ComicLayoutToggleButton` 内部挂的外壳本体）：
+  首页 3（原来是**裸 miuix `IconButton`**，绕过转发件，一并收口）、
+  收藏 2+排序 1、历史 2、搜索 2、下载 1、本地书架 6、统计 1、统一探索 1、探索子页 2、
+  图库 3、源管理 1、设置首页 1、设置子页 1（`SettingsComponents` 一处覆盖全部设置子页）；
+  另有 7 处布局切换钮调用点通过上面那份实现自动收口。
+- 预览矩阵 4 张（`VeneraComponentsPreview.kt`）：有采样层 / 无采样层(回落) × 明 / 暗，
+  含普通 / 低频 / 高亮 / 禁用 / 带角标五种。
+
+### 回落面（哪几颗没有磨砂，原因写死在这）
+
+- **网络收藏那颗**：核实后发现它压根不是独立屏——`AndroidNetworkFavoritesScreen` 只有一个调用点
+  （`FavoritesScreen.kt:286`，`FavoritesMode.Network`），而且传的是 `showLayoutToggle = false`，
+  即**它自己那颗内联钮今天是根本不渲染的**，页面右上角那颗一直就是收藏页顶栏的公共件。
+  ⇒ 本轮它随 `ComicLayoutToggleButton` 收口自动获得同一形态，**不需要接采样层**；
+  方案文档里"要给网络收藏接 `rememberTopBarBackdrop()`"那条前提被实况推翻，未执行。
+- **追更页 `FollowUpdatesScreen.kt:87`**：B 族自绘 chrome，`LocalTopBarBackdrop` 在那里是 null
+  ⇒ 它得到的是**可见回落**（半透明底 + 描边 + 同一套 morph 动画），不是假磨砂。
+  该页确实有 `rememberTopBarBackdrop()`，但它没有 `VeneraTopAppBar` 那层栏级背板，
+  单独给一颗浮在自绘标题行上的磨砂和全站观感不一致，故不补 provide（属 B 族保持现状那条拍板）。
+- B 族其余 4 处（阅读器顶胶囊岛 / 封面查看 / 源编辑 / 网页登录）：未动，逐像素不变。
+
+### 与批准方案的一处偏离
+
+方案里 `VeneraTopBarPill` 签名带了 `badge: String?`。实现时**没有加**：两个带角标的调用点
+（首页"源更新"、本地书架"下载中心"）本来就是 `Box { pill; Surface 角标 }` 的写法且已经对齐，
+加一个当前无人使用的 `badge` 参数是给组件添不需要的形状。角标仍由调用点叠。
+
+### 本轮自己的两次错
+
+1. **两次批量删 import 的脚本都把"在用的"当成"没用"删了**：判据用 `new RegExp('\b'+name+'\s*[(.]')`，
+   在 bash 单引号里写成 `'\\b'` 时正则退化成"字面反斜杠 + b"，于是**永不匹配**、全部误判为未用。
+   误删 `VeneraIconButton` 于 6 个仍在用的文件，靠编译失败暴露、逐文件补回。
+   **规则：批量脚本里的正则不要经 shell 二次转义，写成 `.cjs` 文件再跑。**
+2. **`grep -r` 在这台机器上给了我一次假空结果**（`MiuixIcon`、`topBarBackdrop` 明明在文件里却返回 0 行），
+   我据此差点判定"文件里没有引用"。改用 Grep 工具（ripgrep）复查后结论反转。
+   **规则：判定"某符号无引用"必须以 Grep 工具的结果为准，不要用 shell 裸 grep 的返回值当证据。**
+   另有一次 Edit 把 `) {` 后的换行吃掉，让紧随的 `//` 注释吃掉一行 —— 与批次 G 第 1 条同形，已复查全站无残留。
+
+### 验证
+
+- `veneraPillFrosted` 三条单测先红后绿（无采样层 / 平台不支持 / 两者都满足）。
+- `./gradlew :app:testDebugUnitTest :app:assembleDebug --offline` 双绿：
+  **56 套 / 405 条 / 0 失败 / 0 错误**（基线 55 套 / 402 条，+1 套 +3 条即本轮新增）。
+- 逐形状差异审计：16 个改动文件里"无法归类的变更行"只有三处预期改写（圆座本体、采样层 provide、
+  删掉的 private 复制件）+ 首页注释 2 行，其余全是 `VeneraIconButton( → VeneraTopBarPill(` 的对称替换
+  ⇒ 内容区与 B 族没有被动到。
+- 真机包已推（`lastUpdateTime=2026-09-30 01:17:58`）。磨砂与按压态**只能在真机判**：
+  预览里 layoutlib 的 RuntimeShader 未验证、pressed 需要真实指针。

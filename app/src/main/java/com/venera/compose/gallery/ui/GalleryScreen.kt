@@ -78,7 +78,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.ImageLoader
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
-import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraSegmentedButton
@@ -109,6 +108,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 画廊主 Tab（第 4 位，搜索右侧）。落地档 = **两站热门各 20 张打乱**：
@@ -857,7 +857,7 @@ fun GalleryScreen(
                 // 结果态多一枚 🔍：那一态搜索条已收成"一行胶囊"，**改条件 / 接着加标签的入口在这里**
                 // （点那一行胶囊同样能展开，两条路等价 —— 一枚看得见的按钮 + 一个顺手的快捷方式）。
                 if (svm.active && svm.mode == GallerySearchMode.RESULTS) {
-                    VeneraIconButton(onClick = {
+                    VeneraTopBarPill(onClick = {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         svm.backToInput()
                     }) {
@@ -872,7 +872,7 @@ fun GalleryScreen(
                 // 两态共用一枚，因为它们不会同时需要（开着时"开搜索"没有意义）。
                 // 点它**直接展开并弹键盘**；「收成一条」刻意不挤在这枚上：
                 // 那是键盘收起与系统返回的事（见 `GallerySearchArea`），三态塞进一枚图标谁也读不出来。
-                VeneraIconButton(onClick = {
+                VeneraTopBarPill(onClick = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (svm.active) {
                         // 关搜索要把反搜那一层一起关掉：它的输入挂在搜索卡里，
@@ -893,7 +893,7 @@ fun GalleryScreen(
                 // 两页并存后它必须跟着页走（用户 2026-09-28 拍板）：在推荐页按下去却换掉
                 // 没在看的那屏日榜，是最容易被读成 bug 的联动 —— 两页的种子也因此各自独立。
                 if (!svm.active) {
-                    VeneraIconButton(onClick = {
+                    VeneraTopBarPill(onClick = {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         // refresh() 会清掉 posts/loadedKey 并**换种子**，所以这一下既真发请求，
                         // 也真换一批、换个顺序（抽样与打乱都挂在种子上）。

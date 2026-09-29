@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.SettingsSubScreen
@@ -93,7 +93,7 @@ internal fun SettingsHome(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

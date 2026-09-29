@@ -53,13 +53,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraDialog
-import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraSwitch
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.VeneraIconButton
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
@@ -959,7 +960,7 @@ fun ComicSourceScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onNavigateBack) {
+                VeneraTopBarPill(onClick = onNavigateBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",

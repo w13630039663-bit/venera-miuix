@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.venera.compose.components.venera.VeneraDialog
-import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraSlider
 import com.venera.compose.components.venera.VeneraSwitch
 import com.venera.compose.components.venera.VeneraTopAppBar
@@ -36,6 +35,7 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
  * 设置页通用组件。
@@ -348,7 +348,7 @@ internal fun SettingsPage(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                VeneraIconButton(onClick = onBack) {
+                VeneraTopBarPill(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
