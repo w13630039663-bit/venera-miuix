@@ -18,15 +18,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.AlertDialog
+import com.venera.compose.components.venera.VeneraDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -67,6 +65,8 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTextButton
 
 /**
  * 生产级本地离线书架 (S6)
@@ -391,10 +391,11 @@ fun LocalComicScreen(
 
             // 章节选择对话框
             if (selectedComicForChapters != null) {
-                AlertDialog(
+                VeneraDialog(
+                    show = true,
                     onDismissRequest = { selectedComicForChapters = null },
-                    title = { Text(text = "${selectedComicForChapters?.title} (选择阅读章节)") },
-                    text = {
+                    title = "${selectedComicForChapters?.title} (选择阅读章节)",
+                    content = {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -432,11 +433,8 @@ fun LocalComicScreen(
                             }
                         }
                     },
-                    confirmButton = {
-                        TextButton(onClick = { selectedComicForChapters = null }) {
-                            Text("关闭")
-                        }
-                    }
+                    confirmText = "关闭",
+                    onConfirm = { selectedComicForChapters = null },
                 )
             }
 
@@ -485,7 +483,7 @@ fun LocalComicScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -496,20 +494,17 @@ fun LocalComicScreen(
             actions = {
                 if (isSelectionMode) {
                     // ── 多选态：全选 / 全不选 · 批量删除 · 退出 ──
-                    TextButton(onClick = {
-                        selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
-                            emptySet()
-                        } else {
-                            filteredComics.map { it.rootPath }.toSet()
-                        }
-                    }) {
-                        Text(
-                            text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.primary,
-                        )
-                    }
-                    IconButton(
+                    VeneraTextButton(
+                        text = if (selectedComicPaths.size == filteredComics.size && filteredComics.isNotEmpty()) "全不选" else "全选",
+                        onClick = {
+                            selectedComicPaths = if (selectedComicPaths.size == filteredComics.size) {
+                                emptySet()
+                            } else {
+                                filteredComics.map { it.rootPath }.toSet()
+                            }
+                        },
+                    )
+                    VeneraIconButton(
                         onClick = { if (selectedComicPaths.isNotEmpty()) showDeleteConfirmDialog = true },
                         enabled = selectedComicPaths.isNotEmpty(),
                     ) {
@@ -519,7 +514,7 @@ fun LocalComicScreen(
                             tint = if (selectedComicPaths.isNotEmpty()) StatusColors.Failing else tokens.color.textDisabled,
                         )
                     }
-                    IconButton(onClick = {
+                    VeneraIconButton(onClick = {
                         isSelectionMode = false
                         selectedComicPaths = emptySet()
                     }) {
@@ -531,7 +526,7 @@ fun LocalComicScreen(
                     }
                 } else {
                     // ── 普通态：多选入口 · 布局切换 · 下载中心(带徽章) · 导入 CBZ ──
-                    IconButton(onClick = { isSelectionMode = true }) {
+                    VeneraIconButton(onClick = { isSelectionMode = true }) {
                         Icon(
                             imageVector = Icons.Outlined.Checklist,
                             contentDescription = "多选模式",
@@ -540,7 +535,7 @@ fun LocalComicScreen(
                     }
                     ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
                     Box {
-                        IconButton(onClick = onNavigateToDownloads) {
+                        VeneraIconButton(onClick = onNavigateToDownloads) {
                             Icon(
                                 imageVector = Icons.Outlined.Download,
                                 contentDescription = "下载中心",
@@ -563,7 +558,7 @@ fun LocalComicScreen(
                             }
                         }
                     }
-                    IconButton(onClick = {
+                    VeneraIconButton(onClick = {
                         importLauncher.launch(arrayOf("application/vnd.comicbook+zip", "application/zip", "application/x-zip-compressed", "*/*"))
                     }) {
                         Icon(
@@ -649,7 +644,7 @@ fun LocalComicCard(
                             .align(Alignment.TopEnd)
                             .padding(2.dp)
                     ) {
-                        IconButton(
+                        VeneraIconButton(
                             onClick = { showMenu = true },
                             modifier = Modifier.size(28.dp)
                         ) {

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,6 +79,7 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 统一「探索」页。
@@ -550,7 +550,7 @@ fun UnifiedExploreScreen(
             backdrop = topBarBackdrop,
             actions = {
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                IconButton(onClick = { refreshTick++ }) {
+                VeneraIconButton(onClick = { refreshTick++ }) {
                     Icon(
                         Icons.Outlined.Refresh,
                         contentDescription = "刷新",

@@ -15,8 +15,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +42,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTextField
 
 /**
  * 生产级云同步与备份恢复配置页面 (S7)
@@ -99,7 +99,7 @@ fun SyncBackupScreen(
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -146,11 +146,11 @@ fun SyncBackupScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        OutlinedTextField(
+                        VeneraTextField(
                             value = serverUrl,
                             onValueChange = { serverUrl = it },
-                            label = { Text("服务器地址 (URL)") },
-                            placeholder = { Text("https://dav.jianguoyun.com/dav/") },
+                            label = "服务器地址 (URL)",
+                            placeholder = "https://dav.jianguoyun.com/dav/",
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -158,17 +158,17 @@ fun SyncBackupScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            VeneraTextField(
                                 value = username,
                                 onValueChange = { username = it },
-                                label = { Text("账号") },
+                                label = "账号",
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
-                            OutlinedTextField(
+                            VeneraTextField(
                                 value = password,
                                 onValueChange = { password = it },
-                                label = { Text("密码 / 应用令牌") },
+                                label = "密码 / 应用令牌",
                                 visualTransformation = PasswordVisualTransformation(),
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
@@ -177,11 +177,11 @@ fun SyncBackupScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedTextField(
+                        VeneraTextField(
                             value = remotePath,
                             onValueChange = { remotePath = it },
-                            label = { Text("远程备份目录") },
-                            placeholder = { Text("/Venera/") },
+                            label = "远程备份目录",
+                            placeholder = "/Venera/",
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )

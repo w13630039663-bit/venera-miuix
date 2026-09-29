@@ -24,7 +24,8 @@ import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+// 登记保留：Scaffold（miuix 的同名件参数面不同，换它=重做一层窗口内布局）、
+// DropdownMenu（无锚点对应物）、三颗"图标+文字"的 TextButton（miuix 文字按钮没有 slot）。
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -58,6 +59,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTextButton
 
 /**
  * 插图收藏独立页（设置 → 阅读设置 → 单页与插图收藏）。
@@ -85,7 +88,7 @@ fun FavoriteImagesScreen(
                     .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space4),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -311,7 +314,7 @@ fun FavoriteImagesBody(
                                         // 勾选圈放在原先垃圾桶的位置：同一格换语义，
                                         // 不额外占高度，也不去碰上面那支共享元素图的几何。
                                         val checked = item.id in selectedIds
-                                        IconButton(
+                                        VeneraIconButton(
                                             onClick = {
                                                 selectedIds =
                                                     if (checked) selectedIds - item.id
@@ -330,7 +333,7 @@ fun FavoriteImagesBody(
                                             )
                                         }
                                     } else {
-                                        IconButton(
+                                        VeneraIconButton(
                                             onClick = {
                                                 scope.launch {
                                                     manager.removeFavorite(item.id)
@@ -394,22 +397,19 @@ fun FavoriteImagesBody(
                         color = MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    VeneraTextButton(
+                        text = if (selectedIds.size == images.size) "取消全选" else "全选",
                         onClick = {
                             selectedIds = if (selectedIds.size == images.size) emptySet()
                             else images.mapTo(mutableSetOf()) { it.id }
                         },
-                    ) {
-                        Text(
-                            text = if (selectedIds.size == images.size) "取消全选" else "全选",
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.primary,
-                        )
-                    }
-                    TextButton(
+                    )
+                    VeneraTextButton(
+                        text = "移除",
+                        destructive = true,
                         onClick = {
                             val ids = selectedIds.toList()
-                            if (ids.isEmpty()) return@TextButton
+                            if (ids.isEmpty()) return@VeneraTextButton
                             scope.launch {
                                 // 如实报数：removeFavorites 返回真正删掉的行数，0 就是没删成，
                                 // 不能照旧弹「已移除」（那是假反馈）。
@@ -423,20 +423,8 @@ fun FavoriteImagesBody(
                                 refresh()
                             }
                         },
-                    ) {
-                        Text(
-                            text = "移除",
-                            fontSize = tokens.type.caption,
-                            color = StatusColors.AccentBadge,
-                        )
-                    }
-                    TextButton(onClick = { exitSelection() }) {
-                        Text(
-                            text = "关闭",
-                            fontSize = tokens.type.caption,
-                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        )
-                    }
+                    )
+                    VeneraTextButton(text = "关闭", onClick = { exitSelection() })
                 }
             }
         }

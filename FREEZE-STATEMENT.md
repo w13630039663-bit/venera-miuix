@@ -1438,3 +1438,55 @@ provide 了 `LocalIndication = MiuixIndication`**（`theme/MiuixTheme.kt:36`）�
 material3 与 miuix 版本未动；全仓无文件同时 import 两家 blur。
 真机待验在批次 E 那 4 条之上再加 3 条：① 图标按钮回到 48dp 后，大图页工具栏五颗并排是否挤；
 ② 阅读器开关滑块改为主题主色（Miuix 档）后的对比度；③ 画廊收藏墙两枚确认弹窗的进出场。
+
+---
+
+## 批次 G（2026-09-30）：B5 冻结主 Tab 屏 + 外围收口（用户给豁免："直接做剩下的吧"）
+
+### 豁免记录
+
+用户原话「直接做剩下的吧」，上下文是我上一条明确列出"只剩 B5，全部在 FROZEN 名单里，要给豁免才动"。
+⇒ **首页 / 收藏 / 历史 / 搜索 / 图片收藏 / 本地漫画 六屏的外观改动豁免记在此处**，
+改动性质与前几批同：控件后端从 M3 换成转发件（Miuix 档下形态会变），**路由、`VeneraNavTab` 枚举、
+`Navigation.kt` 一律未动**（保护域这条没被这次豁免覆盖）。
+
+### 迁了什么
+
+- `IconButton` → `VeneraIconButton` **29 颗**：本地漫画 7、图片收藏 3、收藏 3、搜索 2、下载 4、
+  同步备份 1、日志 3、历史 2、首页 3、探索子页 2+1、统计 1。
+  首页那 3 颗本来就是 miuix 的（文件里 M3 导入是**死导入**），一并删掉。
+- `TextButton` → `VeneraTextButton` 8 颗（本地 2、图片收藏 3、下载 0、Cloudflare 过盾页 1、其余在弹窗改写里）；
+  图片收藏「移除」那颗原本用 `AccentBadge` 色，现与批次 E/F 同一条口径走 `destructive`（error 色）。
+- `OutlinedTextField` → `VeneraTextField` 5 处（同步备份 4 含 WebDAV 账号/密码/路径、日志 1）。
+- `AlertDialog` → `VeneraDialog` 1 枚（本地漫画章节选择）。
+- `HorizontalDivider` → miuix import 2 处。
+- 全站 M3 直连（同一逐词口径）：**474 → 418 → 384 → 336**。
+
+### 本轮新登记保留（各有理由，注释在文件导入区）
+
+- **搜索页三枚 `AlertDialog`**：标题是定制排版（`itemTitle` 字号 + semibold + textPrimary），
+  按钮是文件内自绘的 `SearchTextAction`（caption 字号、无最小触达高）。`VeneraDialog` 的标题只是
+  `String`、按钮固定 `VeneraTextButton`（miuix 侧 58×40dp 胶囊）⇒ 换过去是把搜索弹窗的紧凑口径改掉，
+  那是**观感决策不是迁移**，等真机看过 D~F 再定，不静默改。
+- 图片收藏页 3 颗 + 下载页 4 颗「图标+文字」的 `TextButton`：miuix 文字按钮没有槽位。
+- `Scaffold` 3 处（图片收藏 / 同步备份 / 日志）：miuix 同名件参数面不同，换它=重做一层窗口内布局。
+- `DropdownMenu` 各页、`DatePicker`、`ModalBottomSheet`、`LinearProgressIndicator`/`Circular*ProgressIndicator`、
+  `Icon`/`Text` —— 全部沿用前几批已记的裁决。
+- 保护域 `Navigation.kt` 的 M3 `IconButton`/Kyant 导入：未动。
+
+### 本轮自己的两次错（都记下来防复发）
+
+1. **写了个"通用折叠调用点"的脚本**去把 `TextButton(...) { Text("…") }` 压成一行，
+   结果把 `if (…)` 表达式截半、并把多行 lambda 压平后**让注释吃掉了后面的代码**
+   （`FavoriteImagesScreen.kt` 两行变成语法上能过、语义上全错的垃圾）。
+   处置：`git checkout HEAD --` 该文件后只做安全的 IconButton 替换重做。
+   **规则：批量改写只允许"逐形状白名单"匹配，认不出就跳过并报告；注释密集的文件不要压平。**
+2. 字符串替换写成 `join("import …VeneraTextButton")` **漏了行尾 `\n`**，与下一条 import 粘成一行
+   （`CloudflareBypassActivity.kt:28`）。同类错还有一次：漏跑 `FavoritesScreen.kt`（清单靠手抄，不是从名单生成）。
+   **规则：批量文件清单要从口径脚本直接产出，不要手抄。**
+
+构建：`testDebugUnitTest` **55 套 / 402 条 / 0 失败 / 0 错误** / `assembleDebug` 绿；
+material3 与 miuix 版本未动；无文件同时 import 两家 blur。
+真机待验在批次 F 的 16 条之上再加 3 条：① 六个主 Tab 屏顶栏图标按钮换 Miuix 后端后的按压反馈
+（Miuix 是 `pressable`/SinkFeedback，不是水波）；② 同步备份页四枚输入框在 Miuix 档的标签/占位符呈现；
+③ 本地漫画章节选择弹窗换成 `WindowDialog` 后，360dp 高的章节列表滚动与关闭位置。

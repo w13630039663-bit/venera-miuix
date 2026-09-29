@@ -30,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
@@ -79,6 +78,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
 import top.yukonga.miuix.kmp.basic.IconButton as MiuixIconButton
+import com.venera.compose.components.venera.VeneraIconButton
 
 /** 源连通性四态（UI 语义，不改动 source 数据模型）。 */
 private enum class SourceHealth { Connected, Degraded, Failing, Unknown }
@@ -233,7 +233,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             MiuixSectionHeader(title = "可能你感兴趣", onTap = onOpenStats)
                         }
                         // 换一批 = 重新随机页码与排序再拉一次（页内完成，不跳走）
-                        IconButton(
+                        VeneraIconButton(
                             onClick = { viewModel.loadRecommend(force = true) },
                             enabled = !recommend.loading,
                         ) {
@@ -360,7 +360,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         )
                         // 可更新源数量徽章：>0 时显示橙色角标，点击直达源管理
                         Box {
-                            IconButton(onClick = { onOpenSourceManage() }) {
+                            VeneraIconButton(onClick = { onOpenSourceManage() }) {
                                 Icon(
                                     Icons.Outlined.Settings,
                                     contentDescription = "管理源",
@@ -388,7 +388,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                 }
                             }
                         }
-                        IconButton(onClick = { sourceManager.refreshPings() }) {
+                        VeneraIconButton(onClick = { sourceManager.refreshPings() }) {
                             Icon(
                                 Icons.Outlined.Refresh,
                                 contentDescription = "重新测速",

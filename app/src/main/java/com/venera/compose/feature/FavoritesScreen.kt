@@ -94,7 +94,6 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -134,6 +133,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraIconButton
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -306,14 +306,14 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                             sortOrder = vm.sortOrder,
                             onSortOrderChange = { vm.updateSortOrder(it) },
                         )
-                        IconButton(onClick = { searchMode = !searchMode }) {
+                        VeneraIconButton(onClick = { searchMode = !searchMode }) {
                             Icon(
                                 imageVector = Icons.Outlined.Search,
                                 contentDescription = "搜索收藏",
                                 tint = tokens.color.textSecondary,
                             )
                         }
-                        IconButton(onClick = { showMenu = true }) {
+                        VeneraIconButton(onClick = { showMenu = true }) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
                                 contentDescription = "收藏夹操作",
@@ -1445,7 +1445,7 @@ private fun FavoritesSortMenu(
     val tokens = VeneraTokens
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) {
+        VeneraIconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.Sort,
                 contentDescription = "排序方式",

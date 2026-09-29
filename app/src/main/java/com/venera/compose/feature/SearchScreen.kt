@@ -26,9 +26,14 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ViewAgenda
+// ── 本文件的三枚 AlertDialog 登记保留 M3（含它们的按钮）──
+// 标题是**定制排版**（itemTitle 字号 + semibold 字重 + textPrimary 色），按钮用的是自绘的
+// SearchTextAction（caption 字号、无最小触达高），而 VeneraDialog 的标题只是 String、
+// 按钮固定走 VeneraTextButton（miuix 侧 58×40dp 胶囊）。换过去等于把搜索弹窗的紧凑口径改掉，
+// 那是观感决策不是迁移，等真机看过批次 D~F 再定。
+// DropdownMenu / DropdownMenuItem 同族：miuix 只有弹层模型不同的 ListPopup。
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -80,6 +85,7 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 搜索页（SearchRoute 与 TagSearchRoute **共享同一套 UI**）。
@@ -443,7 +449,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
             backdrop = topBarBackdrop,
             navigationIcon = {
                 if (onNavigateBack != null) {
-                    IconButton(onClick = onNavigateBack) {
+                    VeneraIconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
@@ -456,7 +462,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 // 搜索框滚出视口后淡入，避免与列表首项里的搜索框视觉重复。
                 val actionAlpha by searchActionAlpha
                 if (actionAlpha > 0.01f) {
-                    IconButton(
+                    VeneraIconButton(
                         onClick = { showSearchDialog = true },
                         modifier = Modifier
                             .size(tokens.spacing.iconButtonSize)

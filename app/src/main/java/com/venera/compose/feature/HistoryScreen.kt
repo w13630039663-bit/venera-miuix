@@ -48,7 +48,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -91,6 +90,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraIconButton
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -172,7 +172,7 @@ fun AndroidHistoryScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(
+                VeneraIconButton(
                     onClick = { if (vm.multiSelectMode) vm.exitMultiSelect() else onBack() }
                 ) {
                     Icon(
@@ -191,7 +191,7 @@ fun AndroidHistoryScreen(
                         onClick = { vm.deleteSelected() },
                     )
                 } else {
-                    IconButton(onClick = { showClearMenu = true }) {
+                    VeneraIconButton(onClick = { showClearMenu = true }) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = "清空选项",

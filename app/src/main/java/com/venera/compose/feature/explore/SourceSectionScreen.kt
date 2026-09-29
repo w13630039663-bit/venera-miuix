@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -74,6 +73,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 某个漫画源的**原生**分类 / Tag 下钻页。
@@ -326,7 +326,7 @@ fun SourceSectionScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回探索",
@@ -337,7 +337,7 @@ fun SourceSectionScreen(
             actions = {
                 // R2：单列/双列切换，与一级页同款按钮、同一份偏好。
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
-                IconButton(
+                VeneraIconButton(
                     onClick = { reloadTick++ },
                     modifier = Modifier.size(VeneraTokens.spacing.iconButtonSize),
                 ) {

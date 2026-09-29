@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.venera.compose.components.venera.VeneraTextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -140,14 +140,15 @@ class CloudflareBypassActivity : ComponentActivity() {
                     )
                 }
 
-                TextButton(onClick = {
-                    if (!isResolved) {
-                        CloudflareBypassManager.onBypassFailed(targetHost)
-                    }
-                    finish()
-                }) {
-                    Text("取消", color = MiuixTheme.colorScheme.primary)
-                }
+                VeneraTextButton(
+                    text = "取消",
+                    onClick = {
+                        if (!isResolved) {
+                            CloudflareBypassManager.onBypassFailed(targetHost)
+                        }
+                        finish()
+                    },
+                )
             }
 
             // 进度条

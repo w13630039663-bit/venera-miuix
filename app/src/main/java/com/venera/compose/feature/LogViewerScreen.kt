@@ -14,8 +14,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +29,8 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.components.venera.VeneraTextField
 
 /**
  * 生产级运行日志与排错诊断面板 (S7)
@@ -62,7 +62,7 @@ fun LogViewerScreen(
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -79,7 +79,7 @@ fun LogViewerScreen(
                 Spacer(modifier = Modifier.weight(1f))
 
                 // 一键复制
-                IconButton(onClick = {
+                VeneraIconButton(onClick = {
                     val fullText = filteredLogs.joinToString("\n") { "[${it.formattedTime}][${it.level}/${it.tag}] ${it.message}" }
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("VeneraLogs", fullText))
@@ -93,7 +93,7 @@ fun LogViewerScreen(
                 }
 
                 // 清空
-                IconButton(onClick = {
+                VeneraIconButton(onClick = {
                     AppLogManager.clear()
                     Toast.makeText(context, "已清空日志", Toast.LENGTH_SHORT).show()
                 }) {
@@ -113,10 +113,10 @@ fun LogViewerScreen(
         ) {
             // 筛选栏
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
-                OutlinedTextField(
+                VeneraTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索标签或消息内容...", fontSize = 13.sp) },
+                    placeholder = "搜索标签或消息内容...",
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

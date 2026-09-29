@@ -13,9 +13,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Tab
+// 登记保留：四颗按钮都是"图标+文字"（文件夹 / 全部继续 / 全部暂停 / 清空记录），
+// miuix 的 TextButton 只有 text: String 没有槽位；LinearProgressIndicator 沿用「指示器不换」的既有裁决。
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.venera.VeneraIconButton
 
 /**
  * 生产级下载中心管理页面 (S6)
@@ -138,7 +140,7 @@ fun DownloadScreen(
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                VeneraIconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
@@ -348,7 +350,7 @@ fun DownloadTaskCard(
                     ) {
                         when (task.status) {
                             DownloadStatus.DOWNLOADING -> {
-                                IconButton(onClick = onPause, modifier = Modifier.size(40.dp)) {
+                                VeneraIconButton(onClick = onPause, modifier = Modifier.size(40.dp)) {
                                     Icon(
                                         imageVector = Icons.Outlined.Pause,
                                         contentDescription = "暂停",
@@ -357,7 +359,7 @@ fun DownloadTaskCard(
                                 }
                             }
                             DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.PENDING -> {
-                                IconButton(onClick = onResume, modifier = Modifier.size(40.dp)) {
+                                VeneraIconButton(onClick = onResume, modifier = Modifier.size(40.dp)) {
                                     Icon(
                                         imageVector = Icons.Outlined.PlayArrow,
                                         contentDescription = "继续",
@@ -376,7 +378,7 @@ fun DownloadTaskCard(
                             else -> {}
                         }
 
-                        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                        VeneraIconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
                                 contentDescription = "删除",
