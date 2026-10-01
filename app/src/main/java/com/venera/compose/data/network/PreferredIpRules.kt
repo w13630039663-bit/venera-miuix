@@ -396,10 +396,18 @@ internal object PreferredIpRules {
      * 判据按 [PreferredIpTarget.require2xx] 分两档，但**403 一律算失败**：
      * 实测 403 是"这台 CF 节点不服务这个 hostname"那一类（也是 konachan.net 的挡法），
      * 拿它当"通了"就是给自己造一个整站不可用的开关。
+     *
+     * [PreferredIpError.RESET] 与 [PreferredIpError.CONNECT] 必须分开说：
+     * RESET 是 **TCP 通了、TLS 握手带着这个域名的明文 SNI 出去就被重置** —— 2026-10-01 真机测速
+     * 证实（同一台节点 Safebooru 1069 ms 通、yande.re 报"443 被拒"），这是**按域名阻断**的形态，
+     * 换哪台节点都一样（优选 IP 只换 IP，换不掉明文 SNI）；把它写成"节点不可达"会引导用户
+     * 以为换台节点还有救，其实解法只有开代理。
      */
     fun verdict(reading: PreferredIpReading, target: PreferredIpTarget): String? = when {
         reading.error == PreferredIpError.UNKNOWN_HOST -> "连不上：这台地址解析不出路由"
         reading.error == PreferredIpError.CONNECT -> "连不上：TCP 443 被拒或不可达"
+        reading.error == PreferredIpError.RESET ->
+            "连接被重置：该域名在你的网络多半被按域名阻断，优选 IP 绕不过，建议开代理"
         reading.error == PreferredIpError.TIMEOUT -> "超时：${PROBE_TIMEOUT_MS / 1000} 秒内没连上或没读完"
         reading.error == PreferredIpError.TLS -> "TLS 失败：这台节点没给出该域名的证书"
         reading.status == null -> "没拿到 HTTP 响应"
@@ -550,7 +558,7 @@ internal data class PreferredIpReading(
 )
 
 /** 探活失败的形态分类 —— UI 上要说清是"连不上"还是"连上了但站方不认"。 */
-internal enum class PreferredIpError { TIMEOUT, TLS, CONNECT, UNKNOWN_HOST }
+internal enum class PreferredIpError { TIMEOUT, TLS, CONNECT, RESET, UNKNOWN_HOST }
 
 /**
  * 一台候选节点的一轮探活读数。

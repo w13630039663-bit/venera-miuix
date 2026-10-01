@@ -1,6 +1,7 @@
 package com.venera.compose.data.network
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -530,5 +531,36 @@ class PreferredIpRulesTest {
         // 未知域名返回 null（调用方走根路径判据）。
         assertEquals(null, PreferredIpRules.knownTargetFor("no.where.example"))
         assertEquals(null, PreferredIpRules.knownTargetFor(""))
+    }
+
+    // ── RESET 与 CONNECT 分档：被按域名阻断 ≠ 节点不可达 ──
+    // 依据：2026-10-01 真机测速，同一台节点 Safebooru 通、yande.re 等"443 被拒"——
+    // TCP 是通的，被掐的是带明文 SNI 的 TLS 握手。两句文案必须分开，否则用户以为换节点有救。
+
+    @Test
+    fun `连接被重置算失败且文案指明开代理`() {
+        val failure = PreferredIpRules.verdict(
+            PreferredIpReading(ip = "1.2.3.4", error = PreferredIpError.RESET),
+            PreferredIpTarget("yande.re", "/"),
+        )
+        // 非 null = 失败；文案必须给出正解（开代理），而不是"换台节点再试"。
+        assertNotNull(failure)
+        assertTrue("文案要含开代理指引：$failure", failure!!.contains("开代理"))
+        assertTrue("文案要指出是按域名阻断：$failure", failure.contains("阻断"))
+    }
+
+    @Test
+    fun `连接被拒与被重置是两句不同的话`() {
+        val connect = PreferredIpRules.verdict(
+            PreferredIpReading(ip = "1.2.3.4", error = PreferredIpError.CONNECT),
+            PreferredIpTarget("a.example", "/"),
+        )!!
+        val reset = PreferredIpRules.verdict(
+            PreferredIpReading(ip = "1.2.3.4", error = PreferredIpError.RESET),
+            PreferredIpTarget("a.example", "/"),
+        )!!
+        assertTrue(connect.contains("被拒或不可达"))
+        // 被重置那句不该再出现"443 被拒"——那是误导（TCP 其实是通的）。
+        assertTrue(!reset.contains("被拒或不可达"))
     }
 }
