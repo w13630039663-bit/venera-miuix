@@ -4,11 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -26,7 +30,9 @@ import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -72,6 +78,10 @@ val LocalTopBarBackdrop = compositionLocalOf<Backdrop?> { null }
  *   而 `actions` 里那些 `VeneraTopBarPill` 各有自己的 clickable，子组件先消费点击事件，
  *   所以"点胶囊仍然生效、双击空白处才回顶"两条预期同时成立。
  *   这一条**尚未真机验证**（本轮设备未连），真机上要先确认这两件事都成立。
+ * @param scrollProgressOverride 玻璃进度覆盖源（2026-10-02，设置 hero 页专用，加性可选）。
+ *   hero 页调用方**不挂** scrollBehavior 的 nestedScroll 连接（原因见
+ *   [SettingsHome]），折叠机制整个不参与，玻璃/分割线/小标题的进度由调用方从
+ *   列表 scrollState 直接推导传入。null（默认）= 其余页面走 contentOffset 原路。
  */
 @Composable
 fun VeneraTopAppBar(
@@ -85,6 +95,7 @@ fun VeneraTopAppBar(
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
     onDoubleTap: (() -> Unit)? = null,
+    scrollProgressOverride: State<Float>? = null,
 ) {
     val tokens = VeneraTokens
     val density = LocalDensity.current
@@ -99,6 +110,7 @@ fun VeneraTopAppBar(
             if (thresholdPx > 0f) (-state.contentOffset / thresholdPx).coerceIn(0f, 1f) else 0f
         }
     }
+    val activeProgress = scrollProgressOverride ?: scrollProgress
 
     Box(
         modifier = modifier
@@ -124,7 +136,7 @@ fun VeneraTopAppBar(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        alpha = scrollProgress.value
+                        alpha = activeProgress.value
                     }
                     .progressiveTextureBlur(
                         backdrop = backdrop,
@@ -148,7 +160,7 @@ fun VeneraTopAppBar(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        alpha = scrollProgress.value
+                        alpha = activeProgress.value
                     }
                     .background(surfaceColor.copy(alpha = 0.85f)),
             )
@@ -159,10 +171,36 @@ fun VeneraTopAppBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(0.5.dp)
-                .graphicsLayer { alpha = 0.08f * scrollProgress.value }
+                .graphicsLayer { alpha = 0.08f * activeProgress.value }
                 .background(tokens.color.textPrimary)
                 .align(Alignment.BottomStart),
         )
+
+        // ── 折叠小标题（scrollProgressOverride 路径专用）──
+        //
+        // miuix 自带的小标题挂在 collapsedFraction 上，而覆盖进度路径下折叠机制整个
+        // 不参与（collapsedFraction 恒 0），它永远不会出现 —— 所以这里自绘一份，
+        // 位置与 miuix 标题行同位（状态栏下 CollapsedHeight 那一行、水平居中），
+        // alpha 与玻璃背板共用同一条 activeProgress：玻璃起、标题现，玻璃没、标题隐。
+        if (scrollProgressOverride != null && title.isNotEmpty()) {
+            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(statusBarTop + TopAppBarDefaults.CollapsedHeight)
+                    .graphicsLayer { alpha = activeProgress.value },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = title,
+                    fontSize = tokens.type.itemTitle,
+                    fontWeight = tokens.type.weightMedium,
+                    color = tokens.color.textPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
 
         // ── 顶栏本体：miuix TopAppBar，底色透明，由背板负责视觉背景 ──
         // 顶栏里的图标按钮（VeneraTopBarPill）要磨砂就得拿到**同一份**采样层，

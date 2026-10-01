@@ -76,14 +76,21 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
         // 子类属性此刻已初始化（属性初始化在构造函数里，早于 onCreate），读得准。
         blurBehindArmed = !deferredBlurBehind
         // 与 MainActivity 同一份契约：顶部不加 padding，让页面顶栏覆盖状态栏。
+        //
+        // ⚠️ 状态栏 scrim 必须全透明：enableEdgeToEdge 默认会把 statusBarColor 设成一层
+        // 半透明罩（浅色主题下是浅色），正好就是用户报告的"状态栏透出软件背景色"——它盖在
+        // hero 图之上，图露不出来。这里在 enableEdgeToEdge 之后把 statusBarColor 覆成全透明，
+        // 内容（hero 图 / 氛围底）就透得出来；图标深浅由 `SettingsHeroSystemBarIcons`
+        // / `VeneraTheme` 各自负责，不靠这层罩兜底。（Android 35+ 边到边强制后本就没有这层罩，
+        // 这行在旧版本上是真正去掉它的手段。）
         enableEdgeToEdge()
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         // 这些子页会露出封面 / 图片，防窥必须一起覆盖，否则「屏蔽与过滤」里那个开关静默失效。
         applySecureScreenPreference()
         setContent {
             if (opaqueAmbientBackground) {
                 // VeneraAmbientBackground 必须包在这里：它用 Canvas 铺一层不透明的氛围光底色。
-                // 少了它，页面没画满的地方就会露出 Activity 主题
-                // （@android:style/Theme.Material.NoActionBar）的平台深色窗口底 —— 表现为
+                // 少了它，页面没画满的地方就会露出 Activity 主题的平台深色窗口底 —— 表现为
                 // 浅色卡片浮在死灰上、深色标题压深色背景。设置页原先在 MainActivity 的
                 // NavHost 里就是铺在这层之上，补回来即恢复原样。
                 VeneraTheme { VeneraAmbientBackground { SubScreen() } }

@@ -1,7 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        画廊大图页那一层"浮在毛玻璃上"的窗口主题。
+        应用主主题：给所有走边到边（enableEdgeToEdge）的 Activity 用。
+
+        默认 `@android:style/Theme.Material.NoActionBar` 的 `statusBarColor` 不是透明，
+        系统会在状态栏区域画一层主题底色——用户 2026-10-02 反馈"状态栏还是会透出软件背景色"
+        就是这道。这里把状态栏/导航栏都改成透明，并关掉系统自动补的对比度蒙层，内容才能
+        真正画到状态栏背后。
+
+        注意：不改 `windowBackground`，保留 Material 主题的默认窗口底；页面没画满的地方
+        仍由 `VeneraAmbientBackground` 或各屏自己的背景兜底，不会透出系统黑底。
+    -->
+    <style name="Theme.Venera" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <!--
+        画廊大图页 / 画师页那一层"浮在毛玻璃上"的窗口主题。
 
         平台自带的 `@android:style/Theme.Translucent.NoTitleBar` 只管"窗口透"这一件事，
         它 `windowDrawsSystemBarBackgrounds=false` —— 于是状态栏那一条**不由本窗口画**，

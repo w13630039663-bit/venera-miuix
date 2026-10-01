@@ -366,6 +366,93 @@ internal object GalleryTagCategoryColors {
 }
 
 /**
+ * 「关于这张图」半模态里**每一块的色相**（2026-10-01 第三次重排，用户报"分区的色块不明显"）。
+ *
+ * ── 先说病：上一版的"分区"在屏上根本不存在 ──
+ *
+ * 上一版的分区靠"换一张 `VeneraCard`"：卡片吃 `surfaceContainerHigh`，半模态自己吃
+ * `surfaceContainerLow`。真机截图逐像素量过（1080×2376，见 `.tmp_shots/` 那一次对比度拉伸取样）：
+ * 整屏内容区**自始至终是同一个 `rgb(245,242,249)`**，连一条边界都找不出来 ——
+ * 两档色调面在**动态取色**下只差一个色调步，再乘上玻璃那 0.22 的容器 alpha，差到 1 以内。
+ * 所以这不是"色淡了一点"，是"分区没有可见载体"。
+ *
+ * ── 判据：**明度负责"这是一块"，色相负责"这是哪一块"** ──
+ *
+ * 两件事分开承担，才不会再出现"某一档主题下整片糊平"：
+ * - "存在"由描边（`outlineVariant` 发丝线）+ 一层极淡的同色相洗底承担（见 [WashAlpha]）——
+ *   描边与色相都不依赖色调阶梯，换主题、换壁纸、开关玻璃都立得住；
+ * - "归属"由节标题那枚徽标（[BadgeAlpha] 底 + 100% 字形）承担，四块四色，一眼分得开。
+ *
+ * ── 为什么不派生主题色 ──
+ *
+ * 与 [SettingsBadgeColors] 写在同一页上的理由逐字相同：这一组色的用途是**互相区分**，
+ * 而动态取色总共只给 2~3 个色相族 —— 派生过去四块会退化成同色系，"色块"这件事就没了。
+ *
+ * ── 亮暗两档与对比度 ──
+ *
+ * 亮档取 Material 700/800、暗档取 200/300。徽标字形是 18dp 的**非文本图形**（门槛 3:1），
+ * 压在自己那 15% 的浅底上（近似等于所在面）：
+ * 亮档最险的是 [TagsLight] `#EF6C00` ≈ 3.9:1，其余 ≥ 5:1；
+ * 暗档最浅的 [TagsDark] `#FFD54F` 在 `#1C1B1F` 上 ≈ 11:1。
+ *
+ * ⚠️ 与 [GalleryTagCategoryColors] **有四对色相相邻**（靛-蓝、青-绿、粉-红、琥珀-橙），
+ * 这是刻意的取舍而非疏忽：那一份的六个色相已经占满常用域，再挑就只剩灰与棕。
+ * 真正会读错的是**同值**（那等于宣称"这两件事是一回事"），本表与那一份**没有一对同值**；
+ * 而两处色相各自出现的位置也隔得很远 —— 一个是块标题、一个是标签桶名。
+ */
+/** 「关于这张图」的**四块**。枚举值即色相，顺序即屏上顺序（见 [GallerySheetSectionColors]）。 */
+internal enum class GallerySheetSection { Facts, Artist, Source, Tags }
+
+internal object GallerySheetSectionColors {
+    /** 事实网格（这张图的客观属性）。 */
+    val FactsLight = Color(0xFF303F9F) // Indigo 700
+    val FactsDark = Color(0xFF9FA8DA)  // Indigo 200
+
+    /** 画师。 */
+    val ArtistLight = Color(0xFF00796B) // Teal 700
+    val ArtistDark = Color(0xFF80CBC4)  // Teal 200
+
+    /** 来源链接。 */
+    val SourceLight = Color(0xFFC2185B) // Pink 700
+    val SourceDark = Color(0xFFF48FB1)  // Pink 200
+
+    /** 标签。 */
+    val TagsLight = Color(0xFFEF6C00) // Orange 800
+    val TagsDark = Color(0xFFFFD54F)  // Amber 300
+
+    /**
+     * 取一块在当前深浅档下的色相。
+     *
+     * [dark] 由调用方从 `LocalVeneraDarkTheme` 传进来，而不是在这里读 —— 与
+     * [GalleryTagCategoryColors.of] 同一条：`ui/tokens` 不 import `feature`
+     * （唯一那条反向依赖会让预览主题没法独立 provide）。
+     */
+    fun of(section: GallerySheetSection, dark: Boolean): Color = when (section) {
+        GallerySheetSection.Facts -> if (dark) FactsDark else FactsLight
+        GallerySheetSection.Artist -> if (dark) ArtistDark else ArtistLight
+        GallerySheetSection.Source -> if (dark) SourceDark else SourceLight
+        GallerySheetSection.Tags -> if (dark) TagsDark else TagsLight
+    }
+
+    /**
+     * 块底色那层"色相洗底"的 alpha。
+     *
+     * 0.07：亮档实测把 `#F5F2F9` 洗成 `rgb(233,231,244)`（Δ≈12，与一个色调步同量级但**不靠**色调步），
+     * 暗档把 `#141218` 抬约 +10 —— 两档都"看得见但不抢内容"。
+     * 再高就开始影响块内文字的对比度了（块里还有 12sp 的次级文字）。
+     */
+    const val WashAlpha = 0.07f
+
+    /**
+     * 徽标底色的 alpha。
+     *
+     * 0.15，与设置页那枚 [SettingsBadgeColors] 徽标同档（见那个对象的头注：
+     * "15% alpha 作底 + 100% 作图标 tint"），全仓徽标只有这一种画法。
+     */
+    const val BadgeAlpha = 0.15f
+}
+
+/**
  * 「自定义取色」的预设种子色板。
  *
  * 出处：逐字抄自 `jay3-yy/BiliPai` 的 `design-system/.../core/theme/Color.kt`
@@ -421,4 +508,31 @@ object ThemeSeedPresets {
     val DefaultArgb: Int = All.first().argb
 
     fun nameOf(argb: Int): String = All.firstOrNull { it.argb == argb }?.name ?: CustomName
+}
+
+/**
+ * 压在**用户自选图片**上的覆盖层固定色（设置页 hero 头图与名言卡，2026-10-02 新增）。
+ *
+ * 与 [SettingsBadgeColors] / [StatusColors] 同一条口径：图是用户随手选的，
+ * 亮度和色相完全不可控，覆盖层若跟随主题取色就会出现「白字配白图」；
+ * 所以 scrim 与图上文字必须是**固定色**，靠 scrim 自身的浓度兜底可读性。
+ *
+ * 两层 scrim 是同一色（黑）的两档浓度，不是两色渐变：
+ * 顶部一层只保状态栏图标对比，底部一层才保标题白字。
+ */
+internal object ImageOverlayColors {
+    /** 图上文字（标题）：纯白 —— 在底部 scrim（≥55% 黑）上对比度 ≥ 7:1。 */
+    val OnImage = Color(0xFFFFFFFF)
+
+    /** 图上文字（副标题 / 次要）：70% 白，与标题拉开层级但仍在 scrim 上可读。 */
+    val OnImageSecondary = Color(0xB3FFFFFF)
+
+    /** 顶部 scrim（状态栏背后）：35% 黑。 */
+    val ScrimTop = Color(0x59000000)
+
+    /** 底部 scrim 终点（标题所在端）：55% 黑。 */
+    val ScrimBottom = Color(0x8C000000)
+
+    /** 图上动作钮（相机 / 清除）的底：45% 黑圆底，白图标。 */
+    val ActionPill = Color(0x73000000)
 }
