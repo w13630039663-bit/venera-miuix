@@ -296,7 +296,7 @@
 ./gradlew :app:testDebugUnitTest --tests "*ChapterCompletenessTest*"
 ```
 
-> **签名**：`release` 未配置正式证书时回退 debug 签名，产物可直接侧载验证，但**不要用于正式分发**。自行签名发布请替换 `app/build.gradle.kts` 里 `signingConfigs` 的 keystore。
+> **签名**：正式签名材料从仓库根目录的 `key.properties` 读（`storeFile` / `storePassword` / `keyAlias` / `keyPassword`），它与 `*.jks`、`*.keystore` 一起被 `.gitignore` 挡住 —— **密钥与口令都不进版本库**，keystore 存放在仓库之外。没有这个文件时 release 回退 debug 签名，并在构建日志里明写这条回退；那种产物可以侧载验证，但**不可用于分发**（签名与发布线不一致，用户覆盖安装会失败）。
 > **R8 模式**：当前显式关闭 full mode —— full mode 会删除仅被反射引用的合成方法，对 material3 alpha 与 WebView JS 桥风险过高。
 > **material3 版本被钉住**：`1.5.0-alpha22` 必须与 Miuix 运行期实际解析到的版本一致，改之前先跑 `:app:dependencies --configuration debugRuntimeClasspath` 核对，否则会撞 `NoSuchMethodError` 闪退。
 

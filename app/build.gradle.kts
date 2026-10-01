@@ -1,8 +1,23 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+/**
+ * 正式签名材料从仓库外的 `key.properties` 读（已在 `.gitignore` 里，密钥与口令都不入库）。
+ *
+ * 没有这把钥匙时**照样要能出包**：clone 下来的人不该因为缺密钥构建失败，所以回退 debug 签名。
+ * 但回退必须说得出——静默产出 debug 签名的 release 包，下一步就是有人把它当正式包发出去，
+ * 而它的签名与发布线不同，用户覆盖安装直接失败。
+ */
+val signingProps = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasReleaseSigning = !signingProps.getProperty("storeFile").isNullOrBlank()
 
 android {
     namespace = "com.venera.compose"
@@ -22,14 +37,22 @@ android {
     }
 
     signingConfigs {
-        // S8: release 无正式证书时用 debug keystore 兜底签名，
-        // 保证 R8 产物可直接侧载验证；发布正式版时替换为生产 keystore
-        create("release") {
-            val dbg = signingConfigs.getByName("debug")
-            storeFile = dbg.storeFile
-            storePassword = dbg.storePassword
-            keyAlias = dbg.keyAlias
-            keyPassword = dbg.keyPassword
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        } else {
+            // 兜底：沿用 AGP 的 debug keystore，保证 R8 产物可直接侧载验证
+            create("release") {
+                val dbg = signingConfigs.getByName("debug")
+                storeFile = dbg.storeFile
+                storePassword = dbg.storePassword
+                keyAlias = dbg.keyAlias
+                keyPassword = dbg.keyPassword
+            }
         }
     }
 
@@ -46,6 +69,9 @@ android {
             // 保留行号映射：崩溃堆栈可经 mapping.txt 还原，便于线上排错
             isDebuggable = false
             signingConfig = signingConfigs.getByName("release")
+            if (!hasReleaseSigning) {
+                logger.warn("release 缺 key.properties，已回退 debug keystore 签名 —— 产物可侧载验证，不可用于分发")
+            }
         }
     }
 

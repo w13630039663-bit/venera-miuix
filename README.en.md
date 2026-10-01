@@ -296,7 +296,7 @@ No Flutter, no Dart, no Rust.
 ./gradlew :app:testDebugUnitTest --tests "*ChapterCompletenessTest*"
 ```
 
-> **Signing**: if no release certificate is configured, the release build falls back to the debug keystore — the artifact is sideloadable but **should not be distributed**. Replace `signingConfigs` in `app/build.gradle.kts` for your own signing.
+> **Signing**: release signing material is read from `key.properties` at the repository root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). That file, together with `*.jks` and `*.keystore`, is gitignored — **neither keys nor passphrases ever enter version control**, and the keystore itself lives outside the repository. Without that file the release build falls back to the debug keystore and says so in the build log; such an artifact is sideloadable but **must not be distributed** (its signature differs from the release line, so an in-place upgrade will fail).
 > **R8 mode**: full mode is explicitly disabled — it removes synthetic methods referenced only reflectively, too risky for material3 alpha and the WebView JS bridge.
 > **material3 is pinned**: `1.5.0-alpha22` must match what Miuix resolves at runtime; run `:app:dependencies --configuration debugRuntimeClasspath` before changing it, or you will hit a `NoSuchMethodError` crash.
 
