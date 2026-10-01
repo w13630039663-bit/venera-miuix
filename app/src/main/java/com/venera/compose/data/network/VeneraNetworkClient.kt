@@ -8,19 +8,18 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.dnsoverhttps.DnsOverHttps
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 /**
- * Venera 核心统一网络引擎（支持运行时重建客户端以应用 DoH / 代理）。
+ * Venera 核心统一网络引擎（支持运行时重建客户端以应用代理配置）。
  *
  * 对比原版 Flutter 的 intercepted_client.dart：
- * - OkHttp 4 原生不内置 DoH 解析器，但 okhttp-dnsoverhttps 模块提供 DNS-over-HTTPS。
- * - 当前仅做接入决策（pref_enable_doh → builder.dns()），实际部署依赖脚本引擎那一层的稳定性。
  * - 代理默认走 HTTP 代理（SOCKS 场景极少，未来可补）。
  * - 修改偏好后调用 rebuildClient() 使新请求（包括 Coil 图片）走新配置。
+ *
+ * DNS-over-HTTPS 从未接线（历史上只留过一个未使用的 import），故不引 okhttp-dnsoverhttps。
  */
 class VeneraNetworkClient private constructor(private val context: Context) {
 
@@ -78,12 +77,25 @@ class VeneraNetworkClient private constructor(private val context: Context) {
 
         // 代理（支持 HTTP / SOCKS5，后来实装）
         val proxyType = prefs.proxyType.value
-        if (proxyType == "HTTP" || proxyType == "SOCKS") {
+        val proxyInUse = proxyType == "HTTP" || proxyType == "SOCKS"
+        if (proxyInUse) {
             val host = prefs.proxyHost.value.ifEmpty { "127.0.0.1" }
             val port = prefs.proxyPort.value
             val type = if (proxyType == "SOCKS") Proxy.Type.SOCKS else Proxy.Type.HTTP
             builder.proxy(Proxy(type, InetSocketAddress(host, port)))
         }
+
+        // Cloudflare 优选 IP。**默认关闭**：关闭或域名不在适用表里时，判据一律交回 Dns.SYSTEM，
+        // 所以没配过的用户走的代码路径与这层不存在时一致（验收第 2 条）。
+        // 挂代理时 proxyInUse 会写进配置，探活那一侧整轮不跑 —— 代理在的话目标域名由代理解析，
+        // 这一层根本不参与，量出来的延迟也不是用户这台机器的（理由见 PreferredIpProbe 文件头）。
+        PreferredIpRuntime.configure(
+            enabled = prefs.cfPreferredIpEnabled.value,
+            ipsRaw = prefs.cfPreferredIps.value,
+            hostsRaw = prefs.cfPreferredHosts.value,
+            proxyInUse = proxyInUse,
+        )
+        builder.dns(PreferredIpDns())
 
         // 1. UA 策略与 Accept-Language 拦截器（尊重既有 UA，优先使用 host 绑定的过盾 UA）
         builder.addInterceptor { chain ->
@@ -100,6 +112,12 @@ class VeneraNetworkClient private constructor(private val context: Context) {
 
         // 2. 域名熔断（必须最先判定，让不可达源毫秒级失败）
         builder.addInterceptor(HostCircuitBreakerInterceptor())
+
+        // 2.5 优选 IP 的回退。**必须挂在熔断内侧**：共享客户端今天是 retryOnConnectionFailure(false)，
+        // 同一笔里 OkHttp 不会自己换下一个候选地址，所以"连不上就退回正常解析"这件事得有人显式做第二次。
+        // 挂在这一处，两次尝试只有最终那一次结果进熔断 —— 否则优选 IP 试一次、系统解析再试一次，
+        // 一个正常源会被计成两笔失败，60 秒拉黑就是这么来的。
+        builder.addInterceptor(PreferredIpFallbackInterceptor())
 
         // 3. 限速、429 指数退避与同 URL 并发去重
         builder.addInterceptor(RateLimitingInterceptor())
@@ -200,8 +218,11 @@ class VeneraNetworkClient private constructor(private val context: Context) {
  *    这条实测结论一行都没落地，**反而正是下载必然撞盾的成因**：下载走的是裸
  *    `Request.Builder()`（不带 UA），拿到的就是那串必然 403 的 Chrome UA。
  * 3. 全局默认（移动端 Chrome 串）。
+ *
+ * `internal` 而不是 private：探活那一侧（[PreferredIpProbe]）必须发**与真实业务请求同一串 UA** 的请求，
+ * 否则量到的"这台节点通不通"不等于用户实际会遇到的结果 —— 同一份判据留两份迟早会漂。
  */
-private fun userAgentFor(url: okhttp3.HttpUrl): String {
+internal fun userAgentFor(url: okhttp3.HttpUrl): String {
     val bound = UserAgentPolicy.getUserAgentForHost(url.host)
     if (bound != UserAgentPolicy.DEFAULT_USER_AGENT) return bound
     return ImageHeaderPolicy.headersFor(url.toString())["User-Agent"] ?: bound

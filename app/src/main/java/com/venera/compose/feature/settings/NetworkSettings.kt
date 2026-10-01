@@ -47,7 +47,7 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
 
     val threads by prefs.downloadThreads.collectAsState()
 
-    SettingsPage(title = "网络", onBack = onBack, largeTitle = "网络与代理") {
+    SettingsPage(title = "网络", onBack = onBack, largeTitle = "网络与代理", heroSubtitle = "代理 · 缓存 · 超时") {
         SettingsGroup {
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
             SettingsSlider("下载并发", threads.toFloat(), 1f..16f,
@@ -56,6 +56,9 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
             // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
             // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
+        }
+        SettingsGroup("Cloudflare 优选 IP") {
+            PreferredIpSettingsGroup(prefs)
         }
         SettingsGroup("网络诊断") {
             SettingsAction("重置失败记录", "清除暂时连不上的站点记录，这些站点会马上重新尝试") {

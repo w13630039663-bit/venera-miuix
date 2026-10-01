@@ -75,9 +75,6 @@ class VeneraPreferences private constructor(context: Context) {
     private val _volumeKeyTurn = MutableStateFlow(prefs.getBoolean(KEY_VOLUME_KEY_TURN, false))
     val volumeKeyTurn: StateFlow<Boolean> = _volumeKeyTurn.asStateFlow()
 
-    private val _autoCropBorders = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CROP_BORDERS, false))
-    val autoCropBorders: StateFlow<Boolean> = _autoCropBorders.asStateFlow()
-
     private val _nightFilter = MutableStateFlow(prefs.getBoolean(KEY_NIGHT_FILTER, false))
     val nightFilter: StateFlow<Boolean> = _nightFilter.asStateFlow()
 
@@ -121,6 +118,37 @@ class VeneraPreferences private constructor(context: Context) {
     /** 网络响应缓存上限（MB）。OkHttp Cache.maxSize 运行时可改。 */
     private val _httpCacheMaxMb = MutableStateFlow(prefs.getInt(KEY_HTTP_CACHE_MAX_MB, 100))
     val httpCacheMaxMb: StateFlow<Int> = _httpCacheMaxMb.asStateFlow()
+
+    /**
+     * Cloudflare 优选 IP —— **默认关闭**，关闭时网络行为与不开这个功能逐字一致。
+     *
+     * 三条各管一半：这一档决定"要不要绑"，[cfPreferredIps] 决定"绑到哪儿"，
+     * [cfPreferredHosts] 决定"哪些域名允许绑"（其余域名一律走系统解析）。
+     * 判据、探活与回退都在 `com.venera.compose.data.network.PreferredIp*`。
+     */
+    private val _cfPreferredIpEnabled = MutableStateFlow(prefs.getBoolean(KEY_CF_PREFERRED_IP_ENABLED, false))
+    val cfPreferredIpEnabled: StateFlow<Boolean> = _cfPreferredIpEnabled.asStateFlow()
+
+    /**
+     * 用户自己粘的候选节点列表（换行 / 逗号 / 空格分隔）。
+     *
+     * ⚠️ **刻意不内置任何 IP**：CF 会调整边缘节点、防火墙会持续封，写死的那批一旦失效，
+     * 该域名会比不绑更糟地不可用。存的是原始串，规范化在判据层做（`PreferredIpRules.parseIps`）。
+     */
+    private val _cfPreferredIps = MutableStateFlow(prefs.getString(KEY_CF_PREFERRED_IPS, "") ?: "")
+    val cfPreferredIps: StateFlow<String> = _cfPreferredIps.asStateFlow()
+
+    /**
+     * 允许绑优选 IP 的域名表。
+     *
+     * 默认那两条是**本机实测过真实业务路径**的（2026-10-01）：
+     * `safebooru.donmai.us` 的 `/posts.json` 与 JM 图床 `cdn-msp.jmapinodeudzn.net` 的根路径都回 200。
+     * 反面例子也记在探活那侧：`konachan.net` 虽然走 CF 且 TCP 通，HTTP 层恒 403，所以不预置它。
+     */
+    private val _cfPreferredHosts = MutableStateFlow(
+        prefs.getString(KEY_CF_PREFERRED_HOSTS, "safebooru.donmai.us\ncdn-msp.jmapinodeudzn.net") ?: "",
+    )
+    val cfPreferredHosts: StateFlow<String> = _cfPreferredHosts.asStateFlow()
 
     /**
      * 本地漫画存储根目录的绝对路径；空串表示用应用私有内部存储的默认位置。
@@ -356,13 +384,6 @@ class VeneraPreferences private constructor(context: Context) {
     val moveFavoriteAfterRead: StateFlow<String?> = _moveFavoriteAfterRead.asStateFlow()
 
     /**
-     * 收藏面板中「本地收藏」分区是否排在「网络收藏」之前。
-     * 对齐官方 `appdata.settings['localFavoritesFirst'] ?? true`。
-     */
-    private val _localFavoritesFirst = MutableStateFlow(prefs.getBoolean(KEY_LOCAL_FAVORITES_FIRST, true))
-    val localFavoritesFirst: StateFlow<Boolean> = _localFavoritesFirst.asStateFlow()
-
-    /**
      * 长按详情页收藏按钮时的快捷收藏目标夹名。
      * 对齐官方 `appdata.settings['quickFavorite']`；未设置时为 null（长按退化为打开面板）。
      */
@@ -374,9 +395,6 @@ class VeneraPreferences private constructor(context: Context) {
     val followUpdatesFolder: StateFlow<String?> = _followUpdatesFolder.asStateFlow()
 
     // 网络与安全
-    private val _enableDoH = MutableStateFlow(prefs.getBoolean(KEY_ENABLE_DOH, true))
-    val enableDoH: StateFlow<Boolean> = _enableDoH.asStateFlow()
-
     private val _proxyType = MutableStateFlow(prefs.getString(KEY_PROXY_TYPE, "NONE") ?: "NONE")
     val proxyType: StateFlow<String> = _proxyType.asStateFlow()
 
@@ -385,21 +403,6 @@ class VeneraPreferences private constructor(context: Context) {
 
     private val _proxyPort = MutableStateFlow(prefs.getInt(KEY_PROXY_PORT, 7890))
     val proxyPort: StateFlow<Int> = _proxyPort.asStateFlow()
-
-    // ---- 漫画列表布局（对齐原版 appdata.settings['comicDisplayMode']） ----
-
-    /**
-     * 漫画列表展示模式：[MODE_BRIEF] = 双列封面网格；[MODE_DETAILED] = 单列大卡
-     * （左封面 + 右侧标题/副标题/标签/评分/描述，对齐原版 ComicTile detailed 模式）。
-     * 列表页 AppBar 的切换按钮读写此键，全部网格页监听即时重排。
-     */
-    private val _comicDisplayMode = MutableStateFlow(prefs.getString(KEY_COMIC_DISPLAY_MODE, MODE_BRIEF) ?: MODE_BRIEF)
-    val comicDisplayMode: StateFlow<String> = _comicDisplayMode.asStateFlow()
-
-    fun setComicDisplayMode(mode: String) {
-        prefs.edit { putString(KEY_COMIC_DISPLAY_MODE, mode) }
-        _comicDisplayMode.value = mode
-    }
 
     // ---- 本地收藏夹排序（名称 / 时间 / 自定义） ----
 
@@ -439,6 +442,31 @@ class VeneraPreferences private constructor(context: Context) {
             prefs.edit { putLong(KEY_LAST_UPDATE_CHECK_AT, value) }
         }
 
+    // ---- 设置页 hero 头图 / 名言卡小图（2026-10-02）----
+    //
+    // 两条都只存**应用私有目录里的绝对路径**（拷贝落盘在 SettingsHeroImageStore），
+    // 不存 content URI：相册删图 / URI 授权失效都会让 persisted URI 变裂图，
+    // 拷贝一份进来是唯一能保证「设置过就一直显示」的做法。
+    // 空串 = 未设置 ⇒ 整条 hero 渲染链路不参与（页面维持原来的大标题观感）。
+
+    /** 设置页头图（首页与全部子页共用同一张，换一处全局生效）。 */
+    private val _settingsHeroPath = MutableStateFlow(prefs.getString(KEY_SETTINGS_HERO_PATH, "") ?: "")
+    val settingsHeroPath: StateFlow<String> = _settingsHeroPath.asStateFlow()
+
+    /** 名言卡左侧小图；空串 = 用应用图标兜底。 */
+    private val _settingsQuoteAvatarPath = MutableStateFlow(prefs.getString(KEY_SETTINGS_QUOTE_AVATAR_PATH, "") ?: "")
+    val settingsQuoteAvatarPath: StateFlow<String> = _settingsQuoteAvatarPath.asStateFlow()
+
+    fun setSettingsHeroPath(path: String) {
+        prefs.edit { putString(KEY_SETTINGS_HERO_PATH, path) }
+        _settingsHeroPath.value = path
+    }
+
+    fun setSettingsQuoteAvatarPath(path: String) {
+        prefs.edit { putString(KEY_SETTINGS_QUOTE_AVATAR_PATH, path) }
+        _settingsQuoteAvatarPath.value = path
+    }
+
     // 写入方法
     fun setDefaultReadingMode(mode: String) {
         prefs.edit { putString(KEY_DEFAULT_READING_MODE, mode) }
@@ -458,11 +486,6 @@ class VeneraPreferences private constructor(context: Context) {
     fun setVolumeKeyTurn(enable: Boolean) {
         prefs.edit { putBoolean(KEY_VOLUME_KEY_TURN, enable) }
         _volumeKeyTurn.value = enable
-    }
-
-    fun setAutoCropBorders(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_AUTO_CROP_BORDERS, enable) }
-        _autoCropBorders.value = enable
     }
 
     fun setNightFilter(enable: Boolean) {
@@ -569,11 +592,6 @@ class VeneraPreferences private constructor(context: Context) {
         _moveFavoriteAfterRead.value = value
     }
 
-    fun setLocalFavoritesFirst(value: Boolean) {
-        prefs.edit { putBoolean(KEY_LOCAL_FAVORITES_FIRST, value) }
-        _localFavoritesFirst.value = value
-    }
-
     fun setQuickFavorite(folder: String?) {
         prefs.edit { putString(KEY_QUICK_FAVORITE, folder) }
         _quickFavorite.value = folder
@@ -582,11 +600,6 @@ class VeneraPreferences private constructor(context: Context) {
     fun setFollowUpdatesFolder(folder: String?) {
         prefs.edit { putString(KEY_FOLLOW_UPDATES_FOLDER, folder) }
         _followUpdatesFolder.value = folder
-    }
-
-    fun setEnableDoH(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_ENABLE_DOH, enable) }
-        _enableDoH.value = enable
     }
 
     fun setProxy(type: String, host: String, port: Int) {
@@ -600,6 +613,23 @@ class VeneraPreferences private constructor(context: Context) {
         _proxyPort.value = port
     }
 
+    /**
+     * 保存优选 IP 配置。
+     *
+     * 调用方**必须**紧接着 `VeneraNetworkClient.rebuildClient()`：绑哪台地址是建客户端时挂上去的，
+     * 只写偏好不重建客户端就是个假开关（与代理那一处同一口径）。
+     */
+    fun setCfPreferredIp(enabled: Boolean, ips: String, hosts: String) {
+        prefs.edit {
+            putBoolean(KEY_CF_PREFERRED_IP_ENABLED, enabled)
+            putString(KEY_CF_PREFERRED_IPS, ips)
+            putString(KEY_CF_PREFERRED_HOSTS, hosts)
+        }
+        _cfPreferredIpEnabled.value = enabled
+        _cfPreferredIps.value = ips
+        _cfPreferredHosts.value = hosts
+    }
+
     companion object {
         private const val PREFS_NAME = "venera_preferences"
 
@@ -607,7 +637,6 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_PAGE_GAP_DP = "pref_page_gap_dp"
         private const val KEY_KEEP_SCREEN_ON = "pref_keep_screen_on"
         private const val KEY_VOLUME_KEY_TURN = "pref_volume_key_turn"
-        private const val KEY_AUTO_CROP_BORDERS = "pref_auto_crop_borders"
         private const val KEY_NIGHT_FILTER = "pref_night_filter"
         private const val KEY_CLICK_TO_TURN = "pref_click_to_turn"
         private const val KEY_THEME_MODE = "pref_theme_mode"
@@ -644,22 +673,20 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_GALLERY_HIDE_BOTTOM_BAR = "pref_gallery_hide_bottom_bar"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
-        private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"
         private const val KEY_FOLLOW_UPDATES_FOLDER = "pref_follow_updates_folder"
-        private const val KEY_ENABLE_DOH = "pref_enable_doh"
         private const val KEY_PROXY_TYPE = "pref_proxy_type"
+
+        private const val KEY_CF_PREFERRED_IP_ENABLED = "pref_cf_preferred_ip_enabled"
+        private const val KEY_CF_PREFERRED_IPS = "pref_cf_preferred_ips"
+        private const val KEY_CF_PREFERRED_HOSTS = "pref_cf_preferred_hosts"
         private const val KEY_PROXY_HOST = "pref_proxy_host"
         private const val KEY_PROXY_PORT = "pref_proxy_port"
-        private const val KEY_COMIC_DISPLAY_MODE = "pref_comic_display_mode"
         private const val KEY_FAVORITE_SORT_ORDER = "pref_favorite_sort_order"
         private const val KEY_CHECK_UPDATE_ON_START = "pref_check_update_on_start"
         private const val KEY_LAST_UPDATE_CHECK_AT = "pref_last_update_check_at"
-
-        /** 双列封面网格（默认）。 */
-        const val MODE_BRIEF = "brief"
-        /** 单列大卡（左封面 + 右侧完整信息含标签）。 */
-        const val MODE_DETAILED = "detailed"
+        private const val KEY_SETTINGS_HERO_PATH = "pref_settings_hero_path"
+        private const val KEY_SETTINGS_QUOTE_AVATAR_PATH = "pref_settings_quote_avatar_path"
 
         @Volatile
         private var INSTANCE: VeneraPreferences? = null
