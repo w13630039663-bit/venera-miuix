@@ -1992,7 +1992,8 @@ private fun FavRow(
  * 收藏面板内容。
  *
  * 官方结构：本地分区永远显示；网络分区只在「源声明了 favorites 且已登录」时出现，
- * 两者由一个分隔线隔开，顺序由设置项 localFavoritesFirst 决定（默认本地在前）。
+ * 两者由一个分隔线隔开。分区顺序是硬编码的本地在前、网络在后（不提供开关：
+ * 原对齐的 `localFavoritesFirst` 设置项在本仓库从无消费者，已随僵尸键一并撤销）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

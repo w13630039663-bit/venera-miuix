@@ -17,8 +17,8 @@ android {
         applicationId = "com.github.w13630039663bit.venera.miuix"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1800
-        versionName = "1.8"
+        versionCode = 2000
+        versionName = "2.0"
     }
 
     signingConfigs {
@@ -93,7 +93,6 @@ dependencies {
     // @Preview 注解（Home 的 LIGHT/DARK × MIUIX/MD3 预览）
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    implementation(libs.miuix.blur)
     // 官方液态玻璃库（Kyant0/AndroidLiquidGlass）：底栏的 blur + lens + vibrancy 由它提供
     implementation(libs.backdrop)
     // Backdrop 的 Capsule / RoundedRectangularShape（lens 的 shape 参数需要）
@@ -105,13 +104,11 @@ dependencies {
     // 自定义取色：种子色 → 整套 MD3 色板（Android 自带 DynamicColors 只吃系统壁纸，喂不进种子）
     implementation(libs.material.kolor)
 
-    // S0 地基：导航栈 / ViewModel / 分页
+    // S0 地基：导航栈 / ViewModel
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.paging.compose)
-    implementation(libs.androidx.paging.runtime)
 
     // 图片：Coil 3 + OkHttp 引擎（按域注入防盗链头）
     implementation(libs.coil.compose)
@@ -135,17 +132,12 @@ dependencies {
     // 网络与解析
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
-    implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.gson)
     implementation(libs.jsoup)
     implementation(libs.kotlinx.coroutines.android)
 
     // 类型安全导航的路由参数序列化（navigation-compose 2.8 要求）
     implementation(libs.kotlinx.serialization.json)
-
-    // 脚本引擎：现有 quickjs-android 无 Promise 微任务泵，S1 将换成 Zipline；
-    // 目前仅用于保留 .js 规则文件解析能力（QuickJsBridge 已标注待替换）。
-    implementation(libs.quickjs.android)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
