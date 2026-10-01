@@ -89,6 +89,49 @@ internal object PreferredIpRules {
     )
 
     /**
+     * 漫画源 → 该源**图床**要一并写进「适用域名」的条目。
+     *
+     * 为什么需要这张表：详情页的图走的是**另一个域名**（真机 log 实锤 2026-10-02：哔咔 API
+     * `picaapi.picacomic.com` 通了、图 `storage-b.picacomic.com` 走系统 DNS 解析到死 IP 超时）。
+     * 只把 API 域名写进适用域名，图床照样不受优选层管。
+     *
+     * ⚠️ **只收真机实测「在 Cloudflare 后面、边缘 IP 能服务」的域名**（2026-10-02 真机
+     * `--resolve` 逐个验证，TLS 证书校验通过才算）：
+     * - `picacomic.com`（父域管 `storage-*`）✓、`i3/t3.nhentai.net` ✓、`static-tw.baozimh.com` ✓、
+     *   `www.cdntwice.org`（jm 备用图床）✓
+     * - **实测不在 CF 后、刻意不收**：`uploads.mangadex.org`、`ehgt.org`、`api.copy2000.online`
+     *   （边缘 TLS 握手直接被拒 —— 钉 CF IP 会证书不匹配，把本来能用系统解析的搞坏）；
+     *   `www.cdnsha.org`/`www.cdnntr.cc` 同理不收。
+     * - copy_manga 的图床是 API **动态下发**的全 URL，静态钉不了，不在此表。
+     *
+     * 各条目的探活路径也是真机实测选的（目录路径被 WAF 403，具体文件路径 404/302 ——
+     * 在 `require2xx = false` 下非 5xx 判通，403 一律失败的红线不碰）。
+     */
+    val COMIC_SOURCE_IMAGE_HOSTS: Map<String, List<String>> = mapOf(
+        "picacg" to listOf("picacomic.com"),
+        "jm" to listOf("www.cdntwice.org"),
+        "nhentai" to listOf("i3.nhentai.net", "t3.nhentai.net"),
+        "baozi" to listOf("static-tw.baozimh.com"),
+    )
+
+    /**
+     * 适用域名**条目** → 探测目标的别名表：条目本身不是（或不便）探测主机，拿代表性端点探。
+     *
+     * 与 [knownTargetFor] 的"按 host 查表"不同，这张表按**条目串**查 —— 因为条目可能是
+     * 父域（`picacomic.com`）或图床域，`Runtime.targetFor` 与测速页探活都会走到这里，
+     * 保证同一条目在两边用同一套判据。
+     */
+    private val ENTRY_TARGET_ALIASES: Map<String, PreferredIpTarget> = mapOf(
+        // picacomic.com 本身不是可探主机；拿 picaapi 作代表（根路径 400，require2xx=false 判通）。
+        "picacomic.com" to PreferredIpTarget("picaapi.picacomic.com", "/", require2xx = false),
+        // 图床三家的探活路径：目录被 WAF 403，用具体文件路径（404/302 判通）。
+        "i3.nhentai.net" to PreferredIpTarget("i3.nhentai.net", "/galleries/1/1.jpg", require2xx = false),
+        "t3.nhentai.net" to PreferredIpTarget("t3.nhentai.net", "/galleries/1/cover.jpg", require2xx = false),
+        "static-tw.baozimh.com" to PreferredIpTarget("static-tw.baozimh.com", "/cover/test.jpg", require2xx = false),
+        "www.cdntwice.org" to PreferredIpTarget("www.cdntwice.org", "/photos/", require2xx = false),
+    )
+
+    /**
      * 画廊站点 → 测速目标。key 是 [com.venera.compose.gallery.data.GallerySite] 的 routeKey
      * （判据层不 import 那边的类型，用字符串走），label 用**站方写法**（与 displayName 同源）。
      *
@@ -110,11 +153,12 @@ internal object PreferredIpRules {
         ),
     )
 
-    /** 按域名精确查已知探活端点（默认表 → 漫画源表 → 图库表）。查不到返回 null。 */
+    /** 按域名精确查已知探活端点（别名表 → 默认表 → 漫画源表 → 图库表）。查不到返回 null。 */
     fun knownTargetFor(host: String): PreferredIpTarget? {
         val h = host.lowercase().trimEnd('.')
         if (h.isEmpty()) return null
-        return DEFAULT_TARGETS.firstOrNull { it.host == h }
+        return ENTRY_TARGET_ALIASES[h]
+            ?: DEFAULT_TARGETS.firstOrNull { it.host == h }
             ?: COMIC_SOURCE_API_TARGETS.values.firstOrNull { it.host == h }
             ?: GALLERY_SPEED_TEST_SOURCES.values.firstOrNull { it.target.host == h }?.target
     }
@@ -157,6 +201,10 @@ internal object PreferredIpRules {
                         sourceKey = key,
                         label = comicSourceNames[key]?.takeIf { it.isNotBlank() } ?: key,
                         target = target,
+                        // 图床条目跟源走：装了这个源才把它的图床域名写进适用域名。
+                        applyHosts = (listOf(target.host) + COMIC_SOURCE_IMAGE_HOSTS[key].orEmpty())
+                            .map { it.lowercase().trimEnd('.') }
+                            .distinct(),
                     ),
                 )
             }
@@ -566,7 +614,15 @@ internal data class PreferredIpSpeedTestSource(
     val sourceKey: String,
     val label: String,
     val target: PreferredIpTarget,
-)
+    /**
+     * 「使用最优线路」时要写进「适用域名」的**全部条目**（含图床覆盖，见
+     * [PreferredIpRules.COMIC_SOURCE_IMAGE_HOSTS]）；空表 = 只写 [target.host]。
+     * 测速页对这批条目逐条探活，逐条记读数 —— 图床条目没有读数就照样走系统 DNS。
+     */
+    val applyHosts: List<String> = emptyList(),
+) {
+    fun hostsToApply(): List<String> = applyHosts.ifEmpty { listOf(target.host) }
+}
 
 /** 一次探活的原始读数。[status] 与 [error] 恰好一个是 null。 */
 internal data class PreferredIpReading(

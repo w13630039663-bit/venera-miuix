@@ -619,4 +619,67 @@ class PreferredIpRulesTest {
         // 全灭：宁交空表让 UI 如实说「没挑出可用的」，不能拿没通过的节点充数。
         assertTrue(PreferredIpRules.bestIpsFromLines(lines).isEmpty())
     }
+
+    // ── 图床覆盖：详情页图片走独立域名，装了源才把图床条目写进适用域名 ──
+
+    @Test
+    fun `图床条目跟源走_进写回列表但不单开测速行`() {
+        val sources = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = listOf("picacg", "nhentai", "baozi", "jm"),
+            comicSourceNames = emptyMap(),
+            enabledGalleryRouteKeys = emptyList(),
+            userHosts = emptyList(),
+        )
+        // 图床条目不单开行：4 个源 = 4 行。
+        assertEquals(listOf("picacg", "nhentai", "baozi", "jm"), sources.map { it.sourceKey })
+        val byKey = sources.associateBy { it.sourceKey }
+        // 哔咔：父域 picacomic.com 管 storage-* 图床。
+        assertEquals(
+            listOf("picaapi.picacomic.com", "picacomic.com"),
+            byKey.getValue("picacg").hostsToApply(),
+        )
+        // nhentai：i3/t3 两台图床都收。
+        assertEquals(
+            listOf("nhentai.net", "i3.nhentai.net", "t3.nhentai.net"),
+            byKey.getValue("nhentai").hostsToApply(),
+        )
+        // jm：备用图床 cdntwice（cdasha/cdnntr 实测不在 CF 后，不收）。
+        assertEquals(
+            listOf("cdn-msp.jmapinodeudzn.net", "www.cdntwice.org"),
+            byKey.getValue("jm").hostsToApply(),
+        )
+        // baozi：详情页封面/配图域名。
+        assertEquals(
+            listOf("appcn.baozimh.com", "static-tw.baozimh.com"),
+            byKey.getValue("baozi").hostsToApply(),
+        )
+        // 没有 applyHosts 的源（画廊/其他）退回 target.host 单条。
+        val gallery = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = emptyList(),
+            comicSourceNames = emptyMap(),
+            enabledGalleryRouteKeys = listOf("safebooru"),
+            userHosts = emptyList(),
+        )
+        assertEquals(listOf("safebooru.donmai.us"), gallery.single().hostsToApply())
+    }
+
+    @Test
+    fun `图床条目探活走别名表_父域拿代表性端点探`() {
+        // 父域条目 picacomic.com 本身不是可探主机 —— 拿 picaapi 作代表（根路径 400，require2xx=false）。
+        val picaParent = PreferredIpRules.knownTargetFor("picacomic.com")
+        assertEquals("picaapi.picacomic.com", picaParent?.host)
+        assertEquals(false, picaParent?.require2xx)
+        // nhentai 图床：目录路径被 WAF 403，探活用具体文件路径（404 判通）。
+        val i3 = PreferredIpRules.knownTargetFor("i3.nhentai.net")
+        assertEquals("i3.nhentai.net", i3?.host)
+        assertEquals("/galleries/1/1.jpg", i3?.path)
+        val t3 = PreferredIpRules.knownTargetFor("t3.nhentai.net")
+        assertEquals("/galleries/1/cover.jpg", t3?.path)
+        // baozi 封面域：302 判通。
+        assertEquals("/cover/test.jpg", PreferredIpRules.knownTargetFor("static-tw.baozimh.com")?.path)
+        // jm 备用图床：目录 404 判通。
+        assertEquals("/photos/", PreferredIpRules.knownTargetFor("www.cdntwice.org")?.path)
+        // 未收录的域名照旧返回 null（走根路径判据）。
+        assertEquals(null, PreferredIpRules.knownTargetFor("uploads.mangadex.org"))
+    }
 }

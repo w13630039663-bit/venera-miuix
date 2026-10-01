@@ -106,7 +106,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
         // ⚠️ 域名要把这页动态推导出来的源域名**一并写进「适用域名」**：不然测通了哔咔/禁漫，
         // 运行期 plan() 一查适用表没有它们，照样走系统解析 —— 测了等于白测。手填条目保留。
         val applied = PreferredIpRules.parseIps(ipsText).toSet()
-        val mergedHosts = (targets.map { it.target.host } + PreferredIpRules.parseHosts(savedHosts))
+        val mergedHosts = (targets.flatMap { it.hostsToApply() } + PreferredIpRules.parseHosts(savedHosts))
             .distinct()
             .joinToString("\n")
         savePreferredIp(prefs, enabled = true, ips = ipsText, hosts = mergedHosts, clearReadings = true)
@@ -138,8 +138,9 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
         } else {
             PreferredIpRules.sampleCloudflareIps()
         }
-        // 探活域名就是上面这份动态目标的 host（各源路径判据由 targetFor 按已知端点表给出）。
-        val hosts = targets.map { it.target.host }
+        // 探活/写回的条目 = 每个源的 applyHosts（API 域名 + 图床覆盖条目）——
+        // 图床条目没有读数照样走系统 DNS，所以必须逐条探、逐条记（见 COMIC_SOURCE_IMAGE_HOSTS）。
+        val hosts = targets.flatMap { it.hostsToApply() }.distinct()
             .ifEmpty { PreferredIpRules.DEFAULT_TARGETS.map { it.host } }
         scope.launch {
             try {
@@ -347,6 +348,16 @@ private fun SpeedTestTargetRow(source: PreferredIpSpeedTestSource) {
             color = tokens.color.textTertiary,
             modifier = Modifier.padding(top = tokens.spacing.space1),
         )
+        // 图床覆盖条目（API 域名之外一并写进适用域名的那批），摆出来让用户知道测了哪些。
+        val extraHosts = source.hostsToApply().filter { !it.equals(source.target.host, ignoreCase = true) }
+        if (extraHosts.isNotEmpty()) {
+            Text(
+                "图床/子域一并覆盖：${extraHosts.joinToString("、")}",
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+                modifier = Modifier.padding(top = tokens.spacing.space1),
+            )
+        }
     }
 }
 
