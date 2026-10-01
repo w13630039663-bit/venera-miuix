@@ -105,11 +105,26 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
         // 复用设置页的落盘口径：写回偏好 + 立刻让 runtime 看到，清掉旧读数。
         // ⚠️ 域名要把这页动态推导出来的源域名**一并写进「适用域名」**：不然测通了哔咔/禁漫，
         // 运行期 plan() 一查适用表没有它们，照样走系统解析 —— 测了等于白测。手填条目保留。
+        val applied = PreferredIpRules.parseIps(ipsText).toSet()
         val mergedHosts = (targets.map { it.target.host } + PreferredIpRules.parseHosts(savedHosts))
             .distinct()
             .joinToString("\n")
         savePreferredIp(prefs, enabled = true, ips = ipsText, hosts = mergedHosts, clearReadings = true)
-        inUseIps = PreferredIpRules.parseIps(ipsText).toSet()
+        // ⚠️ 把刚才**实测**的读数补写回 runtime。probeIps 是只读的，savePreferredIp 又清了读数 ——
+        // 不补这一步，plan() 见空表对全部条目交 SystemDns，而系统 DNS 在不少网络下是被污染的，
+        // 第一波请求当场死（真机实证：旧「自动测速选点」能用、新「使用最优线路」不能用的根因）。
+        // 写回的是同一次探活的真实结果（与旧链路 probeAll 落点一致），不是伪造读数；
+        // 随后 finishProbeRound 标记本轮新鲜度，避免后台补探立刻把这批读数清了重探。
+        val now = System.currentTimeMillis()
+        lines.forEach { line ->
+            if (line.ip in applied) {
+                line.entries.forEach { e ->
+                    PreferredIpRuntime.recordProbe(e.entry, line.ip, e.latencyMs, e.passed, e.detail, now)
+                }
+            }
+        }
+        PreferredIpRuntime.finishProbeRound()
+        inUseIps = applied
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 

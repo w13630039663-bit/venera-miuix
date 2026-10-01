@@ -34,6 +34,14 @@ import okhttp3.Response
 internal class PreferredIpDns(private val delegate: Dns = Dns.SYSTEM) : Dns {
 
     override fun lookup(hostname: String): List<InetAddress> {
+        // 冷启动/清读数后的死锁修复：读数空表时 plan 永远交 SystemDns，回退拦截器因此永远
+        // 不触发，refreshInBackground 也就永远没人叫 —— 优选层整段静默失效（真机实证：
+        // 「旧自动选点」能用是因为它当场跑了 probeAll，「使用最优线路」写回后读数是空的）。
+        // 这里在「配置了但没读数/已过期」时发起后台补探（needsProbe 判据 + refreshing 单飞），
+        // 当前这一笔照旧走 delegate —— 补探不挡请求，探完后续请求自然钉上。
+        if (PreferredIpRuntime.needsProbe(System.currentTimeMillis())) {
+            PreferredIpProbe.refreshInBackground()
+        }
         val plan = PreferredIpRules.plan(hostname, PreferredIpRuntime.snapshot(), System.currentTimeMillis())
         if (plan is PreferredIpPlan.Preferred) {
             // 候选串在 PreferredIpRules.parseIps 里已经严格校验成 IP 字面量，
