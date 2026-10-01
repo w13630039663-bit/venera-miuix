@@ -27,7 +27,7 @@ fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         else -> "原来的收藏夹 $quickFavorite 已经不存在了，重新选一个"
     }
 
-    SettingsPage(title = "收藏", onBack = onBack, largeTitle = "本地收藏") {
+    SettingsPage(title = "收藏", onBack = onBack, largeTitle = "本地收藏", heroSubtitle = "存储位置 · 排序") {
         // 审计后删掉「在网络收藏前显示本地收藏」：键与 setter 都在，但没有任何消费者
         // （收藏面板顺序是硬编码的），留着就是一个改不动也无效的假开关。
         // 「点击收藏时」一并删除：需要新的行为分支与偏好，不属于补入口。

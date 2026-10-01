@@ -25,7 +25,7 @@ internal fun ReaderSettings(prefs: VeneraPreferences, onBack: () -> Unit, onImag
     val gap by prefs.pageGapDp.collectAsState()
     val autoInterval by prefs.autoScrollPageIntervalSec.collectAsState()
     val preload by prefs.preloadImageCount.collectAsState()
-    SettingsPage("阅读", onBack, largeTitle = "阅读设置") {
+    SettingsPage("阅读", onBack, largeTitle = "阅读设置", heroSubtitle = "翻页 · 预加载 · 音量键") {
         SettingsGroup("翻页与模式") {
             SettingsSelect("阅读模式", ReaderReadingMode.fromKey(mode).key,
                 listOf("HORIZONTAL_LTR" to "翻页（从左到右）", "HORIZONTAL_RTL" to "翻页（从右到左）",

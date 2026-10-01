@@ -111,7 +111,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         }
     }
 
-    SettingsPage(title = "画廊", onBack = onBack, largeTitle = "画廊设置") {
+    SettingsPage(title = "画廊", onBack = onBack, largeTitle = "画廊设置", heroSubtitle = "图片来源 · 缓存 · 保存") {
         // 两张卡本身已经是 VeneraCard，所以这一组只借标题、不再套一层 SettingsGroup 的 Card。
         SettingsGroupTitle("账号与密钥")
         GalleryAccountCard()

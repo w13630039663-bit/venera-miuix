@@ -31,7 +31,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             listOf(SearchViewModel.KEY_ALL to "全部源") +
             sources.map { it.key to it.name }
     }
-    SettingsPage("探索", onBack, largeTitle = "探索与卡片") {
+    SettingsPage("探索", onBack, largeTitle = "探索与卡片", heroSubtitle = "漫画源 · 关键词屏蔽") {
         SettingsGroup("漫画卡片") {
             SettingsSelect("漫画卡片显示模式", mode, listOf("detailed" to "详细（单列）", "brief" to "简洁（双列）"), { mode = it })
         }

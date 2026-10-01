@@ -25,7 +25,7 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
     val mode by guard.nsfwMaskMode.collectAsState()
     val blockAi by guard.blockAiComics.collectAsState()
     val rules by guard.rules.collectAsState()
-    SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤") {
+    SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤", heroSubtitle = "规则类型 · AI 标签") {
         SettingsGroup("隐私") {
             // FLAG_SECURE 由 MainActivity 订阅同一个偏好应用到窗口，拨一下当前界面即刻生效。
             SettingsToggle(

@@ -140,18 +140,12 @@ fun AppSettings(
             val res = withContext(Dispatchers.IO) { BackupTransfers.importBackupFrom(context, uri) }
             busy = false
             res.onSuccess {
-                Toast.makeText(
-                    context,
-                    "已恢复：历史 ${it.historyCount} 条，收藏 ${it.favoriteCount} 部，" +
-                        "统计 ${it.statsCount} 条，规则 ${it.guardRulesCount} 条" +
-                        (it.skippedNotice?.let { n -> "。$n" } ?: ""),
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(context, BackupTransfers.describeResult(it), Toast.LENGTH_LONG).show()
             }.onFailure { Toast.makeText(context, "导入失败：${it.message}", Toast.LENGTH_LONG).show() }
         }
     }
 
-    SettingsPage(title = "应用", onBack = onBack, largeTitle = "应用与数据") {
+    SettingsPage(title = "应用", onBack = onBack, largeTitle = "应用与数据", heroSubtitle = "备份 · 下载 · 日志") {
         SettingsGroup(title = "数据") {
             SettingsAction(
                 title = "本地漫画存储路径",
@@ -226,7 +220,8 @@ fun AppSettings(
             )
             SettingsAction(
                 "导入数据",
-                "选择 .venera 备份文件，覆盖上面那四类数据，不影响偏好设置和漫画源",
+                "选 .venera 或 .picadata 文件。本应用自己的备份全量恢复；" +
+                    "官方 Venera 与 PicaComic 的归档只能导入收藏和阅读历史",
                 enabled = !busy,
                 onClick = { importLauncher.launch(arrayOf("*/*")) }
             )

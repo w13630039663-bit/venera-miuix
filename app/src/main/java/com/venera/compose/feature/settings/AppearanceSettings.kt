@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.venera.compose.components.venera.VeneraTextField
@@ -41,7 +42,7 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val tagTranslation by prefs.tagTranslationMode.collectAsState()
     val colorSource by prefs.themeColorSource.collectAsState()
     val seedArgb by prefs.themeSeedColor.collectAsState()
-    SettingsPage("外观", onBack, largeTitle = "外观与主题") {
+    SettingsPage("外观", onBack, largeTitle = "外观与主题", heroSubtitle = "主题 · 材质 · 主图") {
         // 对照原版顶部手机模型，直接跟随真实 Miuix 色板。
         Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
             Column(Modifier.size(196.dp, 296.dp).clip(RoundedCornerShape(28.dp))
@@ -148,6 +149,46 @@ internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
+        }
+        // 设置页头图与名言卡小图的管理入口（hero 渲染在设置首页与各子页顶部）。
+        // 两条走同一条拷贝落盘链（SettingsHeroImageStore），这里只负责换/清。
+        SettingsGroup("设置主页图与名言卡") {
+            val context = LocalContext.current
+            val heroPath by prefs.settingsHeroPath.collectAsState()
+            val heroFile = remember(heroPath) { SettingsHeroImageStore.resolve(heroPath) }
+            val avatarPath by prefs.settingsQuoteAvatarPath.collectAsState()
+            val avatarFile = remember(avatarPath) { SettingsHeroImageStore.resolve(avatarPath) }
+
+            val pickHero = rememberSettingsImagePicker(SettingsHeroImageStore.KIND_HERO) { path ->
+                if (path != null) prefs.setSettingsHeroPath(path)
+            }
+            SettingsAction(
+                title = "更换主页头图",
+                summary = if (heroFile != null) "已设置：首页与全部子页共用这一张" else "未设置：页面保持默认大标题样式",
+            ) { pickHero() }
+            SettingsAction(
+                title = "恢复默认头图",
+                summary = "清除所选图片",
+                enabled = heroFile != null,
+            ) {
+                SettingsHeroImageStore.clear(context, SettingsHeroImageStore.KIND_HERO)
+                prefs.setSettingsHeroPath("")
+            }
+
+            val pickAvatar = rememberSettingsImagePicker(SettingsHeroImageStore.KIND_QUOTE_AVATAR) { path ->
+                if (path != null) prefs.setSettingsQuoteAvatarPath(path)
+            }
+            SettingsAction(
+                title = "更换名言卡小图",
+                summary = if (avatarFile != null) "已设置：名言卡左侧的小图" else "未设置：使用应用图标",
+            ) { pickAvatar() }
+            SettingsAction(
+                title = "名言卡小图恢复应用图标",
+                enabled = avatarFile != null,
+            ) {
+                SettingsHeroImageStore.clear(context, SettingsHeroImageStore.KIND_QUOTE_AVATAR)
+                prefs.setSettingsQuoteAvatarPath("")
+            }
         }
         // 审计后删除 4 条不打算做的灰行：返回动画样式、沉浸式背景、自定义壁纸、模糊强度。
         // 壁纸/背景体系是独立工程，缺口清单见 settings-audit-2026-09.md，不拿设置页当 TODO。
