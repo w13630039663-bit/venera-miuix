@@ -179,7 +179,7 @@ function encodePng(width, height, rgba) {
 
 function icoToPng(ico) {
   if (ico.readUInt16LE(0) !== 0 || ico.readUInt16LE(2) !== 1) {
-    throw new Error('yande.re 的 favicon 不是 ICO 头 —— 站方改了格式，需要人工复核');
+    throw new Error('favicon 不是 ICO 头 —— 站方改了格式，需要人工复核');
   }
   const entries = ico.readUInt16LE(4);
   if (entries !== 1) {
@@ -205,9 +205,15 @@ function icoToPng(ico) {
   }
   const pixelOffset = 40 + paletteSize * 4;
   const rowBytes = Math.ceil((width * bitCount) / 32) * 4;
+  // AND 掩码紧跟在 XOR 位图之后，1bpp、每行 4 字节对齐；位=1 表示该像素透明。
+  // yande.re 那枚掩码全 0（256 像素全不透明，实测），safebooru 这枚**有**透明像素
+  // （16×16 里 72 个）—— 不认掩码的话透明区会被调色板第 0 项染成黑块。
+  const maskOffset = pixelOffset + rowBytes * height;
+  const maskRowBytes = Math.ceil(width / 32) * 4;
   const rgba = Buffer.alloc(width * height * 4);
   for (let y = 0; y < height; y++) {
     const srcRow = height - 1 - y;   // BMP 自底向上
+    const maskRow = ico.subarray(offset + maskOffset + y * maskRowBytes, offset + maskOffset + (y + 1) * maskRowBytes);
     for (let x = 0; x < width; x++) {
       const index = bmp[pixelOffset + srcRow * rowBytes + x];
       const [r, g, b] = palette[index] ?? [0, 0, 0];
@@ -215,7 +221,8 @@ function icoToPng(ico) {
       rgba[o] = r;
       rgba[o + 1] = g;
       rgba[o + 2] = b;
-      rgba[o + 3] = 255;   // 站方这枚 256 像素全不透明，没有 AND 掩码要处理
+      const transparent = ((maskRow[x >> 3] >> (7 - (x & 7))) & 1) === 1;
+      rgba[o + 3] = transparent ? 0 : 255;
     }
   }
   return encodePng(width, height, rgba);
@@ -227,4 +234,22 @@ fs.mkdirSync(DRAWABLE_NODPI, { recursive: true });
 const yandereTarget = path.join(DRAWABLE_NODPI, 'ic_source_yandere.png');
 fs.writeFileSync(yandereTarget, png);
 console.log(`  写 ${path.relative(ROOT, yandereTarget)}（${png.length} B）`);
+
+/*
+ * ── Safebooru：favicon.ico → 16×16 RGBA PNG ──────────────────────────────────────────
+ *
+ * 与 yande.re 同一路数（单条目 ICO、8bpp 调色板、BMP 位图），实测（2026-10-01）：
+ * 恰好 1 条目 16×16。**与 yande.re 的关键差别**：这枚**有透明像素**（AND 掩码里
+ * 72/256 位置 1，黑底之外是 Danbooru 风格的灰棕笔触）—— 上面 icoToPng 已统一改成
+ * 尊重掩码；yande.re 掩码全 0，产物逐字节不变。
+ * 产物同样落 `drawable-nodpi`：16 像素就是 16 像素，不许系统按密度预缩。
+ * 组件侧（VeneraGallerySourceMark）给它铺白色底板 —— 与 Gelbooru 同一条理由：
+ * 站方这枚图形是为浅色浏览器标签栏设计的。
+ */
+const SAFEBOORU_ICO = 'https://safebooru.donmai.us/favicon.ico';
+const safebooruIco = fs.readFileSync(fetch(SAFEBOORU_ICO, path.join(CACHE, 'safebooru-favicon.ico')));
+const safebooruPng = icoToPng(safebooruIco);
+const safebooruTarget = path.join(DRAWABLE_NODPI, 'ic_source_safebooru.png');
+fs.writeFileSync(safebooruTarget, safebooruPng);
+console.log(`  写 ${path.relative(ROOT, safebooruTarget)}（${safebooruPng.length} B）`);
 console.log('完成。');

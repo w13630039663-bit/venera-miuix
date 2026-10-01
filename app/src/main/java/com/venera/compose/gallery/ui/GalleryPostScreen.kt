@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -43,8 +45,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -92,6 +92,7 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.size.Precision
+import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.data.prefs.VeneraPreferences
@@ -107,12 +108,14 @@ import com.venera.compose.gallery.data.GalleryTagCategories
 import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.YandeReClient
+import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryAutoPlay
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
 import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.security.guard.ContentGuardManager
@@ -122,7 +125,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.math.roundToInt
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -268,12 +270,56 @@ fun GalleryPostScreen(
     // 音量键要走进来，得先有焦点。弹层开着的时候不抢 —— 那会儿按键该归弹层。
     LaunchedEffect(infoOpen) { if (!infoOpen) focusRequester.requestFocus() }
 
+    // ── 连播进度线（§一）──
+    // 它与计时**同一条钟**（见下面那个 effect 的头注）：线走到头的那一刻就是翻页那一刻。
+    // 它每帧都变，所以只读进绘制 lambda（`GalleryAutoPlayProgressLine(progress = { … })`），
+    // 不在组合期取值 —— 取值会让整页每帧重走一遍组合。
+    val autoPlayProgress = remember(site.name, postId) { Animatable(0f) }
+    // 摆不摆这条线，判据与 `shouldAdvance` **完全一致**：不会翻的时候摆线就是说假话
+    // （视频页 / 放大中 / 弹层开着 / 已经到最后一张）。
+    val autoPlayRunning = GalleryAutoPlay.shouldAdvance(
+        seconds = autoPlaySecNow,
+        infoOpen = infoOpen,
+        isVideo = current?.isVideo == true,
+        zoomed = zoomedIn,
+        currentPage = pagerState.currentPage,
+        pageCount = pages.size,
+    )
+
     // ── 自动连播（C1.3）：key 带着当前页 = 翻一页计时器自己重来，不做"暂停后恢复"那份额外状态 ──
+    // **等待与进度线是同一条钟**（§一，2026-10-01）：老写法是 `delay()` 走一条、屏上那条线再走一条，
+    // 两条钟各自积分，线走到头与真正翻页之间就会漂。大图页 hero 那一轮刚栽过一次同形的坑
+    // （交叉淡入挂在弹簧的百分比上 —— 弹簧的百分比不是路程，见 gallery-hero-transition-*.md §十七），
+    // 所以这里一开始就只留一条：等待本身就是这条动画，线走到头就是翻页那一刻。
     LaunchedEffect(pagerState.currentPage, autoPlaySecNow, infoOpen, zoomedIn, current?.isVideo, pages.size) {
-        if (autoPlaySecNow <= 0) return@LaunchedEffect
-        delay(autoPlaySecNow * 1000L)
+        // 每条出口都必须把线归零：留在半路的线读起来是"暂停在六成"，
+        // 而它其实已经重来或不走了。
+        if (autoPlaySecNow <= 0) {
+            autoPlayProgress.snapTo(0f)
+            return@LaunchedEffect
+        }
+        // **起线之前先判一次**：不会翻的那几档（视频页 / 放大中 / 弹层开着 / 到底了）线根本不该出现 ——
+        // 起一条"还有 5 秒翻页"的线却永远不翻，比不摆线更坏。
+        if (!GalleryAutoPlay.shouldAdvance(
+                seconds = autoPlaySecNow,
+                infoOpen = infoOpen,
+                isVideo = current?.isVideo == true,
+                zoomed = zoomedIn,
+                currentPage = pagerState.currentPage,
+                pageCount = pages.size,
+            )) {
+            autoPlayProgress.snapTo(0f)
+            return@LaunchedEffect
+        }
+        autoPlayProgress.snapTo(0f)
+        autoPlayProgress.animateTo(
+            targetValue = 1f,
+            // 线性：它是计时器不是缓动 —— 这条线撒谎的地方只有一处，就是"还有多久"。
+            animationSpec = tween(durationMillis = autoPlaySecNow * 1000, easing = LinearEasing),
+        )
         // 等着的这几秒里人可能已经放大、打开弹层、或自己翻走了 —— 走之前**再判一次**，
         // 按旧读数把人翻走是最难查的那类"它自己在动"。
+        // 上面那一判管"起不起线"，这一判管"翻不翻"（key 覆盖不到的状态由它兜底）。
         if (!GalleryAutoPlay.shouldAdvance(
                 seconds = autoPlaySecNow,
                 infoOpen = infoOpen,
@@ -307,19 +353,59 @@ fun GalleryPostScreen(
     var tagCategories by remember(currentUid) { mutableStateOf<Map<String, Int>?>(null) }
     var fallbackArtists by remember(currentUid) { mutableStateOf<Set<String>>(emptySet()) }
     var tagTranslations by remember(currentUid) { mutableStateOf<Map<String, String>>(emptyMap()) }
-    LaunchedEffect(currentUid, infoOpen) {
+
+    /*
+     * 离线那两样**不等面板**：词典在本地（SQLite 查一趟），早取早显示，一分请求都不花。
+     *
+     * 为什么这一半要提前：**画师的外链与头像现在由这一页在打开时取**（用户 2026-10-01 第 2 条），
+     * 而"哪几个名字算画师"是取数的输入 —— 站方分类那一笔要等面板开，词典这份不用。
+     * 两套判据混用是安全的：兜底表只兜画师一栏，且"判成画师而站方不判"实测 0 例，
+     * 所以先按词典取一轮，站方分类回来后再把多出来的那几位补上（下面第三个 effect）。
+     */
+    LaunchedEffect(currentUid) {
         val post = current ?: return@LaunchedEffect
-        // 面板没开时不做这件事：一次翻页浏览都只为了看画，没有谁在等一个分组。
-        if (!infoOpen) return@LaunchedEffect
         val dictionary = GalleryTagDictionary.getInstance(context)
         tagTranslations = dictionary.translations(post.tagList)
+        fallbackArtists = dictionary.artistNames(post.tagList)
+    }
+
+    // 站方分类那一笔仍然**只在你真要那一页信息时才发**：一次翻页浏览都只为了看画，
+    // 没有谁在等一个分组。
+    LaunchedEffect(currentUid, infoOpen) {
+        val post = current ?: return@LaunchedEffect
+        if (!infoOpen) return@LaunchedEffect
         val categories = GalleryTagCategories.getInstance(context).fetch(post.pageUrl)
         tagCategories = categories
-        // **兜底只在站方判定没拿到时才查**，而且只兜画师一栏：那份离线表对 yande.re 只有 73%
-        // 的名称覆盖，拿它补满五桶会把两三成标签挂进错桶；而它"判成画师而站方不判"实测 0 例。
-        // 两套判据混在同一桶里是最难发现的一类错，所以这里宁可二选一。
-        fallbackArtists = if (categories.isNullOrEmpty()) dictionary.artistNames(post.tagList)
-        else emptySet()
+        // **兜底只在站方判定没拿到时才参与**：拿到分类就把词典那一份撤掉（两者的作用域必须互斥，
+        // 否则两套判据会同时进 [galleryArtistNames]，标签墙里会出现"站方判通用、词典判画师"这种谁都解释不了的分组）。
+        // 离线那一次已经把 `tagTranslations` 备好了，这里只管分类与"撤兜底"。
+        if (!categories.isNullOrEmpty()) fallbackArtists = emptySet()
+    }
+
+    /*
+     * ── 画师署名：**打开这一张图时就取**（用户 2026-10-01 第 2 条）──
+     *
+     * 取什么由 [galleryArtistNames] 决定 —— 与信息卡里那一块**同一个函数**
+     * （两处各写一遍"谁算画师"迟早会对不上：那边会多出几个没取过的名字，面板一开又是当场等）。
+     * 打开时它先按词典那几位开跑（离线、即时），站方分类回来之后 key 变了、effect 重启，
+     * 补取多出来的那几位 —— 已经进过缓存的名字不会重发。
+     */
+    val artistNames = remember(current, tagCategories, fallbackArtists) {
+        current?.let { galleryArtistNames(it.tagList, tagCategories, fallbackArtists) }.orEmpty()
+    }
+    var artistCredits by remember(currentUid) { mutableStateOf<Map<String, ArtistCredits>>(emptyMap()) }
+    LaunchedEffect(currentUid, artistNames) {
+        val post = current ?: return@LaunchedEffect
+        artistNames.forEach { name ->
+            val cached = GalleryArtistCreditsCache.peek(post.site, name, post.source)
+            if (cached != null) {
+                artistCredits = artistCredits + (name to cached)
+                return@forEach
+            }
+            val fetched = loadArtistCredits(context, post.site, name, post.source)
+            GalleryArtistCreditsCache.remember(post.site, name, post.source, fetched)
+            artistCredits = artistCredits + (name to fetched)
+        }
     }
 
     // ── 收藏 ──
@@ -385,8 +471,20 @@ fun GalleryPostScreen(
      * 所以各页都会陆续回报，按 uid 存才分得清谁是谁。
      */
     val frameBounds = remember(site, postId) { mutableStateMapOf<String, Rect>() }
-    /** 打开时那一张的 uid —— 去程的落点、以及"垫帧只垫它"那几条都按它认。 */
-    val initialUid = remember(wall, site, postId) { wall.getOrNull(initialIndex)?.uid }
+    /**
+     * 打开时那一张的 uid —— 去程的落点、以及"垫帧只垫它"那几条都按它认。
+     *
+     * ⚠️ 它**就是路由里那一条**（`站点键:id`，与 [GalleryViewerQueue] 认领时用的是同一条算式），
+     * 不能写成 `wall.getOrNull(initialIndex)?.uid` —— 那一串在**没交队列的入口**上是空列表，
+     * 于是它成了 `null` ⇒ 落点那一路 `await` 的对象永远不存在 ⇒ 吃满超时预算、一路退回
+     * "整页抬上来"。用户 2026-10-01 第 4 条报的"收藏页点图没有飞入、返回却有"就是这一条：
+     * 返回程查的是**当前这张**的 uid（[GalleryFlyIn.cardBoundsOf]），与有没有交队列无关，
+     * 所以那一半一直是好的 —— **两半的判据不一致**才是真成因。
+     *
+     * 墙里认不认得出这一条，是 `pages` 那一层的事（认不出就退回单张模式、自己补取），
+     * 与"这一页要打开哪一个 uid"无关：那是路由已经说死了的。
+     */
+    val initialUid = remember(site, postId) { "${site.routeKey}:$postId" }
     val entrance = remember { Animatable(1f) }
     val fly = remember { Animatable(0f) }
     /**
@@ -455,8 +553,12 @@ fun GalleryPostScreen(
         )
     }
     LaunchedEffect(site, postId) {
-        // 压根没有卡片当起点（深链、收藏页、反搜那些入口）：没有什么可等的，直接抬页。
+        // 压根没有"墙上那一张卡"当起点（深链、反搜那些入口）：没有什么可等的，直接抬页。
         // 这一条短路存在的理由是**别让人家为一笔永远不会来的落点白等一笔预算**。
+        // ⚠️ 判据只能是 [GalleryFlyIn.origin]（点击那一刻同步写的那个矩形），**不是"入口姓什么"**：
+        // 收藏页曾经被写在这一串里（它当年确实没飞），但它今天与画廊一级走同一条路 ——
+        // 交队列 + 截帧都做了，只是 `initialUid` 当时取的是墙里的那一条（空 → null），
+        // 落点永远等不到（2026-10-01 第 4 条）。别再按入口名去猜这一条。
         if (GalleryFlyIn.origin == null) {
             flightDone = true
             handoffDone = true
@@ -492,7 +594,7 @@ fun GalleryPostScreen(
         entrance.snapTo(1f)
         if (!flying) {
             // 退路：整页从屏幕下沿抬上来。两种"飞不起来"都归这里 —— 压根没有卡片当起点
-            // （深链、收藏页、反搜）、`PixelCopy` 没给像素、落点超过预算才量出来。
+            //（深链、反搜）、`PixelCopy` 没给像素、落点超过预算才量出来。
             // 半路把已经起飞的飞行体停在原地，比一开始就不飞难看。
             entranceMode = Entrance.RISE
             flightDone = true
@@ -564,6 +666,7 @@ fun GalleryPostScreen(
         val result = when (site) {
             GallerySite.YANDERE -> YandeReClient.getInstance(context).fetchById(postId)
             GallerySite.GELBOORU -> GelbooruClient.getInstance(context).fetchById(postId)
+            GallerySite.SAFEBOORU -> SafebooruClient.getInstance(context).fetchById(postId)
         }
         result.onSuccess { loaded ->
             // 取到了空 = 站方没有这条（被删/合并），要说话，不要留一屏黑。
@@ -956,6 +1059,23 @@ fun GalleryPostScreen(
                         Spacer(modifier = Modifier.height(VeneraSpacing.bottomBarClearance))
                     }
 
+                    // ── 连播进度线（§一）──
+                    // 摆不摆只看 `autoPlayRunning`（与连播判据同一条），**不看 chrome 显隐**：
+                    // 它属内容层，chrome 藏起来看图时正是最该在的那一条。
+                    if (autoPlayRunning) {
+                        GalleryAutoPlayProgressLine(
+                            progress = { autoPlayProgress.value },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(
+                                    start = tokens.spacing.screenHorizontal,
+                                    end = tokens.spacing.screenHorizontal,
+                                    bottom = tokens.spacing.space2,
+                                ),
+                        )
+                    }
+
                     // 页码跟着 chrome 一起显隐，位置在左上角（底部四个动作已经占满那一条）。
                     AnimatedVisibility(
                         visible = pages.size > 1 && showChrome && !zoomedIn,
@@ -1026,7 +1146,8 @@ fun GalleryPostScreen(
                     VeneraEmptyView(
                         title = "这张图取不到",
                         message = error.orEmpty(),
-                        icon = Icons.Outlined.Image,
+                        // 与「最新流加载失败」同一条：这一档说"没取回来"，不是"这儿有图"。
+                        tone = VeneraEmptyTone.Failed,
                         actionText = "重试",
                         onAction = { retryTick++ },
                     )
@@ -1177,8 +1298,14 @@ fun GalleryPostScreen(
                 post = current,
                 categories = tagCategories,
                 fallbackArtistNames = fallbackArtists,
+                // 这一份在**打开这一张图**时就开取了（见上面那个 effect），面板打开时通常已经到位。
+                artistCredits = artistCredits,
                 tagTranslations = tagTranslations,
                 imageLoader = imageLoader,
+                // 底部那条「下载原图」与底栏那枚是**同一个动作**：进度与 toast 都归这一层持有，
+                // 面板只负责显示（两处各存一个布尔，就会出现"底部条在转圈、底栏那颗还能点"）。
+                saving = saving,
+                onDownload = { download(current) },
                 onDismiss = { infoOpen = false },
                 // 画师行那一块整块可点 → 介绍页。它**不离开本页**（不同于点标签那一条），
                 // 所以不写交接槽、也不 finish：介绍页是又压上来的一级，返回就回到这张图。

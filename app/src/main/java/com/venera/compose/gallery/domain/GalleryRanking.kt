@@ -48,6 +48,7 @@ object GalleryRankings {
 
     private const val YANDERE_SCORE = "order:score"
     private const val GELBOORU_SCORE = "sort:score:desc"
+    private const val SAFEBOORU_SCORE = "order:score"
 
     /** 时间档的窗口起点（按 UTC 日切，与站方 `created_at` 同一时区）；不设窗口的档返回 null。 */
     fun windowStart(ranking: GalleryRanking, todayUtc: LocalDate): LocalDate? = when (ranking) {
@@ -68,7 +69,7 @@ object GalleryRankings {
      * 才不会出"点得动、发出去却是全站结果"那种假开关。
      */
     fun supports(site: GallerySite, ranking: GalleryRanking): Boolean =
-        site == GallerySite.YANDERE || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL
+        site == GallerySite.YANDERE || site == GallerySite.SAFEBOORU || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL
 
     /**
      * 一个**来源**（可能两条腿）能不能摆这一档：每一条腿都得真。
@@ -170,10 +171,15 @@ object GalleryRankings {
         todayUtc: LocalDate,
     ): String? {
         if (ranking == GalleryRanking.NEWEST) return null
-        if (ranking == GalleryRanking.ALL) return if (site == GallerySite.GELBOORU) GELBOORU_SCORE else YANDERE_SCORE
+        if (ranking == GalleryRanking.ALL) return when (site) {
+            GallerySite.GELBOORU -> GELBOORU_SCORE
+            GallerySite.SAFEBOORU -> SAFEBOORU_SCORE
+            else -> YANDERE_SCORE
+        }
         val (start, end) = windowBounds(ranking, anchor, todayUtc) ?: return null
         return when (site) {
             GallerySite.YANDERE -> "date:$start..$end $YANDERE_SCORE"
+            GallerySite.SAFEBOORU -> "date:$start..$end $SAFEBOORU_SCORE"
             // Gelbooru 到不了这一支：[supports] 已经把它的四档时间窗判死（菜单不列 + 状态层落回默认档）。
             GallerySite.GELBOORU -> null
         }

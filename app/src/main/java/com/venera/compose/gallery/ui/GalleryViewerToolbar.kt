@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraSlider
@@ -231,3 +235,47 @@ fun GalleryViewerToolbar(
  */
 private const val AUTOPLAY_MIN_SEC = 1
 private const val AUTOPLAY_MAX_SEC = 15
+
+/**
+ * 连播那条**进度线** —— "还有多久翻到下一张"在屏上唯一的说法。
+ *
+ * ## 为什么是一条线，不是一个秒数
+ * 连播开着的时候人正在看图，屏上不该多一个需要读的数字；线长本身就是读数。
+ * 走到头 = 翻页，线从 0 重新长。
+ *
+ * ## 它与连播判据是**同一条**判据
+ * 线出现的含义是"这一张会自动翻走"，所以摆不摆跟 [GalleryAutoPlay.shouldAdvance] 完全一致：
+ * 视频页 / 放大中 / 弹层开着时**根本不摆** —— 那时不会翻，摆一条线就是在说假话。
+ *
+ * ## 为什么收 lambda 而不是 Float
+ * 它每帧都变。当数值参数传进来会让整页每帧重走一遍组合；收函数则只有这一块重绘
+ * （与 [GalleryPostScreen] 里 `fly.value` / `handoff.value` 同一条口径）。
+ *
+ * ## 位置
+ * 贴底、落在手势条之上（`navigationBarsPadding`），左右取与底栏同一档 `screenHorizontal` 缩进。
+ * 它属于**内容层**：不跟 chrome 一起显隐（chrome 藏起来看图时，它正是最该在的那一条）。
+ * 底栏那颗 pill 靠左、线贴底，两者在同一屏上不会叠。
+ */
+@Composable
+internal fun GalleryAutoPlayProgressLine(
+    progress: () -> Float,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = VeneraTokens
+    // ⚠️ `tokens.shape.*` 是**圆角半径**（Dp），不是 Shape —— `clip()` 要的是 Shape，得自己包一层。
+    // 它同时是 @Composable getter（绘制期读不到），所以和颜色、厚度一起在组合期取到局部再进 lambda。
+    val shape = RoundedCornerShape(tokens.shape.small)
+    val color = tokens.color.primary
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(tokens.spacing.autoPlayProgressThickness)
+            .clip(shape)
+            .drawBehind {
+                val p = progress().coerceIn(0f, 1f)
+                // 0 时不画：刚翻到新页那一刻是一条空线，不该先闪一个点。
+                if (p <= 0f) return@drawBehind
+                drawRect(color = color, size = Size(size.width * p, size.height))
+            },
+    )
+}

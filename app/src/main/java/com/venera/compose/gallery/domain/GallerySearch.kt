@@ -75,6 +75,10 @@ object GallerySearch {
     fun tagBudget(site: GallerySite): Int? = when (site) {
         GallerySite.GELBOORU -> null
         GallerySite.YANDERE -> null
+        // Safebooru 与 Danbooru 同一内核（官方全年龄镜像，匿名访问）—— 匿名档
+        // `tags=` 上限 2 枚，超了站方直接 422。与 Danbooru 账号那套
+        // （匿名/Restricted/Member=2，见 GallerySearchViewModel 的 tagsPerSearch）同源。
+        GallerySite.SAFEBOORU -> 2
     }
 
     /**

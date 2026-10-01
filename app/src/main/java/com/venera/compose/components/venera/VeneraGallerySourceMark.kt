@@ -89,5 +89,23 @@ fun VeneraGallerySourceMark(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+
+        GallerySite.SAFEBOORU -> Box(
+            modifier = modifier
+                .size(size)
+                .clip(shape)
+                // 与 Gelbooru 同一条理由：safebooru.donmai.us 的 favicon 是 Danbooru
+                // 系的纸箱标，带透明像素（由 build_source_icons.mjs 尊重 AND 掩码转出），
+                // 站方这枚图形是为浅色浏览器标签栏设计的 —— 白底托住它，压在封面上不散。
+                .background(Color.White),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_source_safebooru),
+                contentDescription = site.displayName,
+                tint = Color.Unspecified,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }

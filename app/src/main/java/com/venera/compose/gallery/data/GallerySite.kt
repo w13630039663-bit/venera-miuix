@@ -29,6 +29,24 @@ enum class GallerySite(
      * UI 在未配账号时必须**直说这件事**，不能让它长成"这一站今天没图"。
      */
     GELBOORU("Gelbooru", "https://gelbooru.com/index.php?page=post&s=view&id=", "gelbooru", "gelbooru.com"),
+
+    /**
+     * Safebooru：Danbooru 官方的**全年龄镜像**，与 [GELBOORU] 同属 Danbooru 系
+     * （`/posts.json`、`tag_string_*`、`media_asset.variants` 都是同一套字形），
+     * 但它是**匿名可用**的 —— 不像 Gelbooru 那样 DAPI 匿名一律 401。
+     *
+     * ⚠️ 与 [GELBOORU] 的关键差别（都实测过，见 `cloudflare-ip-gallery-sources-2026-10-01.md`）：
+     * - 它**走 Cloudflare**（解析到 `104.26.x` / `104.21.x` CF 段），国内裸连可达；
+     *   而 `danbooru.donmai.us` 本身**不走 CF**、国内不可达。
+     *   也就是说：**同一个 donmai.us，全年龄那个镜像能直连，主站不能** ——
+     *   这正是"封锁按 hostname、不按 IP"那条实测的又一个例证。
+     * - 图床 `cdn.donmai.us` 同样直连可达（实测 TCP 443 通），所以图片能真的显示出来，
+     *   不是"API 通但图加载不出来"那种半残状态。
+     * - 分级是 Danbooru 系的**单字母** `g`/`s`/`q`/`e`（同 yande.re 字形，
+     *   与 Gelbooru 的单词 `general`/`sensitive` 不同）。
+     * - 它有 `fav_count` 与 `tag_string_*` —— 现有另两站都没有，见 [GalleryPost] 的更新注释。
+     */
+    SAFEBOORU("Safebooru", "https://safebooru.donmai.us/posts/", "safebooru", "safebooru.donmai.us"),
     ;
 
     companion object {

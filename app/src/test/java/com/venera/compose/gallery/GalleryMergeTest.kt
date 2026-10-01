@@ -47,9 +47,15 @@ class GalleryMergeTest {
     private fun mix(
         yandere: List<GalleryPost> = emptyList(),
         gelbooru: List<GalleryPost> = emptyList(),
+        safebooru: List<GalleryPost> = emptyList(),
         seed: Long = 20260925L,
     ) = GalleryMerge.mix(
-        pools = mapOf(GallerySite.YANDERE to yandere, GallerySite.GELBOORU to gelbooru),
+        // 生产端契约：每站一个键，这一轮缺席的站给空表（GalleryMerge.mix 按 entries 逐站取）。
+        pools = mapOf(
+            GallerySite.YANDERE to yandere,
+            GallerySite.GELBOORU to gelbooru,
+            GallerySite.SAFEBOORU to safebooru,
+        ),
         seed = seed,
     )
 
@@ -183,7 +189,7 @@ class GalleryMergeTest {
     }
 
     @Test
-    fun `两站都没有内容时是失败而不是空态`() {
+    fun `全部站都没有内容时是失败而不是空态`() {
         assertTrue(mix().isFailure)
     }
 

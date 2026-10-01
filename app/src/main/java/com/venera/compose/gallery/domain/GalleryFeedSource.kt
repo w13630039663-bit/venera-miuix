@@ -5,6 +5,7 @@ import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.YandeReClient
+import com.venera.compose.gallery.data.SafebooruClient
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -68,18 +69,23 @@ class GalleryFeedSource private constructor(context: Context) {
 
     suspend fun loadDaily(seed: Long): Result<Daily> {
         val date = yesterdayString()
-        val (yande, gelbooru) = coroutineScope {
+        val (yande, gelbooru, safebooru) = coroutineScope {
             val y = async { GalleryLegGuard.guard(GallerySite.YANDERE) { YandeReClient.getInstance(appContext).fetchDailyPopular() } }
             val g = async { GalleryLegGuard.guard(GallerySite.GELBOORU) { GelbooruClient.getInstance(appContext).fetchTopScored() } }
-            y.await() to g.await()
+            val s = async { GalleryLegGuard.guard(GallerySite.SAFEBOORU) { SafebooruClient.getInstance(appContext).fetchTopScored() } }
+            Triple(y.await(), g.await(), s.await())
         }
-        val failures = listOf(yande, gelbooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
-        val pools = mapOf(GallerySite.YANDERE to yande.posts, GallerySite.GELBOORU to gelbooru.posts)
-        // 两站都没给上内容时，merge 只能报一句笼统的"没有可用内容"，真正的原因（401 / 超时 /
+        val failures = listOf(yande, gelbooru, safebooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
+        val pools = mapOf(
+            GallerySite.YANDERE to yande.posts,
+            GallerySite.GELBOORU to gelbooru.posts,
+            GallerySite.SAFEBOORU to safebooru.posts,
+        )
+        // 三站都没给上内容时，merge 只能报一句笼统的"没有可用内容"，真正的原因（401 / 超时 /
         // 池子空 / 返回非 JSON）就死在这里了 —— 优先把原因交出去。
-        if (yande.posts.isEmpty() && gelbooru.posts.isEmpty()) {
+        if (yande.posts.isEmpty() && gelbooru.posts.isEmpty() && safebooru.posts.isEmpty()) {
             val notice = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" }
-            return Result.failure(IllegalStateException(notice.ifBlank { "两站都没有返回内容" }))
+            return Result.failure(IllegalStateException(notice.ifBlank { "三站都没有返回内容" }))
         }
         return GalleryMerge.mix(pools, seed).map {
             Daily(merged = it, failures = failures, date = date, pools = pools)

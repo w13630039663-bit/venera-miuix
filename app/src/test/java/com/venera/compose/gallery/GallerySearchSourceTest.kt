@@ -26,9 +26,9 @@ import org.junit.Test
 class GallerySearchSourceTest {
 
     @Test
-    fun `全部档展开成两站且顺序按站表定死`() {
+    fun `全部档展开成全部站且顺序按站表定死`() {
         assertEquals(
-            listOf(GallerySite.YANDERE, GallerySite.GELBOORU),
+            listOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.SAFEBOORU),
             GallerySearchSource.ALL.availableLegs(hasGelbooruAccount = true),
         )
     }
@@ -47,9 +47,10 @@ class GallerySearchSourceTest {
     }
 
     @Test
-    fun `未配账号时可用腿只剩 yande 且缺席那条腿说得出原因`() {
+    fun `未配账号时可用腿只剩免账号的两站 且缺席那条腿说得出原因`() {
         val legs = GallerySearchSource.ALL.availableLegs(hasGelbooruAccount = false)
-        assertEquals(listOf(GallerySite.YANDERE), legs)
+        // Safebooru 匿名可用（Danbooru 全年龄镜像），与 yande.re 一样不需要账号。
+        assertEquals(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), legs)
 
         val missing = GallerySearchSource.ALL.missingLegs(hasGelbooruAccount = false)
         assertEquals(setOf(GallerySite.GELBOORU), missing.keys)
@@ -117,19 +118,23 @@ class GallerySearchSourceTest {
     }
 
     @Test
-    fun `分段器那三档的顺序是全部在最前 后面按站表序`() {
-        // 默认档必须落在 index 0（用户拍板「全部」为默认），两站档跟在后面按站表序。
+    fun `分段器那四档的顺序是全部在最前 后面按站表序`() {
+        // 默认档必须落在 index 0（用户拍板「全部」为默认），单站档跟在后面按站表序。
         // 这一条锁的是 UI 直接照抄的那个列表：顺序漂了，分段器上「全部」就会跑到中间。
         assertEquals(
             listOf(
                 GallerySearchSource.ALL,
                 GallerySearchSource.single(GallerySite.YANDERE),
                 GallerySearchSource.single(GallerySite.GELBOORU),
+                GallerySearchSource.single(GallerySite.SAFEBOORU),
             ),
             GallerySearchSource.options,
         )
-        assertEquals(listOf("全部", "yande.re", "Gelbooru"), GallerySearchSource.options.map { it.label })
-        // 三档都能被 indexOf 认回来 —— 认不回来分段器就会恒选中第一档。
+        assertEquals(
+            listOf("全部", "yande.re", "Gelbooru", "Safebooru"),
+            GallerySearchSource.options.map { it.label },
+        )
+        // 各档都能被 indexOf 认回来 —— 认不回来分段器就会恒选中第一档。
         GallerySearchSource.options.forEachIndexed { i, source ->
             assertEquals(i, GallerySearchSource.options.indexOf(source))
         }

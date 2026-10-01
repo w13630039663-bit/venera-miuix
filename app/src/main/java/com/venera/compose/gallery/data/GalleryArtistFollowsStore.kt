@@ -19,9 +19,10 @@ import kotlinx.serialization.json.Json
  * 与 domain 那个 [GalleryArtistFollow] 分开是有意的：磁盘格式要能向后兼容（加字段给默认值就行），
  * 而领域形状不该被磁盘绑住。这里存的也只有**站别 + 名字 + 关注时刻**三样。
  *
- * 刻意**不存** pixiv 用户编号和头像地址：那两个是会变的（实测拿旧编号去要头像，站方回
- * `error=true`；图片地址也是会过期的临时档）。存了就等于承诺"离线也能看到头像"，
- * 而那条承诺兑现不了 —— 所以每次面板打开现取。
+ * 这份名单里刻意**不**掺 pixiv 用户编号 —— 实测拿旧编号去要头像，站方回 `error=true`，
+ * 编号是会失效的。头像**地址**从 2026-10-01 起单独落盘了（见 [GalleryArtistAvatarStore]，
+ * 那里存的是不会失效的静态路径而不是编号），但仍不写进这一份名单：
+ * 名单是用户攒下的关系，地址档是可随时重取的结果，两者混在一份文件里谁也清不掉谁。
  */
 @Serializable
 private data class ArtistFollowEntry(

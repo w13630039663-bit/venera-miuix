@@ -154,4 +154,5 @@ val GallerySite.sourceMarkLetter: String
     get() = when (this) {
         GallerySite.YANDERE -> "Y"
         GallerySite.GELBOORU -> "G"
+        GallerySite.SAFEBOORU -> "S"
     }

@@ -149,6 +149,7 @@ internal fun parseSauceNao(body: String, allowNsfw: Boolean): SauceNaoPage {
         val ref = listOf(
             GallerySite.YANDERE to data.longOrNull("yandere_id"),
             GallerySite.GELBOORU to data.longOrNull("gelbooru_id"),
+            GallerySite.SAFEBOORU to data.longOrNull("safebooru_id"),
         ).firstOrNull { it.second != null && it.second!! > 0L }
             ?.let { GallerySiteRef(it.first, it.second!!) }
 

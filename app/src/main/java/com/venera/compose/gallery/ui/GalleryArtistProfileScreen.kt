@@ -60,6 +60,7 @@ import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.PixivClient
 import com.venera.compose.gallery.data.YandeReClient
+import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import com.venera.compose.gallery.domain.GalleryArtistLink
 import com.venera.compose.gallery.domain.GalleryArtistLinkPlatform
@@ -171,6 +172,8 @@ internal fun GalleryArtistProfileScreen(
                 YandeReClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
             GallerySite.GELBOORU ->
                 GelbooruClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+            GallerySite.SAFEBOORU ->
+                SafebooruClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
         }
         outcome.onFailure { failure ->
             // "这一站没答上"与"这位只有这几张"是两句话，前者**在屏上也要说出来**（那是真话），
@@ -340,6 +343,9 @@ internal fun GalleryArtistProfileScreen(
             site = site,
             onOpen = { card, rect ->
                 // 与墙上那张卡（`GalleryPostCard`）同一个动作：趁卡片还在屏上把**封面那一块**截下来。
+                // 队列也一起交（与收藏页同一处收口）：少了它大图页认不出"同墙的那批"，
+                // `initialUid` 为空 ⇒ 落点等不到 ⇒ 截好的那一帧白截、只能整页抬上来。
+                GalleryViewerQueue.set(wall.cards.map { it.post })
                 GalleryFlyIn.capture(view, rect)
                 (context as? Activity)?.openGalleryPost(card.post.site, card.post.id)
             },
@@ -550,6 +556,15 @@ private suspend fun loadCredits(
             urls = record?.urls.orEmpty()
             otherNames = record?.otherNames.orEmpty()
         }
+        GallerySite.SAFEBOORU -> {
+            // Safebooru 与 Gelbooru 同属 Danbooru 系，画师端点也走 danbooru
+            val record = DanbooruArtistClient.getInstance(context).artistCredits(name).getOrElse { failure ->
+                Log.w(TAG, "画师「$name」(safebooru/danbooru 供体) 的记录没取到：${failure.message}")
+                null
+            }
+            urls = record?.urls.orEmpty()
+            otherNames = record?.otherNames.orEmpty()
+        }
     }
     val preliminary = GalleryArtistProfile.profilePlan(urls, source = source)
     // 只有这一排里**没有 pixiv 那一档**才值得多花一笔去反查作品作者（与详情面板同一条闸门）。
@@ -571,7 +586,7 @@ private suspend fun loadCredits(
         links = plan,
         aliasReadout = readout,
         canonicalName = canonical,
-        avatarUrl = resolveArtistAvatar(context, name, plan, source),
+        avatarUrl = resolveArtistAvatar(context, site, name, plan, source),
     )
 }
 

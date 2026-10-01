@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import coil3.ImageLoader
+import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
@@ -111,7 +110,7 @@ internal fun GalleryForYouPage(
                 VeneraEmptyView(
                     title = copy.title,
                     message = copy.message,
-                    icon = Icons.Outlined.Image,
+                    tone = copy.tone,
                     actionText = copy.actionText,
                     onAction = copy.onAction,
                 )
@@ -127,19 +126,25 @@ internal fun GalleryForYouPage(
             modifier = pageModifier,
             onOpen = onOpen,
             header = {
-                // 常驻 chrome（搜索入口条 + 来源分段器）是**内容的第一行**：
-                // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
-                chrome?.invoke()
-                // 槽位恒在、判空在内部（理由见 [GalleryCardsGrid] 的 header 注释）。
-                // 少了一站必须占一条**可见**的位置：两站混摆静默退化成单源，
-                // 用户只会看到"怎么没有另一站的图"，而原因就在这一行里。
-                fvm.failures.takeIf { it.isNotEmpty() }?.let { failures ->
-                    Text(
-                        text = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textSecondary,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = tokens.spacing.space3),
-                    )
+                // ⚠️ 必须包进一个 Column：懒列表 item 的内容是按「单一根」量的，
+                // 这里如果摆两个并列的根级组件（chrome 与失败提示），它们会被当成
+                // 同一个 Box 的两个子元素**叠在同一位置画**（2026-10-01 真机缺陷：
+                // 错误提示整段压在搜索栏上）。Column 是唯一正确的容器。
+                Column {
+                    // 常驻 chrome（搜索入口条 + 来源分段器）是**内容的第一行**：
+                    // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
+                    chrome?.invoke()
+                    // 槽位恒在、判空在内部（理由见 [GalleryCardsGrid] 的 header 注释）。
+                    // 少了一站必须占一条**可见**的位置：两站混摆静默退化成单源，
+                    // 用户只会看到"怎么没有另一站的图"，而原因就在这一行里。
+                    fvm.failures.takeIf { it.isNotEmpty() }?.let { failures ->
+                        Text(
+                            text = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textSecondary,
+                            modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.space3),
+                        )
+                    }
                 }
             },
             sections = sections,
@@ -173,12 +178,19 @@ internal fun GalleryForYouPage(
     }
 }
 
-/** 空/错档要说的那三样。分四档说，见 [emptyCopyOf]。 */
+/**
+ * 空/错档要说的那几样。分四档说，见 [emptyCopyOf]。
+ *
+ * [tone] 管**图标**（见 [VeneraEmptyTone]）：这一页四档里同时有"用户还没做"（还没收藏）与
+ * "我们没取成"两种完全不同的处境，而老写法一律摆 `Icons.Outlined.Image` ——
+ * 于是"先去收藏几张"与"这一轮没取成"在屏上是同一枚图，只能靠读字才分得开。
+ */
 private class ForYouEmptyCopy(
     val title: String,
     val message: String,
     val actionText: String?,
     val onAction: (() -> Unit)?,
+    val tone: VeneraEmptyTone,
 )
 
 /**
@@ -207,6 +219,7 @@ private fun emptyCopyOf(
             "现在两站都还没有收藏，抽不出标签来。",
         actionText = null,
         onAction = null,
+        tone = VeneraEmptyTone.NotYet,
     )
 
     GalleryForYouStage.NO_USABLE_TAGS -> ForYouEmptyCopy(
@@ -216,12 +229,16 @@ private fun emptyCopyOf(
             "把那条规则收掉或改长，这里才会有推荐。",
         actionText = null,
         onAction = null,
+        // "去改那条规则"仍是一条**用户要做的事**，所以归 NotYet 而不是 Failed：
+        // 我们这一笔取数没出错，规则也确实按他写的生效了。
+        tone = VeneraEmptyTone.NotYet,
     )
 
     else -> when {
         fvm.error != null -> ForYouEmptyCopy(
             title = "这一轮没取成",
             message = fvm.error.orEmpty(),
+            tone = VeneraEmptyTone.Failed,
             actionText = "重试",
             // 走调用方那枚 onRetry：它会先清域名熔断再置 force。
             // 直接 fvm.refresh() 的话，撞上 60s 熔断窗口时这一按必然还是同一句"熔断中"，是假按钮。
@@ -232,6 +249,9 @@ private fun emptyCopyOf(
             title = "能推的都收藏过了",
             message = "这一轮排掉了 ${fvm.excludedFavourite} 张你已经收藏过的图，剩下的没有可摆的。" +
                 "多看几张、再收藏几张，这里会长出新东西。",
+            // "真的没有可摆的"：这一档是前面几层判据都跑通了的结果，
+            // 既不是我们没取成，也不是用户还没做。
+            tone = VeneraEmptyTone.Nothing,
             // 2026-09-30 第二轮起这一档多半没有出口了：首页那条主墙恒为猜你喜欢，
             // 没有"另一面墙"可切（热门搬去了二级页）。`onGoToDaily` 传 null 时不摆按钮 ——
             // 这是刻意的：按下去只是把同一面墙重滚一次，那是一枚假按钮。
@@ -241,6 +261,7 @@ private fun emptyCopyOf(
 
         else -> ForYouEmptyCopy(
             title = "这些标签没有可摆的图",
+            tone = VeneraEmptyTone.Nothing,
             message = listOfNotNull(
                 fvm.queryBySite.takeIf { it.isNotEmpty() }?.let { queries ->
                     "发出去的条件：" + queries.entries.joinToString(" · ") { "${it.key.displayName}「${it.value}」" }

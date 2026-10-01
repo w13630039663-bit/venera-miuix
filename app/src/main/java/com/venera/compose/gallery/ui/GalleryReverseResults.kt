@@ -18,8 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -36,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.gallery.data.GalleryImageLoader
@@ -101,7 +100,7 @@ fun GalleryReverseResults(
             VeneraEmptyView(
                 title = "这一张没搜成",
                 message = rvm.error.orEmpty(),
-                icon = Icons.Outlined.OpenInNew,
+                tone = VeneraEmptyTone.Failed,
                 actionText = "再试一次",
                 onAction = { rvm.submit(allowNsfw) },
             )
@@ -117,7 +116,9 @@ fun GalleryReverseResults(
             VeneraEmptyView(
                 title = "SauceNAO 说没有相似图",
                 message = "这不是出错。换一张更清晰、更少水印的图，或者用大图页那张原图再试。",
-                icon = Icons.Outlined.OpenInNew,
+                // 显式写 [VeneraEmptyTone.Nothing] 而不是靠默认值：这一档与上面那档
+                // 屏上长得必须**不一样**（"没搜到"不是"没搜成"），写明才不会下次被顺手改回 Failed。
+                tone = VeneraEmptyTone.Nothing,
             )
         }
 

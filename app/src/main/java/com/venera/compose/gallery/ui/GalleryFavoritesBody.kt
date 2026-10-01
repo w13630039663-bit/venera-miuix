@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.ui
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.selection.MultiSelectBarAction
+import com.venera.compose.components.selection.VeneraMultiSelectBar
+import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
@@ -98,9 +103,16 @@ fun GalleryFavoritesBody(
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
     val columnCount = if (wide) 3 else 2
 
-    /** 待确认移除的那一张；null = 弹层未开。 */
-    var pendingRemove by remember { mutableStateOf<GalleryPost?>(null) }
+    /**
+     * 多选状态机：与本地收藏、图片收藏、网络收藏**同一份**（见 `components/selection/`）。
+     * 键取 `uid`（带站键）—— 两站的 id 各自编号，同 id 是两张不同的图，只用 id 会串。
+     */
+    val multi = rememberMultiSelectState<String>()
+    /** 待确认的批量移除；false = 弹层未开。 */
+    var removeConfirm by remember { mutableStateOf(false) }
     var clearConfirm by remember { mutableStateOf(false) }
+    // 系统返回先退多选，不要把整个收藏 tab 弹掉。
+    BackHandler(enabled = multi.active) { multi.exit() }
 
     // 档坏了之类的说明只说一次（读走即清）。
     LaunchedEffect(Unit) {
@@ -115,6 +127,8 @@ fun GalleryFavoritesBody(
             guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
+    // 墙上这一批的 uid 顺序，区间选要用它。
+    val wallUids = remember(wall) { wall.cards.map { it.post.uid } }
 
     LaunchedEffect(gridState) {
         snapshotFlow {
@@ -163,8 +177,36 @@ fun GalleryFavoritesBody(
                     top = topPadding,
                     bottom = VeneraSpacing.bottomBarClearance,
                 ),
-                onOpen = onOpenPost,
-                onLongPress = { pendingRemove = it },
+                onOpen = { post ->
+                    /*
+                     * 交队列这一步**必须有**，与画廊一级那三面墙逐字同一条（用户 2026-10-01 第 4 条）。
+                     *
+                     * 少了它的后果不是"少个功能"，而是一次**静默的降级**：
+                     * 大图页按 uid 去认领"与这一条同墙的那批"，认不出就退回单张模式 ——
+                     * 而单张模式下 `pages` 要等自己发一笔 `tags=id:N` 才落地，于是
+                     * ① 左右翻页没了；② 去程那个落点（画面框的矩形）在预算内等不到 →
+                     * 一律退回"整页抬上来" —— 用户看到的就是"收藏页点图没有飞入"。
+                     * 返回程不受影响（它查的是**当前这张**的 uid，与墙无关），
+                     * 所以症状恰好是"去程没有、返回有"这个最难解释的样子。
+                     *
+                     * 交的是 `wall.cards`（已过屏蔽/分级判据的那批）而不是 `favorites`：
+                     * 左右翻必须与用户刚才看到的顺序一致，把被挡掉的算进去会出现"翻到一张从没见过的图"。
+                     */
+                    GalleryViewerQueue.set(wall.cards.map { it.post })
+                    onOpenPost(post)
+                },
+                onLongPress = { post ->
+                    // 长按：不在多选态 = 进入多选并选中这一张；已在多选态 = 区间反选。
+                    // 区间用的是 **wall.cards**（已过屏蔽/分级判据的那批）的 uid 顺序 ——
+                    // 拿 favorites 的顺序会出现"长按一下，选中了一堆屏上根本没有的图"。
+                    if (multi.active) multi.toggleRange(post.uid, wallUids) else multi.enter(post.uid)
+                },
+                selection = if (multi.active) {
+                    { post: GalleryPost -> multi.contains(post.uid) }
+                } else {
+                    null
+                },
+                onToggleSelect = { post -> multi.toggle(post.uid) },
                 modifier = Modifier
                     .then(if (scrollConnection != null) Modifier.nestedScroll(scrollConnection) else Modifier)
                     .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
@@ -177,30 +219,54 @@ fun GalleryFavoritesBody(
                 },
             )
         }
+        if (multi.active) {
+            // 浮层工具条，与「图片收藏 → 漫藏插图」那条同款同位置（同一个 Box 的底边）。
+            VeneraMultiSelectBar(
+                selectedCount = multi.count,
+                allSelected = wallUids.isNotEmpty() && multi.count == wallUids.size,
+                onExit = { multi.exit() },
+                onSelectAll = { multi.selectAll(wallUids) },
+                onInvert = { multi.invert(wallUids) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = tokens.spacing.screenHorizontal,
+                        end = tokens.spacing.screenHorizontal,
+                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                    ),
+            ) {
+                MultiSelectBarAction(
+                    icon = Icons.Outlined.Delete,
+                    label = "移除",
+                    destructive = true,
+                    onClick = { removeConfirm = true },
+                )
+            }
+        }
     }
 
-    pendingRemove?.let { post ->
+    if (removeConfirm) {
+        val doomed = multi.selected.toList()
         VeneraDialog(
             show = true,
-            onDismissRequest = { pendingRemove = null },
+            onDismissRequest = { removeConfirm = false },
             title = "从画廊收藏移除？",
             content = {
                 Text(
-                    "${post.site.displayName} #${post.id}" +
-                        if (post.author.isBlank()) "" else "\n${post.author}",
+                    "${doomed.size} 张会从收藏里移除，图片本身不受影响。",
                     fontSize = tokens.type.body,
                 )
             },
             confirmText = "移除",
             confirmDestructive = true,
             onConfirm = {
-                val uid = post.uid
-                pendingRemove = null
+                removeConfirm = false
+                multi.exit()
                 // 不弹"已移除"提示：卡片当场从墙上消失，本身就是最清楚的反馈。
-                scope.launch { store.remove(uid) }
+                scope.launch { store.removeAll(doomed) }
             },
             dismissText = "取消",
-            onDismiss = { pendingRemove = null },
+            onDismiss = { removeConfirm = false },
         )
     }
 

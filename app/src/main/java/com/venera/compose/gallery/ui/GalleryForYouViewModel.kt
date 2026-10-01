@@ -23,6 +23,7 @@ import com.venera.compose.gallery.data.toCountRows
 import com.venera.compose.gallery.data.toFavorite
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.gallery.data.toSiteRows
+import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryForYouMerge
 import com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy
@@ -195,6 +196,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     fun limitOf(site: GallerySite): Int = when (site) {
         GallerySite.GELBOORU -> GelbooruClient.POOL_SIZE
         GallerySite.YANDERE -> YandeReClient.SEARCH_PAGE_SIZE
+        GallerySite.SAFEBOORU -> SafebooruClient.POOL_SIZE
     }
 
     /** 前面各页已上屏条目的去重键（跨页去重全靠它，`mix` 那头没有这一维）。 */
@@ -476,6 +478,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             when (site) {
                 GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
                 GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
+                GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
             }
         }
         // "空"有两种：站方真给了 0 条，与请求本身失败（401 / 解析不出来）。

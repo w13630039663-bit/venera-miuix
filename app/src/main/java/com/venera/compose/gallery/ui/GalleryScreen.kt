@@ -81,9 +81,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.ImageLoader
 import coil3.request.ImageRequest
+import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.components.coverSharedElement
+import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraGallerySourceMark
@@ -1274,6 +1276,17 @@ internal fun GalleryCardsGrid(
     modifier: Modifier = Modifier,
     /** 长按一张卡。收藏页用它拉出「从收藏移除」，主墙/搜索不传（长按在那儿没有任何事可做）。 */
     onLongPress: ((GalleryPost) -> Unit)? = null,
+    /**
+     * 非空 = 这面墙**处于多选态**（眼下只有收藏页会传）。此时：
+     * 卡片右上角摆那枚统一选择框、点卡片改成勾选，`onLongPress` 的语义由调用方切成"区间反选"。
+     *
+     * null = 非多选态，卡片行为与从前**逐字一致**（点开大图页）—— 主墙与搜索墙不传，
+     * 它们的交互因此零改动。判据用"传没传这个函数"而不是再加一个布尔开关：
+     * 两个参数表达同一件事就有对不上的可能，一个参数不会。
+     */
+    selection: ((GalleryPost) -> Boolean)? = null,
+    /** 点选择框，以及多选态下点整张卡。 */
+    onToggleSelect: ((GalleryPost) -> Unit)? = null,
     /** 卡片上的补充内容。null 时与从前一致。 */
     overlay: (@Composable BoxScope.(GalleryPost) -> Unit)? = null,
     /**
@@ -1347,6 +1360,9 @@ internal fun GalleryCardsGrid(
                         handler(card.post)
                     }
                 },
+                selected = selection?.invoke(card.post) == true,
+                selecting = selection != null,
+                onToggleSelect = onToggleSelect?.let { handler -> { handler(card.post) } },
                 overlay = overlay,
                 sharedElementKey = sharedElementKey?.invoke(card.post),
             )
@@ -1474,6 +1490,12 @@ internal fun GalleryPostCard(
      */
     onOpen: (Rect) -> Unit,
     onLongPress: (() -> Unit)? = null,
+    /** 这一张是否已选中（仅在 [selecting] 为真时有意义）。 */
+    selected: Boolean = false,
+    /** 是否处于多选态：右上角摆统一选择框，点卡片改成勾选。 */
+    selecting: Boolean = false,
+    /** 点选择框 / 多选态下点卡片。 */
+    onToggleSelect: (() -> Unit)? = null,
     overlay: (@Composable BoxScope.(GalleryPost) -> Unit)? = null,
     /** 非空 = 这张卡的封面参与共享元素飞行，值就是那对两端逐字相同的 key（见 [GalleryCardsGrid]）。 */
     sharedElementKey: String? = null,
@@ -1519,12 +1541,24 @@ internal fun GalleryPostCard(
     // 钉死比例那一档**不再夹取**：它是调用方给的设计值（现成 token），不是站方数据。
     val ratio = fixedRatio?.takeIf { it > 0f }
         ?: (post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio).coerceIn(0.4f, 2.5f)
+    // 选中态与那枚选择框交给 SelectableCardFrame —— 四处收藏面板同一份实现
+    // （洗底不透明度、框的位置与画法全在那一处，这里不再各画一遍）。
+    SelectableCardFrame(
+        selecting = selecting,
+        selected = selected,
+        onToggleSelect = { onToggleSelect?.invoke() },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
     Card(
         // 用 miuix Card 的可长按重载而不是换了外观的 [VeneraCard]：前者的内边距与圆角由我们自己
         // 按这张卡的形态定（封面在上、来源与标题在下），后者会给整卡套一圈固定的内边距 +
         // 一层 `shape.card` 圆角，封面两侧会各留一条缝。
+        // 圆角现在显式跟 [VeneraCard] 同口径（tokens.shape.card）：不传时 miuix 自家默认
+        // 16dp，MIUIX 模式下比别处卡片小一档，洗底（同按 shape.card 裁）也对不上。
+        cornerRadius = tokens.shape.card,
         modifier = Modifier.fillMaxWidth(),
-        onClick = { onOpen(coverBounds) },
+        // 多选态下点整张卡 = 勾选（只让人去够右上角那个小圈太费劲）；非多选态才是点开大图页。
+        onClick = { if (selecting) onToggleSelect?.invoke() else onOpen(coverBounds) },
         onLongPress = onLongPress,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -1581,6 +1615,7 @@ internal fun GalleryPostCard(
                     ),
             )
         }
+    }
     }
 }
 
@@ -1770,7 +1805,9 @@ internal fun GalleryDailyPage(
             VeneraEmptyView(
                 title = "最新流加载失败",
                 message = error,
-                icon = Icons.Outlined.Image,
+                // 「加载失败」不许配**内容**图标（这里原来是 `Icons.Outlined.Image`，
+                // 那枚图标的意思是"这儿有图"）。语义档自己去挑一枚说"没取回来"的。
+                tone = VeneraEmptyTone.Failed,
                 actionText = "重试",
                 onAction = onRetry,
             )

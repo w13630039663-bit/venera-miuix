@@ -15,6 +15,7 @@ import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
+import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryLegGuard
@@ -278,6 +279,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun pageSizeFor(site: GallerySite): Int = when (site) {
         GallerySite.GELBOORU -> GelbooruClient.POOL_SIZE
         GallerySite.YANDERE -> com.venera.compose.gallery.data.YandeReClient.SEARCH_PAGE_SIZE
+        GallerySite.SAFEBOORU -> SafebooruClient.POOL_SIZE
     }
 
     private val gelbooruAccount = GelbooruAccount.getInstance(app)
@@ -1041,6 +1043,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         when (site) {
             GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
             GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
+            GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
         }
 
     /**
@@ -1102,6 +1105,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             leg to when (leg) {
                                 GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchTags(term)
                                 GallerySite.YANDERE -> YandeReClient.getInstance(app).searchTags(term)
+                                GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchTags(term)
                             }
                         }
                     }.awaitAll()

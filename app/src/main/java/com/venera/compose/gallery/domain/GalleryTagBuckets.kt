@@ -153,6 +153,9 @@ internal fun buildGalleryTagBuckets(
     if (fromSite.isEmpty()) {
         val artists = tagList.filter { it.lowercase() in fallbackArtistNames }
         val rest = tagList.filterNot { it.lowercase() in fallbackArtistNames }
+        // ⚠️ 兜底这一路**不给 category**：`fallbackArtistNames` 是离线词典判的，
+        // 不是站方给的档位。屏上按档位上色时它会退到中性色 —— 那是刻意的，
+        // 一桶"我们猜它是画师"不该长得跟"站方说它是画师"一模一样。
         return listOfNotNull(
             artists.takeIf { it.isNotEmpty() }
                 ?.let { GalleryTagGroup(galleryTagCategoryLabel(GalleryTagCategory.ARTIST), it) },
@@ -170,12 +173,33 @@ internal fun buildGalleryTagBuckets(
     }
     val ordered = BucketOrder.mapNotNull { category ->
         byCategory[category]?.takeIf { it.isNotEmpty() }
-            ?.let { GalleryTagGroup(galleryTagCategoryLabel(category), it.toList()) }
+            ?.let { GalleryTagGroup(galleryTagCategoryLabel(category), it.toList(), category) }
     }
     val tail = unresolved.takeIf { it.isNotEmpty() }
         ?.let { GalleryTagGroup(UnresolvedBucketLabel, it) }
     return if (tail == null) ordered else ordered + tail
 }
+
+/**
+ * 这一串标签里，**能当「这位画师」摆出来的那几个** —— [buildGalleryTagBuckets] 那一桶的展开。
+ *
+ * 存在的理由只有一个：这条判据现在有**两个**读者，而它们必须逐字同解。
+ * 1. 「关于这张图」面板：把这一桶摆成画师卡（头像 + 名字 + 平台入口 + 关注）；
+ * 2. 大图页：用户一打开这一页，就按这几个名字**先把外链与头像取回来**
+ *    （2026-10-01 用户点名："不要点信息才加载"）。
+ *
+ * 第二个读者是 2026-10-01 才出现的 —— 在那之前"哪几个是画师"只写在面板那一处。
+ * 两处各写一遍的后果不是编译错，而是**取数的名字与摆出来的名字对不上**：
+ * 屏上留着首字母座、而后台刚取回来的那份挂在另一个名字下，谁都看不出来。
+ */
+internal fun galleryArtistNames(
+    tagList: List<String>,
+    categories: Map<String, Int>?,
+    fallbackArtistNames: Set<String> = emptySet(),
+): List<String> = buildGalleryTagBuckets(tagList, categories, fallbackArtistNames)
+    .firstOrNull { it.label == galleryTagCategoryLabel(GalleryTagCategory.ARTIST) }
+    ?.tags
+    .orEmpty()
 
 /** 站方判定过的那几档，按人最常看的在前。 */
 private val BucketOrder = listOf(

@@ -181,7 +181,20 @@ class GalleryFavoritesStore private constructor(private val context: Context) {
     }
 
     suspend fun remove(uid: String) {
-        val next = _favorites.value.filterNot { it.uid == uid }
+        removeAll(listOf(uid))
+    }
+
+    /**
+     * 批量移除（收藏页多选那条路）。
+     *
+     * 刻意**不**写成 `uids.forEach { remove(it) }`：那样是 N 次全量 JSON 序列化 + N 次写盘，
+     * 选 50 张就是 50 趟 IO；这里一次过滤、一次落盘。与 `GalleryFavoritesBody` 里那条
+     * "选中的这批一起移除"是同一件事。
+     */
+    suspend fun removeAll(uids: Collection<String>) {
+        if (uids.isEmpty()) return
+        val doomed = uids.toSet()
+        val next = _favorites.value.filterNot { it.uid in doomed }
         if (next.size == _favorites.value.size) return
         _favorites.value = next
         persist(next)
