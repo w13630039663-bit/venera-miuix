@@ -123,12 +123,15 @@ internal object PreferredIpRuntime {
     }
 
     /**
-     * 这一条目的探活目标。默认表里实测过的用实测路径，其余用根路径。
+     * 这一条目的探活目标。已知表（默认表 + 漫画源 + 图库测速表）里实测过的用实测路径，
+     * 其余用根路径。
      *
-     * ⚠️ 条目可能写的是父域（`donmai.us` 管 `safebooru.donmai.us`）：默认表按**条目串**查，
+     * ⚠️ 条目可能写的是父域（`donmai.us` 管 `safebooru.donmai.us`）：已知表按**条目串**精确查，
      * 查不到就走根路径 —— 宁可探得保守，也不要拿一条实测 403 的路径（图片站根路径那种）当判据。
+     * 漫画源表里 `require2xx = false` 的条目（哔咔 API 根路径 400 那类）在这里一并生效，
+     * 保证后台探活与测速页对同一域名用同一套判据。
      */
     fun targetFor(entry: String): PreferredIpTarget =
-        PreferredIpRules.DEFAULT_TARGETS.firstOrNull { it.host == entry.lowercase() }
+        PreferredIpRules.knownTargetFor(entry)
             ?: PreferredIpTarget(entry, PreferredIpRules.FALLBACK_PATH)
 }

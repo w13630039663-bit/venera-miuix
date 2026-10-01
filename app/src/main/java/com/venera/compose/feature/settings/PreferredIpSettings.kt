@@ -284,7 +284,7 @@ private fun PreferredIpEditorDialog(
  *
  * [clearReadings] 用在候选表变过的时候：旧表探出来的"哪台通"对新表没有任何意义。
  */
-private fun savePreferredIp(
+internal fun savePreferredIp(
     prefs: VeneraPreferences,
     enabled: Boolean,
     ips: String,

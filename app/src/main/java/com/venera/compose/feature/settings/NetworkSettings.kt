@@ -33,7 +33,7 @@ import top.yukonga.miuix.kmp.basic.Text
 private val proxyOptions = listOf("NONE" to "跟随系统默认", "HTTP" to "HTTP", "SOCKS" to "SOCKS5")
 
 @Composable
-fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
+fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit, onSpeedTest: () -> Unit = {}) {
     val context = LocalContext.current
     val proxyType by prefs.proxyType.collectAsState()
     val proxyHost by prefs.proxyHost.collectAsState()
@@ -59,6 +59,11 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         }
         SettingsGroup("Cloudflare 优选 IP") {
             PreferredIpSettingsGroup(prefs)
+            SettingsAction(
+                "线路测速",
+                "测量各节点到 Cloudflare 站点的直连延迟，挑出最优线路",
+                onClick = onSpeedTest,
+            )
         }
         SettingsGroup("网络诊断") {
             SettingsAction("重置失败记录", "清除暂时连不上的站点记录，这些站点会马上重新尝试") {

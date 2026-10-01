@@ -61,6 +61,124 @@ internal object PreferredIpRules {
         PreferredIpTarget("cdn-msp.jmapinodeudzn.net", "/"),
     )
 
+    /**
+     * 漫画源 → 该源 API 域名的探活目标。
+     *
+     * **域名逐字取自 assets/sources 下各源 JS 顶层声明的 API 域**（官方语义是唯一标准，
+     * 不从 `ComicSource.url` 取 —— 那是源 JS 的更新仓库地址，不是站点 API）。
+     * 只有「装了该源」才会进测速列表（见 [speedTestSources]），所以这里多备几条没有成本。
+     *
+     * 判据分两档：
+     * - `require2xx = true`：有实测 200 业务端点的（jm 图床）；
+     * - `require2xx = false`：只有 API 域名、没有实测业务路径的 —— 根路径对 API 站不是业务端点，
+     *   探它问的是"这台边缘节点认不认这个 SNI"，所以非 5xx 应答（哔咔的 400 / 404 等）都算通。
+     *   这与 [FALLBACK_PATH] 的哲学同源，只是把 require2xx 显式放开。
+     *
+     * 已知事实（2026-10-01 直连实测）：`picaapi.picacomic.com` 在 CF 后（TLS 握手成功、
+     * 未签名请求回 400）；`nhentai.net` **不在 CF 后**（边缘 RST）—— 保留它是为了让测速页
+     * 如实告诉你"这条线不通"，而不是假装这个源不存在。
+     */
+    val COMIC_SOURCE_API_TARGETS: Map<String, PreferredIpTarget> = mapOf(
+        "picacg" to PreferredIpTarget("picaapi.picacomic.com", "/", require2xx = false),
+        "jm" to PreferredIpTarget("cdn-msp.jmapinodeudzn.net", "/"),
+        "copy_manga" to PreferredIpTarget("api.copy-manga.com", "/", require2xx = false),
+        "baozi" to PreferredIpTarget("appcn.baozimh.com", "/", require2xx = false),
+        "manga_dex" to PreferredIpTarget("api.mangadex.org", "/", require2xx = false),
+        "nhentai" to PreferredIpTarget("nhentai.net", "/", require2xx = false),
+        "ehentai" to PreferredIpTarget("api.e-hentai.org", "/", require2xx = false),
+    )
+
+    /**
+     * 画廊站点 → 测速目标。key 是 [com.venera.compose.gallery.data.GallerySite] 的 routeKey
+     * （判据层不 import 那边的类型，用字符串走），label 用**站方写法**（与 displayName 同源）。
+     *
+     * 三站的域名/路径全部来自画廊客户端本体的 BASE 常量：
+     * - `yande.re` 根路径实测 200/301（都在 2xx..3xx 判通带内）；
+     * - `safebooru.donmai.us/posts.json?limit=1` 实测 200（与 [DEFAULT_TARGETS] 同一条）；
+     * - `gelbooru.com` 实测**不在 CF 后**（边缘 RST）—— 与 nhentai 同理，如实显示失败。
+     */
+    val GALLERY_SPEED_TEST_SOURCES: Map<String, PreferredIpSpeedTestSource> = mapOf(
+        "yandere" to PreferredIpSpeedTestSource(
+            "yandere", "yande.re", PreferredIpTarget("yande.re", "/"),
+        ),
+        "gelbooru" to PreferredIpSpeedTestSource(
+            "gelbooru", "Gelbooru", PreferredIpTarget("gelbooru.com", "/"),
+        ),
+        "safebooru" to PreferredIpSpeedTestSource(
+            "safebooru", "Safebooru",
+            PreferredIpTarget("safebooru.donmai.us", "/posts.json?limit=1"),
+        ),
+    )
+
+    /** 按域名精确查已知探活端点（默认表 → 漫画源表 → 图库表）。查不到返回 null。 */
+    fun knownTargetFor(host: String): PreferredIpTarget? {
+        val h = host.lowercase().trimEnd('.')
+        if (h.isEmpty()) return null
+        return DEFAULT_TARGETS.firstOrNull { it.host == h }
+            ?: COMIC_SOURCE_API_TARGETS.values.firstOrNull { it.host == h }
+            ?: GALLERY_SPEED_TEST_SOURCES.values.firstOrNull { it.target.host == h }?.target
+    }
+
+    /**
+     * 推导**这一台设备**的测速目标列表 —— 目标跟着用户实际拥有的源走：
+     * 装了才显示，没装不出现。
+     *
+     * @param installedComicSourceKeys 已安装**且启用**的漫画源 key（调用方已按
+     *   `InstalledSourceMeta.enabled` 过滤；key 可能与 `copy_manga` 双版本重名，内部去重）。
+     * @param comicSourceNames 源 key → 屏上显示名（来自 `InstalledSourceMeta.name`，
+     *   即源 JS 自己声明的名字，如「哔咔漫画」「禁漫天堂」）。缺名时退回 key。
+     * @param enabledGalleryRouteKeys 可用的画廊站点 routeKey（图库是内置功能恒可用；
+     *   Gelbooru 没配账号时不传 —— 与 `GallerySearchSource.availableLegs` 同一判据）。
+     * @param userHosts 用户在「适用域名」里手填的条目（已规范化）。已在本列表里的域名不重复；
+     *   新条目按根路径判据追加，来源标为 custom。
+     *
+     * 顺序：漫画源（安装顺序）→ 图库站（站表序）→ 自定义域名。同域名只保留第一条。
+     */
+    fun speedTestSources(
+        installedComicSourceKeys: List<String>,
+        comicSourceNames: Map<String, String>,
+        enabledGalleryRouteKeys: List<String>,
+        userHosts: List<String>,
+    ): List<PreferredIpSpeedTestSource> {
+        // 去重的身份是**域名**不是 sourceKey：custom 条目的 key 带 `custom:` 前缀，
+        // 拿 key 比对会把"手填了已在列表里的域名"这种重复全放进来。
+        val out = LinkedHashMap<String, PreferredIpSpeedTestSource>()
+        val seenHosts = LinkedHashSet<String>()
+        fun putIfHostAbsent(source: PreferredIpSpeedTestSource) {
+            val host = source.target.host.lowercase().trimEnd('.')
+            if (host.isEmpty() || host in seenHosts) return
+            seenHosts.add(host)
+            out[source.sourceKey] = source
+        }
+        installedComicSourceKeys.distinct().forEach { key ->
+            COMIC_SOURCE_API_TARGETS[key]?.let { target ->
+                putIfHostAbsent(
+                    PreferredIpSpeedTestSource(
+                        sourceKey = key,
+                        label = comicSourceNames[key]?.takeIf { it.isNotBlank() } ?: key,
+                        target = target,
+                    ),
+                )
+            }
+        }
+        enabledGalleryRouteKeys.forEach { routeKey ->
+            GALLERY_SPEED_TEST_SOURCES[routeKey]?.let(::putIfHostAbsent)
+        }
+        userHosts.forEach { raw ->
+            val host = raw.trim().lowercase().trimEnd('.')
+            if (host.isNotBlank()) {
+                putIfHostAbsent(
+                    PreferredIpSpeedTestSource(
+                        sourceKey = "custom:$host",
+                        label = host,
+                        target = PreferredIpTarget(host, FALLBACK_PATH),
+                    ),
+                )
+            }
+        }
+        return out.values.toList()
+    }
+
     /** 没实测过业务路径的域名，只能用根路径去问"这台节点认不认这个 SNI"。 */
     const val FALLBACK_PATH = "/"
 
@@ -330,6 +448,59 @@ internal object PreferredIpRules {
     /** 探活结果多久算过期。 */
     fun probeStale(probedAt: Long, nowMs: Long): Boolean = nowMs - probedAt > PROBE_FRESH_MS
 
+    /**
+     * 把「条目 → 各候选读数」折成「候选 IP → 一条线」，并按约定排序。
+     *
+     * 排序（从前往后就是屏上从上到下）：**可用优先 → 全过优先 → 最慢延迟升序 → IP**。
+     * - 可用优先：至少过了一个域名的排在前，一个都没过的（红）沉底；
+     * - 全过优先：能替这组域名全勤的排在有短板的之前；
+     * - 延迟升序：用**最慢**那台的延迟代表这条线（保守，避免「某站快某站慢」被平均骗过去）；
+     * - IP：同档同延迟时定序，避免每次重组顺序乱跳（否则连接池会反复新建连接）。
+     *
+     * 纯函数（与 [verdict] / [plan] 同一条纪律：时间 / Android / OkHttp 一律不进），
+     * 所以能脱离 gradle 在 `_probe/l0` 里单跑。输入类型 [PreferredIpLineProbe] 也是判据层自有，
+     * 不依赖 [PreferredIpProbe.Row]（那一侧 import 了 OkHttp）。
+     */
+    fun summarizeLineStates(
+        perEntryRows: Map<String, List<PreferredIpLineProbe>>,
+    ): List<PreferredIpLine> {
+        val byIp = LinkedHashMap<String, MutableList<PreferredIpLineEntry>>()
+        perEntryRows.forEach { (entry, rows) ->
+            rows.forEach { r ->
+                // 条目名从外层 map 的键来：读数本身只带 IP，不重复塞 entry。
+                byIp.getOrPut(r.ip) { mutableListOf() }.add(
+                    PreferredIpLineEntry(entry = entry, passed = r.passed, latencyMs = r.latencyMs, detail = r.detail),
+                )
+            }
+        }
+        return byIp.map { (ip, entries) ->
+            val total = entries.size
+            val passed = entries.count { it.passed }
+            val slowest = entries.maxOf { it.latencyMs }
+            val status = when {
+                passed == 0 -> PreferredIpLineStatus.Failing
+                passed == total && slowest < LINE_HEALTHY_LATENCY_MS -> PreferredIpLineStatus.Healthy
+                else -> PreferredIpLineStatus.Degraded
+            }
+            PreferredIpLine(
+                ip = ip,
+                totalEntries = total,
+                passedEntries = passed,
+                slowestLatencyMs = slowest,
+                status = status,
+                failureReason = entries.firstOrNull { !it.passed }?.detail,
+                entries = entries,
+            )
+        }.sortedWith(
+            compareBy(
+                { it.passedEntries == 0 },                     // 可用优先（过了的排前面）
+                { it.passedEntries != it.totalEntries },        // 全过优先（有短板的往后）
+                { it.slowestLatencyMs },                       // 最慢延迟升序
+                { it.ip },                                     // 同档定序
+            ),
+        )
+    }
+
     private fun Long?.orZero() = this ?: 0L
 }
 
@@ -355,6 +526,19 @@ internal data class PreferredIpTarget(
     val path: String,
     /** true = 只有 2xx/3xx 算通；false = 只要边缘节点给出任何非 5xx 应答就算通。 */
     val require2xx: Boolean = true,
+)
+
+/**
+ * 测速列表里的一条目标：**它来自哪个源、屏上叫什么、拿哪条端点去探**。
+ *
+ * [sourceKey] 是来源身份：漫画源 key（`picacg`/`jm`…）、画廊 routeKey（`yandere`…）、
+ * 或用户手填的 `custom:<host>`。[label] 是源自己声明的显示名（漫画源取 `InstalledSourceMeta.name`，
+ * 图库用站方写法），测速页把它当主标题 —— 用户看到的是「装了的那个源」，不是一串裸域名。
+ */
+internal data class PreferredIpSpeedTestSource(
+    val sourceKey: String,
+    val label: String,
+    val target: PreferredIpTarget,
 )
 
 /** 一次探活的原始读数。[status] 与 [error] 恰好一个是 null。 */
@@ -392,3 +576,52 @@ internal sealed interface PreferredIpPlan {
     /** 走优选：[entry] 是命中的条目，[ips] 已按延迟排好。 */
     data class Preferred(val entry: String, val ips: List<String>) : PreferredIpPlan
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 线路测速页的「一条线」聚合（与 [verdict] / [plan] 同一条纪律：时间 / Android / OkHttp 一律不进，
+// 所以能脱离 gradle 在 `_probe/l0` 里单跑）。
+//
+// 探活是「条目 × 候选」逐台打的（见 [PreferredIpProbe]），但测速页要给用户看的是
+// **「这台节点今天整体行不行」**：它要穿过所有适用域名才算可用，只过一两个不算。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 一条测速读数的最小单元（判据层自有，不依赖 [PreferredIpProbe.Row]：那一侧 import 了 OkHttp）。 */
+internal data class PreferredIpLineProbe(
+    val ip: String,
+    val passed: Boolean,
+    val latencyMs: Long,
+    val detail: String,
+)
+
+/** 一条线的健康度（对应屏上的色点；测过的节点没有「未知」这一档）。 */
+internal enum class PreferredIpLineStatus { Healthy, Degraded, Failing }
+
+/** 一台候选节点在一台域名下的结果（屏上逐域名摆）。 */
+internal data class PreferredIpLineEntry(
+    val entry: String,
+    val passed: Boolean,
+    val latencyMs: Long,
+    val detail: String,
+)
+
+/**
+ * 一台候选节点折完所有适用域名之后的一条线。
+ *
+ * [status] 的判法：
+ * - 一个域名都没过 → [Failing]（红）「这台节点今天对这组域名没一个答上话」；
+ * - 全过且最慢 < [LINE_HEALTHY_LATENCY_MS] → [Healthy]（绿）；
+ * - 全过但最慢偏慢，或只过了一部分 → [Degraded]（黄）：能用但不稳 / 不快。
+ */
+internal data class PreferredIpLine(
+    val ip: String,
+    val totalEntries: Int,
+    val passedEntries: Int,
+    val slowestLatencyMs: Long,
+    val status: PreferredIpLineStatus,
+    /** 失败条目里的第一句失败原因（摆「为什么不通」用；全过时 null）。 */
+    val failureReason: String?,
+    val entries: List<PreferredIpLineEntry>,
+)
+
+/** 一条线算「健康」的延迟上限（ms）。与 [StatusColors.Healthy] 的口径「< 400ms」逐字一致。 */
+internal const val LINE_HEALTHY_LATENCY_MS = 400L

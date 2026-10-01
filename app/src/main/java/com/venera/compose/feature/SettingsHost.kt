@@ -27,6 +27,7 @@ import com.venera.compose.feature.settings.ExploreSettings
 import com.venera.compose.feature.settings.GallerySettings
 import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
+import com.venera.compose.feature.settings.PreferredIpSpeedTestScreen
 import com.venera.compose.feature.settings.ReaderSettings
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
@@ -102,6 +103,7 @@ enum class SettingsSubScreen {
     NETWORK,
 
     // 分区内部再往下走的叶子页
+    LINE_SPEEDTEST,
     SOURCE_MANAGE,
     DOWNLOADS,
     LOCAL_COMICS,
@@ -197,7 +199,12 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onDownloads = { open(SettingsSubScreen.DOWNLOADS) },
                 onLocalComics = { open(SettingsSubScreen.LOCAL_COMICS) },
             )
-            SettingsSubScreen.NETWORK -> NetworkSettings(prefs = prefs, onBack = ::back)
+            SettingsSubScreen.NETWORK -> NetworkSettings(
+                prefs = prefs,
+                onBack = ::back,
+                onSpeedTest = { open(SettingsSubScreen.LINE_SPEEDTEST) },
+            )
+            SettingsSubScreen.LINE_SPEEDTEST -> PreferredIpSpeedTestScreen(prefs = prefs, onBack = ::back)
 
             SettingsSubScreen.SOURCE_MANAGE -> ComicSourceScreen(onNavigateBack = ::back)
             SettingsSubScreen.DOWNLOADS -> DownloadScreen(

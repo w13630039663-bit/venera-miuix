@@ -332,4 +332,203 @@ class PreferredIpRulesTest {
         assertTrue(PreferredIpRules.sampleCloudflareIps(count = 0).isEmpty())
         assertTrue(PreferredIpRules.sampleCloudflareIps(count = -3).isEmpty())
     }
+
+    // ── 线路测速页的「一条线」聚合（PreferredIpRules.summarizeLineStates）──
+
+    private fun lineProbe(ip: String, passed: Boolean, latency: Long, detail: String = if (passed) "$latency ms" else "fail") =
+        PreferredIpLineProbe(ip, passed, latency, detail)
+
+    @Test
+    fun `全过且快的节点算健康且排在最前`() {
+        val input = mapOf(
+            "safebooru.donmai.us" to listOf(lineProbe("1.1.1.1", true, 200)),
+            "cdn-msp.jmapinodeudzn.net" to listOf(lineProbe("1.1.1.1", true, 250)),
+        )
+        val lines = PreferredIpRules.summarizeLineStates(input)
+        assertEquals(1, lines.size)
+        assertEquals(PreferredIpLineStatus.Healthy, lines[0].status)
+        assertEquals("1.1.1.1", lines[0].ip)
+        assertEquals(2, lines[0].totalEntries)
+        assertEquals(2, lines[0].passedEntries)
+        assertEquals(250, lines[0].slowestLatencyMs)
+    }
+
+    @Test
+    fun `部分域名失败算降级且排在全过之后`() {
+        // 同一域名下的各候选并列摆；partial.bad 过 a 但没过 b → 部分通过 → 降级（黄），不是失败。
+        val input = mapOf(
+            "a.com" to listOf(lineProbe("fast.ok", true, 100), lineProbe("partial.bad", true, 100)),
+            "b.com" to listOf(lineProbe("fast.ok", true, 120), lineProbe("partial.bad", false, 0, "HTTP 403")),
+        )
+        val lines = PreferredIpRules.summarizeLineStates(input)
+        // fast.ok 全过 → 排前；partial.bad 只过 a → 排后（降级）。
+        assertEquals(listOf("fast.ok", "partial.bad"), lines.map { it.ip })
+        assertEquals(PreferredIpLineStatus.Degraded, lines[1].status)
+        assertEquals("HTTP 403", lines[1].failureReason)
+    }
+
+    @Test
+    fun `全部失败沉底且标红，失败原因取第一条`() {
+        val input = mapOf(
+            "a.com" to listOf(lineProbe("dead", false, 0, "超时"), lineProbe("alive", true, 300)),
+            "b.com" to listOf(lineProbe("dead", false, 0, "连不上"), lineProbe("alive", true, 300)),
+        )
+        val lines = PreferredIpRules.summarizeLineStates(input)
+        assertEquals(listOf("alive", "dead"), lines.map { it.ip })
+        assertEquals(PreferredIpLineStatus.Failing, lines[1].status)
+        assertEquals("超时", lines[1].failureReason)
+    }
+
+    @Test
+    fun `全过但偏慢算降级而不是健康`() {
+        val input = mapOf(
+            "a.com" to listOf(lineProbe("slow", true, 900)),
+            "b.com" to listOf(lineProbe("slow", true, 900)),
+        )
+        assertEquals(PreferredIpLineStatus.Degraded, PreferredIpRules.summarizeLineStates(input)[0].status)
+    }
+
+    @Test
+    fun `同档内按最慢延迟升序`() {
+        val input = mapOf(
+            "a.com" to listOf(lineProbe("slow.one", true, 600), lineProbe("fast.one", true, 110)),
+            "b.com" to listOf(lineProbe("slow.one", true, 600), lineProbe("fast.one", true, 110)),
+        )
+        assertEquals(
+            listOf("fast.one", "slow.one"),
+            PreferredIpRules.summarizeLineStates(input).map { it.ip },
+        )
+    }
+
+    @Test
+    fun `多域名部分通过时通过数与最慢延迟都正确`() {
+        val input = mapOf(
+            "a.com" to listOf(lineProbe("p", true, 200)),
+            "b.com" to listOf(lineProbe("p", false, 0, "HTTP 403")),
+            "c.com" to listOf(lineProbe("p", true, 500)),
+        )
+        val line = PreferredIpRules.summarizeLineStates(input).single()
+        assertEquals(3, line.totalEntries)
+        assertEquals(2, line.passedEntries)
+        assertEquals(500, line.slowestLatencyMs)
+        assertEquals(PreferredIpLineStatus.Degraded, line.status)
+        assertEquals("HTTP 403", line.failureReason)
+    }
+
+    // ── speedTestSources：测速目标跟着用户实际拥有的源走（装了才显示） ──
+
+    @Test
+    fun `测速目标跟随已安装漫画源_装了才显示`() {
+        val sources = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = listOf("jm", "picacg"),
+            comicSourceNames = mapOf("jm" to "禁漫天堂", "picacg" to "哔咔漫画"),
+            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            userHosts = emptyList(),
+        )
+        // 漫画源按安装顺序在前，图库站在后。
+        assertEquals(
+            listOf("cdn-msp.jmapinodeudzn.net", "picaapi.picacomic.com", "yande.re", "safebooru.donmai.us"),
+            sources.map { it.target.host },
+        )
+        // label 用源自己声明的名字，不是裸 key。
+        assertEquals("禁漫天堂", sources[0].label)
+        assertEquals("哔咔漫画", sources[1].label)
+    }
+
+    @Test
+    fun `未安装的漫画源不出现`() {
+        val sources = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = listOf("jm"),
+            comicSourceNames = mapOf("jm" to "禁漫天堂"),
+            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            userHosts = emptyList(),
+        )
+        val hosts = sources.map { it.target.host }
+        assertTrue("哔咔没装就不该测 picaapi：$hosts", "picaapi.picacomic.com" !in hosts)
+        assertTrue("nhentai 没装就不该测：$hosts", "nhentai.net" !in hosts)
+        assertTrue("ehentai 没装就不该测：$hosts", "api.e-hentai.org" !in hosts)
+    }
+
+    @Test
+    fun `哔咔判据是非5xx算通_实测200端点仍要求2xx`() {
+        // 哔咔 API 对未签名请求回 400（实测 TLS 通、Server: cloudflare）——
+        // 根路径不是业务端点，判"节点认不认 SNI"，所以 require2xx 必须放开。
+        assertEquals(false, PreferredIpRules.COMIC_SOURCE_API_TARGETS.getValue("picacg").require2xx)
+        // JM 图床与 safebooru 有实测 200 业务端点，保持业务级判据。
+        assertEquals(true, PreferredIpRules.COMIC_SOURCE_API_TARGETS.getValue("jm").require2xx)
+        assertEquals(true, PreferredIpRules.GALLERY_SPEED_TEST_SOURCES.getValue("safebooru").target.require2xx)
+    }
+
+    @Test
+    fun `图库恒带yandere与safebooru_gelbooru有账号才出现`() {
+        val withoutAccount = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = emptyList(),
+            comicSourceNames = emptyMap(),
+            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            userHosts = emptyList(),
+        )
+        val hosts = withoutAccount.map { it.target.host }
+        assertTrue("yande.re" in hosts)
+        assertTrue("safebooru.donmai.us" in hosts)
+        assertTrue("没配账号 Gelbooru 不该出现：$hosts", "gelbooru.com" !in hosts)
+
+        val withAccount = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = emptyList(),
+            comicSourceNames = emptyMap(),
+            enabledGalleryRouteKeys = listOf("yandere", "gelbooru", "safebooru"),
+            userHosts = emptyList(),
+        )
+        assertTrue("gelbooru.com" in withAccount.map { it.target.host })
+    }
+
+    @Test
+    fun `同域名只出现一次_重复安装与手填都不重复`() {
+        val sources = PreferredIpRules.speedTestSources(
+            // jm 预装且与 copy_manga 双版本同 key 的形态由 distinct 兜住；
+            // cdn-msp 又被用户手填了一遍 → 只留第一条。
+            installedComicSourceKeys = listOf("jm", "jm"),
+            comicSourceNames = mapOf("jm" to "禁漫天堂"),
+            enabledGalleryRouteKeys = listOf("safebooru"),
+            // 大小写不同的同域名也要去重。
+            userHosts = listOf("SafeBooru.Donmai.us", "cdn-msp.jmapinodeudzn.net", "my.example.org"),
+        )
+        assertEquals(
+            listOf("cdn-msp.jmapinodeudzn.net", "safebooru.donmai.us", "my.example.org"),
+            sources.map { it.target.host },
+        )
+    }
+
+    @Test
+    fun `用户手填域名追加为custom条目且走根路径`() {
+        val sources = PreferredIpRules.speedTestSources(
+            installedComicSourceKeys = emptyList(),
+            comicSourceNames = emptyMap(),
+            enabledGalleryRouteKeys = listOf("yandere"),
+            userHosts = listOf("my.example.org"),
+        )
+        val custom = sources.last()
+        assertEquals("my.example.org", custom.target.host)
+        assertEquals(PreferredIpRules.FALLBACK_PATH, custom.target.path)
+        assertEquals("my.example.org", custom.label)
+        assertTrue(custom.sourceKey.startsWith("custom:"))
+    }
+
+    @Test
+    fun `knownTargetFor按域名查已知端点_未知返回null`() {
+        // 默认表。
+        assertEquals(
+            "/posts.json?limit=1",
+            PreferredIpRules.knownTargetFor("safebooru.donmai.us")?.path,
+        )
+        // 漫画源表（哔咔的 SNI 判据在这里也要能查到）。
+        val pica = PreferredIpRules.knownTargetFor("picaapi.picacomic.com")
+        assertEquals(false, pica?.require2xx)
+        // 图库表。
+        assertEquals("gelbooru.com", PreferredIpRules.knownTargetFor("gelbooru.com")?.host)
+        // 大小写与尾点都归一。
+        assertEquals("picaapi.picacomic.com", PreferredIpRules.knownTargetFor("PICAapi.Picacomic.COM.")?.host)
+        // 未知域名返回 null（调用方走根路径判据）。
+        assertEquals(null, PreferredIpRules.knownTargetFor("no.where.example"))
+        assertEquals(null, PreferredIpRules.knownTargetFor(""))
+    }
 }

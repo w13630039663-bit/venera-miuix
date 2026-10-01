@@ -111,13 +111,38 @@ internal object PreferredIpProbe {
     }
 
     /**
-     * 探一台、写回一份读数。
+     * 探一台、写回一份读数（[probeAll] 用）。
      *
      * ⚠️ `verdict` 的"通过"形态是 **null**，而屏上那句 [Row.detail] 永远非空 ——
      * 两者必须分开传。把 `detail.isEmpty()` 当"通没通"会让整台列表永远算不出可用节点，
      * 于是"开了优选 IP"静默退化成"什么都没开"（写这版时踩过一次，故记在这里）。
      */
     private suspend fun probeOne(
+        entry: String,
+        target: PreferredIpTarget,
+        ip: String,
+        client: OkHttpClient,
+    ): Row {
+        val row = probeOneRow(entry, target, ip, client)
+        PreferredIpRuntime.recordProbe(
+            entry = entry,
+            ip = ip,
+            latencyMs = row.latencyMs,
+            passed = row.passed,
+            detail = row.detail,
+            nowMs = System.currentTimeMillis(),
+        )
+        return row
+    }
+
+    /**
+     * 只读探一台：发真实请求、判定通过与否、出一行读数，**不写回** [PreferredIpRuntime]。
+     *
+     * 与 [probeOne] 唯一差别就是少了 `recordProbe` 那一句 —— 抽出来是为了让测速页
+     * （[com.venera.compose.feature.settings.PreferredIpSpeedTestScreen]）能"看一眼"而不污染
+     * 用户已落盘的配置：测速只是瞄一眼，不能因为用户瞄了一眼就把设置页那一屏的探活结论覆盖掉。
+     */
+    private suspend fun probeOneRow(
         entry: String,
         target: PreferredIpTarget,
         ip: String,
@@ -131,16 +156,37 @@ internal object PreferredIpProbe {
         }
         val failure = PreferredIpRules.verdict(reading, target)
         val detail = failure ?: "HTTP ${reading.status} · $latencyMs ms"
-        PreferredIpRuntime.recordProbe(
-            entry = entry,
-            ip = ip,
-            latencyMs = latencyMs,
-            passed = failure == null,
-            detail = detail,
-            nowMs = System.currentTimeMillis(),
-        )
         Row(ip = ip, passed = failure == null, latencyMs = latencyMs, detail = detail)
     }
+
+    /**
+     * 测速页用的**只读**探活：拿一批候选 IP × 一批域名，并发打一遍真实请求，
+     * 返回 `条目 → 各候选读数`，**不写回 [PreferredIpRuntime]** —— 测速页只是「看一眼」，
+     * 不能因为用户瞄了一眼就把他已落盘的配置结论覆盖掉（那会让设置页的探活读数变成测速页的临时结论）。
+     *
+     * 与 [probeAll] 同一条底层：[newProbeClient] 强制 `NO_PROXY`、按 [PreferredIpRuntime.targetFor]
+     * 取真实业务路径、用 [userAgentFor] 那串 UA。挂了代理也不拦：探针本来就是直连，
+     * 量到的就是这台机器到边缘节点的真实距离（正好是该页要看的东西）。
+     */
+    suspend fun probeIps(ips: List<String>, hosts: List<String>): Map<String, List<Row>> =
+        withContext(Dispatchers.IO) {
+            if (ips.isEmpty() || hosts.isEmpty()) return@withContext emptyMap()
+            val clients = ips.associateWith { newProbeClient(it) }
+            try {
+                coroutineScope {
+                    hosts.map { entry ->
+                        val target = PreferredIpRuntime.targetFor(entry)
+                        async {
+                            entry to ips.map { ip ->
+                                async { probeOneRow(entry, target, ip, clients.getValue(ip)) }
+                            }.awaitAll()
+                        }
+                    }.awaitAll().toMap()
+                }
+            } finally {
+                clients.values.forEach { it.connectionPool.evictAll() }
+            }
+        }
 
     /**
      * 发一次真实请求：URL 用**域名**（Host、SNI、证书校验都按它走），连到哪台由这个客户端的 Dns 钉死。
