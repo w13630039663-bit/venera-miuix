@@ -10,7 +10,6 @@ import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -43,6 +42,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 现在每站套 [PER_SITE_TIMEOUT_MS]：超时的那站按"这一轮没给内容"交出去，
  * 由页面挂进 `sourceNotice` 明说，**另一站照旧出图**。
  * 取舍：慢的那一站这一轮缺席（会被说出来），换来快的那站立刻画出来（空等不会说）。
+ *
+ * 2026-09-30 起这套"一条腿 + 一笔预算 + 原因不许吞"的包装收在 [GalleryLegGuard]（三处共用一份，
+ * 从前是三处各写一遍，其中一份已经把"请求失败"记成"回了 0 条"）；
+ * 预算数值仍留在本类，因为日榜、推荐翻页与搜索两腿念的是同一个数。
  */
 class GalleryFeedSource private constructor(context: Context) {
 
@@ -52,18 +55,22 @@ class GalleryFeedSource private constructor(context: Context) {
      * @param failures 这轮**没给内容**的站及原因。非空时页面要挂一条提示 ——
      *                 否则"两站混搭"会静默退化成单站刷屏，那是本仓最忌的静默交错。
      * @param date     实际请求的那一天（只用于 yande.re 那一路的日榜）。
+     * @param pools    两站**滤之前的原始池**。日榜那面墙的「换一批」靠它做本地重排
+     *                 （只换种子、不再联网，用户 2026-09-30 拍板），所以整片原始返回要交出去 ——
+     *                 合并后那 40 张已经被抽样与去重吃掉了大半，拿它重排只是把同一批图再洗一遍。
      */
     data class Daily(
         val merged: GalleryMerge.Merged,
         val failures: Map<GallerySite, String>,
         val date: String,
+        val pools: Map<GallerySite, List<GalleryPost>>,
     )
 
     suspend fun loadDaily(seed: Long): Result<Daily> {
         val date = yesterdayString()
         val (yande, gelbooru) = coroutineScope {
-            val y = async { guardedWithBudget(GallerySite.YANDERE) { YandeReClient.getInstance(appContext).fetchDailyPopular() } }
-            val g = async { guardedWithBudget(GallerySite.GELBOORU) { GelbooruClient.getInstance(appContext).fetchTopScored() } }
+            val y = async { GalleryLegGuard.guard(GallerySite.YANDERE) { YandeReClient.getInstance(appContext).fetchDailyPopular() } }
+            val g = async { GalleryLegGuard.guard(GallerySite.GELBOORU) { GelbooruClient.getInstance(appContext).fetchTopScored() } }
             y.await() to g.await()
         }
         val failures = listOf(yande, gelbooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
@@ -74,50 +81,9 @@ class GalleryFeedSource private constructor(context: Context) {
             val notice = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" }
             return Result.failure(IllegalStateException(notice.ifBlank { "两站都没有返回内容" }))
         }
-        return GalleryMerge.mix(pools, seed).map { Daily(merged = it, failures = failures, date = date) }
-    }
-
-    private data class SiteResult(
-        val site: GallerySite,
-        val posts: List<GalleryPost>,
-        val reason: String?,
-    )
-
-    /**
-     * 把一站的取数包起来：异常不外抛，但**原因必须留着**交回页面。
-     * 异常没带 message（超时类就是这样）时退回类名 —— 吞成 null 就等于没发生过错。
-     */
-    private inline fun guarded(site: GallerySite, block: () -> Result<List<GalleryPost>>): SiteResult {
-        val result = block()
-        val posts = result.getOrDefault(emptyList())
-        val reason = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
-            ?: "这一轮没有返回内容".takeIf { posts.isEmpty() }
-        return SiteResult(site, posts, reason)
-    }
-
-    /**
-     * [guarded] + 一笔时间预算。
-     *
-     * 超时**不是失败**，而是"这一站这一轮没赶上" —— 交给调用方按"没给内容"处理，
-     * 于是它会走到既有的 `failures` / `sourceNotice` 那条路上，页面上被明说出来。
-     *
-     * ⚠️ [withTimeoutOrNull] 会取消 [block] 内部的协程，那个取消是**预期内**的：
-     * 请求该停就停，别让一个没人等的 socket 继续占着连接池。
-     */
-    private suspend fun guardedWithBudget(
-        site: GallerySite,
-        block: suspend () -> Result<List<GalleryPost>>,
-    ): SiteResult {
-        val result = withTimeoutOrNull(PER_SITE_TIMEOUT_MS) { block() }
-        if (result == null) {
-            // 超时**不是失败**，是"这一站这一轮没赶上" —— 交回调用方按"没给内容"处理，
-            // 于是它会走到既有的 `failures` / `sourceNotice` 那条路上被明说出来。
-            return SiteResult(site, emptyList(), "超过 ${PER_SITE_TIMEOUT_MS / 1000}s 没返回")
+        return GalleryMerge.mix(pools, seed).map {
+            Daily(merged = it, failures = failures, date = date, pools = pools)
         }
-        val posts = result.getOrDefault(emptyList())
-        val reason = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
-            ?: "这一轮没有返回内容".takeIf { posts.isEmpty() }
-        return SiteResult(site, posts, reason)
     }
 
     companion object {

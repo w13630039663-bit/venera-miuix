@@ -154,6 +154,49 @@ class GalleryGelbooruParsingTest {
     }
 
     @Test
+    fun `图片条目的底图档取中档而不是缩略档`() {
+        // 画师介绍页的 hero 底图铺满整页宽（约 993 物理像素），缩略档只有 300×212 级，
+        // 铺上去是放大三倍多 —— 再叠一层模糊就只剩色块、认不出画的是什么
+        // （2026-10-01 用户报「hero 底图感觉有点模糊过头了」，这是两处成因中的图源那一处）。
+        val post = postsOf(imageEntry).single()
+        assertEquals(post.largeUrl, post.backdropUrl)
+        assertNotEquals(post.previewUrl, post.backdropUrl)
+    }
+
+    @Test
+    fun `底图档在中档缺席时退缩略档，不给原图`() {
+        // yande.re 侧的原图档实测见过 9600×5400、单条 3 MB 级的条目；
+        // 铺一块 196dp 高的底图不值当，所以这一档**不落 fileUrl**。
+        val post = GalleryPost(
+            site = GallerySite.YANDERE,
+            id = 2,
+            previewUrl = "https://assets.yande.re/data/preview/8b/e5/x.jpg",
+            largeUrl = "",
+            fileUrl = "https://files.yande.re/image/8b/e5/x.png",
+        )
+        assertEquals(post.previewUrl, post.backdropUrl)
+    }
+
+    @Test
+    fun `底图档在视频条目上整条转给静帧判据`() {
+        // 视频那条闸门（中档被兜底成原片 mp4 就退缩略图）在本判据里**不重写** ——
+        // 同一件事写两份判据迟早会分叉。这里只钉"确实是转过去的"。
+        val post = postsOf(videoEntry).single()
+        assertEquals(post.videoPosterUrl, post.backdropUrl)
+        assertNotEquals(post.fileUrl, post.backdropUrl)
+    }
+
+    @Test
+    fun `图片条目即便中档与原件同址也用它`() {
+        // Gelbooru 对小图会把中档兜底成 file_url（见上面「sample_url 为空串时…」那条）。
+        // 对**图片**那不是问题：站方的语义就是"这张本来就小、不需要另给样本"，file_url 就是能用的图。
+        // 视频那条闸门拦的是 **mp4**，不能顺手把图片一起打回 350px 缩略图 —— 那才是真的糊。
+        val post = postsOf(smallImageEntry).single()
+        assertEquals(post.fileUrl, post.largeUrl)
+        assertEquals(post.largeUrl, post.backdropUrl)
+    }
+
+    @Test
     fun `站方给了静帧时视频底图要用静帧而不是缩略图`() {
         // yande.re 那一路 large 档本来就是原分辨率的 jpg 静帧（与 fileUrl 不同址），
         // 它比 350px 缩略图清楚，所以判据是"large 与原片同址才退档"，不是"视频一律用缩略图"。

@@ -15,7 +15,10 @@ import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
+import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
+import com.venera.compose.gallery.domain.GalleryLegGuard
+import com.venera.compose.gallery.domain.GalleryLegOutcome
 import com.venera.compose.gallery.domain.GalleryMerge
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
@@ -23,15 +26,22 @@ import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchContext
 import com.venera.compose.gallery.domain.GallerySearchContextStack
 import com.venera.compose.gallery.domain.GallerySearchEntry
+import com.venera.compose.gallery.domain.GallerySearchMerge
+import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.allLegsExhausted
 import com.venera.compose.gallery.domain.decodeGallerySearchHistory
 import com.venera.compose.gallery.domain.encodeGallerySearchHistory
-import com.venera.compose.gallery.domain.isStaleContext
+import com.venera.compose.gallery.domain.isStaleLeg
+import com.venera.compose.gallery.domain.nextPagesForAppend
 import com.venera.compose.gallery.domain.pushGallerySearchHistory
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /** 搜索区当前那一面：**展开**改条件（输入 + 补全 / 历史），还是**收成一条**看结果。 */
@@ -67,9 +77,27 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /** 搜索模式开没开（顶栏那枚图标切换它；退出即回到日榜那一屏）。 */
     var active by mutableStateOf(false)
 
-    /** 一次只搜一个站（用户 2026-09-25 拍板）：两站词表不通、标签预算也不同。 */
-    var site by mutableStateOf(GallerySite.GELBOORU)
+    /**
+     * 这一轮打哪些站 —— 「全部 / Yande.re / Gelbooru」里的那一枚。
+     *
+     * 默认「全部」是用户 2026-09-30 改判，推翻 09-25 那条「一次只搜一个站」。改判的依据是实测：
+     * 两站头部画师标签 **22/25 同名**（`gallery-artist-alias-2026-09.md` §一.2），
+     * 所以同一串词并打两站直接就能出结果，**不需要**先建一层跨站身份映射。
+     *
+     * ⚠️ 未配 Gelbooru 账号时**默认档不许漂**：那一腿根本不发请求（见
+     * [GallerySearchSource.availableLegs]），但档级仍写着「全部」，并在页尾明说这一腿为什么空着。
+     * 悄悄退回单站就是假开关的另一种长相 —— 用户会看到选中态自己变了一次。
+     */
+    var source by mutableStateOf(GallerySearchSource.ALL)
         internal set
+
+    /**
+     * 单站读法（站表序第一个）。
+     *
+     * 留着只为了给"这一串条件是从哪个站续上的"这类派生读用；**别拿它当身份** ——
+     * 条目 uid、路由键、收藏档用的都是每条结果自带的 `GalleryPost.site`。
+     */
+    val site: GallerySite get() = source.sites.first()
 
     /**
      * 当前**排行档**（默认 / 天 / 周 / 月 / 年 / 全部）。
@@ -127,6 +155,51 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 站方还有没有下一批。判据见 [GallerySearch.isExhausted]。 */
     var exhausted by mutableStateOf(false)
+        internal set
+
+    /**
+     * 各腿飞到的页码。
+     *
+     * 按腿记而不是记一个全局页码：两腿一次要的张数不同（yande.re 与 Gelbooru 各自的上限），
+     * 混成一个数就会出现"到底判据拿 100 去比一个只回 320 的站"。
+     * 缺席的腿不在表里 —— 续页时由 [nextPagesForAppend] 从第 1 页补回来，不能跟着别的腿跳页。
+     */
+    var pageBySite by mutableStateOf<Map<GallerySite, Int>>(emptyMap())
+        internal set
+
+    /** 已经到底的那些腿。混成一个全局标志就会出「A 还在出货、页尾写着到底了」那类假读数。 */
+    var exhaustedBySite by mutableStateOf<Set<GallerySite>>(emptySet())
+        internal set
+
+    /**
+     * 这一轮已经上过屏的去重键，续页要带着它。
+     *
+     * 站方的翻页窗口会滑动，同一批条目会在下一页再发一遍。不攒着就是
+     * "翻一页三张里两张是刚才那两张" —— 它不报错，只显得搜索很笨。
+     */
+    private var seenKeys = HashSet<String>()
+
+    /**
+     * 这一轮**没跑起来的腿**，连着能直接上屏的原因。
+     *
+     * 两种来源：未配账号（发车前就拦住）、超时或失败（每腿一笔时间预算）。
+     * 一律不许静默 —— 屏上少了一个站的货而页尾什么都不说，用户就会以为这一站今天没图。
+     */
+    var legFailures by mutableStateOf<Map<GallerySite, String>>(emptyMap())
+        internal set
+
+    /**
+     * 这一轮**换过画师名**的那句话（批次 J，判据见
+     * [com.venera.compose.gallery.domain.GalleryArtistAlias]）。
+     *
+     * 为什么必须上屏：屏上那排胶囊与历史存的都是**用户打的原词**（换词不该篡改他输入的东西），
+     * 于是"搜 setmen 出来一批 tokenbox 的图"这件事在界面上没有任何地方写着 ——
+     * 用户只会看到"我搜的名字出来的画不是我搜的那个"。悄悄换词是本仓最忌的那一类。
+     *
+     * 没换、换了还是 0 张都各有说法：只有真解析到了站方给的关联才有值，
+     * 拿不到关联时这里保持 null，屏上与没做这个功能时**完全一致**。
+     */
+    var artistAliasNotice by mutableStateOf<String?>(null)
         internal set
 
     /**
@@ -238,7 +311,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 而"发请求之前先按预算截断"这个动作只该有一处落点。
      */
     fun effectiveFilters(): List<GalleryTagFilter> {
-        val budget = GallerySearch.tagBudget(site) ?: return filters
+        // 「全部」档按**最紧的那条腿**截：发出去的那一串两腿共用，
+        // 超出某一条腿预算的话，那一腿会拿一个被站方砍过的条件去搜 —— 结果少了也没人知道。
+        val budget = source.sites.mapNotNull { GallerySearch.tagBudget(it) }.minOrNull() ?: return filters
         return filters.take(budget)
     }
 
@@ -255,16 +330,21 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 而且续页会拿着旧游标去问新站。所以结果整片清空 + 立刻按同一排胶囊在新站重搜一次
      * （条件为空时退回输入态 —— 空查询在站方语义里是"最新一批"，那不是搜索结果）。
      */
-    fun setSite(next: GallerySite) = switchSite(next, reSearch = true)
+    fun setSite(next: GallerySite) = setSource(GallerySearchSource.single(next))
 
-    private fun switchSite(next: GallerySite, reSearch: Boolean) {
-        if (next == site) return
-        // **在途请求要一并掐掉**：不掐的话，旧站那笔响应落地时会把它的结果 append 到新站的上下文里
-        // （chips 是新的、图是旧站的），而且补全也会被旧站词表回填 —— 站名与内容对不上最难被发现。
-        site = next
-        // 换站后手上这一档在新站**可能压根不存在**（Gelbooru 只有默认与全部两档是真的）。
+    /** 分段器上「全部 / Yande.re / Gelbooru」那一档的入口。 */
+    fun setSource(next: GallerySearchSource) = switchSource(next, reSearch = true)
+
+    private fun switchSource(next: GallerySearchSource, reSearch: Boolean) {
+        if (next == source) return
+        // **在途请求要一并掐掉**：不掐的话，旧那一档的响应落地时会把它的结果接成新档的内容
+        // （chips 是新的、图是旧档的），而且补全也会被旧词表回填 —— 档名与内容对不上最难被发现。
+        source = next
+        // 换档后手上这一档排行在新档里**可能压根不存在**（Gelbooru 只有默认与全部两档是真的）。
         // 不落回默认档就会出现：胶囊上写着「周」、发出去的是全站历年高分 —— 假开关最坏的长相。
-        if (!GalleryRankings.supports(next, ranking)) {
+        // 「全部」档按**每一条腿**过：只要有一条腿不支持这一档，整档落回默认才说得通
+        // （只让一条腿按排行搜、另一腿按默认搜，屏上那面墙就成了两种口径的混合，读不出对错）。
+        if (!GalleryRankings.supportsAll(next.sites, ranking)) {
             ranking = GalleryRanking.NEWEST
             periodAnchor = null
         }
@@ -276,11 +356,16 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         suggestError = null
         results = emptyList()
         page = 0
+        pageBySite = emptyMap()
         exhausted = false
+        exhaustedBySite = emptySet()
+        seenKeys = HashSet()
+        legFailures = emptyMap()
+        artistAliasNotice = null
         searchError = null
         loadMoreError = null
         droppedNoImage = 0
-        // reSearch = false 只有 [applyHistory] 用：它自己会装条件 + 开搜 + 收条，
+        // reSearch = false 只有 [openContext] 用：它自己会装条件 + 开搜 + 收条，
         // 这里再动一下就是同一轮发两笔请求。
         if (!reSearch) return
         if (filters.isNotEmpty()) runSearch(1) else mode = GallerySearchMode.INPUT
@@ -320,7 +405,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             mode = GallerySearchMode.INPUT
             results = emptyList()
             page = 0
+            pageBySite = emptyMap()
             exhausted = false
+            exhaustedBySite = emptySet()
+            seenKeys = HashSet()
+            legFailures = emptyMap()
+            artistAliasNotice = null
             searchError = null
             loadMoreError = null
             notice = null
@@ -340,9 +430,27 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 那两步会先拿**上一次那排胶囊**在新站发一笔、紧接着又用新的这排发一笔 ——
      * 同一轮两个请求，正是 [applyFilters] 注释里记的那类返祖现场。
      * 这里一次装到位：条件是新的，只发一笔。
+     *
+     * ⚠️ 来源档**不跟着那张图的站缩小**：正在用「全部」看的人点了一枚 yande.re 图上的标签，
+     * 他要的还是"这串标签的结果"，不是"被悄悄换成只看一个站"。
+     * 只有当前那一档根本不含这张图的站时（例如从收藏页那面墙进来），才落到那一个站。
      */
-    fun acceptHandoff(site: GallerySite, tags: List<String>) =
-        openContext(site, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+    fun acceptHandoff(site: GallerySite, tags: List<String>) {
+        val next = if (site in source.sites) source else GallerySearchSource.single(site)
+        openContext(next, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+    }
+
+    /**
+     * 首页「正在关注的画师」那一栏点进来的入口（批次 M · M5）。
+     *
+     * 与 [acceptHandoff] 只差一处：**恒落到「全部来源」**。那一栏跨站同名已经并成一条、
+     * 卡上并排摆着两枚徽标，此时还按当前那一档来源搜就会出现"卡上摆两枚、结果只有一站的图"——
+     * 屏上自相矛盾，比串台更难解释。只在一站被关注的那位仍走 [acceptHandoff]：
+     * 另一站的同名那位本来就没被认下，替他扩大范围就是替用户做决定。
+     */
+    fun acceptHandoffAllSites(tags: List<String>) {
+        openContext(GallerySearchSource.ALL, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+    }
 
     /**
      * **换一轮搜索上下文**的唯一落点（交接、点历史、点推荐标签行三条入口都走这里）。
@@ -358,8 +466,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 撞上"看起来一样"（连点同一条历史、同一枚标签点两次）就会被短路掉 —— 那正是"点了没反应"
      * 的另一种长相。[GalleryContextPlan.RESEARCH_IN_PLACE] 那一档依赖的正是这件事。
      */
-    private fun openContext(nextSite: GallerySite, next: List<GalleryTagFilter>, thenCollapse: Boolean) {
-        when (GallerySearchContextStack.plan(site, filters, nextSite, next)) {
+    private fun openContext(
+        nextSource: GallerySearchSource,
+        next: List<GalleryTagFilter>,
+        thenCollapse: Boolean,
+    ) {
+        when (GallerySearchContextStack.plan(source, filters, nextSource, next)) {
             GalleryContextPlan.PUSH -> contexts = GallerySearchContextStack.push(contexts, snapshot())
             // 与当前这一轮逐枚相等：不压栈，只再跑一次。压了就会"白按一次返回"——
             // 那一屏与上一屏一模一样，用户读不出那一下干了什么。
@@ -367,7 +479,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             // 还没搜过（一枚胶囊都没有）：屏上没有"上一轮"可留，压进去就是一格空壳。
             GalleryContextPlan.SKIP_EMPTY -> Unit
         }
-        switchSite(nextSite, reSearch = false)
+        switchSource(nextSource, reSearch = false)
         active = true
         // 轮次一 +1：在途那笔（可能是上一轮的续页）落地时会被 [isStaleContext] 作废。
         contextRound++
@@ -391,7 +503,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 当前这一屏的可逆快照。只读，不改任何东西。 */
     private fun snapshot() = GallerySearchContext(
-        site = site,
+        source = source,
         filters = filters,
         results = results,
         page = page,
@@ -401,6 +513,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         ranking = ranking,
         periodAnchor = periodAnchor,
         scrollIndex = currentScrollIndex,
+        pageBySite = pageBySite,
+        exhaustedBySite = exhaustedBySite,
+        aliasNotice = artistAliasNotice,
     )
 
     /** 还有没有"上一轮"可回（页面那侧的返回分支按这一档决定弹栈还是关搜索）。 */
@@ -448,13 +563,22 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         val ctx = popped.first
         pendingScrollRestore = ctx.scrollIndex
         currentScrollIndex = ctx.scrollIndex
-        site = ctx.site
+        source = ctx.source
         filters = ctx.filters
         results = ctx.results
         page = ctx.page
+        pageBySite = ctx.pageBySite
         exhausted = ctx.exhausted
+        exhaustedBySite = ctx.exhaustedBySite
         droppedNoImage = ctx.droppedNoImage
         pageSize = ctx.pageSize
+        legFailures = emptyMap()
+        // 换名那句话跟着那面墙一起回来：抄回来的图是**换过名之后**那一批，胶囊串却是用户的原词，
+        // 不一起抄就会出现「弹回上一轮，那句话没了，屏上多出一批对不上名字的画」。
+        artistAliasNotice = ctx.aliasNotice
+        // 去重键从抄回来的那一片**重建**。不重建就会出现「弹回上一轮 → 往下翻 →
+        // 刚才看过的又重复出现」。键的算法与合并那层同一把，不会分叉。
+        seenKeys = HashSet(ctx.results.flatMap { with(GalleryMerge) { it.dedupKeys() } })
         // 档级一起回来：不然弹栈后屏上还是那一墙图，排序却变了，而用户看不出哪里变了。
         ranking = ctx.ranking
         periodAnchor = ctx.periodAnchor
@@ -564,7 +688,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     fun setRanking(next: GalleryRanking) {
         if (next == ranking && periodAnchor == null) return
-        if (!GalleryRankings.supports(site, next)) return
+        if (!GalleryRankings.supportsAll(source.sites, next)) return
         ranking = next
         // 换档 = 回到本期：从"2024 年 3 月"点「按年排行」，用户要的是今年。
         periodAnchor = null
@@ -582,6 +706,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     fun pickPeriod(target: GalleryRanking, anchor: LocalDate?) {
         if (!GalleryRankings.supportsHistory(target)) return
+        // 「全部」档里 Gelbooru 给不出时间窗 → 这一路整档不通。菜单那一侧已经不摆这个入口，
+        // 这里再挡一道是状态层的判据（与 setRanking 同一条理由：入口不止菜单一个）。
+        if (!GalleryRankings.supportsAll(source.sites, target)) return
         if (target == ranking && anchor == periodAnchor) return
         ranking = target
         periodAnchor = anchor
@@ -640,7 +767,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun beginSearch(limit: Int) {
         results = emptyList()
         page = 0
+        pageBySite = emptyMap()
         exhausted = false
+        exhaustedBySite = emptySet()
+        seenKeys = HashSet()
+        legFailures = emptyMap()
+        artistAliasNotice = null
         searchError = null
         loadMoreError = null
         notice = null
@@ -693,13 +825,29 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
+     * 当前那一笔搜索的句柄。**第 1 页可以打断它**（[runSearch]），续页不能。
+     *
+     * 收尾那三道加载态靠"这一笔还是不是当前这一笔"来认（`searchJob === coroutineContext[Job]`），
+     * 所以这一格必须是**被 launch 赋值的那一份**，别改成局部变量。
+     */
+    private var searchJob: Job? = null
+
+    /**
      * 取一页结果。第 1 页整片替换、后续页追加（[appendPage]）。
      *
      * 放在 ViewModel 而不是页面里，是因为**两个调用方**都要用它：搜索区的同步重查，
      * 以及画廊页那面墙滚到底时的自动续页（墙在 `GalleryScreen`，搜索区在 `GallerySearchArea`）。
+     *
+     * 「全部」档在这里**展开成腿**：同一串条件并发打两站，两腿各按各的页宽与游标要页，
+     * 落地时一次合并、一次写回（分两次 `results +` 会把整片复制两遍）。
+     *
+     * 三条不显然的判据：
+     * - **未配账号的那条腿不发**，但原因从发车那一刻就挂在 [legFailures] 上 —— 屏上少了一个站
+     *   的货而不说原因，用户就会以为这一站今天没图；
+     * - **只有全部发出的腿都失败**才算这一轮失败。一腿成、一腿败时屏上是有内容的，
+     *   把整屏换成错误页就是拿一次抖动换掉用户已经看到的东西；
+     * - **在途作废按腿判**：换档之后旧档那条腿的响应不能落地，但同一笔里另一条腿可能仍是当前档。
      */
-    private var searchJob: Job? = null
-
     fun runSearch(nextPage: Int) {
         if (filters.isEmpty()) {
             notice = "先选至少一个标签（点补全列表里的标签加入）"
@@ -709,12 +857,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 否则屏上留下的是上一串标签的结果 —— 看着就像"点了没反应"。
         // 续页仍要挡：同一批结果里不该并着取两页。
         if (nextPage == 1) searchJob?.cancel() else if (isSearching || isLoadingMore) return
-        // 站与查询都在发车前**定死**：在途期间用户可能换站或改条件，
-        // 落地时用它们比对，对不上就整笔作废（见下面的站比对与 query 的使用处）。
-        val siteAtRequest = site
+        // 档、轮次、排行与"今天"都在发车前**定死**：在途期间用户可能换档、改条件、
+        // 跨过 UTC 零点或中途换了期，这一笔仍按发起那一刻查，落地时按这些比对，对不上就作废。
+        val sourceAtRequest = source
         val roundAtRequest = contextRound
         val rankingAtRequest = ranking
-        // 锚点与"今天"都在发车前定死：在途跨了 UTC 零点、或用户中途换了期，这一笔仍按发起那一刻查。
         val anchorAtRequest = periodAnchor
         // 发出去的是**预算内那几枚**，不是胶囊全部（见 [effectiveFilters]）。
         val sent = effectiveFilters()
@@ -724,60 +871,155 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 那正是 `GalleryRankingTest` 里"胶囊串永远不含伪标签"那条用例防的事。
         val visibleQuery = GallerySearch.queryOf(sent)
         val todayUtc = LocalDate.now(ZoneOffset.UTC)
-        val limit = pageSizeFor(siteAtRequest)
-        if (nextPage == 1) {
-            beginSearch(limit)
-            // 提示必须写在 [beginSearch] **之后** —— 它会把 notice 清成 null。
-            notice = trimmedNotice(sent)
-        } else {
-            isLoadingMore = true
-            loadMoreError = null
-        }
-        /*
-         * **发车前拦住"这一站现在根本不能用"的情况**（只有 Gelbooru 会这样）。
-         *
-         * 它的 DAPI 匿名一律 401，所以没配账号时发出去必然拿回一句 401。
-         * 那本来也会被下面的 onFailure 翻成人话，但**观感完全不同**：
-         * 让用户等一轮网络往返，然后在一个"没有可摆的图"的空态上读一句凭据错误，
-         * 他会先怀疑是标签写错了、再怀疑网络。这里直接说清"要去哪里配"，
-         * 一次请求都不发。
-         *
-         * ⚠️ 只在**第 1 页**拦：续页时账号刚被注销的情况交给正常的失败路径，
-         * 那时已经有一屏图在，不该因为续页失败把屏上的东西换成错误页。
-         */
-        if (nextPage == 1 && siteAtRequest == GallerySite.GELBOORU && !gelbooruConfigured) {
-            searchError = NEEDS_GELBOORU_ACCOUNT
+
+        val dispatched = sourceAtRequest.availableLegs(gelbooruConfigured)
+        // 发车前就拦住"这一条腿现在根本不能用"的情况（只有 Gelbooru 会这样）：
+        // 它的 DAPI 匿名一律 401，发出去必然拿回一句 401。那本来也会被失败路径翻成人话，
+        // 但观感完全不同 —— 让用户等一轮网络往返再读一句凭据错误，他会先怀疑标签写错了。
+        val blockedLegs = sourceAtRequest.missingLegs(gelbooruConfigured)
+        val first = nextPage == 1
+        val primarySite = sourceAtRequest.sites.first()
+        val limit = pageSizeFor(primarySite)
+        if (first) beginSearch(limit) else isLoadingMore = true
+        if (first) notice = trimmedNotice(sent) else loadMoreError = null
+        legFailures = blockedLegs
+        if (dispatched.isEmpty()) {
+            // 一条腿都发不出去 = 这一档现在完全不能用。整屏说这一句，不假装搜过了。
+            searchError = blockedLegs.values.firstOrNull() ?: "这一档现在没有能用的站"
             isSearching = false
+            isLoadingMore = false
+            return
+        }
+        // 各腿要第几页：第 1 页 = 每条腿都从头要；续页 = 到底的腿不再要，
+        // 这一轮缺席过的腿从第 1 页补（跟着别的腿跳页就是永久漏掉那一批）。
+        val pages = if (first) {
+            dispatched.associateWith { 1 }
+        } else {
+            nextPagesForAppend(pageBySite, exhaustedBySite, dispatched)
+        }
+        if (pages.isEmpty()) {
+            // 能发的腿全都到底了：这一句由 exhausted 去说，不再发一笔拿回空页。
+            exhausted = true
+            isSearching = false
+            isLoadingMore = false
             return
         }
         searchJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val query = GalleryRankings.searchQuery(
-                    siteAtRequest,
-                    sent,
-                    rankingAtRequest,
-                    anchorAtRequest,
-                    todayUtc,
-                )
-                val result = when (siteAtRequest) {
-                    GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limit)
-                    GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limit)
+                val attempts: List<GalleryLegAttempt> = coroutineScope {
+                    pages.map { (legSite, legPage) ->
+                        async {
+                            val query = GalleryRankings.searchQuery(
+                                legSite,
+                                sent,
+                                rankingAtRequest,
+                                anchorAtRequest,
+                                todayUtc,
+                            )
+                            // 每腿一笔时间预算：慢的那一条这一轮缺席（会被 legFailures 说出来），
+                            // 换来快的那条立刻出图。预算与包装那份都复用日榜那头（`GalleryLegGuard`），
+                            // 三处各写一遍迟早分叉 —— 而分叉出来的差别不报错，只出假读数。
+                            val byOriginal = GalleryLegGuard.guard(legSite) { searchLeg(legSite, query, legPage) }
+                            // 批次 J：这一腿**答上了却一行都没给**、而且那一排条件只有一枚包含型标签时，
+                            // 用户打的很可能是画师的别名而不是正名（站方两个名字都收，只有正名有货）。
+                            // 该不该走这一步全由 [GalleryArtistAlias.resolveToken] 说，这里只按它说的做；
+                            // 它说"不换"的时候，屏上与没做这个功能时**逐字节一致**：那 0 张照原样交回去。
+                            val token = GalleryArtistAlias.resolveToken(legSite, legPage, sent, byOriginal)
+                                ?: return@async GalleryLegAttempt(byOriginal, null)
+                            val canonical = canonicalArtist(legSite, token)
+                                ?: return@async GalleryLegAttempt(byOriginal, null)
+                            val substituted = GalleryArtistAlias.substitute(sent, token, canonical)
+                                ?: return@async GalleryLegAttempt(byOriginal, null)
+                            // 重搜这一腿**另起一笔预算**：前一笔的 12s 已经花在"确认原词没有货"上了，
+                            // 再拿同一个预算去框两笔就是让第二笔必然超时。
+                            val retried = GalleryLegGuard.guard(legSite) {
+                                searchLeg(
+                                    legSite,
+                                    GalleryRankings.searchQuery(
+                                        legSite,
+                                        substituted,
+                                        rankingAtRequest,
+                                        anchorAtRequest,
+                                        todayUtc,
+                                    ),
+                                    legPage,
+                                )
+                            }
+                            // 换过名这句话只在重搜那一笔**答上了**时才说：那一笔超时或被打回时，
+                            // 「按 tokenbox 也没有图」就是把"我们没问到"念成"站里没有"——
+                            // 那种原因不合并的口径与 [legFailures] 那条完全一致，缺席由缺席去说。
+                            GalleryLegAttempt(
+                                retried,
+                                if (retried.answered) {
+                                    GalleryArtistAlias.notice(token, canonical, retried.posts.isNotEmpty())
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                    }.awaitAll()
                 }
-                // 站已换 **或** 已经不是发车那一轮：这一笔属于别处，落地就是脏数据
-                // （chips 是新的、图是旧站的 / 旧一轮的）—— 整笔丢掉。
-                // 为什么光比站点不够：见 [isStaleContext]（返回弹栈那条路上站恰好没变）。
-                if (isStaleContext(roundAtRequest, siteAtRequest, contextRound, site)) return@launch
-                result.onSuccess { list ->
-                    searchError = null
-                    loadMoreError = null
-                    appendPage(list, nextPage, GallerySearch.isExhausted(list.size, limit))
-                    // 历史存的是**用户那一排**（不带排行伪标签），见 [visibleQuery] 上方那段说明。
-                    if (nextPage == 1) saveHistory(GallerySearchEntry(siteAtRequest, visibleQuery))
-                }.onFailure { e ->
-                    val message = e.message ?: "搜索失败"
+                // 档已换 **或** 已经不是发车那一轮：这一腿属于别处，落地就是脏数据。
+                // 只比站点不够（弹栈那条路上档恰好没变）；整笔丢会误伤同笔里仍有效的那条腿，所以按腿丢。
+                val freshAttempts = attempts.filterNot {
+                    isStaleLeg(roundAtRequest, it.outcome.site, contextRound, source.sites)
+                }
+                val fresh = freshAttempts.map { it.outcome }
+                if (fresh.isEmpty()) return@launch
+                // 换过名字这件事必须上屏：胶囊与历史存的都是用户的**原词**，少了这句话，
+                // 「搜 setmen 出来一批 tokenbox 的画」在界面上就没有任何地方解释。
+                if (first) {
+                    artistAliasNotice = freshAttempts.mapNotNull { it.aliasNotice }
+                        .takeIf { it.isNotEmpty() }?.joinToString("；")
+                }
+
+                val postsByLeg = LinkedHashMap<GallerySite, List<GalleryPost>>()
+                val returnedCount = LinkedHashMap<GallerySite, Int>()
+                val reasons = LinkedHashMap(legFailures)
+                for (leg in fresh) {
+                    // **答上了才算数**：站方回了空表是"这一站到到底"的凭据（记进 returnedCount），
+                    // 而请求没成只是"这一轮它没赶上"（进 legFailures，不参与到底判据）。
+                    // 两者混成一谈，一次 401 就会把那一站永久踢出翻页，页尾却写着「已经到底」。
+                    if (leg.answered) {
+                        postsByLeg[leg.site] = leg.posts
+                        returnedCount[leg.site] = leg.posts.size
+                    } else {
+                        reasons[leg.site] = leg.reason ?: "搜索失败"
+                    }
+                }
+                // 缺席的腿不写进 returnedCount ⇒ 不算到底（一次抖动不许永久踢掉一站）。
+                exhaustedBySite = exhaustedBySite + GallerySearchMerge.exhaustedSites(returnedCount, ::pageSizeFor)
+
+                val allFailed = fresh.size == dispatched.size && fresh.all { !it.answered }
+                if (allFailed) {
                     // 第 1 页失败 → 交给整屏空态说；续页失败 → 只在页尾说。
                     // 续页失败不能写成 searchError：那会把屏上已经摆出来的几十张图换成错误页。
-                    if (nextPage == 1) searchError = message else loadMoreError = message
+                    val message = fresh.firstOrNull { !it.answered }?.reason ?: "搜索失败"
+                    if (first) searchError = message else loadMoreError = message
+                    legFailures = reasons
+                    return@launch
+                }
+
+                val merged = GallerySearchMerge.interleave(postsByLeg, seenKeys).getOrThrow()
+                seenKeys = HashSet(merged.seenKeys)
+                searchError = null
+                loadMoreError = null
+                appendPage(
+                    merged.posts,
+                    // `page` 这一格只当"续页轮次计数"用（retryLoadMore 靠它 +1）；
+                    // 各腿真正的游标在 pageBySite 里，两腿页宽不同、不会互相顶。
+                    pages.values.max(),
+                    allLegsExhausted(dispatched, exhaustedBySite),
+                )
+                pageBySite = pageBySite + pages
+                // 站方给了行没给图的张数：合并那层已经数好了，appendPage 拿到的都是可摆的，
+                // 所以这一份要单独并进来（两边都是 +=，不重复计）。
+                droppedNoImage += merged.droppedUnusable
+                legFailures = reasons
+                if (first) {
+                    // 历史存的是**用户那一排**（不带排行伪标签），且记的是**这一串真正在哪些站搜过**
+                    // —— 未配账号的那条腿没搜过，就不该出现在那条历史的站点标记里。
+                    saveHistory(GallerySearchEntry(dispatched.toSet(), visibleQuery))
                 }
             } finally {
                 // 只有"这一笔还是当前那笔"才收尾：被新查询取消掉的旧协程不能替新的改状态，
@@ -788,6 +1030,31 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                 }
             }
         }
+    }
+
+    /**
+     * 一条腿的那一笔取数。两腿并发与批次 J 的"换个名字再打一次"共用这一条 ——
+     * 那两处唯一的差别是查询串，而 `when` 写两遍迟早分叉（漏掉一站是编译期能抓到的那种，
+     * 记错每页张数就不是了）。
+     */
+    private suspend fun searchLeg(site: GallerySite, query: String, page: Int): Result<List<GalleryPost>> =
+        when (site) {
+            GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
+            GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
+        }
+
+    /**
+     * 站方那条画师别名链（批次 J）：先按原词取画师记录，再跟一次 `artist/show/<alias_id>` 的重定向。
+     *
+     * 交回 null = **站方没有明确给出关联**，调用方就不重搜、保持 0 结果（用户拍的口径）。
+     * 取数失败、非 200、挂维护页那一律算 null，不重试也不报错 —— 这一条链是"顺手多救一次"，
+     * 它自己出问题的时候，屏上必须退回**没做这个功能时**那个样子。
+     */
+    private suspend fun canonicalArtist(site: GallerySite, original: String): String? {
+        // 别拿 Gelbooru 那条腿去走 yande.re 的门（参数在这一行之前就会求值，所以守卫要放在前面）。
+        if (!GalleryArtistAlias.supports(site)) return null
+        val title = YandeReClient.getInstance(app).resolveArtistAlias(original).getOrNull()
+        return GalleryArtistAlias.canonicalNameFor(site, original, title)
     }
 
     /**
@@ -818,20 +1085,48 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 「没有以它开头的标签」那句假话（真机上表现为打字后先闪一下"没有"）。
         isSuggesting = true
         suggestJob = viewModelScope.launch(Dispatchers.IO) {
-            val siteAtRequest = site
+            val sourceAtRequest = source
             try {
-                val result = when (siteAtRequest) {
-                    GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchTags(term)
-                    GallerySite.YANDERE -> YandeReClient.getInstance(app).searchTags(term)
-                }
-                // 站已换 → 这笔候选属于上一个站，作废。
-                if (siteAtRequest != site) return@launch
-                // 复检 + 截断：站方的前缀参数**可能被静默忽略**（少个 s 就回"最新标签"），
-                // 所以必须按原始输入再滤一遍，理由见 refineGalleryTagSuggestions。
-                result.onSuccess {
+                val legs = sourceAtRequest.availableLegs(gelbooruConfigured)
+                if (legs.isEmpty()) {
+                    // 未配账号的那一档没有词表可问。清空候选、不报错 ——
+                    // 那句"这一站还没配置"由卡上的来源读数去说，别让它长成"没有以它开头的标签"
+                    // （那是把我们自己的闸说成站方的答案）。
+                    suggestions = emptyList()
                     suggestError = null
-                    suggestions = refineGalleryTagSuggestions(term, it, SUGGEST_ROWS)
-                }.onFailure { suggestError = it.message ?: "标签补全失败" }
+                    return@launch
+                }
+                val results = coroutineScope {
+                    legs.map { leg ->
+                        async {
+                            leg to when (leg) {
+                                GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchTags(term)
+                                GallerySite.YANDERE -> YandeReClient.getInstance(app).searchTags(term)
+                            }
+                        }
+                    }.awaitAll()
+                }
+                // 档已换 → 这批候选属于上一档，作废（连打两下 `loli` → `lolita` 同理）。
+                if (sourceAtRequest != source) return@launch
+                // 两腿的词表**各问一次再并**：「全部」档搜的是两站，只问一条腿的候选
+                // 就会长成"这一站没这个标签"，而另一站其实有货。同名候选保留先到的那条
+                // （站表序在前的那一腿）。
+                val merged = LinkedHashMap<String, GalleryTagSuggestion>()
+                var failedLegs = 0
+                for ((_, outcome) in results) {
+                    outcome.onSuccess { list ->
+                        refineGalleryTagSuggestions(term, list, SUGGEST_ROWS).forEach { suggestion ->
+                            merged.putIfAbsent(suggestion.name, suggestion)
+                        }
+                    }.onFailure { failedLegs++ }
+                }
+                if (merged.isEmpty() && failedLegs == results.size) {
+                    suggestError = "标签补全失败"
+                    suggestions = emptyList()
+                } else {
+                    suggestError = null
+                    suggestions = merged.values.take(SUGGEST_ROWS)
+                }
             } finally {
                 // 只有"这一笔还是当前那笔"才收尾，被更新的输入取消掉的旧笔不许替新的灭灯。
                 if (suggestJob === coroutineContext[Job]) isSuggesting = false
@@ -892,8 +1187,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 返回能回到点历史之前那面墙。三条"换一轮上下文"的入口口径必须一致，
      * 否则同屏里出现两种语义（点标签能回退、点历史不能），下一轮一定被当成缺陷再报一次。
      */
-    fun applyHistory(entry: GallerySearchEntry) =
-        openContext(entry.site, entry.filters, thenCollapse = true)
+    fun applyHistory(entry: GallerySearchEntry) = openContext(
+        // 一条在两站都搜过的历史，点开就该回到「全部」那一档。退回单站等于把他上次
+        // 看到的两站结果少摆一半 —— 而那正是这条历史被合并成一条的理由。
+        if (entry.sites.size > 1) GallerySearchSource.ALL else GallerySearchSource.single(entry.site),
+        entry.filters,
+        thenCollapse = true,
+    )
 
     /**
      * "站方给了行但没给图"那句读数；没有跳过就 null。
@@ -909,6 +1209,33 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun noImageNotice(): String? = when {
         droppedNoImage == 0 -> null
         else -> "跳过 $droppedNoImage 张（站方给了条目但没给可用的图，多半已被删除或还在审核）"
+    }
+
+    /**
+     * 「这一轮有哪些腿没跑起来」那句读数；全都跑起来了就 null。
+     *
+     * 与 [noImageNotice] 是同一类东西：屏上少了一个站的货必须有个交代。
+     * 未配账号与超时是两种原因，各按腿念出来，不合并成"部分来源获取失败"那种说不出话的串。
+     */
+    fun legFailureNotice(): String? = legFailures
+        .takeIf { it.isNotEmpty() }
+        ?.entries
+        ?.joinToString("；") { (site, reason) ->
+            // 「这一站还没配置」那句自带站名（它是 domain 里唯一一份文案），再前缀一次就成了
+            // "Gelbooru：Gelbooru 需要…"。其余原因（超时、站方 500）都没写站名，才需要补上。
+            if (reason.startsWith(site.displayName)) reason else "${site.displayName}：$reason"
+        }
+
+    /**
+     * 「没有以它开头的标签」那行的主语 —— 说的是**真的问过的那几条腿**。
+     *
+     * 不能照来源档直说「两个站都没有」：默认「全部」档在没配 Gelbooru 账号时只问到了 yande.re，
+     * 那句"两个站都没有"就是把**我们自己的闸**说成**站方的答案**（同一条错误在补全那笔里已经避过一次）。
+     */
+    fun suggestionMissCopy(term: String): String {
+        val legs = source.availableLegs(gelbooruConfigured)
+        return if (legs.size > 1) "两个站都没有以「$term」开头的标签"
+        else "${legs.firstOrNull()?.displayName ?: source.label} 没有以「$term」开头的标签"
     }
 
     /**
@@ -935,19 +1262,25 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     companion object {
         /**
-         * Gelbooru 没配账号时给用户看的那句话。
-         *
-         * 措辞的三个要点，都不是随便写的：
-         * - **说清"完全用不了"而不是"效果差一点"**：它的接口匿名一律 401，
-         *   不是少几档权限。写成"登录后体验更好"会让用户以为不配也能凑合用；
-         * - **指出在哪儿配**（漫画源管理页顶部那张卡）—— 只说"需要账号"等于把问题
-         *   丢回给用户去找入口；
-         * - **不说 yande.re 也受影响**：这一站挂了不影响另一站，说清边界，
-         *   否则用户会以为整个画廊都瘫了。
+         * Gelbooru 没配账号时那句话。文本的唯一来源在 `GallerySearchSource.NEEDS_ACCOUNT_REASON`
+         * （判据与读数是同一件事，两处各写一份迟早分叉），这里只留别名给页面比对用 ——
+         * 空态那一档是靠"错误串是不是这一句"来分"这一站还不能用"与"这一轮没搜成"的。
          */
-        const val NEEDS_GELBOORU_ACCOUNT: String =
-            "Gelbooru 需要先配置账号才能用：它的接口对匿名请求一律拒绝（401）。" +
-                "到「漫画源管理」页顶部的「画廊站点账号」卡里填 User ID 与 API Key 即可；" +
-                "yande.re 不受影响，照常能搜。"
+        const val NEEDS_GELBOORU_ACCOUNT: String = GallerySearchSource.NEEDS_ACCOUNT_REASON
     }
 }
+
+/**
+ * 一条腿最终交回的东西：要上屏的那批图，加上**这一次换名**说的那句话（没换就是 null）。
+ *
+ * 为什么不把这句话塞进 [GalleryLegOutcome]：那份是三条链路（日榜、猜你喜欢、搜索）共用的
+ * "一条腿的取数结果"，换名这件事只有搜索这一条链路有。塞进去会让日榜那头也带一个恒为 null 的格子。
+ *
+ * 为什么要**带着结果一起返回**而不是在腿里直接写状态：多条腿并发，谁先落地不定，
+ * 从协程里写共享状态会把上一条的读数盖掉；而落地前那道"认轮次"的闸要把**过期那条腿的话**一起丢，
+ * 只有把话绑在结果上才丢得干净。
+ */
+private class GalleryLegAttempt(
+    val outcome: GalleryLegOutcome,
+    val aliasNotice: String?,
+)

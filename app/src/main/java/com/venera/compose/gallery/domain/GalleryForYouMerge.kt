@@ -149,23 +149,4 @@ object GalleryForYouMerge {
 
     /** 一条上屏条目的去重键 —— 调用方要**累积这些键**，作为下一页 [page] 的 `seenKeys`。 */
     fun keysOf(post: GalleryPost): List<String> = with(GalleryMerge) { post.dedupKeys() }
-
-    /**
-     * 这一轮**哪些站到底了** —— 返回的集合就是"下一页不再向它们发请求"的那些站。
-     *
-     * 为什么按站单独判，而不是混成一个全局 `exhausted`：两站的池子深浅不一样
-     * （实测 yande.re 的日榜恒 40 条、Gelbooru 的高分池 100 条），混成一个标志必然出现
-     * "A 站还能出货、页尾写着到底了"这种假读数 —— 而那正是搜索页 §7 与日榜那头刚修掉的同一类缺陷。
-     * 判据本身复用现成的 [GallerySearch.isExhausted]（返回条数不足一页即到底），不在这儿另写一把。
-     *
-     * ⚠️ **缺席的站不算到底**：[returned] 里没有这个站的键，含义是"这一轮它没给数"（超时、熔断、
-     * 未配账号都算），不是"它没有货了"。把它当到底就会一次抖动永久踢掉这一站 ——
-     * 那种"少了但没人说"的降级是本仓最忌的（`GalleryFeedSource` 那头同理：缺席要挂进 `failures` 说出来）。
-     */
-    fun exhaustedSites(
-        returned: Map<GallerySite, Int>,
-        limitOf: (GallerySite) -> Int,
-    ): Set<GallerySite> = returned
-        .filter { (site, count) -> GallerySearch.isExhausted(count, limitOf(site)) }
-        .keys
 }

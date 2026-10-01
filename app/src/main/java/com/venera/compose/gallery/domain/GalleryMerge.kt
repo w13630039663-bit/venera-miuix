@@ -68,6 +68,19 @@ object GalleryMerge {
         val videos: Int get() = posts.count { it.isVideo }
     }
 
+    /**
+     * 「换一批」能不能**只在本地重排**：手上那份原始池还够不够再洗一次。
+     *
+     * 批次 K 把日榜那面墙的「换一批」改成"留存两站原始池、只换种子重排，不重新请求"
+     * （用户 2026-09-30 拍板）。池子不够就必须回真取一次 —— 按下去屏上纹丝不动，
+     * 就是那两个按钮存在的意义要防的假按钮。
+     *
+     * 取 `>= 2` 而不是"非空"：只有一张时重排出来的还是那一张，用户看不出这一下干了什么。
+     * 只有一站给货也算够 —— 另一站这一轮缺席是**另一件事**，由页尾那条读数去说。
+     */
+    fun canRemix(pools: Map<GallerySite, List<GalleryPost>>): Boolean =
+        pools.values.any { it.size >= 2 }
+
     fun mix(
         pools: Map<GallerySite, List<GalleryPost>>,
         seed: Long,

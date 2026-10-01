@@ -11,6 +11,7 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.network.VeneraImageLogger
 import com.venera.compose.data.network.VeneraNetworkClient
 import java.io.File
+import okhttp3.Dispatcher
 import okio.Path.Companion.toPath
 
 /**
@@ -57,6 +58,29 @@ object GalleryImageLoader {
     /** 画廊独占的缓存目录名（独立目录 = 清它不会连漫画封面一起清掉）。 */
     private const val DISK_DIR_NAME = "gallery_img"
 
+    /**
+     * 每主机并发上限（2026-09-30「预览能不能更快」那轮调的）。
+     *
+     * 共享客户端的 Dispatcher 全吃 OkHttp 默认值 —— `maxRequestsPerHost = 5`。
+     * 画廊一屏 2 列就是 12~18 张缩略图，全部打在**同一个**图床主机上
+     * （yande.re 是 `assets.yande.re`、Gelbooru 是 `imgN.gelbooru.com` 按 md5 分片但主机就几个），
+     * 第 6 张起全在队列里排队 —— 用户看到的"预览一张一张慢慢蹦"主要是这一条，不是网速。
+     *
+     * 派生客户端只抬这个数字，其余（拦截器链 / 连接池 / Cookie / 缓存）原样共享：
+     * - **连接池共享**意味着并发抬高的只是"同时在飞的请求数"，不是新建 24 条连接 ——
+     *   HTTP/2 复用同一条连接多路复用，闲置连接也会被池回收；
+     * - 2026-09-29 起画廊取图走 Coil 自带 fetcher（`enqueue` 异步入队），**不**绕开
+     *   Dispatcher 的并发闸（同步 `execute()` 才会绕，见记忆 project-coil-image-pipeline-facts），
+     *   所以这一抬是真生效的；
+     * - 两站缩略 CDN 都是静态内容（实测两站缩略都回 `max-age=315360000` + ETag），
+     *   不存在"并发高了把站打疼"的限流代价；原图/样例大档是用户在大图页手动触发的，
+     *   一屏至多几张，不会借这个窗口冲站。
+     */
+    private const val MAX_REQUESTS_PER_HOST = 16
+
+    /** 派生客户端的总并发上限（>= [MAX_REQUESTS_PER_HOST] 才不成为新瓶颈）。 */
+    private const val MAX_REQUESTS_TOTAL = 32
+
     @Volatile
     private var instance: ImageLoader? = null
 
@@ -98,7 +122,18 @@ object GalleryImageLoader {
         .sumOf { it.length() }
 
     private fun build(appContext: Context): ImageLoader {
-        val okHttpClient = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val baseOkHttpClient = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        // 派生客户端：只抬 Dispatcher 的并发上限（理由与数字口径见上面那两个常量的 KDoc）。
+        // 拦截器链（熔断豁免 / 防盗链头 / UA / CF 透明处理）由共享 client 原样带过来 ——
+        // newBuilder() 的语义就是共享这些重对象，连接池与 CookieJar 也在共享之列。
+        val okHttpClient = baseOkHttpClient.newBuilder()
+            .dispatcher(
+                Dispatcher().apply {
+                    maxRequests = MAX_REQUESTS_TOTAL
+                    maxRequestsPerHost = MAX_REQUESTS_PER_HOST
+                },
+            )
+            .build()
         val cacheMb = VeneraPreferences.getInstance(appContext)
             .galleryCacheMaxMb
             .value

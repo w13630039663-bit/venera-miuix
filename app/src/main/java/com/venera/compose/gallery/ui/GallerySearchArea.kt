@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -85,18 +84,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
@@ -109,8 +103,10 @@ import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchEntry
+import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GallerySearchCollapse
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.gallerySourceMarkText
 import com.venera.compose.ui.tokens.GalleryTagCategoryColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.delay
@@ -173,8 +169,6 @@ fun GallerySearchArea(
     recommendations: Map<GallerySite, GalleryRecommendation>,
     /** 点一枚推荐 = 把那一站的这串条件装好并开搜。 */
     onPickRecommendation: (GallerySite, List<String>) -> Unit,
-    /** 区域真实高度回给页面：网格顶部避让按它算，展开 / 收起时网格才被平滑推下去。 */
-    onSizeChanged: (IntSize) -> Unit,
     /** 「以图搜图」那一层。开着时**同一张卡原地形变**成反搜的输入形态（2026-09-28 改，见下）。 */
     rvm: GalleryReverseViewModel,
     /** 与那面墙同一把的分级判据，直接透传给 SauceNAO 的 `hide` 参数。 */
@@ -204,6 +198,10 @@ fun GallerySearchArea(
     var rankingMenuOpen by remember { mutableStateOf(false) }
     var periodPickerOpen by remember { mutableStateOf(false) }
 
+    // 历史在这一态要用（下面空框时的「最近搜索」列表），而恢复点只有一处：
+    // 2026-09-30 第二轮它从 `GalleryScreen` 搬回这里 —— 首页那节撤下之后，
+    // **这里重新成为唯一消费它的地方**（`restoreHistoryIfNeeded` 自带
+    // `if (history.isNotEmpty()) return`，所以重复调用是幂等的）。
     LaunchedEffect(Unit) { svm.restoreHistoryIfNeeded() }
 
     // 展开 = 一步到键盘（MD3 SearchView 的标准行为）。
@@ -272,7 +270,7 @@ fun GallerySearchArea(
     // ── 补全：防抖 250ms，且只在展开时跑 ──
     // 收成一条时输入框还在（就在卡里），不门控的话"看着结果"那一段也会偷发请求。
     var awaitingSuggest by remember { mutableStateOf(false) }
-    LaunchedEffect(svm.term, svm.site, expanded) {
+    LaunchedEffect(svm.term, svm.source, expanded) {
         if (!expanded) {
             awaitingSuggest = false
             return@LaunchedEffect
@@ -320,7 +318,6 @@ fun GallerySearchArea(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .onSizeChanged { onSizeChanged(it) }
             .padding(
                 start = tokens.spacing.screenHorizontal,
                 end = tokens.spacing.screenHorizontal,
@@ -530,7 +527,10 @@ fun GallerySearchArea(
                                     // 标签态（原样保留，含退格删胶囊）
                                     if (svm.term.isEmpty()) {
                                         Text(
-                                            text = "在 ${svm.site.displayName} 搜标签",
+                                            // 占位不写站名：来源就在下面那排分段器上摆着，这里再写一遍"当前哪一站"
+                                            // 就得跟着档改字（「全部」档压根没有单一站名可写）。
+                                            // 说清这一框能敲什么更有用。
+                                            text = "标签 / 画师 / 作品",
                                             fontSize = tokens.type.body,
                                             color = tokens.color.onSurfaceVariant,
                                             maxLines = 1,
@@ -592,6 +592,11 @@ fun GallerySearchArea(
                             }
 
                             // ── 尾随钮：按形态给不同的"现在能退掉什么"，原地过渡 ──
+                            //
+                            // 批次 K 把「以图搜图」也搬进这一格：它原先贴在站点选择器旁边，
+                            // 于是"输入框自己变成另一副样子"的那具身体里，按钮长在框外面 ——
+                            // 点的位置与形变发生的位置对不上，读起来就像换了个页面。
+                            // 标签态这一格里同时放两枚：反搜入口 + "现在能退掉什么"（清空 / 删最后一枚）。
                             Crossfade(
                                 targetState = rvm.open,
                                 animationSpec = tween(tokens.motion.medium),
@@ -599,21 +604,37 @@ fun GallerySearchArea(
                             ) { reverse ->
                                 if (reverse) {
                                     ReverseTrailingActions(rvm)
-                                } else if (svm.term.isNotEmpty() || svm.filters.isNotEmpty()) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Close,
-                                        contentDescription = if (svm.term.isNotEmpty()) "清空输入" else "删掉最后一枚标签",
-                                        tint = tokens.color.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .size(tokens.spacing.chipIconSize)
-                                            .clickable {
-                                                if (svm.term.isNotEmpty()) {
-                                                    svm.term = ""
-                                                } else {
-                                                    svm.removeLastFilter()
-                                                }
-                                            },
-                                    )
+                                } else {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ImageSearch,
+                                            contentDescription = "以图搜图",
+                                            tint = tokens.color.textSecondary,
+                                            modifier = Modifier
+                                                .size(tokens.spacing.chipIconSize)
+                                                .clip(RoundedCornerShape(tokens.shape.small))
+                                                .clickable { rvm.openLayer() },
+                                        )
+                                        if (svm.term.isNotEmpty() || svm.filters.isNotEmpty()) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Close,
+                                                contentDescription = if (svm.term.isNotEmpty()) "清空输入" else "删掉最后一枚标签",
+                                                tint = tokens.color.onSurfaceVariant,
+                                                modifier = Modifier
+                                                    .size(tokens.spacing.chipIconSize)
+                                                    .clickable {
+                                                        if (svm.term.isNotEmpty()) {
+                                                            svm.term = ""
+                                                        } else {
+                                                            svm.removeLastFilter()
+                                                        }
+                                                    },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -621,9 +642,12 @@ fun GallerySearchArea(
                 }
 
                 // ── 展开出来的那一半（只有输入端在）──
-                // 高度由内容决定，外面的 `onSizeChanged` 每帧拿到真实高度，
-                // 网格避让跟着它走 —— 所以这里用 AnimatedVisibility 让它**长开**而不是跳变，
-                // 网格才是被"推下去"的。
+                // 用 AnimatedVisibility 让它**长开**而不是跳变。
+                //
+                // ⚠️ 2026-09-30 第二轮：**网格不再跟着它避让了** —— 这张卡改成了从入口条位置
+                // 弹出的浮层（不再推内容），所以"高度由外面逐帧量走"那条通道
+                // （`onSizeChanged` 回给页面算 padding）已经整条撤掉。这里保留长开动画只是因为
+                // 卡片自己长高读起来更顺，与网格无关了。
                 //
                 // 2026-09-28 形变改造：反搜开着时这一整块收拢（站点选择 / 补全 / 历史都是
                 // 标签态专属），与下面那块反搜区的长开**同时进行** —— 卡高一收一放，
@@ -646,41 +670,35 @@ fun GallerySearchArea(
                                 bottom = tokens.spacing.space6,
                             ),
                     ) {
-                        // 站点切换 + 以图搜图入口，同一行。
+                        // 站点（来源）切换。批次 K 之后这一行**只有它**：
+                        // 反搜入口搬进了输入框的尾随格（形变的那具身体里，按钮该长在框上）。
                         //
-                        // 站点那半：MD3 对 2~5 个互斥选项的标准件是 Segmented Button，
-                        // 不是一排可横滑的 filter chip（两个站用横滑容器是空转的）。
-                        //
-                        // 反搜那半为什么**贴在这里**而不是另起一行：它和"选哪一站"是同一层
-                        // 决定 —— 都在回答"这一轮按什么条件去取图"。另起一行就要多占 48dp，
-                        // 而这一屏每一行都在抢卡片的高度（那面墙才是这一屏的主角）。
-                        // 站点选择器因此从满宽让成 weight(1f)：两枚选项 + 一枚图标钮，
-                        // 1080px 宽的机器上各段仍容得下 "Gelbooru" 全名。
-                        Row(
+                        // MD3 对 2~5 个互斥选项的标准件是 Segmented Button，
+                        // 不是一排可横滑的 filter chip。「全部」这一档不是第三个站，
+                        // 它是**一次打到两站**的来源选择，所以列表来自 [GallerySearchSource.options]
+                        // 而不是 `GallerySite.entries`（默认档在首，两站按站表序跟在后面）。
+                        VeneraSegmentedButton(
+                            options = GallerySearchSource.options.map { it.label },
+                            selectedIndex = GallerySearchSource.options.indexOf(svm.source).coerceAtLeast(0),
+                            onSelect = { index ->
+                                GallerySearchSource.options.getOrNull(index)?.let { svm.setSource(it) }
+                            },
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-                        ) {
-                            VeneraSegmentedButton(
-                                options = GallerySite.entries.map { it.displayName },
-                                selectedIndex = GallerySite.entries.indexOf(svm.site).coerceAtLeast(0),
-                                onSelect = { index ->
-                                    GallerySite.entries.getOrNull(index)?.let { svm.setSite(it) }
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
-                            Icon(
-                                imageVector = Icons.Outlined.ImageSearch,
-                                contentDescription = "以图搜图",
-                                tint = if (rvm.open) tokens.color.primary else tokens.color.textSecondary,
-                                modifier = Modifier
-                                    .size(tokens.spacing.chipIconSize)
-                                    .clip(RoundedCornerShape(tokens.shape.small))
-                                    .clickable { rvm.openLayer() },
-                            )
-                        }
+                        )
 
                         svm.notice?.let {
+                            Spacer(modifier = Modifier.height(tokens.spacing.space3))
+                            SearchNoticeLine(it)
+                        }
+                        // 这一轮有条腿没跑起来 → 卡上就说出来。只写在页尾是不够的：
+                        // 展开着卡的人看的是这一块，而"少了一个站的货"必须在他改条件之前就看得见。
+                        svm.legFailureNotice()?.let {
+                            Spacer(modifier = Modifier.height(tokens.spacing.space3))
+                            SearchNoticeLine(it)
+                        }
+                        // 换过画师名也要在这儿说：卡上那排胶囊是用户打的**原词**，
+                        // 而屏上那面墙已经是另一个人的画了 —— 不在这儿交代，读起来就是"搜错了"。
+                        svm.artistAliasNotice?.let {
                             Spacer(modifier = Modifier.height(tokens.spacing.space3))
                             SearchNoticeLine(it)
                         }
@@ -695,13 +713,21 @@ fun GallerySearchArea(
                             )
                         }
 
-                        // 打字看补全；框里没字、而且屏上还**没有**一轮搜索结果时看历史。
+                        // 打字看补全；框里没字、而且屏上还**没有**一轮搜索结果时看推荐。
                         //
                         // 第三档（没字 + 已经有结果或空态）**刻意不摆列表**：用户此刻看的是结果那一片，
-                        // 而摊着的历史会把它挤到键盘底下 —— 真机实测那一档是
+                        // 而摊着的列表会把它挤到键盘底下 —— 真机实测那一档是
                         // 卡片 ~266dp + 键盘 ~340dp + 顶栏地板 ~128dp，873dp 的屏只剩 ~124dp，
                         // 连"这一串标签没有可摆的图"那句都读不全，只剩一个图标露头。
                         // 想接着加标签直接打字，补全照样出来。
+                        //
+                        // ⚠️ 2026-09-30：这一档里的「最近搜索」**整块搬去了首页第 5 节**
+                        // （用户拍板"上首页、并从搜索卡里撤下"）。理由有两条，都不是省事：
+                        //  1. 同一份历史在卡片里与首页各画一遍，用户在任一处删掉之后另一处会显得没同步；
+                        //  2. 它本来是"浏览时顺手接着搜"的入口，而卡片只在用户**已经决定要搜**之后才开着 ——
+                        //     真正的浏览场景（首页、没点任何东西）此前看不到自己的历史。
+                        // 留下的 `RecommendationRows` 是另一件事：那是**我们替他算出来的**，
+                        // 只在"他正打算搜"这一刻才有意义，所以它留在卡里。
                         val hasResultRound = svm.page > 0 || svm.isSearching
                         if (svm.term.isNotBlank() || !hasResultRound) {
                             Spacer(modifier = Modifier.height(tokens.spacing.space4))
@@ -716,13 +742,21 @@ fun GallerySearchArea(
                                         loading = awaitingSuggest || svm.isSuggesting,
                                         error = svm.suggestError,
                                         term = svm.term.trim(),
-                                        site = svm.site,
+                                        missCopy = svm.suggestionMissCopy(svm.term.trim()),
                                         onPick = { addTag(it) },
                                     )
                                 }
                             } else {
                                 // 「根据你的收藏」排在历史**上面**：它是"我们替你算出来的"，
                                 // 历史是"你自己搜过的"，前者要用户先知道有这条路。
+                                //
+                                // ⚠️ 2026-09-30 第二轮：首页那一栏「根据你的收藏」已撤下
+                                // （用户点名），但**这一份保留** —— 它是"手动挑一枚推荐串"的入口，
+                                // 与首页那排展示栏是两件事（首页那份只是展示，这份点下去即开搜）。
+                                //
+                                // 「关注的画师」那一排 2026-09-30 从这一栏撤掉了（用户拍板）：
+                                // 首页那一节整个换成了「正在关注的画师」，同一份名单在两处长得还不一样，
+                                // 读起来像两个功能。名单本身没动，动的只是它住在哪儿。
                                 RecommendationRows(
                                     recommendations = recommendations,
                                     onPick = onPickRecommendation,
@@ -905,7 +939,7 @@ private fun FilterChipItem(
  *
  * 月/年档可以翻历史期（yande.re 原生认 `date:A..B`，任意一期都是**一笔请求**，见 §十二）。
  * 入口放在同一个下拉的末尾而不是另起一行：这一屏每一行都在抢卡片高度，同一条口径。
- * 给不出时间窗的站连这一行也不出现（[GalleryRankings.supportsPeriodPicker]）。
+ * 给不出时间窗的来源档连这一行也不出现（[GalleryRankings.supportsPeriodPickerAll]）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -932,12 +966,13 @@ private fun RankingChip(
             onClick = { onMenuOpen(true) },
         )
         DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
-            // 本站没有的档**不列出**（2026-09-29 用户点名：「只留『默认』与『全部排行』，其他删掉」）。
-            // 这里原先的口径是"留着行但置灰 + 写'本站没有'"，理由是让用户分清"这站没有"和"我们没做"；
-            // 实际观感是六行里四行点不动，比少两行更烦。判据仍然只有一把（[GalleryRankings.supports]），
-            // 变的只是"不参与判据的行不再画出来"。
+            // 这一档摆不摆这一行，问的是**每一条腿**（[GalleryRankings.supportsAll]）：
+            // 「全部」档里 Gelbooru 给不了时间窗，那一档就只剩「默认」与「全部排行」两行。
+            // 照第一条腿列六行会出现"胶囊写着周、Gelbooru 那腿交回历年高分"—— 假开关。
+            // 本站没有的档**不列出**（2026-09-29 定的口径：原先"留着行但置灰 + 写'本站没有'"，
+            // 实际观感是六行里四行点不动，比少两行更烦；变的只是不参与判据的行不再画出来）。
             GalleryRanking.entries
-                .filter { GalleryRankings.supports(svm.site, it) }
+                .filter { GalleryRankings.supportsAll(svm.source.sites, it) }
                 .forEach { ranking ->
                     val range = GalleryRankings.windowLabel(ranking, todayUtc)
                     DropdownMenuItem(
@@ -959,9 +994,10 @@ private fun RankingChip(
                         },
                     )
                 }
-            // 「选哪一期」只在给得出时间窗的站出现：Gelbooru 连"本期"的档都没有，
-            // 摆一个点开只会翻出空墙的入口就是假开关（判据与上面同一把）。
-            if (GalleryRankings.supportsPeriodPicker(svm.site)) {
+            // 「选哪一期」同样按**每一条腿**判：Gelbooru 连"本期"的档都没有，
+            // 「全部」档带着它一起搜时摆这一行就是点开挑一期、只有一条腿认 —— 同一个假开关的入口版
+            // （判据与上面同一把，[GalleryRankings.supportsPeriodPickerAll]）。
+            if (GalleryRankings.supportsPeriodPickerAll(svm.source.sites)) {
                 DropdownMenuItem(
                     text = { Text(text = "选具体哪一期…　月 / 年", fontSize = tokens.type.body) },
                     onClick = {
@@ -1161,7 +1197,8 @@ private fun SuggestionList(
     loading: Boolean,
     error: String?,
     term: String,
-    site: GallerySite,
+    /** 「没有以它开头的标签」那行整句由 ViewModel 拼（要按**真正问过的那几条腿**说，见 [GallerySearchViewModel.suggestionMissCopy]）。 */
+    missCopy: String,
     onPick: (GalleryTagSuggestion) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1196,7 +1233,7 @@ private fun SuggestionList(
             } else {
                 // 取不到时说清是"没有这个词"还是"请求失败"，不说笼统的"搜索失败"。
                 Text(
-                    text = error ?: "${site.displayName} 没有以「$term」开头的标签",
+                    text = error ?: missCopy,
                     fontSize = tokens.type.body,
                     color = tokens.color.textSecondary,
                     textAlign = TextAlign.Center,
@@ -1278,12 +1315,6 @@ private fun SuggestionRow(
     }
 }
 
-/**
- * 「最近搜索」那一行标题 + 「清空」。
- *
- * 标题**不放进限高的列表里**：放进去它会占掉 4 行里的 1 行，于是可见的历史只剩 3 条。
- * 单独一行也让它读起来像"这一栏在说什么"，而不是一条可以点的记录。
- */
 /**
  * 「根据你的收藏」那一栏。
  *
@@ -1374,6 +1405,17 @@ private fun RecommendationRows(
     }
 }
 
+// 「最近搜索」的渲染件整块搬回本文件（2026-09-30 第二轮）：用户拍板
+// "最近搜索放回点击搜索框后下面框框着"，所以它重新住进这张卡的空框态。
+// 形状与搬到首页之前**逐字相同**（双列紧凑 chip、字母小徽标、`×` 删单条）——
+// 那三条都是真机反馈定的（见 `_trash/gallery-history-row-2026-09-30/README.md`）。
+
+/**
+ * 「最近搜索」那一行标题 + 「清空」。
+ *
+ * 标题**不放进限高的列表里**：放进去它会占掉 4 行里的 1 行，于是可见的历史只剩 3 条。
+ * 单独一行也让它读起来像"这一栏在说什么"，而不是一条可以点的记录。
+ */
 @Composable
 private fun HistoryHeader(onClearAll: () -> Unit) {
     val tokens = VeneraTokens
@@ -1402,8 +1444,13 @@ private fun HistoryHeader(onClearAll: () -> Unit) {
 }
 
 /**
- * 最近搜索列表。每行两件事：**点一行 = 把那一轮的条件装回来**（不直接开搜，用户 2026-09-25 拍板），
+ * 最近搜索列表。每行两件事：**点一行 = 把那一轮再跑一遍**，
  * **点右边的 × = 删这一条**（`clearHistory` 曾是个只有实现没有入口的死方法）。
+ *
+ * **双列紧凑网格**，不是整行的 LazyColumn：
+ *  - 同一个词跨站并成一条之后，历史短了，整行布局十行就顶到键盘底下、密度反而更差；
+ *  - 每条自持半宽，长查询串自己省略 —— 这一块的用途是"认出我搜过哪个"，不是读全文。
+ * 外层那个 `heightIn(max =)` 的限高照旧：行数超了在这块里自己滚，卡片不再跟着长高。
  */
 @Composable
 private fun HistoryList(
@@ -1412,96 +1459,39 @@ private fun HistoryList(
     onRemove: (GallerySearchEntry) -> Unit,
 ) {
     val tokens = VeneraTokens
-    if (history.isEmpty()) {
-        Text(
-            text = "输入标签名（英文或下划线串），从补全里点选。两站标签词表不通，所以一次只搜一个站。",
-            fontSize = tokens.type.caption,
-            color = tokens.color.textTertiary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = tokens.spacing.space4),
-        )
-        return
-    }
-    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-        items(history, key = { "${it.site.routeKey}=${it.query}" }) { entry ->
-            HistoryRow(
-                entry = entry,
-                onPick = { onPick(entry) },
-                onRemove = { onRemove(entry) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun HistoryRow(
-    entry: GallerySearchEntry,
-    onPick: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    val tokens = VeneraTokens
-    val interactionSource = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(tokens.shape.small)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = tokens.spacing.listRowMinHeight)
-            .clip(shape)
-            .clickable(interactionSource = interactionSource) { onPick() }
-            .padding(start = tokens.spacing.space4, end = tokens.spacing.space1),
+            .verticalScroll(rememberScrollState()),
     ) {
-        Icon(
-            imageVector = Icons.Outlined.History,
-            contentDescription = null,
-            tint = tokens.color.textTertiary,
-            modifier = Modifier.size(tokens.spacing.chipIconSize),
-        )
-        Spacer(modifier = Modifier.width(tokens.spacing.space6))
-        Text(
-            text = historyQueryLabel(entry.query, tokens.color.textTertiary),
-            fontSize = tokens.type.body,
-            color = tokens.color.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(modifier = Modifier.width(tokens.spacing.space4))
-        Text(
-            text = entry.site.displayName,
-            fontSize = tokens.type.caption,
-            color = tokens.color.textTertiary,
-            maxLines = 1,
-        )
-        VeneraIconButton(onClick = onRemove) {
-            Icon(
-                imageVector = Icons.Outlined.Close,
-                contentDescription = "删掉这条历史",
-                tint = tokens.color.textTertiary,
-                modifier = Modifier.size(tokens.spacing.chipIconSize),
-            )
+        history.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+            ) {
+                row.forEach { entry ->
+                    VeneraChip(
+                        text = entry.query,
+                        // 字母小徽标（Y / G / Y·G）：这一条在哪些站搜过，是历史里唯一还有信息量的
+                        // 差别；摆站名整行会把关键词挤没。
+                        leadingText = gallerySourceMarkText(entry.sites),
+                        trailingIcon = Icons.Outlined.Close,
+                        onClick = { onPick(entry) },
+                        // × 单独一个动作：整枚 chip 是"按这一条再搜一次"，删掉不能也落在它上面。
+                        onRemoveClick = { onRemove(entry) },
+                        variant = VeneraChipVariant.Neutral,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                // 落单的那条（总数为奇数时最后一行只有一条）占住右半格，别让上一条被拉成满宽。
+                if (row.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(modifier = Modifier.height(tokens.spacing.space2))
         }
     }
 }
-
-/**
- * 历史行的查询串：**排除项压暗**。
- *
- * 直接把 `loli -rating:explicit` 原样摆出来，读起来像一行日志。压暗 `-` 开头的那几段之后，
- * 一眼能分出"我要找的"和"我排掉的"，也不用发明一套新语法（那串仍是站方原样，复制去网页能搜）。
- */
-private fun historyQueryLabel(query: String, tertiary: Color): AnnotatedString =
-    buildAnnotatedString {
-        query.split(' ').forEachIndexed { index, part ->
-            if (index > 0) append(" ")
-            if (part.startsWith("-")) {
-                withStyle(SpanStyle(color = tertiary)) { append(part) }
-            } else {
-                append(part)
-            }
-        }
-    }
 
 /** 标签计数加千分位：`211823` → `211,823`。图站计数动辄六位，不加分隔号读不出量级。 */
 private fun formatTagCount(count: Int): String = String.format(Locale.US, "%,d", count)
@@ -1550,6 +1540,20 @@ fun GallerySearchEnd(
      * 而"我明明选了 3 枚、怎么像只搜了 2 枚"这件事恰恰是收条之后才看得出来的。
      */
     trimmedNote: String? = null,
+    /**
+     * 「这一轮有哪些腿没跑起来」的读数；全都跑起来了传 null。
+     *
+     * 「全部」档少了一条腿，屏上就少了一个站的货，而这行页尾是用户唯一读得出"少了"的地方 ——
+     * 不点名，那一站今天没出货就成了"这站本来就没几张"。
+     */
+    legNotice: String? = null,
+    /**
+     * 这一轮把用户打的画师名**换成了站方记的正名**时的那句话；没换传 null。
+     *
+     * 页尾必须念：上面那行写着「已摆出 N 张」，而条件那一串是用户的原词 ——
+     * 少了这一句，"搜 setmen 出来一批 tokenbox 的画"就成了一次没人解释的换词。
+     */
+    aliasNotice: String? = null,
     /** 续页那一笔的失败原因；非空时页尾如实说 + 给一枚「重试」。 */
     loadMoreError: String? = null,
     onRetryLoadMore: () -> Unit = {},
@@ -1585,10 +1589,11 @@ fun GallerySearchEnd(
         )
         // 续页失败：说清是哪一笔失败，并给一枚**真能发出请求**的重试。
         // 此前没有这一块 —— 失败之后页面进入"永远不再取下一页"，而上面那行还写着"上滑继续取"。
-        if (trimmedNote != null) {
+        // 「条件被砍」与「某条腿没跑起来」与它同式：都是"屏上少了东西，得有个说法"的读数行。
+        listOfNotNull(trimmedNote, legNotice, aliasNotice).forEach { note ->
             Spacer(modifier = Modifier.height(tokens.spacing.space3))
             Text(
-                text = trimmedNote,
+                text = note,
                 fontSize = tokens.type.caption,
                 color = tokens.color.textSecondary,
                 textAlign = TextAlign.Center,

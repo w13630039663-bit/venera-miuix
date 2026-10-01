@@ -17,7 +17,14 @@ import java.time.LocalDate
  * 而且弹栈一律回"看墙"那一态 —— 用户离开那一轮是去别处看图，回来该看到墙，不是键盘。
  */
 data class GallerySearchContext(
-    val site: GallerySite,
+    /**
+     * 这一轮打的**来源**（单站，或「全部」两腿）。
+     *
+     * 存来源而不是存站点：「全部」那一屏弹栈回来必须还是「全部」。只记一个站就会出现
+     * 「用全部搜 → 点一枚标签开新一轮 → 返回 → 张数对不上，因为悄悄退回了一个站」，
+     * 而页尾那行读数仍写着原来那个站 —— 那种错位没人说得清。
+     */
+    val source: GallerySearchSource,
     val filters: List<GalleryTagFilter>,
     val results: List<GalleryPost>,
     val page: Int,
@@ -46,7 +53,32 @@ data class GallerySearchContext(
      * 等于让他从第 1 张重新找刚才看到哪儿。默认 0 = 顶部（新一轮本来就该从顶部开始）。
      */
     val scrollIndex: Int = 0,
-)
+    /**
+     * 各腿当时飞到第几页。
+     *
+     * 「全部」档必须一起存：漏了它就会出现「弹回来屏上是那 200 张，再往下翻却从头重要一遍
+     * 已经看过的内容」。缺席的腿不在表里，续页时由 [nextPagesForAppend] 从第 1 页补。
+     */
+    val pageBySite: Map<GallerySite, Int> = emptyMap(),
+    /** 各腿当时到底了没。缺席的腿不算到底（与 [GallerySearchMerge.exhaustedSites] 同一口径）。 */
+    val exhaustedBySite: Set<GallerySite> = emptySet(),
+    /**
+     * 那一轮**换过画师名**的那句话（批次 J，null = 没换过）。
+     *
+     * 为什么连这句闲话都要存：弹栈时屏上抄回去的是**换过名之后**那一批图，而胶囊串抄回去的是
+     * 用户打的**原词**。漏了它，那面墙就长成"搜 setmen 出来一批 tokenbox 的画，一个字都没说"——
+     * 悄悄换词正是这个功能从第一天就该防的事。
+     */
+    val aliasNotice: String? = null,
+) {
+    /**
+     * 单站那一档的便捷读法。多腿时取站表序第一个。
+     *
+     * 留着这一条只为了"这一串从哪个站续上"这类派生读法 —— **别拿它当身份**：
+     * 条目 uid、路由键、收藏档用的都是每条结果自带的 `GalleryPost.site`，那才是真站。
+     */
+    val site: GallerySite get() = source.sites.first()
+}
 
 /** 换一轮上下文之前，先问这一轮该怎么处置。三个出口，没有第四个。 */
 enum class GalleryContextPlan {
@@ -82,16 +114,31 @@ object GallerySearchContextStack {
     const val MAX_DEPTH = 8
 
     fun plan(
+        currentSource: GallerySearchSource,
+        currentFilters: List<GalleryTagFilter>,
+        incomingSource: GallerySearchSource,
+        incomingFilters: List<GalleryTagFilter>,
+    ): GalleryContextPlan = when {
+        currentFilters.isEmpty() -> GalleryContextPlan.SKIP_EMPTY
+        // 换来源 = 换一轮：条件一串不差但打的站不一样，结果也不同源（两站词表不通）。
+        // 「全部」与单站之间来回切同理 —— 屏上的张数会变，压栈才回得去刚才那一屏。
+        incomingSource == currentSource && incomingFilters == currentFilters ->
+            GalleryContextPlan.RESEARCH_IN_PLACE
+        else -> GalleryContextPlan.PUSH
+    }
+
+    /** 单站写法的薄封装：旧调用点与既有用例都走这一条，语义与上面完全一致。 */
+    fun plan(
         currentSite: GallerySite,
         currentFilters: List<GalleryTagFilter>,
         incomingSite: GallerySite,
         incomingFilters: List<GalleryTagFilter>,
-    ): GalleryContextPlan = when {
-        currentFilters.isEmpty() -> GalleryContextPlan.SKIP_EMPTY
-        // 跨站必然开新一轮：条件一串不差但换了站，结果也不同源（两站词表不通）。
-        incomingSite == currentSite && incomingFilters == currentFilters -> GalleryContextPlan.RESEARCH_IN_PLACE
-        else -> GalleryContextPlan.PUSH
-    }
+    ): GalleryContextPlan = plan(
+        GallerySearchSource.single(currentSite),
+        currentFilters,
+        GallerySearchSource.single(incomingSite),
+        incomingFilters,
+    )
 
     /** 压入 [entry] 作为新的栈顶；超深时从**栈底**挤掉。 */
     fun push(stack: List<GallerySearchContext>, entry: GallerySearchContext): List<GallerySearchContext> =
@@ -118,4 +165,4 @@ fun isStaleContext(
     requestSite: GallerySite,
     currentRound: Int,
     currentSite: GallerySite,
-): Boolean = requestRound != currentRound || requestSite != currentSite
+): Boolean = isStaleLeg(requestRound, requestSite, currentRound, listOf(currentSite))

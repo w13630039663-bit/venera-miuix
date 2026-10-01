@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,22 +40,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import com.venera.compose.components.venera.VeneraIconButton
+import coil3.ImageLoader
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
+import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GalleryTagGroup
 import com.venera.compose.gallery.data.galleryTagCategoryLabel
+import com.venera.compose.gallery.domain.GalleryRatingTone
 import com.venera.compose.gallery.domain.GalleryTagCategory
 import com.venera.compose.gallery.domain.buildGalleryTagBuckets
+import com.venera.compose.gallery.domain.ratingLabel
+import com.venera.compose.gallery.domain.ratingToneOf
 import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.ui.tokens.GalleryRatingColors
 import com.venera.compose.ui.tokens.StatusColors
-import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -70,6 +72,32 @@ import top.yukonga.miuix.kmp.basic.Text
  * **只摆站方真给的字段**：参考截图里那行 `Pixiv URL` 与底部 `Sources | Imageboard` 分段，
  * 是它把"上游出处"和"原站作品页"分开存，而我们只有 `source` 一个串
  * （实测 yande.re 40 条里 3 条为空 → 空就整块不摆）。没有的字段一律不编。
+ *
+ * ## 版面：四块，不是六张卡（2026-10-01 重排）
+ *
+ * 上一版的形状是"每一样读数各发一张卡"，落到屏上是**六张同形同距的白卡**
+ * （2 张 `FactTile` + 左列卡 + 出处卡 + 本站地址卡 + 在站点打开卡）。同形同距 = 每一块
+ * 都在喊"我和旁边那块一样重要"，而这一页里那几样信息的重要度其实差着量级。
+ * 现在的读序是：
+ *
+ * | 位置 | 摆什么 | 为什么在这儿 |
+ * |---|---|---|
+ * | 标题行右端 | **分级**徽标 | 唯一影响"你能看到什么"的字段，该第一个被看到 |
+ * | ① 事实卡 | 站点 / 尺寸 / 评分 / 收藏 / 时长 / 上传者 / 原图 + 角色 / 作品 | 这张图的客观属性，一张卡一口气读完 |
+ * | ② 画师块 | 头像 + 名字（整块可点进档案）+ 平台入口 + 关注 | 见 [GalleryArtistCreditRows] |
+ * | ③ 地址卡 | 出处 + 本站地址（复制 / 打开） | 这一页唯一的"动作出口" |
+ * | ④ 标签墙 | 通用标签 | 参考用的长尾，放最后 |
+ *
+ * 块数 6 → 3（卡片）。撑开"分组感"的两个数是 `sheetGroupGap` 与 `sheetBottomClearance`，
+ * 它们的实算与理由都写在 `ui/tokens/Spacing.kt` 的注释里（本仓禁止 UI 代码出现裸 dp）。
+ *
+ * 两处**刻意不合并**的：
+ * - 事实卡是"字段名在左、值在右"的行式，地址卡是"字段名在上、值占满整行"。
+ *   地址那个值是长 URL，分掉一列字段名之后它会在两行里折得更碎 —— 同一个页面里两种行式
+ *   是内容形态不同，不是没统一。
+ * - 「出处」与「本站地址」不并成一行：一个在 pixiv、一个在本站，是**两个不同的地址**。
+ *   （真正该合并的是"本站地址"与"在站点打开"—— 那两处传的是同一个 `pageUrl`，
+ *   旧版把它们做成了两张卡、屏上同一串地址出现两遍，现在是一行两钮。）
  *
  * @param onSearchTag 用户点了某一枚标签：把这枚标签交回一级画廊去搜（页面那边负责关 sheet、
  *   关本页，见 [GallerySearchHandoff]）。**这里不自己发请求** —— 搜索结果归画廊那一屏的
@@ -88,8 +116,11 @@ fun GalleryInfoSheet(
     categories: Map<String, Int>?,
     fallbackArtistNames: Set<String>,
     tagTranslations: Map<String, String>,
+    imageLoader: ImageLoader,
     onDismiss: () -> Unit,
     onSearchTag: (String) -> Unit,
+    /** 画师行的头像 + 名字：进介绍页（与"点标签 = 回一级搜这一枚"是两条路，批次 Q+R · 批量 4）。 */
+    onOpenArtist: (String) -> Unit,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
@@ -105,16 +136,22 @@ fun GalleryInfoSheet(
     val artistLabel = galleryTagCategoryLabel(GalleryTagCategory.ARTIST)
     /*
      * **署名三组**（画师 / 角色 / 作品）与那面通用标签墙**分家**（用户 2026-09-29 点名）：
-     * 它们摆到左边那张信息卡的**右列**，与尺寸/评分并排；通用那一大排仍留在下面。
-     * 原来画师单独占卡里一行，卡越垫越高、标签墙越沉越下面（截图上"通用 31"要滚两屏）。
+     * 角色与作品不再单独占一列，而是并进①事实卡、跟尺寸评分同一列（见 [CreditRow]）；
+     * 通用那一大排仍在最后一块。
      */
     val creditLabels = setOf(
         artistLabel,
         galleryTagCategoryLabel(GalleryTagCategory.CHARACTER),
         galleryTagCategoryLabel(GalleryTagCategory.COPYRIGHT),
     )
-    val creditGroups = groups.filter { it.label in creditLabels }
+    val creditGroups = groups.filter { it.label in creditLabels && it.label != artistLabel }
     val wallGroups = groups.filterNot { it.label in creditLabels }
+    /*
+     * 画师那一组**不留在事实卡里**，换成单独一块「每位画师一行」（批次 L）：
+     * 一行要摆头像、平台入口和关注，塞进定义列表只会三样都挤没。
+     * 角色 / 作品仍是胶囊 —— 它们没有这些附属动作，而且常常一枚都不止。
+     */
+    val artistNames = groups.firstOrNull { it.label == artistLabel }?.tags.orEmpty()
 
     val copyTag: (String) -> Unit = { tag -> copyToClipboard(context, "标签「$tag」", tag) }
     val blockTag: (String) -> Unit = { tag ->
@@ -145,98 +182,112 @@ fun GalleryInfoSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = tokens.spacing.screenHorizontal),
         ) {
-            Text(
-                text = "关于这张图",
-                fontSize = tokens.type.sectionTitle,
-                fontWeight = tokens.type.weightBold,
-                color = tokens.color.textPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(tokens.spacing.space5))
-
-            // 两张小卡：取值在上、字段名在下，与截图同一读法。
-            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3)) {
-                FactTile(value = ratingLabel(post.rating), label = "分级", modifier = Modifier.weight(1f))
-                FactTile(value = post.site.displayName, label = "站点", modifier = Modifier.weight(1f))
-            }
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-
             /*
-             * 两列并排（用户 2026-09-29 点名"和左边的尺寸分开两列显示"）：
-             * 左列 = 尺寸/评分/上传者/原图那一卡，右列 = 画师/角色/作品（有则摆）。
-             * 右列一枚都没有时**不占位**：那时左列那一枚 weight(1f) 自己铺满整行，
-             * 不会留出半屏空白。
+             * ── 标题行：标题在左、分级徽标在右 ──
+             *
+             * 标题此前是**居中**的，字号还是 `sectionTitle`（13/14sp）—— 比它下面那些
+             * `itemTitle`（16/17sp）的值还小，读起来像这一页的脚注。现在抬到 `itemTitle`
+             * 并靠左，把右端让给分级：那一枚才是这一页唯一影响"你能看到什么"的读数。
+             *
+             * 标题吃 `weight(1f)`、徽标不吃：Row 先把不吃 weight 的那个按**自然宽**量掉，
+             * 剩下的才给标题。反过来的话 `存疑 (questionable)` 这种长标会被压成省略号。
              */
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                VeneraCard(modifier = Modifier.weight(1f)) {
-                    InfoRow("尺寸", "${post.width}×${post.height}")
-                    InfoRow("评分", post.score.toString())
-                    // yande.re 实测没有 `fav_count` → null 就整行不摆：摆 0 是"这张零收藏"，
-                    // 与"站方没给"是两回事。
-                    post.favCount?.let { InfoRow("收藏", it.toString()) }
-                    post.durationSeconds?.let { InfoRow("时长", "${it.toInt()} 秒") }
-                    // 上传者与画师**是两件事**，以前这里只有一行而且写错了名字。
-                    // 实测（方案 §0.6）：yande.re 的 `author` 与 Gelbooru 的 `owner` 都是**上传者的登录名**
-                    // —— 真帖 1269641 的 `author=Arsy`，而那张画的画师是标签 `gijang`（现在在右列）。
-                    post.author.takeIf { it.isNotBlank() }?.let { InfoRow("上传者", it) }
+                Text(
+                    text = "关于这张图",
+                    fontSize = tokens.type.itemTitle,
+                    fontWeight = tokens.type.weightSemibold,
+                    color = tokens.color.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                RatingBadge(rating = post.rating)
+            }
+            Spacer(modifier = Modifier.height(tokens.spacing.space5))
 
-                    // 原图那一档的体积与指纹。**读数没有就不摆**：Gelbooru 的 post JSON 根本没有
-                    // file_size（`GelbooruClient.kt:62` 记着这条天花板，也写了"UI 那边没这个读数就不显示"），
-                    // 解析处只能一律填 0 —— 旧写法于是每张 Gelbooru 图都写着「0 MB」，
-                    // 看着像"这文件是空的"。同一处判据 `GalleryVideoViewer.kt:130` 早修过，这是漏网的第二份。
-                    // 有值也必须走一位小数：整数除法会把 yande.re 上不到 1.5 MB 的真文件也压成「0 MB」。
-                    val fileFacts = listOfNotNull(
-                        post.fileSize.takeIf { it > 0 }?.let { "%.1f MB".format(it / 1024.0 / 1024.0) },
-                        post.md5.takeIf { it.isNotBlank() }?.let { "md5 ${it.take(8)}" },
+            // ── ① 事实卡：这张图的客观属性 ──
+            VeneraCard(modifier = Modifier.fillMaxWidth()) {
+                InfoRow("站点", post.site.displayName)
+                // 发丝线把"它在哪儿"与"它是什么样"分开：前者是这张帖的身份，
+                // 后者是它自己的读数。同一张卡里，不是同一组信息。
+                SheetDivider()
+                InfoRow("尺寸", "${post.width}×${post.height}")
+                InfoRow("评分", post.score.toString())
+                // yande.re 实测没有 `fav_count` → null 就整行不摆：摆 0 是"这张零收藏"，
+                // 与"站方没给"是两回事。
+                post.favCount?.let { InfoRow("收藏", it.toString()) }
+                post.durationSeconds?.let { InfoRow("时长", "${it.toInt()} 秒") }
+                // 上传者与画师**是两件事**，以前这里只有一行而且写错了名字。
+                // 实测（方案 §0.6）：yande.re 的 `author` 与 Gelbooru 的 `owner` 都是**上传者的登录名**
+                // —— 真帖 1269641 的 `author=Arsy`，而那张画的画师是标签 `gijang`（在下面那块）。
+                post.author.takeIf { it.isNotBlank() }?.let { InfoRow("上传者", it) }
+
+                // 原图那一档的体积与指纹。**读数没有就不摆**：Gelbooru 的 post JSON 根本没有
+                // file_size（`GelbooruClient.kt:62` 记着这条天花板，也写了"UI 那边没这个读数就不显示"），
+                // 解析处只能一律填 0 —— 旧写法于是每张 Gelbooru 图都写着「0 MB」，
+                // 看着像"这文件是空的"。同一处判据 `GalleryVideoViewer.kt:130` 早修过，这是漏网的第二份。
+                // 有值也必须走一位小数：整数除法会把 yande.re 上不到 1.5 MB 的真文件也压成「0 MB」。
+                val fileFacts = listOfNotNull(
+                    post.fileSize.takeIf { it > 0 }?.let { "%.1f MB".format(it / 1024.0 / 1024.0) },
+                    post.md5.takeIf { it.isNotBlank() }?.let { "md5 ${it.take(8)}" },
+                )
+                if (fileFacts.isNotEmpty()) {
+                    InfoRow(if (post.isVideo) "视频" else "原图", fileFacts.joinToString(" · "))
+                }
+
+                // 角色 / 作品：同一个行式骨架，**值是可点胶囊**（点=搜、长按=菜单）。
+                creditGroups.forEach { group ->
+                    CreditRow(
+                        label = group.label,
+                        tags = group.tags,
+                        tagLabel = { tag -> tagDisplayLabel(tag, tagTranslations) },
+                        onSearchTag = onSearchTag,
+                        onCopyTag = copyTag,
+                        onBlockTag = blockTag,
                     )
-                    if (fileFacts.isNotEmpty()) {
-                        InfoRow(if (post.isVideo) "视频" else "原图", fileFacts.joinToString(" · "))
-                    }
-                }
-                if (creditGroups.isNotEmpty()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        GalleryTagGroups(
-                            groups = creditGroups,
-                            tagLabel = { tag -> tagDisplayLabel(tag, tagTranslations) },
-                            onSearchTag = onSearchTag,
-                            onCopyTag = copyTag,
-                            onBlockTag = blockTag,
-                            showCount = false,
-                            leadingSpacer = tokens.spacing.none,
-                        )
-                    }
                 }
             }
 
-            // 可复制的两行：上游出处 + 本站单页地址。出处为空就整块不摆。
-            if (post.source.isNotBlank()) {
-                Spacer(modifier = Modifier.height(tokens.spacing.space3))
-                CopyRow(label = "出处", value = post.source) { copyToClipboard(context, "出处", it) }
+            // ── ② 画师块（批次 L）：头像 + 平台入口 + 关注，不套卡 ──
+            if (artistNames.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(tokens.spacing.sheetGroupGap))
+                GalleryArtistCreditRows(
+                    site = post.site,
+                    artists = artistNames,
+                    translations = tagTranslations,
+                    source = post.source,
+                    imageLoader = imageLoader,
+                    onOpenArtist = onOpenArtist,
+                )
             }
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-            CopyRow(label = "本站地址", value = post.pageUrl) { copyToClipboard(context, "本站地址", it) }
-            // 顶栏整条去掉之后，"在站点打开"这个入口搬到这里 —— 不能因为没了顶栏就把功能弄丢。
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-            LinkRow(
-                label = "在 ${post.site.displayName} 打开",
-                value = post.pageUrl,
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(post.pageUrl))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }.onFailure {
-                        Toast.makeText(context, "打不开浏览器：${it.message}", Toast.LENGTH_SHORT).show()
-                    }
-                },
-            )
 
+            // ── ③ 地址卡：这一页唯一的动作出口 ──
+            if (post.source.isNotBlank() || post.pageUrl.isNotBlank()) {
+                Spacer(modifier = Modifier.height(tokens.spacing.sheetGroupGap))
+                VeneraCard(modifier = Modifier.fillMaxWidth()) {
+                    if (post.source.isNotBlank()) {
+                        ActionRow(
+                            label = "出处",
+                            value = post.source,
+                            onCopy = { copyToClipboard(context, "出处", post.source) },
+                        )
+                        SheetDivider()
+                    }
+                    ActionRow(
+                        label = "本站地址",
+                        value = post.pageUrl,
+                        onCopy = { copyToClipboard(context, "本站地址", post.pageUrl) },
+                        onOpen = { openInBrowser(context, post.site.displayName, post.pageUrl) },
+                    )
+                }
+            }
+
+            // ── ④ 标签墙 ──
             GalleryTagGroups(
                 groups = wallGroups,
                 tagLabel = { tag -> tagDisplayLabel(tag, tagTranslations) },
@@ -244,32 +295,47 @@ fun GalleryInfoSheet(
                 onCopyTag = copyTag,
                 onBlockTag = blockTag,
             )
-            Spacer(modifier = Modifier.height(VeneraSpacing.bottomBarClearance))
+            Spacer(modifier = Modifier.height(tokens.spacing.sheetBottomClearance))
         }
     }
 }
 
-/** 一张"值 + 字段名"的小卡（截图里 `General / Rating` 那种读法）。 */
+/**
+ * 标题行右端那枚**分级徽标**。
+ *
+ * 它取代了原来那张「分级 / 站点」小卡里的**分级**一半。为什么值得单独挪出来：
+ * 分级是这一页唯一影响"你能看到什么"的字段（它还连着内容守卫那一档），
+ * 而此前它跟「站点」同形同宽地并排，读起来只是又一个字段。
+ * 挪到标题行右端之后，它成了这一页第一个被看到的东西 —— 而"站点"退进①事实卡第一行，
+ * 那才是它该有的分量。
+ *
+ * 走 [VeneraChip] 而不是自造一枚 Badge：那个组件的头注明写"这是**唯一**的 Chip 实现，
+ * 禁止再复制一套 UI"，所以底色与字色是从它新开的两个覆盖口子进去的。
+ *
+ * **不给 `onClick`** —— 它是个读数，不是按钮。给了会有一份按得动的假反馈。
+ * 色与档位的对应（以及为什么只有四档色）见 `gallery/domain/GalleryRating.kt` 的头注。
+ */
 @Composable
-private fun FactTile(value: String, label: String, modifier: Modifier = Modifier) {
-    val tokens = VeneraTokens
-    VeneraCard(modifier = modifier) {
-        Text(
-            text = value,
-            fontSize = tokens.type.itemTitle,
-            fontWeight = tokens.type.weightSemibold,
-            color = tokens.color.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = label,
-            fontSize = tokens.type.caption,
-            color = tokens.color.textTertiary,
-        )
-    }
+private fun RatingBadge(rating: String) {
+    VeneraChip(
+        text = ratingLabel(rating),
+        variant = VeneraChipVariant.Neutral,
+        containerColorOverride = when (ratingToneOf(rating)) {
+            GalleryRatingTone.Safe -> GalleryRatingColors.Safe
+            GalleryRatingTone.Caution -> GalleryRatingColors.Caution
+            GalleryRatingTone.Explicit -> GalleryRatingColors.Explicit
+            GalleryRatingTone.Unknown -> GalleryRatingColors.Unknown
+        },
+        contentColorOverride = GalleryRatingColors.OnRatingBadge,
+    )
 }
 
+/**
+ * 事实卡里那种"字段名在左、值在右"的一行。
+ *
+ * 字段名是**定宽**（`sheetFieldLabelWidth`）而不是"最小宽"，为的是让下面那一列值的
+ * 左边缘对齐 —— 这张卡现在撑满整屏，对齐是免费的；定宽该取多少的实算写在那个 token 的注释里。
+ */
 @Composable
 private fun InfoRow(label: String, value: String) {
     val tokens = VeneraTokens
@@ -281,9 +347,8 @@ private fun InfoRow(label: String, value: String) {
             text = label,
             fontSize = tokens.type.caption,
             color = tokens.color.textTertiary,
-            // 只设**下限**不设定宽：这张卡现在只占半屏，而定宽是按整屏那版留的 ——
-            // 「上传者」三个字在 24dp 里会折成两行（真机截图上就是那样）。
-            modifier = Modifier.widthIn(min = tokens.spacing.space10).padding(end = tokens.spacing.space2),
+            maxLines = 1,
+            modifier = Modifier.width(tokens.spacing.sheetFieldLabelWidth),
         )
         Text(
             text = value,
@@ -296,30 +361,103 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-/** 一行"值 + 复制"。值可能很长（pixiv 那种带日期的原图地址），所以最多两行并截断。 */
+/**
+ * 事实卡里那种"字段名在左、**值是可点胶囊**"的一行（角色 / 作品）。
+ *
+ * 为什么值不跟上面几行走同一种纯文本：角色与作品那两枚胶囊是**可交互**的
+ * （点=用这枚标签回画廊搜，长按=搜索/复制/屏蔽，用户 2026-09-25 点名做的）。
+ * 把它们降成纯文本，换来的是一列整齐的字 —— 代价是把那份交互悄悄弄丢。
+ * 所以这里是"同一个行式骨架，值是胶囊"，而不是"统一成文本"。
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CopyRow(label: String, value: String, onCopy: (String) -> Unit) {
+private fun CreditRow(
+    label: String,
+    tags: List<String>,
+    tagLabel: (String) -> String,
+    onSearchTag: (String) -> Unit,
+    onCopyTag: (String) -> Unit,
+    onBlockTag: (String) -> Unit,
+) {
     val tokens = VeneraTokens
-    VeneraCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textTertiary,
-                )
-                Text(
-                    text = value,
-                    fontSize = tokens.type.body,
-                    color = tokens.color.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space1),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            fontSize = tokens.type.caption,
+            color = tokens.color.textTertiary,
+            maxLines = 1,
+            modifier = Modifier
+                .width(tokens.spacing.sheetFieldLabelWidth)
+                // 胶囊自己有纵向内衬（`chipVerticalPadding`），字段名不垫一下会顶在第一行上沿。
+                .padding(top = tokens.spacing.space2),
+        )
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+        ) {
+            tags.forEach { tag ->
+                GalleryTagChip(
+                    tag = tag,
+                    text = tagLabel(tag),
+                    onClick = { onSearchTag(tag) },
+                    onCopy = { onCopyTag(tag) },
+                    onBlock = { onBlockTag(tag) },
                 )
             }
-            VeneraIconButton(onClick = { onCopy(value) }) {
+        }
+    }
+}
+
+/**
+ * 一行"标签 / 值 + 动作钮"。**一行可以有两枚钮**。
+ *
+ * 为什么是"一行两钮"而不是"两张卡各一枚钮"：「本站地址」与「在站点打开」这两行
+ * 传的都是 `post.pageUrl` —— 旧版把它们做成两张卡，屏上就是**同一串地址摆了两遍**。
+ * 合成一行之后，"同一串地址"这件事在结构上就不可能再出现。
+ *
+ * 值的摆法与 [InfoRow] 不同（标签在上、值占满整行），是刻意的：这个值是长 URL，
+ * 分掉一列字段名之后它会在两行里折得更碎。
+ */
+@Composable
+private fun ActionRow(
+    label: String,
+    value: String,
+    onCopy: () -> Unit,
+    /** 给 null 就是这一行只有复制（「出处」那一行就是），不摆一枚按不动的假钮。 */
+    onOpen: (() -> Unit)? = null,
+) {
+    val tokens = VeneraTokens
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+            )
+            Text(
+                text = value,
+                fontSize = tokens.type.body,
+                color = tokens.color.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        VeneraIconButton(onClick = onCopy) {
+            Icon(
+                imageVector = Icons.Outlined.ContentCopy,
+                contentDescription = "复制$label",
+                tint = tokens.color.textPrimary,
+            )
+        }
+        if (onOpen != null) {
+            VeneraIconButton(onClick = onOpen) {
                 Icon(
-                    imageVector = Icons.Outlined.ContentCopy,
-                    contentDescription = "复制$label",
+                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                    contentDescription = "打开$label",
                     tint = tokens.color.textPrimary,
                 )
             }
@@ -327,35 +465,24 @@ private fun CopyRow(label: String, value: String, onCopy: (String) -> Unit) {
     }
 }
 
-/** 一行"值 + 打开原站"。与 [CopyRow] 同一形状，只是尾巴那枚钮的动作不同。 */
+/**
+ * 卡片**内部**的分隔发丝线。
+ *
+ * 存在的理由是这一页的病根：上一版一屏堆了六张同形同距的 `VeneraCard`，
+ * 每一块都在喊"我和旁边那块一样重要"。同一张卡里要分两组信息时，
+ * 应该是一条发丝线，而不是再开一张卡。
+ */
 @Composable
-private fun LinkRow(label: String, value: String, onClick: () -> Unit) {
+private fun SheetDivider() {
     val tokens = VeneraTokens
-    VeneraCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textTertiary,
-                )
-                Text(
-                    text = value,
-                    fontSize = tokens.type.body,
-                    color = tokens.color.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            VeneraIconButton(onClick = onClick) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                    contentDescription = label,
-                    tint = tokens.color.textPrimary,
-                )
-            }
-        }
-    }
+    Spacer(modifier = Modifier.height(tokens.spacing.space3))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(tokens.spacing.hairline)
+            .background(tokens.color.outlineVariant),
+    )
+    Spacer(modifier = Modifier.height(tokens.spacing.space3))
 }
 
 /**
@@ -382,16 +509,14 @@ private fun GalleryTagGroups(
     onSearchTag: (String) -> Unit,
     onCopyTag: (String) -> Unit,
     onBlockTag: (String) -> Unit,
-    /** 署名那一列窄，"角色 1" 这种计数只是噪声；标签墙那边照旧带数。 */
-    showCount: Boolean = true,
-    /** 第一组**上面**留多高：并排进另一列时首组不该再垫一整段（外层已经对好顶）。 */
-    leadingSpacer: Dp = VeneraTokens.spacing.space5,
 ) {
     val tokens = VeneraTokens
     groups.forEachIndexed { index, group ->
-        Spacer(modifier = Modifier.height(if (index == 0) leadingSpacer else tokens.spacing.space5))
+        // 首组不垫：调用方已经在这一块**之前**给过一档 `sheetGroupGap`，
+        // 这里再垫一次会让标签墙看起来跟上一块不是同级。
+        if (index > 0) Spacer(modifier = Modifier.height(tokens.spacing.sheetGroupGap))
         Text(
-            text = if (showCount) "${group.label} ${group.tags.size}" else group.label,
+            text = "${group.label} ${group.tags.size}",
             fontSize = tokens.type.itemTitle,
             fontWeight = tokens.type.weightSemibold,
             color = tokens.color.textPrimary,
@@ -431,7 +556,7 @@ internal fun tagDisplayLabel(tag: String, translations: Map<String, String>): St
 
 /**
  * 一枚可交互的标签药丸 —— **画法照 `feature/ComicDetailScreen.kt` 的 `DetailTagChip`**：
- * 点击直达该标签搜索，长按起菜单。按压反馈由 [VeneraChip] 统一持有，这里只给回调。
+ * 点击直达该标签搜索，长按起菜单。按压反馈由 `VeneraChip` 统一持有，这里只给回调。
  *
  * 菜单**逐项各挂一个**：FlowRow 排布下共用一个锚会让菜单永远从第一枚的位置弹出来
  * （详情页已经踩过，`FavoriteImagesScreen.kt:601` 那条注释记着同一件事）。
@@ -501,27 +626,19 @@ private fun GalleryTagChip(
     }
 }
 
-/**
- * 分级值 → 人话。
- *
- * ⚠️ **两站的字形不同**（实测），所以这张表要同时收两套：
- * - yande.re：单字母 `s` / `q` / `e`；
- * - Gelbooru：单词 `general` / `sensitive` / `questionable` / `explicit`。
- *
- * 只认单字母的话，Gelbooru 的每一条都会显示成「未知」—— 那不是"数据缺失"，
- * 是我们没认出来，属于最没必要的一种显示瑕疵。
- */
-internal fun ratingLabel(rating: String): String = when (rating.lowercase()) {
-    "s", "safe" -> "安全 (s)"
-    "g", "general" -> "一般 (general)"
-    "sensitive" -> "敏感 (sensitive)"
-    "q", "questionable" -> "存疑 (questionable)"
-    "e", "explicit" -> "成人 (explicit)"
-    else -> "未知 (${rating.ifBlank { "空" }})"
-}
-
 private fun copyToClipboard(context: Context, label: String, value: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
     Toast.makeText(context, "已复制$label", Toast.LENGTH_SHORT).show()
+}
+
+/** 「在站点打开」：跳系统浏览器。失败必须说话 —— 静默失败读起来就是"按了没反应"。 */
+private fun openInBrowser(context: Context, siteName: String, url: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        Toast.makeText(context, "打不开${siteName}：${it.message}", Toast.LENGTH_SHORT).show()
+    }
 }

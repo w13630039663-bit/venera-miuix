@@ -31,7 +31,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 
 /**
- * 第 1 页 = 猜你喜欢（从**用户自己的收藏**里抽标签，再拿那串标签去站方搜）。
+ * 「猜你喜欢」那面墙（从**用户自己的收藏**里抽标签，再拿那串标签去站方搜）。
+ *
+ * 批次 K 之前它是同一目的地里的第 1 页（左右滑切换）；合一屏之后它是**详情区的一档**，
+ * 由节点头的「查看全部」切进来，见 [GalleryWallFeed]。
  *
  * 判据全部在 `GalleryRecommendations`（纯函数、有单测）与 [GalleryForYouMerge]（分页合并），
  * 这一层只做"屏上摆哪一档"的选择。四档空态**必须不同脸**（方案 §四.8）：
@@ -50,7 +53,23 @@ internal fun GalleryForYouPage(
     backdrop: LayerBackdrop?,
     onOpen: (GalleryPost) -> Unit,
     onRetry: () -> Unit,
-    onGoToDaily: () -> Unit,
+    /**
+     * 空态里那枚「去看每日热门」。
+     *
+     * ⚠️ 2026-09-30 第二轮起首页**可以传 null**：那条主墙恒为猜你喜欢，首页没有"另一面墙"
+     * 可切（每日热门搬去了独立二级页），所以这个动作在首页是"把同一面墙重滚一次"——
+     * 传 null 即为"不摆这枚按钮"，而不是摆一个按下去没反应的假按钮。
+     */
+    onGoToDaily: (() -> Unit)?,
+    sections: List<GalleryGridSection> = emptyList(),
+    /**
+     * 常驻 chrome（搜索入口条 + 来源分段器）—— 2026-09-30 用户口径「搜索栏保持在这里就行」：
+     * 它是**页面内容的第一行**，跟着内容一起滚走，不再钉在顶栏下方。
+     *
+     * 放在 [GalleryCardsGrid] 的 header 槽位（比节头还靠前），滚动时它与三节一起离屏。
+     * 传 null = 这一面墙不摆（目前只有首页传）。
+     */
+    chrome: (@Composable () -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val cards = wall.cards
@@ -67,7 +86,12 @@ internal fun GalleryForYouPage(
     when {
         // IDLE = 还没判过档（第一次组合与那次取数触发之间的一帧）。
         // 摆空态是假读数 —— 那一刻只是"还没算"，不是"没有东西"。
-        fvm.stage == GalleryForYouStage.IDLE || (fvm.isLoading && fvm.posts.isEmpty()) -> Box(
+        //
+        // ⚠️ 加了 `cards.isEmpty()` 这道前提（2026-09-30 第三轮）：**整屏**波浪环只在
+        // 屏上一张卡都没有时才该出现。用户点「换一批」时 `refresh()` 已经不再清 `posts`
+        // （理由见那里），旧卡片留着、三节不动，"正在换"由猜你喜欢节头那枚环去说 ——
+        // 旧写法会在这一刻把三节一起换成一个居中环，读起来就是"整页刷新"。
+        cards.isEmpty() && (fvm.stage == GalleryForYouStage.IDLE || fvm.isLoading) -> Box(
             pageModifier,
             contentAlignment = Alignment.Center,
         ) {
@@ -102,10 +126,14 @@ internal fun GalleryForYouPage(
             contentPadding = contentPadding,
             modifier = pageModifier,
             onOpen = onOpen,
-            header = fvm.failures.takeIf { it.isNotEmpty() }?.let { failures ->
+            header = {
+                // 常驻 chrome（搜索入口条 + 来源分段器）是**内容的第一行**：
+                // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
+                chrome?.invoke()
+                // 槽位恒在、判空在内部（理由见 [GalleryCardsGrid] 的 header 注释）。
                 // 少了一站必须占一条**可见**的位置：两站混摆静默退化成单源，
                 // 用户只会看到"怎么没有另一站的图"，而原因就在这一行里。
-                @Composable {
+                fvm.failures.takeIf { it.isNotEmpty() }?.let { failures ->
                     Text(
                         text = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
                         fontSize = tokens.type.caption,
@@ -114,7 +142,13 @@ internal fun GalleryForYouPage(
                     )
                 }
             },
-            footer = if (fvm.posts.isNotEmpty()) {
+            sections = sections,
+            // ⚠️ 多加一道 `page > 0`（2026-09-30 第三轮）：「换一批」之后 `posts` 留着上一批、
+            // 而 `page` / `perSite` / `excludedFavourite` 都清了（它们是新第一批到货时**累加**的，
+            // 不清就会把上一批的张数算进新一批）。这个窗口里页尾会念出
+            // 「已摆出 40 张（Yande.re 0 · Gelbooru 0）」—— 卡片明明在屏上，读数却说两站各 0 张，
+            // 是典型的假读数。`page == 0` 就等于"这批读数还没落地"，那时整段页尾不摆。
+            footer = if (fvm.posts.isNotEmpty() && fvm.page > 0) {
                 @Composable {
                     GalleryForYouEnd(
                         cards = cards.size,
@@ -165,7 +199,7 @@ private fun emptyCopyOf(
     wall: GalleryWall,
     favoriteCount: Int,
     onRetry: () -> Unit,
-    onGoToDaily: () -> Unit,
+    onGoToDaily: (() -> Unit)?,
 ): ForYouEmptyCopy = when (fvm.stage) {
     GalleryForYouStage.NO_SEEDS -> ForYouEmptyCopy(
         title = "还没有能推荐的基础",
@@ -178,7 +212,7 @@ private fun emptyCopyOf(
     GalleryForYouStage.NO_USABLE_TAGS -> ForYouEmptyCopy(
         title = "标签都被你的规则挡了",
         message = "$favoriteCount 张收藏里抽出来的标签，全部命中了你的屏蔽规则 —— " +
-            "图站的 tag 是 `long_hair`、`tail` 这类下划线标识符，短关键字很容易整站命中。" +
+            "图站的标签是 long_hair、tail 这类下划线写法，短关键字很容易整站命中。" +
             "把那条规则收掉或改长，这里才会有推荐。",
         actionText = null,
         onAction = null,
@@ -198,7 +232,10 @@ private fun emptyCopyOf(
             title = "能推的都收藏过了",
             message = "这一轮排掉了 ${fvm.excludedFavourite} 张你已经收藏过的图，剩下的没有可摆的。" +
                 "多看几张、再收藏几张，这里会长出新东西。",
-            actionText = "去看每日推荐",
+            // 2026-09-30 第二轮起这一档多半没有出口了：首页那条主墙恒为猜你喜欢，
+            // 没有"另一面墙"可切（热门搬去了二级页）。`onGoToDaily` 传 null 时不摆按钮 ——
+            // 这是刻意的：按下去只是把同一面墙重滚一次，那是一枚假按钮。
+            actionText = "去看每日热门".takeIf { onGoToDaily != null },
             onAction = onGoToDaily,
         )
 

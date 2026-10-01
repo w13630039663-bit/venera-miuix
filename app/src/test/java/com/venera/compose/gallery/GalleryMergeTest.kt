@@ -186,4 +186,16 @@ class GalleryMergeTest {
     fun `两站都没有内容时是失败而不是空态`() {
         assertTrue(mix().isFailure)
     }
+
+    @Test
+    fun `本地重排只在池子真够时放行`() {
+        // 批次 K 把「换一批」改成"只换种子、不再联网"（用户 2026-09-30 拍板）。
+        // 池子不够时必须回真取一次 —— 按下去屏上纹丝不动就是假按钮，
+        // 而冷启动那一屏是从缓存铺出来的，手上压根没有原始池。
+        assertFalse(GalleryMerge.canRemix(emptyMap()))
+        assertFalse(GalleryMerge.canRemix(mapOf(GallerySite.YANDERE to list(GallerySite.YANDERE, 1))))
+        assertFalse(GalleryMerge.canRemix(mapOf(GallerySite.YANDERE to emptyList(), GallerySite.GELBOORU to emptyList())))
+        // 只有一站给了两张也算够：另一站这一轮缺席是另一件事，页尾那条读数会说出来。
+        assertTrue(GalleryMerge.canRemix(mapOf(GallerySite.YANDERE to list(GallerySite.YANDERE, 2))))
+    }
 }

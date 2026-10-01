@@ -159,6 +159,25 @@ data class GalleryPost(
     val videoPosterUrl: String
         get() = largeUrl.takeUnless { it.isBlank() || it == fileUrl } ?: previewUrl
 
+    /**
+     * 任何条目**当背景底图**用的那一档。
+     *
+     * 画师介绍页的 hero 底图用它。底图这一档的要求与 [previewUrl] 那档**不是**一件事：
+     * 缩略档只保证"认得出一格是什么"，而底图要铺满整页宽度
+     * （hero 实宽约 361dp，本机 ≈993 物理像素），拿 300×212 铺上去是放大 3.3 倍 ——
+     * 再叠一层模糊就只剩色块，认不出画的是什么（2026-10-01 用户报「模糊过头」）。
+     *
+     * 所以图片条目直接用中档 [largeUrl]（两站都是站方的 `sample_url`，长边 ≤1500），
+     * 缺档才退 [previewUrl]。**不给 [fileUrl]**：那是原图档，yande.re 侧实测见过
+     * 9600×5400 / 单条 3 MB 级的条目，铺一块 196dp 高的底图不值当。
+     *
+     * 视频条目**不在这里重写判据**，整条转给 [videoPosterUrl] —— 那边多一道
+     * "中档被兜底成原片 mp4 就退缩略图"的闸门，两处写两份迟早会分叉。
+     */
+    val backdropUrl: String
+        get() = if (isVideo) videoPosterUrl
+        else largeUrl.takeIf { it.isNotBlank() } ?: previewUrl
+
     /** 时长角标。站方没给时长时返回空串而不是 "0″" —— 编一个看不出来的数比不写更糟。 */
     val durationLabel: String
         get() = durationSeconds?.takeIf { it > 0.0 }?.let { "${it.toInt()}″" } ?: ""

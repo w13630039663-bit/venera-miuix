@@ -6,6 +6,7 @@ import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GallerySearchContext
 import com.venera.compose.gallery.domain.GallerySearchContextStack.MAX_DEPTH
+import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GallerySearchContextStack.pop
 import com.venera.compose.gallery.domain.GallerySearchContextStack.plan
 import com.venera.compose.gallery.domain.GallerySearchContextStack.push
@@ -31,7 +32,7 @@ import org.junit.Test
 class GallerySearchContextStackTest {
 
     private fun one(site: GallerySite, tag: String, results: Int, page: Int) = GallerySearchContext(
-        site = site,
+        source = GallerySearchSource.single(site),
         filters = listOf(GalleryTagFilter(tag)),
         results = List(results) { GalleryPost(site = site, id = it.toLong()) },
         page = page,
@@ -45,7 +46,7 @@ class GallerySearchContextStackTest {
 
     /** 还没搜过的空一屏（刚点顶栏 🔍，一枚胶囊都没有）。 */
     private val nothingSearched = GallerySearchContext(
-        site = GallerySite.YANDERE,
+        source = GallerySearchSource.single(GallerySite.YANDERE),
         filters = emptyList(),
         results = emptyList(),
         page = 0,
@@ -139,6 +140,43 @@ class GallerySearchContextStackTest {
         assertTrue(isStaleContext(3, GallerySite.YANDERE, 4, GallerySite.YANDERE))
         // 轮次没动但站换了：顶栏那排源切换不压栈、不转轮次，靠站点这一半拦住。
         assertTrue(isStaleContext(3, GallerySite.YANDERE, 3, GallerySite.GELBOORU))
+    }
+
+    @Test
+    fun `同来源同条件幂等不压栈 换来源必开新一轮`() {
+        // 「全部」那一屏，条件一串不差地再交接一次 —— 幂等，不许压栈（同上一条用例的理由）。
+        val touhouAll = touhou.copy(source = GallerySearchSource.ALL)
+        assertEquals(
+            GalleryContextPlan.RESEARCH_IN_PLACE,
+            plan(touhouAll.source, touhouAll.filters, GallerySearchSource.ALL, touhouAll.filters),
+        )
+        // 同一串条件从「全部」退回单站：少了一条腿，屏上张数会变。不压栈就回不去刚才那一屏，
+        // 页尾的读数还会写着两站的张数配一张站的墙 —— 这一类错位必须由"换来源=换一轮"拦住。
+        assertEquals(
+            GalleryContextPlan.PUSH,
+            plan(
+                touhouAll.source,
+                touhouAll.filters,
+                GallerySearchSource.single(GallerySite.YANDERE),
+                touhouAll.filters,
+            ),
+        )
+    }
+
+    @Test
+    fun `弹栈把来源与每条腿的游标一起带回去`() {
+        // 「全部」档的游标是分腿记的：只抄一个全局 page 就会「弹回来还是那 200 张，
+        // 再往下翻却从头重要一遍已经看过的内容」。
+        val all = touhou.copy(
+            source = GallerySearchSource.ALL,
+            pageBySite = mapOf(GallerySite.YANDERE to 3, GallerySite.GELBOORU to 2),
+            exhaustedBySite = setOf(GallerySite.GELBOORU),
+        )
+        val (top, rest) = pop(push(emptyList(), all))!!
+        assertEquals(GallerySearchSource.ALL, top.source)
+        assertEquals(mapOf(GallerySite.YANDERE to 3, GallerySite.GELBOORU to 2), top.pageBySite)
+        assertEquals(setOf(GallerySite.GELBOORU), top.exhaustedBySite)
+        assertTrue(rest.isEmpty())
     }
 
     @Test

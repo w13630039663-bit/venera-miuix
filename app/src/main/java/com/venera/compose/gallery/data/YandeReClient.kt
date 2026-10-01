@@ -1,8 +1,11 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import android.util.LruCache
 import com.venera.compose.data.network.NoInteractiveBypassTag
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.gallery.domain.GalleryArtistAlias
+import com.venera.compose.gallery.domain.GalleryArtistRecord
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,15 @@ import okhttp3.Request
 class YandeReClient private constructor(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /**
+     * 同一个画师名只解析一次。存的是"站方给出的正名"这一条判定，几十条字符串，64 条足够
+     * （口径照 [GalleryTagCategories] 的按条数缓存）。
+     *
+     * **只有解析成功才入缓存**：没有别名指针的那一类不存（站方的画师页是可以改的，
+     * 今天没有别名不代表以后没有），失败更不存（那一档下一次照样真发）。
+     */
+    private val aliasCache = LruCache<String, String>(ALIAS_CACHE_SIZE)
 
     /**
      * 取**上一天**的热门（用户点名的 `https://yande.re/post/popular_recent?period=1d` 的 JSON 版）。
@@ -106,6 +118,96 @@ class YandeReClient private constructor(context: Context) {
             }
         }
 
+    /**
+     * 把一个画师别名解析成**站方记的正名**（批次 J，判据在
+     * [com.venera.compose.gallery.domain.GalleryArtistAlias]，这里只做两笔取数）。
+     *
+     * 实测的解析链（`gallery-artist-alias-2026-09.md` §1.4，抽样 16 条 `alias_id` 全部跟到落点）：
+     *
+     * ```
+     * GET /artist.json?name=setmen   → [{id 39892, name setmen, alias_id 46523}]
+     * GET /artist/show/46523         → 302 → /wiki/show?title=tokenbox（匿名可读）
+     * ```
+     *
+     * 正名从**落点 URL 的 `title` 参数**取，不解析 HTML 正文：那页是给用户看的，
+     * 版面一变这里就悄悄读到别的东西，而 `title` 是那条 302 的语义本体。
+     *
+     * 两条站方坑都写进判据、不靠这里兜：
+     * - `name=` 是**前缀匹配**（实测 `name=se` 回 16 条）→ 必须按全等取记录；
+     * - `artist.json` 的 `id=` / `ids=` / `show=` 与 `tag_alias.json` 的 `name=` 一类
+     *   **全部被静默忽略**（回默认列表且 200）→ 除了 `name=` 前缀这一条没有更短的路子。
+     *
+     * 返回 `Result<String?>`：**null = 站方没给出别名关联**（取不到全等记录、或那条没有 `alias_id`），
+     * 那是正常答复，不是失败；而 404 / 非 JSON / 挂维护页一律走 `failure` ——
+     * 把"站方没答上"与"这一路走不通"混成 null 就是本仓最忌的静默降级。
+     */
+    suspend fun resolveArtistAlias(name: String): Result<String?> = withContext(Dispatchers.IO) {
+        runCatching {
+            aliasCache.get(name)?.let { return@runCatching it }
+            val records = requestArtistRecords("$BASE/artist.json?name=${enc(name)}")
+            val record = GalleryArtistAlias.exactRecord(records, name) ?: return@runCatching null
+            val canonical = GalleryArtistAlias.canonicalName(
+                requestRedirectTitle("$BASE/artist/show/${record.aliasId}"),
+                name,
+            )
+            // 只把"解析到了"存进缓存：没有别名指针、或指针指回自己那一类不存（同一个名字以后
+            // 可能改判），也不存失败 —— 失败那一档下一次照样真发。
+            canonical?.also { aliasCache.put(name, it) }
+        }
+    }
+
+    /**
+     * 那位画师在站方记下的**外链地址**（批次 L：摆平台图标、取 pixiv 头像都从它来）。
+     *
+     * 与 [resolveArtistAlias] 打的是同一个端点、同一份记录，只是取的是另一个字段 ——
+     * 所以这里的失败口径也照它：**站方没这条记录 = 空表（合法答复）**，
+     * 404 / 非 JSON / 形态对不上 = `failure`（UI 什么都不摆，但日志里查得到原因）。
+     */
+    suspend fun artistLinks(name: String): Result<List<String>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val records = requestArtistRecords("$BASE/artist.json?name=${enc(name)}")
+            // 这里要的是**记录本身**，不是"带别名指针的那条"：站方给正名记录的 alias_id 恒为 null，
+            // 用 [GalleryArtistAlias.exactRecord] 会把所有正名画师都判成"没这条记录"（真机踩过）。
+            GalleryArtistAlias.recordByName(records, name)?.urls.orEmpty()
+        }
+    }
+
+    private fun requestArtistRecords(url: String): List<GalleryArtistRecord> {
+        val body = executeForJson(url)
+        // 站方这里回的是数组；`{}` 或维护页那种非数组形态会被 `decodeFromString` 炸出来，
+        // 不退化成"没有别名"（那条口径与 [requestList] 里"200 但不是 JSON"完全一致）。
+        return json.decodeFromString<List<YandeReArtistDto>>(body).map { it.toRecord() }
+    }
+
+    /** 跟一次重定向，只读**落点 URL** 上的 `title`。正文一个字节都不解析。 */
+    private fun requestRedirectTitle(url: String): String? {
+        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val request = Request.Builder()
+            .url(url)
+            .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("yande.re 返回 ${response.code}")
+            // OkHttp 默认跟重定向，`request.url` 就是最终落点：不是 wiki 那一页就说明这条指针没用
+            // （登录页、维护页都长这样），交回 null 让调用方保持 0 结果，不猜。
+            return response.request.url.queryParameter("title")
+        }
+    }
+
+    private fun executeForJson(url: String): String {
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/json")
+            .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
+            .build()
+        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw IOException("yande.re 返回 ${response.code}")
+            return body
+        }
+    }
+
     private suspend fun requestList(url: String): List<GalleryPost> {
         val request = Request.Builder()
             .url(url)
@@ -141,6 +243,9 @@ class YandeReClient private constructor(context: Context) {
         const val SEARCH_PAGE_SIZE = 100
 
         private const val BASE = "https://yande.re"
+
+        /** 画师别名解析的按条数缓存上限（口径同 [GalleryTagCategories]）。 */
+        private const val ALIAS_CACHE_SIZE = 64
 
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -230,4 +335,28 @@ internal data class YandeReDto(
         md5 = md5,
         fileExt = fileExt,
     )
+}
+
+/**
+ * yande.re `artist.json` 的一条画师记录。这里只接**解析链与批次 L 那排图标要用的四个键**
+ * （其余 `name_japanese` / `related_tags` / `is_active` / `created_at` 等没有消费点）。
+ *
+ * `alias_id` 站方给的是 `null` 或整个键缺失都有（实测记录里两种形态并存），
+ * 所以它是可空带默认值 —— 缺键与空值在这里是同一件事："这个名字本身就是正名"。
+ */
+@Serializable
+internal data class YandeReArtistDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("alias_id") val aliasId: Long? = null,
+    /**
+     * 这位画师的外链地址（批次 L 摆平台图标、取 pixiv 头像都用它）。
+     *
+     * 实测是**字符串数组**，所以这里就按数组接 —— 站方哪天给成别的样子，`decodeFromString`
+     * 会炸出来、整条链路算失败（UI 什么都不摆），而不是悄悄吞成"这位没有外链"。
+     * 那正是 [GalleryArtistEndpointParse] 对 danbooru 那一侧押不了形态时用的同一条口径。
+     */
+    val urls: List<String> = emptyList(),
+) {
+    fun toRecord(): GalleryArtistRecord = GalleryArtistRecord(id = id, name = name, aliasId = aliasId, urls = urls)
 }

@@ -64,9 +64,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -108,6 +112,9 @@ import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
+import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.handoffBodyAlpha
+import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -119,6 +126,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -158,6 +166,21 @@ fun GalleryPostScreen(
     site: GallerySite,
     postId: Long,
     onBack: () -> Unit,
+    /**
+     * 画师行点头像 + 名字：进介绍页。参数是（画师名，这张图的出处）。
+     *
+     * 出处要一起交：介绍页在外链缺档时拿它补一枚入口、在头像缺档时从它派生 fanbox /
+     * Mastodon 的公开端点（批次 L 那条"站方登记 > 出处"的优先次序），而只有本页知道当前这张图。
+     */
+    onOpenArtist: (String, String) -> Unit,
+    /**
+     * 本页**开始入场动作**的那一刻（图起飞 / 整页抬起，两者之一）—— 此刻才允许摘掉"窗口是透明的"这件事。
+     *
+     * 宿主拿它去挂 blur-behind。为什么不能像别页那样 `onStart` 就挂：那一层糊盖着的正是
+     * 后面那屏主界面，第一帧就挂等于**新窗口一出现就把后面糊掉** —— 2026-10-01 12:26 录屏
+     * 逐帧量出来的那一下"闪"就是它（详见 [backdropEntryAlpha]）。
+     */
+    onEnterStart: () -> Unit = {},
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
@@ -354,44 +377,181 @@ fun GalleryPostScreen(
     val flyOrigin = GalleryFlyIn.origin
     /** 两样输入齐了才飞（缺一样就退回抬页那一档）。 */
     val canFly = cardFrame != null && flyOrigin != null
-    var imageBounds by remember { mutableStateOf<Rect?>(null) }
+    /**
+     * **每一页**画面框的窗口矩形：`uid → Rect`。
+     *
+     * 为什么不是一份：去程要的是"打开那一张"的落点，而返回程要的是"**当前页**"的起点 ——
+     * 用户翻过页之后这两个已经不是同一张（框的尺寸还随图的比例变）。pager 会预组左右邻页，
+     * 所以各页都会陆续回报，按 uid 存才分得清谁是谁。
+     */
+    val frameBounds = remember(site, postId) { mutableStateMapOf<String, Rect>() }
+    /** 打开时那一张的 uid —— 去程的落点、以及"垫帧只垫它"那几条都按它认。 */
+    val initialUid = remember(wall, site, postId) { wall.getOrNull(initialIndex)?.uid }
     val entrance = remember { Animatable(1f) }
     val fly = remember { Animatable(0f) }
+    /**
+     * **交棒**那一档：飞行体已经落在画面框上之后，才轮到"页面铺满 + 图变清晰"。
+     *
+     * 为什么它必须**独立于 [fly]**、而且要等到飞完才开始（2026-10-01 第四次报"打开还是闪"，
+     * 录屏逐帧量出来的）：老写法把页面的淡入挂在**弹簧的百分比**上（`fly ≥ 0.75` 起淡），
+     * 可弹簧的百分比不是路程 —— `fly=0.75` 时飞行体还在**路程的 75%**（离落点约 130px、小 13%）。
+     * 于是同一张图有两份同时可见：页面那份在终点、飞行体那份还在半路，读起来是**重影**；
+     * 而两层 alpha 相乘后总不透明度只有 `0.75`（`a_page + a_body·(1-a_page)` 在 a=0.5 处取最小），
+     * 图还会先**暗一下**再回来 —— 用户说的"图片本身闪一下"就是这两条。
+     * 录屏读数：重影峰值落在 `fly=0.875`（交叉中点），与这条算式逐位吻合。
+     *
+     * 现在的口径：飞行全程**不淡任何东西**（飞行体就是不透明的图，它就是那一帧屏上像素）；
+     * 落位之后再用这一档做两件事 ——
+     * 前半程页面（含 chrome）淡进来（此刻图那一块被**不透明**的飞行体盖着，看不出页面在下面），
+     * 后半程飞行体淡出（此刻页面已经不透明，总不透明度恒为 1，淡的只是"糊 → 清晰"）。
+     * 见 [HANDOFF_PAGE_FRACTION]。
+     */
+    val handoff = remember { Animatable(1f) }
     var contentReady by remember(site, postId) { mutableStateOf(false) }
-    /** 飞行结束（或压根不飞）：画面框里那一帧占位从这一刻起才接管。 */
-    var flightDone by remember(site, postId) { mutableStateOf(!canFly) }
-    // token 要在组合期取（`VeneraTokens.motion` 是 @Composable 读法），effect 里摸不到。
-    val entranceFadeMs = tokens.motion.short
+    /**
+     * 入场姿态：[PENDING] 站在原位但全透明（等落点）→ [FLY] 飞进来 → 或 [RISE] 整页抬上来。
+     * **只在 effect 里定一次，之后不再翻**。
+     *
+     * 两条真机读数各钉掉一种写法（2026-10-01，同一处连栽两次）：
+     *
+     * 1. 不能拿组合期派生的 `canFly` 当分支：飞行一结束就要把 payload 交还
+     *    （[GalleryFlyIn.consume]），`canFly` 当场翻回 false，graphicsLayer 随即改走"抬页"那一支 ——
+     *    可飞这一程根本没用过 `entrance`，它还停在 1f，于是整页（连底部那条栏）被平移出一屏，
+     *    屏上只剩窗口的模糊。
+     * 2. 等待落点的那一段**不能站在"抬页"姿态上**（`translationY = 一屏`）：
+     *    `boundsInWindow()` 报的是**裁到窗口可见部分**之后的矩形，页面整片在屏幕外时
+     *    落点就是 `0×0`（读数：`size=1016x1576` 恒定，而 window 高只有 99）。
+     *    于是"等落点"永远等不到 —— 上一版把 0×0 当目的地（飞行体缩向屏幕左上角消失），
+     *    这一版把 0×0 挡掉（于是永远不飞）。两条都是同一个姿态错误的两面。
+     *    站在原位、只是不透明=0，落点第一帧就量得到。
+     */
+    var entranceMode by remember(site, postId) {
+        mutableStateOf(if (flyOrigin == null) Entrance.RISE else Entrance.PENDING)
+    }
+    /**
+     * 飞行结束（或压根不飞）：画面框里那一帧占位从这一刻起才接管。
+     *
+     * 起点只看**矩形**、不看像素：`capture` 里矩形是同步给的，而像素要等 `PixelCopy` 回来
+     * （约一到数帧）。如果这里按"两样齐不齐"取初值，就会在像素到位前一帧把这一档定成
+     * "压根不飞"，像素一到就直接在**落点**摆出那一帧 —— 飞行体根本没有起飞的时机，
+     * 观感是"图先在原位闪一下"。有矩形就先按"要飞"摆，像素到了再起飞。
+     */
+    var flightDone by remember(site, postId) { mutableStateOf(flyOrigin == null) }
+    /**
+     * 交棒动画播完（或压根没有交棒这一档）。
+     *
+     * 它比 [flightDone] 晚 [HANDOFF_MS]：**起点那一帧（[GalleryFlyIn.payload]）必须活到这一刻**，
+     * 因为页面铺满那半程还要靠它盖着图那一块，而它也是"糊 → 清晰"的淡出体本身。
+     * 老写法在 `flightDone` 那一刻就 `consume()`，位图一清、这一档当场塌掉（真机读数：
+     * `pad=true` 只活了 10ms），观感就是图上"闪一下"。
+     */
+    var handoffDone by remember(site, postId) { mutableStateOf(flyOrigin == null) }
+    // ── 临时取证探针（与 capture 里那条同批，读数后一起撤）──
+    LaunchedEffect(entranceMode, canFly, flyOrigin) {
+        android.util.Log.i(
+            "FlyProbe",
+            "mode=$entranceMode canFly=$canFly frame=${cardFrame?.width}x${cardFrame?.height} " +
+                "origin=$flyOrigin entrance=${entrance.value} fly=${fly.value}",
+        )
+    }
     LaunchedEffect(site, postId) {
-        if (!canFly) {
-            // 退路：整页从屏幕下沿抬上来（收藏页、反搜那些入口压根没有"墙上那一张卡"）。
+        // 压根没有卡片当起点（深链、收藏页、反搜那些入口）：没有什么可等的，直接抬页。
+        // 这一条短路存在的理由是**别让人家为一笔永远不会来的落点白等一笔预算**。
+        if (GalleryFlyIn.origin == null) {
             flightDone = true
-            entrance.snapTo(1f)
+            handoffDone = true
+            // 幕布要开始抬了，宿主可以去挂 blur-behind 了（[onEnterStart] 的头注）。
+            onEnterStart()
+            fly.snapTo(1f)
             entrance.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
             return@LaunchedEffect
         }
-        // 页面淡进来，**不等落点**：落点要等画面那一框量出来，页面不该跟着一起延迟显形。
-        entrance.snapTo(1f)
-        launch { entrance.animateTo(0f, tween(entranceFadeMs)) }
-        // 落点最多等 FLY_WAIT_MS。等不到就干脆不飞 —— 把飞行体停在原地半路放弃，
-        // 比一开始就不飞难看。
-        val target = withTimeoutOrNull(FLY_WAIT_MS) {
-            snapshotFlow { imageBounds }.filterNotNull().first()
+        // ── 临时取证探针（2026-10-01 批次 R2，读数拿到后与 `GalleryFlyIn` 里那条一起撤）──
+        val probeStart = android.os.SystemClock.elapsedRealtime()
+        // 起点那一帧（异步）与落点（要等画面那一框量出来）**并发等**，共用同一笔预算：
+        // 串着等最坏是两倍时长，而这两件事本来就没有先后关系。
+        val frameJob = async {
+            withTimeoutOrNull(FLY_WAIT_MS) {
+                snapshotFlow { GalleryFlyIn.stage }
+                    .first { it != GalleryFlyInStage.WAITING }
+            }
         }
-        if (target == null) {
-            fly.snapTo(1f)
+        val boundsJob = async {
+            withTimeoutOrNull(FLY_WAIT_MS) {
+                snapshotFlow { initialUid?.let { frameBounds[it] } }.filterNotNull().first()
+            }
+        }
+        frameJob.await()
+        val target = boundsJob.await()
+        android.util.Log.i(
+            "FlyProbe",
+            "stage=${GalleryFlyIn.stage} frame=${GalleryFlyIn.payload?.width}x${GalleryFlyIn.payload?.height} " +
+                "origin=${flyOrigin} target=$target waited=${android.os.SystemClock.elapsedRealtime() - probeStart}ms",
+        )
+        val flying = GalleryFlyIn.payload != null && GalleryFlyIn.origin != null && target != null
+        entrance.snapTo(1f)
+        if (!flying) {
+            // 退路：整页从屏幕下沿抬上来。两种"飞不起来"都归这里 —— 压根没有卡片当起点
+            // （深链、收藏页、反搜）、`PixelCopy` 没给像素、落点超过预算才量出来。
+            // 半路把已经起飞的飞行体停在原地，比一开始就不飞难看。
+            entranceMode = Entrance.RISE
             flightDone = true
+            handoffDone = true
+            onEnterStart()
+            fly.snapTo(1f)
+            entrance.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
             return@LaunchedEffect
         }
+        entranceMode = Entrance.FLY
+        // **起飞这一刻**就把交棒档归零 —— 整条飞行程都不淡任何东西（飞行体就是不透明的起点像素）。
+        // 漏了这一句的后果是反的：`handoff` 还停在上一档的 1，飞行体一开场就是全透明
+        // （`handoffBodyAlpha(1) == 0`），屏上只剩幕布 —— 又是一次"闪"，而且是更黑的那种。
+        handoff.snapTo(0f)
+        // 起飞的这一刻才允许后面那屏变糊、变暗 —— 第一帧就更是那一下"闪"本身（见 [backdropEntryAlpha]）。
+        onEnterStart()
         fly.snapTo(0f)
+        // 抬页那一支的表达式读 `entrance`（默认停在 1f = 一整屏位移）。这一档虽然不再走它，
+        // 但给它留一个 1f 的读数就是下一次翻车的引线 —— 归零，让各档互不牵连。
+        entrance.snapTo(0f)
         // 与下滑关闭同一档弹簧：进与出手感对称，且不另造数字。
         fly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+        android.util.Log.i("FlyProbe", "flight end at=${android.os.SystemClock.elapsedRealtime()}")
         flightDone = true
+        // 飞完才开始交棒：此刻飞行体**正好压在画面框上**，这才是"两份图重合"的唯一时刻。
+        // 页面早一帧淡入都不行（弹簧的百分比不是路程，见 [handoff] 的头注）。
+        handoff.animateTo(1f, tween(durationMillis = HANDOFF_MS))
+        handoffDone = true
     }
     // 占位那一帧**换到位才交还**：早交会在"页到位"与"图加载好"之间露出一块玻璃，
     // 观感就是闪一下。取不到详情时也要交 —— 不然这张位图一直攥在手里没人再消费它。
-    LaunchedEffect(contentReady, error) {
-        if (cardFrame != null && (contentReady || error != null)) GalleryFlyIn.consume()
+    //
+    // ⚠️ 两道门，缺一次就是一次"闪"（两轮真机读数各钉掉一道）：
+    // 1. **飞完**（[flightDone]）：这一页从墙上点进来时 `contentReady` 二十来毫秒就为真
+    //    （卡片那张预览档本来就在 Coil 内存里），而飞行体还要用 `payload` 与 `origin`
+    //    画完剩下的三百多毫秒。早交就是把飞行体半路抹掉 —— 真机读数停在 `fly=0.041`。
+    // 2. **交棒也播完**（[handoffDone]，2026-10-01 第四次报"打开还是闪"）：交棒那半程还要靠
+    //    这张位图盖着图那一块、并充当"糊 → 清晰"的淡出体。老写法只看 `flightDone`，
+    //    于是 `consume()` 紧跟 `flightDone` 落地（真机读数：`pad=true` 只活了 10ms），
+    //    一帧糊、又立刻变清晰 —— 那就是"图片本身闪一下"。
+    //
+    // 只认这两个 + 图到位，不再猜图什么时候好。`contentReady` 蕴含中档落位（见 `onReadyChange`），
+    // 所以交还的那一刻垫帧本来就已经被撤了（`cardFrame != null && !largeSettled` 那条），
+    // 位图清掉不会把画面抽空。
+    LaunchedEffect(contentReady, error, handoffDone) {
+        if (handoffDone && GalleryFlyIn.payload != null && (contentReady || error != null)) {
+            android.util.Log.i("FlyProbe", "consume ready=$contentReady error=${error != null}")
+            GalleryFlyIn.consume()
+        }
+    }
+    // ── 临时取证探针（第二轮：查"飞行结束后那一下闪"是哪一层）──
+    // 飞行体交棒之后屏上还能动的东西只有这四类：图换档、框里那份占位、加载态（骨架/环）、chrome。
+    // 各自都有唯一指纹（下面三条 + GalleryViewerMedia 里的 tier 那条），时间线对齐就能定死是哪一类。
+    LaunchedEffect(showChrome, zoomedIn, flightDone, contentReady, cardFrame != null, infoOpen) {
+        android.util.Log.i(
+            "FlyProbe",
+            "state chrome=$showChrome zoomed=$zoomedIn flightDone=$flightDone ready=$contentReady " +
+                "frame=${cardFrame != null} info=$infoOpen",
+        )
     }
 
     // 单张模式才补取：从一面墙点进来时，那一批（含这一条）已经随点击交过来了，
@@ -433,6 +593,106 @@ fun GalleryPostScreen(
 
     // sheet 浮在上面时，系统返回先关 sheet，不要把本页一起弹掉。
     BackHandler(enabled = infoOpen) { infoOpen = false }
+
+    // ── 返回程 hero：把画面那一框截下来，飞回墙上那张卡（用户 2026-10-01 点名要做）──
+    // 与去程是同一套机制的镜像。去程的两样输入是点击那一刻递过来的；返回程自己现取：
+    // **起点** = 画面框（[imageBounds]），**落点** = 墙上那张卡此刻的封面矩形
+    // （[GalleryFlyIn.cardBoundsOf]，由一级那一侧布局时回写）。
+    //
+    // 为什么能直接读后台那一屏的落点：大图页压上来之后 MainActivity 只是 `onStop`，
+    // View 树与布局原封不动（人也没法在大图页里滚那一面墙），所以那份读数就是"离开那一刻的位置"。
+    //
+    // 三条边界都是硬口径，任一条不成立就**照旧走系统那套返回动画**，绝不硬切：
+    // 1. 打码这一张两边都不飞 —— 墙上那张卡因为打码压根没回写落点，这里天然查不到；
+    // 2. 翻到墙外那一张、或卡片已被回收 → 查不到落点；
+    // 3. 截不到像素（超出窗口、窗口没有 surface）。
+    /**
+     * 画面框（以及飞行体）的圆角。**必须在组合期取出来**：`VeneraTokens.shape` 是 @Composable 的
+     * getter，绘制阶段（`drawBehind` 的 lambda）读不到它。`.toPx()` 留在 DrawScope 里做 ——
+     * 那里才是 Density。
+     */
+    val flyCornerRadius = tokens.shape.large
+    var exitFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+    var exitStart by remember { mutableStateOf<Rect?>(null) }
+    var exitTarget by remember { mutableStateOf<Rect?>(null) }
+    val exitFly = remember { Animatable(0f) }
+    var leaving by remember { mutableStateOf(false) }
+
+    /** 离场时整页（含压暗那一层）的透明度：**首程**淡出，与去程尾程那半共用同一个常量。 */
+    fun exitFadeAlpha(): Float =
+        if (!leaving) 1f else (1f - exitFly.value / FLIGHT_FADE_FRACTION).coerceIn(0f, 1f)
+
+    /**
+     * 入场时压暗那一层的透明度。**它不能第一帧就是 1** —— 这是 2026-10-01 第三次报"打开还是闪"
+     * 之后，用录屏逐帧量出来的那条读数：
+     *
+     * ```
+     * t=1.20~1.43s  lum=174.0  帧间差 0.00   ← 点击后主界面一动不动
+     * t=1.450s      lum 173.8 → 106.1        ← 一帧之内暗掉 39%，就是用户看到的"闪"
+     * t=1.45~1.78s  106 → 147  缓慢爬升       ← 图飞过来的 350ms
+     * ```
+     *
+     * 那次暴跌既不在飞行体上、也不在交棒上（那两处上一轮已经修过，读数也对）：它就是
+     * **新窗口的第一帧**。窗口一出现，幕布（0.45 的黑 + 32dp 的系统模糊）就整块盖下来，
+     * 而图还要过两帧才起飞 —— 于是屏上先"空闪"一下，才有运动。
+     *
+     * 判据：**入场第一帧必须与点击前那一帧看起来一样**。所以幕布跟着图起飞一起渐入，
+     * 起步那一下屏上还是原来那屏（只是它上面多出一张与卡片同位同像素的图，看不出来）。
+     * 另一半在 [onEnterStart]：窗口模糊也一并推迟到这一刻（见 `VeneraSubActivityBase.armBlurBehind`）。
+     */
+    fun backdropEntryAlpha(): Float = when (entranceMode) {
+        // 等落点/等像素这一段：后面那屏保持原样（清晰、不压暗），与点击前逐像素相同。
+        Entrance.PENDING -> 0f
+        // 飞这一程：幕布在图起飞的前段里落齐，与它共用同一条钟（不另起一条）。
+        Entrance.FLY -> (fly.value / BACKDROP_ENTRY_FRACTION).coerceIn(0f, 1f)
+        // 抬页那一档：`entrance` 1→0 是页面从屏外抬到位，幕布与它同程渐入。
+        Entrance.RISE -> (1f - entrance.value).coerceIn(0f, 1f)
+    }
+
+    fun leavePage() {
+        if (leaving) return
+        val post = current
+        val box = post?.let { frameBounds[it.uid] }
+        val target = post?.let { GalleryFlyIn.cardBoundsOf(it.uid) }
+        if (post == null || box == null || target == null ||
+            box.width <= 0f || box.height <= 0f || maskedOf(post)
+        ) {
+            onBack()
+            return
+        }
+        leaving = true
+        // 离场第一件事是**摘掉窗口模糊**：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
+        // 基类挂模糊走的是 addFlags，清掉即回到透明窗口底；"要重进页面才恢复模糊"在这里无所谓 ——
+        // 本页马上 finish。状态栏图标同理跟着翻回来（底下那屏是浅色主题）。
+        val host = view.context as? Activity
+        host?.window?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        host?.window?.let { WindowCompat.getInsetsController(it, view) }
+            ?.isAppearanceLightStatusBars = !isDarkTheme
+        GalleryFlyIn.captureRegion(view, box) { frame ->
+            if (frame == null) {
+                onBack()
+                return@captureRegion
+            }
+            exitFrame = frame
+            exitStart = box
+            exitTarget = target
+            scope.launch {
+                // ── 临时取证探针（与那 9 处 `FlyProbe` 同批，验收完一起撤）──
+                android.util.Log.i("FlyProbe", "exit start=$box target=$target")
+                // 与下滑关闭、进场同一档弹簧：进与出手感对称，且不另造数字。
+                exitFly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+                android.util.Log.i("FlyProbe", "exit end")
+                onBack()
+            }
+        }
+    }
+
+    // 系统返回 / 侧滑手势：接管它，返回才有自家这一趟 hero。
+    // 代价如实记账：预测式返回那半"边滑边看到整页缩小"的系统预览没有了，
+    // 现在统一是"松手后图飞回卡片"。sheet 开着时那条优先级更高（enabled 互斥）。
+    // ⚠️ 下滑关闭（[closePage]）**不走这条** —— 那时页面已经跟着手指滑出屏幕，
+    // 再让图从屏幕外飞回来是自相矛盾；那条保持原样，由系统返回动画收尾。
+    BackHandler(enabled = !infoOpen) { leavePage() }
 
     fun toggleChrome() {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -570,6 +830,12 @@ fun GalleryPostScreen(
         Box(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    // 入场那半：跟着图起飞一起渐入（第一帧等于 0），见 [backdropEntryAlpha]。
+                    // 离场那半：与页面同步让开 —— 它压暗的正是图要飞回去的那一屏（见 [leavePage]）。
+                    // 两者相乘而不是各写一遍：进与出不会重叠，但乘起来两条路都不必假设对方的状态。
+                    alpha = backdropEntryAlpha() * exitFadeAlpha()
+                }
                 .background(
                     backdrop.argb?.let { Color(it) }
                         ?: Color.Black.copy(alpha = BACKDROP_SCRIM_ALPHA)
@@ -579,10 +845,33 @@ fun GalleryPostScreen(
         Box(
             Modifier
                 .fillMaxSize()
-                // `entrance.value` / `fly.value` 在 graphicsLayer 的 lambda 里读 = 绘制阶段读，
-                // 每帧只重绘不重组；拿到组合里读会让整页每帧重走一遍组合。
+                // `entrance.value` / `fly.value` / `handoff.value` 在 graphicsLayer 的 lambda 里读
+                // = 绘制阶段读，每帧只重绘不重组；拿到组合里读会让整页每帧重走一遍组合。
                 .graphicsLayer {
-                    if (canFly) alpha = 1f - entrance.value else translationY = entrance.value * screenHeightPx
+                    when (entranceMode) {
+                        // 等落点这一段：**站在原位、只是全透明**。抬页姿态（整片在屏幕外）会让
+                        // 落点被窗口裁成 `0×0` —— 那是这一处连栽两轮的根（见 [Entrance] 的头注）。
+                        Entrance.PENDING -> {
+                            alpha = 0f
+                            translationY = 0f
+                        }
+                        // 飞行全程页面**不出现**：此刻屏上那份图是飞行体，它就是不透明的起点像素。
+                        // 页面在这里露头就会被看见"两份图"（终点一份、半路一份）—— 2026-10-01 录屏
+                        // 量到的重影正是它。页面等到**飞完**才开始淡入（见 [handoff] 的头注）。
+                        Entrance.FLY -> {
+                            // 算式在判据层（`handoffPageAlpha` / `handoffBodyAlpha` / `handoffCoverage`）：
+                            // "两层叠起来恒为不透明"这条只能到那儿去守，UI 里守不住。
+                            alpha = handoffPageAlpha(handoff.value)
+                            translationY = 0f
+                        }
+                        Entrance.RISE -> {
+                            alpha = 1f
+                            translationY = entrance.value * screenHeightPx
+                        }
+                    }
+                    // 离场那一半（首程淡出，同一个 FLIGHT_FADE_FRACTION）：乘上去而不是另起一支 ——
+                    // 入场与离场本来不会重叠，但乘起来两条路都不必假设对方的状态。
+                    alpha *= exitFadeAlpha()
                 },
         ) {
             when {
@@ -635,10 +924,20 @@ fun GalleryPostScreen(
                                 // 框里同时摆一份就会看见"两个起点"。
                                 cardFrame = if (page == initialIndex && flightDone) cardFrame else null,
                                 onReady = { if (page == initialIndex) contentReady = true },
-                                onImageBounds = if (page == initialIndex) {
-                                    { imageBounds = it }
-                                } else {
-                                    null
+                                // **每一页**都回报（按 uid 存）：去程要"打开那一张"的落点，
+                                // 返回程要"当前页"的起点 —— 翻过页之后这两个不是同一张。
+                                onImageBounds = { rect ->
+                                    // 落点**只认有面积的那一版**。`boundsInWindow()` 报的是裁到窗口
+                                    // 可见部分之后的矩形（真机读数：`size=1016x1576` 恒定而 window 高只有 99），
+                                    // 所以页面只要还站在屏幕外，落点就是 `0×0` —— 认了它，飞行体会缩向
+                                    // 屏幕左上角消失。姿态已按 [Entrance] 修对（等待期间站在原位），
+                                    // 这一道留着当保险：一个零面积的目的地永远不该被拿去飞。
+                                    if (rect.width > 0f && rect.height > 0f) {
+                                        if (page == initialIndex && frameBounds[pagePost.uid] == null) {
+                                            android.util.Log.i("FlyProbe", "first landing rect=$rect")
+                                        }
+                                        frameBounds[pagePost.uid] = rect
+                                    }
                                 },
                                 onZoomedChange = { zoomedPages[pagePost.uid] = it },
                                 onHdError = { reason ->
@@ -749,29 +1048,126 @@ fun GalleryPostScreen(
 
         // ── 飞行途中的那一帧（共享元素的"主体"）──
         // 画在整页之上、sheet 之下：它只负责"卡片原位 → 大图位置"那一段。
-        // `fly.value` 与 `imageBounds` 都在 drawBehind 的 lambda 里读 = 绘制阶段读，
+        // `fly.value` / `exitFly.value` 与各页的画面框都在 drawBehind 的 lambda 里读 = 绘制阶段读，
         // 每帧只重绘这一块，不把整页拖进重组（与上面 graphicsLayer 同一条口径）。
         val frame = cardFrame
         val startRect = flyOrigin
-        if (frame != null && startRect != null) {
+        // 抬页那一档**不画飞行体**：走到那一档时像素可能已经在手上（`payload` 非空）但落点没量出来，
+        // 画出来就是"卡片封面僵在原位"等着页面抬上来。它现在整程不透明（见下面 alpha），
+        // 多这一道判断才不会把那种僵住的画面亮出来。
+        if (frame != null && startRect != null && entranceMode != Entrance.RISE) {
+            // ── 临时取证探针：这一档成立 = 飞行体真的进了组合；不成立就是它压根没画出来。──
+            LaunchedEffect(frame, startRect) {
+                android.util.Log.i(
+                    "FlyProbe",
+                    "overlay composed frame=${frame.width}x${frame.height} start=$startRect",
+                )
+            }
             Box(
                 Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        val end = imageBounds ?: return@drawBehind
+                        // 落点还没量出来时**冻在封面原位**垫着（这正是这一层最初"垫着不空"的职责），
+                        // 量到了才起程。直接不画的话，等落点那几帧屏上只剩窗口模糊。
+                        val end = initialUid?.let { frameBounds[it] } ?: startRect
                         val t = fly.value.coerceIn(0f, 1f)
                         val left = startRect.left + (end.left - startRect.left) * t
                         val top = startRect.top + (end.top - startRect.top) * t
                         val width = startRect.width + (end.width - startRect.width) * t
                         val height = startRect.height + (end.height - startRect.height) * t
-                        drawImage(
-                            image = frame,
-                            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                            dstSize = IntSize(width.roundToInt(), height.roundToInt()),
-                            // 最后四分之一程淡出，交棒给画面框里那份同样的占位 ——
-                            // 此刻两者位置重合，读起来是"停住并变清晰"，不是"换了一张图"。
-                            alpha = ((1f - t) / 0.25f).coerceIn(0f, 1f),
-                        )
+                        // 源像素按 **cover 语义**取（保持它自己的比例、居中裁切），**不是**拉伸填满：
+                        // 起点框与落点框的比例并不总是同一档（墙上卡片被夹在 0.4~2.5、预览行的封面固定
+                        // 124×170，而落点框按原图比例定）。拉伸会把整块内容拉扯变形，交棒那一下再把形状
+                        // 还回来，读起来就是"闪"。算式抽在判据层（`coverSourceRect`，带单测）——
+                        // 比例一致时算出来的就是整张位图，与老写法逐像素等价。
+                        val src = coverSourceRect(frame.width, frame.height, width, height)
+                        // 圆角必须跟着走：飞行体本身画的是**矩形**，而落点那一框是 `shape.large` 圆角。
+                        // 不裁它，交棒那一刻就是"方角 → 圆角"的一次跳变 —— 2026-10-01 12:09 那两张
+                        // 真机截图量出来的就是这条：飞行中四角全是直角、到位后四角全是圆角。
+                        // 半径按当前宽度等比缩放，所以落到终点时**逐像素等于框的圆角**，形状差归零。
+                        val radius = flyCornerRadius.toPx() *
+                            (width / end.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        clipPath(
+                            Path().apply {
+                                addRoundRect(
+                                    RoundRect(
+                                        left = left,
+                                        top = top,
+                                        right = left + width,
+                                        bottom = top + height,
+                                        cornerRadius = CornerRadius(radius, radius),
+                                    ),
+                                )
+                            },
+                        ) {
+                            drawImage(
+                                image = frame,
+                                srcOffset = IntOffset(src.left, src.top),
+                                srcSize = IntSize(src.width, src.height),
+                                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+                                dstSize = IntSize(width.roundToInt(), height.roundToInt()),
+                                // 去程**全程不淡**（2026-10-01 第四次报"打开还是闪"，录屏量出来的）：
+                                // 老写法让它在这条弹簧的尾段淡出，可"弹簧的百分比"不是"路程" ——
+                                // 页面同时开始淡入，两份图错着位叠在一起 = 重影，而且两层 alpha
+                                // 相乘后总不透明度只有 0.75，图还会先暗一下。现在它整程不透明，
+                                // 淡出挪到**飞完之后的交棒后半程**（那时页面已不透明，见 [handoff]）。
+                                alpha = if (entranceMode == Entrance.FLY) {
+                                    handoffBodyAlpha(handoff.value)
+                                } else {
+                                    1f
+                                },
+                            )
+                        }
+                    },
+            )
+        }
+
+        // ── 返回程那一帧：画面框 → 墙上那张卡 ──
+        // 与上面那一层是镜像：去程画"卡片 → 画面框"，这一层画"画面框 → 卡片"。
+        // **不淡入也不淡出**：起点是屏上那一帧的真实像素（与它盖住的那张图逐像素相同），
+        // 终点正好是卡片封面那一块，finish 之后卡片把它接住 —— 两头都无缝，中间加淡入淡出
+        // 反而会把身后的东西露出来。
+        val exitFrom = exitStart
+        val exitTo = exitTarget
+        val exitBitmap = exitFrame
+        if (exitBitmap != null && exitFrom != null && exitTo != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val t = exitFly.value.coerceIn(0f, 1f)
+                        val left = exitFrom.left + (exitTo.left - exitFrom.left) * t
+                        val top = exitFrom.top + (exitTo.top - exitFrom.top) * t
+                        val width = exitFrom.width + (exitTo.width - exitFrom.width) * t
+                        val height = exitFrom.height + (exitTo.height - exitFrom.height) * t
+                        // 源像素同样是 cover 语义：起点是画面框的截屏、终点是卡片封面那一块，
+                        // 两者比例未必同档（卡封面被夹过、预览行那条还是固定的 124×170）。
+                        val src = coverSourceRect(exitBitmap.width, exitBitmap.height, width, height)
+                        // 圆角同一条口径（按当前宽度等比缩放）：到终点时等于框的圆角，
+                        // 与卡片自己的圆角同档，落回去那一瞬间没有形状差。
+                        val radius = flyCornerRadius.toPx() *
+                            (width / exitTo.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        clipPath(
+                            Path().apply {
+                                addRoundRect(
+                                    RoundRect(
+                                        left = left,
+                                        top = top,
+                                        right = left + width,
+                                        bottom = top + height,
+                                        cornerRadius = CornerRadius(radius, radius),
+                                    ),
+                                )
+                            },
+                        ) {
+                            drawImage(
+                                image = exitBitmap,
+                                srcOffset = IntOffset(src.left, src.top),
+                                srcSize = IntSize(src.width, src.height),
+                                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+                                dstSize = IntSize(width.roundToInt(), height.roundToInt()),
+                            )
+                        }
                     },
             )
         }
@@ -782,7 +1178,11 @@ fun GalleryPostScreen(
                 categories = tagCategories,
                 fallbackArtistNames = fallbackArtists,
                 tagTranslations = tagTranslations,
+                imageLoader = imageLoader,
                 onDismiss = { infoOpen = false },
+                // 画师行那一块整块可点 → 介绍页。它**不离开本页**（不同于点标签那一条），
+                // 所以不写交接槽、也不 finish：介绍页是又压上来的一级，返回就回到这张图。
+                onOpenArtist = { name -> onOpenArtist(name, current.source) },
                 // 点标签 = 回一级画廊搜这一枚。这里负责"离开本页"，把结果那一屏留给画廊：
                 // 搜索结果归 [GallerySearchViewModel] 持有，在本页另起一份就变成两处各存一半。
                 // 走 onBack（= Activity.finish）而不是 closePage 那套下滑动画 —— 用户要的是立刻看到
@@ -816,7 +1216,7 @@ private fun GalleryViewerPage(
     /** 这一屏该不该把动图解成动画（大图页按档位与网络算出来，见 GalleryMotion）。 */
     animated: Boolean,
     imageLoader: ImageLoader,
-    /** 一级卡片那一帧（窗口坐标裁出来的位图）。只有"打开时那一张"才拿得到。 */
+    /** 一级卡片里**封面那一块**那一帧（窗口坐标裁出来的位图）。只有"打开时那一张"才拿得到。 */
     cardFrame: ImageBitmap?,
     onImageTap: () -> Unit,
     /** 开门档或中档已落位（成功或失败都算）—— 页面据此交还垫着的那一帧。 */
@@ -883,12 +1283,42 @@ private fun GalleryViewerPageCounter(page: Int, total: Int) {
 private const val PAGE_COUNTER_BG_ALPHA = 0.72f
 
 /**
+ * 大图页的三种入场姿态（用法与为什么必须是三档，见 `GalleryPostScreen` 里 [entranceMode] 那处头注）。
+ *
+ * 刻意做成枚举而不是两个布尔：栽过的那两轮都是"两档互相牵连"——一处翻，另一处的表达式就读到脏值。
+ */
+private enum class Entrance { PENDING, FLY, RISE }
+
+/**
  * 等画面那一框报回落点的最长时间。
  *
- * 落点要等详情到位、那一面页组出来、量完布局才有 —— 通常就在头几帧。等不到时放弃飞行、
- * 直接摆占位框，比让一个飞行体停在半路好收拾。
+ * 姿态修对之后（等待期间页面站在原位、只是全透明）落点应当**第一帧**就有 ——
+ * 这一档现在只是笔保险：万一那框压根量不出来（布局被别的动画压住、页面结构改了），
+ * 也不能让页面永远透明地站着。超时就退回抬页，屏上不会留一块空白。
+ *
+ * 记一笔栽过的读法：先前它停在 400ms 时真机读数 `target=null waited=406ms`，
+ * 而第一个非零落点在 651~657ms —— 那时以为是"布局慢"，放宽到 600ms 仍然不飞。
+ * 真实原因是页面站在屏幕外，落点被窗口裁成 `0×0`（见 [Entrance]）。**预算不是病，姿态才是病。**
  */
-private const val FLY_WAIT_MS = 400L
+private const val FLY_WAIT_MS = 600L
+
+/**
+ * **离场**时做交叉淡出的那一段（占整条返回程的比例）。
+ *
+ * 去程曾经也用它（把页面的淡入挂在 `fly` 尾段上），2026-10-01 录屏把它量掉了：
+ * 弹簧的"百分比"不是"路程"，`fly=0.75` 时飞行体还在半路，交叉淡入就变成**重影 + 暗一下**。
+ * 去程现在走 [HANDOFF_MS] 那一档（飞完才开始交棒）。返回程没有这个问题 ——
+ * 离场是"起点现截一帧、原地起飞"，飞行体与页面在首帧**逐像素相同**，交叉淡出不会露馅。
+ */
+private const val FLIGHT_FADE_FRACTION = 0.25f
+
+/**
+ * 交棒的时长（毫秒）。飞行体落位之后才开始走，见 `GalleryPostScreen` 里 [handoff] 的头注。
+ *
+ * 160ms 是"看得出来是一次收束、又不至于让人等"的一档，比进场那一档弹簧短得多 ——
+ * 它不再承担位移，只做"页面铺满 + 糊变清晰"。
+ */
+private const val HANDOFF_MS = 160
 
 /**
  * 满屏的画面：按真实比例定框、圆角贴着图、缩放挂在容器上。
@@ -933,7 +1363,21 @@ private fun GalleryViewerMedia(
     val boundsReporter = if (onImageBounds == null) {
         Modifier
     } else {
-        Modifier.onGloballyPositioned { onImageBounds(it.boundsInWindow()) }
+        Modifier.onGloballyPositioned { coordinates ->
+            // ── 临时取证探针（只挂在打开那一张上）──
+            // 落点报回来的时刻比预算晚（真机两次读数 651ms / 657ms，而预算 600ms），
+            // 且回报的矩形是"宽恒定、高在长"—— 与定框算式对不上。这里一次量齐三样：
+            // 布局给的尺寸、坐标自己算的窗口矩形、以及**不含 graphicsLayer 位移**的根相对矩形。
+            // 三者一比就能分清：是页面在被平移（那就是入场动画在动落点）、还是尺寸真在长（布局在抖）。
+            val window = coordinates.boundsInWindow()
+            // `size` 是布局给的尺寸（不含 graphicsLayer 位移），`window` 含位移。
+            // 两者一比就够分：size 在长 = 布局在抖；size 恒定而 window 在动 = 入场平移在动落点。
+            android.util.Log.i(
+                "FlyProbe",
+                "landing size=${coordinates.size.width}x${coordinates.size.height} window=$window",
+            )
+            onImageBounds(window)
+        }
     }
 
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -976,11 +1420,25 @@ private fun GalleryViewerMedia(
             var fastLoaded by remember(post.uid) { mutableStateOf(false) }
             var largeSettled by remember(post.uid) { mutableStateOf(false) }
             var hdSettled by remember(post.uid) { mutableStateOf(false) }
-            // "第一档落位"垫到**快照档或中档任一落位**为止：快照档通常白拿
-            // （与网格卡片同址，缓存直接命中），它一到位那帧位图就能交还，
-            // 不必再攥到中档取回来 —— 位图攥得越久，越容易在巨幅图上叠出一次 OOM。
-            LaunchedEffect(fastLoaded, largeSettled) {
-                if (fastLoaded || largeSettled) onReadyChange(true)
+            // 垫帧（= 去程那一帧）**等中档落位才交还**（2026-10-01 12:09 真机读数改的口径）。
+            //
+            // 老写法是"快照档或中档任一落位就算到位"，而快照档两站都是**特别小**的一档
+            // （yande.re 的 `preview_url` 实测 300×212）：它铺进一屏宽的画面框里要放大三倍多，
+            // 比手里这张垫帧（卡封面那一块的屏上像素）还糊。于是交棒读起来是"变糊一下"、
+            // 中档回来再"变清晰一下" —— 用户报的"闪几下"里就有它一份。
+            // 中档（sample）才是这一屏的成品档，它落位才算真到位；它取不到时 onError 也会把
+            // `largeSettled` 置真，所以不会把上面那份位图永远攥着。
+            LaunchedEffect(largeSettled) {
+                if (largeSettled) onReadyChange(true)
+            }
+            // ── 临时取证探针（同上第二轮）：这一页哪一档在什么时刻落位。──
+            // 飞行交棒后如果闪与这条的翻动同一时刻，那就是**图本身换档**（分辨率跳变），
+            // 与透明度、chrome 都无关。
+            LaunchedEffect(fastLoaded, largeSettled, hdSettled, cardFrame != null) {
+                android.util.Log.i(
+                    "FlyProbe",
+                    "tier id=${post.id} fast=$fastLoaded large=$largeSettled hd=$hdSettled pad=${cardFrame != null}",
+                )
             }
 
             Box(
@@ -1052,9 +1510,12 @@ private fun GalleryViewerMedia(
                         )
                     }
                 }
-                if (cardFrame != null && !fastLoaded && !largeSettled) {
-                    // 卡片与这块框同一个 `cardRatio`，所以 Crop 不改变构图 ——
-                    // 大图到位时是"变清晰"，不是"跳一下"。
+                if (cardFrame != null && !largeSettled) {
+                    // 这一帧是**卡片封面那一块**（不是整卡，见 GalleryFlyIn 文件头注），与这块框共用
+                    // 同一个 `cardRatio`，所以 Crop 不改变构图 —— 大图到位时是"变清晰"，不是"跳一下"。
+                    //
+                    // ⚠️ 撤它的条件**只有中档落位**，不能再带"快照档也落位"：快照档比它还糊，
+                    // 交棒到它等于先把图换糊一次（同上面 `onReadyChange` 那处头注）。
                     Image(
                         bitmap = cardFrame,
                         contentDescription = null,
@@ -1108,6 +1569,19 @@ private const val DISMISS_VELOCITY_FACTOR = 0.6f
 
 /** 暗化那一档的 alpha（糊完之后压在玻璃上的黑）。 */
 private const val BACKDROP_SCRIM_ALPHA = 0.45f
+
+/**
+ * 入场时压暗那一层在飞行的**前几成**里渐入到齐。
+ *
+ * 不另起一条钟：幕布与图本来就是同一件事的两面（图浮起来、后面的屏退下去）。
+ *
+ * 这个数字是**实测调出来的**，不是拍的（2026-10-01 12:30 修复后录屏逐帧）：
+ * 取 0.35 时幕布只用 **67ms** 就落了满 —— `spring(StiffnessMediumLow)` 起步近似线性，
+ * 临界阻尼 `x(t)=1-(1+ωt)e^(-ωt)`（ω=√400=20）在 t=0.067s 处已经到 0.387。
+ * 67ms 的渐变仍然是"闪"，所以档位加深到 0.8：同一条曲线在 t≈0.14s 处到 0.8，
+ * 幕后整段（约 140ms）都在退，读起来才是"图飞过去、后面的屏一起退开"。
+ */
+private const val BACKDROP_ENTRY_FRACTION = 0.8f
 
 /**
  * 缓存 key 口径（原三级与二级共用，现在满屏那两层图共用）。

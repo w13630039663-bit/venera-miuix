@@ -10,16 +10,29 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.gallery.data.GalleryFavoritesStore
+import com.venera.compose.gallery.data.GalleryForYouCache
+import com.venera.compose.gallery.data.GalleryForYouSnapshot
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GelbooruAccount
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.YandeReClient
+import com.venera.compose.gallery.data.bySite
+import com.venera.compose.gallery.data.countBySite
+import com.venera.compose.gallery.data.toCountRows
+import com.venera.compose.gallery.data.toFavorite
+import com.venera.compose.gallery.data.toPost
+import com.venera.compose.gallery.data.toSiteRows
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryForYouMerge
+import com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy
+import com.venera.compose.gallery.domain.GalleryLegGuard
 import com.venera.compose.gallery.domain.GalleryRecommendation
 import com.venera.compose.gallery.domain.GallerySearch
+import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -28,7 +41,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 猜你喜欢那一屏的状态持有者。
@@ -146,6 +158,27 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     var generation by mutableIntStateOf(0)
         internal set
 
+    // ── 「沿用上次那一屏」的两个标记（批次 O）──
+    //
+    // 与 GalleryViewModel 那两处同名同义，连"为什么要分开记"也一样：
+    // loadedKey 只在成功后写（从错误态点重试要靠它为空才放行），
+    // 而缓存那一屏谈不上"成功"——把它写进 loadedKey 会连带把「重试」变成假按钮。
+
+    /** 屏上这一屏是从快照铺出来的、本轮还没真取过。 */
+    private var hydratedFromCache = false
+
+    /** 快照写于哪一天（epochDay）；null = 没有快照。 */
+    private var cachedOnEpochDay: Long? = null
+
+    /**
+     * 页面问"这一轮要不要自己去联网取"。
+     *
+     * 与日榜那头同一条口径（判据在 [GalleryForYouRefreshPolicy.shouldAutoLoad]）：
+     * 铺着今天的快照就不取；跨天了补拉；用户点过「换一批」后两个标记一起清，那一轮必取。
+     */
+    fun shouldAutoLoad(todayEpochDay: Long = LocalDate.now(ZoneOffset.UTC).toEpochDay()): Boolean =
+        GalleryForYouRefreshPolicy.shouldAutoLoad(hydratedFromCache, cachedOnEpochDay, todayEpochDay)
+
     private val gelbooruAccount = GelbooruAccount.getInstance(app)
 
     /** 订阅而不是读一次快照：设置页配好或注销之后，退回画廊这边要**立刻**跟着变。 */
@@ -167,8 +200,36 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     /** 前面各页已上屏条目的去重键（跨页去重全靠它，`mix` 那头没有这一维）。 */
     private var seenKeys = HashSet<String>()
 
-    /** 已经到底的站。缺席（超时/没账号）的站**不进**这里 —— 见 [GalleryForYouMerge.exhaustedSites]。 */
+    /** 已经到底的站。缺席（超时/没账号）的站**不进**这里 —— 见 [GallerySearchMerge.exhaustedSites]。 */
     private var sitesDone = mutableSetOf<GallerySite>()
+
+    // 必须排在 seenKeys / sitesDone **之后**：init 块按声明顺序跑，写在它们上面就是
+    // "在声明之前初始化"，编译不过（这不是风格问题，是在这个类里放错位置就必然报错）。
+    init {
+        // 同步读：下面那次"这一轮要不要联网"的判断要用得到结果，异步读会抢不过（理由见 GalleryForYouCache.read）。
+        val snapshot = GalleryForYouCache.read(app)
+        val restored = snapshot?.posts.orEmpty().mapNotNull { fav -> fav.site?.let { fav.toPost(it) } }
+        if (snapshot != null && GalleryForYouRefreshPolicy.canHydrate(restored.size, snapshot.seed)) {
+            seed = snapshot.seed
+            posts = restored
+            queryBySite = snapshot.queries.bySite()
+            perSite = snapshot.perSite.countBySite()
+            page = snapshot.page
+            excludedFavourite = snapshot.excludedFavourite
+            videos = snapshot.videos
+            failures = snapshot.failures.bySite()
+            sitesDone = snapshot.sitesDone.toMutableSet()
+            exhausted = queryBySite.isNotEmpty() && sitesDone.containsAll(queryBySite.keys)
+            // 跨页去重的键**不存**，从恢复出来的那一屏重算：它就是从这些 post 累出来的，
+            // 存第二份只会给"两份不一致"留位置（存了旧键、屏上换了新条，去重就会漏剔或误剔）。
+            seenKeys = HashSet<String>().apply { posts.forEach { this += GalleryForYouMerge.keysOf(it) } }
+            // stage 也要铺：否则页面第一帧念的是 IDLE，那一档摆的是整屏加载环 ——
+            // 快照就白存了。判据与 load() 那句一致：发得出标签串才算 READY。
+            if (queryBySite.isNotEmpty()) stage = GalleryForYouStage.READY
+            hydratedFromCache = true
+            cachedOnEpochDay = snapshot.savedEpochDay
+        }
+    }
 
     private var loadJob: Job? = null
     private var moreJob: Job? = null
@@ -273,6 +334,19 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
      * 换种子 = **重抽标签** + 重排两站节奏，所以这一按确实换东西（只换顺序不换口味是没用的）。
      * 熔断那两站要不要连带清，见 [com.venera.compose.gallery.ui.GalleryScreen] 里调用它的那处
      * —— 清的动作留在页面那侧（与日榜那头 `resetBreakers()` 同一处口径），本类不越权碰网络层状态。
+     *
+     * ## ⚠️ 这里**刻意不清 [posts]**（2026-09-30 第三轮）
+     *
+     * 用户原话「换一批不要整个页面刷新，只刷新下面推荐的内容」。旧写法把 `posts` 清空 + `stage`
+     * 打回 IDLE，页面那一档（`stage == IDLE || (isLoading && posts.isEmpty())`）就命中，
+     * **整屏**换成一个居中波浪环 —— 首页三节（关注画师 / 每日热门 / 猜你喜欢节头）跟着一起消失，
+     * 读起来就是"整页刷新"。留着上一批，页面才会走网格那一档，三节与旧卡片都在屏上，
+     * 新第一批到货时由 [applyPage] 的 `nextPage == 1` 那一支**整批替换**（不是追加）。
+     *
+     * 其余字段照旧清，其中三个是"不清就会念出假读数"的：
+     * - [perSite] / [excludedFavourite] 是**累加**的（`applyPage` 里 `+=`），不清就会把
+     *   上一批的张数算进新一批，页尾念出「Yande.re 80」而真实是 40；
+     * - [seenKeys] 不清，新一批会被当成"已经摆过"整批剔空 —— 那是"换了却啥也没变"。
      */
     fun refresh() {
         refreshTick++
@@ -281,7 +355,6 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         moreJob?.cancel()
         isLoading = false
         isLoadingMore = false
-        posts = emptyList()
         perSite = emptyMap()
         excludedFavourite = 0
         videos = 0
@@ -295,6 +368,10 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         stage = GalleryForYouStage.IDLE
         seenKeys = HashSet()
         sitesDone = mutableSetOf()
+        // 用户明确要"换一批"：快照那一屏当场作废。不清这两个，同日门会把这一笔拦成假按钮
+        // （与 GalleryViewModel.refresh() 那两处同一对）。
+        hydratedFromCache = false
+        cachedOnEpochDay = null
     }
 
     /**
@@ -336,7 +413,8 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 两站**并发**取这一页，每站各自一笔时间预算。
      *
-     * 预算复用 [GalleryFeedSource.PER_SITE_TIMEOUT_MS]（12s：本机实测正常态 TTFB 1.1~3.8s 的 3~4 倍）。
+     * 预算复用 [GalleryFeedSource.PER_SITE_TIMEOUT_MS]（12s：本机实测正常态 TTFB 1.1~3.8s 的 3~4 倍），
+     * 包装那份在 [GalleryLegGuard]（日榜、搜索两腿与这一处共用一份，不再各写一遍）。
      * 同一个理由：不加预算的话单站最坏能拖到 40s 级，而 UI 只有"整屏空等"一种表达 ——
      * 用户既看不出是哪一站慢，也拿不到快的那一站。
      *
@@ -394,22 +472,23 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             // 而他该做的是去配置页填那两个字段。
             return Leg(site, reason = GallerySearchViewModel.NEEDS_GELBOORU_ACCOUNT)
         }
-        val result = withTimeoutOrNull(GalleryFeedSource.PER_SITE_TIMEOUT_MS) {
+        val outcome = GalleryLegGuard.guard(site) {
             when (site) {
                 GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
                 GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
             }
-        } ?: return Leg(site, reason = "超过 ${GalleryFeedSource.PER_SITE_TIMEOUT_MS / 1000}s 没返回")
-
-        val list = result.getOrDefault(emptyList())
-        // "空"有两种：站方真给了 0 条，与请求本身失败（401 / 解析不出来）。
-        // 吞成一句笼统的"没有内容"就把后者说成了前者。
-        val reason = if (list.isEmpty()) {
-            result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName } ?: "这一轮没有返回内容"
-        } else {
-            null
         }
-        return Leg(site, posts = list, returned = list.size, reason = reason)
+        // "空"有两种：站方真给了 0 条，与请求本身失败（401 / 解析不出来）。
+        // 吞成一句笼统的"没有内容"就把后者说成了前者 —— 更糟的是 `returned`：
+        // 只有**答上了**才记张数。失败也记成"回了 0 条"，`exhaustedSites` 那把判据就会
+        // 把那一站当成到底、从此这轮不再问它，而页尾写着「已经到底」
+        // （2026-09-30 收口三处重复实现时在这一份里查到的真缺陷）。
+        return Leg(
+            site,
+            posts = outcome.posts,
+            returned = outcome.posts.size.takeIf { outcome.answered },
+            reason = outcome.reason,
+        )
     }
 
     /**
@@ -430,7 +509,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             excludedFavourite += paged.excludedFavourite
             videos = posts.count { it.isVideo }
             paged.posts.forEach { post -> seenKeys += GalleryForYouMerge.keysOf(post) }
-            sitesDone += GalleryForYouMerge.exhaustedSites(outcome.returnedBySite, ::limitOf)
+            sitesDone += GallerySearchMerge.exhaustedSites(outcome.returnedBySite, ::limitOf)
             exhausted = queryBySite.isNotEmpty() && sitesDone.containsAll(queryBySite.keys)
             failures = outcome.reasons
             page = nextPage
@@ -439,10 +518,38 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
                 // 凭证写在这里（成功后），所以从错误态点重试仍会真发请求。
                 loadedKey = "foryou#$refreshTick|$round"
             }
+            // 每一页成功都刷一次快照（不是只在第 1 页）：只存第一页的话，
+            // 用户翻到第 4 页再切回来，"沿用上次那一屏"会退回到第 1 页那一屏 ——
+            // 页码与"哪些站到底了"是这一屏状态的一部分，不存就等于没接上同日门。
+            persistSnapshot()
         }.onFailure { e ->
             val message = e.message ?: "这一轮没取成"
             if (nextPage == 1) error = message else loadMoreError = message
         }
+    }
+
+    /**
+     * 落一份当前这一屏。
+     *
+     * **空屏不存**（与日榜那头同一句）：错误态与"还没抽到标签"存进去，
+     * 下次切回来铺的就是一屏空 —— 而 `canHydrate` 那道闸此时会关掉门，永远不再取。
+     * 存的是"取到的那一屏"，不是"最后一次状态"。
+     */
+    private fun persistSnapshot() {
+        if (posts.isEmpty()) return
+        val snapshot = GalleryForYouSnapshot(
+            savedEpochDay = LocalDate.now(ZoneOffset.UTC).toEpochDay(),
+            seed = seed,
+            posts = posts.map { it.toFavorite() },
+            queries = queryBySite.toSiteRows(),
+            page = page,
+            perSite = perSite.toCountRows(),
+            excludedFavourite = excludedFavourite,
+            videos = videos,
+            failures = failures.toSiteRows(),
+            sitesDone = sitesDone.toList(),
+        )
+        viewModelScope.launch { GalleryForYouCache.write(app, snapshot) }
     }
 }
 

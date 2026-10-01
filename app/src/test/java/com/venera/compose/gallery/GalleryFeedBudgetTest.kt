@@ -36,9 +36,10 @@ class GalleryFeedBudgetTest {
     @Test
     fun `超时被当成这一站没给内容而不是整轮失败`() {
         // 这条是②的核心：超时后**另一站仍要出图**。
-        // 判据体现在 SiteResult 上：超时的站 posts 为空、reason 非空，
+        // 判据体现在 `GalleryLegOutcome` 上：超时的站 posts 为空、answered=false、reason 非空，
         // 于是 loadDaily 的 failures 会带上它、页面挂进 sourceNotice 说出来。
-        // 只有两站**同时**为空才整轮失败。
+        // 只有两站**同时**为空才整轮失败。（批次 K 把这份包装收口进 `GalleryLegGuard`，
+        // 逐条断言搬到了 `GalleryLegGuardTest`，这里只留预算那条读数。）
         val timeoutReason = "超过 ${GalleryFeedSource.PER_SITE_TIMEOUT_MS / 1000}s 没返回"
         assertTrue(timeoutReason.contains("没返回"))
         assertTrue(timeoutReason.contains("12"))

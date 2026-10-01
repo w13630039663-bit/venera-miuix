@@ -71,6 +71,15 @@ object GalleryRankings {
         site == GallerySite.YANDERE || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL
 
     /**
+     * 一个**来源**（可能两条腿）能不能摆这一档：每一条腿都得真。
+     *
+     * 「全部」档只要有一条腿认不了这一档，这一档就不能算数 —— 半面墙按排行、半面墙按默认，
+     * 屏上读不出对错，而胶囊上那个「周」字是在骗人。判据与 [supports] 同一把，只是量词从"这站"变成"每条腿"。
+     */
+    fun supportsAll(sites: List<GallerySite>, ranking: GalleryRanking): Boolean =
+        sites.all { supports(it, ranking) }
+
+    /**
      * 这一站有没有"具体某一期"可挑 —— 日期弹层那一个入口的判据。
      *
      * 定义直接挂在 [supports] 上（"月档在这一站是真的"），这样它不可能独立漂成新站多出一个
@@ -78,6 +87,10 @@ object GalleryRankings {
      */
     fun supportsPeriodPicker(site: GallerySite): Boolean =
         supports(site, GalleryRanking.MONTH)
+
+    /** 同上，量词换成"每一条腿"：「全部」档里有一条腿给不出时间窗，这一行整档不出现。 */
+    fun supportsPeriodPickerAll(sites: List<GallerySite>): Boolean =
+        sites.all { supportsPeriodPicker(it) }
 
     /** 这一档能往回翻到多早的一期（yande.re 存档实测：`date:..2006-06-01` 已经回 0 条）。 */
     val EARLIEST_PERIOD: LocalDate = LocalDate.of(2007, 1, 1)

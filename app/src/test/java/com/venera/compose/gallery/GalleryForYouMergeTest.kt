@@ -4,6 +4,7 @@ import com.venera.compose.gallery.data.GalleryFavorite
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryForYouMerge
+import com.venera.compose.gallery.domain.GallerySearchMerge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -146,8 +147,10 @@ class GalleryForYouMergeTest {
 
     @Test
     fun `一站到底只停那一站 另一站继续`() {
+        // 判据本体在 `GallerySearchMerge`（批次 K 收口：推荐墙与搜索的「全部」档要的是同一把尺，
+        // 两处各写一份迟早分叉）。这三例留在这里是因为**推荐墙**的行为依赖它 —— 换实现不能悄悄丢覆盖。
         val limit = mapOf(GallerySite.YANDERE to 100, GallerySite.GELBOORU to 100)
-        val done = GalleryForYouMerge.exhaustedSites(
+        val done = GallerySearchMerge.exhaustedSites(
             returned = mapOf(GallerySite.YANDERE to 37, GallerySite.GELBOORU to 100),
             limitOf = { limit.getValue(it) },
         )
@@ -155,7 +158,7 @@ class GalleryForYouMergeTest {
         // 混成一个全局标志就会出"A 站还能出货、页尾写着到底了"的假读数。
         assertEquals(setOf(GallerySite.YANDERE), done)
 
-        val bothDone = GalleryForYouMerge.exhaustedSites(
+        val bothDone = GallerySearchMerge.exhaustedSites(
             returned = mapOf(GallerySite.YANDERE to 37, GallerySite.GELBOORU to 12),
             limitOf = { limit.getValue(it) },
         )
@@ -166,7 +169,7 @@ class GalleryForYouMergeTest {
     fun `这一轮没给数的站不算到底`() {
         // 超时 / 熔断 / 未配账号都会让一站这一轮没给数。把它当"到底"，一次抖动就永久踢掉这一站，
         // 屏上从此只剩一站 —— 而且谁都不报错。缺席的原因归 failures 说，不归到底判据管。
-        val done = GalleryForYouMerge.exhaustedSites(
+        val done = GallerySearchMerge.exhaustedSites(
             returned = mapOf(GallerySite.YANDERE to 100),
             limitOf = { 100 },
         )

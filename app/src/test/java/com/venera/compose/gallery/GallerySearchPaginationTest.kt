@@ -60,15 +60,19 @@ class GallerySearchPaginationTest {
     }
 
     @Test
-    fun `新条目排最前并按整串去重`() {
+    fun `同一串标签换站搜并入同一条并提到最前`() {
         val a = entry(GallerySite.GELBOORU, "hime")
         val b = entry(GallerySite.YANDERE, "hime")
         var history = listOf(a, b)
         history = pushGallerySearchHistory(history, a)
-        // 同标签串换站算另一条（两站词表不通），所以 b 留着；a 被提到最前且不重复。
-        assertEquals(listOf(a, b), history)
+        // 批次 K 起去重键**不再含站点**：两站搜过同一串标签就是同一条历史，站点并进去。
+        // 旧档里那两行是同一件事（真机上就是 setmen 连着两行），来源轴上了「全部」之后
+        // 一次搜索本来就会写两行，历史区会被自己的重复撑满。
+        assertEquals(1, history.size)
+        assertEquals(setOf(GallerySite.YANDERE, GallerySite.GELBOORU), history.single().sites)
         history = pushGallerySearchHistory(history, entry(GallerySite.GELBOORU, "hime -ai_generated"))
-        assertEquals(3, history.size)
+        // 多一枚排除项会换掉整个结果集，算另一条。
+        assertEquals(2, history.size)
         assertEquals("hime -ai_generated", history.first().query)
     }
 

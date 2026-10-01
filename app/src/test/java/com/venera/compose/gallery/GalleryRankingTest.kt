@@ -3,6 +3,7 @@ package com.venera.compose.gallery
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
+import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GalleryTagFilter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,6 +57,33 @@ class GalleryRankingTest {
         }
         assertTrue(GalleryRankings.supports(GallerySite.GELBOORU, GalleryRanking.NEWEST))
         assertTrue(GalleryRankings.supports(GallerySite.GELBOORU, GalleryRanking.ALL))
+    }
+
+    @Test
+    fun `全部来源档只列每一条腿都有的档`() {
+        // 「全部」那两腿的排行写法不同源：Gelbooru 给不了时间窗（上一两条用例）。
+        // 下拉若照第一条腿列六档，用户点「按周排行」就得到"胶囊写着周、Gelbooru 那腿交回全站历年高分"
+        // —— 半面墙是真排行、半面是默认序，这种混合读数没人能看出来。
+        assertEquals(
+            listOf(GalleryRanking.NEWEST, GalleryRanking.ALL),
+            GalleryRanking.entries.filter { GalleryRankings.supportsAll(GallerySearchSource.ALL.sites, it) },
+        )
+        // 单站档一律不受影响：yande.re 那六档仍然全真。
+        assertEquals(
+            6,
+            GalleryRanking.entries.count {
+                GalleryRankings.supportsAll(GallerySearchSource.single(GallerySite.YANDERE).sites, it)
+            },
+        )
+    }
+
+    @Test
+    fun `全部来源档不摆选期入口`() {
+        // 「选具体哪一期」只有 yande.re 给得出（原生认 date:A..B）。带着 Gelbooru 一起搜时
+        // 摆这一行 = 点开挑一期、那一期的窗口只有一条腿认，另一半墙还是全站 —— 同一个假开关的入口版。
+        assertFalse(GalleryRankings.supportsPeriodPickerAll(GallerySearchSource.ALL.sites))
+        assertTrue(GalleryRankings.supportsPeriodPickerAll(listOf(GallerySite.YANDERE)))
+        assertFalse(GalleryRankings.supportsPeriodPickerAll(listOf(GallerySite.GELBOORU)))
     }
 
     @Test
