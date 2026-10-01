@@ -392,24 +392,46 @@ private fun SpeedTestLineCard(line: PreferredIpLine, isBest: Boolean, isInUse: B
         }
         Column(Modifier.padding(top = tokens.spacing.space4)) {
             line.entries.forEach { e ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = tokens.spacing.space1),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        e.entry,
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textTertiary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    val color = if (e.passed) tokens.color.textSecondary else StatusColors.Failing
-                    Text(
-                        if (e.passed) "${e.latencyMs} ms" else e.detail,
-                        fontSize = tokens.type.caption,
-                        color = color,
-                    )
+                // 失败原因（尤其 RESET 那句「被按域名阻断…建议开代理」很长）不能放进无权重的
+                // 右槽：它会先量满整行，把左边的域名条目挤成一字一行的竖排（真机 2026-10-01 实锤）。
+                // 所以分两种形态：通过 = 「域名 ←→ 延迟」一行；失败 = 域名一行、原因整行铺开。
+                if (e.passed) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = tokens.spacing.space1),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            e.entry,
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textTertiary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "${e.latencyMs} ms",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textSecondary,
+                        )
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = tokens.spacing.space1),
+                    ) {
+                        Text(
+                            e.entry,
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textTertiary,
+                        )
+                        Text(
+                            e.detail,
+                            fontSize = tokens.type.caption,
+                            color = StatusColors.Failing,
+                            modifier = Modifier.padding(top = tokens.spacing.space1),
+                        )
+                    }
                 }
             }
         }
