@@ -1,6 +1,6 @@
 # Venera 纯原生 Compose 复刻 · 分阶段任务书（含逐阶段替代品调研）
 
-> 2026-09-16 · 基准 `D:\venera-compose`（`compose-migration` @`e2303bd`）· 差距依据见 `venera-gap-analysis.md`
+> 2026-09-16 · 基准 `D:\venera-compose`（`compose-migration` @`e2303bd`）· 差距依据见 `docs/rounds/venera-gap-analysis.md`
 > 每个阶段都包含：**任务清单 → 替代品调研（能否用现成 Compose 库 / 可借用的开源工程）→ 决策 → 验收标准**。调研数据全部来自 GitHub API 实测（★ 数 / 语言 / 最近推送 / 最新版本 / License），不是印象分。
 
 ## 📚 调研结论总表（先看这张）
@@ -52,7 +52,7 @@
 
 ## S1 · 漫画源脚本引擎（原阶段 2.5）★ 全局成败手
 
-差距依据见 `venera-gap-analysis.md §2`：现桥 = 死代码 + 引擎无 Promise/无 ArrayBuffer ⇒ **官方 33 条 .js 规则源 0 覆盖**。
+差距依据见 `docs/rounds/venera-gap-analysis.md §2`：现桥 = 死代码 + 引擎无 Promise/无 ArrayBuffer ⇒ **官方 33 条 .js 规则源 0 覆盖**。
 
 - [x] **S1-0 引擎 spike**：经真机与 API 评估，quickjs-android 缺少 microtask pump 与 ArrayBuffer 支持，选定基于 Android WebView (V8) 作为沙箱，原生支持 Promise/await 与 ArrayBuffer。
 - [x] **S1-1 原样搬运 `init.js`**：`app/src/main/assets/venera-init.js`（1520 行纯净不改写）+ 桥接层 `venera-shim.js`（二进制序列化、Map/Set 深度转换、异步回调调度、appVersion 注入）。
@@ -353,11 +353,11 @@ curl -s -A "<与 cf_clearance 绑定的同一 UA>" -H "Cookie: ipb_member_id=…
 | S8-BATCH-B 搜索筛选（对齐官方 _SearchSettingsDialog） | 全链路打通源 `search.optionList`（28/33 源声明）：<br>① `SearchOptionGroup` 模型（label + LinkedHashMap options + defaultKey 语义）；<br>② `ComicSource.search` 增加 `options` 参数并新增 `getSearchOptions()`，JsComicSource 用 JS 取结构化 optionList（LinkedHashMap 首项优先语义与 shim 一致），三个内置源签名同步；<br>③ `ComicSourceManager.search` 透传；SearchViewModel 持有 `searchOptions/selectedOptions` 状态（源切换自动重载，组数变化重置默认）；<br>④ SearchScreen 搜索框新增 Tune 按钮 + AlertDialog 弹层（每组 chips 单选，确定即带筛选重搜）。 |
 | S8-BATCH-C 封面查看器（对齐官方 cover_viewer.dart） | 新增 `CoverViewerRoute` + `CoverViewerScreen`：全屏黑底展示封面（ContentScale.Fit），点击切换顶栏显隐，顶栏含返回 + 保存到相册（Coil 解码原图 → Pictures/Venera 写入，复用阅读器验证过的 BitmapImage/BitmapDrawable 双路转换）；详情页封面接入 clickable 跳转。 |
 | S8-BATCH-A 标签交互与章评（对齐官方 handleClickTag/chapter_comments） | ① 详情页标签 chip 点击 → `TagSearchRoute(keyword)` → 搜索页自动执行搜索（SearchScreen 新增 initialQuery 参数 + LaunchedEffect 自动搜索）；<br>② 阅读器顶栏新增「本章评论」按钮 → `ChapterCommentsSheet`（源 loadChapterComments 拉取 + sendChapterComment 发表，源不支持时如实提示）。 |
-| 差距分析文档 | 新增 `official-gap-analysis.md`：官方 130+ 文件逐页对照，P0/P1/P2 三级缺口清单 + 源接口能力矩阵 + 四批次实施路线。 |
+| 差距分析文档 | 新增 `docs/rounds/official-gap-analysis.md`：官方 130+ 文件逐页对照，P0/P1/P2 三级缺口清单 + 源接口能力矩阵 + 四批次实施路线。 |
 
 ---
 
-## 🎯 需要你拍板的 5 个决策（`venera-gap-analysis.md §6.1` 的扩展版）
+## 🎯 需要你拍板的 5 个决策（`docs/rounds/venera-gap-analysis.md §6.1` 的扩展版）
 
 | # | 决策 | 本喵的建议 | 影响 |
 | :--- | :--- | :--- | :--- |
@@ -499,7 +499,7 @@ S0 地基手术 ─────────────────────�
 | S7-5 内容屏蔽与 NSFW 过滤 | ① 新增 `ContentGuardManager.kt`（`security/guard/`）与 `ContentGuardScreen.kt`；<br>② 支持关键词、标签、画师、漫画ID 四类规则黑名单（普通包含 + 正则匹配，可启停）；<br>③ R18 分级遮罩三档：OFF 不过滤 / BLUR 封面打码 / HIDE 彻底隐藏，过滤探索、分类、搜索与列表中的敏感漫画。 |
 | S7-6 MIUIX 风格设置页全量重构 | `SettingsScreen.kt` 深度重构，八大分类（阅读器偏好、外观主题、网络与代理、存储与下载、云同步与备份、内容过滤、阅读统计、关于与诊断）全量接入真实偏好存储，子页面完整连通。 |
 | S7-7 运行时诊断日志系统 | 新增 `AppLogManager.kt` 与 `LogViewerScreen.kt`，捕获全局引擎日志、网络错误与源解析异常，支持内存滚动缓冲查看、筛选与导出排错。 |
-| S7-REV 核查补修（S6/S7 全面自查） | 复查发现屏蔽规则此前**仅存在于管理页、未接入任何业务页面**，R18 遮罩同样无任何消费点，本次实装：<br>① `ContentGuardManager` 新增 `filterComicModels`（源生 Comic 口径）与 `filterExploreParts`（分区空块剔除）过滤 API；<br>② 探索页 `loadContentForTab`、分类漫画流 `loadComics`、搜索单源/全网聚合流（`SearchViewModel`）四处数据流全部接入过滤，规则增删后经 `LaunchedEffect(guardRules)` 对已加载内容即时重放；<br>③ R18 分级遮罩实装：新增 `coverMaskStateFor` 判定 API，探索卡片与搜索两处封面在 BLUR 模式下 `Modifier.blur(16dp)` 打码 + 角标提示（HIDE 模式由数据层整条剔除兜底）；<br>④ 复核确认 DownloadManager（Semaphore 并发/逐图3次重试/tmp 原子写/本地秒开）、WebDavClient（PROPFIND/MKCOL/PUT）、BackupManager（4 表全量）、DB v3 迁移路径、WorkManager 追更调度、导航与设置页全量接线均真实落地，详见 `s6-s7-audit-report.md`。 |
+| S7-REV 核查补修（S6/S7 全面自查） | 复查发现屏蔽规则此前**仅存在于管理页、未接入任何业务页面**，R18 遮罩同样无任何消费点，本次实装：<br>① `ContentGuardManager` 新增 `filterComicModels`（源生 Comic 口径）与 `filterExploreParts`（分区空块剔除）过滤 API；<br>② 探索页 `loadContentForTab`、分类漫画流 `loadComics`、搜索单源/全网聚合流（`SearchViewModel`）四处数据流全部接入过滤，规则增删后经 `LaunchedEffect(guardRules)` 对已加载内容即时重放；<br>③ R18 分级遮罩实装：新增 `coverMaskStateFor` 判定 API，探索卡片与搜索两处封面在 BLUR 模式下 `Modifier.blur(16dp)` 打码 + 角标提示（HIDE 模式由数据层整条剔除兜底）；<br>④ 复核确认 DownloadManager（Semaphore 并发/逐图3次重试/tmp 原子写/本地秒开）、WebDavClient（PROPFIND/MKCOL/PUT）、BackupManager（4 表全量）、DB v3 迁移路径、WorkManager 追更调度、导航与设置页全量接线均真实落地，详见 `docs/rounds/s6-s7-audit-report.md`。 |
 | 验收与统计 | `:app:assembleDebug` **0 错误 BUILD SUCCESSFUL**，APK **30.64 MB**（`app/build/outputs/apk/debug/app-debug.apk`，30,639,977 字节）。S6 与 S7 全部功能交付完成，核查补修项全部闭环。 |
 
 ---

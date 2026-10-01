@@ -108,4 +108,4 @@ DNS 加速（DoH / DoT / 换 223.5.5.5 / 8.8.8.8 / 改 hosts）只能修第一�
 本喵的实测结论是：**做不到**。这不是配置问题，是网络层的封锁。
 
 ---
-相关：[direct-source-research-2026-10-01.md](direct-source-research-2026-10-01.md)（可直连源调研）
+相关：[docs/rounds/direct-source-research-2026-10-01.md](docs/rounds/direct-source-research-2026-10-01.md)（可直连源调研）

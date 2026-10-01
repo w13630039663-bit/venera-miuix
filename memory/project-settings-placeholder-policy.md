@@ -8,7 +8,7 @@ metadata:
 2026-09-19 设置树审计后与用户共同定下的判据：
 
 **判据已于 2026-09-30 更新（用户拍板，以这条为准）**：设置页里"未实现/暂不支持"的灰行**连标题整条撤掉**，不再保留任何一条，也不折成底部折叠区；
-配套件 `SettingsFutureGroup` 与 `UnsupportedSetting` 已因零调用点删除。缺口信息一律留在 `settings-audit-2026-09.md`，不拿设置页当 TODO。
+配套件 `SettingsFutureGroup` 与 `UnsupportedSetting` 已因零调用点删除。缺口信息一律留在 `docs/rounds/settings-audit-2026-09.md`，不拿设置页当 TODO。
 
 旧判据（2026-09-19，已被上面取代，仅留档）：只保留"引擎已在、只差一个键"的那类，其余删行；该轮按此删掉 32 条（54 → 22 处调用点），
 剩下的 12 条在 2026-09-30 全部撤完。见 [[feedback-ui-text-no-ai-flavor]]。

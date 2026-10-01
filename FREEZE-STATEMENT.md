@@ -19,7 +19,7 @@
 冻结目的：防止「改视觉 → 顺手改 Host → 功能回归 → Crash → 再修」循环（手册第 9 节）。
 
 ## 冻结范围说明
-- 探索闭环：阶段 0~9 全流程完成（审计/设计/实施/QA/归档），文档见 explore-audit-checklist.md、explore-capability-matrix.md、explore-design-mapping.md。
+- 探索闭环：阶段 0~9 全流程完成（审计/设计/实施/QA/归档），文档见 docs/rounds/explore-audit-checklist.md、docs/rounds/explore-capability-matrix.md、docs/rounds/explore-design-mapping.md。
 - 源级守卫判定链：用户规则 > 源级预设（source_content_warning.json，33 源）> 显式 R18 正则兜底，LRU 缓存 + 别名解析。
 - 后续模块（ComicSource / History / Detail 等页面重构）按手册标准流程另行启动。
 - 顶栏大标题折叠 + 毛玻璃效果：已确认采用「页内自治」架构，不在外壳挂载；待后续模块实施。
@@ -58,13 +58,13 @@
   - 同时修掉两处**既存缺陷**（这两条本身可归入「修实际 Bug」）：① `PullToRefreshState()` 未 remember，每次重组都新建；② `isRefreshing` 直接吃 VM 的 `isLoading`，而该标志同时被 `loadMore` 复用（VM:242 / :274），会把「滚到底加载更多」点亮成刷新。
   - **未动**：手风琴状态机（expandSource / collapseSource）、NetworkFavoritesViewModel、行级虚拟化契约（单 LazyColumn、chunked 行 = LazyItem）、长按删除二次确认、触底自动加载。
   - 刷新期间用屏幕侧快照保留旧卡片（VM 的 `refresh()` 会立即 `comics = emptyList()`，VM:165），避免「卡片消失 → 转圈 → 卡片回来」的硬切。
-  - 方案与真机 QA 清单：`network-favorites-pull-refresh-2026-09.md`。
+  - 方案与真机 QA 清单：`docs/rounds/network-favorites-pull-refresh-2026-09.md`。
 
 - **SearchScreen.kt + Navigation.kt（用户点名豁免，2026-09-19 第二批）**：搜索页加载态与翻页落点改造。
   - `SearchScreen.kt`：`ResultSkeleton`（双列 shimmer 空卡）整体换成 `SearchLoadingIndicator`（M3 波浪环，5 个调用点）；新增可见的「加载更多」落点按钮；**修一处既存缺陷** —— `ui.error` 原先只在 `results` 为空时渲染，导致「已有一屏结果后翻页失败」的原因被整个吞掉。
   - `Navigation.kt`：`TagSearchRoute` 增加可选字段 `sourceName`（默认空串），详情页点标签时携带，搜索页据此把目标切到该漫画所属源。**未改** Tab 枚举顺序、路由映射表与顶栏齿轮入口 —— 冻结声明里禁止的是那三项，本改动是给一个既有路由加可选参数。
   - **未动**：`SearchViewModel`（翻页 / 聚合 / 守卫过滤逻辑一律原样）、`ComicSourceManager`、`TagSearchPolicy`。
-  - 方案与遗留项：`search-page-loading-pagination-2026-09.md`。
+  - 方案与遗留项：`docs/rounds/search-page-loading-pagination-2026-09.md`。
 
 - **标签统计移植（用户显式授权保护域，2026-09-20 第三批）**：把 `master`（Flutter venera-miuix）的题材统计半区接到 compose。授权范围由用户逐条点选（D1~D5 全按推荐），因此下列**保护域改动是获准的**，不是越界：
   - **Reader**：`reader/ComicPageSource.kt` 的 `ReaderSession` 增加 `tags: List<String> = emptyList()`、`createLiveSession` 增加同名参数并透传；`reader/VeneraReaderScreen.kt` 的落库调用补 `tags = session.tags`。**只加字段与传参，未动翻页 / 加载 / 切片 / 进度记忆逻辑。**
@@ -72,7 +72,7 @@
   - **Navigation**：`TagSearchRoute` 增加 3 个可选字段（`tagNamespace` / `tagRaw` / `tagLabel`，默认空串）。与 2026-09-19 那批同类 —— **未改** Tab 枚举顺序、路由映射表与顶栏齿轮入口。
   - **SearchScreen.kt**：新增 `initialTag: SearchTag? = null` 参数，在既有的下钻 `LaunchedEffect` 里先挂标签再搜。
   - `StatsScreen.kt` 不在冻结清单内（它不是底栏 5 大主 Tab），本轮删除了那张「题材偏好热度」死卡（`getTopTags()` 因写入侧从未喂值而恒空，永不渲染），换成范围切换 / 题材占比 / 本命题材 + 题材云 / 追漫轨迹四块。
-  - 方案、决策与实测数据：`tag-statistics-port-2026-09.md`。
+  - 方案、决策与实测数据：`docs/rounds/tag-statistics-port-2026-09.md`。
 
 - **首页「可能你感兴趣」推荐区（用户点名新增，2026-09-21 第四批）**：读最近 30 天读得最多的题材桶 → 禁漫天堂搜索出 10 本，做成 MD3 标准轮播。
   - **HomeScreen.kt（FROZEN，用户点名豁免）**：新增分区 2.5（推荐轮播 + 换一批 + 空态一行说明）、历史记录由两行网格降为单行最多 4 张、刷新期间走灰骨架呼吸。轮播用 material3 自带 `HorizontalMultiBrowseCarousel`（**不引入第三方库、不做真 3D 变换**）。**未动**：顶栏大标题折叠 + 毛玻璃页内自治架构、分区 2/4/5 结构、底栏避让契约（`bottomBarClearance`）。
@@ -95,7 +95,7 @@
     - 真正的修复：显式持有 `rememberLazyListState()`，用 `snapshotFlow { isScrollInProgress }` 记「用户是否自己滚过」，未滚过之前任何结构变化（统计/推荐/历史数据到达）都 `scrollToItem(0)` 钉回顶部。诊断 overlay 已删。
     - **钉顶方案已换成根治方案**（真机第八轮：钉顶发生在漂移之后，差一帧 → 观感是「阅读统计先贴在顶栏上、再自己跳下来」那一闪）：改成让「阅读统计」这一 **LazyColumn 项恒定存在**（`item(key = "stats")`），把判空条件移到项**内部**去决定内容。头部不再出现「插入项」这个动作，锚点自然不动，闪也无从发生；`listState` / `userScrolled` / `scrollToItem` 那套全部删掉。代价是「今天没读」时列表顶部多一个 0 高项 + 14dp 间距，肉眼不可见。
 
-## 预测式返回转场 + 返回过渡模糊（2026-09-22，用户点名；详设与证据见 `predictive-back-transition-2026-09.md`）
+## 预测式返回转场 + 返回过渡模糊（2026-09-22，用户点名；详设与证据见 `docs/rounds/predictive-back-transition-2026-09.md`）
 
 > 本节最初写入的四条结论有三条是错的，已在实测后更正；下面同时记下**错在哪**，避免有人再按旧结论推理。
 
@@ -185,7 +185,7 @@
   - 用 `compositionLocalOf` 而非 `staticCompositionLocalOf`：static 的提供者换值**不触发**读取方重组，切深色/切风格会留下一屏旧颜色。getter 保留 `?: 现算` 兜底，没走主题根的路径（预览、单测）拿不到 null。
 - **未动**：各 ViewModel 的 UIState 结构（见 2-B 的放弃理由）、`Navigation.kt`（保护域，Tier 3 的两处全屏 backdrop 它才有份）、`ComicDetailViewModel` 里两个没人读的死 getter（`visibleThumbnails` / `thumbnailsCollapsed`，屏幕侧已各自算自己的 —— 保护域内、无功能收益，不顺手删）。
 - **尚未证实（设备一整天未连接）**：Tier 2 与 Tier 1 一样只有结构性依据，**没有一次帧时间测量**。验收口径不变：`adb shell dumpsys gfxinfo com.venera.compose reset` → 用户自己切 10 次页 → 读 `framestats` 的 `Janky frames` 前后对比；预览这一段另需真机确认「展开后逐批放出、`点查看更多预览` 每次都能多出一批、EH 漫画能翻到第 3 页预览」。
-  - 口径修正：换包名之后这条命令要用 **`com.github.w13630039663bit.venera.miuix`**（见下节），`com.venera.compose` 那串只剩旧包能用。旧文档里按包名操作的真机命令（本文件、`venera-stage-plan.md:145` 的 `adb shell run-as … cat shared_prefs/…`）同理：装新包后要用新包名，**但那些已经记录下来的证据不改写** —— 它们是旧包在跑的时段留下的日志。
+  - 口径修正：换包名之后这条命令要用 **`com.github.w13630039663bit.venera.miuix`**（见下节），`com.venera.compose` 那串只剩旧包能用。旧文档里按包名操作的真机命令（本文件、`docs/rounds/venera-stage-plan.md:145` 的 `adb shell run-as … cat shared_prefs/…`）同理：装新包后要用新包名，**但那些已经记录下来的证据不改写** —— 它们是旧包在跑的时段留下的日志。
 
 ## 发布身份换成 venera-miuix（2026-09-22，用户点名；桌面图标 / 包名 / 版本 / 检查更新通道）
 
@@ -212,7 +212,7 @@
 
 设备整天没连上。新包上要亲眼确认：桌面/最近任务里是真图标（不是系统默认）、设置顶部大图标是 `app_icon`、版本号显示 1.8、「检查更新」按钮真发出请求并按结果播报、打开漫画源脚本仍能拿到 appVersion。
 
-## 存储目录自选与导入导出位置自选（2026-09-22，用户点名；方案文档 storage-path-selection-2026-09.md）
+## 存储目录自选与导入导出位置自选（2026-09-22，用户点名；方案文档 docs/rounds/storage-path-selection-2026-09.md）
 
 需求是三条：本地漫画存储路径改成用户自选目录、导入/导出数据改成用户自选位置、下载管理跟着同一个路径走。
 
@@ -265,7 +265,7 @@
 
 本节就是第二批冻结里那条「Tab 枚举顺序、路由映射与顶栏齿轮入口**不允许顺手变更**（改动需重新评审）」所要求的**那次重新评审**。
 用户原话：「我觉得可以把底栏的历史去掉放回二级界面，然后新增一个画廊的页面」。本轮只做**腾位**这一步；
-画廊本体按 `gallery-module-isolation-plan-2026-09.md` 由另一条线实现。
+画廊本体按 `docs/rounds/gallery-module-isolation-plan-2026-09.md` 由另一条线实现。
 
 ### 反掉的是第二批冻结里的两条
 - ❌「信息架构决策记录：历史 = 高频主 Tab」 → ✅ 历史是**二级页**：底栏不常驻、有返回语义。
@@ -439,7 +439,7 @@ overlay 天然保住二级滚动位置与信息卡,系统返回用 `BackHandler(
 
 ## 2026-09-25 追加：画廊接第二站（Danbooru）+ 落地流改「月榜池 + 带权随机」
 
-用户点名的一轮。方案与全部实测数据在 `gallery-dual-source-hot-pool-plan-2026-09.md`，这里只记冻结面与判断。
+用户点名的一轮。方案与全部实测数据在 `docs/rounds/gallery-dual-source-hot-pool-plan-2026-09.md`，这里只记冻结面与判断。
 
 ### 三条实测换来的设计（探针 2026-09-25）
 
@@ -567,7 +567,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 候选来源：让子代理把根目录 30+ 份方案/审计文档里的待修项扫成清单并**逐条回代码核实**
 （本项目有过"文档写已落地但代码里没有"的先例），得 8 条非画廊缺口；用户勾选两条先修。
 
-### 一、备份/恢复走真实收藏库（`official-gap-analysis-round2.md` G-1）
+### 一、备份/恢复走真实收藏库（`docs/rounds/official-gap-analysis-round2.md` G-1）
 
 - **核实**：`grep comic_favorite` 只剩三类命中 —— 建表/迁移、`FavoriteDao`（**自身零调用点**，
   注释还写着"详情页现在写进动态夹表"）、`BackupManager` 一出一入。即备份读的是迁移后被
@@ -618,7 +618,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 
 用户报「到底后还是显示加载更多,无法分析是已经加载完了还是需要继续加载」,点名搜索页。
 **先更正我自己**：我给用户的候选清单表里,搜索页被标成"三态齐全、唯一的正解先例"—— 那是照文档
-`search-page-loading-pagination-2026-09.md` §1 第 6 行的措辞读的,没回代码看判据。三态**在**,
+`docs/rounds/search-page-loading-pagination-2026-09.md` §1 第 6 行的措辞读的,没回代码看判据。三态**在**,
 但其中一态的**进入条件**是错的。
 
 - **根因**（详版见该方案文档 §7）：翻页判定写成 `page.maxPage?.let { nextPage < it } ?: comics.isNotEmpty()`,
@@ -643,7 +643,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 用户原话：「画廊改成 `yande.re/post/popular_recent?period=1d` 和 `danbooru/explore/posts/popular?date=&scale=day`
 上一天的热门 **各取 20 张然后打乱**，如果 donmai 有 mp4 就引入 mp4」。
 上一节刚说"图片先不理"，这节是用户主动重新点名，不算自作主张扩面。详版在
-`gallery-dual-source-hot-pool-plan-2026-09.md` §十三（含全量实测表与落地记录）。
+`docs/rounds/gallery-dual-source-hot-pool-plan-2026-09.md` §十三（含全量实测表与落地记录）。
 
 - **实测换来的三条**：① yande.re `popular_recent.json` **固定 40 条**、`limit`/`page` 无效、
   不认的 `period` 值静默退回 `1d`（`1d` 与 `1mo` 实测 40/40 同一批，而 `1w` 只重叠 2 条）；
@@ -710,12 +710,12 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 「先修下其他吧，图片先不理了」那条挂起**已被用户自己解除**（同日回来复看真机并继续提需求）。
 本节只更正状态，细节全在两份文档里：
 
-- `gallery-viewer-toolbar-and-infosheet-2026-09.md` §八~§十二：
+- `docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §八~§十二：
   二级+三级合并成**一层满屏播放器**、Dock 一条（HD/下载/信息/分享）、`(i)` 拉 `GalleryInfoSheet`
   取代原来那两张滚动卡、大图页搬进**独立 Activity**（实时 blur-behind + 跨 activity 预测式返回 +
   进场**向上滑入**）、HD 撞 Cloudflare 改为"图片流量不弹过盾 + 失败如实报"、
   状态栏黑带改由本仓库第一份自有主题 `Theme.Venera.GlassOverlay` 处理。
-- `gallery-search-2026-09.md`：**画廊搜索**（入口=顶栏右上角图标）。§〇 那张两站检索面实测表是这一节的根据：官方 autocomplete 路由两站都 404、
+- `docs/rounds/gallery-search-2026-09.md`：**画廊搜索**（入口=顶栏右上角图标）。§〇 那张两站检索面实测表是这一节的根据：官方 autocomplete 路由两站都 404、
   前缀参数写错会被**静默给错数据**、Danbooru 匿名只有 2 枚标签预算、两站都没有总数端点、
   `[]`+200 是合法的"查无此标签"。
   **形态已被真机第二轮改判两次**：先拍成全高 `ModalBottomSheet` 并照那样落地，用户看过后改成
@@ -724,8 +724,8 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 状态账：`Navigation.kt` 与底栏枚举仍然一个字没动（搜索是画廊页内的一种模式，大图页是 Activity）；
 `GalleryPostRoute` 这个目的地已在追加四之后删除。
 构建：`testDebugUnitTest` **209 条 0 失败** / `assembleDebug` 绿。
-**待真机验**的清单分别写在 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.6 与
-`gallery-search-2026-09.md` §十。
+**待真机验**的清单分别写在 `docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.6 与
+`docs/rounds/gallery-search-2026-09.md` §十。
 
 ## 2026-09-25 追加六：真机二/三轮反馈三条（Danbooru 不出图 / 搜索改内嵌头 / 标签可交互）
 
@@ -737,7 +737,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
    过滤 + **计数报出来** + 给一个**由用户点**的「排掉成人分级再搜一次」出口（不自动往查询里塞条件）。
 2. **纠正我自己中途的判断**：我以为 `posts.json?search[tags]=…` 是官方给的解法（它返回带全 URL 的行），
    拿不存在的 tag 与 `id:` 复跑才发现它**根本不过滤** —— 是红鲱鱼，用它做检索会得到"搜什么都是一屏"，
-   比空屏更坏。已写进 `gallery-search-2026-09.md` §〇 那张表防伪踩。
+   比空屏更坏。已写进 `docs/rounds/gallery-search-2026-09.md` §〇 那张表防伪踩。
 3. **纠正我自己写的 fixture**：`GalleryDanbooruParsingTest` 那条 fixture 的 `tag_string` 原本按
    "它只是 general 那一串"的想当然少写了两支。实测 60 条 / 五桶 2280 个 tag 串**没有一个**不在
    `tag_string` 里 —— 这条差别不是整理癖：它是 InfoSheet 那个「屏蔽」按钮**不是假开关**的前提
@@ -749,16 +749,16 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 状态账：`Navigation.kt`、底栏枚举仍然一个字没动。第一版那份全高 sheet
 `GallerySearchSheet.kt` 按可逆清理路径移到 `build/_trash-from-repo/`（没有硬删）。
 构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿，增量 universal 包 101,825,633
-（**增量数不可与干净基线相减**，口径见 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §10.4）。
-**待真机验**：`gallery-search-2026-09.md` §十三（12 条）、
-`gallery-viewer-toolbar-and-infosheet-2026-09.md` §13.5（3 条）。
+（**增量数不可与干净基线相减**，口径见 `docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §10.4）。
+**待真机验**：`docs/rounds/gallery-search-2026-09.md` §十三（12 条）、
+`docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §13.5（3 条）。
 
 
 ## 2026-09-25 追加七：画廊搜索区按 MD3 重做 —— 一次**可见的 token 层与基础组件契约扩张**
 
 第四轮真机反馈：「现在的搜索页是一个单独的页面或占满了顶部空间…搜索按钮（淡紫色）对比度太低」，
 并给了逐条 MD3 口径。形态从"替换标题栏的自绘头部 + Hero 模糊底"改成
-**顶栏常驻 + 顶栏 `bottomContent` 里的内联展开搜索区**；细节全在 `gallery-search-2026-09.md` §十四/§十五。
+**顶栏常驻 + 顶栏 `bottomContent` 里的内联展开搜索区**；细节全在 `docs/rounds/gallery-search-2026-09.md` §十四/§十五。
 
 本节单列一条：**这一轮动了 token 层与 `VeneraChip`**，属于组件契约变更，必须在这里看得见 ——
 
@@ -793,14 +793,14 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿。
 `gallery/ui/GallerySearchHeader.kt`（第二轮那版）按可逆清理路径移到
 `build/_trash-from-repo/GallerySearchHeader.kt.replaced`。
-**待真机验** 10 条见 `gallery-search-2026-09.md` §十五（重点：网格被"平滑推下去"而不是跳、
+**待真机验** 10 条见 `docs/rounds/gallery-search-2026-09.md` §十五（重点：网格被"平滑推下去"而不是跳、
 提交钮可点/不可点两态的对比度、历史点击只填框不自动搜、`imePadding` 换了所在层之后的键盘避让）。
 
 ## 2026-09-25 追加八：画廊搜索第五轮 —— 胶囊进框 + 同步搜索，`VeneraChip` 第二次加性扩张
 
 用户拿三张真机截图判「效果有点差」，并给了新口径：
 **「不要这样搜索的方法，弹出预测词选中后直接在搜索框内用胶囊显示标签，同步搜索」**。
-细节全在 `gallery-search-2026-09.md` §十六。**先量再改**：搜索区实测 **≈201dp**（约屏幕 1/4）、
+细节全在 `docs/rounds/gallery-search-2026-09.md` §十六。**先量再改**：搜索区实测 **≈201dp**（约屏幕 1/4）、
 顶栏玻璃带与搜索区不透明底之间那道硬边切在 **y≈268px≈97dp**、一屏 **两枚 ✕** 职责还不同。
 
 四条改判（AskUserQuestion 全选推荐项）：去掉提交钮（加/删标签即搜）；胶囊自带 × + 退格删最后一枚；
@@ -830,7 +830,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 保护域仍然一个字没动：`Navigation.kt`、底栏枚举。
 构建：`testDebugUnitTest` **210 条 0 失败** / `assembleDebug` 绿，并已在包内 dex 逐串复核新文案
 （「删掉最后一枚标签」「点标签改成排除」「最近搜索」）。
-**待真机验** 10 条见 `gallery-search-2026-09.md` §16.4。
+**待真机验** 10 条见 `docs/rounds/gallery-search-2026-09.md` §16.4。
 
 ---
 
@@ -872,7 +872,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 
 ## 2026-09-28 追加二：画廊标签三项（分桶画师栏位 / 标签汉化词典 / 点标签返回逐级回退）
 
-方案与实测底账在 `gallery-tag-category-translation-and-nav-2026-09.md`（§〇 底账、§一~§三 设计、
+方案与实测底账在 `docs/rounds/gallery-tag-category-translation-and-nav-2026-09.md`（§〇 底账、§一~§三 设计、
 §七 落地记录，含 §7.4 那份**探针误判与更正**）。这一节只记冻结面。
 
 ### 保护域
@@ -880,7 +880,7 @@ yande.re 那一路是全站历史人气（一衰减就把"人气"静默改成"�
 `Navigation.kt`、底栏枚举、`currentTab` / 主 Tab 横滑**一个字没动**。
 第 2 项评估过"搜索另开一页"（用户提的），结论是不加 `GallerySearchRoute` ——
 要修的"返回回到上一轮"靠 `GallerySearchViewModel` 里的上下文栈就够，
-理由与那三条硬墙记在 `gallery-search-2026-09.md` §不变结论那一段（2026-09-28 补注）。
+理由与那三条硬墙记在 `docs/rounds/gallery-search-2026-09.md` §不变结论那一段（2026-09-28 补注）。
 改动全在 `gallery/` 包 + 两份 assets + 一个构建脚本。
 
 ### 新增的资产与许可（体积账要认）
@@ -925,7 +925,7 @@ ViewModel 只做抄字段那层薄接线。
 > ⚠️ **这一节已被同日「第二轮」那一节取代**（Gelbooru 撤档、新增月/年选期）。
 > 留着不删是历史，但里面的"六档""326 条""定界器"都不是当前形状，别照它读代码。
 
-方案、实测底账与落地记录都在 `gallery-ranking-windows-2026-09.md`（§〇 五批探针、
+方案、实测底账与落地记录都在 `docs/rounds/gallery-ranking-windows-2026-09.md`（§〇 五批探针、
 §0.4 记着我自己的三处探针设计错误、§十 偏离与 QA）。这一节只记冻结面与行为改判。
 
 ### 保护域
@@ -960,7 +960,7 @@ ViewModel 只做抄字段那层薄接线。
 
 ## 2026-09-29 追加（第二轮）：Gelbooru 时间档撤下 + 月/年可选具体一期
 
-同一份方案的第二轮（真机读数之后），细节在 `gallery-ranking-windows-2026-09.md` §十一、§十二。
+同一份方案的第二轮（真机读数之后），细节在 `docs/rounds/gallery-ranking-windows-2026-09.md` §十一、§十二。
 
 ### 保护域
 
@@ -1030,7 +1030,7 @@ ViewModel 只做抄字段那层薄接线。
 
 ## 2026-09-29 追加（第四轮）：切 Tab 方向化滑入（保护域第二次豁免）+ 画廊设置分区
 
-细节在 `gallery-round4-and-settings-2026-09.md`。用户一次回 8 条，其中两条落在保护域或冻结面上。
+细节在 `docs/rounds/gallery-round4-and-settings-2026-09.md`。用户一次回 8 条，其中两条落在保护域或冻结面上。
 
 ### 保护域第二次点名豁免：`Navigation.kt` 的转场方向
 
@@ -1103,12 +1103,12 @@ ViewModel 只做抄字段那层薄接线。
 而图片全被自定义 fetcher 截在前面），所以"当前占用"恒 0、档位恒无效果。本轮改道后才第一次真生效。
 
 构建：`testDebugUnitTest` **49 套 / 356 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
-详见 `gallery-round4-and-settings-2026-09.md` §五。
+详见 `docs/rounds/gallery-round4-and-settings-2026-09.md` §五。
 
 ## 2026-09-29 追加（批次 C1）：大图页四条行为档位
 
 用户「批次c」→ 四条拍板（背景不做取色 / 动图三档只管动图 / AI 那把画廊与漫画分开 / 分两批先做低风险的）
-→「同意，按 C1 方案开工」。方案文档：`gallery-batch-c-viewer-2026-09.md`（含 C2 已定口径）。
+→「同意，按 C1 方案开工」。方案文档：`docs/rounds/gallery-batch-c-viewer-2026-09.md`（含 C2 已定口径）。
 
 新增设置组「大图页」（`GallerySettings.kt:191` 起）+ 四条偏好（`VeneraPreferences.kt:177-227`）：
 屏幕常亮（默认开）、音量键翻页（**默认关**）、自动连播间隔（默认 0=关）、智能预加载（默认 NEXT=今天的实际行为）。
@@ -1145,7 +1145,7 @@ ViewModel 只做抄字段那层薄接线。
 - "无限滑动"没做成新需求：翻页链路本来就在，卡住的就是那个永真标志；真到底时页尾照旧如实念"已经到底"。
 
 构建：`testDebugUnitTest` **51 套 / 369 条 / 0 失败 / 0 错误** / `assembleDebug` 绿。
-详见 `gallery-batch-c-viewer-2026-09.md` §六。
+详见 `docs/rounds/gallery-batch-c-viewer-2026-09.md` §六。
 
 ## 2026-09-29 追加（批次 C2）：动图三档 / 背景四档 / 画廊侧 AI 两枚
 
@@ -1193,7 +1193,7 @@ C2 四条**没有一条在真机上跑过**，待验清单见方案 §七末尾�
 ## 2026-09-29 追加（批次 D · B1~B3）：外观第三轴 `SurfaceMaterial` + 设置域控件收口
 
 用户两句诉求叠在一起：「让整个项目的 UI 完全符合 Miuix 设计规范」+「优化界面性能，目前一卡一卡的」。
-方案档 `miuix-glass-surface-material-2026-09.md`，批准稿在 `~/.qoder-cn/plans/humble-river-moose.md`。
+方案档 `docs/rounds/miuix-glass-surface-material-2026-09.md`，批准稿在 `~/.qoder-cn/plans/humble-river-moose.md`。
 本轮深度按拍板只做 B1~B3，B4~B6 挂账；FROZEN 名单一个都没碰（用户明确不给豁免）。
 
 **这是组件契约变更，必须看得见**：
@@ -1597,7 +1597,7 @@ AskUserQuestion 两问，答：**全量按短句重写** ｜ 未实现项**连�
 `UnsupportedSetting` 调用点 12 处：阅读器 3、本地收藏 3、屏蔽 2、网络 2（代理弹窗内）、应用 1、探索 1。
 连带 `SettingsFutureGroup`（底部「尚未实现」折叠区）与 `UnsupportedSetting` 本身一起从
 `SettingsComponents.kt` 删除 —— 零调用点不留尸体。
-**这推翻了 `settings-audit-2026-09.md` 里两条旧裁决**（"未实现项统一收进折叠区""代理弹窗那两条保留原位"），
+**这推翻了 `docs/rounds/settings-audit-2026-09.md` 里两条旧裁决**（"未实现项统一收进折叠区""代理弹窗那两条保留原位"），
 已在那份文档文末追加更正并把状态图例那行就地标注。
 
 ### 改了哪些字（形态计数，脚本 `Temp/settings_text_smell.cjs`，口径=只扫非注释行的中文字面量）
@@ -1712,7 +1712,7 @@ AskUserQuestion 两问，答：**全量按短句重写** ｜ 未实现项**连�
 `artist.json?name=` 按全等取记录 → 跟一次 `artist/show/<alias_id>` 重定向、只读落点 URL 的 `title`）。
 **只有站方明确给出关联才重搜，否则保持 0 结果**；胶囊与历史存用户原词，换名那句话在展开卡、页尾、
 空态三处念出来，并随 `GallerySearchContext.aliasNotice` 一起过弹栈。
-细则、比方案多出来的两道闸、以及今天复跑的原始响应见 `gallery-artist-alias-2026-09.md` §九。
+细则、比方案多出来的两道闸、以及今天复跑的原始响应见 `docs/rounds/gallery-artist-alias-2026-09.md` §九。
 
 ### 共用件契约变更（都是加性）
 
@@ -1808,7 +1808,7 @@ AskUserQuestion 两问，答：**全量按短句重写** ｜ 未实现项**连�
 ⑧ 节点头「查看全部」来回切日榜 / 推荐，各自滚动位置互不污染，**且四节在两面上都在**
 （本轮第 1 条错就出在这一格）；⑨ 反搜（以图搜图）形变在输入法弹起状态下不被打断；
 ⑩ 三轴截图（MIUIX/M3 × 明/暗 × SOLID/GLASS）人工看过：玻璃档不出现描边发光、实色档无残影；
-⑪ 批次 J 那四条见 `gallery-artist-alias-2026-09.md` §9.5；
+⑪ 批次 J 那四条见 `docs/rounds/gallery-artist-alias-2026-09.md` §9.5；
 ⑫ 在日榜那面墙上点推荐节头的「换一批」，再切到推荐那面墙：应落在顶部而不是刚才的深度
 （本轮给那个 effect 补上 `wallFeed` 键就是为它 —— 合一屏之后另一面墙不在组合，`scrollToItem` 会变成空操作）。
 
@@ -2034,7 +2034,7 @@ yande.re 那一枚是**知情选择**：把"只有 16px、放大必糊、它其�
 6. 「http://img.pixiv.net/img 这部分网站的画师出处有时候可以显示有时候无法显示」
 
 第 3、6 两条是**缺陷**，第 2、4、5 条是**推翻既有判据**，第 1 条是**观感重做**。
-根因与口径逐条记在 `gallery-home-round3-2026-09-30.md`（§1–§6 根因、§7 拍板、§8 落地顺序、§9 落地状态），
+根因与口径逐条记在 `docs/rounds/gallery-home-round3-2026-09-30.md`（§1–§6 根因、§7 拍板、§8 落地顺序、§9 落地状态），
 这里只记结论与红线。
 
 ### 四条拍板（AskUserQuestion）
@@ -2179,7 +2179,7 @@ post-scroll 的语义是"子级消费完之后剩下的那一截"，而首页那
 
 ### 验证
 
-- 判据层三处**先红后绿**，红灯读数逐条记在 `gallery-home-round3-2026-09-30.md` §9 的表里
+- 判据层三处**先红后绿**，红灯读数逐条记在 `docs/rounds/gallery-home-round3-2026-09-30.md` §9 的表里
   （M4 `expected:<147950802> but was:<null>`；M5 `Unresolved reference 'sites'` ×2 —— 新 API，编译级红；
   M6 四条 `AssertionError`）。M1–M3、M7 没有判据层可红（接线与观感），验证只能落在真机清单上。
 - 全量单测 **545 条 / 0 失败 / 0 错误**，`:app:assembleDebug` 通过（APK 已出）。
@@ -2210,7 +2210,7 @@ post-scroll 的语义是"子级消费完之后剩下的那一截"，而首页那
 7. 首页整体观感对照图一：徽标 18、头像 44、标题降一档、每节一层背板（材质轴开 / 关两档都要看）。
    ⚠️ **这一条的三个半句当天就被批次 N 推翻两个**：「每节一层背板」撤掉（表面下放到条目）、
    「标题降一档」回改（badge → caption）。徽标 18 与头像 44 留着。
-   照这条点验前先读 `gallery-home-round4-2026-09-30.md`。
+   照这条点验前先读 `docs/rounds/gallery-home-round4-2026-09-30.md`。
 8. 搜索结果网格的卡片行也跟着变小了（`sourceMarkSize` 是共用 token）—— 这一处**是刻意的**，
    若真机读起来太小，改法是给首页单独立一档，而不是把共用值改回去。
 
@@ -2219,7 +2219,7 @@ post-scroll 的语义是"子级消费完之后剩下的那一截"，而首页那
 批次 M 落地装机后用户两句反馈，各暴露一条根因：
 「我之前设置有个下滑收起顶底栏，**搞反了**，应该是上滑收起」；
 「**开了玻璃就是这样，感觉就是不如图一那种**」—— 后一句直接推翻了"打开材质轴就能接近参考图"这个前提。
-取证、实测读数、改法与**没解决的部分**全记在 `gallery-home-round4-2026-09-30.md`，这里只钉结论。
+取证、实测读数、改法与**没解决的部分**全记在 `docs/rounds/gallery-home-round4-2026-09-30.md`，这里只钉结论。
 
 ### N0 收栏方向：符号假设错了，而测试把它钉住了
 
@@ -2312,7 +2312,7 @@ M7 把卡内标题与画师名从 `caption`(13sp) 一次降到 `badge`(11sp)。�
 ## 批次 O（2026-09-30 晚）：切回画廊 Tab 就整页重取
 
 用户原话：「每次进入画廊整个页面都要重新加载，你整个上次已经加载好的数据，不刷新的话就不要主动刷新新内容了」。
-取证、拍板与三条落地口径全在 `gallery-tab-reload-2026-09-30.md`，这里钉结论。
+取证、拍板与三条落地口径全在 `docs/rounds/gallery-tab-reload-2026-09-30.md`，这里钉结论。
 
 ### 根因（两条叠在一起，缺一条都不会有这个症状）
 
@@ -2516,7 +2516,7 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 ## 批次 P（2026-10-01）：全项目代码深挖 —— 行为缺陷 + 死代码 + 去 AI 味
 
-详档：`code-audit-batch-p-2026-10-01.md`。**与上一轮（首屏性能）零交集**：
+详档：`docs/rounds/code-audit-batch-p-2026-10-01.md`。**与上一轮（首屏性能）零交集**：
 `VeneraApp.onCreate` / `MainActivity.kt` / `VeneraApp.kt` 一行未碰。
 
 ### 落地的三条行为缺陷
@@ -2571,7 +2571,7 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 ## 批次 Q + R（2026-10-01）：画廊 hero 转场 · 跳转落点 · 画师介绍页
 
-详档：`gallery-hero-transition-and-artist-profile-2026-10-01.md`。
+详档：`docs/rounds/gallery-hero-transition-and-artist-profile-2026-10-01.md`。
 
 ### `Navigation.kt` 这次的豁免具体给了哪几处
 
@@ -2702,7 +2702,7 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 `:app:testDebugUnitTest` 672/0/0（新增 SettingsHeroImageStoreTest + QuotePoolTest）；`:app:assembleDebug` 通过。
 
-## 备份范围扩展 · 画廊与插图收藏（2026-10-01，归档格式 v5；方案文档 `backup-scope-gallery-2026-10-01.md`）
+## 备份范围扩展 · 画廊与插图收藏（2026-10-01，归档格式 v5；方案文档 `docs/rounds/backup-scope-gallery-2026-10-01.md`）
 
 需求：「看下现在的备份功能，加上画廊关注画师、收藏页面、阅读统计」。逐项回代码核对后的事实先记在这里，防止后续会话再猜一遍：
 

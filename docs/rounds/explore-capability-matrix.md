@@ -1,6 +1,6 @@
 # Explore 页面 —— Capability Matrix（Source 能力归属与 UI 处理规则）
 
-配套文档：explore-audit-checklist.md（阶段 0~2 完整审计）
+配套文档：docs/rounds/explore-audit-checklist.md（阶段 0~2 完整审计）
 分支：compose-migration ｜ 审计日期：2026-09-18 ｜ 纯只读审计
 
 本矩阵用于后续 Explore UI 实施（阶段 3~5）：明确「每个能力该不该渲染、怎么渲染」。

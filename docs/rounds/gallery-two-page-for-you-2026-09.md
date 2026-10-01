@@ -2,7 +2,7 @@
 
 参考实现：[breadboardapp/breadboard](https://github.com/breadboardapp/breadboard)。
 本文对它的引用全部来自**源码原文**（本轮是走 HTTPS 直取 raw 文件读的，浅克隆那份已不在本机）。
-上一轮的机制与算法判定在 `gallery-recommendations-from-favourites-2026-09.md`，本文**不重推导**，
+上一轮的机制与算法判定在 `docs/rounds/gallery-recommendations-from-favourites-2026-09.md`，本文**不重推导**，
 只接它 §九 第 4 步与 §十.7 那条"等语料数出来再决定"的尾巴。
 
 ## 〇、这份文档要定什么

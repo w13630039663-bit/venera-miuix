@@ -190,7 +190,7 @@
 - 它和哪些标签经常一起出现。
 
 **已有但没被用上的能力**：仓库里已经能把 Danbooru 的 wiki 正文取下来
-（走 API `wiki_pages/<页>.json` 读 `body`，见 `gallery-search-2026-09.md`），
+（走 API `wiki_pages/<页>.json` 读 `body`，见 `docs/rounds/gallery-search-2026-09.md`），
 但**没有任何 UI 把它显示出来**。这是最典型的"能力躺在数据层"。
 
 **形态**

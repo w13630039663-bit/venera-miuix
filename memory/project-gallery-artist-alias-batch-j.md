@@ -7,7 +7,7 @@ metadata:
 
 2026-09-30：外部提案要求「把 Danbooru 当画师跨站身份枢纽 + 建 GalleryArtist/GalleryArtistSourceMapping 两张表」。
 实测把它的核心样例推翻后（见 [[project-gallery-data-ceilings]] 的 2026-09-30 那一节），方案被缩成一条判据，
-落在 `gallery-artist-alias-2026-09.md`（仓库根目录，与其余 gallery-*-2026-09.md 同名单列）。**未动代码。**
+落在 `docs/rounds/gallery-artist-alias-2026-09.md`（仓库根目录，与其余 gallery-*-2026-09.md 同名单列）。**未动代码。**
 
 **Why:** 用户 2026-09-30 定的原话是「在明确的 Artist 搜索场景中，某站原始查询返回 0 张时，查询该站 Artist 元数据，
 尝试解析 canonical name / aliases / source-specific identifier；**只有获得明确站内关联时才重搜，否则保持 0 结果**」。

@@ -195,6 +195,6 @@ nhentai, hitomi, hot_manga, jcomic）+ mixed 2（ehentai, mxs）+ safe 22。
 `Tag:AI繪圖`。而 [isAiTagValue] 刻意不剥命名空间（剥了会把 e-hentai 的 `female:ai` 角色名算成 AI 生成）。
 所以指纹判据**不能**简单 `substringAfter(':')`，要过 `TagNormalizer.normalize()` ——
 它已经有 `EXCLUDED_NAMESPACES` / `TOPIC_NAMESPACES` 的现成分组知识
-（`tag-statistics-port-2026-09.md` §8.2 逐源列过 jm 存活组 = `Tag` / `Actor`）。
+（`docs/rounds/tag-statistics-port-2026-09.md` §8.2 逐源列过 jm 存活组 = `Tag` / `Actor`）。
 
 代价说清楚：**没点开过的那一次仍会露出来**。要全覆盖只能等源给卡片标签（jm 不给）。

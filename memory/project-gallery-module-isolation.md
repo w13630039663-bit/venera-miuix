@@ -6,7 +6,7 @@ metadata:
 ---
 
 用户 2026-09-23 裁定：图库模块**必须与现有漫画全部隔离、全部单独出来**,不做"当漫画源接"那条便宜路。
-边界、分期与**实测端点能力表**都在仓库根 `gallery-module-isolation-plan-2026-09.md`;
+边界、分期与**实测端点能力表**都在仓库根 `docs/rounds/gallery-module-isolation-plan-2026-09.md`;
 底栏接入的重新评审记录在 `FREEZE-STATEMENT.md` 的 2026-09-24 那一节。
 
 **已落地（2026-09-24，P0 浏览部分）**:`com.venera.compose.gallery/` 包 =
@@ -20,7 +20,7 @@ metadata:
 (`routeFor`/`titleFor`/`currentTab`/横滑自动多一格/设置「启动页面」加 GALLERY)。
 
 **P3 建表：前提已翻转（2026-09-25 用户点名要收藏）** —— 之前"刻意不建表"的理由（浏览不写库）不再成立。
-方案与三条备选写在 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.4，**推荐 B**：
+方案与三条备选写在 `docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.4，**推荐 B**：
 `venera_core.db` 里另建 `gallery_favorites`（v3→v4，列按画廊自己的语义），图片收藏墙加两段切换
 （漫画图片 / 画廊），**不往 `favorite_images` 塞 `kind` 列**（那 5 列漫画身份 NOT NULL 无默认，
 塞进去就是撒谎，且墙上"作者"靠 `comic_id` 反查的那条链对画廊行整体失效）。
@@ -140,7 +140,7 @@ HD 钮必须**报状态码 + 自己弹回原档**（留着 HD 亮着画原档 = 
 承载=**与大图页信息框同一形态的全高 `ModalBottomSheet`**（用户原话"直接像图片详情页开那个信息框那样"，
 否掉了我提的"自绘全屏 overlay"与"再开 Activity"两条）；一次只搜**一个站**；**不摆分级 chips**
 （yande.re 对不认识的 `rating:` 值静默不筛 = 假开关，分级仍由守卫管）；页 Danbooru 200 / yande.re 100。
-实测面（全表在 `gallery-search-2026-09.md` §〇，**别再重新探**）：两站官方 autocomplete 路由都 **404**，
+实测面（全表在 `docs/rounds/gallery-search-2026-09.md` §〇，**别再重新探**）：两站官方 autocomplete 路由都 **404**，
 补全只能 `danbooru /tags.json?search[name_matches]=词*&search[order]=count` 与
 `yande.re /tag.json?name=词*&order=count`；⚠️ **参数写错不报错、静默回不相干数据**
 （`name_match` 少个 s → 回"最新建的标签"；yande 的 `search[name]` 同理）→ 必须客户端复检前缀；
@@ -151,5 +151,5 @@ Danbooru 匿名 **2 枚**标签预算（第 3 枚 422 `TagLimitError`，排除�
 **参考实现的位置**：Breadboard（booru 浏览 app，Compose + telephoto 0.19.0 与我们同版本）浅克隆在 `build/_refs/breadboard/`，播放器是 `largeimageview/LargeImageView.kt`（拖拽层/pager/工具条三层）
 与 `InfoSheet.kt`；它用 `io.github.kdroidfilter:composemediaplayer:0.10.0` 替 media3、
 `HorizontalPager` 横滑换张、缩放门控翻页（`zoomFraction < 0.075`）—— 这三样**本轮刻意没做**，
-清单与理由在 `gallery-viewer-toolbar-and-infosheet-2026-09.md` §六。
+清单与理由在 `docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §六。
 它的 Blocked tags 页用**精确 tag 名**（`ai-generated`/`ai_generated`）挡 AI，与画廊整词判据同口径。

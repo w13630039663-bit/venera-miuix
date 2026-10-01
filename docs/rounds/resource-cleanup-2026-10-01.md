@@ -1,7 +1,7 @@
 # 无用资源清理 + 优化审计（2026-10-01）
 
 > 范围：**只做"清理无用资源"与"优化审计"**。版本号 2.0、应用图标、MD3 适配由并行会话处理，本轮一行未碰。
-> 与同日 `code-audit-batch-p-2026-10-01.md`（批次 P）**不重叠**：那一份管取数状态判定、正则判据、注释三类、`BitmapSliceHelper`/`GalleryArtists`/`doubleTapZoom` 归档；这一份管资源/依赖/偏好僵尸键。两份合起来才是今天的全量。
+> 与同日 `docs/rounds/code-audit-batch-p-2026-10-01.md`（批次 P）**不重叠**：那一份管取数状态判定、正则判据、注释三类、`BitmapSliceHelper`/`GalleryArtists`/`doubleTapZoom` 归档；这一份管资源/依赖/偏好僵尸键。两份合起来才是今天的全量。
 
 ---
 
@@ -37,7 +37,7 @@
 | `jm.js:886-902` 与 `ImagePipelinePolicy.kt:208-235` 的 JM 分块双实现 | 实测两侧口径**已一致**（Kotlin `:218` 注释与 jm.js 公式相符），是"脚本路径 vs 原生路径"的固有重复，不是缺陷。动它要重跑真机对拍 |
 | `_qa/`（**358 MB**）、`_probe/`（17 MB）、`_trash/`（3 MB） | 已被 `.gitignore:38-40` 忽略，**不影响仓库交付**；里面是真实图站截图与探针产物，按纪律不入库也不由我删 |
 
-**顺带纠正 `code-audit-batch-p-2026-10-01.md` §七.2 的一条过期陈述**：它写"`_probe/`、`_qa/`、`_trash/` 仍未进 `.gitignore`"——实测 `.gitignore:38-40` 三行都在（还带一段解释注释），该条已不成立。
+**顺带纠正 `docs/rounds/code-audit-batch-p-2026-10-01.md` §七.2 的一条过期陈述**：它写"`_probe/`、`_qa/`、`_trash/` 仍未进 `.gitignore`"——实测 `.gitignore:38-40` 三行都在（还带一段解释注释），该条已不成立。
 
 ---
 

@@ -9,7 +9,7 @@
 ## 〇、先说实测：两站的检索面能力表（全部本机 curl，2026-09-25）
 
 UA 一律 `Venera/1.0 (Android)`（换浏览器串会被 CF 挡，实测与推导见
-`gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.2）。
+`docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §12.2）。
 
 | 能力 | Danbooru | yande.re |
 |---|---|---|
@@ -72,7 +72,7 @@ UA 一律 `Venera/1.0 (Android)`（换浏览器串会被 CF 挡，实测与推�
   "返回回到上一轮"，那一轮在 `GallerySearchViewModel` 里压栈就够；加成目的地反而带进来三条硬墙
   （几百条结果进不了导航参数、per-entry VM 会推翻"再点 🔍 回到原上下文"那条拍板、
   nav 栈只能从顶上 pop 所以中间那条删不掉）。压栈的落地与判据见
-  `gallery-tag-category-translation-and-nav-2026-09.md` §7.4.3。
+  `docs/rounds/gallery-tag-category-translation-and-nav-2026-09.md` §7.4.3。
 - 状态放独立的 `GallerySearchViewModel`：导航条目被下一页覆盖时**组合会销毁**，
   裸 `remember` 会让"点进大图再返回"把整片搜索结果丢掉（同一根因见记忆「导航条目会重建组合」）。
 - 输入框仍用 `BasicTextField`（与漫画搜索同一取舍），IME 不自建焦点（不自动弹键盘）——

@@ -50,8 +50,8 @@ metadata:
 - 提交只提与本轮任务直接相关的文件；需要顺带提前几轮改动时，先在方案/汇报里说明耦合证据并让用户选。**用户 2026-09-20 的裁决是"按主题分笔"**（包括替上一轮 AI 把它那批单独提一笔），不要打包、也别只提自己那半截 —— 细则见 [[project-multi-ai-regression-triage]]。
 
 **事实 6（2026-09-28 实测）**：Git Bash 会**展开双引号里的 glob**。`./gradlew --tests "*Gallery*"`
-被按大小写不敏感展开成仓库根目录下的 `gallery-module-isolation-plan-2026-09.md`，
-Gradle 报 `Task 'gallery-module-isolation-plan-2026-09.md' not found`，看着像构建坏了其实是引号问题。
+被按大小写不敏感展开成仓库根目录下的 `docs/rounds/gallery-module-isolation-plan-2026-09.md`，
+Gradle 报 `Task 'docs/rounds/gallery-module-isolation-plan-2026-09.md' not found`，看着像构建坏了其实是引号问题。
 → **`--tests` 一律用单引号 + 全限定名**：`--tests 'com.venera.compose.gallery.*'`。
 同类：`adb shell` 里的设备路径要 `export MSYS_NO_PATHCONV=1`（见 [[project-venera-qa-device]]）。
 

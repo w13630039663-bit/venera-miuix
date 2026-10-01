@@ -68,7 +68,7 @@
 
 我在方案里最初说「走 `JsComicSource.translate()` 拿源自带字典」。**实施时否掉了这个接法**，两个理由：
 
-1. `venera-tag-multilang-plan.md` §1.3 已写明那份字典只服务探索页分类名，「与标签无关，别混用」；
+1. `docs/rounds/venera-tag-multilang-plan.md` §1.3 已写明那份字典只服务探索页分类名，「与标签无关，别混用」；
 2. 从 UI 拿源实例要穿 Source / ViewModel 两个保护域，违反手册 §6.3。
 
 改为在 `TagTranslationManager` 里加一张 Kotlin 侧兜底表。表项**全部来自 `app/src/main/assets/sources` 下各 .js 里实际写出的键**（脚本扫出来的，不是猜的）：jm（`Author`/`Tag`/`Work`/`Actor`/`View`）、picacg（`Author`/`Chinese Team`/`Categories`/`Tags`）、manga_dex（`Status`/`Authors`/`Artists`/`Tags`）、lanraragi（`Tags`/`Pages`/`Extension`）、nhentai（`Categories`/`Tags`）、shonen_jump_plus（`Update`）。goda/mh18/hcomic 本来就直接写中文键，走原样返回。
@@ -158,7 +158,7 @@
 - `Navigation.kt` 那一族配方全部改调 `materialSharedAxisXIn/Out`，`slideDistance` 由库的 `rememberSlideDistance()` 在组合期取 px（30dp → px 的 density 换算不由我们写）；
   删掉 `slideIn/OutHorizontally`、`fadeIn/Out`、`tween` 五个此刻已无消费者的 import。
 - predictive 分支保持「与 pop 同族」：`forward = predictiveBackDirection(swipeEdge) < 0`，
-  左边缘与三键返回时 `forward = false`，与 `popEnter/popExit` 逐参数相同 → 松手提交帧换分支不跳形（2.10.1 的三分支选择逻辑见 `predictive-back-transition-2026-09.md`）。
+  左边缘与三键返回时 `forward = false`，与 `popEnter/popExit` 逐参数相同 → 松手提交帧换分支不跳形（2.10.1 的三分支选择逻辑见 `docs/rounds/predictive-back-transition-2026-09.md`）。
 - **时长 300ms 与原值一致**，本轮没有新增任何观感数字：300 / 30dp / 0.35 错峰 / FastOutSlowIn 与 LinearOutSlowIn、FastOutLinearIn 三条曲线全在库里。
 - 卡片飞入完全未动（`coverSharedElement` 仍挂在封面上，打码不飞那条规则也保留）。
 

@@ -223,7 +223,7 @@ compose 侧 `data/update/AppUpdateChecker.kt:33` 的发布通道指向本仓库 
 
 ## 九、仓库结构建议（R1-F；三步分开，绝不合成一个大改）
 
-**先记本仓的失败先例**：上次桌面化留的 `desktop/` 模块是 11 文件 1937 行**纯 Mock、与 Android 零共享**，最终当死代码删除，并在 `venera-stage-plan.md:337,347,367` 留下决策 D-4"若真要 CMP 再单开阶段"。**那次失败的根因不是技术，是没先拆模块。**
+**先记本仓的失败先例**：上次桌面化留的 `desktop/` 模块是 11 文件 1937 行**纯 Mock、与 Android 零共享**，最终当死代码删除，并在 `docs/rounds/venera-stage-plan.md:337,347,367` 留下决策 D-4"若真要 CMP 再单开阶段"。**那次失败的根因不是技术，是没先拆模块。**
 
 1. **步骤 A（零风险）**：只抽**不含 Compose** 的层为 `kotlin("jvm")` 模块——先搬框架零依赖的 **76 文件 / 7922 行**（包名不变，同包跨模块合法）。移动 76、改写 0。护栏：APK 做 **dex 类清单逐字节对账** + 真机回归清单跑一遍。
 2. **步骤 B（中风险）**：抽 `:platform` 接口（`Context`、13 处 `assets.open`、19 处 `getSharedPreferences` → `KeyValueStore`、`android.database.sqlite` → `SqliteAccess` 兼容壳）。Android 实现=现有代码原样搬、**行为不变**（有利条件：偏好已有单一事实源 `data/prefs/VeneraPreferences.kt`，52 个 `pref_*` 键 / 105 个 StateFlow）。每类接口一个 PR。

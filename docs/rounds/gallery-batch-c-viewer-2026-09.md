@@ -13,7 +13,7 @@
    现状是窗口 blur-behind 32dp 糊住底下那面墙 + 一层 `Black(0.45)` 压暗
    （`GalleryPostActivity.kt:32-39`、`GalleryPostScreen.kt:459` 与常量 `BACKDROP_SCRIM_ALPHA :968`）；
    而"边缘取色渐变"我们在 2026-09 做过一次，真机被否（"深色主题下头部变成一块边缘清晰的紫色矩形"，
-   见 `detail-thumbnail-and-cover-tint-2026-09.md:188-192`），`CoverPalette.kt` 已删、androidx.palette 依赖已回退。
+   见 `docs/rounds/detail-thumbnail-and-cover-tint-2026-09.md:188-192`），`CoverPalette.kt` 已删、androidx.palette 依赖已回退。
    重新引回一个"已知会被否一次"的东西不划算。
 2. **动图三档只管动图**（GIF / 动图 WebP）：**视频照旧点击才播**。
    "始终"不该替用户决定什么时候花几十 MB 流量、什么时候出声。C2 落这条。

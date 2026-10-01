@@ -436,8 +436,8 @@ public final class app.cash.quickjs.QuickJs implements Closeable {
 
 1. 把 `D:\venera\.git` 镜像进本工作区并 `reset --hard` 到 `compose-migration` HEAD，**工作区首次成为真正的 git 仓库**（原先只有一个 mock 原型文件、不是 git）。
 2. 从 `master` 分支解出原版 Flutter 只读参照到 `.reference/flutter-master/`（143 dart + assets + doc + shaders），并写入 `.git/info/exclude`。
-3. 修订 `venera-migration-plan.md`：新增「现实校准」章节，纠正 Room/DataStore/MVI/QuickJS 四处虚标、阶段 1→🟡 部分完成、阶段 2→已提交但 2.3 重开为 2.5、阶段 4→地基已在、阶段 5/7 补语义与选型警告、产物路径与工作区基准。
+3. 修订 `docs/rounds/venera-migration-plan.md`：新增「现实校准」章节，纠正 Room/DataStore/MVI/QuickJS 四处虚标、阶段 1→🟡 部分完成、阶段 2→已提交但 2.3 重开为 2.5、阶段 4→地基已在、阶段 5/7 补语义与选型警告、产物路径与工作区基准。
 4. 重写 `README.md`（原文件被转义符啃坏：`top.yukonga` 变成 TAB+`op.yukonga`、`app/` 变 `pp/`），并改为反映真实现状与真实进度表。
-5. 新增本文件 `venera-gap-analysis.md`。
+5. 新增本文件 `docs/rounds/venera-gap-analysis.md`。
 
-> 尚未提交 git。建议首个提交：把 `venera-gap-analysis.md` / 修订后的 `venera-migration-plan.md` / `README.md` 一起入库，作为后续所有波次的基准。
+> 尚未提交 git。建议首个提交：把 `docs/rounds/venera-gap-analysis.md` / 修订后的 `docs/rounds/venera-migration-plan.md` / `README.md` 一起入库，作为后续所有波次的基准。

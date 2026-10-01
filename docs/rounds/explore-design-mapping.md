@@ -1,6 +1,6 @@
 # Explore 页面 —— 阶段 3 Design System Mapping + 阶段 4 页面结构设计
 
-> 配套文档：explore-audit-checklist.md（阶段 0~2 审计）、explore-capability-matrix.md（能力矩阵）
+> 配套文档：docs/rounds/explore-audit-checklist.md（阶段 0~2 审计）、docs/rounds/explore-capability-matrix.md（能力矩阵）
 > 分支：compose-migration ｜ 设计日期：2026-09-18 ｜ **本轮只产出设计文档，不写业务代码**
 > 纠偏依据：修 Bug 与换组件不可割裂为两轮 —— VeneraCover 内置打码槽位（天然解 R6），
 > VeneraEmptyView 内置操作按钮与空态（天然解 R4/R5）。先 Mapping，下一轮一次到位落地。
@@ -192,6 +192,6 @@
 ---
 
 ## 停止条件
-- 本轮产出 explore-design-mapping.md 即停止。
+- 本轮产出 docs/rounds/explore-design-mapping.md 即停止。
 - 等待确认设计方案后，再按 Batch 1 / Batch 2 启动代码实施（各自明确 Scope + Stop Condition）。
 - 不自动进入其他页面，不顺手重构无关代码。

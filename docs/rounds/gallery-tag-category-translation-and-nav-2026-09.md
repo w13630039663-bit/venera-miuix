@@ -47,7 +47,7 @@ has_children,parent_id,status,is_pending,width,height,is_held,frames_pending_str
 frames_pending,frames_string,frames,is_note_locked,last_noted_at,last_commented_at
 ```
 
-`gallery-viewer-toolbar-and-infosheet-2026-09.md` §二 那条"44 个键里没有分类字段"**复核成立**。
+`docs/rounds/gallery-viewer-toolbar-and-infosheet-2026-09.md` §二 那条"44 个键里没有分类字段"**复核成立**。
 
 ### 0.4 但两站的 **post HTML 自带分类类名**（本轮的出路）
 
@@ -326,7 +326,7 @@ EhTag 全库 27.0%   <   ffdkj(MIT) 69.3%  ≈  zh_CN-Tags(无许可) 70.6%   < 
 ### 3.3 建议（第 3 项现在与第 1 项有依赖，一起拍）
 
 链路接通是零风险的现成件（`TagDisplay.kt:23` `rememberTagDisplayLabel()` →
-「译文 (原文)」双显，**请求侧永远发原文**，见 `venera-tag-multilang-plan.md` 的 L1 定稿）。
+「译文 (原文)」双显，**请求侧永远发原文**，见 `docs/rounds/venera-tag-multilang-plan.md` 的 L1 定稿）。
 要拍的只有"打包哪份数据"：
 
 - **D（推荐）**：**只打包 ffdkj**（`post_count≥50`，2.35 MB，MIT）。
@@ -346,7 +346,7 @@ EhTag 全库 27.0%   <   ffdkj(MIT) 69.3%  ≈  zh_CN-Tags(无许可) 70.6%   < 
 
 1. **不按标签名猜分类**（§1.1 有 75% 的实测证据）。
 2. **不做逐枚 `tag.json?name=` 的运行时分类**：一张帖 10~30 枚标签就是 10~30 笔请求，
-   而每站预算 12s（`gallery-recommendations-from-favourites-2026-09.md:70-80` 早算过这笔账）。
+   而每站预算 12s（`docs/rounds/gallery-recommendations-from-favourites-2026-09.md:70-80` 早算过这笔账）。
 3. **不引 Danbooru 接口当分类神谕**：`danbooru.donmai.us/tags.json?search[name]=` 实测回
    Cloudflare "Just a moment..."，为一个分桶读数把第三站和过盾面拉进画廊，不值。
 4. **不动 `GalleryPost.tagGroups` 的解析期形状**（分桶是渲染期叠加，见 §1.3）。
@@ -604,4 +604,4 @@ touhou 正在飞第 2 页 → 交接进 wowoguni → 返回弹回 touhou，旧�
 - **§7.4 那条"画师单独占信息卡一行"改版了**：现在画师/角色/作品一起搬到**与尺寸卡并排的右列**
   （站点那一排之下、出处之上），`ArtistRow` 删掉，右列复用 `GalleryTagGroups`（`showCount = false`）。
   用户点名的读法是"和左边的尺寸分开两列显示"。
-- 第 1、3 项的真机待验仍未跑完；本轮新加的三条待验写在 `gallery-ranking-windows-2026-09.md` §十三。
+- 第 1、3 项的真机待验仍未跑完；本轮新加的三条待验写在 `docs/rounds/gallery-ranking-windows-2026-09.md` §十三。

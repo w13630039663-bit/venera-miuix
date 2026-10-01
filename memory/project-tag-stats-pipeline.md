@@ -14,7 +14,7 @@ metadata:
 
 **Why:** 劈标签的 bug 修的是**读侧**（`ReadingStatsManager` 现在只按 `TAG_SEPARATOR` 切，
 且去掉了 `length in 2..10` 那个会把 `female:lolicon` 整条丢掉的闸门），
-但**写侧留下的行是坏数据，不会自愈**。而 `tag-statistics-port-2026-09.md` 当年写「不做数据迁移」的理由是
+但**写侧留下的行是坏数据，不会自愈**。而 `docs/rounds/tag-statistics-port-2026-09.md` 当年写「不做数据迁移」的理由是
 "tags 列此前没有任何写入者，存量行恒为空串" —— 这个前提现在不成立了。
 凡是"修了管线但没迁移存量"的决定，都要在数据真的开始积累之后重审一次。
 

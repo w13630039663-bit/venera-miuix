@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-2026-09-27 落地画廊「以图搜图」（SauceNAO）。代码与 UI 都在（见 `gallery-reverse-search-saucenao-2026-09.md`），**但一次成功的结果至今从未拿到过** —— 卡在 Cloudflare。
+2026-09-27 落地画廊「以图搜图」（SauceNAO）。代码与 UI 都在（见 `docs/rounds/gallery-reverse-search-saucenao-2026-09.md`），**但一次成功的结果至今从未拿到过** —— 卡在 Cloudflare。
 
 **真根因（已定位并改）**：`CloudflareBypassActivity.checkCookies` 从前只要 `CookieManager.getCookie(url)` 里**出现 `cf_clearance=` 就宣布通关并 `finish()`**。两条事实叠起来必然假通关：
 1. `cf_clearance` 在**端挑战页上就会下发**，真正生效要等 JS 跑完、页面跳回目标之后；

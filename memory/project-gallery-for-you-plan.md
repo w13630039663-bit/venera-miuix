@@ -5,8 +5,8 @@ metadata:
   type: project
 ---
 
-2026-09-27 出方案 `gallery-recommendations-from-favourites-2026-09.md`（判据层 + chips）；
-2026-09-28 出方案 `gallery-two-page-for-you-2026-09.md` 并落地**主 Tab 双页化**。
+2026-09-27 出方案 `docs/rounds/gallery-recommendations-from-favourites-2026-09.md`（判据层 + chips）；
+2026-09-28 出方案 `docs/rounds/gallery-two-page-for-you-2026-09.md` 并落地**主 Tab 双页化**。
 参考实现 = [breadboardapp/breadboard](https://github.com/breadboardapp/breadboard)。它的"For You"
 **不推荐图，推荐标签**：本地收藏算词频 → 前 7 名当候选池 → 加权随机抽 1 枚主标签 → 其余按
 "与已选在同一张收藏图里共现"继续抽满 3 枚 → 拼成一次普通站方搜索。没有服务器、模型、向量。
@@ -24,7 +24,7 @@ gelbooru 两图词频全 1、仅 9/21 对共现 >0（最大共现 1 张）→ �
 一搜把自己顶回来，读起来像坏了。这条实测直接改变了设计（"排掉已收藏"从可选优化变成第一性需求）。
 **教训：语料/数据面的数没量到之前不要定形态，量到之后形态往往会变。**
 
-## 已落地（2026-09-28，六笔，见 `gallery-two-page-for-you-2026-09.md` §十三）
+## 已落地（2026-09-28，六笔，见 `docs/rounds/gallery-two-page-for-you-2026-09.md` §十三）
 
 - `GalleryForYouMerge`（分页合并判据层，13 例单测）+ `GalleryForYouViewModel` + 主 Tab 两页 pager。
 - 四条用户拍板：横滑 pager + 顶栏分段行都做 / 「换一批」**只换当前页**（For You 自持 seed，两页不联动）/

@@ -32,7 +32,7 @@ main @ `1836043`）。用户给的两张真机截图分别对应它的
 - `GalleryPostScreen` 改成满屏层：`AsyncImage(large|file, zoomable)` + chrome（顶栏 + 工具条）+ `GalleryInfoSheet`。
 - **`GalleryFullViewer.kt` 删掉**，它那份"两层底图 / 守卫 blur / 波浪环 / chrome 切显隐"的口径整体上移到满屏层。
   留着两层的后果是"两屏几乎一样、其中一屏多一个 HD 钮"，而且守卫判定会出现两份实现 ——
-  今天刚因为"一级与二级各算一套"修过一次分叉（见 `gallery-dual-source-hot-pool-plan-2026-09.md` §十四）。
+  今天刚因为"一级与二级各算一套"修过一次分叉（见 `docs/rounds/gallery-dual-source-hot-pool-plan-2026-09.md` §十四）。
 - 视频条目**不进 zoomable**（沿用现裁定），且**不摆 HD 钮**：实测站方没有更小的视频转码档
   （`media_asset.variants` 只有 180/360 jpg、720 webp 静帧 + original mp4），HD 对视频是假开关。
 
@@ -433,7 +433,7 @@ WebView 直接渲染 JPG 时 Chrome 给的页面标题）。也就是说：图�
 
 | # | 反馈 | 状态 |
 |---|---|---|
-| 1 | 「Danbooru 搜索不出图」（19:16 截图：一排尺寸对、内容全空的灰卡） | 已改，根因与那三条处置见 `gallery-search-2026-09.md` §十一 |
+| 1 | 「Danbooru 搜索不出图」（19:16 截图：一排尺寸对、内容全空的灰卡） | 已改，根因与那三条处置见 `docs/rounds/gallery-search-2026-09.md` §十一 |
 | 2 | 搜索层从全高 sheet 改成**画廊页内的搜索头**（19:19 那张 Hero 头截图为图二） | 已改，见同一文档 §一 / §十 |
 | 3 | 「之前图片信息做的 tag，也要做到点击搜索，长按显示搜索 复制和屏蔽选项」 | 已改，见本节 |
 

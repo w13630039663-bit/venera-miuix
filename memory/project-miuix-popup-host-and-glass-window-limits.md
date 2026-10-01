@@ -30,4 +30,4 @@ KDoc 原话 "rendered at window level without `Scaffold`"，内部自己起 `and
   `components/backdrop/` 目录（`VeneraLiquidGlassNavBar.kt` + `InteractiveHighlight.kt`），不是一个文件。
 
 读库真体的办法见 [[reference-gradle-cache-sources-jars]]；本轮其余落地口径见仓库
-`miuix-glass-surface-material-2026-09.md` 与 `FREEZE-STATEMENT.md` 的批次 D 节。
+`docs/rounds/miuix-glass-surface-material-2026-09.md` 与 `FREEZE-STATEMENT.md` 的批次 D 节。

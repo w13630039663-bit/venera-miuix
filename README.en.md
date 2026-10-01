@@ -216,7 +216,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 
 ### Upstream has it, this branch does not
 
-- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This is an Android-only project; cross-platform needs a separate shell — feasibility is assessed and archived in `windows-port-feasibility-2026-10.md`, **not started**.
+- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This is an Android-only project; cross-platform needs a separate shell — feasibility is assessed and archived in `docs/rounds/windows-port-feasibility-2026-10.md`, **not started**.
 - **Reading EPUB / 7Z / ZIP archives directly**: upstream's reader opens archive files; here local comics are always served to the reader as directories, and CBZ import unpacks into a directory.
 - **Biometric privacy lock**: upstream has launch authentication and re-lock on background; this repository contains no such capability. The rating mask is content filtering, not a privacy lock.
 - **Archive download protocol**: upstream has a dedicated download path for sources declaring archive capability (E-Hentai, for example); here downloads are page by page only.
@@ -381,8 +381,9 @@ venera-compose/
 ├── gradle/libs.versions.toml           # Single source of dependency versions (with reasons for pins)
 ├── screenshots/                        # Images used by this README
 ├── docs/                               # Workflow manual and per-topic designs
-├── FREEZE-STATEMENT.md                 # Page freeze statement and exemptions
-└── *-2026-*.md                         # Per-round plans, audits and measurement archives
+│   └── rounds/                         # Per-round plans, audits and measurement archives
+├── memory/                             # Project knowledge base: decision records and measured limits
+└── FREEZE-STATEMENT.md                 # Page freeze statement and exemptions
 ```
 
 ## Writing a comic source

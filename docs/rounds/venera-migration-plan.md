@@ -3,8 +3,8 @@
 本项目计划将原 Flutter 技术栈的 Venera 完整、高质量地复刻为 **现代原生 Android (Jetpack Compose + Kotlin Coroutines/Flow + MVI + Room + OkHttp/Ktor + QuickJS)** 架构，全面继承 MIUIX 视觉质感，彻底消除跨平台渲染与桥接损耗，打造极致性能与顺滑度的漫画客户端。
 
 > 📋 **配套文档（三份，缺一不可）**
-> - `venera-gap-analysis.md` —— 原版功能 → Compose 的**逐域差距清单**（443 行，含量化覆盖率与硬缺陷）
-> - `venera-stage-plan.md` —— **分阶段任务书 S0→S8**，每阶段带「有没有更好的 Compose 库 / 可借用开源工程」的实测调研与验收标准。**开工顺序以它为准。**
+> - `docs/rounds/venera-gap-analysis.md` —— 原版功能 → Compose 的**逐域差距清单**（443 行，含量化覆盖率与硬缺陷）
+> - `docs/rounds/venera-stage-plan.md` —— **分阶段任务书 S0→S8**，每阶段带「有没有更好的 Compose 库 / 可借用开源工程」的实测调研与验收标准。**开工顺序以它为准。**
 > - 本文档 —— 总纲与技术选型基线；下方「现实校准」纠正与仓库实际不符的描述。
 
 ---
@@ -48,7 +48,7 @@
 - ✅ **阶段 2**（`e2303bd`）：3 个硬编码源 + Ping 测速 + 聚合搜索 + UI 真连网已完成；**2.3 QuickJS/规则解析实质未完成**，建议重开为「阶段 2.5 漫画源脚本引擎（协议级兼容）」。
 - 🟡 **阶段 4**：阅读器地基已在（`a39829b`），缺 RTL/LTR 翻页、双页拼合、前瞻预加载、滤镜。
 - ⬜ **阶段 3 / 5 / 6 / 7 / 8**：未开始（5、6 的数据层地基已在）。
-- 📄 逐页逐组件的量化差距见同目录 **`venera-gap-analysis.md`**。
+- 📄 逐页逐组件的量化差距见同目录 **`docs/rounds/venera-gap-analysis.md`**。
 
 ---
 
@@ -120,7 +120,7 @@ flowchart TD
 
 > 🔒 **阶段 2 已冻结（2026-09-17，用户确认）**
 > 源脚本引擎与网络桥经**真机全源验收通过**，此后非必要不再改动，详见
-> `venera-stage-plan.md §S1-F`（含验收结果、OkHttp ↔ Dart 平台差异对表、三步定性法）。
+> `docs/rounds/venera-stage-plan.md §S1-F`（含验收结果、OkHttp ↔ Dart 平台差异对表、三步定性法）。
 > **纪律**：源脚本是官方原样接入的，某源报错时先按三步定性法排除环境与限流，
 > **不要直接改源脚本**。
 
@@ -209,12 +209,12 @@ flowchart TD
 为了确保开发节奏可控、代码质量过硬、每一步都符合您的要求：
 
 1. **按阶段模块串行推进**：
-   - 每次专注于一个具体子模块（当前首先推进 **阶段 2.5：漫画源脚本引擎协议级兼容**，详见 `venera-gap-analysis.md` 的优先级结论）。
+   - 每次专注于一个具体子模块（当前首先推进 **阶段 2.5：漫画源脚本引擎协议级兼容**，详见 `docs/rounds/venera-gap-analysis.md` 的优先级结论）。
 2. **完成后主动提醒**：
    - 每个子模块编码完成、测试通过并提交 GitHub 后，我会：
      - ① 展示该模块的实现成果与关键代码链接；
      - ② 提供可直接测试的产物或验证说明；
      - ③ **主动向您汇报并提醒是否开启下一个模块**。
 3. **方案持久化保存**：
-   - 本方案保存在**工作区根目录 `venera-migration-plan.md`**（即 `D:\venera-compose\venera-migration-plan.md`，与 `D:\` 根下的旧副本已内容分叉，**以工作区版为唯一准绳**），作为贯穿整个迁移过程的执行基准，随时可供查阅与动态更新。
+   - 本方案保存在**工作区根目录 `docs/rounds/venera-migration-plan.md`**（即 `D:\venera-compose\docs/rounds/venera-migration-plan.md`，与 `D:\` 根下的旧副本已内容分叉，**以工作区版为唯一准绳**），作为贯穿整个迁移过程的执行基准，随时可供查阅与动态更新。
    - 唯一权威仓库：`D:\venera-compose`（git 分支 `compose-migration`，`origin = github.com/w13630039663-bit/venera-miuix`，`upstream = venera-app/venera`）；原版 Flutter 只读参照在 `.reference/flutter-master/`。
