@@ -2643,3 +2643,61 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 `Navigation.kt` 里 5 处轮次编号注释**没清** —— 保护域，连注释级改动也该单独豁免；
 `MainActivity.kt` / `VeneraApp.kt` 各 2 处**没清** —— dsh 正在改那两个文件，避让。
 另记一条口子：备份恢复是直接写库、写完没有 `ContentGuardManager.invalidate()`，本轮未扩范围。
+
+## 收藏四面板多选统一（2026-10-02，用户点名豁免；需求「统一下收藏页面的长按选择删除图片,漫画的选择框，并做多选框给多选」）
+
+### 豁免对象
+
+- **FavoritesScreen.kt（🧊 2026-09-18 第三批，用户点名豁免）**
+- **NetworkFavoritesScreen.kt（🧊 2026-09-18 第三批，用户点名豁免）**
+
+### 用户拍板的两个分叉
+
+1. 长按 = **进多选并选中**；原长按菜单里的动作（从该页阅读 / 详情）**挪进多选工具条**（选中恰好 1 项时出现），长按不再弹菜单。
+2. 统一范围 = **四块全统一**：本地收藏 / 图片收藏 / 网络收藏 / 画廊收藏。
+
+### 结构（共用件，四面板同一份实现）
+
+- `components/selection/MultiSelectState.kt`：多选状态机（enter / toggle / toggleRange / selectAll / invert / retainAll / exit），对齐官方 `local_favorites_page.dart:728-760`；纯判据拆在 `MultiSelectRules.kt`（无 Compose 依赖，进判据层跑测）。
+- `components/selection/SelectableCardFrame.kt`：选中洗底（`selectionHighlightAlpha`=0.14，压内容之上）+ 右上角 `VeneraSelectBox`。洗底按 `cornerRadius`（默认 `shape.card`）裁，防直角露出圆角外。
+- `components/selection/VeneraMultiSelectBar.kt`：统一工具条（已选 N 项 / 全选-反选 / 关闭 + 各面板动作槽）。
+- `components/venera/VeneraSelectBox.kt`：唯一的选择框画法（未选 = `BadgeSurface` 深底白描边，已选 = `primary` 实心白勾）。
+
+### 语义钉死（对齐官方）
+
+- 多选态长按 = **区间反选**（anchor → target 逐个 toggle、跳过 anchor 自己）；anchor 随每次交互移动；官方"陈旧下标越界即崩"的路径**刻意不复刻**，退化为单点 toggle。
+- 官方菜单 **Deselect = 清空并退出**（不是只清空）；`selectAll` / `invert` 不动锚点、清到空也不自动退出。
+- 列表刷新后 `retainAll` 收敛选中，剔掉已不存在的项；收敛到空自动退出多选。
+- 系统返回键先退多选（四面板都挂 `BackHandler`）。
+
+### 本轮顺带修正
+
+- 裸 miuix `Card`（图片收藏 / 画廊 `GalleryPostCard`）此前没传 `cornerRadius`，用的是 miuix 自家默认 16dp —— MIUIX 模式下比 `VeneraCard`（18dp）小一档，洗底也按 `shape.card` 裁就对不上。现在两处显式传 `cornerRadius = tokens.shape.card`，与 `VeneraCard` 同口径。
+
+### 验证
+
+判据层：`bash _probe/l0/run-judgment-tests.sh`（`MultiSelectRulesTest` 已登记）。
+`:app:testDebugUnitTest` / `:app:assembleDebug` 结果见当日 worklog。
+
+## 设置页重设计（2026-10-02，hero 头图 + 名言卡 + 分组重组）
+
+用户需求：参考图（hero 头图 + 玻璃分组卡 + 彩色徽标）重设计设置界面；hero 图用户自选；二级/子页同规格；页尾加名言卡。拍板分叉：hero 全局同一张图（首页+全部子页）；图源仅相册自选（没选图=旧观感）；名言=内置池随机进页定格；名言卡小图可自定义（默认应用图标）。
+
+### 结构
+
+- 图链：`SettingsHeroImageStore`（GetContent→嗅扩展名→拷 `filesDir/settings/<kind>/image.<ext>`→旧文件写成功后删；resolve 三道闸：空路径/文件没了/空文件 ⇒ 回落「未设置」不显示裂图）。prefs +2 keys：`pref_settings_hero_path` / `pref_settings_quote_avatar_path`。
+- `SettingsHero.kt`：hero 头图（双层 scrim：顶 35% 保状态栏、底 55% 保标题；覆盖层色=`ImageOverlayColors` 固定色板，**不加模糊**）。
+- `SettingsQuoteCard.kt` + `QuotePool.kt`：名言池 15 条（**不伪造出处**——古诗词写真人、原创写 Venera、其余不署名）；下标进 rememberSaveable 旋屏不换句。
+- `SettingsHome.kt` 重排：hero（largeTitle 传空串退场）→ 应用身份卡（原 AboutSection 收编）→ 外链快捷行 → 内容/个性化/数据/系统四组 → 页尾名言卡。
+- `SettingsPage` 加 hero 槽 + `heroSubtitle`（8 个子页各传一行功能概述）+ 页尾自动附名言卡；没选图=与旧版逐像素一致。
+- token：`settingsHeroHeight`(208)/`settingsHeroHeightSubpage`(148)/`quoteAvatarSize`(56)；外观页加「设置主页图与名言卡」管理组（换/清四行）。
+
+### 语义钉死
+
+- hero 关闭降级 = **零风险默认**：resolve 返回 null ⇒ 整条 hero 链路不参与渲染。
+- 拷贝落盘不用 persisted content URI（相册删图/授权失效会裂图）。
+- 换图先写新文件、成功后再删旧扩展名残留（先删后写会把上次还能显示的图赔进去）。
+
+### 验证
+
+`:app:testDebugUnitTest` 672/0/0（新增 SettingsHeroImageStoreTest + QuotePoolTest）；`:app:assembleDebug` 通过。
