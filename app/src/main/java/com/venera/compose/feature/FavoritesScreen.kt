@@ -16,6 +16,11 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 
 import com.venera.compose.components.*
+import com.venera.compose.components.selection.MultiSelectBarAction
+import com.venera.compose.components.selection.MultiSelectState
+import com.venera.compose.components.selection.SelectableCardFrame
+import com.venera.compose.components.selection.VeneraMultiSelectBar
+import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -150,6 +155,18 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     val displayMode = rememberComicListDisplayMode()
     val folders by vm.folders.collectAsState()
     val counts by vm.counts.collectAsState()
+    /**
+     * 多选状态机。四处收藏面板**共用同一份实现**（见 `components/selection/MultiSelectState`）：
+     * 长按 = 进多选并选中、多选态内长按 = 区间反选、选中归零 = 自动退出。
+     *
+     * 键取 `(id, type)` —— 与官方 `id + type` 判等一致：同一个 id 在两张源里是两本不同的书，
+     * 只用 id 会让跨源的同号作品互相选中。
+     */
+    val selection = rememberMultiSelectState<Pair<String, Int>>()
+    // 当前选中的条目（按当前列表顺序取）。移动到 / 复制到 / 删除三处**同一份取法** ——
+    // 各自拿 `vm.comics.filter{...}` 抄一遍，改动漏一处就会出现"删掉的和我勾的不是同一批"。
+    fun selectedComics(): List<com.venera.compose.data.db.FavoriteItem> =
+        vm.comics.filter { (it.id to it.type) in selection.selected }
 
     var showMenu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<FolderDialog?>(null) }
@@ -190,8 +207,8 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         }
     }
     val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
-        enabled = mode == FavoritesMode.Local && vm.multiSelectMode && !showMenu && dialog == null,
-    ) { vm.exitMultiSelect() }
+        enabled = mode == FavoritesMode.Local && selection.active && !showMenu && dialog == null,
+    ) { selection.exit() }
     // 大标题折叠 + 毛玻璃顶栏（页内自治）
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
@@ -204,7 +221,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         } else {
             tokens.spacing.segmentedHeight
         }) + tokens.spacing.space3 * 2
-    val topPadding = statusBarTop + 104.dp + segmentedRowHeight + if (mode == FavoritesMode.Local && vm.multiSelectMode) 76.dp else 0.dp
+    val topPadding = statusBarTop + 104.dp + segmentedRowHeight + if (mode == FavoritesMode.Local && selection.active) 76.dp else 0.dp
 
     // 顶栏折叠判定：沿用 miuix TopAppBar 自己的阈值（collapsedFraction * 3 >= 1，
     // 即 smallTitle 出现的同一时刻），保证「分段切换器收起」与「小标题淡入」严格同步。
@@ -266,6 +283,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                         searchMode = searchMode,
                         topPadding = topPadding,
                         onSelect = onSelect,
+                        selection = selection,
                         scrollConnection = topBarBehavior.nestedScrollConnection,
                         backdrop = backdrop,
                         onScrollStateChange = reportScroll,
@@ -370,18 +388,43 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                             onSectionChange = { imageSection = it },
                         )
                     }
-                    if (mode == FavoritesMode.Local && vm.multiSelectMode) {
-                        MultiSelectActionBar(
-                            selectedCount = vm.selected.size,
-                            onExit = { vm.exitMultiSelect() },
-                            onSelectAll = { vm.selectAll() },
-                            onMove = { dialog = FolderDialog.Move },
-                            onCopy = { dialog = FolderDialog.Copy },
-                            onDelete = { vm.deleteSelected() },
-                            modifier = Modifier.graphicsLayer {
-                                alpha = 1f - selectionBack.progress
-                            },
-                        )
+                    if (mode == FavoritesMode.Local && selection.active) {
+                        // 选中的条目由**当前列表**过滤出来交给 ViewModel：ViewModel 不再持有
+                        // 多选集合（那是 UI 的事），它只负责"对这批条目做动作"。
+                        val allKeys = vm.comics.map { it.id to it.type }
+                        VeneraMultiSelectBar(
+                            selectedCount = selection.count,
+                            allSelected = allKeys.isNotEmpty() && selection.count == allKeys.size,
+                            onExit = { selection.exit() },
+                            onSelectAll = { selection.selectAll(allKeys) },
+                            onInvert = { selection.invert(allKeys) },
+                            modifier = Modifier
+                                .graphicsLayer { alpha = 1f - selectionBack.progress }
+                                .padding(
+                                    horizontal = tokens.spacing.rowHorizontal,
+                                    vertical = tokens.spacing.space2,
+                                ),
+                        ) {
+                            MultiSelectBarAction(
+                                icon = Icons.Outlined.DriveFileMove,
+                                label = "移动到",
+                                onClick = { dialog = FolderDialog.Move },
+                            )
+                            MultiSelectBarAction(
+                                icon = Icons.Outlined.ContentCopy,
+                                label = "复制到",
+                                onClick = { dialog = FolderDialog.Copy },
+                            )
+                            MultiSelectBarAction(
+                                icon = Icons.Filled.Delete,
+                                label = "删除",
+                                destructive = true,
+                                onClick = {
+                                    vm.deleteItems(selectedComics())
+                                    selection.exit()
+                                },
+                            )
+                        }
                     }
                 }
             },
@@ -467,14 +510,20 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
             title = "移动到",
             folders = folders.filter { it != vm.currentFolder },
             onDismiss = { dialog = null },
-            onPick = { vm.moveSelectedTo(it) },
+            onPick = {
+                vm.moveItemsTo(selectedComics(), it)
+                selection.exit()
+            },
         )
 
         FolderDialog.Copy -> FolderPickerDialog(
             title = "复制到",
             folders = folders.filter { it != vm.currentFolder },
             onDismiss = { dialog = null },
-            onPick = { vm.copySelectedTo(it) },
+            onPick = {
+                vm.copyItemsTo(selectedComics(), it)
+                selection.exit()
+            },
         )
 
         FolderDialog.Reorder -> ReorderDialog(
@@ -719,6 +768,7 @@ private fun FavoriteGrid(
     searchMode: Boolean,
     topPadding: androidx.compose.ui.unit.Dp,
     onSelect: (ComicItem) -> Unit,
+    selection: MultiSelectState<Pair<String, Int>>,
     /** 顶栏折叠行为：下滑时大标题收起、毛玻璃淡入。 */
     scrollConnection: androidx.compose.ui.input.nestedscroll.NestedScrollConnection? = null,
     backdrop: LayerBackdrop? = null,
@@ -751,6 +801,8 @@ private fun FavoriteGrid(
     } else vm.comics
 
     val (gridWidth, gridWidthModifier) = rememberContentWidth(tokens.spacing.space9 * 2)
+    // 墙上这一批的**可见**顺序，区间选要用它。整批算一次而不是每张卡各算一遍（那是 O(n²)）。
+    val visibleKeys = remember(visibleComics) { visibleComics.map { it.id to it.type } }
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
@@ -813,19 +865,27 @@ private fun FavoriteGrid(
             }
         } else {
             gridItems(visibleComics, key = { "${it.id}-${it.type}" }) { item ->
+                val key = item.id to item.type
                 FavoriteCard(
                     item = item,
                     detailed = displayMode.value == "detailed",
-                    selected = (item.id to item.type) in vm.selected,
-                    multiSelectMode = vm.multiSelectMode,
+                    selecting = selection.active,
+                    selected = key in selection.selected,
+                    // 多选态下点整张卡 = 勾选（只让人去够右上角那个小圈太费劲）；
+                    // 不在多选态才是"打开这一本"。
                     onClick = {
-                        if (vm.multiSelectMode) {
-                            vm.toggleSelect(item)
+                        if (selection.active) selection.toggle(key) else onSelect(item.toComicItem())
+                    },
+                    onToggleSelect = { selection.toggle(key) },
+                    // 长按：不在多选态 = 进入多选并选中这一项；已在多选态 = 区间反选。
+                    // 两条都是官方 local_favorites_page.dart:728-760 的原始语义。
+                    onLongClick = {
+                        if (selection.active) {
+                            selection.toggleRange(key, visibleKeys)
                         } else {
-                            onSelect(item.toComicItem())
+                            selection.enter(key)
                         }
                     },
-                    onLongClick = { vm.enterMultiSelect(item) },
                 )
             }
         }
@@ -837,9 +897,12 @@ private fun FavoriteGrid(
 private fun FavoriteCard(
     item: com.venera.compose.data.db.FavoriteItem,
     detailed: Boolean,
+    /** 当前是否处于多选态（决定右上角那枚选择框摆不摆）。 */
+    selecting: Boolean,
     selected: Boolean,
-    multiSelectMode: Boolean,
     onClick: () -> Unit,
+    /** 点右上角那枚选择框（与"点整卡"是同一条路，只是入口不同）。 */
+    onToggleSelect: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val metrics by rememberCachedComicMetrics(item.sourceKey, item.id)
@@ -870,7 +933,11 @@ private fun FavoriteCard(
     // 单列形态直接共用搜索页那套行卡（components.ComicRowCard）：收藏页与搜索页
     // 从此同一份实现，不会再各页一种高度、改一处忘一处。
     if (detailed) {
-        Box {
+        SelectableCardFrame(
+            selecting = selecting,
+            selected = selected,
+            onToggleSelect = onToggleSelect,
+        ) {
             com.venera.compose.components.ComicRowCard(
                 title = item.name,
                 coverUrl = item.coverPath,
@@ -884,17 +951,6 @@ private fun FavoriteCard(
                 rating = metrics.rating?.toFloat(),
                 coverModifier = coverModifier,
             )
-            if (multiSelectMode) {
-                Icon(
-                    imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (selected) tokens.color.primary else Color.White,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(tokens.spacing.space5)
-                        .size(tokens.spacing.badgeSize),
-                )
-            }
         }
         return
     }
@@ -904,7 +960,11 @@ private fun FavoriteCard(
         onClick = onClick,
         onLongClick = onLongClick,
     ) {
-        Box {
+        SelectableCardFrame(
+            selecting = selecting,
+            selected = selected,
+            onToggleSelect = onToggleSelect,
+        ) {
             ComicCardLayout(detailed = detailed, modifier = Modifier.padding(tokens.spacing.space2), cover = {
                 com.venera.compose.components.venera.VeneraCover(
                     url = item.coverPath,
@@ -947,17 +1007,6 @@ private fun FavoriteCard(
                     }
                 }
             }
-            if (multiSelectMode) {
-                Icon(
-                    imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (selected) tokens.color.primary else Color.White,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(tokens.spacing.space5)
-                        .size(tokens.spacing.badgeSize),
-                )
-            }
         }
     }
 }
@@ -971,94 +1020,6 @@ private fun com.venera.compose.data.db.FavoriteItem.toComicItem() = ComicItem(
     sourceName = sourceKey,
     description = description,
 )
-
-// endregion
-
-// region ---- 多选动作条 ----
-
-@Composable
-private fun MultiSelectActionBar(
-    selectedCount: Int,
-    onExit: () -> Unit,
-    onSelectAll: () -> Unit,
-    onMove: () -> Unit,
-    onCopy: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // 顶部二级工具条（对齐 HistoryScreen 模式）：底部 overlay 版本会被悬浮底栏遮挡。
-    val tokens = com.venera.compose.ui.tokens.VeneraTokens
-    Surface(
-        shape = RoundedCornerShape(tokens.shape.medium),
-        color = MiuixTheme.colorScheme.surface,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.rowHorizontal, vertical = tokens.spacing.space2),
-    ) {
-        Column(modifier = Modifier.padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space2)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "已选择 $selectedCount 项",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textPrimary,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "全选",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.primary,
-                    modifier = Modifier.clickable { onSelectAll() }.padding(tokens.spacing.space2),
-                )
-                Spacer(modifier = Modifier.width(tokens.spacing.space2))
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "退出多选",
-                    tint = tokens.color.textPrimary,
-                    modifier = Modifier
-                        .size(tokens.spacing.chipIconSize)
-                        .clickable { onExit() },
-                )
-            }
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)) {
-                ActionChip(icon = {
-                    Icon(Icons.Outlined.DriveFileMove, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
-                }, label = "移动到", modifier = Modifier.weight(1f), onClick = onMove)
-                ActionChip(icon = {
-                    Icon(Icons.Outlined.ContentCopy, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
-                }, label = "复制到", modifier = Modifier.weight(1f), onClick = onCopy)
-                ActionChip(icon = {
-                    Icon(Icons.Filled.Delete, null, tint = tokens.color.primary, modifier = Modifier.size(tokens.spacing.chipIconSize))
-                }, label = "删除", modifier = Modifier.weight(1f), onClick = onDelete)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ActionChip(
-    icon: @Composable () -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val tokens = com.venera.compose.ui.tokens.VeneraTokens
-    Surface(
-        shape = RoundedCornerShape(tokens.shape.small),
-        color = tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha),
-        modifier = modifier.clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = tokens.spacing.space5, vertical = tokens.spacing.space5),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            icon()
-            Spacer(modifier = Modifier.width(tokens.spacing.space3))
-            Text(text = label, fontSize = tokens.type.caption, color = tokens.color.textPrimary)
-        }
-    }
-}
 
 // endregion
 

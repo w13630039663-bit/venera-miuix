@@ -297,6 +297,57 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         true
     }
 
+    /**
+     * 批量加入收藏（导入外部归档时用），返回**实际新增**的条数。
+     *
+     * 为什么不循环调 [addComic]：那个方法每插一条都要 `notifyChanged()`，而它内部会
+     * launch 一次 [refreshFolders]（对**每个**收藏夹做一次全表 count）。导入上千条时会
+     * 排出上千个这样的协程，界面长时间卡顿。这里改成单事务 + 末尾只通知一次。
+     *
+     * 去重口径与 [addComic] 一致，靠主键 `(id, type)` 上的 CONFLICT_IGNORE，
+     * 所以已存在的条目既不会写重、也不计入返回值。空 id 的行直接跳过 —— 落库就是一行
+     * 看不见也删不掉的垃圾。
+     *
+     * [comics] 的**先后顺序会被保留**（自当前夹子末尾依次追加），调用方应先把归档里的
+     * 条目按 `display_order` 排好再传进来。
+     */
+    suspend fun addComics(folder: String, comics: List<FavoriteItem>): Int = withContext(Dispatchers.IO) {
+        if (comics.isEmpty()) return@withContext 0
+        val db = dbHelper.writableDatabase
+        if (!dbHelper.folderNames(db).contains(folder)) {
+            throw IllegalArgumentException("Folder does not exists")
+        }
+
+        var added = 0
+        db.beginTransaction()
+        try {
+            var order = maxValue(db, folder)
+            for (comic in comics) {
+                if (comic.id.isBlank()) continue
+                order++
+                val values = ContentValues().apply {
+                    put("id", comic.id)
+                    put("name", comic.name)
+                    put("author", comic.author)
+                    put("type", comic.type)
+                    put("source_key", comic.sourceKey)
+                    put("tags", tagsToString(comic.tags))
+                    put("cover_path", comic.coverPath)
+                    put("time", comic.time)
+                    put("translated_tags", tagsToString(comic.tags))
+                    put("display_order", order)
+                }
+                val rowId = db.insertWithOnConflict(q(folder), null, values, SQLiteDatabase.CONFLICT_IGNORE)
+                if (rowId != -1L) added++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        if (added > 0) notifyChanged()
+        added
+    }
+
     suspend fun deleteComicWithId(folder: String, id: String, sourceKey: String) =
         withContext(Dispatchers.IO) {
             val db = dbHelper.writableDatabase

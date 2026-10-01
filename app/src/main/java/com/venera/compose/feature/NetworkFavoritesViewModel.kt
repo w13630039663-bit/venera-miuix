@@ -315,6 +315,30 @@ class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
+    /**
+     * 批量移除（收藏页多选那条路）。
+     *
+     * 逐个发请求 —— 站方没有批量接口，这是网络往返的下限，合并不了。
+     * 值得收口在这里的是另外两件事：**调用方不该自己去猜该传哪个 folderId**，
+     * 也不该在 UI 里循环调 [deleteComic]（那会每成功一条就重建一遍列表）。
+     *
+     * 失败的既不重试也不回滚：已经删掉的那几条是真的没了，报"全部成功"才是撒谎。
+     */
+    fun deleteComics(comicIds: List<String>, folderId: String) {
+        val fd = favoriteData ?: return
+        if (comicIds.isEmpty()) return
+        viewModelScope.launch {
+            val removed = mutableSetOf<String>()
+            comicIds.forEach { id ->
+                fd.addOrDelFavorite(id, folderId, false, null)
+                    .onSuccess { removed += id }
+            }
+            if (removed.isNotEmpty()) {
+                comics = comics.filterNot { it.id in removed }
+            }
+        }
+    }
+
     fun createFolder(name: String, onError: (String) -> Unit = {}) {
         val fd = favoriteData ?: return
         val adder = fd.addFolder ?: return

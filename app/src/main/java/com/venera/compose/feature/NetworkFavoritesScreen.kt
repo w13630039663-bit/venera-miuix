@@ -13,6 +13,9 @@
 package com.venera.compose.feature
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -41,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -65,6 +69,11 @@ import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.rememberComicListDisplayMode
+import com.venera.compose.components.selection.MultiSelectState
+import com.venera.compose.components.selection.SelectableCardFrame
+import com.venera.compose.components.selection.VeneraMultiSelectBar
+import com.venera.compose.components.selection.MultiSelectBarAction
+import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -122,8 +131,17 @@ fun AndroidNetworkFavoritesScreen(
     val (gridWidth, gridWidthModifier) = rememberContentWidth(tokens.spacing.rowHorizontal * 2)
     val columns = comicListColumnCount(displayMode.value, gridWidth)
     val isDetailed = displayMode.value == "detailed"
-    // 待确认的移除请求（长按卡片触发，二次确认后执行删除）。
-    var pendingDelete by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Comic?>(null) }
+    /**
+     * 多选状态机：与另外三处收藏面板**同一份**（见 `components/selection/`）。
+     *
+     * 键取 `(sourceKey, id)` —— 网络收藏一面屏只显示一个源，id 本来唯一；
+     * 带上 sourceKey 是为了将来"一面墙混排多源"时不用回头改键。
+     */
+    val multi = rememberMultiSelectState<Pair<String, String>>()
+    /** 待确认的批量移除；true = 弹层已开。 */
+    var deleteConfirm by remember { mutableStateOf(false) }
+    // 系统返回先退多选，不要把整个收藏 tab 弹掉。
+    BackHandler(enabled = multi.active) { multi.exit() }
 
     // 首屏判定：只有「尚无任何内容」的加载才全屏 Loader；loadMore 期间列表原地不动。
     val firstLoading = isLoading && comics.isEmpty()
@@ -171,6 +189,18 @@ fun AndroidNetworkFavoritesScreen(
     // resetComicState() 是同步执行的，等到 LaunchedEffect（重组之后）再抓，拿到的已经是空表。
     var pullSnapshot by remember { androidx.compose.runtime.mutableStateOf<List<Comic>>(emptyList()) }
     val shownComics = if (pullInFlight && comics.isEmpty()) pullSnapshot else comics
+    // 当前屏上这一批的顺序，区间选要用它。
+    val shownKeys = remember(shownComics) { shownComics.map { it.selectionKey() } }
+    // 卡片动作收口成两个局部函数：brief 与 detailed 两种行都要同一份，
+    // 各写一遍就会出现"改了一种忘了另一种"。
+    val onToggleCard: (Comic) -> Unit = { multi.toggle(it.selectionKey()) }
+    val onLongPressCard: (Comic) -> Unit = { comic ->
+        // 不在多选态 = 进入多选并选中；已在多选态 = 区间反选（官方语义）。
+        if (multi.active) multi.toggleRange(comic.selectionKey(), shownKeys) else multi.enter(comic.selectionKey())
+    }
+    // 面板内浮层工具条要有个 Box 才能 align —— PullToRefreshBox 自己不是 BoxScope，
+    // 在外面套一层是最小改动（它内部那些下拉手势与嵌套滚动原样保留）。
+    Box(modifier = Modifier.fillMaxSize()) {
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = pullInFlight,
         onRefresh = {
@@ -302,8 +332,10 @@ fun AndroidNetworkFavoritesScreen(
                         ComicDetailedRow(
                             row = row,
                             columns = columns,
+                            multi = multi,
                             onSelect = onSelect,
-                            onDelete = { pendingDelete = it },
+                            onToggleSelect = onToggleCard,
+                            onLongPress = onLongPressCard,
                         )
                     }
                 }
@@ -316,8 +348,10 @@ fun AndroidNetworkFavoritesScreen(
                             row = row,
                             columns = columns,
                             sourceName = current.name,
+                            multi = multi,
                             onSelect = onSelect,
-                            onDelete = { pendingDelete = it },
+                            onToggleSelect = onToggleCard,
+                            onLongPress = onLongPressCard,
                         )
                     }
                 }
@@ -335,18 +369,46 @@ fun AndroidNetworkFavoritesScreen(
         }
     }
 
+        if (multi.active) {
+            // 浮层工具条，与插图收藏 / 画廊收藏那两条同款同位置。
+            VeneraMultiSelectBar(
+                selectedCount = multi.count,
+                allSelected = shownKeys.isNotEmpty() && multi.count == shownKeys.size,
+                onExit = { multi.exit() },
+                onSelectAll = { multi.selectAll(shownKeys) },
+                onInvert = { multi.invert(shownKeys) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = tokens.spacing.rowHorizontal,
+                        end = tokens.spacing.rowHorizontal,
+                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                    ),
+            ) {
+                MultiSelectBarAction(
+                    icon = Icons.Outlined.Delete,
+                    label = "移除",
+                    destructive = true,
+                    onClick = { deleteConfirm = true },
+                )
+            }
+        }
     }
 
-    // 长按移除确认弹窗（补回）：破坏性操作必须二次确认。
-    pendingDelete?.let { comic ->
+    // 批量移除确认弹窗：破坏性操作必须二次确认
+    //（站方收藏夹删了就是删了，本应用没有撤销入口）。
+    if (deleteConfirm) {
+        val doomed = vm.comics.filter { it.selectionKey() in multi.selected }
         NetRemoveConfirmDialog(
-            comicTitle = comic.title,
-            onDismiss = { pendingDelete = null },
+            count = doomed.size,
+            onDismiss = { deleteConfirm = false },
             onConfirm = {
-                vm.deleteComic(comic.id, currentFolder ?: "", null) { _, _ -> }
-                pendingDelete = null
+                deleteConfirm = false
+                vm.deleteComics(doomed.map { it.id }, currentFolder ?: "")
+                multi.exit()
             },
         )
+    }
     }
 }
 
@@ -421,8 +483,10 @@ private fun ComicGridRow(
     row: List<Comic>,
     columns: Int,
     sourceName: String,
+    multi: MultiSelectState<Pair<String, String>>,
     onSelect: (ComicItem) -> Unit,
-    onDelete: (Comic) -> Unit,
+    onToggleSelect: (Comic) -> Unit,
+    onLongPress: (Comic) -> Unit,
 ) {
     val tokens = VeneraTokens
     Row(
@@ -430,10 +494,17 @@ private fun ComicGridRow(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
     ) {
         row.forEach { comic ->
+            val key = comic.selectionKey()
             Box(Modifier.weight(1f)) {
-                NetComicCard(comic = comic, sourceName = sourceName,
-                    onClick = { onSelect(comic.toComicItem()) },
-                    onLongClick = { onDelete(comic) },
+                NetComicCard(
+                    comic = comic,
+                    sourceName = sourceName,
+                    selecting = multi.active,
+                    selected = multi.contains(key),
+                    // 多选态下点整张卡 = 勾选（只让人去够右上角那个小圈太费劲）。
+                    onClick = { if (multi.active) onToggleSelect(comic) else onSelect(comic.toComicItem()) },
+                    onToggleSelect = { onToggleSelect(comic) },
+                    onLongClick = { onLongPress(comic) },
                 )
             }
         }
@@ -446,8 +517,10 @@ private fun ComicGridRow(
 private fun ComicDetailedRow(
     row: List<Comic>,
     columns: Int,
+    multi: MultiSelectState<Pair<String, String>>,
     onSelect: (ComicItem) -> Unit,
-    onDelete: (Comic) -> Unit,
+    onToggleSelect: (Comic) -> Unit,
+    onLongPress: (Comic) -> Unit,
 ) {
     val tokens = VeneraTokens
     Row(
@@ -455,11 +528,15 @@ private fun ComicDetailedRow(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
     ) {
         row.forEach { comic ->
+            val key = comic.selectionKey()
             Box(Modifier.weight(1f)) {
                 NetComicDetailedCard(
                     comic = comic,
+                    selecting = multi.active,
+                    selected = multi.contains(key),
                     onSelect = onSelect,
-                    onDelete = { onDelete(comic) },
+                    onToggleSelect = { onToggleSelect(comic) },
+                    onLongClick = { onLongPress(comic) },
                 )
             }
         }
@@ -470,8 +547,11 @@ private fun ComicDetailedRow(
 @Composable
 private fun NetComicDetailedCard(
     comic: Comic,
+    selecting: Boolean,
+    selected: Boolean,
     onSelect: (ComicItem) -> Unit,
-    onDelete: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val maskState = netMaskState(comic)
     // 打码命中不飞行；两端比例同为 0.72（行卡封面 = listCoverWidth + coverAspectRatio），
@@ -481,65 +561,87 @@ private fun NetComicDetailedCard(
         key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
         allowFly = maskState == "VISIBLE",
     )
-    // 与搜索页单列、本地收藏单列共用 components.ComicRowCard —— 全应用一种行卡形态。
-    // 原先的右上角源名徽章不再传：搜索页行卡本来就没这个元素，且源名已在手风琴分区标题上。
-    ComicRowCard(
-        title = comic.title,
-        coverUrl = comic.cover,
-        subtitle = comic.subTitle,
-        description = comic.description,
-        tags = comic.tags,
-        mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
-        onClick = { onSelect(comic.toComicItem()) },
-        onLongClick = onDelete,
-        likesCount = comic.likesCount,
-        rating = comic.rating,
-        updateTime = comic.updateTime,
-        coverModifier = coverModifier,
-    )
+    SelectableCardFrame(
+        selecting = selecting,
+        selected = selected,
+        onToggleSelect = onToggleSelect,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        // 与搜索页单列、本地收藏单列共用 components.ComicRowCard —— 全应用一种行卡形态。
+        // 原先的右上角源名徽章不再传：搜索页行卡本来就没这个元素，且源名已在手风琴分区标题上。
+        ComicRowCard(
+            title = comic.title,
+            coverUrl = comic.cover,
+            subtitle = comic.subTitle,
+            description = comic.description,
+            tags = comic.tags,
+            mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
+            onClick = { if (selecting) onToggleSelect() else onSelect(comic.toComicItem()) },
+            onLongClick = onLongClick,
+            likesCount = comic.likesCount,
+            rating = comic.rating,
+            updateTime = comic.updateTime,
+            coverModifier = coverModifier,
+        )
+    }
 }
 
 @Composable
-private fun NetComicCard(comic: Comic, sourceName: String, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun NetComicCard(
+    comic: Comic,
+    sourceName: String,
+    selecting: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val tokens = VeneraTokens
     val maskState = netMaskState(comic)
-    VeneraCard(
+    SelectableCardFrame(
+        selecting = selecting,
+        selected = selected,
+        onToggleSelect = onToggleSelect,
         modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        onLongClick = onLongClick,
     ) {
-        com.venera.compose.components.venera.VeneraCover(
-            url = comic.cover,
-            contentDescription = comic.title,
-            shimmerWhileLoading = false,
-            // 双列同样参与飞行：源名徽章在封面的内容槽里，会随封面一起飞、落地后消失。
-            modifier = Modifier.coverSharedElement(
-                key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
-                allowFly = maskState == "VISIBLE",
-            ),
-            mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
+        VeneraCard(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onClick,
+            onLongClick = onLongClick,
         ) {
-            VeneraSourceBadge(name = sourceName)
-        }
-        Spacer(Modifier.height(tokens.spacing.cardCoverGap))
-        Text(
-            text = comic.title,
-            fontSize = tokens.type.caption,
-            fontWeight = tokens.type.weightSemibold,
-            color = tokens.color.textPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        val visibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
-        if (visibleTags.isNotEmpty()) {
-            Spacer(Modifier.height(tokens.spacing.space1))
+            com.venera.compose.components.venera.VeneraCover(
+                url = comic.cover,
+                contentDescription = comic.title,
+                shimmerWhileLoading = false,
+                // 双列同样参与飞行：源名徽章在封面的内容槽里，会随封面一起飞、落地后消失。
+                modifier = Modifier.coverSharedElement(
+                    key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),
+                    allowFly = maskState == "VISIBLE",
+                ),
+                mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
+            ) {
+                VeneraSourceBadge(name = sourceName)
+            }
+            Spacer(Modifier.height(tokens.spacing.cardCoverGap))
             Text(
-                text = visibleTags.take(2).joinToString(" · "),
-                fontSize = tokens.type.overline,
-                color = tokens.color.textTertiary,
-                maxLines = 1,
+                text = comic.title,
+                fontSize = tokens.type.caption,
+                fontWeight = tokens.type.weightSemibold,
+                color = tokens.color.textPrimary,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            val visibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
+            if (visibleTags.isNotEmpty()) {
+                Spacer(Modifier.height(tokens.spacing.space1))
+                Text(
+                    text = visibleTags.take(2).joinToString(" · "),
+                    fontSize = tokens.type.overline,
+                    color = tokens.color.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -574,9 +676,9 @@ private fun LoadMoreFooter(isLoading: Boolean) {
     }
 }
 
-/** 长按移除确认弹窗（系统级 Dialog：独立窗口层级，绝无被遮挡/不渲染的可能）。 */
+/** 批量移除确认弹窗（系统级 Dialog：独立窗口层级，绝无被遮挡/不渲染的可能）。 */
 @Composable
-private fun NetRemoveConfirmDialog(comicTitle: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun NetRemoveConfirmDialog(count: Int, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val tokens = VeneraTokens
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -595,7 +697,7 @@ private fun NetRemoveConfirmDialog(comicTitle: String, onDismiss: () -> Unit, on
             )
             Spacer(Modifier.height(tokens.spacing.space5))
             Text(
-                text = "是否从网络收藏夹中移除《" + comicTitle + "》？",
+                text = "是否从网络收藏夹中移除选中的 $count 部漫画？",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textSecondary,
             )
@@ -620,6 +722,14 @@ private fun NetRemoveConfirmDialog(comicTitle: String, onDismiss: () -> Unit, on
     }
 }
 
+/**
+ * 多选用的身份键。
+ *
+ * 网络收藏一面屏只显示一个源，`id` 本来唯一；带上 `sourceKey` 是为了将来"一面墙混排多源"
+ * 时不用回头改键 —— 两站的 id 各自编号，同 id 是两本不同的书。
+ */
+private fun Comic.selectionKey(): Pair<String, String> = sourceKey to id
+
 private fun Comic.toComicItem() = ComicItem(
     id = id,
     title = title,
@@ -632,3 +742,4 @@ private fun Comic.toComicItem() = ComicItem(
     rating = rating?.toString().orEmpty(),
     likesCount = likesCount,
 )
+

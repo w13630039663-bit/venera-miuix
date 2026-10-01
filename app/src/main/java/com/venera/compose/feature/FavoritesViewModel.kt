@@ -69,13 +69,6 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
     var isLoading: Boolean by mutableStateOf(false)
         private set
 
-    var multiSelectMode: Boolean by mutableStateOf(false)
-        private set
-
-    /** 多选集合，元素是 `(id, type)`，与官方 `id + type` 判等一致。 */
-    var selected: Set<Pair<String, Int>> by mutableStateOf(emptySet())
-        private set
-
     init {
         // 观察内容变更计数，任何写操作后自动重载
         viewModelScope.launch {
@@ -94,7 +87,6 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectFolder(folder: String) {
         if (currentFolder == folder) return
         currentFolder = folder
-        exitMultiSelect()
         loadComics()
     }
 
@@ -143,34 +135,6 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
         FavoriteSortOrder.CUSTOM -> items.sortedBy { it.displayOrder }
     }
 
-    // region ---- 多选 ----
-
-    fun enterMultiSelect(item: FavoriteItem) {
-        multiSelectMode = true
-        selected = selected + (item.id to item.type)
-    }
-
-    fun toggleSelect(item: FavoriteItem) {
-        val key = item.id to item.type
-        selected = if (key in selected) selected - key else selected + key
-        if (selected.isEmpty()) multiSelectMode = false
-    }
-
-    fun selectAll() {
-        selected = comics.map { it.id to it.type }.toSet()
-    }
-
-    fun invertSelection() {
-        selected = comics.map { it.id to it.type }.filterNot { it in selected }.toSet()
-    }
-
-    fun exitMultiSelect() {
-        multiSelectMode = false
-        selected = emptySet()
-    }
-
-    // endregion
-
     // region ---- 收藏夹动作 ----
 
     fun createFolder(name: String, onError: (String) -> Unit = {}) {
@@ -202,21 +166,24 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
     // endregion
 
     // region ---- 条目动作 ----
+    //
+    // 四个动作都**收 items 参数**，不读内部的多选集合：多选状态机已经统一到 UI 侧的
+    // `MultiSelectState`（四处收藏面板共用同一份，见 `components/selection/`）。
+    // ViewModel 只留"对这批条目做什么"，这样同一份实现对任何一个面板都成立。
 
-    fun deleteSelected() {
-        val items = comics.filter { (it.id to it.type) in selected }
+    fun deleteItems(items: List<FavoriteItem>) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
             if (currentFolder == LOCAL_ALL_FOLDER) {
                 manager.batchDeleteComicsInAllFolders(items)
             } else {
                 manager.batchDeleteComics(currentFolder, items)
             }
-            exitMultiSelect()
         }
     }
 
-    fun moveSelectedTo(target: String) {
-        val items = comics.filter { (it.id to it.type) in selected }
+    fun moveItemsTo(items: List<FavoriteItem>, target: String) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
             if (currentFolder == LOCAL_ALL_FOLDER) {
                 // 「全部」视图里没有源收藏夹，退化为复制到目标
@@ -224,19 +191,17 @@ class FavoritesViewModel(application: Application) : AndroidViewModel(applicatio
             } else {
                 manager.batchMoveFavorites(currentFolder, target, items)
             }
-            exitMultiSelect()
         }
     }
 
-    fun copySelectedTo(target: String) {
-        val items = comics.filter { (it.id to it.type) in selected }
+    fun copyItemsTo(items: List<FavoriteItem>, target: String) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
             if (currentFolder == LOCAL_ALL_FOLDER) {
                 manager.batchCopyFavorites(target, target, items)
             } else {
                 manager.batchCopyFavorites(currentFolder, target, items)
             }
-            exitMultiSelect()
         }
     }
 

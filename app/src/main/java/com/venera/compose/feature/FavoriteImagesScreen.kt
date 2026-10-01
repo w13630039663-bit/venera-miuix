@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,6 +48,10 @@ import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.selection.MultiSelectBarAction
+import com.venera.compose.components.selection.SelectableCardFrame
+import com.venera.compose.components.selection.VeneraMultiSelectBar
+import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.feature.favoriteimages.FavoriteImagesManager
 import com.venera.compose.ui.tokens.StatusColors
@@ -149,8 +154,6 @@ fun FavoriteImagesBody(
 
     var images by remember { mutableStateOf<List<FavoriteImageItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    /** 长按菜单当前锚定在哪张卡片；null = 未开。 */
-    var menuImage by remember { mutableStateOf<FavoriteImageItem?>(null) }
     // 大屏三列、手机两列（用户真机反馈「平板上太大了」）。
     val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
     val columnCount = if (wide) 3 else 2
@@ -165,16 +168,14 @@ fun FavoriteImagesBody(
     val ratios = remember { mutableStateMapOf<Long, Float>() }
 
     // ── 批量整理（多选）──
-    // 工具条刻意做在**本面板内部**，不塞进收藏页顶栏：顶栏归 FavoritesScreen，
+    // 与本地收藏、网络收藏、画廊收藏**共用同一份状态机**（components/selection/）：
+    // 长按 = 进多选并选中、多选态内长按 = 区间反选、选中归零 = 自动退出。
+    // 键取插图自身那行主键 id（Long）。
+    val selection = rememberMultiSelectState<Long>()
+    // 工具条做在**本面板内部**（不塞进收藏页顶栏）：顶栏归 FavoritesScreen，
     // 而它在冻结声明第三批标了验收冻结 —— 这一轮只读不改它。
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedIds by remember { mutableStateOf(setOf<Long>()) }
-    fun exitSelection() {
-        selectionMode = false
-        selectedIds = emptySet()
-    }
     // 系统返回先退多选，不要把整个收藏 tab 弹掉。
-    BackHandler(enabled = selectionMode) { exitSelection() }
+    BackHandler(enabled = selection.active) { selection.exit() }
 
     fun refresh() {
         scope.launch {
@@ -182,9 +183,8 @@ fun FavoriteImagesBody(
             images = manager.getAllFavorites()
             isLoading = false
             // 选中项可能已被删掉（含另一条入口那侧删的）—— 按最新列表收敛，别留幽灵选择。
-            selectedIds = selectedIds.intersect(images.mapTo(mutableSetOf()) { it.id })
-            // 一张不剩时自动退出多选，否则工具条挂在空列表上还报"已选择 N 项"。
-            if (images.isEmpty()) selectionMode = false
+            // 收敛到一项不剩时状态机自己退出多选，不会留下"已选择 0 项"的空工具条。
+            selection.retainAll(images.map { it.id })
         }
     }
 
@@ -202,6 +202,9 @@ fun FavoriteImagesBody(
             ) { scope.launch { gridState.animateScrollToItem(0) } }
         }
     }
+
+    // 墙上这一批的顺序，区间选要用它。整批算一次而不是每张卡各算一遍（那是 O(n²)）。
+    val visibleIds = remember(images) { images.map { it.id } }
 
     Box(modifier = modifier.fillMaxSize()) {
         when {
@@ -247,60 +250,73 @@ fun FavoriteImagesBody(
                         // 手势走 miuix Card 官方可点击重载：combinedClickable 挂在
                         // squircleSurface **里面**那一层。叠在外层会被 squircle 吞掉长按
                         // （真机实测教训，见 VeneraCard 的分层注释与冻结声明同批记录）。
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            // 多选态下点整张卡就是**勾选** —— 只让人去点那个小圆圈太费劲。
-                            // 长按菜单在多选态让位（勾完就勾完，不再叠一层弹层）。
-                            onClick = {
-                                if (selectionMode) {
-                                    selectedIds =
-                                        if (item.id in selectedIds) selectedIds - item.id
-                                        else selectedIds + item.id
-                                    if (selectedIds.isEmpty()) selectionMode = false
-                                } else {
-                                    onPreviewImage(item)
-                                }
-                            },
-                            onLongPress = { if (!selectionMode) menuImage = item },
+                        //
+                        // 选中态与选择框交给 SelectableCardFrame（四处收藏面板同一份实现）：
+                        // 长按菜单**已撤**，"从该页开始阅读 / 查看漫画详情"两个动作搬进了工具条
+                        // （只在恰好选中 1 项时出现）。原先卡片右下角那颗垃圾桶也一并撤掉 ——
+                        // 卡上摆删除钮既抢画面又极易误触，删除统一走工具条。
+                        SelectableCardFrame(
+                            selecting = selection.active,
+                            selected = selection.contains(item.id),
+                            onToggleSelect = { selection.toggle(item.id) },
                         ) {
-                            Column(modifier = Modifier.padding(tokens.spacing.space3)) {
-                                AsyncImage(
-                                    model = item.localPath.ifBlank { item.imageUrl },
-                                    contentDescription = item.comicTitle,
-                                    contentScale = ContentScale.Crop,
-                                    onSuccess = { state ->
-                                        val size = state.painter.intrinsicSize
-                                        if (size.width > 0f && size.height > 0f) {
-                                            ratios[item.id] = (size.width / size.height).coerceIn(0.4f, 2.5f)
-                                        }
-                                    },
-                                    // 与预览页那支同串 key 的共享元素（favoriteImageKey）。
-                                    // 挂链首 = 跟封面那对同一层级：外层是共享元素，内层才是尺寸与圆角。
-                                    modifier = Modifier
-                                        .coverSharedElement(
-                                            key = ComicSharedTransition.favoriteImageKey(item.id),
-                                        )
-                                        .fillMaxWidth()
-                                        .aspectRatio(
-                                            (ratios[item.id] ?: tokens.spacing.coverAspectRatio)
-                                                .let { if (wide) maxOf(it, tokens.spacing.favoriteImageMinRatio) else it }
-                                        )
-                                        .clip(RoundedCornerShape(tokens.shape.small)),
-                                )
-                                Spacer(modifier = Modifier.height(tokens.spacing.space3))
-                                Text(
-                                    text = item.comicTitle,
-                                    fontSize = tokens.type.caption,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MiuixTheme.colorScheme.onSurface,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(modifier = Modifier.height(tokens.spacing.space1))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                // 圆角跟 [VeneraCard] 同一口径（tokens.shape.card）：不传的话
+                                // miuix 自家默认是 16dp，MIUIX 模式下会比别处的卡片小一档，
+                                // 且 [SelectableCardFrame] 的洗底按 shape.card 裁就对不上了。
+                                cornerRadius = tokens.shape.card,
+                                // 多选态下点整张卡就是**勾选** —— 只让人去点那个小圆圈太费劲。
+                                onClick = {
+                                    if (selection.active) {
+                                        selection.toggle(item.id)
+                                    } else {
+                                        onPreviewImage(item)
+                                    }
+                                },
+                                // 长按：不在多选态 = 进入多选并选中；已在多选态 = 区间反选。
+                                onLongPress = {
+                                    if (selection.active) {
+                                        selection.toggleRange(item.id, visibleIds)
+                                    } else {
+                                        selection.enter(item.id)
+                                    }
+                                },
+                            ) {
+                                Column(modifier = Modifier.padding(tokens.spacing.space3)) {
+                                    AsyncImage(
+                                        model = item.localPath.ifBlank { item.imageUrl },
+                                        contentDescription = item.comicTitle,
+                                        contentScale = ContentScale.Crop,
+                                        onSuccess = { state ->
+                                            val size = state.painter.intrinsicSize
+                                            if (size.width > 0f && size.height > 0f) {
+                                                ratios[item.id] = (size.width / size.height).coerceIn(0.4f, 2.5f)
+                                            }
+                                        },
+                                        // 与预览页那支同串 key 的共享元素（favoriteImageKey）。
+                                        // 挂链首 = 跟封面那对同一层级：外层是共享元素，内层才是尺寸与圆角。
+                                        modifier = Modifier
+                                            .coverSharedElement(
+                                                key = ComicSharedTransition.favoriteImageKey(item.id),
+                                            )
+                                            .fillMaxWidth()
+                                            .aspectRatio(
+                                                (ratios[item.id] ?: tokens.spacing.coverAspectRatio)
+                                                    .let { if (wide) maxOf(it, tokens.spacing.favoriteImageMinRatio) else it }
+                                            )
+                                            .clip(RoundedCornerShape(tokens.shape.small)),
+                                    )
+                                    Spacer(modifier = Modifier.height(tokens.spacing.space3))
+                                    Text(
+                                        text = item.comicTitle,
+                                        fontSize = tokens.type.caption,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.onSurface,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Spacer(modifier = Modifier.height(tokens.spacing.space1))
                                     // 作者反查不到时留空而不拿源名顶上：宁可少一行，不摆假数据。
                                     Text(
                                         text = item.author,
@@ -308,70 +324,25 @@ fun FavoriteImagesBody(
                                         color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
-                                    if (selectionMode) {
-                                        // 勾选圈放在原先垃圾桶的位置：同一格换语义，
-                                        // 不额外占高度，也不去碰上面那支共享元素图的几何。
-                                        val checked = item.id in selectedIds
-                                        VeneraIconButton(
-                                            onClick = {
-                                                selectedIds =
-                                                    if (checked) selectedIds - item.id
-                                                    else selectedIds + item.id
-                                                if (selectedIds.isEmpty()) selectionMode = false
-                                            },
-                                            modifier = Modifier.size(tokens.spacing.space9),
-                                        ) {
-                                            Icon(
-                                                imageVector = if (checked) Icons.Filled.CheckCircle
-                                                else Icons.Outlined.Circle,
-                                                contentDescription = if (checked) "取消选择" else "选择",
-                                                tint = if (checked) tokens.color.primary
-                                                else MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(tokens.spacing.space5),
-                                            )
-                                        }
-                                    } else {
-                                        VeneraIconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    manager.removeFavorite(item.id)
-                                                    refresh()
-                                                }
-                                            },
-                                            modifier = Modifier.size(tokens.spacing.space9),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.Delete,
-                                                contentDescription = "删除",
-                                                tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(tokens.spacing.space5),
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }
-                        FavoriteImageMenu(
-                            expanded = menuImage?.id == item.id,
-                            item = item,
-                            onDismiss = { menuImage = null },
-                            onOpenComicDetail = onOpenComicDetail,
-                            onReadFromPage = onReadFromPage,
-                            onMultiSelect = {
-                                selectionMode = true
-                                selectedIds = setOf(it.id)
-                            },
-                        )
                     }
                 }
             }
         }
-        if (selectionMode) {
+        if (selection.active) {
+            val selectedItems = images.filter { it.id in selection.selected }
             // 面板内浮层工具条（不动收藏页顶栏那条冻结线）。底部留白把最后两行抬起来，
             // 否则瀑布流末尾的卡片会被它压住点不到。
-            Surface(
+            VeneraMultiSelectBar(
+                selectedCount = selection.count,
+                allSelected = visibleIds.isNotEmpty() && selection.count == visibleIds.size,
+                onExit = { selection.exit() },
+                onSelectAll = { selection.selectAll(visibleIds) },
+                onInvert = { selection.invert(visibleIds) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(
@@ -379,37 +350,36 @@ fun FavoriteImagesBody(
                         end = tokens.spacing.screenHorizontal,
                         bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
                     ),
-                shape = RoundedCornerShape(tokens.shape.large),
-                color = MiuixTheme.colorScheme.surfaceVariant,
             ) {
-                Row(
-                    modifier = Modifier.padding(
-                        start = tokens.spacing.space5,
-                        end = tokens.spacing.space2,
-                        top = tokens.spacing.space1,
-                        bottom = tokens.spacing.space1,
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "已选择 ${selectedIds.size} 项",
-                        fontSize = tokens.type.caption,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    VeneraTextButton(
-                        text = if (selectedIds.size == images.size) "取消全选" else "全选",
+                // 「从该页开始阅读 / 查看漫画详情」是**单张**才有意义的动作：
+                // 恰好选中 1 项时它们才上条。这两个动作原先在长按菜单里，而长按已经归多选所有
+                // （四处收藏面板统一），所以搬到这里 —— 动作没丢，入口跟着多选走。
+                if (selectedItems.size == 1) {
+                    val one = selectedItems.first()
+                    MultiSelectBarAction(
+                        icon = Icons.Outlined.MenuBook,
+                        label = "从该页阅读",
                         onClick = {
-                            selectedIds = if (selectedIds.size == images.size) emptySet()
-                            else images.mapTo(mutableSetOf()) { it.id }
+                            selection.exit()
+                            onReadFromPage(one)
                         },
                     )
-                    VeneraTextButton(
-                        text = "移除",
-                        destructive = true,
+                    MultiSelectBarAction(
+                        icon = Icons.Outlined.Info,
+                        label = "详情",
                         onClick = {
-                            val ids = selectedIds.toList()
-                            if (ids.isEmpty()) return@VeneraTextButton
+                            selection.exit()
+                            onOpenComicDetail(one)
+                        },
+                    )
+                }
+                MultiSelectBarAction(
+                    icon = Icons.Outlined.Delete,
+                    label = "移除",
+                    destructive = true,
+                    onClick = {
+                        val ids = selectedItems.map { it.id }
+                        if (ids.isNotEmpty()) {
                             scope.launch {
                                 // 如实报数：removeFavorites 返回真正删掉的行数，0 就是没删成，
                                 // 不能照旧弹「已移除」（那是假反馈）。
@@ -419,13 +389,12 @@ fun FavoriteImagesBody(
                                     if (removed > 0) "已移除 $removed 张插图收藏" else "移除失败",
                                     Toast.LENGTH_SHORT,
                                 ).show()
-                                exitSelection()
+                                selection.exit()
                                 refresh()
                             }
-                        },
-                    )
-                    VeneraTextButton(text = "关闭", onClick = { exitSelection() })
-                }
+                        }
+                    },
+                )
             }
         }
     }
@@ -587,70 +556,5 @@ fun FavoriteImagePreviewScreen(
                 }
             }
         }
-    }
-}
-
-/**
- * 插图卡片长按菜单：把「这一页」还原成两个可去的去处。
- *
- * 菜单锚在**被长按的那一格**上（逐项各挂一个 DropdownMenu）；共用一个锚会从第一格弹出，
- * 详情页的标签长按已经踩过这个坑。
- *
- * 「从该页开始阅读」带的是收藏时记下的章节标题与页码 —— 章节 **id** 并没有入库，
- * 所以由详情页解析出章节目录后按标题找回，见 Navigation.kt 的 ReadTarget。
- */
-@Composable
-private fun FavoriteImageMenu(
-    expanded: Boolean,
-    item: FavoriteImageItem,
-    onDismiss: () -> Unit,
-    onOpenComicDetail: (FavoriteImageItem) -> Unit,
-    onReadFromPage: (FavoriteImageItem) -> Unit,
-    onMultiSelect: (FavoriteImageItem) -> Unit,
-) {
-    if (!expanded) return
-    val tokens = VeneraTokens
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = {
-                Column {
-                    Text(
-                        text = "从该页开始阅读",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textPrimary,
-                    )
-                    Text(
-                        text = "${item.chapterTitle} · 第 ${item.pageIndex + 1} 页",
-                        fontSize = tokens.type.overline,
-                        color = tokens.color.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            },
-            onClick = { onDismiss(); onReadFromPage(item) },
-        )
-        DropdownMenuItem(
-            text = {
-                Text(
-                    text = "查看漫画详情",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textPrimary,
-                )
-            },
-            onClick = { onDismiss(); onOpenComicDetail(item) },
-        )
-        // 进多选的入口挂在长按菜单里：长按已经归"操作菜单"所有，不能再拿长按当多选开关，
-        // 而卡片本身在多选态下整卡可勾，所以这里只需要一个"起手"入口。
-        DropdownMenuItem(
-            text = {
-                Text(
-                    text = "多选",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textPrimary,
-                )
-            },
-            onClick = { onDismiss(); onMultiSelect(item) },
-        )
     }
 }
