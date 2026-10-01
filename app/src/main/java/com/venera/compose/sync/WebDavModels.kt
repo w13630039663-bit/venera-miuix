@@ -36,7 +36,17 @@ data class BackupSummary(
      * 归档带着本机没装的漫画源，其 `type` 是个反查不到 key 的 Dart 哈希。
      * 沉默地少导入几条，用户只会以为"备份是坏的"。
      */
-    val foreignSkipped: Int = 0
+    val foreignSkipped: Int = 0,
+    /**
+     * 恢复到的插图收藏张数（只有元数据与地址，那份去混淆的位图不在归档里）。
+     * 与 [guardRulesSkipped] 一样刻意**不给默认值**：漏传不报错的新参数，
+     * 下一笔恢复就会静默报成"一张也没进来"。
+     */
+    val imageFavoriteCount: Int,
+    /** 恢复到的画廊收藏条数。 */
+    val galleryFavoriteCount: Int,
+    /** 恢复到的关注画师数。 */
+    val galleryFollowCount: Int
 ) {
     /** 跳过要说得出：静默少恢复几条，用户只会以为"屏蔽不知怎么失效了"。 */
     val skippedNotice: String?

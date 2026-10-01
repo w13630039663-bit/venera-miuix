@@ -269,8 +269,9 @@ fun SyncBackupScreen(
                                         val res = syncManager.restoreFromWebDav()
                                         isOperating = false
                                         if (res.isSuccess) {
-                                            val sum = res.getOrNull()!!
-                                            Toast.makeText(context, "云端恢复成功！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部" + (sum.skippedNotice?.let { "。$it" } ?: ""), Toast.LENGTH_LONG).show()
+                                            // 与设置页共用同一句结果文案：这里曾硬编码"历史 + 收藏"两项，
+                                            // 归档多带一栏就只在一个入口看得见，另一处会一直少说。
+                                            Toast.makeText(context, BackupTransfers.describeResult(res.getOrNull()!!), Toast.LENGTH_LONG).show()
                                         } else {
                                             Toast.makeText(context, "恢复失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                         }
@@ -305,7 +306,8 @@ fun SyncBackupScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(text = "本地归档文件 (.venera)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text(text = "无需网络。可导入本应用备份，也可导入官方 Venera / PicaComic 的归档", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "含阅读历史、漫画收藏与收藏夹、画廊收藏、关注画师、插图收藏的地址、阅读统计、屏蔽规则", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "无需网络。可导入本应用备份，也可导入官方 Venera / PicaComic 的归档（那两种只带漫画收藏与历史）", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
                         }
 

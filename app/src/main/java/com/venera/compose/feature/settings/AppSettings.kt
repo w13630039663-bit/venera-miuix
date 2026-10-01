@@ -210,11 +210,11 @@ fun AppSettings(
                     }
                 },
             )
-            // 备份包只含四张表（history/favorite/stats/guard_rules），文案不许超过这个覆盖面。
+            // 覆盖面以 BackupManager 类注释那张表为准（九个成员），文案不许超过它。
             SettingsAction(
                 "导出数据",
-                "自己选保存位置。导出阅读历史、收藏、阅读统计、屏蔽规则，" +
-                    "不包括偏好设置、Cookie 和已装的漫画源",
+                "自己选保存位置。导出阅读历史、漫画收藏、画廊收藏与关注画师、插图收藏的地址、" +
+                    "阅读统计、屏蔽规则，不包括偏好设置、Cookie、已装的漫画源和收藏里那些图片文件本身",
                 enabled = !busy,
                 onClick = { exportLauncher.launch(BackupTransfers.suggestedFileName()) }
             )

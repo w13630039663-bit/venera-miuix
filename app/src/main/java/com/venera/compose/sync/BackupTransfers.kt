@@ -27,7 +27,7 @@ object BackupTransfers {
     /** 导出面板里的默认文件名（用户可改）。扩展名与 BackupManager 产物保持一致。 */
     fun suggestedFileName(): String = "venera_backup_${timestampFormat.format(Date())}.venera"
 
-    /** 备份包只含 history / favorite / stats / guard_rules 四张表，导入前先让用户知道覆盖面。 */
+    /** 备份包含九类成员（历史 / 漫画收藏与收藏夹 / 阅读统计 / 屏蔽规则 / 插图收藏 / 画廊关注与收藏 / 元信息），见 [BackupManager] 的表。 */
     suspend fun exportBackupTo(context: Context, dest: Uri): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val packed = BackupManager.getInstance(context).exportBackup().getOrThrow()
@@ -108,6 +108,9 @@ object BackupTransfers {
             add("历史 ${summary.historyCount} 条")
             add("收藏 ${summary.favoriteCount} 部")
             if (summary.folderCount > 0) add("收藏夹 ${summary.folderCount} 个")
+            if (summary.imageFavoriteCount > 0) add("插图收藏 ${summary.imageFavoriteCount} 张（图不带，按地址重新加载）")
+            if (summary.galleryFavoriteCount > 0) add("画廊收藏 ${summary.galleryFavoriteCount} 条")
+            if (summary.galleryFollowCount > 0) add("关注画师 ${summary.galleryFollowCount} 位")
             if (summary.statsCount > 0) add("统计 ${summary.statsCount} 条")
             if (summary.guardRulesCount > 0) add("屏蔽规则 ${summary.guardRulesCount} 条")
         }

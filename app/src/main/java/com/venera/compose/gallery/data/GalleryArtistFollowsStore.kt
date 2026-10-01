@@ -82,7 +82,31 @@ class GalleryArtistFollowsStore private constructor(private val context: Context
         return adding
     }
 
-    private suspend fun persist(list: List<GalleryArtistFollow>) = withContext(Dispatchers.IO) {
+    /**
+     * 合并一份名单进来（备份恢复），返回**真正新增**的条数。
+     *
+     * 恢复必须走这里、不能直接把 JSON 写回那个文件：屏上读的是 [_follows] 这份内存，
+     * 绕过 store 会让"导入报了成功"和"首页那排入口还是空的"同时成立 —— 那只是把
+     * 缺失往后推一格，跟当年收藏直接写 SQL 那张没人读的表是同一个根因。
+     *
+     * 去重与定序沿用 [GalleryArtistFollows] 既有判据（同一条留**较早**那次关注，不重掷时间戳），
+     * 所以本机已经关注过的人不会因为导入被顶到名单最前。
+     */
+    suspend fun restore(incoming: List<GalleryArtistFollow>): Int {
+        if (incoming.isEmpty()) return 0
+        val known = _follows.value.mapTo(HashSet()) { it.uid }
+        val merged = GalleryArtistFollows.sorted(GalleryArtistFollows.dedupe(_follows.value + incoming))
+        val added = merged.count { it.uid !in known }
+        if (added == 0) return 0
+        // 先落盘、后换内存：盘没写成就整笔退回，不留"屏上已经有了、重启就没了"那种半截状态。
+        // 恢复这条路要比普通关注更硬 —— 一次导入可能几十位画师，全丢了是实打实的损失。
+        if (!persist(merged)) throw java.io.IOException("关注名单没能写进磁盘（${file.absolutePath}），本次恢复未生效")
+        _follows.value = merged
+        return added
+    }
+
+    /** 落盘是否成功。普通关注/取关沿用旧行为（失败只在下次冷启动显现），恢复那条路会把它当错误抛出。 */
+    private suspend fun persist(list: List<GalleryArtistFollow>): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
             tmp.writeText(json.encodeToString(list.map { it.toEntry() }))
@@ -90,7 +114,7 @@ class GalleryArtistFollowsStore private constructor(private val context: Context
                 tmp.delete()
                 throw java.io.IOException("关注名单档改名失败：${file.absolutePath}")
             }
-        }
+        }.isSuccess
     }
 
     private fun readFromDisk() {

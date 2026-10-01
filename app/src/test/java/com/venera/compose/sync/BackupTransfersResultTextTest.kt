@@ -23,6 +23,9 @@ class BackupTransfersResultTextTest {
         guards: Int = 0,
         guardSkipped: Int = 0,
         foreignSkipped: Int = 0,
+        imageFavorites: Int = 0,
+        galleryFavorites: Int = 0,
+        galleryFollows: Int = 0,
     ) = BackupSummary(
         historyCount = history,
         favoriteCount = favorite,
@@ -33,6 +36,9 @@ class BackupTransfersResultTextTest {
         origin = origin,
         folderCount = folders,
         foreignSkipped = foreignSkipped,
+        imageFavoriteCount = imageFavorites,
+        galleryFavoriteCount = galleryFavorites,
+        galleryFollowCount = galleryFollows,
     )
 
     @Test
@@ -50,17 +56,34 @@ class BackupTransfersResultTextTest {
         assertFalse(text, text.contains("统计"))
         assertFalse(text, text.contains("屏蔽规则"))
         assertFalse(text, text.contains("收藏夹"))
+        assertFalse(text, text.contains("插图收藏"))
+        assertFalse(text, text.contains("画廊收藏"))
+        assertFalse(text, text.contains("关注画师"))
     }
 
     @Test
     fun `非零的计数一个都不能漏`() {
         val text = BackupTransfers.describeResult(
-            summary(folders = 3, stats = 5, guards = 7, guardSkipped = 2)
+            summary(
+                folders = 3, stats = 5, guards = 7, guardSkipped = 2,
+                imageFavorites = 4, galleryFavorites = 6, galleryFollows = 2,
+            )
         )
         assertTrue(text, text.contains("收藏夹 3 个"))
         assertTrue(text, text.contains("统计 5 条"))
         assertTrue(text, text.contains("屏蔽规则 7 条"))
+        assertTrue(text, text.contains("插图收藏 4 张"))
+        assertTrue(text, text.contains("画廊收藏 6 条"))
+        assertTrue(text, text.contains("关注画师 2 位"))
         assertTrue(text, text.contains("另有 2 条屏蔽规则写法有误"))
+    }
+
+    @Test
+    fun `插图收藏要顺带说明图本身不带`() {
+        // 恢复出来的那批是按 image_url 现加载的，不写明就会让人以为包里有图、
+        // 离线打不开是备份坏了。
+        val text = BackupTransfers.describeResult(summary(imageFavorites = 4))
+        assertTrue(text, text.contains("按地址重新加载"))
     }
 
     @Test

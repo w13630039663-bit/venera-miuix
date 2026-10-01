@@ -22,7 +22,7 @@ import java.util.zip.ZipFile
  *
  * ## 为什么要单独一条链路
  *
- * 本仓自有的 `.venera` 装的是六个 JSON（见 [BackupManager]），而官方 Venera 的 `.venera`
+ * 本仓自有的 `.venera` 装的是九个成员（八个数据 JSON 加一份元信息，见 [BackupManager]），而官方 Venera 的 `.venera`
  * 装的是 SQLite 文件：`appdata.json` / `history.db` / `local_favorite.db` / `cookie.db`，
  * 外加 `comic_source/` 目录下的源文件。
  * PicaComic 的 `.picadata` 又是另一套：`appdata`（无扩展名）/ `local_favorite.db` /
@@ -36,6 +36,8 @@ import java.util.zip.ZipFile
  *   与官方 `image_favorites(id, ep, page, title, ...)` 的形状对不上，硬塞进去只会得到一堆打不开的图。
  * - `cookie.db` / `cookies.db`：登录态。两个应用的 Cookie 库结构不同，而且认证本来就应该在新设备上重来。
  * - `appdata.json` / `appdata`：偏好设置。本仓的设置项与官方并非一一对应，照搬会产生一堆"看起来设置了其实没生效"的开关。
+ * - **画廊的关注名单与画廊收藏**：画廊是本分支独有的模块（yande.re / Gelbooru / Safebooru 三个图站），
+ *   上游归档里压根没有对应物，不是"没做映射"。本仓自己导出的包才带这两栏。
  *
  * ## 口径是「逐条合并」，不是「覆盖库文件」
  *
@@ -74,6 +76,11 @@ class ForeignArchiveImport private constructor(private val context: Context) {
             origin = origin,
             folderCount = folderCount,
             foreignSkipped = favoriteSkipped + historySkipped,
+            // 这三栏只有本仓自有归档才有（画廊无上游对应物、官方 image_favorites 表形状对不上），
+            // 显式写 0 而不是留默认值：默认值会让"漏传"和"确实一条没有"在文案里长得一模一样。
+            imageFavoriteCount = 0,
+            galleryFavoriteCount = 0,
+            galleryFollowCount = 0,
         )
     }
 

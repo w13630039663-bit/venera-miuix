@@ -206,7 +206,31 @@ class GalleryFavoritesStore private constructor(private val context: Context) {
         persist(emptyList())
     }
 
-    private suspend fun persist(list: List<GalleryFavorite>) = withContext(Dispatchers.IO) {
+    /**
+     * 合并一份收藏进来（备份恢复），返回**真正新增**的条数。
+     *
+     * 与 [GalleryArtistFollowsStore.restore] 同一条必要性：这份内存列表是唯一事实源，
+     * 直接改盘会让收藏页在重启前一直是空的。
+     *
+     * 本机已有的那一条**保持原样**（连 `saved_at` 也不覆盖）：收藏时刻是用户在这台机器上
+     * 攒下的事实，拿归档里另一个时刻盖掉它，等于改了他的历史。
+     */
+    suspend fun restore(incoming: List<GalleryFavorite>): Int {
+        val known = _favorites.value.mapTo(HashSet()) { it.uid }
+        val fresh = incoming
+            .filter { it.site != null && it.id != 0L }
+            .distinctBy { it.uid }
+            .filterNot { it.uid in known }
+        if (fresh.isEmpty()) return 0
+        val merged = (_favorites.value + fresh).sortedByDescending { it.savedAt }
+        // 先落盘再换内存：盘没写成整笔退回，不留"收藏页当帧就有了、重启就没"这种半截状态。
+        if (!persist(merged)) throw java.io.IOException("画廊收藏没能写进磁盘（${file.absolutePath}），本次恢复未生效")
+        _favorites.value = merged
+        return fresh.size
+    }
+
+    /** 落盘是否成功。收藏/取消沿用旧行为（失败到下次冷启动才显现），恢复那条路把它当错误抛出。 */
+    private suspend fun persist(list: List<GalleryFavorite>): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             // 先写临时文件再改名：写到一半被杀（进程回收、闪退）不会把已有收藏截断成半个 JSON。
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
@@ -215,7 +239,7 @@ class GalleryFavoritesStore private constructor(private val context: Context) {
                 tmp.delete()
                 throw java.io.IOException("收藏档改名失败：${file.absolutePath}")
             }
-        }
+        }.isSuccess
     }
 
     private fun readFromDisk() {

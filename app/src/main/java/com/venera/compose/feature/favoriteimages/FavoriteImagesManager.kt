@@ -22,6 +22,72 @@ import java.io.FileOutputStream
  * （`could not find any NavType for argument item ... typeMap received was {}`），
  * 表现为冷启动即闪。载荷放 `VeneraShellViewModel` 的表里，路由只带行 id。
  */
+/**
+ * 插图收藏在备份归档里的那一行。
+ *
+ * 只有七列，且**没有 `id` 与 `local_path`**：前者是设备本地的自增主键，后者指向的是
+ * 那台机器上那份去混淆后的位图副本 —— 换台机器它就是条不存在的路径，而收藏墙和大图的
+ * 取图口径是 `localPath.ifBlank { imageUrl }`（`FavoriteImagesScreen`）。把路径带上，
+ * 等于亲手把"按 URL 现加载"这条唯一还能走的路堵死。落库时 `local_path` 写空串。
+ */
+data class ImageFavoriteBackupRow(
+    val comicId: String,
+    val comicTitle: String,
+    val sourceName: String,
+    val chapterTitle: String,
+    val pageIndex: Int,
+    val imageUrl: String,
+    val createdAt: Long,
+)
+
+/**
+ * 上面那行的**编解码判据**（纯 JVM，不碰 SQLite、不碰 org.json）。
+ *
+ * 单测没有 Robolectric，`FavoriteImagesManager` 那一半在 JVM 里根本跑不起来，而会
+ * **静默出错**的恰好是这一层：列名对不上不抛异常，只会恢复出一批打不开的条目。
+ */
+internal object ImageFavoriteBackupRows {
+
+    fun toMap(row: ImageFavoriteBackupRow): Map<String, Any?> = mapOf(
+        "comic_id" to row.comicId,
+        "comic_title" to row.comicTitle,
+        "source_name" to row.sourceName,
+        "chapter_title" to row.chapterTitle,
+        "page_index" to row.pageIndex,
+        "image_url" to row.imageUrl,
+        "created_at" to row.createdAt,
+    )
+
+    /**
+     * 归档行 → 落库行。地址为空（或整行缺 `image_url`）时返回 null：
+     * 那样一行既加载不出图、也去不了重（`image_url` 就是这一路的身份键），
+     * 进了库就是一行看不见也删不掉的记录。
+     */
+    fun fromMap(row: Map<String, Any?>): ImageFavoriteBackupRow? {
+        val url = row.string("image_url")
+        if (url.isBlank()) return null
+        return ImageFavoriteBackupRow(
+            comicId = row.string("comic_id"),
+            comicTitle = row.string("comic_title"),
+            sourceName = row.string("source_name"),
+            chapterTitle = row.string("chapter_title"),
+            pageIndex = row.int("page_index"),
+            imageUrl = url,
+            createdAt = row.long("created_at").takeIf { it > 0 } ?: System.currentTimeMillis(),
+        )
+    }
+
+    private fun Map<String, Any?>.string(key: String): String = this[key] as? String ?: ""
+
+    private fun Map<String, Any?>.int(key: String): Int = long(key).toInt()
+
+    private fun Map<String, Any?>.long(key: String): Long = when (val value = this[key]) {
+        is Number -> value.toLong()
+        is String -> value.trim().toLongOrNull() ?: 0L
+        else -> 0L
+    }
+}
+
 data class FavoriteImageItem(
     val id: Long,
     val comicId: String,
@@ -184,6 +250,77 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         } catch (_: Exception) {
             false
         }
+    }
+
+    /**
+     * 导出备份用的那几列。刻意不用 `SELECT *`：`id` 和 `local_path` 是本地状态，
+     * 见 [ImageFavoriteBackupRow] 的说明。
+     */
+    suspend fun exportBackupRows(): List<ImageFavoriteBackupRow> = withContext(Dispatchers.IO) {
+        val out = mutableListOf<ImageFavoriteBackupRow>()
+        val cursor = dbHelper.readableDatabase.rawQuery(
+            "SELECT comic_id, comic_title, source_name, chapter_title, page_index, image_url, created_at" +
+                " FROM favorite_images ORDER BY created_at DESC",
+            null,
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                out += ImageFavoriteBackupRow(
+                    comicId = it.getString(0) ?: "",
+                    comicTitle = it.getString(1) ?: "",
+                    sourceName = it.getString(2) ?: "",
+                    chapterTitle = it.getString(3) ?: "",
+                    pageIndex = it.getInt(4),
+                    imageUrl = it.getString(5) ?: "",
+                    createdAt = it.getLong(6),
+                )
+            }
+        }
+        out
+    }
+
+    /**
+     * 恢复插图收藏（备份导入），返回**真正新增**的条数。
+     *
+     * `local_path` 一律写空串，让收藏墙按 `image_url` 现加载（`ifBlank` 那条回落）——
+     * 归档里本来就没有那份位图。`created_at` 用归档里的原值，否则恢复完整个收藏墙的顺序
+     * 会变成"导入的这批全在最前"。
+     *
+     * 去重键是 `image_url`，与 [isFavorited] 用的同一个：同一页被重复导入会在墙上摆两张，
+     * 而大图页的心形按钮按地址判定"在不在收藏里"，那时它对两张都显示已收藏，删一张另一张还在。
+     */
+    suspend fun restoreBackupRows(rows: List<ImageFavoriteBackupRow>): Int = withContext(Dispatchers.IO) {
+        if (rows.isEmpty()) return@withContext 0
+        val db = dbHelper.writableDatabase
+        val known = HashSet<String>()
+        db.rawQuery("SELECT image_url FROM favorite_images", null).use { c ->
+            while (c.moveToNext()) c.getString(0)?.let { known += it }
+        }
+        var added = 0
+        db.beginTransaction()
+        try {
+            for (row in rows) {
+                if (!known.add(row.imageUrl)) continue
+                // insert 返回 -1 是失败而不是抛异常（SQLite 只打日志），这里不退成 -1 就没人知道少了一张。
+                // 事务里当场抛出 = 整笔不提交，比"报成功但少几条"好。
+                val inserted = db.insert("favorite_images", null, ContentValues().apply {
+                    put("comic_id", row.comicId)
+                    put("comic_title", row.comicTitle)
+                    put("source_name", row.sourceName)
+                    put("chapter_title", row.chapterTitle)
+                    put("page_index", row.pageIndex)
+                    put("image_url", row.imageUrl)
+                    put("local_path", "")
+                    put("created_at", row.createdAt)
+                })
+                if (inserted < 0) throw android.database.SQLException("插图收藏落库失败：${row.imageUrl}")
+                added++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        added
     }
 
     /**

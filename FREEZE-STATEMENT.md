@@ -2701,3 +2701,47 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 ### 验证
 
 `:app:testDebugUnitTest` 672/0/0（新增 SettingsHeroImageStoreTest + QuotePoolTest）；`:app:assembleDebug` 通过。
+
+## 备份范围扩展 · 画廊与插图收藏（2026-10-01，归档格式 v5；方案文档 `backup-scope-gallery-2026-10-01.md`）
+
+需求：「看下现在的备份功能，加上画廊关注画师、收藏页面、阅读统计」。逐项回代码核对后的事实先记在这里，防止后续会话再猜一遍：
+
+- **阅读统计本来就在备份里**（`stats.json` ← `reading_stats`），统计页每个读数都从这张表现算，所以整页跟着走 —— 用户列的三项里这一项是"以为缺"。
+- 收藏页四栏中，**漫画收藏已进**（含收藏夹清单与网络夹绑定）、**网络收藏在源侧**不需要进、**画廊收藏**与**画廊关注名单**没进。
+- `BackupManager` 旧类注释里"排除插图收藏的理由是库里只登记了本地路径"是**错的**：`favorite_images` 建表就有 `image_url NOT NULL`。真实带不走的只有那份去混淆位图与指向它的 `local_path`。
+
+### 用户拍板的三个分叉
+
+1. 画廊侧 = **关注名单 + 画廊收藏都进**。
+2. 画师头像地址档（`gallery_artist_avatars.json`）= **不进**（可随时重取的解析结果，不是用户攒下的关系；代价是新设备首开关注面板要重发 2~4 笔 JSON）。
+3. 插图收藏 = **进元数据 + 地址，图不带**（带图会让包体按张数线性膨胀）。代价明写：恢复后按 `image_url` 现加载 —— 禁漫那批画质受降采样、EH 那类临时签名地址几天后 403、离线是裂图。
+
+### 结构
+
+- 三个新 member：`image_favorites.json` / `gallery_follows.json` / `gallery_favorites.json`；`meta.json` 补三个计数，`FavoriteBackupRows.CURRENT_VERSION` **4 → 5**。
+- 版本号**不参与导入判据**（导入侧对缺 member 取空），所以 v4 包在新版全量恢复、v5 包在旧版不会炸，只是各自少几栏。
+- 画廊那两栏的归档字段名与 filesDir 上的磁盘档**逐字一致** —— `sync/GalleryBackupRows.kt` 直接复用 `GalleryFavorite` 那个 `@Serializable` 类，不另立 22 字段的映射表（两处口径可以各自漂移，而漂移没有任何一条错误会指向它）。
+- 插图那一栏走 `feature/favoriteimages/ImageFavoriteBackupRows.kt`，导出用**显式七列**而不是 `exportTableToJson`（那是 `SELECT *`，会把 `id` 与 `local_path` 一起打进包；收藏墙的取图口径是 `localPath.ifBlank { imageUrl }`，路径带上就等于把按地址加载这条活路堵死）。
+
+### 语义钉死
+
+- **恢复一律走各自的 store / manager 单例**，不直接改文件也不直接写 SQL：`GalleryFavoritesStore.restore()` / `GalleryArtistFollowsStore.restore()` / `FavoriteImagesManager.restoreBackupRows()`。内存那份才是运行期被读的事实源 —— 这与本轮之前收藏那次「写了一张没人读的表」是同一条根因。
+- 合并而非覆盖：关注名单沿用 `GalleryArtistFollows.dedupe`（同一条留**较早**那次关注，导入不许把人顶到最前）；画廊收藏本机已有的一条**保持原样**（连 `saved_at` 都不被归档里的时刻盖掉）；插图收藏按 `image_url` 去重（与 `isFavorited` 同一个身份键），`created_at` 用归档原值。
+- **缺档与坏档是两件事**：member 不存在 ⇒ 空列表；member 存在但解不开 ⇒ 抛出，整笔导入在动任何一处存储之前失败。
+- **落盘失败只收紧在恢复这条路**：画廊两个 store 的 `persist` 原本 `runCatching` 丢掉失败（普通点一颗心，失败只是下次冷启动重新点，可接受）。`restore()` 改成**先落盘、写成了才换内存那份列表**，落不进盘抛 `IOException` —— 一次导入几十条的损失不能只在重启后显现。`SQLiteDatabase.insert` 失败是返回 **-1 而不抛异常**，所以插图那一路显式判 `< 0` 并在事务里抛出 = 整笔不提交。
+- 认不出的站点键（如 `pixiv`）与 `id == 0` 的行当场摘掉，不退化成"当成某一站"。
+
+### 顺带修正
+
+- `BackupSummary.folderCount` 此前在**本仓自有归档**那条恢复路径上漏传（走默认值 0），所以设置页从来没报过"收藏夹 N 个" —— 本轮补传。
+- `SyncBackupScreen` 云端恢复成功的 Toast 原本硬编码"历史 + 收藏"两项，与设置页各写一套；统一改走 `BackupTransfers.describeResult`，否则新增的几栏永远只在一个入口出现。
+- 恢复插图收藏时 `local_path` 写空串、`created_at` 用原值；`restoreBackupRows` 的事务在 `venera_core.db` 那笔主事务**结束之后**（同库嵌套事务会抛）。
+
+### 未动
+
+`WebDavSyncManager`（它调的就是 `BackupManager` 那两上出口，新内容自动进包）、`ForeignArchiveImport` 的导入范围（画廊无上游对应物；官方 `image_favorites` 表形状仍对不上，属另一轮）、`FavoritesScreen` / `NetworkFavoritesScreen` / `HomeScreen`（🧊 冻结，本轮根本不需要它们）、`favorite_images` 建表与迁移。
+
+### 验证
+
+`:app:compileDebugKotlin` + `:app:testDebugUnitTest --tests "com.venera.compose.sync.*" --tests "com.venera.compose.feature.favoriteimages.*"` 通过（`GalleryBackupRowsTest` 9 条、`ImageFavoriteBackupRowsTest` 5 条、`BackupTransfersResultTextTest` 6 条，全绿）。新增两个测试**未登记进 `_probe/l0/run-judgment-tests.sh`**：`GalleryFavorite` 与 `GalleryArtistFollowsStore` 同文件，那文件 import `android.content.Context`，纯 JVM 单跑编译不过。
+真机未验（要看的是：导入后关注面板与画廊收藏页**不经重启**当帧补齐；插图收藏那批按地址能不能真显示出图）。

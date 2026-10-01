@@ -20,8 +20,15 @@ import com.venera.compose.data.db.LocalFavoriteDatabase
  */
 internal object FavoriteBackupRows {
 
-    /** 备份归档格式版本，写进 `meta.json`。 */
-    const val CURRENT_VERSION = 4
+    /**
+     * 备份归档格式版本，写进 `meta.json`。
+     *
+     * v5：新增 `image_favorites.json` / `gallery_follows.json` / `gallery_favorites.json` 三栏。
+     * 这个数只是"这份包是什么形状"的记录，**不参与导入判据**：导入侧对缺 member 取空，
+     * 所以旧版应用读 v5 包不会炸（它根本不查那三个 member），新版读 v4 包照样全量恢复
+     * （只是不含画廊与插图）。真正靠版本号撑住兼容的是收藏那一栏的旧列名，见 [FavoriteBackupRows.decode]。
+     */
+    const val CURRENT_VERSION = 5
 
     /** 一条收藏 → 备份行。 */
     fun encode(item: FavoriteItem, folder: String): Map<String, Any?> = mapOf(

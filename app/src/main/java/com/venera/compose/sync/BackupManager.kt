@@ -6,6 +6,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.feature.favoriteimages.FavoriteImagesManager
+import com.venera.compose.feature.favoriteimages.ImageFavoriteBackupRows
+import com.venera.compose.gallery.data.GalleryArtistFollowsStore
+import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,8 +27,34 @@ import java.util.zip.ZipOutputStream
  *
  * 核心特性：
  * 1. 一键全量打包导出为标准 `.venera` 归档文件
- * 2. 包含阅读历史、本地收藏、阅读统计、屏蔽规则与设置
- * 3. 跨设备双向无损还原
+ * 2. 跨设备双向还原
+ *
+ * ## 一份归档里有什么（9 个 member，格式版本 5）
+ *
+ * | member | 内容 | 事实源 |
+ * | --- | --- | --- |
+ * | `meta.json` | 格式版本、导出时刻、各类条数 | —— |
+ * | `history.json` | 阅读历史与已读进度 | `comic_history` |
+ * | `favorites.json` | 漫画收藏条目 | `local_favorite.db`（一夹一表） |
+ * | `favorite_folders.json` | 收藏夹清单、顺序、网络夹绑定 | 同上 |
+ * | `stats.json` | 阅读统计（时长 / 页数 / 日期） | `reading_stats` |
+ * | `guard_rules.json` | 屏蔽规则 | `content_guard_rules` |
+ * | `gallery_follows.json` | 画廊关注画师名单 | `filesDir/gallery_artist_follows.json` |
+ * | `gallery_favorites.json` | 画廊收藏（含地址与尺寸，离线也能铺出收藏页） | `filesDir/gallery_favorites.json` |
+ * | `image_favorites.json` | 插图收藏的**元数据 + 地址** | `favorite_images` |
+ *
+ * 统计页与首页摘要卡上的每个读数都是从 `reading_stats` 现算的，所以这张表进包 = 整页统计复现。
+ *
+ * ## 仍然不进包的东西，以及各自真实的理由
+ *
+ * - **插图收藏的那份图片文件**：包里只带元数据与 `image_url`，恢复后按地址现加载。
+ *   不带图是因为一份归档要能分享出去，而整页原图按收藏张数线性膨胀。真实代价明写着：
+ *   禁漫那批画质受降采样影响、EH 那类动态源解析出的地址带临时签名（几天后 403）、离线时是裂图。
+ *   被排除的是**图片字节**与那条指向它的 `local_path`，不是整行记录。
+ * - **画师头像地址档**（`gallery_artist_avatars.json`）：可随时重取的解析结果，不是用户攒下的关系。
+ *   代价是新设备第一次打开关注面板要为一位画师重发 2~4 笔 JSON。
+ * - **画廊的 Feed 缓存与标签词典**：都可再生。
+ * - `comic_source`（已安装源）、偏好设置、Cookie 登录态、下载任务与下载下来的图片。
  *
  * **收藏这一路必须走 [LocalFavoritesManager]，不能直接写 SQL。**
  * 早期版本读写的是 `venera_core.db` 里的单表 `comic_favorite`，而那张表在
@@ -34,14 +64,18 @@ import java.util.zip.ZipOutputStream
  * 走 Manager 还有第二个必要性：它每次写完会 `notifyChanged()` 刷新 `folders`/`counts` 缓存，
  * 直接写库的话恢复出来的收藏要等重启才看得见 —— 那只是把"看不见"往后推了一格。
  *
- * 跨库的原子性限制（是结构不是遗漏）：收藏在 `local_favorite.db`，历史/统计/屏蔽在
- * `venera_core.db`，两个 SQLite 文件不可能共用一个事务。所以先把整包解析进内存
- * （格式不认识就在**动库之前**失败），再分两笔写。收藏那半中途失败时重跑一次导入即可补齐 ——
- * [LocalFavoritesManager.addComic] 对已存在的条目返回 false，不会写重。
+ * 跨库的原子性限制（是结构不是遗漏）：收藏在 `local_favorite.db`，历史/统计/屏蔽/插图在
+ * `venera_core.db`，画廊那两份是 `filesDir` 下的 JSON 档 —— 三者不可能共用一个事务。所以先把整包
+ * 解析进内存（格式不认识就在**动任何一处存储之前**失败），再分四段写：核心库一笔事务 →
+ * 收藏与夹子（另一库）→ 插图收藏（核心库第二笔，同库嵌套事务会抛）→ 画廊两块。
+ * 中途失败时重跑一次导入即可补齐 —— [LocalFavoritesManager.addComic] 对已存在的条目返回 false，
+ * 画廊与插图那三路也各自按身份键去重，都不会写重。
  *
- * 备份**不含**的东西，如实列在这里：`favorite_images`（插图收藏）在库里只登记了本地路径，
- * 归档里并没有那些图片文件，导进去就是一列表打不开的图；`comic_source`（已安装源）
- * 属于设备本地状态。
+ * **画廊那两块也必须走 store 单例，理由与上面同一条、只是换了一层。**
+ * `GalleryFavoritesStore` / `GalleryArtistFollowsStore` 的内存 `StateFlow` 才是收藏页与
+ * 首页那排入口运行期读的东西，直接改 `filesDir` 上那份 JSON 会让「导入报了成功」和
+ * 「画廊还是空的」同时成立 —— 值确实进盘了，只是没人再读盘。插图收藏同理走
+ * [FavoriteImagesManager]，它的去重键（`image_url`）也是在这一层判的。
  */
 class BackupManager private constructor(private val context: Context) {
 
@@ -50,6 +84,11 @@ class BackupManager private constructor(private val context: Context) {
 
     /** 懒取：`getInstance` 会打开数据库并触发旧表迁移，构造 BackupManager 时不该发生这些。 */
     private val favoritesManager by lazy { LocalFavoritesManager.getInstance(context) }
+
+    /** 同上：画廊那两个 store 构造时会同步读一次自己的 JSON 档。 */
+    private val galleryFollows by lazy { GalleryArtistFollowsStore.getInstance(context) }
+    private val galleryFavorites by lazy { GalleryFavoritesStore.getInstance(context) }
+    private val favoriteImagesManager by lazy { FavoriteImagesManager.getInstance(context) }
 
     /**
      * 导出全量备份为标准 ZIP / .venera 文件
@@ -67,6 +106,10 @@ class BackupManager private constructor(private val context: Context) {
             val guardJson = exportTableToJson(db, "content_guard_rules")
             val favoriteFoldersJson = exportFavoriteFolders()
             val favoriteJson = exportFavoriteItems()
+            val imageFavoritesJson = exportImageFavorites()
+            // 一次取快照：打包期间用户又点了颗心，不该让 meta 的计数与包里的内容对不上。
+            val followsSnapshot = galleryFollows.follows.value
+            val galleryFavoritesSnapshot = galleryFavorites.favorites.value
 
             val metaJson = JSONObject().apply {
                 put("version", FavoriteBackupRows.CURRENT_VERSION)
@@ -77,6 +120,9 @@ class BackupManager private constructor(private val context: Context) {
                 put("favoriteFolderCount", favoriteFoldersJson.length())
                 put("statsCount", statsJson.length())
                 put("guardCount", guardJson.length())
+                put("imageFavoriteCount", imageFavoritesJson.length())
+                put("galleryFollowCount", followsSnapshot.size)
+                put("galleryFavoriteCount", galleryFavoritesSnapshot.size)
             }
 
             ZipOutputStream(BufferedOutputStream(FileOutputStream(backupFile))).use { zos ->
@@ -86,6 +132,9 @@ class BackupManager private constructor(private val context: Context) {
                 addJsonEntry(zos, FAVORITE_FOLDERS_JSON, favoriteFoldersJson.toString())
                 addJsonEntry(zos, "stats.json", statsJson.toString())
                 addJsonEntry(zos, "guard_rules.json", guardJson.toString())
+                addJsonEntry(zos, IMAGE_FAVORITES_JSON, imageFavoritesJson.toString())
+                addJsonEntry(zos, GALLERY_FOLLOWS_JSON, GalleryBackupRows.encodeFollows(followsSnapshot))
+                addJsonEntry(zos, GALLERY_FAVORITES_JSON, GalleryBackupRows.encodeFavorites(galleryFavoritesSnapshot))
             }
 
             Result.success(backupFile)
@@ -113,8 +162,22 @@ class BackupManager private constructor(private val context: Context) {
             // FavoriteBackupRows.decode 认得它，所以老备份照样导得进来。
             val favorites = readArray(zip, FAVORITE_ENTRIES_JSON)
                 .let { if (it.length() > 0) it else readArray(zip, "favorite.json") }
+            val imageFavoriteRows = readArray(zip, IMAGE_FAVORITES_JSON)
+            // 画廊那两份：归档格式与 filesDir 上的磁盘格式是同一套定义（见 GalleryBackupRows），
+            // 所以这里交原文、不转 JSONArray —— 少一层列名映射就少一处能各自漂移的地方。
+            val galleryFollowsJson = readText(zip, GALLERY_FOLLOWS_JSON)
+            val galleryFavoritesJson = readText(zip, GALLERY_FAVORITES_JSON)
             val timestamp = readTimestamp(zip)
             zip.close()
+
+            // 解析全部留在动库之前：画廊那两份解不开就抛，一笔库都不会被写过。
+            val incomingFollows = GalleryBackupRows.decodeFollows(galleryFollowsJson)
+            val incomingGalleryFavorites = GalleryBackupRows.decodeFavorites(galleryFavoritesJson)
+            val incomingImageFavorites = buildList {
+                for (i in 0 until imageFavoriteRows.length()) {
+                    ImageFavoriteBackupRows.fromMap(asMap(imageFavoriteRows.getJSONObject(i)))?.let { add(it) }
+                }
+            }
 
             var historyCount = 0
             var statsCount = 0
@@ -191,7 +254,17 @@ class BackupManager private constructor(private val context: Context) {
             // 4. 恢复本地收藏（另一个 db 文件，单独一笔）
             val folderCount = restoreFavoriteFolders(favoriteFolders)
             val favoriteCount = restoreFavoriteItems(favorites)
-            Log.i(tag, "导入完成：$folderCount 个收藏夹 / $favoriteCount 本收藏 / 跳过 $guardSkipped 条写法有误的屏蔽规则")
+            // 5. 插图收藏（回到 venera_core.db，但必须在上面那笔事务结束之后 —— 同一库里嵌套事务会抛）
+            val imageFavoriteCount = favoriteImagesManager.restoreBackupRows(incomingImageFavorites)
+            // 6. 画廊两块：写 store 单例，收藏页与首页那排入口当帧就看见，不需要重启
+            val galleryFollowCount = galleryFollows.restore(incomingFollows)
+            val galleryFavoriteCount = galleryFavorites.restore(incomingGalleryFavorites)
+            Log.i(
+                tag,
+                "导入完成：$folderCount 个收藏夹 / $favoriteCount 本漫画收藏 / $imageFavoriteCount 张插图收藏 / " +
+                    "$galleryFavoriteCount 条画廊收藏 / $galleryFollowCount 位关注画师 / " +
+                    "跳过 $guardSkipped 条写法有误的屏蔽规则",
+            )
 
             Result.success(
                 BackupSummary(
@@ -200,7 +273,11 @@ class BackupManager private constructor(private val context: Context) {
                     statsCount = statsCount,
                     guardRulesCount = guardCount,
                     guardRulesSkipped = guardSkipped,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    folderCount = folderCount,
+                    imageFavoriteCount = imageFavoriteCount,
+                    galleryFavoriteCount = galleryFavoriteCount,
+                    galleryFollowCount = galleryFollowCount,
                 )
             )
         } catch (e: Exception) {
@@ -236,6 +313,19 @@ class BackupManager private constructor(private val context: Context) {
             for (item in favoritesManager.getFolderComics(folder)) {
                 out.put(JSONObject(FavoriteBackupRows.encode(item, folder)))
             }
+        }
+        return out
+    }
+
+    /**
+     * 插图收藏那一栏。走 [FavoriteImagesManager] 而不是 `exportTableToJson(db, "favorite_images")`：
+     * 后者是 `SELECT *`，会把 `id` 与 `local_path` 一起打进包 —— 前者是本地自增主键，后者换台机器
+     * 就指向一个不存在的文件，而收藏墙的取图口径是「路径为空才按地址加载」。
+     */
+    private suspend fun exportImageFavorites(): JSONArray {
+        val out = JSONArray()
+        for (row in favoriteImagesManager.exportBackupRows()) {
+            out.put(JSONObject(ImageFavoriteBackupRows.toMap(row)))
         }
         return out
     }
@@ -320,6 +410,12 @@ class BackupManager private constructor(private val context: Context) {
         return zip.getInputStream(entry).bufferedReader().use { JSONArray(it.readText()) }
     }
 
+    /** member 不存在交回 null（v4 及更早的归档就是没有这一栏），与"存在但内容坏掉"是两件事。 */
+    private fun readText(zip: ZipFile, entryName: String): String? {
+        val entry = zip.getEntry(entryName) ?: return null
+        return zip.getInputStream(entry).bufferedReader().use { it.readText() }
+    }
+
     private fun readTimestamp(zip: ZipFile): Long {
         val entry = zip.getEntry("meta.json") ?: return System.currentTimeMillis()
         val meta = runCatching {
@@ -357,6 +453,9 @@ class BackupManager private constructor(private val context: Context) {
     companion object {
         private const val FAVORITE_ENTRIES_JSON = "favorites.json"
         private const val FAVORITE_FOLDERS_JSON = "favorite_folders.json"
+        private const val IMAGE_FAVORITES_JSON = "image_favorites.json"
+        private const val GALLERY_FOLLOWS_JSON = "gallery_follows.json"
+        private const val GALLERY_FAVORITES_JSON = "gallery_favorites.json"
 
         @Volatile
         private var INSTANCE: BackupManager? = null
