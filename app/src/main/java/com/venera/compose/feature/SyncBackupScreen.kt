@@ -78,12 +78,7 @@ fun SyncBackupScreen(
                 val res = BackupTransfers.importBackupFrom(context, uri)
                 isOperating = false
                 res.onSuccess { sum ->
-                    Toast.makeText(
-                        context,
-                        "恢复完成！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部，统计 ${sum.statsCount} 条" +
-                            (sum.skippedNotice?.let { "。$it" } ?: ""),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, BackupTransfers.describeResult(sum), Toast.LENGTH_LONG).show()
                 }.onFailure {
                     Toast.makeText(context, "导入失败: ${it.message}", Toast.LENGTH_LONG).show()
                 }
@@ -310,7 +305,7 @@ fun SyncBackupScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(text = "本地归档文件 (.venera)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text(text = "无需网络，打包导出或选取本地文件导入", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "无需网络。可导入本应用备份，也可导入官方 Venera / PicaComic 的归档", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
                         }
 

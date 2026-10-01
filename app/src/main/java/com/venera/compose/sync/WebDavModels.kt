@@ -26,9 +26,29 @@ data class BackupSummary(
      * 漏传不报错的参数，下一笔恢复就会静默变成"一条也没跳过"。
      */
     val guardRulesSkipped: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    /** 这份数据从哪种归档恢复来的。用户可能一次导三种文件，结果里得说得出是哪种。 */
+    val origin: String = BackupOrigin.LOCAL,
+    /** 恢复到的收藏夹数量。 */
+    val folderCount: Int = 0,
+    /**
+     * 因**来源认不出**而没有导入的条数（只可能出现在官方 Venera / PicaComic 归档里）：
+     * 归档带着本机没装的漫画源，其 `type` 是个反查不到 key 的 Dart 哈希。
+     * 沉默地少导入几条，用户只会以为"备份是坏的"。
+     */
+    val foreignSkipped: Int = 0
 ) {
     /** 跳过要说得出：静默少恢复几条，用户只会以为"屏蔽不知怎么失效了"。 */
     val skippedNotice: String?
-        get() = if (guardRulesSkipped > 0) "另有 $guardRulesSkipped 条屏蔽规则写法有误，没有恢复" else null
+        get() = buildList {
+            if (guardRulesSkipped > 0) add("另有 $guardRulesSkipped 条屏蔽规则写法有误，没有恢复")
+            if (foreignSkipped > 0) add("另有 $foreignSkipped 条来源未知（本机没装该源），没有导入")
+        }.takeIf { it.isNotEmpty() }?.joinToString("；")
+}
+
+/** 归档来源的口径，只用于结果文案。 */
+object BackupOrigin {
+    const val LOCAL = "本应用备份"
+    const val VENERA = "官方 Venera 备份"
+    const val PICA_COMIC = "PicaComic 备份"
 }
