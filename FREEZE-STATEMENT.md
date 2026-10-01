@@ -1639,3 +1639,1007 @@ AskUserQuestion 两问，答：**全量按短句重写** ｜ 未实现项**连�
 ② 确认 6 页底部**不再有「尚未实现」折叠区**，且代理弹窗里只剩类型 + 主机 + 端口三项；
 ③ 源管理页顶部那条"连不上"横幅（要把某个站点搞成不可达才能看到，看不到就记"未验"）；
 ④ 被删的三条阅读器项（双击缩放、自动裁剪白边、章节评论默认展开）设置页里确实不再出现。
+
+---
+
+## 批次 K（2026-09-30）：画廊首页合一屏 + 搜索浮层三档来源（批次 J 同轮并入）
+
+### 用户诉求与原话要点
+
+「以新版效果图的信息架构、内容密度、模块组织方式和视觉层级为主要参考，但不要直接照搬它的 Neon / 蓝紫发光风格」；
+「非常重要：不要重写整个 Gallery 模块。先检查当前 GalleryScreen、搜索组件、现有 Venera Components 和 Tokens，尽量复用现有组件」；
+「保留现有以图搜图 / SauceNAO 功能，并将其融入新的搜索界面，不要删除或单独拆成独立页面……点击后让搜索面板平滑 morph 为以图搜图模式，而不是重新 Navigation」。
+
+### 七条拍板（AskUserQuestion 逐条问定，不再讨论）
+
+1. 首页**合成一屏**，撤掉第二页 Pager（左右滑那一轴整块消失）。
+2. 「正在关注的画师」**改成「收藏里的画师」**，用真数据（从收藏条目抽画师标签），
+   **零新请求、零新存储**；"今日更新 N"那种编造读数一律不上。
+3. 来源改成「全部 / Yande.re / Gelbooru」，**默认全部 = 两腿并发**；未配 Gelbooru 账号时**默认档不变**，
+   那一腿显式念「这一站还没配置」，另一腿照常出图。
+4. 「每日热门」的换一批 = **留存两站原始池在内存，只换 seed 本地重排，不重新请求**。
+5. 「猜你喜欢」**保留**，位置在每日热门下面，**样式与每日热门同为横向图片卡行**。
+6. 底部那条墙 = **可切换的详情区**，由节点头的「查看全部」决定它当前装日榜全量还是推荐全量。
+7. 冷启动**串行错开**：先进日榜两腿，落地后再取推荐两腿（推荐那一行有骨架占位，不许空着再突然插进来顶滚动）。
+
+### 三条轴各落了什么
+
+**A 来源选择（搜索腿）** —— 新 `gallery/domain/GallerySearchSource.kt`（`ALL` / `single` / `options` /
+`availableLegs` / `missingLegs` / `label` / `gallerySourceMarkText`）。`GallerySearchViewModel` 的 `site`
+轴换成 `source`，`var site` 留作 `source.sites.first()` 的只读派生（约 15 处读取点零改动）。
+随轴改的状态：`page`→`pageBySite`、`exhausted`→`exhaustedBySite`、去重键 `seenKeys` 跨腿共用、
+`legFailures` 按腿挂原因。排行菜单过 `GalleryRankings.supportsAll`（**「全部」档只列每一条腿都有的档**，
+两站形态不同时选期入口整块收起 —— 那是"假开关"那一类，补了两条单测）。
+`GallerySearchContext` 存来源与两条腿的游标，`GalleryContextPlan.plan` 的第二判据从"同站"改成"同来源"
+（换来源 = 换一轮，返回能回到刚才那个「全部」档）。点卡片进大图页仍传 `post.site`（真站点），
+队列物理上不可能收到"全部"。
+
+**B 墙源** —— 新 `gallery/domain/GalleryWallFeed.kt`（`DAILY` / `FOR_YOU`；label 就是节标题，
+一条口径两处用）。`HorizontalPager` 整块撤下，`PullToRefreshBox` 直接包 `when(wallFeed)`；
+`isRefreshing` / `onRefresh` 从"按 pager 当前页分发"改成"按 `wallFeed` 分发"
+（**同一条教训原样适用：绑并集会造出"已经加载好了还在转"和第二枚环**）。
+`GalleryPageTabs` / `GalleryPage` / 分段器那一行撤下，顶栏 `bottomContent` 现在只住搜索区，
+`gridTopPadding` 关搜索时落回地板（不是落回那一行的高度）。三把独立 gridState（搜索 / 日榜 / 推荐）
+各记各的滚动位置。
+
+**C sections 进墙** —— 新 `gallery/ui/GalleryHomeSections.kt`：四条节头 + 两条横卡行 + 画师行 + Tag Chip 行，
+作为**恒定 key 的 FullLine item** 进 `GalleryCardsGrid`（新增 `sections` 参数）。
+判空全部移到项内部 —— 这是首页顶栏重叠那次真机缺陷（锚定漂移）的根治法；不做常驻头部，
+因为那要新增"顶栏地板 + 节头高"两个常量，正是冻结声明警告过的"常量留空带 / 量高度留硬边"两种失败。
+横卡用固定 token（`historyCardWidth × historyCoverHeight`），`Row + horizontalScroll` 而不是 LazyRow，
+条目上限 8 枚，超出只在节头念"另有 N 位"。
+
+### 收口与归一（三处重复的取数包装）
+
+新 `gallery/domain/GalleryLegGuard.kt`：`guardedWithBudget` 原先在日榜、猜你喜欢、搜索三处各写一遍，
+收口成一份 `GalleryLegOutcome(site, posts, answered, reason)`。
+**收口时查到一条真缺陷**：猜你喜欢那份在请求失败那一支照样把 `returned` 记成 0，
+于是 `exhaustedSites` 会把一次 401 永久判成"这一站到底了"，而页尾写着「已经到底」——
+现象是"少了一个站的图"，读起来像站里本来就没图，且全程不报错。
+`answered` 这一格就是"站方回了空表"与"这一腿没答上"的永久分界，配一条专门单测。
+`exhaustedSites` 也从 `GalleryForYouMerge` 挪进 `GallerySearchMerge`（「全部」档要的就是"缺席不算到底"），
+旧的 3 条用例改指新家、一条没删。
+
+### 换一批 = 本地重排（拍板 4）
+
+`GalleryFeedSource.Daily` 多带一份 `pools`（**过滤之前的原始池**），`GalleryViewModel.remix()` 只换 `seed`
+重排；`GalleryMerge.canRemix(pools)` 判"池子供不出新排列"，回 false 时调用方退回真取一次
+（按下去屏上纹丝不动就是假按钮）。冷启动那一屏是缓存铺出来的、根本没有池，所以这一档是常态不是异常。
+
+### 批次 J 并入（某条腿回 0 行时按该站画师记录换正名重跑那一腿）
+
+判据 `gallery/domain/GalleryArtistAlias.kt` + 取数 `YandeReClient.resolveArtistAlias`（两笔：
+`artist.json?name=` 按全等取记录 → 跟一次 `artist/show/<alias_id>` 重定向、只读落点 URL 的 `title`）。
+**只有站方明确给出关联才重搜，否则保持 0 结果**；胶囊与历史存用户原词，换名那句话在展开卡、页尾、
+空态三处念出来，并随 `GallerySearchContext.aliasNotice` 一起过弹栈。
+细则、比方案多出来的两道闸、以及今天复跑的原始响应见 `gallery-artist-alias-2026-09.md` §九。
+
+### 共用件契约变更（都是加性）
+
+1. `feature/SectionHeader.kt`：`MiuixSectionHeader(title, onTap: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null)`。
+   `trailing != null` 时**不画那枚「›」且整行不再可点**（行里已经有按钮了，两个动作打架，
+   而用户没法从外观判断哪个能点）。`HomeScreen.kt`（FROZEN）那 6 个调用点一行未改。
+2. `gallery/data/GalleryTagDictionary.kt`：加 `lookupArtists(names): Set<String>?`，
+   **null = 离线库打不开**（与"查了、确实没有画师"必须分两档，否则就是把自己的故障说成用户没干活）；
+   旧 `artistNames` 委托过去并回落空表，`GalleryPostScreen` 的调用点零改动。
+3. 玻璃登记状态：`VeneraGlassRole.PANEL` 与 `SEGMENTED` 两档**登记而不启用**（全仓零调用点），
+   理由见下面偏离第 3 条。搜索卡本体与一级卡片继续不上玻璃（冻结声明那条理由原样有效）。
+
+### 与批准方案的偏离（7 条，逐条为什么）
+
+1. **没建 `gallery/ui/GallerySourceMark.kt`**：字母小徽标用既有 `VeneraSourceBadge` 就够，
+   domain 里只留 `gallerySourceMarkText(sites)`（`Y` / `G` / `Y·G`，按 `GallerySite.entries` 序）。
+   站方 logo 资产不进包里。
+2. **`GalleryWallAnchors.kt` 与它那 4 条单测建了又撤**（可逆归档 `_trash/gallery-wall-anchors-2026-09-30/`）：
+   计划里"卡序 ↔ grid index 换算"的前提是三面墙共用一把 state；实际改成三把独立 state 之后换算函数
+   **零调用点**，而"返回不丢进度"那条老账在搜索那把上仍是原样直接记 index。留一个没人读的换算是负债。
+3. **`PANEL` 玻璃没给四条节点头**：节点头跟着墙滚，滚到屏幕中部时采样源还是顶栏那一片，
+   拿到的像素与它所在的位置无关 = 假磨砂（与批次 H 查 B 族那次的同一条物理限制）。
+4. **`GalleryForYouEnd` 没撤**（计划说撤）：详情区那一面墙仍然要"各站几许 / 剔了几张已收藏 / 到底了没"
+   那一行读数。`emptyCopyOf` 也**没搬进 domain** —— 它读的全是 fvm 的快照状态，搬过去等于把 VM 的形状
+   塞进判据层；横卡行与画师行各有各的空态成因（`GalleryArtistsGap` 四档），不是同四种。
+5. **计划风险 1 的 `extendWall` 增量派生没做**。整片重算只有 O(张数) 次字符串判定（屏蔽规则 × 作者/标签），
+   一次续页 ≤ 400 张；卡片的真实成本（Coil 解码与位图）本来就走缓存，且只重绘可见项。
+   **这条是判断，不是实测** —— 真机若在续页那一刻看见掉帧，`extendWall` 仍是既定退路。
+6. **remix 刻意不滚回顶部**：`LaunchedEffect(seed)` 那种重置会在每次条目重建组合时再触发一次
+   （记忆「导航条目会重建组合」），把用户从他看到的位置拽走。
+7. **历史双列 chip 丢了旧 `HistoryRow` 的「排除项灰显」**：`VeneraChip` 没有 `annotatedText` 入口，
+   本轮不为它给共用件加形状。恢复法与那条判据的代码都留在 `_trash/gallery-history-row-2026-09-30/`。
+
+### 本轮我自己的错（按"哪种检查抓不到它"排序）
+
+1. **`GalleryForYouPage` 忘了传 `sections`** —— 切到「猜你喜欢」那面墙时四节整片消失，
+   还顺带违反"节数恒定"这条硬约束。**编译绿、464 条单测全绿都抓不到它**；
+   成因是 `sections` 带默认值 `emptyList()`。**规则：加了必填语义的参数就不要给默认值，或者逐个调用点回读。**
+2. **一次 Edit 把 `onOpen = { post ->` 与 `GalleryViewerQueue.set(…)` 两行吃掉**：old_string 跨了我要插入的
+   位置。这次编译也没来得及抓（下一轮编译在补回之后才跑）—— 是"改完立刻回读那一段"抓到的。
+3. **想删一行却插成两遍**（`val legs = attempts.map { it.outcome }`）：old_string 只写了它下面那行注释。
+   这一条是编译报"重复声明 / 冲突声明"才暴露的。
+4. **协程里的新局部变量取名 `first`，把外层 `val first = nextPage == 1` 遮蔽了**：编译过、语义差点错。
+   改名 `byOriginal`。**规则：同一个 lambda 里不要复用外层判据的名字。**
+5. **注释里写了一个没量过的数字**（「每格仍有 ~116dp」）—— 换成"未量，真机复核"。
+6. **合一屏时把一段 KDoc 挂到了错的声明上**（`runSearch` 的说明长在 `private var searchJob` 头上），
+   还留下一句"两面墙仍然同时组合"的错话、以及三处"第 1 页 / 两页"的旧说法。都已改回。
+7. **把本文件的追加写成了 latin1**：脚本里读旧内容用 `'latin1'`（为了不改字节），却把新段落
+   先用 `'utf8'` 读成字符串、再按 `'latin1'` 写出去 —— 中文字符一律被截成低字节，
+   `FREEZE-STATEMENT.md` 当场变成非法 UTF-8（165 行追加内容全是碎字节）。
+   处置：先确认 append 之前该文件**不在 `git status` 的修改列表里**（也就是除我这次追加之外没有别人的
+   未提交改动），再 `git checkout HEAD -- 该文件` 恢复，用 UTF-8 重读重写。
+   **规则：一个文件里读与写的 encoding 必须成对；跨编码拼字符串的脚本要现验 UTF-8 往返是否等长**
+   （`Buffer.from(s,'utf8').length === raw.length` 这一行就是这次的探测器，写进脚本末尾常备）。
+
+### 验证
+
+- `./gradlew :app:testDebugUnitTest :app:assembleDebug --offline` 双绿：
+  **62 套 / 464 条 / 0 失败 / 0 错误**（批次 H/I 基线 56 套 / 405 条 ⇒ +6 套 +59 条，满足"净增 ≥5 套"）。
+  新增测试文件 6 个：`GallerySearchSourceTest` / `GallerySearchMergeTest` / `GallerySearchHistoryTest` /
+  `GalleryLegGuardTest` / `GalleryArtistsTest` / `GalleryArtistAliasTest`；撤下 1 个
+  （`GalleryWallAnchorsTest`，随本体一起归档）。
+- 先红后绿的判据逐条（共 8 条新用例文件里的对应项）：来源三档顺序（全部在最前、其余按站表序）；
+  两腿展开与每腿页宽各按本站；未配账号时可用腿只剩一站且缺席腿带原因；换来源算换一轮 /
+  同来源同条件幂等不压栈；`isStaleLeg` 只丢不匹配那一腿；两腿按本站原序轮转混排；
+  跨腿重复只留前者并计数；缺席腿不判到底；`nextPagesForAppend` 到底的腿不再要页；
+  `canRemix` 只在池子真够时放行；「全部」档只列每条腿都有的排行档、且不摆选期入口；
+  画师表只收词典判为画师的名 / 降序定序 / 跨站同名并一条带两站标记 / 黑名单词不进表 /
+  零收藏与零画师分两档 / 首见预览图；历史 v1 两站同串读回合成一条 / v2 编解码幂等 /
+  push 命中并入站集合顶到最前 / 认不出的 routeKey 丢掉；`answered` 把"回了空表"与"请求失败"分开；
+  `resolveToken` 的四档门。
+- 静态视觉判据六条逐条过（对象 = 本轮 22 个 main 文件：7 新建 + 15 修改）：
+  ① `Color(0x` **0 处**；② 新写 `.copy(alpha =` **0 处**（唯一那处 `StatusColors.BadgeSurface.copy(alpha = 0.72f)`
+  在 HEAD 里就有，用 `git show HEAD:` 核过，不是本轮新增）；③ `Brush.` 渐变描边 **0 处**，
+  `shadowElevation` 只有一处且 `= tokens.elevation.attached`；④ **新增行**里出现的颜色只有文本色四项
+  （`textPrimary` / `textSecondary` / `textTertiary` / `onSurfaceVariant`；口径 = 7 个新文件全文 +
+  15 个改动文件的 `git diff` 新增行，两边各跑一遍取并集），**没有新增强调色、没有 alpha 压色**；
+  ⑤ 尺寸全部引用既有 token 名（`historyCardWidth` / `historyCoverHeight` / `sectionGap` / `space1~6` /
+  `type.badge` / `type.caption`），新增 dp 字面量 **0 处**（`104.dp` 那处顶栏地板是既有值）；
+  ⑥ 界面文案去 AI 味：非注释行的反引号 / 星号 **0 处**，本轮清掉两条串里的 `` `long_hair` `` 那种写法
+  （`GalleryScreen` 空态与推荐页 `NO_USABLE_TAGS` 各一条）。
+- 保护域核对：`Navigation.kt`、`VeneraNavTab`、路由映射、顶栏齿轮入口 **零改动**，本轮不新增目的地；
+  `GallerySite` **没有**加第三个枚举值（这是本批护栏，各处 `when` 穷举零改动）。
+- 真机包状态：**待推**（本轮不 commit，等用户点名）。
+
+### 真机待验（一加 PJZ110，页面由用户点，我只推包与读日志）
+
+① 首屏层级与"不显得空"（四节 + 瀑布流一屏能看见几节）；② 两条横卡的换一批各自是否秒出 ——
+每日热门必须**零请求**（logcat 计数）；③ 冷启动是否真的"先日榜再推荐"（`logcat -d` 数请求顺序）；
+④ 「全部」档搜一个只有 yande 有的词、和一个只有 Gelbooru 有的词，看部分失败读数是否真念；
+⑤ 未配 Gelbooru 账号时默认档是否不变、那一腿的话是否准；⑥ 历史同一个词只出现一条、双列、
+小 × 好点（触达 48dp）；⑦ 点卡片进大图页再返回：滚动位置与队列站点是否正确（队列绝不能出现"全部"）；
+⑧ 节点头「查看全部」来回切日榜 / 推荐，各自滚动位置互不污染，**且四节在两面上都在**
+（本轮第 1 条错就出在这一格）；⑨ 反搜（以图搜图）形变在输入法弹起状态下不被打断；
+⑩ 三轴截图（MIUIX/M3 × 明/暗 × SOLID/GLASS）人工看过：玻璃档不出现描边发光、实色档无残影；
+⑪ 批次 J 那四条见 `gallery-artist-alias-2026-09.md` §9.5；
+⑫ 在日榜那面墙上点推荐节头的「换一批」，再切到推荐那面墙：应落在顶部而不是刚才的深度
+（本轮给那个 effect 补上 `wallFeed` 键就是为它 —— 合一屏之后另一面墙不在组合，`scrollToItem` 会变成空操作）。
+
+## 批次 L（2026-09-30）：画廊「关注画师」系统 + 详情面板画师行
+
+### 用户诉求与原话要点
+
+「你先看下能怎么做关注系统，在关于这个张图页面可以显示画师的推和pixiv的图标（如果有的话）并关注画师，并显示画师的pixiv头像（如果有）」；
+「可以先开工，等首页改完后dsh在改，dsh改完后你接入主页」。
+
+### 七条拍板（AskUserQuestion 逐条问定）
+
+1. 关注的语义 = **名单 + 直达入口**。两站都没有匿名可写的关注端点，所以不与站方发生任何关注关系；
+   名单只在我们这一侧成立。
+2. 详情页形态 = **每位画师一行：头像 + 平台入口 + 关注**。
+3. 取数与 Referer = **面板打开才取**；pixiv 的 Referer **进共享取流层**（不在页面里各写一遍）。
+4. Gelbooru 侧的供体 = **「还是要 Danbooru，走过盾链」**（用户点名 `danbooru.donmai.us/artists/183883`）。
+5. 平台图标 = **「站方没推就不摆推，改成摆 fanbox」**（次序 pixiv > 推 > fanbox）。
+6. 过盾形态 = **「只静默试一次，失败就什么都不摆」**（不为这一条造任何 UI）。
+7. 关注那一节位置 = **「不进首页，只留入口」**。
+
+### L1 取证：三条旧口径被当场推翻
+
+| 事项 | 当天读数 | 结论 |
+|---|---|---|
+| Gelbooru 画师页按**名字**寻址 | `s=list&name=setmen` / 不存在的名字 / 不带参数 —— 三次返回**逐字节相同**（17621 字节、同样 64 条链接） | `name=` 根本不生效，名字寻址是死的。我此前判它"可用"，判据是"页面里出现了这个名字"，而那是**壳页回显输入** —— 错的判据 |
+| Gelbooru 画师页按**编号**寻址 | `s=show&id=1` → 8781 字节、正文两处 `member.php?id=9311`；`s=show&id=183883` → 2969 字节空壳 | 编号寻址成立（183883 是 Danbooru 的编号，Gelbooru 没这条），但**从画师标签到那个编号之间没有匿名可走的一跳** |
+| Danbooru 可达性 | danbooru / safebooru / testbooru 三站同测全部 **403 + `Just a moment...`** | 拿不到真样例。于是**不押一种字段形态**：`url_string` / `urls` 字符串数组 / `urls` 对象数组三种全吃，每种各一条单测 |
+| pixiv `/ajax/user/{id}` | 不带 UA、带 UA、带 Referer 三档对照 → 都是 200、同一份 687 字节 | 这个 JSON 端点匿名零头即可 |
+| pixiv 头像图本体（`i.pximg.net`） | 不带 Referer → 403（146 字节）；带 `Referer: https://www.pixiv.net/` → 200、5149 字节真图 | 这条进了 `ImageHeaderPolicy` 的内置表（一个 host 一行），并确认画廊的 ImageLoader 走的就是挂着 `ImageHeaderInterceptor` 的那台共享 client |
+
+### 落地
+
+- **判据层（新增，可单测）**：`gallery/domain/GalleryArtistLinks.kt`（平台判定 + 图标摆放次序 +
+  handle/用户编号提取）、`GalleryArtistFollows.kt`（名单幂等/去重/排序，两站同名是两条 ⚠️ 这一条只管
+  **存储与身份**；批次 M · M5 之后首页那一栏在**摆**的时候并成一条，两处不是矛盾，是两层各自的选择）、
+  `GalleryArtistUrls.kt`（`url_string` 切分 + 站方 `-` 停用前缀剔除 + 头像两档挑选）。
+- **形状兼容层（新增）**：`gallery/data/GalleryArtistEndpointParse.kt` —— 手写逐字段走而不是给 DTO 押形态，
+  理由是"押错 = 安静地什么都不显示"。统一口径只有一条：**认不出就抛错，绝不静默交回空表**。
+- **取数层（新增）**：`gallery/data/PixivClient.kt`、`DanbooruArtistClient.kt`（打
+  `NoInteractiveBypassTag` = 不弹过盾窗，但仍吃共享 CookieJar 里那份按 host 生效的 `cf_clearance`，
+  这就是拍板 6 的"走过盾链、只静默试一次"）；`YandeReClient` 的 `YandeReArtistDto` 加 `urls`、
+  新增 `artistLinks(name)`（与批次 J 的 `resolveArtistAlias` 同端点同记录，只取另一个字段）。
+- **存储层（新增）**：`gallery/data/GalleryArtistFollowsStore.kt` —— 照收藏那份规格
+  （构造时同步读盘 / 先写 `*.tmp` 再改名 / 坏档另存 `*.corrupt-<ts>` 并挂 notice）。
+  **只存站别 + 名字 + 时刻**：pixiv 编号与头像地址都会过期（实测旧编号回 `error=true`），
+  存了就等于承诺兑现不了的东西。
+- **UI**：`gallery/ui/GalleryArtistRows.kt`（详情面板一行=头像 + 平台入口 + 关注，面板打开才发请求）；
+  `GalleryInfoSheet.kt` 把画师那一组从右列胶囊里摘出来换成这一叠行（角色/作品仍是胶囊），并新增
+  `imageLoader` 入参；`GallerySearchArea.kt` 搜索卡空框态加「关注的画师」一排（拍板 7 的那个"入口"）
+  ⚠️ 这一排**当天就被 L11 撤掉**：入口改由首页那一栏「正在关注的画师」承担，同一份名单不在两处长两样。
+- **共享层**：`data/network/ImageHeaderPolicy.kt` 内置表加 `pximg.net → Referer` 一行。
+
+### 三条红线（都是"两种状态在屏上长得一样"的那类）
+
+1. **取不到 = 什么都不摆，且不说"没有"**。`failure` 只在日志里留话（tag `GalleryArtistRows`），
+   界面上永远不出现"这位没有外链"这种我们没资格断言的句子。
+2. **头像取不到 = 首字母圆座**，不是空白圆（空白圆读起来像图挂了）。
+3. **过盾页必须算 failure 而不是"0 条结果"** —— 卡盾与"这位真没外链"必须是两句话。
+
+### 偏差与自记错误
+
+- 上面表格里"名字寻址可用"那条是**我自己上一轮的错报**，本轮用正负例差分推翻并已在批次 J 文档 §四.2
+  与 `(plan)` 里回改。教训：**判参数生效只能比正负例的输出差异**，"返回 200 + 页面里含有那个词"不是证据。
+- 平台入口做成**文字胶囊**（pixiv / X / FANBOX）而不是站方 logo：与首页画师行那排字母小徽标同一条理由
+  —— 引第三方标识要往 APK 里塞人家的资产。
+  ⚠️ 这句的后半段**当天就被 L12 推翻**（首页画师行与卡片角那两枚已换成站方真图标，见下面「批次 L 增补」）。
+  文字胶囊本身保留，但理由换成另一条：平台是 pixiv / X / FANBOX / Mastodon 若干家，每家都要塞一份
+  第三方品牌资产还得跟着人家改版走；而来源标识只有两站、各有一枚现成原档。两笔账不是一笔。
+- 中途 dsh 正在改首页，`:app:compileDebugKotlin` 与整个单测源集**一段时间编不过**
+  （`GalleryScreen.kt` 缺 import、`GalleryHomeSectionsTest.kt` 引用已被删的 `CHIPS`/`RECENT`）。
+  判据层是纯 Kotlin，于是临时用 kotlinc + JUnitCore 单跑（`_probe/l0/run-judgment-tests.sh`），
+  这样 RED/GREEN 不必等别人收口。**没有去改 dsh 那一屏的文件**。
+
+### 验证
+
+- 判据层 25 条全绿：`GalleryArtistLinksTest` 12 + `GalleryArtistUrlsTest` 6 + `GalleryArtistEndpointParseTest` 7。
+- 全量单测 **510 条 / 0 失败 / 0 错误**（dsh 收口后跑通），`:app:assembleDebug` BUILD SUCCESSFUL。
+- 首页文件本轮只在 `GallerySearchArea.kt` 的搜索卡内加了一排入口，**没有新增节**（拍板 7 + 锚定漂移那条口径）。
+
+### 真机清单（用户点页面，我只读数）
+
+1. yande.re 一位有 pixiv 的画师 → 详情面板那一行应出现**真头像**（这一步同时验 L4 的 Referer 生效）。
+2. 换一个 pixiv 编号已失效 / 站方没给外链的画师 → 头像位是**首字母圆座**，不是空白、也不是转圈不止。
+3. 平台入口最多两枚、pixiv 恒第一；那位只有 pixiv + fanbox 时第二枚是 FANBOX（不是"少一枚"）。
+4. 点 pixiv/X/FANBOX 胶囊 → 外部浏览器打开的是**站方给的原串**。
+5. 关注连点两次 → 名单不长出第二条；杀进程重进 → 名单还在，次序按关注时刻倒序。
+6. 搜索卡空框态出现「关注的画师」一排，chip 前带 Y/G；点一枚 → 立刻按**那一站**那位开搜。
+   ⚠️ **已作废（L11）**：这一排整个撤掉了，同一份名单只在首页那一栏摆。别再照这条点验。
+7. 名单为空时那一排**整块不摆**（连"关注的画师"这个标题都不摆）。
+   ⚠️ **已作废（L11）**，换成：首页那一节**照样摆**，内容是一句引导「在大图上点关注，这一栏会列出你关注的人」
+   （节的数量恒定是懒列表锚点那条红线，撤一节会让整屏漂）。
+8. Gelbooru 侧画师行：本机未通关 danbooru 时应只有"名字 + 关注"，一枚平台入口都不摆；
+   `adb logcat -s GalleryArtistRows` 里要能看到那一句失败原因（403/卡盾），屏上不出现任何解释文案。
+9. 手工把 `files/gallery_artist_follows.json` 改成非 JSON → 重进画廊应另存 `*.corrupt-<ts>` 并提示一句，
+   而不是静默开一张空名单。
+10. 两站同名各关注一次 → 搜索卡那一排应是**两枚**（带不同字母），点进去搜的是各自那一站。
+    ⚠️ **已作废（L11 + M5）**：现在是首页那一栏**并成一条**、名字下**两枚站标并排**，
+    点进去按这个名字**跨两站搜**（存储与身份仍是一站一条，见批次 M · M5）。
+
+## 批次 L 增补（2026-09-30）：L9–L12
+
+L1–L8 落地当天，用户接着提了三句话，逐条问定后做了四步：
+「pixiv 的还是无法获取，你看下」「另外首页的收藏里的画师也改成正在关注的画师」
+「另外，你看下能不能获取 yande 网站的图标，不用色块用图标」。
+
+### L9 从「帖子自带的出处」派生画师入口与头像
+
+新增 `gallery/domain/GalleryArtistAvatarProbe.kt`（判据层，可单测）+
+`gallery/data/GalleryArtistProbeClient.kt`（取数）+ `GalleryArtistEndpointParse` 两个解析器。
+
+只有两条派生路，而且是**逐档量过才留下的**（2026-09-30 下午，本机代理出口）：
+
+| 平台 | 端点 | 实测 |
+| --- | --- | --- |
+| fanbox | `api.fanbox.cc/creator.get?creatorId=<子域>` | 带 `Origin` → 200，`body.user.iconUrl` 是 160×160；**不带 / 只带 Referer 一律 400 `general_error`** |
+| Mastodon（baraag / pawoo） | `<实例>/api/v1/accounts/lookup?acct=<handle>` | 匿名直取 200 带 `avatar`，所以 `origin` 留 null |
+
+于是"探针只给地址"是不够的 —— `GalleryAvatarProbeEndpoint` 带着 `origin` 与 `kind` 两个字段，
+取数层照它决定带不带请求头、用哪个解析器，**不靠嗅 host**。
+
+三条刻意不做 / 不放宽的：
+
+1. **X / Twitter 没有匿名头像路**。站方 og:image 是占位图，公开代理 unavatar 回的是一张
+   **568 字节的占位 SVG** —— "有值"但根本不是脸，摆上屏就是拿一张通用图冒充这位。
+2. **Mastodon 实例走白名单**，不是"任何 Mastodon 域名"。派生出来的地址会被 app 直接发出去，
+   而 OkHttp 那侧的 CookieJar 按 host 共享 —— 拿一条来路不明的 host 去请求，
+   等于把该 host 上攒下的 cookie 一并带出去。目前只放进量过的两台，以后要加就得先量。
+3. **`acct` 必须来自带 `@` 的那一段**。实例上 `/about`、`/explore`、`/auth/login` 同样是路径首段，
+   少了这道门就会把站方页面名当账号去查，而 `acct=about` 在那台实例上真有账号时就是**认错人**。
+
+两处实现上的坑（都写在 KDoc 里了）：
+
+- `parts()` **手工切 URL 而不用 `java.net.URI`**：fanbox 的子域允许下划线（`a-b_c.fanbox.cc` 是站方真发的形状），
+  而 `URI.host` 按主机名字符集校验，遇到下划线**整个返回 null** ⇒ 真出处被判成"认不出"。
+- fanbox 的 `creatorId` 要的是**子域那一段**（`setmen`），不是 pixiv 用户号 ——
+  同一端点传数字号实测回 400。所以 `www.pixiv.net/fanbox/creator/N` 那一条整条不回。
+
+### L10 pixiv 作品页反查作者（胶囊带账号）
+
+`PixivClient.artworkAuthor(illustId)` → `ajax/illust/{号}`，把作品号换成真用户号与账号。
+
+存在的理由：出处常写成 `pixiv.net/artworks/N`，那串是**作品号** —— 拿它当用户号去要头像必然
+`error=true`（实测）。`GalleryArtistRows` 里的次序是：先按"站方记录 + 出处"排一次，
+**只有这一次里没有 pixiv 那一档**才值得再花这一笔请求。
+
+`failure` = 作品被删 / 被锁（**实测 15 条出处里 4 条站方直接 404**）或读不懂 ⇒ 什么都不摆，
+只在日志留话，屏上不出现"这位没有 pixiv"。这条与 L 批次那三条红线是同一条。
+
+⚠️ **L10 推翻了 L9 KDoc 里的一句话。** 那句原文是"pixiv 也没法从作品号反查作者
+（`/ajax/user/<作品号>` 回 `error=true`）"—— 当时只量了 `/ajax/user/`，**没量 `/ajax/illust/`**。
+原句没有删，改写成一条教训留在 `GalleryArtistAvatarProbe.kt` 上：
+**判"做不到"要量掉所有候选端点，不是量掉最像的那一个。**
+
+### L11 首页那一栏换成「正在关注的画师」
+
+新增 `gallery/domain/GalleryFollowedArtists.kt`（判据层）+ `GalleryFollowedArtistsTest`；
+首页那一栏从「收藏里的画师」换成「正在关注的画师」，**搜索卡里那一排「关注的画师」整个撤掉**
+（用户拍板"撤掉搜索卡那行"）—— 同一份名单不在两处长两样。
+
+四条口径：
+
+1. 卡面 = 那位名下**最近一张被收藏的图**，裁圆；`ContentScale.Crop` + 正方形容器，
+   保证圆内始终填满不留白边（站方缩略图是任意比例，圆外像素会被裁掉）。
+2. 张数是**真数**（"有几张你收藏的图带着这个名字"），不是编出来的更新数。
+3. 关注了、收藏里却没有他名下的图 ⇒ **照样摆**，卡面换**首字母圆座**（用户拍板）。
+   把他挑掉等于让"关注"这件事在没收藏他的图时凭空失效；而"0 张收藏"那行字**不摆** —— 没有的读数不占屏。
+4. 一个都没关注 ⇒ 这一节**照样摆**，内容换成一句引导「在大图上点关注，这一栏会列出你关注的人」
+   （用户拍板"摆一句引导"）。它说的是"你还没做"，不是"这里坏了"。
+   节的数量恒定这条既有红线不受影响（撤一节会让懒列表锚点漂，见记忆「首页顶栏重叠的真根因」）。
+
+旧实现 `gallery/domain/GalleryArtists.kt` + `GalleryArtistsTest.kt` 已镜像到
+`_trash/gallery-artists-from-favorites-2026-09-30/`，**等用户点头才硬删**（可逆清理那条口径）。
+它的 KDoc 里写着"这一栏刻意不叫「正在关注的画师」，仓库里没有任何关注数据源"—— 那是当时的真话
+（L3 的存储层还没落地），今天已经作废，但**跟着文件一起进 `_trash`**，不在活代码里留一句自相矛盾的话。
+
+### L12 站别徽标换成网站图标
+
+新增 `components/venera/VeneraGallerySourceMark.kt`；**两处点位全换**（用户拍板"全站点位都换"）：
+卡片角（`GalleryCardCaption`）与首页画师行（`GalleryHomeSections`）。
+资产由 `scripts/build_source_icons.mjs` 从站方原档转出，两站各拿到什么**不对等，而这不是漏做**：
+
+| 站 | 拿到的原档 | 落地形态 |
+| --- | --- | --- |
+| Gelbooru | 站上有 `layout/gelbooru-logo.svg`（360×360 单路径） | **矢量** `ic_source_gelbooru.xml`，任意密度都锐利。原档填充 #FFFFFF（为站方彩色页头设计），改成品牌蓝 #006FFA |
+| yande.re | 站方**没有方形站标**，唯一可用的方图是 favicon 那枚 **16×16** —— 而它其实是一张裁自插画的粉脸（256 像素全不透明，主色是皮肤与头发色调） | **位图** `drawable-nodpi/ic_source_yandere.png`。摆到 24dp（本机 ≈72 物理像素）必然发糊 |
+
+yande.re 那一枚是**知情选择**：把"只有 16px、放大必糊、它其实是一张粉脸"这三件事当面讲给用户之后，
+用户仍选它（拍板"还是摆 16px 脸"）—— 这张脸就是 yande.re 在浏览器标签页上的标识，
+**与站方一致优先于好看**。两枚同尺寸同圆角，并排时视觉重量一致；
+差别只在"一个是矢量、一个是 16px 位图"，那是**数据面的事实，不是设计选择**。
+
+三条实现口径：
+
+- Gelbooru 那枚底下**垫固定白底**：站标 path 的形状是"实心 G"，直接压在封面上会因为透明度消失；
+  白底既托住图形，也与它原本的设计底色（站方彩色页头）同族。
+- `tint = Color.Unspecified`：那是站方的图，染成我们的主色就不是它了。
+- **刻意不参与「界面材质 = 液态玻璃」这一轴**（与 `VeneraSourceBadge` 同一条）：
+  它背后是颜色不可控的封面，底板存在的理由就是"压在任何图上都可读"。
+
+⚠️ 这一条**收窄了 L 批次那条"不引站方标识"的口径**：现在它**只对文字位成立**
+（`gallerySourceMarkText` 那排 Y/G 字母仍在最近搜索的 chip 上，那里只有两三个字符的宽度，摆图标会把关键词挤没）。
+`GallerySearchSource.kt` 与 `GalleryArtistRows.kt` 上各有一段 ⚠️ 互相指路，
+免得后人拿其中一条去否决另一处。
+
+### 增补部分的自记错误
+
+- 上面 L10 那条：把"量了一个端点不通"写成"这件事做不到"，是**同一类错误的第二次**
+  （第一次是 L1 表格里"名字寻址可用"那条错报）。两次的共同点是**只量了最像的那一个候选**。
+- L12 落地后有两处注释**当场漂了**（`GallerySearchSource.kt` 说 yande.re"只能用字母"、
+  `GalleryArtistRows.kt` 说平台胶囊与首页字母徽标"同一条理由"），本轮写文档时逐字回核才发现，已改。
+  教训：**换了实现就要 grep 一遍旧理由**，注释里的"同一条口径"是最容易过期的一类话。
+
+## 批次 M（2026-09-30）：画廊首页六条真机反馈
+
+用户原话六条（配两张截图：图一 = 参考的深色玻璃首页，图二 = 当前浅色首页）：
+
+1. 「感觉图二的质感还是和图一差距有点大，图标太大了字体也大，整个页面要做 miuix 的悬浮玻璃风格的每组卡片层次分明，质感要更贴合图一」
+2. 「取消掉整个画廊的下拉刷新，猜你喜欢的换一批不要整个页面刷新，只刷新下面推荐的内容就行」
+3. 「之前做了上下滑收起顶和底栏，但是没有效果」
+4. 「关注的画师 y 站和 g 站合并显示不要分站显示」
+5. 「部分图片没有标题就不要完全空着，显示角色和其他 tag 了」
+6. 「http://img.pixiv.net/img 这部分网站的画师出处有时候可以显示有时候无法显示」
+
+第 3、6 两条是**缺陷**，第 2、4、5 条是**推翻既有判据**，第 1 条是**观感重做**。
+根因与口径逐条记在 `gallery-home-round3-2026-09-30.md`（§1–§6 根因、§7 拍板、§8 落地顺序、§9 落地状态），
+这里只记结论与红线。
+
+### 四条拍板（AskUserQuestion）
+
+| # | 问 | 定 |
+| --- | --- | --- |
+| 1 | 换一批重取期间推荐区怎么显示 | **保留上一批 + 压一层轻指示** |
+| 2 | 关注画师跨站合并后徽标与点击 | **两枚徽标并排，点击 = 全部来源搜** |
+| 3 | 卡片无标题时回退到什么 | **画师名 → 通用标签译名** |
+| 4 | 首页尺寸收到哪一档 | **徽标 18 / 头像 44 / 标题降一档** |
+
+### M1（第 3 条）：收栏没效果 —— 根因是取数位置，不是判据
+
+`GalleryScreen.kt` 那枚 `NestedScrollConnection` 挂的是 **`onPostScroll`** 读 `available.y`。
+post-scroll 的语义是"子级消费完之后剩下的那一截"，而首页那面瀑布流只要还能滚就把整笔位移吃干净
+⇒ 到达这一层的 `available.y` **恒为 0** ⇒ `delta < 0f` 不成立、`accumulated + 0 >= threshold` 永远不成立
+⇒ **永远不收**。反方向倒是通的（在顶部往上推时子级吃不下），所以屏上表现正好是
+"只会展开、从不收起"= 用户说的"没有效果"。
+
+第二处成因在同一枚连接上：它挂在 `topBarBehavior.nestedScrollConnection` 的**外面**
+（链上靠后的更贴近子级），miuix 顶栏折叠在 pre 段就把位移吃掉 ⇒ 就算改成 pre 段读，
+也要等顶栏完全折平之后才开始累计。
+
+修法两条，**判据层一行不改**（`GalleryChromeHidePolicy` 含 8 条单测原地不动，符号与阈值口径都没变）：
+改读 **`onPreScroll`** 的 `available.y`（那才是这一笔的真实位移）；
+把这枚连接挪到**最内层**（它恒回 `Offset.Zero`，不抢任何位移，所以"谁先看到"决定"谁拿到原始值"）。
+
+⚠️ 这一条的根因是**读码结论，不是实测读数** —— 只能靠真机验（清单第 1 条）。
+
+### M2（第 2 条前半）：两层下拉刷新都撤
+
+用户说的是"整个画廊"，所以两层 `PullToRefreshBox` 都换成普通 `Box`（各自的 `nestedScroll` 链保留）：
+首页主墙（`GalleryScreen`）与每日热门二级页（`GalleryDailyScreen`）。
+
+这与 2026-09-29 第四轮**加**下拉刷新时的理由（"同一天之内不再自动联网，得有个说得出口的动作"）
+不冲突 —— 那个动作现在由两枚真按钮承担：猜你喜欢节头的「换一批」、二级页顶栏的「换一批」。
+
+### M3（第 2 条后半）：换一批只刷推荐区
+
+根因：`GalleryForYouViewModel.refresh()` 会 `posts = emptyList()` + `stage = IDLE`，
+于是那一档"整屏波浪环"命中 ⇒ **三节跟着一起消失**，这就是"整个页面刷新"的观感来源。
+
+改法：`refresh()` **不再清空 `posts`**（其余字段照旧清），旧卡片留在屏上；
+"整屏波浪环"档只在 `posts` **真的是空的**时候才命中（冷启动第一轮）。
+
+⚠️ 这一改的正反两面：不清 `posts` 就意味着**旧一批与新第一批之间有一个共存窗口**，
+所以轻指示是必须的（用户看得见"正在换"），而且 **`seenKeys` 仍要清空** ——
+否则新一批会被当成"已经摆过"而整批剔空，那会读成"换了一批结果啥也没变"。
+这是"宁可错慢不可静默交错"那条口径在本轮的具体形状。
+
+### M4（第 6 条）：裸图出处里的作品号
+
+判据层把 pixiv 的**图床子域**一律判成 OTHER，`pixivArtworkId()` 对同一批 host 直接 `return null`。
+那条口径本来是为"站方把 `img42.pixiv.net/img/tehu48/` 这种**目录列表**登记成个人主页"立的，没错；
+错在把**带作品号的裸图**一起挡掉了。
+
+实测（`curl -x http://127.0.0.1:7890` 取 yande.re `post.json?limit=100` + 设备 `gallery_feed_cache.json`）：
+
+| 出处形状 | 条数（100 条里） | 改前判定 |
+| --- | --- | --- |
+| `www.pixiv.net/artworks/…`、`/en/artworks/…` | 26 | 认出作品号 → 反查作者 → **能显示** |
+| `i.pximg.net/img-original/img/<日期>/<号>_p0.jpg` | 8 | **认不出** |
+| `http://img.pixiv.net/img/…`（老式，用户截图里那种） | 本批 0，历史池里有 | **认不出** |
+
+"认不出"的那批只有在这帖**恰好带站方画师标签**时才有画师信息 ⇒ 用户读到的就是
+"同一类出处，有时可以显示有时无法显示"。
+
+修法只放宽 `pixivArtworkId()`：host 是 pixiv 图床子域时，从**路径最后一段**取
+`<数字>_<后缀>.<扩展名>` 里那串数字当作品号（`_p0` / `_square1200` / `_ugoira600x600.zip` 都算），
+后面接的 L10 反查**一行不改**。
+
+三条边界钉进了测试：**只看最后一段**（路径里 `img/2026/08/03/00/00/35/` 全是纯数字，
+按"路径里第一串数字"取会取到日期）；`tehu48/` `xerd008ss/` 这类**目录串仍然一律 null**（旧口径继续有效）；
+`fromSource()` **一行未动** —— 裸图**不是**"这个人"的主页，不能直接当入口摆，
+它只是"要不要多花一笔反查请求"的闸门，反查回来的 `users/{id}` 才是入口。
+
+### M5（第 4 条）：关注画师跨站合并
+
+与批次 L 判据 1 正面冲突，用户当面推翻 ⇒ **显示层合并、存储层不合并**：
+
+- `FollowedArtistRef` 由 `site: GallerySite` 改成 `sites: List<GallerySite>`（有货的那几站）；
+- 合并键 = 名字**忽略大小写**（既有那条"不认大小写但摆原样"保留）；
+- `count` 跨站合计，`previewUrl` 取两站里**最近一张非空**的收藏；
+- 徽标：`sites` 里有哪站摆哪枚，**两枚并排**（拍板）—— 只摆一枚就等于把另一站藏起来，
+  用户点进去看到两站的图会觉得莫名其妙；
+- 点击：新增 `GallerySearchViewModel.acceptHandoffAllSites(tags)`（恒落 `GallerySearchSource.ALL`）。
+  既有 `acceptHandoff(site, tags)` **不动**（大图页标签、搜索卡还在用），
+  而且**只在一站关注过的人仍走旧入口** —— 另一站的同名那位本来就没被认下，
+  替他扩大范围就是替用户做决定。
+- ⚠️ 不碰保护域（`Navigation.kt` / `VeneraNavTab` / 路由映射 / 齿轮入口），本轮不新增目的地。
+
+`GalleryArtistFollows` 的判据 1 原文**没有删**，加了一段 ⚠️ 指向 `GalleryFollowedArtists`，
+写明"两处不是矛盾，是两层各自的选择"。
+
+### M6（第 5 条）：无标题回退
+
+先说一条事实（当面提醒过用户）：**角色档本来就在标题里**（现口径是「作品 · 角色」），
+所以真正走到"没标题"的那批是**既无作品档也无角色档**的图 —— 用户说的"显示角色和其他 tag"里，
+"角色"那一半其实已经生效，能新增的只有画师名与通用标签。
+
+回退链改成四档，前一档有就停：作品 · 角色 → 只有作品 / 只有角色 →
+**画师名**（词典 artist 档）→ **第一枚有中文译名的通用标签**。四档都没有才 `null`（整行不画）。
+
+三条边界：**元数据档（5）永不进回退**；通用档**只在有中文译名时进表**
+（没译名就只剩 `shirt_lift` 这种原词，比空着还难读）；画师档**没译名则摆原词**
+（专有名词，音译一个反而没人认得出）。数据面 `GalleryTagDictionary.titleTags()` 相应放宽到四档，
+分批与"打不开回 null"的既有口径不变。
+
+`GalleryCardTitle` 判据 4 原文（「一个都没有 → null，**不拿通用标签或画师名顶包**」）**没有删**，
+原地写明推翻它的那句用户原话与当初为什么那么定。
+
+### M7（第 1 条）：尺寸与层次
+
+三个数字，全部有来由（`Spacing.kt` 里逐条写着）：
+
+- `sourceMarkSize` 24dp → **18dp**（取现成的 `badgeIconSize` 同值）。
+  ⚠️ 这是一枚**共用 token**，搜索结果网格的卡片行也跟着变小。刻意不另立"首页专用一档"：
+  同一枚站标在两处尺寸不同，读起来像漏改。
+- `artistAvatarSize` 56dp → **44dp**、`artistAvatarSlotWidth` 88dp → **72dp**（同比例收，名字仍读得出一行）。
+  44dp 是**本轮唯一的新数字**（现成档只有 34dp 的 `sourceAvatarSize`，跨度太大），理由写进 token。
+- 画师名与卡标题字号 `type.caption` → **`type.badge`**（降一档）。
+
+层次：三节各自套一层背板（新增私有件 `GalleryHomeSectionCard`，里面就是 `VeneraCard`）。
+⚠️ 这**推翻**了第二轮那条「节与节之间不加分割线、不加分区底色」的结构决定，
+理由就是用户这轮的原话「每组卡片层次分明」；旧文字留在 KDoc 里没有删。
+
+走 `VeneraCard` 而不是裸 miuix Card 的理由：全站分组卡的玻璃判据在
+`veneraGlassSurface` / `veneraGlassCardColors` 那一处，这里不留第二份判断 ——
+**材质轴开着是玻璃、关着是实色，两档都有背板**（否则"层次分明"就变成只在一个开关下成立，那是一种假开关）。
+
+### 与拍板文字不一致的一处（如实记）
+
+拍板 1 的选项文字是"保留上一批 + **压一层轻指示**"，我当时在选项里写的是
+"整片压一个半透明遮罩 + 小波浪环"。**实际落地的是节头「换一批」旁一枚 `loaderInline`(28dp)
+波浪环 + 芯片禁用**，没有整片遮罩。
+
+理由：仓库里没有可用的遮罩透明度口径 —— `maskScrimAlpha = 0.65f` 的语义是**封面打码**、
+`selectedSurfaceAlpha = 0.5f` 是**次级表面**，拿任一个来压推荐区都是把语义不同的 token 挪位；
+新造一个数字又违反"观感尺寸用现成口径"。而指示摆在节头正是**用户刚点下去的位置**，
+"这一节正在换"这件事说得比整片遮罩更准，也不挡住已经摆好的那批图。
+真机若嫌它太弱，改法是把这一枚环换成推荐区顶部一条进度条量级的指示，**而不是回头去造遮罩 alpha**。
+
+### 验证
+
+- 判据层三处**先红后绿**，红灯读数逐条记在 `gallery-home-round3-2026-09-30.md` §9 的表里
+  （M4 `expected:<147950802> but was:<null>`；M5 `Unresolved reference 'sites'` ×2 —— 新 API，编译级红；
+  M6 四条 `AssertionError`）。M1–M3、M7 没有判据层可红（接线与观感），验证只能落在真机清单上。
+- 全量单测 **545 条 / 0 失败 / 0 错误**，`:app:assembleDebug` 通过（APK 已出）。
+- 判据层独立跑法仍是 `_probe/l0/run-judgment-tests.sh`（本轮收录 4 个测试类共 43 条）。
+- **装机未完成**：`adb devices` 空列表，等设备接上。
+
+### 本轮踩到的一处工具坑（会影响后面所有人的编辑）
+
+**显示层会把日期形路径里的 `/` 渲染成 `-`**：`img/2026/08/03/00/00/35` 在 Read 与 grep 的输出里
+都显示成 `img/2026-08-03-00-00-35`，磁盘上是真斜杠。后果是 Edit 的 `old_string` 若照着屏幕抄，
+多行匹配**恒 0 处**，而且看起来像"文件里没有这段"。
+排查时先后怀疑过 CRLF、中文字符、多行匹配，全是错的方向；**只有 `od -c` 给出的是真字节**。
+修法：`old_string` 里**手写真斜杠**，落盘后用 `grep -c "img/2026-08-03-00-00-35"`（=8）反向验证。
+
+### 真机清单（用户点页面，我只装机与读数）
+
+1. 画廊设置里打开两枚"滚动收起"，下滑过搜索框 → 顶栏与底栏**各自**收起；上滑任意幅度 → 立即回来；双击空白 → 复位。
+2. 首页与每日热门二级页都**不再有**下拉刷新那一圈；"我要新内容"只剩两枚「换一批」。
+3. 点「换一批」→ 三节不动、上一批卡片留着、节头出现那枚小波浪环且芯片禁用；新数据到了才整批替换
+   （**不许**出现"换了一批结果啥也没变" —— 那是 `seenKeys` 没清的症状）。
+4. 关注一位两站同名的画师 → 首页只出现**一条**、名字下**两枚徽标并排**；点它 → 按这个名字**跨两站搜**。
+   只在一站关注过的人 → **一枚**徽标，点进去仍只搜那一站。
+5. 找一张既无作品档也无角色档的图 → 卡上摆**画师名**（或通用标签译名），不再只剩一枚站标；
+   四档都没有的图仍然**整行不画**（不是摆一行空白）。
+6. 出处是 `i.pximg.net/…/<号>_p0.jpg` 或 `http://img.pixiv.net/img/…` 的图 →
+   「关于这张图」里出现**带账号**的 pixiv 胶囊；删帖 / 锁帖仍会没有，
+   那一档已如实留日志（`adb logcat -s GalleryArtistRows`），屏上不出现任何解释文案。
+7. 首页整体观感对照图一：徽标 18、头像 44、标题降一档、每节一层背板（材质轴开 / 关两档都要看）。
+   ⚠️ **这一条的三个半句当天就被批次 N 推翻两个**：「每节一层背板」撤掉（表面下放到条目）、
+   「标题降一档」回改（badge → caption）。徽标 18 与头像 44 留着。
+   照这条点验前先读 `gallery-home-round4-2026-09-30.md`。
+8. 搜索结果网格的卡片行也跟着变小了（`sourceMarkSize` 是共用 token）—— 这一处**是刻意的**，
+   若真机读起来太小，改法是给首页单独立一档，而不是把共用值改回去。
+
+## 批次 N（2026-09-30 下午）：两条被真机读数推翻的口径
+
+批次 M 落地装机后用户两句反馈，各暴露一条根因：
+「我之前设置有个下滑收起顶底栏，**搞反了**，应该是上滑收起」；
+「**开了玻璃就是这样，感觉就是不如图一那种**」—— 后一句直接推翻了"打开材质轴就能接近参考图"这个前提。
+取证、实测读数、改法与**没解决的部分**全记在 `gallery-home-round4-2026-09-30.md`，这里只钉结论。
+
+### N0 收栏方向：符号假设错了，而测试把它钉住了
+
+`androidx.compose.material3` 1.5.0-alpha22 `AppBar.kt:3899` 的
+`// Don't intercept if scrolling down.` 配 `if (available.y > 0f) return Offset.Zero`，
+而收起要求 `heightOffset` 往负走 ⇒ **负 = 手指向上滑（往下浏览）、正 = 手指向下滑（回滚）**。
+旧判据正好用反（上滑展开、下滑收起）。同一条错假设写在四处（policy 类头、`@param delta`、
+`GalleryScreen` 的连接注释、**测试类注释**）—— 测试当时按错约定写，所以它一直绿着把缺陷钉在屏上。
+
+- TDD：先把 7 条用例按取证方向改号 → **3 条红**（`过了阈值就该收` / 收不起来 / `已经收着就保持收着`），
+  三条红的都是"方向反了"这一件事 → 改 `afterScroll` → 7 条绿。
+  另外 4 条（零位移、复位、成对清、小幅来回）在两种约定下同形，所以不红。
+- 顺带纠正批次 M §1 的一处错报：旧写法（`onPostScroll`）的屏上表现**不是**"只会展开、从不收起"，
+  而是"日常滑动整条判据根本不参与"。M1 那次只修了取数位置（对的），符号没动，所以修完仍然反。
+- 文案：两枚开关 → 「上滑时收起顶栏 / 底栏」，说明一律改写成不会读反的说法
+  （"上滑/下滑"本身就有手指方向与内容走向两种读法，这轮翻车的语言面成因）。
+  **键名没跟着改** —— 改了会让已打开过这一枚的用户静默回到默认档。
+
+### N1 玻璃档在内容区不产生提亮：抬亮量由"叠哪个色"决定
+
+玻璃档实测：页面底 rgb(20,19,24) → 节背板 rgb(22,21,27)（**+2**）→ 条目卡边缘 rgb(27,26,31)（**+7**）；
+同屏顶栏/搜索框 rgb(47,45,58)/(43,41,54)（**+27/+23**）。参考图：底 rgb(6,13,26) → 卡 rgb(27,34,62)（+21/+21/+36，冷蓝）。
+
+CONTAINER 档原先容器色与染色**都取 `surface`**，而这套深色方案的 `surface` 与页面底是同一个近黑
+⇒ 模糊近黑再叠 0.28 的近黑 = 零提亮。反证在同一屏：chrome 亮是因为它走 `surfaceContainerHigh`。
+
+- 改法只换槽位：CONTAINER 档改取 `surfaceContainerHigh`；**三个 alpha（0.28/0.22/0.16）一个都不动**
+  （它们是 `VeneraLiquidGlassNavBar.kt:119` / `VeneraTopAppBar.kt:100` 上真机验证过的读数）。
+- CONTROL / INLINE 两档**不跟着抬**：芯片按钮一屏二十个，要的是与所在面板区分，不是比页面亮一档。
+- `veneraGlassCardColors()` 的**实色档**不再回落 `CardDefaults.defaultColors()` 的近黑，显式给
+  `surfaceContainerHigh` —— 这一支才是本轮真正吃到 +27 的地方；只在玻璃档加层次就是假开关。
+- ⚠️ **没解决的部分如实记**：换槽位后玻璃档抬亮只到 ≈ +7.5（alpha 才是那一档的上限）。
+  要往参考图量级走只有两条路，本轮都没走：抬容器 alpha（与"玻璃要透"那条读数直接冲突）、
+  或改录制层 `Navigation.kt:547` 的 `surfaceBase`（**保护域**）。留给真机读数再拍。
+- 另一条不属于本轮：参考图是深蓝底 + 冷蓝卡，我们是暖黑底 + 紫氛围光 —— 那是主题种子色的事，
+  换槽位解决"抬多亮"，解决不了"色相偏暖"。
+
+### N2 分层方向：表面该在条目上，不在节上（推翻 M7）
+
+参考图没有"节"这一层表面，抬亮发生在**每一条**上。M7 把背板加在节上同时错两处、而且**两节错得还不一样**：
+每日热门 = 卡里嵌卡（两层实测只差一小截，糊成一层）；正在关注的画师 = 节卡里裸摆条目（一排图标，不是四个人的卡）。
+
+- 撤 `GalleryHomeSectionCard` → `GalleryHomeSection`（只剩宽度与节间距）；画师行每位一张 `VeneraCard`；
+  海报行本来就有卡、**一行不改**；猜你喜欢那节只剩裸节头（它下面那条墙就是它的全量，套不进卡）。
+- M7 那段"一节一块背板是分组在屏上唯一的说法"**没删**，原样搬进 `GalleryHomeSection` 注释，后面注着被谁推翻。
+- 三节的**数量与次序恒不变**这条红线未动（锚定漂移），只改分支内部。
+- 骨架 `GalleryRowSkeleton` 改成套同一个 `VeneraCard`：实卡多出上下两层 8dp 内衬，
+  骨架不套同容器就差 32dp，到货那一帧仍然跳。
+- **自记一处算术错**：计划里写"72dp 槽 − 16dp 内衬 = 56dp，两枚站标 38dp 装得下"——
+  漏算了同一行的「N 张收藏」文字（一枚站标 + 那串字 ≈ 60dp，**连一枚都装不进 56dp**）。
+  于是 `artistAvatarSlotWidth` 72 → **88dp**（M7 之前的原值，登记过的回摆、不是新数字）。
+  两枚站标那位在 88dp 下仍会挤掉一两个字，改法是"两枚时不摆张数"而不是再放大这一格。
+
+### N4 字号：M7 降过头，回一档
+
+M7 把卡内标题与画师名从 `caption`(13sp) 一次降到 `badge`(11sp)。用户当时说的是"图标太大、字体也大"，
+**我把两样一起降了**。图标那半（24→18、56→44）是对的、留着；字号这半回 `caption`。
+两处旧注释里 M7 的降档理由原样保留并注上被本轮推翻。「N 张收藏」仍留 badge（补充读数，不是署名）。
+
+### 验证
+
+- 判据层：`GalleryChromeHidePolicyTest` 7 条**先红后绿**（红的读数抄在上面，三条、全是方向反了）。
+- N1/N2/N4 **没有判据层可红**（无 Robolectric，`GalleryHomeSectionsTest` 只落在 key 与次序上）——
+  纯真机验收项，没有硬造断言，只在该测试类里写明"背板撤除属布局层，此处测不到"。
+- 全量单测 **545 条 / 0 失败 / 0 错误**（70 个结果文件），`:app:compileDebugKotlin` 与
+  `:app:assembleDebug` 通过（APK 17:42）。**装机未完成**：`adb devices` 空列表。
+
+### 真机清单（页面由用户点，我只装机与读数；材质两档各拍一张）
+
+1. **收栏方向**（N0 硬指标）：向上滑（往下浏览）累计过搜索框位置两栏各自收起；向下滑任意幅度立刻回来；
+   双击顶栏复位；且与 miuix 顶栏自带折叠**同向**、不再互相拉扯。
+2. **抬亮比**（N1 硬指标）：PowerShell 取页面底与条目卡面。**实色档目标 ≥ +18**（改前 +12）；
+   玻璃档预期只到 ≈ +7.5。**实色档测不出抬亮就说明 N1 做成了假开关。**
+3. 每日热门不再卡中卡；正在关注的画师每位一张卡；猜你喜欢的节头不再像孤立药丸。
+4. 加载 → 到货那一行不跳高（骨架与实卡同容器）。
+5. 画师名 + 「N 张收藏」在 88dp 格里：一枚站标那位读得完整；两枚站标那位挤掉几个字 ——
+   要不要"两枚时不摆张数"，看完再拍。
+6. 卡内标题回到 13sp 后与 18dp 站标的比例是否顺眼。
+7. 从详情页返回：内容不画进 `contentPadding`（锚点未漂）。
+8. **顺带扫设置页**：`veneraGlassCardColors()` 是全站分组卡的同一处判据，那边会一起抬亮。
+
+### 没动的两处，等读数再拍
+
+- 节头没有图标位（`MiuixSectionHeader` 只有 title + trailing），而参考图两节各有一枚；
+  「查看全部」是描边药丸、是整节最亮的元素。抬亮之后它可能就不抢了 —— 先看截图再定。
+- 卡下第二行热度读数（参考图的 🔥12.4k）：用户拍"这轮先不加"。`score` 是真有的
+  （`_probe/day_posts.json` 实测 yande.re 80/64/63/52…），但 Gelbooru 有 `score:0` 的帖子，
+  加之前得先钉"0 就不摆"。
+
+## 批次 O（2026-09-30 晚）：切回画廊 Tab 就整页重取
+
+用户原话：「每次进入画廊整个页面都要重新加载，你整个上次已经加载好的数据，不刷新的话就不要主动刷新新内容了」。
+取证、拍板与三条落地口径全在 `gallery-tab-reload-2026-09-30.md`，这里钉结论。
+
+### 根因（两条叠在一起，缺一条都不会有这个症状）
+
+1. **结构因**：切 Tab 走 `gotoTab` = `popUpTo(startDestination){saveState=true}`，画廊那条目的地是**被 pop 掉的**。
+   `androidx.navigation` 2.10.1 `NavBackStackEntry` 类头 KDoc 明写 pop 时
+   "the lifecycle will be destroyed, state will no longer be saved, and **ViewModels will be cleared**"，
+   而 VMStore 按条目随机 `id` 取 ⇒ **`saveState`/`restoreState` 只救 `rememberSaveable`，救不了 `viewModel()`**。
+   切回来那四个画廊 VM 全是新实例。
+2. **这一屏从来没接上同日门**：日榜那头 2026-09-29 就为同一件事存过快照 + 配了
+   `shouldAutoLoad()`，**猜你喜欢漏了** —— 无缓存、无门、无节流，`loadedKey` 只是"同一次组合"的守卫，
+   新 VM 上恒不成立。外加 `seed = System.currentTimeMillis()`，新 VM 连推荐标签都重抽一遍
+   ⇒ 用户读到的不只是"重新加载"，是"内容还换了一批"。
+
+**一句概括：这不是回归，是 09-29 那条既定口径（"同一天之内不再自动联网"）当时只落在日榜那一屏。**
+
+### 三条拍板（AskUserQuestion）
+
+| # | 问 | 定 |
+| --- | --- | --- |
+| 1 | 修法 | **A：照日榜那套补快照 + 同日门**（不碰保护域、判据可单测） |
+| 2 | 有效期 | **同一天不自动取**，跨天补拉一次 |
+| 3 | 搜索上下文栈一起治？ | **先不动**，本轮只治首页重取 |
+
+否掉的两条留档：**B** 把画廊 VM 提到壳层常驻（取 owner 要动保护域 `Navigation.kt`，两站池子常驻内存）；
+**C** 改 `gotoTab` 不弹栈（一处改完五个 Tab 都不重建，但返回栈语义/返回键/底栏 `currentTab` 判据/切 Tab 动画全跟着变）。
+
+### 落地时定死的三条口径
+
+1. **`seenKeys` 不落盘，从恢复出来的那一屏重算** —— 它本来就是从这些 post 累出来的，
+   存第二份等于给"两份不一致"留位置（存了旧键、屏上换了新条，去重就会漏剔或误剔）。
+2. **空快照一律不算"已铺好"** —— 这一条比看上去重要：空屏若被认成已铺好，同日门恒关，
+   **一屏空白而门是关着的、永远不再取**，那比"每次都刷新"坏得多。落盘那头只存在到内容的那一轮，这是第二道闸。
+3. **`stage` 也要铺成 READY** —— 只恢复 `posts` 不恢复 `stage`，页面第一帧念 IDLE，
+   而 IDLE 那一档摆的是整屏加载环，快照就白存了。
+
+另两条形状选择：`init` 读盘必须**同步**（异步读抢不过"这一轮要不要联网"那次判断）；
+"按站一份"的几列存**行式** `List<GalleryForYouSiteRow>` 而不是 `Map<枚举, String>` ——
+不押 kotlinx 对枚举键的编码口径，且站点认不出时可逐行摘掉而非整档作废。
+
+### 自记错误（两处，都是编译抓的）
+
+- **`init` 块放错位置**：先写在 `generation` 之后，而要赋的 `seenKeys`/`sitesDone` 声明在更下面 ⇒
+  `Variable cannot be initialized before declaration`。教训：**这个类里已经有一个 `init`（订阅 Gelbooru 账号），
+  多个 init 块是按声明位置串起来的，不是随便放哪都一样。**
+- **两个 import 漏了**：`kotlinx.serialization.json.Json`（照抄 `GalleryFeedCache` 时漏一行）
+  与 `toPost`/`toFavorite`（那两个扩展在 `gallery.data` 包里，日榜同包不用 import，VM 在 `gallery.ui` 就得显式引）。
+
+### 验证
+
+- 判据层 8 条**先红后绿**（红是编译级：`Unresolved reference 'GalleryForYouRefreshPolicy'`，新 API 不可避免，
+  与批次 M · M5 同一档）。
+- 全量单测 **553 条 / 0 失败 / 0 错误**（545 + 新 8），`:app:assembleDebug` 通过（APK 20:42）。
+- **装机未完成**：`adb devices` 空列表。
+
+### 真机清单（用户点页面，我只读数）
+
+1. **主判据**：进画廊取到内容 → 切首页 → 切回 ⇒ 不转圈、还是那一屏、次序没变；
+   `adb logcat` 这一轮不该出现画廊取数的网络日志。
+2. 「换一批」**仍然真换**（同日门不许把它拦成假按钮）：节头出小波浪环、芯片禁用、新第一批到货才整批替换。
+3. 翻两三页到底 → 切走切回：停在**已取到的那一屏**（不是退回第 1 页），
+   页尾"累计 X 张 / 已排除 N 张"**没归零**。
+4. 跨天首进补拉一次（这是对的，不是 bug）。
+5. 手工把 `files/gallery_for_you_cache.json` 改成非 JSON → 应**照旧联网取一次**，不是停在空屏。
+6. 冷启动第一帧不该是整屏加载环（同步读盘）。
+7. 双源退化成一源那句**可见**提示，切回 Tab 之后**还在**（`failures` 存进快照了）。
+
+### 本轮没治的同一根因症状
+
+搜索那面墙的上下文栈（`GallerySearchViewModel`）切 Tab 全丢 —— 用户拍"先不动"。
+---
+
+## 批次 N（2026-09-30）：冷启归因实测 —— 优化计划里四条被量掉，只落一条
+
+### 起点
+
+用户给的《Venera-Compose 性能优化计划（基于真机三页面滑动复测）》，主张：冷启首页是唯一真卡，根因是
+`VeneraApp.onCreate` 的同步初始化链（网络引擎 / 内容守卫 / 源管理器），并把 A1–A3 记作 "~60% 收益"。
+按"先量再改"的口径开工：先在启动链每一段插打点，再拿真机读数逐条对账。
+
+### 实测读数（PJZ110，同一份用户数据；协议 = force-stop → 1.5s → gfxinfo reset → `am start -W` → 睡 3s → dump）
+
+| 形态 | TotalTime | 帧数 | janky | 50th | 99th | GPU 99th |
+|---|---|---|---|---|---|---|
+| debug 基线（4 轮） | 973 / 1017 / 1012 / 1055ms | 8–11 | 63–75% | 109–150ms | 550–600ms | 8–14ms |
+| debug + `cmd package compile -m speed -f` | 744 / 796 / 813ms | 8 | 75% | 113–150ms | 550–600ms | — |
+| **release（真用户形态）** | **260 / 263 / 283 / 304ms** | 8–9 | 37–62% | 11–32ms | **125–150ms** | 8–22ms |
+| release + 本轮基线画像 | 261 / 275 / 280 / 302ms | 9–159 | 4–44% | 10–29ms | 101–200ms | — |
+
+打点分段读数（debug）：`App.onCreate` 全程 **74–95ms**；其中 `VeneraNetworkClient.getInstance` **61–77ms**
+（`PersistentCookieJar()` 33–50ms，全是 `loadFromPrefs` 的 prefs 全表读 + 每 host 一次 gson；`buildClient()` 14–24ms）、
+`ContentGuardManager` **5ms**、`ComicSourceManager` **8–13ms**。首帧窗口：主题色就绪 +203~236ms →
+首个 comic 判定 +378~412ms（主线程组合期内）→ **first traversal +880~921ms**。
+
+### 真因（两条硬测量）
+
+1. **主线程状态**（atrace `sched`，进程主线程 tid 全量重建）：那 1280ms 窗口里
+   **running=1147ms、runnable(等 CPU)=4ms、sleep(阻塞)=128ms** ⇒ 不是抢不到核，也不是等 IO，是它自己在跑代码。
+2. **它在跑什么**（simpleperf，`--call-graph fp`，主线程 2863 样本）：
+   **82.7% 周期在 `libart.so`**（`ExecuteSwitchImplCpp` 17%、`DoCall` 8.3%、`MaybeDoOnStackReplacement`+`MethodEntered`+`PrepareForOsr` 11%、
+   `DexFileVerifier::Check*` / `ClassLinker::LoadClass/FindClass` / `MethodVerifier::Verify*` 若干），
+   真正画东西的 `libhwui.so` 只有 **0.8%**。全进程 CPU：主线程 32% / **Jit thread pool 28%** /
+   DefaultDispatch 14.5%（QuickJS `init+loadStandardLib` 实测 1050–1401ms）/ **EmojiCompatInit 3.3%** / RenderThread 2.4%。
+
+⇒ debug 包不能 AOT，冷启那点卡**主要是打包形态的成本**；业务代码在这条链上的占比远小于计划里的估计。
+
+### 被量掉的四条（保留计划编号，逐条附读数）
+
+- **A2 守卫装载时机**：全构造 **5ms**（`loadRules` 1–2ms、`loadSourcePresets` 1–2ms）。更关键的是
+  `Guard: first coverMaskStateFor(Comic)` 落在 **+378~412ms 的主线程组合期内** —— 被动 `ensureLoaded()`
+  不是把这 5ms 搬走，是把它**搬进首帧**。另有一条真风险：`rules` 这条 StateFlow 被
+  `UnifiedExploreScreen.kt:124` 与 `SourceSectionScreen.kt:105`（均 FROZEN）收集，纯延迟会让它们在第一次判定之前看到空规则表。
+  ⇒ **不做**，用户给的豁免未动用；只留打点。
+- **A3 内置源构造**：三个源构造合计 **1–2ms**（`MangaDexSource/CopyMangaSource/BaoziMangaSource` 的 `networkClient` 本来就已 `by lazy`）⇒ 零收益，不做。
+- **A5 collect 协程延后**：JS 抢 CPU 这条被 **E1 实验证伪**（把 `loadInstalledJsSources` 整段推迟 4s：
+  first traversal 886/919/921ms vs 基线 902ms，TotalTime 1071/1101/1015 vs 973–1055 ⇒ 无变化）。
+  `FollowUpdatesScheduler.enable` 在本机从未触发（`followUpdatesFolder=null` 走 disable 分支，无读数）。
+  ⇒ 不为它延后任何东西；且别名注册那条 collect **不能**延后（历史卡存源显示名，延后=把成人源的打码窗口拉长）。
+- **C2 收藏流改造**：`HomeVM.getAllComics` 实测 cost **157–331ms**，起点 +625~+751ms、结果落在 +908~+986ms
+  （正好顶在首帧那一刻），看起来很像成因。但把设备上的 `local_favorite.db` 拉下来用 node:sqlite 读数：
+  **只有 `默认` 一个收藏夹、0 行数据** ⇒ 这 200–300ms 全是"首次开库 + 冷进程首次走代码路径"，不是查询量。
+  另外计划点名的 `favoritesManager.favorites` **不存在**（数据层只有 `folders`/`counts`/`version`，
+  `getAllComics()` 是 suspend 且内部已 `withContext(Dispatchers.IO)`），"组合期间同步全表扫描"这个机理本身不成立。⇒ 不做。
+- **B2 / C1**：首帧之前没有导航发生（`currentTab` 的 derivedStateOf 只影响切页）；LazyColumn 的 `key` 不影响首次组合。
+  且 B2 按计划写法（`derivedStateOf` 块内读已在外部取好的 `destination`）会**永久读到第一次组合的旧值**，
+  要写对必须块内读 `backStackEntryState.value`。⇒ 对冷启零收益，撤下；切页/复用另开一轮。
+
+### 落了的一条（唯一有凭据）
+
+`VeneraNetworkClient`：`cookieJar` / `prefs` / `OkHttpClient` 三条改延迟构造，由 `VeneraApp` 在 IO 线程预热
+（不预热的话这笔钱改由首图那次 `newImageLoader` 在主线程付）。读数：`App: VeneraNetworkClient.getInstance`
+**61–77ms → 2–3ms**，`Application.onCreate` 全程 **74–95ms → 27–28ms**，TotalTime −20ms（在噪声边缘，不写成收益）。
+
+两条刻意不跟着延迟的理由写在代码注释里：
+
+1. `UserAgentPolicy.init` 留在构造期 —— `CloudflareBypassManager` 写 host 绑定 UA 那条路不保证先碰过
+   OkHttpClient，而未 init 时它的 `prefs` 是 null，`setCustomUserAgentForHost` 会只在内存记一笔、**静默丢掉持久化**
+   （`cf_clearance` 配不上 UA，正是本文件 2026-09-26 那条"从来没生效过"的同型坑）。
+2. `httpCacheSizeBytes()` / `clearHttpCache()` 改走 `okHttpClient` 取值器 —— 读 null 会报"缓存 0 字节"的假读数。
+
+### 试了又撤的一条：基线画像
+
+机制走通：把真机 ART 自己记录的 startup profile 用 `profgen dumpProfile` 导成 HRF，落成
+`app/src/main/baseline-prof.txt`（31294 行，自有类 725 条 + compose/miuix/materialkolor/coil 等），
+`compileReleaseArtProfile` 正常产出 `assets/dexopt/baseline.prof`。**按"新装用户第一次冷启"口径实测无收益**
+（见上表第 4 行，与未加画像的 release 完全重叠），且编译后的画像反而从 16129B 缩到 14697B
+（有顶掉库 AAR 原有画像的风险）。⇒ 文件已移 `_trash/baseline-prof.measured-no-gain.txt`，
+重生成三步写在它的文件头注释里。手写 `src/main/baseline-prof.txt` **不需要新依赖也不需要 macrobenchmark**，
+这条已查实，后续要重启很便宜。
+
+### 计划里"验收口径"的两条订正
+
+- `首屏 3 秒 Total frames rendered ≥ 25`：帧数不是流畅度指标。App 画完首屏就空闲，release 上
+  8–9 帧是正常的；同一包若推荐区在窗口内到货就是 149–159 帧。判据应看 50th/99th 与 janky 比例。
+- `TotalTime ≤ 930ms`：release 天然 260–304ms，debug 天然 970–1090ms，用哪一包当分母要先说清。
+
+### 交互基线（用户点页面，我只读数；同一轮 = 4 次切 Tab + 首页快滑 8 下）
+
+debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / **99th 77ms**，
+尾部 125ms×5、133ms×2、150/200/300/350ms 各 1。⇒ 切页与快滑这一面是顺的，legacy 高是算法对接近 60Hz 帧过敏感。
+**release 侧同一轮还没跑**（包已换过，需要用户再点一轮）。
+
+### 测量边界（下一个人别再撞）
+
+- `app/proguard-rules.pro:74` 有 `-assumenosideeffects class android.util.Log { v,d,i }` ⇒ **release 上 VeneraStartup 整条消失**，
+  只能用 `am start -W` + `dumpsys gfxinfo` 两个数。
+- 非 debuggable 让 `run-as` 与 `simpleperf` 都进不去 ⇒ 函数级采样只能做在 debug 包上。
+- Git Bash 里 `adb pull /data/...` 会被路径转换吃掉，要写 `//data/...`；`atrace -z` 输出是 gzip 且头两行是文本头，
+  直接去掉 `-z` 拿文本最省事；`profgen dumpProfile --output` 不给带目录的路径会 NPE。
+- 数据安全性：`install -r` 同签名可来回切 debug/release，**不丢数据**；本轮全程用 `-r`，
+  并在切换前用 `run-as PKG tar` 备份过 `files/databases/shared_prefs`（18MB，`_qa/startup-baseline/appdata-backup.tar`）。
+  注意反向不成立：一旦装成 release，`run-as` 就进不去、备份通道也关掉了。
+
+### 冻结面与被碰记录
+
+- **ContentGuardManager.kt（FROZEN，用户点名豁免"A2 装载时机"）**：最终**只加打点**
+  （`timed` 包 `loadRules`/`loadSourcePresets`、`once` 探三个判定入口首次调用）。判定链、规则初值、
+  verdictCache、预编译正则、`explicitPatterns` 一律未动。豁免给了但没用作语义改动，A2 本身撤下。
+- **HomeScreen.kt（FROZEN）**：**一行没动**（C1 撤下，未申请豁免）。
+- 其余改动都在非冻结文件，且除 `VeneraNetworkClient` 那三条 lazy 外全部是日志与耗时记录：
+  `VeneraApp.kt`、`MainActivity.kt`、`PersistentCookieJar.kt`、`VeneraPreferences.kt`、`ComicSourceManager.kt`、
+  `HomeViewModel.kt`、`VeneraTheme.kt` + 新文件 `StartupTrace.kt`。
+  其中每条 JS 源解析的耗时打点（`SourceMgr: parse jm.js cost=…`）就是计划 **A4** 要的常驻诊断。
+- 未引入新依赖（基线画像那条最终撤了）。
+
+### 验证
+
+`:app:testDebugUnitTest` **559 条 / 0 失败 / 0 错误**；`:app:assembleDebug` 与 `:app:assembleRelease` 均通过。
+读数与 trace 原件在 `_qa/startup-baseline/`（`trace-*.txt`、`gfxinfo-*.txt`、`e1-*`、`rel-*`、`relbp-*`、
+`atrace-cold2.txt`、`sp2.data`、`parse-sched.cjs`）。
+
+### 未做 / 待拍板
+
+1. release 侧"切页 + 快滑"复测还没跑（要用户点页面）。
+2. 收藏页快滑里那 2 次 200ms 尖峰：不动 FROZEN 屏结构无解 —— 仍挂账。
+3. `EmojiCompatInit` 在启动窗口占 3.3% CPU（androidx.emoji2 自启），值不值得查未定。
+4. `StartupTrace` 是否常驻：本轮倾向留（它就是 A4 要的常驻诊断，release 上日志被自身规则抹掉、只剩取时间戳）。
+5. 若真要把 debug 包的冷启也压下来，方向只剩"**首屏少碰类**"（少解释执行一些）与"**冷库/冷 dex 提前在后台摸一遍**"，
+   两者都不在原计划范围内。
+
+---
+
+## 批次 P（2026-10-01）：全项目代码深挖 —— 行为缺陷 + 死代码 + 去 AI 味
+
+详档：`code-audit-batch-p-2026-10-01.md`。**与上一轮（首屏性能）零交集**：
+`VeneraApp.onCreate` / `MainActivity.kt` / `VeneraApp.kt` 一行未碰。
+
+### 落地的三条行为缺陷
+
+1. **P1** `VeneraNetworkClient` 的 `get`/`post`/`downloadBytes` 不判 HTTP 状态 —— 403 的挑战页被当正文
+   交回上游。最坏的一条不是"源解析出错"，是**画廊另存会落盘一个叫 `.jpg` 的网页而提示说"已保存"**。
+   判据抽成纯函数 `data/network/HttpBodyVerdict.kt`（非 2xx 抛 `HttpRejectedException`，
+   文案带方法 + **去掉查询串**的地址 + 状态码），三处补 `use`。
+   **随的是本仓自己的既有约定**：`DownloadManager`、`VeneraImageFetcher`、`ImagePipelinePolicy`、
+   `AppUpdateChecker`、`WebDavClient` 六处、`ComicSourceViewModel` 早就都判了。
+   波及面量清：**19 处调用 / 5 个文件**，全部包在 `try{}` / `runCatching{}` 里 —— 没有把任何空白变成崩溃；
+   JS 源那一整条路（`JsHttpHandler` 自己拿 `okHttpClient`）**不受影响**，别当成"全网关都修了"。
+   错误确实上屏：`SourceSearchResult.error` → `SearchScreen.kt:1030` 直接渲染。
+2. **P2** 正则可编译性判据抽到 `security/guard/GuardRulePattern.kt`（用 `match()` 真正会用的那组选项编译一次），
+   `BlockingSettings` 改调用；**恢复备份那半边原来没拦** —— `BackupManager` 现在跳过编译不过的行，
+   条数经新增的 `BackupSummary.guardRulesSkipped`（**刻意不给默认值**）在**三处**恢复完成的提示里说得出。
+3. **P3** `GalleryArtistFollowsStore.notice` 全仓零收集者（类 KDoc 自己承诺"并通过 notice 说一句"）：
+   档坏了用户只看到"关注的画师全没了"，而 `*.corrupt-<时间戳>` 留档其实已经做了。
+   接点选在**首页那一栏**（`GalleryScreen.kt`）—— 空引导那里才是"必须说得出为什么空"的位置。
+
+### 审计中被我自己推翻的三条（记下来免得再翻）
+
+「用户能存进永不命中的正则」**不成立**（设置页写库前早拦了）；「`addRule` 的 `catch → -1L` 静默失效」
+**不成立**（四个调用点全检查返回值）；「波及 23 个调用点」**数字错**（那是引用文件数，真调用是 19 处）。
+
+### 死代码：全走可逆路径
+
+`reader/BitmapSliceHelper.kt`（整 object 零引用，长图防 OOM 切片一整套）与
+`gallery/domain/GalleryArtists.kt` + 它的测试 —— **都是用户当场点头"归档"**，
+镜像在 `_trash/reader-bitmap-slice-2026-10-01/`（新 README 写了"要接线得先补的三件事"）与
+`_trash/gallery-artists-from-favorites-2026-09-30/`（原件删除前先 `diff -q` 确认镜像一字不差，
+并改正了那份 README 写错的用例数：实际 **10 条**，不是 8 条）。
+`VeneraPreferences.doubleTapZoom`（值 + setter + key）撤 —— 它的注释声称"telephoto 已在用"，
+而阅读器确实用 telephoto，**却从没有把这个开关递过去**，是条断线；
+设备上的 `pref_double_tap_zoom` 键**留着没删**。
+
+### 注释：只删拍定的三类
+
+说错话的横幅两条（「3. 搜索页 1:1 复刻」压在文件尾、「5. 探索页 1:1 复刻」压在收藏排序菜单上）；
+内部轮次编号与共夸措辞**共 80 行注释**（三遍：29 / 32 / 19，每行前后文逐条打印核对；
+**脚本只在注释行下手**）；`VeneraFloatingNavBar` 的「1:1 复刻原版 Flutter」改成留去向、去成绩式措辞。
+论证式 KDoc、`⚠️`、`##` 分节、被推翻的旧文字**一字未清**。
+
+### 验证
+
+判据层先红（6 条新用例里 4 条按预期断言失败）后绿 `OK (49 tests)`；
+`:app:testDebugUnitTest` **549 / 0 失败 / 0 错误**，且与在场 `@Test` 注解静态总数**正好吻合**；
+`:app:assembleDebug` 通过。上一轮记录的 559 与本轮差额**不做核算**（逐类结果 XML 已被覆盖，
+不拿不可复现的读数当基线）。真机四条复现待设备。
+
+---
+
+## 批次 Q + R（2026-10-01）：画廊 hero 转场 · 跳转落点 · 画师介绍页
+
+详档：`gallery-hero-transition-and-artist-profile-2026-10-01.md`。
+
+### `Navigation.kt` 这次的豁免具体给了哪几处
+
+用户给的是**行为级豁免**，范围只有两处，别的都算越界：
+
+1. `composable<GalleryRoute>` 与 `composable<GalleryDailyRoute>` 各包一层
+   `CoverTransitionHost(animatedVisibilityScope = this) { … }`（写法照首页/搜索/探索那几处抄）；
+2. 宿主层一条 `LaunchedEffect(GallerySearchHandoff.pending, destination)`：pending 非空
+   **且当前目的地不是 `GalleryRoute`** 时 `navController.gotoTab(VeneraNavTab.GALLERY)`。
+
+**没动**：`VeneraNavTab` 枚举、路由映射、顶栏齿轮入口、任何新增目的地。
+
+### 落地清单
+
+- **R1 页内 hero**：新增 `gallery/ui/GallerySharedTransition.kt`（`galleryCoverKey(uid)`，
+  两站同 id 不撞 key），预览行 ↔ 每日热门二级页两端各挂 `coverSharedElement`，打码那档恒
+  `allowFly=false`。`GalleryCardsGrid` / `GalleryPostCard` 加**可选** `sharedElementKey`，
+  **只有 `GalleryDailyPage` 传**（其余三面墙对面没有同 key 的落地槽位）。
+- **R2 取证**：`GalleryFlyIn.capture` 两个静默出口 + `GalleryPostScreen.canFly` 分支
+  共**临时** `FlyProbe` 日志五条。**读数拿到就撤**，不留进正式代码。
+- **批量 3**：预览行补 `onGloballyPositioned` + `GalleryFlyIn.capture` ——
+  不补这条，点预览行的图 `canFly` 恒假、必然整页抬上来。
+- **④**：收藏页 → 大图页 → 点 tag 现在直接落在画廊搜索。真实成因不是"收藏卡没 tag"，
+  是消费交接槽的那句 effect 挂在画廊 Tab 自己的组合里而被覆盖 = 组合销毁 ⇒ 槽位写了没人取。
+- **②**：详情面板画师行改成**头像 + 名字整块可点**（按压缩放沿用 `VeneraChip` 那档 0.96/0.88，
+  走向标沿用节标题那枚 `›`），落点从"搜这一枚标签"改判为**进介绍页**；原动作由介绍页的
+  「看 TA 全部作品」承接。首页「正在关注的画师」**单击仍直接搜**，长按才进介绍页。
+- **③**：新建 `GalleryArtistProfileActivity` + `gallery/ui/GalleryArtistProfileScreen.kt` +
+  `gallery/domain/GalleryArtistProfile.kt`，注册进 `AndroidManifest.xml`（`exported=false`，
+  `Theme.Venera.GlassOverlay`，blur-behind 32dp）。返回栈 Main → Post → Profile：
+  「看 TA 全部作品」`setResult` 后 Post 收到也自行 finish，**只返回一次**。
+  卡用墙上的 `GalleryPostCard`（`private` → `internal`），屏蔽分级走**同一把** `buildGalleryWall`。
+
+### 别名这一档：探针量完，yande.re 不上列表
+
+`_probe/yande_re_alias_coverage.cjs`（读数同目录 `.txt`）。18 个横跨字母表的真名里
+**同批凑得出别名表 = 0/18**，结构天花板（别名与正名同前缀）= **10/111 ≈ 9%**
+⇒ yande.re 的别名行**整块不摆**，屏上永不出现"这位没有别名"；那侧只保留批次 J 已有的
+"站方记的正名是 X"一句。别名列表只上 **Gelbooru 腿**（danbooru 记录的 `other_names`，
+真样本 `_probe/hub/dan_setmen.json`），走同一笔现有请求、零新端点。
+第一版探针从 `post.json` 取 `tag_string_artist` 当语料，**那个键根本不存在**（键表里只有 `tags`），
+320 帖只捞出 1 个名 —— 那份 0/1 读数作废。另外钉死两条：`artist.json` 的 **`limit=` 被静默忽略**
+（`limit=1` 与 `limit=40` 都回 25 条），`tag.json?category=` 也不生效。
+
+### 顺带修掉的既有隐患
+
+`GalleryArtistLinks.hostOf` 对**没有路径段**的地址（`https://mochida.tumblr.com` 这种站方真给的形态）
+把 authority 读成空串（那行写的是 `substringBefore('/', "")`），后果是整条静默判成 OTHER、
+屏上只少一枚胶囊。改回默认值并补一条用例钉住不带路径那一形。
+
+### 与批准计划的偏离（逐条，详档 §七）
+
+没建 `GalleryArtistProfileViewModel.kt`（取数归页面，与详情面板同一既有口径）；
+`popularSlots` / `followState` / `sectionsToHide` 三条判据没抽层（理由各写明，其中
+`GalleryCard` 活在 Compose 侧文件、不该为一句 `getOrNull` 拖进可单跑的判据层）；
+介绍页顶栏右侧"更多菜单"没做（当下没有可放的动作）；
+`WEB` 枚举档**刻意不加**（与 OTHER 在屏上同形，且会把 2026-09-30 已拍死的"认不出就 OTHER"劈成两半）；
+**平台图标（批量 6）尚未落地**，两处胶囊现在仍是文字，那条已拍板记进了 `GalleryArtistRows.kt` 头注。
+
+### 验证
+
+判据层先红后绿：`bash _probe/l0/run-judgment-tests.sh` → **OK (69 tests)**（红的时候 10 failures）。
+`:app:testDebugUnitTest` → **569 / 0 失败 / 0 错误**（上轮基线 549，只涨没红）。
+`:app:compileDebugKotlin` / `:app:assembleDebug` 通过。真机验收清单在详档 §十。
+
+
+### 本轮没碰的（保护域与避让）
+
+`Navigation.kt` 里 5 处轮次编号注释**没清** —— 保护域，连注释级改动也该单独豁免；
+`MainActivity.kt` / `VeneraApp.kt` 各 2 处**没清** —— dsh 正在改那两个文件，避让。
+另记一条口子：备份恢复是直接写库、写完没有 `ContentGuardManager.invalidate()`，本轮未扩范围。

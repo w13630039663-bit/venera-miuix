@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>「关于这张图」信息卡 · 布局重排（现状 vs 建议）</title>
+<style>
+  :root{
+    --page:#F1F2F6;
+    --panel:#FFFFFF;
+    --board:#F6F7FA;
+    --card:#FFFFFF;
+    --hair:#E4E6EC;
+    --bar-strong:#6E7481;
+    --bar-mid:#A8AEBB;
+    --bar-soft:#CFD3DC;
+    --ink:#1D2026;
+    --ink-2:#5A6170;
+    --ink-3:#8D94A3;
+    --line:#C9CDD7;
+    --accent:#5B47C8;
+    --caution:#A15C00;
+    --safe:#2E7D32;
+    --danger:#C62828;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;padding:28px 24px 56px;
+    background:var(--page);color:var(--ink);
+    font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+  h1{font-size:20px;font-weight:700;margin:0 0 6px;letter-spacing:.2px;}
+  .sub{margin:0 0 22px;color:var(--ink-2);font-size:13px;}
+  .sub b{color:var(--ink);font-weight:600;}
+
+  .panels{display:flex;gap:56px;align-items:flex-start;}
+  .panel{flex:1;min-width:0;}
+  .panel > h2{
+    font-size:13px;font-weight:600;letter-spacing:.4px;
+    margin:0 0 10px;color:var(--ink-2);
+    display:flex;align-items:baseline;gap:8px;
+  }
+  .panel > h2 .tag{
+    font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;
+    background:#E7E9EF;color:var(--ink-2);
+  }
+  .panel.right > h2 .tag{background:#E3E0F7;color:#4A38A8;}
+
+  .board{
+    position:relative;background:var(--board);
+    border:1px solid var(--hair);border-radius:16px;
+    padding:14px 14px 10px;
+  }
+  /* 编号徽标要浮在 board 右侧，靠这层右内边距腾地方 */
+  .board{padding-right:46px;}
+
+  .blk{position:relative;margin-bottom:8px;}
+  .blk:last-child{margin-bottom:0;}
+  .blk > .n{
+    position:absolute;right:-38px;top:50%;transform:translateY(-50%);
+    width:20px;height:20px;border-radius:50%;
+    background:#fff;border:1px solid var(--line);color:var(--ink-2);
+    font-size:11px;font-weight:600;line-height:18px;text-align:center;
+  }
+  .blk > .n::before{
+    content:"";position:absolute;left:-18px;top:50%;width:16px;height:1px;background:var(--line);
+  }
+  .right .blk > .n{background:#5B47C8;border-color:#5B47C8;color:#fff;}
+  .right .blk > .n::before{background:#B9AEEA;}
+
+  /* ── 线框零件 ── */
+  .card{
+    background:var(--card);border-radius:var(--radius);
+    box-shadow:0 1px 2px rgba(20,24,35,.06);padding:10px;
+  }
+  .row{display:flex;align-items:center;gap:8px;}
+  .row + .row{margin-top:6px;}
+  .between{justify-content:space-between;}
+  .bar{height:8px;border-radius:4px;background:var(--bar-mid);}
+  .bar.strong{background:var(--bar-strong);}
+  .bar.soft{background:var(--bar-soft);}
+  .bar.tall{height:10px;}
+  .w15{width:15%;} .w20{width:20%;} .w25{width:25%;} .w30{width:30%;}
+  .w35{width:35%;} .w40{width:40%;} .w45{width:45%;} .w50{width:50%;}
+  .w60{width:60%;} .w70{width:70%;} .w80{width:80%;}
+  .grow{flex:1;}
+  .label{width:30px;flex:none;}
+  .chip{
+    height:20px;border-radius:99px;border:1px solid #D5D9E2;background:#FBFBFD;
+    display:inline-block;vertical-align:middle;
+  }
+  .chip.solid{background:#E9EBF1;border-color:#E9EBF1;}
+  .chip.tag{height:22px;background:#EEEFF4;border-color:#E3E5EC;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .dot{
+    width:26px;height:26px;border-radius:50%;flex:none;
+    background:linear-gradient(135deg,#DDE0E8,#C8CCD6);
+  }
+  .dot.lg{width:34px;height:34px;}
+  .sq{
+    width:22px;height:22px;border-radius:6px;flex:none;
+    border:1px solid #D5D9E2;background:#FAFAFC;
+  }
+  .hair{height:1px;background:var(--hair);margin:8px 0;}
+  .gap{background:repeating-linear-gradient(45deg,#EDEEF3 0 6px,transparent 6px 12px);
+       border:1px dashed #D8DBE3;border-radius:8px;}
+  .chev{color:var(--ink-3);font-size:15px;line-height:1;flex:none;}
+  .center{justify-content:center;}
+
+  /* 分级徽标（真实色） */
+  .rating{
+    height:22px;border-radius:99px;padding:0 10px;flex:none;
+    color:#fff;font-size:10px;font-weight:600;line-height:22px;letter-spacing:.2px;
+    background:var(--caution);
+  }
+  .rating.safe{background:var(--safe);}
+  .rating.danger{background:var(--danger);}
+  .rating span{font-weight:400;opacity:.85;}
+
+  /* 现状：两张并排小卡 / 两列 */
+  .two{display:flex;gap:8px;}
+  .two > *{flex:1;min-width:0;}
+
+  /* ── 图例 ── */
+  .legend{
+    margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:0 56px;
+    background:var(--panel);border:1px solid var(--hair);border-radius:16px;
+    padding:20px 22px;
+  }
+  .legend h3{
+    font-size:12px;font-weight:600;letter-spacing:.4px;color:var(--ink-3);
+    margin:0 0 10px;text-transform:none;
+  }
+  .legend h3.r{color:#6E5AD0;}
+  .legend dl{margin:0;}
+  .legend .item{display:flex;gap:10px;margin-bottom:9px;align-items:flex-start;}
+  .legend .item .n{
+    flex:none;width:20px;height:20px;border-radius:50%;margin-top:1px;
+    background:#E7E9EF;color:var(--ink-2);font-size:11px;font-weight:600;
+    line-height:20px;text-align:center;
+  }
+  .legend .item .n.r{background:#5B47C8;color:#fff;}
+  .legend .item p{margin:0;font-size:13px;color:var(--ink-2);}
+  .legend .item p b{color:var(--ink);font-weight:600;}
+  .legend .item code{
+    font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:#F1F2F6;border-radius:4px;padding:0 4px;color:#3C4350;
+  }
+
+  .foot{
+    margin-top:18px;font-size:12px;color:var(--ink-3);
+  }
+  .foot code{
+    font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:#E9EBF1;border-radius:4px;padding:0 4px;color:#3C4350;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>「关于这张图」信息卡 · 布局重排</h1>
+  <p class="sub">
+    左＝改动前（<b>6 张同形同距的卡</b>），右＝改动后（<b>3 张卡 + 1 块不套卡的画师行</b>）。
+    真正的差距不在大小，在<b>哪一样信息被摆在了哪个位置</b>。
+  </p>
+
+  <div class="panels">
+
+    <!-- ══════════════ 现状 ══════════════ -->
+    <section class="panel left">
+      <h2>现状<span class="tag">卡片 ×6</span></h2>
+      <div class="board">
+
+        <div class="blk">
+          <div class="row center"><div class="bar strong w35"></div></div>
+          <div class="n">1</div>
+        </div>
+
+        <div class="blk">
+          <div class="two">
+            <div class="card"><div class="bar strong w70 tall"></div><div class="bar soft w30" style="margin-top:6px"></div></div>
+            <div class="card"><div class="bar strong w40 tall"></div><div class="bar soft w30" style="margin-top:6px"></div></div>
+          </div>
+          <div class="n">2</div>
+        </div>
+
+        <div class="blk">
+          <div class="two">
+            <div class="card">
+              <div class="row"><div class="bar soft label"></div><div class="bar w50"></div></div>
+              <div class="row"><div class="bar soft label"></div><div class="bar w30"></div></div>
+              <div class="row"><div class="bar soft label"></div><div class="bar w60"></div></div>
+              <div class="row"><div class="bar soft label"></div><div class="bar w70"></div></div>
+            </div>
+            <div>
+              <div class="row"><div class="bar strong w40"></div></div>
+              <div class="chips" style="margin-top:6px"><i class="chip tag" style="width:44px"></i><i class="chip tag" style="width:34px"></i></div>
+              <div class="row" style="margin-top:10px"><div class="bar strong w40"></div></div>
+              <div class="chips" style="margin-top:6px"><i class="chip tag" style="width:60px"></i></div>
+            </div>
+          </div>
+          <div class="n">2</div>
+        </div>
+
+        <div class="blk">
+          <div class="row">
+            <div class="dot lg"></div>
+            <div class="bar strong w35"></div>
+            <div class="chev" style="margin-left:auto">›</div>
+            <i class="chip solid" style="width:52px;height:24px;margin-left:8px"></i>
+          </div>
+          <div class="chips" style="margin-top:6px"><i class="chip" style="width:46px"></i><i class="chip" style="width:30px"></i></div>
+          <div class="n">3</div>
+        </div>
+
+        <div class="blk"><div class="card">
+          <div class="row"><div class="bar soft w20" style="margin-bottom:6px"></div></div>
+          <div class="row between"><div class="bar w70"></div><div class="sq"></div></div>
+        </div><div class="n">4</div></div>
+
+        <div class="blk"><div class="card">
+          <div class="bar soft w20" style="margin-bottom:6px"></div>
+          <div class="row between"><div class="bar w70"></div><div class="sq"></div></div>
+        </div><div class="n">4</div></div>
+
+        <div class="blk"><div class="card">
+          <div class="bar soft w25" style="margin-bottom:6px"></div>
+          <div class="row between"><div class="bar w70"></div><div class="sq"></div></div>
+        </div><div class="n">4</div></div>
+
+        <div class="blk">
+          <div class="bar strong w25" style="margin-bottom:8px"></div>
+          <div class="chips">
+            <i class="chip tag" style="width:52px"></i><i class="chip tag" style="width:44px"></i>
+            <i class="chip tag" style="width:58px"></i><i class="chip tag" style="width:38px"></i>
+            <i class="chip tag" style="width:66px"></i><i class="chip tag" style="width:50px"></i>
+          </div>
+        </div>
+
+        <div class="blk">
+          <div class="gap" style="height:72px"></div>
+          <div class="n">5</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ══════════════ 建议 ══════════════ -->
+    <section class="panel right">
+      <h2>建议<span class="tag">卡片 ×3</span></h2>
+      <div class="board">
+
+        <div class="blk">
+          <div class="row between">
+            <div class="bar strong w30 tall"></div>
+            <div class="rating">存疑 <span>(questionable)</span></div>
+          </div>
+          <div class="n">7</div>
+        </div>
+
+        <div class="blk">
+          <div class="card">
+            <div class="row"><div class="bar soft label"></div><div class="bar w30"></div></div>
+            <div class="hair"></div>
+            <div class="row"><div class="bar soft label"></div><div class="bar w40"></div></div>
+            <div class="row"><div class="bar soft label"></div><div class="bar w20"></div></div>
+            <div class="row"><div class="bar soft label"></div><div class="bar w45"></div></div>
+            <div class="row"><div class="bar soft label"></div><div class="bar w50"></div></div>
+            <div class="row"><div class="bar soft label"></div><div class="bar w60"></div></div>
+            <div class="row" style="margin-top:8px">
+              <div class="bar soft label" style="align-self:center"></div>
+              <i class="chip tag" style="width:42px"></i>
+            </div>
+            <div class="row">
+              <div class="bar soft label" style="align-self:center"></div>
+              <i class="chip tag" style="width:96px"></i>
+            </div>
+          </div>
+          <div class="n">8</div>
+        </div>
+
+        <div class="blk">
+          <div class="row">
+            <div class="dot lg"></div>
+            <div class="bar strong w35"></div>
+            <div class="chev" style="margin-left:auto">›</div>
+          </div>
+          <div class="row between" style="margin-top:10px">
+            <div class="chips" style="flex:1">
+              <i class="chip" style="width:60px"></i><i class="chip" style="width:30px"></i>
+            </div>
+            <i class="chip solid" style="width:52px;height:24px"></i>
+          </div>
+          <div class="n">9</div>
+        </div>
+
+        <div class="blk">
+          <div class="card">
+            <div class="bar soft w20" style="margin-bottom:6px"></div>
+            <div class="row between"><div class="bar w70"></div><div class="sq"></div></div>
+            <div class="hair"></div>
+            <div class="bar soft w20" style="margin-bottom:6px"></div>
+            <div class="row between"><div class="bar w70"></div><div class="row" style="gap:4px"><div class="sq"></div><div class="sq"></div></div></div>
+          </div>
+          <div class="n">10</div>
+        </div>
+
+        <div class="blk">
+          <div class="bar strong w25" style="margin-bottom:8px"></div>
+          <div class="chips">
+            <i class="chip tag" style="width:52px"></i><i class="chip tag" style="width:44px"></i>
+            <i class="chip tag" style="width:58px"></i><i class="chip tag" style="width:38px"></i>
+            <i class="chip tag" style="width:66px"></i><i class="chip tag" style="width:50px"></i>
+          </div>
+        </div>
+
+        <div class="blk">
+          <div class="gap" style="height:16px"></div>
+          <div class="n">11</div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <div class="legend">
+    <div>
+      <h3>现状（左）</h3>
+      <dl>
+        <div class="item"><div class="n">1</div><p><b>标题比内容还小</b>：<code>sectionTitle</code> 13/14sp 居中，而下面的值是 <code>itemTitle</code> 16/17sp —— 层级倒置，标题读起来像脚注。</p></div>
+        <div class="item"><div class="n">2</div><p><b>两种排版语言并排</b>：左列"字段名 + 值"的行式，右列"组标题 + 胶囊墙"，宽度各占一半；右列常常只有一两枚胶囊，半屏是空的。</p></div>
+        <div class="item"><div class="n">3</div><p><b>两个不同语义的元素贴在一起</b>：名字吃 <code>weight(1f)</code> 把「›」顶到最右，而「关注」原本就在那儿，两者只隔 <code>space4</code>(8dp)。「›」＝进档案，「关注」＝改状态。</p></div>
+        <div class="item"><div class="n">4</div><p><b>同一串地址显示两遍</b>：「本站地址」与「在站点打开」两行传的都是 <code>post.pageUrl</code>，被做成了两张各带一枚钮的卡。</p></div>
+        <div class="item"><div class="n">5</div><p><b>底部 76dp 谁也不挡</b>：用的是 <code>bottomBarClearance</code>（底栏 64 + 间隙 12），那是给"内容会被一级悬浮底栏压住"的页面留的，而半模态是盖在底栏上面的。</p></div>
+        <div class="item"><div class="n">6</div><p><b>组间 6dp &lt; 组内 8dp</b>：块与块之间是 <code>space3</code>(6dp)，而卡片内衬是 <code>cardContentPadding</code>(8dp)、行距 4dp —— 组间比组内还紧，分组感失效。</p></div>
+      </dl>
+    </div>
+    <div>
+      <h3 class="r">建议（右）</h3>
+      <dl>
+        <div class="item"><div class="n r">7</div><p><b>标题左对齐 + 分级徽标</b>：标题抬到 <code>itemTitle</code>；分级单独挪到右端做成带色的徽标 —— 它是这一页唯一影响"你能看到什么"的字段，该第一个被看到。色板定在 <code>GalleryRatingColors</code>（实底 + 白字，四色对比度 5.13 / 5.17 / 5.63 / 6.29 : 1）。</p></div>
+        <div class="item"><div class="n r">8</div><p><b>合成一张事实卡</b>：站点 / 尺寸 / 评分 / 收藏 / 时长 / 上传者 / 原图 用"字段名定宽 48dp + 值左对齐"的行式，角色与作品并进同一列 —— 但它们的值是<b>可点胶囊</b>（点＝搜、长按＝菜单），不降成纯文本。站点与其余字段之间一条发丝线。</p></div>
+        <div class="item"><div class="n r">9</div><p><b>画师行拆成两行</b>：行 1 只有"进档案"一个语义（头像 + 名字 + <code>›</code>）；「关注」下移到行 2 右端，与左侧的平台入口同排。平台胶囊接上品牌色小方块（<code>PlatformBadge</code>，与画师介绍页共用）。</p></div>
+        <div class="item"><div class="n r">10</div><p><b>地址合成一行两钮</b>：出处（复制）／本站地址（复制 + 打开）各一行，中间发丝线。同一串 <code>pageUrl</code> 在结构上不可能再出现第二遍。</p></div>
+        <div class="item"><div class="n r">11</div><p><b>底部收成 20dp</b>：<code>sheetBottomClearance</code>，并说明它<b>不是</b> <code>bottomBarClearance</code>。</p></div>
+        <div class="item"><div class="n r">12</div><p><b>组间提到 12dp</b>：<code>sheetGroupGap</code>。判据只有一条 —— 组间(12) &gt; 卡片内衬(8) &gt; 行距(4)，邻近原则才成立。</p></div>
+      </dl>
+    </div>
+  </div>
+
+  <p class="foot">
+    所有尺寸/色值都走 token（本仓规则：除 <code>ui/tokens/</code> 外，UI 代码不得出现裸 <code>xx.dp</code> / <code>xx.sp</code> / <code>Color(0xFF…)</code>）。
+    新增的只有：<code>sheetGroupGap</code> / <code>sheetBottomClearance</code> / <code>sheetFieldLabelWidth</code> / <code>GalleryRatingColors</code>，其余全是复用现成的
+    <code>space2·3·4·5·6·9</code> 与 <code>hairline</code>。
+  </p>
+
+</div>
+</body>
+</html>

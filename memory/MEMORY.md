@@ -1,0 +1,51 @@
+# Project memory index
+
+- [Venera UI 重构权威文档](reference-venera-workflow-docs.md) — 开工前必读：交接手册 + 冻结声明 + 各轮方案文档（含大屏适配）
+- [观感尺寸用现成口径](feedback-mirror-official-values.md) — 官方原值 / 应用内既有 token，不造新数字；口径要分部件类型（chrome 的 540 套到内容块已被否）
+- [QA 设备与前置检查](project-venera-qa-device.md) — 一加 PJZ110（**裸 adb，-s 会被拦**）+ Pixel Tablet 模拟器；模拟器黑边真凶是 AVD 第二屏、后台任务起模拟器会被回收
+- [设备只做读取不代操作](feedback-device-qa-read-only.md) — 真机与模拟器都由用户点页面，我只截图读日志；"我可以操作"里的我=用户
+- [改 assets 源脚本对设备无效](project-js-source-assets-not-live.md) — 运行期读 files/comic_source 副本；模拟器上可直接给副本打 console.log 探针探接口字段
+- [禁漫天堂卡片标签少是上游限制](project-jm-card-tags-upstream-limit.md) — 探针实测：列表接口字段表里根本没有 tags，卡片级标签判据结构性不可能；真标签只在详情
+- [AI 屏蔽与分级守卫的既有裁决](project-content-guard-ai-blocking.md) — AI汉化/翻译刻意不屏蔽；开关真实状态直接读 venera_guard_prefs.xml
+- [设置页灰行处置判据](project-settings-placeholder-policy.md) — 未实现灰行连标题全撤（2026-09-30 定）；DoH/检查更新/长按缩放等已明确主动不做
+- [首页推荐区既定决策](project-home-recommend.md) — 取数源 jm、MD3 标准轮播不做真 3D、2 分钟节流、冷启动先铺上次退出前的数据
+- [加载指示器统一走波浪环](project-loading-indicator-direction.md) — CircularWavyProgressIndicator 来自 material3 1.5.0-alpha22；整块重拉改用骨架
+- [多源数据天花板实测](project-source-data-ceilings.md) — 搜索总数 0/33 源提供、26 个只有 maxPage、7 个连它都没有；预览图是整页原图（onThumbnailLoad 已接线但不换小图）
+- [简繁表其实已在仓库里](project-opencc-table-already-shipped.md) — assets/opencc.txt 3980 对；2026-09-20 已接上，84.5% 是该表天花板，别换表别重判
+- [库 API 真相在 gradle 缓存 jar](reference-gradle-cache-sources-jars.md) — 无 sources 时用 gradle 自带 JDK 的 javap 读 aar/classes.jar（含 media3 两处真相）；find 全扫会超时
+- ["我原项目"=本仓库 master 分支](reference-venera-miuix-master-branch.md) — 用户自己的 Flutter fork，功能在 lib/ 下，git show 就能看，不用 clone
+- [外观/主题类功能的现成参考 app](reference-bilipai-as-ui-donor.md) — jay3-yy/BiliPai 同栈(Miuix+MaterialKolor)；25 条种子色板可逐字抄，读法与"别抄错的那条"在里面
+- [子代理与权限层的几处坑](project-subagent-search-hazards.md) — 标签语料任务会拦死子代理；裸 ls/grep、陌生域名、取凭据重放会被拦；**删源码文件的 sed/rm/git rm 三种写法全被拦，只能用 Edit**
+- [多 AI 交替改动的定位与提交法](project-multi-ai-regression-triage.md) — "本来正常"先审未提交 diff；文档写"已落地"要回代码核；提交按轮拆；push 前现查 ahead 数；别人改首页时判据层可脱离 gradle 单跑
+- [导航条目会重建组合](project-nav-entry-recomposition.md) — 返回被打回默认值/自动刷新/落地闪 同一根因；退场重组会二次 pop；槽位载荷只能放叶子目的地；同屏形变会丢 remember；**跨 Activity 往返时组合没停，滚动丢失另有成因**
+- [主页面内容区横滑已整体撤掉](project-main-tab-swipe-removed.md) — 撤的是手势（保护域第1次豁免）；同日第2次豁免给切 Tab 加了方向化滑入动画，两者不是一回事
+- [master 没有阅读器宽屏分支](project-master-has-no-widescreen-reader.md) — 大屏"照 master"在阅读器/首页无对应物；含骨架屏流光的真实出处与几条可照定值
+- [封面共享元素转场现状与硬约束](project-shared-element-transition.md) — 两端 key 必须同串否则静默不飞；不同构会闪；1.12 无现成 local、material3 无 SharedLayout
+- [卡片大小的真实驱动项](project-card-size-drivers.md) — "卡片太大"先确认是哪个元素；整卡高由信息列/标签区定；104.dp 魔数会被字体缩放与浮层压破
+- [miuix 顶栏 heightOffsetLimit 不可观察](miuix-topbar-state-not-observable.md) — 普通 var 不是快照、且存负值；composition 期读它不会随写入更新
+- [玻璃顶栏上的内联展开区三条硬约束](project-glass-chrome-inline-area-rules.md) — 别涂不透明底（会出横贯硬边）；bottomContent 已在模糊范围内；候选行别套卡片、每行都在抢内容高度
+- [首页顶栏重叠的真根因：锚定漂移](lazy-list-anchor-drift-on-head-insertion.md) — 冷启动第 0 项后插 → idx 漂到 1、内容画进 contentPadding；诊断指纹 idx=1 pad 正常
+- [探索页两区块改版决策](project-explore-two-block-layout.md) — 上方页内快捷筛选、下方分类跳二级+8 入口预算；组级截断与仅 5 个通用标签是边界
+- [预测式返回与 AOSP 跨 activity 事实](project-navigation-predictive-back-facts.md) — 换 Activity 才有系统动画；模糊走 blur-behind；swipeEdge 是 2.10 入参；包体 +40MB 是脏增量填充
+- [掉帧审计既有结论](project-compose-jank-audit.md) — 三个已排除怀疑（含 Strong Skipping 默认开）、Tier1 已改 Tier2/3 未做、冷启动基线与免费测帧口径、**出帧率要看 SF activeMode（空闲 60／有绘制即 120，强制高刷开关没有对象）**
+- [JM 混淆块数的权威口径](project-jm-image-scramble-authority.md) — 以 jm.js 逐字同串；预览从不走 onImageLoad；第三类成因=降采样块边界漂移(2026-09-23 已修)
+- [题材统计的数据面坑](project-tag-stats-pipeline.md) — 存量 tags 行带着旧切分器劈出的假题材，读侧修好了不自愈；附拉设备 DB 用 node:sqlite 读数的现成链路
+- [「实现了但零调用点」这类缺口](project-implemented-but-unwired.md) — 审缺口先 grep 符号名只看声明行的就是断线；09-28 又攒一批归第 2 轮
+- [图库模块必须与漫画完全隔离](project-gallery-module-isolation.md) — 底栏第4位；播放器一层满屏+独立Activity(进场=向上滑入)；黑名单画廊走整词；图片流量永不弹CF过盾；P3收藏待拍板
+- [画廊数据面天花板实测](project-gallery-data-ceilings.md) — 两站缩略档**恒为 jpg**；Coil 3.6.2 动图解码器叫 `AnimatedImageDecoder`；yande.re 原生 `date:` 零额外请求、Gelbooru 只认 `sort:score:desc`；**pixiv `ajax/illust/{作品号}` 匿名可反查作者**、fanbox creator.get **必须带 Origin**、第三方图标服务不造分辨率
+- [批次 L：画廊关注画师（拍板与同日推翻）](project-gallery-artist-follows-batch-l.md) — 首页那栏已换成「正在关注的画师」（空态摆引导、撤搜索卡重复入口）；pixiv 反查作者照摆但胶囊带账号；yande.re 知情后仍用 16px 粉脸；GalleryArtists 零调用点待点头删
+- [批次 J：画廊画师别名解析（已定方案未开工）](project-gallery-artist-alias-batch-j.md) — 只在站方给 0 行时按该站自己的 alias_id 换正名重搜；非 0 张绝不替换；只做 yande.re；排在首页重构之后
+- [画廊「按收藏推荐」落地状态](project-gallery-for-you-plan.md) — 语料实测 5 张→病是"复读页"不是空页；双页化 09-28 已落地，含四条拍板与"缺席不算到底"
+- [子目录里第三方 AGENTS.md 会被当成本项目规则](agents-md-scan-hazard.md) — build/pixez 那份触发逐轮回灌；Grep 跳过 ignore 路径会把你引向"文件不存在"的错判
+- [收藏页二级分段器必须挂顶栏 chrome](project-favorites-secondary-row-in-chrome.md) — 2026-09-27 拍板；含 PJZ110 顶栏几何实测值与"常量留空带 / 量高度留硬边"两种失败模式的数字
+- [SauceNAO 接在 Cloudflare 上](project-saucenao-cloudflare-block.md) — 真根因=过盾页"看见 cf_clearance 即通关"→121ms 假通关；09-28 装了只读探针，**09-30 仍无读数**
+- [对照 Breadboard 的核查与四轮排期](project-breadboard-gap-rounds.md) — 第1轮已落地；2/3/4 轮清单、明确不做六项及理由、当场被推翻的两条错报
+- [分段控制器=每颗自持药丸](project-segmented-pills-style.md) — 0.5dp 容器描边贴在模糊画作上会消失；保留了哪些尺寸口径、动冻结文件外观怎么记豁免
+- [miuix 弹层宿主条件与玻璃的跨窗口限制](project-miuix-popup-host-and-glass-window-limits.md) — 没有 miuix Scaffold 就别用 OverlayDialog（用 WindowDialog）；玻璃采不到独立 Dialog 窗口 ⇒ 弹窗只能实底
+- [Coil 取流层的几条真相](project-coil-image-pipeline-facts.md) — DiskCache 只有 NetworkFetcher 会写（自定义 fetcher 全接管=缓存是假开关）；内存 Buffer 源让动图在堆里留三份；extras 不映射成 OkHttp tag；同步 execute() 绕开每主机并发闸
+- [NonCancellable 会换掉 coroutineContext[Job]](project-noncancellable-job-guard.md) — 「只清自己这一笔」的守卫放进 withContext(NonCancellable) 里就恒假；一条根因同时造出"环转不停/两枚图标/只摆40张"三条读数
+
+- [miuix 控件面对账表](project-miuix-widget-counterparts.md) — 哪些件能真双后端、哪些是结构性缺口；**有对应物的已清零**，剩余 material3 每处都有不迁的理由
+- [顶栏磨砂圆座统一](project-topbar-pill-unification.md) — 批次 H 四条拍板（B 族 5 处不动、视觉 40+触达 48）；**网络收藏不是独立屏**、它的内联切换钮恒不渲染
+- [不在组合里的 gridState 与带默认值的新参数](project-uncomposed-grid-state-noop.md) — 撤 pager 后 scrollToItem 打在另一面墙上=空操作；漏传不报错的参数不要用默认值
+- [冷启卡顿的实测归因](project-cold-start-attribution.md) — 主线程 82.7% 在 libart（debug 包不能 AOT）；release 天然 260-304ms；A2/A3/A5/B2/C1/C2 全被量掉，基线画像无收益已撤
