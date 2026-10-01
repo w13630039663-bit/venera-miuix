@@ -1,5 +1,5 @@
 /**
- * S5-3 收藏页（对齐原版 `pages/favorites/side_bar.dart` + `local_favorites_page.dart`）。
+ * 收藏页（对齐原版 `pages/favorites/side_bar.dart` + `local_favorites_page.dart`）。
  *
  * 原版是「宽屏双栏（侧栏 + 内容）/ 窄屏抽屉」；本项目是手机单栏，
  * 因此把收藏夹选择做成顶部横向 chips（行为等价：切换当前收藏夹 + 显示计数），
@@ -1311,8 +1311,6 @@ private fun MenuItem(
 }
 
 // endregion
-
-// ==================== 5. 探索页 (ExplorePage) 1:1 复刻 ====================
 
 /**
  * 顶栏排序菜单：名称 / 时间 / 自定义排序，当前项主色勾选。

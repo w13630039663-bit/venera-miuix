@@ -27,21 +27,27 @@ import kotlinx.coroutines.launch
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        StartupTrace.timed("Activity: super.onCreate") { super.onCreate(savedInstanceState) }
+        StartupTrace.timed("Activity: enableEdgeToEdge") { enableEdgeToEdge() }
         // S0-6：主题模式由 VeneraTheme 读取 VeneraPreferences.themeMode 统一管理
+        // setContent 这一段手工取时间戳：包进普通高阶函数会让 @Composable lambda 的归属变复杂。
+        val contentStarted = android.os.SystemClock.elapsedRealtime()
         setContent {
+            StartupTrace.mark("Compose: VeneraTheme body enter")
             VeneraTheme {
                 VeneraComposeApp()
                 // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
                 StartupUpdateHost()
             }
         }
-        handleEntryIntent(intent)
+        StartupTrace.recordElapsed("Activity: setContent", contentStarted)
+        StartupTrace.timed("Activity: handleEntryIntent") { handleEntryIntent(intent) }
         if (intent.getBooleanExtra("run_engine_diagnostic", false)) {
             runEngineDiagnostic()
         }
-        applySecureScreenPreference()
+        StartupTrace.timed("Activity: applySecureScreenPreference") { applySecureScreenPreference() }
+        window.decorView.post { StartupTrace.mark("Choreographer: first traversal done") }
+        StartupTrace.mark("Activity.onCreate exit")
     }
 
     /**

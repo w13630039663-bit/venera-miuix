@@ -55,21 +55,21 @@ data class HomeUiState(
     val tagStats: List<Pair<String, Int>> = emptyList(),
     val authorStats: List<Pair<String, Int>> = emptyList(),
     val comicStats: List<Pair<String, Int>> = emptyList(),
-    /** S8: 本地漫画数量（LocalComicManager 真实扫描） */
+    /** 本地漫画数量（LocalComicManager 真实扫描） */
     val localComicCount: Int = 0,
-    /** S8: 下载中任务数（DownloadManager 队列） */
+    /** 下载中任务数（DownloadManager 队列） */
     val downloadingCount: Int = 0,
 )
 
 /**
- * 首页 ViewModel（S0-4 + S0-5）。
+ * 首页 ViewModel。
  *
  * 之前首页的三块「阅读统计 42 / 286 / 12 天」、「标签·画师·作品 Top 榜」、
  * 以及历史为空时铺出来的 4 张 sampleComics 卡片，全是写死字面量。
  * 现在统一从 FavoriteDao / HistoryDao 的真实记录里算：
  * 页数 = 各记录 last_page_index + 1 之和；连续打卡 = 去重后的活跃日连续段。
  *
- * 说明：原版这些数字来自 read_stats 表（逐话逐页真实计时），那是 S7 的范围；
+ * 说明：原版这些数字来自 read_stats 表（逐话逐页真实计时），那是另有一轮的范围；
  * 本阶段先保证「显示的是真数据、哪怕口径暂时粗略」，不再显示假数据。
  */
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
@@ -79,21 +79,31 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val appContext = app
 
     /**
-     * 收藏条目流（S5 修正）。
+     * 收藏条目流（改过一次：早前接的是旧那套收藏流）。
      *
-     * 数据源必须是 S5 的 [LocalFavoritesManager]——它与收藏页、追更同源。
+     * 数据源必须是收藏那套的 [LocalFavoritesManager]——它与收藏页、追更同源。
      * 早期这里读的是已废弃的旧单表 `comic_favorite`，而详情页现在写进动态夹表，
      * 于是「详情页收藏了，首页书架却是空的」。
      * 这里把 [FavoriteItem] 适配回 [FavoriteRecord]，[build] 的统计逻辑保持不变。
      */
     private val favoritesFlow: Flow<List<FavoriteRecord>> =
-        favoritesManager.version.map { favoritesManager.getAllComics().map { it.toLegacyRecord() } }
+        favoritesManager.version.map {
+            val started = android.os.SystemClock.elapsedRealtime()
+            val comics = favoritesManager.getAllComics()
+            com.venera.compose.StartupTrace.recordElapsed("HomeVM: getAllComics", started)
+            comics.map { it.toLegacyRecord() }
+        }
 
     val uiState: StateFlow<HomeUiState> =
-        combine(favoritesFlow, historyDao.historyFlow) { favs, hist -> build(favs, hist) }
+        combine(favoritesFlow, historyDao.historyFlow) { favs, hist ->
+            val started = android.os.SystemClock.elapsedRealtime()
+            val state = build(favs, hist)
+            com.venera.compose.StartupTrace.recordElapsed("HomeVM: build(uiState)", started)
+            state
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
-    /** 刷新 S8 新增分区数据（本地漫画数 / 下载任务数 / 图片收藏统计），主页进入时调用 */
+    /** 刷新那几个新增分区的数据（本地漫画数 / 下载任务数 / 图片收藏统计），主页进入时调用 */
     fun refreshExtras() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val localCount = com.venera.compose.download.LocalComicManager.getInstance(appContext)
@@ -108,7 +118,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** S8 扩展区数据（与主 uiState 分流，避免整表重算） */
+    /** 扩展区数据（与主 uiState 分流，避免整表重算） */
     private val _uiStateExtra = MutableStateFlow(
         HomeUiState(localComicCount = -1) // -1 = 尚未加载
     )
@@ -382,7 +392,7 @@ internal fun FavoriteRecord.toComicItem() = ComicItem(
 )
 
 /**
- * 适配层：S5 动态夹表的 [FavoriteItem] → 首页沿用的 [FavoriteRecord]。
+ * 适配层：动态夹表那套的 [FavoriteItem] → 首页沿用的 [FavoriteRecord]。
  * 首页只需要展示字段，忽略收藏夹与追更列。
  */
 private fun FavoriteItem.toLegacyRecord() = FavoriteRecord(

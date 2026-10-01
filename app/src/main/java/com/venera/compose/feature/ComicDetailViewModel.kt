@@ -163,9 +163,9 @@ data class FavoritePanelState(
 )
 
 /**
- * 详情页 ViewModel（S2 深度重构）。
+ * 详情页 ViewModel。
  *
- * S5 追加：详情页收藏按钮 → 打开收藏面板（本地 + 网络双分区）。
+ * 追加：详情页收藏按钮 → 打开收藏面板（本地 + 网络双分区）。
  * 收藏的唯一数据源是 [LocalFavoritesManager]（对齐官方），
  * 原先写的旧单表 `comic_favorite` 已废弃，否则收藏页看不到详情页收藏的内容。
  */
@@ -353,7 +353,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             // 网络收藏：源声明了 favorites 且已登录才有。注意这两步都会同步跑 JS 引擎，
-            // 必须在 IO 线程，否则主线程会被 evaluate 的 30s 超时卡死（S5-6 的教训）。
+            // 必须在 IO 线程，否则主线程会被 evaluate 的 30s 超时卡死（踩过一次）。
             val src = sourceManager.getSource(key)
             val (fd, logged) = withContext(Dispatchers.IO) {
                 val f = src?.favoriteData
@@ -856,7 +856,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             val sessionCover =
                 _uiState.value.details?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
 
-            // S6: 优先检查本地离线下载文件，已下载章节实现秒开与无网离线阅读
+            // 优先检查本地离线下载文件，已下载章节实现秒开与无网离线阅读
             val dlMgr = com.venera.compose.download.DownloadManager.getInstance(getApplication())
             val localFiles = dlMgr.getDownloadedChapterFiles(key, comic.id, chapterId)
             if (!localFiles.isNullOrEmpty()) {

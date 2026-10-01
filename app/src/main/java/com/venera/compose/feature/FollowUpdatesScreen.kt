@@ -1,5 +1,5 @@
 /**
- * S5-5 追更 / 更新列表页（对齐原版 `pages/follow_updates_page.dart`）。
+ * 追更 / 更新列表页（对齐原版 `pages/follow_updates_page.dart`）。
  */
 package com.venera.compose.feature
 

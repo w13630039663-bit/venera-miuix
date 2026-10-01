@@ -39,11 +39,42 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
      */
     protected open val blurBehindDp: Float get() = BlurBehindDp
 
+    /**
+     * 要不要**推迟**挂 blur-behind：不跟着 `onStart` 一起挂，等页面自己调 [armBlurBehind]。
+     *
+     * 为什么有的页需要它（2026-10-01 12:26 录屏逐帧量出来的）：那一层糊盖住的正是**后面那屏
+     * 主界面**，`onStart` 就挂等于"新窗口一出现就把后面糊掉 + 压暗"。而大图页的入场是
+     * "图从卡片原位飞过来"，起飞前那一两帧屏上本该**与点击前逐像素相同**——先糊一下再飞，
+     * 读起来就是用户连着报了三轮的"打开图片会闪一下"。
+     * 读数：点击后主界面静止 250ms（帧间差 0.00），然后**一帧之内**整屏亮度从 174 掉到 106，
+     * 再花 350ms 爬回来 —— 那一下就是它。
+     *
+     * 默认 false = 老行为（设置页那些一进来就该是玻璃底的页照旧）。
+     */
+    protected open val deferredBlurBehind: Boolean = false
+
+    /** 系统侧此刻允不允许跨窗口模糊（省电模式、开发者选项都可能关掉它）。 */
+    private var crossWindowBlurEnabled = false
+
+    /**
+     * 本页此刻允不允许挂模糊。推迟型页面在 [armBlurBehind] 之前恒为 false。
+     *
+     * ⚠️ 初值只能在 `onCreate` 里按 [deferredBlurBehind] 定，**不能**写成属性初始化式：
+     * 那是在基类构造期求值的，子类那个 `override val` 还没初始化，读到的必然是 false ——
+     * 于是推迟型页面静默退回"立刻挂"，症状与原样一模一样。
+     */
+    private var blurBehindArmed = true
+
     /** 跨窗口模糊开关可在运行期被系统改（省电模式、开发者选项），所以监听而不是只读一次。 */
-    private val blurEnabledListener = Consumer<Boolean> { applyBlurBehind(it) }
+    private val blurEnabledListener = Consumer<Boolean> { enabled ->
+        crossWindowBlurEnabled = enabled
+        applyBlurBehind(enabled)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 子类属性此刻已初始化（属性初始化在构造函数里，早于 onCreate），读得准。
+        blurBehindArmed = !deferredBlurBehind
         // 与 MainActivity 同一份契约：顶部不加 padding，让页面顶栏覆盖状态栏。
         enableEdgeToEdge()
         // 这些子页会露出封面 / 图片，防窥必须一起覆盖，否则「屏蔽与过滤」里那个开关静默失效。
@@ -77,12 +108,24 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
     protected abstract fun SubScreen()
 
     /**
+     * [deferredBlurBehind] 那一档：页面**入场动作开始的那一刻**调这个，把玻璃底挂上。
+     * 幂等 —— 之后再调无副作用（飞行那条路与退路各调一次，谁先到都行）。
+     */
+    protected fun armBlurBehind() {
+        if (blurBehindArmed) return
+        blurBehindArmed = true
+        applyBlurBehind(crossWindowBlurEnabled)
+    }
+
+    /**
      * 挂 / 摘本窗口的背后模糊。设备不支持跨窗口模糊
      * （[WindowManager.isCrossWindowBlurEnabled] 为 false，ColorOS 这类定制 ROM 有可能关）
      * 时直接不挂，退回普通系统转场 —— 不自己画一份假的。
+     *
+     * 还有一道门：[blurBehindArmed] 为假时一律摘掉（推迟型页面在起飞之前就该露出清晰的主界面）。
      */
     private fun applyBlurBehind(enabled: Boolean) {
-        if (!enabled) {
+        if (!enabled || !blurBehindArmed) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
             return
         }

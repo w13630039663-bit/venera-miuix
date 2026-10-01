@@ -12,7 +12,7 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 标签多语言与命名空间翻译管理服务 (S4 核心基础设施)
+ * 标签多语言与命名空间翻译管理服务 
  *
  * 数据源：
  * - assets/tags.json (1.04MB 完整 EhTagTranslation 词典, 简体)

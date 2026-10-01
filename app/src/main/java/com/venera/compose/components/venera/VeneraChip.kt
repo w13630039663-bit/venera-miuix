@@ -69,6 +69,10 @@ enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral }
  * @param onLongClick 可空；长按（如弹出「复制 / 屏蔽」菜单）。传了它即使 [onClick] 为 null
  *   也算可交互 —— 按压反馈仍由本组件统一持有，页面不要自行叠 combinedClickable。
  * @param leadingIcon 前置图标（如「＋」）。
+ * @param leading 前置**插槽**。与 [leadingIcon] 的分工：那个摆的是一枚**单色矢量**
+ *   （跟着 [contentColor] 走），这个摆的是**自己带底、自己带色**的一小块 ——
+ *   画师介绍页的平台入口就是它：品牌色小方块 + 白字形，两样都不是本组件能推出来的颜色。
+ *   给了它就不再画 [leadingIcon]（两枚前置并排没有语义，只会让胶囊读起来像两个东西）。
  * @param trailingIcon 后置图标（如「×」移除）。
  * @param onRemoveClick 给 [trailingIcon] 单独一个动作（胶囊自带的 ×）。
  *   **为什么要有它**：整枚胶囊的点击常被别的语义占着（标签胶囊点一下=改成排除），
@@ -79,6 +83,16 @@ enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral }
  *   "同一枚 chip 里两段文字两种层级"这种需求 —— 别再为它复制一套 chip UI。
  * @param enabled false 时降透明度且不可点击。
  * @param variant 视觉变体；[VeneraChipVariant.Tag] 用于标签语义。
+ * @param containerColorOverride 底板色的**兜底覆盖**。给 null（默认）时完全走 [variant]
+ *   与各状态分支，既有调用点一字不动。为什么要有这个口子：有些语义标签的底色
+ *   本组件推不出来 —— 「关于这张图」右上那枚分级徽标就是（安全 / 留意 / 成人要吃
+ *   [com.venera.compose.ui.tokens.GalleryRatingColors] 那四枚固定色）。
+ *   ⚠️ 本组件的头注写着"这是**唯一**的 Chip 实现、禁止再复制一套 UI"，
+ *   所以那条需求只能从这里开一个口子，**不许**为它另写一枚 Badge 组件。
+ * @param contentColorOverride 文字色的兜底覆盖，与 [containerColorOverride] 配对使用。
+ *   给了覆盖色之后**对比度由调用方负责**（本组件不再有立场替它挑色）。
+ *   两者一起给时状态分支（selected / disabled）不再参与着色 —— 需要状态色的场景
+ *   请继续走 [variant]，别用这一对。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -89,11 +103,14 @@ fun VeneraChip(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     leadingIcon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
     trailingIcon: ImageVector? = null,
     leadingText: String? = null,
     onRemoveClick: (() -> Unit)? = null,
     enabled: Boolean = true,
     variant: VeneraChipVariant = VeneraChipVariant.Assist,
+    containerColorOverride: Color? = null,
+    contentColorOverride: Color? = null,
 ) {
     val tokens = VeneraTokens
 
@@ -118,8 +135,10 @@ fun VeneraChip(
         label = "VeneraChipPressAlpha",
     )
 
-    // ── 颜色决策：disabled > selected > Neutral > Tag > Assist ──
-    val container = when {
+    // ── 颜色决策：覆盖 > disabled > selected > Neutral > Tag > Assist ──
+    // 覆盖排在最前：调用方给色时它的语义是"这一枚的颜色不由本组件决定"（见参数说明），
+    // 所以它连 disabled/selected 也不再参与 —— 那种需求走 variant，不走这两个口子。
+    val container = containerColorOverride ?: when {
         !enabled -> tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
         // Filter 的选中态吃 secondaryContainer（MD3 给 filter chip 的就是这一档，比
         // primaryContainer 退一级）；其余变体的选中仍是主色容器。
@@ -134,7 +153,7 @@ fun VeneraChip(
             tokens.color.surfaceVariant.copy(alpha = tokens.current.tagContainerAlpha)
         else -> Color.Transparent
     }
-    val contentColor = when {
+    val contentColor = contentColorOverride ?: when {
         !enabled -> tokens.color.textDisabled
         selected && variant == VeneraChipVariant.Filter -> tokens.color.onSecondaryContainer
         selected -> tokens.color.onPrimaryContainer
@@ -172,6 +191,9 @@ fun VeneraChip(
     // Tag 走**点缀档**（只染色、不建模糊）：卡片上一屏可能二十枚，逐个离屏采样就是层数炸弹。
     val glassRole = when {
         !enabled || selected -> null
+        // 底色被调用方接管时不叠玻璃：玻璃是半透明的，压在固定语义色上会把那枚色洗淡
+        // （分级徽标那四枚色是按"白字可读"逐色挑的，洗一层就不成立了）。
+        containerColorOverride != null -> null
         variant == VeneraChipVariant.Tag -> VeneraGlassRole.BADGE
         variant == VeneraChipVariant.Neutral -> null
         else -> VeneraGlassRole.CHIP
@@ -218,7 +240,10 @@ fun VeneraChip(
             ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (leadingIcon != null) {
+            // 前置插槽优先：它与 leadingIcon 互斥（理由见参数说明），摆两块只会让胶囊变胖。
+            if (leading != null) {
+                leading()
+            } else if (leadingIcon != null) {
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,

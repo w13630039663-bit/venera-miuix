@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -18,7 +19,7 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
- * 本地数据备份与恢复服务 (S7)
+ * 本地数据备份与恢复服务
  *
  * 核心特性：
  * 1. 一键全量打包导出为标准 `.venera` 归档文件
@@ -118,6 +119,7 @@ class BackupManager private constructor(private val context: Context) {
             var historyCount = 0
             var statsCount = 0
             var guardCount = 0
+            var guardSkipped = 0
             val db = dbHelper.writableDatabase
             db.beginTransaction()
             try {
@@ -161,10 +163,19 @@ class BackupManager private constructor(private val context: Context) {
                 // 3. 恢复屏蔽规则
                 for (i in 0 until guardRules.length()) {
                     val item = guardRules.getJSONObject(i)
+                    val regexFlag = item.optInt("is_regex", 0)
+                    val pattern = item.getString("pattern")
+                    if (regexFlag == 1 && !GuardRulePattern.compiles(pattern)) {
+                        // 编译不过的正则进了库也命中不了任何东西（ContentGuardManager 的 match() 兜底是
+                        // catch → false），却会在屏蔽列表里显示「已启用 · 正则规则」。
+                        // 恢复它 = 恢复一条假开关，所以不收，收多少条要在屏上说得出。
+                        guardSkipped++
+                        continue
+                    }
                     val cv = ContentValues().apply {
                         put("rule_type", item.getString("rule_type"))
-                        put("pattern", item.getString("pattern"))
-                        put("is_regex", item.optInt("is_regex", 0))
+                        put("pattern", pattern)
+                        put("is_regex", regexFlag)
                         put("is_enabled", item.optInt("is_enabled", 1))
                         put("created_at", item.getLong("created_at"))
                     }
@@ -180,7 +191,7 @@ class BackupManager private constructor(private val context: Context) {
             // 4. 恢复本地收藏（另一个 db 文件，单独一笔）
             val folderCount = restoreFavoriteFolders(favoriteFolders)
             val favoriteCount = restoreFavoriteItems(favorites)
-            Log.i(tag, "导入完成：$folderCount 个收藏夹 / $favoriteCount 本收藏")
+            Log.i(tag, "导入完成：$folderCount 个收藏夹 / $favoriteCount 本收藏 / 跳过 $guardSkipped 条写法有误的屏蔽规则")
 
             Result.success(
                 BackupSummary(
@@ -188,6 +199,7 @@ class BackupManager private constructor(private val context: Context) {
                     favoriteCount = favoriteCount,
                     statsCount = statsCount,
                     guardRulesCount = guardCount,
+                    guardRulesSkipped = guardSkipped,
                     timestamp = timestamp
                 )
             )

@@ -75,6 +75,7 @@ fun VeneraTheme(content: @Composable () -> Unit) {
     }
     val miuixColors = if (appearance == AppearanceStyle.MIUIX) nativeMiuix
         else materialColors.toMiuixColors(nativeMiuix)
+    com.venera.compose.StartupTrace.once("Theme: colors ready (first composition)")
 
     // 非颜色 Token 随风格切换：MIUIX 走大圆角 + 大字号，MD3 走 Material3 标准阶梯。
     val tokens = remember(appearance) {

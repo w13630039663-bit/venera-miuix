@@ -30,7 +30,7 @@ class HistoryDao(private val dbHelper: VeneraDatabase) {
     val historyFlow: StateFlow<List<HistoryRecord>> = _historyFlow.asStateFlow()
 
     /**
-     * 全表读取一律放到 IO 线程（S0-5：原实现是 init 里同步查全表，
+     * 全表读取一律放到 IO 线程（原实现是 init 里同步查全表，
      * 而 DAO 是在 Composable 里 remember 出来的 ⇒ 冷启动主线程扫库）。
      */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

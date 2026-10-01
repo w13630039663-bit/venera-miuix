@@ -358,13 +358,13 @@ class JsComicSource(
             // 官方 search.loadNext(keyword, options, next) 的 next 由**搜索页状态**维护：
             // 第 1 页传 null，之后传上一页返回的 res.next。这里用同语义的缓存等价实现。
             val nextToken = if (pageNum == 1) null else nextTokenCache[nextCacheKey(keyword, options, pageNum - 1)]
-            // S8 批次B: 搜索页传入的筛选值（null 时回退源默认，保持原行为）
+            // 搜索页传入的筛选值（null 时回退源默认，保持原行为）
             val optsJson = gson.toJson(options ?: emptyList<String>())
             val script = """
                 return (async function() {
                     var s = ComicSource.sources['$key'];
                     if (!s || !s.search) return { comics: [] };
-                    // S8: 使用搜索页传入的筛选值；未传时对齐官方 useDefaultOptions() 用默认值
+                    // 使用搜索页传入的筛选值；未传时对齐官方 useDefaultOptions() 用默认值
                     var opts = $optsJson;
                     if (opts.length === 0) opts = _veneraOptionValues(s.search.optionList);
                     var res = null;

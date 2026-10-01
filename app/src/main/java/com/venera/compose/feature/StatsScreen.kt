@@ -52,7 +52,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraTopBarPill
 
 /**
- * 生产级阅读统计看板 (S7)
+ * 生产级阅读统计看板
  *
  * 核心特性：
  * 1. 真实汇总阅读时长、页数、漫画本数与连续打卡

@@ -54,7 +54,7 @@ enum class VeneraNavTab(
 }
 
 /**
- * 1:1 复刻原版 Flutter [NaviPane] 与 [LiquidGlassLens] 悬浮胶囊底栏
+ * 照原版 Flutter 那套悬浮胶囊底栏（`NaviPane` + `LiquidGlassLens`）做的实现
  * - 居中独立悬浮在屏幕底部
  * - 具备半透明毛玻璃底色、微光外框、软阴影
  * - 内部搭载物理回弹滑动的指示器药丸（Pill Highlight）

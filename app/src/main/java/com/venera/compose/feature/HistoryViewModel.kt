@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 历史页 ViewModel（S5-4）。
+ * 历史页 ViewModel。
  *
  * 对齐原版 `pages/history_page.dart`：网格展示 + 多选删除 + 清空（全部 / 仅未收藏）。
  */

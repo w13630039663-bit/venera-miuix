@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  pixiv 品牌字形（画师介绍页平台入口用）。**不要手改这个文件** —— 它由构建脚本生成：
+
+      node scripts/build_platform_icons.mjs
+
+  源：https://cdn.jsdelivr.net/npm/simple-icons@15/icons/pixiv.svg（Simple Icons v15.22.0，CC0-1.0）
+  官方出处：https://policies.pixiv.net/en.html#brand
+  品牌色（官方）：#0096FA —— 屏上认账的那一份在 `GalleryPlatformColors`
+
+  fillColor 是**纯白**：底色由品牌色小方块给（见 GalleryPlatformColors），
+  资产本身不带色，深浅两档与两套主题都不用重出图。
+
+  ⚠️ 这是 pixiv 的商标，仅用于标明"这条外链指向哪一家"。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4.94 0A4.953 4.953 0 0 0 0 4.94v14.12A4.953 4.953 0 0 0 4.94 24h14.12A4.953 4.953 0 0 0 24 19.06c-.014 1.355 0-14.12 0-14.12A4.953 4.953 0 0 0 19.06 0Zm1.783 5.465h.904a.37.37 0 0 1 .31.17l.752 1.17a6.172 6.172 0 0 1 10.01 4.834 6.172 6.172 0 0 1-9.394 5.265v2.016a.37.37 0 0 1-.37.367H6.724a.37.37 0 0 1-.37-.367V5.834a.37.37 0 0 1 .37-.37m5.804 2.951a3.222 3.222 0 1 0-.002 6.443 3.222 3.222 0 0 0 .002-6.443" />
+</vector>

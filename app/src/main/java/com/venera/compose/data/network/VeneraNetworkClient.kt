@@ -14,26 +14,50 @@ import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 /**
- * Venera 核心统一网络引擎（S0-6：支持运行时重建客户端以应用 DoH / 代理）。
+ * Venera 核心统一网络引擎（支持运行时重建客户端以应用 DoH / 代理）。
  *
  * 对比原版 Flutter 的 intercepted_client.dart：
  * - OkHttp 4 原生不内置 DoH 解析器，但 okhttp-dnsoverhttps 模块提供 DNS-over-HTTPS。
- * - 当前仅做接入决策（pref_enable_doh → builder.dns()），实际部署依赖 S1 脚本引擎稳定性。
+ * - 当前仅做接入决策（pref_enable_doh → builder.dns()），实际部署依赖脚本引擎那一层的稳定性。
  * - 代理默认走 HTTP 代理（SOCKS 场景极少，未来可补）。
  * - 修改偏好后调用 rebuildClient() 使新请求（包括 Coil 图片）走新配置。
  */
 class VeneraNetworkClient private constructor(private val context: Context) {
 
-    val cookieJar = PersistentCookieJar(context.applicationContext)
-    private val prefs = VeneraPreferences.getInstance(context)
+    /**
+     * CookieJar 与 OkHttpClient 都推迟到首次真正使用。真机冷启实测：
+     * `PersistentCookieJar()`（prefs 全表读 + 每个 host 一次 gson 解析）要 33~42ms、
+     * `buildClient()` 装配五个拦截器要 14~24ms，原先这两笔全压在 Application.onCreate
+     * 的主线程上；改延迟后由壳层在 IO 线程预热，首图要用时已经备好。
+     */
+    val cookieJar: PersistentCookieJar by lazy {
+        com.venera.compose.StartupTrace.timed("NetClient: PersistentCookieJar()") {
+            PersistentCookieJar(context.applicationContext)
+        }
+    }
+    private val prefs: VeneraPreferences by lazy {
+        com.venera.compose.StartupTrace.timed("NetClient: VeneraPreferences.getInstance") {
+            VeneraPreferences.getInstance(context)
+        }
+    }
 
     @Volatile
-    private var _okHttpClient: OkHttpClient = buildClient()
+    private var _okHttpClient: OkHttpClient? = null
 
-    val okHttpClient: OkHttpClient get() = _okHttpClient
+    val okHttpClient: OkHttpClient
+        get() = _okHttpClient ?: synchronized(this) {
+            _okHttpClient ?: com.venera.compose.StartupTrace.timed("NetClient: buildClient()") {
+                buildClient()
+            }.also { _okHttpClient = it }
+        }
 
     init {
-        UserAgentPolicy.init(context)
+        // UA 策略刻意**不**跟着 client 一起延迟：CloudflareBypassManager 写 host 绑定 UA
+        // 那条路不保证先碰过 OkHttpClient，而 UserAgentPolicy 没 init 时它的 prefs 是 null，
+        // setCustomUserAgentForHost 就只在内存里记一笔、静默丢掉持久化（cf_clearance 配不上 UA）。
+        com.venera.compose.StartupTrace.timed("NetClient: UserAgentPolicy.init") {
+            UserAgentPolicy.init(context)
+        }
     }
 
     private fun buildClient(): OkHttpClient {
@@ -52,7 +76,7 @@ class VeneraNetworkClient private constructor(private val context: Context) {
         val cacheDir = java.io.File(context.cacheDir, "venera_http_cache")
         builder.cache(okhttp3.Cache(cacheDir, prefs.httpCacheMaxMb.value * 1024L * 1024L))
 
-        // 代理（支持 HTTP / SOCKS5，S0-6 实装）
+        // 代理（支持 HTTP / SOCKS5，后来实装）
         val proxyType = prefs.proxyType.value
         if (proxyType == "HTTP" || proxyType == "SOCKS") {
             val host = prefs.proxyHost.value.ifEmpty { "127.0.0.1" }
@@ -100,23 +124,36 @@ class VeneraNetworkClient private constructor(private val context: Context) {
      * 只统计网络响应缓存，不含 Coil 图片磁盘缓存与下载目录 —— 设置页的文案必须
      * 说清这一点，否则"缓存"会被用户理解成应用占用的全部空间。
      */
-    fun httpCacheSizeBytes(): Long = _okHttpClient.cache?.let { c ->
+    fun httpCacheSizeBytes(): Long = okHttpClient.cache?.let { c ->
         runCatching { c.size() }.getOrDefault(0L)
     } ?: 0L
 
     /** 清空 HTTP 响应缓存，返回清理前的字节数（用于提示文案）。 */
     fun clearHttpCache(): Long {
-        val c = _okHttpClient.cache ?: return 0L
+        // 走 okHttpClient 取值器而不是 _okHttpClient：客户端还没建时读 null 会报 0 字节，
+        // 而磁盘上可能留着上一轮的缓存 —— 那是个假读数。
+        val c = okHttpClient.cache ?: return 0L
         val before = runCatching { c.size() }.getOrDefault(0L)
         runCatching { c.evictAll() }
         return before
     }
 
+    /**
+     * 三条路统一成一句话：**非 2xx 一律抛，不把正文交回上游**（判据在 [HttpBodyVerdict]，
+     * 可脱离 gradle 单跑）。以前这三处都是「拿正文，拿不到给空值」了事 —— 403 的挑战页、
+     * 500 的错误页因此被当成正文喂给了上游解析器：漫画源那边表现为「无结果」或一句 gson 错，
+     * 真相是那个源被封了；画廊另存那边更坏，一段 HTML 以"非空正文"通过 `bytes.isEmpty()`
+     * 那道关，落盘成一个叫 `.jpg` 的网页，而提示说的是「已保存」。
+     *
+     * `use` 不是装饰：不走消费正文那条分支时也得把响应关掉，否则连接漏了。
+     * 2xx 而没有正文时仍交回空值 —— `GallerySaver` 那头本来就把 0 字节判成失败。
+     */
     suspend fun get(url: String, headers: Map<String, String>? = null): String = withContext(Dispatchers.IO) {
         val reqBuilder = Request.Builder().url(url)
         headers?.forEach { (k, v) -> reqBuilder.header(k, v) }
-        val response = okHttpClient.newCall(reqBuilder.build()).execute()
-        response.body?.string() ?: ""
+        okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+            HttpBodyVerdict.body(response.code, "GET", url) { response.body?.string() ?: "" }
+        }
     }
 
     suspend fun post(url: String, jsonBody: String, headers: Map<String, String>? = null): String = withContext(Dispatchers.IO) {
@@ -124,8 +161,9 @@ class VeneraNetworkClient private constructor(private val context: Context) {
         val reqBody = jsonBody.toRequestBody(mediaType)
         val reqBuilder = Request.Builder().url(url).post(reqBody)
         headers?.forEach { (k, v) -> reqBuilder.header(k, v) }
-        val response = okHttpClient.newCall(reqBuilder.build()).execute()
-        response.body?.string() ?: ""
+        okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+            HttpBodyVerdict.body(response.code, "POST", url) { response.body?.string() ?: "" }
+        }
     }
 
     suspend fun downloadBytes(url: String, referer: String? = null): ByteArray = withContext(Dispatchers.IO) {
@@ -133,8 +171,9 @@ class VeneraNetworkClient private constructor(private val context: Context) {
         if (referer != null) {
             reqBuilder.header("Referer", referer)
         }
-        val response = okHttpClient.newCall(reqBuilder.build()).execute()
-        response.body?.bytes() ?: ByteArray(0)
+        okHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+            HttpBodyVerdict.body(response.code, "GET", url) { response.body?.bytes() ?: ByteArray(0) }
+        }
     }
 
     companion object {

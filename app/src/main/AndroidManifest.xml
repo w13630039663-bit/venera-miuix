@@ -194,6 +194,15 @@
             android:name=".GalleryPostActivity"
             android:exported="false"
             android:theme="@style/Theme.Venera.GlassOverlay" />
+        <!--
+            画廊画师介绍页（批次 Q+R）：与大图页同一承载 —— 只有独立 Activity 才透得出
+            blur-behind，而那正是这一页的底。栈是 Main → Post → Profile，
+            "看 TA 全部作品"那一级由 Post 收结果后一起 finish（见 GalleryArtistProfileActivity 头注）。
+        -->
+        <activity
+            android:name=".GalleryArtistProfileActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Venera.GlassOverlay" />
         <activity
             android:name=".data.network.CloudflareBypassActivity"
             android:exported="false"

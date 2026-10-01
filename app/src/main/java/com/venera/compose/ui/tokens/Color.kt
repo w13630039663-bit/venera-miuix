@@ -176,6 +176,149 @@ internal object StatusColors {
     val Share = Color(0xFF2196F3)
     /** 评分星标。 */
     val RatingStar = Color(0xFFFFB800)
+
+    // ── 画廊两站的**品牌色**（2026-09-30 新增，来源标识那一对用的）──
+    /**
+     * Gelbooru 品牌蓝。
+     *
+     * 取自站方 favicon 本身：不透明像素里除白色外出现最多的就是 `#006ffa`（22 个像素）。
+     * ⚠️ **不要**改成站方 SVG 里那条 path 自己的 `fill`（`#FFFFFF`）—— 它是设计给
+     * 站方自己的彩色页头用的；摆到我们这枚固定深色小底板上就是一块没有识别度的白斑。
+     * 与 `BadgeSurface` 的对比度 ≈ 3.7:1，高于**图形元素** 3:1 的门槛（非文本，不适用 4.5:1）。
+     *
+     * 它同时被 `res/drawable/ic_source_gelbooru.xml` 写着（那枚由
+     * `scripts/build_source_icons.mjs` 生成、fill 值也出自脚本里的常量）——
+     * 改色要**两处一起改**，这处是给人读的登记，那处才是渲染值。
+     */
+    val GallerySourceGelbooru = Color(0xFF006FFA)
+
+    /**
+     * yande.re 的强调色（**字母标**的底色）。
+     *
+     * 它的 favicon 不是站标（详见 `scripts/build_source_icons.mjs` 头注的实测），
+     * 所以那一站我们用品牌色字母标。这个值取自它站点 CSS 里的链接色
+     * （`a:link { color: #ee8887 }`，出自主样式表 `application-*.css`）——
+     * **是推断，不是官方发布的品牌规范**：真机上若觉得偏，它有个现成的候选
+     * `#3C3CDC`（同一份 CSS 里按钮 hover 的背景色）。改这一处即可。
+     */
+    val GallerySourceYandere = Color(0xFFEE8887)
+
+    /** 品牌色底上的文字/图形色。两站的品牌底色都是中间调，白字在两者上都 ≥ 3:1。 */
+    val OnGallerySourceBrand = Color(0xFFFFFFFF)
+}
+
+/**
+ * 画师介绍页「平台入口」那排胶囊上，各家的**品牌色**（2026-10-01 新增）。
+ *
+ * ── 它是什么、不是什么 ──
+ *
+ * 它是"这一枚色块属于哪一家"的**功能性固定色**，与 [GalleryTagCategoryColors]
+ * 同一档：不跟壁纸取色、不随 MD3/MIUIX 分叉。参照物是各家自己的品牌资产，
+ * 所以**改值前必须先去核源**，不能凭观感调 —— 调偏了就是"把一家认成另一家"。
+ *
+ * ── 色值出处（逐条可核）──
+ *
+ * 五家取自 [Simple Icons](https://simpleicons.org) v15.22.0 的数据文件
+ * （那一份逐条记着官方出处，本仓的 `scripts/build_platform_icons.mjs` 会把出处打进产物注释）。
+ * ⚠️ 这份表是"屏上认账的那一份"，脚本里那行只是登记 —— **改色要两处一起改**，
+ * 与 [GallerySourceGelbooru] 同一条口径。
+ *
+ * ── 一处**故意不照抄官方色** ──
+ *
+ * [X] 官方品牌色是 `#000000`（Simple Icons 记的就是它）。纯黑在**深色档**下与卡面同色，
+ * 22dp 的方块会整块消失、只剩一个镂空的字形。所以取 X 自家界面里那枚链接蓝
+ * `#1d9bf0`（参考图三那一枚用的也是它）。这是唯一一处偏离，理由是"照抄会让它看不见"。
+ *
+ * [Fanbox] 用的是站方 `https://s.pximg.net/common/images/fanbox/logo.svg` 里
+ * 那条 path 自己的 fill（`#2c333c`）—— **不是**它的吉祥物底色。
+ * 吉祥物那枚（`apple-touch-icon.png`，浅黄 `#faf18a` 底 + 白兽 + 黑描边）是**彩色方块**，
+ * 染成单色会得到一整块实心方（它的 alpha 处处为 255），也压不住 14dp 的字形。
+ * 那枚横版字标（148×20）同理，缩到 14dp 读不出字。所以 FANBOX 的徽标里摆的是字母标「F」，
+ * 口径与 [GallerySourceYandere] 那条"没有方形站标就用品牌色字母标"完全一致。
+ */
+internal object GalleryPlatformColors {
+    /** pixiv 官方品牌色。 */
+    val Pixiv = Color(0xFF0096FA)
+
+    /** X（原 Twitter）**界面蓝**，非官方品牌色 `#000000` —— 理由见本对象头注。 */
+    val X = Color(0xFF1D9BF0)
+
+    /** Instagram 官方品牌色。站方真标是渐变，这里取单色档（本仓禁渐变，且渐变压不出单色字形）。 */
+    val Instagram = Color(0xFFFF0069)
+
+    /** FANBOX：站方 logo 矢量档里那条 path 的 fill。 */
+    val Fanbox = Color(0xFF2C333C)
+
+    /** Tumblr 官方品牌色。 */
+    val Tumblr = Color(0xFF36465D)
+
+    /** YouTube 官方品牌色。 */
+    val YouTube = Color(0xFFFF0000)
+
+    /**
+     * 品牌色底上的字形色。
+     *
+     * 白。上面六档里最浅的是 [Tumblr] 的 `#36465d`，与白的对比度 ≈ 9.6:1；
+     * 最险的是 [X] 的 `#1d9bf0`，≈ 2.9:1 —— 字形是非文本图形，门槛是 3:1，
+     * 差一点点。真机上若判定读不出，改法是换一枚更深的蓝（`#0f6ea8` 一带），
+     * 而**不是**把字形调粗：调粗会让它跟相邻的平台名（同一枚胶囊里的文字）抢重量，那是另一件事。
+     */
+    val OnPlatformBrand = Color(0xFFFFFFFF)
+}
+
+/**
+ * 图站**分级徽标**的固定色板（2026-10-01 新增，「关于这张图」重排那一批）。
+ *
+ * ── 为什么是固定色 ──
+ *
+ * 与 [SettingsBadgeColors] / [StatusColors] 同一条口径：这是**功能性语义色**。
+ * 「安全 / 留意 / 成人」在任何主题下都得一眼可辨；跟随 MD3 壁纸取色会退化成
+ * 同色系的不同深浅，那就等于没有编码。
+ *
+ * ── 为什么只有四档，而分级有五个语义档 ──
+ *
+ * 徽标是**实底胶囊 + 白字**（走 [com.venera.compose.components.venera.VeneraChip]
+ * 的 `containerColorOverride` / `contentColorOverride` 两个口子），于是每档都要保证
+ * 白字压住容器色 ≥ 4.5:1（正文门槛）。逐色量过（WCAG 2.1，sRGB 相对亮度）：
+ *
+ * | 本表取值 | 白字对比度 |
+ * |---|---|
+ * | [Safe] `#2E7D32` | 5.13:1 |
+ * | [Caution] `#A15C00` | 5.17:1 |
+ * | [Explicit] `#C62828` | 5.63:1 |
+ * | [Unknown] `#616161` | 6.29:1 |
+ *
+ * 而"五档一比一"要的那些**黄/琥珀族根本进不来**：`#4CAF50` 2.78:1、`#F9A825` 1.97:1、
+ * `#FFB300` 1.90:1 —— 明度太高，白字压不住；把色阶压深到能过对比度，
+ * `sensitive` 与 `questionable` 又分不出来（`#9A6A00` 与 `#A15C00` 色相差不到 10°）。
+ *
+ * 所以本表只编码「**这一档有多需要留意**」，精确档位由徽标上的字承担 ——
+ * 完整的推导在 [com.venera.compose.gallery.domain.GalleryRatingTone] 头注里，
+ * 改这里的值之前先读那一份。
+ *
+ * ⚠️ [Unknown] 是**独立一档**，不是 [Caution] 的兜底：站方给了个我们不认识的值
+ * 与"站方说是敏感"是两件事，画成同一个颜色等于替站方下了一个它没下过的判断。
+ */
+internal object GalleryRatingColors {
+    /** 安全 / 一般。 */
+    val Safe = Color(0xFF2E7D32)
+
+    /** 敏感 / 存疑（两档合用一色，理由见头注）。 */
+    val Caution = Color(0xFFA15C00)
+
+    /** 成人。 */
+    val Explicit = Color(0xFFC62828)
+
+    /** 站方给了不认识的值、或值是空的。 */
+    val Unknown = Color(0xFF616161)
+
+    /**
+     * 四色底上的字：固定白。
+     *
+     * 与 [GalleryPlatformColors.OnPlatformBrand] 同一个理由 —— 这四档底色的明度
+     * 都是按"白字可读"选出来的，换成主题文字色反而会有一半档位塌掉。
+     */
+    val OnRatingBadge = Color(0xFFFFFFFF)
 }
 
 /**

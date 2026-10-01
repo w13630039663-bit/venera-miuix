@@ -126,7 +126,7 @@ import com.venera.compose.components.venera.VeneraSwitch
 // 因此预取循环保持并发（见 preloadPages）。
 
 /**
- * Venera 生产级 Jetpack Compose 工业级漫画阅读器 (S3 升级)
+ * Venera Jetpack Compose 漫画阅读器 
  *
  * 核心技术栈：
  * 1. saket/telephoto v0.19.0 (ZoomableAsyncImage + SubSampling)：超大图分块与子采样，杜绝 8000px+ 长图 OOM
@@ -274,7 +274,7 @@ private fun ReaderSessionContent(
         }
     }
 
-    // 阅读统计记录 (S7)
+    // 阅读统计记录
     val sessionStartTime = remember { System.currentTimeMillis() }
     var maxPageReached by remember { mutableIntStateOf(session.initialPageIndex + 1) }
 
@@ -1529,7 +1529,7 @@ private fun ReaderSessionContent(
             }
         }
 
-        // ==================== 章节评论 Sheet (S8，对齐官方 reader/chapter_comments) ====================
+        // ==================== 章节评论 Sheet（对齐官方阅读器里的那一屏）====================
         if (showChapterCommentsSheet) {
             ModalBottomSheet(
                 onDismissRequest = { activePanel = ReaderPanel.NONE },
@@ -1861,7 +1861,7 @@ private fun ReaderSinglePageItem(
 }
 
 /**
- * 生产级 Telephoto 页面渲染单元 (用于日漫/美漫单页翻页模式)
+ * Telephoto 页面渲染单元 (用于日漫/美漫单页翻页模式)
  * 自动接管多指缩放、双击缩放以及 >8000px 超大图分块与子采样
  */
 @Composable
@@ -2016,7 +2016,7 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
 }
 
 /**
- * 收藏当前单页为插图 (S7)
+ * 收藏当前单页为插图
  *
  * 网络页在写表之前先把**去混淆后的原画**落到 filesDir/favorite_images/：
  * 只存 URL 的收藏墙拿到的是混淆原图（禁漫）+ 会过期的签名地址（EH）+ 离线裂图，

@@ -132,9 +132,9 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
      * 标题对不上时如实提示并留在详情页，绝不随手开第一章糊弄。
      */
     readTarget: ReadTarget? = null,
-    /** S8: 点击标签 → 跳转该标签的搜索结果（对齐官方 handleClickTagEvent 默认语义） */
+    /** 点击标签 → 跳转该标签的搜索结果（对齐官方 handleClickTagEvent 默认语义） */
     onSearchTag: (String) -> Unit = {},
-    /** S8 批次C: 点击封面 → 全屏查看器 */
+    /** 点击封面 → 全屏查看器 */
     onOpenCoverViewer: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -364,7 +364,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     }
                 }
             }
-            // 1. 顶部封面与作品标题信息 (S2 扩展字段对齐)
+            // 1. 顶部封面与作品标题信息
             item {
                 val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
                 // 内容守卫：详情页同样走判定链（JM/哔咔/R18 等命中 → 毛玻璃打码 + R18 角标）。
@@ -1637,7 +1637,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         )
     }
 
-    // 批量离线下载对话框 (S6)
+    // 批量离线下载对话框
     if (showDownloadDialog) {
         val allChs = downloadChapters(liveDetails, detailState.selectedGroupIndex)
         val downloadManager = com.venera.compose.download.DownloadManager.getInstance(context)

@@ -33,7 +33,7 @@ import java.io.FileOutputStream
 import com.venera.compose.components.venera.VeneraIconButton
 
 /**
- * 封面全屏查看器 (S8 批次C, 对齐官方 comic_details_page/cover_viewer.dart):
+ * 封面全屏查看器 (对齐官方 comic_details_page/cover_viewer.dart):
  * 全屏展示封面, 点击切换顶栏显隐, 顶栏含返回与保存到相册。
  */
 @Composable

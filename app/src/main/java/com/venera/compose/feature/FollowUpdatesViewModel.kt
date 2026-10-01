@@ -12,7 +12,7 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import kotlinx.coroutines.launch
 
 /**
- * 追更 / 更新列表页 ViewModel（S5-5）。
+ * 追更 / 更新列表页 ViewModel。
  */
 class FollowUpdatesViewModel(application: Application) : AndroidViewModel(application) {
 

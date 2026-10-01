@@ -1,9 +1,8 @@
 /**
- * 分区标题（首页六分区共用）。
+ * 分区标题（首页六分区与画廊首页共用）。
  *
  * 本轮 Token 化：字号 / 颜色 / 圆角 / 间距全部走 Token。
  * 「›」原为 20sp（明显过大，与 17sp 标题打架），已收敛到 type.chevron。
- * 该组件目前仅被 HomeScreen 使用，因此本次改动不波及其他页面。
  */
 package com.venera.compose.feature
 
@@ -23,15 +22,24 @@ import top.yukonga.miuix.kmp.basic.Text
 @Composable
 fun MiuixSectionHeader(
     title: String,
-    onTap: () -> Unit,
+    onTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /**
+     * 行尾那一段（画廊首页用它摆「换一批 / 查看全部」）。
+     *
+     * 给了 [trailing] 就**不画那枚「›」，整行也不再可点**：那一颗箭头表达的是"整行是一个入口"，
+     * 而行里已经有按钮了 —— 两个动作打架，点标题与点按钮做得不是同一件事，
+     * 用户却没法从外观上知道哪个能点、点了会去哪。
+     */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
+    val clickable = onTap != null && trailing == null
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(tokens.shape.small))
-            .clickable { onTap() }
+            .then(if (clickable) Modifier.clickable { onTap?.invoke() } else Modifier)
             .padding(
                 horizontal = tokens.spacing.space2,
                 vertical = tokens.spacing.space3,
@@ -45,10 +53,14 @@ fun MiuixSectionHeader(
             fontWeight = tokens.type.weightSemibold,
             color = tokens.color.textPrimary,
         )
-        Text(
-            text = "›",
-            fontSize = tokens.type.chevron,
-            color = tokens.color.textTertiary,
-        )
+        if (trailing != null) {
+            trailing()
+        } else {
+            Text(
+                text = "›",
+                fontSize = tokens.type.chevron,
+                color = tokens.color.textTertiary,
+            )
+        }
     }
 }

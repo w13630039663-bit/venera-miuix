@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  YouTube 品牌字形（画师介绍页平台入口用）。**不要手改这个文件** —— 它由构建脚本生成：
+
+      node scripts/build_platform_icons.mjs
+
+  源：https://cdn.jsdelivr.net/npm/simple-icons@15/icons/youtube.svg（Simple Icons v15.22.0，CC0-1.0）
+  官方出处：https://www.youtube.com/howyoutubeworks/resources/brand-resources/#logos-icons-and-colors
+  品牌色（官方）：#FF0000 —— 屏上认账的那一份在 `GalleryPlatformColors`
+
+  fillColor 是**纯白**：底色由品牌色小方块给（见 GalleryPlatformColors），
+  资产本身不带色，深浅两档与两套主题都不用重出图。
+
+  ⚠️ 这是 YouTube 的商标，仅用于标明"这条外链指向哪一家"。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+</vector>

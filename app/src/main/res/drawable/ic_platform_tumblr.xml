@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tumblr 品牌字形（画师介绍页平台入口用）。**不要手改这个文件** —— 它由构建脚本生成：
+
+      node scripts/build_platform_icons.mjs
+
+  源：https://cdn.jsdelivr.net/npm/simple-icons@15/icons/tumblr.svg（Simple Icons v15.22.0，CC0-1.0）
+  官方出处：https://www.tumblr.com/logo
+  品牌色（官方）：#36465D —— 屏上认账的那一份在 `GalleryPlatformColors`
+
+  fillColor 是**纯白**：底色由品牌色小方块给（见 GalleryPlatformColors），
+  资产本身不带色，深浅两档与两套主题都不用重出图。
+
+  ⚠️ 这是 Tumblr 的商标，仅用于标明"这条外链指向哪一家"。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14.563 24c-5.093 0-7.031-3.756-7.031-6.411V9.747H5.116V6.648c3.63-1.313 4.512-4.596 4.71-6.469C9.84.051 9.941 0 9.999 0h3.517v6.114h4.801v3.633h-4.82v7.47c.016 1.001.375 2.371 2.207 2.371h.09c.631-.02 1.486-.205 1.936-.419l1.156 3.425c-.436.636-2.4 1.374-4.156 1.404h-.178l.011.002z" />
+</vector>

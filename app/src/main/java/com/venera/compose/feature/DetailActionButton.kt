@@ -1,5 +1,5 @@
 /**
- * S0-3 机械拆分自 MainActivity.kt（代码正文逐行原样搬运，未作改写）。
+ * 机械拆分自 MainActivity.kt（代码正文逐行原样搬运，未作改写）。
  */
 package com.venera.compose.feature
 
@@ -76,5 +76,3 @@ fun DetailActionButton(
         )
     }
 }
-
-// ==================== 3. 搜索页 (SearchPage) 1:1 复刻 ====================

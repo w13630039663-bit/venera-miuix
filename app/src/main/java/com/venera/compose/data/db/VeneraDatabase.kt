@@ -73,7 +73,7 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
             );
             """.trimIndent()
         )
-        // 4. 阅读统计表 (S7)
+        // 4. 阅读统计表
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS reading_stats (
@@ -93,7 +93,7 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(read_date);")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_comic ON reading_stats(comic_id, source_name);")
 
-        // 5. 单页/图片收藏表 (S7)
+        // 5. 单页/图片收藏表
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS favorite_images (
@@ -111,7 +111,7 @@ class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_favorite_images_created ON favorite_images(created_at DESC);")
 
-        // 6. 屏蔽过滤规则表 (S7)
+        // 6. 屏蔽过滤规则表
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS content_guard_rules (

@@ -12,7 +12,7 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import java.util.concurrent.TimeUnit
 
 /**
- * 追更周期任务（S5-5）。
+ * 追更周期任务。
  *
  * 用 `androidx.work` 的 `PeriodicWorkRequest` + 唯一命名工作：
  * 追更正是「每天一次、可被用户手动触发、允许系统择机执行」的 workload。

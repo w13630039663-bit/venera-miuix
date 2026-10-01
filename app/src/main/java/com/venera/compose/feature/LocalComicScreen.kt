@@ -70,7 +70,7 @@ import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.components.venera.VeneraIconButton
 
 /**
- * 生产级本地离线书架 (S6)
+ * 生产级本地离线书架
  *
  * 核心特性：
  * 1. 离线阅读已下载或导入的本地漫画

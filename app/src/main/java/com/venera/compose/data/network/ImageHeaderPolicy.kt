@@ -54,6 +54,12 @@ object ImageHeaderPolicy {
         // （5.9 KB 挑战页 HTML 而不是图片）。非浏览器 UA 同一个 URL 就 200。
         // ⚠️ 这条是 donmai.us **独有**的强判据，别当成"所有图站都这样"往外推。
         "donmai.us" to mapOf("User-Agent" to "Venera/1.0 (Android)"),
+        // pixiv 的图床（画师头像、`i.pximg.net` 上的其他公开档）—— **必须带站内 Referer**。
+        // 2026-09-30 实测同一个头像 URL 两条对照：不带 `Referer` → 403（146 字节错误页），
+        // 带 `Referer: https://www.pixiv.net/` → 200、5149 字节真图。
+        // 注意与/ajax 端点是两回事：那个 JSON 接口匿名、不带任何头都能读（同一日实测三档对照皆 200），
+        // 只有**取图**这一跳需要这条规则。
+        "pximg.net" to mapOf("Referer" to "https://www.pixiv.net/"),
         // Gelbooru 的图片 CDN —— **必须带 Referer，否则一张图都取不到**。
         //
         // 这是 2026-09-26 真机反馈「搜索出来但全是灰卡」查出来的根因，
@@ -175,7 +181,7 @@ object ImageHeaderPolicy {
  * 把 ImageHeaderPolicy 落到 OkHttp 请求链上。
  *
  * 只补「请求里还没有」的头，因此 API/脚本显式设置的头永远不会被覆盖
- * （对齐原版 Network.get 的头语义，也为 S1.5 的 UA 策略改造铺路）。
+ * （对齐原版 Network.get 的头语义，也为后续 UA 策略改造铺路）。
  */
 class ImageHeaderInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {

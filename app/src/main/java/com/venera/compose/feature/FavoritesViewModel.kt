@@ -35,7 +35,7 @@ enum class FavoriteSortOrder(val label: String) {
 }
 
 /**
- * 收藏页 ViewModel（S5-3）。
+ * 收藏页 ViewModel。
  *
  * 数据全部来自 [LocalFavoritesManager]，ViewModel 只负责：
  * 当前收藏夹 / 搜索关键字 / 多选状态，以及把 UI 动作转发给 Manager。

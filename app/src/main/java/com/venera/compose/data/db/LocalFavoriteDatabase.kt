@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * 本地收藏数据库（S5-1）
+ * 本地收藏数据库
  *
  * 1:1 对齐原版 `lib/foundation/favorites.dart` 所用到的 `local_favorite.db`：
  *

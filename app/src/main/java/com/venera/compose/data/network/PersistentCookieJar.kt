@@ -16,13 +16,18 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PersistentCookieJar(context: Context) : CookieJar {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("venera_cookies", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = com.venera.compose.StartupTrace.timed("CookieJar: getSharedPreferences") {
+        context.getSharedPreferences("venera_cookies", Context.MODE_PRIVATE)
+    }
     private val gson = Gson()
     private val memoryStore = ConcurrentHashMap<String, MutableList<SerializableCookie>>()
 
     init {
-        loadFromPrefs()
-        migrateSubdomainCookiesToRegistrableDomain()
+        com.venera.compose.StartupTrace.timed("CookieJar: loadFromPrefs") { loadFromPrefs() }
+        com.venera.compose.StartupTrace.timed("CookieJar: migrateSubdomainCookies") {
+            migrateSubdomainCookiesToRegistrableDomain()
+        }
+        com.venera.compose.StartupTrace.mark("CookieJar: hosts=${memoryStore.size}")
     }
 
     /**

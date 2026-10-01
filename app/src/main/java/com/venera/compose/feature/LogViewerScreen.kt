@@ -33,7 +33,7 @@ import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraTextField
 
 /**
- * 生产级运行日志与排错诊断面板 (S7)
+ * 生产级运行日志与排错诊断面板
  */
 @Composable
 fun LogViewerScreen(

@@ -15,7 +15,7 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
- * 本地漫画库管理服务 (S6)
+ * 本地漫画库管理服务
  *
  * 核心特性：
  * 1. 自动扫描已完成下载的漫画

@@ -1,7 +1,7 @@
 package com.venera.compose.data.network
 
 /**
- * 漫画 URL 双向表 (S4 起的核心能力，本轮补上反方向)
+ * 漫画 URL 双向表 
  *
  * 一个源一条记录，三个方向共用同一条，不另立第二张表：
  * - [match] 从链接抽 `sourceKey` + `comicId`（搜索框粘贴直达 / 应用链接入站）
@@ -26,7 +26,7 @@ object ComicUrlTable {
     private data class Entry(
         val sourceKey: String,
         val sourceName: String,
-        /** host+路径写在同一条正则里，字符串与 S4 时期逐字一致（收紧匹配会打断搜索框直达）。 */
+        /** host+路径写在同一条正则里，字符串与当初那版逐字一致（收紧匹配会打断搜索框直达）。 */
         val patterns: List<Regex>,
         /** `%s` = comicId。多镜像时取下面注释里那个有依据的域。 */
         val shareTemplate: String,

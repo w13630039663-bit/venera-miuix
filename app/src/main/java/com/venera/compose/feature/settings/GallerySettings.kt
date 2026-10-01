@@ -76,6 +76,9 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val backdrop by prefs.galleryBackdrop.collectAsState()
     val blockAi by prefs.galleryBlockAi.collectAsState()
     val aiBadge by prefs.galleryAiBadge.collectAsState()
+    // 两枚"滚动收起"（2026-09-30）：默认关，见 VeneraPreferences 那两处的说明。
+    val hideTopBar by prefs.galleryHideTopBar.collectAsState()
+    val hideBottomBar by prefs.galleryHideBottomBar.collectAsState()
 
     // 磁盘读数与探针一样：都不许在组合期跑（数目录要开文件句柄）。
     var cacheBytes by remember { mutableLongStateOf(-1L) }
@@ -136,6 +139,24 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 { prefs.setGalleryPreviewQuality(GalleryPreviewQuality.valueOf(it)) },
                 summary = "只影响列表里的小图。点开大图仍然按中档、原图两步加载，" +
                     "不受这里影响。",
+            )
+            // 两枚"滚动收起"（2026-09-30 新增）。分开摆而不是合成一枚，是用户点名的口径：
+            // 有人只要底栏让位、有人只要顶栏让位。
+            //
+            // ⚠️ 标题当天先写成「下滑时收起」，而实现把方向接反了（真机反馈"搞反了，应该是上滑收起"）。
+            // 判据已按 material3 源码的符号量回正（见 GalleryChromeHidePolicy 类头注），标题跟着改。
+            // 另外"上滑/下滑"这两个字本身就有歧义（手指方向 vs 内容往哪走），
+            // 所以说明里一律写成"手指向上推"这种不会读反的说法。
+            SettingsToggle(
+                "上滑时收起顶栏", hideTopBar, { prefs.setGalleryHideTopBar(it) },
+                summary = "手指向上推、浏览到搜索框以下时，顶栏（连同大标题）整条收起，把屏高让给图；" +
+                    "往回一滑立刻回来。双击顶栏也能直接回到顶部。" +
+                    "关闭时顶栏只按原来的方式折叠成一行小标题。",
+            )
+            SettingsToggle(
+                "上滑时收起底栏", hideBottomBar, { prefs.setGalleryHideBottomBar(it) },
+                summary = "同样的触发条件，收的是底下那条导航栏。" +
+                    "只影响画廊这一屏：切到其他页面它照常出现，不会跟着一起消失。",
             )
         }
 

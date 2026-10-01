@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 本地收藏管理器（S5-2），对齐原版 `foundation/favorites.dart` 的 [LocalFavoritesManager]。
+ * 本地收藏管理器，对齐原版 `foundation/favorites.dart` 的 [LocalFavoritesManager]。
  *
  * 官方用 `ChangeNotifier` 通知 UI，这里换成 `StateFlow`：
  * - [folders] 收藏夹清单（已按 folder_order 排序）

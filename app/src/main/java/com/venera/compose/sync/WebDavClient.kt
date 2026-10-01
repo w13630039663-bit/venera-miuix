@@ -19,7 +19,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * 原生轻量级 WebDAV 客户端 (S7)
+ * 原生轻量级 WebDAV 客户端
  *
  * 核心特性：
  * 1. 标准 HTTP Basic Auth 鉴权

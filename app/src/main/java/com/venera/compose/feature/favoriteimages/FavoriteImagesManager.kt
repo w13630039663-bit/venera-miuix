@@ -55,7 +55,7 @@ fun FavoriteImageItem.toComicItem() = ComicItem(
 )
 
 /**
- * 单页/插图收藏管理器 (S7)
+ * 单页/插图收藏管理器
  */
 class FavoriteImagesManager private constructor(private val context: Context) {
 
@@ -97,7 +97,7 @@ class FavoriteImagesManager private constructor(private val context: Context) {
      * 为什么不能只存 URL：`favorite_images.image_url` 存的是源签发的地址，而
      * ① 禁漫那张图本身是横条混淆过的，收藏墙/灯箱直接按 URL 加载时走的是**小请求盒子**，
      * 还原质量受降采样影响；② EH 这类动态源解析出的地址带临时签名，几天后就 403；
-     * ③ 离线时整面收藏墙全是裂图。存下解好的位图，这三条一起解决（S7 方案原本就写了
+     * ③ 离线时整面收藏墙全是裂图。存下解好的位图，这三条一起解决（方案里原本就写了
      * 「原画落盘持久化至 favorite_images/」，实现里漏了，只对本地漫画页成立）。
      */
     suspend fun persistPage(bitmap: Bitmap, comicId: String, pageIndex: Int): String? =
@@ -266,7 +266,7 @@ class FavoriteImagesManager private constructor(private val context: Context) {
     }
 
     companion object {
-        /** filesDir 下的收藏原画目录名（S7 方案里写的就是这个名字）。 */
+        /** filesDir 下的收藏原画目录名（当初定的就是这个名字）。 */
         private const val PERSIST_DIR_NAME = "favorite_images"
 
         @Volatile

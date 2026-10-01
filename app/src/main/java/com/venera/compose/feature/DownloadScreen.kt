@@ -54,7 +54,7 @@ import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraIconButton
 
 /**
- * 生产级下载中心管理页面 (S6)
+ * 生产级下载中心管理页面
  */
 @Composable
 fun DownloadScreen(

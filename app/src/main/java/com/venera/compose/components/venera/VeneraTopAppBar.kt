@@ -1,6 +1,7 @@
 package com.venera.compose.components.venera
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.drawVeneraAmbient
@@ -63,6 +65,13 @@ val LocalTopBarBackdrop = compositionLocalOf<Backdrop?> { null }
  * @param navigationIcon 左侧导航图标。
  * @param actions 右侧操作图标集合。
  * @param bottomContent 顶栏下方常驻内容（如分类 Tab 等）。
+ * @param onDoubleTap 双击顶栏空白处（2026-09-30 新增，加性可选）。
+ *   画廊用它"双击回到顶部"。**默认 null ⇒ 其余 12 个调用点零改动、零行为差异**。
+ *
+ *   ⚠️ 手势与顶栏内的动作钮是**并存**的：`detectTapGestures` 挂在顶栏这层 Box 上，
+ *   而 `actions` 里那些 `VeneraTopBarPill` 各有自己的 clickable，子组件先消费点击事件，
+ *   所以"点胶囊仍然生效、双击空白处才回顶"两条预期同时成立。
+ *   这一条**尚未真机验证**（本轮设备未连），真机上要先确认这两件事都成立。
  */
 @Composable
 fun VeneraTopAppBar(
@@ -75,6 +84,7 @@ fun VeneraTopAppBar(
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
+    onDoubleTap: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val density = LocalDensity.current
@@ -90,7 +100,24 @@ fun VeneraTopAppBar(
         }
     }
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            // 双击回顶部（只在调用方给了 onDoubleTap 时挂）。
+            //
+            // ⚠️ 用 `pointerInput` 而不是 `combinedClickable`：后者会给整条顶栏加上按压涟漪与
+            // 可点击语义（顶栏不是按钮），也会把点击从子组件手里抢过来。`detectTapGestures`
+            // 只认双击那一下、单点不消费，所以 `actions` 里的胶囊照常先拿到自己的点击。
+            .then(
+                if (onDoubleTap != null) {
+                    Modifier.pointerInput(onDoubleTap) {
+                        detectTapGestures(onDoubleTap = { onDoubleTap() })
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         // ── 真实渐变高斯模糊背板（对齐 pixez-miuix 规范）──
         if (backdrop != null && isRuntimeShaderSupported()) {
             Box(

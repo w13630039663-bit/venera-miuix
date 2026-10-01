@@ -143,7 +143,8 @@ fun AppSettings(
                 Toast.makeText(
                     context,
                     "已恢复：历史 ${it.historyCount} 条，收藏 ${it.favoriteCount} 部，" +
-                        "统计 ${it.statsCount} 条，规则 ${it.guardRulesCount} 条",
+                        "统计 ${it.statsCount} 条，规则 ${it.guardRulesCount} 条" +
+                        (it.skippedNotice?.let { n -> "。$n" } ?: ""),
                     Toast.LENGTH_LONG
                 ).show()
             }.onFailure { Toast.makeText(context, "导入失败：${it.message}", Toast.LENGTH_LONG).show() }

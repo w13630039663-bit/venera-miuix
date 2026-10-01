@@ -12,6 +12,7 @@ import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -105,8 +106,9 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                     enabled = !busy && input.isNotBlank(),
                     onClick = {
                         val pattern = input.trim()
-                        if (regexMode && runCatching { Regex(pattern) }.isFailure) {
+                        if (regexMode && !GuardRulePattern.compiles(pattern)) {
                             // 正则在写库前校验：坏模式会静默永不命中，比报错更难查。
+                            // 判据本身在 GuardRulePattern —— 恢复备份那条路收的是同一道关。
                             error = "正则写法有误"
                         } else if (rules.any { it.type == type && it.pattern.equals(pattern, true) }) {
                             error = "这条已经加过了"

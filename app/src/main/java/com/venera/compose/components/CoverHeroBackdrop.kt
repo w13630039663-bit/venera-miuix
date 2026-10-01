@@ -18,10 +18,13 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import coil3.imageLoader
 import com.venera.compose.ui.tokens.VeneraTokens
 
 /**
@@ -39,8 +42,15 @@ private val FadeToBottom = Brush.verticalGradient(
 )
 
 /**
- * 详情页 Hero 背景：封面放大、重模糊、整层压到 [VeneraTokens] 的 `heroBackdropAlpha`，
+ * Hero 背景：底图放大、模糊、整层压到 [VeneraTokens] 的 `heroBackdropAlpha`，
  * 底边擦成透明以软着陆到页面背景。
+ *
+ * **两处在用，档位不同**，靠 [blurRadius] / [backdropScale] 两个参数分，不靠调用方
+ * 传不同的 `modifier`：
+ * - 漫画详情页 —— 一个参数都不传（默认 `space11` 32dp × 1.35）。那里底图**压在封面卡下面**，
+ *   职责只是"把头部染成这张封面的颜色"，糊到什么也认不出正是要的效果。
+ * - 画师介绍页 —— 显式传轻档（`artistHeroBackdropBlur` / `artistHeroBackdropScale`）。
+ *   那里底图**就是这一页唯一的主视觉**，同一个档摆过去只剩一块色块。
  *
  * 为什么是"擦"而不是"盖一圈页面底色的渐变"：页面背景不是纯色，它底下还铺着
  * `VeneraAmbientBackground` 的两团主题色光斑。拿 `surface` 画一圈渐变去遮，
@@ -67,12 +77,43 @@ fun CoverHeroBackdrop(
     bleedHorizontal: Dp = 0.dp,
     /** 往上撑出去多少（顶穿状态栏与顶栏，做真·沉浸头部）。 */
     bleedTop: Dp = 0.dp,
+    /**
+     * 取图用的 ImageLoader；null = 应用级单例（漫画侧现状，调用点一个都不变）。
+     *
+     * 画廊那侧必须显式传自己的实例：那边的图要带 Referer / UA 才拿得到
+     * （见 `gallery/data/GalleryImageLoader.kt`），用默认单例发出去就是一枚 403 的空底 ——
+     * 而屏上"只是一块没有图的纯色面"，谁也不会以为它坏了。
+     */
+    imageLoader: ImageLoader? = null,
+    /**
+     * 底图的**模糊核半径**（不是屏上看到的模糊量，见 [backdropScale]）。
+     *
+     * 默认 `space11`(32dp) 是漫画详情页那一档：那里底图压在封面卡下面、只负责"把头部
+     * 染成这张封面的颜色"，糊到什么也认不出正是它的职责，所以那一处一个参数都不用传。
+     *
+     * 换用途时这一档必须跟着换 —— 画师介绍页里底图是**这一页唯一的主视觉**，
+     * 同一条 32dp 叠上放大之后屏上约 43dp，只剩色块（2026-10-01 用户报「模糊过头」）。
+     */
+    blurRadius: Dp = VeneraTokens.spacing.space11,
+    /**
+     * 底图的放大量。与 [blurRadius] 是**一对**，调一个就得调另一个。
+     *
+     * 它存在的唯一理由是给模糊留出外扩余量：`Modifier.blur` 的默认边缘处理会按原矩形
+     * 把模糊结果裁掉，不放大就会在四边露出一圈被裁淡的边。下界是
+     * `1 + 2 × blur / min(宽, 高)`（横条按矮边算，别按宽边）。
+     *
+     * ⚠️ 顺序：下面 modifier 链是 `.scale(backdropScale).blur(blurRadius)`，
+     * 缩放挂在外层 ⇒ **屏上实际模糊 ≈ `blurRadius × backdropScale`**。
+     * 读参数时两个数要一起看，别只看前者。默认的 1.35 是为 32dp 那个量级配的，
+     * 模糊降到 10dp 一级时它要跟着降到 1.15（见 `VeneraSpacingTokens.artistHeroBackdropScale`）。
+     */
+    backdropScale: Float = 1.35f,
 ) {
     val tokens = VeneraTokens
-    // tokens.current / tokens.spacing 都是 @Composable getter：先在组合里取成局部量，
-    // 再带进 graphicsLayer 与 draw 的 lambda。
+    val context = LocalContext.current
+    // tokens.current 是 @Composable getter：先在组合里取成局部量，再带进 graphicsLayer。
+    // （两个新参数是普通值类型，不受这条约束。）
     val backdropAlpha = tokens.current.heroBackdropAlpha
-    val blurRadius = tokens.spacing.space11
     if (coverUrl.isBlank()) return
     var layerSize by remember { mutableStateOf(IntSize.Zero) }
     Box(
@@ -101,13 +142,13 @@ fun CoverHeroBackdrop(
         AsyncImage(
             model = coverUrl,
             contentDescription = null,
+            imageLoader = imageLoader ?: context.imageLoader,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                // 放大一档：不放大时背景还能"认出是那张封面"，构图细节全在，
-                // 观感就是"贴了张模糊图"。放大 + 下面那档重模糊才成"氛围"。
-                .scale(1.35f)
-                // 比打码那档（space10=24dp）再重一级，取现成的 space11=32dp。
+                // 放大一档只是为了给下面的模糊留外扩余量（见 backdropScale 那条注释）。
+                // 注意顺序：scale 在外层 ⇒ 屏上模糊 ≈ blurRadius × backdropScale。
+                .scale(backdropScale)
                 .blur(blurRadius),
         )
     }

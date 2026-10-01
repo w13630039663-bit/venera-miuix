@@ -75,7 +75,7 @@ internal fun isAiTitleMarked(title: String): Boolean =
 
 
 /**
- * 全局内容屏蔽与分级安全守卫 (S7)
+ * 全局内容屏蔽与分级安全守卫
  *
  * 判定链（对齐原版 venera-miuix ContentGuard，命中即停）：
  *  1. 用户屏蔽规则（DB 规则：关键词/标签/作者/ID，最高优先）
@@ -93,8 +93,12 @@ internal fun isAiTitleMarked(title: String): Boolean =
  */
 class ContentGuardManager private constructor(private val context: Context) {
 
-    private val dbHelper = VeneraDatabase.getInstance(context)
-    private val prefs = context.getSharedPreferences("venera_guard_prefs", Context.MODE_PRIVATE)
+    private val dbHelper = com.venera.compose.StartupTrace.timed("Guard: VeneraDatabase.getInstance") {
+        VeneraDatabase.getInstance(context)
+    }
+    private val prefs = com.venera.compose.StartupTrace.timed("Guard: getSharedPreferences(venera_guard_prefs)") {
+        context.getSharedPreferences("venera_guard_prefs", Context.MODE_PRIVATE)
+    }
 
     private val _rules = MutableStateFlow<List<GuardRule>>(emptyList())
     val rules: StateFlow<List<GuardRule>> = _rules.asStateFlow()
@@ -131,8 +135,8 @@ class ContentGuardManager private constructor(private val context: Context) {
     private val verdictCache = LinkedHashMap<String, String>()
 
     init {
-        loadRules()
-        loadSourcePresets()
+        com.venera.compose.StartupTrace.timed("Guard: loadRules() [DB rawQuery]") { loadRules() }
+        com.venera.compose.StartupTrace.timed("Guard: loadSourcePresets() [assets+JSON]") { loadSourcePresets() }
     }
 
     fun setNsfwMaskMode(mode: String) {
@@ -300,6 +304,7 @@ class ContentGuardManager private constructor(private val context: Context) {
      * （[coverMaskStateFor]），不应影响用户显式黑名单的语义。
      */
     fun isComicBlocked(title: String, author: String = "", tags: List<String> = emptyList(), comicId: String = "", description: String = ""): Boolean {
+        com.venera.compose.StartupTrace.once("Guard: first isComicBlocked")
         val activeRules = _rules.value.filter { it.isEnabled }
         if (activeRules.isEmpty()) return false
 
@@ -340,6 +345,7 @@ class ContentGuardManager private constructor(private val context: Context) {
      *    页面侧已按 nsfwMaskMode == "HIDE" 分流，BLUR 时条目必须保留交卡片打码。
      */
     fun filterComicModels(comics: List<Comic>): List<Comic> {
+        com.venera.compose.StartupTrace.once("Guard: first filterComicModels")
         val activeRules = _rules.value.filter { it.isEnabled }
         val hideMode = _nsfwMaskMode.value == "HIDE"
         val blockAi = _blockAiComics.value
@@ -434,6 +440,7 @@ class ContentGuardManager private constructor(private val context: Context) {
 
     /** 带 [Comic] 的判定入口（走 LRU 缓存，列表场景优先使用）。 */
     fun coverMaskStateFor(comic: Comic): String {
+        com.venera.compose.StartupTrace.once("Guard: first coverMaskStateFor(Comic)")
         if (_blockAiComics.value && isAiMarked(comic.title, comic.tags)) return "HIDDEN"
         val mode = _nsfwMaskMode.value
         if (mode == "OFF") return "VISIBLE"
@@ -509,7 +516,9 @@ class ContentGuardManager private constructor(private val context: Context) {
 
         fun getInstance(context: Context): ContentGuardManager {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ContentGuardManager(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: com.venera.compose.StartupTrace.timed("Guard: ContentGuardManager() full ctor") {
+                    ContentGuardManager(context.applicationContext)
+                }.also { INSTANCE = it }
             }
         }
     }

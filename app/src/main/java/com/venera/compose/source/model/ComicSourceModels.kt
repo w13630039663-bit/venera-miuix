@@ -30,7 +30,7 @@ data class ComicChapter(
 )
 
 /**
- * 搜索筛选组（S8 批次B，对齐官方 SearchOptions）：
+ * 搜索筛选组（对齐官方 SearchOptions）：
  * 源 search.optionList 声明的单组筛选（如排序/语言/分类）。
  *
  * @param label 组标题（空串则不显示标题行）

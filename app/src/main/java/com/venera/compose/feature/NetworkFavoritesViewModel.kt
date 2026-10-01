@@ -37,7 +37,7 @@ data class NetSourceUi(
 )
 
 /**
- * 网络收藏 ViewModel（S5 网络收藏夹）。
+ * 网络收藏 ViewModel。
  * 对齐官方 `pages/favorites/network_favorites_page.dart` + `pages/favorites/side_bar.dart`：
  * - 列出所有声明了 `favorites` 的源（侧栏维度）
  * - 选中源后：多文件夹先列文件夹，单文件夹 / 进入文件夹后直接列漫画

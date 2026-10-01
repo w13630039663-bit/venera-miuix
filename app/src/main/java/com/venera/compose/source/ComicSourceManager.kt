@@ -96,8 +96,12 @@ class ComicSourceManager private constructor(private val context: Context) {
     /** 解析中的请求（key → Deferred），用于合并同一张图的并发解析。 */
     private val imageConfigInflight = ConcurrentHashMap<String, Deferred<Result<ResolvedImageConfig>>>()
 
-    private val sourceDir = File(context.filesDir, "comic_source").apply { mkdirs() }
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val sourceDir = com.venera.compose.StartupTrace.timed("SourceMgr: sourceDir mkdirs") {
+        File(context.filesDir, "comic_source").apply { mkdirs() }
+    }
+    private val prefs = com.venera.compose.StartupTrace.timed("SourceMgr: getSharedPreferences") {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     /** 运行期注册表：JS 声明的 key -> 源实例 */
     private val registeredSources = linkedMapOf<String, ComicSource>()
@@ -118,9 +122,11 @@ class ComicSourceManager private constructor(private val context: Context) {
     val latencyMapFlow: StateFlow<Map<String, Long>> = _latencyMapFlow.asStateFlow()
 
     val jsEngine: VeneraJsEngine by lazy {
-        VeneraJsEngine(context).apply {
-            init()
-            loadStandardLib()
+        com.venera.compose.StartupTrace.timed("SourceMgr: VeneraJsEngine init+loadStandardLib [whoever hits it first]") {
+            VeneraJsEngine(context).apply {
+                init()
+                loadStandardLib()
+            }
         }
     }
 
@@ -151,26 +157,36 @@ class ComicSourceManager private constructor(private val context: Context) {
     }
 
     init {
-        val mangaDex = MangaDexSource(context)
-        val copyManga = CopyMangaSource(context)
-        val baozi = BaoziMangaSource(context)
+        val builtins = com.venera.compose.StartupTrace.timed("SourceMgr: 3 builtin source ctors") {
+            listOf(MangaDexSource(context), CopyMangaSource(context), BaoziMangaSource(context))
+        }
+        val mangaDex = builtins[0]
+        val copyManga = builtins[1]
+        val baozi = builtins[2]
 
         builtinSources[mangaDex.key] = mangaDex
         builtinSources[copyManga.key] = copyManga
         builtinSources[baozi.key] = baozi
 
-        val deletedBuiltins = getDeletedBuiltinKeys()
+        val deletedBuiltins = com.venera.compose.StartupTrace.timed("SourceMgr: getDeletedBuiltinKeys") {
+            getDeletedBuiltinKeys()
+        }
         for ((k, v) in builtinSources) {
             if (k !in deletedBuiltins) {
                 registeredSources[k] = v
             }
         }
 
-        _installedMeta.value = readMeta()
+        com.venera.compose.StartupTrace.timed("SourceMgr: readMeta") {
+            _installedMeta.value = readMeta()
+        }
         _sourcesFlow.value = registeredSources.values.toList()
+        com.venera.compose.StartupTrace.mark("SourceMgr: builtin registered=${registeredSources.size}")
 
         scope.launch {
-            loadInstalledJsSources()
+            com.venera.compose.StartupTrace.timed("SourceMgr: loadInstalledJsSources [bg]") {
+                loadInstalledJsSources()
+            }
         }
     }
 
@@ -244,7 +260,9 @@ class ComicSourceManager private constructor(private val context: Context) {
         // 3. 顺序解析并注册
         for (m in valid) {
             try {
-                val source = parser.parseFile(File(sourceDir, m.fileName))
+                val source = com.venera.compose.StartupTrace.timed("SourceMgr: parse ${m.fileName}") {
+                    parser.parseFile(File(sourceDir, m.fileName))
+                }
                 registeredSources[source.key] = source
                 // 元数据里的展示名优先（部分源的 JS name 不可靠，例如 hitomi 声明为 galleriesindex）
                 val displayName = m.name.ifBlank { source.name }

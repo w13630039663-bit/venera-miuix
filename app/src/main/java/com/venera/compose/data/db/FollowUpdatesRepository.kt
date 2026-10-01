@@ -28,7 +28,7 @@ data class UpdateProgress(
 )
 
 /**
- * 追更检查（S5-5），对齐原版 `foundation/follow_updates.dart`。
+ * 追更检查，对齐原版 `foundation/follow_updates.dart`。
  *
  * 关键规则（与原版一致，改动会误报或漏报）：
  * - **节流**：距上次检查不足 [CHECK_THROTTLE_MS] 的条目直接跳过（除非 [ignoreCheckTime]）

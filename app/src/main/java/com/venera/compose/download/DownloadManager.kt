@@ -29,7 +29,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /**
- * 生产级下载管理器 (S6)
+ * 生产级下载管理器
  *
  * 核心特性：
  * 1. 应用层并发调度池 (默认 2 并发，支持可调)

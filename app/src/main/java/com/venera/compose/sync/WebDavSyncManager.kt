@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * WebDAV 同步协调管理器 (S7)
+ * WebDAV 同步协调管理器
  *
  * 核心特性：
  * 1. 自动打包本地备份并同步至云端

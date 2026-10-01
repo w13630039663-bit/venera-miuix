@@ -112,13 +112,13 @@ private fun SourceHealth.label(latency: Long?): String = when (this) {
 fun SharedTransitionScope.AndroidHomeScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     onSelect: (ComicItem) -> Unit,
-    /** S5-4：历史分区标题点击 → 完整历史页 */
+    /** 历史分区标题点击 → 完整历史页 */
     onOpenHistory: () -> Unit = {},
-    /** S7：阅读统计分区点击 → 完整统计分析页 */
+    /** 阅读统计分区点击 → 完整统计分析页 */
     onOpenStats: () -> Unit = {},
-    /** S8：本地分区 → 本地书架页 */
+    /** 本地分区 → 本地书架页 */
     onOpenLocal: () -> Unit = {},
-    /** S8：漫画源分区 → 源管理页 */
+    /** 漫画源分区 → 源管理页 */
     onOpenSourceManage: () -> Unit = {},
     /** 低频操作收口：设置从外壳顶栏迁入首页顶栏齿轮（页内自治）。 */
     onOpenSettings: () -> Unit = {},

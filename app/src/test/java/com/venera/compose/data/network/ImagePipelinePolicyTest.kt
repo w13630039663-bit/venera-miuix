@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * S8 冒烟测试：图片管道核心纯逻辑。
+ * 冒烟测试：图片管道核心纯逻辑。
  *
  * - [ImagePipelinePolicy.calculateJmScrambleNum] 与 jm.js 的 modifyImage 算法 1:1 对齐，
  *   这是禁漫源图片能否正常渲染的命门，算法回归必须锁定。

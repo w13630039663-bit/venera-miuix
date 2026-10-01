@@ -11,6 +11,7 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -21,10 +22,12 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -63,7 +66,11 @@ import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
+import com.venera.compose.gallery.ui.GalleryChromeAutoHide
+import com.venera.compose.gallery.ui.GalleryDailyScreen
+import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.GalleryScreen
+import com.venera.compose.gallery.ui.GalleryViewModel
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.feature.favoriteimages.toComicItem
 import com.venera.compose.source.ComicLinkResolver
@@ -122,6 +129,18 @@ import androidx.compose.material3.IconButton
 
 /** 画廊主 Tab（两站月度热门混合池，与漫画侧完全隔离的独立模块，见 gallery/ 包）。 */
 @Serializable data object GalleryRoute
+
+/**
+ * 画廊**二级页**：每日热门全量（2026-09-30 新增）。
+ *
+ * 首页那一节从此只是预览（一行横卡 + 「查看全部」），全量与「换一批」都搬到了这里。
+ *
+ * **它是主 Tab 的子页**：`currentTab` 判据里落在这条路由上时算 `GALLERY`
+ * （否则底栏会在点进来的那一刻消失 —— 那是"进了个子页面底栏就没了"的观感缺陷，
+ * 与历史页那种"降级成二级页、底栏隐藏"是两回事：这里是从画廊 Tab 往下走一层）。
+ * 见 [tabIndex] 与 `currentTab` 两处。
+ */
+@Serializable data object GalleryDailyRoute
 
 /**
  * 画廊二级（单张大图）。
@@ -390,6 +409,9 @@ private fun NavDestination.tabIndex(): Int? {
         hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
         hasRoute(GalleryRoute::class) -> VeneraNavTab.GALLERY
+        // 子页同样算 GALLERY：与 `currentTab` 那处同源（两处口径分叉就会出现
+        // "底栏点亮了、切页动画却没有方向"，那条注释在 `tabIndex` 上写着）。
+        hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
         hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
         else -> return null
@@ -412,6 +434,20 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabSlideDirection(
 
 /** 整页横推的时长：与 shared axis 那族同值（本文件原值 300ms），只换形状不换节奏。 */
 private const val TAB_SLIDE_DURATION_MS = 300
+
+/**
+ * 底栏收起时向下滑出的距离。
+ *
+ * 取一个**足够大**的定值（不是量它的真实高度）：底栏高度是常量口径
+ * （`VeneraSpacing.bottomBarHeight` 64dp + `bottomBarBottomGap` 12dp），
+ * 但下滑还要盖上系统导航栏那一段（`navigationBarsPadding` 消费的 inset，各机型不同）。
+ * 200dp 把这两段都覆盖还有余量，而多滑走的那截在屏幕之外、肉眼不可见 ——
+ * 比"读 WindowInsets 再算"少一处会在折叠屏/手势条机型上算错的地方。
+ */
+private val BOTTOM_BAR_HIDE_DISTANCE = 200.dp
+
+/** 底栏收起/展开的时长：与全站同一档（`VeneraMotionTokens.medium` 的 220ms 量级）。 */
+private const val BOTTOM_BAR_HIDE_DURATION_MS = 220
 
 private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.HOME -> "Venera"
@@ -464,6 +500,9 @@ fun VeneraComposeApp() {
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
         destination.hasRoute(GalleryRoute::class) -> VeneraNavTab.GALLERY
+        // 画廊的子页（每日热门全量）：仍然算 GALLERY ⇒ **底栏不消失**、切页动画仍有方向。
+        // 与"历史页那种降级成二级页、底栏隐藏"是两回事：这是从画廊 Tab 往下走一层。
+        destination.hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
         destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
@@ -473,6 +512,27 @@ fun VeneraComposeApp() {
     }
 
     fun haptic() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
+    /**
+     * 大图页点了某枚标签 → 先把用户送回画廊那一屏。
+     *
+     * 为什么这段必须在**宿主层**、而不是留在 `GalleryScreen` 里那句消费旁边：
+     * 画廊收藏是漫画侧收藏页里的一个分段（`FavoritesScreen` 的 `ImageSection.Gallery`），
+     * 从**那里**点开一张图再点标签时，画廊那屏根本不在返回栈顶、组合也没了
+     * （被下一页覆盖 = 组合销毁，见记忆「导航条目会重建组合」）—— 槽位写了没人读，
+     * 用户看到的就是"退回收藏页，得手动切到画廊才进入搜索"。
+     * 每日热门二级页那一档同理：`currentTab` 在那儿也算 GALLERY，所以判据读的是
+     * **目的地**而不是 Tab，否则从二级页进大图页点标签这一路仍然不跳。
+     *
+     * 这里**只读不清**（`pending` 是快照属性、`consume()` 才是清）：能消费它的只有
+     * `GalleryScreen`，它才拿得到 `GallerySearchViewModel`。宿主层若也清槽，
+     * 就变成"谁先到谁吃掉"，两条链互相抢同一笔交接。
+     */
+    LaunchedEffect(GallerySearchHandoff.pending, destination) {
+        if (GallerySearchHandoff.pending == null) return@LaunchedEffect
+        if (destination?.hasRoute(GalleryRoute::class) == true) return@LaunchedEffect
+        navController.gotoTab(VeneraNavTab.GALLERY)
+    }
 
     fun openComic(comic: ComicItem) {
         haptic()
@@ -702,11 +762,58 @@ fun VeneraComposeApp() {
                         // ① 实时糊掉后面这一屏（blur-behind 背景模糊）、② 施加 AOSP 跨 activity
                         // 预测式返回动画。向上滑入期间垫着的那一帧由 GalleryScreen 在点击那一刻截好。
                         // 单击的震动反馈在 GalleryScreen 里已经做过，这里不再 haptic()。
-                        GalleryScreen(
-                            onOpenPost = { site, postId ->
-                                (view.context as? Activity)?.openGalleryPost(site, postId)
-                            },
-                        )
+                        //
+                        // 包这一层只为一件事：把封面共享元素的两个作用域交给深处那张横卡
+                        // （首页「每日热门」预览行 ↔ 二级页同一张）。不包 = `LocalCoverTransitionScopes`
+                        // 读到 null = 画廊里任何卡片都挂不上飞行，而它**不报错**，只表现为"没有过渡"。
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            GalleryScreen(
+                                onOpenPost = { site, postId ->
+                                    (view.context as? Activity)?.openGalleryPost(site, postId)
+                                },
+                                onOpenDailyAll = {
+                                    haptic()
+                                    navController.navigate(GalleryDailyRoute)
+                                },
+                            )
+                        }
+                    }
+                    composable<GalleryDailyRoute> {
+                        // 「每日热门」二级页：**复用首页那一个 `GalleryViewModel`**。
+                        //
+                        // 不新开 `viewModel()` 的理由有两条，都不是省事：
+                        // 1. 新实例会让这一页重新联网拉一遍同一份日榜（同一个池子、等两次网络）；
+                        // 2. 「换一批」是**零请求的本地重排**，它吃的正是首页那份**原始池**
+                        //    （`GalleryViewModel.pools`）—— 新实例手上没有池子，按下去只能真取一次。
+                        //
+                        // 取同一个实例的唯一办法是借用 `GalleryRoute` 那个返回栈条目作 owner：
+                        // 本项目其余二级页没有"与主 Tab 共享 VM"的需求，所以这是第一处。
+                        // ⚠️ 深链直接落到这一页时 `GalleryRoute` 条目不存在，`getBackStackEntry`
+                        // 会抛 IllegalArgumentException —— 所以先 `runCatching`，取不到就退化成
+                        // 自己的实例（那一档只有"冷启动直达"一种，联网拉一遍是可接受的代价，
+                        // 总比崩掉好）。
+                        val dailyOwner = remember(navController) {
+                            runCatching { navController.getBackStackEntry(GalleryRoute) }.getOrNull()
+                        }
+                        val dailyViewModel: GalleryViewModel = if (dailyOwner != null) {
+                            viewModel(viewModelStoreOwner = dailyOwner)
+                        } else {
+                            viewModel()
+                        }
+                        // 与 `GalleryRoute` 同一对作用域：飞行要**两端都挂**才成立，
+                        // 只包首页那一头，二级页就是普通换页（key 对不上等于没挂）。
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            GalleryDailyScreen(
+                                vm = dailyViewModel,
+                                onOpenPost = { site, postId ->
+                                    (view.context as? Activity)?.openGalleryPost(site, postId)
+                                },
+                                onBack = {
+                                    haptic()
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
                     }
                     composable<ExploreRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
@@ -885,6 +992,23 @@ fun VeneraComposeApp() {
         // 录制只覆盖页面内容，因此玻璃采样不会递归包含自身。
         // 用 Box 承担底部对齐：VeneraAmbientBackground 的 content 是普通 lambda，
         // 不是 BoxScope，直接 .align() 不会生效（底栏会跑到左上角）。
+        //
+        // ── 「画廊：下滑收起底栏」那一道闸（2026-09-30）──
+        // 状态住在 `GalleryChromeAutoHide`（页内滚动写、壳层读，形状见那个对象）。
+        // ⚠️ 这里**必须**再判一次"当前是不是画廊"：
+        //  `hidden` 是页内写进跨层对象的快照值，而底栏是**壳层共享**的 ——
+        //  在画廊收了栏、切到首页，若这里无条件跟着隐，用户会发现底栏在别的页面也永久消失了，
+        //  而那时画廊那一屏早已不在组合里、没有任何人会去复位它。
+        // 判据用 `currentTab == GALLERY`（`GalleryDailyRoute` 也算 GALLERY，见那两处映射）：
+        // 二级页是画廊往下走的一层，底栏行为与画廊一致。
+        val chromeHiddenHere = GalleryChromeAutoHide.hidden &&
+            GalleryChromeAutoHide.bottomEnabled &&
+            currentTab == VeneraNavTab.GALLERY
+        val bottomBarOffset by animateDpAsState(
+            targetValue = if (chromeHiddenHere) BOTTOM_BAR_HIDE_DISTANCE else 0.dp,
+            animationSpec = tween(BOTTOM_BAR_HIDE_DURATION_MS),
+            label = "galleryBottomBarHideOffset",
+        )
         Box(modifier = Modifier.fillMaxSize()) {
             if (currentTab != null && contentLayerBackdrop != null) {
                 val isDark = LocalVeneraDarkTheme.current
@@ -906,7 +1030,12 @@ fun VeneraComposeApp() {
                             start = VeneraSpacing.space8,
                             end = VeneraSpacing.space8,
                         )
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        // 下滑收起：整条往下滑出屏幕（含它自己的底部间距）。
+                        // 与顶栏那一处同一口径：只偏移绘制，不改页面内的补偿常量 ——
+                        // 内容底部留白在收起期间仍是 `bottomBarClearance`（滑出后那一段本来就在
+                        // 屏幕之外，若跟着收会让最后一行在收起瞬间被重排一下）。
+                        .offset(y = bottomBarOffset),
                 ) {
                     VeneraLiquidNavTabs(
                         tabs = VeneraNavTab.entries,
@@ -938,7 +1067,8 @@ fun VeneraComposeApp() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .offset(y = bottomBarOffset),
                 )
             }
         }

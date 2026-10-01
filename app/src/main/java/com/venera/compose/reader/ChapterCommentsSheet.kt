@@ -29,7 +29,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.launch
 
 /**
- * 章节评论 Sheet 内容 (S8, 对齐官方 reader/chapter_comments.dart):
+ * 章节评论 Sheet 内容 (对齐官方 reader/chapter_comments.dart):
  * 拉取源声明的 chapterComments 列表 + 发表本章评论 (sendChapterComment)。
  * 源未声明章评能力时如实提示, 不显示假数据。
  */

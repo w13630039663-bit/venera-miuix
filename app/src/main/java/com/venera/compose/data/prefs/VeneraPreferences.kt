@@ -58,7 +58,9 @@ enum class TagTranslationMode {
 
 class VeneraPreferences private constructor(context: Context) {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = com.venera.compose.StartupTrace.timed("Prefs: getSharedPreferences(venera_preferences)") {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     // 阅读器设置
     private val _defaultReadingMode = MutableStateFlow(prefs.getString(KEY_DEFAULT_READING_MODE, "VERTICAL") ?: "VERTICAL")
@@ -99,10 +101,6 @@ class VeneraPreferences private constructor(context: Context) {
     /** 反转点击翻页的左右方向（左利手友好）。 */
     private val _reverseTapDirection = MutableStateFlow(prefs.getBoolean(KEY_REVERSE_TAP, false))
     val reverseTapDirection: StateFlow<Boolean> = _reverseTapDirection.asStateFlow()
-
-    /** 双击图片切换缩放。telephoto 的 ZoomableAsyncImage 已在用，这里只控制该手势。 */
-    private val _doubleTapZoom = MutableStateFlow(prefs.getBoolean(KEY_DOUBLE_TAP_ZOOM, true))
-    val doubleTapZoom: StateFlow<Boolean> = _doubleTapZoom.asStateFlow()
 
     /** 进入搜索页时预选的源；空串表示"不预设，保持会话内选择"。 */
     private val _defaultSearchTarget = MutableStateFlow(prefs.getString(KEY_DEFAULT_SEARCH_TARGET, "") ?: "")
@@ -271,6 +269,35 @@ class VeneraPreferences private constructor(context: Context) {
     private val _galleryAiBadge = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_AI_BADGE, true))
     val galleryAiBadge: StateFlow<Boolean> = _galleryAiBadge.asStateFlow()
 
+    /**
+     * 画廊：**上滑**（手指向上推、浏览下面的图）时**收起顶栏**。默认**关**。
+     *
+     * 两枚"滚动收起"开关**互不联动**（用户 2026-09-30 点名要分开）：
+     * 只想要"看图时底栏让位、顶栏留着看标题"的人，与反过来的人，都能配出自己要的。
+     * 默认关沿用本仓"新能力不改变现有观感"的惯例（同 `SurfaceMaterial` 默认实色、
+     * `checkUpdateOnStart` 默认 false）。
+     *
+     * ⚠️ 键名与设置项标题当天先写的是"下滑"，而实现把方向接反了；判据已按 material3 源码的
+     * 符号量回正（见 `GalleryChromeHidePolicy` 类头注）。**键没跟着改** —— 改了会让已打开过
+     * 这一枚的用户静默回到默认档。
+     */
+    private val _galleryHideTopBar = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_HIDE_TOP_BAR, false))
+    val galleryHideTopBar: StateFlow<Boolean> = _galleryHideTopBar.asStateFlow()
+
+    /** 画廊：上滑时**收起底栏**。默认关，理由同上。 */
+    private val _galleryHideBottomBar = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_HIDE_BOTTOM_BAR, false))
+    val galleryHideBottomBar: StateFlow<Boolean> = _galleryHideBottomBar.asStateFlow()
+
+    fun setGalleryHideTopBar(on: Boolean) {
+        prefs.edit { putBoolean(KEY_GALLERY_HIDE_TOP_BAR, on) }
+        _galleryHideTopBar.value = on
+    }
+
+    fun setGalleryHideBottomBar(on: Boolean) {
+        prefs.edit { putBoolean(KEY_GALLERY_HIDE_BOTTOM_BAR, on) }
+        _galleryHideBottomBar.value = on
+    }
+
     fun setGalleryAnimated(mode: GalleryAnimatedMode) {
         prefs.edit { putString(KEY_GALLERY_ANIMATED, mode.name) }
         _galleryAnimated.value = mode
@@ -318,7 +345,7 @@ class VeneraPreferences private constructor(context: Context) {
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T =
         enumValues<T>().firstOrNull { it.name == prefs.getString(key, null) } ?: fallback
 
-    // ---- 收藏（S5，对齐原版 appdata.settings 同名键） ----
+    // ---- 收藏（对齐原版 appdata.settings 同名键） ----
 
     /** 新收藏插入位置：`"start"`（默认，加到开头）或 `"end"`。对应官方 `newFavoriteAddTo`。 */
     private val _newFavoriteAddTo = MutableStateFlow(prefs.getString(KEY_NEW_FAVORITE_ADD_TO, "start") ?: "start")
@@ -359,7 +386,7 @@ class VeneraPreferences private constructor(context: Context) {
     private val _proxyPort = MutableStateFlow(prefs.getInt(KEY_PROXY_PORT, 7890))
     val proxyPort: StateFlow<Int> = _proxyPort.asStateFlow()
 
-    // ---- 漫画列表布局（S8，对齐原版 appdata.settings['comicDisplayMode']） ----
+    // ---- 漫画列表布局（对齐原版 appdata.settings['comicDisplayMode']） ----
 
     /**
      * 漫画列表展示模式：[MODE_BRIEF] = 双列封面网格；[MODE_DETAILED] = 单列大卡
@@ -505,11 +532,6 @@ class VeneraPreferences private constructor(context: Context) {
         _reverseTapDirection.value = enabled
     }
 
-    fun setDoubleTapZoom(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_DOUBLE_TAP_ZOOM, enabled) }
-        _doubleTapZoom.value = enabled
-    }
-
     fun setDefaultSearchTarget(key: String) {
         prefs.edit { putString(KEY_DEFAULT_SEARCH_TARGET, key) }
         _defaultSearchTarget.value = key
@@ -599,7 +621,6 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_SECURE_SCREEN = "pref_secure_screen"
         private const val KEY_PRELOAD_COUNT = "pref_preload_image_count"
         private const val KEY_REVERSE_TAP = "pref_reverse_tap_direction"
-        private const val KEY_DOUBLE_TAP_ZOOM = "pref_double_tap_zoom"
         private const val KEY_DEFAULT_SEARCH_TARGET = "pref_default_search_target"
         private const val KEY_START_PAGE = "pref_start_page"
         private const val KEY_REVERSE_CHAPTERS = "pref_reverse_chapter_order"
@@ -619,6 +640,8 @@ class VeneraPreferences private constructor(context: Context) {
         private const val KEY_GALLERY_BACKDROP = "pref_gallery_backdrop"
         private const val KEY_GALLERY_BLOCK_AI = "pref_gallery_block_ai"
         private const val KEY_GALLERY_AI_BADGE = "pref_gallery_ai_badge"
+        private const val KEY_GALLERY_HIDE_TOP_BAR = "pref_gallery_hide_top_bar"
+        private const val KEY_GALLERY_HIDE_BOTTOM_BAR = "pref_gallery_hide_bottom_bar"
         private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
         private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
         private const val KEY_LOCAL_FAVORITES_FIRST = "pref_local_favorites_first"
@@ -643,7 +666,9 @@ class VeneraPreferences private constructor(context: Context) {
 
         fun getInstance(context: Context): VeneraPreferences {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: VeneraPreferences(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: com.venera.compose.StartupTrace.timed("Prefs: VeneraPreferences() full ctor") {
+                    VeneraPreferences(context.applicationContext)
+                }.also { INSTANCE = it }
             }
         }
     }

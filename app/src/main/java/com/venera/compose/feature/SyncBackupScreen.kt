@@ -46,7 +46,7 @@ import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraTextField
 
 /**
- * 生产级云同步与备份恢复配置页面 (S7)
+ * 生产级云同步与备份恢复配置页面
  */
 @Composable
 fun SyncBackupScreen(
@@ -80,7 +80,8 @@ fun SyncBackupScreen(
                 res.onSuccess { sum ->
                     Toast.makeText(
                         context,
-                        "恢复完成！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部，统计 ${sum.statsCount} 条",
+                        "恢复完成！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部，统计 ${sum.statsCount} 条" +
+                            (sum.skippedNotice?.let { "。$it" } ?: ""),
                         Toast.LENGTH_LONG
                     ).show()
                 }.onFailure {
@@ -274,7 +275,7 @@ fun SyncBackupScreen(
                                         isOperating = false
                                         if (res.isSuccess) {
                                             val sum = res.getOrNull()!!
-                                            Toast.makeText(context, "云端恢复成功！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "云端恢复成功！历史 ${sum.historyCount} 条，收藏 ${sum.favoriteCount} 部" + (sum.skippedNotice?.let { "。$it" } ?: ""), Toast.LENGTH_LONG).show()
                                         } else {
                                             Toast.makeText(context, "恢复失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                         }
@@ -405,7 +406,7 @@ fun SyncBackupScreen(
                                         val res = syncManager.restoreFromWebDav(backup.name)
                                         isOperating = false
                                         if (res.isSuccess) {
-                                            Toast.makeText(context, "成功从 ${backup.name} 恢复数据！", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "成功从 ${backup.name} 恢复数据！" + (res.getOrNull()?.skippedNotice?.let { "。$it" } ?: ""), Toast.LENGTH_LONG).show()
                                         } else {
                                             Toast.makeText(context, "还原失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                         }

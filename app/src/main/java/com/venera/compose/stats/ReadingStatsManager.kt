@@ -14,7 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * 阅读统计管理服务 (S7)
+ * 阅读统计管理服务
  *
  * 核心特性：
  * 1. 毫秒级阅读会话与页数自动累加记录

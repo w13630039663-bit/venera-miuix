@@ -14,6 +14,7 @@ import com.venera.compose.ui.tokens.SurfaceMaterialPolicy
 import com.venera.compose.ui.tokens.VeneraGlassHighlight
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraGlassTier
+import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.ui.tokens.veneraGlassEnabled
 import top.yukonga.miuix.kmp.basic.CardColors
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -46,10 +47,50 @@ val LocalGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  * - 模糊半径：直接用库默认 `BlurDefaults.BlurRadius`（20f），不另给数字。
  *
  * 深浅色下 [tintAlpha] 不分档：顶栏那条 0.16 是深浅共用的现成读数，没有依据就不拆两份。
+ *
+ * ⚠️ 这三个 alpha 值 2026-09-30 之后**只解释了"透多少"，没解释"抬多亮"** ——
+ * 抬亮量由**叠的是哪个色**决定，见下面 [containerColorFor]。
  */
 private const val ContainerAlphaLight = 0.22f
 private const val ContainerAlphaDark = 0.28f
 private const val TintAlpha = 0.16f
+
+/**
+ * 某一档玻璃**叠哪个色**（容器色与染色色共用一个来源）。
+ *
+ * ## 为什么 CONTAINER 档不能继续用 `surface`（批次 N · N1）
+ *
+ * 玻璃的提亮量 = 容器 alpha × (容器色 − 被采样的底)。这一套深色方案里 `surface` 与页面底
+ * 几乎是同一个近黑（真机实测页面底 rgb(20,19,24)），于是"模糊一个近黑的底、再叠 0.28 的近黑"
+ * = **零提亮**。2026-09-30 量过：玻璃档下节背板比页面底只亮 **+2**、条目卡边缘只亮 **+7**，
+ * 而参考图那张卡比自己的页面底亮 **+21/+21/+36** —— 用户那句
+ * 「开了玻璃就是这样，感觉就是不如图一那种」的成因就在这里，不在模糊本身。
+ *
+ * 反证也在这屏上：顶栏与搜索框实测亮 +27 / +23，因为它们走的是
+ * `tokens.color.surfaceContainerHigh`（`gallery/ui/GalleryHomeChrome.kt` 那两层 Surface）。
+ * 同一个 alpha 在 chrome 有效、在内容区失效 ⇒ 该换的是**槽位**，不是 alpha。
+ *
+ * 所以 CONTAINER 档改取 [VeneraGlassRole] 所在容器已有的抬亮语义槽 `surfaceContainerHigh`：
+ * 它是 MD3 色调表面档、本仓已登记在 token 层（`ui/tokens/Color.kt` 那段说明），**不新造颜色**。
+ *
+ * ## 为什么 CONTROL / INLINE 两档不动
+ *
+ * 芯片、按钮、分段器一屏能到二十个，它们要的是"与所在面板区分开"，不是"比页面亮一档"。
+ * 把容器那一抬加到它们身上，顶栏那一排会糊成一片亮块。点缀档连容器底都不铺，更不受影响。
+ *
+ * ## 玻璃档仍然只是"好一些"，不是"到位"（如实记，别当已解决）
+ *
+ * 换槽位后玻璃档的抬亮 ≈ 0.28 × (47−20) ≈ **+7.5**（原来约 +5）—— 因为 alpha 才是那一档的上限，
+ * 而 0.28 是真机验证过的读数，本轮**刻意不动它**。要往参考图那个量级走只有两条路：
+ * 抬容器 alpha（会牺牲"透"，与上面那条读数冲突），或让采样底本身变亮（要动录制层，
+ * 而那是保护域 `Navigation.kt:547` 的 `surfaceBase`）。**这一条留给真机读数之后再拍板**，
+ * 不在实现里顺手改。实色档没有这个问题：它叠的是不透明的 `surfaceContainerHigh`，抬亮直接 +27。
+ */
+@Composable
+private fun containerColorFor(tier: VeneraGlassTier): Color = when (tier) {
+    VeneraGlassTier.CONTAINER -> VeneraTokens.color.surfaceContainerHigh
+    VeneraGlassTier.CONTROL, VeneraGlassTier.INLINE -> MiuixTheme.colorScheme.surface
+}
 
 /** 枚举 → 库里的 `Highlight` 对象。库里是**扁平属性名**（不是 `Highlight.GlassStrokeMiddle.Light` 那种点链）。 */
 private fun miuixHighlight(preset: VeneraGlassHighlight): Highlight = when (preset) {
@@ -89,10 +130,12 @@ fun Modifier.veneraGlass(
 ): Modifier {
     if (!enabled || backdrop == null) return this
     val isDark = LocalVeneraDarkTheme.current
-    val surface = MiuixTheme.colorScheme.surface
     val tier = SurfaceMaterialPolicy.tierOf(role)
+    // 叠哪个色由档位决定（CONTAINER 取抬亮过的 surfaceContainerHigh，其余照旧 surface）——
+    // 理由与真机读数见 [containerColorFor]。
+    val base = containerColorFor(tier)
     val colors = BlurDefaults.blurColors(
-        blendColors = listOf(BlendColorEntry(color = surface.copy(alpha = TintAlpha))),
+        blendColors = listOf(BlendColorEntry(color = base.copy(alpha = TintAlpha))),
     )
     val highlight = SurfaceMaterialPolicy.highlightFor(isDark, tier)?.let(::miuixHighlight)
     return when (tier) {
@@ -105,7 +148,7 @@ fun Modifier.veneraGlass(
                 blurRadius = BlurDefaults.BlurRadius,
                 colors = colors,
                 highlight = highlight,
-            ).background(surface.copy(alpha = if (isDark) ContainerAlphaDark else ContainerAlphaLight))
+            ).background(base.copy(alpha = if (isDark) ContainerAlphaDark else ContainerAlphaLight))
         // 点缀档：一屏能到二十个，绝不建模糊；只染一层色，连容器底都不铺。
         VeneraGlassTier.INLINE -> drawBackdrop(
             backdrop = backdrop,
@@ -131,11 +174,19 @@ fun Modifier.veneraGlassSurface(role: VeneraGlassRole, cornerRadius: Dp): Modifi
         this
     }
 
-/** 配套：玻璃开着时容器本体必须透明，否则 Card 的不透明底会把刚采的样全盖掉。 */
+/**
+ * 配套：玻璃开着时容器本体必须透明，否则 Card 的不透明底会把刚采的样全盖掉。
+ *
+ * ⚠️ **实色档也必须抬亮**（批次 N · N1）。这一支原先直接回 `CardDefaults.defaultColors()`，
+ * 而 miuix 那张卡在深色方案下只比页面底亮 +12 —— 于是"关掉玻璃就看不出分组"，
+ * 而用户明令禁止只在单一档位成立的效果（那是一种假开关）。
+ * 现在两档叠的是**同一个语义槽** `surfaceContainerHigh`：实色档不透明地铺它，
+ * 玻璃档按容器 alpha 铺它。差别只在"透不透"，不在"亮不亮"。
+ */
 @Composable
 fun veneraGlassCardColors(): CardColors =
     if (veneraGlassEnabled()) {
         CardDefaults.defaultColors().copy(color = Color.Transparent)
     } else {
-        CardDefaults.defaultColors()
+        CardDefaults.defaultColors().copy(color = VeneraTokens.color.surfaceContainerHigh)
     }

@@ -47,7 +47,7 @@ import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.ListView
 
 /**
- * 漫画列表「双列网格 / 单列大卡」布局系统（S8，对齐原版 ComicTile 三模式中的
+ * 漫画列表「双列网格 / 单列大卡」布局系统（对齐原版 ComicTile 三模式中的
  * brief(双列) / detailed(单列) 与 ComicLayoutToggleButton）。
  *
  * 单列 detailed 对齐原版 _buildDetailedMode + _ComicDescription：
@@ -70,7 +70,7 @@ fun ComicTileDetailed(
     /** 长按回调（如网络收藏的移除确认）；null 时不响应长按。 */
     onLongClick: (() -> Unit)? = null,
     coverContent: (@Composable BoxScope.() -> Unit)? = null,
-    /** S7 分级遮罩：外部传入 "VISIBLE"/"BLURRED"/"HIDDEN"（调用方用 ContentGuard 判定） */
+    /** 分级遮罩：外部传入 "VISIBLE"/"BLURRED"/"HIDDEN"（调用方用 ContentGuard 判定） */
     coverMaskState: String = "VISIBLE",
     /**
      * 共享元素转场：调用方在封面容器上挂 `Modifier.sharedElement(...)`。
