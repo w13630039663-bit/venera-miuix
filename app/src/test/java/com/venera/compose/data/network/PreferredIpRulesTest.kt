@@ -563,4 +563,55 @@ class PreferredIpRulesTest {
         // 被重置那句不该再出现"443 被拒"——那是误导（TCP 其实是通的）。
         assertTrue(!reset.contains("被拒或不可达"))
     }
+
+    // ── bestIpsFromLines：一键测速自动选点的选点判据 ──
+
+    @Test
+    fun `自动选点只挑全域名通过的线且按最慢延迟升序`() {
+        val lines = PreferredIpRules.summarizeLineStates(
+            mapOf(
+                "a.com" to listOf(
+                    lineProbe("fast.ok", true, 100),
+                    lineProbe("slow.ok", true, 800),
+                    lineProbe("partial", true, 100),
+                    lineProbe("dead", false, 0, "超时"),
+                ),
+                "b.com" to listOf(
+                    lineProbe("fast.ok", true, 120),
+                    lineProbe("slow.ok", true, 800),
+                    lineProbe("partial", false, 0, "HTTP 403"),
+                    lineProbe("dead", false, 0, "超时"),
+                ),
+            ),
+        )
+        // partial（只过 a）与 dead（全败）都不许进候选；两台全过的按最慢延迟升序。
+        assertEquals(listOf("fast.ok", "slow.ok"), PreferredIpRules.bestIpsFromLines(lines))
+    }
+
+    @Test
+    fun `自动选点不超过候选上限`() {
+        // MAX_IPS_PER_HOST + 3 台全过的线：只留最快的前 MAX_IPS_PER_HOST 台。
+        val probes = (1..PreferredIpRules.MAX_IPS_PER_HOST + 3)
+            .flatMap { n -> listOf(lineProbe("ip$n", true, 100L + n)) }
+        val input = mapOf("a.com" to probes, "b.com" to probes)
+        val best = PreferredIpRules.bestIpsFromLines(PreferredIpRules.summarizeLineStates(input))
+        assertEquals(PreferredIpRules.MAX_IPS_PER_HOST, best.size)
+        // 升序截断：留下的应是最快的那批。
+        assertEquals(
+            (1..PreferredIpRules.MAX_IPS_PER_HOST).map { "ip$it" },
+            best,
+        )
+    }
+
+    @Test
+    fun `没有全通过的线时自动选点交空表`() {
+        val lines = PreferredIpRules.summarizeLineStates(
+            mapOf(
+                "a.com" to listOf(lineProbe("partial", true, 100), lineProbe("dead", false, 0, "超时")),
+                "b.com" to listOf(lineProbe("partial", false, 0, "HTTP 403"), lineProbe("dead", false, 0, "超时")),
+            ),
+        )
+        // 全是 partial / dead：宁交空表让 UI 如实说「没挑出可用的」，不拿半残节点充数。
+        assertTrue(PreferredIpRules.bestIpsFromLines(lines).isEmpty())
+    }
 }

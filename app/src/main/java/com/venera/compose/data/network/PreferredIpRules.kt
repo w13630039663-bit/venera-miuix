@@ -509,6 +509,21 @@ internal object PreferredIpRules {
         )
     }
 
+    /**
+     * 「一键测速并自动选点」的选点判据：从测速线结果里挑出**值得写回**的候选。
+     *
+     * 口径与测速页的「最优」徽标逐字一致 —— 只挑**全域名通过**的线（partial 只能服务部分域名，
+     * 写回它就是给部分源造一个必坏的开关），按最慢延迟升序，上限 [MAX_IPS_PER_HOST]。
+     * 一台全不过就返回空表：调用方要如实说「没挑出可用的」，不能拿半残节点充数。
+     */
+    fun bestIpsFromLines(lines: List<PreferredIpLine>): List<String> =
+        lines.asSequence()
+            .filter { it.totalEntries > 0 && it.passedEntries == it.totalEntries }
+            .sortedBy { it.slowestLatencyMs }
+            .take(MAX_IPS_PER_HOST)
+            .map { it.ip }
+            .toList()
+
     private fun Long?.orZero() = this ?: 0L
 }
 

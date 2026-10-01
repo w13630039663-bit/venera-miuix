@@ -61,7 +61,7 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit, onSpeedTest: (
             PreferredIpSettingsGroup(prefs)
             SettingsAction(
                 "线路测速",
-                "测量各节点到 Cloudflare 站点的直连延迟，挑出最优线路",
+                "一键测速并自动选点：测到已装源站点的直连延迟，自动应用最优线路",
                 onClick = onSpeedTest,
             )
         }

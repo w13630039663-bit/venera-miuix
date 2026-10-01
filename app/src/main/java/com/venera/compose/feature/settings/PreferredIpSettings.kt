@@ -65,7 +65,7 @@ internal fun PreferredIpSettingsGroup(prefs: VeneraPreferences) {
     )
     SettingsAction(
         title = "候选节点与探活",
-        summary = "粘贴 Cloudflare 边缘节点地址，逐个用真实请求探活；全部不通时自动退回正常解析",
+        summary = "手动粘贴候选地址并逐个探活；一键测速自动选点请用「线路测速」页",
         onClick = { showEditor = true },
     )
 
@@ -134,69 +134,15 @@ private fun PreferredIpEditorDialog(
                     maxLines = 6,
                     enabled = !probing,
                     modifier = Modifier.fillMaxWidth(),
-                    // 候选不该让用户自己满世界找 IP 来粘：默认走「自动测速选点」，
-                    // 这里只说清两条路各管什么。判据口径照 [PreferredIpRules.parseIps]。
+                    // 候选不该让用户自己满世界找 IP 来粘：自动选点已整合进「线路测速」页
+                    //（抽样 → 探活 → 自动写回），这里只留手动粘贴这条高级路。
                     supportingText = {
                         Text(
-                            "一般不用手填：点下方「自动测速选点」，系统从 Cloudflare 官方网段抽样测速后自动填入。" +
+                            "一般不用手填：到「线路测速」页点「一键测速并自动选点」，测完会自动填好这里。" +
                                 "也可手动粘贴 IP（IPv4 / IPv6 字面量）；域名不填这里，填下面的「适用域名」。"
                         )
                     },
                 )
-                // 自动选点：从 [PreferredIpRules.CLOUDFLARE_IPV4_RANGES]（官方公布网段）抽样，
-                // 拿「适用域名」的真实端点逐台探活，通过的按延迟排序自动填入并落盘。
-                // 这是这层的主路 —— 手动粘贴只留作高级用法，而不是唯一入口。
-                TextButton(
-                    enabled = !probing && !proxyInUse,
-                    onClick = {
-                        failure = null
-                        if (entries.isEmpty()) {
-                            // 测速要拿真实站点的端点去量：没有域名就不知道量什么，也不能假装量过。
-                            failure = "先填至少一个适用域名：测速要拿真实站点的端点去量"
-                        } else {
-                            scope.launch {
-                                probing = true
-                                val samples = PreferredIpRules.sampleCloudflareIps()
-                                // 探活读的是 runtime 里已落盘的配置：抽样表先保存（清掉旧读数），
-                                // 探完把通过的按延迟排序写回（那轮结论刚量出来，不能再清）。
-                                savePreferredIp(prefs, enabled, samples.joinToString("\n"), hosts, clearReadings = true)
-                                val result = withContext(Dispatchers.IO) {
-                                    runCatching { PreferredIpProbe.probeAll(requireEnabled = false) }
-                                        .getOrElse { cause ->
-                                            failure = "测速没跑成：${cause.message ?: "未知错误"}"
-                                            emptyMap()
-                                        }
-                                }
-                                rows = result
-                                val bestByIp = LinkedHashMap<String, PreferredIpProbe.Row>()
-                                result.values.flatten().filter { it.passed }.forEach { row ->
-                                    val current = bestByIp[row.ip]
-                                    if (current == null || row.latencyMs < current.latencyMs) bestByIp[row.ip] = row
-                                }
-                                val best = bestByIp.values.sortedBy { it.latencyMs }
-                                    .take(PreferredIpRules.MAX_IPS_PER_HOST)
-                                    .joinToString("\n") { it.ip }
-                                if (best.isBlank()) {
-                                    // 如实说，不替探活遮丑；再按一次就是换一批抽样重探。
-                                    failure = "抽样 ${samples.size} 台没有一台对「${entries.joinToString("、")}」答上话，" +
-                                        "可再按一次重抽"
-                                } else {
-                                    ips = best
-                                    savePreferredIp(prefs, enabled, best, hosts, clearReadings = false)
-                                }
-                                probing = false
-                            }
-                        }
-                    },
-                ) {
-                    Text(
-                        if (probing) {
-                            "正在测速…"
-                        } else {
-                            "自动测速选点（从 Cloudflare 官方网段抽样）"
-                        },
-                    )
-                }
                 // 认不出来的那些必须当场说出来：默默丢掉等于让用户以为"我粘了 15 台但只通 3 台"。
                 Text(
                     "识别出 ${recognized.size} 台（共 ${PreferredIpRules.countIpTokens(ips)} 项）· " +

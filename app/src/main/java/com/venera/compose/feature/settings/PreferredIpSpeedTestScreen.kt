@@ -51,11 +51,13 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * 线路测速页（设置 → 网络 → 线路测速）。
  *
- * 这一页只做一件事：**让用户看清「这台机器到各个 Cloudflare 站点的边缘节点，哪条线最快」**，
- * 并让他在「看一眼」和「真的用上」之间二选一 —— 所以它和设置页的探活是两条路：
+ * 这一页是优选 IP 的**主操作台**：看清「这台机器到各个 Cloudflare 站点的边缘节点，哪条线最快」，
+ * 并一键把最优候选用上 —— 两颗按钮对应两种意图：
  *
- * - **只读**：[PreferredIpProbe.probeIps] 只量不写，不会因为他瞄一眼就把已落盘的优选 IP 结论覆盖掉；
- * - **写回只在「使用最优线路」那一下发生**，且复用 [savePreferredIp]（与「候选节点与探活」同一套落盘口径）。
+ * - **一键测速并自动选点（主路）**：从 Cloudflare 官方网段抽样 → 探活 → 展示 → 自动写回最优候选
+ *   （判据在 [PreferredIpRules.bestIpsFromLines]：只挑全域名通过的、按最慢延迟升序、上限
+ *   `MAX_IPS_PER_HOST`，与原「候选节点与探活」弹窗的自动选点同一套落盘口径 [savePreferredIp]）；
+ * - **测当前候选（只看）**：[PreferredIpProbe.probeIps] 只量不写，复核已保存的候选今天还行不行。
  *
  * 三句必须说清的话（用户原话要求的）：
  * 1. **测的是哪个网站**：顶部「测速目标网站」逐条列出（源名 + host + 探活路径），
@@ -70,6 +72,8 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
     val scope = rememberCoroutineScope()
     val savedIps by prefs.cfPreferredIps.collectAsState()
     val savedHosts by prefs.cfPreferredHosts.collectAsState()
+    val proxyType by prefs.proxyType.collectAsState()
+    val proxyInUse = proxyType == "HTTP" || proxyType == "SOCKS"
 
     var probing by remember { mutableStateOf(false) }
     var lines by remember { mutableStateOf<List<PreferredIpLine>>(emptyList()) }
@@ -96,11 +100,24 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
         )
     }
 
-    fun startProbe() {
+    fun applyBest(ipsText: String, message: String) {
+        // 复用设置页的落盘口径：写回偏好 + 立刻让 runtime 看到，清掉旧读数。
+        // ⚠️ 域名要把这页动态推导出来的源域名**一并写进「适用域名」**：不然测通了哔咔/禁漫，
+        // 运行期 plan() 一查适用表没有它们，照样走系统解析 —— 测了等于白测。手填条目保留。
+        val mergedHosts = (targets.map { it.target.host } + PreferredIpRules.parseHosts(savedHosts))
+            .distinct()
+            .joinToString("\n")
+        savePreferredIp(prefs, enabled = true, ips = ipsText, hosts = mergedHosts, clearReadings = true)
+        inUseIps = PreferredIpRules.parseIps(ipsText).toSet()
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun startProbe(autoApply: Boolean) {
         probing = true
         error = null
-        // 候选 IP 同样是「有就用用户的，没有就抽样 Cloudflare 官方网段」—— 与自动选点同一池。
-        val ips = if (savedIps.isNotBlank()) {
+        // 候选 IP 两条路：只看的模式用已保存的候选（没有也抽样）；自动选点永远抽一批新的 ——
+        // 与「候选节点与探活」原自动选点同一口径：抽样表是刚量出来的结论，不该被旧表污染。
+        val ips = if (!autoApply && savedIps.isNotBlank()) {
             PreferredIpRules.parseIps(savedIps)
         } else {
             PreferredIpRules.sampleCloudflareIps()
@@ -122,25 +139,25 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
                 }.toSet()
                 lines = summarized
                 inUseIps = healthy
+                if (autoApply) {
+                    // 选点判据在判据层（bestIpsFromLines，可单测）：只挑全域名通过的、
+                    // 按最慢延迟升序、上限 MAX_IPS_PER_HOST —— 与「候选节点与探活」的落盘口径一致。
+                    val best = PreferredIpRules.bestIpsFromLines(summarized)
+                    if (best.isEmpty()) {
+                        error = "抽样 ${ips.size} 台没有一台对全部目标站点答上话，可再按一次重抽一批"
+                    } else {
+                        applyBest(
+                            ipsText = best.joinToString("\n"),
+                            message = "已自动选点 ${best.size} 台并应用",
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 error = "测速没跑成：${e.message ?: "未知错误"}"
             } finally {
                 probing = false
             }
         }
-    }
-
-    fun applyBest(ip: String) {
-        // 复用设置页的落盘口径：写回偏好 + 立刻让 runtime 看到，清掉旧读数。
-        // 只写这一台最优节点（「使用最优线路」= 用这一条），其余由用户后续再探。
-        // ⚠️ 域名要把这页动态推导出来的源域名**一并写进「适用域名」**：不然测通了哔咔/禁漫，
-        // 运行期 plan() 一查适用表没有它们，照样走系统解析 —— 测了等于白测。手填条目保留。
-        val mergedHosts = (targets.map { it.target.host } + PreferredIpRules.parseHosts(savedHosts))
-            .distinct()
-            .joinToString("\n")
-        savePreferredIp(prefs, enabled = true, ips = ip, hosts = mergedHosts, clearReadings = true)
-        inUseIps = setOf(ip)
-        Toast.makeText(context, "已应用最优线路：$ip", Toast.LENGTH_SHORT).show()
     }
 
     SettingsPage(title = "线路测速", largeTitle = "线路测速", onBack = onBack) {
@@ -162,15 +179,37 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
             )
         }
 
-        // ── 开始测速 ──
+        // ── 一键测速并自动选点（主路）：抽样 → 探活 → 展示 → 自动写回最优候选 ──
         VeneraButton(
-            onClick = { startProbe() },
-            enabled = !probing,
+            onClick = { startProbe(autoApply = true) },
+            enabled = !probing && !proxyInUse,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = tokens.spacing.space4),
         ) {
-            Text(if (probing) "测速中…" else "开始测速")
+            Text(if (probing) "测速中…" else "一键测速并自动选点")
+        }
+        // 只看模式：量「当前已保存的候选」今天还行不行，不动任何配置。
+        // 用自动选点落盘后，这颗就是复核按钮 —— 两颗的关系在说明组里也讲了一遍。
+        VeneraButton(
+            onClick = { startProbe(autoApply = false) },
+            enabled = !probing,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("测当前候选（只看，不改配置）")
+        }
+        if (proxyInUse) {
+            // 与「候选节点与探活」同一句真话：代理在的时候目标域名由代理解析，
+            // 优选 IP 这一层根本不参与 —— 自动选点写回的表没人用，等于白测。
+            Text(
+                "当前设置了代理，优选 IP 这一层不会参与，自动选点已停用；要用它请先把代理切回「跟随系统默认」。",
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+                modifier = Modifier.padding(
+                    horizontal = tokens.spacing.rowHorizontal,
+                    vertical = tokens.spacing.space3,
+                ),
+            )
         }
 
         if (probing) {
@@ -201,7 +240,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
             )
         } else if (lines.isEmpty()) {
             VeneraEmptyView(
-                message = "还没有测速结果，点上方「开始测速」。",
+                message = "还没有测速结果，点上方「一键测速并自动选点」。",
                 tone = VeneraEmptyTone.NotYet,
                 size = VeneraEmptySize.Compact,
                 modifier = Modifier.fillMaxWidth(),
@@ -219,7 +258,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
             val best = lines.firstOrNull { it.passedEntries == it.totalEntries && it.totalEntries > 0 }
             if (best != null) {
                 VeneraButton(
-                    onClick = { applyBest(best.ip) },
+                    onClick = { applyBest(best.ip, "已应用最优线路：${best.ip}") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = tokens.spacing.space4),
