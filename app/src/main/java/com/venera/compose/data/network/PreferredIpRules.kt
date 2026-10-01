@@ -512,14 +512,18 @@ internal object PreferredIpRules {
     /**
      * 「一键测速并自动选点」的选点判据：从测速线结果里挑出**值得写回**的候选。
      *
-     * 口径与测速页的「最优」徽标逐字一致 —— 只挑**全域名通过**的线（partial 只能服务部分域名，
-     * 写回它就是给部分源造一个必坏的开关），按最慢延迟升序，上限 [MAX_IPS_PER_HOST]。
-     * 一台全不过就返回空表：调用方要如实说「没挑出可用的」，不能拿半残节点充数。
+     * 口径是**行级**的（2026-10-02 按用户要求改回，与原探活弹窗逐行取最小延迟一致）：
+     * 一台候选只要**有任一网站答上话**就入选 —— 它没答上的网站被忽略（那些网站走系统解析，
+     * runtime 的探活读数会自然回退），不能因为「没全过」就把一台能用的节点整个扔掉。
+     * 排序按**最快通过延迟**（这台节点在你实际能用的网站上有多快），上限 [MAX_IPS_PER_HOST]。
+     * 一台全不过就返回空表：调用方要如实说「没挑出可用的」，不能拿全灭的节点充数。
      */
     fun bestIpsFromLines(lines: List<PreferredIpLine>): List<String> =
         lines.asSequence()
-            .filter { it.totalEntries > 0 && it.passedEntries == it.totalEntries }
-            .sortedBy { it.slowestLatencyMs }
+            .filter { it.passedEntries > 0 }
+            .sortedBy { line ->
+                line.entries.filter { it.passed }.minOf { it.latencyMs }
+            }
             .take(MAX_IPS_PER_HOST)
             .map { it.ip }
             .toList()

@@ -565,38 +565,43 @@ class PreferredIpRulesTest {
     }
 
     // ── bestIpsFromLines：一键测速自动选点的选点判据 ──
+    // 口径是行级的（2026-10-02 按用户要求改回）：任一网站答上话就入选，没答上的网站被忽略；
+    // 排序按最快通过延迟 —— 与原探活弹窗逐行取最小延迟一致。
 
     @Test
-    fun `自动选点只挑全域名通过的线且按最慢延迟升序`() {
+    fun `自动选点任一网站通过即入选且按最快通过延迟升序`() {
         val lines = PreferredIpRules.summarizeLineStates(
             mapOf(
                 "a.com" to listOf(
                     lineProbe("fast.ok", true, 100),
                     lineProbe("slow.ok", true, 800),
-                    lineProbe("partial", true, 100),
+                    lineProbe("partial", true, 50),
                     lineProbe("dead", false, 0, "超时"),
                 ),
                 "b.com" to listOf(
                     lineProbe("fast.ok", true, 120),
                     lineProbe("slow.ok", true, 800),
-                    lineProbe("partial", false, 0, "HTTP 403"),
+                    lineProbe("partial", false, 0, "连接被重置"),
                     lineProbe("dead", false, 0, "超时"),
                 ),
             ),
         )
-        // partial（只过 a）与 dead（全败）都不许进候选；两台全过的按最慢延迟升序。
-        assertEquals(listOf("fast.ok", "slow.ok"), PreferredIpRules.bestIpsFromLines(lines))
+        // partial 只过 a（50ms）也算入选且排最前 —— 它没答上的 b 被忽略，不能因为"没全过"
+        // 就把一台能用的节点扔掉；dead 全败不进。排序键是最快通过延迟，不是最慢。
+        assertEquals(
+            listOf("partial", "fast.ok", "slow.ok"),
+            PreferredIpRules.bestIpsFromLines(lines),
+        )
     }
 
     @Test
-    fun `自动选点不超过候选上限`() {
+    fun `自动选点不超过候选上限且留下的是最快的`() {
         // MAX_IPS_PER_HOST + 3 台全过的线：只留最快的前 MAX_IPS_PER_HOST 台。
         val probes = (1..PreferredIpRules.MAX_IPS_PER_HOST + 3)
             .flatMap { n -> listOf(lineProbe("ip$n", true, 100L + n)) }
         val input = mapOf("a.com" to probes, "b.com" to probes)
         val best = PreferredIpRules.bestIpsFromLines(PreferredIpRules.summarizeLineStates(input))
         assertEquals(PreferredIpRules.MAX_IPS_PER_HOST, best.size)
-        // 升序截断：留下的应是最快的那批。
         assertEquals(
             (1..PreferredIpRules.MAX_IPS_PER_HOST).map { "ip$it" },
             best,
@@ -604,14 +609,14 @@ class PreferredIpRulesTest {
     }
 
     @Test
-    fun `没有全通过的线时自动选点交空表`() {
+    fun `没有任何一台通过任何网站时自动选点交空表`() {
         val lines = PreferredIpRules.summarizeLineStates(
             mapOf(
-                "a.com" to listOf(lineProbe("partial", true, 100), lineProbe("dead", false, 0, "超时")),
-                "b.com" to listOf(lineProbe("partial", false, 0, "HTTP 403"), lineProbe("dead", false, 0, "超时")),
+                "a.com" to listOf(lineProbe("dead1", false, 0, "超时"), lineProbe("dead2", false, 0, "连接被重置")),
+                "b.com" to listOf(lineProbe("dead1", false, 0, "超时"), lineProbe("dead2", false, 0, "连接被重置")),
             ),
         )
-        // 全是 partial / dead：宁交空表让 UI 如实说「没挑出可用的」，不拿半残节点充数。
+        // 全灭：宁交空表让 UI 如实说「没挑出可用的」，不能拿没通过的节点充数。
         assertTrue(PreferredIpRules.bestIpsFromLines(lines).isEmpty())
     }
 }

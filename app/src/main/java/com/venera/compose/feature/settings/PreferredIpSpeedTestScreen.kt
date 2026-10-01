@@ -55,8 +55,9 @@ import top.yukonga.miuix.kmp.basic.Text
  * 并一键把最优候选用上 —— 两颗按钮对应两种意图：
  *
  * - **一键测速并自动选点（主路）**：从 Cloudflare 官方网段抽样 → 探活 → 展示 → 自动写回最优候选
- *   （判据在 [PreferredIpRules.bestIpsFromLines]：只挑全域名通过的、按最慢延迟升序、上限
- *   `MAX_IPS_PER_HOST`，与原「候选节点与探活」弹窗的自动选点同一套落盘口径 [savePreferredIp]）；
+ *   （判据在 [PreferredIpRules.bestIpsFromLines]：**行级口径** —— 任一网站答上话就入选、按最快
+ *   通过延迟排序、上限 `MAX_IPS_PER_HOST`，没答上的网站被忽略；写回落盘口径与
+ *   [savePreferredIp] 同一套）；
  * - **测当前候选（只看）**：[PreferredIpProbe.probeIps] 只量不写，复核已保存的候选今天还行不行。
  *
  * 三句必须说清的话（用户原话要求的）：
@@ -140,11 +141,12 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
                 lines = summarized
                 inUseIps = healthy
                 if (autoApply) {
-                    // 选点判据在判据层（bestIpsFromLines，可单测）：只挑全域名通过的、
-                    // 按最慢延迟升序、上限 MAX_IPS_PER_HOST —— 与「候选节点与探活」的落盘口径一致。
+                    // 选点判据在判据层（bestIpsFromLines，可单测）：行级口径 —— 任一网站答上话
+                    // 就入选、按最快通过延迟升序、上限 MAX_IPS_PER_HOST（没答上的网站被忽略，
+                    // 运行期 runtime 探活会自动回退系统解析）。
                     val best = PreferredIpRules.bestIpsFromLines(summarized)
                     if (best.isEmpty()) {
-                        error = "抽样 ${ips.size} 台没有一台对全部目标站点答上话，可再按一次重抽一批"
+                        error = "抽样 ${ips.size} 台没有一台对任何目标站点答上话，可再按一次重抽一批"
                     } else {
                         applyBest(
                             ipsText = best.joinToString("\n"),
@@ -228,42 +230,50 @@ internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> 
                     modifier = Modifier.padding(start = tokens.spacing.space4),
                 )
             }
-        } else if (error != null) {
-            Text(
-                error.orEmpty(),
-                fontSize = tokens.type.caption,
-                color = StatusColors.Failing,
-                modifier = Modifier.padding(
-                    horizontal = tokens.spacing.rowHorizontal,
-                    vertical = tokens.spacing.space4,
-                ),
-            )
-        } else if (lines.isEmpty()) {
-            VeneraEmptyView(
-                message = "还没有测速结果，点上方「一键测速并自动选点」。",
-                tone = VeneraEmptyTone.NotYet,
-                size = VeneraEmptySize.Compact,
-                modifier = Modifier.fillMaxWidth(),
-            )
         } else {
-            lines.forEachIndexed { idx, line ->
-                // 「最优」= 第一条**全域名通过**的线（partial 只能服务部分域名，不算最优）。
-                // summarizeLineStates 已把全过的排在前，所以 idx==0 且全过即是最快那条。
-                val isBest = idx == 0 && line.passedEntries == line.totalEntries && line.totalEntries > 0
-                SpeedTestLineCard(line = line, isBest = isBest, isInUse = line.ip in inUseIps)
+            // 错误提示**不挡结果**：自动选点没挑出可用节点时，用户更需要看到每台节点
+            // 对每个网站的具体表现（哪些绿哪些红），一句报错糊脸上什么都看不见是倒错的优先级。
+            if (error != null) {
+                Text(
+                    error.orEmpty(),
+                    fontSize = tokens.type.caption,
+                    color = StatusColors.Failing,
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.rowHorizontal,
+                        vertical = tokens.spacing.space4,
+                    ),
+                )
             }
+            if (lines.isEmpty()) {
+                if (error == null) {
+                    VeneraEmptyView(
+                        message = "还没有测速结果，点上方「一键测速并自动选点」。",
+                        tone = VeneraEmptyTone.NotYet,
+                        size = VeneraEmptySize.Compact,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                lines.forEachIndexed { idx, line ->
+                    // 「最优」= 排第一且**至少有一个网站答上话**的线（与自动选点同一行级口径：
+                    // 没答上的网站被忽略，不要求全过 —— 全过才算好会让被阻断站点在场时永远没有最优）。
+                    // summarizeLineStates 已把可用的排在前，所以 idx==0 且有通过即是最快那条。
+                    val isBest = idx == 0 && line.passedEntries > 0
+                    SpeedTestLineCard(line = line, isBest = isBest, isInUse = line.ip in inUseIps)
+                }
 
-            // 「使用最优线路」：把最快且**全域名通过**的那台写进优选 IP 配置。
-            // 没有全过的线时（所有节点都只能服务部分域名）整组不显示 —— 不能把一个半残的节点当最优。
-            val best = lines.firstOrNull { it.passedEntries == it.totalEntries && it.totalEntries > 0 }
-            if (best != null) {
-                VeneraButton(
-                    onClick = { applyBest(best.ip, "已应用最优线路：${best.ip}") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = tokens.spacing.space4),
-                ) {
-                    Text("使用最优线路（${best.ip}）")
+                // 「使用最优线路」：把排头那台（至少一个网站通过）写进优选 IP 配置。
+                // 与自动选点同行级口径；它没答上的网站运行期由 runtime 探活自然回退系统解析。
+                val best = lines.firstOrNull { it.passedEntries > 0 }
+                if (best != null) {
+                    VeneraButton(
+                        onClick = { applyBest(best.ip, "已应用最优线路：${best.ip}") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = tokens.spacing.space4),
+                    ) {
+                        Text("使用最优线路（${best.ip}）")
+                    }
                 }
             }
         }
