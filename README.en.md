@@ -196,7 +196,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Theme colour | dynamic + 6 presets | ✅ seed colour + 25 presets + wallpaper |
 | Transitions | standard | ✅ shared element + predictive-back tracking + gallery fly-in |
 | Archive interoperability | — | ✅ imports official `.venera` and PicaComic `.picadata` |
-| Unit tests | 1 Dart test file | ✅ 101 pure JVM test files (100 classes) / 791 cases |
+| Unit tests | 1 Dart test file | ✅ 103 pure JVM test files (101 classes) / 797 cases |
 | Local formats | ZIP / 7Z / CBZ / EPUB / folder | ✅ folder + CBZ import/export (**no archive reading**, see gaps) |
 | Headless / CLI mode | ✅ | ❌ not planned |
 
@@ -211,7 +211,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Source JS execution | flutter_inappwebview | **system WebView + JS bridge** + shim reimplementation |
 | Gallery boards / artist follows / daily hot / reverse search | — | ✅ |
 | Cloudflare preferred IP | — | ✅ (off by default) |
-| JVM correctness tests | 1 Dart test file | ✅ 101 files / 791 cases |
+| JVM correctness tests | 1 Dart test file | ✅ 103 files / 797 cases |
 | Radial transition (preview card ⇄ reader) | ✅ | ❌ not carried over in the migration |
 
 ### Upstream has it, this branch does not
@@ -289,7 +289,7 @@ No Flutter, no Dart, no Rust.
 # release: R8 obfuscation + resource shrinking, split per ABI (armeabi-v7a / arm64-v8a / x86_64 / universal)
 ./gradlew :app:assembleRelease
 
-# pure JVM correctness tests (101 files / 791 cases, no device needed)
+# pure JVM correctness tests (103 files / 797 cases, no device needed)
 # These two numbers drift. Recompute: find app/src/test -name '*.kt' | wc -l  and  grep -rho '@Test' app/src/test --include=*.kt | wc -l
 ./gradlew :app:testDebugUnitTest
 

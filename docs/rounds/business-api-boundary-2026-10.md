@@ -18,7 +18,7 @@
 | 非 `getInstance` 的直连 | `AndroidKeyValueStore(` 3、`HostCircuitBreaker.` 3、`okhttp3.` 1、`PreferredIpRuntime.` 5、`ComicStorageRoot.` 15 | 同上，`BASELINE_*` 五张表 |
 | 全仓 `fun getInstance(` | 35 处声明 | `grep -rn "fun getInstance(" --include=*.kt app/src/main` |
 | ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 18 处（另有 3 处在注释里）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
-| 测试基线 | 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test` | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
+| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
 **冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **19 处**（B3 再加 2 处 W1 嵌套类型，见 §五 B3 与 §六）。
 
@@ -71,6 +71,8 @@ app/src/main/java/com/venera/compose/gallery/data/
 **契约与守卫同批**：B2/B3/B5/B7' 的新契约文件与它们的白名单缩短在**同一颗提交**里 —— 沿用审计 `:230` 那条已写下的纪律「守卫用例必须和被守卫的动作同批落地，否则现在建它等于埋一条常红用例」。
 
 **验收线**：业务穿透 `150 → 15`（甲裁决下的终值，**不是 0**）；静态取用的出处 `51 颗文件（+ MainActivity.kt）→ 装配根 + 适配层 + 实现类自身`；`BusinessApiBoundaryTest` 的四张白名单逐批只许缩短；`:app:testDebugUnitTest` 用例数只增不减。
+
+**进度（B6 落地后）**：业务穿透 **93 处 / 38 颗文件**（起点 150 / 51），实现类 import **77 条 / 39 颗**（起点 125 / 56），类型引用位 **32 条 / 21 颗**（起点 49 / 33）。剩 B5（收藏库与下载本地 18 处，方案 §七 与 §三 都写着**允许整批砍掉**）与 B7'（画廊 57 处，含三腿 `when(site)` 表四遍→一遍），两批都需要真机验收；设备当前未连接（`adb devices` 空列表），已挂账。
 
 ## 四、守卫用例 `app/src/test/java/com/venera/compose/data/api/BusinessApiBoundaryTest.kt`
 
