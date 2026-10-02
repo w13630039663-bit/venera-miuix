@@ -5,7 +5,7 @@ package com.venera.compose.data.api
  *
  * 为什么 UI 需要它：页面上的「刷新 / 重试」要清掉这一站的熔断状态，而今天它是 Composable
  * 直抓 `object HostCircuitBreaker` —— 审计 §二 第 8 行点名的两处
- * （`gallery/ui/GalleryScreen.kt:401`、`GalleryDailyScreen.kt:108`），外加
+ * （`gallery/ui/GalleryScreen.kt:400`、`GalleryDailyScreen.kt:107`），外加
  * `feature/settings/NetworkSettings.kt:70` 与同文件 `:148` 的代理重建客户端。
  *
  * ⚠️ 漫画侧**今天已经有这条门面的先例**：`source/ComicSourceManager.kt:1274-1276` 的
@@ -28,6 +28,17 @@ interface NetworkHygiene {
 
     /** 代理/UA 类设置改完后的重建：让后续请求用上新的 OkHttpClient 装配。 */
     fun rebuildHttpClient()
+
+    /**
+     * HTTP 缓存当前占用字节数（设置页那行「缓存 xx MB」的读数）。
+     *
+     * **非 suspend**：调用点自己包在 `withContext(Dispatchers.IO)` 里（`feature/settings/AppSettings.kt:48`），
+     * 契约这边改成 suspend 就等于把那次的调度位置换掉。
+     */
+    fun httpCacheSizeBytes(): Long
+
+    /** 清空 HTTP 缓存，返回清掉的字节数（同一颗页那颗「清除缓存」按钮）。 */
+    fun clearHttpCache(): Long
 }
 
 /**

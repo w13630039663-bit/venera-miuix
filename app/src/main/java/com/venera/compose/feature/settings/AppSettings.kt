@@ -16,11 +16,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.venera.compose.components.venera.VeneraDialog
-import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.sync.BackupTransfers
 import com.venera.compose.data.api.NetworkPreferences
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,7 +39,7 @@ fun AppSettings(
     val context = LocalContext.current
     val cacheMaxMb by prefs.httpCacheMaxMb.collectAsState()
     var cacheBytes by remember { mutableLongStateOf(-1L) }
-    val network = remember(context) { VeneraNetworkClient.getInstance(context) }
+    val network = remember(context) { BusinessPorts.of(context).network }
     val scope = rememberCoroutineScope()
     val defaultRoot = remember(context) { ComicStorageRoot.defaultDir(context).absolutePath }
 
@@ -189,7 +189,7 @@ fun AppSettings(
                 {
                     prefs.setHttpCacheMaxMb(it.toInt())
                     // 上限是建 client 时写进 OkHttp Cache 的，改完必须重建才生效。
-                    network.rebuildClient()
+                    network.rebuildHttpClient()
                 },
                 steps = 62, suffix = " MB",
                 summary = "只统计漫画源接口和网页的缓存，不含下载下来的图片。",

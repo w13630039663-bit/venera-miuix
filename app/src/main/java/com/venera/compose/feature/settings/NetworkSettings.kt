@@ -22,13 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.api.NetworkPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.data.api.BusinessPorts
 
 private val proxyOptions = listOf("NONE" to "跟随系统默认", "HTTP" to "HTTP", "SOCKS" to "SOCKS5")
 
@@ -67,7 +67,7 @@ fun NetworkSettings(prefs: NetworkPreferences, onBack: () -> Unit, onSpeedTest: 
         }
         SettingsGroup("网络诊断") {
             SettingsAction("重置失败记录", "清除暂时连不上的站点记录，这些站点会马上重新尝试") {
-                com.venera.compose.data.network.HostCircuitBreaker.resetAll()
+                BusinessPorts.of(context).network.resetAllBreakers()
                 Toast.makeText(context, "已清除失败记录", Toast.LENGTH_SHORT).show()
             }
         }
@@ -145,7 +145,7 @@ private fun ProxySettingsDialog(prefs: NetworkPreferences, onDismiss: () -> Unit
                         try {
                             withContext(Dispatchers.IO) {
                                 prefs.setProxy(type, host.trim(), validPort ?: prefs.proxyPort.value)
-                                VeneraNetworkClient.getInstance(context).rebuildClient()
+                                BusinessPorts.of(context).network.rebuildHttpClient()
                             }
                             Toast.makeText(context, "代理已保存，之后的请求生效", Toast.LENGTH_SHORT).show()
                             onDismiss()

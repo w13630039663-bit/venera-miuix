@@ -59,8 +59,8 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "LocalFavoritesManager" to "B5（契约 FavoriteLibrary，随 B5 与守卫同批落地）",
     "DownloadManager" to "B5（契约 OfflineLibrary，同上）",
     "LocalComicManager" to "B5（契约 OfflineLibrary，同上）",
-    "VeneraNetworkClient" to "B6（契约 data/api/NetworkApi.kt 的 NetworkHygiene）",
-    "HostCircuitBreaker" to "B6（同上；漫画侧今天已有 ComicSourceManager.kt:1276 那层包装的先例）",
+    "VeneraNetworkClient" to "契约 data/api/NetworkApi.kt 的 NetworkHygiene，B6 已迁完、零站点；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删键等于给未来的 VeneraNetworkClient 类型引用位开一口漏（解锁条件：无，本行不是点位）",
+    "HostCircuitBreaker" to "B7'（漫画侧那两处已随 B6 收进 NetworkHygiene；残留两颗都在 gallery/ui，按各侧自持要落 gallery/data/GalleryPorts.kt 的卫生口，方案 §七.9）",
     "YandeReClient" to "B7'（画廊契约 gallery/data/GalleryPorts.kt 的 GalleryBoards + GalleryArtistDirectory）",
     "GelbooruClient" to "B7'",
     "SafebooruClient" to "B7'",
@@ -150,7 +150,7 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
 /** 符号默认归属 + 站点覆写；必须排在两者之后（顶层属性按声明顺序初始化）。 */
 internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERRIDE
 
-/** A ——「UI import 业务实现类」。最新：40 颗文件 / 79 条。 */
+/** A ——「UI import 业务实现类」。最新：39 颗文件 / 77 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
@@ -173,10 +173,9 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("FavoriteImagesStore", "LocalFavoritesManager", "ReadingStatsManager", "ReadingStatsStore"),
-        "feature/settings/AppSettings.kt" to setOf("DownloadManager", "VeneraNetworkClient"),
+        "feature/settings/AppSettings.kt" to setOf("DownloadManager"),
         "feature/settings/GallerySettings.kt" to setOf("VeneraPreferences"),
         "feature/settings/LocalFavoritesSettings.kt" to setOf("LocalFavoritesManager"),
-        "feature/settings/NetworkSettings.kt" to setOf("VeneraNetworkClient"),
         "feature/settings/PreferredIpSpeedTestScreen.kt" to setOf("ComicSourceManager", "GelbooruAccount"),
         "feature/sourcemanage/ComicSourceScreen.kt" to setOf("ComicSourceManager", "JsComicSource"),
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "JsComicSource"),
@@ -195,7 +194,7 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
 
 )
 
-/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：39 颗文件 / 80 条，站点总数 96。 */
+/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：38 颗文件 / 77 条，站点总数 93。 */
 internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "feature/ComicDetailScreen.kt" to setOf("DownloadManager", "TagTranslationManager"),
@@ -219,11 +218,10 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("LocalFavoritesManager"),
-        "feature/settings/AppSettings.kt" to setOf("DownloadManager", "VeneraNetworkClient"),
+        "feature/settings/AppSettings.kt" to setOf("DownloadManager"),
         "feature/settings/LocalFavoritesSettings.kt" to setOf("LocalFavoritesManager"),
-        "feature/settings/NetworkSettings.kt" to setOf("VeneraNetworkClient"),
         "feature/settings/PreferredIpSpeedTestScreen.kt" to setOf("ComicSourceManager", "GelbooruAccount"),
-        "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "VeneraNetworkClient"),
+        "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
         "feature/sourcemanage/SauceNaoKeyCard.kt" to setOf("SauceNaoAccount"),
         "gallery/ui/GalleryArtistProfileScreen.kt" to setOf("DanbooruArtistClient", "GalleryArtistFollowsStore", "GelbooruClient", "PixivClient", "SafebooruClient", "YandeReClient"),
@@ -244,9 +242,9 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
  * 有了它，"文件 → 符号"的折叠就不会把重复点位藏起来，而它又不受行号漂移影响。
  * B0 当天 152 ⇒ B1 摘 14（内容守卫）⇒ B2 摘 23（偏好四颗与 stores）= 115。
  */
-internal const val SITE_TOTAL_GET_INSTANCE = 96
+internal const val SITE_TOTAL_GET_INSTANCE = 93
 
-/** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：22 颗文件 / 33 条。 */
+/** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：21 颗文件 / 32 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(
         "MainActivity.kt" to setOf("JsComicSource"),
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
@@ -257,7 +255,6 @@ internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("FavoriteImagesManager", "FavoriteImagesStore", "ReadingStatsManager", "ReadingStatsStore"),
         "feature/settings/GallerySettings.kt" to setOf("VeneraPreferences"),
-        "feature/settings/NetworkSettings.kt" to setOf("HostCircuitBreaker"),
         "feature/sourcemanage/ComicSourceScreen.kt" to setOf("ComicSourceManager"),
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "JsComicSource"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
@@ -279,13 +276,11 @@ internal val BASELINE_KEY_VALUE_STORE: Map<String, Int> = mapOf(
 
 )
 internal val BASELINE_BREAKER: Map<String, Int> = mapOf(
-    "feature/settings/NetworkSettings.kt" to 1,
     "gallery/ui/GalleryDailyScreen.kt" to 1,
     "gallery/ui/GalleryScreen.kt" to 1,
 )
-internal val BASELINE_RAW_OKHTTP: Map<String, Int> = mapOf(
-    "feature/sourcemanage/ComicSourceViewModel.kt" to 1,
-)
+/** B6 已清零：`feature/sourcemanage/ComicSourceViewModel.kt` 那笔 VM 内裸 okhttp 改引 `HttpTextFetch`。**这张表不许删** —— 它钉的是「以后再有 UI 直接拼 okhttp 请求就红」。 */
+internal val BASELINE_RAW_OKHTTP: Map<String, Int> = emptyMap()
 internal val BASELINE_PREFERRED_IP: Map<String, Int> = mapOf(
     "feature/settings/PreferredIpSettings.kt" to 2,
     "feature/settings/PreferredIpSpeedTestScreen.kt" to 3,

@@ -189,6 +189,10 @@ private class AndroidNetworkHygiene(private val context: Context) : NetworkHygie
     override fun unreachableHosts(): Set<String> = HostCircuitBreaker.openHosts()
 
     override fun rebuildHttpClient() = VeneraNetworkClient.getInstance(context).rebuildClient()
+
+    override fun httpCacheSizeBytes(): Long = VeneraNetworkClient.getInstance(context).httpCacheSizeBytes()
+
+    override fun clearHttpCache(): Long = VeneraNetworkClient.getInstance(context).clearHttpCache()
 }
 
 /**

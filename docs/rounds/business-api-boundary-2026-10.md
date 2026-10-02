@@ -55,7 +55,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 **VM 侧本轮不做构造注入**，改成字段一次性持有契约（`private val api = BusinessPorts.of(application)` + `private val prefs: ComicPreferences = api.comicPrefs`）。三条理由：18 处 `viewModel()` 里 **7 处落在冻结屏**（而 VM 文件本身一颗都不在冻结清单里 ⇒ 改动留在 VM 内是零豁免成本）；3 颗裸 `ViewModel()` 今天已零穿透；全仓零 `ViewModelProvider.Factory`，引入它等于新造一整个 DI 形状。**病因分两段**：①「实现类的名字出现在消费层」（125 行 import）本轮治；②「对象来自进程全局」只有构造注入能治，改完之后一颗 VM 的依赖恰好等于它字段声明里那几颗契约类型 —— **「能不能一眼列出依赖」就是本轮与下一轮的分界**。
 
-## 三、批次（B0–B4 已落地）
+## 三、批次（B0–B4、B6 已落地）
 
 | 批 | 内容 | 点位 | 状态 |
 |---|---|---|---|
@@ -65,7 +65,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 8 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
 | **B4** | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | ✅ 已落地 |
 | B5 | `FavoriteLibrary` + `OfflineLibrary`（契约随本批与守卫同批落地） | 18 | 待做，**允许整批砍掉** |
-| B6 | `NetworkHygiene` + `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | 待做 |
+| **B6** | `NetworkHygiene`（补 `httpCacheSizeBytes` / `clearHttpCache` 两枚）+ `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | ✅ 已落地 | |
 | B7' | 画廊六颗契约（`gallery/data/GalleryPorts.kt`，含三腿 `when(site)` 表四遍→一遍） | 57 | 待做 |
 
 **契约与守卫同批**：B2/B3/B5/B7' 的新契约文件与它们的白名单缩短在**同一颗提交**里 —— 沿用审计 `:230` 那条已写下的纪律「守卫用例必须和被守卫的动作同批落地，否则现在建它等于埋一条常红用例」。
@@ -76,14 +76,14 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 六条断言，底座是 `testsupport/RepoSources.kt` 的源码扫描（**定位不到仓根就 fail 并打印尝试过的路径**，`RepoSources.kt:11-13`：扫描类用例静默通过等于没有用例）：
 
-| 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 | B3 后 |
-|---|---|---|---|---|---|
-| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | 45 / 91 | **42 / 85** |
-| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | 45 / 115 | 41 / 103 | **39 / 96** |
-| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | 23 / 36 | **22 / 33** |
-| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | 1+3+1+5+15 处 | 同值 |
-| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | 45 颗 | **41 颗** |
-| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 | 全量 | 全量 |
+| 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 | B3 后 | B4 后 | B6 后 |
+|---|---|---|---|---|---|---|---|
+| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | 45 / 91 | 42 / 85 | 40 / 79 | **39 / 77** |
+| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | 45 / 115 | 41 / 103 | 39 / 96 | **38 / 93** |
+| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | 23 / 36 | 22 / 33 | 22 / 33 | **21 / 32** |
+| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | 1+3+1+5+15 处 | 同值 | 同值 | **1+2+0+5+15 处** |
+| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | 45 颗 | 41 颗 | 39 颗 | **38 颗** |
+| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 | 全量 | 全量 | 全量 | 全量 |
 
 三个已知坑都防住了（上一轮 A3/A5 首跑就是红在这三条上）：① 声明行不会命中（判据以 `.getInstance(` 与 `^import ` 为锚）；② 整行注释与 **尾随注释**都先切掉再判（`PreferenceStorageNamesTest.kt:80-87` 缺的正是第二步）；③ 跨两行的写法由 C 承担，它不依赖与 `getInstance` 同行。
 
@@ -181,6 +181,35 @@ app/src/main/java/com/venera/compose/gallery/data/
 **归因表两处不许删**：`HistoryDao` 与 `ReadingStatsManager` 现在零站点，条目仍保留 —— 断言 C 的 `IMPL_NAMES` 由归属表的键导出，删键等于给未来这两颗实现类的类型引用位开一口漏（这条写在表值里，免得下一个人当垃圾清掉）。
 
 **未验（挂账，与 B1/B2/B3 合并一次真机过）**：读完一章退出后历史页出现该条且顺序正确、历史页单条删除与多选删除、「清空历史」整表清空后的空态文案、统计页四块读数（汇总 / 14 天趋势 / 榜单 / 题材分布）、切「近 30 天 / 近 1 年」只重算题材那一块、阅读器退出时统计写入失败仍弹那句 Toast。
+
+### B6（2026-10-03）
+
+**改引 5 处**（B 站点 96 → **93**，A 79 → **77**，C 33 → **32**，E 出处 39 → **38 颗**，D 的熔断表 3 颗 → **2 颗**、`okhttp3.` 表 1 颗 → **0 颗**）。
+
+**这批含本轮唯一的缺陷修复，不是分层**。`feature/sourcemanage/ComicSourceViewModel.kt:569-571`（从 URL 装源）原来是：
+
+```kotlin
+val client = VeneraNetworkClient.getInstance(getApplication())
+val req = okhttp3.Request.Builder().url(url).build()
+val resp = client.okHttpClient.newCall(req).execute()
+val content = resp.body?.string()
+if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure(Exception("HTTP ${resp.code}: 获取脚本失败")) }
+```
+
+它绕过了 `VeneraNetworkClient.kt:46` 那一整套装配（`PersistentCookieJar`、限流拦截器、熔断拦截器、HTTP 缓存），后果可指认：从仓库 URL 装源拿不到 cookie、不受限流保护，失败原因被 okhttp 的原始异常替掉。现在走 `BusinessPorts.of(app).httpText.fetchText(url)`，判据逐条对拍：
+
+- `ok = isSuccessful && !body.isNullOrBlank()` 就写在适配器里（`NetworkApi.kt` 的语义第 2 条），与原来那两个条件同义，**没有把 `ok`/`code` 吞成 `String`**；
+- 失败分支仍拼 `HTTP ${resp.code}: 获取脚本失败`，一字未动；
+- 同步 `execute()` 仍留在调用方那层 `withContext(Dispatchers.IO)` 里（语义第 1 条：实现里再切一次上下文就是凭空多一跳）；
+- 抛出的异常仍被同一个 `catch (e: Exception)` 接住 → `Result.failure(e)`。
+
+**`NetworkHygiene` 因此比 B0 立的宽两枚**：`feature/settings/AppSettings.kt` 那三行（缓存读数 / 清除缓存 / 重建客户端）里前两枚当时不在契约上。补进来时保持**非 suspend** —— 调用点自己包着 `withContext(Dispatchers.IO)`，改成 suspend 就是换调度位置。`rebuildClient()` → `rebuildHttpClient()` 是本批唯一改了方法名的调用点（两处：`AppSettings.kt:192`、`NetworkSettings.kt:148`）。
+
+**为什么 `HostCircuitBreaker` 那两页不归本批**：`gallery/ui/GalleryDailyScreen.kt:107` 与 `GalleryScreen.kt:400` 的「刷新清熔断」按各侧自持要落 `gallery/data/GalleryPorts.kt` 的卫生口（与 B1 的 `GalleryContentGuard`、B2 的 `GalleryPreferences` 同一处），归 **B7'**。归属表里 `HostCircuitBreaker` 的默认因此从「B6」改成「B7'（漫画侧两处已收）」。
+
+**两张表清零后不许删**：`BASELINE_RAW_OKHTTP` 现在是 `emptyMap()`，`VeneraNetworkClient` 在归属表里零站点 —— 保留的理由与 B4 那两颗同名（断言 C 的 `IMPL_NAMES` 由归属表键导出；而 D 那张 okhttp 表的存在本身就是「以后再有 UI 直接拼请求就红」）。
+
+**未验（挂账，本轮真机项里优先级最高的一批）**：从 URL 装源**成功与失败各一次**（失败那条要看错误文案是否仍是 `HTTP <码>: 获取脚本失败`，这是本批唯一改了取径的行为面）、设置页「缓存 xx MB」读数与「清除缓存」后归零、改代理后重建客户端生效、网络设置页「重置网络状态」清熔断、画廊两页的刷新清熔断（这两处属 B7'，同批验）。
 
 ## 六、那 19 处为什么不收（已裁决：甲）
 

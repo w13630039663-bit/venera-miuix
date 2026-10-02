@@ -566,11 +566,12 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val result: Result<ComicSource> = withContext(Dispatchers.IO) {
                 try {
-                    val client = com.venera.compose.data.network.VeneraNetworkClient.getInstance(getApplication())
-                    val req = okhttp3.Request.Builder().url(url).build()
-                    val resp = client.okHttpClient.newCall(req).execute()
-                    val content = resp.body?.string()
-                    if (resp.isSuccessful && !content.isNullOrBlank()) {
+                    // 走 HttpTextFetch：同步 execute() 仍留在上面那层 withContext(Dispatchers.IO) 里，
+                    // 但这一笔从此带上 VeneraNetworkClient 装配的那一整套（cookie jar / 限流 / 熔断 / 缓存）。
+                    val resp = com.venera.compose.data.api.BusinessPorts.of(getApplication())
+                        .httpText.fetchText(url)
+                    val content = resp.body
+                    if (resp.ok && content != null) {
                         val name = url.substringAfterLast('/').takeIf { it.endsWith(".js") }
                         sourceManager.installJsSource(content, name)
                     } else {
