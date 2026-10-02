@@ -172,8 +172,10 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
      * 以及和 Android 的 `bindLong`/`bindDouble` 摆在一起读时对得上。
      *
      * 不要再往外说"不这么写两端字节就不同"：SQLite 的 REAL 恒为 8 字节，没有 4 字节 REAL 这一档，
-     * Float 与 Double 在存储层根本区分不出来（`JdbcSqliteDatabaseTest` 因此不再断这两族，
-     * 那条用例只断本层能决定的事：整数族不截断、驱动拒收的类型当场点名）。
+     * Float 与 Double 在存储层根本区分不出来（`JdbcSqliteDatabaseTest` 因此不再断这两族）。
+     * 那两条用例只断本层能决定的事：「绑定表」逐支钉死这张映射表，「参数绑定」走存储侧往返
+     * （整数族不截断、文本与 null 各归各位）。没有"驱动拒收的类型当场点名"那种断言 ——
+     * 2026-10-02 实测驱动连 `Char` 都收（不抛），编不出能红的"拒收"判据，故撤。
      * 真正跨端要对齐的是 Android `execSQL(sql, Object[])` 交给 SQLite 的列亲和性转换结果，
      * 那只能靠真机回归核，桌面侧的用例证不了。
      *

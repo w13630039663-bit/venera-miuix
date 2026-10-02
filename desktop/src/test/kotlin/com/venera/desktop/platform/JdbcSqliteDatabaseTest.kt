@@ -164,7 +164,8 @@ class JdbcSqliteDatabaseTest {
         // Float 在交给驱动之前就已升成 Double（0.1f 的精确值是 0.10000000149011612，不是 0.1）
         assertEquals(0.10000000149011612, db.bindable(0.1f))
         assertEquals(0.1, db.bindable(0.1))
-        // 不在表里的类型原样交出去，认不认由驱动决定（认不下就在 bind 处抛并点名，见下一条）
+        // 不在表里的类型原样交出去，认不认由驱动决定（2026-10-02 实测 sqlite-jdbc 3.53.4.0
+        // 连 Char 都收、不抛，所以这里只钉"原样交出去"，不设"驱动拒收"的期望）
         assertEquals("文", db.bindable("文"))
         assertEquals('A', db.bindable('A'))
         val blob = byteArrayOf(1, 2)
