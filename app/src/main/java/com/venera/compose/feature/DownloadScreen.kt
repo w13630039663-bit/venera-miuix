@@ -81,7 +81,7 @@ fun DownloadScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val topPadding = statusBarTop + 104.dp + 92.dp
+    val topPadding = statusBarTop + tokens.spacing.topBarFloor + 92.dp
     val currentList = if (selectedTab == 0) activeTasks else completedTasks
 
     Box(modifier = Modifier.fillMaxSize()) {

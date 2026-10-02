@@ -178,7 +178,18 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
   存储名扫描：`除白名单两处外不许再用内联字面量开存储` 全仓扫 `.kt`，白名单 = `ContentGuardManager`（冻结）
   + `AndroidKeyValueStore.kt`（平台实现本身，它必须调 `getSharedPreferences`）。
   未验：三处分享（阅读器单页 / 画廊原图原片 / CBZ 导出 / 备份导出）真机各点一次。
-- A4 待回写
+- A4 已落地。`VeneraSpacing.topBarFloor = 104.dp` 立为唯一声明（放在 `topBarCollapsedHeight=52` 旁，
+  同一个顶栏几何组），11 处非冻结点改引（有 `tokens` 在scope 的页走 `tokens.spacing.topBarFloor`、
+  其余走 `VeneraSpacing.topBarFloor` —— 两个接收者读的是同一份声明，`:523 val VeneraSpacing = VeneraSpacingTokens()`）。
+  剩余裸字面量实测 **7 处 / 6 颗文件，全部是冻结文件**（HomeScreen 1、HistoryScreen 2、FavoritesScreen 1、
+  SearchScreen 1、UnifiedExploreScreen 1、SourceSectionScreen 1），由 `TopBarFloorGuardTest` 三条用例钉住：
+  ① 值逐字 `== 104.dp`；② 非冻结处再抄一次即红（扫描跳过整行注释，否则 KDoc 里引这条口径的文字会误报
+  —— `HomeScreen:167`、`GalleryScreen:560` 与本文件 KDoc 三处就是这种引用）；③ 冻结白名单写成
+  **集合相等**而不是子集：冻结文件哪天解冻会少一项、用例即红，逼人来显式确认，白名单只许缩短。
+  行为零变更：常量值就是各页今天用的那个数，一分未改。
+  读数：`:app:testDebugUnitTest --rerun-tasks` **787 tests / 0 failures / 0 errors**（99 颗测试类）、
+  `:app:assembleDebug` 通过。未验：14 颗页首屏留白逐像素对比（本批改的是 8 颗页的书写形式，数值同源，
+  理论无差；仍要真机确认 `LocalComicScreen`/`StatsScreen` 这三行不是巧合同值）。
 - A5 待回写
 - A6 待回写
 

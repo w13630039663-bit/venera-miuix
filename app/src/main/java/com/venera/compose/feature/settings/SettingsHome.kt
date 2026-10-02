@@ -144,7 +144,7 @@ internal fun SettingsHome(
             scrollState = scrollState,
             scrollConnection = if (heroFile != null) null else topBarBehavior.nestedScrollConnection,
             backdrop = topBarBackdrop,
-            topPadding = statusBarTop + 104.dp,
+            topPadding = statusBarTop + tokens.spacing.topBarFloor,
             heroHeight = statusBarTop + tokens.spacing.settingsHeroHeight,
         )
 

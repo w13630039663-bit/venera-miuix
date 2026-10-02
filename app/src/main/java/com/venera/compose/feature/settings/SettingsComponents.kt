@@ -349,7 +349,7 @@ internal fun SettingsPage(
                         // hero 不在场：内容自顶栏折叠区下方开始（旧几何）；
                         // 在场：第一组卡**叠在图的下段上**（hero 占位已让出 overlap），
                         // 只留呼吸缝 —— 组标题落在图底溶接渐变带里，灰字仍可读。
-                        top = if (heroFile != null) tokens.spacing.space3 else statusBarTop + 104.dp,
+                        top = if (heroFile != null) tokens.spacing.space3 else statusBarTop + tokens.spacing.topBarFloor,
                         bottom = LocalBottomBarClearance.current,
                     ),
                 content = {

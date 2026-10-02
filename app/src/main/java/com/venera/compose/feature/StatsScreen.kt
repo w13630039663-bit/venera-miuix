@@ -112,7 +112,7 @@ fun StatsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = statusBarTop + 104.dp),
+                    .padding(top = statusBarTop + tokens.spacing.topBarFloor),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
@@ -126,7 +126,7 @@ fun StatsScreen(
                 contentPadding = PaddingValues(
                     start = 14.dp,
                     end = 14.dp,
-                    top = statusBarTop + 104.dp,
+                    top = statusBarTop + tokens.spacing.topBarFloor,
                     bottom = LocalBottomBarClearance.current,
                 ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),

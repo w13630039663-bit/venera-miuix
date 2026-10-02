@@ -162,7 +162,7 @@ fun ComicSourceScreen(
                 .fillMaxSize()
                 .nestedScroll(topBarBehavior.nestedScrollConnection)
                 .blurBackdropSource(topBarBackdrop),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + 104.dp, bottom = LocalBottomBarClearance.current + VeneraSpacing.space9),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + VeneraSpacing.topBarFloor, bottom = LocalBottomBarClearance.current + VeneraSpacing.space9),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (sourceRows.isEmpty()) {

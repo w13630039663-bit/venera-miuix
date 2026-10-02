@@ -179,7 +179,7 @@ fun LocalComicScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = statusBarTop + 104.dp),
+                        .padding(top = statusBarTop + tokens.spacing.topBarFloor),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
@@ -190,7 +190,7 @@ fun LocalComicScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = statusBarTop + 104.dp),
+                        .padding(top = statusBarTop + tokens.spacing.topBarFloor),
                     contentAlignment = Alignment.Center,
                 ) {
                     VeneraEmptyView(
@@ -215,7 +215,7 @@ fun LocalComicScreen(
                     contentPadding = PaddingValues(
                         start = tokens.spacing.rowHorizontal,
                         end = tokens.spacing.rowHorizontal,
-                        top = statusBarTop + 104.dp,
+                        top = statusBarTop + tokens.spacing.topBarFloor,
                         bottom = LocalBottomBarClearance.current,
                     ),
                     verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),

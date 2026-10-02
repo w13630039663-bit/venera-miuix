@@ -127,7 +127,7 @@ internal fun GalleryDailyScreen(
 
     // 二级页也用与主 Tab 同一条**顶栏避让地板**（口径出处见冻结声明第七轮），
     // 它没有常驻 chrome（搜索条在首页那一屏），所以只需地板本身。
-    val topPadding = statusBarTop + 104.dp
+    val topPadding = statusBarTop + VeneraSpacing.topBarFloor
 
     // 根节点是一层 Box：内容与顶栏是**兄弟**，顶栏靠 `align(TopCenter)` 叠在内容之上。
     // 形状与 `GalleryScreen` 那一屏逐字同构（页内自治：外壳不挂 TopAppBar）。

@@ -310,6 +310,23 @@ data class VeneraSpacingTokens(
      */
     val topBarCollapsedHeight: Dp = 52.dp,
     /**
+     * 顶栏地板 —— 页面内容首行要让开的**顶栏展开态高度**（系统状态栏 inset 之外再加这一段）。
+     *
+     * 104dp 不是新造数：它是 2026-10-03 清点时 14 颗页里逐字相同的那一个数
+     * （`statusBarTop + 104.dp` 共 18 处），今天把它从 18 份抄本收成一处声明。
+     *
+     * ⚠️ 两条纪律：
+     *  1. **地板与附加高不许混在同一条相加链里**。`DownloadScreen` 那种
+     *     `statusBarTop + 104 + 92`、`SourceSectionScreen` 那种 `104 + chipsHeight`，
+     *     一旦顶栏改高就分不清该动哪一段 —— 附加高各页自己留着，地板走这里。
+     *  2. 另有 **7 处落在冻结文件**里（HomeScreen、HistoryScreen×2、FavoritesScreen、
+     *     SearchScreen、UnifiedExploreScreen、SourceSectionScreen），本轮按
+     *     `FREEZE-STATEMENT.md:18`「禁止无明确需求的架构重构」不动它们，
+     *     由 `ui/tokens/TopBarFloorGuardTest` 把它们写成白名单钉住 ——
+     *     **白名单只许缩短，不许变长**：新页面抄 104.dp 会被用例打回。
+     */
+    val topBarFloor: Dp = 104.dp,
+    /**
      * 大标题 / 小标题的左内边距：Miuix `TopAppBarDefaults.TitlePadding` 的本地镜像。
      *
      * 结果态把搜索条件胶囊吸附到顶栏左上角时，横向起点要与大标题**同一个 x**，

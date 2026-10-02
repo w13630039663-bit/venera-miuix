@@ -541,7 +541,7 @@ fun GalleryScreen(
     }
 
     // 与其他主 Tab 完全一致的顶栏避让地板（口径出处见冻结声明第七轮）。
-    val topBarFloor = statusBarTop + 104.dp
+    val topBarFloor = statusBarTop + VeneraSpacing.topBarFloor
 
     /**
      * 网格的顶部避让 = 顶栏展开地板。
