@@ -1,6 +1,7 @@
 package com.venera.compose.ui.tokens
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -185,12 +186,16 @@ data class VeneraSpacingTokens(
     // Bottom Navigation Insets 契约（全局唯一真源）
     //
     // 责任划分：
-    //   1. 系统     -> navigationBars inset（由 WindowInsets 提供，谁都不许硬编码）
+    //   1. 系统      -> navigationBars inset（由 WindowInsets 提供，谁都不许硬编码）
     //   2. BottomBar -> 自身高度 + 自身与系统 inset 的间距（barBottomGap）
-    //   3. Screen   -> 只消费 [bottomBarClearance]，不得再自行叠加 Bar 高度
+    //   3. Screen   -> 只消费 [LocalBottomBarClearance]，不得再自行叠加 Bar 高度
     //
-    // 页面内容底部留白 = bottomBarClearance + navigationBars inset（由 Scaffold/NavHost 提供）。
-    // 任何页面都**禁止**再额外加 Spacer(bottomBarClearance) 或写 88dp/96dp 这类魔法数。
+    // 页面内容底部留白 = LocalBottomBarClearance.current + navigationBars inset（由 Scaffold/NavHost 提供）。
+    // 任何页面都**禁止**再额外加 Spacer(这笔留白) 或写 88dp/96dp 这类魔法数。
+    //
+    // 真源是 [LocalBottomBarClearance]，**不是**下面这个常量：常量只作为窄窗默认档值与单测基线存在，
+    // 页面一律不许直读它。档位判断（该留多少）收口在唯一的 provider 处，由 `wideScreenLayoutMode()`
+    // 驱动 —— 按档位的 `if` 散进各页面是要禁止的形态。
     // ────────────────────────────────────────────────────────────────────
 
     /** 悬浮底栏外壳高度（与 VeneraFloatingNavBar / LiquidGlass 的 64dp 保持一致）。 */
@@ -198,7 +203,10 @@ data class VeneraSpacingTokens(
     /** 底栏与系统导航栏之间的视觉间距。 */
     val bottomBarBottomGap: Dp = 12.dp,
     /**
-     * 页面内容需要为底部导航预留的净留白（= 底栏高度 + 底栏底部间距）。
+     * 底栏在位时页面内容需要预留的净留白（= 底栏高度 + 底栏底部间距）。
+     *
+     * ⚠️ **这个常量不是真源。** 它是窄窗（底栏可见那一档）的默认值兼单测基线；
+     * 页面要避让时读 [LocalBottomBarClearance]，直读本常量会让侧栏档的 FAB / 回到顶部钮浮空。
      *
      * 注意：**不含**系统 navigationBars inset —— 那部分由 Scaffold / NavHost 统一提供，
      * 页面若再加一次就会重复（这正是本轮修复的双重留白问题）。
@@ -513,6 +521,22 @@ data class VeneraMotionTokens(
 
 /** 静态间距实例：两套主题共用。 */
 val VeneraSpacing = VeneraSpacingTokens()
+
+/**
+ * 页面内容底部要为导航让出的净留白 —— 这条契约的**唯一真源**。
+ *
+ * 为什么必须是 Local 而不是常量：侧栏档（`Medium` / `Expanded`）整条底栏不渲染，
+ * 留白应归 0，而 24 个消费点若各自按档位写 `if`，同一个数就有 24 个来源，
+ * 「有底栏 ⟺ 有留白」这条不变量只能靠人记。收口成一个注入点后，档位判断只发生一次，
+ * 底栏可见性与这个值由同一个 `WideScreenLayoutMode` 驱动 —— 由构造保证，不靠纪律。
+ *
+ * 用 `compositionLocalOf` 不用 static：值会随窗口形态变化（自由窗口拉宽跨断点），
+ * static 会让整棵子树在跨档时不做最小重组。
+ *
+ * 默认值取窄窗（底栏在位）那一档，让未显式提供 provider 的子树（如独立 Activity 的页面）
+ * 仍拿到正确留白，而不是静默塌成 0。
+ */
+val LocalBottomBarClearance = compositionLocalOf { VeneraSpacing.bottomBarClearance }
 
 /** MD3 形状：跟随 Material3 默认圆角阶梯。 */
 val Md3Shapes = VeneraShapeTokens(

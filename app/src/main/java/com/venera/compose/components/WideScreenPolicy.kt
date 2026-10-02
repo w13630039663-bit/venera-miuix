@@ -12,15 +12,101 @@ package com.venera.compose.components
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraSpacing
 
-/** 宽屏档判定阈值：master 的 `changePoint`。 */
+/** 宽屏档判定阈值：master 的 `changePoint`（`consts.dart:2`）。 */
 private val WideScreenWidthThreshold = 600.dp
+
+/** master 的 `changePoint2`（`consts.dart:7`）。全仓唯一用法是 `nav:254` 的 `width > changePoint2`。 */
+private val WideScreenExpandedThreshold = 1300.dp
+
+/**
+ * 大屏档位：master `targetFormContext` 返回的 0 / 2 / 3 三态（跳过 1，那是 0→2 的动画中间态）。
+ *
+ * ⚠️ **名字是 MD3 的，阈值不是 MD3 的。**
+ * MD3 官方断点是 compact <600 / medium 600–839 / **expanded ≥840**；
+ * 本枚举取 **600 / 1300**，抄的是 master 的 `changePoint` 与 `changePoint2`。
+ * 本项目要对标的第一方是 Flutter master，不是 MD3 —— 看到 `Expanded` 不要按 840 判。
+ */
+enum class WideScreenLayoutMode { Compact, Medium, Expanded }
+
+/**
+ * 断点判定 —— **吃屏幕宽**（不是网格/容器实测宽）。
+ *
+ * 两类宽度回答的是不同问题，别混：「该换布局了吗」是设备形态的粗粒度判断，屏幕宽正是这个语义，
+ * 且照 master（`context.width` = `MediaQuery.size.width`）才可能与官方一致；
+ * 「该排几列」才用实测宽，那一条已经收口在 `ComicPresentationPolicy`，不要退回去。
+ *
+ * 比较符取 `>`：**恰好 600dp 归 `Compact`（仍算手机档）**。
+ * 这一点三方一致，别改成 `>=`：① master `nav:251` 原文 `if (width > changePoint) target = 2`，
+ * 600dp 上官方给的是底部胶囊而非侧栏；② 本仓既有单测 `wideScreenChromeMaxWidth(600.dp)`
+ * 断言返回 `null`（手机档无上限），改判会连带把 chrome 收口口径翻掉；
+ * ③ master 在 600 处三种写法并存（`>` 3 处 / `<` 9 处 / `>=` 1 处），
+ * 且 `consts.dart:1` 的注释与 `nav:251` 的代码互相矛盾 —— 那是官方的边界缺陷，不照抄。
+ *
+ * ⚠️ master 那 9 处 `<` 判的是 AppBar 用 shadow 还是 blur，与导航形态无关，
+ * 不构成「600 必须是手机」的独立证据；真正的依据是 `nav:251` 本身。
+ */
+fun wideScreenLayoutMode(screenWidth: Dp): WideScreenLayoutMode = when {
+    screenWidth > WideScreenExpandedThreshold -> WideScreenLayoutMode.Expanded
+    screenWidth > WideScreenWidthThreshold -> WideScreenLayoutMode.Medium
+    else -> WideScreenLayoutMode.Compact
+}
+
+/** master `_kFoldedSideBarWidth`（`navigation_bar.dart:132`）。 */
+private val FoldedSideBarWidth = 72.dp
+
+/** master `_kSideBarWidth`（`navigation_bar.dart:134`）。 */
+private val ExpandedSideBarWidth = 224.dp
+
+/**
+ * 侧栏宽度。抄的是 master 插值公式的**稳态值**，不是插值本身：
+ * `nav:310-312` 在 `value = 2/3` 时内容内缩算出来恰好等于 72 / 224，
+ * 即「内容内缩 == 侧栏宽」是这两条路线的自洽性保证。
+ */
+fun sideBarWidthFor(mode: WideScreenLayoutMode): Dp = when (mode) {
+    WideScreenLayoutMode.Compact -> 0.dp
+    WideScreenLayoutMode.Medium -> FoldedSideBarWidth
+    WideScreenLayoutMode.Expanded -> ExpandedSideBarWidth
+}
+
+/**
+ * 页面内容为底部导航预留的净留白。
+ *
+ * **批次 2 起三档分值**：Compact 76 / Medium 0 / Expanded 0。
+ *
+ * 为什么侧栏档归 0：master 在 `value >= 2` 时把整条底栏连同 overlay 层一起消失
+ * （`nav:933` `shouldShowAppBar = controller.value < 2` ⇒ false，`:972-974` 提前 return），
+ * 底栏不存在 ⇒ 没有需要避让的对象。留 76dp 会在侧栏档留下一条永远填不满的空空白。
+ *
+ * ⚠️ 归 0 的**前提是底栏真的不渲染**，两者必须同一颗提交落地。
+ * 批次 1 曾把三档都设 76 作中间态（那时底栏仍无条件渲染，提前归 0 会让平板档
+ * 最后一行内容被悬浮底栏压住 —— 只在侧栏档出现、手机档全好、回归测试抓不到）。
+ * 批次 2 的 [VeneraSideBar] 接管了侧栏档的导航，`Navigation.kt` 的底栏门同步加上了
+ * 档位判断 ⇒ 前提已成立。**若将来回退侧栏落地，必须同时把这两档改回 76。**
+ */
+fun bottomBarClearanceFor(mode: WideScreenLayoutMode): Dp = when (mode) {
+    WideScreenLayoutMode.Compact -> VeneraSpacing.bottomBarClearance
+    WideScreenLayoutMode.Medium,
+    WideScreenLayoutMode.Expanded -> 0.dp
+}
 
 /**
  * 宽屏档判定（平板 / 横向宽窗）：阈值唯一收口在本文件，
  * 组件内需要按档位换几何（如分段控制器加高）时只许调这个，不得各自抄 600。
+ *
+ * 保留签名、只改函数体：现有消费点全部只调列数/尺寸，没有一处结构分支，
+ * 它们要的是一个「是不是宽屏」的布尔，不需要档位 —— 一处都不用改。
+ * 出现第一个需要区分 `Medium` / `Expanded` 的消费点时再一次性替换掉它们。
  */
-fun isWideScreen(screenWidth: Dp): Boolean = screenWidth > WideScreenWidthThreshold
+@Deprecated(
+    "改用 wideScreenLayoutMode() 拿档位；本函数只是「!= Compact」的别名，" +
+        "保留是为了让只关心是否宽屏的消费点零改动。",
+    ReplaceWith("wideScreenLayoutMode(screenWidth) != WideScreenLayoutMode.Compact"),
+    level = DeprecationLevel.WARNING,
+)
+fun isWideScreen(screenWidth: Dp): Boolean =
+    wideScreenLayoutMode(screenWidth) != WideScreenLayoutMode.Compact
 
 /** master `_kGlassBarMaxWidth`。 */
 private val WideScreenMaxWidth = 540.dp

@@ -36,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
@@ -61,8 +62,12 @@ import com.venera.compose.components.VeneraAmbientBackground
 import android.app.Activity
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
+import com.venera.compose.components.VeneraSideBar
+import com.venera.compose.components.WideScreenLayoutMode
 import com.venera.compose.components.backdrop.VeneraLiquidGlassNavBar
 import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
+import com.venera.compose.components.bottomBarClearanceFor
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
@@ -79,6 +84,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.reader.ReaderSession
@@ -573,11 +579,35 @@ fun VeneraComposeApp() {
             drawContent()
         }
     } else null
+    // ── 底部留白的唯一注入点 ──
+    // 档位判断只在这一处发生，底栏可见性与 LocalBottomBarClearance 由同一个 mode 驱动 ——
+    // 「有底栏 ⟺ 有留白」由构造保证，而不是靠各页面自己记。
+    // 包在最外层 Box 之外（不是 Scaffold 的 slot 上）：内容层与底栏 overlay 是它的两个子节点，
+    // 这样两侧读到同一个数。宽度源与既有 11 处 isWideScreen 消费点同为 screenWidthDp。
+    val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
+    // 侧栏档（Medium/Expanded）用左侧栏替代底栏；Compact 档原样走底栏。
+    // 判定只在这一处发生 —— 底栏可见性、底部留白、侧栏有无三件事由同一个 layoutMode 驱动，
+    // 「有底栏 ⟺ 有留白 ⟺ 无侧栏」由构造保证，不靠各页面自己记。
+    val useSideBar = layoutMode != WideScreenLayoutMode.Compact
+    CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(layoutMode)) {
     Box(modifier = Modifier.fillMaxSize()) {
         VeneraAmbientBackground {
         val layoutDirection = LocalLayoutDirection.current
         // shared axis X 的 30dp 要换成 px，由库的 rememberSlideDistance 负责 density 取整。
         val slideDistance = rememberSlideDistance()
+        // ── 大屏侧栏 ──
+        // 侧栏只包**内容层**（下面那个 SharedTransitionLayout），不包底栏 overlay：
+        // 底栏 overlay 是 VeneraAmbientBackground 的兄弟节点，侧栏档已被 `!useSideBar` 门控掉。
+        // Compact 档 VeneraSideBar 内部直通 content（见该组件的 Compact 分支），
+        // 所以这里无条件调用即可，不需要在调用点分叉。
+        VeneraSideBar(
+            currentTab = currentTab,
+            onTabSelected = { tab ->
+                haptic()
+                navController.gotoTab(tab)
+            },
+            mode = layoutMode,
+        ) {
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             // ── 顶栏控制权已交还各页面（页内自治）──
             // 外壳不再挂 TopAppBar：统一顶栏 = 各页自身的 VeneraTopAppBar（大标题折叠 + 毛玻璃），
@@ -635,11 +665,12 @@ fun VeneraComposeApp() {
                     composable<HomeRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
                             AndroidHomeScreen(
-                                // 统一契约：页面只消费 bottomBarClearance（底栏高度 + 底栏底部间距）。
+                                // 统一契约：页面只消费底部留白，且真源是 LocalBottomBarClearance（本文件
+                                // 上方的注入点），不是 VeneraSpacing 里那个常量 —— 后者只是窄窗档默认值。
                                 // 系统 navigationBars inset 由上面的 NavHost padding 统一提供，
                                 // 页面**不得**再自行叠加 —— 此前 Liquid 88dp / fallback 8dp 的路径差异
                                 // 叠加 Home 内部 80dp Spacer，正是 168dp 双重留白的根因。
-                                bottomContentPadding = VeneraSpacing.bottomBarClearance,
+                                bottomContentPadding = LocalBottomBarClearance.current,
                                 animatedVisibilityScope = this,
                                 onSelect = ::openComic,
                                 onOpenHistory = {
@@ -987,7 +1018,8 @@ fun VeneraComposeApp() {
                     }
                 }
             }
-        }
+        } // ← SharedTransitionLayout
+        } // ← VeneraSideBar（侧栏只包内容层；Compact 档内部直通）
         // 玻璃底栏作为覆盖层叠在内容之上，位于录制层之外（Pixez 结构）。
         // 录制只覆盖页面内容，因此玻璃采样不会递归包含自身。
         // 用 Box 承担底部对齐：VeneraAmbientBackground 的 content 是普通 lambda，
@@ -1010,7 +1042,15 @@ fun VeneraComposeApp() {
             label = "galleryBottomBarHideOffset",
         )
         Box(modifier = Modifier.fillMaxSize()) {
-            if (currentTab != null && contentLayerBackdrop != null) {
+            // ── 大屏侧栏档：整条底栏不渲染，改由左侧栏承担导航（master `nav:933` 同款裁决）──
+            // master 的 `shouldShowAppBar = controller.value < 2` 同时门控顶栏（`:957`）、
+            // 底栏占位（`:967-968`）与整段 overlay（`:972-974` 提前 return）。
+            // 本仓顶栏是**页内自治**（各页自绘 VeneraTopAppBar），外壳管不到，
+            // 所以这里只关底栏；顶栏的收起在批次 2 之后按拍板项 13 另行处理。
+            //
+            // ⚠️ 底栏消失是 bottomBarClearanceFor 归 0 的**前提**（见 WideScreenPolicy.kt
+            // 那个函数的 KDoc）—— 两者必须同一批落地，回退侧栏时必须同时回退那两档。
+            if (currentTab != null && !useSideBar && contentLayerBackdrop != null) {
                 val isDark = LocalVeneraDarkTheme.current
                 VeneraLiquidGlassNavBar(
                     selectedTabIndex = { VeneraNavTab.entries.indexOf(currentTab) },
@@ -1047,7 +1087,7 @@ fun VeneraComposeApp() {
                         },
                     )
                 }
-            } else if (currentTab != null) {
+            } else if (currentTab != null && !useSideBar) {
                 // Fallback：普通悬浮底栏，作为**同样的 overlay** 承载。
                 //
                 // 关键：它与 Liquid Glass 共用完全相同的几何修饰符链
@@ -1073,5 +1113,6 @@ fun VeneraComposeApp() {
             }
         }
         }
+    }
     }
 }

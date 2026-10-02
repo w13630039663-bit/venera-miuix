@@ -80,6 +80,7 @@ import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.SearchOptionGroup
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
@@ -281,8 +282,8 @@ fun SharedTransitionScope.AndroidSearchScreen(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
                 top = baseTopPadding,
-                // 统一契约：主 Tab 避让底栏；下钻子页仅保留自身滚动留白。
-                bottom = if (consumesBottomBarClearance) VeneraSpacing.bottomBarClearance else tokens.spacing.space8,
+                // 统一契约：主 Tab 避让底栏；下钻子页仅保留自身滚动留白。开关保留，值从真源 Local 取。
+                bottom = if (consumesBottomBarClearance) LocalBottomBarClearance.current else tokens.spacing.space8,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap),
         ) {
@@ -433,7 +434,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
             visible = showBackToTop,
             modifier = Modifier.align(Alignment.BottomEnd),
             bottomOffset = if (consumesBottomBarClearance) {
-                VeneraSpacing.bottomBarClearance + VeneraSpacing.space9
+                LocalBottomBarClearance.current + VeneraSpacing.space9
             } else {
                 VeneraSpacing.space10
             },

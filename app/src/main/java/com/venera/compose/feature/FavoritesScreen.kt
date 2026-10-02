@@ -12,6 +12,7 @@ import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.gallery.ui.GalleryFavoritesBody
 import com.venera.compose.openGalleryPost
 import com.venera.compose.feature.favoriteimages.toComicItem
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 
@@ -431,8 +432,9 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         )
 
         // 右下角「顶置」按钮：下滑一段距离后淡入，点击回到列表顶部。
-        // 底部让位沿用与其他页面一致的契约（底栏 clearanc + 额外留白），不手写 magic number。
-        val favBackToTopBottom = VeneraSpacing.bottomBarClearance + VeneraSpacing.space9
+        // 底部让位读契约真源（LocalBottomBarClearance）再加额外留白，不手写 magic number。
+        // 直读 VeneraSpacing 那个常量会在侧栏档浮空 —— 那档底栏不渲染、留白应归 0。
+        val favBackToTopBottom = LocalBottomBarClearance.current + VeneraSpacing.space9
         androidx.compose.animation.AnimatedVisibility(
             visible = favHasScrolled,
             modifier = Modifier
@@ -810,7 +812,7 @@ private fun FavoriteGrid(
             start = tokens.spacing.space9,
             end = tokens.spacing.space9,
             top = topPadding,
-            bottom = VeneraSpacing.bottomBarClearance,
+            bottom = LocalBottomBarClearance.current,
         ),
         // 用户拍板：横向列间距 16dp、纵向行间距 12dp（横 ≈ 纵的 1.5 倍，消除「横散纵挤」）。
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space8),
