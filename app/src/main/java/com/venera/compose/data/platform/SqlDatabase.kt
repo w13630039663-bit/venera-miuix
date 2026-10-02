@@ -33,6 +33,15 @@ enum class SqlType { INTEGER, FLOAT, TEXT, BLOB, NULL }
 
 /** 结果集中一行的只读视图。全部按列名取值，列名大小写不敏感（与 SQLite 一致）。 */
 interface SqlRow {
+    /**
+     * 这一行有没有该列。
+     *
+     * 存在的理由：`local_favorite.db` 的收藏夹表里，追更三列是运行时按需 `ALTER` 上去的，
+     * 「列不存在」是合法状态（改造前用 `Cursor.getColumnIndex(...) < 0` 判）。
+     * 除此之外读列一律按名直读，读不到就抛 —— 这个成员只服务那一处「表结构本来就可选」。
+     */
+    fun has(name: String): Boolean
+
     fun isNull(name: String): Boolean
     fun typeOf(name: String): SqlType
     fun string(name: String): String?
@@ -69,6 +78,8 @@ class MappedSqlRow(values: Map<String, Any?>, types: Map<String, SqlType>) : Sql
             throw IllegalStateException("结果集没有列「$name」，现有列：${valueMap.keys}")
         }
     }
+
+    override fun has(name: String): Boolean = valueMap.containsKey(name)
 
     override fun isNull(name: String): Boolean {
         requireColumn(name)

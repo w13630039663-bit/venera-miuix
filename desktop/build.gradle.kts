@@ -20,16 +20,18 @@ kotlin { jvmToolchain(21) }
 kotlin.sourceSets["main"].kotlin {
     srcDir("../app/src/main/java/com/venera/compose/data/platform")
     exclude("android/**")
-    // Task 3：两端共享的建表 DDL。SchemaSql.kt 是零 android.* 依赖的纯字符串，编进桌面侧；
-    // data/db 其余文件还吃着 android.database.*（Task 4 的活），逐个点名排除。
+    // Task 3：两端共享的建表 DDL。
+    // Task 4a：`data/db` 的持久层核心已经全部脱离 android.*，整个目录进桌面编译，
+    // 只剩三个文件点名排除（清单见下方 exclude）。
     // 为什么不用 include：KGP 的 sourceSet 过滤器对整个 source set 生效而非单条 srcDir，
     // 实测 include("**/SchemaSql.kt") 会把本模块自己的源文件一并滤掉且 BUILD SUCCESSFUL（静默假绿），
-    // 故"只收 SchemaSql.kt"以点名排除取反实现；Task 4 让同目录脱离 android.* 后可撤本段 srcDir。
+    // 故排除只能按文件名点着写；剩下三个文件脱离 Android（VeneraDatabase 挪进 data/platform/android、
+    // 追更那颗等后台任务方案）后整段 srcDir 可以撤掉。
     srcDir("../app/src/main/java/com/venera/compose/data/db")
     exclude(
-        "ComicSourceDao.kt", "FavoriteDao.kt", "FavoriteModels.kt",
-        "FollowUpdatesRepository.kt", "FollowUpdatesWorker.kt", "HistoryDao.kt",
-        "LocalFavoriteDatabase.kt", "LocalFavoritesManager.kt", "VeneraDatabase.kt",
+        "VeneraDatabase.kt",            // Android 接线处：SQLiteOpenHelper 薄壳（R20 允许它留在原位）
+        "FollowUpdatesRepository.kt",   // 吃 ComicSourceManager（Android 侧网络/引擎那一坨）
+        "FollowUpdatesWorker.kt",       // WorkManager，桌面侧本阶段不做后台追更
     )
 }
 
@@ -55,6 +57,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // Task 3：JdbcSqliteDatabase 的驱动。坐标版本照阶段 1 方案 D3 写死（已在 Maven Central 核到）。
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
+    // Task 4a：LocalFavoritesManager.folderToJson 走 gson（阶段 1 方案对 org.json 的处置就是"换仓库已有的 gson"，
+    // 不再往桌面加第二颗 JSON 依赖）。:app 侧同一版本，见 libs.gson。
+    implementation(libs.gson)
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)

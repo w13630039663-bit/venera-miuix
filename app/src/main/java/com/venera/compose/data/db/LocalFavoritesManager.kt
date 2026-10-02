@@ -1,10 +1,9 @@
 package com.venera.compose.data.db
 
-import android.content.ContentValues
-import android.content.Context
-import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.venera.compose.data.platform.SqlDatabase
+import com.venera.compose.data.platform.SqlRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,11 +22,19 @@ import kotlinx.coroutines.withContext
  * - [version] 内容变更计数，UI 用它触发重新查询
  *
  * 所有写操作都在 IO 线程且包在事务里。
+ *
+ * 本轮改造点：这个类以前满手 `SQLiteDatabase` / `Cursor` / `ContentValues`，
+ * 现在只吃 [SqlDatabaseSource]（两个库的连接获取口）与 [FavoritesPreferences]（三项偏好），
+ * 不碰任何 Android 类型，所以它连同 `LocalFavoriteDatabase` 一起进了桌面的编译面。
+ * SQL 的语句文本、绑定参数、排序与去重口径逐条照搬改造前，只换了 API 形状。
  */
-class LocalFavoritesManager private constructor(private val context: Context) {
+class LocalFavoritesManager(
+    private val core: SqlDatabaseSource,
+    private val favorites: SqlDatabaseSource,
+    private val prefs: FavoritesPreferences,
+) {
 
-    private val dbHelper = LocalFavoriteDatabase.getInstance(context)
-    private val prefs = VeneraPreferences.getInstance(context)
+    private val dbHelper = LocalFavoriteDatabase(favorites)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _folders = MutableStateFlow<List<String>>(emptyList())
@@ -43,17 +50,22 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     /** 收藏夹表名来自用户输入，拼 SQL 前必须转义。 */
     private fun q(name: String): String = LocalFavoriteDatabase.quoteId(name)
 
+    /** 取一次写连接即触发 `local_favorite.db` 的建表/迁移（与原 `dbHelper.writableDatabase` 同义）。 */
+    private fun favWriter(): SqlDatabase = favorites.writer()
+
+    private fun favReader(): SqlDatabase = favorites.reader()
+
     fun init() {
         scope.launch {
-            // 触发 onCreate / onUpgrade
-            dbHelper.writableDatabase
+            // 触发建表（Android 侧即 helper 的 onCreate / onUpgrade）
+            favWriter()
             migrateLegacyFavorites()
             refreshFolders()
         }
     }
 
     private suspend fun refreshFolders() = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         val names = dbHelper.folderNames(db)
         _folders.value = names
         _counts.value = names.associateWith { countInternal(db, it) }
@@ -67,7 +79,7 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     // region ---- 收藏夹 ----
 
     suspend fun existsFolder(name: String): Boolean = withContext(Dispatchers.IO) {
-        dbHelper.folderNames(dbHelper.readableDatabase).contains(name)
+        dbHelper.folderNames(favReader()).contains(name)
     }
 
     /**
@@ -77,7 +89,7 @@ class LocalFavoritesManager private constructor(private val context: Context) {
      */
     suspend fun createFolder(name: String, renameWhenInvalidName: Boolean = false): String =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             var real = name
             if (real.isEmpty()) {
                 if (!renameWhenInvalidName) throw IllegalArgumentException("name is empty!")
@@ -99,26 +111,26 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     /** 重命名收藏夹（官方 `rename`）。 */
     suspend fun rename(before: String, after: String) = withContext(Dispatchers.IO) {
         if (before == after) return@withContext
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(before)) return@withContext
         if (dbHelper.folderNames(db).contains(after)) throw IllegalArgumentException("Folder is existing")
         dbHelper.renameFolderTable(db, before, after)
-        if (prefs.followUpdatesFolder.value == before) prefs.setFollowUpdatesFolder(after)
+        if (prefs.followUpdatesFolder == before) prefs.setFollowUpdatesFolder(after)
         notifyChanged()
     }
 
     /** 删除收藏夹（官方 `deleteFolder`）。 */
     suspend fun deleteFolder(name: String) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         dbHelper.dropFolderTable(db, name)
-        if (prefs.followUpdatesFolder.value == name) prefs.setFollowUpdatesFolder(null)
+        if (prefs.followUpdatesFolder == name) prefs.setFollowUpdatesFolder(null)
         dbHelper.updateOrder(db, dbHelper.folderNames(db))
         notifyChanged()
     }
 
     /** 调整收藏夹顺序（官方 `updateOrder`）。 */
     suspend fun updateOrder(folders: List<String>) = withContext(Dispatchers.IO) {
-        dbHelper.updateOrder(dbHelper.writableDatabase, folders)
+        dbHelper.updateOrder(favWriter(), folders)
         notifyChanged()
     }
 
@@ -129,19 +141,17 @@ class LocalFavoritesManager private constructor(private val context: Context) {
      * 备份导出这种"必须拿到当下真值"的场合用这个；UI 仍用 [folders]。
      */
     suspend fun currentFolders(): List<String> = withContext(Dispatchers.IO) {
-        dbHelper.folderNames(dbHelper.readableDatabase)
+        dbHelper.folderNames(favReader())
     }
 
     suspend fun folderComics(folder: String): Int = withContext(Dispatchers.IO) {
-        countInternal(dbHelper.readableDatabase, folder)
+        countInternal(favReader(), folder)
     }
 
-    private fun countInternal(db: SQLiteDatabase, folder: String): Int {
+    private fun countInternal(db: SqlDatabase, folder: String): Int {
         if (!dbHelper.folderNames(db).contains(folder)) return 0
-        db.rawQuery("SELECT count(*) AS c FROM ${q(folder)}", null).use { c ->
-            if (c.moveToFirst()) return c.getInt(0)
-        }
-        return 0
+        return db.query("SELECT count(*) AS c FROM ${q(folder)}").firstOrNull()
+            ?.long("c")?.toInt() ?: 0
     }
 
     // endregion
@@ -149,23 +159,19 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     // region ---- 收藏条目读取 ----
 
     suspend fun getFolderComics(folder: String): List<FavoriteItem> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext emptyList()
-        db.rawQuery("SELECT * FROM ${q(folder)} ORDER BY display_order", null).use { c ->
-            buildList { while (c.moveToNext()) add(rowToItem(c)) }
-        }
+        db.query("SELECT * FROM ${q(folder)} ORDER BY display_order").map { rowToItem(it) }
     }
 
     /** 所有收藏夹的全部条目（去重，官方按 `id + type` 判等）。 */
     suspend fun getAllComics(): List<FavoriteItem> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         val res = LinkedHashMap<Pair<String, Int>, FavoriteItem>()
         for (folder in dbHelper.folderNames(db)) {
-            db.rawQuery("SELECT * FROM ${q(folder)} ORDER BY display_order", null).use { c ->
-                while (c.moveToNext()) {
-                    val item = rowToItem(c)
-                    res.putIfAbsent(item.id to item.type, item)
-                }
+            db.query("SELECT * FROM ${q(folder)} ORDER BY display_order").forEach { row ->
+                val item = rowToItem(row)
+                res.putIfAbsent(item.id to item.type, item)
             }
         }
         res.values.toList()
@@ -173,24 +179,24 @@ class LocalFavoritesManager private constructor(private val context: Context) {
 
     /** 某条目在哪些收藏夹里（官方 `find`）。 */
     suspend fun find(id: String, sourceKey: String): List<String> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         val type = sourceKey.hashCode()
         dbHelper.folderNames(db).filter { folder ->
-            db.rawQuery(
+            db.query(
                 "SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1",
-                arrayOf(id, type.toString())
-            ).use { it.moveToFirst() }
+                id, type.toString()
+            ).isNotEmpty()
         }
     }
 
     suspend fun comicExists(folder: String, id: String, sourceKey: String): Boolean =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.readableDatabase
+            val db = favReader()
             if (!dbHelper.folderNames(db).contains(folder)) return@withContext false
-            db.rawQuery(
+            db.query(
                 "SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1",
-                arrayOf(id, sourceKey.hashCode().toString())
-            ).use { it.moveToFirst() }
+                id, sourceKey.hashCode().toString()
+            ).isNotEmpty()
         }
 
     /** 是否已被收藏（任意收藏夹）。官方 `isExist` 走内存 hashedIds，这里直接查库。 */
@@ -198,11 +204,11 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         withContext(Dispatchers.IO) { findInternal(id, sourceKey).isNotEmpty() }
 
     private fun findInternal(id: String, sourceKey: String): List<String> {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         val type = sourceKey.hashCode().toString()
         return dbHelper.folderNames(db).filter { folder ->
-            db.rawQuery("SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1", arrayOf(id, type))
-                .use { it.moveToFirst() }
+            db.query("SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1", id, type)
+                .isNotEmpty()
         }
     }
 
@@ -210,40 +216,36 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         withContext(Dispatchers.IO) {
             if (keyword.isBlank()) return@withContext getFolderComicsInternal(folder)
             val like = "%${keyword.trim()}%"
-            val db = dbHelper.readableDatabase
+            val db = favReader()
             if (!dbHelper.folderNames(db).contains(folder)) return@withContext emptyList()
-            db.rawQuery(
+            db.query(
                 "SELECT * FROM ${q(folder)} WHERE name LIKE ? OR author LIKE ? OR tags LIKE ? ORDER BY display_order",
-                arrayOf(like, like, like)
-            ).use { c -> buildList { while (c.moveToNext()) add(rowToItem(c)) } }
+                like, like, like
+            ).map { rowToItem(it) }
         }
 
     /** 跨收藏夹搜索（官方 `search`）。 */
     suspend fun search(keyword: String): List<FavoriteItem> = withContext(Dispatchers.IO) {
         if (keyword.isBlank()) return@withContext emptyList()
         val like = "%${keyword.trim()}%"
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         val res = LinkedHashMap<Pair<String, Int>, FavoriteItem>()
         for (folder in dbHelper.folderNames(db)) {
-            db.rawQuery(
+            db.query(
                 "SELECT * FROM ${q(folder)} WHERE name LIKE ? OR author LIKE ? OR tags LIKE ? ORDER BY display_order",
-                arrayOf(like, like, like)
-            ).use { c ->
-                while (c.moveToNext()) {
-                    val item = rowToItem(c)
-                    res.putIfAbsent(item.id to item.type, item)
-                }
+                like, like, like
+            ).forEach { row ->
+                val item = rowToItem(row)
+                res.putIfAbsent(item.id to item.type, item)
             }
         }
         res.values.toList()
     }
 
     private fun getFolderComicsInternal(folder: String): List<FavoriteItem> {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         if (!dbHelper.folderNames(db).contains(folder)) return emptyList()
-        db.rawQuery("SELECT * FROM ${q(folder)} ORDER BY display_order", null).use { c ->
-            return buildList { while (c.moveToNext()) add(rowToItem(c)) }
-        }
+        return db.query("SELECT * FROM ${q(folder)} ORDER BY display_order").map { rowToItem(it) }
     }
 
     // endregion
@@ -263,34 +265,22 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         order: Int? = null,
         updateTime: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) throw IllegalArgumentException("Folder does not exists")
         if (comicExistsInternal(db, folder, comic.id, comic.type)) return@withContext false
 
-        val displayOrder = order ?: if (prefs.newFavoriteAddTo.value == "end") {
+        val displayOrder = order ?: if (prefs.newFavoriteAddTo == "end") {
             maxValue(db, folder) + 1
         } else {
             minValue(db, folder) - 1
         }
 
-        val values = ContentValues().apply {
-            put("id", comic.id)
-            put("name", comic.name)
-            put("author", comic.author)
-            put("type", comic.type)
-            put("source_key", comic.sourceKey)
-            put("tags", tagsToString(comic.tags))
-            put("cover_path", comic.coverPath)
-            put("time", comic.time)
-            put("translated_tags", tagsToString(comic.tags))
-            put("display_order", displayOrder)
-        }
-        db.insertWithOnConflict(q(folder), null, values, SQLiteDatabase.CONFLICT_IGNORE)
+        insertIgnoringDuplicate(db, folder, comic, displayOrder)
 
         if (updateTime != null && dbHelper.hasColumn(db, folder, "last_update_time")) {
-            db.execSQL(
+            db.exec(
                 "UPDATE ${q(folder)} SET last_update_time = ? WHERE id = ? AND type = ?",
-                arrayOf(updateTime, comic.id, comic.type.toString())
+                updateTime, comic.id, comic.type.toString()
             )
         }
         notifyChanged()
@@ -304,7 +294,7 @@ class LocalFavoritesManager private constructor(private val context: Context) {
      * launch 一次 [refreshFolders]（对**每个**收藏夹做一次全表 count）。导入上千条时会
      * 排出上千个这样的协程，界面长时间卡顿。这里改成单事务 + 末尾只通知一次。
      *
-     * 去重口径与 [addComic] 一致，靠主键 `(id, type)` 上的 CONFLICT_IGNORE，
+     * 去重口径与 [addComic] 一致，靠主键 `(id, type)` 上的 IGNORE 语义，
      * 所以已存在的条目既不会写重、也不计入返回值。空 id 的行直接跳过 —— 落库就是一行
      * 看不见也删不掉的垃圾。
      *
@@ -313,36 +303,23 @@ class LocalFavoritesManager private constructor(private val context: Context) {
      */
     suspend fun addComics(folder: String, comics: List<FavoriteItem>): Int = withContext(Dispatchers.IO) {
         if (comics.isEmpty()) return@withContext 0
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) {
             throw IllegalArgumentException("Folder does not exists")
         }
 
         var added = 0
-        db.beginTransaction()
-        try {
+        db.inTransaction {
             var order = maxValue(db, folder)
             for (comic in comics) {
                 if (comic.id.isBlank()) continue
                 order++
-                val values = ContentValues().apply {
-                    put("id", comic.id)
-                    put("name", comic.name)
-                    put("author", comic.author)
-                    put("type", comic.type)
-                    put("source_key", comic.sourceKey)
-                    put("tags", tagsToString(comic.tags))
-                    put("cover_path", comic.coverPath)
-                    put("time", comic.time)
-                    put("translated_tags", tagsToString(comic.tags))
-                    put("display_order", order)
-                }
-                val rowId = db.insertWithOnConflict(q(folder), null, values, SQLiteDatabase.CONFLICT_IGNORE)
-                if (rowId != -1L) added++
+                // 改造前靠 `insertWithOnConflict` 返回 -1 判「没插进去」；门面不回报影响行数，
+                // 所以这里显式查一次主键 (id, type)。同一事务内前面插的行本就可见，判重口径一致。
+                if (comicExistsInternal(db, folder, comic.id, comic.type)) continue
+                insertIgnoringDuplicate(db, folder, comic, order)
+                added++
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         if (added > 0) notifyChanged()
         added
@@ -350,24 +327,26 @@ class LocalFavoritesManager private constructor(private val context: Context) {
 
     suspend fun deleteComicWithId(folder: String, id: String, sourceKey: String) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             if (!dbHelper.folderNames(db).contains(folder)) return@withContext
-            db.delete(q(folder), "id = ? AND type = ?", arrayOf(id, sourceKey.hashCode().toString()))
+            db.exec(
+                "DELETE FROM ${q(folder)} WHERE id = ? AND type = ?",
+                id, sourceKey.hashCode().toString()
+            )
             notifyChanged()
         }
 
     suspend fun batchDeleteComics(folder: String, comics: List<FavoriteItem>) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             if (!dbHelper.folderNames(db).contains(folder)) return@withContext
-            db.beginTransaction()
-            try {
+            db.inTransaction {
                 comics.forEach {
-                    db.delete(q(folder), "id = ? AND type = ?", arrayOf(it.id, it.type.toString()))
+                    db.exec(
+                        "DELETE FROM ${q(folder)} WHERE id = ? AND type = ?",
+                        it.id, it.type.toString()
+                    )
                 }
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
             }
             notifyChanged()
         }
@@ -375,18 +354,17 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     /** 在所有收藏夹中删除（官方 `batchDeleteComicsInAllFolders`）。 */
     suspend fun batchDeleteComicsInAllFolders(comics: List<FavoriteItem>) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
-            val folders = dbHelper.folderNames(db)
-            db.beginTransaction()
-            try {
+            val db = favWriter()
+            val names = dbHelper.folderNames(db)
+            db.inTransaction {
                 comics.forEach { item ->
-                    folders.forEach { folder ->
-                        db.delete(q(folder), "id = ? AND type = ?", arrayOf(item.id, item.type.toString()))
+                    names.forEach { folder ->
+                        db.exec(
+                            "DELETE FROM ${q(folder)} WHERE id = ? AND type = ?",
+                            item.id, item.type.toString()
+                        )
                     }
                 }
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
             }
             notifyChanged()
         }
@@ -394,23 +372,22 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     /** 移动单条到另一个收藏夹（官方 `moveFavorite`，目标插到开头）。 */
     suspend fun moveFavorite(sourceFolder: String, targetFolder: String, id: String, sourceKey: String) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             val names = dbHelper.folderNames(db)
             if (sourceFolder !in names || targetFolder !in names) return@withContext
             val type = sourceKey.hashCode().toString()
-            db.beginTransaction()
-            try {
-                db.execSQL(
+            db.inTransaction {
+                db.exec(
                     "INSERT OR IGNORE INTO ${q(targetFolder)} " +
                         "(id, name, author, type, source_key, tags, cover_path, time, display_order) " +
                         "SELECT id, name, author, type, source_key, tags, cover_path, time, ? " +
                         "FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
-                    arrayOf<Any?>(minValue(db, targetFolder) - 1, id, type)
+                    minValue(db, targetFolder) - 1, id, type
                 )
-                db.delete(q(sourceFolder), "id = ? AND type = ?", arrayOf(id, type))
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
+                db.exec(
+                    "DELETE FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
+                    id, type
+                )
             }
             notifyChanged()
         }
@@ -421,26 +398,19 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         targetFolder: String,
         comics: List<FavoriteItem>,
     ) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         val names = dbHelper.folderNames(db)
         if (sourceFolder !in names || targetFolder !in names) return@withContext
-        db.beginTransaction()
-        try {
+        db.inTransaction {
             var displayOrder = maxValue(db, targetFolder) + 1
             comics.forEach { item ->
-                db.execSQL(
-                    "INSERT OR IGNORE INTO ${q(targetFolder)} " +
-                        "(id, name, author, type, source_key, tags, cover_path, time, display_order) " +
-                        "SELECT id, name, author, type, source_key, tags, cover_path, time, ? " +
-                        "FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
-                    arrayOf<Any?>(displayOrder, item.id, item.type.toString())
+                copyRow(db, sourceFolder, targetFolder, displayOrder, item)
+                db.exec(
+                    "DELETE FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
+                    item.id, item.type.toString()
                 )
-                db.delete(q(sourceFolder), "id = ? AND type = ?", arrayOf(item.id, item.type.toString()))
                 displayOrder++
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         notifyChanged()
     }
@@ -451,64 +421,50 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         targetFolder: String,
         comics: List<FavoriteItem>,
     ) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         val names = dbHelper.folderNames(db)
         if (sourceFolder !in names || targetFolder !in names) return@withContext
-        db.beginTransaction()
-        try {
+        db.inTransaction {
             var displayOrder = maxValue(db, targetFolder) + 1
             comics.forEach { item ->
-                db.execSQL(
-                    "INSERT OR IGNORE INTO ${q(targetFolder)} " +
-                        "(id, name, author, type, source_key, tags, cover_path, time, display_order) " +
-                        "SELECT id, name, author, type, source_key, tags, cover_path, time, ? " +
-                        "FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
-                    arrayOf<Any?>(displayOrder, item.id, item.type.toString())
-                )
+                copyRow(db, sourceFolder, targetFolder, displayOrder, item)
                 displayOrder++
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         notifyChanged()
     }
 
     /** 手动排序：按给定顺序重写 display_order（官方 `reorder`）。 */
     suspend fun reorder(newFolder: List<FavoriteItem>, folder: String) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext
-        db.beginTransaction()
-        try {
+        db.inTransaction {
             newFolder.forEachIndexed { i, item ->
-                db.execSQL(
+                db.exec(
                     "UPDATE ${q(folder)} SET display_order = ? WHERE id = ? AND type = ?",
-                    arrayOf<Any?>(i, item.id, item.type.toString())
+                    i, item.id, item.type.toString()
                 )
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         notifyChanged()
     }
 
     suspend fun updateInfo(folder: String, comic: FavoriteItem) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext
-        db.execSQL(
+        db.exec(
             "UPDATE ${q(folder)} SET name = ?, author = ?, tags = ?, cover_path = ? WHERE id = ? AND type = ?",
-            arrayOf(comic.name, comic.author, tagsToString(comic.tags), comic.coverPath, comic.id, comic.type.toString())
+            comic.name, comic.author, tagsToString(comic.tags), comic.coverPath, comic.id, comic.type.toString()
         )
         notifyChanged()
     }
 
     suspend fun editTags(id: String, folder: String, tags: List<String>) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext
-        db.execSQL(
+        db.exec(
             "UPDATE ${q(folder)} SET tags = ? WHERE id = ?",
-            arrayOf(tagsToString(tags), id)
+            tagsToString(tags), id
         )
         notifyChanged()
     }
@@ -518,13 +474,12 @@ class LocalFavoritesManager private constructor(private val context: Context) {
      * 若是追更夹则顺带清掉 NEW 标记。
      */
     suspend fun onRead(id: String, sourceKey: String) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         val type = sourceKey.hashCode().toString()
-        val move = prefs.moveFavoriteAfterRead.value ?: return@withContext
-        val followFolder = prefs.followUpdatesFolder.value
+        val move = prefs.moveFavoriteAfterRead ?: return@withContext
+        val followFolder = prefs.followUpdatesFolder
 
-        db.beginTransaction()
-        try {
+        db.inTransaction {
             for (folder in dbHelper.folderNames(db)) {
                 if (!comicExistsInternal(db, folder, id, sourceKey.hashCode())) continue
                 val locationSql = when (move) {
@@ -533,22 +488,19 @@ class LocalFavoritesManager private constructor(private val context: Context) {
                     else -> ""
                 }
                 val updateFlag = if (followFolder == folder) "has_new_update = 0," else ""
-                db.execSQL(
+                db.exec(
                     "UPDATE ${q(folder)} SET $locationSql $updateFlag time = ? WHERE id = ? AND type = ?",
-                    arrayOf(FavoriteItem.currentTimeString(), id, type)
+                    FavoriteItem.currentTimeString(), id, type
                 )
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
         notifyChanged()
     }
 
     suspend fun clearAll() = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         dbHelper.folderNames(db).forEach { folder ->
-            db.delete(q(folder), null, null)
+            db.exec("DELETE FROM ${q(folder)}")
         }
         notifyChanged()
     }
@@ -559,54 +511,45 @@ class LocalFavoritesManager private constructor(private val context: Context) {
 
     suspend fun linkFolderToNetwork(folder: String, source: String, networkFolder: String) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
-            db.execSQL(
+            favWriter().exec(
                 "INSERT OR REPLACE INTO folder_sync (folder_name, source_key, source_folder) VALUES (?, ?, ?)",
-                arrayOf(folder, source, networkFolder)
+                folder, source, networkFolder
             )
             notifyChanged()
         }
 
     suspend fun unlinkFolderFromNetwork(folder: String) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
-        db.delete("folder_sync", "folder_name = ?", arrayOf(folder))
+        favWriter().exec("DELETE FROM folder_sync WHERE folder_name = ?", folder)
         notifyChanged()
     }
 
     data class FolderSyncInfo(val folder: String, val sourceKey: String?, val sourceFolder: String?)
 
     suspend fun getFolderSync(): List<FolderSyncInfo> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
-        db.rawQuery("SELECT folder_name, source_key, source_folder FROM folder_sync", null).use { c ->
-            buildList {
-                while (c.moveToNext()) {
-                    add(
-                        FolderSyncInfo(
-                            folder = c.getString(0),
-                            sourceKey = c.getString(1),
-                            sourceFolder = c.getString(2),
-                        )
-                    )
-                }
-            }
+        favReader().query("SELECT folder_name, source_key, source_folder FROM folder_sync").map { row ->
+            FolderSyncInfo(
+                folder = row.requiredString("folder_name"),
+                sourceKey = row.string("source_key"),
+                sourceFolder = row.string("source_folder"),
+            )
         }
     }
 
     suspend fun folderToJson(folder: String): String = withContext(Dispatchers.IO) {
-        val arr = org.json.JSONArray()
+        val arr = JsonArray()
         getFolderComicsInternal(folder).forEach { item ->
-            val obj = org.json.JSONObject()
-            obj.put("id", item.id)
-            obj.put("name", item.name)
-            obj.put("author", item.author)
-            obj.put("sourceKey", item.sourceKey)
-            obj.put("coverPath", item.coverPath)
-            obj.put("tags", org.json.JSONArray(item.tags))
-            arr.put(obj)
+            val obj = JsonObject()
+            obj.addProperty("id", item.id)
+            obj.addProperty("name", item.name)
+            obj.addProperty("author", item.author)
+            obj.addProperty("sourceKey", item.sourceKey)
+            obj.addProperty("coverPath", item.coverPath)
+            obj.add("tags", JsonArray().apply { item.tags.forEach { t -> add(t) } })
+            arr.add(obj)
         }
-        org.json.JSONObject().apply {
-            put("name", folder)
-            put("comics", arr)
+        JsonObject().apply {
+            addProperty("name", folder)
+            add("comics", arr)
         }.toString()
     }
 
@@ -616,7 +559,7 @@ class LocalFavoritesManager private constructor(private val context: Context) {
 
     suspend fun prepareTableForFollowUpdates(table: String, clearData: Boolean = true) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             if (!dbHelper.folderNames(db).contains(table)) return@withContext
             dbHelper.prepareTableForFollowUpdates(db, table, clearData)
             notifyChanged()
@@ -632,18 +575,18 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         sourceKey: String,
         updateTime: String,
     ) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext
         if (!dbHelper.hasColumn(db, folder, "last_update_time")) return@withContext
         val type = sourceKey.hashCode().toString()
-        val oldTime = db.rawQuery(
+        val oldTime = db.query(
             "SELECT last_update_time FROM ${q(folder)} WHERE id = ? AND type = ?",
-            arrayOf(id, type)
-        ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            id, type
+        ).firstOrNull()?.string("last_update_time")
         val hasNewUpdate = oldTime != updateTime
-        db.execSQL(
+        db.exec(
             "UPDATE ${q(folder)} SET last_update_time = ?, has_new_update = ?, last_check_time = ? WHERE id = ? AND type = ?",
-            arrayOf<Any?>(updateTime, if (hasNewUpdate) 1 else 0, System.currentTimeMillis(), id, type)
+            updateTime, if (hasNewUpdate) 1 else 0, System.currentTimeMillis(), id, type
         )
         notifyChanged()
     }
@@ -651,22 +594,21 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     /** 只刷新检查时间、不改更新状态（官方 `updateCheckTime`），用于节流。 */
     suspend fun updateCheckTime(folder: String, id: String, sourceKey: String) =
         withContext(Dispatchers.IO) {
-            val db = dbHelper.writableDatabase
+            val db = favWriter()
             if (!dbHelper.folderNames(db).contains(folder)) return@withContext
             if (!dbHelper.hasColumn(db, folder, "last_check_time")) return@withContext
-            db.execSQL(
+            db.exec(
                 "UPDATE ${q(folder)} SET last_check_time = ? WHERE id = ? AND type = ?",
-                arrayOf<Any?>(System.currentTimeMillis(), id, sourceKey.hashCode().toString())
+                System.currentTimeMillis(), id, sourceKey.hashCode().toString()
             )
         }
 
     suspend fun countUpdates(folder: String): Int = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext 0
         if (!dbHelper.hasColumn(db, folder, "has_new_update")) return@withContext 0
-        db.rawQuery("SELECT count(*) AS c FROM ${q(folder)} WHERE has_new_update = 1", null).use { c ->
-            if (c.moveToFirst()) c.getInt(0) else 0
-        }
+        db.query("SELECT count(*) AS c FROM ${q(folder)} WHERE has_new_update = 1").firstOrNull()
+            ?.long("c")?.toInt() ?: 0
     }
 
     /** 仅返回有新更新的条目（官方 `getUpdates`）。 */
@@ -678,34 +620,30 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         withContext(Dispatchers.IO) { queryUpdates(folder, onlyNew = false) }
 
     private fun queryUpdates(folder: String, onlyNew: Boolean): List<FavoriteItemWithUpdateInfo> {
-        val db = dbHelper.readableDatabase
+        val db = favReader()
         if (!dbHelper.folderNames(db).contains(folder)) return emptyList()
         if (!dbHelper.hasColumn(db, folder, "has_new_update")) return emptyList()
         val where = if (onlyNew) " WHERE has_new_update = 1" else ""
-        return db.rawQuery("SELECT * FROM ${q(folder)}$where", null).use { c ->
-            buildList {
-                while (c.moveToNext()) {
-                    add(
-                        FavoriteItemWithUpdateInfo(
-                            item = rowToItem(c),
-                            updateTime = c.optString("last_update_time"),
-                            hasNewUpdate = c.optInt("has_new_update") == 1,
-                            lastCheckTime = c.optLong("last_check_time"),
-                        )
-                    )
-                }
-            }
+        return db.query("SELECT * FROM ${q(folder)}$where").map { row ->
+            FavoriteItemWithUpdateInfo(
+                item = rowToItem(row),
+                // 保持「读不到就是空串」：官方那侧靠空串与 null 的差别不多，但 UI 的
+                // description 会把 null 显示成 "Unknown"、空串显示成空 —— 这里不替它改口径。
+                updateTime = row.optString("last_update_time"),
+                hasNewUpdate = row.optInt("has_new_update") == 1,
+                lastCheckTime = row.optLongOrNull("last_check_time"),
+            )
         }
     }
 
     suspend fun markAsRead(id: String, sourceKey: String) = withContext(Dispatchers.IO) {
-        val folder = prefs.followUpdatesFolder.value ?: return@withContext
-        val db = dbHelper.writableDatabase
+        val folder = prefs.followUpdatesFolder ?: return@withContext
+        val db = favWriter()
         if (!dbHelper.folderNames(db).contains(folder)) return@withContext
         if (!dbHelper.hasColumn(db, folder, "has_new_update")) return@withContext
-        db.execSQL(
+        db.exec(
             "UPDATE ${q(folder)} SET has_new_update = 0 WHERE id = ? AND type = ?",
-            arrayOf(id, sourceKey.hashCode().toString())
+            id, sourceKey.hashCode().toString()
         )
         notifyChanged()
     }
@@ -714,28 +652,56 @@ class LocalFavoritesManager private constructor(private val context: Context) {
 
     // region ---- 内部工具 ----
 
-    private fun comicExistsInternal(db: SQLiteDatabase, folder: String, id: String, type: Int): Boolean {
-        db.rawQuery("SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1", arrayOf(id, type.toString()))
-            .use { return it.moveToFirst() }
+    /** 原 `insertWithOnConflict(表, null, values, CONFLICT_IGNORE)` 的等价语句，列序同原 ContentValues。 */
+    private fun insertIgnoringDuplicate(
+        db: SqlDatabase,
+        folder: String,
+        comic: FavoriteItem,
+        displayOrder: Int,
+    ) {
+        db.exec(
+            "INSERT OR IGNORE INTO ${q(folder)} " +
+                "(id, name, author, type, source_key, tags, cover_path, time, translated_tags, display_order) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            comic.id, comic.name, comic.author, comic.type, comic.sourceKey,
+            tagsToString(comic.tags), comic.coverPath, comic.time, tagsToString(comic.tags), displayOrder
+        )
     }
 
-    private fun maxValue(db: SQLiteDatabase, folder: String): Int {
-        db.rawQuery("SELECT MAX(display_order) AS max_value FROM ${q(folder)}", null).use { c ->
-            if (c.moveToFirst()) return c.getInt(0)
-        }
-        return 0
+    /** 跨夹搬运（官方那条 `INSERT OR IGNORE ... SELECT`，批量移动与批量复制共用）。 */
+    private fun copyRow(
+        db: SqlDatabase,
+        sourceFolder: String,
+        targetFolder: String,
+        displayOrder: Int,
+        item: FavoriteItem,
+    ) {
+        db.exec(
+            "INSERT OR IGNORE INTO ${q(targetFolder)} " +
+                "(id, name, author, type, source_key, tags, cover_path, time, display_order) " +
+                "SELECT id, name, author, type, source_key, tags, cover_path, time, ? " +
+                "FROM ${q(sourceFolder)} WHERE id = ? AND type = ?",
+            displayOrder, item.id, item.type.toString()
+        )
     }
 
-    private fun minValue(db: SQLiteDatabase, folder: String): Int {
-        db.rawQuery("SELECT MIN(display_order) AS min_value FROM ${q(folder)}", null).use { c ->
-            if (c.moveToFirst()) return c.getInt(0)
-        }
-        return 0
-    }
+    private fun comicExistsInternal(db: SqlDatabase, folder: String, id: String, type: Int): Boolean =
+        db.query(
+            "SELECT 1 FROM ${q(folder)} WHERE id = ? AND type = ? LIMIT 1",
+            id, type.toString()
+        ).isNotEmpty()
 
-    private fun rowToItem(c: Cursor): FavoriteItem = FavoriteItem(
-        id = c.getString(c.getColumnIndexOrThrow("id")),
-        name = c.getString(c.getColumnIndexOrThrow("name")),
+    private fun maxValue(db: SqlDatabase, folder: String): Int =
+        db.query("SELECT MAX(display_order) AS max_value FROM ${q(folder)}").firstOrNull()
+            ?.long("max_value")?.toInt() ?: 0
+
+    private fun minValue(db: SqlDatabase, folder: String): Int =
+        db.query("SELECT MIN(display_order) AS min_value FROM ${q(folder)}").firstOrNull()
+            ?.long("min_value")?.toInt() ?: 0
+
+    private fun rowToItem(c: SqlRow): FavoriteItem = FavoriteItem(
+        id = c.requiredString("id"),
+        name = c.requiredString("name"),
         author = c.optString("author"),
         sourceKey = c.optString("source_key"),
         tags = stringToTags(c.optString("tags")),
@@ -749,57 +715,36 @@ class LocalFavoritesManager private constructor(private val context: Context) {
     private fun stringToTags(s: String): List<String> =
         s.split(",").filter { it.isNotBlank() }
 
-    private fun Cursor.optString(column: String): String {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) "" else (getString(idx) ?: "")
-    }
-
-    private fun Cursor.optInt(column: String): Int {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) 0 else getInt(idx)
-    }
-
-    private fun Cursor.optLong(column: String): Long? {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) null else (if (isNull(idx)) null else getLong(idx))
-    }
-
     /**
      * 一次性迁移：把旧 `venera_core.db` 的 `comic_favorite` 单表数据搬进新的
      * 「每夹一表」结构。旧表遷移后即清空，避免重复搬家。
      */
     private fun migrateLegacyFavorites() {
-        val legacy = VeneraDatabase.getInstance(context).readableDatabase
-        val target = dbHelper.writableDatabase
-        val hasLegacy = legacy.rawQuery(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='comic_favorite'", null
-        ).use { it.moveToFirst() }
+        val legacy = core.reader()
+        val target = favWriter()
+        val hasLegacy = legacy.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='comic_favorite'"
+        ).isNotEmpty()
         if (!hasLegacy) return
 
-        val rows = mutableListOf<LegacyRow>()
-        legacy.rawQuery("SELECT * FROM comic_favorite", null).use { c ->
-            while (c.moveToNext()) {
-                rows.add(
-                    LegacyRow(
-                        comicId = c.optStringRaw("comic_id"),
-                        title = c.optStringRaw("title"),
-                        author = c.optStringRaw("author"),
-                        coverUrl = c.optStringRaw("cover_url"),
-                        sourceName = c.optStringRaw("source_name"),
-                        folderName = c.optStringRaw("folder_name").ifBlank { LocalFavoriteDatabase.DEFAULT_FOLDER },
-                        tags = c.optStringRaw("tags"),
-                        hasUpdate = c.optIntRaw("has_update"),
-                        latestChapter = c.optStringRaw("latest_chapter"),
-                        createdAt = c.optLongRaw("created_at"),
-                    )
-                )
-            }
+        val rows = legacy.query("SELECT * FROM comic_favorite").map { c ->
+            LegacyRow(
+                comicId = c.optString("comic_id"),
+                title = c.optString("title"),
+                author = c.optString("author"),
+                coverUrl = c.optString("cover_url"),
+                sourceName = c.optString("source_name"),
+                folderName = c.optString("folder_name").ifBlank { LocalFavoriteDatabase.DEFAULT_FOLDER },
+                tags = c.optString("tags"),
+                hasUpdate = c.optInt("has_update"),
+                latestChapter = c.optString("latest_chapter"),
+                createdAt = c.optLongOrZero("created_at"),
+            )
         }
         if (rows.isEmpty()) return
 
         val existingFolders = dbHelper.folderNames(target).toMutableSet()
-        target.beginTransaction()
-        try {
+        target.inTransaction {
             rows.forEach { r ->
                 val folder = r.folderName.ifBlank { LocalFavoriteDatabase.DEFAULT_FOLDER }
                 if (folder !in existingFolders) {
@@ -807,49 +752,26 @@ class LocalFavoritesManager private constructor(private val context: Context) {
                     existingFolders.add(folder)
                 }
                 val type = r.sourceName.hashCode()
-                val values = ContentValues().apply {
-                    put("id", r.comicId)
-                    put("name", r.title)
-                    put("author", r.author)
-                    put("type", type)
-                    put("source_key", r.sourceName)
-                    put("tags", r.tags)
-                    put("cover_path", r.coverUrl)
-                    put("time", FavoriteItem.currentTimeString(r.createdAt))
-                    put("translated_tags", r.tags)
-                    put("display_order", maxValue(target, folder) + 1)
-                }
-                target.insertWithOnConflict(q(folder), null, values, SQLiteDatabase.CONFLICT_IGNORE)
+                target.exec(
+                    "INSERT OR IGNORE INTO ${q(folder)} " +
+                        "(id, name, author, type, source_key, tags, cover_path, time, translated_tags, display_order) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    r.comicId, r.title, r.author, type, r.sourceName, r.tags, r.coverUrl,
+                    FavoriteItem.currentTimeString(r.createdAt), r.tags,
+                    maxValue(target, folder) + 1
+                )
                 if (r.hasUpdate == 1 && r.latestChapter.isNotBlank()) {
                     dbHelper.prepareTableForFollowUpdates(target, folder, clearData = false)
-                    target.execSQL(
+                    target.exec(
                         "UPDATE ${q(folder)} SET last_update_time = ?, has_new_update = 1 WHERE id = ? AND type = ?",
-                        arrayOf(r.latestChapter, r.comicId, type.toString())
+                        r.latestChapter, r.comicId, type.toString()
                     )
                 }
             }
-            target.setTransactionSuccessful()
-        } finally {
-            target.endTransaction()
         }
         // 旧表清空，防止二次迁移
-        VeneraDatabase.getInstance(context).writableDatabase.delete("comic_favorite", null, null)
+        core.writer().exec("DELETE FROM comic_favorite")
         _version.value++
-    }
-
-    private fun Cursor.optStringRaw(column: String): String {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) "" else (getString(idx) ?: "")
-    }
-
-    private fun Cursor.optIntRaw(column: String): Int {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) 0 else getInt(idx)
-    }
-
-    private fun Cursor.optLongRaw(column: String): Long {
-        val idx = getColumnIndex(column)
-        return if (idx < 0) 0L else getLong(idx)
     }
 
     // endregion
@@ -872,13 +794,26 @@ class LocalFavoritesManager private constructor(private val context: Context) {
         @Volatile
         private var INSTANCE: LocalFavoritesManager? = null
 
-        fun getInstance(context: Context): LocalFavoritesManager {
+        /**
+         * 兼容既有调用点的取用写法（UI / ViewModel / 备份与导入递的是 Android 的 Context）。
+         *
+         * 参数类型只能是 `Any`：本层不许再出现 Android 的 Context 类型，句柄原样交给
+         * 平台装的 factory 去解释（Android 侧不是 Context 就抛）。首次取用时才建接线口，
+         * 时机与改造前 `getInstance(context)` 里现取 helper 完全一致。
+         */
+        fun getInstance(context: Any): LocalFavoritesManager {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE
-                    ?: LocalFavoritesManager(context.applicationContext).also {
+                INSTANCE ?: run {
+                    val ports = DatabasePorts.of(context)
+                    LocalFavoritesManager(
+                        core = ports.core,
+                        favorites = ports.localFavorites,
+                        prefs = ports.favoritesPreferences,
+                    ).also {
                         INSTANCE = it
                         it.init()
                     }
+                }
             }
         }
     }

@@ -1,12 +1,10 @@
 package com.venera.compose.data.db
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import com.venera.compose.data.platform.SqlDatabase
 import com.venera.compose.data.platform.quoteIdentifier
 
 /**
- * 本地收藏数据库
+ * 本地收藏数据库（`local_favorite.db`）的表结构与收藏夹增删改查。
  *
  * 1:1 对齐原版 `lib/foundation/favorites.dart` 所用到的 `local_favorite.db`：
  *
@@ -22,86 +20,48 @@ import com.venera.compose.data.platform.quoteIdentifier
  * 原版存的是 Dart `String.hashCode`，JVM 与 Dart 的哈希算法不同、无法复刻同一数值，
  * 且哈希不可逆 ⇒ 官方靠 `ComicType` 反查源，我们没有等价机制，
  * 因此**新增 `source_key TEXT` 列**保存可读来源。这是必要的适配，不是偏离。
+ *
+ * 本轮改造点：这个类以前**就是** `SQLiteOpenHelper`，
+ * 建表/迁移回调只有 Android 有。现在它不碰任何 Android 类型：
+ *  - 底层连接从 [SqlDatabaseSource] 现取，SQL 全部走 [SqlDatabase]；
+ *  - 建库/升库编排搬到 [LocalFavoriteDbSchema]（两端共用一份），Android 的 helper 壳在
+ *    `data/platform/android/AndroidLocalFavoriteOpenHelper`，只转发回调；
+ *  - 方法签名的形状（可选 `db` 参数、缺省取当前连接）与改造前一致，调用点无需改口径。
  */
-class LocalFavoriteDatabase private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
-
-    override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS folder_order (
-                folder_name TEXT PRIMARY KEY,
-                order_value INTEGER
-            );
-            """.trimIndent()
-        )
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS folder_sync (
-                folder_name TEXT PRIMARY KEY,
-                source_key TEXT,
-                source_folder TEXT
-            );
-            """.trimIndent()
-        )
-        createFolderTable(db, DEFAULT_FOLDER)
-        db.execSQL(
-            "INSERT OR IGNORE INTO folder_order(folder_name, order_value) VALUES (?, 0)",
-            arrayOf(DEFAULT_FOLDER)
-        )
-    }
-
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // v1 为首个版本，暂无历史数据需要迁移。
-    }
+class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
 
     // region ---- 收藏夹表（动态表名） ----
 
     /**
      * 建一张收藏夹表。表名即文件夹名，来自用户输入，
-     * 因此必须经过 [quoteId] 转义（原版 Dart 直接字符串插值，存在注入风险，这里不照搬）。
+     * 因此必须经过 [quoteIdentifier] 转义（原版 Dart 直接字符串插值，存在注入风险，这里不照搬）。
+     * 语句文本的唯一出处是 [LocalFavoriteDbSchema.folderTableCreate]。
      */
-    fun createFolderTable(db: SQLiteDatabase, name: String) {
-        db.execSQL(
-            """
-            CREATE TABLE IF NOT EXISTS ${quoteId(name)}(
-                id TEXT,
-                name TEXT,
-                author TEXT,
-                type INTEGER,
-                source_key TEXT,
-                tags TEXT,
-                cover_path TEXT,
-                time TEXT,
-                display_order INTEGER,
-                translated_tags TEXT,
-                PRIMARY KEY (id, type)
-            );
-            """.trimIndent()
-        )
-        db.execSQL(
+    fun createFolderTable(db: SqlDatabase = source.writer(), name: String) {
+        db.exec(LocalFavoriteDbSchema.folderTableCreate(name))
+        db.exec(
             "INSERT OR IGNORE INTO folder_order(folder_name, order_value) VALUES (?, ?)",
-            arrayOf<Any?>(name, 0)
+            name, 0
         )
     }
 
     /** 删除收藏夹 = 删表 + 清掉 order / sync 记录。 */
-    fun dropFolderTable(db: SQLiteDatabase, name: String) {
-        db.execSQL("DROP TABLE IF EXISTS ${quoteId(name)}")
-        db.delete("folder_order", "folder_name = ?", arrayOf(name))
-        db.delete("folder_sync", "folder_name = ?", arrayOf(name))
+    fun dropFolderTable(db: SqlDatabase = source.writer(), name: String) {
+        db.exec("DROP TABLE IF EXISTS ${quoteId(name)}")
+        db.exec("DELETE FROM folder_order WHERE folder_name = ?", name)
+        db.exec("DELETE FROM folder_sync WHERE folder_name = ?", name)
     }
 
     /** 重命名收藏夹（SQLite 的 ALTER TABLE ... RENAME TO 会保留数据与索引）。 */
-    fun renameFolderTable(db: SQLiteDatabase, oldName: String, newName: String) {
+    fun renameFolderTable(db: SqlDatabase, oldName: String, newName: String) {
         // 顺序值必须在删除旧记录之前取，否则会读成 0
         val order = folderOrderOf(db, oldName)
-        db.execSQL("ALTER TABLE ${quoteId(oldName)} RENAME TO ${quoteId(newName)}")
-        db.delete("folder_order", "folder_name = ?", arrayOf(oldName))
-        db.delete("folder_sync", "folder_name = ?", arrayOf(oldName))
-        db.execSQL(
+        db.exec("ALTER TABLE ${quoteId(oldName)} RENAME TO ${quoteId(newName)}")
+        db.exec("DELETE FROM folder_order WHERE folder_name = ?", oldName)
+        db.exec("DELETE FROM folder_sync WHERE folder_name = ?", oldName)
+        db.exec(
             "INSERT OR REPLACE INTO folder_order(folder_name, order_value) VALUES (?, ?)",
-            arrayOf<Any?>(newName, order)
+            newName, order
         )
     }
 
@@ -109,89 +69,79 @@ class LocalFavoriteDatabase private constructor(context: Context) :
      * 追更前置：给收藏夹表补上三列。官方是运行时按需 ALTER，这里同样按需，
      * 以便与官方的「未开启追更的夹子没有这些列」状态保持一致。
      */
-    fun prepareTableForFollowUpdates(db: SQLiteDatabase, table: String, clearData: Boolean = true) {
+    fun prepareTableForFollowUpdates(
+        db: SqlDatabase = source.writer(),
+        table: String,
+        clearData: Boolean = true,
+    ) {
         if (!hasColumn(db, table, "last_update_time")) {
-            db.execSQL("ALTER TABLE ${quoteId(table)} ADD COLUMN last_update_time TEXT")
+            db.exec("ALTER TABLE ${quoteId(table)} ADD COLUMN last_update_time TEXT")
         }
         if (!hasColumn(db, table, "has_new_update")) {
-            db.execSQL("ALTER TABLE ${quoteId(table)} ADD COLUMN has_new_update INTEGER")
+            db.exec("ALTER TABLE ${quoteId(table)} ADD COLUMN has_new_update INTEGER")
         }
         if (clearData) {
-            db.execSQL("UPDATE ${quoteId(table)} SET has_new_update = 0")
+            db.exec("UPDATE ${quoteId(table)} SET has_new_update = 0")
         }
         if (!hasColumn(db, table, "last_check_time")) {
-            db.execSQL("ALTER TABLE ${quoteId(table)} ADD COLUMN last_check_time INTEGER")
+            db.exec("ALTER TABLE ${quoteId(table)} ADD COLUMN last_check_time INTEGER")
         }
     }
 
-    fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean {
-        db.rawQuery("PRAGMA table_info(${quoteId(table)})", null).use { c ->
-            val idx = c.getColumnIndex("name")
-            while (c.moveToNext()) {
-                if (c.getString(idx) == column) return true
-            }
-        }
-        return false
-    }
+    /** 列是否存在（`PRAGMA table_info`）；表不存在时为 false，与改造前一致。 */
+    fun hasColumn(db: SqlDatabase = source.reader(), table: String, column: String): Boolean =
+        db.query("PRAGMA table_info(${quoteId(table)})").any { it.string("name") == column }
 
     // endregion
 
     // region ---- 文件夹清单与排序 ----
 
     /** 所有收藏夹名，按 folder_order 排序（对应官方 `_getFolderNamesWithDB`）。 */
-    fun folderNames(db: SQLiteDatabase = readableDatabase): List<String> {
-        val folders = mutableListOf<String>()
-        db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { c ->
-            while (c.moveToNext()) {
-                folders.add(c.getString(0))
-            }
-        }
+    fun folderNames(db: SqlDatabase = source.reader()): List<String> {
+        val folders = db.query("SELECT name FROM sqlite_master WHERE type='table'")
+            .map { it.string("name") ?: "" }
+            .toMutableList()
         folders.removeAll(META_TABLES)
         val order = folderOrderMap(db)
         folders.sortWith(compareBy({ order[it] ?: 0 }, { it }))
         return folders
     }
 
-    fun folderOrderMap(db: SQLiteDatabase = readableDatabase): Map<String, Int> {
+    fun folderOrderMap(db: SqlDatabase = source.reader()): Map<String, Int> {
         val map = mutableMapOf<String, Int>()
-        db.rawQuery("SELECT folder_name, order_value FROM folder_order", null).use { c ->
-            while (c.moveToNext()) map[c.getString(0)] = c.getInt(1)
+        db.query("SELECT folder_name, order_value FROM folder_order").forEach {
+            map[it.string("folder_name") ?: ""] = it.long("order_value").toInt()
         }
         return map
     }
 
-    private fun folderOrderOf(db: SQLiteDatabase, folder: String): Int {
-        db.rawQuery("SELECT order_value FROM folder_order WHERE folder_name = ?", arrayOf(folder))
-            .use { c -> if (c.moveToFirst()) return c.getInt(0) }
-        return 0
-    }
+    private fun folderOrderOf(db: SqlDatabase, folder: String): Int =
+        db.query("SELECT order_value FROM folder_order WHERE folder_name = ?", folder)
+            .firstOrNull()?.long("order_value")?.toInt() ?: 0
 
     /** 覆盖式写入文件夹顺序（对应官方 `updateOrder`）。 */
-    fun updateOrder(db: SQLiteDatabase = writableDatabase, folders: List<String>) {
-        db.beginTransaction()
-        try {
+    fun updateOrder(db: SqlDatabase = source.writer(), folders: List<String>) {
+        db.inTransaction {
             folders.forEachIndexed { i, name ->
-                db.execSQL(
+                db.exec(
                     "INSERT OR REPLACE INTO folder_order (folder_name, order_value) VALUES (?, ?)",
-                    arrayOf<Any?>(name, i)
+                    name, i
                 )
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
     }
 
     // endregion
 
     companion object {
-        const val DATABASE_NAME = "local_favorite.db"
-        const val DATABASE_VERSION = 1
+        /** 库名与版本的事实源在 [LocalFavoriteDbSchema]（两端共用的编排），这里只做转发。 */
+        const val DATABASE_NAME = LocalFavoriteDbSchema.DATABASE_NAME
+        const val DATABASE_VERSION = LocalFavoriteDbSchema.DATABASE_VERSION
 
         /** 首次运行的默认收藏夹，沿用既有 `FavoriteDao` 的命名，避免破坏已有行为。 */
         const val DEFAULT_FOLDER = "默认"
 
-        /** 元数据表，不属于收藏夹。 */
+        /** 元数据表，不属于收藏夹。`android_metadata` 是 Android helper 建的，桌面侧不会有。 */
         private val META_TABLES =
             setOf("folder_order", "folder_sync", "android_metadata", "sqlite_sequence")
 
@@ -202,15 +152,5 @@ class LocalFavoriteDatabase private constructor(context: Context) :
          * 双引号换反引号只是引号风格，SQLite 语义等价，不动任何已有表名。
          */
         fun quoteId(name: String): String = quoteIdentifier(name)
-
-        @Volatile
-        private var INSTANCE: LocalFavoriteDatabase? = null
-
-        fun getInstance(context: Context): LocalFavoriteDatabase {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE
-                    ?: LocalFavoriteDatabase(context.applicationContext).also { INSTANCE = it }
-            }
-        }
     }
 }

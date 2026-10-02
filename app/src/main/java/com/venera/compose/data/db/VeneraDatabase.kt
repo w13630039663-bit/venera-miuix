@@ -3,43 +3,39 @@ package com.venera.compose.data.db
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.venera.compose.data.platform.android.AndroidSqlDatabase
 
 /**
  * Venera 原生 SQLite 核心数据库
  * 承载阅读历史 (comic_history)、本地收藏夹 (comic_favorite)、漫画源元数据 (comic_source)
  *
- * 建表/迁移 DDL 逐字存于 [SchemaSql]（与桌面端共享同一棵源），本类只负责执行顺序与版本分支。
+ * **这一类只是 Android 接线处**：`SQLiteOpenHelper` 的回调原样转给 [CoreDbSchema]，
+ * 建表/迁移的编排（版本号、语句顺序、v2 的 DROP 重建、v3 的补表）一份都不在这里，
+ * 桌面侧与 JVM 测试走 [CoreDbSchema.ensureOn] 同一个入口 —— 两端共用一份编排（R20）。
+ *
+ * 库名与版本常量同样住在 [CoreDbSchema]（两端共用的事实源），这里不再重复声明。
+ * 建表/迁移 DDL 的逐字原文在 [SchemaSql]。
+ *
+ * 上层（`data/db` 的 DAO 与 `LocalFavoritesManager`）已经不吃这个类，它们吃
+ * [SqlDatabaseSource]；此处保留 `getInstance` + `readableDatabase` / `writableDatabase`
+ * 的既有写法，是为了让还没改造的调用点（备份 / 导入 / 统计 / 守卫 / 图库 / 阅读器）继续编译。
  */
 class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
-    DATABASE_NAME,
+    CoreDbSchema.DATABASE_NAME,
     null,
-    DATABASE_VERSION
+    CoreDbSchema.DATABASE_VERSION
 ) {
 
     override fun onCreate(db: SQLiteDatabase) {
-        // 6 张建表语句 + 索引，逐字存于 SchemaSql（与 :desktop 共享同一棵源），按原顺序执行
-        SchemaSql.V1_CREATE_STATEMENTS.forEach { db.execSQL(it) }
+        CoreDbSchema.create(AndroidSqlDatabase(db))
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) {
-            // v2：DROP 重建语义不变——先删三张旧表，再跑一遍建表全集
-            SchemaSql.V2_DROP_STATEMENTS.forEach { db.execSQL(it) }
-            onCreate(db)
-            return
-        }
-        if (oldVersion < 3) {
-            // v3：补建 reading_stats / favorite_images / content_guard_rules 三张表及索引
-            SchemaSql.V3_CREATE_STATEMENTS.forEach { db.execSQL(it) }
-        }
+        CoreDbSchema.upgrade(AndroidSqlDatabase(db), oldVersion, newVersion)
     }
 
     companion object {
-        const val DATABASE_NAME = "venera_core.db"
-        // v3: 新增阅读统计 (reading_stats)、单页收藏 (favorite_images)、内容屏蔽 (content_guard_rules)
-        const val DATABASE_VERSION = 3
-
         @Volatile
         private var INSTANCE: VeneraDatabase? = null
 

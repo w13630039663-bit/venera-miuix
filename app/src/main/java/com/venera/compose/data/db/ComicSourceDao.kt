@@ -1,7 +1,5 @@
-﻿package com.venera.compose.data.db
+package com.venera.compose.data.db
 
-import android.content.ContentValues
-import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +16,13 @@ data class ComicSourceRecord(
     val configJson: String = "{}"
 )
 
-class ComicSourceDao(private val dbHelper: VeneraDatabase) {
+/**
+ * 漫画源元数据（`comic_source`）的读写层。
+ *
+ * 本轮改造点同 `FavoriteDao`：连接从 [SqlDatabaseSource] 现取，`ContentValues` 换成
+ * 参数绑定的显式语句。首次运行播种五条默认源的口径（条数、顺序、启用状态）一字未动。
+ */
+class ComicSourceDao(private val source: SqlDatabaseSource) {
 
     private val _sourcesFlow = MutableStateFlow<List<ComicSourceRecord>>(emptyList())
     val sourcesFlow: StateFlow<List<ComicSourceRecord>> = _sourcesFlow.asStateFlow()
@@ -29,12 +33,11 @@ class ComicSourceDao(private val dbHelper: VeneraDatabase) {
     }
 
     private fun checkAndSeedDefaults() {
-        val db = dbHelper.writableDatabase
-        val cursor = db.rawQuery("SELECT COUNT(*) FROM comic_source", null)
-        val count = cursor.use {
-            if (it.moveToFirst()) it.getInt(0) else 0
-        }
-        if (count == 0) {
+        val db = source.writer()
+        // 原来的写法是 `getInt(0)` 按位置读；这里加了 AS 别名，因为 SqlRow 只按列名取值，
+        // 计数结果本身没有变化。
+        val count = db.query("SELECT COUNT(*) AS total FROM comic_source").firstOrNull()?.long("total") ?: 0L
+        if (count == 0L) {
             val defaults = listOf(
                 ComicSourceRecord("copymanga", "拷贝漫画", "1.0.0", "", true, 0),
                 ComicSourceRecord("picacg", "哔咔漫画", "1.0.0", "", true, 1),
@@ -43,66 +46,56 @@ class ComicSourceDao(private val dbHelper: VeneraDatabase) {
                 ComicSourceRecord("nhentai", "NHentai", "1.0.0", "", false, 4)
             )
             defaults.forEach { src ->
-                val values = ContentValues().apply {
-                    put("source_id", src.sourceId)
-                    put("name", src.name)
-                    put("version", src.version)
-                    put("icon_url", src.iconUrl)
-                    put("is_enabled", if (src.isEnabled) 1 else 0)
-                    put("sort_order", src.sortOrder)
-                    put("config_json", src.configJson)
-                }
-                db.insert("comic_source", null, values)
+                db.exec(
+                    INSERT,
+                    src.sourceId, src.name, src.version, src.iconUrl,
+                    if (src.isEnabled) 1 else 0, src.sortOrder, src.configJson
+                )
             }
         }
     }
 
     fun refresh() {
-        val list = mutableListOf<ComicSourceRecord>()
-        val db = dbHelper.readableDatabase
-        val cursor = db.query(
-            "comic_source",
-            null,
-            null,
-            null,
-            null,
-            null,
-            "sort_order ASC"
-        )
-        cursor.use {
-            while (it.moveToNext()) {
-                list.add(
-                    ComicSourceRecord(
-                        sourceId = it.getString(it.getColumnIndexOrThrow("source_id")),
-                        name = it.getString(it.getColumnIndexOrThrow("name")),
-                        version = it.getString(it.getColumnIndexOrThrow("version")),
-                        iconUrl = it.getString(it.getColumnIndexOrThrow("icon_url")) ?: "",
-                        isEnabled = it.getInt(it.getColumnIndexOrThrow("is_enabled")) == 1,
-                        sortOrder = it.getInt(it.getColumnIndexOrThrow("sort_order")),
-                        configJson = it.getString(it.getColumnIndexOrThrow("config_json")) ?: "{}"
-                    )
-                )
-            }
+        _sourcesFlow.value = source.reader().query(
+            "SELECT * FROM comic_source ORDER BY sort_order ASC"
+        ).map { row ->
+            ComicSourceRecord(
+                sourceId = row.requiredString("source_id"),
+                name = row.requiredString("name"),
+                version = row.requiredString("version"),
+                iconUrl = row.string("icon_url") ?: "",
+                isEnabled = row.long("is_enabled") == 1L,
+                sortOrder = row.long("sort_order").toInt(),
+                configJson = row.string("config_json") ?: "{}"
+            )
         }
-        _sourcesFlow.value = list
     }
 
     suspend fun toggleSource(sourceId: String, isEnabled: Boolean) = withContext(Dispatchers.IO) {
-        val db = dbHelper.writableDatabase
-        val values = ContentValues().apply {
-            put("is_enabled", if (isEnabled) 1 else 0)
-        }
-        db.update("comic_source", values, "source_id = ?", arrayOf(sourceId))
+        source.writer().exec(
+            "UPDATE comic_source SET is_enabled = ? WHERE source_id = ?",
+            if (isEnabled) 1 else 0, sourceId
+        )
         refresh()
     }
 
     companion object {
+        /** 原 `db.insert(...)`（冲突即失败）的等价语句。 */
+        private const val INSERT =
+            "INSERT INTO comic_source " +
+                "(source_id, name, version, icon_url, is_enabled, sort_order, config_json) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"
+
         @Volatile
         private var INSTANCE: ComicSourceDao? = null
 
-        fun getInstance(context: Context): ComicSourceDao {
+        /**
+         * 兼容既有调用点的取用写法（递进来的是 Android 的 Context）。
+         * 参数只能是 `Any`、句柄由平台 factory 解释，理由见 `FavoriteDao.getInstance`。
+         */
+        fun getInstance(context: Any): ComicSourceDao {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ComicSourceDao(VeneraDatabase.getInstance(context)).also { INSTANCE = it }
+                INSTANCE ?: ComicSourceDao(DatabasePorts.of(context).core).also { INSTANCE = it }
             }
         }
     }
