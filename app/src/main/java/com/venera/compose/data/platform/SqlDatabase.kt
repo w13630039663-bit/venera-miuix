@@ -32,8 +32,12 @@ interface SqlDatabase : AutoCloseable {
      * `ContentGuardManager.addRule` 的调用方拿返回的 rowid 判成败
      * （`reader/VeneraReaderScreen.kt:2075` 的 `rowId < 0`、`components/ComicCardContextMenu.kt:94`
      * 的 `addRule(...) >= 0`），而 [exec] 不回报任何东西。
-     * 两端都不许用 `SELECT last_insert_rowid()` 另查一次：那是**连接级**的状态，
-     * Android 的 SQLiteDatabase 是连接池，取到的可能是别的连接的。
+     * 回读 rowid 的口径：`SELECT last_insert_rowid()` 是**连接级**状态。
+     *  - **凡写连接可能来自池的端（Android）不许另查** —— 取到的 rowid 可能是别的连接的，
+     *    实现走 `compileStatement().executeInsert()`，同语句同连接直报；
+     *  - **任何端要另查 rowid，前提是与 INSERT 同连接、且期间没有别的线程往这条连接插语句**。
+     *    桌面侧满足这个前提（共享单连接 + `connectionLock` 全程持锁，见
+     *    `JdbcSqliteDatabase.insert` 的实现注释），所以它在锁内同连接另查。
      */
     fun insert(sql: String, vararg args: Any?): Long
 
