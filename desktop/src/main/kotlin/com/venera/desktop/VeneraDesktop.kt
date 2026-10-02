@@ -53,6 +53,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /**
@@ -118,6 +119,23 @@ private suspend fun addFavorite(
     return message
 }
 
+/**
+ * 关持久层的次序（5a 复审点名）：**先 manager.close()（有界等待在飞刷新，15s 上界），
+ * 再 DesktopDatabasePorts.close()**——反序会让在飞的收藏刷新在下一次取用时撞上"已退役"，
+ * 抛出落进管理器自己的协程 scope，变成 R25 那类 `database connection closed` 噪音。
+ * 两步各自的失败原样打痕，不咽。
+ */
+private fun closePersistenceInOrder() {
+    favoritesManagerRef?.let { manager ->
+        runCatching { manager.close() }.onFailure {
+            println("D_关闭 收藏管理器未关净：${it::class.java.simpleName}: ${it.message?.take(200)}")
+        }
+    }
+    runCatching { DesktopDatabasePorts.close() }.onFailure {
+        println("D_关闭 桌面接线关闭失败：${it::class.java.simpleName}: ${it.message?.take(200)}")
+    }
+}
+
 fun main(args: Array<String>) {
     val root = File(System.getProperty("user.dir"))
     val assetDir = File(root, "app/src/main/assets")
@@ -127,6 +145,11 @@ fun main(args: Array<String>) {
     val proxy = args.firstOrNull { it.startsWith("--proxy=") }?.removePrefix("--proxy=")
     val shot = args.firstOrNull { it.startsWith("--shot=") }?.removePrefix("--shot=")
     val startKey = args.firstOrNull { !it.startsWith("--") } ?: "jm"
+    // --autofav / --favcheck **只为取证存在**（无人值守把"点心收藏 → 重开进程还在"这条链
+    // 量成两条 D_收藏 读数）：一个写（收藏第一张卡后读回条数并退出），一个读（启动时不点
+    // 任何按钮直接读回条数并退出）。都不是默认行为，不带参数时窗口交互如常。
+    val autofav = args.contains("--autofav")
+    val favcheck = args.contains("--favcheck")
 
     val sources = File(assetDir, "sources").listFiles { f -> f.extension == "js" }
         ?.map { it.nameWithoutExtension }?.sorted() ?: emptyList()
@@ -150,9 +173,27 @@ fun main(args: Array<String>) {
             "fav=${favDb.path} 已建=${favDb.exists()}",
     )
 
+    if (favcheck) {
+        // 取证第二跑：开窗前直接读回收藏条数（数据源仍是 LocalFavoritesManager，不自己开 SQL）
+        val outcome = runCatching { runBlocking { favorites().getAllComics() } }
+        outcome.fold(
+            onSuccess = { items ->
+                println("D_收藏 命中=${items.size} 明细=${items.take(10).map { it.id to it.name }}")
+            },
+            onFailure = {
+                println("D_收藏 读回失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
+            },
+        )
+        closePersistenceInOrder()
+        kotlin.system.exitProcess(if (outcome.isSuccess) 0 else 1)
+    }
+
     application {
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                closePersistenceInOrder()
+                exitApplication()
+            },
             title = APP_TITLE,
             state = rememberWindowState(placement = WindowPlacement.Floating, width = 1080.dp, height = 760.dp),
         ) {
@@ -164,6 +205,7 @@ fun main(args: Array<String>) {
                     sources = sources,
                     startKey = startKey,
                     shotPath = shot,
+                    autofav = autofav,
                 )
             }
         }
@@ -178,6 +220,7 @@ private fun VeneraDesktop(
     sources: List<String>,
     startKey: String,
     shotPath: String?,
+    autofav: Boolean,
 ) {
     var selected by remember { mutableStateOf(startKey) }
     var status by remember { mutableStateOf("待装载") }
@@ -308,6 +351,26 @@ private fun VeneraDesktop(
             }
             selfShot(shotPath)
             kotlin.system.exitProcess(0)
+        }
+        if (autofav) {
+            // 取证第一跑：等效"点第一张卡的收藏"（同一颗 addFavorite），读回条数后按次序收尾退出
+            val first = cards.firstOrNull()?.comics?.firstOrNull()
+            if (first == null) {
+                println("D_收藏 失败：源没回任何卡片，没东西可收（error=${error ?: "无网络层错误"}）")
+                closePersistenceInOrder()
+                kotlin.system.exitProcess(1)
+            }
+            val message = addFavorite(favorites(), selected, first)
+            val total = runCatching { favorites().getAllComics().size }
+            total.fold(
+                onSuccess = { println("D_收藏 命中=$it") },
+                onFailure = {
+                    println("D_收藏 读回失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
+                },
+            )
+            closePersistenceInOrder()
+            // 退出码判据：读回成功且这条点击不是"收藏失败"（"已在里面"也算写链完好）
+            kotlin.system.exitProcess(if (total.isSuccess && !message.startsWith("收藏失败")) 0 else 1)
         }
     }
 

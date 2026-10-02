@@ -153,6 +153,7 @@ tasks.register<JavaExec>("reader") {
 // 端到端最小闭环：真源 → GraalJS → 取图 → Fluent 窗口
 //   ./gradlew :desktop:app -Pkey=jm -Pproxy=127.0.0.1:7890
 //   加 -Pshot=_qa/desktop-jm.png 时它自截图后退出（无人值守取证）
+//   加 -Pautofav=1 / -Pfavcheck=1 走收藏取证两跑（写 / 读回，只为读数存在，见 VeneraDesktop.kt）
 tasks.register<JavaExec>("app") {
     group = "probe"
     classpath = sourceSets["main"].runtimeClasspath
@@ -163,6 +164,8 @@ tasks.register<JavaExec>("app") {
             providers.gradleProperty("key").getOrElse("jm"),
             providers.gradleProperty("proxy").orNull?.let { "--proxy=$it" },
             providers.gradleProperty("shot").orNull?.let { "--shot=$it" },
+            providers.gradleProperty("autofav").orNull?.let { "--autofav" },
+            providers.gradleProperty("favcheck").orNull?.let { "--favcheck" },
         ).filterNotNull()
     )
 }
