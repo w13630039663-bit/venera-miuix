@@ -61,6 +61,24 @@ kotlin.sourceSets["main"].kotlin {
     )
 }
 
+// Task 6：源脚本**随包分发**。桌面链路真用得上的只有这三类（逐个点名，不整个目录搬）：
+//  - `sources/*.js` —— EngineSession.load 取的那份源脚本；
+//  - `venera-init.js` / `venera-shim.js` —— DesktopJsHost 装载序列的前两颗。
+//     （派单口径 R39 只列了 init，读数在案：DesktopJsHost.kt:102 `readText(venera-shim.js)`
+//      是无条件执行的，不带它包内装载必崩，所以按"装载路径确实用到"这条判据把它一起带上。）
+// **不带** `opencc.txt`：它唯一的消费点是 `app/…/data/tags/ChineseVariantConverter.kt`
+//   （`data/tags` 不在本模块 srcDir 的编译面里），桌面侧今天一行都不读它。
+// 同理不带 `tags.json` / `tags_tw.json` / `gallery_tags_79415.sqlite` / `source_content_warning.json`
+// / `licenses/` / `sources/index.json`（源清单是枚举 `sources/` 得来的，不是读这份索引）。
+// include 的坑与上面 kotlin 源集同一条：过滤器对**整个 resources 源集**生效，本模块今天
+// 没有自己的 `src/main/resources`，将来加了必须往这张清单里补一颗，否则会被**静默滤掉**。
+sourceSets["main"].resources.srcDir("../app/src/main/assets")
+sourceSets["main"].resources.include(
+    "sources/*.js",
+    "venera-init.js",
+    "venera-shim.js",
+)
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.foundation)
@@ -154,6 +172,8 @@ tasks.register<JavaExec>("reader") {
 //   ./gradlew :desktop:app -Pkey=jm -Pproxy=127.0.0.1:7890
 //   加 -Pshot=_qa/desktop-jm.png 时它自截图后退出（无人值守取证）
 //   加 -Pautofav=1 / -Pfavcheck=1 走收藏取证两跑（写 / 读回，只为读数存在，见 VeneraDesktop.kt）
+// Task 6 第 4 件：这两个开关**把值一起传下去**（`--autofav=<值>`），由程序判读 ——
+//   原来只传"给没给"，`-Pautofav=0` 也会点亮，是个假开关形状。现在 0/false/off 是关，且照样打读数。
 tasks.register<JavaExec>("app") {
     group = "probe"
     classpath = sourceSets["main"].runtimeClasspath
@@ -164,8 +184,8 @@ tasks.register<JavaExec>("app") {
             providers.gradleProperty("key").getOrElse("jm"),
             providers.gradleProperty("proxy").orNull?.let { "--proxy=$it" },
             providers.gradleProperty("shot").orNull?.let { "--shot=$it" },
-            providers.gradleProperty("autofav").orNull?.let { "--autofav" },
-            providers.gradleProperty("favcheck").orNull?.let { "--favcheck" },
+            providers.gradleProperty("autofav").orNull?.let { "--autofav=$it" },
+            providers.gradleProperty("favcheck").orNull?.let { "--favcheck=$it" },
         ).filterNotNull()
     )
 }

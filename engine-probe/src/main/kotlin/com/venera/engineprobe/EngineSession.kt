@@ -38,11 +38,13 @@ class EngineSession(
 
     /** @return 源名；装载失败直接抛，不返回半套状态 */
     fun load(sourceKey: String): String {
-        val sourceFile = File(assetDir, "sources/$sourceKey.js")
-        if (!sourceFile.exists()) error("源脚本不存在: $sourceFile")
-        val js = sourceFile.readText().replace("\r\n", "\n")
+        // Task 6：源脚本改走 EngineAssets —— 包内 `/sources/<key>.js` 优先，取不到才回仓库目录，
+        // 两处都没有就抛（原来是 `error("源脚本不存在: …")`，形状不变）。CRLF 归一仍在这颗做，
+        // 送进 eval 的**内容**与改动前逐字节相同。
+        val sourcePath = "sources/$sourceKey.js"
+        val js = EngineAssets.readText(assetDir, sourcePath).replace("\r\n", "\n")
         val className = Regex("""class\s+(\w+)\s+extends\s+ComicSource""").find(js)?.groupValues?.get(1)
-            ?: error("未找到 extends ComicSource 的类声明: $sourceFile")
+            ?: error("未找到 extends ComicSource 的类声明: $sourcePath")
         host.evaluate("(function() {\n$js\nwindow['temp_source'] = new $className();\n})();")
 
         val loadedKey = host.evaluate("window['temp_source'] ? window['temp_source'].key : null")

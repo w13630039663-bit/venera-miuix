@@ -99,8 +99,9 @@ class DesktopJsHost(
         context.getBindings("js").putMember("_venera", Bridge())
 
         // 装载脚本是多语句源码，必须原样 eval —— evaluate() 的 `return (...)` 包装只适用于表达式
-        exec(File(assetDir, "venera-shim.js").readText())
-        exec(File(assetDir, "venera-init.js").readText())
+        // Task 6：这两颗从 EngineAssets 取（包内优先、仓库兜底，取不到就抛）——顺序与内容一字未动
+        exec(EngineAssets.readText(assetDir, "venera-shim.js"))
+        exec(EngineAssets.readText(assetDir, "venera-init.js"))
         resolveFn = context.eval("js", "window.__veneraResolve")
         pumpTimers = context.eval("js", "window.__pumpTimers")
         val patched = evaluate("_veneraApplyPostInitPatches()")

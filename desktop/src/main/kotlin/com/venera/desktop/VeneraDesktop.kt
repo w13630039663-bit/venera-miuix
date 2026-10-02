@@ -36,6 +36,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.venera.engineprobe.DesktopJsHost
+import com.venera.engineprobe.EngineAssets
 import com.venera.engineprobe.EngineSession
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoriteDatabase
@@ -136,8 +137,12 @@ private fun closePersistenceInOrder() {
     }
 }
 
+/** 取证参数的判读口径与读数都在 [ForensicFlags]（那颗是可测的；这里只是接线） */
+
 fun main(args: Array<String>) {
     val root = File(System.getProperty("user.dir"))
+    // 仓库目录从今天起只是**兜底**：包内 `/sources/*.js` 与 `/venera-init.js`、`/venera-shim.js`
+    // 命中时这条路径压根不会被读（每次取用都会打一条"来源=包内/仓库"的读数，见 EngineAssets）
     val assetDir = File(root, "app/src/main/assets")
     // 阶段 1：数据目录收进 DesktopPaths —— 语义与旧的 localDataDir() 一致，
     // 取不到 %LOCALAPPDATA% 就启动即抛，绝不退回 java.io.tmpdir。
@@ -148,12 +153,16 @@ fun main(args: Array<String>) {
     // --autofav / --favcheck **只为取证存在**（无人值守把"点心收藏 → 重开进程还在"这条链
     // 量成两条 D_收藏 读数）：一个写（收藏第一张卡后读回条数并退出），一个读（启动时不点
     // 任何按钮直接读回条数并退出）。都不是默认行为，不带参数时窗口交互如常。
-    val autofav = args.contains("--autofav")
-    val favcheck = args.contains("--favcheck")
+    val autofav = ForensicFlags.state(args.asList(), "--autofav")
+    val favcheck = ForensicFlags.state(args.asList(), "--favcheck")
+    // 不认识的参数原样报出来，别让用户以为打进去了
+    ForensicFlags.unknown(args.asList())
+        .forEach { println("D_参数 未识别 $it（已忽略，不影响其余参数）") }
+    // 两参同给原来会"静默抢跑"：favcheck 先 exitProcess，autofav 被吃掉且不吭声。现在如实说一句。
+    ForensicFlags.bothGivenNote(autofav, favcheck)?.let(::println)
 
-    val sources = File(assetDir, "sources").listFiles { f -> f.extension == "js" }
-        ?.map { it.nameWithoutExtension }?.sorted() ?: emptyList()
-    println("D_启动 sources=${sources.size} 起始=$startKey proxy=${proxy ?: "直连"} assets=${assetDir.path}")
+    val sources = EngineAssets.listSourceKeys(assetDir)
+    println("D_启动 sources=${sources.size} 起始=$startKey proxy=${proxy ?: "直连"} 仓库兜底=${assetDir.path}")
     // jpackage.app-path 只有从打包 exe 进来才有值 —— 用它区分"gradle 起的"和"真产物"，
     // 两者的坑不通用（本轮 ImageIO 缓存那条就只在后者复现）。
     println(
@@ -173,7 +182,7 @@ fun main(args: Array<String>) {
             "fav=${favDb.path} 已建=${favDb.exists()}",
     )
 
-    if (favcheck) {
+    if (favcheck == true) {
         // 取证第二跑：开窗前直接读回收藏条数（数据源仍是 LocalFavoritesManager，不自己开 SQL）
         val outcome = runCatching { runBlocking { favorites().getAllComics() } }
         outcome.fold(
@@ -205,7 +214,7 @@ fun main(args: Array<String>) {
                     sources = sources,
                     startKey = startKey,
                     shotPath = shot,
-                    autofav = autofav,
+                    autofav = autofav == true,
                 )
             }
         }

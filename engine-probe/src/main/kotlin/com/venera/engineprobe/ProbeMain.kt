@@ -26,18 +26,18 @@ fun main(args: Array<String>) {
     println("[probe] want=$wantKey assets=${assetDir.path} data=$dataDir proxy=${proxy ?: "直连"}")
 
     DesktopJsHost(assetDir, dataDir, proxy).use { host ->
-        val sourceFile = File(assetDir, "sources/$wantKey.js")
-        if (!sourceFile.exists()) {
-            println("[probe] FAIL 源脚本不存在: $sourceFile")
-            return
-        }
-        val js = sourceFile.readText().replace("\r\n", "\n")
-        val className = Regex("""class\s+(\w+)\s+extends\s+ComicSource""").find(js)?.groupValues?.get(1)
+        // Task 6：源脚本改走 EngineAssets（包内优先、仓库兜底，两条路各打一条读数）。
+        // 探针原来的形状是"取不到就打 FAIL 然后 return"，不改成抛 —— 只把读法统一。
+        val js = runCatching { EngineAssets.readText(assetDir, "sources/$wantKey.js") }
+            .onFailure { println("[probe] FAIL 源脚本取不到：${it.message}") }
+            .getOrNull() ?: return
+        val normalized = js.replace("\r\n", "\n")
+        val className = Regex("""class\s+(\w+)\s+extends\s+ComicSource""").find(normalized)?.groupValues?.get(1)
         if (className == null) {
             println("[probe] FAIL 未找到 extends ComicSource 的类声明")
             return
         }
-        host.evaluate("(function() {\n$js\nwindow['temp_source'] = new $className();\n})();")
+        host.evaluate("(function() {\n$normalized\nwindow['temp_source'] = new $className();\n})();")
 
         val key = host.evaluate("window['temp_source'] ? window['temp_source'].key : null")
             ?.trim('"', '\'')
