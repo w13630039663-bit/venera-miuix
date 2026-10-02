@@ -43,9 +43,17 @@ enum class GallerySaveNaming {
  */
 object GallerySettingsModel {
 
-    /** 墙上到底摆几列。 */
-    fun gridColumns(mode: GalleryColumnMode, wide: Boolean): Int = when (mode) {
-        GalleryColumnMode.AUTO -> if (wide) 3 else 2
+    /**
+     * 墙上到底摆几列。
+     *
+     * AUTO 不再自己拍"宽屏就是 3"：那一档改成按窗口宽自适应，列数由调用点算好传进来
+     * （判据在 `WideScreenPolicy.imageWallColumnCount`，它要吃窗口宽与本档侧栏宽，
+     * 这两样都是 composable 侧的运行时量，留在 domain 里只能靠猜屏幕宽）。
+     *
+     * TWO / THREE 是用户的显式覆盖，窗口再宽也不许跟着动 —— 那两档存在的意义就是"我就要这么多列"。
+     */
+    fun gridColumns(mode: GalleryColumnMode, adaptiveColumns: Int): Int = when (mode) {
+        GalleryColumnMode.AUTO -> adaptiveColumns
         GalleryColumnMode.TWO -> 2
         GalleryColumnMode.THREE -> 3
     }

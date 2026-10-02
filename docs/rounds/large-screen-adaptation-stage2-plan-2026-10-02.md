@@ -547,6 +547,34 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 **批次 2 验证读数**（本线实跑，非 UP-TO-DATE 蒙混）：`:app:compileDebugKotlin` **executed 通过**（含并行线的 `VeneraSideBar` 与本线 2 处 explore ⇒ 24 处 `Local.current` 读取全部由编译器判定在组合期内）；`:app:testDebugUnitTest` **executed 通过**，`WideScreenPolicyTest tests="9" failures="0" errors="0"`（原 3 条 chrome 用例仍未动）；`:desktop:compileKotlin` UP-TO-DATE（R5 未破）。
 **仍未验的**：侧栏 72/224 的实际观感、600dp 跨越时的 76→0 + 左内缩 0→72 双向突变（R1）、平板档顶栏保留后的整体比例 —— 全部需要真机，见 §8.4 第 4 条；阅读器在侧栏档是否内缩**仍未查证**（§6.2 那条未闭合）。
 
+### 8.7 侧栏落地后暴露的第二处"宽窗只按两档"缺陷（2026-10-02，用户真机报）
+
+用户在大屏版上反馈：**画廊所有图片卡片过大、收藏的图片卡片也过大**。根因与侧栏无关，是同一类"两档定死"的病：
+
+- `GallerySettingsModel.gridColumns(AUTO, wide)` = `if (wide) 3 else 2`
+- `FavoriteImagesScreen:160`、`GalleryFavoritesBody:105` 干脆把 `if (wide) 3 else 2` 写死在调用点
+
+⇒ 窗口从 1280dp 拉到 1706dp 仍只排 3 列，一格近 **478dp**；而画廊墙是 staggered 网格，**格子高度跟着宽度走**，所以"列数不涨"直接等价于"卡片等比放大"。
+
+**改法**：新增 `WideScreenPolicy.imageWallColumnCount(windowWidth, mode, horizontalContentPadding)`，
+每列预算 **200dp** —— 不是新造数，是本仓详情页预览格早就照 master 钉下的
+`maxCrossAxisExtent: 200`（`ComicPresentationPolicy.comicPreviewColumnCount`），连 `ceil` 的方向也一致。
+宽度先扣本档侧栏宽再扣左右内边距（侧栏是这一轮新出现的扣项，忘了就会在宽窗多排一列）。
+
+**用户同时下了硬约束：「我们现在的操作都是调试大屏版本的，不要轻易修改手机版本」**，落成两条实现：
+
+1. `Compact` 档**直接 return 2**，不参与预算计算。裸算 `ceil(宽/200)` 会让 425dp 以上的大屏机与折叠屏合起态变 3 列 —— 那就是偷改手机版。单测 `phoneBandIsPinnedAtTwoColumnsAndNeverTouchesTheBudget` 从 320 扫到 600 逐个钉住。
+2. 侧栏档下限取 **3** = 改版前 `if (wide) 3 else 2` 的原值 ⇒ **列数只许比今天多**。单测 `wideBandNeverGivesFewerColumnsThanTheOldFixedThree` 扫 601..2000。
+
+读数（单测 + 真机两边对齐）：手机 ≤600dp **2 列不变**；601dp 仍 3 列（跨断点第一格扣掉 72dp 侧栏后只够 3 列）；
+**1280dp 原生平板 3→6 列**；**1706dp 8 列**；跨进 Expanded 那格会回落到 6（侧栏 72→224 的正常结果，不是抖动）。
+真机侧在 Pixel Tablet 上两档都抓屏确认过：1280dp 出 6 列、1706dp 出 8 列，且 rail 节点 bounds 实测
+`[0,336]px ÷1.5 = 224dp` 与 `sideBarWidthFor(Expanded)` 逐字相等 ⇒ **「内容内缩 == 侧栏宽」这条自洽性在真机上成立**。
+
+`TWO` / `THREE` 两档仍是用户的显式覆盖（单测拿 `adaptiveColumns = 8` 当诱饵，证明手动档无视它）。
+**这次改动推翻了 2026-09 那纸"平板插图卡 3 列"**（它当时是用户反馈「平板上两列偏大」定的 3，现在 3 又嫌大）——
+被 `GallerySettingsModelTest` 钉死的那两条断言已一并改写，历史留在本节的注释与用例名里。
+
 ---
 
 ## §附 本轮复核修正记录

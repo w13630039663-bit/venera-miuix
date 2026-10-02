@@ -83,7 +83,8 @@ import coil3.ImageLoader
 import coil3.request.ImageRequest
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
-import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.imageWallColumnCount
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.venera.VeneraCover
@@ -272,11 +273,20 @@ fun GalleryScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    // 大屏三列、手机两列 —— 与图片收藏那面墙同一口径（用户真机反馈「平板上两列偏大」定的）。
-    // 这一档现在能被「画廊设置 → 网格列数」盖掉（AUTO 才继续按屏宽定）。
+    // 列数按窗口宽自适应：每列预算 200dp（照详情页预览格那把 master 原值），手机档恒 2 列不参与计算。
+    // 历史：这一档原本"手机 2 / 平板 3"两值定死（3 是当时用户反馈「平板上两列偏大」定的），
+    // 但侧栏落地后宽窗仍恒排 3 列 ⇒ 一格 478dp，2026-10-02 用户再报「图片卡片过大」才改成自适应。
+    // 「画廊设置 → 网格列数」的 TWO/THREE 仍是显式覆盖，只有 AUTO 走自适应。
     val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
-    val columnCount = GallerySettingsModel.gridColumns(columnMode, wide)
+    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val columnCount = GallerySettingsModel.gridColumns(
+        columnMode,
+        imageWallColumnCount(
+            windowWidth,
+            wideScreenLayoutMode(windowWidth),
+            VeneraSpacing.screenHorizontal * 2,
+        ),
+    )
 
     // ── 下滑收起两栏（2026-09-30，用户点名；两枚开关默认关）──
     val hideTopBarOnScroll by VeneraPreferences.getInstance(context).galleryHideTopBar.collectAsState()

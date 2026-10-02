@@ -92,6 +92,35 @@ fun bottomBarClearanceFor(mode: WideScreenLayoutMode): Dp = when (mode) {
 }
 
 /**
+ * 图片墙列数 —— 画廊墙 / 每日推荐 / 画廊收藏 / 图片收藏四处共用这一把。
+ *
+ * 每列预算 200dp 不是新造数：本仓详情页预览格早就照 master 钉了
+ * `SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200)`
+ * （见 `ComicPresentationPolicy.comicPreviewColumnCount`），这里沿同一把尺，
+ * 连"向上取整"的方向也一致（保证算出来的格宽不超预算，而不是刚好超）。
+ *
+ * ⚠️ **手机档恒等于 2，不参与预算计算** —— 这是用户 2026-10-02 的硬约束
+ * （「现在调的都是大屏版，别动手机版」）的实现，别拿 `ceil` 的裸结果替它：
+ * 425dp 以上的手机（大屏机/折叠屏合起）裸算会得 3 列，等于悄悄改了手机版。
+ * 侧栏档下限取 3 = 今天 `if (wide) 3 else 2` 的原值 ⇒ **列数只许比今天多，
+ * 任何宽度都不会因为这次改动变得比现在更大**（画廊卡是 staggered 网格，
+ * 格子高度跟着宽度走，减列就等于放大卡片）。
+ *
+ * 宽度传**窗口宽**（`screenWidthDp`），不传物理屏宽：分屏与自由窗口下两者不等；
+ * 再减掉本档侧栏占掉的 [sideBarWidthFor] 与网格自己的左右内边距 ——
+ * 侧栏是这一轮新出现的扣项，忘了减就会在宽窗上多排一列、卡片被挤窄。
+ */
+fun imageWallColumnCount(
+    windowWidth: Dp,
+    mode: WideScreenLayoutMode,
+    horizontalContentPadding: Dp,
+): Int {
+    if (mode == WideScreenLayoutMode.Compact) return 2
+    val available = (windowWidth - sideBarWidthFor(mode) - horizontalContentPadding).value.coerceAtLeast(0f)
+    return kotlin.math.ceil(available / 200f).toInt().coerceAtLeast(3)
+}
+
+/**
  * 宽屏档判定（平板 / 横向宽窗）：阈值唯一收口在本文件，
  * 组件内需要按档位换几何（如分段控制器加高）时只许调这个，不得各自抄 600。
  *

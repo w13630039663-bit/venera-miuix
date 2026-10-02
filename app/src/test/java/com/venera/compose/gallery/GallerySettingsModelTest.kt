@@ -36,16 +36,20 @@ class GallerySettingsModelTest {
     )
 
     @Test
-    fun `AUTO 保持原口径 大屏三列 手机两列`() {
-        assertEquals(3, GallerySettingsModel.gridColumns(GalleryColumnMode.AUTO, wide = true))
-        assertEquals(2, GallerySettingsModel.gridColumns(GalleryColumnMode.AUTO, wide = false))
+    fun `AUTO 透传自适应列数 不再自己拍两档`() {
+        // 2026-10-02 改：AUTO 原来是这里写死的 `if (wide) 3 else 2`。侧栏落地后宽窗仍只排 3 列
+        // ⇒ 一格近 480dp（用户报「图片卡片过大」）。列数改由调用点按窗口宽算好传进来
+        //（判据在 WideScreenPolicy.imageWallColumnCount），domain 只管"AUTO 透传 / 手动档覆盖"。
+        assertEquals(6, GallerySettingsModel.gridColumns(GalleryColumnMode.AUTO, adaptiveColumns = 6))
+        assertEquals(2, GallerySettingsModel.gridColumns(GalleryColumnMode.AUTO, adaptiveColumns = 2))
     }
 
     @Test
-    fun `手动选列数就不再看屏宽`() {
-        // 用户在平板上选了 2 列，屏宽那条判据必须让位 —— 否则这一档是假开关。
-        assertEquals(2, GallerySettingsModel.gridColumns(GalleryColumnMode.TWO, wide = true))
-        assertEquals(3, GallerySettingsModel.gridColumns(GalleryColumnMode.THREE, wide = false))
+    fun `手动选列数就不再看宽度`() {
+        // 用户在平板上选了 2 列，自适应那条判据必须让位 —— 否则这一档是假开关。
+        // 传 8 当诱饵：手动档必须无视它。
+        assertEquals(2, GallerySettingsModel.gridColumns(GalleryColumnMode.TWO, adaptiveColumns = 8))
+        assertEquals(3, GallerySettingsModel.gridColumns(GalleryColumnMode.THREE, adaptiveColumns = 8))
     }
 
     @Test

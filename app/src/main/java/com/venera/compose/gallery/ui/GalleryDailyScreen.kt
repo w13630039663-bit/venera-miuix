@@ -23,7 +23,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
-import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.imageWallColumnCount
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberTopBarBackdrop
@@ -36,6 +37,7 @@ import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GalleryWallFeed
 import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -93,8 +95,16 @@ internal fun GalleryDailyScreen(
     val gridState = rememberLazyStaggeredGridState()
 
     val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
-    val columnCount = GallerySettingsModel.gridColumns(columnMode, wide)
+    // 与画廊墙同一把自适应列数（每列预算 200dp，手机档恒 2 列），理由见 GalleryScreen 那一处。
+    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val columnCount = GallerySettingsModel.gridColumns(
+        columnMode,
+        imageWallColumnCount(
+            windowWidth,
+            wideScreenLayoutMode(windowWidth),
+            VeneraSpacing.screenHorizontal * 2,
+        ),
+    )
 
     // 与首页**同一把过滤判据**（`buildGalleryWall`）：同一张图在首页预览与这一页上待遇必须一致。
     val wall = remember(vm.posts, maskMode, rules, blockAi) {

@@ -34,7 +34,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.VeneraEmptyView
-import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.imageWallColumnCount
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
@@ -101,8 +102,14 @@ fun GalleryFavoritesBody(
     val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
     val imageLoader = remember { GalleryImageLoader.get(context) }
     val gridState = rememberLazyStaggeredGridState()
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
-    val columnCount = if (wide) 3 else 2
+    // 与画廊墙同一把自适应列数（每列预算 200dp、手机档恒 2 列），理由见 GalleryScreen 那一处。
+    // 这里原来是 `if (wide) 3 else 2` 写死两档 —— 侧栏落地后宽窗仍只排 3 列，一格近 480dp。
+    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val columnCount = imageWallColumnCount(
+        windowWidth,
+        wideScreenLayoutMode(windowWidth),
+        VeneraSpacing.screenHorizontal * 2,
+    )
 
     /**
      * 多选状态机：与本地收藏、图片收藏、网络收藏**同一份**（见 `components/selection/`）。

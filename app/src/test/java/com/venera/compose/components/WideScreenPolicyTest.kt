@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WideScreenPolicyTest {
@@ -98,7 +99,7 @@ class WideScreenPolicyTest {
     }
 
     /**
-     * `isWideScreen` 改成走档位后，现有 12 个消费点必须一个像素都不动 ——
+     * `isWideScreen` 改成走档位后，现有消费点必须一个像素都不动 ——
      * 它就是 `!= Compact` 的别名，跨 600 的翻转点也得一致。
      */
     @Suppress("DEPRECATION")
@@ -107,5 +108,51 @@ class WideScreenPolicyTest {
             val expected = wideScreenLayoutMode(width.dp) != WideScreenLayoutMode.Compact
             assertEquals(expected, isWideScreen(width.dp))
         }
+    }
+
+    /**
+     * 图片墙列数（画廊墙 / 每日推荐 / 画廊收藏 / 图片收藏共用）。
+     * 这条用例是用户 2026-10-02 那句「我们调的都是大屏版，别动手机版」的**实现层保险**：
+     * Compact 档直接 return 2，不参与 200dp 预算 —— 因为裸算 `ceil(宽/200)` 会让
+     * 425dp 以上的大屏机与折叠屏合起态从 2 列变 3 列，那是偷偷改了手机版观感。
+     * 逐个宽度扫到 600dp（含 600 这条边界，它按 §2.4 归 Compact）都不许出现 3。
+     */
+    @Test fun phoneBandIsPinnedAtTwoColumnsAndNeverTouchesTheBudget() {
+        for (width in 320..600 step 5) {
+            val columns = imageWallColumnCount(width.dp, WideScreenLayoutMode.Compact, 24.dp)
+            assertEquals("手机档 $width.dp 必须是 2 列", 2, columns)
+        }
+    }
+
+    /** 侧栏档下限 3 = 改动前 `if (wide) 3 else 2` 的原值 ⇒ 任何宽度都不会变得比今天更大。 */
+    @Test fun wideBandNeverGivesFewerColumnsThanTheOldFixedThree() {
+        for (width in 601..2000 step 7) {
+            val mode = wideScreenLayoutMode(width.dp)
+            val columns = imageWallColumnCount(width.dp, mode, 24.dp)
+            assertTrue("$width.dp 只许加列不许减列", columns >= 3)
+        }
+    }
+
+    /**
+     * 具体读数钉死（每列预算 200dp，扣掉本档侧栏宽与左右 12dp 内边距）。
+     * 这几格就是"平板 3 列→6 列、宽窗 3 列→8 列"那次改版的验收口径，观感变了要在这里留痕。
+     */
+    @Test fun columnCountsAtTheMeasuredBands() {
+        val padding = 24.dp
+        // 601dp：刚跨断点，扣掉 72dp 侧栏后只够 3 列 ⇒ 与改版前一致
+        assertEquals(3, imageWallColumnCount(601.dp, WideScreenLayoutMode.Medium, padding))
+        // 1280dp（Pixel Tablet 原生横屏）：1280-72-24 = 1184 ⇒ 6 列，一格约 189dp
+        assertEquals(6, imageWallColumnCount(1280.dp, WideScreenLayoutMode.Medium, padding))
+        // 1706dp（本机覆写密度后的实测宽）：1706-224-24 = 1458 ⇒ 8 列，一格约 173dp
+        assertEquals(8, imageWallColumnCount(1706.dp, WideScreenLayoutMode.Expanded, padding))
+    }
+
+    /** 跨进 Expanded 时侧栏从 72 跳到 224，列数会回落一档 —— 这是扣掉侧栏宽的正常结果，不是抖动。 */
+    @Test fun crossingIntoExpandedDropsColumnsBecauseTheRailWidens() {
+        val padding = 24.dp
+        val mediumAt1300 = imageWallColumnCount(1300.dp, WideScreenLayoutMode.Medium, padding)
+        val expandedAt1301 = imageWallColumnCount(1301.dp, WideScreenLayoutMode.Expanded, padding)
+        assertEquals(7, mediumAt1300)
+        assertEquals(6, expandedAt1301)
     }
 }
