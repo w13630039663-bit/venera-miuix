@@ -64,7 +64,14 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
         try {
             connection.prepareStatement(sql).use { stmt ->
                 bind(stmt, args)
-                stmt.executeUpdate()
+                val updated = stmt.executeUpdate()
+                if (updated == 0) {
+                    // 与 Android 侧 `executeInsert()` 回 -1 就抛同判据：`INSERT OR IGNORE` 撞了唯一键、
+                    // 触发器把写入吞掉等等，都是"这一句没产生新行"。不接住返回值就直接查
+                    // `last_insert_rowid()` 的话，SQLite 会把**上一条**插入的 rowid（或 0）交回来，
+                    // 桌面端于是既不抛也不报失败 —— 门面 KDoc 写的"失败 ⇒ 抛"就是这么破掉的。
+                    throw IllegalStateException("插入未成功（影响行数为 0，未产生新行）：$sql")
+                }
                 // 单连接 + 本方法全程持锁，所以 last_insert_rowid() 取到的就是刚插的那一行；
                 // Android 侧不能这么办（写连接来自连接池），故那边的实现走 SQLiteStatement。
                 stmt.connection.prepareStatement("SELECT last_insert_rowid()").use { rowIdStmt ->
@@ -157,14 +164,24 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
     }
 
     /**
-     * Kotlin 的数字族 → sqlite-jdbc 认得的值形态。
+     * Kotlin 的数字族 → JDBC 认得的值形态。这一层是**防御性归一**，不是修复驱动的问题：
+     * 2026-10-02 拿 sqlite-jdbc 3.53.4.0 实测（绕开本层直接 `setObject`），
+     *  `Boolean true/false` 已经是 INTEGER 1/0、`Float 0.1f` 已经是 REAL 0.10000000149011612、
+     *  `Int`/`Long` 已经是 INTEGER —— 与本层的输出**一字不差**。
+     * 留着它的理由只有两条：把"按哪一族存"写死在本仓一侧（驱动升级换语义时这里不变），
+     * 以及和 Android 的 `bindLong`/`bindDouble` 摆在一起读时对得上。
      *
-     * 这一层不换算就交给 `setObject` 的话，`Int` 会变成 `INTEGER` 列里的 4 字节整数（没问题），
-     * 但 `ULong`/`Char`/`Boolean` 这些 JDBC 不认的类型会被驱动直接拒绝；
-     * 而 `Float` 交给 `setObject` 会写成 REAL 的 4 字节舍入值，与 Android 侧
-     * `execSQL(sql, Object[])` 的 `bindDouble` 结果不同 —— 两端必须给同一个字节。
+     * 不要再往外说"不这么写两端字节就不同"：SQLite 的 REAL 恒为 8 字节，没有 4 字节 REAL 这一档，
+     * Float 与 Double 在存储层根本区分不出来（`JdbcSqliteDatabaseTest` 因此不再断这两族，
+     * 那条用例只断本层能决定的事：整数族不截断、驱动拒收的类型当场点名）。
+     * 真正跨端要对齐的是 Android `execSQL(sql, Object[])` 交给 SQLite 的列亲和性转换结果，
+     * 那只能靠真机回归核，桌面侧的用例证不了。
+     *
+     * 可见性放成 `internal` 只为一件事：这张映射表本身要能被用例逐条钉住（`JdbcSqliteDatabaseTest`
+     * 的「绑定表」）。走公开的 `exec` 反而钉不住 —— 存储层读回来的形态是那台驱动决定的，
+     * 把这几支删掉读数也一样，用例就变成一句恒真的话。
      */
-    private fun bindable(arg: Any): Any = when (arg) {
+    internal fun bindable(arg: Any): Any = when (arg) {
         is Boolean -> if (arg) 1L else 0L // SQLite 没有独立布尔存储类
         is Byte, is Short, is Int, is Long -> (arg as Number).toLong()
         is Float, is Double -> (arg as Number).toDouble()

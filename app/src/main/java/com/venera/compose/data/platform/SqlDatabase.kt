@@ -24,9 +24,13 @@ interface SqlDatabase : AutoCloseable {
     /**
      * 执行一条 INSERT 并回报新行的 rowid；失败 ⇒ 抛（消息带 SQL 原文）。
      *
+     * "失败"两端同判据：语句本身报错，以及**没产生新行**（Android 的 `executeInsert()` 回 -1、
+     * JDBC 的 `executeUpdate()` 回 0，例如 `INSERT OR IGNORE` 撞了唯一键）。后一种两端都抛，
+     * 不许回一个 `last_insert_rowid()` 的旧值装作成功。
+     *
      * 为什么门面要有这一条而 [exec] 不够：`FavoriteImagesManager.addFavorite` 与
      * `ContentGuardManager.addRule` 的调用方拿返回的 rowid 判成败
-     * （`reader/VeneraReaderScreen.kt:2074` 的 `rowId < 0`、`components/ComicCardContextMenu.kt:93`
+     * （`reader/VeneraReaderScreen.kt:2075` 的 `rowId < 0`、`components/ComicCardContextMenu.kt:94`
      * 的 `addRule(...) >= 0`），而 [exec] 不回报任何东西。
      * 两端都不许用 `SELECT last_insert_rowid()` 另查一次：那是**连接级**的状态，
      * Android 的 SQLiteDatabase 是连接池，取到的可能是别的连接的。

@@ -136,23 +136,57 @@ class JdbcSqliteDatabaseTest {
         assertTrue("实际消息：${e!!.message}", e.message!!.contains("INSERT INTO t_pk"))
         // 抛了也不许有第二行
         assertEquals(1, db.query("SELECT id FROM t_pk WHERE id = 9").size)
+        // 两端一致的那一半：`INSERT OR IGNORE` 撞唯一键时驱动不报错、只是**没写进行**，
+        // 而 SQLite 的 last_insert_rowid() 这时交回的是上一条插入的 rowid —— 不接住
+        // executeUpdate() 的返回值就会"假装成功"并把旧 rowid 给调用方（Android 侧
+        // executeInsert() 回 -1 当场抛，桌面侧必须同样抛）。
+        val ignored = runCatching { db.insert("INSERT OR IGNORE INTO t_pk(id) VALUES (?)", 9L) }.exceptionOrNull()
+        assertTrue("INSERT OR IGNORE 撞主键本该抛，实际没抛：$ignored", ignored is IllegalStateException)
+        assertTrue("实际消息：${ignored!!.message}", ignored.message!!.contains("INSERT OR IGNORE INTO t_pk"))
+        // 上面那一句没成功，rowid 序列也不许被它污染：紧接着的真插入拿到的仍是新行
+        assertEquals(3L, db.insert(historyInsert, "c", "C", null, "u", "jm", "c", 0, 0, 1, 3L))
+        assertEquals(1, db.query("SELECT id FROM t_pk WHERE id = 9").size)
     }
 
-    @Test fun `参数归一化：布尔写成一比零、Float 与 Double 给同一个字节、整族进 INTEGER`() {
-        // JdbcSqliteDatabase 新增的 bindable 层改了所有绑定路径的语义，必须有用例钉住
-        // "与 Android 侧 bindLong/bindDouble 同形"这条口径（两端给同一个字节的说法不能只写在注释里）。
-        db.exec("CREATE TABLE t_bind(b INTEGER, f REAL, i INTEGER)")
-        db.exec("INSERT INTO t_bind(b, f, i) VALUES (?, ?, ?)", true, 0.1f, 7)
-        val r = db.query("SELECT b, f, i FROM t_bind").single()
-        assertEquals(1L, r.long("b"))
-        assertEquals(SqlType.INTEGER, r.typeOf("b"))
-        // 0.1f 升成 double 是 0.10000000149011612；若驱动按 4 字节 REAL 存，读回会是 0.1
-        // ——断言按 double(0.1f) 钉住"绑定前已升成 double"这件事
-        assertEquals((0.1f).toDouble(), r.double("f"), 1e-12)
-        assertEquals(7L, r.long("i"))
+    @Test fun `绑定表：布尔给一到零、Float 升 Double、整数族给 Long、其余原样`() {
+        // [JdbcSqliteDatabase.bindable] 是"驱动拿到什么形态"这张表的唯一出处，直着钉它：
+        // 走公开的 exec 钉不住 —— 存储层读回来的形态是 sqlite-jdbc 自己决定的（2026-10-02 实测：
+        // 绕开本层直接 setObject，Boolean 已经是 INTEGER 1/0、Float 0.1f 已经是 REAL
+        // 0.10000000149011612，与本层输出一字不差），把那几支删掉这条用例照样绿，
+        // 所以旧版那句"用例已证明这一层必要"不成立，已从注释与断言里一起撤掉。
+        // 本层能被证明的只有它自己写了什么：删掉任何一支、或改成交给驱动的另一种形态，这里就红。
+        assertEquals(1L, db.bindable(true))
+        assertEquals(0L, db.bindable(false))
+        assertEquals(7L, db.bindable(7))
+        assertEquals(7L, db.bindable(7L))
+        assertEquals(7L, db.bindable(7.toShort()))
+        assertEquals(7L, db.bindable(7.toByte()))
+        // Float 在交给驱动之前就已升成 Double（0.1f 的精确值是 0.10000000149011612，不是 0.1）
+        assertEquals(0.10000000149011612, db.bindable(0.1f))
+        assertEquals(0.1, db.bindable(0.1))
+        // 不在表里的类型原样交出去，认不认由驱动决定（认不下就在 bind 处抛并点名，见下一条）
+        assertEquals("文", db.bindable("文"))
+        assertEquals('A', db.bindable('A'))
+        val blob = byteArrayOf(1, 2)
+        assertSame(blob, db.bindable(blob))
+    }
+
+    @Test fun `参数绑定：整数族按 64 位进 INTEGER 且文本与 null 各归各位`() {
+        // 存储侧的往返：列不声明亲和性，所以存进去是什么存储类就读回什么。
+        // 防的是本层（或往后的改动）把某一族写成文本 —— 那种行在 Android 侧读出来是另一回事。
+        db.exec("CREATE TABLE t_bind(i, big, small, tiny, s, n)")
+        db.exec(
+            "INSERT INTO t_bind(i, big, small, tiny, s, n) VALUES (?, ?, ?, ?, ?, ?)",
+            7, 1234567890123L, 3.toShort(), 4.toByte(), "文", null,
+        )
+        val r = db.query("SELECT i, big, small, tiny, s, n FROM t_bind").single()
         assertEquals(SqlType.INTEGER, r.typeOf("i"))
-        // false 同理落 0
-        db.exec("INSERT INTO t_bind(b, f, i) VALUES (?, ?, ?)", false, 0.0, 0)
-        assertEquals(0L, db.query("SELECT b FROM t_bind WHERE i = 0").single().long("b"))
+        assertEquals(7L, r.long("i"))
+        assertEquals(1234567890123L, r.long("big"))     // 超出 Int 的值不许在绑定处掉高位
+        assertEquals(3L, r.long("small"))
+        assertEquals(4L, r.long("tiny"))
+        assertEquals(SqlType.TEXT, r.typeOf("s"))
+        assertTrue(r.isNull("n"))
+        assertEquals(1, db.query("SELECT i FROM t_bind").size)
     }
 }
