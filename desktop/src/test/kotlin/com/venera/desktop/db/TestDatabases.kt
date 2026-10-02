@@ -57,6 +57,38 @@ class ExplodingSqlDatabase(
 }
 
 /**
+ * 记录每一次调用的替身：把"不碰库"、"每批不超过给定大小"这类说法变成**计数断言**。
+ * 全部照常委托给 [delegate]（结果不变），只是把读写的参数留底。
+ */
+class RecordingSqlDatabase(private val delegate: SqlDatabase) : SqlDatabase {
+    /** 每次 [query] 的参数快照，顺序即调用顺序 —— 批大小就看它的长度。 */
+    val queries = mutableListOf<List<Any?>>()
+
+    /** 落盘过（或被 [ExplodingSqlDatabase] 之类拦下过）的写入次数。 */
+    var writes = 0
+        private set
+
+    override fun exec(sql: String, vararg args: Any?) {
+        writes++
+        delegate.exec(sql, *args)
+    }
+
+    override fun insert(sql: String, vararg args: Any?): Long {
+        writes++
+        return delegate.insert(sql, *args)
+    }
+
+    override fun query(sql: String, vararg args: Any?): List<SqlRow> {
+        queries += args.toList()
+        return delegate.query(sql, *args)
+    }
+
+    override fun inTransaction(block: () -> Unit) = delegate.inTransaction(block)
+
+    override fun close() = delegate.close()
+}
+
+/**
  * 把任意一条连接包成"读写都走它"的 [SqlDatabaseSource]：
  * 用例要把 [ExplodingSqlDatabase] 之类的替身递给某一层的 store 时用。
  */

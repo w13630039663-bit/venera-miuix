@@ -102,8 +102,23 @@ class FavoriteImagesStoreTest {
         assertEquals(2, rows.size)
         assertEquals("新", rows[0].comicTitle)
         assertEquals(9L, rows[0].createdAt)
-        // 备份里不许出现 local_path（换台机器它就是条不存在的路径）
-        assertTrue(rows.none { it.toString().contains("local") })
+        // 备份里不许出现 local_path 与本机自增 id（换台机器前者是一条不存在的路径、后者没有意义）。
+        // 断的是**那句 SQL 的列清单**：FavoriteImageBackupFields 这个类型本来就没有 localPath 字段，
+        // 拿返回值的形状去证明"没带本机字段"是句恒真的话 —— 把 SELECT 改坏了也照样绿。
+        val selected = FavoriteImagesStore.BACKUP_SELECT
+            .substringAfter("SELECT ")
+            .substringBefore(" FROM")
+            .split(",")
+            .map { it.trim() }
+        assertEquals(
+            listOf(
+                "comic_id", "comic_title", "source_name", "chapter_title",
+                "page_index", "image_url", "created_at",
+            ),
+            selected,
+        )
+        // 再补一道实值探针：这一行的 local_path 在库里是真有值的，备份行里任何位置都不许带出它
+        assertTrue(rows.none { it.toString().contains("/x/new.jpg") })
     }
 
     @Test
@@ -150,9 +165,16 @@ class FavoriteImagesStoreTest {
 
     @Test
     fun `空批次不碰库`() {
-        assertEquals(0, images.restoreBackupFields(emptyList()))
-        assertEquals(0, images.deleteByIds(emptyList()))
-        assertEquals(emptyList<String?>(), images.localPathsOf(emptyList()))
+        // 光看返回值证不出"不碰库"：这里套一层 failOn = 1 的写入替身（这笔连接只要发出过
+        // 一条写入就当场抛），再用 recorder 兜住另一半 —— 连查询都不许发出去。
+        val recorder = RecordingSqlDatabase(ExplodingSqlDatabase(store.db, failOn = 1))
+        val idle = FavoriteImagesStore(recorder.asSource())
+
+        assertEquals(0, idle.restoreBackupFields(emptyList()))
+        assertEquals(0, idle.deleteByIds(emptyList()))
+        assertEquals(emptyList<String?>(), idle.localPathsOf(emptyList()))
+        assertEquals(0, recorder.writes)
+        assertEquals(emptyList<List<Any?>>(), recorder.queries)
     }
 
     @Test

@@ -60,10 +60,7 @@ class FavoriteImagesStore(private val source: SqlDatabaseSource) {
 
     /** 备份那一栏的七列（刻意不含 `id` 与 `local_path`，理由见调用方的类注释）。 */
     fun backupFields(): List<FavoriteImageBackupFields> =
-        source.reader().query(
-            "SELECT comic_id, comic_title, source_name, chapter_title, page_index, image_url, created_at" +
-                " FROM favorite_images ORDER BY created_at DESC"
-        ).map { row ->
+        source.reader().query(BACKUP_SELECT).map { row ->
             FavoriteImageBackupFields(
                 comicId = row.requiredString("comic_id"),
                 comicTitle = row.requiredString("comic_title"),
@@ -126,7 +123,7 @@ class FavoriteImagesStore(private val source: SqlDatabaseSource) {
      *  - `created_at` 用归档里的原值，否则导入的这批会整体插到收藏墙最前；
      *  - 去重键是 `image_url`（本机已有的与这批内部重复都不再写）。
      *
-     * 整笔在一句事务里；任一行写不下去 ⇒ [SqlDatabase.insert] 抛 → 整笔回滚 → 异常传出。
+     * 整笔在一句事务里；任一行写不下去 ⇒ [SqlDatabase.exec] 抛 → 整笔回滚 → 异常传出。
      * 改造前靠 `insert` 返回 -1 再手工抛 `SQLException` 达到同一效果，判据一致。
      */
     fun restoreBackupFields(rows: List<FavoriteImageBackupFields>): Int {
@@ -156,6 +153,15 @@ class FavoriteImagesStore(private val source: SqlDatabaseSource) {
             "INSERT INTO favorite_images " +
                 "(comic_id, comic_title, source_name, chapter_title, page_index, image_url, " +
                 "local_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+
+        /**
+         * 备份读那一栏的列清单。收成常量与 [INSERT_FAVORITE_IMAGE] 同一个做法：
+         * 「不带本机自增 `id` 与 `local_path`」是这张表最要紧的备份口径（换台机器前者没有意义、
+         * 后者指向一个不存在的文件），一句写死的 SQL 才让用例能把这条口径逐列断言住。
+         */
+        internal const val BACKUP_SELECT =
+            "SELECT comic_id, comic_title, source_name, chapter_title, page_index, image_url, created_at" +
+                " FROM favorite_images ORDER BY created_at DESC"
     }
 }
 

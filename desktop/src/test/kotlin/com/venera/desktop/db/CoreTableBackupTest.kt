@@ -218,17 +218,78 @@ class CoreTableBackupTest {
     // ── 读法的抛点：缺字段、类型不符、数组元素不是对象 ──
 
     @Test
-    fun `恢复时缺字段当场抛出并点名缺哪一个`() {
-        val rows = parseJsonArray("[{\"comic_id\":\"c1\"}]")
+    fun `恢复历史中途缺字段则整笔回滚并点名缺哪一个`() {
+        // 两行：第一行是好的、第二行缺 title。恢复那三步在生产里是包在
+        // `BackupManager` 的 `db.inTransaction { CoreTableBackup.importHistory(...) }` 里的，
+        // 所以这里也照同一个形状跑 —— 只喂一行坏数据是测不出回滚的（抛在 db.exec 之前的
+        // 参数求值阶段，一笔都没发出去，"库里 0 行"恒成立）。
+        val rows = parseJsonArray(
+            "[{\"comic_id\":\"c1\",\"title\":\"好的\",\"author\":\"\",\"cover_url\":\"\"," +
+                "\"source_name\":\"s\",\"last_chapter_title\":\"\",\"last_chapter_index\":0," +
+                "\"last_page_index\":0,\"total_pages\":0,\"updated_at\":1}," +
+                "{\"comic_id\":\"c2\"}]"
+        )
         val restored = TestDatabase("history-missing")
         try {
             CoreDbSchema.ensureOn(restored.db)
-            CoreTableBackup.importHistory(restored.db, rows)
-            fail("缺 title 的行本该抛")
-        } catch (e: IllegalStateException) {
-            assertTrue("实际消息：${e.message}", e.message!!.contains("title"))
-            // 一笔都没写进去（抛在第一行，事务还没提交）
+            try {
+                restored.db.inTransaction { CoreTableBackup.importHistory(restored.db, rows) }
+                fail("缺 title 的行本该抛")
+            } catch (e: IllegalStateException) {
+                assertTrue("实际消息：${e.message}", e.message!!.contains("title"))
+            }
+            // 第一行已经 exec 过，只有整笔回滚能让这里还是 0
             assertEquals(0, CoreTableBackup.exportTable(restored.db, "comic_history").size())
+        } finally {
+            restored.close()
+        }
+    }
+
+    @Test
+    fun `恢复统计中途缺字段则整笔回滚`() {
+        // 同一条判据换 importStats：这张表十列全 NOT NULL，缺 comic_title 必抛，
+        // 而第一行已经写进事务了 —— 没有事务就会留下"报失败但其实多了一条统计"。
+        val rows = parseJsonArray(
+            "[{\"comic_id\":\"c1\",\"comic_title\":\"好的\",\"source_name\":\"s\",\"tags\":\"\"," +
+                "\"chapter_title\":\"\",\"pages_read\":1,\"duration_seconds\":1," +
+                "\"read_date\":\"2026-10-01\",\"created_at\":1}," +
+                "{\"comic_id\":\"c2\"}]"
+        )
+        val restored = TestDatabase("stats-missing")
+        try {
+            CoreDbSchema.ensureOn(restored.db)
+            try {
+                restored.db.inTransaction { CoreTableBackup.importStats(restored.db, rows) }
+                fail("缺 comic_title 的行本该抛")
+            } catch (e: IllegalStateException) {
+                assertTrue("实际消息：${e.message}", e.message!!.contains("comic_title"))
+            }
+            assertEquals(0, CoreTableBackup.exportTable(restored.db, "reading_stats").size())
+        } finally {
+            restored.close()
+        }
+    }
+
+    @Test
+    fun `恢复屏蔽规则中途缺字段则整笔回滚`() {
+        // 同一条判据换 importGuardRules。第二条刻意给 is_regex=0：
+        // 它不会走"编译不过就跳过"那一条退路，必须真的走到 exec 之后才因为缺 created_at 抛。
+        val rows = parseJsonArray(
+            "[{\"rule_type\":\"KEYWORD\",\"pattern\":\"好\",\"is_regex\":0,\"is_enabled\":1,\"created_at\":10}," +
+                "{\"rule_type\":\"TAG\",\"pattern\":\"坏\",\"is_regex\":0}]"
+        )
+        val restored = TestDatabase("guard-missing")
+        try {
+            CoreDbSchema.ensureOn(restored.db)
+            try {
+                restored.db.inTransaction {
+                    CoreTableBackup.importGuardRules(restored.db, rows) { true }
+                }
+                fail("缺 created_at 的行本该抛")
+            } catch (e: IllegalStateException) {
+                assertTrue("实际消息：${e.message}", e.message!!.contains("created_at"))
+            }
+            assertEquals(0, CoreTableBackup.exportTable(restored.db, "content_guard_rules").size())
         } finally {
             restored.close()
         }

@@ -205,15 +205,6 @@ internal fun JsonObject.optLongValue(key: String, fallback: Long): Long {
     return fallback
 }
 
-/** 原 `getJSONObject(i)` 的对象版：键不存在或不是对象 ⇒ 抛。 */
-internal fun JsonObject.objectValue(key: String): JsonObject {
-    val element = requireElement(key)
-    if (!element.isJsonObject) {
-        throw IllegalStateException("备份行字段「$key」不是 JSON object（${element.asDescriptor()}）")
-    }
-    return element.asJsonObject
-}
-
 /** [JsonArray] 取一行：越界与 null 元素都抛，不返回"看起来像空行"的东西。 */
 internal fun JsonArray.objectAt(index: Int): JsonObject {
     val element = get(index) // 越界时 gson 自己抛 IndexOutOfBounds，与 org.json 一致

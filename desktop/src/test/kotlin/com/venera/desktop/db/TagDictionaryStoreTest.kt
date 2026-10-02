@@ -91,10 +91,19 @@ class TagDictionaryStoreTest {
         // 变量上限：超限是直接抛异常，而外层把它吞成 null 就成了"所有卡都没标题"。
         (1..5).forEach { put("t$it", 0, "第${it}个") }
 
-        val rows = dictionary.rowsForInChunks((1..5).map { "t$it" }, chunkSize = 2)
+        // "不超过批大小"要看实际发出去的参数才有意义：把 chunkSize 改大（或干脆不切批）
+        // 在查询结果上是完全看不出来的，所以这里换一条会记录参数的连接来断。
+        val recorder = RecordingSqlDatabase(store.db)
+        val recorded = TagDictionaryStore(recorder)
+        val rows = recorded.rowsForInChunks((1..5).map { "t$it" }, chunkSize = 2)
 
         assertEquals(5, rows.size)
         assertEquals((1..5).map { "第${it}个" }.sorted(), rows.mapNotNull { it.cn }.sorted())
+        // 5 个名字按 2 个一批 = 三批 2/2/1，且每批的参数就是那一批的名字（顺序 = 切批顺序）
+        assertEquals(
+            listOf(listOf("t1", "t2"), listOf("t3", "t4"), listOf("t5")),
+            recorder.queries,
+        )
     }
 
     @Test
