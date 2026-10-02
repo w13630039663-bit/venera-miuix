@@ -23,6 +23,19 @@ kotlin.sourceSets["main"].kotlin {
     // Task 3：两端共享的建表 DDL。
     // Task 4a：`data/db` 的持久层核心已经全部脱离 android.*，整个目录进桌面编译，
     // 只剩三个文件点名排除（清单见下方 exclude）。
+    // Task 4b：4b 从 8 颗业务文件里抽出的持久层内核（ReadingStatsStore / FavoriteImagesStore /
+    // GuardRuleStore / TagDictionaryStore / CoreTableBackup / JsonValues）也放进了 `data/db`，
+    // 所以它们**不需要新增 srcDir** 就自动进桌面编译面，`:desktop:test` 因此能拿真
+    // JdbcSqliteDatabase + 临时 `.db` 跑它们的行为。
+    // 那 8 颗业务文件本身**没有**搬进来，各自的原因为（详见 4b 报告，不许假摘）：
+    //  - sync/BackupManager、sync/ForeignArchiveImport：cacheDir 落点/解包、ZipFile、logcat，
+    //    BackupManager 还要画廊两个 store 与 FavoriteImagesManager（Bitmap）的单例；
+    //  - stats/ReadingStatsManager：标签字典与繁简表要 Context；
+    //  - security/guard/ContentGuardManager：源级预设表在 assets 里，另有 StartupTrace 与偏好；
+    //  - feature/favoriteimages/FavoriteImagesManager：android.graphics.Bitmap 落盘 + filesDir；
+    //  - gallery/data/GalleryTagDictionary：词典库是 assets 复制出来的真实路径（Context.assets）；
+    //  - gallery/data/GallerySaver、reader/VeneraReaderScreen：唯一的 ContentValues 是 MediaStore
+    //    的 ContentResolver 写入，按本轮口径（平台服务不碰）一行未动。
     // 为什么不用 include：KGP 的 sourceSet 过滤器对整个 source set 生效而非单条 srcDir，
     // 实测 include("**/SchemaSql.kt") 会把本模块自己的源文件一并滤掉且 BUILD SUCCESSFUL（静默假绿），
     // 故排除只能按文件名点着写；剩下三个文件脱离 Android（VeneraDatabase 挪进 data/platform/android、
@@ -57,9 +70,12 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // Task 3：JdbcSqliteDatabase 的驱动。坐标版本照阶段 1 方案 D3 写死（已在 Maven Central 核到）。
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
-    // Task 4a 曾为 LocalFavoritesManager.folderToJson 加过 implementation(libs.gson)：
-    // 该方法零生产调用方已删（R23），桌面编译面（data/platform + data/db 共享源）里再无 gson
-    // 使用者，这颗依赖随之撤掉。
+    // Task 4b：`data/db` 的持久层 JSON（JsonValues / CoreTableBackup）替代原来的 android `org.json`
+    // ——后者桌面侧根本没有。生产调用方是真的：`sync/BackupManager` 导出与恢复归档的九个 member、
+    // `sync/ForeignArchiveImport` 读 PicaComic 的 `sync_data`、`security/guard/ContentGuardManager`
+    // 读 assets 的源级预设表，全走这一层。
+    // （Task 4a 曾为已删的 `folderToJson` 加过它又撤掉；这次带进来的是有生产调用方的那份。）
+    implementation(libs.gson)
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)

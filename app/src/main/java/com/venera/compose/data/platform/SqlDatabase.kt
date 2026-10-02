@@ -13,10 +13,25 @@ import java.util.TreeMap
  *  - SQL 值一律走 `?` 参数绑定；标识符（表名）只能走 [quoteIdentifier]；
  *  - 未知列名直接抛，不许返回 null 蒙混；
  *  - 驱动缺失、连接建不出、执行/事务失败 ⇒ 抛，并把 SQL 原文或路径写进消息，不许静默降级。
+ *
+ * 继承 [AutoCloseable] 只为一件事：调用方能写 `.use { }`。哪些连接该由取用者关掉、
+ * 哪些归 helper 管，仍然由实现自己决定（[close] 的语义见各实现）。
  */
-interface SqlDatabase {
+interface SqlDatabase : AutoCloseable {
     /** 执行一条语句（DDL/DML），args 按位置绑定参数。 */
     fun exec(sql: String, vararg args: Any?)
+
+    /**
+     * 执行一条 INSERT 并回报新行的 rowid；失败 ⇒ 抛（消息带 SQL 原文）。
+     *
+     * 为什么门面要有这一条而 [exec] 不够：`FavoriteImagesManager.addFavorite` 与
+     * `ContentGuardManager.addRule` 的调用方拿返回的 rowid 判成败
+     * （`reader/VeneraReaderScreen.kt:2074` 的 `rowId < 0`、`components/ComicCardContextMenu.kt:93`
+     * 的 `addRule(...) >= 0`），而 [exec] 不回报任何东西。
+     * 两端都不许用 `SELECT last_insert_rowid()` 另查一次：那是**连接级**的状态，
+     * Android 的 SQLiteDatabase 是连接池，取到的可能是别的连接的。
+     */
+    fun insert(sql: String, vararg args: Any?): Long
 
     /** 查询并**一次性**把结果读进内存（返回的行不再受游标/连接生命周期牵制）。 */
     fun query(sql: String, vararg args: Any?): List<SqlRow>
@@ -25,7 +40,7 @@ interface SqlDatabase {
     fun inTransaction(block: () -> Unit)
 
     /** 关闭底层连接。关闭后继续使用由实现决定抛法，但必须抛。 */
-    fun close()
+    override fun close()
 }
 
 /** SQLite 的五种存储类。[SqlRow.typeOf] 的返回值，Android 端由 Cursor.getType 的 FIELD_TYPE_* 映射而来。 */

@@ -119,4 +119,40 @@ class JdbcSqliteDatabaseTest {
         assertEquals(1, db.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", evil).size)
         assertEquals(1, db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='comic_favorite'").size)
     }
+
+    @Test fun `insert 回报新行 rowid 且失败抛并带 SQL 原文`() {
+        // 门面新增成员 insert 的判据（4b，供 FavoriteImagesStore / GuardRuleStore 的 rowid 语义）：
+        // 行号是**这一条**新行的，主键冲突不许悄悄给个 -1。
+        val historyInsert = "INSERT INTO comic_history(comic_id, title, author, cover_url, source_name, " +
+            "last_chapter_title, last_chapter_index, last_page_index, total_pages, updated_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        assertEquals(1L, db.insert(historyInsert, "a", "A", null, "u", "jm", "c", 0, 0, 1, 1L))
+        assertEquals(2L, db.insert(historyInsert, "b", "B", null, "u", "jm", "c", 0, 0, 1, 2L))
+        // 同一张表里 rowid 可指定：撞已存在的主键必须抛，且消息里带 SQL 原文
+        db.exec("CREATE TABLE t_pk(id INTEGER PRIMARY KEY)")
+        db.insert("INSERT INTO t_pk(id) VALUES (?)", 9L)
+        val e = runCatching { db.insert("INSERT INTO t_pk(id) VALUES (?)", 9L) }.exceptionOrNull()
+        assertTrue("实际异常：$e", e is IllegalStateException)
+        assertTrue("实际消息：${e!!.message}", e.message!!.contains("INSERT INTO t_pk"))
+        // 抛了也不许有第二行
+        assertEquals(1, db.query("SELECT id FROM t_pk WHERE id = 9").size)
+    }
+
+    @Test fun `参数归一化：布尔写成一比零、Float 与 Double 给同一个字节、整族进 INTEGER`() {
+        // JdbcSqliteDatabase 新增的 bindable 层改了所有绑定路径的语义，必须有用例钉住
+        // "与 Android 侧 bindLong/bindDouble 同形"这条口径（两端给同一个字节的说法不能只写在注释里）。
+        db.exec("CREATE TABLE t_bind(b INTEGER, f REAL, i INTEGER)")
+        db.exec("INSERT INTO t_bind(b, f, i) VALUES (?, ?, ?)", true, 0.1f, 7)
+        val r = db.query("SELECT b, f, i FROM t_bind").single()
+        assertEquals(1L, r.long("b"))
+        assertEquals(SqlType.INTEGER, r.typeOf("b"))
+        // 0.1f 升成 double 是 0.10000000149011612；若驱动按 4 字节 REAL 存，读回会是 0.1
+        // ——断言按 double(0.1f) 钉住"绑定前已升成 double"这件事
+        assertEquals((0.1f).toDouble(), r.double("f"), 1e-12)
+        assertEquals(7L, r.long("i"))
+        assertEquals(SqlType.INTEGER, r.typeOf("i"))
+        // false 同理落 0
+        db.exec("INSERT INTO t_bind(b, f, i) VALUES (?, ?, ?)", false, 0.0, 0)
+        assertEquals(0L, db.query("SELECT b FROM t_bind WHERE i = 0").single().long("b"))
+    }
 }

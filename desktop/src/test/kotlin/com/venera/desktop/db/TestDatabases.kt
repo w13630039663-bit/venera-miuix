@@ -29,8 +29,9 @@ class TestDatabase(nameHint: String) : AutoCloseable {
 }
 
 /**
- * 把第 [failOn] 次 `exec` 换成抛的包装，用来验「事务中途抛 ⇒ 整笔回滚」。
+ * 把第 [failOn] 次**写入**换成抛的包装，用来验「事务中途抛 ⇒ 整笔回滚」。
  * 查询照常放行：`folderNames` 这类读操作不该被算进写入次数。
+ * [insert] 与 [exec] 共用同一个计数器 —— 被模拟的是"第 N 次落盘"，不是"第 N 次调哪个方法"。
  */
 class ExplodingSqlDatabase(
     private val delegate: SqlDatabase,
@@ -43,6 +44,11 @@ class ExplodingSqlDatabase(
         delegate.exec(sql, *args)
     }
 
+    override fun insert(sql: String, vararg args: Any?): Long {
+        if (++calls == failOn) throw IllegalStateException("模拟第 $failOn 次写入失败：$sql")
+        return delegate.insert(sql, *args)
+    }
+
     override fun query(sql: String, vararg args: Any?): List<SqlRow> = delegate.query(sql, *args)
 
     override fun inTransaction(block: () -> Unit) = delegate.inTransaction(block)
@@ -51,7 +57,17 @@ class ExplodingSqlDatabase(
 }
 
 /**
+ * 把任意一条连接包成"读写都走它"的 [SqlDatabaseSource]：
+ * 用例要把 [ExplodingSqlDatabase] 之类的替身递给某一层的 store 时用。
+ */
+fun SqlDatabase.asSource(): SqlDatabaseSource = object : SqlDatabaseSource {
+    override fun reader(): SqlDatabase = this@asSource
+    override fun writer(): SqlDatabase = this@asSource
+}
+
+/**
  * 三项偏好的替身。
+ *
  *
  * [followUpdatesFolder] 用私有字段 + `override val` 实现，不写 `override var`：
  * 接口的 `setFollowUpdatesFolder` 与 var 自动生成的 setter 是同一个 JVM 签名，会撞车。

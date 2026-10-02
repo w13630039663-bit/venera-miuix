@@ -60,6 +60,27 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
         }
     }
 
+    override fun insert(sql: String, vararg args: Any?): Long = synchronized(connectionLock) {
+        try {
+            connection.prepareStatement(sql).use { stmt ->
+                bind(stmt, args)
+                stmt.executeUpdate()
+                // 单连接 + 本方法全程持锁，所以 last_insert_rowid() 取到的就是刚插的那一行；
+                // Android 侧不能这么办（写连接来自连接池），故那边的实现走 SQLiteStatement。
+                stmt.connection.prepareStatement("SELECT last_insert_rowid()").use { rowIdStmt ->
+                    rowIdStmt.executeQuery().use { rs ->
+                        if (!rs.next()) {
+                            throw IllegalStateException("取不到新行的 rowid：$sql")
+                        }
+                        rs.getLong(1)
+                    }
+                }
+            }
+        } catch (e: SQLException) {
+            throw IllegalStateException("执行失败：$sql：${e.message}", e)
+        }
+    }
+
     override fun query(sql: String, vararg args: Any?): List<SqlRow> = synchronized(connectionLock) {
         try {
             connection.prepareStatement(sql).use { stmt ->
@@ -128,11 +149,26 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
     private fun bind(stmt: PreparedStatement, args: Array<out Any?>) {
         args.forEachIndexed { i, arg ->
             try {
-                if (arg == null) stmt.setNull(i + 1, Types.NULL) else stmt.setObject(i + 1, arg)
+                if (arg == null) stmt.setNull(i + 1, Types.NULL) else stmt.setObject(i + 1, bindable(arg))
             } catch (e: SQLException) {
                 throw IllegalStateException("第 ${i + 1} 个参数绑定失败（值类型 ${arg?.javaClass?.name ?: "null"}）：${e.message}", e)
             }
         }
+    }
+
+    /**
+     * Kotlin 的数字族 → sqlite-jdbc 认得的值形态。
+     *
+     * 这一层不换算就交给 `setObject` 的话，`Int` 会变成 `INTEGER` 列里的 4 字节整数（没问题），
+     * 但 `ULong`/`Char`/`Boolean` 这些 JDBC 不认的类型会被驱动直接拒绝；
+     * 而 `Float` 交给 `setObject` 会写成 REAL 的 4 字节舍入值，与 Android 侧
+     * `execSQL(sql, Object[])` 的 `bindDouble` 结果不同 —— 两端必须给同一个字节。
+     */
+    private fun bindable(arg: Any): Any = when (arg) {
+        is Boolean -> if (arg) 1L else 0L // SQLite 没有独立布尔存储类
+        is Byte, is Short, is Int, is Long -> (arg as Number).toLong()
+        is Float, is Double -> (arg as Number).toDouble()
+        else -> arg
     }
 
     /** 值分类对齐 SQLite 存储类：sqlite-jdbc 的 getObject 只会给出这几族。 */
