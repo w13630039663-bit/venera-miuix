@@ -146,7 +146,7 @@ private class AndroidReadingHistory(private val context: Context) : ReadingHisto
 
     override val historyFlow: StateFlow<List<HistoryRecord>> get() = dao.historyFlow
 
-    override fun refresh() = dao.refresh()
+    override suspend fun clearAll() = dao.clearAll()
 
     override suspend fun saveHistory(record: HistoryRecord) = dao.saveHistory(record)
 
@@ -170,13 +170,13 @@ private class AndroidReadingStats(private val context: Context) : ReadingStats {
         durationSeconds: Long,
     ) = manager.recordSession(comicId, comicTitle, sourceName, tags, chapterTitle, pagesRead, durationSeconds)
 
-    override suspend fun summary(): ReadingStatsSummary = manager.getSummary()
+    override suspend fun getSummary(): ReadingStatsSummary = manager.getSummary()
 
-    override suspend fun recent14DaysTrend(): List<DailyTrendItem> = manager.getRecent14DaysTrend()
+    override suspend fun getRecent14DaysTrend(): List<DailyTrendItem> = manager.getRecent14DaysTrend()
 
-    override suspend fun topComics(limit: Int): List<ComicStatItem> = manager.getTopComics(limit)
+    override suspend fun getTopComics(limit: Int): List<ComicStatItem> = manager.getTopComics(limit)
 
-    override suspend fun tagStats(days: Int): TagStats = manager.getTagStats(days)
+    override suspend fun getTagStats(days: Int): TagStats = manager.getTagStats(days)
 }
 
 /** 熔断与取流客户端的运维动作。 */

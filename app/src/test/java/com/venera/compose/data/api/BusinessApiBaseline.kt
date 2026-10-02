@@ -54,8 +54,8 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
             "残留四类逐条见覆写：冻结屏（FREEZE-STATEMENT.md:8-15）、feature/sourcemanage 整域、" +
             "以及 W1 那族嵌套类型（SourceSearchResult 与 InstalledSourceMeta 都声明在 ComicSourceManager.kt:61 一带）",
     "JsComicSource" to "B3（穿过接口拿实现那一处收进 ComicContentApi.tagSuggestionKeyword；sourcemanage 两颗见覆写）",
-    "HistoryDao" to "B4（契约 data/api/LibraryApi.kt 的 ReadingHistory）",
-    "ReadingStatsManager" to "B4（同文件的 ReadingStats）",
+    "HistoryDao" to "契约 data/api/LibraryApi.kt 的 ReadingHistory，B4 已迁完、零站点；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删掉等于给未来的 HistoryDao 类型引用位开一口漏（解锁条件：无，本行不是点位）",
+    "ReadingStatsManager" to "契约 data/api/LibraryApi.kt 的 ReadingStats，B4 已迁完；漫画侧零站点，唯一残留是 feature/favoriteimages 那颗实现类自己（见 FEATURE_RESIDENT_IMPL 覆写）。条目不许删，理由同 HistoryDao",
     "LocalFavoritesManager" to "B5（契约 FavoriteLibrary，随 B5 与守卫同批落地）",
     "DownloadManager" to "B5（契约 OfflineLibrary，同上）",
     "LocalComicManager" to "B5（契约 OfflineLibrary，同上）",
@@ -150,26 +150,25 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
 /** 符号默认归属 + 站点覆写；必须排在两者之后（顶层属性按声明顺序初始化）。 */
 internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERRIDE
 
-/** A ——「UI import 业务实现类」。最新：42 颗文件 / 85 条。 */
+/** A ——「UI import 业务实现类」。最新：40 颗文件 / 79 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
         "feature/ComicDetailScreen.kt" to setOf("TagTranslationManager"),
-        "feature/ComicDetailViewModel.kt" to setOf("HistoryDao", "LocalFavoritesManager"),
+        "feature/ComicDetailViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/DownloadScreen.kt" to setOf("DownloadManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FavoritesViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
-        "feature/HistoryViewModel.kt" to setOf("HistoryDao", "LocalFavoritesManager"),
+        "feature/HistoryViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/HomeScreen.kt" to setOf("ComicSourceManager"),
-        "feature/HomeViewModel.kt" to setOf("HistoryDao", "LocalFavoritesManager", "ReadingStatsManager"),
+        "feature/HomeViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/LocalComicScreen.kt" to setOf("DownloadManager", "LocalComicManager"),
         "feature/LogViewerScreen.kt" to setOf("AppLogManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver", "VeneraPreferences"),
         "feature/SearchScreen.kt" to setOf("ContentGuardManager", "VeneraPreferences"),
         "feature/SearchViewModel.kt" to setOf("ChineseVariantConverter", "ComicSourceManager", "TagTranslationManager"),
         "feature/SettingsHost.kt" to setOf("VeneraPreferences"),
-        "feature/StatsScreen.kt" to setOf("ReadingStatsManager"),
         "feature/SyncBackupScreen.kt" to setOf("BackupManager", "WebDavSyncManager"),
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
@@ -193,31 +192,29 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "gallery/ui/GalleryReverseViewModel.kt" to setOf("SauceNaoAccount", "SauceNaoClient"),
         "gallery/ui/GalleryScreen.kt" to setOf("GalleryArtistFollowsStore", "GalleryFavoritesStore", "HostCircuitBreaker"),
         "gallery/ui/GallerySearchViewModel.kt" to setOf("AndroidKeyValueStore", "GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "reader/VeneraReaderScreen.kt" to setOf("HistoryDao"),
 
 )
 
-/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：41 颗文件 / 87 条，站点总数 103。 */
+/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：39 颗文件 / 80 条，站点总数 96。 */
 internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "feature/ComicDetailScreen.kt" to setOf("DownloadManager", "TagTranslationManager"),
-        "feature/ComicDetailViewModel.kt" to setOf("DownloadManager", "HistoryDao", "LocalFavoritesManager"),
+        "feature/ComicDetailViewModel.kt" to setOf("DownloadManager", "LocalFavoritesManager"),
         "feature/DownloadScreen.kt" to setOf("DownloadManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/FavoritesViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository", "LocalFavoritesManager"),
         "feature/HistoryScreen.kt" to setOf("ContentGuardManager"),
-        "feature/HistoryViewModel.kt" to setOf("HistoryDao", "LocalFavoritesManager"),
+        "feature/HistoryViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/HomeScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
-        "feature/HomeViewModel.kt" to setOf("DownloadManager", "HistoryDao", "LocalComicManager", "LocalFavoritesManager", "ReadingStatsManager"),
+        "feature/HomeViewModel.kt" to setOf("DownloadManager", "LocalComicManager", "LocalFavoritesManager"),
         "feature/LocalComicScreen.kt" to setOf("DownloadManager", "LocalComicManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver", "VeneraPreferences"),
         "feature/NetworkFavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/SearchScreen.kt" to setOf("ContentGuardManager", "VeneraPreferences"),
         "feature/SearchViewModel.kt" to setOf("ChineseVariantConverter", "TagTranslationManager"),
         "feature/SettingsHost.kt" to setOf("VeneraPreferences"),
-        "feature/StatsScreen.kt" to setOf("ReadingStatsManager"),
         "feature/SyncBackupScreen.kt" to setOf("BackupManager", "WebDavSyncManager"),
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
@@ -239,7 +236,6 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "gallery/ui/GalleryReverseViewModel.kt" to setOf("SauceNaoAccount", "SauceNaoClient"),
         "gallery/ui/GalleryScreen.kt" to setOf("GalleryArtistFollowsStore", "GalleryFavoritesStore", "GalleryFeedSource"),
         "gallery/ui/GallerySearchViewModel.kt" to setOf("GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "reader/VeneraReaderScreen.kt" to setOf("HistoryDao", "ReadingStatsManager"),
 
 )
 
@@ -248,7 +244,7 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
  * 有了它，"文件 → 符号"的折叠就不会把重复点位藏起来，而它又不受行号漂移影响。
  * B0 当天 152 ⇒ B1 摘 14（内容守卫）⇒ B2 摘 23（偏好四颗与 stores）= 115。
  */
-internal const val SITE_TOTAL_GET_INSTANCE = 103
+internal const val SITE_TOTAL_GET_INSTANCE = 96
 
 /** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：22 颗文件 / 33 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(

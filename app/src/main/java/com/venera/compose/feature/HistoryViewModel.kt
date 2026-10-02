@@ -6,11 +6,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.venera.compose.data.api.BusinessPorts
 
 /**
  * 历史页 ViewModel。
@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  */
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = HistoryDao.getInstance(application)
+    private val dao = BusinessPorts.of(application).history
     private val favorites = LocalFavoritesManager.getInstance(application)
 
     val history: StateFlow<List<HistoryRecord>> = dao.historyFlow

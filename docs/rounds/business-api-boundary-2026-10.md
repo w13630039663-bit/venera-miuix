@@ -30,7 +30,7 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
     ContentGuardApi.kt        ContentGuard(9) + GuardRuleBook(3)                      【B1】
     PreferencesApi.kt         Reader(20) + Appearance(20) + Comic(15) + Network(14)
                               + NamedStoreFactory(1)                                  【B2】
-    LibraryApi.kt             ReadingHistory(5) + ReadingStats(5)
+    LibraryApi.kt             ReadingHistory(5) + ReadingStats(5)                          【B4】
     SourceApi.kt              ComicContentApi(12) + SourceCatalog(8)                     【B3】
     NetworkApi.kt             NetworkHygiene(4) + HttpTextFetch(1)
     android/AndroidBusinessPorts.kt   全部适配器 + install()
@@ -55,7 +55,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 **VM 侧本轮不做构造注入**，改成字段一次性持有契约（`private val api = BusinessPorts.of(application)` + `private val prefs: ComicPreferences = api.comicPrefs`）。三条理由：18 处 `viewModel()` 里 **7 处落在冻结屏**（而 VM 文件本身一颗都不在冻结清单里 ⇒ 改动留在 VM 内是零豁免成本）；3 颗裸 `ViewModel()` 今天已零穿透；全仓零 `ViewModelProvider.Factory`，引入它等于新造一整个 DI 形状。**病因分两段**：①「实现类的名字出现在消费层」（125 行 import）本轮治；②「对象来自进程全局」只有构造注入能治，改完之后一颗 VM 的依赖恰好等于它字段声明里那几颗契约类型 —— **「能不能一眼列出依赖」就是本轮与下一轮的分界**。
 
-## 三、批次（B0、B1 已落地）
+## 三、批次（B0–B4 已落地）
 
 | 批 | 内容 | 点位 | 状态 |
 |---|---|---|---|
@@ -63,7 +63,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | **B1** | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14），画廊侧同时立 `gallery/data/GalleryPorts.kt` 那颗自持的 `GalleryContentGuard` | 14 | ✅ 已落地 |
 | **B2** | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
 | **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 8 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
-| B4 | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | 待做 |
+| **B4** | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | ✅ 已落地 |
 | B5 | `FavoriteLibrary` + `OfflineLibrary`（契约随本批与守卫同批落地） | 18 | 待做，**允许整批砍掉** |
 | B6 | `NetworkHygiene` + `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | 待做 |
 | B7' | 画廊六颗契约（`gallery/data/GalleryPorts.kt`，含三腿 `when(site)` 表四遍→一遍） | 57 | 待做 |
@@ -79,7 +79,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 | B3 后 |
 |---|---|---|---|---|---|
 | **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | 45 / 91 | **42 / 85** |
-| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | 45 / 115 | **41 / 103** |
+| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | 45 / 115 | 41 / 103 | **39 / 96** |
 | **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | 23 / 36 | **22 / 33** |
 | **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | 1+3+1+5+15 处 | 同值 |
 | **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | 45 颗 | **41 颗** |
@@ -161,6 +161,26 @@ app/src/main/java/com/venera/compose/gallery/data/
 **两条新的长期条目（W1 那族嵌套类型）**：`feature/SearchViewModel.kt` 六处 `ComicSourceManager.SourceSearchResult`（39,286,299,316,325,327）与 `feature/settings/PreferredIpSpeedTestScreen.kt:88` 的 `installedMeta`（类型 `InstalledSourceMeta` 声明在 `source/ComicSourceManager.kt:61`）。这两颗 data class **嵌在实现类体里**，收进契约签名就等于让 `data/api` 去 import 实现类拿嵌套类型 —— 与本轮「不搬类型」的边界不是一件事，登记为与 W1 同批。§六 的计数因此 **17 → 19 处**。
 
 **未验（挂账，与 B1/B2 合并一次真机过）**：详情页进入与翻页（`getComicDetails` / `getChapterPages` / `loadThumbnails`）、阅读器逐页加载与「下载失败重试要强制重解」那条链（`resolveImageLoadingConfig`）、搜索单源与「全部源」聚合（`searchTargets` / `search`）、点标签联想（Hitomi 那类 `series:` 语法转换，**必须验一次真转换成功**，它是本批唯一改了调用形状的行为面）、首页推荐区（`search` + `awaitSourceRegistered` 的有界等待）、评论面板（`getSource`）、探索设置页源列表。
+
+### B4（2026-10-03）
+
+**改引 7 处**（B 站点 103 → **96**，A 85 → **79**，E 出处 41 → **39 颗**，C 同值）：`HistoryDao` 与 `ReadingStatsManager` 在 UI 的站点**全部清空**。
+
+| 落点 | 从 | 到 |
+|---|---|---|
+| `feature/ComicDetailViewModel.kt:179`、`feature/HomeViewModel.kt:79` | `HistoryDao.getInstance(app)` | `BusinessPorts.of(app).history` |
+| `feature/HistoryViewModel.kt:22` | 同上（那颗句柄名叫 `dao`） | `BusinessPorts.of(application).history` |
+| `feature/HomeViewModel.kt:210`、`feature/StatsScreen.kt:72` | `ReadingStatsManager.getInstance(…)` | `BusinessPorts.of(…).stats` |
+| `reader/VeneraReaderScreen.kt:306` | `…ReadingStatsManager.getInstance(context).recordSession(` | `BusinessPorts.of(context).stats.recordSession(` |
+| `reader/VeneraReaderScreen.kt:446` | `HistoryDao.getInstance(context).saveHistory(` | `BusinessPorts.of(context).history.saveHistory(` |
+
+**这批的验收线是"调度形状一字未动"**：审计 `:237` 当年把阅读器那两处推给 Part B 的理由是「动它们必然改调度时序」，所以入场券写成 diff 里 `LaunchedEffect(` 与 `withContext(NonCancellable + Dispatchers.IO)` 两类行**零命中** —— 实测本批对 `VeneraReaderScreen.kt` 只有三条改动行：删 `HistoryDao` 的 import、306 与 446 各换一次接收者表达式；effect 的 key、`NonCancellable` 的位置、`statsFailureHandler` 那圈 `CoroutineExceptionHandler`（"本次阅读统计未能保存"那句 Toast 的落点）全在原处。
+
+**契约侧同步三处（两处是我自己上一批写错的）**：① `ReadingHistory` 补 `clearAll()` —— B0 的 KDoc 断言它「UI 零命中」是**错的**，`feature/HistoryViewModel.kt:68` 的「清空历史」一直在调它；漏的原因那次复核按句柄名 `historyDao` 扫，而那颗文件里的句柄叫 `dao`。复核式已改成按成员名扫，并把这条错记进 KDoc。② `ReadingHistory.refresh()` 摘掉（真零命中：`.refresh()` 的命中全是 VM 自己的 `vm.refresh()`；`refresh` 是 `saveHistory` / `clearAll` 内部自己走的那一步）。③ `ReadingStats` 的四个读口改回与实现同串（`getSummary` / `getRecent14DaysTrend` / `getTopComics` / `getTagStats`）——这颗契约的参数与返回类型本来就已全中性，改名不换来任何窄化收益，只把「换从哪拿」扩成"再改四个调用点的方法名"，本批 diff 因此只动接收者。
+
+**归因表两处不许删**：`HistoryDao` 与 `ReadingStatsManager` 现在零站点，条目仍保留 —— 断言 C 的 `IMPL_NAMES` 由归属表的键导出，删键等于给未来这两颗实现类的类型引用位开一口漏（这条写在表值里，免得下一个人当垃圾清掉）。
+
+**未验（挂账，与 B1/B2/B3 合并一次真机过）**：读完一章退出后历史页出现该条且顺序正确、历史页单条删除与多选删除、「清空历史」整表清空后的空态文案、统计页四块读数（汇总 / 14 天趋势 / 榜单 / 题材分布）、切「近 30 天 / 近 1 年」只重算题材那一块、阅读器退出时统计写入失败仍弹那句 Toast。
 
 ## 六、那 19 处为什么不收（已裁决：甲）
 

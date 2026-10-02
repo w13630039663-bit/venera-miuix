@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
-import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.ComicMetricsCache
@@ -176,7 +175,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
     private val comics: ComicContentApi = BusinessPorts.of(app).comics
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
     private val prefs = BusinessPorts.of(app).comicPrefs
-    private val historyDao = HistoryDao.getInstance(app)
+    private val historyDao = BusinessPorts.of(app).history
 
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()

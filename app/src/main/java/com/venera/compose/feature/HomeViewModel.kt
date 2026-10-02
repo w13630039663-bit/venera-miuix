@@ -6,12 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.FavoriteRecord
-import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.source.model.Comic
-import com.venera.compose.stats.ReadingStatsManager
 import com.venera.compose.stats.TagStatBucket
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -76,7 +74,7 @@ data class HomeUiState(
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
-    private val historyDao = HistoryDao.getInstance(app)
+    private val historyDao = BusinessPorts.of(app).history
     private val appContext = app
 
     /**
@@ -207,7 +205,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         _recommend.value = _recommend.value.copy(loading = true)
         val guard = BusinessPorts.of(appContext).contentGuard
         val buckets = runCatching {
-            ReadingStatsManager.getInstance(appContext).getTagStats(RECOMMEND_WINDOW_DAYS).buckets
+            BusinessPorts.of(appContext).stats.getTagStats(RECOMMEND_WINDOW_DAYS).buckets
         }.getOrNull().orEmpty().take(3)
         if (buckets.isEmpty()) {
             // 读几本之后就该能推了，允许下次进入首页再试

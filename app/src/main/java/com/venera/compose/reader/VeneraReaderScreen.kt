@@ -92,7 +92,6 @@ import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import com.venera.compose.components.WideScreenDrawerWidth
 import com.venera.compose.components.wideScreenChromeMaxWidth
-import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
@@ -303,7 +302,7 @@ private fun ReaderSessionContent(
                 }
             }
             kotlinx.coroutines.CoroutineScope(Dispatchers.IO + statsFailureHandler).launch {
-                com.venera.compose.stats.ReadingStatsManager.getInstance(context).recordSession(
+                com.venera.compose.data.api.BusinessPorts.of(context).stats.recordSession(
                     comicId = session.comicId,
                     comicTitle = session.comicTitle,
                     sourceName = session.sourceName,
@@ -443,7 +442,7 @@ private fun ReaderSessionContent(
     LaunchedEffect(currentChapterIndex, currentPageIndex) {
         // Finish an already-started save even when NavHost disposes this destination.
         withContext(NonCancellable + Dispatchers.IO) {
-            HistoryDao.getInstance(context).saveHistory(
+            BusinessPorts.of(context).history.saveHistory(
                 HistoryRecord(
                     comicId = session.comicId,
                     title = session.comicTitle,

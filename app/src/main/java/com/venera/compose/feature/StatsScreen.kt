@@ -39,7 +39,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.stats.ComicStatItem
 import com.venera.compose.stats.DailyTrendItem
 import com.venera.compose.stats.MonthlyTagTop
-import com.venera.compose.stats.ReadingStatsManager
 import com.venera.compose.stats.ReadingStatsSummary
 import com.venera.compose.stats.TagStatBucket
 import com.venera.compose.stats.TagStats
@@ -51,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
+import com.venera.compose.data.api.BusinessPorts
 
 /**
  * 生产级阅读统计看板
@@ -69,7 +69,7 @@ fun StatsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val statsManager = remember { ReadingStatsManager.getInstance(context) }
+    val statsManager = remember { BusinessPorts.of(context).stats }
 
     var summary by remember { mutableStateOf(ReadingStatsSummary()) }
     var dailyTrends by remember { mutableStateOf<List<DailyTrendItem>>(emptyList()) }
