@@ -7,8 +7,12 @@ import com.venera.compose.data.db.LocalFavoriteDbSchema
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.db.SqlDatabaseSource
 import com.venera.compose.data.platform.SqlDatabase
+import com.venera.compose.data.platform.SqlRow
 import com.venera.compose.data.platform.quoteIdentifier
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -546,5 +550,56 @@ class LocalFavoritesManagerTest {
         assertTrue("直查应读到 close 后新建的夹", runBlocking { manager.currentFolders() }.contains("关停后新增"))
     }
 
+    @Test
+    fun `在飞刷新等不完时有超时上界且抛出来不静默`() {
+        // 只包 reader（后台刷新走的那一头）；写入照常，用例自己的准备动作不受替身影响。
+        val blockingReader = BlockingFirstQuerySqlDatabase(fav.db)
+        val blockingSource = object : SqlDatabaseSource {
+            override fun reader(): SqlDatabase = blockingReader
+            override fun writer(): SqlDatabase = fav.db
+        }
+        val m = newManager(core.source, blockingSource, prefs)
+        try {
+            runBlocking { m.createFolder("在飞夹") } // notifyChanged 排的后台刷新会在第一笔查询上卡住
+            assertTrue(
+                "后台刷新没进查询 —— 替身没被用住，这条用例就恒绿了",
+                blockingReader.queryEntered.await(2, TimeUnit.SECONDS),
+            )
+            val boom = runCatching { m.close(awaitMillis = 250) }
+            val err = boom.exceptionOrNull()
+            assertTrue("期望 IllegalStateException，实际：$err", err is IllegalStateException)
+            assertTrue("报错要点名『在飞』这件事，实际：${err?.message}", err!!.message?.contains("在飞") == true)
+        } finally {
+            // 放行在飞段：tearDown 里 close（默认上界）才等得完，连接才关得干净
+            blockingReader.release.countDown()
+        }
+    }
+
     // endregion
+}
+
+/**
+ * 把**第一笔查询**卡住的连接包装：查询进入时数一次闩、等放行闩，其余全部照常委托。
+ * 用来钉 R25 的 close() 超时判据 —— 在飞刷新没等完 ⇒ 抛，不静默说已关干净。
+ */
+private class BlockingFirstQuerySqlDatabase(private val delegate: SqlDatabase) : SqlDatabase {
+    private val blocked = AtomicBoolean(false)
+    val queryEntered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+
+    override fun query(sql: String, vararg args: Any?): List<SqlRow> {
+        if (blocked.compareAndSet(false, true)) {
+            queryEntered.countDown()
+            check(release.await(10, TimeUnit.SECONDS)) { "10 秒内没等到放行 —— 用例的收尾环节断了" }
+        }
+        return delegate.query(sql, *args)
+    }
+
+    override fun exec(sql: String, vararg args: Any?) = delegate.exec(sql, *args)
+
+    override fun insert(sql: String, vararg args: Any?) = delegate.insert(sql, *args)
+
+    override fun inTransaction(block: () -> Unit) = delegate.inTransaction(block)
+
+    override fun close() = delegate.close()
 }

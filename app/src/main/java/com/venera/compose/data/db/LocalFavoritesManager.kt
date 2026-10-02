@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 本地收藏管理器，对齐原版 `foundation/favorites.dart` 的 [LocalFavoritesManager]。
@@ -71,11 +72,23 @@ class LocalFavoritesManager(
 
     /**
      * 停掉内部协程作用域（[notifyChanged] 排队的后台刷新），并等已开跑的刷新把当前这段
-     * 查询跑完再返回（会**短暂阻塞**，正常毫秒级）。
+     * 查询跑完再返回。等待**有上界**：[awaitMillis] 内没等完就抛，不静默放过。
+     *
+     * 阻塞的真实上界（R25 口径，别说成"正常毫秒级"）：**该共享连接上最长一笔在飞事务/迁移**
+     * ——桌面侧 `connectionLock` 全程串行化，后台刷新排在别人的大事务后面时，这里就得等那么久；
+     * 毫秒级只是常见读数，不是保证。
      *
      * 为什么要等：`refreshFolders` 是一段串行的 JDBC 调用、中间没有 suspension point，
      * cancel 只能拦住"还没开跑/新排进来"的协程，拦不住正在跑的那一段；不等它走完就关
      * 连接，就会在线程默认异常处理器里留下一批 `database connection closed`。
+     *
+     * 超时抛出去的意义：把"在飞刷新没等完"这件事交回调用方定夺（关连接会留噪音、重试或
+     * 接受噪音），而不是这里替他装作干净。作用域已 cancel，抛完在飞段不会重开。
+     *
+     * 两条**禁止的调用上下文**（都会把等待变成死锁，本层检测不了，只能靠使用方避开）：
+     *  - 持有该库连接锁的线程内 —— 在飞的刷新正排在锁后面，你持锁不放，它永远走不完
+     *    （桌面侧是 `JdbcSqliteDatabase.connectionLock`，Android 侧是 helper 的监视器）；
+     *  - 本管理器自身 [scope] 里的协程 —— join 自己的 Job，永远等不到。
      *
      * 两个必须调它的使用方：
      *  - **桌面（Task 5）**：窗口关闭时，连接随后就关；不取消作用域的话，在飞的刷新
@@ -85,9 +98,20 @@ class LocalFavoritesManager(
      * 幂等（重复调用第二次起只是等同一批 job，立刻返回）；close 后挂起的公开方法仍可正常
      * 使用 —— 它们跑在调用方协程里，不经过本类的 [scope]。
      */
-    fun close() {
+    fun close(awaitMillis: Long = 15_000) {
         scope.cancel()
-        runBlocking { scope.coroutineContext[Job]?.join() }
+        val drained = runBlocking {
+            withTimeoutOrNull(awaitMillis) {
+                scope.coroutineContext[Job]?.join()
+                Unit
+            } != null
+        }
+        if (!drained) {
+            throw IllegalStateException(
+                "LocalFavoritesManager.close() 等待 ${awaitMillis}ms 后仍未等完在飞的后台刷新" +
+                    "（上界=该共享连接上最长一笔在飞事务/迁移）——拒绝装作已关干净"
+            )
+        }
     }
 
     private suspend fun refreshFolders() = withContext(Dispatchers.IO) {
