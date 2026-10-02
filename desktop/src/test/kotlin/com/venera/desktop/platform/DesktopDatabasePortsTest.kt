@@ -1,11 +1,14 @@
 package com.venera.desktop.platform
 
+import com.venera.compose.data.db.CoreDbSchema
 import com.venera.compose.data.db.DatabasePorts
 import com.venera.compose.data.db.FavoriteItem
+import com.venera.compose.data.db.LocalFavoriteDbSchema
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.PreferenceKeys
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -187,5 +190,18 @@ class DesktopDatabasePortsTest {
         val ports = DatabasePorts.of(Unit)
         assertSame(ports.core.reader(), ports.core.writer())
         DesktopDatabasePorts.close()
+    }
+
+    @Test
+    fun 接线读数是纯计算全新目录里只算路径不会把db目录建出来() {
+        // `D_接线` 那行"已建="想反映磁盘现状，读数本身不许顺手把 db/ 建出来（5a 只有代码级
+        // 证据：dbFile 不走 subDir；这条把同一性质钉在用例面——dbFileAt 一旦改用会 mkdirs 的
+        // PathProvider.subDir，最后的 assertFalse 就红）。
+        val fresh = Files.createTempDirectory("r1f-desktop-pure-").toFile()
+        val core = DesktopDatabasePorts.dbFileAt(FakePaths(fresh), CoreDbSchema.DATABASE_NAME)
+        val fav = DesktopDatabasePorts.dbFileAt(FakePaths(fresh), LocalFavoriteDbSchema.DATABASE_NAME)
+        assertEquals(File(File(fresh, "db"), CoreDbSchema.DATABASE_NAME), core)
+        assertEquals(File(File(fresh, "db"), LocalFavoriteDbSchema.DATABASE_NAME), fav)
+        assertFalse("算落点不该把 db/ 建出来", File(fresh, "db").exists())
     }
 }

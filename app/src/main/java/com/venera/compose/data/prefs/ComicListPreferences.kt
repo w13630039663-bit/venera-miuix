@@ -3,6 +3,7 @@ package com.venera.compose.data.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import com.venera.compose.components.normalizeComicDisplayMode
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.data.platform.contains
 
@@ -13,7 +14,7 @@ class ComicListPreferences(context: Context) {
     init {
         if (!preferences.contains(KEY_MODE)) {
             // 首次进入从 VeneraPreferences 那张表搬一次（表名与它内部的 PREFS_NAME 对齐）
-            val legacy = AndroidKeyValueStore(context.applicationContext, "venera_preferences")
+            val legacy = AndroidKeyValueStore(context.applicationContext, PreferenceKeys.PREFS_NAME)
             preferences.put(KEY_MODE, normalizeComicDisplayMode(legacy.getString("pref_comic_display_mode", null)))
         }
     }

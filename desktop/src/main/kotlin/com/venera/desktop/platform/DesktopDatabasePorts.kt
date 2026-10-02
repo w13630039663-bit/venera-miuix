@@ -96,21 +96,34 @@ object DesktopDatabasePorts {
     /** `local_favorite.db` 的落点。纯计算，不建目录。 */
     fun favoritesDbFile(): File = dbFile(LocalFavoriteDbSchema.DATABASE_NAME)
 
+    /**
+     * 纯计算：从给定 [PathProvider] 推出库文件落点（`db/` 子目录 + 库名），**不建任何目录**——
+     * "算路径不会把 `db/` 建出来"这条由用例钉（`DesktopDatabasePortsTest`）；
+     * [coreDbFile] / [favoritesDbFile] 走的就是这颗，所以 `D_接线` 读数同样不带副作用。
+     */
+    fun dbFileAt(paths: PathProvider, name: String): File = File(File(paths.dataRoot, "db"), name)
+
     private fun dbFile(name: String): File {
         val p = paths
             ?: throw IllegalStateException("桌面 data/db 尚未接线：先在 main 里调 DesktopDatabasePorts.install(paths)")
         // 不走 PathProvider.subDir —— 那颗顺手 mkdirs，`D_接线` 这行读数不该自己把 db/ 建出来。
         // 目录创建在 DesktopDatabaseSource.obtain() 里显式做。
-        return File(File(p.dataRoot, "db"), name)
+        return dbFileAt(p, name)
     }
 
     /**
-     * 关掉两棵库的连接并清掉缓存端口。三条性质（各有用例钉，见 `DesktopDatabasePortsTest`）：
+     * 关掉两棵库的连接并清掉缓存端口。三条性质里**性质 1 有用例**（`DesktopDatabasePortsTest`
+     * 的"关掉全部连接后拿旧端口再取用直接抛"钉住"退役后取用必抛"这半颗），
+     * **2/3 是实现约定**（同锁互斥与"关闭有抛关完重抛"没有各自的可红用例）：
      *  - 与端口创建、连接获取走 [DesktopDatabasePorts] 的同一把锁：连接要么被这次关掉、
      *    要么根本没建出来，不存在"close 返回后又多出一条活连接"的句柄泄漏；
      *  - 两颗 source 引用先摘下即清，关闭抛不抛都不留残留；
      *  - 关闭有抛先等全部关完再重抛第一颗（不吞、也不因前一颗抛让后一颗躲过关闭）。
      * 关完拿旧端口再取用必抛（[DesktopDatabaseSource] 已退役），[DatabasePorts.of] 重建新端口。
+     *
+     * **锁序约束**：不许在 `inTransaction`（持 `JdbcSqliteDatabase.connectionLock`）内再调
+     * `source.reader()/writer()`——取用走 [DesktopDatabasePorts] 这把外锁，嵌套方向反过来就是
+     * 锁序倒置。现状全部调用点是"先取连接后进事务"，别把它破坏。
      */
     fun close() = synchronized(this) {
         ports = null

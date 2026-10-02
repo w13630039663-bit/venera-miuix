@@ -16,7 +16,7 @@ package com.venera.compose.data.platform
  */
 object PreferenceKeys {
 
-    /** prefs 存储名。Android 侧成 `.xml`，桌面侧由 [JsonKeyValueStore] 成 `<name>.json`。 */
+    /** prefs 存储名。Android 侧成 `.xml`，桌面侧由同包的 JsonKeyValueStore 成 `<name>.json`。 */
     const val PREFS_NAME = "venera_preferences"
 
     /** 新收藏插入位置（Android 侧缺省 `"start"`）。 */
