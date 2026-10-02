@@ -36,6 +36,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.venera.engineprobe.DesktopJsHost
 import com.venera.engineprobe.EngineSession
+import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
 import io.github.composefluent.FluentTheme
 import io.github.composefluent.component.NavigationView
@@ -88,6 +89,13 @@ fun main(args: Array<String>) {
             "打包=${System.getProperty("jpackage.app-path") != null}"
     )
     println("D_数据目录 ${paths.dataRoot.path}（写入回读已验）")
+    // Task 5a：把 data/db 接到桌面（只装 factory lambda，不碰 SQLite —— 建库推迟到第一次取用）。
+    // 未接线就取用会由 DatabasePorts.of 直接抛，这里不包 try/catch：抛就是要崩在启动读数里。
+    DesktopDatabasePorts.install(paths)
+    println(
+        "D_接线 平台=desktop core=${DesktopDatabasePorts.coreDbFile().path} " +
+            "fav=${DesktopDatabasePorts.favoritesDbFile().path}",
+    )
 
     application {
         Window(
