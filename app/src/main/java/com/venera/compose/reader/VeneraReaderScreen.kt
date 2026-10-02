@@ -96,6 +96,7 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
+import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -2157,7 +2158,7 @@ private fun shareCurrentImage(
             } ?: return@launch
 
             // 写入 cacheDir/shared_images，经 FileProvider 授予读权限
-            val shareDir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
+            val shareDir = CacheDirs.inCache(context.cacheDir, CacheDirs.SHARED_IMAGES)
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val imageFile = File(shareDir, "Venera_${stamp}_p$pageNumber.jpg")
             imageFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }

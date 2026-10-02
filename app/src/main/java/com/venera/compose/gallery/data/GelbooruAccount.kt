@@ -2,6 +2,7 @@ package com.venera.compose.gallery.data
 
 import android.content.Context
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import java.io.IOException
 import java.net.URLEncoder
@@ -170,7 +171,7 @@ class GelbooruAccount private constructor(context: Context) {
     }
 
     companion object {
-        private const val PREFS_NAME = "venera_gelbooru_account"
+        private const val PREFS_NAME = PreferenceKeys.PREFS_GELBOORU_ACCOUNT
         private const val KEY_USER_ID = "user_id"
         private const val KEY_API_KEY = "api_key"
 
@@ -181,14 +182,14 @@ class GelbooruAccount private constructor(context: Context) {
          * 不带 `tags` 即"全部"，保证查询本身非空，这样 200 就一定是"凭据被接受"
          * 而不是"这个查询碰巧没结果"（后者也是 200）。
          */
-        private const val PROBE_URL =
-            "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=1"
+        private val PROBE_URL =
+            "https://${GallerySite.GELBOORU.apiHost}/index.php?page=dapi&s=post&q=index&json=1&limit=1"
 
         /**
          * 设置页那枚「去账号页拿 Key」要打开的页面。
          * 官方 wiki 写明 API Key 与 User ID **都在账号选项页**。
          */
-        const val ACCOUNT_PAGE = "https://gelbooru.com/index.php?page=account&s=options"
+        val ACCOUNT_PAGE = "https://${GallerySite.GELBOORU.apiHost}/index.php?page=account&s=options"
 
         private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
 

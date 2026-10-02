@@ -19,6 +19,17 @@ object ImageHeaderPolicy {
     /** 运行时发布的规则：host(或后缀) -> 请求头，优先级高于内置 */
     private val perHost = ConcurrentHashMap<String, Map<String, String>>()
 
+    /**
+     * 桌面 Chrome 串，E-Hentai 家族四个 host 共用。四行逐字相同是刻意的 ——
+     * `ehgt.org` / `e-hentai.org` / `exhentai.org` / `hath.network` 是同一家族的四颗 host，
+     * 站方按 UA 放行，任何一条改歪就成"封面出、内页不出"那种半残状态。
+     *
+     * ⚠️ 与 `engine/JsHttpHandler.kt:62` 那颗 **Chrome/119** 是两枚不同的值、两处不同的链路，
+     * 不是漏收口，别合。
+     */
+    private const val DESKTOP_BROWSER_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
     /** 内置规则：不依赖解析结果的通用防盗链 */
     private val builtin: Map<String, Map<String, String>> = mapOf(
         "mangadex.org" to mapOf("Referer" to "https://mangadex.org/"),
@@ -53,7 +64,7 @@ object ImageHeaderPolicy {
         // 实测拿它去打 cdn.donmai.us，连 180×180 的缩略图都回 403 + cf-mitigated: challenge
         // （5.9 KB 挑战页 HTML 而不是图片）。非浏览器 UA 同一个 URL 就 200。
         // ⚠️ 这条是 donmai.us **独有**的强判据，别当成"所有图站都这样"往外推。
-        "donmai.us" to mapOf("User-Agent" to "Venera/1.0 (Android)"),
+        "donmai.us" to mapOf("User-Agent" to UserAgentPolicy.APP_USER_AGENT),
         // pixiv 的图床（画师头像、`i.pximg.net` 上的其他公开档）—— **必须带站内 Referer**。
         // 2026-09-30 实测同一个头像 URL 两条对照：不带 `Referer` → 403（146 字节错误页），
         // 带 `Referer: https://www.pixiv.net/` → 200、5149 字节真图。
@@ -87,23 +98,23 @@ object ImageHeaderPolicy {
         // **不是**必需项：这一站没有 donmai.us 那种"浏览器串必 403"的强判据。
         "gelbooru.com" to mapOf(
             "Referer" to "https://gelbooru.com/",
-            "User-Agent" to "Venera/1.0 (Android)",
+            "User-Agent" to UserAgentPolicy.APP_USER_AGENT,
         ),
         "ehgt.org" to mapOf(
             "Referer" to "https://e-hentai.org/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            "User-Agent" to DESKTOP_BROWSER_UA
         ),
         "e-hentai.org" to mapOf(
             "Referer" to "https://e-hentai.org/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            "User-Agent" to DESKTOP_BROWSER_UA
         ),
         "exhentai.org" to mapOf(
             "Referer" to "https://exhentai.org/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            "User-Agent" to DESKTOP_BROWSER_UA
         ),
         "hath.network" to mapOf(
             "Referer" to "https://e-hentai.org/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            "User-Agent" to DESKTOP_BROWSER_UA
         ),
     )
 

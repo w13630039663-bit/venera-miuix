@@ -2,6 +2,7 @@ package com.venera.compose.data.network
 
 import android.content.Context
 import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import java.util.concurrent.ConcurrentHashMap
 
@@ -19,12 +20,23 @@ object UserAgentPolicy {
     const val DEFAULT_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 Venera/1.0.0"
 
+    /**
+     * 我们自己的**产品串**，非浏览器身份。两处图站规则与 Gelbooru 接口侧都必须发同一条 ——
+     * 这条不变量此前只有注释级证据（`ImageHeaderPolicy` 里那句"UA 一并带上只为与接口侧
+     * `GelbooruClient.API_USER_AGENT` 保持一致"），改一处另一处不会报错，症状是那一站整站取不到图。
+     * 现在两边引这一枚常量。
+     *
+     * ⚠️ 与 [DEFAULT_USER_AGENT] 是两回事：那枚是移动端 Chrome 串（走漫画源与网页），
+     * 这枚是"明确表明自己不是浏览器"的串（走图床与部分 DAPI）。别合并。
+     */
+    const val APP_USER_AGENT = "Venera/1.0 (Android)"
+
     private val hostUaMap = ConcurrentHashMap<String, String>()
     private var prefs: KeyValueStore? = null
 
     fun init(context: Context) {
         if (prefs == null) {
-            val p = AndroidKeyValueStore(context.applicationContext, "venera_ua_policy")
+            val p = AndroidKeyValueStore(context.applicationContext, PreferenceKeys.PREFS_UA_POLICY)
             prefs = p
             // 加载持久化的 host -> UA 映射（这张表里只有 host→UA 一种字符串值）
             p.keys().forEach { key ->

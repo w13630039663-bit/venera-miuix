@@ -9,7 +9,7 @@
 1. **依赖方向：没有底，只有一张网。** 包级图上 46 条粗边里 11 条存在反向边。真正干净的底层只有三处：`source/model`（21 条入边 / 0 条出边）、`ui/tokens`（45 入 / 1 出）、`engine/` 里除 `VeneraJsEngine.kt` 之外的 7 颗 handler（对 `com.venera.compose.*` 零 import，`:engine-probe` 就靠排除那一颗复用整目录）。`data/` 不是底层，是全仓公共总线。
 2. **两个插座：** `data/prefs/VeneraPreferences`（46 个调用文件、跨 9 个顶层包）与 `security/guard/ContentGuardManager`（29 个文件、6 个包）。后者是画廊隔离被破的隐形主通道。
 3. **职责：13 颗文件把 6-13 类职责并在一处**，最重的三处越界是「渲染文件里跑业务」与「状态持有者与渲染混体」，见 §二。
-4. **重复：18 处顶栏地板零命名常量**、11 个偏好存储名有 10 个绕过常量、`"shared_images"` 在代码与 `FileProvider` 配置里各写一份。这些不是风格问题，其中三条是「改一处即崩 / 即丢用户数据」的路径。
+4. **重复：18 处顶栏地板零命名常量**、13 个偏好存储名有 12 个绕过常量、`"shared_images"` 在代码与 `FileProvider` 配置里各写一份。这些不是风格问题，其中三条是「改一处即崩 / 即丢用户数据」的路径。
 5. **测试面与枢纽错位：** `app/src/test` 94 颗 / 773 个 `@Test`，集中在 policy、纯函数、DAO；`feature/` 只有 13 颗。`Navigation.kt`、`VeneraReaderScreen.kt`、`GalleryScreen.kt` 这三颗最大的枢纽**零测试**，而它们同时又直接 `getInstance` 取全局单例，是事实上无法独立测试的块。
 
 ## 二、依赖方向
@@ -104,8 +104,9 @@ Grep ^import com\.venera\.compose\.gallery\.  glob {feature,components,data,sync
 
 | 字面量 | 点位 | 权威出处 | 是否被绕过 |
 |---|---|---|---|
-| prefs 存储名（11 个） | `data/platform/PreferenceKeys.kt:20` 只有 `venera_preferences`；内联在 `data/prefs/ComicMetricsCache.kt:14`、`data/prefs/ComicListPreferences.kt:12`、`security/guard/ContentGuardManager.kt:105`（:104 的 trace 串里再抄一次）、`sync/WebDavSyncManager.kt:23`、`data/network/UserAgentPolicy.kt:27`、`data/network/PersistentCookieJar.kt:20`、`source/copymanga/CopyMangaSource.kt:39`、`feature/HomeViewModel.kt:136`、`gallery/ui/GallerySearchViewModel.kt:1144`；私有 const 在 `gallery/data/GelbooruAccount.kt:55,173`、`SauceNaoAccount.kt:31,55`、`source/ComicSourceManager.kt:103,1384` | `data/platform/PreferenceKeys.kt` | **10/11 绕过**。改名 = 该模块全部存量偏好静默回落默认 |
-| `"shared_images"` | `reader/VeneraReaderScreen.kt:2160`、`gallery/ui/GalleryPostScreen.kt:850`、`app/src/main/res/xml/file_paths.xml:17` | 应有单一常量 | 是。代码与 `FileProvider` 配置各写一份，改一处分享即崩 |
+| prefs 存储名（**13 个**：9 处内联字面量 + 3 处各自私有 `const PREFS_NAME`，只有 `venera_preferences` 已在常量里） | 明细见下一行 | `data/platform/PreferenceKeys.kt` | **12/13 绕过** |
+| `cacheDir` 下要经 FileProvider 暴露的三个目录名 | `shared_images`：`reader/VeneraReaderScreen.kt:2160`、`gallery/ui/GalleryPostScreen.kt:850`、`res/xml/file_paths.xml:17`；`exports`：`feature/LocalComicScreen.kt:287` + XML `:18`；`backups`：`sync/BackupManager.kt:115` + XML `:19` | 无（三处各写一遍，XML 引用不到 Kotlin 常量） | 是。同一类失败已被记过账：`file_paths.xml` 顶部注释写着 G-2，三条里曾缺两条，写入侧全成功、`getUriForFile` 才抛，而异常被 `catch (_: Exception) {}` 吞掉，表现是「导出成功」的 Toast 弹了、分享面板从没出现 |
+| prefs 存储名的明细 | `data/platform/PreferenceKeys.kt:20` 只有 `venera_preferences`；内联在 `data/prefs/ComicMetricsCache.kt:14`、`data/prefs/ComicListPreferences.kt:12`、`security/guard/ContentGuardManager.kt:105`（:104 的 trace 串里再抄一次）、`sync/WebDavSyncManager.kt:23`、`data/network/UserAgentPolicy.kt:27`、`data/network/PersistentCookieJar.kt:20`、`source/copymanga/CopyMangaSource.kt:39`、`feature/HomeViewModel.kt:136`、`gallery/ui/GallerySearchViewModel.kt:1144`；私有 const 在 `gallery/data/GelbooruAccount.kt:55,173`、`SauceNaoAccount.kt:31,55`、`source/ComicSourceManager.kt:103,1384` | `data/platform/PreferenceKeys.kt` | **12/13 绕过**。改名 = 该模块全部存量偏好静默回落默认 |
 | UA | `data/network/ImageHeaderPolicy.kt:94,98,102,106` 四条逐字 Chrome/128；`"Venera/1.0 (Android)"` 在 :56,:90 + `gallery/data/GelbooruClient.kt:219 API_USER_AGENT`；另 Chrome/119 一颗在 **`engine/JsHttpHandler.kt:62`**（不同值、不同用途，不参与收口） | `data/network/UserAgentPolicy.kt:20` | 是。`ImageHeaderPolicy.kt:87` 的注释自陈「只为与接口侧 `API_USER_AGENT` 保持一致」——这条不变量只有注释级证据 |
 | gelbooru 域名 | `gallery/data/GallerySite.kt:31`（host 字段，天然单源）、`GelbooruClient.kt:230 BASE`、`GelbooruAccount.kt:185,191`、`data/network/ImageHeaderPolicy.kt:88-89`（跨侧，漫画侧基建） | `GallerySite.GELBOORU` | 是（画廊侧 3 处手写 URL） |
 | `"block_ai"` | `security/guard/ContentGuardManager.kt:153,159` 内联；`GalleryGuard.kt:23` 与 `VeneraPreferences.kt:292` 的注释里再各抄一次 | 同文件 companion | 是；无单测 |
@@ -139,7 +140,7 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
 |---|---|---|
 | A1 | 本文档 + 表 D 六处回填（README 双语同批） | 文档在陈述错事实 |
 | A2 | `WideScreenPolicy` 新增 `bottomReadoutPadding(clearance)`；`FollowUpdatesScreen:153`、`ComicSourceScreen:164` 的 `bottom=96.dp` 改调它 | 17bd774 ④ 迁了 15 颗漏这 2 颗；侧栏档底栏已不渲染却仍留 96dp 空带 = 用户可见回归；且直接违反 `Spacing.kt:194` 写下的禁令。Compact 档 76+20=96 逐字等值 |
-| A3 | 五簇字面量收口：UA（`APP_USER_AGENT` / `DESKTOP_BROWSER_UA`）、`data/platform/SharedImageCache.kt`（`shared_images`）、10 处存储名 → `PreferenceKeys`（值逐字不变）、gelbooru 域名由 `GallerySite` 派生（跨侧那份不改引）、`ComicSourceManager` 两枚 8s 合一 | 三条真故障路径：`file_paths.xml` 与代码各写一份 = 分享崩；存储名绕过 = 丢偏好；UA 同值只有注释级证据 = 排障成本 |
+| A3 | 四簇字面量收口（原列五簇，第⑤簇判掉见 §八.10）：UA 同源性（`UserAgentPolicy.APP_USER_AGENT` + 表内 `DESKTOP_BROWSER_UA`）、新 `data/platform/CacheDirs.kt`（`shared_images`/`exports`/`backups` 三枚，四个落盘点改引）、11 处存储名 → `PreferenceKeys`（值逐字不变，冻结的 guard 那颗只登记不改引）、gelbooru 域名由 `GallerySite.apiHost` 派生（跨侧那份不改引） | 三条真故障路径：`file_paths.xml` 与代码各写一份 = 分享崩；存储名绕过 = 丢偏好；UA 同值只有注释级证据 = 排障成本 |
 | A4 | `VeneraSpacing.topBarFloor = 104.dp`，收 11 处非冻结点，7 处冻结点写进守卫用例白名单 | 18 处共用一条几何契约却零命名常量；大屏批次 2 正在改 chrome 几何，地板与附加高已混写 |
 | A5 | 新 `components/ImageWallColumns.kt` 的 `rememberImageWallColumnCount()` + `imageWallHorizontalPadding()`；测试的 `24.dp` 改由 token 推导 | ba3e207 修了「判据写死」没修「判据入参写死」；测试写死字面量 ⇒ 列数回归抓不到 |
 | A6 | `gallery/ui/` 内页尾读数件合一（6 处，仅本侧） | 屏蔽/分级计数读数 6 份，改一处即读数不一致 |
@@ -157,7 +158,26 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
   **773 tests / 0 failures / 0 errors**（94 颗测试类，与 A1 回填的 README 数字互相印证）；
   `:app:compileDebugKotlin` executed（非 UP-TO-DATE），仅一条既存 `Icons.Filled.ArrowBack` deprecation 警告与本次无关。
   全仓 `bottom = 88.dp|96.dp` 与 `Spacer(height(88/96.dp))` 检索式复跑 → **零命中**，避让已收口。
-- A3 待回写
+- A3 已落地，**三处与方案不同，都是往回收的**：
+  1. 原第⑤簇「`ComicSourceManager` 两枚 8s 常量合一」**撤销**。读码后确认那是两个刻意分开的旋钮
+     （`THUMBNAIL_CONFIG_TIMEOUT_MS` 退化成一排裸请求、`COMIC_LINK_TIMEOUT_MS` 是这一跳进不去，
+     注释各写了失效后果，且互相引「口径一致」是**说明同值**不是**说明同源**）。合一等于把两条独立可调的值焊死，
+     与我自己判掉 `space7`/`rowHorizontal` 合并是同一条理由 —— 方案的这条是我给的错误前提，不是子代理的。
+  2. `SharedImageCache` 扩成 **`CacheDirs`**（`shared_images` + `exports` + `backups`）。只钉 1/3 等于没钉：
+     `file_paths.xml` 顶部记的 G-2 事故正是「三条里缺了两条」，而漏的那两条都是分享静默失败。
+     于是 `LocalComicScreen:287`、`BackupManager:115` 两处也一起改引（各只有一处使用，本来不构成重复，
+     但它们与 XML 的**成对性**是同一条洞）。
+  3. UA 的用例**没有新开第二份文件**：我先写了 `UserAgentPolicyTest.kt`，随后发现同目录已有
+     `ImageHeaderPolicyTest.kt` 在测同一张表的产物 —— 那正是本次审计表 B 抓的毛病，改判成
+     `ImageHeaderPolicyUaSourceTest`（只测「同源性 + 桌面串四颗 host 同源」这条新不变量），
+     host 匹配口径的老用例一字未动。
+  读数：`:app:testDebugUnitTest --rerun-tasks` **784 tests / 0 failures / 0 errors**（**98 颗测试类**，
+  本批 +4 颗 / +11 条），`:app:compileDebugKotlin` executed；**`:desktop:compileKotlin` 与
+  `:engine-probe:compileKotlin` 均 executed 通过** —— 这就是 `CacheDirs.kt` 落进 `data/platform`
+  （桌面 srcDir 内）后「零 Android 类型」的证明，exclude 名单一字未动。`:app:assembleDebug` 出包三份。
+  存储名扫描：`除白名单两处外不许再用内联字面量开存储` 全仓扫 `.kt`，白名单 = `ContentGuardManager`（冻结）
+  + `AndroidKeyValueStore.kt`（平台实现本身，它必须调 `getSharedPreferences`）。
+  未验：三处分享（阅读器单页 / 画廊原图原片 / CBZ 导出 / 备份导出）真机各点一次。
 - A4 待回写
 - A5 待回写
 - A6 待回写
@@ -188,6 +208,10 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
 
 ## 八、本次审计中被推翻的读数（记账）
 
+> 另一条要防的：README 与本文档里的测试规模数字**在 Part A 期间每加一颗用例就会再漂一次**
+> （A1 回填成 94/773，A3 就变成 98/784）。收尾做法是 Part A 全部落完后**统一复算一次回填**，
+> 不逐批改 —— 逐批改会把同一行改五遍，还容易中英两份改漏一边。
+
 1. 「图片墙列数测试传 `24.dp` 与生产 `screenHorizontal*2` **不同值**」——错。实测 `Spacing.kt:33 screenHorizontal = 12.dp`，两值相等。真缺陷是「测试写死字面量、生产走 token，改 token 不会红」。
 2. 「Chrome/119 在 `ImageHeaderPolicy.kt:62`」——错，在 `engine/JsHttpHandler.kt:62`。收口只统一同值的 Chrome/128 四份与 app UA 两份，那颗不动。
 3. 「`GelbooruAccount.kt:185,191` 无域名字面量」——错，那两行就是手写 URL。域名实为 4 处（`GallerySite:31` 为天然单源、`GelbooruClient:230`、`GelbooruAccount:185,191`、`ImageHeaderPolicy:88-89`）。
@@ -197,3 +221,6 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
 7. 「顶栏地板 17 处」——少计，逐行清点为 **18 处 / 14 文件**（评论行不算）。
 8. `docs/rounds/settings-audit-2026-09.md:87` 写 `nsfw_mode` 被「explore/detail 卡片」消费——**详情页不消费它**。实测消费面是 `explore/{SourceSectionScreen,UnifiedExploreScreen}`、`FavoritesScreen`、`SearchScreen`、`settings/BlockingSettings` 与 4 颗 `gallery/ui` 文件。修锚点时差点把这条陈旧断言一起抄过去，已按实测改写。
 9. **本次审计自己造出来的两处错**（记下来因为它们是同一类失败）：① 回填收藏页方案文档时写了「历史见 §8.7」，而 `§8.7` 是 `docs/rounds/large-screen-adaptation-stage2-plan-2026-10-02.md` 里的节号、不是本文档的节——**正是本次审计要抓的「悬空引用」这一类**，已改成带文件路径的锚。② 表 A 原写「测试传 24.dp 共 5 处字面量」，实际是 2 处直接字面量 + 2 处 `val padding = 24.dp` 局部常量（`WideScreenPolicyTest.kt:141,152`），5 个调用点全部与生产不同源，结论不变但形状要说准。
+10. 「`ComicSourceManager.kt:1416,1425` 两枚 8s 常量是同值重复、该合一」——**错**，那是两个刻意分开的旋钮，各自的失效后果写在注释里（一个退化成裸请求、一个是这一跳进不去），合一等于把两条独立可调的值焊死。方案里这条是我给的前提错，不是子代理造的，A3 落地时撤销。
+11. 「13 个存储名里 10 个绕过常量」——少计：10 处内联 + 3 处各自私有 `const PREFS_NAME` = **12/13 绕过**（只有 `venera_preferences` 本来就在 `PreferenceKeys`）。清点时把三处私有 const 当成了合规。
+

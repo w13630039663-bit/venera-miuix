@@ -5,6 +5,7 @@ import android.util.LruCache
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.venera.compose.data.network.HostCircuitBreaker
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.engine.explainSourceFailure
 import com.venera.compose.engine.VeneraJsEngine
@@ -1381,7 +1382,7 @@ class ComicSourceManager private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "ComicSourceManager"
-        private const val PREFS_NAME = "venera_sources"
+        private const val PREFS_NAME = PreferenceKeys.PREFS_SOURCES
         private const val KEY_INSTALLED = "installed_sources_v1"
 
         /** 一次性标记：是否已执行过「内置源开箱写入」。用户清空全部源后不再回填 */

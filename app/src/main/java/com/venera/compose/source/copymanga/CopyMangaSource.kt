@@ -3,6 +3,7 @@ package com.venera.compose.source.copymanga
 import android.content.Context
 import android.util.Base64
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.source.ComicSource
 import com.venera.compose.source.model.ChapterPages
@@ -36,7 +37,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
     override val iconUrl: String = "https://www.copymanga.tv/favicon.ico"
 
     private val networkClient by lazy { VeneraNetworkClient.getInstance(context) }
-    private val prefs by lazy { AndroidKeyValueStore(context, "venera_source_copy_manga") }
+    private val prefs by lazy { AndroidKeyValueStore(context, PreferenceKeys.PREFS_COPY_MANGA) }
     private val apiUrl: String
         get() {
             val host = prefs.getString("base_url", "api.copy2000.online")?.takeIf { it.isNotBlank() } ?: "api.copy2000.online"

@@ -2,6 +2,7 @@ package com.venera.compose.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 
 /** Optional snapshot of metrics actually returned by a source. No database schema change. */
@@ -11,7 +12,7 @@ data class CachedComicMetrics(val rating: Double? = null, val likesCount: Int? =
 fun comicMetricCacheKey(sourceKey: String, comicId: String): String = "${sourceKey.length}:$sourceKey$comicId"
 
 class ComicMetricsCache(context: Context) {
-    private val preferences = AndroidKeyValueStore(context.applicationContext, "comic_source_metrics")
+    private val preferences = AndroidKeyValueStore(context.applicationContext, PreferenceKeys.PREFS_COMIC_METRICS)
 
     fun get(sourceKey: String, comicId: String): CachedComicMetrics {
         val key = comicMetricCacheKey(sourceKey, comicId)

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -16,8 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PersistentCookieJar(context: Context) : CookieJar {
 
-    private val prefs: KeyValueStore = com.venera.compose.StartupTrace.timed("CookieJar: KeyValueStore(venera_cookies)") {
-        AndroidKeyValueStore(context, "venera_cookies")
+    private val prefs: KeyValueStore = com.venera.compose.StartupTrace.timed("CookieJar: KeyValueStore(${PreferenceKeys.PREFS_COOKIES})") {
+        AndroidKeyValueStore(context, PreferenceKeys.PREFS_COOKIES)
     }
     private val gson = Gson()
     private val memoryStore = ConcurrentHashMap<String, MutableList<SerializableCookie>>()

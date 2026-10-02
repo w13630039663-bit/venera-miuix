@@ -2,6 +2,7 @@ package com.venera.compose.sync
 
 import android.content.Context
 import android.util.Log
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,7 +21,7 @@ class WebDavSyncManager private constructor(private val context: Context) {
 
     private val tag = "WebDavSyncManager"
     private val backupManager = BackupManager.getInstance(context)
-    private val prefs = AndroidKeyValueStore(context, "venera_webdav_prefs")
+    private val prefs = AndroidKeyValueStore(context, PreferenceKeys.PREFS_WEBDAV)
 
     fun getConfig(): WebDavConfig {
         return WebDavConfig(

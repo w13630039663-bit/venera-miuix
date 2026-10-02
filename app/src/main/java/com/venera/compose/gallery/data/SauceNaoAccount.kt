@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +53,7 @@ class SauceNaoAccount private constructor(context: Context) {
     fun clear() = save("")
 
     companion object {
-        private const val PREFS_NAME = "venera_saucenao"
+        private const val PREFS_NAME = PreferenceKeys.PREFS_SAUCENAO_ACCOUNT
         private const val KEY_API_KEY = "api_key"
 
         /** 免费 key 的领取页 —— 设置页那颗「去拿 Key」开它。 */

@@ -11,6 +11,7 @@ import com.venera.compose.data.db.jsonArray
 import com.venera.compose.data.db.jsonObject
 import com.venera.compose.data.db.objectAt
 import com.venera.compose.data.db.optLongValue
+import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.data.db.optTextValue
 import com.venera.compose.data.db.parseJsonArray
 import com.venera.compose.data.db.parseJsonObject
@@ -112,7 +113,7 @@ class BackupManager private constructor(private val context: Context) {
     suspend fun exportBackup(targetFile: File? = null): Result<File> = withContext(Dispatchers.IO) {
         try {
             val db = core.reader()
-            val outDir = File(context.cacheDir, "backups").apply { if (!exists()) mkdirs() }
+            val outDir = CacheDirs.inCache(context.cacheDir, CacheDirs.BACKUPS)
             val timestamp = System.currentTimeMillis()
             val backupFile = targetFile ?: File(outDir, "venera_backup_$timestamp.venera")
             if (backupFile.exists()) backupFile.delete()

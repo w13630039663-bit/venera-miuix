@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.data.GelbooruAccount
 import com.venera.compose.gallery.data.GelbooruClient
@@ -1141,7 +1142,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 历史：进 ViewModel 时读一次，成功搜索后写回键值门面。 */
     private val prefs by lazy {
-        AndroidKeyValueStore(app, "venera_gallery_search")
+        AndroidKeyValueStore(app, PreferenceKeys.PREFS_GALLERY_SEARCH)
     }
 
     fun restoreHistoryIfNeeded() {

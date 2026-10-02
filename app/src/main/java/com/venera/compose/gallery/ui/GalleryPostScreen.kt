@@ -95,6 +95,7 @@ import coil3.size.Precision
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
+import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryFavoritesStore
@@ -847,7 +848,7 @@ fun GalleryPostScreen(
                         // 落盘要在 IO 上：视频原片实测 16~26 MB，
                         // 跟在 Main.immediate 的续点上写就是拿主线程写几十兆，能卡出 ANR。
                         withContext(Dispatchers.IO) {
-                            val dir = File(context.cacheDir, "shared_images").apply { if (!exists()) mkdirs() }
+                            val dir = CacheDirs.inCache(context.cacheDir, CacheDirs.SHARED_IMAGES)
                             val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
                             val file = File(dir, name)
                             file.outputStream().use { it.write(bytes) }

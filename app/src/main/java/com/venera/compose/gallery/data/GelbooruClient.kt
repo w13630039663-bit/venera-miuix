@@ -2,6 +2,7 @@ package com.venera.compose.gallery.data
 
 import android.content.Context
 import com.venera.compose.data.network.NoInteractiveBypassTag
+import com.venera.compose.data.network.UserAgentPolicy
 import com.venera.compose.data.network.VeneraNetworkClient
 import java.io.IOException
 import java.net.URLEncoder
@@ -215,8 +216,12 @@ class GelbooruClient private constructor(context: Context) {
     companion object {
         val SITE: GallerySite = GallerySite.GELBOORU
 
-        /** 非浏览器串（理由见 [requestBuilder]）。 */
-        const val API_USER_AGENT = "Venera/1.0 (Android)"
+        /**
+         * 非浏览器串（理由见 [requestBuilder]）。值与图床侧规则同一枚常量 ——
+         * `ImageHeaderPolicy` 那句"UA 一并带上只为与接口侧保持一致"从前只有注释级证据，
+         * 现在由编译期保证。
+         */
+        const val API_USER_AGENT = UserAgentPolicy.APP_USER_AGENT
 
         /**
          * 一次取多少条。
@@ -227,7 +232,12 @@ class GelbooruClient private constructor(context: Context) {
          */
         const val POOL_SIZE = 100
 
-        private const val BASE = "https://gelbooru.com/index.php"
+        /**
+         * DAPI 前缀。域名由 [SITE] 的 `apiHost` 派生，不再手写第二份 ——
+         * `GallerySite.GELBOORU` 才是这一站域名的单一出处（熔断、Referer、设置页都查它）。
+         * 不是 `const` 了：字符串模板吃的是 `val`。
+         */
+        private val BASE = "https://${SITE.apiHost}/index.php"
 
         private val json = Json { ignoreUnknownKeys = true }
 

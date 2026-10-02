@@ -49,6 +49,7 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
@@ -284,7 +285,7 @@ fun LocalComicScreen(
                                     scope.launch {
                                         isExporting = true
                                         exportProgress = 0f
-                                        val outDir = File(context.cacheDir, "exports").apply { if (!exists()) mkdirs() }
+                                        val outDir = CacheDirs.inCache(context.cacheDir, CacheDirs.EXPORTS)
                                         val targetFile = File(outDir, "${comic.title}.cbz")
                                         val res = localComicManager.exportToCbz(comic, targetFile) { p ->
                                             exportProgress = p

@@ -9,7 +9,7 @@ import com.venera.compose.data.platform.contains
 
 /** Separate file: list layout is independent of reader settings and source preferences. */
 class ComicListPreferences(context: Context) {
-    private val preferences = AndroidKeyValueStore(context.applicationContext, "comic_list_presentation")
+    private val preferences = AndroidKeyValueStore(context.applicationContext, PreferenceKeys.PREFS_COMIC_LIST_PRESENTATION)
 
     init {
         if (!preferences.contains(KEY_MODE)) {
