@@ -317,17 +317,10 @@ private fun GalleryForYouEnd(
                 append("（")
                 append(GallerySite.entries.joinToString(" · ") { "${it.displayName} ${perSite[it] ?: 0}" })
                 if (excludedFavourite > 0) append("；已排除 $excludedFavourite 张你收藏过的图")
-                if (blockedCount > 0) append("；另有 $blockedCount 张命中屏蔽规则 ${blockedRules.joinToString("、")}")
-                if (hiddenByRating > 0) append("；$hiddenByRating 张按「成人内容处理」收起")
-                append(
-                    when {
-                        loadingMore -> "；正在取下一页"
-                        exhausted -> "；已经到底"
-                        // 失败时**不能**再说"上滑继续取"：此刻怎么滑都不会再发请求，那是假读数。
-                        loadMoreError != null -> ""
-                        else -> "；上滑继续取"
-                    },
-                )
+                if (blockedCount > 0) append("；另有 ${blockedByRulesFragment(blockedCount, blockedRules)}")
+                if (hiddenByRating > 0) append("；${ratingHiddenFragment(hiddenByRating)}")
+                // 失败档说空串，原因与重试由下面那行说 —— 两头都说就是两行重复读数。
+                append(feedTailStatus(loadingMore, exhausted, loadMoreError != null))
                 append("）")
             },
             fontSize = tokens.type.overline,
@@ -346,21 +339,6 @@ private fun GalleryForYouEnd(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        if (loadMoreError != null) {
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-            Text(
-                text = "下一页没取到：$loadMoreError",
-                fontSize = tokens.type.caption,
-                color = tokens.color.textSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(tokens.spacing.space2))
-            VeneraChip(
-                text = "重试",
-                variant = VeneraChipVariant.Assist,
-                onClick = onRetryLoadMore,
-            )
-        }
+        GalleryLoadMoreRetryLine(loadMoreError, onRetryLoadMore)
     }
 }

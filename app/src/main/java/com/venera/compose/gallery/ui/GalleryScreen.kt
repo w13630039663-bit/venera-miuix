@@ -1737,10 +1737,10 @@ private fun GalleryFeedEnd(wall: GalleryWall, date: String) {
             append("（$perSite")
             if (videos > 0) append("，含 $videos 个视频")
             if (wall.blockedCount > 0) {
-                append("；另有 ${wall.blockedCount} 张命中屏蔽规则 ${wall.blockedRules.joinToString("、")}")
+                append("；另有 ${blockedByRulesFragment(wall.blockedCount, wall.blockedRules)}")
             }
             if (wall.hiddenByRating > 0) {
-                append("；${wall.hiddenByRating} 张按「成人内容处理」收起")
+                append("；${ratingHiddenFragment(wall.hiddenByRating)}")
             }
             append("）")
         },

@@ -156,7 +156,7 @@ fun GalleryFavoritesBody(
                 VeneraEmptyView(
                     title = "收藏里的图都被挡下了",
                     message = buildString {
-                        if (wall.hiddenByRating > 0) append("${wall.hiddenByRating} 张按「成人内容处理」收起")
+                        if (wall.hiddenByRating > 0) append(ratingHiddenFragment(wall.hiddenByRating))
                         if (wall.blockedCount > 0) {
                             if (length > 0) append("，")
                             append("${wall.blockedCount} 张命中你的屏蔽规则")

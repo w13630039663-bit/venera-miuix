@@ -1569,18 +1569,11 @@ fun GallerySearchEnd(
                 ranking?.let { append(" · 排行 $it") }
                 if (page > 1) append(" · 第 $page 页")
                 if (videos > 0) append(" · 含 $videos 个视频")
-                if (blockedCount > 0) append("；另有 $blockedCount 张命中屏蔽规则 ${blockedRules.joinToString("、")}")
-                if (hiddenByRating > 0) append("；$hiddenByRating 张按「成人内容处理」收起")
+                if (blockedCount > 0) append("；另有 ${blockedByRulesFragment(blockedCount, blockedRules)}")
+                if (hiddenByRating > 0) append("；${ratingHiddenFragment(hiddenByRating)}")
                 if (noImage != null) append("；$noImage")
-                append(
-                    when {
-                        loadingMore -> "；正在取下一页"
-                        exhausted -> "；已经到底"
-                        // 失败时**不能**再说"上滑继续取" —— 那是一句假读数：此刻怎么滑都不会再发请求。
-                        loadMoreError != null -> ""
-                        else -> "；上滑继续取"
-                    },
-                )
+                // 失败档要说空串：状态串由 feedTailStatus 收口，失败原因交给下面那行重试。
+                append(feedTailStatus(loadingMore, exhausted, loadMoreError != null))
             },
             fontSize = tokens.type.overline,
             color = tokens.color.textTertiary,
@@ -1600,21 +1593,6 @@ fun GallerySearchEnd(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (loadMoreError != null) {
-            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-            Text(
-                text = "下一页没取到：$loadMoreError",
-                fontSize = tokens.type.caption,
-                color = tokens.color.textSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(tokens.spacing.space2))
-            VeneraChip(
-                text = "重试",
-                variant = VeneraChipVariant.Assist,
-                onClick = onRetryLoadMore,
-            )
-        }
+        GalleryLoadMoreRetryLine(loadMoreError, onRetryLoadMore)
     }
 }

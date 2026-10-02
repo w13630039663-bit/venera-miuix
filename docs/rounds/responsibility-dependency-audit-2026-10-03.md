@@ -10,7 +10,7 @@
 2. **两个插座：** `data/prefs/VeneraPreferences`（46 个调用文件、跨 9 个顶层包）与 `security/guard/ContentGuardManager`（29 个文件、6 个包）。后者是画廊隔离被破的隐形主通道。
 3. **职责：13 颗文件把 6-13 类职责并在一处**，最重的三处越界是「渲染文件里跑业务」与「状态持有者与渲染混体」，见 §二。
 4. **重复：18 处顶栏地板零命名常量**、13 个偏好存储名有 12 个绕过常量、`"shared_images"` 在代码与 `FileProvider` 配置里各写一份。这些不是风格问题，其中三条是「改一处即崩 / 即丢用户数据」的路径。
-5. **测试面与枢纽错位：** `app/src/test` 94 颗 / 773 个 `@Test`，集中在 policy、纯函数、DAO；`feature/` 只有 13 颗。`Navigation.kt`、`VeneraReaderScreen.kt`、`GalleryScreen.kt` 这三颗最大的枢纽**零测试**，而它们同时又直接 `getInstance` 取全局单例，是事实上无法独立测试的块。
+5. **测试面与枢纽错位：** `app/src/test` 审计当时 94 颗 / 773 个 `@Test`（Part A 落地后 101 个文件 = 100 颗测试类 + 1 颗扫描底座，791 个 `@Test`），集中在 policy、纯函数、DAO；`feature/` 只有 13 颗。`Navigation.kt`、`VeneraReaderScreen.kt`、`GalleryScreen.kt` 这三颗最大的枢纽**零测试**，而它们同时又直接 `getInstance` 取全局单例，是事实上无法独立测试的块。
 
 ## 二、依赖方向
 
@@ -117,7 +117,7 @@ Grep ^import com\.venera\.compose\.gallery\.  glob {feature,components,data,sync
 
 | 值 | 文档 | 代码 / 实测 | 状态 |
 |---|---|---|---|
-| 「92 个测试文件 / 749 个用例」 | `README.md:199,214,292,380` + `README.en.md` 同四行 | `app/src/test` 实测 **94 颗 `.kt` / 773 个 `@Test`** | **已漂移**，中英两份逐字一致地一起落后 |
+| 「92 个测试文件 / 749 个用例」 | `README.md:199,214,292,381` + `README.en.md` 同四行 | `app/src/test` 实测 **94 颗 `.kt` / 773 个 `@Test`** | **已漂移**，中英两份逐字一致地一起落后 |
 | 「平板插图卡 3 列 / `StaggeredGridCells.Fixed(2)`」 | `docs/收藏页双栏分屏方案_2026-09.md:224,227,266` | `WideScreenPolicy.kt:113`：1280dp→6 列、1706dp→8 列（ba3e207 已推翻 3 列） | **已漂移**，只有 §8.7 记了一句、正文没改 |
 | `navBarWideScreenMaxWidth()`（写死落点「`VeneraFloatingNavBar.kt` 顶层」） | `docs/rounds/large-screen-adaptation-2026-09.md:71,117`、`reader-large-screen-adaptation-2026-09.md:59` | 全仓零命中，真身 `components/WideScreenPolicy.kt:152 wideScreenChromeMaxWidth()` | **已漂移**：符号不存在 |
 | `bottomBarClearance` 在 `Spacing.kt:206` | `docs/rounds/large-screen-adaptation-stage2-plan-2026-10-02.md:233`（同句还引 `:184-206` 契约文本与 `:193` 禁令） | 常量在 `:214`，契约块 `:185-198`，禁令在 `:194` | **行号漂移**（值 76dp 仍对） |
@@ -206,7 +206,18 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
   手机档恒 2 列这条 standing 约束没被动过，1280→6 / 1706→8 / 1300→7 / 1301→6 四格读数一字未变。
   读数：`:app:testDebugUnitTest --rerun-tasks` **789 tests / 0 failures / 0 errors**（99 颗测试类，+2 条）、
   `:app:compileDebugKotlin` 通过、`:app:assembleDebug` 通过。未验：真机 Pixel Tablet 两档抓屏对齐。
-- A6 待回写
+- A6 已落地，**抽的是片段而不是整块页尾**。原因：四处页尾**不是同一段话**（搜索报「"查询" 已摆出 N 张 · 排行 · 第 P 页」、
+  猜你喜欢报「按你的收藏已摆出 N 张（各站分布…）」、每日热门报「某天的热门已全部显示（…）」、收藏墙又少一节），
+  合并成一块必然要改措辞，而措辞是各页各自定过的 —— 违反「文案一字不改」。逐字重复、且改一处就让别处落后的只有四件：
+  「N 张命中屏蔽规则 …」4 处、「N 张按「成人内容处理」收起」3 处、四档取数状态串 2 处、
+  失败重试块 2 处，全在画廊侧，故只在本侧收口（跨侧的 `FavoriteImagesScreen` 骨架相似是隔离口径要求保留的，不动）。
+  新 `gallery/ui/GalleryFeedReadout.kt` 收这四件；失败档「状态串说空 + 单独一行给真能发请求的重试」是**成对**的，
+  只做一半就还在骗人（那是本轮修过的假读数），所以两者写在同一个文件里并注明。
+  `GalleryScreen:1836-1842` 那句「N 张被「成人内容处理」收起。想看到内容，去设置里改成…」措辞不同（多一段指引），
+  `GalleryForYouScreen:273` 的「命中屏蔽规则 X」是无计数的 chips 标签 —— **两处都不并入**，硬合就是改文案。
+  读数：`:app:testDebugUnitTest --rerun-tasks` **791 tests / 0 failures / 0 errors**（100 颗测试类，本批 +1 颗 +2 条）、
+  `:app:assembleDebug` 通过、`:desktop:compileKotlin` 与 `:engine-probe:compileKotlin` 均 executed 通过（R5 未破）。
+  未验：画廊搜索到底 / 猜你喜欢到底 / 每日热门页尾 / 含屏蔽项的图片收藏 —— 四条读数行真机各看一眼。
 
 ## 六、Part B — Windows 移植阶段 2 再做
 
