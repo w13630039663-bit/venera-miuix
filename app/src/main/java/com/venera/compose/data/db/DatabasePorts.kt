@@ -49,6 +49,8 @@ interface FavoritesPreferences {
  * 装法（两端各一份、各一次）：
  *  - Android：`data/platform/android/AndroidDatabasePorts.install()`（由 `VeneraApp.onCreate` 触发）；
  *  - 桌面：Task 5 在桌面启动处 `install`，用 `JdbcSqliteDatabase` + `DesktopPaths` 拼同一份口。
+ * [install] 带平台标签：装的时候记下是谁装的，**换了平台标签再装直接抛** ——
+ * 本对象是静态口，测试里装了假端口若不清零，会留给整个 JVM 的后续用例（R22）。
  *
  * 关于 `factory` 的参数类型 `Any?`：安装的是「怎么从调用点递来的句柄造出口」这段逻辑，
  * 句柄本身核心不解读 —— Android 侧传 `Context`（旧调用点原样递下来），桌面侧传 `Unit` 或
@@ -64,13 +66,25 @@ class DatabasePorts(
         @Volatile
         private var factory: ((Any?) -> DatabasePorts)? = null
 
-        /** 幂等安装：重复调用以先装的那份为准，避免两端互相覆盖。 */
-        fun install(factory: (Any?) -> DatabasePorts) {
-            if (this.factory == null) this.factory = factory
-        }
+        @Volatile
+        private var installedPlatform: String? = null
 
-        /** 平台是否已接线（诊断用；[of] 未接线时的报错文案也走这条）。 */
-        fun isInstalled(): Boolean = factory != null
+        /**
+         * 安装接线 factory：**同一平台**重复调用以先装的那份为准（幂等，两端互不覆盖）；
+         * 平台标签不同再装 ⇒ 直接抛 —— 静态口一旦被一个装走，另一个平台悄悄换 factory 会
+         * 让全 JVM 后续取用都打到错连接上（含测试装了假端口留给整个进程的情形，R22）。
+         */
+        fun install(platform: String, factory: (Any?) -> DatabasePorts) {
+            val current = installedPlatform
+            if (current == null) {
+                installedPlatform = platform
+                this.factory = factory
+            } else if (current != platform) {
+                throw IllegalStateException(
+                    "data/db 接线已由平台「$current」安装，拒绝平台「$platform」重复安装（静态口不会清零）"
+                )
+            }
+        }
 
         /**
          * 由调用点递来的平台句柄造出接线口。未接线 ⇒ 抛并说清是谁该在什么时候装，
@@ -79,8 +93,9 @@ class DatabasePorts(
         fun of(handle: Any?): DatabasePorts {
             val f = factory
                 ?: throw IllegalStateException(
-                    "data/db 尚未完成平台接线：请在启动处调用 DatabasePorts.install（Android 侧为 " +
-                        "AndroidDatabasePorts.install()）。当前收到的句柄：${handle?.javaClass?.name ?: "null"}"
+                    "data/db 尚未完成平台接线（of 取用时无任何已装 factory）：请在启动处调用 " +
+                        "DatabasePorts.install —— Android 侧为 AndroidDatabasePorts.install()。" +
+                        "当前收到的句柄：${handle?.javaClass?.name ?: "null"}"
                 )
             return f(handle)
         }

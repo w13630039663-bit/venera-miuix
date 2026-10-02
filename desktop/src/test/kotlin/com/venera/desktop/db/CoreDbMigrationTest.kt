@@ -87,8 +87,13 @@ class CoreDbMigrationTest {
         assertTrue("comic_history" in tables())
         assertTrue("comic_favorite" in tables())
         assertTrue("comic_source" in tables())
-        // 原 onUpgrade 在 v2 分支里跑完建表全集就 return，不再走 v3 那段。今天 [V1_CREATE_STATEMENTS]
+        // 原 onUpgrade 在 v2 分支里跑完建表全集就 return，不再走 v3 那段。今天 [SchemaSql.V1_CREATE_STATEMENTS]
         // 本身已含那三张表，所以这条 return 无可观察差异 —— 但它仍然是编排的一部分，逐字保着。
+        // 下面这三行断言就是那个"无差异"的可观察哨兵：谁把这三张表移出 V1_CREATE_STATEMENTS，
+        // 本用例必先红（对应 CoreDbSchema KDoc 里钉住的那条约束）。
+        listOf("reading_stats", "favorite_images", "content_guard_rules").forEach {
+            assertTrue("v1 升 v2 后缺表 $it —— create 的全集不再含它，KDoc 假设已破裂", it in tables())
+        }
         assertEquals(3, userVersion(store.db))
     }
 

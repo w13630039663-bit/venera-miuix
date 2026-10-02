@@ -57,9 +57,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // Task 3：JdbcSqliteDatabase 的驱动。坐标版本照阶段 1 方案 D3 写死（已在 Maven Central 核到）。
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
-    // Task 4a：LocalFavoritesManager.folderToJson 走 gson（阶段 1 方案对 org.json 的处置就是"换仓库已有的 gson"，
-    // 不再往桌面加第二颗 JSON 依赖）。:app 侧同一版本，见 libs.gson。
-    implementation(libs.gson)
+    // Task 4a 曾为 LocalFavoritesManager.folderToJson 加过 implementation(libs.gson)：
+    // 该方法零生产调用方已删（R23），桌面编译面（data/platform + data/db 共享源）里再无 gson
+    // 使用者，这颗依赖随之撤掉。
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)

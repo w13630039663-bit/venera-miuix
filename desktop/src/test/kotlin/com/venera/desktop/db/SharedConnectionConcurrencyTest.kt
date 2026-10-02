@@ -94,9 +94,16 @@ class SharedConnectionConcurrencyTest {
         val outsiderThread = thread(name = "db-outsider") {
             store.db.exec(insertSql, "outsider", "自己的一笔", null, "u", "jm", "默认", "", 0, "", 1L)
         }
-        outsiderThread.join(10_000)
+        outsiderThread.join(500)
+        // join 超时返回 ⇒ outsider 还活着：这就是"确实被挡在锁外"的直白断言。
+        // 不再用 join(10_000) 干等 —— 上一版那 10 秒超时让整类固定花 12.4s，却什么都没断言。
+        assertTrue(
+            "串行化未生效：持锁事务还没走完，outsiderThread 就已经写完了",
+            outsiderThread.isAlive,
+        )
         releaseHolder.countDown()
-        holderThread.join(10_000)
+        holderThread.join()
+        outsiderThread.join()
 
         assertTrue("持锁线程没把事务走完", holderFinished.get())
         val ids = store.db.query("SELECT comic_id FROM comic_favorite").map { it.string("comic_id") }

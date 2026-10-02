@@ -72,11 +72,17 @@ fun setUserVersion(db: SqlDatabase, version: Int) {
  * `venera_core.db`（阅读历史 / 旧单表收藏 / 漫画源元数据）的建表与迁移。
  *
  * [upgrade] 是原 `VeneraDatabase.onUpgrade` 的逐字翻译，**包括那条 `return`**：
- * v1 起的库走 DROP 重建分支后直接返回，v3 才补的三张表（reading_stats / favorite_images /
- * content_guard_rules）在这条路径上不会被建出来。这是改造前就存在的行为，本轮只搬不改 ——
- * 改它属于行为变更，要单独过口径（三张表各自的管理器目前靠自己的 `CREATE TABLE IF NOT EXISTS`
- * 兜底，见 `feature/favoriteimages/FavoriteImagesManager.kt`、`stats/ReadingStatsManager.kt`、
- * `security/guard/ContentGuardManager.kt`）。
+ * v1 起的库走 DROP 重建分支后直接返回，不再走 v3 那段补表。这条 `return` 在**可观察层面
+ * 没有差异** —— v2 分支里 `create(db)` 跑的就是 `SchemaSql.V1_CREATE_STATEMENTS`，它本身
+ * 已含 v3 那三张表（reading_stats / favorite_images / content_guard_rules），DROP 只删老三张，
+ * 重跑建表全集后三张表照样在库中。逐字保留它只是为了不偷改编排结构（本轮口径：搬，不改）。
+ *
+ * 由此推出一条约束：**若将来有人把这三张表移出 `V1_CREATE_STATEMENTS`**（例如想让 v2 分支
+ * 真的"不含 v3 表"），`CoreDbMigrationTest` 的「v1 升 v2 走 DROP 重建且保留提前 return 的
+ * 既有语义」必须先失败 —— 那条用例连同本注释就是这条假设的哨兵。
+ * 另注：三个表的管理器（`FavoriteImagesManager` / `ReadingStatsManager` / `ContentGuardManager`）
+ * **没有任何自建表 DDL**（全项目 `CREATE TABLE` 只出现在本文件与 [SchemaSql]），
+ * 它们从来不做"兜底建表"，别把这条写进任何假设里。
  */
 object CoreDbSchema : SchemaOps {
     const val DATABASE_NAME = "venera_core.db"

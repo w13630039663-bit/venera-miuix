@@ -1,16 +1,17 @@
 package com.venera.compose.data.db
 
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import com.venera.compose.data.platform.SqlDatabase
 import com.venera.compose.data.platform.SqlRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /**
@@ -27,6 +28,10 @@ import kotlinx.coroutines.withContext
  * 现在只吃 [SqlDatabaseSource]（两个库的连接获取口）与 [FavoritesPreferences]（三项偏好），
  * 不碰任何 Android 类型，所以它连同 `LocalFavoriteDatabase` 一起进了桌面的编译面。
  * SQL 的语句文本、绑定参数、排序与去重口径逐条照搬改造前，只换了 API 形状。
+ *
+ * **生命周期**：本类内部持有一个 IO 协程作用域（[notifyChanged] 的后台刷新走它），
+ * 使用方退出时必须调 [close]，否则在飞的刷新会打到已关闭的连接上
+ * （桌面侧：Task 5 窗口关闭时；测试侧：`@After` 里先 `close()` 再关连接）。
  */
 class LocalFavoritesManager(
     private val core: SqlDatabaseSource,
@@ -34,7 +39,7 @@ class LocalFavoritesManager(
     private val prefs: FavoritesPreferences,
 ) {
 
-    private val dbHelper = LocalFavoriteDatabase(favorites)
+    private val dbHelper = LocalFavoriteDatabase()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _folders = MutableStateFlow<List<String>>(emptyList())
@@ -62,6 +67,27 @@ class LocalFavoritesManager(
             migrateLegacyFavorites()
             refreshFolders()
         }
+    }
+
+    /**
+     * 停掉内部协程作用域（[notifyChanged] 排队的后台刷新），并等已开跑的刷新把当前这段
+     * 查询跑完再返回（会**短暂阻塞**，正常毫秒级）。
+     *
+     * 为什么要等：`refreshFolders` 是一段串行的 JDBC 调用、中间没有 suspension point，
+     * cancel 只能拦住"还没开跑/新排进来"的协程，拦不住正在跑的那一段；不等它走完就关
+     * 连接，就会在线程默认异常处理器里留下一批 `database connection closed`。
+     *
+     * 两个必须调它的使用方：
+     *  - **桌面（Task 5）**：窗口关闭时，连接随后就关；不取消作用域的话，在飞的刷新
+     *    会打到已关闭连接上 —— 那是运行期噪音，不是可恢复状态。
+     *  - **测试**：`@After` 里**先 `close()` 再关连接**，顺序反了就会复现上面那批噪音。
+     *
+     * 幂等（重复调用第二次起只是等同一批 job，立刻返回）；close 后挂起的公开方法仍可正常
+     * 使用 —— 它们跑在调用方协程里，不经过本类的 [scope]。
+     */
+    fun close() {
+        scope.cancel()
+        runBlocking { scope.coroutineContext[Job]?.join() }
     }
 
     private suspend fun refreshFolders() = withContext(Dispatchers.IO) {
@@ -507,7 +533,7 @@ class LocalFavoritesManager(
 
     // endregion
 
-    // region ---- 网络收藏夹绑定 / 导入导出 ----
+    // region ---- 网络收藏夹绑定 ----
 
     suspend fun linkFolderToNetwork(folder: String, source: String, networkFolder: String) =
         withContext(Dispatchers.IO) {
@@ -533,24 +559,6 @@ class LocalFavoritesManager(
                 sourceFolder = row.string("source_folder"),
             )
         }
-    }
-
-    suspend fun folderToJson(folder: String): String = withContext(Dispatchers.IO) {
-        val arr = JsonArray()
-        getFolderComicsInternal(folder).forEach { item ->
-            val obj = JsonObject()
-            obj.addProperty("id", item.id)
-            obj.addProperty("name", item.name)
-            obj.addProperty("author", item.author)
-            obj.addProperty("sourceKey", item.sourceKey)
-            obj.addProperty("coverPath", item.coverPath)
-            obj.add("tags", JsonArray().apply { item.tags.forEach { t -> add(t) } })
-            arr.add(obj)
-        }
-        JsonObject().apply {
-            addProperty("name", folder)
-            add("comics", arr)
-        }.toString()
     }
 
     // endregion

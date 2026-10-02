@@ -2,6 +2,7 @@ package com.venera.desktop.db
 
 import com.venera.compose.data.db.CoreDbSchema
 import com.venera.compose.data.db.FavoriteItem
+import com.venera.compose.data.db.FavoritesPreferences
 import com.venera.compose.data.db.LocalFavoriteDbSchema
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.db.SqlDatabaseSource
@@ -21,12 +22,27 @@ import org.junit.Test
  * 覆盖 R18 点名的几项：动态建表（中文 / 带空格 / 带反引号的名字一律过 quoteIdentifier）、
  * 收藏增删查、搬运与排序、追更列的按需 ALTER，以及事务中途抛 ⇒ 整笔回滚。
  * 每条判据都对着改造前的 Android 实现比过，位置策略与去重口径这类细节尤其没动。
+ *
+ * **生命周期口径**：每个用例建过的管理器都登记在 [managers] 里，[tearDown] **先逐个
+ * `close()`（取消内部刷新协程）再关连接**。顺序反了就会在测试输出里留下一批
+ * `database connection closed` 的未捕获异常 —— 上一轮就是这么炸的，别再退回去。
  */
 class LocalFavoritesManagerTest {
     private lateinit var core: TestDatabase
     private lateinit var fav: TestDatabase
     private lateinit var prefs: FakeFavoritesPreferences
     private lateinit var manager: LocalFavoritesManager
+
+    /** 本用例建过的全部管理器（含替身 source 的那颗），tearDown 里统一先 close 再关库。 */
+    private val managers = mutableListOf<LocalFavoritesManager>()
+
+    /** 建一个并登记，杜绝"忘了 close"的新增点。 */
+    private fun newManager(
+        core: SqlDatabaseSource,
+        favorites: SqlDatabaseSource,
+        prefs: FavoritesPreferences,
+    ): LocalFavoritesManager =
+        LocalFavoritesManager(core, favorites, prefs).also { managers += it }
 
     @Before
     fun setUp() {
@@ -35,11 +51,13 @@ class LocalFavoritesManagerTest {
         CoreDbSchema.ensureOn(core.db)
         LocalFavoriteDbSchema.ensureOn(fav.db)
         prefs = FakeFavoritesPreferences()
-        manager = LocalFavoritesManager(core.source, fav.source, prefs)
+        manager = newManager(core.source, fav.source, prefs)
     }
 
     @After
     fun tearDown() {
+        // 先 close 再关连接：close 掉在飞的 refreshFolders，才轮到关连接
+        managers.forEach { it.close() }
         fav.close()
         core.close()
     }
@@ -220,7 +238,7 @@ class LocalFavoritesManagerTest {
 
     @Test
     fun `批量添加中途抛则整笔回滚且异常原样传出`() {
-        val boomManager = LocalFavoritesManager(
+        val boomManager = newManager(
             core.source,
             object : SqlDatabaseSource {
                 override fun reader(): SqlDatabase = fav.db
@@ -434,7 +452,7 @@ class LocalFavoritesManagerTest {
 
     // endregion
 
-    // region ---- 绑定 / 导出 / 迁移 ----
+    // region ---- 绑定 / 迁移 ----
 
     @Test
     fun `网络收藏夹绑定的写入与读出`() {
@@ -452,23 +470,6 @@ class LocalFavoritesManagerTest {
     }
 
     @Test
-    fun `folderToJson 导出条目字段齐全`() {
-        runBlocking {
-            val folder = manager.createFolder("导出夹")
-            manager.addComic(folder, item("c1", name = "要导出的作品"))
-            val json = manager.folderToJson(folder)
-            assertTrue(json, json.startsWith("""{"name":"导出夹","comics":["""))
-            listOf(
-                "\"id\":\"c1\"",
-                "\"name\":\"要导出的作品\"",
-                "\"author\":\"作者\"",
-                "\"sourceKey\":\"jm\"",
-                "\"tags\":[\"恋爱\",\"校园\"]",
-            ).forEach { assertTrue("导出缺字段 $it：$json", it in json) }
-        }
-    }
-
-    @Test
     fun `旧单表收藏一次性迁进每夹一表并清空旧表`() {
         core.db.exec(
             "INSERT OR REPLACE INTO comic_favorite " +
@@ -476,7 +477,7 @@ class LocalFavoritesManagerTest {
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             "legacy1", "旧收藏", "旧作者", "https://old/cover", "拷贝漫画", "老夹子", "热血,战斗", 1, "第 9 话", 123L
         )
-        val migrating = LocalFavoritesManager(core.source, fav.source, FakeFavoritesPreferences())
+        val migrating = newManager(core.source, fav.source, FakeFavoritesPreferences())
 
         migrating.init()
 
@@ -502,7 +503,7 @@ class LocalFavoritesManagerTest {
         )
 
         // 二次 init 不会再搬一次
-        val again = LocalFavoritesManager(core.source, fav.source, FakeFavoritesPreferences())
+        val again = newManager(core.source, fav.source, FakeFavoritesPreferences())
         again.init()
         awaitUntil("二次 init 完成") { again.folders.value.contains("老夹子") }
         assertEquals(1L, countIn("老夹子"))
@@ -515,12 +516,34 @@ class LocalFavoritesManagerTest {
             manager.addComic("缓存夹", item("c1"))
             manager.addComic("缓存夹", item("c2"))
         }
-        val reader = LocalFavoritesManager(core.source, fav.source, FakeFavoritesPreferences())
+        val reader = newManager(core.source, fav.source, FakeFavoritesPreferences())
 
         reader.init()
 
         awaitUntil("folders 缓存续上缓存夹") { reader.folders.value.contains("缓存夹") }
         assertEquals(2, reader.counts.value["缓存夹"])
+    }
+
+    // endregion
+
+    // region ---- 生命周期 ----
+
+    @Test
+    fun `close 后不再排后台刷新且直查照常`() {
+        runBlocking { manager.createFolder("关停首夹") }
+        awaitUntil("folders 缓存含关停首夹") { manager.folders.value.contains("关停首夹") }
+
+        manager.close()
+
+        // 公开挂起方法跑在调用方协程里、不经过管理器内部 scope ⇒ close 后写入与直查仍可用
+        runBlocking { manager.createFolder("关停后新增") }
+        // 给"没被取消成功"的在飞刷新一点时间：close 若失效，此刻缓存早该带上新夹
+        Thread.sleep(200)
+        assertFalse(
+            "close 后缓存不该再被后台刷新：${manager.folders.value}",
+            manager.folders.value.contains("关停后新增"),
+        )
+        assertTrue("直查应读到 close 后新建的夹", runBlocking { manager.currentFolders() }.contains("关停后新增"))
     }
 
     // endregion

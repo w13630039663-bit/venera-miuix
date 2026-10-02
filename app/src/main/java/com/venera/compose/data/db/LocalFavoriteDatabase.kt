@@ -23,12 +23,13 @@ import com.venera.compose.data.platform.quoteIdentifier
  *
  * 本轮改造点：这个类以前**就是** `SQLiteOpenHelper`，
  * 建表/迁移回调只有 Android 有。现在它不碰任何 Android 类型：
- *  - 底层连接从 [SqlDatabaseSource] 现取，SQL 全部走 [SqlDatabase]；
+ *  - 本类不持连接、也不现取连接：调用方（`LocalFavoritesManager`）从 [SqlDatabaseSource]
+ *    现取后作为**必填参数**逐次传入（改造前 `db` 就是必填；上一轮短暂加过的"带默认值"形状
+ *    没有任何调用用到，已撤，见 Minor 2 处置）；SQL 全部走 [SqlDatabase]；
  *  - 建库/升库编排搬到 [LocalFavoriteDbSchema]（两端共用一份），Android 的 helper 壳在
- *    `data/platform/android/AndroidLocalFavoriteOpenHelper`，只转发回调；
- *  - 方法签名的形状（可选 `db` 参数、缺省取当前连接）与改造前一致，调用点无需改口径。
+ *    `data/platform/android/AndroidLocalFavoriteOpenHelper`，只转发回调。
  */
-class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
+class LocalFavoriteDatabase {
 
     // region ---- 收藏夹表（动态表名） ----
 
@@ -37,7 +38,7 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
      * 因此必须经过 [quoteIdentifier] 转义（原版 Dart 直接字符串插值，存在注入风险，这里不照搬）。
      * 语句文本的唯一出处是 [LocalFavoriteDbSchema.folderTableCreate]。
      */
-    fun createFolderTable(db: SqlDatabase = source.writer(), name: String) {
+    fun createFolderTable(db: SqlDatabase, name: String) {
         db.exec(LocalFavoriteDbSchema.folderTableCreate(name))
         db.exec(
             "INSERT OR IGNORE INTO folder_order(folder_name, order_value) VALUES (?, ?)",
@@ -46,7 +47,7 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
     }
 
     /** 删除收藏夹 = 删表 + 清掉 order / sync 记录。 */
-    fun dropFolderTable(db: SqlDatabase = source.writer(), name: String) {
+    fun dropFolderTable(db: SqlDatabase, name: String) {
         db.exec("DROP TABLE IF EXISTS ${quoteId(name)}")
         db.exec("DELETE FROM folder_order WHERE folder_name = ?", name)
         db.exec("DELETE FROM folder_sync WHERE folder_name = ?", name)
@@ -70,7 +71,7 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
      * 以便与官方的「未开启追更的夹子没有这些列」状态保持一致。
      */
     fun prepareTableForFollowUpdates(
-        db: SqlDatabase = source.writer(),
+        db: SqlDatabase,
         table: String,
         clearData: Boolean = true,
     ) {
@@ -89,7 +90,7 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
     }
 
     /** 列是否存在（`PRAGMA table_info`）；表不存在时为 false，与改造前一致。 */
-    fun hasColumn(db: SqlDatabase = source.reader(), table: String, column: String): Boolean =
+    fun hasColumn(db: SqlDatabase, table: String, column: String): Boolean =
         db.query("PRAGMA table_info(${quoteId(table)})").any { it.string("name") == column }
 
     // endregion
@@ -97,9 +98,9 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
     // region ---- 文件夹清单与排序 ----
 
     /** 所有收藏夹名，按 folder_order 排序（对应官方 `_getFolderNamesWithDB`）。 */
-    fun folderNames(db: SqlDatabase = source.reader()): List<String> {
+    fun folderNames(db: SqlDatabase): List<String> {
         val folders = db.query("SELECT name FROM sqlite_master WHERE type='table'")
-            .map { it.string("name") ?: "" }
+            .map { it.requiredString("name") }
             .toMutableList()
         folders.removeAll(META_TABLES)
         val order = folderOrderMap(db)
@@ -107,10 +108,10 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
         return folders
     }
 
-    fun folderOrderMap(db: SqlDatabase = source.reader()): Map<String, Int> {
+    fun folderOrderMap(db: SqlDatabase): Map<String, Int> {
         val map = mutableMapOf<String, Int>()
         db.query("SELECT folder_name, order_value FROM folder_order").forEach {
-            map[it.string("folder_name") ?: ""] = it.long("order_value").toInt()
+            map[it.requiredString("folder_name")] = it.long("order_value").toInt()
         }
         return map
     }
@@ -120,7 +121,7 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
             .firstOrNull()?.long("order_value")?.toInt() ?: 0
 
     /** 覆盖式写入文件夹顺序（对应官方 `updateOrder`）。 */
-    fun updateOrder(db: SqlDatabase = source.writer(), folders: List<String>) {
+    fun updateOrder(db: SqlDatabase, folders: List<String>) {
         db.inTransaction {
             folders.forEachIndexed { i, name ->
                 db.exec(
@@ -134,10 +135,6 @@ class LocalFavoriteDatabase(private val source: SqlDatabaseSource) {
     // endregion
 
     companion object {
-        /** 库名与版本的事实源在 [LocalFavoriteDbSchema]（两端共用的编排），这里只做转发。 */
-        const val DATABASE_NAME = LocalFavoriteDbSchema.DATABASE_NAME
-        const val DATABASE_VERSION = LocalFavoriteDbSchema.DATABASE_VERSION
-
         /** 首次运行的默认收藏夹，沿用既有 `FavoriteDao` 的命名，避免破坏已有行为。 */
         const val DEFAULT_FOLDER = "默认"
 

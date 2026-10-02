@@ -49,7 +49,7 @@ object AndroidDatabasePorts {
     private var ports: DatabasePorts? = null
 
     fun install() {
-        DatabasePorts.install { handle -> createPorts(handle) }
+        DatabasePorts.install(platform = "android") { handle -> createPorts(handle) }
     }
 
     /** 句柄必须是 Context；不是就抛并说清收到的是什么，不猜、不降级。 */
