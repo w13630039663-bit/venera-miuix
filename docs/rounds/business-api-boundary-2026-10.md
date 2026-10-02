@@ -421,3 +421,55 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 ③ 真机连接（今天 `adb devices` 实测空列表）。三件齐了，**第一颗该抽的就是漫画侧那颗聚合 UseCase** ——
 照 `GalleryFeedSource` 的形状抄，连 `failures` 出参那条纪律一起抄（本仓最忌的是静默交错，不是层数少）。
 
+
+
+## 十一、D1 / D2 的开工包（本会话量完，**未动工**）
+
+四批之后停在这里是有理由的：D1 与 D2 都是「一颗契约 + 十几颗文件改引 + 基线重灌」这个量级，
+半批落地比不落地更糟 —— 契约建了而消费点没换完，等于树里同时存在两种形状，下一轮分不清该信哪个。
+下面这些是**已经花过取证成本**的结论，下一轮不必重跑。
+
+### D2（B5）：这批**不用等 W1**，返回类型那道坎今天就不存在
+
+判据是逐颗查过声明地的：`FavoriteItem` / `FavoriteItemWithUpdateInfo` 在 `data/db/FavoriteModels.kt:14,73`，
+`DownloadTask` / `LocalComic` 在 `download/DownloadModels.kt:15,34` —— **全在下层**，所以 `data/api/` 里的
+契约签名不必 import 任何 `feature.*`。这与 §七.6 那颗 `FavoriteImageItem`（声明在
+`feature/favoriteimages/FavoriteImagesManager.kt:92`，必须等搬家）不是一回事 —— 那条理由**不适用于 B5**，
+别顺手把两批并成一个「等 W1」。复算：`_qa/b5-surface.mjs`。
+
+| 契约 | 成员数 | UI 实测吃到的成员全集 |
+|---|---|---|
+| `FavoriteLibrary`（贴 `data/db/LocalFavoritesManager`，公开面 68 枚） | **20** | `addComic` `batchCopyFavorites` `batchDeleteComics` `batchDeleteComicsInAllFolders` `batchMoveFavorites` `counts` `createFolder` `deleteComicWithId` `deleteFolder` `find` `folders` `getAllComics` `getFolderComics` `isExist` `rename` `reorder` `search` `searchInFolder` `updateOrder` `version` |
+| `DownloadQueue`（贴 `download/DownloadManager`，公开面 42 枚） | **12** | `chapterOffline` `clearCompleted` `delete` `enqueue` `getDownloadedChapterFiles` `isChapterDownloaded` `pause` `pauseAll` `relocateTasks` `resume` `resumeAll` `tasks` |
+| `LocalComicLibrary`（贴 `download/LocalComicManager`，公开面 7 枚） | **5** | `deleteLocalComic` `exportToCbz` `getLocalChapters` `getLocalComics` `importCbz` |
+
+写入时的三个已知坑：
+1. **默认值必须逐字照抄**（本仓有条现成的教训：漏传不报错的新参数不要用默认值）——
+   `addComic(folder, comic, order: Int? = null, updateTime: String? = null): Boolean`、
+   `createFolder(name, renameWhenInvalidName: Boolean = false): String`、`delete(taskId, deleteFiles: Boolean = true)`。
+   少抄一枚默认值是**编译不红、行为红**。
+2. 四枚成员的声明是**跨行**的（`addComic` / `batchCopyFavorites` / `batchMoveFavorites` / `exportToCbz`），
+   单行 grep 抓不全签名，别据此判「这枚不存在」。
+3. D3 已把 `ports` 注进 7 颗 VM ⇒ 这批在 VM 侧只是把 `LocalFavoritesManager.getInstance(app)` 换成
+   `ports.favorites` 一行，**不要再往 VM 里加 `BusinessPorts.of`**（那是 `ViewModelAssemblyGuardTest`
+   第一条要红的东西）。点位账：`BASELINE_GET_INSTANCE` 里含这三颗符号的是 **12 行 / 16 个 symbol-site**。
+
+### D1（B7'）：35 条 / 10 颗，第一道岔口是「常量算不算契约成员」
+
+复算 `_qa/gallery-recon2.mjs`。画廊侧 UI 真正摸到的东西分三种，**今天混在同一个数字里**：
+
+- **方法调用**：`SauceNaoClient.searchByFile/searchByUrl`、`YandeReClient.artistLinks/resolveArtistAlias`、
+  `PixivClient.artworkAuthor/avatarUrl`、`DanbooruArtistClient.artistUrls/artistCredits`、
+  `GalleryArtistProbeClient.avatarUrl`、`GalleryFeedSource.loadDaily`、`GalleryTagDictionary.artistNames/translations`、
+  三颗 store 的 `favorites` / `follows` / `toggle` / `peek` / `remember` / `consumeNotice` / `clear` / `removeAll`。
+- **常量位**（占比不小，且**不是**行为）：`GelbooruClient.POOL_SIZE`、`YandeReClient.SEARCH_PAGE_SIZE`、
+  `SauceNaoClient.SAUCE_NUM_RESULTS`、`GalleryFeedSource.PER_SITE_TIMEOUT_MS`（`GalleryLegGuard.kt:52,71` 拿它做算术）。
+  ⇒ 契约要么带这些常量成员、要么让它们留在实现类里，**这是必须先拍的方向**：带进契约 = 端口面掺进调参常量；
+  留在原处 = 这批收不完、那几行 import 继续挂白名单。
+- **凭据只读判据**：`GelbooruAccount.identity`、`SauceNaoAccount.hasKey` —— 按批准过的方案收成
+  「凭据已配置」一枚派生判据，两处变一处（§七.8）。
+
+另外：`PixivClient` / `DanbooruArtistClient` / `GalleryArtistProbeClient` 的取用**全是内联链**
+（`PixivClient.getInstance(context).artworkAuthor(…)`，没有 `val` 句柄）。我第一版按句柄形状扫，
+这三颗扫出 0、差点被判成「只用类型位」—— 改引与复算都要按内联形状写判式。
+三站 `when(site)` 表「四遍改一遍」那半件**默认不做**（行为敏感、风险中），只做纯改引。
