@@ -60,10 +60,25 @@ class LocalFavoritesManagerTest {
 
     @After
     fun tearDown() {
-        // 先 close 再关连接：close 掉在飞的 refreshFolders，才轮到关连接
-        managers.forEach { it.close() }
-        fav.close()
-        core.close()
+        // 先 close 再关连接：close 掉在飞的 refreshFolders，才轮到关连接。
+        // 一颗 close 有抛（比如超时）不许跳过其余：全部关完（含两颗库）再重抛第一颗 ——
+        // 既不静默，也不把"上一轮清掉的 database connection closed 噪音"从缝隙里放回来。
+        var first: Throwable? = null
+        for (m in managers) {
+            try {
+                m.close()
+            } catch (e: Throwable) {
+                if (first == null) first = e else first.addSuppressed(e)
+            }
+        }
+        for (db in listOf(fav, core)) {
+            try {
+                db.close()
+            } catch (e: Throwable) {
+                if (first == null) first = e else first.addSuppressed(e)
+            }
+        }
+        first?.let { throw it }
     }
 
     private fun item(id: String, sourceKey: String = "jm", name: String = "作品 $id") = FavoriteItem(
