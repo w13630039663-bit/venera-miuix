@@ -28,6 +28,10 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
         // data/db 的平台接线：只装一个「怎么从 Context 造出口」的 lambda，不碰 SQLite，
         // 建库时机仍是第一次取用 DAO / 收藏管理器（与改造前一致）。
         com.venera.compose.data.platform.android.AndroidDatabasePorts.install()
+        // 业务 API（data/api 那六颗窄契约）的平台接线：同样只装 lambda、不碰任何 IO。
+        // 适配器的构造不调 getInstance，所以「第一次真正用到才建那颗单例」的时机与改造前逐点相同。
+        // 必须排在下面那几颗 getInstance 预热**之前**：改造过的调用点一旦早于装配就抛。
+        com.venera.compose.data.api.android.AndroidBusinessPorts.install()
         // 网络引擎：主线程只留 UA 策略初始化（1~4ms），CookieJar 与 OkHttpClient 的
         // 47~66ms 装配交给下面这条预热协程；不预热的话这笔钱会改在首图那刻由主线程付。
         StartupTrace.timed("App: VeneraNetworkClient.getInstance") { VeneraNetworkClient.getInstance(this) }
