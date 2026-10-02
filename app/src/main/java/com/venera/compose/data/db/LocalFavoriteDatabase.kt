@@ -3,6 +3,7 @@ package com.venera.compose.data.db
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.venera.compose.data.platform.quoteIdentifier
 
 /**
  * 本地收藏数据库
@@ -196,9 +197,11 @@ class LocalFavoriteDatabase private constructor(context: Context) :
 
         /**
          * SQLite 标识符转义：文件夹名来自用户输入，直接拼进 SQL 有注入风险
-         * （原版 Dart 就是直接插值，这里不照搬）。
+         * （原版 Dart 就是直接插值，这里不照搬）。规则收口到 data/platform 的
+         * [quoteIdentifier]（外包反引号、内部反引号翻倍，另拒空串与换行），两端共用一条转义；
+         * 双引号换反引号只是引号风格，SQLite 语义等价，不动任何已有表名。
          */
-        fun quoteId(name: String): String = "\"" + name.replace("\"", "\"\"") + "\""
+        fun quoteId(name: String): String = quoteIdentifier(name)
 
         @Volatile
         private var INSTANCE: LocalFavoriteDatabase? = null
