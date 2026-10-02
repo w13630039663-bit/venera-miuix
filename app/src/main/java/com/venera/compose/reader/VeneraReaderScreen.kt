@@ -98,7 +98,6 @@ import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.data.api.BusinessPorts
-import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -124,6 +123,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.venera.compose.components.venera.VeneraSlider
 import com.venera.compose.components.venera.VeneraSwitch
+import com.venera.compose.data.api.ComicContentApi
 
 // 前瞻预加载页数已改为偏好 pref_preload_image_count（默认 5）：
 // 动态页每页都要跨 WebView 调一次源 JS 再由源发起网络请求，串行预取会把翻页等待线性叠加，
@@ -180,7 +180,7 @@ private fun ReaderSessionContent(
     }
 
     val prefs = remember { BusinessPorts.of(context).readerPrefs }
-    val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    val sourceManager = remember { BusinessPorts.of(context).comics }
 
     // 活跃章节列表（支持动态加载新章节页码）
     val chaptersState = remember { mutableStateListOf<ReaderChapter>().apply { addAll(session.chapters) } }
@@ -1623,7 +1623,7 @@ private class DynamicPageState {
  */
 private suspend fun resolveDynamicPageUrl(
     context: Context,
-    sourceManager: ComicSourceManager,
+    sourceManager: ComicContentApi,
     page: ComicPageSource.DynamicNetwork,
     maxAttempts: Int = 5,
     forceRefresh: Boolean = false
@@ -1698,7 +1698,7 @@ private fun rememberDynamicPageResolution(page: ComicPageSource.DynamicNetwork):
             state.failed = false
             val url = resolveDynamicPageUrl(
                 context,
-                ComicSourceManager.getInstance(context),
+                BusinessPorts.of(context).comics,
                 page,
                 // 用户点按重试说明上一轮解析出的地址已经不可用 → 绕过解析缓存重来
                 forceRefresh = state.attempt > 0
@@ -1977,7 +1977,7 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
                 is ComicPageSource.Network -> pageSource.url
                 // 动态页先解析出真实地址再取图
                 is ComicPageSource.DynamicNetwork ->
-                    resolveDynamicPageUrl(context, ComicSourceManager.getInstance(context), pageSource)
+                    resolveDynamicPageUrl(context, BusinessPorts.of(context).comics, pageSource)
                 is ComicPageSource.LocalFile -> pageSource.file.absolutePath
                 else -> null
             }
@@ -2053,7 +2053,7 @@ private fun favoriteCurrentPage(
             val urlOrFile = when (pageSource) {
                 is ComicPageSource.Network -> pageSource.url
                 // 动态页先解析出真实地址再取图
-                is ComicPageSource.DynamicNetwork -> resolveDynamicPageUrl(context, com.venera.compose.source.ComicSourceManager.getInstance(context), pageSource)
+                is ComicPageSource.DynamicNetwork -> resolveDynamicPageUrl(context, BusinessPorts.of(context).comics, pageSource)
                 is ComicPageSource.LocalFile -> pageSource.file.absolutePath
                 else -> null
             }
@@ -2142,7 +2142,7 @@ private fun shareCurrentImage(
             val urlOrFile = when (pageSource) {
                 is ComicPageSource.Network -> pageSource.url
                 is ComicPageSource.DynamicNetwork ->
-                    resolveDynamicPageUrl(context, ComicSourceManager.getInstance(context), pageSource)
+                    resolveDynamicPageUrl(context, BusinessPorts.of(context).comics, pageSource)
                 is ComicPageSource.LocalFile -> pageSource.file.absolutePath
                 else -> null
             }

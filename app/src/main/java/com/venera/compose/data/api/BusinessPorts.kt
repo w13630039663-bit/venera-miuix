@@ -43,6 +43,7 @@ package com.venera.compose.data.api
  * @param guardRuleBook 用户屏蔽规则的读写口
  * @param readerPrefs / appearancePrefs / comicPrefs / networkPrefs 偏好的四份分域（`PreferencesApi.kt`）
  * @param stores 按名字取自有缓存（偏好域之外那两颗：首页推荐快照、搜索历史）
+ * @param comics / sources 上游源的两颗口（`SourceApi.kt`：取内容 / 问源清单）
  * @param history 阅读历史
  * @param stats 阅读统计
  * @param network 熔断与取流客户端的运维动作
@@ -56,6 +57,8 @@ class BusinessPorts(
     val comicPrefs: ComicPreferences,
     val networkPrefs: NetworkPreferences,
     val stores: NamedStoreFactory,
+    val comics: ComicContentApi,
+    val sources: SourceCatalog,
     val history: ReadingHistory,
     val stats: ReadingStats,
     val network: NetworkHygiene,

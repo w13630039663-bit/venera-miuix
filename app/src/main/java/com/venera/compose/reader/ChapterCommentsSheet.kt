@@ -21,12 +21,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import android.widget.Toast
-import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comment
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.launch
+import com.venera.compose.data.api.BusinessPorts
 
 /**
  * 章节评论 Sheet 内容 (对齐官方 reader/chapter_comments.dart):
@@ -41,7 +41,7 @@ fun ChapterCommentsSheetContent(
     chapterTitle: String
 ) {
     val context = LocalContext.current
-    val sourceManager = remember { ComicSourceManager.getInstance(context) }
+    val sourceManager = remember { BusinessPorts.of(context).sources }
     val scope = rememberCoroutineScope()
 
     var comments by remember { mutableStateOf<List<Comment>>(emptyList()) }

@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val logTag = "ENGINE_TEST"
             android.util.Log.i(logTag, "========== S1 JS ENGINE END-TO-END TEST START ==========")
-            val sourceManager = com.venera.compose.source.ComicSourceManager.getInstance(applicationContext)
+            val sourceManager = com.venera.compose.data.api.BusinessPorts.of(applicationContext).sources
             
             // 稍等引擎初始化与规则源释放加载
             kotlinx.coroutines.delay(2000)

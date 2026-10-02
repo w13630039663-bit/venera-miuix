@@ -10,7 +10,6 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.PreferenceKeys
-import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.stats.ReadingStatsManager
 import com.venera.compose.stats.TagStatBucket
@@ -27,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import com.venera.compose.data.api.SourceCatalog
 
 /**
  * 首页「可能你感兴趣」推荐区状态。
@@ -198,8 +198,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadRecommendOnce() {
-        val sourceManager = ComicSourceManager.getInstance(appContext)
-        if (!awaitSourceRegistered(sourceManager, RECOMMEND_SOURCE_KEY)) {
+        val sources = BusinessPorts.of(appContext).sources
+        val comics = BusinessPorts.of(appContext).comics
+        if (!awaitSourceRegistered(sources, RECOMMEND_SOURCE_KEY)) {
             failRecommend("推荐取自禁漫天堂（免登录），当前未启用该源", canRetry = true)
             return
         }
@@ -221,7 +222,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             val page = random.nextInt(1, RECOMMEND_MAX_PAGE + 1)
             val sort = RECOMMEND_SORTS.random(random)
             runCatching {
-                sourceManager.search(
+                comics.search(
                     RECOMMEND_SOURCE_KEY, bucket.searchRaw, page, listOf(sort)
                 ).getOrNull()?.comics.orEmpty()
             }.getOrDefault(emptyList())
@@ -287,7 +288,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
      * 冷启动这一发几乎总是早于注册完成 —— 直接判「未启用该源」就是真机看到的症状。
      * 给它一个有界等待窗口，等不到才认输。
      */
-    private suspend fun awaitSourceRegistered(manager: ComicSourceManager, key: String): Boolean {
+    private suspend fun awaitSourceRegistered(manager: SourceCatalog, key: String): Boolean {
         if (manager.getSource(key) != null) return true
         return withTimeoutOrNull(RECOMMEND_SOURCE_WAIT_MS) {
             while (manager.getSource(key) == null) delay(300)

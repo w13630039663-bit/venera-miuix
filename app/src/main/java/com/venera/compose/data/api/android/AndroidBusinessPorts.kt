@@ -4,6 +4,7 @@ import android.content.Context
 import com.venera.compose.data.api.AppearancePreferences
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.api.ComicPreferences
+import com.venera.compose.data.api.ComicContentApi
 import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.data.api.GuardRuleBook
 import com.venera.compose.data.api.HttpTextFetch
@@ -14,6 +15,7 @@ import com.venera.compose.data.api.NetworkPreferences
 import com.venera.compose.data.api.ReaderPreferences
 import com.venera.compose.data.api.ReadingHistory
 import com.venera.compose.data.api.ReadingStats
+import com.venera.compose.data.api.SourceCatalog
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.HostCircuitBreaker
@@ -28,6 +30,18 @@ import com.venera.compose.data.prefs.ThemeColorSource
 import com.venera.compose.data.prefs.ThemeMode
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.source.ComicSource
+import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.explore.SourceExploration
+import com.venera.compose.source.js.JsComicSource
+import com.venera.compose.source.model.CategoryComicsOption
+import com.venera.compose.source.model.CategoryComicsResult
+import com.venera.compose.source.model.ChapterPages
+import com.venera.compose.source.model.ComicDetails
+import com.venera.compose.source.model.ResolvedImageConfig
+import com.venera.compose.source.model.ResolvedThumbnailConfig
+import com.venera.compose.source.model.SearchPage
+import com.venera.compose.source.model.ThumbnailPage
 import com.venera.compose.security.guard.GuardRule
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ExplorePagePart
@@ -75,6 +89,8 @@ object AndroidBusinessPorts {
                 comicPrefs = AndroidComicPreferences(context),
                 networkPrefs = AndroidNetworkPreferences(context),
                 stores = AndroidNamedStoreFactory(context),
+                comics = AndroidComicContentApi(context),
+                sources = AndroidSourceCatalog(context),
                 history = AndroidReadingHistory(context),
                 stats = AndroidReadingStats(context),
                 network = AndroidNetworkHygiene(context),
@@ -304,4 +320,82 @@ private class AndroidNetworkPreferences(private val context: Context) : NetworkP
 private class AndroidNamedStoreFactory(private val context: Context) : NamedStoreFactory {
 
     override fun open(name: String): KeyValueStore = AndroidKeyValueStore(context, name)
+}
+
+/**
+ * 上游源的内容面。**每一枚都是一行转发**，参数默认值留在这颗适配器上与原处一致
+ * （`page = 1`、`options = null`、`next = null`）。
+ */
+private class AndroidComicContentApi(private val context: Context) : ComicContentApi {
+
+    private val manager: ComicSourceManager get() = ComicSourceManager.getInstance(context)
+
+    override suspend fun search(sourceKey: String, keyword: String, page: Int, options: List<String?>?): Result<SearchPage> =
+        manager.search(sourceKey, keyword, page, options)
+
+    override suspend fun getComicDetails(sourceKey: String, comicId: String): Result<ComicDetails> =
+        manager.getComicDetails(sourceKey, comicId)
+
+    override suspend fun getChapterPages(sourceKey: String, comicId: String, chapterId: String): Result<ChapterPages> =
+        manager.getChapterPages(sourceKey, comicId, chapterId)
+
+    override suspend fun loadThumbnails(sourceKey: String, comicId: String, next: String?): Result<ThumbnailPage> =
+        manager.loadThumbnails(sourceKey, comicId, next)
+
+    override suspend fun resolveThumbnailConfigs(sourceKey: String, urls: List<String>): Map<String, ResolvedThumbnailConfig> =
+        manager.resolveThumbnailConfigs(sourceKey, urls)
+
+    override suspend fun resolveImageLoadingConfig(
+        sourceKey: String,
+        comicId: String,
+        epId: String,
+        imageKey: String,
+        nl: String?,
+        forceRefresh: Boolean,
+    ): Result<ResolvedImageConfig> =
+        manager.resolveImageLoadingConfig(sourceKey, comicId, epId, imageKey, nl, forceRefresh)
+
+    override suspend fun getSourceExplorations(): List<SourceExploration> = manager.getSourceExplorations()
+
+    override suspend fun loadExplorePage(sourceKey: String, pageIndex: Int, page: Int): Result<List<ExplorePagePart>> =
+        manager.loadExplorePage(sourceKey, pageIndex, page)
+
+    override suspend fun loadCategoryComics(
+        sourceKey: String,
+        category: String,
+        param: String?,
+        options: List<String>,
+        page: Int,
+    ): Result<CategoryComicsResult> = manager.loadCategoryComics(sourceKey, category, param, options, page)
+
+    override suspend fun getCategoryComicsOptions(
+        sourceKey: String,
+        category: String,
+        param: String?,
+    ): Result<List<CategoryComicsOption>> = manager.getCategoryComicsOptions(sourceKey, category, param)
+
+    override suspend fun loadCategoryRanking(sourceKey: String, option: String, page: Int): Result<List<Comic>> =
+        manager.loadCategoryRanking(sourceKey, option, page)
+
+    override suspend fun tagSuggestionKeyword(sourceKey: String, namespace: String, raw: String): String? =
+        (manager.getSource(sourceKey) as? JsComicSource)?.onTagSuggestionSelected(namespace, raw)
+}
+
+/** 装了哪些源、当前选哪个、活得怎么样。 */
+private class AndroidSourceCatalog(private val context: Context) : SourceCatalog {
+
+    private val manager: ComicSourceManager get() = ComicSourceManager.getInstance(context)
+
+    override val sourcesFlow: StateFlow<List<ComicSource>> get() = manager.sourcesFlow
+    override val activeSourceKey: StateFlow<String> get() = manager.activeSourceKey
+    override val latencyMapFlow: StateFlow<Map<String, Long>> get() = manager.latencyMapFlow
+    override val availableUpdates: StateFlow<Map<String, String>> get() = manager.availableUpdates
+
+    override fun getSource(key: String): ComicSource? = manager.getSource(key)
+
+    override fun searchTargets(): List<ComicSource> = manager.searchTargets()
+
+    override fun refreshPings() = manager.refreshPings()
+
+    override suspend fun checkUpdates(force: Boolean): Int = manager.checkUpdates(force = force)
 }

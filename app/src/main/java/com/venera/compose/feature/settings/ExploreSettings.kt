@@ -5,7 +5,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.feature.SearchViewModel
-import com.venera.compose.source.ComicSourceManager
 
 /**
  * 对照 explore_settings.dart：漫画卡片 → 页面 → 屏蔽 → 搜索与默认值。
@@ -24,7 +23,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
     val comicPrefs = remember(context) { BusinessPorts.of(context).comicPrefs }
     val appearancePrefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
     val readerPrefs = remember(context) { BusinessPorts.of(context).readerPrefs }
-    val sources by ComicSourceManager.getInstance(context).sourcesFlow.collectAsState()
+    val sources by BusinessPorts.of(context).sources.sourcesFlow.collectAsState()
     var mode by rememberComicListDisplayMode()
     val defaultTarget by comicPrefs.defaultSearchTarget.collectAsState()
     val startPage by appearancePrefs.startPage.collectAsState()

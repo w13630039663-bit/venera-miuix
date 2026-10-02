@@ -20,7 +20,7 @@
 | ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 18 处（另有 3 处在注释里）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
 | 测试基线 | 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test` | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
-**冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **17 处**。
+**冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **19 处**（B3 再加 2 处 W1 嵌套类型，见 §五 B3 与 §六）。
 
 ## 二、门面形状
 
@@ -31,6 +31,7 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
     PreferencesApi.kt         Reader(20) + Appearance(20) + Comic(15) + Network(14)
                               + NamedStoreFactory(1)                                  【B2】
     LibraryApi.kt             ReadingHistory(5) + ReadingStats(5)
+    SourceApi.kt              ComicContentApi(12) + SourceCatalog(8)                     【B3】
     NetworkApi.kt             NetworkHygiene(4) + HttpTextFetch(1)
     android/AndroidBusinessPorts.kt   全部适配器 + install()
 app/src/main/java/com/venera/compose/gallery/data/
@@ -60,8 +61,8 @@ app/src/main/java/com/venera/compose/gallery/data/
 |---|---|---|---|
 | **B0** | 骨架 + 守卫：`data/api/` 三颗契约文件 + 容器 + 适配层、`VeneraApp.kt` 一行 install、`BusinessApiBoundaryTest`（A-F 六条断言，白名单 = 当前全量） | 改引 **0** 处 | ✅ 已落地 |
 | **B1** | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14），画廊侧同时立 `gallery/data/GalleryPorts.kt` 那颗自持的 `GalleryContentGuard` | 14 | ✅ 已落地 |
-| B2 | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
-| B3 | `SourceApi.kt`（`ComicContentApi` + `SourceCatalog`）+ 收 `SearchViewModel.kt:166` 的 `as? JsComicSource` | 12 | 待做 |
+| **B2** | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
+| **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 8 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
 | B4 | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | 待做 |
 | B5 | `FavoriteLibrary` + `OfflineLibrary`（契约随本批与守卫同批落地） | 18 | 待做，**允许整批砍掉** |
 | B6 | `NetworkHygiene` + `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | 待做 |
@@ -75,14 +76,14 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 六条断言，底座是 `testsupport/RepoSources.kt` 的源码扫描（**定位不到仓根就 fail 并打印尝试过的路径**，`RepoSources.kt:11-13`：扫描类用例静默通过等于没有用例）：
 
-| 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 |
-|---|---|---|---|---|
-| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | **45 / 91** |
-| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | **45 / 115** |
-| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | **23 / 36** |
-| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | **1**+3+1+5+15 处 |
-| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | **45 颗** |
-| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 | 全量 |
+| 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 | B3 后 |
+|---|---|---|---|---|---|
+| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | 45 / 91 | **42 / 85** |
+| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | 45 / 115 | **41 / 103** |
+| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | 23 / 36 | **22 / 33** |
+| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | 1+3+1+5+15 处 | 同值 |
+| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | 45 颗 | **41 颗** |
+| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 | 全量 | 全量 |
 
 三个已知坑都防住了（上一轮 A3/A5 首跑就是红在这三条上）：① 声明行不会命中（判据以 `.getInstance(` 与 `^import ` 为锚）；② 整行注释与 **尾随注释**都先切掉再判（`PreferenceStorageNamesTest.kt:80-87` 缺的正是第二步）；③ 跨两行的写法由 C 承担，它不依赖与 `getInstance` 同行。
 
@@ -142,9 +143,28 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 **未验（挂账，与 B1 合并一次真机过）**：设置九页（外观 / 阅读 / 探索 / 图库 / 网络 / 优选 IP / 本地收藏 / 屏蔽 / 关于）每项拨动后即时生效且重启仍在、冷启动落回设定 Tab、阅读器内六条开关（模式/点击翻页/音量键/常亮/柔光/页间距）、详情页章节倒序、防窥开关（截图与最近任务缩略图）、画廊的列数档 / 画质档 / 自动播放 / 双层收起 / AI 两枚，以及首页推荐区冷启动仍能铺上次数据（`stores` 那条换了取用点，存储名未动）。
 
-## 六、那 17 处为什么不收（已裁决：甲）
+### B3（2026-10-03）
 
-`FREEZE-STATEMENT.md:17-19` 写的是「允许修实际 Bug、修明确回归；**禁止架构重构**、顺手拆文件」，`:2493` 还记着「用户明确不给豁免」的先例。本轮按**甲档**执行：非冻结的照收，冻结屏 13 处 + 导航保护域 2 处 + B2 落地的画廊写口 2 处**留在白名单**，但每条都在 `BusinessApiBaseline.kt` 的 `SITE_OVERRIDE` 里写明**解锁条件**（这是断言 F 的检查对象，不是给人看的注释）。
+**改引 12 处**（B 站点 115 → **103**，A 91 → **85**，C 36 → **33**，E 出处 45 → **41 颗**）。`ComicSourceManager` 的公开面 77 枚，UI 真吃的只有 12 枚内容动作 + 8 枚清单动作，其余 30 余枚（装源/卸源/排序/仓库地址/登录态回写）今天全在 `feature/sourcemanage/` 那两颗文件里 —— 它们按 §七.1 判为「契约宽度≈实现宽度」，本轮不收。
+
+| 新契约 | 成员 | 消费面 |
+|---|---|---|
+| `ComicContentApi` | `search` / `getComicDetails` / `getChapterPages` / `loadThumbnails` / `resolveThumbnailConfigs` / `resolveImageLoadingConfig` / `getSourceExplorations` / `loadExplorePage` / `loadCategoryComics` / `getCategoryComicsOptions` / `loadCategoryRanking` / `tagSuggestionKeyword` | `feature/ComicDetailViewModel`、`feature/HomeViewModel`、`feature/SearchViewModel`、`reader/VeneraReaderScreen`（含 `resolveDynamicPageUrl` 那颗私有函数的参数位）、四颗冻结屏（未迁，宽度已备） |
+| `SourceCatalog` | `sourcesFlow` / `activeSourceKey` / `latencyMapFlow` / `availableUpdates` / `getSource` / `searchTargets` / `refreshPings` / `checkUpdates` | `MainActivity`、`feature/NetworkFavoritesViewModel`、`feature/ComicDetailViewModel`、`feature/SearchViewModel`、`feature/settings/ExploreSettings`、`reader/ChapterCommentsSheet` |
+
+三处判据值得单独记：
+
+1. **`resolveImageLoadingConfig` 是量出来的、不是计划里有的**：`reader/VeneraReaderScreen.kt` 有五处经 `ComicSourceManager.getInstance(context)` 把它递进 `resolveDynamicPageUrl`，参数 `nl` / `forceRefresh` 区分「首轮吃缓存」与「上一轮地址已失效必须重解」，适配器逐字转发、默认值留原位。
+2. **`checkUpdates` 不参数化仓库地址**：实现那一颗的 `repoUrl` 默认值是它自己的私有常量，而用户在源管理页改的是 `repoUrl` 那条流 —— 契约若开这个参数，调用点传空串就会**绕过**用户设的那份。
+3. **`as? JsComicSource` 收成 `tagSuggestionKeyword(sourceKey, namespace, raw)`**：`feature/SearchViewModel.kt:167` 原来是「拿接口 → 强转实现 → 调实现方法」两级，现在类型探测进适配器，UI 侧不再出现 `JsComicSource` 这个实现类名字（返回 null 的判据与原来同一：非 JS 源或源没声明那条规则）。
+
+**两条新的长期条目（W1 那族嵌套类型）**：`feature/SearchViewModel.kt` 六处 `ComicSourceManager.SourceSearchResult`（39,286,299,316,325,327）与 `feature/settings/PreferredIpSpeedTestScreen.kt:88` 的 `installedMeta`（类型 `InstalledSourceMeta` 声明在 `source/ComicSourceManager.kt:61`）。这两颗 data class **嵌在实现类体里**，收进契约签名就等于让 `data/api` 去 import 实现类拿嵌套类型 —— 与本轮「不搬类型」的边界不是一件事，登记为与 W1 同批。§六 的计数因此 **17 → 19 处**。
+
+**未验（挂账，与 B1/B2 合并一次真机过）**：详情页进入与翻页（`getComicDetails` / `getChapterPages` / `loadThumbnails`）、阅读器逐页加载与「下载失败重试要强制重解」那条链（`resolveImageLoadingConfig`）、搜索单源与「全部源」聚合（`searchTargets` / `search`）、点标签联想（Hitomi 那类 `series:` 语法转换，**必须验一次真转换成功**，它是本批唯一改了调用形状的行为面）、首页推荐区（`search` + `awaitSourceRegistered` 的有界等待）、评论面板（`getSource`）、探索设置页源列表。
+
+## 六、那 19 处为什么不收（已裁决：甲）
+
+`FREEZE-STATEMENT.md:17-19` 写的是「允许修实际 Bug、修明确回归；**禁止架构重构**、顺手拆文件」，`:2493` 还记着「用户明确不给豁免」的先例。本轮按**甲档**执行：非冻结的照收，冻结屏 13 处 + 导航保护域 2 处 + B2 落地的画廊写口 2 处 + B3 落地的 W1 嵌套类型 2 处**留在白名单**，但每条都在 `BusinessApiBaseline.kt` 的 `SITE_OVERRIDE` 里写明**解锁条件**（这是断言 F 的检查对象，不是给人看的注释）。
 
 | 点位 | 归哪颗契约 | 解锁条件 |
 |---|---|---|
@@ -152,6 +172,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | `feature/Navigation.kt:491`（`navigationBarStyle` + `startPage`） | B2 `AppearancePreferences` | 同文件改动按保护域口径需**重新评审一次**（`FREEZE-STATEMENT.md:32` 只管 Tab 枚举顺序 / 路由映射 / 顶栏齿轮入口这三项，本行不在其内） |
 | `feature/Navigation.kt:286`（`ComicLinkResolver`） | **本轮连契约都不立** | **两段前提，缺一段做不动**：① 同上保护域重新评审；② 硬技术前提 = `ComicLinkResolver.Outcome` 是**嵌套在吃 `Context` 的类体里的 `sealed interface`**（`source/ComicLinkResolver.kt:3,23,25-36`），而 `feature/Navigation.kt:313` 逐条消费那四档 ⇒ 必须先做一次 W1 同族的类型搬家，本行才有契约可引 |
 | `feature/SettingsHost.kt:140` 与 `feature/settings/GallerySettings.kt:60`（`VeneraPreferences`） | B2 的 `GalleryPreferences` 已立但**故意只读** | 与 **W5** 同批：`setGalleryXxx` 15 枚写口的唯一消费者是这一页（`feature/settings/GallerySettings.kt:107-284`），而 `gallery/ui` 对那 12 枚只读；W5 落 `gallery/data/GalleryPreferences.kt` 实现类接上这颗接口后，这两行才有的契约可引（零技术前提的另一半已在 `GalleryPorts.kt` 里） |
+| `feature/SearchViewModel.kt:39,286,299,316,325,327`（`ComicSourceManager.SourceSearchResult`）与 `feature/settings/PreferredIpSpeedTestScreen.kt:88`（`installedMeta`） | B3 的 `ComicContentApi` / `SourceCatalog **不收这两枚类型**` | 与 **W1** 同批：两颗 data class 嵌套在实现类体里（`source/ComicSourceManager.kt:61` 一带），契约签名要它们就必须 import 实现类拿嵌套类型；搬进 `source/model/` 后这两行自动消失（`SearchViewModel` 的 7 处**取用**本批已全部改引，留的只是类型位） |
 
 **将来兑现解锁时的豁免记录形状**（照 `:51-63` 与 `:78` 的真实先例：**点名 + 明列未动项**）—— 未动清单至少要含：探索闭环判定链（`:23`）、`ContentGuardManager.kt` 本体（仍 FROZEN，从外面包、未进一颗字符）、打码与分页、行级虚拟化契约、手风琴状态机、下拉刷新与续页闸门、顶栏大标题折叠 + 毛玻璃页内自治、`statusBarTop + topBarFloor` 地板、`LocalBottomBarClearance` 底栏避让、Tab 枚举顺序与路由映射表与顶栏齿轮入口。
 

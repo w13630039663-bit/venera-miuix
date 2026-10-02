@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.coroutineContext
+import com.venera.compose.data.api.SourceCatalog
+import com.venera.compose.data.api.ComicContentApi
 
 data class SearchUiState(
     val query: String = "",
@@ -78,7 +80,8 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val variantConverter = ChineseVariantConverter.getInstance(app)
     private val metricsCache = com.venera.compose.data.prefs.ComicMetricsCache(app)
-    private val sourceManager by lazy { ComicSourceManager.getInstance(app) }
+    private val sources: SourceCatalog by lazy { BusinessPorts.of(app).sources }
+    private val comics: ComicContentApi by lazy { BusinessPorts.of(app).comics }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
     private val guardManager: ContentGuard = BusinessPorts.of(app).contentGuard
     private var searchJob: Job? = null
@@ -108,7 +111,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      */
     var listAnchor: Pair<Int, Int>? = null
 
-    val sourcesFlow = sourceManager.sourcesFlow
+    val sourcesFlow = sources.sourcesFlow
     private val _uiState = MutableStateFlow(SearchUiState(history = readHistory()))
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
     private val _searchOptions = MutableStateFlow<List<SearchOptionGroup>>(emptyList())
@@ -163,10 +166,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     fun selectTagSuggestion(raw: String, label: String, namespace: String = "") {
         viewModelScope.launch {
             val currentKey = _uiState.value.selectedSourceKey
-            val source = if (currentKey != KEY_ALL) {
-                sourceManager.getSource(currentKey) as? com.venera.compose.source.js.JsComicSource
-            } else null
-            val mappedKeyword = source?.onTagSuggestionSelected(namespace, raw)
+            // 源级转换规则只有 JS 源有；那颗类型探测收进 ComicContentApi.tagSuggestionKeyword，
+            // UI 侧不再出现 JsComicSource 这个实现类名字。
+            val mappedKeyword = if (currentKey != KEY_ALL) comics.tagSuggestionKeyword(currentKey, namespace, raw) else null
             if (!mappedKeyword.isNullOrBlank()) {
                 // 源提供了专用转换规则（如 Hitomi 的 "series:xxx" / "type:xxx"）：
                 // 直接把转换结果作为查询词并立刻检索。
@@ -239,7 +241,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             return@withLock
         }
         _uiState.update { it.copy(optionsLoading = true, optionsError = null) }
-        val source = sourceManager.getSource(sourceKey) ?: error("漫画源不可用")
+        val source = sources.getSource(sourceKey) ?: error("漫画源不可用")
         val groups = source.getSearchOptions()
         coroutineContext.ensureActive()
         if (_uiState.value.selectedSourceKey == sourceKey) {
@@ -281,7 +283,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             try {
                 if (currentKey == KEY_ALL) {
-                    val targets = sourceManager.searchTargets()
+                    val targets = sources.searchTargets()
                     _uiState.update { it.copy(aggregatedResults = targets.associate { source ->
                         source.key to ComicSourceManager.SourceSearchResult(source.key, source.name, emptyList(), isLoading = true)
                     }) }
@@ -332,7 +334,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                     _uiState.update { it.copy(isSearching = false) }
                 } else {
                     ensureOptions(currentKey)
-                    val source = sourceManager.getSource(currentKey) ?: error("漫画源不可用")
+                    val source = sources.getSource(currentKey) ?: error("漫画源不可用")
                     val request = TagSearchPolicy.requestKeyword(currentKey, query, snapshot.tags, source::formatSearchTag)
                     if (request.isBlank() && snapshot.tags.isNotEmpty()) {
                         // 该源不认识标签语法且没有纯文本关键词：明确提示而不是静默空结果。
@@ -340,7 +342,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                             error = "当前源不支持标签搜索：请输入关键词，或选择 EHentai 等原生标签源。") }
                         return@launch
                     }
-                    val result = sourceManager.search(currentKey, request, options = _selectedOptions.value.takeIf { it.isNotEmpty() })
+                    val result = comics.search(currentKey, request, options = _selectedOptions.value.takeIf { it.isNotEmpty() })
                     coroutineContext.ensureActive()
                     val firstPage = result.getOrThrow()
                     val comics = firstPage.comics
@@ -397,9 +399,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             try {
                 ensureOptions(currentKey)
-                val source = sourceManager.getSource(currentKey) ?: error("漫画源不可用")
+                val source = sources.getSource(currentKey) ?: error("漫画源不可用")
                 val request = TagSearchPolicy.requestKeyword(currentKey, snapshot.query, snapshot.tags, source::formatSearchTag)
-                val result = sourceManager.search(currentKey, request, page = nextPage,
+                val result = comics.search(currentKey, request, page = nextPage,
                     options = _selectedOptions.value.takeIf { it.isNotEmpty() })
                 coroutineContext.ensureActive()
                 val page = result.getOrThrow()

@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.FavoriteData
 import com.venera.compose.source.model.Comic
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import com.venera.compose.data.api.BusinessPorts
 
 /**
  * 网络收藏「源列表」的展示模型。
@@ -51,7 +51,7 @@ data class NetSourceUi(
  */
 class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val manager = ComicSourceManager.getInstance(application)
+    private val manager = BusinessPorts.of(application).sources
 
     /**
      * key -> 已解析的 [FavoriteData] 缓存。

@@ -11,7 +11,6 @@ import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.ComicMetricsCache
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.ReaderSessionFactory
-import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.Comment
 import com.venera.compose.source.model.CommentCapabilities
@@ -29,6 +28,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.venera.compose.data.api.ComicContentApi
+import com.venera.compose.data.api.SourceCatalog
 
 /** Root comments and reply threads keep independent cursors and errors. */
 data class DetailCommentState(
@@ -171,7 +172,8 @@ data class FavoritePanelState(
  */
 class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val sourceManager = ComicSourceManager.getInstance(app)
+    private val sources: SourceCatalog = BusinessPorts.of(app).sources
+    private val comics: ComicContentApi = BusinessPorts.of(app).comics
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
     private val prefs = BusinessPorts.of(app).comicPrefs
     private val historyDao = HistoryDao.getInstance(app)
@@ -266,13 +268,13 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
                     thumbnailsExpanded = false
                 )
             }
-            val res = sourceManager.getComicDetails(key, comic.id)
+            val res = comics.getComicDetails(key, comic.id)
             if (generation != detailGeneration) return@launch
             val d = res.getOrNull()
             if (d != null) {
                 cacheMetrics(d, key)
                 val capabilities = withContext(Dispatchers.IO) {
-                    sourceManager.getSource(key)?.getCommentCapabilities() ?: CommentCapabilities()
+                    sources.getSource(key)?.getCommentCapabilities() ?: CommentCapabilities()
                 }
                 if (generation != detailGeneration) return@launch
                 val initialPreviewChId = d.chapters.firstOrNull()?.id
@@ -354,7 +356,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
             // 网络收藏：源声明了 favorites 且已登录才有。注意这两步都会同步跑 JS 引擎，
             // 必须在 IO 线程，否则主线程会被 evaluate 的 30s 超时卡死（踩过一次）。
-            val src = sourceManager.getSource(key)
+            val src = sources.getSource(key)
             val (fd, logged) = withContext(Dispatchers.IO) {
                 val f = src?.favoriteData
                 f to (f != null && src.getAccountInfo().isLogged)
@@ -466,7 +468,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         _favPanel.update { it.copy(pending = it.pending + entryKey) }
 
         viewModelScope.launch {
-            val src = sourceManager.getSource(key)
+            val src = sources.getSource(key)
             val fd = withContext(Dispatchers.IO) { src?.favoriteData }
             if (fd == null) {
                 _favPanel.update { it.copy(pending = it.pending - entryKey, toast = "该源不支持网络收藏") }
@@ -533,7 +535,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         _uiState.update { it.copy(isLiked = !currentLiked, likesCount = newCount) }
 
         viewModelScope.launch {
-            val src = sourceManager.getSource(key)
+            val src = sources.getSource(key)
             val result = src?.likeComic(details.comic.id, isLike = !currentLiked)
             val supported = result?.getOrDefault(false) == true
             if (result == null || result.isFailure || !supported) {
@@ -565,7 +567,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         _uiState.update { it.copy(userRating = rating) }
 
         viewModelScope.launch {
-            val src = sourceManager.getSource(key)
+            val src = sources.getSource(key)
             val result = src?.starRating(details.comic.id, rating)
             val supported = result?.getOrDefault(false) == true
             if (result == null || result.isFailure || !supported) {
@@ -617,7 +619,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingThumbnails = true, thumbnailError = null) }
-            val res = sourceManager.loadThumbnails(key, d.comic.id, if (loadMore) thumbnailNext else null)
+            val res = comics.loadThumbnails(key, d.comic.id, if (loadMore) thumbnailNext else null)
             val page = res.getOrNull()
             if (page != null && page.thumbnails.isNotEmpty()) {
                 thumbnailNext = page.next
@@ -640,7 +642,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             val firstChapter = d.chapters.firstOrNull()
                 ?: d.chapterGroups.firstOrNull()?.chapters?.firstOrNull()
             if (firstChapter != null) {
-                val chRes = sourceManager.getChapterPages(key, d.comic.id, firstChapter.id)
+                val chRes = comics.getChapterPages(key, d.comic.id, firstChapter.id)
                 val chPages = chRes.getOrNull()
                 if (chPages != null && chPages.pages.isNotEmpty()) {
                     fallbackChapterPages = chPages.pages
@@ -716,7 +718,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         val pending = urls.filter { it.isNotBlank() && thumbnailConfigAsked.add(it) }
         if (pending.isEmpty()) return
         viewModelScope.launch {
-            val configs = sourceManager.resolveThumbnailConfigs(currentSourceKey(), pending)
+            val configs = comics.resolveThumbnailConfigs(currentSourceKey(), pending)
             if (configs.isEmpty()) return@launch
             configs.forEach { (_, cfg) ->
                 // 按**实际要请求的那个 url** 的 host 记账（EH 会换成镜像域 ehgt.org）。
@@ -769,7 +771,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         val job = viewModelScope.launch {
             try {
                 val page = withContext(Dispatchers.IO) {
-                    val source = sourceManager.getSource(key) ?: error("找不到对应漫画源")
+                    val source = sources.getSource(key) ?: error("找不到对应漫画源")
                     source.loadCommentsPage(details.comic.id, details.subId, requestedPage, replyId).getOrThrow()
                 }
                 updateThread { it.received(page.comments, requestedPage, page.maxPage) }
@@ -804,7 +806,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val success = withContext(Dispatchers.IO) {
-                    val source = sourceManager.getSource(key) ?: error("找不到对应漫画源")
+                    val source = sources.getSource(key) ?: error("找不到对应漫画源")
                     source.sendComment(details.comic.id, details.subId, content, replyId).getOrThrow()
                 }
                 if (generation != detailGeneration) return@launch
@@ -891,7 +893,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             _uiState.update { it.copy(loadingMessage = "正在解析章节画质...") }
-            val res = sourceManager.getChapterPages(key, comic.id, chapterId)
+            val res = comics.getChapterPages(key, comic.id, chapterId)
             val pagesData = res.getOrNull()
             val pages = pagesData?.pages.orEmpty()
             _uiState.update { it.copy(loadingMessage = "") }
@@ -952,9 +954,9 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
         _uiState.value.details?.updateTime?.takeIf { it.isNotBlank() }
 
     private fun resolveSourceKey(sourceNameOrKey: String): String {
-        return sourceManager.sourcesFlow.value.find {
+        return sources.sourcesFlow.value.find {
             it.key.equals(sourceNameOrKey, ignoreCase = true) || it.name.equals(sourceNameOrKey, ignoreCase = true)
-        }?.key ?: sourceManager.activeSourceKey.value
+        }?.key ?: sources.activeSourceKey.value
     }
 }
 
