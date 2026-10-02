@@ -119,7 +119,7 @@ import com.venera.compose.gallery.domain.coverSourceRect
 import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -191,7 +191,7 @@ fun GalleryPostScreen(
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val imageLoader: ImageLoader = remember { GalleryImageLoader.get(context) }
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
 
     // ── 大图页的四条行为档位（批次 C1，2026-09-29；方案 §一）──
@@ -682,7 +682,7 @@ fun GalleryPostScreen(
 
     /**
      * 这一张要不要打码。与一级那面墙**同一把判据**（[GalleryGuard.maskStateFor] +
-     * [ContentGuardManager.findGalleryBlockedRule]）：大图页不能换一套匹配口径，
+     * GalleryPorts.contentGuard.blockedGalleryRule）：大图页不能换一套匹配口径，
      * 否则会出现"墙上被挡掉、点进来却全裸"（或反之）的分叉。
      *
      * 从 val 改成"按页算"：左右翻之后屏上那张不再是打开时那张，判据必须跟着当前页走。
@@ -690,7 +690,7 @@ fun GalleryPostScreen(
     fun maskedOf(target: GalleryPost): Boolean = GalleryGuard.maskStateFor(
         post = target,
         mode = maskMode,
-        blockedByUser = guard.findGalleryBlockedRule(
+        blockedByUser = guard.blockedGalleryRule(
             author = target.author,
             tags = target.tagList,
         ) != null,

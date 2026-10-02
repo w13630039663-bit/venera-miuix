@@ -12,7 +12,7 @@ import androidx.compose.ui.text.AnnotatedString
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoriteDatabase
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -90,7 +90,7 @@ fun ComicCardContextMenu(
             onClick = {
                 onDismiss()
                 scope.launch {
-                    val saved = ContentGuardManager.getInstance(context)
+                    val saved = BusinessPorts.of(context).guardRuleBook
                         .addRule("COMIC_ID", comic.id) >= 0
                     toast(context, if (saved) "已屏蔽本作，可在 设置→屏蔽与过滤→作品 里撤销"
                         else "屏蔽失败，请重试")

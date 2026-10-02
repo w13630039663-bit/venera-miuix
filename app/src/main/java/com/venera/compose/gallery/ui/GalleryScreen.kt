@@ -110,7 +110,7 @@ import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GalleryWallFeed
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -227,7 +227,7 @@ fun GalleryScreen(
     val imageLoader = remember { GalleryImageLoader.get(context) }
 
     // 分级与屏蔽**只读共享**漫画侧那一份，不新造开关（理由见 GalleryGuard）。
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     // 反搜要的是**同一把**分级判据，不是第二份开关：「成人内容处理」选了不过滤，
     // 才让 SauceNAO 把成人内容也带回来（站方的 `hide` 参数与解析期的 hidden 过滤两道同源）。
@@ -254,7 +254,7 @@ fun GalleryScreen(
     val galleryFavorites by GalleryFavoritesStore.getInstance(context).favorites.collectAsState()
     val recommendations = remember(galleryFavorites, rules, fvm.seed) {
         GalleryRecommendations.recommendBySite(galleryFavorites, seed = fvm.seed) { tag ->
-            guard.findGalleryBlockedRule(author = "", tags = listOf(tag)) != null
+            guard.blockedGalleryRule(author = "", tags = listOf(tag)) != null
         }
     }
 
@@ -570,21 +570,21 @@ fun GalleryScreen(
 
     val searchWall = remember(svm.results, maskMode, rules, blockAi) {
         buildGalleryWall(svm.results, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
     // 猜你喜欢（首页主墙）**同一把判据**（`buildGalleryWall`）：否则会出现"首页预览上没被挡、
     // 主墙上全裸"的分叉 —— 同一张图在同一个页面的两处待遇不同，是最难解释的一种不一致。
     val forYouWall = remember(fvm.posts, maskMode, rules, blockAi) {
         buildGalleryWall(fvm.posts, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
     // 日榜那一批（首页预览行 + 二级页全量）**同一把判据**：预览上没被挡的图，
     // 点进二级页也不能变成裸的（同一张图在同一页面的两处待遇不同）。
     val wall = remember(vm.posts, maskMode, rules, blockAi) {
         buildGalleryWall(vm.posts, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
 
@@ -1229,7 +1229,7 @@ private const val LOAD_MORE_AHEAD = 4
  * 当时页尾还写着「那站 40 张」的假读数，正是这次定位真机反馈的唯一线索被抹掉的原因）。
  *
  * @param blockedRuleOf 这条被哪条用户规则挡了（返回规则原文，给页面念出来）。
- *   判据由调用方给：画廊侧是 [ContentGuardManager.findGalleryBlockedRule]，
+ *   判据由调用方给：画廊侧是 GalleryPorts.contentGuard.blockedGalleryRule，
  *   日榜与搜索必须**同一个调用**，否则会出现"墙上被挡、搜索结果里全裸"的分叉。
  * @param blockAi 画廊那一把**独立的** AI 屏蔽开关（批次 C2，用户拍板"画廊和漫画分开"）。
  *   命中的条目按"命中一条屏蔽规则"记账，规则名写死成 `AI 生成` —— 页尾与空态那两处读数

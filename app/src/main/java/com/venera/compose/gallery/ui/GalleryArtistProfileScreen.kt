@@ -69,7 +69,7 @@ import com.venera.compose.gallery.domain.GalleryArtistProfile
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.compose.gallery.domain.GalleryTagFilter
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.VeneraTokens
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -143,7 +143,7 @@ internal fun GalleryArtistProfileScreen(
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val imageLoader: ImageLoader = remember { GalleryImageLoader.get(context) }
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
     val store = remember { GalleryArtistFollowsStore.getInstance(context) }
@@ -187,7 +187,7 @@ internal fun GalleryArtistProfileScreen(
 
     val wall = remember(posts, maskMode, blockAi) {
         buildGalleryWall(posts, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
     val titles = rememberGalleryCardTitles(wall.cards.map { it.post })

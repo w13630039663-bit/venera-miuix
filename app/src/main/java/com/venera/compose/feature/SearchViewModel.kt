@@ -3,6 +3,8 @@ package com.venera.compose.feature
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.data.tags.ChineseVariantConverter
@@ -79,7 +81,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val metricsCache = com.venera.compose.data.prefs.ComicMetricsCache(app)
     private val sourceManager by lazy { ComicSourceManager.getInstance(app) }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
-    private val guardManager = com.venera.compose.security.guard.ContentGuardManager.getInstance(app)
+    private val guardManager: ContentGuard = BusinessPorts.of(app).contentGuard
     private var searchJob: Job? = null
     private var debounceJob: Job? = null
     private var optionsJob: Job? = null
@@ -314,7 +316,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                                         }
                                         ComicSourceManager.SourceSearchResult(
                                             source.key, source.name,
-                                            guardManager.filterComicModels(filtered.comics),
+                                            guardManager.filterComics(filtered.comics),
                                             isLoading = false,
                                             tagFilterRelaxed = filtered.relaxed,
                                         )
@@ -350,7 +352,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                         TagSearchPolicy.filterByTagsWithFallback(
                             comics, snapshot.tags, variantConverter::traditionalToSimplified)
                     }
-                    _uiState.update { it.copy(results = guardManager.filterComicModels(filtered.comics), isSearching = false,
+                    _uiState.update { it.copy(results = guardManager.filterComics(filtered.comics), isSearching = false,
                         tagFilterRelaxed = filtered.relaxed,
                         // 判据与翻页那一路共用（见 SearchPagination）：首页就是空也算到底，
                         // 不能只看源声明的 maxPage —— 它常常比这个关键词真能翻到的页数大得多。
@@ -415,7 +417,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 val unseen = filtered.comics.filter { next ->
                     _uiState.value.results.none { it.id == next.id && it.sourceKey == next.sourceKey }
                 }
-                val fresh = guardManager.filterComicModels(unseen)
+                val fresh = guardManager.filterComics(unseen)
                 _uiState.update {
                     it.copy(results = it.results + fresh, loadingMore = false,
                         // 任一页触发过降级，提示就要一直留着 —— 否则用户以为后面的页是精确的。

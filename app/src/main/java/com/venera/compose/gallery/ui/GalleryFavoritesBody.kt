@@ -42,7 +42,7 @@ import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.toPost
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
@@ -92,7 +92,7 @@ fun GalleryFavoritesBody(
     val scope = rememberCoroutineScope()
     val store = remember { GalleryFavoritesStore.getInstance(context) }
     val favorites by store.favorites.collectAsState()
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     // 收藏那一面墙也走**同一把** AI 屏蔽判据（批次 C2）：不同墙各判一次，
     // 就会出"日榜上被 AI 挡掉的那张，在收藏里全裸"这种最难解释的分叉。
@@ -124,7 +124,7 @@ fun GalleryFavoritesBody(
     val wall = remember(favorites, maskMode, blockAi) {
         val posts = favorites.mapNotNull { fav -> fav.site?.let { fav.toPost(it) } }
         buildGalleryWall(posts, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
     // 墙上这一批的 uid 顺序，区间选要用它。

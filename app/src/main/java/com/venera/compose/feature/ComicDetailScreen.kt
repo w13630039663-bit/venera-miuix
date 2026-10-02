@@ -111,7 +111,8 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.download.GALLERY_CHAPTER_ID
 import com.venera.compose.download.downloadChapters
 import com.venera.compose.reader.*
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.source.model.*
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -148,7 +149,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     // **屏蔽的是站点原值** —— TAG 规则对「ns:value」与裸 value 双路命中，存原值两种写法都盖得住；
     // 存译文会因字典更新而失效（屏蔽列表里出现中文键）。
     val guardForTags = remember(context) {
-        com.venera.compose.security.guard.ContentGuardManager.getInstance(context)
+        BusinessPorts.of(context).guardRuleBook
     }
     val tagActionScope = rememberCoroutineScope()
     val copyTag: (String) -> Unit = { raw ->
@@ -369,8 +370,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
                 // 内容守卫：详情页同样走判定链（JM/哔咔/R18 等命中 → 毛玻璃打码 + R18 角标）。
                 // sourceKey 传显示名 comic.sourceName，由守卫别名解析链（显示名 → sourceKey）对齐源级预设。
-                val guard = ContentGuardManager.getInstance(context)
-                val maskState = guard.coverMaskStateFor(
+                val guard = BusinessPorts.of(context).contentGuard
+                val maskState = guard.maskStateFor(
                     sourceKey = comic.sourceName,
                     title = liveDetails?.comic?.title ?: comic.title,
                     author = liveDetails?.author ?: comic.author,
@@ -1846,13 +1847,13 @@ private fun shareText(
 
 /** 内容守卫判定（详情页封面用；sourceKey 传显示名，走守卫别名解析链）。 */
 private fun detailMaskState(
-    guard: ContentGuardManager,
+    guard: ContentGuard,
     sourceName: String,
     title: String,
     author: String,
     tags: List<String>,
     comicId: String,
-): String = guard.coverMaskStateFor(
+): String = guard.maskStateFor(
     sourceKey = sourceName,
     title = title,
     author = author,

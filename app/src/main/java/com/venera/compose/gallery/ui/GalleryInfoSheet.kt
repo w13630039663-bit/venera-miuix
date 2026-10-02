@@ -89,7 +89,7 @@ import com.venera.compose.gallery.domain.buildGalleryTagBuckets
 import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.ratingLabel
 import com.venera.compose.gallery.domain.ratingToneOf
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.GalleryRatingColors
 import com.venera.compose.ui.tokens.GallerySheetSection
 import com.venera.compose.ui.tokens.GalleryTagCategoryColors
@@ -189,7 +189,7 @@ internal fun GalleryInfoSheet(
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     // 屏蔽规则要落库（suspend），动作归本面板持有；与漫画详情页那三个标签动作同一份分工。
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val tagScope = rememberCoroutineScope()
     // 收起 / 展开只属于"这一次打开"：换一张图要回到收起态（`post.uid` 当 key）。
     // 不落盘也不跨页 —— 它是个阅读动作，不是设置。

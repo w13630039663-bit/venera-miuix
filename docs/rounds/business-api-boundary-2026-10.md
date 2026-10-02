@@ -50,12 +50,12 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 
 **VM 侧本轮不做构造注入**，改成字段一次性持有契约（`private val api = BusinessPorts.of(application)` + `private val prefs: ComicPreferences = api.comicPrefs`）。三条理由：18 处 `viewModel()` 里 **7 处落在冻结屏**（而 VM 文件本身一颗都不在冻结清单里 ⇒ 改动留在 VM 内是零豁免成本）；3 颗裸 `ViewModel()` 今天已零穿透；全仓零 `ViewModelProvider.Factory`，引入它等于新造一整个 DI 形状。**病因分两段**：①「实现类的名字出现在消费层」（125 行 import）本轮治；②「对象来自进程全局」只有构造注入能治，改完之后一颗 VM 的依赖恰好等于它字段声明里那几颗契约类型 —— **「能不能一眼列出依赖」就是本轮与下一轮的分界**。
 
-## 三、批次（B0 已落地）
+## 三、批次（B0、B1 已落地）
 
 | 批 | 内容 | 点位 | 状态 |
 |---|---|---|---|
 | **B0** | 骨架 + 守卫：`data/api/` 三颗契约文件 + 容器 + 适配层、`VeneraApp.kt` 一行 install、`BusinessApiBoundaryTest`（A-F 六条断言，白名单 = 当前全量） | 改引 **0** 处 | ✅ 已落地 |
-| B1 | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14） | 14 | 待做 |
+| **B1** | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14），画廊侧同时立 `gallery/data/GalleryPorts.kt` 那颗自持的 `GalleryContentGuard` | 14 | ✅ 已落地 |
 | B2 | 偏好四颗契约（`PreferencesApi.kt`：Reader/Appearance/Comic + 画廊 `GalleryPreferences`）+ 3 处 `AndroidKeyValueStore(` 归位 | 24 | 待做 |
 | B3 | `SourceApi.kt`（`ComicContentApi` + `SourceCatalog`）+ 收 `SearchViewModel.kt:166` 的 `as? JsComicSource` | 12 | 待做 |
 | B4 | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | 待做 |
@@ -71,14 +71,14 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 
 六条断言，底座是 `testsupport/RepoSources.kt` 的源码扫描（**定位不到仓根就 fail 并打印尝试过的路径**，`RepoSources.kt:11-13`：扫描类用例静默通过等于没有用例）：
 
-| 断言 | 钉住的不变量 | B0 基线 |
-|---|---|---|
-| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 |
-| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 |
-| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 |
-| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 |
-| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 |
-| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 |
+| 断言 | 钉住的不变量 | B0 基线 | B1 后 |
+|---|---|---|---|
+| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | **56 / 119** |
+| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | **50 / 138** |
+| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | **32 / 48** |
+| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值（B1 不碰） |
+| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | **50 颗** |
+| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 |
 
 三个已知坑都防住了（上一轮 A3/A5 首跑就是红在这三条上）：① 声明行不会命中（判据以 `.getInstance(` 与 `^import ` 为锚）；② 整行注释与 **尾随注释**都先切掉再判（`PreferenceStorageNamesTest.kt:80-87` 缺的正是第二步）；③ 跨两行的写法由 C 承担，它不依赖与 `getInstance` 同行。
 
@@ -93,6 +93,27 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 - `RepoSources` **未改**：六条断言只用现成的 `allMainLines()` 与 `kotlinFiles()`，不需要新访问器。
 - 用例首跑红了 5 条，全部是**用例自己的错**而不是代码的错，逐条记：① B 忘了把行号拼进 key（基线是 `Sym:line`，扫描只给了 `Sym`）；② A 少登记了 `feature/sourcemanage/*` 的 `JsComicSource` import；③ C 的符号表来自归属表，比生成脚本多 `HostCircuitBreaker` 与 `JsComicSource` 两颗，多出 4 条真实命中（含 `MainActivity.kt:97` 那句诊断日志里的 `is JsComicSource`）；④ E 原设计只放过「基础设施目录 + 自身声明」，但 B0 不改引 ⇒ 51 颗 UI 文件全在命里，改成「存量名单 + 名单清空不删也红」；⑤ F 抓到 6 条长期条目的解锁条件**没有可复核的锚**（只写了文件名没写行号），逐条补上真实点位。
 - `:app:compileDebugKotlin`、`:app:testDebugUnitTest --tests "*BusinessApiBoundaryTest*" --rerun-tasks`（**6 tests / 0 failures / 0 errors**，强制重跑非 UP-TO-DATE）、全套读数见提交信息。
+
+### B1（2026-10-03）
+
+**改引 14 处**（B 的站点总数 152 → **138**，A 128 → **119**，C 49 → **48**，E 出处 52 → **50 颗**）：漫画侧 9 处取 `BusinessPorts.of(ctx).contentGuard` / `.guardRuleBook`，画廊侧 6 处取 `GalleryPorts.of(ctx).contentGuard`（另 1 处是 `BlockingSettings` 里同一颗 ruleBook 被两个 `remember` 各取一次，所以新增的 `of(...)` 行比减掉的 `getInstance` 多一枚）。
+
+| 落点 | 从 | 到 |
+|---|---|---|
+| `components/ComicCardContextMenu.kt:93` | `ContentGuardManager.getInstance(ctx).addRule(…)` | `BusinessPorts.of(context).guardRuleBook.addRule("COMIC_ID", comic.id)`（`>= 0` 的成功判据逐字保留） |
+| `feature/ComicDetailScreen.kt:152,373` | 同上 + `getInstance` 后 `maskStateFor` | `guardRuleBook` / `contentGuard`，`detailMaskState(guard: ContentGuard, …)` 的参数类型随之从实现类换成契约 |
+| `feature/FollowUpdatesScreen.kt:220` | 全限定内联 `com.venera.compose.security.guard.ContentGuardManager.getInstance(…)` | `BusinessPorts.of(LocalContext.current).contentGuard` |
+| `feature/HomeViewModel.kt:208`、`feature/SearchViewModel.kt:84` | 字段/局部变量拿实现类 | `private val guardManager: ContentGuard = BusinessPorts.of(app).contentGuard`（VM 从这一天起字段里只有契约类型） |
+| `feature/settings/BlockingSettings.kt:22,23,71` | `guard` + `manager`（规则本体的增删查） | `contentGuard` + `ruleBook: GuardRuleBook`，`rules by ruleBook.rules` |
+| `gallery/ui/{GalleryArtistProfileScreen:146, GalleryDailyScreen:85, GalleryFavoritesBody, GalleryInfoSheet, GalleryPostScreen, GalleryScreen}`（含 `GalleryScreen` 的 4 条 `findGalleryBlockedRule` 调用点） | `ContentGuardManager.getInstance(…)` / `findGalleryBlockedRule(` | `GalleryPorts.of(context).contentGuard` / `blockedGalleryRule(` |
+
+**画廊侧为什么不复用漫画侧那颗契约**：隔离口径要的是**各侧自持**（`project-gallery-module-isolation`），共用一个发布者等于让 `gallery/ui` 依赖 `data/api` 的漫画语义。所以 `gallery/data/GalleryPorts.kt` 里只有 UI 真要问的 4 枚成员（`nsfwMaskMode`、`rules`、`blockedGalleryRule`、`addRule`），适配器转发 `ContentGuardManager` 的同一对方法；`VeneraApp.kt` 加第二行 `AndroidGalleryPorts.install()`。它在 `gallery/data/` 目录下，天然落进守卫 E 的 `INFRA_DIRS`，不需要为它开豁免。
+
+**基线形状本轮重做**（B0 那版是我的设计缺陷，不是迁移的代价）：B0 把白名单键写成 `符号:行号`，于是同一文件里加一行 import 就会让**别处**的行号全部漂移、白名单跟着假红。现在改成「文件 → 符号集合」+ 一个站点总数 `SITE_TOTAL_GET_INSTANCE`（D 五张表同理改成「文件 → 处数」），既钉得住「哪颗文件还直连着谁」也钉得住「重复几处」，且不受行号漂移影响 —— 这条写在 `BusinessApiBaseline.kt` 的文件级 KDoc 里，B2 之后每批照此复算。
+
+**用例本轮三处自己的错**（全部是守卫变松，不是代码变红）：① `countsOf` 改签名时残留了上一版的函数体（编译期即红）；② `attribOf` 把键写成字面量 `"path#$sym"` 而不是 `"$path#$sym"` ⇒ 25 条站点覆写（冻结屏 11 + 导航保护域 2 + 画廊内凭据 4 + sourcemanage 4 + favoriteimages 3 + `MainActivity` 1）全部取不到值，甲裁决下逐条写来的解锁条件形同不存在；③ **A 的判据里 `attribOf(rel, sym) == null` 就 `return null`** —— 这是一条假绿口子：新增一颗实现类、只要它不在归属表里，它的 import 就会被静默丢掉，白名单再严也管不到它。现已删掉这一行，改由 `EXCLUDED_SYMBOLS`（`ComicSource` 是接口、`FavoriteItem`/`HistoryRecord`/`GuardRule` 是数据类）**显式**登记端口与真底层，将来漏登记就是红。
+
+**未验（挂账，需用户点页面）**：屏蔽页三档遮罩与 AI 开关的即时生效、加/删规则后列表计数文案、详情页与关注更新列表的封面打码、搜索与首页的 HIDE 过滤、画廊四页（日推/收藏/详情/画师主页）的打码与"已屏蔽"提示。B1 是**同一行取用表达式的替换**，`remember` 边界不加不减、`collectAsState` 订阅对象未换，判据层已由 797 条用例兜住；观感仍要真机过一遍才算完。
 
 ## 六、那 15 处为什么不收（已裁决：甲）
 

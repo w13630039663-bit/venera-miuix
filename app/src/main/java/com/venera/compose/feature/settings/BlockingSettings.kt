@@ -11,7 +11,7 @@ import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.data.prefs.VeneraPreferences
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -19,12 +19,13 @@ import top.yukonga.miuix.kmp.basic.Text
 @Composable
 internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
     val context = LocalContext.current
-    val guard = remember(context) { ContentGuardManager.getInstance(context) }
+    val guard = remember(context) { BusinessPorts.of(context).contentGuard }
+    val ruleBook = remember(context) { BusinessPorts.of(context).guardRuleBook }
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
     val secureScreen by prefs.secureScreen.collectAsState()
     val mode by guard.nsfwMaskMode.collectAsState()
     val blockAi by guard.blockAiComics.collectAsState()
-    val rules by guard.rules.collectAsState()
+    val rules by ruleBook.rules.collectAsState()
     SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤", heroSubtitle = "规则类型 · AI 标签") {
         SettingsGroup("隐私") {
             // FLAG_SECURE 由 MainActivity 订阅同一个偏好应用到窗口，拨一下当前界面即刻生效。
@@ -67,7 +68,7 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
 @Composable
 internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
     val context = LocalContext.current
-    val manager = remember(context) { ContentGuardManager.getInstance(context) }
+    val manager = remember(context) { BusinessPorts.of(context).guardRuleBook }
     val rules by manager.rules.collectAsState()
     val scope = rememberCoroutineScope()
     var input by rememberSaveable { mutableStateOf("") }

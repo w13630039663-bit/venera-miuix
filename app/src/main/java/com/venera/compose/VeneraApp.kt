@@ -32,6 +32,8 @@ class VeneraApp : Application(), SingletonImageLoader.Factory {
         // 适配器的构造不调 getInstance，所以「第一次真正用到才建那颗单例」的时机与改造前逐点相同。
         // 必须排在下面那几颗 getInstance 预热**之前**：改造过的调用点一旦早于装配就抛。
         com.venera.compose.data.api.android.AndroidBusinessPorts.install()
+        // 画廊侧的业务 API 单独一颗（隔离口径要的是各侧自持，不是共用一个发布者）。
+        com.venera.compose.gallery.data.AndroidGalleryPorts.install()
         // 网络引擎：主线程只留 UA 策略初始化（1~4ms），CookieJar 与 OkHttpClient 的
         // 47~66ms 装配交给下面这条预热协程；不预热的话这笔钱会改在首图那刻由主线程付。
         StartupTrace.timed("App: VeneraNetworkClient.getInstance") { VeneraNetworkClient.getInstance(this) }

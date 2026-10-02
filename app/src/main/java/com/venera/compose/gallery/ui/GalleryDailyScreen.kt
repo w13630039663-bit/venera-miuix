@@ -34,7 +34,7 @@ import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GalleryWallFeed
-import com.venera.compose.security.guard.ContentGuardManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.CoroutineScope
@@ -82,7 +82,7 @@ internal fun GalleryDailyScreen(
 
     val source = remember { GalleryFeedSource.getInstance(context) }
     val imageLoader = remember { GalleryImageLoader.get(context) }
-    val guard = remember { ContentGuardManager.getInstance(context) }
+    val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     val rules by guard.rules.collectAsState()
     val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
@@ -99,7 +99,7 @@ internal fun GalleryDailyScreen(
     // 与首页**同一把过滤判据**（`buildGalleryWall`）：同一张图在首页预览与这一页上待遇必须一致。
     val wall = remember(vm.posts, maskMode, rules, blockAi) {
         buildGalleryWall(vm.posts, maskMode, blockAi = blockAi) { post ->
-            guard.findGalleryBlockedRule(author = post.author, tags = post.tagList)?.pattern
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
         }
     }
 

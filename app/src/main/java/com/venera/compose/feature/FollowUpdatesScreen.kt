@@ -4,6 +4,7 @@
 package com.venera.compose.feature
 
 import com.venera.compose.components.*
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraSpacing
 
@@ -216,8 +217,8 @@ private fun UpdateRow(
     onClick: () -> Unit,
 ) {
     // 内容守卫：BLUR 命中打码（sourceKey 直查源级预设），HIDE 由调用方列表过滤兜底。
-    val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(LocalContext.current)
-    val maskState = guard.coverMaskStateFor(
+    val guard = BusinessPorts.of(LocalContext.current).contentGuard
+    val maskState = guard.maskStateFor(
         sourceKey = sourceKey,
         title = title,
         author = author,

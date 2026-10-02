@@ -3,6 +3,7 @@ package com.venera.compose.feature
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.FavoriteRecord
 import com.venera.compose.data.db.HistoryDao
@@ -204,7 +205,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _recommend.value = _recommend.value.copy(loading = true)
-        val guard = com.venera.compose.security.guard.ContentGuardManager.getInstance(appContext)
+        val guard = BusinessPorts.of(appContext).contentGuard
         val buckets = runCatching {
             ReadingStatsManager.getInstance(appContext).getTagStats(RECOMMEND_WINDOW_DAYS).buckets
         }.getOrNull().orEmpty().take(3)
@@ -243,7 +244,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             index++
         }
         // HIDE 命中整条剔除（BLUR 交由卡片自身打码），与探索页同一口径。
-        val visible = guard.filterComicModels(merged)
+        val visible = guard.filterComics(merged)
         if (visible.isEmpty()) {
             failRecommend(
                 note = if (perTag.all { it.isEmpty() }) "禁漫天堂暂时拉不到内容，稍后重试"

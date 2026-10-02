@@ -60,7 +60,6 @@ class BusinessApiBoundaryTest {
             if (!IMPL_SUFFIX.matches(sym)) return@mapNotNull null
             if (m.groupValues[1].startsWith("source.model")) return@mapNotNull null
             if (sym in EXCLUDED_SYMBOLS) return@mapNotNull null
-            if (attribOf(rel, sym) == null) return@mapNotNull null
             rel to sym
         }
 
@@ -102,44 +101,44 @@ class BusinessApiBoundaryTest {
 
     // ─────────────────────────── 六条断言 ───────────────────────────
 
-    /** A ——「UI 目录不许 import 业务实现类」。基线 = 56 颗文件 / 125 条。 */
+    /** A ——「UI 目录不许 import 业务实现类」。B1 后基线 = 56 颗文件 / 119 条（B0 当天 57 / 128）。 */
     @Test
     fun `A UI 不许 import 业务实现类`() = report("import", byFileSym(scanImplImport()), BASELINE_IMPORT)
 
     /**
-     * B ——「UI 目录不许 `实现类.getInstance`」。基线 = 51 颗文件 / 150 处。
-     * 判据取**接收者简单名**，所以 `com.venera.compose.security.guard.ContentGuardManager.getInstance(…)`
-     * 这种全限定内联（`feature/FavoritesScreen.kt:795` 就是这个形状）同样落网。
+     * B ——「UI 目录不许 `实现类.getInstance`」。判据取**接收者简单名**，所以
+     * `com.venera.compose.security.guard.ContentGuardManager.getInstance(…)` 这种全限定内联
+     * （`feature/FavoritesScreen.kt:795` 就是这个形状）同样落网。
+     *
+     * 两道钉：① 文件 → 符号集合相等（哪颗文件还直连着谁，B1 后 50 颗）；② **站点总数**
+     * （同一符号在一颗文件里取用三次算三处，B1 摘掉 14 处后 [SITE_TOTAL_GET_INSTANCE]=138）。
+     * 基线**不记行号** —— B0 记过，结果同一文件加一行 import 就让别处行号全漂、白名单跟着假红。
      */
     @Test
-    fun `B UI 不许直连取单例`() = report(
-        "取用",
-        byFileSym(scanImplCall().map { it.first to "${it.third}:${it.second}" }),
-        BASELINE_GET_INSTANCE,
-    )
+    fun `B UI 不许直连取单例`() {
+        val calls = scanImplCall()
+        report("取用", byFileSym(calls.map { it.first to it.third }), BASELINE_GET_INSTANCE)
+        assertEquals(
+            "取用点位总数变了（迁完一处就从这里减掉；新增点位必须先加契约）",
+            SITE_TOTAL_GET_INSTANCE,
+            calls.size,
+        )
+    }
 
-    /** C ——「不许把实现类当类型用」（跨两行的间接穿透）。基线 = 31 颗文件 / 45 条。 */
+    /** C ——「不许把实现类当类型用」（跨两行的间接穿透）。B1 后 32 颗 / 48 条（B0 当天 33 / 49）。 */
     @Test
     fun `C 不许把实现类当类型用`() = report("类型引用位", byFileSym(scanTypeSite()), BASELINE_TYPE_SITE)
 
-    /** D ——「非 getInstance 的直连」五张名单，逐个行号登记（这几颗文件不会每天改，行号可接受）。 */
+    /** D ——「非 getInstance 的直连」五张名单，按文件记**处数**（不记行号，理由同 B）。 */
     @Test
     fun `D 非 getInstance 的直连同样要登记`() {
-        assertEquals("AndroidKeyValueStore( 的点位变了", BASELINE_KEY_VALUE_STORE, linesOf(Regex("AndroidKeyValueStore\\(")))
-        assertEquals("HostCircuitBreaker. 的点位变了", BASELINE_BREAKER, linesOf(Regex("HostCircuitBreaker\\.")))
-        assertEquals("okhttp3. 的点位变了", BASELINE_RAW_OKHTTP, linesOf(Regex("okhttp3\\.")))
-        assertEquals("PreferredIpRuntime. 的点位变了", BASELINE_PREFERRED_IP, linesOf(Regex("PreferredIpRuntime\\.")))
-        assertEquals("ComicStorageRoot. 的点位变了", BASELINE_STORAGE_ROOT, linesOf(Regex("ComicStorageRoot\\.")))
+        assertEquals("AndroidKeyValueStore( 的点位变了", BASELINE_KEY_VALUE_STORE, countsOf(Regex("AndroidKeyValueStore\\(")))
+        assertEquals("HostCircuitBreaker. 的点位变了", BASELINE_BREAKER, countsOf(Regex("HostCircuitBreaker\\.")))
+        assertEquals("okhttp3. 的点位变了", BASELINE_RAW_OKHTTP, countsOf(Regex("okhttp3\\.")))
+        assertEquals("PreferredIpRuntime. 的点位变了", BASELINE_PREFERRED_IP, countsOf(Regex("PreferredIpRuntime\\.")))
+        assertEquals("ComicStorageRoot. 的点位变了", BASELINE_STORAGE_ROOT, countsOf(Regex("ComicStorageRoot\\.")))
     }
 
-    /**
-     * E ——「静态取用的出处必须可数」：全仓 `*.getInstance` 只能出现在装配根、适配层、
-     * 基础设施目录内部互调、或**自己声明了这个 `getInstance` 的文件**里。
-     * 这条不依赖白名单，所以它天然只会变严不会变松。
-     *
-     * 如实声明它的粗粒度：一颗文件只要自己声明过任意 `getInstance`，本条就整体放过它
-     * （`feature/favoriteimages/FavoriteImagesManager.kt` 属于这种）。细的一口径由 A/B/C 承担。
-     */
     /**
      * E ——「静态取用的出处必须可数」：全仓 `*.getInstance` 只能出现在装配根、适配层、
      * 基础设施目录内部互调、**自己声明了这个 `getInstance` 的文件**，或 B0 登记的存量名单里。
@@ -185,7 +184,7 @@ class BusinessApiBoundaryTest {
     fun `F 白名单每条都要有归属或解锁条件`() {
         val entries = buildSet {
             for ((f, set) in BASELINE_IMPORT) for (s in set) add(Triple(f, s, "import"))
-            for ((f, set) in BASELINE_GET_INSTANCE) for (s in set) add(Triple(f, s.substringBefore(':'), "取用"))
+            for ((f, set) in BASELINE_GET_INSTANCE) for (s in set) add(Triple(f, s, "取用"))
             for ((f, set) in BASELINE_TYPE_SITE) for (s in set) add(Triple(f, s, "类型位"))
         }
         val orphans = entries.mapNotNull { (path, sym, kind) ->
@@ -203,13 +202,13 @@ class BusinessApiBoundaryTest {
         assertTrue("白名单里有无主条目：\n${orphans.sorted().joinToString("\n")}", orphans.isEmpty())
     }
 
-    private fun linesOf(pattern: Regex): Map<String, Set<Int>> =
-        scan(pattern, group = 0).groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
+    private fun countsOf(pattern: Regex): Map<String, Int> =
+        scan(pattern, group = 0).groupingBy { it.first }.eachCount()
 
     private fun relOf(absolutePath: String) =
         absolutePath.replace('\\', '/').substringAfter("app/src/main/java/com/venera/compose/")
 
-    private fun attribOf(path: String, sym: String): String? = ATTRIBUTION["path#$sym"] ?: ATTRIBUTION[sym]
+    private fun attribOf(path: String, sym: String): String? = ATTRIBUTION["$path#$sym"] ?: ATTRIBUTION[sym]
 
     private companion object {
         const val ROOT = "com/venera/compose/"
