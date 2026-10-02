@@ -41,10 +41,22 @@ kotlin.sourceSets["main"].kotlin {
     // 故排除只能按文件名点着写；剩下三个文件脱离 Android（VeneraDatabase 挪进 data/platform/android、
     // 追更那颗等后台任务方案）后整段 srcDir 可以撤掉。
     srcDir("../app/src/main/java/com/venera/compose/data/db")
+    // 摘（= 撤掉某行的 exclude）的判据两条：这颗进桌面能编译，且真有桌面代码调用它。
+    // 4b-2 逐颗核过（2026-10），三颗都不满足第一条，全留：
+    //  - VeneraDatabase.kt：直接 import android.database.sqlite.SQLiteOpenHelper 与 android.content.Context，
+    //    桌面编不过；它唯一的 Android 生产引用点是 data/platform/android/AndroidDatabasePorts.kt（那颗本来
+    //    就被上面的 exclude("android/**") 挡在桌面编译面外）。桌面侧没有任何代码调用它。
+    //    4a §七.3 预告过的收口（整个文件挪进 data/platform/android/，让 data/db 目录对桌面全透明）
+    //    前提已凑齐、但那是 Android 接线面的文件搬迁，不在本段的决策面里，留在这里写明。
+    //  - FollowUpdatesRepository.kt：构造吃 android.content.Context，并依赖 source/ComicSourceManager
+    //    （那坨直接 import android.util.LruCache 的 Android 网络/引擎层）；桌面调用方是 0
+    //    （全仓唯一使用点 feature/FollowUpdatesViewModel.kt，属 :app）。
+    //  - FollowUpdatesWorker.kt：androidx.work（WorkManager/PeriodicWorkRequest），桌面没有后台任务
+    //    调度面，本阶段桌面不做后台追更；调用方同样在 :app 侧。
     exclude(
-        "VeneraDatabase.kt",            // Android 接线处：SQLiteOpenHelper 薄壳（R20 允许它留在原位）
-        "FollowUpdatesRepository.kt",   // 吃 ComicSourceManager（Android 侧网络/引擎那一坨）
-        "FollowUpdatesWorker.kt",       // WorkManager，桌面侧本阶段不做后台追更
+        "VeneraDatabase.kt",
+        "FollowUpdatesRepository.kt",
+        "FollowUpdatesWorker.kt",
     )
 }
 

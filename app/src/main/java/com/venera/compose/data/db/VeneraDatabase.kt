@@ -16,9 +16,11 @@ import com.venera.compose.data.platform.android.AndroidSqlDatabase
  * 库名与版本常量同样住在 [CoreDbSchema]（两端共用的事实源），这里不再重复声明。
  * 建表/迁移 DDL 的逐字原文在 [SchemaSql]。
  *
- * 上层（`data/db` 的 DAO 与 `LocalFavoritesManager`）已经不吃这个类，它们吃
- * [SqlDatabaseSource]；此处保留 `getInstance` + `readableDatabase` / `writableDatabase`
- * 的既有写法，是为了让还没改造的调用点（备份 / 导入 / 统计 / 守卫 / 图库 / 阅读器）继续编译。
+ * 上层已经不吃这个类：`data/db` 的 DAO 与 `LocalFavoritesManager` 走 [SqlDatabaseSource]，
+ * 备份/导入/统计/守卫/图库/阅读器那批原调用点（4b-1）也全部改经 `DatabasePorts`。
+ * 现在唯一引用它的是 `data/platform/android/AndroidDatabasePorts`（Android 接线，把 helper
+ * 包成 SqlDatabaseSource 供 install）；等它整体挪进 `data/platform/android/` 后，
+ * `data/db` 目录对桌面就全透明了（收口条件见 desktop/build.gradle.kts 的排除清单注释）。
  */
 class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
