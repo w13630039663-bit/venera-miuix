@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,9 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.venera.engineprobe.DesktopJsHost
 import com.venera.engineprobe.EngineSession
+import com.venera.compose.data.db.FavoriteItem
+import com.venera.compose.data.db.LocalFavoriteDatabase
+import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
 import io.github.composefluent.FluentTheme
@@ -48,6 +52,7 @@ import java.awt.Robot
 import java.io.File
 import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -67,6 +72,51 @@ import kotlinx.coroutines.withContext
  * 标题一样时 `FindWindowW` 匹配到的是哪一扇全凭运气（本轮的"截图截到壁纸"就是这么来的）。
  */
 private val APP_TITLE = "Venera Desktop R1-F 最小闭环 #${ProcessHandle.current().pid()}"
+
+/**
+ * 桌面侧收藏管理器的唯一引用：第一次用到才取（取用即建两棵库，时机与 Android 侧
+ * `getInstance(context)` 一致），留着它只为关窗时能按正确次序关（见 `closePersistenceInOrder`）。
+ */
+private var favoritesManagerRef: LocalFavoritesManager? = null
+
+private fun favorites(): LocalFavoritesManager =
+    favoritesManagerRef
+        ?: LocalFavoritesManager.getInstance(DesktopDatabasePorts.PLATFORM).also { favoritesManagerRef = it }
+
+/**
+ * 加入收藏 —— 与 Android 侧 `ComicCardContextMenu`「加入收藏」同源的调用形状：
+ * 默认收藏夹 + [FavoriteItem] 逐字段对应（title→name、cover→coverPath、递下来的源 key→sourceKey）。
+ * 桌面 [EngineSession.ComicCard] 这颗模型没带 subTitle/tags，author/tags 就按 FavoriteItem
+ * 自身的空默认值落库，不编字段。addComic **抛**=收藏夹不存在、回 **false**=这本已经在里面，
+ * 三种结果分开说，否则"收藏失败"看起来像"点了没反应"。
+ */
+private suspend fun addFavorite(
+    manager: LocalFavoritesManager,
+    sourceKey: String,
+    card: EngineSession.ComicCard,
+): String {
+    val folder = LocalFavoriteDatabase.DEFAULT_FOLDER
+    val added = runCatching {
+        manager.addComic(
+            folder,
+            FavoriteItem(
+                id = card.id,
+                name = card.title,
+                sourceKey = sourceKey,
+                coverPath = card.cover,
+            ),
+        )
+    }
+    val message = when {
+        added.getOrDefault(false) -> "已收藏到「$folder」"
+        added.isSuccess -> "这本已经在「$folder」里了"
+        else -> "收藏失败：${added.exceptionOrNull()?.let {
+            it.message?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName
+        } ?: "未知原因"}"
+    }
+    println("D_收藏 点击 源=$sourceKey id=${card.id} -> $message")
+    return message
+}
 
 fun main(args: Array<String>) {
     val root = File(System.getProperty("user.dir"))
@@ -140,6 +190,28 @@ private fun VeneraDesktop(
     var open by remember { mutableStateOf<EngineSession.ComicCard?>(null) }
     var pages by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
     var pageStatus by remember { mutableStateOf<String?>(null) }
+    // 收藏这条链：顶栏「收藏」分段 + 卡片上的收藏入口，数据源一律 LocalFavoritesManager
+    val scope = rememberCoroutineScope()
+    var showFavorites by remember { mutableStateOf(false) }
+    var favStatus by remember { mutableStateOf<String?>(null) }
+    var favTree by remember { mutableStateOf<List<Pair<String, List<FavoriteItem>>>>(emptyList()) }
+
+    LaunchedEffect(showFavorites) {
+        if (!showFavorites) return@LaunchedEffect
+        val outcome = withContext(Dispatchers.IO) {
+            runCatching {
+                val manager = favorites()
+                manager.currentFolders().map { it to manager.getFolderComics(it) }
+            }
+        }
+        outcome.fold(
+            onSuccess = { favTree = it; favStatus = null },
+            onFailure = {
+                favStatus = "收藏列表读取失败：${it::class.java.simpleName}: ${it.message?.take(200)}"
+                println("D_收藏列表 读取失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
+            },
+        )
+    }
 
     LaunchedEffect(open) {
         val s = session
@@ -243,16 +315,57 @@ private fun VeneraDesktop(
         menuItems = {
             sources.forEach { key ->
                 menuItem(
-                    selected = key == selected,
-                    onClick = { selected = key },
+                    selected = key == selected && !showFavorites,
+                    onClick = {
+                        showFavorites = false
+                        selected = key
+                    },
                     text = { Text(key) },
                     icon = { Text(key.take(1).uppercase()) },
                 )
             }
+            menuItem(
+                selected = showFavorites,
+                onClick = { showFavorites = true },
+                text = { Text("收藏") },
+                icon = { Text("藏") },
+            )
         },
     ) {
         val card = open
-        if (card != null) {
+        if (showFavorites) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Text("收藏")
+                favStatus?.let {
+                    Text(it, modifier = Modifier.padding(top = 6.dp))
+                }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    favTree.forEach { (folder, items) ->
+                        item {
+                            Text("收藏夹：$folder（${items.size} 条）", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        }
+                        if (items.isEmpty()) {
+                            item { Text("这个收藏夹还没有收藏", modifier = Modifier.padding(start = 12.dp)) }
+                        }
+                        items.forEach { fav ->
+                            item {
+                                Column(Modifier.padding(horizontal = 12.dp).padding(vertical = 3.dp)) {
+                                    Text(fav.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        "　${fav.author.ifBlank { fav.sourceKey }} ｜ 收藏于 ${fav.time}",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (favTree.isEmpty() && favStatus == null) {
+                        item { Text("还没有收藏") }
+                    }
+                }
+            }
+        } else if (card != null) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("← 返回列表", modifier = Modifier.clickable { open = null })
@@ -271,6 +384,8 @@ private fun VeneraDesktop(
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             // 状态行走 fluent 的 Text（跟着主题取色）：上一版硬用白字，浅色主题下等于隐形
             Text("源：$selected ｜ $status" + (error?.let { " ｜ $it" } ?: ""))
+            // 收藏入口的即时反馈（对应 Android 侧那颗 Toast 的位置）
+            favStatus?.let { Text(it, modifier = Modifier.padding(top = 2.dp)) }
             if (busy) {
                 ProgressBar()
             }
@@ -308,6 +423,16 @@ private fun VeneraDesktop(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 4.dp),
+                            )
+                            // 收藏入口：走与 Android 侧同一颗 addComic（默认收藏夹）
+                            Text(
+                                "收藏",
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .clickable {
+                                        val source = selected
+                                        scope.launch { favStatus = addFavorite(favorites(), source, comic) }
+                                    },
                             )
                         }
                     }
