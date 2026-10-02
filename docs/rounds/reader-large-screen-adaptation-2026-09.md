@@ -56,7 +56,8 @@
 ### 路线乙：复用我们已定稿的宽屏收口口径（推荐）
 
 顶栏与控制岛在 `>600dp` 时收口为 `min(540dp, 宽 - 24×2)` 并居中，
-与本轮刚落地并量过的底栏**同一个契约、同一个函数**（`navBarWideScreenMaxWidth`）。
+与本轮刚落地并量过的底栏**同一个契约、同一个函数**（`wideScreenChromeMaxWidth`，现行落点
+`components/WideScreenPolicy.kt:152`；落地当时名为 `navBarWideScreenMaxWidth`）。
 540 与 24 都来自 master（`_kGlassBarMaxWidth` / `_kGlassBarHorizontalPadding`），不是新造数。
 手机档：`<=600dp` 时该口径返回 `null`，几何一字不改。
 代价：540dp 要放"上一话 + Slider + 下一话"和 5 个带标签的键，比现在挤；

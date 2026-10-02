@@ -26,7 +26,7 @@
 - `components/ComicPresentationPolicy.kt:6` — `comicListColumnCount = if (detailed) 1 else 2`，**写死**，被 6 处网格消费（History / Favorites / FollowUpdates / NetworkFavorites / Search / Explore 两个页 + `LocalComicScreen` `DownloadScreen` 各留了一份 `if (detailed) 1 else 2` 的副本）。
 - `feature/ComicDetailScreen.kt:166` — `previewThumbnails.chunked(3)`，`rowIdx * 3 + colIdx` 硬编码，列数与宽度无关。
 
-顺带一处既有失真：`ui/tokens/Spacing.kt:114` 的 `comicCardMinWidth = 130.dp` 注释写着"供 GridCells.Adaptive 使用：列数由实际可用宽度推导"，但全仓没有 `GridCells.Adaptive`，这个 token 只被两个预览页当宽度用。130dp 若真拿来做列宽，1280dp 屏会算出 9 列，比 master 的 5 列多近一倍 —— 所以本轮**以 master 的 220/360 为准**，130dp 那条注释要改掉，不留第二个口径。
+顺带一处既有失真：`ui/tokens/Spacing.kt` 的 `comicCardMinWidth = 130.dp` 注释写着"供 GridCells.Adaptive 使用：列数由实际可用宽度推导"，但全仓没有 `GridCells.Adaptive`，这个 token 只被两个预览页当宽度用。130dp 若真拿来做列宽，1280dp 屏会算出 9 列，比 master 的 5 列多近一倍 —— 所以本轮**以 master 的 220/360 为准**，130dp 那条注释要改掉，不留第二个口径。
 
 ## 二、要拍板的两件事
 
@@ -68,7 +68,7 @@ master 在宽窗会把行卡排成 `width ~/ 360` 列（1280dp → 3 列并排�
 | chunked 行级网格四处 | `SearchScreen`（`SingleSourceResults` 改为收 `columns` 参数）、`NetworkFavoritesScreen`、`LocalComicScreen`、`explore/UnifiedExploreScreen` + `explore/SourceSectionScreen` |
 | 详细模式并排化 | 上述 chunked 页各加一个 `*DetailedRow`（`ComicDetailedRow` / `ExploreDetailedRow`），末行补位统一成 `repeat(columns - row.size)`，不再是只补一格的 `if (row.size == 1)` |
 | 详情页预览 | `ComicDetailScreen`：`chunked(3)` → `chunked(previewColumns)`，`pageIndex = rowIdx * previewColumns + colIdx`，测量挂在预览 Column 上 |
-| 底栏 | 两种样式共用一个宽屏口径 `navBarWideScreenMaxWidth(screenWidth)`（`VeneraFloatingNavBar.kt` 顶层）：>600dp 取 `min(540, 宽-48)`，手机档返回 `null` 表示各样式沿用现有几何。胶囊直接用它算 `barWidth`；液态玻璃在组件内部 `modifier.then(requiredWidth(cap))`，因此**没有动保护域 `Navigation.kt`** |
+| 底栏 | 两种样式共用一个宽屏口径 `wideScreenChromeMaxWidth(screenWidth)`（**现行落点 `components/WideScreenPolicy.kt:152`；本轮落地时名为 `navBarWideScreenMaxWidth`，写在 `VeneraFloatingNavBar.kt` 顶层，后收口进 policy**）：>600dp 取 `min(540, 宽-48)`，手机档返回 `null` 表示各样式沿用现有几何。胶囊直接用它算 `barWidth`；液态玻璃在组件内部 `modifier.then(requiredWidth(cap))`，因此**没有动保护域 `Navigation.kt`** |
 | 口径收口 | `ui/tokens/Spacing.kt` 的 `comicCardMinWidth` 注释原本自称"供 GridCells.Adaptive 推导列数"，实际无人这么用 —— 改为说明它只是参考宽度，列数唯一口径在 policy |
 | 单测 | `app/src/test/.../components/ComicColumnPolicyTest.kt`：锁手机档（360/411/412dp → 2 列、预览 3 列）与宽屏档（1280dp → brief 5 列 / detailed 3 列 / 预览 6 列），另锁 0 宽兜底与 chunked 往返 |
 
@@ -114,7 +114,7 @@ QA 时才暴露：`Navigation.kt:642-651` 给玻璃底栏的是 `.fillMaxWidth()
 自己承诺"两条路径的 bottomBarClearance 契约天然一致……几何零差异"。只给胶囊加 540 上限，
 就是把这条已写死的不变量打破：同一台设备上换样式，底栏宽度会跳变。
 
-处置：抽出唯一口径 `navBarWideScreenMaxWidth()`，玻璃侧在**组件内部**收口（`requiredWidth`，
+处置：抽出唯一口径 `wideScreenChromeMaxWidth()`（当时名 `navBarWideScreenMaxWidth()`），玻璃侧在**组件内部**收口（`requiredWidth`，
 因为宿主链以 `fillMaxWidth()` 结尾、`widthIn` 会被钉死的 min 约束顶回去），
 不触碰保护域 `Navigation.kt`。
 

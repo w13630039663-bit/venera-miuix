@@ -196,7 +196,7 @@
 | 主题色 | 动态取色 + 6 预设 | ✅ 种子色 + 25 条预设色板 + 跟随系统壁纸 |
 | 转场 | 标准 | ✅ 共享元素 + 预测式返回随动 + 画廊飞入 |
 | 备份格式互通 | — | ✅ 可直接导入官方 `.venera` 与 PicaComic `.picadata` |
-| 单元测试 | 1 个 Dart 测试文件 | ✅ 92 个纯 JVM 测试文件 / 749 个用例 |
+| 单元测试 | 1 个 Dart 测试文件 | ✅ 94 个纯 JVM 测试文件 / 773 个用例 |
 | 本地格式 | ZIP / 7Z / CBZ / EPUB / 文件夹 | ✅ 文件夹 + CBZ 导入导出（**不直读归档**，见缺口节） |
 | Headless / 命令行模式 | ✅ | ❌ 不做 |
 
@@ -211,7 +211,7 @@
 | 漫画源 JS 执行 | flutter_inappwebview | **系统 WebView + JS 桥** + shim 层复刻 |
 | 画廊图站 / 画师关注 / 每日热门 / 反向搜图 | — | ✅ |
 | Cloudflare 优选 IP | — | ✅（默认关闭） |
-| 判据层 JVM 单测 | 1 个 Dart 测试文件 | ✅ 92 个文件 / 749 个用例 |
+| 判据层 JVM 单测 | 1 个 Dart 测试文件 | ✅ 94 个文件 / 773 个用例 |
 | 光学径向转场（预览卡 ⇄ 阅读器） | ✅ | ❌ 未随迁移带过来 |
 
 ### 上游有、本分支没有
@@ -289,7 +289,8 @@
 # 发布包：R8 混淆 + 资源收缩，按 ABI 分包（armeabi-v7a / arm64-v8a / x86_64 / 通用）
 ./gradlew :app:assembleRelease
 
-# 纯 JVM 判据层单测（92 个文件 / 749 个用例，不需要设备）
+# 纯 JVM 判据层单测（94 个文件 / 773 个用例，不需要设备）
+# 这两个数字会漂，复算式：find app/src/test -name '*.kt' | wc -l 与  grep -rho '@Test' app/src/test --include=*.kt | wc -l
 ./gradlew :app:testDebugUnitTest
 
 # 只跑某一个判据测试类
@@ -377,7 +378,7 @@ venera-compose/
 │   │   ├── 漫画侧标签词典（简 / 繁）与 3,980 对繁简映射
 │   │   ├── 33 源分级预设表 · 画廊标签词典 SQLite
 │   │   └── licenses/                   # 第三方词典与组件的许可证
-│   └── src/test/java/                  # 92 个纯 JVM 判据测试文件
+│   └── src/test/java/                  # 94 个纯 JVM 判据测试文件
 ├── gradle/libs.versions.toml           # 依赖版本单一来源（含版本被钉住的原因注释）
 ├── screenshots/                        # 本 README 用的截图
 ├── docs/                               # 交接手册与专项方案

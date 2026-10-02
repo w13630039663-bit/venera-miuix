@@ -84,7 +84,7 @@
 
 | 项 | 位置 | 状态 | 实际写入 / 消费者 |
 |---|---|---|---|
-| 不允许成人内容 | `:25` | ⚠️ **降级** | 写 `venera_guard_prefs/nsfw_mode`，被 `security/guard/ContentGuardManager.kt:50,246,269,285` 与 explore/detail 卡片真实消费。两个缺陷：① 原版是 `off/blur/blurReveal/hide` **四态**（`blocking_settings.dart:99-104`），我们做成二态 toggle，`HIDE` 只能绕到「完整内容守卫」页选；② 当前为 `HIDE` 时，把它关再开会**静默降级成 `BLUR`** |
+| 不允许成人内容 | `:25` | ⚠️ **降级** | 写 `venera_guard_prefs/nsfw_mode`，读侧是 `security/guard/ContentGuardManager.kt` 的 `_nsfwMaskMode`（`prefs.getString("nsfw_mode", "OFF")`），写侧是 `setNsfwMaskMode()`，对外经 `nsfwMaskMode: StateFlow` 供 `explore/{SourceSectionScreen,UnifiedExploreScreen}`、`FavoritesScreen`、`SearchScreen`、`settings/BlockingSettings` 与 4 颗 `gallery/ui` 文件消费（**详情页不消费它** —— 本文原写「explore/detail 卡片」是陈旧断言，2026-10-03 按实测消费面改掉）。两个缺陷：① 原版是 `off/blur/blurReveal/hide` **四态**（`blocking_settings.dart:99-104`），我们做成二态 toggle，`HIDE` 只能绕到「完整内容守卫」页选；② 当前为 `HIDE` 时，把它关再开会**静默降级成 `BLUR`** |
 | 标签 / 画师 / 作品（计数行） | `:33` | ✅ | 纯导航 → `rules/TAG` 等；计数读真实 DB `_rules` |
 | 完整内容守卫 | `:38` | ✅ | 纯导航 → `ContentGuardRoute`（OFF/BLUR/HIDE + 逐条规则） |
 | 启用标签/画师/作品 屏蔽 | `:34`（forEach，3 行） | 🚧 | **字段其实已就绪**：`GuardRule.isEnabled`（`ContentGuardManager.kt:21-22`）被过滤逻辑消费（`:206,246,268`），只是设置 UI 从不写它 |

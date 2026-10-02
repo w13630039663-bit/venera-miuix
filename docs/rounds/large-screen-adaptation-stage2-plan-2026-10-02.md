@@ -230,7 +230,9 @@ var shouldShowAppBar = state.controller.value < 2;
 
 ### 3.2 问题：24 处消费点全部硬绑底栏
 
-`ui/tokens/Spacing.kt:206`：`bottomBarClearance = bottomBarHeight(64) + bottomBarBottomGap(12)` = **76dp**。
+`ui/tokens/Spacing.kt` 的 `VeneraSpacing.bottomBarClearance` = `bottomBarHeight(64) + bottomBarBottomGap(12)` = **76dp**
+（行号锚撤成符号锚的原因：`Spacing.kt` 是 token 单文件，每轮加一颗专属尺寸就会让全文档的行号锚集体漂一次，
+2026-10-03 审计已抓到本文 3 处这种漂移。只有符号名不会漂。）
 契约文本 `:184-206` 定义三方责任：系统 inset / BottomBar 自身高度+间距 / **Screen 只消费 `bottomBarClearance`，不得自行叠加 Bar 高度**。`:193` 明文禁止额外加 `Spacer(bottomBarClearance)`。
 
 实测消费点 **24 处 / 19 文件**（文档记载 23 处/13 文件，说明后续新增页面沿用了契约但没人回填文档）：
@@ -270,7 +272,7 @@ CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(
 档位判断**只在这一处发生**。契约文本明令禁止「按档位的 if」散进 24 处（那是方案 C）。
 宽度源与既有 11 处 `isWideScreen` 消费点同为 `LocalConfiguration.current.screenWidthDp.dp`（已核，无第二种宽度源）。
 
-**③ 隐式性用契约文本补**，把 `Spacing.kt:184-206` 从「常量契约」升级为「可注入契约」，写死两条纪律：
+**③ 隐式性用契约文本补**，把 `Spacing.kt` 的「Bottom Navigation Insets 契约块」从「常量契约」升级为「可注入契约」，写死两条纪律：
 - `LocalBottomBarClearance.current` 是唯一真源
 - **新页面禁止直读 `VeneraSpacing.bottomBarClearance`**（该常量降级为窄窗兜底默认值 + 单测基线）
 
@@ -298,7 +300,7 @@ CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(
 
 **解冻纪律**：`FREEZE-STATEMENT.md:17-20` 的「允许：修实际 Bug、修明确回归」**不覆盖**本次改动（这是契约重构，不是 bug 修复）⇒ 必须走**明确的行级解冻评审**，不能靠「顺手改」蒙过去。
 
-### 3.6 `Spacing.kt:184-206` 契约文本改写要求
+### 3.6 `Spacing.kt` 契约块（Bottom Navigation Insets）文本改写要求
 
 - **保留**：三方责任划分；`:193` 禁止额外 `Spacer(bottomBarClearance)`；`:192` clearance 不含系统 inset
 - **改**：`bottomBarClearance` KDoc 点明它**不再是真源**，只是窄窗默认档值；新增 `LocalBottomBarClearance` 声明与 provider；`:190` 第 3 条责任改为「只消费 `LocalBottomBarClearance.current`」
@@ -500,7 +502,7 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 | 13 个消费点文件 / 18 处 | `VeneraSpacing.bottomBarClearance` 与 `tokens.spacing.bottomBarClearance` → `LocalBottomBarClearance.current`（含 4 个 FROZEN：`NetworkFavoritesScreen`×2、`FavoritesScreen:815`、`HistoryScreen`） |
 | `WideScreenPolicyTest.kt` | 3 → 9 条：新增 `bottomBarClearanceIsZeroOnceSideBarReplacesBottomBar`、`bottomBarVisibleIffClearanceIsPositive`（黄金不变量）、`sideBarWidthIsZeroOnCompactSoItNeverStacksWithBottomBar` |
 
-**迁移后的全仓读数**：`VeneraSpacing.bottomBarClearance` / `tokens.spacing.bottomBarClearance` 仅剩 2 处——`WideScreenPolicy.kt:87`（实现本身）与 `Spacing.kt:539`（`Local` 的默认值），**消费点零直读**。
+**迁移后的全仓读数**：`VeneraSpacing.bottomBarClearance` / `tokens.spacing.bottomBarClearance` 仅剩 2 处——`WideScreenPolicy.bottomBarClearanceFor()`（实现本身）与 `VeneraSpacing.bottomBarClearance` 的 `Local` 默认值声明，**消费点零直读**。
 
 **验证读数（实跑取退出码）**
 
@@ -532,7 +534,7 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 
 **本线补的部分**：
 - **2 处 `explore/` 消费点**（`SourceSectionScreen`、`UnifiedExploreScreen`）。它们写作 `VeneraTokens.spacing.bottomBarClearance` —— 经 token 对象转发读同一个数，所以**之前所有以 `VeneraSpacing.bottomBarClearance` 为字面的清点都数不到它们**（含本文 §3.2 的「24 处 / 19 文件」那张表，它按字面列的 24 处里根本没有这两行）。不补的后果：侧栏档这两个页面底部各留 76dp 永远填不满的空。
-- ⇒ **契约现已彻底收口**：全仓只剩 2 处仍读该常量 —— `WideScreenPolicy.kt:89`（76 的真身）与 `Spacing.kt:539`（Local 的默认值）。页面侧零直读。
+- ⇒ **契约现已彻底收口**：全仓只剩 2 处仍读该常量 —— `WideScreenPolicy.bottomBarClearanceFor()` 的 Compact 分支（76 的取值处）与 `LocalBottomBarClearance` 的默认值声明。页面侧零直读。
 - **阅读器那条 §8.5-4 的对账补一句本仓侧的确定事实**（那条讲的是 master，本仓这侧无需推断）：`composable<ReaderRoute>`（`Navigation.kt:986`）→ `VeneraReaderScreen`（`:1003`）在 **NavHost 内**，`AndroidManifest.xml` 的 Activity 只有 Main / Settings / SettingsSub / GalleryPost / GalleryArtistProfile，**没有 ReaderActivity** ⇒ `VeneraSideBar` 包的是 `SharedTransitionLayout`，所以**侧栏档下阅读器会一并拿到侧栏并左内缩**。这与 §6.2 原文「阅读器不走 buildMainView 的 left」相反，以本仓事实为准。**观感是否可接受（阅读器要不要保持沉浸全屏）留给真机裁**，本批不改。
 
 **拍板项 13（侧栏档一并收起顶栏）—— 本批未做，且建议不做**（推翻已批准项，理由与代价都要写清）：
@@ -607,7 +609,7 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 |---|---|
 | 唯一宽度阈值 + 4 消费点 | `app/src/main/java/com/venera/compose/components/WideScreenPolicy.kt` |
 | 唯一列数口径 | `app/src/main/java/com/venera/compose/components/ComicPresentationPolicy.kt` |
-| 契约文本（✅ 批次 1 已改写为可注入契约） | `app/src/main/java/com/venera/compose/ui/tokens/Spacing.kt:185-207` + 同文件 `LocalBottomBarClearance` |
+| 契约文本（✅ 批次 1 已改写为可注入契约） | `app/src/main/java/com/venera/compose/ui/tokens/Spacing.kt` 的 Bottom Navigation Insets 契约块 + 同文件 `LocalBottomBarClearance` |
 | 唯一 provider 落点（✅ 批次 1 已落） | `app/src/main/java/com/venera/compose/feature/Navigation.kt` — `VeneraComposeApp()` 最外层 `Box`（现 :579）之外；原 :642 那处只是消费点 |
 | 行级解冻 3 处（✅ 已授权并落地） | `feature/SearchScreen.kt`（FAB 让位 / contentPadding 两处）、`feature/FavoritesScreen.kt`（顶置钮） |
 | 单测（✅ 已扩到 7 条，原有 3 条未动） | `app/src/test/java/com/venera/compose/components/WideScreenPolicyTest.kt` |
