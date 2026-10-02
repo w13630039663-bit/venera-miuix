@@ -8,8 +8,10 @@ import com.venera.compose.data.db.SchemaOps
 import com.venera.compose.data.db.SqlDatabaseSource
 import com.venera.compose.data.platform.JsonKeyValueStore
 import com.venera.compose.data.platform.PathProvider
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.SqlDatabase
 import java.io.File
+import java.io.IOException
 
 /**
  * `data/db` 在桌面侧的接线（与 `AndroidDatabasePorts` 对口，标签 `"desktop"`）。
@@ -18,32 +20,31 @@ import java.io.File
  *  - **两棵库各自独立**：`venera_core.db` 与 `local_favorite.db` 两个文件、两条连接，
  *    对应 Android 的两个 helper；`reader()` / `writer()` 交回**同一实例**
  *    （桌面是单连接语义，R21(a) 的串行化就压在那条连接上）。
- *  - **建库时机同 helper**：连接推迟到第一次取用才建，`ensureOn` 就在首次取用里跑
+ *  - **建库时机同 helper**：连接推迟到第一次取用才建（`db/` 目录也在那一刻才建，
+ *    [coreDbFile]/[favoritesDbFile] 是纯计算、不带副作用），`ensureOn` 就在首次取用里跑
  *    （不许包进 `inTransaction` —— 单连接没有 savepoint，嵌套事务会当场抛）。
- *  - **三项偏好**从桌面自己的 [JsonKeyValueStore] 现读，写走 `put`。
+ *  - **三项偏好**从桌面自己的 [JsonKeyValueStore] 现读，写走 `put`；文件名与键名引用
+ *    [PreferenceKeys]（Android 侧 `VeneraPreferences` 引用同一批常量，两端名字对不上是
+ *    编译错误，不是"注释失守"）。两端今天落在**不同的文件**上：Android
+ *    `venera_preferences.xml`、桌面 `prefs/venera_preferences.json` —— 名字一致 ≠ 数据共享。
  *
  * 未接线就取用 ⇒ [DatabasePorts.of] 直接抛（它自带的语义，桌面侧不加 try/catch 咽掉）。
- * [install] 只装 lambda、不碰 SQLite；同标签重复装（数据目录不变）是幂等，
- * 换了目录则抛 —— 静态口不会清零，悄悄换目录等于让全 JVM 后续取用打到别的库上。
+ * [install] 只装 lambda、不碰 SQLite；同落点重复装是幂等，换了落点（dataRoot 或 cacheRoot
+ * 任一）则抛 —— 静态口不会清零，悄悄换目录等于让全 JVM 后续取用打到别的库上。
  *
- * 进程内"关窗 → 再开"走 [close]：关掉两棵库的连接并清掉缓存端口，
- * 下一次 [DatabasePorts.of] 会拿同一批文件重建新连接（版本编排 `ensureOn` 幂等，
- * 已建好的库只是重开连接，不会重跑建表）。
+ * 进程内"关窗 → 再开"走 [close]：它与取用（端口创建、连接获取）走同一把锁，关掉两棵库的
+ * 连接并清掉缓存端口；被关掉的端口整颗退役，拿它再取用直接抛。下一次 [DatabasePorts.of]
+ * 拿同一批文件重建新连接与新端口（版本编排 `ensureOn` 幂等，已建好的库只是重开连接，
+ * 不会重跑建表）。
  */
 object DesktopDatabasePorts {
 
     /** 平台标签：与 [DatabasePorts.install] 的异标签闸门配套（Android 侧传 `"android"`）。 */
     const val PLATFORM = "desktop"
 
-    /** prefs 文件名与 `VeneraPreferences.PREFS_NAME` 逐字一致（那颗里是 private，复制来钉在这注释里）。 */
-    private const val PREFS_NAME = "venera_preferences"
-
-    // 三个键名与 `VeneraPreferences` companion 里的 KEY_NEW_FAVORITE_ADD_TO /
-    // KEY_MOVE_FAVORITE_AFTER_READ / KEY_FOLLOW_UPDATES_FOLDER 逐字一致（那三颗是 private，
-    // 这里只能抄常量；DesktopDatabasePortsTest 用"写一遍→重开→读回"钉住两端不再漂移）。
-    private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
-    private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
-    private const val KEY_FOLLOW_UPDATES_FOLDER = "pref_follow_updates_folder"
+    // 偏好文件名与三颗键名都引用 [PreferenceKeys]，这里不再自备字面量：与 Android 侧
+    // `VeneraPreferences` 的名字一致因此是编译期事实。桌面用例钉的是自己"写→关→重开→读回"
+    // 落在同一批键上，钉不了（也不需要钉）跨端一致 —— `VeneraPreferences` 不在桌面编译面里。
 
     @Volatile
     private var paths: PathProvider? = null
@@ -56,46 +57,80 @@ object DesktopDatabasePorts {
     private var favoritesSource: DesktopDatabaseSource? = null
 
     /**
-     * 装桌面接线。同目录重复装幂等（供"关窗再开"后重新走一遍启动路径的用例用）；
-     * 已装过且数据目录不同 ⇒ 抛，不咽。
+     * 装桌面接线。同落点重复装幂等（供"关窗再开"后重新走一遍启动路径的用例用）；
+     * 已装过且落点不同（dataRoot 或 cacheRoot 任一变了）⇒ 抛，不咽。
      */
     fun install(paths: PathProvider) {
         val current = this.paths
         if (current == null) {
             this.paths = paths
             DatabasePorts.install(platform = PLATFORM) { handle -> ports(handle) }
-        } else if (current.dataRoot != paths.dataRoot) {
+        } else if (!sameLanding(current, paths)) {
             throw IllegalStateException(
-                "桌面接线已绑定 ${current.dataRoot.path}，拒绝改绑 ${paths.dataRoot.path}（静态口不会清零）"
+                "桌面接线已绑定 数据=${current.dataRoot.path} 缓存=${current.cacheRoot.path}，" +
+                    "拒绝改绑 数据=${paths.dataRoot.path} 缓存=${paths.cacheRoot.path}（静态口不会清零）"
             )
         }
     }
 
-    /** `venera_core.db` 的落点（`db/` 子目录下，与 Android 的同名同层）。 */
+    /**
+     * 同一落点与否：dataRoot 与 cacheRoot 一起比 canonicalFile。
+     * 不许退化成串比较 —— 同一目录有 `dir\.` 这类别名写法，Windows 上还有一串
+     * "两个对象、一个目录"的写法；也只许比 dataRoot —— 只换缓存目录同样是改绑。
+     */
+    private fun sameLanding(a: PathProvider, b: PathProvider): Boolean =
+        canonicalPath(a.dataRoot) == canonicalPath(b.dataRoot) &&
+            canonicalPath(a.cacheRoot) == canonicalPath(b.cacheRoot)
+
+    private fun canonicalPath(file: File): String = try {
+        file.canonicalFile.path
+    } catch (e: IOException) {
+        // 规范化取不到（异常路径）：退成绝对路径比较。降级方向是"更可能拒绝改绑"，
+        // 响着比悄悄接受换目录安全，故不另抛也不静默吞。
+        file.absolutePath
+    }
+
+    /** `venera_core.db` 的落点（`db/` 子目录下，与 Android 的同名同层）。纯计算，不建目录。 */
     fun coreDbFile(): File = dbFile(CoreDbSchema.DATABASE_NAME)
 
-    /** `local_favorite.db` 的落点。 */
+    /** `local_favorite.db` 的落点。纯计算，不建目录。 */
     fun favoritesDbFile(): File = dbFile(LocalFavoriteDbSchema.DATABASE_NAME)
 
     private fun dbFile(name: String): File {
         val p = paths
             ?: throw IllegalStateException("桌面 data/db 尚未接线：先在 main 里调 DesktopDatabasePorts.install(paths)")
-        return File(p.subDir("db"), name)
+        // 不走 PathProvider.subDir —— 那颗顺手 mkdirs，`D_接线` 这行读数不该自己把 db/ 建出来。
+        // 目录创建在 DesktopDatabaseSource.obtain() 里显式做。
+        return File(File(p.dataRoot, "db"), name)
     }
 
     /**
-     * 关掉两棵库的连接并清掉缓存端口（连接随机关不掉也要清，故 try/finally）。
-     * 关完再取用 [DatabasePorts.of] 就是新连接 —— "写-关-新开-读回"用例钉的就是这条路径。
+     * 关掉两棵库的连接并清掉缓存端口。三条性质（各有用例钉，见 `DesktopDatabasePortsTest`）：
+     *  - 与端口创建、连接获取走 [DesktopDatabasePorts] 的同一把锁：连接要么被这次关掉、
+     *    要么根本没建出来，不存在"close 返回后又多出一条活连接"的句柄泄漏；
+     *  - 两颗 source 引用先摘下即清，关闭抛不抛都不留残留；
+     *  - 关闭有抛先等全部关完再重抛第一颗（不吞、也不因前一颗抛让后一颗躲过关闭）。
+     * 关完拿旧端口再取用必抛（[DesktopDatabaseSource] 已退役），[DatabasePorts.of] 重建新端口。
      */
     fun close() = synchronized(this) {
         ports = null
-        try {
-            coreSource?.close()
-        } finally {
-            favoritesSource?.close()
-            coreSource = null
-            favoritesSource = null
+        val core = coreSource
+        val favorites = favoritesSource
+        coreSource = null
+        favoritesSource = null
+        var first: Throwable? = null
+        for (source in listOfNotNull(core, favorites)) {
+            try {
+                source.close()
+            } catch (e: Throwable) {
+                if (first == null) {
+                    first = e
+                } else {
+                    first.addSuppressed(e)
+                }
+            }
         }
+        first?.let { throw it }
     }
 
     /**
@@ -113,28 +148,46 @@ object DesktopDatabasePorts {
             DatabasePorts(
                 core = core,
                 localFavorites = favorites,
-                favoritesPreferences = DesktopFavoritesPreferences(JsonKeyValueStore(PREFS_NAME, p)),
+                favoritesPreferences = DesktopFavoritesPreferences(JsonKeyValueStore(PreferenceKeys.PREFS_NAME, p)),
             ).also { ports = it }
         }
     }
 
     /**
-     * 一棵库的连接获取口：第一次取用才建连接并跑 [SchemaOps.ensureOn]，之后 reader/writer
-     * 恒交回同一实例（桌面单连接语义）。close 后即弃 —— 由 [DesktopDatabasePorts.close]
-     * 整颗换新，不做"同颗重开"（同颗重开会让别的线程手里的旧实例作废得更隐蔽）。
+     * 一棵库的连接获取口：第一次取用才建 `db/` 目录、建连接并跑 [SchemaOps.ensureOn]，
+     * 之后 reader/writer 恒交回同一实例（桌面单连接语义）。
+     *
+     * 锁取在外层 [DesktopDatabasePorts] 上而不是自己 —— 与 [close] 互斥，
+     * "close 关完又新建一条活连接"的交错因此被锁掉。close 之后整颗退役：再取用直接抛，
+     * 不做"同颗重开"（悄悄重建会把活连接留在已退役的端口里，句柄泄漏；同颗复活
+     * 也会让别的线程手里的旧实例变成暗状态 —— 打到已退役的端口要响）。
      */
     private class DesktopDatabaseSource(
         private val file: File,
         private val schema: SchemaOps,
     ) : SqlDatabaseSource {
 
-        @Volatile
         private var db: JdbcSqliteDatabase? = null
 
-        private fun obtain(): SqlDatabase = synchronized(this) {
-            db ?: JdbcSqliteDatabase(file).also { fresh ->
-                schema.ensureOn(fresh)
-                db = fresh
+        /** 读与写都在 [DesktopDatabasePorts] 的锁内，不外泄，所以不加 @Volatile。 */
+        private var retired = false
+
+        private fun obtain(): SqlDatabase = synchronized(this@DesktopDatabasePorts) {
+            check(!retired) {
+                "桌面库连接口已随 DesktopDatabasePorts.close() 退役：${file.path}" +
+                    "（再取用请走 DatabasePorts.of 拿新端口，旧端口整颗作废）"
+            }
+            db ?: run {
+                // 建目录显式在这里做（dbFile 是纯计算，不顺手建目录）
+                val dir = file.parentFile
+                    ?: throw IllegalStateException("库路径没有父目录，建不出库：${file.path}")
+                if (!dir.mkdirs() && !dir.isDirectory) {
+                    throw IllegalStateException("建不出库目录：${dir.path}")
+                }
+                JdbcSqliteDatabase(file).also { fresh ->
+                    schema.ensureOn(fresh)
+                    db = fresh
+                }
             }
         }
 
@@ -142,7 +195,9 @@ object DesktopDatabasePorts {
 
         override fun writer(): SqlDatabase = obtain()
 
+        /** 调用方持 [DesktopDatabasePorts] 锁。先标记退役，之后任何取用都响。 */
         fun close() {
+            retired = true
             db?.close()
             db = null
         }
@@ -160,16 +215,16 @@ object DesktopDatabasePorts {
         private val store: JsonKeyValueStore,
     ) : FavoritesPreferences {
         override val newFavoriteAddTo: String?
-            get() = store.getString(KEY_NEW_FAVORITE_ADD_TO, "start") ?: "start"
+            get() = store.getString(PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO, "start") ?: "start"
 
         override val moveFavoriteAfterRead: String?
-            get() = store.getString(KEY_MOVE_FAVORITE_AFTER_READ, null)
+            get() = store.getString(PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ, null)
 
         override val followUpdatesFolder: String?
-            get() = store.getString(KEY_FOLLOW_UPDATES_FOLDER, null)
+            get() = store.getString(PreferenceKeys.KEY_FOLLOW_UPDATES_FOLDER, null)
 
         override fun setFollowUpdatesFolder(folder: String?) {
-            store.put(KEY_FOLLOW_UPDATES_FOLDER, folder)
+            store.put(PreferenceKeys.KEY_FOLLOW_UPDATES_FOLDER, folder)
         }
     }
 }
