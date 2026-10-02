@@ -94,7 +94,6 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.network.HostCircuitBreaker
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryArtistFollowsStore
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
@@ -236,7 +235,7 @@ fun GalleryScreen(
     // 画廊**自己那把** AI 屏蔽开关（批次 C2，用户拍板"画廊和漫画分开"）。
     // 与守卫页的 block_ai 是两枚开关、共用一份词表（判据在 GalleryAi）；
     // 它进的是三面墙的同一个 remember 键 —— 键里不带上它，改完开关要重进页面才生效，就是假开关。
-    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
+    val blockAi by GalleryPorts.of(context).prefs.galleryBlockAi.collectAsState()
 
     /**
      * 「根据你的收藏」的标签集。判据全在 `GalleryRecommendations`（纯函数、有单测），
@@ -275,12 +274,12 @@ fun GalleryScreen(
     // 历史：这一档原本"手机 2 / 平板 3"两值定死（3 是当时用户反馈「平板上两列偏大」定的），
     // 但侧栏落地后宽窗仍恒排 3 列 ⇒ 一格 478dp，2026-10-02 用户再报「图片卡片过大」才改成自适应。
     // 「画廊设置 → 网格列数」的 TWO/THREE 仍是显式覆盖，只有 AUTO 走自适应。
-    val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
+    val columnMode by GalleryPorts.of(context).prefs.galleryColumnMode.collectAsState()
     val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 
     // ── 下滑收起两栏（2026-09-30，用户点名；两枚开关默认关）──
-    val hideTopBarOnScroll by VeneraPreferences.getInstance(context).galleryHideTopBar.collectAsState()
-    val hideBottomBarOnScroll by VeneraPreferences.getInstance(context).galleryHideBottomBar.collectAsState()
+    val hideTopBarOnScroll by GalleryPorts.of(context).prefs.galleryHideTopBar.collectAsState()
+    val hideBottomBarOnScroll by GalleryPorts.of(context).prefs.galleryHideBottomBar.collectAsState()
     // 开关写进跨层状态：**底栏在壳层**，它读不到页面里的局部变量（见 GalleryChromeAutoHide）。
     // 用 SideEffect 而不是在组合期直接赋值：组合期写快照状态会触发"在组合中写状态"的重组循环。
     SideEffect {
@@ -1517,7 +1516,7 @@ internal fun GalleryPostCard(
     // 墙上摆哪一档由「画廊设置 → 预览清晰度」定（判据与"取不到就退回 preview"那条都在
     // GallerySettingsModel.wallUrl）。按卡片各读一次：它是整面墙唯一的消费点，
     // 往下透传要改四个调用方（主墙/搜索/推荐/收藏），往上提又要改 GalleryWall 的派生 —— 都不值。
-    val quality by VeneraPreferences.getInstance(LocalContext.current)
+    val quality by GalleryPorts.of(LocalContext.current).prefs
         .galleryPreviewQuality.collectAsState()
     /**
      * 飞行体的**起点矩形**：卡片里**封面那一块**的窗口矩形，**不是整张卡**。
@@ -1597,7 +1596,7 @@ internal fun GalleryPostCard(
                 // （与漫画守卫页的 block_ai 是两把，词表仍是同一份）。
                 // 屏蔽开着时这条根本不会上屏，所以角标的真正用途是"我不屏蔽，但我要看得出来"。
                 // 偏好读法与上面「预览清晰度」同一条口径：按卡片各读一次，不往下透传四个调用方。
-                val aiBadgeOn by VeneraPreferences.getInstance(LocalContext.current)
+                val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
                     .galleryAiBadge.collectAsState()
                 if (aiBadgeOn && GalleryAi.isAiMarked(post.tagList)) GalleryAiPill()
                 overlay?.invoke(this, post)

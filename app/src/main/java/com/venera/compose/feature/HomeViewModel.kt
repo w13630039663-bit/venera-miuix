@@ -10,7 +10,6 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.PreferenceKeys
-import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.stats.ReadingStatsManager
@@ -135,7 +134,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val recommend: StateFlow<HomeRecommendState> = _recommend.asStateFlow()
 
     /** 退出前那批推荐的落盘位置（冷启动首屏直接铺它，见 [hydrateRecommendFromCache]）。 */
-    private val recommendPrefs = AndroidKeyValueStore(app, PreferenceKeys.PREFS_HOME_RECOMMEND_CACHE)
+    private val recommendPrefs = BusinessPorts.of(app).stores.open(PreferenceKeys.PREFS_HOME_RECOMMEND_CACHE)
 
     init {
         hydrateRecommendFromCache()

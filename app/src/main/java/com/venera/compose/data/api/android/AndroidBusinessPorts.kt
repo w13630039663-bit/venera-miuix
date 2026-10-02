@@ -1,18 +1,32 @@
 package com.venera.compose.data.api.android
 
 import android.content.Context
+import com.venera.compose.data.api.AppearancePreferences
 import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.data.api.ComicPreferences
 import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.data.api.GuardRuleBook
 import com.venera.compose.data.api.HttpTextFetch
 import com.venera.compose.data.api.HttpTextResponse
+import com.venera.compose.data.api.NamedStoreFactory
 import com.venera.compose.data.api.NetworkHygiene
+import com.venera.compose.data.api.NetworkPreferences
+import com.venera.compose.data.api.ReaderPreferences
 import com.venera.compose.data.api.ReadingHistory
 import com.venera.compose.data.api.ReadingStats
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
+import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.data.prefs.TagTranslationMode
+import com.venera.compose.data.prefs.ThemeColorSource
+import com.venera.compose.data.prefs.ThemeMode
+import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.security.guard.GuardRule
 import com.venera.compose.source.model.Comic
@@ -56,6 +70,11 @@ object AndroidBusinessPorts {
             BusinessPorts(
                 contentGuard = AndroidContentGuard(context),
                 guardRuleBook = AndroidGuardRuleBook(context),
+                readerPrefs = AndroidReaderPreferences(context),
+                appearancePrefs = AndroidAppearancePreferences(context),
+                comicPrefs = AndroidComicPreferences(context),
+                networkPrefs = AndroidNetworkPreferences(context),
+                stores = AndroidNamedStoreFactory(context),
                 history = AndroidReadingHistory(context),
                 stats = AndroidReadingStats(context),
                 network = AndroidNetworkHygiene(context),
@@ -174,4 +193,115 @@ private class AndroidHttpTextFetch(private val context: Context) : HttpTextFetch
             )
         }
     }
+}
+
+/**
+ * 偏好的四份分域贴在**同一颗** `VeneraPreferences` 上（它内部本来就是一份 StateFlow 镜像 +
+ * 一份键值存储，分域只是把可见面收窄）。`get() = prefs.xxx` 交回的是**同一个 StateFlow 实例**，
+ * 所以 `collectAsState()` 的订阅对象没换、重组时序没换（`AndroidDatabasePorts.kt:32-40` 同一手法）。
+ */
+private class AndroidReaderPreferences(private val context: Context) : ReaderPreferences {
+
+    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
+
+    override val defaultReadingMode: StateFlow<String> get() = prefs.defaultReadingMode
+    override val clickToTurn: StateFlow<Boolean> get() = prefs.clickToTurn
+    override val reverseTapDirection: StateFlow<Boolean> get() = prefs.reverseTapDirection
+    override val volumeKeyTurn: StateFlow<Boolean> get() = prefs.volumeKeyTurn
+    override val keepScreenOn: StateFlow<Boolean> get() = prefs.keepScreenOn
+    override val nightFilter: StateFlow<Boolean> get() = prefs.nightFilter
+    override val pageGapDp: StateFlow<Float> get() = prefs.pageGapDp
+    override val autoScrollPageIntervalSec: StateFlow<Float> get() = prefs.autoScrollPageIntervalSec
+    override val preloadImageCount: StateFlow<Int> get() = prefs.preloadImageCount
+    override val reverseChapterOrder: StateFlow<Boolean> get() = prefs.reverseChapterOrder
+
+    override fun setDefaultReadingMode(mode: String) = prefs.setDefaultReadingMode(mode)
+    override fun setClickToTurn(enable: Boolean) = prefs.setClickToTurn(enable)
+    override fun setReverseTapDirection(enabled: Boolean) = prefs.setReverseTapDirection(enabled)
+    override fun setVolumeKeyTurn(enable: Boolean) = prefs.setVolumeKeyTurn(enable)
+    override fun setKeepScreenOn(enable: Boolean) = prefs.setKeepScreenOn(enable)
+    override fun setNightFilter(enable: Boolean) = prefs.setNightFilter(enable)
+    override fun setPageGapDp(gap: Float) = prefs.setPageGapDp(gap)
+    override fun setAutoScrollPageIntervalSec(sec: Float) = prefs.setAutoScrollPageIntervalSec(sec)
+    override fun setPreloadImageCount(count: Int) = prefs.setPreloadImageCount(count)
+    override fun setReverseChapterOrder(enabled: Boolean) = prefs.setReverseChapterOrder(enabled)
+}
+
+private class AndroidAppearancePreferences(private val context: Context) : AppearancePreferences {
+
+    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
+
+    override val themeMode: StateFlow<ThemeMode> get() = prefs.themeMode
+    override val appearanceStyle: StateFlow<AppearanceStyle> get() = prefs.appearanceStyle
+    override val navigationBarStyle: StateFlow<NavigationBarStyle> get() = prefs.navigationBarStyle
+    override val surfaceMaterial: StateFlow<SurfaceMaterial> get() = prefs.surfaceMaterial
+    override val tagTranslationMode: StateFlow<TagTranslationMode> get() = prefs.tagTranslationMode
+    override val themeColorSource: StateFlow<ThemeColorSource> get() = prefs.themeColorSource
+    override val themeSeedColor: StateFlow<Int> get() = prefs.themeSeedColor
+    override val settingsHeroPath: StateFlow<String> get() = prefs.settingsHeroPath
+    override val settingsQuoteAvatarPath: StateFlow<String> get() = prefs.settingsQuoteAvatarPath
+    override val startPage: StateFlow<String> get() = prefs.startPage
+
+    override fun setThemeMode(mode: ThemeMode) = prefs.setThemeMode(mode)
+    override fun setAppearanceStyle(style: AppearanceStyle) = prefs.setAppearanceStyle(style)
+    override fun setNavigationBarStyle(style: NavigationBarStyle) = prefs.setNavigationBarStyle(style)
+    override fun setSurfaceMaterial(material: SurfaceMaterial) = prefs.setSurfaceMaterial(material)
+    override fun setTagTranslationMode(mode: TagTranslationMode) = prefs.setTagTranslationMode(mode)
+    override fun setThemeColorSource(source: ThemeColorSource) = prefs.setThemeColorSource(source)
+    override fun setThemeSeedColor(argb: Int) = prefs.setThemeSeedColor(argb)
+    override fun setSettingsHeroPath(path: String) = prefs.setSettingsHeroPath(path)
+    override fun setSettingsQuoteAvatarPath(path: String) = prefs.setSettingsQuoteAvatarPath(path)
+    override fun setStartPage(tab: String) = prefs.setStartPage(tab)
+}
+
+private class AndroidComicPreferences(private val context: Context) : ComicPreferences {
+
+    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
+
+    override val defaultSearchTarget: StateFlow<String> get() = prefs.defaultSearchTarget
+    override val checkUpdateOnStart: StateFlow<Boolean> get() = prefs.checkUpdateOnStart
+    override var lastUpdateCheckAt: Long
+        get() = prefs.lastUpdateCheckAt
+        set(value) { prefs.lastUpdateCheckAt = value }
+    override val favoriteSortOrder: StateFlow<String> get() = prefs.favoriteSortOrder
+    override val newFavoriteAddTo: StateFlow<String> get() = prefs.newFavoriteAddTo
+    override val quickFavorite: StateFlow<String?> get() = prefs.quickFavorite
+    override val followUpdatesFolder: StateFlow<String?> get() = prefs.followUpdatesFolder
+    override val secureScreen: StateFlow<Boolean> get() = prefs.secureScreen
+
+    override fun setDefaultSearchTarget(key: String) = prefs.setDefaultSearchTarget(key)
+    override fun setCheckUpdateOnStart(enable: Boolean) = prefs.setCheckUpdateOnStart(enable)
+    override fun setFavoriteSortOrder(order: String) = prefs.setFavoriteSortOrder(order)
+    override fun setNewFavoriteAddTo(value: String) = prefs.setNewFavoriteAddTo(value)
+    override fun setQuickFavorite(folder: String?) = prefs.setQuickFavorite(folder)
+    override fun setFollowUpdatesFolder(folder: String?) = prefs.setFollowUpdatesFolder(folder)
+    override fun setSecureScreen(enabled: Boolean) = prefs.setSecureScreen(enabled)
+}
+
+private class AndroidNetworkPreferences(private val context: Context) : NetworkPreferences {
+
+    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
+
+    override val proxyType: StateFlow<String> get() = prefs.proxyType
+    override val proxyHost: StateFlow<String> get() = prefs.proxyHost
+    override val proxyPort: StateFlow<Int> get() = prefs.proxyPort
+    override val downloadThreads: StateFlow<Int> get() = prefs.downloadThreads
+    override val httpCacheMaxMb: StateFlow<Int> get() = prefs.httpCacheMaxMb
+    override val comicStoragePath: StateFlow<String> get() = prefs.comicStoragePath
+    override val cfPreferredIpEnabled: StateFlow<Boolean> get() = prefs.cfPreferredIpEnabled
+    override val cfPreferredIps: StateFlow<String> get() = prefs.cfPreferredIps
+    override val cfPreferredHosts: StateFlow<String> get() = prefs.cfPreferredHosts
+
+    override fun setProxy(type: String, host: String, port: Int) = prefs.setProxy(type, host, port)
+    override fun setDownloadThreads(threads: Int) = prefs.setDownloadThreads(threads)
+    override fun setHttpCacheMaxMb(mb: Int) = prefs.setHttpCacheMaxMb(mb)
+    override fun setComicStoragePath(path: String) = prefs.setComicStoragePath(path)
+    override fun setCfPreferredIp(enabled: Boolean, ips: String, hosts: String) =
+        prefs.setCfPreferredIp(enabled, ips, hosts)
+}
+
+/** 缓存的实例按名字各建一颗（与改造前 `AndroidKeyValueStore(app, NAME)` 逐字同形：同一名字每次新建）。 */
+private class AndroidNamedStoreFactory(private val context: Context) : NamedStoreFactory {
+
+    override fun open(name: String): KeyValueStore = AndroidKeyValueStore(context, name)
 }

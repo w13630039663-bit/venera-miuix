@@ -96,7 +96,6 @@ import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.data.platform.CacheDirs
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryConnectivity
@@ -196,7 +195,7 @@ fun GalleryPostScreen(
 
     // ── 大图页的四条行为档位（批次 C1，2026-09-29；方案 §一）──
     // 全都在 `GalleryViewerPolicies` 里算，这里只读档 + 接线：那三条判据要能上单测。
-    val prefs = remember { VeneraPreferences.getInstance(context) }
+    val prefs = remember { GalleryPorts.of(context).prefs }
     val keepScreenOn by prefs.galleryKeepScreenOn.collectAsState()
     val volumeKeyTurn by prefs.galleryVolumeKeyTurn.collectAsState()
     val autoPlaySec by prefs.galleryAutoPlaySec.collectAsState()

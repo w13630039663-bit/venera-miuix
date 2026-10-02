@@ -41,6 +41,8 @@ package com.venera.compose.data.api
  *
  * @param contentGuard 分级遮罩与屏蔽判定（`ContentGuardApi.kt`）
  * @param guardRuleBook 用户屏蔽规则的读写口
+ * @param readerPrefs / appearancePrefs / comicPrefs / networkPrefs 偏好的四份分域（`PreferencesApi.kt`）
+ * @param stores 按名字取自有缓存（偏好域之外那两颗：首页推荐快照、搜索历史）
  * @param history 阅读历史
  * @param stats 阅读统计
  * @param network 熔断与取流客户端的运维动作
@@ -49,6 +51,11 @@ package com.venera.compose.data.api
 class BusinessPorts(
     val contentGuard: ContentGuard,
     val guardRuleBook: GuardRuleBook,
+    val readerPrefs: ReaderPreferences,
+    val appearancePrefs: AppearancePreferences,
+    val comicPrefs: ComicPreferences,
+    val networkPrefs: NetworkPreferences,
+    val stores: NamedStoreFactory,
     val history: ReadingHistory,
     val stats: ReadingStats,
     val network: NetworkHygiene,

@@ -27,14 +27,14 @@ import com.venera.compose.data.prefs.SurfaceMaterial
 import com.venera.compose.data.prefs.TagTranslationMode
 import com.venera.compose.data.prefs.ThemeColorSource
 import com.venera.compose.data.prefs.ThemeMode
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.ui.tokens.ThemeSeedPresets
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.data.api.AppearancePreferences
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-internal fun AppearanceSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
+internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit) {
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
     val navigationBar by prefs.navigationBarStyle.collectAsState()

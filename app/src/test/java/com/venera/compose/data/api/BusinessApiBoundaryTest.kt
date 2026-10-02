@@ -24,6 +24,9 @@ import org.junit.Test
  */
 class BusinessApiBoundaryTest {
 
+    /** [portInterfaces] 的结果缓存：同一颗文件不必为每条断言重读一遍。 */
+    private var cachedPorts: Set<String>? = null
+
     // ─────────────────────────── 扫描底座 ───────────────────────────
 
     /**
@@ -60,8 +63,29 @@ class BusinessApiBoundaryTest {
             if (!IMPL_SUFFIX.matches(sym)) return@mapNotNull null
             if (m.groupValues[1].startsWith("source.model")) return@mapNotNull null
             if (sym in EXCLUDED_SYMBOLS) return@mapNotNull null
+            if (sym in portInterfaces()) return@mapNotNull null
             rel to sym
         }
+
+    /**
+     * 「被声明成 `interface` 的名字是端口，不是实现」—— 这条是自维持的排除法。
+     *
+     * 本轮交付的契约（`ContentGuard`、`ReaderPreferences`、`NetworkPreferences`、
+     * `GalleryPreferences`…）后缀全都长得像实现类（`Preferences` 正是 `VeneraPreferences` 那个
+     * 后缀），如果靠手写排除名单，每落一批就要加几颗名字，漏一颗就是白名单自己变红、
+     * 而那红是**假的**。判据改成回源码看它到底是不是接口：`source/ComicSource.kt` 那种
+     * "本来就是接口"的存量条目也一并自动落进这条规则里。
+     * 数据类（`FavoriteItem` / `HistoryRecord` / `GuardRule`）不是接口，仍走 [EXCLUDED_SYMBOLS]。
+     */
+    private fun portInterfaces(): Set<String> {
+        cachedPorts?.let { return it }
+        val found = RepoSources.kotlinFiles("com/venera/compose")
+            .flatMap { file ->
+                INTERFACE_NAME.findAll(file.readText()).map { it.groupValues[1] }.toList()
+            }.toSet()
+        cachedPorts = found
+        return found
+    }
 
     /**
      * 断言 C 的判据：实现类的简单名出现在**非 import、非 `getInstance`、非注释**的行上 ——
@@ -220,6 +244,12 @@ class BusinessApiBoundaryTest {
         val GET_INSTANCE = Regex("([A-Za-z0-9_]+)\\.getInstance\\(")
         val IMPORT = Regex("^import com\\.venera\\.compose\\.([A-Za-z0-9_.]+)$")
         val IMPL_SUFFIX = Regex(".*(Manager|Dao|Repository|Client|Breaker|Preferences|Store|Account|Resolver|Converter|JsComicSource)$")
+
+        /** 声明形如 `interface X` / `internal sealed interface X`（用于把端口从实现里分出去）。 */
+        val INTERFACE_NAME = Regex(
+            "^\\s*(?:(?:public|internal|private|sealed|fun|abstract|nested)\\s+)*interface\\s+([A-Za-z0-9_]+)",
+            RegexOption.MULTILINE,
+        )
 
         /** 后缀像实现类、但判为端口/真底层的：`ComicSource` 是接口（正是端口对象本身）。 */
         val EXCLUDED_SYMBOLS = setOf("ComicSource", "FavoriteItem", "HistoryRecord", "GuardRule")

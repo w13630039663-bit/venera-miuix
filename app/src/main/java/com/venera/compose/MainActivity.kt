@@ -9,12 +9,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.EntryIntent
 import com.venera.compose.feature.EntryIntentHandoff
 import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
 import com.venera.compose.feature.settings.StartupUpdateHost
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
  * 会露出封面的页面跟着一起搬走了，只挂 MainActivity 等于把那两页的防窥丢掉。
  */
 internal fun ComponentActivity.applySecureScreenPreference() {
-    val prefs = VeneraPreferences.getInstance(applicationContext)
+    val prefs = BusinessPorts.of(applicationContext).comicPrefs
     lifecycleScope.launch {
         repeatOnLifecycle(Lifecycle.State.STARTED) {
             prefs.secureScreen.collect { secure ->

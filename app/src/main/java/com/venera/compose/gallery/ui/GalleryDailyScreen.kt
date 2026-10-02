@@ -28,7 +28,6 @@ import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.data.network.HostCircuitBreaker
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryFeedSource
@@ -85,14 +84,14 @@ internal fun GalleryDailyScreen(
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     val rules by guard.rules.collectAsState()
-    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
+    val blockAi by GalleryPorts.of(context).prefs.galleryBlockAi.collectAsState()
 
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val gridState = rememberLazyStaggeredGridState()
 
-    val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
+    val columnMode by GalleryPorts.of(context).prefs.galleryColumnMode.collectAsState()
     // 与画廊墙同一把自适应列数（每列预算 200dp，手机档恒 2 列），理由见 GalleryScreen 那一处。
     val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 

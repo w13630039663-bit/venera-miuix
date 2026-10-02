@@ -23,7 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.venera.compose.data.network.PreferredIpProbe
 import com.venera.compose.data.network.PreferredIpRules
 import com.venera.compose.data.network.PreferredIpRuntime
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.NetworkPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -47,7 +47,7 @@ import top.yukonga.miuix.kmp.basic.Text
  *   不说这一句，用户"开了优选 IP 又挂着代理"只会以为功能坏了。
  */
 @Composable
-internal fun PreferredIpSettingsGroup(prefs: VeneraPreferences) {
+internal fun PreferredIpSettingsGroup(prefs: NetworkPreferences) {
     val enabled by prefs.cfPreferredIpEnabled.collectAsState()
     val ips by prefs.cfPreferredIps.collectAsState()
     val hosts by prefs.cfPreferredHosts.collectAsState()
@@ -97,7 +97,7 @@ private fun summaryOf(enabled: Boolean, ipsRaw: String, hostsRaw: String, proxyI
 
 @Composable
 private fun PreferredIpEditorDialog(
-    prefs: VeneraPreferences,
+    prefs: NetworkPreferences,
     enabled: Boolean,
     initialIps: String,
     initialHosts: String,
@@ -231,7 +231,7 @@ private fun PreferredIpEditorDialog(
  * [clearReadings] 用在候选表变过的时候：旧表探出来的"哪台通"对新表没有任何意义。
  */
 internal fun savePreferredIp(
-    prefs: VeneraPreferences,
+    prefs: NetworkPreferences,
     enabled: Boolean,
     ips: String,
     hosts: String,

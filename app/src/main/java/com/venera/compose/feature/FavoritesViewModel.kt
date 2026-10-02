@@ -8,7 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -43,7 +43,7 @@ enum class FavoriteSortOrder(val label: String) {
 class FavoritesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val manager = LocalFavoritesManager.getInstance(application)
-    private val prefs = VeneraPreferences.getInstance(application)
+    private val prefs = BusinessPorts.of(application).comicPrefs
 
     val folders: StateFlow<List<String>> = manager.folders
     val counts: StateFlow<Map<String, Int>> = manager.counts

@@ -1,6 +1,12 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.gallery.domain.GalleryAnimatedMode
+import com.venera.compose.gallery.domain.GalleryColumnMode
+import com.venera.compose.gallery.domain.GalleryPreloadMode
+import com.venera.compose.gallery.domain.GalleryPreviewQuality
+import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.security.guard.GuardRule
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +24,10 @@ import kotlinx.coroutines.flow.StateFlow
  * 形状照 `data/db/DatabasePorts.kt:60-103`（容器 + `install(platform, factory)` + `of(handle: Any?)`），
  * 所以这颗文件里出现的只有 `Context` 一句平台类型，与同目录其余颗一样。
  */
-class GalleryPorts(val contentGuard: GalleryContentGuard) {
+class GalleryPorts(
+    val contentGuard: GalleryContentGuard,
+    val prefs: GalleryPreferences,
+) {
 
     companion object {
         @Volatile
@@ -76,6 +85,48 @@ interface GalleryContentGuard {
     suspend fun addRule(type: String, pattern: String, isRegex: Boolean = false): Long
 }
 
+/**
+ * 画廊**显示与播放行为**读的那 12 枚偏好，getter-only。
+ *
+ * 为什么没有写口：逐颗核过调用点 —— 画廊侧（`gallery/ui` 全部 10 处取用）对这些值**只读**，
+ * 15 枚 `setGalleryXxx` 的写口今天全在漫画侧的设置页 `feature/settings/GallerySettings.kt`
+ * （它是"给画廊配开关"的界面，不是画廊本身）。把写口收进画廊契约就等于把设置页搬进画廊，
+ * 那是 Part B 的 W5（`docs/rounds/business-api-boundary-2026-10.md` §八）要一起做的一件事：
+ * W5 落 `gallery/data/GalleryPreferences.kt` 实现类时直接接上这颗接口，本轮的声明就是它的前置。
+ *
+ * 存储语义不在这里发明：值仍然来自漫画侧那一份 `VeneraPreferences`（只读共享的档，
+ * `docs/rounds/gallery-module-isolation-plan-2026-09.md:36-47`），存储名与 15 枚键名逐字不变。
+ */
+interface GalleryPreferences {
+
+    /** 图片墙列数档位（AUTO / TWO / THREE），与窗口宽一起算成实际列数。 */
+    val galleryColumnMode: StateFlow<GalleryColumnMode>
+
+    /** 墙上缩略档取哪一档画质。 */
+    val galleryPreviewQuality: StateFlow<GalleryPreviewQuality>
+
+    val galleryKeepScreenOn: StateFlow<Boolean>
+    val galleryVolumeKeyTurn: StateFlow<Boolean>
+
+    /** 幻灯片自动翻页秒数；0 = 关。 */
+    val galleryAutoPlaySec: StateFlow<Int>
+
+    val galleryPreload: StateFlow<GalleryPreloadMode>
+    val galleryAnimated: StateFlow<GalleryAnimatedMode>
+
+    /** 播放器那一层的背景处理方式（与漫画阅读器的夜间柔光是两条独立开关）。 */
+    val galleryBackdrop: StateFlow<GalleryViewerBackdrop>
+
+    /** 画廊**自己的** AI 屏蔽开关（批次 C2 拍板"画廊和漫画分开"，不是复用 blockAiComics）。 */
+    val galleryBlockAi: StateFlow<Boolean>
+
+    /** 是否在卡片上标 AI 角标。 */
+    val galleryAiBadge: StateFlow<Boolean>
+
+    val galleryHideTopBar: StateFlow<Boolean>
+    val galleryHideBottomBar: StateFlow<Boolean>
+}
+
 /** Android 接线。⚠️ 构造不调 `getInstance`，只在成员方法体里现取 —— 取用时机与改造前逐点相同。 */
 object AndroidGalleryPorts {
 
@@ -94,7 +145,10 @@ object AndroidGalleryPorts {
                 ?: throw IllegalStateException(
                     "画廊业务 API 的 Android 接线需要 Context，实际收到：${handle?.javaClass?.name ?: "null"}"
                 )
-            GalleryPorts(contentGuard = AndroidGalleryContentGuard(context)).also { ports = it }
+            GalleryPorts(
+                contentGuard = AndroidGalleryContentGuard(context),
+                prefs = AndroidGalleryPreferences(context),
+            ).also { ports = it }
         }
     }
 }
@@ -112,4 +166,23 @@ private class AndroidGalleryContentGuard(private val context: Context) : Gallery
 
     override suspend fun addRule(type: String, pattern: String, isRegex: Boolean): Long =
         manager.addRule(type, pattern, isRegex)
+}
+
+/** 12 枚只读 getter，交回同一个 `StateFlow` 实例：订阅对象没换、重组时序没换。 */
+private class AndroidGalleryPreferences(private val context: Context) : GalleryPreferences {
+
+    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
+
+    override val galleryColumnMode: StateFlow<GalleryColumnMode> get() = prefs.galleryColumnMode
+    override val galleryPreviewQuality: StateFlow<GalleryPreviewQuality> get() = prefs.galleryPreviewQuality
+    override val galleryKeepScreenOn: StateFlow<Boolean> get() = prefs.galleryKeepScreenOn
+    override val galleryVolumeKeyTurn: StateFlow<Boolean> get() = prefs.galleryVolumeKeyTurn
+    override val galleryAutoPlaySec: StateFlow<Int> get() = prefs.galleryAutoPlaySec
+    override val galleryPreload: StateFlow<GalleryPreloadMode> get() = prefs.galleryPreload
+    override val galleryAnimated: StateFlow<GalleryAnimatedMode> get() = prefs.galleryAnimated
+    override val galleryBackdrop: StateFlow<GalleryViewerBackdrop> get() = prefs.galleryBackdrop
+    override val galleryBlockAi: StateFlow<Boolean> get() = prefs.galleryBlockAi
+    override val galleryAiBadge: StateFlow<Boolean> get() = prefs.galleryAiBadge
+    override val galleryHideTopBar: StateFlow<Boolean> get() = prefs.galleryHideTopBar
+    override val galleryHideBottomBar: StateFlow<Boolean> get() = prefs.galleryHideBottomBar
 }

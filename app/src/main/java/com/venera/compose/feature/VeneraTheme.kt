@@ -21,7 +21,6 @@ import com.materialkolor.rememberDynamicColorScheme
 import com.venera.compose.data.prefs.AppearanceStyle
 import com.venera.compose.data.prefs.ThemeColorSource
 import com.venera.compose.data.prefs.ThemeMode
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.ui.tokens.LocalSurfaceMaterial
 import com.venera.compose.ui.tokens.LocalVeneraColorTokens
 import com.venera.compose.ui.tokens.LocalVeneraTokens
@@ -34,6 +33,7 @@ import com.venera.compose.ui.tokens.VeneraMotionTokens
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokenSet
 import com.venera.compose.ui.tokens.buildVeneraColorTokens
+import com.venera.compose.data.api.BusinessPorts
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
@@ -48,7 +48,7 @@ val LocalVeneraDarkTheme = staticCompositionLocalOf { false }
 @Composable
 fun VeneraTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val prefs = VeneraPreferences.getInstance(context)
+    val prefs = BusinessPorts.of(context).appearancePrefs
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
     val material by prefs.surfaceMaterial.collectAsState()

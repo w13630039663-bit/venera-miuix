@@ -23,7 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.venera.compose.data.network.VeneraNetworkClient
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.NetworkPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,7 +33,7 @@ import top.yukonga.miuix.kmp.basic.Text
 private val proxyOptions = listOf("NONE" to "跟随系统默认", "HTTP" to "HTTP", "SOCKS" to "SOCKS5")
 
 @Composable
-fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit, onSpeedTest: () -> Unit = {}) {
+fun NetworkSettings(prefs: NetworkPreferences, onBack: () -> Unit, onSpeedTest: () -> Unit = {}) {
     val context = LocalContext.current
     val proxyType by prefs.proxyType.collectAsState()
     val proxyHost by prefs.proxyHost.collectAsState()
@@ -78,7 +78,7 @@ fun NetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit, onSpeedTest: (
 }
 
 @Composable
-private fun ProxySettingsDialog(prefs: VeneraPreferences, onDismiss: () -> Unit) {
+private fun ProxySettingsDialog(prefs: NetworkPreferences, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var type by rememberSaveable { mutableStateOf(prefs.proxyType.value) }

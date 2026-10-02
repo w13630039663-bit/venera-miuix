@@ -6,11 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.FavoriteSortOrder
+import com.venera.compose.data.api.ComicPreferences
 
 @Composable
-fun LocalFavoritesSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
+fun LocalFavoritesSettings(prefs: ComicPreferences, onBack: () -> Unit) {
     val context = LocalContext.current
     val manager = remember(context) { LocalFavoritesManager.getInstance(context) }
     val folders by manager.folders.collectAsState()

@@ -36,13 +36,13 @@ import com.venera.compose.data.network.PreferredIpProbe
 import com.venera.compose.data.network.PreferredIpRuntime
 import com.venera.compose.data.network.PreferredIpRules
 import com.venera.compose.data.network.PreferredIpSpeedTestSource
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GelbooruAccount
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.ui.tokens.SettingsBadgeColors
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.data.api.NetworkPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,7 +68,7 @@ import top.yukonga.miuix.kmp.basic.Text
  * 3. **推荐开代理**：优选 IP 只优化直连路径，想要稳地访问这些站点，开代理通常更好（同见底部说明组）。
  */
 @Composable
-internal fun PreferredIpSpeedTestScreen(prefs: VeneraPreferences, onBack: () -> Unit) {
+internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val savedIps by prefs.cfPreferredIps.collectAsState()

@@ -1,7 +1,7 @@
 package com.venera.compose.feature.settings
 
 import androidx.compose.runtime.*
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.ReaderPreferences
 import com.venera.compose.reader.ReaderReadingMode
 
 /**
@@ -15,7 +15,7 @@ import com.venera.compose.reader.ReaderReadingMode
  * 完整判据与清单见 settings-audit-2026-09.md。
  */
 @Composable
-internal fun ReaderSettings(prefs: VeneraPreferences, onBack: () -> Unit, onImages: () -> Unit, onStats: () -> Unit) {
+internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImages: () -> Unit, onStats: () -> Unit) {
     val mode by prefs.defaultReadingMode.collectAsState()
     val tap by prefs.clickToTurn.collectAsState()
     val reverseTap by prefs.reverseTapDirection.collectAsState()

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.data.network.ComicUrlTable
-import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
@@ -71,7 +70,7 @@ data class SearchUiState(
 )
 
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
-    private val prefs = AndroidKeyValueStore(app, PREFS)
+    private val prefs = BusinessPorts.of(app).stores.open(PREFS)
 
     /**
      * 客户端标签过滤要吃**同一张**简繁字级表：源里繁简混写时，简体标签必须能认繁体卡片标签，

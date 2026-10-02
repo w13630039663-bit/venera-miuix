@@ -8,7 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItemWithUpdateInfo
 import com.venera.compose.data.db.FollowUpdatesRepository
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.launch
 
 /**
@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 class FollowUpdatesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = FollowUpdatesRepository.getInstance(application)
-    private val prefs = VeneraPreferences.getInstance(application)
+    private val prefs = BusinessPorts.of(application).comicPrefs
 
     /** 当前用于追更的收藏夹（null = 未开启追更）。 */
     var followFolder: String? by mutableStateOf(prefs.followUpdatesFolder.value)

@@ -20,17 +20,21 @@
 | ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 18 处（另有 3 处在注释里）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
 | 测试基线 | 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test` | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
-**冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = **15 处待解锁**，见 §六。
+**冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **17 处**。
 
 ## 二、门面形状
 
 ```
 app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（本轮唯一新顶层子包）
     BusinessPorts.kt          端口容器 + install(platform, factory) / of(handle: Any?)
-    ContentGuardApi.kt        ContentGuard(9) + GuardRuleBook(3)
+    ContentGuardApi.kt        ContentGuard(9) + GuardRuleBook(3)                      【B1】
+    PreferencesApi.kt         Reader(20) + Appearance(20) + Comic(15) + Network(14)
+                              + NamedStoreFactory(1)                                  【B2】
     LibraryApi.kt             ReadingHistory(5) + ReadingStats(5)
     NetworkApi.kt             NetworkHygiene(4) + HttpTextFetch(1)
     android/AndroidBusinessPorts.kt   全部适配器 + install()
+app/src/main/java/com/venera/compose/gallery/data/
+    GalleryPorts.kt           画廊自持：GalleryContentGuard(4) + GalleryPreferences(12，getter-only)
 ```
 
 **契约宽度由消费面决定**，不由实现决定 —— 抄 `data/db/DatabasePorts.kt:32-44` 的 `FavoritesPreferences`（只暴露 3 个 getter 而不是整个 `VeneraPreferences`）：`ContentGuardManager` 公开面 16 个成员，契约只留 UI 真要问的 9 个，`loadRules()`（只被自己调）、`registerSourceNameAliases()`（只有装配根 `VeneraApp.kt:46` 一带）、`isComicBlocked()`（UI 零命中）三颗**不收**，收进来就等于没做收口。
@@ -56,7 +60,7 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 |---|---|---|---|
 | **B0** | 骨架 + 守卫：`data/api/` 三颗契约文件 + 容器 + 适配层、`VeneraApp.kt` 一行 install、`BusinessApiBoundaryTest`（A-F 六条断言，白名单 = 当前全量） | 改引 **0** 处 | ✅ 已落地 |
 | **B1** | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14），画廊侧同时立 `gallery/data/GalleryPorts.kt` 那颗自持的 `GalleryContentGuard` | 14 | ✅ 已落地 |
-| B2 | 偏好四颗契约（`PreferencesApi.kt`：Reader/Appearance/Comic + 画廊 `GalleryPreferences`）+ 3 处 `AndroidKeyValueStore(` 归位 | 24 | 待做 |
+| B2 | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
 | B3 | `SourceApi.kt`（`ComicContentApi` + `SourceCatalog`）+ 收 `SearchViewModel.kt:166` 的 `as? JsComicSource` | 12 | 待做 |
 | B4 | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | 待做 |
 | B5 | `FavoriteLibrary` + `OfflineLibrary`（契约随本批与守卫同批落地） | 18 | 待做，**允许整批砍掉** |
@@ -71,14 +75,14 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 
 六条断言，底座是 `testsupport/RepoSources.kt` 的源码扫描（**定位不到仓根就 fail 并打印尝试过的路径**，`RepoSources.kt:11-13`：扫描类用例静默通过等于没有用例）：
 
-| 断言 | 钉住的不变量 | B0 基线 | B1 后 |
-|---|---|---|---|
-| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | **56 / 119** |
-| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | **50 / 138** |
-| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | **32 / 48** |
-| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值（B1 不碰） |
-| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | **50 颗** |
-| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 |
+| 断言 | 钉住的不变量 | B0 基线 | B1 后 | B2 后 |
+|---|---|---|---|---|
+| **A** | UI（四棵目录 + `MainActivity.kt`）不许 import 业务实现类 | 57 颗文件 / 128 条 | 56 / 119 | **45 / 91** |
+| **B** | UI 不许 `实现类.getInstance`，含全限定内联（`feature/FavoritesScreen.kt:795` 那种写法） | 52 颗文件 / 152 处 | 50 / 138 | **45 / 115** |
+| **C** | 不许把实现类当**类型**用（参数、字段、`is`/`as?`）—— 单行扫 `getInstance` 永远抓不到这一类 | 33 颗文件 / 49 条 | 32 / 48 | **23 / 36** |
+| **D** | 非 `getInstance` 的直连五张名单（KeyValueStore / 熔断 / okhttp3 / 优选 IP / 存储根） | 3+3+1+5+15 处 | 同值 | **1**+3+1+5+15 处 |
+| **E** | 全仓静态取用的出处必须可数（装配根 / 适配层 / 基础设施目录 / 自身声明该 `getInstance` 的文件 / 存量名单），且**存量名单清空了却不删也红** | 52 颗 | 50 颗 | **45 颗** |
+| **F** | **白名单不许有无主条目**：每条要么归某一批，要么写明「解锁条件」，且条件必须带可复核的锚（`文件.kt:行号` / `W1..W6` / `FREEZE-STATEMENT`） | 全量 | 全量 | 全量 |
 
 三个已知坑都防住了（上一轮 A3/A5 首跑就是红在这三条上）：① 声明行不会命中（判据以 `.getInstance(` 与 `^import ` 为锚）；② 整行注释与 **尾随注释**都先切掉再判（`PreferenceStorageNamesTest.kt:80-87` 缺的正是第二步）；③ 跨两行的写法由 C 承担，它不依赖与 `getInstance` 同行。
 
@@ -115,15 +119,39 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
 
 **未验（挂账，需用户点页面）**：屏蔽页三档遮罩与 AI 开关的即时生效、加/删规则后列表计数文案、详情页与关注更新列表的封面打码、搜索与首页的 HIDE 过滤、画廊四页（日推/收藏/详情/画师主页）的打码与"已屏蔽"提示。B1 是**同一行取用表达式的替换**，`remember` 边界不加不减、`collectAsState` 订阅对象未换，判据层已由 797 条用例兜住；观感仍要真机过一遍才算完。
 
-## 六、那 15 处为什么不收（已裁决：甲）
+### B2（2026-10-03）
 
-`FREEZE-STATEMENT.md:17-19` 写的是「允许修实际 Bug、修明确回归；**禁止架构重构**、顺手拆文件」，`:2493` 还记着「用户明确不给豁免」的先例。本轮按**甲档**执行：非冻结的 135 处照收，冻结屏 13 处 + 导航保护域 2 处**留在白名单**，但每条都在 `BusinessApiBaseline.kt` 的 `SITE_OVERRIDE` 里写明**解锁条件**（这是断言 F 的检查对象，不是给人看的注释）。
+**改引 23 处取用**（B 的站点总数 138 → **115**，A 119 → **91**，C 48 → **36**，E 出处 50 → **45 颗**，D 的 `AndroidKeyValueStore(` 3 颗/3 处 → **1 颗/1 处**）：`VeneraPreferences.getInstance` 从 UI 的 25 处降到 4 处（冻结屏 `SearchScreen:138`、保护域 `Navigation:491`、画廊写口那两行见下），`AndroidKeyValueStore(` 漫画侧两颗收进 `stores`。
+
+**契约从四颗变五颗（与原计划的偏差，如实记）**：计划写的是 `Reader`/`Appearance`/`Comic` + 画廊 `GalleryPreferences`。逐颗调用点数完是 **99 枚**成员被 UI 摸（`VeneraPreferences` 公开面 101 枚），三颗漫画侧契约里 `ComicPreferences` 要吞 28 枚（代理三条 + CF 优选四条 + 下载并发 + HTTP 缓存 + 存储根 + 收藏四条 + 搜索默认值 + 防窥 + 检查更新），宽度接近实现的一半 ⇒ 把网络与存储那 14 枚单切一颗 `NetworkPreferences`（消费者正好是 `NetworkSettings`、`PreferredIpSettings`、`PreferredIpSpeedTestScreen`、`AppSettings` 四颗页）。**分域的判据是"照已有的页切"，不是发明分层**：切完四颗的宽度各 20 / 20 / 15 / 14 枚。
+
+| 新契约 | 成员 | 消费面 |
+|---|---|---|
+| `ReaderPreferences` | 10 getter + 10 setter | `reader/VeneraReaderScreen.kt:182`、`feature/settings/ReaderSettings.kt:18`、`feature/ComicDetailScreen.kt:247`（章节倒序）、`feature/settings/ExploreSettings.kt`（同一枚） |
+| `AppearancePreferences` | 10 + 10 | `feature/VeneraTheme.kt:51`、`AppearanceSettings`、`SettingsComponents:294`、`SettingsHome:106,190`、`SettingsQuoteCard:53`、`ExploreSettings`（启动页） |
+| `ComicPreferences` | 8 + 7 | `MainActivity:167`（防窥）、`BlockingSettings:24`、`FavoritesViewModel:46`、`FollowUpdatesViewModel:20`、`ComicDetailViewModel:176`、`AboutSection:51`、`LocalFavoritesSettings:13`、`UpdateCheckUi:62` |
+| `NetworkPreferences` | 9 + 5 | `AppSettings`（三处参数位）、`NetworkSettings`（两处）、`PreferredIpSettings`（三处）、`PreferredIpSpeedTestScreen:71` |
+| `GalleryPreferences`（getter-only，`gallery/data/GalleryPorts.kt`） | 12 getter，**零 setter** | `gallery/ui` 的 10 处取用（`GalleryPostScreen:199`、`GalleryScreen:239,278,282,283,1520,1600`、`GalleryDailyScreen:88,95`、`GalleryFavoritesBody:99`、`GalleryArtistProfileScreen:148`） |
+| `NamedStoreFactory`（`stores`） | 1 | `HomeViewModel:138`（推荐快照）、`SearchViewModel:74`（搜索历史）——存储名仍由调用点原样递进（`PREFS_HOME_RECOMMEND_CACHE` / VM 私有 const `PREFS`），收口不改数据文件 |
+
+**为什么画廊那颗是 getter-only，以及因此留下的两行**：逐颗核过写口，15 枚 `setGalleryXxx` 的唯一消费者是 `feature/settings/GallerySettings.kt`（给画廊配开关的漫画侧页），`gallery/ui` 对这 12 枚只读。所以画廊契约按隔离口径立成只读，写口那一页今天仍抓 `VeneraPreferences`（`SettingsHost.kt:140` 的取用 + `GallerySettings.kt:60` 的参数位）—— 这是**两条新的长期条目**，各带 W5 解锁条件（W5 落 `gallery/data/GalleryPreferences.kt` 实现类接上这颗接口，本行随之改引）。§六 的"15 处"因此是 **17 处**。
+
+**守卫新增一条自维持排除**（`BusinessApiBoundaryTest.portInterfaces()`）：本轮交付的契约后缀全都长得像实现类（`ReaderPreferences`、`NetworkPreferences`、`GalleryPreferences`… 命中的正是 `VeneraPreferences` 那条 `Preferences` 后缀），靠手写排除名单等于每落一批就要加几颗名字、漏一颗就是白名单自己假红。判据改成**回源码看它是不是 `interface`**（33 颗接口名自动豁免），A 的实测因此从"含契约 import"的 102 条回到 **91 条**（这 11 条是本轮新写的契约引用，本来就不该算穿透）。数据类（`FavoriteItem`/`HistoryRecord`/`GuardRule`）不是接口，仍走 `EXCLUDED_SYMBOLS`。
+
+**顺带一处必要的外科**：`data/update/AppUpdateChecker.kt:52` 的 `shouldCheckOnStartup(prefs: VeneraPreferences)` 改成 `ComicPreferences` —— 它只有一个调用点（`UpdateCheckUi`），不收窄就会让一颗 infra 文件反过来把实现类类型塞回 UI。
+
+**未验（挂账，与 B1 合并一次真机过）**：设置九页（外观 / 阅读 / 探索 / 图库 / 网络 / 优选 IP / 本地收藏 / 屏蔽 / 关于）每项拨动后即时生效且重启仍在、冷启动落回设定 Tab、阅读器内六条开关（模式/点击翻页/音量键/常亮/柔光/页间距）、详情页章节倒序、防窥开关（截图与最近任务缩略图）、画廊的列数档 / 画质档 / 自动播放 / 双层收起 / AI 两枚，以及首页推荐区冷启动仍能铺上次数据（`stores` 那条换了取用点，存储名未动）。
+
+## 六、那 17 处为什么不收（已裁决：甲）
+
+`FREEZE-STATEMENT.md:17-19` 写的是「允许修实际 Bug、修明确回归；**禁止架构重构**、顺手拆文件」，`:2493` 还记着「用户明确不给豁免」的先例。本轮按**甲档**执行：非冻结的照收，冻结屏 13 处 + 导航保护域 2 处 + B2 落地的画廊写口 2 处**留在白名单**，但每条都在 `BusinessApiBaseline.kt` 的 `SITE_OVERRIDE` 里写明**解锁条件**（这是断言 F 的检查对象，不是给人看的注释）。
 
 | 点位 | 归哪颗契约 | 解锁条件 |
 |---|---|---|
 | `UnifiedExploreScreen:123,124`、`SourceSectionScreen:104,105`、`HomeScreen:134,610,796`、`SearchScreen:136,138`、`FavoritesScreen:795,913`、`HistoryScreen:269`、`NetworkFavoritesScreen:653`（13 处） | B1 `ContentGuard` / B2 `ComicPreferences` / B3 `SourceCatalog` 都已覆盖 | **只差一次点名豁免，零技术前提**：契约与适配器已就绪，这些行是同一行的取用替换。入场券已逐颗核实（`applicationContext` 归一：`ContentGuardManager.kt:511`、`ComicSourceManager.kt:1448`、`VeneraPreferences.kt:707`；`StateFlow` 交回同一实例；不加减 `remember`） |
 | `feature/Navigation.kt:491`（`navigationBarStyle` + `startPage`） | B2 `AppearancePreferences` | 同文件改动按保护域口径需**重新评审一次**（`FREEZE-STATEMENT.md:32` 只管 Tab 枚举顺序 / 路由映射 / 顶栏齿轮入口这三项，本行不在其内） |
 | `feature/Navigation.kt:286`（`ComicLinkResolver`） | **本轮连契约都不立** | **两段前提，缺一段做不动**：① 同上保护域重新评审；② 硬技术前提 = `ComicLinkResolver.Outcome` 是**嵌套在吃 `Context` 的类体里的 `sealed interface`**（`source/ComicLinkResolver.kt:3,23,25-36`），而 `feature/Navigation.kt:313` 逐条消费那四档 ⇒ 必须先做一次 W1 同族的类型搬家，本行才有契约可引 |
+| `feature/SettingsHost.kt:140` 与 `feature/settings/GallerySettings.kt:60`（`VeneraPreferences`） | B2 的 `GalleryPreferences` 已立但**故意只读** | 与 **W5** 同批：`setGalleryXxx` 15 枚写口的唯一消费者是这一页（`feature/settings/GallerySettings.kt:107-284`），而 `gallery/ui` 对那 12 枚只读；W5 落 `gallery/data/GalleryPreferences.kt` 实现类接上这颗接口后，这两行才有的契约可引（零技术前提的另一半已在 `GalleryPorts.kt` 里） |
 
 **将来兑现解锁时的豁免记录形状**（照 `:51-63` 与 `:78` 的真实先例：**点名 + 明列未动项**）—— 未动清单至少要含：探索闭环判定链（`:23`）、`ContentGuardManager.kt` 本体（仍 FROZEN，从外面包、未进一颗字符）、打码与分页、行级虚拟化契约、手风琴状态机、下拉刷新与续页闸门、顶栏大标题折叠 + 毛玻璃页内自治、`statusBarTop + topBarFloor` 地板、`LocalBottomBarClearance` 底栏避让、Tab 枚举顺序与路由映射表与顶栏齿轮入口。
 

@@ -3,7 +3,7 @@ package com.venera.compose.data.update
 import android.content.Context
 import android.util.Log
 import com.venera.compose.data.network.VeneraNetworkClient
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.ComicPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -49,7 +49,7 @@ object AppUpdateChecker {
     }
 
     /** 开关开着、且距上次占坑超过 24 小时，才在启动时打这一次请求。 */
-    fun shouldCheckOnStartup(prefs: VeneraPreferences): Boolean =
+    fun shouldCheckOnStartup(prefs: ComicPreferences): Boolean =
         prefs.checkUpdateOnStart.value &&
             System.currentTimeMillis() - prefs.lastUpdateCheckAt >= STARTUP_CHECK_INTERVAL_MS
 

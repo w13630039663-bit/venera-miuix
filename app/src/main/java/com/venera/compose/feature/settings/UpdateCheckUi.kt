@@ -12,10 +12,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.components.venera.VeneraDialog
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.update.AppUpdateChecker
 import com.venera.compose.data.update.ProjectChannel
 import com.venera.compose.data.update.UpdateCheck
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.delay
 
 /** 冷启动后多久才允许弹更新框（master 的 `checkUpdateUi(delay = true)` 同口径：不与首屏抢帧）。 */
@@ -59,7 +59,7 @@ internal fun UpdateAvailableDialog(remoteVersion: String, onDismiss: () -> Unit)
 @Composable
 internal fun StartupUpdateHost() {
     val context = LocalContext.current
-    val prefs = remember { VeneraPreferences.getInstance(context) }
+    val prefs = remember { BusinessPorts.of(context).comicPrefs }
     var remoteVersion by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {

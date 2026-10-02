@@ -28,8 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import coil3.compose.AsyncImage
 import com.venera.compose.R
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.data.api.AppearancePreferences
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -50,7 +50,7 @@ import top.yukonga.miuix.kmp.basic.Text
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun SettingsQuoteCard(prefs: VeneraPreferences) {
+internal fun SettingsQuoteCard(prefs: AppearancePreferences) {
     val tokens = VeneraTokens
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

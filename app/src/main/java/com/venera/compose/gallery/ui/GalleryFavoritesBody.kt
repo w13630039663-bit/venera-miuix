@@ -37,7 +37,6 @@ import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
@@ -96,7 +95,7 @@ fun GalleryFavoritesBody(
     val maskMode by guard.nsfwMaskMode.collectAsState()
     // 收藏那一面墙也走**同一把** AI 屏蔽判据（批次 C2）：不同墙各判一次，
     // 就会出"日榜上被 AI 挡掉的那张，在收藏里全裸"这种最难解释的分叉。
-    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
+    val blockAi by GalleryPorts.of(context).prefs.galleryBlockAi.collectAsState()
     val imageLoader = remember { GalleryImageLoader.get(context) }
     val gridState = rememberLazyStaggeredGridState()
     // 与画廊墙同一把自适应列数（每列预算 200dp、手机档恒 2 列），理由见 GalleryScreen 那一处。

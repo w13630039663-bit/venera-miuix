@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.navigation.NavHostController
 import com.venera.compose.MainActivity
 import com.venera.compose.SettingsSubActivity
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.settings.AppearanceSettings
 import com.venera.compose.feature.settings.AppSettings
@@ -133,7 +134,14 @@ fun Context.openSettingsSubScreen(screen: SettingsSubScreen, arg: String? = null
 fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
     val context = LocalContext.current
     val view = LocalView.current
+    // ⚠️ 只有画廊那一页还抓实现类：它是唯一需要 setGalleryXxx 写口的消费点，而画廊侧契约按
+    // 口径是 getter-only（gallery/data/GalleryPorts.kt 的 GalleryPreferences）。解锁条件见
+    // docs/rounds/business-api-boundary-2026-10.md §六（与 Part B 的 W5 同批）。
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val readerPrefs = remember(context) { BusinessPorts.of(context).readerPrefs }
+    val appearancePrefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
+    val comicPrefs = remember(context) { BusinessPorts.of(context).comicPrefs }
+    val networkPrefs = remember(context) { BusinessPorts.of(context).networkPrefs }
 
     fun haptic() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 
@@ -184,15 +192,15 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onBack = ::back,
             )
             SettingsSubScreen.READER -> ReaderSettings(
-                prefs = prefs,
+                prefs = readerPrefs,
                 onBack = ::back,
                 onImages = { open(SettingsSubScreen.FAVORITE_IMAGES) },
                 onStats = { open(SettingsSubScreen.STATS) },
             )
-            SettingsSubScreen.APPEARANCE -> AppearanceSettings(prefs = prefs, onBack = ::back)
-            SettingsSubScreen.LOCAL_FAVORITES -> LocalFavoritesSettings(prefs = prefs, onBack = ::back)
+            SettingsSubScreen.APPEARANCE -> AppearanceSettings(prefs = appearancePrefs, onBack = ::back)
+            SettingsSubScreen.LOCAL_FAVORITES -> LocalFavoritesSettings(prefs = comicPrefs, onBack = ::back)
             SettingsSubScreen.APP -> AppSettings(
-                prefs = prefs,
+                prefs = networkPrefs,
                 onBack = ::back,
                 onSync = { open(SettingsSubScreen.SYNC) },
                 onLogs = { open(SettingsSubScreen.LOGS) },
@@ -200,11 +208,11 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onLocalComics = { open(SettingsSubScreen.LOCAL_COMICS) },
             )
             SettingsSubScreen.NETWORK -> NetworkSettings(
-                prefs = prefs,
+                prefs = networkPrefs,
                 onBack = ::back,
                 onSpeedTest = { open(SettingsSubScreen.LINE_SPEEDTEST) },
             )
-            SettingsSubScreen.LINE_SPEEDTEST -> PreferredIpSpeedTestScreen(prefs = prefs, onBack = ::back)
+            SettingsSubScreen.LINE_SPEEDTEST -> PreferredIpSpeedTestScreen(prefs = networkPrefs, onBack = ::back)
 
             SettingsSubScreen.SOURCE_MANAGE -> ComicSourceScreen(onNavigateBack = ::back)
             SettingsSubScreen.DOWNLOADS -> DownloadScreen(

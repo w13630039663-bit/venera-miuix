@@ -51,7 +51,6 @@ import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraGallerySourceMark
 import com.venera.compose.components.venera.VeneraTopBarPill
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.data.DanbooruArtistClient
 import com.venera.compose.gallery.data.GalleryArtistFollowsStore
 import com.venera.compose.gallery.data.GalleryImageLoader
@@ -145,7 +144,7 @@ internal fun GalleryArtistProfileScreen(
     val imageLoader: ImageLoader = remember { GalleryImageLoader.get(context) }
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
-    val blockAi by VeneraPreferences.getInstance(context).galleryBlockAi.collectAsState()
+    val blockAi by GalleryPorts.of(context).prefs.galleryBlockAi.collectAsState()
     val store = remember { GalleryArtistFollowsStore.getInstance(context) }
     val follows by store.follows.collectAsState()
 

@@ -29,11 +29,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import com.venera.compose.R
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.update.AppUpdateChecker
 import com.venera.compose.data.update.ProjectChannel
 import com.venera.compose.data.update.UpdateCheck
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.data.api.ComicPreferences
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -48,7 +48,7 @@ import top.yukonga.miuix.kmp.basic.Text
  * - 检查更新与启动检查开关留在卡内 —— 这两条是真正的「应用级行为」。
  */
 @Composable
-internal fun AppIdentityCard(prefs: VeneraPreferences) {
+internal fun AppIdentityCard(prefs: ComicPreferences) {
     val context = LocalContext.current
     val version = remember(context) { AppUpdateChecker.localVersion(context) ?: "未知" }
     val checkOnStart by prefs.checkUpdateOnStart.collectAsState()

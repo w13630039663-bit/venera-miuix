@@ -34,7 +34,6 @@ import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraTopAppBar
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.feature.SettingsSubScreen
 import com.venera.compose.feature.openSettingsSubScreen
 import com.venera.compose.ui.tokens.SettingsBadgeColors
@@ -42,6 +41,9 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 import java.io.File
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
+import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.data.api.AppearancePreferences
+import com.venera.compose.data.api.ComicPreferences
 
 /**
  * 设置分区：比旧版多一个可选 [subtitle]，显示在标题下方（个性化组的「外观」用它）。
@@ -102,7 +104,8 @@ internal fun SettingsHome(
     onOpenHistory: () -> Unit,
 ) {
     val context = LocalContext.current
-    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val prefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
+    val comicPrefs = remember(context) { BusinessPorts.of(context).comicPrefs }
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -138,6 +141,7 @@ internal fun SettingsHome(
     Box(modifier = Modifier.fillMaxSize()) {
         SettingsHomeContent(
             prefs = prefs,
+            comicPrefs = comicPrefs,
             heroFile = heroFile,
             onOpen = { screen -> context.openSettingsSubScreen(screen) },
             onOpenHistory = onOpenHistory,
@@ -181,7 +185,8 @@ internal fun SettingsHome(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SettingsHomeContent(
-    prefs: VeneraPreferences,
+    prefs: AppearancePreferences,
+    comicPrefs: ComicPreferences,
     heroFile: File?,
     onOpen: (SettingsSubScreen) -> Unit,
     onOpenHistory: () -> Unit,
@@ -223,7 +228,7 @@ private fun SettingsHomeContent(
                 bottom = LocalBottomBarClearance.current,
             )
         ) {
-            AppIdentityCard(prefs)
+            AppIdentityCard(comicPrefs)
             SettingsQuickLinks()
             SettingsGroup("内容") {
                 groupContent.forEach { category ->

@@ -37,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
@@ -45,6 +44,7 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
+import com.venera.compose.data.api.BusinessPorts
 
 /**
  * 设置页通用组件。
@@ -291,7 +291,7 @@ internal fun SettingsPage(
     // 而不是让 8 个调用点各传一遍 —— 子页们对头图只有「显示」没有「管理」的差别
     // （换图 / 清图的入口只在外观设置里）。
     val context = LocalContext.current
-    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val prefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
     val heroPath by prefs.settingsHeroPath.collectAsState()
     val heroFile = remember(heroPath) { SettingsHeroImageStore.resolve(heroPath) }
 

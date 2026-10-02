@@ -97,7 +97,7 @@ import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.platform.CacheDirs
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
@@ -179,7 +179,7 @@ private fun ReaderSessionContent(
         Modifier.fillMaxWidth().wrapContentSize(Alignment.TopCenter).width(WideScreenDrawerWidth)
     }
 
-    val prefs = remember { VeneraPreferences.getInstance(context) }
+    val prefs = remember { BusinessPorts.of(context).readerPrefs }
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
 
     // 活跃章节列表（支持动态加载新章节页码）

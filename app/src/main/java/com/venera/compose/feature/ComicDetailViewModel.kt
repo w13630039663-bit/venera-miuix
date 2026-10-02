@@ -8,7 +8,6 @@ import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.network.ImageHeaderPolicy
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.prefs.ComicMetricsCache
 import com.venera.compose.reader.ReaderSession
 import com.venera.compose.reader.ReaderSessionFactory
@@ -17,6 +16,7 @@ import com.venera.compose.source.model.ComicDetails
 import com.venera.compose.source.model.Comment
 import com.venera.compose.source.model.CommentCapabilities
 import com.venera.compose.source.model.ResolvedThumbnailConfig
+import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -173,7 +173,7 @@ class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
 
     private val sourceManager = ComicSourceManager.getInstance(app)
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
-    private val prefs = VeneraPreferences.getInstance(app)
+    private val prefs = BusinessPorts.of(app).comicPrefs
     private val historyDao = HistoryDao.getInstance(app)
 
     private val _uiState = MutableStateFlow(DetailUiState())

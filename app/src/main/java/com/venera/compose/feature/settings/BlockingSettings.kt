@@ -10,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.launch
@@ -21,7 +20,7 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
     val context = LocalContext.current
     val guard = remember(context) { BusinessPorts.of(context).contentGuard }
     val ruleBook = remember(context) { BusinessPorts.of(context).guardRuleBook }
-    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val prefs = remember(context) { BusinessPorts.of(context).comicPrefs }
     val secureScreen by prefs.secureScreen.collectAsState()
     val mode by guard.nsfwMaskMode.collectAsState()
     val blockAi by guard.blockAiComics.collectAsState()

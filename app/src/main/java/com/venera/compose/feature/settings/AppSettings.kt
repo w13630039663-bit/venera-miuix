@@ -17,10 +17,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.data.network.VeneraNetworkClient
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.sync.BackupTransfers
+import com.venera.compose.data.api.NetworkPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +29,7 @@ import java.io.File
 /** Follows app.dart: data, user, troubleshooting, then existing offline entry points. */
 @Composable
 fun AppSettings(
-    prefs: VeneraPreferences,
+    prefs: NetworkPreferences,
     onBack: () -> Unit,
     onSync: () -> Unit,
     onLogs: () -> Unit,
@@ -329,7 +329,7 @@ internal fun evaluatePickedDir(context: Context, uri: Uri): DirChoice {
  */
 private suspend fun commitOrAskTarget(
     context: Context,
-    prefs: VeneraPreferences,
+    prefs: NetworkPreferences,
     target: String,
     onAskMigration: (String, Pair<Int, Int>) -> Unit,
 ) {
@@ -352,7 +352,7 @@ private suspend fun commitOrAskTarget(
  */
 private suspend fun applyStoragePath(
     context: Context,
-    prefs: VeneraPreferences,
+    prefs: NetworkPreferences,
     target: String,
     migrate: Boolean,
 ) {

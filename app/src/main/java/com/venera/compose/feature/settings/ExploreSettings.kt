@@ -3,7 +3,7 @@ package com.venera.compose.feature.settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.components.rememberComicListDisplayMode
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.feature.SearchViewModel
 import com.venera.compose.source.ComicSourceManager
 
@@ -19,12 +19,16 @@ import com.venera.compose.source.ComicSourceManager
 @Composable
 internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywords: () -> Unit) {
     val context = LocalContext.current
-    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    // 这一页横跨三个偏好域（默认搜索目标 / 启动页面 / 章节顺序），所以按域各取一份，
+    // 而不是回去抓那颗 101 枚成员的实现类。
+    val comicPrefs = remember(context) { BusinessPorts.of(context).comicPrefs }
+    val appearancePrefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
+    val readerPrefs = remember(context) { BusinessPorts.of(context).readerPrefs }
     val sources by ComicSourceManager.getInstance(context).sourcesFlow.collectAsState()
     var mode by rememberComicListDisplayMode()
-    val defaultTarget by prefs.defaultSearchTarget.collectAsState()
-    val startPage by prefs.startPage.collectAsState()
-    val reverseChapters by prefs.reverseChapterOrder.collectAsState()
+    val defaultTarget by comicPrefs.defaultSearchTarget.collectAsState()
+    val startPage by appearancePrefs.startPage.collectAsState()
+    val reverseChapters by readerPrefs.reverseChapterOrder.collectAsState()
     // 已装源可能很多，SettingsSelect 的对话框列表本身可滚动。
     val targetOptions = remember(sources) {
         listOf("" to "不预设，进去时保持上次选的") +
@@ -43,7 +47,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
         }
         SettingsGroup("搜索与默认值") {
             SettingsSelect(
-                "默认搜索目标", defaultTarget, targetOptions, prefs::setDefaultSearchTarget,
+                "默认搜索目标", defaultTarget, targetOptions, comicPrefs::setDefaultSearchTarget,
                 summary = "进搜索页时先选好的源，不会自动开始搜索。",
             )
             SettingsSelect(
@@ -52,7 +56,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
                     "HOME" to "首页", "FAVORITES" to "我的收藏",
                     "SEARCH" to "搜索与发现", "GALLERY" to "画廊", "EXPLORE" to "探索",
                 ),
-                prefs::setStartPage,
+                appearancePrefs::setStartPage,
                 summary = "下次打开应用时停在哪个标签页。",
             )
             // 2026-09-23 历史降回二级页 → 这一项同时撤掉「历史」选项：留着它就是假开关
@@ -60,7 +64,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             // 启动侧按 Navigation.kt 的 getOrDefault(HOME) 回落首页，
             // 设置这行则显示现成的「未识别的已保存值：HISTORY」（SettingsComponents.kt:218），
             // 不做静默改写 —— 用户改过的偏好被动了要说得出来。
-            SettingsToggle("默认倒序排列章节", reverseChapters, prefs::setReverseChapterOrder,
+            SettingsToggle("默认倒序排列章节", reverseChapters, readerPrefs::setReverseChapterOrder,
                 summary = "进详情页时的默认顺序，页面上的正序/倒序按钮还能临时改。")
         }
     }
