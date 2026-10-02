@@ -1,7 +1,6 @@
 package com.venera.desktop.platform
 
 import com.venera.compose.data.platform.MappedSqlRow
-import com.venera.compose.data.platform.PathProvider
 import com.venera.compose.data.platform.SqlDatabase
 import com.venera.compose.data.platform.SqlRow
 import com.venera.compose.data.platform.SqlType
@@ -29,9 +28,6 @@ import java.sql.Types
  * 保留 `@Volatile` 是让读到的值对诊断可见，不当作互斥手段。
  */
 class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
-
-    /** 正式入口走 PathProvider：库文件固定落在 `db/` 子目录下（与 Android 侧同构）。 */
-    constructor(paths: PathProvider, name: String) : this(File(paths.subDir("db"), "$name.db"))
 
     private val connection: Connection = try {
         DriverManager.getConnection("jdbc:sqlite:${file.path}")
