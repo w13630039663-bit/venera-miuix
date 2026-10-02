@@ -190,7 +190,22 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
   读数：`:app:testDebugUnitTest --rerun-tasks` **787 tests / 0 failures / 0 errors**（99 颗测试类）、
   `:app:assembleDebug` 通过。未验：14 颗页首屏留白逐像素对比（本批改的是 8 颗页的书写形式，数值同源，
   理论无差；仍要真机确认 `LocalComicScreen`/`StatsScreen` 这三行不是巧合同值）。
-- A5 待回写
+- A5 已落地。新 `components/ImageWallColumns.kt` 的 `rememberImageWallColumnCount()` 收掉三行样板，
+  `WideScreenPolicy.imageWallHorizontalPadding() = screenHorizontal * 2` 把第三参从「测试写字面量、生产走 token」
+  改成**两边同一个表达式**（这才是 ba3e207 修剩的那一半：判据收口了，判据的入参没收口）。
+  四个消费点改调新函数，顺带清掉因此变死的三处 `windowWidth` 局部与四枚 import
+  （`LocalConfiguration`×3、`VeneraSpacing`×1 —— 审计 §2.2 刚批评过 `ComicItem` 留 9 条无用通配 import，
+  自己改完不能也留一遍）。`FavoriteImagesScreen` 的 `windowWidth/layoutMode/wide` 三行**保留**，
+  因为 `wide` 另有一处消费点（卡片最小宽高比 :312）。
+  **helper 故意不设参数**：四处今天用的是同一个网格内边距，设默认值等于埋一个「漏传也不报错」的口子；
+  将来某页真要别的内边距，让它直调 `imageWallColumnCount` 显式传。
+  新增 2 条用例：① `imageWallHorizontalPadding()==24.dp` 且等于 token 推导（把口径钉在 token 上而不是 24 上）
+  ② 源码扫描断言 `imageWallColumnCount(` 的**调用者**只有 `ImageWallColumns.kt` 一颗（声明行由 `fun ` 前缀滤掉；
+  这条用例首跑即红，红在我把声明也算进了名单，修的是用例不是代码）。
+  既有的 320..600 恒 2 列、601..2000 ≥3 列两条扫描把 `24.dp` 字面量换成推导值后**重跑通过**：
+  手机档恒 2 列这条 standing 约束没被动过，1280→6 / 1706→8 / 1300→7 / 1301→6 四格读数一字未变。
+  读数：`:app:testDebugUnitTest --rerun-tasks` **789 tests / 0 failures / 0 errors**（99 颗测试类，+2 条）、
+  `:app:compileDebugKotlin` 通过、`:app:assembleDebug` 通过。未验：真机 Pixel Tablet 两档抓屏对齐。
 - A6 待回写
 
 ## 六、Part B — Windows 移植阶段 2 再做

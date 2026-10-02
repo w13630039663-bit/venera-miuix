@@ -1,6 +1,7 @@
 package com.venera.compose.components
 
 import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraSpacing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -119,7 +120,7 @@ class WideScreenPolicyTest {
      */
     @Test fun phoneBandIsPinnedAtTwoColumnsAndNeverTouchesTheBudget() {
         for (width in 320..600 step 5) {
-            val columns = imageWallColumnCount(width.dp, WideScreenLayoutMode.Compact, 24.dp)
+            val columns = imageWallColumnCount(width.dp, WideScreenLayoutMode.Compact, imageWallHorizontalPadding())
             assertEquals("手机档 $width.dp 必须是 2 列", 2, columns)
         }
     }
@@ -128,7 +129,7 @@ class WideScreenPolicyTest {
     @Test fun wideBandNeverGivesFewerColumnsThanTheOldFixedThree() {
         for (width in 601..2000 step 7) {
             val mode = wideScreenLayoutMode(width.dp)
-            val columns = imageWallColumnCount(width.dp, mode, 24.dp)
+            val columns = imageWallColumnCount(width.dp, mode, imageWallHorizontalPadding())
             assertTrue("$width.dp 只许加列不许减列", columns >= 3)
         }
     }
@@ -138,7 +139,7 @@ class WideScreenPolicyTest {
      * 这几格就是"平板 3 列→6 列、宽窗 3 列→8 列"那次改版的验收口径，观感变了要在这里留痕。
      */
     @Test fun columnCountsAtTheMeasuredBands() {
-        val padding = 24.dp
+        val padding = imageWallHorizontalPadding()
         // 601dp：刚跨断点，扣掉 72dp 侧栏后只够 3 列 ⇒ 与改版前一致
         assertEquals(3, imageWallColumnCount(601.dp, WideScreenLayoutMode.Medium, padding))
         // 1280dp（Pixel Tablet 原生横屏）：1280-72-24 = 1184 ⇒ 6 列，一格约 189dp
@@ -147,9 +148,47 @@ class WideScreenPolicyTest {
         assertEquals(8, imageWallColumnCount(1706.dp, WideScreenLayoutMode.Expanded, padding))
     }
 
+    /**
+     * 列数入参的**口径**也归这个表达式（2026-10-03 A5）。
+     *
+     * 这条断言看着像废话（12×2 就是 24），它要钉的是另一件事：**测试与生产必须同源**。
+     * 此前测试写字面量 `24.dp`、生产写 `VeneraSpacing.screenHorizontal * 2`，两值今天恰好相等，
+     * 于是谁改 `screenHorizontal`、或某页换掉网格内边距，测试照样绿、列数照样漂。
+     * 现在两处都走 [imageWallHorizontalPadding]，改 token 会同时改变所有读数 ——
+     * 用例随即要求人来留痕，而不是悄悄少一排卡片。
+     */
+    @Test fun theWallPaddingComesFromTheSameTokenAsProduction() {
+        assertEquals(24.dp, imageWallHorizontalPadding())
+        assertEquals(VeneraSpacing.screenHorizontal * 2, imageWallHorizontalPadding())
+    }
+
+    /**
+     * `imageWallColumnCount` 只许有一个调用者：`rememberImageWallColumnCount`。
+     * 四颗页各抄一遍「取窗口宽 → 定档 → 算列」正是 ba3e207 修了一半的那个形状
+     * （它把判据收进 policy，却把判据的入参留在各页）。扫描判据见 `testsupport/RepoSources`。
+     */
+    @Test fun onlyOneCallerBuildsTheColumnCount() {
+        val callers = com.venera.compose.testsupport.RepoSources.allMainLines()
+            .filter { (_, _, line) ->
+                val t = line.trim()
+                t.startsWith("imageWallColumnCount(") || (line.contains("imageWallColumnCount(") &&
+                    !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("fun ") &&
+                    !t.startsWith("@Deprecated") && !t.startsWith("ReplaceWith"))
+            }
+            .map { it.first }
+            .distinct()
+        // 声明本身（WideScreenPolicy 的 `fun imageWallColumnCount(`）已被上面的 `fun ` 前缀滤掉，
+        // 所以这里期望的是**调用者**名单：只许有 rememberImageWallColumnCount 这一颗。
+        assertEquals(
+            "列数判据又被别处直接抄用（应走 rememberImageWallColumnCount）：$callers",
+            listOf("com/venera/compose/components/ImageWallColumns.kt"),
+            callers.sorted(),
+        )
+    }
+
     /** 跨进 Expanded 时侧栏从 72 跳到 224，列数会回落一档 —— 这是扣掉侧栏宽的正常结果，不是抖动。 */
     @Test fun crossingIntoExpandedDropsColumnsBecauseTheRailWidens() {
-        val padding = 24.dp
+        val padding = imageWallHorizontalPadding()
         val mediumAt1300 = imageWallColumnCount(1300.dp, WideScreenLayoutMode.Medium, padding)
         val expandedAt1301 = imageWallColumnCount(1301.dp, WideScreenLayoutMode.Expanded, padding)
         assertEquals(7, mediumAt1300)

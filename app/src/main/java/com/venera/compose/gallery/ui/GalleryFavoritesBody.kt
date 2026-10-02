@@ -28,14 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.VeneraEmptyView
-import com.venera.compose.components.imageWallColumnCount
-import com.venera.compose.components.wideScreenLayoutMode
+import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
@@ -45,7 +43,6 @@ import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.security.guard.ContentGuardManager
-import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
@@ -104,12 +101,7 @@ fun GalleryFavoritesBody(
     val gridState = rememberLazyStaggeredGridState()
     // 与画廊墙同一把自适应列数（每列预算 200dp、手机档恒 2 列），理由见 GalleryScreen 那一处。
     // 这里原来是 `if (wide) 3 else 2` 写死两档 —— 侧栏落地后宽窗仍只排 3 列，一格近 480dp。
-    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
-    val columnCount = imageWallColumnCount(
-        windowWidth,
-        wideScreenLayoutMode(windowWidth),
-        VeneraSpacing.screenHorizontal * 2,
-    )
+    val columnCount = rememberImageWallColumnCount()
 
     /**
      * 多选状态机：与本地收藏、图片收藏、网络收藏**同一份**（见 `components/selection/`）。

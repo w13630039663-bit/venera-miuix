@@ -70,7 +70,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -83,8 +82,7 @@ import coil3.ImageLoader
 import coil3.request.ImageRequest
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
-import com.venera.compose.components.imageWallColumnCount
-import com.venera.compose.components.wideScreenLayoutMode
+import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.venera.VeneraCover
@@ -278,15 +276,7 @@ fun GalleryScreen(
     // 但侧栏落地后宽窗仍恒排 3 列 ⇒ 一格 478dp，2026-10-02 用户再报「图片卡片过大」才改成自适应。
     // 「画廊设置 → 网格列数」的 TWO/THREE 仍是显式覆盖，只有 AUTO 走自适应。
     val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
-    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
-    val columnCount = GallerySettingsModel.gridColumns(
-        columnMode,
-        imageWallColumnCount(
-            windowWidth,
-            wideScreenLayoutMode(windowWidth),
-            VeneraSpacing.screenHorizontal * 2,
-        ),
-    )
+    val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 
     // ── 下滑收起两栏（2026-09-30，用户点名；两枚开关默认关）──
     val hideTopBarOnScroll by VeneraPreferences.getInstance(context).galleryHideTopBar.collectAsState()

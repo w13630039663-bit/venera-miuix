@@ -18,13 +18,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
-import com.venera.compose.components.imageWallColumnCount
-import com.venera.compose.components.wideScreenLayoutMode
+import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberTopBarBackdrop
@@ -96,15 +94,7 @@ internal fun GalleryDailyScreen(
 
     val columnMode by VeneraPreferences.getInstance(context).galleryColumnMode.collectAsState()
     // 与画廊墙同一把自适应列数（每列预算 200dp，手机档恒 2 列），理由见 GalleryScreen 那一处。
-    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
-    val columnCount = GallerySettingsModel.gridColumns(
-        columnMode,
-        imageWallColumnCount(
-            windowWidth,
-            wideScreenLayoutMode(windowWidth),
-            VeneraSpacing.screenHorizontal * 2,
-        ),
-    )
+    val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 
     // 与首页**同一把过滤判据**（`buildGalleryWall`）：同一张图在首页预览与这一页上待遇必须一致。
     val wall = remember(vm.posts, maskMode, rules, blockAi) {

@@ -48,7 +48,7 @@ import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.WideScreenLayoutMode
-import com.venera.compose.components.imageWallColumnCount
+import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.SelectableCardFrame
@@ -57,7 +57,6 @@ import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.feature.favoriteimages.FavoriteImagesManager
 import com.venera.compose.ui.tokens.StatusColors
-import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
@@ -162,7 +161,7 @@ fun FavoriteImagesBody(
     val windowWidth = LocalConfiguration.current.screenWidthDp.dp
     val layoutMode = wideScreenLayoutMode(windowWidth)
     val wide = layoutMode != WideScreenLayoutMode.Compact
-    val columnCount = imageWallColumnCount(windowWidth, layoutMode, VeneraSpacing.screenHorizontal * 2)
+    val columnCount = rememberImageWallColumnCount()
     /**
      * 每张图的真实宽高比，加载成功后回填。
      *

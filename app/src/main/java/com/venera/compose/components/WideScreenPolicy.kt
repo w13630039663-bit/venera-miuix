@@ -110,6 +110,16 @@ fun bottomBarClearanceFor(mode: WideScreenLayoutMode): Dp = when (mode) {
  * 再减掉本档侧栏占掉的 [sideBarWidthFor] 与网格自己的左右内边距 ——
  * 侧栏是这一轮新出现的扣项，忘了减就会在宽窗上多排一列、卡片被挤窄。
  */
+/**
+ * 图片墙网格的左右内边距合计 = 页面横向内边距 × 2。
+ *
+ * 存在的理由只有一条：**让单测与生产用同一个表达式**。此前测试传字面量 `24.dp`、
+ * 生产传 `VeneraSpacing.screenHorizontal * 2`，两者今天恰好相等（12×2），
+ * 于是谁改 `screenHorizontal` 都不会红 —— 列数回归就这么溜过去。
+ * 现在四颗页与本文件的用例都从这里取值，改 token 会同时改变读数，用例随即要求留痕。
+ */
+fun imageWallHorizontalPadding(): Dp = VeneraSpacing.screenHorizontal * 2
+
 fun imageWallColumnCount(
     windowWidth: Dp,
     mode: WideScreenLayoutMode,
