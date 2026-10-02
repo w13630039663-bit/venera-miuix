@@ -1,7 +1,9 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
+import com.venera.compose.data.db.TagDictRow
+import com.venera.compose.data.db.TagDictionaryStore
+import com.venera.compose.data.platform.android.openReadOnlySqlDatabase
 import com.venera.compose.gallery.domain.GalleryTagCategory
 import com.venera.compose.gallery.domain.GalleryTitleTag
 import java.io.File
@@ -25,6 +27,9 @@ import kotlinx.coroutines.withContext
  * ⚠️ Android 的 SQLite **要真实路径**，不能直接开 assets —— 所以首次使用把资产复制到 `databases/`。
  * 副本文件名**就是资产文件名**（里面带行数）：数据换一批 → 行数变 → 文件名变 → 重新复制。
  * 若只按"存在就不复制"，刷了词典的包会继续读旧副本，而且看不出来。
+ *
+ * SQL 与列的读法在 [TagDictionaryStore]（那颗不碰 Android 类型，词典读法因此被 `:desktop:test`
+ * 的真库用例钉着）；这一层只剩 Android 才有的两件事：把资产复制成真实路径、只读打开那份库文件。
  */
 class GalleryTagDictionary private constructor(context: Context) {
 
@@ -33,17 +38,18 @@ class GalleryTagDictionary private constructor(context: Context) {
     /** 复制+打开的只此一次：双检由 [lock] 兜，失败后不重试到无限（[openFailed] 记住这次进程的结果）。 */
     private val lock = Any()
 
+    /** 打开成功就是这一份只读连接（进程内不关，与改造前同一个 `SQLiteDatabase` 句柄的寿命）。 */
     @Volatile
-    private var database: SQLiteDatabase? = null
+    private var dictionary: TagDictionaryStore? = null
 
     @Volatile
     private var openFailed = false
 
-    private fun openDatabase(): SQLiteDatabase? {
-        database?.let { return it }
+    private fun openDatabase(): TagDictionaryStore? {
+        dictionary?.let { return it }
         if (openFailed) return null
         synchronized(lock) {
-            database?.let { return it }
+            dictionary?.let { return it }
             if (openFailed) return null
             val opened = runCatching {
                 // 按名字里的**行数**取最新那一份，不做字典序比较：
@@ -66,14 +72,14 @@ class GalleryTagDictionary private constructor(context: Context) {
                         error("复制 $assetName 失败")
                     }
                 }
-                SQLiteDatabase.openDatabase(target.path, null, SQLiteDatabase.OPEN_READONLY)
+                openReadOnlySqlDatabase(target.path)
             }.onFailure {
                 // 这条必须响：静默返回 null 的表现是"画师栏永远不出、标签永远没译文"，
                 // 和"词典就是没有这些词"在屏上一模一样。
                 android.util.Log.w(TAG, "打不开画廊标签词典，分桶兜底与标签译文都不可用", it)
                 openFailed = true
-            }.getOrNull()
-            database = opened
+            }.getOrNull()?.let { TagDictionaryStore(it) }
+            dictionary = opened
             return opened
         }
     }
@@ -94,11 +100,13 @@ class GalleryTagDictionary private constructor(context: Context) {
      * 说成**用户没干活**，而这两件事在屏上本来长得一模一样（同一条错误在标签补全那笔里已经避过一次）。
      */
     suspend fun lookupArtists(names: List<String>): Set<String>? =
-        query(names) { (name, row) -> if (row.getInt(1) == GalleryTagCategory.ARTIST) name else null }?.toSet()
+        query(names) { row ->
+            if (row.category == GalleryTagCategory.ARTIST) row.name else null
+        }?.toSet()
 
     /** 这批名字的中文译名；**没有译名的键不出现**在结果里（调用方据此原样显示）。 */
     suspend fun translations(names: List<String>): Map<String, String> =
-        query(names) { (name, row) -> row.getString(2)?.takeIf { it.isNotBlank() }?.let { name to it } }
+        query(names) { row -> row.cn?.takeIf { it.isNotBlank() }?.let { row.name to it } }
             ?.toMap() ?: emptyMap()
 
     /**
@@ -119,9 +127,10 @@ class GalleryTagDictionary private constructor(context: Context) {
      * 占位符个数就是 SQLite 的**变量上限**（老版本 999）。超了不是"少查几个"，是**直接抛异常**，
      * 而外层 `runCatching` 会把它吞成 `null` ⇒ 表现成"所有卡片都没有标题"，
      * 那是"我们的查询炸了"被说成"这些图没有作品标签"——最难发现的一类错。
-     * 所以按 [TITLE_CHUNK] 切批，逐批查再合并。
+     * 所以按 [TITLE_CHUNK] 切批（切批本身在 [TagDictionaryStore.rowsForInChunks]），逐批查再合并。
      *
-     * **不拼 SQL**（沿用 [query] 那条口径）：标签名是站方给的外部数据，里面有引号与 `%`。
+     * **不拼 SQL**（那条口径也写在 [TagDictionaryStore] 里）：标签名是站方给的外部数据，
+     * 里面有引号与 `%`。
      *
      * @return 库打不开时回 `null`（未知），与"这批名字里没有可当标题的标签"（空 map）**分开**。
      *   调用方据此区分"我们的表没打开"与"这些图确实没有能当标题的标签"。
@@ -130,60 +139,57 @@ class GalleryTagDictionary private constructor(context: Context) {
         val targets = names.map { it.lowercase() }.distinct()
         if (targets.isEmpty()) return emptyMap()
         val out = LinkedHashMap<String, GalleryTitleTag>()
-        for (chunk in targets.chunked(TITLE_CHUNK)) {
-            val part = query(chunk) { (name, row) ->
-                val category = row.getInt(1)
-                val cn = row.getString(2)?.takeIf { it.isNotBlank() }
-                when (category) {
-                    TITLE_COPYRIGHT, TITLE_CHARACTER, TITLE_ARTIST ->
-                        // 译名为空 → 回原词：人名/罗马字照抄那类在库里 `cn` 是 NULL，
-                        // 但它们本来就是"没有公认中文名"，显示原词是对的（同 TagDisplay 的口径）。
-                        GalleryTitleTag(label = cn ?: name, category = category) to name
+        val rows = queryInChunks(targets) ?: return null // 库打不开：整批交 null，不交半份（半份会让一部分卡有标题、一部分没有）
+        for (row in rows) {
+            val name = row.name
+            val cn = row.cn?.takeIf { it.isNotBlank() }
+            val tag = when (row.category) {
+                TITLE_COPYRIGHT, TITLE_CHARACTER, TITLE_ARTIST ->
+                    // 译名为空 → 回原词：人名/罗马字照抄那类在库里 `cn` 是 NULL，
+                    // 但它们本来就是"没有公认中文名"，显示原词是对的（同 TagDisplay 的口径）。
+                    GalleryTitleTag(label = cn ?: name, category = row.category)
 
-                    // 通用档**只在有中文译名时**进表：没译名就只剩 `shirt_lift` 这种原词，
-                    // 摆到标题行上是一串英文下划线，比那一行空着还难读 —— 用户要的是"译名"。
-                    TITLE_GENERAL -> cn?.let { GalleryTitleTag(label = it, category = category) to name }
+                // 通用档**只在有中文译名时**进表：没译名就只剩 `shirt_lift` 这种原词，
+                // 摆到标题行上是一串英文下划线，比那一行空着还难读 —— 用户要的是"译名"。
+                TITLE_GENERAL -> cn?.let { GalleryTitleTag(label = it, category = row.category) }
 
-                    // 元数据档（5）与认不出的档位一律不进表（理由见 GalleryCardTitle 判据 4）。
-                    else -> null
-                }
-            } ?: return null // 库打不开：整批交 null，不交半份（半份会让一部分卡有标题、一部分没有）
-            part.forEach { (tag, name) -> out[name] = tag }
+                // 元数据档（5）与认不出的档位一律不进表（理由见 GalleryCardTitle 判据 4）。
+                else -> null
+            } ?: continue
+            out[name] = tag
         }
         return out
     }
 
     /**
-     * 一次 `name IN (…) ?` 的主键查。
+     * 一次 `name IN (…) ?` 的主键查（读法与占位符口径在 [TagDictionaryStore]）。
      *
-     * 占位符逐位传参，**不把标签名拼进 SQL**：标签名是站方给的外部数据，
-     * 里面合法地出现过引号与 `%`（实测 `tag.json` 的返回里有 `"kimi_wo_aisuru…"` 这种带引号的长串）。
+     * @return 库打不开或查询抛了 ⇒ null（"我们的故障"），空列表 ⇒ 这批名字一个都不在词典里。
      */
-    private suspend fun <T> query(names: List<String>, map: (Pair<String, android.database.Cursor>) -> T?): List<T>? =
+    private suspend fun <T> query(names: List<String>, map: (TagDictRow) -> T?): List<T>? =
         withContext(Dispatchers.IO) {
-            val db = openDatabase() ?: return@withContext null
-            val targets = names.map { it.lowercase() }.distinct()
-            if (targets.isEmpty()) return@withContext emptyList()
-            val placeholders = targets.joinToString(",") { "?" }
-            runCatching {
-                db.query(
-                    "tags", arrayOf(PROJECTION_COLUMN, "category", "cn"),
-                    "name IN ($placeholders)", targets.toTypedArray(), null, null, null,
-                ).use { cursor ->
-                    val out = ArrayList<T>(cursor.count)
-                    while (cursor.moveToNext()) {
-                        val name = cursor.getString(0)?.lowercase() ?: continue
-                        map(name to cursor)?.let { out.add(it) }
-                    }
-                    out
-                }
-            }.onFailure { android.util.Log.w(TAG, "查画廊标签词典失败", it) }.getOrNull()
+            val store = openDatabase() ?: return@withContext null
+            runCatching { store.rowsFor(names).mapNotNull(map) }
+                .onFailure { android.util.Log.w(TAG, "查画廊标签词典失败", it) }
+                .getOrNull()
+        }
+
+    /**
+     * [query] 的分块版本（分块的理由与批次大小见 [TITLE_CHUNK] 那两条注释）。
+     *
+     * 与改造前的同一判据：任何一批失败就整批交 null，不交半份。
+     */
+    private suspend fun queryInChunks(targets: List<String>): List<TagDictRow>? =
+        withContext(Dispatchers.IO) {
+            val store = openDatabase() ?: return@withContext null
+            runCatching { store.rowsForInChunks(targets, TITLE_CHUNK) }
+                .onFailure { android.util.Log.w(TAG, "查画廊标签词典失败", it) }
+                .getOrNull()
         }
 
     companion object {
         private const val TAG = "GalleryTagDictionary"
         private const val ASSET_PREFIX = "gallery_tags_"
-        private const val PROJECTION_COLUMN = "name"
 
         /**
          * 一批查多少个名字。

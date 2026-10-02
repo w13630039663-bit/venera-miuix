@@ -1,8 +1,8 @@
 package com.venera.compose.stats
 
-import android.content.ContentValues
 import android.content.Context
-import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.db.DatabasePorts
+import com.venera.compose.data.db.ReadingStatsStore
 import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagNormalizer
 import com.venera.compose.data.tags.TagTranslationManager
@@ -21,15 +21,23 @@ import java.util.*
  * 2. 连续打卡天数精准计算
  * 3. 14 天阅读趋势分析
  * 4. 常看漫画 Top 榜与偏好题材热度统计
+ *
+ * `reading_stats` 的 SQL 全部在 [ReadingStatsStore] 那一层（本类不碰游标、不碰列名），
+ * 这里只剩三件必须吃 Context 才能做的事：取平台接线口、等标签字典异步加载、按本地时区格式化日期。
  */
 class ReadingStatsManager private constructor(private val context: Context) {
 
-    private val dbHelper = VeneraDatabase.getInstance(context)
+    private val store = ReadingStatsStore(DatabasePorts.of(context).core)
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val shortDateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
 
     /**
      * 上报一次阅读会话
+     *
+     * **写不进去就当场抛出**，不再吞异常：改造前这里套的是 `catch (_: Exception) {}`，
+     * 而 `SQLiteDatabase.insert` 失败既不抛也不回滚，表现成"读了书、统计页永远 0 条"——
+     * 写坏被扮成没数据，这是本仓明禁的那一类（4a 评审点名移交本轮）。
+     * 抛出后的传播路径见 [ReadingStatsStore.insertSession] 的注释与 4b 报告。
      */
     suspend fun recordSession(
         comicId: String,
@@ -42,29 +50,23 @@ class ReadingStatsManager private constructor(private val context: Context) {
     ) = withContext(Dispatchers.IO) {
         if (pagesRead <= 0 && durationSeconds <= 0) return@withContext
 
-        try {
-            val db = dbHelper.writableDatabase
-            val today = dateFormat.format(Date())
-            val cv = ContentValues().apply {
-                put("comic_id", comicId)
-                put("comic_title", comicTitle)
-                put("source_name", sourceName)
-                put("tags", tags.joinToString(TAG_SEPARATOR))
-                put("chapter_title", chapterTitle)
-                put("pages_read", pagesRead)
-                put("duration_seconds", durationSeconds)
-                put("read_date", today)
-                put("created_at", System.currentTimeMillis())
-            }
-            db.insert("reading_stats", null, cv)
-        } catch (_: Exception) {}
+        store.insertSession(
+            comicId = comicId,
+            comicTitle = comicTitle,
+            sourceName = sourceName,
+            tags = tags.joinToString(TAG_SEPARATOR),
+            chapterTitle = chapterTitle,
+            pagesRead = pagesRead,
+            durationSeconds = durationSeconds,
+            readDate = dateFormat.format(Date()),
+            createdAt = System.currentTimeMillis(),
+        )
     }
 
     /**
      * 获取全站阅读总览
      */
     suspend fun getSummary(): ReadingStatsSummary = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
         val todayStr = dateFormat.format(Date())
 
         var totalSec = 0L
@@ -73,36 +75,22 @@ class ReadingStatsManager private constructor(private val context: Context) {
         var todaySec = 0L
         var todayPages = 0
 
-        val cursor = db.rawQuery(
-            "SELECT comic_id, source_name, pages_read, duration_seconds, read_date FROM reading_stats",
-            null
-        )
-        cursor.use {
-            val cidIdx = it.getColumnIndex("comic_id")
-            val srcIdx = it.getColumnIndex("source_name")
-            val pagesIdx = it.getColumnIndex("pages_read")
-            val durIdx = it.getColumnIndex("duration_seconds")
-            val dateIdx = it.getColumnIndex("read_date")
+        for (row in store.summaryRows()) {
+            val p = row.pagesRead
+            val d = row.durationSeconds
 
-            while (it.moveToNext()) {
-                val p = it.getInt(pagesIdx)
-                val d = it.getLong(durIdx)
-                val dt = it.getString(dateIdx)
-                val cid = "${it.getString(srcIdx)}_${it.getString(cidIdx)}"
+            totalSec += d
+            totalPages += p
+            comicSet.add("${row.sourceName}_${row.comicId}")
 
-                totalSec += d
-                totalPages += p
-                comicSet.add(cid)
-
-                if (dt == todayStr) {
-                    todaySec += d
-                    todayPages += p
-                }
+            if (row.readDate == todayStr) {
+                todaySec += d
+                todayPages += p
             }
         }
 
         // 计算连续打卡天数
-        val streak = calculateStreakDays(db)
+        val streak = calculateStreakDays()
 
         ReadingStatsSummary(
             totalSeconds = totalSec,
@@ -118,8 +106,6 @@ class ReadingStatsManager private constructor(private val context: Context) {
      * 获取最近 14 天每日阅读趋势
      */
     suspend fun getRecent14DaysTrend(): List<DailyTrendItem> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
-        val calendar = Calendar.getInstance()
         val daysList = mutableListOf<String>()
 
         for (i in 13 downTo 0) {
@@ -132,20 +118,8 @@ class ReadingStatsManager private constructor(private val context: Context) {
             map[d] = 0 to 0L
         }
 
-        val cursor = db.rawQuery(
-            "SELECT read_date, SUM(pages_read) as sum_pages, SUM(duration_seconds) as sum_dur FROM reading_stats WHERE read_date >= ? GROUP BY read_date",
-            arrayOf(daysList.first())
-        )
-        cursor.use {
-            val dateIdx = it.getColumnIndex("read_date")
-            val pagesIdx = it.getColumnIndex("sum_pages")
-            val durIdx = it.getColumnIndex("sum_dur")
-            while (it.moveToNext()) {
-                val dt = it.getString(dateIdx)
-                val p = it.getInt(pagesIdx)
-                val d = it.getLong(durIdx)
-                map[dt] = p to d
-            }
+        for (row in store.trendRows(daysList.first())) {
+            map[row.readDate] = row.pages to row.seconds
         }
 
         daysList.map { d ->
@@ -163,38 +137,15 @@ class ReadingStatsManager private constructor(private val context: Context) {
      * 获取阅读时间最长的常看漫画 Top 10
      */
     suspend fun getTopComics(limit: Int = 10): List<ComicStatItem> = withContext(Dispatchers.IO) {
-        val db = dbHelper.readableDatabase
-        val list = mutableListOf<ComicStatItem>()
-
-        val cursor = db.rawQuery(
-            """
-            SELECT comic_id, comic_title, source_name, SUM(pages_read) as sum_pages, SUM(duration_seconds) as sum_dur
-            FROM reading_stats
-            GROUP BY comic_id, source_name
-            ORDER BY sum_dur DESC, sum_pages DESC
-            LIMIT ?
-            """.trimIndent(),
-            arrayOf(limit.toString())
-        )
-        cursor.use {
-            val idIdx = it.getColumnIndex("comic_id")
-            val titleIdx = it.getColumnIndex("comic_title")
-            val srcIdx = it.getColumnIndex("source_name")
-            val pagesIdx = it.getColumnIndex("sum_pages")
-            val durIdx = it.getColumnIndex("sum_dur")
-            while (it.moveToNext()) {
-                list.add(
-                    ComicStatItem(
-                        comicId = it.getString(idIdx),
-                        comicTitle = it.getString(titleIdx),
-                        sourceName = it.getString(srcIdx),
-                        pagesRead = it.getInt(pagesIdx),
-                        durationSeconds = it.getLong(durIdx)
-                    )
-                )
-            }
+        store.topComics(limit).map { row ->
+            ComicStatItem(
+                comicId = row.comicId,
+                comicTitle = row.comicTitle,
+                sourceName = row.sourceName,
+                pagesRead = row.pages,
+                durationSeconds = row.seconds
+            )
         }
-        list
     }
 
     /**
@@ -219,31 +170,21 @@ class ReadingStatsManager private constructor(private val context: Context) {
         val monthly = HashMap<String, HashMap<String, Int>>()
         var taggedPages = 0
 
-        val cursor = dbHelper.readableDatabase.rawQuery(
-            "SELECT read_date, pages_read, tags FROM reading_stats " +
-                "WHERE read_date >= ? AND tags != ''",
-            arrayOf(startKey)
-        )
-        cursor.use {
-            val dateIdx = it.getColumnIndex("read_date")
-            val pagesIdx = it.getColumnIndex("pages_read")
-            val tagsIdx = it.getColumnIndex("tags")
-            while (it.moveToNext()) {
-                val pages = it.getInt(pagesIdx)
-                if (pages <= 0) continue
-                val month = it.getString(dateIdx).take(MONTH_KEY_LENGTH)
-                var contributed = false
-                for (plainTag in it.getString(tagsIdx).split(TAG_SEPARATOR)) {
-                    val display = normalizer.normalize(plainTag) ?: continue
-                    contributed = true
-                    val acc = buckets.getOrPut(display) { TagBucketAccumulator() }
-                    acc.pages += pages
-                    acc.originals[plainTag] = (acc.originals[plainTag] ?: 0) + 1
-                    val monthCounts = monthly.getOrPut(month) { HashMap() }
-                    monthCounts[display] = (monthCounts[display] ?: 0) + pages
-                }
-                if (contributed) taggedPages += pages
+        for (row in store.taggedRows(startKey)) {
+            val pages = row.pages
+            if (pages <= 0) continue
+            val month = row.readDate.take(MONTH_KEY_LENGTH)
+            var contributed = false
+            for (plainTag in row.tags.split(TAG_SEPARATOR)) {
+                val display = normalizer.normalize(plainTag) ?: continue
+                contributed = true
+                val acc = buckets.getOrPut(display) { TagBucketAccumulator() }
+                acc.pages += pages
+                acc.originals[plainTag] = (acc.originals[plainTag] ?: 0) + 1
+                val monthCounts = monthly.getOrPut(month) { HashMap() }
+                monthCounts[display] = (monthCounts[display] ?: 0) + pages
             }
+            if (contributed) taggedPages += pages
         }
 
         val sorted = buckets.entries.sortedWith(
@@ -327,43 +268,26 @@ class ReadingStatsManager private constructor(private val context: Context) {
         }
     }
 
-    private fun calculateStreakDays(db: android.database.sqlite.SQLiteDatabase): Int {
-        val cursor = db.rawQuery(
-            "SELECT DISTINCT read_date FROM reading_stats ORDER BY read_date DESC",
-            null
-        )
-        val dates = mutableListOf<String>()
-        cursor.use {
-            while (it.moveToNext()) {
-                dates.add(it.getString(0))
-            }
-        }
+    /**
+     * 连续打卡天数。日期运算留在这里（要 `Calendar` 与本地时区），
+     * "从今天/昨天起逐日往回数连续命中"的判据在 [ReadingStatsStore.streakDays]，两边各一份就一定会漂。
+     */
+    private fun calculateStreakDays(): Int {
+        val dates = store.distinctReadDates()
         if (dates.isEmpty()) return 0
 
         val today = dateFormat.format(Date())
-        val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }.let { dateFormat.format(it.time) }
+        val yesterday = dayBefore(today)
 
-        // 如果今天或昨天有记录，则连续打卡成立
-        if (!dates.contains(today) && !dates.contains(yesterday)) {
-            return 0
-        }
+        return store.streakDays(dates, today, yesterday, ::dayBefore)
+    }
 
-        var streak = 0
+    /** 把 `yyyy-MM-dd` 往前挪一天（与改造前同一份 Calendar 走法，含夏令时那套行为）。 */
+    private fun dayBefore(date: String): String {
         val cal = Calendar.getInstance()
-        if (!dates.contains(today)) {
-            cal.add(Calendar.DAY_OF_YEAR, -1)
-        }
-
-        while (true) {
-            val dateStr = dateFormat.format(cal.time)
-            if (dates.contains(dateStr)) {
-                streak++
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-            } else {
-                break
-            }
-        }
-        return streak
+        cal.time = dateFormat.parse(date) ?: Date()
+        cal.add(Calendar.DAY_OF_YEAR, -1)
+        return dateFormat.format(cal.time)
     }
 
     companion object {

@@ -1,11 +1,12 @@
 package com.venera.compose.feature.favoriteimages
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.database.sqlite.SQLiteDatabase
+import com.venera.compose.data.db.DatabasePorts
+import com.venera.compose.data.db.FavoriteImageBackupFields
+import com.venera.compose.data.db.FavoriteImagesStore
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.db.ReadingStatsStore
 import com.venera.compose.data.tags.TagNormalizer
 import com.venera.compose.feature.ComicItem
 import com.venera.compose.stats.ReadingStatsManager
@@ -122,10 +123,17 @@ fun FavoriteImageItem.toComicItem() = ComicItem(
 
 /**
  * 单页/插图收藏管理器
+ *
+ * `favorite_images` 的 SQL 全在 [FavoriteImagesStore]（同 [com.venera.compose.data.db.ReadingStatsStore]
+ * 的拆法：持久层脱开 Android 类型，`data/db` 才能进桌面编译面并被真库用例跑住）。
+ * 这一层留下的是只有 Android 才有的事：`filesDir` 下的原画落盘、`Bitmap` 编码，
+ * 以及把库里的行补成卡片要显示的作者。
  */
 class FavoriteImagesManager private constructor(private val context: Context) {
 
-    private val dbHelper = VeneraDatabase.getInstance(context)
+    private val core = DatabasePorts.of(context).core
+    private val store = FavoriteImagesStore(core)
+    private val statsStore = ReadingStatsStore(core)
 
     suspend fun addFavorite(
         comicId: String,
@@ -137,19 +145,19 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         localPath: String = ""
     ): Long = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.writableDatabase
-            val cv = ContentValues().apply {
-                put("comic_id", comicId)
-                put("comic_title", comicTitle)
-                put("source_name", sourceName)
-                put("chapter_title", chapterTitle)
-                put("page_index", pageIndex)
-                put("image_url", imageUrl)
-                put("local_path", localPath)
-                put("created_at", System.currentTimeMillis())
-            }
-            db.insert("favorite_images", null, cv)
+            store.insert(
+                comicId = comicId,
+                comicTitle = comicTitle,
+                sourceName = sourceName,
+                chapterTitle = chapterTitle,
+                pageIndex = pageIndex,
+                imageUrl = imageUrl,
+                localPath = localPath,
+                createdAt = System.currentTimeMillis(),
+            )
         } catch (_: Exception) {
+            // 写不下去回报 -1：调用方（阅读器）就是按这个数如实提示"没存进去"的。
+            // 判据与改造前相同，只是改造前靠 SQLiteDatabase.insert 自己回 -1，现在是门面抛出后收口在这里。
             -1L
         }
     }
@@ -195,18 +203,13 @@ class FavoriteImagesManager private constructor(private val context: Context) {
 
     suspend fun removeFavorite(id: Long): Boolean = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.writableDatabase
             // 先读路径再删行：行一没就再没人知道那个文件存在过（泄漏在 filesDir 里）。
-            val path = runCatching {
-                db.rawQuery(
-                    "SELECT local_path FROM favorite_images WHERE id = ?",
-                    arrayOf(id.toString()),
-                ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
-            }.getOrNull()
-            val removed = db.delete("favorite_images", "id = ?", arrayOf(id.toString())) > 0
+            val path = store.localPathOf(id)
+            val removed = store.deleteById(id)
             if (removed) deletePersistedFile(path)
             removed
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("FavoriteImages", "removeFavorite(id=$id) failed", e)
             false
         }
     }
@@ -222,16 +225,8 @@ class FavoriteImagesManager private constructor(private val context: Context) {
     suspend fun removeFavorites(ids: List<Long>): Int = withContext(Dispatchers.IO) {
         if (ids.isEmpty()) return@withContext 0
         try {
-            val db = dbHelper.writableDatabase
-            val placeholders = ids.joinToString(",") { "?" }
-            val args = ids.map { it.toString() }.toTypedArray()
-            val paths = runCatching {
-                db.rawQuery(
-                    "SELECT local_path FROM favorite_images WHERE id IN ($placeholders)",
-                    args,
-                ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
-            }.getOrDefault(emptyList())
-            val removed = db.delete("favorite_images", "id IN ($placeholders)", args)
+            val paths = store.localPathsOf(ids)
+            val removed = store.deleteByIds(ids)
             if (removed > 0) paths.forEach { deletePersistedFile(it) }
             removed
         } catch (e: Exception) {
@@ -242,12 +237,10 @@ class FavoriteImagesManager private constructor(private val context: Context) {
 
     suspend fun isFavorited(imageUrl: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.readableDatabase
-            val cursor = db.rawQuery("SELECT id FROM favorite_images WHERE image_url = ? LIMIT 1", arrayOf(imageUrl))
-            val exists = cursor.moveToFirst()
-            cursor.close()
-            exists
+            store.isFavorited(imageUrl)
         } catch (_: Exception) {
+            // 读不出就报"未收藏"：这颗心只是按钮上的一个初始状态，下一帧重进页面就会再问一次。
+            // 与改造前一致（改造前也是 catch → false），这里不升级成抛，因为打不开图墙的代价更大。
             false
         }
     }
@@ -257,26 +250,17 @@ class FavoriteImagesManager private constructor(private val context: Context) {
      * 见 [ImageFavoriteBackupRow] 的说明。
      */
     suspend fun exportBackupRows(): List<ImageFavoriteBackupRow> = withContext(Dispatchers.IO) {
-        val out = mutableListOf<ImageFavoriteBackupRow>()
-        val cursor = dbHelper.readableDatabase.rawQuery(
-            "SELECT comic_id, comic_title, source_name, chapter_title, page_index, image_url, created_at" +
-                " FROM favorite_images ORDER BY created_at DESC",
-            null,
-        )
-        cursor.use {
-            while (it.moveToNext()) {
-                out += ImageFavoriteBackupRow(
-                    comicId = it.getString(0) ?: "",
-                    comicTitle = it.getString(1) ?: "",
-                    sourceName = it.getString(2) ?: "",
-                    chapterTitle = it.getString(3) ?: "",
-                    pageIndex = it.getInt(4),
-                    imageUrl = it.getString(5) ?: "",
-                    createdAt = it.getLong(6),
-                )
-            }
+        store.backupFields().map {
+            ImageFavoriteBackupRow(
+                comicId = it.comicId,
+                comicTitle = it.comicTitle,
+                sourceName = it.sourceName,
+                chapterTitle = it.chapterTitle,
+                pageIndex = it.pageIndex,
+                imageUrl = it.imageUrl,
+                createdAt = it.createdAt,
+            )
         }
-        out
     }
 
     /**
@@ -288,39 +272,25 @@ class FavoriteImagesManager private constructor(private val context: Context) {
      *
      * 去重键是 `image_url`，与 [isFavorited] 用的同一个：同一页被重复导入会在墙上摆两张，
      * 而大图页的心形按钮按地址判定"在不在收藏里"，那时它对两张都显示已收藏，删一张另一张还在。
+     *
+     * 落库那一步不在这里吞异常：整笔事务里任何一行写不下去就抛出（判据与改造前的
+     * "insert 返回 -1 ⇒ 手工抛 SQLException"相同），调用方（`BackupManager`）据此把这次导入
+     * 如实报成失败，而不是"报了成功但少几条"。
      */
     suspend fun restoreBackupRows(rows: List<ImageFavoriteBackupRow>): Int = withContext(Dispatchers.IO) {
-        if (rows.isEmpty()) return@withContext 0
-        val db = dbHelper.writableDatabase
-        val known = HashSet<String>()
-        db.rawQuery("SELECT image_url FROM favorite_images", null).use { c ->
-            while (c.moveToNext()) c.getString(0)?.let { known += it }
-        }
-        var added = 0
-        db.beginTransaction()
-        try {
-            for (row in rows) {
-                if (!known.add(row.imageUrl)) continue
-                // insert 返回 -1 是失败而不是抛异常（SQLite 只打日志），这里不退成 -1 就没人知道少了一张。
-                // 事务里当场抛出 = 整笔不提交，比"报成功但少几条"好。
-                val inserted = db.insert("favorite_images", null, ContentValues().apply {
-                    put("comic_id", row.comicId)
-                    put("comic_title", row.comicTitle)
-                    put("source_name", row.sourceName)
-                    put("chapter_title", row.chapterTitle)
-                    put("page_index", row.pageIndex)
-                    put("image_url", row.imageUrl)
-                    put("local_path", "")
-                    put("created_at", row.createdAt)
-                })
-                if (inserted < 0) throw android.database.SQLException("插图收藏落库失败：${row.imageUrl}")
-                added++
+        store.restoreBackupFields(
+            rows.map {
+                FavoriteImageBackupFields(
+                    comicId = it.comicId,
+                    comicTitle = it.comicTitle,
+                    sourceName = it.sourceName,
+                    chapterTitle = it.chapterTitle,
+                    pageIndex = it.pageIndex,
+                    imageUrl = it.imageUrl,
+                    createdAt = it.createdAt,
+                )
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-        added
+        )
     }
 
     /**
@@ -337,38 +307,25 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         val authors = authorIndex()
         val list = mutableListOf<FavoriteImageItem>()
         try {
-            val db = dbHelper.readableDatabase
-            val cursor = db.rawQuery("SELECT * FROM favorite_images ORDER BY created_at DESC", null)
-            cursor.use {
-                val idIdx = it.getColumnIndex("id")
-                val cidIdx = it.getColumnIndex("comic_id")
-                val titleIdx = it.getColumnIndex("comic_title")
-                val srcIdx = it.getColumnIndex("source_name")
-                val chIdx = it.getColumnIndex("chapter_title")
-                val pageIdx = it.getColumnIndex("page_index")
-                val urlIdx = it.getColumnIndex("image_url")
-                val pathIdx = it.getColumnIndex("local_path")
-                val timeIdx = it.getColumnIndex("created_at")
-
-                while (it.moveToNext()) {
-                    val comicId = it.getString(cidIdx) ?: ""
-                    list.add(
-                        FavoriteImageItem(
-                            id = it.getLong(idIdx),
-                            comicId = comicId,
-                            comicTitle = it.getString(titleIdx),
-                            sourceName = it.getString(srcIdx),
-                            chapterTitle = it.getString(chIdx),
-                            pageIndex = it.getInt(pageIdx),
-                            imageUrl = it.getString(urlIdx),
-                            localPath = it.getString(pathIdx) ?: "",
-                            createdAt = it.getLong(timeIdx),
-                            author = authors[comicId] ?: "",
-                        )
-                    )
-                }
+            list += store.allRows().map { row ->
+                FavoriteImageItem(
+                    id = row.id,
+                    comicId = row.comicId,
+                    comicTitle = row.comicTitle,
+                    sourceName = row.sourceName,
+                    chapterTitle = row.chapterTitle,
+                    pageIndex = row.pageIndex,
+                    imageUrl = row.imageUrl,
+                    localPath = row.localPath,
+                    createdAt = row.createdAt,
+                    author = authors[row.comicId] ?: "",
+                )
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // 与改造前一致：整表读不出来就交已拿到的部分（此时是空表），页面自己提示加载失败。
+            // 换成抛出会让收藏墙在库坏了时直接崩，而那本来只是"这一屏没有图"。
+            android.util.Log.e("FavoriteImages", "getAllFavorites failed", e)
+        }
         list
     }
 
@@ -377,21 +334,17 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         val out = mutableMapOf<String, String>()
         // 先铺覆盖面更广的阅读统计，再让本地收藏覆盖它（author 字段更权威）。
         try {
-            dbHelper.readableDatabase
-                .rawQuery("SELECT comic_id, tags FROM reading_stats WHERE tags != ''", null)
-                .use { c ->
-                    val idIdx = c.getColumnIndex("comic_id")
-                    val tagIdx = c.getColumnIndex("tags")
-                    while (c.moveToNext()) {
-                        val id = c.getString(idIdx)?.takeIf { it.isNotBlank() } ?: continue
-                        if (out.containsKey(id)) continue
-                        val tags = (c.getString(tagIdx) ?: "")
-                            .split(ReadingStatsManager.TAG_SEPARATOR)
-                            .filter { it.isNotBlank() }
-                        TagNormalizer.resolveAuthor("", tags)?.let { out[id] = it }
-                    }
-                }
-        } catch (_: Exception) {}
+            statsStore.comicTagPairs().forEach { pair ->
+                val id = pair.comicId.takeIf { it.isNotBlank() } ?: return@forEach
+                if (out.containsKey(id)) return@forEach
+                val tags = pair.tags
+                    .split(ReadingStatsManager.TAG_SEPARATOR)
+                    .filter { it.isNotBlank() }
+                TagNormalizer.resolveAuthor("", tags)?.let { out[id] = it }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FavoriteImages", "作者反查跳过阅读统计这一路", e)
+        }
         // 用 runCatching：本地收藏表是按收藏夹分表的动态结构，建表前调用会抛，
         // 这里失败只意味着少一路作者来源，不该让整张插图列表打不开。
         runCatching {

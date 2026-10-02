@@ -1,8 +1,10 @@
 package com.venera.compose.security.guard
 
-import android.content.ContentValues
 import android.content.Context
-import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.db.DatabasePorts
+import com.venera.compose.data.db.GuardRuleStore
+import com.venera.compose.data.db.optTextValue
+import com.venera.compose.data.db.parseJsonObject
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.feature.ComicItem
 import com.venera.compose.source.model.Comic
@@ -12,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.util.LinkedHashMap
 
 data class GuardRule(
@@ -91,11 +92,14 @@ internal fun isAiTitleMarked(title: String): Boolean =
  *  - BLUR : 条目**必须保留**，由 [coverMaskStateFor] 返回 BLURRED 交卡片打码
  *           （列表剔除绝不能在此模式发生，否则整站成人源在探索页直接变空列表）
  *  - HIDE : [filterComicModels] / [filterExploreParts] 才执行物理剔除
+ *
+ * `content_guard_rules` 的 SQL 在 [GuardRuleStore]（那颗不碰 Android 类型，所以 `:desktop:test`
+ * 能拿真库跑规则读写）；这里剩下的才是 Context 的活：assets 里的源级预设表、偏好、内存缓存与判定链。
  */
 class ContentGuardManager private constructor(private val context: Context) {
 
-    private val dbHelper = com.venera.compose.StartupTrace.timed("Guard: VeneraDatabase.getInstance") {
-        VeneraDatabase.getInstance(context)
+    private val ruleStore = com.venera.compose.StartupTrace.timed("Guard: DatabasePorts.of(core)") {
+        GuardRuleStore(DatabasePorts.of(context).core)
     }
     private val prefs = com.venera.compose.StartupTrace.timed("Guard: KeyValueStore(venera_guard_prefs)") {
         AndroidKeyValueStore(context, "venera_guard_prefs")
@@ -136,7 +140,7 @@ class ContentGuardManager private constructor(private val context: Context) {
     private val verdictCache = LinkedHashMap<String, String>()
 
     init {
-        com.venera.compose.StartupTrace.timed("Guard: loadRules() [DB rawQuery]") { loadRules() }
+        com.venera.compose.StartupTrace.timed("Guard: loadRules() [SELECT content_guard_rules]") { loadRules() }
         com.venera.compose.StartupTrace.timed("Guard: loadSourcePresets() [assets+JSON]") { loadSourcePresets() }
     }
 
@@ -176,30 +180,23 @@ class ContentGuardManager private constructor(private val context: Context) {
 
     fun loadRules() {
         try {
-            val db = dbHelper.readableDatabase
-            val cursor = db.rawQuery("SELECT * FROM content_guard_rules ORDER BY id DESC", null)
-            val list = mutableListOf<GuardRule>()
-            cursor.use {
-                val idIdx = it.getColumnIndex("id")
-                val typeIdx = it.getColumnIndex("rule_type")
-                val patIdx = it.getColumnIndex("pattern")
-                val regIdx = it.getColumnIndex("is_regex")
-                val enIdx = it.getColumnIndex("is_enabled")
-                while (it.moveToNext()) {
-                    list.add(
-                        GuardRule(
-                            id = it.getLong(idIdx),
-                            type = it.getString(typeIdx),
-                            pattern = it.getString(patIdx),
-                            isRegex = it.getInt(regIdx) == 1,
-                            isEnabled = it.getInt(enIdx) == 1
-                        )
-                    )
-                }
+            _rules.value = ruleStore.loadAll().map {
+                GuardRule(
+                    id = it.id,
+                    type = it.ruleType,
+                    pattern = it.pattern,
+                    isRegex = it.isRegex,
+                    isEnabled = it.isEnabled
+                )
             }
-            _rules.value = list
             invalidate()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // 与改造前一致：规则读不出来就保持上一次已知的那批（首次是空表）。
+            // 这里不升级成抛 —— 判定链宁可少几条规则也不该把整个探索页打死，
+            // 而"少规则"的方向是**漏屏蔽**，所以在真机回归里要点这一条（见 4b 报告）。
+            // 但不许静默：logcat 必须留痕，否则"库坏了"与"就是没规则"在屏上分不开。
+            android.util.Log.w("ContentGuard", "loadRules 读取失败，沿用已知规则集", e)
+        }
     }
 
     /**
@@ -209,11 +206,11 @@ class ContentGuardManager private constructor(private val context: Context) {
     private fun loadSourcePresets() {
         try {
             val text = context.assets.open("source_content_warning.json").bufferedReader().use { it.readText() }
-            val root = JSONObject(text)
-            val sources = root.optJSONObject("sources") ?: return
-            sources.keys().forEach { key ->
-                val entry = sources.optJSONObject(key) ?: return@forEach
-                sourcePresets[key] = entry.optString("level", "safe")
+            val root = parseJsonObject(text)
+            val sources = root["sources"]?.takeIf { it.isJsonObject }?.asJsonObject ?: return
+            for (key in sources.keySet()) {
+                val entry = sources[key]?.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                sourcePresets[key] = entry.optTextValue("level", "safe")
             }
         } catch (_: Exception) {
             // 预设表缺失/损坏：清空已载入内容，全部按 safe 处理（宁松勿严）。
@@ -261,28 +258,20 @@ class ContentGuardManager private constructor(private val context: Context) {
 
     suspend fun addRule(type: String, pattern: String, isRegex: Boolean = false): Long = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.writableDatabase
-            val cv = ContentValues().apply {
-                put("rule_type", type)
-                put("pattern", pattern.trim())
-                put("is_regex", if (isRegex) 1 else 0)
-                put("is_enabled", 1)
-                put("created_at", System.currentTimeMillis())
-            }
-            val id = db.insert("content_guard_rules", null, cv)
+            val id = ruleStore.add(type, pattern.trim(), isRegex, System.currentTimeMillis())
             loadRules()
             id
         } catch (_: Exception) {
+            // 写不进去回报 -1，调用方（长按卡片"屏蔽本作"）据此如实提示失败；判据与改造前相同。
             -1L
         }
     }
 
     suspend fun deleteRule(id: Long): Boolean = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.writableDatabase
-            val count = db.delete("content_guard_rules", "id = ?", arrayOf(id.toString()))
+            val deleted = ruleStore.delete(id)
             loadRules()
-            count > 0
+            deleted
         } catch (_: Exception) {
             false
         }
