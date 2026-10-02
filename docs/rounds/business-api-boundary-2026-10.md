@@ -17,8 +17,8 @@
 | UI import 实现类 | **125 条 / 56 颗文件 / 33 个符号**（`VeneraPreferences` 29、`ComicSourceManager` 13、`ContentGuardManager` 12、`LocalFavoritesManager` 7…） | 见 `BusinessApiBaseline.kt` 的 `BASELINE_IMPORT` |
 | 非 `getInstance` 的直连 | `AndroidKeyValueStore(` 3、`HostCircuitBreaker.` 3、`okhttp3.` 1、`PreferredIpRuntime.` 5、`ComicStorageRoot.` 15 | 同上，`BASELINE_*` 五张表 |
 | 全仓 `fun getInstance(` | 35 处声明 | `grep -rn "fun getInstance(" --include=*.kt app/src/main` |
-| ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 18 处（另有 3 处在注释里）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
-| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
+| ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 **17 处**（另有 4 处是注释字样，见 §九 第 2 条 —— **本行原先写的「18 处 / 另 3 处」是错的**，错在把 `BusinessPorts.kt` 自己那句 KDoc 算成了调用点）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
+| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例；D0（`architecture/LayeringEdgeTest.kt`）后 104 颗 `.kt` / 102 颗测试类 / 800 个用例** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
 **冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **19 处**（B3 再加 2 处 W1 嵌套类型，见 §五 B3 与 §六）。
 
@@ -240,7 +240,11 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 9. **`GalleryFeedSource` 的类型收口（2 处）** —— 它今天已是聚合端口（三站并发 + 每站时间预算 + `GalleryLegGuard` 都在里面），只做装配收口。
 10. **`engine/*`** —— UI 目录实测 0 处 `getInstance`，没有可治的穿透点。
 11. **把 `BusinessPorts` provide 进 CompositionLocal** —— §二 五条理由。
-12. **12 颗 VM 的构造注入 / 第一颗 `ViewModelProvider.Factory`** —— §二 三条理由，硬约束是 7/18 调用点在冻结屏内。
+12. ~~**12 颗 VM 的构造注入 / 第一颗 `ViewModelProvider.Factory`** —— §二 三条理由，硬约束是 7/18 调用点在冻结屏内。~~
+    **本条已于 2026-10-03 被用户改判推翻**（指令原文要求「引入 ViewModelProvider.Factory，将 BusinessPorts 或契约接口
+    通过构造函数注入」）。裁决与做法见 **§九**：走的是第三路（主构造吃契约 + 保留 `constructor(app)` 委托），
+    既没给冻结屏开 Factory 口子、也没降级成 `remember`；顺带把这条原句里那个 **18** 纠正成实测 **17**。
+    §二 那三条「不把 ports provide 进 CompositionLocal」的理由**不撤销**，与本条无关。
 
 ## 八、与 Part B（W1-W6）的关系
 
@@ -249,3 +253,78 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 - **W5**：本方案把 `GalleryPreferences` 的**接口**先立在 `gallery/data/GalleryPorts.kt`，W5 落实现类时接上它 —— 两批共用「存储名与键名逐字不变 + 化石用例」的同一条口径。
 - **W6**：`FollowUpdatesRepository` 让路给它的构造注入，本方案不碰。
 - 共同前置自动满足：**一行不动 `desktop/build.gradle.kts`**。
+
+## 九、第二阶段 D（2026-10-03 起）：分层守卫 → 收口 → 构造注入
+
+用户 2026-10-03 的指令是「自动提交并执行下一阶段：VM 构造注入 / 解锁遗留债务 / 推进 Part B / UseCase 化」，
+硬约束沿用三条：**行为零变更、不碰冻结屏核心逻辑、不加新依赖**。开工前先把三句前提纠正：
+
+1. **「UI 层已不再穿透底层实现」不成立** —— B5、B7' 两批还没做。复跑读数（`_qa/scan.mjs`）：
+   `getInstance` 站点 **93 处 / 38 颗**；实现类 import **77 条 / 39 颗**；类型位 **32 条 / 21 颗**。
+   其中画廊侧 35 条（B7'）、收藏与离线 18 条（B5）。
+2. **§一 #20 那个「18 处 `viewModel()`」是我自己写错的数**（同一个错还抄进了 `data/api/BusinessPorts.kt:17` 的 KDoc）。
+   实数 **17 处真调用点 + 4 处注释字样 = 21 条 grep 命中**：注释那四处是
+   `feature/Navigation.kt:815`、`gallery/ui/GalleryDailyScreen.kt:56`、`gallery/domain/GalleryForYouRefreshPolicy.kt:11`、
+   以及 `BusinessPorts.kt:17` 这句 KDoc 自己。**「7 处落在冻结屏」这半句成立**，逐文件核过：
+   UnifiedExplore、SourceSection、Search、History、Favorites、NetworkFavorites、Home 各 1 处
+   （`Navigation.kt` 另有 2 处属导航保护域，不计入那 7）。
+3. **§八 对 W3 基线的预判当场兑现**：本方案先落地之后，下层→上层的边只剩 **10 条 / 5 颗文件**（D0 实测，见下）。
+
+### 冻结屏两难的裁决：两个选项都不选（推翻 §七.12）
+
+指令给的二选一 —— 「改冻结契约允许 Factory」或「状态管理降级成 `remember`」—— 两条都不做：
+
+- **不给冻结屏开 Factory 口子**：Factory 只能出现在调用点（`viewModel(factory = …)`），17 处全要改，
+  其中 7 颗文件被 `FREEZE-STATEMENT.md:17-19` 的「禁止架构重构」点名管着；那条禁令写的成因正是
+  「改视觉 → 顺手改 Host → 功能回归 → Crash」这一循环，而 Factory 要在调用点拿 `Context` 去建端口图，
+  等于把 Host 那层的装配时序引进每一颗冻结屏。
+- **不降级成 `remember`**：这些 VM 吃 `viewModelScope` 与 `StateFlow`，且本仓已钉过「导航条目会重建组合」
+  （`project-nav-entry-recomposition`）—— 退场重组与返回时 composition 重建，`remember` 的状态会掉。
+  那是**行为变更**，与硬约束第一条直接对撞。
+- **第三路**：VM **主构造吃契约** + 保留 `constructor(app)` 委托到 `BusinessPorts.of(app)`。
+  17 处调用点**一字不动**（冻结屏零 diff、导航层零 diff），契约仍从构造函数进（JVM 侧可塞假实现，
+  这是构造注入的实际收益所在），日后非冻结屏想上真 Factory 只动调用点、不必再改 VM 一颗字符。
+  零新依赖（`androidx.lifecycle` 已在）。**唯一的逐颗核对项**：现有 `by lazy { BusinessPorts.of(app).… }`
+  是懒的，直接搬成构造参数会变**急** —— 那几颗要注入 ports 对象本身或保留 lazy，
+  判据仍是本方案从头用到现在的那条「第一次真正用到才建单例，时机与改造前逐点相同」。
+
+### D 批次表
+
+| 批 | 内容 | 前置 | 状态 |
+|---|---|---|---|
+| **D0** | W3 `architecture/LayeringEdgeTest.kt`：下层禁 import 上层，基线 **10 条 / 5 颗**，每条写解锁条件 | 无（且它是后面三批的兜底） | ✅ |
+| **D1** | B7' 画廊契约**纯改引** 35 条 / 14 颗；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
+| **D2** | B5 `FavoriteLibrary` + `OfflineLibrary` 18 条；宽度按消费面实数定 | 无 | ⏳ |
+| **D3** | VM 构造注入（第三路），17 处调用点不动 | D1、D2（否则注入的是实现类，等于把穿透定型） | ⏳ |
+| **D4** | 「解锁条件已兑现而债务未清即红」的守卫：W1/W2 类型搬家一旦完成，`BusinessApiBaseline` 挂着的那些行自动转红；并行线脏文件一旦入库，`TagTranslationManager` 那几条待办同样转红 | D0 | ⏳ |
+| **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ⏳ |
+
+**顺序不能反**的两条理由：D0 先做，因为 D1/D2/D3 每一批都在往里写 import，那半边今天一条用例都没有；
+D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现」从可摘的取用替换**升级成构造签名**，
+以后要摘就得改 VM 的对外形状 —— 债务从浅变深。
+
+**跨侧那条边为什么不进 D0 的口径**（如实记，别让人以为 W3 已全覆盖）：实测
+`feature → gallery` **17 条**、`gallery → feature` **5 条**（复算 `_qa/crossside.mjs`）。
+这 22 条绝大多数是合法宿主边（`Navigation.kt:74-78` 承载 `GalleryScreen`；画廊四颗文件吃
+`feature.LocalVeneraDarkTheme`、`GalleryHomeSections.kt:47` 吃 `feature.MiuixSectionHeader` 这些共用 chrome），
+而隔离方案 `gallery-module-isolation-plan-2026-09.md:36-47` 定的禁面是**数据/业务互引**、UI 宿主与只读共用另立一档。
+把它编成 22 行只缩不红的名单，是造一条永远不会亮的灯 —— 不做。
+
+### D0（2026-10-03）读数
+
+- 基线 10 条 / 5 颗文件，逐条解锁条件写在用例的 `UNLOCK` 里（不是给人看的注释，`基线里每一条都要写明解锁条件` 那条用例检查它）。
+  按「该谁摘」分四族：① `source/js/JsComicSource.kt` 3 条 = **W2 本体**；② `security/guard/ContentGuardManager.kt` 1 条 =
+  **W1 同族**（`ComicItem` 是 `feature/ComicItem.kt:27` 的 data class）；③ `data/prefs/` 2 条 = 纯函数/纯常量表住错层，
+  **可独立小批下移**（`components/ComicPresentationPolicy.kt:16` 的一行判据、`ui/tokens/Color.kt:472` 的 `ThemeSeedPresets`）；
+  ④ `sync/BackupManager.kt` 2 条 = **D2 落地后可摘一半**（`:108` 那颗改收藏契约；`ImageFavoriteBackupRows` 是备份行模型，
+  要随图片收藏侧一起收）；⑤ `data/network/CloudflareBypassActivity.kt` 2 条 = 它是住错包的 **Activity**，
+  解锁要连带改 `AndroidManifest` 的 activity name，动的是发布物形状，须单独一批 + 真机验一次过盾。
+- **两条 teeth 实测**（证明它不是死开关）：往 `data/prefs/ComicListPreferences.kt` 注一行
+  `import com.venera.compose.feature.ComicItem` ⇒ 主断言红并点名该文件，同时「命中总条数 11 ≠ 10」也红；
+  撤掉 ⇒ 绿。**反向那一半已经自己红过一次**：第一版没剥 `com/venera/compose/` 前缀，扫描恒 0 条，
+  靠第三条「扫描口径自己要有读数」当场报「下层只扫到 0 颗文件（实测 171）」，才没让它变成一条假绿。
+  注入的临时 import 已用 `git checkout --` 撤净（`grep` 复算 0 命中、该文件 `git status` 干净）。
+- 事故记账：这四处数字（93/38、17 处、10 条 vs 我先量的 8 条、以及第一版恒 0 的判式）全是**取数口径**问题而非取数失败 ——
+  我先用只含 `feature|gallery.ui|reader` 的 grep 量出 8 条 / 4 颗，补齐 `components|ui|download|sync|engine` 才是 10 条 / 5 颗。
+  口径没跑全就落笔，白名单会当场少记 2 条，而那两条是**新批次真会踩的**（`sync/BackupManager` 那族）。
+
