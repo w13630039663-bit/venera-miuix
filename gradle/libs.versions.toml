@@ -35,6 +35,14 @@ kyantShapes = "1.2.1"
 materialMotion = "2.0.1"
 # 种子色生成 MD3 色板（自定义取色用）；版本取自 Maven Central 当前 release
 materialKolor = "5.0.1"
+# ── R1-F 桌面化 S0-1 版本矩阵探针（只被 :desktop 消费，:app 不引用）──────
+# 坐标见 Maven Central: org/jetbrains/compose/compose-gradle-plugin（当前 stable）
+composeMultiplatform = "1.12.1"
+# compose-fluent 正式版至今只有 v0.1.0（2025-08-10），它是拿 Compose 1.8.2 / Kotlin 2.2.0 编的
+# ⇒ 与本工程（CMP 1.12.1 / Kotlin 2.4.10）的二进制兼容就是 S0-2 的靶子。坐标带字面 v 前缀。
+composeFluent = "v0.1.0"
+# ComposeWindowStyler：真 Mica/Acrylic/Tabbed（S0-6）。KMP 构件，JVM 侧由 Gradle 自动重定向 -jvm
+windowStyler = "0.3.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -97,8 +105,18 @@ material-motion-core = { group = "io.github.fornewid", name = "material-motion-c
 # 坐标见 Maven Central: com/materialkolor/material-kolor（5.0.1 为当前 release）
 material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "materialKolor" }
 
+# ── R1-F 桌面化 S0-1 探针依赖 ────────────────────────────────────────────
+# Fluent 控件语义（45 个组件，desktopMain 有 ContextMenu/Dialog 专门实现）
+compose-fluent-desktop = { group = "io.github.compose-fluent", name = "fluent-desktop", version.ref = "composeFluent" }
+# 系统级 Mica/Acrylic 材质（与 Fluent 控件语义是两件事，分开取用）
+window-styler = { group = "com.mayakapps.compose", name = "window-styler", version.ref = "windowStyler" }
+# Miuix 的 desktop 变体：同一版本目录里能不能与 fluent-desktop 并存，是 S0-1 要量的一格
+miuix-ui-desktop = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-desktop", version.ref = "miuix" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+# Compose Multiplatform 的 Gradle 插件（提供 compose.* 访问器与 compose.desktop DSL）
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

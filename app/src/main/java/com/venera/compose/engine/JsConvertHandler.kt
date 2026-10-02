@@ -1,6 +1,5 @@
 package com.venera.compose.engine
 
-import android.util.Base64
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import java.security.KeyFactory
@@ -41,10 +40,10 @@ class JsConvertHandler {
                 "base64" -> {
                     if (isEncode) {
                         val bytes = extractBytes(data["value"]) ?: ByteArray(0)
-                        Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        EngineBase64.encodeToString(bytes)
                     } else {
                         val str = data["value"]?.toString() ?: ""
-                        wrapBytes(Base64.decode(str, Base64.DEFAULT))
+                        wrapBytes(EngineBase64.decode(str))
                     }
                 }
                 "md5" -> {
@@ -129,7 +128,7 @@ class JsConvertHandler {
                 "rsa" -> {
                     val keyStr = data["key"]?.toString() ?: ""
                     val valBytes = extractBytes(data["value"]) ?: ByteArray(0)
-                    val keyBytes = Base64.decode(keyStr, Base64.DEFAULT)
+                    val keyBytes = EngineBase64.decode(keyStr)
                     val privateKey = parsePrivateKey(keyBytes)
                     val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
                     cipher.init(Cipher.DECRYPT_MODE, privateKey)
@@ -141,7 +140,7 @@ class JsConvertHandler {
                 else -> data["value"]
             }
         } catch (e: Exception) {
-            android.util.Log.e("VeneraJS", "Convert error for type: $type", e)
+            EngineLog.e("VeneraJS", "Convert error for type: $type :: ${e.message}")
             null
         }
     }
@@ -152,7 +151,7 @@ class JsConvertHandler {
         if (obj is Map<*, *>) {
             val b64 = obj["__bytes_base64__"] as? String
             if (b64 != null) {
-                return Base64.decode(b64, Base64.DEFAULT)
+                return EngineBase64.decode(b64)
             }
         }
         if (obj is String) {
@@ -169,7 +168,7 @@ class JsConvertHandler {
     }
 
     private fun wrapBytes(bytes: ByteArray): Map<String, String> {
-        return mapOf("__bytes_base64__" to Base64.encodeToString(bytes, Base64.NO_WRAP))
+        return mapOf("__bytes_base64__" to EngineBase64.encodeToString(bytes))
     }
 
     private fun processCipherBlocks(cipher: Cipher, input: ByteArray, blockSize: Int): ByteArray {

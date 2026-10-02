@@ -1,6 +1,7 @@
 # Venera Windows 桌面版可行性评估（含路线对照与改动面清单）
 
-> 状态：**评估完成 / 未开工 / 待拍板 P1–P6**
+> 状态：**评估完成 / 2026-10-02 起按 R1-F 开工（用户改道，W0 撤）** ｜ 待拍板 P2–P6
+> 落地读数见 `windows-r1f-s0-spike-2026-10-02.md`：**S0-1 通过**（`:desktop` 探针窗口起来 + `:app` 四支 APK 照出 + material3 仍解析为 `1.5.0-alpha22`）、**S0-2 通过**（compose-fluent v0.1.0 在 CMP 1.12.1 下 8 组件运行期零 `NoSuchMethodError`）、**S0-6 否决**（window-styler 0.3.2 静默失效）。
 > 日期：2026-10-01　分支：`compose-migration`
 > 范围：**只评估 Windows 桌面版。不考虑 Linux / macOS**（因此上游 CI 里 `Build_Linux`/`Build_MacOS` 那类跨平台包袱、以及"Linux 无障碍不支持"这类限制都不在本文件的决策范围内）。
 > 本文件是评估产物，**不含任何已实施改动**；`FREEZE-STATEMENT.md` 未追加豁免，保护域未申请。
@@ -96,6 +97,8 @@ README 明确提供 `WindowBackdrop.Mica`（**Win11 21H2+**）/ `Acrylic`（Win1
 
 ⚠️ 一个易混点：`compose-fluent` 自己的 `Mica.kt` 是用 **haze 做的应用内模糊**（`fluent-desktop` 的 pom 里**没有** window-styler，该依赖只在它自己的版本目录里声明）。所以**控件语义找 compose-fluent，桌面系统材质找 WindowStyler，两件事分开取用**。
 
+> **【2026-10-02 实测推翻本节的"真 Mica 有现成依赖"】** `window-styler:0.3.2` 在 CMP 1.12.1 下运行期抛 `NoSuchFieldException: delegate`（它反射 skiko `SkiaLayer.delegate` 做透明 hack，该字段已不存在），异常抛在 AWT 事件线程被吞 ⇒ **窗口静默变实心浅灰**。读数与三条改道候选见 `windows-r1f-s0-spike-2026-10-02.md` 第二节 S0-6。
+
 ---
 
 ## 四、"能不能并入我们的 GitHub 仓库"——仓库拓扑与产物纪律
@@ -174,17 +177,18 @@ compose 侧 `data/update/AppUpdateChecker.kt:33` 的发布通道指向本仓库 
 
 | ID | 假设 | 判据（看什么算过） | 不通的后果 |
 |---|---|---|---|
-| **S0-1** | **版本矩阵**：`AGP 9.3.2 + Kotlin 2.4.10 + KMP + CMP + miuix-desktop + compose-fluent-desktop + material3 钉版` 同仓共存 | 一个 `FluentTheme { Text("hi") } }` 桌面窗口跑起来；**同时** `:app:assembleDebug` 的 APK 装真机、首页零回归；两边各跑 `dependencies` 对账 material3 解析结果 | **R1-F 整条作废**，退回 W 或 R2。R1-F 唯一会动 Android 构建产物的一步，故排第一 |
-| **S0-2** | compose-fluent 跑在我们的 CMP 版本上（它是拿 1.8.2 编的） | 抽 8 个真用组件（`NavigationView`/`TextField`/`Flyout`/`MenuFlyout`/`ProgressBar`/`Switcher`/`TooltipBox`/`Dialog`）无 `NoSuchMethodError`；haze 与 miuix-blur/backdrop 同屏不打架 | 被迫锁 1.8.2 或降 Android Compose → 改选 W |
-| **S0-3** | GraalJS 按 `js_api.md` 复刻后与上游一致 | 两级探针：`nhentai.js` 出 ≥10 条结果；`jm.js` 出详情 + 落盘**已还原**的图。**oracle**：同命令跑 `venera --headless updatesubscribe`，对 `[CLI PRINT]` JSON 逐字段对拍 | 心脏不通路线不存在；备胎 Node sidecar |
-| **S0-4** | CF 过盾（5.1） | 拿到 `cf_clearance` 且后续请求 200、`ehentai` 出图 | 该源桌面标记不可用 + 给"浏览器登录后手动导入 cookie"的替代路径 |
-| **S0-5** | **中文 IME** | 搜索框拼音打"禁漫"，候选窗落在光标下、可翻页、可上屏 | 不能降级（入口就是搜索框），不通即改路线 |
-| **S0-6** | WindowStyler 真 Mica | `WindowBackdrop.Mica` 生效并随主题变色；并验"透明 hack 不可逆" | 退回 haze 应用内模糊，观感降档不否决 |
-| **S0-7** | Fluent 档位映射 | `SurfaceMaterial{SOLID,LIQUID_GLASS}` 与 `NavigationBarStyle` 两轴重映射；`isRuntimeShaderSupported()` 在 desktop 的返回值明确——现有 **4 个消费点**会因它返回 false **整段静默跳过玻璃**（`VeneraTopAppBar.kt:122,199`、`VeneraTopBarPill.kt:66`、`InteractiveHighlight.kt:49`），按"降级必须可见"必须要么生效要么报错 | 桌面材质默认关并写明 |
-| **S0-8** | 长列表与内存 | 条漫单列数千图的滚动帧时间与内存；`zoomable-image-coil3` 有无 desktop 变体（`flick-desktop`/`zoomable-desktop`/`sub-sampling-image-desktop` 已确认存在，coil3 那支未见） | 阅读器改分页制 + 超大图可见提示 |
-| **S0-9** | 打包分发 | `nativeDistributions` 出 exe；任务栏真图标；数据落 `%LOCALAPPDATA%`；**含 `modules("jdk.accessibility")`**；**代理设置项在**（5.4）；产物只进 Releases（第四节） | 影响每阶段验收体验 |
+| **S0-1 ✅ 通过** | **版本矩阵**：`AGP 9.3.2 + Kotlin 2.4.10 + KMP + CMP + miuix-desktop + compose-fluent-desktop + material3 钉版` 同仓共存 | 一个 `FluentTheme { Text("hi") } }` 桌面窗口跑起来；**同时** `:app:assembleDebug` 的 APK 装真机、首页零回归；两边各跑 `dependencies` 对账 material3 解析结果 | **R1-F 整条作废**，退回 W 或 R2。R1-F 唯一会动 Android 构建产物的一步，故排第一 |
+| **S0-2 ✅ 通过（8/8 零 NoSuchMethodError）** | compose-fluent 跑在我们的 CMP 版本上（它是拿 1.8.2 编的） | 抽 8 个真用组件（`NavigationView`/`TextField`/`Flyout`/`MenuFlyout`/`ProgressBar`/`Switcher`/`TooltipBox`/`Dialog`）无 `NoSuchMethodError`；haze 与 miuix-blur/backdrop 同屏不打架 | 被迫锁 1.8.2 或降 Android Compose → 改选 W |
+| **S0-3 ✅ 主体通过（nhentai 25 条 / jm 80 条 + 104 页 + 去混淆落盘并量化验证）；⚠️ headless oracle 对拍未做** | GraalJS 按 `js_api.md` 复刻后与上游一致 | 两级探针：`nhentai.js` 出 ≥10 条结果；`jm.js` 出详情 + 落盘**已还原**的图。**oracle**：同命令跑 `venera --headless updatesubscribe`，对 `[CLI PRINT]` JSON 逐字段对拍 | 心脏不通路线不存在；备胎 Node sidecar |
+| **S0-4 ✅ 主体通过（桌面没有 WebView ≠ 过不了盾；唯 SauceNAO 搜索端点被真盾）** | CF 过盾（5.1） | 拿到 `cf_clearance` 且后续请求 200、`ehentai` 出图 | 该源桌面标记不可用 + 给"浏览器登录后手动导入 cookie"的替代路径。**实测**（纯 JVM OkHttp 同一颗 TLS 指纹，走本机代理）：`e-hentai.org` 搜索页 200 真页、详情页图 `ehgt.org/w/…webp` **200 / 21,366 字节 / `RIFF` 魔数 = 出图成立**（该 CDN `Server: nginx` 本就不在 CF 后面）、`exhentai.org/api.php` 200 合法 JSON、`yande.re/post.json` 200、jsdelivr 源索引 200；`ehentai` 真源在 GraalJS 上搜索出 **25 条**。被挡的只有两个：`saucenao.com/search.php` **403 + `cf-mitigated: challenge`（换非浏览器 UA 也挡）**、`danbooru.donmai.us/posts.json` 在应用默认 UA 下挡但**非浏览器 UA 下 200 出真数据**（⇒ 本仓 `ImageHeaderPolicy` 那条规则跨域复现，且移植时要原样搬）。`exhentai.org/` 根路径重定向循环与 gelbooru API 401 **都不是 CF**（分别是缺登录 cookie、缺 `api_key`）。"手动导 cookie"那条未验，需用户从 devtools 手抄一枚 `cf_clearance`；读数与三个自审点在 `windows-r1f-s0-spike-2026-10-02.md` 第九节 |
+| **S0-5 ⏳ 库层已证（`InputMethodSession implements java.awt.im.InputMethodRequests` + Windows 专用 end-composition 补丁），四条人工判据待用户点** | **中文 IME** | 搜索框拼音打"禁漫"，候选窗落在光标下、可翻页、可上屏 | 不能降级（入口就是搜索框），不通即改路线 |
+| **S0-6 ❌ 原依赖否决（0.3.2 反射目标已不存在，且静默）→ 改道候选 a 也判负（材质画不出来，硬伤在窗口层）** | WindowStyler 真 Mica | `WindowBackdrop.Mica` 生效并随主题变色；并验"透明 hack 不可逆" | 退回 haze 应用内模糊，观感降档不否决。**S0-6a 实测**（`windows-r1f-s0-spike-2026-10-02.md` 第十节）：FFM 在 JDK 21 无需 preview 可用、HWND 走 `user32.FindWindowA` 零内部依赖（`sun.awt.AWTAccessor` 那条实测不通）、真透明有官方 `Window(transparent=true)` 但**硬要求 `undecorated=true`**（否则组合期抛 `Transparent window should be undecorated!`）—— 三块砖齐了，**可材质没画**：backdrop 四档扫描里 Mica 与 Tabbed 帧**逐字节相同**、三档均值全是 `R=G=B` 的死灰（桌面参照是 (47,41,36) 带暖偏），方差只来自探针那行字 ⇒ 是 DWM 的 fallback 填充；唯一补法 `WS_EX_NOREDIRECTIONBITMAP` **事后改不上**（`SetWindowLongPtrW` 回读 `0x80000` 未变，该样式只能在 `CreateWindowEx` 时指定）。⇒ 真路只剩 **b. haze 应用内模糊**（fluent pom 自带）或 **c. 桌面侧明确不做材质并写清楚**；a 仅在自建 HWND 窗口层时才重新可选。 |
+| **S0-7 ✅ 通过（预期被推翻：两个 gate 在 desktop 都返回 true，玻璃走库自家 skiko RuntimeEffect；androidx `RuntimeShader` 在桌面 classpath 上根本不存在）** | Fluent 档位映射 | `SurfaceMaterial{SOLID,LIQUID_GLASS}` 与 `NavigationBarStyle` 两轴重映射；`isRuntimeShaderSupported()` 在 desktop 的返回值明确——现有 **4 个消费点**会因它返回 false **整段静默跳过玻璃**（`VeneraTopAppBar.kt:122,199`、`VeneraTopBarPill.kt:66`、`InteractiveHighlight.kt:49`），按"降级必须可见"必须要么生效要么报错 | 桌面材质默认关并写明 |
+| **S0-8 ✅ 通过（阅读器不必改分页制）** | 长列表与内存 | 条漫单列数千图的滚动帧时间与内存；`zoomable-image-coil3` 有无 desktop 变体（`flick-desktop`/`zoomable-desktop`/`sub-sampling-image-desktop` 已确认存在，coil3 那支未见） | 阅读器改分页制 + 超大图可见提示。**实测**：3000 项单列，共享位图档 `p50=5.56 p95=6.13ms 丢帧 2/239`；每项各自组合期解码档 `p95=15.38ms 丢帧 6/239`；skia 解码 **11.7ms/页**、驻留 **8.2MB/页**（3000 页=24.6GB ⇒ 窗口化缓存必需）；`zoomable-image-coil3-0.19.0` 经 module metadata 证实**是纯 Android aar**（无 KMP 变体表），但 `zoomable` 本体有 `desktop*` 变体且 `Modifier.zoomable(...)` 签名无 Android-only 类型 ⇒ 缺的只是一层薄桥接。读数与口径边界在 `windows-r1f-s0-spike-2026-10-02.md` 第八节 |
+| **S0-9 ⏳ 可移植产物已过，且打包对象已换成真闭环（199MB 自包含目录，exe 直跑整链通：源→GraalJS→取图→去混淆 8 页→Fluent 窗口）；安装包仍卡在 WiX 版本（插件下的是 3.11，JDK23 jpackage 拒收）** | 打包分发 | `nativeDistributions` 出 exe；任务栏真图标；数据落 `%LOCALAPPDATA%`；**含 `modules("jdk.accessibility", "jdk.unsupported")`**（后者是 GraalJS 的硬前提，`sun.misc.Unsafe` 住在里面，jlink 自动推导看不见 —— 见探针文档第七节末）；源脚本随包分发（现仍从 `user.dir` 取仓库路径，记在阶段 1）；**代理设置项在**（5.4）；产物只进 Releases（第四节） | 影响每阶段验收体验 |
 
 顺序：S0-1 → S0-2 → S0-3 → S0-5 → S0-6 → S0-4 → S0-7 → S0-8 → S0-9。
+> 阶段 0 收官后，阶段 1 的实施计划已成文：**`windows-r1f-stage1-plan-2026-10-02.md`**（含 6 条待拍板 D1-D6、DoD 判据表与逐任务步骤）。
 
 ### 阶段 1–6
 

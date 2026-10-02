@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -100,8 +101,20 @@ class VeneraJsEngine(appContext: Context) : AutoCloseable {
 
     val htmlHandler = JsHtmlHandler()
     val convertHandler = JsConvertHandler()
-    val httpHandler = JsHttpHandler(context)
-    val dataStore = JsSourceDataStore(context)
+    val httpHandler = JsHttpHandler { VeneraNetworkClient.getInstance(context).okHttpClient }
+    val dataStore = JsSourceDataStore(File(context.filesDir, "comic_source"))
+
+    init {
+        // 引擎层去 Android 化后，日志出口默认 stdout；Android 侧必须重新接回 logcat，
+        // 否则真机 QA 读不到 HTTP/Convert 的失败原因。
+        EngineLog.sink = { level, tag, message ->
+            when (level) {
+                "W" -> Log.w(tag, message)
+                "E" -> Log.e(tag, message)
+                else -> Log.i(tag, message)
+            }
+        }
+    }
 
     private val mapType = object : TypeToken<Map<String, Any?>>() {}.type
 

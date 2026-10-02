@@ -1,14 +1,11 @@
 package com.venera.compose.engine
 
-import android.content.Context
-import android.util.Base64
-import android.util.Log
-import com.venera.compose.data.network.VeneraNetworkClient
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -16,7 +13,7 @@ import java.net.URLEncoder
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
 
-class JsHttpHandler(private val context: Context) {
+class JsHttpHandler(private val baseClient: () -> OkHttpClient) {
 
     private companion object {
         const val TAG = "VeneraHttp"
@@ -80,7 +77,7 @@ class JsHttpHandler(private val context: Context) {
         val body: RequestBody? = when {
             method == "GET" || method == "HEAD" -> null
             dataObj is Map<*, *> && dataObj["__bytes_base64__"] is String -> {
-                val b = Base64.decode(dataObj["__bytes_base64__"] as String, Base64.DEFAULT)
+                val b = EngineBase64.decode(dataObj["__bytes_base64__"] as String)
                 b.toRequestBody((declaredContentType ?: "application/octet-stream").toMediaTypeOrNull())
             }
             dataObj is String -> {
@@ -104,13 +101,13 @@ class JsHttpHandler(private val context: Context) {
         builder.method(method, body)
 
         return try {
-            val baseClient = VeneraNetworkClient.getInstance(context).okHttpClient
-            val client = if (manualCookieHeader.isNullOrBlank()) baseClient else {
+            val okHttp = baseClient()
+            val client = if (manualCookieHeader.isNullOrBlank()) okHttp else {
                 val httpUrl = url.toHttpUrlOrNull()
                 val manualCookies = if (httpUrl != null) parseManualCookies(httpUrl, manualCookieHeader!!) else emptyList()
-                if (manualCookies.isEmpty()) baseClient
-                else baseClient.newBuilder()
-                    .cookieJar(MergingCookieJar(baseClient.cookieJar, manualCookies))
+                if (manualCookies.isEmpty()) okHttp
+                else okHttp.newBuilder()
+                    .cookieJar(MergingCookieJar(okHttp.cookieJar, manualCookies))
                     .build()
             }
             val response = client.newCall(builder.build()).execute()
@@ -130,7 +127,7 @@ class JsHttpHandler(private val context: Context) {
                 resHeaders.remove("content-encoding")
             }
             val resBody: Any = if (bytesMode) {
-                mapOf("__bytes_base64__" to Base64.encodeToString(bytes, Base64.NO_WRAP))
+                mapOf("__bytes_base64__" to EngineBase64.encodeToString(bytes))
             } else {
                 // 必须吃掉开头的 UTF-8 BOM（EF BB BF）。
                 //
@@ -154,7 +151,7 @@ class JsHttpHandler(private val context: Context) {
             if (response.code >= 400) {
                 val snippet = if (bytesMode) "" else resBody.toString()
                 SourceHttpDiagnostics.record(response.code, snippet)
-                Log.w(TAG, "HTTP ${response.code} $method $url :: ${snippet.replace(Regex("\\s+"), " ").take(200)}")
+                EngineLog.w(TAG, "HTTP ${response.code} $method $url :: ${snippet.replace(Regex("\\s+"), " ").take(200)}")
             }
 
             mapOf(
@@ -164,7 +161,7 @@ class JsHttpHandler(private val context: Context) {
                 "error" to null
             )
         } catch (e: Exception) {
-            Log.w(TAG, "HTTP 请求失败 $method $url :: ${e.message ?: e.javaClass.simpleName}")
+            EngineLog.w(TAG, "HTTP 请求失败 $method $url :: ${e.message ?: e.javaClass.simpleName}")
             mapOf(
                 "status" to 0,
                 "headers" to emptyMap<String, String>(),
@@ -262,7 +259,7 @@ class JsHttpHandler(private val context: Context) {
                 else -> bytes
             }
         } catch (e: Exception) {
-            Log.w(TAG, "解压失败 Content-Encoding=$contentEncoding :: ${e.message}")
+            EngineLog.w(TAG, "解压失败 Content-Encoding=$contentEncoding :: ${e.message}")
             bytes
         }
     }

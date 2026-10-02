@@ -1,13 +1,14 @@
 package com.venera.compose.engine
 
-import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-class JsSourceDataStore(context: Context) {
-    private val baseDir = File(context.filesDir, "comic_source").apply { mkdirs() }
+class JsSourceDataStore(private val baseDir: File) {
+    init {
+        baseDir.mkdirs()
+    }
     private val gson = Gson()
     private val cache = ConcurrentHashMap<String, MutableMap<String, Any?>>()
 
@@ -34,7 +35,7 @@ class JsSourceDataStore(context: Context) {
             val file = File(baseDir, "$sourceKey.data")
             file.writeText(gson.toJson(map))
         } catch (e: Exception) {
-            android.util.Log.e("VeneraJS", "Failed to persist data for source $sourceKey", e)
+            EngineLog.e("VeneraJS", "Failed to persist data for source $sourceKey :: ${e.message}")
         }
     }
 
@@ -131,7 +132,7 @@ class JsSourceDataStore(context: Context) {
         try {
             File(baseDir, "$sourceKey.data").delete()
         } catch (e: Exception) {
-            android.util.Log.w("VeneraJS", "Failed to delete data file for source $sourceKey", e)
+            EngineLog.w("VeneraJS", "Failed to delete data file for source $sourceKey :: ${e.message}")
         }
     }
 }

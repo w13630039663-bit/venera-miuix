@@ -258,7 +258,7 @@ class JsHtmlHandler {
                     if (eldest != null) {
                         eldest.value.wrapper.free()
                         documents.remove(eldest.key)
-                        android.util.Log.w(
+                        EngineLog.w(
                             "VeneraJS",
                             "HtmlDocument cache overflow (${MAX_DOCUMENTS}), evicted key=${eldest.key}"
                         )
