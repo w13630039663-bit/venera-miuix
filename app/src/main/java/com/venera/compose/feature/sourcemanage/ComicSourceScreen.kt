@@ -64,6 +64,7 @@ import com.venera.compose.components.venera.VeneraIconButton
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -161,7 +162,7 @@ fun ComicSourceScreen(
                 .fillMaxSize()
                 .nestedScroll(topBarBehavior.nestedScrollConnection)
                 .blurBackdropSource(topBarBackdrop),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + 104.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + 104.dp, bottom = LocalBottomBarClearance.current + VeneraSpacing.space9),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (sourceRows.isEmpty()) {

@@ -148,8 +148,15 @@ Grep Mozilla/5\.0                    Grep "block_ai"                   Grep segm
 
 落地读数（每批完成后回写，未回写视为未落地）：
 
-- A1 待回写
-- A2 待回写
+- A1 已落地（本文档 + README 双语 4 处 + 5 处文档锚）。**过程中自己重犯了同一类失败两次**，记 §八 第 9 条。
+- A2 已落地。**与方案的偏差一处，有意为之**：原计划新增 `bottomReadoutPadding(clearance)` 纯函数并配三档扫描用例，
+  落地时改用仓内**已有**的形状 `LocalBottomBarClearance.current + VeneraSpacing.space9` ——
+  `FavoritesScreen.kt:437` 与 `SearchScreen.kt:437` 的「回到顶部」钮就是这个形状，两处消费点不必再造第三API；
+  等值性也不用用例钉了：它是由 `bottomBarClearance` 与 `space9` 两枚 token 相加而来，改 token 本就该带着这两处一起动
+  （写死 `==96.dp` 的用例反而会挡住合法的 token 调整）。读数：`:app:cleanTest :app:testDebugUnitTest` 强制重跑，
+  **773 tests / 0 failures / 0 errors**（94 颗测试类，与 A1 回填的 README 数字互相印证）；
+  `:app:compileDebugKotlin` executed（非 UP-TO-DATE），仅一条既存 `Icons.Filled.ArrowBack` deprecation 警告与本次无关。
+  全仓 `bottom = 88.dp|96.dp` 与 `Spacer(height(88/96.dp))` 检索式复跑 → **零命中**，避让已收口。
 - A3 待回写
 - A4 待回写
 - A5 待回写

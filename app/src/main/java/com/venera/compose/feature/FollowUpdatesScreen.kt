@@ -4,6 +4,8 @@
 package com.venera.compose.feature
 
 import com.venera.compose.components.*
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
+import com.venera.compose.ui.tokens.VeneraSpacing
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -150,7 +152,7 @@ fun AndroidFollowUpdatesScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(comicListColumnCount(displayMode.value, gridWidth)),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = LocalBottomBarClearance.current + VeneraSpacing.space9),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier
                             .fillMaxSize()
