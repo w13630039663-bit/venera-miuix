@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 画廊收藏面板 —— 「收藏 → 图片收藏 → 画廊收藏」那一档。
@@ -175,7 +176,7 @@ fun GalleryFavoritesBody(
                     start = tokens.spacing.screenHorizontal,
                     end = tokens.spacing.screenHorizontal,
                     top = topPadding,
-                    bottom = VeneraSpacing.bottomBarClearance,
+                    bottom = LocalBottomBarClearance.current,
                 ),
                 onOpen = { post ->
                     /*
@@ -232,7 +233,7 @@ fun GalleryFavoritesBody(
                     .padding(
                         start = tokens.spacing.screenHorizontal,
                         end = tokens.spacing.screenHorizontal,
-                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                        bottom = tokens.spacing.space8 + LocalBottomBarClearance.current,
                     ),
             ) {
                 MultiSelectBarAction(

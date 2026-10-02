@@ -75,6 +75,7 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Surface
@@ -313,7 +314,7 @@ fun UnifiedExploreScreen(
                 start = VeneraTokens.spacing.rowHorizontal,
                 end = VeneraTokens.spacing.rowHorizontal,
                 top = statusBarTop + 104.dp,
-                bottom = VeneraTokens.spacing.bottomBarClearance,
+                bottom = LocalBottomBarClearance.current,
             ),
             verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.sectionGap)
         ) {

@@ -91,6 +91,7 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 @Composable
 fun AndroidNetworkFavoritesScreen(
@@ -227,7 +228,7 @@ fun AndroidNetworkFavoritesScreen(
             start = tokens.spacing.rowHorizontal,
             end = tokens.spacing.rowHorizontal,
             top = topPadding,
-            bottom = VeneraSpacing.bottomBarClearance,
+            bottom = LocalBottomBarClearance.current,
         ),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
     ) {
@@ -382,7 +383,7 @@ fun AndroidNetworkFavoritesScreen(
                     .padding(
                         start = tokens.spacing.rowHorizontal,
                         end = tokens.spacing.rowHorizontal,
-                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                        bottom = tokens.spacing.space8 + LocalBottomBarClearance.current,
                     ),
             ) {
                 MultiSelectBarAction(

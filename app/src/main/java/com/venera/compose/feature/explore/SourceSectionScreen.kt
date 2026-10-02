@@ -67,6 +67,7 @@ import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.explore.UnifiedTag
 import com.venera.compose.source.model.CategoryComicsOption
 import com.venera.compose.source.model.Comic
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -249,7 +250,7 @@ fun SourceSectionScreen(
                         start = VeneraTokens.spacing.rowHorizontal,
                         end = VeneraTokens.spacing.rowHorizontal,
                         top = baseTopPadding,
-                        bottom = VeneraTokens.spacing.bottomBarClearance,
+                        bottom = LocalBottomBarClearance.current,
                     ),
                     verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.gridGap),
                 ) {

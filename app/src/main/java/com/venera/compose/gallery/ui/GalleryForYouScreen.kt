@@ -28,6 +28,7 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 「猜你喜欢」那面墙（从**用户自己的收藏**里抽标签，再拿那串标签去站方搜）。
@@ -79,7 +80,7 @@ internal fun GalleryForYouPage(
         start = tokens.spacing.screenHorizontal,
         end = tokens.spacing.screenHorizontal,
         top = topPadding,
-        bottom = VeneraSpacing.bottomBarClearance,
+        bottom = LocalBottomBarClearance.current,
     )
 
     when {

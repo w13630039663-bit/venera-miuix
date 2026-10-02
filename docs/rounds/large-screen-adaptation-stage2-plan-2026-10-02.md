@@ -1,11 +1,13 @@
 # 大屏适配第二轮方案（档位模型 + 契约解法 + 侧栏落地）
 
-> 状态：**§7 十三项已于 2026-10-02 全部照推荐批准**；**批次 1 已落地**（档位模型 + clearance 注入，值未改），批次 2/3 未开工
+> 状态：**§7 十三项已于 2026-10-02 全部照推荐批准**；**批次 1、批次 2 均已落地**（批次 2 主体由并行线写、本线收下并补齐 2 处 explore + 修复提交完整性，见 §8.5）；批次 3 仍暂缓
+> 拍板项 13（侧栏档收顶栏）**未照做并已被推翻**，理由与代价记在 §8.5
 > 日期：2026-10-02　范围：**只做 Android 端大屏适配**。桌面化（R1-F）暂停、冻结不扩建（见 §0）
 > 依据：`master` 分支 Flutter 源码（逐条复核，命令与行号见 §1）
 >
-> ⚠️ 落地时纠正了本文 6 处事实错误（provider 落点、R5 命令名、600 归属自相矛盾、
-> 消费点计数、批次 1 独立价值、剩余 20 处的迁移义务），逐条见 **§8** 与 §附修正表。
+> ⚠️ 落地时纠正了本文 8 处事实错误（provider 落点、R5 命令名、600 归属自相矛盾、
+> 消费点计数、批次 1 独立价值、剩余 20 处的迁移义务、`VeneraTokens.spacing` 转发读法、
+> 拍板项 13 的前提），逐条见 **§8** 与 §附修正表。
 
 ---
 
@@ -521,6 +523,30 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 4. **阅读器侧栏档内缩**（原「未查证」项，本轮已查证）：`nav:963` 的内容层走 `buildMainViewContent()`，它被 `nav:310-312` 的 `Positioned.fill(left: 内缩)` 包住 ⇒ **阅读器确实跟着内缩**，master 无例外。原 §6.2 那条「未查证」到此关闭。
 
 
+### 8.6 批次 2 并行线对账（2026-10-02，主体由并行线写、本线收下并补齐）
+
+**并发现场，必须记账**（否则下一轮读不到真相）：本线提完批次 1（`8dfd9ff`）后才发现，批次 2 的主体是**另一条线在同一工作树里并行写的** —— `VeneraSideBar.kt`（新组件）、`Navigation.kt` 的侧栏接入与底栏 `!useSideBar` 门、`bottomBarClearanceFor` 归 0、对应单测、22 处消费点迁 Local。
+
+> ⚠️ **本线造成的事故**：批次 1 用 `git add <整文件>` 提交，把并行线当时已落在盘上的 `Navigation.kt`（调用 `VeneraSideBar`）与 `WideScreenPolicy.kt`（已归 0）连同改过的单测一起带进了 `8dfd9ff`，而 `VeneraSideBar.kt` 那时还是**未跟踪新文件** ⇒ **`8dfd9ff` 这个提交自身编不过**（悬空引用）。修复 = 批次 2 提交把组件与其余迁移一起收进库。
+> **教训（写进纪律）**：并行工作树里 `git add` 整文件前必须逐文件 `git diff` 过一遍；新组件与它的调用方**必须同一颗提交**，否则提交面是坏的。
+
+**本线补的部分**：
+- **2 处 `explore/` 消费点**（`SourceSectionScreen`、`UnifiedExploreScreen`）。它们写作 `VeneraTokens.spacing.bottomBarClearance` —— 经 token 对象转发读同一个数，所以**之前所有以 `VeneraSpacing.bottomBarClearance` 为字面的清点都数不到它们**（含本文 §3.2 的「24 处 / 19 文件」那张表，它按字面列的 24 处里根本没有这两行）。不补的后果：侧栏档这两个页面底部各留 76dp 永远填不满的空。
+- ⇒ **契约现已彻底收口**：全仓只剩 2 处仍读该常量 —— `WideScreenPolicy.kt:89`（76 的真身）与 `Spacing.kt:539`（Local 的默认值）。页面侧零直读。
+- **阅读器那条 §8.5-4 的对账补一句本仓侧的确定事实**（那条讲的是 master，本仓这侧无需推断）：`composable<ReaderRoute>`（`Navigation.kt:986`）→ `VeneraReaderScreen`（`:1003`）在 **NavHost 内**，`AndroidManifest.xml` 的 Activity 只有 Main / Settings / SettingsSub / GalleryPost / GalleryArtistProfile，**没有 ReaderActivity** ⇒ `VeneraSideBar` 包的是 `SharedTransitionLayout`，所以**侧栏档下阅读器会一并拿到侧栏并左内缩**。这与 §6.2 原文「阅读器不走 buildMainView 的 left」相反，以本仓事实为准。**观感是否可接受（阅读器要不要保持沉浸全屏）留给真机裁**，本批不改。
+
+**拍板项 13（侧栏档一并收起顶栏）—— 本批未做，且建议不做**（推翻已批准项，理由与代价都要写清）：
+- master 敢收顶栏，是因为它把动作项搬进了侧栏：`nav:620-627` 在 `buildLeft()` 底部渲染 `paneActions`；而 `nav:957` 关掉的那条"顶栏"，全文就是 `Text(页名) + Spacer + paneActions 图标`（`buildTop()`，`nav:390-419`）—— 一条壳层细条。
+- 本仓的顶栏**不是那条细条**：2026-09-18 起顶栏页内自治（`Navigation.kt:612-615`），且外壳本就**没有页无关的 `paneActions`**（设置齿轮同日迁入首页顶栏，见 `FREEZE-STATEMENT.md` 第二批）。照收 = 设置入口、搜索入口、页内工具行、返回钮在平板档无家可归 ⇒ 直接撞「重功能不丢」。
+- **代价如实说**：平板档会留着一条 master 没有的顶部 chrome，属观感差异不是缺陷。日后若要真 1:1，前置是先给 rail 加动作区并把各页顶栏的动作项收进去 —— 那是独立一轮，不该塞进批次 2。
+
+**与 master 的几何差项 —— 留给真机裁，不在盘面上抢改**：本仓条目是「图标在上、标题在下」竖排 + 整组垂直居中；master 是 `Row[icon, 12, label]` 横排、顶部起排、`Spacer()` 把动作压到底（`nav:603-629`）。分隔线也不同：master 只有右侧 1dp `outlineVariant`（`nav:596-600`），本仓给整条 rail 涂了 `surfaceContainerHigh` 底衬。尺寸口径也不照 `nav:663,674` 的「高 38 + 竖直 4 + 圆角 12」而用 space 系 token。
+> 不动它们的理由就是本文 §4.2 自己写的「侧栏宽度/内容内缩/折叠态几何**必须真机**」—— 这些正该由真机读数裁决，没读数之前重写一遍等于再来一次无据改动。
+> 另一条一并留给真机：rail 没有 `if (tab != currentTab)` 门，重复点当前 Tab 会多震一次（`gotoTab` 是 `launchSingleTop`，不堆栈，只是反馈多余）。
+
+**批次 2 验证读数**（本线实跑，非 UP-TO-DATE 蒙混）：`:app:compileDebugKotlin` **executed 通过**（含并行线的 `VeneraSideBar` 与本线 2 处 explore ⇒ 24 处 `Local.current` 读取全部由编译器判定在组合期内）；`:app:testDebugUnitTest` **executed 通过**，`WideScreenPolicyTest tests="9" failures="0" errors="0"`（原 3 条 chrome 用例仍未动）；`:desktop:compileKotlin` UP-TO-DATE（R5 未破）。
+**仍未验的**：侧栏 72/224 的实际观感、600dp 跨越时的 76→0 + 左内缩 0→72 双向突变（R1）、平板档顶栏保留后的整体比例 —— 全部需要真机，见 §8.4 第 4 条；阅读器在侧栏档是否内缩**仍未查证**（§6.2 那条未闭合）。
+
 ---
 
 ## §附 本轮复核修正记录
@@ -542,6 +568,8 @@ for (mode in entries) assertEquals(mode == Compact, bottomBarClearanceFor(mode) 
 | 「`isWideScreen` 12 处消费点」 | 实数 **11 处**，且全部同读 `LocalConfiguration.current.screenWidthDp.dp`，无第二种宽度源 |
 | 「每批跑 `:desktop:compileDebugKotlin`」 | **任务名不存在**（gradle 报 `Cannot locate tasks`）。桌面是 Compose Multiplatform：`compileDevKotlin` 实测 NO-SOURCE，吃共享源的是 `:desktop:compileKotlin` |
 | §4.4 把「clearance 三档 76/0/0」与黄金不变量列为本批必写 | 本批写了**必红**（三档同值 76 才是当前事实）。已挪进批次 2 清单 —— 见 §8.4 |
+| 「消费点 24 处 / 19 文件」（§3.2 那张按字面列的表） | 表本身数对了**行数**，但数漏了**写法**：`SourceSectionScreen`、`UnifiedExploreScreen` 两处经 `VeneraTokens.spacing.bottomBarClearance` 转发读同一个数，字面 `VeneraSpacing.bottomBarClearance` 的 grep 抓不到 ⇒ 真总数 24 + 2。批次 2 已补齐 —— 见 §8.5 |
+| 拍板项 13「批次 2 含顶栏收起」 | **前提不成立**：master `nav:957` 关的是一条壳层细条 `Text(页名)+Spacer+paneActions`（`nav:390-419`），且它把 `paneActions` 搬进了 rail 底部（`nav:620-627`）。本仓顶栏是页内自治的 chrome 宿主、外壳没有 `paneActions`（齿轮 09-18 已迁首页顶栏）⇒ 照收 = 丢入口。**已推翻，批次 2 不收顶栏** —— 见 §8.5 |
 
 ---
 

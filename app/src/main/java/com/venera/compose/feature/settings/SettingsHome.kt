@@ -41,6 +41,7 @@ import com.venera.compose.ui.tokens.SettingsBadgeColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 import java.io.File
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 设置分区：比旧版多一个可选 [subtitle]，显示在标题下方（个性化组的「外观」用它）。
@@ -219,7 +220,7 @@ private fun SettingsHomeContent(
                 // 在场时应用身份卡**叠在图的下段上**（hero 占位已让出 overlap），
                 // 这里只留一点点呼吸缝 —— 过渡靠叠图，不靠留白。
                 top = if (heroFile != null) tokens.spacing.space3 else topPadding,
-                bottom = tokens.spacing.bottomBarClearance,
+                bottom = LocalBottomBarClearance.current,
             )
         ) {
             AppIdentityCard(prefs)

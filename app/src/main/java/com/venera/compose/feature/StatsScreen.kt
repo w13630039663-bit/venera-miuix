@@ -50,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraTopBarPill
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 生产级阅读统计看板
@@ -126,7 +127,7 @@ fun StatsScreen(
                     start = 14.dp,
                     end = 14.dp,
                     top = statusBarTop + 104.dp,
-                    bottom = VeneraSpacing.bottomBarClearance,
+                    bottom = LocalBottomBarClearance.current,
                 ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {

@@ -137,6 +137,7 @@ import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 画廊的**满屏播放器**（2026-09-25 改版，照 Breadboard 的两张真机截图，
@@ -1056,7 +1057,7 @@ fun GalleryPostScreen(
                             )
                         }
                         // 工具条是浮层，所以底部留白自己给，图不会被它盖住。
-                        Spacer(modifier = Modifier.height(VeneraSpacing.bottomBarClearance))
+                        Spacer(modifier = Modifier.height(LocalBottomBarClearance.current))
                     }
 
                     // ── 连播进度线（§一）──

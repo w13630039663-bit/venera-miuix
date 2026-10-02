@@ -44,6 +44,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import com.venera.compose.components.venera.VeneraTopBarPill
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 设置页通用组件。
@@ -349,7 +350,7 @@ internal fun SettingsPage(
                         // 在场：第一组卡**叠在图的下段上**（hero 占位已让出 overlap），
                         // 只留呼吸缝 —— 组标题落在图底溶接渐变带里，灰字仍可读。
                         top = if (heroFile != null) tokens.spacing.space3 else statusBarTop + 104.dp,
-                        bottom = tokens.spacing.bottomBarClearance,
+                        bottom = LocalBottomBarClearance.current,
                     ),
                 content = {
                     content()

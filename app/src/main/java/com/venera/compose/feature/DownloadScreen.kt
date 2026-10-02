@@ -52,6 +52,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 生产级下载中心管理页面
@@ -119,7 +120,7 @@ fun DownloadScreen(
                     start = 14.dp,
                     end = 14.dp,
                     top = topPadding,
-                    bottom = VeneraSpacing.bottomBarClearance,
+                    bottom = LocalBottomBarClearance.current,
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {

@@ -122,6 +122,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 画廊主 Tab（第 4 位，搜索右侧）。
@@ -856,7 +857,7 @@ fun GalleryScreen(
                     start = tokens.spacing.screenHorizontal,
                     end = tokens.spacing.screenHorizontal,
                     top = gridTopPadding,
-                    bottom = VeneraSpacing.bottomBarClearance,
+                    bottom = LocalBottomBarClearance.current,
                 ),
                 modifier = Modifier
                     .nestedScroll(topBarBehavior.nestedScrollConnection)
@@ -1783,7 +1784,7 @@ internal fun GalleryDailyPage(
         end = tokens.spacing.screenHorizontal,
         // 顶栏避让地板（这一页没有常驻 chrome，避让就是地板本身）。
         top = topPadding,
-        bottom = VeneraSpacing.bottomBarClearance,
+        bottom = LocalBottomBarClearance.current,
     )
     val wallModifier = Modifier
         .fillMaxSize()

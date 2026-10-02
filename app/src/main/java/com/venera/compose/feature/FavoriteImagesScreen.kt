@@ -66,6 +66,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraTextButton
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 插图收藏独立页（设置 → 阅读设置 → 单页与插图收藏）。
@@ -237,7 +238,7 @@ fun FavoriteImagesBody(
                         start = tokens.spacing.screenHorizontal,
                         end = tokens.spacing.screenHorizontal,
                         top = topPadding,
-                        bottom = VeneraSpacing.bottomBarClearance,
+                        bottom = LocalBottomBarClearance.current,
                     ),
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5),
                     verticalItemSpacing = tokens.spacing.gridGap,
@@ -348,7 +349,7 @@ fun FavoriteImagesBody(
                     .padding(
                         start = tokens.spacing.screenHorizontal,
                         end = tokens.spacing.screenHorizontal,
-                        bottom = tokens.spacing.space8 + VeneraSpacing.bottomBarClearance,
+                        bottom = tokens.spacing.space8 + LocalBottomBarClearance.current,
                     ),
             ) {
                 // 「从该页开始阅读 / 查看漫画详情」是**单张**才有意义的动作：

@@ -68,6 +68,7 @@ import java.io.File
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 生产级本地离线书架
@@ -214,7 +215,7 @@ fun LocalComicScreen(
                         start = tokens.spacing.rowHorizontal,
                         end = tokens.spacing.rowHorizontal,
                         top = statusBarTop + 104.dp,
-                        bottom = VeneraSpacing.bottomBarClearance,
+                        bottom = LocalBottomBarClearance.current,
                     ),
                     verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                 ) {

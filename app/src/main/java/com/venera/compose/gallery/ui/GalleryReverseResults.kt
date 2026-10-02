@@ -46,6 +46,7 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
  * 反搜结果，摆在**墙那一片**（不是新造一屏）。
@@ -129,7 +130,7 @@ fun GalleryReverseResults(
                 start = tokens.spacing.screenHorizontal,
                 end = tokens.spacing.screenHorizontal,
                 top = topPadding,
-                bottom = VeneraSpacing.bottomBarClearance,
+                bottom = LocalBottomBarClearance.current,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
         ) {

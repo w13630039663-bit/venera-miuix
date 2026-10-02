@@ -91,6 +91,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.venera.compose.components.venera.VeneraTopBarPill
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -136,7 +137,7 @@ fun AndroidHistoryScreen(
                     start = tokens.spacing.rowHorizontal,
                     end = tokens.spacing.rowHorizontal,
                     top = statusBarTop + 104.dp + if (vm.multiSelectMode) 44.dp else 0.dp,
-                    bottom = VeneraSpacing.bottomBarClearance,
+                    bottom = LocalBottomBarClearance.current,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
