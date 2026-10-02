@@ -1,11 +1,19 @@
 package com.venera.compose.sync
 
-import android.content.ContentValues
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.google.gson.JsonArray
+import com.venera.compose.data.db.CoreTableBackup
+import com.venera.compose.data.db.DatabasePorts
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.db.asMap
+import com.venera.compose.data.db.jsonArray
+import com.venera.compose.data.db.jsonObject
+import com.venera.compose.data.db.objectAt
+import com.venera.compose.data.db.optLongValue
+import com.venera.compose.data.db.optTextValue
+import com.venera.compose.data.db.parseJsonArray
+import com.venera.compose.data.db.parseJsonObject
 import com.venera.compose.feature.favoriteimages.FavoriteImagesManager
 import com.venera.compose.feature.favoriteimages.ImageFavoriteBackupRows
 import com.venera.compose.gallery.data.GalleryArtistFollowsStore
@@ -13,8 +21,6 @@ import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -76,11 +82,21 @@ import java.util.zip.ZipOutputStream
  * 首页那排入口运行期读的东西，直接改 `filesDir` 上那份 JSON 会让「导入报了成功」和
  * 「画廊还是空的」同时成立 —— 值确实进盘了，只是没人再读盘。插图收藏同理走
  * [FavoriteImagesManager]，它的去重键（`image_url`）也是在这一层判的。
+ *
+ * ## 与 JSON 那一层的分工
+ *
+ * `org.json` 换成了 gson，但归档的**文本格式一字未改**：键序、`null` 的表示方式、数字形状
+ * 都按改造前 android `JSONObject` 的行为对齐（逐字节锚点用例在 `:desktop:test` 的
+ * `CoreTableBackupTest` / `BackupJsonTest`）。三张核心库表 ↔ JSON 的读写全在
+ * [CoreTableBackup]，那颗不碰 Android 类型、因此能被真库用例跑住；这里留下的都是
+ * Android 才有的事：`cacheDir` 默认落点、`ZipFile`、logcat，以及那几个必须走单例的管理器。
  */
 class BackupManager private constructor(private val context: Context) {
 
     private val tag = "BackupManager"
-    private val dbHelper = VeneraDatabase.getInstance(context)
+
+    /** 懒取：`DatabasePorts.of` 会建 helper（虽然不碰 SQLite），与下面几个管理器同一口径。 */
+    private val core by lazy { DatabasePorts.of(context).core }
 
     /** 懒取：`getInstance` 会打开数据库并触发旧表迁移，构造 BackupManager 时不该发生这些。 */
     private val favoritesManager by lazy { LocalFavoritesManager.getInstance(context) }
@@ -95,15 +111,15 @@ class BackupManager private constructor(private val context: Context) {
      */
     suspend fun exportBackup(targetFile: File? = null): Result<File> = withContext(Dispatchers.IO) {
         try {
-            val db = dbHelper.readableDatabase
+            val db = core.reader()
             val outDir = File(context.cacheDir, "backups").apply { if (!exists()) mkdirs() }
             val timestamp = System.currentTimeMillis()
             val backupFile = targetFile ?: File(outDir, "venera_backup_$timestamp.venera")
             if (backupFile.exists()) backupFile.delete()
 
-            val historyJson = exportTableToJson(db, "comic_history")
-            val statsJson = exportTableToJson(db, "reading_stats")
-            val guardJson = exportTableToJson(db, "content_guard_rules")
+            val historyJson = CoreTableBackup.exportTable(db, "comic_history")
+            val statsJson = CoreTableBackup.exportTable(db, "reading_stats")
+            val guardJson = CoreTableBackup.exportTable(db, "content_guard_rules")
             val favoriteFoldersJson = exportFavoriteFolders()
             val favoriteJson = exportFavoriteItems()
             val imageFavoritesJson = exportImageFavorites()
@@ -111,19 +127,22 @@ class BackupManager private constructor(private val context: Context) {
             val followsSnapshot = galleryFollows.follows.value
             val galleryFavoritesSnapshot = galleryFavorites.favorites.value
 
-            val metaJson = JSONObject().apply {
-                put("version", FavoriteBackupRows.CURRENT_VERSION)
-                put("timestamp", timestamp)
-                put("app", "Venera Compose")
-                put("historyCount", historyJson.length())
-                put("favoriteCount", favoriteJson.length())
-                put("favoriteFolderCount", favoriteFoldersJson.length())
-                put("statsCount", statsJson.length())
-                put("guardCount", guardJson.length())
-                put("imageFavoriteCount", imageFavoritesJson.length())
-                put("galleryFollowCount", followsSnapshot.size)
-                put("galleryFavoriteCount", galleryFavoritesSnapshot.size)
-            }
+            // 键序就是改造前逐次 put 的顺序，一个都没动（这份 JSON 要跨端、跨版本读）。
+            val metaJson = jsonObject(
+                listOf(
+                    "version" to FavoriteBackupRows.CURRENT_VERSION,
+                    "timestamp" to timestamp,
+                    "app" to "Venera Compose",
+                    "historyCount" to historyJson.size(),
+                    "favoriteCount" to favoriteJson.size(),
+                    "favoriteFolderCount" to favoriteFoldersJson.size(),
+                    "statsCount" to statsJson.size(),
+                    "guardCount" to guardJson.size(),
+                    "imageFavoriteCount" to imageFavoritesJson.size(),
+                    "galleryFollowCount" to followsSnapshot.size,
+                    "galleryFavoriteCount" to galleryFavoritesSnapshot.size,
+                )
+            )
 
             ZipOutputStream(BufferedOutputStream(FileOutputStream(backupFile))).use { zos ->
                 addJsonEntry(zos, "meta.json", metaJson.toString())
@@ -161,10 +180,10 @@ class BackupManager private constructor(private val context: Context) {
             // v3 及更早的归档里这一栏叫 favorite.json，行是旧单表的列名；
             // FavoriteBackupRows.decode 认得它，所以老备份照样导得进来。
             val favorites = readArray(zip, FAVORITE_ENTRIES_JSON)
-                .let { if (it.length() > 0) it else readArray(zip, "favorite.json") }
+                .let { if (it.size() > 0) it else readArray(zip, "favorite.json") }
             val imageFavoriteRows = readArray(zip, IMAGE_FAVORITES_JSON)
             // 画廊那两份：归档格式与 filesDir 上的磁盘格式是同一套定义（见 GalleryBackupRows），
-            // 所以这里交原文、不转 JSONArray —— 少一层列名映射就少一处能各自漂移的地方。
+            // 所以这里交原文、不转 JsonArray —— 少一层列名映射就少一处能各自漂移的地方。
             val galleryFollowsJson = readText(zip, GALLERY_FOLLOWS_JSON)
             val galleryFavoritesJson = readText(zip, GALLERY_FAVORITES_JSON)
             val timestamp = readTimestamp(zip)
@@ -174,8 +193,8 @@ class BackupManager private constructor(private val context: Context) {
             val incomingFollows = GalleryBackupRows.decodeFollows(galleryFollowsJson)
             val incomingGalleryFavorites = GalleryBackupRows.decodeFavorites(galleryFavoritesJson)
             val incomingImageFavorites = buildList {
-                for (i in 0 until imageFavoriteRows.length()) {
-                    ImageFavoriteBackupRows.fromMap(asMap(imageFavoriteRows.getJSONObject(i)))?.let { add(it) }
+                for (i in 0 until imageFavoriteRows.size()) {
+                    ImageFavoriteBackupRows.fromMap(asMap(imageFavoriteRows.objectAt(i)))?.let { add(it) }
                 }
             }
 
@@ -183,72 +202,16 @@ class BackupManager private constructor(private val context: Context) {
             var statsCount = 0
             var guardCount = 0
             var guardSkipped = 0
-            val db = dbHelper.writableDatabase
-            db.beginTransaction()
-            try {
-                // 1. 恢复阅读历史
-                for (i in 0 until history.length()) {
-                    val item = history.getJSONObject(i)
-                    val cv = ContentValues().apply {
-                        put("comic_id", item.getString("comic_id"))
-                        put("title", item.getString("title"))
-                        put("author", item.optString("author"))
-                        put("cover_url", item.getString("cover_url"))
-                        put("source_name", item.getString("source_name"))
-                        put("last_chapter_title", item.getString("last_chapter_title"))
-                        put("last_chapter_index", item.getInt("last_chapter_index"))
-                        put("last_page_index", item.getInt("last_page_index"))
-                        put("total_pages", item.getInt("total_pages"))
-                        put("updated_at", item.getLong("updated_at"))
-                    }
-                    db.insertWithOnConflict("comic_history", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
-                    historyCount++
-                }
-
-                // 2. 恢复阅读统计
-                for (i in 0 until stats.length()) {
-                    val item = stats.getJSONObject(i)
-                    val cv = ContentValues().apply {
-                        put("comic_id", item.getString("comic_id"))
-                        put("comic_title", item.getString("comic_title"))
-                        put("source_name", item.getString("source_name"))
-                        put("tags", item.optString("tags", ""))
-                        put("chapter_title", item.getString("chapter_title"))
-                        put("pages_read", item.getInt("pages_read"))
-                        put("duration_seconds", item.getInt("duration_seconds"))
-                        put("read_date", item.getString("read_date"))
-                        put("created_at", item.getLong("created_at"))
-                    }
-                    db.insert("reading_stats", null, cv)
-                    statsCount++
-                }
-
-                // 3. 恢复屏蔽规则
-                for (i in 0 until guardRules.length()) {
-                    val item = guardRules.getJSONObject(i)
-                    val regexFlag = item.optInt("is_regex", 0)
-                    val pattern = item.getString("pattern")
-                    if (regexFlag == 1 && !GuardRulePattern.compiles(pattern)) {
-                        // 编译不过的正则进了库也命中不了任何东西（ContentGuardManager 的 match() 兜底是
-                        // catch → false），却会在屏蔽列表里显示「已启用 · 正则规则」。
-                        // 恢复它 = 恢复一条假开关，所以不收，收多少条要在屏上说得出。
-                        guardSkipped++
-                        continue
-                    }
-                    val cv = ContentValues().apply {
-                        put("rule_type", item.getString("rule_type"))
-                        put("pattern", pattern)
-                        put("is_regex", regexFlag)
-                        put("is_enabled", item.optInt("is_enabled", 1))
-                        put("created_at", item.getLong("created_at"))
-                    }
-                    db.insert("content_guard_rules", null, cv)
-                    guardCount++
-                }
-
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
+            val db = core.writer()
+            db.inTransaction {
+                // 1. 恢复阅读历史 2. 恢复阅读统计 3. 恢复屏蔽规则
+                //    三段的列名、类型判据与被跳过的那条正则规则都在 CoreTableBackup 里，
+                //    任一行读不出或写不下去就从这里抛出 = 整笔不提交。
+                historyCount = CoreTableBackup.importHistory(db, history)
+                statsCount = CoreTableBackup.importStats(db, stats)
+                val guard = CoreTableBackup.importGuardRules(db, guardRules, GuardRulePattern::compiles)
+                guardCount = guard.imported
+                guardSkipped = guard.skipped
             }
 
             // 4. 恢复本地收藏（另一个 db 文件，单独一笔）
@@ -288,47 +251,35 @@ class BackupManager private constructor(private val context: Context) {
 
     // region ---- 收藏 ----
 
-    private suspend fun exportFavoriteFolders(): JSONArray {
+    private suspend fun exportFavoriteFolders(): JsonArray {
         val syncByFolder = favoritesManager.getFolderSync().associateBy { it.folder }
-        val out = JSONArray()
         // currentFolders() 已按 folder_order 排好，导入侧就按数组顺序还原
-        for (folder in favoritesManager.currentFolders()) {
-            val sync = syncByFolder[folder]
-            out.put(
-                JSONObject(
-                    mapOf(
-                        "folder" to folder,
-                        "sourceKey" to sync?.sourceKey.orEmpty(),
-                        "sourceFolder" to sync?.sourceFolder.orEmpty(),
-                    )
+        return jsonArray(
+            favoritesManager.currentFolders().map { folder ->
+                val sync = syncByFolder[folder]
+                mapOf(
+                    "folder" to folder,
+                    "sourceKey" to sync?.sourceKey.orEmpty(),
+                    "sourceFolder" to sync?.sourceFolder.orEmpty(),
                 )
-            )
-        }
-        return out
+            }
+        )
     }
 
-    private suspend fun exportFavoriteItems(): JSONArray {
-        val out = JSONArray()
-        for (folder in favoritesManager.currentFolders()) {
-            for (item in favoritesManager.getFolderComics(folder)) {
-                out.put(JSONObject(FavoriteBackupRows.encode(item, folder)))
+    private suspend fun exportFavoriteItems(): JsonArray =
+        jsonArray(
+            favoritesManager.currentFolders().flatMap { folder ->
+                favoritesManager.getFolderComics(folder).map { FavoriteBackupRows.encode(it, folder) }
             }
-        }
-        return out
-    }
+        )
 
     /**
-     * 插图收藏那一栏。走 [FavoriteImagesManager] 而不是 `exportTableToJson(db, "favorite_images")`：
-     * 后者是 `SELECT *`，会把 `id` 与 `local_path` 一起打进包 —— 前者是本地自增主键，后者换台机器
-     * 就指向一个不存在的文件，而收藏墙的取图口径是「路径为空才按地址加载」。
+     * 插图收藏那一栏。走 [FavoriteImagesManager] 而不是 `SELECT *`：后者会把 `id` 与
+     * `local_path` 一起打进包 —— 前者是本地自增主键，后者换台机器就指向一个不存在的文件，
+     * 而收藏墙的取图口径是「路径为空才按地址加载」。
      */
-    private suspend fun exportImageFavorites(): JSONArray {
-        val out = JSONArray()
-        for (row in favoriteImagesManager.exportBackupRows()) {
-            out.put(JSONObject(ImageFavoriteBackupRows.toMap(row)))
-        }
-        return out
-    }
+    private suspend fun exportImageFavorites(): JsonArray =
+        jsonArray(favoriteImagesManager.exportBackupRows().map { ImageFavoriteBackupRows.toMap(it) })
 
     /**
      * 建收藏夹 + 恢复顺序 + 恢复网络夹绑定。返回恢复到的收藏夹数量。
@@ -336,20 +287,20 @@ class BackupManager private constructor(private val context: Context) {
      * 顺序是「备份里的夹子在前，本机原有而这份备份里没有的夹子接在后面」：导入是**合并**，
      * 不该把本机已有的夹子挤到未知位置去。
      */
-    private suspend fun restoreFavoriteFolders(folders: JSONArray): Int = withContext(Dispatchers.IO) {
-        if (folders.length() == 0) return@withContext 0
+    private suspend fun restoreFavoriteFolders(folders: JsonArray): Int = withContext(Dispatchers.IO) {
+        if (folders.size() == 0) return@withContext 0
         val restored = mutableListOf<String>()
-        for (i in 0 until folders.length()) {
-            val row = folders.getJSONObject(i)
-            val name = row.optString("folder").trim()
+        for (i in 0 until folders.size()) {
+            val row = folders.objectAt(i)
+            val name = row.optTextValue("folder").trim()
             if (name.isBlank() || name in restored) continue
             if (!favoritesManager.existsFolder(name)) {
                 // renameWhenInvalidName 保持默认 false：夹名是用户起的，静默改名会让
                 // "这一本在哪个夹子里"和备份对不上号。
                 favoritesManager.createFolder(name)
             }
-            val sourceKey = row.optString("sourceKey")
-            val sourceFolder = row.optString("sourceFolder")
+            val sourceKey = row.optTextValue("sourceKey")
+            val sourceFolder = row.optTextValue("sourceFolder")
             if (sourceKey.isNotBlank() && sourceFolder.isNotBlank()) {
                 favoritesManager.linkFolderToNetwork(name, sourceKey, sourceFolder)
             }
@@ -361,12 +312,12 @@ class BackupManager private constructor(private val context: Context) {
     }
 
     /** 逐条写回收藏，返回**实际新增**的条数（本机已有的不重复写，也不计入）。 */
-    private suspend fun restoreFavoriteItems(items: JSONArray): Int = withContext(Dispatchers.IO) {
-        if (items.length() == 0) return@withContext 0
+    private suspend fun restoreFavoriteItems(items: JsonArray): Int = withContext(Dispatchers.IO) {
+        if (items.size() == 0) return@withContext 0
         val knownFolders = favoritesManager.currentFolders().toHashSet()
         var added = 0
-        for (i in 0 until items.length()) {
-            val row = FavoriteBackupRows.decode(asMap(items.getJSONObject(i)))
+        for (i in 0 until items.size()) {
+            val row = FavoriteBackupRows.decode(asMap(items.objectAt(i)))
             // 没有 id 的行落库就是一行看不见也删不掉的垃圾（主键是 id + type），直接跳掉。
             if (row.item.id.isBlank()) continue
             if (row.folder !in knownFolders) {
@@ -380,34 +331,12 @@ class BackupManager private constructor(private val context: Context) {
 
     // endregion
 
-    // region ---- 通用 JSON / 归档读写 ----
+    // region ---- 归档读写 ----
 
-    private fun exportTableToJson(db: SQLiteDatabase, tableName: String): JSONArray {
-        val array = JSONArray()
-        val cursor = db.rawQuery("SELECT * FROM $tableName", null)
-        cursor.use {
-            val colNames = it.columnNames
-            while (it.moveToNext()) {
-                val obj = JSONObject()
-                for (name in colNames) {
-                    val idx = it.getColumnIndex(name)
-                    when (it.getType(idx)) {
-                        android.database.Cursor.FIELD_TYPE_INTEGER -> obj.put(name, it.getLong(idx))
-                        android.database.Cursor.FIELD_TYPE_FLOAT -> obj.put(name, it.getDouble(idx))
-                        android.database.Cursor.FIELD_TYPE_STRING -> obj.put(name, it.getString(idx))
-                        android.database.Cursor.FIELD_TYPE_NULL -> obj.put(name, JSONObject.NULL)
-                        else -> obj.put(name, it.getString(idx))
-                    }
-                }
-                array.put(obj)
-            }
-        }
-        return array
-    }
-
-    private fun readArray(zip: ZipFile, entryName: String): JSONArray {
-        val entry = zip.getEntry(entryName) ?: return JSONArray()
-        return zip.getInputStream(entry).bufferedReader().use { JSONArray(it.readText()) }
+    /** member 不存在交回空数组（旧版归档就是没有这一栏）；内容不是合法 JSON 数组 ⇒ 抛。 */
+    private fun readArray(zip: ZipFile, entryName: String): JsonArray {
+        val entry = zip.getEntry(entryName) ?: return JsonArray()
+        return parseJsonArray(zip.getInputStream(entry).bufferedReader().use { it.readText() })
     }
 
     /** member 不存在交回 null（v4 及更早的归档就是没有这一栏），与"存在但内容坏掉"是两件事。 */
@@ -419,9 +348,9 @@ class BackupManager private constructor(private val context: Context) {
     private fun readTimestamp(zip: ZipFile): Long {
         val entry = zip.getEntry("meta.json") ?: return System.currentTimeMillis()
         val meta = runCatching {
-            zip.getInputStream(entry).bufferedReader().use { JSONObject(it.readText()) }
+            parseJsonObject(zip.getInputStream(entry).bufferedReader().use { it.readText() })
         }.getOrNull() ?: return System.currentTimeMillis()
-        return meta.optLong("timestamp", System.currentTimeMillis())
+        return meta.optLongValue("timestamp", System.currentTimeMillis())
     }
 
     private fun addJsonEntry(zos: ZipOutputStream, entryName: String, jsonContent: String) {
@@ -429,23 +358,6 @@ class BackupManager private constructor(private val context: Context) {
         zos.putNextEntry(entry)
         zos.write(jsonContent.toByteArray(Charsets.UTF_8))
         zos.closeEntry()
-    }
-
-    /**
-     * `JSONObject` → 普通 Map。
-     *
-     * 为什么要绕这一层：单元测试没有 Robolectric，android 的 `org.json` 在 JVM 测试里
-     * 全是返回默认值的桩，解析逻辑一沾 JSONObject 就没法测。所以解析完立刻转 Map，
-     * 字段判据全留在 [FavoriteBackupRows] 那种纯函数里。
-     */
-    private fun asMap(obj: JSONObject): Map<String, Any?> {
-        val map = LinkedHashMap<String, Any?>(obj.length())
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            map[key] = obj.get(key).takeIf { it !== JSONObject.NULL }
-        }
-        return map
     }
 
     // endregion

@@ -1,19 +1,24 @@
 package com.venera.compose.sync
 
-import android.content.ContentValues
 import android.content.Context
-import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.venera.compose.data.db.CoreTableBackup
+import com.venera.compose.data.db.DatabasePorts
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoriteDatabase
 import com.venera.compose.data.db.LocalFavoritesManager
-import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.db.optInt
+import com.venera.compose.data.db.optString
+import com.venera.compose.data.db.requiredString
+import com.venera.compose.data.platform.SqlDatabase
+import com.venera.compose.data.platform.android.openReadOnlySqlDatabase
+import com.venera.compose.data.db.optLongOrZero
+import com.venera.compose.data.db.parseJsonObject
+import com.venera.compose.data.db.optTextValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -50,6 +55,15 @@ import java.util.zip.ZipFile
  * 官方 Venera 自己就带 `importPicaData()`（`.reference/flutter-master/lib/utils/data.dart:115`），
  * 它读的正是 PicaComic 的 `local_favorite.db` / `history.db`。本文件按它的口径实现，
  * 而不是另起一套 —— 包括那几个别扭的枚举值（收藏 nhentai=6、历史 nhentai=5）。
+ *
+ * ## 读外部库时的"缺列"为什么可以宽容
+ *
+ * 归档里那两张库**不是本应用维护的结构**，两个上游各有一套列名（`target` vs `id`、
+ * `key`/`sync_data` vs `source_key`/`source_folder`），判据本来就写在"这一列在不在"上。
+ * 所以那一侧的读法走 `data/db/RowRead.kt` 的 `optString` / `optInt` / `optLongOrZero`
+ * （缺列给改造前同样的 `""` / `0` / `0L`），**值本身读不成对应类型仍然抛**。
+ * 写进本仓的那一张表（`comic_history`）没有这种宽容：语句与列名走
+ * [CoreTableBackup.INSERT_OR_REPLACE_HISTORY]，写不下去就抛、整笔回滚。
  */
 class ForeignArchiveImport private constructor(private val context: Context) {
 
@@ -179,7 +193,7 @@ class ForeignArchiveImport private constructor(private val context: Context) {
     private data class FavoritesOutcome(val folderCount: Int, val added: Int, val skipped: Int)
 
     private suspend fun importFavorites(
-        db: SQLiteDatabase,
+        db: SqlDatabase,
         isPica: Boolean,
         hashIndex: Map<Int, String>,
         unknownTypes: MutableSet<Int>,
@@ -252,39 +266,35 @@ class ForeignArchiveImport private constructor(private val context: Context) {
      * 两边列名不同：PicaComic 是 `key` / `sync_data`（JSON，`folderId` 才是夹 ID），
      * 本仓与官方 Venera 是 `source_key` / `source_folder`。判据按列在不在，老库缺列就跳过。
      */
-    private suspend fun linkFoldersToNetwork(db: SQLiteDatabase, isPica: Boolean) {
+    private suspend fun linkFoldersToNetwork(db: SqlDatabase, isPica: Boolean) {
         if (!tableExists(db, "folder_sync")) return
         val cols = columnsOf(db, "folder_sync")
         val manager = LocalFavoritesManager.getInstance(context)
 
         if (isPica) {
             if (!cols.contains("key") || !cols.contains("sync_data")) return
-            db.rawQuery("SELECT folder_name, key, sync_data FROM folder_sync", null).use { c ->
-                while (c.moveToNext()) {
-                    val folder = c.str("folder_name")
-                    val key = ForeignImportMapping.normalizeSourceKey(c.str("key"))
-                    val folderId = runCatching {
-                        JSONObject(c.str("sync_data")).optString("folderId")
-                    }.getOrDefault("")
-                    if (folder.isNotBlank() && key.isNotBlank() && folderId.isNotBlank() &&
-                        manager.existsFolder(folder)
-                    ) {
-                        manager.linkFolderToNetwork(folder, key, folderId)
-                    }
+            db.query("SELECT folder_name, key, sync_data FROM folder_sync").forEach { c ->
+                val folder = c.optString("folder_name")
+                val key = ForeignImportMapping.normalizeSourceKey(c.optString("key"))
+                val folderId = runCatching {
+                    parseJsonObject(c.optString("sync_data")).optTextValue("folderId")
+                }.getOrDefault("")
+                if (folder.isNotBlank() && key.isNotBlank() && folderId.isNotBlank() &&
+                    manager.existsFolder(folder)
+                ) {
+                    manager.linkFolderToNetwork(folder, key, folderId)
                 }
             }
         } else {
             if (!cols.contains("source_key") || !cols.contains("source_folder")) return
-            db.rawQuery("SELECT folder_name, source_key, source_folder FROM folder_sync", null).use { c ->
-                while (c.moveToNext()) {
-                    val folder = c.str("folder_name")
-                    val key = ForeignImportMapping.normalizeSourceKey(c.str("source_key"))
-                    val sourceFolder = c.str("source_folder")
-                    if (folder.isNotBlank() && key.isNotBlank() && sourceFolder.isNotBlank() &&
-                        manager.existsFolder(folder)
-                    ) {
-                        manager.linkFolderToNetwork(folder, key, sourceFolder)
-                    }
+            db.query("SELECT folder_name, source_key, source_folder FROM folder_sync").forEach { c ->
+                val folder = c.optString("folder_name")
+                val key = ForeignImportMapping.normalizeSourceKey(c.optString("source_key"))
+                val sourceFolder = c.optString("source_folder")
+                if (folder.isNotBlank() && key.isNotBlank() && sourceFolder.isNotBlank() &&
+                    manager.existsFolder(folder)
+                ) {
+                    manager.linkFolderToNetwork(folder, key, sourceFolder)
                 }
             }
         }
@@ -297,7 +307,7 @@ class ForeignArchiveImport private constructor(private val context: Context) {
     private data class HistoriesOutcome(val added: Int, val skipped: Int)
 
     private suspend fun importHistories(
-        db: SQLiteDatabase,
+        db: SqlDatabase,
         isPica: Boolean,
         hashIndex: Map<Int, String>,
         unknownTypes: MutableSet<Int>,
@@ -309,67 +319,53 @@ class ForeignArchiveImport private constructor(private val context: Context) {
 
         val records = ArrayList<HistoryRecord>()
         var skipped = 0
-        db.rawQuery("SELECT * FROM $HISTORY_TABLE", null).use { c ->
-            while (c.moveToNext()) {
-                val id = c.str(idColumn)
-                if (id.isBlank()) {
-                    skipped++
-                    continue
-                }
-                val sourceKey = resolveSourceKey(
-                    type = c.intCol("type"),
-                    isPica = isPica,
-                    forHistory = true,
-                    hashIndex = hashIndex,
-                )
-                if (sourceKey == null) {
-                    skipped++
-                    unknownTypes += c.intCol("type")
-                    continue
-                }
-                records += HistoryRecord(
-                    comicId = id,
-                    title = c.str("title"),
-                    // 官方的 subtitle 就是作者，本仓作者单列
-                    author = c.str("subtitle"),
-                    coverUrl = c.str("cover"),
-                    sourceName = sourceKey,
-                    // 归档里没有章节标题（只有索引），如实留空，不编一个"第 N 话"填进去
-                    lastChapterTitle = "",
-                    // ⚠️ 归档是 1 基、本仓是 0 基，不转换会整体偏移一章一页
-                    lastChapterIndex = ForeignImportMapping.toZeroBasedIndex(c.intCol("ep")),
-                    lastPageIndex = ForeignImportMapping.toZeroBasedIndex(c.intCol("page")),
-                    totalPages = c.intCol("max_page"),
-                    // 缺时间戳的记录会沉到历史最底，等于看不见；用导入时刻兜底
-                    updatedAt = c.longCol("time").takeIf { it > 0 } ?: now,
-                )
+        db.query("SELECT * FROM $HISTORY_TABLE").forEach { c ->
+            val id = c.optString(idColumn)
+            if (id.isBlank()) {
+                skipped++
+                return@forEach
             }
+            val type = c.optInt("type")
+            val sourceKey = resolveSourceKey(
+                type = type,
+                isPica = isPica,
+                forHistory = true,
+                hashIndex = hashIndex,
+            )
+            if (sourceKey == null) {
+                skipped++
+                unknownTypes += type
+                return@forEach
+            }
+            records += HistoryRecord(
+                comicId = id,
+                title = c.optString("title"),
+                // 官方的 subtitle 就是作者，本仓作者单列
+                author = c.optString("subtitle"),
+                coverUrl = c.optString("cover"),
+                sourceName = sourceKey,
+                // 归档里没有章节标题（只有索引），如实留空，不编一个"第 N 话"填进去
+                lastChapterTitle = "",
+                // ⚠️ 归档是 1 基、本仓是 0 基，不转换会整体偏移一章一页
+                lastChapterIndex = ForeignImportMapping.toZeroBasedIndex(c.optInt("ep")),
+                lastPageIndex = ForeignImportMapping.toZeroBasedIndex(c.optInt("page")),
+                totalPages = c.optInt("max_page"),
+                // 缺时间戳的记录会沉到历史最底，等于看不见；用导入时刻兜底
+                updatedAt = c.optLongOrZero("time").takeIf { it > 0 } ?: now,
+            )
         }
         if (records.isEmpty()) return HistoriesOutcome(0, skipped)
 
-        val db2 = VeneraDatabase.getInstance(context).writableDatabase
-        db2.beginTransaction()
-        try {
+        val core = DatabasePorts.of(context).core.writer()
+        core.inTransaction {
             for (record in records) {
-                val values = ContentValues().apply {
-                    put("comic_id", record.comicId)
-                    put("title", record.title)
-                    put("author", record.author)
-                    put("cover_url", record.coverUrl)
-                    put("source_name", record.sourceName)
-                    put("last_chapter_title", record.lastChapterTitle)
-                    put("last_chapter_index", record.lastChapterIndex)
-                    put("last_page_index", record.lastPageIndex)
-                    put("total_pages", record.totalPages)
-                    put("updated_at", record.updatedAt)
-                }
-                db2.insertWithOnConflict(
-                    "comic_history", null, values, SQLiteDatabase.CONFLICT_REPLACE
+                core.exec(
+                    CoreTableBackup.INSERT_OR_REPLACE_HISTORY,
+                    record.comicId, record.title, record.author, record.coverUrl, record.sourceName,
+                    record.lastChapterTitle, record.lastChapterIndex, record.lastPageIndex,
+                    record.totalPages, record.updatedAt
                 )
             }
-            db2.setTransactionSuccessful()
-        } finally {
-            db2.endTransaction()
         }
         // 直接写库不会刷新 HistoryDao 的缓存 flow，不补这一下历史页要等重启才看得见
         HistoryDao.getInstance(context).refresh()
@@ -380,40 +376,32 @@ class ForeignArchiveImport private constructor(private val context: Context) {
 
     // region ---- 只读打开与列/表探查 ----
 
-    private fun openReadOnly(file: File): SQLiteDatabase =
-        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+    private fun openReadOnly(file: File): SqlDatabase =
+        openReadOnlySqlDatabase(file.absolutePath)
 
-    private fun foldersOf(db: SQLiteDatabase): List<String> {
-        val names = ArrayList<String>()
-        db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { c ->
-            while (c.moveToNext()) names += c.str("name")
-        }
-        return names
-    }
+    private fun foldersOf(db: SqlDatabase): List<String> =
+        db.query("SELECT name FROM sqlite_master WHERE type='table'")
+            .map { it.requiredString("name") }
 
     /** 收藏夹表 = 除元数据表以外的所有表（两边都是"一夹一表"的结构）。 */
-    private fun folderTablesOf(db: SQLiteDatabase): List<String> =
+    private fun folderTablesOf(db: SqlDatabase): List<String> =
         foldersOf(db).filterNot { it in META_TABLES }
 
-    private fun columnsOf(db: SQLiteDatabase, table: String): List<String> {
-        val cols = ArrayList<String>()
-        db.rawQuery("PRAGMA table_info(${LocalFavoriteDatabase.quoteId(table)})", null).use { c ->
-            while (c.moveToNext()) cols += c.str("name")
-        }
-        return cols
-    }
+    private fun columnsOf(db: SqlDatabase, table: String): List<String> =
+        db.query("PRAGMA table_info(${LocalFavoriteDatabase.quoteId(table)})")
+            .map { it.requiredString("name") }
 
-    private fun tableExists(db: SQLiteDatabase, table: String): Boolean =
-        db.rawQuery(
+    private fun tableExists(db: SqlDatabase, table: String): Boolean =
+        db.query(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
-            arrayOf(table)
-        ).use { it.moveToFirst() }
+            table
+        ).isNotEmpty()
 
-    private fun orderedFolders(db: SQLiteDatabase, tables: List<String>): List<String> {
+    private fun orderedFolders(db: SqlDatabase, tables: List<String>): List<String> {
         val order = HashMap<String, Int>()
         if (tableExists(db, "folder_order")) {
-            db.rawQuery("SELECT folder_name, order_value FROM folder_order", null).use { c ->
-                while (c.moveToNext()) order[c.str("folder_name")] = c.intCol("order_value")
+            db.query("SELECT folder_name, order_value FROM folder_order").forEach { c ->
+                order[c.optString("folder_name")] = c.optInt("order_value")
             }
         }
         return tables.sortedWith(compareBy({ order[it] ?: 0 }, { it }))
@@ -429,25 +417,22 @@ class ForeignArchiveImport private constructor(private val context: Context) {
         val time: String,
     )
 
-    private fun readFolderRows(db: SQLiteDatabase, folder: String): List<RawFavorite> {
+    private fun readFolderRows(db: SqlDatabase, folder: String): List<RawFavorite> {
         val cols = columnsOf(db, folder)
         val idColumn = if (cols.contains("target")) "target" else "id"
         val orderBy = if (cols.contains("display_order")) " ORDER BY display_order" else ""
-        val rows = ArrayList<RawFavorite>()
-        db.rawQuery("SELECT * FROM ${LocalFavoriteDatabase.quoteId(folder)}$orderBy", null).use { c ->
-            while (c.moveToNext()) {
-                rows += RawFavorite(
-                    id = c.str(idColumn),
-                    name = c.str("name"),
-                    author = c.str("author"),
-                    type = c.intCol("type"),
-                    tags = c.str("tags"),
-                    coverPath = c.str("cover_path"),
-                    time = c.str("time"),
+        return db.query("SELECT * FROM ${LocalFavoriteDatabase.quoteId(folder)}$orderBy")
+            .map { c ->
+                RawFavorite(
+                    id = c.optString(idColumn),
+                    name = c.optString("name"),
+                    author = c.optString("author"),
+                    type = c.optInt("type"),
+                    tags = c.optString("tags"),
+                    coverPath = c.optString("cover_path"),
+                    time = c.optString("time"),
                 )
             }
-        }
-        return rows
     }
 
     // endregion
@@ -513,15 +498,13 @@ class ForeignArchiveImport private constructor(private val context: Context) {
     }
 
     /** PicaComic 的 `folder_sync.key` 是明文源 key，用它把自装源补进候选集合。 */
-    private fun plainSourceKeysFromFolderSync(db: SQLiteDatabase): Set<String> {
+    private fun plainSourceKeysFromFolderSync(db: SqlDatabase): Set<String> {
         val keys = linkedSetOf<String>()
         if (!tableExists(db, "folder_sync")) return keys
         if (!columnsOf(db, "folder_sync").contains("key")) return keys
-        db.rawQuery("SELECT key FROM folder_sync", null).use { c ->
-            while (c.moveToNext()) {
-                val key = ForeignImportMapping.normalizeSourceKey(c.str("key"))
-                if (key.isNotBlank()) keys += key
-            }
+        db.query("SELECT key FROM folder_sync").forEach { c ->
+            val key = ForeignImportMapping.normalizeSourceKey(c.optString("key"))
+            if (key.isNotBlank()) keys += key
         }
         return keys
     }
@@ -555,21 +538,6 @@ class ForeignArchiveImport private constructor(private val context: Context) {
 
     private fun splitTags(raw: String): List<String> =
         raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-
-    private fun Cursor.str(column: String): String {
-        val index = getColumnIndex(column)
-        return if (index < 0) "" else (getString(index) ?: "")
-    }
-
-    private fun Cursor.intCol(column: String): Int {
-        val index = getColumnIndex(column)
-        return if (index < 0) 0 else getInt(index)
-    }
-
-    private fun Cursor.longCol(column: String): Long {
-        val index = getColumnIndex(column)
-        return if (index < 0) 0L else getLong(index)
-    }
 
     // endregion
 
