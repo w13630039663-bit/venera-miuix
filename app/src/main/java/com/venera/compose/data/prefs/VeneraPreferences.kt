@@ -2,6 +2,7 @@ package com.venera.compose.data.prefs
 
 import android.content.Context
 import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
@@ -637,7 +638,9 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     }
 
     companion object {
-        private const val PREFS_NAME = "venera_preferences"
+        // 存储名与三颗收藏键名以 data/platform 的 PreferenceKeys 为唯一事实源：
+        // 桌面接线（DesktopDatabasePorts）引用同一批常量，两端不再各自抄字面量（见那颗的注释）。
+        private const val PREFS_NAME = PreferenceKeys.PREFS_NAME
 
         private const val KEY_DEFAULT_READING_MODE = "pref_reading_mode"
         private const val KEY_PAGE_GAP_DP = "pref_page_gap_dp"
@@ -677,10 +680,10 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_GALLERY_AI_BADGE = "pref_gallery_ai_badge"
         private const val KEY_GALLERY_HIDE_TOP_BAR = "pref_gallery_hide_top_bar"
         private const val KEY_GALLERY_HIDE_BOTTOM_BAR = "pref_gallery_hide_bottom_bar"
-        private const val KEY_NEW_FAVORITE_ADD_TO = "pref_new_favorite_add_to"
-        private const val KEY_MOVE_FAVORITE_AFTER_READ = "pref_move_favorite_after_read"
+        private const val KEY_NEW_FAVORITE_ADD_TO = PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO
+        private const val KEY_MOVE_FAVORITE_AFTER_READ = PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"
-        private const val KEY_FOLLOW_UPDATES_FOLDER = "pref_follow_updates_folder"
+        private const val KEY_FOLLOW_UPDATES_FOLDER = PreferenceKeys.KEY_FOLLOW_UPDATES_FOLDER
         private const val KEY_PROXY_TYPE = "pref_proxy_type"
 
         private const val KEY_CF_PREFERRED_IP_ENABLED = "pref_cf_preferred_ip_enabled"
