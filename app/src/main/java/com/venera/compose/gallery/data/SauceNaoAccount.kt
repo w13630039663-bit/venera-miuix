@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,7 @@ class SauceNaoAccount private constructor(context: Context) {
 
     private val appContext = context.applicationContext
 
-    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = AndroidKeyValueStore(appContext, PREFS_NAME)
 
     /**
      * 有没有配 key。
@@ -44,7 +45,7 @@ class SauceNaoAccount private constructor(context: Context) {
 
     fun save(key: String) {
         val trimmed = key.trim()
-        prefs.edit().putString(KEY_API_KEY, trimmed).apply()
+        prefs.put(KEY_API_KEY, trimmed)
         _hasKey.value = trimmed.isNotBlank()
     }
 

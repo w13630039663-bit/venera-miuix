@@ -39,6 +39,9 @@ dependencies {
     implementation(libs.miuix.blur)
     implementation(libs.backdrop)
     implementation(libs.kyant.shapes)
+    // JsonKeyValueStore 的落盘格式（`data/platform` 的共享源里就用这一棵树，不再引第二套 JSON 库）。
+    // 必须显式声明：`:engine-probe` 那份是 implementation，不透传到本模块的编译 classpath。
+    implementation(libs.kotlinx.serialization.json)
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)

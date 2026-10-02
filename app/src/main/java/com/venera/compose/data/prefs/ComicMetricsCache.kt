@@ -2,6 +2,7 @@ package com.venera.compose.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 
 /** Optional snapshot of metrics actually returned by a source. No database schema change. */
 data class CachedComicMetrics(val rating: Double? = null, val likesCount: Int? = null)
@@ -10,7 +11,7 @@ data class CachedComicMetrics(val rating: Double? = null, val likesCount: Int? =
 fun comicMetricCacheKey(sourceKey: String, comicId: String): String = "${sourceKey.length}:$sourceKey$comicId"
 
 class ComicMetricsCache(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences("comic_source_metrics", Context.MODE_PRIVATE)
+    private val preferences = AndroidKeyValueStore(context.applicationContext, "comic_source_metrics")
 
     fun get(sourceKey: String, comicId: String): CachedComicMetrics {
         val key = comicMetricCacheKey(sourceKey, comicId)
@@ -27,12 +28,14 @@ class ComicMetricsCache(context: Context) {
         val validLikes = likesCount?.takeIf { it >= 0 }
         if (validRating == null && validLikes == null) return
         val key = comicMetricCacheKey(sourceKey, comicId)
-        val editor = preferences.edit()
-        validRating?.let { editor.putString("$key:rating", it.toString()) }
-        validLikes?.let { editor.putString("$key:likes", it.toString()) }
-        editor.apply()
+        // 攒成一次 putAll：两条观测同进同出，跟收口前那个 editor 一个口径
+        val values = mutableMapOf<String, Any?>()
+        validRating?.let { values["$key:rating"] = it.toString() }
+        validLikes?.let { values["$key:likes"] = it.toString() }
+        preferences.putAll(values)
     }
 
-    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.registerOnSharedPreferenceChangeListener(listener)
-    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.unregisterOnSharedPreferenceChangeListener(listener)
+    // 变更监听仍是 Android 原生回调：接口里没有这一格，调用方（列表卡片）的签名不动
+    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.registerListener(listener)
+    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.unregisterListener(listener)
 }

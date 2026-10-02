@@ -2,6 +2,7 @@ package com.venera.compose.gallery.data
 
 import android.content.Context
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,7 @@ class GelbooruAccount private constructor(context: Context) {
 
     private val appContext = context.applicationContext
 
-    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = AndroidKeyValueStore(appContext, PREFS_NAME)
 
     /**
      * 当前登录身份；null = 没配。
@@ -144,16 +145,19 @@ class GelbooruAccount private constructor(context: Context) {
 
     /** 落库 + 推流，两处调用（[signIn] / [refresh]）共用同一条口径。 */
     private fun store(identity: GelbooruIdentity, uid: String, key: String) {
-        prefs.edit()
-            .putString(KEY_USER_ID, uid)
-            .putString(KEY_API_KEY, key)
-            .apply()
+        // 一次写两条：只有一个半边凭据的状态在下一句就会被判成"没配"
+        prefs.putAll(
+            mapOf(
+                KEY_USER_ID to uid,
+                KEY_API_KEY to key,
+            ),
+        )
         _identity.value = identity
     }
 
     /** 注销：把凭据与身份一起删掉（一个都不留，免得下次"半配置"）。 */
     fun signOut() {
-        prefs.edit().clear().apply()
+        prefs.clear()
         _identity.value = null
     }
 

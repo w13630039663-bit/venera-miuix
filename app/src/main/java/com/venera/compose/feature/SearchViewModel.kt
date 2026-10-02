@@ -1,10 +1,10 @@
 package com.venera.compose.feature
 
 import android.app.Application
-import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.network.ComicUrlTable
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
@@ -69,7 +69,7 @@ data class SearchUiState(
 )
 
 class SearchViewModel(app: Application) : AndroidViewModel(app) {
-    private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val prefs = AndroidKeyValueStore(app, PREFS)
 
     /**
      * 客户端标签过滤要吃**同一张**简繁字级表：源里繁简混写时，简体标签必须能认繁体卡片标签，
@@ -437,13 +437,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearHistory() {
-        prefs.edit().remove(KEY_HISTORY).apply()
+        prefs.remove(KEY_HISTORY)
         _uiState.update { it.copy(history = emptyList()) }
     }
 
     private fun appendHistory(query: String) {
         val next = (listOf(query) + readHistory()).distinct().take(HISTORY_MAX)
-        prefs.edit().putString(KEY_HISTORY, next.joinToString("\u001F")).apply()
+        prefs.put(KEY_HISTORY, next.joinToString("\u001F"))
         _uiState.update { it.copy(history = next) }
     }
 

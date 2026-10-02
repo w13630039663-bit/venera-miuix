@@ -3,24 +3,28 @@ package com.venera.compose.data.prefs
 import android.content.Context
 import android.content.SharedPreferences
 import com.venera.compose.components.normalizeComicDisplayMode
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
+import com.venera.compose.data.platform.contains
 
 /** Separate file: list layout is independent of reader settings and source preferences. */
 class ComicListPreferences(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences("comic_list_presentation", Context.MODE_PRIVATE)
+    private val preferences = AndroidKeyValueStore(context.applicationContext, "comic_list_presentation")
 
     init {
         if (!preferences.contains(KEY_MODE)) {
-            val legacy = context.applicationContext.getSharedPreferences("venera_preferences", Context.MODE_PRIVATE)
-            preferences.edit().putString(KEY_MODE, normalizeComicDisplayMode(legacy.getString("pref_comic_display_mode", null))).apply()
+            // 首次进入从 VeneraPreferences 那张表搬一次（表名与它内部的 PREFS_NAME 对齐）
+            val legacy = AndroidKeyValueStore(context.applicationContext, "venera_preferences")
+            preferences.put(KEY_MODE, normalizeComicDisplayMode(legacy.getString("pref_comic_display_mode", null)))
         }
     }
 
     var displayMode: String
         get() = normalizeComicDisplayMode(preferences.getString(KEY_MODE, null))
-        set(value) { preferences.edit().putString(KEY_MODE, normalizeComicDisplayMode(value)).apply() }
+        set(value) { preferences.put(KEY_MODE, normalizeComicDisplayMode(value)) }
 
-    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.registerOnSharedPreferenceChangeListener(listener)
-    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.unregisterOnSharedPreferenceChangeListener(listener)
+    // 变更监听仍是 Android 原生回调：接口里没有这一格，调用方（列表卡片）的签名不动
+    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.registerListener(listener)
+    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) = preferences.unregisterListener(listener)
 
     private companion object { const val KEY_MODE = "display_mode" }
 }

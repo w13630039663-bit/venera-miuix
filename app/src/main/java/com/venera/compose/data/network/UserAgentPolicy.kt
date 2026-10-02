@@ -1,7 +1,8 @@
 package com.venera.compose.data.network
 
 import android.content.Context
-import android.content.SharedPreferences
+import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -19,15 +20,16 @@ object UserAgentPolicy {
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 Venera/1.0.0"
 
     private val hostUaMap = ConcurrentHashMap<String, String>()
-    private var prefs: SharedPreferences? = null
+    private var prefs: KeyValueStore? = null
 
     fun init(context: Context) {
         if (prefs == null) {
-            val p = context.applicationContext.getSharedPreferences("venera_ua_policy", Context.MODE_PRIVATE)
+            val p = AndroidKeyValueStore(context.applicationContext, "venera_ua_policy")
             prefs = p
-            // 加载持久化的 host -> UA 映射
-            p.all.forEach { (key, value) ->
-                if (value is String && value.isNotBlank()) {
+            // 加载持久化的 host -> UA 映射（这张表里只有 host→UA 一种字符串值）
+            p.keys().forEach { key ->
+                val value = p.getString(key, null)
+                if (!value.isNullOrBlank()) {
                     hostUaMap[key] = value
                 }
             }
@@ -51,7 +53,7 @@ object UserAgentPolicy {
         if (host.isBlank() || userAgent.isBlank()) return
         val normalizedHost = host.lowercase().removePrefix("www.")
         hostUaMap[normalizedHost] = userAgent
-        prefs?.edit()?.putString(normalizedHost, userAgent)?.apply()
+        prefs?.put(normalizedHost, userAgent)
     }
 
     /**
@@ -60,11 +62,11 @@ object UserAgentPolicy {
     fun clear(host: String? = null) {
         if (host == null) {
             hostUaMap.clear()
-            prefs?.edit()?.clear()?.apply()
+            prefs?.clear()
         } else {
             val normalizedHost = host.lowercase().removePrefix("www.")
             hostUaMap.remove(normalizedHost)
-            prefs?.edit()?.remove(normalizedHost)?.apply()
+            prefs?.remove(normalizedHost)
         }
     }
 }

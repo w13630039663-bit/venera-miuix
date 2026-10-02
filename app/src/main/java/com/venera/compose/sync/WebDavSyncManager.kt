@@ -2,6 +2,7 @@ package com.venera.compose.sync
 
 import android.content.Context
 import android.util.Log
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -19,7 +20,7 @@ class WebDavSyncManager private constructor(private val context: Context) {
 
     private val tag = "WebDavSyncManager"
     private val backupManager = BackupManager.getInstance(context)
-    private val prefs = context.getSharedPreferences("venera_webdav_prefs", Context.MODE_PRIVATE)
+    private val prefs = AndroidKeyValueStore(context, "venera_webdav_prefs")
 
     fun getConfig(): WebDavConfig {
         return WebDavConfig(
@@ -32,13 +33,16 @@ class WebDavSyncManager private constructor(private val context: Context) {
     }
 
     fun saveConfig(config: WebDavConfig) {
-        prefs.edit()
-            .putString("server_url", config.serverUrl)
-            .putString("username", config.username)
-            .putString("password", config.password)
-            .putString("remote_path", config.remotePath)
-            .putBoolean("auto_sync", config.autoSync)
-            .apply()
+        // 一次写全套：配置项之间要配套，逐条写会让半套配置有机会被读到
+        prefs.putAll(
+            mapOf(
+                "server_url" to config.serverUrl,
+                "username" to config.username,
+                "password" to config.password,
+                "remote_path" to config.remotePath,
+                "auto_sync" to config.autoSync,
+            ),
+        )
     }
 
     /**
@@ -88,7 +92,7 @@ class WebDavSyncManager private constructor(private val context: Context) {
             Log.w(tag, "Clean old backups failed", e)
         }
 
-        prefs.edit().putLong("last_sync_time", System.currentTimeMillis()).apply()
+        prefs.put("last_sync_time", System.currentTimeMillis())
         Result.success("备份已成功同步至云端: $fileName")
     }
 

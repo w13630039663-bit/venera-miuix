@@ -1,7 +1,6 @@
 package com.venera.compose.feature
 
 import android.app.Application
-import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
@@ -9,6 +8,7 @@ import com.venera.compose.data.db.FavoriteRecord
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.stats.ReadingStatsManager
@@ -133,8 +133,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val recommend: StateFlow<HomeRecommendState> = _recommend.asStateFlow()
 
     /** 退出前那批推荐的落盘位置（冷启动首屏直接铺它，见 [hydrateRecommendFromCache]）。 */
-    private val recommendPrefs =
-        app.getSharedPreferences("home_recommend_cache", android.content.Context.MODE_PRIVATE)
+    private val recommendPrefs = AndroidKeyValueStore(app, "home_recommend_cache")
 
     init {
         hydrateRecommendFromCache()
@@ -308,7 +307,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun writeRecommendCache(state: HomeRecommendState) {
-        recommendPrefs.edit { putString(KEY_RECOMMEND_CACHE, writeSnapshot(state)) }
+        recommendPrefs.put(KEY_RECOMMEND_CACHE, writeSnapshot(state))
     }
 
     private companion object {

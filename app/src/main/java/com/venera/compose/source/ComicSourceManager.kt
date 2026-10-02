@@ -2,10 +2,10 @@ package com.venera.compose.source
 
 import android.content.Context
 import android.util.LruCache
-import androidx.core.content.edit
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.venera.compose.data.network.HostCircuitBreaker
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.engine.explainSourceFailure
 import com.venera.compose.engine.VeneraJsEngine
 import com.venera.compose.source.baozi.BaoziMangaSource
@@ -99,8 +99,8 @@ class ComicSourceManager private constructor(private val context: Context) {
     private val sourceDir = com.venera.compose.StartupTrace.timed("SourceMgr: sourceDir mkdirs") {
         File(context.filesDir, "comic_source").apply { mkdirs() }
     }
-    private val prefs = com.venera.compose.StartupTrace.timed("SourceMgr: getSharedPreferences") {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = com.venera.compose.StartupTrace.timed("SourceMgr: KeyValueStore(venera_sources)") {
+        AndroidKeyValueStore(context, PREFS_NAME)
     }
 
     /** 运行期注册表：JS 声明的 key -> 源实例 */
@@ -133,19 +133,19 @@ class ComicSourceManager private constructor(private val context: Context) {
     val parser: ComicSourceParser by lazy { ComicSourceParser(jsEngine) }
 
     fun getDeletedBuiltinKeys(): Set<String> {
-        return prefs.getStringSet(KEY_DELETED_BUILTINS, emptySet()) ?: emptySet()
+        return prefs.getStringSet(KEY_DELETED_BUILTINS)
     }
 
     private fun markBuiltinDeleted(key: String) {
         val set = getDeletedBuiltinKeys().toMutableSet()
         set.add(key)
-        prefs.edit { putStringSet(KEY_DELETED_BUILTINS, set) }
+        prefs.put(KEY_DELETED_BUILTINS, set)
     }
 
     private fun unmarkBuiltinDeleted(key: String) {
         val set = getDeletedBuiltinKeys().toMutableSet()
         if (set.remove(key)) {
-            prefs.edit { putStringSet(KEY_DELETED_BUILTINS, set) }
+            prefs.put(KEY_DELETED_BUILTINS, set)
         }
     }
 
@@ -205,7 +205,7 @@ class ComicSourceManager private constructor(private val context: Context) {
     }
 
     private fun writeMeta(list: List<InstalledSourceMeta>) {
-        prefs.edit { putString(KEY_INSTALLED, gson.toJson(list)) }
+        prefs.put(KEY_INSTALLED, gson.toJson(list))
         _installedMeta.value = list
     }
 
@@ -245,7 +245,7 @@ class ComicSourceManager private constructor(private val context: Context) {
                 }
             }
             // 无论本次是否真的写入，都记为已 bootstrap（老版本升级时 valid 非空也走这里）
-            prefs.edit { putBoolean(KEY_BOOTSTRAPPED, true) }
+            prefs.put(KEY_BOOTSTRAPPED, true)
         } else {
             // 增量补装：默认清单后来加过 jm.js，只补「本机没有」的那几个。
             // 不补的话，老设备的首页推荐区会永久判「未启用该源」。
@@ -512,7 +512,7 @@ class ComicSourceManager private constructor(private val context: Context) {
     fun setRepoUrl(url: String) {
         val normalized = url.trim().ifBlank { DEFAULT_REPO_URL }
         _repoUrl.value = normalized
-        prefs.edit { putString(KEY_REPO_URL, normalized) }
+        prefs.put(KEY_REPO_URL, normalized)
     }
 
     /** 恢复官方默认仓库地址 */

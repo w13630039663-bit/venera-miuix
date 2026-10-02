@@ -3,6 +3,7 @@ package com.venera.compose.security.guard
 import android.content.ContentValues
 import android.content.Context
 import com.venera.compose.data.db.VeneraDatabase
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.feature.ComicItem
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ExplorePagePart
@@ -96,8 +97,8 @@ class ContentGuardManager private constructor(private val context: Context) {
     private val dbHelper = com.venera.compose.StartupTrace.timed("Guard: VeneraDatabase.getInstance") {
         VeneraDatabase.getInstance(context)
     }
-    private val prefs = com.venera.compose.StartupTrace.timed("Guard: getSharedPreferences(venera_guard_prefs)") {
-        context.getSharedPreferences("venera_guard_prefs", Context.MODE_PRIVATE)
+    private val prefs = com.venera.compose.StartupTrace.timed("Guard: KeyValueStore(venera_guard_prefs)") {
+        AndroidKeyValueStore(context, "venera_guard_prefs")
     }
 
     private val _rules = MutableStateFlow<List<GuardRule>>(emptyList())
@@ -140,7 +141,7 @@ class ContentGuardManager private constructor(private val context: Context) {
     }
 
     fun setNsfwMaskMode(mode: String) {
-        prefs.edit().putString("nsfw_mode", mode).apply()
+        prefs.put("nsfw_mode", mode)
         _nsfwMaskMode.value = mode
         invalidate()
     }
@@ -151,7 +152,7 @@ class ContentGuardManager private constructor(private val context: Context) {
     val blockAiComics: kotlinx.coroutines.flow.StateFlow<Boolean> = _blockAiComics.asStateFlow()
 
     fun setBlockAiComics(enabled: Boolean) {
-        prefs.edit().putBoolean("block_ai", enabled).apply()
+        prefs.put("block_ai", enabled)
         _blockAiComics.value = enabled
         invalidate()
     }

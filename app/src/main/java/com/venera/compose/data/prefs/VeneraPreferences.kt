@@ -1,8 +1,8 @@
 package com.venera.compose.data.prefs
 
 import android.content.Context
-import android.content.SharedPreferences
-import androidx.core.content.edit
+import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
@@ -56,11 +56,13 @@ enum class TagTranslationMode {
     SYSTEM, SIMPLIFIED, TRADITIONAL, OFF
 }
 
-class VeneraPreferences private constructor(context: Context) {
-
-    private val prefs: SharedPreferences = com.venera.compose.StartupTrace.timed("Prefs: getSharedPreferences(venera_preferences)") {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    }
+/**
+ * 全应用偏好设置。
+ *
+ * 底下那条存取通道收口到 [KeyValueStore]（Android 侧是 SharedPreferences 的薄壳，桌面侧是
+ * 一名一个 JSON 文件）；这层 StateFlow 镜像的语义、键名、默认值一字未动。
+ */
+class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
 
     // 阅读器设置
     private val _defaultReadingMode = MutableStateFlow(prefs.getString(KEY_DEFAULT_READING_MODE, "VERTICAL") ?: "VERTICAL")
@@ -160,7 +162,7 @@ class VeneraPreferences private constructor(context: Context) {
     val comicStoragePath: StateFlow<String> = _comicStoragePath.asStateFlow()
 
     fun setComicStoragePath(path: String) {
-        prefs.edit { putString(KEY_COMIC_STORAGE_PATH, path) }
+        prefs.put(KEY_COMIC_STORAGE_PATH, path)
         _comicStoragePath.value = path
     }
 
@@ -192,28 +194,28 @@ class VeneraPreferences private constructor(context: Context) {
     val gallerySaveNaming: StateFlow<GallerySaveNaming> = _gallerySaveNaming.asStateFlow()
 
     fun setGalleryColumnMode(mode: GalleryColumnMode) {
-        prefs.edit { putString(KEY_GALLERY_COLUMNS, mode.name) }
+        prefs.put(KEY_GALLERY_COLUMNS, mode.name)
         _galleryColumnMode.value = mode
     }
 
     fun setGalleryPreviewQuality(quality: GalleryPreviewQuality) {
-        prefs.edit { putString(KEY_GALLERY_PREVIEW, quality.name) }
+        prefs.put(KEY_GALLERY_PREVIEW, quality.name)
         _galleryPreviewQuality.value = quality
     }
 
     fun setGalleryCacheMaxMb(mb: Int) {
         val clamped = mb.coerceIn(64, 4096)
-        prefs.edit { putInt(KEY_GALLERY_CACHE_MB, clamped) }
+        prefs.put(KEY_GALLERY_CACHE_MB, clamped)
         _galleryCacheMaxMb.value = clamped
     }
 
     fun setGalleryDownloadPath(path: String) {
-        prefs.edit { putString(KEY_GALLERY_DOWNLOAD_PATH, path) }
+        prefs.put(KEY_GALLERY_DOWNLOAD_PATH, path)
         _galleryDownloadPath.value = path
     }
 
     fun setGallerySaveNaming(naming: GallerySaveNaming) {
-        prefs.edit { putString(KEY_GALLERY_SAVE_NAMING, naming.name) }
+        prefs.put(KEY_GALLERY_SAVE_NAMING, naming.name)
         _gallerySaveNaming.value = naming
     }
 
@@ -248,24 +250,24 @@ class VeneraPreferences private constructor(context: Context) {
     val galleryPreload: StateFlow<GalleryPreloadMode> = _galleryPreload.asStateFlow()
 
     fun setGalleryKeepScreenOn(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_KEEP_SCREEN_ON, on) }
+        prefs.put(KEY_GALLERY_KEEP_SCREEN_ON, on)
         _galleryKeepScreenOn.value = on
     }
 
     fun setGalleryVolumeKeyTurn(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_VOLUME_KEY, on) }
+        prefs.put(KEY_GALLERY_VOLUME_KEY, on)
         _galleryVolumeKeyTurn.value = on
     }
 
     /** 夹在 0..30：滑条那一头已经给了区间，这里再兜一道，防别处写进一个负数把连播变成"每 0 秒翻一张"。 */
     fun setGalleryAutoPlaySec(seconds: Int) {
         val clamped = seconds.coerceIn(0, 30)
-        prefs.edit { putInt(KEY_GALLERY_AUTOPLAY_SEC, clamped) }
+        prefs.put(KEY_GALLERY_AUTOPLAY_SEC, clamped)
         _galleryAutoPlaySec.value = clamped
     }
 
     fun setGalleryPreload(mode: GalleryPreloadMode) {
-        prefs.edit { putString(KEY_GALLERY_PRELOAD, mode.name) }
+        prefs.put(KEY_GALLERY_PRELOAD, mode.name)
         _galleryPreload.value = mode
     }
 
@@ -317,32 +319,32 @@ class VeneraPreferences private constructor(context: Context) {
     val galleryHideBottomBar: StateFlow<Boolean> = _galleryHideBottomBar.asStateFlow()
 
     fun setGalleryHideTopBar(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_HIDE_TOP_BAR, on) }
+        prefs.put(KEY_GALLERY_HIDE_TOP_BAR, on)
         _galleryHideTopBar.value = on
     }
 
     fun setGalleryHideBottomBar(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_HIDE_BOTTOM_BAR, on) }
+        prefs.put(KEY_GALLERY_HIDE_BOTTOM_BAR, on)
         _galleryHideBottomBar.value = on
     }
 
     fun setGalleryAnimated(mode: GalleryAnimatedMode) {
-        prefs.edit { putString(KEY_GALLERY_ANIMATED, mode.name) }
+        prefs.put(KEY_GALLERY_ANIMATED, mode.name)
         _galleryAnimated.value = mode
     }
 
     fun setGalleryBackdrop(backdrop: GalleryViewerBackdrop) {
-        prefs.edit { putString(KEY_GALLERY_BACKDROP, backdrop.name) }
+        prefs.put(KEY_GALLERY_BACKDROP, backdrop.name)
         _galleryBackdrop.value = backdrop
     }
 
     fun setGalleryBlockAi(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_BLOCK_AI, on) }
+        prefs.put(KEY_GALLERY_BLOCK_AI, on)
         _galleryBlockAi.value = on
     }
 
     fun setGalleryAiBadge(on: Boolean) {
-        prefs.edit { putBoolean(KEY_GALLERY_AI_BADGE, on) }
+        prefs.put(KEY_GALLERY_AI_BADGE, on)
         _galleryAiBadge.value = on
     }
 
@@ -416,7 +418,7 @@ class VeneraPreferences private constructor(context: Context) {
     val favoriteSortOrder: StateFlow<String> = _favoriteSortOrder.asStateFlow()
 
     fun setFavoriteSortOrder(order: String) {
-        prefs.edit { putString(KEY_FAVORITE_SORT_ORDER, order) }
+        prefs.put(KEY_FAVORITE_SORT_ORDER, order)
         _favoriteSortOrder.value = order
     }
 
@@ -427,7 +429,7 @@ class VeneraPreferences private constructor(context: Context) {
     val checkUpdateOnStart: StateFlow<Boolean> = _checkUpdateOnStart.asStateFlow()
 
     fun setCheckUpdateOnStart(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_CHECK_UPDATE_ON_START, enable) }
+        prefs.put(KEY_CHECK_UPDATE_ON_START, enable)
         _checkUpdateOnStart.value = enable
     }
 
@@ -439,7 +441,7 @@ class VeneraPreferences private constructor(context: Context) {
     var lastUpdateCheckAt: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_CHECK_AT, 0L)
         set(value) {
-            prefs.edit { putLong(KEY_LAST_UPDATE_CHECK_AT, value) }
+            prefs.put(KEY_LAST_UPDATE_CHECK_AT, value)
         }
 
     // ---- 设置页 hero 头图 / 名言卡小图（2026-10-02）----
@@ -458,156 +460,158 @@ class VeneraPreferences private constructor(context: Context) {
     val settingsQuoteAvatarPath: StateFlow<String> = _settingsQuoteAvatarPath.asStateFlow()
 
     fun setSettingsHeroPath(path: String) {
-        prefs.edit { putString(KEY_SETTINGS_HERO_PATH, path) }
+        prefs.put(KEY_SETTINGS_HERO_PATH, path)
         _settingsHeroPath.value = path
     }
 
     fun setSettingsQuoteAvatarPath(path: String) {
-        prefs.edit { putString(KEY_SETTINGS_QUOTE_AVATAR_PATH, path) }
+        prefs.put(KEY_SETTINGS_QUOTE_AVATAR_PATH, path)
         _settingsQuoteAvatarPath.value = path
     }
 
     // 写入方法
     fun setDefaultReadingMode(mode: String) {
-        prefs.edit { putString(KEY_DEFAULT_READING_MODE, mode) }
+        prefs.put(KEY_DEFAULT_READING_MODE, mode)
         _defaultReadingMode.value = mode
     }
 
     fun setPageGapDp(gap: Float) {
-        prefs.edit { putFloat(KEY_PAGE_GAP_DP, gap) }
+        prefs.put(KEY_PAGE_GAP_DP, gap)
         _pageGapDp.value = gap
     }
 
     fun setKeepScreenOn(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_KEEP_SCREEN_ON, enable) }
+        prefs.put(KEY_KEEP_SCREEN_ON, enable)
         _keepScreenOn.value = enable
     }
 
     fun setVolumeKeyTurn(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_VOLUME_KEY_TURN, enable) }
+        prefs.put(KEY_VOLUME_KEY_TURN, enable)
         _volumeKeyTurn.value = enable
     }
 
     fun setNightFilter(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_NIGHT_FILTER, enable) }
+        prefs.put(KEY_NIGHT_FILTER, enable)
         _nightFilter.value = enable
     }
 
     fun setClickToTurn(enable: Boolean) {
-        prefs.edit { putBoolean(KEY_CLICK_TO_TURN, enable) }
+        prefs.put(KEY_CLICK_TO_TURN, enable)
         _clickToTurn.value = enable
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        prefs.edit { putString(KEY_THEME_MODE, mode.name) }
+        prefs.put(KEY_THEME_MODE, mode.name)
         _themeMode.value = mode
     }
 
     fun setAppearanceStyle(style: AppearanceStyle) {
-        prefs.edit { putString(KEY_APPEARANCE_STYLE, style.name) }
+        prefs.put(KEY_APPEARANCE_STYLE, style.name)
         _appearanceStyle.value = style
     }
 
     fun setThemeColorSource(source: ThemeColorSource) {
-        prefs.edit { putString(KEY_THEME_COLOR_SOURCE, source.name) }
+        prefs.put(KEY_THEME_COLOR_SOURCE, source.name)
         _themeColorSource.value = source
     }
 
     fun setThemeSeedColor(argb: Int) {
-        prefs.edit { putInt(KEY_THEME_SEED_COLOR, argb) }
+        prefs.put(KEY_THEME_SEED_COLOR, argb)
         _themeSeedColor.value = argb
     }
 
     fun setNavigationBarStyle(style: NavigationBarStyle) {
-        prefs.edit { putString(KEY_NAVIGATION_BAR_STYLE, style.name) }
+        prefs.put(KEY_NAVIGATION_BAR_STYLE, style.name)
         _navigationBarStyle.value = style
     }
 
     fun setSurfaceMaterial(material: SurfaceMaterial) {
-        prefs.edit { putString(KEY_SURFACE_MATERIAL, material.name) }
+        prefs.put(KEY_SURFACE_MATERIAL, material.name)
         _surfaceMaterial.value = material
     }
 
     fun setTagTranslationMode(mode: TagTranslationMode) {
-        prefs.edit { putString(KEY_TAG_TRANSLATION_MODE, mode.name) }
+        prefs.put(KEY_TAG_TRANSLATION_MODE, mode.name)
         _tagTranslationMode.value = mode
     }
 
     fun setAutoScrollPageIntervalSec(sec: Float) {
         val clamped = sec.coerceIn(1f, 15f)
-        prefs.edit { putFloat(KEY_AUTO_SCROLL_INTERVAL_SEC, clamped) }
+        prefs.put(KEY_AUTO_SCROLL_INTERVAL_SEC, clamped)
         _autoScrollPageIntervalSec.value = clamped
     }
 
     fun setSecureScreen(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_SECURE_SCREEN, enabled) }
+        prefs.put(KEY_SECURE_SCREEN, enabled)
         _secureScreen.value = enabled
     }
 
     fun setPreloadImageCount(count: Int) {
         val v = count.coerceIn(0, 20)
-        prefs.edit { putInt(KEY_PRELOAD_COUNT, v) }
+        prefs.put(KEY_PRELOAD_COUNT, v)
         _preloadImageCount.value = v
     }
 
     fun setReverseTapDirection(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_REVERSE_TAP, enabled) }
+        prefs.put(KEY_REVERSE_TAP, enabled)
         _reverseTapDirection.value = enabled
     }
 
     fun setDefaultSearchTarget(key: String) {
-        prefs.edit { putString(KEY_DEFAULT_SEARCH_TARGET, key) }
+        prefs.put(KEY_DEFAULT_SEARCH_TARGET, key)
         _defaultSearchTarget.value = key
     }
 
     fun setStartPage(tab: String) {
-        prefs.edit { putString(KEY_START_PAGE, tab) }
+        prefs.put(KEY_START_PAGE, tab)
         _startPage.value = tab
     }
 
     fun setReverseChapterOrder(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_REVERSE_CHAPTERS, enabled) }
+        prefs.put(KEY_REVERSE_CHAPTERS, enabled)
         _reverseChapterOrder.value = enabled
     }
 
     fun setDownloadThreads(threads: Int) {
         val v = threads.coerceIn(1, 16)
-        prefs.edit { putInt(KEY_DOWNLOAD_THREADS, v) }
+        prefs.put(KEY_DOWNLOAD_THREADS, v)
         _downloadThreads.value = v
     }
 
     fun setHttpCacheMaxMb(mb: Int) {
         val v = mb.coerceIn(16, 1024)
-        prefs.edit { putInt(KEY_HTTP_CACHE_MAX_MB, v) }
+        prefs.put(KEY_HTTP_CACHE_MAX_MB, v)
         _httpCacheMaxMb.value = v
     }
 
     fun setNewFavoriteAddTo(value: String) {
-        prefs.edit { putString(KEY_NEW_FAVORITE_ADD_TO, value) }
+        prefs.put(KEY_NEW_FAVORITE_ADD_TO, value)
         _newFavoriteAddTo.value = value
     }
 
     fun setMoveFavoriteAfterRead(value: String?) {
-        prefs.edit { putString(KEY_MOVE_FAVORITE_AFTER_READ, value) }
+        prefs.put(KEY_MOVE_FAVORITE_AFTER_READ, value)
         _moveFavoriteAfterRead.value = value
     }
 
     fun setQuickFavorite(folder: String?) {
-        prefs.edit { putString(KEY_QUICK_FAVORITE, folder) }
+        prefs.put(KEY_QUICK_FAVORITE, folder)
         _quickFavorite.value = folder
     }
 
     fun setFollowUpdatesFolder(folder: String?) {
-        prefs.edit { putString(KEY_FOLLOW_UPDATES_FOLDER, folder) }
+        prefs.put(KEY_FOLLOW_UPDATES_FOLDER, folder)
         _followUpdatesFolder.value = folder
     }
 
     fun setProxy(type: String, host: String, port: Int) {
-        prefs.edit {
-            putString(KEY_PROXY_TYPE, type)
-            putString(KEY_PROXY_HOST, host)
-            putInt(KEY_PROXY_PORT, port)
-        }
+        prefs.putAll(
+            mapOf(
+                KEY_PROXY_TYPE to type,
+                KEY_PROXY_HOST to host,
+                KEY_PROXY_PORT to port,
+            ),
+        )
         _proxyType.value = type
         _proxyHost.value = host
         _proxyPort.value = port
@@ -620,11 +624,13 @@ class VeneraPreferences private constructor(context: Context) {
      * 只写偏好不重建客户端就是个假开关（与代理那一处同一口径）。
      */
     fun setCfPreferredIp(enabled: Boolean, ips: String, hosts: String) {
-        prefs.edit {
-            putBoolean(KEY_CF_PREFERRED_IP_ENABLED, enabled)
-            putString(KEY_CF_PREFERRED_IPS, ips)
-            putString(KEY_CF_PREFERRED_HOSTS, hosts)
-        }
+        prefs.putAll(
+            mapOf(
+                KEY_CF_PREFERRED_IP_ENABLED to enabled,
+                KEY_CF_PREFERRED_IPS to ips,
+                KEY_CF_PREFERRED_HOSTS to hosts,
+            ),
+        )
         _cfPreferredIpEnabled.value = enabled
         _cfPreferredIps.value = ips
         _cfPreferredHosts.value = hosts
@@ -694,7 +700,11 @@ class VeneraPreferences private constructor(context: Context) {
         fun getInstance(context: Context): VeneraPreferences {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: com.venera.compose.StartupTrace.timed("Prefs: VeneraPreferences() full ctor") {
-                    VeneraPreferences(context.applicationContext)
+                    VeneraPreferences(
+                        com.venera.compose.StartupTrace.timed("Prefs: KeyValueStore(venera_preferences)") {
+                            AndroidKeyValueStore(context.applicationContext, PREFS_NAME)
+                        },
+                    )
                 }.also { INSTANCE = it }
             }
         }

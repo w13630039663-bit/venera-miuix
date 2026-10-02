@@ -3,6 +3,7 @@ package com.venera.compose.source.copymanga
 import android.content.Context
 import android.util.Base64
 import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.source.ComicSource
 import com.venera.compose.source.model.ChapterPages
 import com.venera.compose.source.model.Comic
@@ -35,7 +36,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
     override val iconUrl: String = "https://www.copymanga.tv/favicon.ico"
 
     private val networkClient by lazy { VeneraNetworkClient.getInstance(context) }
-    private val prefs by lazy { context.getSharedPreferences("venera_source_copy_manga", Context.MODE_PRIVATE) }
+    private val prefs by lazy { AndroidKeyValueStore(context, "venera_source_copy_manga") }
     private val apiUrl: String
         get() {
             val host = prefs.getString("base_url", "api.copy2000.online")?.takeIf { it.isNotBlank() } ?: "api.copy2000.online"
@@ -317,7 +318,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
     }
 
     override fun saveSetting(key: String, value: Any) {
-        prefs.edit().putString(key, value.toString()).apply()
+        prefs.put(key, value.toString())
     }
 
     override fun getAccountInfo(): com.venera.compose.feature.sourcemanage.SourceAccountInfo {
@@ -379,16 +380,19 @@ class CopyMangaSource(private val context: Context) : ComicSource {
             val token = json.optJSONObject("results")?.optString("token").orEmpty()
             if (token.isBlank()) throw Exception("登录响应里没有 token")
 
-            prefs.edit()
-                .putString("token", token)
-                .putString("account_username", username)
-                .apply()
+            // 两条一次写：token 与用户名要么都落、要么都不落（半套凭据等于登录没成）
+            prefs.putAll(
+                mapOf(
+                    "token" to token,
+                    "account_username" to username,
+                ),
+            )
             true
         }
     }
 
     override suspend fun logout(): Result<Boolean> = withContext(Dispatchers.IO) {
-        prefs.edit().remove("token").remove("account_username").apply()
+        prefs.putAll(mapOf("token" to null, "account_username" to null))
         Result.success(true)
     }
 }

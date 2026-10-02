@@ -1,10 +1,10 @@
 ﻿package com.venera.compose.data.network
 
 import android.content.Context
-import android.content.SharedPreferences
-import androidx.core.content.edit
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PersistentCookieJar(context: Context) : CookieJar {
 
-    private val prefs: SharedPreferences = com.venera.compose.StartupTrace.timed("CookieJar: getSharedPreferences") {
-        context.getSharedPreferences("venera_cookies", Context.MODE_PRIVATE)
+    private val prefs: KeyValueStore = com.venera.compose.StartupTrace.timed("CookieJar: KeyValueStore(venera_cookies)") {
+        AndroidKeyValueStore(context, "venera_cookies")
     }
     private val gson = Gson()
     private val memoryStore = ConcurrentHashMap<String, MutableList<SerializableCookie>>()
@@ -63,7 +63,7 @@ class PersistentCookieJar(context: Context) : CookieJar {
         if (changed) {
             for (host in memoryStore.keys.toList()) persistHost(host)
         }
-        prefs.edit { putBoolean(KEY_DOMAIN_MIGRATION_DONE, true) }
+        prefs.put(KEY_DOMAIN_MIGRATION_DONE, true)
     }
 
     private data class SerializableCookie(
@@ -105,22 +105,22 @@ class PersistentCookieJar(context: Context) : CookieJar {
     }
 
     private fun loadFromPrefs() {
-        val all = prefs.all
-        for ((host, jsonStr) in all) {
-            if (jsonStr is String) {
-                try {
-                    val type = object : TypeToken<List<SerializableCookie>>() {}.type
-                    val list: List<SerializableCookie> = gson.fromJson(jsonStr, type)
-                    memoryStore[host] = list.toMutableList()
-                } catch (_: Exception) {}
-            }
+        // 那张表里除 cookie 桶外只有一枚 Boolean 的迁移标记，所以遍历时要按名字绕开它
+        // （门面读 String 撞上别的类型是抛，不是给默认值 —— 别用 runCatching 把它捂过去）。
+        for (host in prefs.keys() - KEY_DOMAIN_MIGRATION_DONE) {
+            val jsonStr = prefs.getString(host, null) ?: continue
+            try {
+                val type = object : TypeToken<List<SerializableCookie>>() {}.type
+                val list: List<SerializableCookie> = gson.fromJson(jsonStr, type)
+                memoryStore[host] = list.toMutableList()
+            } catch (_: Exception) {}
         }
     }
 
     private fun persistHost(host: String) {
         val list = memoryStore[host] ?: return
         val json = gson.toJson(list)
-        prefs.edit { putString(host, json) }
+        prefs.put(host, json)
     }
 
     /**
@@ -206,13 +206,13 @@ class PersistentCookieJar(context: Context) : CookieJar {
         }
         for (h in targets) {
             memoryStore.remove(h)
-            prefs.edit { remove(h) }
+            prefs.remove(h)
         }
     }
 
     fun clear() {
         memoryStore.clear()
-        prefs.edit { clear() }
+        prefs.clear()
     }
 
     private companion object {

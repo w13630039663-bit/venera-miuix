@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.data.GelbooruAccount
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GalleryPost
@@ -1138,9 +1139,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    /** 历史：进 ViewModel 时读一次，成功搜索后写回 SharedPreferences。 */
+    /** 历史：进 ViewModel 时读一次，成功搜索后写回键值门面。 */
     private val prefs by lazy {
-        app.getSharedPreferences("venera_gallery_search", Context.MODE_PRIVATE)
+        AndroidKeyValueStore(app, "venera_gallery_search")
     }
 
     fun restoreHistoryIfNeeded() {
@@ -1151,12 +1152,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     private fun saveHistory(entry: GallerySearchEntry) {
         val next = pushGallerySearchHistory(history, entry)
         acceptHistory(next)
-        prefs.edit().putString("history", encodeGallerySearchHistory(next)).apply()
+        prefs.put("history", encodeGallerySearchHistory(next))
     }
 
     fun clearHistory() {
         acceptHistory(emptyList())
-        prefs.edit().remove("history").apply()
+        prefs.remove("history")
     }
 
     /**
@@ -1168,7 +1169,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun removeHistory(entry: GallerySearchEntry) {
         val next = history.filterNot { it == entry }
         acceptHistory(next)
-        prefs.edit().putString("history", encodeGallerySearchHistory(next)).apply()
+        prefs.put("history", encodeGallerySearchHistory(next))
     }
 
     /**
