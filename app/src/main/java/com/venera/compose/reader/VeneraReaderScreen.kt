@@ -8,6 +8,8 @@ import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.view.HapticFeedbackConstants
@@ -96,6 +98,7 @@ import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.source.ComicSourceManager
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
@@ -287,7 +290,18 @@ private fun ReaderSessionContent(
     DisposableEffect(Unit) {
         onDispose {
             val durationSec = ((System.currentTimeMillis() - sessionStartTime) / 1000).coerceAtLeast(1)
-            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            // recordSession 按纪律写失败当场抛（磁盘满/写锁/库损坏）。这里原来是
+            // `CoroutineScope(Dispatchers.IO).launch` —— 没 Job 也没 CoroutineExceptionHandler，
+            // 异常会走线程默认未捕获路径，把"退出阅读器"变成进程级崩溃。
+            // 换成带 handler 的作用域：留痕（含 comicId 与失败原因）+ 一次性可见提示，既不静默也不崩。
+            val statsComicId = session.comicId
+            val statsFailureHandler = CoroutineExceptionHandler { _, error ->
+                Log.e("VeneraReader", "阅读统计写入失败：comicId=$statsComicId", error)
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "本次阅读统计未能保存", Toast.LENGTH_SHORT).show()
+                }
+            }
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO + statsFailureHandler).launch {
                 com.venera.compose.stats.ReadingStatsManager.getInstance(context).recordSession(
                     comicId = session.comicId,
                     comicTitle = session.comicTitle,
