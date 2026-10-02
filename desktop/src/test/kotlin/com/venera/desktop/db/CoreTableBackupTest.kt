@@ -236,7 +236,12 @@ class CoreTableBackupTest {
                 restored.db.inTransaction { CoreTableBackup.importHistory(restored.db, rows) }
                 fail("缺 title 的行本该抛")
             } catch (e: IllegalStateException) {
-                assertTrue("实际消息：${e.message}", e.message!!.contains("title"))
+                // 「缺字段『title』」整段带引号对死：旧的 contains("title") 会被子串
+                // last_chapter_title（以及抛文案里的现有字段清单）撞上，指不了"缺的就是 title 这一列"。
+                assertTrue(
+                    "实际消息：${e.message}",
+                    e.message!!.contains("缺字段「title」"),
+                )
             }
             // 第一行已经 exec 过，只有整笔回滚能让这里还是 0
             assertEquals(0, CoreTableBackup.exportTable(restored.db, "comic_history").size())
