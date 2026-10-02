@@ -222,7 +222,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 | `UnifiedExploreScreen:123,124`、`SourceSectionScreen:104,105`、`HomeScreen:134,610,796`、`SearchScreen:136,138`、`FavoritesScreen:795,913`、`HistoryScreen:269`、`NetworkFavoritesScreen:653`（13 处） | B1 `ContentGuard` / B2 `ComicPreferences` / B3 `SourceCatalog` 都已覆盖 | **只差一次点名豁免，零技术前提**：契约与适配器已就绪，这些行是同一行的取用替换。入场券已逐颗核实（`applicationContext` 归一：`ContentGuardManager.kt:511`、`ComicSourceManager.kt:1448`、`VeneraPreferences.kt:707`；`StateFlow` 交回同一实例；不加减 `remember`） |
 | `feature/Navigation.kt:491`（`navigationBarStyle` + `startPage`） | B2 `AppearancePreferences` | 同文件改动按保护域口径需**重新评审一次**（`FREEZE-STATEMENT.md:32` 只管 Tab 枚举顺序 / 路由映射 / 顶栏齿轮入口这三项，本行不在其内） |
 | `feature/Navigation.kt:286`（`ComicLinkResolver`） | **本轮连契约都不立** | **两段前提，缺一段做不动**：① 同上保护域重新评审；② 硬技术前提 = `ComicLinkResolver.Outcome` 是**嵌套在吃 `Context` 的类体里的 `sealed interface`**（`source/ComicLinkResolver.kt:3,23,25-36`），而 `feature/Navigation.kt:313` 逐条消费那四档 ⇒ 必须先做一次 W1 同族的类型搬家，本行才有契约可引 |
-| `feature/SettingsHost.kt:140` 与 `feature/settings/GallerySettings.kt:60`（`VeneraPreferences`） | B2 的 `GalleryPreferences` 已立但**故意只读** | 与 **W5** 同批：`setGalleryXxx` 15 枚写口的唯一消费者是这一页（`feature/settings/GallerySettings.kt:107-284`），而 `gallery/ui` 对那 12 枚只读；W5 落 `gallery/data/GalleryPreferences.kt` 实现类接上这颗接口后，这两行才有的契约可引（零技术前提的另一半已在 `GalleryPorts.kt` 里） |
+| `feature/SettingsHost.kt:140` 与 `feature/settings/GallerySettings.kt:60`（`VeneraPreferences`） | B2 的 `GalleryPreferences` 已立但**故意只读** | 与 **W5 的写口**同批：`setGalleryXxx` 15 枚写口的唯一消费者是这一页（`feature/settings/GallerySettings.kt:107-284`），而 `gallery/ui` 对那 12 枚只读。**读侧实现类不用等 W5** —— `AndroidGalleryPreferences` 已在 B2 那批落进 `gallery/data/GalleryPorts.kt:150,172`（原文那句「W5 落实现类时接上它」已被实码推翻，见 §八 的更正框），这两行缺的只是**契约上的写成员** |
 | `feature/SearchViewModel.kt:39,286,299,316,325,327`（`ComicSourceManager.SourceSearchResult`）与 `feature/settings/PreferredIpSpeedTestScreen.kt:88`（`installedMeta`） | B3 的 `ComicContentApi` / `SourceCatalog **不收这两枚类型**` | 与 **W1** 同批：两颗 data class 嵌套在实现类体里（`source/ComicSourceManager.kt:61` 一带），契约签名要它们就必须 import 实现类拿嵌套类型；搬进 `source/model/` 后这两行自动消失（`SearchViewModel` 的 7 处**取用**本批已全部改引，留的只是类型位） |
 
 **将来兑现解锁时的豁免记录形状**（照 `:51-63` 与 `:78` 的真实先例：**点名 + 明列未动项**）—— 未动清单至少要含：探索闭环判定链（`:23`）、`ContentGuardManager.kt` 本体（仍 FROZEN，从外面包、未进一颗字符）、打码与分页、行级虚拟化契约、手风琴状态机、下拉刷新与续页闸门、顶栏大标题折叠 + 毛玻璃页内自治、`statusBarTop + topBarFloor` 地板、`LocalBottomBarClearance` 底栏避让、Tab 枚举顺序与路由映射表与顶栏齿轮入口。
@@ -251,6 +251,11 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 - **W1/W2 是本方案 4 条「不收」的唯一先决条件**：`InstalledSourceMeta`（`source/ComicSourceManager.kt:61`）、`FavoriteImageItem`、`ComicLinkResolver.Outcome` 搬进 `source/model` 之后，§2.2 的「故意不收」与 §七.1/§六 的第三行当场可摘 —— 这是 W1/W2 收益的具体化。
 - **W3（`LayeringEdgeTest`）** 与本方案的守卫**同源不同向**（那条管「下层不许向上层伸手」，这条管「上层不许直连下层实现」），**必须共享同一份实现类符号表**；本方案先落地会让 W3 的基线从「几乎全仓」缩到可指名的一小撮。
 - **W5**：本方案把 `GalleryPreferences` 的**接口**先立在 `gallery/data/GalleryPorts.kt`，W5 落实现类时接上它 —— 两批共用「存储名与键名逐字不变 + 化石用例」的同一条口径。
+  > **本条的后半句已过期（2026-10-03 由 D4 探测器当场量出来）**：读侧实现类 `AndroidGalleryPreferences`
+  > **B2 那批就顺手落了**（`gallery/data/GalleryPorts.kt:150` 装配、`:172` 类体），所以「W5 = 实现类接入 GalleryPorts」
+  > 这半件事已经做完了；W5 真正剩下的只有**写口**那 15 枚（`GalleryPreferences` 今天 12 枚全 `val`）。
+  > §六 那行「与 W5 同批」的措辞随之改定，探测器 `DebtReadinessTest` 的 W5 判式也随之从「实现类存在」
+  > 收紧成「契约出现写成员」—— 收之前它是**假亮**的（第一次跑就红了，红得对，只是红在了我的判式上而不是债务上）。
 - **W6**：`FollowUpdatesRepository` 让路给它的构造注入，本方案不碰。
 - 共同前置自动满足：**一行不动 `desktop/build.gradle.kts`**。
 
@@ -296,7 +301,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 | **D1** | B7' 画廊契约**纯改引** 35 条 / **10 颗**（原写 14 颗是 B 系列之前的旧数，2026-10-03 复算改定）；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
 | **D2** | B5 `FavoriteLibrary` + `OfflineLibrary` 18 条；宽度按消费面实数定 | 无 | ⏳ |
 | **D3** | VM 构造注入（第三路），17 处调用点不动。**形状 = 注入聚合端口 `BusinessPorts`**（改判理由见上面那段引文） | 无（不等 D1/D2） | ✅ |
-| **D4** | 「解锁条件已兑现而债务未清即红」的守卫：W1/W2 类型搬家一旦完成，`BusinessApiBaseline` 挂着的那些行自动转红；并行线脏文件一旦入库，`TagTranslationManager` 那几条待办同样转红。**已交一半**：`architecture/ViewModelAssemblyGuardTest.kt` 那三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ◐ |
+| **D4** | 「解锁条件已兑现而债务未清即红」的守卫：`architecture/DebtReadinessTest.kt` 六条债（W1×3、W2、W5 写口、§七.7）+ `architecture/ViewModelAssemblyGuardTest.kt` 三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ✅ |
 | **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ⏳ |
 
 **顺序不能反**的两条理由：D0 先做，因为 D1/D2/D3 每一批都在往里写 import，那半边今天一条用例都没有；
@@ -365,4 +370,25 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 - 未验：**VM 在真机上能否实例化**（无 Robolectric、且今天无设备连接）。缓解是那条 teeth 实测 + 委托构造形状
   与 `AndroidViewModelFactory.getConstructor(Application::class.java)` 的反射口径逐字对得上；
   结案要等真机挂账那一批（冷启动进首页/搜索/详情/历史各一次）。
+
+### D4（2026-10-03）读数 —— 探测器第一次亮就照出一处文档撒谎
+
+- 新增 `architecture/DebtReadinessTest.kt` 三条用例 + 六条债（W1-a `SourceSearchResult`/`InstalledSourceMeta`、
+  W1-b `FavoriteImageItem`、W1-c `ComicLinkResolver.Outcome`、W2 三枚 sourcemanage 类型、W5 **写口**、§七.7 简繁/标签翻译契约）。
+  每条债 = 「前置是否成立」的机器判据 + 「待摘点位是否还挂在白名单上」的判据，两者同时成立 ⇒ 红。
+  点位判据直接读 `internal` 的三张基线表（`BASELINE_IMPORT` / `BASELINE_GET_INSTANCE` / `BASELINE_TYPE_SITE`），
+  不复制行号也不复制符号名，所以不会又制造一份会漂的账本。
+- **三条用例里第一条就在首跑红了**，红在 W5：我的判式写的是「`gallery/data` 出现 `GalleryPreferences` 的实现类」，
+  而实现类 `AndroidGalleryPreferences` **B2 那批就顺手落了**（`git log -S` 定位到 5ff7486；装配在 `GalleryPorts.kt:150`、
+  类体 `:172`）。也就是说 §六 与 §八 那句「W5 落实现类时接上这颗接口」**从落笔那天起就过期了** ——
+  W5 真正缺的是 15 枚写口，不是实现类。两处文档已按实码改定，判式收紧成
+  「契约出现写成员（`fun set/toggleGalleryXxx` 或 `var galleryXxx:`）」，收紧后今天不亮（正确）。
+  这次红同时给出一条 teeth 实测：**探测器会亮，而且亮的时机就是该有人动手的时机**。
+- 另两条用例是给探测器自己兜底的：② 每条债的 `probeTypes` 必须能在 `app/src/main` 里找到类型声明
+  （判式写错符号名 ⇒ 永不点亮，比没有探测器更糟）；③ 每条债的待摘点位必须**今天真的还挂着**
+  （自己消失了就把这条 Debt 删掉，照「消失也要红一次」的纪律）。
+- 读数：`:app:testDebugUnitTest --rerun-tasks` **806 tests / 0 failures**（104 份 XML、106 颗 `.kt`）、
+  `:desktop:compileKotlin` executed 过。白名单 A/B/C/D/E 五张表**一条未动**（B 仍 93 站点）—— 这批只加用例与改文档。
+- README 中英各 4 处测试规模同步 106/104/806。`_qa/readme-counts.mjs` 改成「旧值没命中就抛错」，
+  不再静默跳过（它这轮就真的抛了一次：我按记忆写旧值 104，实际已是 105）。
 
