@@ -71,10 +71,16 @@ data class HomeUiState(
  * 说明：原版这些数字来自 read_stats 表（逐话逐页真实计时），那是另有一轮的范围；
  * 本阶段先保证「显示的是真数据、哪怕口径暂时粗略」，不再显示假数据。
  */
-class HomeViewModel(app: Application) : AndroidViewModel(app) {
+class HomeViewModel(
+    app: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(app) {
+
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(app: Application) : this(app, BusinessPorts.of(app))
 
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
-    private val historyDao = BusinessPorts.of(app).history
+    private val historyDao = ports.history
     private val appContext = app
 
     /**
@@ -132,7 +138,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val recommend: StateFlow<HomeRecommendState> = _recommend.asStateFlow()
 
     /** 退出前那批推荐的落盘位置（冷启动首屏直接铺它，见 [hydrateRecommendFromCache]）。 */
-    private val recommendPrefs = BusinessPorts.of(app).stores.open(PreferenceKeys.PREFS_HOME_RECOMMEND_CACHE)
+    private val recommendPrefs = ports.stores.open(PreferenceKeys.PREFS_HOME_RECOMMEND_CACHE)
 
     init {
         hydrateRecommendFromCache()
@@ -196,16 +202,16 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadRecommendOnce() {
-        val sources = BusinessPorts.of(appContext).sources
-        val comics = BusinessPorts.of(appContext).comics
+        val sources = ports.sources
+        val comics = ports.comics
         if (!awaitSourceRegistered(sources, RECOMMEND_SOURCE_KEY)) {
             failRecommend("推荐取自禁漫天堂（免登录），当前未启用该源", canRetry = true)
             return
         }
         _recommend.value = _recommend.value.copy(loading = true)
-        val guard = BusinessPorts.of(appContext).contentGuard
+        val guard = ports.contentGuard
         val buckets = runCatching {
-            BusinessPorts.of(appContext).stats.getTagStats(RECOMMEND_WINDOW_DAYS).buckets
+            ports.stats.getTagStats(RECOMMEND_WINDOW_DAYS).buckets
         }.getOrNull().orEmpty().take(3)
         if (buckets.isEmpty()) {
             // 读几本之后就该能推了，允许下次进入首页再试

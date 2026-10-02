@@ -196,7 +196,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Theme colour | dynamic + 6 presets | ✅ seed colour + 25 presets + wallpaper |
 | Transitions | standard | ✅ shared element + predictive-back tracking + gallery fly-in |
 | Archive interoperability | — | ✅ imports official `.venera` and PicaComic `.picadata` |
-| Unit tests | 1 Dart test file | ✅ 104 pure JVM test files (102 classes) / 800 cases |
+| Unit tests | 1 Dart test file | ✅ 105 pure JVM test files (103 classes) / 803 cases |
 | Local formats | ZIP / 7Z / CBZ / EPUB / folder | ✅ folder + CBZ import/export (**no archive reading**, see gaps) |
 | Headless / CLI mode | ✅ | ❌ not planned |
 
@@ -211,7 +211,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Source JS execution | flutter_inappwebview | **system WebView + JS bridge** + shim reimplementation |
 | Gallery boards / artist follows / daily hot / reverse search | — | ✅ |
 | Cloudflare preferred IP | — | ✅ (off by default) |
-| JVM correctness tests | 1 Dart test file | ✅ 104 files / 800 cases |
+| JVM correctness tests | 1 Dart test file | ✅ 105 files / 803 cases |
 | Radial transition (preview card ⇄ reader) | ✅ | ❌ not carried over in the migration |
 
 ### Upstream has it, this branch does not
@@ -289,7 +289,7 @@ No Flutter, no Dart, no Rust.
 # release: R8 obfuscation + resource shrinking, split per ABI (armeabi-v7a / arm64-v8a / x86_64 / universal)
 ./gradlew :app:assembleRelease
 
-# pure JVM correctness tests (104 files / 800 cases, no device needed)
+# pure JVM correctness tests (105 files / 803 cases, no device needed)
 # These two numbers drift. Recompute: find app/src/test -name '*.kt' | wc -l  and  grep -rho '@Test' app/src/test --include=*.kt | wc -l
 ./gradlew :app:testDebugUnitTest
 
@@ -378,7 +378,7 @@ venera-compose/
 │   │   ├── comic-side tag dictionaries (Simplified / Traditional) + 3,980 Simplified/Traditional pairs
 │   │   ├── rating presets for 33 sources · gallery tag dictionary SQLite
 │   │   └── licenses/                   # Licences of third-party dictionaries and components
-│   └── src/test/java/                  # 102 pure JVM correctness test files (1 is the source-scan helper)
+│   └── src/test/java/                  # 103 pure JVM correctness test files (1 is the source-scan helper)
 ├── gradle/libs.versions.toml           # Single source of dependency versions (with reasons for pins)
 ├── screenshots/                        # Images used by this README
 ├── docs/                               # Workflow manual and per-topic designs

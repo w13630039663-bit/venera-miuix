@@ -71,8 +71,14 @@ data class SearchUiState(
     val tagFilterRelaxed: Boolean = false
 )
 
-class SearchViewModel(app: Application) : AndroidViewModel(app) {
-    private val prefs = BusinessPorts.of(app).stores.open(PREFS)
+class SearchViewModel(
+    app: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(app) {
+
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(app: Application) : this(app, BusinessPorts.of(app))
+    private val prefs = ports.stores.open(PREFS)
 
     /**
      * 客户端标签过滤要吃**同一张**简繁字级表：源里繁简混写时，简体标签必须能认繁体卡片标签，
@@ -80,10 +86,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val variantConverter = ChineseVariantConverter.getInstance(app)
     private val metricsCache = com.venera.compose.data.prefs.ComicMetricsCache(app)
-    private val sources: SourceCatalog by lazy { BusinessPorts.of(app).sources }
-    private val comics: ComicContentApi by lazy { BusinessPorts.of(app).comics }
+    private val sources: SourceCatalog by lazy { ports.sources }
+    private val comics: ComicContentApi by lazy { ports.comics }
     private val tagManager by lazy { TagTranslationManager.getInstance(app) }
-    private val guardManager: ContentGuard = BusinessPorts.of(app).contentGuard
+    private val guardManager: ContentGuard = ports.contentGuard
     private var searchJob: Job? = null
     private var debounceJob: Job? = null
     private var optionsJob: Job? = null

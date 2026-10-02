@@ -40,10 +40,16 @@ enum class FavoriteSortOrder(val label: String) {
  * 数据全部来自 [LocalFavoritesManager]，ViewModel 只负责：
  * 当前收藏夹 / 搜索关键字 / 多选状态，以及把 UI 动作转发给 Manager。
  */
-class FavoritesViewModel(application: Application) : AndroidViewModel(application) {
+class FavoritesViewModel(
+    application: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(application) {
+
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(application: Application) : this(application, BusinessPorts.of(application))
 
     private val manager = LocalFavoritesManager.getInstance(application)
-    private val prefs = BusinessPorts.of(application).comicPrefs
+    private val prefs = ports.comicPrefs
 
     val folders: StateFlow<List<String>> = manager.folders
     val counts: StateFlow<Map<String, Int>> = manager.counts

@@ -49,9 +49,15 @@ data class NetSourceUi(
  * 一律只在 `Dispatchers.IO` 上访问；真正的收藏调用（`loadComic` / `loadFolders` / …）
  * 内部是 `evaluateEnvelope`（挂起 + `evaluateAsync`），不会阻塞主线程，可放心调用。
  */
-class NetworkFavoritesViewModel(application: Application) : AndroidViewModel(application) {
+class NetworkFavoritesViewModel(
+    application: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(application) {
 
-    private val manager = BusinessPorts.of(application).sources
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(application: Application) : this(application, BusinessPorts.of(application))
+
+    private val manager = ports.sources
 
     /**
      * key -> 已解析的 [FavoriteData] 缓存。

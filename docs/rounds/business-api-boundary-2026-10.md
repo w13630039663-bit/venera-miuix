@@ -293,15 +293,21 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 | 批 | 内容 | 前置 | 状态 |
 |---|---|---|---|
 | **D0** | W3 `architecture/LayeringEdgeTest.kt`：下层禁 import 上层，基线 **10 条 / 5 颗**，每条写解锁条件 | 无（且它是后面三批的兜底） | ✅ |
-| **D1** | B7' 画廊契约**纯改引** 35 条 / 14 颗；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
+| **D1** | B7' 画廊契约**纯改引** 35 条 / **10 颗**（原写 14 颗是 B 系列之前的旧数，2026-10-03 复算改定）；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
 | **D2** | B5 `FavoriteLibrary` + `OfflineLibrary` 18 条；宽度按消费面实数定 | 无 | ⏳ |
-| **D3** | VM 构造注入（第三路），17 处调用点不动 | D1、D2（否则注入的是实现类，等于把穿透定型） | ⏳ |
-| **D4** | 「解锁条件已兑现而债务未清即红」的守卫：W1/W2 类型搬家一旦完成，`BusinessApiBaseline` 挂着的那些行自动转红；并行线脏文件一旦入库，`TagTranslationManager` 那几条待办同样转红 | D0 | ⏳ |
+| **D3** | VM 构造注入（第三路），17 处调用点不动。**形状 = 注入聚合端口 `BusinessPorts`**（改判理由见上面那段引文） | 无（不等 D1/D2） | ✅ |
+| **D4** | 「解锁条件已兑现而债务未清即红」的守卫：W1/W2 类型搬家一旦完成，`BusinessApiBaseline` 挂着的那些行自动转红；并行线脏文件一旦入库，`TagTranslationManager` 那几条待办同样转红。**已交一半**：`architecture/ViewModelAssemblyGuardTest.kt` 那三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ◐ |
 | **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ⏳ |
 
 **顺序不能反**的两条理由：D0 先做，因为 D1/D2/D3 每一批都在往里写 import，那半边今天一条用例都没有；
 D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现」从可摘的取用替换**升级成构造签名**，
 以后要摘就得改 VM 的对外形状 —— 债务从浅变深。
+
+> **D3 实际提前做了（2026-10-03），这里记下改判的成因，不是省事**：上面那条只约束「注入**窄契约**」这一种形状。
+> 指令原文是「将 **BusinessPorts 或契约接口**通过构造函数注入」—— 注入**聚合端口**这条路今天就有，
+> 它把每颗 VM 体内的服务定位器调用清干净，而 D1/D2 的缺口仍然**留在原地可见**
+> （`LocalFavoritesManager.getInstance(app)` 那几行一个字节没动），不会被签名定型。
+> 于是 D3 提前、D1/D2 在后：那两批要改的是 VM **体内的字段初值行**，不再动构造形状。
 
 **跨侧那条边为什么不进 D0 的口径**（如实记，别让人以为 W3 已全覆盖）：实测
 `feature → gallery` **17 条**、`gallery → feature` **5 条**（复算 `_qa/crossside.mjs`）。
@@ -327,4 +333,36 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 - 事故记账：这四处数字（93/38、17 处、10 条 vs 我先量的 8 条、以及第一版恒 0 的判式）全是**取数口径**问题而非取数失败 ——
   我先用只含 `feature|gallery.ui|reader` 的 grep 量出 8 条 / 4 颗，补齐 `components|ui|download|sync|engine` 才是 10 条 / 5 颗。
   口径没跑全就落笔，白名单会当场少记 2 条，而那两条是**新批次真会踩的**（`sync/BackupManager` 那族）。
+
+### D3（2026-10-03）读数
+
+- **改的 7 颗**：`feature/{ComicDetail,Favorites,FollowUpdates,History,Home,NetworkFavorites,Search}ViewModel.kt`。
+  每颗类声明换成主构造 `(app: Application, private val ports: BusinessPorts)` + 紧接一行
+  `constructor(app: Application) : this(app, BusinessPorts.of(app))`；体内 `BusinessPorts.of(…)` 取用逐字替换成 `ports`，
+  合计 **18 处**（4+1+1+1+6+1+4，脚本 `_qa/d3-inject.mjs` 打的读数）。**调用点 17 处一行未动**（冻结屏 7 处、导航层 2 处全在名单外）。
+- **时序核对**（这才是「行为零变更」的判据，不是我的印象）：7 颗**全都**在属性初始化器上急取过 `BusinessPorts.of`
+  （`HistoryViewModel:22`、`FavoritesViewModel:46`、`ComicDetailViewModel:177-178`、`HomeViewModel:77,135`、
+  `NetworkFavoritesViewModel:54`、`SearchViewModel:75`、`FollowUpdatesViewModel:20`）
+  ⇒ 端口图的建图时刻本来就在那颗 VM 的构造行上，换成委托构造后仍是同一瞬间（`of` 首次建图后走 `@Volatile` 缓存）。
+  `SearchViewModel` 另有的三处 `by lazy { BusinessPorts.of(app).… }` 换成 `by lazy { ports.… }`，**懒字面保留**，
+  只是懒的对象从「静态口解析」变成「读一个已在手的字段」。
+- **排除 `feature/sourcemanage/ComicSourceViewModel.kt`**：它唯一的 `of()` 在 `:571` 的**函数体**里，
+  构造期今天一次都不碰端口图 ⇒ 注入会把建图提前到 VM 构造，那是**新增的构造期成本**，与硬约束①对撞。
+  这颗同时是 §七.1 与 W2 的文件，本就整颗挂着。
+- **新增守卫 `architecture/ViewModelAssemblyGuardTest.kt` 三条**（为什么必须有：本仓 JVM 用例不吃 Robolectric，
+  也就是说**没有任何用例能证明 `viewModel()` 还建得出 VM** —— 删掉 arity=1 那行不会让编译失败，
+  只会在真机上以「Cannot create an instance of class …」的形式出现）：
+  ① VM 体内（非 `constructor(...)` 行）不许再出现 `BusinessPorts.of(`，豁免按文件计表、集合相等，
+  `ComicSourceViewModel` 那 1 处带解锁条件挂着；② 注入端口的 VM 清单 == 7 颗且委托构造行数 == 7；
+  ③ `viewModel()` 真调用点 == **17** 且冻结屏内恰好那 7 颗各一处 —— 第三条是把**我自己写错过两遍的那个数字交给机器管**。
+- **teeth 实测**：临时删掉 `HistoryViewModel` 那行委托构造 ⇒ 用例红在「委托构造行数应与已注入的 VM 数相等 expected:<7> but was:<6>」，
+  **而编译照过**（正是上面说的那个失败模式）；从备份还原后绿。备份文件用完即删。
+- 读数：`:app:testDebugUnitTest --rerun-tasks` **803 tests / 0 failures / 0 errors**（103 份 XML、105 颗 `.kt`、803 个 `@Test`）、
+  `:desktop:compileKotlin` executed 过（R5 未破）、`:app:compileDebugKotlin` 过。
+- **白名单变化：一条没动。** B 取用站点仍 **93**、实现类 import 仍 **77 条 / 39 颗**、类型位仍 **32 条 / 21 颗**、
+  D 表五张同值 —— 这不是我推断的，是 `BusinessApiBoundaryTest` 那六条断言在 803 里跑绿的读数
+  （它们钉的是精确相等，动了任何一条都会红）。D3 改的是「端口从哪来」，不是「穿透还剩多少」，后者归 D1/D2。
+- 未验：**VM 在真机上能否实例化**（无 Robolectric、且今天无设备连接）。缓解是那条 teeth 实测 + 委托构造形状
+  与 `AndroidViewModelFactory.getConstructor(Application::class.java)` 的反射口径逐字对得上；
+  结案要等真机挂账那一批（冷启动进首页/搜索/详情/历史各一次）。
 

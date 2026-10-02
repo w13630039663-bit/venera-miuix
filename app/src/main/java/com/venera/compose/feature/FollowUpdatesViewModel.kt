@@ -14,10 +14,16 @@ import kotlinx.coroutines.launch
 /**
  * 追更 / 更新列表页 ViewModel。
  */
-class FollowUpdatesViewModel(application: Application) : AndroidViewModel(application) {
+class FollowUpdatesViewModel(
+    application: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(application) {
+
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(application: Application) : this(application, BusinessPorts.of(application))
 
     private val repo = FollowUpdatesRepository.getInstance(application)
-    private val prefs = BusinessPorts.of(application).comicPrefs
+    private val prefs = ports.comicPrefs
 
     /** 当前用于追更的收藏夹（null = 未开启追更）。 */
     var followFolder: String? by mutableStateOf(prefs.followUpdatesFolder.value)

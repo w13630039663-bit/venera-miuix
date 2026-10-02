@@ -169,13 +169,19 @@ data class FavoritePanelState(
  * 收藏的唯一数据源是 [LocalFavoritesManager]（对齐官方），
  * 原先写的旧单表 `comic_favorite` 已废弃，否则收藏页看不到详情页收藏的内容。
  */
-class ComicDetailViewModel(app: Application) : AndroidViewModel(app) {
+class ComicDetailViewModel(
+    app: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(app) {
 
-    private val sources: SourceCatalog = BusinessPorts.of(app).sources
-    private val comics: ComicContentApi = BusinessPorts.of(app).comics
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(app: Application) : this(app, BusinessPorts.of(app))
+
+    private val sources: SourceCatalog = ports.sources
+    private val comics: ComicContentApi = ports.comics
     private val favoritesManager = LocalFavoritesManager.getInstance(app)
-    private val prefs = BusinessPorts.of(app).comicPrefs
-    private val historyDao = BusinessPorts.of(app).history
+    private val prefs = ports.comicPrefs
+    private val historyDao = ports.history
 
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()

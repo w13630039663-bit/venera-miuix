@@ -17,9 +17,15 @@ import com.venera.compose.data.api.BusinessPorts
  *
  * 对齐原版 `pages/history_page.dart`：网格展示 + 多选删除 + 清空（全部 / 仅未收藏）。
  */
-class HistoryViewModel(application: Application) : AndroidViewModel(application) {
+class HistoryViewModel(
+    application: Application,
+    private val ports: BusinessPorts,
+) : AndroidViewModel(application) {
 
-    private val dao = BusinessPorts.of(application).history
+    /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
+    constructor(application: Application) : this(application, BusinessPorts.of(application))
+
+    private val dao = ports.history
     private val favorites = LocalFavoritesManager.getInstance(application)
 
     val history: StateFlow<List<HistoryRecord>> = dao.historyFlow
