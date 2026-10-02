@@ -302,7 +302,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 | **D2** | B5 `FavoriteLibrary` + `OfflineLibrary` 18 条；宽度按消费面实数定 | 无 | ⏳ |
 | **D3** | VM 构造注入（第三路），17 处调用点不动。**形状 = 注入聚合端口 `BusinessPorts`**（改判理由见上面那段引文） | 无（不等 D1/D2） | ✅ |
 | **D4** | 「解锁条件已兑现而债务未清即红」的守卫：`architecture/DebtReadinessTest.kt` 六条债（W1×3、W2、W5 写口、§七.7）+ `architecture/ViewModelAssemblyGuardTest.kt` 三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ✅ |
-| **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ⏳ |
+| **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ✅（结论在 §十，零搬迁） |
 
 **顺序不能反**的两条理由：D0 先做，因为 D1/D2/D3 每一批都在往里写 import，那半边今天一条用例都没有；
 D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现」从可摘的取用替换**升级成构造签名**，
@@ -391,4 +391,33 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
   `:desktop:compileKotlin` executed 过。白名单 A/B/C/D/E 五张表**一条未动**（B 仍 93 站点）—— 这批只加用例与改文档。
 - README 中英各 4 处测试规模同步 106/104/806。`_qa/readme-counts.mjs` 改成「旧值没命中就抛错」，
   不再静默跳过（它这轮就真的抛了一次：我按记忆写旧值 104，实际已是 105）。
+
+## 十、D5：UseCase 化的逐簇裁定 —— 本阶段一条都不搬，给的是可执行的前置
+
+指令点名的三簇，逐条给「为什么现在搬就是行为变更」的实证（读数出自 `grep -c`，颗颗可复算）：
+
+1. **多源聚合**：画廊侧**早就抽过了** —— `gallery/domain/GalleryFeedSource.kt:51` 是
+   `class GalleryFeedSource private constructor(context)`，三站并发 + 每站时间预算 + `GalleryLegGuard` +
+   `failures` 出参（哪一站没给内容必须挂提示）全在里面，那就是 Clean Architecture 意义上的一颗 UseCase。
+   漫画侧的同一件事在 `SearchViewModel` 里，跟它同生共死的是 **14 个 `Job?` 字段、3 个 `Mutex`、6 处 `viewModelScope`**。
+2. **并发竞争**：取消时机的载体**就是** `viewModelScope`（`ComicDetailViewModel` 16 处、`SearchViewModel` 6 处、
+   `GallerySearchViewModel` 4 处、`GalleryForYouViewModel` 6 处）。UseCase 要么自带 scope
+   （取消点从「VM 销毁」变成「UseCase 销毁」，今天这两件事**不等价**），要么吃注入进来的 scope
+   （那只是给 VM 的 scope 换个名字，一行语义都没省）。
+3. **阅读进度状态机**：它今天**根本不在 VM 里** —— `reader/VeneraReaderScreen.kt` 的 `viewModelScope` 命中数 = **0**，
+   而 `withContext` 9 处、`NonCancellable` 2 处。进度写库那条「不被取消」的语义恰恰依赖它挂在组合而不是 VM scope 上。
+   本仓在这条线上已踩过一次事故（`withContext(NonCancellable)` 会换掉 `coroutineContext[Job]`，
+   于是「只清自己这一笔」的守卫恒假，一次根因同时造出三条读数）——
+   把这段搬进 UseCase 就是**再搬一次协程上下文**，而搬迁之后**没有任何一条用例能证明取消语义没变**
+   （本仓 JVM 用例不吃 Robolectric，这正是 D3 那颗装配守卫存在的理由）。
+
+**可证安全的那一类不是没在做，是已经做完了**：纯判据 + JVM 用例在本仓的既有形状就是
+`reader/ReaderInteractionPolicy.kt`（配 `ReaderInteractionPolicyTest`、`ReaderTapPolicyTest` 两颗用例）
+与 Part A 那批（`WideScreenPolicy`、屏蔽计数文案、顶栏地板）。D5 按这个口径把「还能不能抽出纯函数」清了一遍，
+结论是**剩下三簇全部跨不过取消时机这道线**，所以本阶段一条不搬 —— 不是"没时间"，是搬了就违约束①。
+
+**要真做 Clean Architecture，前置是三件事，且都不是代码问题**：
+① 一个允许行为变更的窗口；② 中断/取消时序的可执行判据（Robolectric 或等价物 = 新依赖，硬约束③今天禁止）；
+③ 真机连接（今天 `adb devices` 实测空列表）。三件齐了，**第一颗该抽的就是漫画侧那颗聚合 UseCase** ——
+照 `GalleryFeedSource` 的形状抄，连 `failures` 出参那条纪律一起抄（本仓最忌的是静默交错，不是层数少）。
 
