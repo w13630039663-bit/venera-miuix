@@ -2,6 +2,7 @@ package com.venera.desktop.platform
 
 import com.venera.compose.data.platform.PathProvider
 import java.io.File
+import java.io.IOException
 
 /**
  * 桌面侧的数据目录门面：唯一来源是 `%LOCALAPPDATA%\venera`。
@@ -19,9 +20,16 @@ class DesktopPaths private constructor(override val dataRoot: File, override val
             val cache = File(root, "cache")
             if (!root.mkdirs() && !root.isDirectory) throw IllegalStateException("建不出目录 $root")
             val probe = File(root, ".write-probe")
-            probe.writeText("ok")
-            if (probe.readText() != "ok") throw IllegalStateException("$root 写得进却读不出")
-            probe.delete()
+            try {
+                probe.writeText("ok")
+                // "写得进却读不出"不设文件系统注入缝：writeText 成功后回读内容仍对不上，真机构造不出来，为它引抽象不值。
+                if (probe.readText() != "ok") throw IllegalStateException("$root 写得进却读不出")
+            } catch (e: IOException) {
+                // 真机实证：打包 exe 在探测写入上抛过 FileNotFoundException（拒绝访问），错误面统一收敛为 IllegalStateException
+                throw IllegalStateException("探测读写失败 $root：${e.message}", e)
+            } finally {
+                probe.delete()
+            }
             return DesktopPaths(root, cache)
         }
     }
