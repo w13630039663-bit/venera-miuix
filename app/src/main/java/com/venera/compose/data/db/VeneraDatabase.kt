@@ -20,7 +20,9 @@ import com.venera.compose.data.platform.android.AndroidSqlDatabase
  * 备份/导入/统计/守卫/图库/阅读器那批原调用点（4b-1）也全部改经 `DatabasePorts`。
  * 现在唯一引用它的是 `data/platform/android/AndroidDatabasePorts`（Android 接线，把 helper
  * 包成 SqlDatabaseSource 供 install）；等它整体挪进 `data/platform/android/` 后，
- * `data/db` 目录对桌面就全透明了（收口条件见 desktop/build.gradle.kts 的排除清单注释）。
+ * `data/db` 目录对桌面就**少一颗**了 —— 别读成"全透明"：还差追更两颗
+ * （`FollowUpdatesRepository` / `FollowUpdatesWorker`，另计，见 desktop/build.gradle.kts
+ * 排除清单注释里的逐颗理由）。
  */
 class VeneraDatabase private constructor(context: Context) : SQLiteOpenHelper(
     context.applicationContext,

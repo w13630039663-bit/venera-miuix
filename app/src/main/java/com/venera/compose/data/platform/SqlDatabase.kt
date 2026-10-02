@@ -30,8 +30,10 @@ interface SqlDatabase : AutoCloseable {
      *
      * 为什么门面要有这一条而 [exec] 不够：`FavoriteImagesManager.addFavorite` 与
      * `ContentGuardManager.addRule` 的调用方拿返回的 rowid 判成败
-     * （`reader/VeneraReaderScreen.kt:2075` 的 `rowId < 0`、`components/ComicCardContextMenu.kt:94`
-     * 的 `addRule(...) >= 0`），而 [exec] 不回报任何东西。
+     * （`reader/VeneraReaderScreen.kt` 里 `favoriteCurrentPage` 的 `rowId < 0` 判据、
+     * `components/ComicCardContextMenu` 里「屏蔽本作」菜单项的 `addRule(...) >= 0` 判据），
+     * 而 [exec] 不回报任何东西。锚按**符号**写、不写行号：行号锚在 UI 文件里活不过一轮
+     * （那两处自 2026-10 起已各自漂过位，改回行号只会再造一次假指认）。
      * 回读 rowid 的口径：`SELECT last_insert_rowid()` 是**连接级**状态。
      *  - **凡写连接可能来自池的端（Android）不许另查** —— 取到的 rowid 可能是别的连接的，
      *    实现走 `compileStatement().executeInsert()`，同语句同连接直报；

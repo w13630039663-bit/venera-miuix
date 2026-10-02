@@ -17,6 +17,9 @@ import java.lang.reflect.Modifier
  * 导出侧就会**静默漏掉那一列**，恢复出的归档少字段且不报错。本文件把这条线钉成用例：
  *  - 字段名集不对齐 ⇒ 第一条红；
  *  - 两边一起漂移（同时加列但 toMap 忘了写键）⇒ 第三条红。
+ * 为什么不直接把那段手写逐参映射跑通来测：`FavoriteImagesManager.exportBackupRows` 是 suspend
+ * 且持 Context（管理器只能在 Android 上实例化，仓内无 Robolectric），JVM 单测进不去 ——
+ * 所以钉的是**两份字段定义 + `toMap` 键集**这三段可静态反射对齐的事实。
  *
  * 为什么放 `:app` 的测试面而不是 `:desktop`：[FavoriteImageBackupFields] 在桌面编译面，
  * 而 `ImageFavoriteBackupRow`/`ImageFavoriteBackupRows` 住在 `feature/favoriteimages/FavoriteImagesManager.kt`

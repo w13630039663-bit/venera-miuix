@@ -49,8 +49,9 @@ kotlin.sourceSets["main"].kotlin {
     //    4a §七.3 预告过的收口（整个文件挪进 data/platform/android/，让 data/db 目录对桌面全透明）
     //    前提已凑齐、但那是 Android 接线面的文件搬迁，不在本段的决策面里，留在这里写明。
     //  - FollowUpdatesRepository.kt：构造吃 android.content.Context，并依赖 source/ComicSourceManager
-    //    （那坨直接 import android.util.LruCache 的 Android 网络/引擎层）；桌面调用方是 0
-    //    （全仓唯一使用点 feature/FollowUpdatesViewModel.kt，属 :app）。
+    //    （那坨直接 import android.util.LruCache 的 Android 网络/引擎层）；桌面调用方是 0。
+    //    :app 侧使用点是**两处**：feature/FollowUpdatesViewModel.kt 与同清单里的 FollowUpdatesWorker.kt
+    //    （Worker 里 `FollowUpdatesRepository.getInstance(applicationContext).updateFolder`）。
     //  - FollowUpdatesWorker.kt：androidx.work（WorkManager/PeriodicWorkRequest），桌面没有后台任务
     //    调度面，本阶段桌面不做后台追更；调用方同样在 :app 侧。
     exclude(
