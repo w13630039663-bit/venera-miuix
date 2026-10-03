@@ -89,7 +89,7 @@ internal fun DesktopGelbooruCredentialPanel(
             // 缺席必须明说，而且要说清"要什么"：这一站没有匿名读，所以这是硬门槛不是加分项。
             Text(
                 "没配凭据时这一站一张图都取不到：${GelbooruCredentialState.ANONYMOUS_HINT}。",
-                color = WarnColor,
+                color = DesktopTheme.AccentBeni,
                 fontSize = 13.sp,
             )
             Text(
@@ -107,7 +107,7 @@ internal fun DesktopGelbooruCredentialPanel(
             Text(
                 "凭据只落在本机数据目录的 prefs 文件里，不上传、不写日志。" +
                     "共享机器上别在这上面配。",
-                color = MutedColor,
+                color = DesktopTheme.TextTertiary,
                 fontSize = 12.sp,
             )
         }
@@ -132,7 +132,7 @@ internal fun DesktopGelbooruCredentialPanel(
         )
 
         rejection?.let {
-            Text(it, color = WarnColor, fontSize = 12.sp, maxLines = 3)
+            Text(it, color = DesktopTheme.AccentBeni, fontSize = 12.sp, maxLines = 3)
         }
 
         if (busy) {
@@ -185,5 +185,5 @@ internal fun DesktopGelbooruCredentialPanel(
 private fun maskUserId(userId: String): String =
     if (userId.length <= 2) "**" else "…" + userId.takeLast(2)
 
-private val WarnColor = androidx.compose.ui.graphics.Color(0xFFE0A030)
-private val MutedColor = androidx.compose.ui.graphics.Color(0xFF8B8B8B)
+
+

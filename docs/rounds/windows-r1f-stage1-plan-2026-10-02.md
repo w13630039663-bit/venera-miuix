@@ -38,7 +38,7 @@
 
 | 判据 | 怎么量 |
 |---|---|
-| 14 个文件不再 import Android 持久化类型 | Grep 三个符号（`android.database.` 打头的那类、`ContentValues`、`getSharedPreferences`）在 `app/src/main/java/com/venera/compose/data` 与 `.../sync` 下 → 只剩 `platform/android/` 里的实现命中 |
+| Android 持久化类型清零（口径已按 R31 收窄） | **12 颗已脱**（`data/db` 六颗 + `BackupManager`/`ForeignArchiveImport`/`ReadingStatsManager`/`ContentGuardManager`/`FavoriteImagesManager`/`GalleryTagDictionary`），Grep `android.database.`、`ContentValues`、`getSharedPreferences` 在这 12 颗里只剩 `data/platform/android/` 的实现命中。**2 颗豁免**：`GallerySaver`、`VeneraReaderScreen` 的存相册分支 —— 它们的 `ContentValues` 只喂 `MediaStore`（平台服务，不是持久层）。**另 2 颗属 `androidx.work` 的追更组件**（`FollowUpdatesRepository`/`FollowUpdatesWorker`），桌面没有 WorkManager 对位库，排在阶段 2 的"后台追更"决策里，不在本阶段判据内 |
 | 桌面进程重启后收藏仍在 | 跑两次 `:desktop:app`：第一次点收藏写入，第二次启动即读回并打印 `D_收藏 命中=N` |
 | 动态表名不可注入 | `:desktop:test` 里那 5 条恶意表名用例全绿（含反引号、空格、中文、`"; DROP`） |
 | Android 侧不回归 | 真机：收藏增删、历史记录、备份导出各一遍（由用户点，我只读日志） |

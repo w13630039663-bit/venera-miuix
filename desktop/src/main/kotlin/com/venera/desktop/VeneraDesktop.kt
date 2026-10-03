@@ -46,11 +46,10 @@ import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
 import com.venera.desktop.gallery.data.DesktopGalleryPorts
 import com.venera.desktop.gallery.ui.DesktopGalleryHome
+import com.venera.desktop.gallery.ui.DesktopTheme
 import io.github.composefluent.FluentTheme
-import io.github.composefluent.component.NavigationView
 import io.github.composefluent.component.ProgressBar
 import io.github.composefluent.component.Text
-import io.github.composefluent.component.menuItem
 import java.awt.Rectangle
 import java.awt.Robot
 import java.io.File
@@ -211,9 +210,28 @@ fun main(args: Array<String>) {
                 exitApplication()
             },
             title = APP_TITLE,
-            state = rememberWindowState(placement = WindowPlacement.Floating, width = 1080.dp, height = 760.dp),
+            // 1440×900 = 设计稿 `.frame` 的画板尺寸（`docs/designs/windows-gallery-home-touhou-2026-10-03.html:39`）。
+            // ⚠️ 这个尺寸不只是"好看"：它决定图片墙的列数。`1440 − rail 48 − pane 224 = 1168`，
+            // 正是稿上标注的「内容净宽 1168」，再扣横向内边距 24 ⇒ `ceil(1144/200) = 6` 列。
+            // 稿 `:338` 与 `:657` 两处都把这档写成 6 列，由 `DesktopWidthCaliberDriftTest` 钉住。
+            //
+            // 旧档 1080×760 仍然有效（窗口可缩放），它按同一条公式得 4 列。
+            // ⚠️ 已知局限：`WindowPlacement.Floating` 不做尺寸自适应，1366 宽的屏上这扇窗会超出可视区
+            //（尺寸钳制不在本批范围，见计划 R-g）。
+            state = rememberWindowState(placement = WindowPlacement.Floating, width = 1440.dp, height = 900.dp),
         ) {
-            FluentTheme {
+            // 深色主题**钉死**（2026-10-04 视觉重构）：`colors` 走 Fluent 的 darkColors（accent=藤紫），
+            // 其余 surface 走 DesktopTheme 的五档阶梯。理由写在 `DesktopTheme` 的类注释里 ——
+            // 之前让 Fluent 自己跟系统，于是浅底上那几枚深色档色值（#8B8B8B 灰、#CBB6FF 藤紫、
+            // #3A2A55 渐变）全成了"看着发脏的错色"。
+            // ⚠️ 这一行是**临时钉死**而不是"不支持浅色"：桌面端今天没有主题轴
+            // （DesktopGalleryPreferences 那 12 枚读成员在桌面给的都是常量），
+            // 将来接主题轴时这里要变成跟着偏好走，而不是删掉深色这套。
+            //
+            // ⚠️ 拆掉 `NavigationView` **不等于**拆掉 `FluentTheme`：后者给全窗提供深色档，
+            // 且 `gallery/ui/` 多处在用 fluent 的 `Text`（需要它 provide 的 CompositionLocal scope）。
+            // 由 `DesktopShellLayoutTest` ② 钉住这一条，防止连它一起被拆掉。
+            FluentTheme(colors = DesktopTheme.colors()) {
                 VeneraDesktop(
                     assetDir = assetDir,
                     dataDir = paths.dataRoot,
@@ -390,9 +408,20 @@ private fun VeneraDesktop(
         }
     }
 
-    NavigationView(menuItems = {}) {
-        DesktopGalleryHome(GalleryPorts.of(null))
-    }
+    // ⚠️ 这里**直接**是 `DesktopGalleryHome`，外面不再套 compose-fluent 的 `NavigationView`。
+    //
+    // 判负记录：`docs/rounds/large-screen-adaptation-stage2-plan-2026-10-02.md:20` 已明确
+    // 「`NavigationView` 有它自己的默认宽度，不是官方的 72/224。两边都建侧栏就是两套宽度 ——
+    // 即『第二套布局系统』」，并据此把桌面化冻结在阶段 1。S2 接线时漏判了这条，
+    // 于是窗口里挤了三层竖栏：NavigationView 自带的 pane（实测 `SideNavKt` 宽度常量 `180.0f`）
+    // + 我们自绘的 rail 48 + 自绘的 pane 224 ⇒ 452dp 被吃掉，内容区被压掉一大截。
+    //
+    // 那层 pane 的底色还另有一次事故：它走 fluent 的 `MaterialContainer` + `acrylicDefault`，
+    // 而 acrylic 在 skiko 桌面端解析不出系统底色 ⇒ 回退成**浅色**面板（深色主题下也一样）。
+    // 自绘 rail/pane 不依赖 fluent Material 体系，这条路才彻底断掉。
+    //
+    // 判据：`DesktopShellLayoutTest` ① 断言根布局里不再出现 `NavigationView(` / `menuItems =`。
+    DesktopGalleryHome(GalleryPorts.of(null))
 }
 
 /**

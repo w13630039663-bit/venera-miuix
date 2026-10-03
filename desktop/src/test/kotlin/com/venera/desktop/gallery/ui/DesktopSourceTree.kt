@@ -54,6 +54,12 @@ internal object DesktopSourceTree {
      */
     fun codeText(file: File): String = codeLines(file).joinToString("\n")
 
+    /**
+     * 去注释后的代码行 —— 对外可见（色值扫描器 [DesktopSurfaceLiterals] 复用同一口径，
+     * 别处再写一份"怎么算代码行"就会与这里漂）。
+     */
+    fun codeLinesOf(file: File): List<String> = codeLines(file)
+
     private fun codeLines(file: File): List<String> =
         file.readText().lines()
             .map { it.trim() }

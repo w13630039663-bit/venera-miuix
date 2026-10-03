@@ -106,5 +106,5 @@ private fun DesktopFollowedArtistRow(artist: FollowedArtistRef) {
 }
 
 // 座底色与元信息色都取稿的深色档阶梯（`--layer2:#2C2C2C` / `--t3:#8B8B8B`，`:10-11`），浅色档映射归 S5。
-private val SeatBackground = Color(0xFF2C2C2C)
+private val SeatBackground = DesktopTheme.CardBackground
 private val MetaText = Color(0xFF8B8B8B)

@@ -269,13 +269,13 @@ private fun DesktopGalleryHomeSelectableRow(row: DesktopGalleryHomeRow, selected
 
 // 下面几颗色值逐条来自设计稿的深色档（`:10-17` 的变量表与 `:76-78` 的选中态），不是新造数：
 // 浅色档的正式映射归设计稿回改（S5），本轮不自己发挥。
-private val SelectionStart = Color(0xFF3A2A55)
-private val SelectionEnd = Color(0xFF2C2C2C)
+private val SelectionStart = DesktopTheme.SelectionGradientStart
+private val SelectionEnd = DesktopTheme.SelectionGradientEnd
 
 // 稿上 `.nav.sel` 是 `linear-gradient(90deg,#3A2A55,#2C2C2C 78%)`；Compose 的停靠点写法与 CSS 同形，
 // 0f 与 0.78f 就是那两档，无需换算（方向差一条 90deg 与对角线的观感，S5 出图时一并校）。
 private val SelectionBrush = Brush.linearGradient(0f to SelectionStart, 0.78f to SelectionEnd)
-private val HoverBackground = Color(0xFF333333)
-private val IndicatorColor = Color(0xFFCBB6FF)
-private val SelectedGlyph = Color(0xFFCBB6FF)
-private val Glyph = Color(0xFFC2C2C2)
+private val HoverBackground = DesktopTheme.SurfaceRaised
+private val IndicatorColor = DesktopTheme.AccentFuji
+private val SelectedGlyph = DesktopTheme.AccentFuji
+private val Glyph = DesktopTheme.TextSecondary

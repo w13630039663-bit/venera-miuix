@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Venera Windows 图库首页 · 幻想乡档设计稿 2026-10-03</title>
+<style>
+  :root{
+    /* Fluent 中性 surface 阶梯（结构层，不随主题变） */
+    --host:#202020; --layer:#272727; --layer2:#2C2C2C; --card:#2C2C2C; --card-hov:#333333;
+    --stroke:#353535; --stroke2:#3D3D3D; --t1:#E4E4E4; --t2:#C2C2C2; --t3:#8B8B8B;
+    /* 和色（皮肤层，由种子色经 MaterialKolor 生成，这里给默认档读数） */
+    --beni:#D6463C;        /* 博丽朱 */
+    --beni-lite:#FF8C80;
+    --fuji:#8A6BC4;        /* 藤紫 */
+    --fuji-lite:#CBB6FF;
+    --washi:#F5F1E8;       /* 和纸白 */
+    --ruri:#3E7CB0;        /* 琉璃蓝 */
+    --gold:#E3B04B;        /* 黄櫨 */
+    --accent:var(--fuji-lite); --accent-fill:#5B47A8; --on-accent:#FFFFFF;
+    --r-card:8px; --r-art:12px; --r-ctl:4px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#141519;color:var(--t1);
+    font:14px/20px "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}
+  .bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 24px;
+    background:rgba(20,21,25,.94);backdrop-filter:blur(8px);border-bottom:1px solid #26282E}
+  .bar h1{font-size:15px;font-weight:600;margin:0 10px 0 0}
+  .sw{height:32px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--stroke2);background:#2D2D2D;color:var(--t1);
+    font:inherit;font-size:13px;cursor:pointer}
+  .sw[aria-pressed="true"]{background:var(--accent-fill);border-color:#7C64D8;color:#fff;font-weight:600}
+  .bar .hint{font-size:12px;color:var(--t3);margin-left:auto}
+  .scroll{overflow:auto;padding:26px 24px}
+  .stack{display:flex;flex-direction:column;gap:26px;align-items:flex-start}
+  .cap-line{font-size:12.5px;color:#9AA0AE;letter-spacing:.04em}
+
+  /* ── 窗体 ── */
+  .frame{width:1440px;height:900px;background:var(--host);display:flex;flex-direction:column;overflow:hidden;position:relative;flex:0 0 auto}
+  .tb{height:40px;flex:0 0 40px;display:flex;align-items:center;gap:10px;padding:0 0 0 12px;background:var(--layer);position:relative;z-index:40}
+  .brand{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--t2);white-space:nowrap}
+  .brand svg{width:20px;height:20px;color:var(--beni-lite)}
+  .search{flex:0 0 400px;height:32px;margin-left:12px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:var(--r-ctl);
+    background:#2D2D2D;border:1px solid var(--stroke2);border-bottom:2px solid var(--stroke2);font-size:13px;color:var(--t3)}
+  .search svg{width:15px;height:15px}
+  .kbd{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:4px;background:#222;border:1px solid #3A3A3A;color:#B4B4B4}
+  .tbr{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .lamp{height:32px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--stroke2);background:#2D2D2D;font-size:13px;
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .lamp svg{width:14px;height:14px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#3FB950}
+  .ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(140deg,var(--beni),var(--fuji));border:1px solid var(--stroke2)}
+  .cap{width:46px;height:32px;display:grid;place-items:center;color:var(--t2)}
+  .cap svg{width:12px;height:12px}
+  .cap.x{background:#C42B1C;color:#fff}
+
+  .body{flex:1;display:flex;min-height:0;position:relative}
+  /* rail 48 */
+  .rail{flex:0 0 48px;background:#1C1C1C;border-right:1px solid var(--stroke);display:flex;flex-direction:column;align-items:center;padding:6px 0;position:relative;z-index:8}
+  .rbtn{width:40px;height:40px;border-radius:var(--r-ctl);display:grid;place-items:center;color:var(--t2);position:relative;margin:1px 0}
+  .rbtn svg{width:18px;height:18px}
+  .rbtn:hover{background:#2A2A2A}
+  .rbtn.sel{background:#33294F;color:var(--fuji-lite)}
+  .rbtn.sel::before{content:"";position:absolute;left:0;top:11px;width:3px;height:18px;border-radius:3px;background:var(--fuji-lite)}
+  .rail .spacer{flex:1}
+  .rail .shrine{width:48px;display:grid;place-items:center;padding-bottom:8px}
+  .rail .shrine svg{width:26px;height:26px;color:#4A3550}
+  .rail .kanji{writing-mode:vertical-rl;text-orientation:upright;font-size:11px;letter-spacing:.22em;color:#5A4560;padding-bottom:10px}
+  /* pane 224 */
+  .pane{flex:0 0 224px;background:var(--layer);padding:6px 4px;display:flex;flex-direction:column;position:relative;z-index:7;overflow-y:auto}
+  /* ⚠️ pane 是 flex column，行是它的 flex item ⇒ 默认 flex-shrink:1。
+     放开了 .nav.off 的 height:auto 之后，pane 装不下就**压扁这些行**，
+     症状是标题与 caption 叠成一团（实截图撞到：历史那行对、下面三行叠字）——
+     行高不均本身不致命，"看不清哪行是哪行"才致命。
+     所以每行都钉 flex:0 0 auto 不许收缩，装不下时由 pane 自己滚。 */
+  .pane > *{flex:0 0 auto}
+  .ghead{height:32px;display:flex;align-items:center;padding:0 12px;font-size:12px;letter-spacing:.1em;color:var(--t3)}
+  .ghead .arrow{margin-left:auto;font-size:11px}
+  .nav{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;margin:1px 0;border-radius:var(--r-ctl);font-size:14px;position:relative;white-space:nowrap}
+  .nav svg{width:16px;height:16px;color:var(--t2)}
+  .nav:hover{background:var(--card-hov)}
+  .nav.sel{background:linear-gradient(90deg,#3A2A55,#2C2C2C 78%);font-weight:600}
+  .nav.sel svg{color:var(--fuji-lite)}
+  .nav.sel::before{content:"";position:absolute;left:0;top:10px;width:3px;height:20px;border-radius:3px;background:var(--fuji-lite)}
+  .nav .cnt{margin-left:auto;font-size:12px;color:var(--t3)}
+  .nav.off{color:#6E6E6E}
+  .nav.off svg{color:#5E5E5E}
+  .nav .lock{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:999px;background:#33251F;color:#E0A08F}
+  /* 「未实现」药丸 + 行下方 caption：形状取自方案 §「未实现」四项的形状规范 ——
+     药丸文字 #8B8B8B、图标 #5E5E6E，完整原因写在同一行下方 caption（12px、maxLines=2），
+     句子里必须点名缺席的那颗件，不许写"敬请期待"。计数徽标 .cnt 已按同一条规范全部删掉：
+     没有 store 就没有数。
+     ⚠️ 关键：.nav 是 `height:40px` 的 flex 行 + `white-space:nowrap`（`:73`），所以块级内容
+     进去会出两种坏形（实截图各撞过一次）：① caption 留在行内被 flex 拉走、跑到主区压在 hero 上；
+     ② 放开 flex-direction 之后多行 caption 被 40px 固定高压成叠字。
+     所以未实现的行必须**换成块级容器 + 放开高度**：药丸与标题进 .line（自己 27px），
+     caption 自己占一整行。行高因此不恒定 40 —— 那条恒定性在桌面侧由
+     `DesktopGalleryHomeSectionsTest` 守的是**项数恒 6**，不是行高。 */
+  .nav .pill{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:999px;background:#2A2A2A;color:#8B8B8B;border:1px solid #3A3A3A}
+  .nav.off{flex-direction:column;align-items:stretch;gap:2px;height:auto;white-space:normal;padding:6px 12px 7px}
+  .nav.off .line{display:flex;align-items:center;gap:12px;height:27px;align-self:stretch}
+  /* ⚠️ 块级行里药丸**不许再 margin-left:auto**（实截图撞到：标题被压成零宽、只看得见药丸）。
+     行内版靠 auto 推到行尾；进 .line 后它要跟在标题后面，用一个固定间距就够。 */
+  .nav.off .line .pill{margin-left:0}
+  /* 标题包一层：裸文本节点在 flex 里吃不到 shrink，wrap 之后才可能被 ellipsis 截断。
+     药丸同理不许被压（它承载「未实现」这个唯一信号）。 */
+  .nav.off .line .t{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nav.off .line .pill,.nav.off .line .lock{flex:0 0 auto}
+  /* ⚠️ .cap 的宽度必须**显式 align-self:stretch**：pane 是 flex column（`:70`），
+     .cap 作为 flex item 默认只吃内容宽度，`max-width` 是**上限不是目标宽度** ——
+     实测（dump-dom 量 computed rect）它被压到 **46px 宽**，于是中文竖排成 5~6 行、
+     逐行溢出、叠成一团。DOM 结构与 CSS 看着都对，只有量矩形才看得见这一种坏形。
+     同理 .line 要 stretch 才能撑满，进而让 .t 吃得到 gap。 */
+  .nav .why{display:block;align-self:stretch;font-size:12px;line-height:1.45;color:#8B8B8B;
+            font-style:normal;white-space:normal;overflow:hidden}
+  .panefoot{margin-top:auto;padding:10px 12px;font-size:11.5px;line-height:17px;color:var(--t3);border-top:1px solid var(--stroke)}
+  .panefoot b{color:var(--t2);font-weight:600}
+  .rope{height:8px;background-image:repeating-linear-gradient(90deg,var(--beni) 0 3px,transparent 3px 9px);opacity:.5}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;z-index:5}
+  .page{flex:1;min-height:0;overflow-y:auto;padding:0 24px 10px;display:flex;flex-direction:column;gap:18px;scrollbar-width:thin;scrollbar-color:#4A4A4A transparent}
+  .page::-webkit-scrollbar{width:6px}.page::-webkit-scrollbar-thumb{background:#4A4A4A;border-radius:3px}
+  .phead{height:52px;flex:0 0 52px;display:flex;align-items:center;gap:12px}
+  .phead .pt{font-size:20px;line-height:28px;font-weight:600}
+  .phead .pt .sub{font-size:12.5px;font-weight:400;color:var(--t3);margin-left:10px}
+  .seg{display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl);background:#2A2A2A;border:1px solid var(--stroke)}
+  .seg i{font-style:normal;padding:4px 12px;border-radius:2px;font-size:13px;color:var(--t2)}
+  .seg i.on{background:#383838;color:#fff;font-weight:600}
+  .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn{height:32px;padding:0 12px;border-radius:var(--r-ctl);font-size:13px;display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--stroke2);background:#2D2D2D;color:var(--t1);white-space:nowrap}
+  .btn svg{width:14px;height:14px}
+  .btn.acc{background:var(--accent-fill);border-color:rgba(255,255,255,.10);color:var(--on-accent)}
+  .btn.ghost{background:transparent;border-color:transparent}
+  .btn.sm{height:26px;padding:0 10px;font-size:12.5px}
+  .btn.big{height:40px;padding:0 18px;font-size:14px}
+  .chip{height:26px;padding:0 11px;border-radius:999px;background:#333333;color:var(--t2);font-size:12px;display:inline-flex;align-items:center;gap:5px}
+  .chip.acc{background:var(--accent-fill);color:#fff}
+  .chip.beni{background:#4A2220;color:#FFB4A8}
+  .sechead{display:flex;align-items:baseline;gap:10px;position:relative;z-index:3}
+  .sechead h4{margin:0;font-size:16px;line-height:24px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .sechead h4 svg{width:15px;height:15px;color:var(--beni-lite)}
+  .sechead .more{margin-left:auto;font-size:13px;color:var(--accent);display:inline-flex;align-items:center;gap:4px}
+
+  /* hero + 右侧两块（非对称：2/3 与 1/3） */
+  .top{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:stretch}
+  .hero{position:relative;height:330px;flex:0 0 auto;border-radius:var(--r-art);overflow:hidden;border:1px solid var(--stroke)}
+  .hero .art{position:absolute;inset:0;background:linear-gradient(150deg,#2A1F47 0%,#6B4BC8 38%,var(--beni) 100%)}
+  .hero .veil{position:absolute;inset:0;background:linear-gradient(90deg,rgba(16,14,24,.86) 0%,rgba(16,14,24,.42) 46%,rgba(16,14,24,.10) 100%)}
+  .hero .dots{position:absolute;inset:0;opacity:.5;
+    background-image:radial-gradient(rgba(255,255,255,.20) 1px,transparent 1.7px);background-size:9px 9px}
+  .hero .torii{position:absolute;right:26px;bottom:18px;width:150px;height:110px;color:rgba(255,255,255,.16)}
+  .hero .in{position:absolute;left:26px;bottom:24px;right:200px}
+  .kicker{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;letter-spacing:.2em;color:var(--beni-lite);font-weight:700}
+  .kicker svg{width:13px;height:13px}
+  .htitle{font-family:"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;font-size:44px;line-height:.98;font-weight:800;
+    letter-spacing:-1px;margin:10px 0 0;text-shadow:0 2px 0 rgba(0,0,0,.4)}
+  .hsub{font-size:13px;color:#DCD6E8;margin-top:8px}
+  .hchips{display:flex;gap:8px;margin-top:12px}
+  .pager{position:absolute;left:26px;bottom:-2px;display:none}
+  .pips{display:flex;gap:5px;align-items:center}
+  .pips i{width:6px;height:6px;border-radius:999px;background:rgba(255,255,255,.35)}
+  .pips i.on{width:18px;background:var(--washi)}
+  .hnav{position:absolute;right:22px;top:22px;display:flex;gap:8px;align-items:center}
+  .hbtn{width:32px;height:32px;border-radius:999px;background:rgba(20,18,28,.6);border:1px solid rgba(255,255,255,.18);
+    display:grid;place-items:center;color:#fff}
+  .hbtn svg{width:14px;height:14px}
+  .count{font-size:11.5px;padding:3px 9px;border-radius:999px;background:rgba(20,18,28,.6);border:1px solid rgba(255,255,255,.18);color:#EAE6F2}
+  .side{display:flex;flex-direction:column;gap:16px}
+  .minicard{background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-card);padding:12px;flex:1;display:flex;flex-direction:column}
+  .minicard .mh{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;margin-bottom:10px}
+  .minicard .mh svg{width:14px;height:14px;color:var(--fuji-lite)}
+  .minicard .mh .more{margin-left:auto;font-size:12px;font-weight:400;color:var(--t3)}
+  .row2{display:flex;align-items:center;gap:10px;padding:6px;border-radius:6px}
+  .row2:hover{background:var(--card-hov)}
+  .row2 .th{width:44px;height:44px;border-radius:6px;flex:0 0 44px}
+  .row2 .nm{font-size:13.5px;font-weight:600}
+  .row2 .mt{font-size:11.5px;color:var(--t3)}
+  .row2 .go{margin-left:auto;color:var(--t3)}
+  .row2 .chev{width:14px;height:14px}
+  .chipwrap{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+  /* 作品网格 */
+  .wall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+  .art-card{position:relative;border-radius:var(--r-art);overflow:hidden;border:1px solid var(--stroke);background:var(--card)}
+  .art-card.wide{grid-column:span 2}
+  .art-card .im{display:block;width:100%;aspect-ratio:3/4;position:relative}
+  .art-card.wide .im{aspect-ratio:16/10}
+  .art-card .ov{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,10,18,0) 42%,rgba(12,10,18,.82) 100%)}
+  .art-card .cap{position:absolute;left:12px;right:12px;bottom:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#EAE6F2;white-space:nowrap}
+  .art-card .cap svg{width:13px;height:13px;flex:0 0 13px}
+  .art-card .cap .n{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .art-card .ttl{position:absolute;left:12px;top:12px;right:60px;font-size:13px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .art-card .src{position:absolute;right:10px;top:10px;font-size:10.5px;padding:2px 7px;border-radius:999px;background:rgba(18,16,26,.66);
+    border:1px solid rgba(255,255,255,.16);color:#EAE6F2}
+  .art-card .acts{position:absolute;left:10px;right:10px;bottom:38px;display:flex;gap:6px;opacity:0;transform:translateY(6px);
+    transition:150ms cubic-bezier(.1,.9,.2,1)}
+  .art-card:hover .acts{opacity:1;transform:none}
+  .art-card .acts .btn{flex:1;justify-content:center;background:rgba(24,20,34,.82);backdrop-filter:blur(2px)}
+  .art-card:hover{border-color:var(--stroke2)}
+  .art-card.focus{outline:2px solid var(--t1);outline-offset:2px}
+  .rank{position:absolute;left:10px;bottom:38px;display:flex;align-items:flex-end;gap:5px}
+  .rank .big{font-family:"Segoe UI Variable Display",sans-serif;font-size:30px;font-weight:800;line-height:.9;color:var(--washi);text-shadow:0 2px 6px rgba(0,0,0,.6)}
+
+  /* 最近浏览横滚 */
+  .hscroll{display:flex;gap:12px;overflow:hidden}
+  .hitem{width:132px;flex:0 0 132px;border-radius:var(--r-card);overflow:hidden;border:1px solid var(--stroke);position:relative}
+  .hitem .im{display:block;width:100%;aspect-ratio:4/3}
+  .hitem .lb{font-size:11.5px;padding:6px 8px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hitem.fade{opacity:.45}
+  .hitem .cut{position:absolute;right:0;top:0;bottom:0;width:40px;background:linear-gradient(90deg,rgba(32,32,32,0),rgba(32,32,32,.9))}
+
+  /* 详情浮层 */
+  .detail{position:absolute;right:0;top:0;bottom:0;width:340px;background:var(--layer);border-left:1px solid var(--stroke);z-index:22;
+    box-shadow:-18px 0 40px -18px rgba(0,0,0,.8);display:flex;flex-direction:column;overflow:hidden}
+  .detail::before{content:"";position:absolute;left:-46px;top:0;bottom:0;width:46px;background:linear-gradient(90deg,rgba(32,32,32,0),rgba(32,32,32,.55) 55%,rgba(32,32,32,.92))}
+  .dhero{position:relative;height:200px;flex:0 0 200px}
+  .dhero .im{position:absolute;inset:0}
+  .dhero .veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,10,18,0) 55%,rgba(12,10,18,.75))}
+  .dhero .pips{position:absolute;right:12px;bottom:12px}
+  .dclose{position:absolute;right:10px;top:10px;width:30px;height:30px;border-radius:999px;background:rgba(18,16,26,.66);
+    border:1px solid rgba(255,255,255,.16);display:grid;place-items:center;color:#fff}
+  .dclose svg{width:12px;height:12px}
+  .dbody{padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+  .dbody h5{margin:0;font-size:17px;font-weight:600}
+  .dbody .by{font-size:12.5px;color:var(--t3)}
+  .acts4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .acts4 .b{height:52px;border-radius:var(--r-ctl);border:1px solid var(--stroke2);background:#2D2D2D;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:3px;font-size:11.5px;color:var(--t1)}
+  .acts4 .b svg{width:15px;height:15px}
+  .acts4 .b.on{background:var(--accent-fill);border-color:#7C64D8;color:#fff}
+  .infotbl{border:1px solid var(--stroke);border-radius:var(--r-card);overflow:hidden}
+  .infotbl div{display:flex;padding:7px 10px;font-size:12.5px;border-bottom:1px solid #2E2E2E}
+  .infotbl div:last-child{border-bottom:0}
+  .infotbl .k{width:76px;color:var(--t3)}
+  .infotbl .v{color:var(--t1);font-variant-numeric:tabular-nums}
+  .lab{font-size:13px;font-weight:600}
+  .artist{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--stroke);border-radius:var(--r-card);background:#2A2A2A}
+  .artist .av{width:36px;height:36px;border-radius:50%;background:linear-gradient(140deg,var(--beni),var(--fuji))}
+  .artist .nm{font-size:13.5px;font-weight:600}
+  .artist .mt{font-size:11.5px;color:var(--t3)}
+  .status{flex:0 0 24px;height:24px;display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11.5px;color:var(--t3);
+    background:var(--layer);border-top:1px solid var(--stroke)}
+  .status .r{margin-left:auto;display:flex;gap:16px;align-items:center}
+  .infobar{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding:9px 12px;border-radius:var(--r-ctl);font-size:12.5px;background:#2B2620;border:1px solid #4A3B22}
+  .infobar svg{width:15px;height:15px;color:#F0B429;flex:0 0 15px}
+  .infobar.err{background:#2A2020;border-color:#4A2626}
+  .infobar.err svg{color:#F47067}
+  .infobar b{font-weight:600}
+  .infobar .d{color:#C9B79A}
+  .infobar.err .d{color:#E0B4B0}
+  .infobar .acts{margin-left:auto;display:flex;gap:6px}
+  .gyoku{width:16px;height:16px;display:inline-block;vertical-align:-3px}
+
+  /* 装饰三档 */
+  .deco{display:none}
+  body[data-deco="pattern"] .deco, body[data-deco="shrine"] .deco{display:block}
+  body[data-deco="pattern"] .deco.ib, body[data-deco="shrine"] .deco.ib{display:inline-flex}
+  body[data-deco="pattern"] .deco.grid, body[data-deco="shrine"] .deco.grid{display:grid}
+  body[data-deco="plain"] .rope{display:none}
+  /* 三档差量：素=零装饰；纹样=平面纹样（网点/樱花/注连绳/扇）；神社=再加建筑剪影、竖排与背景画 */
+  body:not([data-deco="shrine"]) .rail .shrine, body:not([data-deco="shrine"]) .rail .kanji, body:not([data-deco="shrine"]) .hero .torii{display:none}
+  body[data-deco="plain"] .hero .dots{display:none}
+  body[data-deco="plain"] .sechead h4 svg{display:none}
+  body[data-deco="plain"] .kicker svg{display:none}
+  body[data-deco="plain"] .nav.sel{background:var(--layer2)}
+  body[data-deco="shrine"] .hero{height:360px}
+  body[data-deco="shrine"] .hero .veil{background:linear-gradient(90deg,rgba(16,14,24,.9) 0%,rgba(16,14,24,.46) 48%,rgba(16,14,24,.12) 100%)}
+  body[data-deco="shrine"] .frame::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1.6px);background-size:11px 11px}
+
+  /* ── 稿下说明 ── */
+  .notes{max-width:1440px;display:flex;flex-direction:column;gap:16px;color:#B9BCC4}
+  .notes h2{font-size:19px;margin:6px 0 2px;color:#E4E4E4}
+  .notes h3{font-size:15px;margin:12px 0 6px;color:#E4E4E4}
+  .notes p{font-size:13px;line-height:20px;margin:0}
+  .legend{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 22px;font-size:12.5px;line-height:19px}
+  .num{display:inline-grid;place-items:center;min-width:16px;height:16px;border-radius:999px;background:var(--fuji);color:#fff;
+    font-size:10.5px;font-weight:700;padding:0 4px;margin-right:6px}
+  table{border-collapse:collapse;width:100%;background:#1B1C20;border:1px solid #26282E;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #26282E;vertical-align:top}
+  th{background:#202127;font-weight:600;color:#D6D8DE}
+  tr:last-child td{border-bottom:0}
+  .ok{color:#56D364}.wa{color:#F0B429}.no{color:#F47067}.mid{color:#CBB6FF}
+  .tags{display:flex;gap:8px;flex-wrap:wrap}
+  .tg{padding:4px 10px;border-radius:999px;font-size:12px;border:1px solid #26282E;background:#1B1C20}
+  .tg.ok{color:#56D364}.tg.wa{color:#F0B429}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body data-deco="shrine">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <!-- UI 图标 -->
+  <symbol id="i-home" viewBox="0 0 16 16"><path d="M2 6.6 8 2l6 4.6M3.6 7.6V13h8.8V7.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.6 5.4 9.4 9.4 5.4 10.6 6.6 6.6z" fill="currentColor"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.4 10.4 13.6 13.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.4C4.6 11 2.8 9 2.8 7.1A2.6 2.6 0 0 1 8 5.6a2.6 2.6 0 0 1 5.2 1.5c0 1.9-1.8 3.9-5.2 6.3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 16 16"><path d="M8 2.2 9.9 6l4.1.6-3 2.9.7 4.1L8 11.7 4.3 13.6 5 9.5 2 6.6 6.1 6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.4" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 13.4c.6-2.6 2.5-3.9 5-3.9s4.4 1.3 5 3.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-users" viewBox="0 0 16 16"><circle cx="6" cy="5.6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 13c.5-2.4 2.2-3.6 4.2-3.6s3.7 1.2 4.2 3.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M11 4.2a2.2 2.2 0 0 1 0 4.2M12.2 12.8c-.2-1-.6-1.8-1.2-2.4" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2.6v7.4M4.8 7.4 8 10.6l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 16 16"><rect x="2.4" y="3.4" width="11.2" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.6 11 6.4 8l2.2 2.2L10.4 7.6l2 2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 16 16"><path d="M8.4 2.2H13v4.6l-6.2 6.2-4.6-4.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.8" cy="5.2" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-src" viewBox="0 0 16 16"><path d="M2.6 5.4 8 2.6l5.4 2.8L8 8.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 8.6 8 11.4l5.4-2.8M2.6 11.6 8 14.4l5.4-2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-set" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M12.6 6.4A5 5 0 1 0 8 13a5 5 0 0 0 4.2-2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M13.4 3v3.4H10" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 4.4 10 8l-4 3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-left" viewBox="0 0 16 16"><path d="M10 4.4 6 8l4 3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 12 12"><path d="M2.6 2.6 9.4 9.4M9.4 2.6 2.6 9.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1"/></symbol>
+  <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3 7.6 8.4M11 9.6V13H3V5h3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-share" viewBox="0 0 16 16"><path d="M8 10.6V2.8M5.4 5.2 8 2.6l2.6 2.6M3 9.4v3.4h10V9.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.4 14.4 13.6H1.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".9" fill="currentColor"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 16 16"><path d="M8 1.8c2.6 2.8 4 4.6 4 6.6a4 4 0 0 1-8 0c0-1.2.5-2.2 1.4-3.2.2 1.2.8 1.8 1.4 1.8.8 0 1.2-1.2 1.2-5.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <!-- 东方语汇（全部自绘矢量，不含任何官方立绘或受版权保护素材） -->
+  <symbol id="t-torii" viewBox="0 0 24 24"><path d="M2 5.4C6 3.6 18 3.6 22 5.4l-1.6 2.2C16.6 6 7.4 6 3.6 7.6z" fill="currentColor"/><rect x="4.4" y="9" width="15.2" height="1.9" rx=".6" fill="currentColor"/><rect x="5.6" y="6.6" width="2" height="14.4" rx=".6" fill="currentColor"/><rect x="16.4" y="6.6" width="2" height="14.4" rx=".6" fill="currentColor"/><rect x="11" y="5.2" width="2" height="3.8" rx=".6" fill="currentColor"/></symbol>
+  <symbol id="t-gyoku" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.4" fill="var(--beni)"/><path d="M8 1.6a6.4 6.4 0 0 1 0 12.8z" fill="var(--washi)"/><circle cx="8" cy="8" r="6.4" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".8"/></symbol>
+  <symbol id="t-sakura" viewBox="0 0 16 16"><g fill="currentColor"><ellipse cx="8" cy="4.4" rx="2.5" ry="3.4"/><ellipse cx="8" cy="4.4" rx="2.5" ry="3.4" transform="rotate(72 8 8)"/><ellipse cx="8" cy="4.4" rx="2.5" ry="3.4" transform="rotate(144 8 8)"/><ellipse cx="8" cy="4.4" rx="2.5" ry="3.4" transform="rotate(216 8 8)"/><ellipse cx="8" cy="4.4" rx="2.5" ry="3.4" transform="rotate(288 8 8)"/></g><circle cx="8" cy="8" r="1.3" fill="rgba(0,0,0,.45)"/></symbol>
+  <symbol id="t-fan" viewBox="0 0 16 16"><path d="M8 13.4 2.4 4.6a8 8 0 0 1 11.2 0z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 13.4V5.2M5.4 9.2 8 13.4l2.6-4.2" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+</defs></svg>
+
+<div class="bar">
+  <h1>Venera Windows · 图库首页 · 幻想乡档</h1>
+  <button class="sw" data-d="plain" aria-pressed="false">素（纯 WinUI3 结构）</button>
+  <button class="sw" data-d="pattern" aria-pressed="false">纹样（和色 + 自绘纹样）</button>
+  <button class="sw" data-d="shrine" aria-pressed="true">神社（+ 背景画与鸟居）</button>
+  <span class="hint">两块画板：A 首页 ｜ B 内联详情态 ｜ 本页不含漫画块</span>
+</div>
+
+<div class="scroll">
+<div class="stack">
+
+  <!-- ══════════ 画板 A ══════════ -->
+  <div class="cap-line">画板 A · 图库首页（1440×900 · 两级导航 48+224 · 内容净宽 1168 → 6 列；<b>桌面默认窗 1080×760 ⇒ 4 列</b>，见 <code>DesktopGalleryMetrics.imageWallColumnCount</code>）</div>
+  <div class="frame">
+    <div class="tb">
+      <span class="brand"><svg aria-hidden="true"><use href="#t-torii"/></svg>Venera</span>
+      <span class="search"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索作品、画师、标签<em class="kbd">Ctrl K</em></span>
+      <span class="tbr">
+        <span class="lamp"><span class="dot"></span>网络正常</span>
+        <span class="lamp">三站 · 本地无任务队列</span>
+        <span class="ava" title="本机数据目录"></span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-min"/></svg></span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-max"/></svg></span>
+        <span class="cap x"><svg aria-hidden="true"><use href="#i-x"/></svg></span>
+      </span>
+    </div>
+    <div class="body">
+      <nav class="rail" aria-label="域切换">
+        <span class="rbtn sel" title="图库"><svg aria-hidden="true"><use href="#i-home"/></svg></span>
+        <span class="rbtn" title="发现"><svg aria-hidden="true"><use href="#i-compass"/></svg></span>
+        <span class="rbtn" title="搜索"><svg aria-hidden="true"><use href="#i-search"/></svg></span>
+        <span class="rbtn" title="收藏"><svg aria-hidden="true"><use href="#i-heart"/></svg></span>
+        <span class="rbtn" title="画师"><svg aria-hidden="true"><use href="#i-users"/></svg></span>
+        <span style="height:8px"></span>
+        <span class="rbtn" title="漫画"><svg aria-hidden="true"><use href="#i-photo"/></svg></span>
+        <span class="spacer"></span>
+        <span class="shrine deco grid"><svg aria-hidden="true"><use href="#t-torii"/></svg></span>
+        <span class="kanji deco">博麗神社</span>
+        <span class="rbtn" title="设置"><svg aria-hidden="true"><use href="#i-set"/></svg></span>
+      </nav>
+      <nav class="pane" aria-label="图库内页">
+        <div class="ghead">图库<span class="arrow">‹</span></div>
+        <div class="nav sel"><svg aria-hidden="true"><use href="#i-star"/></svg>每日热门</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-users"/></svg>正在关注的画师</div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="t">历史</span><span class="pill">未实现</span></span><em class="why">还没有本地历史存储，读不到浏览记录</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-down"/></svg><span class="t">下载</span><span class="pill">未实现</span></span><em class="why">存图落点还没接桌面，没有可枚举的目录</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="t">最新</span><span class="pill">未实现</span></span><em class="why">三站列表都没有按时间的排序参数</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-flame"/></svg><span class="t">排行榜</span><span class="pill">未实现</span></span><em class="why">没有跨站取榜的口，yande.re 也只固定给 40 条</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="t">以图搜源</span><span class="lock">桌面不可用</span></span><em class="why">选图器要走 OpenableColumns / GetContent()，且过盾要开一个 Activity</em></div>
+        <div class="rope deco"></div>
+        <div class="ghead">管理</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-users"/></svg>画师</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-tag"/></svg>标签</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-src"/></svg>图库源</div>
+        <div class="panefoot">
+          <div><b>Gelbooru</b> DAPI 匿名一律 401，需 <code>api_key</code> + <code>user_id</code>；无凭据则这一站一张图都取不到</div>
+          <div><b>缓存</b> 上限未接（<code>VeneraPreferences</code> 不在桌面编译面）</div>
+        </div>
+      </nav>
+      <div class="main">
+        <div class="page">
+          <div class="phead">
+            <span class="pt">图库 · 今日<span class="sub">10-03 · 三站并行 · 每站 12s 预算</span></span>
+            <span class="seg"><i class="on">推荐</i><i>最新</i><i>排行</i></span>
+            <span class="right">
+              <span class="chip beni"><svg class="gyoku" aria-hidden="true"><use href="#t-gyoku"/></svg>东方Project</span>
+              <span class="chip">少女</span><span class="chip">4k</span><span class="chip">+6</span>
+              <span class="btn sm"><svg aria-hidden="true"><use href="#i-refresh"/></svg>换一批</span>
+            </span>
+          </div>
+
+          <div class="top">
+            <div class="hero">
+              <span class="art" style="background:linear-gradient(150deg,#2A1F47 0%,#6B4BC8 38%,var(--beni) 100%)"></span>
+              <span class="dots deco"></span>
+              <span class="veil"></span>
+              <svg class="torii deco" aria-hidden="true"><use href="#t-torii"/></svg>
+              <span class="hnav"><span class="count">重排</span>
+                <span class="hbtn"><svg aria-hidden="true"><use href="#i-left"/></svg></span>
+                <span class="hbtn"><svg aria-hidden="true"><use href="#i-chev"/></svg></span>
+              </span>
+              <div class="in">
+                <div class="kicker"><svg class="deco ib" aria-hidden="true"><use href="#t-sakura"/></svg>今日热门 · 三站混搭</div>
+                <div class="htitle">春风与樱</div>
+                <div class="hsub">作品名是<b>虚构占位</b> —— 桌面今日没有大图页，也没有详情态。 · りりお</div>
+                <div class="hchips"><span class="chip beni">东方Project</span><span class="chip">少女</span><span class="chip">樱花</span><span class="chip">站点标只能三选一</span></div>
+                <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+                  <span class="btn acc">查看原图</span><span class="btn">收藏</span><span class="btn">下载</span>
+                  <span class="pips deco" style="margin-left:auto"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                </div>
+                <div style="font-size:11.5px;color:var(--t3);margin-top:8px">三站的「热门」不是同一件事：<b>yande.re 是真日榜</b>（<span class="mono">popular_recent?period=1d</span>），Gelbooru 与 Safebooru <b>没有日榜端点</b>，取的是全站高分池（<span class="mono">sort:score:desc</span> / <span class="mono">order:rank</span>）。「换一批」只换种子本地重排，<b>不再联网</b></div>
+              </div>
+            </div>
+
+            <div class="side">
+              <div class="minicard">
+                <div class="mh"><svg aria-hidden="true"><use href="#i-users"/></svg>正在关注的画师<span class="more">更多</span></div>
+                <div class="row2"><span class="th" style="background:linear-gradient(140deg,#6B4BC8,#FF8C80)"></span><span><span class="nm">りりお</span><br><span class="mt">本机收藏 1 张 · 三站取数</span></span><span class="go"><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></span></div>
+                <div class="row2"><span class="th" style="background:linear-gradient(140deg,#2E5C8A,#CBB6FF)"></span><span><span class="nm">椛庭 るり</span><br><span class="mt">本机收藏 0 张 · 三站取数</span></span><span class="go"><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></span></div>
+                <div class="row2"><span class="th" style="background:linear-gradient(140deg,#8A6BC4,#E3B04B)"></span><span><span class="nm">N次郎</span><br><span class="mt">本机收藏 3 张 · 三站取数</span></span><span class="go"><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></span></div>
+                <div style="margin-top:auto;padding-top:10px;font-size:11.5px;color:var(--t3)">关注是**本地动作**（<span class="mono">GalleryArtistFollowsStore</span> 不与站方发生关注）；本仓从来没有「热门画师榜」，硬造就是假读数</div>
+              </div>
+              <div class="minicard">
+                <div class="mh"><svg aria-hidden="true"><use href="#i-tag"/></svg>标签分类<span class="more">更多</span></div>
+                <div class="chipwrap">
+                  <span class="chip beni">当页 3</span><span class="chip">当页 2</span><span class="chip">当页 5</span>
+                  <span class="chip">当页 1</span><span class="chip">当页 2</span>
+                </div>
+                <div style="margin-top:auto;padding-top:10px;font-size:11.5px;color:var(--t3)"><b>未实现</b>：<span class="mono">BoardSource</span> 没有 count 成员，词典 sqlite 也不随包分发。上面这些数是 <span class="mono">lexicon.fetchTagCategories(pageUrl)</span> 的<b>当页</b>分类计数，不是「12.4 万作品」那种全站数</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sechead"><h4><svg class="deco" aria-hidden="true"><use href="#t-sakura"/></svg>精选推荐</h4><span class="more">查看更多<svg class="chev" style="width:13px;height:13px" aria-hidden="true"><use href="#i-chev"/></svg></span></div>
+          <div class="wall">
+            <div class="art-card wide focus">
+              <span class="im" style="background:linear-gradient(160deg,#12333A,#2E8C9E 60%,var(--ruri))"></span><span class="ov"></span>
+              <span class="ttl">海渊图书馆 · 第 4 页<span class="src" style="position:static;margin-left:6px">（虚构占位）</span></span><span class="src">yande.re</span>
+              <span class="rank"><span class="big">01</span></span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span><span class="btn sm">原图</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#3A1420,#B0374F 70%,var(--gold))"></span><span class="ov"></span>
+              <span class="ttl">炉边闲话</span><span class="src">yande.re</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#22301F,#5C8F4E 70%,#D9E88A)"></span><span class="ov"></span>
+              <span class="ttl">铁锈与潮汐</span><span class="src">Gelbooru</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#2B2B33,#6C6F7A 65%,#FFC0CB)"></span><span class="ov"></span>
+              <span class="ttl">白噪声电台</span><span class="src">Safebooru</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#403257,#A98BE0)"></span><span class="ov"></span>
+              <span class="ttl">雾港守夜人</span><span class="src">yande.re</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#2A1F47,#6B4BC8)"></span><span class="ov"></span>
+              <span class="ttl">拾光修理铺</span><span class="src">yande.re</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#1F4B45,#5FD3A6)"></span><span class="ov"></span>
+              <span class="ttl">长夏失眠</span><span class="src">Gelbooru</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card">
+              <span class="im" style="background:linear-gradient(160deg,#5A2F3E,#D96A82)"></span><span class="ov"></span>
+              <span class="ttl">钢与盐的编年史</span><span class="src">yande.re</span>
+              <span class="acts"><span class="btn sm">收藏</span><span class="btn sm">下载</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+          </div>
+
+          <div class="sechead"><h4><svg class="deco" aria-hidden="true"><use href="#t-fan"/></svg>最近浏览</h4><span class="more" style="color:#8B8B8B">未实现</span></div>
+          <div style="padding:22px 14px;border:1px dashed #3A3A3A;border-radius:10px;color:#8B8B8B;font-size:12.5px;line-height:1.7">
+            整节未实现：<b>没有本地历史存储</b>，读不到浏览记录（不存在 <span class="mono">gallery/data/GalleryHistoryStore.kt</span>，<span class="mono">data/db</span> 里也没有 gallery 历史表）。点亮它要三件事同时成立：有那张表、注册表里有 <span class="mono">HISTORY</span>、且有内容件。
+            <br>节的数量<b>不跟数据变</b> —— 这一条在桌面注册表同样成立（<span class="mono">DesktopGalleryHomeSectionsTest</span> 钉住「项数恒 6」）。
+          </div>
+        </div>
+        <div class="status">
+          <span>三站 · 2 正常 · 1 需凭据</span><span>本次取数 00:41 前</span>
+          <span class="r"><span>每站 12s 预算（超时那一站这一轮缺席，会被说出来）</span><span class="kbd">Ctrl K</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 画板 B ══════════ -->
+  <div class="cap-line" id="board-b">画板 B · 点选作品后的内联详情态（右浮层 340 覆盖式，内容区不重排、列数不变）</div>
+  <div class="frame">
+    <div class="tb">
+      <span class="brand"><svg aria-hidden="true"><use href="#t-torii"/></svg>Venera</span>
+      <span class="search"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索作品、画师、标签<em class="kbd">Ctrl K</em></span>
+      <span class="tbr">
+        <span class="lamp"><span class="dot"></span>网络正常</span>
+        <span class="lamp">三站 · 本地无任务队列</span>
+        <span class="ava"></span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-min"/></svg></span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-max"/></svg></span>
+        <span class="cap x"><svg aria-hidden="true"><use href="#i-x"/></svg></span>
+      </span>
+    </div>
+    <div class="body">
+      <nav class="rail">
+        <span class="rbtn sel"><svg aria-hidden="true"><use href="#i-home"/></svg></span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-compass"/></svg></span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-search"/></svg></span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-heart"/></svg></span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-users"/></svg></span>
+        <span style="height:8px"></span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-photo"/></svg></span>
+        <span class="spacer"></span>
+        <span class="shrine deco grid"><svg aria-hidden="true"><use href="#t-torii"/></svg></span>
+        <span class="kanji deco">博麗神社</span>
+        <span class="rbtn"><svg aria-hidden="true"><use href="#i-set"/></svg></span>
+      </nav>
+      <nav class="pane">
+        <div class="ghead">图库<span class="arrow">‹</span></div>
+        <div class="nav sel"><svg aria-hidden="true"><use href="#i-star"/></svg>每日热门</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-users"/></svg>正在关注的画师</div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="t">历史</span><span class="pill">未实现</span></span><em class="why">还没有本地历史存储，读不到浏览记录</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-down"/></svg><span class="t">下载</span><span class="pill">未实现</span></span><em class="why">存图落点还没接桌面，没有可枚举的目录</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-clock"/></svg><span class="t">最新</span><span class="pill">未实现</span></span><em class="why">三站列表都没有按时间的排序参数</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-flame"/></svg><span class="t">排行榜</span><span class="pill">未实现</span></span><em class="why">没有跨站取榜的口，yande.re 也只固定给 40 条</em></div>
+        <div class="nav off"><span class="line"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="t">以图搜源</span><span class="lock">桌面不可用</span></span><em class="why">选图器要走 OpenableColumns / GetContent()，且过盾要开一个 Activity</em></div>
+        <div class="rope deco"></div>
+        <div class="ghead">管理</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-users"/></svg>画师</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-tag"/></svg>标签</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-src"/></svg>图库源</div>
+        <div class="panefoot"><div><b>Gelbooru</b> DAPI 匿名一律 401，需 <code>api_key</code> + <code>user_id</code></div><div><b>缓存</b> 上限未接</div></div>
+      </nav>
+      <div class="main">
+        <div class="page">
+          <div class="phead">
+            <span class="pt">图库 · 今日<span class="sub">10-03 · 三站并行 · 每站 12s 预算</span></span>
+            <span class="seg"><i class="on">推荐</i><i>最新</i><i>排行</i></span>
+            <span class="right"><span class="chip beni">东方Project</span><span class="chip">少女</span><span class="btn sm"><svg aria-hidden="true"><use href="#i-refresh"/></svg>换一批</span></span>
+          </div>
+
+          <div class="hero">
+            <span class="art" style="background:linear-gradient(150deg,#2A1F47 0%,#6B4BC8 38%,var(--beni) 100%)"></span>
+            <span class="dots deco"></span><span class="veil"></span>
+            <svg class="torii deco" aria-hidden="true"><use href="#t-torii"/></svg>
+            <span class="hnav"><span class="count">重排</span>
+              <span class="hbtn"><svg aria-hidden="true"><use href="#i-left"/></svg></span>
+              <span class="hbtn"><svg aria-hidden="true"><use href="#i-chev"/></svg></span>
+            </span>
+            <div class="in">
+              <div class="kicker"><svg class="deco ib" aria-hidden="true"><use href="#t-sakura"/></svg>今日热门 · 三站混搭</div>
+              <div class="htitle">春风与樱</div>
+              <div class="hsub">作品名是<b>虚构占位</b> —— 桌面今日没有大图页，也没有详情态。 · りりお</div>
+              <div class="hchips"><span class="chip beni">东方Project</span><span class="chip">少女</span><span class="chip">樱花</span><span class="chip">站点标只能三选一</span></div>
+              <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+                <span class="btn acc">查看原图</span><span class="btn">收藏</span><span class="btn">下载</span>
+                <span class="pips deco" style="margin-left:auto"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="infobar err">
+            <svg aria-hidden="true"><use href="#i-warn"/></svg>
+            <span><b>以图搜源在本机不可用</b>　<span class="d">SauceNAO 的搜索端点被 Cloudflare 盾拦，桌面端没有可完成验证的载体；换 UA 也无效。此项不会自动重试。</span></span>
+            <span class="acts"><span class="btn bd sm" style="background:#2D2D2D">说明</span><span class="btn sm" style="background:transparent;border-color:transparent">知道了</span></span>
+          </div>
+
+          <div class="sechead"><h4><svg class="deco" aria-hidden="true"><use href="#t-sakura"/></svg>精选推荐</h4><span class="more">查看更多</span></div>
+          <div class="wall">
+            <div class="art-card wide" style="outline:2px solid var(--fuji-lite);outline-offset:2px">
+              <span class="im" style="background:linear-gradient(160deg,#12333A,#2E8C9E 60%,var(--ruri))"></span><span class="ov"></span>
+              <span class="ttl">海渊图书馆 · 第 4 页<span class="src" style="position:static;margin-left:6px">（虚构占位）</span></span><span class="src">yande.re</span>
+              <span class="rank"><span class="big">01</span></span>
+              <span class="cap"><svg aria-hidden="true"><use href="#i-eye"/></svg><span class="n">分数 31144</span></span>
+            </div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#3A1420,#B0374F 70%,var(--gold))"></span><span class="ov"></span><span class="ttl">炉边闲话</span><span class="src">yande.re</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#22301F,#5C8F4E 70%,#D9E88A)"></span><span class="ov"></span><span class="ttl">铁锈与潮汐</span><span class="src">Gelbooru</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#2B2B33,#6C6F7A 65%,#FFC0CB)"></span><span class="ov"></span><span class="ttl">白噪声电台</span><span class="src">Safebooru</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#403257,#A98BE0)"></span><span class="ov"></span><span class="ttl">雾港守夜人</span><span class="src">yande.re</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#2A1F47,#6B4BC8)"></span><span class="ov"></span><span class="ttl">拾光修理铺</span><span class="src">yande.re</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+            <div class="art-card"><span class="im" style="background:linear-gradient(160deg,#1F4B45,#5FD3A6)"></span><span class="ov"></span><span class="ttl">长夏失眠</span><span class="src">Gelbooru</span><span class="cap"><span class="n">分数 · 三站口径不同</span></span></div>
+          </div>
+        </div>
+        <div class="status"><span>已选 1 项 · 详情浮层在位（内容区未重排）</span><span class="r"><span class="kbd">Esc</span> 关闭浮层<span class="kbd">Ctrl K</span></span></div>
+      </div>
+
+      <aside class="detail">
+        <div class="dhero">
+          <span class="im" style="background:linear-gradient(150deg,#12333A,#2E8C9E 55%,var(--ruri))"></span>
+          <span class="veil"></span>
+          <span class="dclose"><svg aria-hidden="true"><use href="#i-x"/></svg></span>
+          <span class="pips" style="position:absolute;right:12px;bottom:12px"><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></span>
+          <span class="count" style="position:absolute;left:12px;bottom:12px">重排</span>
+        </div>
+        <div class="dbody">
+          <div>
+            <h5>海渊图书馆 · 第 4 页</h5>
+            <div class="by">Pixiv · ID 12345678 <svg style="width:12px;height:12px;vertical-align:-2px" aria-hidden="true"><use href="#i-ext"/></svg></div>
+          </div>
+          <div class="chipwrap"><span class="chip beni">东方Project</span><span class="chip">十六夜咲夜</span><span class="chip">少女</span><span class="chip">+3</span></div>
+          <div class="acts4">
+            <span class="b on"><svg aria-hidden="true"><use href="#i-heart"/></svg>收藏</span>
+            <span class="b"><svg aria-hidden="true"><use href="#i-down"/></svg>下载</span>
+            <span class="b"><svg aria-hidden="true"><use href="#i-photo"/></svg>原图</span>
+            <span class="b"><svg aria-hidden="true"><use href="#i-share"/></svg>分享</span>
+          </div>
+          <div class="artist">
+            <span class="av"></span>
+            <span><span class="nm">椛庭 るり</span><br><span class="mt">作品 3,408 · 已关注</span></span>
+            <span class="btn sm" style="margin-left:auto">关注</span>
+          </div>
+          <div>
+            <div class="lab" style="margin-bottom:6px">作品信息</div>
+            <div class="infotbl">
+              <div><span class="k">来源</span><span class="v">Pixiv</span></div>
+              <div><span class="k">分辨率</span><span class="v">3840 × 2160</span></div>
+              <div><span class="k">格式</span><span class="v">JPG</span></div>
+              <div><span class="k">大小</span><span class="v">3.2 MB</span></div>
+              <div><span class="k">上传时间</span><span class="v">2024-08-12</span></div>
+              <div><span class="k">本地状态</span><span class="v">未读（<span class="mono">GalleryImageLoader</span> 不在桌面编译面）</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="lab" style="margin-bottom:6px">相关标签</div>
+            <div class="chipwrap"><span class="chip">东方Project</span><span class="chip">十六夜咲夜</span><span class="chip">少女</span><span class="chip">白发</span><span class="chip">幻想乡</span><span class="chip">樱花</span></div>
+          </div>
+          <span class="btn acc big" style="justify-content:center">查看原图<svg aria-hidden="true"><use href="#i-ext"/></svg></span>
+          <div style="font-size:11.5px;color:var(--t3)">标签与计数按该站自己的返回原样展示；本地不做二次归类</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ══════════ 说明 ══════════ -->
+  <div class="notes">
+    <h2>并存规则：WinUI3 出骨架，幻想乡出皮肤</h2>
+    <div class="legend">
+      <span><span class="num">1</span>两级导航：rail 48 = 域（图库/漫画/设置），pane 224 = 域内页。Fluent NavigationView 有对应模式，选中态仍是 3px 指示条 + Layer 底色。</span>
+      <span><span class="num">2</span>中性 surface 阶梯一分未动（#202020 / #272727 / #2C2C2C / #353535），和色只进强调位：博丽朱用于当前筛选 chip 与鸟居，藤紫用于选中态。</span>
+      <span><span class="num">3</span>非对称来自"hero 占 1fr + 右侧两小卡固定 320"，以及网格首格跨 2 列 16:10；列数公式仍是每列 200，净宽 1168 → 6 列。<b>但桌面默认窗是 1080×760（<span class="mono">VeneraDesktop.kt</span>）⇒ 扣掉 rail 48 与 pane 224 之后净宽 808、再扣横向内边距 24 = 784 ⇒ <b>4 列</b></b>，由 <span class="mono">DesktopGalleryMetrics.imageWallColumnCount</span> 与 <span class="mono">DesktopWidthCaliberDriftTest</span> 钉死。稿上 1440 那档的 6 列只在更宽的窗上成立。</span>
+      <span><span class="num">4</span>东方语汇全部自绘矢量：鸟居（rail 底部 + hero 剪影）、阴阳玉（当前筛选前缀）、五瓣樱（区块头）、扇面（次级区块头）、注连绳（分组分隔）、竖排「博麗神社」。其中鸟居两处与竖排只在神社档出现，见下方三档差量表。</span>
+      <span><span class="num">5</span>作品卡的信息层级：标题压在图上但走常驻深色遮罩（不是 hover 才有）。<b>原设计的「点赞/浏览」两枚数已删</b> —— 三站只有 Safebooru 给 <span class="mono">fav_count</span>，yande.re 的 JSON 实测 44 个键不含它、Gelbooru 字段表里也没有；把"不知道"当 0 会把整站系统性压到最低档。现在摆的是三站都给的<b>分数</b>（<span class="mono">GalleryPost.score</span>）。</span>
+      <span><span class="num">6</span>详情浮层 340 覆盖式，内容区不重排 —— 上一版量过：并排会把每列压到 148，违反 200 预算。</span>
+    </div>
+
+    <h3>为什么这版不含漫画块</h3>
+    <p>按你的口径：漫画不是辅区，是<b>另开一屏</b>。所以首页 100% 图库，rail 保留漫画域入口但不占内容位。附带一条实现上的好处：图库这条链在代码里对 JS 引擎<b>零引用</b>（<span class="mono">gallery/</span> 下 grep <span class="mono">VeneraJsEngine|JsComicSource</span> 空命中，取数走 <span class="mono">GelbooruClient.kt</span> / <span class="mono">PixivClient.kt</span> / <span class="mono">DanbooruArtistClient.kt</span> 直连），所以这版首页<b>不依赖 GraalJS</b>——移植里最贵最不确定的一环从首屏关键路径上摘掉了。</p>
+    <p style="margin-top:8px">隔离口径同时守住：首页块由图库侧提供，壳层只认 slot 接口，漫画侧将来接同一个 slot，两边不互相 import。</p>
+
+    <h3>主题轴怎么落（不新造开关）</h3>
+    <table>
+      <tr><th>既有轴</th><th>位置</th><th>幻想乡档取值</th></tr>
+      <tr><td><span class="mono">AppearanceStyle</span>（色板/形状/字号）</td><td class="mono">data/prefs/VeneraPreferences.kt:26</td><td>新增预设「幻想乡」：种子色博丽朱 #D6463C 或藤紫 #8A6BC4，仍经 MaterialKolor 生成整套色板，不硬编码</td></tr>
+      <tr><td><span class="mono">SurfaceMaterial</span>（SOLID / LIQUID_GLASS）</td><td class="mono">ui/tokens/SurfaceMaterialPolicy.kt:89</td><td>桌面默认 SOLID；LIQUID_GLASS 只在 hero 与浮层，且必须能看出是应用内模糊（不叫玻璃、不承诺 Mica）</td></tr>
+      <tr><td><span class="mono">NavigationBarStyle</span>（只管底栏）</td><td class="mono">data/prefs/VeneraPreferences.kt</td><td>桌面没有底栏，此轴在桌面档不参与（三轴正交是拍板过的，不并轴）</td></tr>
+      <tr><td class="mid">装饰语汇（本稿新增第四轴）</td><td class="mid">待建</td><td>素 / 纹样 / 神社 三档，即本页顶部三个按钮；窄窗与低配机自动回落</td></tr>
+    </table>
+
+    <h3>装饰三档的差量（每档只多这几件，不是换个皮）</h3>
+    <table>
+      <tr><th>档位</th><th>相对上一档新增</th><th>落点</th></tr>
+      <tr><td><span class="mono">素</span>（纯 WinUI3 结构）</td><td>—</td><td>零装饰件；pane 选中态从藤紫渐变退回中性 Layer2，3px 指示条保留；注连绳 / 网点 / 樱花 / 鸟居全不出现</td></tr>
+      <tr><td><span class="mono">纹样</span></td><td>平面纹样四件</td><td>hero 网点、五瓣樱（区块头与 kicker）、注连绳（pane 分组分隔）、和色强调（当前筛选 chip 用博丽朱）</td></tr>
+      <tr><td><span class="mono">神社</span></td><td>建筑与底图三件</td><td>rail 底部鸟居 + 竖排「博麗神社」、hero 鸟居剪影 + 遮罩加重 + 高度 330→360、整窗网点底图</td></tr>
+    </table>
+    <p style="margin-top:6px">三档只改装饰层的可见性与两处尺寸，<b>不改任何栅格参数</b>：rail 48 / pane 224 / 右侧 320 / 每列 200 在档间恒定，所以切档不会引起列数变化或卡片位移。</p>
+
+    <h3>参考图里我拒绝照抄的（CRITICAL 级）</h3>
+    <div class="legend">
+      <span><b>文字直接压在插画上</b>：改为遮罩常驻，正文对比度守 4.5:1（本稿标题 #FFF / 遮罩后 ≈ #1A1622 底）。</span>
+      <span><b>选中态靠一条紫渐变</b>：渐变保留做质感，但选中语义仍由 3px 指示条 + 字重承担，键盘与读屏能解释。</span>
+      <span><b>圆角 12–16 到处用</b>：容器与控件守 Fluent（卡 8 / 控件 4），只有插画卡允许 12。</span>
+      <span><b>整页半透明毛玻璃压在壁纸上</b>：系统 Mica 实测画不出来（S0-6a 判负），整页模糊只会得到一片糊；背景画只进 hero。</span>
+      <span><b>粉色细描边当边界</b>：描边一律中性 #353535，色彩只承担强调不承担边界。</span>
+      <span><b>轮播自动播放</b>：桌面鼠标环境禁自动播，只留左右键与分页点（也与既有"轮播不做真 3D、2 分钟节流"一致）。</span>
+    </div>
+
+    <h3>素材红线</h3>
+    <p>本稿所有插画位都是<b>占位色块 + 自绘矢量纹样</b>。东方 Project 的官方立绘、以及参考图里那种 AI 生成的角色图都不能进产品素材；可用的是<b>语汇</b>（鸟居、阴阳玉、五瓣樱、注连绳、扇面、弹幕点阵、和色、竖排汉字）。背景画要么走"用户本地自备并导入"，要么委托原创。</p>
+
+    <h3>待量（不写成已知）</h3>
+    <table>
+      <tr><th>项</th><th>为什么不确定</th><th>量法</th></tr>
+      <tr><td>竖排「博麗神社」</td><td class="wa">Compose 文本无 vertical writing mode 现成 API，桌面 skiko 侧未验</td><td>逐字换行 vs 自绘两条各做一次，取可读的那条；都不行就改横排小字</td></tr>
+      <tr><td>背景画 + 模糊的内存与帧时间</td><td class="wa">S0-8 只量过列表绘制，没量过大幅底图与合成</td><td>按 8.2MB/1200×1800 口径推算 2560×1440 ≈ 14.7MB 常驻，再叠模糊纹理 ≈ 29MB；真机测滚动 p95</td></tr>
+      <tr><td>GIF / 动图</td><td class="no">coil-gif 吃 Android ImageDecoder；桌面侧解码器名已量过但未验证播放</td><td>播不了就首帧 + 角标写明，禁止看起来像坏图</td></tr>
+      <tr><td>樱花飘落</td><td class="wa">装饰动效未进本稿，因为帧预算未知</td><td>先不做；若做只限 hero、限粒子数、reduced-motion 直接停</td></tr>
+    </table>
+
+    <h3>交付前检查单</h3>
+    <div class="tags">
+      <span class="tg ok">装饰件全部 aria-hidden，读屏只念标题/标签/计数</span>
+      <span class="tg ok">键盘焦点环 2px + 2px 偏移，对所有卡可见</span>
+      <span class="tg ok">hover 不引起位移（动作条是图上覆盖层）</span>
+      <span class="tg ok">计数不只靠颜色：图标 + 数字双通道</span>
+      <span class="tg ok">以图搜源不可用是"禁用 + 原因"，不是灰着能点</span>
+      <span class="tg wa">神社档在 1280 宽会挤掉一列，需自动降纹样档</span>
+      <span class="tg wa">详情浮层覆盖式会压住最右列，靠左缘渐隐提示"下面还有"</span>
+    </div>
+
+    <p style="margin-top:12px">同目录配套：<span class="mono">windows-home-fluent-2026-10-03.html</span>（规则底稿）、<span class="mono">windows-home-fluent-anime-2026-10-03.html</span>（二次元浓度实验）。作品名与画师名均为虚构占位。</p>
+  </div>
+
+</div>
+</div>
+
+<script>
+  var btns = document.querySelectorAll('.sw');
+  function setDeco(d, hash) {
+    if (d !== 'plain' && d !== 'pattern' && d !== 'shrine') d = 'shrine';
+    document.body.dataset.deco = d;
+    btns.forEach(function (o) { o.setAttribute('aria-pressed', String(o.dataset.d === d)); });
+    if (hash) history.replaceState(null, '', '#' + d);
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () { setDeco(b.dataset.d, true); }); });
+  setDeco((location.hash || '').replace('#', ''), false);
+</script>
+</body>
+</html>

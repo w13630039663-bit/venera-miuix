@@ -96,10 +96,20 @@ internal fun DesktopUnimplementedRow(title: String, glyph: String, reason: Strin
 /** 行尾药丸上的那三个字。抽成常量是为了让用例能钉「四行都带同一句」。 */
 internal const val UNIMPLEMENTED_LABEL = "未实现"
 
-private val OffText = Color(0xFF8B8B8B)
-private val OffGlyph = Color(0xFF5E5E5E)
-private val LockBackground = Color(0xFF33251F)
-private val LockText = Color(0xFFE0A08F)
+private val OffText = DesktopTheme.TextTertiary
+private val OffGlyph = DesktopTheme.OffGlyph
+
+/**
+ * 药丸底色。
+ *
+ * ⚠️ 稿上是 `#33251F`（暖棕，`:82`），而那一档是配**神社暖调**的装饰色。
+ * 本轮窗体整体转冷调深阶梯（`#202020`/`#272727`/`#2C2C2C`）之后，那颗暖棕放在冷灰里
+ * 读起来是"一块脏斑"而不是"一枚标记"。所以药丸改成 [DesktopTheme.SurfaceRaised] 冷灰底
+ * + [DesktopTheme.TextSecondary] 字 —— 形状（999 圆角、10.5px、右侧对齐）一字未动。
+ * 暖棕留给神社档装饰，不用来标"缺席"。
+ */
+private val LockBackground = DesktopTheme.SurfaceRaised
+private val LockText = DesktopTheme.TextSecondary
 private val NavFontSize = 14.sp
 private val LockFontSize = 10.5.sp
 private val CaptionFontSize = 12.sp

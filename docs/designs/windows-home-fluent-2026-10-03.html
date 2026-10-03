@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Venera Windows 首页 · Fluent 高保真设计稿 2026-10-03</title>
+<style>
+  :root{
+    --ink:#14161A; --ink2:#4A505C; --hair:#DEE1E8; --paper:#F1F2F6; --panel:#FFFFFF;
+    /* 设计稿标注色（只用于画板之外的说明，不进应用） */
+    --note:#5B47C8; --caution:#A15C00; --danger:#C62828;
+
+    /* Fluent 深色 surface 层级（本稿取值） */
+    --d-host:#202020; --d-layer:#272727; --d-layer-alt:#2C2C2C; --d-card:#2C2C2C;
+    --d-card-hov:#333333; --d-stroke:#353535; --d-stroke2:#3D3D3D;
+    --d-t1:#E4E4E4; --d-t2:#C2C2C2; --d-t3:#8B8B8B;
+    --d-accent:#CBB6FF; --d-accent-fill:#4A3AA8; --d-on-accent:#FFFFFF;
+    --d-scrim:rgba(0,0,0,.45);
+
+    /* Fluent 亮色 surface 层级 */
+    --l-host:#F3F3F3; --l-layer:#FFFFFF; --l-card:#FBFBFB; --l-card-hov:#F0F0F0;
+    --l-stroke:#E5E5E5; --l-t1:#1B1B1B; --l-t2:#5F5F5F; --l-t3:#8A8A8A;
+    --l-accent:#4B3E9E; --l-accent-fill:#4A3AA8; --l-on-accent:#FFFFFF;
+
+    --r-card:8px; --r-ctl:4px; --r-pill:999px;
+    --gap4:4px; --gap8:8px; --gap12:12px; --gap16:16px; --gap24:24px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font:14px/20px "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:"Segoe UI Variable Display","Segoe UI","Microsoft YaHei UI",sans-serif;margin:0}
+  .wrap{max-width:1560px;margin:0 auto;padding:32px 28px 80px}
+  .sheet-head h1{font-size:28px;line-height:36px;font-weight:600;letter-spacing:-.2px}
+  .sheet-head .sub{color:var(--ink2);max-width:960px;margin-top:10px}
+  .sheet-head .stance{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .sheet-head .stance div{background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:14px 16px}
+  .sheet-head .stance b{display:block;font-size:13px;letter-spacing:.02em;color:var(--note);margin-bottom:6px}
+  .sheet-head .stance p{margin:0;font-size:13px;line-height:19px;color:var(--ink2)}
+
+  section.board-sec{margin-top:44px}
+  .board-title{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .board-title h2{font-size:20px;line-height:28px;font-weight:600}
+  .board-title .size{font-size:12px;color:var(--t3,#8B8B8B);color:#767C89;letter-spacing:.04em}
+  .board-lead{font-size:13px;color:var(--ink2);max-width:1000px;margin:0 0 14px}
+  .boardwrap{overflow:auto;border-radius:16px;box-shadow:0 18px 50px -22px rgba(20,22,26,.35);background:#14161A}
+  .legend{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 20px;margin-top:14px;font-size:12.5px;line-height:19px;color:var(--ink2)}
+  .legend span{display:block}
+  .num{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;
+    border-radius:var(--r-pill);background:var(--note);color:#fff;font-size:10.5px;font-weight:600;padding:0 4px;margin-right:5px;vertical-align:1px}
+
+  /* ─── 应用窗体 ─── */
+  .win{width:1440px;height:900px;display:flex;flex-direction:column;position:relative;overflow:hidden;
+    font-size:14px;line-height:20px}
+  .win.dark{background:var(--d-host);color:var(--d-t1)}
+  .win.light{background:var(--l-host);color:var(--l-t1)}
+  .win.light *{--t1:var(--l-t1)}
+
+  /* 标题栏 */
+  .titlebar{height:40px;display:flex;align-items:center;gap:10px;padding:0 0 0 12px;flex:0 0 40px;position:relative;z-index:30}
+  .dark .titlebar{background:var(--d-layer)}
+  .light .titlebar{background:var(--l-layer)}
+  .brand{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--d-t2);white-space:nowrap}
+  .light .brand{color:var(--l-t2)}
+  .brand .mark{width:20px;height:20px;border-radius:5px;background:linear-gradient(140deg,#8B6CFF,#4A3AA8);display:grid;place-items:center}
+  .brand .mark svg{width:12px;height:12px;stroke:#fff}
+  .search{flex:0 0 420px;height:32px;margin-left:14px;display:flex;align-items:center;gap:8px;padding:0 10px;
+    border-radius:var(--r-ctl);font-size:13px;position:relative}
+  .dark .search{background:#2D2D2D;border:1px solid var(--d-stroke2);border-bottom:2px solid var(--d-stroke2);color:var(--d-t3)}
+  .light .search{background:var(--l-layer);border:1px solid var(--l-stroke);border-bottom:2px solid #B9B3E0;color:var(--l-t3)}
+  .search svg{width:16px;height:16px}
+  .search .kbd{margin-left:auto}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:2px}
+  .cap{width:46px;height:32px;display:grid;place-items:center;border-radius:var(--r-ctl)}
+  .cap svg{width:12px;height:12px}
+  .dark .cap{color:var(--d-t2)} .light .cap{color:var(--l-t2)}
+  .cap.close{background:#C42B1C;color:#fff}
+  .pill{height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;border-radius:var(--r-ctl);font-size:13px}
+  .dark .pill{border:1px solid var(--d-stroke2);background:#2D2D2D;color:var(--d-t1)}
+  .light .pill{border:1px solid var(--l-stroke);background:var(--l-layer);color:var(--l-t1)}
+  .pill svg{width:16px;height:16px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#3FB950;display:inline-block}
+  .dot.warn{background:#D89614} .dot.bad{background:#F47067}
+
+  /* 主体 = 侧栏 + 内容 + 右详情 */
+  .body{flex:1;display:flex;min-height:0;position:relative}
+  .navpane{flex:0 0 224px;display:flex;flex-direction:column;padding:4px 4px 0}
+  .dark .navpane{background:var(--d-layer)} .light .navpane{background:var(--l-layer)}
+  .navpane.compact{flex-basis:48px}
+  .navhead{height:36px;display:flex;align-items:center;padding:0 12px;font-size:16px;font-weight:600}
+  .navitem{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;margin:1px 0;border-radius:var(--r-ctl);
+    position:relative;font-size:14px;color:var(--d-t1);cursor:default;white-space:nowrap}
+  .light .navitem{color:var(--l-t1)}
+  .navitem svg{width:16px;height:16px;flex:0 0 16px}
+  .navitem:hover{background:var(--d-card-hov)}
+  .light .navitem:hover{background:var(--l-card-hov)}
+  .navitem.sel{background:var(--d-layer-alt);font-weight:600}
+  .light .navitem.sel{background:var(--l-card)}
+  .navitem.sel::before{content:"";position:absolute;left:0;top:10px;width:3px;height:20px;border-radius:3px;background:var(--d-accent)}
+  .light .navitem.sel::before{background:var(--l-accent)}
+  .navitem .cnt{margin-left:auto;font-size:12px;color:var(--d-t3)}
+  .navpane.compact .navitem{justify-content:center;padding:0;gap:0}
+  .navpane.compact .navitem span.lbl,.navpane.compact .navitem .cnt,.navpane.compact .navhead,.navpane.compact .panefoot{display:none}
+  .navpane.compact .navitem.sel::before{top:8px;height:24px}
+  .navdiv{height:1px;margin:8px 12px}
+  .dark .navdiv{background:var(--d-stroke)} .light .navdiv{background:var(--l-stroke)}
+  .panefoot{margin-top:auto;padding:10px 12px;font-size:12px;line-height:17px;color:var(--d-t3);display:flex;flex-direction:column;gap:6px}
+  .light .panefoot{color:var(--l-t3)}
+  .panefoot .row{display:flex;align-items:center;gap:6px}
+
+  .scroller{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+  .page{flex:1;min-height:0;overflow-y:auto;padding:0 24px 8px;display:flex;flex-direction:column;gap:16px;
+    scrollbar-width:thin;scrollbar-color:#4A4A4A transparent}
+  .page::-webkit-scrollbar{width:6px}
+  .page::-webkit-scrollbar-thumb{background:#4A4A4A;border-radius:3px}
+  .light .page::-webkit-scrollbar-thumb{background:#CFCFCF}
+  .phead{height:52px;display:flex;align-items:center;gap:12px;flex:0 0 52px}
+  .phead h3{font-size:20px;line-height:28px;font-weight:600}
+  .phead .seg{display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl)}
+  .dark .phead .seg{background:#2A2A2A;border:1px solid var(--d-stroke)}
+  .light .phead .seg{background:var(--l-card);border:1px solid var(--l-stroke)}
+  .seg i{font-style:normal;padding:4px 12px;border-radius:2px;font-size:13px;color:var(--d-t2)}
+  .light .seg i{color:var(--l-t2)}
+  .seg i.on{background:var(--d-layer-alt);font-weight:600;color:var(--d-t1)}
+  .dark .seg i.on{background:#383838}
+  .light .seg i.on{background:#fff;color:var(--l-t1);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .phead .right{margin-left:auto;display:flex;align-items:center;gap:6px}
+
+  /* InfoBar */
+  .infobar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r-ctl);font-size:13px}
+  .dark .infobar{background:#2B2620;border:1px solid #4A3B22}
+  .light .infobar{background:#FFF4CE;border:1px solid #E8D48A}
+  .infobar svg{width:16px;height:16px;flex:0 0 16px}
+  .dark .infobar svg{color:#F0B429} .light .infobar svg{color:#8A6100}
+  .infobar b{font-weight:600}
+  .infobar .desc{color:var(--d-t2)} .light .infobar .desc{color:#5C4B16}
+  .infobar .acts{margin-left:auto;display:flex;gap:6px}
+  .btn{height:32px;padding:0 12px;border-radius:var(--r-ctl);display:inline-flex;align-items:center;gap:6px;font-size:13px}
+  .btn svg{width:14px;height:14px}
+  .dark .btn.sub{background:transparent;color:var(--d-t1)}
+  .dark .btn.sub:hover{background:rgba(255,255,255,.06)}
+  .dark .btn.bd{border:1px solid var(--d-stroke2);background:#2D2D2D;color:var(--d-t1)}
+  .light .btn.sub{background:transparent;color:var(--l-t1)}
+  .light .btn.bd{border:1px solid var(--l-stroke);background:var(--l-layer);color:var(--l-t1)}
+  .btn.acc{background:var(--d-accent-fill);color:var(--d-on-accent);border:1px solid rgba(255,255,255,.09)}
+  .light .btn.acc{background:var(--l-accent-fill);color:var(--l-on-accent)}
+  .btn.sm{height:26px;padding:0 10px;font-size:12.5px}
+
+  /* 区块 */
+  .sec{display:flex;flex-direction:column;gap:10px}
+  .sec h4{font-size:16px;line-height:24px;font-weight:600;display:flex;align-items:center;gap:10px;margin:0}
+  .sec h4 .more{margin-left:auto;font-size:13px;font-weight:400;color:var(--d-accent)}
+  .light .sec h4 .more{color:var(--l-accent)}
+
+  /* 继续阅读 */
+  .hero{display:flex;gap:12px}
+  .hcard{width:268px;height:124px;border-radius:var(--r-card);display:flex;gap:12px;padding:12px;position:relative;overflow:hidden}
+  .dark .hcard{background:var(--d-card);border:1px solid var(--d-stroke)}
+  .light .hcard{background:var(--l-card);border:1px solid var(--l-stroke)}
+  .hcard.hov{background:var(--d-card-hov);border-color:var(--d-stroke2)}
+  .thumb{width:78px;height:100px;border-radius:6px;flex:0 0 78px;position:relative}
+  .hmeta{min-width:0;display:flex;flex-direction:column;gap:4px}
+  .hmeta .t{font-size:14px;font-weight:600;line-height:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hmeta .m{font-size:12px;color:var(--d-t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .light .hmeta .m{color:var(--l-t3)}
+  .hmeta .ch{font-size:12.5px;color:var(--d-t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .light .hmeta .ch{color:var(--l-t2)}
+  .prog{position:absolute;left:0;right:0;bottom:0;height:3px}
+  .dark .prog{background:#3B3B3B} .light .prog{background:var(--l-stroke)}
+  .prog i{position:absolute;left:0;top:0;bottom:0;background:var(--d-accent);display:block}
+  .light .prog i{background:var(--l-accent)}
+  .hresume{position:absolute;left:12px;top:12px;width:78px;height:100px;border-radius:6px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:11.5px;
+    background:rgba(0,0,0,.6);color:#fff}
+  .hresume svg{width:22px;height:22px}
+
+  /* 推荐网格 */
+  .wall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+  .wall.c6{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .tcard{border-radius:var(--r-card);padding:8px;position:relative;overflow:hidden}
+  .dark .tcard{background:var(--d-card);border:1px solid transparent}
+  .light .tcard{background:var(--l-card);border:1px solid transparent}
+  .tcard:hover,.tcard.hov{background:var(--d-card-hov);border-color:var(--d-stroke)}
+  .light .tcard:hover{background:var(--l-card-hov);border-color:var(--l-stroke)}
+  .cover{width:100%;aspect-ratio:3/4;border-radius:5px;position:relative;overflow:hidden}
+  .cover .rank{position:absolute;left:6px;top:6px;height:18px;padding:0 6px;border-radius:var(--r-pill);
+    background:rgba(0,0,0,.62);color:#fff;font-size:11px;display:grid;place-items:center}
+  .cover .new{position:absolute;right:6px;top:6px;height:18px;padding:0 6px;border-radius:var(--r-pill);
+    background:var(--d-accent-fill);color:#fff;font-size:11px;display:grid;place-items:center}
+  .tcard .tt{margin-top:8px;font-size:13px;line-height:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tcard .tm{font-size:11.5px;line-height:16px;color:var(--d-t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .light .tcard .tm{color:var(--l-t3)}
+  /* hover 动作行 = 封面上的覆盖条，不改卡片高度（hover 不引起位移） */
+  .reveal{position:absolute;left:6px;right:6px;bottom:6px;display:flex;gap:6px}
+  .reveal .btn{flex:1;justify-content:center;padding:0 6px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  .reveal .btn.bd{background:#2C2C2C}
+  .reveal .btn.fix{flex:0 0 32px}
+  .tcard.focus{outline:2px solid var(--d-t1);outline-offset:2px}
+  /* 骨架 */
+  .sk{background:linear-gradient(90deg,#2A2A2A 0%,#383838 40%,#2A2A2A 80%);border-radius:5px}
+  .sk.line{height:12px;border-radius:3px;margin-top:8px}
+
+  /* 统计条 */
+  .statstrip{display:flex;align-items:center;gap:20px;padding:12px 16px;border-radius:var(--r-card)}
+  .dark .statstrip{background:var(--d-card);border:1px solid var(--d-stroke)}
+  .light .statstrip{background:var(--l-card);border:1px solid var(--l-stroke)}
+  .stat{display:flex;flex-direction:column;gap:2px}
+  .stat .v{font-size:20px;line-height:26px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--d-t3)} .light .stat .l{color:var(--l-t3)}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:28px}
+  .spark i{width:6px;border-radius:2px;background:var(--d-accent);opacity:.75;display:block}
+  .light .spark i{background:var(--l-accent)}
+  .statstrip .split{width:1px;height:30px}
+  .dark .statstrip .split{background:var(--d-stroke)} .light .statstrip .split{background:var(--l-stroke)}
+
+  /* 右详情：并排（inline）或覆盖（overlay，不推挤内容区） */
+  .detail{flex:0 0 340px;border-left:1px solid var(--d-stroke);background:var(--d-layer);
+    display:flex;flex-direction:column;overflow:hidden;z-index:20}
+  .detail.overlay{position:absolute;right:0;top:0;bottom:0;width:340px;box-shadow:-18px 0 40px -18px rgba(0,0,0,.7)}
+  /* 浮层左缘留一道渐隐，让"被压住的内容"看得见，不被误读成少了一列 */
+  .detail.overlay::before{content:"";position:absolute;left:-26px;top:0;bottom:0;width:26px;
+    background:linear-gradient(90deg,rgba(32,32,32,0),rgba(32,32,32,.78))}
+  .light .detail{border-left-color:var(--l-stroke)}
+  .detail .dh{padding:16px 16px 0;display:flex;gap:14px}
+  .detail .dbig{width:100px;height:133px;border-radius:6px;flex:0 0 100px}
+  .detail .dt{font-size:16px;line-height:22px;font-weight:600}
+  .detail .dm{font-size:12.5px;color:var(--d-t3);margin-top:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{height:24px;padding:0 10px;border-radius:var(--r-pill);font-size:12px;display:inline-flex;align-items:center}
+  .dark .chip{background:#333333;color:var(--d-t2)} .light .chip{background:#EFEFEF;color:var(--l-t2)}
+  .chip.acc{background:var(--d-accent-fill);color:#fff}
+  .detail .dbody{padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden}
+  .detail p{margin:0;font-size:13px;line-height:19px;color:var(--d-t2)}
+  .dacts{display:flex;gap:8px}
+  .dacts .btn{flex:1;justify-content:center}
+  .chaplist{display:flex;flex-direction:column;gap:1px}
+  .chap{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:var(--r-ctl);font-size:13px}
+  .dark .chap{background:#2E2E2E} .light .chap{background:var(--l-card)}
+  .chap .no{color:var(--d-t3);font-variant-numeric:tabular-nums}
+  .chap .rd{margin-left:auto;font-size:11.5px;color:#3FB950}
+  .chap .rd.new{color:var(--d-accent)} .chap .rd.soon{color:var(--d-t3)}
+  .chap.cur{outline:1px solid var(--d-accent)}
+  .simil{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+
+  /* 状态栏 */
+  .statusbar{flex:0 0 24px;height:24px;display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11.5px;color:var(--d-t3)}
+  .light .statusbar{color:var(--l-t3)}
+  .dark .statusbar{background:var(--d-layer);border-top:1px solid var(--d-stroke)}
+  .light .statusbar{background:var(--l-layer);border-top:1px solid var(--l-stroke)}
+  .statusbar .r{margin-left:auto;display:flex;gap:16px;align-items:center}
+  .kbd{height:20px;padding:0 6px;border-radius:4px;font-size:11px;display:inline-flex;align-items:center;gap:3px}
+  .dark .kbd{background:#2D2D2D;border:1px solid var(--d-stroke2);color:var(--d-t2)}
+  .light .kbd{background:#FBFBFB;border:1px solid var(--l-stroke);color:var(--l-t2)}
+
+  /* 浮层样张 */
+  .menu{width:264px;border-radius:8px;padding:4px;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  .dark .menu{background:#2C2C2C;border:1px solid var(--d-stroke2)}
+  .light .menu{background:#fff;border:1px solid var(--l-stroke);box-shadow:0 12px 30px rgba(20,22,26,.18)}
+  .mi{height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:var(--r-ctl);font-size:13px}
+  .mi svg{width:15px;height:15px;opacity:.8}
+  .mi .k{margin-left:auto;font-size:11.5px;color:var(--d-t3)}
+  .mi.hov{background:rgba(255,255,255,.07)}
+  .mi.dv{height:1px;margin:4px 8px;padding:0;background:var(--d-stroke)}
+  .tip{padding:6px 10px;border-radius:6px;font-size:12px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
+  .dark .tip{background:#2C2C2C;border:1px solid var(--d-stroke2);color:var(--d-t1)}
+
+  /* ─── 说明表格 ─── */
+  table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--hair);border-radius:12px;overflow:hidden;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+  th{background:#F7F8FB;font-weight:600;font-size:12.5px;letter-spacing:.02em;color:#3C4250}
+  tr:last-child td{border-bottom:0}
+  td b{font-weight:600}
+  td .mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px;border:1px solid rgba(0,0,0,.18)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .statelist{margin:0;padding-left:20px;font-size:13px;line-height:21px;color:#3C4250}
+  .statelist li{margin:5px 0}
+  .pill-note{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;background:#EDE9FB;color:#3F2FA8;font-weight:600}
+  .pill-warn{background:#FFF1DB;color:#8A5200}
+  .pill-cut{background:#FDE7E7;color:#A3181C}
+  .states{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;background:#14161A;padding:22px;border-radius:16px}
+  .states.light-row{background:#E9EAF0}
+  .states .grp{display:flex;flex-direction:column;gap:8px}
+  .states .grp>label{font-size:11px;letter-spacing:.06em;color:#8B8B8B;text-transform:uppercase}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 16 16"><path d="M2 6.6 8 2l6 4.6M3.6 7.6V13h8.8V7.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.6 5.4 9.4 9.4 5.4 10.6 6.6 6.6z" fill="currentColor"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.4C4.6 11 2.8 9 2.8 7.1A2.6 2.6 0 0 1 8 5.6a2.6 2.6 0 0 1 5.2 1.5c0 1.9-1.8 3.9-5.2 6.3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2.6v7.4M4.8 7.4 8 10.6l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-photo" viewBox="0 0 16 16"><rect x="2.4" y="3.4" width="11.2" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.6 11 6.4 8l2.2 2.2L10.4 7.6l2 2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M12.6 6.4A5 5 0 1 0 8 13a5 5 0 0 0 4.2-2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M13.4 3v3.4H10" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.4 10.4 13.6 13.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.6" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.4" cy="8" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.6 12 8l-7 4.4z" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.4v9.2M3.4 8h9.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.4 14.4 13.6H1.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-set" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-src" viewBox="0 0 16 16"><path d="M2.6 5.4 8 2.6l5.4 2.8L8 8.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 8.6 8 11.4l5.4-2.8M2.6 11.6 8 14.4l5.4-2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.6 11.4h7a2.6 2.6 0 0 0 .2-5.2A3.6 3.6 0 0 0 5 5.4a2.9 2.9 0 0 0-.4 6z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1"/></symbol>
+    <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+    <symbol id="i-x" viewBox="0 0 12 12"><path d="M2.6 2.6 9.4 9.4M9.4 2.6 2.6 9.4" stroke="currentColor" stroke-width="1.1"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 4.4 10 8l-4 3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <div class="sheet-head">
+    <h1>Venera Windows 首页 · Fluent 高保真设计稿</h1>
+    <p class="sub">2026-10-03 ｜ 分支 compose-migration ｜ 配套读数见 <span class="mono">docs/rounds/windows-port-feasibility-2026-10.md</span> 与 <span class="mono">windows-r1f-s0-spike-2026-10-02.md</span>。本稿只谈首页与壳层，不含阅读器与图库内部页。</p>
+    <div class="stance">
+      <div><b>骨架借 Windows，颜色借 Venera</b><p>中性 surface 阶梯、控件尺寸、圆角、焦点环、动效时长全部取 Fluent 官方口径；强调色仍由现有 MaterialKolor 种子色生成，两套色板互不替换。这样它"像 Windows 应用"，但仍是同一个 Venera。</p></div>
+      <div><b>首屏为"回来接着读"设计</b><p>桌面首页第一屏给继续阅读与内联详情，不给广告位。翻一部漫画不必离开首页——这条也顺手解掉评估文档里"跨窗口玻璃必然没有"的连带损失。</p></div>
+      <div><b>材质缺失要写明，不假装</b><p>系统 Mica/Acrylic 已实测画不出来（S0-6a 判负），本稿的顶栏与侧栏用应用内模糊加实底两级降级，界面上不出现"液态玻璃"字样。</p></div>
+    </div>
+  </div>
+
+  <!-- ══════ 画板一 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>画板一 · 首页（深色 / 侧栏展开 224 / 右栏详情在位）</h2><span class="size">1440 × 900 · 100% 缩放</span></div>
+    <p class="board-lead">默认落地态。左侧导航、中间内容、右栏详情三段式；1440 档详情栏用<b>覆盖式浮层</b>（并排会把每列压到 148，违反每列 200 的预算），内容区净宽 1168 排 5 列。推荐区不自动轮播，改由"换一批"手动驱动。</p>
+    <div class="boardwrap">
+      <div class="win dark">
+        <div class="titlebar">
+          <span class="brand"><span class="mark"><svg><use href="#i-play"/></svg></span>Venera</span>
+          <div class="search"><svg><use href="#i-search"/></svg>搜索全部源或跳转到<em class="kbd">Ctrl K</em></div>
+          <div class="tb-right">
+            <span class="pill"><span class="dot"></span>禁漫天堂 · 213ms</span>
+            <span class="pill"><svg><use href="#i-refresh"/></svg>刷新</span>
+            <span class="pill" style="padding:0 8px"><svg><use href="#i-sun"/></svg></span>
+            <span class="cap"><svg><use href="#i-min"/></svg></span>
+            <span class="cap"><svg><use href="#i-max"/></svg></span>
+            <span class="cap close"><svg><use href="#i-x"/></svg></span>
+          </div>
+        </div>
+        <div class="body">
+          <nav class="navpane">
+            <div class="navhead">浏览</div>
+            <div class="navitem sel"><svg><use href="#i-home"/></svg><span class="lbl">首页</span></div>
+            <div class="navitem"><svg><use href="#i-compass"/></svg><span class="lbl">探索</span></div>
+            <div class="navitem"><svg><use href="#i-search"/></svg><span class="lbl">搜索</span></div>
+            <div class="navitem"><svg><use href="#i-heart"/></svg><span class="lbl">收藏</span><span class="cnt">412</span></div>
+            <div class="navitem"><svg><use href="#i-clock"/></svg><span class="lbl">历史</span><span class="cnt">89</span></div>
+            <div class="navitem"><svg><use href="#i-down"/></svg><span class="lbl">下载</span><span class="cnt">3</span></div>
+            <div class="navitem"><svg><use href="#i-photo"/></svg><span class="lbl">图库</span></div>
+            <div class="navdiv"></div>
+            <div class="navhead" style="font-size:13px;padding-top:6px">工作区</div>
+            <div class="navitem"><svg><use href="#i-cloud"/></svg><span class="lbl">追更</span><span class="cnt">17</span></div>
+            <div class="navitem"><svg><use href="#i-src"/></svg><span class="lbl">漫画源</span></div>
+            <div class="panefoot">
+              <div class="row"><span class="dot"></span>34 源 · 28 正常</div>
+              <div class="row"><span class="dot warn"></span>4 未测速</div>
+              <div class="row"><span class="dot bad"></span>2 连接失败</div>
+            </div>
+            <div class="navitem"><svg><use href="#i-set"/></svg><span class="lbl">设置</span></div>
+          </nav>
+
+          <div class="scroller">
+            <div class="page">
+              <div class="phead">
+                <h3>首页</h3>
+                <div class="seg"><i class="on">推荐</i><i>最近更新</i><i>本地</i></div>
+                <div class="right"><span class="btn bd sm">换一批</span><span class="btn sub sm"><svg style="width:14px;height:14px"><use href="#i-more"/></svg></span></div>
+              </div>
+
+              <div class="infobar">
+                <svg><use href="#i-warn"/></svg>
+                <span><b>拷贝漫画连接失败</b>　<span class="desc">已跳过该源，其余 27 个源正常。此结果不会自动重试。</span></span>
+                <span class="acts"><span class="btn bd sm">重新测速</span><span class="btn sub sm">管理源</span></span>
+              </div>
+
+              <div class="sec">
+                <h4>继续阅读<span class="more">全部历史 ›</span></h4>
+                <div class="hero">
+                  <div class="hcard hov">
+                    <div class="thumb" style="background:linear-gradient(150deg,#4C3B7A,#8B6CFF 70%)"></div>
+                    <div class="hmeta">
+                      <div class="t">夜行列车与无名站</div>
+                      <div class="ch">第 12 话 · 读至 8/104 页</div>
+                      <div class="m">禁漫天堂 · 昨天 22:14</div>
+                    </div>
+                    <span class="hresume"><svg><use href="#i-play"/></svg>继续阅读</span>
+                    <span class="prog"><i style="width:7%"></i></span>
+                  </div>
+                  <div class="hcard">
+                    <div class="thumb" style="background:linear-gradient(150deg,#1F4B45,#5FD3A6 70%)"></div>
+                    <div class="hmeta">
+                      <div class="t">第七个夏天的约定</div>
+                      <div class="ch">第 3 卷 · 读至 62/188 页</div>
+                      <div class="m">拷贝漫画 · 今天 09:02</div>
+                    </div>
+                    <span class="prog"><i style="width:33%"></i></span>
+                  </div>
+                  <div class="hcard">
+                    <div class="thumb" style="background:linear-gradient(150deg,#5A2F3E,#D96A82 70%)"></div>
+                    <div class="hmeta">
+                      <div class="t">钢与盐的编年史</div>
+                      <div class="ch">第 41 话 · 读至 19/24 页</div>
+                      <div class="m">禁漫天堂 · 3 天前</div>
+                    </div>
+                    <span class="prog"><i style="width:79%"></i></span>
+                  </div>
+                  <div class="hcard">
+                    <div class="thumb" style="background:linear-gradient(150deg,#2C3E63,#7FA6E8 70%)"></div>
+                    <div class="hmeta">
+                      <div class="t">北岸灯塔值班记录</div>
+                      <div class="ch">单本 · 读至 5/120 页</div>
+                      <div class="m">Goda · 5 天前</div>
+                    </div>
+                    <span class="prog"><i style="width:4%"></i></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sec">
+                <h4>可能你感兴趣<span class="more">全部推荐 ›</span></h4>
+                <div class="wall">
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#403257,#A98BE0)"><span class="rank">9.1</span><span class="new">新</span></div>
+                    <div class="tt">雾港守夜人</div><div class="tm">奇幻 · 全 38 话</div>
+                  </div>
+                  <div class="tcard hov">
+                    <div class="cover" style="background:linear-gradient(160deg,#2A4A43,#77CBB0)">
+                      <span class="rank">8.6</span>
+                      <div class="reveal">
+                        <span class="btn acc sm">阅读</span>
+                        <span class="btn bd sm fix"><svg><use href="#i-heart"/></svg></span>
+                        <span class="btn bd sm fix"><svg><use href="#i-down"/></svg></span>
+                      </div>
+                    </div>
+                    <div class="tt">海渊图书馆</div><div class="tm">悬疑 · 更新中</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#57303B,#D08095)"><span class="rank">7.9</span></div>
+                    <div class="tt">甜苦循环</div><div class="tm">日常 · 12 话</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#33405F,#8FB0DE)"><span class="rank">8.2</span></div>
+                    <div class="tt">轨道尽头的城</div><div class="tm">科幻 · 完结</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#4A4230,#C9B476)"><span class="rank">7.4</span></div>
+                    <div class="tt">炉边闲话</div><div class="tm">四格 · 更新中</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#2F3B3A,#6FA09A)"><span class="rank">9.4</span></div>
+                    <div class="tt">无声雷鸣</div><div class="tm">动作 · 全 210 话</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#3A2E4F,#8E6FB8)"><span class="rank">8.0</span></div>
+                    <div class="tt">白噪声电台</div><div class="tm">都市 · 31 话</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#243B4A,#5E9BB8)"><span class="rank">8.8</span></div>
+                    <div class="tt">拾光修理铺</div><div class="tm">治愈 · 更新中</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#4B2F3A,#B87A8E)"><span class="rank">7.6</span></div>
+                    <div class="tt">长夏失眠</div><div class="tm">恋爱 · 18 话</div>
+                  </div>
+                  <div class="tcard">
+                    <div class="cover" style="background:linear-gradient(160deg,#2E3A30,#7FA270)"><span class="rank">9.0</span></div>
+                    <div class="tt">铁锈与潮汐</div><div class="tm">冒险 · 完结</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="statstrip">
+                <div class="stat"><span class="v">128</span><span class="l">今日页数</span></div>
+                <div class="split"></div>
+                <div class="stat"><span class="v">640</span><span class="l">本周累计</span></div>
+                <div class="split"></div>
+                <div class="stat"><span class="v">9</span><span class="l">连续天数</span></div>
+                <div class="split"></div>
+                <div class="stat"><span class="v" style="font-size:14px;line-height:20px">近 14 天</span><span class="l">含本地与下载阅读</span></div>
+                <div class="spark" style="margin-left:8px">
+                  <i style="height:10px"></i><i style="height:18px"></i><i style="height:7px"></i><i style="height:22px"></i><i style="height:14px"></i>
+                  <i style="height:26px"></i><i style="height:12px"></i><i style="height:20px"></i><i style="height:9px"></i><i style="height:24px"></i>
+                  <i style="height:16px"></i><i style="height:28px"></i><i style="height:11px"></i><i style="height:19px"></i>
+                </div>
+                <span class="btn sub sm" style="margin-left:auto">统计详情</span>
+              </div>
+            </div>
+
+            <div class="statusbar">
+              <span>本地漫画：共 46 部 · 已扫描</span>
+              <span>下载任务：3 个进行中</span>
+              <span class="r">
+                <span>代理 127.0.0.1:7890</span>
+                <span>源脚本 34</span>
+                <span>可用更新 Venera-2.1.0-windows.exe</span>
+                <span class="kbd">Ctrl K</span>
+              </span>
+            </div>
+          </div>
+
+          <aside class="detail overlay">
+            <div class="dh">
+              <div class="dbig" style="background:linear-gradient(155deg,#2A4A43,#77CBB0)"></div>
+              <div style="min-width:0">
+                <div class="dt">海渊图书馆</div>
+                <div class="dm">海崎あかり · 拷贝漫画</div>
+                <div class="dm">悬疑 · 更新中 · 132 话</div>
+                <div class="chips"><span class="chip">深海</span><span class="chip">单元剧</span><span class="chip acc">9.1 分</span></div>
+              </div>
+            </div>
+            <div class="dbody">
+              <p>沉入海沟的图书馆每百年开放一次，管理员要替读者取回他们生前没读完的那一本。</p>
+              <div class="dacts">
+                <span class="btn acc">开始阅读</span>
+                <span class="btn bd" style="flex:0 0 40px;justify-content:center"><svg><use href="#i-heart"/></svg></span>
+                <span class="btn bd" style="flex:0 0 40px;justify-content:center"><svg><use href="#i-down"/></svg></span>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px">章节</div>
+                <div class="chaplist">
+                  <div class="chap"><span class="no">130</span>潜水的频率<span class="rd">已读</span></div>
+                  <div class="chap cur"><span class="no">131</span>回声室的钥匙</div>
+                  <div class="chap"><span class="no">132</span>借书卡上的名字<span class="rd new">新</span></div>
+                  <div class="chap"><span class="no">133</span>潮线以下<span class="rd soon">预告</span></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px">因为你也读过这些</div>
+                <div class="simil">
+                  <div class="cover" style="aspect-ratio:3/4;background:linear-gradient(160deg,#403257,#A98BE0)"></div>
+                  <div class="cover" style="aspect-ratio:3/4;background:linear-gradient(160deg,#33405F,#8FB0DE)"></div>
+                  <div class="cover" style="aspect-ratio:3/4;background:linear-gradient(160deg,#2F3B3A,#6FA09A)"></div>
+                  <div class="cover" style="aspect-ratio:3/4;background:linear-gradient(160deg,#4A4230,#C9B476)"></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><em class="num">1</em>标题栏 40 高内嵌搜索与源状态：搜索是全应用第一入口，放这里比放内容区顶部更省一次视线折返（Windows 11 邮件、媒体播放器同构）。</span>
+      <span><em class="num">2</em>侧栏 224 宽直接复用本仓 Expanded 档实测值（真机 rail 节点 224dp），不新造数；WinUI 默认 240，取 224 让两端列数公式同源。</span>
+      <span><em class="num">3</em>源健康从"卡片"降为侧栏脚注 + InfoBar：桌面可以把跨源状态常驻在视野里，Android 做不到。</span>
+      <span><em class="num">4</em>继续阅读卡 268×124，进度条贴底 3px；hover 时"继续阅读"盖在封面缩略图上，文字区不缩、卡不变形。</span>
+      <span><em class="num">5</em>推荐墙 5 列（每列约 224）；hover 时动作条盖在封面下沿，卡片高度不变——hover 不引起位移。</span>
+      <span><em class="num">6</em>右详情栏 340 是<b>临时浮层</b>：悬停 350ms 或方向键选中即出，离开或 Esc 即收，不重排内容（左缘那道渐隐就是提示"下面还有内容"）。常驻并排做成设置项，代价写明：少 1–2 列。</span>
+      <span><em class="num">7</em>内容超一屏时只有内容区滚，页头与标题栏不跟着滚；滚动条是悬停揭示的细条（Fluent 系统滚动条口径）。</span>
+    </div>
+  </section>
+
+  <!-- ══════ 画板二 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>画板二 · 首页（深色 / 侧栏收起 48 / 键盘焦点态 + 加载骨架）</h2><span class="size">1440 × 900 · 窄窗或用户主动收起</span></div>
+    <p class="board-lead">收起后内容区净宽 1344，列数从 5 涨到 6；推荐区正在重拉时用骨架而不是转圈（整块重拉走骨架是本仓既有口径）。焦点环给的是键盘导航态，与鼠标 hover 态分得很开。</p>
+    <div class="boardwrap">
+      <div class="win dark">
+        <div class="titlebar">
+          <span class="pill" style="border:0;background:transparent;padding:0 6px"><svg><use href="#i-chev"/></svg></span>
+          <span class="brand"><span class="mark"><svg><use href="#i-play"/></svg></span>Venera</span>
+          <div class="search"><svg><use href="#i-search"/></svg>搜索全部源或跳转到<em class="kbd">Ctrl K</em></div>
+          <div class="tb-right">
+            <span class="pill"><span class="dot"></span>禁漫天堂 · 213ms</span>
+            <span class="pill"><svg><use href="#i-refresh"/></svg>刷新</span>
+            <span class="cap"><svg><use href="#i-min"/></svg></span>
+            <span class="cap"><svg><use href="#i-max"/></svg></span>
+            <span class="cap close"><svg><use href="#i-x"/></svg></span>
+          </div>
+        </div>
+        <div class="body">
+          <nav class="navpane compact">
+            <div class="navitem sel"><svg><use href="#i-home"/></svg></div>
+            <div class="navitem"><svg><use href="#i-compass"/></svg></div>
+            <div class="navitem"><svg><use href="#i-search"/></svg></div>
+            <div class="navitem"><svg><use href="#i-heart"/></svg></div>
+            <div class="navitem"><svg><use href="#i-clock"/></svg></div>
+            <div class="navitem"><svg><use href="#i-down"/></svg></div>
+            <div class="navitem"><svg><use href="#i-photo"/></svg></div>
+            <div class="navdiv"></div>
+            <div class="navitem"><svg><use href="#i-cloud"/></svg></div>
+            <div class="navitem"><svg><use href="#i-src"/></svg></div>
+            <div class="panefoot"><div class="row"><span class="dot"></span></div></div>
+            <div class="navitem"><svg><use href="#i-set"/></svg></div>
+          </nav>
+          <div class="scroller">
+            <div class="page">
+              <div class="phead">
+                <h3>首页</h3>
+                <div class="seg"><i class="on">推荐</i><i>最近更新</i><i>本地</i></div>
+                <div class="right"><span class="btn bd sm">换一批</span><span class="btn sub sm"><svg style="width:14px;height:14px"><use href="#i-more"/></svg></span></div>
+              </div>
+              <div class="sec">
+                <h4>继续阅读<span class="more">全部历史 ›</span></h4>
+                <div class="hero">
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#4C3B7A,#8B6CFF 70%)"></div><div class="hmeta"><div class="t">夜行列车与无名站</div><div class="ch">第 12 话 · 读至 8/104 页</div><div class="m">禁漫天堂 · 昨天 22:14</div></div><span class="prog"><i style="width:7%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#1F4B45,#5FD3A6 70%)"></div><div class="hmeta"><div class="t">第七个夏天的约定</div><div class="ch">第 3 卷 · 读至 62/188 页</div><div class="m">拷贝漫画 · 今天 09:02</div></div><span class="prog"><i style="width:33%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#5A2F3E,#D96A82 70%)"></div><div class="hmeta"><div class="t">钢与盐的编年史</div><div class="ch">第 41 话 · 读至 19/24 页</div><div class="m">禁漫天堂 · 3 天前</div></div><span class="prog"><i style="width:79%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#2C3E63,#7FA6E8 70%)"></div><div class="hmeta"><div class="t">北岸灯塔值班记录</div><div class="ch">单本 · 读至 5/120 页</div><div class="m">Goda · 5 天前</div></div><span class="prog"><i style="width:4%"></i></span></div>
+                </div>
+              </div>
+              <div class="sec">
+                <h4>可能你感兴趣<span class="more" style="color:#8B8B8B">正在重新取数 · 请稍候</span></h4>
+                <div class="wall c6">
+                  <div class="tcard focus">
+                    <div class="cover" style="background:linear-gradient(160deg,#403257,#A98BE0)"><span class="rank">9.1</span></div>
+                    <div class="tt">雾港守夜人</div><div class="tm">奇幻 · 全 38 话</div>
+                  </div>
+                  <div class="tcard"><div class="sk" style="aspect-ratio:3/4"></div><div class="sk line" style="width:70%"></div><div class="sk line" style="width:45%"></div></div>
+                  <div class="tcard"><div class="sk" style="aspect-ratio:3/4"></div><div class="sk line" style="width:62%"></div><div class="sk line" style="width:40%"></div></div>
+                  <div class="tcard"><div class="sk" style="aspect-ratio:3/4"></div><div class="sk line" style="width:75%"></div><div class="sk line" style="width:38%"></div></div>
+                  <div class="tcard"><div class="sk" style="aspect-ratio:3/4"></div><div class="sk line" style="width:66%"></div><div class="sk line" style="width:44%"></div></div>
+                  <div class="tcard"><div class="sk" style="aspect-ratio:3/4"></div><div class="sk line" style="width:58%"></div><div class="sk line" style="width:36%"></div></div>
+                </div>
+              </div>
+              <div class="sec">
+                <h4>本地书架<span class="more">管理本地 ›</span></h4>
+                <div class="statstrip" style="gap:12px">
+                  <span class="pill"><svg><use href="#i-photo"/></svg>46 部本地作品</span>
+                  <span class="pill"><svg><use href="#i-down"/></svg>3 个下载任务</span>
+                  <span class="desc" style="font-size:12.5px;color:#8B8B8B">把 CBZ 或图片文件夹直接拖进窗口即可导入</span>
+                  <span class="btn bd sm" style="margin-left:auto">打开数据目录</span>
+                </div>
+              </div>
+            </div>
+            <div class="statusbar">
+              <span>就绪</span><span>上次取数 00:41 前（2 分钟节流）</span>
+              <span class="r"><span>代理 127.0.0.1:7890</span><span>延迟 213ms</span><span class="kbd">Ctrl K</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><em class="num">1</em>焦点环：2px 外框 + 2px 偏移，用 TextFillColorPrimary 而非强调色（Fluent 口径），鼠标态不出现它。</span>
+      <span><em class="num">2</em>收起态侧栏 48，图标居中，选中指示条加高到 24；hover 出 Tooltip 显示名称，不自动展开。</span>
+      <span><em class="num">3</em>骨架与真卡片同尺寸同圆角，避免取数完成时版面跳动（预留空间是本仓既有纪律）。</span>
+      <span><em class="num">4</em>本地书架从 Android 的"扫描中"文案改成结果行 + 拖拽提示，桌面不需要"扫描"这一步的存在感。</span>
+    </div>
+  </section>
+
+  <!-- ══════ 画板三 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>画板三 · 首页（亮色档，同一套骨架换 surface 阶梯）</h2><span class="size">1440 × 900 · 跟随系统或手动</span></div>
+    <p class="board-lead">亮色档不是把深色反相：surface 阶梯、描边、阴影权重各有一套值，强调色仍走种子色。这张的作用是证明中性阶梯能双向。</p>
+    <div class="boardwrap">
+      <div class="win light">
+        <div class="titlebar">
+          <span class="brand"><span class="mark"><svg><use href="#i-play"/></svg></span>Venera</span>
+          <div class="search"><svg><use href="#i-search"/></svg>搜索全部源或跳转到<em class="kbd">Ctrl K</em></div>
+          <div class="tb-right">
+            <span class="pill"><span class="dot"></span>禁漫天堂 · 213ms</span>
+            <span class="pill"><svg><use href="#i-refresh"/></svg>刷新</span>
+            <span class="cap"><svg><use href="#i-min"/></svg></span>
+            <span class="cap"><svg><use href="#i-max"/></svg></span>
+            <span class="cap close"><svg><use href="#i-x"/></svg></span>
+          </div>
+        </div>
+        <div class="body">
+          <nav class="navpane">
+            <div class="navhead">浏览</div>
+            <div class="navitem sel"><svg><use href="#i-home"/></svg><span class="lbl">首页</span></div>
+            <div class="navitem"><svg><use href="#i-compass"/></svg><span class="lbl">探索</span></div>
+            <div class="navitem"><svg><use href="#i-search"/></svg><span class="lbl">搜索</span></div>
+            <div class="navitem"><svg><use href="#i-heart"/></svg><span class="lbl">收藏</span><span class="cnt">412</span></div>
+            <div class="navitem"><svg><use href="#i-clock"/></svg><span class="lbl">历史</span><span class="cnt">89</span></div>
+            <div class="navitem"><svg><use href="#i-down"/></svg><span class="lbl">下载</span><span class="cnt">3</span></div>
+            <div class="navitem"><svg><use href="#i-photo"/></svg><span class="lbl">图库</span></div>
+            <div class="panefoot"><div class="row"><span class="dot"></span>34 源 · 28 正常</div><div class="row"><span class="dot bad"></span>2 连接失败</div></div>
+            <div class="navitem"><svg><use href="#i-set"/></svg><span class="lbl">设置</span></div>
+          </nav>
+          <div class="scroller">
+            <div class="page">
+              <div class="phead">
+                <h3>首页</h3>
+                <div class="seg"><i class="on">推荐</i><i>最近更新</i><i>本地</i></div>
+                <div class="right"><span class="btn bd sm">换一批</span></div>
+              </div>
+              <div class="infobar">
+                <svg><use href="#i-warn"/></svg>
+                <span><b>拷贝漫画连接失败</b>　<span class="desc">已跳过该源，其余 27 个源正常。此结果不会自动重试。</span></span>
+                <span class="acts"><span class="btn bd sm">重新测速</span><span class="btn sub sm">管理源</span></span>
+              </div>
+              <div class="sec">
+                <h4>继续阅读<span class="more">全部历史 ›</span></h4>
+                <div class="hero">
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#B9A7F5,#7A5FD0 70%)"></div><div class="hmeta"><div class="t">夜行列车与无名站</div><div class="ch">第 12 话 · 读至 8/104 页</div><div class="m">禁漫天堂 · 昨天 22:14</div></div><span class="prog"><i style="width:7%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#8FD8C0,#3E9E7B 70%)"></div><div class="hmeta"><div class="t">第七个夏天的约定</div><div class="ch">第 3 卷 · 读至 62/188 页</div><div class="m">拷贝漫画 · 今天 09:02</div></div><span class="prog"><i style="width:33%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#E6A0B2,#C2566F 70%)"></div><div class="hmeta"><div class="t">钢与盐的编年史</div><div class="ch">第 41 话 · 读至 19/24 页</div><div class="m">禁漫天堂 · 3 天前</div></div><span class="prog"><i style="width:79%"></i></span></div>
+                  <div class="hcard"><div class="thumb" style="background:linear-gradient(150deg,#A6C6F0,#5E86C6 70%)"></div><div class="hmeta"><div class="t">北岸灯塔值班记录</div><div class="ch">单本 · 读至 5/120 页</div><div class="m">Goda · 5 天前</div></div><span class="prog"><i style="width:4%"></i></span></div>
+                </div>
+              </div>
+              <div class="sec">
+                <h4>可能你感兴趣<span class="more">全部推荐 ›</span></h4>
+                <div class="wall">
+                  <div class="tcard"><div class="cover" style="background:linear-gradient(160deg,#B9A7F5,#8B6CFF)"><span class="rank" style="background:rgba(0,0,0,.55)">9.1</span></div><div class="tt">雾港守夜人</div><div class="tm">奇幻 · 全 38 话</div></div>
+                  <div class="tcard"><div class="cover" style="background:linear-gradient(160deg,#8FD8C0,#4FA98A)"><span class="rank" style="background:rgba(0,0,0,.55)">8.6</span></div><div class="tt">海渊图书馆</div><div class="tm">悬疑 · 更新中</div></div>
+                  <div class="tcard"><div class="cover" style="background:linear-gradient(160deg,#F0B7C5,#C9748D)"><span class="rank" style="background:rgba(0,0,0,.55)">7.9</span></div><div class="tt">甜苦循环</div><div class="tm">日常 · 12 话</div></div>
+                  <div class="tcard"><div class="cover" style="background:linear-gradient(160deg,#A6C6F0,#6E97CE)"><span class="rank" style="background:rgba(0,0,0,.55)">8.2</span></div><div class="tt">轨道尽头的城</div><div class="tm">科幻 · 完结</div></div>
+                  <div class="tcard"><div class="cover" style="background:linear-gradient(160deg,#E4D4A0,#B7A05E)"><span class="rank" style="background:rgba(0,0,0,.55)">7.4</span></div><div class="tt">炉边闲话</div><div class="tm">四格 · 更新中</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="statusbar"><span>本地漫画：共 46 部 · 已扫描</span><span class="r"><span>代理 127.0.0.1:7890</span><span class="kbd">Ctrl K</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 状态样张 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>状态样张 · 控件五态 / 浮层 / 严重级别</h2></div>
+    <p class="board-lead">这几格决定"像不像 Windows"，比颜色更像：五态齐了才有桌面手感。浮层一律实底（系统玻璃采不到独立窗口，是既有读数）。</p>
+    <div class="states">
+      <div class="grp"><label>强调按钮</label>
+        <span class="btn acc">开始阅读</span>
+        <span class="btn acc" style="filter:brightness(.9)">按下</span>
+        <span class="btn acc" style="opacity:.5">禁用</span>
+        <span class="btn acc" style="outline:2px solid #E4E4E4;outline-offset:2px">键盘焦点</span>
+      </div>
+      <div class="grp"><label>标准 / 透明按钮</label>
+        <span class="btn bd">重新测速</span>
+        <span class="btn bd" style="background:#383838">hover</span>
+        <span class="btn sub">换一批</span>
+        <span class="btn sub" style="background:rgba(255,255,255,.06)">hover</span>
+      </div>
+      <div class="grp"><label>输入与选中</label>
+        <span class="search" style="margin:0;flex:none;width:240px">海渊</span>
+        <span class="search" style="margin:0;flex:none;width:240px;border-bottom:2px solid #CBB6FF">聚焦时底线加粗</span>
+        <span class="navitem" style="background:#333;width:240px"><svg><use href="#i-heart"/></svg>hover 态</span>
+      </div>
+      <div class="grp"><label>右键上下文菜单</label>
+        <div class="menu">
+          <div class="mi hov"><svg><use href="#i-play"/></svg>继续阅读<span class="k">Enter</span></div>
+          <div class="mi"><svg><use href="#i-heart"/></svg>加入收藏</div>
+          <div class="mi"><svg><use href="#i-down"/></svg>加入下载队列<span class="k">D</span></div>
+          <div class="mi"><svg><use href="#i-src"/></svg>只看这一源<span class="k">F</span></div>
+          <div class="mi dv"></div>
+          <div class="mi"><svg><use href="#i-x"/></svg>屏蔽标签：悬疑</div>
+        </div>
+      </div>
+      <div class="grp"><label>Tooltip / InfoBar 严重级别</label>
+        <span class="tip">切换侧栏展开或收起 <em class="kbd" style="margin-left:4px">Ctrl B</em></span>
+        <div class="infobar" style="width:420px"><svg><use href="#i-warn"/></svg><span><b>注意</b>　<span class="desc">图库为独立窗口</span></span></div>
+        <div class="infobar" style="width:420px;background:#2A2020;border-color:#4A2626"><svg style="color:#F47067"><use href="#i-warn"/></svg><span><b>以图搜源不可用</b>　<span class="desc">SauceNAO 桌面端需要浏览器盾，本机取不到</span></span><span class="acts"><span class="btn bd sm">说明</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ Token ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>Token 表</h2></div>
+    <p class="board-lead">三档来源标在最后一列：Fluent 官方口径 / 本仓既有 token / 本稿新定。新定的只有 surface 阶梯与右栏宽——其余能借就借。</p>
+    <div class="grid2">
+      <table>
+        <tr><th>中性 surface（深色）</th><th>值</th><th>亮色档</th></tr>
+        <tr><td>Host（窗口底）</td><td><span class="sw" style="background:#202020"></span>#202020</td><td><span class="sw" style="background:#F3F3F3"></span>#F3F3F3</td></tr>
+        <tr><td>Layer（侧栏 / 标题栏 / 详情栏）</td><td><span class="sw" style="background:#272727"></span>#272727</td><td><span class="sw" style="background:#FFF"></span>#FFFFFF</td></tr>
+        <tr><td>Card（内容块）</td><td><span class="sw" style="background:#2C2C2C"></span>#2C2C2C</td><td><span class="sw" style="background:#FBFBFB"></span>#FBFBFB</td></tr>
+        <tr><td>Card hover</td><td><span class="sw" style="background:#333"></span>#333333</td><td><span class="sw" style="background:#F0F0F0"></span>#F0F0F0</td></tr>
+        <tr><td>Stroke</td><td><span class="sw" style="background:#353535"></span>#353535</td><td><span class="sw" style="background:#E5E5E5"></span>#E5E5E5</td></tr>
+        <tr><td>文本一 / 二 / 三</td><td>#E4E4E4 · #C2C2C2 · #8B8B8B</td><td>#1B1B1B · #5F5F5F · #8A8A8A</td></tr>
+        <tr><td>强调文本 / 强调底</td><td>由种子色出深色档 primary（示例 #CBB6FF）· 实底 #4A3AA8</td><td>实底不变，文本改 #4B3E9E 保 4.5:1</td></tr>
+      </table>
+      <table>
+        <tr><th>尺寸口径</th><th>值</th><th>来源</th></tr>
+        <tr><td>标题栏高 / caption 按钮</td><td class="mono">40 / 46×32</td><td>Fluent</td></tr>
+        <tr><td>侧栏展开宽 / 收起宽</td><td class="mono">224 / 48</td><td>本仓 Expanded 实测 224 + Fluent Compact 48</td></tr>
+        <tr><td>导航项高 / 选中指示条</td><td class="mono">40 / 3×20（r 3）</td><td>Fluent</td></tr>
+        <tr><td>控件高（按钮 / 输入 / 小按钮）</td><td class="mono">32 / 32 / 26</td><td>Fluent 32，26 为本稿紧凑档</td></tr>
+        <tr><td>圆角（卡片 / 控件 / 药丸）</td><td class="mono">8 / 4 / 999</td><td>Fluent</td></tr>
+        <tr><td>栅格间距 / 页内边距</td><td class="mono">4·8·12·16·24</td><td>Fluent 4px 栅格</td></tr>
+        <tr><td>封面列预算</td><td class="mono">200 / 列</td><td>本仓 imageWallColumnCount</td></tr>
+        <tr><td>右详情栏宽 / 状态栏高</td><td class="mono">340 / 24</td><td>本稿新定</td></tr>
+        <tr><td>继续阅读卡</td><td class="mono">268×124，封面 78×100</td><td>本稿新定</td></tr>
+      </table>
+    </div>
+    <div style="margin-top:20px" class="grid2">
+      <table>
+        <tr><th>字阶</th><th>字号 / 行高 · 字重</th><th>用在</th></tr>
+        <tr><td>Display</td><td class="mono">28 / 36 · 600</td><td>画板说明，不进界面</td></tr>
+        <tr><td>Subtitle</td><td class="mono">20 / 28 · 600</td><td>页标题、统计数字</td></tr>
+        <tr><td>BodyStrong</td><td class="mono">14 / 20 · 600</td><td>卡片标题、区块头（16/24 用于区块头）</td></tr>
+        <tr><td>Body</td><td class="mono">14 / 20 · 400</td><td>正文、菜单项</td></tr>
+        <tr><td>Caption</td><td class="mono">12 / 16 · 400</td><td>元信息、计数、状态栏 11.5</td></tr>
+        <tr><td>字体族</td><td class="mono">Segoe UI Variable Text → Microsoft YaHei UI</td><td>数字一律 tabular-nums</td></tr>
+      </table>
+      <table>
+        <tr><th>动效</th><th>时长 / 曲线</th><th>用在</th></tr>
+        <tr><td>fast</td><td class="mono">150ms · cubic-bezier(.1,.9,.2,1)</td><td>hover 揭示、按钮按下</td></tr>
+        <tr><td>medium</td><td class="mono">250ms · 同上</td><td>详情栏展开、侧栏收展</td></tr>
+        <tr><td>slow</td><td class="mono">350ms · cubic-bezier(0,.9,.2,1)</td><td>页面切换、抽屉</td></tr>
+        <tr><td>详情栏触发延时</td><td class="mono">hover 350ms</td><td>跨卡片扫视不闪栏</td></tr>
+        <tr><td>降级</td><td class="mono">prefers-reduced-motion → 全部 0ms</td><td>只留透明度，不留位移</td></tr>
+        <tr><td>不做</td><td class="mono">自动轮播、视差、真 3D</td><td>与既有轮播裁决一致</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════ 组件映射 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>这块 UI 由谁实现</h2></div>
+    <table>
+      <tr><th>稿中部件</th><th>落点</th><th>备注</th></tr>
+      <tr><td>侧栏导航 / 导航项 / 选中指示条</td><td>compose-fluent <span class="mono">NavigationView</span>，样式覆写</td><td>S0-2 已证该类运行期可组合；指示条与 224 宽需覆写</td></tr>
+      <tr><td>标题栏与 caption 按钮</td><td>自绘 + <span class="mono">Window(undecorated)</span> 或系统装饰</td><td>优先保留系统装饰只做深色标题栏（S0-6a 实测 DWM 属性 20 肉眼生效），自绘窗饰留到后面</td></tr>
+      <tr><td>顶栏搜索</td><td><span class="mono">AutoSuggestBox</span></td><td>库有；候选项数据要接现有多源搜索</td></tr>
+      <tr><td>上下文菜单 / Tooltip / Flyout</td><td>库有（desktopMain 专实现）</td><td>实底，不宣称玻璃</td></tr>
+      <tr><td>InfoBar（源健康、不可用声明）</td><td>库有</td><td>正好承接"降级必须可见"那条纪律</td></tr>
+      <tr><td>继续阅读卡 / 封面卡 / 右详情栏 / 统计条</td><td>自绘</td><td>这三件是本设计的全部私有部件，其余照库</td></tr>
+      <tr><td>状态栏</td><td>自绘一行</td><td>Android 无对应物，不与手机档争口径</td></tr>
+      <tr><td>材质（顶栏 / 侧栏的模糊）</td><td>haze 应用内模糊，两级降级</td><td>失败即回实底并在设置写明原因，禁止静默</td></tr>
+      <tr><td>图标</td><td>Fluent System Icons 包（<span class="mono">fluent-icons-extended</span>）</td><td>与本稿 SVG 同语汇；不引第二套图标库</td></tr>
+      <tr><td>加载指示</td><td>整块重拉用骨架；单点等待用 ProgressRing</td><td>波浪环属 Android 侧口径，桌面不跨端强推</td></tr>
+    </table>
+  </section>
+
+  <!-- ══════ 断点 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>断点与列数</h2></div>
+    <table>
+      <tr><th>窗口宽</th><th>侧栏</th><th>内容区净宽</th><th>封面列数</th><th>每列实得</th><th>继续阅读</th><th>右详情栏</th></tr>
+      <tr><td class="mono">1280</td><td class="mono">224</td><td class="mono">1008</td><td>5</td><td class="mono">192</td><td>3 张</td><td>覆盖式</td></tr>
+      <tr><td class="mono">1440</td><td class="mono">224</td><td class="mono">1168</td><td>5</td><td class="mono">224</td><td>4 张</td><td>覆盖式（本稿画板一）</td></tr>
+      <tr><td class="mono">1706</td><td class="mono">224</td><td class="mono">1434</td><td>7</td><td class="mono">199</td><td>5 张</td><td>覆盖式</td></tr>
+      <tr><td class="mono">1920</td><td class="mono">224</td><td class="mono">1648</td><td>8</td><td class="mono">224</td><td>6 张</td><td>覆盖式，设置里可选并排</td></tr>
+      <tr><td class="mono">1440 收起态</td><td class="mono">48</td><td class="mono">1344</td><td>6</td><td class="mono">222</td><td>4 张</td><td>覆盖式（本稿画板二）</td></tr>
+      <tr><td class="mono">&lt; 1280</td><td class="mono">自动收 48</td><td class="mono">窗宽−96</td><td>按公式，只随宽增</td><td class="mono">满 200 才加列</td><td>横向滚动</td><td>覆盖式</td></tr>
+    </table>
+    <p style="font-size:13px;color:var(--ink2);margin-top:10px">列数沿用本仓 <span class="mono">imageWallColumnCount</span> 的每列 200 预算与取整方向，净宽只多扣一项左右内边距 48。<b>详情栏一律覆盖式是算出来的结论，不是偏好</b>：并排要吃掉 340，会让 1706 档从 7 列掉回 5 列、1920 档从 8 列掉到 6 列——列数属"只许加不许减"的量，所以宁可让浮层压住右缘。继续阅读卡取 268 宽同理：296 时 1440 档只排得下 3 张。</p>
+  </section>
+
+  <!-- ══════ 检查单 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>交付前检查单</h2></div>
+    <div class="grid2">
+      <ul class="statelist">
+        <li><b>无障碍</b>：正文对比度 ≥ 4.5:1（本稿深色正文 #E4E4E4 / #202020 ≈ 13:1）；焦点环对所有可交互件可见；键盘顺序与视觉顺序一致；计数与状态不只靠颜色，另有文字（"2 连接失败"）。</li>
+        <li><b>读屏</b>：Compose Desktop 走 Java Access Bridge，打包已带 <span class="mono">jdk.accessibility</span>；文案只承诺 NVDA/JAWS 可读，不写"支持系统讲述人"。</li>
+        <li><b>鼠标</b>：hover 态不引起版面位移（动作行只在卡内展开）；可点件给 cursor；悬停揭示延时 350ms 防误触。</li>
+        <li><b>触控</b>：2in1 触控档最小触达 40×40（导航项与按钮已满足），封面卡的紧凑按钮 26 高在触控档要升到 36。</li>
+      </ul>
+      <ul class="statelist">
+        <li><b>降级可见</b>：SauceNAO / mp4 / GIF / 材质 四项各有一条 InfoBar 或设置内说明文案，不留"能点但什么都不做"的控件。</li>
+        <li><b>性能</b>：首屏只解码可见封面；阅读统计迷你柱状用自绘不引图表库；动效全部走 transform/alpha。</li>
+        <li><b>不做的东西</b>：自动轮播、视差、真 3D、玻璃弹窗、跨窗口模糊、开机自启开关。</li>
+        <li><b>与手机档的关系</b>：本稿不改 Android 任何观感；共用的只有列数公式、断点定义、色板生成链路三处。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══════ 落地 ══════ -->
+  <section class="board-sec">
+    <div class="board-title"><h2>如果按这张稿开工，首页要分几刀</h2></div>
+    <ol class="statelist">
+      <li><span class="pill">第 1 刀</span>壳层：标题栏深色 + 侧栏 NavigationView（展开/收起/键盘 <span class="mono">Ctrl B</span>）+ 断点表落进 <span class="mono">WideScreenPolicy</span>，内容区先只放占位网格。<i>不碰取数。</i></li>
+      <li><span class="pill">第 1 刀</span>中性 surface 阶梯与字阶做成桌面侧 token 文件，与 Android 的 <span class="mono">VeneraSpacing</span> 并列而不服从它。</li>
+      <li><span class="pill-warn pill">第 2 刀</span>继续阅读 + 封面墙 hover 动作行 + 骨架 + InfoBar（接现有源健康读数）。这一刀完成后首页就能用。</li>
+      <li><span class="pill-warn pill">第 3 刀</span>右详情栏：需要"卡片 → 详情"的取数复用现成 <span class="mono">EngineSession</span>，并决定详情是预览还是可操作（本稿按可操作设计）。</li>
+      <li><span class="pill-warn pill">第 4 刀</span>键盘图与命令面板 <span class="mono">Ctrl K</span>、右键菜单全量、拖拽导入 CBZ、状态栏。</li>
+      <li><span class="pill-cut pill">押后</span>材质（haze 两级降级）、自绘窗饰、亮色档细校、2in1 触控档。</li>
+    </ol>
+    <p style="font-size:13px;color:var(--ink2);margin-top:14px">本稿的封面与作品名全为占位色块与虚构标题，不是素材也不是版权内容；真实封面在开发期由现成源出图替换。设计稿中"阅读统计""本地书架""漫画源"三块的名字与文案取自 <span class="mono">feature/HomeScreen.kt</span> 现网字符串，未新增模块。</p>
+  </section>
+</div>
+</body>
+</html>

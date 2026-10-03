@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Venera Windows 首页 · 二次元浓度实验稿 2026-10-03</title>
+<style>
+  :root{
+    --host:#202020; --layer:#272727; --card:#2C2C2C; --card-hov:#333333;
+    --stroke:#353535; --stroke2:#3D3D3D; --t1:#E4E4E4; --t2:#C2C2C2; --t3:#8B8B8B;
+    --accent:#CBB6FF; --accent-fill:#4A3AA8; --pink:#FF5FA2; --cyan:#4DE1F1; --gold:#F5C542;
+    --ink-line:#101114;
+    --a:linear-gradient(150deg,#2A1F47 0%,#6B4BC8 42%,#FF5FA2 100%);
+    --b:linear-gradient(160deg,#12333A,#2E8C9E 60%,#4DE1F1);
+    --c:linear-gradient(160deg,#3A1420,#B0374F 70%,#F5C542);
+    --d:linear-gradient(160deg,#1E2A4A,#4E6FD8 70%,#CBB6FF);
+    --e:linear-gradient(160deg,#22301F,#5C8F4E 70%,#D9E88A);
+    --f:linear-gradient(160deg,#2B2B33,#6C6F7A 65%,#FFC0CB);
+    --r-card:8px; --r-ctl:4px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#151619;color:var(--t1);
+    font:14px/20px "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}
+
+  /* ── 顶部的浓度切换条（画板外，只给看稿用） ── */
+  .bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:14px 24px;background:rgba(21,22,25,.92);backdrop-filter:blur(8px);border-bottom:1px solid #2A2C31}
+  .bar h1{font-size:15px;font-weight:600;margin:0 8px 0 0}
+  .sw{height:32px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--stroke2);background:#2D2D2D;
+    color:var(--t1);font:inherit;font-size:13px;cursor:pointer}
+  .sw[aria-pressed="true"]{background:var(--accent-fill);border-color:#6E5BC8;color:#fff;font-weight:600}
+  .bar .hint{font-size:12px;color:var(--t3);margin-left:auto}
+
+  .scroll{overflow:auto;padding:24px}
+  .stack{display:flex;flex-direction:column;gap:20px;align-items:flex-start}
+
+  /* ── 应用窗体 ── */
+  .frame{width:1440px;height:900px;background:var(--host);display:flex;flex-direction:column;overflow:hidden;position:relative;flex:0 0 auto}
+  .tb{height:40px;flex:0 0 40px;display:flex;align-items:center;gap:10px;padding:0 0 0 12px;background:var(--layer);position:relative;z-index:40}
+  .brand{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--t2);white-space:nowrap}
+  .mark{width:20px;height:20px;border-radius:5px;background:linear-gradient(140deg,var(--pink),var(--accent-fill))}
+  .search{flex:0 0 380px;height:32px;margin-left:14px;display:flex;align-items:center;gap:8px;padding:0 10px;
+    border-radius:var(--r-ctl);background:#2D2D2D;border:1px solid var(--stroke2);border-bottom:2px solid var(--stroke2);font-size:13px;color:var(--t3)}
+  .search svg{width:15px;height:15px}
+  .kbd{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:4px;background:#222;border:1px solid #3A3A3A;color:#B4B4B4}
+  .tbr{margin-left:auto;display:flex;align-items:center;gap:6px;padding-right:2px}
+  .lamp{height:32px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--stroke2);background:#2D2D2D;
+    font-size:13px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .lamp svg{width:14px;height:14px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#3FB950}
+  .cap{width:46px;height:32px;display:grid;place-items:center;color:var(--t2)}
+  .cap svg{width:12px;height:12px}
+  .cap.x{background:#C42B1C;color:#fff}
+
+  .body{flex:1;display:flex;min-height:0;position:relative}
+  .pane{flex:0 0 224px;background:var(--layer);padding:4px;display:flex;flex-direction:column;position:relative;z-index:6}
+  .panehead{height:36px;display:flex;align-items:center;padding:0 12px;font-size:16px;font-weight:600}
+  .nav{height:40px;display:flex;align-items:center;gap:12px;padding:0 12px;margin:1px 0;border-radius:var(--r-ctl);font-size:14px;position:relative;cursor:default}
+  .nav:hover{background:var(--card-hov)}
+  .nav.sel{background:var(--card);font-weight:600}
+  .nav.sel::before{content:"";position:absolute;left:0;top:10px;width:3px;height:20px;border-radius:3px;background:var(--accent)}
+  .nav svg{width:16px;height:16px;color:var(--t2)}
+  .nav .cnt{margin-left:auto;font-size:12px;color:var(--t3)}
+  .panefoot{margin-top:auto;padding:10px 12px 14px;font-size:11.5px;line-height:17px;color:var(--t3)}
+  .panefoot b{color:var(--t2)}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;z-index:5}
+  .page{flex:1;min-height:0;overflow-y:auto;padding:0 24px 10px;display:flex;flex-direction:column;gap:18px;
+    scrollbar-width:thin;scrollbar-color:#4A4A4A transparent}
+  .page::-webkit-scrollbar{width:6px}.page::-webkit-scrollbar-thumb{background:#4A4A4A;border-radius:3px}
+  .phead{height:52px;flex:0 0 52px;display:flex;align-items:center;gap:12px}
+  .phead .pt{font-size:20px;line-height:28px;font-weight:600}
+  .seg{display:flex;gap:2px;padding:2px;border-radius:var(--r-ctl);background:#2A2A2A;border:1px solid var(--stroke)}
+  .seg i{font-style:normal;padding:4px 12px;border-radius:2px;font-size:13px;color:var(--t2)}
+  .seg i.on{background:#383838;color:#fff;font-weight:600}
+  .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn{height:32px;padding:0 12px;border-radius:var(--r-ctl);font-size:13px;display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--stroke2);background:#2D2D2D;color:var(--t1);white-space:nowrap}
+  .btn svg{width:14px;height:14px}
+  .btn.acc{background:var(--accent-fill);border-color:rgba(255,255,255,.10);color:#fff}
+  .btn.ghost{background:transparent;border-color:transparent}
+  .btn.sm{height:26px;padding:0 10px;font-size:12.5px}
+  .sechead{display:flex;align-items:baseline;gap:10px;position:relative;z-index:3}
+  .sechead h4{margin:0;font-size:16px;line-height:24px;font-weight:600}
+  .sechead .more{margin-left:auto;font-size:13px;color:var(--accent)}
+
+  /* ── HERO 分格 ── */
+  .hero{position:relative;display:grid;gap:12px;flex:0 0 auto;transition:all 350ms cubic-bezier(0,.9,.2,1)}
+  .panel{position:relative;overflow:hidden;background:var(--card)}
+  .art{position:absolute;inset:0}
+  .a{background:linear-gradient(150deg,#2A1F47 0%,#6B4BC8 42%,var(--pink) 100%)}
+  .b{background:linear-gradient(160deg,#12333A,#2E8C9E 60%,var(--cyan))}
+  .c{background:linear-gradient(160deg,#3A1420,#B0374F 70%,var(--gold))}
+  .d{background:linear-gradient(160deg,#1E2A4A,#4E6FD8 70%,var(--accent))}
+  .e{background:linear-gradient(160deg,#22301F,#5C8F4E 70%,#D9E88A)}
+  .f{background:linear-gradient(160deg,#2B2B33,#6C6F7A 65%,#FFC0CB)}
+  .halftone{background-image:radial-gradient(rgba(255,255,255,.16) 1px,transparent 1.6px);background-size:6px 6px}
+  .speed{background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.13) 0 2px,transparent 2px 11px)}
+  .big{font-family:"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;font-weight:800;letter-spacing:-1px;line-height:.94;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+  .kicker{font-size:11.5px;letter-spacing:.22em;color:var(--pink);font-weight:700}
+  .furi{font-size:12px;color:var(--cyan);letter-spacing:.14em}
+  .vert{writing-mode:vertical-rl;text-orientation:mixed;font-weight:800;letter-spacing:.16em;font-size:26px;color:#081014}
+  .sticker{position:absolute;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+    background:var(--pink);color:#151619;font-size:12px;font-weight:800;border:2px solid var(--ink-line);
+    box-shadow:4px 4px 0 rgba(0,0,0,.55);z-index:12}
+  .sticker.cy{background:var(--cyan)} .sticker.gd{background:var(--gold)}
+
+  .pa{grid-area:pa}.pb{grid-area:pb}.pc{grid-area:pc}.pd{grid-area:pd}
+  .pa .cap-in{position:absolute;left:18px;right:18px;bottom:16px}
+  .pa .meta{font-size:12.5px;color:var(--t2);margin-top:6px}
+  .pa .acts{display:flex;gap:8px;margin-top:12px}
+  .pb .in{position:relative;padding:16px 14px;z-index:2}
+  .pb .sub{font-size:12.5px;color:var(--t2);margin-top:8px}
+  .pc .mid{position:absolute;inset:0;display:grid;place-items:center}
+  .pd .in{position:absolute;left:12px;bottom:10px}
+  .pd .lab{font-size:12px;color:#FFE7EE}
+
+  /* ── 继续阅读 ── */
+  .strip{display:flex;gap:12px;align-items:flex-end}
+  .hcard{background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-card);padding:12px;display:flex;gap:12px;position:relative}
+  .hcard .txt{min-width:0;display:flex;flex-direction:column;gap:4px}
+  .hcard .t{font-size:14px;font-weight:600;line-height:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hcard .m{font-size:12px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hcard .thumb{width:78px;height:100px;border-radius:5px;flex:0 0 78px;position:relative;overflow:hidden}
+  .prog{position:absolute;left:0;right:0;bottom:0;height:4px;background:#3B3B3B}
+  .prog i{position:absolute;left:0;top:0;bottom:0;background:var(--accent)}
+  .prog.skew i{clip-path:polygon(0 0,100% 0,calc(100% - 6px) 100%,0 100%)}
+
+  /* ── 统计贴纸 ── */
+  .stat{background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-card);padding:12px 16px;
+    display:flex;align-items:center;gap:18px;align-self:flex-start;width:620px;position:relative;z-index:14}
+  .stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--t3)}
+  .bars{display:flex;align-items:flex-end;gap:3px;height:28px}
+  .bars i{width:6px;border-radius:2px;background:var(--accent);opacity:.8}
+
+  /* ── 推荐墙 ── */
+  .wall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:10px}
+  .tile{background:var(--card);border:1px solid transparent;border-radius:var(--r-card);padding:8px;position:relative}
+  .tile:hover{background:var(--card-hov);border-color:var(--stroke)}
+  .cover{width:100%;aspect-ratio:3/4;border-radius:5px;position:relative;overflow:hidden}
+  .tile .tt{margin-top:8px;font-size:13px;line-height:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tile .tm{font-size:11.5px;line-height:16px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .reveal{position:absolute;left:6px;right:6px;bottom:6px;display:flex;gap:6px;opacity:0;transform:translateY(6px);
+    transition:150ms cubic-bezier(.1,.9,.2,1)}
+  .tile:hover .reveal{opacity:1;transform:none}
+  .reveal .btn{flex:1;justify-content:center;padding:0 6px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  .reveal .btn.fix{flex:0 0 32px}
+  .tile.focus{outline:2px solid var(--t1);outline-offset:2px}
+
+  /* ── 右详情浮层 ── */
+  .detail{position:absolute;right:0;top:0;bottom:0;width:340px;background:var(--layer);border-left:1px solid var(--stroke);
+    z-index:20;box-shadow:-18px 0 40px -18px rgba(0,0,0,.75);overflow:hidden;display:flex;flex-direction:column}
+  .detail::before{content:"";position:absolute;left:-26px;top:0;bottom:0;width:26px;background:linear-gradient(90deg,rgba(32,32,32,0),rgba(32,32,32,.8))}
+  .dh{padding:16px;display:flex;gap:14px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{height:24px;padding:0 10px;border-radius:999px;background:var(--card-hov);color:var(--t2);font-size:12px;display:inline-flex;align-items:center}
+  .chip.acc{background:var(--accent-fill);color:#fff}
+  .dbody{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+  .dbody p{margin:0;font-size:13px;line-height:19px;color:var(--t2)}
+  .dbody .lab{font-size:13px;font-weight:600;margin-bottom:6px}
+  .chap{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:var(--r-ctl);background:#2E2E2E;font-size:13px}
+  .chap .no{color:var(--t3);font-variant-numeric:tabular-nums}
+  .chap .rd{margin-left:auto;font-size:11.5px;color:#3FB950}
+  .chap .rd.n{color:var(--accent)} .chap .rd.s{color:var(--t3)}
+  .chap.cur{outline:1px solid var(--accent)}
+  .simil{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .status{flex:0 0 24px;height:24px;display:flex;align-items:center;gap:16px;padding:0 12px;font-size:11.5px;color:var(--t3);
+    background:var(--layer);border-top:1px solid var(--stroke)}
+  .status .r{margin-left:auto;display:flex;gap:16px;align-items:center}
+
+  /* ── 三档浓度：几何差全在这里 ── */
+  .deco{display:none}
+  body[data-density="calm"] .hero{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr;height:214px;
+    grid-template-areas:"pa pb pd";margin-left:0}
+  body[data-density="calm"] .pc{display:none}
+  body[data-density="calm"] .pa{border-radius:var(--r-card)}
+  body[data-density="calm"] .pb{border-radius:var(--r-card)}
+  body[data-density="calm"] .pd{border-radius:var(--r-card)}
+  body[data-density="calm"] .strip{margin-top:10px}
+  body[data-density="calm"] .hcard{width:268px;transform:none}
+  body[data-density="calm"] .hcard .thumb{width:78px;height:100px;flex:0 0 78px}
+  body[data-density="calm"] .stat{margin-top:0;transform:none;box-shadow:none}
+  body[data-density="calm"] .tile{transform:none}
+  body[data-density="calm"] .tile.wide{grid-column:auto}
+  body[data-density="calm"] .tile.wide .cover{aspect-ratio:3/4}
+  body[data-density="calm"] .tile.off{margin-left:0}
+
+  body[data-density="page"] .hero, body[data-density="max"] .hero{
+    grid-template-columns:1.35fr .95fr .78fr;grid-template-rows:1fr .82fr;
+    grid-template-areas:"pa pb pc" "pa pd pc"}
+  body[data-density="page"] .hero{height:348px;margin-left:-24px}
+  body[data-density="max"] .hero{height:470px;margin-left:-48px}
+  body[data-density="page"] .deco, body[data-density="max"] .deco{display:inline-flex}
+  body[data-density="page"] .deco.blk, body[data-density="max"] .deco.blk{display:block}
+  body[data-density="page"] .deco.grid, body[data-density="max"] .deco.grid{display:grid}
+  body[data-density="page"] .pa, body[data-density="max"] .pa{clip-path:polygon(0 0,100% 0,100% 74%,86% 100%,0 100%);border-radius:0;z-index:8}
+  body[data-density="page"] .pb, body[data-density="max"] .pb{margin-left:-34px;z-index:5;border-radius:0;background:#241C3B;overflow:visible}
+  body[data-density="max"] .pb{margin-left:-56px}
+  /* 被大格斜切遮住的左缘只留给背景，文字一律让开遮挡区 */
+  body[data-density="page"] .pb .in, body[data-density="max"] .pb .in{padding-left:46px}
+  body[data-density="page"] .pc, body[data-density="max"] .pc{margin-top:-18px;z-index:7;border-radius:0}
+  body[data-density="page"] .pd, body[data-density="max"] .pd{margin-top:-10px;margin-left:-20px;z-index:6;border-radius:0}
+  body[data-density="max"] .panel{border:3px solid var(--ink-line);box-shadow:0 0 0 1px #45464C}
+  body[data-density="page"] .pa .big{font-size:34px}
+  body[data-density="max"] .pa .big{font-size:44px}
+  body[data-density="calm"] .pa .big{font-size:22px}
+  body[data-density="page"] .pb .big{font-size:40px}
+  body[data-density="max"] .pb .big{font-size:50px}
+  body[data-density="calm"] .pb .big{font-size:20px}
+  /* 上咬整块"继续阅读"（标题+卡片一起），并抬到 hero 之上，避免卡片盖住自己的标题 */
+  .sec-read{position:relative}
+  body[data-density="page"] .sec-read{margin-top:-18px;z-index:10}
+  body[data-density="max"] .sec-read{margin-top:-26px;z-index:10}
+  body[data-density="page"] .strip, body[data-density="max"] .strip{margin-top:0}
+  body[data-density="page"] .hcard.t1{width:372px;transform:rotate(-1.6deg);box-shadow:8px 8px 0 rgba(0,0,0,.55);z-index:9}
+  body[data-density="max"] .hcard.t1{width:400px;transform:rotate(-1.6deg);box-shadow:8px 8px 0 rgba(0,0,0,.55);z-index:9}
+  body[data-density="page"] .hcard.t1 .thumb, body[data-density="max"] .hcard.t1 .thumb{width:104px;height:134px;flex:0 0 104px}
+  body[data-density="page"] .hcard.t2, body[data-density="max"] .hcard.t2{transform:rotate(1.2deg);margin-top:18px}
+  body[data-density="page"] .hcard.t3, body[data-density="max"] .hcard.t3{transform:rotate(-1.6deg);margin-top:30px}
+  body[data-density="max"] .hcard.t2{margin-top:26px} body[data-density="max"] .hcard.t3{margin-top:44px}
+  body[data-density="page"] .stat, body[data-density="max"] .stat{margin-top:-26px;transform:rotate(-3deg);box-shadow:8px 8px 0 rgba(0,0,0,.5)}
+  body[data-density="max"] .stat{margin-top:-34px}
+  body[data-density="page"] .tile.wide, body[data-density="max"] .tile.wide{grid-column:span 2}
+  body[data-density="page"] .tile.wide .cover, body[data-density="max"] .tile.wide .cover{aspect-ratio:16/10}
+  body[data-density="page"] .tile.off, body[data-density="max"] .tile.off{margin-left:28px}
+  body[data-density="page"] .tile.rt1{transform:rotate(1.2deg)} body[data-density="page"] .tile.rt2{transform:rotate(-1.6deg)}
+  body[data-density="max"] .tile.rt1{transform:rotate(2deg)} body[data-density="max"] .tile.rt2{transform:rotate(-2.4deg)}
+  body[data-density="max"] .tile:hover{transform:translateY(-4px) scale(1.02)}
+  body[data-density="max"] .sticker{box-shadow:6px 6px 0 rgba(0,0,0,.6)}
+
+  /* ── 稿下说明 ── */
+  .notes{max-width:1440px;display:flex;flex-direction:column;gap:18px;color:#B9BCC4}
+  .notes h2{font-size:19px;margin:0 0 4px;color:#E4E4E4}
+  .notes h3{font-size:15px;margin:14px 0 6px;color:#E4E4E4}
+  .notes p{font-size:13px;line-height:20px;margin:0}
+  .legend{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 22px;font-size:12.5px;line-height:19px}
+  .num{display:inline-grid;place-items:center;min-width:16px;height:16px;border-radius:999px;background:#8B5CF6;color:#fff;
+    font-size:10.5px;font-weight:700;padding:0 4px;margin-right:6px}
+  table{border-collapse:collapse;width:100%;background:#1C1D21;border:1px solid #2A2C31;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #2A2C31;vertical-align:top}
+  th{background:#202127;font-weight:600;color:#D6D8DE}
+  tr:last-child td{border-bottom:0}
+  td.no{color:#F47067} td.warn{color:#F0B429} td.yes{color:#56D364}
+  .tags{display:flex;gap:8px;flex-wrap:wrap}
+  .tg{padding:4px 10px;border-radius:999px;font-size:12px;border:1px solid #2A2C31;background:#1C1D21}
+  .tg.ok{color:#56D364} .tg.wa{color:#F0B429}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body data-density="page">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-home" viewBox="0 0 16 16"><path d="M2 6.6 8 2l6 4.6M3.6 7.6V13h8.8V7.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.6 5.4 9.4 9.4 5.4 10.6 6.6 6.6z" fill="currentColor"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.4 10.4 13.6 13.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.4C4.6 11 2.8 9 2.8 7.1A2.6 2.6 0 0 1 8 5.6a2.6 2.6 0 0 1 5.2 1.5c0 1.9-1.8 3.9-5.2 6.3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2.6v7.4M4.8 7.4 8 10.6l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 16 16"><rect x="2.4" y="3.4" width="11.2" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.6 11 6.4 8l2.2 2.2L10.4 7.6l2 2.2" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.6 11.4h7a2.6 2.6 0 0 0 .2-5.2A3.6 3.6 0 0 0 5 5.4a2.9 2.9 0 0 0-.4 6z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-src" viewBox="0 0 16 16"><path d="M2.6 5.4 8 2.6l5.4 2.8L8 8.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 8.6 8 11.4l5.4-2.8M2.6 11.6 8 14.4l5.4-2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+  <symbol id="i-set" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M12.6 6.4A5 5 0 1 0 8 13a5 5 0 0 0 4.2-2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M13.4 3v3.4H10" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.6 12 8l-7 4.4z" fill="currentColor"/></symbol>
+  <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1"/></symbol>
+  <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 12 12"><path d="M2.6 2.6 9.4 9.4M9.4 2.6 2.6 9.4" stroke="currentColor" stroke-width="1.1"/></symbol>
+</defs></svg>
+
+<div class="bar">
+  <h1>Venera Windows 首页 · 二次元浓度三档</h1>
+  <button class="sw" data-d="calm" aria-pressed="false">克制（等于规则稿）</button>
+  <button class="sw" data-d="page" aria-pressed="true">页面感（默认）</button>
+  <button class="sw" data-d="max" aria-pressed="false">满幅（最激进）</button>
+  <span class="hint">窗口固定 1440×900 ｜ 切换只改装饰浓度，不改列数公式</span>
+</div>
+
+<div class="scroll">
+<div class="stack">
+
+  <div class="frame">
+    <div class="tb">
+      <span class="brand"><span class="mark"></span>Venera</span>
+      <span class="search"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索全部源或跳转到<span class="kbd">Ctrl K</span></span>
+      <span class="tbr">
+        <span class="lamp"><span class="dot"></span>禁漫天堂 · 213ms</span>
+        <span class="lamp"><svg aria-hidden="true"><use href="#i-refresh"/></svg>刷新</span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-min"/></svg></span>
+        <span class="cap"><svg aria-hidden="true"><use href="#i-max"/></svg></span>
+        <span class="cap x"><svg aria-hidden="true"><use href="#i-x"/></svg></span>
+      </span>
+    </div>
+
+    <div class="body">
+      <nav class="pane">
+        <div class="panehead">浏览</div>
+        <div class="nav sel"><svg aria-hidden="true"><use href="#i-home"/></svg>首页</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-compass"/></svg>探索</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-search"/></svg>搜索</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-heart"/></svg>收藏<span class="cnt">412</span></div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-clock"/></svg>历史<span class="cnt">89</span></div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-down"/></svg>下载<span class="cnt">3</span></div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-photo"/></svg>图库</div>
+        <div class="panehead" style="font-size:13px;height:30px">工作区</div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-cloud"/></svg>追更<span class="cnt">17</span></div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-src"/></svg>漫画源</div>
+        <div class="panefoot"><div><b>34 源</b> · 28 正常 · 2 失败</div><div style="margin-top:6px">源脚本 00:41 前更新</div></div>
+        <div class="nav"><svg aria-hidden="true"><use href="#i-set"/></svg>设置</div>
+      </nav>
+
+      <div class="main">
+        <div class="page">
+          <div class="phead">
+            <span class="pt">首页</span>
+            <span class="seg"><i class="on">推荐</i><i>最近更新</i><i>本地</i></span>
+            <span class="right"><span class="btn sm">换一批</span><span class="btn ghost sm">···</span></span>
+          </div>
+
+          <!-- HERO 分格 -->
+          <div class="hero">
+            <div class="panel pa">
+              <div class="art a"></div>
+              <div class="art speed deco blk" style="opacity:.5"></div>
+              <div class="cap-in">
+                <div class="kicker deco blk">今週の推し · 编辑精选</div>
+                <div class="big" style="margin-top:6px">无声雷鸣</div>
+                <div class="meta">动作 · 全 210 话 · 9.4 分 · 禁漫天堂</div>
+                <div class="acts"><span class="btn acc"><svg aria-hidden="true"><use href="#i-play"/></svg>开始阅读</span><span class="btn">收藏</span></div>
+              </div>
+              <span class="sticker deco" style="right:14px;top:14px;transform:rotate(6deg)">新番</span>
+            </div>
+
+            <div class="panel pb">
+              <div class="art halftone deco blk"></div>
+              <div class="in">
+                <div class="furi deco blk">よむ・つきひ</div>
+                <div class="big" style="margin-top:4px">夜行列车<br>与无名站</div>
+                <div class="sub">第 12 话 · 读至 8/104 页</div>
+              </div>
+              <span class="sticker cy deco" style="left:58%;bottom:-12px;transform:rotate(-8deg)">续读</span>
+            </div>
+
+            <div class="panel pc">
+              <div class="art b"></div>
+              <div class="art halftone deco blk" style="opacity:.35"></div>
+              <div class="mid deco grid"><span class="vert">本地书架 46 部</span></div>
+            </div>
+
+            <div class="panel pd">
+              <div class="art c"></div>
+              <div class="in"><div class="lab">本周新到</div><div class="big" style="font-size:22px">17 话</div></div>
+              <span class="sticker gd deco" style="right:10px;top:10px;transform:rotate(-4deg)">追更</span>
+            </div>
+          </div>
+
+          <!-- 继续阅读 -->
+          <div class="sec-read">
+            <div class="sechead"><h4>继续阅读</h4><span class="more">全部历史 ›</span></div>
+            <div class="strip">
+              <div class="hcard t1">
+                <div class="thumb" style="background:var(--d)"></div>
+                <div class="txt">
+                  <div class="t">夜行列车与无名站</div>
+                  <div class="m">第 12 话 · 读至 8/104 页</div>
+                  <div class="m">禁漫天堂 · 昨天 22:14</div>
+                  <span class="btn acc sm" style="margin-top:auto;align-self:flex-start">继续读</span>
+                </div>
+                <span class="prog skew"><i style="width:7%"></i></span>
+              </div>
+              <div class="hcard t2">
+                <div class="thumb" style="background:var(--e)"></div>
+                <div class="txt">
+                  <div class="t">第七个夏天的约定</div>
+                  <div class="m">第 3 卷 · 读至 62/188 页</div>
+                  <div class="m">拷贝漫画 · 今天 09:02</div>
+                </div>
+                <span class="prog skew"><i style="width:33%"></i></span>
+              </div>
+              <div class="hcard t3">
+                <div class="thumb" style="background:var(--f)"></div>
+                <div class="txt">
+                  <div class="t">钢与盐的编年史</div>
+                  <div class="m">第 41 话 · 读至 19/24 页</div>
+                  <div class="m">禁漫天堂 · 3 天前</div>
+                </div>
+                <span class="prog skew"><i style="width:79%"></i></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 统计贴纸 -->
+          <div class="stat">
+            <div><div class="v">128</div><div class="l">今日页数</div></div>
+            <div><div class="v">640</div><div class="l">本周累计</div></div>
+            <div><div class="v">9</div><div class="l">连续天数</div></div>
+            <div class="bars"><i style="height:10px"></i><i style="height:18px"></i><i style="height:7px"></i><i style="height:22px"></i><i style="height:14px"></i><i style="height:26px"></i><i style="height:12px"></i><i style="height:20px"></i><i style="height:9px"></i><i style="height:24px"></i><i style="height:16px"></i><i style="height:28px"></i><i style="height:11px"></i><i style="height:19px"></i></div>
+            <span class="btn ghost sm" style="margin-left:auto">统计详情</span>
+          </div>
+
+          <!-- 推荐墙 -->
+          <div>
+            <div class="sechead"><h4>可能你感兴趣</h4><span class="furi deco blk">おすゝめ</span><span class="btn sm" style="margin-left:auto">换一批</span></div>
+            <div class="wall">
+              <div class="tile wide focus">
+                <div class="cover" style="background:var(--a)">
+                  <div class="reveal"><span class="btn acc sm">阅读</span><span class="btn sm fix"><svg aria-hidden="true"><use href="#i-heart"/></svg></span><span class="btn sm fix"><svg aria-hidden="true"><use href="#i-down"/></svg></span></div>
+                </div>
+                <div class="tt">雾港守夜人</div><div class="tm">奇幻 · 全 38 话 · 9.1</div>
+              </div>
+              <div class="tile rt1"><div class="cover" style="background:var(--b)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">海渊图书馆</div><div class="tm">悬疑 · 更新中 · 8.6</div></div>
+              <div class="tile"><div class="cover" style="background:var(--c)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">甜苦循环</div><div class="tm">日常 · 12 话 · 7.9</div></div>
+              <div class="tile rt2"><div class="cover" style="background:var(--d)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">轨道尽头的城</div><div class="tm">科幻 · 完结 · 8.2</div></div>
+              <div class="tile off"><div class="cover" style="background:var(--e)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">炉边闲话</div><div class="tm">四格 · 更新中 · 7.4</div></div>
+              <div class="tile"><div class="cover" style="background:var(--f)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">白噪声电台</div><div class="tm">都市 · 31 话 · 8.0</div></div>
+              <div class="tile rt1"><div class="cover" style="background:var(--a)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">拾光修理铺</div><div class="tm">治愈 · 更新中 · 8.8</div></div>
+              <div class="tile"><div class="cover" style="background:var(--c)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">长夏失眠</div><div class="tm">恋爱 · 18 话 · 7.6</div></div>
+              <div class="tile rt2"><div class="cover" style="background:var(--b)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">铁锈与潮汐</div><div class="tm">冒险 · 完结 · 9.0</div></div>
+              <div class="tile"><div class="cover" style="background:var(--d)"><div class="reveal"><span class="btn acc sm">阅读</span></div></div><div class="tt">无声雷鸣</div><div class="tm">动作 · 全 210 话 · 9.4</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="status">
+          <span>本地漫画：共 46 部 · 已扫描</span><span>下载任务：3 个进行中</span>
+          <span class="r"><span>代理 127.0.0.1:7890</span><span>可用更新 Venera-2.1.0-windows.exe</span><span class="kbd">Ctrl K</span></span>
+        </div>
+      </div>
+
+      <aside class="detail">
+        <div class="dh">
+          <div style="width:100px;height:133px;border-radius:6px;background:var(--b);flex:0 0 100px"></div>
+          <div style="min-width:0">
+            <div style="font-size:16px;font-weight:600">海渊图书馆</div>
+            <div style="font-size:12.5px;color:var(--t3);margin-top:2px">海崎あかり · 拷贝漫画</div>
+            <div style="font-size:12.5px;color:var(--t3)">悬疑 · 更新中 · 132 话</div>
+            <div class="chips"><span class="chip">深海</span><span class="chip">单元剧</span><span class="chip acc">9.1 分</span></div>
+          </div>
+        </div>
+        <div class="dbody">
+          <p>沉入海沟的图书馆每百年开放一次，管理员要替读者取回他们生前没读完的那一本。</p>
+          <div style="display:flex;gap:8px"><span class="btn acc" style="flex:1;justify-content:center">开始阅读</span><span class="btn">收藏</span><span class="btn">下载</span></div>
+          <div><div class="lab">章节</div>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <div class="chap"><span class="no">130</span>潜水的频率<span class="rd">已读</span></div>
+              <div class="chap cur"><span class="no">131</span>回声室的钥匙</div>
+              <div class="chap"><span class="no">132</span>借书卡上的名字<span class="rd n">新</span></div>
+              <div class="chap"><span class="no">133</span>潮线以下<span class="rd s">预告</span></div>
+            </div>
+          </div>
+          <div><div class="lab">因为你也读过这些</div>
+            <div class="simil"><div style="aspect-ratio:3/4;border-radius:5px;background:var(--a)"></div><div style="aspect-ratio:3/4;border-radius:5px;background:var(--d)"></div><div style="aspect-ratio:3/4;border-radius:5px;background:var(--b)"></div><div style="aspect-ratio:3/4;border-radius:5px;background:var(--e)"></div></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>大胆的部位只有一处：hero 与阅读痕迹；网格被破的是节奏，不是列数公式</h2>
+    <div class="legend">
+      <span><span class="num">1</span>hero 用不规则分格：大格斜切并出血压过侧栏 24（满幅档 48），字格被封面角遮住一角——这才是"穿插"，不是"叠了两张卡"。</span>
+      <span><span class="num">2</span>继续阅读首卡放大 1.35 倍并向上咬进 hero 14，后两张依次下移 18/30；非对称来自错位，不来自随机。</span>
+      <span><span class="num">3</span>统计条是旋转 −3° 的贴纸，横跨两区交界，是全页唯一浮在网格之上的数据件。</span>
+      <span><span class="num">4</span>推荐墙仍 5 列、每列 200 预算照本仓公式；破格只用"首格跨 2 列 16:10 + 交替左边距"表达。</span>
+      <span><span class="num">5</span>漫画语汇四件：分格硬描边（满幅档 3px）、网点底纹、速度线、贴纸标签（新番/续读/追更）。</span>
+      <span><span class="num">6</span>强调双色固定在品红 #FF5FA2 与青 #4DE1F1，只用于贴纸与 kicker；中性 surface 阶梯一分未动——这是"仍像 Windows 应用"的锚。</span>
+    </div>
+
+    <h3>哪里允许破，哪里必须不破</h3>
+    <table>
+      <tr><th>部位</th><th>判定</th><th>理由</th></tr>
+      <tr><td>hero / 编辑位 / 装饰层</td><td class="yes">可破：出血、斜切、旋转、重叠、竖排大字</td><td>纯展示，不承载精确对齐，错了也只是难看</td></tr>
+      <tr><td>封面墙列数</td><td class="no">不可破：每列 200 预算与取整方向照本仓公式</td><td>列数是"只许加不许减"的量，且直接决定卡片尺寸</td></tr>
+      <tr><td>侧栏导航</td><td class="no">不可破：40 高 / 224 宽 / 选中指示条</td><td>键盘焦点顺序与读屏依赖它</td></tr>
+      <tr><td>正文与元信息</td><td class="no">不可破：不旋转、不上渐变字、行高不动</td><td>旋转与描边会吃掉对比度，中文尤其明显</td></tr>
+      <tr><td>浮层（菜单 / Tooltip / 详情）</td><td class="warn">不可破：实底、直角 4、无网点</td><td>系统玻璃采不到独立窗口，装饰叠加只会更糊</td></tr>
+      <tr><td>状态栏 / 标题栏</td><td class="no">不可破：24 / 40 高，caption 46×32</td><td>Windows 识别度来自这里，不是来自 hero</td></tr>
+    </table>
+
+    <h3>代价与待量</h3>
+    <div class="legend">
+      <span><b>实现成本上移</b>：分格描边、clip-path 斜切、旋转贴纸、竖排大字全在 compose-fluent 覆盖范围之外，只能自绘；满幅档比克制档多约 6 类私有部件。</span>
+      <span><b>渲染开销未量</b>：桌面是 skiko 光栅，clip-path 与 mask 会触发离屏合成；网点与速度线若常驻底纹，滚动帧时间要实测，量不过就退克制档，不许默认开着。</span>
+      <span><b>必须能一键关</b>：设置项「页面感装饰」三档，默认页面感；窗口宽 &lt; 1280 强制回落克制档——出血与重叠在窄窗会互相压字。</span>
+      <span><b>与手机档分叉变大</b>：分格与贴纸是桌面版式语言，Android 不跟；同源的仍只有列数公式、断点定义、种子色链路三件。</span>
+      <span><b>几何只校过一档</b>：出血 24/48 与错位 14/18/30 目前只在 1440 校过，1280 与 1920 两档要各看一眼。渲染实测另有一条：<b>满幅档 hero 高 470，推荐墙会整块掉到折叠以下</b>，所以满幅只能当"展示档"，不能当默认档。</span>
+      <span><b>假名点缀只两处</b>（kicker 与 furi），且随装饰开关一起关。</span>
+    </div>
+
+    <h3>交付前检查单</h3>
+    <div class="tags">
+      <span class="tg ok">装饰层 aria-hidden，读屏只念标题与元信息</span>
+      <span class="tg ok">正文对比度 ≥ 4.5:1（#E4E4E4 / #202020）</span>
+      <span class="tg ok">旋转只用于贴纸与卡片外框，文字不旋转</span>
+      <span class="tg ok">prefers-reduced-motion 已接</span>
+      <span class="tg ok">hover 不引起位移（动作条仍是封面覆盖条）</span>
+      <span class="tg wa">满幅档 hero 在 1280 宽会遮住继续阅读首卡，需自动降档</span>
+      <span class="tg wa">窄窗下贴纸的硬阴影会与相邻文字叠色</span>
+    </div>
+
+    <p style="margin-top:14px">配套：同目录 <span class="mono">windows-home-fluent-2026-10-03.html</span> 是规则底稿（"克制"档的等价物）。本稿封面与作品名均为占位色块与虚构标题，不是素材也不是版权内容。</p>
+  </div>
+
+</div>
+</div>
+
+<script>
+  const btns = document.querySelectorAll('.sw');
+  function setDensity(d, updateHash) {
+    if (d !== 'calm' && d !== 'page' && d !== 'max') d = 'page';
+    document.body.dataset.density = d;
+    btns.forEach(function (o) { o.setAttribute('aria-pressed', String(o.dataset.d === d)); });
+    if (updateHash) history.replaceState(null, '', '#' + d);
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () { setDensity(b.dataset.d, true); }); });
+  // 支持 #calm / #page / #max 深链，便于把某一档直接发给别人看
+  setDensity((location.hash || '').replace('#', ''), false);
+</script>
+</body>
+</html>

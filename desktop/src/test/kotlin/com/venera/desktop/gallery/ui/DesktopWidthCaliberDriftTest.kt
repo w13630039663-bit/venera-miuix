@@ -69,18 +69,41 @@ class DesktopWidthCaliberDriftTest {
         }
     }
 
+    /**
+     * 列数读数：**1440 档 6 列**（当前默认窗，稿 `.frame` 尺寸）、1080 档 4 列、1280 档 5 列。
+     *
+     * ## 为什么 1440 是 6 而不是稿上画的那个 5
+     *
+     * 权威稿 `docs/designs/windows-gallery-home-touhou-2026-10-03.html:338` 与 `:657` 两处**逐字**写着
+     * 「内容净宽 **1168** → **6 列**」。核算：`1440 − 48 − 224 = 1168`（正是稿标的净宽）
+     * → `1168 − 24 = 1144` → `ceil(1144/200) = 6`，三步全对。
+     *
+     * 而稿上 `.wall{grid-template-columns:repeat(5,minmax(0,1fr))}`（`:184`）那个 5 是
+     * **展示稿的硬编码摆位**，不是推导产物 —— CSS Grid 画板要的是"看起来对"，生产要的是"公式对"。
+     * 本仓的立场就写在这颗用例的名字里（`桌面侧每颗字面量只有唯一出处`）：**推导不许抄展示稿**。
+     * 所以 6 列是正解，不是偏差。
+     */
     @Test
-    fun `默认 1080 窗口是 4 列 不是稿上的 5`() {
-        val windowWidth = 1080f
-        val contentWidth = windowWidth - DesktopGalleryMetrics.railWidth.value - DesktopGalleryMetrics.paneWidth.value
-        assertEquals("默认档窗口扣掉 rail 48 与 pane 224 之后是 808", 808f, contentWidth, 0.001f)
+    fun `列数逐档钉死 1440 是 6 列 都不许照展示稿的 5 抄`() {
+        val w1440 = 1440f
+        val c1440 = w1440 - DesktopGalleryMetrics.railWidth.value - DesktopGalleryMetrics.paneWidth.value
         assertEquals(
-            "1080 − 48 − 224 = 808，再扣横向内边距 24 = 784，ceil(784/200) = 4 —— 列数不许照设计稿抄 5",
-            4,
-            DesktopGalleryMetrics.imageWallColumnCount(contentWidth),
+            "1440 − 48 − 224 = 1168（与稿 :338/:657 标注的「内容净宽 1168」同值）",
+            1168f, c1440, 0.001f,
         )
-        // 5 列有它的出处，但那是**更宽的窗**：1280 − 48 − 224 = 1008，(1008−24)/200 = 4.92 → 5。
-        // 记在这里是为了"稿上画 5 列"与"默认档算 4 列"这两件事不再被人当成矛盾。
+        assertEquals(
+            "1440 档：1168 − 24 = 1144，ceil(1144/200) = 6 —— 展示稿那个 repeat(5) 是画板摆位，不是口径",
+            6, DesktopGalleryMetrics.imageWallColumnCount(c1440),
+        )
+
+        // 1080 仍是有效档（窗口可缩放），它的 4 列由**同一条公式**得出，不是另一把尺。
+        val c1080 = 1080f - DesktopGalleryMetrics.railWidth.value - DesktopGalleryMetrics.paneWidth.value
+        assertEquals("1080 − 48 − 224 = 808", 808f, c1080, 0.001f)
+        assertEquals(
+            "1080 档：808 − 24 = 784，ceil(784/200) = 4",
+            4, DesktopGalleryMetrics.imageWallColumnCount(c1080),
+        )
+        // 1280 是 5 列那一档，记在这里是为了"某天有人把默认窗改回 1280"时不必重新推一遍。
         assertEquals(5, DesktopGalleryMetrics.imageWallColumnCount(1280f - 48f - 224f))
         // 极窄窗的下限来自 Android 原式的 coerceAtLeast(3)，不是桌面另定的一档。
         assertEquals(3, DesktopGalleryMetrics.imageWallColumnCount(300f))
