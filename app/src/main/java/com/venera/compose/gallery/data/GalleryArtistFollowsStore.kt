@@ -1,6 +1,6 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
+import com.venera.compose.data.platform.PathProvider
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import java.io.File
@@ -44,9 +44,9 @@ private data class ArtistFollowEntry(
  * - 解不开时**先把原文件改名留档**（`*.corrupt-<时间戳>`）再开空档，并通过 [notice] 说一句
  *   —— 直接覆盖等于把用户攒的名单删了。
  */
-class GalleryArtistFollowsStore private constructor(private val context: Context) {
+class GalleryArtistFollowsStore internal constructor(private val paths: PathProvider) {
 
-    private val file = File(context.filesDir, FILE_NAME)
+    private val file = File(paths.dataRoot, FILE_NAME)
 
     private val _follows = MutableStateFlow<List<GalleryArtistFollow>>(emptyList())
 
@@ -149,8 +149,8 @@ class GalleryArtistFollowsStore private constructor(private val context: Context
         @Volatile
         private var instance: GalleryArtistFollowsStore? = null
 
-        fun getInstance(context: Context): GalleryArtistFollowsStore = instance ?: synchronized(this) {
-            instance ?: GalleryArtistFollowsStore(context.applicationContext).also { instance = it }
+        fun getInstance(paths: PathProvider): GalleryArtistFollowsStore = instance ?: synchronized(this) {
+            instance ?: GalleryArtistFollowsStore(paths).also { instance = it }
         }
     }
 }

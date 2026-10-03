@@ -1,8 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.NoInteractiveBypassTag
+import com.venera.compose.data.platform.HttpEngine
 import com.venera.compose.gallery.domain.GalleryAvatarEndpointKind
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
 import java.io.IOException
@@ -29,9 +28,7 @@ import okhttp3.Request
  * 一台量不准的留档：`baraag.net` 的 TLS 握手从**本机出口**（含代理）直接失败，`pawoo.net` 通。
  * 两家是同一套 Mastodon API，所以这里不按实例分叉；baraag 通不通要在真机上再看一次。
  */
-class GalleryArtistProbeClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class GalleryArtistProbeClient internal constructor(private val engine: HttpEngine) {
 
     /** 端点对应的那张头像地址。null = 站方答上了但没有可用头像（调用方换首字母座）。 */
     suspend fun avatarUrl(endpoint: GalleryAvatarProbeEndpoint): Result<String?> = withContext(Dispatchers.IO) {
@@ -50,7 +47,7 @@ class GalleryArtistProbeClient private constructor(context: Context) {
             .header("Accept", "application/json")
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
         endpoint.origin?.let { builder.header("Origin", it) }
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException("${endpoint.kind} 返回 ${response.code}")
@@ -62,8 +59,8 @@ class GalleryArtistProbeClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: GalleryArtistProbeClient? = null
 
-        fun getInstance(context: Context): GalleryArtistProbeClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: GalleryArtistProbeClient(context.applicationContext).also { INSTANCE = it }
+        fun getInstance(engine: HttpEngine): GalleryArtistProbeClient = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: GalleryArtistProbeClient(engine).also { INSTANCE = it }
         }
     }
 }

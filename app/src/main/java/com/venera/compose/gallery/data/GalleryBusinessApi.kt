@@ -1,16 +1,13 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.data.platform.KeyValueStore
-import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
 import com.venera.compose.gallery.domain.GalleryTitleTag
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 画廊侧的**业务 API 契约**（B7' / D1 的「状态类」那一半），接线也在这一颗。
+ * 画廊侧的**业务 API 契约**（B7' / D1 的「状态类」那一半）。
  *
  * 为什么不并进漫画侧 `data/api/`：隔离口径要求画廊各侧自持，让 `gallery/ui` 去 import 漫画侧的
  * 业务口会把「屏蔽口径、分级模式」这些只读共享重新绑回一个发布者。为什么不写进 `GalleryPorts.kt`：
@@ -20,6 +17,12 @@ import kotlinx.coroutines.flow.StateFlow
  * 宽度一律按**消费面实数**（复算 `_qa/b7-recon.mjs`），没一枚是为「看起来完整」加的。
  * 适配器全部**不在构造里调 `getInstance`**（成员体里现取），于是「第一次真正用到才建那颗单例」的
  * 时机与改造前逐点相同 —— 与 `AndroidBusinessPorts.kt` 从头守到尾的是同一条纪律。
+ *
+ * ## 这颗文件一句平台类型都没有
+ *
+ * 原先「契约在上、接线在下」同处一颗，`Context` 把整颗钉死在 Android 面；S1 把下面那十三颗
+ * 搬进 `android/GalleryAdaptersAndroid.kt` 后，这颗只剩 `StateFlow` + `Result` + 本仓数据模型，
+ * 于是它是桌面编译面的一部分（`:desktop` 排掉 android 子目录就拿到了契约、没拿到接线）。
  */
 
 /** 画廊图片收藏。`clear()`（整表）与 `removeAll()`（按 uid）是两条不同的路。 */
@@ -97,61 +100,9 @@ interface GalleryStoreFactory {
     fun open(name: String): KeyValueStore
 }
 
-// ─────────────────────────── Android 接线 ───────────────────────────
-
-internal class AndroidGalleryFavorites(private val context: Context) : GalleryFavorites {
-
-    private val store: GalleryFavoritesStore get() = GalleryFavoritesStore.getInstance(context)
-
-    override val favorites: StateFlow<List<GalleryFavorite>> get() = store.favorites
-    override suspend fun toggle(post: GalleryPost): Boolean = store.toggle(post)
-    override suspend fun removeAll(uids: Collection<String>) = store.removeAll(uids)
-    override suspend fun clear() = store.clear()
-    override fun consumeNotice(): String? = store.consumeNotice()
-}
-
-internal class AndroidGalleryArtistFollows(private val context: Context) : GalleryArtistFollows {
-
-    private val store: GalleryArtistFollowsStore get() = GalleryArtistFollowsStore.getInstance(context)
-
-    override val follows: StateFlow<List<GalleryArtistFollow>> get() = store.follows
-    override suspend fun toggle(site: GallerySite, name: String): Boolean = store.toggle(site, name)
-    override fun consumeNotice(): String? = store.consumeNotice()
-}
-
-internal class AndroidGalleryArtistAvatars(private val context: Context) : GalleryArtistAvatars {
-
-    private val store: GalleryArtistAvatarStore get() = GalleryArtistAvatarStore.getInstance(context)
-
-    override fun peek(site: GallerySite, name: String, source: String): String? = store.peek(site, name, source)
-    override suspend fun remember(site: GallerySite, name: String, source: String, avatar: String?) =
-        store.remember(site, name, source, avatar)
-}
-
-internal class AndroidGalleryTagLexicon(private val context: Context) : GalleryTagLexicon {
-
-    private val dictionary: GalleryTagDictionary get() = GalleryTagDictionary.getInstance(context)
-    private val categories: GalleryTagCategories get() = GalleryTagCategories.getInstance(context)
-
-    override suspend fun artistNames(names: List<String>): Set<String> = dictionary.artistNames(names)
-    override suspend fun translations(names: List<String>): Map<String, String> = dictionary.translations(names)
-    override suspend fun fetchTagCategories(pageUrl: String): Map<String, Int>? = categories.fetch(pageUrl)
-    override suspend fun titleTags(names: List<String>): Map<String, GalleryTitleTag>? =
-        dictionary.titleTags(names)
-}
-
-internal class AndroidGalleryCredentials(private val context: Context) : GalleryCredentials {
-
-    private val gelbooru: GelbooruAccount get() = GelbooruAccount.getInstance(context)
-    private val sauceNao: SauceNaoAccount get() = SauceNaoAccount.getInstance(context)
-
-    override val gelbooruIdentity: StateFlow<GelbooruIdentity?> get() = gelbooru.identity
-    override val sauceNaoHasKey: StateFlow<Boolean> get() = sauceNao.hasKey
-}
-
-internal class AndroidGalleryStoreFactory(private val context: Context) : GalleryStoreFactory {
-    override fun open(name: String): KeyValueStore = AndroidKeyValueStore(context, name)
-}
+// 十三颗 `Android*` 适配器不住在这颗文件里，住在 `android/GalleryAdaptersAndroid.kt`。
+// 搬出去的唯一原因是构造参数 `Context`：契约面一句平台类型都没有，可以进桌面编译面，
+// 而 `android/` 子目录被 `:desktop` 的全局排除挡在外面。包名不变 ⇒ 同包构造点无需 import。
 
 // ─────────────────────────── D1b：站点侧 ───────────────────────────
 
@@ -182,13 +133,36 @@ interface YandeReBoard : BoardSource {
     suspend fun artistLinks(name: String): Result<List<String>>
 
     suspend fun resolveArtistAlias(name: String): Result<String?>
+
+    /**
+     * 昨日日榜（桌面首页「今日推荐」那一格取的正是它）。
+     *
+     * 只住在 `YandeReClient`（那颗的 `fetchDailyPopular`），Gelbooru/Safebooru 两站**没有**对应接口，
+     * 所以它进 yande.re 的专属窄口而不是公共 `BoardSource` —— 进公共口就等于逼那两站的适配器
+     * 写一枚"永远失败"的假实现，而假实现是本仓最忌的静默交错。
+     */
+    suspend fun fetchDailyPopular(): Result<List<GalleryPost>>
+}
+
+/**
+ * 「这一站有按分数排的墙」—— 只有两站有（`GelbooruClient` / `SafebooruClient` 的 `fetchTopScored`），
+ * `YandeReClient` **没有**，所以它不进公共 [BoardSource]（理由同 [YandeReBoard.fetchDailyPopular]，
+ * 方向相反：那里是 yande.re 独有，这里是另两站独有）。
+ *
+ * 收窄 [GalleryBoards] 那两枚的声明类型对既有调用方**源码兼容**：子类型只加成员、不减成员，
+ * 原先按 `BoardSource` 用它们的 `when(site)` 表一行都不用改。
+ */
+interface ScoredBoard : BoardSource {
+
+    /** 一次给多少条由实现侧那枚 `POOL_SIZE` 定，契约不兜默认（口径同 [BoardSource.searchPosts]）。 */
+    suspend fun fetchTopScored(): Result<List<GalleryPost>>
 }
 
 interface GalleryBoards {
 
     val yandere: YandeReBoard
-    val gelbooru: BoardSource
-    val safebooru: BoardSource
+    val gelbooru: ScoredBoard
+    val safebooru: ScoredBoard
 }
 
 /** 画师出处与头像：三颗客户端的取用面合成一颗（成员名带站点前缀，因为两站都叫 `avatarUrl`）。 */
@@ -234,72 +208,4 @@ interface GalleryReverseSearch {
 interface GalleryNetworkHygiene {
 
     fun resetAllSiteBreakers()
-}
-
-internal class AndroidGelbooruBoard(private val context: Context) : BoardSource {
-    private val client: GelbooruClient get() = GelbooruClient.getInstance(context)
-    override val pageSize: Int get() = GelbooruClient.POOL_SIZE
-    override suspend fun searchPosts(tags: String, page: Int, limit: Int) = client.searchPosts(tags, page, limit)
-    override suspend fun searchTags(term: String) = client.searchTags(term)
-    override suspend fun fetchById(id: Long) = client.fetchById(id)
-}
-
-internal class AndroidSafebooruBoard(private val context: Context) : BoardSource {
-    private val client: SafebooruClient get() = SafebooruClient.getInstance(context)
-    override val pageSize: Int get() = SafebooruClient.POOL_SIZE
-    override suspend fun searchPosts(tags: String, page: Int, limit: Int) = client.searchPosts(tags, page, limit)
-    override suspend fun searchTags(term: String) = client.searchTags(term)
-    override suspend fun fetchById(id: Long) = client.fetchById(id)
-}
-
-internal class AndroidYandeReBoard(private val context: Context) : YandeReBoard {
-    private val client: YandeReClient get() = YandeReClient.getInstance(context)
-    override val pageSize: Int get() = YandeReClient.SEARCH_PAGE_SIZE
-    override suspend fun searchPosts(tags: String, page: Int, limit: Int) = client.searchPosts(tags, page, limit)
-    override suspend fun searchTags(term: String) = client.searchTags(term)
-    override suspend fun fetchById(id: Long) = client.fetchById(id)
-    override suspend fun artistLinks(name: String) = client.artistLinks(name)
-    override suspend fun resolveArtistAlias(name: String) = client.resolveArtistAlias(name)
-}
-
-internal class AndroidGalleryBoards(private val context: Context) : GalleryBoards {
-    override val yandere: YandeReBoard by lazy { AndroidYandeReBoard(context) }
-    override val gelbooru: BoardSource by lazy { AndroidGelbooruBoard(context) }
-    override val safebooru: BoardSource by lazy { AndroidSafebooruBoard(context) }
-}
-
-internal class AndroidGalleryArtistDirectory(private val context: Context) : GalleryArtistDirectory {
-
-    private val danbooru: DanbooruArtistClient get() = DanbooruArtistClient.getInstance(context)
-    private val pixiv: PixivClient get() = PixivClient.getInstance(context)
-    private val probe: GalleryArtistProbeClient get() = GalleryArtistProbeClient.getInstance(context)
-
-    override suspend fun danbooruArtistUrls(name: String) = danbooru.artistUrls(name)
-    override suspend fun danbooruArtistCredits(name: String) = danbooru.artistCredits(name)
-    override suspend fun pixivArtworkAuthor(illustId: Long) = pixiv.artworkAuthor(illustId)
-    override suspend fun pixivAvatarUrl(userId: Long) = pixiv.avatarUrl(userId)
-    override suspend fun probeAvatarUrl(endpoint: GalleryAvatarProbeEndpoint) = probe.avatarUrl(endpoint)
-}
-
-internal class AndroidGalleryReverseSearch(private val context: Context) : GalleryReverseSearch {
-
-    private val client: SauceNaoClient get() = SauceNaoClient.getInstance(context)
-
-    override val maxResults: Int get() = SauceNaoClient.SAUCE_NUM_RESULTS
-
-    override suspend fun searchByFile(
-        bytes: ByteArray,
-        fileName: String,
-        mimeType: String,
-        allowNsfw: Boolean,
-    ): SauceNaoPage = client.searchByFile(bytes, fileName, mimeType, allowNsfw)
-
-    override suspend fun searchByUrl(imageUrl: String, allowNsfw: Boolean): SauceNaoPage =
-        client.searchByUrl(imageUrl, allowNsfw)
-}
-
-internal class AndroidGalleryNetworkHygiene(private val context: Context) : GalleryNetworkHygiene {
-    override fun resetAllSiteBreakers() {
-        GallerySite.entries.forEach { HostCircuitBreaker.reset(it.apiHost) }
-    }
 }

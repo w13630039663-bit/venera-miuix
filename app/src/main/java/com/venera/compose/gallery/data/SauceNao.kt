@@ -1,8 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.UserAgentPolicy
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.UserAgentStrings
+import com.venera.compose.data.platform.HttpEngine
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -255,6 +254,12 @@ private val IMAGE_ONLY_HOSTS = setOf(
 internal fun preferredExternalUrl(extUrls: List<String>): String? =
     extUrls.firstOrNull { !isDirectImageUrl(it) } ?: extUrls.firstOrNull()
 
+/** 反搜只要一枚可选的 key，所以这里只给这一枚（与 [GelbooruCredentials] 同一手法，理由也相同）。 */
+interface SauceNaoCredentials {
+    val apiKey: String
+}
+
+
 /**
  * SauceNAO 读侧客户端。两种喂法，同一个解析出口：
  *
@@ -273,11 +278,10 @@ internal fun preferredExternalUrl(extUrls: List<String>): String? =
  *   Cloudflare 交互挑战后面，豁免过盾就等于这个功能永远 403。理由与风险见 [request] 那段。
  * - `hide` 与解析期的 hidden 过滤**两道都要**（见 [parseSauceNao] 第 3 点）。
  */
-class SauceNaoClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
-
-    private val account get() = SauceNaoAccount.getInstance(appContext)
+class SauceNaoClient internal constructor(
+    private val engine: HttpEngine,
+    private val credentials: SauceNaoCredentials,
+) {
 
     /** 用一张已经在网上的图去反搜。 */
     suspend fun searchByUrl(imageUrl: String, allowNsfw: Boolean): SauceNaoPage {
@@ -306,13 +310,13 @@ class SauceNaoClient private constructor(context: Context) {
                 fileName.ifBlank { "image.jpg" },
                 bytes.toRequestBody(mimeType.toMediaType()),
             )
-        account.apiKey.takeIf { it.isNotBlank() }
+        credentials.apiKey.takeIf { it.isNotBlank() }
             ?.let { builder.addFormDataPart("api_key", it) }
         return parseSauceNao(postBody(builder.build()), allowNsfw)
     }
 
     private fun keyParameter(): String {
-        val key = account.apiKey
+        val key = credentials.apiKey
         return if (key.isBlank()) "" else "&api_key=${URLEncoder.encode(key, "UTF-8")}"
     }
 
@@ -325,7 +329,7 @@ class SauceNaoClient private constructor(context: Context) {
     private fun request(url: String): Request.Builder = Request.Builder()
         .url(url)
         .header("Accept", "application/json")
-        .header("User-Agent", UserAgentPolicy.DEFAULT_USER_AGENT)
+        .header("User-Agent", UserAgentStrings.DEFAULT_USER_AGENT)
     // ⚠️ 这里**刻意不打** [NoInteractiveBypassTag]，与画廊日榜那一路相反 —— 2026-09-27 实测：
     // saucenao.com 挂在 Cloudflare 交互挑战后面，三种 UA（移动端 Chrome 串 / 应用串 / 不带 UA）
     // 全部 403 + `server: cloudflare` + body 是 "Just a moment..."。
@@ -347,7 +351,7 @@ class SauceNaoClient private constructor(context: Context) {
      */
     private fun execute(request: Request): String {
         val response = try {
-            VeneraNetworkClient.getInstance(appContext).okHttpClient
+            engine.okHttpClient
                 .newCall(request).execute()
         } catch (e: IOException) {
             throw SauceNaoException("连不上 SauceNAO：${e.message ?: e.javaClass.simpleName}")
@@ -378,8 +382,9 @@ class SauceNaoClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: SauceNaoClient? = null
 
-        fun getInstance(context: Context): SauceNaoClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: SauceNaoClient(context.applicationContext).also { INSTANCE = it }
-        }
+        fun getInstance(engine: HttpEngine, credentials: SauceNaoCredentials): SauceNaoClient =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: SauceNaoClient(engine, credentials).also { INSTANCE = it }
+            }
     }
 }

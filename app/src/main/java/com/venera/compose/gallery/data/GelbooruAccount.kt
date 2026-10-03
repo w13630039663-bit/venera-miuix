@@ -49,7 +49,7 @@ import okhttp3.Request
  * 凭据只落在本机 SharedPreferences，注销即删；**不写日志、不进任何提示文案**
  * （提示里只说"凭据没被接受"，从不回显 key 或 id）。
  */
-class GelbooruAccount private constructor(context: Context) {
+class GelbooruAccount private constructor(context: Context) : GelbooruCredentials {
 
     private val appContext = context.applicationContext
 
@@ -77,10 +77,10 @@ class GelbooruAccount private constructor(context: Context) {
      * ⚠️ 只给 [GelbooruClient] 拼 query 用，**不要**把它摆到任何界面或日志上。
      * 不是 private 是因为客户端在另一个类里，而这两个值要分别拼进 URL。
      */
-    val apiKey: String get() = prefs.getString(KEY_API_KEY, "").orEmpty()
+    override val apiKey: String get() = prefs.getString(KEY_API_KEY, "").orEmpty()
 
     /** 当前 User ID；没配时空串。 */
-    val userId: String get() = prefs.getString(KEY_USER_ID, "").orEmpty()
+    override val userId: String get() = prefs.getString(KEY_USER_ID, "").orEmpty()
 
     /**
      * 用一组凭据登录（**不落任何状态，除非站方点头**）。
@@ -202,12 +202,6 @@ class GelbooruAccount private constructor(context: Context) {
     }
 }
 
-/**
- * 站方确认过的身份。
- *
- * ⚠️ 只有一个字段 —— 因为 Gelbooru 的 DAPI **不告诉你"我是谁、什么等级"**
- * （没有 `/profile` 类端点，实测）。所以这里存的是**我们发出去的那个 user_id**，
- * 不是站方回给我们的身份。不要给它补 `name` / `level` 这类字段去"对齐"旧实现：
- * 那些值在这一站**取不到**，编一个出来会让界面显示假信息。
- */
-data class GelbooruIdentity(val userId: String)
+// `GelbooruIdentity` 住在 GelbooruClient.kt：`GalleryCredentials` 那颗契约的返回类型里有它，
+// 而契约要进桌面编译面、这颗 account 不上（它吃 `Context` 与 `AndroidKeyValueStore`）。
+// 同包移动，`feature/settings` 那几处的 import 一字未改。

@@ -109,24 +109,9 @@ object HostCircuitBreaker {
  */
 class ImageFetchTag
 
-/**
- * 打上这个 tag 的请求**不弹** Cloudflare 交互式过盾窗口，撞盾就原样失败。
- *
- * ⚠️ 与 [ImageFetchTag] 是**两件事**，别合并：
- * - [ImageFetchTag] = "图片取流"，同时关掉过盾**和**域名熔断（图片不该把 host 拉黑）；
- * - 本 tag = **只**关过盾，熔断照旧参与。
- *
- * 用途是画廊日榜那类"整屏等结果"的 API 流量（2026-09-26）：
- * 过盾是 `runBlocking { bypass() }` 等一个人机交互，而那个 `await()` 没有超时 ——
- * 用户若 Home 掉过盾窗口而不是点"取消"，取数线程会一直挂住，
- * 屏上就是永远的波浪环（OkHttp 的 callTimeout 关 socket 唤醒不了 parked 的线程）。
- * 但这类流量**仍然要参与熔断** —— 否则连续失败不会把 host 拉黑，
- * 「刷新 / 重试」的 `resetBreakers()` 也就没了对象。
- *
- * 所以：撞盾时直接失败并说一句话（代价是要手动重试），
- * 但"连不上"仍然走熔断快败（保住重试按钮的语义）。
- */
-class NoInteractiveBypassTag
+// NoInteractiveBypassTag 的定义已搬进 com.venera.compose.data.platform.NoInteractiveBypassTag
+// （八颗画廊客户端要引它，而本文件所在的 data/network 是 Android 面）。读它的那侧在
+// CloudflareBypassInterceptor，语义一字未改。
 
 /**
  * 熔断拦截器：必须挂在拦截器链的**最外层**，

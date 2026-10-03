@@ -1,6 +1,6 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
+import com.venera.compose.data.platform.PathProvider
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -136,9 +136,9 @@ fun GalleryPost.toFavorite(): GalleryFavorite = GalleryFavorite(
  * **坏档不静默吞**：JSON 解不开时先把原文件改名留档（`*.corrupt-<时间戳>`）再开空档，
  * 并通过 [notice] 说一句。直接覆盖等于把用户攒的收藏删了。
  */
-class GalleryFavoritesStore private constructor(private val context: Context) {
+class GalleryFavoritesStore internal constructor(private val paths: PathProvider) {
 
-    private val file = File(context.filesDir, FILE_NAME)
+    private val file = File(paths.dataRoot, FILE_NAME)
 
     private val _favorites = MutableStateFlow<List<GalleryFavorite>>(emptyList())
     val favorites: StateFlow<List<GalleryFavorite>> = _favorites.asStateFlow()
@@ -276,8 +276,8 @@ class GalleryFavoritesStore private constructor(private val context: Context) {
         @Volatile
         private var instance: GalleryFavoritesStore? = null
 
-        fun getInstance(context: Context): GalleryFavoritesStore = instance ?: synchronized(this) {
-            instance ?: GalleryFavoritesStore(context.applicationContext).also { instance = it }
+        fun getInstance(paths: PathProvider): GalleryFavoritesStore = instance ?: synchronized(this) {
+            instance ?: GalleryFavoritesStore(paths).also { instance = it }
         }
     }
 }

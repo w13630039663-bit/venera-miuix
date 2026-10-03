@@ -1,9 +1,8 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.UserAgentPolicy
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.NoInteractiveBypassTag
+import com.venera.compose.data.platform.UserAgentStrings
+import com.venera.compose.data.platform.HttpEngine
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +15,33 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.Request
+
+/**
+ * 拼凭据用的最小面 —— 客户端只要这两枚串，不要 `GelbooruAccount` 那颗单例。
+ *
+ * 为什么要抽这一层：`GelbooruAccount` 本体是 Android 侧的（它自己建 `SharedPreferences`，
+ * 而设置页那三处 UI 直接拿它的 `identity` 流在渲染）。让客户端吃具体类就等于把客户端
+ * 一起钉在 Android 面；让 account 脱 Context 又必须动那三处 UI。所以两边各让一步：
+ * 客户端认这颗接口，account 实现它，UI 一行不动。
+ */
+interface GelbooruCredentials {
+    val userId: String
+    val apiKey: String
+}
+
+/**
+ * 站方确认过的身份。
+ *
+ * ⚠️ 只有一个字段 —— 因为 Gelbooru 的 DAPI **不告诉你"我是谁、什么等级"**
+ * （没有 `/profile` 类端点，实测）。所以那里存的是**我们发出去的那个 user_id**，
+ * 不是站方回给我们的身份。不要给它补 `name` / `level` 这类字段去"对齐"旧实现：
+ * 那些值在这一站**取不到**，编一个出来会让界面显示假信息。
+ *
+ * 为什么住在这颗文件而不是 `GelbooruAccount.kt`：`GalleryCredentials.gelbooruIdentity` 的返回类型
+ * 里有它，而那颗契约要进桌面编译面、account 不上（它吃 `Context` 与 `AndroidKeyValueStore`）。
+ * 同包移动 ⇒ 所有 import 路径一字未改。
+ */
+data class GelbooruIdentity(val userId: String)
 
 /**
  * Gelbooru 的读侧客户端：官方 DAPI，**必须带账号**（[GelbooruAccount]），不走 JS 源脚本。
@@ -79,9 +105,10 @@ import okhttp3.Request
  * ⚠️ 用 `sort:score` 而不是 `sort:updated:desc`：后者是"最近被改过的"，
  * 改一条旧图的标签就能把它顶上来，那不是热门。
  */
-class GelbooruClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class GelbooruClient internal constructor(
+    private val engine: HttpEngine,
+    private val credentials: GelbooruCredentials,
+) {
 
     /**
      * 取**高分池**（本站没有日榜端点，用 `sort:score:desc` 模拟，理由见类注释）。
@@ -156,7 +183,7 @@ class GelbooruClient private constructor(context: Context) {
      * 后者是全应用的，把站别凭据挂上去会漏给别的站。
      */
     private fun get(url: String): String {
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(requestBuilder(url).build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw failure(response.code)
@@ -191,9 +218,8 @@ class GelbooruClient private constructor(context: Context) {
 
     /** 把 `&api_key=` / `&user_id=` 拼上去（没有凭据就原样返回，由站方回 401）。 */
     private fun withCredentials(url: String): String {
-        val account = GelbooruAccount.getInstance(appContext)
-        val key = account.apiKey
-        val uid = account.userId
+        val key = credentials.apiKey
+        val uid = credentials.userId
         if (key.isBlank() || uid.isBlank()) return url
         val sep = if (url.contains('?')) '&' else '?'
         return "$url$sep&api_key=${enc(key)}&user_id=${enc(uid)}"
@@ -221,7 +247,7 @@ class GelbooruClient private constructor(context: Context) {
          * `ImageHeaderPolicy` 那句"UA 一并带上只为与接口侧保持一致"从前只有注释级证据，
          * 现在由编译期保证。
          */
-        const val API_USER_AGENT = UserAgentPolicy.APP_USER_AGENT
+        const val API_USER_AGENT = UserAgentStrings.APP_USER_AGENT
 
         /**
          * 一次取多少条。
@@ -246,9 +272,10 @@ class GelbooruClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: GelbooruClient? = null
 
-        fun getInstance(context: Context): GelbooruClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: GelbooruClient(context.applicationContext).also { INSTANCE = it }
-        }
+        fun getInstance(engine: HttpEngine, credentials: GelbooruCredentials): GelbooruClient =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: GelbooruClient(engine, credentials).also { INSTANCE = it }
+            }
     }
 }
 

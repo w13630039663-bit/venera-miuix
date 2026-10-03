@@ -1,8 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.HttpEngine
+import com.venera.compose.data.platform.NoInteractiveBypassTag
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,9 +25,7 @@ import okhttp3.Request
  * 2. **只做未登录读取，不带任何凭据**。这个端点在登录后会多回一堆私人字段，
  *    我们只需要一张公开头像，也就不该让任何会话材料进这条请求。
  */
-class PixivClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class PixivClient internal constructor(private val engine: HttpEngine) {
 
     /** 取那位 pixiv 用户的头像地址。null = 站方答上了但没有可用地址（调用方换首字母占位）。 */
     suspend fun avatarUrl(userId: Long): Result<String?> = withContext(Dispatchers.IO) {
@@ -53,7 +50,7 @@ class PixivClient private constructor(context: Context) {
             // 与日榜同一条口径：画廊这一路**不弹过盾窗口**（挂在那儿等交互会把整屏挂死）。
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException("pixiv 返回 ${response.code}")
@@ -67,8 +64,14 @@ class PixivClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: PixivClient? = null
 
-        fun getInstance(context: Context): PixivClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: PixivClient(context.applicationContext).also { INSTANCE = it }
+        /**
+         * 只收 [HttpEngine]，不收 `Context` —— 收口前这里是 `getInstance(context)`，
+         * 于是整颗客户端被钉在 Android 面。Android 侧的同名工厂搬在
+         * `gallery/data/android/GalleryClientsAndroid.kt`（同包，所以调用点一字未改）。
+         * 单例照旧：一端只会传进一颗 engine。
+         */
+        fun getInstance(engine: HttpEngine): PixivClient = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: PixivClient(engine).also { INSTANCE = it }
         }
     }
 }

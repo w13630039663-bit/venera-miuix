@@ -260,8 +260,16 @@ class BusinessApiBoundaryTest {
         const val ROOT = "com/venera/compose/"
         val UI_DIRS = listOf("feature/", "gallery/ui/", "reader/", "components/")
 
-        /** 平台 API 不是业务单例：`android.webkit.CookieManager`、`android.view.Choreographer`。 */
-        val PLATFORM_ONLY = setOf("CookieManager", "Choreographer")
+        /**
+         * 平台 API 不是业务单例：`android.webkit.CookieManager`、`android.view.Choreographer`。
+         *
+         * `Calendar` 是 2026-10-03 S1 加进来的：`yesterdayString(now = Calendar.getInstance())`
+         * 从前住在 `GalleryFeedSource`（那颗自己声明 `fun getInstance(`，按"声明者整体放过"的
+         * 粗口径免疫），搬进 `GalleryDailyFeed` 后那颗不再是声明者，于是一句 JDK 取时钟被
+         * 算成了"新增静态取用出处"。本集合的存在理由就是挡这种名字撞规的假阳性，
+         * 不是给业务穿透开后门 —— 往里加之前先问一句"这是 JDK/平台句柄，还是我们的单例？"
+         */
+        val PLATFORM_ONLY = setOf("CookieManager", "Choreographer", "Calendar")
 
         val GET_INSTANCE = Regex("([A-Za-z0-9_]+)\\.getInstance\\(")
         val IMPORT = Regex("^import com\\.venera\\.compose\\.([A-Za-z0-9_.]+)$")

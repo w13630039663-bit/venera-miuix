@@ -1,18 +1,16 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
-import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.security.guard.GuardRule
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 画廊侧的**业务 API**：契约与适配同处一颗文件。
+ * 画廊侧的**业务 API 容器 + 守卫口 + 偏好口**（适配器在 `android/GalleryPortsAndroid.kt`，
+ * 其余十二颗契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`）。
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -21,8 +19,13 @@ import kotlinx.coroutines.flow.StateFlow
  * `docs/rounds/gallery-module-isolation-plan-2026-09.md:36-47` 给这三类共用定的档是
  * 「只读共享」，不是「共用一个对象」。
  *
- * 形状照 `data/db/DatabasePorts.kt:60-103`（容器 + `install(platform, factory)` + `of(handle: Any?)`），
- * 所以这颗文件里出现的只有 `Context` 一句平台类型，与同目录其余颗一样。
+ * 形状照 `data/db/DatabasePorts.kt:60-103`（容器 + `install(platform, factory)` + `of(handle: Any?)`）。
+ *
+ * ## 这颗文件现在**一句平台类型都没有**
+ *
+ * `install` 收的是 `platform: String`（只用来拒绝第二个平台重复接线），`of` 收的是不透明句柄
+ * `Any?`，而 `Context` 只在接线那半边用 —— 那半边整颗搬进了 `android/GalleryPortsAndroid.kt`，
+ * 于是容器 + 契约这半边可以进桌面编译面（`:desktop` 的 srcDir 排除 android 子目录）。
  */
 class GalleryPorts(
     val contentGuard: GalleryContentGuard,
@@ -61,7 +64,8 @@ class GalleryPorts(
         fun of(handle: Any?): GalleryPorts {
             val f = factory
                 ?: throw IllegalStateException(
-                    "画廊业务 API 尚未完成平台接线：请在启动处调用 AndroidGalleryPorts.install()。" +
+                    "画廊业务 API 尚未完成平台接线（of 取用时无任何已装 factory）：请在启动处调用 " +
+                        "GalleryPorts.install —— Android 侧为 AndroidGalleryPorts.install()。" +
                         "当前收到的句柄：${handle?.javaClass?.name ?: "null"}"
                 )
             return f(handle)
@@ -135,74 +139,4 @@ interface GalleryPreferences {
 
     val galleryHideTopBar: StateFlow<Boolean>
     val galleryHideBottomBar: StateFlow<Boolean>
-}
-
-/** Android 接线。⚠️ 构造不调 `getInstance`，只在成员方法体里现取 —— 取用时机与改造前逐点相同。 */
-object AndroidGalleryPorts {
-
-    const val PLATFORM = "android"
-
-    @Volatile
-    private var ports: GalleryPorts? = null
-
-    fun install() {
-        GalleryPorts.install(platform = PLATFORM) { handle -> createPorts(handle) }
-    }
-
-    private fun createPorts(handle: Any?): GalleryPorts = ports ?: synchronized(this) {
-        ports ?: run {
-            val context = handle as? Context
-                ?: throw IllegalStateException(
-                    "画廊业务 API 的 Android 接线需要 Context，实际收到：${handle?.javaClass?.name ?: "null"}"
-                )
-            GalleryPorts(
-                contentGuard = AndroidGalleryContentGuard(context),
-                prefs = AndroidGalleryPreferences(context),
-                favorites = AndroidGalleryFavorites(context),
-                follows = AndroidGalleryArtistFollows(context),
-                avatars = AndroidGalleryArtistAvatars(context),
-                lexicon = AndroidGalleryTagLexicon(context),
-                credentials = AndroidGalleryCredentials(context),
-                stores = AndroidGalleryStoreFactory(context),
-                boards = AndroidGalleryBoards(context),
-                artists = AndroidGalleryArtistDirectory(context),
-                reverse = AndroidGalleryReverseSearch(context),
-                hygiene = AndroidGalleryNetworkHygiene(context),
-            ).also { ports = it }
-        }
-    }
-}
-
-private class AndroidGalleryContentGuard(private val context: Context) : GalleryContentGuard {
-
-    private val manager: ContentGuardManager get() = ContentGuardManager.getInstance(context)
-
-    override val nsfwMaskMode: StateFlow<String> get() = manager.nsfwMaskMode
-
-    override val rules: StateFlow<List<GuardRule>> get() = manager.rules
-
-    override fun blockedGalleryRule(author: String, tags: List<String>): GuardRule? =
-        manager.findGalleryBlockedRule(author = author, tags = tags)
-
-    override suspend fun addRule(type: String, pattern: String, isRegex: Boolean): Long =
-        manager.addRule(type, pattern, isRegex)
-}
-
-/** 12 枚只读 getter，交回同一个 `StateFlow` 实例：订阅对象没换、重组时序没换。 */
-private class AndroidGalleryPreferences(private val context: Context) : GalleryPreferences {
-
-    private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
-
-    override val galleryColumnMode: StateFlow<GalleryColumnMode> get() = prefs.galleryColumnMode
-    override val galleryPreviewQuality: StateFlow<GalleryPreviewQuality> get() = prefs.galleryPreviewQuality
-    override val galleryKeepScreenOn: StateFlow<Boolean> get() = prefs.galleryKeepScreenOn
-    override val galleryVolumeKeyTurn: StateFlow<Boolean> get() = prefs.galleryVolumeKeyTurn
-    override val galleryAutoPlaySec: StateFlow<Int> get() = prefs.galleryAutoPlaySec
-    override val galleryPreload: StateFlow<GalleryPreloadMode> get() = prefs.galleryPreload
-    override val galleryAnimated: StateFlow<GalleryAnimatedMode> get() = prefs.galleryAnimated
-    override val galleryBackdrop: StateFlow<GalleryViewerBackdrop> get() = prefs.galleryBackdrop
-    override val galleryBlockAi: StateFlow<Boolean> get() = prefs.galleryBlockAi
-    override val galleryAiBadge: StateFlow<Boolean> get() = prefs.galleryAiBadge
-    override val galleryHideTopBar: StateFlow<Boolean> get() = prefs.galleryHideTopBar
-    override val galleryHideBottomBar: StateFlow<Boolean> get() = prefs.galleryHideBottomBar
 }

@@ -2,6 +2,7 @@ package com.venera.compose.data.network
 
 import android.content.Context
 import android.util.Log
+import com.venera.compose.data.platform.NoInteractiveBypassTag
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Request

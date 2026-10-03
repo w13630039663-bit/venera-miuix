@@ -49,7 +49,7 @@ object GalleryLegGuard {
         site: GallerySite,
         timedOut: Boolean,
         outcome: Result<List<GalleryPost>>?,
-        timeoutMs: Long = GalleryFeedSource.PER_SITE_TIMEOUT_MS,
+        timeoutMs: Long = GalleryDailyFeed.PER_SITE_TIMEOUT_MS,
     ): GalleryLegOutcome {
         if (timedOut || outcome == null) {
             // 超时**不是失败**，是"这一站这一轮没赶上"：调用方按"没答上"处理，
@@ -68,7 +68,7 @@ object GalleryLegGuard {
 
     suspend fun guard(
         site: GallerySite,
-        timeoutMs: Long = GalleryFeedSource.PER_SITE_TIMEOUT_MS,
+        timeoutMs: Long = GalleryDailyFeed.PER_SITE_TIMEOUT_MS,
         block: suspend () -> Result<List<GalleryPost>>,
     ): GalleryLegOutcome {
         val outcome = withTimeoutOrNull(timeoutMs) { block() }

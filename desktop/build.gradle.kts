@@ -8,6 +8,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.multiplatform)
 }
 
@@ -59,6 +60,59 @@ kotlin.sourceSets["main"].kotlin {
         "FollowUpdatesRepository.kt",
         "FollowUpdatesWorker.kt",
     )
+
+    // S1（Windows 图库首页）：画廊的**取数层与判据层**进桌面编译面。
+    // 三颗目录必须一起点名，因为它们互相指：`gallery/domain` 的编排（`GalleryDailyFeed`）
+    // 吃 `gallery/data` 的契约（`GalleryBoards`），而那颗契约的返回类型里有
+    // `security/guard` 的 `GuardRule` 与 `data/db` 之外的词汇表 —— 只共享其中一颗编不过，
+    // KGP 又不许按单文件挑（上面那段"include 的坑"说的就是这件事）。
+    //
+    // `security/guard` 里今天只有 `ContentGuardManager.kt` 上不了桌面（assets 预设表 + 偏好 +
+    // StartupTrace），剩下三颗是零 import 的纯声明，正是 S1 把 `GuardRule` / `AiTagKeys`
+    // 从冻结那颗文件里搬出来的原因（豁免记录见 FREEZE-STATEMENT.md 末尾）。
+    //
+    // ⚠️ 排除清单的判据是**禁引集合**，不是 `^import android`。反例就在我自己量过的第一遍：
+    // `GalleryImageLoader.kt` 只 import 了一句 `android.content.Context`，看起来"换个平台件
+    // 就能上桌面"，真正把它钉死的是它间接吃的 `data.prefs` + `data.network`
+    // （`VeneraImageFetcher` / `ImageFetchCallFactory`）。只看 android 会一边把它误判成
+    // "该进却没进"、一边对这类间接绑定视而不见，所以两份账都在
+    // `DesktopSharedFaceLedgerTest` 里按禁引集合对。
+    srcDir("../app/src/main/java/com/venera/compose/gallery/data")
+    srcDir("../app/src/main/java/com/venera/compose/gallery/domain")
+    srcDir("../app/src/main/java/com/venera/compose/security/guard")
+    // 逐颗点名，每颗的成因各不相同（写在这里而不是"一张总理由"，是因为撤排除时要按颗重判）。
+    exclude(
+        // Android 接线那半边：包名没变、只是搬进 `android/` 子目录，
+        // 上面的 `exclude("android/**")` 已经把三颗目录里的 android 子目录全挡掉了；
+        // 这里再点名一次不是为了生效，是为了让清单读得完整 —— 有人把接线搬出子目录时会红。
+        //
+        // —— 以下七颗是 gallery/data 里的 Android 面 ——
+        // 解码闸门：整颗是 coil3 的 Extras/Decoder 管线，桌面侧取图那一层今天还没接 coil。
+        "GalleryAnimationGate.kt",
+        // ConnectivityManager + NetworkCapabilities：平台网络状态句柄，桌面要另一套判据。
+        "GalleryConnectivity.kt",
+        // 日榜在途缓存：read(app)/write(app,…) 的形状被 gallery/ui 的 ViewModel 直接拿着。
+        "GalleryFeedCache.kt",
+        // 推荐页在途缓存：同上，两颗是同一族。
+        "GalleryForYouCache.kt",
+        // 取图器：coil3 + data.prefs + data.network（不是 android import 挡的，是间接依赖挡的）。
+        "GalleryImageLoader.kt",
+        // 存图到相册：MediaStore/ContentValues/Environment，平台服务，本轮口径明确不碰。
+        "GallerySaver.kt",
+        // 标签词典：库文件是 assets 复制出来的真实路径，且走 platform.android 的开库口子。
+        "GalleryTagDictionary.kt",
+        // —— 以下四颗是"实现类留在 Android、契约与窄接口进桌面"的那一组 ——
+        // Gelbooru 账号：Context + AndroidKeyValueStore；客户端只认它实现的 GelbooruCredentials。
+        "GelbooruAccount.kt",
+        // SauceNao 账号：同上，客户端只认 SauceNaoCredentials 那一枚 apiKey。
+        "SauceNaoAccount.kt",
+        // 日榜取数的 Android 门面：唯一存在理由是 gallery/ui 那两处 getInstance(context) 零改动，
+        // 编排本体在 GalleryDailyFeed.kt（那颗才是共享面）。
+        "GalleryFeedSource.kt",
+        // 内容守卫实现：assets 里的源级预设表 + VeneraPreferences + StartupTrace。
+        // 桌面屏蔽判据直连 data/db 的 GuardRuleStore，不需要这颗（那是 4b 抽出来的内核）。
+        "ContentGuardManager.kt",
+    )
 }
 
 // Task 6：源脚本**随包分发**。桌面链路真用得上的只有这三类（逐个点名，不整个目录搬）：
@@ -107,6 +161,11 @@ dependencies {
     // 读 assets 的源级预设表，全走这一层。
     // （Task 4a 曾为已删的 `folderToJson` 加过它又撤掉；这次带进来的是有生产调用方的那份。）
     implementation(libs.gson)
+
+    // `data/platform/HttpEngine.kt` 在上面的共享 srcDir 里，而它签名上的 `OkHttpClient` 是 okhttp 的类型
+    // —— 不显式声明就编不过。必须显式：`:engine-probe` 那份是 implementation，不透传到本模块编译 classpath。
+    // 注意这是"接口签名需要它的类型"，不等于桌面已经接好了一条真路（桌面侧实现件与它一起落在 S2）。
+    implementation(libs.okhttp)
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)

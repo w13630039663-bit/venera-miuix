@@ -16,30 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
 
-data class GuardRule(
-    val id: Long,
-    val type: String, // "KEYWORD", "TAG", "AUTHOR", "COMIC_ID"
-    val pattern: String,
-    val isRegex: Boolean,
-    val isEnabled: Boolean
-)
-
-/**
- * AI 标签词。归一（繁转简 + 小写）后**精确等值**。
- *
- * 出处：`ai` / `ai-generated` 逐字同 master 卡片 AI 角标的判据
- * （`lib/components/comic.dart:485-487`）；`ai生成` / `ai绘图` 取自本仓
- * [com.venera.compose.data.tags.TagNormalizer] 已归类好的中文形态（`:84`）。
- * 刻意不加"含 ai 字样就算"——那会误伤角色名与英文单词，master 也没这么做。
- * （反过来，裸 `ai` 这一枚在两站画廊上**也**是角色名：yande.re `tags=ai` 那 19 条是《Artery Gear》的 AI。
- * 漫画侧不动它 —— EH 那边 `AI生成` 那一系要用；画廊侧把它剔出去了，理由与读数见
- * [com.venera.compose.gallery.domain.GalleryAi]。）
- *
- * `internal` 而不是 private：画廊那把 AI 判据（[com.venera.compose.gallery.domain.GalleryAi]）
- * **以这张表为准再只收窄不放宽**，只把开关分家（用户 2026-09-29 拍板"画廊和漫画分开"= 分开的是开关）。
- * 词表复制第二份迟早会漂，漂的那一半通常是被抄的那份。
- */
-internal val AiTagKeys = setOf("ai", "ai-generated", "ai生成", "ai绘图")
+// GuardRule 与 AiTagKeys 两枚纯声明已搬进同包的 GuardVocabulary.kt（桌面编译面的前置，
+// 理由与"包名未改所以零 import 变更"记在那颗文件的文件头）。
 
 /**
  * AI 标签判据的纯函数部分（不含繁转简，那一步要 Context 与语言表，测不到）。

@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * Key 只落本机 SharedPreferences；**不写日志、不进任何提示文案**（与 Gelbooru 同一条规矩）。
  */
-class SauceNaoAccount private constructor(context: Context) {
+class SauceNaoAccount private constructor(context: Context) : SauceNaoCredentials {
 
     private val appContext = context.applicationContext
 
@@ -42,7 +42,7 @@ class SauceNaoAccount private constructor(context: Context) {
     val hasKey: StateFlow<Boolean> = _hasKey.asStateFlow()
 
     /** 当前 key；没配时空串。只给 [SauceNaoClient] 拼参数用。 */
-    val apiKey: String get() = prefs.getString(KEY_API_KEY, "").orEmpty()
+    override val apiKey: String get() = prefs.getString(KEY_API_KEY, "").orEmpty()
 
     fun save(key: String) {
         val trimmed = key.trim()

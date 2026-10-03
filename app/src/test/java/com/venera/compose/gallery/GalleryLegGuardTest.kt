@@ -78,7 +78,8 @@ class GalleryLegGuardTest {
 
         assertFalse(leg.answered)
         // 秒数字面量是**故意钉死**的：它是日榜那头按本机 TTFB 实测定的预算
-        // （`GalleryFeedSource.PER_SITE_TIMEOUT_MS`）。有人调那个数，这里会红 ——
+        // （数值住在 `GalleryDailyFeed.PER_SITE_TIMEOUT_MS`，`GalleryFeedSource` 那枚是转发）。
+        // 有人调那个数，这里会红 ——
         // 那就是一次重新核对观感取舍的机会，而不是让读数与预算悄悄分叉。
         assertEquals("超过 12s 没返回", leg.reason)
         assertTrue(leg.posts.isEmpty())

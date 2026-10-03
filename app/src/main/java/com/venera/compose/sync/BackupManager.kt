@@ -19,6 +19,7 @@ import com.venera.compose.feature.favoriteimages.FavoriteImagesManager
 import com.venera.compose.feature.favoriteimages.ImageFavoriteBackupRows
 import com.venera.compose.gallery.data.GalleryArtistFollowsStore
 import com.venera.compose.gallery.data.GalleryFavoritesStore
+import com.venera.compose.gallery.data.getInstance
 import com.venera.compose.security.guard.GuardRulePattern
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

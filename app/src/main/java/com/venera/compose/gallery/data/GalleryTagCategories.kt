@@ -1,9 +1,9 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import android.util.LruCache
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.HttpEngine
+import com.venera.compose.data.platform.Logger
+import com.venera.compose.data.platform.LruMap
+import com.venera.compose.data.platform.NoInteractiveBypassTag
 import com.venera.compose.gallery.domain.parseGalleryTagCategories
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -27,12 +27,13 @@ import okhttp3.Request
  * - **失败交 null，不交空表**：调用方要能分清"站方没分类"与"这一笔没成"，
  *   后者才走离线词典的画师兜底（见 [com.venera.compose.gallery.domain.buildGalleryTagBuckets]）。
  */
-class GalleryTagCategories private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class GalleryTagCategories internal constructor(
+    private val engine: HttpEngine,
+    private val logger: Logger,
+) {
 
     /** 同一张图反复开合面板只发一笔。存的是"这一张贴的判定"，几十条字符串，64 张足够。 */
-    private val cache = LruCache<String, Map<String, Int>>(CACHE_SIZE)
+    private val cache = LruMap<String, Map<String, Int>>(CACHE_SIZE)
 
     /**
      * @param pageUrl 那张帖的本站单页地址（[GalleryPost.pageUrl]，站方自己的地址，不自己拼）。
@@ -46,7 +47,7 @@ class GalleryTagCategories private constructor(context: Context) {
                 .header("Accept", "text/html,application/xhtml+xml")
                 .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
                 .build()
-            VeneraNetworkClient.getInstance(appContext).okHttpClient
+            engine.okHttpClient
                 .newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) throw IOException("标签分类页返回 ${response.code}")
@@ -59,7 +60,7 @@ class GalleryTagCategories private constructor(context: Context) {
                 }
         }.onSuccess { cache.put(pageUrl, it) }
             .onFailure {
-                android.util.Log.i(TAG, "取 $pageUrl 的标签分类失败，退到离线词典兜底：${it.message}")
+                logger.info(TAG, "取 $pageUrl 的标签分类失败，退到离线词典兜底：${it.message}")
             }
             .getOrNull()
     }
@@ -67,14 +68,15 @@ class GalleryTagCategories private constructor(context: Context) {
     companion object {
         private const val TAG = "GalleryTagCategories"
 
-        /** 按**条数**计（不是字节）：LruCache 的 maxSize 单位由这里决定，这里一条=一张帖。 */
+        /** 按**条数**计（不是字节）：[LruMap] 的容量单位由这里决定，这里一条=一张帖。 */
         private const val CACHE_SIZE = 64
 
         @Volatile
         private var INSTANCE: GalleryTagCategories? = null
 
-        fun getInstance(context: Context): GalleryTagCategories = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: GalleryTagCategories(context.applicationContext).also { INSTANCE = it }
-        }
+        fun getInstance(engine: HttpEngine, logger: Logger): GalleryTagCategories =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: GalleryTagCategories(engine, logger).also { INSTANCE = it }
+            }
     }
 }

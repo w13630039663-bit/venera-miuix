@@ -2745,3 +2745,33 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 `:app:compileDebugKotlin` + `:app:testDebugUnitTest --tests "com.venera.compose.sync.*" --tests "com.venera.compose.feature.favoriteimages.*"` 通过（`GalleryBackupRowsTest` 9 条、`ImageFavoriteBackupRowsTest` 5 条、`BackupTransfersResultTextTest` 6 条，全绿）。新增两个测试**未登记进 `_probe/l0/run-judgment-tests.sh`**：`GalleryFavorite` 与 `GalleryArtistFollowsStore` 同文件，那文件 import `android.content.Context`，纯 JVM 单跑编译不过。
 真机未验（要看的是：导入后关注面板与画廊收藏页**不经重启**当帧补齐；插图收藏那批按地址能不能真显示出图）。
+
+## 2026-10-03 追加：动了 `ContentGuardManager.kt`（清单第 4 颗 FROZEN），为的是把它自己的两枚纯声明搬出去
+
+用户点名开工 Windows 桌面端图库首页（分批方案见 `~/.qoder-cn/plans/wistful-inlet-snipe.md`），硬前提是整个 `gallery/data` + `gallery/domain` 上桌面编译面。挡路的不是画廊那侧，是这颗冻结文件里的两枚**与平台无关的顶层声明**：
+
+- `:19 data class GuardRule` —— 被 `gallery/data/GalleryPorts.kt:10-11`（契约 `GalleryContentGuard.rules` 的签名）与漫画侧 `data/api/ContentGuardApi.kt` 同时 import；
+- `:42 internal val AiTagKeys` —— 被 `gallery/domain/GalleryAi.kt:3` import（"以这张表为准再只收窄不放宽"那条纪律的落点）。
+
+而 `ContentGuardManager.kt` 本体吃 `Context`（`:3`）与 assets 源级预设表，桌面不可编。两枚声明困在同一颗文件里，等于整棵画廊取数层被那一行 `import android.content.Context` 钉死在 Android 面。
+
+### 处置
+
+两枚搬进新建的同包文件 `security/guard/GuardVocabulary.kt`，**包名一字未改**。因此：
+
+- 五处 `import com.venera.compose.security.guard.GuardRule`（`data/api/ContentGuardApi.kt`、`data/api/android/AndroidBusinessPorts.kt`、`feature/settings/BlockingSettings.kt`、`gallery/data/GalleryPorts.kt`、`sync/BackupManager.kt`）全部原样解析，**一行未改**；
+- 同文件内 `isAiTagValue()` / `isAiMarked()` 对 `AiTagKeys` 的取用是同包解析，**一行未改**。
+
+### 对冻结文件是纯减法
+
+`git diff` 该文件 = **2 insertions / 24 deletions**：删掉的是那两枚声明及其 KDoc（KDoc 逐字搬进新文件，含 `comic.dart:485-487` 与 `TagNormalizer:84` 两处出处），加回来的是两行指路注释。
+
+**类体、判定链、缓存、偏好读写一行未动**：用户规则 > 源级预设 > 显式 R18 正则 > 默认 safe 的顺序、LRU 缓存、别名解析、`coverMaskStateFor` 三个重载、AI 那一路附加剔除全部原样。这次搬迁不改任何判定，只改判据住在哪颗文件。
+
+### 顺带解掉的同一颗债
+
+漫画侧 `data/api/ContentGuardApi.kt` 此前也因 `GuardRule` 而桌面不可编 —— 同一枚类型、同一个成因，这次一并通了。
+
+### 验证
+
+`:app:compileDebugKotlin` EXIT=0（搬迁前后各跑一次）。运行期未验，理由：改动面是"声明换个文件住 + 包名不变"，编译器已经覆盖了唯一的风险（符号解析）；没有可执行的行为差异可验。

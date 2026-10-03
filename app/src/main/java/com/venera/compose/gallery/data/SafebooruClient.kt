@@ -1,8 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.NoInteractiveBypassTag
+import com.venera.compose.data.platform.HttpEngine
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -57,9 +56,7 @@ import okhttp3.Request
  *
  * ⚠️ `image_width`/`image_height` 不是 `width`/`height` —— 照抄 Gelbooru 会拿到 0。
  */
-class SafebooruClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class SafebooruClient internal constructor(private val engine: HttpEngine) {
 
     /**
      * 取**高分池**（`order:rank`）。
@@ -96,7 +93,7 @@ class SafebooruClient private constructor(context: Context) {
                     .header("Accept", "application/json")
                     .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
                     .build()
-                VeneraNetworkClient.getInstance(appContext).okHttpClient
+                engine.okHttpClient
                     .newCall(request).execute().use { response ->
                         val body = response.body?.string().orEmpty()
                         if (!response.isSuccessful) throw IOException("Safebooru 返回 ${response.code}")
@@ -123,7 +120,7 @@ class SafebooruClient private constructor(context: Context) {
             .header("Accept", "application/json")
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException("Safebooru 返回 ${response.code}")
@@ -146,8 +143,8 @@ class SafebooruClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: SafebooruClient? = null
 
-        fun getInstance(context: Context): SafebooruClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: SafebooruClient(context.applicationContext).also { INSTANCE = it }
+        fun getInstance(engine: HttpEngine): SafebooruClient = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: SafebooruClient(engine).also { INSTANCE = it }
         }
     }
 }

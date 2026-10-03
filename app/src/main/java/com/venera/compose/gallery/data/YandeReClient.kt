@@ -1,9 +1,8 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import android.util.LruCache
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.HttpEngine
+import com.venera.compose.data.platform.LruMap
+import com.venera.compose.data.platform.NoInteractiveBypassTag
 import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryArtistRecord
 import java.io.IOException
@@ -35,9 +34,7 @@ import okhttp3.Request
  * `/post/popular_by_month.json` 可读但**固定 40 条、忽略 limit、没有 page**；
  * 字段表里**没有 `fav_count`**（44 个键里没有）。
  */
-class YandeReClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class YandeReClient internal constructor(private val engine: HttpEngine) {
 
     /**
      * 同一个画师名只解析一次。存的是"站方给出的正名"这一条判定，几十条字符串，64 条足够
@@ -46,7 +43,7 @@ class YandeReClient private constructor(context: Context) {
      * **只有解析成功才入缓存**：没有别名指针的那一类不存（站方的画师页是可以改的，
      * 今天没有别名不代表以后没有），失败更不存（那一档下一次照样真发）。
      */
-    private val aliasCache = LruCache<String, String>(ALIAS_CACHE_SIZE)
+    private val aliasCache = LruMap<String, String>(ALIAS_CACHE_SIZE)
 
     /**
      * 取**上一天**的热门（用户点名的 `https://yande.re/post/popular_recent?period=1d` 的 JSON 版）。
@@ -92,7 +89,7 @@ class YandeReClient private constructor(context: Context) {
                     // 补全也是"用户在等"的流量，同样不弹过盾窗口。
                     .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
                     .build()
-                VeneraNetworkClient.getInstance(appContext).okHttpClient
+                engine.okHttpClient
                     .newCall(request).execute().use { response ->
                         val body = response.body?.string().orEmpty()
                         if (!response.isSuccessful) throw IOException("yande.re 返回 ${response.code}")
@@ -181,7 +178,7 @@ class YandeReClient private constructor(context: Context) {
 
     /** 跟一次重定向，只读**落点 URL** 上的 `title`。正文一个字节都不解析。 */
     private fun requestRedirectTitle(url: String): String? {
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         val request = Request.Builder()
             .url(url)
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
@@ -200,7 +197,7 @@ class YandeReClient private constructor(context: Context) {
             .header("Accept", "application/json")
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException("yande.re 返回 ${response.code}")
@@ -217,7 +214,7 @@ class YandeReClient private constructor(context: Context) {
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
         // 与漫画侧共用连接池 / Cookie / CF 过盾（方案 §二"复用基础设施"那一列）。
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw IOException("yande.re 返回 ${response.code}")
@@ -254,8 +251,8 @@ class YandeReClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: YandeReClient? = null
 
-        fun getInstance(context: Context): YandeReClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: YandeReClient(context.applicationContext).also { INSTANCE = it }
+        fun getInstance(engine: HttpEngine): YandeReClient = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: YandeReClient(engine).also { INSTANCE = it }
         }
     }
 }

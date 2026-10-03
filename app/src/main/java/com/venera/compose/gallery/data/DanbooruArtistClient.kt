@@ -1,8 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import com.venera.compose.data.network.NoInteractiveBypassTag
-import com.venera.compose.data.network.VeneraNetworkClient
+import com.venera.compose.data.platform.NoInteractiveBypassTag
+import com.venera.compose.data.platform.HttpEngine
 import java.io.IOException
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -36,9 +35,7 @@ import okhttp3.Request
  * 字段形态押不了（拿不到真样例），所以走 [GalleryArtistEndpointParse] 的多形态宽容解析，
  * 每一种候选形态各有一条单测兜着。
  */
-class DanbooruArtistClient private constructor(context: Context) {
-
-    private val appContext = context.applicationContext
+class DanbooruArtistClient internal constructor(private val engine: HttpEngine) {
 
     /** 那位画师的外链地址。空表 = 站方答上了但查不到同名记录；`failure` = 这一路没走通（含卡盾）。 */
     suspend fun artistUrls(name: String): Result<List<String>> = withContext(Dispatchers.IO) {
@@ -65,7 +62,7 @@ class DanbooruArtistClient private constructor(context: Context) {
             .header("Accept", "application/json")
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
-        val client = VeneraNetworkClient.getInstance(appContext).okHttpClient
+        val client = engine.okHttpClient
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             // 过盾页就是 403 + 一坨 HTML：这里先按状态码抛，正文里的形状由解析层第二条兜住。
@@ -82,8 +79,8 @@ class DanbooruArtistClient private constructor(context: Context) {
         @Volatile
         private var INSTANCE: DanbooruArtistClient? = null
 
-        fun getInstance(context: Context): DanbooruArtistClient = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: DanbooruArtistClient(context.applicationContext).also { INSTANCE = it }
+        fun getInstance(engine: HttpEngine): DanbooruArtistClient = INSTANCE ?: synchronized(this) {
+            INSTANCE ?: DanbooruArtistClient(engine).also { INSTANCE = it }
         }
     }
 }

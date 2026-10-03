@@ -1,7 +1,7 @@
 package com.venera.compose.gallery.data
 
-import android.content.Context
-import android.util.Log
+import com.venera.compose.data.platform.Logger
+import com.venera.compose.data.platform.PathProvider
 import com.venera.compose.gallery.domain.GalleryArtistAvatars
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -36,9 +36,12 @@ import kotlinx.serialization.json.Json
  * 不先空一下再蹦出来）、写盘先 `*.tmp` 再改名、解不开时**先把原文件改名留档**再开空档。
  * 判据（三档语义、上限怎么丢）都在 [GalleryArtistAvatars]，这一层只管字节与磁盘。
  */
-internal class GalleryArtistAvatarStore private constructor(private val context: Context) {
+internal class GalleryArtistAvatarStore private constructor(
+    private val paths: PathProvider,
+    private val logger: Logger,
+) {
 
-    private val file = File(context.filesDir, FILE_NAME)
+    private val file = File(paths.dataRoot, FILE_NAME)
 
     /** 内存查找表；[GalleryArtistAvatars.lookup] 的三档语义由它的返回值承担。 */
     @Volatile
@@ -83,7 +86,7 @@ internal class GalleryArtistAvatarStore private constructor(private val context:
             }
         }.onFailure { failure ->
             // 落不进盘只是下次冷启动多问一遍，不值得打扰用户 —— 但日志里必须留话。
-            Log.w(TAG, "头像地址档没写成：${failure.message}")
+            logger.warn(TAG, "头像地址档没写成：${failure.message}")
         }
     }
 
@@ -111,7 +114,7 @@ internal class GalleryArtistAvatarStore private constructor(private val context:
         }
         val backup = File(file.parentFile, "$FILE_NAME.corrupt-${System.currentTimeMillis()}")
         val moved = runCatching { file.renameTo(backup) }.getOrDefault(false)
-        Log.w(
+        logger.warn(
             TAG,
             if (moved) "头像地址档读不出来，已另存为 ${backup.name} 并重新开始"
             else "头像地址档读不出来，本次改动可能覆盖它（${file.absolutePath}）",
@@ -131,9 +134,10 @@ internal class GalleryArtistAvatarStore private constructor(private val context:
         @Volatile
         private var instance: GalleryArtistAvatarStore? = null
 
-        fun getInstance(context: Context): GalleryArtistAvatarStore = instance ?: synchronized(this) {
-            instance ?: GalleryArtistAvatarStore(context.applicationContext).also { instance = it }
-        }
+        fun getInstance(paths: PathProvider, logger: Logger): GalleryArtistAvatarStore =
+            instance ?: synchronized(this) {
+                instance ?: GalleryArtistAvatarStore(paths, logger).also { instance = it }
+            }
     }
 }
 
