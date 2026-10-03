@@ -74,14 +74,14 @@ class FollowUpdatesViewModel(
 
     /** 收藏夹清单，供「选择追更夹」对话框使用。 */
     fun folderList(): kotlinx.coroutines.flow.StateFlow<List<String>> =
-        com.venera.compose.data.db.LocalFavoritesManager.getInstance(getApplication()).folders
+        ports.favorites.folders
 
     /** 把某个收藏夹设为/取消追更夹。 */
     fun chooseFollowFolder(folder: String?) {
         viewModelScope.launch {
             prefs.setFollowUpdatesFolder(folder)
             if (!folder.isNullOrBlank()) {
-                com.venera.compose.data.db.LocalFavoritesManager.getInstance(getApplication())
+                ports.favorites
                     .prepareTableForFollowUpdates(folder)
             }
             refresh()

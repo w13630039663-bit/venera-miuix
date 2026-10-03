@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
-import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.prefs.ComicMetricsCache
 import com.venera.compose.reader.ReaderSession
@@ -179,7 +178,7 @@ class ComicDetailViewModel(
 
     private val sources: SourceCatalog = ports.sources
     private val comics: ComicContentApi = ports.comics
-    private val favoritesManager = LocalFavoritesManager.getInstance(app)
+    private val favoritesManager = ports.favorites
     private val prefs = ports.comicPrefs
     private val historyDao = ports.history
 
@@ -864,7 +863,7 @@ class ComicDetailViewModel(
                 _uiState.value.details?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
 
             // 优先检查本地离线下载文件，已下载章节实现秒开与无网离线阅读
-            val dlMgr = com.venera.compose.download.DownloadManager.getInstance(getApplication())
+            val dlMgr = ports.downloads
             val localFiles = dlMgr.getDownloadedChapterFiles(key, comic.id, chapterId)
             if (!localFiles.isNullOrEmpty()) {
                 val state = _uiState.value

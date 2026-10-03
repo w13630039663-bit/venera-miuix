@@ -22,6 +22,7 @@ import com.venera.compose.components.venera.VeneraDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import com.venera.compose.data.api.BusinessPorts
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,12 +51,10 @@ import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.data.platform.CacheDirs
-import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
 import com.venera.compose.download.LocalChapter
 import com.venera.compose.download.LocalComic
-import com.venera.compose.download.LocalComicManager
 import com.venera.compose.reader.ComicPageSource
 import com.venera.compose.reader.ReaderChapter
 import com.venera.compose.reader.ReaderSession
@@ -91,7 +90,7 @@ fun LocalComicScreen(
     val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
     val displayMode = rememberComicListDisplayMode()
-    val localComicManager = remember { LocalComicManager.getInstance(context) }
+    val localComicManager = remember { BusinessPorts.of(context).localComics }
 
     var comics by remember { mutableStateOf<List<LocalComic>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -99,7 +98,7 @@ fun LocalComicScreen(
     var comicChapters by remember { mutableStateOf<List<LocalChapter>>(emptyList()) }
 
     // ── 下载中心联动：观察任务流 + 源分类过滤 ──
-    val downloadManager = remember { DownloadManager.getInstance(context) }
+    val downloadManager = remember { BusinessPorts.of(context).downloads }
     val downloadTasks by downloadManager.tasks.collectAsState()
     val activeDownloadTasks = remember(downloadTasks) {
         downloadTasks.filter { it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PENDING }

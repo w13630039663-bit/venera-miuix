@@ -64,6 +64,9 @@ class BusinessPorts(
     val sources: SourceCatalog,
     val history: ReadingHistory,
     val stats: ReadingStats,
+    val favorites: FavoriteLibrary,
+    val downloads: DownloadQueue,
+    val localComics: LocalComicLibrary,
     val network: NetworkHygiene,
     val httpText: HttpTextFetch,
 ) {

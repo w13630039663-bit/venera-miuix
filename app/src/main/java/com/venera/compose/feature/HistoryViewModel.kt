@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.HistoryRecord
-import com.venera.compose.data.db.LocalFavoritesManager
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import com.venera.compose.data.api.BusinessPorts
@@ -26,7 +25,7 @@ class HistoryViewModel(
     constructor(application: Application) : this(application, BusinessPorts.of(application))
 
     private val dao = ports.history
-    private val favorites = LocalFavoritesManager.getInstance(application)
+    private val favorites = ports.favorites
 
     val history: StateFlow<List<HistoryRecord>> = dao.historyFlow
 

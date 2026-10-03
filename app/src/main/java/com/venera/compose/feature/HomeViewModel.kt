@@ -7,7 +7,6 @@ import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.FavoriteRecord
 import com.venera.compose.data.db.HistoryRecord
-import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.source.model.Comic
 import com.venera.compose.stats.TagStatBucket
@@ -54,9 +53,9 @@ data class HomeUiState(
     val tagStats: List<Pair<String, Int>> = emptyList(),
     val authorStats: List<Pair<String, Int>> = emptyList(),
     val comicStats: List<Pair<String, Int>> = emptyList(),
-    /** 本地漫画数量（LocalComicManager 真实扫描） */
+    /** 本地漫画数量（本地库真实扫描） */
     val localComicCount: Int = 0,
-    /** 下载中任务数（DownloadManager 队列） */
+    /** 下载中任务数（下载队列） */
     val downloadingCount: Int = 0,
 )
 
@@ -79,7 +78,7 @@ class HomeViewModel(
     /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
     constructor(app: Application) : this(app, BusinessPorts.of(app))
 
-    private val favoritesManager = LocalFavoritesManager.getInstance(app)
+    private val favoritesManager = ports.favorites
     private val historyDao = ports.history
     private val appContext = app
 
@@ -111,9 +110,9 @@ class HomeViewModel(
     /** 刷新那几个新增分区的数据（本地漫画数 / 下载任务数 / 图片收藏统计），主页进入时调用 */
     fun refreshExtras() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val localCount = com.venera.compose.download.LocalComicManager.getInstance(appContext)
+            val localCount = ports.localComics
                 .getLocalComics().size
-            val dlCount = com.venera.compose.download.DownloadManager.getInstance(appContext)
+            val dlCount = ports.downloads
                 .tasks.value.count { it.status != com.venera.compose.download.DownloadStatus.COMPLETED }
             // 图片收藏的统计/列表已整体搬到收藏页（第三个分段），主页扩展区只剩本地数量与下载任务。
             _uiStateExtra.value = HomeUiState(

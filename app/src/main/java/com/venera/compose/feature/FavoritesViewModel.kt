@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
-import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -48,7 +47,7 @@ class FavoritesViewModel(
     /** 装配入口：调用点（17 处 viewModel()）与 AndroidViewModelFactory 反射的那颗 arity=1 构造逐字不变。 */
     constructor(application: Application) : this(application, BusinessPorts.of(application))
 
-    private val manager = LocalFavoritesManager.getInstance(application)
+    private val manager = ports.favorites
     private val prefs = ports.comicPrefs
 
     val folders: StateFlow<List<String>> = manager.folders

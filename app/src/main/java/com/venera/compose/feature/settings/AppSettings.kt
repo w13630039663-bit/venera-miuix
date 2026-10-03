@@ -17,7 +17,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.download.ComicStorageRoot
-import com.venera.compose.download.DownloadManager
 import com.venera.compose.sync.BackupTransfers
 import com.venera.compose.data.api.NetworkPreferences
 import com.venera.compose.data.api.BusinessPorts
@@ -366,7 +365,7 @@ private suspend fun applyStoragePath(
         }.map { movedDirs ->
             prefs.setComicStoragePath(if (isDefault) "" else newDir.absolutePath)
             // 任务清单里记的是绝对路径，搬家后必须换前缀，否则已完成章节会被判成未下载
-            if (migrate) DownloadManager.getInstance(context).relocateTasks(oldDir, newDir)
+            if (migrate) BusinessPorts.of(context).downloads.relocateTasks(oldDir, newDir)
             movedDirs
         }
     }

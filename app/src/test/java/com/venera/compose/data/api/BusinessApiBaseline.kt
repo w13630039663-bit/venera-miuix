@@ -56,9 +56,9 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "JsComicSource" to "B3（穿过接口拿实现那一处收进 ComicContentApi.tagSuggestionKeyword；sourcemanage 两颗见覆写）",
     "HistoryDao" to "契约 data/api/LibraryApi.kt 的 ReadingHistory，B4 已迁完、零站点；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删掉等于给未来的 HistoryDao 类型引用位开一口漏（解锁条件：无，本行不是点位）",
     "ReadingStatsManager" to "契约 data/api/LibraryApi.kt 的 ReadingStats，B4 已迁完；漫画侧零站点，唯一残留是 feature/favoriteimages 那颗实现类自己（见 FEATURE_RESIDENT_IMPL 覆写）。条目不许删，理由同 HistoryDao",
-    "LocalFavoritesManager" to "B5（契约 FavoriteLibrary，随 B5 与守卫同批落地）",
-    "DownloadManager" to "B5（契约 OfflineLibrary，同上）",
-    "LocalComicManager" to "B5（契约 OfflineLibrary，同上）",
+    "LocalFavoritesManager" to "B5/D2 已迁完（契约 data/api/FavoritesOfflineApi.kt 的 FavoriteLibrary，21 枚）；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出",
+    "DownloadManager" to "B5/D2 已迁完（契约 DownloadQueue，11 枚；`chapterOffline` 因返回 internal 枚举不收，故 feature/ComicDetailScreen.kt 那一行留着）；条目不许删，理由同 LocalFavoritesManager",
+    "LocalComicManager" to "B5/D2 已迁完（契约 LocalComicLibrary，5 枚）；条目不许删，理由同 LocalFavoritesManager",
     "VeneraNetworkClient" to "契约 data/api/NetworkApi.kt 的 NetworkHygiene，B6 已迁完、零站点；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删键等于给未来的 VeneraNetworkClient 类型引用位开一口漏（解锁条件：无，本行不是点位）",
     "HostCircuitBreaker" to "B7'（漫画侧那两处已随 B6 收进 NetworkHygiene；残留两颗都在 gallery/ui，按各侧自持要落 gallery/data/GalleryPorts.kt 的卫生口，方案 §七.9）",
     "YandeReClient" to "B7'（画廊契约 gallery/data/GalleryPorts.kt 的 GalleryBoards + GalleryArtistDirectory）",
@@ -134,10 +134,6 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
     "feature/sourcemanage/ComicSourceScreen.kt#ComicSourceManager" to INFRA_FACING_PAGE,
     "feature/sourcemanage/ComicSourceViewModel.kt#ComicSourceManager" to INFRA_FACING_PAGE,
     "feature/sourcemanage/ComicSourceViewModel.kt#JsComicSource" to INFRA_FACING_PAGE,
-    "feature/sourcemanage/ComicSourceViewModel.kt#VeneraNetworkClient" to
-        "B6（唯一的例外：:569-571 那笔裸 okhttp3 请求绕过了 cookie jar / 限流 / 熔断 / 缓存四件套，" +
-            "是审计 §二.8 里可指认的缺陷，用 HttpTextFetch 外科手术收掉，不是架构偏好）",
-    "feature/favoriteimages/FavoriteImagesManager.kt#LocalFavoritesManager" to FEATURE_RESIDENT_IMPL,
     "feature/favoriteimages/FavoriteImagesManager.kt#ReadingStatsManager" to FEATURE_RESIDENT_IMPL,
     "feature/favoriteimages/FavoriteImagesManager.kt#FavoriteImagesManager" to
         "解锁条件：这颗文件自己就是那颗实现类（class FavoriteImagesManager 声明在 feature/favoriteimages/FavoriteImagesManager.kt:132），" +
@@ -150,20 +146,13 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
 /** 符号默认归属 + 站点覆写；必须排在两者之后（顶层属性按声明顺序初始化）。 */
 internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERRIDE
 
-/** A ——「UI import 业务实现类」。最新：39 颗文件 / 77 条。 */
+/** A ——「UI import 业务实现类」。最新：30 颗文件 / 66 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
-        "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
         "feature/ComicDetailScreen.kt" to setOf("TagTranslationManager"),
-        "feature/ComicDetailViewModel.kt" to setOf("LocalFavoritesManager"),
-        "feature/DownloadScreen.kt" to setOf("DownloadManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
-        "feature/FavoritesViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
-        "feature/HistoryViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/HomeScreen.kt" to setOf("ComicSourceManager"),
-        "feature/HomeViewModel.kt" to setOf("LocalFavoritesManager"),
-        "feature/LocalComicScreen.kt" to setOf("DownloadManager", "LocalComicManager"),
         "feature/LogViewerScreen.kt" to setOf("AppLogManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver", "VeneraPreferences"),
         "feature/SearchScreen.kt" to setOf("ContentGuardManager", "VeneraPreferences"),
@@ -172,10 +161,8 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "feature/SyncBackupScreen.kt" to setOf("BackupManager", "WebDavSyncManager"),
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
-        "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("FavoriteImagesStore", "LocalFavoritesManager", "ReadingStatsManager", "ReadingStatsStore"),
-        "feature/settings/AppSettings.kt" to setOf("DownloadManager"),
+        "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("FavoriteImagesStore", "ReadingStatsManager", "ReadingStatsStore"),
         "feature/settings/GallerySettings.kt" to setOf("VeneraPreferences"),
-        "feature/settings/LocalFavoritesSettings.kt" to setOf("LocalFavoritesManager"),
         "feature/settings/PreferredIpSpeedTestScreen.kt" to setOf("ComicSourceManager", "GelbooruAccount"),
         "feature/sourcemanage/ComicSourceScreen.kt" to setOf("ComicSourceManager", "JsComicSource"),
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "JsComicSource"),
@@ -194,21 +181,14 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
 
 )
 
-/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：38 颗文件 / 77 条，站点总数 93。 */
+/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：28 颗文件 / 62 条，站点总数 77。 */
 internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
-        "components/ComicCardContextMenu.kt" to setOf("LocalFavoritesManager"),
         "feature/ComicDetailScreen.kt" to setOf("DownloadManager", "TagTranslationManager"),
-        "feature/ComicDetailViewModel.kt" to setOf("DownloadManager", "LocalFavoritesManager"),
-        "feature/DownloadScreen.kt" to setOf("DownloadManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FavoritesScreen.kt" to setOf("ContentGuardManager"),
-        "feature/FavoritesViewModel.kt" to setOf("LocalFavoritesManager"),
-        "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository", "LocalFavoritesManager"),
+        "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
         "feature/HistoryScreen.kt" to setOf("ContentGuardManager"),
-        "feature/HistoryViewModel.kt" to setOf("LocalFavoritesManager"),
         "feature/HomeScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
-        "feature/HomeViewModel.kt" to setOf("DownloadManager", "LocalComicManager", "LocalFavoritesManager"),
-        "feature/LocalComicScreen.kt" to setOf("DownloadManager", "LocalComicManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver", "VeneraPreferences"),
         "feature/NetworkFavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/SearchScreen.kt" to setOf("ContentGuardManager", "VeneraPreferences"),
@@ -217,9 +197,6 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "feature/SyncBackupScreen.kt" to setOf("BackupManager", "WebDavSyncManager"),
         "feature/explore/SourceSectionScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
         "feature/explore/UnifiedExploreScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
-        "feature/favoriteimages/FavoriteImagesManager.kt" to setOf("LocalFavoritesManager"),
-        "feature/settings/AppSettings.kt" to setOf("DownloadManager"),
-        "feature/settings/LocalFavoritesSettings.kt" to setOf("LocalFavoritesManager"),
         "feature/settings/PreferredIpSpeedTestScreen.kt" to setOf("ComicSourceManager", "GelbooruAccount"),
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
@@ -242,7 +219,7 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
  * 有了它，"文件 → 符号"的折叠就不会把重复点位藏起来，而它又不受行号漂移影响。
  * B0 当天 152 ⇒ B1 摘 14（内容守卫）⇒ B2 摘 23（偏好四颗与 stores）= 115。
  */
-internal const val SITE_TOTAL_GET_INSTANCE = 93
+internal const val SITE_TOTAL_GET_INSTANCE = 77
 
 /** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：21 颗文件 / 32 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(

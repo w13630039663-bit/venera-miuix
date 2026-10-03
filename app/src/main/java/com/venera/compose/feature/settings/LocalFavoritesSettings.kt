@@ -5,14 +5,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.feature.FavoriteSortOrder
 import com.venera.compose.data.api.ComicPreferences
 
 @Composable
 fun LocalFavoritesSettings(prefs: ComicPreferences, onBack: () -> Unit) {
     val context = LocalContext.current
-    val manager = remember(context) { LocalFavoritesManager.getInstance(context) }
+    val manager = remember(context) { BusinessPorts.of(context).favorites }
     val folders by manager.folders.collectAsState()
     val newFavoriteAddTo by prefs.newFavoriteAddTo.collectAsState()
     val quickFavorite by prefs.quickFavorite.collectAsState()

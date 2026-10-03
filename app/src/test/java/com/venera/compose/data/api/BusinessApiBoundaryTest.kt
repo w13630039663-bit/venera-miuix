@@ -226,6 +226,28 @@ class BusinessApiBoundaryTest {
         assertTrue("白名单里有无主条目：\n${orphans.sorted().joinToString("\n")}", orphans.isEmpty())
     }
 
+    /**
+     * 反方向：归属表里也不许留**已消失点位的遗言**。
+     *
+     * 断言 F 管的是「点位有没有归属」，管不到反过来那一半 —— 而 D2 那批摘掉 10 行之后，
+     * `SITE_OVERRIDE` 里当场浮出两条谁也不会想起去删的死键（其中一条还是 B6 那批留下的）。
+     * 死键的危害不是难看：它让人以为那一行还在挂着，下一轮就照错的前提排活。
+     */
+    @Test
+    fun `G 归属表里不许留已消失点位的死键`() {
+        val live = buildSet {
+            for ((f, set) in BASELINE_IMPORT) for (s in set) add("$f#$s")
+            for ((f, set) in BASELINE_GET_INSTANCE) for (s in set) add("$f#$s")
+            for ((f, set) in BASELINE_TYPE_SITE) for (s in set) add("$f#$s")
+        }
+        val dead = ATTRIBUTION.keys.filter { it.contains('#') && it !in live }.sorted()
+        assertTrue(
+            "这些「文件#符号」的归属条目对应的点位已经不挂在白名单上了，把归属行一起删掉：\n" +
+                dead.joinToString("\n"),
+            dead.isEmpty(),
+        )
+    }
+
     private fun countsOf(pattern: Regex): Map<String, Int> =
         scan(pattern, group = 0).groupingBy { it.first }.eachCount()
 

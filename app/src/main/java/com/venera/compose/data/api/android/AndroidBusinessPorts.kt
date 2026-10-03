@@ -16,8 +16,20 @@ import com.venera.compose.data.api.ReaderPreferences
 import com.venera.compose.data.api.ReadingHistory
 import com.venera.compose.data.api.ReadingStats
 import com.venera.compose.data.api.SourceCatalog
+import com.venera.compose.data.api.DownloadQueue
+import com.venera.compose.data.api.FavoriteLibrary
+import com.venera.compose.data.api.LocalComicLibrary
+import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
+import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.download.DownloadManager
+import com.venera.compose.download.DownloadTask
+import com.venera.compose.download.LocalChapter
+import com.venera.compose.download.LocalComic
+import com.venera.compose.download.LocalComicManager
+import com.venera.compose.source.model.ComicChapter
+import java.io.File
 import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.platform.KeyValueStore
@@ -93,6 +105,9 @@ object AndroidBusinessPorts {
                 sources = AndroidSourceCatalog(context),
                 history = AndroidReadingHistory(context),
                 stats = AndroidReadingStats(context),
+                favorites = AndroidFavoriteLibrary(context),
+                downloads = AndroidDownloadQueue(context),
+                localComics = AndroidLocalComicLibrary(context),
                 network = AndroidNetworkHygiene(context),
                 httpText = AndroidHttpTextFetch(context),
             ).also { ports = it }
@@ -402,4 +417,121 @@ private class AndroidSourceCatalog(private val context: Context) : SourceCatalog
     override fun refreshPings() = manager.refreshPings()
 
     override suspend fun checkUpdates(force: Boolean): Int = manager.checkUpdates(force = force)
+}
+
+/**
+ * 本地收藏库的接线。⚠️ 构造不调 `getInstance`，只在成员体里现取 —— 那颗单例的建图时机与改造前逐点相同。
+ *
+ * 转发一律不带调度器：`LocalFavoritesManager` 的成员自己 `withContext(Dispatchers.IO)`，
+ * 这里再包一层就是凭空多一次切换。
+ */
+private class AndroidFavoriteLibrary(private val context: Context) : FavoriteLibrary {
+
+    private val manager: LocalFavoritesManager get() = LocalFavoritesManager.getInstance(context)
+
+    override val folders: StateFlow<List<String>> get() = manager.folders
+    override val counts: StateFlow<Map<String, Int>> get() = manager.counts
+    override val version: StateFlow<Int> get() = manager.version
+
+    override suspend fun getAllComics(): List<FavoriteItem> = manager.getAllComics()
+
+    override suspend fun getFolderComics(folder: String): List<FavoriteItem> =
+        manager.getFolderComics(folder)
+
+    override suspend fun search(keyword: String): List<FavoriteItem> = manager.search(keyword)
+
+    override suspend fun searchInFolder(folder: String, keyword: String): List<FavoriteItem> =
+        manager.searchInFolder(folder, keyword)
+
+    override suspend fun find(id: String, sourceKey: String): List<String> = manager.find(id, sourceKey)
+
+    override suspend fun isExist(id: String, sourceKey: String): Boolean = manager.isExist(id, sourceKey)
+
+    override suspend fun addComic(folder: String, comic: FavoriteItem, order: Int?, updateTime: String?): Boolean =
+        manager.addComic(folder, comic, order, updateTime)
+
+    override suspend fun deleteComicWithId(folder: String, id: String, sourceKey: String) =
+        manager.deleteComicWithId(folder, id, sourceKey)
+
+    override suspend fun batchDeleteComics(folder: String, comics: List<FavoriteItem>) =
+        manager.batchDeleteComics(folder, comics)
+
+    override suspend fun batchDeleteComicsInAllFolders(comics: List<FavoriteItem>) =
+        manager.batchDeleteComicsInAllFolders(comics)
+
+    override suspend fun batchMoveFavorites(sourceFolder: String, targetFolder: String, comics: List<FavoriteItem>) =
+        manager.batchMoveFavorites(sourceFolder, targetFolder, comics)
+
+    override suspend fun batchCopyFavorites(sourceFolder: String, targetFolder: String, comics: List<FavoriteItem>) =
+        manager.batchCopyFavorites(sourceFolder, targetFolder, comics)
+
+    override suspend fun createFolder(name: String, renameWhenInvalidName: Boolean): String =
+        manager.createFolder(name, renameWhenInvalidName)
+
+    override suspend fun deleteFolder(name: String) = manager.deleteFolder(name)
+
+    override suspend fun rename(before: String, after: String) = manager.rename(before, after)
+
+    override suspend fun updateOrder(folders: List<String>) = manager.updateOrder(folders)
+
+    override suspend fun reorder(newFolder: List<FavoriteItem>, folder: String) =
+        manager.reorder(newFolder, folder)
+
+    override suspend fun prepareTableForFollowUpdates(table: String, clearData: Boolean) =
+        manager.prepareTableForFollowUpdates(table, clearData)
+}
+
+/** 下载队列的接线。不收 `chapterOffline`（返回 internal 枚举），理由写在 `DownloadQueue` 的 KDoc。 */
+private class AndroidDownloadQueue(private val context: Context) : DownloadQueue {
+
+    private val manager: DownloadManager get() = DownloadManager.getInstance(context)
+
+    override val tasks: StateFlow<List<DownloadTask>> get() = manager.tasks
+
+    override fun enqueue(
+        sourceKey: String,
+        comicId: String,
+        comicTitle: String,
+        comicCover: String,
+        chapters: List<ComicChapter>,
+    ) = manager.enqueue(sourceKey, comicId, comicTitle, comicCover, chapters)
+
+    override fun pause(taskId: String) = manager.pause(taskId)
+
+    override fun resume(taskId: String) = manager.resume(taskId)
+
+    override fun pauseAll() = manager.pauseAll()
+
+    override fun resumeAll() = manager.resumeAll()
+
+    override fun clearCompleted() = manager.clearCompleted()
+
+    override fun delete(taskId: String, deleteFiles: Boolean) = manager.delete(taskId, deleteFiles)
+
+    override fun isChapterDownloaded(sourceKey: String, comicId: String, chapterId: String): Boolean =
+        manager.isChapterDownloaded(sourceKey, comicId, chapterId)
+
+    override fun getDownloadedChapterFiles(sourceKey: String, comicId: String, chapterId: String): List<File>? =
+        manager.getDownloadedChapterFiles(sourceKey, comicId, chapterId)
+
+    override fun relocateTasks(oldRoot: File, newRoot: File): Int = manager.relocateTasks(oldRoot, newRoot)
+}
+
+/** 本地漫画库的接线。 */
+private class AndroidLocalComicLibrary(private val context: Context) : LocalComicLibrary {
+
+    private val manager: LocalComicManager get() = LocalComicManager.getInstance(context)
+
+    override suspend fun getLocalComics(): List<LocalComic> = manager.getLocalComics()
+
+    override suspend fun getLocalChapters(comic: LocalComic): List<LocalChapter> =
+        manager.getLocalChapters(comic)
+
+    override suspend fun deleteLocalComic(comic: LocalComic): Boolean = manager.deleteLocalComic(comic)
+
+    override suspend fun exportToCbz(comic: LocalComic, targetFile: File, onProgress: (Float) -> Unit): Result<File> =
+        manager.exportToCbz(comic, targetFile, onProgress)
+
+    override suspend fun importCbz(archiveFile: File, customTitle: String?): Result<LocalComic> =
+        manager.importCbz(archiveFile, customTitle)
 }

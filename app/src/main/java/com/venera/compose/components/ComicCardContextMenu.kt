@@ -11,7 +11,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoriteDatabase
-import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.StatusColors
@@ -63,7 +62,7 @@ fun ComicCardContextMenu(
                     // addComic 抛异常=收藏夹不存在，返回 false=这本已经在里面了。两种要分开说，
                     // 否则重复收藏看起来像"点了没反应"。
                     val added = runCatching {
-                        LocalFavoritesManager.getInstance(context).addComic(
+                        BusinessPorts.of(context).favorites.addComic(
                             folder,
                             FavoriteItem(
                                 id = comic.id,

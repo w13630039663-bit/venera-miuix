@@ -18,7 +18,7 @@
 | 非 `getInstance` 的直连 | `AndroidKeyValueStore(` 3、`HostCircuitBreaker.` 3、`okhttp3.` 1、`PreferredIpRuntime.` 5、`ComicStorageRoot.` 15 | 同上，`BASELINE_*` 五张表 |
 | 全仓 `fun getInstance(` | 35 处声明 | `grep -rn "fun getInstance(" --include=*.kt app/src/main` |
 | ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 **17 处**（另有 4 处是注释字样，见 §九 第 2 条 —— **本行原先写的「18 处 / 另 3 处」是错的**，错在把 `BusinessPorts.kt` 自己那句 KDoc 算成了调用点）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
-| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例；D0（`architecture/LayeringEdgeTest.kt`）后 104 颗 `.kt` / 102 颗测试类 / 800 个用例** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
+| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例；D0 后 104/102/800、D3 后 105/103/803、D4 后 106/104/806；D2 未新增测试类但加了一条断言 G ⇒ 106/104/807** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
 **冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **19 处**（B3 再加 2 处 W1 嵌套类型，见 §五 B3 与 §六）。
 
@@ -55,7 +55,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 **VM 侧本轮不做构造注入**，改成字段一次性持有契约（`private val api = BusinessPorts.of(application)` + `private val prefs: ComicPreferences = api.comicPrefs`）。三条理由：18 处 `viewModel()` 里 **7 处落在冻结屏**（而 VM 文件本身一颗都不在冻结清单里 ⇒ 改动留在 VM 内是零豁免成本）；3 颗裸 `ViewModel()` 今天已零穿透；全仓零 `ViewModelProvider.Factory`，引入它等于新造一整个 DI 形状。**病因分两段**：①「实现类的名字出现在消费层」（125 行 import）本轮治；②「对象来自进程全局」只有构造注入能治，改完之后一颗 VM 的依赖恰好等于它字段声明里那几颗契约类型 —— **「能不能一眼列出依赖」就是本轮与下一轮的分界**。
 
-## 三、批次（B0–B4、B6 已落地）
+## 三、批次（B0–B6 已落地）
 
 | 批 | 内容 | 点位 | 状态 |
 |---|---|---|---|
@@ -64,7 +64,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | **B2** | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
 | **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 8 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
 | **B4** | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | ✅ 已落地 |
-| B5 | `FavoriteLibrary` + `OfflineLibrary`（契约随本批与守卫同批落地） | 18 | 待做，**允许整批砍掉** |
+| B5 | `FavoriteLibrary`(21) + `DownloadQueue`(11) + `LocalComicLibrary`(5)，一颗新文件 `data/api/FavoritesOfflineApi.kt` | 15（`chapterOffline` 那颗文件整行留着，理由见 §十一） | ✅ 已落地（2026-10-03 的 D2） |
 | **B6** | `NetworkHygiene`（补 `httpCacheSizeBytes` / `clearHttpCache` 两枚）+ `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | ✅ 已落地 | |
 | B7' | 画廊六颗契约（`gallery/data/GalleryPorts.kt`，含三腿 `when(site)` 表四遍→一遍） | 57 | 待做 |
 
@@ -72,7 +72,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 
 **验收线**：业务穿透 `150 → 15`（甲裁决下的终值，**不是 0**）；静态取用的出处 `51 颗文件（+ MainActivity.kt）→ 装配根 + 适配层 + 实现类自身`；`BusinessApiBoundaryTest` 的四张白名单逐批只许缩短；`:app:testDebugUnitTest` 用例数只增不减。
 
-**进度（B6 落地后）**：业务穿透 **93 处 / 38 颗文件**（起点 150 / 51），实现类 import **77 条 / 39 颗**（起点 125 / 56），类型引用位 **32 条 / 21 颗**（起点 49 / 33）。剩 B5（收藏库与下载本地 18 处，方案 §七 与 §三 都写着**允许整批砍掉**）与 B7'（画廊 57 处，含三腿 `when(site)` 表四遍→一遍），两批都需要真机验收；设备当前未连接（`adb devices` 空列表），已挂账。
+**进度（D2 落地后，2026-10-03 复算）**：业务穿透 **77 处 / 28 颗文件**（起点 150 / 51，B6 后曾是 93 / 38），实现类 import **66 条 / 30 颗**（起点 125 / 56），类型引用位 **32 条 / 21 颗**（未动，那半边归 W1/W2）。只剩 **B7'（画廊 35 条 / 10 颗）**，需要真机验收；设备当前未连接（`adb devices` 空列表），已挂账。§十一 那张「D2 开工包」已兑现，剩下的坑记在那一节里改写成「已落地」。
 
 ## 四、守卫用例 `app/src/test/java/com/venera/compose/data/api/BusinessApiBoundaryTest.kt`
 
@@ -299,7 +299,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 |---|---|---|---|
 | **D0** | W3 `architecture/LayeringEdgeTest.kt`：下层禁 import 上层，基线 **10 条 / 5 颗**，每条写解锁条件 | 无（且它是后面三批的兜底） | ✅ |
 | **D1** | B7' 画廊契约**纯改引** 35 条 / **10 颗**（原写 14 颗是 B 系列之前的旧数，2026-10-03 复算改定）；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
-| **D2** | B5 `FavoriteLibrary` + `OfflineLibrary` 18 条；宽度按消费面实数定 | 无 | ⏳ |
+| **D2** | B5 三颗契约 `FavoriteLibrary`(21) + `DownloadQueue`(11) + `LocalComicLibrary`(5)，11 颗文件改引；业务穿透 **93 → 77 处** | 无 | ✅ |
 | **D3** | VM 构造注入（第三路），17 处调用点不动。**形状 = 注入聚合端口 `BusinessPorts`**（改判理由见上面那段引文） | 无（不等 D1/D2） | ✅ |
 | **D4** | 「解锁条件已兑现而债务未清即红」的守卫：`architecture/DebtReadinessTest.kt` 六条债（W1×3、W2、W5 写口、§七.7）+ `architecture/ViewModelAssemblyGuardTest.kt` 三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ✅ |
 | **D5** | UseCase 化：逐簇给结论，不做并发/状态机搬迁 | D3 | ✅（结论在 §十，零搬迁） |
@@ -392,6 +392,39 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 - README 中英各 4 处测试规模同步 106/104/806。`_qa/readme-counts.mjs` 改成「旧值没命中就抛错」，
   不再静默跳过（它这轮就真的抛了一次：我按记忆写旧值 104，实际已是 105）。
 
+### D2（2026-10-03）读数 —— B5 落地，业务穿透 93 → 77 处
+
+- **改引 16 处 / 11 颗文件**：`components/ComicCardContextMenu.kt`、`feature/{ComicDetailViewModel,DownloadScreen,
+  FavoritesViewModel,FollowUpdatesViewModel,HistoryViewModel,HomeViewModel,LocalComicScreen}.kt`、
+  `feature/settings/{AppSettings,LocalFavoritesSettings}.kt`、`feature/favoriteimages/FavoriteImagesManager.kt`。
+  新增 `data/api/FavoritesOfflineApi.kt`（三颗契约 21+11+5 枚）+ `AndroidBusinessPorts` 三颗适配器 +
+  `BusinessPorts` 三枚字段。**16 个「文件 + 符号」位里 15 个摘净**，只留
+  `feature/ComicDetailScreen.kt#DownloadManager` 一枚（坑 4：`chapterOffline` 返回 internal 枚举，结构性不可收；
+  那颗文件本次**根本没动**，避免同一颗里混两种形状）。
+  B 表文件数 38 → 28 的账是这么来的：**10 颗整行消失**（ComicCardContextMenu、ComicDetailViewModel、DownloadScreen、
+  FavoritesViewModel、HistoryViewModel、HomeViewModel、LocalComicScreen、favoriteimages/FavoriteImagesManager、
+  AppSettings、LocalFavoritesSettings）+ **1 颗行内缩短**（`FollowUpdatesViewModel` 2 枚 → 1 枚，
+  剩的是 `FollowUpdatesRepository`，那是 W6 的点位）。11 颗改引文件里只有这后一颗还挂在表上。
+- **冻结屏交集 = 0**：`git diff --name-only` 与 `FREEZE-STATEMENT.md:8-15` 那 8 颗逐条比对，
+  命中的是 `HomeViewModel` / `FavoritesViewModel` / `HistoryViewModel`（ViewModel，未冻结），
+  不是 `HomeScreen` / `FavoritesScreen` / `HistoryScreen`（冻结）。冻结文件一行未进本次改动。
+- **白名单读数（前后）**：A 实现类 import **77 → 66 条 / 39 → 30 颗**；B 取用 **77 → 62 行 / 38 → 28 颗**，
+  `SITE_TOTAL_GET_INSTANCE` **93 → 77**；C 类型位 **32 条 / 21 颗未动**（那半边归 W1/W2）；
+  D 五张表同值；`E_SEED` 由 B 的键导出，自动从 38 缩到 28。基线由 `_qa/scan.mjs` → `_qa/splice.mjs` 灌回。
+- **新加一条断言 G**（`BusinessApiBoundaryTest`）：归属表里不许留**已消失点位的死键**。
+  加完当场浮出两条：一条是本批 `feature/favoriteimages/FavoriteImagesManager.kt#LocalFavoritesManager`，
+  另一条是 **B6 那批遗留**的 `feature/sourcemanage/ComicSourceViewModel.kt#VeneraNetworkClient` ——
+  断言 F 只管「点位有没有归属」，反方向此前无人管。两条已删。
+- **时序**：三颗适配器一律 `private val manager: X get() = X.getInstance(context)`，成员体里现取；
+  转发不带任何调度器（`LocalFavoritesManager` / `LocalComicManager` 的成员自己 `withContext(Dispatchers.IO)`，
+  再包一层就是凭空多一次切换）；`DownloadManager` 的 11 枚今天全是非 suspend 同步成员，契约照原样不收 `suspend`。
+- 读数：`:app:compileDebugKotlin` 过（第 21 枚成员就是被它抓出来的）、`:app:testDebugUnitTest :desktop:compileKotlin
+  --rerun-tasks` **807 tests / 0 failures / 0 errors**（104 份 XML、29 颗任务全 executed）。
+  README 中英同步 106/104/807。
+- 未验（真机挂账，与 B 系列那批合并）：收藏增删改夹与排序、追更夹登记（`prepareTableForFollowUpdates`）、
+  下载页暂停/恢复/清空已完成/删除、换存储根的 `relocateTasks`、本地漫画导入与 CBZ 导出、
+  首页扩展区那两个计数。这批里 `FavoritesViewModel` 是**收藏页的唯一数据源**，装机前不要把「编译绿」当「收藏没坏」。
+
 ## 十、D5：UseCase 化的逐簇裁定 —— 本阶段一条都不搬，给的是可执行的前置
 
 指令点名的三簇，逐条给「为什么现在搬就是行为变更」的实证（读数出自 `grep -c`，颗颗可复算）：
@@ -423,13 +456,14 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 
 
 
-## 十一、D1 / D2 的开工包（本会话量完，**未动工**）
+## 十一、D1 / D2 的开工包（D2 已兑现，D1 待做）
 
-四批之后停在这里是有理由的：D1 与 D2 都是「一颗契约 + 十几颗文件改引 + 基线重灌」这个量级，
+原本写在这里的判据是：D1 与 D2 都是「一颗契约 + 十几颗文件改引 + 基线重灌」这个量级，
 半批落地比不落地更糟 —— 契约建了而消费点没换完，等于树里同时存在两种形状，下一轮分不清该信哪个。
-下面这些是**已经花过取证成本**的结论，下一轮不必重跑。
+**D2 已按这一节的表在 2026-10-03 做完**（读数见 §五 最后一段与下面的「已兑现」标记），D1 仍待做。
+下面这些是**已经花过取证成本**的结论，做 D1 时不必重跑。
 
-### D2（B5）：这批**不用等 W1**，返回类型那道坎今天就不存在
+### D2（B5）✅ 已落地：**不用等 W1** 这条判据兑现了
 
 判据是逐颗查过声明地的：`FavoriteItem` / `FavoriteItemWithUpdateInfo` 在 `data/db/FavoriteModels.kt:14,73`，
 `DownloadTask` / `LocalComic` 在 `download/DownloadModels.kt:15,34` —— **全在下层**，所以 `data/api/` 里的
@@ -439,11 +473,11 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 
 | 契约 | 成员数 | UI 实测吃到的成员全集 |
 |---|---|---|
-| `FavoriteLibrary`（贴 `data/db/LocalFavoritesManager`，公开面 68 枚） | **20** | `addComic` `batchCopyFavorites` `batchDeleteComics` `batchDeleteComicsInAllFolders` `batchMoveFavorites` `counts` `createFolder` `deleteComicWithId` `deleteFolder` `find` `folders` `getAllComics` `getFolderComics` `isExist` `rename` `reorder` `search` `searchInFolder` `updateOrder` `version` |
-| `DownloadQueue`（贴 `download/DownloadManager`，公开面 42 枚） | **12** | `chapterOffline` `clearCompleted` `delete` `enqueue` `getDownloadedChapterFiles` `isChapterDownloaded` `pause` `pauseAll` `relocateTasks` `resume` `resumeAll` `tasks` |
+| `FavoriteLibrary`（贴 `data/db/LocalFavoritesManager`，公开面 68 枚） | **21** | `addComic` `batchCopyFavorites` `batchDeleteComics` `batchDeleteComicsInAllFolders` `batchMoveFavorites` `counts` `createFolder` `deleteComicWithId` `deleteFolder` `find` `folders` `getAllComics` `getFolderComics` `isExist` `prepareTableForFollowUpdates` `rename` `reorder` `search` `searchInFolder` `updateOrder` `version` |
+| `DownloadQueue`（贴 `download/DownloadManager`，公开面 42 枚） | **11 收 / 12 计** | 收：`clearCompleted` `delete` `enqueue` `getDownloadedChapterFiles` `isChapterDownloaded` `pause` `pauseAll` `relocateTasks` `resume` `resumeAll` `tasks`；**不收 `chapterOffline`**（见坑 4） |
 | `LocalComicLibrary`（贴 `download/LocalComicManager`，公开面 7 枚） | **5** | `deleteLocalComic` `exportToCbz` `getLocalChapters` `getLocalComics` `importCbz` |
 
-写入时的三个已知坑：
+写入时的五条已知坑（前三条是开工前量的，后两条是这批**真踩之后**补的）：
 1. **默认值必须逐字照抄**（本仓有条现成的教训：漏传不报错的新参数不要用默认值）——
    `addComic(folder, comic, order: Int? = null, updateTime: String? = null): Boolean`、
    `createFolder(name, renameWhenInvalidName: Boolean = false): String`、`delete(taskId, deleteFiles: Boolean = true)`。
@@ -453,6 +487,15 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 3. D3 已把 `ports` 注进 7 颗 VM ⇒ 这批在 VM 侧只是把 `LocalFavoritesManager.getInstance(app)` 换成
    `ports.favorites` 一行，**不要再往 VM 里加 `BusinessPorts.of`**（那是 `ViewModelAssemblyGuardTest`
    第一条要红的东西）。点位账：`BASELINE_GET_INSTANCE` 里含这三颗符号的是 **12 行 / 16 个 symbol-site**。
+4. **`chapterOffline` 结构性不可收**：它返回的 `ChapterOffline` 是 `download/ChapterCompleteness.kt:4` 的
+   `internal enum` —— 公开契约签名不许暴露 internal 类型，要么提 public、要么把三颗契约降级 internal，
+   两条都是「为了缩名单而放宽封装」。所以 `feature/ComicDetailScreen.kt` 那一行**整颗留在白名单**
+   （它同时吃 `enqueue` / `isChapterDownloaded`，混着两种形状更糟），归属表里写的是这条理由。
+5. **跨行内联链会把成员漏掉**：`FollowUpdatesViewModel` 那处写成
+   `…LocalFavoritesManager.getInstance(getApplication())` 换行 `.prepareTableForFollowUpdates(folder)`，
+   单行判式扫不到 ⇒ 第 21 枚成员是**编译器报 `Unresolved reference` 才抓回来的**。
+   这条与坑 2 同族但方向相反（那条是声明跨行、这条是**调用点**跨行）。
+   判据修正：**契约宽度的完整性由编译器担保**，不由复算脚本担保 —— 只要有一处漏收，改引后必编译失败。
 
 ### D1（B7'）：35 条 / 10 颗，第一道岔口是「常量算不算契约成员」
 

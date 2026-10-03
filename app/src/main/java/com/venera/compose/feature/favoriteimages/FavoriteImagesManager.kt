@@ -2,10 +2,10 @@ package com.venera.compose.feature.favoriteimages
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.db.DatabasePorts
 import com.venera.compose.data.db.FavoriteImageBackupFields
 import com.venera.compose.data.db.FavoriteImagesStore
-import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.db.ReadingStatsStore
 import com.venera.compose.data.tags.TagNormalizer
 import com.venera.compose.feature.ComicItem
@@ -348,7 +348,7 @@ class FavoriteImagesManager private constructor(private val context: Context) {
         // 用 runCatching：本地收藏表是按收藏夹分表的动态结构，建表前调用会抛，
         // 这里失败只意味着少一路作者来源，不该让整张插图列表打不开。
         runCatching {
-            LocalFavoritesManager.getInstance(context).getAllComics().forEach { fav ->
+            BusinessPorts.of(context).favorites.getAllComics().forEach { fav ->
                 TagNormalizer.resolveAuthor(fav.author, fav.tags)?.let { out[fav.id] = it }
             }
         }

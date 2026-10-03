@@ -33,6 +33,7 @@ import com.venera.compose.components.*
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -42,7 +43,6 @@ import com.venera.compose.components.venera.blurBackdropSource
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
-import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadStatus
 import com.venera.compose.download.DownloadTask
 import top.yukonga.miuix.kmp.basic.Button
@@ -64,7 +64,7 @@ fun DownloadScreen(
 ) {
     val context = LocalContext.current
     val tokens = VeneraTokens
-    val downloadManager = remember { DownloadManager.getInstance(context) }
+    val downloadManager = remember { BusinessPorts.of(context).downloads }
     val tasks by downloadManager.tasks.collectAsState()
     val displayMode = rememberComicListDisplayMode()
 
