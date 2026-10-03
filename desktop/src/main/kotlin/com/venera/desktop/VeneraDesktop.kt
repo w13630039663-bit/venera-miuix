@@ -41,8 +41,11 @@ import com.venera.engineprobe.EngineSession
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoriteDatabase
 import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
+import com.venera.desktop.gallery.data.DesktopGalleryPorts
+import com.venera.desktop.gallery.ui.DesktopGalleryHome
 import io.github.composefluent.FluentTheme
 import io.github.composefluent.component.NavigationView
 import io.github.composefluent.component.ProgressBar
@@ -174,6 +177,10 @@ fun main(args: Array<String>) {
     // Task 5a：把 data/db 接到桌面（只装 factory lambda，不碰 SQLite —— 建目录/建库推迟到第一次取用）。
     // 未接线就取用会由 DatabasePorts.of 直接抛，这里不包 try/catch：抛就是要崩在启动读数里。
     DesktopDatabasePorts.install(paths)
+    // Gallery 接线：必须在 DatabasePorts 之后，因为 [DesktopGalleryContentGuard]
+    // 的 [com.venera.compose.gallery.data.GalleryRules.askFirst] 首问规则时会经
+    // [com.venera.compose.data.db.DatabasePorts.of] 取库，未接线就抛。
+    DesktopGalleryPorts.install(com.venera.desktop.gallery.data.DesktopGalleryHandle.of(paths))
     // coreDbFile/favoritesDbFile 是纯计算读数：这行自己不建目录，"已建"照实反映磁盘现状。
     val coreDb = DesktopDatabasePorts.coreDbFile()
     val favDb = DesktopDatabasePorts.favoritesDbFile()
@@ -383,135 +390,8 @@ private fun VeneraDesktop(
         }
     }
 
-    NavigationView(
-        menuItems = {
-            sources.forEach { key ->
-                menuItem(
-                    selected = key == selected && !showFavorites,
-                    onClick = {
-                        showFavorites = false
-                        selected = key
-                    },
-                    text = { Text(key) },
-                    icon = { Text(key.take(1).uppercase()) },
-                )
-            }
-            menuItem(
-                selected = showFavorites,
-                onClick = { showFavorites = true },
-                text = { Text("收藏") },
-                icon = { Text("藏") },
-            )
-        },
-    ) {
-        val card = open
-        if (showFavorites) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text("收藏")
-                favStatus?.let {
-                    Text(it, modifier = Modifier.padding(top = 6.dp))
-                }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    favTree.forEach { (folder, items) ->
-                        item {
-                            Text("收藏夹：$folder（${items.size} 条）", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                        }
-                        if (items.isEmpty()) {
-                            item { Text("这个收藏夹还没有收藏", modifier = Modifier.padding(start = 12.dp)) }
-                        }
-                        items.forEach { fav ->
-                            item {
-                                Column(Modifier.padding(horizontal = 12.dp).padding(vertical = 3.dp)) {
-                                    Text(fav.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(
-                                        "　${fav.author.ifBlank { fav.sourceKey }} ｜ 收藏于 ${fav.time}",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (favTree.isEmpty() && favStatus == null) {
-                        item { Text("还没有收藏") }
-                    }
-                }
-            }
-        } else if (card != null) {
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("← 返回列表", modifier = Modifier.clickable { open = null })
-                    Text("  ｜ ${card.title}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(pageStatus ?: "取页中…", modifier = Modifier.padding(horizontal = 12.dp))
-                LazyColumn(Modifier.fillMaxSize()) {
-                    // 用 items(count) 而不是 items(list)：`items` 在本文件里已被网格占用，
-                    // 两个同名扩展同时 import 会撞
-                    items(pages.size) { i ->
-                        Image(pages[i], contentDescription = null, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-        } else {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
-            // 状态行走 fluent 的 Text（跟着主题取色）：上一版硬用白字，浅色主题下等于隐形
-            Text("源：$selected ｜ $status" + (error?.let { " ｜ $it" } ?: ""))
-            // 收藏入口的即时反馈（对应 Android 侧那颗 Toast 的位置）
-            favStatus?.let { Text(it, modifier = Modifier.padding(top = 2.dp)) }
-            if (busy) {
-                ProgressBar()
-            }
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(180.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize().padding(top = 12.dp),
-            ) {
-                cards.forEach { section ->
-                    if (section.title.isNotBlank()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Text(section.title, modifier = Modifier.padding(vertical = 6.dp))
-                        }
-                    }
-                    items(section.comics, key = { "${section.title}-${it.id}" }) { comic ->
-                        Column(
-                            Modifier
-                                .width(180.dp)
-                                .clickable { open = comic },
-                        ) {
-                            Box(
-                                Modifier.width(180.dp).height(230.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                val bmp = covers[comic.id]
-                                if (bmp != null) {
-                                    Image(bmp, contentDescription = comic.title, modifier = Modifier.fillMaxSize())
-                                } else {
-                                    Text("无图")
-                                }
-                            }
-                            Text(
-                                comic.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                            // 收藏入口：走与 Android 侧同一颗 addComic（默认收藏夹）
-                            Text(
-                                "收藏",
-                                modifier = Modifier
-                                    .padding(top = 2.dp)
-                                    .clickable {
-                                        val source = selected
-                                        scope.launch { favStatus = addFavorite(favorites(), source, comic) }
-                                    },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        }
+    NavigationView(menuItems = {}) {
+        DesktopGalleryHome(GalleryPorts.of(null))
     }
 }
 
