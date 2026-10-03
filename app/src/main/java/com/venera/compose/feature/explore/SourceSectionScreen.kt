@@ -64,6 +64,7 @@ import com.venera.compose.feature.ComicItem
 import com.venera.compose.feature.SourceSectionRoute
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.explore.PAGE_KIND_SEARCH
 import com.venera.compose.source.explore.UnifiedTag
 import com.venera.compose.source.model.CategoryComicsOption
 import com.venera.compose.source.model.Comic
@@ -113,6 +114,15 @@ fun SourceSectionScreen(
         route.unifiedTag?.let { name -> UnifiedTag.entries.firstOrNull { it.name == name } }
     }
 
+    // 源原生 search 型入口：官方 `PageJumpTarget.jump()` 按 `page == "search"` 走**搜索页**，
+    // 而不是分类接口。禁漫天堂的「主題A漫 / 角色扮演 / 特殊PLAY」全是这类入口
+    // （jm.js 里 `itemType: "search"`），它们没有 categoryParams ⇒ param 恒为 null。
+    // 修复前这里一律按分类发请求，`param ??= category` 便拿分类名去查分类接口，
+    // 于是点哪个都落回同一份默认内容；同理 nhentai 的 Tags、gelbooru 的两个条目。
+    val isSearchEntry = route.page == PAGE_KIND_SEARCH
+    // 关键词取源侧原文（attributes["keyword"]），没有才退回显示名 label。
+    val searchKeyword = route.keyword?.takeIf { it.isNotBlank() } ?: route.category
+
     // 状态放 ViewModel：进详情会销毁本条目组合，remember 的字段全部重建 → 每次返回都
     // 重拉第 1 页并回到默认排序。理由与字段说明见 SourceSectionViewModel。
     val vm: SourceSectionViewModel = viewModel()
@@ -130,14 +140,18 @@ fun SourceSectionScreen(
         scope.launch {
             isLoading = true
             error = null
-            val result = if (unifiedTag != null) {
-                // 只取条目：本页维持改造前的行为（maxPage 传 null，即"页数未知"）。
-                // 接口现在能给出真实 maxPage 了，但启用它会改变这个冻结页的分页判定，
-                // 属于另一件事，要改请单独评审。
-                sourceManager.search(route.sourceKey, unifiedTag.label, targetPage, null)
-                    .map { page -> page.comics to null }
-            } else {
-                sourceManager.loadCategoryComics(
+            val result = when {
+                // 应用层通用标签：走本源搜索。只取条目，maxPage 传 null（"页数未知"）——
+                // 本页维持改造前的行为，启用真实 maxPage 会改变这个冻结页的分页判定。
+                unifiedTag != null ->
+                    sourceManager.search(route.sourceKey, unifiedTag.label, targetPage, null)
+                        .map { page -> page.comics to null }
+                // 源原生 search 型入口：对齐官方 jump()，走搜索接口，用源给的真实 maxPage。
+                isSearchEntry ->
+                    sourceManager.search(route.sourceKey, searchKeyword, targetPage, null)
+                        .map { page -> page.comics to page.maxPage }
+                // 源原生 category 型入口：走分类接口（现状保持）。
+                else -> sourceManager.loadCategoryComics(
                     sourceKey = route.sourceKey,
                     category = route.category,
                     param = route.param,
@@ -164,14 +178,14 @@ fun SourceSectionScreen(
     }
 
     // 初始化：读取该分类的源自定义筛选项。
-    LaunchedEffect(route.sourceKey, route.category, route.param, reloadTick) {
+    LaunchedEffect(route.sourceKey, route.category, route.param, route.page, reloadTick) {
         // 从详情页返回时本 effect 会随组合重建再跑一次。没按过刷新、筛选项也没变、且手里
         // 已经有数据，就直接返回 —— 否则每次返回都会重拉第 1 页并回到默认排序。
         if (vm.loadedForTick == reloadTick && vm.loadedOptions == selectedOptions && comics.isNotEmpty()) {
             isLoading = false
             return@LaunchedEffect
         }
-        if (unifiedTag != null) {
+        if (unifiedTag != null || isSearchEntry) {
             options = emptyList()
             vm.loadedForTick = reloadTick
             vm.loadedOptions = selectedOptions
@@ -262,6 +276,13 @@ fun SourceSectionScreen(
                                     "；它不会修改该源的任何原生分类。",
                             )
                         }
+                    } else if (isSearchEntry) {
+                        item(key = "notice-search") {
+                            NoticeBanner(
+                                text = "「" + route.category + "」是该源的搜索型入口，正在以关键词「" + searchKeyword +
+                                    "」搜索 " + route.sourceTitle + "。",
+                            )
+                        }
                     }
 
                     if (isDetailed) {
@@ -323,7 +344,11 @@ fun SourceSectionScreen(
         VeneraTopAppBar(
             title = route.category,
             largeTitle = route.category,
-            subtitle = route.sourceTitle + if (unifiedTag != null) " · 通用标签搜索" else "",
+            subtitle = route.sourceTitle + when {
+                unifiedTag != null -> " · 通用标签搜索"
+                isSearchEntry -> " · 关键词搜索"
+                else -> ""
+            },
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {

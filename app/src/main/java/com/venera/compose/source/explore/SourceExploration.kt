@@ -81,7 +81,33 @@ data class NativeEntry(
     val label: String,
     /** 传给源的参数（[com.venera.compose.source.model.PageJumpTarget] 的 attributes["param"]）。 */
     val param: String?,
+    /**
+     * 这一项该跳去哪一种页 —— **原样透传官方 `PageJumpTarget.page`（即源声明的 `itemType`）**。
+     *
+     * 官方 `models.dart:537-560` 的 `jump()` 就按这个字段分发：
+     *  - [PAGE_KIND_CATEGORY]（默认）→ CategoryComicsPage，走 `categoryComics.load`；
+     *  - [PAGE_KIND_SEARCH] → SearchResultPage，走 `search.load`，关键词取 [keyword]。
+     *
+     * **丢了它就会把「search 型」当「category 型」发请求**：这类项没有 `categoryParams`，
+     * `param` 恒为 null，`categoryComics.load` 里的 `param ??= category` 于是拿分类名去查分类接口
+     * —— 禁漫天堂的「主題A漫 / 角色扮演 / 特殊PLAY」全部退化成同一份内容（本字段修复前的真实现象）。
+     */
+    val page: String = PAGE_KIND_CATEGORY,
+    /**
+     * search 型的搜索关键词（官方 `attributes["keyword"]`，**源侧原文、未被字典翻译**）。
+     *
+     * 显示用 [label]（可能已翻译），发请求必须用本字段，否则翻译过的标签会被拿去搜索。
+     * 官方对 `itemType == "search"` 只写 keyword（`parser.dart:503`），对 `search_with_namespace`
+     * 写的是 `"$name:$tags[i]"`（`:505-507`）—— 两种情况本字段都已是最终值。
+     */
+    val keyword: String? = null,
 )
+
+/** 源 `itemType` / 官方 `PageJumpTarget.page`：走源的分类接口。 */
+const val PAGE_KIND_CATEGORY = "category"
+
+/** 源 `itemType` / 官方 `PageJumpTarget.page`：走源的搜索接口。 */
+const val PAGE_KIND_SEARCH = "search"
 
 /**
  * 把源的 [ExplorePageData] + [CategoryData] 收敛成一份 [SourceExploration]。
@@ -158,7 +184,16 @@ object SourceExplorationFactory {
     private fun CategoryPart.toNativeSection() = NativeSection(
         name = name,
         type = type,
-        items = items.map { NativeEntry(it.label, it.target.attributes?.get("param")?.toString()) },
+        // page / keyword 必须原样带出来：只看 label 与 param 无法区分 category 型与 search 型
+        // （search 型的 param 恒为 null），会把后者的请求发到错误的端点。
+        items = items.map {
+            NativeEntry(
+                label = it.label,
+                param = it.target.attributes?.get("param")?.toString(),
+                page = it.target.page,
+                keyword = it.target.attributes?.get("keyword")?.toString(),
+            )
+        },
     )
 
     /** 去掉「源名 + 分隔符」前缀，例如 "拷贝漫画 - 最新" -> "最新"。 */

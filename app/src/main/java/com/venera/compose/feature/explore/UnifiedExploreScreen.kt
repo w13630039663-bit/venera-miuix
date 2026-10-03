@@ -62,6 +62,7 @@ import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.explore.ExploreMode
 import com.venera.compose.source.explore.NativeEntry
 import com.venera.compose.source.explore.NativeSection
+import com.venera.compose.source.explore.PAGE_KIND_CATEGORY
 import com.venera.compose.source.explore.SourceExploration
 import com.venera.compose.source.explore.UnifiedTag
 import com.venera.compose.source.explore.unifiedTagsFor
@@ -415,7 +416,11 @@ fun UnifiedExploreScreen(
                                 sourceKey = src.sourceKey,
                                 sourceTitle = src.sourceName,
                                 category = entry.label,
+                                // page/keyword 原样带上：search 型项的 param 恒为 null，
+                                // 只靠 label+param 无法判断该走搜索还是分类（见 NativeEntry.page）。
                                 param = entry.param,
+                                page = entry.page,
+                                keyword = entry.keyword,
                             )
                         )
                     },
@@ -486,6 +491,8 @@ fun UnifiedExploreScreen(
                                             sourceTitle = src.sourceName,
                                             category = part.title,
                                             param = target.attributes?.get("param")?.toString(),
+                                            page = target.page,
+                                            keyword = target.attributes?.get("keyword")?.toString(),
                                         )
                                     )
                                 },
@@ -1081,4 +1088,11 @@ data class NativeSectionArgs(
     val category: String,
     val param: String?,
     val unifiedTag: UnifiedTag? = null,
+    /**
+     * 跳转类型（源 `itemType` / 官方 `PageJumpTarget.page`）：[PAGE_KIND_CATEGORY] 或
+     * [PAGE_KIND_SEARCH]。详见 [com.venera.compose.source.explore.NativeEntry.page]。
+     */
+    val page: String = PAGE_KIND_CATEGORY,
+    /** search 型的搜索关键词（源侧原文）。 */
+    val keyword: String? = null,
 ) : java.io.Serializable

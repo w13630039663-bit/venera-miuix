@@ -170,6 +170,14 @@ import androidx.compose.material3.IconButton
     val category: String,
     val param: String? = null,
     val unifiedTag: String? = null,
+    /**
+     * 源 `itemType` / 官方 `PageJumpTarget.page`：`"category"`（分类接口）或 `"search"`
+     * （搜索接口，关键词取 [keyword]）。**必须进路由** —— 同一个 label 可能来自 search 型入口，
+     * 不带它下钻页只能一律当分类发请求（禁漫天堂 54/65 个入口就是这么被发错的）。
+     */
+    val page: String = "category",
+    /** search 型的搜索关键词（源侧原文，未翻译）。 */
+    val keyword: String? = null,
 )
 @Serializable data object DownloadRoute
 @Serializable data object LocalComicRoute
@@ -859,6 +867,8 @@ fun VeneraComposeApp() {
                                             category = args.category,
                                             param = args.param,
                                             unifiedTag = args.unifiedTag?.name,
+                                            page = args.page,
+                                            keyword = args.keyword,
                                         )
                                     )
                                 },
@@ -879,6 +889,8 @@ fun VeneraComposeApp() {
                                             category = args.category,
                                             param = args.param,
                                             unifiedTag = args.unifiedTag?.name,
+                                            page = args.page,
+                                            keyword = args.keyword,
                                         )
                                     )
                                 },
