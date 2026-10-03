@@ -8,9 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -30,7 +28,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
@@ -46,6 +43,7 @@ import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
 import com.venera.desktop.gallery.data.DesktopGalleryPorts
 import com.venera.desktop.gallery.ui.DesktopGalleryHome
+import com.venera.desktop.gallery.ui.DesktopGalleryMetrics
 import com.venera.desktop.gallery.ui.DesktopTheme
 import io.github.composefluent.FluentTheme
 import io.github.composefluent.component.ProgressBar
@@ -204,21 +202,32 @@ fun main(args: Array<String>) {
     }
 
     application {
+        // 默认窗尺寸**按屏钳制**（收掉计划里的 R-g）：`WindowPlacement.Floating` 不做尺寸自适应，
+        // 1366 宽的屏上写死 1440 会让最右一列永远跑到屏幕外。钳制逻辑在
+        // `DesktopGalleryMetrics.windowSizeFor` —— 那里是纯函数，所以"1366 屏得多少"有单测兜着；
+        // 这里只负责把 AWT 的屏幕读数喂给它。
+        val windowSize = remember {
+            val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+            DesktopGalleryMetrics.windowSizeFor(screen.width, screen.height)
+        }
         Window(
             onCloseRequest = {
                 closePersistenceInOrder()
                 exitApplication()
             },
             title = APP_TITLE,
-            // 1440×900 = 设计稿 `.frame` 的画板尺寸（`docs/designs/windows-gallery-home-touhou-2026-10-03.html:39`）。
+            // 目标尺寸 1440×900 = 设计稿 `.frame` 的画板尺寸（`docs/designs/windows-gallery-home-touhou-2026-10-03.html:39`）。
             // ⚠️ 这个尺寸不只是"好看"：它决定图片墙的列数。`1440 − rail 48 − pane 224 = 1168`，
             // 正是稿上标注的「内容净宽 1168」，再扣横向内边距 24 ⇒ `ceil(1144/200) = 6` 列。
             // 稿 `:338` 与 `:657` 两处都把这档写成 6 列，由 `DesktopWidthCaliberDriftTest` 钉住。
             //
-            // 旧档 1080×760 仍然有效（窗口可缩放），它按同一条公式得 4 列。
-            // ⚠️ 已知局限：`WindowPlacement.Floating` 不做尺寸自适应，1366 宽的屏上这扇窗会超出可视区
-            //（尺寸钳制不在本批范围，见计划 R-g）。
-            state = rememberWindowState(placement = WindowPlacement.Floating, width = 1440.dp, height = 900.dp),
+            // ⚠️ 实际开出来可能是**更窄**的一档（屏放不下 1440 时）：那不是"跑偏"，
+            // 列数会按同一条公式跟着变（1280 档 5 列、1080 档 4 列），墙仍然是墙。
+            state = rememberWindowState(
+                placement = WindowPlacement.Floating,
+                width = windowSize.width,
+                height = windowSize.height,
+            ),
         ) {
             // 深色主题**钉死**（2026-10-04 视觉重构）：`colors` 走 Fluent 的 darkColors（accent=藤紫），
             // 其余 surface 走 DesktopTheme 的五档阶梯。理由写在 `DesktopTheme` 的类注释里 ——

@@ -1,6 +1,7 @@
 package com.venera.desktop.gallery.ui
 
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
 
@@ -26,6 +27,78 @@ import kotlin.math.ceil
  * `WideScreenPolicy.kt` 本身一行不改 —— 原计划要往它加 `railWidth()`，那是动 Android UI 基建，已撤。
  */
 internal object DesktopGalleryMetrics {
+
+    // ── 窗口 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 设计稿画板尺寸 `1440×900`（`docs/designs/windows-gallery-home-touhou-2026-10-03.html:39`
+     * 的 `.frame`），也是默认窗的**目标**尺寸。
+     *
+     * ⚠️ 它不只是"好看"：它决定图片墙的列数（`1440−48−224 = 1168 → 6 列`，
+     * 与稿 `:338`/`:657` 的标注逐字相符），推导见 [imageWallColumnCount] 那张表。
+     */
+    private const val DESIGN_WINDOW_WIDTH = 1440
+    private const val DESIGN_WINDOW_HEIGHT = 900
+
+    /** 按屏钳制时留出的余量：横向给窗口边框，纵向另给任务栏与标题栏。 */
+    private const val WINDOW_MARGIN_X = 80
+    private const val WINDOW_MARGIN_Y = 120
+
+    /** 钳制下限：屏幕小到连余量都不够时，至少别算出一个零或负数。 */
+    private const val MIN_WINDOW_WIDTH = 640
+    private const val MIN_WINDOW_HEIGHT = 480
+
+    /**
+     * 默认窗尺寸（dp）：目标是 [DESIGN_WINDOW_WIDTH]×[DESIGN_WINDOW_HEIGHT]，但**先按屏幕可视区钳**。
+     *
+     * ## 为什么必须钳
+     *
+     * `VeneraDesktop.kt` 用的是 `WindowPlacement.Floating`，它**不做尺寸自适应** ——
+     * 1366 宽的屏上开一扇 1440 的窗，右边那一截直接跑到屏幕外，图片墙最右一列永远看不见。
+     * 2026-10-04 之前这里写死 `1440.dp`，那条局限以 `R-g` 的名字挂在计划里；
+     * 本条把它收掉。
+     *
+     * ## 为什么写成纯函数
+     *
+     * 屏幕读数由**调用方**给（`VeneraDesktop.kt` 那边才去问 AWT），所以
+     * 「1366 屏得多少、2560 屏得多少、小到荒谬的屏得多少」全部能落成单测 ——
+     * 不用真开一扇窗、不依赖 `java.awt`。拿不到设备的场合，这是唯一能跑的证据。
+     *
+     * ## 取向：宁可窄，不可超屏
+     *
+     * 取 `min(目标, 屏 − 余量)`，**不再往上兜下限** —— 屏幕真比目标还小时，
+     * 结果是比 1440 窄而不是比屏幕宽。只有余量算出非正数（屏幕小到荒谬）时才退到
+     * [MIN_WINDOW_WIDTH] / [MIN_WINDOW_HEIGHT]，那已经把"开一扇比屏幕大的窗"挡掉了。
+     */
+    fun windowSizeFor(screenWidth: Int, screenHeight: Int): DpSize = DpSize(
+        minOf(DESIGN_WINDOW_WIDTH, (screenWidth - WINDOW_MARGIN_X).coerceAtLeast(MIN_WINDOW_WIDTH)).dp,
+        minOf(DESIGN_WINDOW_HEIGHT, (screenHeight - WINDOW_MARGIN_Y).coerceAtLeast(MIN_WINDOW_HEIGHT)).dp,
+    )
+
+    // ── 标题栏（稿 `.tb`：CSS `:40`，HTML `:340-351`）──────────────────────
+
+    /** 标题栏高。稿 `.tb{height:40px;flex:0 0 40px}`（`:40`）。 */
+    val topBarHeight: Dp = 40.dp
+
+    /** 标题栏左内衬。稿 `.tb{padding:0 0 0 12px}`（`:40`）—— 只有左边那一侧。 */
+    val topBarLeadingPadding: Dp = 12.dp
+
+    /** 标题栏内各元素间距。稿 `.tb{gap:10px}`（`:40`）。 */
+    val topBarGap: Dp = 10.dp
+
+    /**
+     * 搜索框的宽 × 高。稿 `.search{flex:0 0 400px;height:32px}`（`:43`）——
+     * **固定 400 而不是 `1fr`**，所以它旁边才有一大段空白（稿就是这样）。
+     */
+    val searchFieldWidth: Dp = 400.dp
+    val searchFieldHeight: Dp = 32.dp
+
+    /** 搜索框与左侧品牌之间的距离。稿 `.search{margin-left:12px}`（`:43`）。 */
+    val searchFieldLeadingMargin: Dp = 12.dp
+
+    /** 标题栏右侧读数胶囊的高。稿 `.lamp{height:32px;padding:0 12px}`（`:48`）。 */
+    val statusLampHeight: Dp = 32.dp
+    val statusLampHorizontalPadding: Dp = 12.dp
 
     /** 域切换条宽（图库 / 漫画 / 设置）。设计稿原值，桌面自持。 */
     val railWidth: Dp = 48.dp
@@ -71,16 +144,16 @@ internal object DesktopGalleryMetrics {
             .toInt()
             .coerceAtLeast(3)
 
-    /** pane 行高。设计稿 `.nav{height:40px}`（`:73`），与批次 H 定的「视觉 40 + 触达 48」同一档。 */
+    /** pane 行高。设计稿 `.nav{height:40px}`（`:79`），与批次 H 定的「视觉 40 + 触达 48」同一档。 */
     val navRowHeight: Dp = 40.dp
 
-    /** pane 行的左右内缩与设计稿 `.nav{padding:0 12px}` 同值（`:73`）。 */
+    /** pane 行的左右内缩与设计稿 `.nav{…padding:0 12px}` 同值（`:79`）。 */
     val navRowHorizontalPadding: Dp = 12.dp
 
-    /** pane 行里图标与文字的间距。设计稿 `.nav{gap:12px}`（`:73`）。 */
+    /** pane 行里图标与文字的间距。设计稿 `.nav{…gap:12px}`（`:79`）。 */
     val navRowGap: Dp = 12.dp
 
-    /** 图标位宽。设计稿 `.nav svg{width:16px}`（`:74`）；桌面这轮没有图标集，位子里摆一个汉字。 */
+    /** 图标位宽。设计稿 `.nav svg{width:16px}`（`:80`）；桌面这轮没有图标集，位子里摆一个汉字。 */
     val navGlyphSlotWidth: Dp = 16.dp
 
     /** 图片墙的行列间距。设计稿 `.wall{gap:14px}`（`:184`）。 */

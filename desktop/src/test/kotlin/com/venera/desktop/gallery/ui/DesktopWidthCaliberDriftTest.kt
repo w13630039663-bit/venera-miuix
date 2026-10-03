@@ -1,5 +1,7 @@
 package com.venera.desktop.gallery.ui
 
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,6 +109,49 @@ class DesktopWidthCaliberDriftTest {
         assertEquals(5, DesktopGalleryMetrics.imageWallColumnCount(1280f - 48f - 224f))
         // 极窄窗的下限来自 Android 原式的 coerceAtLeast(3)，不是桌面另定的一档。
         assertEquals(3, DesktopGalleryMetrics.imageWallColumnCount(300f))
+    }
+
+    /**
+     * 默认窗尺寸**按屏钳制**（收掉计划里的 R-g）。
+     *
+     * ## 为什么这条必须存在
+     *
+     * `VeneraDesktop.kt` 用的是 `WindowPlacement.Floating`，它**不做尺寸自适应** ——
+     * 写死 1440 的窗开在 1366 宽的屏上，右边那一截直接跑到屏幕外，
+     * 图片墙最右一列**永远看不见**。而"看不见"这件事：不报错、不抛异常、单测照跑绿、
+     * 截图也只截得到屏幕内的部分 —— 只有真的坐在那台小屏前的人才会发现。
+     *
+     * 所以钳制写成了纯函数（屏幕读数由调用方喂，见 [DesktopGalleryMetrics.windowSizeFor]），
+     * 这条用例就是那台"小屏"：不用开窗，也能把"1366 屏上开多大"钉死。
+     */
+    @Test
+    fun `默认窗尺寸按屏钳制 小屏上不许开出比屏幕还大的窗`() {
+        // 大屏（本机 2560×1440）：照设计稿画板开，一颗数不改，列数仍是 6。
+        assertEquals(
+            "2560×1440 屏上应原样开 1440×900（= 稿 .frame 画板）",
+            DpSize(1440.dp, 900.dp),
+            DesktopGalleryMetrics.windowSizeFor(2560, 1440),
+        )
+        // 1920 屏：宽够（1920−80 = 1840 > 1440），高也够（1080−120 = 960 > 900）⇒ 仍是目标尺寸。
+        assertEquals(DpSize(1440.dp, 900.dp), DesktopGalleryMetrics.windowSizeFor(1920, 1080))
+        // 1366×768（R-g 点名的那一档）：宽 1366−80 = 1286、高 768−120 = 648，两轴都收。
+        assertEquals(
+            "1366 宽的屏上应收到 1286×648，而不是开一扇 1440 的窗让最右一列跑到屏幕外",
+            DpSize(1286.dp, 648.dp),
+            DesktopGalleryMetrics.windowSizeFor(1366, 768),
+        )
+
+        // 不变量：任何屏幕上都**不许开出比屏幕还大的窗**。
+        listOf(
+            2560 to 1440, 1920 to 1080, 1600 to 900, 1366 to 768,
+            1280 to 720, 1024 to 768, 800 to 600, 640 to 480,
+        ).forEach { (sw, sh) ->
+            val size = DesktopGalleryMetrics.windowSizeFor(sw, sh)
+            assertTrue(
+                "屏幕 ${sw}×${sh} 上算出了 ${size.width.value.toInt()}×${size.height.value.toInt()} 的窗 —— 超出屏幕",
+                size.width.value <= sw && size.height.value <= sh,
+            )
+        }
     }
 
     private companion object {

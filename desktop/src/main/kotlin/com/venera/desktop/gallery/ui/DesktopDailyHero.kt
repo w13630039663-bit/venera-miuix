@@ -32,7 +32,7 @@ import io.github.composefluent.component.Text
 import androidx.compose.foundation.layout.fillMaxSize
 
 /**
- * Hero 区（稿 `.top`，`docs/designs/windows-gallery-home-touhou-2026-10-03.html:364`）：
+ * Hero 区（稿 `.top`，`docs/designs/windows-gallery-home-touhou-2026-10-03.html:146`）：
  * **左侧 1fr 大位 + 右侧两张小卡**。
  *
  * ## 这一版比稿上少三样，原因是它们今天**不存在**
@@ -48,7 +48,7 @@ import androidx.compose.foundation.layout.fillMaxSize
  *
  * ## 拿哪张当大位：**种子序第一张**，不是"分数最高"
  *
- * 墙上那 40 张已经被 `GalleryMerge` 按种子打乱过（`GalleryMerge.kt:26`），hero 若另按分数挑
+ * 墙上那 40 张已经被 `GalleryMerge` 按种子打乱过（`gallery/domain/GalleryMerge.kt:27`），hero 若另按分数挑
  * 一张，就等于**在用户已经看到的集合之外多出一个选择** —— 点了却没有下一页可翻。
  * 所以 hero 取的就是墙上那 40 张里的第一张：大位与墙是同一个集合，不多不少。
  */
@@ -74,7 +74,18 @@ internal fun DesktopDailyHero(
                     .background(DesktopTheme.CardBackground),
             ) {
                 AsyncImage(
-                    model = lead.previewUrl.ifBlank { lead.largeUrl },
+                    // ⚠️ **不许用 `previewUrl`**：它是网格缩略档（300~360px），
+                    // 铺到这块 ≈900×330 的大位上等于放大 3 倍 —— 观感就是"糊成一片色块"，
+                    // 认不出画的是什么。
+                    //
+                    // 走 `GalleryPost.backdropUrl`：它就是为"当背景底图"开的那一档
+                    // （非视频取中档 `largeUrl`，视频整条转给 `videoPosterUrl` 那道
+                    // "中档被兜底成原片 mp4 就退缩略图"的闸门）。画师介绍页的 hero
+                    // 用的是同一条判据 —— **不在这里写第二份**。
+                    //
+                    // 本仓 2026-10-01 已经报过一次同类事故（用户原话「模糊过头」），
+                    // 记录就在 `GalleryPost.backdropUrl` 的 KDoc 里。
+                    model = lead.backdropUrl,
                     contentDescription = "今日第一张",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,

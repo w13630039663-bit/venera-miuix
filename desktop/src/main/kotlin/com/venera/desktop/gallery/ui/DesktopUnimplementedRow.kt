@@ -21,7 +21,7 @@ import io.github.composefluent.component.Text
 
 /**
  * 一项「没接」的首页内容 —— 设计稿 `.nav.off` + `.lock` 那一套形状
- * （`docs/designs/windows-gallery-home-touhou-2026-10-03.html:73-82`）。
+ * （`docs/designs/windows-gallery-home-touhou-2026-10-03.html:79-88`）。
  *
  * ## 这是用户对既有口径的一次**定点豁免**（2026-10-03 拍板），照做不要自己发挥
  *
@@ -102,7 +102,7 @@ private val OffGlyph = DesktopTheme.OffGlyph
 /**
  * 药丸底色。
  *
- * ⚠️ 稿上是 `#33251F`（暖棕，`:82`），而那一档是配**神社暖调**的装饰色。
+ * ⚠️ 稿上是 `#33251F`（暖棕，`:88`），而那一档是配**神社暖调**的装饰色。
  * 本轮窗体整体转冷调深阶梯（`#202020`/`#272727`/`#2C2C2C`）之后，那颗暖棕放在冷灰里
  * 读起来是"一块脏斑"而不是"一枚标记"。所以药丸改成 [DesktopTheme.SurfaceRaised] 冷灰底
  * + [DesktopTheme.TextSecondary] 字 —— 形状（999 圆角、10.5px、右侧对齐）一字未动。

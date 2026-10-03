@@ -12,7 +12,7 @@ import io.github.composefluent.darkColors
  * `docs/designs/windows-gallery-home-touhou-2026-10-03.html` 那套深色阶梯毫无关系 ——
  * 而 `DesktopUnimplementedRow` / `DesktopGalleryHomeSections` 里那几枚色值（`#8B8B8B` 灰、
  * `#CBB6FF` 藤紫、`#3A2A55→#2C2C2C` 渐变）**全部是稿的深色档**。浅底上那几枚就是"看起来发灰的脏色"。
- * 所以本轮把深浅**钉死在深色**：[darkColors] 交给 Fluent，其余 surface 走稿的四档阶梯。
+ * 所以本轮把深浅**钉死在深色**：[darkColors] 交给 Fluent，其余 surface 走稿的阶梯。
  *
  * ⚠️ 代价要写明：桌面端**今天没有主题切换**。稿上的两档浅色映射、以及
  * `DesktopGalleryPreferences` 里那 12 枚读成员（`galleryAnimated` 等）在桌面给的都是常量，
@@ -21,13 +21,21 @@ import io.github.composefluent.darkColors
  *
  * ## 阶梯的语义（不是随手排的几档）
  *
+ * ⚠️ 行号锚定仓库内那份权威稿 `docs/designs/windows-gallery-home-touhou-2026-10-03.html`
+ * （736 行，2026-10-03 22:32 版）。稿改版后行号会漂 —— 引用时连带抄上选择器名，
+ * 行号对不上就按名字 grep。2026-10-04 已把早先按旧稿写的行号全部对账过一次。
+ *
  * | 档 | 值 | 用在哪 | 为什么在这一档 |
  * |---|---|---|---|
- * | 窗底 | `#202020` | `windowBackground` | 稿 `:10`，整扇窗的最底层 |
+ * | 窗底 | `#202020` | `windowBackground` | 稿 `:10` 的 `--host`，整扇窗的最底层 |
  * | rail | `#1C1C1C` | `rail` | 稿 `:59` 的 `.rail{background:#1C1C1C}`，**比窗底与 pane 都更暗** |
- * | 侧栏 | `#272727` | pane | 稿 `:11` 的 `--layer`，比窗底高一档 |
- * | 卡片 | `#2C2C2C` | Hero 侧卡、作品卡 | 稿 `:12` 的 `--card`，比侧栏再高一档 |
- * | 浮起 | `#353535` | 选中行 hover、输入框、**作品卡描边** | 稿 `--card-hov` `:13` / `--stroke` `:11`（同一颗值） |
+ * | 侧栏 | `#272727` | pane | 稿 `:10` 的 `--layer`，比窗底高一档 |
+ * | 卡片 | `#2C2C2C` | Hero 侧卡、作品卡 | 稿 `:10` 的 `--card`（与 `--layer2` 同值），比侧栏再高一档 |
+ * | 浮起 | `#353535` | 选中行 hover、输入框、**作品卡描边** | 稿 `:11` 的 `--stroke` |
+ *
+ * ⚠️ 浮起档**不是**稿的 `--card-hov`：那一枚是 `#333333`（稿 `:10`），比 `--stroke` 暗一档。
+ * 2026-10-04 之前这里的注释把它俩写成"同一颗值"，是错的 —— 本条按实稿改正，
+ * 而代码取的是 `#353535`（`--stroke`），与作品卡描边的出处一致。
  *
  * ## 为什么 rail 单独一档（2026-10-04 改判）
  *
@@ -45,7 +53,7 @@ import io.github.composefluent.darkColors
  */
 internal object DesktopTheme {
 
-    // ── surface 阶梯（逐字抄稿的 CSS 变量，:10-13）────────────────────────────
+    // ── surface 阶梯（逐字抄稿的 CSS 变量，:10-11）────────────────────────────
 
     /** 窗底。稿 `--host` = `#202020`。 */
     val WindowBackground: Color = Color(0xFF202020)
@@ -66,10 +74,10 @@ internal object DesktopTheme {
     /** 卡片。稿 `--card` = `#2C2C2C`。 */
     val CardBackground: Color = Color(0xFF2C2C2C)
 
-    /** 交互态浮起。稿 `--card-hov` = `#353535`。只在 hover / 聚焦时出现。 */
+    /** 交互态浮起。稿 `:11` 的 `--stroke` = `#353535`（**不是** `--card-hov`，那枚是 `#333333`）。只在 hover / 聚焦时出现。 */
     val SurfaceRaised: Color = Color(0xFF353535)
 
-    // ── 文字（稿 `:14-17` 的 --t1..--t3，本次按用户口径收成两档）───────────────
+    // ── 文字（稿 `:11` 的 --t1..--t3，本次按用户口径收成两档）───────────────
 
     /** 主文字。`#FFFFFF`。 */
     val TextPrimary: Color = Color(0xFFFFFFFF)
@@ -80,7 +88,7 @@ internal object DesktopTheme {
     /** 最弱一档：未实现行、caption。稿 `--t3` = `#8B8B8B`。 */
     val TextTertiary: Color = Color(0xFF8B8B8B)
 
-    // ── 强调色（稿 `:18-19`）─────────────────────────────────────────────
+    // ── 强调色（稿 `:13-16` 的 --beni / --fuji 两族）───────────────────────
 
     /** 藤紫：选中态文字、指示条、focus。稿 `--fuji-lite` = `#CBB6FF`。 */
     val AccentFuji: Color = Color(0xFFCBB6FF)
@@ -116,7 +124,7 @@ internal object DesktopTheme {
     val OverlayScrim: Color = Color(0xB0202020)
 
     /**
-     * 「未实现」行的**图标**档：`#5E5E5E`，稿 `.nav.off svg`（`:212`）。
+     * 「未实现」行的**图标**档：`#5E5E5E`，稿 `.nav.off svg`（`:86-87`）。
      *
      * 比同行的文字档 [TextTertiary]（`#8B8B8B`）再暗一档 —— 图标是次要信号，
      * 不该和标题抢注意力。收进主题的理由同上（原先在 `DesktopUnimplementedRow.kt` 里写字面量）。

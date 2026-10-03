@@ -189,4 +189,36 @@ class DesktopCardOverlayTest {
             assertTrue("Hero 里出现了「$bad」—— 那是另挑一张，与墙上不是同一个集合", !hero.contains(bad))
         }
     }
+
+    /**
+     * Hero 大位必须走**底图那一档**（`GalleryPost.backdropUrl`），不许拿网格缩略档顶。
+     *
+     * 2026-10-04 用户发来截图报「hero 的大图糊成一片」—— 当时写的是
+     * `previewUrl.ifBlank { largeUrl }`，即**缩略档优先**：300~360px 的图铺到 ≈900×330 的
+     * 大位上等于放大 3 倍，再叠一层底部遮罩就只剩色块，认不出画的是什么。
+     *
+     * 这不是"参数该调一下"，是**选错了档**。本仓 `GalleryPost.backdropUrl` 就是为
+     * 「当背景底图」开的那一档（非视频取中档 `largeUrl`，视频条目整条转给 `videoPosterUrl`
+     * 那道"中档被兜底成原片 mp4 就退缩略图"的闸门），Android 侧画师介绍页的 hero
+     * 用的就是它 —— 所以这里断言的是**引用**，不是把那条判据再抄一遍。
+     *
+     * ⚠️ 2026-10-01 已经报过一次同类事故（用户原话「模糊过头」），记录就在
+     * `GalleryPost.backdropUrl` 的 KDoc 里。桌面侧这次是同一个错。
+     *
+     * 用 [DesktopSourceTree.codeText]（跳注释）：本条 KDoc 里点名了 `previewUrl`，
+     * 含进正文会让负向断言恒假。
+     */
+    @Test
+    fun `Hero 大位走底图那一档而不是网格缩略档`() {
+        val hero = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
+        assertTrue(
+            "Hero 大位应引 GalleryPost.backdropUrl —— 中档优先，视频条目另有闸门",
+            hero.contains(".backdropUrl"),
+        )
+        assertTrue(
+            "Hero 大位里就地写了 previewUrl —— 那是网格缩略档，铺满大位会糊成色块；" +
+                "取哪一档的判据归 GalleryPost.backdropUrl，UI 层不许再写一份",
+            !hero.contains("previewUrl"),
+        )
+    }
 }

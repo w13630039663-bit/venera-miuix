@@ -1,6 +1,7 @@
 package com.venera.desktop.gallery.ui
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,16 +79,32 @@ class DesktopShellLayoutTest {
     }
 
     /**
-     * ③ 默认窗口对齐设计稿画板 1440×900。
+     * ③ 默认窗尺寸走**按屏钳制**，目标是设计稿画板 1440×900。
      *
-     * 理由不只是"好看"：它决定列数。`1440−48−224 = 1168`，正是权威稿 `:338`/`:657`
-     * 标注的「内容净宽 1168 → 6 列」。
+     * 目标尺寸的理由不只是"好看"：它决定列数 —— `1440−48−224 = 1168`，
+     * 正是权威稿 `:338`/`:657` 标注的「内容净宽 1168 → 6 列」。
+     *
+     * ⚠️ 但**不许把 1440 写死在窗口上**：`WindowPlacement.Floating` 不做尺寸自适应，
+     * 1366 宽的屏上写死 1440，右边那一截直接跑到屏幕外（计划里挂着的 R-g）。
+     * 所以这条断的是"引用了钳制函数"，而"每一档屏幕各得多少"由
+     * `DesktopWidthCaliberDriftTest` 的 `默认窗尺寸按屏钳制…` 逐屏钉死 ——
+     * 那条吃的是纯函数，不用开窗就能真跑。
      */
     @Test
-    fun `默认窗口是 1440 乘 900`() {
+    fun `默认窗口尺寸走按屏钳制`() {
         assertTrue(
-            "默认窗应写死 1440.dp × 900.dp（稿 .frame 的画板尺寸）",
-            shell.contains("width = 1440.dp") && shell.contains("height = 900.dp"),
+            "窗宽高应来自 DesktopGalleryMetrics.windowSizeFor(…)（按屏钳制），而不是写死一颗数",
+            shellCode.contains("windowSizeFor("),
+        )
+        assertTrue(
+            "不许再把 1440.dp 写死在 rememberWindowState 上 —— 1366 屏上那会让最右一列跑到屏幕外",
+            shellCode.contains("1440.dp").not(),
+        )
+        assertEquals(
+            "目标尺寸仍是设计稿画板 1440×900（大屏上原样开出来）",
+            1440f,
+            DesktopGalleryMetrics.windowSizeFor(2560, 1440).width.value,
+            0.001f,
         )
     }
 
@@ -110,5 +127,44 @@ class DesktopShellLayoutTest {
             "pane 应引 SidebarBackground（#272727）",
             home.contains("DesktopTheme.SidebarBackground"),
         )
+    }
+
+    /**
+     * ⑤ 标题栏在**三栏之外**，且搜索位不是一枚假开关。
+     *
+     * 稿把 `.tb` 放在 `.body` 之外（`:340` 的 `.tb` 与 `:352` 的 `.body` 是兄弟节点），
+     * 所以它必须横跨 rail / pane / 主区。要是有人把它塞进 pane 或主区里，
+     * 截图上是"标题栏缩了一截"——编译通过、单测全绿，只有人眼看得出来。
+     *
+     * 搜索位那一条更硬：稿上它是**能输入**的框，而桌面没有搜索页。本仓把它降级成
+     * "点了给说法"（与 rail 上漫画/设置同一办法）—— 所以那句说法必须真的存在。
+     * 它被删成空串的那一刻，这枚可点的框就退化成本仓最忌的假开关。
+     */
+    @Test
+    fun `标题栏跨三栏且搜索位不是假开关`() {
+        val home = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryHome.kt"))
+        assertTrue(
+            "根布局里应把 DesktopGalleryTopBar 放在三栏之外（Column 直接子节点，与 Row 平级）",
+            home.contains("DesktopGalleryTopBar("),
+        )
+        assertTrue(
+            "搜索位点下去必须给出「这一档没接」的说法，而不是点了什么都不发生",
+            home.contains("railNotice = DESKTOP_GALLERY_SEARCH_NOTICE"),
+        )
+        val notice = Regex("""DESKTOP_GALLERY_SEARCH_NOTICE\s*=\s*(.+)""").find(home)
+        assertTrue(
+            "搜索位的缺席说法被删成空串了 —— 空串等于把那枚可点的框变成假开关",
+            notice != null && notice.groupValues[1].startsWith("\"\"").not(),
+        )
+
+        // 三枚自绘窗口按钮：系统标题栏已经有了，跟着稿再画一排就是两排。
+        // （稿上那三枚是它在浏览器里模拟窗口 chrome，不是应用内容。）
+        val bar = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryTopBar.kt"))
+        listOf("最小化", "最大化", "关闭").forEach { label ->
+            assertTrue(
+                "标题栏里出现了「$label」—— 系统标题栏已有窗口按钮，再自绘一排就是两排按钮",
+                bar.contains(label).not(),
+            )
+        }
     }
 }

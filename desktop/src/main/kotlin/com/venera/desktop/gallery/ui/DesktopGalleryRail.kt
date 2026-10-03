@@ -26,7 +26,13 @@ import androidx.compose.ui.unit.sp
 import io.github.composefluent.component.Text
 
 /**
- * 三个域：图库 / 漫画 / 设置（设计稿 `.rail`，`:320-331`）。
+ * 三个域：图库 / 漫画 / 设置（设计稿 `.rail` 的 HTML 区，`:353-365`）。
+ *
+ * ⚠️ **稿上 rail 画了 7 枚**（图库/发现/搜索/收藏/画师/漫画/设置，`:354-360`、`:364`），
+ * 本仓只落 3 枚。「发现 / 搜索 / 收藏 / 画师」那四枚在桌面还没有入口页 ——
+ * 按本仓"不许有假开关、也不许有画成灰的假缺席"的纪律，它们**一枚都不画**：
+ * 画出来就得给一个"没接"的说法，而它们连说法都还没定。
+ * 稿底部那两枚装饰（鸟居 SVG `:362`、縦排「博麗神社」`:363`）属装饰层，本批不做。
  *
  * ## 为什么今天只有图库是真入口，而另两枚**仍然是可点的**
  *
@@ -51,9 +57,14 @@ internal enum class DesktopGalleryDomain(val title: String, val glyph: String, v
 /**
  * rail 那一列。
  *
- * 形状照稿 `.rail` + `.rbtn`（`:320`、`:57`）：宽 48、图标位 16、选中态藤紫 + 3×20 圆角指示条。
- * 与 pane 那一列的差别只有**底色**（rail 用 [DesktopTheme.SidebarBackground]，pane 同档 ——
- * 两者的层级差由宽度与指示条说清，明度差留给 pane↔主区那一对）。
+ * 形状照稿 `.rail{flex:0 0 48px;…}`（`:59`）+ `.rbtn{…}`（`:60`）：宽 48、图标位 16、
+ * 选中态藤紫 + 3×20 圆角指示条（`.rbtn.sel` 在 `:63-64`）。
+ *
+ * ⚠️ **rail 底色与 pane 不同档**（2026-10-04 改）：rail 走 [DesktopTheme.RailBackground]
+ * `#1C1C1C`（稿 `:59` 的 `.rail{background:#1C1C1C}`），pane 走 [DesktopTheme.SidebarBackground]
+ * `#272727`（稿 `:10` 的 `--layer`）—— **这枚明度差就是两级导航的层级差本身**。
+ * 本条原先写的是"两者同档、层级差只由宽度与指示条说清"，与代码不符
+ * （那时两处确实同色，深色下两级糊成一片）。
  */
 @Composable
 internal fun DesktopGalleryRail(

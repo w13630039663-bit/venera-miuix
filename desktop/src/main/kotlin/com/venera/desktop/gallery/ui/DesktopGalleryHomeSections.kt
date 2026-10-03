@@ -213,10 +213,10 @@ private fun DesktopAbsentBody(row: DesktopGalleryHomeRow) {
 }
 
 /**
- * 有内容件的那一行。形状来自稿：`.nav`（`:73-78`）—— 高 40、内缩 12、图标位 16、
+ * 有内容件的那一行。形状来自稿：`.nav{…}`（`:79-85`）—— 高 40、内缩 12、图标位 16、
  * 选中态是**藤紫到 Layer2 的横向渐变 + 行首一枚 3×20 圆角指示条**，未选中悬停走 `--card-hov`。
  *
- * 选中态的文字加粗（稿 `font-weight:600`），图标换成 `--fuji-lite`（`:77`）。
+ * 选中态的文字加粗（稿 `font-weight:600`），图标换成 `--fuji-lite`（变量表 `:16`）。
  * 稿上的计数徽标 `.nav .cnt`（`1.2k` / `286` / `2` / `3,412`）**一颗都不带**：那些数要有 store 才念得出口。
  */
 @Composable
@@ -267,7 +267,7 @@ private fun DesktopGalleryHomeSelectableRow(row: DesktopGalleryHomeRow, selected
     }
 }
 
-// 下面几颗色值逐条来自设计稿的深色档（`:10-17` 的变量表与 `:76-78` 的选中态），不是新造数：
+// 下面几颗色值逐条来自设计稿的深色档（`:10-11` 的变量表与 `:82-84` 的选中态），不是新造数：
 // 浅色档的正式映射归设计稿回改（S5），本轮不自己发挥。
 private val SelectionStart = DesktopTheme.SelectionGradientStart
 private val SelectionEnd = DesktopTheme.SelectionGradientEnd
