@@ -119,7 +119,9 @@ class DesktopGalleryHomeSectionsTest {
                 unimplemented.contains(token).not(),
             )
         }
-        listOf("DesktopUnimplementedRow.kt", "DesktopGalleryHomeSections.kt", "DesktopGalleryHome.kt").forEach { name ->
+        // 「旧根 DesktopGalleryHome.kt」换成「应用根 VeneraDesktopApp.kt」：壳层统一在那颗之后，
+        // 这台 pane/body 的渲染器也跟着换了主人，no-op 的形状要在新的 active rendering path 上空。
+        listOf("DesktopUnimplementedRow.kt", "DesktopGalleryHomeSections.kt", "VeneraDesktopApp.kt").forEach { name ->
             val text = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
             NO_OP_CLICK_SHAPES.forEach { shape ->
                 assertTrue("$name 里不许出现 no-op 点击形状「$shape」", text.contains(shape).not())

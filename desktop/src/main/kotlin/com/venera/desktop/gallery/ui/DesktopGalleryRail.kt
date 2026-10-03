@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,39 +27,29 @@ import androidx.compose.ui.unit.sp
 import io.github.composefluent.component.Text
 
 /**
- * 三个域：图库 / 漫画 / 设置（设计稿 `.rail` 的 HTML 区，`:353-365`）。
+ * rail 那一列 —— **一级导航**，形状照稿 `.rail{flex:0 0 48px;…}`（`:59`）
+ * 与 `.rbtn{…}`（`:60`）：宽 48、按钮视觉 36×36（触达 40×40）、选中态藤紫 + 3×20 圆角指示条
+ * （`.rbtn.sel` 在 `:63-64`）。
  *
- * ⚠️ **稿上 rail 画了 7 枚**（图库/发现/搜索/收藏/画师/漫画/设置，`:354-360`、`:364`），
- * 本仓只落 3 枚。「发现 / 搜索 / 收藏 / 画师」那四枚在桌面还没有入口页 ——
- * 按本仓"不许有假开关、也不许有画成灰的假缺席"的纪律，它们**一枚都不画**：
- * 画出来就得给一个"没接"的说法，而它们连说法都还没定。
- * 稿底部那两枚装饰（鸟居 SVG `:362`、縦排「博麗神社」`:363`）属装饰层，本批不做。
+ * ## 七枚全可是 —— selected 不再是写死的常量（2026-10-04 改）
  *
- * ## 为什么今天只有图库是真入口，而另两枚**仍然是可点的**
+ * 上一版 `DesktopGalleryRail` 收一个**由调用方写死**的 `DesktopGalleryDomain.GALLERY`，
+ * 于是点了另外两枚只会往主区底部吐一句缺席说明，**当前域从来不变**。
+ * 那形状等于把 rail 从"导航"降级成"一排提示按钮"：用户看得见七个格子、看得见 hover，
+ * 却在路由器那里看到地址的那一刻才发现自己哪里也没去。
  *
- * 漫画侧在桌面确实有能跑的东西（`:engine-probe` 那条 `EngineSession` 链实测能取数），
- * 但它被关在 S0 探针壳里、不是界面。设置侧**一颗都没有**。
- * 按本仓"不许有假开关"的纪律，正确的做法不是把两枚画成灰的（那是"未实现"那一档的形状，
- * 会让用户以为点进去能看到说明），而是：**点它就把"这一档没接"说清楚**。
- * 所以 [notWiredReason] 那句话是这个组件存在的一半理由 ——
- * 它让"没接"有一处可以落脚，而不是静默消失。
- */
-internal enum class DesktopGalleryDomain(val title: String, val glyph: String, val notWiredReason: String) {
-    GALLERY("图库", "图", "") {
-        override fun toString() = title
-    },
-    COMIC("漫画", "漫", "漫画域在桌面还没有入口页：取数链能跑（S0 那条最小闭环实测过），但没做成界面。"),
-    SETTINGS("设置", "设", "设置域在桌面还没有入口页：偏好与内容守卫都已接线到本机数据目录，界面没做。"),
-    ;
-
-    val isWired: Boolean get() = notWiredReason.isEmpty()
-}
-
-/**
- * rail 那一列。
+ * 现在 [selected] 是真状态，缺席域点了就**真的切过去**，目的地是一屏把理由念全的坦白页
+ * （[DesktopDomain.absence]）。缺席的立足点从"临时浮出来的一句话"变成"一个能回来的地方"。
  *
- * 形状照稿 `.rail{flex:0 0 48px;…}`（`:59`）+ `.rbtn{…}`（`:60`）：宽 48、图标位 16、
- * 选中态藤紫 + 3×20 圆角指示条（`.rbtn.sel` 在 `:63-64`）。
+ * ## 排版照稿的三段（`:354-364`）
+ *
+ * ```
+ * 图库 发现 搜索 收藏 画师     ← 一组，组内 4dp
+ *   ── 8px ──                  ← `:359` 的 `<span style="height:8px">`
+ * 漫画
+ *   ── 弹性留白 ──             ← `:361` 的 `.spacer`
+ * 设置                         ← 贴底（`:362-363` 那两枚装饰在本批不做）
+ * ```
  *
  * ⚠️ **rail 底色与 pane 不同档**（2026-10-04 改）：rail 走 [DesktopTheme.RailBackground]
  * `#1C1C1C`（稿 `:59` 的 `.rail{background:#1C1C1C}`），pane 走 [DesktopTheme.SidebarBackground]
@@ -68,28 +59,38 @@ internal enum class DesktopGalleryDomain(val title: String, val glyph: String, v
  */
 @Composable
 internal fun DesktopGalleryRail(
-    selected: DesktopGalleryDomain,
-    onSelect: (DesktopGalleryDomain) -> Unit,
+    selected: DesktopDomain,
+    onSelect: (DesktopDomain) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier.fillMaxHeight().padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.railButtonSpacing),
     ) {
-        DesktopGalleryDomain.entries.forEach { domain ->
+        DesktopDomain.entries.forEach { domain ->
             RailButton(
                 domain = domain,
                 selected = domain == selected,
                 onClick = { onSelect(domain) },
             )
+            when {
+                // 稿 `:359`：前五枚与「漫画」之间那道 8px —— 视觉上把"浏览"与"读图"分成两段。
+                // （在 Column 的 4dp 之上再叠 8dp，合计 12dp，够看出来是分组而不是普通行距。）
+                domain == DesktopDomain.ARTISTS ->
+                    Spacer(Modifier.height(DesktopGalleryMetrics.railGroupGap))
+
+                // 稿 `:361`：`.spacer` 吃掉剩余高度，把「设置」推到 rail 底部。
+                // 少了这一枚，设置会紧跟在漫画下面，而稿上它明明是**贴底**的那一枚。
+                domain.precedesSpacer -> Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
 private fun RailButton(
-    domain: DesktopGalleryDomain,
+    domain: DesktopDomain,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -106,7 +107,7 @@ private fun RailButton(
     ) {
         Box(
             Modifier
-                // 40×40 的触达，视觉上是 32×32 的圆角块 —— 触达与观感分开（同 pane 行的做法）
+                // 40×40 的触达，视觉上是 36×36 的圆角块 —— 触达与观感分开（同 pane 行的做法）
                 .width(36.dp)
                 .height(36.dp)
                 .background(
@@ -121,7 +122,12 @@ private fun RailButton(
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Text(domain.glyph, color = glyph, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            Text(
+                domain.glyph,
+                color = glyph,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
         }
         if (selected) {
             // 稿 `.rbtn.sel::before` 那一枚：3dp 宽、圆角 3、藤紫。

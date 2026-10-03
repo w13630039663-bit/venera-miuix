@@ -100,8 +100,18 @@ internal object DesktopGalleryMetrics {
     val statusLampHeight: Dp = 32.dp
     val statusLampHorizontalPadding: Dp = 12.dp
 
-    /** 域切换条宽（图库 / 漫画 / 设置）。设计稿原值，桌面自持。 */
+    /** 域切换条宽（rail 上七枚）。设计稿原值，桌面自持。 */
     val railWidth: Dp = 48.dp
+
+    /**
+     * rail 上**组与组之间**的那道空隙：前五枚（图库…画师）与「漫画」之间。
+     * 稿是 `<span style="height:8px"></span>`（`:359`），叠在 Column 自身 4dp 的
+     * [railButtonSpacing] 之上，合计 12dp —— 够看出是分组而不是普通行距。
+     */
+    val railGroupGap: Dp = 8.dp
+
+    /** rail 按钮之间的常规间距（组内）。 */
+    val railButtonSpacing: Dp = 4.dp
 
     /** 域内页条宽。对岸见类注释里的 `WideScreenPolicy.kt:60`。 */
     val paneWidth: Dp = 224.dp

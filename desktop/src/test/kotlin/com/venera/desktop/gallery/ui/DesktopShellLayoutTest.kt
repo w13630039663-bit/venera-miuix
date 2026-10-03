@@ -116,16 +116,28 @@ class DesktopShellLayoutTest {
      * 结果两级导航在深色下糊成一片。`DesktopCardOverlayTest` ① 从色值那头钉，
      * 这里从**引用点**这头钉：改回去少一处都会红。
      */
+    /**
+     * ④ rail 与 pane 各自引**不同**的底色 token。
+     *
+     * 这是根因 3 的机械防线：那一处原先的注释声称「rail 底色刻意比 pane 更深一档」，
+     * 而代码里两处是**同一个** `SidebarBackground` —— 注释与代码互相矛盾，
+     * 结果两级导航在深色下糊成一片。`DesktopCardOverlayTest` ① 从色值那头钉，
+     * 这里从**引用点**这头钉：改回去少一处都会红。
+     *
+     * ⚠️ 扫的是 `VeneraDesktopApp.kt` 而不是旧的 `DesktopGalleryHome.kt`：2026-10-04 起了
+     * **应用根**之后，三级壳（标题栏 / rail / pane / 主区）由那颗文件统一画，
+     * 旧的 `DesktopGalleryHome` 连同它的 Katherine Column/Row 一起删了。
+     */
     @Test
     fun `rail 与 pane 引不同的底色 token`() {
-        val home = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryHome.kt"))
+        val shell = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
         assertTrue(
             "rail 应引 RailBackground（#1C1C1C，比 pane 更暗）",
-            home.contains("DesktopTheme.RailBackground"),
+            shell.contains("DesktopTheme.RailBackground"),
         )
         assertTrue(
             "pane 应引 SidebarBackground（#272727）",
-            home.contains("DesktopTheme.SidebarBackground"),
+            shell.contains("DesktopTheme.SidebarBackground"),
         )
     }
 
@@ -136,25 +148,27 @@ class DesktopShellLayoutTest {
      * 所以它必须横跨 rail / pane / 主区。要是有人把它塞进 pane 或主区里，
      * 截图上是"标题栏缩了一截"——编译通过、单测全绿，只有人眼看得出来。
      *
-     * 搜索位那一条更硬：稿上它是**能输入**的框，而桌面没有搜索页。本仓把它降级成
-     * "点了给说法"（与 rail 上漫画/设置同一办法）—— 所以那句说法必须真的存在。
-     * 它被删成空串的那一刻，这枚可点的框就退化成本仓最忌的假开关。
+     * 搜索位那一条在 2026-10-04 **换了判法**：原先它弹一条 `railNotice` 就完事，
+     * 断言守的是"那句话没被删成空串"。改成不动款之后 —— rail 七枚都是真导航，
+     * 搜索位也跟着**真的把人带到搜索域** —— 该守住的东西升级成了"点了Destination 真的换了"。
+     * 一条 cue 会被删空，一次导航不会。
      */
     @Test
     fun `标题栏跨三栏且搜索位不是假开关`() {
-        val home = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryHome.kt"))
+        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
         assertTrue(
             "根布局里应把 DesktopGalleryTopBar 放在三栏之外（Column 直接子节点，与 Row 平级）",
-            home.contains("DesktopGalleryTopBar("),
+            app.contains("DesktopGalleryTopBar("),
         )
         assertTrue(
-            "搜索位点下去必须给出「这一档没接」的说法，而不是点了什么都不发生",
-            home.contains("railNotice = DESKTOP_GALLERY_SEARCH_NOTICE"),
+            "搜索位点下去必须把当前域换成 SEARCH（真导航），而不是吐一句话原地不动",
+            app.contains("domain = DesktopDomain.SEARCH"),
         )
-        val notice = Regex("""DESKTOP_GALLERY_SEARCH_NOTICE\s*=\s*(.+)""").find(home)
+        // 反过来：旧的"提示吐丝"那条路必须真的没有了 —— 留着它就是两个说法并存，
+        // 而同一件事讲两处的时候，改动迟早只改一处。
         assertTrue(
-            "搜索位的缺席说法被删成空串了 —— 空串等于把那枚可点的框变成假开关",
-            notice != null && notice.groupValues[1].startsWith("\"\"").not(),
+            "DESKTOP_GALLERY_SEARCH_NOTICE / railNotice 应已随旧根一起删掉，缺席说法现在只有搜索域坦白页一处",
+            app.contains("DESKTOP_GALLERY_SEARCH_NOTICE").not() && app.contains("railNotice").not(),
         )
 
         // 三枚自绘窗口按钮：系统标题栏已经有了，跟着稿再画一排就是两排。

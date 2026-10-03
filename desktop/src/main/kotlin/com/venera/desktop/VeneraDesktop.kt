@@ -1,33 +1,14 @@
 package com.venera.desktop
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
@@ -42,18 +23,17 @@ import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
 import com.venera.desktop.gallery.data.DesktopGalleryPorts
-import com.venera.desktop.gallery.ui.DesktopGalleryHome
+import com.venera.desktop.gallery.ui.DesktopComicEngineConfig
 import com.venera.desktop.gallery.ui.DesktopGalleryMetrics
 import com.venera.desktop.gallery.ui.DesktopTheme
+import com.venera.desktop.gallery.ui.VeneraDesktopApp
 import io.github.composefluent.FluentTheme
-import io.github.composefluent.component.ProgressBar
-import io.github.composefluent.component.Text
 import java.awt.Rectangle
 import java.awt.Robot
 import java.io.File
 import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -119,6 +99,59 @@ private suspend fun addFavorite(
     println("D_收藏 点击 源=$sourceKey id=${card.id} -> $message")
     return message
 }
+
+/**
+ * `--autofav` 的取证链路：**不碰 UI**，自己在 IO 上走完"装载源 → 探索页 → 第一张卡"。
+ *
+ * 上一版这一跑依赖根组合里那颗 `cards` 状态 —— 而那颗状态的唯一用途是喂给从未存在过的布局。
+ * 于是这个开关在做的其实是"为了让某个变量被写进去，先把 30 张封面拉下来"。
+ * 取证自己会取它需要的那一张，`engine.close()` 也在同一份 `finally` 里，不会漏。
+ *
+ * @return 退出码：0 = 写链完好（含"这本已经在里面了"）；1 = 取卡失败或写失败。
+ */
+private fun runAutofavEvidence(
+    assetDir: File,
+    dataDir: File,
+    proxy: String?,
+    sourceKey: String,
+): Int {
+    val outcome = runBlocking {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val host = DesktopJsHost(assetDir, dataDir, proxy)
+                val engine = EngineSession(host, assetDir)
+                try {
+                    engine.load(sourceKey)
+                    engine.explore(1).sections.firstOrNull()?.comics?.firstOrNull()
+                } finally {
+                    engine.close()
+                }
+            }
+        }
+    }
+    val first = outcome.getOrNull()
+    if (first == null) {
+        println(
+            "D_收藏 失败：源没回任何卡片，没东西可收" +
+                "（${outcome.exceptionOrNull()?.message?.take(200) ?: "无网络层错误"}）",
+        )
+        return 1
+    }
+
+    val message = runBlocking { addFavorite(favorites(), sourceKey, first) }
+    val total = runCatching { runBlocking { favorites().getAllComics().size } }
+    total.fold(
+        onSuccess = { println("D_收藏 命中=$it") },
+        onFailure = {
+            println("D_收藏 读回失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
+        },
+    )
+    // 退出码判据：读回成功，且这次点击不是"收藏失败"（"已在里面"也算写链完好）。
+    return if (total.isSuccess && !message.startsWith("收藏失败")) 0 else 1
+}
+
+/** 无人值守截图前给 UI 的落地时间。取封面是异步的，太早截会拿到半屏的占位块。 */
+private const val SELF_SHOT_SETTLE_MS = 2500L
 
 /**
  * 关持久层的次序（5a 复审点名）：**先 manager.close()（有界等待在飞刷新，15s 上界），
@@ -201,6 +234,17 @@ fun main(args: Array<String>) {
         kotlin.system.exitProcess(if (outcome.isSuccess) 0 else 1)
     }
 
+    if (autofav == true) {
+        // 取证第一跑。**不再经过 UI**：上一版它挂在根组合的 LaunchedEffect 上，要靠
+        // `cards` 里第一张卡 —— 而那张卡是给 UI 用的中间产物，UI 不画它它就白跑。
+        // 现在自己在 IO 上走一遍"装载 → 探索 → 首卡"，这里既不需要窗口也不需要布局：
+        // 于是 `-Pautofav=1` 在同一次启动里不再为了喂一张卡去串行拉 30 张封面。
+        val code = runAutofavEvidence(assetDir, paths.dataRoot, proxy, startKey)
+        closePersistenceInOrder()
+        kotlin.system.exitProcess(code)
+        return
+    }
+
     application {
         // 默认窗尺寸**按屏钳制**（收掉计划里的 R-g）：`WindowPlacement.Floating` 不做尺寸自适应，
         // 1366 宽的屏上写死 1440 会让最右一列永远跑到屏幕外。钳制逻辑在
@@ -241,196 +285,32 @@ fun main(args: Array<String>) {
             // 且 `gallery/ui/` 多处在用 fluent 的 `Text`（需要它 provide 的 CompositionLocal scope）。
             // 由 `DesktopShellLayoutTest` ② 钉住这一条，防止连它一起被拆掉。
             FluentTheme(colors = DesktopTheme.colors()) {
-                VeneraDesktop(
-                    assetDir = assetDir,
-                    dataDir = paths.dataRoot,
-                    proxy = proxy,
-                    sources = sources,
-                    startKey = startKey,
-                    shotPath = shot,
-                    autofav = autofav == true,
+                VeneraDesktopApp(
+                    ports = GalleryPorts.of(null),
+                    comic = DesktopComicEngineConfig(
+                        assetDir = assetDir,
+                        dataDir = paths.dataRoot,
+                        proxy = proxy,
+                        sourceKey = startKey,
+                        // 懒装载：见 DesktopComicEngineConfig.favorites 的注释。
+                        favorites = ::favorites,
+                    ),
                 )
-            }
-        }
-    }
-}
 
-@Composable
-private fun VeneraDesktop(
-    assetDir: File,
-    dataDir: File,
-    proxy: String?,
-    sources: List<String>,
-    startKey: String,
-    shotPath: String?,
-    autofav: Boolean,
-) {
-    var selected by remember { mutableStateOf(startKey) }
-    var status by remember { mutableStateOf("待装载") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(true) }
-    var cards by remember { mutableStateOf<List<EngineSession.Section>>(emptyList()) }
-    var covers by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
-    var session by remember { mutableStateOf<EngineSession?>(null) }
-    // 阅读链路：点卡片 → loadInfo → 取第一章 → loadEp → 前 8 页（含去混淆）
-    var open by remember { mutableStateOf<EngineSession.ComicCard?>(null) }
-    var pages by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
-    var pageStatus by remember { mutableStateOf<String?>(null) }
-    // 收藏这条链：顶栏「收藏」分段 + 卡片上的收藏入口，数据源一律 LocalFavoritesManager
-    val scope = rememberCoroutineScope()
-    var showFavorites by remember { mutableStateOf(false) }
-    var favStatus by remember { mutableStateOf<String?>(null) }
-    var favTree by remember { mutableStateOf<List<Pair<String, List<FavoriteItem>>>>(emptyList()) }
-
-    LaunchedEffect(showFavorites) {
-        if (!showFavorites) return@LaunchedEffect
-        val outcome = withContext(Dispatchers.IO) {
-            runCatching {
-                val manager = favorites()
-                manager.currentFolders().map { it to manager.getFolderComics(it) }
-            }
-        }
-        outcome.fold(
-            onSuccess = { favTree = it; favStatus = null },
-            onFailure = {
-                favStatus = "收藏列表读取失败：${it::class.java.simpleName}: ${it.message?.take(200)}"
-                println("D_收藏列表 读取失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
-            },
-        )
-    }
-
-    LaunchedEffect(open) {
-        val s = session
-        val card = open
-        pages = emptyList()
-        pageStatus = null
-        if (s == null || card == null) return@LaunchedEffect
-        pageStatus = "取详情…"
-        val outcome = withContext(Dispatchers.IO) {
-            runCatching {
-                val (title, eps) = s.details(card.id)
-                val ep = eps.first()
-                println("D_详情 $title 章数=${eps.size} 前3=${eps.take(3)}")
-                val keys = s.pages(card.id, ep)
-                if (keys.isEmpty()) error("loadEp 回了 0 页")
-                pageStatus = "$title · ${eps.size} 章 · 共 ${keys.size} 页 · 取前 8 页"
-                keys.take(8).mapIndexed { i, k ->
-                    pageStatus = "$title · 解码第 ${i + 1}/8 页"
-                    org.jetbrains.skia.Image.makeFromEncoded(s.pageImage(k, card.id, ep.id))
-                        .toComposeImageBitmap()
-                }
-            }
-        }
-        outcome.fold(
-            onSuccess = { pages = it },
-            onFailure = {
-                pageStatus = "阅读链路失败：${it::class.java.simpleName}: ${it.message?.take(240)}"
-                println("D_阅读失败 ${card.id} -> ${it.message?.take(420)}")
-            },
-        )
-        println("D_阅读 ${card.id} 页数=${pages.size}")
-    }
-
-    LaunchedEffect(selected) {
-        session?.close()
-        busy = true
-        error = null
-        cards = emptyList()
-        covers = emptyMap()
-        status = "装载源 $selected…"
-        val s = EngineSession(DesktopJsHost(assetDir, dataDir, proxy), assetDir)
-        session = s
-        // 引擎与网络都是阻塞式，一笔都不许留在 UI 线程上
-        val outcome = withContext(Dispatchers.IO) {
-            runCatching {
-                val name = s.load(selected)
-                status = "$name · 取探索页…"
-                val page = s.explore(1)
-                // 分区数组（jm 等）与单列表（search）两种形状在这里汇流，每分区先取 12 张
-                val shown = page.sections.map { it.copy(comics = it.comics.take(12)) }
-                val all = shown.flatMap { it.comics }
-                if (all.isEmpty()) {
-                    // 空手而归必须说清楚是哪种空：没有 explore / 信封失败 / 源回了 0 条
-                    error = page.error ?: "源返回 0 条（分区 ${page.sections.size} 个）"
-                }
-                val map = LinkedHashMap<String, ImageBitmap>()
-                // 取图先设总量闸：分区多的源一屏也放不下，逐张串行拉会先把探针拖成爬
-                all.take(30).forEachIndexed { i, c ->
-                    status = "$name · 取图 ${i + 1}/${all.take(30).size}"
-                    if (c.cover.isNotBlank()) {
-                        runCatching {
-                            org.jetbrains.skia.Image.makeFromEncoded(s.coverBytes(c.cover))
-                                .toComposeImageBitmap()
-                        }.getOrNull()?.let { map[c.id] = it }
+                if (shot != null) {
+                    // 无人值守取证等 UI 落地后再截。这段**留在集成方**（本文件）而不是搬进
+                    // `VeneraDesktopApp`：截图与"起来就退出"都是取证的形状，不是应用的形状 ——
+                    // 塞进应用根的话，每个正式用户每一次启动都要多走一个 `shot != null` 的判断。
+                    LaunchedEffect(Unit) {
+                        delay(SELF_SHOT_SETTLE_MS)
+                        selfShot(shot)
+                        closePersistenceInOrder()
+                        kotlin.system.exitProcess(0)
                     }
                 }
-                Triple(name, shown, map)
             }
-        }
-        outcome.fold(
-            onSuccess = { (name, shown, map) ->
-                cards = shown
-                covers = map
-                busy = false
-                val total = shown.sumOf { it.comics.size }
-                status = "$name · ${shown.size} 个分区 / $total 条 · 出图 ${map.size}/$total"
-                println("D_结果 源=$name 分区=${shown.map { it.title to it.comics.size }} 出图=${map.size}/$total")
-            },
-            onFailure = {
-                busy = false
-                error = "${it::class.java.simpleName}: ${it.message?.take(300)}"
-                status = "失败"
-                println("D_失败 $selected -> $error")
-            },
-        )
-        if (shotPath != null) {
-            // 无人值守取证时顺手把阅读链路也走一遍（点第一条 → 取详情/页表/去混淆取图）
-            val first = cards.firstOrNull()?.comics?.firstOrNull()
-            if (open == null && first != null) {
-                open = first
-                kotlinx.coroutines.delay(20_000)
-            } else {
-                kotlinx.coroutines.delay(1500)
-            }
-            selfShot(shotPath)
-            kotlin.system.exitProcess(0)
-        }
-        if (autofav) {
-            // 取证第一跑：等效"点第一张卡的收藏"（同一颗 addFavorite），读回条数后按次序收尾退出
-            val first = cards.firstOrNull()?.comics?.firstOrNull()
-            if (first == null) {
-                println("D_收藏 失败：源没回任何卡片，没东西可收（error=${error ?: "无网络层错误"}）")
-                closePersistenceInOrder()
-                kotlin.system.exitProcess(1)
-            }
-            val message = addFavorite(favorites(), selected, first)
-            val total = runCatching { favorites().getAllComics().size }
-            total.fold(
-                onSuccess = { println("D_收藏 命中=$it") },
-                onFailure = {
-                    println("D_收藏 读回失败 ${it::class.java.simpleName}: ${it.message?.take(200)}")
-                },
-            )
-            closePersistenceInOrder()
-            // 退出码判据：读回成功且这条点击不是"收藏失败"（"已在里面"也算写链完好）
-            kotlin.system.exitProcess(if (total.isSuccess && !message.startsWith("收藏失败")) 0 else 1)
         }
     }
-
-    // ⚠️ 这里**直接**是 `DesktopGalleryHome`，外面不再套 compose-fluent 的 `NavigationView`。
-    //
-    // 判负记录：`docs/rounds/large-screen-adaptation-stage2-plan-2026-10-02.md:20` 已明确
-    // 「`NavigationView` 有它自己的默认宽度，不是官方的 72/224。两边都建侧栏就是两套宽度 ——
-    // 即『第二套布局系统』」，并据此把桌面化冻结在阶段 1。S2 接线时漏判了这条，
-    // 于是窗口里挤了三层竖栏：NavigationView 自带的 pane（实测 `SideNavKt` 宽度常量 `180.0f`）
-    // + 我们自绘的 rail 48 + 自绘的 pane 224 ⇒ 452dp 被吃掉，内容区被压掉一大截。
-    //
-    // 那层 pane 的底色还另有一次事故：它走 fluent 的 `MaterialContainer` + `acrylicDefault`，
-    // 而 acrylic 在 skiko 桌面端解析不出系统底色 ⇒ 回退成**浅色**面板（深色主题下也一样）。
-    // 自绘 rail/pane 不依赖 fluent Material 体系，这条路才彻底断掉。
-    //
-    // 判据：`DesktopShellLayoutTest` ① 断言根布局里不再出现 `NavigationView(` / `menuItems =`。
-    DesktopGalleryHome(GalleryPorts.of(null))
 }
 
 /**

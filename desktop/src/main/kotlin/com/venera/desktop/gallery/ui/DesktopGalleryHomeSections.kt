@@ -83,10 +83,21 @@ internal val DESKTOP_GALLERY_HOME_SECTION_ORDER: List<String> = listOf(
 /**
  * 「有内容件」的三种说法中的两种 —— 只有这一颗 sealed 才是 `when` 穷尽检查的载体
  * （理由见类注释里那一节）。今天两档，S3 接上「最新」之类时加一档，忘了在两颗 `when` 里出形状的代价是编译不过。
+ *
+ * ⚠️ 下面四档不属于图库域 —— 它们是**漫画域**的两页（2026-10-04 回收）。之所以放在这颗 sealed 里
+ * 而不是另开一颗：pane 的行模型 [DesktopGalleryHomeRow] 是全桌面共用的一颗，
+ * 它的 `when` 必须能同时排开两个域的货；另开一颗 sealed 就等于给每个域配一套行模型，
+ * 那是本仓判过负的"第二套布局系统"在更小的尺度上重演。
  */
 internal sealed interface DesktopGallerySectionContent {
     data object Daily : DesktopGallerySectionContent
     data object FollowedArtists : DesktopGallerySectionContent
+
+    /** 漫画域：源的探索页（分区 + 封面墙）。 */
+    data object ComicExplore : DesktopGallerySectionContent
+
+    /** 漫画域：本机收藏夹（`LocalFavoritesManager`，与画廊收藏不是同一份数据）。 */
+    data object ComicFavorites : DesktopGallerySectionContent
 }
 
 /**
@@ -180,6 +191,8 @@ internal fun DesktopGalleryHomeNavRow(row: DesktopGalleryHomeRow, selected: Bool
     val rendered: Unit = when (row.content) {
         DesktopGallerySectionContent.Daily -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.FollowedArtists -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.ComicExplore -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.ComicFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         null -> DesktopUnimplementedRow(row.title, row.glyph, requireNotNull(row.reason))
     }
 }
@@ -195,6 +208,16 @@ internal fun DesktopGalleryHomeBody(row: DesktopGalleryHomeRow, ports: GalleryPo
     val rendered: Unit = when (row.content) {
         DesktopGallerySectionContent.Daily -> DesktopDailyPane(ports)
         DesktopGallerySectionContent.FollowedArtists -> DesktopFollowedArtistsPane(ports)
+        // 漫画域那两页在结构上走不到这里 —— 分发发生在 `VeneraDesktopApp` 的 `DesktopDomainBody`，
+        // 它按**域**先分岔，漫画域整域走 `DesktopComicBody`（那里才收得到 `DesktopComicEngineConfig`）。
+        // 这里写成 error 而不是随便渲染个占位：真有人把漫画域的行塞进图库域那一刻就崩，
+        // 而不是静默画出一屏少了一半的东西。
+        DesktopGallerySectionContent.ComicExplore,
+        DesktopGallerySectionContent.ComicFavorites,
+        -> error(
+            "「${row.title}」是漫画域的页，不该由图库域的 body 渲染 —— " +
+                "两条路的分岔在 VeneraDesktopApp.DesktopDomainBody",
+        )
         null -> DesktopAbsentBody(row)
     }
 }
