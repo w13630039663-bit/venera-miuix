@@ -32,6 +32,7 @@ internal object DesktopSurfaceLiterals {
      * 否则一补前缀就会把既有代码打成红 —— 那是"判据自己先崩"，不是"抓到漂移"。
      */
     private val SURFACE_PREFIXES = listOf(
+        // ── surface 阶梯（中性灰）──────────────────────────────────────────
         // 四档基础阶梯
         "0xFF202020", "0xFF272727", "0xFF2C2C2C", "0xFF353535",
         "0xFF1F1F1F",
@@ -41,6 +42,19 @@ internal object DesktopSurfaceLiterals {
         "0xB0202020",
         // 未实现行的图标档（稿 `.nav.off svg`）
         "0xFF5E5E5E",
+        // ── 文字三档 ───────────────────────────────────────────────────────
+        // ⚠️ 2026-10-04 登记。旧表**只扫 surface**，于是文字档是整块盲区：
+        //    `DesktopFollowedArtistsPane.kt` 里那句 `Color(0xFF8B8B8B)`（[DesktopTheme.TextTertiary]
+        //    的同值重写）从落成那天起到今天一直没被抓到。补前缀的**前提**是先把那处改成引主题
+        //    —— 否则一补前缀就先把自己打成红，那是"判据自己先崩"不是"抓到漂移"。
+        "0xFFFFFFFF", "0xFFA0A0A0", "0xFF8B8B8B",
+        // ── 强调 / 半透明 ──────────────────────────────────────────────────
+        "0xFFCBB6FF", // 藤紫 AccentFuji
+        "0xFFD6463C", // 博丽朱 AccentBeni
+        "0xFF3A2A55", // 选中行渐变起点
+        "0x80000000", // 作品卡遮罩终点（半透明黑；旧表只认 0xFF 与后来补的 0xB0）
+        // ── 标签 chip 的 beni 强调档（稿 `.chip.beni`，`:139`）──────────────
+        "0xFF4A2220", "0xFFFFB4A8",
     )
 
     /**

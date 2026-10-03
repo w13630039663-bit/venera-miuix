@@ -96,6 +96,21 @@ internal object DesktopTheme {
     /** 博丽朱：神社档装饰与警示。稿 `--beni` = `#D6463C`。 */
     val AccentBeni: Color = Color(0xFFD6463C)
 
+    // ── 标签 chip 的 beni 强调档（稿 `:139` 的 `.chip.beni`）──────────────────
+
+    /**
+     * beni 强调 chip 的底色。稿 `.chip.beni{background:#4A2220}`（`docs/designs/…2026-10-03.html:139`）。
+     *
+     * ⚠️ 这两枚是 **beni 色族**（与既有 [AccentBeni] 同族），**不是 surface 阶梯里的一档灰** ——
+     * 「五档之间不许再出现第六档差不多灰」那条禁的是**中性灰**（那种只差几个色号、
+     * 肉眼分不出区别的相邻灰阶），色相明确的强调色不在此列；但它们同样只许在这一处出现，
+     * 2026-10-04 起前缀也已登记进色板扫描器（`DesktopSurfaceLiterals` 的前缀表）。
+     */
+    val ChipBeniBackground: Color = Color(0xFF4A2220)
+
+    /** beni 强调 chip 的文字。稿 `.chip.beni{color:#FFB4A8}`（`:139`）。 */
+    val ChipBeniContent: Color = Color(0xFFFFB4A8)
+
     /**
      * 选中行的横向渐变（稿 `.nav.sel`：`linear-gradient(90deg,#3A2A55,#2C2C2C 78%)`）。
      *

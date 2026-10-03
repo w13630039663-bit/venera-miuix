@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,4 +106,7 @@ private fun DesktopFollowedArtistRow(artist: FollowedArtistRef) {
 
 // 座底色与元信息色都取稿的深色档阶梯（`--layer2:#2C2C2C` / `--t3:#8B8B8B`，`:10-11`），浅色档映射归 S5。
 private val SeatBackground = DesktopTheme.CardBackground
-private val MetaText = Color(0xFF8B8B8B)
+// 2026-10-04：`MetaText` 原先这里是 `Color(0xFF8B8B8B)` 字面量 —— 那是 [DesktopTheme.TextTertiary]
+// 的同值重写，而扫描器的前缀表里没有登记 `0xFF8B8B8B`，所以它从落成那天起就没被抓到。
+// 这是 2026-10-04 静态体检扫全量字面量时才发现的（旧表只认四档 surface，文字档never watched）。
+private val MetaText = DesktopTheme.TextTertiary

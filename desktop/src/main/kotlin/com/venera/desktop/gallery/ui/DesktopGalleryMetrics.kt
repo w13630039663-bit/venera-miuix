@@ -181,6 +181,63 @@ internal object DesktopGalleryMetrics {
     /** Hero 左右两列的间距。设计稿 `.top{gap:16px}`（`:146`）。 */
     val heroGap: Dp = 16.dp
 
+    // ── 主区段头（稿 `.phead`：CSS `:123-129`，HTML `:387-395`）──────────────
+
+    /** 段头高。稿 `.phead{height:52px;flex:0 0 52px}`（`:123`）。 */
+    val pageHeaderHeight: Dp = 52.dp
+
+    /** 段头内元素间距。稿 `.phead{gap:12px}`（`:123`）。 */
+    val pageHeaderGap: Dp = 12.dp
+
+    /** 子标题相对主标题的左间距。稿 `.phead .pt .sub{margin-left:10px}`（`:125`）。 */
+    val pageHeaderSubMargin: Dp = 10.dp
+
+    /** 控件统一圆角。稿 `--r-ctl:4px`（`:21`），按钮 / 分段控件 / 输入框共用一颗。 */
+    val controlRadius: Dp = 4.dp
+
+    // 分段控件（稿 `.seg` `:126-128`）
+    /** 分段控件容器的内衬。稿 `.seg{padding:2px}`（`:126`）。 */
+    val segmentedInnerPadding: Dp = 2.dp
+
+    /** 分段控件两项之间的缝。稿 `.seg{gap:2px}`（`:126`）。 */
+    val segmentedItemGap: Dp = 2.dp
+
+    /** 分段控件单项的圆角。稿 `.seg i{border-radius:2px}`（`:127`）—— 比容器 [controlRadius] 更方。 */
+    val segmentedItemRadius: Dp = 2.dp
+
+    /** 分段控件单项的左右内衬。稿 `.seg i{padding:4px 12px}`（`:127`）。 */
+    val segmentedItemHorizontalPadding: Dp = 12.dp
+    val segmentedItemVerticalPadding: Dp = 4.dp
+
+    /** chip 高与左右内衬。稿 `.chip{height:26px;padding:0 11px;border-radius:999px}`（`:137`）。 */
+    val chipHeight: Dp = 26.dp
+    val chipHorizontalPadding: Dp = 11.dp
+
+    /** 小号按钮的高与左右内衬。稿 `.btn.sm{height:26px;padding:0 10px}`（`:135`）。 */
+    val smallButtonHeight: Dp = 26.dp
+    val smallButtonHorizontalPadding: Dp = 10.dp
+
+    // ── 状态栏（稿 `.status`：CSS `:243-245`，HTML `:498-501`）──────────────
+
+    /** 状态栏高。稿 `.status{flex:0 0 24px;height:24px}`（`:243`）。 */
+    val statusBarHeight: Dp = 24.dp
+
+    /** 状态栏读数之间的间距。稿 `.status{gap:16px}`（`:243`）。 */
+    val statusBarGap: Dp = 16.dp
+
+    /** 状态栏左右内衬。稿 `.status{padding:0 12px}`（`:243`）。 */
+    val statusBarHorizontalPadding: Dp = 12.dp
+
+    /**
+     * 内容区（稿 `.page`）的横向内衬。
+     *
+     * ⚠️ 稿给的是 `padding:0 24px`；桌面各 pane 件一直写 16。**本批处理这道差的一半**：
+     * 先把散在各处的 `16.dp` 收成一枚有名字的常量，把"桌面这里是 16、稿是 24"这句差量钉在这颗文件里，
+     * **但不动数值** —— 它直接决定图片墙的可列宽（`BoxWithConstraints` 吃的就是这个值），
+     * 改它会牵动列数那一整套口径。要回到稿的 24，只改这一处并连带重跑 `DesktopWidthCaliberDriftTest`。
+     */
+    val pageHorizontalPadding: Dp = 16.dp
+
     /**
      * caption 的起始缩进 = 行内缩 + 图标位宽 + 图标间距，让说明文字与标题**左边缘对齐**。
      * 写成推导而不是再抄一个魔数：三个数任何一颗跟着设计稿动，缩进自己跟上。

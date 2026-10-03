@@ -86,7 +86,8 @@ internal fun DesktopDailyPane(ports: GalleryPorts) {
             runCatching { GalleryDailyFeed(ports.boards).loadDaily(seed).getOrThrow() }
         }
         state = outcome.fold(
-            onSuccess = { DailyState.Ready(it) },
+            // 时刻戳在这里取 —— `getOrThrow()` 返回的那一点就是"这一轮到手"的时刻。
+            onSuccess = { DailyState.Ready(it, System.currentTimeMillis()) },
             onFailure = { DailyState.Failed("${it::class.java.simpleName}: ${it.message?.take(240)}") },
         )
     }
@@ -122,7 +123,12 @@ internal fun DesktopDailyPane(ports: GalleryPorts) {
             Text("重试", modifier = Modifier.clickable { attempt += 1 })
         }
 
-        is DailyState.Ready -> DailyWall(current.daily, ports, onShuffle = { attempt += 1 })
+        is DailyState.Ready -> DailyWall(
+            daily = current.daily,
+            ports = ports,
+            fetchedAtMillis = current.fetchedAtMillis,
+            onShuffle = { attempt += 1 },
+        )
     }
 }
 
@@ -130,6 +136,7 @@ internal fun DesktopDailyPane(ports: GalleryPorts) {
 private fun DailyWall(
     daily: GalleryDailyFeed.Daily,
     ports: GalleryPorts,
+    fetchedAtMillis: Long,
     onShuffle: () -> Unit,
 ) {
     val merged = daily.merged
@@ -140,61 +147,108 @@ private fun DailyWall(
         merged.videos.takeIf { it > 0 }?.let { "其中视频 $it 条" },
     ).joinToString(" · ")
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // ① 精简 Header：只留「标题 + 计数」这一行。
-        // ⚠️ 上一轮把三段说明（各站条数 / 三站口径差别 / 已滤掉几条）全堆在正文顶上，
-        // 结果是"进屏 40 张"这种读数占掉了首屏最好的位置，而它们是**页脚该说的话**。
-        // 现在：一条 Header 报数 + 一条状态条报缺席与已滤掉的，其余移到墙下面。
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "每日热门",
-                color = DesktopTheme.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                " · 进屏 ${merged.posts.size} 张 · $perSite",
-                color = DesktopTheme.TextSecondary,
-                fontSize = 12.sp,
-            )
-        }
+    // 段头 chips 取**当页**标签频次（[desktopTopTags]），随机数那样飘的东西不要。
+    // `remember(posts)` 而不是每次重组都算：几十张卡的标签表扫一遍不贵，但没必要跟着动画重组重算。
+    val (tags, hiddenTagCount) = remember(merged.posts) { desktopTopTags(merged.posts) }
+    val segments = remember { desktopGallerySegments() }
+    var segmentIndex by remember { mutableStateOf(0) }
+    var segNotice by remember { mutableStateOf<String?>(null) }
+    val pad = DesktopGalleryMetrics.pageHorizontalPadding
 
-        // ② Hero 区：左侧大位 + 右侧两张小卡（稿 `.top` 的非对称，`:146`）。
-        //    `onShuffle` 是形参而不是就地改 attempt —— 「重排」背后是真动作
-        //    （`loadDaily(seed)` 换种子本地重排），而 attempt 属于这一层的组合状态；
-        //    让子件直接改它就是"孙件伸手去改孙孙件的状态"，换一颗调用点就编译不过。
-        DesktopDailyHero(
-            daily = daily,
+    Column(Modifier.fillMaxSize()) {
+        // ① 段头（稿 `.phead`，`:387-395`）：日期 / 并行 / 预算 + 分段控件 + 当页标签 + 换一批。
+        DesktopGalleryPageHeader(
+            date = daily.date,
+            budgetLabel = budgetLabel(GalleryDailyFeed.PER_SITE_TIMEOUT_MS),
+            tags = tags,
+            hiddenTagCount = hiddenTagCount,
+            selectedIndex = segmentIndex,
+            onSegment = { segment ->
+                if (segment.reason == null) {
+                    // 接不上的那一档**不换选中项** —— 换过去内容区没有任何东西可画，
+                    // 就成了"选中了但下面还是上一屏"的假态。这一条由调用方把关而不是段头自己决定：
+                    // 段头只负责把"我为什么接不上"交出来。
+                    segmentIndex = segments.indexOfFirst { it.label == segment.label }
+                    segNotice = null
+                } else {
+                    segNotice = segment.reason
+                }
+            },
             onShuffle = onShuffle,
+            modifier = Modifier.padding(horizontal = pad),
         )
 
-        // ③ 缺席必须先说 —— 它决定"这一屏为什么只有两站"，所以它**留在墙上方**而不是页脚。
-        if (daily.failures.isNotEmpty()) {
+        // 点「最新 / 排行」时的话就落在这里 —— 它是段头的回答，所以紧贴段头下方，
+        // 不混进墙上方那条缺席行（那条说的是**取数**，这条说的是**视图没接**）。
+        segNotice?.let { reason ->
             Text(
-                "这一轮没给内容的站：" +
-                    daily.failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
+                reason,
+                modifier = Modifier.padding(horizontal = pad, vertical = 6.dp),
                 color = DesktopTheme.AccentBeni,
                 fontSize = 12.sp,
             )
-            // S4：缺席原因指向的那件事要能在这里修。
-            // 条件刻意只判"这一站缺席"而不判缺席原因的字面：**原因句会改**（站方改文案、
-            // 换措辞），拿字面去挂钩会让面板在某次措辞调整后静默消失。
-            // 理由原文改由面板自己念（`GelbooruCredentialState.ANONYMOUS_HINT`）。
-            if (daily.failures.containsKey(GallerySite.GELBOORU)) {
-                val credentials = ports.credentials as? DesktopGalleryCredentials
-                if (credentials != null) {
-                    GelbooruCredentialLauncher(credentials)
-                } else {
-                    Text(
-                        "Gelbooru 缺凭据（${GelbooruCredentialState.ANONYMOUS_HINT}），" +
-                            "但当前接线没有桌面凭据件。",
-                        color = DesktopTheme.TextSecondary,
-                    )
-                }
-            }
         }
 
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        // ② 内容本体：hero → 缺席 → 节头 → 墙。整块吃剩余高度，状态栏才贴得住窗底。
+        Column(
+            Modifier
+                .weight(1f)
+                // ⚠️ 写 `start/end/bottom` 而不是 `horizontal + bottom` —— Compose 的 `padding`
+                // 没有那个具名组合（`horizontal` 只与 `vertical` 配对），写上去编译不过。
+                .padding(start = pad, end = pad, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            DesktopDailyHero(
+                daily = daily,
+                onShuffle = onShuffle,
+            )
+
+            // ③ 缺席必须先说 —— 它决定"这一屏为什么只有两站"，所以它**留在墙上方**而不是页脚。
+            if (daily.failures.isNotEmpty()) {
+                Text(
+                    "这一轮没给内容的站：" +
+                        daily.failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
+                    color = DesktopTheme.AccentBeni,
+                    fontSize = 12.sp,
+                )
+                // S4：缺席原因指向的那件事要能在这里修。
+                // 条件刻意只判"这一站缺席"而不判缺席原因的字面：**原因句会改**（站方改文案、
+                // 换措辞），拿字面去挂钩会让面板在某次措辞调整后静默消失。
+                // 理由原文改由面板自己念（`GelbooruCredentialState.ANONYMOUS_HINT`）。
+                if (daily.failures.containsKey(GallerySite.GELBOORU)) {
+                    val credentials = ports.credentials as? DesktopGalleryCredentials
+                    if (credentials != null) {
+                        GelbooruCredentialLauncher(credentials)
+                    } else {
+                        Text(
+                            "Gelbooru 缺凭据（${GelbooruCredentialState.ANONYMOUS_HINT}），" +
+                                "但当前接线没有桌面凭据件。",
+                            color = DesktopTheme.TextSecondary,
+                        )
+                    }
+                }
+            }
+
+            // ④ 节头（稿 `.sechead` `:140-141`）：节名 + 进屏读数。
+            //    ⚠️ 稿这里右边还有一枚「查看更多」（`.sechead .more`）—— **不画**：桌面今天的墙
+            //    就是这一轮取到的全部，"查看更多"按下去没有下一页可翻，是一枚假开关。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "精选推荐",
+                    color = DesktopTheme.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    " · 进屏 ${merged.posts.size} 张 · $perSite",
+                    color = DesktopTheme.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
             val columns = DesktopGalleryMetrics.imageWallColumnCount(maxWidth.value)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
@@ -222,17 +276,24 @@ private fun DailyWall(
                 }
             }
         }
+        }
 
-        // ④ 页脚：接住从 Header 移下来的三段读数（稿 `.status`，`:243`）。
-        // 放这里而不是顶部，因为它们是**解释**而不是**内容** —— 首屏该给图。
-        // ⚠️ 三站口径那条必须在页脚（不是删掉）：只有 yande.re 是日榜，另两站取的是高分池，
-        // 不说清就会长成"这三站都是今天的热门"这种假读数。
-        Text(
-            "yande.re 取的是 ${daily.date} 的日榜；Gelbooru 与 Safebooru 没有日榜端点，取的是全站高分池" +
-                if (dropped.isNotBlank()) "　已滤掉：$dropped" else "",
-            color = DesktopTheme.TextTertiary,
-            fontSize = 11.sp,
-            maxLines = 2,
+        // ↑ 第二层是内容本体那一节（hero / 缺席 / 节头 / 墙），它吃 `weight(1f)`；
+        //   下面那条状态栏必须与它**平级**才贴得住窗底 —— 塞进它里面会和墙一起被压缩。
+
+        // ⑤ 状态栏（稿 `.status`，`:243-245`）：全宽贴在内容区底部。
+        //
+        // ⚠️ 这里原先是一条"页脚"（把三站口径与已滤掉条数排在墙下面）。本批把它换成状态栏：
+        // - 「三站口径」那句 Hero 右侧第一张侧卡**已经在说**（内容一致），页脚再说一遍就是重复；
+        // - 「已滤掉 X 条」是真读数，但它属于"这一批货的账"，该躺在状态栏那条读数带里；
+        // - 「yande.re 取的是 x 的日榜」同样由侧卡承担。
+        // 同一件事在两处讲，改动时迟早只改一处 —— 那时屏上就同时摆着两个互相否定的读数。
+        DesktopGalleryStatusBar(
+            siteTotal = daily.pools.size,
+            missingCount = daily.failures.size,
+            fetchedAtMillis = fetchedAtMillis,
+            budgetMs = GalleryDailyFeed.PER_SITE_TIMEOUT_MS,
+            droppedLabel = dropped,
         )
     }
 }
@@ -248,7 +309,10 @@ private fun DailyWall(
  * ## 描边不是阴影
  *
  * 稿 `.art-card{border:1px solid var(--stroke)}`（`:185`）—— 全稿卡片一律用描边不用阴影，
- * 而 `--stroke` = `#353535` 正是已有的 [DesktopTheme.SurfaceRaised]（`--card-hov` 同一颗值），
+ * 而 `--stroke` = `#353535` 正是已有的 [DesktopTheme.SurfaceRaised]。
+ * ⚠️ 2026-10-04 改正：这里原先还写着「（`--card-hov` 同一颗值）」—— 是错的，
+ * `--card-hov` 是 `#333333`，比 `--stroke` 的 `#353535` **暗一档**（两处都在稿 `:10`）。
+ * 代码取 `#353535` 是对的，错的只是那句注释；同一句错注在同批的 `DesktopTheme.kt` 已一并改正。
  * 所以这里复用它、**不新增第六档色**。描边画在 layout 边界内，不影响任何宽度口径。
  *
  * ## 遮罩为什么是**常驻**而不是 hover 才有
@@ -399,5 +463,11 @@ private fun hostHint(url: String): String =
 private sealed interface DailyState {
     data object Loading : DailyState
     data class Failed(val reason: String) : DailyState
-    data class Ready(val daily: GalleryDailyFeed.Daily) : DailyState
+
+    /**
+     * @param fetchedAtMillis **取数完成那一刻**的时刻戳，给状态栏那句「本次取数 X 前」。
+     *   不是在渲染时现取的时刻 —— 那句话要回答的是"墙上这批图是哪一轮拿的"，
+     *   而"渲染的这一刻"会随着每次重组往后挪，填进去就成了自指。
+     */
+    data class Ready(val daily: GalleryDailyFeed.Daily, val fetchedAtMillis: Long) : DailyState
 }
