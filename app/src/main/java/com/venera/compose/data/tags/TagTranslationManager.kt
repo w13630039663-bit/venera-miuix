@@ -85,14 +85,15 @@ class TagTranslationManager private constructor(private val context: Context) {
     private fun parse(jsonString: String): LangDict? {
         val dict = LangDict()
         val root = JSONObject(jsonString)
-
         // 1. 读取 rows 命名空间
         val rowsObj = root.optJSONObject("rows")
         if (rowsObj != null) {
             val keys = rowsObj.keys()
             while (keys.hasNext()) {
                 val key = keys.next()
-                namespaceMap[key.lowercase()] = rowsObj.optString(key)
+                // 同样过一遍图标清洗：EhTag 的 rows 是命名空间元信息，理论上不带图标，
+                // 但「根因层」就应当把所有出口统一收口，不留某条 value 漏网的缝。
+                namespaceMap[key.lowercase()] = stripTranslationIconMarkdown(rowsObj.optString(key))
             }
         }
 
@@ -109,7 +110,9 @@ class TagTranslationManager private constructor(private val context: Context) {
             val itemKeys = categoryObj.keys()
             while (itemKeys.hasNext()) {
                 val rawKey = itemKeys.next()
-                val rawVal = categoryObj.optString(rawKey)
+                // 官方数据里一部分词条的译名带 markdown 图标前缀（见 [stripTranslationIconMarkdown]），
+                // 收进字典前剥掉 —— 三个视图（scoped/unique/flat）共享同一份清洗，别处不再各擦各的。
+                val rawVal = stripTranslationIconMarkdown(categoryObj.optString(rawKey))
                 if (rawVal.isBlank()) continue
                 val lowerKey = rawKey.lowercase()
                 dict.scoped["${namespace.lowercase()}:$lowerKey"] = rawVal
@@ -227,6 +230,24 @@ class TagTranslationManager private constructor(private val context: Context) {
         }
     }
 }
+
+/**
+ * 剥掉 EhTagTranslation 词条里混进来的 **markdown 图标前缀**。
+ *
+ * 官方数据库（EhTagTranslation）的一部分词条，译名本身长这样：
+ * `![阴阳玉图标](https://raw.githubusercontent.com/wiki/EhTagTranslation/Database/database-icon/touhou%20project.webp)东方Project`
+ * —— 那段 `![...](...)` 是给官方 wiki 渲染 tag 图标用的，我们只取后半段文字。
+ * 2026-10-02 用户报「EH/NH 英文站详情页出现超长 tag」：英文界面不译时看似正常，
+ * 一旦译文命中这类词条，药丸上就是一整串 URL（长按复制里也是它）。
+ *
+ * 全部剥完只剩空串的词条按「没有译文」处理（调用方 `parse` 会跳过它）——
+ * 宁可不译，不摆一串 URL。
+ */
+internal fun stripTranslationIconMarkdown(value: String): String =
+    value.replace(TRANSLATION_ICON_MARKDOWN, "").trim()
+
+/** 词条译名里的 markdown 图片语法：`![任意 alt](任意 url)`，一篇词条里可能出现多次。 */
+private val TRANSLATION_ICON_MARKDOWN = Regex("""!\[[^\]]*]\([^)]*\)""")
 
 /**
  * 源原生命名空间键的中文兜底表（键一律小写；`tags.json` 的 rows 优先，未命中才查这里）。
