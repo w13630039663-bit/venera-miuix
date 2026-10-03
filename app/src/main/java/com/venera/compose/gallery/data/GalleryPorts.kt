@@ -27,6 +27,16 @@ import kotlinx.coroutines.flow.StateFlow
 class GalleryPorts(
     val contentGuard: GalleryContentGuard,
     val prefs: GalleryPreferences,
+    val favorites: GalleryFavorites,
+    val follows: GalleryArtistFollows,
+    val avatars: GalleryArtistAvatars,
+    val lexicon: GalleryTagLexicon,
+    val credentials: GalleryCredentials,
+    val stores: GalleryStoreFactory,
+    val boards: GalleryBoards,
+    val artists: GalleryArtistDirectory,
+    val reverse: GalleryReverseSearch,
+    val hygiene: GalleryNetworkHygiene,
 ) {
 
     companion object {
@@ -148,6 +158,16 @@ object AndroidGalleryPorts {
             GalleryPorts(
                 contentGuard = AndroidGalleryContentGuard(context),
                 prefs = AndroidGalleryPreferences(context),
+                favorites = AndroidGalleryFavorites(context),
+                follows = AndroidGalleryArtistFollows(context),
+                avatars = AndroidGalleryArtistAvatars(context),
+                lexicon = AndroidGalleryTagLexicon(context),
+                credentials = AndroidGalleryCredentials(context),
+                stores = AndroidGalleryStoreFactory(context),
+                boards = AndroidGalleryBoards(context),
+                artists = AndroidGalleryArtistDirectory(context),
+                reverse = AndroidGalleryReverseSearch(context),
+                hygiene = AndroidGalleryNetworkHygiene(context),
             ).also { ports = it }
         }
     }

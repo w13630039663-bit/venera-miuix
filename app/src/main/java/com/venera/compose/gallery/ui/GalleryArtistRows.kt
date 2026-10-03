@@ -40,13 +40,8 @@ import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraCover
-import com.venera.compose.gallery.data.DanbooruArtistClient
-import com.venera.compose.gallery.data.GalleryArtistAvatarStore
-import com.venera.compose.gallery.data.GalleryArtistFollowsStore
-import com.venera.compose.gallery.data.GalleryArtistProbeClient
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.PixivClient
-import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.domain.GalleryArtistAvatarProbe
 import com.venera.compose.gallery.domain.GalleryArtistCreditsKey
 import com.venera.compose.gallery.domain.GalleryArtistFollows
@@ -160,9 +155,9 @@ internal suspend fun loadArtistCredits(
         // Gelbooru 那边没有任何匿名可读的画师端点（`s=list&name=` 那个参数实测根本不生效），
         // 只能借 danbooru —— 两家共享画师名。
         // Safebooru 与 Gelbooru 同属 Danbooru 系，画师端点也走 danbooru。
-        GallerySite.YANDERE -> YandeReClient.getInstance(context).artistLinks(name)
-        GallerySite.GELBOORU -> DanbooruArtistClient.getInstance(context).artistUrls(name)
-        GallerySite.SAFEBOORU -> DanbooruArtistClient.getInstance(context).artistUrls(name)
+        GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
+        GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
     }.getOrElse { failure ->
         Log.w(TAG, "画师「$name」($site) 的外链没取到：${failure.message}")
         emptyList()
@@ -172,7 +167,7 @@ internal suspend fun loadArtistCredits(
     val preliminary = GalleryArtistLinks.iconPlan(links, source = source)
     val author = if (preliminary.any { it.platform == GalleryArtistLinkPlatform.PIXIV }) null
     else GalleryArtistLinks.pixivArtworkId(source)?.let { artworkId ->
-        PixivClient.getInstance(context).artworkAuthor(artworkId).getOrElse { failure ->
+        GalleryPorts.of(context).artists.pixivArtworkAuthor(artworkId).getOrElse { failure ->
             // 实测 15 条出处里有 4 条站方直接 404（删了或锁了）：那是"没取到"，不是"这位没有 pixiv"。
             Log.w(TAG, "画师「$name」的出处是作品 $artworkId，但 pixiv 没答上作者：${failure.message}")
             null
@@ -235,7 +230,7 @@ internal fun GalleryArtistCreditRows(
     val context = LocalContext.current
     val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
-    val store = remember { GalleryArtistFollowsStore.getInstance(context) }
+    val store = remember { GalleryPorts.of(context).follows }
     val follows by store.follows.collectAsState()
 
     Column(
@@ -491,7 +486,7 @@ internal suspend fun resolveArtistAvatar(
     plan: List<GalleryArtistLink>,
     source: String,
 ): String? {
-    val store = GalleryArtistAvatarStore.getInstance(context)
+    val store = GalleryPorts.of(context).avatars
     // 三档语义（没查过 / 查过没有 / 有地址）在 GalleryArtistAvatars 里钉着，这里只照它办。
     store.peek(site, name, source)?.let { return it.ifBlank { null } }
     val avatar = probeArtistAvatar(context, name, plan, source)
@@ -507,7 +502,7 @@ private suspend fun probeArtistAvatar(
     source: String,
 ): String? {
     plan.pixivUserIdOrNull()?.let { userId ->
-        val url = PixivClient.getInstance(context).avatarUrl(userId).getOrElse { failure ->
+        val url = GalleryPorts.of(context).artists.pixivAvatarUrl(userId).getOrElse { failure ->
             Log.w(TAG, "画师「$name」的 pixiv 头像没取到（$userId）：${failure.message}")
             null
         }
@@ -518,7 +513,7 @@ private suspend fun probeArtistAvatar(
         ?: GalleryArtistAvatarProbe.mastodonLookup(source)
         ?: return null
     // 日志里只到 `?` 之前：这几条端点本身不带凭据，但"URL 一律截掉 query"是这一层的统一口径。
-    return GalleryArtistProbeClient.getInstance(context).avatarUrl(endpoint).getOrElse { failure ->
+    return GalleryPorts.of(context).artists.probeAvatarUrl(endpoint).getOrElse { failure ->
         Log.w(
             TAG,
             "画师「$name」的 ${endpoint.kind} 头像没取到（${endpoint.endpoint.substringBefore('?')}）：${failure.message}",
@@ -538,9 +533,9 @@ private suspend fun probeArtistAvatar(
  */
 internal suspend fun artistAvatarOnSite(context: Context, site: GallerySite, name: String): String? {
     val links = when (site) {
-        GallerySite.YANDERE -> YandeReClient.getInstance(context).artistLinks(name)
-        GallerySite.GELBOORU -> DanbooruArtistClient.getInstance(context).artistUrls(name)
-        GallerySite.SAFEBOORU -> DanbooruArtistClient.getInstance(context).artistUrls(name)
+        GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
+        GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
     }.getOrElse { failure ->
         Log.w(TAG, "画师「$name」($site) 的外链没取到，头像这一路到此为止：${failure.message}")
         emptyList()

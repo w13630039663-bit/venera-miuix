@@ -38,8 +38,8 @@ import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.gallery.data.GalleryImageLoader
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.SauceNaoClient
 import com.venera.compose.gallery.data.SauceNaoHit
 import com.venera.compose.gallery.data.preferredExternalUrl
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -150,7 +150,7 @@ fun GalleryReverseResults(
             // 一屏到底要说出来。SauceNAO 一次只回这么多条、且没有可靠的深翻页，
             // 不写这一句，用户滚到底会以为"相似图就这么点"，而事实是"我们只取了前 N 条"。
             item {
-                SearchNoticeLine("SauceNAO 一次只回前 ${SauceNaoClient.SAUCE_NUM_RESULTS} 条，到底了")
+                SearchNoticeLine("SauceNAO 一次只回前 ${GalleryPorts.of(context).reverse.maxResults} 条，到底了")
             }
         }
     }

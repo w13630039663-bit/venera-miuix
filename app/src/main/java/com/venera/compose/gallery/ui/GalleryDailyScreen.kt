@@ -27,7 +27,6 @@ import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
-import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryFeedSource
@@ -104,7 +103,7 @@ internal fun GalleryDailyScreen(
 
     /** 用户主动重来一次：清熔断（否则按下去必然还是"熔断中"，是假按钮）+ 置 force 绕过在途标志。 */
     fun refreshFromUser() {
-        GallerySite.entries.forEach { HostCircuitBreaker.reset(it.apiHost) }
+        GalleryPorts.of(context).hygiene.resetAllSiteBreakers()
         vm.refresh()
         loadDailyFeed(vm, source, scope)
     }

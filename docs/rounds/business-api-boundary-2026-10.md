@@ -18,7 +18,7 @@
 | 非 `getInstance` 的直连 | `AndroidKeyValueStore(` 3、`HostCircuitBreaker.` 3、`okhttp3.` 1、`PreferredIpRuntime.` 5、`ComicStorageRoot.` 15 | 同上，`BASELINE_*` 五张表 |
 | 全仓 `fun getInstance(` | 35 处声明 | `grep -rn "fun getInstance(" --include=*.kt app/src/main` |
 | ViewModel | 12 颗 `AndroidViewModel(app)` + 3 颗裸 `ViewModel()`（`feature/explore/ExploreViewModel.kt:25`、`:91`、`feature/Navigation.kt:322`，三颗今天就零穿透）；`viewModel()` 真调用点 **17 处**（另有 4 处是注释字样，见 §九 第 2 条 —— **本行原先写的「18 处 / 另 3 处」是错的**，错在把 `BusinessPorts.kt` 自己那句 KDoc 算成了调用点）；**全仓零 `ViewModelProvider.Factory`** | `grep -rnE "^class [A-Za-z]+ViewModel" --include=*.kt app/src` |
-| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例；D0 后 104/102/800、D3 后 105/103/803、D4 后 106/104/806；D2 未新增测试类但加了一条断言 G ⇒ 106/104/807** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
+| 测试基线 | 裁决当天 101 颗 `.kt`（100 测试类 + `testsupport/RepoSources.kt`）/ 791 个 `@Test`；**B0 起每批加守卫类，B6 落地后实测 103 颗 `.kt` / 101 颗测试类 / 797 个用例；D0 后 104/102/800、D3 后 105/103/803、D4 后 106/104/806；D2 未新增测试类但加了一条断言 G ⇒ 106/104/807；D1 同样不新增用例（纯改引）⇒ 106/104/807 不变** | `find app/src/test -name '*.kt' \| wc -l`；`grep -rho '@Test' app/src/test \| wc -l` |
 
 **冻结面**：`FREEZE-STATEMENT.md`（在**仓根**，`docs/` 下没有）`:8-15` 的清单实测 **8 颗**。冻结屏内含穿透 **13 处**，导航保护域（`:32`）另含 **2 处** = 裁决时登记的 **15 处待解锁**，见 §六；B2 之后画廊偏好写口再加 **2 处**（W5）⇒ 长期条目共 **19 处**（B3 再加 2 处 W1 嵌套类型，见 §五 B3 与 §六）。
 
@@ -66,13 +66,13 @@ app/src/main/java/com/venera/compose/gallery/data/
 | **B4** | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | ✅ 已落地 |
 | B5 | `FavoriteLibrary`(21) + `DownloadQueue`(11) + `LocalComicLibrary`(5)，一颗新文件 `data/api/FavoritesOfflineApi.kt` | 15（`chapterOffline` 那颗文件整行留着，理由见 §十一） | ✅ 已落地（2026-10-03 的 D2） |
 | **B6** | `NetworkHygiene`（补 `httpCacheSizeBytes` / `clearHttpCache` 两枚）+ `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | ✅ 已落地 | |
-| B7' | 画廊六颗契约（`gallery/data/GalleryPorts.kt`，含三腿 `when(site)` 表四遍→一遍） | 57 | 待做 |
+| B7' | 画廊十颗契约（`gallery/data/GalleryBusinessApi.kt`，**只做纯改引**；三腿 `when(site)` 表**没有**折成一遍） | 35 个「文件+符号」位 / 44 处调用 | ✅ 已落地（2026-10-03 的 D1，剩 2 颗文件结构性收不了） |
 
 **契约与守卫同批**：B2/B3/B5/B7' 的新契约文件与它们的白名单缩短在**同一颗提交**里 —— 沿用审计 `:230` 那条已写下的纪律「守卫用例必须和被守卫的动作同批落地，否则现在建它等于埋一条常红用例」。
 
 **验收线**：业务穿透 `150 → 15`（甲裁决下的终值，**不是 0**）；静态取用的出处 `51 颗文件（+ MainActivity.kt）→ 装配根 + 适配层 + 实现类自身`；`BusinessApiBoundaryTest` 的四张白名单逐批只许缩短；`:app:testDebugUnitTest` 用例数只增不减。
 
-**进度（D2 落地后，2026-10-03 复算）**：业务穿透 **77 处 / 28 颗文件**（起点 150 / 51，B6 后曾是 93 / 38），实现类 import **66 条 / 30 颗**（起点 125 / 56），类型引用位 **32 条 / 21 颗**（未动，那半边归 W1/W2）。只剩 **B7'（画廊 35 条 / 10 颗）**，需要真机验收；设备当前未连接（`adb devices` 空列表），已挂账。§十一 那张「D2 开工包」已兑现，剩下的坑记在那一节里改写成「已落地」。
+**进度（D1 落地后，2026-10-03 复算）**：业务穿透 **33 处 / 20 颗文件**（起点 150 / 51；B6 后 93 / 38 ⇒ D2 后 77 / 28 ⇒ D1 后 33 / 20），实现类 import **32 条 / 20 颗**（起点 125 / 56），类型引用位 **20 条 / 15 颗**（起点 49 / 33），`AndroidKeyValueStore(` 与 `HostCircuitBreaker.` 两张 D 表**清零**（写成 `emptyMap()`，条目不删的理由同 §五 B6）。B 表剩下的 20 颗里，画廊侧只剩 `GalleryDailyScreen` 与 `GalleryScreen` 各一处 `GalleryFeedSource` —— 那两枚**结构性收不了**（原因见 §十一 的 D1 段）。剩下的全是 W1/W2/W5 写口与并行线那族。
 
 ## 四、守卫用例 `app/src/test/java/com/venera/compose/data/api/BusinessApiBoundaryTest.kt`
 
@@ -211,7 +211,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 
 **两张表清零后不许删**：`BASELINE_RAW_OKHTTP` 现在是 `emptyMap()`，`VeneraNetworkClient` 在归属表里零站点 —— 保留的理由与 B4 那两颗同名（断言 C 的 `IMPL_NAMES` 由归属表键导出；而 D 那张 okhttp 表的存在本身就是「以后再有 UI 直接拼请求就红」）。
 
-**未验（挂账，本轮真机项里优先级最高的一批）**：从 URL 装源**成功与失败各一次**（失败那条要看错误文案是否仍是 `HTTP <码>: 获取脚本失败`，这是本批唯一改了取径的行为面）、设置页「缓存 xx MB」读数与「清除缓存」后归零、改代理后重建客户端生效、网络设置页「重置网络状态」清熔断、画廊两页的刷新清熔断（这两处属 B7'，同批验）。
+**未验（挂账，本轮真机项里优先级最高的一批）**：从 URL 装源**成功与失败各一次**（失败那条要看错误文案是否仍是 `HTTP <码>: 获取脚本失败`，这是本批唯一改了取径的行为面）、设置页「缓存 xx MB」读数与「清除缓存」后归零、改代理后重建客户端生效、网络设置页「重置网络状态」清熔断、画廊两页的刷新清熔断（这两处 B6 时归 B7'，**D1 已把它改引到 `GalleryPorts.hygiene`，仍是未验状态**，验法不变：日推/首页刷新后触发一次熔断再清，看是否真复位）。
 
 ## 六、那 19 处为什么不收（已裁决：甲）
 
@@ -236,7 +236,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 5. **`BackupManager` + `WebDavSyncManager`**（`feature/SyncBackupScreen.kt:57,58`）—— 消费面 2 处对成员 7 枚，无收效；`sync/BackupManager.kt:19-20` 持画廊两颗 store，端口要么跨侧要么 import feature；且备份是**用户数据面**，出错代价是丢数据。
 6. **`FavoriteImagesManager`（2 处）** —— 返回类型 `FavoriteImageItem` 声明在 `feature/favoriteimages/FavoriteImagesManager.kt:92` ⇒ 契约要 import `feature.`，正是 W3 要禁的边。解锁：与 W1 同批搬家。
 7. **`TagTranslationManager`（2）与 `ChineseVariantConverter`（1）** —— `data/tags/TagTranslationManager.kt` 是并行线在飞的脏文件，碰它 = 抢改。
-8. **`GelbooruAccount`（4）/ `SauceNaoAccount`（2）** —— 3 处在漫画侧，建契约就新增 `feature → gallery` 边；审计 `:39,:43` 的隔离裁决不豁免凭据。画廊内 2 处 B7' 顺路收成一枚派生的「凭据已配置」判据。
+8. **`GelbooruAccount`（4）/ `SauceNaoAccount`（2）** —— 3 处在漫画侧，建契约就新增 `feature → gallery` 边；审计 `:39,:43` 的隔离裁决不豁免凭据。**画廊内那 3 处已随 D1 收口**，但做法**改了**：原句写的是「收成一枚派生的『凭据已配置』判据」，实际交回的是**同一个 flow 实例**（`GalleryCredentials.gelbooruIdentity` / `.sauceNaoHasKey`），因为派生（`map { it != null }`）要 `stateIn(scope)` = 给契约新造一颗协程容器 = 改取消时机，撞硬约束①；「两处变一处」是可选项不是本批目标。漫画侧那 3 处仍长期挂着。
 9. **`GalleryFeedSource` 的类型收口（2 处）** —— 它今天已是聚合端口（三站并发 + 每站时间预算 + `GalleryLegGuard` 都在里面），只做装配收口。
 10. **`engine/*`** —— UI 目录实测 0 处 `getInstance`，没有可治的穿透点。
 11. **把 `BusinessPorts` provide 进 CompositionLocal** —— §二 五条理由。
@@ -267,6 +267,8 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 1. **「UI 层已不再穿透底层实现」不成立** —— B5、B7' 两批还没做。复跑读数（`_qa/scan.mjs`）：
    `getInstance` 站点 **93 处 / 38 颗**；实现类 import **77 条 / 39 颗**；类型位 **32 条 / 21 颗**。
    其中画廊侧 35 条（B7'）、收藏与离线 18 条（B5）。
+   > 这三是**开工前（D0 之前）**的快照，不是现状；现状见 §五 最后一段（D1 后 33 处 / 20 颗）。
+   > 之所以连快照都不删：D4 那颗探测器照出过「文档里一句从落笔起就过期的话」，教训是**标住口径与时点**，而不是让它自己冒充现在。
 2. **§一 #20 那个「18 处 `viewModel()`」是我自己写错的数**（同一个错还抄进了 `data/api/BusinessPorts.kt:17` 的 KDoc）。
    实数 **17 处真调用点 + 4 处注释字样 = 21 条 grep 命中**：注释那四处是
    `feature/Navigation.kt:815`、`gallery/ui/GalleryDailyScreen.kt:56`、`gallery/domain/GalleryForYouRefreshPolicy.kt:11`、
@@ -298,7 +300,7 @@ if (resp.isSuccessful && !content.isNullOrBlank()) { … } else { Result.failure
 | 批 | 内容 | 前置 | 状态 |
 |---|---|---|---|
 | **D0** | W3 `architecture/LayeringEdgeTest.kt`：下层禁 import 上层，基线 **10 条 / 5 颗**，每条写解锁条件 | 无（且它是后面三批的兜底） | ✅ |
-| **D1** | B7' 画廊契约**纯改引** 35 条 / **10 颗**（原写 14 颗是 B 系列之前的旧数，2026-10-03 复算改定）；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ⏳ |
+| **D1** | B7' 画廊契约**纯改引** 35 条 / **10 颗**（原写 14 颗是 B 系列之前的旧数，2026-10-03 复算改定）；三站 `when(site)` 表「四遍改一遍」**单独拆出去默认不做** | 无 | ✅（2026-10-03，读数见 §十一） |
 | **D2** | B5 三颗契约 `FavoriteLibrary`(21) + `DownloadQueue`(11) + `LocalComicLibrary`(5)，11 颗文件改引；业务穿透 **93 → 77 处** | 无 | ✅ |
 | **D3** | VM 构造注入（第三路），17 处调用点不动。**形状 = 注入聚合端口 `BusinessPorts`**（改判理由见上面那段引文） | 无（不等 D1/D2） | ✅ |
 | **D4** | 「解锁条件已兑现而债务未清即红」的守卫：`architecture/DebtReadinessTest.kt` 六条债（W1×3、W2、W5 写口、§七.7）+ `architecture/ViewModelAssemblyGuardTest.kt` 三条（VM 体内零服务定位器、arity=1 委托构造不许消失、`viewModel()` 调用点数交给机器核）| D0 | ✅ |
@@ -366,7 +368,7 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
   `:desktop:compileKotlin` executed 过（R5 未破）、`:app:compileDebugKotlin` 过。
 - **白名单变化：一条没动。** B 取用站点仍 **93**、实现类 import 仍 **77 条 / 39 颗**、类型位仍 **32 条 / 21 颗**、
   D 表五张同值 —— 这不是我推断的，是 `BusinessApiBoundaryTest` 那六条断言在 803 里跑绿的读数
-  （它们钉的是精确相等，动了任何一条都会红）。D3 改的是「端口从哪来」，不是「穿透还剩多少」，后者归 D1/D2。
+  （它们钉的是精确相等，动了任何一条都会红）。D3 改的是「端口从哪来」，不是「穿透还剩多少」，后者归 D1/D2（两批现均已落地）。
 - 未验：**VM 在真机上能否实例化**（无 Robolectric、且今天无设备连接）。缓解是那条 teeth 实测 + 委托构造形状
   与 `AndroidViewModelFactory.getConstructor(Application::class.java)` 的反射口径逐字对得上；
   结案要等真机挂账那一批（冷启动进首页/搜索/详情/历史各一次）。
@@ -456,12 +458,12 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
 
 
 
-## 十一、D1 / D2 的开工包（D2 已兑现，D1 待做）
+## 十一、D1 / D2 的开工包（两批均已兑现）
 
 原本写在这里的判据是：D1 与 D2 都是「一颗契约 + 十几颗文件改引 + 基线重灌」这个量级，
 半批落地比不落地更糟 —— 契约建了而消费点没换完，等于树里同时存在两种形状，下一轮分不清该信哪个。
-**D2 已按这一节的表在 2026-10-03 做完**（读数见 §五 最后一段与下面的「已兑现」标记），D1 仍待做。
-下面这些是**已经花过取证成本**的结论，做 D1 时不必重跑。
+**D2 与 D1 都在 2026-10-03 按这一节的表做完**（读数见 §五 最后一段与下面两节的「已落地」标记）。
+下面这些是**已经花过取证成本**的结论，接后面几批（W1/W2/W5 写口）时不必重跑。
 
 ### D2（B5）✅ 已落地：**不用等 W1** 这条判据兑现了
 
@@ -497,22 +499,77 @@ D3 后做，因为把还没契约的成员注入 VM，是把「UI 直连实现�
    这条与坑 2 同族但方向相反（那条是声明跨行、这条是**调用点**跨行）。
    判据修正：**契约宽度的完整性由编译器担保**，不由复算脚本担保 —— 只要有一处漏收，改引后必编译失败。
 
-### D1（B7'）：35 条 / 10 颗，第一道岔口是「常量算不算契约成员」
+### D1（B7'）✅ 已落地：常量裁决拍在「UI 在不在问它」，`when(site)` 表一遍都没折
 
-复算 `_qa/gallery-recon2.mjs`。画廊侧 UI 真正摸到的东西分三种，**今天混在同一个数字里**：
+**落点**：新文件 `gallery/data/GalleryBusinessApi.kt` —— 10 颗契约（`GalleryFavorites` 5 枚、`GalleryArtistFollows` 3、
+`GalleryArtistAvatars` 2、`GalleryTagLexicon` 4、`GalleryCredentials` 2、`GalleryStoreFactory` 1、
+`GalleryBoards` 3、`GalleryArtistDirectory` 5、`GalleryReverseSearch` 3、`GalleryNetworkHygiene` 1 = 29 枚）
++ 2 颗辅助接口（`BoardSource` 4 / `YandeReBoard` 2）；`GalleryPorts` 从 2 枚字段扩到 12 枚。
+为什么不并进 `data/api/`：§四 那条「画廊各侧自持」的隔离裁决，且 `data/api` 里没有一枚画廊符号。
+13 颗 UI 文件改引，diff 为 **+73/−106**，逐行扫过：增删行**全是** import / `getInstance` 取用 / 常量位 /
+句柄名，没有一行碰表形状、并发结构或文案。
 
-- **方法调用**：`SauceNaoClient.searchByFile/searchByUrl`、`YandeReClient.artistLinks/resolveArtistAlias`、
-  `PixivClient.artworkAuthor/avatarUrl`、`DanbooruArtistClient.artistUrls/artistCredits`、
-  `GalleryArtistProbeClient.avatarUrl`、`GalleryFeedSource.loadDaily`、`GalleryTagDictionary.artistNames/translations`、
-  三颗 store 的 `favorites` / `follows` / `toggle` / `peek` / `remember` / `consumeNotice` / `clear` / `removeAll`。
-- **常量位**（占比不小，且**不是**行为）：`GelbooruClient.POOL_SIZE`、`YandeReClient.SEARCH_PAGE_SIZE`、
-  `SauceNaoClient.SAUCE_NUM_RESULTS`、`GalleryFeedSource.PER_SITE_TIMEOUT_MS`（`GalleryLegGuard.kt:52,71` 拿它做算术）。
-  ⇒ 契约要么带这些常量成员、要么让它们留在实现类里，**这是必须先拍的方向**：带进契约 = 端口面掺进调参常量；
-  留在原处 = 这批收不完、那几行 import 继续挂白名单。
-- **凭据只读判据**：`GelbooruAccount.identity`、`SauceNaoAccount.hasKey` —— 按批准过的方案收成
-  「凭据已配置」一枚派生判据，两处变一处（§七.8）。
+**第一道岔口（常量算不算契约成员）拍的是判据，不是清单**：不看「它是不是常量」，看
+**「UI 有没有把它当业务问题在问」**。
+- 进契约的两枚：`BoardSource.pageSize`（三站各交回 `GelbooruClient.POOL_SIZE` / `SafebooruClient.POOL_SIZE` /
+  `YandeReClient.SEARCH_PAGE_SIZE`，UI 用它决定一次拉多少张：`GallerySearchViewModel.pageSizeFor(site)`、
+  `GalleryForYouViewModel.limitOf(site)`）、`GalleryReverseSearch.maxResults`（`SauceNaoClient.SAUCE_NUM_RESULTS`，
+  `GalleryReverseResults` 把它显示给用户看）。两枚都写成 `override val ... get() = 实现类常量`，
+  于是「改这个数」仍是实现类的私事，端口面只是问一句。
+- 留原处的一枚：`GalleryFeedSource.PER_SITE_TIMEOUT_MS` —— 复算后它**在 UI 侧一条取用都没有**
+  （`GalleryForYouViewModel.kt:415` 那条命中是 KDoc 字样），真正吃它的是 `gallery/domain/GalleryLegGuard.kt:52,71`
+  的默认参数与 `GalleryFeedSource` 自己。而且它所属的 `GalleryFeedSource` 本来就有 3 枚点位收不掉（见下），
+  常量顺带挂同一行 ⇒ **不新增点位**，也就没必要为了它破「端口面不掺调参常量」这条。
 
-另外：`PixivClient` / `DanbooruArtistClient` / `GalleryArtistProbeClient` 的取用**全是内联链**
-（`PixivClient.getInstance(context).artworkAuthor(…)`，没有 `val` 句柄）。我第一版按句柄形状扫，
-这三颗扫出 0、差点被判成「只用类型位」—— 改引与复算都要按内联形状写判式。
-三站 `when(site)` 表「四遍改一遍」那半件**默认不做**（行为敏感、风险中），只做纯改引。
+**三站 `when(site)` 表：默认不做，本批一条都没折**，且落笔时把「四遍」这个旧数改成了实测 —— UI 侧
+`when (site)` 今天 **9 处 / 5 颗文件**，其中三站聚合表 7 处（`GalleryArtistProfileScreen.kt:163,530`、
+`GalleryArtistRows.kt:153,535`、`GalleryForYouViewModel.kt:475`、`GalleryPostScreen.kt:661`、
+`GallerySearchViewModel.kt:1042`）、常量表 2 处（`limitOf` / `pageSizeFor`）。§三 那句「四遍改一遍」按
+「同一件事在几颗文件里各写一遍」数，口径比实测小。理由与 D5 同一族：折叠会动并发与取消时机，那是行为不是形状。
+
+**结构性收不了的 3 枚点位（2 颗文件）**：`GalleryFeedSource.loadDaily` 返回**嵌套在类体内的** `data class Daily`
+（`gallery/domain/GalleryFeedSource.kt:63`）—— 契约签名要么把这份嵌套类型暴露出去（它和那颗吃 `Context` 的类体
+绑在一颗文件里，正是 §一 #19 那族「类型搬家」的前置），要么在契约侧再造一份 DTO（两份会漂）；
+两条都比「留 2 行 import 在白名单」更糟。
+所以 `GalleryDailyScreen.kt:81` 与 `GalleryScreen.kt:221` 两枚取用 + 后者的一枚类型位长期挂着，
+归属表里写的解锁条件 = `Daily` 提到 `gallery/domain`（W1 同族）。这是本轮画廊侧**唯一**没收干净的符号。
+
+**凭据那半件按 §七.8 的改判落地**：`GalleryCredentials.gelbooruIdentity` / `.sauceNaoHasKey` 交回的是
+**同一个 flow 实例**，不是派生判据（派生要 `stateIn(scope)` = 新造协程容器 = 改取消时机）。
+漫画侧那 3 处仍长期挂着（`CROSS_SIDE_CREDENTIAL`）。
+
+**这批踩到的两处**：
+1. **跨行词典链**（与 D2 坑 5 同族）：`GalleryTagDictionary` 的取用在 `GalleryCardCaption` /
+   `GalleryHomeSections` / `GallerySearchArea` / `GalleryPostScreen` 里写成换行三行式，单行判式扫不到；
+   复算与改引都得按「内联链 + 跨行」两种形状各写一遍判式。
+2. **断言 G 又抓到 4 条死键**（加一条空节标题注释）：D1 把点位收掉后，`SITE_OVERRIDE` 里那些
+   `文件#符号` 键没人来删 —— 这正是 D2 加那条断言想管的事，第二次兑现。另外顺手把 14 枚画廊符号的归属
+   文字从「B7'（将来）」改成「已随 D1 迁完、零站点」，但**键一枚没删**（`IMPL_NAMES` 由本表键导出，
+   删键 = 给未来的同名实现类引用位开无声漏口）。
+
+**基线重灌**（`_qa/splice.mjs` 写表，`_qa/baseline-diff.mjs` 对 `git show HEAD` 逐行比对复核，两遍口径一致）：
+
+| 表 | D1 前 | D1 后 | 摘除 |
+|---|---|---|---|
+| A 实现类 import | 30 颗 / 66 条 | **20 颗 / 32 条** | −34 条 |
+| B 直连取单例 | 28 颗 / 62 位 / 站点 77 | **20 颗 / 29 位 / 站点 33** | −33 位（−44 处调用） |
+| C 类型位 | 21 颗 / 32 条 | **15 颗 / 20 条** | −12 条 |
+| `AndroidKeyValueStore(` | 1 颗 | **`emptyMap()`** | 清零 |
+| `HostCircuitBreaker.` | 0（B6 已清） | **`emptyMap()`** | 声明也清了 |
+
+> §三 B7' 行那句「35 个「文件+符号」位」与上表的「33 位」不矛盾：35 = 本批摘掉的 33 位 + 那 2 颗收不了的
+> 文件各一枚；口径是「B 表里画廊行的全集」。
+
+**splice 脚本这轮的四个缺陷逐条记下来**（都是脚本错，不是代码错；每个都让读数假过一次）：
+① `section()` 对空段落抛错 ⇒ A/B/C 三张表全没写进去，而我拿**陈旧 XML** 当读数以为守卫还红；
+② 空表分支漏了换行 ⇒ 写出 `emptyMap()internal val …` 吞掉下一颗声明，测试编译失败在
+   `Unresolved reference 'BASELINE_BREAKER'`；
+③ `git checkout`（autocrlf）把工作树写成 CRLF 而 HEAD blob 是 LF ⇒ `\n)\n` 失配，脚本内先做 CR→LF 规范化；
+④ 上一轮已把表写成 `emptyMap()` 后本轮再找 `mapOf(` 找不到 ⇒ `replaceMap` 改成双向。
+教训与既有那条同族：**改完基线要立刻复算并只读当次产物**，别拿上一轮的 XML 说这一轮的事。
+
+**读数**：`:app:testDebugUnitTest --rerun-tasks` **807 tests / 0 failures / 0 errors**（104 份 XML、106 颗 `.kt`、
+807 个 `@Test`、29 任务全 executed）；`:desktop:compileKotlin` 与 `:engine-probe:compileKotlin` executed 过（R5 未破）。
+`BusinessApiBoundaryTest` 七条（含新断言 G）+ `architecture` 三颗守卫类共 16 条绿。
+**未验**：画廊六屏的运行期观感（收藏切换提示、以图搜图结果数、画师头像、日推、搜索分页、熔断复位）——
+无设备连接，判据层拦不住「装配没跑」这类形状，装机这一项不许用编译通过替代。

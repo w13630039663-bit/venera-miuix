@@ -51,15 +51,9 @@ import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraGallerySourceMark
 import com.venera.compose.components.venera.VeneraTopBarPill
-import com.venera.compose.gallery.data.DanbooruArtistClient
-import com.venera.compose.gallery.data.GalleryArtistFollowsStore
 import com.venera.compose.gallery.data.GalleryImageLoader
-import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.PixivClient
-import com.venera.compose.gallery.data.YandeReClient
-import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import com.venera.compose.gallery.domain.GalleryArtistLink
 import com.venera.compose.gallery.domain.GalleryArtistLinkPlatform
@@ -145,7 +139,7 @@ internal fun GalleryArtistProfileScreen(
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
     val blockAi by GalleryPorts.of(context).prefs.galleryBlockAi.collectAsState()
-    val store = remember { GalleryArtistFollowsStore.getInstance(context) }
+    val store = remember { GalleryPorts.of(context).follows }
     val follows by store.follows.collectAsState()
 
     var credits by remember(site, artistName) { mutableStateOf(ProfileCredits()) }
@@ -168,11 +162,11 @@ internal fun GalleryArtistProfileScreen(
         // 都在 GalleryRankings 那一处钉着），这里不另造参数、也不互抄写法。
         val outcome = when (site) {
             GallerySite.YANDERE ->
-                YandeReClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+                GalleryPorts.of(context).boards.yandere.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
             GallerySite.GELBOORU ->
-                GelbooruClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+                GalleryPorts.of(context).boards.gelbooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
             GallerySite.SAFEBOORU ->
-                SafebooruClient.getInstance(context).searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+                GalleryPorts.of(context).boards.safebooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
         }
         outcome.onFailure { failure ->
             // "这一站没答上"与"这位只有这几张"是两句话，前者**在屏上也要说出来**（那是真话），
@@ -535,7 +529,7 @@ private suspend fun loadCredits(
     var canonical: String? = null
     when (site) {
         GallerySite.YANDERE -> {
-            val client = YandeReClient.getInstance(context)
+            val client = GalleryPorts.of(context).boards.yandere
             urls = client.artistLinks(name).getOrElse { failure ->
                 Log.w(TAG, "画师「$name」(yande.re) 的外链没取到：${failure.message}")
                 emptyList()
@@ -548,7 +542,7 @@ private suspend fun loadCredits(
             }
         }
         GallerySite.GELBOORU -> {
-            val record = DanbooruArtistClient.getInstance(context).artistCredits(name).getOrElse { failure ->
+            val record = GalleryPorts.of(context).artists.danbooruArtistCredits(name).getOrElse { failure ->
                 Log.w(TAG, "画师「$name」(danbooru 供体) 的记录没取到（多半是 403 卡盾）：${failure.message}")
                 null
             }
@@ -557,7 +551,7 @@ private suspend fun loadCredits(
         }
         GallerySite.SAFEBOORU -> {
             // Safebooru 与 Gelbooru 同属 Danbooru 系，画师端点也走 danbooru
-            val record = DanbooruArtistClient.getInstance(context).artistCredits(name).getOrElse { failure ->
+            val record = GalleryPorts.of(context).artists.danbooruArtistCredits(name).getOrElse { failure ->
                 Log.w(TAG, "画师「$name」(safebooru/danbooru 供体) 的记录没取到：${failure.message}")
                 null
             }
@@ -569,7 +563,7 @@ private suspend fun loadCredits(
     // 只有这一排里**没有 pixiv 那一档**才值得多花一笔去反查作品作者（与详情面板同一条闸门）。
     val author = if (preliminary.any { it.platform == GalleryArtistLinkPlatform.PIXIV }) null
     else GalleryArtistLinks.pixivArtworkId(source)?.let { artworkId ->
-        PixivClient.getInstance(context).artworkAuthor(artworkId).getOrElse { failure ->
+        GalleryPorts.of(context).artists.pixivArtworkAuthor(artworkId).getOrElse { failure ->
             Log.w(TAG, "画师「$name」的出处是作品 $artworkId，但 pixiv 没答上作者：${failure.message}")
             null
         }

@@ -93,9 +93,6 @@ import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
-import com.venera.compose.data.network.HostCircuitBreaker
-import com.venera.compose.gallery.data.GalleryArtistFollowsStore
-import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
@@ -250,7 +247,7 @@ fun GalleryScreen(
      * 2026-09-30 第二轮：首页那排展示栏撤了（用户点名"去掉根据你的收藏这个栏"），
      * 但这份数据**照留** —— 它是猜你喜欢那条墙的取数种子，也是搜索卡空框态那行推荐的来路。
      */
-    val galleryFavorites by GalleryFavoritesStore.getInstance(context).favorites.collectAsState()
+    val galleryFavorites by GalleryPorts.of(context).favorites.favorites.collectAsState()
     val recommendations = remember(galleryFavorites, rules, fvm.seed) {
         GalleryRecommendations.recommendBySite(galleryFavorites, seed = fvm.seed) { tag ->
             guard.blockedGalleryRule(author = "", tags = listOf(tag)) != null
@@ -397,7 +394,7 @@ fun GalleryScreen(
     }
 
     /** 见 [retryFromUser]：只有用户显式要求重试才清熔断。 */
-    fun resetBreakers() = GallerySite.entries.forEach { HostCircuitBreaker.reset(it.apiHost) }
+    fun resetBreakers() = GalleryPorts.of(context).hygiene.resetAllSiteBreakers()
 
     /**
      * 用户主动要求重来一次。
@@ -592,7 +589,7 @@ fun GalleryScreen(
     // 这一栏 2026-09-30 从「收藏里的画师」换成「正在关注的画师」（批次 L · L11，用户拍板）：
     // 换名的前提是那之前有了关注名单存储，"关注"这两个字第一次配得上一个真读数。
     // 卡面与张数仍从收藏里取 —— 名单只存「站别 + 名字」，不为此多发任何请求。
-    val followsStore = remember(context) { GalleryArtistFollowsStore.getInstance(context) }
+    val followsStore = remember(context) { GalleryPorts.of(context).follows }
     val follows by followsStore.follows.collectAsState()
     // 名单档读不出来时这一栏只剩空引导，屏上必须说得出为什么空 —— 那份留档改名其实已经做了，
     // 只是不说就没人知道去哪儿找回（读走即清，只说一次）。

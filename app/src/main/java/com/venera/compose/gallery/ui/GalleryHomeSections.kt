@@ -45,8 +45,8 @@ import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraCoverShimmer
 import com.venera.compose.components.venera.VeneraGallerySourceMark
 import com.venera.compose.feature.MiuixSectionHeader
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
-import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.domain.FollowedArtistRef
 import com.venera.compose.gallery.domain.GalleryFollowedArtists
 import com.venera.compose.gallery.domain.GalleryFollowedArtistsGap
@@ -512,9 +512,7 @@ internal fun galleryHomeSections(
     val artistNames = artists?.artists?.map { it.name }.orEmpty()
     var translations by remember(artistNames) { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(artistNames) {
-        translations = if (artistNames.isEmpty()) emptyMap() else GalleryTagDictionary
-            .getInstance(context)
-            .translations(artistNames)
+        translations = if (artistNames.isEmpty()) emptyMap() else GalleryPorts.of(context).lexicon.translations(artistNames)
     }
 
     // 清单驱动：`when` **不留 else** —— 加了 key 却忘了在这里出内容会编译不过，

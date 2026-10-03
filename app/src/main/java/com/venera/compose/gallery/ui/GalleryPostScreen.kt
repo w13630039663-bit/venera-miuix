@@ -97,18 +97,12 @@ import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.feature.LocalVeneraDarkTheme
-import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryConnectivity
 import com.venera.compose.gallery.data.allowAnimatedImage
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.GalleryTagCategories
-import com.venera.compose.gallery.data.GalleryTagDictionary
-import com.venera.compose.gallery.data.GelbooruClient
-import com.venera.compose.gallery.data.YandeReClient
-import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryAutoPlay
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryMotion
@@ -365,7 +359,7 @@ fun GalleryPostScreen(
      */
     LaunchedEffect(currentUid) {
         val post = current ?: return@LaunchedEffect
-        val dictionary = GalleryTagDictionary.getInstance(context)
+        val dictionary = GalleryPorts.of(context).lexicon
         tagTranslations = dictionary.translations(post.tagList)
         fallbackArtists = dictionary.artistNames(post.tagList)
     }
@@ -375,7 +369,7 @@ fun GalleryPostScreen(
     LaunchedEffect(currentUid, infoOpen) {
         val post = current ?: return@LaunchedEffect
         if (!infoOpen) return@LaunchedEffect
-        val categories = GalleryTagCategories.getInstance(context).fetch(post.pageUrl)
+        val categories = GalleryPorts.of(context).lexicon.fetchTagCategories(post.pageUrl)
         tagCategories = categories
         // **兜底只在站方判定没拿到时才参与**：拿到分类就把词典那一份撤掉（两者的作用域必须互斥，
         // 否则两套判据会同时进 [galleryArtistNames]，标签墙里会出现"站方判通用、词典判画师"这种谁都解释不了的分组）。
@@ -412,7 +406,7 @@ fun GalleryPostScreen(
     // ── 收藏 ──
     // 直接读那份存档（不另存一份本地状态）：收藏页与这里读的是同一个 StateFlow，
     // 所以"在这一页取消、回收藏页还亮着"不可能发生。存档只有几百条，`any` 是遍历几十项。
-    val favoritesStore = remember { GalleryFavoritesStore.getInstance(context) }
+    val favoritesStore = remember { GalleryPorts.of(context).favorites }
     val favorites by favoritesStore.favorites.collectAsState()
 
     // ── 下滑关闭 ──
@@ -665,9 +659,9 @@ fun GalleryPostScreen(
         // 两站各自一个客户端，取法同一套（都是 `tags=id:N`），这里按站点分支就够了 ——
         // 为一处分支抽"通用图库站接口"会把只有一站会用的参数（favCount）拖进抽象层。
         val result = when (site) {
-            GallerySite.YANDERE -> YandeReClient.getInstance(context).fetchById(postId)
-            GallerySite.GELBOORU -> GelbooruClient.getInstance(context).fetchById(postId)
-            GallerySite.SAFEBOORU -> SafebooruClient.getInstance(context).fetchById(postId)
+            GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.fetchById(postId)
+            GallerySite.GELBOORU -> GalleryPorts.of(context).boards.gelbooru.fetchById(postId)
+            GallerySite.SAFEBOORU -> GalleryPorts.of(context).boards.safebooru.fetchById(postId)
         }
         result.onSuccess { loaded ->
             // 取到了空 = 站方没有这条（被删/合并），要说话，不要留一屏黑。

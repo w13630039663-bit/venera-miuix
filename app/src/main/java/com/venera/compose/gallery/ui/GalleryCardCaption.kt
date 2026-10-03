@@ -15,8 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import com.venera.compose.components.venera.VeneraGallerySourceMark
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
-import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.domain.GalleryCardTitle
 import com.venera.compose.gallery.domain.GalleryTitleTag
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -74,7 +74,7 @@ internal fun GalleryCardCaption(
  *
  * ── 为什么是"整批查一次"而不是"每张卡各查一次" ──
  *
- * 标题来自离线词典（`GalleryTagDictionary.titleTags`），而它是要开 SQLite 的：
+ * 标题来自离线词典（`GalleryTagLexicon.titleTags`），而它是要开 SQLite 的：
  * 一屏几十张卡各查一次 = 几十趟查询 + 几十次游标开关。整批摊平去重后查一次，
  * 成本与"一屏多少张"基本无关（名字去重之后也就几百上千枚，那层还有分批）。
  *
@@ -99,7 +99,7 @@ internal fun rememberGalleryCardTitles(posts: List<GalleryPost>): Map<String, St
             labels = emptyMap()
             return@LaunchedEffect
         }
-        val found = GalleryTagDictionary.getInstance(context).titleTags(names)
+        val found = GalleryPorts.of(context).lexicon.titleTags(names)
         if (found == null) {
             // 词典打不开：这一批卡都不会有标题行。这条必须响 —— 静默的话它和
             // "这些图没有作品标签"完全同形（理由见上面那段）。

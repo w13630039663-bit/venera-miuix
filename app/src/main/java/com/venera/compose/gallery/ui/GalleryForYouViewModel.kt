@@ -9,21 +9,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryForYouCache
 import com.venera.compose.gallery.data.GalleryForYouSnapshot
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.GelbooruAccount
-import com.venera.compose.gallery.data.GelbooruClient
-import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.data.bySite
 import com.venera.compose.gallery.data.countBySite
 import com.venera.compose.gallery.data.toCountRows
 import com.venera.compose.gallery.data.toFavorite
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.gallery.data.toSiteRows
-import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryForYouMerge
 import com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy
@@ -180,23 +176,24 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     fun shouldAutoLoad(todayEpochDay: Long = LocalDate.now(ZoneOffset.UTC).toEpochDay()): Boolean =
         GalleryForYouRefreshPolicy.shouldAutoLoad(hydratedFromCache, cachedOnEpochDay, todayEpochDay)
 
-    private val gelbooruAccount = GelbooruAccount.getInstance(app)
+    private val gelbooruIdentity = GalleryPorts.of(app).credentials.gelbooruIdentity
+    private val boards = GalleryPorts.of(app).boards
 
     /** 订阅而不是读一次快照：设置页配好或注销之后，退回画廊这边要**立刻**跟着变。 */
-    var gelbooruConfigured by mutableStateOf(gelbooruAccount.identity.value != null)
+    var gelbooruConfigured by mutableStateOf(gelbooruIdentity.value != null)
         internal set
 
     init {
         viewModelScope.launch {
-            gelbooruAccount.identity.collect { gelbooruConfigured = it != null }
+            gelbooruIdentity.collect { gelbooruConfigured = it != null }
         }
     }
 
     /** 这一站一次要多少条（也是"到底"判据里的那个 requestedLimit）。 */
     fun limitOf(site: GallerySite): Int = when (site) {
-        GallerySite.GELBOORU -> GelbooruClient.POOL_SIZE
-        GallerySite.YANDERE -> YandeReClient.SEARCH_PAGE_SIZE
-        GallerySite.SAFEBOORU -> SafebooruClient.POOL_SIZE
+        GallerySite.GELBOORU -> boards.gelbooru.pageSize
+        GallerySite.YANDERE -> boards.yandere.pageSize
+        GallerySite.SAFEBOORU -> boards.safebooru.pageSize
     }
 
     /** 前面各页已上屏条目的去重键（跨页去重全靠它，`mix` 那头没有这一维）。 */
@@ -428,7 +425,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         round: Long,
         queries: Map<GallerySite, String>,
     ): PageOutcome {
-        val favourites = GalleryFavoritesStore.getInstance(app).favorites.value.mapTo(HashSet()) { it.uid }
+        val favourites = GalleryPorts.of(app).favorites.favorites.value.mapTo(HashSet()) { it.uid }
         // 每笔只**返回**自己的结果，不在 async 里写共享容器：这几路跑在 Dispatchers.IO 的不同线程上，
         // 并发写一个 HashMap 是竞态（`GalleryFeedSource` 那头也是 `async` 出值、外面合并）。
         val legs = coroutineScope {
@@ -476,9 +473,9 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         }
         val outcome = GalleryLegGuard.guard(site) {
             when (site) {
-                GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
-                GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
-                GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchPosts(query, nextPage, limitOf(site))
+                GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, nextPage, limitOf(site))
+                GallerySite.YANDERE -> boards.yandere.searchPosts(query, nextPage, limitOf(site))
+                GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, nextPage, limitOf(site))
             }
         }
         // "空"有两种：站方真给了 0 条，与请求本身失败（401 / 解析不出来）。

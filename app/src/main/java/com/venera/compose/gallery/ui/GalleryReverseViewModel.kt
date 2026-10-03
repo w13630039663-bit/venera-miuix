@@ -10,9 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.SauceNaoAccount
-import com.venera.compose.gallery.data.SauceNaoClient
 import com.venera.compose.gallery.data.SauceNaoException
 import com.venera.compose.gallery.data.SauceNaoHit
 import com.venera.compose.gallery.data.SauceNaoPage
@@ -54,8 +53,8 @@ data class PickedImage(
 class GalleryReverseViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app: Context = application
-    private val client = SauceNaoClient.getInstance(application)
-    private val account = SauceNaoAccount.getInstance(application)
+    private val client = GalleryPorts.of(application).reverse
+    private val accountHasKey = GalleryPorts.of(application).credentials.sauceNaoHasKey
 
     /** 这一层开没开。开着 = 搜索卡换成反搜输入形态、墙那一片换成结果。 */
     var open by mutableStateOf(false)
@@ -86,7 +85,7 @@ class GalleryReverseViewModel(application: Application) : AndroidViewModel(appli
     var notice by mutableStateOf<String?>(null)
 
     /** 配没配 key —— UI 直接吃这个 StateFlow，设置页存完立刻跟着变。 */
-    val hasKey = account.hasKey
+    val hasKey = accountHasKey
 
     /**
      * 每成功落地一轮就 +1。
@@ -158,7 +157,7 @@ class GalleryReverseViewModel(application: Application) : AndroidViewModel(appli
         // （`onBypassSuccess`、存下 cf_clearance、重试），**重试仍然 403**，
         // 且日志显示只存下 1 枚 cookie（Cloudflare 正常同时给 cf_clearance 与 __cf_bm）。
         // 也就是这一笔注定白等 90 秒。发出去并让用户盯着转圈，比先说一句"去配 Key"更坏。
-        if (!account.hasKey.value) {
+        if (!accountHasKey.value) {
             notice = "匿名请求实测过不去 Cloudflare。先去配一枚免费 Key：" +
                 "设置 → 漫画源管理 → 「以图搜图（SauceNAO）」"
             return

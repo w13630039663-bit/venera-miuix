@@ -56,6 +56,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import com.venera.compose.gallery.data.GalleryPorts
 import top.yukonga.miuix.kmp.basic.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -96,7 +97,6 @@ import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.domain.GalleryRecommendation
 import com.venera.compose.gallery.domain.GalleryRanking
@@ -1206,9 +1206,7 @@ private fun SuggestionList(
     // 查不到的那一行原样显示站方给的词 —— 宁可不译，不猜一个看着像的。
     var translations by remember(suggestions) { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(suggestions) {
-        translations = if (suggestions.isEmpty()) emptyMap() else GalleryTagDictionary
-            .getInstance(context)
-            .translations(suggestions.map { it.name })
+        translations = if (suggestions.isEmpty()) emptyMap() else GalleryPorts.of(context).lexicon.translations(suggestions.map { it.name })
     }
     val tokens = VeneraTokens
     if (suggestions.isEmpty()) {

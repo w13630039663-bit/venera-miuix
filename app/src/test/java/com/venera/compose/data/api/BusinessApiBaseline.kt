@@ -45,10 +45,19 @@ private val CROSS_SIDE_CREDENTIAL =
         "feature/sourcemanage/SauceNaoKeyCard.kt:65、feature/settings/PreferredIpSpeedTestScreen.kt:89）。" +
         "审计 :39 判画廊隔离已双向被打破，:43 的中性基建豁免只给了 components / ui.tokens / data/platform，不含凭据"
 
+/**
+ * D1 收掉的画廊符号：点位已经没了，但**键不许删** —— 断言 C 的 `IMPL_NAMES` 由本表键导出，
+ * 删键等于给「将来又有一颗 UI 文件 import 这颗实现类」开一口无声的漏。
+ * 写法沿用 [FROZEN_SCREEN] 那族（值以 `B` 开头 = 归那一批，断言 F 认这一档）。
+ */
+private val GALLERY_MIGRATED_BY_D1 =
+    "B7' 已随 D1 迁完（2026-10-03，契约与适配器在 gallery/data/GalleryBusinessApi.kt、容器字段见 gallery/data/GalleryPorts.kt），零站点；" +
+        "条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删键等于给未来的同名实现类类型引用位开一口漏（解锁条件：无，本行不是点位）"
+
 private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "ContentGuardManager" to FROZEN_SCREEN,
     "VeneraPreferences" to FROZEN_SCREEN,
-    "AndroidKeyValueStore" to "B7'（B2 已把漫画侧两颗 VM 的自建存储改引 BusinessPorts.stores；唯一残留点位是画廊搜索缓存，见站点覆写）",
+    "AndroidKeyValueStore" to "B7' 已随 D1 迁完（B2 收了漫画侧两颗 VM 的自建存储 → BusinessPorts.stores，画廊搜索缓存 → GalleryPorts.stores），零站点；条目不许删，理由同 VeneraNetworkClient",
     "ComicSourceManager" to
         "B3 已落地（契约 data/api/SourceApi.kt 的 ComicContentApi 12 枚 + SourceCatalog 8 枚，12 处取用改引）；" +
             "残留四类逐条见覆写：冻结屏（FREEZE-STATEMENT.md:8-15）、feature/sourcemanage 整域、" +
@@ -60,20 +69,24 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "DownloadManager" to "B5/D2 已迁完（契约 DownloadQueue，11 枚；`chapterOffline` 因返回 internal 枚举不收，故 feature/ComicDetailScreen.kt 那一行留着）；条目不许删，理由同 LocalFavoritesManager",
     "LocalComicManager" to "B5/D2 已迁完（契约 LocalComicLibrary，5 枚）；条目不许删，理由同 LocalFavoritesManager",
     "VeneraNetworkClient" to "契约 data/api/NetworkApi.kt 的 NetworkHygiene，B6 已迁完、零站点；条目不许删——断言 C 的 IMPL_NAMES 由本表键导出，删键等于给未来的 VeneraNetworkClient 类型引用位开一口漏（解锁条件：无，本行不是点位）",
-    "HostCircuitBreaker" to "B7'（漫画侧那两处已随 B6 收进 NetworkHygiene；残留两颗都在 gallery/ui，按各侧自持要落 gallery/data/GalleryPorts.kt 的卫生口，方案 §七.9）",
-    "YandeReClient" to "B7'（画廊契约 gallery/data/GalleryPorts.kt 的 GalleryBoards + GalleryArtistDirectory）",
-    "GelbooruClient" to "B7'",
-    "SafebooruClient" to "B7'",
-    "DanbooruArtistClient" to "B7'",
-    "PixivClient" to "B7'",
-    "SauceNaoClient" to "B7'",
-    "GalleryArtistProbeClient" to "B7'",
-    "GalleryArtistAvatarStore" to "B7'",
-    "GalleryFavoritesStore" to "B7'（notice/consumeNotice 是一次性消费槽位，必须交回同一个 store 实例的流）",
-    "GalleryArtistFollowsStore" to "B7'",
-    "GalleryTagDictionary" to "B7'",
-    "GalleryTagCategories" to "B7'",
-    "GalleryFeedSource" to "B7'（只做装配收口：它今天已是聚合端口、且 gallery/domain/GalleryFeedSource.kt:3 自己 import Context，方案 §七.9）",
+    "HostCircuitBreaker" to "B7' 已随 D1 迁完（画廊卫生口 = GalleryPorts.hygiene，漫画侧那两处随 B6），零站点；条目不许删，理由同 VeneraNetworkClient",
+    "YandeReClient" to GALLERY_MIGRATED_BY_D1,
+    "GelbooruClient" to GALLERY_MIGRATED_BY_D1,
+    "SafebooruClient" to GALLERY_MIGRATED_BY_D1,
+    "DanbooruArtistClient" to GALLERY_MIGRATED_BY_D1,
+    "PixivClient" to GALLERY_MIGRATED_BY_D1,
+    "SauceNaoClient" to GALLERY_MIGRATED_BY_D1,
+    "GalleryArtistProbeClient" to GALLERY_MIGRATED_BY_D1,
+    "GalleryArtistAvatarStore" to GALLERY_MIGRATED_BY_D1,
+    "GalleryFavoritesStore" to "B7' 已随 D1 迁完（契约 GalleryFavorites，零站点）。留一条写下来的理由：notice/consumeNotice 是一次性消费槽位，" +
+        "适配器必须交回**同一个 store 实例**的流，换成新建实例会让提示丢——条目不许删，理由同 VeneraNetworkClient",
+    "GalleryArtistFollowsStore" to GALLERY_MIGRATED_BY_D1,
+    "GalleryTagDictionary" to GALLERY_MIGRATED_BY_D1,
+    "GalleryTagCategories" to GALLERY_MIGRATED_BY_D1,
+    "GalleryFeedSource" to "B7'（只做装配收口：它今天已是聚合端口、且 gallery/domain/GalleryFeedSource.kt:3 自己 import Context，方案 §七.9）。" +
+        "解锁条件：剩 3 枚点位（feature 外两处取用 + 一颗类型位）收不了，因为 loadDaily 返回**嵌套在类体内的** data class Daily" +
+        "（gallery/domain/GalleryFeedSource.kt:63）——契约签名要么暴露它、要么再造一份会漂的 DTO；" +
+        "点位 gallery/ui/GalleryDailyScreen.kt:81、gallery/ui/GalleryScreen.kt:221。摘除前提 = Daily 提到 gallery/domain（W1 同族）",
     "TagTranslationManager" to "解锁条件：data/tags/TagTranslationManager.kt 是另一条并行线在飞的脏文件（git status 实测 M），碰它 = 抢改；现存点位 feature/ComicDetailScreen.kt:147 与 feature/SearchViewModel.kt:83。那颗文件变干净后的独立批",
     "ChineseVariantConverter" to "解锁条件：与 TagTranslationManager 同域（简繁表已在 assets/opencc.txt，审计 :238 已判该域归位零收益）；点位 feature/SearchViewModel.kt:80，随同一批做",
     "FollowUpdatesRepository" to "解锁条件：让给 Part B 的 W6（审计 :233 已定「构造参数注入 + desktop/build.gradle.kts:57-61 三行 exclude 一行不撤」，边本身在 data/db/FollowUpdatesRepository.kt:4,44）；本轮再包一层会让同一个 DAO 成员被转发两次",
@@ -125,11 +138,6 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
     "feature/Navigation.kt#ComicLinkResolver" to
         "解锁条件两段：① 同文件改动需重新评审（FREEZE-STATEMENT.md:32）；② 硬技术前提 = Outcome 是嵌套在吃 Context 的类里的 " +
             "sealed interface（source/ComicLinkResolver.kt:25-36），须与 W1 同批搬进 source/model 后本行才有契约可引",
-    // ── 跨侧凭据：漫画侧长期、画廊内两处顺路收 ──
-    "gallery/ui/GallerySearchViewModel.kt#GelbooruAccount" to "B7'（画廊内顺路收：GalleryPorts 上一枚派生的「凭据已配置」判据，把两处变一处，账号类留在画廊 infra，方案 §七.8）",
-    "gallery/ui/GalleryForYouViewModel.kt#GelbooruAccount" to "B7'（同上）",
-    "gallery/ui/GalleryReverseViewModel.kt#SauceNaoAccount" to "B7'（同上）",
-    "gallery/ui/GallerySearchViewModel.kt#AndroidKeyValueStore" to "B7'（画廊搜索缓存随画廊侧收口，不并进漫画侧 B2）",
     // ── 住在 feature 里的实现类：整文件长期 ──
     "feature/sourcemanage/ComicSourceScreen.kt#ComicSourceManager" to INFRA_FACING_PAGE,
     "feature/sourcemanage/ComicSourceViewModel.kt#ComicSourceManager" to INFRA_FACING_PAGE,
@@ -146,7 +154,7 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
 /** 符号默认归属 + 站点覆写；必须排在两者之后（顶层属性按声明顺序初始化）。 */
 internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERRIDE
 
-/** A ——「UI import 业务实现类」。最新：30 颗文件 / 66 条。 */
+/** A ——「UI import 业务实现类」。最新：20 颗文件 / 32 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
         "feature/ComicDetailScreen.kt" to setOf("TagTranslationManager"),
@@ -168,20 +176,10 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "JsComicSource"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
         "feature/sourcemanage/SauceNaoKeyCard.kt" to setOf("SauceNaoAccount"),
-        "gallery/ui/GalleryArtistProfileScreen.kt" to setOf("DanbooruArtistClient", "GalleryArtistFollowsStore", "GelbooruClient", "PixivClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryArtistRows.kt" to setOf("DanbooruArtistClient", "GalleryArtistAvatarStore", "GalleryArtistFollowsStore", "GalleryArtistProbeClient", "PixivClient", "YandeReClient"),
-        "gallery/ui/GalleryDailyScreen.kt" to setOf("HostCircuitBreaker"),
-        "gallery/ui/GalleryFavoritesBody.kt" to setOf("GalleryFavoritesStore"),
-        "gallery/ui/GalleryForYouViewModel.kt" to setOf("GalleryFavoritesStore", "GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryPostScreen.kt" to setOf("GalleryFavoritesStore", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryReverseResults.kt" to setOf("SauceNaoClient"),
-        "gallery/ui/GalleryReverseViewModel.kt" to setOf("SauceNaoAccount", "SauceNaoClient"),
-        "gallery/ui/GalleryScreen.kt" to setOf("GalleryArtistFollowsStore", "GalleryFavoritesStore", "HostCircuitBreaker"),
-        "gallery/ui/GallerySearchViewModel.kt" to setOf("AndroidKeyValueStore", "GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
 
 )
 
-/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：28 颗文件 / 62 条，站点总数 77。 */
+/** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：20 颗文件 / 29 条，站点总数 33。 */
 internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "feature/ComicDetailScreen.kt" to setOf("DownloadManager", "TagTranslationManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
@@ -201,16 +199,8 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
         "feature/sourcemanage/SauceNaoKeyCard.kt" to setOf("SauceNaoAccount"),
-        "gallery/ui/GalleryArtistProfileScreen.kt" to setOf("DanbooruArtistClient", "GalleryArtistFollowsStore", "GelbooruClient", "PixivClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryArtistRows.kt" to setOf("DanbooruArtistClient", "GalleryArtistAvatarStore", "GalleryArtistFollowsStore", "GalleryArtistProbeClient", "PixivClient", "YandeReClient"),
-        "gallery/ui/GalleryCardCaption.kt" to setOf("GalleryTagDictionary"),
         "gallery/ui/GalleryDailyScreen.kt" to setOf("GalleryFeedSource"),
-        "gallery/ui/GalleryFavoritesBody.kt" to setOf("GalleryFavoritesStore"),
-        "gallery/ui/GalleryForYouViewModel.kt" to setOf("GalleryFavoritesStore", "GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryPostScreen.kt" to setOf("GalleryFavoritesStore", "GalleryTagCategories", "GalleryTagDictionary", "GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryReverseViewModel.kt" to setOf("SauceNaoAccount", "SauceNaoClient"),
-        "gallery/ui/GalleryScreen.kt" to setOf("GalleryArtistFollowsStore", "GalleryFavoritesStore", "GalleryFeedSource"),
-        "gallery/ui/GallerySearchViewModel.kt" to setOf("GelbooruAccount", "GelbooruClient", "SafebooruClient", "YandeReClient"),
+        "gallery/ui/GalleryScreen.kt" to setOf("GalleryFeedSource"),
 
 )
 
@@ -219,9 +209,9 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
  * 有了它，"文件 → 符号"的折叠就不会把重复点位藏起来，而它又不受行号漂移影响。
  * B0 当天 152 ⇒ B1 摘 14（内容守卫）⇒ B2 摘 23（偏好四颗与 stores）= 115。
  */
-internal const val SITE_TOTAL_GET_INSTANCE = 77
+internal const val SITE_TOTAL_GET_INSTANCE = 33
 
-/** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：21 颗文件 / 32 条。 */
+/** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：15 颗文件 / 20 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(
         "MainActivity.kt" to setOf("JsComicSource"),
         "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
@@ -236,35 +226,25 @@ internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(
         "feature/sourcemanage/ComicSourceViewModel.kt" to setOf("ComicSourceManager", "JsComicSource"),
         "feature/sourcemanage/GalleryAccountCard.kt" to setOf("GelbooruAccount"),
         "feature/sourcemanage/SauceNaoKeyCard.kt" to setOf("SauceNaoAccount"),
-        "gallery/ui/GalleryDailyScreen.kt" to setOf("GalleryFeedSource", "HostCircuitBreaker"),
-        "gallery/ui/GalleryForYouViewModel.kt" to setOf("GelbooruClient", "SafebooruClient", "YandeReClient"),
-        "gallery/ui/GalleryHomeSections.kt" to setOf("GalleryTagDictionary"),
-        "gallery/ui/GalleryReverseResults.kt" to setOf("SauceNaoClient"),
-        "gallery/ui/GalleryScreen.kt" to setOf("HostCircuitBreaker"),
-        "gallery/ui/GallerySearchArea.kt" to setOf("GalleryTagDictionary"),
-        "gallery/ui/GallerySearchViewModel.kt" to setOf("AndroidKeyValueStore", "GelbooruClient", "SafebooruClient", "YandeReClient"),
+        "gallery/ui/GalleryDailyScreen.kt" to setOf("GalleryFeedSource"),
         "reader/VeneraReaderScreen.kt" to setOf("FavoriteImagesManager"),
 
 )
 
 // D ——「非 getInstance 的直连」五张名单：文件 → **处数**（同样不记行号）
-internal val BASELINE_KEY_VALUE_STORE: Map<String, Int> = mapOf(
-        "gallery/ui/GallerySearchViewModel.kt" to 1,
-
-)
-internal val BASELINE_BREAKER: Map<String, Int> = mapOf(
-    "gallery/ui/GalleryDailyScreen.kt" to 1,
-    "gallery/ui/GalleryScreen.kt" to 1,
-)
+internal val BASELINE_KEY_VALUE_STORE: Map<String, Int> = emptyMap()
+internal val BASELINE_BREAKER: Map<String, Int> = emptyMap()
 /** B6 已清零：`feature/sourcemanage/ComicSourceViewModel.kt` 那笔 VM 内裸 okhttp 改引 `HttpTextFetch`。**这张表不许删** —— 它钉的是「以后再有 UI 直接拼 okhttp 请求就红」。 */
 internal val BASELINE_RAW_OKHTTP: Map<String, Int> = emptyMap()
 internal val BASELINE_PREFERRED_IP: Map<String, Int> = mapOf(
-    "feature/settings/PreferredIpSettings.kt" to 2,
-    "feature/settings/PreferredIpSpeedTestScreen.kt" to 3,
+        "feature/settings/PreferredIpSettings.kt" to 2,
+        "feature/settings/PreferredIpSpeedTestScreen.kt" to 3,
+
 )
 internal val BASELINE_STORAGE_ROOT: Map<String, Int> = mapOf(
-    "feature/settings/AppSettings.kt" to 14,
-    "feature/settings/GallerySettings.kt" to 1,
+        "feature/settings/AppSettings.kt" to 14,
+        "feature/settings/GallerySettings.kt" to 1,
+
 )
 
 /** E 的存量名单：B 的出处文件全集（含四棵 UI 目录之外的 MainActivity.kt）。 */

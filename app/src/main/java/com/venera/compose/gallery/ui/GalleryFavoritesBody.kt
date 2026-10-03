@@ -37,7 +37,6 @@ import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
-import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.toPost
@@ -89,7 +88,7 @@ fun GalleryFavoritesBody(
     val tokens = VeneraTokens
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val store = remember { GalleryFavoritesStore.getInstance(context) }
+    val store = remember { GalleryPorts.of(context).favorites }
     val favorites by store.favorites.collectAsState()
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()

@@ -9,15 +9,11 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.platform.PreferenceKeys
-import com.venera.compose.data.platform.android.AndroidKeyValueStore
-import com.venera.compose.gallery.data.GelbooruAccount
-import com.venera.compose.gallery.data.GelbooruClient
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
-import com.venera.compose.gallery.data.YandeReClient
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
-import com.venera.compose.gallery.data.SafebooruClient
 import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryLegGuard
@@ -279,12 +275,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 这一站一次要多少条（也是"到底"判据里的那个 requestedLimit）。 */
     fun pageSizeFor(site: GallerySite): Int = when (site) {
-        GallerySite.GELBOORU -> GelbooruClient.POOL_SIZE
-        GallerySite.YANDERE -> com.venera.compose.gallery.data.YandeReClient.SEARCH_PAGE_SIZE
-        GallerySite.SAFEBOORU -> SafebooruClient.POOL_SIZE
+        GallerySite.GELBOORU -> boards.gelbooru.pageSize
+        GallerySite.YANDERE -> boards.yandere.pageSize
+        GallerySite.SAFEBOORU -> boards.safebooru.pageSize
     }
 
-    private val gelbooruAccount = GelbooruAccount.getInstance(app)
+    private val gelbooruIdentity = GalleryPorts.of(app).credentials.gelbooruIdentity
+    private val boards = GalleryPorts.of(app).boards
 
     /**
      * Gelbooru **配没配账号**。
@@ -296,12 +293,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 订阅 [GelbooruAccount.identity]（StateFlow）而不是读一次快照：设置页配好
      * 或注销之后，退回画廊这边要**立刻**跟着变，而不是等重启。
      */
-    var gelbooruConfigured by mutableStateOf(gelbooruAccount.identity.value != null)
+    var gelbooruConfigured by mutableStateOf(gelbooruIdentity.value != null)
         internal set
 
     init {
         viewModelScope.launch {
-            gelbooruAccount.identity.collect { gelbooruConfigured = it != null }
+            gelbooruIdentity.collect { gelbooruConfigured = it != null }
         }
     }
 
@@ -1043,9 +1040,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     private suspend fun searchLeg(site: GallerySite, query: String, page: Int): Result<List<GalleryPost>> =
         when (site) {
-            GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
-            GallerySite.YANDERE -> YandeReClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
-            GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchPosts(query, page, pageSizeFor(site))
+            GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, page, pageSizeFor(site))
+            GallerySite.YANDERE -> boards.yandere.searchPosts(query, page, pageSizeFor(site))
+            GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, page, pageSizeFor(site))
         }
 
     /**
@@ -1058,7 +1055,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     private suspend fun canonicalArtist(site: GallerySite, original: String): String? {
         // 别拿 Gelbooru 那条腿去走 yande.re 的门（参数在这一行之前就会求值，所以守卫要放在前面）。
         if (!GalleryArtistAlias.supports(site)) return null
-        val title = YandeReClient.getInstance(app).resolveArtistAlias(original).getOrNull()
+        val title = boards.yandere.resolveArtistAlias(original).getOrNull()
         return GalleryArtistAlias.canonicalNameFor(site, original, title)
     }
 
@@ -1105,9 +1102,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                     legs.map { leg ->
                         async {
                             leg to when (leg) {
-                                GallerySite.GELBOORU -> GelbooruClient.getInstance(app).searchTags(term)
-                                GallerySite.YANDERE -> YandeReClient.getInstance(app).searchTags(term)
-                                GallerySite.SAFEBOORU -> SafebooruClient.getInstance(app).searchTags(term)
+                                GallerySite.GELBOORU -> boards.gelbooru.searchTags(term)
+                                GallerySite.YANDERE -> boards.yandere.searchTags(term)
+                                GallerySite.SAFEBOORU -> boards.safebooru.searchTags(term)
                             }
                         }
                     }.awaitAll()
@@ -1142,7 +1139,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /** 历史：进 ViewModel 时读一次，成功搜索后写回键值门面。 */
     private val prefs by lazy {
-        AndroidKeyValueStore(app, PreferenceKeys.PREFS_GALLERY_SEARCH)
+        GalleryPorts.of(app).stores.open(PreferenceKeys.PREFS_GALLERY_SEARCH)
     }
 
     fun restoreHistoryIfNeeded() {
