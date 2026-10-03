@@ -532,6 +532,14 @@ private suspend fun probeArtistAvatar(
  * 「查没查过」由 [resolveArtistAvatar] 里那份磁盘档负责，这里不再自备一份进程内的表。
  */
 internal suspend fun artistAvatarOnSite(context: Context, site: GallerySite, name: String): String? {
+    // 先问那份**已在内存里**的地址档（peek 非 suspend、纯查表）：它答上过（无论"有地址"还是
+    // "查过、没有"）就直接交回，一次请求都不许多发。
+    //
+    // 从前这里是先 await 站方外链表、才轮到 resolveArtistAvatar 里那次 peek —— 2026-10-03 真机读数
+    // `首页档=有地址(https://i.pximg.net/…)` 后面仍跟着 `外链数=2 外链耗时=1032ms`：切走再回来
+    // 每位画师每站各重付一笔外链请求（五位串行合计 ≈2.1~2.3s），而这段时长正是用户看见的
+    // "先摆收藏图、再换成真头像"。键用空串 = 首页档那一枚，与下面 profilePlan 的 source 同一条。
+    GalleryPorts.of(context).avatars.peek(site, name, "")?.let { return it.ifBlank { null } }
     val links = when (site) {
         GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
         GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)

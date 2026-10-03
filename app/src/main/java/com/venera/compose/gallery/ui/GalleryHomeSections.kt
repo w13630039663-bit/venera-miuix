@@ -262,10 +262,20 @@ private fun GalleryArtistRow(
     val context = LocalContext.current
     // 圆座**先试真头像**（用户 2026-10-01 报"关注了却只有英文字母"）：一位一位串行现取，
     // 谁先回来谁先换脸 —— 有收藏图垫着的那几位在这一趟里本来就有东西可摆，不是空着等。
-    // 取法与代价见 [artistAvatarOnSite]（内含进程内缓存，切走再回来不重发）。
-    var faces by remember(artists) { mutableStateOf(emptyMap<String, String>()) }
+    // 取法与代价见 [artistAvatarOnSite]。这句从前写的是「内含进程内缓存，切走再回来不重发」，
+    // 2026-10-03 的探针把它驳掉了：档里确实有地址，但那次 peek 排在一笔外链请求之后，
+    // 所以每次进栏都重发一遍（读数 `首页档=有地址` 紧跟 `外链耗时=1032ms`）—— 现在档在前面。
+    // 切走再回来时这一栏的组合是**重建**的（2026-10-03 真机读数：`faces已填=3` 下一次进栏回到 0），
+    // 所以初值不能是空表 —— 空表的第一帧按 faceOf(null, previewUrl) 摆名下收藏图，等异步跑完才换脸，
+    // 用户读出来就是"每次切页面头像都刷一遍"。这里直接用地址档（peek 纯内存查表）同步播种：
+    // 档里答上过的那几位第一帧就是真头像，剩下的仍由下面的 effects 逐位补。
+    val avatars = remember(context) { GalleryPorts.of(context).avatars }
+    var faces by remember(artists) {
+        mutableStateOf(GalleryFollowedArtists.seedFaces(artists) { site, name -> avatars.peek(site, name, "") })
+    }
     LaunchedEffect(artists) {
         artists.forEach { artist ->
+            if (faces[artist.name] != null) return@forEach
             // 跨站同名并成一条时按徽标次序试，先答上的赢（`sites` 恒为枚举自然序，不会飘）。
             val avatar = artist.sites.firstNotNullOfOrNull { site ->
                 artistAvatarOnSite(context, site, artist.name)

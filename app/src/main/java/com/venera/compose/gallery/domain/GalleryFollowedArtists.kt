@@ -113,4 +113,24 @@ object GalleryFollowedArtists {
      */
     fun faceOf(avatar: String?, previewUrl: String): String? =
         avatar?.takeUnless { it.isBlank() } ?: previewUrl.takeUnless { it.isBlank() }
+
+    /**
+     * 组合重建时这一栏的**初值**：地址档里已经答上过真地址的那几位，直接进脸表，不等异步。
+     *
+     * 为什么要单列一颗纯函数（2026-10-03 真机读数）：切走再回来会把这一栏的组合销毁，`faces`
+     * 回到空表 ⇒ 第一帧只能摆名下收藏图，等异步那一路跑完才换脸；而探针量到**档里本来就有地址**
+     * （`首页档=有地址` 后面仍跟着 `外链耗时=349~1032ms`），那段换脸的时长全花在已经知道的答案上。
+     *
+     * [peek] 的三档语义照 [GalleryArtistAvatars]：
+     * 空串 = 查过、站方确实没给脸 —— 它**不算答案也不算缺**，不进表（没脸可摆），
+     * 但外面也不该为它重发请求（那条在 `artistAvatarOnSite` 侧，UI 层，本函数管不着）。
+     */
+    fun seedFaces(
+        artists: List<FollowedArtistRef>,
+        peek: (GallerySite, String) -> String?,
+    ): Map<String, String> = artists.mapNotNull { artist ->
+        artist.sites.firstNotNullOfOrNull { site ->
+            peek(site, artist.name)?.takeUnless { it.isBlank() }
+        }?.let { artist.name to it }
+    }.toMap()
 }

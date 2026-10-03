@@ -3,10 +3,12 @@ package com.venera.compose.gallery
 import com.venera.compose.gallery.data.GalleryFavorite
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryArtistFollow
+import com.venera.compose.gallery.domain.FollowedArtistRef
 import com.venera.compose.gallery.domain.GalleryFollowedArtists
 import com.venera.compose.gallery.domain.GalleryFollowedArtistsGap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -227,5 +229,56 @@ class GalleryFollowedArtistsTest {
         assertEquals("https://cdn/a.jpg", GalleryFollowedArtists.faceOf("   ", "https://cdn/a.jpg"))
         assertNull(GalleryFollowedArtists.faceOf("", "  "))
         assertNull(GalleryFollowedArtists.faceOf(null, ""))
+    }
+
+    // ── 组合重建时第一帧摆什么（2026-10-03 真机读数：切走再回来 faces 回空表，
+    //    于是先摆名下收藏图、等异步跑完才换脸；而探针证明地址**早就在盘上的档里**）──
+    //
+    // 判据只管一件事：档里已经答上过的那几位，不许再排到异步后面去。
+    // 「查过没有」这一档**不算答案也不算缺** —— 它不进表（没脸可摆），但外面也不该为它发请求
+    // （那条在 artistAvatarOnSite 侧，UI 层，JVM 不吃 Robolectric 所以这里只管纯判据）。
+    @Test
+    fun `档里有地址的画师在组合初值里就直接进脸表`() {
+        val artists = listOf(
+            FollowedArtistRef(sites = listOf(GallerySite.YANDERE), name = "wowoguni", previewUrl = "https://cdn/art.jpg", count = 3),
+        )
+        val seeded = GalleryFollowedArtists.seedFaces(artists) { site, name ->
+            if (site == GallerySite.YANDERE && name == "wowoguni") "https://px/face.png" else null
+        }
+        assertEquals(mapOf("wowoguni" to "https://px/face.png"), seeded)
+    }
+
+    @Test
+    fun `没查过与查过都不许当脸 只留名字给异步补`() {
+        val artists = listOf(
+            FollowedArtistRef(listOf(GallerySite.YANDERE), "没查过", "https://cdn/a.jpg", 1),
+            FollowedArtistRef(listOf(GallerySite.GELBOORU), "查过没有", "https://cdn/b.jpg", 2),
+        )
+        val seeded = GalleryFollowedArtists.seedFaces(artists) { site, name ->
+            when (name) {
+                "没查过" -> null
+                "查过没有" -> ""
+                else -> null
+            }
+        }
+        assertTrue("两档都不该进初值，进了就是拿空串当头像画：$seeded", seeded.isEmpty())
+    }
+
+    @Test
+    fun `跨站同名时第一站查过没有不许短路 仍要试第二站`() {
+        // sites 恒为枚举自然序（yande.re 在前）。若按"第一个非 null"取，第一站的空串会把
+        // 第二站那张脸吃掉 —— 与 faceOf 那条"空串不算值"是同一个错。
+        val artists = listOf(
+            FollowedArtistRef(
+                sites = listOf(GallerySite.YANDERE, GallerySite.GELBOORU),
+                name = "setmen",
+                previewUrl = "https://cdn/a.jpg",
+                count = 4,
+            ),
+        )
+        val seeded = GalleryFollowedArtists.seedFaces(artists) { site, _ ->
+            if (site == GallerySite.YANDERE) "" else "https://px/setmen.png"
+        }
+        assertEquals(mapOf("setmen" to "https://px/setmen.png"), seeded)
     }
 }
