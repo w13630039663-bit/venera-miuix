@@ -3,6 +3,7 @@ package com.venera.desktop.gallery.data
 import com.venera.compose.data.platform.JsonKeyValueStore
 import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.gallery.data.GalleryCredentials
+import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GelbooruCredentials
 import com.venera.compose.gallery.data.GelbooruIdentity
 import com.venera.compose.gallery.data.SauceNaoCredentials
@@ -42,27 +43,45 @@ class DesktopGalleryCredentials(private val handle: DesktopGalleryHandle) :
     private val gelbooruStore = JsonKeyValueStore(PreferenceKeys.PREFS_GELBOORU_ACCOUNT, handle.paths)
     private val sauceNaoStore = JsonKeyValueStore(PreferenceKeys.PREFS_SAUCENAO_ACCOUNT, handle.paths)
 
-    override val userId: String get() = gelbooruStore.getString(KEY_USER_ID, "").orEmpty()
-    override val apiKey: String get() = gelbooruStore.getString(KEY_API_KEY, "").orEmpty()
-
-    private val _gelbooruIdentity: MutableStateFlow<GelbooruIdentity?> = MutableStateFlow(restoreIdentity())
-    override val gelbooruIdentity: StateFlow<GelbooruIdentity?> = _gelbooruIdentity.asStateFlow()
+    /**
+     * 判据本体是 `GelbooruCredentialState`（S4 抽出来的那颗，两端共用一份）。
+     *
+     * 桌面这一侧把出网口交给 [DesktopHttpEngine]：这一站每笔请求自带 UA 与两个 query 参数，
+     * 不吃 `data.network` 的公共头（Android 侧那条注释的理由：`VeneraNetworkClient` 的头是
+     * 全应用的，把站别凭据挂上去会漏给别的站）。
+     */
+    val gelbooru = GelbooruCredentialState(
+        store = gelbooruStore,
+        engine = { handle.engine.okHttpClient },
+    )
 
     private val _sauceNaoHasKey = MutableStateFlow(sauceNaoKey().isNotBlank())
     override val sauceNaoHasKey: StateFlow<Boolean> = _sauceNaoHasKey.asStateFlow()
 
+    override val gelbooruIdentity: StateFlow<GelbooruIdentity?> get() = gelbooru.identity
+
     /** SauceNao 的 key 单独一枚：Android 侧那颗 account 存的键名与 Gelbooru 的同名但不同存储。 */
     private fun sauceNaoKey(): String = sauceNaoStore.getString(KEY_API_KEY, "").orEmpty()
 
-    private fun restoreIdentity(): GelbooruIdentity? {
-        val uid = userId
-        val key = apiKey
-        if (uid.isBlank() || key.isBlank()) return null
-        return GelbooruIdentity(userId = uid)
+    override val userId: String get() = gelbooru.userId
+    override val apiKey: String get() = gelbooru.apiKey
+
+    /**
+     * SauceNao 的写侧：**只落盘，不做校验**（照 `SauceNaoAccount.save`）。
+     *
+     * 这条判据不可省：那一站没有"保证非空的最小请求"，拿任何一笔搜索去验 key 都会真的
+     * 消耗一次额度，而免费额度本来就少 —— 还会把"这次搜不出东西"和"key 不对"搅在一起。
+     * key 对不对由第一次真实搜索的结果去说。
+     */
+    fun saveSauceNaoKey(key: String) {
+        val trimmed = key.trim()
+        sauceNaoStore.put(KEY_API_KEY, trimmed)
+        _sauceNaoHasKey.value = trimmed.isNotBlank()
     }
 
+    fun clearSauceNaoKey() = saveSauceNaoKey("")
+
     companion object {
-        private const val KEY_USER_ID = "user_id"
         private const val KEY_API_KEY = "api_key"
     }
 }

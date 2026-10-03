@@ -216,7 +216,7 @@
 
 ### 上游有、本分支没有
 
-- **桌面与移动其他平台**：官方靠 Flutter 出多端包。本分支是 Android 独占工程，跨平台要另起壳工程 —— 可行性已评估留档 `docs/rounds/windows-port-feasibility-2026-10.md`，**未开工**。
+- **桌面与移动其他平台**：官方靠 Flutter 出多端包。本分支的桌面端（`:desktop` 模块）**已在推进**：Compose Desktop + compose-fluent 壳，三站图库首页的取数层已落地并可跑（读数与缺席原因见 `docs/rounds/windows-gallery-home-2026-10.md`）。但**只是图库首页这一屏**——漫画侧 33 源、设置、阅读器在桌面上都还没有入口，可行性与阶段读数留档 `docs/rounds/windows-port-feasibility-2026-10.md`。Linux / macOS / iOS 仍未开工。
 - **EPUB / 7Z / ZIP 归档直读**：官方阅读器可直接吃归档文件；本分支的本地漫画一律以目录形态服务给阅读器，CBZ 导入是解包成目录。
 - **生物识别隐私锁**：官方有启动认证与后台重锁；本分支全仓没有对应能力。分级遮罩是内容过滤，不是隐私锁。
 - **归档下载协议**：官方对声明归档能力的源（如 E-Hentai）有专用下载路径；本分支只有逐页下载。

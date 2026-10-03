@@ -233,7 +233,7 @@ class GelbooruClient internal constructor(
      * 并把"去哪儿改"指出来 —— 否则用户会以为是网络问题反复重试。
      */
     private fun failure(code: Int): IOException = when (code) {
-        401 -> IOException("Gelbooru 没接受这组凭据（API Key 与 User ID 要对得上，且都应来自同一账号）")
+        401 -> IOException(GelbooruCredentialHints.rejected)
         403 -> IOException("Gelbooru 回了 403：请求被站方拦了")
         429 -> IOException("Gelbooru 限流了（429），稍后再试")
         else -> IOException("Gelbooru 返回 $code")

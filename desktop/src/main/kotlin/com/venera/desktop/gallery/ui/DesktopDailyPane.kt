@@ -22,12 +22,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.BoxWithConstraints
+import coil3.compose.AsyncImage
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.domain.GalleryDailyFeed
+import com.venera.desktop.gallery.data.DesktopGalleryCredentials
 import io.github.composefluent.component.ProgressBar
 import io.github.composefluent.component.Text
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +82,20 @@ internal fun DesktopDailyPane(ports: GalleryPorts) {
         )
     }
 
+    // S4：配好凭据之后自动重跑一轮。
+    //
+    // ⚠️ 读的是 `gelbooruIdentity` 这枚**流**，而不是某个本地 state —— 判据件是单一事实源
+    // （存好/注销时它自己推流）。这里每次**进屏**取一次初值就够了：用户在这屏上配好凭据
+    // 时 `identity` 从 null 变成有值，这一笔的 key 变了就重跑；反过来注销也重跑，
+    // 于是"注销后那一站又缺席"同样会被说出来，而不是停在一屏旧读数上。
+    //
+    // 刻意**不**读 `apiKey` / `userId` 两枚串：那两样是明文，逐值重组会让这屏在每次击键时重跑取数。
+    val identityReady = (ports.credentials as? DesktopGalleryCredentials)
+        ?.gelbooru?.identity?.value != null
+    LaunchedEffect(ports, seed, attempt, identityReady) {
+        if (identityReady) attempt += 1
+    }
+
     when (val current = state) {
         DailyState.Loading -> Column(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -94,12 +113,12 @@ internal fun DesktopDailyPane(ports: GalleryPorts) {
             Text("重试", modifier = Modifier.clickable { attempt += 1 })
         }
 
-        is DailyState.Ready -> DailyWall(current.daily)
+        is DailyState.Ready -> DailyWall(current.daily, ports)
     }
 }
 
 @Composable
-private fun DailyWall(daily: GalleryDailyFeed.Daily) {
+private fun DailyWall(daily: GalleryDailyFeed.Daily, ports: GalleryPorts) {
     val merged = daily.merged
     val perSite = merged.perSite.entries.joinToString("、") { "${it.key.displayName} ${it.value} 张" }
     val dropped = listOfNotNull(
@@ -119,6 +138,26 @@ private fun DailyWall(daily: GalleryDailyFeed.Daily) {
             Text(
                 "这一轮没给内容的站：" + daily.failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
             )
+            // S4：**缺席原因指向的那件事要能在这里修**。
+            // 别的站缺席我们今天修不了（网络/站方抽风），但 Gelbooru 的缺席在绝大多数情况下
+            // 就是"没配凭据"——那一行写着理由、却让用户无处可去，等于把"明说"做成了"推卸"。
+            // 条件刻意只判"这一站缺席"而不判缺席原因的字面：**原因句会改**（站方改文案、
+            // 换措辞），拿字面去挂钩会让面板在某次措辞调整后静默消失。
+            // 理由原文改由面板自己念（`GelbooruCredentialState.ANONYMOUS_HINT`），
+            // 用户永远看得到"要什么"，而不必先猜这一站为什么缺席。
+            if (daily.failures.containsKey(GallerySite.GELBOORU)) {
+                val credentials = ports.credentials as? DesktopGalleryCredentials
+                if (credentials != null) {
+                    DesktopGelbooruCredentialPanel(credentials)
+                } else {
+                    // 装配面不是桌面那颗（理论上不会发生；发生就说出来，而不是画一个点不动的面板）
+                    Text(
+                        "Gelbooru 缺凭据（${GelbooruCredentialState.ANONYMOUS_HINT}），" +
+                            "但当前接线没有桌面凭据件。",
+                        color = PlaceholderText,
+                    )
+                }
+            }
         }
 
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -142,6 +181,10 @@ private fun DailyWall(daily: GalleryDailyFeed.Daily) {
  * 几何都取现成口径，不造新数：图位比例 3:4 来自设计稿的 `.art-card .im{aspect-ratio:3/4}`（`:154`），
  * 圆角 8 来自稿的 `--r-card:8px`（`:21`）。刻意不挂 `clickable` —— 桌面没有画廊详情页，
  * 画成能点的样子就是一枚假开关。
+ *
+ * **图片加载**：用 Coil3 直接加载站方 URL，不加第二条缓存账本；header 里写 Referer 保证 Gelbooru/Safebooru
+ * 不因为跨域被拒。`data/network/VeneraImageFetcher.kt`（带 Android 依赖的那份）不进桌面，桌面只用 `coil-compose`
+ * 与 `coil-network-okhttp`，自己管自己的网络与磁盘缓存，干净利落。
  */
 @Composable
 private fun DesktopGalleryPostTile(post: GalleryPost) {
@@ -149,20 +192,34 @@ private fun DesktopGalleryPostTile(post: GalleryPost) {
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // 占位格：本轮用站名代替图片
+        // 网格档按用途取 [GalleryPost.previewUrl]（`GalleryPost.kt:66`「网格缩略档」，三站同口径）。
+        // ⚠️ 不拿 `largeUrl` / `fileUrl` 顶：那些是原图（yande.re 单条实测可达 6.6 MB，
+        // 见 `GalleryPost.kt:22`），一屏几十张就是几百 MB 的下载与解码，而墙上只画 3:4 的小格。
+        // 站方没给缩略档时那三站各有各的空值形态，`GalleryPost` 已按"取不到就留空串"处理 ——
+        // 留空串就走下面那句说明，不去别处凑一个编出来的地址。
+        val preview = post.previewUrl
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
-                .background(Color(0xFF333333), RoundedCornerShape(8.dp)),
+                .background(TilePlaceholder, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                post.site.displayName,
-                color = Color(0xFF8B8B8B),
-                fontSize = 13.sp,
-                maxLines = 1
-            )
+            if (preview.isBlank()) {
+                Text(
+                    "站方没给缩略档\n${post.site.displayName}",
+                    color = PlaceholderText,
+                    fontSize = 13.sp,
+                    maxLines = 2,
+                )
+            } else {
+                AsyncImage(
+                    model = preview,
+                    contentDescription = "${post.site.displayName} 的作品",
+                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                    contentScale = ContentScale.Crop,
+                )
+            }
         }
         Text(post.author.ifBlank { "站方没给画师" }, maxLines = 1)
         Text("分数 ${post.score} · 标签 ${post.tagList.size} 枚", maxLines = 1)

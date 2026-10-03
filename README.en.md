@@ -216,7 +216,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 
 ### Upstream has it, this branch does not
 
-- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This is an Android-only project; cross-platform needs a separate shell — feasibility is assessed and archived in `docs/rounds/windows-port-feasibility-2026-10.md`, **not started**.
+- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This branch now has a **Windows desktop module in progress** (`:desktop`, Compose Desktop + compose-fluent): the gallery home screen's data layer is live and runnable — see `docs/rounds/windows-gallery-home-2026-10.md`. It covers **that one screen only**: the 33 comic sources, settings and the reader have no desktop entry point yet. Feasibility and stage readings are archived in `docs/rounds/windows-port-feasibility-2026-10.md`. Linux / macOS / iOS are still not started.
 - **Reading EPUB / 7Z / ZIP archives directly**: upstream's reader opens archive files; here local comics are always served to the reader as directories, and CBZ import unpacks into a directory.
 - **Biometric privacy lock**: upstream has launch authentication and re-lock on background; this repository contains no such capability. The rating mask is content filtering, not a privacy lock.
 - **Archive download protocol**: upstream has a dedicated download path for sources declaring archive capability (E-Hentai, for example); here downloads are page by page only.
@@ -239,7 +239,8 @@ This section exists on purpose. Anything implemented but not reachable from an e
 
 | Item | Note |
 | --- | --- |
-| Windows / Linux / macOS / iOS | Android only. Port feasibility assessed and archived; not started. |
+| Windows | In progress. `:desktop` covers the gallery home screen's data layer; comic sources, settings and the reader have no desktop entry point yet. |
+| Linux / macOS / iOS | Not started. Port feasibility assessed and archived for Windows only. |
 | EPUB / 7Z / ZIP direct reading | Local comics are always served as directories; CBZ import unpacks. |
 | Biometric privacy lock | No launch authentication, no re-lock on background. The rating mask is content filtering, not a lock. |
 | Archive download protocol | Page-by-page downloads only. |
