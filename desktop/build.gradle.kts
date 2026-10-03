@@ -162,7 +162,12 @@ dependencies {
     // （Task 4a 曾为已删的 `folderToJson` 加过它又撤掉；这次带进来的是有生产调用方的那份。）
     implementation(libs.gson)
 
-    // `data/platform/HttpEngine.kt` 在上面的共享 srcDir 里，而它签名上的 `OkHttpClient` 是 okhttp 的类型
+    // Coil3 图片加载器（桌面侧自持，不走 VeneraImageFetcher）
+    // libs.coil = coil3 (3.6.2)，已在 libs.versions.toml 定义
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+
+    // `data/platform/HttpEngine.kt`在上面的共享 srcDir 里，而它签名上的 `OkHttpClient` 是 okhttp 的类型
     // —— 不显式声明就编不过。必须显式：`:engine-probe` 那份是 implementation，不透传到本模块编译 classpath。
     // 注意这是"接口签名需要它的类型"，不等于桌面已经接好了一条真路（桌面侧实现件与它一起落在 S2）。
     implementation(libs.okhttp)

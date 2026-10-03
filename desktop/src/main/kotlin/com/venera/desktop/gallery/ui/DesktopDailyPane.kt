@@ -120,7 +120,6 @@ private fun DailyWall(daily: GalleryDailyFeed.Daily) {
                 "这一轮没给内容的站：" + daily.failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
             )
         }
-        Text("图片本轮不显示：桌面还没有图库的取图件，卡上摆的是站方给的元数据")
 
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = DesktopGalleryMetrics.imageWallColumnCount(maxWidth.value)
@@ -138,7 +137,7 @@ private fun DailyWall(daily: GalleryDailyFeed.Daily) {
 }
 
 /**
- * 一张卡：占位 + 元数据。
+ * 一张卡：图位 + 元数据。
  *
  * 几何都取现成口径，不造新数：图位比例 3:4 来自设计稿的 `.art-card .im{aspect-ratio:3/4}`（`:154`），
  * 圆角 8 来自稿的 `--r-card:8px`（`:21`）。刻意不挂 `clickable` —— 桌面没有画廊详情页，
@@ -150,15 +149,20 @@ private fun DesktopGalleryPostTile(post: GalleryPost) {
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // 占位那一格摆的是**真东西**：来源站的站名（稿上的 `--t3` 灰）。
+        // 占位格：本轮用站名代替图片
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
-                .background(TilePlaceholder, RoundedCornerShape(8.dp)),
+                .background(Color(0xFF333333), RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(post.site.displayName, color = PlaceholderText, fontSize = 13.sp, maxLines = 1)
+            Text(
+                post.site.displayName,
+                color = Color(0xFF8B8B8B),
+                fontSize = 13.sp,
+                maxLines = 1
+            )
         }
         Text(post.author.ifBlank { "站方没给画师" }, maxLines = 1)
         Text("分数 ${post.score} · 标签 ${post.tagList.size} 枚", maxLines = 1)
