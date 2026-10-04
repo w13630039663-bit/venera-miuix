@@ -61,6 +61,14 @@ import io.github.composefluent.component.Text
  * 出现"两者都非空 / 两者都空"即红 —— 前者是"既能渲染又有理由"的自相矛盾，
  * 后者就是本仓最忌的"看起来正常但实际少了一半"。
  */
+/**
+ * pane 里那六项的 key（[DESKTOP_GALLERY_HOME_SECTION_ORDER] 的成员）。
+ *
+ * ⚠️ 它**只管图库域那一域**的六项。2026-10-04 第二批把收藏域与搜索域也接成真页面之后，
+ * 全桌面的页条 key 分成三处出处：这里（图库六项）、`DesktopComicSectionKey`（漫画两项）、
+ * [DesktopFavoritesSectionKey] / [DesktopSearchSectionKey]（各一项）。
+ * 三处都在 `DesktopGalleryHomeRow` 那一个行模型上，不另开第二颗行模型。
+ */
 internal object DesktopGalleryHomeSectionKey {
     const val DAILY = "section-daily"
     const val FOLLOWED_ARTISTS = "section-followed-artists"
@@ -81,13 +89,14 @@ internal val DESKTOP_GALLERY_HOME_SECTION_ORDER: List<String> = listOf(
 )
 
 /**
- * 「有内容件」的三种说法中的两种 —— 只有这一颗 sealed 才是 `when` 穷尽检查的载体
- * （理由见类注释里那一节）。今天两档，S3 接上「最新」之类时加一档，忘了在两颗 `when` 里出形状的代价是编译不过。
+ * 「有内容件」的六种说法 —— 只有这一颗 sealed 才是 `when` 穷尽检查的载体
+ * （理由见类注释里那一节）。今天六档；S3 接上「最新」之类时加一档，忘了在两颗 `when` 里出形状的代价是编译不过。
  *
- * ⚠️ 下面四档不属于图库域 —— 它们是**漫画域**的两页（2026-10-04 回收）。之所以放在这颗 sealed 里
- * 而不是另开一颗：pane 的行模型 [DesktopGalleryHomeRow] 是全桌面共用的一颗，
- * 它的 `when` 必须能同时排开两个域的货；另开一颗 sealed 就等于给每个域配一套行模型，
- * 那是本仓判过负的"第二套布局系统"在更小的尺度上重演。
+ * ⚠️ 下面几档不属于图库域 —— 它们是**别的域**的页（2026-10-04 先后接回漫画域两页、
+ * 收藏域与搜索域各一页）。之所以放在这颗 sealed 里而不是另开一颗：pane 的行模型
+ * [DesktopGalleryHomeRow] 是全桌面共用的一颗，它的 `when` 必须能同时排开四个域的货；
+ * 另开一颗 sealed 就等于给每个域配一套行模型，那是本仓判过负的"第二套布局系统"
+ * 在更小尺度上的重演。
  */
 internal sealed interface DesktopGallerySectionContent {
     data object Daily : DesktopGallerySectionContent
@@ -98,6 +107,12 @@ internal sealed interface DesktopGallerySectionContent {
 
     /** 漫画域：本机收藏夹（`LocalFavoritesManager`，与画廊收藏不是同一份数据）。 */
     data object ComicFavorites : DesktopGallerySectionContent
+
+    /** 画廊收藏域：本机 `gallery_favorites.json` 那面墙。 */
+    data object GalleryFavorites : DesktopGallerySectionContent
+
+    /** 画廊搜索域：标签串 → 三站并发 → 一面结果墙。 */
+    data object GallerySearch : DesktopGallerySectionContent
 }
 
 /**
@@ -193,6 +208,8 @@ internal fun DesktopGalleryHomeNavRow(row: DesktopGalleryHomeRow, selected: Bool
         DesktopGallerySectionContent.FollowedArtists -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.ComicExplore -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.ComicFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.GalleryFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.GallerySearch -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         null -> DesktopUnimplementedRow(row.title, row.glyph, requireNotNull(row.reason))
     }
 }
@@ -208,15 +225,17 @@ internal fun DesktopGalleryHomeBody(row: DesktopGalleryHomeRow, ports: GalleryPo
     val rendered: Unit = when (row.content) {
         DesktopGallerySectionContent.Daily -> DesktopDailyPane(ports)
         DesktopGallerySectionContent.FollowedArtists -> DesktopFollowedArtistsPane(ports)
-        // 漫画域那两页在结构上走不到这里 —— 分发发生在 `VeneraDesktopApp` 的 `DesktopDomainBody`，
-        // 它按**域**先分岔，漫画域整域走 `DesktopComicBody`（那里才收得到 `DesktopComicEngineConfig`）。
-        // 这里写成 error 而不是随便渲染个占位：真有人把漫画域的行塞进图库域那一刻就崩，
+        // 下面四档在结构上走不到这里 —— 分发发生在 `VeneraDesktopApp` 的 `DesktopDomainBody`，
+        // 它按**域**先分岔：漫画域整域走 `DesktopComicBody`，收藏域与搜索域各走自己那颗。
+        // 这里写成 error 而不是随便渲染个占位：真有人把别的域的行塞进图库域那一刻就崩，
         // 而不是静默画出一屏少了一半的东西。
         DesktopGallerySectionContent.ComicExplore,
         DesktopGallerySectionContent.ComicFavorites,
+        DesktopGallerySectionContent.GalleryFavorites,
+        DesktopGallerySectionContent.GallerySearch,
         -> error(
-            "「${row.title}」是漫画域的页，不该由图库域的 body 渲染 —— " +
-                "两条路的分岔在 VeneraDesktopApp.DesktopDomainBody",
+            "「${row.title}」不是图库域的页，不该由图库域的 body 渲染 —— " +
+                "域路的分岔在 VeneraDesktopApp.DesktopDomainBody",
         )
         null -> DesktopAbsentBody(row)
     }

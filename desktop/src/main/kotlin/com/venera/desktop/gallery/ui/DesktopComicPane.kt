@@ -123,10 +123,12 @@ internal fun DesktopComicBody(row: DesktopGalleryHomeRow, config: DesktopComicEn
     val rendered: Unit = when (row.content) {
         DesktopGallerySectionContent.ComicExplore -> ComicExplorePane(config)
         DesktopGallerySectionContent.ComicFavorites -> ComicFavoritesPane(config)
-        // 与 `DesktopGalleryHomeBody` 里那处 error 对称：两条域路不许串。
+        // 与 `DesktopGalleryHomeBody` / 两颗新 body 里那几处 error 对称：**域路不许串**。
         DesktopGallerySectionContent.Daily,
         DesktopGallerySectionContent.FollowedArtists,
-        -> error("「${row.title}」是图库域的页，不该由漫画域渲染 —— 分岔见 VeneraDesktopApp.DesktopDomainBody")
+        DesktopGallerySectionContent.GalleryFavorites,
+        DesktopGallerySectionContent.GallerySearch,
+        -> error("「${row.title}」不是漫画域的页 —— 分岔见 VeneraDesktopApp.DesktopDomainBody")
         null -> error("漫画域今天没有未实现的行，「${row.title}」却带了空的 content 位")
     }
 }

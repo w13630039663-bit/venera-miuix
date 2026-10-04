@@ -146,6 +146,9 @@ fun VeneraDesktopApp(
 internal fun desktopDomainRows(domain: DesktopDomain): List<DesktopGalleryHomeRow> = when (domain) {
     DesktopDomain.GALLERY -> desktopGalleryHomeRows()
     DesktopDomain.COMIC -> desktopComicRows()
+    // 2026-10-04 第二批：这两域从坦白页转成真页面，各有一行。
+    DesktopDomain.FAVORITES -> desktopFavoritesRows()
+    DesktopDomain.SEARCH -> desktopSearchRows()
     else -> {
         val absence = requireNotNull(domain.absence) { "「${domain.title}」既有内容又说缺席" }
         listOf(
@@ -167,6 +170,12 @@ internal fun desktopDomainRows(domain: DesktopDomain): List<DesktopGalleryHomeRo
  * [DesktopAbsence.wired]，也就是"已经接好了但因为没界面而看不见"的那几颗件。
  * 少了那张清单，"这一域没做"和"这台机器上没有这个域"就会念成同一句话 ——
  * 那正是 [DesktopDomain] 类注释里写的、不许发生的混淆。
+ *
+ * ## 现在有**四**条真域路 + 一条坦白页路
+ *
+ * `when` 挂在那颗 `val rendered: Unit =` 上（表达式位置 ⇒ Kotlin 做穷尽检查），
+ * 所以新增一枚域忘了在这里出形状会**编译不过**。而每一条真域路内部那层 `when` 也各自挂着
+ * 同一根钩子 —— 两层都是"忘了登记就红"，这是本仓唯一一种能自动顶出漏登记的形状。
  */
 @Composable
 private fun DesktopDomainBody(
@@ -178,6 +187,8 @@ private fun DesktopDomainBody(
     val rendered: Unit = when (domain) {
         DesktopDomain.GALLERY -> DesktopGalleryHomeBody(row, ports)
         DesktopDomain.COMIC -> DesktopComicBody(row, comic)
+        DesktopDomain.FAVORITES -> DesktopGalleryFavoritesBody(row, ports)
+        DesktopDomain.SEARCH -> DesktopGallerySearchBody(row, ports)
         else -> DesktopAbsentDomainBody(domain)
     }
 }

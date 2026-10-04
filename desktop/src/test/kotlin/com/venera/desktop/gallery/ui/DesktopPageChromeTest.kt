@@ -130,6 +130,66 @@ class DesktopPageChromeTest {
         assertFalse("首页顶到位的键帽不许回来：", status.contains("Ctrl K"))
     }
 
+    /**
+     * 收藏那一档**三句都不许照抄日榜**（2026-10-04 第二批，接收藏域时开出三处）。
+     *
+     * ## 为什么这条是"闸必须写在代码里"而不是"文档里记着"
+     *
+     * 三处都是同一个病：**那句话的主语在收藏屏不存在**。
+     * - 「本次取数」—— 收藏读本机 JSON，一次网都不发；
+     * - 「每站 N 预算 · 超时那一站缺席」—— 收藏屏没有"站"这个动作；
+     * - 「N 站 · 都给内容」—— 主语是"站出勤"，而存档是**已经躺在本机**的。
+     *
+     * 第三处尤其荒唐：空收藏时 `perSite` 是空的，屏上会念「**0 站 · 都给内容**」，
+     * 一句话同时宣称零个站和全都给了内容。
+     *
+     * ## 为什么扫文本而不是"跑起来看屏上有没有念"
+     *
+     * 组合期那一行在 `@Composable` 里，跑它要开窗；而"这三句在收藏语境下该不该出现"
+     * 是**结构**问题（闸有没有写），扫得到。屏上念了什么由真机验证兜（用户侧）。
+     *
+     * ⚠️ 顺带钉住"**只有收藏那一档**关这三句"：日榜真出网、真有站出勤，
+     * 把它一起关掉就是**少报**（本仓另一个方向的错）。所以反向断言是
+     * 「日榜那一档三处闸都不许出现」。
+     */
+    @Test
+    fun `收藏屏那一档三句读数都必须关掉 日榜那一档必须都开着`() {
+        val status = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryStatusBar.kt"))
+        assertTrue(
+            "siteTotal 那句要有闸（`siteTotal >= 0`）—— 不写闸的话收藏屏会念「0 站 · 都给内容」",
+            status.contains("if (siteTotal >= 0)"),
+        )
+        assertTrue(
+            "budgetMs 那句要有闸（`budgetMs >= 0`）—— 这条 2026-10-04 之前就有了，保留",
+            status.contains("if (budgetMs >= 0)"),
+        )
+
+        val fav = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryFavoritesPane.kt"))
+        listOf(
+            "siteTotal = STATUS_NO_SITE_TALLY" to "首句（站出勤）",
+            "budgetMs = STATUS_NO_BUDGET_MS" to "末句（每站预算）",
+            "elapsedLabelPrefix = LOCAL_READ_LABEL" to "中间那句（本次取数）",
+        ).forEach { (call, what) ->
+            assertTrue(
+                "收藏屏的$what 必须走关掉/改写的那一档 —— 照抄日榜就是一句主语不存在的读数",
+                fav.contains(call),
+            )
+        }
+        assertTrue(
+            "站分布不能因此少讲：它挪到段头那句「本机存档 N 条 · 摆上屏 M 张 · 某某站 k 张」",
+            fav.contains("projection.perSiteLabel"),
+        )
+
+        val daily = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
+        listOf("STATUS_NO_SITE_TALLY", "STATUS_NO_BUDGET_MS", "LOCAL_READ_LABEL").forEach { sentinel ->
+            assertFalse(
+                "日榜那一档**不许**用收藏的哨兵（它真的出网、真的有站出勤）—— 关掉就是少报：$sentinel",
+                daily.contains(sentinel),
+            )
+        }
+        assertTrue("日榜仍要传真站数：", daily.contains("daily.pools.size"))
+    }
+
     @Test
     fun `旧页脚没有复活 三站口径只由 Hero 侧卡说一次`() {
         val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))

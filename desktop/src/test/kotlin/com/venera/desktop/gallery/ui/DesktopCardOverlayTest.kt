@@ -91,22 +91,36 @@ class DesktopCardOverlayTest {
      *
      * ⚠️ 用 [DesktopSourceTree.codeText]（跳注释）而不是 `readText`：否则这些串在注释里
      * 被提到就会让断言恒真 —— 那是本仓记过的"看起来有判据、其实没有"。
+     *
+     * ## 扫的文件从 `DesktopDailyPane.kt` 换成了 `DesktopGalleryPostTile.kt`（2026-10-04 第二批）
+     *
+     * 卡位画法原先是 `DesktopDailyPane.kt` 里的 `private` 件，本批接收藏域与搜索域时提成了
+     * [DesktopGalleryPostTile] 这颗共用件（`DesktopGalleryPostWall` 连网格一起）。
+     * 判据的对象是"**墙上的卡长什么样**"，不是"它住在哪个文件" —— 画法搬了家，判据得跟着搬，
+     * 否则它会一直红，而红的原因跟这条要防的事（有人把 2 列改回 1 列）毫无关系。
+     *
+     * 这也是"判据扫源码"这一支的固有代价：搬家要付一次红。宁可付一次红也不要留一条恒假的判据。
      */
     @Test
     fun `墙的首卡跨两列且卡片有标题层与描边`() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
+        val tile = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPostTile.kt"))
         assertTrue(
             "首卡应跨 2 列（稿 .art-card.wide{grid-column:span 2}）",
-            pane.contains("GridItemSpan(maxLineSpan.coerceAtMost(2))"),
+            tile.contains("GridItemSpan(maxLineSpan.coerceAtMost(2))"),
         )
-        assertTrue("宽卡应是 16:10（稿 .art-card.wide .im）", pane.contains("16f / 10f"))
+        assertTrue("宽卡应是 16:10（稿 .art-card.wide .im）", tile.contains("16f / 10f"))
         assertTrue(
             "卡片应有标题层（稿 .art-card .ttl 在左上）",
-            pane.contains("Alignment.TopStart"),
+            tile.contains("Alignment.TopStart"),
         )
         assertTrue(
             "卡片应有 1px 描边（稿 .art-card{border:1px solid var(--stroke)}，全稿不用阴影）",
-            pane.contains(".border(1.dp") && pane.contains("DesktopTheme.SurfaceRaised"),
+            tile.contains(".border(1.dp") && tile.contains("DesktopTheme.SurfaceRaised"),
+        )
+        // 三面墙都吃这颗：日榜 / 收藏 / 搜索。少一条就说明有一面墙在别处自己摆网格。
+        assertTrue(
+            "墙那一份（列数推导与首卡跨列）应当和画法在一起 —— 三面墙共用一件，判据跟着那一件走",
+            tile.contains("internal fun DesktopGalleryPostWall("),
         )
     }
 

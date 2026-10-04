@@ -57,33 +57,20 @@ internal enum class DesktopDomain(
         ),
     ),
 
-    SEARCH(
-        "搜索",
-        "索",
-        DesktopAbsence(
-            DesktopAbsenceKind.NO_UI,
-            "三站 searchPosts 已通，缺那面结果墙",
-            listOf(
-                "BoardSource.searchPosts(tags, page, limit)（三站 board 都继承它）",
-                "BoardSource.searchTags(term)（标签补全）",
-                "GallerySearch.tagBudget(site) / fitsTagBudget（每站的标签预算）",
-            ),
-        ),
-    ),
+    // 2026-10-04 第二批：转成真页面。取数链那一整套判据**整颗已在桌面编译面**
+    // （`gallery/domain` 是 srcDir 之一），所以这一屏没有新造任何一条口径：
+    // 分段用 `GallerySearchSource.options`、每腿一笔超时用 `GalleryLegGuard.guard`、
+    // 合成用 `GallerySearchMerge.interleave`、到底判据用 `exhaustedSites` + `GallerySearch.isExhausted`。
+    SEARCH("搜索", "索", null),
 
-    FAVORITES(
-        "收藏",
-        "藏",
-        DesktopAbsence(
-            DesktopAbsenceKind.NO_UI,
-            "名单在流已落盘，缺一面墙来读它",
-            listOf(
-                "GalleryFavorites.favorites（StateFlow<List<GalleryFavorite>>）",
-                "GalleryFavoritesStore（落本机数据目录的 JSON，与 Android 那一侧同一份磁盘形状）",
-                "toggle / removeAll / clear（三个写动作都在）",
-            ),
-        ),
-    ),
+    // 2026-10-04 第二批：这一域从坦白页转成真页面。
+    // 取数链是 2026-10-04 骨架那批就核过的（`GalleryFavorites.favorites` 是真 StateFlow、
+    // `GalleryFavorite.toPost` 已在），当时判它"最便宜"；这一批真的把它画出来。
+    //
+    // ⚠️ 与**漫画域的收藏夹**不是同一份数据：这里是 `GalleryFavoritesStore`（`gallery_favorites.json`），
+    // 那边是 `LocalFavoriteDatabase`（本机 SQLite）。两处条数不相等是正常的，
+    // 把两个域的收藏数念成同一个数就是假读数。
+    FAVORITES("收藏", "藏", null),
 
     ARTISTS(
         "画师",
