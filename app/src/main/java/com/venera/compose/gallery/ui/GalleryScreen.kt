@@ -52,9 +52,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -106,6 +108,8 @@ import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GalleryWallFeed
+import com.venera.compose.gallery.domain.SavedWallDepth
+import com.venera.compose.gallery.domain.depthToApply
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -493,11 +497,50 @@ fun GalleryScreen(
     // 的守卫 —— 那是"两面墙共用一屏、只画当前那一面"时代的产物。现在首页那条主墙**恒为**
     // 猜你喜欢（每日热门搬去了二级页），所以那个守卫恒真、那个键恒不变：
     // 留着它只会让下一个人以为"这一屏还可能不是猜你喜欢"。
-    var forYouScrolledGeneration by remember { mutableIntStateOf(0) }
-    LaunchedEffect(fvm.generation) {
-        if (fvm.generation == 0 || forYouScrolledGeneration == fvm.generation) return@LaunchedEffect
-        forYouGridState.scrollToItem(0)
-        forYouScrolledGeneration = fvm.generation
+    // 「离开这面墙时看到第几张」记在 saveable 里，而不是 VM 里 ——
+    // 切主 Tab 走的是 `gotoTab` 的 `popUpTo(startDestination){saveState=true}`，这条目的地是被
+    // **pop** 掉的：`NavBackStackEntry` 类头明写 "ViewModels will be cleared"，saveState 只救
+    // `rememberSaveable` 那一族（判据出处见 `GalleryWallDepth` 的头注）。
+    // 锚 = 记下位置时墙上第一张的 id：换一批之后同一个序号指的是另一块内容，
+    // 把人送到那儿既不是"回到原处"，也会让续页判据以为已经到底。−1 = 还没记过。
+    var forYouDepthAnchor by rememberSaveable { mutableLongStateOf(-1L) }
+    var forYouDepthIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(forYouGridState) {
+        snapshotFlow {
+            val info = forYouGridState.layoutInfo
+            (info.visibleItemsInfo.firstOrNull()?.index ?: 0) to fvm.posts.firstOrNull()?.id
+        }
+            .distinctUntilChanged()
+            .collect { (index, anchor) ->
+                // 墙上还没内容时不记：那一次报回来的 0 会把用户真实离开的位置抹掉，
+                // 而"下一轮落地该落第几张"这个判据从此就没有输入了。
+                if (anchor == null) return@collect
+                forYouDepthAnchor = anchor
+                forYouDepthIndex = index
+            }
+    }
+
+    // 新一轮结果落地 → 滚回**该去的那一格**（不滚的后果与原注释一样：用户落在上一轮深处，
+    // 而续页判据当场认为已经到底）。
+    //
+    // 这一处原来是 `scrollToItem(0)` 无条件回顶，而"这一轮已经落过点"的凭据记在 `remember` 里 ——
+    // 组合一销毁凭据就归零，`LaunchedEffect` 在重建后又必跑首帧，于是**每次切回画廊都被按回顶部**。
+    // 凭据搬进 fvm（`appliedGeneration`），落点交给 [depthToApply]：还是刚才那块内容就回原处，
+    // 换了一批（锚变了）才回第 1 张。
+    //
+    // 键里带 posts.size：内容还没落地时先不落点，那一次滚会被 Lazy 的夹取按成 0，
+    // 而 appliedGeneration 一旦写上就再也不会重来。
+    LaunchedEffect(fvm.generation, fvm.posts.size) {
+        if (fvm.generation == 0 || fvm.appliedGeneration == fvm.generation) return@LaunchedEffect
+        val anchor = fvm.posts.firstOrNull()?.id ?: return@LaunchedEffect
+        val target = depthToApply(
+            saved = if (forYouDepthAnchor == -1L) null else SavedWallDepth(forYouDepthAnchor, forYouDepthIndex),
+            currentAnchorId = anchor,
+        ) ?: 0
+        forYouGridState.scrollToItem(target)
+        forYouDepthIndex = target
+        fvm.appliedGeneration = fvm.generation
     }
 
     // 滑到底取下一页 —— **每面墙各一份判据**：搜索那一份整块硬编码读 `svm`，套不过来。
@@ -511,7 +554,7 @@ fun GalleryScreen(
                 exhausted = fvm.exhausted,
                 busy = fvm.isLoading || fvm.isLoadingMore,
                 failed = fvm.loadMoreError != null,
-                settled = forYouScrolledGeneration == fvm.generation,
+                settled = fvm.appliedGeneration == fvm.generation,
                 lastIndex = info.totalItemsCount - 1,
                 visibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
             )
@@ -705,14 +748,16 @@ fun GalleryScreen(
     // 只有"这面墙此刻在布局里"才滚：搜索墙不接管时 `scrollToItem` 是空操作，
     // 而那一次落点本来就该由下一次接管时的 [consumeScrollRestore] 去还。
     //
-    // ⚠️ [scrolledGeneration] 是"已回顶凭据"（续页判据用它挡"旧位置在深处"就顺手取第 2 页），
-    // 所以它必须在这里声明、两个 effect 共读 —— 挪进哪个 effect 里，另一个就读不到了。
-    var scrolledGeneration by remember { mutableIntStateOf(0) }
+    // ⚠️ "这一轮已经落过点"的凭据原先记在这里（`var scrolledGeneration by remember`），
+    // 那是本次修复的病灶：`LaunchedEffect` 在组合重建后会**再跑一次首帧**，而 `remember` 跟着
+    // 组合归零 ⇒ 守卫形同不存在 ⇒ 每次从别的页/别的 Tab 回到画廊搜索都被按回第 1 张。
+    // 凭据搬进 `svm.appliedGeneration`（与它守卫的那个 `searchGeneration` 住同一层）。
     LaunchedEffect(svm.searchGeneration) {
         if (svm.searchGeneration == 0) return@LaunchedEffect
+        if (svm.appliedGeneration == svm.searchGeneration) return@LaunchedEffect
         if (!(svm.active && svm.filters.isNotEmpty())) return@LaunchedEffect
         gridState.scrollToItem(svm.consumeScrollRestore() ?: 0)
-        scrolledGeneration = svm.searchGeneration
+        svm.appliedGeneration = svm.searchGeneration
     }
 
     // 结果滚到离底几张以内就续下一页（搜索那面墙）。
@@ -726,7 +771,7 @@ fun GalleryScreen(
                 exhausted = svm.exhausted,
                 busy = svm.isSearching || svm.isLoadingMore,
                 failed = svm.loadMoreError != null,
-                settled = scrolledGeneration == svm.searchGeneration,
+                settled = svm.appliedGeneration == svm.searchGeneration,
                 lastIndex = info.totalItemsCount - 1,
                 visibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
             )

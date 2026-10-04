@@ -76,6 +76,20 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
      * ⚠️ 但搜索卡里那行「根据你的收藏」chips 改用**这一颗**（`GalleryScreen` 那侧）：
      * chips 与这一屏是同一次抽样，不同源就会出现"卡片上写着 A 串、点进去那面墙是 B 串"。
      */
+    /**
+     * 第几"轮"结果已经落过点（滚过位）。
+     *
+     * 原来这个凭据记在页面的 `remember` 里（`forYouScrolledGeneration`），于是它跟着组合一起死：
+     * 从别的页返回、或切主 Tab 再切回来，组合重建 → 凭据归零 → 那条「新一轮结果落地 → 滚回顶部」
+     * 的 effect 键没变但**会再跑一次**（`LaunchedEffect` 在重建后无条件执行首帧），
+     * 用户读到的就是"我明明在看第 40 张，回来直接在顶部"。
+     * 凭据必须和 `generation` 住同一层，否则"已经落过点"这件事在重建后无从得知。
+     *
+     * 它同时也是续页判据里的 `settled`（没落过点就不判到底，见 `GalleryLoadMoreState`）。
+     */
+    var appliedGeneration by mutableIntStateOf(0)
+        internal set
+
     var seed by mutableLongStateOf(System.currentTimeMillis())
         internal set
 

@@ -222,6 +222,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         internal set
 
     /**
+     * 第几轮搜索结果已经落过点（滚过位）—— 续页判据的 `settled` 读它。
+     *
+     * 与 [GalleryForYouViewModel.appliedGeneration] 同一条理由，必须住在这里而不是页面的
+     * `remember` 里：组合销毁重建后 `LaunchedEffect` 会再跑一次首帧，凭据若跟着组合归零，
+     * "这一轮已经落过点了"就无从得知，于是每次返回都把墙上的人按回第 1 张。
+     */
+    var appliedGeneration by mutableIntStateOf(0)
+
+    /**
      * 用户此刻在这面墙上看到第几张 —— 页面在滚动变化时写进来（[recordScroll]）。
      *
      * 只需要"当前这一轮"的那一个数：换轮时 [snapshot] 会把它抄进被压栈的那一份。

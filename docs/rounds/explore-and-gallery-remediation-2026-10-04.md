@@ -145,9 +145,70 @@ jm 的「本源分类」顶部应出现「總排行/月排行/周排行/日排�
 `UnifiedExploreScreen.kt` 两处、`ComicDetailScreen.kt:1792`、`GalleryInfoSheet.kt:966`。
 **已验证**：`:app:compileDebugKotlin` EXIT=0（唯一告警 `VeneraChip.kt:307` 的 elvis 是既有代码，不属本轮）。
 
+## 批 C：画廊搜索切走再切回不再回顶部（7）
+
+### C.1 读数：两条独立成因，都不在"没保存"上
+
+先把库的真相量掉，不靠记忆（`androidx.compose.foundation:foundation` 实测解析到 **1.12.0**，
+不是 catalog 里写的 `compose = 1.7.8` —— 被 material3 1.5.0-alpha22 顶上去的）：
+从 gradle 缓存的 sources jar 里逐行读 `LazyStaggeredGridState.kt:81-87`，
+
+```kotlin
+fun rememberLazyStaggeredGridState(...) : LazyStaggeredGridState =
+    rememberSaveable(saver = LazyStaggeredGridState.Saver) { ... }
+```
+
+⇒ **那面墙的位置本来就是 saveable 的**，切 Tab 的 `popUpTo{saveState=true}` + `restoreState=true`
+本该把它救回来。所以症状不是"没存"，而是"存了之后又被按回 0"，有两处会按：
+
+**成因一：「已回顶凭据」记在 `remember` 里。**
+`GalleryScreen.kt` 原先有两处 `var …ScrolledGeneration by remember { mutableIntStateOf(0) }`
+（`:753` 搜索墙、`:498` 猜你喜欢墙）。而 `LaunchedEffect` 在组合重建后会**无条件再跑一次首帧** ——
+凭据归零 ⇒ 守卫形同不存在 ⇒ 那条"新一轮结果落地 → `scrollToItem(0)`"每次都真跑一次。
+这正是仓里既有结论「光把状态搬进 ViewModel 还不够，effect 重建后会再跑」的**反向形态**：
+这次是守卫本身没搬进 VM，留在组合里。
+
+**成因二：猜你喜欢那面墙根本没有"离开时看到第几张"的记录。**
+搜索墙有（`svm.recordScroll`），主墙一条都没有，而它唯一的落点动作就是无条件回 0。
+
+### C.2 拍板
+
+1. 凭据搬进各自 VM：`GallerySearchViewModel.appliedGeneration`、`GalleryForYouViewModel.appliedGeneration`
+   —— 与它守卫的那个 `generation` **住同一层**，否则重建后"这一轮已经落过点"这件事无从得知。
+   续页判据里那两处 `settled` 一并改读 VM（同一个凭据，不留两份真相）。
+2. 主墙的落点记在 **`rememberSaveable`**，不记在 VM：切 Tab 是被 **pop**，
+   `NavBackStackEntry` 类头明写 "ViewModels will be cleared"，`saveState` 只救 saveable 那一族。
+3. 落点必须**绑内容**，所以存的是 `(锚 = 当时墙上第一张的 id, 序号)` 二元组，判据抽成纯函数
+   `gallery/domain/GalleryWallDepth.kt`。理由：换一批之后第 40 个序号指的是另一块内容，
+   把人送去那儿既不是"回到原处"，还会让续页判据当场以为到底了。
+4. 内容未落地时不落点（`currentAnchorId == null` 一律返回 null），并把 effect 的键补上
+   `fvm.posts.size` —— 空墙上滚一次会被 Lazy 的夹取按成 0，而凭据一旦写上就不会重来。
+5. 序号 0 与"没有落点要求"是两件事，判据返回值区分（`Int?`），测试钉住。
+
+### C.3 明确不做（要做得用户点一句）
+
+**切 Tab 时搜索那一屏整片消失**，本批没治。判据：`GallerySearchViewModel.active` 只能由用户动作置真
+（`:484/:660/:727`），VM 被 pop 清空后没有任何恢复路径；条目作用域 VM 救不了切 Tab 是既有结论，
+真要留只有**落盘**一条路（与日榜 `GalleryFeedCache`、猜你喜欢 `GalleryForYouCache` 同源）。
+代价是把"搜索条件 + 已取回的结果 + 上下文栈"整体序列化，那是独立一批的活，且用户报的是位置不是内容，
+所以先不扩。若真机上切回来发现搜索内容也没了，就是这条，说一声我按落盘做。
+
+### C.4 已改 / 已验证
+
+已改：`gallery/domain/GalleryWallDepth.kt`（新）、`GallerySearchViewModel.kt`、`GalleryForYouViewModel.kt`、
+`GalleryScreen.kt`（两处凭据改读 VM + 主墙新增 recorder/落点 effect + 一个 `saveable` 二元组 + 两个 import）。
+
+已验证：`:app:testDebugUnitTest --tests "...GalleryWallDepthTest"` EXIT=0（5 颗全绿），
+`compileDebugKotlin` 执行并通过。
+
+**未验（要真机）**：本环境按既定分工不代操作设备。要看的两条是
+①画廊搜索滑到第 40 张 → 切首页 → 切回画廊，仍在那一屏附近；②点「换一批」之后**应该**回顶部
+（这条必须还成立，否则是过度修复）。另外如果 ①切回来看到的是猜你喜欢而不是搜索结果，
+那说明命中的是 C.3 那条未做的缺口。
+
 ---
 
-## 批 C–H：待逐批回写
+## 批 D–H：待逐批回写
 
 B/C/D/E/F/G/H 的现状读数已由代码勘察钉住（文件行号在各批文档段落里补），
 每批落地后回写「已改 / 已验证 / 未做」。
