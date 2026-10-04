@@ -1002,6 +1002,9 @@ private fun GalleryTagChip(
         VeneraChip(
             text = text,
             variant = VeneraChipVariant.Tag,
+            // 诊断包专用：报"这一支的盒子被命中了没有"，与下面 onClick/onLongClick 的 `到达`
+            // 对照才是二分 —— 只到盒子 = 事件进了盒子没成点击；两条都没有 = 命中没走到这一支。
+            modifier = GallerySheetProbe.tapWitness("标签「$tag」"),
             // 站方标签原文最长能到五六十字符（`red_rose_(flower)` 这类带括号的），单行省略后
             // 用户既读不到全词、也复制不到全词。标签墙在面板内自己滚，多一行不抢别的高度。
             textMaxLines = 2,
