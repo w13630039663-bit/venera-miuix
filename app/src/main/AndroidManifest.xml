@@ -8,6 +8,12 @@
     <!-- Android 13+ 下载进度通知运行时权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--
+        应用内更新：把下载好的 APK 交给系统安装器需要它（signature|appop 级，
+        装不装成还要用户在系统那一页授权，见 ApkInstallLauncher.NeedsUnknownSources）。
+        这里只是"有权问"，本应用不默认持有：只在用户点过一次「更新」之后才可能唤起安装页。
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!--
         把漫画库放进用户自选的公共目录（含外置卡）需要它：分区存储下 java.io.File
         写不了公共目录，而下载/续下/扫描/CBZ 整条链都是 File 语义。
         应用不默认持有该权限，只在用户选完目录、探针实测写不进时才引导去系统页开。

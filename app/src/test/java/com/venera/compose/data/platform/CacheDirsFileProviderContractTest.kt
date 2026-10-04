@@ -36,11 +36,30 @@ class CacheDirsFileProviderContractTest {
         }.toSet()
 
     @Test
-    fun `三个分享落点都在 FileProvider 白名单里`() {
+    fun `四个外部读取落点都在 FileProvider 白名单里`() {
         val configured = configuredDirs()
         assertTrue("shared_images 没配 → 阅读器与画廊分享当场失败", CacheDirs.SHARED_IMAGES in configured)
         assertTrue("exports 没配 → CBZ 导出分享静默失败（G-2 的一条）", CacheDirs.EXPORTS in configured)
         assertTrue("backups 没配 → 备份导出分享静默失败（G-2 的另一条）", CacheDirs.BACKUPS in configured)
+        assertTrue(
+            "app_update 没配 → 更新包下完了点安装没反应（同一条洞，读方是系统安装器）",
+            CacheDirs.APP_UPDATE in configured,
+        )
+    }
+
+    @Test
+    fun `常量清单与本表逐字对账，不多一枚也不少一枚`() {
+        // 三条 assert 的形状有个漏口：将来加第五枚常量却忘了登记在这里，第一那条照样绿。
+        // 改成集合相等，多一枚少一枚都红（照本仓白名单纪律）。
+        assertEquals(
+            setOf(
+                CacheDirs.SHARED_IMAGES,
+                CacheDirs.EXPORTS,
+                CacheDirs.BACKUPS,
+                CacheDirs.APP_UPDATE,
+            ),
+            configuredDirs(),
+        )
     }
 
     @Test
@@ -49,11 +68,17 @@ class CacheDirsFileProviderContractTest {
         assertEquals("shared_images", CacheDirs.SHARED_IMAGES)
         assertEquals("exports", CacheDirs.EXPORTS)
         assertEquals("backups", CacheDirs.BACKUPS)
+        assertEquals("app_update", CacheDirs.APP_UPDATE)
     }
 
     @Test
-    fun `代码侧不许再手写这三个目录名`() {
-        val names = setOf(CacheDirs.SHARED_IMAGES, CacheDirs.EXPORTS, CacheDirs.BACKUPS)
+    fun `代码侧不许再手写这几个目录名`() {
+        val names = setOf(
+            CacheDirs.SHARED_IMAGES,
+            CacheDirs.EXPORTS,
+            CacheDirs.BACKUPS,
+            CacheDirs.APP_UPDATE,
+        )
         val self = "com/venera/compose/data/platform/CacheDirs.kt"
         val hits = RepoSources.allMainLines().filter { (rel, _, line) ->
             rel != self && names.any { line.contains("\"$it\"") }

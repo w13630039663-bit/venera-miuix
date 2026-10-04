@@ -2,19 +2,23 @@
 <!--
     经 FileProvider 暴露给外部应用读取的目录。
 
-    ⚠️ 这三行**每一条都对应一个真实的分享落点**，漏一条就有一处分享永远失败：
+    ⚠️ 这四行**每一条都对应一个真实的外部读取落点**，漏一条就有一处永远失败：
     - shared_images：阅读器分享单页、画廊分享原图/原片；
     - exports：本地漫画导出 CBZ 后分享（LocalComicScreen）；
-    - backups：备份导出后分享（SyncBackupScreen）。
+    - backups：备份导出后分享（SyncBackupScreen）；
+    - app_update：应用内更新下载到的 APK，交给**系统安装器**读（data/update/ApkInstallLauncher）。
 
-    后两条是 2026-09-26 补的：那两处 `getUriForFile` 落点不在这张表里，
+    前三条是 2026-09-26 补的：那两处 `getUriForFile` 落点不在这张表里，
     FileProvider 当场抛 IllegalArgumentException，而调用点 `catch (_: Exception) {}`
     把它整个吞掉 —— 表现为"导出成功"的 Toast 弹了、分享面板却从没出现过
     （即 official-gap-analysis-round2.md 的 G-2）。
     补表是修法；把吞异常的 catch 也改成报一句话，否则下一条同类问题还是会静默。
+    第四条是 2026-10-04 随应用内自更新加的，同一条洞、同一个修法，
+    由 `CacheDirsFileProviderContractTest` 把四行与 `CacheDirs` 的四个常量逐字对账。
 -->
 <paths>
     <cache-path name="shared_images" path="shared_images/" />
     <cache-path name="exports" path="exports/" />
     <cache-path name="backups" path="backups/" />
+    <cache-path name="app_update" path="app_update/" />
 </paths>

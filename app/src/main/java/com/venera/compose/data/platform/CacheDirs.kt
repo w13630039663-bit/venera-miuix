@@ -5,7 +5,7 @@ import java.io.File
 /**
  * `cacheDir` 下那几个**要经 `FileProvider` 暴露给外部应用**的目录名 —— 单一出处。
  *
- * 为什么这三枚名字必须集中，而且必须与 `res/xml/file_paths.xml` 成对：
+ * 为什么这几枚名字必须集中，而且必须与 `res/xml/file_paths.xml` 成对：
  * `FileProvider` 只认那张 XML 表里配过的根。代码把文件写进一个表里没有的目录，
  * 写入侧**完全成功**（`File.outputStream()` 不知道有 FileProvider 这回事），
  * 到 `getUriForFile()` 才抛 `IllegalArgumentException: Failed to find configured root`。
@@ -16,8 +16,8 @@ import java.io.File
  *   即 `file_paths.xml` 顶部记的 G-2：「导出成功」的 Toast 弹了、分享面板从没出现过。
  *
  * 所以：名字在这里，XML 那一行由
- * `data/platform/CacheDirsFileProviderContractTest` 读 XML 逐字对账（三条全覆盖，
- * 少对一条就是重演 G-2 的另外两行）。
+ * `data/platform/CacheDirsFileProviderContractTest` 读 XML 逐字对账（四枚常量与表里的 cache-path
+ * 集合相等，多一枚少一枚都红 —— 少对一条就是重演 G-2）。
  *
  * 落点选 `data/platform/` 而不是别处：
  * - 不放 `download/ComicStorageRoot` —— 画廊侧已经欠它一条 `GallerySaver.kt:11`，不再加一条；
@@ -36,6 +36,16 @@ object CacheDirs {
 
     /** 备份导出后分享（`sync/SyncBackupScreen` 走 `BackupManager`）。 */
     const val BACKUPS = "backups"
+
+    /**
+     * 应用内更新的 APK 落点（`data/update/ApkDownloader` 写、`ApkInstallLauncher` 交给安装器）。
+     *
+     * 这四个名字里只有它不是"分享给别人"，而是"分享给**系统安装器**"——
+     * 而洞的形状一模一样：目录不在这张 XML 表里，写入照样成功，
+     * `getUriForFile` 才抛 `IllegalArgumentException`，表现是"下载完了点安装没反应"。
+     * 所以它同样归本文件管，同样由 `CacheDirsFileProviderContractTest` 与 XML 逐字对账。
+     */
+    const val APP_UPDATE = "app_update"
 
     /** 取（并按需创建）`cacheDir` 下的那个分享目录。传 `context.cacheDir` 与本页要用的名字。 */
     fun inCache(cacheRoot: File, name: String): File = File(cacheRoot, name).apply { if (!exists()) mkdirs() }
