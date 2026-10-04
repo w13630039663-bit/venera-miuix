@@ -2844,3 +2844,21 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 **验证**：`:app:testDebugUnitTest --tests "com.venera.compose.source.explore.*"` EXIT=0，
 新 11 颗 + 原有 5+4 颗全绿（含 `SourceExplorationRankingTest` 未被碰坏）。
 真机视觉验证交用户 —— 本环境按既定约束不代操作设备。
+
+### 批 B：共享组件 `VeneraChip` 契约扩张（加性）+ `UnifiedExploreScreen.kt` 两行
+
+按本文件既有约定（组件契约变更必须在这里看得见，见「2026-09-25 追加七」那条），此处记一条：
+
+- `components/venera/VeneraChip.kt`：**加性**参数 `textMaxLines: Int = 1`，主 Text 由写死的 `maxLines = 1`
+  改用它；`VeneraTagChip` 转发同名参数。**默认值就是原行为**，所以 12+ 个既有调用点源码与观感都不变 ——
+  刻意不改默认值的原因写在 `docs/rounds/explore-and-gallery-remediation-2026-10-04.md` 批 B：
+  整张卡的高度由标签区驱动（`project-card-size-drivers`），默认放 2 会让每一面墙的卡片集体长高。
+- 逐点名放 2 行的只有四处「标签即内容」的地方：探索页分类/榜入口、探索页跨源快捷筛选、
+  漫画详情页 `DetailTagChip`、画廊信息卡标签墙 `GalleryTagChip`。
+  卡片里的只读标签（`ComicListPresentation:174` / `FavoritesScreen:1006` / `SearchScreen:1329`）**留 1 行**；
+  画廊搜索的顶栏内联胶囊（每行都在抢卡片高度）也**留 1 行**。
+- `UnifiedExploreScreen.kt`（FROZEN）：本批只加了 `textMaxLines = 2` 两个参数位，FlowRow/点击语义未动。
+- `ComicDetailScreen.kt` / `GalleryInfoSheet.kt`：不在 8 颗 FROZEN 清单内。
+
+**验证**：`:app:compileDebugKotlin` EXIT=0。唯一告警 `VeneraChip.kt:307` 的 elvis 属既有代码。
+真机读数交用户（长 tag 应折到第二行读完，卡片高度不因此变化）。

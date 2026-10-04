@@ -752,6 +752,9 @@ private fun NativeSectionBlock(
                 VeneraChip(
                     text = entry.label,
                     selected = entry == selectedEntry,
+                    // 分类区的入口就是内容本身，读不全等于没有。卡片里那些标签仍留 1 行
+                    // （整卡高度由标签区驱动），所以这是逐点开的名词，不是组件改默认值。
+                    textMaxLines = 2,
                     onClick = { onEntryClick(entry) },
                 )
             }
@@ -785,6 +788,7 @@ private fun UnifiedTagBlock(
                 VeneraTagChip(
                     text = tag.label,
                     selected = tag == selectedTag,
+                    textMaxLines = 2,
                     onClick = { onTagClick(tag) },
                 )
             }

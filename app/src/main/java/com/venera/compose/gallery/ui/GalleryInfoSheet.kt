@@ -966,6 +966,9 @@ private fun GalleryTagChip(
         VeneraChip(
             text = text,
             variant = VeneraChipVariant.Tag,
+            // 站方标签原文最长能到五六十字符（`red_rose_(flower)` 这类带括号的），单行省略后
+            // 用户既读不到全词、也复制不到全词。标签墙在面板内自己滚，多一行不抢别的高度。
+            textMaxLines = 2,
             onClick = onClick,
             // 条件与下面那块菜单**各写一次**，不用一个布尔变量接着：
             // 那样 Kotlin 认不出 `onCopy` 已经不是 null，只能写成 `?.invoke()` 反而更绕。

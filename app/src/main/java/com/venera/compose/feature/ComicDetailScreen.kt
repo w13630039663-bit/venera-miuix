@@ -1791,6 +1791,9 @@ private fun DetailTagChip(
     Box {
         VeneraTagChip(
             text = label,
+            // 详情页的标签是**内容**，读不到末了就无从下手（漫画标签动辄七八十个字符）。
+            // 列表卡里那几枚仍留 1 行 —— 那里整卡高度由标签区驱动。
+            textMaxLines = 2,
             onClick = if (searchable) onClick else null,
             onLongClick = {
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)

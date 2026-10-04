@@ -111,6 +111,15 @@ fun VeneraChip(
     variant: VeneraChipVariant = VeneraChipVariant.Assist,
     containerColorOverride: Color? = null,
     contentColorOverride: Color? = null,
+    /**
+     * 主文字的行数上限，默认 1 行 + 省略 —— 这是 Chip 的常态，**卡片里的标签必须留在这档**：
+     * 整张卡的高度是由信息列与标签区驱动的，不是封面（`ComicTileLayout` 那处已烧过三轮往返），
+     * 一枚 chip 多一行，一屏几十张卡就集体长高。
+     *
+     * 只有在**标签本身就是内容**的地方才值得放到 2（详情页标签、探索页分类/榜、画廊信息卡的标签墙、
+     * 搜索页标签选择器）—— 那里的失败模式是"读不到完整的词"，而卡片那里的失败模式是"卡变胖"。
+     */
+    textMaxLines: Int = 1,
 ) {
     val tokens = VeneraTokens
 
@@ -266,7 +275,7 @@ fun VeneraChip(
                 text = text,
                 fontSize = tokens.type.caption,
                 color = contentColor,
-                maxLines = 1,
+                maxLines = textMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
             if (trailingIcon != null) {

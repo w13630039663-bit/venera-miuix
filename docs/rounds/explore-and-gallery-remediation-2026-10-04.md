@@ -110,9 +110,44 @@ jm 的「本源分类」顶部应出现「總排行/月排行/周排行/日排�
 **冻结豁免**：`UnifiedExploreScreen.kt` 在 FROZEN 名单第一行，本轮动它的理由与"没动的东西"清单
 记在 `FREEZE-STATEMENT.md` 的「2026-10-04 追加：九项整改对冻结域的触碰」。
 
+## 批 B：tag 太长会被截断（4）
+
+### B.1 实测读数
+
+全仓只有一处渲染 tag 文本：`components/venera/VeneraChip.kt:265-271`，写死 `maxLines = 1` +
+`TextOverflow.Ellipsis`（`VeneraTagChip` 只是转发它并固定 `variant = Tag`）。
+`VeneraChip` 里没有 `widthIn`、也没有固定 `Modifier.width` —— 所以**截断不是宽度被写死**，
+而是"一行放不下就省略"，长词在 FlowRow 里最多只能占满一行。
+
+### B.2 拍板：不给组件改默认值，而是开一个逐点名的参数
+
+`textMaxLines: Int = 1` 加在 `VeneraChip` / `VeneraTagChip` 上，默认 1 = **现有 12+ 个调用点一字不变**。
+
+为什么不直接把默认改成 2：卡片高度不是封面决定的，而是**信息列最小高度 + 标签区**决定的
+（`project-card-size-drivers` 那条既有结论：`tags.take(10)` + `FlowRow maxLines=3`，一枚 chip ≈32dp，
+三行就 ≈116dp；曾经因为"卡片太大"来回改过 110→140→122→92 四轮）。
+默认改 2 会让**每一面墙**的每张卡集体长高，而那不是用户报的问题。
+
+于是失败模式分成两种，各配一档：
+
+| 场景 | 档 | 为什么 |
+|---|---|---|
+| 列表卡里的只读标签（`ComicListPresentation.kt:174`、`FavoritesScreen.kt:1006`、`SearchScreen.kt:1329`） | 留 1 行 | 标签区就是整卡高度的驱动项 |
+| 探索页分类/榜入口（`NativeSectionBlock`） | 2 | 入口即内容，读不到末了等于没有 |
+| 探索页跨源快捷筛选（`UnifiedTagBlock`） | 2 | 同上 |
+| 漫画详情页标签（`DetailTagChip`） | 2 | 页内自滚，不抢别的高度；漫画标签动辄七八十字符 |
+| 画廊信息卡标签墙（`GalleryTagChip`） | 2 | 站方原文最长的一档（`red_rose_(flower)` 这种带括号的），且读不全也复制不全 |
+| 画廊搜索已选条件 + 顶栏内联候选（`FilterChipItem` 等） | **留 1 行** | 那一屏每行都在抢卡片高度（玻璃顶栏三条硬约束），而且胶囊行是横滑的 |
+
+超过 2 行仍省略：一枚 300 字的标签不该把 FlowRow 撑成一面墙，这是刻意的上界不是遗漏。
+
+**已改**：`VeneraChip.kt`（参数 + 主 Text 用它）、`VeneraTagChip.kt`（转发 + KDoc）、
+`UnifiedExploreScreen.kt` 两处、`ComicDetailScreen.kt:1792`、`GalleryInfoSheet.kt:966`。
+**已验证**：`:app:compileDebugKotlin` EXIT=0（唯一告警 `VeneraChip.kt:307` 的 elvis 是既有代码，不属本轮）。
+
 ---
 
-## 批 B–H：待逐批回写
+## 批 C–H：待逐批回写
 
 B/C/D/E/F/G/H 的现状读数已由代码勘察钉住（文件行号在各批文档段落里补），
 每批落地后回写「已改 / 已验证 / 未做」。
