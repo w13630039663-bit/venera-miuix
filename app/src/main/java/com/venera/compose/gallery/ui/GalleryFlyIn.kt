@@ -7,6 +7,7 @@ import android.graphics.Rect as AndroidRect
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import android.view.View
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.venera.compose.components.ChromeCaptureSuppress
 
 /**
  * 起点那一帧的读数档位。**四档不同脸**，因为调用方要按档位决定退不退路：
@@ -102,6 +104,19 @@ object GalleryFlyIn {
      * 立刻把 [stage] 置 [WAITING]（同帧），像素回来后再置 [READY] 或 [FAILED]：
      * 对面那一头等的就是这一次翻转，所以这里**任何一条出口都必须离开 WAITING**，
      * 否则那一页会白等到超时才动。
+     *
+     * ## 这一块被我们自己的 chrome 压住时，先让 chrome 让位两帧
+     *
+     * PixelCopy 读的是**窗口已经合成好的表面**，它分不出"这一块的像素属于卡片，还是属于压在
+     * 上面的底栏"。2026-10-04 的真机图证：一张下沿被底栏压住的卡，飞行体里横着一条底栏
+     * （「首页」「收藏」两枚与那层玻璃都跟着进去了），而落点是纯图 —— 交棒那一刻那条带消失，
+     * 就是用户读到的"录制/闪"。
+     *
+     * 所以被压住时先把 chrome 收成透明（[ChromeCaptureSuppress]），等两帧让它真的画出那一帧，
+     * 再读表面。两条约束：
+     * - **只在真被压住时才收** —— 判据是各块 chrome 自己报上来的矩形，否则每次点卡都闪一下；
+     * - **复位有两条路** —— PixelCopy 的监听器（正常那一条）与一颗闹钟（异常那一条）。
+     *   "底栏永久不见了"比"那条带还在"糟得多，所以宁可多复位一次。
      */
     fun capture(view: View, coverBounds: Rect) {
         val width = coverBounds.width.toInt()
@@ -124,18 +139,43 @@ object GalleryFlyIn {
             coverBounds.bottom.toInt(),
         )
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        // 回调线程要给主线程：payload 是快照状态，从别的线程写会让读侧不自洽。
-        PixelCopy.request(window, source, bitmap, { result ->
-            if (result == PixelCopy.SUCCESS) {
-                payload = bitmap.asImageBitmap()
-                stage = GalleryFlyInStage.READY
-            } else {
-                // 这几种是站得住的失败：超出窗口边界（卡片只露半截）、窗口还没 surface、超时。
-                // 都不飞，退路照常 —— 但屏上看不出成因，所以只有这里说得出是哪一种。
-                Log.w(TAG, "PixelCopy 没给像素 result=$result bounds=$coverBounds")
-                fail()
+        val main = Handler(Looper.getMainLooper())
+        val obstructed = ChromeCaptureSuppress.obstructs(coverBounds)
+        var requested = false
+        // 这两颗是 `Runnable` 而不是 lambda：它们要交给 Handler 与 Choreographer，
+        // 而 Kotlin 的 lambda 只在**字面量**位置才自动转 SAM，存成变量再传就只剩类型不匹配。
+        val restore = Runnable { if (obstructed) ChromeCaptureSuppress.suppressed = false }
+        val request = Runnable {
+            if (!requested) {
+                requested = true
+                // 回调线程要给主线程：payload 是快照状态，从别的线程写会让读侧不自洽。
+                PixelCopy.request(window, source, bitmap, { result ->
+                    restore.run()
+                    if (result == PixelCopy.SUCCESS) {
+                        payload = bitmap.asImageBitmap()
+                        stage = GalleryFlyInStage.READY
+                    } else {
+                        // 这几种是站得住的失败：超出窗口边界（卡片只露半截）、窗口还没 surface、超时。
+                        // 都不飞，退路照常 —— 但屏上看不出成因，所以只有这里说得出是哪一种。
+                        Log.w(TAG, "PixelCopy 没给像素 result=$result bounds=$coverBounds")
+                        fail()
+                    }
+                }, main)
             }
-        }, Handler(Looper.getMainLooper()))
+        }
+        if (obstructed) {
+            ChromeCaptureSuppress.suppressed = true
+            // 两帧：alpha 的写入要进**下一次绘制**才生效，而 `postFrameCallback` 排在 traversal
+            // 之前 —— 第一个回调时那一帧还没画，第二个回调时能读到的最新表面才是已收掉 chrome 的那帧。
+            Choreographer.getInstance().postFrameCallback {
+                Choreographer.getInstance().postFrameCallback { request.run() }
+            }
+            // 拿不到 vsync（屏幕熄了、整个 App 被切到后台）也不能把对面白留在 WAITING。
+            main.postDelayed(request, FRAME_WAIT_BUDGET_MS)
+            main.postDelayed(restore, CHROME_SUPPRESS_BUDGET_MS)
+        } else {
+            request.run()
+        }
     }
 
     /** 大图那一档到位就交还，别把这张位图一直攥在手里。 */
@@ -228,3 +268,17 @@ object GalleryFlyIn {
 }
 
 private const val TAG = "GalleryFlyIn"
+
+/**
+ * 等"chrome 已经画没了"那一帧的预算。两帧在 60Hz 是 33ms，给到 120ms 是留给掉帧的 ——
+ * 它不是观感参数，是**兜底闹钟**：正常情况下第一个 vsync 回调就到，用不到它。
+ */
+private const val FRAME_WAIT_BUDGET_MS = 120L
+
+/**
+ * chrome 让位的最长时间。到点无条件恢复。
+ *
+ * 判据是方向性的：这条超时如果太短，症状是"那条带又出现在飞行体里"（回到本轮之前的样子）；
+ * 太长或漏掉，症状是"底栏不见了"—— 后者严重得多，所以宁可留长。
+ */
+private const val CHROME_SUPPRESS_BUDGET_MS = 800L

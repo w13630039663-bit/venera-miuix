@@ -25,7 +25,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.CHROME_BAND_TOP_BAR
+import com.venera.compose.components.ChromeCaptureSuppress
 import com.venera.compose.components.drawVeneraAmbient
+import com.venera.compose.components.reportChromeBand
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -115,6 +118,14 @@ fun VeneraTopAppBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // ── 起点截帧时让位（2026-10-04，与壳层底栏同一枚开关，成因写在那一处）──
+            // 顶栏是玻璃覆盖层，滚到上面那几行的卡会被它压住；PixelCopy 读的是已合成表面，
+            // 于是那一条玻璃会被截进飞行体。只走 alpha：顶栏的折叠状态与滚动锚点都不参与。
+            .graphicsLayer {
+                alpha = if (ChromeCaptureSuppress.suppressed) 0f else 1f
+            }
+            // 它自己占的那一块由它自己报 —— 这里不存"顶栏有多高"的第二份真相。
+            .reportChromeBand(CHROME_BAND_TOP_BAR)
             // 双击回顶部（只在调用方给了 onDoubleTap 时挂）。
             //
             // ⚠️ 用 `pointerInput` 而不是 `combinedClickable`：后者会给整条顶栏加上按压涟漪与
