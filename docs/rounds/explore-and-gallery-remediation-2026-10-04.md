@@ -308,9 +308,60 @@ yande.re / Gelbooru 两站的 `tags` 就是那串平铺标签（**没有** `tag_
 和停在**图片**上按，两次是否一次灵一次不灵 —— 若是，A 就是主因（本轮已修，修完两处位置一致）；
 若是**双指放大过一下**再按才失灵，那是 B，需要用户点头才动那条判据。
 
+## 批 G：鬼畜 = 滚动中图片反复重建（3）
+
+用户确认的复现类型是**滚动中图片反复重建**。只读勘察按证据强度排了八条，
+我复核后修的是**自激环那两条**，其余按事实记账。
+
+### G.1 已修：每张可见卡每帧被重组一次
+
+`GalleryScreen.kt:1620`（画廊卡封面那处 `onGloballyPositioned`）原来是无条件 `coverBounds = rect`。
+两个事实叠起来就是风暴：
+
+1. `coverBounds` 是 `remember { mutableStateOf(Rect.Zero) }`（`:1574`），
+   `mutableStateOf` 默认按**引用**比较；
+2. `it.boundsInWindow()` 每次返回一个**新的** `Rect` 实例，
+   而 Lazy 项在窗口坐标系里的位置**每帧都在变** ⇒ 这个回调每帧都来一次。
+
+于是滚动过程中每张可见卡每帧失效重组一次。改成 `if (rect != coverBounds) coverBounds = rect`
+（`Rect` 的 equals 是结构相等）之后，只有几何真的变了才写。
+
+同处顺带修的第二条来自 pixez 那轮踩过的坑（它的 fix 提交 `45d3a6ca` 把它写进了注释）：
+`GalleryFlyIn.noteCardBounds` 原先照单覆盖，而 **Lazy 回收一个项之前的最后一次布局回调给的是 `0×0`** ——
+那是组合噪声不是"这张卡没了"。照存的话，返回程查到的落点是空矩形。
+改成**零尺寸只忽略、不注销**；项真没了仍由 `forgetCardBounds`（两处 `DisposableEffect.onDispose`：
+`GalleryScreen.kt:1578`、`GalleryHomeSections.kt:192`）负责。
+
+### G.2 已修（一支）：`chunked` 没 remember
+
+`ComicDetailScreen.kt:208-211` 早就写着正确范式 ——「chunked 每次都会新建两层 List，
+不 remember 就是每次重组换引用，把这一块的强跳过打掉」—— 而四处调用点全没遵守
+（`SearchScreen.kt:1112/1128`、`UnifiedExploreScreen.kt:515/521/533/539`、
+`NetworkFavoritesScreen.kt:331/346`、`LocalComicScreen.kt:252`）。
+
+本轮只把探索页 **`ComicList` 那一支**提出去（`comicRows = remember(content, columns) { … }`），
+因为它是随机/最新/各档排行实际走的那一支。`Sections`（singlePageWithMultiPart）那两支
+要先按 part 预排一张行表才能离开 LazyListScope，动的是循环结构，**记为同一条修法的下一批**。
+`SearchScreen` / `NetworkFavoritesScreen` / `LocalComicScreen` 三处同理未动（前两颗在冻结名单里，
+且改动要逐页真机对照，不宜和这一批混在一起）。
+
+### G.3 勘察提出、我复核后**降级或不修**的几条
+
+| 条目 | 勘察的判断 | 我的复核 |
+|---|---|---|
+| 行 key 同时含 `rowIndex` 与行首 id，列数一变就换 key | 最强成因 | **降级**：列数真的变了行本来就要重组，去掉 `rowIndex` 收益很小；而只留行首 id 会在 id 为空时撞 key（Lazy 直接抛 "Key was already used"）—— 那个 `?: ""` 兜底正是当前写法带着 rowIndex 的理由 |
+| 全仓没有一处传 `contentType` | 强 | **不修（记账）**：不同形态的槽位互相复用确实会整块拆建，但 `contentType` 必须按形态给稳定分组名，几十个 `item`/`items` 调用点逐个判"这属于哪一类"是另一批活，且错了会直接崩；本轮不动 |
+| 打码判定每卡每重组都跑 | 事实 | **不是"闪"的成因**：`ContentGuardManager` 有 LRU（`CACHE_LIMIT=2000`），同一部漫画的判定是确定的，不会来回变；开销是 CPU + 一次全局锁，属性能账不属本条 |
+| 画廊动图重解码 | — | **排除**：`GalleryAnimationGate.kt:39-41` 默认给 null（墙上恒静帧），而漫画侧那把 loader（`VeneraApp.kt:81-89`）**根本没注册** `AnimatedImageDecoder` |
+| `FavoritesScreen.kt:796-803` 列表在 composition 里现算 `filter` | 事实 | **记账**：只在 NSFW=隐藏 那一档触发，且该文件在冻结名单里；一行 `remember` 能修，留与 G.2 同一批一起做 |
+
+**已验证**：`:app:testDebugUnitTest` 全量 109 类 **834 颗 0 失败 0 错误**，`compileDebugKotlin` 通过。
+**必须说的限制**：这一批是**代码级自激环**的修复，"滚动观感是否不再鬼畜"只有真机能定，
+而本环境不代操作设备。若修完仍闪，下一个要读的是 `contentType` 那条（G.3 第二行）。
+
 ---
 
-## 批 E、G、H：待逐批回写
+## 批 E、H：待逐批回写
 
 B/C/D/E/F/G/H 的现状读数已由代码勘察钉住（文件行号在各批文档段落里补），
 每批落地后回写「已改 / 已验证 / 未做」。

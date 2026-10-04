@@ -305,6 +305,18 @@ fun UnifiedExploreScreen(
         val (listWidth, listWidthModifier) =
             rememberContentWidth(VeneraTokens.spacing.rowHorizontal * 2)
         val columns = comicListColumnCount(displayMode.value, listWidth)
+        /*
+         * 列表内容预先分行。`chunked` 每跑一次就新建两层 List，不 remember 就是每次重组换引用，
+         * 把这一块的强跳过打掉 —— 同一条既有结论与写法见 `ComicDetailScreen.kt:208-211`。
+         *
+         * ⚠️ 本轮只覆盖 `ComicList` 那一支（随机 / 最新 / 各档排行走的就是它）。
+         * `Sections` 那两支（singlePageWithMultiPart）仍是就地 chunked：那里要先按 part 预排一张
+         * 行表才能提出 LazyColumn 作用域，动的是循环结构而不是加一行 remember，
+         * 留作同一条修法的下一批，记账在方案文档里。
+         */
+        val comicRows = remember(content, columns) {
+            (content as? ExploreContent.ComicList)?.comics?.chunked(columns).orEmpty()
+        }
 
         LazyColumn(
             // 挂载折叠与录制行为：下滑时大标题收起、真实高斯模糊背板淡入
@@ -527,16 +539,17 @@ fun UnifiedExploreScreen(
                     }
                 }
                 content is ExploreContent.ComicList -> {
-                    val listContent = content as ExploreContent.ComicList
-                    val flatComics: List<Comic> = listContent.comics
+                    // 行表在外面 remember 好了（comicRows），这里只读不算；
+                    // 扁平行 `crow` 的 key 不带 rowIndex 之外的身份，分页追加只会往尾部加行、
+                    // 不会让已有行换 key。
                     if (isDetailed) {
-                        flatComics.chunked(columns).forEachIndexed { rowIndex, row ->
+                        comicRows.forEachIndexed { rowIndex, row ->
                             item(key = "crowd-$rowIndex-${row.firstOrNull()?.id}") {
                                 ExploreDetailedRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
                             }
                         }
                     } else {
-                        flatComics.chunked(columns).forEachIndexed { rowIndex, row ->
+                        comicRows.forEachIndexed { rowIndex, row ->
                             item(key = "crow-$rowIndex-${row.firstOrNull()?.id}") {
                                 ExploreCardRow(row, columns, src.sourceName, guardManager, nsfwMaskMode, onSelectComic)
                             }

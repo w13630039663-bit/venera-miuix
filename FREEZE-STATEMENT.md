@@ -2862,3 +2862,20 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 **验证**：`:app:compileDebugKotlin` EXIT=0。唯一告警 `VeneraChip.kt:307` 的 elvis 属既有代码。
 真机读数交用户（长 tag 应折到第二行读完，卡片高度不因此变化）。
+
+### 批 G：`UnifiedExploreScreen.kt`（同一轮内第二次触碰，FROZEN）
+
+用户第 3 条「鬼畜现象」（确认类型：滚动中图片反复重建）。本轮真正修的自激环在
+`GalleryScreen.kt:1620` 与 `GalleryFlyIn.noteCardBounds`，**都不在冻结名单里**。
+冻结文件只动了一处、且是加一行 `remember`：
+
+- 把探索页 `ComicList` 那一支的 `flatComics.chunked(columns)` 提到 LazyColumn 外面
+  （`comicRows = remember(content, columns) { … }`）。依据是本文件自己已确立的写法
+  `ComicDetailScreen.kt:208-211`「chunked 每次都会新建两层 List，不 remember 就是把强跳过打掉」。
+- **没动**：行 key 的构成（勘察提出"rowIndex 让列数变化时换 key"，复核后降级 —— 见方案文档 G.3，
+  去掉 rowIndex 会在 id 为空时撞 key，Lazy 直接抛 `Key was already used`）；
+  `Sections` 那两支（要动循环结构）；`SearchScreen.kt` / `NetworkFavoritesScreen.kt` 里同类的四处
+  （两颗都在冻结名单，且需逐页真机对照，不与本批混做）；`contentType` 一条整体记账未做。
+
+验证：`:app:testDebugUnitTest` 全量 834 颗 0 失败 0 错误。**观感是否真的不闪只有真机能定**，
+本环境不代操作设备。

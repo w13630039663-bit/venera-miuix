@@ -162,8 +162,16 @@ object GalleryFlyIn {
      */
     private val cardBounds = HashMap<String, Rect>()
 
-    /** 一级的卡片在布局时回写（`onGloballyPositioned` 每帧一次，同一 uid 覆盖）。 */
+    /**
+     * 一级的卡片在布局时回写（`onGloballyPositioned` 每帧一次，同一 uid 覆盖）。
+     *
+     * **零尺寸的上报只忽略、不注销**：Lazy 网格回收一个项之前，最后一次布局回调给的就是
+     * `0×0`（组合噪声，不是"这张卡没了"的信号）。照单覆盖的话，用户点进大图那一下存进去的
+     * 真实矩形会被一个空矩形抹掉，返回程查到的落点是 0×0 —— 要么不飞、要么往一个点上飞。
+     * 项真的没了由 [forgetCardBounds] 负责，不靠这条噪声。
+     */
     fun noteCardBounds(uid: String, bounds: Rect) {
+        if (bounds.width <= 0f || bounds.height <= 0f) return
         cardBounds[uid] = bounds
     }
 

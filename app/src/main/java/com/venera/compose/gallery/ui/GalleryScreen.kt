@@ -1617,7 +1617,13 @@ internal fun GalleryPostCard(
                     // 起点矩形在这里量：它必须与落点（画面框）同构，所以量的是封面而不是整卡。
                     .onGloballyPositioned {
                         val rect = it.boundsInWindow()
-                        coverBounds = rect
+                        // 只在矩形**真的变了**才写。这不是省几行开销的打磨：`boundsInWindow()`
+                        // 每次返回一个新的 `Rect` 实例，而 `mutableStateOf` 默认按引用比较 ——
+                        // 无条件赋值等于"滚动每一帧都把这张卡重组一遍"（Lazy 项在窗口坐标系里的
+                        // 位置每帧都在动，这个回调就每帧都来一次）。用户报的「滚动中图片反复重建」
+                        // 最直接的自激环就在这里。
+                        // 读 `coverBounds` 再比是安全的：`Rect` 的 equals 是结构相等。
+                        if (rect != coverBounds) coverBounds = rect
                         // 顺手给**返回程**留一个落点（大图页离场时按 uid 来查）。
                         // ⚠️ 打码卡**不回写** —— 红线是"打码那张两边都不飞"，
                         // 而"表里压根没有它"是这条红线最不容易被绕过的一种落法。
