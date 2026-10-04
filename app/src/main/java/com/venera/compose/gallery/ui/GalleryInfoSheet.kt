@@ -52,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -211,12 +213,19 @@ internal fun GalleryInfoSheet(
                 } else {
                     GallerySheetScroll.consumedFromDrag(available.y)
                 }
+                // 只记惯性那一路：拖动每一帧都过这里，记下来会把有用读数冲掉。
+                if (source == NestedScrollSource.Fling) {
+                    GallerySheetProbe.log("甩 available.y=${available.y} 扣掉=$eaten")
+                }
                 // 横向一分不动：这一页没有横滑的内容，横向位移归标签墙外面那些手势（如果有）。
                 return Offset(0f, eaten)
             }
 
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
-                Velocity(0f, GallerySheetScroll.consumedFromFling(available.y))
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                val eaten = GallerySheetScroll.consumedFromFling(available.y)
+                GallerySheetProbe.log("甩(onPostFling) available.y=${available.y} 扣掉=$eaten")
+                return Velocity(0f, eaten)
+            }
         }
     }
 
@@ -274,7 +283,18 @@ internal fun GalleryInfoSheet(
         .coerceAtLeast(tokens.spacing.sheetBodyHeightReserve)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // ── 诊断包专用（2026-10-04）：只读，不改行为。撤除时连着 GallerySheetProbe.kt 一起删 ──
+        val probeHolder = remember { SheetCoordsHolder() }
+        LaunchedEffect(Unit) { GallerySheetProbe.sample("面板", probeHolder) }
+        LaunchedEffect(sheetState.currentValue, sheetState.targetValue) {
+            GallerySheetProbe.log("面板 姿态 current=${sheetState.currentValue} target=${sheetState.targetValue}")
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(GallerySheetProbe.touchProbe("面板", probeHolder))
+                .onGloballyPositioned { probeHolder.coordinates = it },
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -652,7 +672,13 @@ private fun GalleryTagWall(
             // 标题行**整行可点**：那枚「展开全部 ›」按 12sp 只有 48dp 宽，
             // 单给它挂点击就得靠猜位置；整行可点之后触达位是整屏宽，也不必再造一枚小钮。
             action = if (collapsible) (if (expanded) "收起" else "展开全部") else null,
-            onAction = if (collapsible) onToggleExpand else null,
+            // 诊断包专用：这一枚与下面那枚 `+N` 就是用户点名的「查看更多」那两处。
+            onAction = if (collapsible) {
+                {
+                    GallerySheetProbe.log("到达 节标题「展开全部」 nowExpanded=$expanded")
+                    onToggleExpand()
+                }
+            } else null,
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             groups.forEachIndexed { index, group ->
@@ -672,7 +698,10 @@ private fun GalleryTagWall(
                             GalleryTagChip(
                                 tag = tag,
                                 text = tagLabel(tag),
-                                onClick = { onSearchTag(tag) },
+                                onClick = {
+                                    GallerySheetProbe.log("到达 标签chip 点击 「$tag」")
+                                    onSearchTag(tag)
+                                },
                                 onCopy = { onCopyTag(tag) },
                                 onBlock = { onBlockTag(tag) },
                             )
@@ -684,7 +713,10 @@ private fun GalleryTagWall(
                             VeneraChip(
                                 text = "+${slice.hiddenCount}",
                                 variant = VeneraChipVariant.Neutral,
-                                onClick = onToggleExpand,
+                                onClick = {
+                                    GallerySheetProbe.log("到达 +${slice.hiddenCount} chip 点击")
+                                    onToggleExpand()
+                                },
                             )
                         }
                     }
@@ -978,6 +1010,7 @@ private fun GalleryTagChip(
             // 那样 Kotlin 认不出 `onCopy` 已经不是 null，只能写成 `?.invoke()` 反而更绕。
             onLongClick = if (onCopy != null && onBlock != null) {
                 {
+                    GallerySheetProbe.log("到达 标签chip 长按 「$tag」")
                     view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     menuExpanded = true
                 }
