@@ -382,9 +382,20 @@ internal fun GalleryInfoSheet(
             GallerySheetActionBar(
                 isVideo = post.isVideo,
                 saving = saving,
-                onCopyLink = { copyToClipboard(context, "本站地址", post.pageUrl) },
-                onDownload = onDownload,
-                onOpenInBrowser = { openInBrowser(context, post.site.displayName, post.pageUrl) },
+                // 诊断包专用：这三颗是**普通 `Modifier.clickable`**，不是 VeneraChip。
+                // 它们要是能报「到达」，坏的就只在 chip 那条链上；一起哑就是整块内容收不到点击。
+                onCopyLink = {
+                    GallerySheetProbe.log("到达 复制链接")
+                    copyToClipboard(context, "本站地址", post.pageUrl)
+                },
+                onDownload = {
+                    GallerySheetProbe.log("到达 下载")
+                    onDownload()
+                },
+                onOpenInBrowser = {
+                    GallerySheetProbe.log("到达 在浏览器中打开")
+                    openInBrowser(context, post.site.displayName, post.pageUrl)
+                },
             )
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.delay
 import kotlin.math.max
@@ -96,38 +97,53 @@ internal object GallerySheetProbe {
     }
 
     /**
-     * 挂在每一枚 chip 上的**只观察**见证：这一支的盒子有没有被命中。
+     * 挂在每一枚 chip 上的**只观察**见证：这一支的盒子有没有被命中、以及**事件到 Final 段时
+     * 是不是已经被下面的人消费掉了**。
      *
      * 与调用点那些 `到达 …` 的分工是这颗探针的全部意义：
-     * - 只有 `盒子收到`、没有 `到达` ⇒ 事件进了盒子却没成点击（被人消费、抬手没回来、或 slop 判成移动）；
+     * - 只有 `盒子收到`、没有 `到达` ⇒ 事件进了盒子却没成点击；
      * - 两条都没有 ⇒ 命中测试压根没走到这一支（上面有透明覆盖物，或盒子与画出来的位置不在一起）。
      *
-     * Initial pass、全程不消费，所以它不会把命中让给自己。
+     * ⚠️ 走 **Final** 段而不是 Initial：Initial 是父先子后，那时读 `isConsumed` 永远是 false，
+     * 量不到"被下面的子节点吃了"这一种；Final 是子先父后，这里的 `被消费=true` 才是证据。
+     * 16:53 那一读就是栽在这一点上 —— 它报了 `被消费=false`，而那个 false 什么也没说。
+     *
+     * `盒子顶`/`盒子高` 一起报：拿它减去见证里的 local y 就是触点在窗口里的位置，
+     * 这样"我点的是第几行"能与"日志说是哪一枚"对得上号。
      */
     @Composable
-    fun tapWitness(label: String): Modifier = Modifier.pointerInput(label) {
-        awaitEachGesture {
-            val down = awaitFirstDown(false, PointerEventPass.Initial)
-            var last = down.position
-            var moved = 0f
-            var pressed = true
-            var consumed = false
-            while (true) {
-                val change = awaitPointerEvent(pass = PointerEventPass.Initial)
-                    .changes.firstOrNull { it.id == down.id } ?: break
-                val dx = change.position.x - last.x
-                val dy = change.position.y - last.y
-                moved = max(moved, sqrt(dx * dx + dy * dy))
-                last = change.position
-                pressed = change.pressed
-                consumed = change.isConsumed
-                if (!pressed) break
+    fun tapWitness(label: String): Modifier {
+        val holder = SheetCoordsHolder()
+        return Modifier
+            .onGloballyPositioned { holder.coordinates = it }
+            .pointerInput(label, holder) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(false, PointerEventPass.Final)
+                    val boxTop = holder.topOrNull()
+                    val boxHeight = holder.heightOrNull()
+                    var last = down.position
+                    var moved = 0f
+                    var pressed = true
+                    var consumed = false
+                    while (true) {
+                        val change = awaitPointerEvent(pass = PointerEventPass.Final)
+                            .changes.firstOrNull { it.id == down.id } ?: break
+                        val dx = change.position.x - last.x
+                        val dy = change.position.y - last.y
+                        moved = max(moved, sqrt(dx * dx + dy * dy))
+                        last = change.position
+                        pressed = change.pressed
+                        consumed = change.isConsumed
+                        if (!pressed) break
+                    }
+                    log(
+                        "$label 盒子收到 down=(${down.position.x.toInt()},${down.position.y.toInt()}) " +
+                            "盒子顶=$boxTop 盒子高=$boxHeight " +
+                            "触点窗口y=${if (boxTop == null) Float.NaN else boxTop + down.position.y} " +
+                            "移动=${moved.toInt()}px 已抬手=${!pressed} 到Final已被消费=$consumed",
+                    )
+                }
             }
-            log(
-                "$label 盒子收到 down=(${down.position.x.toInt()},${down.position.y.toInt()}) " +
-                    "移动=${moved.toInt()}px 已抬手=${!pressed} 被消费=$consumed",
-            )
-        }
     }
 
     /**

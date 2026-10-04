@@ -132,6 +132,18 @@ fun VeneraChip(
     val interactive = (onClick != null || onLongClick != null) && enabled
     val isPressed = interactive && pressed
 
+    // ── 诊断包专用（2026-10-04）：撤除时连着 `gallery/ui/GallerySheetProbe.kt` 一起删 ──
+    // 16:53 那一份读数是"盒子收到 9 条、到达 0 条"，所以要先把"这枚到底有没有挂上 clickable"
+    // 钉成数。这里**不 import 那颗探针**：components 层 import gallery 会破 LayeringEdgeTest，
+    // 所以直接写同一个 TAG，让 logcat 一条过滤就能看全。
+    if (variant == VeneraChipVariant.Tag) {
+        android.util.Log.i(
+            "GallerySheetProbe",
+            "chip 装配 「$text」 interactive=$interactive enabled=$enabled " +
+                "有点击=${onClick != null} 有长按=${onLongClick != null}",
+        )
+    }
+
     // 轻量动画：只有 scale 与 alpha，均走 spring，无涟漪/模糊。
     val pressScale by animateFloatAsState(
         targetValue = if (isPressed) tokens.current.chipPressedScale else 1f,
