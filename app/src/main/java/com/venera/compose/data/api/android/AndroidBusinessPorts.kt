@@ -19,6 +19,10 @@ import com.venera.compose.data.api.SourceCatalog
 import com.venera.compose.data.api.DownloadQueue
 import com.venera.compose.data.api.FavoriteLibrary
 import com.venera.compose.data.api.LocalComicLibrary
+import com.venera.compose.data.api.UpdateDownloadQueue
+import com.venera.compose.data.update.ApkDownloader
+import com.venera.compose.data.update.ReleaseAsset
+import com.venera.compose.data.update.UpdateDownload
 import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
@@ -110,6 +114,7 @@ object AndroidBusinessPorts {
                 localComics = AndroidLocalComicLibrary(context),
                 network = AndroidNetworkHygiene(context),
                 httpText = AndroidHttpTextFetch(context),
+                updates = AndroidUpdateDownloadQueue(context),
             ).also { ports = it }
         }
     }
@@ -485,6 +490,23 @@ private class AndroidFavoriteLibrary(private val context: Context) : FavoriteLib
 }
 
 /** 下载队列的接线。不收 `chapterOffline`（返回 internal 枚举），理由写在 `DownloadQueue` 的 KDoc。 */
+/**
+ * 应用内更新那笔下载的适配器（2026-10-04，随 `AppUpdateApi.kt`）。
+ *
+ * 现读单例、每次交回**同一个实例的流** —— 换成新建实例的话，界面 collect 到的
+ * 与后台协程写的那份就不是同一条，进度会停在 0（同 `AndroidFavoriteLibrary` 那条教训）。
+ */
+private class AndroidUpdateDownloadQueue(private val context: Context) : UpdateDownloadQueue {
+
+    private val downloader: ApkDownloader get() = ApkDownloader.getInstance(context)
+
+    override val state: StateFlow<UpdateDownload> get() = downloader.state
+
+    override fun start(asset: ReleaseAsset) = downloader.start(asset)
+
+    override fun cancel() = downloader.cancel()
+}
+
 private class AndroidDownloadQueue(private val context: Context) : DownloadQueue {
 
     private val manager: DownloadManager get() = DownloadManager.getInstance(context)

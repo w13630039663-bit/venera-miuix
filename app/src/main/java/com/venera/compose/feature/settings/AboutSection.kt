@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import com.venera.compose.R
 import com.venera.compose.data.update.AppUpdateChecker
+import com.venera.compose.data.update.LatestRelease
 import com.venera.compose.data.update.ProjectChannel
 import com.venera.compose.data.update.UpdateCheck
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -54,15 +55,23 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
     val checkOnStart by prefs.checkUpdateOnStart.collectAsState()
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
-    var availableVersion by remember { mutableStateOf<String?>(null) }
+    var availableRelease by remember { mutableStateOf<LatestRelease?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 被「以后再说」跳过的那一版。它不是流（账本，见 `PreferencesApi.kt` 那条注释），
+     * 所以这里自己拿一份快照，只在清除那一下改写 —— 读的时候不需要重组。
+     */
+    var ignored by remember { mutableStateOf(prefs.ignoredUpdateVersion) }
 
     fun checkUpdate() {
         if (checking) return
         checking = true
         scope.launch {
             when (val result = AppUpdateChecker.check(context)) {
-                is UpdateCheck.Available -> availableVersion = result.remoteVersion
+                // 手动检查**不看**「以后再说」那本账：用户主动问了就该把结果给他，
+                // 那本账只管启动时那一次自动打扰（判据在 StartupUpdateHost）。
+                is UpdateCheck.Available -> availableRelease = result.release
                 // 拿不到远端版本 ≠ 没有更新，播报必须分开，否则一次断网就是一次假成功
                 UpdateCheck.UpToDate -> notice = "已经是最新版"
                 UpdateCheck.Failed -> notice = "找不到 ${ProjectChannel.SLUG} 的发布记录，稍后再试"
@@ -116,9 +125,23 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
             onCheckedChange = prefs::setCheckUpdateOnStart,
             summary = "24 小时内不重复检查",
         )
+        /*
+         * 只在真有这么一版被跳过过时才摆这一行（2026-10-04 随「以后再说」记账加的）。
+         * 常态是没有的，那时这一行不占位；出现就说明用户手滑过一次，而这条路的出口
+         * 不该只有"等作者再发一版"。
+         */
+        ignored?.let { skipped ->
+            SettingsAction(
+                title = "已跳过版本 $skipped",
+                summary = "清除后下次冷启动会重新提醒这一版",
+            ) {
+                prefs.ignoredUpdateVersion = null
+                ignored = null
+            }
+        }
     }
 
-    availableVersion?.let { UpdateAvailableDialog(it) { availableVersion = null } }
+    availableRelease?.let { release -> UpdateAvailableDialog(release) { availableRelease = null } }
     notice?.let {
         LaunchedEffect(it) {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()

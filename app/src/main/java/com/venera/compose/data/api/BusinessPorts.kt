@@ -51,6 +51,7 @@ package com.venera.compose.data.api
  * @param stats 阅读统计
  * @param network 熔断与取流客户端的运维动作
  * @param httpText 一次取正文的 HTTP 动作（治 VM 内裸 okhttp 那一处）
+ * @param updates 应用内更新那一笔下载（`AppUpdateApi.kt`：读状态 / 开下 / 取消）
  */
 class BusinessPorts(
     val contentGuard: ContentGuard,
@@ -69,6 +70,7 @@ class BusinessPorts(
     val localComics: LocalComicLibrary,
     val network: NetworkHygiene,
     val httpText: HttpTextFetch,
+    val updates: UpdateDownloadQueue,
 ) {
     companion object {
         @Volatile

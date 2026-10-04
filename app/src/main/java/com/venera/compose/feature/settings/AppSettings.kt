@@ -399,7 +399,8 @@ private fun openAllFilesSettings(context: Context) {
     }
 }
 
-private fun formatMib(bytes: Long): String =
+/** 字节数 → 人类可读。同包内共享（`UpdateCheckUi` 的更新进度那一行也用这把），别再开第四份。 */
+internal fun formatMib(bytes: Long): String =
     if (bytes < 1024) "$bytes B"
     else if (bytes < 1024 * 1024) "%.1f KiB".format(bytes / 1024.0)
     else "%.1f MiB".format(bytes / (1024.0 * 1024.0))
