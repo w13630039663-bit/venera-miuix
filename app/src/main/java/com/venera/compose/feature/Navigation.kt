@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,6 +58,9 @@ import androidx.navigationevent.NavigationEvent
 import androidx.navigation.toRoute
 import com.venera.compose.SettingsActivity
 import com.venera.compose.components.CoverTransitionScopes
+import com.venera.compose.components.CHROME_BAND_BOTTOM_BAR
+import com.venera.compose.components.ChromeCaptureSuppress
+import com.venera.compose.components.reportChromeBand
 import com.venera.compose.components.LocalCoverTransitionScopes
 import com.venera.compose.components.VeneraAmbientBackground
 import android.app.Activity
@@ -1053,7 +1057,20 @@ fun VeneraComposeApp() {
             animationSpec = tween(BOTTOM_BAR_HIDE_DURATION_MS),
             label = "galleryBottomBarHideOffset",
         )
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                // ── 起点截帧时让位（2026-10-04，用户图证：飞行体里横着一条底栏）──
+                // PixelCopy 读的是**已合成**的窗口表面，压在这块之上的自有 chrome 会被一起截进
+                // 飞行体。所以截之前把整条覆盖层收掉，截完立刻恢复。
+                // ⚠️ 只走 alpha，不走 `if` 摘掉、也不改 offset：那两种都会让内容重排、卡片挪位，
+                // 而起点矩形是点击那一刻量的 —— 挪了就对不上屏上那一块，与「起点终点要同构」同族。
+                // 这一层是 fillMaxSize 的容器，所以**只在这里收**，"我占哪一块"登记在各条栏自己身上
+                // （登记到这里会把整屏报成底栏，等于每次点卡都闪一下）。
+                .graphicsLayer {
+                    alpha = if (ChromeCaptureSuppress.suppressed) 0f else 1f
+                },
+        ) {
             // ── 大屏侧栏档：整条底栏不渲染，改由左侧栏承担导航（master `nav:933` 同款裁决）──
             // master 的 `shouldShowAppBar = controller.value < 2` 同时门控顶栏（`:957`）、
             // 底栏占位（`:967-968`）与整段 overlay（`:972-974` 提前 return）。
@@ -1087,7 +1104,10 @@ fun VeneraComposeApp() {
                         // 与顶栏那一处同一口径：只偏移绘制，不改页面内的补偿常量 ——
                         // 内容底部留白在收起期间仍是 `bottomBarClearance`（滑出后那一段本来就在
                         // 屏幕之外，若跟着收会让最后一行在收起瞬间被重排一下）。
-                        .offset(y = bottomBarOffset),
+                        .offset(y = bottomBarOffset)
+                        // 登记自己占的那一块：offset 算进窗口坐标，所以滑出屏幕时报的是屏外，
+                        // 不会让"其实没压住任何卡"的那一次也去收 chrome。
+                        .reportChromeBand(CHROME_BAND_BOTTOM_BAR),
                 ) {
                     VeneraLiquidNavTabs(
                         tabs = VeneraNavTab.entries,
@@ -1120,7 +1140,8 @@ fun VeneraComposeApp() {
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .fillMaxWidth()
-                        .offset(y = bottomBarOffset),
+                        .offset(y = bottomBarOffset)
+                        .reportChromeBand(CHROME_BAND_BOTTOM_BAR),
                 )
             }
         }
