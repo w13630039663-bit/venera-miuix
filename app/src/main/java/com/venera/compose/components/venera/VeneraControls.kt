@@ -156,6 +156,18 @@ fun VeneraSlider(
 }
 
 /**
+ * 图标按钮的触达位边长 —— **全仓只有这一处写这个数**。
+ *
+ * 48dp 不是新造的数：它就是 M3 `IconButton` 的默认触达尺寸，也是 Android 无障碍的触达位下限。
+ * miuix 的 `IconButtonDefaults.MinWidth/MinHeight` 是 40dp，直接吃默认会让全仓每一颗图标按钮
+ * 的触摸区悄悄缩掉 8dp（源管理列表那排最先被看出来）。
+ *
+ * 公开它还有一个用途：要给一排钮**留空位**（不是留假钮）时，占位必须与真实触达位同尺寸，
+ * 否则那排钮会因为少一枚而整体挪位 —— 画廊大图页那条 dock 的「关于这张图」就靠这条不动。
+ */
+val VeneraIconButtonTouchSize = 48.dp
+
+/**
  * 图标按钮。两家的 content 类型不同（M3 是 `RowScope`，miuix 是普通 lambda），
  * 对外统一成**普通 lambda**：M3 那一侧传 `{ content() }`，receiver 不用即可，
  * 不为此额外塞一个 `Row` 进布局（塞了就会改测量结果，那是观感回归的源头）。
@@ -176,16 +188,12 @@ fun VeneraIconButton(
         Modifier
     }
     if (useMiuixWidgets) {
-        // 48dp 不是新造的数：它就是 M3 `IconButton` 的默认触达尺寸，也是 Android 无障碍的触达位下限。
-        // miuix 的 `IconButtonDefaults.MinWidth/MinHeight` 是 40dp，直接吃默认会让全仓每一颗图标按钮
-        // 的触摸区悄悄缩掉 8dp（源管理列表那排最先被看出来）。尺寸只在**这一个出口**钉住，
-        // 别在各调用点各写一遍。
         MiuixIconButton(
             onClick = onClick,
             modifier = modifier.then(glassModifier),
             enabled = enabled,
-            minWidth = 48.dp,
-            minHeight = 48.dp,
+            minWidth = VeneraIconButtonTouchSize,
+            minHeight = VeneraIconButtonTouchSize,
         ) { content() }
     } else {
         Md3IconButton(onClick = onClick, modifier = modifier.then(glassModifier), enabled = enabled) { content() }
