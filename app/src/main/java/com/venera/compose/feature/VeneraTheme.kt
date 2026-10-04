@@ -33,6 +33,7 @@ import com.venera.compose.ui.tokens.VeneraMotionTokens
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokenSet
 import com.venera.compose.ui.tokens.buildVeneraColorTokens
+import com.venera.compose.ui.tokens.miuixTextStylesOf
 import com.venera.compose.data.api.BusinessPorts
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -111,6 +112,13 @@ fun VeneraTheme(content: @Composable () -> Unit) {
         )
     }
 
+    // miuix 组件的字阶也吃**我们这一份表**（映射表与"今天为什么看不出差别"见该函数头注）。
+    // 恒用 MiuixTypography：MiuixTheme 只管 miuix 那一侧的件，而它原先吃的是库自带默认，
+    // 两边今天逐格相等（对账见 font-scale-pixez-alignment-2026-09.md 第 3 节，
+    // 出处是 miuix-ui-0.9.4-rc01 的 sources jar 里 theme/TextStyles.kt）——
+    // 所以这是一次"把巧合式相等改成同一份真相"的接线，不是改观感。
+    val veneraMiuixTextStyles = remember { miuixTextStylesOf(MiuixTypography) }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -132,7 +140,7 @@ fun VeneraTheme(content: @Composable () -> Unit) {
         LocalContentColor provides miuixColors.onBackground,
         androidx.compose.material3.LocalContentColor provides materialColors.onBackground,
     ) {
-        MiuixTheme(colors = miuixColors) {
+        MiuixTheme(colors = miuixColors, textStyles = veneraMiuixTextStyles) {
             MaterialTheme(colorScheme = materialColors, content = content)
         }
     }
