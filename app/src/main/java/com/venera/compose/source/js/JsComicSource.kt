@@ -1100,6 +1100,9 @@ class JsComicSource(
                         return {
                             name: p.name || "",
                             type: p.type || "fixed",
+                            // 只搬原值，窗口截断留给 Kotlin 的构建入口（官方在 RandomCategoryPart
+                            // 的 getter 里做，master category.dart:82-86）。缺省 0 表示源没声明。
+                            randomNumber: (typeof p.randomNumber === 'number') ? p.randomNumber : 0,
                             items: items
                         };
                     });
@@ -1165,7 +1168,13 @@ class JsComicSource(
                         )
                     )
                 }
-                CategoryPart(name = partName, type = partType, items = items)
+                CategoryPart(
+                    name = partName,
+                    type = partType,
+                    // gson 把 JSON 数值解成 Double，必须走 Number 再取整
+                    randomNumber = (pm["randomNumber"] as? Number)?.toInt() ?: 0,
+                    items = items
+                )
             }
             val rawButtons = (data["buttons"] as? List<*>) ?: emptyList<Any>()
             val buttons = rawButtons.mapNotNull { b ->

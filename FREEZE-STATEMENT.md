@@ -2801,3 +2801,46 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 ### 验证
 
 `:desktop:test` 198 用例全绿（其中含本条豁免的 4 条 caption 断言与 5 条负向断言）。真机视觉验证交用户。
+
+## 2026-10-04 追加：九项整改对冻结域的触碰（用户整批放行，逐条记名）
+
+授权口径：用户 2026-10-04 原话「全部一起做，你自行评估，自行修改，自行复核，有分歧不需要我同意自行按照推荐做法」。
+这不是逐条点名，所以每一条都把「落在冻结声明哪条允许项内」写清楚，用户可以单独撤销其中任何一条。
+方案与实测读数见 `docs/rounds/explore-and-gallery-remediation-2026-10-04.md`。
+
+### 批 A：`UnifiedExploreScreen.kt`（FROZEN，名单第一行）
+
+**属于允许项「修实际 Bug + 修明确需求」，不是视觉重构**：
+
+- `randomNumber` 是**迁移漏项**：官方 `parser.dart:470-472` 把 `type=="random"` 建成 `RandomCategoryPart`，
+  `category.dart:82-86` 读数时取随机窗口；我们的 `JsComicSource` 分类脚本压根没输出这个字段。
+  实测（33 源全扫）：全仓只有 `nhentai.js:547-553` 一处声明 `type:"random", randomNumber:20`，
+  而它的 categories 是 `Object.values(Nhentai.nhentaiTags)` ≈ **720 条全渲染** —— 正是用户点名的源。
+- 榜首入口是用户点名要的能力。旧实现是一张「🏆 排行榜」卡，点击只会选 `modes` 的**第一档**，
+  而 jm 的第一档是「總排行」，用户要的「日排行」排在第 4 个（`jm.js:618-623`）。
+
+改了什么：
+
+| 位置 | 改动 |
+|---|---|
+| `source/model/ComicSourceModels.kt:279` | `CategoryPart` 加 `randomNumber`（默认 0） |
+| `source/js/JsComicSource.kt` 分类脚本 | 输出 `randomNumber` 原值（`typeof === 'number'` 才取），Kotlin 侧走 `Number.toInt()` |
+| `source/explore/SourceExploration.kt` | `type=="random"` 才开窗（缺省按官方的 1）；新开 `rankingSection` 字段 + `NativeEntry.rankingOption` |
+| `feature/explore/ExploreViewModel.kt` | 新增 `SECTION_ITEM_CAP = 20` |
+| `feature/explore/UnifiedExploreScreen.kt` | 折叠态每组截 20 枚；榜组进「本源分类」首位且**不吃组预算**；探索方式行不再摆 `排行·X`；删掉旧的单张榜卡 |
+
+**明确没动的东西**（防止读成"顺手重构"）：
+
+- `SECTION_ENTRY_BUDGET = 8` 的**组级**语义原样保留 —— 2026-09-20 拍板过「组内切一半比切整组更难读」。
+  新加的 `SECTION_ITEM_CAP` 是第二道闸，只截渲染、不改预算计算（`used += section.items.size` 用的仍是全组数）。
+- `nativeSections` 不放合成榜组：那个字段的头一条契约是「原样保留源声明的分区名、绝不合并」，
+  而 zaimanhua 自己有一个叫「排行榜」的 fixed 分区，塞进去就撞名破约。
+- `modes` 数据面照旧带着 RANKING 档（内容取数与选中态解析靠它），只在 `ExploreModeRow` 的调用点过滤。
+- 顶栏大标题折叠 + 毛玻璃页内自治架构、打码守卫链、分页与共享元素 key：**一字未动**。
+
+**照做的官方怪味道**（记下来免得被当成我们的 bug 修掉）：官方 `nextInt(size - n)` 上界是开区间，
+所以全组最后一枚永远进不了窗口。逐字对齐就一起对齐，测试里钉死了这一条。
+
+**验证**：`:app:testDebugUnitTest --tests "com.venera.compose.source.explore.*"` EXIT=0，
+新 11 颗 + 原有 5+4 颗全绿（含 `SourceExplorationRankingTest` 未被碰坏）。
+真机视觉验证交用户 —— 本环境按既定约束不代操作设备。

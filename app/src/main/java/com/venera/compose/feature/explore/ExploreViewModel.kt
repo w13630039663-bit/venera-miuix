@@ -80,6 +80,15 @@ class ExploreViewModel : ViewModel() {
          * 官方顺序本身就是按重要性排的。
          */
         const val SECTION_ENTRY_BUDGET = 8
+
+        /**
+         * 折叠态下**单个分区**渲染的入口上限 —— 预算管的是"露几组"（组级，2026-09-20 已拍板），
+         * 这条管"一组最长成什么样"，是 mh1234「题材」343 枚那种大组唯一的闸门。
+         *
+         * 20 不是造的数：它是全仓唯一一处由源自己声明的窗口尺寸
+         * （nhentai.js:551 `randomNumber: 20`）。定在它下面，会让 fixed 组比官方的 random 组更短。
+         */
+        const val SECTION_ITEM_CAP = 20
     }
 }
 

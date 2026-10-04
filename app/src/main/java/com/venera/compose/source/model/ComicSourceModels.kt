@@ -279,7 +279,15 @@ data class CategoryButtonData(
 data class CategoryPart(
     val name: String,
     val type: String = "fixed", // "fixed", "random", "dynamic"
-    val items: List<CategoryItem> = emptyList()
+    val items: List<CategoryItem> = emptyList(),
+    /**
+     * `type == "random"` 时源声明的窗口大小（来自分区里的 `randomNumber`）。
+     *
+     * 官方 `parser.dart:470-472` 只在 `type=="random"` 分支读它，缺省按 1；
+     * 其余 type 上源脚本偶尔也写这个字段（baozi/ikmmh/wnacg 写 5），官方一律不读，
+     * 所以这里带着但**不参与截断** —— 读了就把官方的"整组露出"改成"只露 5 枚"了。
+     */
+    val randomNumber: Int = 0
 )
 
 data class CategoryItem(

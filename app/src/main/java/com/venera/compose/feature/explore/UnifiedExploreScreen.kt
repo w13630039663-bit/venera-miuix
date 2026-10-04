@@ -79,7 +79,6 @@ import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import com.venera.compose.components.venera.VeneraTopBarPill
 
@@ -284,6 +283,9 @@ fun UnifiedExploreScreen(
         }
         // 「本源分类」的首屏截断：按组顺序消耗入口预算，预算用尽后的组整组不渲染
         // （同组内切一半会比切整组更难读）。源脚本自带顺序即官方重要性顺序。
+        // 第二道闸是组内上限 SECTION_ITEM_CAP：预算只决定"露几组"，管不了 mh1234 那种
+        // 一组 343 枚的题材表，不截它首屏就是几百枚药丸。折叠态截下的尾部与整组未露出的
+        // 部分一起进 hiddenEntryCount，由同一个「更多分类」按钮放出。
         val allSections = currentSource?.nativeSections.orEmpty()
         val visibleSections = remember(allSections, vm.sectionsExpanded) {
             if (vm.sectionsExpanded) allSections
@@ -291,7 +293,7 @@ fun UnifiedExploreScreen(
                 var used = 0
                 for (section in allSections) {
                     if (used >= ExploreViewModel.SECTION_ENTRY_BUDGET) break
-                    add(section)
+                    add(section.copy(items = section.items.take(ExploreViewModel.SECTION_ITEM_CAP)))
                     used += section.items.size
                 }
             }
@@ -359,10 +361,14 @@ fun UnifiedExploreScreen(
             // 这里的每一项都**不跳转**，点了直接刷新本页内容区，方便和探索方式组合着用。
             item(key = "quick-filter-header-" + src.sourceKey) { SectionHeader("快捷筛选") }
 
-            if (src.modes.isNotEmpty()) {
+            // 榜档不进探索方式行：它们改在下方「本源分类」里逐档成入口（见 rankingSection），
+            // 同一动作留两个入口是噪声。modes 数据面照旧带着 RANKING —— 内容取数与选中态
+            // 解析都靠它，只是这一行不摆。
+            val pageModes = src.modes.filterNot { it.kind == ExploreMode.Kind.RANKING }
+            if (pageModes.isNotEmpty()) {
                 item(key = "modes-" + src.sourceKey) {
                     ExploreModeRow(
-                        modes = src.modes,
+                        modes = pageModes,
                         selectedId = state.resolveMode(src.sourceKey, src.modes)?.id,
                         onSelect = { mode ->
                             state.selectMode(src.sourceKey, mode.id)
@@ -398,10 +404,37 @@ fun UnifiedExploreScreen(
             }
 
             // ══ 下方区块：本源专属分类入口 ══
-            // 这些入口一律跳二级列表页（与现有习惯一致）。默认只露前
-            // ExploreViewModel.SECTION_ENTRY_BUDGET 个入口，其余收进「更多分类」。
-            if (visibleSections.isNotEmpty() || src.hasRanking) {
+            // 榜档逐档入口 + 源专属分类组。分类组一律跳二级列表页（与现有习惯一致），
+            // 默认只露前 ExploreViewModel.SECTION_ENTRY_BUDGET 个入口（单组再套
+            // SECTION_ITEM_CAP），其余收进「更多分类」。
+            if (visibleSections.isNotEmpty() || src.rankingSection != null) {
                 item(key = "sections-header-" + src.sourceKey) { SectionHeader("本源分类") }
+            }
+
+            // 榜排在分类组之前，且**不吃组预算**：它是这一轮点名要够得着的东西，
+            // 排进预算就会被 mh1234 那种大组整组顶掉。点它 = 页内切到该档（不跳二级页），
+            // 与上方「快捷筛选」同一套互斥纪律 —— 留着标签筛选就说不清列表是哪来的。
+            src.rankingSection?.let { ranking ->
+                item(key = "ranking-" + src.sourceKey) {
+                    val active = state.resolveMode(src.sourceKey, src.modes)
+                        ?.takeIf { it.kind == ExploreMode.Kind.RANKING }
+                        ?.let { mode -> ranking.items.firstOrNull { it.rankingOption == mode.rankingOption } }
+                    NativeSectionBlock(
+                        section = ranking,
+                        selectedEntry = active,
+                        onEntryClick = { entry ->
+                            val mode = src.modes.firstOrNull {
+                                it.kind == ExploreMode.Kind.RANKING &&
+                                    it.rankingOption == entry.rankingOption
+                            }
+                            if (mode != null) {
+                                state.selectMode(src.sourceKey, mode.id)
+                                vm.unifiedFilter = null
+                                modeTick++
+                            }
+                        },
+                    )
+                }
             }
 
             itemsIndexed(
@@ -433,26 +466,6 @@ fun UnifiedExploreScreen(
                         hiddenCount = hiddenEntryCount,
                         expanded = vm.sectionsExpanded,
                         onClick = { vm.sectionsExpanded = !vm.sectionsExpanded },
-                    )
-                }
-            }
-
-            if (src.hasRanking) {
-                item(key = "ranking-" + src.sourceKey) {
-                    RankingEntry(
-                        sourceName = src.sourceName,
-                        onClick = {
-                            // 原先这里跳 SourceSectionScreen(category="排行", param="ranking")，
-                            // 而那一页只会调 `loadCategoryComics` —— **走的是分类端点**，
-                            // 对哔咔发出去的是 `&ranking=排行`，压根不是排行接口。
-                            // 排行现在由上方芯片逐档提供，这张卡只做「选中第一档」，不发错请求。
-                            val rankingMode = src.modes.firstOrNull { it.kind == ExploreMode.Kind.RANKING }
-                            if (rankingMode != null) {
-                                state.selectMode(src.sourceKey, rankingMode.id)
-                                vm.unifiedFilter = null
-                                modeTick++
-                            }
-                        },
                     )
                 }
             }
@@ -722,6 +735,11 @@ private fun ExploreModeRow(
 private fun NativeSectionBlock(
     section: NativeSection,
     onEntryClick: (NativeEntry) -> Unit,
+    /**
+     * 已生效的那一枚入口。**只有页内生效的组**（排行榜）需要传：分类组的点击是跳走，
+     * 本页没有"生效中"的概念，传了就是把一枚跳走的入口染成选中色谎报状态。
+     */
+    selectedEntry: NativeEntry? = null,
 ) {
     Column {
         SectionHeader(section.name)
@@ -731,37 +749,12 @@ private fun NativeSectionBlock(
             modifier = Modifier.fillMaxWidth(),
         ) {
             section.items.forEach { entry ->
-                VeneraChip(text = entry.label, onClick = { onEntryClick(entry) })
+                VeneraChip(
+                    text = entry.label,
+                    selected = entry == selectedEntry,
+                    onClick = { onEntryClick(entry) },
+                )
             }
-        }
-    }
-}
-
-/* ------------------------------------------------------------------ *
- * 排行榜入口（仅源声明 enableRankingPage 时渲染）
- * ------------------------------------------------------------------ */
-
-@Composable
-private fun RankingEntry(sourceName: String, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(VeneraTokens.shape.medium),
-        color = VeneraTokens.color.surfaceVariant.copy(alpha = VeneraTokens.current.selectedSurfaceAlpha),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(
-                horizontal = VeneraTokens.spacing.rowHorizontal,
-                vertical = VeneraTokens.spacing.rowVertical,
-            ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "🏆 " + sourceName + " 排行榜",
-                fontSize = VeneraTokens.type.body,
-                fontWeight = VeneraTokens.type.weightSemibold,
-            )
-            Spacer(Modifier.weight(1f))
-            Text("查看 ›", fontSize = VeneraTokens.type.caption, color = VeneraTokens.color.primary)
         }
     }
 }

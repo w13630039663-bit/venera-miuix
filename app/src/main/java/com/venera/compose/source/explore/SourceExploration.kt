@@ -3,6 +3,7 @@ package com.venera.compose.source.explore
 import com.venera.compose.source.model.CategoryData
 import com.venera.compose.source.model.CategoryPart
 import com.venera.compose.source.model.ExplorePageData
+import kotlin.random.Random
 
 /**
  * 一个漫画源**自己**的探索能力与分类体系。
@@ -26,10 +27,19 @@ data class SourceExploration(
     val modes: List<ExploreMode> = emptyList(),
 
     /**
-     * 该源**原生**的分类分区（分类 / Tag / 专题 / 排行榜入口）。
-     * 直接来自 [CategoryData.parts]，保持源自己的命名与分组。
+     * 该源**原生**的分类分区（分类 / Tag / 专题）。
+     * 直接来自 [CategoryData.parts]，保持源自己的命名与分组，**不含任何合成组**。
      */
     val nativeSections: List<NativeSection> = emptyList(),
+
+    /**
+     * 排行榜分区（源声明 `enableRankingPage` 且有档位时非 null），一档一枚入口。
+     *
+     * 单独开字段而不是塞进 [nativeSections]：那个字段的契约是「原样保留源声明的分区名、
+     * 绝不合并」，而 zaimanhua 自己就有一个叫「排行榜」的 fixed 分区，合成组进去会撞名。
+     * 每项的 [NativeEntry.rankingOption] 非 null，UI 据此走「页内切档」而不是跳二级页。
+     */
+    val rankingSection: NativeSection? = null,
 
     /** 该源是否支持排行榜（决定是否显示排行榜入口）。 */
     val hasRanking: Boolean = false,
@@ -101,6 +111,14 @@ data class NativeEntry(
      * 写的是 `"$name:$tags[i]"`（`:505-507`）—— 两种情况本字段都已是最终值。
      */
     val keyword: String? = null,
+    /**
+     * 非 null 表示这是一枚**排行榜档位**入口，值就是要回传给源的 option key
+     * （空串合法：manhuagui 的 `-最新发布` 拆出空 key，源用它表示默认排序）。
+     *
+     * UI 见到它必须走「页内选中对应探索方式」，**不能**跳 [com.venera.compose.feature.explore.SourceSectionScreen] ——
+     * 那一页只会调 `loadCategoryComics`（分类端点），对排行请求是错的端点。
+     */
+    val rankingOption: String? = null,
 )
 
 /** 源 `itemType` / 官方 `PageJumpTarget.page`：走源的分类接口。 */
@@ -132,11 +150,22 @@ object SourceExplorationFactory {
         // 有排行能力 = 声明了 enableRankingPage **且**真给了档位：
         // 只有前者就出入口的话，点上去没有任何可请求的 option，等于摆一个死按钮。
         val hasRanking = categoryData?.enableRankingPage == true && categoryData.rankingOptions.isNotEmpty()
+        // 榜位逐档一枚入口，标签用**源自己给的档名**（jm「日排行」、picacg「日」、nhentai "Popular Today"），
+        // 不套「排行·X」前缀 —— 那一层前缀是为了在探索方式行里和「随机/最新」区分开，
+        // 而在排行榜分区里每一枚都是榜，前缀纯属重复。
+        val rankingSection = if (hasRanking) NativeSection(
+            name = RANKING_SECTION_NAME,
+            type = TYPE_RANKING,
+            items = categoryData?.rankingOptions.orEmpty().map { opt ->
+                NativeEntry(label = opt.label, param = null, rankingOption = opt.key)
+            },
+        ) else null
         return SourceExploration(
             sourceKey = sourceKey,
             sourceName = sourceName,
             modes = modes,
             nativeSections = sections,
+            rankingSection = rankingSection,
             hasRanking = hasRanking,
             hasCategoryPage = sections.isNotEmpty() || hasRanking,
         )
@@ -181,20 +210,23 @@ object SourceExplorationFactory {
         return modes.distinctBy { it.id }
     }
 
-    private fun CategoryPart.toNativeSection() = NativeSection(
-        name = name,
-        type = type,
-        // page / keyword 必须原样带出来：只看 label 与 param 无法区分 category 型与 search 型
-        // （search 型的 param 恒为 null），会把后者的请求发到错误的端点。
-        items = items.map {
+    private fun CategoryPart.toNativeSection(): NativeSection {
+        val mapped = items.map {
             NativeEntry(
                 label = it.label,
                 param = it.target.attributes?.get("param")?.toString(),
+                // page / keyword 必须原样带出来：只看 label 与 param 无法区分 category 型与 search 型
+                // （search 型的 param 恒为 null），会把后者的请求发到错误的端点。
                 page = it.target.page,
                 keyword = it.target.attributes?.get("keyword")?.toString(),
             )
-        },
-    )
+        }
+        return NativeSection(
+            name = name,
+            type = type,
+            items = if (type == TYPE_RANDOM) randomWindow(mapped, randomNumber.coerceAtLeast(1)) else mapped,
+        )
+    }
 
     /** 去掉「源名 + 分隔符」前缀，例如 "拷贝漫画 - 最新" -> "最新"。 */
     private fun cleanExploreLabel(title: String, sourceName: String): String {
@@ -205,5 +237,32 @@ object SourceExplorationFactory {
             .trimStart('-', '—', ':', '：', ' ', '·')
             .trim()
         return stripped.ifBlank { trimmed }
+    }
+
+    /** 合成排行榜分区的名字，与源脚本无关，因此不受「原样保留源声明分区名」那条契约约束。 */
+    const val RANKING_SECTION_NAME = "排行榜"
+
+    /** [NativeSection.type] 里给合成榜组用的标记值。 */
+    const val TYPE_RANKING = "ranking"
+
+    private const val TYPE_RANDOM = "random"
+
+    /**
+     * `type == "random"` 分区的随机窗口，**逐字对齐官方** `category.dart:82-86`：
+     * 窗口不小于全组就整组原样，否则起点在 `[0, size-n)` 里摇（官方 Dart 的
+     * `nextInt(max)` 同样上界开区间，所以最后一枚永远不会作为窗口尾出现，这不是我们的偏差）。
+     *
+     * 摇的时机是**每次重建 SourceExploration**（冷启动 / 手动刷新），不是每次读数 ——
+     * 官方在 getter 里摇，而我们的组合会随导航条目重建（见导航条目重建那条既有结论），
+     * 照抄那一条就变成"标签自己在页面上乱变"。
+     */
+    internal fun randomWindow(
+        items: List<NativeEntry>,
+        size: Int,
+        random: Random = Random.Default,
+    ): List<NativeEntry> {
+        if (size >= items.size) return items
+        val start = random.nextInt(items.size - size)
+        return items.subList(start, start + size)
     }
 }
