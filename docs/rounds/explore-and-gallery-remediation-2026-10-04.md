@@ -250,9 +250,58 @@ fun rememberLazyStaggeredGridState(...) : LazyStaggeredGridState =
 **已验证**：`:app:testDebugUnitTest` 全量 EXIT=0，**109 个类 834 颗用例 0 失败 0 错误**
 （这一条同时是批 A–D 的回归读数）。真机读数交用户：三处头像应同尺寸同退路字号。
 
+## 批 F：关于这张图（8 点不动 / 9 屏蔽画师）
+
+「图片关于图片」= 画廊大图页右上角那枚 `Icons.Outlined.Info`（`contentDescription = "关于这张图"`，
+`GalleryViewerToolbar.kt:185`）打开的 `GalleryInfoSheet`（面板标题就叫「关于这张图」`:298`）。
+
+### F.9 屏蔽该画师 —— 已落地
+
+**先确认这条不是假开关**：`GalleryInfoSheet.kt:243-262` 那条既有的 `blockTag` 存的是
+`guard.addRule("TAG", tag)`，而它自己的注释写着实测结论 —— 画廊那面墙的屏蔽判据只喂 `post.tagList`，
+yande.re / Gelbooru 两站的 `tags` 就是那串平铺标签（**没有** `tag_string_*` 分桶串），
+画师名**就在这串里**；用 KEYWORD 反而会连作者名一起误伤。
+所以「屏蔽画师」= 同一条链换个入口，不需要新规则类型，也不需要一个新存储。
+
+改动：
+
+- `GalleryArtistRows.kt`：`GalleryArtistCreditRows` 加两个**可空**回调
+  `onBlockArtist` / `onCopyArtistName`；每位画师那张卡外面包一层 `Box` + `key(name)`，
+  长按出 `DropdownMenu`（两项：**复制画师名「原名」** / **屏蔽该画师**（`StatusColors.Failing` 色，
+  与那面标签墙的「屏蔽该标签」同一档）），长按前 `HapticFeedbackConstants.LONG_PRESS`，与 chip 那三项菜单同构。
+- `GalleryInfoSheet.kt:316` 调用点把既有的 `blockTag` 与 `copyToClipboard` 接进去。
+
+四条刻意的取舍：
+
+1. **走长按不走明面按钮**：那张卡在 2026-10-01 第二次重排时定过口径 ——
+   "行1右端只剩关注这一样可点物"，再加一枚明面胶囊就是把那次重排推翻，而信息卡"读起来像参数表"
+   正是用户当轮报的问题。长按与同面板里那面标签墙的手势一致（点=搜索、长按=三项菜单）。
+2. **锚点逐位各挂一个 `Box`**：与详情页 `DetailTagChip` 那条既有结论同因 —— 共用锚会让菜单
+   永远从第一位的位置弹出来。
+3. **`key(name)` 而不是裸 `remember`**：菜单开合态若按位置记忆，列表增减时会错位到别人身上
+   （本项目已经因为"A 态能用 B 态不能用"的形态分叉踩过两次）。
+4. **两个回调都不给时整块不挂长按**：摆一枚按出空菜单的卡，比没有长按更让人以为是自己按错了。
+5. **复制与屏蔽都拿站方原串**，屏上摆译文 —— 与 `blockTag` 头注那条"译文会随字典更新失效，
+   词表与检索词都存原值"同一条纪律。
+
+**已验证**：`:app:compileDebugKotlin` EXIT=0。**未验**：真机上长按那张卡应弹出两项菜单、
+选「屏蔽该画师」应出「已屏蔽「xxx」，可在设置 → 内容屏蔽管理」的 Toast，且回画廊墙那位的新图不再出现
+（这三条都要读数，本环境不代操作设备）。
+
+### F.8 「有时候无法点击，没有任何反应」—— 待定位，不猜着修
+
+用户没给复现步骤。已排除的一条直觉：**不是这枚按钮自己被判成不可用** ——
+`GalleryViewerToolbar.kt` 里 `onInfo` 那一枚是 `VeneraIconButton(onClick = onInfo)`，**不带 `enabled` 参数**
+（同排的 `Download` 带 `!saving`、`Share` 带 `!sharing`；`收藏` 与 `清晰档` 两枚同样不带，
+所以"不带 enabled"是这一排 chrome 的常态，不是这枚的特殊豁免），因此它恒在命中测试里可点。
+剩下三条候选已交给只读勘察（层级/手势吞事件、sheet 宿主条件、
+"关于这张图"要的三份额外数据未回来时有没有静默分支），结论与修法在本节回写后再动代码。
+按仓里那条既有规矩（**降级路径宁可错慢，不可静默交错**；以及"复现不出就撤销"），
+在没有读数之前不去改这一条。
+
 ---
 
-## 批 E–H：待逐批回写
+## 批 E、G、H：待逐批回写
 
 B/C/D/E/F/G/H 的现状读数已由代码勘察钉住（文件行号在各批文档段落里补），
 每批落地后回写「已改 / 已验证 / 未做」。

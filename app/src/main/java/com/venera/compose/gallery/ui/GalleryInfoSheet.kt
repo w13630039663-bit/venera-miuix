@@ -322,6 +322,10 @@ internal fun GalleryInfoSheet(
                         credits = artistCredits,
                         imageLoader = imageLoader,
                         onOpenArtist = onOpenArtist,
+                        // 长按那两项走的是**同一条既有落库链**：画师名在两站都就在 post.tagList 里，
+                        // 所以 TAG 规则一定挡得住（blockTag 头注记着这个实测）；复制的也是站方原串。
+                        onBlockArtist = blockTag,
+                        onCopyArtistName = { copyToClipboard(context, "画师「$it」", it) },
                     )
                 }
 

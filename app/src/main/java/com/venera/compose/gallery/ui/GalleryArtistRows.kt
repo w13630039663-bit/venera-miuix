@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,16 +23,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.ImageLoader
@@ -50,6 +57,7 @@ import com.venera.compose.gallery.domain.GalleryArtistLinkPlatform
 import com.venera.compose.gallery.domain.GalleryArtistLinks
 import com.venera.compose.gallery.domain.GalleryArtistProfile
 import com.venera.compose.ui.tokens.GalleryPlatformColors
+import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -225,9 +233,20 @@ internal fun GalleryArtistCreditRows(
     imageLoader: ImageLoader,
     /** 点这张卡（关注钮与外链胶囊除外）：进画师介绍页（批次 Q+R · 批量 4 改判，原来是"点 = 搜这一枚标签"）。 */
     onOpenArtist: (String) -> Unit,
+    /**
+     * 「屏蔽该画师」。null 时长按菜单**整块不挂** —— 不给回调却摆一枚菜单项就是假开关。
+     *
+     * 调用方给的是信息卡里那同一条 `blockTag`：画师名在 yande.re / Gelbooru 两站都**就在
+     * `post.tagList` 里**（两站的 `tags` 就是那串平铺标签，没有 `tag_string_*` 分桶），
+     * 所以存成 TAG 规则一定挡得住；按既有实测，用 KEYWORD 会连作者名一起误伤。
+     */
+    onBlockArtist: ((String) -> Unit)? = null,
+    /** 「复制画师名」（站方原串，不是译文）。null 时这一项不摆。 */
+    onCopyArtistName: ((String) -> Unit)? = null,
 ) {
     if (artists.isEmpty()) return
     val context = LocalContext.current
+    val view = LocalView.current
     val tokens = VeneraTokens
     val scope = rememberCoroutineScope()
     val store = remember { GalleryPorts.of(context).follows }
@@ -258,80 +277,129 @@ internal fun GalleryArtistCreditRows(
              * （`VeneraCard.kt` 头注记着这条真机实测）。卡里的关注胶囊自己有 onClick，
              * 子级先拿到事件，所以"点关注"不会连带跳进档案页。
              */
-            VeneraCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { onOpenArtist(name) },
-            ) {
-                // ── 行1：头像 + 名字 + 关注 ──
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GalleryArtistAvatar(
-                        avatarUrl = data?.avatarUrl,
-                        name = name,
-                        imageLoader = imageLoader,
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = translated ?: name,
-                            fontSize = tokens.type.itemTitle,
-                            fontWeight = tokens.type.weightSemibold,
-                            color = tokens.color.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        /*
-                         * 第二行只在**显示名与站方标识不是同一个串**时才摆（有译文时）。
-                         * 它摆的是站方那串原始标识 —— 用户拿它回站上搜得到这个人，
-                         * 而中文译名在站上是搜不到的。两者相同时摆两遍同一串字只是噪声。
-                         */
-                        if (translated != null) {
-                            Text(
-                                text = name,
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.textTertiary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+            // 长按这张卡 = 「复制画师名 / 屏蔽该画师」（2026-10-04，用户第 9 条）。
+            // 锚点逐位各挂一个 Box，与那面标签墙同一个理由：共用锚会让菜单永远从第一位的
+            // 位置弹出来。key(name) 让开合态不随列表增减而错位（位子在、人换了，菜单就跟着
+            // 错位到别人身上）。两个回调都没有时**整块不挂**长按 —— 摆一枚按出空菜单的卡比
+            // 没有长按更让人以为是自己按错了。
+            key(name) {
+                var artistMenu by remember { mutableStateOf(false) }
+                Box {
+                    VeneraCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onOpenArtist(name) },
+                        onLongClick = if (onBlockArtist != null || onCopyArtistName != null) {
+                            {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                artistMenu = true
+                            }
+                        } else null,
+                    ) {
+                        // ── 行1：头像 + 名字 + 关注 ──
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            GalleryArtistAvatar(
+                                avatarUrl = data?.avatarUrl,
+                                name = name,
+                                imageLoader = imageLoader,
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = translated ?: name,
+                                    fontSize = tokens.type.itemTitle,
+                                    fontWeight = tokens.type.weightSemibold,
+                                    color = tokens.color.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                /*
+                                 * 第二行只在**显示名与站方标识不是同一个串**时才摆（有译文时）。
+                                 * 它摆的是站方那串原始标识 —— 用户拿它回站上搜得到这个人，
+                                 * 而中文译名在站上是搜不到的。两者相同时摆两遍同一串字只是噪声。
+                                 */
+                                if (translated != null) {
+                                    Text(
+                                        text = name,
+                                        fontSize = tokens.type.caption,
+                                        color = tokens.color.textTertiary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            /*
+                             * 关注**留在这一行右端**（2026-10-01 从行1挪到行2、本版又挪回来）。
+                             *
+                             * 上次挪走的理由是"名字吃 weight(1f) 会把「›」顶到最右，与关注只隔 8dp，
+                             * 两个不同语义的可点物误触面重叠"。那条前提今天不成立了：这一版把
+                             * 「›」**整枚撤掉**，行1右端只剩关注这一样可点物（整卡可点那一路由卡自己的
+                             * 按压反馈承担），所以"挤"这件事在结构上不存在了。
+                             */
+                            VeneraChip(
+                                text = if (following) "已关注" else "关注",
+                                selected = following,
+                                variant = VeneraChipVariant.Assist,
+                                onClick = { scope.launch { store.toggle(site, name) } },
                             )
                         }
+                        /*
+                         * ── 行2：外链胶囊 ──
+                         *
+                         * 一枚外链都没有是常态（站方没给、或全被认成别的站）：那时这一行整体不摆
+                         * —— 不摆"没有外链"那种我们没资格说的话，也不留一行空白撑高卡片。
+                         */
+                        if (links.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(tokens.spacing.space4))
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                                verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                            ) {
+                                links.forEach { link ->
+                                    VeneraChip(
+                                        text = GalleryArtistLinks.chipLabel(link),
+                                        variant = VeneraChipVariant.Assist,
+                                        // 品牌色小方块 + 白字形（见 [PlatformBadge]）。
+                                        leading = { PlatformBadge(link.platform) },
+                                        onClick = { openExternal(context, link.url) },
+                                    )
+                                }
+                            }
+                        }
                     }
-                    /*
-                     * 关注**留在这一行右端**（2026-10-01 从行1挪到行2、本版又挪回来）。
-                     *
-                     * 上次挪走的理由是"名字吃 weight(1f) 会把「›」顶到最右，与关注只隔 8dp，
-                     * 两个不同语义的可点物误触面重叠"。那条前提今天不成立了：这一版把
-                     * 「›」**整枚撤掉**，行1右端只剩关注这一样可点物（整卡可点那一路由卡自己的
-                     * 按压反馈承担），所以"挤"这件事在结构上不存在了。
-                     */
-                    VeneraChip(
-                        text = if (following) "已关注" else "关注",
-                        selected = following,
-                        variant = VeneraChipVariant.Assist,
-                        onClick = { scope.launch { store.toggle(site, name) } },
-                    )
-                }
-                /*
-                 * ── 行2：外链胶囊 ──
-                 *
-                 * 一枚外链都没有是常态（站方没给、或全被认成别的站）：那时这一行整体不摆
-                 * —— 不摆"没有外链"那种我们没资格说的话，也不留一行空白撑高卡片。
-                 */
-                if (links.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(tokens.spacing.space4))
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
-                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                    if (artistMenu) DropdownMenu(
+                        expanded = artistMenu,
+                        onDismissRequest = { artistMenu = false },
                     ) {
-                        links.forEach { link ->
-                            VeneraChip(
-                                text = GalleryArtistLinks.chipLabel(link),
-                                variant = VeneraChipVariant.Assist,
-                                // 品牌色小方块 + 白字形（见 [PlatformBadge]）。
-                                leading = { PlatformBadge(link.platform) },
-                                onClick = { openExternal(context, link.url) },
+                        onCopyArtistName?.let { copy ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "复制画师名「$name」",
+                                        fontSize = tokens.type.caption,
+                                        color = tokens.color.textPrimary,
+                                    )
+                                },
+                                onClick = {
+                                    artistMenu = false
+                                    copy(name)
+                                },
+                            )
+                        }
+                        onBlockArtist?.let { block ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text("屏蔽该画师", fontSize = tokens.type.caption, color = StatusColors.Failing)
+                                },
+                                // 落库的串必须是**站方原串**（译文会随字典更新变味），与标签那三项
+                                // 同一规矩：屏上摆译文，发出去、复制的、屏蔽的都拿原值。
+                                onClick = {
+                                    artistMenu = false
+                                    block(name)
+                                },
                             )
                         }
                     }
