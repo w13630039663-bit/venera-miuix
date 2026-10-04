@@ -112,6 +112,12 @@ interface ComicPreferences {
      */
     var lastUpdateCheckAt: Long
 
+    /**
+     * 用户点过「以后再说」的那一版。**是 `var` 不是流**，与 [lastUpdateCheckAt] 同形（账本不当偏好）。
+     * 写 null 撤销。判据在 `AppUpdateChecker.shouldAnnounce`：只有"远程就是被跳过的那一版"才压住。
+     */
+    var ignoredUpdateVersion: String?
+
     val favoriteSortOrder: StateFlow<String>
     val newFavoriteAddTo: StateFlow<String>
     val quickFavorite: StateFlow<String?>

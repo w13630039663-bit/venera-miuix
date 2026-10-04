@@ -7,7 +7,6 @@ import com.venera.compose.data.api.ComicPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
-import org.json.JSONObject
 
 /**
  * 本包的发布通道（检查更新与"去下载"都指向它）。
@@ -25,7 +24,11 @@ object ProjectChannel {
 
 /** 检查结果。`Failed` 与 `UpToDate` 必须分开：一次断网不能播报成"已是最新版本"。 */
 sealed interface UpdateCheck {
-    data class Available(val remoteVersion: String) : UpdateCheck
+    /**
+     * [release] 带着更新日志与候选安装包 —— 应用内下载要的就是这两样，
+     * 而它们与 [remoteVersion] 来自**同一次**请求（见 [AppUpdateChecker.check]）。
+     */
+    data class Available(val remoteVersion: String, val release: LatestRelease) : UpdateCheck
     data object UpToDate : UpdateCheck
     data object Failed : UpdateCheck
 }
@@ -44,8 +47,12 @@ object AppUpdateChecker {
 
     suspend fun check(context: Context): UpdateCheck {
         val local = localVersion(context) ?: return UpdateCheck.Failed
-        val remote = fetchRemoteVersion(context) ?: return UpdateCheck.Failed
-        return if (isNewer(remote, local)) UpdateCheck.Available(remote) else UpdateCheck.UpToDate
+        val release = fetchLatestRelease(context) ?: return UpdateCheck.Failed
+        return if (isNewer(release.version, local)) {
+            UpdateCheck.Available(release.version, release)
+        } else {
+            UpdateCheck.UpToDate
+        }
     }
 
     /** 开关开着、且距上次占坑超过 24 小时，才在启动时打这一次请求。 */
@@ -53,7 +60,16 @@ object AppUpdateChecker {
         prefs.checkUpdateOnStart.value &&
             System.currentTimeMillis() - prefs.lastUpdateCheckAt >= STARTUP_CHECK_INTERVAL_MS
 
-    private suspend fun fetchRemoteVersion(context: Context): String? = withContext(Dispatchers.IO) {
+    /**
+     * 「以后再说」的判据：压住的**只有被跳过的那一版**，出了更高的一版照旧提醒。
+     *
+     * 写成相等判断而不是"有值就不弹"，是因为后者等于让一次误点永久关掉更新通道 ——
+     * 用户下次知道自己落后，只能自己想起来去设置页翻。
+     */
+    fun shouldAnnounce(remote: String, ignored: String?): Boolean =
+        ignored.isNullOrBlank() || isNewer(remote, ignored)
+
+    private suspend fun fetchLatestRelease(context: Context): LatestRelease? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(ProjectChannel.LATEST_RELEASE_API)
             .header("Accept", "application/vnd.github+json")
@@ -65,15 +81,13 @@ object AppUpdateChecker {
                         Log.w(TAG, "发布通道返回 HTTP ${response.code}")
                         return@use null
                     }
-                    val tag = response.body?.string()
-                        ?.let { JSONObject(it).optString("tag_name") }
-                        .orEmpty()
-                    if (tag.isEmpty()) {
-                        Log.w(TAG, "发布通道没有 tag_name：${ProjectChannel.SLUG} 还没发过 release？")
-                        null
-                    } else {
-                        displayVersion(tag)
+                    val body = response.body?.string().orEmpty()
+                    val release = parseLatestRelease(body)
+                    if (release == null) {
+                        // 只报长度不报正文：body 里带着日志全文，日志文件不该收下一整篇发布说明。
+                        Log.w(TAG, "发布通道响应解不出可用版本（${body.length} 字符，HTTP 200）")
                     }
+                    release
                 }
         } catch (e: Exception) {
             Log.w(TAG, "拉取发布通道失败", e)

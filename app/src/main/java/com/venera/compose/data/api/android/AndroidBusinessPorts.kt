@@ -298,6 +298,9 @@ private class AndroidComicPreferences(private val context: Context) : ComicPrefe
     override var lastUpdateCheckAt: Long
         get() = prefs.lastUpdateCheckAt
         set(value) { prefs.lastUpdateCheckAt = value }
+    override var ignoredUpdateVersion: String?
+        get() = prefs.ignoredUpdateVersion
+        set(value) { prefs.ignoredUpdateVersion = value }
     override val favoriteSortOrder: StateFlow<String> get() = prefs.favoriteSortOrder
     override val newFavoriteAddTo: StateFlow<String> get() = prefs.newFavoriteAddTo
     override val quickFavorite: StateFlow<String?> get() = prefs.quickFavorite

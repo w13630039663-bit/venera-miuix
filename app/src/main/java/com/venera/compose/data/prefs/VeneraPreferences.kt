@@ -445,6 +445,20 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
             prefs.put(KEY_LAST_UPDATE_CHECK_AT, value)
         }
 
+    /**
+     * 用户在更新弹窗里点过「以后再说」的那一版。2026-10-04 新增，同样是账本不是偏好：
+     * 它只决定"这一版还弹不弹"，不改变任何界面观感，也不该出现在备份/恢复里。
+     * 判据是**版本号相等**而不是"有值就不弹" —— 出了更高的一档必须恢复提醒，
+     * 否则一次误点就把更新通道永久关掉了。
+     */
+    var ignoredUpdateVersion: String?
+        get() = prefs.getString(KEY_IGNORED_UPDATE_VERSION, null)
+        set(value) {
+            // 写 null 就是删键（JsonKeyValueStore.put :95-98），所以"清除已忽略的版本"
+            // 不留一个空串在那儿被读成某个真版本号。
+            prefs.put(KEY_IGNORED_UPDATE_VERSION, value)
+        }
+
     // ---- 设置页 hero 头图 / 名言卡小图（2026-10-02）----
     //
     // 两条都只存**应用私有目录里的绝对路径**（拷贝落盘在 SettingsHeroImageStore），
@@ -694,6 +708,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_FAVORITE_SORT_ORDER = "pref_favorite_sort_order"
         private const val KEY_CHECK_UPDATE_ON_START = "pref_check_update_on_start"
         private const val KEY_LAST_UPDATE_CHECK_AT = "pref_last_update_check_at"
+        private const val KEY_IGNORED_UPDATE_VERSION = "pref_ignored_update_version"
         private const val KEY_SETTINGS_HERO_PATH = "pref_settings_hero_path"
         private const val KEY_SETTINGS_QUOTE_AVATAR_PATH = "pref_settings_quote_avatar_path"
 
