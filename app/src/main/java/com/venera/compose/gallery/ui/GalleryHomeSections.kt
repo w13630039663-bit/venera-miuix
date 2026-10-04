@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.runtime.Composable
@@ -306,36 +305,14 @@ private fun GalleryArtistRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(tokens.spacing.artistAvatarSize)
-                            .clip(CircleShape)
-                            .then(
-                                if (face == null) {
-                                    Modifier.background(tokens.color.surfaceVariant)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (face == null) {
-                            Text(
-                                text = artist.name.take(1).uppercase(),
-                                fontSize = tokens.type.statNumber,
-                                color = tokens.color.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                        } else {
-                            VeneraCover(
-                                url = face,
-                                contentDescription = artist.name,
-                                preserveAspectRatio = false,
-                                imageLoader = imageLoader,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    }
+                    // 脸走全站唯一那颗件（2026-10-04 统一）。这里从前自己手写了一份圆座 +
+                    // 首字母退路，于是同一个人在首页是 22sp 的字母、在信息卡是 14sp，
+                    // 改一处忘另一处。次序仍由 faceOf 定（真头像 > 名下最近一张收藏 > 首字母）。
+                    GalleryArtistAvatar(
+                        avatarUrl = face,
+                        name = artist.name,
+                        imageLoader = imageLoader,
+                    )
                     Text(
                         text = translations[artist.name] ?: artist.name,
                         // 回到 caption（批次 N · N4）。批次 M · M7 那一句原文是：

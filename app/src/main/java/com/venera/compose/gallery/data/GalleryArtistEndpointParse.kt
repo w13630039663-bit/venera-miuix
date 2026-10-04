@@ -103,7 +103,8 @@ internal object GalleryArtistEndpointParse {
     /**
      * Mastodon `accounts/lookup` 的答复里取头像地址（批次 L · L9）。
      *
-     * 两根键都给出时**先取静态档**：头像位只有 34dp，那是 chrome 不是内容，为一枚圆座挂动图解码器不值
+     * 两根键都给出时**先取静态档**：头像位是 `artistAvatarSize`（56dp，2026-10-04 三处统一到这一档），
+     * 那是 chrome 不是内容，为一枚圆座挂动图解码器不值
      * （与"画廊墙缩略档恒 jpg"同一条口径）。
      *
      * 实例给没设过头像的账号挂的是 `/avatars/original/missing.png` 那张通用剪影 —— 它**是个合法地址**，

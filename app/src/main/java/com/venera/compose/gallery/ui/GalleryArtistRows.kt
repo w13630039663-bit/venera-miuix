@@ -272,9 +272,6 @@ internal fun GalleryArtistCreditRows(
                         avatarUrl = data?.avatarUrl,
                         name = name,
                         imageLoader = imageLoader,
-                        // 这一档就是首页「正在关注的画师」那一栏的脸径：同一件事（一个人的头像）
-                        // 在两个页面上不该是两个尺寸。
-                        modifier = Modifier.size(tokens.spacing.artistAvatarSize),
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -345,18 +342,28 @@ internal fun GalleryArtistCreditRows(
 }
 
 /**
- * 头像位。三种状态在屏上是**两种样子**：
- * 有地址 → 真图；没地址（含"还没回来"）→ 首字母圆座。
+ * 画师头像位 —— 全站**唯一**一处画师脸的画法（2026-10-04 统一）。
  *
+ * 首页「正在关注的画师」从前自己手写了一份圆座，于是同一个人在三个页面上有两种退路字号
+ * （这里 14sp、那里 22sp），改一处忘另一处。三处现在都调这颗件，且**都吃默认尺寸**：
+ * 默认档曾指着 `sourceAvatarSize`（34dp，那是漫画源状态行的档），漏传参数不会报错、
+ * 只会静默小一号 —— 那种"带默认值的新参数漏了没人发现"的坑仓里踩过，所以默认值本身就是判据。
+ *
+ * 三种状态在屏上是**两种样子**：有脸 → 真图；没脸（含"还没回来"）→ 首字母圆座。
  * 首字母不是装饰：这一行总得有个"这是个人"的形状，而空白圆读起来像图挂了。
- * 取数回来之后它会换成真图，那一跳比"先空白再蹦出来"好读。
+ *
+ * ⚠️ [avatarUrl] 是调用方按各自那套次序算好的最终值（首页走
+ * `GalleryFollowedArtists.faceOf`：真头像 > 名下最近一张收藏的缩略图 > null）。
+ * **备用水缩略图那条至今不过屏蔽/分级那把**（它是收藏里那张图本身，而收藏记录里没存
+ * 该不该挡的判据）—— 已知的口子，方案文档里挂着。要关它得给收藏加一档"落库时就算好"的字段，
+ * 老数据默认 false 就成了静默错答，比不关更糟，所以宁可不关。
  */
 @Composable
 internal fun GalleryArtistAvatar(
     avatarUrl: String?,
     name: String,
     imageLoader: ImageLoader,
-    modifier: Modifier = Modifier.size(VeneraTokens.spacing.sourceAvatarSize),
+    modifier: Modifier = Modifier.size(VeneraTokens.spacing.artistAvatarSize),
 ) {
     val tokens = VeneraTokens
     Box(
@@ -376,7 +383,9 @@ internal fun GalleryArtistAvatar(
         } else {
             Text(
                 text = name.take(1).uppercase(),
-                fontSize = tokens.type.body,
+                // 22sp 是首页那一栏在真机上定下来的字号（批次 N · N4 那轮调过），
+                // 56dp 的圆座里 14sp 的字母读起来像"没画完"。
+                fontSize = tokens.type.statNumber,
                 color = tokens.color.onSurfaceVariant,
                 maxLines = 1,
             )

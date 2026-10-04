@@ -245,9 +245,8 @@ internal fun GalleryArtistProfileScreen(
                     avatarUrl = credits.avatarUrl,
                     name = artistName,
                     imageLoader = imageLoader,
-                    // 与首页「正在关注的画师」同一档：两处是同一个人的同一张脸，
-                    // 尺寸不同就会读成两种头像（那一档刚从 44 抬到 56，见 Spacing.kt）。
-                    modifier = Modifier.size(tokens.spacing.artistAvatarSize),
+                    // 脸径吃组件默认档（artistAvatarSize），与首页那一栏、信息卡那一行同一个值 ——
+                    // 三处都不再各自传尺寸，就没有"某一处漏传、静默小一号"那种分叉。
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(

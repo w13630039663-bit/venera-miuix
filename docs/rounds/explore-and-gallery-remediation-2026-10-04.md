@@ -206,9 +206,53 @@ fun rememberLazyStaggeredGridState(...) : LazyStaggeredGridState =
 （这条必须还成立，否则是过度修复）。另外如果 ①切回来看到的是猜你喜欢而不是搜索结果，
 那说明命中的是 C.3 那条未做的缺口。
 
+## 批 D：统一全平台画师头像（5）
+
+### D.1 读数：尺寸其实早就对齐了，没对齐的是**画法**
+
+三处渲染点（Android 画廊）：信息卡画师行 `GalleryArtistRows.kt:271`、介绍页 hero
+`GalleryArtistProfileScreen.kt:244`、首页「正在关注的画师」`GalleryHomeSections.kt:309`。
+前两处调共用件 `GalleryArtistAvatar` 并各自传 `artistAvatarSize`(56dp)，
+**首页那一处是自己手写的一份圆座**（`Box + clip(CircleShape) + VeneraCover` 或首字母 Text）。
+
+于是真正的分叉有三条，都不是"尺寸"：
+
+| 分叉 | 原值 | 为什么是坑 |
+|---|---|---|
+| 共用件的**默认档** | `sourceAvatarSize` = **34dp**（那是漫画源状态行的档） | 漏传 modifier 不报错，只会静默小一号；仓里已有「带默认值的新参数漏了没人发现」这条教训 |
+| 首字母退路的字号 | 组件 14sp（`type.body`）vs 首页 22sp（`statNumber`） | 同一个人在两个页面两种退路长相，改一处忘另一处 |
+| 脸径 | 两处显式传 56dp，一处硬编码在同一 token 上 | 值一致但**来源不一致**，将来谁改一处就分叉 |
+
+档位（各站给哪一档）实测**已经是一致的**，不用动：`GalleryArtistUrls.avatarUrl` 是
+「两档取大」（pixiv `imageBig` 的 `_170` 优先于 `_50`）、fanbox 单档 160、Mastodon 优先静态档
+（`GalleryArtistEndpointParse.kt:106` 那条理由仍成立），且拿不到一律交 **null** 不交空串
+（空串进 Coil 是"什么都不显示且没有原因"）。56dp 圆座在 3x 屏约 168px，取大档正好。
+
+### D.2 已改
+
+- `GalleryArtistAvatar`：默认档改成 `artistAvatarSize`；首字母字号统一成 `statNumber`(22sp，
+  首页在真机上定下来的那一档）；头写清"全站唯一一处画师脸的画法"。
+- 信息卡与介绍页两处**删掉显式尺寸**，一起吃默认档 —— 三处不再各传各的。
+- 首页那一处手写的 `Box + VeneraCover + Text` 整块换成调这颗件；`faceOf` 的次序
+  （真头像 > 名下最近一张收藏 > 首字母）留在 domain 不动，仍是调用方算好最终 URL 再传进来。
+- 顺掉因此空转的 `CircleShape` import；修掉 `GalleryArtistEndpointParse.kt:106` 那句
+  还写着"头像位只有 34dp"的过期注释（判据本身不变）。
+
+### D.3 那条口子如实留着
+
+首页退路里「名下收藏的缩略图」那条**不过屏蔽/分级那把**（2026-10-01 那轮就记着"口子变小但没关死"）。
+本批没关，理由不是省事：收藏记录里存的是图的地址，**没有"该不该挡"的判据**，
+要关得给 `GalleryFavoritesStore` 加一档落库时就算好的字段；而历史数据只能默认 false ——
+按仓里那条既有规矩（**降级路径宁可错慢，不可静默交错**），把一屏旧收藏的头像全标成"不挡"
+是静默错答，比留着这个口子更糟。所以本批做的是：把三条未保护的画法收成一条，
+下一轮要上那把尺只需改一处。要现在就关，说一声，我按"读侧现判 + 判不了就不摆脸"做。
+
+**已验证**：`:app:testDebugUnitTest` 全量 EXIT=0，**109 个类 834 颗用例 0 失败 0 错误**
+（这一条同时是批 A–D 的回归读数）。真机读数交用户：三处头像应同尺寸同退路字号。
+
 ---
 
-## 批 D–H：待逐批回写
+## 批 E–H：待逐批回写
 
 B/C/D/E/F/G/H 的现状读数已由代码勘察钉住（文件行号在各批文档段落里补），
 每批落地后回写「已改 / 已验证 / 未做」。
