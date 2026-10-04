@@ -82,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.ImageLoader
 import coil3.request.ImageRequest
+import com.venera.compose.artistProfileIntent
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.rememberImageWallColumnCount
@@ -1359,6 +1360,17 @@ internal fun GalleryCardsGrid(
 ) {
     val tokens = VeneraTokens
     val view = LocalView.current
+    val context = LocalContext.current
+    /*
+     * 长按一张卡 → 那张动作表（用户 2026-10-04 第 2 条点名的五项）。
+     *
+     * 挂在**这一颗共用件**上而不是四个调用点各接一遍：搜索墙 / 猜你喜欢主墙 / 日榜二级页 /
+     * 收藏页走的是同一个 `GalleryCardsGrid`，只在一面墙上有长按就是假开关。
+     * 收藏页把 `onLongPress` 拿去做了多选与区间反选 —— **调用方传的优先**，
+     * 判据仍用"传没传这个函数"而不是再加一个布尔开关（与本函数 `selection` 那条同规矩：
+     * 两个参数表达同一件事就有对不上的可能，一个参数不会）。
+     */
+    var actionCard by remember { mutableStateOf<GalleryCard?>(null) }
     // 这一面墙所有卡片的标题**整批算一次**（要开 SQLite 查离线词典，逐卡各查一次就是几十趟）。
     // 墙是唯一知道"这批卡是哪些"的地方，所以取数落在这里；下面按 uid 交给每张卡。
     val titles = rememberGalleryCardTitles(cards.map { it.post })
@@ -1401,6 +1413,9 @@ internal fun GalleryCardsGrid(
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         handler(card.post)
                     }
+                } ?: {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    actionCard = card
                 },
                 selected = selection?.invoke(card.post) == true,
                 selecting = selection != null,
@@ -1412,6 +1427,21 @@ internal fun GalleryCardsGrid(
         footer?.let { slot ->
             item(key = "grid-footer", span = StaggeredGridItemSpan.FullLine) { slot() }
         }
+    }
+
+    actionCard?.let { card ->
+        GalleryCardActionSheet(
+            post = card.post,
+            onDismiss = { actionCard = null },
+            onOpenDetail = { onOpen(card.post) },
+            // 画师介绍页是另一颗 Activity（`artistProfileIntent` 那颗入口），
+            // source 传这张图的**画师出处**（站方那串，可能为空 —— 介绍页对它只当"没出处"）。
+            onOpenArtist = { name ->
+                context.startActivity(
+                    artistProfileIntent(context, card.post.site, name, card.post.source),
+                )
+            },
+        )
     }
 }
 

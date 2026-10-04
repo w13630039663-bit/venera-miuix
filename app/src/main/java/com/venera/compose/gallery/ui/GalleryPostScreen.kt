@@ -798,75 +798,19 @@ fun GalleryPostScreen(
     }
 
     /**
-     * 分享一条**原档**（图或视频），并把单页链接一并带上。
+     * 分享一条**原档**（图或视频）+ 单页链接。
      *
-     * ## 为什么直接给字节而不是给 URL
-     *
-     * 旧实现只发一行文本 `"站名 #id URL"` —— 用户拿到的不是图，是链接。
-     * 现在取 `file_url` 的真实字节写入 `cacheDir/shared_images/`，
-     * 经 FileProvider 以 `ACTION_SEND` 交给外部应用（附 `EXTRA_TEXT` 单页链接）。
-     *
-     * ## 三条口径，都是沿用既有裁决
-     *
-     * - **取原档**（`GallerySaver.fetchBytes`），与「保存」那条路同源同档 ——
-     *   分享出去的和保存下来的必须是同一份。
-     * - **原样落字节，不解码不重编码**：不用阅读器那条 `bitmap.compress(JPEG, 95)`，
-     *   那会洗掉 png 的 alpha 并把原图降质（`GallerySaver` 顶部注释已明令禁止这条路）。
-     * - **MIME 按站方扩展名**（`GallerySaver.mimeOf`），未知扩展名退 `application/octet-stream`
-     *   而不是猜一个。
-     *
-     * ## 视频
-     *
-     * 视频条目**照原片分享**（mp4/webm）。不把它换成"分享链接"—— 那枚钮在两种条目上
-     * 长得一样，行为却不同，用户会以为按钮坏了。
-     *
-     * ⚠️ 视频原片实测 16~26 MB，分享前要真下载一次（不命中 Coil 缓存），
-     * 所以走 [sharing] 标志防重入，并由 Toast 报失败原因 —— 静默失败最坏。
+     * 动作本体在 [shareGalleryPost]（墙上长按共用，2026-10-04 从这一处搬出去的），
+     * 三条口径与"失败必须出声"的理由都写在那颗的头注里。这里只留本宿主的三件事：
+     * 震动、防重入的 [sharing] 旗（视频原片 16~26 MB，取档要真下载一次）、以及把旗收回。
      */
     fun share(target: GalleryPost) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (sharing) return
         sharing = true
         scope.launch {
-            GallerySaver.fetchBytes(context, target)
-                .onSuccess { bytes ->
-                    // 类型**写死成 Uri**，并且用 getOrElse 而不是 onFailure：
-                    // `runCatching{…}.onFailure{…}` 交出的是 `Result<Uri>` 而**不是** `Uri`，
-                    // 于是下面那句 `putExtra(EXTRA_STREAM, uri)` 静默挑中了
-                    // `putExtra(String, Serializable)` 那个重载（kotlin.Result 声明了 Serializable）——
-                    // 编译通过、真机当场 "Parcelable encountered IOException writing serializable
-                    // object (name = kotlin.Result)"，分享**一次都没有成功过**。
-                    // 显式类型 + getOrElse 让这一类错落在编译期，而不是落在用户手上。
-                    val uri: Uri = runCatching {
-                        // 落盘要在 IO 上：视频原片实测 16~26 MB，
-                        // 跟在 Main.immediate 的续点上写就是拿主线程写几十兆，能卡出 ANR。
-                        withContext(Dispatchers.IO) {
-                            val dir = CacheDirs.inCache(context.cacheDir, CacheDirs.SHARED_IMAGES)
-                            val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
-                            val file = File(dir, name)
-                            file.outputStream().use { it.write(bytes) }
-                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                        }
-                    }.getOrElse { e ->
-                        Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
-                        return@onSuccess
-                    }
-                    runCatching {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = GallerySaver.mimeOf(target)
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            putExtra(Intent.EXTRA_TEXT, "${target.site.displayName} #${target.id} ${target.pageUrl}")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "分享图片"))
-                    }.onFailure { e ->
-                        Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                .onFailure { e ->
-                    Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
-                }
+            // 动作本体在 [shareGalleryPost]：墙上长按走的是同一份，别在这儿留第二份实现。
+            shareGalleryPost(context, target)
             sharing = false
         }
     }
