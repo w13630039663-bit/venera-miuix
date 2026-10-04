@@ -1,15 +1,9 @@
 package com.venera.compose.download
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.venera.compose.data.network.ImageHeaderPolicy
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
@@ -79,30 +73,15 @@ class DownloadManager private constructor(private val context: Context) {
 
     // ================================= 系统前台下载通知 =================================
 
-    /** 低打扰下载进度渠道（Channel ID: venera_download）。 */
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "离线下载",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "漫画离线下载进度与完成状态"
-                setShowBadge(false)
-            }
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.createNotificationChannel(channel)
-        }
-    }
+    /**
+     * 渠道定义搬到了 `DownloadNotificationChannel`（2026-10-04）——
+     * 应用内更新那条链要复用同一条渠道，而它不该依赖"这台设备用过漫画离线下载"。
+     * 名字、id、重要级与那一句描述都逐字没动。
+     */
+    private fun createNotificationChannel() = DownloadNotificationChannel.ensure(context)
 
     /** Android 13+ 通知运行时权限（未授予时静默跳过，不打扰用户）。 */
-    private fun canPostNotification(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun canPostNotification(): Boolean = DownloadNotificationChannel.canPost(context)
 
     /** 每个任务一条进度通知（taskId 尾部哈希作 notificationId，互不覆盖）。 */
     private fun notifyTaskProgress(task: DownloadTask) {
@@ -111,7 +90,7 @@ class DownloadManager private constructor(private val context: Context) {
             val notificationId = task.taskId.hashCode()
             val text = "${task.downloadedPages}/${task.totalPages} 页" +
                 (if (task.speedText.isNotBlank()) " · ${task.speedText}" else "")
-            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, DownloadNotificationChannel.ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle("正在下载：${task.comicTitle} - ${task.chapterTitle}")
                 .setContentText(text)
@@ -136,7 +115,7 @@ class DownloadManager private constructor(private val context: Context) {
             } else {
                 "下载失败：${task.errorMsg ?: "未知错误"}" to android.R.drawable.stat_notify_error
             }
-            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, DownloadNotificationChannel.ID)
                 .setSmallIcon(icon)
                 .setContentTitle(title)
                 .setContentText("${task.comicTitle} - ${task.chapterTitle}")
@@ -746,8 +725,6 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     companion object {
-        /** 系统通知渠道 ID（低打扰下载进度）。 */
-        private const val NOTIFICATION_CHANNEL_ID = "venera_download"
 
         @Volatile
         private var INSTANCE: DownloadManager? = null
