@@ -8,8 +8,12 @@ import org.junit.Test
  * 半模态滚动位移去向的判据（`GallerySheetScroll`）。
  *
  * 为什么这几条值得钉：返回值是"**我吃掉了多少**"（嵌套滚动的约定，与本能的"我放了多少"相反），
- * 写反的后果是面板又开始抖 —— 而那件事在屏上只在"内容顶到满屏 + 甩一下"这个组合下才出现，
+ * 写反的后果是面板又开始抖 —— 而那件事在屏上只在"内容顶到满屏 + 拉到底 + 再下拉"这个组合下才出现，
  * 平时看起来一切正常。设备掉线时这是唯一能跑的证据。
+ *
+ * 2026-10-05 起 `consumedFromDrag` 由「恒不扣」改成**三档条件**（相位 0/1/2 的判据见实现）：
+ * 只有「面板已 Expanded **且** 内容已到底」才扣 —— 其余两档放行，保住「下拉关面板」的手势。
+ * 下面三条正是照这三档写的。
  *
  * 用例里的四个数取自真机读数：面板在满屏态被甩时那一份残余位移约 120~400px/帧，
  * 残余速度在 2000~8000 px/s 一档（`GalleryPostScreen` 那次录屏的能量峰值）。
@@ -17,11 +21,29 @@ import org.junit.Test
 class GallerySheetScrollTest {
 
     @Test
-    fun `拖拽那一份全部放行给面板`() {
-        // 手指按着往下拖 = 用户在用这个手势关面板，一份都不能扣。
-        assertEquals(0f, GallerySheetScroll.consumedFromDrag(120f), 1e-4f)
-        assertEquals(0f, GallerySheetScroll.consumedFromDrag(-360f), 1e-4f)
-        assertEquals(0f, GallerySheetScroll.consumedFromDrag(0f), 1e-4f)
+    fun `面板没顶格时拖拽那一份全部放行给面板`() {
+        // 半开档：用户就是在用「在内容上往下拖」这个手势关面板，一份都不能扣。
+        // 「内容到没到底」在这一档不影响结论（门是 &&）。
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(120f, panelExpanded = false, contentAtBottom = false), 1e-4f)
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(120f, panelExpanded = false, contentAtBottom = true), 1e-4f)
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(-360f, panelExpanded = false, contentAtBottom = true), 1e-4f)
+    }
+
+    @Test
+    fun `面板顶格但内容还能滚时仍然放行`() {
+        // 下拉的第一顺位永远是「滚内容」。内容还有得滚就说明用户想滚它，不是想关面板。
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(120f, panelExpanded = true, contentAtBottom = false), 1e-4f)
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(-360f, panelExpanded = true, contentAtBottom = false), 1e-4f)
+    }
+
+    @Test
+    fun `面板顶格且内容已到底时整份扣住`() {
+        // 2026-10-05 鬼畜的修复点：这一份若不扣，会经 m3 的连接器（SheetDefaults.kt:656）
+        // 逐帧推给面板，而面板 Expanded 锚点依赖内容高（BottomSheet.kt:306）⇒ 帧级上下跳。
+        // 扣住 = 本层报「全吃了」⇒ 外层拿到 0 ⇒ 面板不动 ⇒ 锚点不重算 ⇒ 环断。
+        assertEquals(120f, GallerySheetScroll.consumedFromDrag(120f, panelExpanded = true, contentAtBottom = true), 1e-4f)
+        assertEquals(-360f, GallerySheetScroll.consumedFromDrag(-360f, panelExpanded = true, contentAtBottom = true), 1e-4f)
+        assertEquals(0f, GallerySheetScroll.consumedFromDrag(0f, panelExpanded = true, contentAtBottom = true), 1e-4f)
     }
 
     @Test

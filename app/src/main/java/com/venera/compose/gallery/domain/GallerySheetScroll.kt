@@ -3,17 +3,11 @@ package com.venera.compose.gallery.domain
 /**
  * 半模态内容区**滚动位移的去向**：内容区吃不完的那一份，哪些扣在自己这儿、哪些放给面板。
  *
- * ## 这条判据解决的问题：面板盖满屏之后"下拉不下来，一直在鬼畜跳动"
+ * ## 当前职责
  *
- * 用户 2026-10-01 的原话。成因不是面板本身，而是**内容区与面板抢同一份惯性**：
- * 内容比屏幕高时（「关于这张图」的标签墙很容易就顶到满屏），用户上滑到底再一甩，
- * 内容区把自己吃不完的那一份**速度**顺着嵌套滚动交上去，面板那条 `anchoredDraggable`
- * 接到之后就朝锚点冲 —— 而内容高度又是被父约束量出来的，于是
- * "面板动 → 约束变 → 量出的高度变 → 锚点变 → 面板再动"形成一个自我推进的环，
- * 表现就是停在原地高频抖动、手指往下拉也拉不动。
- * （这不是本仓猜的：M3 `ModalBottomSheet` 这一族问题在 issue tracker 与官方样例里都有记载，
- * 触发条件正是"可滚动内容 + 动态高度上限"。上界那条的另一半修法在半模态自己那一层：
- * 滚动区的高度上限改成按**屏幕**算的常量，见 `VeneraSpacingTokens.sheetBodyHeightReserve`。）
+ * 这里保留 M3 嵌套滚动链的残余位移判据：只限制内容区已经到边界后，仍会继续传给面板的部分。
+ * 它不是高度稳定方案。鬼畜复现的最新设备日志显示，原来的 `contentAtBottom` 条件
+ * 没有扣住实际向下面板交接的那份位移；稳定面板锚点由 `GalleryInfoSheet` 的固定总高度负责。
  *
  * ## 为什么两种位移必须分开处理
  *
@@ -34,12 +28,37 @@ package com.venera.compose.gallery.domain
 object GallerySheetScroll {
 
     /**
-     * 拖动（`NestedScrollSource.Drag` / `UserInput`）吃不完的那一份纵向位移 —— **一点都不扣**。
+     * 拖动（`NestedScrollSource.Drag` / `UserInput`）吃不完的那一份纵向位移 —— **要不要扣住**。
      *
-     * 恒为 0：全部放行给面板，下滑关闭靠它。
+     * ## 2026-10-05 诊断判据：在旧的近全屏高度下尝试限制已到底时的残余拖动
+     *
+     * 旧版恒返回 0（全放行），理由是「手指按着往下拖 = 用户在用这个手势关面板，一份都不能扣」。
+     * 那条理由**只在面板没顶格时成立**。用户 2026-10-05 报的帧级上下跳有三种条件同时成立：
+     *
+     * 「面板**已 Expanded** + 标签全展导致**内容滚到底** + **在内容区（非把手）下拉**」。
+     *
+     * 旧判据假设内容区已经吃不下任何位移，这一份顺着嵌套滚动交给面板。而 m3 自己的
+     * `ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection.onPostScroll`
+     * （`SheetDefaults.kt:655-656`）对 UserInput **无条件** `dispatchRawDelta(available)` ——
+     * 面板于是被**逐帧**推动。面板一动就触发 m3 的 `draggableAnchors` 重算挡
+     * （`BottomSheet.kt:293`），而那里的 `Expanded` 锚点是 `fullHeight − sheetSize.height`
+     * （`:306`）—— **依赖内容量出的高**。锚点变 ⇒ `dragTarget` 被反复置/清 ⇒ 面板帧间来回。
+     * 「间隔不到几帧」就是从这来的。
+     *
+     * ## 这条判据的限制
+     *
+     * 设备日志已证明连接器处在祖先位，但这个按**实时滚动值**切换的条件会漏过底部到顶部的连续手势：
+     * 内容回到 `value == 0` 后 `contentAtBottom` 已为 false，正向剩余量于是继续交给 M3。
+     * 该判据仅作旧实验记录；当前面板稳定性不再依赖它。
+     *
+     * @param availableY 本层吃不完、下一步本该交给面板的纵向位移（**向下为正**）。
+     * @param panelExpanded 面板当前是否已是 `Expanded` 档。传 `false` 一律放行。
+     * @param contentAtBottom 内容区是否已滚到最底（`scrollState.value >= scrollState.maxValue`）。
+     *   传 `false` 一律放行。
+     * @return **本层消费掉的量**（嵌套滚动约定，与「放了多少」相反）。
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun consumedFromDrag(availableY: Float): Float = 0f
+    fun consumedFromDrag(availableY: Float, panelExpanded: Boolean, contentAtBottom: Boolean): Float =
+        if (panelExpanded && contentAtBottom) availableY else 0f
 
     /**
      * 惯性吃不完的那一份 —— **全扣**，两个方向都扣。

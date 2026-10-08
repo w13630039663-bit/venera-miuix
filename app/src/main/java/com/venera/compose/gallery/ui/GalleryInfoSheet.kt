@@ -9,6 +9,8 @@ import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,20 +51,25 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -97,8 +103,20 @@ import com.venera.compose.ui.tokens.GallerySheetSection
 import com.venera.compose.ui.tokens.GalleryTagCategoryColors
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
+
+/**
+ * 落定看门狗的**真机二分开关**（2026-10-05）。
+ *
+ * 改 `false` 就是旧行为 —— 面板点不动是**偶发**的，一颗包装上去如果不再出现，
+ * 必须能一条开关切回去再验一次，否则分不清「修好了」与「这轮没撞上」。
+ */
+private const val SHEET_SETTLE_WATCHDOG = true
 
 /**
  * 「关于这张图」半模态（照 Breadboard 的 `InfoSheet`，用户 2026-09-25 点名复刻）。
@@ -189,7 +207,11 @@ internal fun GalleryInfoSheet(
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
-    val sheetState = rememberModalBottomSheetState()
+    // 只有一个打开档：外层面板固定高度，Expanded 也不会贴到屏幕顶部。
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
     // 屏蔽规则要落库（suspend），动作归本面板持有；与漫画详情页那三个标签动作同一份分工。
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val tagScope = rememberCoroutineScope()
@@ -198,20 +220,63 @@ internal fun GalleryInfoSheet(
     var tagsExpanded by remember(post.uid) { mutableStateOf(false) }
 
     /*
-     * 内容区吃不完的那一份位移，**拖动放行、惯性全扣** —— 判据在 [GallerySheetScroll]，
-     * 那边逐条写了"为什么手套那一份不能扣、甩那一份不能给"，以及返回值的方向为什么反直觉。
-     * 少了这一层，面板盖满屏之后会一直抖、还拉不下来（用户 2026-10-01 报的第 3 条）。
+     * 内容区吃不完的那一份位移 —— **判据在 [GallerySheetScroll]**，那边逐条写了
+     * 「为什么顶格+到底时那一下必须扣、其余两档为什么必须放」，以及返回值的方向为什么反直觉。
+     * 少了这一层，面板盖满屏之后下拉会**帧级上下跳**（用户 2026-10-01 报的第 3 条，
+     * 2026-10-05 复现并定死机理：m3 自己的连接器 `SheetDefaults.kt:656` 把位移逐帧推给面板，
+     * 而面板的 `Expanded` 锚点 = 屏高 − 内容高（`BottomSheet.kt:306`）⇒ 面板一动锚点就重算 ⇒ 环）。
      */
+    // 内容区的滚动状态提到这里：判据要读它「到底了没有」。
+    val bodyScrollState = rememberScrollState()
     // `NestedScrollSource.Drag` / `Fling` 在新版 compose 里已改名（UserInput / SideEffect），
     // 但这两个旧名在 1.7 与 1.12 上都在 —— 本仓的 compose 版本由 Miuix 在运行期顶，写新名会编不过。
     @Suppress("DEPRECATION")
     val sheetScrollConnection = remember {
+        // 「上一次拖动分支报出去的判据组合」——同一个组合连续过帧时不重复记（拖动每帧都过这里）。
+        // 只在**组合变了**（available 正负变、两个门翻转）时落一行，读数才读得动。
+        var lastDragSig: String? = null
+        // 诊断包专用（2026-10-05 03:2x）：`onPostScroll` 的**累计调用次数**。
+        // 为什么要这一列：上一轮的 `扣判` 一条都没出现，而它只在「组合变了」时记 ——
+        // 于是"一次都没被调"与"被调了但组合没变"在读数上长得一模一样。
+        // 加一个无条件计数就能把这两件事分开：计数为 0 ⇒ 本连接器**不在嵌套滚动链上**。
+        var postScrollCalls = 0
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                postScrollCalls++
+                if (postScrollCalls == 1 || postScrollCalls % 200 == 0) {
+                    GallerySheetProbe.log(
+                        "扣判 第${postScrollCalls}次进入 onPostScroll available.y=${available.y} " +
+                            "source=$source expanded=${sheetState.currentValue}",
+                    )
+                }
                 val eaten = if (source == NestedScrollSource.Fling) {
                     GallerySheetScroll.consumedFromFling(available.y)
                 } else {
-                    GallerySheetScroll.consumedFromDrag(available.y)
+                    // 「面板已 Expanded」与「内容已到底」两个门都由**读的时候**取，不缓存：
+                    // 用户在拖的过程中这两个条件都可能翻转（拖到一半滚到底），缓存一次就会判错。
+                    val atBottom = bodyScrollState.maxValue > 0 &&
+                        bodyScrollState.value >= bodyScrollState.maxValue
+                    val expanded = sheetState.currentValue == SheetValue.Expanded
+                    val eatenNow = GallerySheetScroll.consumedFromDrag(
+                        availableY = available.y,
+                        panelExpanded = expanded,
+                        contentAtBottom = atBottom,
+                    )
+                    // 诊断包专用（2026-10-05 03:xx）：把**判据的两个门与扣下的量**记下来。
+                    // 为什么非记不可：这个判据的第二个门（`contentAtBottom`）上一轮**零读数**，
+                    // 于是"它有没有为真""到底扣没扣"全靠推理 —— 方案 2 就是这样打空的一枪。
+                    // 只在「方向 + 两个门 + max/value」这个组合**变了**时才落一行（拖动每帧都过这里，
+                    // 逐帧记会刷屏）；`扣掉` 取本次真实返回值，不经二次调用。
+                    val dir = if (available.y > 0f) "下拉" else if (available.y < 0f) "上滑" else "零"
+                    val sig = "$dir expanded=$expanded atBottom=$atBottom max=${bodyScrollState.maxValue}"
+                    if (sig != lastDragSig) {
+                        lastDragSig = sig
+                        GallerySheetProbe.log(
+                            "扣判 $sig value=${bodyScrollState.value} " +
+                                "available.y=${available.y} 扣掉=$eatenNow",
+                        )
+                    }
+                    eatenNow
                 }
                 // 只记惯性那一路：拖动每一帧都过这里，记下来会把有用读数冲掉。
                 if (source == NestedScrollSource.Fling) {
@@ -269,38 +334,149 @@ internal fun GalleryInfoSheet(
     }
 
     /*
-     * 滚动区的高度上限按**屏幕**算，不用 `weight(1f, fill = false)`。
-     *
-     * 后者的上限是"父高 − 动作条"，而父高就是这张 sheet 自己的高度、sheet 的高度又由内容量出来
-     * —— 一个自我引用的环。用户在面板上拖一下就会让两边互相推着走：面板动 → 可用高度变 →
-     * 量出的内容高变 → 面板的锚点变 → 面板再动。表现是面板盖满屏之后**下拉不动、原地高频抖动**
-     * （用户 2026-10-01 报的第 3 条）。上限一旦是"屏高减一个常量"，内容高度就与面板当前姿态无关。
-     * 另一半修法（扣掉惯性）在 [sheetScrollConnection]，两份参数化成一个事实：
-     * **内容区的高度与位移都不许反过来影响面板的姿态。**
+     * 整张面板从第一次测量起就固定到一个屏幕相关的高度，Expanded 档也留出稳定的顶部空间。
+     * 内容区占面板剩余高度并单独滚动，因此标签数量、译文回填不会改变 sheet 的高度与锚点。
      */
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val bodyMaxHeight = (screenHeight - tokens.spacing.sheetBodyHeightReserve)
-        .coerceAtLeast(tokens.spacing.sheetBodyHeightReserve)
+    val sheetMaxHeight = (screenHeight - tokens.spacing.sheetTopClearance)
+        .coerceAtLeast(tokens.spacing.sheetTopClearance)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         // ── 诊断包专用（2026-10-04）：只读，不改行为。撤除时连着 GallerySheetProbe.kt 一起删 ──
         val probeHolder = remember { SheetCoordsHolder() }
-        LaunchedEffect(Unit) { GallerySheetProbe.sample("面板", probeHolder) }
-        LaunchedEffect(sheetState.currentValue, sheetState.targetValue) {
-            GallerySheetProbe.log("面板 姿态 current=${sheetState.currentValue} target=${sheetState.targetValue}")
+        LaunchedEffect(Unit) { GallerySheetProbe.install(context) }
+        /*
+         * 面板姿态用**事件驱动**记，不再用 `sample()` 那种 60 × 120ms 的一次性轮询。
+         *
+         * 上一版之所以「取了 4~5 次日志都白取」，是因为有分叉力的那一列（`动画中=`）只活在轮询里：
+         * 它只在开面板后 7.2 秒内有效、粒度 120ms、而且与「哪一次按下」对不上时间轴 ——
+         * 一个 7~100ms 级的偶发态落进它采样格的概率极低。
+         * `dragTarget` 是 `by mutableStateOf`（foundation `AnchoredDraggable.kt:993`），
+         * snapshotFlow 收得到每一次翻转，比轮询更全、日志还更少。
+         */
+        LaunchedEffect(sheetState) {
+            snapshotFlow { sheetState.isAnimationRunning }.distinctUntilChanged().collect { running ->
+                GallerySheetProbe.log("面板 落定 running=$running ${GallerySheetProbe.poseOf(sheetState)}")
+            }
+        }
+        LaunchedEffect(sheetState) {
+            snapshotFlow { sheetState.currentValue }.distinctUntilChanged().collect {
+                GallerySheetProbe.log("面板 姿态 current=$it target=${sheetState.targetValue}")
+            }
+        }
+        LaunchedEffect(sheetState) {
+            snapshotFlow { sheetState.targetValue }.distinctUntilChanged().collect {
+                GallerySheetProbe.log("面板 目标 target=$it current=${sheetState.currentValue}")
+            }
+        }
+        /*
+         * ── 诊断包专用（2026-10-05 03:xx 补）：内容区滚动状态 ─────────────────────────
+         *
+         * 上一轮只量了面板，没量内容区 —— 于是"chip 在窗口里平移 ±1800px 而面板 top 纹丝不动"
+         * 这个现象只能靠推理归因。这一支把内容区的 `value`/`maxValue`/`isScrollInProgress`
+         * 直接落成读数，补上那个缺口。理由与取数方式见 [GallerySheetProbe.onBodyScroll] 头注。
+         *
+         * 与另外三条一样是 `snapshotFlow` + `distinctUntilChanged`：事件驱动，不轮询。
+         */
+        LaunchedEffect(bodyScrollState) {
+            snapshotFlow {
+                Triple(
+                    bodyScrollState.value,
+                    bodyScrollState.maxValue,
+                    bodyScrollState.isScrollInProgress,
+                )
+            }.distinctUntilChanged().collect { (v, m, running) ->
+                GallerySheetProbe.onBodyScroll("面板内容", v, m, running)
+            }
+        }
+        // 「有没有手指按在这张面板上」——只观察、不消费。落定看门狗靠它避开用户正在进行的拖动。
+        val fingerDown = remember { mutableStateOf(false) }
+        /*
+         * ── 档 A：落定看门狗（2026-10-05）─────────────────────────────────────────────
+         *
+         * 机理：`AnchoredDraggableState.dragTarget` 有一个**只在抢不到锁时被置上、却没有任何
+         * `finally` 兜底**的赋值点（foundation `AnchoredDraggable.kt:1024-1027`：
+         * `if (!snapSuccessful) dragTarget = newTarget`）。而 `isAnimationRunning` ⇔ `dragTarget != null`
+         * （`:935-936`），面板拖动层的 `startDragImmediately` 用的正是它
+         * （m3 `BottomSheet.kt:329-334` 没传该参 ⇒ 走默认值）。于是它一旦被置上、而**之后没有
+         * 任何一次带 `targetValue` 的 `anchoredDrag` 正常走完**（只有那条重载会在 `finally` 里清它，
+         * `:1197-1226`），它就永远非空 ⇒ 拖动层在 Initial 段把每一笔 DOWN 都吃掉
+         * ⇒ **整块内容点不动、拖动照常**。
+         *
+         * 为什么是**偶发**：置上它的前提是「有人正持着锁」的那一瞬恰好发生锚点变化
+         * （内容异步长高）—— 这是竞态，不是必现。
+         *
+         * 修法只做一件事：内容到位后，若面板**声称自己在 Expanded** 却还卡着，就重申一次落定 ——
+         * 借 `anchoredDrag` 走完的 `finally` 把那个标志清掉。Expanded → Expanded 是**零距离动画**，
+         * 画面不动，所以不改观感。
+         *
+         * ⚠️ 必须带 `!fingerDown`：`SheetState.expand()` 与用户拖动**同为 `MutatePriority.Default`**
+         * （`SheetDefaults.kt:343` / `AnchoredDraggable.kt:1155`），而 `MutatorMutex.canInterrupt` 是 `>=`
+         * （`MutatorMutex.kt:82`）—— **同优先级也会互相抢**。在用户拖动当中重申落定会把那次拖动取消掉
+         * （手指还在屏上、面板却不跟手）。有这道门，「不改观感」才是被证明的，而不是嘴上说说。
+         *
+         * ⚠️ 只在 `claimed == Expanded` 时动作：卡在别的档时**只记日志不动作** ——
+         * 否则「帮它走完」会让面板自己挪一下，那才是改观感。
+         */
+        // `currentValue` 也进 key：否则「内容比面板到位更早」时，看门狗只评估一次就再也不评了，
+        // 而卡住恰恰可能发生在**展开动画期间**（内容长高点与开面板动画撞上）。
+        LaunchedEffect(tagTranslations.size, artistCredits.size, sheetState.currentValue) {
+            if (!SHEET_SETTLE_WATCHDOG) return@LaunchedEffect
+            val claimed = sheetState.currentValue
+            GallerySheetProbe.log(
+                "修法 看门狗 评估 手指=${fingerDown.value} ${GallerySheetProbe.poseOf(sheetState)}",
+            )
+            if (sheetState.isAnimationRunning && !fingerDown.value && claimed == SheetValue.Expanded) {
+                try {
+                    sheetState.expand()
+                    GallerySheetProbe.log("修法 看门狗 已重申 ${GallerySheetProbe.poseOf(sheetState)}")
+                } catch (e: CancellationException) {
+                    // MutatorMutex 在「当前有同/更高优先级」时取消的是**新来的这一次**
+                    // （`MutatorMutex.kt:90-99`），它抛 CancellationException 表示「本趟不生效」，
+                    // 而不是「本协程被取消」。必须区分：真被取消（离开组合 / 换 key）要照常抛出，
+                    // 否则会把结构化并发咬坏。
+                    if (!currentCoroutineContext().isActive) throw e
+                    GallerySheetProbe.log("修法 看门狗 本趟未生效（有更高优先级的动作占着锁）")
+                }
+            }
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(GallerySheetProbe.touchProbe("面板", probeHolder))
+                .height(sheetMaxHeight)
+                .then(GallerySheetProbe.touchProbe("面板", probeHolder, sheetState))
+                .then(Modifier.observePointerDown(fingerDown))
                 .onGloballyPositioned { probeHolder.coordinates = it },
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = bodyMaxHeight)
-                    .verticalScroll(rememberScrollState())
+                    .weight(1f)
+                    /*
+                     * ★ 2026-10-05 03:2x 修：`nestedScroll` 必须在 `verticalScroll` **之前**（= 祖先位）。
+                     *
+                     * ## 上一版为什么完全没生效（`扣判` 在真机日志里 0 条）
+                     *
+                     * 上一版写的是 `…verticalScroll(state).nestedScroll(conn)…` —— 我们的连接器
+                     * 挂在了滚动容器的**内侧**。而 `Modifier.nestedScroll` 的语义是**向祖先注册**
+                     * （compose-ui `NestedScrollNode.kt:60-61`：`parentNestedScrollNode` =
+                     * `findNearestAncestor()`，只向上找），事件传播方向也是
+                     * 「正在滚动的后代 → 祖先」（`NestedScrollModifier.kt:54-59` 原文：
+                     * "the dispatching (scrolling) descendant … **notifies ancestors**"）。
+                     *
+                     * ⇒ 挂在滚动容器内侧的 `nestedScroll` **既不是它的祖先、也不在后代的祖先链上**，
+                     * 于是 `onPostScroll` **一次都不会被调用** —— 判据形同虚设，
+                     * 而屏上看起来"改了个东西却没效果"，极难归因。
+                     *
+                     * ## 挪到祖先位之后的语义（正是我们想要的）
+                     *
+                     * `onPostScroll` 是「**自己先、父后**」（`NestedScrollNode.kt:93-105`）。
+                     * 我们在 `verticalScroll` 之外 ⇒ `verticalScroll` 是**子**、我们是**父**
+                     * ⇒ 它先消费、我们拿到的是**它吃剩的** —— 即"内容滚到底之后多出来的那一份"，
+                     * 这正是 [GallerySheetScroll.consumedFromDrag] 判据要处理的那一份。
+                     */
                     .nestedScroll(sheetScrollConnection)
+                    .verticalScroll(bodyScrollState)
                     .padding(horizontal = tokens.spacing.screenHorizontal),
             ) {
                 // ── 标题行：标题在左、分级徽标在右 ──
@@ -1081,3 +1257,36 @@ private fun openInBrowser(context: Context, siteName: String, url: String) {
         Toast.makeText(context, "打不开${siteName}：${it.message}", Toast.LENGTH_SHORT).show()
     }
 }
+
+/**
+ * 「此刻有没有手指按在这张面板上」——**只观察、一次都不 `consume()`**。
+ *
+ * 落定看门狗（见 `GalleryInfoSheet` 里那段注释）需要这道门，理由是一条被核过的库语义：
+ * `SheetState.expand()` 与用户拖动**同为 `MutatePriority.Default`**
+ * （m3 `SheetDefaults.kt:343` / foundation `AnchoredDraggable.kt:1155`），而
+ * `MutatorMutex.canInterrupt` 判的是 `>=`（`MutatorMutex.kt:82`）—— **同优先级也会互相抢**。
+ * 也就是说：在用户拖动当中去重申落定，会把那次拖动**取消掉**（手指还在屏上、面板却不跟手）。
+ * 有了这道门，看门狗只在没有手指时动作。
+ *
+ * 写法照本仓既有的只读观察件（`GallerySheetProbe.touchProbe`、
+ * `components/backdrop/DragGestureInspector.kt:29`）：Initial 段取 down、
+ * `requireUnconsumed = false`、全程不消费 ⇒ 对子节点与手势链完全透明。
+ *
+ * `finally` 里必须复位：手势协程被取消（离开组合）时若留下 `true`，看门狗会**永久失效**。
+ */
+private fun Modifier.observePointerDown(down: MutableState<Boolean>): Modifier =
+    this.pointerInput(down) {
+        awaitEachGesture {
+            val first = awaitFirstDown(false, PointerEventPass.Initial)
+            down.value = true
+            try {
+                while (true) {
+                    val change = awaitPointerEvent(PointerEventPass.Final)
+                        .changes.firstOrNull { it.id == first.id } ?: break
+                    if (!change.pressed) break
+                }
+            } finally {
+                down.value = false
+            }
+        }
+    }
