@@ -2,6 +2,8 @@ package com.venera.compose.gallery.data
 
 import com.venera.compose.data.platform.PathProvider
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -235,10 +237,9 @@ class GalleryFavoritesStore internal constructor(private val paths: PathProvider
             // 先写临时文件再改名：写到一半被杀（进程回收、闪退）不会把已有收藏截断成半个 JSON。
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
             tmp.writeText(json.encodeToString(list))
-            if (!tmp.renameTo(file)) {
-                tmp.delete()
-                throw java.io.IOException("收藏档改名失败：${file.absolutePath}")
-            }
+            // 从前是 `tmp.renameTo(file)` —— Windows 上目标已存在时它**返回 false 而不替换**，
+            // 于是收藏第二张图就写不进盘（成因与选型逐字写在 `GalleryArtistAvatarStore.persist` 那里）。
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }.isSuccess
     }
 

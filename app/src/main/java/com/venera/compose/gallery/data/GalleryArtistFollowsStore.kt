@@ -4,6 +4,8 @@ import com.venera.compose.data.platform.PathProvider
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,10 +112,9 @@ class GalleryArtistFollowsStore internal constructor(private val paths: PathProv
         runCatching {
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
             tmp.writeText(json.encodeToString(list.map { it.toEntry() }))
-            if (!tmp.renameTo(file)) {
-                tmp.delete()
-                throw java.io.IOException("关注名单档改名失败：${file.absolutePath}")
-            }
+            // 从前是 `tmp.renameTo(file)` —— Windows 上目标已存在时它**返回 false 而不替换**，
+            // 于是第二次关注就写不进盘（成因与选型逐字写在 `GalleryArtistAvatarStore.persist` 那里）。
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }.isSuccess
     }
 

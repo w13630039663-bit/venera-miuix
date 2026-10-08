@@ -4,6 +4,8 @@ import com.venera.compose.data.platform.Logger
 import com.venera.compose.data.platform.PathProvider
 import com.venera.compose.gallery.domain.GalleryArtistAvatars
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -80,10 +82,19 @@ internal class GalleryArtistAvatarStore private constructor(
         runCatching {
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
             tmp.writeText(json.encodeToString(snapshot.map { it.toRecord() }))
-            if (!tmp.renameTo(file)) {
-                tmp.delete()
-                throw java.io.IOException("头像地址档改名失败：${file.absolutePath}")
-            }
+            // ⚠️ 这里从前是 `tmp.renameTo(file)`，而 **Windows 上 `File.renameTo` 遇到目标已存在
+            // 直接返回 false**（POSIX 的 `rename` 会替换）—— 于是这份"先写 tmp 再改名"的原子写
+            // 在 Android 侧一直是对的，在桌面**从第二笔起全丢**（2026-10-04 桌面第十批 ② 量死的：
+            // 两位画师连落，盘上只剩第一条，stdout 一句「改名失败」）。
+            // 三颗同形状的 store 各有一条用例钉着（`:desktop:test` 的 `SharedStoreAtomicWriteTest`）。
+            //
+            // ⚠️ **这条 Windows 事实在仓库里本来就有第二份**：`data/platform/JsonKeyValueStore.kt:24-25`
+            // 的注释与 `replace(…)` 写得清清楚楚（那颗是桌面键值实现件），而这三颗 store 各写了一份
+            // `renameTo` —— 同一族知识两处各存一份，那份是错的。这里**不**照抄它那枚
+            // `ATOMIC_MOVE` + `AtomicMoveNotSupportedException` 退路：tmp 恒与目标同目录同卷，
+            // `ATOMIC_MOVE` 唯一能多保证的东西这里本来就成立，而它在部分文件系统上会**直接抛**，
+            // 那会把"今天至少写得成第一笔"换成"那一笔也写不了"。
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }.onFailure { failure ->
             // 落不进盘只是下次冷启动多问一遍，不值得打扰用户 —— 但日志里必须留话。
             logger.warn(TAG, "头像地址档没写成：${failure.message}")
