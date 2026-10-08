@@ -32,8 +32,8 @@ android {
         applicationId = "com.github.w13630039663bit.venera.miuix"
         minSdk = 33
         targetSdk = 37
-        versionCode = 2003
-        versionName = "2.0.3"
+        versionCode = 2004
+        versionName = "2.0.4"
     }
 
     signingConfigs {
