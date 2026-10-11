@@ -196,7 +196,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Theme colour | dynamic + 6 presets | ✅ seed colour + 25 presets + wallpaper |
 | Transitions | standard | ✅ shared element + predictive-back tracking + gallery fly-in |
 | Archive interoperability | — | ✅ imports official `.venera` and PicaComic `.picadata` |
-| Unit tests | 1 Dart test file | ✅ 109 pure JVM test files (106 classes) / 814 cases |
+| Unit tests | 1 Dart test file | ✅ 119 pure JVM test files (116 classes) / 886 cases |
 | Local formats | ZIP / 7Z / CBZ / EPUB / folder | ✅ folder + CBZ import/export (**no archive reading**, see gaps) |
 | Headless / CLI mode | ✅ | ❌ not planned |
 
@@ -211,12 +211,12 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Source JS execution | flutter_inappwebview | **system WebView + JS bridge** + shim reimplementation |
 | Gallery boards / artist follows / daily hot / reverse search | — | ✅ |
 | Cloudflare preferred IP | — | ✅ (off by default) |
-| JVM correctness tests | 1 Dart test file | ✅ 109 files / 814 cases |
+| JVM correctness tests | 1 Dart test file | ✅ 119 files (116 carry cases) / 886 cases |
 | Radial transition (preview card ⇄ reader) | ✅ | ❌ not carried over in the migration |
 
 ### Upstream has it, this branch does not
 
-- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This branch now has a **Windows desktop module in progress** (`:desktop`, Compose Desktop + compose-fluent): the gallery home screen's data layer is live and runnable — see `docs/rounds/windows-gallery-home-2026-10.md`. It covers **that one screen only**: the 33 comic sources, settings and the reader have no desktop entry point yet. Feasibility and stage readings are archived in `docs/rounds/windows-port-feasibility-2026-10.md`. Linux / macOS / iOS are still not started.
+- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This branch's **Windows desktop module** (`:desktop`, Compose Desktop + compose-fluent) is well past a single screen: all seven rail destinations are enterable today — Gallery (Daily / Followed artists / For you / Latest / Rankings, plus a large-image viewer with keyboard zoom, copy-image and four backdrop modes), Discover, Search (including reverse search and the local-file slot), Favorites (the gallery set and the comic set, separately), Artists, Comics (explore → detail → the reading screen (vertical strip plus a real paging tier: three modes switch on screen, and the choice is stored in the very same `pref_reading_mode` key the phone uses) → reading history; progress lands in the very same `comic_history` table the phone writes, and the history screen recognises rows the phone recorded too — that column is written differently on each side (the phone stores the display name, desktop the key), so desktop parses it with the phone's own rule; plus a source-management screen listing all 34 packaged sources, each one disable/enable-able, with "pick this" switching the active source and the disabled list kept in this machine's local file), and Settings (8 of the 12 preferences actually change something). Per-batch readings, absence reasons and measurement methods live in `docs/rounds/`, entered from `docs/HANDOFF-2026-10-04.md`. What the desktop still lacks is listed separately below. Linux / macOS / iOS are still not started.
 - **Reading EPUB / 7Z / ZIP archives directly**: upstream's reader opens archive files; here local comics are always served to the reader as directories, and CBZ import unpacks into a directory.
 - **Biometric privacy lock**: upstream has launch authentication and re-lock on background; this repository contains no such capability. The rating mask is content filtering, not a privacy lock.
 - **Archive download protocol**: upstream has a dedicated download path for sources declaring archive capability (E-Hentai, for example); here downloads are page by page only.
@@ -239,7 +239,7 @@ This section exists on purpose. Anything implemented but not reachable from an e
 
 | Item | Note |
 | --- | --- |
-| Windows | In progress. `:desktop` covers the gallery home screen's data layer; comic sources, settings and the reader have no desktop entry point yet. |
+| Windows | In progress. `:desktop` reaches all seven rail destinations; what it still lacks is listed in the dedicated subsection below rather than mixed into the Android table. |
 | Linux / macOS / iOS | Not started. Port feasibility assessed and archived for Windows only. |
 | EPUB / 7Z / ZIP direct reading | Local comics are always served as directories; CBZ import unpacks. |
 | Biometric privacy lock | No launch authentication, no re-lock on background. The rating mask is content filtering, not a lock. |
@@ -247,6 +247,19 @@ This section exists on purpose. Anything implemented but not reachable from an e
 | Headless CLI mode | No counterpart. |
 | Reader-only wide-screen layout | Only top-bar/drawer width caps; no landscape two-column reader. |
 | DoH, pinch-to-zoom, "not implemented" grey rows | Explicitly withdrawn, so they never occupy a switch slot. |
+
+**What the desktop (`:desktop`) still lacks**
+
+- **Comic chapter downloads**: saving images to disk is wired now (batch 85) — the "Save to this machine" button in the overlay writes the original tier into `dataRoot/downloads/图库`, and the "Downloads" row on the home screen enumerates exactly that directory. File names follow the other side's default tier `<site key>-<id>.<ext>`, and a collision steps aside on its own. What is still missing is "download a whole episode" on the comic side — a different thing.
+- **Gallery browsing history**: wired in batch 86 — opening a post records one row from the detail overlay (site, id, preview URL, timestamp; masked posts are not recorded), and the History row on home reads that file. What is still missing is getting **back to the post itself** from that row: that would mean storing the whole post, and file URLs plus dimensions start owing an expiry debt the moment they land in the archive.
+- **Resume at the last page**: opening a row in reading history starts at the first page. The stored row keeps the page you stopped at (the phone reads it to resume); the desktop side does not hand it to the reading screen yet.
+- **Keys on the reading screen**: `←` / `→` / `PageUp` / `PageDown` are wired into this screen now (batch 87, second half) — all three modes take this pair of keys, each one scrolls its own wall, and the keys share the very same step the two on-screen buttons use. What is still missing is the **volume keys**: on desktop the only possible route left for them is the raw AWT code (VK 175 / 176), this machine has no OS-level input, and no reading exists yet for whether a real press reaches this layer — so what this batch ships is the instrument rather than that branch: every key press the screen receives prints one line, `D_按键 键=… 原始=… 落点=…`, and only a number in that `原始=` slot counts as a measurement. There is also no "volume keys turn pages" switch on the settings screen yet (the other side's copy defaults to off, and it serves a phone's keys).
+- **Animated images stop at the first frame on the wall and the overlay**: the full-screen viewer does animate — it bypasses Coil's decoder and steps frames with the desktop's own Skia `Codec`. The wall and overlay go through `AsyncImage`, whose JVM interface has no frame tier, so those two stay still.
+- **Web login and importing source scripts**: the Android page imports files through `android.content.Intent` / `Uri`; its web-login flow reads the cookie jar of the **embedded WebView** itself, and desktop has no such host — while the sites never redirect to a local port (there is no local HTTP server anywhere in the reference client), so the "open the system browser and wait for a callback" shortcut has **nothing to wait for**. What this side does offer is the **paste-it-by-hand** form: on the "source management" screen every source whose script declares its own field list gets a slot for those credentials (the list is read from the script — the desktop never restates it), the logged-in mark is only written once the source accepts them, and that cookie jar lands in `cookies.json` under the data root, so **it survives a restart**. The "source management" screen covers the 34 packaged sources (list, disable/enable, switch the active source) plus pasting credentials by hand; it is **not** a local script importer.
+- **Backup / sync and reading statistics**: the shared layer is on the desktop compile face (`data/db` as a whole directory), but there is no entry point.
+- **Volume-key paging and "keep the screen on for large images"**: those are phone keys and power APIs; on desktop paging accepts ← and →, and those two rows name their own absence in Settings and say what to do instead.
+- **Landscape two-column reader**: not doing it, same call as on Android.
+- **Distribution shape**: no released installer in the repository; the locally built executable directories stay under `_qa/`, the MSI target is configured but never enabled, and the package name is still the probe-era one.
 
 **Capabilities with conditions**
 
@@ -290,7 +303,7 @@ No Flutter, no Dart, no Rust.
 # release: R8 obfuscation + resource shrinking, split per ABI (armeabi-v7a / arm64-v8a / x86_64 / universal)
 ./gradlew :app:assembleRelease
 
-# pure JVM correctness tests (109 files / 814 cases, no device needed)
+# pure JVM correctness tests (119 files / 886 cases, no device needed)
 # These two numbers drift. Recompute: find app/src/test -name '*.kt' | wc -l  and  grep -rho '@Test' app/src/test --include=*.kt | wc -l
 ./gradlew :app:testDebugUnitTest
 
@@ -379,7 +392,7 @@ venera-compose/
 │   │   ├── comic-side tag dictionaries (Simplified / Traditional) + 3,980 Simplified/Traditional pairs
 │   │   ├── rating presets for 33 sources · gallery tag dictionary SQLite
 │   │   └── licenses/                   # Licences of third-party dictionaries and components
-│   └── src/test/java/                  # 104 pure JVM correctness test files (1 is the source-scan helper)
+│   └── src/test/java/                  # 119 pure JVM correctness test files (116 carry cases, 3 are helpers; one of them is the source-scan base)
 ├── gradle/libs.versions.toml           # Single source of dependency versions (with reasons for pins)
 ├── screenshots/                        # Images used by this README
 ├── docs/                               # Workflow manual and per-topic designs

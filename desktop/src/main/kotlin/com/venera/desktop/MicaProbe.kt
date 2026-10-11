@@ -323,30 +323,161 @@ internal fun screenRectOf(hwnd: Long): Rectangle? = runCatching {
 }
 
 /**
- * 该点最前面的窗口是不是我们这扇（或其子窗）。
+ * 该点最前面的窗口是不是我们这扇（或其**祖先链上的任一子窗**）。
  * **锁屏 / 切到别的虚拟桌面时，`Robot` 照样能截出一张纯壁纸**，而 Win32 的 visible 位仍是 true
  * —— 只有这一招能识破，所以自截图前必须先过这道闸。
+ *
+ * ⚠️ 这一颗原来**只走 `GetParent` 一层**：CMP 桌面窗的画布嵌得更深
+ * （Frame → 画布 → Skia 面板那种形状），于是"其实是我们这扇窗"会被判成"不是"，
+ * **每一张取证图都会被这道闸拒掉**（2026-10-04 实测：抬成 topmost 之后仍然拒）。
+ * 现在沿父链往上走，上限 [ANCESTOR_WALK_LIMIT] 层（防环；真到上限也没到本窗就是不在）。
  */
-internal fun isPointOnWindow(hwnd: Long, x: Int, y: Int): Boolean = runCatching {
+internal fun isPointOnWindow(hwnd: Long, x: Int, y: Int): Boolean {
+    val at = windowAtPoint(x, y) ?: return false
+    if (at == hwnd) return true
+    var current = at
+    repeat(ANCESTOR_WALK_LIMIT) {
+        current = windowParent(current) ?: return false
+        if (current == hwnd) return true
+    }
+    return false
+}
+
+/** 父链走几层就罢：环与畸形形状都按"不在本窗"处理，不硬凑成"在" */
+private const val ANCESTOR_WALK_LIMIT = 6
+
+/** `WS_EX_TOPMOST`：抬窗那颗位。回读它才算数，"我调用了 SetWindowPos" 不算 */
+private const val WS_EX_TOPMOST = 0x8L
+
+private const val HWND_TOPMOST_VALUE = -1L
+private const val HWND_NOTOPMOST_VALUE = -2L
+// SWP_NOSIZE / SWP_NOMOVE 这颗文件顶部就已声明（`addNoRedirectionBitmap` 在用），不重复登记
+private const val SWP_NOACTIVATE = 0x10
+
+/**
+ * 把这扇窗抬成（或落回）topmost，返回**一句带证据的读数**。
+ *
+ * 为什么不能用 AWT 的 `setAlwaysOnTop` 就算数（2026-10-04 实测）：AWT 那头报
+ * `isAlwaysOnTop=true 支持=true visible=true`，而 `WindowFromPoint` 仍认用户的 Chrome 窗 ——
+ * `SunAwtFrame` 上那一层样式**没落到 Win32**。所以这里直接 `SetWindowPos(HWND_TOPMOST)`，
+ * 并且**回读 `GWL_EXSTYLE` 的 0x8 位**写进读数：抬窗这件事要么有位要么没有，不接受"我调用了"。
+ *
+ * 只带 `SWP_NOSIZE|SWP_NOMOVE|SWP_NOACTIVATE`：取证不需要改尺寸位置，而**不抢焦点**是刻意的 ——
+ * 抢前台已经是用户批准的例外，再顺手抢输入焦点就是另一件事了。
+ */
+internal fun setTopmost(hwnd: Long?, on: Boolean): String {
+    if (hwnd == null) return "hwnd 取不到，未抬"
+    return runCatching {
+        Arena.ofConfined().use { arena ->
+            val u = SymbolLookup.libraryLookup("user32", arena)
+            val get = u.find("GetWindowLongPtrW").map {
+                Linker.nativeLinker().downcallHandle(
+                    it,
+                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT),
+                )
+            }.orElse(null) ?: return "GetWindowLongPtrW 取不到"
+            val pos = u.find("SetWindowPos").map {
+                Linker.nativeLinker().downcallHandle(
+                    it,
+                    FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                    ),
+                )
+            }.orElse(null) ?: return "SetWindowPos 取不到"
+            val h = MemorySegment.ofAddress(hwnd)
+            val old = (get.invokeExact(h, GWL_EXSTYLE) as MemorySegment).address()
+            val moved = pos.invokeExact(
+                h,
+                MemorySegment.ofAddress(if (on) HWND_TOPMOST_VALUE else HWND_NOTOPMOST_VALUE),
+                0, 0, 0, 0,
+                SWP_NOSIZE or SWP_NOMOVE or SWP_NOACTIVATE,
+            ) as Int
+            val back = (get.invokeExact(h, GWL_EXSTYLE) as MemorySegment).address()
+            "on=$on SetWindowPos=$moved（非 0 才算生效）位已上=${(back and WS_EX_TOPMOST) != 0L} " +
+                "exstyle 0x${old.toString(16)}→0x${back.toString(16)}"
+        }
+    }.getOrElse { "抬窗抛了 ${it::class.java.simpleName}: ${it.message?.take(100)}" }
+}
+
+/** `WindowFromPoint`：那点最前面的那扇窗（返回 0 或取不到都算 `null`） */
+internal fun windowAtPoint(x: Int, y: Int): Long? = runCatching {
     Arena.ofConfined().use { arena ->
-        val u = SymbolLookup.libraryLookup("user32", arena)
-        val fromPoint = u.find("WindowFromPoint").map {
+        val fn = SymbolLookup.libraryLookup("user32", arena).find("WindowFromPoint").map {
             Linker.nativeLinker().downcallHandle(
                 it,
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
             )
-        }.orElse(null) ?: return false
-        val at = (fromPoint.invokeExact(x, y) as MemorySegment).address()
-        if (at == hwnd) return true
-        val getParent = u.find("GetParent").map {
+        }.orElse(null) ?: return null
+        val hwnd = (fn.invokeExact(x, y) as MemorySegment).address()
+        if (hwnd == 0L) null else hwnd
+    }
+}.getOrElse {
+    println("S06a_WindowFromPoint FAIL ${it::class.java.simpleName}: ${it.message?.take(140)}")
+    null
+}
+
+/** `GetParent`：直接父窗（顶层窗没有父窗，取不到与没有都回 `null`） */
+internal fun windowParent(hwnd: Long): Long? = runCatching {
+    Arena.ofConfined().use { arena ->
+        val fn = SymbolLookup.libraryLookup("user32", arena).find("GetParent").map {
             Linker.nativeLinker().downcallHandle(
                 it,
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS),
             )
-        }.orElse(null) ?: return false
-        (getParent.invokeExact(MemorySegment.ofAddress(at)) as MemorySegment).address() == hwnd
+        }.orElse(null) ?: return null
+        val parent = (fn.invokeExact(MemorySegment.ofAddress(hwnd)) as MemorySegment).address()
+        if (parent == 0L) null else parent
     }
 }.getOrElse {
-    println("S06a_WindowFromPoint FAIL ${it::class.java.simpleName}: ${it.message?.take(140)}")
-    false
+    println("S06a_GetParent FAIL ${it::class.java.simpleName}: ${it.message?.take(140)}")
+    null
 }
+
+/**
+ * 那扇窗的**标题与类名**，只为诊断。原来拒图那句写的是"多半已锁屏/切到别的虚拟桌面"—— 那是**猜**的；
+ * 取证时要的是"中心点到底被谁占着"。取不到就照实说取不到，不拿"未知"冒充"我们这扇"。
+ */
+internal fun windowDescribe(hwnd: Long): String = runCatching {
+    Arena.ofConfined().use { arena ->
+        val u = SymbolLookup.libraryLookup("user32", arena)
+        // arena.allocate 是零填充的，所以 GetWindowTextW 没写满时 getUtf16String 也会在 NUL 处收住
+        val buf = arena.allocate(2L * 512)
+        fun text(of: String): String {
+            val fn = u.find(of).map {
+                Linker.nativeLinker().downcallHandle(
+                    it,
+                    FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                    ),
+                )
+            }.orElse(null) ?: return "?"
+            val n = fn.invokeExact(MemorySegment.ofAddress(hwnd), buf, 512) as Int
+            return if (n <= 0) {
+                ""
+            } else {
+                // 手工按 UTF-16 读：`getUtf16String` 在这套编译 JDK 上不解析（实测报 Unresolved reference），
+                // 而 `get(ValueLayout.JAVA_CHAR, offset)` 是各版本都有的最低公分母
+                val sb = StringBuilder(n)
+                var i = 0
+                while (i < n) {
+                    val ch = buf.get(ValueLayout.JAVA_CHAR, i * 2L)
+                    if (ch.code == 0) break
+                    sb.append(ch)
+                    i++
+                }
+                sb.toString()
+            }
+        }
+        "标题「${text("GetWindowTextW")}」类名「${text("GetClassNameW")}」"
+    }
+}.getOrElse { "描述取不到（${it::class.java.simpleName}）" }

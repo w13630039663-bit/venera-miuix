@@ -10,6 +10,7 @@ import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.SQLException
 import java.sql.Types
+import java.util.Properties
 
 /**
  * SqlDatabase 的桌面实现：一条 sqlite-jdbc（org.xerial）连接直连本地 `.db` 文件。
@@ -26,11 +27,32 @@ import java.sql.Types
  *    而不是两个线程的语句混在同一笔事务里互相提交/回滚。
  * [inTransaction] 标记因此只需要挡"同线程重入"这一种情况（跨线程已经被锁隔开了），
  * 保留 `@Volatile` 是让读到的值对诊断可见，不当作互斥手段。
+ *
+ * 两种打开形状：读写（[JdbcSqliteDatabase]，本应用自己维护的两棵库）与
+ * **只读**（[openReadOnly]，离线词典那份包内副本 —— 它不是我们的库，写进去就是改包内数据）。
+ * 只读那条不是装饰：2026-10-08 实测 `open_mode=1` 之后，任何写句都被驱动以
+ * `SQLITE_READONLY` 挡回，走的是上面那条"SQL 失败就抛并带原文"的同一口径。
  */
-class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
+class JdbcSqliteDatabase private constructor(private val file: File, readOnly: Boolean) : SqlDatabase {
+
+    /** 读写打开：建表与迁移都按这条走（`db/` 目录由调用方建好，库文件不在时 sqlite 会自己建）。 */
+    constructor(file: File) : this(file, readOnly = false)
 
     private val connection: Connection = try {
-        DriverManager.getConnection("jdbc:sqlite:${file.path}")
+        // 排在取连接之前：交付包里驱动自己去 jar 里取原生库会取空（批 82.9b），
+        // 而"落一份 + 指两枚属性"这条路在包内 exe 上量过是通的。
+        // 落点递的是**库文件那一侧的目录**而不是 java.io.tmpdir —— 包内进程在 Temp 里建目录被拒过（同批读数）。
+        val nativeRoot = file.parentFile
+            ?: throw IllegalStateException("库文件没有父目录，落不下 SQLite 原生库：${file.path}")
+        val nativePlaced = DesktopSqliteNative.ensure(nativeRoot)
+        println(DesktopSqliteNative.reading(nativePlaced))
+        if (readOnly) {
+            DriverManager.getConnection("jdbc:sqlite:${file.path}", Properties().apply {
+                setProperty(OPEN_MODE_PROPERTY, OPEN_MODE_READONLY.toString())
+            })
+        } else {
+            DriverManager.getConnection("jdbc:sqlite:${file.path}")
+        }
     } catch (e: SQLException) {
         // 驱动缺失（No suitable driver）与文件不可写都收敛到这一条，消息带路径，不许静默换库
         throw IllegalStateException("建不出 SQLite 连接：${file.absolutePath}：${e.message}", e)
@@ -194,5 +216,19 @@ class JdbcSqliteDatabase(private val file: File) : SqlDatabase {
         is Double, is Float -> SqlType.FLOAT
         is Boolean, is Number -> SqlType.INTEGER // SQLite 无独立布尔存储类，1/0 即 INTEGER
         else -> throw IllegalStateException("sqlite-jdbc 返回了未识别的值类型 ${v.javaClass.name}，请先补映射再放行")
+    }
+
+    companion object {
+        private const val OPEN_MODE_PROPERTY = "open_mode"
+
+        /** sqlite-jdbc 认的那枚 `SQLITE_OPEN_READONLY`（2026-10-08 实测：1 = 只读，2 = 读写）。 */
+        private const val OPEN_MODE_READONLY = 1
+
+        /**
+         * 只读打开一份**已经存在**的库文件，与 Android 侧 `data.platform.android.openReadOnlySqlDatabase`
+         * 同语义、同"打不开就抛并带路径"的判据。存在的理由：画廊离线词典那份包内副本不是我们的库，
+         * 写进去等于改包内数据，而那种改动在屏上一点都看不出来。
+         */
+        fun openReadOnly(file: File): JdbcSqliteDatabase = JdbcSqliteDatabase(file, readOnly = true)
     }
 }

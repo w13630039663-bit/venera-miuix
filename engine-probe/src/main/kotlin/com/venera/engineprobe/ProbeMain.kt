@@ -25,7 +25,7 @@ fun main(args: Array<String>) {
 
     println("[probe] want=$wantKey assets=${assetDir.path} data=$dataDir proxy=${proxy ?: "直连"}")
 
-    DesktopJsHost(assetDir, dataDir, proxy).use { host ->
+    DesktopJsHost(assetDir, dataDir, proxy, emptyList()).use { host ->
         // Task 6：源脚本改走 EngineAssets（包内优先、仓库兜底，两条路各打一条读数）。
         // 探针原来的形状是"取不到就打 FAIL 然后 return"，不改成抛 —— 只把读法统一。
         val js = runCatching { EngineAssets.readText(assetDir, "sources/$wantKey.js") }

@@ -58,7 +58,6 @@ import kotlinx.coroutines.launch
 internal fun DesktopGelbooruCredentialPanel(
     credentials: DesktopGalleryCredentials,
     modifier: Modifier = Modifier,
-    onCleared: () -> Unit = {},
 ) {
     // 身份流是判据件的单一事实源：存好/注销之后这一屏立刻跟着变，不靠本地再存一份。
     // 局部化一次是为了避开委托属性的 smart cast 限制（`by` 出来的属性编译器判不出非空）。
@@ -168,7 +167,6 @@ internal fun DesktopGelbooruCredentialPanel(
                 Button(onClick = {
                     credentials.gelbooru.signOut()
                     rejection = null
-                    onCleared()
                 }) { Text("清除凭据") }
             }
         }

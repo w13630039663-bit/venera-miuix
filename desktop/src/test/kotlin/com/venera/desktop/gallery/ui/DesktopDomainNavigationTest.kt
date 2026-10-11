@@ -35,7 +35,7 @@ class DesktopDomainNavigationTest {
      * ① rail 上恰好七枚，**次序**照稿 `:354-364`。
      *
      * 次序不是排版偏好：稿上「图画组｜漫画」之间那道 8px 空隙与「设置」贴底是靠
-     * [DesktopDomain.isInTopGroup] / [DesktopDomain.precedesSpacer] 判出来的，
+     * [DesktopDomain.precedesSpacer] 判出来的（批 26 撤了另一枚同族的判据：它零调用点），
      * 而这两枚 getter 写的是序数比较 —— 有人往中间插一枚，设置就掉到半空中。
      */
     @Test
@@ -82,16 +82,22 @@ class DesktopDomainNavigationTest {
      * `wired` 非空锁的是**缺席的种类**：这张清单把"接好了但没画"和"这台机器上没有"
      * 分成两句话。空清单等于退回那句什么都说了、等于什么都没说的"暂不支持"。
      *
-     * ⚠️ 缺席域的**数目**钉在 3：2026-10-04 骨架那批是五枚（发现 / 搜索 / 收藏 / 画师 / 设置），
-     * 第二批把搜索与收藏两域接成真页面 ⇒ 剩 3 枚。这个数是"还有哪几域没做"的清单，
-     * 改它就等于悄悄多接或少接了一域 —— 而那正是本文件其余断言要覆盖的事。
+     * ⚠️ 缺席域的**数目**钉在 0：2026-10-04 骨架那批是五枚（发现 / 搜索 / 收藏 / 画师 / 设置），
+     * 第二批把搜索与收藏两域接成真页面（剩 3 枚），第七批转正**设置域**（§21）、
+     * 第八批转正**画师域**（§22）、第九批转正**发现域**（§23）—— 七枚域到此全部是真页面。
+     * 这个数是"还有哪几域没做"的清单，改它就等于悄悄多接或少接了一域。
+     *
+     * ⚠️ 今天它是 0，所以下面那个 `forEach` **一条都不会跑到** —— 那几条措辞断言此刻等于没验证过。
+     * 真钉住"不许挂回一句缺席说明"的是这一行 `assertEquals(0, absent.size)` 本身；
+     * 循环留着唯一的用途是：将来真出现缺席域时它立刻开始工作。别把它当成"这条已经覆盖了"。
      */
     @Test
     fun `缺席域的短句在预算内 且点名了已接线的件`() {
         val absent = DesktopDomain.entries.mapNotNull { domain -> domain.absence?.let { domain to it } }
         assertEquals(
-            "七枚里应当剩 3 枚是缺席域（发现 / 画师 / 设置）—— 搜索与收藏已在第二批转正",
-            3,
+            "七枚里应当**没有**缺席域了（设置第七批、画师第八批、发现第九批陆续转正）—— " +
+                "挂回一句缺席说明之前，先答这一屏为什么又看不见了",
+            0,
             absent.size,
         )
 
@@ -155,31 +161,32 @@ class DesktopDomainNavigationTest {
     }
 
     /**
-     * ⑥ 四枚真能进的域：`absence` 必须是 `null`。
+     * ⑥ 七枚真能进的域：`absence` 必须是 `null`，且每一域真有一行带内容件。
      *
      * 看上去像在测一件显而易见的事，其实防的是**回滚**：有人为了排查临时给某一域挂回一句
      * 缺席说明的那一刻，这一批搬进来的取数就又变回"写了从不读"。
      *
-     * ⚠️ 名单从 2 枚长到 4 枚（第二批接进收藏与搜索）—— 这条断言的**形状**没变，
+     * ⚠️ 名单从 2 枚长到 4 枚（第二批接进收藏与搜索）、5 枚（第七批接进设置）、
+     * 6 枚（第八批接进画师）、7 枚（第九批接进发现）—— 这条断言的**形状**没变，
      * 变的是它守的那份清单，而清单本身就是"桌面今天真有几屏能看"的规格。
+     * 长到头之后这条与"0 枚缺席域"是同一件事的两面：那一枚管不许挂回去，
+     * 这一枚管"每一域真有一行能看的东西"（`absence = null` 而 rows 全空是另一种静默缺席）。
      */
     @Test
-    fun `图库 漫画 收藏 搜索四域真能进`() {
-        val wired = listOf(
-            DesktopDomain.GALLERY,
-            DesktopDomain.COMIC,
-            DesktopDomain.FAVORITES,
-            DesktopDomain.SEARCH,
-        )
-        wired.forEach { domain ->
+    fun `七域全部真能进`() {
+        DesktopDomain.entries.forEach { domain ->
             assertTrue(
                 "「${domain.title}」应当是真能进的（absence = null）",
                 domain.isWired,
             )
+            assertTrue(
+                "「${domain.title}」挂着 absence = null 却没有一行带内容件 —— 那是比坦白页更坏的形状",
+                desktopDomainRows(domain).any { it.content != null },
+            )
         }
         assertEquals(
-            "真能进的域应当恰好是这四枚 —— 剩下三枚仍带缺席说明",
-            4,
+            "真能进的域应当恰好是这七枚 —— 桌面今天没有坦白页了",
+            7,
             DesktopDomain.entries.count { it.isWired },
         )
     }
@@ -207,8 +214,10 @@ class DesktopDomainNavigationTest {
             appCode.contains("selected = domain"),
         )
         assertTrue(
-            "onSelect 必须把新的域真的写进 state，否则 rail 永远停在初始那一格",
-            appCode.contains("onSelect = { domain = it }"),
+            "onSelect 必须把新的域真的写进 state，否则 rail 永远停在初始那一格" +
+                "（⚠️ 判式只钉行为不钉写法：那颗 lambda 里要有 domain = it。" +
+                "从前钉的是整串「onSelect = { domain = it }」，第四十八批在同一处补一枚落点戳就把它判红了 —— 那是写法锚点，不是行为变了）",
+            appCode.contains("onSelect = {") && appCode.contains("domain = it"),
         )
         listOf(
             "DesktopGalleryDomain.GALLERY",
@@ -284,9 +293,14 @@ class DesktopDomainNavigationTest {
             "必须有 DisposableEffect(session) 把 GraalJS context 关掉 —— key 写 Unit 会在重取时泄漏一颗",
             comic.contains("DisposableEffect(session)"),
         )
+        // ⚠️ 批 80 改判：原先这一条钉的是 `onDispose { session?.close() }` **整串**。
+        // 那一形是错的——闭包读的是变量当下的值，`null → 引擎` 那次切换关掉的是刚建好的那一颗，
+        // 而这条判据把它当成了规格（手册 §0 那一族："措辞锚点会把当时的诊断冻成规格"）。
+        // 现在钉的是**意图**（退场要关掉取出来的那一颗），形状由 `DesktopComicDetailWiringTest` ⑦
+        // 与那条负向一起钉；撤掉 close 仍然会红在这里。
         assertTrue(
-            "onDispose 里必须是 session?.close()",
-            comic.contains("onDispose { session?.close() }"),
+            "onDispose 里必须关掉**这一刻取出来**的那一颗（写 `session?.close()` 关的是变量当下的值）",
+            comic.contains("onDispose { closing?.close() }"),
         )
     }
 
@@ -434,5 +448,274 @@ class DesktopDomainNavigationTest {
                 (domain.absence?.wired ?: emptyList()).isEmpty(),
             )
         }
+    }
+
+    /**
+     * ⑭ `--start-domain=` 必须**真被消费**（2026-10-04 第三批）。
+     *
+     * ## 为什么这一颗要单独钉
+     *
+     * 判读层自己有用例（`ForensicFlagsTest`），所以"没接上去"这件事**不会**让那一套变红：
+     * 参数打得进、窗口开得了、截图写得出，唯一断的是"起始域交给应用根"那一步 ——
+     * 于是每张图都是默认那一域的，而**文件名写着目标域**。本仓为"实现了但零调用点"付过一整批的账，
+     * 而这一颗的账比平常更贵，因为它产出的是伪证而不只是死代码。
+     *
+     * ## 为什么还是扫文本而不是真跑
+     *
+     * 与 ⑪ 同一条理由：真跑一轮 `main()` 要开窗、要真网络、要 Win32 截图，
+     * 拿不到那些的时候它不是判据而是许愿。这里断言的是**位置与接线**，正适合扫代码行
+     * （[DesktopSourceTree.codeText] 已把注释行剥掉，所以说明文字里提到这些串不会造成假命中）。
+     */
+    @Test
+    fun `起始域参数必须真被交给应用根`() {
+        val mainBody = desktopMainBody()
+        assertTrue(
+            "main() 里必须调 ForensicFlags.startDomain —— 判读层写了不接就是零消费",
+            mainBody.contains("ForensicFlags.startDomain("),
+        )
+        assertTrue(
+            "认不出那一档必须中止启动（不退到默认域）—— 退出码 1 是它唯一的可见后果",
+            mainBody.contains("exitProcess(1)"),
+        )
+        assertTrue(
+            "解析出来的起始域要真传进应用根（命名参数 startDomain = startDomain）",
+            mainBody.contains("startDomain = startDomain"),
+        )
+        assertTrue(
+            "应用根若还写死 mutableStateOf(DesktopDomain.GALLERY)，那颗参数就只是装饰",
+            appCode.contains("mutableStateOf(DesktopDomain.GALLERY)").not(),
+        )
+        assertTrue(
+            "当前域的初值必须是那颗参数",
+            appCode.contains("mutableStateOf(startDomain)"),
+        )
+    }
+
+    /**
+     * ⑯ 起始查询串必须**真被交给搜索那一屏**（第五批补的那枚取证参数）。
+     *
+     * 这一条钉的是本仓最阴的一种缺口：**判读层写了、参数解析对了、stdout 也念了，
+     * 但那一屏的初值还是写死的空串** —— 于是 `-Pquery=ai` 用起来像生效了（它不报错），
+     * 拍出来的却是空态那一屏。搜索域是七枚域里唯一有输入框的，也是唯一"不给输入就拍不到东西"的。
+     */
+    @Test
+    fun `起始查询串必须真被交给搜索那一屏`() {
+        val mainBody = desktopMainBody()
+        assertTrue(
+            "main() 没调 ForensicFlags.query —— 判读层写了不接就是零消费",
+            mainBody.contains("ForensicFlags.query("),
+        )
+        assertTrue("解析出来的查询串没传进应用根", mainBody.contains("startQuery = startQuery"))
+        // ⚠️ 第十二批 批2 之后这一条的**形状**变了：应用根不再把裸串交给搜索屏，而是把它装进
+        // 那颗种子（同一个初值还要被"点标签 / 点画师名"改写，两颗状态各写一份就会争谁覆盖谁）。
+        // 不变量一字未放宽 —— 仍然是"`--query=` 那一串要走到搜索屏的输入框"，只是它现在住在种子里。
+        assertTrue("应用根没把查询串装进那颗种子", appCode.contains("DesktopSearchSeed(startQuery"))
+        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
+        assertTrue("搜索那一屏的查询初值不是那颗种子", pane.contains("mutableStateOf(seed.query"))
+        assertTrue(
+            "pane 里还留着写死的空串作查询初值 —— 那正好是「参数只是装饰」的形状",
+            pane.contains("mutableStateOf(\"\")").not(),
+        )
+        // 对照组：应用根真读到了内容（读空会让上面那两条 contains 恒真）。
+        // 注：应用根调的是**域路那颗** `DesktopGallerySearchBody`，pane 在 `DesktopGalleryDomainPanes.kt` 里
+        // —— 这条对照组就是被这一点教出来的：拿 `DesktopGallerySearchPane(` 作样会误报"读空了"。
+        assertTrue("对照组失效：应用根里连搜索域的域路调用都没找到", appCode.contains("DesktopGallerySearchBody("))
+    }
+
+    /**
+     * ⑰ 起始**行**参数必须真被用来预选 pane 里那一行（第十批 ⑤ 补的取证参数）。
+     *
+     * `--start-domain=` 只到域，到不了域内那一行 —— 于是图库域里新点亮的「最新」今天拍不到。
+     * 这一条钉的是与 ⑯ 同一族的缺口：**判读层写了、main 也念了，而 pane 的选中行还是 `rows.first()`**，
+     * 那种形状下 `-PstartSection=latest` 用起来像生效了（它不报错），拍出来的却是日榜。
+     */
+    @Test
+    fun `起始行参数必须真被用来预选 pane 里那一行`() {
+        val mainBody = desktopMainBody()
+        assertTrue("main() 没调 ForensicFlags.section —— 判读层写了不接就是零消费", mainBody.contains("ForensicFlags.section("))
+        assertTrue("main() 没把「对不上任何行」那一句念出来", mainBody.contains("ForensicFlags.sectionNote("))
+        assertTrue("main() 没拿行表去核这一枚（键与题名都要认）", mainBody.contains("desktopDomainRows("))
+        assertTrue("解析出来的起始行没传进应用根", mainBody.contains("startSection = startSection"))
+        assertTrue("应用根没收这颗必填参数", appCode.contains("startSection: String?"))
+        assertTrue("应用根没把它用来播种 pane 的选中行", appCode.contains("put(startDomain, startSection)"))
+        // gradle 那一环同样钉：`-PstartSection=…` 没映射进 `args` 时那枚参数被**静默忽略**，
+        // 而这正是本族最忌的形状 —— 命令行看起来是个开关，实际什么都没做（不报错、截图照出）。
+        val gradle = DesktopSourceTree.codeText(
+            java.io.File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts"),
+        )
+        assertTrue("`app` 任务没读 gradleProperty(\"startSection\")", gradle.contains("""gradleProperty("startSection")"""))
+        assertTrue("读到了却没拼成 --start-section=…", gradle.contains("""--start-section=$"""))
+        // 对照组：应用根真读到了内容（读空会让上面那两条 contains 恒真）。
+        assertTrue("对照组失效：应用根里连 pane 选中行那本账都没读到", appCode.contains("mutableStateMapOf<DesktopDomain, String>()"))
+    }
+
+    /**
+     * ⑮ 抢前台那一步**只许出现在取证那一路**（2026-10-04 第三批，用户拍板走"抬自己这扇窗"那条）。
+     *
+     * `selfShot` 现在会把这扇窗临时抬成 topmost。这件事在取证里是正解，但一旦漏进正式路径，
+     * 用户每次启动都会被抢前台 —— 而"被抢前台"正是 §8 那条禁令要挡住的那种感觉。
+     * 所以钉四件，每件对着一种以后会被顺手改坏的形状：
+     *
+     * 1. `frame.toFront()` 在入口文件里**恰好一次**，且在 `raiseOwnWindowForShot` 内（写在别处
+     *    就等于多一处抢前台的入口）；`requestFocus` 一颗都**不许有** —— 抬窗要的只是 z-order，
+     *    把键盘焦点从用户正在打的字上抢走与"截一张图"不成比例；
+     * 2. `main()` 的函数体里**一个 `alwaysOnTop` 都不许有**：那颗窗的创建路径必须干净；
+     * 3. 抬起来必须有落回，而且**两层都落**：AWT 的 `isAlwaysOnTop = false` 与 Win32 的
+     *    `setTopmost(hwnd, false)` —— 只解一半的话这扇窗会一直压着用户的屏幕；
+     * 4. 落回要包在 `finally` 里，而不是"成功那条路上记得写" —— 那三档"截不到"的 `return`
+     *    是 `runCatching` 里的**非局部 return**，会绕过跟在后面的 `.also { }` 一类收尾。
+     *    这一条就是当初选 try/finally 而不是链式收尾的原因，判据把它钉住。
+     */
+    @Test
+    fun `抢前台只发生在取证那一路`() {
+        val hits = Regex(Regex.escape("frame.toFront()")).findAll(shellCode).count()
+        assertEquals(
+            "「frame.toFront()」应在 VeneraDesktop.kt 里恰好出现一次（取证那一颗函数内）—— 命中 $hits 次",
+            1,
+            hits,
+        )
+        assertTrue(
+            "frame.toFront() 必须待在 raiseOwnWindowForShot 里，搬进别处就是多一处抢前台的入口",
+            desktopFunctionBody("raiseOwnWindowForShot").contains("frame.toFront()"),
+        )
+        assertEquals(
+            "抬窗不许抢输入焦点：requestFocus 一颗都不该有 —— 取证要的只是 z-order，" +
+                "把键盘焦点从用户正在打的字上抢走与「截一张图」完全不成比例",
+            0,
+            Regex(Regex.escape("requestFocus")).findAll(shellCode).count(),
+        )
+        assertTrue(
+            "main() 的函数体里不许出现 alwaysOnTop —— 正式启动那一路不能被抢前台",
+            desktopMainBody().contains("alwaysOnTop").not(),
+        )
+        val shot = desktopFunctionBody("selfShot")
+        assertTrue("selfShot 必须把 topmost 落回 false", shot.contains("isAlwaysOnTop = false"))
+        assertTrue(
+            "AWT 那层落回之外，Win32 那颗位也要落回（只解一半这扇窗就一直压着用户的屏幕）",
+            shot.contains("setTopmost(hwnd, false)"),
+        )
+        assertTrue("落回要包在 finally 里（非局部 return 会绕过链式收尾）", shot.contains("finally {"))
+    }
+
+    /**
+     * ⑱ 单人页那颗种子必须**真被交给应用根**，而且构建脚本那一跳也要接上（第二十批）。
+     *
+     * 这一条钉的是同一族三个断点，每断一个都产出一张**看不出问题**的图：
+     * 1. 判读层写了、`main()` 没调 ⇒ 至少会被 `unknown` 报成拼错的参数，还会出声；
+     * 2. `main()` 调了、没传进应用根 ⇒ 屏上永远是画师列表；
+     * 3. 传进了应用根、`args(...)` 里漏了这一枚 ⇒ 用户在命令行打 `-Partist=…`
+     *    **既不报错也不生效**（第十一批的 `-Pdetail` 就是这么漏的，手册 §27.5 那条"没有像素证据"）。
+     * 第 2、3 档不会红在任何一层，只会把"这一屏验过了"变成假话 —— 而批 19 的图证缺口正是它。
+     *
+     * 另外钉一条**这一枚特有的**：种子认出来时起始域要跟着落到「画师」那一域。
+     * 只把目的地种进槽而域留在别处，那一屏根本不在组合里，屏上什么也不会出现 ——
+     * 那是"参数给了不报错而屏上是另一屏"最省事的一种做法。
+     */
+    @Test
+    fun `单人页种子必须真被交给应用根并接进app任务`() {
+        val mainBody = desktopMainBody()
+        assertTrue("main() 没调 ForensicFlags.artist —— 判读层写了不接就是零消费", mainBody.contains("ForensicFlags.artist("))
+        assertTrue("main() 没把「没落到那一屏」那一句念出来", mainBody.contains("ForensicFlags.artistNote("))
+        assertTrue(
+            "种子认出来时起始域没跟着落到「画师」那一域 —— 只种槽不换域，屏上什么也不会出现",
+            mainBody.contains("DesktopDomain.ARTISTS"),
+        )
+        assertTrue("解析出来的目的地没传进应用根", mainBody.contains("startArtist = "))
+        assertTrue(
+            "应用根没收这颗必填参数（带默认值的新参数漏传不报错，正是这一族最忌的形状）",
+            appCode.contains("startArtist: DesktopArtistTarget?"),
+        )
+        assertTrue("应用根没拿它作单人页槽的初值", appCode.contains("mutableStateOf(startArtist)"))
+        // 对照组：应用根真读到了内容（读空会让上面那两条 contains 恒真）。
+        assertTrue(
+            "对照组失效：应用根里连单人页那颗粒调用都没读到",
+            appCode.contains("DesktopArtistProfilePane("),
+        )
+
+        val gradle = DesktopSourceTree.codeText(File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts"))
+        assertTrue("`app` 任务没读 gradleProperty(\"artist\")", gradle.contains("""gradleProperty("artist")"""))
+        assertTrue("`--artist` 没被拼进 args（值传不下去，判读层再对也接不到）", gradle.contains("\"--artist=\$it\""))
+        assertTrue("对照组失效：这份构建脚本里没有 :desktop:app 那颗粒任务", gradle.contains("""tasks.register<JavaExec>("app")"""))
+    }
+
+    /**
+     * ⑲ 排行榜那颗种子必须**一路接到那一屏的两枚初值**，而构建脚本那一跳也要接上（第三十批）。
+     *
+     * 与 ⑱ 同族、断点更多一层：那一枚只种"进哪一屏"，这一枚要种"那一屏里停在哪儿"，
+     * 所以中间多一次域内分发（应用根 → 域分发 → 图库那一行的 body → 那一屏）。少一环都不报错：
+     * 1. 判读层写了、`main()` 没调 ⇒ 会被 `unknown` 报成拼错的参数，还会出声；
+     * 2. `main()` 调了、没换域换行 ⇒ 那一屏根本不在组合里，**屏上什么也不会出现**；
+     * 3. 传进了应用根、没递到那一屏 ⇒ 档永远停在默认，期次那一排永远不出现（＝批 29 的缺口原样留着）；
+     * 4. `args(...)` 里漏这一枚 ⇒ 用户打 `-Pranking=…` **既不报错也不生效**。
+     * 第 2、3、4 档不会红在任何一层，只会把"那一层拍到了"变成假话。
+     */
+    @Test
+    fun 排行榜种子必须真被交给那一屏并接进app任务() {
+        val mainBody = desktopMainBody()
+        assertTrue("main() 没调 ForensicFlags.ranking —— 判读层写了不接就是零消费", mainBody.contains("ForensicFlags.ranking("))
+        assertTrue("main() 没把「没落到那一屏」那一句念出来", mainBody.contains("ForensicFlags.rankingNote("))
+        // 域与行的接管走那颗纯函数（真跑判据在 `ForensicFlagsTest` ⑳）。这里只钉接线那一跳：
+        // 曾经直接钉 `DesktopDomain.GALLERY` 出现过 —— 读数里那句"起始域跟着落到「图库」"也含这串字，
+        // 于是接管被撤掉它照样绿（§0 坑 ㉛ 的同族：锚点会替不相干的那一处作证）。
+        assertTrue("main() 没问落点那颗纯函数（域与行不再跟着种子走）", mainBody.contains("ForensicFlags.rankingLanding("))
+        // ⚠️ 批 80 改判：落点现在多走一跳（`comicLanding` 排在 `rankingLanding` 之后，`--comic` 会接管起始域）。
+        // 这两枚锚点原先钉的是 `landing.domain` / `landing.section`，那一串字如今只是中间结果的名字 ——
+        // 继续钉它就是替一个不相干的名字作证（同一颗文件上面那段注释讲的正是这个忌）。
+        // ⚠️ 批 81 又改判一次（坑 ㉖ 第八次，红在上一次刚退让过的那枚锚点上）：接管链再加了一环
+        // （`--read` 排在 `--comic` 之后），`comicLanding` 不再是末端。锚点继续钉某一枚**中间结果的名字**
+        // 就是替一个随时会换掉的名字作证 —— 退到"末端那一枚接管结果"这一层：换了名字仍绿，
+        // 而撤掉整条接管链（退回直接吃 flagDomain）必红。
+        val domainTail = Regex("""val startDomain = (\w+)\.domain""").find(mainBody)?.groupValues?.get(1)
+        assertTrue("起始域不是从接管链的末端取的（那一形没了 = 接管被撤）", domainTail != null)
+        assertTrue(
+            "起始域退回直接吃用户的 flag：种子那一枚永远不会接上（`--ranking`/`--comic`/`--read` 全断）",
+            domainTail != "flagDomain",
+        )
+        val sectionTail = Regex("""val startSection = (\w+)\.section""").find(mainBody)?.groupValues?.get(1)
+        assertTrue("起始行不是从接管链的末端取的", sectionTail != null)
+        assertTrue("起始行退回直接吃 flagSection", sectionTail != "flagSection")
+        assertTrue("解析出来的种子没传进应用根", mainBody.contains("startRanking = "))
+        assertTrue(
+            "应用根没收这颗必填参数（带默认值的新参数漏传不报错，正是这一族最忌的形状）",
+            appCode.contains("startRanking: DesktopRankingSeed?"),
+        )
+        assertTrue("应用根没把它递给域内分发", appCode.contains("startRanking = startRanking"))
+
+        val sections = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryHomeSections.kt"))
+        assertTrue("那一行的分发没收这颗种子", sections.contains("startRanking: DesktopRankingSeed?"))
+        assertTrue("种子没递到排行榜那一屏", sections.contains("DesktopRankingPane(ports, startRanking)"))
+        // 对照组：两份文本真读到了内容（读空会让上面那几条 contains 恒真）。
+        assertTrue(
+            "对照组失效：应用根里连域分发那颗函数都没读到",
+            appCode.contains("private fun DesktopDomainBody("),
+        )
+        assertTrue("对照组失效：那份分发表里连「最新」那一屏都没读到", sections.contains("DesktopLatestPane(ports"))
+
+        val gradle = DesktopSourceTree.codeText(File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts"))
+        assertTrue("`app` 任务没读 gradleProperty(\"ranking\")", gradle.contains("""gradleProperty("ranking")"""))
+        assertTrue("`--ranking` 没被拼进 args（值传不下去，判读层再对也接不到）", gradle.contains("\"--ranking=\$it\""))
+    }
+
+    /**
+     * 取 `VeneraDesktop.kt` 里某颗顶层函数的**函数体**（大括号配平，与 [desktopMainBody] 同一条简化前提）。
+     * 找不到就抛：取证那两颗函数被改名或删掉时，这条判据必须红而不是静默少扫一颗。
+     */
+    private fun desktopFunctionBody(name: String): String {
+        val start = shellCode.indexOf("fun $name(")
+        assertTrue("VeneraDesktop.kt 里找不到 fun $name( —— 取证那一路被改名或删掉了", start >= 0)
+        val open = shellCode.indexOf('{', start)
+        var depth = 0
+        var i = open
+        while (i < shellCode.length) {
+            when (shellCode[i]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return shellCode.substring(open + 1, i)
+                }
+            }
+            i++
+        }
+        throw AssertionError("fun $name 的函数体没有配平收尾大括号 —— 文件被截断了？")
     }
 }

@@ -191,6 +191,60 @@ internal object DesktopGalleryMetrics {
     /** Hero 左右两列的间距。设计稿 `.top{gap:16px}`（`:146`）。 */
     val heroGap: Dp = 16.dp
 
+    // ── 详情浮层（稿画板 B `.detail`：CSS `:214-236`，HTML `:604-645`）────────
+    //
+    // ⚠️ 这一族**全部是稿上的现成值**，一个都不许改：面板是覆盖层，它的宽直接决定"压住最右列多少"，
+    // 而稿 `:660` 那条量过的账写得很清楚 —— 并排会把每列压到 148、违反 200 预算，
+    // 所以它必须是**覆盖式 340**，不是新的分配档。
+
+    /** 浮层宽。稿 `.detail{width:340px}`（`:215`）。 */
+    val detailWidth: Dp = 340.dp
+
+    /** 浮层左缘那道渐隐。稿 `.detail::before{width:46px}`（`:217`）—— 它的作用是提示"下面还有卡"。 */
+    val detailScrimWidth: Dp = 46.dp
+
+    /** 浮层顶部那张大图的高。稿 `.dhero{height:200px;flex:0 0 200px}`（`:218`）。 */
+    val detailHeroHeight: Dp = 200.dp
+
+    /** 关闭钮那一枚。稿 `.dclose{width:30px;height:30px;border-radius:999px}`（`:222`）。 */
+    val detailCloseSize: Dp = 30.dp
+
+    /** 浮层正文内边距。稿 `.dbody{padding:14px 16px 16px}`（`:226`，上下不同值里取那一档横向值）。 */
+    val detailBodyPadding: Dp = 16.dp
+
+    /** 浮层正文行距。稿 `.dbody{gap:12px}`（`:226`）。 */
+    val detailBodyGap: Dp = 12.dp
+
+    /** 信息表左列（键）宽。稿 `.infotbl .k{width:76px}`（`:236`）。 */
+    val detailInfoKeyWidth: Dp = 76.dp
+
+    /** 关闭钮离浮层右上角的距离。稿 `.dclose{right:10px;top:10px}`（`:222`）—— **不是** [detailBodyPadding] 那一档。 */
+    val detailCloseInset: Dp = 10.dp
+
+    /** 信息表每行的内衬。稿 `.infotbl div{padding:7px 10px}`（`:234`）。 */
+    val detailInfoRowVerticalPadding: Dp = 7.dp
+    val detailInfoRowHorizontalPadding: Dp = 10.dp
+
+    // ── 全稿共用的两档小值 ────────────────────────────────────────────────
+
+    /**
+     * 描边宽。稿上**处处是** `1px`（`:11` 的 `--stroke`/`--stroke2` 两档只换色不换宽，
+     * 用例 `:215` 浮层左边、`:233` 信息表外框、`:234` 行分隔、`:239` 画师条）。
+     * 收成一颗是因为浮层里要画四处，而浮层那颗件里**不许出现写死的 dp**
+     *（判据 `DesktopGalleryDetailTest.面板尺寸一律走现成口径不许造新数`）。
+     * ⚠️ 墙上的卡此前一直 inline 写同一颗值 —— 本批不动它们（改法与口径无关，属另一批的整理）。
+     */
+    val hairline: Dp = 1.dp
+
+    /**
+     * 小间隙。稿上三处同一颗值：`.chipwrap{gap:6px}`（`:181`）、`.acts4{gap:6px}`（`:228`）、
+     * `.lab{margin-bottom:6px}`（HTML `:630`）。
+     */
+    val tightGap: Dp = 6.dp
+
+    /** 卡片圆角。稿 `--r-card:8px`（`:21`），信息表那层外框吃它（`:233`）。 */
+    val cardRadius: Dp = 8.dp
+
     // ── 主区段头（稿 `.phead`：CSS `:123-129`，HTML `:387-395`）──────────────
 
     /** 段头高。稿 `.phead{height:52px;flex:0 0 52px}`（`:123`）。 */

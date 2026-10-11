@@ -44,18 +44,16 @@ internal enum class DesktopDomain(
 ) {
     GALLERY("图库", "图", null),
 
-    DISCOVER(
-        "发现",
-        "发",
-        DesktopAbsence(
-            DesktopAbsenceKind.NO_UI,
-            "猜你喜欢那一屏没做：编排在、ViewModel 不在",
-            listOf(
-                "GalleryForYouMerge（跨页跨站去重、排掉已收藏，`.domain` 已整颗在桌面编译面）",
-                "GalleryMerge.isDisplayable / dedupKeys（能不能摆上屏的判据，与日榜共用同一份）",
-            ),
-        ),
-    ),
+    // 2026-10-04 第九批转正：**最后一枚**坦白页至此全部转真。
+    // 原先那张"已经接好、只是没界面去看"的清单（`GalleryForYouMerge` + `isDisplayable/dedupKeys`）
+    // 随缺席一起消失 —— 那一屏现在真的在读它们：抽样走 `GalleryRecommendations.recommendBySite`、
+    // 每腿预算走 `GalleryLegGuard`、混摆走 `GalleryForYouMerge.page`、墙上那一关走第四批那层守卫。
+    //
+    // ⚠️ 这一屏仍然缺一件事，且**写在屏上**而不是不提：
+    // 沿用上次那一屏（`GalleryForYouCache` 吃 `Context`，在桌面编译面的排除清单里）。
+    // 续页**不缺**了 —— 第十批 ③ 立了那颗 `DesktopGalleryBatch` 持有件、批 8 把页码改成逐腿一份账，
+    // 页尾那枚「下一页」读的就是它的相位。
+    DISCOVER("发现", "发", null),
 
     // 2026-10-04 第二批：转成真页面。取数链那一整套判据**整颗已在桌面编译面**
     // （`gallery/domain` 是 srcDir 之一），所以这一屏没有新造任何一条口径：
@@ -72,45 +70,30 @@ internal enum class DesktopDomain(
     // 把两个域的收藏数念成同一个数就是假读数。
     FAVORITES("收藏", "藏", null),
 
-    ARTISTS(
-        "画师",
-        "绘",
-        DesktopAbsence(
-            DesktopAbsenceKind.NO_UI,
-            "关注名单在流，没有画师墙也没有单人页",
-            listOf(
-                "GalleryArtistFollows.follows（StateFlow<List<GalleryArtistFollow>>）",
-                "GalleryArtistDirectory.danbooruArtistUrls / danbooruArtistCredits",
-                "GalleryArtistDirectory.probeAvatarUrl（fallback 的 fanbox / Mastodon 两路）",
-            ),
-        ),
-    ),
+    // 2026-10-04 第八批：转成真页面。原先这张"已经接好、只是没界面去看"的清单随缺席一起消失 ——
+    // 名单、头像档、画师目录三颗都在 `DesktopGalleryPorts` 里接好了，今天那一屏真的在读它们。
+    //
+    // ⚠️ 这一屏**只读**，而它有两层：名单那一行与「看他的图」进去的单人页（批 19，一站一次、段头点名是哪一站）。
+    // 头像走的是**按视口现取**那一路（第十批 ②），取不到的落字母座 —— 这一域原先记着的头像那一层，随现取一起过期了。
+    // 成因与判据见 `DesktopArtistsPage` 与 `DesktopArtistProfilePolicy` 的类注释。
+    ARTISTS("画师", "绘", null),
 
     // 本批回收：原先在 `VeneraDesktop.kt` 里那一批"写了从不读"的真链路
     // （EngineSession.explore / details / pages / pageImage + LocalFavoritesManager）
     // 搬到这里成了漫画域，所以这一域的 absence 是 null —— 它是**真能进**的第二个域。
     COMIC("漫画", "漫", null),
 
-    SETTINGS(
-        "设置",
-        "设",
-        DesktopAbsence(
-            DesktopAbsenceKind.NO_UI,
-            "读数都在，缺那颗能改的设置页",
-            listOf(
-                "GalleryPreferences 那 12 枚 StateFlow（桌面对应物 DesktopGalleryPreferences）",
-                "GalleryContentGuard.rules / nsfwMaskMode（直连 GuardRuleStore，桌面真跑）",
-                "⚠️ 桌面那一侧是 getter-only：构造时读一次，今天没有写侧，改不动",
-            ),
-        ),
-    ),
+    // 2026-10-04 第七批转正：原先这三行念的"桌面那一侧是 getter-only、改不动"已经不实 ——
+    // 四枚有消费点的档现在能改（写侧在 DesktopGalleryPreferences，落盘 + 推流两步），
+    // 剩下六枚为什么不在这一屏，由设置页**逐颗点名**（DesktopGallerySettingsSpec.notOnScreen），
+    // 不再由域级坦白页代答。域级缺席清单随缺席一起消失，与收藏/搜索那两域同一条规矩。
+    SETTINGS("设置", "设", null),
     ;
 
     /** 这一域今天能不能点进去。[absence] 为空即能进，反过来亦然。 */
     val isWired: Boolean get() = absence == null
 
     /** 这一域在 rail 上是不是排在 8px 空隙之前那一组里（稿 `:354-358`）。 */
-    val isInTopGroup: Boolean get() = ordinal <= ARTISTS.ordinal
 
     /**
      * 这一域在漫画之后那一段弹性留白的前面 —— 只有「漫画」为真，

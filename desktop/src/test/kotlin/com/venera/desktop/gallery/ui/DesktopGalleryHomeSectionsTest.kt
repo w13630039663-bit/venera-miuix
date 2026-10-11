@@ -27,21 +27,34 @@ import org.junit.Test
  */
 class DesktopGalleryHomeSectionsTest {
 
+    /**
+     * pane 那六行的**次序规格**（批 27 起写在用例里而不是产品代码里）。
+     *
+     * 从前产品代码另有一份 `DESKTOP_GALLERY_HOME_SECTION_ORDER` 常量并声称"次序由它一处定死"，
+     * 而 pane 与段头都直接从 [desktopGalleryHomeRows] 取序 —— 那份常量只有判据在吃。
+     * 规格留在测试侧才是规格，留在产品侧而没人取用就是第二份事实。
+     */
+    private fun expectedOrder(): List<String> = listOf(
+        DesktopGalleryHomeSectionKey.DAILY,
+        DesktopGalleryHomeSectionKey.FOLLOWED_ARTISTS,
+        DesktopGalleryHomeSectionKey.HISTORY,
+        DesktopGalleryHomeSectionKey.DOWNLOADS,
+        DesktopGalleryHomeSectionKey.LATEST,
+        DesktopGalleryHomeSectionKey.RANKING,
+    )
+
     @Test
-    fun `① ORDER 恰含六项且次序钉死`() {
+    fun `① pane 那六行的项数与次序钉死`() {
         assertEquals(
-            listOf(
-                DesktopGalleryHomeSectionKey.DAILY,
-                DesktopGalleryHomeSectionKey.FOLLOWED_ARTISTS,
-                DesktopGalleryHomeSectionKey.HISTORY,
-                DesktopGalleryHomeSectionKey.DOWNLOADS,
-                DesktopGalleryHomeSectionKey.LATEST,
-                DesktopGalleryHomeSectionKey.RANKING,
-            ),
-            DESKTOP_GALLERY_HOME_SECTION_ORDER,
+            "六项的 key 与次序就是这份字面规格",
+            expectedOrder(),
+            desktopGalleryHomeRows().map { it.key },
         )
-        assertEquals("六项的 key 不许重复", 6, DESKTOP_GALLERY_HOME_SECTION_ORDER.toSet().size)
-        assertTrue("每一项的 key 都应带 section- 前缀", DESKTOP_GALLERY_HOME_SECTION_ORDER.all { it.startsWith("section-") })
+        assertEquals("六项的 key 不许重复", 6, desktopGalleryHomeRows().map { it.key }.toSet().size)
+        assertTrue(
+            "每一项的 key 都应带 section- 前缀",
+            desktopGalleryHomeRows().all { it.key.startsWith("section-") },
+        )
         assertEquals(
             listOf("每日热门", "正在关注的画师", "历史", "下载", "最新", "排行榜"),
             desktopGalleryHomeRows().map { it.title },
@@ -59,8 +72,7 @@ class DesktopGalleryHomeSectionsTest {
         assertEquals(GalleryFollowedArtistsGap.NONE, withData.gap)
         assertEquals(GalleryFollowedArtistsGap.NO_FOLLOWS, emptyData.gap)
         // 数据两侧各算一次注册表：项数与次序都不许动（"数据到货才插项"就是在这里变红的）。
-        val keys = DESKTOP_GALLERY_HOME_SECTION_ORDER
-        assertEquals(keys, desktopGalleryHomeRows().map { it.key })
+        // 次序本身的规格只在 ① 钉一次（同一件事不许两把尺子各钉一遍）。
         assertEquals("关注名单清空后项数仍须是 6", 6, desktopGalleryHomeRows().size)
     }
 
@@ -74,26 +86,47 @@ class DesktopGalleryHomeSectionsTest {
                 row.reason != null,
             )
         }
-        assertEquals("六项里恒有两项有内容件", 2, desktopGalleryHomeRows().count { it.content != null })
-        assertEquals("六项里恒有四项未实现", 4, desktopGalleryHomeRows().count { it.content == null })
-        // 有内容的那两项必须点名是哪两项（被人悄悄撤成"全部未实现"也要能读到）。
+        assertEquals("六项全都有内容件了（历史那一行批 86 转正）", 6, desktopGalleryHomeRows().count { it.content != null })
+        assertEquals("六项里今天没有一项未实现", 0, desktopGalleryHomeRows().count { it.content == null })
+        // 有内容的那几项必须点名是哪几项（被人悄悄撤成"全部未实现"也要能读到）。
         assertEquals(
-            listOf(DesktopGalleryHomeSectionKey.DAILY, DesktopGalleryHomeSectionKey.FOLLOWED_ARTISTS),
+            listOf(
+                DesktopGalleryHomeSectionKey.DAILY,
+                DesktopGalleryHomeSectionKey.FOLLOWED_ARTISTS,
+                DesktopGalleryHomeSectionKey.HISTORY,
+                DesktopGalleryHomeSectionKey.DOWNLOADS,
+                DesktopGalleryHomeSectionKey.LATEST,
+                DesktopGalleryHomeSectionKey.RANKING,
+            ),
             desktopGalleryHomeRows().filter { it.content != null }.map { it.key },
         )
     }
 
     @Test
-    fun `④ 四行未实现都点名缺席的那颗件`() {
-        val byKey = desktopGalleryHomeRows().associate { it.key to it }
-        assertReason(byKey, DesktopGalleryHomeSectionKey.HISTORY, "历史存储")
-        assertReason(byKey, DesktopGalleryHomeSectionKey.DOWNLOADS, "存图落点")
-        assertReason(byKey, DesktopGalleryHomeSectionKey.LATEST, "排序参数")
-        assertReason(byKey, DesktopGalleryHomeSectionKey.RANKING, "跨站", "40 条")
+    fun `④ 未实现的行都点名缺席的那颗件`() {
+        val absent = desktopGalleryHomeRows().filter { it.content == null }
+        // ⚠️ 这一枚钉过两次，两次都被后续批次推翻：先是「历史存储」（批 14 量准为假话），
+        // 后是「阅读器」（批 81 落地了阅读那一屏，那句又过期了 —— 坑 ㉖ 的第六次，红在上一批的锚点上）。
+        // 于是退到"逐颗点名"这一层：有未实现的行，就必须逐颗点名差的是哪一层。
+        // ~~assertReason(byKey, HISTORY, "进度")~~ —— 第八十六批那一行点亮，那句跟着撤；
+        // 「历史转正了没」由 `DesktopGalleryHistorySeedTest` ①② 钉（那一颗同时钉旧句子不再在树上）。
+        // ~~assertReason(byKey, DOWNLOADS, "存图落点")~~ —— 批 85 那一屏点亮，那句跟着撤。
+        absent.forEach { row ->
+            val reason = row.reason
+            checkNotNull(reason) { "行「${row.key}」是未实现的那一档却没带原因" }
+            assertTrue("caption 必须点名差的是哪一层，不许写「这功能没做」：${row.key} → $reason", reason.length >= 8)
+        }
+        // 「最新」在第十批 ⑤ 点亮了（读数在手册 §23.9），它那一行现在必须**没有**缺席说明 ——
+        // 那条由 `DesktopLatestTest` ⑤ 钉着，这里不再挂 LATEST。
+        // ⚠️ 批 25 这一枚曾挂过 RANKING（钉的是"那一行必须点名差的是哪一层"）。批 28 那一屏点亮之后
+        // 它不再属于"未实现的行"这一族，于是那句归 `DesktopRankingTest` ⑨（转正了没）——
+        // 同一件事只许一把尺子钉（批 14 那条），这里整条撤而不是留一枚恒假的断言。
+        // ⚠️ 今天这一族**没有对象**（六行全点亮 ⇒ 上面那个循环恒真）。它重新有对象的时刻由
+        // `DesktopGalleryHistorySeedTest` ② 报出来：谁再长出一行未实现的，那一枚先红。
     }
 
     @Test
-    fun `④b 四行 caption 不许写成敬请期待 且短到两行念得完`() {
+    fun `剩下那一行 caption 不许写成敬请期待 且短到两行念得完`() {
         desktopGalleryHomeRows().filter { it.content == null }.forEach { row ->
             val reason = checkNotNull(row.reason) { "未实现的行必须带原因：${row.key}" }
             assertTrue("caption 不许写「敬请期待」那一类话：${row.key}", reason.contains("敬请期待").not())
@@ -128,14 +161,15 @@ class DesktopGalleryHomeSectionsTest {
             }
         }
         // 默认档必须是"有内容的那一项"，否则一进首页就落在缺席读数上。
-        assertEquals(DesktopGalleryHomeSectionKey.DAILY, DESKTOP_GALLERY_HOME_SECTION_ORDER.first())
+        assertEquals(DesktopGalleryHomeSectionKey.DAILY, desktopGalleryHomeRows().first().key)
     }
 
     @Test
     fun `稿上的计数徽标一颗都不带`() {
         // 稿的 pane 上挂着 `1.2k` / `286` / `2` / `3,412` 四枚计数（`:336-340`），底下另有 `418` / `9,077`。
         // 这一串都扫；只有那枚孤零零的 `2`（下载数）扫不得 —— 任何源文件里都会撞上无数个字符 2，
-        // 一条恒不成立的判式等于没有判式。它在下载那一行上的等价保护是：那行是未实现档、根本没有数可摆。
+        // 一条恒不成立的判式等于没有判式。下载那一行在批 85 转正了，它那一屏摆的张数是**从盘上数出来的**
+        // （`desktopListSavedImages`），不是稿上那枚写死的 `2` —— 这一族由 `DesktopSaveImageSeedTest` ⑬⑮ 钉。
         val offenders = DesktopSourceTree.desktopMainSources().flatMap { file ->
             FAKE_COUNT_BADGES.filter { DesktopSourceTree.codeText(file).contains(it) }.map { "${file.name}:$it" }
         }
@@ -147,22 +181,18 @@ class DesktopGalleryHomeSectionsTest {
     fun `六项按 key 取行 取不到就说清`() {
         val rows = desktopGalleryHomeRows()
         assertEquals("每日热门", rows.byKey(DesktopGalleryHomeSectionKey.DAILY).title)
-        assertNull(rows.byKey(DesktopGalleryHomeSectionKey.RANKING).content)
-        assertNotNull(rows.byKey(DesktopGalleryHomeSectionKey.RANKING).reason)
+        // 从前这一枚拿"仍未实现的那一行"当 null 内容的样例（排行榜批 28、下载批 85 先后点亮，
+        // 历史批 86 也点亮）—— 今天**没有那样的样例可拿了**：六行全有内容件。
+        // 于是这一枚只钉两件事：按 key 取得到行，与取不到 key 时说清而不是崩窗。
+        // "有没有长回一行未实现"由 `DesktopGalleryHistorySeedTest` ② 钉（同一件事只许一把尺子）。
+        rows.forEach { row ->
+            assertNotNull("行「${row.key}」的内容件不见了", rows.byKey(row.key).content)
+        }
         // 注册表外的 key 必须**抛错并说清**，不许静默退回第一项。
         val message = runCatching { rows.byKey("section-does-not-exist") }.exceptionOrNull()?.message.orEmpty()
-        assertTrue("取不到 key 时要说清它不在 ORDER 里，实际：$message", message.contains("ORDER"))
-    }
-
-    private fun assertReason(
-        byKey: Map<String, DesktopGalleryHomeRow>,
-        key: String,
-        vararg keywords: String,
-    ) {
-        val reason = checkNotNull(byKey[key]?.reason) { "行「$key」应当是未实现的那一档并带原因" }
-        keywords.forEach {
-            assertTrue("行「$key」的 caption 必须点名「$it」，实际写的是：$reason", reason.contains(it))
-        }
+        // 只钉这句要完成的**事**（点名那个 key + 说清不在表里），不钉它当年那句"不在 ORDER 里"的措辞。
+        assertTrue("取不到 key 时要点名那枚 key，实际：$message", message.contains("section-does-not-exist"))
+        assertTrue("取不到 key 时要说清它不在注册表里，实际：$message", message.contains("注册表"))
     }
 
     private companion object {

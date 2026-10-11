@@ -28,6 +28,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * 只能重述一遍字符串。重述就是会漂的那种重复，所以 `DesktopGalleryPreferencesTest` 拿文本
  * 回核：这里写的每一串键名与每一枚默认档，都要能在 `VeneraPreferences.kt` 里找到同一句。
  *
+ * ⚠️ 那句"否则 `DesktopGalleryPreferencesTest` 会红"原本是一张**开不出来的支票** —— 这颗测试类
+ * 此前从来没有存在过（2026-10-04 第四批才补上）。注释指向一颗不存在的守卫，比没注释更坏：
+ * 读的人会以为漂了会被抓到。
+ *
+ * 本批起 `galleryBlockAi` 是桌面**第一个真被消费的档**（墙上那一关，见手册 §18），其余 11 枚
+ * 今天仍零消费 —— 所以"桌面设置页"这件事的瓶颈不在控件面，而在**没有消费点**（§18.1）。
+ *
  * ## 存储文件与 Android 落在不同文件上，这是刻意的
  *
  * 文件名仍引 [PreferenceKeys.PREFS_NAME]（与 `DesktopDatabasePorts` 里那三枚偏好同一个 store），
@@ -42,11 +49,26 @@ class DesktopGalleryPreferences(paths: PathProvider) : GalleryPreferences {
 
     private val store = JsonKeyValueStore(PreferenceKeys.PREFS_NAME, paths)
 
-    override val galleryColumnMode: StateFlow<GalleryColumnMode> =
-        readEnum(KEY_COLUMNS, GalleryColumnMode.AUTO).asStateFlow()
+    // ---- 下面这八枚是桌面**今天真有消费点**的档，所以它们有写侧 ----
+    //
+    // 写侧两步走（与 Android 侧 `VeneraPreferences.setGalleryXxx` 逐字同一形状）：
+    // 先落盘、再把那条流推到新值。少第二步的后果是"存下来了，但屏上要重启才变" ——
+    // 用户按下去看不见反应，那就是假开关。用例 ⑧⑨ 一条钉流、一条钉盘。
+    //
+    // ⚠️ 别给其余两枚补 setter：它们今天没人读（那两枚属于桌面还没有的大图页键位与常亮；
+    // 另两枚 hide 给常量）。批 61 给 `backdrop` 补了 setter —— 那一枚是**先有消费点**（大图那一屏那层底）才动的。
+    // 多出来的写口不会让任何现有测试变红，它只会在哪天被接进界面时变成"能改但没人读"。
+    // 这条由 `DesktopGalleryPreferencesTest` ⑩ 反射钉着：**只有这八枚**能有 `setGallery*`。
 
-    override val galleryPreviewQuality: StateFlow<GalleryPreviewQuality> =
-        readEnum(KEY_PREVIEW, GalleryPreviewQuality.PREVIEW).asStateFlow()
+    private val columnModeState = readEnum(KEY_COLUMNS, GalleryColumnMode.AUTO)
+    private val previewQualityState = readEnum(KEY_PREVIEW, GalleryPreviewQuality.PREVIEW)
+    private val preloadState = readEnum(KEY_PRELOAD, GalleryPreloadMode.NEXT)
+    private val blockAiState = MutableStateFlow(store.getBoolean(KEY_BLOCK_AI, false))
+    private val aiBadgeState = MutableStateFlow(store.getBoolean(KEY_AI_BADGE, true))
+
+    override val galleryColumnMode: StateFlow<GalleryColumnMode> = columnModeState.asStateFlow()
+
+    override val galleryPreviewQuality: StateFlow<GalleryPreviewQuality> = previewQualityState.asStateFlow()
 
     override val galleryKeepScreenOn: StateFlow<Boolean> =
         MutableStateFlow(store.getBoolean(KEY_KEEP_SCREEN_ON, true)).asStateFlow()
@@ -54,30 +76,94 @@ class DesktopGalleryPreferences(paths: PathProvider) : GalleryPreferences {
     override val galleryVolumeKeyTurn: StateFlow<Boolean> =
         MutableStateFlow(store.getBoolean(KEY_VOLUME_KEY, false)).asStateFlow()
 
-    override val galleryAutoPlaySec: StateFlow<Int> =
-        MutableStateFlow(store.getInt(KEY_AUTOPLAY_SEC, 0)).asStateFlow()
+    /**
+     * 「到点自己翻下一张」那一档（批 46）。与那两枚开关一样留了**可写的 backing**：
+     * 屏上那排档位按钮按下去要立刻看见反应（写盘 + 推流两步），只写盘不推流就是假开关。
+     */
+    private val autoPlaySecState = MutableStateFlow(store.getInt(KEY_AUTOPLAY_SEC, 0))
 
-    override val galleryPreload: StateFlow<GalleryPreloadMode> =
-        readEnum(KEY_PRELOAD, GalleryPreloadMode.NEXT).asStateFlow()
+    override val galleryAutoPlaySec: StateFlow<Int> = autoPlaySecState.asStateFlow()
+
+    override val galleryPreload: StateFlow<GalleryPreloadMode> = preloadState.asStateFlow()
 
     /**
      * 桌面取 **ALWAYS** 档：`WIFI_ONLY` 的判据来自 `GalleryConnectivity`，而那颗在桌面排除清单里
      * （它吃 `ConnectivityManager`）。把 unmetered 硬编码成"永远不动"等于桌面永远静帧，
      * 硬编码成"永远动"又是往判据里塞一个假读数 —— 所以这里改的是**档位**而不是那条布尔：
-     * 桌面不做流量计费判断，等同 ALWAYS。桌面今天没有这一档的设置入口（写侧属 W5），
-     * 所以这一枚在桌面档是常量语义，不是"能配"。
+     * 桌面不做流量计费判断，那一档在桌面上等同 ALWAYS（屏上那一行明说了这件事）。
+     * 批 51 给了消费点（大图那一屏那颗播放器），批 52 补上写口与屏上那一行。
      */
-    override val galleryAnimated: StateFlow<GalleryAnimatedMode> =
-        readEnum(KEY_ANIMATED, GalleryAnimatedMode.ALWAYS).asStateFlow()
+    private val animatedState = readEnum(KEY_ANIMATED, GalleryAnimatedMode.ALWAYS)
 
-    override val galleryBackdrop: StateFlow<GalleryViewerBackdrop> =
-        readEnum(KEY_BACKDROP, GalleryViewerBackdrop.GLASS).asStateFlow()
+    override val galleryAnimated: StateFlow<GalleryAnimatedMode> = animatedState.asStateFlow()
 
-    override val galleryBlockAi: StateFlow<Boolean> =
-        MutableStateFlow(store.getBoolean(KEY_BLOCK_AI, false)).asStateFlow()
+    /**
+     * 大图那一层的那枚底（批 61 起**改得动**：从前它挂在屏上点名缺席那一区）。
+     *
+     * backing 与别的档同一形状：写盘 + 推流两步都要，少一步就是"重启就忘"或"改了不动"。
+     */
+    private val backdropState = readEnum(KEY_BACKDROP, GalleryViewerBackdrop.GLASS)
 
-    override val galleryAiBadge: StateFlow<Boolean> =
-        MutableStateFlow(store.getBoolean(KEY_AI_BADGE, true)).asStateFlow()
+    override val galleryBackdrop: StateFlow<GalleryViewerBackdrop> = backdropState.asStateFlow()
+
+    override val galleryBlockAi: StateFlow<Boolean> = blockAiState.asStateFlow()
+
+    override val galleryAiBadge: StateFlow<Boolean> = aiBadgeState.asStateFlow()
+
+    /** 列数档。写盘 + 推流两步，理由见上面那段。 */
+    fun setGalleryColumnMode(mode: GalleryColumnMode) {
+        store.put(KEY_COLUMNS, mode.name)
+        columnModeState.value = mode
+    }
+
+    fun setGalleryPreviewQuality(quality: GalleryPreviewQuality) {
+        store.put(KEY_PREVIEW, quality.name)
+        previewQualityState.value = quality
+    }
+
+    fun setGalleryBlockAi(on: Boolean) {
+        store.put(KEY_BLOCK_AI, on)
+        blockAiState.value = on
+    }
+
+    fun setGalleryAiBadge(on: Boolean) {
+        store.put(KEY_AI_BADGE, on)
+        aiBadgeState.value = on
+    }
+
+    /**
+     * 连播间隔。夹在 0..30 **逐字照对岸那颗 setter**（`VeneraPreferences.setGalleryAutoPlaySec`：
+     * 「滑条那一头已经给了区间，这里再兜一道，防别处写进一个负数把连播变成每 0 秒翻一张」）。
+     * 桌面这头摆的是档位按钮，那道兜底也不许省：写口的另一半是对岸与被人手工改过的盘上档。
+     */
+    fun setGalleryAutoPlaySec(seconds: Int) {
+        val clamped = seconds.coerceIn(0, 30)
+        store.put(KEY_AUTOPLAY_SEC, clamped)
+        autoPlaySecState.value = clamped
+    }
+
+    /** 预取档。写盘 + 推流两步，理由同 [setGalleryColumnMode]：只推流不落盘是"重启就忘"，只落盘不推流是"改了不动"。 */
+    fun setGalleryPreload(mode: GalleryPreloadMode) {
+        store.put(KEY_PRELOAD, mode.name)
+        preloadState.value = mode
+    }
+
+    /**
+     * 动图档（批 52）。同一形状：写盘 + 推流。
+     *
+     * 读侧那一路是 `GalleryMotion.animates(mode, unmetered = true)` —— 桌面量不出"哪种网不算流量"，
+     * 所以 `WIFI_ONLY` 走的是"照播"那一支，而屏上那一行明说了这件事（`DesktopGallerySettingsSpecTest` ⑧ 钉着）。
+     */
+    fun setGalleryAnimated(mode: GalleryAnimatedMode) {
+        store.put(KEY_ANIMATED, mode.name)
+        animatedState.value = mode
+    }
+
+    /** 大图那一层的底（批 61）。写盘 + 推流两步，理由同 [setGalleryColumnMode]。 */
+    fun setGalleryBackdrop(backdrop: GalleryViewerBackdrop) {
+        store.put(KEY_BACKDROP, backdrop.name)
+        backdropState.value = backdrop
+    }
 
     override val galleryHideTopBar: StateFlow<Boolean> = ALWAYS_FALSE
 

@@ -54,7 +54,7 @@ class DesktopAssetsClasspathTest {
         val none = missingAssetDir()
         val dataDir = Files.createTempDirectory("r1f-assets-data-").toFile()
         // 装载入口 = DesktopJsHost 的 init 序列（venera-shim.js → venera-init.js → post-init 补丁）
-        DesktopJsHost(none, dataDir, null).use { host ->
+        DesktopJsHost(none, dataDir, null, emptyList()).use { host ->
             // venera-init.js 定义的 ComicSource 在不在，就是"init 脚本真从包里装起来了"的读数
             assertEquals("function", host.evaluate("typeof ComicSource"))
             // EngineSession 那颗源脚本的取用口同样不许碰仓库目录：不存在的 key 必须**抛**，
@@ -82,8 +82,14 @@ class DesktopAssetsClasspathTest {
 
     @Test
     fun 只有桌面链路用得上的资源进了包其余没被整个目录拖进来() {
-        // R39 口径：随包只带 sources/*.js + venera-init.js + venera-shim.js
-        for (hit in listOf("/sources/jm.js", "/sources/goda.js", "/venera-init.js", "/venera-shim.js")) {
+        // 批 40 起的口径：sources/*.js + venera-init.js + venera-shim.js + 画廊离线词典那份 sqlite
+        for (hit in listOf(
+            "/sources/jm.js",
+            "/sources/goda.js",
+            "/venera-init.js",
+            "/venera-shim.js",
+            "/gallery_tags_79415.sqlite",   // 三处译名消费点的数据源（DesktopGalleryTagDictionary 真在读）
+        )) {
             assertNotNull("包内应有 $hit", javaClass.getResource(hit))
         }
         // 这些是 app/src/main/assets 里的资源，桌面链路一行都不读 ⇒ 不许进包
@@ -92,7 +98,6 @@ class DesktopAssetsClasspathTest {
             "/tags.json",
             "/tags_tw.json",
             "/source_content_warning.json",
-            "/gallery_tags_79415.sqlite",
             "/licenses",
             "/sources/index.json",      // 源清单是枚举出来的，不是读这份索引
         )) {

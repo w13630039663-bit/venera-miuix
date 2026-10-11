@@ -14,14 +14,15 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 桌面侧的两枚站方凭据读数。
  *
- * ## 同一颗对象实现三颗接口，不是图省事
+ * ## 同一颗对象实现两枚接口，而**第三枚必须分出去**
  *
  * [GalleryCredentials] 是问"配没配"（两枚 `StateFlow`，给界面用），而
  * [GelbooruCredentials] / [SauceNaoCredentials] 是取数时拼参数用的那两枚串（给 client 用）。
  * S1 之所以要给 client 抽那两颗窄接口，是因为 `GelbooruAccount` / `SauceNaoAccount` 本体
  * 留在 Android 面（它们自己建 SharedPreferences，而设置页三处 UI 直接拿它们的流在渲染）。
- * 桌面这边没有那层包袱：**一份存储、一处读数**，两端拿到的必然是同一个事实 ——
- * 分成两颗对象就是给"界面显示已登录而请求带不上 key"这种分叉留位置。
+ * 桌面这边没有那层包袱：**一份存储一处读数，但一站一枚读数** ——
+ * 分成两颗对象是给"界面显示已登录而请求带不上 key"留位置，而**把两站的 key 并成一颗是更坏的那种分叉**
+ * （见下面"两枚 key 必须是两枚读数"那一节）。
  *
  * ## 键名与"没配"的判据照 Android 侧
  *
@@ -32,13 +33,22 @@ import kotlinx.coroutines.flow.asStateFlow
  * 两端今天落在**不同文件**上（Android `venera_*_account.xml`、桌面同名 `.json`）：
  * 名字一致不等于数据共享。
  *
- * ⚠️ 这一颗**只读**。写侧（用户在桌面填 key 那一路）属 S4，且有一条已拍板的红线：
- * 不许从浏览器 cookie 库里取他人凭据。
+ * ## 两枚 key 必须是**两枚读数**（第三十四批 批 34）
+ *
+ * 从前这一颗同时实现 [GelbooruCredentials] 与 [SauceNaoCredentials]，而 Kotlin 里两枚接口的成员
+ * **同名**（都叫 `apiKey`）⇒ 一颗对象只能交出一个 `apiKey`，实际交的是 Gelbooru 那一份。
+ * 批 34 那天它**还没炸**，只是因为反搜那两枚方法是抛桩；批 35 把那一族接上之后，
+ * 这条路带的就是 [sauceNao] 这一枚读数，而**接线那两颗参数由 `DesktopReverseSearchTest` ⑨ 钉着**
+ * —— 递错一枚的后果是把 A 站的凭据发给 B 站（发给 saucenao.com 的 `api_key=` 成了 Gelbooru 那一份）。
+ * 对岸不撞是因为两颗 account 各是各的对象。
+ * 所以这里改成：这颗只实现 Gelbooru 那枚窄口，SauceNao 的那枚走 [sauceNao] 这一颗独立读数。
+ *
+ * ⚠️ 写侧只有一枚 [setSauceNaoKey]（空串 = 清掉），不补"成对的两枚"：
+ * 批 26 撤掉的就是那对零调用点的死函数，而 `clear() = save("")` 本来就是同一条动作。
  */
 class DesktopGalleryCredentials(private val handle: DesktopGalleryHandle) :
     GalleryCredentials,
-    GelbooruCredentials,
-    SauceNaoCredentials {
+    GelbooruCredentials {
 
     private val gelbooruStore = JsonKeyValueStore(PreferenceKeys.PREFS_GELBOORU_ACCOUNT, handle.paths)
     private val sauceNaoStore = JsonKeyValueStore(PreferenceKeys.PREFS_SAUCENAO_ACCOUNT, handle.paths)
@@ -63,23 +73,29 @@ class DesktopGalleryCredentials(private val handle: DesktopGalleryHandle) :
     /** SauceNao 的 key 单独一枚：Android 侧那颗 account 存的键名与 Gelbooru 的同名但不同存储。 */
     private fun sauceNaoKey(): String = sauceNaoStore.getString(KEY_API_KEY, "").orEmpty()
 
-    override val userId: String get() = gelbooru.userId
-    override val apiKey: String get() = gelbooru.apiKey
-
     /**
-     * SauceNao 的写侧：**只落盘，不做校验**（照 `SauceNaoAccount.save`）。
-     *
-     * 这条判据不可省：那一站没有"保证非空的最小请求"，拿任何一笔搜索去验 key 都会真的
-     * 消耗一次额度，而免费额度本来就少 —— 还会把"这次搜不出东西"和"key 不对"搅在一起。
-     * key 对不对由第一次真实搜索的结果去说。
+     * 反搜那一侧要的 key —— **与上面那枚 `apiKey` 不是同一份**（两枚接口成员同名，
+     * 并成一颗就会把 Gelbooru 的 key 拼进 saucenao.com 的请求里）。
      */
-    fun saveSauceNaoKey(key: String) {
-        val trimmed = key.trim()
-        sauceNaoStore.put(KEY_API_KEY, trimmed)
-        _sauceNaoHasKey.value = trimmed.isNotBlank()
+    val sauceNao: SauceNaoCredentials = object : SauceNaoCredentials {
+        override val apiKey: String get() = sauceNaoKey()
     }
 
-    fun clearSauceNaoKey() = saveSauceNaoKey("")
+    /**
+     * 落盘这一枚反搜的 key；**空串就是清掉**（对岸 `clear() = save("")` 同一条，所以这边只暴露一枚）。
+     *
+     * 只落盘、不发校验请求：对岸那颗 account 的类注释写着理由 —— SauceNAO 没有"保证非空的最小请求"
+     * 那种端点，填完就发一笔等于拿用户的键去撞墙。所以这一屏不许写"已校验"，只说"已保存"。
+     *
+     * 去首尾空白：半截空格会让屏上那句「已保存」变成假话（站方按空 key 处理，用户以为填过了）。
+     */
+    fun setSauceNaoKey(key: String) {
+        sauceNaoStore.put(KEY_API_KEY, key.trim())
+        _sauceNaoHasKey.value = sauceNao.apiKey.isNotBlank()
+    }
+
+    override val userId: String get() = gelbooru.userId
+    override val apiKey: String get() = gelbooru.apiKey
 
     companion object {
         private const val KEY_API_KEY = "api_key"

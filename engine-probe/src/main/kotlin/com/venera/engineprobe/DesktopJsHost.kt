@@ -8,8 +8,6 @@ import com.venera.compose.engine.JsHtmlHandler
 import com.venera.compose.engine.JsHttpHandler
 import com.venera.compose.engine.JsSourceDataStore
 import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import org.graalvm.polyglot.Context
@@ -36,13 +34,21 @@ class DesktopJsHost(
     assetDir: File,
     dataDir: File,
     proxy: String?,
+    /**
+     * `--cookie=<host>:<名>=<值>` 那几枚取证种子（批 88·下半）。**必填、不给默认值**：
+     * 漏传的形状是「`-Pcookie=…` 递上而请求照旧不带凭据」，与本批要防的那一族同形（同一颗纪律）。
+     *
+     * 只并进**本次装载**：那几枚进的是 [DesktopCookieJar] 的种子层，永远不进盘上那份 ——
+     * 盘上那份是用户在这台机器上的登录态，取证参数把它改掉等于量具动了被量的东西（批 83.1 同口径）。
+     */
+    seedCookies: List<String>,
 ) : AutoCloseable {
 
     private val gson = Gson()
     private val bridgeGson = GsonBuilder().serializeNulls().create()
     private val mapType = object : TypeToken<Map<String, Any?>>() {}.type
 
-    private val cookieJar = InMemoryCookieJar()
+    private val cookieJar = DesktopCookieJar(DesktopCookieJar.fileIn(dataDir))
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
@@ -108,7 +114,32 @@ class DesktopJsHost(
         if (patched?.contains("true") != true) {
             println("[probe] WARN post-init patches not applied: $patched")
         }
+        applySeedCookies(seedCookies)
     }
+
+    /**
+     * 把取证种子那几枚并进本次装载，并念一行点名**真吃下几枚**。
+     *
+     * 解析与落罐都在 [DesktopCookieJar.seed] 里（那一颗件才懂 host 与域那两形的口径），
+     * 这里只数"报出去的那一句是不是实话"：applied 而不是 parsed。
+     */
+    private fun applySeedCookies(seeds: List<String>) {
+        if (seeds.isEmpty()) return
+        val applied = seeds.count { cookieJar.seed(it) }
+        // ASCII 那半是给交付包内留的（包内中文 stdout 全成乱码，批 87·下半那一课）
+        println("D_凭据罐 种子=$applied/${seeds.size} 盘=未写 seeded=$applied/${seeds.size}")
+    }
+
+    /**
+     * 源登录成功之后把「已登录」那一格落到盘上。
+     *
+     * 口径**照对岸** `ComicSourceManager.markLoggedIn`（`dataStore.saveAccount(key, "ok")`），
+     * 桌面不另造一套：那一格是 `isLogged` 那一问在读的东西，两轨就会长成"屏上说登录过而源脚本说没有"。
+     */
+    fun markLoggedIn(sourceKey: String) = dataStore.saveAccount(sourceKey, "ok")
+
+    /** 桥后面那颗罐此刻的登录态（屏上「已登录」那一行读它，不读界面自己记的那笔）。 */
+    fun isLogged(sourceKey: String): Boolean = dataStore.isLogged(sourceKey)
 
     /** 原样执行（装载 shim/init/源脚本用），不做返回值包装 */
     fun exec(script: String) {
@@ -367,24 +398,4 @@ class DesktopJsHost(
 private object EngineProbeBase64 {
     fun encodeToString(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
     fun decode(text: String): ByteArray = java.util.Base64.getMimeDecoder().decode(text)
-}
-
-class InMemoryCookieJar : CookieJar {
-    private val store = ConcurrentHashMap<String, MutableList<Cookie>>()
-
-    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        store.getOrPut(url.host) { mutableListOf() }.let { existing ->
-            cookies.forEach { c ->
-                existing.removeAll { it.name == c.name && it.domain == c.domain && it.path == c.path }
-                existing.add(c)
-            }
-        }
-    }
-
-    override fun loadForRequest(url: HttpUrl): List<Cookie> =
-        store[url.host]?.filter { it.matches(url) } ?: emptyList()
-
-    fun clearForUrl(url: HttpUrl) {
-        store[url.host]?.removeAll { it.matches(url) }
-    }
 }

@@ -46,11 +46,14 @@ import io.github.composefluent.component.Text
  * ⚠️ 日期不做成 `10-03` 那种短写：稿那枚短写看着像"今天"，而 `Daily.date` 实际是**昨日**
  * （`GalleryDailyFeed.yesterdayString()`）。写成全 `yyyy-MM-dd` 免得被读成当日。
  *
- * ## 分段控件三档：**只有「推荐」今天真的有东西**
+ * ## 分段控件三档：**今天三档都点得动**
  *
- * 「最新」与「排行」在稿上画出来了，但桌面这两个视图不存在 —— pane 里它们就是两行未实现行。
- * 按本仓"不许有假开关"的纪律，正确做法不是把两项画灰（那是"未实现"的形状，读起来像点进去能看到说明），
- * 而是 **点就把原因说出来**：原因串**逐字复用** [desktopGalleryHomeRows] 里那两行的 `reason`
+ * 三档都在稿上画着。哪一档点不动、点了说什么，**由 pane 那张六项表现数**（见 [desktopGallerySegments]）：
+ * 「最新」在第十批 ⑤ 点亮（读数在手册 §23.9），「排行」在批 28 点亮 ⇒ 那三行今天都拿得到内容件，
+ * 三档的 `reason` 恒为 null。⚠️ 这句从前写的是"今天只剩「排行」点不动"，那是一句**没对过账的话**：
+ * 段头那三档是推荐／最新／排行，从来不含「历史」那一行（第八十六批收尾时现量纠正，见手册 §0 那一族）。
+ * 按本仓"不许有假开关"的纪律，正确做法不是把未实现那项画灰（那是"点进去能看到说明"的形状），
+ * 而是 **点就把原因说出来**：原因串**逐字复用** [desktopGalleryHomeRows] 里那一行的 `reason`
  * （不去重写第二份 —— 重写过一遍就会漂，这是本仓记过的那一类）。
  *
  * 所以调用方拿到的是 [DesktopSegment.reason]：非空 ⇒ 不要切换选中项，把这句话交给用户。
@@ -135,15 +138,14 @@ internal data class DesktopSegment(val label: String, val reason: String?)
 /**
  * 三档：推荐 / 最新 / 排行。
  *
- * ⚠️ 「推荐」的 [DesktopSegment.reason] 必为 `null`（它在 pane 里是有内容件的一行）；
- * 另两档必非 `null`。这不是巧合而是同一件事的两种说法 —— 原因串就是从一个来源来的。
+ * ⚠️ 哪几档的 `reason` 为 null **不在这里写死**：它由那张六项表的 `content` 现数（有内容件 ⇒ null）。
+ * 批 28 起三档全为 null（「排行」那一屏点亮之后，段头不再有带原因的档）。
+ * 这一格由 `DesktopStaleClaimsTest` ⑫ **真跑**钉着 —— 改那张表时这里会红，而不是让注释漂着。
+ * 原因串只有一个来源，这不是巧合而是同一件事的两种说法。
  */
 internal fun desktopGallerySegments(): List<DesktopSegment> {
-    val rows = desktopGalleryHomeRows().associateBy { it.key }
-    fun keyed(key: String, label: String): DesktopSegment {
-        val row = rows[key] ?: error("pane 注册表里没有 key「$key」—— 段头与 pane 必须对同一份六项表说话")
-        return DesktopSegment(label, row.reason)
-    }
+    val rows = desktopGalleryHomeRows()
+    fun keyed(key: String, label: String): DesktopSegment = DesktopSegment(label, rows.byKey(key).reason)
     return listOf(
         keyed(DesktopGalleryHomeSectionKey.DAILY, "推荐"),
         keyed(DesktopGalleryHomeSectionKey.LATEST, "最新"),
@@ -152,7 +154,7 @@ internal fun desktopGallerySegments(): List<DesktopSegment> {
 }
 
 @Composable
-private fun DesktopSegmented(
+internal fun DesktopSegmented(
     items: List<DesktopSegment>,
     selectedIndex: Int,
     onSelect: (DesktopSegment) -> Unit,
@@ -175,8 +177,9 @@ private fun DesktopSegmented(
                             color = if (selected) DesktopTheme.SurfaceRaised else Color.Transparent,
                             shape = RoundedCornerShape(metrics.segmentedItemRadius),
                         )
-                        // ⚠️ 三项都可点：接不上的那两档点了给原因，而不是画成灰的让人去猜能不能点。
-                        //    同一条纪律 rail 上那两枚域按键已经在用（`DesktopGalleryDomain.notWiredReason`）。
+                        // ⚠️ 三项都可点：接不上的那一档点下去换到「未实现」那一档，由那一行把差的是哪一层念出来
+                        //    （`DesktopUnimplementedRow`）。今天三档都拿得到内容件，所以三档的 reason 恒为 null ——
+                        //    枚数不写在这里，由 `desktopGallerySegments()` 现数（判据 ⑫ 真跑它）。
                         .clickable { onSelect(item) }
                         .padding(
                             horizontal = metrics.segmentedItemHorizontalPadding,

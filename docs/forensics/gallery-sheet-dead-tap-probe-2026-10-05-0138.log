@@ -1,0 +1,368 @@
+--------- beginning of main
+10-05 01:37:51.350 I/GallerySheetProbe(18251): chip 装配 「单人男性 (1boy)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.355 I/GallerySheetProbe(18251): chip 装配 「单人女性 (1girl)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.355 I/GallerySheetProbe(18251): chip 装配 「O字嘴 (:o)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.356 I/GallerySheetProbe(18251): chip 装配 「惊叹号符号 (^^^)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.357 I/GallerySheetProbe(18251): chip 装配 「呆毛 (ahoge)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.358 I/GallerySheetProbe(18251): chip 装配 「黑条遮挡 (bar_censor)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:51.426 I/GallerySheetProbe(18251): 面板 采样开始 ticks=60 interval=120ms
+10-05 01:37:51.426 I/GallerySheetProbe(18251): 面板 #0 画=0.0 未裁=2503.0 差=-2503.0 dy=NaN 高=1754.0 dh=NaN
+10-05 01:37:51.426 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=Hidden
+10-05 01:37:51.437 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=PartiallyExpanded
+10-05 01:37:51.547 I/GallerySheetProbe(18251): 面板 #1 画=1527.0 未裁=1527.0 差=0.0 dy=1527.0 高=1754.0 dh=0.0
+10-05 01:37:51.673 I/GallerySheetProbe(18251): 面板 #2 画=1315.0 未裁=1315.0 差=0.0 dy=-212.0 高=1754.0 dh=0.0
+10-05 01:37:51.793 I/GallerySheetProbe(18251): 面板 #3 画=1314.0 未裁=1314.0 差=0.0 dy=-1.0 高=1865.0 dh=111.0
+10-05 01:37:51.914 I/GallerySheetProbe(18251): 面板 #4 画=1315.0 未裁=1315.0 差=0.0 dy=1.0 高=1865.0 dh=0.0
+10-05 01:37:51.991 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=PartiallyExpanded
+10-05 01:37:52.035 I/GallerySheetProbe(18251): 面板 #5 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.157 I/GallerySheetProbe(18251): 面板 #6 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.278 I/GallerySheetProbe(18251): 面板 #7 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.401 I/GallerySheetProbe(18251): 面板 #8 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.521 I/GallerySheetProbe(18251): 面板 #9 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.642 I/GallerySheetProbe(18251): 面板 #10 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.762 I/GallerySheetProbe(18251): 面板 #11 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:52.883 I/GallerySheetProbe(18251): 面板 #12 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:53.005 I/GallerySheetProbe(18251): 面板 #13 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:37:53.041 I/GallerySheetProbe(18251): chip 装配 「东北切蒲英（VOICEROID） (touhoku_kiritan)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.044 I/GallerySheetProbe(18251): chip 装配 「VOICEROID (voiceroid)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.049 I/GallerySheetProbe(18251): chip 装配 「单人男性 (1boy)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.050 I/GallerySheetProbe(18251): chip 装配 「单人女性 (1girl)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.051 I/GallerySheetProbe(18251): chip 装配 「O字嘴 (:o)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.052 I/GallerySheetProbe(18251): chip 装配 「惊叹号符号 (^^^)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.053 I/GallerySheetProbe(18251): chip 装配 「呆毛 (ahoge)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.053 I/GallerySheetProbe(18251): chip 装配 「黑条遮挡 (bar_censor)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.055 I/GallerySheetProbe(18251): chip 装配 「评论翻译请求 (commentary_request)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.056 I/GallerySheetProbe(18251): chip 装配 「付费委托 (commission)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.057 I/GallerySheetProbe(18251): chip 装配 「Skeb委托 (skeb_commission)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.058 I/GallerySheetProbe(18251): chip 装配 「翻译请求 (translation_request)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.059 I/GallerySheetProbe(18251): chip 装配 「差分图组 (variant_set)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:37:53.126 I/GallerySheetProbe(18251): 面板 #14 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=314.0
+10-05 01:37:53.247 I/GallerySheetProbe(18251): 面板 #15 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=0.0
+10-05 01:37:53.368 I/GallerySheetProbe(18251): 面板 #16 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=0.0
+10-05 01:37:53.489 I/GallerySheetProbe(18251): 面板 #17 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=0.0
+10-05 01:37:53.610 I/GallerySheetProbe(18251): 面板 #18 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=0.0
+10-05 01:37:53.731 I/GallerySheetProbe(18251): 面板 #19 画=1315.0 未裁=1315.0 差=0.0 dy=0.0 高=2179.0 dh=0.0
+10-05 01:37:53.852 I/GallerySheetProbe(18251): 面板 #20 画=1124.0 未裁=1124.0 差=0.0 dy=-191.0 高=2179.0 dh=0.0
+10-05 01:37:53.972 I/GallerySheetProbe(18251): 面板 #21 画=819.0 未裁=819.0 差=0.0 dy=-305.0 高=2179.0 dh=0.0
+10-05 01:37:54.013 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=Expanded
+10-05 01:37:54.021 I/GallerySheetProbe(18251): 面板 触摸 down=(703,629) 移动=33px top按下=1315.0 top抬起=693.0 屏高=2376
+10-05 01:37:54.095 I/GallerySheetProbe(18251): 面板 #22 画=359.0 未裁=359.0 差=0.0 dy=-460.0 高=2179.0 dh=0.0
+10-05 01:37:54.217 I/GallerySheetProbe(18251): 面板 #23 画=248.0 未裁=248.0 差=0.0 dy=-111.0 高=2096.0 dh=-83.0
+10-05 01:37:54.247 I/GallerySheetProbe(18251): 面板 姿态 current=Expanded target=Expanded
+10-05 01:37:54.339 I/GallerySheetProbe(18251): 面板 #24 画=247.0 未裁=247.0 差=0.0 dy=-1.0 高=2087.0 dh=-9.0
+10-05 01:37:54.459 I/GallerySheetProbe(18251): 面板 #25 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:54.580 I/GallerySheetProbe(18251): 面板 #26 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:54.702 I/GallerySheetProbe(18251): 面板 #27 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:54.822 I/GallerySheetProbe(18251): 面板 #28 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:54.944 I/GallerySheetProbe(18251): 面板 #29 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.065 I/GallerySheetProbe(18251): 面板 #30 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.186 I/GallerySheetProbe(18251): 面板 #31 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.307 I/GallerySheetProbe(18251): 面板 #32 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.428 I/GallerySheetProbe(18251): 面板 #33 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.550 I/GallerySheetProbe(18251): 面板 #34 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.671 I/GallerySheetProbe(18251): 面板 #35 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.792 I/GallerySheetProbe(18251): 面板 #36 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:55.913 I/GallerySheetProbe(18251): 面板 #37 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.035 I/GallerySheetProbe(18251): 面板 #38 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.157 I/GallerySheetProbe(18251): 面板 #39 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.278 I/GallerySheetProbe(18251): 面板 #40 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.399 I/GallerySheetProbe(18251): 面板 #41 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.520 I/GallerySheetProbe(18251): 面板 #42 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.642 I/GallerySheetProbe(18251): 面板 #43 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.763 I/GallerySheetProbe(18251): 面板 #44 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.764 I/GallerySheetProbe(18251): 面板 触摸 down=(587,1475) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:56.764 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:37:56.764 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(345,63) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1722.1533 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=524ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(345,63) 在盒内=true
+10-05 01:37:56.884 I/GallerySheetProbe(18251): 面板 #45 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:56.988 I/GallerySheetProbe(18251): 面板 触摸 down=(597,1470) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:56.989 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:37:56.989 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(355,58) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1717.5596 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=86ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(355,58) 在盒内=true
+10-05 01:37:57.006 I/GallerySheetProbe(18251): 面板 #46 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.126 I/GallerySheetProbe(18251): 面板 #47 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.138 I/GallerySheetProbe(18251): 面板 触摸 down=(616,1455) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.139 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:37:57.139 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(374,43) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1702.4668 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=58ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(374,43) 在盒内=true
+10-05 01:37:57.249 I/GallerySheetProbe(18251): 面板 #48 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.261 I/GallerySheetProbe(18251): 面板 触摸 down=(626,1456) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.262 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:37:57.262 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(384,44) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1703.3574 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=61ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(384,44) 在盒内=true
+10-05 01:37:57.370 I/GallerySheetProbe(18251): 面板 #49 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.406 I/GallerySheetProbe(18251): 面板 触摸 down=(632,1479) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.406 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:37:57.407 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(390,67) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1726.5596 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=70ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(390,67) 在盒内=true
+10-05 01:37:57.491 I/GallerySheetProbe(18251): 面板 #50 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.542 I/GallerySheetProbe(18251): 面板 触摸 down=(609,1520) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.543 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:57.543 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(367,18) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1767.6211 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=62ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(367,18) 在盒内=true
+10-05 01:37:57.612 I/GallerySheetProbe(18251): 面板 #51 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.679 I/GallerySheetProbe(18251): 面板 触摸 down=(616,1525) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.679 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:57.679 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(374,23) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1772.2148 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=68ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(374,23) 在盒内=true
+10-05 01:37:57.733 I/GallerySheetProbe(18251): 面板 #52 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.854 I/GallerySheetProbe(18251): 面板 #53 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:57.931 I/GallerySheetProbe(18251): 面板 触摸 down=(564,1661) 移动=63px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:57.931 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=9 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:57.931 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(28,69) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1908.1973 移动=63px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=9 按住=118ms 抬手时盒顶=1839.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(215,-250) 在盒内=false
+10-05 01:37:57.975 I/GallerySheetProbe(18251): 面板 #54 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.095 I/GallerySheetProbe(18251): 面板 #55 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.139 I/GallerySheetProbe(18251): 面板 触摸 down=(581,1624) 移动=29px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:58.139 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=4 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:58.139 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(45,32) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1871.916 移动=29px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=4 按住=87ms 抬手时盒顶=1839.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(64,-11) 在盒内=false
+10-05 01:37:58.216 I/GallerySheetProbe(18251): 面板 #56 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.290 I/GallerySheetProbe(18251): 面板 触摸 down=(540,1596) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:58.290 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:58.290 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(4,4) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1843.7451 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=46ms 抬手时盒顶=1839.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(4,4) 在盒内=true
+10-05 01:37:58.337 I/GallerySheetProbe(18251): 面板 #57 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.436 I/GallerySheetProbe(18251): 面板 触摸 down=(578,1502) 移动=8px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:58.436 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=2 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:58.436 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(336,0) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1749.6221 移动=8px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=2 按住=54ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(339,-7) 在盒内=false
+10-05 01:37:58.458 I/GallerySheetProbe(18251): 面板 #58 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.578 I/GallerySheetProbe(18251): 面板 #59 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:37:58.674 I/GallerySheetProbe(18251): 面板 触摸 down=(526,1635) 移动=105px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:58.699 I/GallerySheetProbe(18251): 面板 采样结束
+10-05 01:37:58.933 I/GallerySheetProbe(18251): 面板 触摸 down=(573,1464) 移动=64px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:58.933 I/GallerySheetProbe(18251): 内 黑条遮挡 (bar_censor) 收到 down已被消费=true 事件数=6 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:58.934 I/GallerySheetProbe(18251): 标签「bar_censor」 盒子收到 down=(331,31) 盒子顶=1680.0 盒子高=69.0 触点窗口y=1711.8418 移动=54px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=6 按住=118ms 抬手时盒顶=1555.0 抬手时宽高=374.0x69.0 盒顶变化=-125.0 高变化=0.0 宽变化=0.0 抬手local=(476,2) 在盒内=false
+10-05 01:37:59.202 I/GallerySheetProbe(18251): 面板 触摸 down=(497,1573) 移动=68px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:59.202 I/GallerySheetProbe(18251): 内 评论翻译请求 (commentary_request) 收到 down已被消费=true 事件数=8 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:59.202 I/GallerySheetProbe(18251): 标签「commentary_request」 盒子收到 down=(255,72) 盒子顶=1748.0 盒子高=69.0 触点窗口y=1820.9639 移动=45px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=8 按住=121ms 抬手时盒顶=1534.0 抬手时宽高=577.0x69.0 盒顶变化=-214.0 高变化=0.0 宽变化=0.0 抬手local=(454,16) 在盒内=true
+10-05 01:37:59.730 I/GallerySheetProbe(18251): 面板 触摸 down=(435,1751) 移动=61px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:37:59.730 I/GallerySheetProbe(18251): 内 Skeb委托 (skeb_commission) 收到 down已被消费=true 事件数=16 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:37:59.730 I/GallerySheetProbe(18251): 标签「skeb_commission」 盒子收到 down=(193,35) 盒子顶=1963.0 盒子高=69.0 触点窗口y=1998.5703 移动=39px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=16 按住=177ms 抬手时盒顶=1523.0 抬手时宽高=470.0x69.0 盒顶变化=-440.0 高变化=0.0 宽变化=0.0 抬手local=(537,-100) 在盒内=false
+10-05 01:38:00.335 I/GallerySheetProbe(18251): 面板 触摸 down=(554,1360) 移动=32px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:00.336 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=30 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:00.336 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(18,85) 盒子顶=1522.0 盒子高=69.0 触点窗口y=1607.2656 移动=17px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=30 按住=334ms 抬手时盒顶=1836.0 抬手时宽高=272.0x69.0 盒顶变化=314.0 高变化=0.0 宽变化=0.0 抬手local=(-27,86) 在盒内=false
+10-05 01:38:00.952 I/GallerySheetProbe(18251): 面板 触摸 down=(575,1350) 移动=59px top按下=247.0 top抬起=253.0 屏高=2376
+10-05 01:38:01.234 I/GallerySheetProbe(18251): 面板 触摸 down=(473,1605) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:01.234 I/GallerySheetProbe(18251): 内 单人男性 (1boy) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:01.234 I/GallerySheetProbe(18251): 标签「1boy」 盒子收到 down=(231,13) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1852.2764 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=59ms 抬手时盒顶=1839.0 抬手时宽高=283.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(231,13) 在盒内=true
+10-05 01:38:01.384 I/GallerySheetProbe(18251): 面板 触摸 down=(491,1604) 移动=0px top按下=248.0 top抬起=248.0 屏高=2376
+10-05 01:38:01.385 I/GallerySheetProbe(18251): 内 单人男性 (1boy) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:01.385 I/GallerySheetProbe(18251): 标签「1boy」 盒子收到 down=(249,12) 盒子顶=1840.0 盒子高=69.0 触点窗口y=1852.5576 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=67ms 抬手时盒顶=1840.0 抬手时宽高=283.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(249,12) 在盒内=true
+10-05 01:38:01.524 I/GallerySheetProbe(18251): 面板 触摸 down=(511,1575) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:01.524 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:01.524 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(269,73) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1822.6514 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=62ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(269,73) 在盒内=false
+10-05 01:38:01.660 I/GallerySheetProbe(18251): 面板 触摸 down=(536,1521) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:01.660 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:01.660 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(294,19) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1768.0898 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=60ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(294,19) 在盒内=true
+10-05 01:38:01.804 I/GallerySheetProbe(18251): 面板 触摸 down=(555,1487) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:01.805 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:38:01.805 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(313,75) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1734.294 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=62ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(313,75) 在盒内=false
+10-05 01:38:01.949 I/GallerySheetProbe(18251): 面板 触摸 down=(570,1477) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:01.949 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:38:01.949 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(328,65) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1724.4033 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=70ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(328,65) 在盒内=true
+10-05 01:38:02.085 I/GallerySheetProbe(18251): 面板 触摸 down=(580,1449) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:02.085 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:38:02.085 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(338,37) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1696.748 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=62ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(338,37) 在盒内=true
+10-05 01:38:02.223 I/GallerySheetProbe(18251): 面板 触摸 down=(562,1496) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:02.223 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:02.223 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(320,-5) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1743.8564 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=55ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(320,-5) 在盒内=false
+10-05 01:38:02.366 I/GallerySheetProbe(18251): 面板 触摸 down=(509,1581) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:02.366 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:02.366 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(267,79) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1828.1357 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=45ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(267,79) 在盒内=false
+10-05 01:38:02.504 I/GallerySheetProbe(18251): 面板 触摸 down=(513,1652) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:02.504 I/GallerySheetProbe(18251): 内 单人男性 (1boy) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:02.504 I/GallerySheetProbe(18251): 标签「1boy」 盒子收到 down=(271,60) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1899.3379 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=53ms 抬手时盒顶=1839.0 抬手时宽高=283.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(271,60) 在盒内=true
+10-05 01:38:02.640 I/GallerySheetProbe(18251): 面板 触摸 down=(563,1555) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:02.640 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:02.640 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(321,53) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1802.2148 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=45ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(321,53) 在盒内=true
+10-05 01:38:02.944 I/GallerySheetProbe(18251): 面板 触摸 down=(922,1187) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:03.201 I/GallerySheetProbe(18251): 面板 触摸 down=(816,1307) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:03.498 I/GallerySheetProbe(18251): 面板 触摸 down=(704,560) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:03.618 I/GallerySheetProbe(18251): 面板 触摸 down=(748,535) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:03.810 I/GallerySheetProbe(18251): 面板 触摸 down=(499,643) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:03.971 I/GallerySheetProbe(18251): 面板 触摸 down=(434,646) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.124 I/GallerySheetProbe(18251): 面板 触摸 down=(393,666) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.316 I/GallerySheetProbe(18251): 面板 触摸 down=(276,1056) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.461 I/GallerySheetProbe(18251): 面板 触摸 down=(268,1332) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.598 I/GallerySheetProbe(18251): 面板 触摸 down=(340,1461) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.598 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:38:04.598 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(98,49) 盒子顶=1659.0 盒子高=69.0 触点窗口y=1708.6543 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=36ms 抬手时盒顶=1659.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(98,49) 在盒内=true
+10-05 01:38:04.727 I/GallerySheetProbe(18251): 面板 触摸 down=(356,1500) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:04.727 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:04.727 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(114,-1) 盒子顶=1749.0 盒子高=69.0 触点窗口y=1747.3252 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=47ms 抬手时盒顶=1749.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(114,-1) 在盒内=false
+10-05 01:38:05.321 I/GallerySheetProbe(18251): 面板 触摸 down=(678,959) 移动=59px top按下=247.0 top抬起=865.0 屏高=2376
+10-05 01:38:05.578 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=Expanded
+10-05 01:38:05.897 I/GallerySheetProbe(18251): 面板 触摸 down=(646,184) 移动=45px top按下=1315.0 top抬起=1968.0 屏高=2376
+10-05 01:38:09.115 I/GallerySheetProbe(18251): chip 装配 「胸部 (breasts)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.116 I/GallerySheetProbe(18251): chip 装配 「精液 (cum)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.116 I/GallerySheetProbe(18251): chip 装配 「紧身连体衣 (leotard)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.117 I/GallerySheetProbe(18251): chip 装配 「萝莉 (loli)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.117 I/GallerySheetProbe(18251): chip 装配 「乳头 (nipples)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.118 I/GallerySheetProbe(18251): chip 装配 「未戴胸罩 (no_bra)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:09.173 I/GallerySheetProbe(18251): 面板 采样开始 ticks=60 interval=120ms
+10-05 01:38:09.173 I/GallerySheetProbe(18251): 面板 #0 画=0.0 未裁=2503.0 差=-2503.0 dy=NaN 高=1865.0 dh=NaN
+10-05 01:38:09.173 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=Hidden
+10-05 01:38:09.190 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=PartiallyExpanded
+10-05 01:38:09.293 I/GallerySheetProbe(18251): 面板 #1 画=1527.0 未裁=1527.0 差=0.0 dy=1527.0 高=1865.0 dh=0.0
+10-05 01:38:09.414 I/GallerySheetProbe(18251): 面板 #2 画=1317.0 未裁=1317.0 差=0.0 dy=-210.0 高=1865.0 dh=0.0
+10-05 01:38:09.535 I/GallerySheetProbe(18251): 面板 #3 画=1314.0 未裁=1314.0 差=0.0 dy=-3.0 高=1865.0 dh=0.0
+10-05 01:38:09.656 I/GallerySheetProbe(18251): 面板 #4 画=1315.0 未裁=1315.0 差=0.0 dy=1.0 高=1865.0 dh=0.0
+10-05 01:38:09.728 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=PartiallyExpanded
+10-05 01:38:09.776 I/GallerySheetProbe(18251): 面板 #5 画=953.0 未裁=953.0 差=0.0 dy=-362.0 高=1865.0 dh=0.0
+10-05 01:38:09.797 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=Expanded
+10-05 01:38:09.842 I/GallerySheetProbe(18251): 面板 触摸 down=(657,759) 移动=38px top按下=1315.0 top抬起=641.0 屏高=2376
+10-05 01:38:09.900 I/GallerySheetProbe(18251): 面板 #6 画=536.0 未裁=536.0 差=0.0 dy=-417.0 高=1865.0 dh=0.0
+10-05 01:38:10.023 I/GallerySheetProbe(18251): 面板 #7 画=470.0 未裁=470.0 差=0.0 dy=-66.0 高=1865.0 dh=0.0
+10-05 01:38:10.063 I/GallerySheetProbe(18251): 面板 姿态 current=Expanded target=Expanded
+10-05 01:38:10.144 I/GallerySheetProbe(18251): 面板 #8 画=469.0 未裁=469.0 差=0.0 dy=-1.0 高=1865.0 dh=0.0
+10-05 01:38:10.266 I/GallerySheetProbe(18251): 面板 #9 画=469.0 未裁=469.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:38:10.387 I/GallerySheetProbe(18251): 面板 #10 画=469.0 未裁=469.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:38:10.508 I/GallerySheetProbe(18251): 面板 #11 画=469.0 未裁=469.0 差=0.0 dy=0.0 高=1865.0 dh=0.0
+10-05 01:38:10.533 I/GallerySheetProbe(18251): 面板 触摸 down=(609,1459) 移动=0px top按下=469.0 top抬起=469.0 屏高=2376
+10-05 01:38:10.533 I/GallerySheetProbe(18251): 到达 标签chip 点击 「cum」
+10-05 01:38:10.537 I/GallerySheetProbe(18251): 内 精液 (cum) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:10.537 I/GallerySheetProbe(18251): 标签「cum」 盒子收到 down=(97,47) 盒子顶=1881.0 盒子高=69.0 触点窗口y=1928.7275 移动=0px 已抬手=true 到Final已被消费=true down最终已被消费=true 事件数=1 按住=86ms 抬手时盒顶=1881.0 抬手时宽高=217.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(97,47) 在盒内=true
+10-05 01:38:13.953 I/GallerySheetProbe(18251): chip 装配 「单人男性 (1boy)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:13.954 I/GallerySheetProbe(18251): chip 装配 「单人女性 (1girl)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:13.954 I/GallerySheetProbe(18251): chip 装配 「惊叹号符号 (^^^)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:13.955 I/GallerySheetProbe(18251): chip 装配 「呆毛 (ahoge)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:13.956 I/GallerySheetProbe(18251): chip 装配 「黑条遮挡 (bar_censor)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:13.956 I/GallerySheetProbe(18251): chip 装配 「赤脚 (barefoot)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.003 I/GallerySheetProbe(18251): 面板 采样开始 ticks=60 interval=120ms
+10-05 01:38:14.003 I/GallerySheetProbe(18251): 面板 #0 画=0.0 未裁=2503.0 差=-2503.0 dy=NaN 高=1834.0 dh=NaN
+10-05 01:38:14.003 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=Hidden
+10-05 01:38:14.012 I/GallerySheetProbe(18251): 面板 姿态 current=Hidden target=PartiallyExpanded
+10-05 01:38:14.124 I/GallerySheetProbe(18251): 面板 #1 画=1527.0 未裁=1527.0 差=0.0 dy=1527.0 高=1834.0 dh=0.0
+10-05 01:38:14.244 I/GallerySheetProbe(18251): 面板 #2 画=1315.0 未裁=1315.0 差=0.0 dy=-212.0 高=1834.0 dh=0.0
+10-05 01:38:14.368 I/GallerySheetProbe(18251): 面板 #3 画=1314.0 未裁=1314.0 差=0.0 dy=-1.0 高=1945.0 dh=111.0
+10-05 01:38:14.488 I/GallerySheetProbe(18251): 面板 #4 画=1315.0 未裁=1315.0 差=0.0 dy=1.0 高=1945.0 dh=0.0
+10-05 01:38:14.567 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=PartiallyExpanded
+10-05 01:38:14.601 I/GallerySheetProbe(18251): 面板 触摸 down=(720,663) 移动=60px top按下=1315.0 top抬起=1104.0 屏高=2376
+10-05 01:38:14.608 I/GallerySheetProbe(18251): 面板 #5 画=1104.0 未裁=1104.0 差=0.0 dy=-211.0 高=1945.0 dh=0.0
+10-05 01:38:14.653 I/GallerySheetProbe(18251): 面板 姿态 current=PartiallyExpanded target=Expanded
+10-05 01:38:14.729 I/GallerySheetProbe(18251): 面板 #6 画=465.0 未裁=465.0 差=0.0 dy=-639.0 高=1945.0 dh=0.0
+10-05 01:38:14.757 I/GallerySheetProbe(18251): chip 装配 「东北切蒲英（VOICEROID） (touhoku_kiritan)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.761 I/GallerySheetProbe(18251): chip 装配 「VOICEROID (voiceroid)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.762 I/GallerySheetProbe(18251): chip 装配 「单人男性 (1boy)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.763 I/GallerySheetProbe(18251): chip 装配 「单人女性 (1girl)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.763 I/GallerySheetProbe(18251): chip 装配 「惊叹号符号 (^^^)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.763 I/GallerySheetProbe(18251): chip 装配 「呆毛 (ahoge)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.764 I/GallerySheetProbe(18251): chip 装配 「黑条遮挡 (bar_censor)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.764 I/GallerySheetProbe(18251): chip 装配 「赤脚 (barefoot)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.766 I/GallerySheetProbe(18251): chip 装配 「评论翻译请求 (commentary_request)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.766 I/GallerySheetProbe(18251): chip 装配 「付费委托 (commission)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.766 I/GallerySheetProbe(18251): chip 装配 「Skeb委托 (skeb_commission)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.767 I/GallerySheetProbe(18251): chip 装配 「翻译请求 (translation_request)」 interactive=true enabled=true 有点击=true 有长按=true
+10-05 01:38:14.856 I/GallerySheetProbe(18251): 面板 #7 画=247.0 未裁=247.0 差=0.0 dy=-218.0 高=2179.0 dh=234.0
+10-05 01:38:14.920 I/GallerySheetProbe(18251): 面板 姿态 current=Expanded target=Expanded
+10-05 01:38:14.977 I/GallerySheetProbe(18251): 面板 #8 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=-92.0
+10-05 01:38:15.098 I/GallerySheetProbe(18251): 面板 #9 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.228 I/GallerySheetProbe(18251): 面板 #10 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.349 I/GallerySheetProbe(18251): 面板 #11 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.427 I/GallerySheetProbe(18251): 面板 触摸 down=(938,1351) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:15.471 I/GallerySheetProbe(18251): 面板 #12 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.592 I/GallerySheetProbe(18251): 面板 #13 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.714 I/GallerySheetProbe(18251): 面板 #14 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.835 I/GallerySheetProbe(18251): 面板 #15 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:15.868 I/GallerySheetProbe(18251): 面板 触摸 down=(949,1325) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:15.956 I/GallerySheetProbe(18251): 面板 #16 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.077 I/GallerySheetProbe(18251): 面板 #17 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.141 I/GallerySheetProbe(18251): 面板 触摸 down=(955,1351) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:16.198 I/GallerySheetProbe(18251): 面板 #18 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.323 I/GallerySheetProbe(18251): 面板 #19 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.443 I/GallerySheetProbe(18251): 面板 #20 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.469 I/GallerySheetProbe(18251): 面板 触摸 down=(781,1598) 移动=71px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:16.469 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=12 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:16.470 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(245,6) 盒子顶=1839.0 盒子高=69.0 触点窗口y=1845.7139 移动=63px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=12 按住=148ms 抬手时盒顶=1373.0 抬手时宽高=272.0x69.0 盒顶变化=-466.0 高变化=0.0 宽变化=0.0 抬手local=(474,-31) 在盒内=false
+10-05 01:38:16.564 I/GallerySheetProbe(18251): 面板 #21 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.685 I/GallerySheetProbe(18251): 面板 #22 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.758 I/GallerySheetProbe(18251): 面板 触摸 down=(757,1408) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:16.759 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:16.759 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(194,37) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1655.4521 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=47ms 抬手时盒顶=1618.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(194,37) 在盒内=true
+10-05 01:38:16.809 I/GallerySheetProbe(18251): 面板 #23 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:16.895 I/GallerySheetProbe(18251): 面板 触摸 down=(726,1427) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:16.895 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:16.895 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(163,56) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1674.8574 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=54ms 抬手时盒顶=1618.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(163,56) 在盒内=true
+10-05 01:38:16.930 I/GallerySheetProbe(18251): 面板 #24 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.032 I/GallerySheetProbe(18251): 面板 触摸 down=(699,1445) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.032 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.032 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(136,74) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1692.2012 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=45ms 抬手时盒顶=1618.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(136,74) 在盒内=false
+10-05 01:38:17.051 I/GallerySheetProbe(18251): 面板 #25 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.161 I/GallerySheetProbe(18251): 面板 触摸 down=(669,1407) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.162 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.162 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(106,36) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1654.4678 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=47ms 抬手时盒顶=1618.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(106,36) 在盒内=true
+10-05 01:38:17.171 I/GallerySheetProbe(18251): 面板 #26 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.292 I/GallerySheetProbe(18251): 面板 #27 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.312 I/GallerySheetProbe(18251): 面板 触摸 down=(678,1268) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.312 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.313 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(142,-22) 盒子顶=1538.0 盒子高=69.0 触点窗口y=1515.4385 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=47ms 抬手时盒顶=1538.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(142,-22) 在盒内=false
+10-05 01:38:17.412 I/GallerySheetProbe(18251): 面板 #28 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.449 I/GallerySheetProbe(18251): 面板 触摸 down=(654,1227) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.537 I/GallerySheetProbe(18251): 面板 #29 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.585 I/GallerySheetProbe(18251): 面板 触摸 down=(639,1204) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.585 I/GallerySheetProbe(18251): 内 东北切蒲英（VOICEROID） (touhoku_kiritan) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=2→2 按着时重组=false
+10-05 01:38:17.586 I/GallerySheetProbe(18251): 标签「touhoku_kiritan」 盒子收到 down=(397,93) 盒子顶=1358.0 盒子高=69.0 触点窗口y=1451.1748 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=53ms 抬手时盒顶=1358.0 抬手时宽高=683.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(397,93) 在盒内=false
+10-05 01:38:17.658 I/GallerySheetProbe(18251): 面板 #30 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.722 I/GallerySheetProbe(18251): 面板 触摸 down=(598,1219) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.722 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.723 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(356,18) 盒子顶=1448.0 盒子高=69.0 触点窗口y=1466.877 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=54ms 抬手时盒顶=1448.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(356,18) 在盒内=true
+10-05 01:38:17.780 I/GallerySheetProbe(18251): 面板 #31 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.859 I/GallerySheetProbe(18251): 面板 触摸 down=(601,1222) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.859 I/GallerySheetProbe(18251): 内 VOICEROID (voiceroid) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.859 I/GallerySheetProbe(18251): 标签「voiceroid」 盒子收到 down=(359,21) 盒子顶=1448.0 盒子高=69.0 触点窗口y=1469.4551 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=54ms 抬手时盒顶=1448.0 抬手时宽高=382.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(359,21) 在盒内=true
+10-05 01:38:17.901 I/GallerySheetProbe(18251): 面板 #32 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:17.994 I/GallerySheetProbe(18251): 面板 触摸 down=(573,1305) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:17.995 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:17.995 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(37,14) 盒子顶=1538.0 盒子高=69.0 触点窗口y=1552.751 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=53ms 抬手时盒顶=1538.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(37,14) 在盒内=true
+10-05 01:38:18.022 I/GallerySheetProbe(18251): 面板 #33 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.123 I/GallerySheetProbe(18251): 面板 触摸 down=(580,1298) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.124 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.124 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(44,7) 盒子顶=1538.0 盒子高=69.0 触点窗口y=1545.0166 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=45ms 抬手时盒顶=1538.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(44,7) 在盒内=true
+10-05 01:38:18.142 I/GallerySheetProbe(18251): 面板 #34 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.260 I/GallerySheetProbe(18251): 面板 触摸 down=(597,1329) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.260 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.260 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(61,38) 盒子顶=1538.0 盒子高=69.0 触点窗口y=1576.7969 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=46ms 抬手时盒顶=1538.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(61,38) 在盒内=true
+10-05 01:38:18.263 I/GallerySheetProbe(18251): 面板 #35 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.384 I/GallerySheetProbe(18251): 面板 #36 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.396 I/GallerySheetProbe(18251): 面板 触摸 down=(587,1319) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.396 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.397 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(51,28) 盒子顶=1538.0 盒子高=69.0 触点窗口y=1566.8594 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=54ms 抬手时盒顶=1538.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(51,28) 在盒内=true
+10-05 01:38:18.504 I/GallerySheetProbe(18251): 面板 #37 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.533 I/GallerySheetProbe(18251): 面板 触摸 down=(562,1399) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.625 I/GallerySheetProbe(18251): 面板 #38 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.669 I/GallerySheetProbe(18251): 面板 触摸 down=(570,1371) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.670 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.670 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(7,0) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1618.6084 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=52ms 抬手时盒顶=1618.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(7,0) 在盒内=true
+10-05 01:38:18.747 I/GallerySheetProbe(18251): 面板 #39 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.817 I/GallerySheetProbe(18251): 面板 触摸 down=(579,1377) 移动=4px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.817 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=2 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.817 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(16,6) 盒子顶=1618.0 盒子高=69.0 触点窗口y=1624.0459 移动=4px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=2 按住=65ms 抬手时盒顶=1622.0 抬手时宽高=243.0x69.0 盒顶变化=4.0 高变化=0.0 宽变化=0.0 抬手local=(17,5) 在盒内=true
+10-05 01:38:18.868 I/GallerySheetProbe(18251): 面板 #40 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:18.951 I/GallerySheetProbe(18251): 面板 触摸 down=(565,1377) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:18.951 I/GallerySheetProbe(18251): 内 呆毛 (ahoge) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:18.951 I/GallerySheetProbe(18251): 标签「ahoge」 盒子收到 down=(2,-4) 盒子顶=1629.0 盒子高=69.0 触点窗口y=1624.0459 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=53ms 抬手时盒顶=1629.0 抬手时宽高=243.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(2,-4) 在盒内=false
+10-05 01:38:18.989 I/GallerySheetProbe(18251): 面板 #41 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.085 I/GallerySheetProbe(18251): 面板 触摸 down=(570,1372) 移动=17px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:19.085 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=2 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:19.086 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(34,70) 盒子顶=1549.0 盒子高=69.0 触点窗口y=1619.7334 移动=19px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=2 按住=67ms 抬手时盒顶=1567.0 抬手时宽高=272.0x69.0 盒顶变化=18.0 高变化=0.0 宽变化=0.0 抬手local=(35,68) 在盒内=true
+10-05 01:38:19.110 I/GallerySheetProbe(18251): 面板 #42 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.224 I/GallerySheetProbe(18251): 面板 触摸 down=(559,1400) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:19.224 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:19.224 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(23,80) 盒子顶=1567.0 盒子高=69.0 触点窗口y=1647.6709 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=61ms 抬手时盒顶=1567.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(23,80) 在盒内=false
+10-05 01:38:19.230 I/GallerySheetProbe(18251): 面板 #43 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.336 I/GallerySheetProbe(18251): 面板 触摸 down=(567,1394) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:19.336 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:19.336 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(31,74) 盒子顶=1567.0 盒子高=69.0 触点窗口y=1641.3896 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=53ms 抬手时盒顶=1567.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(31,74) 在盒内=false
+10-05 01:38:19.351 I/GallerySheetProbe(18251): 面板 #44 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.464 I/GallerySheetProbe(18251): 面板 触摸 down=(539,1400) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:19.465 I/GallerySheetProbe(18251): 内 惊叹号符号 (^^^) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:19.465 I/GallerySheetProbe(18251): 标签「^^^」 盒子收到 down=(297,0) 盒子顶=1647.0 盒子高=69.0 触点窗口y=1647.999 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=54ms 抬手时盒顶=1647.0 抬手时宽高=310.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(297,0) 在盒内=true
+10-05 01:38:19.472 I/GallerySheetProbe(18251): 面板 #45 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.592 I/GallerySheetProbe(18251): 面板 #46 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.601 I/GallerySheetProbe(18251): 面板 触摸 down=(546,1362) 移动=0px top按下=247.0 top抬起=247.0 屏高=2376
+10-05 01:38:19.601 I/GallerySheetProbe(18251): 内 单人女性 (1girl) 收到 down已被消费=true 事件数=1 按下时scaleX=1.0 alpha=1.0 组合=1→1 按着时重组=false
+10-05 01:38:19.601 I/GallerySheetProbe(18251): 标签「1girl」 盒子收到 down=(10,42) 盒子顶=1567.0 盒子高=69.0 触点窗口y=1609.75 移动=0px 已抬手=true 到Final已被消费=false down最终已被消费=true 事件数=1 按住=46ms 抬手时盒顶=1567.0 抬手时宽高=272.0x69.0 盒顶变化=0.0 高变化=0.0 宽变化=0.0 抬手local=(10,42) 在盒内=true
+10-05 01:38:19.714 I/GallerySheetProbe(18251): 面板 #47 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.835 I/GallerySheetProbe(18251): 面板 #48 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:19.956 I/GallerySheetProbe(18251): 面板 #49 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.077 I/GallerySheetProbe(18251): 面板 #50 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.199 I/GallerySheetProbe(18251): 面板 #51 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.320 I/GallerySheetProbe(18251): 面板 #52 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.442 I/GallerySheetProbe(18251): 面板 #53 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.563 I/GallerySheetProbe(18251): 面板 #54 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.684 I/GallerySheetProbe(18251): 面板 #55 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.805 I/GallerySheetProbe(18251): 面板 #56 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:20.926 I/GallerySheetProbe(18251): 面板 #57 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:21.048 I/GallerySheetProbe(18251): 面板 #58 画=247.0 未裁=247.0 差=0.0 dy=0.0 高=2087.0 dh=0.0
+10-05 01:38:21.170 I/GallerySheetProbe

@@ -38,6 +38,42 @@ internal object DesktopSourceTree {
         }
 
     /**
+     * `desktop/src/main` 下按**包内相对路径**点名一颗文件。
+     *
+     * 为什么不只留 [desktopUiSource]：接线类的判据要核的是数据层与集成方那几颗
+     * （`gallery/data` 下那几颗与 `VeneraDesktop.kt`），把它们塞进 `gallery/ui/` 那颗的名字里只会读不到。
+     */
+    fun desktopSourceOf(relative: String): File =
+        File(repoRoot, "desktop/src/main/kotlin/com/venera/desktop/$relative").also {
+            check(it.isFile) { "读不到桌面文件：${it.path}" }
+        }
+
+    /**
+     * `:engine-probe` 里点名的那颗宿主文件。
+     *
+     * 为什么单开一颗而不并进 [desktopMainSources]：登录那一族的凭据落点实际住在 `:engine-probe`
+     * （桥里那三档 cookie 处理与那颗 in-memory 罐），而"扫 `desktop/src/main`"那批既有尺子的
+     * 对象是桌面自己那一片；把那颗文件塞进它们的名单，等于让一堆不相干的尺子突然多扫一个模块。
+     */
+    fun engineProbeSource(name: String): File =
+        File(repoRoot, "engine-probe/src/main/kotlin/com/venera/engineprobe/$name").also {
+            check(it.isFile) { "读不到 :engine-probe 的文件：${it.path}" }
+        }
+
+    /** `:engine-probe` 那一整片（"树上不许有第二颗罐"这类两轨判据要扫全片而不是一颗文件）。 */
+    fun engineProbeSourceDir(): List<File> =
+        walkFiles(File(repoRoot, "engine-probe/src/main"))
+
+    /**
+     * `gallery/ui/` 下的**全部**桌面界面件。
+     *
+     * 文案类的尺子用这一颗而不是手写名单：名单会把"屏上有没有这东西"读成"我记不记得把它列进来"，
+     * 而列错一个文件名（它 `check(isFile)` 直接抛）会让整条用例红在一次拼写上，红得没有信息量。
+     */
+    fun desktopUiSources(): List<File> =
+        walkFiles(File(repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/ui"))
+
+    /**
      * **代码行**里某个字面量的出现次数：跳过注释行。
      *
      * 为什么要跳注释：口径账的注释里**必须**能点名对岸那个数（`ExpandedSideBarWidth = 224.dp`），

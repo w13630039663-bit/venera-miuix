@@ -2,6 +2,7 @@ package com.venera.desktop.gallery.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,10 +13,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.domain.GalleryColumnMode
+import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import io.github.composefluent.component.Text
 
 /**
@@ -52,8 +57,13 @@ import io.github.composefluent.component.Text
  *
  * 几何取现成口径，不造新数：常态图位比例 3:4 来自设计稿 `.art-card .im{aspect-ratio:3/4}`（`:187`），
  * [wideFirst] 那档 16:10 来自 `.art-card.wide .im{aspect-ratio:16/10}`（`:188`），
- * 圆角 8 来自稿的 `--r-card:8px`（`:21`）。刻意不挂 `clickable` —— 桌面没有画廊详情页，
- * 画成能点的样子就是一枚假开关。
+ * 圆角 8 来自稿的 `--r-card:8px`（`:21`）。
+ *
+ * ⚠️ 这里**曾经**写着「刻意不挂 `clickable` —— 桌面没有画廊详情页，画成能点的样子就是一枚假开关」，
+ * 那是对的旧裁决（当时详情面板还没有，挂上去确实是假开关）。第十一批 P0 把详情浮层接上了，
+ * [onClick] 于是成了必填参数（**不给默认值**：漏传不报错的形状正是"某一屏的卡点不动"，
+ * 与第五批那枚墙参数同一条教训），旧那句随之下架。点击面是**整张卡**而不是卡底那两行字 ——
+ * 挂在小件上就成了"看得见的一圈字能点、图不能点"。
  *
  * ## 描边不是阴影
  *
@@ -69,38 +79,63 @@ import io.github.composefluent.component.Text
  * 永远读不到那两行 —— 而且一屏几十张卡，鼠标扫过时反复明灭本身就是闪烁。所以遮罩常驻。
  * 渐变从透明到 [DesktopTheme.CardOverlayEnd]（`#80000000` 半透明黑），白字压在上面。
  *
- * ## 三档图位状态，**不许留一档"什么都没有"**
+ * ## 四档图位状态，**不许留一档"什么都没有"**
  *
- * 1. `previewUrl` 空串 → 「站方没给缩略档」+ 站名（这是**站方没给**，不是我们没取到）；
+ * 0. `masked = true`（分级遮挡档）→ 「分级遮挡」+ 站名，**而且根本不发起取图**：
+ *    一张注定要盖住的图，没必要先花一次流量与一次解码再盖住它。
+ *    这一档排在"站方没给缩略档"之前判 —— 反过来会让被遮挡的条目谎报"站方没给"，
+ *    那是把"我们不给看"说成"站方没有"，两个方向都算错报；
+ * 1. 地址是空串 → 「站方没给缩略档」+ 站名（这是**站方没给**，不是我们没取到）；
  * 2. 加载中 → 站名 + 一句"正在取图"（所以灰块至少知道自己是什么）；
  * 3. 加载失败 → 「图没加载出来」+ 站名 + 域名的头几段（便于用户报障时定位是哪张）。
  *
  * ⚠️ 第 3 档**不许**静默重试到成功：那是"悄悄变成正常"的另一种形状。
+ *
+ * ⚠️ 第 1 档那句文案里的"缩略档"是**旧说法**。第五批起这一格取哪一档由用户的
+ * 「预览清晰度」定（preview / sample 两档，判据在共享那颗 `GallerySettingsModel.wallUrl`），
+ * 所以严格讲这一档是"站方没给这一档的图"。留原句是因为它短、且两档都空时才是这一档；
+ * 要改文案就连着 `TilePhase.Failed` 那句一起改，别只改一半。
  */
 @Composable
-internal fun DesktopGalleryPostTile(post: GalleryPost, wide: Boolean = false) {
-    // 网格档按用途取 [GalleryPost.previewUrl]（`GalleryPost.kt:66`「网格缩略档」，三站同口径）。
-    // ⚠️ 不拿 `largeUrl` / `fileUrl` 顶：那些是原图（yande.re 单条实测可达 6.6 MB，
-    // 见 `GalleryPost.kt:22`），一屏几十张就是几百 MB 的下载与解码，而墙上只画 3:4 的小格。
-    val preview = post.previewUrl
+internal fun DesktopGalleryPostTile(
+    post: GalleryPost,
+    masked: Boolean,
+    quality: GalleryPreviewQuality,
+    aiBadge: Boolean,
+    onClick: (GalleryPost) -> Unit,
+    wide: Boolean = false,
+) {
+    // 取哪一档**不在这里判**：交给 `tileImageRequest`（它再转给共享那颗 `GallerySettingsModel.wallUrl`）。
+    // ⚠️ 曾经这里写死 `post.previewUrl` —— 那是"墙上摆哪一档"这一档偏好恒不生效的形状，
+    // 而且它把两条判据（视频只吃静帧、LARGE 取不到退 preview）抄在了桌面这一侧。
+    // `null` 只有一种来处：这一张被分级挡住了，**连发起取图都不该有**。
+    val url = tileImageRequest(post, masked, quality)
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(if (wide) 16f / 10f else 3f / 4f)
             .clip(RoundedCornerShape(8.dp))
             .background(DesktopTheme.ImagePlaceholder)
-            .border(1.dp, DesktopTheme.SurfaceRaised, RoundedCornerShape(8.dp)),
+            .border(1.dp, DesktopTheme.SurfaceRaised, RoundedCornerShape(8.dp))
+            // 点击面 = **整张卡**（几何与描边都在它之内，所以挂这一层不改任何尺寸口径）。
+            // 挡住的那一档同样能点：点开的面板里那一格照旧是「分级遮挡」，
+            // `masked` 一路跟着卡进面板，这里不给守卫开绕出口。
+            .clickable { onClick(post) },
     ) {
-        if (preview.isBlank()) {
+        if (url == null) {
+            // 这一档**不进下面那条 else**：进了就会起 `AsyncImage`，
+            // 而这一张的内容正是"这台机器的这个人不该看到"。
+            TileFallback("分级遮挡", post.site.displayName)
+        } else if (url.isBlank()) {
             TileFallback("站方没给缩略档", post.site.displayName)
         } else {
-            var phase by remember(preview) { mutableStateOf<TilePhase>(TilePhase.Loading) }
+            var phase by remember(url) { mutableStateOf<TilePhase>(TilePhase.Loading) }
             // ⚠️ coil3 的三枚回调是**具名参数**（`onLoading` / `onSuccess` / `onError`），
             // 不是 `onSuccessListener` / `onErrorListener` 那一族 —— 那是 coil2 的 modifier 扩展，
             // 写上去会红。也不是 `placeholder` / `error` 那两枚 Painter 形参：
             // 我们要的是**知道自己处于哪一档**，不是画一张占位图。
             AsyncImage(
-                model = preview,
+                model = url,
                 contentDescription = "${post.site.displayName} 的作品",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -112,7 +147,7 @@ internal fun DesktopGalleryPostTile(post: GalleryPost, wide: Boolean = false) {
                 TilePhase.Loading -> TileFallback("正在取图", post.site.displayName)
                 // ⚠️ 只点名**哪一档**出了事，不回显整条 URL：那张图能显示在屏幕上，
                 // 链接也就等于摆出去了。这里只留 host 的头几段作定位线索。
-                TilePhase.Failed -> TileFallback("图没加载出来", "${post.site.displayName} · ${hostHint(preview)}")
+                TilePhase.Failed -> TileFallback("图没加载出来", "${post.site.displayName} · ${hostHint(url)}")
                 TilePhase.Loaded -> Unit
             }
         }
@@ -161,13 +196,18 @@ internal fun DesktopGalleryPostTile(post: GalleryPost, wide: Boolean = false) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                "分数 ${post.score} · 标签 ${post.tagList.size} 枚",
-                color = DesktopTheme.TextPrimary,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // 分数与标签两半**各自可缺**（判据在 [desktopCardMetricLine]）：
+            // `score` 是非空 Int、缺省 0，而 Gelbooru 站方真会给 `"score":0` ⇒
+            // 「分数 0」把"零分"与"这一站没给这个数"念成了同一句话。两半都没有就整行不摆。
+            desktopCardMetricLine(post)?.let { metrics ->
+                Text(
+                    metrics,
+                    color = DesktopTheme.TextPrimary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         // 站点胶囊（稿 `.src`）：站别是身份的一部分，三站各 id 独立编号，同号必是两张不同的图。
         Text(
@@ -181,11 +221,34 @@ internal fun DesktopGalleryPostTile(post: GalleryPost, wide: Boolean = false) {
             fontSize = 10.sp,
             maxLines = 1,
         )
+        // 「AI」角标：文案与 Android 那颗 `GalleryAiPill` 同串（`AI_BADGE_TEXT`，由用例逐字回核），
+        // 判据同一条（站方没打标一律不摆，不靠画风推断）。
+        //
+        // 位置与 Android 不同（那颗在左上）：桌面这一张的左上被标题占了、右上是站点胶囊、
+        // 左下是作者与分数那两行，右下角是这一张上唯一还空着的一角。**刻意不可点** ——
+        // 点下去要的是"只看这一站/只看 AI"，桌面还没有筛选态的出口，做了就是假按钮。
+        if (aiBadgeFor(post, aiBadge)) {
+            Text(
+                AI_BADGE_TEXT,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(DesktopTheme.OverlayScrim, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                color = DesktopTheme.TextPrimary,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+        }
     }
 }
 
 /**
- * 一面墙：列数走 [DesktopGalleryMetrics.imageWallColumnCount]，首卡跨 2 列。
+ * 一面墙：列数走 [desktopWallColumnCount]（AUTO 才吃宽度，TWO/THREE 是用户覆盖），首卡跨 2 列。
+ *
+ * 三枚档（列数 / 清晰度 / AI 角标）在这里**一次收下、逐张传给卡位**，不在卡位里各自去读偏好：
+ * 那样一面墙上会有几十次 `collectAsState`，而"同一面墙上第 1 张与第 20 张不同档"这种形状
+ * 恰恰是最难看出来的错。
  *
  * ## 为什么是**一颗**而不是三处各摆一次 `LazyVerticalGrid`
  *
@@ -204,20 +267,60 @@ internal fun DesktopGalleryPostTile(post: GalleryPost, wide: Boolean = false) {
  * ## 键用 `"${site}-${id}"` 而不是 `id`
  *
  * 三站各自独立编号，同一个 id 在三站是三张不同的图 —— 用裸 id 当键会让三站的图互相顶掉。
+ *
+ * ## 收的是 [DesktopWall] 而不是 `List<GalleryPost>`
+ *
+ * 墙自己**不判分级**：判据在 [DesktopGalleryWallPolicy] 那一层算完再交进来（纯函数，能被单测取值）。
+ * 让墙自己判，等于三面墙各长一把过滤 —— 而"同一张图在日榜被挡、在收藏里摆出来"正是这一层要禁的事。
  */
 @Composable
 internal fun DesktopGalleryPostWall(
-    posts: List<GalleryPost>,
+    wall: DesktopWall,
+    columnMode: GalleryColumnMode,
+    quality: GalleryPreviewQuality,
+    aiBadge: Boolean,
+    /**
+     * 点了一张卡。交出的是**整批 + 序号**（[DesktopWallSelection]）而不是裸 post ——
+     * 两件事各占一半理由：`masked` 那一档必须跟着进浮层（否则"墙上挡住的那张，点开就看到"
+     * 就是第四批那层守卫的绕出口），而"第 3 / 40 张"里那个 40 只有墙自己知道
+     *（守卫挡掉的不算、续页追加的要算）。
+     *
+     * 同样**必填、不给默认值**：五处调用点漏一处，形状就是"某一屏的卡点不动"。
+     */
+    onPick: (DesktopWallSelection) -> Unit,
+    /**
+     * 墙**前面**那几排（节头、hero、缺席读数…），跟着同一颗滚动容器一起滚。
+     *
+     * 必填、不给默认值：带默认值时"该有节头的那一屏漏传"不报错。
+     * 为什么把这颗口子开在墙上而不是让调用方自己套一层滚动容器：
+     * `LazyVerticalGrid` 自己就是滚动容器，外面再挂 `verticalScroll` 会**整屏崩**（手册 §23.3），
+     * 而"给墙算一个定高"对照片墙是一条会漂的账（行数随窗宽变）。
+     * 于是"整页下滑"只剩这一条路 —— 前置内容做成**跨整行的 grid item**，全页一个滚动容器。
+     */
+    lead: LazyGridScope.() -> Unit,
     modifier: Modifier = Modifier,
     wideFirst: Boolean = false,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val columns = DesktopGalleryMetrics.imageWallColumnCount(maxWidth.value)
+        // 三枚新参数一律**必填**：带默认值时漏传不报错，而"漏传"的形状正好是
+        // "同一份设置在某一屏上静默不生效" —— 那与第四批修掉的"墙不过守卫"是同一族缺陷。
+        val columns = desktopWallColumnCount(maxWidth.value, columnMode)
+        // 取证种子（`--detail`）：起窗之后自己点开这一屏的第一张卡。
+        // ⚠️ 放在 `LaunchedEffect(wall.cards)` 里而不是组合期直接调：组合期写状态就是
+        //   "每帧新实例 × 引用比较"那一族（手册 §摆放期写矩形），而第一帧 `cards` 还是空的。
+        //   默认那颗种子是 `false`（判据 `DesktopGalleryDetailP1Test` ⑨），所以不带参数时这条链不通。
+        if (LocalDesktopWallSeedFirst.current) {
+            LaunchedEffect(wall.cards) {
+                if (wall.cards.isNotEmpty()) onPick(DesktopWallSelection(wall.cards, 0))
+            }
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             horizontalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.wallGridGap),
             verticalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.wallGridGap),
         ) {
+            // 前置那几排先入列：`maxLineSpan` 是"跨满一行"，正是它们要的（与首卡跨 2 列不是一回事）。
+            lead()
             // ⚠️ 用 `itemsIndexed` 而不是 `items`：首卡要跨 2 列，而"是不是第一张"只有 index 知道。
             //
             // `coerceAtMost(2)` 而不是直接写 2：下限公式是 3（`DesktopGalleryMetrics.kt` 的
@@ -225,16 +328,47 @@ internal fun DesktopGalleryPostWall(
             // 哪天下限被调到 2 时不会静默跨满整行。**不写 `maxLineSpan`** —— 那是"跨满一行"，
             // 与稿的"跨 2 列"不是一回事。
             itemsIndexed(
-                items = posts,
-                key = { _, post -> "${post.site.routeKey}-${post.id}" },
+                items = wall.cards,
+                key = { _, card -> "${card.post.site.routeKey}-${card.post.id}" },
                 span = { index, _ ->
                     if (wideFirst && index == 0) GridItemSpan(maxLineSpan.coerceAtMost(2)) else GridItemSpan(1)
                 },
-            ) { index, post ->
-                DesktopGalleryPostTile(post, wide = wideFirst && index == 0)
+            ) { index, card ->
+                DesktopGalleryPostTile(
+                    card.post,
+                    masked = card.masked,
+                    quality = quality,
+                    aiBadge = aiBadge,
+                    // 交出**整批与序号**：`masked` 要跟着进浮层，而页码那个"共几张"只有墙知道。
+                    onClick = { onPick(DesktopWallSelection(wall.cards, index)) },
+                    wide = wideFirst && index == 0,
+                )
             }
         }
     }
+}
+
+/**
+ * 墙上那两笔"被挡了多少"的读数，一行。空表就**一行都不画** ——
+ * 没有东西被挡的时候摆一句"没有内容被屏蔽"是把不存在的事说一遍，
+ * 而一屏几十张卡底下多一行常显文字，读的人只会以为哪里出了事。
+ *
+ * ⚠️ 这一行是**每一面墙都要摆的那一颗件**（批 37）：拼法住在 [desktopWallGuardReading] 里，
+ * 各 pane 只许调这一颗，不许自己 `guardFragments().joinToString(…)` ——
+ * 从前四处各写一遍，其中单人页把那一串写进了"整墙空了"那一格，非空时屏上就没有任何一句话说少了谁。
+ */
+@Composable
+internal fun DesktopWallGuardLine(wall: DesktopWall, modifier: Modifier = Modifier) {
+    val reading = desktopWallGuardReading(wall)
+    if (reading.isEmpty()) return
+    Text(
+        reading,
+        color = DesktopTheme.TextSecondary,
+        fontSize = 12.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(bottom = 6.dp),
+    )
 }
 
 /** 图位三态。刻意做成 sealed 而不是布尔 —— 下一轮若要加"图过大降采样"时是第四档，不是插在中间。 */

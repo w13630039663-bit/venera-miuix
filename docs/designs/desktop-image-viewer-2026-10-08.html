@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Venera Windows 大图查看器 · 高保真设计稿 2026-10-08</title>
+<style>
+  :root{
+    --ink:#14161A; --ink2:#4A505C; --hair:#DEE1E8; --paper:#F1F2F6; --panel:#FFFFFF;
+    --note:#5B47C8; --caution:#A15C00; --danger:#C62828;
+    /* 桌面自有 token（逐字取自 DesktopTheme.kt 与 DesktopGalleryMetrics.kt） */
+    --d-host:#202020; --d-rail:#1C1C1C; --d-layer:#272727; --d-card:#2C2C2C; --d-stroke:#353535;
+    --d-t1:#FFFFFF; --d-t2:#A0A0A0; --d-t3:#8B8B8B; --d-accent:#CBB6FF; --d-beni:#D6463C;
+    --d-grad-a:#3A2A55; --d-grad-b:#2C2C2C;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:14px/20px "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Segoe UI Variable Display","Segoe UI","Microsoft YaHei UI",sans-serif;margin:0}
+  .wrap{max-width:1560px;margin:0 auto;padding:32px 28px 80px}
+  .sheet-head h1{font-size:28px;line-height:36px;font-weight:600;letter-spacing:-.2px}
+  .sheet-head .sub{color:var(--ink2);max-width:980px;margin-top:10px}
+  .stance{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .stance div{background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:14px 16px}
+  .stance b{display:block;font-size:13px;letter-spacing:.02em;color:var(--note);margin-bottom:6px}
+  .stance p{margin:0;font-size:13px;line-height:19px;color:var(--ink2)}
+  section{margin-top:44px}
+  .bt{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .bt h2{font-size:20px;line-height:28px;font-weight:600}
+  .bt .size{font-size:12px;color:#767C89;letter-spacing:.04em}
+  .lead{font-size:13px;color:var(--ink2);max-width:1040px;margin:0 0 14px}
+  .boardwrap{overflow:auto;border-radius:16px;box-shadow:0 18px 50px -22px rgba(20,22,26,.35);background:#14161A}
+  .legend{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 20px;margin-top:14px;font-size:12.5px;line-height:19px;color:var(--ink2)}
+  .num{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:999px;
+    background:var(--note);color:#fff;font-size:10.5px;font-weight:600;padding:0 4px;margin-right:5px;vertical-align:1px}
+  .flag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;margin-left:6px;vertical-align:2px}
+  .flag.now{background:#F1E4C6;color:var(--caution)}
+  .flag.fix{background:#E4E9FB;color:var(--note)}
+
+  /* ─── 窗体骨架：1440×900，rail 48 + pane 224 + 内容净宽 1168 ─── */
+  .win{width:1440px;height:900px;display:flex;background:var(--d-host);color:var(--d-t1);position:relative;overflow:hidden;font-size:14px;line-height:20px}
+  .rail{width:48px;background:var(--d-rail);border-right:1px solid var(--d-stroke);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px;flex:none}
+  .rail i{width:30px;height:30px;border-radius:8px;background:var(--d-card);display:block}
+  .rail i.on{background:var(--d-accent)}
+  .pane{width:224px;background:var(--d-layer);border-right:1px solid var(--d-stroke);padding:14px 12px;flex:none}
+  .pane h3{font-size:13px;color:var(--d-t2);font-weight:600;margin-bottom:8px}
+  .row{padding:8px 10px;border-radius:6px;font-size:13px;color:var(--d-t2)}
+  .row.on{background:var(--d-card);color:var(--d-t1)}
+  .body{flex:1;display:flex;flex-direction:column;min-width:0}
+  .topbar{height:52px;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--d-stroke)}
+  .topbar b{font-size:16px;font-weight:600}
+  .chip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--d-card);color:var(--d-t2)}
+  .chip.on{background:var(--d-accent);color:#1B1B1B;font-weight:600}
+  .content{flex:1;position:relative;overflow:hidden}
+  .wall{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:16px 18px}
+  .card{aspect-ratio:3/4;border-radius:8px;background:linear-gradient(160deg,#3B3346,#26242C);border:1px solid var(--d-stroke)}
+  .card.masked{background:repeating-linear-gradient(45deg,#2A2A2A,#2A2A2A 8px,#232323 8px,#232323 16px)}
+
+  /* ─── 浮层：46 渐隐带 + 340 面板 ─── */
+  .overlay{position:absolute;top:0;right:0;bottom:0;display:flex}
+  .scrim{width:46px;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.92));flex:none}
+  .panel{width:340px;background:var(--d-layer);border-left:1px solid var(--d-stroke);padding:12px;display:flex;flex-direction:column;gap:10px}
+  .hero{height:200px;border-radius:8px;background:linear-gradient(150deg,#4A3F63,#2A2733);border:1px solid var(--d-stroke)}
+  .tiers{display:flex;gap:6px}
+  .tiers span{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--d-stroke);color:var(--d-t2)}
+  .tiers span.on{border-color:var(--d-accent);color:var(--d-accent)}
+  .pager{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--d-t2)}
+  .kv{font-size:12px;color:var(--d-t3);line-height:18px}
+  .kv b{color:var(--d-t2);font-weight:600}
+
+  /* ─── 目标那一层：大图铺满「内容净宽 − 386」 ─── */
+  .viewer{position:absolute;top:0;left:0;bottom:0;background:var(--d-host);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .img{width:62%;aspect-ratio:3/4;background:linear-gradient(150deg,#5B4C7A,#2E2A3A);border-radius:4px;box-shadow:0 20px 60px -20px #000}
+  .img.zoom{width:150%;transform:translate(4%,3%)}
+  .vpager{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:12.5px;color:var(--d-t2);
+    background:rgba(28,28,28,.82);border:1px solid var(--d-stroke);border-radius:999px;padding:4px 14px}
+  .vfail{position:absolute;bottom:14px;left:16px;font-size:12px;color:var(--d-beni)}
+  .vhint{position:absolute;top:14px;left:16px;font-size:11.5px;color:var(--d-t3)}
+  .note{position:absolute;font-size:11.5px;color:var(--d-accent);background:rgba(32,32,32,.9);border:1px solid var(--d-stroke);
+    border-radius:6px;padding:4px 8px}
+  .dim{position:absolute;height:22px;border:1px dashed var(--d-accent);border-radius:4px;font-size:11px;color:var(--d-accent);
+    display:flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sheet-head">
+    <h1>Venera Windows 大图查看器 · 高保真设计稿</h1>
+    <p class="sub">配套设计 <code>docs/rounds/desktop-image-viewer-design-2026-10-08.md</code> 与实施计划
+      <code>docs/rounds/desktop-image-viewer-plan-2026-10-08.md</code>。画板尺寸 1440×900 = 桌面默认窗（rail 48 + pane 224 + 内容净宽 1168），
+      所有色值与尺寸逐字取自 <code>DesktopTheme.kt</code> / <code>DesktopGalleryMetrics.kt</code>，不是新造的数。</p>
+    <div class="stance">
+      <div><b>这一屏解决的那句话</b><p>「点一张卡只出右侧 340 浮层里顶上那 200 高的图位」——没有一层把图铺到内容区。目标：点卡即进大图，浮层继续浮右。</p></div>
+      <div><b>已拍板的形态</b><p>满内容区大图 + 原浮层浮在右侧；Esc 一层层退；← / → 与浮层那两枚按钮吃同一对 lambda；滚轮显式设为「裸滚即缩放」。</p></div>
+      <div><b>这一批不做的</b><p>动图逐帧（紧接第二批，桌面 <code>coil-gif</code> 无 JVM 变体）、视频、下载、手势滑动翻页、第二窗口。</p></div>
+    </div>
+  </div>
+
+  <section>
+    <div class="bt"><h2>板 1 · 今天（改前基线）</h2><span class="size">1440 × 900 · 已用窗口捕获拍到同一形态</span><span class="flag now">现状</span></div>
+    <p class="lead">点卡之后只有右侧那一浮层，图被压在顶上 200 高的一条里；左边整块仍是墙。这就是「点卡跳不到大图」的全部真相。</p>
+    <div class="boardwrap">
+      <div class="win">
+        <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        <div class="pane"><h3>图库 · 今日</h3>
+          <div class="row on">每日热门</div><div class="row">最新</div><div class="row">排行榜</div><div class="row">关注</div>
+        </div>
+        <div class="body">
+          <div class="topbar"><b>图库 · 今日</b><span class="chip">yande.re</span><span class="chip on">大图</span></div>
+          <div class="content">
+            <div class="wall"><div class="card"></div><div class="card"></div><div class="card"></div><div class="card masked"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div></div>
+            <div class="overlay">
+              <div class="scrim"></div>
+              <div class="panel">
+                <div class="hero"></div>
+                <div class="tiers"><span>预览</span><span class="on">大图</span><span>原图</span></div>
+                <div class="pager"><span>‹ 上一张</span><span>第 5 / 40 张</span><span>下一张 ›</span></div>
+                <div class="kv"><b>作品信息</b><br>站点 yande.re<br>尺寸 2245×4360<br>格式 JPG</div>
+              </div>
+            </div>
+            <div class="note" style="top:26px;right:352px">① 图只到这 200 高的一条<br>② 左边整块还是墙，没铺图</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="num">1</i>浮层的图位是 <b>200.dp</b>（<code>detailHeroHeight</code>），宽 340.dp（<code>detailWidth</code>）——今天「看大的极限」就是这一条。</span>
+      <span><i class="num">2</i>内容区其余部分仍是六列墙；缩放 / 平移 / 满屏那一档在桌面上<b>从来没有过</b>（不是坏了）。</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="bt"><h2>板 2 · 目标（点卡即进大图，浮层浮右）</h2><span class="size">1440 × 900 · 可用宽度 = 1168 − 340 − 46 = 782</span><span class="flag fix">本批落地</span></div>
+    <p class="lead">大图那一层铺在内容区左侧那一大块里，<b>浮层与它左缘那道 46 宽的渐隐带都要让开</b>（少减那 46，大图右缘就压在渐隐带底下）。图用 Fit 不用 Crop —— 裁掉的边缘放大了回不来。</p>
+    <div class="boardwrap">
+      <div class="win">
+        <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        <div class="pane"><h3>图库 · 今日</h3>
+          <div class="row on">每日热门</div><div class="row">最新</div><div class="row">排行榜</div><div class="row">关注</div>
+        </div>
+        <div class="body">
+          <div class="topbar"><b>图库 · 今日</b><span class="chip">yande.re</span><span class="chip on">大图</span><span class="chip">1.0×</span></div>
+          <div class="content">
+            <div class="viewer">
+              <div class="img"></div>
+              <div class="vhint">滚轮缩放 · 拖动平移 · Esc 先退这一层</div>
+              <div class="vpager">第 5 / 40 张</div>
+            </div>
+            <div class="dim" style="left:60px;top:64px;width:782px">内容净宽 1168 − 面板 340 − 渐隐带 46 = 782（这一格就是大图的可用宽）</div>
+            <div class="overlay">
+              <div class="scrim"></div>
+              <div class="panel">
+                <div class="hero"></div>
+                <div class="tiers"><span>预览</span><span class="on">大图</span><span>原图</span></div>
+                <div class="pager"><span>‹ 上一张</span><span>第 5 / 40 张</span><span>下一张 ›</span></div>
+                <div class="kv"><b>作品信息</b><br>站点 yande.re<br>尺寸 2245×4360<br>格式 JPG</div>
+              </div>
+            </div>
+            <div class="note" style="top:26px;left:16px">① 两层同时开：大图铺左，浮层浮右<br>② 档位与浮层共用同一颗状态</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="num">1</i>点卡 = 两层一起开（不需要再点一下）。Esc 一层层退：先退大图，再按才关浮层回墙。</span>
+      <span><i class="num">2</i>顶上那排「预览 / 大图 / 原图」与浮层那排是<b>同一枚档位</b>；预取也吃这一枚（各吃各的就成两条轨，屏上看不出而流量白花）。</span>
+      <span><i class="num">3</i>被分级挡住的那张：这一层只摆「分级遮挡」，<b>不发请求</b>；站方没给那一档时念「站方没给这一档的图」——两句与浮层逐字同串。</span>
+      <span><i class="num">4</i>放大态下连播不许自己翻页（那枚 <code>zoomed</code> 从今天写死的 <code>false</code> 换成真读数）。</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="bt"><h2>板 3 · 放大态与失败态</h2><span class="size">同一窗体 · 滚轮或种子放大后</span><span class="flag fix">判据覆盖</span></div>
+    <p class="lead">左：放大到 2.5× 后仍可翻页，但<b>翻页那一刻缩放复位到 1×</b>（带着放大态翻页，页码与屏上那张就对不上）。右：取图失败时那句原话落在大图那一层的左下角，不静默变白屏。</p>
+    <div class="boardwrap">
+      <div class="win">
+        <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        <div class="pane"><h3>图库 · 今日</h3><div class="row on">每日热门</div><div class="row">最新</div></div>
+        <div class="body">
+          <div class="topbar"><b>图库 · 今日</b><span class="chip">yande.re</span><span class="chip on">大图</span><span class="chip on">2.5×</span></div>
+          <div class="content">
+            <div class="viewer" style="align-items:flex-start">
+              <div class="img zoom"></div>
+              <div class="vhint">放大态：拖动平移 · 翻页即复位 1×</div>
+              <div class="vfail">取这一档失败：Connection reset（本机到那一头）</div>
+              <div class="vpager">第 6 / 40 张</div>
+            </div>
+            <div class="overlay"><div class="scrim"></div>
+              <div class="panel"><div class="hero"></div><div class="tiers"><span>预览</span><span class="on">大图</span><span>原图</span></div>
+                <div class="pager"><span>‹ 上一张</span><span>第 6 / 40 张</span><span>下一张 ›</span></div>
+                <div class="kv">放大时连播暂停；<br>失败那句同时打一行 <code>D_大图</code> 读数</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><b>取证种子</b>：放大那一帧不靠手（禁鼠标令）—— <code>-PviewerZoom=2.5</code> 走公开的 <code>changeScale</code>，越界先自己夹并把「给的 / 用的」两个数一起念出来。</span>
+      <span><b>量不了的半条</b>：滚轮事件是否真投递进手势链，我这边没人去滚 —— 交付时这一条写明「由你手动滚一下确认」，不写成验收结论。</span>
+    </div>
+  </section>
+</div>
+</body>
+</html>

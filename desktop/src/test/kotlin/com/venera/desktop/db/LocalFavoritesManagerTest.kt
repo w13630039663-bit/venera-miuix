@@ -540,6 +540,11 @@ class LocalFavoritesManagerTest {
         reader.init()
 
         awaitUntil("folders 缓存续上缓存夹") { reader.folders.value.contains("缓存夹") }
+        // 那一枚夹子的**条目数**也要等到：`init` 里是两笔写（先 `_folders.value = names`，
+        // 再逐夹各查一次条数写 `_counts.value`），只等第一枚时第二枚那一拍还是空表 ⇒ 读到 null。
+        // 单跑这一类 3/3 绿，全量跑（与并行 worktree 抢 CPU）里红过一次 —— 等的是"那一笔到了"，
+        // 数值仍由下面那行断（等键出现而不是等值，免得把判据写成自证）。
+        awaitUntil("counts 缓存续上缓存夹") { reader.counts.value.containsKey("缓存夹") }
         assertEquals(2, reader.counts.value["缓存夹"])
     }
 

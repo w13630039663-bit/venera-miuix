@@ -224,15 +224,29 @@ class DesktopCardOverlayTest {
      */
     @Test
     fun `Hero 大位走底图那一档而不是网格缩略档`() {
-        val hero = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
+        // 2026-10-04 这一档的决定**搬了家**：hero 不再自己写 `post.backdropUrl`，而是问
+        // `heroBackdropOf(wall.cards.firstOrNull())`（那颗函数在 `DesktopGalleryWallPolicy.kt`）。
+        // 搬家是为了把"遮住的这一张根本不许发起取图"做成可单测的形状，不是为了改掉取哪一档 ——
+        // 所以这里跟着改**判据落点**，`.backdropUrl` 那半颗钉到新家，hero 那半颗继续钉"不许自己写档"。
+        val policy = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryWallPolicy.kt"))
         assertTrue(
-            "Hero 大位应引 GalleryPost.backdropUrl —— 中档优先，视频条目另有闸门",
-            hero.contains(".backdropUrl"),
+            "hero 那一档应引 GalleryPost.backdropUrl —— 中档优先，视频条目另有闸门" +
+                "（决定现在在 heroBackdropOf 里，不在 hero 的 composable 里）",
+            policy.contains(".backdropUrl"),
         )
         assertTrue(
-            "Hero 大位里就地写了 previewUrl —— 那是网格缩略档，铺满大位会糊成色块；" +
+            "heroBackdropOf 里就地写了 previewUrl —— 那是网格缩略档，铺满大位会糊成色块；" +
                 "取哪一档的判据归 GalleryPost.backdropUrl，UI 层不许再写一份",
-            !hero.contains("previewUrl"),
+            !policy.contains("previewUrl"),
+        )
+        val hero = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
+        assertTrue(
+            "hero 不再经 heroBackdropOf 拿底图 —— 那一步同时是「分级就不取图」的入口，绕开它就等于自己挑一张",
+            hero.contains("heroBackdropOf("),
+        )
+        assertTrue(
+            "hero 里自己写了取哪一档（backdropUrl 的引用）—— 档的决定归 heroBackdropOf 一处",
+            !hero.contains(".backdropUrl"),
         )
     }
 }

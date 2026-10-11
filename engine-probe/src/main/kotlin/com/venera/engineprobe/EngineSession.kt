@@ -219,12 +219,10 @@ class EngineSession(
     data class Episode(val name: String, val id: String, val placeholder: Boolean = false)
 
     /**
-     * 详情：标题 + 章节表。**解析语义逐条对齐 Android 侧 `JsComicSource.getComicDetails`**：
-     * `chapters` 是 Map 时 **key=话号、value=话名**（我第一版写反了，`loadEp` 当场报 `Invalid Data`），
-     * 值还是 Map 的就是分组表，要摊平；是 List 时取 `item.id` / `item.title`；
-     * 完全没有 chapters 时补一个沿用漫画 id 的占位章（不能留空）。
+     * 详情：标题 + 简介 + 章节表。**怎么读那份答复全在 [parseComicLoadInfo]**（那一颗是纯函数，
+     * 判据直接喂假信封进它）；这里只负责发一次 JS。
      */
-    fun details(comicId: String): Pair<String, List<Episode>> {
+    fun details(comicId: String): ComicInfo {
         val env = gson.fromJson<Map<String, Any?>>(
             host.evaluateAsync(
                 """
@@ -235,26 +233,7 @@ class EngineSession(
                 """.trimIndent()
             ), mapType
         )
-        if (env["success"] == false) error("loadInfo 失败: ${env["error"]}")
-        val data = env["data"] as? Map<*, *> ?: error("loadInfo 没有 data")
-        val eps = mutableListOf<Episode>()
-        when (val raw = data["chapters"] ?: data["episodes"]) {
-            is Map<*, *> -> raw.forEach { (groupKey, groupVal) ->
-                if (groupVal is Map<*, *>) {
-                    groupVal.forEach { (k, v) -> eps.add(Episode(v.toString(), k.toString())) }
-                } else {
-                    eps.add(Episode(groupVal.toString(), groupKey.toString()))
-                }
-            }
-
-            is List<*> -> raw.forEachIndexed { i, item ->
-                if (item is Map<*, *>) {
-                    eps.add(Episode(item["title"]?.toString() ?: "第 $i 话", item["id"]?.toString() ?: i.toString()))
-                }
-            }
-        }
-        if (eps.isEmpty()) eps.add(Episode("", comicId, placeholder = true))
-        return (data["title"]?.toString() ?: "") to eps
+        return parseComicLoadInfo(comicId, env)
     }
 
     /** 页表（图片键，可能带 `#crop` 之类后缀，交给 onImageLoad 之前原样传） */
@@ -318,6 +297,61 @@ class EngineSession(
         return JvmImageOps.descrambleBlocks(img, num)
             ?: error("${img.height}px 不够切 $num 块，去混淆无从谈起")
     }
+
+    /**
+     * 手填 cookie 那一形（批 88·下半）：把用户粘进来的那几枚交给**源自己的**
+     * `account.loginWithCookies.validate(values)`，过了才落「已登录」那一格。
+     *
+     * ## 口径为什么不在这里重述
+     *
+     * 要哪几枚字段、什么算成功，全在源脚本里（`fields: [...]` 与 `validate` 的返回值），
+     * 桌面**一个字都不认**：脚本名单随这一趟的答复一起回来（[CookieLogin.fields]），
+     * 与批 83 读 `name = "…"` 那一行同一族做法。桌面写死一份字段名单的话，
+     * 站方改名单时屏上照旧摆老几格而答案永远过不了。
+     *
+     * ## 信封形状照 Android 侧
+     *
+     * 对岸那颗 `JsComicSource.validateCookies`（`JsComicSource.kt:1838`）认的是
+     * `env["success"] == true` 且 `data === true`，桌面沿用同一判式，只把"为什么没过"多带一句回来 ——
+     * 那一格在屏上必须说得出话，只回 `false` 用户读到的是"点了没反应"。
+     *
+     * ⚠️ 源在 `validate` 里自己会走 `Network.setCookies`（ehentai 甚至先 `deleteCookies` 再 set），
+     * 所以"先种凭据再校验"这一步由脚本做，桌面不代做（代做就是第二条轨）。
+     */
+    fun loginWithCookies(values: List<String>): CookieLogin {
+        val script = """
+            return (async function() {
+                var s = ComicSource.sources['$key'];
+                if (!s || !s.account || !s.account.loginWithCookies) {
+                    return { ok: false, why: "该源没有 loginWithCookies 那一形", fields: [] };
+                }
+                if (typeof s.account.loginWithCookies.validate !== 'function') {
+                    return { ok: false, why: "该源的 validate 不是函数", fields: [] };
+                }
+                var fields = Array.isArray(s.account.loginWithCookies.fields)
+                    ? s.account.loginWithCookies.fields : [];
+                var r = await s.account.loginWithCookies.validate(${gson.toJson(values)});
+                return { ok: r === true, fields: fields };
+            })()
+        """.trimIndent()
+        val raw = host.evaluateAsync(script)
+        val env = runCatching { gson.fromJson<Map<String, Any?>>(raw, mapType) }.getOrNull()
+            ?: return CookieLogin(false, "源那句 validate 的答复解不开", emptyList())
+        if (env["success"] == false) {
+            return CookieLogin(false, env["error"]?.toString() ?: "validate 执行失败", emptyList())
+        }
+        val data = env["data"] as? Map<*, *>
+            ?: return CookieLogin(false, "validate 回的形状不认识", emptyList())
+        val fields = (data["fields"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+        if (data["ok"] != true) {
+            return CookieLogin(false, data["why"]?.toString() ?: "源说这批凭据不算通过", fields)
+        }
+        host.markLoggedIn(key)
+        return CookieLogin(true, "源认了这批凭据", fields)
+    }
+
+    /** 手填 cookie 那一跑的三样结果。[fields] 是脚本自己那份名单（屏上回核与"摆哪几格"都读它）。 */
+    data class CookieLogin(val ok: Boolean, val note: String, val fields: List<String>)
 
     override fun close() = host.close()
 }

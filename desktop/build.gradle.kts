@@ -1,9 +1,15 @@
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+
 /**
  * R1-F 桌面化 S0-1 探针模块：验证 `Compose Desktop + compose-fluent + WindowStyler`
  * 这套版本矩阵能否与本仓的 `AGP 9.3.2 / Kotlin 2.4.10 / material3 钉版` 同仓共存。
  *
  * 判据（写死在方案文档 `docs/rounds/windows-port-feasibility-2026-10.md` 第七节）：
  * 本模块的窗口能起来，**同时** `:app` 的 APK 与 material3 解析结果一字不变。
+ *
+ * 下面那份排除清单**为什么是这些颗**，从 2026-10-10 起有一把成文的尺子：
+ * `docs/rounds/desktop-port-scope-verdicts-2026-10-10.md` §4（逐颗对账 + `[术]`/`[值]` 两类理由的口径）。
+ * 摘行之前先在那张表里找到那一颗的裁决行；找不到就当场补一行，别只改这里。
  */
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -77,13 +83,23 @@ kotlin.sourceSets["main"].kotlin {
     // （`VeneraImageFetcher` / `ImageFetchCallFactory`）。只看 android 会一边把它误判成
     // "该进却没进"、一边对这类间接绑定视而不见，所以两份账都在
     // `DesktopSharedFaceLedgerTest` 里按禁引集合对。
+    // 第八十七批**量过而没走**的一条路（登记在 `docs/rounds/desktop-reader-paging-2026-10-11.md` §3.1，等点头）：
+    // 把 `compose/reader` 也 srcDir 进来，桌面就能直接转交对岸那两颗纯件
+    // （`ReaderInteractionPolicy.kt` 零 import、`ComicPageSource.kt` 只 import `java.io.File`，
+    //  且现量过这两颗**不指**目录里那三颗 Android 面 —— 逐颗核过，不是推断）。
+    // 挡住它的不是编译而是受保域里的一行：`app/src/test/java/com/venera/compose/desktop/DesktopNoAndroidImportTest.kt:82`
+    // 那条 UI 禁串把**整个** `reader/` 算作 Android UI 面，于是「桌面 import 那颗纯判据件」在对岸那把尺子上红。
+    // 本批不动 `app/`（规矩），改走 B 路：桌面自持一份同轨件，而**键值表、归一别名表、步长算式三处都用
+    // 正则从对岸源码文本现取再比**（对岸改了桌面会红 —— 批 82.6 与批 85 用的是同一招回核，不是"抄一份了事"）。
+    // ⚠️ B 路的代价要说清：两张表从此要有人对齐，而回核尺子只覆盖"我量过的那三处"，
+    //    对岸新增第四处算式时尺子看不见。所以点头之后**应当**改走上面那条 A 路。
     srcDir("../app/src/main/java/com/venera/compose/gallery/data")
     srcDir("../app/src/main/java/com/venera/compose/gallery/domain")
     srcDir("../app/src/main/java/com/venera/compose/security/guard")
     // 逐颗点名，每颗的成因各不相同（写在这里而不是"一张总理由"，是因为撤排除时要按颗重判）。
     exclude(
         // Android 接线那半边：包名没变、只是搬进 `android/` 子目录，
-        // 上面的 `exclude("android/**")` 已经把三颗目录里的 android 子目录全挡掉了；
+        // 上面的 `exclude("android/**")` 已经把各颗目录里的 android 子目录全挡掉了；
         // 这里再点名一次不是为了生效，是为了让清单读得完整 —— 有人把接线搬出子目录时会红。
         //
         // —— 以下七颗是 gallery/data 里的 Android 面 ——
@@ -100,6 +116,8 @@ kotlin.sourceSets["main"].kotlin {
         // 存图到相册：MediaStore/ContentValues/Environment，平台服务，本轮口径明确不碰。
         "GallerySaver.kt",
         // 标签词典：库文件是 assets 复制出来的真实路径，且走 platform.android 的开库口子。
+        // （批 40：桌面那两颗自持件补的就是这两件事 —— DesktopTagDictionaryAsset 从 classpath 落成真实路径，
+        //  DesktopGalleryTagDictionary 只读打开后交给共享的 data/db/TagDictionaryStore。）
         "GalleryTagDictionary.kt",
         // —— 以下四颗是"实现类留在 Android、契约与窄接口进桌面"的那一组 ——
         // Gelbooru 账号：Context + AndroidKeyValueStore；客户端只认它实现的 GelbooruCredentials。
@@ -115,15 +133,20 @@ kotlin.sourceSets["main"].kotlin {
     )
 }
 
-// Task 6：源脚本**随包分发**。桌面链路真用得上的只有这三类（逐个点名，不整个目录搬）：
+// Task 6：源脚本**随包分发**。桌面链路真用得上的只有这几类（逐个点名，不整个目录搬）：
 //  - `sources/*.js` —— EngineSession.load 取的那份源脚本；
 //  - `venera-init.js` / `venera-shim.js` —— DesktopJsHost 装载序列的前两颗。
 //     （派单口径 R39 只列了 init，读数在案：DesktopJsHost.kt:102 `readText(venera-shim.js)`
 //      是无条件执行的，不带它包内装载必崩，所以按"装载路径确实用到"这条判据把它一起带上。）
+//  - `gallery_tags_*.sqlite` —— 批 40 起：画廊那三处译名消费点的数据源
+//     （`DesktopGalleryTagDictionary` 复制成真实路径再只读打开；3,257,344 B 的包体增量就是它）。
 // **不带** `opencc.txt`：它唯一的消费点是 `app/…/data/tags/ChineseVariantConverter.kt`
 //   （`data/tags` 不在本模块 srcDir 的编译面里），桌面侧今天一行都不读它。
-// 同理不带 `tags.json` / `tags_tw.json` / `gallery_tags_79415.sqlite` / `source_content_warning.json`
+// 同理不带 `tags.json` / `tags_tw.json` / `source_content_warning.json`
 // / `licenses/` / `sources/index.json`（源清单是枚举 `sources/` 得来的，不是读这份索引）。
+// 批 40 起**带上** `gallery_tags_*.sqlite`：桌面那颗 `DesktopGalleryTagDictionary` 真在读它
+// （标签墙译名 / 关注栏 / 补全那排三处消费点），取的是"包内优先"那条 classpath 路，
+// 名字里的行数就是词典的版本号 ⇒ include 写成 `*` 而不是钉死 `79415`，换一批词典不必改构建脚本。
 // include 的坑与上面 kotlin 源集同一条：过滤器对**整个 resources 源集**生效，本模块今天
 // 没有自己的 `src/main/resources`，将来加了必须往这张清单里补一颗，否则会被**静默滤掉**。
 sourceSets["main"].resources.srcDir("../app/src/main/assets")
@@ -131,6 +154,7 @@ sourceSets["main"].resources.include(
     "sources/*.js",
     "venera-init.js",
     "venera-shim.js",
+    "gallery_tags_*.sqlite",
 )
 
 dependencies {
@@ -164,8 +188,22 @@ dependencies {
 
     // Coil3 图片加载器（桌面侧自持，不走 VeneraImageFetcher）
     // libs.coil = coil3 (3.6.2)，已在 libs.versions.toml 定义
+    // 桌面这一枚**不是可选项**：Coil 的 `ImageLoader` 作用域吃 `Dispatchers.Main.immediate`，
+    // 而 Compose Desktop 不把那个 dispatcher 带上 classpath —— 少了这一行，第一次构造
+    // `SingletonImageLoader` 就弹一枚 AWT Error 框「Module with the Main dispatcher is missing」
+    // （2026-10-08 第四十七批的图证拍到的，判据 645 条当时全绿）。版本不写：靠图里已有的
+    // `kotlinx-coroutines-bom` 供，写死一枚反而会与 core 不同版（那句报错后半段警告的正是这件事）。
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing")
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+
+    // 大图那一屏的缩放能力（第五十批）。选它的三条读数都写在
+    // docs/rounds/desktop-image-viewer-design-2026-10-08.md §2：stable 2.16.0、
+    // desktopRuntime 的 compose 三件与本仓逐字同版（1.12.1）、滚轮是一等公民。
+    // ⚠️ 它的滚轮默认档是 EnabledWithCtrlKey，Task 5 那处必须显式选 Enabled。
+    // ⚠️ 本仓 Android 侧在用的 me.saket.telephoto 那一族不取：`zoomable-image-coil3` 没有
+    // desktop 变体（0.16.0 与 0.19.0 两次实测 desktop=NONE），且它的桌面件不含 Wheel。
+    implementation("net.engawapg.lib:zoomable:2.16.0")
 
     // `data/platform/HttpEngine.kt`在上面的共享 srcDir 里，而它签名上的 `OkHttpClient` 是 okhttp 的类型
     // —— 不显式声明就编不过。必须显式：`:engine-probe` 那份是 implementation，不透传到本模块编译 classpath。
@@ -174,10 +212,19 @@ dependencies {
 
     // 阶段 1 起 :desktop 有 JVM 单测；栈跟仓库钉版一致（JUnit4，libs.junit = junit:junit:4.13.2），不引新测试框架
     testImplementation(libs.junit)
+    // 离屏语义树测试接入（2026-10-09）：runComposeUiTest 把界面渲成语义树，performClick 验屏上文案变没变。
+    // 仍是 JUnit4 runner（compose 自带），未脱离既有测试栈；只补"像素层那一段"盲区（qoder 的纯函数判据盖不到）。
+    testImplementation(compose.uiTest)
 }
 
 tasks.withType<Test> {
     useJUnit()
+    // ⚠️ 把**本构建脚本**声明成测试输入（2026-10-04 桌面第十批实测才加）。
+    //   有几条判据是"扫源码文本"的，其中一条扫的就是**这颗文件**（`-PstartSection=` 有没有真被
+    //   拼进 `args`）。而 Gradle 不知道这件事：改这里它仍报 `:desktop:test UP-TO-DATE` ——
+    //   扰动实验第一次就是这么"绿"过去的（读数：`Task :desktop:test UP-TO-DATE` + `GRADLE_EXIT=0`，
+    //   加 `--rerun-tasks` 复跑才红）。**扫构建脚本的判据必须自己声明这个输入，否则它会拿着旧结果放行。**
+    inputs.file(project.buildFile)
 }
 
 compose.desktop {
@@ -196,7 +243,11 @@ compose.desktop {
             // jdk.unsupported：`sun.misc.Unsafe` 住在这个模块里，而 jlink 的自动模块推导看不出来
             // —— Truffle 的 NodeClassImpl 启动即 NoClassDefFoundError: sun/misc/Unsafe，
             // 打包跑第一次就把 GraalJS 打死（实测读数见 docs/rounds/windows-r1f-s0-spike-2026-10-02.md §七）。
-            modules("jdk.accessibility", "jdk.unsupported")
+            // java.sql：同一族的第二课，这次打死的是"读库"那一条路。sqlite-jdbc 是**自动模块**，
+            // 它对 java.sql 的依赖 jlink 推不出来 ⇒ 交付包里 `java.sql.SQLException` 直接找不到，
+            // 而开发跑用的是全 JDK，判据与 dev 起窗都抓不到 —— 只有打包跑看得见：
+            // `D_异常 … 因=NoClassDefFoundError: java/sql/SQLException 栈=DesktopDatabasePorts.kt:200`（2026-10-10，批 82.9）。
+            modules("jdk.accessibility", "jdk.unsupported", "java.sql")
             description = "R1-F 阶段 0 探针（非正式产物，只验打包链）"
             vendor = "venera-miuix"
             // 不带控制台时 exe 的 stdout 直接丢弃，打包后的启动证据就全看不到了。
@@ -222,6 +273,36 @@ tasks.register<JavaExec>("glass") {
     mainClass = "com.venera.desktop.GlassProbeKt"
 }
 
+// 批 62：S0-7 §六 欠的那一步 —— 应用内模糊**画不画得出来**（要开一扇窗，靠 WGC 拍帧）
+tasks.register<JavaExec>("blurprobe") {
+    group = "probe"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.venera.desktop.BlurRenderProbeKt"
+}
+
+// 批 64：S0-9 —— 那一层糊**每帧花多少钱**（三相：不糊 → 糊 → 再不糊；读数全在 stdout，取完数自己走）。
+//   ⚠️ 那三条 UTF-8 是必需的：这一颗念的每一行都带中文（`sh gradlew :desktop:blurcost`）。
+tasks.register<JavaExec>("blurcost") {
+    group = "probe"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.venera.desktop.BlurCostProbeKt"
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+    // 堆上限写死（与 `reader` 同一颗纪律）：读数里那两枚 MB 才可复现。
+    jvmArgs("-Xmx2g")
+    // 加 -Phold=20000 让每一相起手真等 20 秒 —— 那一档是给 WGC 拍帧用的（毫秒数证明不了"那一相真糊了"）。
+    // 加 -Pstep=400 把每帧推进调大：那是**正对照的把手**（三相读数一模一样时，得先证明这把尺子认账）。
+    // 加 -Poverlay=anim 让**覆盖层**每帧换内容（生产那一形：墙静帧、动图在浮层里播）。默认静。
+    // 加 -Prounds=3 把整副 ABBA 连跑几轮：每轮独立算地板、独立下判词（一轮的地板就是那一轮的散布，说不了话）。
+    args(
+        listOf(
+            providers.gradleProperty("hold").orNull?.let { "hold=$it" },
+            providers.gradleProperty("step").orNull?.let { "step=$it" },
+            providers.gradleProperty("overlay").orNull?.let { "overlay=$it" },
+            providers.gradleProperty("rounds").orNull?.let { "rounds=$it" },
+        ).filterNotNull()
+    )
+}
+
 // S0-8：条漫单列数千图的滚动帧时间与内存
 tasks.register<JavaExec>("reader") {
     group = "probe"
@@ -236,21 +317,108 @@ tasks.register<JavaExec>("reader") {
 //   ./gradlew :desktop:app -Pkey=jm -Pproxy=127.0.0.1:7890
 //   加 -Pshot=_qa/desktop-jm.png 时它自截图后退出（无人值守取证）
 //   加 -Pautofav=1 / -Pfavcheck=1 走收藏取证两跑（写 / 读回，只为读数存在，见 VeneraDesktop.kt）
+//   加 -PstartDomain=SETTINGS 让无人值守取证落在**指定那一域**（认枚举名或中文题名；
+//     认不出就退出码 1 且不开窗 —— 不退到默认域，理由在 ForensicFlags.startDomain 的注释里）。
+//     ⚠️ 走命令行时**首选枚举名**：中文值要穿过 gradle 属性与 Windows 控制台编码那两层。
+//   加 -PstartSection=LATEST 让取证落在**域内 pane 的那一行**（第十批 ⑤；`--start-domain=` 只到域）。
+//     认的是行键或中文题名两种，对不上任何行时**不中止但出声**（那句在 ForensicFlags.sectionNote）。
+//     例：`-PstartDomain=GALLERY -PstartSection=最新` 才拍得到刚点亮的「最新」那一屏。
+//   加 -Pdetail=1 让**详情浮层自己摆出来**（那一层本来要点一张卡才出来，而鼠标自验是禁的）：
+//     判读层认 `--detail=<值>`，0/false/off 是关；不给值只按开处理（见 ForensicFlags.state）。
+//   加 -Partist=yandere/某标签 让取证**直接进那一位的单人页**（第二十批；那一屏本来要在画师列表上
+//     点「看他的图」才出来，而鼠标自验是禁的 ⇒ 没有这一枚时那一屏只编译得过、拍不到图）。
+//     值两截 `<站点>/<标签>`，站点段认键、枚举名、站方写法三种；读不出不中止但出声（ForensicFlags.artistNote）。
+//   加 -Pranking=MONTH/2024-03 让取证**把排行榜拨到那一档、那一期**（第三十批；「上一期 / 下一期 / 回到本期」
+//     那一排本来要把档拨到月/年之后才出现，而鼠标自验是禁的 ⇒ 没有这一枚时那一层只编译得过、拍不到图）。
+//     档段认枚举名、下拉里那一整行的题、胶囊上那一小截三种；期段可省（省了就是本期）。
+//     ⚠️ 走命令行时**首选枚举名**：中文值要穿过 gradle 属性与 Windows 控制台编码那两层。
 // Task 6 第 4 件：这两个开关**把值一起传下去**（`--autofav=<值>`），由程序判读 ——
 //   原来只传"给没给"，`-Pautofav=0` 也会点亮，是个假开关形状。现在 0/false/off 是关，且照样打读数。
+// 手填凭据那枚取证种子（批 88·下半）。同一颗纪律第十一次：**判读层与消费点接好了也不算通**，
+// 漏了这一跳 `-Pcookie=…` 就是"不报错也不做事"，而"罐里没那枚凭据"会被读成"手填那一路坏了"。
+// 为什么在这一层摊成**多枚** `--cookie=`：一站要粘几枚字段（ehentai 四枚），而 `-P` 只能递一个串 ——
+// 分隔符归 transport 这一层，`ForensicFlags.cookies` 始终只认那一枚参数的规范形状。
+// 值形如 `-Pcookie=exhentai.org:ipb_a=1|exhentai.org:ipb_b=2`。
+val cookieSeeds: List<String> = providers.gradleProperty("cookie").orNull
+    ?.split("|")?.filter { it.isNotBlank() }?.map { "--cookie=$it" }
+    .orEmpty()
+
 tasks.register<JavaExec>("app") {
     group = "probe"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.venera.desktop.VeneraDesktopKt"
     workingDir = rootDir
+    // ⚠️ 强制 UTF-8 写 stdout（2026-10-04 实测才加）：JDK 18+ 的 `System.out` 跟的是
+    //   `stdout.encoding`，中文 Windows 上默认落到 GBK，而 Gradle 按 UTF-8 解码子进程输出 ——
+    //   结果是**每一条 `D_` 中文读数都变成 U+FFFD**，只有 ASCII 部分（枚举名、数字）活下来。
+    //   这一颗任务的产物就是读数，读数码着等于没产；S0 那轮没暴露是因为探针窗只打 `S02_COMPOSED_OK`。
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
     args(
         listOf(
             providers.gradleProperty("key").getOrElse("jm"),
             providers.gradleProperty("proxy").orNull?.let { "--proxy=$it" },
             providers.gradleProperty("shot").orNull?.let { "--shot=$it" },
+            providers.gradleProperty("startDomain").orNull?.let { "--start-domain=$it" },
+            providers.gradleProperty("query").orNull?.let { "--query=$it" },
+            providers.gradleProperty("startSection").orNull?.let { "--start-section=$it" },
+            // 详情浮层那颗取证种子（第十一批 P1 判读层接好了，这一跳当时漏了 ⇒ `-Pdetail=1` 不报错也不做事，
+            // 而"浮层拍不到图"会被读成"浮层起不来"。判据 `DesktopKeyNavigationTest` ⑨ 钉这一跳。）
+            providers.gradleProperty("detail").orNull?.let { "--detail=$it" },
+            // 画师单人页那颗种子（第二十批）。同一颗纪律：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Partist=…` 就是"不报错也不做事"，而"那一屏拍不到图"会被读成"那一屏起不来"。
+            // 值两截 `<站点>/<标签>`，站点写法与判读见 ForensicFlags.artist。
+            providers.gradleProperty("artist").orNull?.let { "--artist=$it" },
+            // 漫画详情那一屏那颗种子（第八十批）。同一颗纪律第七次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pcomic=…` 就是"不报错也不做事"，而"那一屏拍不到图"会被读成"那一屏起不来"。
+            // 值两截 `<漫画号>[/<题名>]`，判读见 ForensicFlags.comic。
+            providers.gradleProperty("comic").orNull?.let { "--comic=$it" },
+            // 阅读那一屏那颗种子（第八十一批）。同一颗纪律第八次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pread=…` 就是"不报错也不做事"，而"那一屏拍不到图"会被读成"那一屏起不来"。
+            // 值一到三截 `<漫画号>[/<话号>[/<章名>]]`，判读见 ForensicFlags.read。
+            providers.gradleProperty("read").orNull?.let { "--read=$it" },
+            // 阅读那一屏的**起点页**那颗种子（第八十二批半）。同一颗纪律第九次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-PreadPage=3` 就是"不报错也不做事"，而"页号没写进历史那一行"会被读成"写口坏了"。
+            // 值是 0 起的页索引（不是第几页），判读见 ForensicFlags.readPage。
+            providers.gradleProperty("readPage").orNull?.let { "--read-page=$it" },
+            // 第八十七批：把阅读那一屏顶到某一档模式（`-PreadMode=HORIZONTAL_RTL`）。
+            // 没有这一跳，横向那一面墙在帧上永远不存在 —— 它要"点模式那一排的一枚"才出来，而取证不许动鼠标。
+            providers.gradleProperty("readMode").orNull?.let { "--read-mode=$it" },
+            // 把某一颗随包源当成本台"停用着"起来（批 83.1）：只为拍到帧 —— 那一格今天只有离屏语义树量过。
+            // 同一颗纪律第十次：**判读层与消费点接好了也不算通**，漏了这一跳 `-Pdisable=jm` 就是
+            // "不报错也不做事"，而"源管理那一屏说一颗都没停用"会被读成"停用那枚开关坏了"。
+            providers.gradleProperty("disable").orNull?.let { "--disable=$it" },
+            // 排行榜那颗种子（第三十批）。同一颗纪律：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pranking=…` 就是"不报错也不做事"，而"那一排拍不到图"会被读成"那一层起不来"。
+            // 值两截 `<档>[/<期>]`，写法与判读见 ForensicFlags.ranking。
+            providers.gradleProperty("ranking").orNull?.let { "--ranking=$it" },
+            // 反搜那颗种子（第三十六批）。同一颗纪律：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Preverse=1` 就是"不报错也不做事"，而"结果那一格拍不到图"会被读成"那一格起不来"。
+            // 值只判开不开（`--reverse` / `--reverse=0`），它顺带把详情浮层摆出来（那一枚按钮在浮层里）。
+            providers.gradleProperty("reverse").orNull?.let { "--reverse=$it" },
+            // 反搜本机那一格那颗种子（第七十七批 下半）。同一颗纪律第六次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-PreverseFile=C:/x.png` 就是"不报错也不做事"，而"那一格拍不到图"会被读成"那一格起不来"。
+            // 值是一条本机路径（它替用户跳过系统文件框那一步 —— 那一步今天没有鼠标走不到）。
+            providers.gradleProperty("reverseFile").orNull?.let { "--reverse-file=$it" },
+            // 大图那一层的两枚种子（第五十批）。同一颗纪律第三次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pviewer=1` 就是"不报错也不做事"，而"那一屏拍不到图"会被读成"那一屏起不来"。
+            // `viewer` 判开不开（`--viewer` / `--viewer=0`，默认是**进**）；`viewerZoom` 是一个倍数。
+            providers.gradleProperty("viewer").orNull?.let { "--viewer=$it" },
+            providers.gradleProperty("viewerZoom").orNull?.let { "--viewer-zoom=$it" },
+            // 崩一枚那颗种子（第五十三批）。同一颗纪律第四次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pcrash=thread` 就是"不报错也不做事"，而"崩了没念出那一行"会被读成
+            // "那颗 handler 没装上"。值只认 thread 与 edt（两档各走一条线程路，判读见 ForensicFlags.crash）。
+            providers.gradleProperty("crash").orNull?.let { "--crash=$it" },
+            // 「复制图片」那颗种子（第五十四批）。同一颗纪律第五次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Pcopy=1` 就是"不报错也不做事"，而"剪贴板是空的"会被读成"那一枚写口坏了"。
+            // 值只判开不开，它顺带把详情浮层摆出来（那一枚按钮在浮层里）。
+            providers.gradleProperty("copy").orNull?.let { "--copy=$it" },
+            // 「存到本机」那颗种子（第八十五批）。同一颗纪律第六次：**判读层与消费点接好了也不算通**，
+            // 这一跳漏了的话 `-Psave=1` 就是"不报错也不做事"，而"盘上没多那颗文件"会被读成"落盘那层坏了"。
+            // 值只判开不开，它顺带把详情浮层摆出来（那一枚按钮也在浮层里，与 -Pcopy 同一格）。
+            providers.gradleProperty("save").orNull?.let { "--save=$it" },
             providers.gradleProperty("autofav").orNull?.let { "--autofav=$it" },
             providers.gradleProperty("favcheck").orNull?.let { "--favcheck=$it" },
-        ).filterNotNull()
+        ).filterNotNull() + cookieSeeds
     )
 }
 

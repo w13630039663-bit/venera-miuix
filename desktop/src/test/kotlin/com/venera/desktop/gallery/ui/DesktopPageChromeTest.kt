@@ -176,8 +176,12 @@ class DesktopPageChromeTest {
             )
         }
         assertTrue(
-            "站分布不能因此少讲：它挪到段头那句「本机存档 N 条 · 摆上屏 M 张 · 某某站 k 张」",
-            fav.contains("projection.perSiteLabel"),
+            "站分布不能因此少讲：它挪到段头那句「本机存档 N 条 · 摆上屏 M 张 · 某某站 k 张」。" +
+                "⚠️ 这一枚钉过两次字面形状：批 12 之前钉 `projection.perSiteLabel`、批 12 当时改成钉" +
+                "`desktopPerSiteReading(那颗实参)` —— 而批 13 把实参换成墙之后**又红了一次**。" +
+                "同一族连犯两次（§0 坑 ㉖），这次退到**只钉被调的那颗件**：各站分布由谁供、数的是哪一份，" +
+                "由 `DesktopWallCountSourceTest` ⑥ 与那颗件自己的判据去管。",
+            fav.contains("desktopPerSiteReading("),
         )
 
         val daily = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
@@ -210,5 +214,33 @@ class DesktopPageChromeTest {
         val metrics = DesktopGalleryMetrics
         assertEquals(24.dp, metrics.statusBarHeight)
         assertTrue("状态栏须有高度预算且不吃 weight：", metrics.statusBarHeight.value > 0)
+    }
+
+    /**
+     * 界面串里不许带 markdown 痕迹（`**强调**` 与 反引号包词）。
+     *
+     * 成因是实测的：设置页副标题写过「这一屏只管\*\*墙上\*\*那四枚档」，
+     * 窗口捕获里那两对星号**就摆在屏上**（`Text` 不解析 markdown）。
+     * 这类东西属于"写作时的记号漏进了产物"，用户读到只会确认这是机器写的。
+     *
+     * 只管 `gallery/ui/` 的**代码行**（`codeText` 已跳注释 —— 注释里用星号强调是允许的，
+     * 那是给人看的口径账）。日志那一路也不管：`DesktopGalleryContentGuard.kt:82` 的
+     * 「方向是**漏屏蔽**」走 stdout，不是屏上的字。
+     * 对照组钉的是"确实扫到了非空的界面代码"，否则整篇读空也会恒绿。
+     */
+    @Test
+    fun `界面文案不许带 markdown 痕迹`() {
+        val offenders = DesktopSourceTree.desktopUiSources()
+        assertTrue("对照组失效：扫到 0 颗界面件，那下面两条恒真", offenders.isNotEmpty())
+        val bold = Regex("""\*\*[^*]+\*\*""")
+        val code = Regex("""`[^`]+`""")
+        offenders.forEach { file ->
+            val text = DesktopSourceTree.codeText(file)
+            assertTrue("界面串里出现了星号强调（${file.name}）：${bold.findAll(text).joinToString { it.value }}", !bold.containsMatchIn(text))
+            assertTrue("界面串里出现了反引号包词（${file.name}）：${code.findAll(text).joinToString { it.value }}", !code.containsMatchIn(text))
+        }
+        // 对照组：那两颗正则真能抓到东西 —— 拿一段已知含星号的样例过一遍。
+        assertTrue("对照组失效：判式抓不到样例，那上面两条恒真", bold.containsMatchIn("val x = \"只管**墙上**那四枚\""))
+        assertTrue("对照组失效：反引号判式抓不到样例", code.containsMatchIn("val x = \"看 `pref_gallery_columns` 那枚\""))
     }
 }

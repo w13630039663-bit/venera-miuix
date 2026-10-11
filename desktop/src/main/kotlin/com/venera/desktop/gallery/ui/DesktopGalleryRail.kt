@@ -33,7 +33,7 @@ import io.github.composefluent.component.Text
  *
  * ## 七枚全可是 —— selected 不再是写死的常量（2026-10-04 改）
  *
- * 上一版 `DesktopGalleryRail` 收一个**由调用方写死**的 `DesktopGalleryDomain.GALLERY`，
+ * 上一版 `DesktopGalleryRail` 收一个**由调用方写死**的当前域（写死成图库那一枚），
  * 于是点了另外两枚只会往主区底部吐一句缺席说明，**当前域从来不变**。
  * 那形状等于把 rail 从"导航"降级成"一排提示按钮"：用户看得见七个格子、看得见 hover，
  * 却在路由器那里看到地址的那一刻才发现自己哪里也没去。

@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
 
     println("BENCH jdk=${System.getProperty("java.version")} vm=${System.getProperty("java.vm.name")}")
 
-    EngineSession(DesktopJsHost(assetDir, dataDir, proxy), assetDir).use { s ->
+    EngineSession(DesktopJsHost(assetDir, dataDir, proxy, emptyList()), assetDir).use { s ->
         val host = s.host
         val loadMs = measureTimeMillis { s.load("jm") }
         println("BENCH 装载jm=${loadMs}ms")

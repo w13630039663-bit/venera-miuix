@@ -1,17 +1,19 @@
 package com.venera.desktop.gallery.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +26,7 @@ import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.gallery.domain.GalleryMerge
 import io.github.composefluent.component.Text
+import kotlinx.coroutines.launch
 
 /**
  * 画廊收藏域的那一面墙。
@@ -46,40 +49,148 @@ import io.github.composefluent.component.Text
  * 3. **空收藏与"有收藏但一张都摆不出来"必须念成两句话**。前者是"你还没收藏过"，
  *    后者是"有 8 条记录但全都摆不上屏"，后者需要用户去设置/数据目录里排查。
  *
- * ## 为什么本屏**没有**移除/清空按钮
+ * ## 这一屏的写口：只有「清空」，而且是同一屏上两步
  *
- * `GalleryFavorites` 的 `toggle` / `removeAll` / `clear` 三枚写动作都在（缺席说明里点过名），
- * 而本屏刻意不摆它们的入口：Android 侧那面墙的移除入口是**长按 → 确认弹层**
- * （`GalleryFavoritesBody` 的类注释写着为什么不在卡上挂心形），而桌面今天没有弹层宿主
- * （2026-10-04 那批把 `Dialog` 系弹层判负过，理由记在弹层那几份轮次文档里）。
- * 摆一枚"点了就永久删掉用户收藏、且不可撤销"的按钮而没有确认层，是本仓最不该有的形状。
- * ⇒ 缺席如实说：本屏是**只读**的那一档，写侧等弹层宿主。
+ * `GalleryFavorites` 的 `toggle` / `removeAll` / `clear` 三枚写动作都在，桌面那份逐枚转交了；
+ * 这一屏此前只接 `toggle`，于是"收藏多了清不掉"。批 77 补上「清空」，走
+ * [desktopClearGalleryFavorites]：第一按只**武装**（那句改成念条数的确认），第二按才真清，
+ * 清完**读回**存档还剩几条（还剩就说明没生效，那句不许念成"已清空"）。
+ *
+ * ⚠️ 为什么不是弹层：桌面今天没有 `ContentDialogHost`（全仓只有 `SpikeWindow` 那枚探针用过 `FluentDialog`），
+ * 为这一格去应用根新铺一层宿主是把两件事捆成一件。原来那段"桌面没有弹层宿主"的理由早在 2026-10-04
+ * 就被更正过（fluent 侧 `ContentDialogHostState.show` 在、S0 实测渲染成形；真成立的那条限制是
+ * **弹层只能实底**）—— 今天仍然不铺宿主，是因为这一格用不着，不是因为做不到。
+ *
+ * 摆一枚"点了就永久删掉用户收藏、且不可撤销"的按钮而没有确认，仍然是本仓最不该有的形状；
+ * 而"再按一次"那一步之所以能算确认层，是因为**两档各念一句且都点名条数**（判据 ①），
+ * 且条数一变就重新武装（判据 ②）。
  */
 @Composable
-internal fun DesktopGalleryFavoritesPane(ports: GalleryPorts) {
+internal fun DesktopGalleryFavoritesPane(
+    ports: GalleryPorts,
+    /**
+     * 那份档**读不出来**时 store 留下的那一句（`null` = 档是好的），逐字念、桌面不重述。
+     *
+     * 必填、不给默认值，而且不在这一屏里取 —— `consumeNotice()` 读走即清，主人是应用根（批 3′）。
+     * 这一枚在批 3′ 之前是**桌面零调用点**：收藏档坏了而这一屏只说"还没有收藏过"，
+     * 就是把"我们读不出来"念成"你没有"。
+     */
+    favoritesNotice: String?,
+) {
     val favorites by ports.favorites.favorites.collectAsState()
+
+    // 「清空」那两步（批 77）：`armedAt` = 武装那一刻屏上念着的条数（`null` = 没武装）。
+    // 存**条数**而不是存一颗 bool：条数一变就说明"要删的那批"换了，判据 ② 钉的就是这一格。
+    val scope = rememberCoroutineScope()
+    var armedAt by remember { mutableStateOf<Int?>(null) }
+    var clearReading by remember { mutableStateOf<DesktopClearOutcome?>(null) }
 
     // `site` 为 null 的那批（站方键认不出来）与不可摆上屏的计数都从**这一屏的收藏**现算，
     // 不另存一份 state —— 另存就会与收藏流不同步，而不同步的读数比没有读数更坏。
     val projection = remember(favorites) { projectFavorites(favorites) }
 
+    // 与日榜墙同一把分级判据（共享的 `GalleryGuard.maskStateFor`）。收藏这一屏以前是
+    // 「存档 → toPost → isDisplayable → 墙」，**分级那一关根本没过** ——
+    // 于是同一条收藏在手机上被挡、在桌面上照常摆出来。`guardRules` 只当 remember 的键，理由同日榜那处。
+    val maskMode by ports.contentGuard.nsfwMaskMode.collectAsState()
+    val guardRules by ports.contentGuard.rules.collectAsState()
+    val blockAi by ports.prefs.galleryBlockAi.collectAsState()
+    // 列数 / 清晰度 / AI 角标这三枚与日榜那处同一批接上（第五批）。收藏墙与日榜墙**必须是同一套档**，
+    // 否则用户会遇到"同一张卡在两屏上大小不一样"。
+    val columnMode by ports.prefs.galleryColumnMode.collectAsState()
+    val previewQuality by ports.prefs.galleryPreviewQuality.collectAsState()
+    val aiBadge by ports.prefs.galleryAiBadge.collectAsState()
+    // 点卡的接收者住在应用根（选中态只有一颗），这里只取句柄。
+    val onPick = LocalDesktopWallPick.current
+    val wall = remember(projection.posts, maskMode, guardRules, blockAi) {
+        DesktopGalleryWallPolicy.of(projection.posts, maskMode, blockAi, ports.contentGuard)
+    }
+
     val pad = DesktopGalleryMetrics.pageHorizontalPadding
     Column(Modifier.fillMaxWidth()) {
+        // ⚠️ 这一屏**不挂** `verticalScroll`：下面那一面墙自己就是滚动容器（`LazyVerticalGrid`），
+        // 套进纵向滚动会拿到无限高并当场抛（整屏崩，不是滚不动）。
+        // 这条此前一直是**潜伏**的：这台机器上没有画廊收藏，所以走的全是空态那几档。
+        // 判据与真崩溃读数在 `DesktopWallScrollNestingTest`。
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = pad, end = pad, bottom = 10.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(start = pad, end = pad, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            DesktopFavoritesHead(projection)
+            DesktopFavoritesHead(projection, desktopWallPosts(wall))
+            // 「清空」那一枚（批 77）：只在真有条目时摆；第一按只武装、第二按才走那颗件，且能反悔。
+            // 摆在三档空态**之前**、段头**之后**：这一排的主语是"存档里有 N 条"，与后面摆不摆得出来无关。
+            val count = favorites.size
+            if (desktopFavoritesClearVisible(count)) {
+                val stage = if (armedAt == null) DesktopFavoritesClearStage.IDLE else DesktopFavoritesClearStage.ARMED
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        desktopFavoritesClearLabel(stage, count),
+                        color = if (stage == DesktopFavoritesClearStage.ARMED) {
+                            DesktopTheme.AccentBeni
+                        } else {
+                            DesktopTheme.AccentFuji
+                        },
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable {
+                            when (desktopFavoritesClearNext(stage, armedAt ?: 0, count)) {
+                                DesktopFavoritesClearStage.FIRE -> {
+                                    armedAt = null
+                                    scope.launch {
+                                        clearReading = desktopClearGalleryFavorites(ports.favorites, count)
+                                    }
+                                }
+                                // 条数变了就重新对准**当下**这个数：删的那批必须是屏上刚念着的那批。
+                                DesktopFavoritesClearStage.ARMED -> armedAt = count
+                                // 那颗纯函数不会交回 IDLE（一按要么武装要么真清），这一支只为穷尽而存在。
+                                DesktopFavoritesClearStage.IDLE -> Unit
+                            }
+                        },
+                    )
+                    if (stage == DesktopFavoritesClearStage.ARMED) {
+                        Text(
+                            "先不清了",
+                            color = DesktopTheme.TextTertiary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.clickable { armedAt = null },
+                        )
+                    }
+                    clearReading?.let { outcome ->
+                        Text(
+                            desktopFavoritesClearReading(outcome),
+                            color = if (outcome is DesktopClearOutcome.Failed) {
+                                DesktopTheme.AccentBeni
+                            } else {
+                                DesktopTheme.TextSecondary
+                            },
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+            // 逐字念 store 那一句（里面带着原档的绝对路径），桌面不重述 —— 重述的话 store 改了没人跟上。
+            // 摆在三档空态**之前**：档坏了与一条收藏都没有是两件事，先说坏了我才知道后面那句能不能信。
+            if (favoritesNotice != null) {
+                Text(
+                    favoritesNotice,
+                    color = DesktopTheme.AccentBeni,
+                    fontSize = 12.5.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
             when {
                 // 分支次序是判据的次序：先"一条收藏都没有"，再"有收藏但一张都摆不出来"。
                 // 反过来写会让后者落进空态那句话，用户读完以为是自己没收藏。
                 favorites.isEmpty() -> DesktopFavoritesEmpty(
                     "还没有收藏过",
-                    "这一屏读的是本机 `gallery_favorites.json`。收藏一条之后它就会出现在这儿。",
+                    "这一屏读的是本机 gallery_favorites.json。收藏一条之后它就会出现在这儿。",
                 )
 
                 projection.posts.isEmpty() -> DesktopFavoritesEmpty(
@@ -87,10 +198,38 @@ internal fun DesktopGalleryFavoritesPane(ports: GalleryPorts) {
                     unrenderableSentence(projection),
                 )
 
-                else -> DesktopGalleryPostWall(
-                    posts = projection.posts,
-                    modifier = Modifier.fillMaxWidth(),
+                // 第四档：摆得上屏，但**全被分级这一关挡下**。它不能并进上面那档 ——
+                // 那一句的主语是"站方给的档不支持展示"，而这里的内容是支持的、是我们不给看。
+                // 把"我们不给看"念成"站方没有"，用户会去翻存档然后以为自己丢了收藏。
+                // 走到这一档时 `projection.posts` 必非空（上面那档已经接走了"一张都摆不出来"），
+                // 所以那句"全被挡下"不会把"本来就没有"说成"被我们挡了"。
+                // 「本可以」那两个字是判据：少了它，"可摆上屏"与"被挡下"在同一句里互相打脸。
+                wall.cards.isEmpty() -> DesktopFavoritesEmpty(
+                    "收藏里有 ${favorites.size} 条，本可以摆上屏的 ${projection.posts.size} 张全被挡下了",
+                    desktopWallGuardReading(wall)
+                        // ⚠️ 这句兜底话**第三次**改口径，两次都是被"设置那一屏"推着改的：
+                        // 第三批写它的时候桌面没有那一屏，"去设置里看档位"是一枚指向不存在的假指针；
+                        // 第七批有了设置域、批 6 起分级档与屏蔽规则在那一屏真能改 ⇒ 今天它又该把用户指过去。
+                        // 判据 `DesktopStaleClaimsTest` ⑬ 钉着这一句不许退回"改不了"，并配三道写口的对照。
+                        .ifBlank { "分级与屏蔽规则把这一批全挡下了（当前档位读自本机存档，「设置」那一屏能改它）。" },
                 )
+
+                else -> {
+                    DesktopWallGuardLine(wall)
+                    DesktopGalleryPostWall(
+                        wall = wall,
+                        // 这一屏没有前置那几排（节头在 pane 外面），显式交空 —— `lead` 是必填的。
+                        lead = {},
+                        columnMode = columnMode,
+                        quality = previewQuality,
+                        aiBadge = aiBadge,
+                        // 点卡的接收者住在应用根（选中态只有一颗），这里只取句柄并**显式传给墙**。
+                        onPick = onPick,
+                        // `weight(1f)` 而不是只给 `fillMaxWidth()`：墙要吃**剩下那一截的有界高度**，
+                        // 撤掉外层滚动之后没有别的容器给它限高了。
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
             }
         }
 
@@ -118,7 +257,7 @@ internal fun DesktopGalleryFavoritesPane(ports: GalleryPorts) {
 
 /** 段头：标题 + 条数读数。**不套** [DesktopGalleryPageHeader] —— 那一颗的日期与"换一批"是日榜专属。 */
 @Composable
-private fun DesktopFavoritesHead(projection: FavoritesProjection) {
+private fun DesktopFavoritesHead(projection: FavoritesProjection, onScreen: List<GalleryPost>) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -129,14 +268,23 @@ private fun DesktopFavoritesHead(projection: FavoritesProjection) {
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Text(
-            " · 本机存档 ${projection.total} 条 · 摆上屏 ${projection.posts.size} 张" +
-                (if (projection.perSite.isEmpty()) "" else projection.perSiteLabel),
-            color = DesktopTheme.TextSecondary,
-            fontSize = 12.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // 段头那一句：本机存档（**条**，存档里有多少条记录）/ 摆上屏（**张**，真在这面墙上的）/
+        // 各站分布（与"摆上屏"同一份数）。
+        // ⚠️ 后两截从前吃的是 `projection.posts`（过关之前），于是「摆上屏」那句冒领了还没上屏的张数 ——
+        //   墙过完分级与屏蔽之后剩几张，屏上从来没人念（批 13 改的就是这一格）。
+        desktopWallReadingLine(
+            "本机存档 ${projection.total} 条",
+            "摆上屏 ${onScreen.size} 张",
+            desktopPerSiteReading(onScreen.groupingBy { it.site }.eachCount(), unit = "张"),
+        ).takeIf { it.isNotEmpty() }?.let { line ->
+            Text(
+                line,
+                color = DesktopTheme.TextSecondary,
+                fontSize = 12.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -189,16 +337,12 @@ private fun unrenderableSentence(projection: FavoritesProjection): String {
  */
 internal data class FavoritesProjection(
     val posts: List<GalleryPost>,
-    val perSite: Map<com.venera.compose.gallery.data.GallerySite, Int>,
     val total: Int,
     val unrecognizedSites: List<String>,
     val unrecognizedCount: Int,
     val droppedUnusable: Int,
     val readAtMillis: Long,
 ) {
-    val perSiteLabel: String
-        get() = " · " + perSite.entries.joinToString("、") { "${it.key.displayName} ${it.value} 张" }
-
     val droppedLabel: String
         get() = listOfNotNull(
             droppedUnusable.takeIf { it > 0 }?.let { "不可摆 $it 条" },
@@ -232,7 +376,6 @@ internal fun projectFavorites(
     }
     return FavoritesProjection(
         posts = posts,
-        perSite = posts.groupingBy { it.site }.eachCount(),
         total = favorites.size,
         // 同一个键认不出来可能是**多条**（存档里那条键写错了）。列出去重，
         // 让那句话念的是"哪几个键有问题"而不是同一串重复 N 遍；
