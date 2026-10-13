@@ -35,8 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
@@ -226,6 +229,9 @@ internal fun SettingsSlider(
     steps: Int = 0,
     suffix: String = "",
     summary: String = "",
+    /** 置灰档：总开关关着时这一组滑块要"看得到但拧不动"，撤掉整行会让人以为功能没做。
+     *  与 [SettingsToggle] 的 `enabled` 同一语义（标题走 textDisabled、滑块 itself 禁用）。 */
+    enabled: Boolean = true,
 ) {
     val tokens = VeneraTokens
     Column(
@@ -237,12 +243,14 @@ internal fun SettingsSlider(
         Text(
             text = "$title · " + (if (value % 1f == 0f) value.toInt().toString() else value.toString()) + suffix,
             fontSize = tokens.type.itemTitle,
+            color = if (enabled) tokens.color.textPrimary else tokens.color.textDisabled,
         )
         VeneraSlider(
             value = value.coerceIn(range),
             onValueChange = onValueChange,
             valueRange = range,
             steps = steps,
+            enabled = enabled,
         )
         if (summary.isNotBlank()) {
             Text(
@@ -294,6 +302,11 @@ internal fun SettingsPage(
     val prefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
     val heroPath by prefs.settingsHeroPath.collectAsState()
     val heroFile = remember(heroPath) { SettingsHeroImageStore.resolve(heroPath) }
+
+    // 大屏内容收口宽度；手机档为 null（= 不收口，逐像素走旧几何）。
+    val contentMaxWidth = contentMaxWidthFor(
+        wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+    )
 
     // ── hero 页的滚动契约：与 SettingsHome 同一套（2026-10-02 第五轮）──
     //
@@ -351,7 +364,14 @@ internal fun SettingsPage(
                         // 只留呼吸缝 —— 组标题落在图底溶接渐变带里，灰字仍可读。
                         top = if (heroFile != null) tokens.spacing.space3 else statusBarTop + tokens.spacing.topBarFloor,
                         bottom = LocalBottomBarClearance.current,
-                    ),
+                    )
+                    // ── 大屏内容收口（2026-10-12）──────────────────────────────
+                    // 与 SettingsHome 同一口径、同一函数。放在这里而不是 17 个调用点：
+                    // 全部子页都走 SettingsPage 这一个骨架，改一处即全覆盖。
+                    // 手机档 contentMaxWidth 为 null ⇒ 整个 Modifier 不挂，逐像素不变。
+                    // hero 在上面、不在这个 Column 内 ⇒ 头图仍整屏通栏，不受收口影响。
+                    .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                    .align(Alignment.CenterHorizontally),
                 content = {
                     content()
                     // 页尾名言卡：首页与全部子页同位（参考图布局）。

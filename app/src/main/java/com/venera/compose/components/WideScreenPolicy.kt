@@ -84,11 +84,75 @@ fun sideBarWidthFor(mode: WideScreenLayoutMode): Dp = when (mode) {
  * 最后一行内容被悬浮底栏压住 —— 只在侧栏档出现、手机档全好、回归测试抓不到）。
  * 批次 2 的 [VeneraSideBar] 接管了侧栏档的导航，`Navigation.kt` 的底栏门同步加上了
  * 档位判断 ⇒ 前提已成立。**若将来回退侧栏落地，必须同时把这两档改回 76。**
+ *
+ * 2026-10-12 追加：前提从「档位」细化为 `sideBarActive`（见 [sideBarReplacesBottomBar]）。
+ * 液态玻璃档在宽窗**保留**底栏 ⇒ 该档必须回到 76dp 留白，否则最后一行会被悬浮栏压住
+ * （正是本条 KDoc 上半段记的那个「只在宽窗出现、手机档全好」的失败模式）。
+ * 「底栏渲染 ⟺ 留白 76」这条不变量由 `sideBarActive` 一个布尔同时驱动两侧，未被削弱。
  */
-fun bottomBarClearanceFor(mode: WideScreenLayoutMode): Dp = when (mode) {
-    WideScreenLayoutMode.Compact -> VeneraSpacing.bottomBarClearance
-    WideScreenLayoutMode.Medium,
-    WideScreenLayoutMode.Expanded -> 0.dp
+fun bottomBarClearanceFor(
+    mode: WideScreenLayoutMode,
+    /**
+     * 本档是否真的由侧栏接管导航。默认值 = 「侧栏档就用侧栏」，与批次 2 既有行为逐值相同。
+     *
+     * ⚠️ 2026-10-12 起这条不再是 `mode` 的纯函数：用户要求液态玻璃档**横屏也保留底部悬浮栏**，
+     * 于是「宽窗是否换侧栏」改由导航栏样式轴决定（见 [sideBarReplacesBottomBar]）。
+     * 参数化而不是在这里直读样式，是为了让本文件不反向依赖 `data.prefs`（策略层不认识偏好枚举）。
+     */
+    sideBarActive: Boolean = mode != WideScreenLayoutMode.Compact,
+): Dp = if (sideBarActive) 0.dp else VeneraSpacing.bottomBarClearance
+
+/**
+ * 宽窗下是否由左侧栏替代底部导航栏。
+ *
+ * **2026-10-12 用户新增的第二档选择**：原先把「宽窗 ⇒ 换侧栏」写死成几何必然
+ * （`Navigation.kt` 的 `useSideBar = layoutMode != Compact`），导致液态玻璃栏在横屏/平板上
+ * 被无条件顶掉、设置里那一项在宽窗形同虚设。现在判据收口在这里，两种样式各自成立：
+ *
+ *  - `MD3`（默认）→ 宽窗换侧栏，手机档用悬浮底栏。**与改动前逐像素一致**。
+ *  - `LIQUID_GLASS` → 无论宽窄都保留底部悬浮栏（横屏一样能用玻璃栏）。
+ */
+fun sideBarReplacesBottomBar(
+    mode: WideScreenLayoutMode,
+    liquidGlassSelected: Boolean,
+): Boolean = mode != WideScreenLayoutMode.Compact && !liquidGlassSelected
+
+/**
+ * 传给 [VeneraSideBar] 的**有效档位**：侧栏不接管时一律降为 `Compact`，
+ * 让该组件走它自己的「直通 content」分支。
+ *
+ * 为什么需要这一层（2026-10-12，我自己改动里抓到的一个真 bug）：
+ * `VeneraSideBar` 的短路判据是 `mode == Compact`。引入样式轴后，
+ * 「宽窗 + 液态玻璃」这一格 `useSideBar == false` 而 `layoutMode` 仍是 Medium/Expanded ——
+ * 若照旧传 `layoutMode`，侧栏**和**底部玻璃栏会同时渲染（两套导航叠在一屏上）。
+ *
+ * 收口在这里而不是在 `Navigation.kt` 写 `if (useSideBar) layoutMode else Compact`：
+ * 本文件的既有契约是「档位判定只有一处」，调用点不该再自己分叉一次。
+ */
+fun sideBarModeFor(
+    mode: WideScreenLayoutMode,
+    sideBarActive: Boolean,
+): WideScreenLayoutMode = if (sideBarActive) mode else WideScreenLayoutMode.Compact
+
+/**
+ * 阅读型内容列的最大宽度（设置 / 详情 / 表单这类「一行一行读」的页面）。
+ *
+ * 为什么需要它：`wideScreenChromeMaxWidth` 只收口了**通栏悬浮件**（底栏 540、抽屉 400），
+ * 页面内容此前没有任何宽度口径 —— 1707dp 的平板上设置页单列列表横跨 2560px、
+ * 开关被拉到 2182px 宽，这是 2026-10-12 排查里最明显的一条。
+ *
+ * **Compact 返回 `null`**，与 [wideScreenChromeMaxWidth] 同一约定：手机档一个像素都不改
+ * （用户 2026-10-02 的硬约束「我们调的都是大屏版，别动手机版」）。调用点必须显式处理 null 分支。
+ *
+ * 取值依据（不是新造数）：
+ *  - 720dp ≈ 中文正文 45~50 字/行，是「一行读得完」的上限档；
+ *  - 840dp = MD3 官方 expanded 断点，也是 master 抽屉定宽 400 的两倍余量。
+ *  两者都落在既有断点语义内，没有引入第三套断点。
+ */
+fun contentMaxWidthFor(mode: WideScreenLayoutMode): Dp? = when (mode) {
+    WideScreenLayoutMode.Compact -> null
+    WideScreenLayoutMode.Medium -> 720.dp
+    WideScreenLayoutMode.Expanded -> 840.dp
 }
 
 /**

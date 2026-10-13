@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,8 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 import java.io.File
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.api.AppearancePreferences
 import com.venera.compose.data.api.ComicPreferences
@@ -197,6 +200,10 @@ private fun SettingsHomeContent(
     heroHeight: Dp = 0.dp,
 ) {
     val tokens = VeneraTokens
+    // 大屏内容收口宽度；手机档为 null（= 不收口，逐像素走旧几何）。
+    val contentMaxWidth = contentMaxWidthFor(
+        wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+    )
     // hero 在场时 scrollConnection 传 null：折叠 behavior 不参与（见 SettingsHome 注释）。
     // 禁掉 overscroll：到顶继续下拉会把 hero 图拉伸变形（Android 12+ 的 stretch 效果
     // 恰好作用在图上），设置页宁可没有回弹反馈。用户 2026-10-02 拍板「直接禁止」。
@@ -218,15 +225,25 @@ private fun SettingsHomeContent(
             )
         }
         Column(
-            Modifier.padding(
-                start = tokens.spacing.screenHorizontal,
-                end = tokens.spacing.screenHorizontal,
-                // hero 不在场时，内容自顶栏折叠区下方开始（旧版几何）；
-                // 在场时应用身份卡**叠在图的下段上**（hero 占位已让出 overlap），
-                // 这里只留一点点呼吸缝 —— 过渡靠叠图，不靠留白。
-                top = if (heroFile != null) tokens.spacing.space3 else topPadding,
-                bottom = LocalBottomBarClearance.current,
-            )
+            Modifier
+                .padding(
+                    start = tokens.spacing.screenHorizontal,
+                    end = tokens.spacing.screenHorizontal,
+                    // hero 不在场时，内容自顶栏折叠区下方开始（旧版几何）；
+                    // 在场时应用身份卡**叠在图的下段上**（hero 占位已让出 overlap），
+                    // 这里只留一点点呼吸缝 —— 过渡靠叠图，不靠留白。
+                    top = if (heroFile != null) tokens.spacing.space3 else topPadding,
+                    bottom = LocalBottomBarClearance.current,
+                )
+                // ── 大屏内容收口（2026-10-12）──────────────────────────────────
+                // 手机档 `contentMaxWidth` 为 null ⇒ 这条 Modifier 整个不挂，逐像素不变
+                // （用户 2026-10-02 硬约束「别动手机版」）。宽窗档才居中收口：
+                // 此前 1707dp 平板上单列列表横跨 2560px、开关被拉到 2182px 宽。
+                // 注意 hero 在上面、不在这个 Column 内，所以头图仍**整屏通栏**，不被收口影响。
+                .then(
+                    contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier
+                )
+                .align(Alignment.CenterHorizontally)
         ) {
             AppIdentityCard(comicPrefs)
             SettingsQuickLinks()

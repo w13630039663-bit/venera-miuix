@@ -73,6 +73,116 @@ class WideScreenPolicyTest {
         assertEquals(0.dp, bottomBarClearanceFor(WideScreenLayoutMode.Expanded))
     }
 
+    // ── 导航栏样式轴（2026-10-12 用户新增第二档）────────────────────────────
+    // 需求原话：横屏下也要能选「悬浮液态玻璃导航栏」，与原有 MD3 导航栏二选一。
+    // 改动前 `useSideBar = layoutMode != Compact` 是几何必然 ⇒ 宽窗无条件顶掉玻璃栏。
+
+    /**
+     * 默认档（MD3）必须**逐值等于改动前**：`sideBarReplacesBottomBar(mode, false) == (mode != Compact)`。
+     * 这条是「手机档与既有平板档零回归」的保险 —— 用户 2026-10-02 的硬约束。
+     */
+    @Test fun md3StyleKeepsTheOriginalWideScreenDecision() {
+        for (mode in WideScreenLayoutMode.entries) {
+            assertEquals(
+                "MD3 档必须与改动前逐值相同：$mode",
+                mode != WideScreenLayoutMode.Compact,
+                sideBarReplacesBottomBar(mode, liquidGlassSelected = false),
+            )
+        }
+    }
+
+    /**
+     * 液态玻璃档：**任何档位都保留底部悬浮栏**（横屏一样能用），侧栏一律不接管。
+     * 手机档本来就无侧栏，两者在这条上不冲突。
+     */
+    @Test fun liquidGlassStyleNeverLetsTheSideBarTakeOver() {
+        for (mode in WideScreenLayoutMode.entries) {
+            assertEquals(
+                "液态玻璃档不许被侧栏顶掉：$mode",
+                false,
+                sideBarReplacesBottomBar(mode, liquidGlassSelected = true),
+            )
+        }
+    }
+
+    /**
+     * 黄金不变量的**新形态**：底栏可见 ⟺ 留白 76dp。
+     *
+     * 改动前这条由 `mode` 单参保证（[bottomBarVisibleIffClearanceIsPositive]）；
+     * 引入样式轴后必须对**两个轴的四格组合**都成立，否则会出现
+     * 「宽窗 + 玻璃档：底栏渲染了但留白是 0」⇒ 最后一行被悬浮栏压住，
+     * 且只在那一格出现（手机档全好、普通回归抓不到）。
+     */
+    @Test fun bottomBarVisibleIffClearanceIsPositiveAcrossBothAxes() {
+        for (mode in WideScreenLayoutMode.entries) {
+            for (liquid in listOf(false, true)) {
+                val sideBarActive = sideBarReplacesBottomBar(mode, liquid)
+                val bottomBarRenders = !sideBarActive
+                assertEquals(
+                    "底栏渲染 ⟺ 留白 76（mode=$mode, liquidGlass=$liquid）",
+                    bottomBarRenders,
+                    bottomBarClearanceFor(mode, sideBarActive) > 0.dp,
+                )
+            }
+        }
+    }
+
+    /** 宽窗 + 玻璃档这一格是本次需求的核心：底栏在，留白就必须跟着回到 76dp。 */
+    @Test fun wideWindowWithLiquidGlassKeepsTheBottomBarAndItsClearance() {
+        for (mode in listOf(WideScreenLayoutMode.Medium, WideScreenLayoutMode.Expanded)) {
+            val sideBarActive = sideBarReplacesBottomBar(mode, liquidGlassSelected = true)
+            assertEquals(false, sideBarActive)
+            assertEquals(76.dp, bottomBarClearanceFor(mode, sideBarActive))
+        }
+    }
+
+    /**
+     * **侧栏与底栏绝不同时渲染**（2026-10-12，我自己改动里抓到的真 bug 的保险）。
+     *
+     * `VeneraSideBar` 的短路判据是 `mode == Compact`。引入样式轴后，
+     * 「宽窗 + 液态玻璃」这一格 `sideBarActive == false` 而 `layoutMode` 仍是 Medium/Expanded ——
+     * 若 `Navigation.kt` 照旧把裸 `layoutMode` 传进去，侧栏**和**底部玻璃栏会同时出现。
+     * [sideBarModeFor] 就是为这一格存在的：侧栏不接管时必须降成 Compact。
+     */
+    @Test fun sideBarModeCollapsesToCompactWheneverTheSideBarIsNotActive() {
+        for (mode in WideScreenLayoutMode.entries) {
+            for (liquid in listOf(false, true)) {
+                val sideBarActive = sideBarReplacesBottomBar(mode, liquid)
+                val effective = sideBarModeFor(mode, sideBarActive)
+                if (sideBarActive) {
+                    assertEquals("侧栏接管时必须保留原档位：$mode", mode, effective)
+                } else {
+                    assertEquals(
+                        "侧栏不接管时必须降为 Compact，否则侧栏会与底栏同时渲染：$mode/liquid=$liquid",
+                        WideScreenLayoutMode.Compact,
+                        effective,
+                    )
+                }
+            }
+        }
+    }
+
+    // ── 内容宽度口径（2026-10-12）─────────────────────────────────────────
+
+    /**
+     * 手机档必须返回 null：与 [wideScreenChromeMaxWidth] 同一约定，
+     * 保证「别动手机版」那条硬约束在实现层成立（调用点必须显式处理 null 分支）。
+     */
+    @Test fun phoneBandNeverGetsAContentWidthCap() {
+        assertNull(contentMaxWidthFor(WideScreenLayoutMode.Compact))
+    }
+
+    /** 宽窗两档各有定值，且 Expanded 必须比 Medium 宽（否则收口方向反了）。 */
+    @Test fun contentCapWidensWithTheBand() {
+        assertEquals(720.dp, contentMaxWidthFor(WideScreenLayoutMode.Medium))
+        assertEquals(840.dp, contentMaxWidthFor(WideScreenLayoutMode.Expanded))
+        assertTrue(
+            "Expanded 的收口必须宽于 Medium",
+            contentMaxWidthFor(WideScreenLayoutMode.Expanded)!! >
+                contentMaxWidthFor(WideScreenLayoutMode.Medium)!!,
+        )
+    }
+
     /**
      * 黄金不变量（方案 §3.6 扩写的那条）：**给定档位下，底栏可见 ⟺ 底部留白 76dp**。
      *
