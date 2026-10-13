@@ -57,6 +57,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 挂正式证书：换签名会让 debug 包无法覆盖已装的正式包（INSTALL_FAILED_UPDATE_INCOMPATIBLE），
+            // 而用户为了试 debug 包只能卸载重装 —— 阅读统计、收藏、已下载的本子一起清掉。
+            // 缺正式密钥时保持 AGP 默认，不阻断构建。
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             // S8: 开启 R8 混淆 + 资源收缩（keep 规则见 proguard-rules.pro，
             // 覆盖 WebView JS 桥 / Gson 反射模型 / kotlinx.serialization 路由）
@@ -126,6 +132,12 @@ dependencies {
     // 页面转场取官方 Material Motion 的 shared axis X（300ms / 30dp / 0.35 错峰淡入都在库里，不本地加码）
     implementation(libs.material.motion.core)
     implementation(libs.androidx.compose.material3)
+    // MD3 Adaptive：收藏页宽屏「列表 + 详情」双栏（ListDetailPaneScaffold）。
+    // 三颗必须同时引（构件划分见 gradle/libs.versions.toml 的 `adaptive` 那一节）；
+    // 版本安全性论证同处，已实跑 `:app:dependencies` 核对过 material3 未被顶动。
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.layout)
+    implementation(libs.androidx.compose.material3.adaptive.navigation)
     implementation(libs.androidx.compose.material.icons.extended)
     // 自定义取色：种子色 → 整套 MD3 色板（Android 自带 DynamicColors 只吃系统壁纸，喂不进种子）
     implementation(libs.material.kolor)
