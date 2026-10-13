@@ -75,4 +75,17 @@ object PreferenceKeys {
 
     /** SauceNAO API key（`gallery/data/SauceNaoAccount`）。 */
     const val PREFS_SAUCENAO_ACCOUNT = "venera_saucenao_account"
+
+    /**
+     * 自动翻页间隔**允许选到哪**的秒数区间 —— 三处共用这一把：
+     * 写入钳位（`data/prefs/VeneraPreferences.setAutoScrollPageIntervalSec`）、
+     * 设置页那条滑块、阅读器面板里的 −/+ 两枚药丸。
+     *
+     * 为什么住在这颗文件而不是 `reader/`：那三处分别在 `data/`、`feature/settings/`、`reader/`，
+     * 而"下层不许引用上层"是本仓判据钉过的红线 —— 放在下层的中性件里三处才真能共用。
+     *
+     * 2026-10-13 从 1..15 收到 **1..10**（用户点名"加上时间控制 1-10s"）。
+     * 存量盘上若已有 11~15，读出来照旧能用（读侧不偷偷改），但任何一次写入都会夹回 10。
+     */
+    val AUTO_PAGE_INTERVAL_SEC_RANGE = 1f..10f
 }

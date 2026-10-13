@@ -67,6 +67,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.RenderEffect
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -101,6 +103,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -202,6 +205,15 @@ private fun ReaderSessionContent(
     val volumeKeyTurn by prefs.volumeKeyTurn.collectAsState()
     val clickToTurn by prefs.clickToTurn.collectAsState()
     val reverseTap by prefs.reverseTapDirection.collectAsState()
+    val autoNextChapter by prefs.autoNextChapter.collectAsState()
+    val autoScrollIntervalSec by prefs.autoScrollPageIntervalSec.collectAsState()
+
+    // 图片增强五枚。总开关关着时下面四枚**不参与渲染**（见 pageColorFilter / sharpenLayer）
+    val enhanceEnabled by prefs.readerEnhanceEnabled.collectAsState()
+    val enhanceSharpen by prefs.readerEnhanceSharpen.collectAsState()
+    val enhanceContrast by prefs.readerEnhanceContrast.collectAsState()
+    val enhanceSaturation by prefs.readerEnhanceSaturation.collectAsState()
+    val enhanceBrightness by prefs.readerEnhanceBrightness.collectAsState()
 
     // 控制浮层显隐
     var isControlsVisible by rememberSaveable { mutableStateOf(false) }
@@ -351,10 +363,14 @@ private fun ReaderSessionContent(
     }
 
     // 动态章节加载与切换
-    fun switchToChapter(newChapterIndex: Int, initialPage: Int = 0) {
+    //
+    // [keepAutoScroll] 只有一处传 true：自动巡航自己跨话续播（见下面的巡航协程）。
+    // 其余三个调用点（音量键 / 面板上下话 / 章节抽屉）都是"用户主动换话"，照旧退出巡航。
+    fun switchToChapter(newChapterIndex: Int, initialPage: Int = 0, keepAutoScroll: Boolean = false) {
         if (isChapterLoading || newChapterIndex !in chaptersState.indices) return
-        // 换章即退出自动巡航（新章节从页首开始，续播语义不成立）
-        isAutoScrolling = false
+        // 换章即退出自动巡航（新章节从页首开始，续播语义不成立）——
+        // 例外正是那一个：巡航跨话时要的就是"从新话页首接着播"。
+        if (!keepAutoScroll) isAutoScrolling = false
         val targetCh = chaptersState[newChapterIndex]
         if (targetCh.isLoaded && targetCh.pages.isNotEmpty()) {
             currentChapterIndex = newChapterIndex
@@ -501,20 +517,55 @@ private fun ReaderSessionContent(
         isControlsVisible = false
     }
 
-    // 反色滤镜
-    val nightColorFilter = remember(isNightFilter) {
-        if (isNightFilter) {
-            ColorFilter.colorMatrix(
-                ColorMatrix(
-                    floatArrayOf(
-                        -1f,  0f,  0f, 0f, 255f,
-                         0f, -1f,  0f, 0f, 255f,
-                         0f,  0f, -1f, 0f, 255f,
-                         0f,  0f,  0f, 1f,   0f
-                    )
-                )
-            )
-        } else null
+    // ── 页面色彩层：夜间反色与图片增强三项合成**同一枚** ColorMatrix ──
+    //
+    // 走 ColorFilter 这条路是因为它已经在四条渲染路径上穿好了（夜间反色本来就走它），
+    // 零新依赖；而 ColorMatrix 只能做逐像素线性变换，卷积（锐化）另走下面的 renderEffect。
+    //
+    // **恒等 = 一个都不挂**：`readerColorMatrix` 在全中性且不开夜间时返回 null，
+    // 于是默认态传给各渲染路径的 colorFilter 与改动前同为 null —— "默认观感不变"是这条判据，
+    // 不是"看着差不多"。
+    val pageColorFilter = remember(
+        isNightFilter,
+        enhanceEnabled,
+        enhanceBrightness,
+        enhanceContrast,
+        enhanceSaturation,
+    ) {
+        val neutralize = !enhanceEnabled
+        val matrix = ReaderEnhancement.readerColorMatrix(
+            brightness = if (neutralize) ReaderEnhancement.NEUTRAL_BRIGHTNESS else enhanceBrightness,
+            contrast = if (neutralize) ReaderEnhancement.NEUTRAL_CONTRAST else enhanceContrast,
+            saturation = if (neutralize) ReaderEnhancement.NEUTRAL_SATURATION else enhanceSaturation,
+            nightInvert = isNightFilter,
+        )
+        matrix?.let { ColorFilter.colorMatrix(ColorMatrix(it)) }
+    }
+
+    // ── 锐化层（AGSL）：挂在页面内容那一层而不是每张图，一处覆盖五种模式；
+    // HUD / 面板 / 章节抽屉不在其内，免得整屏多做一次离屏合成。──
+    val sharpenAmount =
+        if (enhanceEnabled) ReaderEnhancement.sharpenKernelAmount(enhanceSharpen) else ReaderEnhancement.NEUTRAL_SHARPEN
+    // Pair：第一枚是要挂的 effect（null = 不挂），第二枚是"想锐化但机器不给"——降级只报一次。
+    val sharpenLayer = remember(sharpenAmount) {
+        if (sharpenAmount <= 0f) {
+            null to false
+        } else {
+            val effect = buildSharpenRenderEffect(sharpenAmount)
+            effect to (effect == null)
+        }
+    }
+    LaunchedEffect(sharpenLayer.second) {
+        if (sharpenLayer.second) {
+            Log.w("ReaderEnhance", "AGSL 锐化 shader 不可用，本次只做色彩调整（amount=$sharpenAmount）")
+            Toast.makeText(context, "本机不支持锐化，已只应用色彩调整", Toast.LENGTH_SHORT).show()
+        }
+    }
+    // 恒等时这一枚就是 `Modifier` 本身 —— `.then(Modifier)` 是空操作，
+    // 所以"默认态与改动前逐像素一致"这条判据在修饰符链上也成立，不只是在 ColorFilter 那一路。
+    val sharpenEffect = sharpenLayer.first
+    val enhanceLayerModifier = remember(sharpenEffect) {
+        if (sharpenEffect != null) Modifier.graphicsLayer { renderEffect = sharpenEffect } else Modifier
     }
 
     // pointerInput(Unit) must use the latest chapter/page callbacks, not its first composition.
@@ -530,10 +581,59 @@ private fun ReaderSessionContent(
         }
     }
 
+    // 巡航协程跨帧存活，而它要的动作每次重组都是新闭包：`turnToNextPage()` 读的 `currentChapter`
+    // 是当次 composition 算出的普通 val（不是 State），直接捕获就会在跨话之后仍按**旧章节**的
+    // lastIndex 翻页；`currentPageIndex` 那枚 derivedState 更是 `remember(currentChapter)` 重建的，
+    // 旧闭包握着旧实例。与上面 onReaderTap 同一味药，同一个教训（见 pointerInput 那条注释）。
+    val cruiseTurnPage by rememberUpdatedState<() -> Boolean> { turnToNextPage() }
+    val cruiseStepAtEnd by rememberUpdatedState<() -> ReaderAutoStep> {
+        autoStepAtChapterEnd(
+            // "用户关了续章"与"后面没话了"折进同一枚参数：对巡航来说结果完全一样（都不走）。
+            hasNextChapter = autoNextChapter && currentChapterIndex < chaptersState.lastIndex,
+            chapterLoading = isChapterLoading,
+        )
+    }
+    val cruiseAdvanceChapter by rememberUpdatedState<() -> Unit> {
+        switchToChapter(currentChapterIndex + 1, 0, keepAutoScroll = true)
+    }
+
     // Auto-Scroll 巡航协程：withFrameNanos 逐帧推进 scrollBy(speed * dt)，
-    // 帧率无关（60/90/120Hz 屏速度一致）；暂停/模式切走/换章自动停。
+    // 帧率无关（60/90/120Hz 屏速度一致）；模式切走自动停。
+    //
+    // 「本话到底」不再是终点：到底那一刻问 `autoStepAtChapterEnd` 一次 —— 还有下一话就切过去
+    // 从第 1 页续播，全书到头（或用户把续章关了）才真的停。
     LaunchedEffect(isAutoScrolling, readingMode) {
         if (!isAutoScrolling) return@LaunchedEffect
+        // 可用态与分支读同一个 autoCruiseSupported：面板那枚按钮亮起而协程立刻退出是假开关。
+        if (!autoCruiseSupported(readingMode)) {
+            isAutoScrolling = false
+            return@LaunchedEffect
+        }
+
+        // 本话到底时的处置。返回 false = 巡航到此为止，调用方的循环该退出。
+        suspend fun handleChapterEnd(): Boolean {
+            val fromIndex = currentChapterIndex
+            when (cruiseStepAtEnd()) {
+                // 正在取页表：什么都不做，下一帧再问一遍（换话要联网，不能连切好几话）。
+                ReaderAutoStep.Continue -> return true
+                ReaderAutoStep.Stop -> {
+                    isAutoScrolling = false
+                    return false
+                }
+                ReaderAutoStep.NextChapter -> {
+                    cruiseAdvanceChapter()
+                    // 落地后章节号没动 = 这次换章失败了（取页表为空）。失败当场有 Toast，但屏上
+                    // 仍停在末页、看不出来；这里停巡航，而不是每隔若干秒重刷同一话的页表。
+                    if (isChapterLoading) snapshotFlow { isChapterLoading }.first { !it }
+                    if (currentChapterIndex == fromIndex) {
+                        isAutoScrolling = false
+                        return false
+                    }
+                    return true
+                }
+            }
+        }
+
         when (readingMode) {
             // 条漫：逐帧匀速滚动（帧率无关）
             ReaderReadingMode.VERTICAL_CONTINUOUS -> {
@@ -545,11 +645,15 @@ private fun ReaderSessionContent(
                         dt
                     }.let { dt ->
                         if (dt > 0f) verticalListState.scrollBy(scrollSpeed * dt)
+                        // 改动前这一支**只滚动、从不判到底**：到末尾后 scrollBy 恒返回 0，
+                        // 于是"巡航在跑、屏上不动"，既不停也不前进 —— 一种静默假象。
+                        // canScrollForward 是 LazyListState 的公开 State，滚到底自然翻转。
+                        if (!verticalListState.canScrollForward && !handleChapterEnd()) return@LaunchedEffect
                     }
                 }
             }
-            // 美漫 LTR / 日漫 RTL：每 4 秒自动翻到下一页（复用 turnToNextPage，
-            // RTL 的镜像索引映射在其内部处理）；到末页自动停。
+            // 美漫 LTR / 日漫 RTL：按设置的间隔自动翻到下一页（复用 turnToNextPage，
+            // RTL 的镜像索引映射在其内部处理）；末页不再停住，改走续章判据。
             ReaderReadingMode.HORIZONTAL_LTR, ReaderReadingMode.HORIZONTAL_RTL -> {
                 var acc = 0f
                 var lastFrame = 0L
@@ -563,13 +667,13 @@ private fun ReaderSessionContent(
                         // 间隔读偏好实时值而非启动时快照：设置页或面板改完，下一页就生效。
                         if (acc >= prefs.autoScrollPageIntervalSec.value) {
                             acc = 0f
-                            if (!turnToNextPage()) isAutoScrolling = false
+                            if (!cruiseTurnPage() && !handleChapterEnd()) return@LaunchedEffect
                         }
                     }
                 }
             }
-            // 其余模式（横向连续流/双页）不支持巡航
-            else -> isAutoScrolling = false
+            // 其余模式不参与巡航（可用态已在上面的 autoCruiseSupported 闸门判过）
+            else -> Unit
         }
     }
 
@@ -628,6 +732,7 @@ private fun ReaderSessionContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(enhanceLayerModifier)
                 .then(pauseAutoScrollOnTouch)
                 .pointerInput(Unit) {
                     // Only unconsumed taps reach here; Telephoto owns its own single/double taps.
@@ -647,7 +752,7 @@ private fun ReaderSessionContent(
                                 page = page,
                                 index = index,
                                 total = currentChapter.pages.size,
-                                colorFilter = nightColorFilter,
+                                colorFilter = pageColorFilter,
                                 contentScale = ContentScale.FillWidth,
                                 modifier = Modifier.fillMaxWidth().wrapContentHeight()
                             )
@@ -666,7 +771,7 @@ private fun ReaderSessionContent(
                                 page = page,
                                 index = index,
                                 total = currentChapter.pages.size,
-                                colorFilter = nightColorFilter,
+                                colorFilter = pageColorFilter,
                                 contentScale = ContentScale.FillHeight,
                                 modifier = Modifier.fillMaxHeight().wrapContentWidth()
                             )
@@ -684,7 +789,7 @@ private fun ReaderSessionContent(
                             ReaderTelephotoPageItem(
                                 page = page,
                                 index = pageIdx,
-                                colorFilter = nightColorFilter,
+                                colorFilter = pageColorFilter,
                                 onTap = onReaderTap
                             )
                         }
@@ -702,7 +807,7 @@ private fun ReaderSessionContent(
                             ReaderTelephotoPageItem(
                                 page = page,
                                 index = realIdx,
-                                colorFilter = nightColorFilter,
+                                colorFilter = pageColorFilter,
                                 onTap = onReaderTap
                             )
                         }
@@ -730,7 +835,7 @@ private fun ReaderSessionContent(
                                         page = p1,
                                         index = pageIdx1,
                                         total = currentChapter.pages.size,
-                                        colorFilter = nightColorFilter,
+                                        colorFilter = pageColorFilter,
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -742,7 +847,7 @@ private fun ReaderSessionContent(
                                         page = p2,
                                         index = pageIdx2,
                                         total = currentChapter.pages.size,
-                                        colorFilter = nightColorFilter,
+                                        colorFilter = pageColorFilter,
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -962,10 +1067,9 @@ private fun ReaderSessionContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3)
                     ) {
-                        // 自动播放：条漫逐帧滚动，美漫/日漫每 4 秒翻页；点按进入巡航并收起控制栏
-                        val autoScrollEnabled = readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS ||
-                            readingMode == ReaderReadingMode.HORIZONTAL_LTR ||
-                            readingMode == ReaderReadingMode.HORIZONTAL_RTL
+                        // 自动播放：条漫逐帧滚动，美漫/日漫按设置的间隔翻页；点按进入巡航并收起控制栏
+                        // 可用态与巡航协程读同一个 autoCruiseSupported（一处判据，不再各写三连判断）
+                        val autoScrollEnabled = autoCruiseSupported(readingMode)
                         Surface(
                             shape = RoundedCornerShape(tokens.shape.small),
                             color = if (autoScrollEnabled) tokens.color.primary.copy(alpha = 0.30f) else StatusColors.OnBadgeSurface.copy(alpha = 0.05f),
@@ -1177,7 +1281,7 @@ private fun ReaderSessionContent(
                             Text(text = "⏸", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.caption)
                         }
                     }
-                    // 减速 / 加速（仅条漫滚动模式有意义；翻页模式固定 4s/页）
+                    // 减速 / 加速（仅条漫滚动模式有意义；翻页档那一格显示真实翻页间隔）
                     if (readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS) {
                         Surface(
                             shape = CircleShape,
@@ -1209,12 +1313,38 @@ private fun ReaderSessionContent(
                             modifier = Modifier.padding(end = tokens.spacing.space1)
                         )
                     } else {
+                        // 翻页档：与条漫档同一套 −/+ 把手（2026-10-13 用户点名"自动播放加上时间控制 1-10s"）。
+                        // 从前这一格只**印**真实间隔（更早之前印死 "4s/页"，那是假读数），
+                        // 要调只能退出阅读器去设置页 —— 现在两处改的是同一枚持久化的值。
+                        val intervalSec = autoScrollIntervalSec
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                            modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                                prefs.setAutoScrollPageIntervalSec(nextAutoPageIntervalSec(intervalSec, -1))
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Text(text = "−", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                            }
+                        }
                         Text(
-                            text = "4s/页",
+                            text = (if (intervalSec % 1f == 0f) intervalSec.toInt().toString() else intervalSec.toString()) + "s/页",
                             color = StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
                             fontSize = tokens.type.badge,
                             modifier = Modifier.padding(end = tokens.spacing.space1)
                         )
+                        Surface(
+                            shape = CircleShape,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                            modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
+                                prefs.setAutoScrollPageIntervalSec(nextAutoPageIntervalSec(intervalSec, +1))
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Text(text = "+", color = StatusColors.OnBadgeSurface, fontSize = tokens.type.itemTitle)
+                            }
+                        }
                     }
                 }
             }
@@ -1479,7 +1609,32 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 开关项 2: 保持屏幕常亮
+                    // 开关项 2: 图片增强总开关（细项在设置页，这里只切"要不要动原图"）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = "图片增强", fontSize = 14.sp, color = Color.White)
+                            Text(
+                                text = if (enhanceEnabled) "锐化与色彩调整已生效，画面不是原图" else "默认关闭，画面保持原图",
+                                fontSize = tokens.type.overline,
+                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f)
+                            )
+                        }
+                        VeneraSwitch(
+                            checked = enhanceEnabled,
+                            onCheckedChange = {
+                                prefs.setReaderEnhanceEnabled(it)
+                            },
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 开关项 3: 保持屏幕常亮
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1500,7 +1655,7 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 开关项 3: 音量键翻页
+                    // 开关项 4: 音量键翻页
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1521,7 +1676,7 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 开关项 4: 点击边缘翻页
+                    // 开关项 5: 点击边缘翻页
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1587,6 +1742,29 @@ private fun ReaderSessionContent(
         }
     }
 }
+
+/**
+ * AGSL 锐化 → Compose 的 `RenderEffect`。**失败返回 null**，调用方据此不挂 renderEffect。
+ *
+ * 为什么走平台 API 而不是 Compose 那层的包装：本仓解析到 Compose UI 1.12.0（CMP 1.12.1 顶上来的），
+ * 它已经没有 `androidx.compose.ui.graphics.RuntimeShader` / `RuntimeShaderEffect` 了 ——
+ * `ui.aar` 与 `ui-graphics.aar` 的 classes.jar 里 `RuntimeShader*` 零颗，AGSL 只剩
+ * `android.graphics.RuntimeShader` + 公开的 `android.graphics.RenderEffect.asComposeRenderEffect()`
+ * 这一条路（见 `AndroidRenderEffect.android.kt`）。
+ *
+ * 形状按 `android-37/android.jar` 现读的那三行来：构造子取**单个** AGSL 源码串
+ * （双参的 `RuntimeShader(shaderType, code)` 是 API 34 才有的，minSdk 33 用不了），
+ * uniform 写法是 `setFloatUniform`（`setFloat` 是被撤掉的那层 Compose 的名字）。
+ *
+ * 厂商的 Skia 拒绝这段 AGSL 时，构造子当场抛 `IllegalArgumentException`。
+ * 这里吃掉它并返回 null，由调用方**如实**降级成"只做色彩、不做锐化"并说一次 ——
+ * 不许崩，更不许把"按了锐化"演成"锐化生效了"。
+ */
+private fun buildSharpenRenderEffect(amount: Float): RenderEffect? = runCatching {
+    val shader = android.graphics.RuntimeShader(ReaderEnhancement.SHARPEN_AGSL)
+    shader.setFloatUniform("uAmount", amount)
+    android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "uContent").asComposeRenderEffect()
+}.getOrNull()
 
 /**
  * 正文页取图的成因为什么要落 logcat：这一段的失败在 UI 上只有一句

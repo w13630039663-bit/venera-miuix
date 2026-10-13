@@ -66,7 +66,10 @@ enum class TagTranslationMode {
 class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
 
     // 阅读器设置
-    private val _defaultReadingMode = MutableStateFlow(prefs.getString(KEY_DEFAULT_READING_MODE, "VERTICAL") ?: "VERTICAL")
+    // 默认「美漫·左至右」（用户 2026-10-13 点名）。只影响**从没设过这一项**的安装：
+    // 盘上有值就照读，不迁移也不覆盖。`ReaderReadingMode.fromKey` 认这一枚键，也认旧值 "VERTICAL"。
+    private val _defaultReadingMode =
+        MutableStateFlow(prefs.getString(KEY_DEFAULT_READING_MODE, "HORIZONTAL_LTR") ?: "HORIZONTAL_LTR")
     val defaultReadingMode: StateFlow<String> = _defaultReadingMode.asStateFlow()
 
     private val _pageGapDp = MutableStateFlow(prefs.getFloat(KEY_PAGE_GAP_DP, 8f))
@@ -101,6 +104,42 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /** 反转点击翻页的左右方向（左利手友好）。 */
     private val _reverseTapDirection = MutableStateFlow(prefs.getBoolean(KEY_REVERSE_TAP, false))
     val reverseTapDirection: StateFlow<Boolean> = _reverseTapDirection.asStateFlow()
+
+    /**
+     * 自动巡航到本话末页时**接着开下一话**（默认开）。
+     *
+     * 关掉时巡航在本话末页停住 —— 那是改动前的行为，留着这条开关是为了让"无人值守连读"
+     * 与"只看这一话"两种用法各自说得出口。跨话会**自动联网取下一话的页表**，
+     * 所以设置页那一行必须把这件事写出来（summary），不能让用户以为它只是翻页。
+     */
+    private val _autoNextChapter = MutableStateFlow(prefs.getBoolean(KEY_AUTO_NEXT_CHAPTER, true))
+    val autoNextChapter: StateFlow<Boolean> = _autoNextChapter.asStateFlow()
+
+    // ── 图片增强（默认全关/全中性，见 ReaderEnhancement）──
+    //
+    // ⚠️ 这五枚的默认值**就是"不改观感"**：总开关关着，且三个色彩量都落在中性点。
+    // 判据不是"UI 上看着差不多"，而是 `readerColorMatrix` 在全中性时返回 null ——
+    // 一个 ColorFilter 都不挂，渲染路径与加这个功能之前逐像素相同。
+
+    /** 图片增强总开关。关着时下面四枚一律不参与渲染（也不在设置页可调）。 */
+    private val _readerEnhanceEnabled = MutableStateFlow(prefs.getBoolean(KEY_ENHANCE_ENABLED, false))
+    val readerEnhanceEnabled: StateFlow<Boolean> = _readerEnhanceEnabled.asStateFlow()
+
+    /** 锐化强度 0..1（0 = 不锐化）。 */
+    private val _readerEnhanceSharpen = MutableStateFlow(prefs.getFloat(KEY_ENHANCE_SHARPEN, 0f))
+    val readerEnhanceSharpen: StateFlow<Float> = _readerEnhanceSharpen.asStateFlow()
+
+    /** 对比度 0.5..1.5（1 = 原图）。 */
+    private val _readerEnhanceContrast = MutableStateFlow(prefs.getFloat(KEY_ENHANCE_CONTRAST, 1f))
+    val readerEnhanceContrast: StateFlow<Float> = _readerEnhanceContrast.asStateFlow()
+
+    /** 饱和度 0..2（1 = 原图，0 = 灰度）。 */
+    private val _readerEnhanceSaturation = MutableStateFlow(prefs.getFloat(KEY_ENHANCE_SATURATION, 1f))
+    val readerEnhanceSaturation: StateFlow<Float> = _readerEnhanceSaturation.asStateFlow()
+
+    /** 亮度 −0.25..0.25（0 = 原图）。 */
+    private val _readerEnhanceBrightness = MutableStateFlow(prefs.getFloat(KEY_ENHANCE_BRIGHTNESS, 0f))
+    val readerEnhanceBrightness: StateFlow<Float> = _readerEnhanceBrightness.asStateFlow()
 
     /** 进入搜索页时预选的源；空串表示"不预设，保持会话内选择"。 */
     private val _defaultSearchTarget = MutableStateFlow(prefs.getString(KEY_DEFAULT_SEARCH_TARGET, "") ?: "")
@@ -353,10 +392,15 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
-    private val _appearanceStyle = MutableStateFlow(readEnum(KEY_APPEARANCE_STYLE, AppearanceStyle.MIUIX))
+    // 默认 **MD3 风格**（用户 2026-10-13 点名"界面风格默认使用 md3 取色"）。
+    // 取色那一步不用另改：`ThemeColorSource` 的默认已经是 WALLPAPER（系统壁纸动态取色），
+    // 而它**只在 MD3 下有意义** —— Miuix 用的是它自己那套固定色板。
+    private val _appearanceStyle = MutableStateFlow(readEnum(KEY_APPEARANCE_STYLE, AppearanceStyle.MD3))
     val appearanceStyle: StateFlow<AppearanceStyle> = _appearanceStyle.asStateFlow()
 
-    private val _navigationBarStyle = MutableStateFlow(readEnum(KEY_NAVIGATION_BAR_STYLE, NavigationBarStyle.MD3))
+    // 默认**液态玻璃悬浮底栏**（用户 2026-10-13 点名）。这一轴只管底栏，
+    // 与内容层材质 `SurfaceMaterial`（默认仍 SOLID，那是它自己 KDoc 写明的零回归判据）是两回事。
+    private val _navigationBarStyle = MutableStateFlow(readEnum(KEY_NAVIGATION_BAR_STYLE, NavigationBarStyle.LIQUID_GLASS))
     val navigationBarStyle: StateFlow<NavigationBarStyle> = _navigationBarStyle.asStateFlow()
 
     private val _surfaceMaterial = MutableStateFlow(readEnum(KEY_SURFACE_MATERIAL, SurfaceMaterial.SOLID))
@@ -551,7 +595,8 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     }
 
     fun setAutoScrollPageIntervalSec(sec: Float) {
-        val clamped = sec.coerceIn(1f, 15f)
+        // 区间只有一把尺子（三处共用，见常量上那段）；步进件在 reader/ReaderAutoAdvancePolicy。
+        val clamped = sec.coerceIn(PreferenceKeys.AUTO_PAGE_INTERVAL_SEC_RANGE)
         prefs.put(KEY_AUTO_SCROLL_INTERVAL_SEC, clamped)
         _autoScrollPageIntervalSec.value = clamped
     }
@@ -570,6 +615,40 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     fun setReverseTapDirection(enabled: Boolean) {
         prefs.put(KEY_REVERSE_TAP, enabled)
         _reverseTapDirection.value = enabled
+    }
+
+    fun setAutoNextChapter(enabled: Boolean) {
+        prefs.put(KEY_AUTO_NEXT_CHAPTER, enabled)
+        _autoNextChapter.value = enabled
+    }
+
+    fun setReaderEnhanceEnabled(enabled: Boolean) {
+        prefs.put(KEY_ENHANCE_ENABLED, enabled)
+        _readerEnhanceEnabled.value = enabled
+    }
+
+    fun setReaderEnhanceSharpen(value: Float) {
+        val v = value.coerceIn(0f, 1f)
+        prefs.put(KEY_ENHANCE_SHARPEN, v)
+        _readerEnhanceSharpen.value = v
+    }
+
+    fun setReaderEnhanceContrast(value: Float) {
+        val v = value.coerceIn(0.5f, 1.5f)
+        prefs.put(KEY_ENHANCE_CONTRAST, v)
+        _readerEnhanceContrast.value = v
+    }
+
+    fun setReaderEnhanceSaturation(value: Float) {
+        val v = value.coerceIn(0f, 2f)
+        prefs.put(KEY_ENHANCE_SATURATION, v)
+        _readerEnhanceSaturation.value = v
+    }
+
+    fun setReaderEnhanceBrightness(value: Float) {
+        val v = value.coerceIn(-0.25f, 0.25f)
+        prefs.put(KEY_ENHANCE_BRIGHTNESS, v)
+        _readerEnhanceBrightness.value = v
     }
 
     fun setDefaultSearchTarget(key: String) {
@@ -670,6 +749,17 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_THEME_COLOR_SOURCE = "pref_theme_color_source"
         private const val KEY_THEME_SEED_COLOR = "pref_theme_seed_color"
         private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
+
+        /** 巡航到本话末页时接着开下一话。 */
+        private const val KEY_AUTO_NEXT_CHAPTER = "pref_reader_auto_next_chapter"
+
+        // 图片增强五枚。键名前缀统一 `pref_reader_enhance_`，与上面几枚 `pref_` 同族
+        // （都落在 PREFS_NAME 这一份里，不新开存储 —— 见 PreferenceStorageNamesTest 的口径）。
+        private const val KEY_ENHANCE_ENABLED = "pref_reader_enhance_enabled"
+        private const val KEY_ENHANCE_SHARPEN = "pref_reader_enhance_sharpen"
+        private const val KEY_ENHANCE_CONTRAST = "pref_reader_enhance_contrast"
+        private const val KEY_ENHANCE_SATURATION = "pref_reader_enhance_saturation"
+        private const val KEY_ENHANCE_BRIGHTNESS = "pref_reader_enhance_brightness"
         private const val KEY_SECURE_SCREEN = "pref_secure_screen"
         private const val KEY_PRELOAD_COUNT = "pref_preload_image_count"
         private const val KEY_REVERSE_TAP = "pref_reverse_tap_direction"

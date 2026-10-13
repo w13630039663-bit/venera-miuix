@@ -55,6 +55,28 @@ interface ReaderPreferences {
     val autoScrollPageIntervalSec: StateFlow<Float>
     val preloadImageCount: StateFlow<Int>
 
+    /** 巡航到本话末页时接着开下一话（会**自动联网取下一话**，默认开）。 */
+    val autoNextChapter: StateFlow<Boolean>
+
+    // ── 图片增强（2026-10-13）。五枚一组，默认全中性 = 不改观感。 ──
+    // 收进契约的理由与别处一致：消费点有阅读器本体与设置页两处，
+    // 而"哪一枚算中性"这件事必须只有一个说法（判据在 `ReaderEnhancement.readerColorMatrix`）。
+
+    /** 总开关。关着时下面四枚一律不参与渲染。 */
+    val readerEnhanceEnabled: StateFlow<Boolean>
+
+    /** 锐化 0..1（0 = 不锐化）。 */
+    val readerEnhanceSharpen: StateFlow<Float>
+
+    /** 对比度 0.5..1.5（1 = 原图）。 */
+    val readerEnhanceContrast: StateFlow<Float>
+
+    /** 饱和度 0..2（1 = 原图）。 */
+    val readerEnhanceSaturation: StateFlow<Float>
+
+    /** 亮度 −0.25..0.25（0 = 原图）。 */
+    val readerEnhanceBrightness: StateFlow<Float>
+
     /** 章节目录倒序（详情页与探索设置页都读它，阅读语义而非列表语义）。 */
     val reverseChapterOrder: StateFlow<Boolean>
 
@@ -67,6 +89,12 @@ interface ReaderPreferences {
     fun setPageGapDp(gap: Float)
     fun setAutoScrollPageIntervalSec(sec: Float)
     fun setPreloadImageCount(count: Int)
+    fun setAutoNextChapter(enabled: Boolean)
+    fun setReaderEnhanceEnabled(enabled: Boolean)
+    fun setReaderEnhanceSharpen(value: Float)
+    fun setReaderEnhanceContrast(value: Float)
+    fun setReaderEnhanceSaturation(value: Float)
+    fun setReaderEnhanceBrightness(value: Float)
     fun setReverseChapterOrder(enabled: Boolean)
 }
 

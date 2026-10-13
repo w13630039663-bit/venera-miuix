@@ -253,6 +253,12 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override val pageGapDp: StateFlow<Float> get() = prefs.pageGapDp
     override val autoScrollPageIntervalSec: StateFlow<Float> get() = prefs.autoScrollPageIntervalSec
     override val preloadImageCount: StateFlow<Int> get() = prefs.preloadImageCount
+    override val autoNextChapter: StateFlow<Boolean> get() = prefs.autoNextChapter
+    override val readerEnhanceEnabled: StateFlow<Boolean> get() = prefs.readerEnhanceEnabled
+    override val readerEnhanceSharpen: StateFlow<Float> get() = prefs.readerEnhanceSharpen
+    override val readerEnhanceContrast: StateFlow<Float> get() = prefs.readerEnhanceContrast
+    override val readerEnhanceSaturation: StateFlow<Float> get() = prefs.readerEnhanceSaturation
+    override val readerEnhanceBrightness: StateFlow<Float> get() = prefs.readerEnhanceBrightness
     override val reverseChapterOrder: StateFlow<Boolean> get() = prefs.reverseChapterOrder
 
     override fun setDefaultReadingMode(mode: String) = prefs.setDefaultReadingMode(mode)
@@ -264,6 +270,12 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override fun setPageGapDp(gap: Float) = prefs.setPageGapDp(gap)
     override fun setAutoScrollPageIntervalSec(sec: Float) = prefs.setAutoScrollPageIntervalSec(sec)
     override fun setPreloadImageCount(count: Int) = prefs.setPreloadImageCount(count)
+    override fun setAutoNextChapter(enabled: Boolean) = prefs.setAutoNextChapter(enabled)
+    override fun setReaderEnhanceEnabled(enabled: Boolean) = prefs.setReaderEnhanceEnabled(enabled)
+    override fun setReaderEnhanceSharpen(value: Float) = prefs.setReaderEnhanceSharpen(value)
+    override fun setReaderEnhanceContrast(value: Float) = prefs.setReaderEnhanceContrast(value)
+    override fun setReaderEnhanceSaturation(value: Float) = prefs.setReaderEnhanceSaturation(value)
+    override fun setReaderEnhanceBrightness(value: Float) = prefs.setReaderEnhanceBrightness(value)
     override fun setReverseChapterOrder(enabled: Boolean) = prefs.setReverseChapterOrder(enabled)
 }
 
