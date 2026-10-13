@@ -86,16 +86,24 @@ class ReadingStatsStore(private val source: SqlDatabaseSource) {
             )
         }
 
-    /** 从 [fromDate]（含）起**带标签**的行；题材分布的原料（标签列的拆分与归一在调用侧）。 */
+    /**
+     * 从 [fromDate]（含）起**带标签**的行；题材分布的原料（标签列的拆分与归一在调用侧）。
+     *
+     * 带上 `comic_id` 与 `source_name` 是因为统计页那一半要数**本**（同一本读三天只算一本），
+     * 而"哪算一本"的键是这两列的**组合** —— `comic_id` 是源内编号，跨源会撞车。
+     */
     fun taggedRows(fromDate: String): List<TaggedReadRow> =
         source.reader().query(
-            "SELECT read_date, pages_read, tags FROM reading_stats WHERE read_date >= ? AND tags != ''",
+            "SELECT read_date, pages_read, tags, comic_id, source_name " +
+                "FROM reading_stats WHERE read_date >= ? AND tags != ''",
             fromDate
         ).map {
             TaggedReadRow(
                 readDate = it.requiredString("read_date"),
                 pages = it.long("pages_read").toInt(),
                 tags = it.requiredString("tags"),
+                comicId = it.requiredString("comic_id"),
+                sourceName = it.requiredString("source_name"),
             )
         }
 
@@ -183,7 +191,13 @@ data class TopComicRow(
 )
 
 /** 带标签的一行阅读记录。 */
-data class TaggedReadRow(val readDate: String, val pages: Int, val tags: String)
+data class TaggedReadRow(
+    val readDate: String,
+    val pages: Int,
+    val tags: String,
+    val comicId: String,
+    val sourceName: String,
+)
 
 /** 一行阅读记录的「哪本漫画 + 它的标签串」。 */
 data class ComicTagsRow(val comicId: String, val tags: String)

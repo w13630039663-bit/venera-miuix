@@ -81,7 +81,8 @@ class ReadingStatsManager private constructor(private val context: Context) {
 
             totalSec += d
             totalPages += p
-            comicSet.add("${row.sourceName}_${row.comicId}")
+            // 「一本」的键只有这一颗（同题材占比那把尺子共用，见 [comicKey]）
+            comicSet.add(comicKey(row.sourceName, row.comicId))
 
             if (row.readDate == todayStr) {
                 todaySec += d
@@ -149,74 +150,21 @@ class ReadingStatsManager private constructor(private val context: Context) {
     }
 
     /**
-     * 题材分布：取最近 [days] 天带标签的阅读行，逐条过 [TagNormalizer] 归一，按**页数**加权。
+     * 题材分布：取最近 [days] 天带标签的阅读行，交给 [aggregateTagStats] 成桶。
      *
-     * 与旧版 `getTopTags` 的四处本质差别（旧实现即使喂上数据也会产出错统计，已删）：
-     *  - 权重是页数而非记录条数 —— 翻 200 页的本子比翻 2 页就退的更该上榜；
-     *  - 走归一化管线，`lolicon` / `蘿莉` / `萝莉` 合成一个桶；
-     *  - 按 [TAG_SEPARATOR] 取原值，不再按空格与逗号切（`big breasts` 会被劈成两半）；
-     *  - 去掉 `length in 2..10` 的字符数闸门（它会把带命名空间的 `female:lolicon` 整条丢掉）。
+     * 这一层只留两件吃 `Context` 的事：等字典（[buildNormalizer]）与按本地时区算日期下限。
+     * 判据本体（怎么切标签、怎么数页、怎么去重数本）在 `TagStatsAggregation.kt`，
+     * 那里一句 Android 类型都没有，所以能在单测里对着构造出来的行判对错。
      *
-     * 与原版的一处**有意**分歧：原版把「所有带 tags 的行」都计入分母 `taggedPages`，
-     * 包括标签全被管线滤掉的行；这里只计**至少贡献了一个桶**的行 —— 否则占比条的分母
-     * 会被「只有作者/分类词的本子」灌水，读起来像「题材很分散」。
+     * 四格屏上读数各自的口径写在那颗文件头：**页加权**是首页推荐用的那把尺，
+     * **本数**是统计页那半区念的那把 —— 两把不许混着引。
      */
     suspend fun getTagStats(days: Int): TagStats = withContext(Dispatchers.IO) {
         val startKey = dateFormat.format(
             Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -(days - 1)) }.time
         )
         val normalizer = buildNormalizer()
-        val buckets = HashMap<String, TagBucketAccumulator>()
-        val monthly = HashMap<String, HashMap<String, Int>>()
-        var taggedPages = 0
-
-        for (row in store.taggedRows(startKey)) {
-            val pages = row.pages
-            if (pages <= 0) continue
-            val month = row.readDate.take(MONTH_KEY_LENGTH)
-            var contributed = false
-            for (plainTag in row.tags.split(TAG_SEPARATOR)) {
-                val display = normalizer.normalize(plainTag) ?: continue
-                contributed = true
-                val acc = buckets.getOrPut(display) { TagBucketAccumulator() }
-                acc.pages += pages
-                acc.originals[plainTag] = (acc.originals[plainTag] ?: 0) + 1
-                val monthCounts = monthly.getOrPut(month) { HashMap() }
-                monthCounts[display] = (monthCounts[display] ?: 0) + pages
-            }
-            if (contributed) taggedPages += pages
-        }
-
-        val sorted = buckets.entries.sortedWith(
-            compareByDescending<Map.Entry<String, TagBucketAccumulator>> { it.value.pages }
-                .thenBy { it.key }
-        )
-        TagStats(
-            buckets = sorted.map { (display, acc) ->
-                val (namespace, raw) = acc.pickOriginal()
-                TagStatBucket(
-                    display = display,
-                    pages = acc.pages,
-                    searchNamespace = namespace,
-                    searchRaw = raw,
-                )
-            },
-            taggedPages = taggedPages,
-            monthlyTop = monthly.entries.sortedByDescending { it.key }
-                .take(if (days > 30) 12 else 6)
-                .map { (month, counts) ->
-                    MonthlyTagTop(
-                        month = month,
-                        tags = counts.entries
-                            .sortedWith(
-                                compareByDescending<Map.Entry<String, Int>> { it.value }
-                                    .thenBy { it.key }
-                            )
-                            .take(MONTHLY_TOP_TAGS)
-                            .map { it.key to it.value },
-                    )
-                },
-        )
+        aggregateTagStats(store.taggedRows(startKey), days) { normalizer.normalize(it) }
     }
 
     /**
@@ -242,30 +190,6 @@ class ReadingStatsManager private constructor(private val context: Context) {
             toSimplified = converter::traditionalToSimplified,
             hasTraditional = converter::hasChineseTraditional,
         )
-    }
-
-    /** 一个题材桶的累加器。 */
-    private class TagBucketAccumulator {
-        var pages = 0
-
-        /** 归到本桶的**原始** `namespace:tag` → 出现次数，用于挑一个可检索的原值。 */
-        val originals = HashMap<String, Int>()
-
-        /**
-         * 取出现次数最高的原始标签；并列时按字典序取最小，保证同一份数据每次算出的结果一致
-         * （否则「这次点进去搜 A、下次搜 B」这种不可复现的行为会留在统计页）。
-         */
-        fun pickOriginal(): Pair<String, String> {
-            val plain = originals.entries.sortedWith(
-                compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
-            ).firstOrNull()?.key ?: return "" to ""
-            val idx = plain.indexOf(':')
-            return if (idx > 0) {
-                plain.substring(0, idx).trim() to plain.substring(idx + 1).trim()
-            } else {
-                "" to plain.trim()
-            }
-        }
     }
 
     /**
@@ -305,12 +229,6 @@ class ReadingStatsManager private constructor(private val context: Context) {
          * 那是同一列的另一种读法 —— 分隔符只能有一处真相。
          */
         internal const val TAG_SEPARATOR = "\u001F"
-
-        /** `read_date` 形如 "yyyy-MM-dd"，取前 7 位即月份键。 */
-        private const val MONTH_KEY_LENGTH = 7
-
-        /** 时间轴每个月展示几个题材。 */
-        private const val MONTHLY_TOP_TAGS = 2
 
         /** 等标签字典异步加载的上限；超时只是不合中文规范名，不阻断统计。 */
         private const val DICT_WAIT_TIMEOUT_MS = 3000L

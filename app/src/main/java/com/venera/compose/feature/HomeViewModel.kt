@@ -449,7 +449,14 @@ private fun writeSnapshot(state: HomeRecommendState): String {
         )
     }
     val tags = JSONArray()
-    state.tags.forEach { tags.put(JSONObject().put("display", it.display).put("pages", it.pages)) }
+    state.tags.forEach {
+        tags.put(
+            JSONObject()
+                .put("display", it.display)
+                .put("pages", it.pages)
+                .put("comics", it.comics),
+        )
+    }
     return JSONObject().put("tags", tags).put("comics", comics).toString()
 }
 
@@ -480,6 +487,9 @@ private fun readRecommendSnapshot(raw: String): HomeRecommendState {
             TagStatBucket(
                 display = item.optString("display"),
                 pages = item.optInt("pages"),
+                // 旧快照没这一枚 ⇒ 0。缓存那一格只用 `display`（首页副标题那串题材名），
+                // 而重进首页就会按当天读数整片重算，所以这里不拿 0 去念成"零本"。
+                comics = item.optInt("comics"),
                 searchNamespace = "",
                 searchRaw = "",
             )

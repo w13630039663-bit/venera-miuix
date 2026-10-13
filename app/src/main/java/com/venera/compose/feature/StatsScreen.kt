@@ -304,7 +304,7 @@ fun StatsScreen(
                         item {
                             TopicShareCard(
                                 buckets = tagStats.buckets,
-                                taggedPages = tagStats.taggedPages,
+                                taggedComics = tagStats.taggedComics,
                                 scopeDays = scopeDays,
                                 onDig = onDigTag,
                             )
@@ -312,7 +312,7 @@ fun StatsScreen(
                         item {
                             SoulTagCard(
                                 buckets = tagStats.buckets,
-                                taggedPages = tagStats.taggedPages,
+                                taggedComics = tagStats.taggedComics,
                                 scopeDays = scopeDays,
                                 onDig = onDigTag,
                             )
@@ -496,41 +496,50 @@ private fun ScopeChip(label: String, value: Int, current: Int, onSelect: (Int) -
  * 为什么不做环形图（原版的 `_PreferenceDonut`）：一是要在这页从 0 自绘 `drawArc` 与图例
  * 点色序列；二是「第 1 名吃掉多少」用横条比扇形更好读。
  *
- * 分母是**带标签记录的那些页**（[taggedPages]），不是全部阅读页数 —— 标题里必须把分母写出来，
- * 否则读起来像「我读的漫画里有 40% 是某题材」，而实际口径是「可归类的页里占 40%」。
+ * 数的是**本**（[taggedComics] = 至少归出一个题材的那些本），不是页 ——
+ * 「十本里有四本是它」才是这半区要给人看的读数。⚠️ 一本会带好几个题材，所以各行加起来
+ * **会超过 100%**，这不是错；标题里把分母写出来（「· N 本」）就是为了让这句读得出来。
+ *
+ * 行序按本数重新排（`buckets` 那一份是**页加权**的序，首页推荐用的就是那一把；
+ * 拿页的序配本的数，屏上就是"条子长短和数字对不上"）。
  */
 @Composable
 private fun TopicShareCard(
     buckets: List<TagStatBucket>,
-    taggedPages: Int,
+    taggedComics: Int,
     scopeDays: Int,
     onDig: (TagStatBucket) -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
-    val total = taggedPages.coerceAtLeast(1)
-    val shown = buckets.take(TOPIC_SHARE_ROWS)
-    val otherPages = buckets.drop(TOPIC_SHARE_ROWS).sumOf { it.pages }
+    val total = taggedComics.coerceAtLeast(1)
+    val byComics = buckets.sortedWith(
+        compareByDescending<TagStatBucket> { it.comics }.thenBy { it.display }
+    )
+    val shown = byComics.take(TOPIC_SHARE_ROWS)
+    val others = byComics.drop(TOPIC_SHARE_ROWS)
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
-            SectionTitle(text = "题材占比（${scopeLabel(scopeDays)} · $taggedPages 页）")
+            SectionTitle(text = "题材占比（${scopeLabel(scopeDays)} · $taggedComics 本）")
             Spacer(modifier = Modifier.height(10.dp))
             shown.forEach { bucket ->
                 ShareRow(
                     label = bucket.display,
-                    pages = bucket.pages,
-                    share = bucket.pages.toFloat() / total,
+                    comics = bucket.comics,
+                    share = bucket.comics.toFloat() / total,
                     accent = colors.primary,
                     track = colors.surfaceVariant,
                     onClick = { onDig(bucket) },
                 )
             }
-            if (otherPages > 0) {
+            if (others.isNotEmpty()) {
                 // 「其它」不是一个可检索的题材，所以不给点击。
+                // 本数在这里**按题材相加**（同一本出现在两个题材里会各数一次），
+                // 所以它只用来定条子的长短，不当"还剩几本"念 —— 那一格要说的是项数。
                 ShareRow(
-                    label = "其它 ${buckets.size - shown.size} 项",
-                    pages = otherPages,
-                    share = otherPages.toFloat() / total,
+                    label = "其它 ${others.size} 项",
+                    comics = others.sumOf { it.comics },
+                    share = others.sumOf { it.comics }.toFloat() / total,
                     accent = colors.onSurface.copy(alpha = 0.35f),
                     track = colors.surfaceVariant,
                     onClick = null,
@@ -543,7 +552,7 @@ private fun TopicShareCard(
 @Composable
 private fun ShareRow(
     label: String,
-    pages: Int,
+    comics: Int,
     share: Float,
     accent: Color,
     track: Color,
@@ -592,7 +601,7 @@ private fun ShareRow(
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = "$pages 页",
+            text = "$comics 本",
             fontSize = 11.sp,
             color = colors.onSurface.copy(alpha = 0.45f),
         )
@@ -602,20 +611,29 @@ private fun ShareRow(
 /**
  * 本命题材 + 题材云。
  *
- * 权重公式照抄原版：字号 `12 + 8w`、底色 alpha `0.10 + 0.22w`（w = 本页数 / 第一名页数），
+ * 权重公式照抄原版：字号 `12 + 8w`、底色 alpha `0.10 + 0.22w`（w = 本桶本数 / 第一名本数），
  * 让「读得多」在**同一屏内**可比，而不是靠颜色数量硬堆层级。
+ *
+ * ⚠️ 这一张与上面那张占比条**同一把尺**（都数本），所以"本命"取的是**本数第一**那一桶，
+ * 而不是列表首元素 —— 列表那份序是页加权（首页推荐用的尺），拿它当"本命"就会出
+ * 「占比条第一名是 A、本命题材写的却是 B」这种同屏互相打脸。
  */
 @Composable
 private fun SoulTagCard(
     buckets: List<TagStatBucket>,
-    taggedPages: Int,
+    taggedComics: Int,
     scopeDays: Int,
     onDig: (TagStatBucket) -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
-    val top = buckets.first()
-    val maxPages = top.pages.coerceAtLeast(1)
-    val total = taggedPages.coerceAtLeast(1)
+    val top = buckets.maxWithOrNull(
+        compareBy<TagStatBucket> { it.comics }.thenByDescending { it.display }
+    ) ?: return
+    val maxComics = top.comics.coerceAtLeast(1)
+    val total = taggedComics.coerceAtLeast(1)
+    val cloud = buckets.sortedWith(
+        compareByDescending<TagStatBucket> { it.comics }.thenBy { it.display }
+    ).take(TOPIC_CLOUD_SIZE)
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -633,7 +651,7 @@ private fun SoulTagCard(
                     .clickable { onDig(top) },
             )
             Text(
-                text = "${top.pages} 页 · 占可归类阅读的 ${((top.pages.toFloat() / total) * 100).roundToInt()}%",
+                text = "$taggedComics 本里有 ${top.comics} 本 · 占可归类阅读的 ${((top.comics.toFloat() / total) * 100).roundToInt()}%",
                 fontSize = 12.sp,
                 color = colors.onSurface.copy(alpha = 0.6f),
             )
@@ -642,8 +660,8 @@ private fun SoulTagCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                buckets.take(TOPIC_CLOUD_SIZE).forEach { bucket ->
-                    val weight = (bucket.pages.toFloat() / maxPages).coerceIn(0f, 1f)
+                cloud.forEach { bucket ->
+                    val weight = (bucket.comics.toFloat() / maxComics).coerceIn(0f, 1f)
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -693,7 +711,7 @@ private fun TopicTimelineCard(monthly: List<MonthlyTagTop>) {
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = if (entry.tags.isEmpty()) "无题材记录"
-                        else entry.tags.joinToString("　") { "${it.first} ${it.second} 页" },
+                        else entry.tags.joinToString("　") { "${it.first} ${it.second} 本" },
                         fontSize = 13.sp,
                         color = colors.onSurface,
                         maxLines = 1,
