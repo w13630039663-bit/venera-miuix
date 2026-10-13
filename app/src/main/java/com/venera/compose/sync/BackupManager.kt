@@ -21,6 +21,7 @@ import com.venera.compose.gallery.data.GalleryArtistFollowsStore
 import com.venera.compose.gallery.data.GalleryFavoritesStore
 import com.venera.compose.gallery.data.getInstance
 import com.venera.compose.security.guard.GuardRulePattern
+import com.venera.compose.source.ComicSourceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
@@ -37,7 +38,7 @@ import java.util.zip.ZipOutputStream
  * 1. 一键全量打包导出为标准 `.venera` 归档文件
  * 2. 跨设备双向还原
  *
- * ## 一份归档里有什么（9 个 member，格式版本 5）
+ * ## 一份归档里有什么（9 个必选 member + 1 个可选，格式版本 5）
  *
  * | member | 内容 | 事实源 |
  * | --- | --- | --- |
@@ -50,8 +51,21 @@ import java.util.zip.ZipOutputStream
  * | `gallery_follows.json` | 画廊关注画师名单 | `filesDir/gallery_artist_follows.json` |
  * | `gallery_favorites.json` | 画廊收藏（含地址与尺寸，离线也能铺出收藏页） | `filesDir/gallery_favorites.json` |
  * | `image_favorites.json` | 插图收藏的**元数据 + 地址** | `favorite_images` |
+ * | `source_accounts.json` | **可选**：漫画源登录态与源内设置 | `filesDir/comic_source/<key>.data` + 源元数据 |
  *
  * 统计页与首页摘要卡上的每个读数都是从 `reading_stats` 现算的，所以这张表进包 = 整页统计复现。
+ *
+ * ## 漫画源那一栏为什么是"可选的"
+ *
+ * 它是**唯一一栏默认不进包**的数据，理由是安全性而非体积：`.data` 档里装的是账密、session
+ * token 与 `_localStorage` 里的 accessToken，而一份归档是用户会随手分享出去的文件。
+ * 所以"没勾选"必须表现为**归档里根本没有这个 member**，而不是"有一个空数组"——
+ * 后者让导入侧无从区分"这次没导出账号"与"导出时一个源都没登录"。
+ * 见 [SourceAccountMode] 与 [SourceAccountBackup]。
+ *
+ * 这一栏**只带账号与设置，不带源脚本**：脚本是可以从仓库重装的可再生物，
+ * 混进来只会让"恢复登录态"被"要不要覆盖本机的源"这个无关问题拖住。
+ * 导入时本机没装的源**跳过并计数**（那个数要报到屏上，见 [BackupSummary.sourceAccountSkipped]）。
  *
  * ## 仍然不进包的东西，以及各自真实的理由
  *
@@ -62,7 +76,8 @@ import java.util.zip.ZipOutputStream
  * - **画师头像地址档**（`gallery_artist_avatars.json`）：可随时重取的解析结果，不是用户攒下的关系。
  *   代价是新设备第一次打开关注面板要为一位画师重发 2~4 笔 JSON。
  * - **画廊的 Feed 缓存与标签词典**：都可再生。
- * - `comic_source`（已安装源）、偏好设置、Cookie 登录态、下载任务与下载下来的图片。
+ * - **已安装源的脚本**（`comic_source` 目录下的 `.js`）：可从仓库重装；账号数据那一栏单独见上。
+ * - 偏好设置、全局 Cookie 罐、下载任务与下载下来的图片。
  *
  * **收藏这一路必须走 [LocalFavoritesManager]，不能直接写 SQL。**
  * 早期版本读写的是 `venera_core.db` 里的单表 `comic_favorite`，而那张表在
@@ -108,10 +123,21 @@ class BackupManager private constructor(private val context: Context) {
     private val galleryFavorites by lazy { GalleryFavoritesStore.getInstance(context) }
     private val favoriteImagesManager by lazy { FavoriteImagesManager.getInstance(context) }
 
+    /** 懒取：源的元数据表与账号数据档都在它手里（`getInstance` 会开 prefs 并异步装源）。 */
+    private val sourceManager by lazy { ComicSourceManager.getInstance(context) }
+
     /**
      * 导出全量备份为标准 ZIP / .venera 文件
+     *
+     * @param sourceAccountMode 漫画源账号那一栏打包到什么程度。默认 [SourceAccountMode.NONE]
+     *   —— 包里含登录凭据，**只有用户明确勾选才装进去**，不能让一次顺手点"导出"静默
+     *   把全部源的账密与 token 写进一份会被随手分享出去的文件。
+     * @param targetFile 落点；默认写应用私有 cache。
      */
-    suspend fun exportBackup(targetFile: File? = null): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun exportBackup(
+        targetFile: File? = null,
+        sourceAccountMode: SourceAccountMode = SourceAccountMode.NONE,
+    ): Result<File> = withContext(Dispatchers.IO) {
         try {
             val db = core.reader()
             val outDir = CacheDirs.inCache(context.cacheDir, CacheDirs.BACKUPS)
@@ -128,8 +154,10 @@ class BackupManager private constructor(private val context: Context) {
             // 一次取快照：打包期间用户又点了颗心，不该让 meta 的计数与包里的内容对不上。
             val followsSnapshot = galleryFollows.follows.value
             val galleryFavoritesSnapshot = galleryFavorites.favorites.value
+            val sourceAccountsJson = exportSourceAccounts(sourceAccountMode)
 
-            // 键序就是改造前逐次 put 的顺序，一个都没动（这份 JSON 要跨端、跨版本读）。
+            // 键序就是改造前逐次 put 的顺序，一个都没动（这份 JSON 要跨端、跨版本读）；
+            // 新增的计数一律**追加在末尾**，中间插一个键就会让所有历史锚点用例失真。
             val metaJson = jsonObject(
                 listOf(
                     "version" to FavoriteBackupRows.CURRENT_VERSION,
@@ -143,6 +171,7 @@ class BackupManager private constructor(private val context: Context) {
                     "imageFavoriteCount" to imageFavoritesJson.size(),
                     "galleryFollowCount" to followsSnapshot.size,
                     "galleryFavoriteCount" to galleryFavoritesSnapshot.size,
+                    SourceAccountBackup.META_COUNT_KEY to (sourceAccountsJson?.size() ?: 0),
                 )
             )
 
@@ -156,6 +185,11 @@ class BackupManager private constructor(private val context: Context) {
                 addJsonEntry(zos, IMAGE_FAVORITES_JSON, imageFavoritesJson.toString())
                 addJsonEntry(zos, GALLERY_FOLLOWS_JSON, GalleryBackupRows.encodeFollows(followsSnapshot))
                 addJsonEntry(zos, GALLERY_FAVORITES_JSON, GalleryBackupRows.encodeFavorites(galleryFavoritesSnapshot))
+                // 没勾选就不写这个 member（而不是写一个空数组）：归档里"没有这一栏"
+                // 与"这一栏是空的"必须分得开，否则导入侧无从判断该不该清本机的登录态。
+                if (sourceAccountsJson != null) {
+                    addJsonEntry(zos, SourceAccountBackup.MEMBER, sourceAccountsJson.toString())
+                }
             }
 
             Result.success(backupFile)
@@ -188,12 +222,16 @@ class BackupManager private constructor(private val context: Context) {
             // 所以这里交原文、不转 JsonArray —— 少一层列名映射就少一处能各自漂移的地方。
             val galleryFollowsJson = readText(zip, GALLERY_FOLLOWS_JSON)
             val galleryFavoritesJson = readText(zip, GALLERY_FAVORITES_JSON)
+            // 账号那一栏：缺 member（没勾选导出，或 v6 之前的归档）⇒ null，
+            // 与"有这一栏但是空数组"分得开 —— 后者是"明确导出了、一个源都没有"。
+            val sourceAccountsJson = readText(zip, SourceAccountBackup.MEMBER)
             val timestamp = readTimestamp(zip)
             zip.close()
 
             // 解析全部留在动库之前：画廊那两份解不开就抛，一笔库都不会被写过。
             val incomingFollows = GalleryBackupRows.decodeFollows(galleryFollowsJson)
             val incomingGalleryFavorites = GalleryBackupRows.decodeFavorites(galleryFavoritesJson)
+            val incomingSourceAccounts = SourceAccountBackup.decode(sourceAccountsJson)
             val incomingImageFavorites = buildList {
                 for (i in 0 until imageFavoriteRows.size()) {
                     ImageFavoriteBackupRows.fromMap(asMap(imageFavoriteRows.objectAt(i)))?.let { add(it) }
@@ -224,12 +262,21 @@ class BackupManager private constructor(private val context: Context) {
             // 6. 画廊两块：写 store 单例，收藏页与首页那排入口当帧就看见，不需要重启
             val galleryFollowCount = galleryFollows.restore(incomingFollows)
             val galleryFavoriteCount = galleryFavorites.restore(incomingGalleryFavorites)
+            // 7. 漫画源账号与设置：只写数据档，**不装源脚本**（见 SourceAccountBackup 的文件头）
+            val sourceAccountOutcome = restoreSourceAccounts(incomingSourceAccounts)
             Log.i(
                 tag,
                 "导入完成：$folderCount 个收藏夹 / $favoriteCount 本漫画收藏 / $imageFavoriteCount 张插图收藏 / " +
                     "$galleryFavoriteCount 条画廊收藏 / $galleryFollowCount 位关注画师 / " +
                     "跳过 $guardSkipped 条写法有误的屏蔽规则",
             )
+            if (sourceAccountsJson != null) {
+                Log.i(
+                    tag,
+                    "源账号：恢复 ${sourceAccountOutcome.count} 个源，" +
+                        "跳过 ${sourceAccountOutcome.skipped} 个（本机未装该源）",
+                )
+            }
 
             Result.success(
                 BackupSummary(
@@ -243,6 +290,8 @@ class BackupManager private constructor(private val context: Context) {
                     imageFavoriteCount = imageFavoriteCount,
                     galleryFavoriteCount = galleryFavoriteCount,
                     galleryFollowCount = galleryFollowCount,
+                    sourceAccountCount = sourceAccountOutcome.count,
+                    sourceAccountSkipped = sourceAccountOutcome.skipped,
                 )
             )
         } catch (e: Exception) {
@@ -282,6 +331,109 @@ class BackupManager private constructor(private val context: Context) {
      */
     private suspend fun exportImageFavorites(): JsonArray =
         jsonArray(favoriteImagesManager.exportBackupRows().map { ImageFavoriteBackupRows.toMap(it) })
+
+    // endregion
+
+    // region ---- 漫画源账号与设置 ----
+
+    /**
+     * 打包漫画源那一栏。
+     *
+     * [SourceAccountMode.NONE] ⇒ **返回 null，整个 member 不写进归档**。
+     * 这一条是安全判据而不是省字节：包里含账密与 token，而归档本身是一份用户会随手
+     * 分享出去的文件。"没勾选"必须表现为"包里根本没有这一栏"，不能是"有一栏但是空的"，
+     * 否则导入侧无法区分"这次没导出账号"与"导出时一个源都没登录"。
+     *
+     * 只带**已安装源**的数据档：`comic_source` 目录里可能有已卸载源的残留 `.data`
+     * （`deleteSource` 会删，但历史版本或异常路径留下的不保证清干净），带上它们
+     * 就是恢复一批指向不存在脚本的幽灵登录态。以元数据为准，不看目录。
+     *
+     * **单个源读不出来只跳过它，不让整包导出失败**。账号这一栏是附属物 ——
+     * 历史/收藏/统计那九栏才是主体。一个源的 `.data` 档权限坏掉、被外部进程删到一半、
+     * 或内容不是合法 JSON，都不该让用户"什么都导不出来"。（真机上就踩过一次：
+     * 从没存过数据的源被判成"文件不存在"而抛 ENOENT，整个导出直接失败。）
+     */
+    private suspend fun exportSourceAccounts(mode: SourceAccountMode): JsonArray? {
+        if (mode == SourceAccountMode.NONE) return null
+        val kind = if (mode == SourceAccountMode.ACCOUNT_ONLY) {
+            SourceAccountBackup.Kind.ACCOUNT_ONLY
+        } else {
+            SourceAccountBackup.Kind.ALL
+        }
+        return withContext(Dispatchers.IO) {
+            val rows = sourceManager.installedMetaSnapshot().mapNotNull { meta ->
+                val raw = runCatching { sourceManager.sourceDataFileText(meta.key) }
+                    .onFailure { Log.w(tag, "读取源 ${meta.key} 的账号档失败，这一栏跳过该源", it) }
+                    .getOrNull()
+                val data = SourceAccountBackup.filterData(
+                    SourceAccountBackup.decodeSourceData(raw),
+                    kind,
+                )
+                // 只导出账号时，"没有账号"的源不进包 —— 否则一栏里全是空行，
+                // 用户无从判断到底带走了几个登录态。
+                if (mode == SourceAccountMode.ACCOUNT_ONLY && data.isEmpty()) {
+                    return@mapNotNull null
+                }
+                SourceAccountBackup.Row(
+                    fileName = meta.fileName,
+                    key = meta.key,
+                    name = meta.name,
+                    version = meta.version,
+                    enabled = meta.enabled,
+                    pinned = meta.pinned,
+                    data = data,
+                )
+            }
+            SourceAccountBackup.encode(rows)
+        }
+    }
+
+    /**
+     * 恢复账号与源设置。返回**实际恢复了数据的源数**，以及因本机没装该源而跳过的源数。
+     *
+     * 口径与收藏/历史那两路一致，是**逐源合并**而非整目录覆盖：
+     * - 本机没装这个源 ⇒ 跳过并计数。**不装脚本**（脚本可从仓库重装，见 [SourceAccountBackup]），
+     *   硬塞一份只有账号、没有脚本的数据档只会变成读不到的垃圾；这个数必须报到屏上，
+     *   否则用户会以为"导入成功但登录态没回来"是备份坏了。
+     * - 本机装了 ⇒ 只覆盖归档里**带了的那些键**，没带的（源自己的其它本地状态）保持不动。
+     *   整份 `.data` 覆盖会连带把本机上更新的字段抹回归档时的旧值。
+     */
+    private suspend fun restoreSourceAccounts(rows: List<SourceAccountBackup.Row>): SourceAccountOutcome =
+        withContext(Dispatchers.IO) {
+            if (rows.isEmpty()) return@withContext SourceAccountOutcome(0, 0)
+            val installed = managerMetaByFile()
+            var restored = 0
+            var skipped = 0
+            for (row in rows) {
+                val meta = installed[row.fileName]
+                if (meta == null) {
+                    skipped++
+                    continue
+                }
+                // 空 data 的行照样恢复状态位（启用/置顶/展示名）—— 那也是用户的状态。
+                if (row.data.isNotEmpty()) {
+                    sourceManager.restoreSourceData(
+                        key = meta.key,
+                        entries = row.data.entries.map { it.key to it.value },
+                    )
+                }
+                sourceManager.restoreSourceMeta(
+                    fileName = row.fileName,
+                    name = row.name,
+                    enabled = row.enabled,
+                    pinned = row.pinned,
+                )
+                restored++
+            }
+            SourceAccountOutcome(restored, skipped)
+        }
+
+    /** fileName → 元数据。每次导入现取一次，避免和导入过程中被改写的元数据表对不上。 */
+    private fun managerMetaByFile(): Map<String, com.venera.compose.source.InstalledSourceMeta> =
+        sourceManager.installedMetaSnapshot().associateBy { it.fileName }
+
+    /** 恢复结果的两项计数。 */
+    private data class SourceAccountOutcome(val count: Int, val skipped: Int)
 
     /**
      * 建收藏夹 + 恢复顺序 + 恢复网络夹绑定。返回恢复到的收藏夹数量。
@@ -380,4 +532,21 @@ class BackupManager private constructor(private val context: Context) {
             }
         }
     }
+}
+
+/**
+ * 导出时「漫画源账号」那一栏打包到什么程度。
+ *
+ * 三档而非一个布尔：用户实际会做的选择有三种，而"是否连源设置一起搬"与
+ * "要不要把凭据写进这份会被分享出去的文件"是两个独立的问题。
+ */
+enum class SourceAccountMode {
+    /** 不导出（默认）。归档里**没有** `source_accounts.json` 这个 member。 */
+    NONE,
+
+    /** 只导出登录凭据（`account` / `token` / `_cookies` / `_localStorage`），源设置留在本机。 */
+    ACCOUNT_ONLY,
+
+    /** 账号凭据 + 源设置（`settings` 及其它源自存键）整行带走。 */
+    ALL,
 }

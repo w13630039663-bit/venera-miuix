@@ -46,13 +46,26 @@ data class BackupSummary(
     /** 恢复到的画廊收藏条数。 */
     val galleryFavoriteCount: Int,
     /** 恢复到的关注画师数。 */
-    val galleryFollowCount: Int
+    val galleryFollowCount: Int,
+    /**
+     * 恢复了账号数据的漫画源数量（只有勾选了导出账号的归档才可能 > 0）。
+     * 与 [imageFavoriteCount] 同样刻意**不给默认值**：漏传就是静默报成"一个源都没恢复"。
+     */
+    val sourceAccountCount: Int,
+    /**
+     * 归档里带了账号、但本机没装那个源因而跳过的数量。
+     * 不说出来，用户看到的就是"导入成功，但登录态没回来"，只会以为备份是坏的。
+     */
+    val sourceAccountSkipped: Int
 ) {
     /** 跳过要说得出：静默少恢复几条，用户只会以为"屏蔽不知怎么失效了"。 */
     val skippedNotice: String?
         get() = buildList {
             if (guardRulesSkipped > 0) add("另有 $guardRulesSkipped 条屏蔽规则写法有误，没有恢复")
             if (foreignSkipped > 0) add("另有 $foreignSkipped 条来源未知（本机没装该源），没有导入")
+            if (sourceAccountSkipped > 0) {
+                add("另有 $sourceAccountSkipped 个源的账号因本机未安装该源而没有恢复")
+            }
         }.takeIf { it.isNotEmpty() }?.joinToString("；")
 }
 

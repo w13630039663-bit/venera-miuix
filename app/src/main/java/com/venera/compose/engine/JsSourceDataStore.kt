@@ -5,6 +5,22 @@ import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * 源数据档的文件名规则：**`<源 key>.data`**，只有这一条。
+ *
+ * 抽成顶层函数是因为这条规则被**三个**地方需要，而它已经漂移过一次：
+ * 备份那一栏原本按「脚本文件名去扩展名」猜档名（`baozi.js` → `baozi.data`），
+ * 于是 `komiic.js`（key 是 `Komiic`）和 `copy_manga_multi_accounts.js`
+ * （key 是 `copy_manga`）这两个源全部读不到自己的档；更糟的是那条路径在档不存在时
+ * 会回落成一个**同样不存在的** `File`，调用方一 `readText()` 就抛 ENOENT，
+ * 把整个导出一起带崩（真机实测：`baozi.data: open failed: ENOENT`）。
+ *
+ * key 与脚本文件名**经常不同**，这是源协议允许的（`ComicSourceParser` 从脚本里读
+ * `key = "..."`），所以档名只能由 key 决定。
+ */
+fun sourceDataFileName(sourceKey: String): String =
+    "${sourceKey.substringAfterLast('/').substringAfterLast('\\')}.data"
+
 class JsSourceDataStore(private val baseDir: File) {
     init {
         baseDir.mkdirs()
@@ -14,7 +30,7 @@ class JsSourceDataStore(private val baseDir: File) {
 
     private fun getSourceMap(sourceKey: String): MutableMap<String, Any?> {
         return cache.getOrPut(sourceKey) {
-            val file = File(baseDir, "$sourceKey.data")
+            val file = File(baseDir, sourceDataFileName(sourceKey))
             if (file.exists()) {
                 try {
                     val text = file.readText()
@@ -32,7 +48,7 @@ class JsSourceDataStore(private val baseDir: File) {
     private fun persist(sourceKey: String) {
         val map = cache[sourceKey] ?: return
         try {
-            val file = File(baseDir, "$sourceKey.data")
+            val file = File(baseDir, sourceDataFileName(sourceKey))
             file.writeText(gson.toJson(map))
         } catch (e: Exception) {
             EngineLog.e("VeneraJS", "Failed to persist data for source $sourceKey :: ${e.message}")
@@ -130,7 +146,7 @@ class JsSourceDataStore(private val baseDir: File) {
         cache.remove(sourceKey)
         defaultSettings.remove(sourceKey)
         try {
-            File(baseDir, "$sourceKey.data").delete()
+            File(baseDir, sourceDataFileName(sourceKey)).delete()
         } catch (e: Exception) {
             EngineLog.w("VeneraJS", "Failed to delete data file for source $sourceKey :: ${e.message}")
         }

@@ -26,6 +26,8 @@ class BackupTransfersResultTextTest {
         imageFavorites: Int = 0,
         galleryFavorites: Int = 0,
         galleryFollows: Int = 0,
+        sourceAccounts: Int = 0,
+        sourceAccountsSkipped: Int = 0,
     ) = BackupSummary(
         historyCount = history,
         favoriteCount = favorite,
@@ -39,6 +41,8 @@ class BackupTransfersResultTextTest {
         imageFavoriteCount = imageFavorites,
         galleryFavoriteCount = galleryFavorites,
         galleryFollowCount = galleryFollows,
+        sourceAccountCount = sourceAccounts,
+        sourceAccountSkipped = sourceAccountsSkipped,
     )
 
     @Test
@@ -59,6 +63,7 @@ class BackupTransfersResultTextTest {
         assertFalse(text, text.contains("插图收藏"))
         assertFalse(text, text.contains("画廊收藏"))
         assertFalse(text, text.contains("关注画师"))
+        assertFalse(text, text.contains("漫画源账号"))
     }
 
     @Test
@@ -99,5 +104,31 @@ class BackupTransfersResultTextTest {
         val text = BackupTransfers.describeResult(summary(guardSkipped = 2, foreignSkipped = 3))
         assertTrue(text, text.contains("2 条屏蔽规则写法有误"))
         assertTrue(text, text.contains("3 条来源未知"))
+    }
+
+    @Test
+    fun `恢复了几个源的账号必须报出来`() {
+        // 不说出来，用户没法判断这份包到底带没带登录态 ——
+        // 这一栏默认不进包，所以"0 个源"是常态而非异常，更不能编一句"已恢复"。
+        val text = BackupTransfers.describeResult(summary(sourceAccounts = 4))
+        assertTrue(text, text.contains("漫画源账号 4 个"))
+        // 顺带说明前提：本机没装的源恢复不了，用户才不会以为备份坏了。
+        assertTrue(text, text.contains("本机已装该源才恢复"))
+    }
+
+    @Test
+    fun `因本机未装该源而跳过的账号要说得出`() {
+        val text = BackupTransfers.describeResult(summary(sourceAccounts = 2, sourceAccountsSkipped = 3))
+        assertTrue(text, text.contains("漫画源账号 2 个"))
+        assertTrue(text, text.contains("另有 3 个源的账号因本机未安装该源而没有恢复"))
+    }
+
+    @Test
+    fun `账号跳过与屏蔽规则跳过互不顶掉`() {
+        val text = BackupTransfers.describeResult(
+            summary(guardSkipped = 1, sourceAccountsSkipped = 2)
+        )
+        assertTrue(text, text.contains("1 条屏蔽规则写法有误"))
+        assertTrue(text, text.contains("2 个源的账号"))
     }
 }

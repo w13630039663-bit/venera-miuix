@@ -48,8 +48,13 @@ class WebDavSyncManager private constructor(private val context: Context) {
 
     /**
      * 上传当前数据到 WebDAV 云端
+     *
+     * @param sourceAccountMode 漫画源账号那一栏打包程度，默认不导出
+     *   （云端那份归档同样是一份会被下载到别处、被别的东西读到的文件）。
      */
-    suspend fun uploadToWebDav(): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun uploadToWebDav(
+        sourceAccountMode: SourceAccountMode = SourceAccountMode.NONE,
+    ): Result<String> = withContext(Dispatchers.IO) {
         val config = getConfig()
         if (config.serverUrl.isBlank()) {
             return@withContext Result.failure(Exception("请先在设置中配置 WebDAV 服务器地址"))
@@ -62,7 +67,7 @@ class WebDavSyncManager private constructor(private val context: Context) {
         }
 
         // 1. 本地生成备份
-        val backupRes = backupManager.exportBackup()
+        val backupRes = backupManager.exportBackup(sourceAccountMode = sourceAccountMode)
         if (backupRes.isFailure) {
             return@withContext Result.failure(backupRes.exceptionOrNull() ?: Exception("生成备份失败"))
         }

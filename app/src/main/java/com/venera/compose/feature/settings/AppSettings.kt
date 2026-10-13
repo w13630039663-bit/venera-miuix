@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.sync.BackupTransfers
+import com.venera.compose.sync.SourceAccountMode
 import com.venera.compose.data.api.NetworkPreferences
 import com.venera.compose.data.api.BusinessPorts
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,10 @@ fun AppSettings(
     var pendingGrantPath by remember { mutableStateOf<String?>(null) }
     var showGrantPrompt by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+
+    // 导出时「漫画源账号」打包到哪一档。默认不导出 —— 包里含账密与 token，
+    // 而归档是一份用户会随手分享出去的文件，不能让一次顺手点"导出"把它写进去。
+    var sourceAccountMode by remember { mutableStateOf(SourceAccountMode.NONE) }
 
     fun askMigration(target: String, counts: Pair<Int, Int>) {
         pendingCounts = counts
@@ -123,7 +128,9 @@ fun AppSettings(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             busy = true
-            val res = withContext(Dispatchers.IO) { BackupTransfers.exportBackupTo(context, uri) }
+            val res = withContext(Dispatchers.IO) {
+                BackupTransfers.exportBackupTo(context, uri, sourceAccountMode)
+            }
             busy = false
             res.onSuccess { Toast.makeText(context, "已导出到 $it", Toast.LENGTH_LONG).show() }
                 .onFailure { Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_LONG).show() }
@@ -209,11 +216,32 @@ fun AppSettings(
                     }
                 },
             )
-            // 覆盖面以 BackupManager 类注释那张表为准（九个成员），文案不许超过它。
+            // 覆盖面以 BackupManager 类注释那张表为准（十个成员），文案不许超过它。
+            SettingsSelect(
+                title = "导出内容 · 漫画源账号",
+                value = sourceAccountMode.name,
+                options = listOf(
+                    SourceAccountMode.NONE.name to "不导出（默认）",
+                    SourceAccountMode.ACCOUNT_ONLY.name to "只导出登录状态",
+                    SourceAccountMode.ALL.name to "登录状态 + 源内设置",
+                ),
+                onSelected = { name ->
+                    sourceAccountMode = SourceAccountMode.entries.firstOrNull { it.name == name }
+                        ?: SourceAccountMode.NONE
+                },
+                summary = "可选择是否把各漫画源的登录状态与源内设置一并写入备份。" +
+                    "导入时只补齐本机尚未安装的源，已装源不动；" +
+                    "登录凭据会以明文出现在备份文件里，请不要把备份文件发给他人。",
+            )
             SettingsAction(
                 "导出数据",
                 "自己选保存位置。导出阅读历史、漫画收藏、画廊收藏与关注画师、插图收藏的地址、" +
-                    "阅读统计、屏蔽规则，不包括偏好设置、Cookie、已装的漫画源和收藏里那些图片文件本身",
+                    "阅读统计、屏蔽规则" +
+                    if (sourceAccountMode == SourceAccountMode.NONE) {
+                        "。不含偏好设置、Cookie、已装的漫画源和收藏里那些图片文件本身"
+                    } else {
+                        "、以及按上面所选的漫画源账号数据。不含偏好设置、Cookie 与已装的漫画源脚本本身"
+                    },
                 enabled = !busy,
                 onClick = { exportLauncher.launch(BackupTransfers.suggestedFileName()) }
             )

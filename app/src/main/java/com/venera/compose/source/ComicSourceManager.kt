@@ -1380,6 +1380,72 @@ class ComicSourceManager private constructor(private val context: Context) {
         jsEngine.dataStore.deleteData(key, KEY_LOCAL_STORAGE)
     }
 
+    /* ------------------------------------------------------------------ *
+     * 账号数据档（备份用）
+     * ------------------------------------------------------------------ */
+
+    /**
+     * 读一个源在磁盘上的那份 `.data` 档原文；该源从没存过东西 ⇒ null。
+     *
+     * 档名就是 **`<源 key>.data`**（`JsSourceDataStore` 的命名规则），所以这里只要 key，
+     * 与脚本文件名无关 —— `komiic.js` 的 key 是 `Komiic`，`copy_manga.js` 与
+     * `copy_manga_multi_accounts.js` 共用同一个 `copy_manga.data`，都是这条规则的实例。
+     *
+     * 刻意**读文件**而不是问 [jsEngine] 的 `dataStore`：后者有内存缓存
+     * （`cache[sourceKey]`），而导出要的是"此刻盘上是什么"这一份快照。走缓存会在
+     * 「刚登录、缓存已更新、异步 persist 还没落盘」那一瞬把旧状态导出去。
+     */
+    fun sourceDataFileText(key: String): String? {
+        val file = sourceDataFile(key)
+        if (!file.exists()) return null
+        return runCatching { file.readText() }.getOrNull()
+    }
+
+    /**
+     * 把归档里的一份账号数据写回磁盘，并**同步刷新运行期内存态**。
+     *
+     * 必须走 [JsSourceDataStore.saveData] 那一层而不是直接 `writeText`：`account` 是
+     * `isLogged()` 读的东西，写盘不换内存的话，「导入报成功」与「源里还是没登录」会同时成立，
+     * 要等下次冷启动才看见 —— 与 [com.venera.compose.sync.BackupManager] 顶部记的那次
+     * 收藏事故（写进一张没人读的表）是同一类根因。
+     *
+     * @param key 源的 JS 声明 key（数据档按它命名）
+     * @return 实际写入的顶层键数
+     */
+    fun restoreSourceData(key: String, entries: List<Pair<String, Any?>>): Int {
+        if (key.isBlank() || entries.isEmpty()) return 0
+        var written = 0
+        for ((dataKey, value) in entries) {
+            // "setting" 是引擎的保留键（`saveData` 会拒收），从归档里读回来的也不该例外：
+            // 放它进去只会在下一次 saveSetting 时被覆盖，形成一处永远读不到的脏数据。
+            if (dataKey == "setting") continue
+            jsEngine.dataStore.saveData(key, dataKey, value)
+            written++
+        }
+        return written
+    }
+
+    /** `<数据目录>/<key>.data`；文件名规则与 [JsSourceDataStore] 共用同一个函数。 */
+    private fun sourceDataFile(key: String): File =
+        File(sourceDir, com.venera.compose.engine.sourceDataFileName(key))
+
+    /** 覆盖写入元数据里的启用/置顶状态（导入恢复用；按文件名定位，找不到就跳过）。 */
+    fun restoreSourceMeta(fileName: String, name: String?, enabled: Boolean, pinned: Boolean): Boolean {
+        val meta = readMeta().toMutableList()
+        val idx = meta.indexOfFirst { it.fileName == fileName }
+        if (idx < 0) return false
+        meta[idx] = meta[idx].copy(
+            name = name?.takeIf { it.isNotBlank() } ?: meta[idx].name,
+            enabled = enabled,
+            pinned = pinned,
+        )
+        writeMeta(sortMeta(meta))
+        return true
+    }
+
+    /** 本机已装源的元数据快照（导出用；外部只读，不暴露可变的内部表）。 */
+    fun installedMetaSnapshot(): List<InstalledSourceMeta> = readMeta()
+
     companion object {
         private const val TAG = "ComicSourceManager"
         private const val PREFS_NAME = PreferenceKeys.PREFS_SOURCES

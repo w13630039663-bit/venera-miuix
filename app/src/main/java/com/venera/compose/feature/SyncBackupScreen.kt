@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.venera.compose.sync.BackupManager
 import com.venera.compose.sync.BackupTransfers
+import com.venera.compose.sync.SourceAccountMode
 import com.venera.compose.sync.WebDavConfig
 import com.venera.compose.sync.WebDavFileItem
 import com.venera.compose.sync.WebDavSyncManager
@@ -65,6 +66,9 @@ fun SyncBackupScreen(
 
     var isOperating by remember { mutableStateOf(false) }
     var remoteBackups by remember { mutableStateOf<List<WebDavFileItem>>(emptyList()) }
+
+    // 「立即上传云端」与「导出本地备份」共用这一档。默认不导出账号（包会被分享出去）。
+    var sourceAccountMode by remember { mutableStateOf(SourceAccountMode.NONE) }
 
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
@@ -241,7 +245,7 @@ fun SyncBackupScreen(
                                 onClick = {
                                     scope.launch {
                                         isOperating = true
-                                        val res = syncManager.uploadToWebDav()
+                                        val res = syncManager.uploadToWebDav(sourceAccountMode)
                                         isOperating = false
                                         if (res.isSuccess) {
                                             Toast.makeText(context, res.getOrNull(), Toast.LENGTH_SHORT).show()
@@ -311,14 +315,50 @@ fun SyncBackupScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // 与设置页同一档选择。默认不导出：登录凭据进了包，
+                        // 这份文件就不再适合随手发给别人。
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = "漫画源账号", fontSize = 13.sp)
+                                Text(
+                                    text = "登录凭据会以明文写进备份文件，请勿分享给他人；导入时只补齐本机尚未安装的源",
+                                    fontSize = 10.sp,
+                                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    sourceAccountMode = when (sourceAccountMode) {
+                                        SourceAccountMode.NONE -> SourceAccountMode.ACCOUNT_ONLY
+                                        SourceAccountMode.ACCOUNT_ONLY -> SourceAccountMode.ALL
+                                        SourceAccountMode.ALL -> SourceAccountMode.NONE
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                            ) {
+                                Text(
+                                    text = when (sourceAccountMode) {
+                                        SourceAccountMode.NONE -> "不导出"
+                                        SourceAccountMode.ACCOUNT_ONLY -> "只导登录"
+                                        SourceAccountMode.ALL -> "登录+设置"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = MiuixTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
                                     scope.launch {
                                         isOperating = true
-                                        val res = backupManager.exportBackup()
+                                        val res = backupManager.exportBackup(sourceAccountMode = sourceAccountMode)
                                         isOperating = false
                                         if (res.isSuccess) {
                                             val file = res.getOrNull()!!

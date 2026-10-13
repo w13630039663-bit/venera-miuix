@@ -95,6 +95,10 @@ class ForeignArchiveImport private constructor(private val context: Context) {
             imageFavoriteCount = 0,
             galleryFavoriteCount = 0,
             galleryFollowCount = 0,
+            // 官方 / PicaComic 的账号数据是 SQLite（`cookies.db`）而非本仓的 `<key>.data`，
+            // 形状对不上、也不该跨应用搬凭据（见本文件头部第 2 条），如实报 0 与 0。
+            sourceAccountCount = 0,
+            sourceAccountSkipped = 0,
         )
     }
 
