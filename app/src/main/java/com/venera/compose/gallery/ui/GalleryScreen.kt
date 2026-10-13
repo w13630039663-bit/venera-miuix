@@ -111,6 +111,7 @@ import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GalleryWallFeed
 import com.venera.compose.gallery.domain.SavedWallDepth
 import com.venera.compose.gallery.domain.depthToApply
+import com.venera.compose.gallery.domain.galleryNotices
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -381,6 +382,9 @@ fun GalleryScreen(
                             notice = daily.failures.entries
                                 .joinToString(" · ") { "${it.key.displayName}：${it.value}" }
                                 .takeIf { daily.failures.isNotEmpty() },
+                            // 结构那一份一起交下去（理由见 `GalleryViewModel.failures`）：
+                            // 首行那块提示要按档分色、还要给未配账号那一档挂真入口。
+                            failures = daily.failures,
                             // 原始池一起存下：二级页的「换一批」靠它做**本地**重排（零请求）。
                             pools = daily.pools,
                         )
@@ -1767,25 +1771,6 @@ private fun BoxScope.GalleryCornerPill(text: String, alignment: Alignment) {
 }
 
 /**
- * 只有一站给出内容时的说明条。放在网格首行、跟着滚走，不占固定空间。
- *
- * 颜色刻意不用 textTertiary：这一条是"两站混搭已经退化成单站"的**唯一**可见信号，
- * 灰到看不见就等于没有 —— 用户只会看到"怎么没有 donmai 的图"，而原因就在这一行里。
- */
-@Composable
-private fun GallerySourceNotice(text: String) {
-    val tokens = VeneraTokens
-    Text(
-        text = text,
-        fontSize = tokens.type.caption,
-        color = tokens.color.textSecondary,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(bottom = tokens.spacing.space3),
-    )
-}
-
-/**
  * 页尾那一行「已经到底了」。
  *
  * 样式照搜索页的 `ss-end`（overline + textTertiary + 居中），不另造口径。
@@ -1844,6 +1829,14 @@ internal fun GalleryDailyPage(
     wall: GalleryWall,
     date: String,
     sourceNotice: String?,
+    /**
+     * 「这一轮哪几站没给内容、各是什么原因」，**按站一份**。
+     *
+     * 与 [sourceNotice] 并存而不是替掉它：那个串仍供下面**空态**那整段说明用
+     * （它要把缺席与"这一轮没货"念在同一段里），而首行那块提示吃结构
+     * （要按档分色、还要给未配账号那一档挂真入口，理由见 `GalleryViewModel.failures`）。
+     */
+    failures: Map<GallerySite, String>,
     isLoading: Boolean,
     error: String?,
     imageLoader: ImageLoader,
@@ -1944,7 +1937,16 @@ internal fun GalleryDailyPage(
             header = {
                 // 槽位**恒在**（理由见 [GalleryCardsGrid] 的 header 注释）：有没有话由内部判。
                 // 只有一站给上内容时把缺的那站说出来 —— 静默退化成单源最难被发现。
-                sourceNotice?.let { notice -> GallerySourceNotice(notice) }
+                //
+                // 2026-10-12 改造：从"一行灰字"换成按档分块的提示组件。
+                // 未配账号那一档带一枚「去配置账号」（真能到 设置 → 画廊），
+                // 出错那一档带「重试」—— 重试走 `onRetry`（= 顶栏那枚「换一批」同一条路径：
+                // 先清熔断再真取），直接调 refresh 撞上 60s 熔断窗口时是一枚假按钮。
+                GalleryNotices(
+                    notices = remember(failures) { galleryNotices(failures) },
+                    onRetry = onRetry,
+                    modifier = Modifier.padding(bottom = tokens.spacing.space3),
+                )
             },
             footer = if (hasPosts) {
                 @Composable { GalleryFeedEnd(wall, date) }

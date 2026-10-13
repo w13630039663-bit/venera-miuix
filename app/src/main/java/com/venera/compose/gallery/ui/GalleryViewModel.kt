@@ -13,8 +13,10 @@ import com.venera.compose.gallery.data.GalleryFeedCache
 import com.venera.compose.gallery.data.GalleryFeedSnapshot
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.bySite
 import com.venera.compose.gallery.data.toFavorite
 import com.venera.compose.gallery.data.toPost
+import com.venera.compose.gallery.data.toSiteRows
 import com.venera.compose.gallery.domain.GalleryFeedRefreshPolicy
 import com.venera.compose.gallery.domain.GalleryMerge
 import java.time.LocalDate
@@ -73,8 +75,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      *
      * 双源混合静默退化成单源，是这一屏最容易被"看起来正常"糊过去的一种错 ——
      * 所以要占页面一条可见的位置，而不是只写日志。
+     *
+     * ⚠️ 这一串仍供**空态**那整段说明用（它要把缺席与"这一轮没货"念在同一段里）；
+     * 网格首行那块提示改吃 [failures] 的结构（见那处的理由）。
      */
     var sourceNotice by mutableStateOf<String?>(null)
+
+    /**
+     * 「这一轮哪几站没给内容、各是什么原因」，**按站一份**。
+     *
+     * 与 [sourceNotice] 是同一份事实的两种形状：那个是拼好的显示串，这个是结构。
+     * 提示块要按档分色、还要给未配账号那一档挂一枚真能到配置页的按钮 ——
+     * 从一个 `站：原因 · 站：原因` 的串里反解结构只能靠猜关键词，猜错不报错、
+     * 只在屏上换个颜色，所以结构必须在发车那一处就留住。
+     */
+    var failures by mutableStateOf<Map<GallerySite, String>>(emptyMap())
+        internal set
 
     /**
      * 手动刷新计数：参与 [feedLoadedKey] 的比对口径。
@@ -110,6 +126,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             posts = snapshot.posts.mapNotNull { fav -> fav.site?.let { fav.toPost(it) } }
             date = snapshot.date
             sourceNotice = snapshot.notice
+            failures = snapshot.failures.bySite()
             cachedOnEpochDay = snapshot.savedEpochDay
             hydratedFromCache = posts.isNotEmpty()
         }
@@ -132,17 +149,32 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         pools = emptyMap()
         date = ""
         sourceNotice = null
+        failures = emptyMap()
         feedLoadedKey = null
         // 用户明确要"换一批"：缓存那一屏当场作废，下一次判断必须放行去取。
         hydratedFromCache = false
         cachedOnEpochDay = null
     }
 
-    /** 收下本轮产出（整屏替换，不是追加 —— 日榜只有一轮）。 */
-    fun accept(list: List<GalleryPost>, day: String, notice: String?, pools: Map<GallerySite, List<GalleryPost>>) {
+    /**
+     * 收下本轮产出（整屏替换，不是追加 —— 日榜只有一轮）。
+     *
+     * @param failures 这一轮没给内容的站及原因，**按站一份**（与 [notice] 是同一份事实的
+     *   两种形状，理由见 [GalleryViewModel.failures]）。它要进快照：冷启动铺缓存那一屏时
+     *   提示块仍要按档上屏、仍要给"去配置账号"那枚按钮 —— 不存的话，重开应用那块提示
+     *   整个消失，用户读到的是"这次三站都好了"。
+     */
+    fun accept(
+        list: List<GalleryPost>,
+        day: String,
+        notice: String?,
+        pools: Map<GallerySite, List<GalleryPost>>,
+        failures: Map<GallerySite, String> = emptyMap(),
+    ) {
         posts = list
         date = day
         sourceNotice = notice
+        this.failures = failures
         this.pools = pools
         hydratedFromCache = false
         cachedOnEpochDay = null
@@ -152,6 +184,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             savedEpochDay = LocalDate.now(ZoneOffset.UTC).toEpochDay(),
             date = day,
             notice = notice,
+            failures = failures.toSiteRows(),
             posts = list.map { it.toFavorite() },
         )
         viewModelScope.launch { GalleryFeedCache.write(app, snapshot) }

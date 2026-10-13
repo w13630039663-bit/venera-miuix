@@ -137,6 +137,23 @@ data class VeneraSpacingTokens(
      */
     val artistHeroHeight: Dp = 196.dp,
     /**
+     * 宽屏档（>600dp）的画师 hero 高度。
+     *
+     * 为什么需要第二档（2026-10-12 平板排查）：[artistHeroHeight] 是照 393dp 手机屏量的
+     * （「屏宽 − 两边各 16dp」≈ 361dp 宽 × 196dp 高，约 1.83:1）。宽窗下 hero 仍
+     * `fillMaxWidth()` 而高度不变 ⇒ 1891dp 的平板上被拉成 **9.6:1** 的一条扁带，
+     * 头像与画师名挤在左下角、整块读不出主视觉（用户截图直接报「显示不合理」）。
+     *
+     * 取 280dp：宽窗下 hero 与正文同受 [com.venera.compose.components.contentMaxWidthFor]
+     * 收口（Medium 720dp / Expanded 840dp），720 ÷ 280 ≈ **2.57:1**，
+     * 与手机档的 1.83:1 同一族，不再是被拉长的扁条。
+     *
+     * ⚠️ 与 [artistHeroHeight] 一样**由断点驱动、不由底图比例驱动** ——
+     * 那条约束的理由（底图随时可能缺档/换图，跟着图变会让整页在取数前后跳一次）在宽屏同样成立，
+     * 所以这里给的是第二个定值，不是 aspectRatio。
+     */
+    val artistHeroHeightWide: Dp = 280.dp,
+    /**
      * 画师介绍页 hero 底图的**模糊核半径**。
      *
      * 10dp（2026-10-01 用户报「hero 底图感觉有点模糊过头了」）。这是**模糊核的参数，

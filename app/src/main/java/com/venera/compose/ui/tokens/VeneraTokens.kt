@@ -229,6 +229,18 @@ fun buildVeneraColorTokens(
     secondaryContainer = m.secondaryContainer,
     onSecondaryContainer = m.onSecondaryContainer,
 
+    // 错误对：四枚**直取** MD3 色板，不做任何派生。
+    // 唯一能想到的"派生"是把 errorContainer 按 alpha 压淡，而那正好会把
+    // "容器色 ↔ onErrorContainer" 这条由色板保证的对比度拆掉（见 Color.kt 那处头注）。
+    error = m.error,
+    onError = m.onError,
+    errorContainer = m.errorContainer,
+    onErrorContainer = m.onErrorContainer,
+
+    // 三级容器对：警告档的底色（理由见 Color.kt 那处头注）。同样直取、不派生。
+    tertiaryContainer = m.tertiaryContainer,
+    onTertiaryContainer = m.onTertiaryContainer,
+
     outline = m.outline,
     outlineVariant = m.outlineVariant,
     divider = m.outlineVariant,

@@ -62,6 +62,27 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
         const val ALL_LABEL = "全部"
 
         /**
+         * Gelbooru 没配账号时给用户看的那句话，**标题那一半**（"是什么事"）。
+         *
+         * 拆两半是为了让提示组件有层级（标题一行说"是什么事"、正文一段说"怎么办"），
+         * 而**整句一个字都没变** —— [NEEDS_ACCOUNT_REASON] 仍是这两半的拼接。
+         *
+         * ⚠️ 提示块上屏时**只摆标题 + [NEEDS_ACCOUNT_BODY]**，不再摆整句：
+         * 整句里含标题，两行一起摆就是"同一件事说两遍"（2026-10-13 真机截图上读出来的）。
+         * 页面别处（空态标题、`searchError`）仍用整句，那份口径没动。
+         */
+        const val NEEDS_ACCOUNT_TITLE: String = "Gelbooru 需要先配置账号才能用"
+
+        /**
+         * 同一句话的**正文那一半**（"为什么 + 怎么办"）。拼在标题后面（中间一个全角冒号）
+         * 就是 [NEEDS_ACCOUNT_REASON]。
+         */
+        const val NEEDS_ACCOUNT_BODY: String =
+            "它的接口对匿名请求一律拒绝（401）。" +
+                "到「设置 → 画廊」里的「画廊站点账号」卡中填 User ID 与 API Key 即可；" +
+                "yande.re 不受影响，照常能搜。"
+
+        /**
          * Gelbooru 没配账号时给用户看的那句话。**这一份是唯一来源**，
          * ViewModel 那边只是别名 —— 两处各写一份就会长成"空态标题与页尾读数对不上"。
          *
@@ -71,11 +92,13 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
          * - **指出在哪儿配**（设置 → 画廊 那张账号卡）—— 只说"需要账号"等于把问题丢回给用户去找入口；
          * - **不说 yande.re 也受影响**：这一站挂了不影响另一站，说清边界，
          *   否则用户会以为整个画廊都瘫了。
+         *
+         * ⚠️ 这句话**必须仍以 [NEEDS_ACCOUNT_TITLE] 起头**：
+         * `galleryNotices` 那一层就是按这个前缀判它属于"警告"档的（而不是拿"账号"二字猜）。
+         * 改措辞时两半一起改，别只动正文。
          */
         const val NEEDS_ACCOUNT_REASON: String =
-            "Gelbooru 需要先配置账号才能用：它的接口对匿名请求一律拒绝（401）。" +
-                "到「设置 → 画廊」里的「画廊站点账号」卡中填 User ID 与 API Key 即可；" +
-                "yande.re 不受影响，照常能搜。"
+            NEEDS_ACCOUNT_TITLE + "：" + NEEDS_ACCOUNT_BODY
 
         /** 两站都打。顺序恒为站表序。 */
         val ALL = GallerySearchSource(GallerySite.entries.toList())

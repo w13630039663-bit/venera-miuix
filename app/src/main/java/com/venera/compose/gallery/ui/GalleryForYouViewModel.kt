@@ -28,6 +28,7 @@ import com.venera.compose.gallery.domain.GalleryRecommendation
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.noRecommendTagsReason
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
@@ -478,7 +479,10 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
 
     private suspend fun leg(site: GallerySite, nextPage: Int, query: String?): Leg {
         if (query == null) {
-            return Leg(site, reason = "${site.displayName}这一站还没有能推荐的标签")
+            // 那句文案的**唯一来源**在 domain（`noRecommendTagsReason`）：归类那一层要按它
+            // 认出"这一档不是出错"，而 domain 不许 import ui —— 两处各写一份的后果是
+            // 这句掉进"未知原因"那一档，屏上给出一枚按下去没用的「重试」。
+            return Leg(site, reason = noRecommendTagsReason(site))
         }
         if (site == GallerySite.GELBOORU && !gelbooruConfigured) {
             // 发车前就拦住：它的 DAPI 匿名一律 401，发出去只是让用户等一轮网络再读一句凭据错误 ——

@@ -22,6 +22,18 @@ data class GalleryFeedSnapshot(
     @SerialName("saved_epoch_day") val savedEpochDay: Long = 0L,
     @SerialName("date") val date: String = "",
     @SerialName("notice") val notice: String? = null,
+    /**
+     * 「这一轮哪几站没给内容、各是什么原因」，**按站一份**。
+     *
+     * 为什么不能只留 [notice] 那个拼好的串：提示块要按"未配账号 / 出错 / 本来没货"三档分开上屏，
+     * 还要给未配账号那一档挂一枚「去配置账号」—— 而从一个 `站：原因 · 站：原因` 的
+     * 显示串里反解出结构，只能靠关键词猜。**猜错不报错，只在屏上换一个颜色、少一个按钮**，
+     * 正是最难查的那一类。所以结构在这一层就留住，与 `GalleryForYouSnapshot.failures` 同一形状。
+     *
+     * [notice] 保留不删：空态那句整段说明仍在用它，且旧档里只有它（读回来是空表，
+     * 屏上少一个提示块、不会错）—— 这条兼容路径**只退化成少一块**，不会退化成假读数。
+     */
+    @SerialName("failures") val failures: List<GalleryForYouSiteRow> = emptyList(),
     @SerialName("posts") val posts: List<GalleryFavorite> = emptyList(),
 )
 

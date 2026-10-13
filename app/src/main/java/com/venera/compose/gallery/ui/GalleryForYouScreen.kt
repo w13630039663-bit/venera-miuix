@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -24,6 +25,7 @@ import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.domain.galleryNotices
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
@@ -135,17 +137,24 @@ internal fun GalleryForYouPage(
                     // 常驻 chrome（搜索入口条 + 来源分段器）是**内容的第一行**：
                     // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
                     chrome?.invoke()
+                    // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──
+                    //
                     // 槽位恒在、判空在内部（理由见 [GalleryCardsGrid] 的 header 注释）。
                     // 少了一站必须占一条**可见**的位置：两站混摆静默退化成单源，
-                    // 用户只会看到"怎么没有另一站的图"，而原因就在这一行里。
-                    fvm.failures.takeIf { it.isNotEmpty() }?.let { failures ->
-                        Text(
-                            text = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" },
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.textSecondary,
-                            modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.space3),
-                        )
-                    }
+                    // 用户只会看到"怎么没有另一站的图"，而原因就在这一块里。
+                    //
+                    // 从前这里是**一行灰字**（`站：原因 · 站：原因`），三类处境同一张脸、
+                    // 且一个能按的东西都没有。现在按档分块：未配账号那一档带一枚
+                    // 「去配置账号」（真能到设置 → 画廊），出错那一档带「重试」。
+                    //
+                    // ⚠️ 重试走 `onRetry`（= 首页那枚「换一批」同一条路径：先清熔断再置 force）：
+                    // 直接调 `fvm.refresh()` 撞上 60s 熔断窗口时，按下去必然还是同一句
+                    // "熔断中" —— 那是一枚假按钮。
+                    GalleryNotices(
+                        notices = remember(fvm.failures) { galleryNotices(fvm.failures) },
+                        onRetry = onRetry,
+                        modifier = Modifier.padding(top = tokens.spacing.space3),
+                    )
                 }
             },
             sections = sections,

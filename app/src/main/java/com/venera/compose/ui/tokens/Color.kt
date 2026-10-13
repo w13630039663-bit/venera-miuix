@@ -53,6 +53,41 @@ data class VeneraColorTokens(
     val secondaryContainer: Color,
     val onSecondaryContainer: Color,
 
+    /**
+     * 错误对（MD3 `error` / `onError` / `errorContainer` / `onErrorContainer`）。
+     *
+     * ── 为什么现在才摆上来 ──
+     *
+     * 此前页面里要"红一下"只能绕道：[actionLike] 借了 `m.error`，而提示类文字
+     * （画廊各面墙的缺席读数、搜索卡里那几行）一律退到 `textSecondary` ——
+     * 于是"这一站没答上"与"换过画师名"在屏上是**同一种灰**，只能靠读字分辨。
+     *
+     * ── 为什么是容器对而不是只加一枚 [error] ──
+     *
+     * 提示组件的底板要是**色块**（见 `VeneraNotice`），块上压着标题与正文两行字。
+     * 只有前景色的话，块底就得由调用方自己拿 `error.copy(alpha = …)` 凑 ——
+     * 那正是 MD3 用 `errorContainer` 这一档要避免的事：手调 alpha 出的底，
+     * 在动态取色下与文字色的对比度没有任何保证。
+     *
+     * ⚠️ 两套主题都桥得上（`ThemeColorBridge` 双向映射了这四个槽位），所以页面只认槽位。
+     */
+    val error: Color,
+    val onError: Color,
+    val errorContainer: Color,
+    val onErrorContainer: Color,
+
+    /**
+     * 三级容器对（MD3 `tertiaryContainer` / `onTertiaryContainer`）。
+     *
+     * 用途是 [VeneraNotice] 的**警告**档：MD3 没有 warning 槽位，而"需要留意但不是错误"
+     * 这一档在规范里落在 tertiary 上（它刻意与 primary 分开，正是为了不跟"主行动"抢意思）。
+     *
+     * ⚠️ 不拿 [secondaryContainer] 顶替：那一档已经是 filter chip 的**选中态**底色，
+     * 一枚选中的筛选条件与一条警告共用一个色，屏上就分不出"我选了它"和"这里出事了"。
+     */
+    val tertiaryContainer: Color,
+    val onTertiaryContainer: Color,
+
     // 分隔与描边
     val outline: Color,
     /**

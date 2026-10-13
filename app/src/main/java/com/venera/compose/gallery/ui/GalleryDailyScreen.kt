@@ -133,6 +133,7 @@ internal fun GalleryDailyScreen(
                 wall = wall,
                 date = vm.date,
                 sourceNotice = vm.sourceNotice,
+                failures = vm.failures,
                 isLoading = vm.isLoadingFeed,
                 error = vm.feedError,
                 imageLoader = imageLoader,
@@ -210,6 +211,10 @@ private fun loadDailyFeed(
                         notice = daily.failures.entries
                             .joinToString(" · ") { "${it.key.displayName}：${it.value}" }
                             .takeIf { daily.failures.isNotEmpty() },
+                        // 结构那一份一起交下去：网格首行那块提示按档分色、还要给
+                        // "去配置账号"挂一枚真能到设置页的按钮 —— 从上面那串显示串里
+                        // 反解结构只能靠猜关键词（见 GalleryViewModel.failures 的头注）。
+                        failures = daily.failures,
                         pools = daily.pools,
                     )
                     vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"

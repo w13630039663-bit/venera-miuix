@@ -106,6 +106,7 @@ import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GallerySearchCollapse
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.galleryNotices
 import com.venera.compose.gallery.domain.gallerySourceMarkText
 import com.venera.compose.ui.tokens.GalleryTagCategoryColors
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -690,12 +691,23 @@ fun GallerySearchArea(
                             Spacer(modifier = Modifier.height(tokens.spacing.space3))
                             SearchNoticeLine(it)
                         }
+                        // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──
+                        //
                         // 这一轮有条腿没跑起来 → 卡上就说出来。只写在页尾是不够的：
                         // 展开着卡的人看的是这一块，而"少了一个站的货"必须在他改条件之前就看得见。
-                        svm.legFailureNotice()?.let {
-                            Spacer(modifier = Modifier.height(tokens.spacing.space3))
-                            SearchNoticeLine(it)
-                        }
+                        //
+                        // 从前这里是**一行灰字**（`legFailureNotice()` 拼的那串），三类处境同一张脸。
+                        // 现在按档分块，未配账号那一档带一枚「去配置账号」——那句文案本来就写着
+                        // "到「设置 → 画廊」里去填"，而此前屏上没有任何能按的东西。
+                        //
+                        // ⚠️ 重试走 `svm.runSearch(1)`（第 1 页可打断在途那一笔），
+                        // 不是 `retryLoadMore()`：这里失败的是**第一轮**取数，
+                        // 屏上还没有任何结果，续页那条路的前提不成立。
+                        GalleryNotices(
+                            notices = remember(svm.legFailures) { galleryNotices(svm.legFailures) },
+                            onRetry = { svm.runSearch(1) },
+                            modifier = Modifier.padding(top = tokens.spacing.space3),
+                        )
                         // 换过画师名也要在这儿说：卡上那排胶囊是用户打的**原词**，
                         // 而屏上那面墙已经是另一个人的画了 —— 不在这儿交代，读起来就是"搜错了"。
                         svm.artistAliasNotice?.let {
@@ -966,13 +978,15 @@ private fun RankingChip(
             onClick = { onMenuOpen(true) },
         )
         DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
-            // 这一档摆不摆这一行，问的是**每一条腿**（[GalleryRankings.supportsAll]）：
+            // 这一档摆不摆这一行，问的是**每一条腿**（[GalleryRankings.supportsForApp]）：
             // 「全部」档里 Gelbooru 给不了时间窗，那一档就只剩「默认」与「全部排行」两行。
             // 照第一条腿列六行会出现"胶囊写着周、Gelbooru 那腿交回历年高分"—— 假开关。
             // 本站没有的档**不列出**（2026-09-29 定的口径：原先"留着行但置灰 + 写'本站没有'"，
             // 实际观感是六行里四行点不动，比少两行更烦；变的只是不参与判据的行不再画出来）。
+            // 2026-10-13：这一把换成**移动端那把** —— Gelbooru 的纯本站来源现在多出天/周/月/年四行，
+            // 那四档站方不给、由 id 边界合成（`GelbooruWindowBoundary`），混腿来源照旧不列。
             GalleryRanking.entries
-                .filter { GalleryRankings.supportsAll(svm.source.sites, it) }
+                .filter { GalleryRankings.supportsForApp(svm.source.sites, it) }
                 .forEach { ranking ->
                     val range = GalleryRankings.windowLabel(ranking, todayUtc)
                     DropdownMenuItem(
