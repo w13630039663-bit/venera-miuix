@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.HighQuality
@@ -69,6 +70,11 @@ import top.yukonga.miuix.kmp.basic.Text
  *   外加一条单页地址。原档要先落一次盘，所以它与「下载」同一形态：
  *   进行中把图标换成波浪环并吃掉点击 —— 视频 16~26 MB 那几秒里，
  *   一个没有任何反馈的钮就是"点了没反应"。
+ * - `画笔` —— 把这张图**画成水彩**（2026-10-13 新增）：整屏浮层按
+ *   「纸 → 晕染 → 背景 → 主体 → 细节」的顺序一笔一笔长出来，画成可存可重画。
+ *   **视频条目不摆这一钮**（也留空位不留假钮，与 HD 同一条口径）：
+ *   它没有可画的静帧语义之外的东西 —— 取的是 poster 图，点开画的是那张海报，
+ *   用户在视频上点"画笔"期待的不是这个。
  * - `▶ / ⏸` —— 自动连播的开关（**点**），与这一屏的速度（**长按**展开一条滑条）。
  *   开启时染主色（与 HD 同一约定）。这一颗改的是**本次浏览**的速度，
  *   退出大图页就回到「设置 → 画廊 → 大图页 → 自动连播间隔」那一条的默认值 ——
@@ -91,6 +97,8 @@ fun GalleryViewerToolbar(
     onAutoPlaySecChange: (Int) -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
+    /** 「画成水彩」：整屏浮层把当前这张图按水彩顺序画出来（见文件头注）。 */
+    onPaint: () -> Unit,
     onDownload: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -194,6 +202,20 @@ fun GalleryViewerToolbar(
                         tint = tokens.color.textPrimary,
                     )
                 }
+            }
+            // ── 画成水彩（2026-10-13）──
+            // 视频条目：与 HD 同一条口径 —— 不放一枚点了没意义的钮，放**同尺寸空位**，
+            // 让「关于这张图」与连播两颗在两类内容下停在同一个 x。
+            if (!post.isVideo) {
+                VeneraIconButton(onClick = onPaint) {
+                    Icon(
+                        imageVector = Icons.Outlined.Brush,
+                        contentDescription = "把这张图画成水彩",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.size(VeneraIconButtonTouchSize))
             }
             VeneraIconButton(onClick = onInfo) {
                 Icon(
