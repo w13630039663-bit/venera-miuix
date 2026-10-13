@@ -43,7 +43,7 @@ import top.yukonga.miuix.kmp.basic.Text
  * 所以这一版把两件事分开，各自用不会塌的载体：
  * - **"这是一块"**：[tint] 一层色相洗底 + 一圈 `outlineVariant` 发丝描边。
  *   描边不随主题明暗变，洗底差的是**色相**而不是明度 —— 两者在四档主题里都立得住。
- * - **"这是哪一块"**：节标题前那枚 28dp 的色相徽标（[SheetSectionBadge]）。
+ * - **"这是哪一块"**：节标题**那几个字本身**（2026-10-14 改判，见 [SheetSectionBadge] 头注）。
  *
  * 材质轴照样接：玻璃档开着时块面仍走 [veneraGlassSurface]（关闭档那一句是纯 no-op），
  * 所以"开关玻璃"这件事的观感差异在这一页没有被吃掉。
@@ -78,17 +78,22 @@ internal fun sheetSectionTint(section: GallerySheetSection): Color =
     GallerySheetSectionColors.of(section, LocalVeneraDarkTheme.current)
 
 /**
- * 一块的**节标题**：色相徽标 + 名字（+ 右端一枚只作提示的动作字）。
+ * 一块的**节标题**：中性徽标 + 名字（+ 右端一枚只作提示的动作字）。
  *
  * [onAction] 非空时**整行可点**（「展开全部」/「收起」），右端那句文字本身不带点击 ——
  * 12sp 的四个字只有 48dp 宽，单给它挂点击就是让人拿手指去戳一排小字。
  * 这条口径与上一版一致，没有跟着这次重排改。
+ *
+ * ⚠️ 从前这里有一枚**吃色相的**徽标，四块各一色（靛蓝 / 玫红 / 琥珀 …）。2026-10-14
+ * 手机档截图把它连同平台品牌色、分级色、标签分类色一起量下来是**一屏 6+ 种高饱和色**，
+ * 面积相当、饱和相当，谁也压不住谁 —— 屏上没有视觉锚点。那一轮把彩色只留给**分级**那一枚
+ * （它是这一屏唯一影响"你能看到什么"的字段），节标题改回中性。
+ * 参数 `tint` 一并删掉而不是留着不用：留着一个不生效的取色参数就是假开关。
  */
 @Composable
 internal fun SheetSectionHeader(
     icon: ImageVector,
     title: String,
-    tint: Color,
     action: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
@@ -101,7 +106,7 @@ internal fun SheetSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SheetSectionBadge(icon = icon, tint = tint)
+        SheetSectionBadge(icon = icon)
         Text(
             text = title,
             fontSize = tokens.type.itemTitle,
@@ -128,30 +133,33 @@ internal fun SheetSectionHeader(
 }
 
 /**
- * 节标题前那枚**色相徽标**：28dp 圆角方块，15% 本色底 + 100% 本色字形。
+ * 节标题前那枚**中性徽标**：28dp 圆角方块，`surfaceVariant` 底 + `textTertiary` 字形。
  *
- * 这不是新画法：与设置页那枚 `SectionIconBadge` **逐参数相同**
- * （`badgeSize` / `shape.badge` / `badgeAlpha` / `badgeIconSize` 四个现成 token，一个都没新造），
- * 因为"一屏里的徽标只有一种画法"这件事比"这两页各调各的手感"重要。
+ * 2026-10-14 改判：从前它吃的是这一块自己的色相（四块四色）。同一屏上还有平台品牌色、
+ * 分级色、标签分类色 —— 截图量下来是 6+ 种高饱和色互相压不住，屏上没有锚点。
+ * 去色之后"这是哪一块"由标题那几个字承担（它本来就是 `itemTitle` + semibold，
+ * 而徽标里的字形承担"这块是什么"），色相只留一处：标题行右端那枚**分级**徽标。
+ *
+ * 尺寸与形状仍与设置页那枚 `SectionIconBadge` 同参数（`badgeSize` / `shape.badge` /
+ * `badgeIconSize` 三个现成 token，一个都没新造）—— "一屏里的徽标只有一种画法"这条口径
+ * 管的是**同一屏**，设置页与这一屏不是同一屏，所以那里保留彩色。
  * 两份实现（不共用函数）是**分层**的代价：那一枚在 `feature/settings` 里，
  * 让 `gallery/ui` 去 import 它会把画廊挂到设置域上；换来的只是十几行同形代码。
- *
- * 色相承担"这是哪一块"，字形承担"这块是什么" —— 色盲档下色不成立，字还在。
  */
 @Composable
-internal fun SheetSectionBadge(icon: ImageVector, tint: Color) {
+internal fun SheetSectionBadge(icon: ImageVector) {
     val tokens = VeneraTokens
     Box(
         modifier = Modifier
             .size(tokens.spacing.badgeSize)
             .clip(RoundedCornerShape(tokens.shape.badge))
-            .background(tint.copy(alpha = GallerySheetSectionColors.BadgeAlpha)),
+            .background(tokens.color.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = tint,
+            tint = tokens.color.textTertiary,
             modifier = Modifier.size(tokens.spacing.badgeIconSize),
         )
     }

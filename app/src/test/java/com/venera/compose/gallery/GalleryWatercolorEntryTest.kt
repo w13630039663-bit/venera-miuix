@@ -48,6 +48,19 @@ class GalleryWatercolorEntryTest {
     private fun callLinesStartingWith(text: String, prefix: String): Int =
         text.lines().count { it.trim().startsWith(prefix) }
 
+    /**
+     * 取**某一处调用往后 n 行**那一整段（含实参表与它自己的内容槽位）。
+     *
+     * 为什么不能只看"含不含锚点那一行"：`VeneraButton(` 的四个判点（递的是哪个回调、
+     * 吃没吃 `saving`、吃没吃满整行、标签跟不跟着内容走）**全在它下面那十几行里** ——
+     * 按行匹配的尺子看不见它们，而"把整行主按钮换成一枚小钮"这种回归恰好只改下面那几行。
+     */
+    private fun blockAfter(text: String, anchor: String, n: Int): String =
+        text.lines().let { lines ->
+            val i = lines.indexOfFirst { it.trim().startsWith(anchor) }
+            if (i < 0) error("找不到调用点：$anchor") else lines.subList(i, minOf(i + n, lines.size)).joinToString(" ") { it.trim() }
+        }
+
     /** ① 唯一能证行为的一条：两个否决者各拆各的，四格全喂。 */
     @Test
     fun `入口可见性真值表 开关与视频各有一票否决`() {
@@ -94,24 +107,42 @@ class GalleryWatercolorEntryTest {
     }
 
     /**
-     * ⑤ 它**不许挤进等分那一排**（评审 S2 原话是"与三枚并列"，这条故意反着做并钉住）。
+     * ⑤ 动作条的**三档权重**（2026-10-14 重排：评审里那条 P0"主次倒置"修掉）。
      *
-     * 那一排三格靠 `weight(1f)` 均分、中间两条发丝线。加第 4 格会把其余三格各自挪位
-     * （= 第 8 条那种"按记忆去点却点在空隙里"），而 360dp 上每格只剩约 82dp，
-     * 「在浏览器中打开」要 106dp ⇒ 会被截成省略号 —— Beta 关着的用户也跟着受害。
-     * 尺子取**发丝线的条数**：并列进那一排就会多第三条。
+     * 从前那一排是"三格等分 + 上面一整行「画成水彩 Beta」"：一枚默认关闭的实验件拿到了
+     * 比这一页真正的高频动作更高的视觉权重。评审 S2 的原话是"与三枚并列"，这一条**故意反着做**
+     * 并钉住 —— 并列进等分排会把每格挤到截字（360dp 上「在浏览器中打开」要 104~111dp 而每格只剩 83dp），
+     * 还会让两格各自挪位（= 用户 2026-10-04 报的第 8 条"按记忆去点却点在空隙里"）。
+     *
+     * 现在三档：① 下载 = 整行 `VeneraButton`（这一条上唯一有底色的一枚）；
+     * ② 复制链接 / 在浏览器中打开 = 等分两格、中间**一条**发丝线；
+     * ③ 画成水彩 = 最低一档的小字整行入口。
+     * 尺子取**发丝线的条数**：并进等分排就会多一条，而"多一条"正是那件事唯一的源码指纹。
      */
     @Test
-    fun `水彩单独成一行 没有挤进等分那排`() {
+    fun `动作条三档权重 下载是整行主按钮而水彩是最低一档`() {
         assertEquals(
-            "底部动作条那一排应当仍是三格（中间两条发丝线）。数出第三条 = 有人把第四格并进了 weight(1f) 均分那一排",
-            2, callLines(sheet, "GallerySheetActionDivider()"),
+            "等分那一排应当只剩两格（中间一条发丝线）。0 = 两格并成一格，2 = 有人把第三格并进了 weight(1f) 均分那一排",
+            1, callLines(sheet, "GallerySheetActionDivider()"),
         )
-        // 对照①：整排三格本身读得到（读空了上面那条恒真）。同样按调用行数，
-        // 免得 `private fun RowScope.GallerySheetAction(` 那颗定义行被算成一次调用。
-        assertEquals("动作条里的动作格数变了（现在该是 3 枚常驻 + 1 枚水彩 = 4）", 4, callLinesStartingWith(sheet, "GallerySheetAction("))
-        // 对照②：水彩这一格真的在文件里摆着，而不是"因为整块被删了所以发丝线也没多"。
+        assertEquals(
+            "等分排里的动作格数（现在该是 复制链接 + 在浏览器中打开）",
+            2, callLinesStartingWith(sheet, "GallerySheetAction("),
+        )
+        // 对照①：主行动那一枚确实还在，而且是**整行 + 吃 saving 那道闸**（读空了上面两条恒真）。
+        val button = blockAfter(sheet, "VeneraButton(", 32)
+        assertTrue("下载那一枚不再是整行主按钮：$button", button.contains("onClick = onDownload"))
+        assertTrue("主按钮没吃 saving 那道闸（进行中还能再按一次）：$button", button.contains("enabled = !saving"))
+        assertTrue("主按钮没吃满整行：$button", button.contains(".fillMaxWidth()"))
+        assertTrue("主按钮的标签不再跟着内容走（视频该念「下载视频」）：$button", button.contains("if (isVideo) \"下载视频\" else \"下载原图\""))
+        assertTrue(
+            "主按钮的字与图标没显式取色 —— miuix 那颗 Button 不把内容色喂给 LocalContentColor，" +
+                "真机读数是一枚浅蓝实底配白字（2026-10-14 截图量到，本批自己写出来又自己看到的）：$button",
+            button.contains("color = tokens.color.onPrimary"),
+        )
+        // 对照②：水彩这一格真的还摆着，而不是"因为整块被删了所以发丝线也没多"。
         assertEquals("GallerySheetAction 里应当只有那一枚笔刷图标", 1, occurrences(sheet, "Icons.Outlined.Brush"))
+        assertTrue("水彩入口的文案不见了", sheet.contains("\"画成水彩 Beta\""))
     }
 
     /** ⑥ 开关只在调用点判一次：面板里不许自己再读一遍偏好。 */

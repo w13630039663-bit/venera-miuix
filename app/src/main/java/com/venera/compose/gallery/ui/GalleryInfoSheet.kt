@@ -23,29 +23,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Face
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -80,10 +74,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
+import com.venera.compose.components.venera.VeneraButton
 import com.venera.compose.components.venera.VeneraGallerySourceMark
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.feature.LocalVeneraDarkTheme
@@ -600,54 +594,62 @@ internal fun GalleryInfoSheet(
 private const val FACT_GRID_COLUMNS = 3
 
 /** 网格里的一格。 */
-private class FactCell(val icon: ImageVector, val label: String, val value: String)
+private class FactCell(val label: String, val value: String)
 
 /**
- * 基本信息：**一块 [SheetBlock] + 一块 3 列图标网格**。
+ * 基本信息：**一块 [SheetBlock] + 一块 3 列网格**。
  *
  * 为什么不是一列"字段名在左、值在右"的定义列表：那七行同形的读数里，
  * 人真正要找的通常只有一两样（多大、什么分级），而逐行读的代价是**要扫七行**。
- * 网格把每一样压成一个"图标 + 标签 + 值"的小块，眼睛按位置跳，不用按顺序读。
+ * 网格把每一样压成一个"标签 + 值"的小块，眼睛按位置跳，不用按顺序读。
  *
  * 每一格**没有自己的底色**：块面本身就是那个"容器"，再加一层底色会变成
  * 六个小卡片钻进一张大卡片（上一版六张同形白卡的老毛病换个尺寸复现）。
+ *
+ * ⚠️ 2026-10-14 撤掉了每一格前面那枚图标。八个档八枚同色灰度图形**不携带任何读数**
+ * （「分辨率」那三个字自己就是最短的语义），却把这一块的视觉重量抬到与内容相当；
+ * 其中「MD5」配的还是一枚**指纹** —— 语义本来就是错的。去图标同时修掉了这两件事，
+ * 而不是"把错的图标换成对的"（那只是把噪音刷新）。
  */
 @Composable
 private fun GalleryFactGrid(post: GalleryPost) {
     val tokens = VeneraTokens
     val cells = buildList {
-        add(FactCell(Icons.Outlined.Language, "来源", post.site.displayName))
+        // 「站点」而不是「来源」：③ 那一块叫「来源链接」，两行给的是**能点开的地址**
+        // （出处页 / 本站帖子页）。这一格吃的是 `post.site.displayName`，是"这张来自哪一站"，
+        // 与那两行不是一件事 —— 从前两处都叫"来源"，屏上读起来就是同一份信息摆了两遍。
+        add(FactCell("站点", post.site.displayName))
         // 尺寸取不到的条目（站方变体缺项）**整格不摆**：摆一个 `0×0` 就是编读数。
         if (post.width > 0 && post.height > 0) {
-            add(FactCell(Icons.Outlined.AspectRatio, "分辨率", "${post.width}×${post.height}"))
+            add(FactCell("分辨率", "${post.width}×${post.height}"))
         }
-        add(FactCell(Icons.Outlined.Star, "评分", post.score.toString()))
+        // 「评分」= `post.score`（一个数字），与标题行右端那枚**分级**（`post.rating`）是两件事。
+        add(FactCell("评分", post.score.toString()))
         // 原图那一档的体积。**读数没有就不摆**：Gelbooru 的 post JSON 根本没有 file_size
         // （`GelbooruClient.kt:62` 记着这条天花板），解析处一律填 0 —— 摆出来每张
         // Gelbooru 图都写着「0 MB」，看着像"这文件是空的"。
         // 有值也必须走一位小数：整数除法会把 yande.re 上不到 1.5 MB 的真文件也压成「0 MB」。
         if (post.fileSize > 0) {
-            add(FactCell(Icons.Outlined.Storage, "文件大小", "%.1f MB".format(post.fileSize / 1024.0 / 1024.0)))
+            add(FactCell("文件大小", "%.1f MB".format(post.fileSize / 1024.0 / 1024.0)))
         }
         // 指纹只摆前 8 位：这一格的用处是"两条看着一样的帖子是不是同一份文件"，
         // 8 位（32 bit）足够分辨，而全 32 位在这三列的格子里必然折成两行。
-        post.md5.takeIf { it.isNotBlank() }?.let { add(FactCell(Icons.Outlined.Fingerprint, "MD5", it.take(8))) }
+        post.md5.takeIf { it.isNotBlank() }?.let { add(FactCell("MD5", it.take(8))) }
         // 上传者与画师**是两件事**，别互相顶替（实测：yande.re 的 `author` 与 Gelbooru 的
         // `owner` 都是**上传者的登录名**；真帖 1269641 的 `author=Arsy`，而画师是标签 `gijang`，
         // 那一位在②那块里）。画师不在这里，所以这里没有"重复显示一个人"的问题。
-        post.author.takeIf { it.isNotBlank() }?.let { add(FactCell(Icons.Outlined.Person, "上传者", it)) }
+        post.author.takeIf { it.isNotBlank() }?.let { add(FactCell("上传者", it)) }
         // yande.re 实测没有 `fav_count` → null 就整格不摆：摆 0 是"这张零收藏"，
         // 与"站方没给"是两回事。
-        post.favCount?.let { add(FactCell(Icons.Outlined.FavoriteBorder, "收藏", it.toString())) }
+        post.favCount?.let { add(FactCell("收藏", it.toString())) }
         // 两站都没有时长字段，一律 null；真给到 0 也不是一段能看的视频，同样不摆。
-        post.durationSeconds?.takeIf { it > 0 }?.let { add(FactCell(Icons.Outlined.Schedule, "时长", "${it.toInt()} 秒")) }
+        post.durationSeconds?.takeIf { it > 0 }?.let { add(FactCell("时长", "${it.toInt()} 秒")) }
     }
 
     SheetBlock(tint = sheetSectionTint(GallerySheetSection.Facts)) {
         SheetSectionHeader(
             icon = Icons.Outlined.Info,
             title = "基本信息",
-            tint = sheetSectionTint(GallerySheetSection.Facts),
         )
         Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
             cells.chunked(FACT_GRID_COLUMNS).forEach { row ->
@@ -666,7 +668,7 @@ private fun GalleryFactGrid(post: GalleryPost) {
 }
 
 /**
- * 网格里的一格：**上一行是图标 + 标签（次级）、下一行是值（主要）**。
+ * 网格里的一格：**上一行是标签（次级）、下一行是值（主要）**。
  *
  * 值比标签大一号是刻意的：标签那三四个字（「分辨率」「上传者」）是**索引**，
  * 值的那个数才是要读的东西。反过来（标签大字、值小字）就是上一版定义列表的观感，
@@ -683,26 +685,13 @@ private fun RowScope.GalleryFactCell(cell: FactCell) {
         modifier = Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = cell.icon,
-                contentDescription = null,
-                tint = tokens.color.textTertiary,
-                modifier = Modifier.size(tokens.spacing.chipIconSize),
-            )
-            Text(
-                text = cell.label,
-                fontSize = tokens.type.caption,
-                color = tokens.color.textTertiary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        Text(
+            text = cell.label,
+            fontSize = tokens.type.caption,
+            color = tokens.color.textTertiary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         // 值只给一行：三列的一格约 96dp 净宽，`3636×2607` 那一档正好一行，
         // 放不下的是上传者那种长名 —— 那种情况省略号比折成两行好（折行会把整行的高度拉开，
         // 同一行里另两格的底边就对不齐了）。
@@ -742,7 +731,7 @@ private fun GallerySourceLinks(
     val tokens = VeneraTokens
     val tint = sheetSectionTint(GallerySheetSection.Source)
     SheetBlock(tint = tint) {
-        SheetSectionHeader(icon = Icons.Outlined.Link, title = "来源链接", tint = tint)
+        SheetSectionHeader(icon = Icons.Outlined.Link, title = "来源链接")
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.source.isNotBlank()) {
                 GallerySourceLinkRow(
@@ -775,11 +764,15 @@ private fun GallerySourceLinks(
  * 编号只认 pixiv 那一条链（`GalleryArtistLinks.pixivArtworkId`，它认得 `/artworks/N`、
  * `member_illust.php?illust_id=N` 与图床上 `<号>_p<页>.<扩展名>` 三种形态）。
  * 别家的地址里也可能有一串数字，但那不是我们能断言的编号 —— 不摆。
+ *
+ * ⚠️ 编号前那枚 `#` 不是装饰：③ 那一块的两行抬头由**同一个形状**读成"同一类东西的两个值"，
+ * 而下面那行本来就是 `yande.re · #1270292`（站点 + `#` + 帖子号）。少一个 `#`，
+ * 第一行就退化成"只有域名"，两行读起来像两组不同的数据（2026-10-14 手机档截图的读数）。
  */
 private fun sourceHeadline(url: String): String {
     val host = GalleryArtistLinks.hostLabel(url).removePrefix("www.")
     val artworkId = GalleryArtistLinks.pixivArtworkId(url) ?: return host
-    return "$host · $artworkId"
+    return "$host · #$artworkId"
 }
 
 @Composable
@@ -870,7 +863,6 @@ private fun GalleryTagWall(
         SheetSectionHeader(
             icon = Icons.Outlined.LocalOffer,
             title = "标签 · $total",
-            tint = tint,
             // 标题行**整行可点**：那枚「展开全部 ›」按 12sp 只有 48dp 宽，
             // 单给它挂点击就得靠猜位置；整行可点之后触达位是整屏宽，也不必再造一枚小钮。
             action = if (collapsible) (if (expanded) "收起" else "展开全部") else null,
@@ -936,6 +928,11 @@ private fun GalleryTagWall(
  * 判据吃的是 [GalleryTagGroup.category]：**兜底那两路没有档位**（离线词典猜的、
  * 站方没判定的），一律退中性文字色，不硬安一个色相。
  *
+ * ⚠️ 2026-10-14 改判：**色只留在图标上，分类名回中性文字色**。分类名自己是中文两三个字，
+ * 它不需要颜色来表态；而这一屏同时还有平台品牌色、分级色、块洗底色，
+ * 四色分类名再铺成一片就没有锚点了（截图读数：一屏 6+ 种高饱和色）。
+ * 颜色=归属这条编码**没有丢** —— 它整份搬到了每一行最左那枚图标上，位置比文字更好扫。
+ *
  * 定宽 [VeneraTokens.spacing.sheetTagLabelWidth] 的理由见那个 token 的注释。
  */
 @Composable
@@ -962,7 +959,7 @@ private fun GalleryTagGroupLabel(group: GalleryTagGroup) {
         Text(
             text = group.label,
             fontSize = tokens.type.caption,
-            color = color,
+            color = tokens.color.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -991,13 +988,31 @@ private fun tagCategoryIcon(category: Int?): ImageVector = when (category) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * 底部动作条：**复制链接 / 下载原图 / 在浏览器中打开**。
+ * 底部动作条：三档权重，按"这一屏谁最常被按"排。
  *
  * 为什么把它钉在屏底而不是跟在内容后面：这一页的长度由标签数量决定，标签多的时候
  * "在浏览器中打开"会被推到几屏之外 —— 而它是这一页**用完就想走**的那一枚。
  *
  * 上面一条发丝线是它与内容的唯一分界：包一层底色没必要（两者本来就在同一张 sheet 面上），
  * 但**不画线**时内容滚到底会与动作条糊在一起，分不清哪一行是内容、哪一行是行为。
+ *
+ * ── 2026-10-14 重排：主次倒置修掉 ──
+ *
+ * 从前这一条是"上面一整行只摆着「画成水彩 Beta」，下面三等分挤着 复制链接 / 下载原图 /
+ * 在浏览器中打开" —— 一枚**默认关闭的实验件**拿到了比这一页真正的高频动作更高的视觉权重
+ * （整行 vs 每格约 1/3 宽）。现在分三档：
+ * ① 下载 = 整行实底主按钮（这一条上唯一有底色的一枚）；
+ * ② 复制链接 / 在浏览器中打开 = 一行两格等分（无底色，图标 + 小字）；
+ * ③ 画成水彩 = 最低一档的**小字整行入口**，且只在开关开着时出现。
+ *
+ * ⚠️ ③ 没有搬去"节头右侧那枚小字"那个位置（评审提的另一方案）：那个位置在本仓的语义是
+ * "展开/收起**这一块**"（[SheetSectionHeader] 的 `onAction` 口径），挂一个跨块动作会读成
+ * "展开基本信息"。
+ *
+ * ⚠️ ② 那一排**恒两格**：加第 3 格会把两格各自往左挪一档（= 用户 2026-10-04 报的第 8 条
+ * "按记忆去点，结果点在钮与钮之间的空隙里"在同一屏上的另一种发作）；而 360dp 上三格等分时
+ * 每格只剩 83dp，「在浏览器中打开」要 104~111dp ⇒ 会截成省略号，Beta 关着的用户也跟着受害。
+ * 这条口径由 `GalleryWatercolorEntryTest` ⑤ 数**发丝线的条数**钉住（等分排只剩一条）。
  */
 @Composable
 private fun GallerySheetActionBar(
@@ -1017,128 +1032,138 @@ private fun GallerySheetActionBar(
                 .height(tokens.spacing.hairline)
                 .background(tokens.color.outlineVariant),
         )
-        /**
-         * 「画成水彩」**单独成一行**，而不是挤进下面那三等分。
-         *
-         * 评审方案 S2 的原话是"与复制链接 / 下载原图 / 浏览器打开并列"，这一条本鱼**故意没照做**，
-         * 因为那一排是 `weight(1f)` 均分：
-         * ① 加第 4 格会把其余三格各自往左挪一档 —— 那正是用户 2026-10-04 报的第 8 条
-         *   （"按记忆去点，结果点在钮与钮之间的空隙里，没有任何反应"）在同一屏上的另一种发作；
-         * ② 360dp 上那一排是 `weight(1f)` 均分：三格时每格 **111.3dp**，四格时每格只剩 **83.3dp**，
-         *   而「在浏览器中打开」这一格要 16(图标) + 4(间距) + 7×12~13( caption，中文一字一发宽)
-         *   = **104~111dp** ⇒ 并进四等分就被截成「在浏览器中打…」—— **Beta 关着的用户也跟着受害**。
-         * 单独一行两个都不犯：三格的位置一个字没动，这一格自己吃满宽也不会截字。
-         *
-         * 开关关着（默认）时这一行**整行不摆**、不留灰行：摆一行按不动的东西就是假按钮。
-         */
-        onPaint?.let { startPainting ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                GallerySheetAction(
-                    icon = Icons.Outlined.Brush,
-                    label = "画成水彩",
-                    badge = "Beta",
-                    onClick = startPainting,
-                )
-            }
-        }
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    start = tokens.spacing.screenHorizontal,
-                    end = tokens.spacing.screenHorizontal,
-                    top = tokens.spacing.space4,
-                    bottom = tokens.spacing.space4,
+                    horizontal = tokens.spacing.screenHorizontal,
+                    vertical = tokens.spacing.space4,
                 ),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
         ) {
-            GallerySheetAction(
-                icon = Icons.Outlined.ContentCopy,
-                label = "复制链接",
-                onClick = onCopyLink,
-            )
-            GallerySheetActionDivider()
-            // 标签跟着内容走：视频条目的原始档是一段 mp4，写「下载原图」就成了另一个东西。
-            GallerySheetAction(
-                icon = Icons.Outlined.Download,
-                label = if (isVideo) "下载视频" else "下载原图",
+            // ① 主行动。标签跟着内容走：视频条目的原始档是一段 mp4，写「下载原图」就成了另一个东西。
+            // 进行中**吃掉点击并换成波浪环**：视频原片实测 16~26 MB 那几秒里，一枚没有任何反馈、
+            // 还能再按一次的钮就是"点了没反应"。与底栏那枚下载是同一个 `saving`（页面持有），
+            // 所以两处不会各转各的。
+            VeneraButton(
                 onClick = onDownload,
-                // 进行中**吃掉点击并换成波浪环**：视频原片实测 16~26 MB 那几秒里，
-                // 一个没有任何反馈、还能再按一次的钮就是"点了没反应"。
-                // 与底栏那枚下载是同一个 `saving`（页面持有），所以两处不会各转各的。
                 enabled = !saving,
-                busy = saving,
-            )
-            GallerySheetActionDivider()
-            GallerySheetAction(
-                icon = Icons.AutoMirrored.Outlined.OpenInNew,
-                label = "在浏览器中打开",
-                onClick = onOpenInBrowser,
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = tokens.spacing.sheetActionHeight),
+            ) {
+                if (saving) {
+                    CircularWavyProgressIndicator(
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                        color = tokens.color.onPrimary,
+                        trackColor = tokens.color.primary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Download,
+                        contentDescription = null,
+                        // 显式取色：miuix 那颗 `Button` 不像 M3 那样把内容色喂给 `LocalContentColor`，
+                        // 而这里的 `Text` 是 miuix 那一颗（它默认吃 onBackground）。
+                        // 真机读数：不写这一行时浅色主按钮配的是**白字**，读不出来。
+                        tint = tokens.color.onPrimary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                }
+                Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                Text(
+                    text = if (isVideo) "下载视频" else "下载原图",
+                    fontSize = tokens.type.body,
+                    color = tokens.color.onPrimary,
+                )
+            }
+            // ② 两枚次要动作：等分一行，中间一条发丝线。
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GallerySheetAction(
+                    icon = Icons.Outlined.ContentCopy,
+                    label = "复制链接",
+                    onClick = onCopyLink,
+                )
+                GallerySheetActionDivider()
+                GallerySheetAction(
+                    icon = Icons.AutoMirrored.Outlined.OpenInNew,
+                    label = "在浏览器中打开",
+                    onClick = onOpenInBrowser,
+                )
+            }
+            // ③ 实验件：最低一档，**整行可点**（那五个字按 caption 只有 70dp 宽，
+            // 单给它挂点击就是让人拿手指去戳一排小字 —— 与「展开全部」同一口径）。
+            // 开关关着（默认档）时这一行整行不摆、不留灰行：摆一行按不动的东西就是假按钮。
+            onPaint?.let { startPainting ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(tokens.spacing.sheetActionHeight)
+                        .clip(RoundedCornerShape(tokens.shape.small))
+                        .clickable(onClick = startPainting),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Brush,
+                        contentDescription = null,
+                        tint = tokens.color.textTertiary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                    // `Beta` 跟着主文案同一串：实验件要一眼能看出它是实验件，否则用户会按
+                    // "常驻能力"的预期去依赖它，而它随时可能被撤（从前那枚 7.sp 独立小字
+                    // 既不在任何字阶里、又抢不走注意力）。
+                    Text(
+                        text = "画成水彩 Beta",
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textTertiary,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "›",
+                        fontSize = tokens.type.chevron,
+                        color = tokens.color.textTertiary,
+                    )
+                }
+            }
         }
     }
 }
 
-/** 动作条里的一项：图标 + 文案，均分整条宽度。 */
+/** 等分那一排里的一项：图标 + 文案，均分该行宽度。**没有底色** —— 底色是主行动那一档才有的。 */
 @Composable
 private fun RowScope.GallerySheetAction(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
-    enabled: Boolean = true,
-    busy: Boolean = false,
-    /**
-     * 文案后那一枚极小的身份标（现在只用在一处：「画成水彩」旁的 `Beta`）。
-     *
-     * 沿用从前底栏那枚笔刷的同一用意：**实验件要一眼能看出它是实验件**，
-     * 否则用户会按"常驻能力"的预期去依赖它，而它随时可能被撤。
-     * 字号取 7.sp 而不是新开一档 token：这一枚只在"贴着主文案"这一个位置出现，
-     * 与 [VeneraTokens] 里那几档正文/说明字号都不是同一条基准线。
-     */
-    badge: String? = null,
 ) {
     val tokens = VeneraTokens
-    val tint = if (enabled) tokens.color.textPrimary else tokens.color.textDisabled
     Row(
         modifier = Modifier
             .weight(1f)
             .height(tokens.spacing.sheetActionHeight)
             .clip(RoundedCornerShape(tokens.shape.small))
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (busy) {
-            CircularWavyProgressIndicator(
-                modifier = Modifier.size(tokens.spacing.chipIconSize),
-                color = tokens.color.primary,
-                trackColor = tokens.color.surfaceVariant,
-            )
-        } else {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(tokens.spacing.chipIconSize),
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tokens.color.textPrimary,
+            modifier = Modifier.size(tokens.spacing.chipIconSize),
+        )
         Spacer(modifier = Modifier.width(tokens.spacing.space2))
         Text(
             text = label,
             fontSize = tokens.type.caption,
-            color = tint,
+            color = tokens.color.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        badge?.let {
-            Spacer(modifier = Modifier.width(tokens.spacing.space1))
-            Text(
-                text = it,
-                fontSize = 7.sp,
-                color = tokens.color.primary,
-                maxLines = 1,
-            )
-        }
     }
 }
 
