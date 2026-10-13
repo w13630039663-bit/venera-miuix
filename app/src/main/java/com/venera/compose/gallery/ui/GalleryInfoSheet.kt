@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.AspectRatio
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Face
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
@@ -204,6 +206,18 @@ internal fun GalleryInfoSheet(
     onOpenArtist: (String) -> Unit,
     /** 底部那条「下载」：与底栏那枚是**同一个**动作，带它的进度与 toast（页面持有）。 */
     onDownload: () -> Unit,
+    /**
+     * 「画成水彩」那一格（2026-10-14 从底栏那枚笔刷搬进这条动作条 —— 那条 dock 是 5 枚
+     * **高频**钮，360dp 上排到第 6 枚只剩约 12dp 余量，而它是默认关的实验件，低频件占高频位不值）。
+     *
+     * 交回 null = 这一格**整格不摆**。什么时候是 null 由调用方那一头的
+     * [com.venera.compose.gallery.domain.watercolorEntryVisible] 定（Beta 关着 / 这一张是视频），
+     * 这里不再判第二次 —— 两处各判一遍迟早漂成"设置里开着却屏上没入口"。
+     *
+     * ⚠️ **故意不给默认值**：给了默认，漏传那一头的后果不是编译报错，而是那一格永远不出现，
+     * 且现有任何测试都不会替这件事喊一声 —— 本仓踩过两次的那类"看着接了其实没接"。
+     */
+    onPaint: (() -> Unit)?,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
@@ -558,6 +572,7 @@ internal fun GalleryInfoSheet(
             GallerySheetActionBar(
                 isVideo = post.isVideo,
                 saving = saving,
+                onPaint = onPaint,
                 // 诊断包专用：这三颗是**普通 `Modifier.clickable`**，不是 VeneraChip。
                 // 它们要是能报「到达」，坏的就只在 chip 那条链上；一起哑就是整块内容收不到点击。
                 onCopyLink = {
@@ -988,6 +1003,8 @@ private fun tagCategoryIcon(category: Int?): ImageVector = when (category) {
 private fun GallerySheetActionBar(
     isVideo: Boolean,
     saving: Boolean,
+    /** 「画成水彩」那一格；null = 整格不摆（判据在调用方那一头的 `watercolorEntryVisible`）。 */
+    onPaint: (() -> Unit)?,
     onCopyLink: () -> Unit,
     onDownload: () -> Unit,
     onOpenInBrowser: () -> Unit,
@@ -1000,6 +1017,30 @@ private fun GallerySheetActionBar(
                 .height(tokens.spacing.hairline)
                 .background(tokens.color.outlineVariant),
         )
+        /**
+         * 「画成水彩」**单独成一行**，而不是挤进下面那三等分。
+         *
+         * 评审方案 S2 的原话是"与复制链接 / 下载原图 / 浏览器打开并列"，这一条本鱼**故意没照做**，
+         * 因为那一排是 `weight(1f)` 均分：
+         * ① 加第 4 格会把其余三格各自往左挪一档 —— 那正是用户 2026-10-04 报的第 8 条
+         *   （"按记忆去点，结果点在钮与钮之间的空隙里，没有任何反应"）在同一屏上的另一种发作；
+         * ② 360dp 上那一排是 `weight(1f)` 均分：三格时每格 **111.3dp**，四格时每格只剩 **83.3dp**，
+         *   而「在浏览器中打开」这一格要 16(图标) + 4(间距) + 7×12~13( caption，中文一字一发宽)
+         *   = **104~111dp** ⇒ 并进四等分就被截成「在浏览器中打…」—— **Beta 关着的用户也跟着受害**。
+         * 单独一行两个都不犯：三格的位置一个字没动，这一格自己吃满宽也不会截字。
+         *
+         * 开关关着（默认）时这一行**整行不摆**、不留灰行：摆一行按不动的东西就是假按钮。
+         */
+        onPaint?.let { startPainting ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                GallerySheetAction(
+                    icon = Icons.Outlined.Brush,
+                    label = "画成水彩",
+                    badge = "Beta",
+                    onClick = startPainting,
+                )
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1046,6 +1087,15 @@ private fun RowScope.GallerySheetAction(
     onClick: () -> Unit,
     enabled: Boolean = true,
     busy: Boolean = false,
+    /**
+     * 文案后那一枚极小的身份标（现在只用在一处：「画成水彩」旁的 `Beta`）。
+     *
+     * 沿用从前底栏那枚笔刷的同一用意：**实验件要一眼能看出它是实验件**，
+     * 否则用户会按"常驻能力"的预期去依赖它，而它随时可能被撤。
+     * 字号取 7.sp 而不是新开一档 token：这一枚只在"贴着主文案"这一个位置出现，
+     * 与 [VeneraTokens] 里那几档正文/说明字号都不是同一条基准线。
+     */
+    badge: String? = null,
 ) {
     val tokens = VeneraTokens
     val tint = if (enabled) tokens.color.textPrimary else tokens.color.textDisabled
@@ -1080,6 +1130,15 @@ private fun RowScope.GallerySheetAction(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        badge?.let {
+            Spacer(modifier = Modifier.width(tokens.spacing.space1))
+            Text(
+                text = it,
+                fontSize = 7.sp,
+                color = tokens.color.primary,
+                maxLines = 1,
+            )
+        }
     }
 }
 

@@ -274,8 +274,8 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             )
             SettingsToggle(
                 "画成水彩（Beta）", watercolorBeta, { prefs.setGalleryWatercolorBeta(it) },
-                summary = "实验功能，默认关闭。开启后大图页底栏会多出一枚笔刷按钮，" +
-                    "点它就把当前这张图按水彩笔触重新画一遍。" +
+                summary = "实验功能，默认关闭。开启后在大图页点「关于这张图」，" +
+                    "面板底部会多出一行「画成水彩」，点它就把当前这张图按水彩笔触重新画一遍。" +
                     "目前重绘后的构图和五官还不够稳定，画完的作品可以直接存进相册，" +
                     "原图不受影响。",
             )

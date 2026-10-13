@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.HighQuality
@@ -43,7 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraIconButtonTouchSize
 import com.venera.compose.components.venera.VeneraSlider
@@ -67,15 +65,15 @@ import top.yukonga.miuix.kmp.basic.Text
  * - `下载` —— 原样存下来（[com.venera.compose.gallery.data.GallerySaver]），
  *   进行中把图标换成波浪环并吃掉点击，避免出现"点了没反应"的那一下。
  * - `信息` —— 拉起 [GalleryInfoSheet]（顶栏没了，"在站点打开"也搬进那里）。
+ *   **「画成水彩」这一枚不在本条 dock 上**（2026-10-14 搬进那张面板底部的动作条）。
+ *   360dp 上量过的算术：可用内宽 = 360 − 2×`screenHorizontal`(12) − 2×`space2`(4) = **328dp**，
+ *   加回水彩那时有 **7** 个 48dp 槽（♥/HD/下载/笔刷/信息/分享/连播）+ 6 条 `space1`(2) 间距
+ *   = **348dp ⇒ 超出 20dp**，不是"挤"而是排不下、最后一枚被圆角裁掉；撤掉一格后
+ *   6×48 + 5×2 = **298dp，余 30dp**。判据与理由见 `gallery/domain/GalleryWatercolorEntry.kt`。
  * - `分享` —— 系统分享面板，交出去的是**原档字节**（图或视频，与「下载」同档），
  *   外加一条单页地址。原档要先落一次盘，所以它与「下载」同一形态：
  *   进行中把图标换成波浪环并吃掉点击 —— 视频 16~26 MB 那几秒里，
  *   一个没有任何反馈的钮就是"点了没反应"。
- * - `画笔` —— 把这张图**画成水彩**（2026-10-13 新增）：整屏浮层按
- *   「纸 → 晕染 → 背景 → 主体 → 细节」的顺序一笔一笔长出来，画成可存可重画。
- *   **视频条目不摆这一钮**（也留空位不留假钮，与 HD 同一条口径）：
- *   它没有可画的静帧语义之外的东西 —— 取的是 poster 图，点开画的是那张海报，
- *   用户在视频上点"画笔"期待的不是这个。
  * - `▶ / ⏸` —— 自动连播的开关（**点**），与这一屏的速度（**长按**展开一条滑条）。
  *   开启时染主色（与 HD 同一约定）。这一颗改的是**本次浏览**的速度，
  *   退出大图页就回到「设置 → 画廊 → 大图页 → 自动连播间隔」那一条的默认值 ——
@@ -98,11 +96,6 @@ fun GalleryViewerToolbar(
     onAutoPlaySecChange: (Int) -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
-    /** 「画成水彩」：整屏浮层把当前这张图按水彩顺序画出来（见文件头注）。
-     *  Beta 功能默认关：关时 [showPaint] 为 false，这一枚不摆（留空位占位，同视频条目口径）。 */
-    onPaint: () -> Unit,
-    /** 水彩（Beta）开关：图廊设置里控制，默认关。 */
-    showPaint: Boolean = false,
     onDownload: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -206,33 +199,6 @@ fun GalleryViewerToolbar(
                         tint = tokens.color.textPrimary,
                     )
                 }
-            }
-            // ── 画成水彩（2026-10-13，Beta，默认关）──
-            // 视频条目：与 HD 同一条口径 —— 不放一枚点了没意义的钮，放**同尺寸空位**，
-            // 让「关于这张图」与连播两颗在两类内容下停在同一个 x。
-            // 开关关闭（默认）：同样只放空位 —— 一条 dock 不因实验功能改变布局。
-            if (showPaint && !post.isVideo) {
-                VeneraIconButton(onClick = onPaint) {
-                    // 笔刷下压一枚「Beta」小字：开着的时候也让人一眼看出它是实验件，
-                    // 不是常驻能力。放在 48dp 触达位内部，不外溢不被 dock 圆角裁掉。
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Outlined.Brush,
-                            contentDescription = "把这张图画成水彩（Beta 实验功能）",
-                            tint = tokens.color.textPrimary,
-                        )
-                        Text(
-                            text = "Beta",
-                            fontSize = 7.sp,
-                            color = tokens.color.primary,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(top = 26.dp),
-                        )
-                    }
-                }
-            } else {
-                Spacer(modifier = Modifier.size(VeneraIconButtonTouchSize))
             }
             VeneraIconButton(onClick = onInfo) {
                 Icon(

@@ -122,6 +122,7 @@ import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.gallery.domain.nextExitGesture
+import com.venera.compose.gallery.domain.watercolorEntryVisible
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
@@ -1213,11 +1214,6 @@ fun GalleryPostScreen(
                                 }
                             },
                             onDownload = { download(target) },
-                            onPaint = {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                painterPost = target
-                            },
-                            showPaint = watercolorBeta,
                             onInfo = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 infoOpen = true
@@ -1396,6 +1392,14 @@ fun GalleryPostScreen(
                 // 面板只负责显示（两处各存一个布尔，就会出现"底部条在转圈、底栏那颗还能点"）。
                 saving = saving,
                 onDownload = { download(current) },
+                // 「画成水彩」的入口（2026-10-14 从底栏那枚笔刷搬进这一条动作条）。
+                // 判据在 `watercolorEntryVisible`：Beta 关着、或这一张是视频 ⇒ 交回 null，那一格**整格不摆**。
+                // 点它先把面板收掉：浮层画完关掉，回到的是那张图，不是压在图上的面板。
+                onPaint = if (watercolorEntryVisible(betaEnabled = watercolorBeta, isVideo = current.isVideo)) {
+                    { painterPost = current }
+                } else {
+                    null
+                },
                 onDismiss = { infoOpen = false },
                 // 画师行那一块整块可点 → 介绍页。它**不离开本页**（不同于点标签那一条），
                 // 所以不写交接槽、也不 finish：介绍页是又压上来的一级，返回就回到这张图。
