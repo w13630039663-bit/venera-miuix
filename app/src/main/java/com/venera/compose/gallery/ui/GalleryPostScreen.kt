@@ -108,6 +108,7 @@ import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
+import com.venera.compose.gallery.watercolor.WatercolorPainterScreen
 import com.venera.compose.gallery.domain.coverSourceRect
 import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
@@ -197,6 +198,9 @@ fun GalleryPostScreen(
     // ── 批次 C2：动图该不该解动画、背景那一层画什么 ──
     val animatedMode by prefs.galleryAnimated.collectAsState()
     val backdrop by prefs.galleryBackdrop.collectAsState()
+    // 「画成水彩」Beta：默认关（图廊设置里开）。关着时底栏不摆那枚笔刷钮，
+    // 连着连播/信息两颗的位置都不动（GalleryViewerToolbar 留的是空位不是灰钮）。
+    val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
     /**
      * 网络读数**只在这一屏打开时问一次**。
      * 逐张问的后果是同一面墙里忽动忽静（翻到第 3 张时切了网络），那是最难解释的一种表现；
@@ -237,6 +241,10 @@ fun GalleryPostScreen(
     var saving by remember { mutableStateOf(false) }
     /** 分享在途：视频原片可能几十 MB，防重复点击并发下载同一份。 */
     var sharing by remember { mutableStateOf(false) }
+    // ── 水彩绘制浮层：非空即"正在画这张图" ──
+    // 它盖住整页，所以连播（信息面板开着不翻的那一条判据同款）、
+    // 音量键翻页都以"浮层开着"为前提让位 —— 人在看画的时候不该被翻走。
+    var painterPost by remember(site.name, postId) { mutableStateOf<GalleryPost?>(null) }
     // 逐张记 HD。用 `ArrayList<String>` 而不是 `mutableStateMapOf`：map 那套进不了
     // `rememberSaveable`（Bundle 认的是 Serializable / Parcelable 这一族），旋转一下就丢，
     // 而"翻回来 HD 还亮着"是这张图上唯一可见的档位状态，不该丢。
@@ -274,7 +282,7 @@ fun GalleryPostScreen(
     // （视频页 / 放大中 / 弹层开着 / 已经到最后一张）。
     val autoPlayRunning = GalleryAutoPlay.shouldAdvance(
         seconds = autoPlaySecNow,
-        infoOpen = infoOpen,
+        infoOpen = infoOpen || painterPost != null,
         isVideo = current?.isVideo == true,
         zoomed = zoomedIn,
         currentPage = pagerState.currentPage,
@@ -286,18 +294,18 @@ fun GalleryPostScreen(
     // 两条钟各自积分，线走到头与真正翻页之间就会漂。大图页 hero 那一轮刚栽过一次同形的坑
     // （交叉淡入挂在弹簧的百分比上 —— 弹簧的百分比不是路程，见 gallery-hero-transition-*.md §十七），
     // 所以这里一开始就只留一条：等待本身就是这条动画，线走到头就是翻页那一刻。
-    LaunchedEffect(pagerState.currentPage, autoPlaySecNow, infoOpen, zoomedIn, current?.isVideo, pages.size) {
+    LaunchedEffect(pagerState.currentPage, autoPlaySecNow, infoOpen, painterPost != null, zoomedIn, current?.isVideo, pages.size) {
         // 每条出口都必须把线归零：留在半路的线读起来是"暂停在六成"，
         // 而它其实已经重来或不走了。
         if (autoPlaySecNow <= 0) {
             autoPlayProgress.snapTo(0f)
             return@LaunchedEffect
         }
-        // **起线之前先判一次**：不会翻的那几档（视频页 / 放大中 / 弹层开着 / 到底了）线根本不该出现 ——
+        // **起线之前先判一次**：不会翻的那几档（视频页 / 放大中 / 弹层开着 / 水彩浮层开着 / 到底了）线根本不该出现 ——
         // 起一条"还有 5 秒翻页"的线却永远不翻，比不摆线更坏。
         if (!GalleryAutoPlay.shouldAdvance(
                 seconds = autoPlaySecNow,
-                infoOpen = infoOpen,
+                infoOpen = infoOpen || painterPost != null,
                 isVideo = current?.isVideo == true,
                 zoomed = zoomedIn,
                 currentPage = pagerState.currentPage,
@@ -1072,6 +1080,11 @@ fun GalleryPostScreen(
                                 }
                             },
                             onDownload = { download(target) },
+                            onPaint = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                painterPost = target
+                            },
+                            showPaint = watercolorBeta,
                             onInfo = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 infoOpen = true
@@ -1259,6 +1272,23 @@ fun GalleryPostScreen(
                     onBack()
                 },
             )
+        }
+
+        // ── 水彩绘制浮层（2026-10-13）──
+        // 整屏盖在本页之上：它自己是不透明白底，取的像素与屏上同一张 large 档
+        // （同一颗缓存键，不再下一遍）。连播在它开着时让位（autoPlayRunning 那两处判据）。
+        AnimatedVisibility(
+            visible = painterPost != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            painterPost?.let { post ->
+                WatercolorPainterScreen(
+                    post = post,
+                    imageLoader = imageLoader,
+                    onClose = { painterPost = null },
+                )
+            }
         }
     }
 }

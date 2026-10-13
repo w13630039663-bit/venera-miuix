@@ -2,6 +2,7 @@ package com.venera.compose.gallery.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Environment
@@ -10,6 +11,7 @@ import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.GallerySettingsModel
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.time.LocalDateTime
@@ -101,6 +103,39 @@ object GallerySaver {
             Saved(path, bytes.size.toLong())
         }
     }
+
+    /**
+     * 把一张**画出来的位图**（水彩画作）存进相册。
+     *
+     * 与 [save] 的分工：[save] 落的是站方原档字节（不解码不重编码），
+     * 这一个落的是我们自己生成的 PNG —— 位图没有"原档字节"可存，只能编码。
+     * 落点、命名、两条写入路径与 [save] 完全同一套（[GallerySaveTarget] +
+     * MediaStore 优先 / 直写兜底），不另起第二套口径。
+     *
+     * PNG 而不是 JPEG：画作有纸色平 staff 区与大量淡彩渐层，JPEG 的 8×8 块效应
+     * 会把纸的尿点变成一圈圈脏斑；无损才保得住"画"的观感。
+     *
+     * @param name 调用方给的文件名（含扩展名），重名由我们按 `name (1).png` 让位。
+     */
+    suspend fun saveArtwork(context: Context, bitmap: Bitmap, name: String): Result<Saved> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val mime = "image/png"
+                val bytes = ByteArrayOutputStream().use { out ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                        throw IOException("这张画编码不出 PNG")
+                    }
+                    out.toByteArray()
+                }
+                val dir = GallerySaveTarget.directory(context)
+                // 重名由我们先处理掉（`name (1).png`），与 [save] 同一条理由：
+                // MediaStore 自己改完的名只能再查一次才拿得到，"存到哪了"会变成猜的话。
+                val unique = GallerySaveTarget.uniqueName(dir, name)
+                val path = saveToAlbum(context, dir, unique, mime, bytes)
+                    ?: saveToFile(context, dir, unique, mime, bytes)
+                Saved(path, bytes.size.toLong())
+            }
+        }
 
     /**
      * 走 MediaStore。落点不被系统接受（换算不出相对路径 / 插入返回 null / 抛参数错）时返回 null，

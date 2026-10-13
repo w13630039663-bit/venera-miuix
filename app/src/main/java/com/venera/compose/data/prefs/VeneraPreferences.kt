@@ -368,6 +368,22 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _galleryHideBottomBar.value = on
     }
 
+    /**
+     * 画廊：大图页「画成水彩」入口（Beta）。默认**关** —— 沿用本仓"新能力不改变
+     * 现有观感"的惯例（同两枚滚动收起、`checkUpdateOnStart`）。开着才会在大图页
+     * 底栏摆出那枚笔刷钮；关着时连钮带位置一起收起（留空位，不放灰钮）。
+     *
+     * 标 Beta 是如实标注：静态重绘的结构保留还不过关（五官辨识度不足），
+     * 先以开关形式合入主线，继续改进不影响默认体验。
+     */
+    private val _galleryWatercolorBeta = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_WATERCOLOR_BETA, false))
+    val galleryWatercolorBeta: StateFlow<Boolean> = _galleryWatercolorBeta.asStateFlow()
+
+    fun setGalleryWatercolorBeta(on: Boolean) {
+        prefs.put(KEY_GALLERY_WATERCOLOR_BETA, on)
+        _galleryWatercolorBeta.value = on
+    }
+
     fun setGalleryAnimated(mode: GalleryAnimatedMode) {
         prefs.put(KEY_GALLERY_ANIMATED, mode.name)
         _galleryAnimated.value = mode
@@ -784,6 +800,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_GALLERY_AI_BADGE = "pref_gallery_ai_badge"
         private const val KEY_GALLERY_HIDE_TOP_BAR = "pref_gallery_hide_top_bar"
         private const val KEY_GALLERY_HIDE_BOTTOM_BAR = "pref_gallery_hide_bottom_bar"
+        private const val KEY_GALLERY_WATERCOLOR_BETA = "pref_gallery_watercolor_beta"
         private const val KEY_NEW_FAVORITE_ADD_TO = PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO
         private const val KEY_MOVE_FAVORITE_AFTER_READ = PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"

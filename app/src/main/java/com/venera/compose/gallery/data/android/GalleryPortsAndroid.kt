@@ -91,4 +91,5 @@ private class AndroidGalleryPreferences(private val context: Context) : GalleryP
     override val galleryAiBadge: StateFlow<Boolean> get() = prefs.galleryAiBadge
     override val galleryHideTopBar: StateFlow<Boolean> get() = prefs.galleryHideTopBar
     override val galleryHideBottomBar: StateFlow<Boolean> get() = prefs.galleryHideBottomBar
+    override val galleryWatercolorBeta: StateFlow<Boolean> get() = prefs.galleryWatercolorBeta
 }

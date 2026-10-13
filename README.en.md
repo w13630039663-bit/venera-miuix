@@ -114,7 +114,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 - **Daily hot** as a home preview row plus a full-screen secondary page (view all / shuffle again); **For you** builds its wall from tags in your gallery favorites, seeded so results are reproducible and shuffleable.
 - **Followed artists**: follow list, circular avatar row (with favorite counts and site icons), artist page in its own Activity, cross-site work aggregation, and **artist alias resolution** (when a board returns zero posts, re-search once using that board's own alias identifier; a non-zero result is never substituted). *Alias resolution is currently wired for yande.re only.*
 - **Reverse image search** via SauceNAO. *Requires your own free API key in Settings.*
-- Viewer toolbar: favorite, original-file toggle, save to gallery, info sheet, share, slideshow (1–15 s adjustable).
+- Viewer toolbar: favorite, original-file toggle, save to gallery, info sheet, share, **paint as watercolor** (renders the current image stroke by stroke in paper → wash → background → subject → detail order; save / re-roll with a new seed / compare with the original), slideshow (1–15 s adjustable).
 - **Video posts** play inline with a badge on the card. *Only Safebooru reports duration.*
 - Chinese tag glossary comes from the gallery's own dictionary (derived from ffdkj's Danbooru Simplified/Traditional/English table); the comic side uses the EhTagTranslation database instead — the two are never mixed.
 - **6 ranking tabs** in the search area (default/newest / day / week / month / year / all), plus a date sheet to pick a specific period. *Gelbooru's API cannot express a time window, so that board lists only "default" and "all" rather than offering four tabs that would silently return all-time results.*
@@ -197,7 +197,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Theme colour | dynamic + 6 presets | ✅ seed colour + 25 presets + wallpaper |
 | Transitions | standard | ✅ shared element + predictive-back tracking + gallery fly-in |
 | Archive interoperability | — | ✅ imports official `.venera` and PicaComic `.picadata` |
-| Unit tests | 1 Dart test file | ✅ 119 pure JVM test files (116 classes) / 886 cases |
+| Unit tests | 1 Dart test file | ✅ 120 pure JVM test files (117 classes) / 902 cases |
 | Local formats | ZIP / 7Z / CBZ / EPUB / folder | ✅ folder + CBZ import/export (**no archive reading**, see gaps) |
 | Headless / CLI mode | ✅ | ❌ not planned |
 
@@ -212,7 +212,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Source JS execution | flutter_inappwebview | **system WebView + JS bridge** + shim reimplementation |
 | Gallery boards / artist follows / daily hot / reverse search | — | ✅ |
 | Cloudflare preferred IP | — | ✅ (off by default) |
-| JVM correctness tests | 1 Dart test file | ✅ 119 files (116 carry cases) / 886 cases |
+| JVM correctness tests | 1 Dart test file | ✅ 120 files (117 carry cases) / 902 cases |
 | Radial transition (preview card ⇄ reader) | ✅ | ❌ not carried over in the migration |
 
 ### Upstream has it, this branch does not
@@ -305,7 +305,7 @@ No Flutter, no Dart, no Rust.
 # release: R8 obfuscation + resource shrinking, split per ABI (armeabi-v7a / arm64-v8a / x86_64 / universal)
 ./gradlew :app:assembleRelease
 
-# pure JVM correctness tests (119 files / 886 cases, no device needed)
+# pure JVM correctness tests (120 files / 902 cases, no device needed)
 # These two numbers drift. Recompute: find app/src/test -name '*.kt' | wc -l  and  grep -rho '@Test' app/src/test --include=*.kt | wc -l
 ./gradlew :app:testDebugUnitTest
 
