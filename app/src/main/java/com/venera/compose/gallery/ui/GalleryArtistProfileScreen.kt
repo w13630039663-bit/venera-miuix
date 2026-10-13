@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,11 +44,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import com.venera.compose.openGalleryPost
 import com.venera.compose.components.CoverHeroBackdrop
+import com.venera.compose.components.WideScreenLayoutMode
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.rememberImageWallColumnCount
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraGallerySourceMark
@@ -61,6 +69,7 @@ import com.venera.compose.gallery.domain.GalleryArtistLinks
 import com.venera.compose.gallery.domain.GalleryArtistProfile
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
+import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GalleryTagFilter
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -192,6 +201,20 @@ internal fun GalleryArtistProfileScreen(
     // （2026-10-01 用户报「模糊过头」，两处成因之一）。
     val heroImage = wall.cards.firstOrNull { !it.masked }?.post?.backdropUrl.orEmpty()
     val aliasLine = GalleryArtistProfile.aliasLine(credits.canonicalName, credits.aliasReadout)
+    // 宽屏档与内容收口宽度（2026-10-12 平板排查）：手机档 contentMaxWidth = null ⇒
+    // 下面各处 `.then(...)` 都不挂 Modifier，本页手机观感逐像素不变。
+    val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
+    val wideScreen = layoutMode != WideScreenLayoutMode.Compact
+    val contentMaxWidth = contentMaxWidthFor(layoutMode)
+    // 「热门作品」那一排的列数：**用墙上那把尺子**（与主墙 / 日榜二级页 / 画廊收藏同一颗
+    // `rememberImageWallColumnCount`，也吃用户那枚列数设置）。此前这里写死 3 列，
+    // 而 1097dp 横屏上墙已经排到 6 列 —— 同一类卡在两处一个 179dp 一个 357dp，
+    // 用户 2026-10-13 的读数就是这一排"卡片过大"。手机档那把尺子恒 2 列，逐像素不变。
+    val columnMode by GalleryPorts.of(context).prefs.galleryColumnMode.collectAsState()
+    val popularColumns = GallerySettingsModel.gridColumns(
+        columnMode,
+        rememberImageWallColumnCount(),
+    )
 
     Column(
         modifier = Modifier
@@ -213,12 +236,20 @@ internal fun GalleryArtistProfileScreen(
         Spacer(modifier = Modifier.height(tokens.spacing.space4))
 
         // ── hero：这一页唯一的主视觉 ──────────────────────────────────────────
+        // 2026-10-12 平板排查：宽窗下 hero 仍 fillMaxWidth 而高度不变 ⇒ 1891dp 上被拉成
+        // 约 9.6:1 的扁带（用户截图报「显示不合理」）。现在两处一起收：
+        //  ① 高度按断点取第二档（手机 196 / 宽屏 280，见 artistHeroHeightWide 的理由）；
+        //  ② 整块随正文一起受 contentMaxWidth 收口（手机档为 null ⇒ 不挂，逐像素不变）。
+        // 用 height 而不是 aspectRatio，理由见 token KDoc：底图会缺档/换图，
+        // 跟着图片比例走会让整页在取数前后跳一次。
+        val heroModifier = Modifier
+            .fillMaxWidth()
+            .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+            .height(if (wideScreen) tokens.spacing.artistHeroHeightWide else tokens.spacing.artistHeroHeight)
+            .clip(RoundedCornerShape(tokens.shape.extraLarge))
+            .background(tokens.color.surfaceContainerHigh)
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(tokens.spacing.artistHeroHeight)
-                .clip(RoundedCornerShape(tokens.shape.extraLarge))
-                .background(tokens.color.surfaceContainerHigh),
+            modifier = heroModifier.align(Alignment.CenterHorizontally),
         ) {
             // 底图（有就画、没有就是上面那块卡面）。要显式传画廊自己的 ImageLoader：
             // 这一链路的图带 Referer/UA 才拿得到，用默认单例换来的是一枚 403 的空底。
@@ -285,7 +316,11 @@ internal fun GalleryArtistProfileScreen(
         if (credits.links.isNotEmpty()) {
             Spacer(modifier = Modifier.height(tokens.spacing.space6))
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 宽屏收口：外链排也跟着 hero 的宽度走，否则 chip 会沿着 1891dp 铺满整行。
+                    .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                    .align(Alignment.CenterHorizontally),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
             ) {
@@ -304,7 +339,12 @@ internal fun GalleryArtistProfileScreen(
         //    放的是举报/屏蔽这类动作，本仓没有对应的语义可承接，画出来就是个假开关）。
         Spacer(modifier = Modifier.height(tokens.spacing.space6))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // 宽屏下与 hero 同一口径收口：否则两枚按钮各 weight(1f) 会在 1891dp 上
+                // 各占近半屏（用户截图里那两条通栏大按钮）。
+                .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                .align(Alignment.CenterHorizontally),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
         ) {
             ArtistActionPill(
@@ -333,6 +373,7 @@ internal fun GalleryArtistProfileScreen(
             imageLoader = imageLoader,
             postsFailed = postsFailed,
             site = site,
+            columns = popularColumns,
             onOpen = { card, rect ->
                 // 与墙上那张卡（`GalleryPostCard`）同一个动作：趁卡片还在屏上把**封面那一块**截下来。
                 // 队列也一起交（与收藏页同一处收口）：少了它大图页认不出"同墙的那批"，
@@ -373,6 +414,8 @@ private fun GalleryArtistPostGrid(
     imageLoader: ImageLoader,
     postsFailed: Boolean,
     site: GallerySite,
+    /** 这一排几列 —— 由调用方拿墙上那把尺子算，本件不自己定（见 `popularColumns`）。 */
+    columns: Int,
     /** 第二枚参数是封面那一块的窗口矩形 —— 大图页的飞行起点要它，见 `GalleryPostCard` 的 `onOpen`。 */
     onOpen: (GalleryCard, Rect) -> Unit,
 ) {
@@ -390,7 +433,7 @@ private fun GalleryArtistPostGrid(
     }
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap)) {
         // 卡位恒 SLOT_COUNT：行与列都按固定数生成，数据多少只改"这一格有没有卡"。
-        (0 until SLOT_COUNT).chunked(COLUMNS).forEach { rowSlots ->
+        (0 until SLOT_COUNT).chunked(columns).forEach { rowSlots ->
             Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap)) {
                 rowSlots.forEach { index ->
                     Box(modifier = Modifier.weight(1f)) {
@@ -590,9 +633,9 @@ private fun openExternal(context: Context, url: String) {
     }
 }
 
-/** Popular posts 那一节的卡位数（3 列 × 2 行，用户 2026-10-01 拍的默认档）。 */
+/** Popular posts 那一节的卡位数（2026-10-01 用户拍的默认档：那一屏是 3 列 × 2 行）。
+ *  列数今天不再由这里定 —— 用墙上那把尺子（见 `popularColumns`），所以宽屏上是一行 6 张。 */
 private const val SLOT_COUNT = 6
-private const val COLUMNS = 3
 
 /** 多取一些再按屏蔽判据筛：筛完还剩几张就摆几张，取刚好 6 会让那一节经常缺角。 */
 private const val SLOT_FETCH_SIZE = 18

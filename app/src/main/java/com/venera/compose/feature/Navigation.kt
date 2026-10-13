@@ -67,10 +67,13 @@ import android.app.Activity
 import com.venera.compose.components.VeneraFloatingNavBar
 import com.venera.compose.components.VeneraNavTab
 import com.venera.compose.components.VeneraSideBar
-import com.venera.compose.components.WideScreenLayoutMode
 import com.venera.compose.components.backdrop.VeneraLiquidGlassNavBar
 import com.venera.compose.components.backdrop.VeneraLiquidNavTabs
 import com.venera.compose.components.bottomBarClearanceFor
+import com.venera.compose.components.sideBarModeFor
+import com.venera.compose.components.sideBarReplacesBottomBar
+import com.venera.compose.feature.favorites.FavoritesSplitPaneHost
+import com.venera.compose.feature.favorites.favoritesUsesSplitPane
 import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
@@ -598,10 +601,18 @@ fun VeneraComposeApp() {
     // 这样两侧读到同一个数。宽度源与既有 11 处 isWideScreen 消费点同为 screenWidthDp。
     val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
     // 侧栏档（Medium/Expanded）用左侧栏替代底栏；Compact 档原样走底栏。
-    // 判定只在这一处发生 —— 底栏可见性、底部留白、侧栏有无三件事由同一个 layoutMode 驱动，
+    // 判定只在这一处发生 —— 底栏可见性、底部留白、侧栏有无三件事由同一个布尔驱动，
     // 「有底栏 ⟺ 有留白 ⟺ 无侧栏」由构造保证，不靠各页面自己记。
-    val useSideBar = layoutMode != WideScreenLayoutMode.Compact
-    CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(layoutMode)) {
+    //
+    // 2026-10-12（用户点名）：这个布尔不再只吃档位 —— 液态玻璃档要求**横屏也保留底部悬浮栏**，
+    // 所以改由 `sideBarReplacesBottomBar(档位, 样式)` 定夺。MD3 档返回值与改动前逐值相同
+    // （`layoutMode != Compact`），手机档与既有平板档零回归；只有「宽窗 + 液态玻璃」这一格
+    // 从「被顶掉」变成「保留玻璃栏」，正是用户要的那一档。
+    val useSideBar = sideBarReplacesBottomBar(
+        mode = layoutMode,
+        liquidGlassSelected = navigationBarStyle == NavigationBarStyle.LIQUID_GLASS,
+    )
+    CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(layoutMode, useSideBar)) {
     Box(modifier = Modifier.fillMaxSize()) {
         VeneraAmbientBackground {
         val layoutDirection = LocalLayoutDirection.current
@@ -610,15 +621,16 @@ fun VeneraComposeApp() {
         // ── 大屏侧栏 ──
         // 侧栏只包**内容层**（下面那个 SharedTransitionLayout），不包底栏 overlay：
         // 底栏 overlay 是 VeneraAmbientBackground 的兄弟节点，侧栏档已被 `!useSideBar` 门控掉。
-        // Compact 档 VeneraSideBar 内部直通 content（见该组件的 Compact 分支），
-        // 所以这里无条件调用即可，不需要在调用点分叉。
+        // 传 `sideBarModeFor(...)` 而不是裸 `layoutMode`：后者在「宽窗 + 液态玻璃」那一格
+        // 会让侧栏与底部玻璃栏**同时渲染**（VeneraSideBar 只在 Compact 档短路）。
+        // 该档下 `sideBarModeFor` 返回 Compact ⇒ 组件直通 content，导航只剩底部那一条。
         VeneraSideBar(
             currentTab = currentTab,
             onTabSelected = { tab ->
                 haptic()
                 navController.gotoTab(tab)
             },
-            mode = layoutMode,
+            mode = sideBarModeFor(layoutMode, useSideBar),
         ) {
         SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             // ── 顶栏控制权已交还各页面（页内自治）──
@@ -755,12 +767,94 @@ fun VeneraComposeApp() {
                     }
                     composable<FavoritesRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
-                            AndroidFavoritesScreen(
-                                animatedVisibilityScope = this,
-                                onSelect = ::openComic,
-                                onPreviewFavoriteImage = ::openFavoriteImagePreview,
-                                onReadFavoriteImage = ::readFavoriteImage,
-                            )
+                            // 2026-10-12（用户点名的 B 方案）：宽窗走「列表 + 详情」双栏，
+                            // 窄窗仍走单页 + 壳 NavHost 的 DetailRoute（逐像素不变）。
+                            //
+                            // 档位判据收口在 feature/favorites/FavoritesSplitPanePolicy.kt（有单测），
+                            // 这里不再自己抄一个 600。**冻结文件 FavoritesScreen.kt 零 diff** ——
+                            // 列表那一屏原样复用，只是 onSelect 在双栏档换成「填右栏」。
+                            if (favoritesUsesSplitPane(LocalConfiguration.current.screenWidthDp.dp)) {
+                                FavoritesSplitPaneHost(
+                                    onStartLiveReading = { session ->
+                                        haptic()
+                                        shell.pendingSession = session
+                                        navController.navigate(ReaderRoute)
+                                    },
+                                    onSearchTag = { tag, sourceName ->
+                                        haptic()
+                                        navController.navigate(
+                                            TagSearchRoute(keyword = tag, sourceName = sourceName)
+                                        )
+                                    },
+                                    onOpenCoverViewer = { url, title ->
+                                        haptic()
+                                        navController.navigate(
+                                            CoverViewerRoute(coverUrl = url, title = title)
+                                        )
+                                    },
+                                    // 一次性槽位，与 DetailRoute 那支同纪律：只在本支进入时取一次。
+                                    readTargetFor = { comicId, sourceName ->
+                                        shell.pendingReadTarget?.takeIf {
+                                            it.comicId == comicId && it.sourceName == sourceName
+                                        }
+                                    },
+                                    // 右栏那一本**照手机档同一把尺子**现取：路由/键是身份的唯一依据，
+                                    // 内存条目（shell.selectedComic）只能补充同一本漫画的展示数据。
+                                    onComicOpened = { comic -> shell.selectedComic = comic },
+                                    detailComicFor = { sourceName, comicId ->
+                                        resolveDetailComic(DetailRoute(comicId, sourceName), shell.selectedComic)
+                                    },
+                                    listPane = { onOpen ->
+                                        AndroidFavoritesScreen(
+                                            animatedVisibilityScope = this,
+                                            onSelect = onOpen,
+                                            onPreviewFavoriteImage = ::openFavoriteImagePreview,
+                                            onReadFavoriteImage = ::readFavoriteImage,
+                                        )
+                                    },
+                                    detailPane = { comic, readTarget, detailVisibilityScope, onBack ->
+                                        AndroidComicDetailScreen(
+                                            comic = comic,
+                                            animatedVisibilityScope = detailVisibilityScope,
+                                            readTarget = readTarget,
+                                            onBack = {
+                                                haptic()
+                                                onBack()
+                                            },
+                                            onStartLiveReading = { session ->
+                                                haptic()
+                                                shell.pendingSession = session
+                                                navController.navigate(ReaderRoute)
+                                            },
+                                            onSearchTag = { tag ->
+                                                haptic()
+                                                navController.navigate(
+                                                    TagSearchRoute(
+                                                        keyword = tag,
+                                                        sourceName = comic.sourceName,
+                                                    )
+                                                )
+                                            },
+                                            onOpenCoverViewer = { url ->
+                                                haptic()
+                                                navController.navigate(
+                                                    CoverViewerRoute(
+                                                        coverUrl = url,
+                                                        title = comic.title,
+                                                    )
+                                                )
+                                            },
+                                        )
+                                    },
+                                )
+                            } else {
+                                AndroidFavoritesScreen(
+                                    animatedVisibilityScope = this,
+                                    onSelect = ::openComic,
+                                    onPreviewFavoriteImage = ::openFavoriteImagePreview,
+                                    onReadFavoriteImage = ::readFavoriteImage,
+                                )
+                            }
                         }
                     }
                     composable<FavoriteImageRoute> { entry ->

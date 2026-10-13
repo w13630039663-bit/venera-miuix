@@ -41,6 +41,30 @@ fun comicPreviewColumnCount(availableWidth: Dp): Int =
     kotlin.math.ceil(availableWidth.value / 200f).toInt().coerceAtLeast(3)
 
 /**
+ * 首页「可能你感兴趣」那一横排在宽屏档排几张。
+ *
+ * 为什么不用 [comicListColumnCount]：那一把尺是给**整面网格**用的（每 220dp 一列，卡片越大越好吃信息），
+ * 而推荐只有**一行**，横在屏幕顶上。1280×800 的平板上它给 4 列 ⇒ 每张约 232dp 宽、
+ * 封面约 318dp 高 —— 半屏多高全是封面，用户读到的就是"卡太大、一屏放不下几本"（2026-10-13 反馈）。
+ *
+ * 这一把改成**按卡片自身应有的宽倒推列数**，而那个宽用的是应用内现成的口径
+ * [com.venera.compose.ui.tokens.VeneraSpacing.historyCardWidth]（历史行那 124dp，
+ * 而推荐行的骨架 `RecommendSkeleton` 本来也是按这枚画的 —— 之前只有真数据那一支没照它走）。
+ *
+ * 取 floor 而不是 round/ceil：**每张的实宽永远不窄于 token**（宁可把除不尽的余宽摊给每张），
+ * 而且越宽越贴近 token —— 960dp 上 7 张、每张 126.9dp（比 token 多 2.9）。
+ * 反过来取 ceil 就会在窄一档时把卡压到 98dp 那种"比历史行还小"的观感。
+ * ⚠️ 窄端不成立：320dp 上 floor 只给 2 张、每张 154dp —— 那一档由调用点的
+ * `comicListColumnCount(...) >= 3` 闸门挡着（手机档根本不走这一排），所以不影响观感，
+ * 但别把"实宽 ≤ token + 一枚间距"当成这条函数的性质写进别处。
+ */
+fun recommendStripColumns(availableWidth: Dp, cardWidth: Dp, gap: Dp): Int {
+    val slot = cardWidth.value + gap.value
+    if (slot <= 0f) return 1
+    return ((availableWidth.value + gap.value) / slot).toInt().coerceAtLeast(1)
+}
+
+/**
  * 量宿主自身的可用宽。
  *
  * 返回 `(去掉左右内边距后的可用宽, 需挂在宿主 modifier 链上的测量修饰符)`。

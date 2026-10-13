@@ -61,6 +61,7 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.comicListColumnCount
+import com.venera.compose.components.recommendStripColumns
 import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
@@ -254,17 +255,24 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         )
                     }
                     Spacer(Modifier.height(tokens.spacing.space2))
+                    // 宽屏档不用 Hero 轮播：1280dp 上 hero 会被算成约 1040×220，
+                    // 竖版封面横向裁成一坨放大碎片。改排**单行封面卡**，而每一张的宽用现成的
+                    // `historyCardWidth`（124dp）倒推列数，不用 `comicListColumnCount` 那把 220dp 的尺 ——
+                    // 后者是给整面网格的，一行推荐按它排就变成"四张海报占掉半屏"（2026-10-13 反馈）。
+                    // 闸门仍留在 `gridColumns >= 3`：手机档恒为 2 ⇒ 仍走下面的轮播，几何与交互零改动。
+                    val (blockWidth, blockWidthModifier) = rememberContentWidth()
+                    val gridColumns = comicListColumnCount("brief", blockWidth)
+                    val stripColumns = recommendStripColumns(
+                        availableWidth = blockWidth,
+                        cardWidth = tokens.spacing.historyCardWidth,
+                        gap = tokens.spacing.gridGap,
+                    )
                     when {
                         // 刷新中（含首拉）：整排灰骨架呼吸，不铺假封面也不留白。
                         // 放在 comics 判断之前 —— 「换一批」期间也要走骨架，不能拿旧批次挡着。
-                        recommend.loading -> RecommendSkeleton()
+                        // 骨架的张数与真数据那一支同一把尺，否则呼吸完会"整排跳一次"。
+                        recommend.loading -> RecommendSkeleton(columns = stripColumns)
                         recommend.comics.isNotEmpty() -> {
-                            // 宽屏档不用 Hero 轮播：1280dp 上 hero 会被算成约 1040×220，
-                            // 竖版封面横向裁成一坨放大碎片。改按漫画网格同一口径排单行封面卡
-                            // （comicListColumnCount：每 220dp 一列 → 1280dp 上 5 列）。
-                            // 手机档 columns 恒为 2 → 仍走下面的轮播，几何与交互零改动。
-                            val (blockWidth, blockWidthModifier) = rememberContentWidth()
-                            val gridColumns = comicListColumnCount("brief", blockWidth)
                             val openComic: (Comic) -> Unit = { comic ->
                                 onSelect(
                                     ComicItem(
@@ -283,8 +291,8 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             }
                             if (gridColumns >= 3) {
                                 RecommendGridRow(
-                                    comics = recommend.comics.take(gridColumns),
-                                    columns = gridColumns,
+                                    comics = recommend.comics.take(stripColumns),
+                                    columns = stripColumns,
                                     onOpen = openComic,
                                     modifier = blockWidthModifier,
                                 )
@@ -824,10 +832,10 @@ private fun RecommendCarouselItem(comic: Comic, modifier: Modifier) {
  * 复用全站那套 [VeneraShimmer]（它本来就只做 alpha 呼吸，不引 shader），不新造动画。
  */
 @Composable
-private fun RecommendSkeleton() {
+private fun RecommendSkeleton(columns: Int) {
     val tokens = VeneraTokens
     Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
-        repeat(3) {
+        repeat(columns) {
             VeneraShimmer(
                 modifier = Modifier
                     .width(tokens.spacing.historyCardWidth)
