@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * 画廊侧的**业务 API 容器 + 守卫口 + 偏好口**（适配器在 `android/GalleryPortsAndroid.kt`，
- * 其余十二颗契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`）。
+ * 其余十二颗必给契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`；
+ * 第十三颗 [GalleryPorts.gelbooruWindows] 有默认值，只有移动端接 —— 见那颗口上的「为什么不并进 ScoredBoard」）。
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -40,6 +41,9 @@ class GalleryPorts(
     val artists: GalleryArtistDirectory,
     val reverse: GalleryReverseSearch,
     val hygiene: GalleryNetworkHygiene,
+    // 有默认值只为让**没接这一路的那一侧**不必改一个字：桌面今天的排行判据不列 Gelbooru 的
+    // 四档时间窗，所以它压根不会问这一颗（不是"接了但坏掉"，是"这一侧没有这一档"）。
+    val gelbooruWindows: GelbooruWindowProbeSource? = null,
 ) {
 
     companion object {

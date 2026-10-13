@@ -10,12 +10,12 @@ import com.venera.compose.gallery.domain.GalleryTitleTag
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * `GalleryBusinessApi` 十二颗契约的 **Android 适配器**（契约本体留在同目录那颗）。
+ * `GalleryBusinessApi` 十三颗契约的 **Android 适配器**（契约本体留在同目录那颗）。
  *
  * ## 为什么单独一颗、且落在 `android/` 子目录
  *
  * 契约面只有 `StateFlow` + `Result` + 本仓数据模型，一句平台类型都没有，桌面侧要用同一套契约另接一份实现；
- * 而这十三颗的构造参数 `Context` 正是它们上不了桌面编译面的原因。目录 `android/` 被
+ * 而这十四颗的构造参数 `Context` 正是它们上不了桌面编译面的原因。目录 `android/` 被
  * `desktop/build.gradle.kts` 那颗全局的 android 目录排除挡在外面，包名仍写
  * `com.venera.compose.gallery.data`（Kotlin 允许包名不等于目录名）⇒ 同包的
  * `AndroidGalleryPorts.createPorts` 照常直接构造，`gallery/ui` 一行不动。
@@ -86,6 +86,23 @@ internal class AndroidGelbooruBoard(private val context: Context) : ScoredBoard 
     override suspend fun searchTags(term: String) = client.searchTags(term)
     override suspend fun fetchById(id: Long) = client.fetchById(id)
     override suspend fun fetchTopScored() = client.fetchTopScored()
+}
+
+/**
+ * Gelbooru 时间窗的定界取数（2026-10-13）：状态机在 `gallery/domain`，这里只把两笔问句递到那颗 client。
+ *
+ * 走 [GelbooruClient] 而不并进 [AndroidGelbooruBoard]：那颗 `ScoredBoard` 是 Gelbooru 与 Safebooru
+ * 共用的契约，往公共口加成员就得给 Safebooru 挂一枚"永远失败"的假实现（理由见 `GalleryBusinessApi.kt`
+ * 里 `YandeReBoard.fetchDailyPopular` 与 `GelbooruWindowProbeSource` 上那两段说明）。
+ */
+internal class AndroidGelbooruWindowProbe(private val context: Context) : GelbooruWindowProbeSource {
+
+    private val client: GelbooruClient get() = GelbooruClient.getInstance(context)
+
+    override suspend fun fetchLatestPostId(): Result<Long> = client.fetchLatestId()
+
+    override suspend fun probeWindowStart(atLeastId: Long): Result<GelbooruWindowProbe> =
+        client.probeWindowStart(atLeastId)
 }
 
 internal class AndroidSafebooruBoard(private val context: Context) : ScoredBoard {

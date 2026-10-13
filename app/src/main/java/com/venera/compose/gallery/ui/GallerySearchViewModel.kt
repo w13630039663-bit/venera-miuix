@@ -28,12 +28,16 @@ import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.GelbooruWindowBreak
+import com.venera.compose.gallery.domain.GelbooruWindowFinder
+import com.venera.compose.gallery.domain.GelbooruWindowHunt
 import com.venera.compose.gallery.domain.allLegsExhausted
 import com.venera.compose.gallery.domain.decodeGallerySearchHistory
 import com.venera.compose.gallery.domain.encodeGallerySearchHistory
 import com.venera.compose.gallery.domain.isStaleLeg
 import com.venera.compose.gallery.domain.nextPagesForAppend
 import com.venera.compose.gallery.domain.pushGallerySearchHistory
+import java.io.IOException
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
@@ -354,7 +358,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 不落回默认档就会出现：胶囊上写着「周」、发出去的是全站历年高分 —— 假开关最坏的长相。
         // 「全部」档按**每一条腿**过：只要有一条腿不支持这一档，整档落回默认才说得通
         // （只让一条腿按排行搜、另一腿按默认搜，屏上那面墙就成了两种口径的混合，读不出对错）。
-        if (!GalleryRankings.supportsAll(next.sites, ranking)) {
+        if (!GalleryRankings.supportsForApp(next.sites, ranking)) {
             ranking = GalleryRanking.NEWEST
             periodAnchor = null
         }
@@ -693,12 +697,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 但**轮次计数器要 +1**：不加的话，上一档正在飞的续页会落进这一档的墙上
      * （站没变、条件没变，[isStaleContext] 那两道都拦不住，只有轮次拦得住）。
      *
-     * [GalleryRankings.supports] 判为"本站没有"的档这里再挡一道：菜单那一侧已经不列这一档，
+     * [GalleryRankings.supportsForApp] 判为"这一档现在摆不出来的"这里再挡一道：菜单那一侧已经不列这一档，
      * 但入口不止菜单一个（弹栈回来的快照、以后可能加的快捷入口），判据得落在状态层。
+     * 2026-10-13 起这一把是**移动端那把**（Gelbooru 的四档时间窗是 id 边界合成档，桌面未接）。
      */
     fun setRanking(next: GalleryRanking) {
         if (next == ranking && periodAnchor == null) return
-        if (!GalleryRankings.supportsAll(source.sites, next)) return
+        if (!GalleryRankings.supportsForApp(source.sites, next)) return
         ranking = next
         // 换档 = 回到本期：从"2024 年 3 月"点「按年排行」，用户要的是今年。
         periodAnchor = null
@@ -919,17 +924,22 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                 val attempts: List<GalleryLegAttempt> = coroutineScope {
                     pages.map { (legSite, legPage) ->
                         async {
-                            val query = GalleryRankings.searchQuery(
-                                legSite,
-                                sent,
-                                rankingAtRequest,
-                                anchorAtRequest,
-                                todayUtc,
-                            )
                             // 每腿一笔时间预算：慢的那一条这一轮缺席（会被 legFailures 说出来），
                             // 换来快的那条立刻出图。预算与包装那份都复用日榜那头（`GalleryLegGuard`），
                             // 三处各写一遍迟早分叉 —— 而分叉出来的差别不报错，只出假读数。
-                            val byOriginal = GalleryLegGuard.guard(legSite) { searchLeg(legSite, query, legPage) }
+                            // ⚠️ Gelbooru 合成档的**定界探测也算在这笔预算里**：它是几笔 `limit=1` 的轻请求
+                            // （稠密桩上实跑：天 5 / 周 6 / 月 6 / 年 6 笔，见 `GelbooruWindowFinderTest`；
+                            // 真站有删帖空洞时可能多一两笔，上限 18 笔），另起一台计时就会出现
+                            // "这一腿既超了预算、又没人说得清它为什么缺席"。定不出来 = 这一腿缺席，
+                            // **绝不发一串没有后缀的**。
+                            val byOriginal = GalleryLegGuard.guard(legSite) {
+                                when (val leg = legQuery(legSite, sent, rankingAtRequest, anchorAtRequest, todayUtc)) {
+                                    is LegQuery.Ready -> searchLeg(legSite, leg.query, legPage)
+                                    is LegQuery.Skip -> Result.failure(
+                                        IOException(legSkipped(rankingAtRequest, leg))
+                                    )
+                                }
+                            }
                             // 批次 J：这一腿**答上了却一行都没给**、而且那一排条件只有一枚包含型标签时，
                             // 用户打的很可能是画师的别名而不是正名（站方两个名字都收，只有正名有货）。
                             // 该不该走这一步全由 [GalleryArtistAlias.resolveToken] 说，这里只按它说的做；
@@ -942,18 +952,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                                 ?: return@async GalleryLegAttempt(byOriginal, null)
                             // 重搜这一腿**另起一笔预算**：前一笔的 12s 已经花在"确认原词没有货"上了，
                             // 再拿同一个预算去框两笔就是让第二笔必然超时。
+                            // 合成档的边界在第一次就已经定出来并缓存过（同日同档同键），所以这里不再探测；
+                            // 万一还是定不出来（例如跨了 UTC 零点），就**不重搜** —— 那一腿退回
+                            // "没做别名这一步"的样子，比拿一串没有窗口后缀的去搜全站旧账诚实。
+                            val retryQuery = (
+                                legQuery(legSite, substituted, rankingAtRequest, anchorAtRequest, todayUtc)
+                                    as? LegQuery.Ready
+                                )?.query ?: return@async GalleryLegAttempt(byOriginal, null)
                             val retried = GalleryLegGuard.guard(legSite) {
-                                searchLeg(
-                                    legSite,
-                                    GalleryRankings.searchQuery(
-                                        legSite,
-                                        substituted,
-                                        rankingAtRequest,
-                                        anchorAtRequest,
-                                        todayUtc,
-                                    ),
-                                    legPage,
-                                )
+                                searchLeg(legSite, retryQuery, legPage)
                             }
                             // 换过名这句话只在重搜那一笔**答上了**时才说：那一笔超时或被打回时，
                             // 「按 tokenbox 也没有图」就是把"我们没问到"念成"站里没有"——
@@ -1053,6 +1060,83 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             GallerySite.YANDERE -> boards.yandere.searchPosts(query, page, pageSizeFor(site))
             GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, page, pageSizeFor(site))
         }
+
+    /**
+     * 这一腿**真正发出去的那一串**（含排行伪标签），必要时先把 Gelbooru 的合成档边界定出来。
+     *
+     * [LegQuery.Skip] = 这一腿**这一轮不发**（调用方判成缺席并说原因）。两条走到 Skip 的路：
+     * - Gelbooru 的时间窗定不出边界（凭据没了、站方抽风、探测超上限、命中总数不自洽）；
+     * - 排行档要窗口而窗口边界算不出来。
+     * ⚠️ **绝不能退回"没有后缀的那一串"** —— 那按站方语义就是全站最新/全站高分，
+     * 而胶囊上写着「周」，就是本仓最忌的静默交错。
+     */
+    private suspend fun legQuery(
+        site: GallerySite,
+        filters: List<GalleryTagFilter>,
+        rankingAtRequest: GalleryRanking,
+        anchorAtRequest: LocalDate?,
+        todayUtc: LocalDate,
+    ): LegQuery {
+        val targetDay = GalleryRankings.boundaryTargetDay(site, rankingAtRequest, anchorAtRequest, todayUtc)
+        val hunt = targetDay?.let { gelbooruWindowFinder.hunt(it, todayUtc) }
+        val query = GalleryRankings.searchQueryFor(
+            site,
+            filters,
+            rankingAtRequest,
+            anchorAtRequest,
+            todayUtc,
+            hunt?.startId,
+        ) ?: return LegQuery.Skip(
+            (hunt as? GelbooruWindowHunt.Broken)?.at,
+            (hunt as? GelbooruWindowHunt.Broken)?.detail,
+        )
+        return LegQuery.Ready(query)
+    }
+
+    /**
+     * 屏上那一句缺席原因：先说清"这一站不给时间查询，要先探几次"，再把**断在哪一步**接上去。
+     *
+     * 光一句"没探成"是不够的：那五种成因里只有一种该去设置里补凭据，其余几种该等站方缓过来，
+     * 而用户分不出来的结果就是把凭据改一遍再截一张图过来。站方原话（401 那句）直接带上。
+     */
+    private fun legSkipped(ranking: GalleryRanking, skip: LegQuery.Skip): String {
+        val why = when (skip.at) {
+            GelbooruWindowBreak.ProbeNotWired -> "这一档的探测通道没接上"
+            GelbooruWindowBreak.LatestIdRejected -> skip.detail ?: "Gelbooru 没接受这组凭据"
+            GelbooruWindowBreak.LatestIdUnusable -> "Gelbooru 没给出最新一条的编号"
+            GelbooruWindowBreak.ProbeRejected -> skip.detail ?: "Gelbooru 没接受定界那一笔请求"
+            GelbooruWindowBreak.ProbeNoEntry -> "定界问到的位置上没有条目"
+            GelbooruWindowBreak.StampUnparsable -> "Gelbooru 的上传时间读不出日子"
+            GelbooruWindowBreak.CountInconsistent -> "Gelbooru 的编号过滤没按语义生效"
+            GelbooruWindowBreak.SameReadingRepeated -> "连着几笔探到同一个位置，没往前走"
+            GelbooruWindowBreak.ProbeBudget -> "探满上限还没括住这一档"
+            GelbooruWindowBreak.TopReachedWithoutBracket -> "问到最新一条仍没括住这一档"
+            null -> "窗口边界算不出来"
+        }
+        return "${ranking.shortLabel}排行：这一站的窗口要先把起止探出来，这一次没探成（$why），所以这一腿这一轮不发"
+    }
+
+    /**
+     * Gelbooru 合成档的定界器（2026-10-13）。
+     *
+     * 取数走 [GalleryPorts.gelbooruWindows] 那一颗契约，**不直连** `GelbooruClient`（UI 层直连实现类
+     * 是 `BusinessApiBoundaryTest` 的 A/B 两条红线，"要开口就加契约"是它自己给出的处置）。
+     * 那一颗在桌面上不接线 → 这里就是 null，而桌面今天的判据面本来也不列这四档，null 不会被点出来。
+     * 状态机与缓存都在 `gallery/domain` 那颗纯件里，这里只负责把两枚挂起函数递进去。
+     */
+    private val gelbooruWindowFinder by lazy {
+        val windows = GalleryPorts.of(app).gelbooruWindows
+        GelbooruWindowFinder(
+            // **不压成 null**：出网那一笔的失败原话要一路留到屏上（"没探成"三个字分不出
+            // 是没配凭据还是在等站方缓过来，2026-10-13 真机这一笔就是这么卡住的）。
+            latestId = { windows?.fetchLatestPostId() },
+            probeAtLeast = { atLeast ->
+                windows?.probeWindowStart(atLeast)?.map {
+                    Triple(it.oldestId, it.createdAtRaw, it.count)
+                }
+            },
+        )
+    }
 
     /**
      * 站方那条画师别名链（批次 J）：先按原词取画师记录，再跟一次 `artist/show/<alias_id>` 的重定向。
@@ -1296,3 +1380,17 @@ private class GalleryLegAttempt(
     val outcome: GalleryLegOutcome,
     val aliasNotice: String?,
 )
+
+/**
+ * 一条腿「发什么」的结论。
+ *
+ * 不用 `String?` 是因为屏上要说得出**为什么不发**（[GelbooruWindowBreak] 那一步 + 站方原话），
+ * 而 null 装不下这句话。与 [GalleryLegAttempt] 同一纪律：结论**跟着返回值走**，不写共享状态 ——
+ * 多条腿并发时从协程里写一格"上一次为什么失败"会把别人的话盖掉。
+ */
+private sealed interface LegQuery {
+    data class Ready(val query: String) : LegQuery
+
+    /** @param at null = 不是 Gelbooru 合成档那一路（这一档压根要不到窗口边界）。 */
+    data class Skip(val at: GelbooruWindowBreak?, val detail: String?) : LegQuery
+}

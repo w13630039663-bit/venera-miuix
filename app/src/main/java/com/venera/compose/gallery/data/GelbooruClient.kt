@@ -177,6 +177,52 @@ class GelbooruClient internal constructor(
             .filterNotNull()
 
     /**
+     * 站方最新一条的 id（一笔 `limit=1`、不带 tags）。定界的估点要从这里往回推。
+     *
+     * 空表 / `id<=0` 都算**失败**交出去：估点没有锚就等于这一档定不出来，
+     * 而不是"从 0 开始"—— 从 0 起算的窗口就是全站那批，那正是假开关。
+     */
+    suspend fun fetchLatestId(): Result<Long> = withContext(Dispatchers.IO) {
+        runCatching {
+            val envelope = json.decodeFromString<GelbooruPostEnvelopeDto>(
+                get("$BASE?page=dapi&s=post&q=index&json=1&limit=1")
+            )
+            val id = envelope.posts().firstOrNull()?.id
+                ?: throw IOException("Gelbooru 没给出最新一条的 id")
+            if (id <= 0L) throw IOException("Gelbooru 最新一条的 id 不可用：$id")
+            id
+        }
+    }
+
+    /**
+     * 问一次「从 [atLeastId] 起，这一档最早的一条是哪天」。
+     *
+     * 拼法是 2026-10-13 现量挑出来的那一枚：`id:>=M` 生效（`count` 会缩），
+     * 而 **`id:M..` 与 `id:M..N` 被静默忽略**（`count` 与全站逐字相同）——
+     * 别照别的站的区间写法改这里，那不会报错，只会把"全站高分"当成"本周高分"交上去。
+     * `sort:id:asc` 让第一条就是窗口里最老的那条，所以**一笔**拿到边界日期；
+     * 用 `id:<M&limit=1` 那种"取比 M 新的那条"要多一次方向换算，还会踩删帖留下的 id 空洞。
+     *
+     * 这一笔**没有条目**时（M 已经高过站方最新 id）算失败：那是位置给错了，
+     * 不是"窗口里没有图"。
+     */
+    internal suspend fun probeWindowStart(atLeastId: Long): Result<GelbooruWindowProbe> = withContext(Dispatchers.IO) {
+        runCatching {
+            val tags = "id:>=$atLeastId sort:id:asc"
+            val envelope = json.decodeFromString<GelbooruPostEnvelopeDto>(
+                get("$BASE?page=dapi&s=post&q=index&json=1&tags=${enc(tags)}&limit=1")
+            )
+            val first = envelope.posts().firstOrNull()
+                ?: throw IOException("Gelbooru 定界探针在 id:>=$atLeastId 上没有读到条目")
+            GelbooruWindowProbe(
+                count = envelope.attributes.count,
+                oldestId = first.id,
+                createdAtRaw = first.createdAt,
+            )
+        }
+    }
+
+    /**
      * 发一笔 GET 并交出 body；非 2xx 一律翻成人话。
      *
      * ⚠️ 凭证走**类内部**的 [GelbooruAccount]，不走 `VeneraNetworkClient` 的公共头 ——
@@ -399,6 +445,12 @@ internal data class GelbooruDto(
     val sample: Int = 0,
     /** Unix 秒。日榜模拟用不到它（我们用 `sort:score`），留作读数。 */
     val change: Long = 0,
+    /**
+     * 站方上传时刻，**Ruby asctime**：`Sat Sep 26 03:51:09 -0500 2026`（2026-10-13 带凭据现量，
+     * 与 09-26 那次抄录同形）。这里**只原样交出**——日切换算在 `gallery/domain` 的
+     * `parseGelbooruStampDay` 里做，那颗是定界判据的唯一出处，`data` 层不参与判读。
+     */
+    @SerialName("created_at") val createdAt: String = "",
 ) {
     /**
      * 翻成归一形状。

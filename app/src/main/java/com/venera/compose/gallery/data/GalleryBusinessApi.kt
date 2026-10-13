@@ -165,6 +165,39 @@ interface GalleryBoards {
     val safebooru: ScoredBoard
 }
 
+/**
+ * 定界探针的一笔读数：信封上的**命中总数**，与那一条的 id 和原始上传时刻。
+ *
+ * `count` 是这一档成败唯一的数值判据 —— 2026-10-13 实测它**随 id 窗口缩**
+ * （全站 14,409,081 → `id:>=14994000` 83,868），而"HTTP 200 + 合法 JSON"在
+ * `id:A..B` 那种**被静默忽略**的拼法下长得和生效一模一样。
+ */
+data class GelbooruWindowProbe(
+    val count: Long,
+    val oldestId: Long,
+    val createdAtRaw: String,
+)
+
+/**
+ * Gelbooru 时间窗的**定界取数**（2026-10-13）：这一站不认 `date:`，"这一档从哪天起"要换算成
+ * "从哪个 id 起"，换算要靠两笔问句。状态机在 `gallery/domain/GelbooruWindowBoundary.kt`（纯件），
+ * 这里只是它伸向网络的那两手。
+ *
+ * ## 为什么不并进 [ScoredBoard]
+ * 那是 Gelbooru 与 Safebooru **共用**的一颗，而只有前者需要定界 —— 理由与
+ * [YandeReBoard.fetchDailyPopular] 写在同一颗文件上的那条一样：进公共口就等于逼另一站的适配器
+ * 挂一枚"永远失败"的假实现。这里另开一颗口，[GalleryPorts.gelbooruWindows] 那一位**没接线就是 null**
+ * （桌面今天不接：那边的排行判据根本不列这四档，所以不存在"点了没反应"那一格）。
+ */
+interface GelbooruWindowProbeSource {
+
+    /** 站方最新一条的 id —— 估点往回推的那根锚。取不到就失败，**不许**退成 0（那等于全站）。 */
+    suspend fun fetchLatestPostId(): Result<Long>
+
+    /** 问一次「从 [atLeastId] 起，最早的一条是哪天」；那一段没有条目算失败，不算"窗口里没图"。 */
+    suspend fun probeWindowStart(atLeastId: Long): Result<GelbooruWindowProbe>
+}
+
 /** 画师出处与头像：三颗客户端的取用面合成一颗（成员名带站点前缀，因为两站都叫 `avatarUrl`）。 */
 interface GalleryArtistDirectory {
 

@@ -131,6 +131,85 @@ object GalleryRankings {
     }
 
     /**
+     * 移动端菜单/状态层该不该摆这一档（2026-10-13 新加的一把，**只给移动端用**）。
+     *
+     * ── 为什么不直接把 [supports] 翻成 true ──
+     * 那把尺子今天同时钉着桌面那三面判据（`DesktopRankingTest` / `DesktopRankingPeriodTest` /
+     * `DesktopStaleClaimsTest`）与桌面的菜单。用户 2026-10-13 的口径是「先改移动端的，桌面端的别动」，
+     * 而这一档在桌面上要落地还得先翻那三把尺子（桌面测试源集今天编译不过，量不到）。
+     *
+     * 更要紧的是这两问**本来就不是一件事**，合在一把尺子上才是隐患：
+     * - [supports] 答的是「站方**自己**给不给这一档」—— Gelbooru 不给（今天带凭据复量仍 `date:` ⇒ `count=0`）；
+     * - 这一把答的是「**我们**能不能把它做出来」—— 能，用 id 边界合成（见 `GelbooruWindowBoundary`）。
+     *
+     * ⚠️ 合成档**只认纯 Gelbooru 腿**：混着别的站的「全部」档里一条腿原生、一条腿合成，
+     * 半面墙按周、半面墙按全站高分，屏上读不出对错，而胶囊上那个「周」字是在骗人 ——
+     * 所以那种来源这一档照样不列。
+     */
+    fun supportsForApp(sites: List<GallerySite>, ranking: GalleryRanking): Boolean =
+        sites.isNotEmpty() && (
+            supportsAll(sites, ranking) ||
+                (sites.all { it == GallerySite.GELBOORU } && gelbooruWindowSynthesizable(ranking))
+            )
+
+    /** Gelbooru 的四档时间窗能不能靠 id 边界合成（「默认」与「全部」是原生档，不走这条路）。 */
+    fun gelbooruWindowSynthesizable(ranking: GalleryRanking): Boolean = when (ranking) {
+        GalleryRanking.DAY, GalleryRanking.WEEK, GalleryRanking.MONTH, GalleryRanking.YEAR -> true
+        GalleryRanking.NEWEST, GalleryRanking.ALL -> false
+    }
+
+    /**
+     * 这一档在 Gelbooru 上要往回定界的**窗口第一天**；不需要定界时返回 null
+     * （原生站、`NEWEST`/`ALL`、以及混腿来源都走这一支 —— 别为一档多发一笔没用的探测）。
+     */
+    fun boundaryTargetDay(
+        site: GallerySite,
+        ranking: GalleryRanking,
+        anchor: LocalDate?,
+        todayUtc: LocalDate,
+    ): LocalDate? {
+        if (site != GallerySite.GELBOORU) return null
+        if (!gelbooruWindowSynthesizable(ranking)) return null
+        return windowBounds(ranking, anchor, todayUtc)?.first
+    }
+
+    /** 这一腿要不要先探边界才能拼串（只有 Gelbooru 的四档时间窗要）。 */
+    fun needsGelbooruBoundary(site: GallerySite, ranking: GalleryRanking): Boolean =
+        site == GallerySite.GELBOORU && gelbooruWindowSynthesizable(ranking)
+
+    /**
+     * [searchQuery] 的移动端版：需要边界的档吃一枚**已定好的边界 id**。
+     *
+     * 返回 null 的含义只有一个 —— "**这一腿这一轮不发**"：
+     * 边界没探成还要发，退化的结果是"没有后缀的那一串"＝ 全站最新/历年高分，
+     * 而胶囊上写着「周」，那是本仓最忌的静默交错，不是降级。
+     *
+     * ⚠️ 这一支**不能**照 [suffix] 那样把 null 读成"这一档不需要后缀"：`NEWEST` 在站方默认序里
+     * 确实不需要后缀（照 [searchQuery] 的口径原样交回条件串），而边界探不成必须判成不发 ——
+     * 两种 null 的语义相反，所以这里按"要不要边界"分流，而不是共用一个可空后缀。
+     */
+    fun searchQueryFor(
+        site: GallerySite,
+        filters: List<GalleryTagFilter>,
+        ranking: GalleryRanking,
+        anchor: LocalDate?,
+        todayUtc: LocalDate,
+        gelbooruStartId: Long?,
+    ): String? {
+        val base = queryOfVisible(filters)
+        if (needsGelbooruBoundary(site, ranking)) {
+            val start = gelbooruStartId ?: return null
+            // 只用 `id:>=A` 这一枚**实测生效**的拼法，不带窗口终点：站方不认 `date:`，
+            // 而 `id:A..B` 那种区间写法被静默忽略（`count` 与全站逐字相同）。
+            // 终点由 id 单调性自然兜住 —— 比 A 新的那批就是"从那一天起到现在"。
+            val suffix = "id:>=$start sort:score:desc"
+            return if (base.isEmpty()) suffix else "$base $suffix"
+        }
+        val suffix = suffix(site, ranking, anchor, todayUtc) ?: return base
+        return if (base.isEmpty()) suffix else "$base $suffix"
+    }
+
+    /**
      * 这一档**允不允许选历史期**。
      *
      * 只有月/年两档开放（用户 2026-09-29 拍板）：天/周回看是"上一天/上一周"这种一步的事，
