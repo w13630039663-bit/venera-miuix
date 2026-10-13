@@ -1,6 +1,7 @@
 package com.venera.compose.components.venera
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,10 +11,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,6 +80,17 @@ enum class VeneraNoticeTone { Info, Warning, Error }
  * @param actionLabel 动作文案；与 [onAction] **同时**非空才渲染。
  * @param onAction 动作回调。
  * @param icon 显式指定图标。一般不要传 —— 语义交给 [tone]；传了则以它为准。
+ * @param compact **一行档**：只摆「图标 + 标题 + 出口 + 展开把手」一行，[message] 收到行下，
+ *   点这一行才就地展开。给**内容区第一屏**用（画廊首页那面墙），因为：
+ *
+ *   ⚠️ 2026-10-14 手机档截图上读到的原样是 —— 两块提示各占 3~4 行，把
+ *   「正在关注的画师 / 每日热门」整块推出首屏。文档式长段落直接铺在内容区，
+ *   用户第一眼看到的是故障说明书而不是内容。
+ *
+ *   ⚠️ 但它**不是把正文删掉**：正文一个字都在，只是改成"点了才展开"。
+ *   收起来的那一行同时给了展开把手（一枚箭头 + 读屏标签），所以这条路是可发现的；
+ *   没有正文可展开时（`title` 为空）**不摆**那枚把手，也不挂点击 ——
+ *   摆一枚按下去什么都不发生的把手就是本仓明令禁止的假开关。
  */
 @Composable
 fun VeneraNotice(
@@ -83,6 +101,7 @@ fun VeneraNotice(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
     icon: ImageVector? = null,
+    compact: Boolean = false,
 ) {
     val tokens = VeneraTokens
     val palette = noticePaletteOf(tone)
@@ -90,6 +109,10 @@ fun VeneraNotice(
     // 只有标题或只有正文时那一行不留空位：`Row` 里摆一个空 Text 会让图标与动作之间凭空多一截。
     val hasTitle = !title.isNullOrBlank()
     val showAction = !actionLabel.isNullOrBlank() && onAction != null
+    // 一行档里"有东西可展开"的全部条件：正文存在、且它不是那一行本身。
+    val collapsible = compact && hasTitle && message.isNotBlank()
+    var expanded by remember { mutableStateOf(false) }
+    val showBody = hasTitle && message.isNotBlank() && (!compact || expanded)
 
     Surface(
         shape = RoundedCornerShape(tokens.shape.medium),
@@ -97,14 +120,21 @@ fun VeneraNotice(
         // Info 档的底色（surfaceContainerHigh）在浅色主题下与页面底色只差一档，
         // 描一道发丝线它才读得出"这是一块"。另两档的容器色本身已经分得开，再加描边就是两层装饰。
         border = palette.border?.let { BorderStroke(tokens.spacing.hairlineThin, it) },
-        modifier = modifier.fillMaxWidth(),
+        // 只有真的藏着东西时这一行才可按（见上面那条"假开关"约束）。
+        modifier = if (collapsible) {
+            modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = if (expanded) "收起说明" else "展开说明") { expanded = !expanded }
+        } else {
+            modifier.fillMaxWidth()
+        },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
                     horizontal = tokens.spacing.space6,
-                    vertical = tokens.spacing.space5,
+                    vertical = if (compact && !expanded) tokens.spacing.space4 else tokens.spacing.space5,
                 ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
         ) {
@@ -122,13 +152,24 @@ fun VeneraNotice(
                 )
                 Text(
                     text = title?.takeIf { hasTitle } ?: message,
+                    // 一行档把标题压在**一行**：多行标题 + 展开把手 = 这一行仍然吃掉整块高度。
                     fontSize = if (hasTitle) tokens.type.body else tokens.type.caption,
                     fontWeight = if (hasTitle) tokens.type.weightSemibold else tokens.type.weightRegular,
                     color = palette.onContainer,
-                    maxLines = if (hasTitle) 2 else 3,
+                    maxLines = if (hasTitle) (if (compact) 1 else 2) else 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                if (collapsible) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        // 语义由那一行的 `onClickLabel` 承担（读屏在那里念"展开说明/收起说明"），
+                        // 这里再念一遍就是同一件事说两次。
+                        contentDescription = null,
+                        tint = palette.onContainer,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                }
                 if (showAction) {
                     // 动作走**实底胶囊**，而不是同色的文字：文字动作与标题同为 onContainer 时
                     // 读起来只是标题的续行，用户不会想到它能按。
@@ -147,7 +188,7 @@ fun VeneraNotice(
                     )
                 }
             }
-            if (hasTitle) {
+            if (showBody) {
                 Text(
                     text = message,
                     fontSize = tokens.type.caption,

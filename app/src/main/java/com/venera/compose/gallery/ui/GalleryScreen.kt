@@ -1942,8 +1942,14 @@ internal fun GalleryDailyPage(
                 // 未配账号那一档带一枚「去配置账号」（真能到 设置 → 画廊），
                 // 出错那一档带「重试」—— 重试走 `onRetry`（= 顶栏那枚「换一批」同一条路径：
                 // 先清熔断再真取），直接调 refresh 撞上 60s 熔断窗口时是一枚假按钮。
+                //
+                // 2026-10-14 改判：这一面墙上的块改成**一行档**（`compact = true`）。
+                // 手机档截图量到：两块各 3~4 行正文，把「正在关注的画师 / 每日热门」
+                // 整块推出首屏 —— 核心模块的第一眼成了故障说明书。
+                // 正文一个字没删，改成点那一行就地展开；判据见 `UiAuditBatch2Test`。
                 GalleryNotices(
                     notices = remember(failures) { galleryNotices(failures) },
+                    compact = true,
                     onRetry = onRetry,
                     modifier = Modifier.padding(bottom = tokens.spacing.space3),
                 )

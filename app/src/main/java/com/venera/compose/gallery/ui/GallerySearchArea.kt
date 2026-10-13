@@ -705,6 +705,7 @@ fun GallerySearchArea(
                         // 屏上还没有任何结果，续页那条路的前提不成立。
                         GalleryNotices(
                             notices = remember(svm.legFailures) { galleryNotices(svm.legFailures) },
+                            compact = true,
                             onRetry = { svm.runSearch(1) },
                             modifier = Modifier.padding(top = tokens.spacing.space3),
                         )

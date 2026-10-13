@@ -152,6 +152,7 @@ internal fun GalleryForYouPage(
                     // "熔断中" —— 那是一枚假按钮。
                     GalleryNotices(
                         notices = remember(fvm.failures) { galleryNotices(fvm.failures) },
+                        compact = true,
                         onRetry = onRetry,
                         modifier = Modifier.padding(top = tokens.spacing.space3),
                     )

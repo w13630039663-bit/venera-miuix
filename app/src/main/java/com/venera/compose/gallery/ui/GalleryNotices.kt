@@ -43,12 +43,24 @@ import com.venera.compose.ui.tokens.VeneraTokens
  * ⚠️ 这一条**不吞掉任何原因**：原来那串 `站：原因` 里的原因一个字都没丢，
  * 只是从"一整段拼接的灰字"变成"按档分组的块"，每组里仍逐站念原因。
  *
+ * ── 为什么三面墙都走 [compact]（一行档）──
+ *
+ * 2026-10-14 手机档截图量到的原样：首页那面墙的两块提示各占 3~4 行（标题 +
+ * 一段"为什么 + 去哪儿配 + 另一站不受影响"），把「正在关注的画师 / 每日热门」
+ * **整块推出首屏**。画廊是这款产品的核心模块，而它的第一眼是一份故障说明书。
+ *
+ * 所以内容区只允许"一行摘要"这一级：标题 + 出口 + 展开把手，正文点了才就地铺开
+ * （一个字不删）。文档级长文另有归属（设置 → 画廊 那一页的账号卡）。
+ *
  * @param onRetry 有出口那一档按下去要做什么。传 null 时**不摆**那枚「重试」——
  *   摆一枚按不动的按钮比不摆更坏（它同时在暗示一个不存在的出路）。
+ * @param compact 是否只摆一行。**必填、无默认值**：这一档是"这块提示摆在哪面墙上"的
+ *   决定，第四个调用点出现时必须当场决定一次，不许靠默认值静默长成多行块。
  */
 @Composable
 internal fun GalleryNotices(
     notices: List<GalleryNotice>,
+    compact: Boolean,
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
 ) {
@@ -86,6 +98,7 @@ internal fun GalleryNotices(
                 tone = noticeToneOf(notice.tone),
                 actionLabel = actionLabel,
                 onAction = onAction,
+                compact = compact,
             )
         }
     }
@@ -101,8 +114,13 @@ internal fun GalleryNotices(
  * 而猜串的写法（`reason.contains("推荐")`）在措辞调整时会静默换掉屏上那句话。
  *
  * ⚠️ 标题与正文是**分工**不是复述：正文由 domain 的 `bodyOf` 给，只写标题答不出的那半句。
+ *
+ * ⚠️ `internal`（不是 private）是为的这条不变量能被**行为**测到而不是靠扫字符串：
+ * 一行档把标题压在单行上，标题超长会静默变成省略号 —— 那正是本批要防的失败形态，
+ * 扫描式判据只看得见"代码里写了什么"，看不见"两站并起时那一行有多长"。
+ * 尺子在 `UiAuditBatch2Test`。
  */
-private fun noticeTitle(notice: GalleryNotice): String {
+internal fun noticeTitle(notice: GalleryNotice): String {
     val sites = notice.sites.joinToString(" · ") { it.displayName }
     return when (notice.kind) {
         // 未配账号那一档：标题用那句**唯一来源**的标题半句（不另造措辞）。
