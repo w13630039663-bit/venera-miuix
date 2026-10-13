@@ -114,7 +114,8 @@ This branch (`compose-migration`) does three things, plus one new module:
 - **Daily hot** as a home preview row plus a full-screen secondary page (view all / shuffle again); **For you** builds its wall from tags in your gallery favorites, seeded so results are reproducible and shuffleable.
 - **Followed artists**: follow list, circular avatar row (with favorite counts and site icons), artist page in its own Activity, cross-site work aggregation, and **artist alias resolution** (when a board returns zero posts, re-search once using that board's own alias identifier; a non-zero result is never substituted). *Alias resolution is currently wired for yande.re only.*
 - **Reverse image search** via SauceNAO. *Requires your own free API key in Settings.*
-- Viewer toolbar: favorite, original-file toggle, save to gallery, info sheet, share, **paint as watercolor** (renders the current image stroke by stroke in paper → wash → background → subject → detail order; save / re-roll with a new seed / compare with the original), slideshow (1–15 s adjustable).
+- Viewer toolbar: favorite, original-file toggle, save to gallery, info sheet, share, slideshow (1-15 s adjustable).
+- **Paint as watercolor** (Beta, off by default): renders the current image stroke by stroke in paper -> wash -> background -> subject -> detail order; save it, re-roll with a new seed, or compare with the original. The entry lives in the bottom row of the "About this image" sheet; that row is absent while Beta is off or when the post is a video.
 - **Video posts** play inline with a badge on the card. *Only Safebooru reports duration.*
 - Chinese tag glossary comes from the gallery's own dictionary (derived from ffdkj's Danbooru Simplified/Traditional/English table); the comic side uses the EhTagTranslation database instead — the two are never mixed.
 - **6 ranking tabs** in the search area (default/newest / day / week / month / year / all), plus a date sheet to pick a specific period. *Gelbooru's API cannot express a time window, so that board lists only "default" and "all" rather than offering four tabs that would silently return all-time results.*
@@ -161,7 +162,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 
 - **Two interface styles, Miuix / Material 3** (default **Material 3**), light / dark / follow system. *What switches is the token set — colour, shape, type scale; two component suites still coexist inside one screen (a structural gap, not a missed wiring).*
 - **Custom theme colour**: seed colour #RRGGBB + 25 preset palettes + wallpaper-based dynamic colour (API 31+).
-- **Surface material**: solid / liquid glass (default solid); **bottom bar**: liquid glass / MD3 elevated / solid (default **liquid glass**).
+- **Surface material**: solid / liquid glass (default solid); **bottom bar**: liquid glass / MD3 elevated, two options (default **liquid glass**).
 - **Tag translation display**: follow system / always Simplified / always Traditional / original.
 - Custom header image and quote card on the settings home page; 17 settings sub-pages.
 
@@ -184,7 +185,7 @@ This branch (`compose-migration`) does three things, plus one new module:
 | Stack | Flutter / Dart + Rust | **Pure native Kotlin + Jetpack Compose** |
 | Platforms | Android · iOS · Windows · Linux · macOS | **Android 13+ only** |
 | Interface language | Material 3 | **Miuix (HyperOS style)** + switchable Material 3 |
-| Bottom bar | Standard NavigationBar | **Floating liquid-glass pill bar** (glass / MD3 elevated / solid) |
+| Bottom bar | Standard NavigationBar | **Floating liquid-glass pill bar** (glass / MD3 elevated) |
 | Main tabs | 4 + search/settings as actions | **5**: Home · Favorites · Search · **Gallery** · Explore |
 | Gallery image boards | ❌ none | ✅ yande.re / Gelbooru / Safebooru as an isolated module |
 | Artist follows and artist page | ❌ none | ✅ follow list + avatar row + cross-site aliasing + own Activity |

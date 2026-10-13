@@ -123,10 +123,11 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
         }
         SettingsGroup("导航栏") {
             SettingsSelect("导航栏样式", navigationBar.name,
-                listOf("MD3" to "Miuix 悬浮栏（默认）", "LIQUID_GLASS" to "Liquid Glass 液态玻璃"),
+                listOf("MD3" to "Miuix 悬浮栏", "LIQUID_GLASS" to "Liquid Glass 液态玻璃（默认）"),
                 { prefs.setNavigationBarStyle(NavigationBarStyle.valueOf(it)) })
             Text(
-                "把底栏做成玻璃质感：背景模糊、边缘折射和高光，拖动时还有形变效果。",
+                "把底栏做成玻璃质感：背景模糊、边缘折射和高光，拖动时还有形变效果。" +
+                    "折射要 Android 13 以上的系统能力，低版本会退回普通悬浮栏，这一项的选择不受影响。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

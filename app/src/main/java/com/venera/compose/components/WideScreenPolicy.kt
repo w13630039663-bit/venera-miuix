@@ -109,8 +109,9 @@ fun bottomBarClearanceFor(
  * （`Navigation.kt` 的 `useSideBar = layoutMode != Compact`），导致液态玻璃栏在横屏/平板上
  * 被无条件顶掉、设置里那一项在宽窗形同虚设。现在判据收口在这里，两种样式各自成立：
  *
- *  - `MD3`（默认）→ 宽窗换侧栏，手机档用悬浮底栏。**与改动前逐像素一致**。
- *  - `LIQUID_GLASS` → 无论宽窄都保留底部悬浮栏（横屏一样能用玻璃栏）。
+ *  - `MD3` → 宽窗换侧栏，手机档用悬浮底栏。**与改动前逐像素一致**（这句"默认"已过期：
+ *    `cd0e1bd` 起应用默认是 `LIQUID_GLASS`，见 `VeneraPreferences.kt:419`）。
+ *  - `LIQUID_GLASS` → 无论宽窄都保留底部悬浮栏（横屏一样能用玻璃栏）。**这是今天的新默认**。
  */
 fun sideBarReplacesBottomBar(
     mode: WideScreenLayoutMode,
