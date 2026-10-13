@@ -79,6 +79,8 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     // 两枚"滚动收起"（2026-09-30）：默认关，见 VeneraPreferences 那两处的说明。
     val hideTopBar by prefs.galleryHideTopBar.collectAsState()
     val hideBottomBar by prefs.galleryHideBottomBar.collectAsState()
+    // 「画成水彩」Beta 开关（2026-10-13）：默认关，见 VeneraPreferences 该条说明。
+    val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
 
     // 磁盘读数与探针一样：都不许在组合期跑（数目录要开文件句柄）。
     var cacheBytes by remember { mutableLongStateOf(-1L) }
@@ -269,6 +271,13 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 summary = "没有跟随图片主色调这一项：试过，深色主题下顶部会出现一块颜色很硬的色块，已经撤掉。" +
                     "选纯黑、深灰或纯白时背景会马上挡住后面的模糊；" +
                     "改回模糊那一档要重新进入大图页才生效。",
+            )
+            SettingsToggle(
+                "画成水彩（Beta）", watercolorBeta, { prefs.setGalleryWatercolorBeta(it) },
+                summary = "实验功能，默认关闭。开启后大图页底栏会多出一枚笔刷按钮，" +
+                    "点它就把当前这张图按水彩笔触重新画一遍。" +
+                    "目前重绘后的构图和五官还不够稳定，画完的作品可以直接存进相册，" +
+                    "原图不受影响。",
             )
         }
 

@@ -139,4 +139,7 @@ interface GalleryPreferences {
 
     val galleryHideTopBar: StateFlow<Boolean>
     val galleryHideBottomBar: StateFlow<Boolean>
+
+    /** 「画成水彩」入口开关（Beta，默认关）：见 VeneraPreferences 该条说明。 */
+    val galleryWatercolorBeta: StateFlow<Boolean>
 }

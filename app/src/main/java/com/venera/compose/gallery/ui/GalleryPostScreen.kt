@@ -198,6 +198,9 @@ fun GalleryPostScreen(
     // ── 批次 C2：动图该不该解动画、背景那一层画什么 ──
     val animatedMode by prefs.galleryAnimated.collectAsState()
     val backdrop by prefs.galleryBackdrop.collectAsState()
+    // 「画成水彩」Beta：默认关（图廊设置里开）。关着时底栏不摆那枚笔刷钮，
+    // 连着连播/信息两颗的位置都不动（GalleryViewerToolbar 留的是空位不是灰钮）。
+    val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
     /**
      * 网络读数**只在这一屏打开时问一次**。
      * 逐张问的后果是同一面墙里忽动忽静（翻到第 3 张时切了网络），那是最难解释的一种表现；
@@ -1081,6 +1084,7 @@ fun GalleryPostScreen(
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 painterPost = target
                             },
+                            showPaint = watercolorBeta,
                             onInfo = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 infoOpen = true

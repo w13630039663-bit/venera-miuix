@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraIconButtonTouchSize
 import com.venera.compose.components.venera.VeneraSlider
@@ -97,8 +98,11 @@ fun GalleryViewerToolbar(
     onAutoPlaySecChange: (Int) -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
-    /** 「画成水彩」：整屏浮层把当前这张图按水彩顺序画出来（见文件头注）。 */
+    /** 「画成水彩」：整屏浮层把当前这张图按水彩顺序画出来（见文件头注）。
+     *  Beta 功能默认关：关时 [showPaint] 为 false，这一枚不摆（留空位占位，同视频条目口径）。 */
     onPaint: () -> Unit,
+    /** 水彩（Beta）开关：图廊设置里控制，默认关。 */
+    showPaint: Boolean = false,
     onDownload: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -203,16 +207,29 @@ fun GalleryViewerToolbar(
                     )
                 }
             }
-            // ── 画成水彩（2026-10-13）──
+            // ── 画成水彩（2026-10-13，Beta，默认关）──
             // 视频条目：与 HD 同一条口径 —— 不放一枚点了没意义的钮，放**同尺寸空位**，
             // 让「关于这张图」与连播两颗在两类内容下停在同一个 x。
-            if (!post.isVideo) {
+            // 开关关闭（默认）：同样只放空位 —— 一条 dock 不因实验功能改变布局。
+            if (showPaint && !post.isVideo) {
                 VeneraIconButton(onClick = onPaint) {
-                    Icon(
-                        imageVector = Icons.Outlined.Brush,
-                        contentDescription = "把这张图画成水彩",
-                        tint = tokens.color.textPrimary,
-                    )
+                    // 笔刷下压一枚「Beta」小字：开着的时候也让人一眼看出它是实验件，
+                    // 不是常驻能力。放在 48dp 触达位内部，不外溢不被 dock 圆角裁掉。
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Outlined.Brush,
+                            contentDescription = "把这张图画成水彩（Beta 实验功能）",
+                            tint = tokens.color.textPrimary,
+                        )
+                        Text(
+                            text = "Beta",
+                            fontSize = 7.sp,
+                            color = tokens.color.primary,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(top = 26.dp),
+                        )
+                    }
                 }
             } else {
                 Spacer(modifier = Modifier.size(VeneraIconButtonTouchSize))
