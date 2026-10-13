@@ -108,6 +108,7 @@ enum class SettingsSubScreen {
     SOURCE_MANAGE,
     DOWNLOADS,
     LOCAL_COMICS,
+    FOLLOW_UPDATES,
     STATS,
     FAVORITE_IMAGES,
     SYNC,
@@ -206,6 +207,7 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onLogs = { open(SettingsSubScreen.LOGS) },
                 onDownloads = { open(SettingsSubScreen.DOWNLOADS) },
                 onLocalComics = { open(SettingsSubScreen.LOCAL_COMICS) },
+                onFollowUpdates = { open(SettingsSubScreen.FOLLOW_UPDATES) },
             )
             SettingsSubScreen.NETWORK -> NetworkSettings(
                 prefs = networkPrefs,
@@ -224,6 +226,13 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onOpenLocalSession = { session -> escape(SettingsEscape.ReadLocal(session)) },
                 onNavigateToDownloads = { open(SettingsSubScreen.DOWNLOADS) },
                 onOpenComicDetail = { item -> escape(SettingsEscape.OpenComic(item)) },
+            )
+            // 追更整页早就写完了（列表、挑夹对话框、每日排程都齐），缺的只有这一跳入口：
+            // VeneraApp 的排程开关吃 followUpdatesFolder，而那值的唯一写点在这页里，
+            // 所以没有这一行之前，用户永远打不开追更。
+            SettingsSubScreen.FOLLOW_UPDATES -> AndroidFollowUpdatesScreen(
+                onBack = ::back,
+                onSelect = { item -> escape(SettingsEscape.OpenComic(item)) },
             )
             SettingsSubScreen.STATS -> StatsScreen(
                 onBack = ::back,

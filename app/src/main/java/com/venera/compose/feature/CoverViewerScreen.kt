@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.SaveAlt
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -25,6 +26,8 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
+import com.venera.compose.components.venera.VeneraTextButton
+import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,20 +47,62 @@ fun CoverViewerScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val tokens = VeneraTokens
     var appBarVisible by remember { mutableStateOf(true) }
+    // 取图状态必须上屏：这一屏原先是裸 AsyncImage，取不到就是一片纯黑且什么都不说，
+    // 用户只能靠"黑得不对劲"猜它失败了。
+    var loading by remember(coverUrl) { mutableStateOf(true) }
+    var failed by remember(coverUrl) { mutableStateOf(false) }
+    var retryTick by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable { appBarVisible = !appBarVisible }
+            .clickable { appBarVisible = !appBarVisible },
+        contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
-            model = coverUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
-        )
+        key(retryTick) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(coverUrl)
+                    // 重试要绕开内存里那份失败结果，否则点一下只是把同一个错误再放一遍。
+                    .memoryCacheKey("cover-viewer:$coverUrl#$retryTick")
+                    .build(),
+                contentDescription = title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+                onLoading = { loading = true; failed = false },
+                onSuccess = { loading = false; failed = false },
+                onError = { loading = false; failed = true },
+            )
+        }
+
+        if (loading && !failed) {
+            CircularWavyProgressIndicator(
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.24f),
+            )
+        }
+
+        if (failed) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+            ) {
+                Text(
+                    text = "这张封面没取到",
+                    fontSize = tokens.type.body,
+                    color = Color.White,
+                )
+                Text(
+                    text = "网络或源站没给回图片，可以重试一次",
+                    fontSize = tokens.type.caption,
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+                VeneraTextButton(text = "重试", onClick = { retryTick++ })
+            }
+        }
 
         if (appBarVisible) {
             Row(

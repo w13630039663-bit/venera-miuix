@@ -34,7 +34,8 @@ fun AppSettings(
     onSync: () -> Unit,
     onLogs: () -> Unit,
     onDownloads: () -> Unit,
-    onLocalComics: () -> Unit
+    onLocalComics: () -> Unit,
+    onFollowUpdates: () -> Unit
 ) {
     val context = LocalContext.current
     val cacheMaxMb by prefs.httpCacheMaxMb.collectAsState()
@@ -260,6 +261,7 @@ fun AppSettings(
         SettingsGroup(title = "离线与本地漫画") {
             SettingsAction("下载管理", "管理下载队列与离线章节", onClick = onDownloads)
             SettingsAction("本地漫画", "浏览、导入和管理本地漫画", onClick = onLocalComics)
+            SettingsAction("追更更新", "挑一个收藏夹每天检查更新", onClick = onFollowUpdates)
         }
     }
 

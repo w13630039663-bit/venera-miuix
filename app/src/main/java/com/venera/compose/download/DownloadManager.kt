@@ -14,7 +14,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Semaphore
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -56,10 +55,12 @@ class DownloadManager private constructor(private val context: Context) {
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
     val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
 
-    // 并发数走偏好（默认 2，1–16）。semaphore 是 lazy 的，因此首次下载时取当时值；
-    // 改完偏好在下一轮下载队列启动时生效，不强行打断进行中的任务。
-    private var maxConcurrency = VeneraPreferences.getInstance(context).downloadThreads.value
-    private val semaphore by lazy { Semaphore(maxConcurrency) }
+    // 并发上限**每轮队列循环现取**（默认 2，1–16），这里只留引用不缓存值。
+    // 为什么不缓存：真正的闸门一直是下面那句 `activeJobs.size < 当前值`，
+    // 一旦把偏好值抄成字段，设置页那把滑块在同进程内就永不生效（只有重启才动），
+    // 而屏上写的是"改完对新排进队列的任务生效" —— 那句当时是假的。
+    // 也不在这里放 Semaphore：它从建好到本次改动前没有任何使用点，是颗死字段。
+    private val prefs = VeneraPreferences.getInstance(context)
     private val activeJobs = mutableMapOf<String, Job>()
 
     init {
@@ -347,10 +348,18 @@ class DownloadManager private constructor(private val context: Context) {
 
     // ================================= 内部队列与下载执行 =================================
 
+    /**
+     * 当下这一轮允许的并发数：每次问偏好，不缓存。
+     *
+     * `coerceIn` 是防盘上存着旧版本写下的越界值（0 或负数会让队列**永远不放行任何任务**，
+     * 而那副表现是"下载卡在队列里不动"，不是报错）。上限与设置页那把滑块的 1..16 同口径。
+     */
+    private fun currentConcurrency(): Int = prefs.downloadThreads.value.coerceIn(1, 16)
+
     private suspend fun processQueueLoop() {
         while (true) {
             val pendingTask = _tasks.value.firstOrNull { it.status == DownloadStatus.PENDING }
-            if (pendingTask != null && activeJobs.size < maxConcurrency) {
+            if (pendingTask != null && activeJobs.size < currentConcurrency()) {
                 val taskId = pendingTask.taskId
                 updateTaskStatus(taskId, DownloadStatus.DOWNLOADING)
                 val job = scope.launch {

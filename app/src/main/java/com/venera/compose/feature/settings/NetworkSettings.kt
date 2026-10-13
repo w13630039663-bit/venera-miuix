@@ -52,7 +52,7 @@ fun NetworkSettings(prefs: NetworkPreferences, onBack: () -> Unit, onSpeedTest: 
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
             SettingsSlider("下载并发", threads.toFloat(), 1f..16f,
                 { prefs.setDownloadThreads(it.toInt()) }, steps = 14, suffix = " 线程",
-                summary = "同时下载几章。改完对新排进队列的任务生效，不影响正在下的。")
+                summary = "同时下载几章。改完当场生效，正在下的那几章不受影响。")
             // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
             // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
             // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
