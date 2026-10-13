@@ -94,7 +94,12 @@ fun ComicMetrics(rating: Double? = null, likesCount: Int? = null, modifier: Modi
 
 /**
  * 列表「单列行卡」的唯一形态：左封面 92dp（`listCoverWidth`）+ 右信息
- * （标题 2 行 / 副标题 / metadata 行 / 描述 2 行 / 标签 5 个最多 2 行）。
+ * （标题 2 行 / 副标题 / metadata 行 / 标签 5 个最多 2 行）。
+ *
+ * ⚠️ **不铺简介**（2026-10-14 手机档改判）：从前这里还带 2 行 `description`，
+ * 单卡因此到 ~155dp、一屏只剩 3.5 张。列表页的首要任务是"找那一本"，
+ * 简介在列表里的价值最低却占两行 —— 要看简介去详情那一屏。
+ * 参数一并删掉而不是留一枚恒传的开关：留着就是"能传但没人想开"的假口子。
  *
  * 正文是从 `SearchScreen.SearchResultRowItem` **逐行搬来、未改任何尺寸与颜色**的，
  * 搜索页现在也调这个组件。之所以抽出来：收藏页两条路径（本地 / 网络）各自画了一套，
@@ -109,7 +114,6 @@ fun ComicRowCard(
     title: String,
     coverUrl: String,
     subtitle: String,
-    description: String,
     tags: List<String>,
     mask: VeneraCoverMask,
     onClick: () -> Unit,
@@ -150,15 +154,6 @@ fun ComicRowCard(
                     )
                 }
                 ComicRowMetadata(likesCount = likesCount, rating = rating, updateTime = updateTime)
-                if (description.isNotBlank()) {
-                    Text(
-                        text = description,
-                        fontSize = tokens.type.overline,
-                        color = tokens.color.textTertiary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
                 // 标签放开到 5 个（网格小卡才是 2 个）：单列有整行宽度可用。
                 // 承载用 FlowRow 而非 Row —— 5 个在 360dp 窄屏必超一行，Row 会直接裁掉；
                 // overflow 留默认（Clip），省略号指示要额外交互态，这里不引入。

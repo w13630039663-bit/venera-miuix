@@ -265,7 +265,7 @@ fun SharedTransitionScope.AndroidSearchScreen(
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp），与 SourceSectionScreen 同契约。
-    val baseTopPadding = statusBarTop + 104.dp
+    val baseTopPadding = statusBarTop + VeneraTokens.spacing.topBarFloor
     // 标签译文显示器：只改药丸文本，点击与请求仍走源生原文（见 rememberTagDisplayLabel 注释）。
     // 在屏幕顶层取一次再往下传，避免每张卡片各自订阅字典加载状态。
     val tagLabel = rememberTagDisplayLabel()
@@ -1363,7 +1363,6 @@ private fun SearchResultRowItem(
         title = comic.title,
         coverUrl = comic.cover,
         subtitle = comic.subTitle,
-        description = comic.description,
         tags = comic.tags,
         mask = mask,
         onClick = onClick,

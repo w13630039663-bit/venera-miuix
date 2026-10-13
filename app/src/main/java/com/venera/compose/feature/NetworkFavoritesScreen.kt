@@ -574,7 +574,6 @@ private fun NetComicDetailedCard(
             title = comic.title,
             coverUrl = comic.cover,
             subtitle = comic.subTitle,
-            description = comic.description,
             tags = comic.tags,
             mask = if (maskState == "VISIBLE") VeneraCoverMask.Visible else VeneraCoverMask.Masked,
             onClick = { if (selecting) onToggleSelect() else onSelect(comic.toComicItem()) },

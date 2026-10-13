@@ -42,8 +42,8 @@ val LocalGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  * 三个观感参数，**全部抄本仓已真机验证过的读数**，不自造：
  * - 容器透明度 0.22 / 0.28：`components/backdrop/VeneraLiquidGlassNavBar.kt:119`
  *   （同处 :117-118 的注释说明官方 catalog 默认 0.4 太不透，玻璃要"透"必须压低这一层）。
- * - 染色强度 0.16：`components/venera/VeneraTopAppBar.kt:100`，那行自己的注释写着
- *   "只负责提升文字对比，不再把玻璃推向白色"——泛白的真凶曾是采样层缺氛围光，已修，这里不补偿。
+ * - 染色强度 0.16：现在只有下面 [GlassTintAlpha] 那一处定义（顶栏、药丸、详情页背板都读它）。
+ *   它只负责提升文字对比，不再把玻璃推向白色 —— 泛白的真凶曾是采样层缺氛围光，已修，这里不补偿。
  * - 模糊半径：直接用库默认 `BlurDefaults.BlurRadius`（20f），不另给数字。
  *
  * 深浅色下 [tintAlpha] 不分档：顶栏那条 0.16 是深浅共用的现成读数，没有依据就不拆两份。
@@ -53,7 +53,14 @@ val LocalGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  */
 private const val ContainerAlphaLight = 0.22f
 private const val ContainerAlphaDark = 0.28f
-private const val TintAlpha = 0.16f
+
+/**
+ * 玻璃补底那一层的染色强度：顶栏、药丸、详情页背板与这颗件共用一个数。
+ *
+ * 从前是四处各抄一遍 `0.16f`（其中三处还各写了一句"与某某同步"）—— 改一档要翻四颗文件，
+ * 而现在这一档是"透多少"与"抬多亮"两条曲线的交点，动它的理由只会是整屏玻璃一起动。
+ */
+internal const val GlassTintAlpha = 0.16f
 
 /**
  * 某一档玻璃**叠哪个色**（容器色与染色色共用一个来源）。
@@ -135,7 +142,7 @@ fun Modifier.veneraGlass(
     // 理由与真机读数见 [containerColorFor]。
     val base = containerColorFor(tier)
     val colors = BlurDefaults.blurColors(
-        blendColors = listOf(BlendColorEntry(color = base.copy(alpha = TintAlpha))),
+        blendColors = listOf(BlendColorEntry(color = base.copy(alpha = GlassTintAlpha))),
     )
     val highlight = SurfaceMaterialPolicy.highlightFor(isDark, tier)?.let(::miuixHighlight)
     return when (tier) {

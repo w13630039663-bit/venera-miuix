@@ -8,14 +8,14 @@ import org.junit.Test
 /**
  * 顶栏地板 `topBarFloor` 的唯一性与**冻结白名单只许缩短**。
  *
- * 为什么需要扫源码这一层：`statusBarTop + 104.dp` 这个表达式今天散在 18 处 / 14 颗文件里，
+ * 为什么需要扫源码这一层：`statusBarTop + 104.dp` 这个表达式曾经散在 18 处 / 14 颗文件里，
  * 编译器管不了"新页面又抄了一遍"，运行时也管不了 —— 而大屏批次 2 正在改 chrome 几何，
  * 一旦顶栏改高就是"14 颗页逐页找"，其中还会有人把附加高混进同一条相加链
  * （`DownloadScreen` 的 `104 + 92`、`SourceSectionScreen` 的 `104 + chipsHeight` 已经是这个形状）。
  *
- * 本轮只收非冻结的 11 处：`FREEZE-STATEMENT.md:18` 允许"修实际 Bug、修明确回归"，
- * 禁止"无明确需求的架构重构 / 顺手拆文件"，而下面这 7 处今天没有可指认的故障。
- * 它们留在原地，但**钉在名单里**：谁再新增一处裸 `104.dp`，这条用例就红。
+ * 大屏那轮先收了 11 处、把剩下 7 处钉在冻结白名单里（当时没有可指认的故障，不动架构）。
+ * UI 审查整改批 6（2026-10-14）把最后 7 处也改吃 token，名单清空 —— 本文剩下的职责是**防新增**：
+ * 谁再抄一遍字面量，或往名单里加一项，两条用例都会红。
  */
 class TopBarFloorGuardTest {
 
@@ -26,14 +26,10 @@ class TopBarFloorGuardTest {
 
     @Test
     fun `非冻结页面不许再抄地板字面量`() {
-        val frozenWhitelist = setOf(
-            "com/venera/compose/feature/HomeScreen.kt",
-            "com/venera/compose/feature/HistoryScreen.kt",
-            "com/venera/compose/feature/FavoritesScreen.kt",
-            "com/venera/compose/feature/SearchScreen.kt",
-            "com/venera/compose/feature/explore/UnifiedExploreScreen.kt",
-            "com/venera/compose/feature/explore/SourceSectionScreen.kt",
-        )
+        // 冻结白名单今天为空：UI 审查整改批 6（2026-10-14，`docs/rounds/ui-fixes-2026-10-14.md`）
+        // 把最后 7 处逐页抄写的 `statusBarTop + 104.dp` 全部改吃 `tokens.spacing.topBarFloor`。
+        // 这一条现在管的是**新增**：任何页面再抄一遍字面量都会红在这里。
+        val frozenWhitelist = emptySet<String>()
         val hits = RepoSources.allMainLines().filter { (rel, _, line) ->
             val t = line.trim()
             line.contains("statusBarTop + 104.dp") &&
@@ -51,14 +47,9 @@ class TopBarFloorGuardTest {
 
     @Test
     fun `冻结白名单只许缩短不许变长`() {
-        val expected = mapOf(
-            "com/venera/compose/feature/HomeScreen.kt" to 1,
-            "com/venera/compose/feature/HistoryScreen.kt" to 2,
-            "com/venera/compose/feature/FavoritesScreen.kt" to 1,
-            "com/venera/compose/feature/SearchScreen.kt" to 1,
-            "com/venera/compose/feature/explore/UnifiedExploreScreen.kt" to 1,
-            "com/venera/compose/feature/explore/SourceSectionScreen.kt" to 1,
-        )
+        // 名单已空（批 6 解冻全部 7 处）。写成集合相等而不是"实际 ⊆ 预期"的原意不变：
+        // 谁再往名单里加一项、或新抄一处字面量，这里都会红 —— 而"名单为空"本身就是这条要守的状态。
+        val expected = emptyMap<String, Int>()
         val actual = RepoSources.allMainLines()
             .filter { (_, _, line) ->
                 val t = line.trim()
@@ -66,8 +57,6 @@ class TopBarFloorGuardTest {
             }
             .groupingBy { it.first }
             .eachCount()
-        // 冻结文件解冻或被顺手改掉时，这里会少一项 —— 那是**好消息**，但必须有人显式确认，
-        // 所以断言写成集合相等而不是"实际 ⊆ 预期"。
         assertEquals(expected, actual)
     }
 }

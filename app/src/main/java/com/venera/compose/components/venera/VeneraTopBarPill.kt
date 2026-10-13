@@ -69,7 +69,7 @@ fun VeneraTopBarPill(
     val pressed by interactionSource.collectIsPressedAsState()
     Box(
         modifier = modifier
-            .size(48.dp)
+            .size(VeneraIconButtonTouchSize)
             .graphicsLayer {
                 val p = if (pressed) 1f else 0f
                 scaleX = lerp(1f, 0.96f, p)
@@ -98,7 +98,7 @@ fun VeneraTopBarPill(
                             blurRadius = 10f,
                             colors = BlurColors(
                                 blendColors = listOf(
-                                    BlendColorEntry(color = tokens.color.surface.copy(alpha = 0.16f)),
+                                    BlendColorEntry(color = tokens.color.surface.copy(alpha = GlassTintAlpha)),
                                 ),
                             ),
                         )

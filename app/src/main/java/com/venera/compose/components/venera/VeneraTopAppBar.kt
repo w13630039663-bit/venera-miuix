@@ -160,7 +160,7 @@ fun VeneraTopAppBar(
                                 // 低强度补底：只负责提升文字对比，不再把玻璃推向白色。
                                 // 泛白的主因曾是采样层缺氛围光（见 rememberTopBarBackdrop），
                                 // 修掉后这里只需要很轻的一层。
-                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.16f)),
+                                BlendColorEntry(color = surfaceColor.copy(alpha = GlassTintAlpha)),
                             ),
                         ),
                     ),

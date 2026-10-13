@@ -224,7 +224,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
         } else {
             tokens.spacing.segmentedHeight
         }) + tokens.spacing.space3 * 2
-    val topPadding = statusBarTop + 104.dp + segmentedRowHeight + if (mode == FavoritesMode.Local && selection.active) 76.dp else 0.dp
+    val topPadding = statusBarTop + VeneraTokens.spacing.topBarFloor + segmentedRowHeight + if (mode == FavoritesMode.Local && selection.active) 76.dp else 0.dp
 
     // 顶栏折叠判定：沿用 miuix TopAppBar 自己的阈值（collapsedFraction * 3 >= 1，
     // 即 smallTitle 出现的同一时刻），保证「分段切换器收起」与「小标题淡入」严格同步。
@@ -949,7 +949,6 @@ private fun FavoriteCard(
                 title = item.name,
                 coverUrl = item.coverPath,
                 subtitle = item.author,
-                description = item.description,
                 tags = item.tags,
                 mask = coverMask,
                 onClick = onClick,

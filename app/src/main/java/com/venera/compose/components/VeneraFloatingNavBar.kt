@@ -77,11 +77,12 @@ fun VeneraFloatingNavBar(
     val tabCount = tabs.size
     val selectedIndex = tabs.indexOf(currentTab).coerceAtLeast(0)
 
-    val surfaceGlassColor = if (isDark) {
-        MiuixTheme.colorScheme.surface.copy(alpha = 0.85f)
-    } else {
-        Color(0xFFFCFCFD).copy(alpha = 0.90f)
-    }
+    // 两档都吃色板那枚 `surface`：浅色档从前写死 `Color(0xFFFCFCFD)`，换一张深色壁纸
+    // 或换一套种子色它仍然是那一点近白 —— 底栏与整屏脱节，而它是屏上最大的一块常驻面。
+    // 透明度按档给（浅色档 surface 与页面底色只差一档，要多压一点才读得出"这是一块"）。
+    val surfaceGlassColor = MiuixTheme.colorScheme.surface.copy(
+        alpha = if (isDark) 0.85f else 0.90f,
+    )
 
     val borderColor = if (isDark) {
         Color.White.copy(alpha = 0.12f)

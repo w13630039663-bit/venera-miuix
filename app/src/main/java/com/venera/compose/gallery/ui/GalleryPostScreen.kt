@@ -94,6 +94,12 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.size.Precision
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.Icon
+import com.venera.compose.components.venera.VeneraIconButtonTouchSize
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
@@ -1157,9 +1163,9 @@ fun GalleryPostScreen(
                         )
                     }
 
-                    // 页码跟着 chrome 一起显隐，位置在左上角（底部四个动作已经占满那一条）。
+                    // 左上角那一条跟着 chrome 显隐：一枚**看得见的返回** + 页码读数。
                     AnimatedVisibility(
-                        visible = pages.size > 1 && showChrome && !zoomedIn,
+                        visible = showChrome && !zoomedIn,
                         enter = fadeIn() + slideInVertically { -it },
                         exit = fadeOut() + slideOutVertically { -it },
                         modifier = Modifier
@@ -1169,10 +1175,18 @@ fun GalleryPostScreen(
                                 top = statusBarTop + tokens.spacing.space5,
                             ),
                     ) {
-                        GalleryViewerPageCounter(
-                            page = pagerState.currentPage,
-                            total = pages.size,
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            GalleryViewerBackButton(onBack = onBack)
+                            if (pages.size > 1) {
+                                GalleryViewerPageCounter(
+                                    page = pagerState.currentPage,
+                                    total = pages.size,
+                                )
+                            }
+                        }
                     }
 
                     AnimatedVisibility(
@@ -1519,6 +1533,37 @@ private fun GalleryViewerPageCounter(page: Int, total: Int) {
 
 /** 页码底色透明度，与卡片角标同一档（0.72）。 */
 private const val PAGE_COUNTER_BG_ALPHA = 0.72f
+
+/**
+ * 大图页左上角那枚**返回**。
+ *
+ * 此前这一屏没有任何可见的"出去"入口：退出走系统返回、下滑手势与左右边缘滑，
+ * 而那三条都不写在屏上 —— 第一次进来的人要答的恰恰是"这屏怎么出去"
+ * （2026-10-14 手机档 P2：顶部只有「4 / 180」）。
+ *
+ * 底色与页码读数共用那一套固定色对：压在内容完全不可控的图上，只有固定色对保证可读
+ * （理由同 [GalleryViewerPageCounter] 头注）。触达位吃 [VeneraIconButtonTouchSize]，
+ * 与底部那排 dock 同尺寸 —— 同一屏上的两排钮不该有两种触摸面积。
+ */
+@Composable
+private fun GalleryViewerBackButton(onBack: () -> Unit) {
+    val tokens = VeneraTokens
+    Box(
+        modifier = Modifier
+            .size(VeneraIconButtonTouchSize)
+            .clip(CircleShape)
+            .background(StatusColors.BadgeSurface.copy(alpha = PAGE_COUNTER_BG_ALPHA))
+            .clickable(onClick = onBack, onClickLabel = "退出这张图"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+            contentDescription = "返回",
+            tint = StatusColors.OnBadgeSurface,
+            modifier = Modifier.size(tokens.spacing.chipIconSize),
+        )
+    }
+}
 
 /**
  * 大图页的三种入场姿态（用法与为什么必须是三档，见 `GalleryPostScreen` 里 [entranceMode] 那处头注）。

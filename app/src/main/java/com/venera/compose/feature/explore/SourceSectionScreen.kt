@@ -219,7 +219,7 @@ fun SourceSectionScreen(
     var chipsHeight by remember { mutableStateOf(0.dp) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     // 基础顶部间距 = 状态栏 + 折叠顶栏（约 104dp）+ 顶栏底部浮层高度
-    val baseTopPadding = statusBarTop + 104.dp + chipsHeight
+    val baseTopPadding = statusBarTop + VeneraTokens.spacing.topBarFloor + chipsHeight
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {

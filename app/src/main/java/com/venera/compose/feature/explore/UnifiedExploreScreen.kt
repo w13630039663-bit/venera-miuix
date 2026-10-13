@@ -332,7 +332,7 @@ fun UnifiedExploreScreen(
             contentPadding = PaddingValues(
                 start = VeneraTokens.spacing.rowHorizontal,
                 end = VeneraTokens.spacing.rowHorizontal,
-                top = statusBarTop + 104.dp,
+                top = statusBarTop + VeneraTokens.spacing.topBarFloor,
                 bottom = LocalBottomBarClearance.current,
             ),
             verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.sectionGap)

@@ -121,7 +121,7 @@ fun AndroidHistoryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = statusBarTop + 104.dp),
+                    .padding(top = statusBarTop + VeneraTokens.spacing.topBarFloor),
                 contentAlignment = Alignment.Center,
             ) {
                 VeneraEmptyView(
@@ -136,7 +136,7 @@ fun AndroidHistoryScreen(
                 contentPadding = PaddingValues(
                     start = tokens.spacing.rowHorizontal,
                     end = tokens.spacing.rowHorizontal,
-                    top = statusBarTop + 104.dp + if (vm.multiSelectMode) 44.dp else 0.dp,
+                    top = statusBarTop + VeneraTokens.spacing.topBarFloor + if (vm.multiSelectMode) 44.dp else 0.dp,
                     bottom = LocalBottomBarClearance.current,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),

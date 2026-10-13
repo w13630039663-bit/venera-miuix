@@ -177,7 +177,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
             contentPadding = PaddingValues(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
-                top = statusBarTop + 104.dp,
+                top = statusBarTop + VeneraTokens.spacing.topBarFloor,
                 bottom = bottomContentPadding,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.rowHorizontal),
@@ -656,9 +656,13 @@ private fun HistoryCardHome(
  * 一张主卡在正中，左右各挂一张缩窄的侧卡；主卡从两侧平滑滑入中心，两侧同时反向缩放，
  * 全部由组件自带的 keyline 插值完成（不引第三方库、不做真 3D 变换）。
  *
- * 尺寸口径照 material3 官方 sample：`maxItemWidth` 不指定 → 主卡吃掉「视口 − 两张侧卡」，
- * 侧卡目标宽是主卡的 1/3，再用 min/max 把它压在 64~96dp（约主卡的 0.6 倍，贴近设计稿的
- * 1.5:1 观感）。侧卡宽必须留在视口 1/3 以内，否则求解器会排成「两张大卡」而不是一个 Hero。
+ * 尺寸口径照 material3 官方 sample：`maxItemWidth` 不指定 → 主卡吃掉「视口减去两张侧卡与两枚间距」。
+ * 侧卡目标宽不由我们定，库的算法是「主卡目标除以 3，再夹进 min/max」（本仓夹在 64~88dp）。
+ * 库里那句原文是 "Visually balanced layouts should aim to use small items that are 1/3 the size
+ * of large items" —— 主卡与侧卡 3:1 就是 MD3 中央 Hero 的平衡档，不是排版失手，也不是宽度分配失衡。
+ * 现量（MuMu 1440x2560 @544dpi，`_qa/ui-audit-2026-10-14/after/b5-00-home.png` 第 1300 行逐像素扫描）：
+ * 主卡 691px 合 203dp、侧卡 217px 合 64dp、间距 8dp —— 侧卡正好落在 min 那一端。
+ * 夹在视口三分之一以内是硬约束：侧卡再宽，求解器就排成「两张大卡」而不是一个 Hero。
  *
  * 交互沿用 MD3 约定：点焦点卡进详情，点侧卡先把焦点滚过去。
  * 标题只给焦点卡（单独摆在轮播下方）—— 卡片宽度边滑边变，文字放在卡里会跟着重排抖动。

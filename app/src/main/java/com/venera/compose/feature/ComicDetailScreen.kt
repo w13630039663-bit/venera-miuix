@@ -87,6 +87,7 @@ import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.data.tags.rememberTagDisplayLabel
+import com.venera.compose.components.venera.GlassTintAlpha
 import com.venera.compose.components.venera.hScrollEndContentPadding
 import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
@@ -2305,7 +2306,7 @@ private fun DetailTopBarBackdrop(
                         colors = BlurDefaults.blurColors(
                             blendColors = listOf(
                                 // 与 VeneraTopAppBar 同步：轻补底保文字对比，玻璃色交给采样层氛围光。
-                                BlendColorEntry(color = surfaceColor.copy(alpha = 0.16f)),
+                                BlendColorEntry(color = surfaceColor.copy(alpha = GlassTintAlpha)),
                             ),
                         ),
                     )
