@@ -146,11 +146,19 @@ class SearchViewModel(
         debounceJob?.cancel()
         searchJob?.cancel()
         val matched = matchedInstalled(value)
+        val suggestions = if (matched == null) suggestTags(value) else emptyList()
         _uiState.update { it.copy(query = value, matchedUrlComic = matched,
-            tagSuggestions = if (matched == null) suggestTags(value) else emptyList(),
+            tagSuggestions = suggestions,
             isSearching = false, hasSearched = false, error = null,
             results = emptyList(), aggregatedResults = emptyMap()) }
-        if ((value.length >= MIN_QUERY || _uiState.value.tags.isNotEmpty()) && matched == null) {
+        if (shouldAutoSearchOnQueryChange(
+                suggestionsShowing = suggestions.isNotEmpty(),
+                query = value,
+                hasTags = _uiState.value.tags.isNotEmpty(),
+                matchedComicUrl = matched != null,
+                minQueryLength = MIN_QUERY,
+            )
+        ) {
             debounceJob = viewModelScope.launch {
                 delay(SEARCH_DEBOUNCE_MS)
                 search(value)
@@ -468,4 +476,30 @@ class SearchViewModel(
         private const val MIN_QUERY = 2
         private const val SEARCH_DEBOUNCE_MS = 400L
     }
+}
+
+/**
+ * 这一笔输入要不要**自动**发起检索（防抖到期后代用户按一次搜索）。
+ *
+ * 比改动前多出来的判据只有 `suggestionsShowing` 那一条，而它是有成因的：联想面板一冒出来，
+ * 400ms 的防抖紧接着就到，而 `search()` 头一件事就是把 `tagSuggestions` 清空 —— 用户看到的是
+ * 「联想刚显示就被刷掉、根本点不到」，同时结果墙重拉一遍。
+ *
+ * "联想在屏上就不自动搜"**不等于**要多加一步提交：显式路径本来就在（键盘的搜索键走
+ * `onSubmit`、点某条联想走 `selectTagSuggestion`，两者都立刻检索）；而打字打到联想消失的那一笔，
+ * 自动检索自己回来。结果墙在这段编辑期是"什么都没显示"而不是「没有结果」——
+ * 那一行的渲染判据是 `hasSearched`，编辑期它是 false，所以不会把"还没搜"演成"搜不到"。
+ */
+internal fun shouldAutoSearchOnQueryChange(
+    suggestionsShowing: Boolean,
+    query: String,
+    hasTags: Boolean,
+    matchedComicUrl: Boolean,
+    minQueryLength: Int,
+): Boolean = when {
+    // 识别成漫画链接时走那张卡，不发关键词搜索（与改动前同一条）
+    matchedComicUrl -> false
+    suggestionsShowing -> false
+    hasTags -> true
+    else -> query.length >= minQueryLength
 }
