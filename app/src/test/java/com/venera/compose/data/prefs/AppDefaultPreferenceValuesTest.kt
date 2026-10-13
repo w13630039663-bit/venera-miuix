@@ -64,4 +64,13 @@ class AppDefaultPreferenceValuesTest {
         assertEquals(ReaderReadingMode.HORIZONTAL_LTR, ReaderReadingMode.fromKey("HORIZONTAL_LTR"))
         assertEquals("美漫·左至右", ReaderReadingMode.HORIZONTAL_LTR.label)
     }
+
+    /**
+     * 「画成水彩」默认**关**（2026-10-13 用户点名）：Beta 功能的默认档也是产品要求，
+     * 同本篇其余几枚扫字面量钉住。只钉从没设过这一项的安装读到的值，盘上有值照旧。
+     */
+    @Test
+    fun `画成水彩 Beta 默认关闭`() {
+        assertTrue(lineWith("KEY_GALLERY_WATERCOLOR_BETA").contains("false"))
+    }
 }
