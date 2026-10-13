@@ -132,12 +132,6 @@ dependencies {
     // 页面转场取官方 Material Motion 的 shared axis X（300ms / 30dp / 0.35 错峰淡入都在库里，不本地加码）
     implementation(libs.material.motion.core)
     implementation(libs.androidx.compose.material3)
-    // MD3 Adaptive：收藏页宽屏「列表 + 详情」双栏（ListDetailPaneScaffold）。
-    // 三颗必须同时引（构件划分见 gradle/libs.versions.toml 的 `adaptive` 那一节）；
-    // 版本安全性论证同处，已实跑 `:app:dependencies` 核对过 material3 未被顶动。
-    implementation(libs.androidx.compose.material3.adaptive)
-    implementation(libs.androidx.compose.material3.adaptive.layout)
-    implementation(libs.androidx.compose.material3.adaptive.navigation)
     implementation(libs.androidx.compose.material.icons.extended)
     // 自定义取色：种子色 → 整套 MD3 色板（Android 自带 DynamicColors 只吃系统壁纸，喂不进种子）
     implementation(libs.material.kolor)
