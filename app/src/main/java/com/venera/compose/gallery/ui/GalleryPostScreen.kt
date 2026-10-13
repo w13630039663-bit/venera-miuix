@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -51,6 +52,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -103,22 +105,30 @@ import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.domain.FlyRect
 import com.venera.compose.gallery.domain.GalleryAutoPlay
+import com.venera.compose.gallery.domain.GalleryExitGestureCommand
+import com.venera.compose.gallery.domain.GalleryExitGestureEvent
+import com.venera.compose.gallery.domain.GalleryExitGesturePhase
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
 import com.venera.compose.gallery.watercolor.WatercolorPainterScreen
 import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.exitExpansion
+import com.venera.compose.gallery.domain.exitPageAlpha
 import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
+import com.venera.compose.gallery.domain.nextExitGesture
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.math.roundToInt
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -724,9 +734,9 @@ fun GalleryPostScreen(
     val exitFly = remember { Animatable(0f) }
     var leaving by remember { mutableStateOf(false) }
 
-    /** 离场时整页（含压暗那一层）的透明度：**首程**淡出，与去程尾程那半共用同一个常量。 */
+    /** 离场时整页（含压暗那一层）的透明度：**首程**淡出，算式在判据层（[exitPageAlpha]）。 */
     fun exitFadeAlpha(): Float =
-        if (!leaving) 1f else (1f - exitFly.value / FLIGHT_FADE_FRACTION).coerceIn(0f, 1f)
+        if (!leaving) 1f else exitPageAlpha(exitFly.value)
 
     /**
      * 入场时压暗那一层的透明度。**它不能第一帧就是 1** —— 这是 2026-10-01 第三次报"打开还是闪"
@@ -755,25 +765,61 @@ fun GalleryPostScreen(
         Entrance.RISE -> (1f - entrance.value).coerceIn(0f, 1f)
     }
 
-    fun leavePage() {
-        if (leaving) return
-        val post = current
-        val box = post?.let { frameBounds[it.uid] }
-        val target = post?.let { GalleryFlyIn.cardBoundsOf(it.uid) }
-        if (post == null || box == null || target == null ||
-            box.width <= 0f || box.height <= 0f || maskedOf(post)
-        ) {
-            onBack()
-            return
-        }
-        leaving = true
-        // 离场第一件事是**摘掉窗口模糊**：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
-        // 基类挂模糊走的是 addFlags，清掉即回到透明窗口底；"要重进页面才恢复模糊"在这里无所谓 ——
-        // 本页马上 finish。状态栏图标同理跟着翻回来（底下那屏是浅色主题）。
+    /**
+     * 离场那两条路共用的守卫：当前页的**画面框**与**墙上那张卡的落点**。
+     *
+     * 交回 null = 这一张飞不了（打码那一张两边都不飞、量不到画面框、翻到墙外、卡片已被 LazyGrid 回收），
+     * 调用方必须直接 finish —— 不许把"飞不起来"演成"飞完了"。
+     */
+    fun exitRectsOrNull(): Pair<Rect, Rect>? {
+        val post = current ?: return null
+        val box = frameBounds[post.uid] ?: return null
+        val target = GalleryFlyIn.cardBoundsOf(post.uid) ?: return null
+        if (box.width <= 0f || box.height <= 0f || maskedOf(post)) return null
+        return box to target
+    }
+
+    /**
+     * 离场第一件事是**摘掉窗口模糊**：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
+     * 基类挂模糊走的是 addFlags，清掉即回到透明窗口底；状态栏图标同理跟着翻回来（底下那屏是浅色主题）。
+     */
+    fun clearChromeForExit() {
         val host = view.context as? Activity
         host?.window?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
         host?.window?.let { WindowCompat.getInsetsController(it, view) }
             ?.isAppearanceLightStatusBars = !isDarkTheme
+    }
+
+    /**
+     * 回弹收尾：玻璃底与状态栏图标放回去、取消"正在离开"、**把离场那三样输入清掉**。
+     *
+     * 它排在"视觉回到 0"那条命令**之后**才执行（决策层交回的指令是顺序跑的），
+     * 所以这一刻画面已经站回原位，不会看见"背景先清晰、页面还在缩"的两步。
+     *
+     * 那三样必须清：批 2 之前 `leaving` 是单行道（本页必 finish），留着无所谓；现在回弹之后人还可能
+     * 继续翻页，而那一层飞行体的挂载条件只看"三样齐不齐"—— 不清就是**旧那一张的截屏压在新那一张上面**。
+     */
+    fun restoreChromeAfterCancel() {
+        leaving = false
+        exitFrame = null
+        exitStart = null
+        exitTarget = null
+        val host = view.context as? Activity
+        host?.window?.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        host?.window?.let { WindowCompat.getInsetsController(it, view) }
+            ?.isAppearanceLightStatusBars = false
+    }
+
+    fun leavePage() {
+        if (leaving) return
+        val rects = exitRectsOrNull()
+        if (rects == null) {
+            onBack()
+            return
+        }
+        val (box, target) = rects
+        leaving = true
+        clearChromeForExit()
         GalleryFlyIn.captureRegion(view, box) { frame ->
             if (frame == null) {
                 onBack()
@@ -793,12 +839,99 @@ fun GalleryPostScreen(
         }
     }
 
-    // 系统返回 / 侧滑手势：接管它，返回才有自家这一趟 hero。
-    // 代价如实记账：预测式返回那半"边滑边看到整页缩小"的系统预览没有了，
-    // 现在统一是"松手后图飞回卡片"。sheet 开着时那条优先级更高（enabled 互斥）。
+    // ── 跟手返回（批 2）──
+    // 决策层在 `GalleryExitGesture`（四道门闩），视觉算式在 `GalleryExitExpansion`（批 1 抽出来的那颗）。
+    // 这里只负责：把系统事件喂进去、按交回的指令顺序执行、不再自己判"这一笔该不该理"。
+    var exitPhase by remember { mutableStateOf(GalleryExitGesturePhase.Idle) }
+    /** 最近一次收到的手势进度：`Arming` 期间攒着，像素一到就补到手指已经拖到的那一档。 */
+    var exitLastProgress by remember { mutableFloatStateOf(0f) }
+    /**
+     * 跟手期的高刚度弹簧。
+     *
+     * 不用 `snapTo`：澎湃 / HyperOS 这类机器在拖动期间只派发少量进度点，直接落位就是整页跳位。
+     * 3000f 无回弹那一档是"几乎贴手指、稀疏时平滑追赶"，与仓内既有的跟手口径同源
+     * （`components/PredictiveBack.kt` 的回弹用 600f，那是回弹不是跟手）。
+     */
+    val exitFollowSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = 3000f,
+        visibilityThreshold = 0.0005f,
+    )
+
+    fun onExitGestureEvent(event: GalleryExitGestureEvent) {
+        val decision = nextExitGesture(exitPhase, exitLastProgress, event)
+        exitPhase = decision.phase
+        if (decision.commands.isEmpty()) return
+        // 用组合那侧的 scope，不用手势事件自己的协程：回弹这一笔正是发生在事件协程被取消之后。
+        scope.launch {
+            for (command in decision.commands) {
+                when (command) {
+                    is GalleryExitGestureCommand.SetVisualTarget ->
+                        exitFly.animateTo(command.target, exitFollowSpec)
+
+                    // 备料（跟手那一趟）：守卫 + 摘玻璃底 + 起 `PixelCopy`。
+                    // 像素回来之前画面**钉在 0**（决策层的 `Arming` 档），所以那几帧不会先空一下。
+                    // 本地函数不能前向引用，这一条就地做完、只回调自己。
+                    GalleryExitGestureCommand.Prepare -> {
+                        val rects = exitRectsOrNull()
+                        if (rects == null) {
+                            // 飞不起来：交回失败那条事件，让决策层直接 finish（半路没有帧可画，别自己编一帧）。
+                            onExitGestureEvent(GalleryExitGestureEvent.PixelsFailed)
+                        } else {
+                            val (box, target) = rects
+                            leaving = true
+                            clearChromeForExit()
+                            GalleryFlyIn.captureRegion(view, box) { frame ->
+                                if (frame == null) {
+                                    android.util.Log.w("FlyProbe", "gesture exit: no pixels for $box")
+                                    onExitGestureEvent(GalleryExitGestureEvent.PixelsFailed)
+                                } else {
+                                    exitFrame = frame
+                                    exitStart = box
+                                    exitTarget = target
+                                    onExitGestureEvent(GalleryExitGestureEvent.PixelsReady)
+                                }
+                            }
+                        }
+                    }
+
+                    GalleryExitGestureCommand.Restore -> restoreChromeAfterCancel()
+                    GalleryExitGestureCommand.FlySelfDriven -> leavePage()
+                    GalleryExitGestureCommand.Finish -> onBack()
+                }
+            }
+        }
+    }
+
+    // 系统返回 / 侧滑手势：**跟手**。进度直接驱动离场那一帧，松手确认就落回卡片、回弹就原路退回。
+    // 三键点返回与 `adb` 送按键**没有**进度事件，照旧走原来那趟自驱弹簧 —— 两条共用同一颗算式与同一份落点账本。
+    // 代价如实记账：这一页自己接管之后，系统那套整窗口预览没有了（它给的是整扇窗，不是元素级）。
+    // sheet 开着时那条优先级更高（enabled 互斥）。
     // ⚠️ 下滑关闭（[closePage]）**不走这条** —— 那时页面已经跟着手指滑出屏幕，
     // 再让图从屏幕外飞回来是自相矛盾；那条保持原样，由系统返回动画收尾。
-    BackHandler(enabled = !infoOpen) { leavePage() }
+    PredictiveBackHandler(enabled = !infoOpen) { events ->
+        var receivedProgress = false
+        try {
+            events.collect { event ->
+                exitLastProgress = event.progress
+                val first = !receivedProgress
+                receivedProgress = true
+                onExitGestureEvent(
+                    if (first) GalleryExitGestureEvent.Started(event.progress)
+                    else GalleryExitGestureEvent.Progress(event.progress),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            // 平台在取消手势时撤掉这一笔协程：画面回原位、玻璃挂回来，然后把取消交回去。
+            // 没有进度事件就没有动过画面（`Arming` 都没进），什么都不必做。
+            if (receivedProgress) onExitGestureEvent(GalleryExitGestureEvent.Cancel)
+            throw cancelled
+        }
+        onExitGestureEvent(
+            if (receivedProgress) GalleryExitGestureEvent.Commit
+            else GalleryExitGestureEvent.BackWithoutProgress,
+        )
+    }
 
     fun toggleChrome() {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -919,7 +1052,7 @@ fun GalleryPostScreen(
                             translationY = entrance.value * screenHeightPx
                         }
                     }
-                    // 离场那一半（首程淡出，同一个 FLIGHT_FADE_FRACTION）：乘上去而不是另起一支 ——
+                    // 离场那一半（首程淡出，算式在判据层 [exitPageAlpha]）：乘上去而不是另起一支 ——
                     // 入场与离场本来不会重叠，但乘起来两条路都不必假设对方的状态。
                     alpha *= exitFadeAlpha()
                 },
@@ -1208,26 +1341,31 @@ fun GalleryPostScreen(
                 Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        val t = exitFly.value.coerceIn(0f, 1f)
-                        val left = exitFrom.left + (exitTo.left - exitFrom.left) * t
-                        val top = exitFrom.top + (exitTo.top - exitFrom.top) * t
-                        val width = exitFrom.width + (exitTo.width - exitFrom.width) * t
-                        val height = exitFrom.height + (exitTo.height - exitFrom.height) * t
+                        // 整帧算式在判据层（`exitExpansion`，有单测逐位钉着它与搬过来之前那句相同）：
+                        // 给定进度 → 落点框 + 源裁切 + 圆角缩放。进度就是这一层的唯一输入，
+                        // 所以批 2 换成手势直驱时不必再动这一处。
+                        val frame = exitExpansion(
+                            progress = exitFly.value,
+                            from = exitFrom.toFlyRect(),
+                            to = exitTo.toFlyRect(),
+                            sourceWidthPx = exitBitmap.width,
+                            sourceHeightPx = exitBitmap.height,
+                        )
+                        val dst = frame.dst
                         // 源像素同样是 cover 语义：起点是画面框的截屏、终点是卡片封面那一块，
                         // 两者比例未必同档（卡封面被夹过、预览行那条还是固定的 124×170）。
-                        val src = coverSourceRect(exitBitmap.width, exitBitmap.height, width, height)
+                        val src = frame.source
                         // 圆角同一条口径（按当前宽度等比缩放）：到终点时等于框的圆角，
                         // 与卡片自己的圆角同档，落回去那一瞬间没有形状差。
-                        val radius = flyCornerRadius.toPx() *
-                            (width / exitTo.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        val radius = flyCornerRadius.toPx() * frame.cornerRadiusScale
                         clipPath(
                             Path().apply {
                                 addRoundRect(
                                     RoundRect(
-                                        left = left,
-                                        top = top,
-                                        right = left + width,
-                                        bottom = top + height,
+                                        left = dst.left,
+                                        top = dst.top,
+                                        right = dst.left + dst.width,
+                                        bottom = dst.top + dst.height,
                                         cornerRadius = CornerRadius(radius, radius),
                                     ),
                                 )
@@ -1237,8 +1375,8 @@ fun GalleryPostScreen(
                                 image = exitBitmap,
                                 srcOffset = IntOffset(src.left, src.top),
                                 srcSize = IntSize(src.width, src.height),
-                                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                                dstSize = IntSize(width.roundToInt(), height.roundToInt()),
+                                dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
+                                dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
                             )
                         }
                     },
@@ -1397,16 +1535,6 @@ private enum class Entrance { PENDING, FLY, RISE }
  * 真实原因是页面站在屏幕外，落点被窗口裁成 `0×0`（见 [Entrance]）。**预算不是病，姿态才是病。**
  */
 private const val FLY_WAIT_MS = 600L
-
-/**
- * **离场**时做交叉淡出的那一段（占整条返回程的比例）。
- *
- * 去程曾经也用它（把页面的淡入挂在 `fly` 尾段上），2026-10-01 录屏把它量掉了：
- * 弹簧的"百分比"不是"路程"，`fly=0.75` 时飞行体还在半路，交叉淡入就变成**重影 + 暗一下**。
- * 去程现在走 [HANDOFF_MS] 那一档（飞完才开始交棒）。返回程没有这个问题 ——
- * 离场是"起点现截一帧、原地起飞"，飞行体与页面在首帧**逐像素相同**，交叉淡出不会露馅。
- */
-private const val FLIGHT_FADE_FRACTION = 0.25f
 
 /**
  * 交棒的时长（毫秒）。飞行体落位之后才开始走，见 `GalleryPostScreen` 里 [handoff] 的头注。
@@ -1789,3 +1917,16 @@ private const val TIER_RING_TRACK_ALPHA = 0.24f
  * 5 秒是用户原话里给的那个数（「比如每 5 秒切一张」），不另造一个。
  */
 private const val AUTOPLAY_DEFAULT_SEC = 5
+
+/**
+ * 落点框翻成 domain 那层的 [FlyRect]。
+ *
+ * 为什么在调用侧翻而不是让 `exitExpansion` 直接吃 `Rect`：判据层刻意不碰 Compose 类型，
+ * 它才能脱离 gradle 单跑（口径见 `GalleryFlyGeometry.kt` 文件头注）。
+ */
+private fun Rect.toFlyRect() = FlyRect(
+    left = left,
+    top = top,
+    width = width,
+    height = height,
+)
