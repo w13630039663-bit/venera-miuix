@@ -66,6 +66,10 @@ import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.rememberContentWidth
+import com.venera.compose.components.venera.VeneraNotice
+import com.venera.compose.components.venera.VeneraNoticeTone
+import com.venera.compose.components.venera.hScrollEndContentPadding
+import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
@@ -854,7 +858,11 @@ private fun SourceSelector(
             color = tokens.color.textSecondary,
             modifier = Modifier.padding(bottom = tokens.spacing.space2),
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+        LazyRow(
+            modifier = Modifier.hScrollEndFade(container = tokens.color.background),
+            contentPadding = hScrollEndContentPadding(),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
+        ) {
             itemsIndexed(sources, key = { _, s -> "src-" + s.key }) { _, source ->
                 VeneraChip(
                     text = source.name,
@@ -935,17 +943,19 @@ private fun SearchControls(
  *
  * 只在严格 AND 过滤会把整页清空、于是退回未过滤结果时出现。不写这句就等于把
  * 「没过滤」伪装成「过滤后就这么多样」，是假信息；写出来用户至少知道该换源或改关键词。
+ *
+ * 2026-10-14 手机档改判：这句两行灰字从前**直接铺在结果列表上方** —— 没有容器、没有图标、
+ * 没有层级，读起来像一条报错。改走 [VeneraNotice] 的一行档：标题一行说清"没精确过滤"，
+ * 那半句"为什么"收进点了才展开的正文。措辞一个字没删（这一条存在的理由恰恰是它必须被读到）。
  */
 @Composable
 private fun TagFilterRelaxedNotice() {
-    val tokens = VeneraTokens
-    Text(
-        text = "所选标签在该源的结果里没有对得上的项，以下结果没有按标签精确过滤。" +
+    VeneraNotice(
+        title = "这些结果没按所选标签精确过滤",
+        message = "所选标签在该源的结果里没有对得上的项。" +
             "（多数源的列表项不带完整标签；繁简写法不同也判为不匹配。）",
-        fontSize = tokens.type.overline,
-        lineHeight = tokens.type.caption * 1.5f,
-        color = tokens.color.textSecondary,
-        modifier = Modifier.fillMaxWidth(),
+        tone = VeneraNoticeTone.Warning,
+        compact = true,
     )
 }
 

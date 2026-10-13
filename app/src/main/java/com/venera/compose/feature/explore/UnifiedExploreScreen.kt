@@ -286,7 +286,11 @@ fun UnifiedExploreScreen(
         // 第二道闸是组内上限 SECTION_ITEM_CAP：预算只决定"露几组"，管不了 mh1234 那种
         // 一组 343 枚的题材表，不截它首屏就是几百枚药丸。折叠态截下的尾部与整组未露出的
         // 部分一起进 hiddenEntryCount，由同一个「更多分类」按钮放出。
-        val allSections = currentSource?.nativeSections.orEmpty()
+        // ⚠️ **零入口的组整组先剔掉**（2026-10-14 手机档读数：MangaDex 那一屏连着两行光杆标题
+        // 「Tags」「内容」，各自管着一枚入口都没有的组）—— 屏上多一行标题，用户读到的不是
+        // "这里没有分类"，而是"这里应该还有东西没出来"。空组对预算与折叠计数都贡献 0，
+        // 所以在源头剔：visibleSections 与 hiddenEntryCount 两本账一起对上。
+        val allSections = currentSource?.nativeSections.orEmpty().filter { it.items.isNotEmpty() }
         val visibleSections = remember(allSections, vm.sectionsExpanded) {
             if (vm.sectionsExpanded) allSections
             else buildList {
@@ -371,12 +375,15 @@ fun UnifiedExploreScreen(
 
             // ══ 上方区块：通用 / 跨源快捷筛选 ══
             // 这里的每一项都**不跳转**，点了直接刷新本页内容区，方便和探索方式组合着用。
-            item(key = "quick-filter-header-" + src.sourceKey) { SectionHeader("快捷筛选") }
-
+            //
+            // ⚠️ 这一层**不再另摆一枚总标题**（2026-10-14 手机档读数）：它管的两块各自带题
+            // （ExploreModeRow 念「探索方式」、UnifiedTagBlock 念自己的名），
+            // 再套一层「快捷筛选」就是两行标题压一行药丸 —— 层级重复是那一屏"像没加载完"的另一半成因。
             // 榜档不进探索方式行：它们改在下方「本源分类」里逐档成入口（见 rankingSection），
             // 同一动作留两个入口是噪声。modes 数据面照旧带着 RANKING —— 内容取数与选中态
             // 解析都靠它，只是这一行不摆。
             val pageModes = src.modes.filterNot { it.kind == ExploreMode.Kind.RANKING }
+
             if (pageModes.isNotEmpty()) {
                 item(key = "modes-" + src.sourceKey) {
                     ExploreModeRow(
@@ -419,14 +426,14 @@ fun UnifiedExploreScreen(
             // 榜档逐档入口 + 源专属分类组。分类组一律跳二级列表页（与现有习惯一致），
             // 默认只露前 ExploreViewModel.SECTION_ENTRY_BUDGET 个入口（单组再套
             // SECTION_ITEM_CAP），其余收进「更多分类」。
-            if (visibleSections.isNotEmpty() || src.rankingSection != null) {
+            if (visibleSections.isNotEmpty() || src.rankingSection?.items?.isNotEmpty() == true) {
                 item(key = "sections-header-" + src.sourceKey) { SectionHeader("本源分类") }
             }
 
             // 榜排在分类组之前，且**不吃组预算**：它是这一轮点名要够得着的东西，
             // 排进预算就会被 mh1234 那种大组整组顶掉。点它 = 页内切到该档（不跳二级页），
             // 与上方「快捷筛选」同一套互斥纪律 —— 留着标签筛选就说不清列表是哪来的。
-            src.rankingSection?.let { ranking ->
+            src.rankingSection?.takeIf { it.items.isNotEmpty() }?.let { ranking ->
                 item(key = "ranking-" + src.sourceKey) {
                     val active = state.resolveMode(src.sourceKey, src.modes)
                         ?.takeIf { it.kind == ExploreMode.Kind.RANKING }
@@ -482,8 +489,13 @@ fun UnifiedExploreScreen(
                 }
             }
 
-            item(key = "content-header-" + src.sourceKey) {
-                SectionHeader(if (activeFilter != null) "筛选结果" else "内容")
+            // 「内容」那枚节头只在**真有一屏内容要列**时摆：加载中 / 失败 / 空 那三档下面
+            // 各自会念一句话，再压一行标题上去就是真机量到的那行"光杆标题 + 空态"
+            // （2026-10-14 手机档：MangaDex 那一屏读完是"探索方式 / 内容 / 该探索方式暂无内容"）。
+            if (!isLoadingContent && contentError == null && !content.isEmpty) {
+                item(key = "content-header-" + src.sourceKey) {
+                    SectionHeader(if (activeFilter != null) "筛选结果" else "内容")
+                }
             }
 
             val isDetailed = displayMode.value == "detailed"

@@ -87,6 +87,8 @@ import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.data.tags.rememberTagDisplayLabel
+import com.venera.compose.components.venera.hScrollEndContentPadding
+import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCheckbox
 import com.venera.compose.components.venera.VeneraDialog
@@ -1121,7 +1123,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     // 多分组 Tabs（若存在多个章节分组，如单行本/连载中/番外篇）
                     if (groups.size > 1) {
                         Spacer(modifier = Modifier.height(tokens.spacing.space5))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+                        LazyRow(
+                            modifier = Modifier.hScrollEndFade(container = tokens.color.background),
+                            contentPadding = hScrollEndContentPadding(),
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                        ) {
                             items(groups.indices.toList()) { gIdx ->
                                 val group = groups[gIdx]
                                 val isSelected = detailState.selectedGroupIndex == gIdx

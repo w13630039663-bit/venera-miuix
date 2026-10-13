@@ -22,6 +22,8 @@ import com.venera.compose.components.selection.MultiSelectState
 import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
+import com.venera.compose.components.venera.hScrollEndContentPadding
+import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -705,7 +707,10 @@ private fun FolderChipRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .hScrollEndFade(container = tokens.color.background),
+            contentPadding = hScrollEndContentPadding(),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
         ) {
             item {
