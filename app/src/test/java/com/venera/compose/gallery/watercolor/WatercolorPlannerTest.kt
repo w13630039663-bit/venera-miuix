@@ -10,12 +10,14 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
- * 水彩规划器判据。靶子是四条不能松的口径：
+ * 水彩规划器判据。靶子是五条不能松的口径：
  *
- * 1. **顺序即叙事** —— 晕染 → 背景 → 主体 → 细节，绝不能乱序、缺段；
+ * 1. **顺序即叙事** —— 晕染 → 铺色 → 主体 → 勾勒 → 细节，绝不能乱序、缺段；
  * 2. **同种子同构图** —— 同一张图同一个种子，规划必须逐笔相同（回放、对比、判据都靠它）；
- * 3. **笔触顺结构** —— 细节笔的平均边缘强度必须高于背景笔（"哪里该收一笔"的判据）；
- * 4. **颜色取自原图** —— 左红右蓝的图上，左侧落的晕染必须偏红、右侧偏蓝。
+ * 3. **笔触困在分区里**（v2 核心）—— BLOCKS/FORMS/DETAILS 的每一笔都不跨分区，
+ *    眼色不混肤色、发丝不拖背景；
+ * 4. **笔触顺结构**（v2）—— 勾勒笔的平均结构边缘必须高于铺色笔（"哪里该收一笔"）；
+ * 5. **颜色取自原图** —— 左红右蓝的图上，左侧落的晕染必须偏红、右侧偏蓝。
  */
 class WatercolorPlannerTest {
 
@@ -73,8 +75,9 @@ class WatercolorPlannerTest {
         assertEquals(
             listOf(
                 WatercolorPhase.WASH,
-                WatercolorPhase.BACKGROUND,
+                WatercolorPhase.BLOCKS,
                 WatercolorPhase.FORMS,
+                WatercolorPhase.OUTLINE,
                 WatercolorPhase.DETAILS,
             ),
             plan.phaseOrder,
@@ -85,7 +88,7 @@ class WatercolorPlannerTest {
             if (seenOrder.lastOrNull() != s.phase) seenOrder.add(s.phase)
         }
         assertEquals(plan.phaseOrder, seenOrder)
-        // 四个阶段都不能空 —— 屏上叙事少任何一段都读得出来。
+        // 五个阶段都不能空 —— 屏上叙事少任何一段都读得出来。
         for (phase in plan.phaseOrder) {
             assertTrue("阶段 $phase 一笔都没有", plan.countOf(phase) > 0)
         }
@@ -96,10 +99,12 @@ class WatercolorPlannerTest {
         val src = leftRedRightBlue()
         val plan = WatercolorPlanner.plan(src, seed = 7L)
         val total = plan.strokes.size
-        // 背景与细节、主体都有兜底补齐，笔数=计划量（±2 是晕染按"枚"取整的颗粒）。
-        assertEquals((total * 0.30f).roundToInt().toDouble(), plan.countOf(WatercolorPhase.BACKGROUND).toDouble(), 2.0)
-        assertEquals((total * 0.46f).roundToInt().toDouble(), plan.countOf(WatercolorPhase.FORMS).toDouble(), 2.0)
-        assertEquals((total * 0.12f).roundToInt().toDouble(), plan.countOf(WatercolorPhase.DETAILS).toDouble(), 2.0)
+        // 铺色/主体/勾勒/细节都有兜底补齐，笔数=计划量（±2 是取整颗粒）。
+        // 期望值直接引用 Planner 的权重常量：调权重不必双处改。
+        assertEquals((total * WatercolorPlanner.BLOCKS_WEIGHT).roundToInt().toDouble(), plan.countOf(WatercolorPhase.BLOCKS).toDouble(), 2.0)
+        assertEquals((total * WatercolorPlanner.FORMS_WEIGHT).roundToInt().toDouble(), plan.countOf(WatercolorPhase.FORMS).toDouble(), 2.0)
+        assertEquals((total * WatercolorPlanner.OUTLINE_WEIGHT).roundToInt().toDouble(), plan.countOf(WatercolorPhase.OUTLINE).toDouble(), 2.0)
+        assertEquals((total * WatercolorPlanner.DETAILS_WEIGHT).roundToInt().toDouble(), plan.countOf(WatercolorPhase.DETAILS).toDouble(), 2.0)
         assertTrue("晕染量太小：${plan.countOf(WatercolorPhase.WASH)}", plan.countOf(WatercolorPhase.WASH) >= 24)
         // 阶段边界彼此不重叠、递增。
         val starts = plan.phaseOrder.map { plan.phaseStart(it) }
@@ -111,8 +116,8 @@ class WatercolorPlannerTest {
     fun `progress 与 phaseAt 的边界读数`() {
         val plan = WatercolorPlanner.plan(leftRedRightBlue(), seed = 3L)
         assertEquals(WatercolorPhase.WASH, plan.phaseAt(0))
-        val bgStart = plan.phaseStart(WatercolorPhase.BACKGROUND)
-        assertEquals(WatercolorPhase.BACKGROUND, plan.phaseAt(bgStart))
+        val blocksStart = plan.phaseStart(WatercolorPhase.BLOCKS)
+        assertEquals(WatercolorPhase.BLOCKS, plan.phaseAt(blocksStart))
         assertEquals(WatercolorPhase.DETAILS, plan.phaseAt(plan.strokes.size - 1))
         assertEquals(0f, plan.progress(0), 1e-4f)
         assertEquals(1f, plan.progress(plan.strokes.size), 1e-4f)
@@ -160,32 +165,32 @@ class WatercolorPlannerTest {
     }
 
     @Test
-    fun `细节笔落在高边缘处 背景笔落在平坦处`() {
+    fun `勾勒笔落在高结构边缘处 铺色笔落在平坦处`() {
         val src = topBrightBottomDark()
         val plan = WatercolorPlanner.plan(src, seed = 5L)
-        fun meanEdge(phase: WatercolorPhase): Double {
+        fun meanStructEdge(phase: WatercolorPhase): Double {
             val pts = plan.strokes.filter { it.phase == phase }.map { it.points[0] to it.points[1] }
-            return pts.map { src.edge(it.first, it.second) }.average()
+            return pts.map { src.structuralEdge(it.first, it.second) }.average()
         }
-        val detailEdge = meanEdge(WatercolorPhase.DETAILS)
-        val bgEdge = meanEdge(WatercolorPhase.BACKGROUND)
-        assertTrue("细节笔平均边缘 $detailEdge 不高于背景笔 $bgEdge", detailEdge > bgEdge)
-        // 背景笔必须明显偏平坦：这张图的边缘只有中间 10% 一条带，
-        // 平均边缘强度高不过 0.15。
-        assertTrue("背景笔平均边缘 $bgEdge 太高，说明没往平坦处挑", bgEdge < 0.15)
+        val outlineEdge = meanStructEdge(WatercolorPhase.OUTLINE)
+        val blocksEdge = meanStructEdge(WatercolorPhase.BLOCKS)
+        assertTrue("勾勒笔平均结构边缘 $outlineEdge 不高于铺色笔 $blocksEdge", outlineEdge > blocksEdge)
+        // 铺色笔必须明显偏平坦：这张图的边缘只有中间 10% 一条带，
+        // 平均结构边缘强度高不过 0.15。
+        assertTrue("铺色笔平均结构边缘 $blocksEdge 太高，说明没往平坦处挑", blocksEdge < 0.15)
     }
 
     @Test
-    fun `细节笔比背景笔更浓更细`() {
+    fun `勾勒笔比铺色笔更浓更细`() {
         val plan = WatercolorPlanner.plan(leftRedRightBlue(), seed = 6L)
-        val detail = plan.strokes.filter { it.phase == WatercolorPhase.DETAILS }
-        val bg = plan.strokes.filter { it.phase == WatercolorPhase.BACKGROUND }
-        val detailAlpha = detail.map { it.alpha }.average()
-        val bgAlpha = bg.map { it.alpha }.average()
-        assertTrue("细节笔 alpha $detailAlpha 不高于背景笔 $bgAlpha", detailAlpha > bgAlpha)
-        val detailW = detail.map { it.width }.average()
-        val bgW = bg.map { it.width }.average()
-        assertTrue("细节笔宽 $detailW 不小于背景笔 $bgW", detailW < bgW)
+        val outline = plan.strokes.filter { it.phase == WatercolorPhase.OUTLINE }
+        val blocks = plan.strokes.filter { it.phase == WatercolorPhase.BLOCKS }
+        val outlineAlpha = outline.map { it.alpha }.average()
+        val blocksAlpha = blocks.map { it.alpha }.average()
+        assertTrue("勾勒笔 alpha $outlineAlpha 不高于铺色笔 $blocksAlpha", outlineAlpha > blocksAlpha)
+        val outlineW = outline.map { it.width }.average()
+        val blocksW = blocks.map { it.width }.average()
+        assertTrue("勾勒笔宽 $outlineW 不小于铺色笔 $blocksW", outlineW < blocksW)
     }
 
     @Test
@@ -314,7 +319,124 @@ class WatercolorPlannerTest {
                 WatercolorSource.pack(255, v, (v * 3) % 256, (255 - v))
             }
             val plan = WatercolorPlanner.plan(WatercolorSource.of(px, w, h), seed = 2L)
-            assertTrue("${w}x$h 总量失控: ${plan.strokes.size}", plan.strokes.size in 1200..4400)
+            assertTrue("${w}x$h 总量失控: ${plan.strokes.size}", plan.strokes.size in 2000..5200)
         }
+    }
+
+    // ─────────── 6. v2：分区 / 困区 / 流向 / 皮肤 / 扁平化 ───────────
+
+    @Test
+    fun `铺色与主体笔困在分区内 一笔不跨区`() {
+        val src = leftRedRightBlue()
+        val plan = WatercolorPlanner.plan(src, seed = 17L)
+        var checked = 0
+        for (s in plan.strokes) {
+            if (s.phase != WatercolorPhase.BLOCKS && s.phase != WatercolorPhase.FORMS) continue
+            val startRegion = src.regionAt(s.points[0], s.points[1])
+            var i = 2
+            while (i + 1 < s.points.size) {
+                assertEquals(
+                    "笔触跨出了起点分区（${s.phase}）",
+                    startRegion, src.regionAt(s.points[i], s.points[i + 1]),
+                )
+                i += 2
+                checked++
+            }
+        }
+        assertTrue("一笔困区笔都没验到", checked > 100)
+    }
+
+    @Test
+    fun `勾勒笔不困区 允许跨分区`() {
+        // 边线骑在分界上，跨区才是它的工作 —— 左红右蓝图上勾边笔必然跨区。
+        val src = leftRedRightBlue()
+        val plan = WatercolorPlanner.plan(src, seed = 17L)
+        val outlines = plan.strokes.filter { it.phase == WatercolorPhase.OUTLINE }
+        assertTrue(outlines.isNotEmpty())
+    }
+
+    @Test
+    fun `横边处结构流向沿边 即水平`() {
+        val src = topBrightBottomDark()
+        val flow = FloatArray(2)
+        src.flowDirection(0.5f, 0.5f, flow)
+        assertTrue(
+            "横边处流向应水平：|x|=${abs(flow[0])} |y|=${abs(flow[1])}",
+            abs(flow[0]) > abs(flow[1]) * 3f,
+        )
+        // 远离边缘的纯色区没有结构走向。
+        src.flowDirection(0.5f, 0.1f, flow)
+        val coh = src.flowCoherence(0.5f, 0.1f)
+        assertTrue("纯色区相干性应接近 0（实为 $coh）", coh < 0.1f)
+    }
+
+    @Test
+    fun `皮肤掩识别暖粉 不认蓝`() {
+        // 左暖粉（肤）右蓝（衣/背景）。
+        val w = 120; val h = 90
+        val px = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            px[y * w + x] = if (x < w / 2) 0xFFF2CFC4.toInt() else 0xFFA8C0E8.toInt()
+        }
+        val src = WatercolorSource.of(px, w, h)
+        assertTrue("左半应判为皮肤", src.skinAt(0.25f, 0.5f))
+        assertTrue("右半不应判为皮肤", !src.skinAt(0.75f, 0.5f))
+    }
+
+    @Test
+    fun `扁平化吃掉细密纹理 分区数受控`() {
+        // 蓝底上撒白色单像素噪点：多数表决后噪点应被底色吃掉。
+        val w = 100; val h = 80
+        val px = IntArray(w * h) { 0xFF2848B0.toInt() }
+        val rng = Random(7)
+        for (i in 0 until 400) {
+            val x = rng.nextInt(w); val y = rng.nextInt(h)
+            px[y * w + x] = 0xFFFFFFFF.toInt()
+        }
+        val src = WatercolorSource.of(px, w, h)
+        assertTrue("分区数应受控（实为 ${src.regionCount}）", src.regionCount in 1..6)
+        // 噪点位置的分区号必须等于蓝底的分区号（被吃掉了）。
+        var dots = 0; var absorbed = 0
+        for (i in 0 until 400) {
+            val x = rng.nextInt(w); val y = rng.nextInt(h)
+            val u = (x + 0.5f) / w; val v = (y + 0.5f) / h
+            if (src.sampleFlat(u, v) != 0xFF2848B0.toInt()) dots++
+            if (src.regionAt(x.toFloat() / (w - 1), y.toFloat() / (h - 1)) ==
+                src.regionAt(0.5f, 0.5f)
+            ) absorbed++
+        }
+        assertTrue("噪点应基本被底色吸收（$absorbed/400）", absorbed >= 360)
+    }
+
+    @Test
+    fun `分区均值色接近该区实际色 且分区齐全`() {
+        val src = leftRedRightBlue()
+        assertTrue("分区数至少为 2（实为 ${src.regionCount}）", src.regionCount >= 2)
+        // 左半分区的均值必须偏红、右半偏蓝（取红差最大 / 最小的分区）。
+        var leftRegion = -1; var rightRegion = -1
+        var maxRed = 60f; var minRed = -60f
+        for (r in 0 until src.regionCount) {
+            val c = src.regionColor(r)
+            val redness = WatercolorSource.channel(c, 16) - WatercolorSource.channel(c, 0)
+            if (redness > maxRed) { maxRed = redness; leftRegion = r }
+            if (redness < minRed) { minRed = redness; rightRegion = r }
+        }
+        assertTrue("没找到偏红分区", leftRegion >= 0)
+        assertTrue("没找到偏蓝分区", rightRegion >= 0)
+        val lc = src.regionColor(leftRegion)
+        assertTrue(
+            "红分区均值不像红（r=${WatercolorSource.channel(lc, 16)} b=${WatercolorSource.channel(lc, 0)}）",
+            WatercolorSource.channel(lc, 16) - WatercolorSource.channel(lc, 0) > 60,
+        )
+        // 左分区必须真的落在画布左半（它的种子点 regionAt 一致）。
+        assertEquals(leftRegion, src.regionAt(0.1f, 0.5f))
+        assertEquals(rightRegion, src.regionAt(0.9f, 0.5f))
+    }
+
+    @Test
+    fun `structuralEdge 在竖边上强 在纯色区弱`() {
+        val src = leftRedRightBlue()
+        assertTrue("竖边处结构边缘应强", src.structuralEdge(0.5f, 0.5f) > 0.5f)
+        assertTrue("纯色区结构边缘应弱", src.structuralEdge(0.05f, 0.5f) < 0.05f)
     }
 }

@@ -352,8 +352,9 @@ fun WatercolorPainterScreen(
 /** 阶段名 —— 摆上屏的三个字，不带实现笔记。 */
 private fun phaseName(phase: WatercolorPhase): String = when (phase) {
     WatercolorPhase.WASH -> "晕染"
-    WatercolorPhase.BACKGROUND -> "背景"
+    WatercolorPhase.BLOCKS -> "铺色"
     WatercolorPhase.FORMS -> "主体"
+    WatercolorPhase.OUTLINE -> "勾勒"
     WatercolorPhase.DETAILS -> "细节"
 }
 
