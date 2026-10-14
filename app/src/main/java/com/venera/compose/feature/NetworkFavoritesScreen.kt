@@ -74,6 +74,8 @@ import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.MultiSelectBarAction
 import com.venera.compose.components.selection.rememberMultiSelectState
+import com.venera.compose.components.venera.hScrollEndContentPadding
+import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -420,7 +422,11 @@ fun AndroidNetworkFavoritesScreen(
 @Composable
 private fun TopSourceBar(sources: List<NetSourceUi>, selectedKey: String?, onSelect: (String) -> Unit) {
     val tokens = VeneraTokens
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+    LazyRow(
+        modifier = Modifier.hScrollEndFade(container = tokens.color.background),
+        contentPadding = hScrollEndContentPadding(),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
+    ) {
         items(sources, key = { it.key }) { src ->
             VeneraFilterPill(
                 text = src.name,
@@ -453,7 +459,11 @@ private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoa
         // 只有 0 或 1 个文件夹时整行不渲染：单个「全部」pill 不提供任何选择，
         // 挂在源栏下方就像多出来的一块（用户真机反馈）。
         folders == null || folders.size <= 1 -> {}
-        else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+        else -> LazyRow(
+            modifier = Modifier.hScrollEndFade(container = tokens.color.background),
+            contentPadding = hScrollEndContentPadding(),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
+        ) {
             items(folders.toList(), key = { it.first }) { (id, name) ->
                 // 与源栏同一套 VeneraFilterPill：文件夹胶囊样式与源药丸完全一致。
                 VeneraFilterPill(

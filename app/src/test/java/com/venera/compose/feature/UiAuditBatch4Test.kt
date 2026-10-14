@@ -29,19 +29,21 @@ class UiAuditBatch4Test {
 
     private val fade = code("com/venera/compose/components/venera", "VeneraHScrollFade.kt")
 
-    /** ① 三处横向行：渐隐与尾部内边距**成对**出现。 */
+    /** ① 横向行：渐隐与尾部内边距**成对**出现，且每颗文件的行数钉死（存在性判式会被同屏另一处喂饱）。 */
     @Test
     fun `横向行的渐隐与尾部内边距成对`() {
         val sites = listOf(
-            "com/venera/compose/feature" to "SearchScreen.kt",
-            "com/venera/compose/feature" to "FavoritesScreen.kt",
-            "com/venera/compose/feature" to "ComicDetailScreen.kt",
+            Triple("com/venera/compose/feature", "SearchScreen.kt", 1),
+            Triple("com/venera/compose/feature", "FavoritesScreen.kt", 1),
+            Triple("com/venera/compose/feature", "ComicDetailScreen.kt", 1),
+            // 网络收藏那一屏有两行：上方源药丸行与展开区的文件夹行（报告 2.3 那条 P1 裁的是前者）
+            Triple("com/venera/compose/feature", "NetworkFavoritesScreen.kt", 2),
         )
-        sites.forEach { (dir, name) ->
+        sites.forEach { (dir, name, expected) ->
             val lines = code(dir, name)
             val fades = lines.count { it.contains("hScrollEndFade(container =") }
             val pads = lines.count { it.contains("hScrollEndContentPadding()") }
-            assertTrue("$name 一处渐隐都没有", fades >= 1)
+            assertEquals("$name 的渐隐道数不是约定的那 $expected 道（改了要先回来看这条约定）", expected, fades)
             assertEquals(
                 "$name 的渐隐与尾部内边距不成对 —— 只接一半等于把『被裁』从中途挪到终点",
                 fades, pads,
