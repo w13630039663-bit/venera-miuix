@@ -222,6 +222,7 @@ private fun SettingsHomeContent(
                 subtitle = "设置与偏好",
                 totalHeight = heroHeight,
                 overlapBottom = tokens.spacing.settingsHeroOverlap,
+                imageDescription = "设置页头图",
             )
         }
         Column(

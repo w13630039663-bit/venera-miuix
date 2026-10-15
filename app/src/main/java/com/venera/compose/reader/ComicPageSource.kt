@@ -86,6 +86,40 @@ enum class ReaderReadingMode(
 }
 
 /**
+ * 翻页特效。默认 [NONE] —— 守仓库"新能力默认不改动观感"的铁律（同图片增强总开关、内容层材质）。
+ *
+ * 三种档位：
+ * - [NONE] 原样，与接入此功能之前逐像素一致；
+ * - [BOOK_FLIP_3D] 3D 翻书（绕 Y 轴旋转 + 透视），纯 Compose graphicsLayer，接入 HorizontalPager 最稳；
+ * - [CURL] 仿真卷边（页面从翻页边角卷起，露出背面与落影），单页横向模式专用。
+ *
+ * 存字符串而非枚举：与 [ReaderReadingMode] 同口径 —— 盘上可能残留旧值/未知值，
+ * `fromKey` 一律兜底到 [NONE]，避免一次静默升级把用户弹到某个没做过的档。
+ *
+ * [shortLabel] / [glyph] 是**屏上短称**：设置页走 [label]（长称，带括号说明），
+ * 阅读器面板那一行三枚均分格走这一对（长称塞不进 1/3 宽）。两处必须是同一颗枚举的两个
+ * 字段，而不是页面里各写一份短名 —— 各写一份就是两本账，改一忘一。
+ */
+enum class ReaderPageTurnEffect(
+    val key: String,
+    val label: String,
+    val shortLabel: String,
+    val glyph: String,
+) {
+    NONE("NONE", "无（原样）", "原样", "○"),
+    BOOK_FLIP_3D("BOOK_FLIP_3D", "3D 翻书", "3D 翻书", "📖"),
+    CURL("CURL", "仿真卷边", "仿真卷边", "📄");
+
+    companion object {
+        fun fromKey(key: String?): ReaderPageTurnEffect = when (key?.uppercase()) {
+            "BOOK_FLIP_3D", "FLIP", "3D" -> BOOK_FLIP_3D
+            "CURL", "PAGECURL", "卷边", "仿真" -> CURL
+            else -> NONE
+        }
+    }
+}
+
+/**
  * 章节数据载体
  */
 data class ReaderChapter(

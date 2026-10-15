@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.source.FavoriteData
+import com.venera.compose.source.humanizeSourceError
 import com.venera.compose.source.model.Comic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -210,7 +211,7 @@ class NetworkFavoritesViewModel(
                         enterFolder(allEntry?.key ?: res.folders.keys.first())
                     }
                 }
-                .onFailure { error = it.message ?: "加载文件夹失败" }
+                .onFailure { error = humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty())) }
             isFolderLoading = false
         }
     }
@@ -257,7 +258,7 @@ class NetworkFavoritesViewModel(
                         page = 1
                         hasMore = 1 < it.maxPage
                     }
-                    .onFailure { error = it.message ?: "加载收藏失败" }
+                    .onFailure { error = humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty())) }
 
                 nextLoader != null -> nextLoader(null, folderId)
                     .onSuccess {
@@ -265,7 +266,7 @@ class NetworkFavoritesViewModel(
                         nextToken = it.next
                         hasMore = it.next != null
                     }
-                    .onFailure { error = it.message ?: "加载收藏失败" }
+                    .onFailure { error = humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty())) }
 
                 else -> error = "当前源未提供收藏列表能力"
             }
@@ -289,7 +290,7 @@ class NetworkFavoritesViewModel(
                         page = next
                         hasMore = next < it.maxPage
                     }
-                    .onFailure { error = it.message ?: "加载更多失败" }
+                    .onFailure { error = humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty())) }
             } else if (nextLoader != null) {
                 nextLoader(nextToken, currentFolderId)
                     .onSuccess {
@@ -297,7 +298,7 @@ class NetworkFavoritesViewModel(
                         nextToken = it.next
                         hasMore = it.next != null
                     }
-                    .onFailure { error = it.message ?: "加载更多失败" }
+                    .onFailure { error = humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty())) }
             }
             isLoading = false
         }
@@ -317,7 +318,7 @@ class NetworkFavoritesViewModel(
                     comics = comics.filterNot { it.id == comicId }
                     onResult(true, null)
                 }
-                .onFailure { onResult(false, it.message) }
+                .onFailure { onResult(false, humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty()))) }
         }
     }
 
@@ -351,7 +352,7 @@ class NetworkFavoritesViewModel(
         viewModelScope.launch {
             adder(name.trim())
                 .onSuccess { loadFolders() }
-                .onFailure { onError(it.message ?: "创建失败") }
+                .onFailure { onError(humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty()))) }
         }
     }
 
@@ -361,7 +362,7 @@ class NetworkFavoritesViewModel(
         viewModelScope.launch {
             deleter(folderId)
                 .onSuccess { backToFolders() }
-                .onFailure { onError(it.message ?: "删除失败") }
+                .onFailure { onError(humanizeSourceError(it, manager.sourceSupportsLogin(selectedSourceKey.orEmpty()))) }
         }
     }
 }

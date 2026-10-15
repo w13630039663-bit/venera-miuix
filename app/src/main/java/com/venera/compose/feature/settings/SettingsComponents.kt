@@ -352,6 +352,7 @@ internal fun SettingsPage(
                     subtitle = heroSubtitle,
                     totalHeight = statusBarTop + tokens.spacing.settingsHeroHeightSubpage,
                     overlapBottom = tokens.spacing.settingsHeroOverlap,
+                    imageDescription = "设置页头图",
                 )
             }
             Column(

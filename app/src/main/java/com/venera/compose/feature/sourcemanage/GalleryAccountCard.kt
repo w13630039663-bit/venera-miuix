@@ -253,7 +253,7 @@ private fun GelbooruLoginDialog(
                 Intent(Intent.ACTION_VIEW, Uri.parse(GelbooruAccount.ACCOUNT_PAGE)),
             )
         }.onFailure {
-            Toast.makeText(context, "打不开浏览器：${it.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "没打开浏览器 🥲 可以手动到站方页面拿 Key", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -324,11 +324,12 @@ private fun GelbooruLoginDialog(
                                 }
                                 .onFailure { e ->
                                     busy = false
-                                    // 原样转达站方的答案（401 / 403 / 网络错误各自可分辨），
-                                    // 不统一糊成一句"配置失败"。
+                                    // 转达站方的答案（401 / 403 / 网络错误各自可分辨），
+                                    // 不统一糊成一句"配置失败"。但**不许把类名当理由** ——
+                                    // 回退到 `javaClass.simpleName` 会让屏上出现代码。
                                     Toast.makeText(
                                         context,
-                                        e.message ?: "配置失败",
+                                        e.message?.takeIf { it.isNotBlank() } ?: "配置没成 🥲 检查一下 Key 和网络",
                                         Toast.LENGTH_LONG,
                                     ).show()
                                 }

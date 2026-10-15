@@ -145,7 +145,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import me.saket.telephoto.zoomable.ZoomableState
+import me.saket.telephoto.zoomable.DoubleClickToZoomListener
+import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
 import top.yukonga.miuix.kmp.basic.Text
@@ -204,6 +205,9 @@ fun GalleryPostScreen(
     val imageLoader: ImageLoader = remember { GalleryImageLoader.get(context) }
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
+    // 浏览历史件（2026-10-14 起记「看过」）。可空：桌面那一侧不接这一颗（它有自己的历史屏），
+    // 而这一屏是两端共享的源码文件 —— 空着就是不记，不是报错。
+    val history = remember { GalleryPorts.of(context).history }
 
     // ── 大图页的四条行为档位（批次 C1，2026-09-29；方案 §一）──
     // 全都在 `GalleryViewerPolicies` 里算，这里只读档 + 接线：那三条判据要能上单测。
@@ -695,7 +699,10 @@ fun GalleryPostScreen(
             } else {
                 pages = listOf(loaded)
             }
-        }.onFailure { error = it.message ?: "加载失败" }
+        }.onFailure { e ->
+            android.util.Log.w("VeneraDebug", "load gallery post failed", e)
+            error = "这一条没读出来 🥲 稍后再试，或换一条"
+        }
     }
 
     /**
@@ -713,6 +720,20 @@ fun GalleryPostScreen(
             tags = target.tagList,
         ) != null,
     ) == GalleryGuard.BLURRED
+
+    // ── 浏览历史：看到的那一张记一行（2026-10-14，与画廊首页顶栏那枚「浏览历史」同一轮）──
+    //
+    // 写在大图页而不是七处开卡点（首页墙 / 日榜二级页 / 搜索墙 / 画师页 / 收藏页 / 反搜结果 / 深链）：
+    // 那七条路径全在这一页汇流，一处写完覆盖全部；键取 currentUid，左右翻页每滑一张也各记一笔 ——
+    // 划过去没停下来也算看过，这正是"浏览"二字的含义。
+    //
+    // 守卫照桌面批 86 那颗用例（「挡住的那一档不记」）：maskedOf 为真 = 分级遮罩或用户屏蔽规则
+    // 把这张挡住了，用户没看见画，记一条「看过」就是假历史。
+    LaunchedEffect(currentUid) {
+        val post = current ?: return@LaunchedEffect
+        if (maskedOf(post)) return@LaunchedEffect
+        history?.recordView(post, System.currentTimeMillis())
+    }
 
     // sheet 浮在上面时，系统返回先关 sheet，不要把本页一起弹掉。
     BackHandler(enabled = infoOpen) { infoOpen = false }
@@ -979,7 +1000,10 @@ fun GalleryPostScreen(
                         Toast.LENGTH_LONG,
                     ).show()
                 }
-                .onFailure { Toast.makeText(context, "保存失败：${it.message}", Toast.LENGTH_LONG).show() }
+                .onFailure { e ->
+                    android.util.Log.w("VeneraDebug", "save gallery post failed", e)
+                    Toast.makeText(context, "保存没成功 🥲 看一眼存储空间再试一次", Toast.LENGTH_LONG).show()
+                }
             saving = false
         }
     }
@@ -1479,19 +1503,15 @@ private fun GalleryViewerPage(
     onImageBounds: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    val zoomState = rememberZoomableState()
-    LaunchedEffect(zoomState) {
-        snapshotFlow { (zoomState.zoomFraction ?: 0f) > 0f }
-            .distinctUntilChanged()
-            .collect { onZoomedChange(it) }
-    }
+    // 缩放状态**不在这里建**：上限要按"这一屏铺满要几倍"算，而那一框的尺寸是
+    // [GalleryViewerMedia] 里定框那段的产物 —— 放在这边就只能猜一个数（见那颗文件的 zoomSpec 那处）。
     GalleryViewerMedia(
         post = post,
         masked = masked,
         preferHd = preferHd,
         animated = animated,
         imageLoader = imageLoader,
-        zoomState = zoomState,
+        onZoomedChange = onZoomedChange,
         cardFrame = cardFrame,
         onImageTap = onImageTap,
         onReadyChange = { onReady() },
@@ -1616,7 +1636,8 @@ private fun GalleryViewerMedia(
     /** 这一屏该不该把动图解成动画（判据 `GalleryMotion`，墙上永远传 false）。 */
     animated: Boolean,
     imageLoader: ImageLoader,
-    zoomState: ZoomableState,
+    /** 正在放大（喂给宿主：放大时禁下滑、chrome 让位，与「翻到别张」共用那一档读数）。 */
+    onZoomedChange: (Boolean) -> Unit,
     onImageTap: () -> Unit,
     /** 一级卡片那一帧（窗口坐标裁出来的位图）—— 滑入期间垫在最上面。 */
     cardFrame: ImageBitmap?,
@@ -1714,22 +1735,53 @@ private fun GalleryViewerMedia(
                 )
             }
 
+            /*
+             * 缩放层吃**整屏**，不吃"图的那一框"（2026-10-15 真机读数：捏到最大也出不了那一块）。
+             * 两处叠在一起才成那副观感：
+             * ① `Modifier.zoomable` 默认 `clipToBounds = true` —— 裁的就是它自己那一层，
+             *    挂在定框上等于放大之后再剪回原框；
+             * ② `rememberZoomableState()` 的默认上限是 **2×**（`ZoomSpec(maxZoomFactor = 2f)`），
+             *    而宽幅图的框本来就只有屏高的一小条，2× 也够不着全屏。
+             * 上限按 master 那一档口径给：`PhotoViewComputedScale.covered * 10.0`
+             * （`lib/pages/image_favorites_page/image_favorites_photo_view.dart:64`），
+             * 其中 `covered` 在这里就是"把这一框铺满整屏要几倍"，由定框那两个尺寸现算，不猜数。
+             */
+            val coverToFill = galleryCoverZoomFactor(boxWidth, boxHeight, maxWidth, maxHeight)
+            val zoomState = rememberZoomableState(
+                zoomSpec = ZoomSpec(maxZoomFactor = coverToFill * GALLERY_ZOOM_OVERCOVER_FACTOR),
+            )
+            LaunchedEffect(zoomState) {
+                snapshotFlow { (zoomState.zoomFraction ?: 0f) > 0f }
+                    .distinctUntilChanged()
+                    .collect { onZoomedChange(it) }
+            }
             Box(
                 Modifier
-                    .size(boxWidth, boxHeight)
-                    .then(boundsReporter)
-                    .clip(RoundedCornerShape(tokens.shape.large)),
+                    .fillMaxSize()
+                    // 双击走"铺满那一档"，不走默认那枚 `cycle()`：默认会在 min 与**上限**之间来回，
+                    // 而上限是 ×10 —— 双击想要的是"放大到整屏"，不是"跳到糊到底"。
+                    // 已经铺满（cover ≈ 1）时把这枚撤掉：按下去什么都不变的那一枚就是假开关。
+                    .zoomable(
+                        state = zoomState,
+                        onClick = { onImageTap() },
+                        onDoubleClick = if (coverToFill > COVER_TOLERANCE) {
+                            DoubleClickToZoomListener.cycle(coverToFill)
+                        } else {
+                            null
+                        },
+                    ),
             ) {
                 // 三档叠画（用户 2026-09-26 点名）：谁先到谁先显形，后到的直接盖上去。
                 // 三档是同一构图、只是分辨率不同，所以盖上去读起来是"变清晰"，不是"跳一下"。
                 //
-                // 缩放与点击挂在**这层容器**上，不再挂在最上面那一档：老写法只有最顶那层带
-                // zoomable，于是"中档还没回来"的那段时间里点画面切不动 chrome —— 现在只要
-                // 有任何一档在屏上就点得动。
+                // 缩放与点击挂在**整屏那一层**，图这一框只跟着一起变换：老写法把 zoomable 放在
+                // 这一框里面，于是放大被这一框的边界裁死（见上面那段）。
                 Box(
                     Modifier
-                        .fillMaxSize()
-                        .zoomable(state = zoomState, onClick = { onImageTap() })
+                        .align(Alignment.Center)
+                        .size(boxWidth, boxHeight)
+                        .then(boundsReporter)
+                        .clip(RoundedCornerShape(tokens.shape.large))
                         .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                 ) {
                     // 底：开门档（两站都用各自的 preview_url）。
@@ -1783,6 +1835,17 @@ private fun GalleryViewerMedia(
                         )
                     }
                 }
+            }
+
+            // ── 不跟着放大那一层 ──
+            // 垫帧、骨架、加载环、打码提示都按"图那一框"定位，但它们不是被看的对象：
+            // 放大到几十倍时还让骨架与环跟着涨就荒唐了。所以它们住在缩放层**外面**，
+            // 另起一框与那一框同心同尺寸。
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(boxWidth, boxHeight),
+            ) {
                 if (cardFrame != null && !largeSettled) {
                     // 这一帧是**卡片封面那一块**（不是整卡，见 GalleryFlyIn 文件头注），与这块框共用
                     // 同一个 `cardRatio`，所以 Crop 不改变构图 —— 大图到位时是"变清晰"，不是"跳一下"。
@@ -1816,23 +1879,48 @@ private fun GalleryViewerMedia(
                             .padding(tokens.spacing.space6),
                     )
                 }
-            }
-
-            if (masked) {
-                Text(
-                    text = "已按你的分级设置打码",
-                    fontSize = tokens.type.caption,
-                    // 底是深色玻璃，所以走角标那套固定白（主题的 textPrimary 在浅色主题下是深色，
-                    // 压在黑玻璃上就读不出来了）。
-                    color = StatusColors.OnBadgeSurface,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(tokens.spacing.space4),
-                )
+                // 打码提示住在这一层：它说的是"这张被打码了"，不是画面的一部分，
+                // 所以放大时它不该跟着飘（落点仍是那一框的正中，与挪进来之前的位置同一处）。
+                if (masked) {
+                    Text(
+                        text = "已按你的分级设置打码",
+                        fontSize = tokens.type.caption,
+                        // 底是深色玻璃，所以走角标那套固定白（主题的 textPrimary 在浅色主题下是深色，
+                        // 压在黑玻璃上就读不出来了）。
+                        color = StatusColors.OnBadgeSurface,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(tokens.spacing.space4),
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * 把图那一框**铺满整屏**要几倍（master 里 `PhotoViewComputedScale.covered` 的同义）。
+ *
+ * 定框那段是 Fit（哪一轴装不下就缩哪一轴），所以另一轴留白；要盖满视口得按**留白更多**那一轴算，
+ * 取两轴商里大的那个。下限钉在 1：框本来就比视口大（不会发生，但纯函数要能单测）时不许报小于 1。
+ */
+internal fun galleryCoverZoomFactor(
+    boxWidth: Dp,
+    boxHeight: Dp,
+    viewportWidth: Dp,
+    viewportHeight: Dp,
+): Float {
+    // 退化输入一律退回 1 倍：`Dp / 0.dp` 交出来的是 Infinity，上限一旦是 Inf 或 NaN，
+    // 捏合直接失灵而不是"退到默认档"。比较用 `.value` 不吃裸 dp（存量已冻结那把尺子）。
+    if (listOf(boxWidth, boxHeight, viewportWidth, viewportHeight).any { it.value <= 0f }) return 1f
+    return maxOf(viewportWidth / boxWidth, viewportHeight / boxHeight, 1f)
+}
+
+/** 上限 = 铺满那一档再乘的头数。照 master 图片收藏页那档：`covered * 10.0`。 */
+private const val GALLERY_ZOOM_OVERCOVER_FACTOR = 10f
+
+/** 已经铺满的容差：小于这一档就别摆双击那一枚（按下去看不出变化 = 假开关）。 */
+private const val COVER_TOLERANCE = 1.01f
 
 /** 位移超过 25% 屏高就算"要关"（阈值口径照参考实现）。 */
 private const val DISMISS_DISTANCE_FRACTION = 0.25f

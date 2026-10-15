@@ -107,6 +107,14 @@ class ComicSourceManager private constructor(private val context: Context) {
     /** 运行期注册表：JS 声明的 key -> 源实例 */
     private val registeredSources = linkedMapOf<String, ComicSource>()
 
+    /**
+     * 源 key -> 是否支持登录（源脚本里声明了 `account` 块）。
+     *
+     * 只服务错误文案的分支，见 [sourceSupportsLogin]。`account` 块是源脚本的**静态声明**，
+     * 运行期不会变，故可缓存；源被重装/删除时在 [registerSource] / [deleteSource] 里清掉。
+     */
+    private val loginCapabilityCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     /** 原生兜底实现：当 JS 源检索失败时回退 */
     private val builtinSources = linkedMapOf<String, ComicSource>()
 
@@ -256,6 +264,8 @@ class ComicSourceManager private constructor(private val context: Context) {
                 valid.addAll(added)
                 changed = true
             }
+            // 2.5 内置源的**更新**落地（否则随包脚本改了只对全新安装起效，见那颗函数头注）。
+            if (refreshBundledSourceUpdates(valid)) changed = true
         }
 
         // 3. 顺序解析并注册
@@ -297,7 +307,7 @@ class ComicSourceManager private constructor(private val context: Context) {
     private fun bootstrapBundledSources(installedFiles: Set<String>): List<InstalledSourceMeta> {
         val result = mutableListOf<InstalledSourceMeta>()
         // 禁漫天堂一并预装：首页「可能你感兴趣」推荐区取数靠它，且它免登录可搜。
-        val defaultFiles = listOf("baozi.js", "copy_manga.js", "manga_dex.js", "jm.js")
+        val defaultFiles = BUNDLED_DEFAULT_FILES.toList()
         val repoIndex = readBundledRepoIndex().associateBy { it.fileName }
         val deleted = getDeletedBuiltinKeys()
         for (name in defaultFiles) {
@@ -321,6 +331,60 @@ class ComicSourceManager private constructor(private val context: Context) {
             }
         }
         return result
+    }
+
+    /** 随包那份源脚本的正文；读不到返回 null（不存在的内置文件、被裁掉的资产）。 */
+    private fun readBundledSourceText(fileName: String): String? = try {
+        context.assets.open("sources/$fileName").bufferedReader().use { it.readText() }
+    } catch (e: Exception) {
+        android.util.Log.w(TAG, "Failed to read bundled source text: $fileName", e)
+        null
+    }
+
+    /**
+     * 把「随包版本比本机那份新」的内置源覆写成随包的那一份。
+     *
+     * ## 为什么需要它
+     *
+     * [bootstrapBundledSources] 只在「本机没有这颗文件」时才写，于是改了随包的那份源脚本
+     * 对**已经装过的设备永远不生效**。2026-10-15 实测到这一格：禁漫的线路回退修好、新 APK 也装上了，
+     * 而运行期读的 `files/comic_source/jm.js` 还是 1.4.0 那份旧文件 —— 屏上现象一字未变，
+     * 代码却已经"修过了"。那一类缺口比没修更难查。
+     *
+     * ## 三条边界
+     *
+     * ① 只碰 [BUNDLED_DEFAULT_FILES] 那几颗：用户自己导入的、或从仓库更新来的源一概不动 ——
+     *    覆写用户的文件比留着旧文件更糟；
+     * ② 只有随包版本**严格大于**本机版本才写。内容不同而版本没涨 ⇒ 那是本机被人改过（例如调试探针），
+     *    留着它；
+     * ③ 版本读不出来就当不动，绝不因一次解析失败换掉用户的文件。
+     *
+     * @return 是否改动了 [valid]（调用方据此决定是否回写元数据）
+     */
+    private fun refreshBundledSourceUpdates(valid: MutableList<InstalledSourceMeta>): Boolean {
+        var changed = false
+        for ((index, meta) in valid.withIndex()) {
+            if (meta.fileName !in BUNDLED_DEFAULT_FILES) continue
+            val bundled = readBundledSourceText(meta.fileName) ?: continue
+            val installedFile = File(sourceDir, meta.fileName)
+            if (!installedFile.isFile) continue
+            val installedText = runCatching { installedFile.readText() }.getOrNull() ?: continue
+            if (installedText == bundled) continue
+            val bundledVersion = runCatching { parser.parse(bundled).version }.getOrNull() ?: continue
+            val installedVersion = runCatching { parser.parse(installedText).version }.getOrNull() ?: continue
+            if (compareVersion(bundledVersion, installedVersion) <= 0) continue
+            runCatching { installedFile.writeText(bundled) }
+                .onSuccess {
+                    valid[index] = meta.copy(version = bundledVersion)
+                    changed = true
+                    android.util.Log.i(
+                        TAG,
+                        "refreshed bundled source ${meta.fileName}: $installedVersion -> $bundledVersion",
+                    )
+                }
+                .onFailure { android.util.Log.w(TAG, "failed to refresh ${meta.fileName}", it) }
+        }
+        return changed
     }
 
     /** 同步运行期注册表：注册已启用源，移除已不存在的 JS 源与已删除的内置源 */
@@ -420,6 +484,7 @@ class ComicSourceManager private constructor(private val context: Context) {
 
         // 彻底从运行期注册表中移除
         registeredSources.remove(key)
+        loginCapabilityCache.remove(key)
 
         if (_activeSourceKey.value == key) {
             _activeSourceKey.value = registeredSources.keys.firstOrNull() ?: ""
@@ -469,6 +534,7 @@ class ComicSourceManager private constructor(private val context: Context) {
 
     fun registerSource(source: ComicSource) {
         registeredSources[source.key] = source
+        loginCapabilityCache.remove(source.key)
         _sourcesFlow.value = registeredSources.values.toList()
     }
 
@@ -477,6 +543,25 @@ class ComicSourceManager private constructor(private val context: Context) {
     }
 
     fun getSource(key: String): ComicSource? = registeredSources[key]
+
+    /**
+     * 这颗源是否**支持登录**（源脚本里声明了 `account` 块）。
+     *
+     * 只服务于错误文案分支：源站回 401/403 时，支持登录的源十有八九是"要先登录"，
+     * 不支持的只能是源站自己拦了 —— 两种情况的下一步完全不同，合成一句话会把用户
+     * 往错误的方向指（真机读数：包子漫画被说成"源站防护或网络波动"）。
+     *
+     * `getAccountInfo()` 内部是**同步** `engine.evaluate()`，在主线程调用会卡满 30 秒
+     * （见 JsComicSource.requireLogin 的注释），所以强制切 IO。结果按 key 缓存。
+     */
+    suspend fun sourceSupportsLogin(key: String): Boolean {
+        loginCapabilityCache[key]?.let { return it }
+        val supported = withContext(Dispatchers.IO) {
+            runCatching { getSource(key)?.getAccountInfo()?.hasAccount == true }.getOrDefault(false)
+        }
+        loginCapabilityCache[key] = supported
+        return supported
+    }
 
     fun getSourceByFileName(fileName: String): ComicSource? {
         val key = _installedMeta.value.firstOrNull { it.fileName == fileName }?.key ?: return null
@@ -861,15 +946,21 @@ class ComicSourceManager private constructor(private val context: Context) {
                         if (finalRes.isSuccess) {
                             SourceSearchResult(source.key, source.name, finalRes.getOrNull()?.comics.orEmpty())
                         } else {
+                            // 屏上文案统一出口（见 SourceErrorCopy 头注）：源脚本的 message 是
+                            // 写给开发者的，聚合检索这条路上每个源都会回一句，最容易糊满一屏黑话。
                             SourceSearchResult(
                                 source.key, source.name, emptyList(),
-                                finalRes.exceptionOrNull()?.message ?: "检索无结果"
+                                humanizeSourceError(finalRes.exceptionOrNull(), sourceSupportsLogin(source.key))
                             )
                         }
                     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                        SourceSearchResult(source.key, source.name, emptyList(), "检索超时（${SOURCE_TIMEOUT_MS / 1000}s）")
+                        SourceSearchResult(source.key, source.name, emptyList(), "这颗源等太久没回应 😴 进入该源单独重试")
                     } catch (e: Exception) {
-                        SourceSearchResult(source.key, source.name, emptyList(), e.message ?: "检索异常")
+                        if (isCancellation(e)) throw e
+                        SourceSearchResult(
+                            source.key, source.name, emptyList(),
+                            humanizeSourceError(e, sourceSupportsLogin(source.key))
+                        )
                     }
                     send(event)
                 }
@@ -1159,14 +1250,33 @@ class ComicSourceManager private constructor(private val context: Context) {
     suspend fun getSourceExplorations(): List<SourceExploration> = withContext(Dispatchers.IO) {
         val sources = registeredSources.values.filter { isSourceEnabled(it.key) }
         sources.map { source ->
-            val explorePages = source.getExplorePages().getOrDefault(emptyList())
-            val categoryData = source.getCategoryData().getOrNull()
-            SourceExplorationFactory.build(
-                sourceKey = source.key,
-                sourceName = source.name,
-                explorePages = explorePages,
-                categoryData = categoryData,
-            )
+            // 登录能力在探测时一并取好：错误文案要靠它区分「要先登录」与「源站自己拦了」。
+            // 单独 runCatching —— `getAccountInfo()` 会同步跑一次 JS，源脚本没写 account
+            // 时返回 hasAccount=false，不该让它把整颗源的探测带崩。
+            val supportsLogin = runCatching { source.getAccountInfo().hasAccount }.getOrDefault(false)
+            try {
+                val explorePages = source.getExplorePages().getOrDefault(emptyList())
+                val categoryData = source.getCategoryData().getOrNull()
+                SourceExplorationFactory.build(
+                    sourceKey = source.key,
+                    sourceName = source.name,
+                    explorePages = explorePages,
+                    categoryData = categoryData,
+                    supportsLogin = supportsLogin,
+                )
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 探测失败 ≠ 源没有探索能力：网络一抖就剔除整颗源，屏上表现是"源凭空消失"
+                // （2026-10-14 真机读数）。降级保留，能力未知，UI 据此摆重试。
+                android.util.Log.w("VeneraDebug", "getSourceExplorations 探测失败: ${source.key}", e)
+                SourceExploration(
+                    sourceKey = source.key,
+                    sourceName = source.name,
+                    probeFailed = true,
+                    supportsLogin = supportsLogin,
+                )
+            }
         }.filter { !it.isEmpty }
     }
 
@@ -1493,6 +1603,9 @@ class ComicSourceManager private constructor(private val context: Context) {
 
         /** 静默检查更新的最小间隔，口径与首页推荐自动刷新一致 */
         private const val SILENT_UPDATE_CHECK_INTERVAL_MS = 120_000L
+
+        /** 随包预装的那几颗源（也只有这几颗允许被"随包更新"覆写，见 [refreshBundledSourceUpdates]） */
+        private val BUNDLED_DEFAULT_FILES = setOf("baozi.js", "copy_manga.js", "manga_dex.js", "jm.js")
 
         /** 版本号比较：a > b 返回正数 */
         fun compareVersion(a: String, b: String): Int {

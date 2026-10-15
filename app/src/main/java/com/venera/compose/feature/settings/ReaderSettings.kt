@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import com.venera.compose.data.api.ReaderPreferences
 import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.reader.ReaderEnhancement
+import com.venera.compose.reader.ReaderPageTurnEffect
 import com.venera.compose.reader.ReaderReadingMode
 import kotlin.math.roundToInt
 
@@ -35,6 +36,7 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
     val autoInterval by prefs.autoScrollPageIntervalSec.collectAsState()
     val preload by prefs.preloadImageCount.collectAsState()
     val autoNextChapter by prefs.autoNextChapter.collectAsState()
+    val pageTurnEffect by prefs.pageTurnEffect.collectAsState()
     val enhanceOn by prefs.readerEnhanceEnabled.collectAsState()
     val sharpen by prefs.readerEnhanceSharpen.collectAsState()
     val contrast by prefs.readerEnhanceContrast.collectAsState()
@@ -46,6 +48,15 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
                 listOf("HORIZONTAL_LTR" to "翻页（从左到右）", "HORIZONTAL_RTL" to "翻页（从右到左）",
                     "HORIZONTAL_CONTINUOUS" to "连续（从左到右）", "VERTICAL_CONTINUOUS" to "连续（从上到下）",
                     "DOUBLE_PAGE" to "对开双页"), prefs::setDefaultReadingMode)
+            // 翻页特效默认「无（原样）」：守仓库"新能力默认不改动观感"铁律（同图片增强总开关、内容层材质）。
+            // 3D 翻书接入所有横向翻页模式；仿真卷边为单页横向专用，该模式下不再走双指缩放。
+            // ⚠️ 选项名与阅读器面板**必须同源**：那一边显示的是 ReaderPageTurnEffect.shortLabel /
+            // glyph 这一对，这边是 label。同一颗枚举的两个字段，不是两处各写一份文案。
+            SettingsSelect("翻页特效", ReaderPageTurnEffect.fromKey(pageTurnEffect).key,
+                ReaderPageTurnEffect.entries.map { it.key to it.label },
+                prefs::setPageTurnEffect,
+                summary = "默认无（原样）。3D 翻书接入所有横向翻页模式；仿真卷边仅单页横向（美漫/日漫），" +
+                    "该模式下不支持双指缩放。")
             SettingsToggle("点击翻页", tap, prefs::setClickToTurn)
             SettingsToggle("反转点击翻页方向", reverseTap, prefs::setReverseTapDirection,
                 summary = "左右两半屏的作用互换。日漫模式本身的反向不受影响。")

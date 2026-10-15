@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import android.widget.Toast
 import com.venera.compose.source.model.Comment
+import com.venera.compose.source.humanizeSourceError
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -65,7 +66,7 @@ fun ChapterCommentsSheetContent(
             comments = res.getOrDefault(emptyList())
             error = null
         } else {
-            error = res.exceptionOrNull()?.message ?: "加载评论失败"
+            error = humanizeSourceError(res.exceptionOrNull(), sourceManager.sourceSupportsLogin(sourceKey))
         }
         loading = false
         loadedOnce = true
@@ -125,11 +126,13 @@ fun ChapterCommentsSheetContent(
                             if (r2.isSuccess) comments = r2.getOrDefault(emptyList())
                             loading = false
                         } else {
-                            Toast.makeText(
-                                context,
-                                "发表失败: " + (res?.exceptionOrNull()?.message ?: "当前源不支持"),
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            val failure = res?.exceptionOrNull()
+                            val msg = if (failure != null) {
+                                humanizeSourceError(failure, sourceManager.sourceSupportsLogin(sourceKey))
+                            } else {
+                                "当前源不支持发表评论"
+                            }
+                            Toast.makeText(context, "发表失败：" + msg, Toast.LENGTH_SHORT).show()
                         }
                     }
                 },

@@ -1,5 +1,8 @@
 package com.venera.compose.feature.explore
 
+import com.venera.compose.source.explore.ExploreMode
+import com.venera.compose.source.explore.SourceExploration
+import com.venera.compose.source.explore.UnifiedTagAvailability
 import com.venera.compose.source.model.ExplorePageData
 import com.venera.compose.source.model.ExplorePagePart
 import java.util.Locale
@@ -30,8 +33,11 @@ internal class ExploreRequestGate {
 internal fun mergeExploreParts(old: List<ExplorePagePart>, new: List<ExplorePagePart>): List<ExplorePagePart> {
     val result = old.toMutableList()
     new.forEach { part ->
-        if (result.lastOrNull()?.title == part.title) {
-            val last = result.last()
+        val last = result.lastOrNull()
+        // 同名续接；**空标题的新分区也折进上一段** —— `mixed` 型源（nhentai）第 1 页给
+        // 带标题的分区、第 2 页起给裸作品列表，解析出来标题就是空的。不折的话每翻一页就
+        // 多出一个空标题段（PartHeader 会把空标题兜底成「推荐」，读起来像凭空多了一栏）。
+        if (last != null && (last.title == part.title || part.title.isBlank())) {
             result[result.lastIndex] = last.copy(comics = (last.comics + part.comics).distinctBy { it.sourceKey to it.id })
         } else result.add(part)
     }
@@ -67,3 +73,40 @@ internal fun explorePageTitle(title: String, sourceName: String): String {
     }
     return pageTitle.ifBlank { "探索" }
 }
+
+/* ------------------------------------------------------------------ *
+ * 显隐判据与屏上文案（2026-10-14 模式行 / 筛选 / 容错那一轮）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 模式药丸行是否值得占一行。
+ *
+ * 只有一枚模式时整行不渲染 —— 没得选就不摆：那一枚没有第二个可比，
+ * 一行描边药丸既选不动也读不出当前模式。
+ * 而 6 颗源的模式标题与源名只差空格与大小写（禁漫天堂 / MangaDex /
+ * Komiic / Lanraragi / Gelbooru / 紳士漫畫），那一行会出现第二枚同名药丸，
+ * 于是"源名 ×模式名"这句话在两处各说一半，读起来像两套东西。
+ *
+ * @param modes 已剔除榜档之后的探索方式（榜档改在分类区逐档成入口）。
+ */
+internal fun exploreModeRowVisible(modes: List<ExploreMode>): Boolean = modes.size > 1
+
+/**
+ * 动作行里「筛选 · N」这枚按钮要显示的入口数。
+ *
+ * N = 该源真正可用的通用标签数，**N == 0 时按钮不渲染**（点开没东西的按钮
+ * 不许出现）。取 [UnifiedTagAvailability.available] 而不是原生分区数：
+ * 这是跨源快捷筛选的计数，不随源分类体系大小变。
+ */
+internal fun filterEntryCount(availability: UnifiedTagAvailability): Int =
+    availability.available.size
+
+/**
+ * 把裸异常 message 翻成人话。
+ *
+ * **2026-10-14 第三轮：整条逻辑搬去 [com.venera.compose.source.humanizeSourceError]** ——
+ * 原来只有探索页用，详情页/二级分类/搜索/网络收藏各写各的 `e.message`，于是同一颗源的
+ * 同一个 210 在四个页面是四种说法（探索页"加载失败，请稍后重试"、详情页直接念
+ * "Invalid status code: 210"）。收口到一处之后，屏上文案只有一份来源。
+ */
+

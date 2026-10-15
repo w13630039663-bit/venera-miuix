@@ -66,6 +66,8 @@ import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.explore.PAGE_KIND_SEARCH
 import com.venera.compose.source.explore.UnifiedTag
+import com.venera.compose.source.humanizeSourceError
+import com.venera.compose.source.isCancellation
 import com.venera.compose.source.model.CategoryComicsOption
 import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
@@ -170,7 +172,12 @@ fun SourceSectionScreen(
                     page = targetPage
                 },
                 onFailure = { e ->
-                    error = e.message ?: "加载失败"
+                    // 取消（用户切走/切了源/按了刷新）不是错误，不许上屏。
+                    // 其余一律走统一文案层：源脚本的 message 是写给开发者看的
+                    // （"Invalid status code: 210"），屏上直接出现它就是实现笔记漏到界面上。
+                    if (!isCancellation(e)) {
+                        error = humanizeSourceError(e, sourceManager.sourceSupportsLogin(route.sourceKey))
+                    }
                 },
             )
             isLoading = false

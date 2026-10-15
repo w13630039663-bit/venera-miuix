@@ -80,6 +80,7 @@ import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
 import com.venera.compose.gallery.ui.GalleryChromeAutoHide
 import com.venera.compose.gallery.ui.GalleryDailyScreen
+import com.venera.compose.gallery.ui.GalleryHistoryScreen
 import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.GalleryScreen
 import com.venera.compose.gallery.ui.GalleryViewModel
@@ -138,7 +139,6 @@ import androidx.compose.material3.IconButton
 @Serializable data object FavoritesRoute
 @Serializable data object HistoryRoute
 @Serializable data object ExploreRoute
-@Serializable data object CategoriesRoute
 
 /** 画廊主 Tab（两站月度热门混合池，与漫画侧完全隔离的独立模块，见 gallery/ 包）。 */
 @Serializable data object GalleryRoute
@@ -154,6 +154,20 @@ import androidx.compose.material3.IconButton
  * 见 [tabIndex] 与 `currentTab` 两处。
  */
 @Serializable data object GalleryDailyRoute
+
+/**
+ * 画廊二级页：**浏览历史**（2026-10-14 新增，入口是画廊首页顶栏那枚 🕘，
+ * 占的正是原来「换一批」那枚的位置 —— 换一批仍在猜你喜欢节头，见 `GalleryScreen` 顶栏注）。
+ *
+ * 做成 MainActivity 里的路由而不是新 Activity：屏防窥（`FLAG_SECURE`）是**窗口属性**，
+ * 只挂在 MainActivity 上（`VeneraSubActivityBase` 不挂），而画廊历史里摆的是同一批图的缩略图 ——
+ * 用户开了屏防窥却能在这一屏截图，与"敏感内容历史跟屏防窥同一口径"（路线图 §7.1）直接冲突。
+ * 路由这一形态天然继承主窗的窗口标志，一行 flag 代码都不用写。
+ *
+ * 与 `GalleryDailyRoute` 同样是主 Tab 的子页：`currentTab` 判据里落在这条路由上时算 `GALLERY`
+ * （底栏不消失的理由同 `GalleryDailyRoute` 那条注）。
+ */
+@Serializable data object GalleryHistoryRoute
 
 /**
  * 画廊二级（单张大图）。
@@ -420,9 +434,8 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
 /**
  * 这条目的地是第几个主 Tab；不是 Tab 就返回 null。
  *
- * 判据与 [VeneraComposeApp] 里 `currentTab` 那串 `hasRoute` 同源（含 CategoriesRoute 那条
- * 重定向到探索的旧路由）—— 两处若走了两套口径，就会出现"底栏点亮了、切页动画却没有方向"
- * 这种读不出来的不一致。
+ * 判据与 [VeneraComposeApp] 里 `currentTab` 那串 `hasRoute` 同源 —— 两处若走了两套口径，
+ * 就会出现"底栏点亮了、切页动画却没有方向"这种读不出来的不一致。
  */
 private fun NavDestination.tabIndex(): Int? {
     val tab = when {
@@ -433,8 +446,9 @@ private fun NavDestination.tabIndex(): Int? {
         // 子页同样算 GALLERY：与 `currentTab` 那处同源（两处口径分叉就会出现
         // "底栏点亮了、切页动画却没有方向"，那条注释在 `tabIndex` 上写着）。
         hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
+        // 浏览历史同理：它是画廊 Tab 下的一层，底栏不消失（同 GalleryDailyRoute 的理由）。
+        hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
-        hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
         else -> return null
     }
     return VeneraNavTab.entries.indexOf(tab)
@@ -524,9 +538,9 @@ fun VeneraComposeApp() {
         // 画廊的子页（每日热门全量）：仍然算 GALLERY ⇒ **底栏不消失**、切页动画仍有方向。
         // 与"历史页那种降级成二级页、底栏隐藏"是两回事：这是从画廊 Tab 往下走一层。
         destination.hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
+        // 浏览历史同样算 GALLERY（同一条理由：从画廊 Tab 往下走一层）。
+        destination.hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
-        // 旧的「分类索引」路由重定向到合并后的「探索」页，避免深链失效。
-        destination.hasRoute(CategoriesRoute::class) -> VeneraNavTab.EXPLORE
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
         else -> null
@@ -903,14 +917,23 @@ fun VeneraComposeApp() {
                         // 包这一层只为一件事：把封面共享元素的两个作用域交给深处那张横卡
                         // （首页「每日热门」预览行 ↔ 二级页同一张）。不包 = `LocalCoverTransitionScopes`
                         // 读到 null = 画廊里任何卡片都挂不上飞行，而它**不报错**，只表现为"没有过渡"。
+                        // 首页头图的路径在装配根读、递给画廊那一屏：`gallery/ui/**` 被边界尺子
+                        // 钉死不许直连业务单例（理由写在 GalleryScreen 的 heroPath 参数上）。
+                        // 这里只递字符串——文件是否还在由那一侧核验，本屏不碰磁盘。
+                        val galleryHeroPath by prefs.galleryHeroPath.collectAsState()
                         CoverTransitionHost(animatedVisibilityScope = this) {
                             GalleryScreen(
+                                heroPath = galleryHeroPath,
                                 onOpenPost = { site, postId ->
                                     (view.context as? Activity)?.openGalleryPost(site, postId)
                                 },
                                 onOpenDailyAll = {
                                     haptic()
                                     navController.navigate(GalleryDailyRoute)
+                                },
+                                onOpenHistory = {
+                                    haptic()
+                                    navController.navigate(GalleryHistoryRoute)
                                 },
                             )
                         }
@@ -952,29 +975,24 @@ fun VeneraComposeApp() {
                             )
                         }
                     }
-                    composable<ExploreRoute> {
-                        CoverTransitionHost(animatedVisibilityScope = this) {
-                            UnifiedExploreScreen(
-                                onSelectComic = ::openComic,
-                                onOpenNativeSection = { args ->
-                                    haptic()
-                                    navController.navigate(
-                                        SourceSectionRoute(
-                                            sourceKey = args.sourceKey,
-                                            sourceTitle = args.sourceTitle,
-                                            category = args.category,
-                                            param = args.param,
-                                            unifiedTag = args.unifiedTag?.name,
-                                            page = args.page,
-                                            keyword = args.keyword,
-                                        )
-                                    )
-                                },
-                            )
-                        }
+                    composable<GalleryHistoryRoute> {
+                        // 浏览历史二级页（2026-10-14）。它**不包 CoverTransitionHost**：
+                        // 那一层是给封面共享元素用的，而历史墙的瓦片没有对面那一头
+                        // （大图页是独立 Activity，跨窗口没有同 key 的落地槽位 —— 挂了就是白挂）。
+                        // 点一张历史瓦片 = 重新走一遍 openGalleryPost：大图页按「站 + 号」现取，
+                        // 所以「从那一格回到原卡」在 Android 侧是天然成立的（桌面那颗件没有这一手，
+                        // 见它的 README 注）。
+                        GalleryHistoryScreen(
+                            onOpenPost = { site, postId ->
+                                (view.context as? Activity)?.openGalleryPost(site, postId)
+                            },
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                        )
                     }
-                    // 旧「分类索引」入口重定向到合并后的探索页。
-                    composable<CategoriesRoute> {
+                    composable<ExploreRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
                             UnifiedExploreScreen(
                                 onSelectComic = ::openComic,

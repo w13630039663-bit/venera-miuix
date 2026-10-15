@@ -80,6 +80,9 @@ interface ReaderPreferences {
     /** 章节目录倒序（详情页与探索设置页都读它，阅读语义而非列表语义）。 */
     val reverseChapterOrder: StateFlow<Boolean>
 
+    /** 翻页特效档位（ReaderPageTurnEffect 的键）。默认 "NONE" = 原样。 */
+    val pageTurnEffect: StateFlow<String>
+
     fun setDefaultReadingMode(mode: String)
     fun setClickToTurn(enable: Boolean)
     fun setReverseTapDirection(enabled: Boolean)
@@ -96,6 +99,7 @@ interface ReaderPreferences {
     fun setReaderEnhanceSaturation(value: Float)
     fun setReaderEnhanceBrightness(value: Float)
     fun setReverseChapterOrder(enabled: Boolean)
+    fun setPageTurnEffect(effect: String)
 }
 
 /** 主题、色板、底栏形态与设置页的两张自绘图。 */

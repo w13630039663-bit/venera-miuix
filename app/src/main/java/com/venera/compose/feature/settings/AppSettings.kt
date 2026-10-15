@@ -134,7 +134,10 @@ fun AppSettings(
             }
             busy = false
             res.onSuccess { Toast.makeText(context, "已导出到 $it", Toast.LENGTH_LONG).show() }
-                .onFailure { Toast.makeText(context, "导出失败：${it.message}", Toast.LENGTH_LONG).show() }
+                .onFailure { e ->
+                    android.util.Log.w("VeneraDebug", "export backup failed", e)
+                    Toast.makeText(context, "导出没成功 🥲 换个位置再试一次", Toast.LENGTH_LONG).show()
+                }
         }
     }
 
@@ -148,7 +151,10 @@ fun AppSettings(
             busy = false
             res.onSuccess {
                 Toast.makeText(context, BackupTransfers.describeResult(it), Toast.LENGTH_LONG).show()
-            }.onFailure { Toast.makeText(context, "导入失败：${it.message}", Toast.LENGTH_LONG).show() }
+            }.onFailure { e ->
+                android.util.Log.w("VeneraDebug", "import backup failed", e)
+                Toast.makeText(context, "这个备份没能导入 🥲 确认选的是 Venera 导出的文件", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -402,8 +408,9 @@ private suspend fun applyStoragePath(
     result.onSuccess { dirs ->
         val tail = if (migrate) "，已迁移 $dirs 个源目录" else "，已有内容留在原目录"
         Toast.makeText(context, "存储目录已切换$tail", Toast.LENGTH_LONG).show()
-    }.onFailure {
-        Toast.makeText(context, "切换失败：${it.message}（存储目录没有改动）", Toast.LENGTH_LONG).show()
+    }.onFailure { e ->
+        android.util.Log.w("VeneraDebug", "switch storage dir failed", e)
+        Toast.makeText(context, "没切过去，存储目录没有改动 🥲 检查下新位置能不能写", Toast.LENGTH_LONG).show()
     }
 }
 

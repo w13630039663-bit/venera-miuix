@@ -219,7 +219,10 @@ private fun loadDailyFeed(
                     )
                     vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"
                 }.onFailure { e ->
-                    vm.feedError = e.message ?: "加载失败"
+                    // 屏上不出现原始异常：各站失败原因已由 failures 那份结构分档表达，
+                    // 这里只兜"整轮都没成"这一种。
+                    android.util.Log.w("VeneraDebug", "gallery daily feed failed", e)
+                    vm.feedError = "这次没读到内容 🥲 稍后再试一次"
                 }
         } finally {
             // 取消路径也要清：见首页那份的长注释（标志卡在 true 就是一个永久波浪环 + 假按钮）。

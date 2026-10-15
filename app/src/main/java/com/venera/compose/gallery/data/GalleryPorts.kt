@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * 画廊侧的**业务 API 容器 + 守卫口 + 偏好口**（适配器在 `android/GalleryPortsAndroid.kt`，
  * 其余十二颗必给契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`；
- * 第十三颗 [GalleryPorts.gelbooruWindows] 有默认值，只有移动端接 —— 见那颗口上的「为什么不并进 ScoredBoard」）。
+ * 第十三颗 [GalleryPorts.gelbooruWindows] 与第十四颗 [GalleryPorts.history] 有默认值，只有移动端接 ——
+ * 前者见那颗口上的「为什么不并进 ScoredBoard」，后者见那颗槽上的注）。
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
  * 漫画侧的业务口，等于把分级模式、屏蔽口径这些**只读共享**的东西重新绑回一个发布者 ——
  * `docs/rounds/gallery-module-isolation-plan-2026-09.md:36-47` 给这三类共用定的档是
  * 「只读共享」，不是「共用一个对象」。
- *
  * 形状照 `data/db/DatabasePorts.kt:60-103`（容器 + `install(platform, factory)` + `of(handle: Any?)`）。
  *
  * ## 这颗文件现在**一句平台类型都没有**
@@ -44,6 +44,10 @@ class GalleryPorts(
     // 有默认值只为让**没接这一路的那一侧**不必改一个字：桌面今天的排行判据不列 Gelbooru 的
     // 四档时间窗，所以它压根不会问这一颗（不是"接了但坏掉"，是"这一侧没有这一档"）。
     val gelbooruWindows: GelbooruWindowProbeSource? = null,
+    // 浏览历史（2026-10-14）：同一条理由的可空槽。桌面那一侧有自己的历史件与历史屏
+    // （`DesktopGalleryBrowseHistory` + 首页「历史」那一行），压根不会问画廊共享口上的这一颗 ——
+    // 所以默认 null 不是"移动端专用开关"，是"这一侧没有这一档"。
+    val history: GalleryBrowseHistory? = null,
 ) {
 
     companion object {

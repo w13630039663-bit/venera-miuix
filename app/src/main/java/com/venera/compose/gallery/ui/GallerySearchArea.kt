@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ImageSearch
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -57,6 +59,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import com.venera.compose.gallery.data.GalleryPorts
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -92,6 +95,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.venera.compose.components.venera.SegmentedBackdrop
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
@@ -465,7 +469,23 @@ fun GallerySearchArea(
                             ),
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // 2026-10-15 照参考图：输入行自己是一颗**填充**胶囊（不是描边 —— 描边那版被否）。
+                                // 底取 `surfaceVariant`，比卡底 `surfaceContainerHigh` 低一档（参考图实测
+                                // 卡底/控件底 1.055:1 与 1.115:1 两级），于是"这一行才是能敲东西的框"
+                                // 由底色表达，屏上一根线都不画。
+                                //
+                                // ⚠️ 必须是**定高**而不是 `heightIn(min = )`：这一行里有一根
+                                // `fillMaxHeight()` 的竖分隔，而 Row 的高度取"子件最大测量高" ——
+                                // 只给下限时那根分隔会把父级传下来的剩余全高一口吃满。真机读数：
+                                // 整行被撑成 ~520dp，而 `percent = 50` 的圆角半径取短边 ⇒ 屏上是一枚
+                                // **整屏高的拱门**，分段器与历史全被顶出屏幕。定高取 MD3 docked search
+                                // bar 那一档，与首页那条常驻入口条同值同形状（不立新数字）。
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(tokens.color.surfaceVariant)
+                                .height(tokens.spacing.dockedSearchBarHeight)
+                                .padding(horizontal = tokens.spacing.space6),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                         ) {
@@ -592,6 +612,17 @@ fun GallerySearchArea(
                                 }
                             }
 
+                            // 参考图那一根竖分隔：把"框里能敲的字"与"框尾那两枚动作"切开。
+                            // 从前它们只靠 12dp 的间距并列，读起来像三个都能敲的东西 ——
+                            // 而其中两枚按下去是换态/清空，语义完全不同一档。
+                            // 它写 `fillMaxHeight()` 是安全的：所在那一颗 Row 上面已经**定高**，
+                            // 那条"整屏拱门"的事故正是这两者配错才有的（见那颗 Row 的注释）。
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(tokens.spacing.hairline)
+                                    .background(tokens.color.outlineVariant),
+                            )
                             // ── 尾随钮：按形态给不同的"现在能退掉什么"，原地过渡 ──
                             //
                             // 批次 K 把「以图搜图」也搬进这一格：它原先贴在站点选择器旁边，
@@ -684,6 +715,9 @@ fun GallerySearchArea(
                             onSelect = { index ->
                                 GallerySearchSource.options.getOrNull(index)?.let { svm.setSource(it) }
                             },
+                            // 这一排住在**实色卡**上而不是玻璃顶栏：半透明底会被卡底吃掉（真机现量
+                            // 未选档与卡底只差 1.021:1），而首页那一排摘掉之后这里是唯一的换源入口。
+                            backdrop = SegmentedBackdrop.Opaque,
                             modifier = Modifier.fillMaxWidth(),
                         )
 
@@ -1378,41 +1412,66 @@ private fun RecommendationRows(
             color = tokens.color.textTertiary,
             modifier = Modifier.padding(bottom = tokens.spacing.space1),
         )
-        picks.forEach { (site, tags) ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = tokens.spacing.listRowMinHeight)
-                    .clip(RoundedCornerShape(tokens.shape.small))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                    ) { onPick(site, tags) }
-                    .padding(start = tokens.spacing.space4, end = tokens.spacing.space1),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.AutoAwesome,
-                    contentDescription = null,
-                    tint = tokens.color.textTertiary,
-                    modifier = Modifier.size(tokens.spacing.chipIconSize),
-                )
-                Spacer(modifier = Modifier.width(tokens.spacing.space6))
-                Text(
-                    // 走 queryOf 而不是自己 join：这一串**就是**要发出去的搜索条件，
-                    // 拼法必须与真正发请求那处同一个来源，否则会出现"看着一样、搜出来不一样"。
-                    text = GallerySearch.queryOf(tags.map { GalleryTagFilter(it) }),
-                    fontSize = tokens.type.body,
-                    color = tokens.color.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = site.displayName,
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textTertiary,
-                    modifier = Modifier.padding(start = tokens.spacing.space6),
-                )
+        // 参考图那一档：两条推荐**框在一起**（一颗填充面，不是描边），节头留在框外。
+        // 底色与输入行那颗胶囊同一档（`surfaceVariant`，比卡底低一档）—— 全卡只有一层台阶，
+        // 读起来就是"卡上浮着几块能按的面"，而屏上一根线都不画。
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(tokens.shape.large))
+                .background(tokens.color.surfaceVariant),
+        ) {
+            picks.forEachIndexed { index, (site, tags) ->
+                if (index > 0) {
+                    HorizontalDivider(color = tokens.color.divider)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = tokens.spacing.listRowMinHeight)
+                        .clip(RoundedCornerShape(tokens.shape.large))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                        ) { onPick(site, tags) }
+                        .padding(start = tokens.spacing.space4, end = tokens.spacing.space4),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AutoAwesome,
+                        contentDescription = null,
+                        // 参考图那枚星形是**主色**而不是灰的：这一行点下去是"换站 + 装条件 + 开搜"
+                        // 三件事一步做完，得比旁边那串站名更像入口。
+                        tint = tokens.color.primary,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                    Spacer(modifier = Modifier.width(tokens.spacing.space6))
+                    Text(
+                        // 走 queryOf 而不是自己 join：这一串**就是**要发出去的搜索条件，
+                        // 拼法必须与真正发请求那处同一个来源，否则会出现"看着一样、搜出来不一样"。
+                        text = GallerySearch.queryOf(tags.map { GalleryTagFilter(it) }),
+                        fontSize = tokens.type.body,
+                        color = tokens.color.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = site.displayName,
+                        fontSize = tokens.type.caption,
+                        color = tokens.color.textTertiary,
+                        modifier = Modifier.padding(start = tokens.spacing.space6),
+                    )
+                    Icon(
+                        // 行尾 chevron = "这行点进去还有下一步"。摆这里而不是靠用户试：
+                        // 整行的可点区域与它的视觉边界从前不一致（框都没有，谈不上边界）。
+                        imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = tokens.color.textTertiary,
+                        modifier = Modifier
+                            .padding(start = tokens.spacing.space2)
+                            .size(tokens.spacing.chipIconSize),
+                    )
+                }
             }
         }
     }
@@ -1492,7 +1551,9 @@ private fun HistoryList(
                         onClick = { onPick(entry) },
                         // × 单独一个动作：整枚 chip 是"按这一条再搜一次"，删掉不能也落在它上面。
                         onRemoveClick = { onRemove(entry) },
-                        variant = VeneraChipVariant.Neutral,
+                        // Neutral 填的就是卡底那颗 `surfaceContainerHigh` ⇒ 住在卡里 1.000:1，
+                        // 画出来只剩文字悬在卡上。Tonal 是同一形态低一档的底（无描边、无圆点）。
+                        variant = VeneraChipVariant.Tonal,
                         modifier = Modifier.weight(1f),
                     )
                 }

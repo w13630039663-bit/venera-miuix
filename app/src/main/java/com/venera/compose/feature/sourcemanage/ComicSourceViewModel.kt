@@ -8,6 +8,7 @@ import com.venera.compose.source.ComicSource
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.InstalledSourceMeta
 import com.venera.compose.source.RepoIndexEntry
+import com.venera.compose.source.humanizeSourceError
 import com.venera.compose.source.js.JsComicSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -205,7 +206,10 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             emit("正在执行操作...")
             val res = withContext(Dispatchers.IO) { src.executeSettingCallback(settingKey) }
-            emit(if (res.isSuccess) "执行完成" else "执行失败: ${res.exceptionOrNull()?.message}")
+            if (res.isSuccess) emit("执行完成") else {
+                android.util.Log.w(TAG, "executeSettingCallback($sourceKey/$settingKey) failed", res.exceptionOrNull())
+                emit(humanizeSourceError(res.exceptionOrNull(), loginable = true))
+            }
             refreshConfigBundles()
         }
     }
@@ -237,7 +241,10 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             emit("正在重新登录...")
             val res = withContext(Dispatchers.IO) { src.relogin() }
-            emit(if (res.isSuccess) "重新登录成功" else "重新登录失败: ${res.exceptionOrNull()?.message}")
+            if (res.isSuccess) emit("重新登录成功") else {
+                android.util.Log.w(TAG, "relogin($sourceKey) failed", res.exceptionOrNull())
+                emit(humanizeSourceError(res.exceptionOrNull(), loginable = true))
+            }
             refreshConfigBundles()
         }
     }
@@ -425,7 +432,8 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
                 emit("成功安装: ${item.name} (${src?.version ?: item.version})")
                 refreshConfigBundles()
             } else {
-                emit("安装失败: ${result.exceptionOrNull()?.message}")
+                android.util.Log.w(TAG, "installFromRepo(${item.fileName}) failed", result.exceptionOrNull())
+                emit("这颗源没装上 🥲 检查网络，或换个源再试")
             }
         }
     }
@@ -533,7 +541,8 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
                 emit("已更新到 v${res.getOrNull()?.version}")
                 refreshConfigBundles()
             } else {
-                emit("更新失败: ${res.exceptionOrNull()?.message}")
+                android.util.Log.w(TAG, "updateSource($fileName) failed", res.exceptionOrNull())
+                emit("更新没成功 🥲 检查网络后再试一次")
             }
         }
     }
@@ -585,7 +594,8 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
                 emit("成功从链接安装: ${result.getOrNull()?.name ?: url}")
                 refreshConfigBundles()
             } else {
-                emit("安装失败: ${result.exceptionOrNull()?.message}")
+                android.util.Log.w(TAG, "installFromUrl($url) failed", result.exceptionOrNull())
+                emit("这个链接的源没装上 🥲 确认它指向一个有效的 .js 源文件")
             }
         }
     }
@@ -599,7 +609,8 @@ class ComicSourceViewModel(application: Application) : AndroidViewModel(applicat
                 emit("成功导入漫画源: ${result.getOrNull()?.name ?: label}")
                 refreshConfigBundles()
             } else {
-                emit("导入解析失败: ${result.exceptionOrNull()?.message}")
+                android.util.Log.w(TAG, "installFromScriptContent($label) failed", result.exceptionOrNull())
+                emit("这个文件不是有效的漫画源 🥲 确认是 Venera 的 .js 源")
             }
         }
     }

@@ -141,7 +141,8 @@ class ApkDownloader private constructor(context: Context) {
                 throw e
             } catch (e: Exception) {
                 deleteIfExists(part)
-                reasons += "${hostOf(url)} ${e.javaClass.simpleName}: ${e.message ?: "无详情"}"
+                // 屏上只说"哪条线路没成"，异常原文（类名 + message）只进日志。
+                reasons += "${hostOf(url)} 这条线路没下下来"
                 Log.w(TAG, "更新包下载候选失败 ${hostOf(url)}", e)
             }
         }

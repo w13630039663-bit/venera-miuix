@@ -115,6 +115,16 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _autoNextChapter = MutableStateFlow(prefs.getBoolean(KEY_AUTO_NEXT_CHAPTER, true))
     val autoNextChapter: StateFlow<Boolean> = _autoNextChapter.asStateFlow()
 
+    /**
+     * 翻页特效档位（[com.venera.compose.reader.ReaderPageTurnEffect] 的键）。
+     *
+     * 默认 [NONE] —— 守仓库"新能力默认不改动观感"的铁律，升级后与改动前逐像素一致；
+     * 用户在设置页手动选了才生效。单测 `AppDefaultPreferenceValuesTest.翻页特效默认关闭` 钉这一点。
+     */
+    private val _pageTurnEffect =
+        MutableStateFlow(prefs.getString(KEY_READER_PAGE_TURN_EFFECT, "NONE") ?: "NONE")
+    val pageTurnEffect: StateFlow<String> = _pageTurnEffect.asStateFlow()
+
     // ── 图片增强（默认全关/全中性，见 ReaderEnhancement）──
     //
     // ⚠️ 这五枚的默认值**就是"不改观感"**：总开关关着，且三个色彩量都落在中性点。
@@ -539,6 +549,19 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _settingsHeroPath.value = path
     }
 
+    /**
+     * 画廊首页头图（2026-10-15）。**独立一键一槽位**，不复用 [settingsHeroPath]：
+     * 「和设置页一样」说的是同一套机制（可选可清、空串=整条链路不参与），
+     * 而不是同一张图 —— 两处共用一张会让"换画廊的头"顺手改掉设置页，反过来也一样。
+     */
+    private val _galleryHeroPath = MutableStateFlow(prefs.getString(KEY_GALLERY_HERO_PATH, "") ?: "")
+    val galleryHeroPath: StateFlow<String> = _galleryHeroPath.asStateFlow()
+
+    fun setGalleryHeroPath(path: String) {
+        prefs.put(KEY_GALLERY_HERO_PATH, path)
+        _galleryHeroPath.value = path
+    }
+
     fun setSettingsQuoteAvatarPath(path: String) {
         prefs.put(KEY_SETTINGS_QUOTE_AVATAR_PATH, path)
         _settingsQuoteAvatarPath.value = path
@@ -636,6 +659,11 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     fun setAutoNextChapter(enabled: Boolean) {
         prefs.put(KEY_AUTO_NEXT_CHAPTER, enabled)
         _autoNextChapter.value = enabled
+    }
+
+    fun setPageTurnEffect(effect: String) {
+        prefs.put(KEY_READER_PAGE_TURN_EFFECT, effect)
+        _pageTurnEffect.value = effect
     }
 
     fun setReaderEnhanceEnabled(enabled: Boolean) {
@@ -769,6 +797,9 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         /** 巡航到本话末页时接着开下一话。 */
         private const val KEY_AUTO_NEXT_CHAPTER = "pref_reader_auto_next_chapter"
 
+        /** 翻页特效档位（ReaderPageTurnEffect 的键）。默认 "NONE" = 原样。 */
+        private const val KEY_READER_PAGE_TURN_EFFECT = "pref_reader_page_turn_effect"
+
         // 图片增强五枚。键名前缀统一 `pref_reader_enhance_`，与上面几枚 `pref_` 同族
         // （都落在 PREFS_NAME 这一份里，不新开存储 —— 见 PreferenceStorageNamesTest 的口径）。
         private const val KEY_ENHANCE_ENABLED = "pref_reader_enhance_enabled"
@@ -817,6 +848,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_LAST_UPDATE_CHECK_AT = "pref_last_update_check_at"
         private const val KEY_IGNORED_UPDATE_VERSION = "pref_ignored_update_version"
         private const val KEY_SETTINGS_HERO_PATH = "pref_settings_hero_path"
+    private const val KEY_GALLERY_HERO_PATH = "pref_gallery_hero_path"
         private const val KEY_SETTINGS_QUOTE_AVATAR_PATH = "pref_settings_quote_avatar_path"
 
         @Volatile

@@ -3,9 +3,14 @@ package com.venera.compose.feature
 import com.venera.compose.feature.explore.ExploreRequestGate
 import com.venera.compose.feature.explore.exploreColumnCount
 import com.venera.compose.feature.explore.exploreKey
+import com.venera.compose.feature.explore.exploreModeRowVisible
 import com.venera.compose.feature.explore.explorePageTitle
+import com.venera.compose.feature.explore.filterEntryCount
 import com.venera.compose.feature.explore.mergeExploreParts
 import com.venera.compose.feature.explore.reconcileExploreSelection
+import com.venera.compose.source.explore.ExploreMode
+import com.venera.compose.source.explore.UnifiedTag
+import com.venera.compose.source.explore.UnifiedTagAvailability
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.ExplorePageData
 import com.venera.compose.source.model.ExplorePagePart
@@ -63,5 +68,53 @@ class ExplorePolicyTest {
         )
         assertEquals(listOf(one, two, anotherSource), result[0].comics)
         assertEquals(listOf(two), result[1].comics)
+    }
+
+    /**
+     * mixed 型源（nhentai）第 2 页起返回的是**裸作品列表**，解析出来标题为空 ——
+     * 这种空标题分区必须折进上一段，而不是每翻一页多出一个标题为空的段
+     * （PartHeader 会把空标题兜底成「推荐」，读起来像凭空多了一栏）。
+     */
+    @Test fun mixedPaginationFoldsUntitledPageIntoLastSection() {
+        val one = Comic("1", "one", sourceKey = "a")
+        val two = Comic("2", "two", sourceKey = "a")
+        val three = Comic("3", "three", sourceKey = "a")
+        val result = mergeExploreParts(
+            listOf(
+                ExplorePagePart("Popular Now", listOf(one)),
+                ExplorePagePart("New Uploads", listOf(two)),
+            ),
+            listOf(ExplorePagePart("", listOf(three))),
+        )
+        assertEquals(2, result.size)
+        assertEquals("New Uploads", result[1].title)
+        assertEquals(listOf(two, three), result[1].comics)
+    }
+
+    /* ── 2026-10-14 显隐判式与屏上文案 ── */
+
+    private fun mode(id: String) =
+        ExploreMode(id = id, label = id, kind = ExploreMode.Kind.EXPLORE_PAGE, pageIndex = 0)
+
+    @Test
+    fun modeRowOnlyShowsWhenThereIsAChoice() {
+        // 只有一个模式 = 没得选，整行不渲染。6 颗源命中这条（模式标题与源名同名）。
+        assertFalse(exploreModeRowVisible(emptyList()))
+        assertFalse(exploreModeRowVisible(listOf(mode("m1"))))
+        assertTrue(exploreModeRowVisible(listOf(mode("m1"), mode("m2"))))
+        assertTrue(exploreModeRowVisible(listOf(mode("m1"), mode("m2"), mode("m3"))))
+    }
+
+    @Test
+    fun filterCountCountsOnlyTagsThisSourceCanActuallyUse() {
+        assertEquals(0, filterEntryCount(UnifiedTagAvailability(emptyList())))
+        assertEquals(1, filterEntryCount(UnifiedTagAvailability(listOf(UnifiedTag.LONG))))
+        assertEquals(
+            UnifiedTag.entries.size,
+            filterEntryCount(UnifiedTagAvailability(UnifiedTag.entries.toList())),
+        )
+        // isFallbackOnly 不许反过来抬计数：那条分支现网零调用（UnifiedTags.kt 的读数），
+        // 它恒与 available.isEmpty() 同时成立 —— 正因为它不是判据，才不会把空按钮喂出来。
+        assertEquals(0, filterEntryCount(UnifiedTagAvailability(emptyList(), isFallbackOnly = true)))
     }
 }

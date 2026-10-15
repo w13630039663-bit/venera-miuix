@@ -7,7 +7,7 @@ class JM extends ComicSource {
     // unique id of the source
     key = "jm"
 
-    version = "1.4.0"
+    version = "1.4.1"
 
     minAppVersion = "1.5.0"
 
@@ -277,6 +277,44 @@ class JM extends ComicSource {
             throw 'Invalid Data'
         }
         return this.convertData(data, `${time}${kJmSecret}`)
+    }
+
+    /**
+     * 逐条线路取同一个接口。
+     *
+     * 站方几条线路**不是同一份库**：实测同一个号 `1482354`，线路 1 `www.cdnhjk.net` 回
+     * `{"code":200,"data":[]}`（`data` 是空数组，不是密文字符串 —— `get()` 在这里抛 `Invalid Data`），
+     * 而线路 2 `www.cdngwc.cc` 给了完整数据；另一号在另一时刻回的是明文 `Could not find the album!`
+     * （`JSON.parse` 直接炸）。固定只吃第一线路，就长成用户报的那句
+     * 「封面和详情都能搜到，但章节加载不出来」—— 详情页的封面标题是卡片带进来的，
+     * 而 `loadInfo` 整颗抛了，章节那一列自然一条也没有。
+     *
+     * 只在「这一线路答不上来」的两种形态上换线：`data` 不是字符串（`Invalid Data`）、
+     * 响应体不是 JSON（`... is not valid JSON`）。其它错误照原样抛：登录过期、被限流、
+     * 状态码非 200 —— 换线路重试只会把真问题藏起来，还多打几次站方。
+     *
+     * @param path {string} - 以 `/` 开头的路径与查询，不含协议与主机
+     * @returns {Promise<string>} - 解密后的响应
+     */
+    async getAcrossLines(path) {
+        let start = parseInt(this.loadSetting('apiDomain')) - 1
+        if (!Number.isFinite(start) || start < 0 || start >= JM.apiDomains.length) {
+            start = 0
+        }
+        let lastError = null
+        for (let offset = 0; offset < JM.apiDomains.length; offset++) {
+            let host = JM.apiDomains[(start + offset) % JM.apiDomains.length]
+            try {
+                return await this.get(`https://${host}${path}`)
+            } catch (e) {
+                let msg = String(e ?? '')
+                if (msg !== 'Invalid Data' && msg.indexOf('is not valid JSON') < 0) {
+                    throw e
+                }
+                lastError = e
+            }
+        }
+        throw lastError
     }
 
     async post(url, body) {
@@ -771,7 +809,7 @@ class JM extends ComicSource {
             if (id.startsWith('jm')) {
                 id = id.substring(2)
             }
-            let res = await this.get(`${this.baseUrl}/album?id=${id}`);
+            let res = await this.getAcrossLines(`/album?id=${id}`);
             let data = JSON.parse(res)
             let author = data.author ?? []
             let works = data.works ?? []
@@ -828,7 +866,7 @@ class JM extends ComicSource {
          * @returns {Promise<{images: string[]}>}
          */
         loadEp: async (comicId, epId) => {
-            let res = await this.get(`${this.baseUrl}/chapter?id=${epId}`);
+            let res = await this.getAcrossLines(`/chapter?id=${epId}`);
             let data = JSON.parse(res)
             let images = data.images.map((e) => this.getImageUrl(epId, e))
             return {

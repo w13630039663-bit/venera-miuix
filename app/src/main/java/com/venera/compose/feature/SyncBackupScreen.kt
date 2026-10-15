@@ -83,8 +83,9 @@ fun SyncBackupScreen(
                 isOperating = false
                 res.onSuccess { sum ->
                     Toast.makeText(context, BackupTransfers.describeResult(sum), Toast.LENGTH_LONG).show()
-                }.onFailure {
-                    Toast.makeText(context, "导入失败: ${it.message}", Toast.LENGTH_LONG).show()
+                }.onFailure { e ->
+                    android.util.Log.w("VeneraDebug", "sync-backup import failed", e)
+                    Toast.makeText(context, "这个备份没能导入 🥲 确认选的是 Venera 导出的文件", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -226,7 +227,8 @@ fun SyncBackupScreen(
                                                 remoteBackups = listRes.getOrNull() ?: emptyList()
                                             }
                                         } else {
-                                            Toast.makeText(context, "连接失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "webdav testConnection failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "没连上 🥲 检查地址、账号密码和网络，再试一次", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -254,7 +256,8 @@ fun SyncBackupScreen(
                                                 remoteBackups = listRes.getOrNull() ?: emptyList()
                                             }
                                         } else {
-                                            Toast.makeText(context, "同步失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "webdav upload failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "这次没同步上去 🥲 检查网络后再试一次", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -277,7 +280,8 @@ fun SyncBackupScreen(
                                             // 归档多带一栏就只在一个入口看得见，另一处会一直少说。
                                             Toast.makeText(context, BackupTransfers.describeResult(res.getOrNull()!!), Toast.LENGTH_LONG).show()
                                         } else {
-                                            Toast.makeText(context, "恢复失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "webdav restore failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "这次没恢复成 🥲 检查网络后再试一次", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -375,10 +379,12 @@ fun SyncBackupScreen(
                                                 // 不吞：同 LocalComicScreen 那条 —— 落点不在
                                                 // file_paths 里时这里必抛却被静默，
                                                 // 表现为"导出成功"但分享从未发生。
-                                                Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_LONG).show()
+                                                android.util.Log.w("VeneraDebug", "share backup file failed", e)
+                                                Toast.makeText(context, "分享没打开 🥲 文件已经导出，可在「文件」里找到", Toast.LENGTH_LONG).show()
                                             }
                                         } else {
-                                            Toast.makeText(context, "导出失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "export backup failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "导出没成功 🥲 换个位置再试一次", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -445,7 +451,8 @@ fun SyncBackupScreen(
                                         if (res.isSuccess) {
                                             Toast.makeText(context, "成功从 ${backup.name} 恢复数据！" + (res.getOrNull()?.skippedNotice?.let { "。$it" } ?: ""), Toast.LENGTH_LONG).show()
                                         } else {
-                                            Toast.makeText(context, "还原失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "restore backup file failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "这个备份没能还原 🥲 确认选的是 Venera 导出的文件", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },

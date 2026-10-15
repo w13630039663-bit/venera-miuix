@@ -1,5 +1,6 @@
 package com.venera.compose.data.prefs
 
+import com.venera.compose.reader.ReaderPageTurnEffect
 import com.venera.compose.reader.ReaderReadingMode
 import com.venera.compose.testsupport.RepoSources
 import java.io.File
@@ -136,5 +137,18 @@ class AppDefaultPreferenceValuesTest {
     @Test
     fun `画成水彩 Beta 默认关闭`() {
         assertTrue(lineWith("KEY_GALLERY_WATERCOLOR_BETA").contains("false"))
+    }
+
+    /**
+     * 翻页特效默认**关闭（NONE）**：与图片增强总开关、内容层材质同口径 —— 升级后所有人看到的
+     * 翻页行为与改动前逐像素一致。默认串必须是 `fromKey` 认得的键，否则会静默退到 NONE
+     * （这里仍钉住，防止有人把默认值写成枚举名而非键名）。
+     */
+    @Test
+    fun `翻页特效默认关闭`() {
+        val line = code.first { it.contains("KEY_READER_PAGE_TURN_EFFECT") }
+        // getString 的默认值与 `?:` 那枚兜底必须是同一串 —— 只改一处会出现不一致的一格。
+        assertEquals("默认值与兜底要同串：$line", 2, Regex("\"NONE\"").findAll(line).count())
+        assertEquals(ReaderPageTurnEffect.NONE, ReaderPageTurnEffect.fromKey("NONE"))
     }
 }

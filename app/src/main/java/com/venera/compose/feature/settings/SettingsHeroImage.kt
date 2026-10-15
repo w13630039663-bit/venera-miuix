@@ -27,8 +27,14 @@ import kotlinx.coroutines.withContext
  */
 internal object SettingsHeroImageStore {
 
-    /** 头图槽位（首页与全部子页共用一张）。 */
+    /** 头图槽位（设置首页与全部子页共用一张）。 */
     const val KIND_HERO = "hero"
+
+    /**
+     * 画廊首页头图槽位（2026-10-15）。与 [KIND_HERO] 是**两个目录、两张图**：
+     * 共用槽位会让"换画廊的头"顺手改掉设置页（反之亦然），而两处的偏好是独立开关。
+     */
+    const val KIND_GALLERY_HERO = "gallery_hero"
 
     /** 名言卡左侧小图槽位。 */
     const val KIND_QUOTE_AVATAR = "quote_avatar"

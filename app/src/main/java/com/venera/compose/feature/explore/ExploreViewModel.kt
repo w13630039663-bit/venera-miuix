@@ -31,6 +31,15 @@ class ExploreViewModel : ViewModel() {
     var isLoadingSources by mutableStateOf(true)
     var sourceError by mutableStateOf<String?>(null)
 
+    /**
+     * 上一次**成功探测**的源列表（内存级缓存，不落盘）。
+     *
+     * 缓存兜底：本轮探测失败的源若上次成功过，沿用上次的结果 —— 网络抖动时
+     * 列表不缩水，用户看到的还是那颗熟悉的源而不是"源凭空消失"。
+     * 只缓存成功的（probeFailed = false），失败源下一轮重新探测。
+     */
+    var lastGoodExplorations by mutableStateOf<List<SourceExploration>>(emptyList())
+
     var content by mutableStateOf<ExploreContent>(ExploreContent.Empty)
     var isLoadingContent by mutableStateOf(false)
     var contentError by mutableStateOf<String?>(null)
@@ -69,8 +78,27 @@ class ExploreViewModel : ViewModel() {
      */
     var unifiedFilter by mutableStateOf<UnifiedTag?>(null)
 
-    /** 下方「本源分类」区块是否展开全部入口（默认只露前 [SECTION_ENTRY_BUDGET] 个）。 */
+    /**
+     * 分类区里，**超预算的那些组是否也摆出来**。
+     *
+     * 分类区本身是**常驻**的（2026-10-14 从「分类 · N」按钮改回来：探索 = 浏览，
+     * 分类就是主干道，折进按钮等于要先点一下才看得见能逛什么）。这一枚只管区内
+     * 那枚「更多分类」—— 首屏只露前 [SECTION_ENTRY_BUDGET] 个入口，预算用尽后被
+     * 整组切掉的尾巴由这一枚放出。**默认 false 不变**，首屏观感沿用旧基线。
+     *
+     * ⚠️ 改的是职责边界，不是数值：8 与 20 两道闸一个都不动。
+     */
     var sectionsExpanded by mutableStateOf(false)
+
+    /**
+     * 动作行里「筛选 · N」是否就地撑开（展开的是通用标签 FlowRow）。
+     *
+     * 筛选是**辅助**动作（通用标签通常 3~5 枚），折在按钮里点开就地撑开 ——
+     * 推走内容，不是弹层、不是新页、也没有「确定」那一步。
+     * 切源 / 切模式必须收起（筛选本身也会被清掉，见 UnifiedExploreScreen 的纪律），
+     * 否则会留着上一个源的标签在新源里摊着一屏。
+     */
+    var filterExpanded by mutableStateOf(false)
 
     companion object {
         /**

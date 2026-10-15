@@ -171,7 +171,8 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
                     }
                 }
             } catch (e: Exception) {
-                error = "测速没跑成：${e.message ?: "未知错误"}"
+                android.util.Log.w("VeneraDebug", "preferred-ip speed test failed", e)
+                error = "测速没跑成 🥲 检查网络后再试一次"
             } finally {
                 probing = false
             }

@@ -66,6 +66,7 @@ import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
 import com.venera.compose.components.wideScreenChromeMaxWidth
+import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -113,7 +114,11 @@ fun VeneraLiquidGlassNavBar(
     tabsCount: Int,
     modifier: Modifier = Modifier,
     isLightTheme: Boolean = true,
-    accentColor: Color = if (isLightTheme) Color(0xFF0088FF) else Color(0xFF0091FF),
+    // 选中那一枚的着色**必须来自色板**（2026-10-15 修「底栏选中色不跟 MD3 取色变」）：
+    // 从前这里的默认值是写死的 0xFF0088FF / 0xFF0091FF，而全仓唯一调用点（Navigation.kt）
+    // 根本不传这个参数 ⇒ 换主题、换强调色、跟壁纸取色，别的控件都跟着变，唯独药丸里那枚图标
+    // 恒是同一支蓝 —— "默认值即违规值"，所以修在定义处，不修调用点。
+    accentColor: Color = VeneraTokens.color.primary,
     // 官方 catalog 默认 0.4 的容器色。半透明玻璃要「透」必须压低这一层，
     // 否则再强的折射也被这层不透明表面盖住了。
     containerColor: Color = if (isLightTheme) Color(0xFFFAFAFA).copy(0.22f) else Color(0xFF121212).copy(0.28f),

@@ -91,10 +91,18 @@ class UiAuditBatch4Test {
             "内容节头又回到恒摆了（真机读数：一行「内容」压着一句「该探索方式暂无内容」）",
             explore.any { it.contains("if (!isLoadingContent && contentError == null && !content.isEmpty) {") },
         )
-        // 对照：「本源分类」那枚节头的判据还在，而且判的是**非空**而不是"存在"。
+        // 对照：分类区（常驻，2026-10-14 从「分类 · N」按钮改回来）的可见性判据，
+        // 看的是**两本账同一把尺子**。
+        //
+        // 分类区常驻后那枚 `SectionHeader("本源分类")` 与动作行「分类 · N」按钮都没了，
+        // 判式的句子形状回到「只看入口非空」：**可见性判式同时看 visibleSections 与榜档非空**，
+        // 并且这枚变量就是同一段 gating 用的那把尺子 —— 宁可没入口，也不留一行光杆标题。
         assertTrue(
-            "「本源分类」那枚节头的判据被改坏了",
-            explore.any { it.startsWith("if (visibleSections.isNotEmpty() || src.rankingSection?.items?.isNotEmpty() == true) {") },
+            "「分类」区的判据被改坏了：没同时看 visibleSections 与榜档非空（屏上会留空区）",
+            explore.any {
+                it.contains("val hasAnyCategoryEntry =") &&
+                    it.contains("visibleSections.isNotEmpty() || src.rankingSection?.items?.isNotEmpty() == true")
+            },
         )
     }
 

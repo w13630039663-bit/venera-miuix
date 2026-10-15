@@ -541,7 +541,8 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             // 页码与"哪些站到底了"是这一屏状态的一部分，不存就等于没接上同日门。
             persistSnapshot()
         }.onFailure { e ->
-            val message = e.message ?: "这一轮没取成"
+            android.util.Log.w("VeneraDebug", "gallery for-you round failed", e)
+            val message = "这一轮没取到内容 🥲 稍后再试一次"
             if (nextPage == 1) error = message else loadMoreError = message
         }
     }

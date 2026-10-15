@@ -103,6 +103,8 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
  * @param subtitle 副标题；null 不摆。
  * @param totalHeight hero 视觉全高（**含状态栏段**，调用方算好传入）。
  * @param overlapBottom 布局占位比视觉高度矮多少（其后内容上移叠图）。
+ * @param imageDescription 这层图读给无障碍的话。刻意**必填**：这颗件现在既住设置页
+ *   也住画廊首页（2026-10-15），留个"设置页头图"的默认值就等于让画廊那枚念错归属。
  */
 @Composable
 internal fun SettingsHeroImage(
@@ -111,6 +113,7 @@ internal fun SettingsHeroImage(
     subtitle: String?,
     totalHeight: Dp,
     overlapBottom: Dp,
+    imageDescription: String,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -129,7 +132,7 @@ internal fun SettingsHeroImage(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "设置页头图" }
+            .semantics { contentDescription = imageDescription }
             // 「占位矮一截、画面画全高」：报告高度 = 全高 − overlap，place 从 y=0 画全图，
             // 后续内容上移压到图的下段上。
             //

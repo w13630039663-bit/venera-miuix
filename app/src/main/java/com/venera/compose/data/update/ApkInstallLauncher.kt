@@ -107,7 +107,10 @@ object ApkInstallLauncher {
         return runCatching {
             context.startActivity(installIntent(context, apk))
             InstallOutcome.Launched
-        }.getOrElse { InstallOutcome.Failed(it.javaClass.simpleName + ": " + (it.message ?: "无详情")) }
+        }.getOrElse { e ->
+            android.util.Log.w("VeneraDebug", "launch apk install failed", e)
+            InstallOutcome.Failed("没能唤起安装 🥲 检查一下「安装未知应用」权限")
+        }
     }
 
     /** 只有"两边都读得出且不相等"才是签名不同；任何一侧读不出都算未知（见类头的说明）。 */

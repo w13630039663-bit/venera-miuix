@@ -65,13 +65,22 @@ internal fun GalleryForYouPage(
     onGoToDaily: (() -> Unit)?,
     sections: List<GalleryGridSection> = emptyList(),
     /**
-     * 常驻 chrome（搜索入口条 + 来源分段器）—— 2026-09-30 用户口径「搜索栏保持在这里就行」：
+     * 常驻 chrome（一条搜索入口条）—— 2026-09-30 用户口径「搜索栏保持在这里就行」：
      * 它是**页面内容的第一行**，跟着内容一起滚走，不再钉在顶栏下方。
      *
      * 放在 [GalleryCardsGrid] 的 header 槽位（比节头还靠前），滚动时它与三节一起离屏。
      * 传 null = 这一面墙不摆（目前只有首页传）。
      */
     chrome: (@Composable () -> Unit)? = null,
+    /**
+     * 画廊首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
+     *
+     * 摆在**同一颗 header item 里、chrome 之上**，而不是新插一枚 item —— 后者会撞本仓
+     * 两族已量过的坑：懒列表"第 0 项之后插入"的锚定漂移（首页顶栏重叠那次真机根因），
+     * 以及"header 必须是单根 Column"（2026-10-01 错误提示压在搜索栏上）。
+     * 槽位恒在、判空在调用方（未设置头图时这里就是 null，墙的首帧几何与从前逐像素一致）。
+     */
+    hero: (@Composable () -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val cards = wall.cards
@@ -134,7 +143,9 @@ internal fun GalleryForYouPage(
                 // 同一个 Box 的两个子元素**叠在同一位置画**（2026-10-01 真机缺陷：
                 // 错误提示整段压在搜索栏上）。Column 是唯一正确的容器。
                 Column {
-                    // 常驻 chrome（搜索入口条 + 来源分段器）是**内容的第一行**：
+                    // 头图（未设置 = null，整段不参与，见参数文档）。
+                    hero?.invoke()
+                    // 常驻 chrome（一条搜索入口条）是**内容的第一行**：
                     // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
                     chrome?.invoke()
                     // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──

@@ -145,21 +145,21 @@ class FavoritesViewModel(
     fun createFolder(name: String, onError: (String) -> Unit = {}) {
         viewModelScope.launch {
             runCatching { manager.createFolder(name.trim()) }
-                .onFailure { onError(it.message ?: "创建失败") }
+                .onFailure { onError("新建分组没成功，换个名字再试试") }
         }
     }
 
     fun renameFolder(before: String, after: String, onError: (String) -> Unit = {}) {
         viewModelScope.launch {
             runCatching { manager.rename(before, after.trim()) }
-                .onFailure { onError(it.message ?: "重命名失败") }
+                .onFailure { onError("改名没成功，换个名字再试试") }
         }
     }
 
     fun deleteFolder(name: String, onError: (String) -> Unit = {}) {
         viewModelScope.launch {
             runCatching { manager.deleteFolder(name) }
-                .onFailure { onError(it.message ?: "删除失败") }
+                .onFailure { onError("删除没成功，再试一次") }
                 .onSuccess { if (currentFolder == name) selectFolder(LOCAL_ALL_FOLDER) }
         }
     }

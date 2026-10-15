@@ -205,7 +205,8 @@ private fun PreferredIpEditorDialog(
                             rows = withContext(Dispatchers.IO) {
                                 runCatching { PreferredIpProbe.probeAll() }
                                     .getOrElse { cause ->
-                                        failure = "探活没跑成：${cause.message ?: "未知错误"}"
+                                        android.util.Log.w("VeneraDebug", "preferred-ip probeAll failed", cause)
+                                        failure = "探活没跑成 🥲 稍后再试一次"
                                         emptyMap()
                                     }
                             }

@@ -43,8 +43,13 @@ import top.yukonga.miuix.kmp.basic.Text
  *  - 选中 = **实心 primary**（主题色，动态色板驱动，不写死色值）+ `onPrimary` 文字；
  *  - 整条宽度仍由**调用方**按"单段占屏宽 25%"推导（用户"太宽太散"那条反馈），本组件不自己定宽。
  *
- * 未选中档：`surfaceVariant` 叠现成的 `selectedSurfaceAlpha`（0.5，VeneraChip 禁用态同一档）。
- * 刻意**半透明**而不是涂实底 —— 玻璃顶栏上涂不透明底会拉出一条横贯屏幕的硬边（已拍板那条）。
+ * 未选中档分两种底，由调用方用 [SegmentedBackdrop] 表态（**这两档只差一层 alpha，没有描边**）：
+ *  - [SegmentedBackdrop.Glass]：`surfaceVariant` 叠现成的 `selectedSurfaceAlpha`（0.5，VeneraChip
+ *    禁用态同一档）。刻意**半透明**而不是涂实底 —— 玻璃顶栏上涂不透明底会拉出一条横贯屏幕的硬边（已拍板那条）。
+ *  - [SegmentedBackdrop.Opaque]：`surfaceVariant` **不透明**。实色卡（如画廊搜索卡）上那层 0.5 会被
+ *    卡底吃掉 —— 真机逐像素量过：未选药丸与卡底 `#F4E4E5 / #F4E1E3` 只差 **1.021:1**，等于看不见，
+ *    而这一排是首页摘掉重复件之后**唯一的换源入口**。涂实底就回到 MD3 本来的那一档
+ *    （`surfaceVariant` 比 `surfaceContainerHigh` 低一档，约 1.05:1），不靠描边表达层次。
  *
  * 动画：旧那颗滑动的果冻块依附容器才成立，取消；换成每颗自己的底色淡变 + 轻微弹性缩放，
  * 阻尼仍取 0.7 那一族（与旧滑动块、布局小钮同族，别另起一档手感）。
@@ -54,6 +59,8 @@ fun VeneraSegmentedButton(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    /** 这一排落在哪种底上 —— 未选档"看不看得见"完全由它决定（见类头注那两条现量）。 */
+    backdrop: SegmentedBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -86,6 +93,8 @@ fun VeneraSegmentedButton(
                     .background(
                         if (selected) {
                             tokens.color.primary
+                        } else if (backdrop == SegmentedBackdrop.Opaque) {
+                            tokens.color.surfaceVariant
                         } else {
                             tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
                         },
@@ -106,4 +115,13 @@ fun VeneraSegmentedButton(
             }
         }
     }
+}
+
+/** 分段器所在的那层底。只有两档，且**两档都不画描边** —— 层次一律用底色表达。 */
+enum class SegmentedBackdrop {
+    /** 实时模糊的玻璃（顶栏 chrome 那一族）：半透明底，涂实会拉出横贯屏幕的硬边。 */
+    Glass,
+
+    /** 实色容器（卡、面板）：不透明底，否则半透明底被卡底吃掉、未选档看不见。 */
+    Opaque,
 }

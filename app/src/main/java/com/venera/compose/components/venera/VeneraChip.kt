@@ -44,8 +44,13 @@ import top.yukonga.miuix.kmp.basic.Text
  * - [Filter]   : MD3 filter chip —— 未选中只有描边，选中填 **secondaryContainer**
  *   （不是 primaryContainer：选中一枚筛选条件不该有"主行动"那么响，规范里两者分档）
  * - [Neutral]  : MD3 tonal chip —— **无描边**、填 surfaceContainerHigh，用于"最近搜索"这类次要项
+ * - [Tonal]    : 与 [Neutral] 同形（无描边、无前置圆点），但填 **surfaceVariant**（不透明）。
+ *   为什么还要一档：`Neutral` 填的 `surfaceContainerHigh` 与画廊搜索卡的卡底**是同一颗色**
+ *   （真机逐像素量过：`#EAE7EE / #EAE7EE` = 1.000:1），住在实色卡里就完全看不见。
+ *   `Tonal` 用比卡底低一档的 `surfaceVariant`，层次靠**底色**表达而不是靠描边 —— 参考图那套
+ *   读起来"有台阶又不抢眼"的就是这一档（实测卡底/控件底 1.055:1 与 1.115:1 两级）。
  */
-enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral }
+enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral, Tonal }
 
 /**
  * Venera 基础 Chip（基础层）。
@@ -175,6 +180,8 @@ fun VeneraChip(
         selected -> tokens.color.primaryContainer
         // Neutral：无描边的 tonal 面，靠底色本身与背景分层，不画轮廓。
         variant == VeneraChipVariant.Neutral -> tokens.color.surfaceContainerHigh
+        // Tonal：同一条路，只是低一档的底 —— 住在"卡底就是 surfaceContainerHigh"的容器里时用它。
+        variant == VeneraChipVariant.Tonal -> tokens.color.surfaceVariant
         // Tag：使用**专用**语义 Token，不再用两个 alpha 相加拼凑。
         // 这让 Tag 成为一个可辨识的「块」，同时仍是 surfaceVariant（非 primary），
         // 因而弱于 SourceBadge 的实底深色，满足 Title > SourceBadge > Tag > Metadata。
@@ -225,6 +232,8 @@ fun VeneraChip(
         containerColorOverride != null -> null
         variant == VeneraChipVariant.Tag -> VeneraGlassRole.BADGE
         variant == VeneraChipVariant.Neutral -> null
+        // Tonal 与 Neutral 同理：它本来就靠实底分层，再叠半透明玻璃就把那一档洗平了。
+        variant == VeneraChipVariant.Tonal -> null
         else -> VeneraGlassRole.CHIP
     }
 

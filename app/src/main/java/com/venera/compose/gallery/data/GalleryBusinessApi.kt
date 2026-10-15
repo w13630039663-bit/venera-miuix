@@ -3,6 +3,7 @@ package com.venera.compose.gallery.data
 import com.venera.compose.data.platform.KeyValueStore
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
+import com.venera.compose.gallery.domain.GalleryBrowseRow
 import com.venera.compose.gallery.domain.GalleryTitleTag
 import kotlinx.coroutines.flow.StateFlow
 
@@ -20,7 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * ## 这颗文件一句平台类型都没有
  *
- * 原先「契约在上、接线在下」同处一颗，`Context` 把整颗钉死在 Android 面；S1 把下面那十三颗
+ * 原先「契约在上、接线在下」同处一颗，`Context` 把整颗钉死在 Android 面；S1 把下面那十四颗
  * 搬进 `android/GalleryAdaptersAndroid.kt` 后，这颗只剩 `StateFlow` + `Result` + 本仓数据模型，
  * 于是它是桌面编译面的一部分（`:desktop` 排掉 android 子目录就拿到了契约、没拿到接线）。
  */
@@ -48,6 +49,41 @@ interface GalleryArtistFollows {
 
     suspend fun toggle(site: GallerySite, name: String): Boolean
 
+    fun consumeNotice(): String?
+}
+
+/**
+ * 画廊浏览历史（看过的图）。2026-10-14 新增，入口在画廊首页顶栏（取代原来那枚「换一批」）。
+ *
+ * 与漫画侧的阅读历史是两件事：那一份记的是**漫画**（跨源、带进度），这一份记的是**图站的图**。
+ * 桌面那一侧早有自己的实现（`DesktopGalleryBrowseHistory`，桌面首页「历史」那一行由它点亮），
+ * 所以这一颗**只被移动端接** —— 桌面压根不会问这一颗（见 `GalleryPorts.history` 那颗可空槽，
+ * 与 `gelbooruWindows` 同一条理由：不是"接了但坏掉"，是"这一侧没有这一档"）。
+ */
+interface GalleryBrowseHistory {
+
+    /** 已按「最近看过在前」排好的名单（判据在 domain 那颗件里）。 */
+    val rows: StateFlow<List<GalleryBrowseRow>>
+
+    /**
+     * 记一笔「看过」。同一条重复看只留一行、刷新时刻并置顶 —— 幂等，不涨行数。
+     *
+     * @param at 看过那一刻的毫秒时间戳，由调用方传入（屏上以编译器为裁判的可注入点）；
+     *   不在实现里现取，是为了让判据能被单测钉住。
+     */
+    suspend fun recordView(post: GalleryPost, at: Long)
+
+    suspend fun clear()
+
+    /**
+     * 批量移除（历史墙多选那一格，2026-10-15）。键是 [GalleryBrowseRow.uid]。
+     *
+     * 与 `GalleryFavorites.removeAll` 同一条口径：`clear()`（整表）与 `removeAll()`（按 uid）
+     * 是两条不同的路，别拿前者实现后者 —— 那会把"删这几张"做成"把整份历史清空"。
+     */
+    suspend fun removeAll(uids: Collection<String>)
+
+    /** 取走并清空那条「刚刚发生了什么」的提示（坏档留档那一句）；没有给 null。 */
     fun consumeNotice(): String?
 }
 
@@ -100,7 +136,7 @@ interface GalleryStoreFactory {
     fun open(name: String): KeyValueStore
 }
 
-// 十三颗 `Android*` 适配器不住在这颗文件里，住在 `android/GalleryAdaptersAndroid.kt`。
+// 十四颗 `Android*` 适配器不住在这颗文件里，住在 `android/GalleryAdaptersAndroid.kt`。
 // 搬出去的唯一原因是构造参数 `Context`：契约面一句平台类型都没有，可以进桌面编译面，
 // 而 `android/` 子目录被 `:desktop` 的全局排除挡在外面。包名不变 ⇒ 同包构造点无需 import。
 

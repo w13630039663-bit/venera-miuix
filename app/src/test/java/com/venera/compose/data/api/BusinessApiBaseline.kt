@@ -59,7 +59,7 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "VeneraPreferences" to FROZEN_SCREEN,
     "AndroidKeyValueStore" to "B7' 已随 D1 迁完（B2 收了漫画侧两颗 VM 的自建存储 → BusinessPorts.stores，画廊搜索缓存 → GalleryPorts.stores），零站点；条目不许删，理由同 VeneraNetworkClient",
     "ComicSourceManager" to
-        "B3 已落地（契约 data/api/SourceApi.kt 的 ComicContentApi 12 枚 + SourceCatalog 8 枚，12 处取用改引）；" +
+        "B3 已落地（契约 data/api/SourceApi.kt 的 ComicContentApi 12 枚 + SourceCatalog 9 枚，12 处取用改引）；" +
             "残留四类逐条见覆写：冻结屏（FREEZE-STATEMENT.md:8-15）、feature/sourcemanage 整域、" +
             "以及 W1 那族嵌套类型（SourceSearchResult 与 InstalledSourceMeta 都声明在 ComicSourceManager.kt:61 一带）",
     "JsComicSource" to "B3（穿过接口拿实现那一处收进 ComicContentApi.tagSuggestionKeyword；sourcemanage 两颗见覆写）",

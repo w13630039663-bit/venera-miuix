@@ -72,6 +72,9 @@ fun GalleryFavoritesStore.Companion.getInstance(context: Context): GalleryFavori
 fun GalleryArtistFollowsStore.Companion.getInstance(context: Context): GalleryArtistFollowsStore =
     getInstance(pathsFor(context))
 
+fun GalleryHistoryStore.Companion.getInstance(context: Context): GalleryHistoryStore =
+    getInstance(pathsFor(context))
+
 internal fun GalleryArtistAvatarStore.Companion.getInstance(context: Context): GalleryArtistAvatarStore =
     getInstance(pathsFor(context), AndroidLogger)
 

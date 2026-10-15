@@ -43,18 +43,10 @@ internal suspend fun shareGalleryPost(context: Context, target: GalleryPost) {
             // 编译通过、真机当场 "Parcelable encountered IOException writing serializable
             // object (name = kotlin.Result)"，分享**一次都没有成功过**。
             // 显式类型 + getOrElse 让这一类错落在编译期，而不是落在用户手上。
-            val uri: Uri = runCatching {
-                // 落盘要在 IO 上：视频原片实测 16~26 MB，
-                // 跟在 Main.immediate 的续点上写就是拿主线程写几十兆，能卡出 ANR。
-                withContext(Dispatchers.IO) {
-                    val dir = CacheDirs.inCache(context.cacheDir, CacheDirs.SHARED_IMAGES)
-                    val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
-                    val file = File(dir, name)
-                    file.outputStream().use { it.write(bytes) }
-                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                }
-            }.getOrElse { e ->
-                Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
+            // 同一族陷阱见 [cacheShareUri]：那颗的返回类型也**写死成 Uri?**，
+            // 批量那一路（[shareGalleryPosts]）就是从这儿分出去的。
+            val uri: Uri = cacheShareUri(context, target, bytes) ?: run {
+                Toast.makeText(context, "分享没准备好 🥲 换一张，或先保存再分享", Toast.LENGTH_LONG).show()
                 return@onSuccess
             }
             runCatching {
@@ -70,10 +62,95 @@ internal suspend fun shareGalleryPost(context: Context, target: GalleryPost) {
                 }
                 context.startActivity(Intent.createChooser(intent, "分享图片"))
             }.onFailure { e ->
-                Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_SHORT).show()
+                android.util.Log.w("VeneraDebug", "gallery share chooser failed", e)
+                Toast.makeText(context, "分享没打开 🥲 先保存到相册再分享", Toast.LENGTH_SHORT).show()
             }
         }
         .onFailure { e ->
-            Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_LONG).show()
+            android.util.Log.w("VeneraDebug", "gallery share fetch failed", e)
+            Toast.makeText(context, "这张图没取下来 🥲 稍后再试一次", Toast.LENGTH_LONG).show()
         }
 }
+
+/**
+ * **批量**分享：一次 chooser，把选中的每一条原档一起交出去。
+ *
+ * 为什么不能拿单张那颗在循环里按 N 次：`startActivity(createChooser(...))` 一次开一扇系统面板，
+ * 选 5 张就是连开 5 扇，而循环不会等第一扇关。Android 对多文件的正解是
+ * `ACTION_SEND_MULTIPLE` + `EXTRA_STREAM` 装 `ArrayList<Uri>` —— 一扇面板、N 份附件。
+ *
+ * 只有 1 张时**退回单张那条路**：两条系统面板长得不同，而单张那一路的行为已经在大图页上验过，
+ * 不为一枚批量钮去动它。
+ *
+ * 每一份都要先现取原档（视频实测 16~26 MB），所以带不上的必须数出来并说一次：
+ * 少一份而屏上没说法，读起来就是"按了没反应"。
+ */
+internal suspend fun shareGalleryPosts(context: Context, targets: List<GalleryPost>) {
+    if (targets.isEmpty()) return
+    if (targets.size == 1) {
+        shareGalleryPost(context, targets.single())
+        return
+    }
+    val uris = ArrayList<Uri>(targets.size)
+    val links = StringBuilder()
+    var notCarried = 0
+    for (target in targets) {
+        val bytes = GallerySaver.fetchBytes(context, target).getOrNull()
+        val uri = bytes?.let { cacheShareUri(context, target, it) }
+        if (uri == null) {
+            notCarried++
+            continue
+        }
+        uris.add(uri)
+        links.appendLine("${target.site.displayName} #${target.id} ${target.pageUrl}")
+    }
+    if (uris.isEmpty()) {
+        Toast.makeText(context, "这几张都没取下来 🥲 稍后再试一次", Toast.LENGTH_LONG).show()
+        return
+    }
+    runCatching {
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            // MIME 取第一条那一档：混合类型（png + mp4）时系统面板自己按附件挑，
+            // 这里猜一个反而会把视频那几份压成 image/*。
+            type = GallerySaver.mimeOf(targets.first())
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            putExtra(Intent.EXTRA_TEXT, links.toString().trimEnd())
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(Intent.createChooser(intent, "分享图片"))
+    }.onFailure { e ->
+        android.util.Log.w("VeneraDebug", "gallery batch share chooser failed", e)
+        Toast.makeText(context, "分享没打开 🥲 先保存到相册再分享", Toast.LENGTH_LONG).show()
+    }
+    if (notCarried > 0) {
+        Toast.makeText(
+            context,
+            "$notCarried 张没取下来，这次带上了 ${uris.size} 张",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+}
+
+/**
+ * 把一份**已经取到手**的原档落进缓存目录，换成外部应用读得到的 Uri。
+ *
+ * 失败给 null 且**不出声** —— 说哪一句由调用方按自己那一档定（单张说"换一张"，
+ * 批量说"第几张没带上"）。这里出声会变成两份真相。
+ *
+ * 落盘要在 IO 上：视频原片实测 16~26 MB，跟在 Main.immediate 的续点上写就是拿主线程写几十兆，
+ * 能卡出 ANR。
+ */
+private suspend fun cacheShareUri(context: Context, target: GalleryPost, bytes: ByteArray): Uri? =
+    runCatching {
+        withContext(Dispatchers.IO) {
+            val dir = CacheDirs.inCache(context.cacheDir, CacheDirs.SHARED_IMAGES)
+            val name = "${target.site.routeKey}-${target.id}.${target.fileExt.ifBlank { "bin" }}"
+            val file = File(dir, name)
+            file.outputStream().use { it.write(bytes) }
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }
+    }.getOrElse { e ->
+        android.util.Log.w("VeneraDebug", "gallery share cache write failed", e)
+        null
+    }

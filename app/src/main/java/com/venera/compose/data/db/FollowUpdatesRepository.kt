@@ -2,6 +2,7 @@ package com.venera.compose.data.db
 
 import android.content.Context
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.humanizeSourceError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -78,7 +79,7 @@ class FollowUpdatesRepository(context: Context) {
             } catch (e: Exception) {
                 delay(RETRY_DELAY_MS)
                 retries--
-                if (retries == 0) return ComicUpdateResult(false, e.message ?: e.javaClass.simpleName)
+                if (retries == 0) return ComicUpdateResult(false, humanizeSourceError(e))
             }
         }
     }

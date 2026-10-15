@@ -77,9 +77,8 @@ fun ComicCardContextMenu(
                     toast(context, when {
                         added.getOrDefault(false) -> "已收藏到「$folder」"
                         added.isSuccess -> "这本已经在「$folder」里了"
-                        else -> "收藏失败：${added.exceptionOrNull()?.let {
-                            it.message?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName
-                        } ?: "未知原因"}"
+                        // 本地收藏夹是设备上的库操作，异常原文（SQLite / IO）对用户没有可操作性。
+                        else -> "收藏没成功，再试一次"
                     })
                 }
             },

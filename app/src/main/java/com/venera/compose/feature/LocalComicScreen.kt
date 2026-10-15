@@ -156,12 +156,15 @@ fun LocalComicScreen(
                             Toast.makeText(context, "成功导入: ${result.getOrNull()?.title}", Toast.LENGTH_SHORT).show()
                             refresh()
                         } else {
-                            Toast.makeText(context, "导入失败: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            // 屏上不出现原始异常（IO / 解压库的原文用户看不懂也做不了什么）。
+                            android.util.Log.w("VeneraDebug", "importCbz failed", result.exceptionOrNull())
+                            Toast.makeText(context, "这个文件没能导入 🥲 确认是完整的 CBZ 压缩包再试", Toast.LENGTH_LONG).show()
                         }
                         tempFile.delete()
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "读取文件异常: ${e.message}", Toast.LENGTH_LONG).show()
+                    android.util.Log.w("VeneraDebug", "local comic import read failed", e)
+                    Toast.makeText(context, "这个文件读不出来 🥲 换一个文件试试", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -305,10 +308,12 @@ fun LocalComicScreen(
                                                 // 而落点不在 file_paths 里时 getUriForFile 必抛
                                                 // IllegalArgumentException —— 于是"导出成功"弹了、
                                                 // 分享面板从没出现过，且没有任何线索。
-                                                Toast.makeText(context, "分享没打开：${e.message}", Toast.LENGTH_LONG).show()
+                                                android.util.Log.w("VeneraDebug", "share local comic failed", e)
+                                                Toast.makeText(context, "分享没打开 🥲 可以改用「保存到相册」", Toast.LENGTH_LONG).show()
                                             }
                                         } else {
-                                            Toast.makeText(context, "导出失败: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            android.util.Log.w("VeneraDebug", "export local comic failed", res.exceptionOrNull())
+                                            Toast.makeText(context, "导出没成功 🥲 看一眼存储空间，再试一次", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },

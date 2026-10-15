@@ -126,6 +126,9 @@ import java.util.*
 import com.venera.compose.components.venera.VeneraSlider
 import com.venera.compose.components.venera.VeneraSwitch
 import com.venera.compose.data.api.ComicContentApi
+import com.venera.compose.source.humanizeSourceError
+import com.venera.compose.source.isCancellation
+import kotlin.math.absoluteValue
 
 // 前瞻预加载页数已改为偏好 pref_preload_image_count（默认 5）：
 // 动态页每页都要跨 WebView 调一次源 JS 再由源发起网络请求，串行预取会把翻页等待线性叠加，
@@ -183,6 +186,8 @@ private fun ReaderSessionContent(
 
     val prefs = remember { BusinessPorts.of(context).readerPrefs }
     val sourceManager = remember { BusinessPorts.of(context).comics }
+    // 源清单端口：只为错误文案问一句「这颗源支不支持登录」，别的一概不用它。
+    val sourceCatalog = remember { BusinessPorts.of(context).sources }
 
     // 活跃章节列表（支持动态加载新章节页码）
     val chaptersState = remember { mutableStateListOf<ReaderChapter>().apply { addAll(session.chapters) } }
@@ -206,6 +211,8 @@ private fun ReaderSessionContent(
     val clickToTurn by prefs.clickToTurn.collectAsState()
     val reverseTap by prefs.reverseTapDirection.collectAsState()
     val autoNextChapter by prefs.autoNextChapter.collectAsState()
+    val pageTurnEffectKey by prefs.pageTurnEffect.collectAsState()
+    val pageTurnEffect = ReaderPageTurnEffect.fromKey(pageTurnEffectKey)
     val autoScrollIntervalSec by prefs.autoScrollPageIntervalSec.collectAsState()
 
     // 图片增强五枚。总开关关着时下面四枚**不参与渲染**（见 pageColorFilter / sharpenLayer）
@@ -266,7 +273,11 @@ private fun ReaderSessionContent(
     )
 
     // 当前可视页码推导 (0-indexed)
-    val currentPageIndex by remember(currentChapter) {
+    //
+    // 除 currentChapter 外还把 readingMode 一并当键：它不是快照状态，只按 currentChapter
+    // 记忆的话，在面板里换模式后这一枚会继续读**旧模式**的滚动状态 ——
+    // 页码气泡、进度条、持久化会一起读到另一档的读数。
+    val currentPageIndex by remember(currentChapter, readingMode) {
         derivedStateOf {
             if (currentChapter.pages.isEmpty()) return@derivedStateOf 0
             when (readingMode) {
@@ -329,6 +340,7 @@ private fun ReaderSessionContent(
 
     // Chapter switching must wait for composition to publish the new pager count.
     var pendingChapterPage by remember { mutableStateOf<Int?>(null) }
+
     suspend fun scrollToPage(targetPage: Int) {
         if (currentChapter.pages.isEmpty()) return
         val page = targetPage.coerceIn(0, currentChapter.pages.lastIndex)
@@ -336,7 +348,8 @@ private fun ReaderSessionContent(
             ReaderReadingMode.VERTICAL_CONTINUOUS -> verticalListState.scrollToItem(page)
             ReaderReadingMode.HORIZONTAL_CONTINUOUS -> horizontalListState.scrollToItem(page)
             ReaderReadingMode.HORIZONTAL_LTR -> ltrPagerState.scrollToPage(page)
-            ReaderReadingMode.HORIZONTAL_RTL -> rtlPagerState.scrollToPage(currentChapter.pages.lastIndex - page)
+            ReaderReadingMode.HORIZONTAL_RTL ->
+                rtlPagerState.scrollToPage(currentChapter.pages.lastIndex - page)
             ReaderReadingMode.DOUBLE_PAGE -> doublePagerState.scrollToPage(page / 2)
         }
     }
@@ -409,7 +422,15 @@ private fun ReaderSessionContent(
                         currentChapterIndex = newChapterIndex
                         pendingChapterPage = initialPage
                     } else {
-                        Toast.makeText(context, "加载章节失败：${res.exceptionOrNull()?.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+                        val failure = res.exceptionOrNull()
+                        if (!isCancellation(failure)) {
+                            val msg = if (failure != null) {
+                                humanizeSourceError(failure, sourceCatalog.sourceSupportsLogin(key))
+                            } else {
+                                "这一章没解析到任何图片页 🧩 稍后重试，或换一颗源"
+                            }
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } finally {
                     isChapterLoading = false
@@ -779,24 +800,41 @@ private fun ReaderSessionContent(
                     }
                 }
                 ReaderReadingMode.HORIZONTAL_LTR -> {
-                    // 3. 美漫·从左至右翻页 (Telephoto Zoomable)
+                    // 3. 美漫·从左至右翻页
                     HorizontalPager(
                         state = ltrPagerState,
                         modifier = Modifier.fillMaxSize()
                     ) { pageIdx ->
                         val page = currentChapter.pages.getOrNull(pageIdx)
                         if (page != null) {
-                            ReaderTelephotoPageItem(
-                                page = page,
-                                index = pageIdx,
-                                colorFilter = pageColorFilter,
-                                onTap = onReaderTap
-                            )
+                            val offset = pagerOffset(ltrPagerState, pageIdx)
+                            ReaderPageTurnBox(
+                                effect = pageTurnEffect,
+                                offsetFraction = offset,
+                                isRtl = false,
+                            ) {
+                                if (pageTurnEffect == ReaderPageTurnEffect.CURL) {
+                                    ReaderCurlPageItem(
+                                        page = page,
+                                        index = pageIdx,
+                                        colorFilter = pageColorFilter,
+                                        isRtl = false,
+                                        turnProgress = { pagerOffset(ltrPagerState, pageIdx).absoluteValue },
+                                    )
+                                } else {
+                                    ReaderTelephotoPageItem(
+                                        page = page,
+                                        index = pageIdx,
+                                        colorFilter = pageColorFilter,
+                                        onTap = onReaderTap,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
                 ReaderReadingMode.HORIZONTAL_RTL -> {
-                    // 4. 日漫·从右至左翻页 (Telephoto Zoomable)
+                    // 4. 日漫·从右至左翻页
                     HorizontalPager(
                         state = rtlPagerState,
                         modifier = Modifier.fillMaxSize()
@@ -804,12 +842,29 @@ private fun ReaderSessionContent(
                         val realIdx = (currentChapter.pages.lastIndex - rtlIdx).coerceIn(0, currentChapter.pages.lastIndex)
                         val page = currentChapter.pages.getOrNull(realIdx)
                         if (page != null) {
-                            ReaderTelephotoPageItem(
-                                page = page,
-                                index = realIdx,
-                                colorFilter = pageColorFilter,
-                                onTap = onReaderTap
-                            )
+                            val offset = pagerOffset(rtlPagerState, rtlIdx)
+                            ReaderPageTurnBox(
+                                effect = pageTurnEffect,
+                                offsetFraction = offset,
+                                isRtl = true,
+                            ) {
+                                if (pageTurnEffect == ReaderPageTurnEffect.CURL) {
+                                    ReaderCurlPageItem(
+                                        page = page,
+                                        index = realIdx,
+                                        colorFilter = pageColorFilter,
+                                        isRtl = true,
+                                        turnProgress = { pagerOffset(rtlPagerState, rtlIdx).absoluteValue },
+                                    )
+                                } else {
+                                    ReaderTelephotoPageItem(
+                                        page = page,
+                                        index = realIdx,
+                                        colorFilter = pageColorFilter,
+                                        onTap = onReaderTap,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -823,6 +878,13 @@ private fun ReaderSessionContent(
                         val pageIdx2 = pairIdx * 2 + 1
                         val p1 = currentChapter.pages.getOrNull(pageIdx1)
                         val p2 = currentChapter.pages.getOrNull(pageIdx2)
+                        val pairOffset = pagerOffset(doublePagerState, pairIdx)
+                        // 卷边（CURL）在双页下不给（与拼合对开观感冲突），仅 3D 翻书可用。
+                        val turn3D = if (pageTurnEffect == ReaderPageTurnEffect.BOOK_FLIP_3D) {
+                            Modifier.pageTurn3D(pairOffset, false)
+                        } else {
+                            Modifier
+                        }
 
                         Row(
                             modifier = Modifier.fillMaxSize(),
@@ -830,7 +892,7 @@ private fun ReaderSessionContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (p1 != null) {
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight().then(turn3D), contentAlignment = Alignment.Center) {
                                     ReaderSinglePageItem(
                                         page = p1,
                                         index = pageIdx1,
@@ -842,7 +904,7 @@ private fun ReaderSessionContent(
                                 }
                             }
                             if (p2 != null) {
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight().then(turn3D), contentAlignment = Alignment.Center) {
                                     ReaderSinglePageItem(
                                         page = p2,
                                         index = pageIdx2,
@@ -1565,6 +1627,89 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // ── 翻页特效（2026-10-14 补入口）──
+                    //
+                    // 为什么必须也在阅读器里：这一档**翻页时才看得出效果**，而从前唯一入口在
+                    // 设置页 —— 用户读到一半想看卷边，得退出阅读器、进设置、选档、再回阅读器
+                    // 重进那一话，四步才能看到自己刚选的动画。设置页那一份继续留着（总入口），
+                    // 这里补的是"当场试、当场切"的那一份。
+                    //
+                    // 档位语义与设置页同一把尺子（ReaderPageTurnEffect，默认 NONE = 原样）：
+                    //  - 3D 翻书  接入所有横向翻页模式（美漫/日漫/对开双页）；
+                    //  - 仿真卷边 仅单页横向（美漫/日漫），该档不走双指缩放；
+                    //  - 条漫 / 横向连续 两种模式没有"翻"这个动作，整块跟着隐藏（不留假开关）。
+                    val horizontalPageMode = readingMode == ReaderReadingMode.HORIZONTAL_LTR ||
+                        readingMode == ReaderReadingMode.HORIZONTAL_RTL ||
+                        readingMode == ReaderReadingMode.DOUBLE_PAGE
+                    if (horizontalPageMode) {
+                        Text(
+                            text = "翻页特效",
+                            fontSize = tokens.type.sectionTitle,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.6f)
+                        )
+                        // 间距一律吃 token：TokenBudgetFrozenTest 把裸 dp 存量封了顶，
+                        // 这一块是新代码，不许往上加（隔壁那两行 8.dp 是存量，不追改）。
+                        Spacer(modifier = Modifier.height(tokens.spacing.chipSpacing))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)
+                        ) {
+                            ReaderPageTurnEffect.entries.forEach { effect ->
+                                val isSelected = pageTurnEffect == effect
+                                // 卷边那一档在双页对开下**不给**（ReaderCurlPageItem 与拼合对开观感冲突，
+                                // VeneraReaderScreen 的翻页区只在单页横向两条支上挂它）。选不中要比
+                                // 选完没反应好：这里是置灰 + 一句说明，不是一枚假开关。
+                                val effectEnabled = effect != ReaderPageTurnEffect.CURL ||
+                                    readingMode != ReaderReadingMode.DOUBLE_PAGE
+                                Surface(
+                                    color = if (isSelected) tokens.color.primary else StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                                    shape = RoundedCornerShape(tokens.shape.small),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable(enabled = effectEnabled) {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            prefs.setPageTurnEffect(effect.key)
+                                        },
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = tokens.spacing.space5).fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = effect.glyph,
+                                            fontSize = tokens.type.itemTitle,
+                                            color = if (effectEnabled) StatusColors.OnBadgeSurface else StatusColors.OnBadgeSurface.copy(alpha = 0.4f),
+                                        )
+                                        Spacer(modifier = Modifier.height(tokens.spacing.space1))
+                                        Text(
+                                            text = effect.shortLabel,
+                                            fontSize = tokens.type.caption,
+                                            fontWeight = tokens.type.weightSemibold,
+                                            color = when {
+                                                isSelected -> tokens.color.onPrimary
+                                                effectEnabled -> StatusColors.OnBadgeSurface.copy(alpha = 0.75f)
+                                                else -> StatusColors.OnBadgeSurface.copy(alpha = 0.4f)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // 卷边那一档在双页模式下的说明：读同一把尺子（ReaderPageTurnBox 只认 CURL 分支在
+                        // 单页横向那两支上挂），屏上给一句说明，而不是让人选了却没动画。
+                        if (readingMode == ReaderReadingMode.DOUBLE_PAGE) {
+                            Text(
+                                text = "双页对开下仿真卷边不生效，选「3D 翻书」",
+                                fontSize = tokens.type.overline,
+                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f),
+                                modifier = Modifier.padding(top = tokens.spacing.space1),
+                            )
+                        }
+                        // 这一段底部的呼吸量：吃 space8（32dp），与上面「排版翻页模式」那两枚
+                        // 16.dp 存量同档但不新增裸值（16dp 见 space7/space8 之间那批存量的用法）。
+                        Spacer(modifier = Modifier.height(tokens.spacing.sectionGap))
+                    }
+
                     // 条漫间距调节
                     if (readingMode == ReaderReadingMode.VERTICAL_CONTINUOUS || readingMode == ReaderReadingMode.HORIZONTAL_CONTINUOUS) {
                         Row(
@@ -1694,6 +1839,8 @@ private fun ReaderSessionContent(
                             checkedThumbColor = MiuixTheme.colorScheme.primary
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(tokens.spacing.space4))
                 }
             }
         }
@@ -1777,7 +1924,7 @@ private const val PAGE_LOAD_TAG = "ReaderPageLoad"
 /**
  * 「动态页」解析状态：真实 URL、失败标志与手动重试计数
  */
-private class DynamicPageState {
+internal class DynamicPageState {
     var url by mutableStateOf<String?>(null)
     var failed by mutableStateOf(false)
     var attempt by mutableIntStateOf(0)
@@ -1867,7 +2014,7 @@ private suspend fun resolveDynamicPageUrl(
  * 失败后由 UI 触发 [DynamicPageState.attempt] 自增重试。
  */
 @Composable
-private fun rememberDynamicPageResolution(page: ComicPageSource.DynamicNetwork): DynamicPageState {
+internal fun rememberDynamicPageResolution(page: ComicPageSource.DynamicNetwork): DynamicPageState {
     val context = LocalContext.current
     val state = remember(page) { DynamicPageState() }
     LaunchedEffect(page, state.attempt) {
@@ -2200,8 +2347,9 @@ private fun saveCurrentImage(context: Context, pageSource: ComicPageSource?) {
                 }
             }
         } catch (e: Exception) {
+            android.util.Log.w("VeneraDebug", "save page to gallery failed", e)
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "保存图片失败：${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "保存没成功 🥲 看一眼存储空间，再试一次", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -2274,9 +2422,9 @@ private fun favoriteCurrentPage(
             }
         } catch (e: Exception) {
             // 静默失败会被读成"点了没反应"，进而判成假按钮 —— 存不下来必须说。
-            val reason = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            android.util.Log.w("VeneraDebug", "favorite illustration failed", e)
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "插图收藏失败：$reason", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "插图收藏没成功 🥲 稍后再试一次", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -2356,8 +2504,9 @@ private fun shareCurrentImage(
                 context.startActivity(Intent.createChooser(intent, "分享漫画单页"))
             }
         } catch (e: Exception) {
+            android.util.Log.w("VeneraDebug", "share page failed", e)
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "分享失败：${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "分享没打开 🥲 可以改用「保存到相册」", Toast.LENGTH_SHORT).show()
             }
         }
     }

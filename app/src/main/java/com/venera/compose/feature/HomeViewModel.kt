@@ -40,7 +40,31 @@ data class HomeRecommendState(
     val canRetry: Boolean = false,
     /** 每成功拉一批 +1：界面用它区分「换了一批」与「还是那批」，并把焦点滚到新位置。 */
     val batch: Int = 0,
+    /**
+     * 本批实际用上的源（显示名，顿号分隔）。界面在依据那行后面挂出来 ——
+     * 两档各自绑一组源，用户有权知道这一行到底是哪儿来的。
+     * 缓存快照里为空（不落盘），下次真拉到后会被覆盖。
+     */
+    val sourcesLabel: String = "",
 )
+
+/**
+ * 「可能你感兴趣」的内容分级。两档各自绑定一组源（见 [HomeViewModel] 里的源集常量）：
+ *
+ * - [NORMAL] 全年龄向：MangaDex / 爱看漫 / 拷贝漫画
+ * - [R18] 成人向：禁漫天堂 / nhentai
+ *
+ * 存的是 [key]（大小写不敏感读回），所以改枚举名不会让老用户的档位掉回默认。
+ */
+enum class HomeRecommendMode(val key: String, val label: String) {
+    NORMAL("NORMAL", "正常"),
+    R18("R18", "R18");
+
+    companion object {
+        fun fromKey(key: String?): HomeRecommendMode =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: NORMAL
+    }
+}
 
 /** 首页各分区的数据（全部来自本地库，不再有 sampleComics 兜底） */
 data class HomeUiState(
@@ -139,8 +163,33 @@ class HomeViewModel(
     /** 退出前那批推荐的落盘位置（冷启动首屏直接铺它，见 [hydrateRecommendFromCache]）。 */
     private val recommendPrefs = ports.stores.open(PreferenceKeys.PREFS_HOME_RECOMMEND_CACHE)
 
+    /**
+     * 当前分级档（正常 / R18）。与推荐快照同存一处（`PREFS_HOME_RECOMMEND_CACHE`），
+     * 快照按档分开存（[cacheKeyFor]），否则切档瞬间会先闪出另一档的内容。
+     */
+    private val _recommendMode =
+        MutableStateFlow(HomeRecommendMode.fromKey(recommendPrefs.getString(KEY_RECOMMEND_MODE, null)))
+    val recommendMode: StateFlow<HomeRecommendMode> = _recommendMode.asStateFlow()
+
     init {
         hydrateRecommendFromCache()
+    }
+
+    /**
+     * 切换分级档。**清空当前展示、铺新档的缓存、立刻拉一批** —— 三件事都要做：
+     * 留着旧档那批内容会让人以为切档没生效；只铺缓存不拉新的，用户看到的是上一轮的残影；
+     * 不重置 `recommendLoaded/lastRecommendAt`，下一次 `autoRefreshRecommend` 会被节流挡掉。
+     */
+    fun setRecommendMode(mode: HomeRecommendMode) {
+        if (_recommendMode.value == mode) return
+        _recommendMode.value = mode
+        recommendPrefs.put(KEY_RECOMMEND_MODE, mode.key)
+        recommendLoaded = false
+        lastRecommendAt = 0L
+        // loading=true 同时兜住一件事：这一档缓存为空时，分区不会因为"空态且无说明"而整块消失
+        // ——那会让用户连切回原来那一档的入口都找不到。
+        _recommend.value = readCacheFor(mode)?.copy(loading = true) ?: HomeRecommendState(loading = true)
+        loadRecommend(force = true)
     }
 
     /**
@@ -203,10 +252,19 @@ class HomeViewModel(
     private suspend fun loadRecommendOnce() {
         val sources = ports.sources
         val comics = ports.comics
-        if (!awaitSourceRegistered(sources, RECOMMEND_SOURCE_KEY)) {
-            failRecommend("推荐取自禁漫天堂（免登录），当前未启用该源", canRetry = true)
+        val mode = _recommendMode.value
+        val candidates = sourcesFor(mode)
+        // JS 源是异步注册的，冷启动这一发几乎总是早于注册完成：给一个有界等待窗口，
+        // 等到**至少一颗**就继续（等全套会把首屏拖到十几秒；漏掉的那几颗下一次刷新会补上）。
+        val ready = awaitReadySources(sources, candidates)
+        if (ready.isEmpty()) {
+            failRecommend(
+                note = "推荐取自${mode.label}源（${candidates.joinToString("、") { it.displayName }}），当前都没启用",
+                canRetry = true,
+            )
             return
         }
+        val sourcesLabel = ready.joinToString(" · ") { it.displayName }
         _recommend.value = _recommend.value.copy(loading = true)
         val guard = ports.contentGuard
         val buckets = runCatching {
@@ -217,25 +275,30 @@ class HomeViewModel(
             failRecommend("最近 $RECOMMEND_WINDOW_DAYS 天还没有足够的阅读记录", canRetry = false)
             return
         }
-        // 每个题材各拉一页，再 round-robin 混排去重 —— 否则整行都是 top1 一个题材。
-        // 「刷新即换一批」：页码与排序都随机取，用户点刷新就会看到新的本子。
-        // 页码压在 1..10：冷门题材的深页会直接给空结果。
+        // 每个 (源 × 题材) 各拉一页，再 round-robin 混排去重 —— 否则整行都是 top1 一个题材，
+        // 或者一个源把它自己的风格刷满。页码与排序都随机取，用户点刷新就会看到新的本子。
+        // 页码压在 1..maxPage：冷门题材的深页会直接给空结果，而像爱看漫这种搜索本身不分页的源
+        // 只能取第 1 页（深页返回空，白打一次请求）。
         val random = kotlin.random.Random
-        val perTag = buckets.map { bucket ->
-            val page = random.nextInt(1, RECOMMEND_MAX_PAGE + 1)
-            val sort = RECOMMEND_SORTS.random(random)
-            runCatching {
-                comics.search(
-                    RECOMMEND_SOURCE_KEY, bucket.searchRaw, page, listOf(sort)
-                ).getOrNull()?.comics.orEmpty()
-            }.getOrDefault(emptyList())
+        val perCombo = buildList {
+            for (src in ready) {
+                for (bucket in buckets) {
+                    val page = random.nextInt(1, src.maxPage + 1)
+                    val options = src.sortOptions.random(random)
+                    add(
+                        runCatching {
+                            comics.search(src.key, bucket.searchRaw, page, options).getOrNull()?.comics.orEmpty()
+                        }.getOrDefault(emptyList())
+                    )
+                }
+            }
         }
         val merged = ArrayList<Comic>(RECOMMEND_LIMIT)
         val seen = HashSet<String>()
         var index = 0
         while (merged.size < RECOMMEND_LIMIT) {
             var addedThisRound = false
-            for (list in perTag) {
+            for (list in perCombo) {
                 val comic = list.getOrNull(index) ?: continue
                 if (seen.add(comic.id)) {
                     merged.add(comic)
@@ -250,10 +313,12 @@ class HomeViewModel(
         val visible = guard.filterComics(merged)
         if (visible.isEmpty()) {
             failRecommend(
-                note = if (perTag.all { it.isEmpty() }) "禁漫天堂暂时拉不到内容，稍后重试"
-                       else "推荐内容都被屏蔽规则过滤掉了",
+                note = if (perCombo.all { it.isEmpty() })
+                    "${mode.label}源暂时拉不到内容，稍后重试"
+                else "推荐内容都被屏蔽规则过滤掉了",
                 canRetry = true,
                 tags = buckets,
+                sourcesLabel = sourcesLabel,
             )
             return
         }
@@ -262,6 +327,7 @@ class HomeViewModel(
             batch = recommendBatch,
             tags = buckets,
             comics = visible,
+            sourcesLabel = sourcesLabel,
         )
         _recommend.value = state
         writeRecommendCache(state)
@@ -276,11 +342,22 @@ class HomeViewModel(
      *
      * batch 不递增：轮播不该因为一次失败请求就随机跳焦点。
      */
-    private fun failRecommend(note: String, canRetry: Boolean, tags: List<TagStatBucket> = emptyList()) {
+    private fun failRecommend(
+        note: String,
+        canRetry: Boolean,
+        tags: List<TagStatBucket> = emptyList(),
+        sourcesLabel: String = "",
+    ) {
         recommendLoaded = false
         val previous = _recommend.value
         _recommend.value = if (previous.comics.isEmpty()) {
-            HomeRecommendState(batch = previous.batch, tags = tags, note = note, canRetry = canRetry)
+            HomeRecommendState(
+                batch = previous.batch,
+                tags = tags,
+                note = note,
+                canRetry = canRetry,
+                sourcesLabel = sourcesLabel,
+            )
         } else {
             previous.copy(loading = false, note = note, canRetry = canRetry)
         }
@@ -289,20 +366,25 @@ class HomeViewModel(
     /**
      * JS 源是 `ComicSourceManager` 构造里 `scope.launch { loadInstalledJsSources() }` 异步注册的，
      * 冷启动这一发几乎总是早于注册完成 —— 直接判「未启用该源」就是真机看到的症状。
-     * 给它一个有界等待窗口，等不到才认输。
+     * 给它一个有界等待窗口，等到**至少一颗**候选源可用就返回；等不到才认输。
+     *
+     * 刻意不逐颗等：三颗各等 10s 会把首屏拖到半分钟。漏掉的那几颗下一次刷新（回首页）会补上。
      */
-    private suspend fun awaitSourceRegistered(manager: SourceCatalog, key: String): Boolean {
-        if (manager.getSource(key) != null) return true
-        return withTimeoutOrNull(RECOMMEND_SOURCE_WAIT_MS) {
-            while (manager.getSource(key) == null) delay(300)
-            true
-        } ?: false
+    private suspend fun awaitReadySources(
+        manager: SourceCatalog,
+        candidates: List<RecommendSourceDef>,
+    ): List<RecommendSourceDef> {
+        fun ready() = candidates.filter { manager.getSource(it.key) != null }
+        if (ready().isNotEmpty()) return ready()
+        withTimeoutOrNull(RECOMMEND_SOURCE_WAIT_MS) {
+            while (ready().isEmpty()) delay(300)
+        }
+        return ready()
     }
 
     /** 退出前的那批推荐先铺上，网络回来再换（冷启动首屏不该是一段错误文案）。 */
     private fun hydrateRecommendFromCache() {
-        val raw = recommendPrefs.getString(KEY_RECOMMEND_CACHE, null) ?: return
-        val restored = runCatching { readRecommendSnapshot(raw) }.getOrNull() ?: return
+        val restored = readCacheFor(_recommendMode.value) ?: return
         if (restored.comics.isEmpty()) return
         _recommend.value = restored
         // 缓存当作「刚拉过」：启动时不再自动打网络，只铺上次退出前的那批。
@@ -311,17 +393,19 @@ class HomeViewModel(
         lastRecommendAt = System.currentTimeMillis()
     }
 
-    private fun writeRecommendCache(state: HomeRecommendState) {
-        recommendPrefs.put(KEY_RECOMMEND_CACHE, writeSnapshot(state))
+    /** 读某一档的快照；键按档分开，切档不会串内容。 */
+    private fun readCacheFor(mode: HomeRecommendMode): HomeRecommendState? {
+        val raw = recommendPrefs.getString(cacheKeyFor(mode), null) ?: return null
+        return runCatching { readRecommendSnapshot(raw) }.getOrNull()
     }
 
-    private companion object {
-        /**
-         * 推荐取数源：禁漫天堂免登录即可搜索，且搜索支持分页与排序，
-         * 所以「刷新换一批」能做到真随机（而不是把同一页重排）。
-         */
-        const val RECOMMEND_SOURCE_KEY = "jm"
+    private fun writeRecommendCache(state: HomeRecommendState) {
+        recommendPrefs.put(cacheKeyFor(_recommendMode.value), writeSnapshot(state))
+    }
 
+    private fun cacheKeyFor(mode: HomeRecommendMode): String = "recommend_snapshot_${mode.key.lowercase()}"
+
+    private companion object {
         /** 题材榜窗口：固定最近 30 天（不跟随统计页的范围切换）。 */
         const val RECOMMEND_WINDOW_DAYS = 30
 
@@ -334,15 +418,78 @@ class HomeViewModel(
         /** 等 JS 源注册上界的窗口。 */
         const val RECOMMEND_SOURCE_WAIT_MS = 10_000L
 
-        /** 随机页码上限：冷门题材的深页会直接给空结果。 */
-        const val RECOMMEND_MAX_PAGE = 10
+        const val KEY_RECOMMEND_MODE = "recommend_mode"
 
-        /** jm.js 的 search optionList 取值（源里 `options[0]`，传错会静默退回默认排序）。 */
-        val RECOMMEND_SORTS = listOf(
-            "mr", "mv", "mv_m", "mv_w", "mv_t", "mp", "tf",
+        /**
+         * 推荐取数的一个源 + 它的搜索排序候选。
+         *
+         * [sortOptions] 的每一项是**一次 search 的 options 实参**（元素为各 optionList 里的
+         * "值-文案" 左半边），不是单个字符串 —— 因为有的源搜索是**多段**的（MangaDex 是
+         * 排序 / 内容分级 / 状态三段，缺一段会在源脚本里拼出字面量 "undefined" 的查询串）。
+         * 空列表 = 这个源不吃 options（爱看漫、拷贝漫画）。
+         */
+        data class RecommendSourceDef(
+            val key: String,
+            val displayName: String,
+            val sortOptions: List<List<String?>>,
+            val maxPage: Int,
         )
 
-        const val KEY_RECOMMEND_CACHE = "recommend_snapshot"
+        /** 正常档：MangaDex / 爱看漫 / 拷贝漫画。 */
+        val NORMAL_RECOMMEND_SOURCES = listOf(
+            RecommendSourceDef(
+                key = "manga_dex",
+                displayName = "MangaDex",
+                // 后两段固定 "any"（不筛分级 / 状态）：源脚本里 options[1]/options[2] 一旦不是 "any"
+                // 就会被拼进 URL，给 null 同样会拼出 "undefined"。
+                sortOptions = listOf(
+                    listOf("popular", "any", "any"),
+                    listOf("recent", "any", "any"),
+                    listOf("updated", "any", "any"),
+                    listOf("rating", "any", "any"),
+                ),
+                maxPage = 10,
+            ),
+            RecommendSourceDef(
+                key = "ikmmh",
+                displayName = "爱看漫",
+                sortOptions = listOf(emptyList()),
+                // 爱看漫的 search 没有分页（源里 maxPage 恒 1），深页只会给空结果。
+                maxPage = 1,
+            ),
+            RecommendSourceDef(
+                key = "copy_manga",
+                displayName = "拷贝漫画",
+                sortOptions = listOf(emptyList()),
+                maxPage = 10,
+            ),
+        )
+
+        /** R18 档：禁漫天堂 / nhentai。 */
+        val R18_RECOMMEND_SOURCES = listOf(
+            RecommendSourceDef(
+                key = "jm",
+                displayName = "禁漫天堂",
+                // jm.js 的 search optionList 取值（源里 options[0]，传错会静默退回默认排序）。
+                sortOptions = listOf(
+                    listOf("mr"), listOf("mv"), listOf("mv_t"), listOf("mp"), listOf("tf"),
+                ),
+                maxPage = 10,
+            ),
+            RecommendSourceDef(
+                key = "nhentai",
+                displayName = "nhentai",
+                sortOptions = listOf(
+                    listOf("date"), listOf("popular-week"), listOf("popular"),
+                ),
+                maxPage = 10,
+            ),
+        )
+
+        fun sourcesFor(mode: HomeRecommendMode): List<RecommendSourceDef> = when (mode) {
+            HomeRecommendMode.NORMAL -> NORMAL_RECOMMEND_SOURCES
+            HomeRecommendMode.R18 -> R18_RECOMMEND_SOURCES
+        }
     }
 
     private fun build(favs: List<FavoriteRecord>, hist: List<HistoryRecord>): HomeUiState {

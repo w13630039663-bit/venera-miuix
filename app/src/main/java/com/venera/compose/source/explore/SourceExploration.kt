@@ -46,8 +46,28 @@ data class SourceExploration(
 
     /** 该源是否声明了分类页（false 表示只有 explore，没有分类矩阵）。 */
     val hasCategoryPage: Boolean = false,
+
+    /**
+     * 探测这颗源时**抛了异常**（网络失败 / 源脚本报错），能力未知。
+     *
+     * true 时 [modes] / [nativeSections] 都是空的，但这一颗**必须留在列表里** ——
+     * 探测失败不等于源没有探索能力，一次网络抖动就把它剔除，屏上表现就是
+     * "源凭空消失"（2026-10-14 真机：16:57 还有禁漫天堂，18:26 就只剩两颗源）。
+     * UI 据此摆重试，而不是让用户以为这颗源不能探索。
+     */
+    val probeFailed: Boolean = false,
+
+    /**
+     * 这颗源是否**支持登录**（`SourceAccountInfo.hasAccount`）。
+     *
+     * 只服务于错误文案的分支：源站回 401/403 时，支持登录的源十有八九是"要先登录"，
+     * 不支持的只能是源站自己拦了 —— 两种情况的下一步完全不同，合成一句话就会把用户
+     * 往错的方向指（2026-10-14 真机：包子漫画被说成"源站防护或网络波动"，
+     * 用户在原话里直接否掉了这句）。
+     */
+    val supportsLogin: Boolean = false,
 ) {
-    val isEmpty: Boolean get() = modes.isEmpty() && nativeSections.isEmpty() && !hasRanking
+    val isEmpty: Boolean get() = !probeFailed && modes.isEmpty() && nativeSections.isEmpty() && !hasRanking
 }
 
 /**
@@ -70,6 +90,15 @@ data class ExploreMode(
         EXPLORE_PAGE,
         /** 源声明的单页多分区（推荐 / 热门 混合在几个 part 里）。 */
         EXPLORE_MULTI_PART,
+        /**
+         * `mixed` 型：第 1 页给若干**带标题的分区**，第 2 页起给**裸作品列表**（nhentai）。
+         *
+         * 为什么单开一档而不是并进 [EXPLORE_MULTI_PART]：后者按定义是「单页」，
+         * 在页面上永不翻页（`hasMore` 恒 false）。mixed 的 `load(page)` 是**真分页**的
+         * （nhentai 的 New Uploads 靠它续页），并进多分区就等于把「翻页」这件事一起丢掉。
+         * 也不能并进 [EXPLORE_PAGE]：那样第 1 页的两个分区标题会被压平成一个大网格。
+         */
+        EXPLORE_MIXED,
         /** 排行榜。 */
         RANKING,
     }
@@ -135,15 +164,36 @@ const val PAGE_KIND_SEARCH = "search"
  */
 object SourceExplorationFactory {
 
-    /** 官方 explore 页 type 字段的取值。 */
+    /**
+     * explore 页 `type` 字段的四个取值，一个都不能少。
+     *
+     * 2026-10-14 真机读数：nhentai 与禁漫天堂的默认页一个报错、一个空白。根因不在 UI，
+     * 在这四个值里有三个没被引擎认全 —— 于是「默认该显示什么」根本无从谈起：
+     *  - [TYPE_MULTI_PART] `singlePageWithMultiPart`：单页多分区（包子 / 拷贝 / Komga…），
+     *    `load()` 无参，返回 `{分区名: Comic[]}` 或 `[{title, comics}]`；
+     *  - [TYPE_MULTI_PART_PAGE] `multiPartPage`：**10 颗源在用**（禁漫天堂 / 紳士漫畫 / MangaDex /
+     *    漫画柜 / 漫画人 / mh18 / 漫小肆 / 优酷漫画 / goda / h-comic），`load(page)` 返回
+     *    `[{title, comics, viewMore?}]`；
+     *  - [TYPE_MULTI_LIST] `multiPageComicList`：分页列表（ehentai / picacg / hitomi…），
+     *    返回 `{comics, maxPage}`；
+     *  - [TYPE_MIXED] `mixed`：首页给分区、后续页给裸列表（nhentai），
+     *    返回 `{data: [Comic[] | {title, comics}], maxPage}`。
+     *
+     * 前两者都是「一页多分区」，在 UI 上是同一件事（按分区渲染），故同归
+     * [ExploreMode.Kind.EXPLORE_MULTI_PART]；[TYPE_MIXED] 是唯一「首页分区、后续页平铺且
+     * 可分页」的混合体，单开 [ExploreMode.Kind.EXPLORE_MIXED]。
+     */
     private const val TYPE_MULTI_PART = "singlePageWithMultiPart"
+    private const val TYPE_MULTI_PART_PAGE = "multiPartPage"
     private const val TYPE_MULTI_LIST = "multiPageComicList"
+    private const val TYPE_MIXED = "mixed"
 
     fun build(
         sourceKey: String,
         sourceName: String,
         explorePages: List<ExplorePageData>,
         categoryData: CategoryData?,
+        supportsLogin: Boolean = false,
     ): SourceExploration {
         val modes = buildModes(sourceKey, explorePages, categoryData)
         val sections = categoryData?.parts.orEmpty().map { it.toNativeSection() }
@@ -168,6 +218,7 @@ object SourceExplorationFactory {
             rankingSection = rankingSection,
             hasRanking = hasRanking,
             hasCategoryPage = sections.isNotEmpty() || hasRanking,
+            supportsLogin = supportsLogin,
         )
     }
 
@@ -186,8 +237,14 @@ object SourceExplorationFactory {
             modes += ExploreMode(
                 id = "$sourceKey:page:$index",
                 label = label,
-                kind = if (page.type == TYPE_MULTI_PART) ExploreMode.Kind.EXPLORE_MULTI_PART
-                else ExploreMode.Kind.EXPLORE_PAGE,
+                // 四个 type 收敛到三种 Kind：两种「一页多分区」形态在 UI 上是同一件事。
+                // 漏掉 multiPartPage 的后果是实打实的 —— 那 10 颗源的默认页会当成
+                // 「分页列表」去解析，拿回来的分区对象里没有 comic 字段，整页解析成空。
+                kind = when (page.type) {
+                    TYPE_MULTI_PART, TYPE_MULTI_PART_PAGE -> ExploreMode.Kind.EXPLORE_MULTI_PART
+                    TYPE_MIXED -> ExploreMode.Kind.EXPLORE_MIXED
+                    else -> ExploreMode.Kind.EXPLORE_PAGE
+                },
                 pageIndex = page.pageIndex,
             )
         }

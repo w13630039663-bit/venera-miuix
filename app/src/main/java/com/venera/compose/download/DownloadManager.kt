@@ -9,6 +9,7 @@ import com.venera.compose.data.network.ImagePipelinePolicy
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.humanizeSourceError
 import com.venera.compose.source.model.ComicChapter
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -369,7 +370,7 @@ class DownloadManager private constructor(private val context: Context) {
                         Log.d(tag, "Task $taskId canceled")
                     } catch (e: Exception) {
                         Log.e(tag, "Task $taskId unhandled error", e)
-                        updateTaskError(taskId, e.message ?: "下载发生未知异常")
+                        updateTaskError(taskId, "下载出了点问题 🥲 稍后重试一次")
                     } finally {
                         activeJobs.remove(taskId)
                     }
@@ -397,7 +398,8 @@ class DownloadManager private constructor(private val context: Context) {
         // 1. 获取章节全部图片 URL
         val pagesResult = source.getChapterPages(task.comicId, task.chapterId)
         if (pagesResult.isFailure || pagesResult.getOrNull() == null || pagesResult.getOrNull()!!.pages.isEmpty()) {
-            val err = pagesResult.exceptionOrNull()?.message ?: "获取章节图片列表为空或失败"
+            val err = pagesResult.exceptionOrNull()?.let { humanizeSourceError(it) }
+                ?: "这一章没解析到图片 🧩 稍后重试，或换一颗源"
             updateTaskError(taskId, err)
             return
         }
@@ -484,7 +486,7 @@ class DownloadManager private constructor(private val context: Context) {
                 } catch (e: Exception) {
                     Log.w(tag, "Image $idx attempt $attempt failed for ${task.chapterTitle}: ${e.message}")
                     if (attempt >= 3) {
-                        updateTaskError(taskId, "第 ${idx + 1} 页下载重试3次仍失败: ${e.message}")
+                        updateTaskError(taskId, "第 ${idx + 1} 页重试 3 次还是没下来 🥲 检查网络后再试一次")
                         return
                     }
                     delay(600)

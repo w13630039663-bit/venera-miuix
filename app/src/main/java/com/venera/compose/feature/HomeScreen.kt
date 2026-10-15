@@ -131,6 +131,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val extra by viewModel.uiStateExtra.collectAsStateWithLifecycle()
     val recommend by viewModel.recommend.collectAsStateWithLifecycle()
+    val recommendMode by viewModel.recommendMode.collectAsStateWithLifecycle()
     val historyList = ui.history
     val sourceManager = remember { ComicSourceManager.getInstance(context) }
     // 静默触发一次源更新检测：让可更新角标数据保持实时有效（结果落 availableUpdates 流）
@@ -234,6 +235,12 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         Box(Modifier.weight(1f)) {
                             MiuixSectionHeader(title = "可能你感兴趣", onTap = onOpenStats)
                         }
+                        // 分级切换：正常 = MangaDex/爱看漫/拷贝漫画，R18 = 禁漫天堂/nhentai。
+                        // 切档会立刻清空并重拉（见 HomeViewModel.setRecommendMode），所以这里不做防抖。
+                        RecommendModeSelector(
+                            selected = recommendMode,
+                            onSelect = { viewModel.setRecommendMode(it) },
+                        )
                         // 换一批 = 重新随机页码与排序再拉一次（页内完成，不跳走）
                         VeneraIconButton(
                             onClick = { viewModel.loadRecommend(force = true) },
@@ -250,6 +257,13 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         Text(
                             text = "按你最近 30 天读得最多的题材：" +
                                 recommend.tags.joinToString(" · ") { it.display },
+                            fontSize = tokens.type.overline,
+                            color = tokens.color.textTertiary,
+                        )
+                    }
+                    if (recommend.sourcesLabel.isNotEmpty()) {
+                        Text(
+                            text = "来自 ${recommend.sourcesLabel}",
                             fontSize = tokens.type.overline,
                             color = tokens.color.textTertiary,
                         )
@@ -648,6 +662,51 @@ private fun HistoryCardHome(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 「可能你感兴趣」的内容分级切换（正常 / R18）。
+ *
+ * 为什么不用 [VeneraSegmentedButton]：那一件是**整条通栏**的分段条（每颗 weight(1f)、高 48dp），
+ * 放进分区标题行会把这一行撑成一整块控件，标题与「换一批」都被挤没。这里要的是贴在标题右侧的
+ * 一枚紧凑药丸对，所以按同一套设计口径（选中 = 实心 primary + onPrimary 字；未选 = surfaceVariant
+ * 半透明、胶囊圆角）单独收一枚，高度跟着标题行走。
+ *
+ * 两档绑定的源在 HomeViewModel 的 NORMAL_/R18_RECOMMEND_SOURCES 里，这一件只负责切档。
+ */
+@Composable
+private fun RecommendModeSelector(
+    selected: HomeRecommendMode,
+    onSelect: (HomeRecommendMode) -> Unit,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha))
+            .padding(tokens.spacing.space1),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space1),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HomeRecommendMode.entries.forEach { mode ->
+            val active = mode == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(if (active) tokens.color.primary else Color.Transparent)
+                    .clickable { onSelect(mode) }
+                    .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space1),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = mode.label,
+                    fontSize = tokens.type.caption,
+                    fontWeight = if (active) tokens.type.weightSemibold else tokens.type.weightMedium,
+                    color = if (active) tokens.color.onPrimary else tokens.color.textSecondary,
+                )
+            }
+        }
     }
 }
 

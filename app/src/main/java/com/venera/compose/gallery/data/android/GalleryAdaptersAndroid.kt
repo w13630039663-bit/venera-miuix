@@ -6,6 +6,7 @@ import com.venera.compose.data.platform.KeyValueStore
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
+import com.venera.compose.gallery.domain.GalleryBrowseRow
 import com.venera.compose.gallery.domain.GalleryTitleTag
 import kotlinx.coroutines.flow.StateFlow
 
@@ -52,6 +53,17 @@ internal class AndroidGalleryArtistAvatars(private val context: Context) : Galle
     override fun peek(site: GallerySite, name: String, source: String): String? = store.peek(site, name, source)
     override suspend fun remember(site: GallerySite, name: String, source: String, avatar: String?) =
         store.remember(site, name, source, avatar)
+}
+
+internal class AndroidGalleryHistory(private val context: Context) : GalleryBrowseHistory {
+
+    private val store: GalleryHistoryStore get() = GalleryHistoryStore.getInstance(context)
+
+    override val rows: StateFlow<List<GalleryBrowseRow>> get() = store.rows
+    override suspend fun recordView(post: GalleryPost, at: Long) = store.recordView(post, at)
+    override suspend fun clear() = store.clear()
+    override suspend fun removeAll(uids: Collection<String>) = store.removeAll(uids)
+    override fun consumeNotice(): String? = store.consumeNotice()
 }
 
 internal class AndroidGalleryTagLexicon(private val context: Context) : GalleryTagLexicon {

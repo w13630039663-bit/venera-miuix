@@ -147,7 +147,8 @@ fun ComicSourceScreen(
                     viewModel.installFromScriptContent(content, uri.lastPathSegment ?: "本地规则")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "读取本地文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                android.util.Log.w("VeneraDebug", "read local source file failed", e)
+                Toast.makeText(context, "这个文件读不出来 🥲 换一个 .js 源文件试试", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1248,7 +1249,7 @@ fun ComicSourceScreen(
                                     Toast.makeText(
                                         context,
                                         if (res.isSuccess) "登录成功"
-                                        else (res.exceptionOrNull()?.message ?: "登录失败"),
+                                        else "登录没成功 🥲 检查一下填的字段是否正确",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                     if (res.isSuccess) cookieLoginTargetKey = null

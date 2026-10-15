@@ -24,6 +24,7 @@ import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.components.venera.hScrollEndContentPadding
 import com.venera.compose.components.venera.hScrollEndFade
+import com.venera.compose.components.venera.SegmentedBackdrop
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
@@ -629,6 +630,8 @@ private fun ImageSectionToggle(
             options = remember { imageSectionEntries },
             selectedIndex = modes.indexOf(section),
             onSelect = { onSectionChange(modes[it]) },
+            // 这一排住在收藏页顶栏那层玻璃上（不是实色卡）⇒ 半透明无描边那一档，逐字维持原样。
+            backdrop = SegmentedBackdrop.Glass,
             modifier = if (wide) Modifier.fillMaxWidth()
             else Modifier.fillMaxWidth(subSegmentedCellWidthFraction * modes.size),
         )
@@ -655,6 +658,8 @@ private fun FavoritesModeToggle(
             options = remember { favoritesModeEntriesWithNetworkFirst },
             selectedIndex = modes.indexOf(mode),
             onSelect = { onModeChange(modes[it]) },
+            // 同上：这一排也在玻璃顶栏上，未选档维持半透明无描边。
+            backdrop = SegmentedBackdrop.Glass,
             // 手机档宽度按「每一段占屏宽 25%」推导：用户当初对**两段**控制器定的口径是
             // 整条 50% 居中，段数变三就是 3×25%。此前宽度写死 50% 没跟着段数走，
             // 三段各分 16.7% 屏宽，四个字的标签全被削成「网…图…本…」。

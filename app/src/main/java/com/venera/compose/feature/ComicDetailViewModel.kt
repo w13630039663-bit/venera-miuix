@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.venera.compose.data.api.ComicContentApi
 import com.venera.compose.data.api.SourceCatalog
+import com.venera.compose.source.humanizeSourceError
+import com.venera.compose.source.isCancellation
 
 /** Root comments and reply threads keep independent cursors and errors. */
 data class DetailCommentState(
@@ -308,11 +310,21 @@ class ComicDetailViewModel(
             } else {
                 val e = res.exceptionOrNull()
                 Log.e("VeneraDebug", "getComicDetails($key) failed for id=${comic.id}", e)
+                // 取消不是错误：切作品 / 退出页面会走到这里，上一版会把内部那句
+                // "The coroutine scope left the composition" 原样写上屏（真机 2026-10-14）。
+                if (isCancellation(e)) return@launch
+                // 登录能力要问一次源（`getAccountInfo()` 会同步跑 JS，必须在 IO 上问）。
+                // 只有它能把这个 401/403 说成"要先登录"而不是"源站拦了"。
+                val loginable = withContext(Dispatchers.IO) {
+                    runCatching { sources.getSource(key)?.getAccountInfo()?.hasAccount == true }
+                        .getOrDefault(false)
+                }
+                if (generation != detailGeneration) return@launch
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         loadingMessage = "",
-                        error = res.exceptionOrNull()?.let { e -> "详情加载失败：${e.message ?: e.javaClass.simpleName}" }
+                        error = humanizeSourceError(e, loginable)
                     )
                 }
             }
@@ -402,7 +414,7 @@ class ComicDetailViewModel(
                     }
                 }
                 .onFailure { e ->
-                    _favPanel.update { it.copy(isLoadingNetwork = false, networkError = e.message ?: "加载网络收藏夹失败") }
+                    _favPanel.update { it.copy(isLoadingNetwork = false, networkError = humanizeSourceError(e, sources.sourceSupportsLogin(key))) }
                 }
         }
     }
@@ -434,7 +446,10 @@ class ComicDetailViewModel(
                     )
                 }
             }.onFailure { e ->
-                _favPanel.update { it.copy(pending = it.pending - folder, toast = e.message ?: "操作失败") }
+                // 本地收藏夹是设备上的库操作，失败原因（SQLite 原文）对用户没有可操作性，
+                // 说清"没成"和"可以再试"就够了。
+                Log.w("VeneraDebug", "toggleLocalFavorite($folder) failed", e)
+                _favPanel.update { it.copy(pending = it.pending - folder, toast = "这一步没成，再试一次") }
             }
         }
     }
@@ -456,7 +471,10 @@ class ComicDetailViewModel(
                         )
                     }
                 }
-                .onFailure { onError(it.message ?: "创建失败") }
+                .onFailure { e ->
+                    Log.w("VeneraDebug", "createFolder($trimmed) failed", e)
+                    onError("新建分组没成功，换个名字再试试")
+                }
         }
     }
 
@@ -494,7 +512,7 @@ class ComicDetailViewModel(
                     _isNetworkFav.value = if (isAdded) false else true
                 }
                 .onFailure { e ->
-                    _favPanel.update { it.copy(pending = it.pending - entryKey, toast = e.message ?: "操作失败") }
+                    _favPanel.update { it.copy(pending = it.pending - entryKey, toast = humanizeSourceError(e, sources.sourceSupportsLogin(key))) }
                 }
         }
     }
@@ -523,7 +541,10 @@ class ComicDetailViewModel(
                 .onSuccess { added ->
                     _favPanel.update { it.copy(toast = if (added) "已收藏到「$target」" else "「$target」里已有这本") }
                 }
-                .onFailure { e -> _favPanel.update { it.copy(toast = e.message ?: "收藏失败") } }
+                .onFailure { e ->
+                    Log.w("VeneraDebug", "quickFavorite($target) failed", e)
+                    _favPanel.update { it.copy(toast = "收藏没成功，再试一次") }
+                }
         }
     }
 
@@ -552,9 +573,9 @@ class ComicDetailViewModel(
                 _uiState.update {
                     it.copy(
                         error = when {
-                            result == null -> "点赞失败：找不到对应漫画源"
-                            result.isFailure -> "点赞失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
-                            else -> "该源不支持作品点赞"
+                            result == null -> "没找到这本所属的源，点赞没生效"
+                            result.isFailure -> humanizeSourceError(result.exceptionOrNull(), sources.sourceSupportsLogin(key))
+                            else -> "这颗源不支持点赞"
                         }
                     )
                 }
@@ -580,9 +601,9 @@ class ComicDetailViewModel(
                     it.copy(
                         userRating = previousRating,
                         error = when {
-                            result == null -> "评分失败：找不到对应漫画源"
-                            result.isFailure -> "评分失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
-                            else -> "该源不支持作品评分"
+                            result == null -> "没找到这本所属的源，评分没生效"
+                            result.isFailure -> humanizeSourceError(result.exceptionOrNull(), sources.sourceSupportsLogin(key))
+                            else -> "这颗源不支持评分"
                         }
                     )
                 }
@@ -668,12 +689,14 @@ class ComicDetailViewModel(
                 }
             }
 
-            val msg = res.exceptionOrNull()?.message ?: "预览图加载失败"
-            Log.w("VeneraDebug", "loadThumbnails($key, cid=${d.comic.id}, loadMore=$loadMore) failed: $msg")
+            val raw = res.exceptionOrNull()?.message ?: "预览图加载失败"
+            Log.w("VeneraDebug", "loadThumbnails($key, cid=${d.comic.id}, loadMore=$loadMore) failed: $raw")
             _uiState.update {
                 it.copy(
                     isLoadingThumbnails = false,
-                    thumbnailError = if (it.thumbnails.isEmpty()) msg else null
+                    thumbnailError = if (it.thumbnails.isEmpty()) {
+                        humanizeSourceError(res.exceptionOrNull(), sources.sourceSupportsLogin(key))
+                    } else null
                 )
             }
         }
@@ -782,7 +805,10 @@ class ComicDetailViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                updateThread { it.copy(isLoading = false, error = e.message ?: "评论加载失败") }
+                // 先算好文案再进 updateThread：那个 lambda 不是挂起上下文，
+                // 而 sourceSupportsLogin 是挂起的（要跑源 JS）。
+                val message = humanizeSourceError(e, sources.sourceSupportsLogin(key))
+                updateThread { it.copy(isLoading = false, error = message) }
             }
         }
         if (replyId == null) commentJob = job else replyJob = job
@@ -831,7 +857,7 @@ class ComicDetailViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (generation == detailGeneration) onComplete(false, e.message ?: "发表失败")
+                if (generation == detailGeneration) onComplete(false, humanizeSourceError(e, sources.sourceSupportsLogin(key)))
             } finally {
                 if (generation == detailGeneration) _uiState.update { it.copy(isSendingComment = false) }
             }
@@ -943,12 +969,15 @@ class ComicDetailViewModel(
             } else {
                 // 解析不出图片就如实报错：**绝不回退到占位图**
                 // （曾用硬编码 Unsplash 图伪造整章，用户会读到与作品无关的图片）
-                val reason = res.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
-                _readerEvents.tryEmit(
-                    ReaderEvent.Failed(
-                        reason ?: "「$chapterTitle」没有解析到任何图片页，请稍后重试或更换源"
-                    )
-                )
+                val failure = res.exceptionOrNull()
+                // 取消不是错误：用户自己切走了，不许弹"这一章读不出来"。
+                if (isCancellation(failure)) return@launch
+                val reason = if (failure != null) {
+                    humanizeSourceError(failure, sources.sourceSupportsLogin(key))
+                } else {
+                    "「$chapterTitle」没有解析到任何图片页，稍后重试或换一颗源"
+                }
+                _readerEvents.tryEmit(ReaderEvent.Failed(reason))
             }
         }
     }

@@ -261,6 +261,8 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override val readerEnhanceBrightness: StateFlow<Float> get() = prefs.readerEnhanceBrightness
     override val reverseChapterOrder: StateFlow<Boolean> get() = prefs.reverseChapterOrder
 
+    override val pageTurnEffect: StateFlow<String> get() = prefs.pageTurnEffect
+
     override fun setDefaultReadingMode(mode: String) = prefs.setDefaultReadingMode(mode)
     override fun setClickToTurn(enable: Boolean) = prefs.setClickToTurn(enable)
     override fun setReverseTapDirection(enabled: Boolean) = prefs.setReverseTapDirection(enabled)
@@ -277,6 +279,7 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override fun setReaderEnhanceSaturation(value: Float) = prefs.setReaderEnhanceSaturation(value)
     override fun setReaderEnhanceBrightness(value: Float) = prefs.setReaderEnhanceBrightness(value)
     override fun setReverseChapterOrder(enabled: Boolean) = prefs.setReverseChapterOrder(enabled)
+    override fun setPageTurnEffect(effect: String) = prefs.setPageTurnEffect(effect)
 }
 
 private class AndroidAppearancePreferences(private val context: Context) : AppearancePreferences {
@@ -431,6 +434,8 @@ private class AndroidSourceCatalog(private val context: Context) : SourceCatalog
     override val availableUpdates: StateFlow<Map<String, String>> get() = manager.availableUpdates
 
     override fun getSource(key: String): ComicSource? = manager.getSource(key)
+
+    override suspend fun sourceSupportsLogin(key: String): Boolean = manager.sourceSupportsLogin(key)
 
     override fun searchTargets(): List<ComicSource> = manager.searchTargets()
 

@@ -200,9 +200,10 @@ class GalleryReverseViewModel(application: Application) : AndroidViewModel(appli
             }.onFailure { e ->
                 hits = emptyList()
                 noResults = false
-                // 原因必须原样落上来：反搜失败的形态与"没有相似图"太像，
-                // 混成一句会让人去换图而不是去过盾 / 配 Key。
-                error = e.message ?: e.javaClass.simpleName
+                // 原因要落上来：反搜失败的形态与"没有相似图"太像，混成一句会让人去换图
+                // 而不是去过盾 / 配 Key。但**不许把类名当理由**（旧写法回退到
+                // `javaClass.simpleName`，屏上会出现 "SauceNaoException" 这种代码）。
+                error = e.message?.takeIf { it.isNotBlank() } ?: "反搜没跑成 🥲 稍后再试，或换一张图"
             }
         }
     }

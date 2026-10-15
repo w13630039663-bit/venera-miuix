@@ -23,6 +23,7 @@ import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.feature.sourcemanage.GalleryAccountCard
 import com.venera.compose.feature.sourcemanage.SauceNaoKeyCard
 import com.venera.compose.gallery.data.GalleryImageLoader
+import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
@@ -82,6 +83,14 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     // 「画成水彩」Beta 开关（2026-10-13）：默认关，见 VeneraPreferences 该条说明。
     val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
 
+    /*
+     * 浏览历史（2026-10-14）。可空读而不是 checkNotNull：这一颗在契约上就是"移动端才有"，
+     * 而设置页属于漫画侧那一棵 —— 读不到就整行不摆。摆一枚永远清不出东西的钮才是假开关，
+     * 少一行设置不是缺陷。
+     */
+    val history = remember { GalleryPorts.of(context).history }
+    val historyRows = history?.rows?.collectAsState()?.value ?: emptyList()
+
     // 磁盘读数与探针一样：都不许在组合期跑（数目录要开文件句柄）。
     var cacheBytes by remember { mutableLongStateOf(-1L) }
     var cacheTick by remember { mutableIntStateOf(0) }
@@ -122,6 +131,26 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         Spacer(Modifier.height(VeneraTokens.spacing.space4))
 
         SettingsGroup("浏览与布局") {
+            // 画廊首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
+            // 与设置页那一条**同机制、不同键不同槽位**：共用一张会让"换画廊的头"顺手改掉设置页，
+            // 反之也一样。未设置 = 首页维持现在的样子（hero 整条链路不参与）。
+            val heroPath by prefs.galleryHeroPath.collectAsState()
+            val heroFile = remember(heroPath) { SettingsHeroImageStore.resolve(heroPath) }
+            val pickGalleryHero = rememberSettingsImagePicker(SettingsHeroImageStore.KIND_GALLERY_HERO) { path ->
+                if (path != null) prefs.setGalleryHeroPath(path)
+            }
+            SettingsAction(
+                title = "更换首页头图",
+                summary = if (heroFile != null) "已设置：只影响画廊首页顶部那一段" else "未设置：首页保持现在的样子",
+            ) { pickGalleryHero() }
+            SettingsAction(
+                title = "恢复默认头图",
+                summary = "清除所选图片",
+                enabled = heroFile != null,
+            ) {
+                SettingsHeroImageStore.clear(context, SettingsHeroImageStore.KIND_GALLERY_HERO)
+                prefs.setGalleryHeroPath("")
+            }
             SettingsSelect(
                 "网格列数", columnMode.name,
                 listOf(
@@ -160,6 +189,17 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 summary = "同样的触发条件，收的是底下那条导航栏。" +
                     "只影响画廊这一屏：切到其他页面它照常出现，不会跟着一起消失。",
             )
+            history?.let { store ->
+                // 张数直接订阅存储件那份名单：清完自己归零，不需要图片缓存那种重取读数。
+                SettingsAction(
+                    "清空画廊浏览历史",
+                    if (historyRows.isEmpty()) "还没有记下看过哪些图" else "当前记了 ${historyRows.size} 张",
+                    onClick = {
+                        scope.launch { store.clear() }
+                        Toast.makeText(context, "浏览历史已清空", Toast.LENGTH_SHORT).show()
+                    },
+                )
+            }
         }
 
         SettingsGroup("缓存") {

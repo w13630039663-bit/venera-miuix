@@ -86,7 +86,7 @@ object SourceHttpDiagnostics {
 private val STATUS_CODE_REGEX = Regex("""status code:?\s*(\d{3})""", RegexOption.IGNORE_CASE)
 
 /**
- * 把源脚本抛出的原始错误补全成可执行的说明。
+ * 把源脚本抛出的原始错误翻成「先说人话、再给技术细节」的一段说明。
  *
  * 源脚本的错误只有状态码，而那个状态码的真实含义往往被丢掉了：
  *
@@ -96,26 +96,33 @@ private val STATUS_CODE_REGEX = Regex("""status code:?\s*(\d{3})""", RegexOption
  * | `Failed to login`（picacg 把非 200 一律压成这句） | 同上 | 同上，**并非账号密码错误** |
  * | `Invalid status code: 401` | `unauthorized` | 需要登录或凭证失效 |
  *
- * 所以这里把 [SourceHttpDiagnostics] 记录到的服务端原文与建议一起拼出来。
- * 「不可用：Invalid status code: 400」这种没有信息量的提示正是排查困难的根源。
+ * ⚠️ 2026-10-14 第三轮改口径：**人话在前，技术细节在后**。
+ * 旧版把 `raw` 原样拼在开头（"不可用：Invalid status code: 400"），屏上第一眼就是代码 ——
+ * 与「界面文案不许带实现笔记」那条硬约束冲突。现在改成：第一句是用户能读懂的动作，
+ * 原始报文收在「技术细节」括号里。
+ *
+ * 这一处**故意保留**原始报文（与其他页面不同）：调用点只有「源可用性测试」和
+ * 「源登录失败」两个位置，都属于**源管理这颗诊断屏** —— 用户到那儿就是为了排查，
+ * 原始报文是他能贴给源作者的唯一凭据，删掉等于把可诊断性一起删掉。
  */
 fun explainSourceFailure(raw: String): String {
     val status = STATUS_CODE_REGEX.find(raw)?.groupValues?.get(1)?.toIntOrNull()
     val server = SourceHttpDiagnostics.recent(status)
 
-    val hint = when {
+    val human = when {
         server != null && server.message.contains("too many", ignoreCase = true) ->
-            "服务端限流，请稍后重试；若走代理，多半是代理出口 IP 被限"
-        status == 429 -> "服务端限流，请稍后重试；若走代理，多半是代理出口 IP 被限"
-        status == 401 || status == 403 -> "需要登录，或登录凭证已失效"
-        status != null && status >= 500 -> "源站服务器故障"
-        raw.contains("not logged in", ignoreCase = true) -> "该源需要先登录后才能搜索"
-        else -> null
+            "源站这会儿在限流 ⏳ 等几分钟再试；走代理的话，多半是代理出口 IP 被限"
+        status == 429 -> "源站这会儿在限流 ⏳ 等几分钟再试；走代理的话，多半是代理出口 IP 被限"
+        status == 401 || status == 403 -> "这颗源要先登录，或者登录凭证过期了 🔑"
+        status != null && status >= 500 -> "源站自己出了点状况 🛠 跟你没关系，过会儿再来"
+        raw.contains("not logged in", ignoreCase = true) -> "这颗源要先登录才能搜索 🔑"
+        else -> "这次没能取到内容 🥲 稍后再试，或换一颗源"
     }
 
     return buildString {
-        append(raw)
-        if (server != null) append("（服务端 ").append(server.code).append(": ").append(server.message).append("）")
-        if (hint != null) append("｜").append(hint)
+        append(human)
+        append("（技术细节：").append(raw)
+        if (server != null) append(" · 服务端 ").append(server.code).append(": ").append(server.message)
+        append("）")
     }
 }

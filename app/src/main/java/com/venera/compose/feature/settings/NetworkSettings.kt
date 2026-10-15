@@ -152,7 +152,8 @@ private fun ProxySettingsDialog(prefs: NetworkPreferences, onDismiss: () -> Unit
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            error = "代理配置生效失败：${failure.message ?: "未知错误"}"
+                            android.util.Log.w("VeneraDebug", "apply proxy failed", failure)
+                            error = "代理没生效 🥲 检查一下地址和端口"
                         } finally {
                             saving = false
                         }

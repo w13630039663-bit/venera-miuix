@@ -1338,7 +1338,7 @@ private fun openInBrowser(context: Context, siteName: String, url: String) {
             Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }.onFailure {
-        Toast.makeText(context, "打不开${siteName}：${it.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "没打开浏览器 🥲 可以复制链接手动打开", Toast.LENGTH_SHORT).show()
     }
 }
 

@@ -2879,3 +2879,57 @@ debug：1407 帧 / janky **6.54%**（legacy 45.91%）/ 50th 11ms / 95th 32ms / *
 
 验证：`:app:testDebugUnitTest` 全量 834 颗 0 失败 0 错误。**观感是否真的不闪只有真机能定**，
 本环境不代操作设备。
+
+---
+
+## 冻结面外观豁免 · 探索页改版（2026-10-14，H 批）
+
+`UnifiedExploreScreen.kt` 是 FROZEN 名单第一行，本轮属于**冻结面外观改动**，记一节豁免：
+
+- **用户当句拍板原话**：「可以就这样吧」—— 2026-10-14 先出稿（闸门 A，稿见
+  `_qa/explore-redesign-2026-10-14/mockups-d.png`，折叠态 + 展开态四格）后点头，再动代码。
+- **改了什么**：源选择器由 LazyRow 药丸行换成官方 M3 `ExposedDropdownMenuBox`；
+  模式药丸行去掉 `SectionHeader("探索方式")` 且 `size <= 1` 整行不渲染；
+  通用标签整块改由动作行「筛选 · N」就地撑开（那行提示文字删）；
+  `SectionHeader("本源分类")` 换成「分类 · N」按钮，榜档与分类组进同一展开区；
+  独占一行的 `FilterActiveBar` 降级成动作行右槽；顶栏加 `subtitle = 源名 · 模式名`，
+  并配 `contentPadding.top` 的副标题地板补偿（`topBarSubtitleExtra`，出处见 `Spacing.kt` 头注）。
+- **两条 manager 取用点未动**：`remember { ComicSourceManager.getInstance(context) }` 与
+  `remember { ContentGuardManager.getInstance(context) }` 逐字未改、未迁、未换成注入。
+- **miuix 对账口径**：下拉 = 结构性缺口，走 M3 官方件（miuix `ListPopup` 锚定不兼容，
+  旧结论记在 `ComicDetailScreen.kt`）。不引任何第三方依赖。
+- 新判据落在 `UiAuditBatch7Test`（4 条）+ `ExplorePolicyTest`（4 条）；
+  `UiAuditBatch4Test` 第 ⑤ 条随「本源分类」节头换成按钮而**改判**（精神不变：
+  可见性判式仍同时看 `visibleSections` 与榜档非空）。
+
+---
+
+## 2026-10-15 追加：搜索卡按参考图改版（动了一个 FROZEN 文件的调用参数）
+
+用户口径「根据他这种的ui优化下，你看情况点，其他的按照你说」。**改到共享组件**
+`components/venera/VeneraSegmentedButton.kt`：新加一枚必填的 `backdrop`（`Glass` / `Opaque`），
+`Opaque` 档给**未选中格**加一根 `hairline` 描边。加它的原因是一条现量读数：搜索卡里那一排
+分段器住在实色卡底（`surfaceContainerHigh`）上，未选中格从前**没有任何边界** —— 与卡底
+**1.02:1**，读起来就是"灰字浮在灰底上，不知道能不能点"。同一类病还有历史筹码
+（`Neutral` 那层填充与卡片同颗），那一格换成现成的 `Assist`，没造新数字。
+
+### 为什么是必填而不是默认值
+
+`Glass` 是**今天的行为**（半透明、无描边），而它必须写在调用点上：默认值会让"这排长在玻璃上
+还是长在卡上"这件事从代码里消失，下一批新增调用点时没人被提醒去选 —— 本仓已经吃过一次
+「漏传不报错的参数不要用默认值」（手册同族条目）。所以签名逼三处调用点各自表态。
+
+### 冻结面
+
+`FavoritesScreen.kt`（2026-09-18 第三批冻结）被改，**只加了两枚 `backdrop = SegmentedBackdrop.Glass`
+与一行 import 和两行注释**：`Glass` 档逐字等于改前的渲染（无描边、半透明），
+收藏页那两排的外观、几何常量、状态机、选中语义一字未动，是一枚**外观中性的必填参数补齐**。
+`Navigation.kt`（第二批「导航层」冻结）这一批只加了首页头图的两行接线（装配根读路径、递给画廊那一屏），
+Tab 枚举顺序、`currentTab` 判据串、路由结构一字未动。
+
+构建：`testDebugUnitTest` 全量 **1215 条 0 失败 0 错误** / `assembleDebug` 绿；
+本批新判据 12 条（`GalleryHomeChromeTest` 5 + `GalleryHeroWiringTest` 5 + `BottomNavAccentThemeTest` 2），
+三笔扰动全咬住、零残留，台账见手册 §189。
+**待真机验**：三档主题（MD3 动态 / MIUIX / 浅色）下卡内那排未选中格的描边是否读得出"可点"
+（`outline` 在浅色卡底上是另一档对比度），以及收藏页那两排在玻璃上确实没长出描边。
+

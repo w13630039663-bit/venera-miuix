@@ -1,5 +1,6 @@
 package com.venera.compose.feature.explore
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,18 +13,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,7 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +58,7 @@ import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicSharedTransition
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.ComicTileDetailed
+import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberContentWidth
@@ -59,6 +72,8 @@ import com.venera.compose.components.venera.VeneraTagChip
 import com.venera.compose.feature.ComicItem
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.humanizeSourceError
+import com.venera.compose.source.isCancellation
 import com.venera.compose.source.explore.ExploreMode
 import com.venera.compose.source.explore.NativeEntry
 import com.venera.compose.source.explore.NativeSection
@@ -78,6 +93,7 @@ import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import com.venera.compose.components.venera.VeneraTopBarPill
@@ -87,11 +103,18 @@ import com.venera.compose.components.venera.VeneraTopBarPill
  *
  * 结构（严格对应「合并页面入口，而不是合并数据体系」）：
  *
- *   第一层 选漫画源      [Picacg] [nhentai] [禁漫天堂] [ehentai]
+ *   第一层 选漫画源      源下拉（探测失败的源保留在列表里，进得去、有重试）
  *   第二层 探索方式      —— 只显示**当前源真正支持**的（随机/最新/H24/D7/排行榜…）
- *   第三层 该源原生分类  —— 分类 / Tag / 专题，全部来自当前源自己的声明
- *   （辅助）通用标签     —— 应用层可选映射，绝不覆盖源的原生 Tag
+ *   第二层 该源原生分类  —— 分类 / Tag / 专题，**常驻**摊着（探索 = 浏览，分类是主干道）
+ *   （辅助）通用标签     —— 折在「筛选 · N」按钮里点开（筛选是辅助动作）
  *   底部   作品列表
+ *
+ * 2026-10-14 两轮迭代的结论：
+ *  - 折叠那一轮（筛选/分类折进按钮、副标题念源名·模式名）被真机读数否掉：
+ *    分类折起来 =「要先点一下才看得见能逛什么」。分类回常驻，副标题整个删掉
+ *    （源名在源下拉格里、模式名在模式行实心选中态上，两处都在屏上）。
+ *  - 探测容错：源探测失败的源不再被剔除（网络抖动不该让源凭空消失），
+ *    保留在下拉里标注「暂不可达」，内容区摆「重新检测」。
  *
  * Batch 1（卡片与状态统一落地）：
  *  - R6  ContentGuardManager 数据过滤 + VeneraCover(mask) 打码；规则变化重放。
@@ -103,8 +126,7 @@ import com.venera.compose.components.venera.VeneraTopBarPill
  *  - R2  顶栏 ComicLayoutToggleButton，接入全局 rememberComicListDisplayMode；
  *        detailed 单列复用 ComicTileDetailed（coverMaskState 同步传递给封面）。
  *  - V4  列数 = comicListColumnCount(displayMode)（brief 双列 / detailed 单列，与
- *        Home/Favorites/NetworkFavorites 同源）。注意：exploreColumnCount 是给源选择器
- *        的网格展开用的（coerceAtLeast(3)），**不用于漫画卡片**。
+ *        Home/Favorites/NetworkFavorites 同源）。
  *  - 网格虚拟化：全页唯一 LazyColumn，items(comics.chunked(columns)) 逐行挂载，
  *        每行是独立 LazyItem 参与回收；绝不在 item 内嵌套同向 LazyVerticalGrid
  *        （会因无界最大高度直接抛 IllegalStateException）。
@@ -165,12 +187,25 @@ fun UnifiedExploreScreen(
         sourceError = null
         try {
             val list = sourceManager.getSourceExplorations()
-            explorations = list
-            val kept = state.selectedSourceKey?.takeIf { key -> list.any { it.sourceKey == key } }
-            state.selectedSourceKey = kept ?: list.firstOrNull()?.sourceKey
+            // 缓存兜底：本轮探测失败的源，若上次成功过，沿用上次的结果 —— 网络抖动不该让源消失。
+            val merged = list.map { item ->
+                if (item.probeFailed) {
+                    vm.lastGoodExplorations.firstOrNull { it.sourceKey == item.sourceKey } ?: item
+                } else {
+                    item
+                }
+            }
+            vm.lastGoodExplorations = merged.filter { !it.probeFailed }
+            explorations = merged
+            val kept = state.selectedSourceKey?.takeIf { key -> merged.any { it.sourceKey == key } }
+            state.selectedSourceKey = kept ?: merged.firstOrNull { !it.probeFailed }?.sourceKey
+                ?: merged.firstOrNull()?.sourceKey
             vm.sourcesLoadedForTick = refreshTick
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            sourceError = e.message ?: "加载漫画源失败"
+            // 源列表探测失败：这句话说的是"源"这一层，不走源报错文案（那是单颗源的失败）。
+            sourceError = "没能读到已装的漫画源 🧩 检查下「漫画源」里有没有启用，或重新检测一次"
         } finally {
             isLoadingSources = false
         }
@@ -223,17 +258,29 @@ fun UnifiedExploreScreen(
             val raw = fetchPageParts(src, mode, 1)
             accumulatedParts = raw
             currentPage = 1
-            // 筛选结果是平铺列表，永远不按分区渲染。
+            // 筛选结果是平铺列表，永远不按分区渲染。多分区页（singlePageWithMultiPart /
+            // multiPartPage）与 mixed 的第 1 页都按分区渲染 —— mixed 的第 2 页起是裸列表，
+            // 会被下面的「单分区且标题为空」判式自动打回平铺。
             showAsSections = vm.unifiedFilter == null &&
-                mode.kind == ExploreMode.Kind.EXPLORE_MULTI_PART &&
+                (mode.kind == ExploreMode.Kind.EXPLORE_MULTI_PART ||
+                    mode.kind == ExploreMode.Kind.EXPLORE_MIXED) &&
                 !(raw.size == 1 && raw.first().title.isBlank())
-            // 旧版口径：singlePageWithMultiPart 是单页结构，永远没有下一页；筛选结果可翻页。
+            // 旧版口径：多分区页是单页结构，永远没有下一页；分页列表与 mixed 可翻页，筛选结果也可翻页。
             hasMore = (vm.unifiedFilter != null || mode.kind != ExploreMode.Kind.EXPLORE_MULTI_PART) &&
                 raw.any { it.comics.isNotEmpty() }
             content = buildExploreContent(guardManager, raw, showAsSections, 1, hasMore, nsfwMaskMode)
             vm.contentLoadedKey = loadKey
+        } catch (e: CancellationException) {
+            // 取消是控制流：切源 / 按刷新 / 离开这一页都会走到这儿。**必须原样抛回**，
+            // 否则 `catch (e: Exception)` 会把它读成"加载失败"并把内部那句话念上屏
+            // （真机 2026-10-14：拷贝漫画偶发 "The coroutine scope left the composition"）。
+            throw e
         } catch (e: Exception) {
-            contentError = e.message ?: "加载失败"
+            // 取消的第二种形态：类型不是 CancellationException，但 message 明说"scope 走了"
+            // （Compose 在个别取消路径上会把原因包成普通异常）。这种同样不许上屏 —— 静默退出。
+            if (isCancellation(e)) return@LaunchedEffect
+            android.util.Log.w("VeneraDebug", "explore 内容加载失败: ${src.sourceKey}", e)
+            contentError = humanizeSourceError(e, src.supportsLogin)
         } finally {
             isLoadingContent = false
         }
@@ -255,8 +302,14 @@ fun UnifiedExploreScreen(
                 currentPage = next
                 hasMore = raw.isNotEmpty() && raw.any { it.comics.isNotEmpty() }
                 content = buildExploreContent(guardManager, accumulatedParts, showAsSections, next, hasMore, nsfwMaskMode)
+            } catch (e: CancellationException) {
+                // 同上：取消不是错误。
+                throw e
             } catch (e: Exception) {
-                loadMoreError = e.message ?: "加载失败"
+                // 同上：取消的第二种形态（message 里写着 scope 走了）静默退出，不上屏。
+                if (isCancellation(e)) return@launch
+                android.util.Log.w("VeneraDebug", "explore 触底加载失败: ${src.sourceKey}", e)
+                loadMoreError = humanizeSourceError(e, src.supportsLogin)
             } finally {
                 isLoadingMore = false
             }
@@ -274,6 +327,10 @@ fun UnifiedExploreScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    // 顶栏**不放副标题**（2026-10-14 删）：源名在源下拉格里，模式名在模式行的实心
+    // 选中态上 —— 两处都在屏上，副标题再说一遍就是「禁漫天堂 · 禁漫天堂」那种同词两遍
+    // （真机读数原话）。为兜它还要配一个 24dp 的地板补偿项，删掉副标题那笔账也一起没了。
 
     Box(Modifier.fillMaxSize()) {
         // 通用标签的可用性只依赖当前源，提前算好（LazyListScope 内不能调用 remember）。
@@ -339,7 +396,7 @@ fun UnifiedExploreScreen(
         ) {
             if (explorations.isNotEmpty()) {
                 item(key = "source-picker") {
-                    SourcePicker(
+                    SourceDropdownField(
                         sources = explorations,
                         selectedKey = currentSource?.sourceKey,
                         enabled = !isLoadingSources,
@@ -348,6 +405,8 @@ fun UnifiedExploreScreen(
                             // 筛选是「源内」的（走本源搜索接口），切源必须清掉，
                             // 否则会拿着上一个源的标签在新源里瞎搜。
                             vm.unifiedFilter = null
+                            // 筛选展开区也收起：换源等于重新挑，摊着上一源的标签没有意义。
+                            vm.filterExpanded = false
                         },
                     )
                 }
@@ -373,18 +432,22 @@ fun UnifiedExploreScreen(
             val src = currentSource ?: return@LazyColumn
             val activeFilter = vm.unifiedFilter
 
-            // ══ 上方区块：通用 / 跨源快捷筛选 ══
-            // 这里的每一项都**不跳转**，点了直接刷新本页内容区，方便和探索方式组合着用。
+            // ══ 上方区块：模式 / 筛选 / 分类三个入口，2026-10-14 改版 ══
             //
-            // ⚠️ 这一层**不再另摆一枚总标题**（2026-10-14 手机档读数）：它管的两块各自带题
-            // （ExploreModeRow 念「探索方式」、UnifiedTagBlock 念自己的名），
+            // 折叠态首屏只留三件事：源是谁、模式是哪个、要不要挑什么。
+            // 「挑什么」收进**一枚动作行**里的两枚按钮，点开就地撑开在它下面 ——
+            // 不是弹层、不是新页、也没有「确定」那一步（筛选条件即选即查）。
+            //
+            // ⚠️ 这一层**不再另摆一枚总标题**（2026-10-14 手机档读数）：它管的三块各自带题，
             // 再套一层「快捷筛选」就是两行标题压一行药丸 —— 层级重复是那一屏"像没加载完"的另一半成因。
-            // 榜档不进探索方式行：它们改在下方「本源分类」里逐档成入口（见 rankingSection），
+            //
+            // 模式行：只有一枚模式时整行不渲染（没得选就不摆），模式名交给顶栏副标题说。
+            // 榜档不进探索方式行：它们改在下方「分类」的展开区里逐档成入口（见 rankingSection），
             // 同一动作留两个入口是噪声。modes 数据面照旧带着 RANKING —— 内容取数与选中态
             // 解析都靠它，只是这一行不摆。
             val pageModes = src.modes.filterNot { it.kind == ExploreMode.Kind.RANKING }
 
-            if (pageModes.isNotEmpty()) {
+            if (exploreModeRowVisible(pageModes)) {
                 item(key = "modes-" + src.sourceKey) {
                     ExploreModeRow(
                         modes = pageModes,
@@ -394,14 +457,37 @@ fun UnifiedExploreScreen(
                             // 选探索方式即退出标签筛选 —— 否则两个数据来源同时生效，
                             // 用户看不出下面这份列表到底是从哪来的。
                             vm.unifiedFilter = null
+                            vm.filterExpanded = false
                             modeTick++
                         },
                     )
                 }
             }
 
-            if (!unifiedAvailability.isEmpty) {
-                item(key = "unified-" + src.sourceKey) {
+            // ── 动作行：筛选一枚开关 + 右槽念生效中的筛选 ──
+            // 分类**不再收进按钮**（2026-10-14 改回去常驻）：探索 = 浏览，分类就是主干道，
+            // 折进按钮等于"先点一下才看得见能逛什么"（用户原话：需要手动点击才显示不好）。
+            // 右槽把原先独占一行的 FilterActiveBar 的信息与「清除」把手一起搬过来。
+            val filterCount = filterEntryCount(unifiedAvailability)
+            if (filterCount > 0 || activeFilter != null) {
+                item(key = "actions-" + src.sourceKey) {
+                    ExploreActionRow(
+                        filterCount = filterCount,
+                        activeFilterLabel = activeFilter?.label,
+                        filterExpanded = vm.filterExpanded,
+                        onToggleFilter = {
+                            vm.filterExpanded = !vm.filterExpanded
+                        },
+                        onClearFilter = { vm.unifiedFilter = null },
+                    )
+                }
+            }
+
+            // ── 展开态 · 筛选：动作行下面就地撑开通用标签 FlowRow ──
+            // 门控是 filterExpanded && 真有标签：后者正是"点开没东西的按钮不许出现"的判式，
+            // 与这一枚 button 是否渲染用的是同一把尺子。
+            if (vm.filterExpanded && !unifiedAvailability.isEmpty) {
+                item(key = "filter-open-" + src.sourceKey) {
                     UnifiedTagBlock(
                         tags = unifiedAvailability.available,
                         selectedTag = activeFilter,
@@ -413,79 +499,72 @@ fun UnifiedExploreScreen(
                 }
             }
 
-            if (activeFilter != null) {
-                item(key = "unified-filter-active-" + src.sourceKey) {
-                    FilterActiveBar(
-                        label = activeFilter.label,
-                        onClear = { vm.unifiedFilter = null },
-                    )
+            // ══ 分类区：常驻（榜档组 + 分类组）══
+            //
+            // 2026-10-14 改回常驻：折叠那一轮把分类折进「分类 · N」按钮，用户原话
+            // "需要手动点击才显示不好" —— 浏览场景里分类就是内容本身，藏起来等于没有。
+            // 首屏仍按组顺序只露前 SECTION_ENTRY_BUDGET 个入口，尾巴由「更多分类」放出。
+            //
+            // ⚠️ 判据整串钉在 UiAuditBatch4Test：宁可没入口，也不留一行空区。
+            val hasAnyCategoryEntry = visibleSections.isNotEmpty() || src.rankingSection?.items?.isNotEmpty() == true
+            if (hasAnyCategoryEntry) {
+                // 榜排在分类组之前，且**不吃组预算**：它是这一轮点名要够得着的东西，
+                // 排进预算就会被 mh1234 那种大组整组顶掉。点它 = 页内切到该档（不跳二级页），
+                // 与上方「快捷筛选」同一套互斥纪律 —— 留着标签筛选就说不清列表是哪来的。
+                src.rankingSection?.takeIf { it.items.isNotEmpty() }?.let { ranking ->
+                    item(key = "ranking-" + src.sourceKey) {
+                        val active = state.resolveMode(src.sourceKey, src.modes)
+                            ?.takeIf { it.kind == ExploreMode.Kind.RANKING }
+                            ?.let { mode -> ranking.items.firstOrNull { it.rankingOption == mode.rankingOption } }
+                        NativeSectionBlock(
+                            section = ranking,
+                            selectedEntry = active,
+                            onEntryClick = { entry ->
+                                val mode = src.modes.firstOrNull {
+                                    it.kind == ExploreMode.Kind.RANKING &&
+                                        it.rankingOption == entry.rankingOption
+                                }
+                                if (mode != null) {
+                                    state.selectMode(src.sourceKey, mode.id)
+                                    vm.unifiedFilter = null
+                                    modeTick++
+                                }
+                            },
+                        )
+                    }
                 }
-            }
 
-            // ══ 下方区块：本源专属分类入口 ══
-            // 榜档逐档入口 + 源专属分类组。分类组一律跳二级列表页（与现有习惯一致），
-            // 默认只露前 ExploreViewModel.SECTION_ENTRY_BUDGET 个入口（单组再套
-            // SECTION_ITEM_CAP），其余收进「更多分类」。
-            if (visibleSections.isNotEmpty() || src.rankingSection?.items?.isNotEmpty() == true) {
-                item(key = "sections-header-" + src.sourceKey) { SectionHeader("本源分类") }
-            }
-
-            // 榜排在分类组之前，且**不吃组预算**：它是这一轮点名要够得着的东西，
-            // 排进预算就会被 mh1234 那种大组整组顶掉。点它 = 页内切到该档（不跳二级页），
-            // 与上方「快捷筛选」同一套互斥纪律 —— 留着标签筛选就说不清列表是哪来的。
-            src.rankingSection?.takeIf { it.items.isNotEmpty() }?.let { ranking ->
-                item(key = "ranking-" + src.sourceKey) {
-                    val active = state.resolveMode(src.sourceKey, src.modes)
-                        ?.takeIf { it.kind == ExploreMode.Kind.RANKING }
-                        ?.let { mode -> ranking.items.firstOrNull { it.rankingOption == mode.rankingOption } }
+                itemsIndexed(
+                    visibleSections,
+                    key = { index, section -> "sec-" + src.sourceKey + "-" + index + "-" + section.name }
+                ) { _, section ->
                     NativeSectionBlock(
-                        section = ranking,
-                        selectedEntry = active,
+                        section = section,
                         onEntryClick = { entry ->
-                            val mode = src.modes.firstOrNull {
-                                it.kind == ExploreMode.Kind.RANKING &&
-                                    it.rankingOption == entry.rankingOption
-                            }
-                            if (mode != null) {
-                                state.selectMode(src.sourceKey, mode.id)
-                                vm.unifiedFilter = null
-                                modeTick++
-                            }
+                            onOpenNativeSection(
+                                NativeSectionArgs(
+                                    sourceKey = src.sourceKey,
+                                    sourceTitle = src.sourceName,
+                                    category = entry.label,
+                                    // page/keyword 原样带上：search 型项的 param 恒为 null，
+                                    // 只靠 label+param 无法判断该走搜索还是分类（见 NativeEntry.page）。
+                                    param = entry.param,
+                                    page = entry.page,
+                                    keyword = entry.keyword,
+                                )
+                            )
                         },
                     )
                 }
-            }
 
-            itemsIndexed(
-                visibleSections,
-                key = { index, section -> "sec-" + src.sourceKey + "-" + index + "-" + section.name }
-            ) { _, section ->
-                NativeSectionBlock(
-                    section = section,
-                    onEntryClick = { entry ->
-                        onOpenNativeSection(
-                            NativeSectionArgs(
-                                sourceKey = src.sourceKey,
-                                sourceTitle = src.sourceName,
-                                category = entry.label,
-                                // page/keyword 原样带上：search 型项的 param 恒为 null，
-                                // 只靠 label+param 无法判断该走搜索还是分类（见 NativeEntry.page）。
-                                param = entry.param,
-                                page = entry.page,
-                                keyword = entry.keyword,
-                            )
+                if (hiddenEntryCount > 0 || vm.sectionsExpanded) {
+                    item(key = "sections-more-" + src.sourceKey) {
+                        SectionMoreButton(
+                            hiddenCount = hiddenEntryCount,
+                            expanded = vm.sectionsExpanded,
+                            onClick = { vm.sectionsExpanded = !vm.sectionsExpanded },
                         )
-                    },
-                )
-            }
-
-            if (hiddenEntryCount > 0 || vm.sectionsExpanded) {
-                item(key = "sections-more-" + src.sourceKey) {
-                    SectionMoreButton(
-                        hiddenCount = hiddenEntryCount,
-                        expanded = vm.sectionsExpanded,
-                        onClick = { vm.sectionsExpanded = !vm.sectionsExpanded },
-                    )
+                    }
                 }
             }
 
@@ -498,20 +577,123 @@ fun UnifiedExploreScreen(
                 }
             }
 
+            // 换到下一颗源：空态与错误态共用（同一套纪律：切源清筛选、筛选区收起）。
+            // `src` 是本作用域的本地解构，非空（这一支只有 explorations 非空才到）。
+            val switchToNextSource: () -> Unit = {
+                val idx = explorations.indexOfFirst { it.sourceKey == src.sourceKey }
+                val nextSource = explorations.getOrNull(idx + 1)
+                    ?: explorations.firstOrNull { it.sourceKey != src.sourceKey }
+                if (nextSource != null) {
+                    state.selectedSourceKey = nextSource.sourceKey
+                    vm.unifiedFilter = null
+                    vm.filterExpanded = false
+                }
+            }
+
             val isDetailed = displayMode.value == "detailed"
 
             when {
                 isLoadingContent -> item { CenteredLoader() }
                 contentError != null -> item {
+                    Column {
+                        VeneraEmptyView(
+                            title = "探索内容加载失败",
+                            message = contentError.orEmpty(),
+                            actionText = "重试",
+                            onAction = { modeTick++ },
+                        )
+                        // 错误态也给换源出口：403 这类源站拒绝，重试未必立刻好，
+                        // 换一颗源是更快的出路（只有多于一颗源才摆 —— 一颗源时摆了也是假的）。
+                        if (explorations.size > 1) {
+                            Spacer(Modifier.height(VeneraTokens.spacing.space4))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    VeneraTokens.spacing.chipSpacing,
+                                    Alignment.CenterHorizontally,
+                                ),
+                            ) {
+                                VeneraChip(
+                                    text = "换一颗源",
+                                    trailingIcon = Icons.Filled.ExpandMore,
+                                    onClick = switchToNextSource,
+                                )
+                            }
+                        }
+                    }
+                }
+                // 探测失败的源：能力未知，摆的是「重新检测」（重探源）而不是「重试」（重拉内容）——
+                // 内容 effect 对这颗源必然空转，重试按钮走 refreshTick 才真有用。
+                src.probeFailed -> item {
                     VeneraEmptyView(
-                        title = "探索内容加载失败",
-                        message = contentError.orEmpty(),
-                        actionText = "重试",
-                        onAction = { modeTick++ },
+                        title = "这颗源暂时探测不到",
+                        message = "探索能力检测失败，可能是网络波动。重新检测一下，或换一颗源看看。",
+                        actionText = "重新检测",
+                        onAction = { refreshTick++ },
                     )
                 }
                 content.isEmpty -> item {
-                    VeneraEmptyView(message = "该探索方式暂无内容")
+                    // ── 空态：只说「这一格空的」，并且**给下一步**（2026-10-14 改版）──
+                    //
+                    // 改版前这里只有一句「该探索方式暂无内容」—— 那是把责任推给用户的死话：
+                    // 用户读完不知道该改什么，能做的只有退出这一页。出路都在手边：
+                    // 换个探索方式（模式行）、挑一个分类（分类区就在这屏上面常驻摊着）、
+                    // 或者换一颗源（源下拉）。分类常驻后「挑一个分类」那枚 chip 已删 ——
+                    // 分类区就在空态上面，再摆一枚按钮就是假入口。
+                    //
+                    // 剩下两枚的显隐一律跟着「那一条路真的存在」：
+                    //  - 模式行：只有一枚模式时那行整行不渲染（exploreModeRowVisible），
+                    //    这里也不摆 —— 摆一枚切不动当前模式的按钮就是假开关；
+                    //  - 换源：explorations 多于一颗才有得换，一颗源时摆出来也是假的。
+                    // ⚠️ 判式不许改成"摆满显得热闹"：本仓栽过"判式里写着那个名字、
+                    //    喂饱了自己"（UiAuditBatch7Test ① 认的是整串表达式）。
+                    VeneraEmptyView(
+                        title = "这一格现在没有内容",
+                        message = when {
+                            activeFilter != null ->
+                                "「${activeFilter.label}」在这个源里没有匹配的作品，换个标签或清除筛选。"
+                            else ->
+                                "当前源的这个探索方式没有返回作品。换一种方式，或直接挑一个分类去看。"
+                        },
+                        tone = VeneraEmptyTone.Nothing,
+                    )
+                    // 空态出路只剩两枚：「挑一个分类」那一枚随分类常驻删掉 ——
+                    // 分类区就在空态上面摊着，再摆一枚"挑一个分类"的按钮是假入口。
+                    if (exploreModeRowVisible(pageModes) || explorations.size > 1) {
+                        Spacer(Modifier.height(VeneraTokens.spacing.space4))
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            VeneraTokens.spacing.chipSpacing,
+                            Alignment.CenterHorizontally,
+                        ),
+                    ) {
+                        if (exploreModeRowVisible(pageModes)) {
+                            // 「换一种方式」= 把模式行那一屏 chip 的逻辑搬到空态这里：
+                            // 点击即切到下一枚模式，与模式行 onclick 同一颗 prefs/state 写入口。
+                            VeneraChip(
+                                text = "换一种方式",
+                                onClick = {
+                                    val next = pageModes.firstOrNull { it.id != state.resolveMode(src.sourceKey, src.modes)?.id }
+                                        ?: pageModes.first()
+                                    state.selectMode(src.sourceKey, next.id)
+                                    // 选探索方式即退出标签筛选 —— 否则两个数据来源同时生效，
+                                    // 用户看不出下面这份列表到底是从哪来的（与模式行同一纪律）。
+                                    vm.unifiedFilter = null
+                                    vm.filterExpanded = false
+                                    modeTick++
+                                },
+                            )
+                        }
+                        if (explorations.size > 1) {
+                            VeneraChip(
+                                text = "换一颗源",
+                                trailingIcon = Icons.Filled.ExpandMore,
+                                onClick = switchToNextSource,
+                            )
+                        }
+                    }
                 }
                 content is ExploreContent.Sections -> {
                     // 先解构局部变量：LazyListScope lambda 内对 sealed 成员的智能转换不可靠。
@@ -628,6 +810,7 @@ private suspend fun fetchModeParts(
         )
     }
     ExploreMode.Kind.EXPLORE_MULTI_PART,
+    ExploreMode.Kind.EXPLORE_MIXED,
     ExploreMode.Kind.EXPLORE_PAGE -> {
         manager.loadExplorePage(source.sourceKey, mode.pageIndex, page).fold(
             onSuccess = { it },
@@ -679,22 +862,140 @@ private fun buildExploreContent(
  * 第一层：漫画源
  * ------------------------------------------------------------------ */
 
+/**
+ * 源选择器：大卡片锚点 + 自绘下拉（2026-10-14 第二版，用户点名「改成这种比较大的显示」）。
+ *
+ * 为什么自绘而不是官方 `ExposedDropdownMenuBox`：那一件在深色主题下弹的是半透明
+ * surface 菜单、锚点格也没有描边，与本仓其余 5 处 `DropdownMenu`（实底菜单 +
+ * 描边锚点，见 SearchScreen 的 SearchDropdownOption）是两套视觉语言 —— 探索页是
+ * 工具栏，违和写在脸上。
+ *
+ * 锚点是一张**两行卡片**：书本图标 + 源名（大号加粗）+ 「当前漫画源 · 点击切换」+ 箭头。
+ * 一行细条读不出「这里能换源」（用户 2026-10-14 报「改成比较大的显示」），
+ * 副标题把这一格的用途写死在脸上，源名过长时靠 `Ellipsis` 收尾，不换行、不撑高。
+ *
+ * 菜单宽度 = 锚点宽度（用户点名「点击后有和这个框一样宽度的下拉框」）：锚点实测宽经
+ * `onSizeChanged` 记下，再按密度折回 dp 喂给 `DropdownMenu`。首帧还没量到时退回内容自适应，
+ * 免得弹出一个 0dp 的空菜单。
+ *
+ * 34 颗源一屏放不下：菜单内容是纵向滚动的 Column，上限约 6 行源项
+ * （`sheetActionHeight * 6`，吃既有 token，不造新数）。
+ *
+ * `enabled` 不是装饰：源列表还在拉时点它只会弹出一个空菜单，所以这一格直接置灰。
+ */
 @Composable
-private fun SourcePicker(
+private fun SourceDropdownField(
     sources: List<SourceExploration>,
     selectedKey: String?,
     enabled: Boolean,
     onSelect: (String) -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing)) {
-        items(sources, key = { it.sourceKey }) { source ->
-            val selected = source.sourceKey == selectedKey
-            VeneraChip(
-                text = source.sourceName,
-                selected = selected,
-                enabled = enabled,
-                onClick = { if (!selected) onSelect(source.sourceKey) },
-            )
+    var expanded by remember { mutableStateOf(false) }
+    val current = sources.firstOrNull { it.sourceKey == selectedKey }
+    // 锚点实测宽（px）。菜单要跟它等宽，见上面那条注释。
+    var anchorWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    Box {
+        Surface(
+            shape = RoundedCornerShape(VeneraTokens.shape.large),
+            color = VeneraTokens.color.surfaceContainerHigh,
+            border = BorderStroke(VeneraTokens.spacing.hairlineThin, VeneraTokens.color.outlineVariant),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { anchorWidthPx = it.width }
+                .clickable(enabled = enabled) { expanded = true },
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = VeneraTokens.spacing.chipHorizontalPadding,
+                    vertical = VeneraTokens.spacing.space6,
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space6),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                    contentDescription = null,
+                    tint = VeneraTokens.color.primary,
+                    modifier = Modifier.size(VeneraTokens.spacing.space10),
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space1),
+                ) {
+                    Text(
+                        text = current?.sourceName ?: "选择漫画源",
+                        fontSize = VeneraTokens.type.itemTitle,
+                        fontWeight = VeneraTokens.type.weightBold,
+                        color = if (current != null) VeneraTokens.color.textPrimary else VeneraTokens.color.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "当前漫画源 · 点击切换",
+                        fontSize = VeneraTokens.type.caption,
+                        color = VeneraTokens.color.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = VeneraTokens.color.textTertiary,
+                    modifier = Modifier.size(VeneraTokens.spacing.space9),
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            // 菜单与锚点等宽；锚点未量到时（首帧）不加宽度约束，退回内容自适应。
+            modifier = if (anchorWidthPx > 0) {
+                Modifier.width(with(density) { anchorWidthPx.toDp() })
+            } else {
+                Modifier
+            },
+            shape = RoundedCornerShape(VeneraTokens.shape.large),
+            containerColor = VeneraTokens.color.surface,
+            border = BorderStroke(VeneraTokens.spacing.hairlineThin, VeneraTokens.color.outlineVariant),
+        ) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = VeneraTokens.spacing.sheetActionHeight * 6)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                sources.forEach { source ->
+                    val selected = source.sourceKey == selectedKey
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = source.sourceName,
+                                    color = if (selected) {
+                                        VeneraTokens.color.primary
+                                    } else {
+                                        VeneraTokens.color.textPrimary
+                                    },
+                                )
+                                // 探测失败的源在菜单里就标明身份：不是这颗源不能探索，
+                                // 是这次没探测出来 —— 点进去有重试。
+                                if (source.probeFailed) {
+                                    Text(
+                                        text = "暂不可达 · 点击进入可重试",
+                                        fontSize = VeneraTokens.type.caption,
+                                        color = VeneraTokens.color.textTertiary,
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            if (!selected) onSelect(source.sourceKey)
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -736,17 +1037,17 @@ private fun ExploreModeRow(
     selectedId: String?,
     onSelect: (ExploreMode) -> Unit,
 ) {
-    Column {
-        SectionHeader("探索方式")
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing)) {
-            items(modes, key = { it.id }) { mode ->
-                val selected = mode.id == selectedId
-                VeneraChip(
-                    text = mode.label,
-                    selected = selected,
-                    onClick = { if (!selected) onSelect(mode) },
-                )
-            }
+    // ⚠️ 这里**不再有** `SectionHeader("探索方式")`：源名已经在副标题里，模式行摊在它下面
+    // 人人都看得懂，再压一枚 25dp 的标题就是 chrome 里最贵的那一行（UiAuditBatch7Test 钉着）。
+    // 整行的显隐见 `exploreModeRowVisible`：只有一枚模式时连行带题一起不渲染。
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing)) {
+        items(modes, key = { it.id }) { mode ->
+            val selected = mode.id == selectedId
+            VeneraChip(
+                text = mode.label,
+                selected = selected,
+                onClick = { if (!selected) onSelect(mode) },
+            )
         }
     }
 }
@@ -788,6 +1089,72 @@ private fun NativeSectionBlock(
 }
 
 /* ------------------------------------------------------------------ *
+ * 动作行：筛选一枚开关 + 右槽念生效中的筛选（分类已回常驻，不在这枚行里）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 动作行。
+ *
+ * 左一枚是**开关**（`selected = 展开中`，尾部箭头指当前朝向），右一槽念生效中的筛选 ——
+ * 原先独占一行的 [FilterActiveBar] 的信息与「清除」把手都搬到这里。
+ *
+ * ⚠️ 筛选按钮的显隐由计数判式门控（`filterCount`，见 [filterEntryCount]）：
+ * 计数为 0 时不渲染，**不留"点开没东西"的假开关**。本仓为这条栽过 —— 判式里写着
+ * 那个标识符、喂饱了自己，所以 UiAuditBatch7Test 认的是**整串判式表达式**。
+ *
+ * @param activeFilterLabel 生效中的通用标签名；null 表示没有筛选题。
+ * @param onClearFilter 右槽「清除」。只在 [activeFilterLabel] 非空时摆出来。
+ */
+@Composable
+private fun ExploreActionRow(
+    filterCount: Int,
+    activeFilterLabel: String?,
+    filterExpanded: Boolean,
+    onToggleFilter: () -> Unit,
+    onClearFilter: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
+    ) {
+        if (filterCount > 0) {
+            VeneraChip(
+                text = "筛选 · $filterCount",
+                selected = filterExpanded,
+                // 箭头是这一枚与普通药丸的分界：它在展开/收起一个区，不是在选一个值。
+                trailingIcon = Icons.Filled.ExpandMore,
+                onClick = onToggleFilter,
+            )
+        }
+        // 右槽：生效中的筛选一句话 + 清除把手。没有筛选题时整槽不占位。
+        if (activeFilterLabel != null) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space3),
+            ) {
+                Text(
+                    text = "正在按「$activeFilterLabel」筛选",
+                    fontSize = VeneraTokens.type.overline,
+                    color = VeneraTokens.color.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "清除",
+                    fontSize = VeneraTokens.type.overline,
+                    fontWeight = VeneraTokens.type.weightSemibold,
+                    color = VeneraTokens.color.primary,
+                    modifier = Modifier.clickable(onClick = onClearFilter),
+                )
+            }
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ *
  * 辅助层：通用标签（VeneraTagChip 描边样式，与源原生标签明确区分）
  * ------------------------------------------------------------------ */
 
@@ -798,50 +1165,22 @@ private fun UnifiedTagBlock(
     selectedTag: UnifiedTag?,
     onTagClick: (UnifiedTag) -> Unit,
 ) {
-    Column {
-        Text(
-            "跨源快捷筛选：点击即在下方筛当前源，再点一次取消。",
-            fontSize = VeneraTokens.type.overline,
-            color = VeneraTokens.color.textTertiary,
-            modifier = Modifier.padding(bottom = VeneraTokens.spacing.space2),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
-            verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
-        ) {
-            tags.forEach { tag ->
-                VeneraTagChip(
-                    text = tag.label,
-                    selected = tag == selectedTag,
-                    textMaxLines = 2,
-                    onClick = { onTagClick(tag) },
-                )
-            }
-        }
-    }
-}
-
-/** 页内筛选生效时的状态条：说清列表是哪来的，并给一个明确的清除入口。 */
-@Composable
-private fun FilterActiveBar(label: String, onClear: () -> Unit) {
-    Row(
+    // ⚠️ 那行「跨源快捷筛选：点击即在下方筛当前源，再点一次取消。」提示**已删**
+    // （2026-10-14 改版）：整块改由动作行「筛选 · N」撑开，撑开即上下文，
+    // 一行常驻说明文字是白占 21dp chrome。动作行右槽担起"现在筛的是什么"那句话。
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
+        verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space3),
     ) {
-        Text(
-            text = "正在按「$label」筛选当前源",
-            fontSize = VeneraTokens.type.caption,
-            color = VeneraTokens.color.textSecondary,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = "清除",
-            fontSize = VeneraTokens.type.caption,
-            fontWeight = VeneraTokens.type.weightSemibold,
-            color = VeneraTokens.color.primary,
-            modifier = Modifier.clickable(onClick = onClear),
-        )
+        tags.forEach { tag ->
+            VeneraTagChip(
+                text = tag.label,
+                selected = tag == selectedTag,
+                textMaxLines = 2,
+                onClick = { onTagClick(tag) },
+            )
+        }
     }
 }
 

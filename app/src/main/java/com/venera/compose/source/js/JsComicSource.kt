@@ -954,6 +954,8 @@ class JsComicSource(
                 )
             }
             Result.success(pages)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -967,18 +969,27 @@ class JsComicSource(
                     if (!s || !s.explore || !s.explore[$pageIndex]) throw new Error("Explore page not found");
                     var exp = s.explore[$pageIndex];
                     var t = exp.type;
+                    // 四个 type 归一到三个解析口径（见 SourceExplorationFactory 的 TYPE_* 注释）：
+                    //   multiPart    —— 一页多分区，data 是 {分区名: Comic[]} 或 [{title, comics}]
+                    //   mixed        —— 首页分区 / 后续页裸列表，data 是 {data: [...], maxPage}
+                    //   list         —— 分页列表，data 是 {comics, maxPage} 或 Comic[]
+                    // ⚠️ 这里曾对 mixed 调 exp.loadMixed($page) —— 源脚本里根本没有这个方法，
+                    //    真机原样报 "exploadMixed is not a function"（变量名 exp 拼上属性名）。
                     if (t === "singlePageWithMultiPart") {
                         var res = await exp.load();
-                        return { type: t, title: exp.title, data: res };
+                        return { type: "multiPart", title: exp.title, data: res };
+                    } else if (t === "multiPartPage") {
+                        var res = await exp.load($page);
+                        return { type: "multiPart", title: exp.title, data: res };
+                    } else if (t === "mixed") {
+                        var res = exp.load ? await exp.load($page) : { data: [] };
+                        return { type: "mixed", title: exp.title, data: res };
                     } else if (t === "multiPageComicList") {
                         var res = exp.load ? await exp.load($page) : (exp.loadNext ? await exp.loadNext($page == 1 ? null : String($page)) : { comics: [] });
-                        return { type: t, title: exp.title, data: res };
-                    } else if (t === "mixed") {
-                        var res = await exp.loadMixed($page);
-                        return { type: t, title: exp.title, data: res };
+                        return { type: "list", title: exp.title, data: res };
                     } else {
                         var res = exp.load ? await exp.load($page) : [];
-                        return { type: t, title: exp.title, data: res };
+                        return { type: "list", title: exp.title, data: res };
                     }
                 })()
             """.trimIndent()
@@ -1019,37 +1030,79 @@ class JsComicSource(
             }
 
             val parts = mutableListOf<ExplorePagePart>()
-            if (type == "singlePageWithMultiPart") {
-                if (rawData is Map<*, *>) {
-                    for ((k, v) in rawData) {
-                        val sectionTitle = k?.toString() ?: ""
-                        val comics = (v as? List<*>)?.let { parseComicList(it) } ?: emptyList()
-                        if (comics.isNotEmpty()) {
-                            parts.add(ExplorePagePart(title = sectionTitle, comics = comics))
+            when (type) {
+                // 一页多分区：`singlePageWithMultiPart`（老式 Map `{分区名: Comic[]}`）与
+                // `multiPartPage`（`[{title, comics, viewMore?}]`）共用这一支 ——
+                // 两者在源脚本里只是数据形状不同，收敛到同一份解析。
+                //
+                // ⚠️ 漏掉 multiPartPage 的后果：那 10 颗源的分区对象被当成 Comic 去解析，
+                // `id` 取不到 → 每一条都返回 null → parts 空 → 屏上是「这一格现在没有内容」。
+                // 真机读数（2026-10-14）：禁漫天堂 / 紳士漫畫 / MangaDex 全是这个症状。
+                "multiPart" -> {
+                    if (rawData is Map<*, *>) {
+                        for ((k, v) in rawData) {
+                            val sectionTitle = k?.toString() ?: ""
+                            val comics = (v as? List<*>)?.let { parseComicList(it) } ?: emptyList()
+                            if (comics.isNotEmpty()) {
+                                parts.add(ExplorePagePart(title = sectionTitle, comics = comics))
+                            }
                         }
-                    }
-                } else if (rawData is List<*>) {
-                    for (item in rawData) {
-                        val m = item as? Map<*, *> ?: continue
-                        val partTitle = m["title"]?.toString() ?: ""
-                        val comics = (m["comics"] as? List<*>)?.let { parseComicList(it) } ?: emptyList()
-                        if (comics.isNotEmpty()) {
-                            parts.add(ExplorePagePart(title = partTitle, comics = comics))
+                    } else if (rawData is List<*>) {
+                        for (item in rawData) {
+                            val m = item as? Map<*, *> ?: continue
+                            val partTitle = m["title"]?.toString() ?: ""
+                            val comics = (m["comics"] as? List<*>)?.let { parseComicList(it) } ?: emptyList()
+                            if (comics.isNotEmpty()) {
+                                parts.add(ExplorePagePart(title = partTitle, comics = comics))
+                            }
                         }
                     }
                 }
-            } else {
-                val comics = when (rawData) {
-                    is Map<*, *> -> (rawData["comics"] as? List<*>)?.let { parseComicList(it) } ?: emptyList()
-                    is List<*> -> parseComicList(rawData)
-                    else -> emptyList()
+                // mixed：`{data: [Comic[] | {title, comics}], maxPage}`。第 1 页的分区带标题，
+                // 第 2 页起是裸 Comic[] —— 裸数组收成一个**空标题**分区，续接由
+                // ExplorePolicy.mergeExploreParts 的空标题规则折进上一段。
+                "mixed" -> {
+                    val list = when (rawData) {
+                        is Map<*, *> -> rawData["data"] as? List<*>
+                        is List<*> -> rawData
+                        else -> null
+                    }
+                    list?.forEach { item ->
+                        when (item) {
+                            is List<*> -> {
+                                val comics = parseComicList(item)
+                                if (comics.isNotEmpty()) {
+                                    parts.add(ExplorePagePart(title = "", comics = comics))
+                                }
+                            }
+                            is Map<*, *> -> {
+                                val partTitle = item["title"]?.toString() ?: ""
+                                val comics = (item["comics"] as? List<*>)?.let { parseComicList(it) } ?: emptyList()
+                                if (comics.isNotEmpty()) {
+                                    parts.add(ExplorePagePart(title = partTitle, comics = comics))
+                                }
+                            }
+                        }
+                    }
                 }
-                val title = payload["title"]?.toString() ?: name
-                if (comics.isNotEmpty()) {
-                    parts.add(ExplorePagePart(title = title, comics = comics))
+                else -> {
+                    val comics = when (rawData) {
+                        is Map<*, *> -> (rawData["comics"] as? List<*>)?.let { parseComicList(it) } ?: emptyList()
+                        is List<*> -> parseComicList(rawData)
+                        else -> emptyList()
+                    }
+                    val title = payload["title"]?.toString() ?: name
+                    if (comics.isNotEmpty()) {
+                        parts.add(ExplorePagePart(title = title, comics = comics))
+                    }
                 }
             }
             Result.success(parts)
+        } catch (e: CancellationException) {
+            // 取消是控制流，不是错误（见 getComicDetails 那条同源注释）。包成 Result.failure
+            // 会让调用方把"用户切走了"读成"加载失败"——真机 2026-10-14 读数：
+            // 拷贝漫画偶发在屏上念出 "The coroutine scope left the composition"。
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

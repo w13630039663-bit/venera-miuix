@@ -326,6 +326,10 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     val detailBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
+    // 详情加载失败弹窗的「已看过」标记：换一次错误文案就重置一次。用户关掉弹窗后不再反复打扰，
+    // 而章节区那块「重试」仍在原地 —— 关掉弹窗不等于失去出路。
+    var detailErrorSeen by remember(detailState.error) { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -340,33 +344,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap)
         ) {
-            // 0. 详情加载失败横幅（此前 error 只写进 state 不渲染，用户无从得知失败原因）
-            detailState.error?.let { err ->
-                item(key = "detail-error") {
-                    Surface(
-                        shape = RoundedCornerShape(tokens.shape.small),
-                        color = tokens.color.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space5),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ErrorOutline,
-                                contentDescription = null,
-                                tint = StatusColors.Failing
-                            )
-                            Spacer(modifier = Modifier.width(tokens.spacing.space4))
-                            Text(
-                                text = err,
-                                color = tokens.color.textSecondary,
-                                fontSize = tokens.type.caption
-                            )
-                        }
-                    }
-                }
-            }
+            // 0. 详情加载失败**不再摆内联横幅**（2026-10-14 第三轮）：
+            //    它排在 LazyColumn 的第 0 项，一出现就把 hero 往下顶 —— 顶掉的那一截正是
+            //    模糊封面铺的位置（真机原话「背景的模糊被顶下去了」）。改走页面级统一弹窗，
+            //    见本页末尾的 VeneraDialog；弹窗是独立窗口，不占页面流。
+
             // 1. 顶部封面与作品标题信息
             item {
                 val coverUrl = liveDetails?.comic?.cover?.ifBlank { comic.coverUrl } ?: comic.coverUrl
@@ -1183,11 +1165,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                 color = tokens.color.textSecondary,
                             )
                         }
-                        // 详情加载失败：标准空态组件 + 重试
+                        // 详情加载失败：标准空态组件 + 重试（文案由 ViewModel 统一翻过人话）
                         liveDetails == null && detailState.error != null -> VeneraEmptyView(
-                            title = "章节信息加载失败",
+                            title = "章节目录还没读出来",
                             message = detailState.error ?: "",
-                            actionText = "重试",
+                            actionText = "再试一次",
                             onAction = { viewModel.load(comic) }
                         )
                         hasRealChapters -> {
@@ -1628,6 +1610,32 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     }
                 }
             }
+        }
+
+        // 详情加载失败：统一弹窗（2026-10-14 第三轮）。
+        // 只在「详情确实没拿到」（liveDetails == null）时弹 —— 拿到了详情只是某个子块失败时，
+        // 页面自己会如实标注那一块，再弹一个整页级弹窗就是打扰。
+        val detailError = detailState.error
+        if (detailError != null && liveDetails == null && !detailErrorSeen) {
+            VeneraDialog(
+                show = true,
+                onDismissRequest = { detailErrorSeen = true },
+                title = "这本的详情没读出来",
+                content = {
+                    Text(
+                        text = detailError,
+                        fontSize = tokens.type.body,
+                        color = tokens.color.textSecondary,
+                    )
+                },
+                confirmText = "再试一次",
+                onConfirm = {
+                    detailErrorSeen = true
+                    viewModel.load(comic)
+                },
+                dismissText = "先看看别的",
+                onDismiss = { detailErrorSeen = true },
+            )
         }
     }
 

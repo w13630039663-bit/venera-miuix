@@ -38,8 +38,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
@@ -113,6 +113,7 @@ import com.venera.compose.gallery.domain.SavedWallDepth
 import com.venera.compose.gallery.domain.depthToApply
 import com.venera.compose.gallery.domain.galleryNotices
 import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.feature.settings.SettingsHeroImage
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -131,7 +132,7 @@ import com.venera.compose.ui.tokens.LocalBottomBarClearance
  * ## 2026-09-30 第二轮的形态（用户按新版效果图点名的信息架构）
  *
  * 一屏自上而下：
- * 1. 顶栏大标题「画廊」+ 常驻 chrome（搜索入口条 + 来源分段器，见 [GalleryHomeChrome]）；
+ * 1. 顶栏大标题「画廊」+ 常驻 chrome（一条搜索入口条，见 [GalleryHomeChrome]）；
  * 2. 三节恒定项：收藏里的画师（圆形头像）→ 每日热门**预览行**（「查看全部」进二级页）→
  *    「猜你喜欢」节头；
  * 3. 主墙**恒为猜你喜欢**的瀑布流。
@@ -162,6 +163,27 @@ fun GalleryScreen(
      * 而不是"在页内切成另一面墙"（后者会让返回语义变成页内状态机）。
      */
     onOpenDailyAll: () -> Unit,
+    /**
+     * 顶栏那枚「浏览历史」（2026-10-14 起，占的正是原来「换一批」那枚的位置）。
+     *
+     * 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
+     * （下拉刷新 2026-09-30 撤下时，注释就写明节头那枚「承担」了「我要新内容」的出口），
+     * 所以这一格换成历史入口之后，首页换一批仍在节头。
+     *
+     * 这里交出去的是导航动作（`GalleryHistoryRoute`，二级页、有返回语义）而不是页内状态：
+     * 历史是**另一屏内容**，做成页内一层会让"从历史点开一张图、再返回"的栈说不清楚。
+     */
+    onOpenHistory: () -> Unit,
+    /**
+     * 首页头图的**绝对路径**，空串 = 未设置（2026-10-15，用户「图廊首页也加上和设置页一样的可切换头图」）。
+     *
+     * 为什么是一根字符串而不是这一屏自己去读偏好：`BusinessApiBoundaryTest` 的 A/B 两条钉着
+     * 「画廊 UI 那一层不许直连业务实现类单例」，白名单只许缩短。而往 `GalleryPreferences`
+     * 端口上加成员这条路也走不通 —— 那颗接口与桌面侧**共享源码**（`desktop/build.gradle.kts:96`
+     * 把 `app/…/gallery/data` 整目录 srcDir 进去），动它就要动本轮不许动的桌面目录。
+     * 所以路径在装配根（`feature/Navigation.kt`，那颗本来就在白名单里）读出来递进来。
+     */
+    heroPath: String,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
@@ -283,6 +305,12 @@ fun GalleryScreen(
     // ── 下滑收起两栏（2026-09-30，用户点名；两枚开关默认关）──
     val hideTopBarOnScroll by GalleryPorts.of(context).prefs.galleryHideTopBar.collectAsState()
     val hideBottomBarOnScroll by GalleryPorts.of(context).prefs.galleryHideBottomBar.collectAsState()
+    // 首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
+    // 路径由装配根递进来（理由见参数上的注）；这一侧只做**收据核验**：
+    // 空串 / 文件不在了 / 文件是零字节，三种都必须当成"没设过头图"，绝不摆一张裂图。
+    val galleryHeroFile = remember(heroPath) {
+        java.io.File(heroPath).takeIf { it.isFile && it.length() > 0L }
+    }
     // 开关写进跨层状态：**底栏在壳层**，它读不到页面里的局部变量（见 GalleryChromeAutoHide）。
     // 用 SideEffect 而不是在组合期直接赋值：组合期写快照状态会触发"在组合中写状态"的重组循环。
     SideEffect {
@@ -391,7 +419,9 @@ fun GalleryScreen(
                         // 成功才写凭证：从错误态点重试要能真发请求。
                         vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"
                     }.onFailure { e ->
-                        vm.feedError = e.message ?: "加载失败"
+                        // 屏上不出现原始异常：各站失败原因已由 failures 那份结构分档表达。
+                        android.util.Log.w("VeneraDebug", "gallery feed failed", e)
+                        vm.feedError = "这次没读到内容 🥲 稍后再试一次"
                     }
             } finally {
                 // 取消路径也要清：见上面那段"永久转圈"的说明。
@@ -953,29 +983,42 @@ fun GalleryScreen(
                     // 三节**必须带**：不带就会让画师/热门/节头整片消失 ——
                     // 屏上少一大块内容、视口锚点跟着漂，读起来像页面坏了。
                     sections = homeSections,
-                    // 常驻 chrome（搜索入口条 + 来源分段器）= 墙的第一行内容：
-                    // 随内容滚走（2026-09-30 第三版，用户口径「搜索栏保持在这里就行」）。
-                    // 搜索开着时它照旧不渲染 —— 与搜索浮层两态互斥的口径不变。
-                    chrome = if (!svm.active) {
+                    // 头图摆在 chrome **之上**、同一颗 header item 里（理由见 GalleryForYouPage 的
+                    // hero 参数文档）。标题传空串：这一屏的大标题「画廊」住在顶栏里，图上再压一遍
+                    // 就是同一屏两处同名标题；设置页那边反过来（hero 在场时顶栏大标题让位）。
+                    hero = if (galleryHeroFile != null) {
                         @Composable {
-                            GalleryHomeChrome(
-                                source = svm.source,
-                                onOpenSearch = {
-                                    // 只开搜索、**直接展开**：与顶栏那枚 🔍 同一个入口同一种语义
-                                    // （点搜索就是要打字，不是要看上一轮的结果）。
-                                    svm.openSearch()
-                                },
-                                onOpenReverse = {
-                                    // 顺序不能反：先开搜索再开反搜。搜索卡的抢焦点 effect 在 `rvm.open`
-                                    // 为真时刻意让位给反搜框，先开反搜会让标签框与反搜框抢一次焦点。
-                                    svm.openSearch()
-                                    rvm.openLayer()
-                                },
-                                onPickSource = { next -> svm.setSource(next) },
+                            SettingsHeroImage(
+                                file = galleryHeroFile,
+                                title = "",
+                                subtitle = null,
+                                totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeight,
+                                overlapBottom = VeneraSpacing.settingsHeroOverlap,
+                                imageDescription = "画廊首页头图",
                             )
                         }
                     } else {
                         null
+                    },
+                    // 常驻 chrome（一条搜索入口条）= 墙的第一行内容：
+                    // 随内容滚走（2026-09-30 第三版，用户口径「搜索栏保持在这里就行」）。
+                    // 2026-10-15 起**搜索开着也照旧传**（从前这一格在 `svm.active` 时整块摘走）：
+                    // 摘走会让内容硬跳一行，而卡片是另一层浮起来长开的 —— 两处不同步就是用户
+                    // 读到的"没有过渡"。现在条留在原地，卡片从它身上原地盖过来、收回时缩回去。
+                    chrome = {
+                        GalleryHomeChrome(
+                            onOpenSearch = {
+                                // 只开搜索、**直接展开**：与顶栏那枚 🔍 同一个入口同一种语义
+                                // （点搜索就是要打字，不是要看上一轮的结果）。
+                                svm.openSearch()
+                            },
+                            onOpenReverse = {
+                                // 顺序不能反：先开搜索再开反搜。搜索卡的抢焦点 effect 在 `rvm.open`
+                                // 为真时刻意让位给反搜框，先开反搜会让标签框与反搜框抢一次焦点。
+                                svm.openSearch()
+                                rvm.openLayer()
+                            },
+                        )
                     },
                     onOpen = { post ->
                         GalleryViewerQueue.set(forYouWall.cards.map { it.post })
@@ -991,7 +1034,7 @@ fun GalleryScreen(
         }
 
         // 顶栏**一直在**（用户 2026-09-25 第四轮：不跳页、也不替换标题栏）。
-        // ⚠️ 常驻 chrome（搜索入口条 + 来源分段器）**不在顶栏里** —— 它现在是猜你喜欢墙的
+        // ⚠️ 常驻 chrome（一条搜索入口条）**不在顶栏里** —— 它现在是猜你喜欢墙的
         // 第一行内容（见 GalleryForYouPage 调用处），随内容滚走；顶栏的下滑折叠照常工作。
         //
         // ── 下滑收起（2026-09-30，用户点名；默认关）──
@@ -1058,27 +1101,27 @@ fun GalleryScreen(
                         tint = tokens.color.textPrimary,
                     )
                 }
-                // 「换一批」只管**屏上这一面墙**：搜索态下屏上是搜索结果，按它用户看不见效果，
-                // 所以在搜索态整枚收掉，而不是摆一颗"按了没反应"的钮（换结果由「搜索」钮负责）。
+                // 「浏览历史」（2026-10-14 起占住这枚位置，取代原来的「换一批」）。
                 //
-                // ⚠️ 2026-09-30 第二轮：首页只有一面墙了（猜你喜欢），所以这一枚**只有一种语义** ——
-                // 重抽标签并重取。它原来还有一个"日榜那一面 = 零请求本地重排"的分支，
-                // 现在那个动作住在每日热门的二级页上（那里才是"看全量的人"）。
-                if (!svm.active) {
-                    VeneraTopBarPill(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        retryForYouFromUser()
-                    }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            // 说出它干了什么：这一按是**重抽标签**，不只是把同一批图再洗一次顺序。
-                            contentDescription = "按收藏重抽一批",
-                            tint = tokens.color.textPrimary,
-                        )
-                    }
+                // 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
+                // —— 下拉刷新 2026-09-30 撤下时那条注释就写明节头那枚「承担」了「我要新内容」
+                // 的出口，所以这一格换成历史入口之后，首页换一批仍在节头。
+                //
+                // 不套 `if (!svm.active)` 那道门：搜索态同样要能翻历史（正在搜的时候回头看
+                // 一张图是常事），而旧那枚被门控住是因为「换一批」在搜索结果上看不见效果 ——
+                // 历史没有这个问题，它在哪一态都摆同一份名单。
+                VeneraTopBarPill(onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onOpenHistory()
+                }) {
+                    Icon(
+                        imageVector = Icons.Outlined.History,
+                        contentDescription = "浏览历史",
+                        tint = tokens.color.textPrimary,
+                    )
                 }
             },
-            // ── 常驻 chrome（搜索入口条 + 来源分段器）**不在顶栏的 bottomContent 里了** ──
+            // ── 常驻 chrome（一条搜索入口条）**不在顶栏的 bottomContent 里了** ──
             //
             // 2026-09-30 用户口径「顶住在这个位置就行，不需要跟随顶栏」。从前它住在顶栏的
             // `bottomContent` 槽里，而 miuix 顶栏把那一格钉在 `contentTop`（= 折叠中的栏高 +
@@ -1099,7 +1142,7 @@ fun GalleryScreen(
                 .offset(y = topBarHiddenOffset),
         )
 
-        // ── 常驻 chrome（搜索入口条 + 来源分段器）**不再是浮层**（2026-09-30 第三版）──
+        // ── 常驻 chrome（一条搜索入口条）**不再是浮层**（2026-09-30 第三版）──
         //
         // 用户口径（原话）：「顶栏我需要下滑折叠，我只需要搜索栏保持在这里就行而不是图二这样」。
         // 两版浮层方案都被真机否了：
@@ -1125,55 +1168,65 @@ fun GalleryScreen(
         //  - 网格避让因此**不再跟随它**（公式简化成常量，见 [gridTopPadding]）。
         //
         // z 序：它在顶栏**之后**画，所以压在顶栏背板之上；INPUT 态那层 scrim 在它之下。
-        if (svm.active) {
+        //
+        // ⚠️ 这两层都不许再被 `if (svm.active) { … }` 包着（2026-10-15 修「还是没有过渡」）：
+        // `AnimatedVisibility` 被包在 `if` 里时，开搜索那一刻它是**新组合进来的**，
+        // 内部状态的初值直接等于目标值 `true` —— 没有"false→true"那一跳，
+        // `enter` 那套 fadeIn + scaleIn 一个字都不播（它只在 `searchCollapsed` 随滚动翻档时才播）。
+        // 所以"没有过渡"从来不是缺动画定义，而是动画挂在一次**不会被观察到**的状态变化上。
+        // 现在 `visible` 自己吃 `svm.active`：关闭态它仍在组合里（只是不渲染内容），
+        // 一开就是一次真的 false→true ⇒ 动画照播。
+        AnimatedVisibility(
+            visible = svm.active && svm.mode == GallerySearchMode.INPUT && !searchCollapsed,
+            enter = fadeIn(animationSpec = tween(durationMillis = tokens.motion.medium)),
+            exit = fadeOut(animationSpec = tween(durationMillis = tokens.motion.short)),
+        ) {
             // INPUT 态（正在打字/挑标签）：铺一层可点 scrim。
             // 点它 = 有胶囊就收成一条（接着看图）、没有就整个关掉 —— 与系统返回那两档同义。
             //
             // 只在 INPUT 态铺：RESULTS 态那张卡只有一行胶囊、下面的结果墙是**用户正在看的东西**，
             // 铺一层 scrim 会把那面墙的滚动与点击全吃掉（用户会以为页面卡死了）。
-            if (svm.mode == GallerySearchMode.INPUT && !searchCollapsed) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = SEARCH_SCRIM_ALPHA))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) {
-                            if (svm.filters.isNotEmpty()) svm.collapseToResults() else svm.closeSearch()
-                        },
-                )
-            }
-            AnimatedVisibility(
-                visible = !searchCollapsed,
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = searchOverlayTop),
-                enter = fadeIn(animationSpec = tween(durationMillis = tokens.motion.medium)) +
-                    scaleIn(
-                        initialScale = SEARCH_OVERLAY_INITIAL_SCALE,
-                        // 从**顶部**长开：与它锚在入口条位置这件事一致（从中心长开会像"凭空浮出来"）。
-                        transformOrigin = TransformOrigin(0.5f, 0f),
-                        animationSpec = tween(durationMillis = tokens.motion.medium),
-                    ),
-                exit = fadeOut(animationSpec = tween(durationMillis = tokens.motion.short)) +
-                    scaleOut(
-                        targetScale = SEARCH_OVERLAY_INITIAL_SCALE,
-                        transformOrigin = TransformOrigin(0.5f, 0f),
-                        animationSpec = tween(durationMillis = tokens.motion.short),
-                    ),
-            ) {
-                GallerySearchArea(
-                    svm = svm,
-                    recommendations = recommendations,
-                    // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
-                    // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
-                    // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
-                    onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
-                    rvm = rvm,
-                    allowNsfw = allowNsfw,
-                )
-            }
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = SEARCH_SCRIM_ALPHA))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        if (svm.filters.isNotEmpty()) svm.collapseToResults() else svm.closeSearch()
+                    },
+            )
+        }
+        AnimatedVisibility(
+            visible = svm.active && !searchCollapsed,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = searchOverlayTop),
+            enter = fadeIn(animationSpec = tween(durationMillis = tokens.motion.medium)) +
+                scaleIn(
+                    initialScale = SEARCH_OVERLAY_INITIAL_SCALE,
+                    // 从**顶部**长开：与它锚在入口条位置这件事一致（从中心长开会像"凭空浮出来"）。
+                    transformOrigin = TransformOrigin(0.5f, 0f),
+                    animationSpec = tween(durationMillis = tokens.motion.medium),
+                ),
+            exit = fadeOut(animationSpec = tween(durationMillis = tokens.motion.short)) +
+                scaleOut(
+                    targetScale = SEARCH_OVERLAY_INITIAL_SCALE,
+                    transformOrigin = TransformOrigin(0.5f, 0f),
+                    animationSpec = tween(durationMillis = tokens.motion.short),
+                ),
+        ) {
+            GallerySearchArea(
+                svm = svm,
+                recommendations = recommendations,
+                // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
+                // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
+                // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
+                onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
+                rvm = rvm,
+                allowNsfw = allowNsfw,
+            )
         }
 
         // ── 吸附态的条件胶囊 ──

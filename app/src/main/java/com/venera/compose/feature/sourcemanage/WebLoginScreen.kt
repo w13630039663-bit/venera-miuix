@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import com.venera.compose.components.venera.VeneraIconButton
+import com.venera.compose.source.humanizeSourceError
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -136,7 +137,8 @@ fun WebLoginScreen(
                 } else {
                     Toast.makeText(
                         context,
-                        "已识别登录，但源回调执行失败：${res.exceptionOrNull()?.message}",
+                        "已识别到登录，但源那边没接上 🥲 " +
+                            humanizeSourceError(res.exceptionOrNull(), loginable = true),
                         Toast.LENGTH_LONG
                     ).show()
                 }

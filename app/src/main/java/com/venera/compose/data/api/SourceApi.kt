@@ -117,6 +117,14 @@ interface SourceCatalog {
     /** 按 key 取一颗源；没装或已停用给 null。返回的是**接口** `ComicSource`，不是实现类。 */
     fun getSource(key: String): ComicSource?
 
+    /**
+     * 这颗源是否**支持登录**（源脚本里声明了 `account` 块）。
+     *
+     * 只服务错误文案的分支：源站回 401/403 时，支持登录的源十有八九是"要先登录"，
+     * 不支持的只能是源站自己拦了。实现内部会同步跑一次源 JS，故是挂起函数。
+     */
+    suspend fun sourceSupportsLogin(key: String): Boolean
+
     /** 参与"全部源"聚合检索的那些源。 */
     fun searchTargets(): List<ComicSource>
 

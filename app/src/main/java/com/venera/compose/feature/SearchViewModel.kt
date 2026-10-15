@@ -9,6 +9,7 @@ import com.venera.compose.data.network.ComicUrlTable
 import com.venera.compose.data.tags.ChineseVariantConverter
 import com.venera.compose.data.tags.TagTranslationManager
 import com.venera.compose.source.ComicSourceManager
+import com.venera.compose.source.humanizeSourceError
 import com.venera.compose.source.model.Comic
 import com.venera.compose.source.model.SearchOptionGroup
 import kotlinx.coroutines.CancellationException
@@ -150,6 +151,7 @@ class SearchViewModel(
         _uiState.update { it.copy(query = value, matchedUrlComic = matched,
             tagSuggestions = suggestions,
             isSearching = false, hasSearched = false, error = null,
+            loadingMore = false,
             results = emptyList(), aggregatedResults = emptyMap()) }
         if (shouldAutoSearchOnQueryChange(
                 suggestionsShowing = suggestions.isNotEmpty(),
@@ -219,6 +221,7 @@ class SearchViewModel(
         _selectedOptions.value = emptyList()
         _uiState.update { it.copy(selectedSourceKey = key, selectedSourceLabel = label,
             results = emptyList(), aggregatedResults = emptyMap(), isSearching = false,
+            loadingMore = false,
             hasSearched = false, optionsError = null, optionsLoading = key != KEY_ALL) }
         loadSearchOptions(key)
         if (_uiState.value.query.isNotBlank() || _uiState.value.tags.isNotEmpty()) search(_uiState.value.query)
@@ -229,6 +232,7 @@ class SearchViewModel(
         searchJob?.cancel()
         _uiState.update { it.copy(query = "", tags = emptyList(), results = emptyList(),
             aggregatedResults = emptyMap(), isSearching = false, hasSearched = false,
+            loadingMore = false,
             matchedUrlComic = null, tagSuggestions = emptyList(), error = null) }
     }
 
@@ -239,7 +243,7 @@ class SearchViewModel(
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (_uiState.value.selectedSourceKey == sourceKey) {
-                    _uiState.update { it.copy(optionsLoading = false, optionsError = "筛选加载失败：${e.message ?: "未知错误"}") }
+                    _uiState.update { it.copy(optionsLoading = false, optionsError = humanizeSourceError(e, sources.sourceSupportsLogin(sourceKey))) }
                 }
             }
         }
@@ -283,13 +287,17 @@ class SearchViewModel(
         searchJob?.cancel()
         val matched = matchedInstalled(query)
         if (matched != null) {
-            _uiState.update { it.copy(query = query, matchedUrlComic = matched, isSearching = false) }
+            _uiState.update { it.copy(query = query, matchedUrlComic = matched, isSearching = false,
+                loadingMore = false) }
             return
         }
         if (query.isNotBlank()) appendHistory(query)
         val currentKey = snapshot.selectedSourceKey
         currentPage = 1
         _uiState.update { it.copy(query = query, isSearching = true, hasSearched = true,
+            // 上面那行 searchJob?.cancel() 会掐掉正在飞的翻页，而它自己走的是
+            // CancellationException 直接 rethrow、不写状态 —— 旗必须由新一轮落下。
+            loadingMore = false,
             results = emptyList(), aggregatedResults = emptyMap(), error = null,
             sourceMaxPage = null, estimatedTotal = null, canLoadMore = false,
             tagFilterRelaxed = false,
@@ -340,12 +348,12 @@ class SearchViewModel(
                             } catch (e: TimeoutCancellationException) {
                                 ComicSourceManager.SourceSearchResult(source.key, source.name, error = "检索超时，请进入该源重试")
                             } catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { ComicSourceManager.SourceSearchResult(source.key, source.name, emptyList(), isLoading = false, error = e.message ?: "检索失败") }
+                            catch (e: Exception) { ComicSourceManager.SourceSearchResult(source.key, source.name, emptyList(), isLoading = false, error = humanizeSourceError(e, sources.sourceSupportsLogin(source.key))) }
                             coroutineContext.ensureActive()
                             _uiState.update { it.copy(aggregatedResults = it.aggregatedResults + (source.key to event)) }
                         } }
                     }
-                    _uiState.update { it.copy(isSearching = false) }
+                    _uiState.update { it.copy(isSearching = false, loadingMore = false) }
                 } else {
                     ensureOptions(currentKey)
                     val source = sources.getSource(currentKey) ?: error("漫画源不可用")
@@ -353,6 +361,7 @@ class SearchViewModel(
                     if (request.isBlank() && snapshot.tags.isNotEmpty()) {
                         // 该源不认识标签语法且没有纯文本关键词：明确提示而不是静默空结果。
                         _uiState.update { it.copy(results = emptyList(), isSearching = false,
+                            loadingMore = false,
                             error = "当前源不支持标签搜索：请输入关键词，或选择 EHentai 等原生标签源。") }
                         return@launch
                     }
@@ -368,6 +377,7 @@ class SearchViewModel(
                             comics, snapshot.tags, variantConverter::traditionalToSimplified)
                     }
                     _uiState.update { it.copy(results = guardManager.filterComics(filtered.comics), isSearching = false,
+                        loadingMore = false,
                         tagFilterRelaxed = filtered.relaxed,
                         // 判据与翻页那一路共用（见 SearchPagination）：首页就是空也算到底，
                         // 不能只看源声明的 maxPage —— 它常常比这个关键词真能翻到的页数大得多。
@@ -385,8 +395,9 @@ class SearchViewModel(
             catch (e: Exception) {
                 coroutineContext.ensureActive()
                 _uiState.update { it.copy(isSearching = false, optionsLoading = false,
-                    optionsError = if (loadedSourceKey != currentKey && currentKey != KEY_ALL) "筛选加载失败，可重试" else it.optionsError,
-                    error = "检索异常：${e.message ?: "未知错误"}") }
+                    loadingMore = false,
+                    optionsError = if (loadedSourceKey != currentKey && currentKey != KEY_ALL) "筛选没读出来，可以再试一次" else it.optionsError,
+                    error = humanizeSourceError(e, sources.sourceSupportsLogin(currentKey))) }
             }
         }
     }
@@ -444,11 +455,13 @@ class SearchViewModel(
                         ))
                 }
                 if (comics.isNotEmpty()) currentPage = nextPage
+            // 被 cancel 的这一支不写状态：掐掉它的每一处（打字、挂/摘标签、切源、清空、
+            // 再搜一次）都在自己的重置块里把 loadingMore 落下了，见 SearchLoadMoreFlagTest。
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 coroutineContext.ensureActive()
                 _uiState.update { it.copy(loadingMore = false, canLoadMore = false,
-                    error = "加载更多失败：${e.message ?: "未知错误"}") }
+                    error = humanizeSourceError(e, sources.sourceSupportsLogin(currentKey))) }
             }
         }
     }

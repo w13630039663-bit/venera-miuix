@@ -53,6 +53,7 @@ object AndroidGalleryPorts {
                 reverse = AndroidGalleryReverseSearch(context),
                 hygiene = AndroidGalleryNetworkHygiene(context),
                 gelbooruWindows = AndroidGelbooruWindowProbe(context),
+                history = AndroidGalleryHistory(context),
             ).also { ports = it }
         }
     }
