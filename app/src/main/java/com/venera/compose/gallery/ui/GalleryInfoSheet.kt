@@ -56,13 +56,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -101,7 +99,6 @@ import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -240,23 +237,8 @@ internal fun GalleryInfoSheet(
     // 但这两个旧名在 1.7 与 1.12 上都在 —— 本仓的 compose 版本由 Miuix 在运行期顶，写新名会编不过。
     @Suppress("DEPRECATION")
     val sheetScrollConnection = remember {
-        // 「上一次拖动分支报出去的判据组合」——同一个组合连续过帧时不重复记（拖动每帧都过这里）。
-        // 只在**组合变了**（available 正负变、两个门翻转）时落一行，读数才读得动。
-        var lastDragSig: String? = null
-        // 诊断包专用（2026-10-05 03:2x）：`onPostScroll` 的**累计调用次数**。
-        // 为什么要这一列：上一轮的 `扣判` 一条都没出现，而它只在「组合变了」时记 ——
-        // 于是"一次都没被调"与"被调了但组合没变"在读数上长得一模一样。
-        // 加一个无条件计数就能把这两件事分开：计数为 0 ⇒ 本连接器**不在嵌套滚动链上**。
-        var postScrollCalls = 0
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                postScrollCalls++
-                if (postScrollCalls == 1 || postScrollCalls % 200 == 0) {
-                    GallerySheetProbe.log(
-                        "扣判 第${postScrollCalls}次进入 onPostScroll available.y=${available.y} " +
-                            "source=$source expanded=${sheetState.currentValue}",
-                    )
-                }
                 val eaten = if (source == NestedScrollSource.Fling) {
                     GallerySheetScroll.consumedFromFling(available.y)
                 } else {
@@ -270,25 +252,7 @@ internal fun GalleryInfoSheet(
                         panelExpanded = expanded,
                         contentAtBottom = atBottom,
                     )
-                    // 诊断包专用（2026-10-05 03:xx）：把**判据的两个门与扣下的量**记下来。
-                    // 为什么非记不可：这个判据的第二个门（`contentAtBottom`）上一轮**零读数**，
-                    // 于是"它有没有为真""到底扣没扣"全靠推理 —— 方案 2 就是这样打空的一枪。
-                    // 只在「方向 + 两个门 + max/value」这个组合**变了**时才落一行（拖动每帧都过这里，
-                    // 逐帧记会刷屏）；`扣掉` 取本次真实返回值，不经二次调用。
-                    val dir = if (available.y > 0f) "下拉" else if (available.y < 0f) "上滑" else "零"
-                    val sig = "$dir expanded=$expanded atBottom=$atBottom max=${bodyScrollState.maxValue}"
-                    if (sig != lastDragSig) {
-                        lastDragSig = sig
-                        GallerySheetProbe.log(
-                            "扣判 $sig value=${bodyScrollState.value} " +
-                                "available.y=${available.y} 扣掉=$eatenNow",
-                        )
-                    }
                     eatenNow
-                }
-                // 只记惯性那一路：拖动每一帧都过这里，记下来会把有用读数冲掉。
-                if (source == NestedScrollSource.Fling) {
-                    GallerySheetProbe.log("甩 available.y=${available.y} 扣掉=$eaten")
                 }
                 // 横向一分不动：这一页没有横滑的内容，横向位移归标签墙外面那些手势（如果有）。
                 return Offset(0f, eaten)
@@ -296,7 +260,6 @@ internal fun GalleryInfoSheet(
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 val eaten = GallerySheetScroll.consumedFromFling(available.y)
-                GallerySheetProbe.log("甩(onPostFling) available.y=${available.y} 扣掉=$eaten")
                 return Velocity(0f, eaten)
             }
         }
@@ -350,53 +313,6 @@ internal fun GalleryInfoSheet(
         .coerceAtLeast(tokens.spacing.sheetTopClearance)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        // ── 诊断包专用（2026-10-04）：只读，不改行为。撤除时连着 GallerySheetProbe.kt 一起删 ──
-        val probeHolder = remember { SheetCoordsHolder() }
-        LaunchedEffect(Unit) { GallerySheetProbe.install(context) }
-        /*
-         * 面板姿态用**事件驱动**记，不再用 `sample()` 那种 60 × 120ms 的一次性轮询。
-         *
-         * 上一版之所以「取了 4~5 次日志都白取」，是因为有分叉力的那一列（`动画中=`）只活在轮询里：
-         * 它只在开面板后 7.2 秒内有效、粒度 120ms、而且与「哪一次按下」对不上时间轴 ——
-         * 一个 7~100ms 级的偶发态落进它采样格的概率极低。
-         * `dragTarget` 是 `by mutableStateOf`（foundation `AnchoredDraggable.kt:993`），
-         * snapshotFlow 收得到每一次翻转，比轮询更全、日志还更少。
-         */
-        LaunchedEffect(sheetState) {
-            snapshotFlow { sheetState.isAnimationRunning }.distinctUntilChanged().collect { running ->
-                GallerySheetProbe.log("面板 落定 running=$running ${GallerySheetProbe.poseOf(sheetState)}")
-            }
-        }
-        LaunchedEffect(sheetState) {
-            snapshotFlow { sheetState.currentValue }.distinctUntilChanged().collect {
-                GallerySheetProbe.log("面板 姿态 current=$it target=${sheetState.targetValue}")
-            }
-        }
-        LaunchedEffect(sheetState) {
-            snapshotFlow { sheetState.targetValue }.distinctUntilChanged().collect {
-                GallerySheetProbe.log("面板 目标 target=$it current=${sheetState.currentValue}")
-            }
-        }
-        /*
-         * ── 诊断包专用（2026-10-05 03:xx 补）：内容区滚动状态 ─────────────────────────
-         *
-         * 上一轮只量了面板，没量内容区 —— 于是"chip 在窗口里平移 ±1800px 而面板 top 纹丝不动"
-         * 这个现象只能靠推理归因。这一支把内容区的 `value`/`maxValue`/`isScrollInProgress`
-         * 直接落成读数，补上那个缺口。理由与取数方式见 [GallerySheetProbe.onBodyScroll] 头注。
-         *
-         * 与另外三条一样是 `snapshotFlow` + `distinctUntilChanged`：事件驱动，不轮询。
-         */
-        LaunchedEffect(bodyScrollState) {
-            snapshotFlow {
-                Triple(
-                    bodyScrollState.value,
-                    bodyScrollState.maxValue,
-                    bodyScrollState.isScrollInProgress,
-                )
-            }.distinctUntilChanged().collect { (v, m, running) ->
-                GallerySheetProbe.onBodyScroll("面板内容", v, m, running)
-            }
-        }
         // 「有没有手指按在这张面板上」——只观察、不消费。落定看门狗靠它避开用户正在进行的拖动。
         val fingerDown = remember { mutableStateOf(false) }
         /*
@@ -423,7 +339,7 @@ internal fun GalleryInfoSheet(
          * （`MutatorMutex.kt:82`）—— **同优先级也会互相抢**。在用户拖动当中重申落定会把那次拖动取消掉
          * （手指还在屏上、面板却不跟手）。有这道门，「不改观感」才是被证明的，而不是嘴上说说。
          *
-         * ⚠️ 只在 `claimed == Expanded` 时动作：卡在别的档时**只记日志不动作** ——
+         * ⚠️ 只在 `claimed == Expanded` 时动作：卡在别的档时**什么都不做** ——
          * 否则「帮它走完」会让面板自己挪一下，那才是改观感。
          */
         // `currentValue` 也进 key：否则「内容比面板到位更早」时，看门狗只评估一次就再也不评了，
@@ -431,20 +347,15 @@ internal fun GalleryInfoSheet(
         LaunchedEffect(tagTranslations.size, artistCredits.size, sheetState.currentValue) {
             if (!SHEET_SETTLE_WATCHDOG) return@LaunchedEffect
             val claimed = sheetState.currentValue
-            GallerySheetProbe.log(
-                "修法 看门狗 评估 手指=${fingerDown.value} ${GallerySheetProbe.poseOf(sheetState)}",
-            )
             if (sheetState.isAnimationRunning && !fingerDown.value && claimed == SheetValue.Expanded) {
                 try {
                     sheetState.expand()
-                    GallerySheetProbe.log("修法 看门狗 已重申 ${GallerySheetProbe.poseOf(sheetState)}")
                 } catch (e: CancellationException) {
                     // MutatorMutex 在「当前有同/更高优先级」时取消的是**新来的这一次**
                     // （`MutatorMutex.kt:90-99`），它抛 CancellationException 表示「本趟不生效」，
                     // 而不是「本协程被取消」。必须区分：真被取消（离开组合 / 换 key）要照常抛出，
                     // 否则会把结构化并发咬坏。
                     if (!currentCoroutineContext().isActive) throw e
-                    GallerySheetProbe.log("修法 看门狗 本趟未生效（有更高优先级的动作占着锁）")
                 }
             }
         }
@@ -452,9 +363,7 @@ internal fun GalleryInfoSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(sheetMaxHeight)
-                .then(GallerySheetProbe.touchProbe("面板", probeHolder, sheetState))
-                .then(Modifier.observePointerDown(fingerDown))
-                .onGloballyPositioned { probeHolder.coordinates = it },
+                .then(Modifier.observePointerDown(fingerDown)),
         ) {
             Column(
                 modifier = Modifier
@@ -567,20 +476,9 @@ internal fun GalleryInfoSheet(
                 isVideo = post.isVideo,
                 saving = saving,
                 onPaint = onPaint,
-                // 诊断包专用：这三颗是**普通 `Modifier.clickable`**，不是 VeneraChip。
-                // 它们要是能报「到达」，坏的就只在 chip 那条链上；一起哑就是整块内容收不到点击。
-                onCopyLink = {
-                    GallerySheetProbe.log("到达 复制链接")
-                    copyToClipboard(context, "本站地址", post.pageUrl)
-                },
-                onDownload = {
-                    GallerySheetProbe.log("到达 下载")
-                    onDownload()
-                },
-                onOpenInBrowser = {
-                    GallerySheetProbe.log("到达 在浏览器中打开")
-                    openInBrowser(context, post.site.displayName, post.pageUrl)
-                },
+                onCopyLink = { copyToClipboard(context, "本站地址", post.pageUrl) },
+                onDownload = { onDownload() },
+                onOpenInBrowser = { openInBrowser(context, post.site.displayName, post.pageUrl) },
             )
         }
     }
@@ -866,12 +764,8 @@ private fun GalleryTagWall(
             // 标题行**整行可点**：那枚「展开全部 ›」按 12sp 只有 48dp 宽，
             // 单给它挂点击就得靠猜位置；整行可点之后触达位是整屏宽，也不必再造一枚小钮。
             action = if (collapsible) (if (expanded) "收起" else "展开全部") else null,
-            // 诊断包专用：这一枚与下面那枚 `+N` 就是用户点名的「查看更多」那两处。
             onAction = if (collapsible) {
-                {
-                    GallerySheetProbe.log("到达 节标题「展开全部」 nowExpanded=$expanded")
-                    onToggleExpand()
-                }
+                { onToggleExpand() }
             } else null,
         )
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -892,10 +786,7 @@ private fun GalleryTagWall(
                             GalleryTagChip(
                                 tag = tag,
                                 text = tagLabel(tag),
-                                onClick = {
-                                    GallerySheetProbe.log("到达 标签chip 点击 「$tag」")
-                                    onSearchTag(tag)
-                                },
+                                onClick = { onSearchTag(tag) },
                                 onCopy = { onCopyTag(tag) },
                                 onBlock = { onBlockTag(tag) },
                             )
@@ -907,10 +798,7 @@ private fun GalleryTagWall(
                             VeneraChip(
                                 text = "+${slice.hiddenCount}",
                                 variant = VeneraChipVariant.Neutral,
-                                onClick = {
-                                    GallerySheetProbe.log("到达 +${slice.hiddenCount} chip 点击")
-                                    onToggleExpand()
-                                },
+                                onClick = { onToggleExpand() },
                             )
                         }
                     }
@@ -1273,9 +1161,6 @@ private fun GalleryTagChip(
         VeneraChip(
             text = text,
             variant = VeneraChipVariant.Tag,
-            // 诊断包专用：报"这一支的盒子被命中了没有"，与下面 onClick/onLongClick 的 `到达`
-            // 对照才是二分 —— 只到盒子 = 事件进了盒子没成点击；两条都没有 = 命中没走到这一支。
-            modifier = GallerySheetProbe.tapWitness("标签「$tag」"),
             // 站方标签原文最长能到五六十字符（`red_rose_(flower)` 这类带括号的），单行省略后
             // 用户既读不到全词、也复制不到全词。标签墙在面板内自己滚，多一行不抢别的高度。
             textMaxLines = 2,
@@ -1284,7 +1169,6 @@ private fun GalleryTagChip(
             // 那样 Kotlin 认不出 `onCopy` 已经不是 null，只能写成 `?.invoke()` 反而更绕。
             onLongClick = if (onCopy != null && onBlock != null) {
                 {
-                    GallerySheetProbe.log("到达 标签chip 长按 「$tag」")
                     view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     menuExpanded = true
                 }
@@ -1352,8 +1236,7 @@ private fun openInBrowser(context: Context, siteName: String, url: String) {
  * 也就是说：在用户拖动当中去重申落定，会把那次拖动**取消掉**（手指还在屏上、面板却不跟手）。
  * 有了这道门，看门狗只在没有手指时动作。
  *
- * 写法照本仓既有的只读观察件（`GallerySheetProbe.touchProbe`、
- * `components/backdrop/DragGestureInspector.kt:29`）：Initial 段取 down、
+ * 写法照本仓既有的只读观察件（`components/backdrop/DragGestureInspector.kt:29`）：Initial 段取 down、
  * `requireUnconsumed = false`、全程不消费 ⇒ 对子节点与手势链完全透明。
  *
  * `finally` 里必须复位：手势协程被取消（离开组合）时若留下 `true`，看门狗会**永久失效**。

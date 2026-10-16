@@ -6,8 +6,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -26,8 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -154,22 +150,6 @@ fun VeneraChip(
     val interactive = (onClick != null || onLongClick != null) && enabled
     val isPressed = interactive && pressed
 
-    // ── 诊断包专用（2026-10-04）：撤除时连着 `gallery/ui/GallerySheetProbe.kt` 一起删 ──
-    // 16:53 那一份读数是"盒子收到 9 条、到达 0 条"，所以要先把"这枚到底有没有挂上 clickable"
-    // 钉成数。这里**不 import 那颗探针**：components 层 import gallery 会破 LayeringEdgeTest，
-    // 所以直接写同一个 TAG，让 logcat 一条过滤就能看全。
-    // `composeTick` 存在普通 IntArray 里而不是状态：探针不许自己引发重组（同 GallerySheetProbe 的头注），
-    // 而下面那颗见证在按住前后各读一次它，就能分出"这一枚在按着的时候被重新组合了没有"。
-    val composeTick = remember { IntArray(1) }
-    if (variant == VeneraChipVariant.Tag) {
-        android.util.Log.i(
-            "GallerySheetProbe",
-            "chip 装配 「$text」 interactive=$interactive enabled=$enabled " +
-                "有点击=${onClick != null} 有长按=${onLongClick != null}",
-        )
-        composeTick[0]++
-    }
-
     // 轻量动画：只有 scale 与 alpha，均走 spring，无涟漪/模糊。
     val pressScale by animateFloatAsState(
         targetValue = if (isPressed) tokens.current.chipPressedScale else 1f,
@@ -264,39 +244,6 @@ fun VeneraChip(
                 scaleY = pressScale
                 alpha = if (enabled) pressAlpha else disabledAlpha
             }
-            // ── 诊断包专用（2026-10-05）：撤除时连着 `gallery/ui/GallerySheetProbe.kt` 一起删 ──
-            // 这一颗挂在 **combinedClickable 的外侧一格**（同一个 LayoutNode，Main 段）。
-            // 同节点上 Main 段是"链上靠后的先收"，所以 clickable 比我先拿到事件 ——
-            // 于是我报 `down已被消费=true` 而调用点没报「到达」，就是"clickable 收了 down 却没走完点击"；
-            // 我报 false 而它又不响，就是"这一层根本没参与"，与几何无关。
-            // 不 import 那颗探针：components 层 import gallery 会破 LayeringEdgeTest。
-            .then(
-                if (variant == VeneraChipVariant.Tag) {
-                    Modifier.pointerInput(text) {
-                        awaitEachGesture {
-                            val d = awaitFirstDown(false, PointerEventPass.Main)
-                            val consumedAtDown = d.isConsumed
-                            val ticksAtDown = composeTick[0]
-                            var seen = 0
-                            var done = false
-                            while (!done) {
-                                val c = awaitPointerEvent(PointerEventPass.Main)
-                                    .changes.firstOrNull { it.id == d.id } ?: break
-                                seen++
-                                done = !c.pressed
-                            }
-                            android.util.Log.i(
-                                "GallerySheetProbe",
-                                "内 $text 收到 down已被消费=$consumedAtDown 事件数=$seen " +
-                                    "按下时scaleX=$pressScale alpha=$pressAlpha " +
-                                    "组合=${ticksAtDown}→${composeTick[0]} 按着时重组=${composeTick[0] != ticksAtDown}",
-                            )
-                        }
-                    }
-                } else {
-                    Modifier
-                },
-            )
             .then(
                 if (interactive) {
                     Modifier.combinedClickable(
@@ -317,48 +264,6 @@ fun VeneraChip(
                 .padding(
                     horizontal = tokens.spacing.chipHorizontalPadding,
                     vertical = tokens.spacing.chipVerticalPadding,
-                )
-                // ── 诊断包专用（2026-10-05）：撤除时连着 `gallery/ui/GallerySheetProbe.kt` 一起删 ──
-                // 挂在**比 combinedClickable 更深一格**的内容行上：Main 段是"内先外后"，所以这一颗
-                // 比 clickable 先跑，它报的 `主=` 就是**clickable 轮到之前 down 干不干净**。
-                // 这一枚要分掉最后两种可能（foundation `Clickable.kt:1113` 写死了
-                // `isChangedToDown(requireUnconsumed = true)`：down 被吃过 ⇒ clickable 根本不开始跟踪
-                // ⇒ 不消费抬手、不回调 onClick、不发 Press —— 01:38 那份"事件全到了、一条到达都没有"
-                // 只有这一条能造出来）：
-                // - `主=false` ⇒ clickable 开始时 down 还是干净的，是它自己走完又判负（slop / 越界 / 长按），坏在本枚内部；
-                // - `主=true` ⇒ 它还没轮到就被吃了，吃的人比这一枚更深或 z 序更高（FlowRow 里后画的相邻药丸、
-                //   或面板里某个盖在内容上的浮层）。
-                .then(
-                    if (variant == VeneraChipVariant.Tag) {
-                        Modifier.pointerInput(text) {
-                            awaitEachGesture {
-                                val d = awaitFirstDown(false, PointerEventPass.Initial)
-                                val deepInit = d.isConsumed
-                                val mainChange = awaitPointerEvent(PointerEventPass.Main)
-                                    .changes.firstOrNull { it.id == d.id }
-                                val deepMain = mainChange?.isConsumed
-                                var seen = 0
-                                var pressed = true
-                                var consumed = false
-                                while (true) {
-                                    val c = awaitPointerEvent(PointerEventPass.Main)
-                                        .changes.firstOrNull { it.id == d.id } ?: break
-                                    seen++
-                                    pressed = c.pressed
-                                    consumed = c.isConsumed
-                                    if (!pressed) break
-                                }
-                                android.util.Log.i(
-                                    "GallerySheetProbe",
-                                    "深 $text down=(${d.position.x.toInt()},${d.position.y.toInt()}) " +
-                                        "初=$deepInit 主=$deepMain 事件=$seen 已抬手=${!pressed} " +
-                                        "抬手被消费=$consumed",
-                                )
-                            }
-                        }
-                    } else {
-                        Modifier
-                    },
                 ),
             // ⚠️ 这一档从前给"带次要前缀"那支**收到 space1（2dp）**，理由写的是"两段文字是一体的
             // （站点名 + 关键词），留出两个独立元素的间距会把一枚 chip 读成两枚"。真机量下来那一档过头了：
