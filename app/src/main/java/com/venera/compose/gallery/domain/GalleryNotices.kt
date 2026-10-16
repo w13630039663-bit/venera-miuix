@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.domain
 
+import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GallerySite
 
 /**
@@ -65,6 +66,16 @@ enum class GalleryNoticeKind(
 ) {
     /** 这一站整站发不出车：没配账号。出路是去配置。 */
     MissingAccount(GalleryNoticeTone.Warning, GalleryNoticeAction.ConfigureAccount),
+
+    /**
+     * **配了，但站方不认这一组**（2026-10-16 补这一档）。
+     *
+     * 与 [MissingAccount] 分开是因为两句实话不同：一句是"你还没填"，一句是"填的那组被拒了"，
+     * 而它们通向同一个出口（那张账号卡）。合成档的定界探测吃的就是带凭据的那一笔，
+     * 凭据一失效，屏上原本的读法是「窗口没探成」+ 一枚按下去没用的「重试」——
+     * 用户把凭据改一遍再截一张图过来，正是这句读数该说的话。
+     */
+    CredentialRejected(GalleryNoticeTone.Warning, GalleryNoticeAction.ConfigureAccount),
 
     /** 这一笔真出错了（超时 / 被拒 / 解析不出来）。出路是重试。 */
     LegFailed(GalleryNoticeTone.Error, GalleryNoticeAction.Retry),
@@ -177,6 +188,11 @@ private fun bodyOf(
     // 为什么用不了 + 去哪儿配。那一句本来就是共享文案，逐站念反而会与标题撞车。
     GalleryNoticeKind.MissingAccount -> GallerySearchSource.NEEDS_ACCOUNT_BODY
 
+    // 标题只说"不认这组凭据"，而**是哪一笔被拒、站方原话是什么**只有原因串里有
+    // （401 与 403 是两种事：前者改凭据，后者可能在等风控缓过来）—— 所以这一档逐站念原话。
+    GalleryNoticeKind.CredentialRejected ->
+        sites.joinToString("\n") { site -> lineOf(site, reasons.getValue(site)) }
+
     // 逐站念原始原因，一个都不合并 —— 这一档的原因**各站确实不同**（超时 / 401 / 解析失败），
     // 合并成"部分站点无结果"是本仓最忌的静默降级：用户读不出是哪一站、也读不出为什么。
     GalleryNoticeKind.LegFailed -> sites.joinToString("\n") { site -> lineOf(site, reasons.getValue(site)) }
@@ -209,6 +225,9 @@ internal fun kindOfReason(reason: String): GalleryNoticeKind = when {
     // 发车前就拦住的那一类：它自带完整措辞（见 GallerySearchSource），
     // 所以判据是"以那句标题起头"，而不是"含『账号』两个字"。
     reason.startsWith(GallerySearchSource.NEEDS_ACCOUNT_TITLE) -> GalleryNoticeKind.MissingAccount
+    // 配了凭据、那一笔带凭据的请求被站方拒：判据是**站方原话那一句**（401 的措辞全仓只有一份，
+    // 见 GelbooruCredentialState.REJECTED_HINT），不是"含『凭据』"。
+    reason.startsWith(GelbooruCredentialState.REJECTED_HINT) -> GalleryNoticeKind.CredentialRejected
     // 站方答上了、只是这一轮一行都没给 —— 不是失败，重试也还是这个结果。
     reason == GalleryLegGuard.NO_CONTENT -> GalleryNoticeKind.NoContent
     // 这一站还没有可推荐的标签：不是出错，是"你还没收藏它的图"。

@@ -93,6 +93,19 @@ object GalleryRankings {
     fun supportsPeriodPickerAll(sites: List<GallerySite>): Boolean =
         sites.all { supportsPeriodPicker(it) }
 
+    /**
+     * 移动端那把「这一组腿有没有具体某一期可挑」（2026-10-16 新加，口径与 [supportsForApp] 同一把）。
+     *
+     * 为什么不直接把 [supportsPeriodPickerAll] 改成认合成档：那把钉着桌面三面判据，而桌面今天
+     * **不接** id 边界这一路（`GelbooruWindowFinder` 那颗契约在桌面上不接线）。两把分开之后，
+     * 移动端认"原生给得出 + 纯 Gelbooru 合成得出"，桌面照旧只认原生。
+     *
+     * 判的是**月档**：日期弹层只开月/年两档（[supportsHistory]），而月档能定出边界，年档用的是
+     * 同一套机制、只是窗口更长 —— 所以"能不能翻历史期"这一问的答案由月档那一枚说了算。
+     */
+    fun supportsPeriodPickerForApp(sites: List<GallerySite>): Boolean =
+        supportsForApp(sites, GalleryRanking.MONTH)
+
     /** 这一档能往回翻到多早的一期（yande.re 存档实测：`date:..2006-06-01` 已经回 0 条）。 */
     val EARLIEST_PERIOD: LocalDate = LocalDate.of(2007, 1, 1)
 
@@ -173,12 +186,53 @@ object GalleryRankings {
         return windowBounds(ranking, anchor, todayUtc)?.first
     }
 
+    /**
+     * 这一档在 Gelbooru 上要不要再定一枚**上界**：只有**翻历史期**才要，返回"这一期之后第一天"。
+     *
+     * ── 为什么本期不需要 ──
+     * 本期终点就是今天，站方没有比今天更晚的图，`id:>=A` 天然收口 —— 再探一枚上界是多花
+     * 六七笔（2026-10-16 真站量测：每一笔 0.9–2.0 秒往返），换来的那一串与不带上界**逐字等价**。
+     *
+     * ── 为什么历史期**必须**要 ──
+     * 站方不认 `date:`，`id:A..B` 那种区间写法被**静默忽略**（`count` 与全站逐字相同）。
+     * 只带 `id:>=A` 去看 2024 年 3 月，拿回的其实是"2024-03-01 起到今天"的分排序 ——
+     * 而胶囊上写着「月 2024-03」。两枚边界合起来才是那一月：`id:>=A id:<B`（实测严格互补，
+     * 见 `GelbooruWindowBoundary` 那颗文件头与 `_qa/gb_window_probe.sh` 的读数）。
+     *
+     * 锚点由日期弹层给（只有月/年两档能带历史锚点，见 [supportsHistory]）。
+     */
+    fun boundaryEndTargetDay(
+        site: GallerySite,
+        ranking: GalleryRanking,
+        anchor: LocalDate?,
+        todayUtc: LocalDate,
+    ): LocalDate? {
+        if (boundaryTargetDay(site, ranking, anchor, todayUtc) == null) return null
+        if (anchor == null) return null
+        val lastDay = windowBounds(ranking, anchor, todayUtc)?.second ?: return null
+        // 终点已经夹在今天上（选到本月/今年）：与本期同一档，不带上界就是那一串。
+        if (!lastDay.isBefore(todayUtc)) return null
+        return lastDay.plusDays(1)
+    }
+
     /** 这一腿要不要先探边界才能拼串（只有 Gelbooru 的四档时间窗要）。 */
     fun needsGelbooruBoundary(site: GallerySite, ranking: GalleryRanking): Boolean =
         site == GallerySite.GELBOORU && gelbooruWindowSynthesizable(ranking)
 
     /**
-     * [searchQuery] 的移动端版：需要边界的档吃一枚**已定好的边界 id**。
+     * 这一腿要不要**两枚**边界 —— 屏上给它的等待预算按这一把分档（历史期是本期那一档的两倍开销）。
+     *
+     * 调用方是 `GallerySearchViewModel` 那一处 `GalleryLegGuard.guard(..., timeoutMs = ...)`。
+     */
+    fun needsGelbooruEndBoundary(
+        site: GallerySite,
+        ranking: GalleryRanking,
+        anchor: LocalDate?,
+        todayUtc: LocalDate,
+    ): Boolean = boundaryEndTargetDay(site, ranking, anchor, todayUtc) != null
+
+    /**
+     * [searchQuery] 的移动端版：需要边界的档吃**已定好的边界**。
      *
      * 返回 null 的含义只有一个 —— "**这一腿这一轮不发**"：
      * 边界没探成还要发，退化的结果是"没有后缀的那一串"＝ 全站最新/历年高分，
@@ -187,6 +241,9 @@ object GalleryRankings {
      * ⚠️ 这一支**不能**照 [suffix] 那样把 null 读成"这一档不需要后缀"：`NEWEST` 在站方默认序里
      * 确实不需要后缀（照 [searchQuery] 的口径原样交回条件串），而边界探不成必须判成不发 ——
      * 两种 null 的语义相反，所以这里按"要不要边界"分流，而不是共用一个可空后缀。
+     *
+     * 上界那一颗用 [GelbooruWindowEnd] 而不是可空 Long，为的是同一件事：
+     * "不需要上界"与"上界没探成"都是 null，而一个该发、一个必须不发。
      */
     fun searchQueryFor(
         site: GallerySite,
@@ -195,14 +252,21 @@ object GalleryRankings {
         anchor: LocalDate?,
         todayUtc: LocalDate,
         gelbooruStartId: Long?,
+        gelbooruEnd: GelbooruWindowEnd,
     ): String? {
         val base = queryOfVisible(filters)
         if (needsGelbooruBoundary(site, ranking)) {
             val start = gelbooruStartId ?: return null
-            // 只用 `id:>=A` 这一枚**实测生效**的拼法，不带窗口终点：站方不认 `date:`，
-            // 而 `id:A..B` 那种区间写法被静默忽略（`count` 与全站逐字相同）。
-            // 终点由 id 单调性自然兜住 —— 比 A 新的那批就是"从那一天起到现在"。
-            val suffix = "id:>=$start sort:score:desc"
+            // 只用实测生效的两枚独立标签：`id:>=A` 与 `id:<B`。
+            // 区间语法 `id:A..B` 会被静默忽略（count 与全站逐字相同），`date:` 直接回 0 条。
+            val bounded = gelbooruEnd as? GelbooruWindowEnd.Before
+            val suffix = buildString {
+                append("id:>=").append(start)
+                if (bounded != null) {
+                    append(" id:<").append(bounded.exclusiveId)
+                }
+                append(' ').append(GELBOORU_SCORE)
+            }
             return if (base.isEmpty()) suffix else "$base $suffix"
         }
         val suffix = suffix(site, ranking, anchor, todayUtc) ?: return base

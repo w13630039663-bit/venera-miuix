@@ -5,8 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -49,7 +47,6 @@ import androidx.compose.runtime.LaunchedEffect
 import android.widget.Toast
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -65,7 +62,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -91,6 +87,7 @@ import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraGallerySourceMark
+import com.venera.compose.components.venera.VeneraPressFeedback
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.blurBackdropSource
@@ -419,9 +416,10 @@ fun GalleryScreen(
                         // 成功才写凭证：从错误态点重试要能真发请求。
                         vm.feedLoadedKey = "feed#${vm.refreshTick}|${vm.seed}"
                     }.onFailure { e ->
-                        // 屏上不出现原始异常：各站失败原因已由 failures 那份结构分档表达。
                         android.util.Log.w("VeneraDebug", "gallery feed failed", e)
-                        vm.feedError = "这次没读到内容 🥲 稍后再试一次"
+                        // 各站为什么没给，一起收进 vm —— 屏上摆着缓存那一屏时，
+                        // 整页错误视图上不了屏，那一排按档提示是唯一的失败说法（见 GalleryViewModel.reject）。
+                        vm.reject(e)
                     }
             } finally {
                 // 取消路径也要清：见上面那段"永久转圈"的说明。
@@ -627,19 +625,84 @@ fun GalleryScreen(
     val searchOverlayTop = topBarFloor
 
     /**
-     * 顶栏"已经折平"的判据 —— 到了这个点才把结果态那张搜索卡收走。
+     * 结果态给搜索结果墙的**稳定**顶部内缩（方案 B，2026-10-16 用户拍板「直接方案 b」）。
      *
-     * 取 0.99 而不是 1：折叠进度是 `heightOffset / heightOffsetLimit`，滚到深处被夹在 1，
-     * 但那是浮点除法，边界上可能停在 0.9999…。留一丝余量，语义上仍然是"完全折叠"。
-     * 之所以要"完全折叠"而不取中间值，见 [GalleryScreen] 里 [searchCollapsed] 那段注释。
+     * ── 它解决什么 ──
+     *
+     * 结果态那张摘要卡是**浮层**（锚在 [searchOverlayTop] = [topBarFloor]，不推内容），
+     * 于是首屏它正压在网格第一排图上。方案 A 那一路（把卡收窄到内容宽）只能**减少**遮挡面积，
+     * 要"压图"这件事归零只有一条路：给网格一段自己的空白带，让卡落在带子里。
+     *
+     * ── 取值 ──
+     *
+     * `listRowMinHeight`(48dp，摘要卡在这一态的实际高度) + `space6`(12dp 收口) = 60dp。
+     * 对齐关系：卡顶在 `topBarFloor + space2`、卡高 48dp ⇒ 卡底在 `topBarFloor + 50`，
+     * 空白带从 `topBarFloor + 60` 起 ⇒ **卡底与第一排图上沿之间留 10dp**。
+     *
+     * ⚠️ 那 12dp 是用户 2026-10-16 点名要的（原话「搜索框离下面的图片要有点边距」）：
+     * 上一版取 `space2`(4dp)，卡底到图上沿只剩 **2dp** —— 真机上读起来是"卡片贴在图上"。
+     *
+     * ⚠️ 当时把成因写成"卡片自己的投影（`elevation.attached` 3dp）把那条缝吃掉"，
+     * 这一半是错的：玻璃档下那张卡**没有**投影了（见 `VeneraGlass.veneraSurfaceShadowElevation`，
+     * 投影透出卡底正是"灰块"那条 bug）。12dp 这个值**不变** —— 它本来就是按"看得出是一段留白"
+     * 定的，不是按"补掉 3dp 投影"定的；只是成因里去掉投影那一项。
+     * 12dp 是"看得出是一段留白、又不至于把首屏白白让掉一行"的那一档，且是现成 token。
+     * **一枚 token 都不新立**（两枚都是现成的）。
+     *
+     * ── 为什么这不犯 2026-09-30 撤"网格避让"那条 ──
+     *
+     * 当时否掉避让的理由**针对"padding 随滚动状态变化"**（会让整面墙跳一下）。
+     * 这一条只随"进 / 出结果态"变化 —— 那本来就是一次整页切换（卡片 scaleIn 长开 / 收起），
+     * 墙跟着让半屏高是顺的；**滚动过程中它是常量**（收没收起都不影响它），墙不会跳。
+     *
+     * ⚠️ 收起之后这段空白**照旧占位**是刻意的：那时它在屏上看不见了（已滚到顶栏之上），
+     * 而回滚到顶时卡片正好落回它里面 —— 两边位置对得上，不会出现"卡片回来了但底下挤着"。
+     */
+    val searchResultsInset = if (svm.active && svm.mode == GallerySearchMode.RESULTS) {
+        tokens.spacing.listRowMinHeight + tokens.spacing.space6
+    } else {
+        tokens.spacing.none
+    }
+
+    /**
+     * 结果态那张搜索卡**收起**的判据 —— 与顶栏**居中标题**的出现同一条线（2026-10-16 用户拍板）。
+     *
+     * ── 阈值 1/3 的出处是 miuix 源码，不是拍出来的 ──
+     *
+     * `.reference/miuix-ui-094/…/basic/TopAppBar.kt:647-682` 两条逐字：
+     * 大标题 `alpha = 1 − (collapsedFraction × 3f).coerceIn(0f, 1f)`、
+     * 居中那行小标题 `visible = collapsedFraction × 3f >= 1f` —— 两条都落在 **1/3** 这一个点上。
+     * 取 1/3 的语义因此是「居中标题一出来，搜索卡就收起」，两个动作同帧起跑
+     * （出场曲线也取 miuix 那一颗 spring，见 [SEARCH_CARD_SHOW_SPEC]）。
+     *
+     * 从前这里是 `COLLAPSE_SETTLED_FRACTION`（0.99，完全折平才收）—— 用户真机读到的是
+     * "我都滚过一屏了它还在"。
+     *
+     * ── 为什么是滞回而不是单阈值 ──
+     *
+     * 用户口径（原话）：「向上滑动内容到显示居中标题的时候搜索栏收入消失，
+     * 向下拉到最顶的位置才重新显示」。单阈值做不到后半截 —— 那样滚回 1/3 之上它就弹回来了，
+     * 而"退回到刚刚折平的位置"与"回顶"在用户心里是两件事。两个方向各给一条：
+     * 上滑越过 1/3 收，**只有回到接近顶部才放出来**。
+     *
+     * 判据走 `snapshotFlow` 而不是 `derivedStateOf`：滞回**有记忆**、要写状态，
+     * 而 `derivedStateOf` 只能算纯函数。滚动全程只在越线那两下各写一次（不是逐帧写）。
      */
     val topBarState = topBarBehavior.state
-    val searchCollapsed by remember(topBarState) {
-        derivedStateOf {
-            svm.active &&
-                svm.mode == GallerySearchMode.RESULTS &&
-                topBarState.collapsedFraction >= COLLAPSE_SETTLED_FRACTION
+    var searchCollapsed by remember { mutableStateOf(false) }
+    LaunchedEffect(topBarState, svm.active, svm.mode) {
+        if (!svm.active || svm.mode != GallerySearchMode.RESULTS) {
+            // 不在结果态（没搜 / 正在打字 / 反搜那一层）：这一格没有"收起"这件事，复位。
+            searchCollapsed = false
+            return@LaunchedEffect
         }
+        snapshotFlow { topBarState.collapsedFraction }
+            .collect { fraction ->
+                when {
+                    fraction >= SEARCH_CARD_COLLAPSE_AT -> searchCollapsed = true
+                    fraction <= SEARCH_CARD_RESTORE_AT -> searchCollapsed = false
+                }
+            }
     }
 
     val searchWall = remember(svm.results, maskMode, rules, blockAi) {
@@ -726,9 +789,19 @@ fun GalleryScreen(
     // 而且那一态键盘起着，本来也滚不动网格。
     // （`searchWallActive` 的定义搬到了上面那几个 remember 之后，因为三个墙都要用同一句判据。）
     val searching = svm.active && svm.filters.isNotEmpty()
-    // 结果墙只在「这一轮真的取过（page > 0）或正在取」时接管。条件刚装好、还没搜时仍显示主墙 ——
-    // 否则会摆出一屏"0 张"的假空态（不是没有结果，是还没搜）。
-    val searchWallActive = searching && (svm.page > 0 || svm.isSearching)
+    // 结果墙只在「这一轮真的取过（page > 0）或正在取**或这一轮已经说过一句失败**」时接管。
+    //
+    // `searchError != null` 那一支是 2026-10-15 补的：此前只有前两支，于是**第 1 页整轮失败**
+    // （`beginSearch` 把 page 归零、失败路径又不走 `appendPage`，page 就停在 0）时这一句判据
+    // 当场为假 —— 内容区落回**首页那面墙**，用户读到的是"搜不到就自己退回主页"，
+    // 而下面那台专门给失败态的空态（"这一轮没搜成" + 条件 + 排行 + 改条件）永远命中不了。
+    // 真机读数：`_qa/ui-verify-2026-10-15/scr-23-39-search-fail-fell-back-home.jpg` ——
+    // 条件行「loli ×」「排行：年」还挂在顶上，身子已经是首页（正在关注的画师 / 每日热门）。
+    //
+    // ⚠️ 条件刚装好、还没搜时仍显示主墙 —— 否则会摆出一屏"0 张"的假空态（不是没有结果，是还没搜）。
+    // 这条没动，也**不能**用 `svm.legFailures` 非空来代替 `searchError`：
+    // 一腿成、一腿败时屏上是有内容的，那一档由页尾与展开区说，不该把整面墙换成错误页。
+    val searchWallActive = searching && (svm.page > 0 || svm.isSearching || svm.searchError != null)
 
     // 页尾那一行：搜索与猜你喜欢各一句，**类型显式写出来**（`when` 里混 `@Composable {}` 字面量
     // 会被推成 Unit?，编译器就不认了）。
@@ -847,7 +920,9 @@ fun GalleryScreen(
                 // 只按整屏居中会让中心正好落在键盘底下 —— 展开态下键盘叠着卡片时尤其明显。
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = gridTopPadding)
+                    // 加上结果态内缩：这一段空白带在结果态是**摘要卡的落点**（见 [searchResultsInset]），
+                    // 波浪环再居中一次才不会落在卡下面一半看不见。
+                    .padding(top = gridTopPadding + searchResultsInset)
                     .imePadding(),
                 contentAlignment = Alignment.Center,
             ) {
@@ -872,7 +947,9 @@ fun GalleryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        top = gridTopPadding,
+                        // 结果态内缩与网格同一口径（见 [searchResultsInset]）：这一屏的语义中心
+                        // 落在摘要卡**下面**，而不是被那张卡顶下来一截。
+                        top = gridTopPadding + searchResultsInset,
                         // 左右与其余空态同一口径。
                         start = tokens.spacing.screenHorizontal,
                         end = tokens.spacing.screenHorizontal,
@@ -932,7 +1009,9 @@ fun GalleryScreen(
                 contentPadding = PaddingValues(
                     start = tokens.spacing.screenHorizontal,
                     end = tokens.spacing.screenHorizontal,
-                    top = gridTopPadding,
+                    // 方案 B：结果态多让出 [searchResultsInset] 一条空白带，
+                    // 摘要卡落进带子里、首排图完整可见（不再是"浮层压在第一排图上"）。
+                    top = gridTopPadding + searchResultsInset,
                     bottom = LocalBottomBarClearance.current,
                 ),
                 modifier = Modifier
@@ -1007,6 +1086,11 @@ fun GalleryScreen(
                     // 读到的"没有过渡"。现在条留在原地，卡片从它身上原地盖过来、收回时缩回去。
                     chrome = {
                         GalleryHomeChrome(
+                            // 搜索一开，这一条就让位给从它身上长开的卡（两端同一个共享元素 key，
+                            // 2026-10-16 第七轮）。传 `svm.active` 而不是 `active && !collapsed`：
+                            // 结果态滚到 1/3 那一路的对面是**顶栏胶囊**那一对（本轮不做），
+                            // 这里只认"搜索开没开"，免得条在屏幕外跟着翻档、给卡一个看不见的落点。
+                            searchOpen = svm.active,
                             onOpenSearch = {
                                 // 只开搜索、**直接展开**：与顶栏那枚 🔍 同一个入口同一种语义
                                 // （点搜索就是要打字，不是要看上一轮的结果）。
@@ -1198,35 +1282,55 @@ fun GalleryScreen(
                     },
             )
         }
+        // ── 结果态那张卡：进出场取顶栏居中标题那一颗 spring ──
+        // 收起时机与"居中标题出现"同帧（见 [SEARCH_CARD_COLLAPSE_AT]），曲线也必须同源
+        // （`SEARCH_CARD_SHOW_SPEC` / `SEARCH_CARD_HIDE_SPEC` = miuix `TopAppBar.kt:688` 那两颗），
+        // 否则两边各动各的、读起来是两件事而不是一个动作。
+        //
+        // ⚠️ 2026-10-16（第七轮）**这一层不再是这一下的主角**：展开/收起现在是
+        // 「入口条 ↔ 这张卡」的真容器变化（同一个共享元素 key，见 `GallerySearchContainer.kt`），
+        // 这里退成"配不上对时"的兜底 —— 详见下面 enter/exit 上的注释。
         AnimatedVisibility(
             visible = svm.active && !searchCollapsed,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = searchOverlayTop),
-            enter = fadeIn(animationSpec = tween(durationMillis = tokens.motion.medium)) +
-                scaleIn(
-                    initialScale = SEARCH_OVERLAY_INITIAL_SCALE,
-                    // 从**顶部**长开：与它锚在入口条位置这件事一致（从中心长开会像"凭空浮出来"）。
-                    transformOrigin = TransformOrigin(0.5f, 0f),
-                    animationSpec = tween(durationMillis = tokens.motion.medium),
-                ),
-            exit = fadeOut(animationSpec = tween(durationMillis = tokens.motion.short)) +
-                scaleOut(
-                    targetScale = SEARCH_OVERLAY_INITIAL_SCALE,
-                    transformOrigin = TransformOrigin(0.5f, 0f),
-                    animationSpec = tween(durationMillis = tokens.motion.short),
-                ),
+            // 进出场只留 fade（2026-10-16 第七轮）：原先那对
+            // `scaleIn / scaleOut(initialScale = 0.94f, transformOrigin = 顶边中点)` 是
+            // "容器变化"的**近似物**，真容器变化落地后退休 —— 它俩叠在共享元素的 bounds
+            // 插值上就是双重形变（卡会一边被拉伸一边被缩放）。
+            //
+            // 这一层与 fade 都留着，是因为它还要给**配不上对**的两路兜底：
+            // 结果态滚到 1/3 收起、以及从收起态 `backToInput` 展开 —— 那两下入口条恒不可见
+            // （`svm.active` 仍为真），共享元素无从匹配，只能由这里淡出淡入。
+            enter = fadeIn(animationSpec = SEARCH_CARD_SHOW_SPEC),
+            exit = fadeOut(animationSpec = SEARCH_CARD_HIDE_SPEC),
         ) {
-            GallerySearchArea(
-                svm = svm,
-                recommendations = recommendations,
-                // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
-                // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
-                // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
-                onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
-                rvm = rvm,
-                allowNsfw = allowNsfw,
-            )
+            Box(
+                // 与常驻入口条**同一个 key**：这两层是"同一块面"的两态。外面包一层 Box
+                // 而不是把修饰符直接挂给 `GallerySearchArea` —— 它的根是那个带 padding 的
+                // Column，共享元素的 bounds 要的是**外框**（与入口条的外框同构），挂进去就变成
+                // "面 vs 面 + 边距"，飞行途中会横跳一下。
+                modifier = Modifier.gallerySearchContainerElement(this@AnimatedVisibility),
+            ) {
+                GallerySearchArea(
+                    svm = svm,
+                    recommendations = recommendations,
+                    // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
+                    // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
+                    // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
+                    onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
+                    rvm = rvm,
+                    allowNsfw = allowNsfw,
+                    // 结果态读数槽要报的张数：**与页尾 `GallerySearchEnd` 同一个来源、同一个数**
+                    // （都是 `searchWall.cards.size`，"真正摆出来的那些"）——
+                    // 两处各算一遍一定会分叉，而屏上同时摆着两个不同的数，两个都不可信。
+                    // 第一轮在途时传 null（那一格改画波浪环），不报 0。
+                    // 判据取 `page > 0`（有一轮到过货）而不是 `!isSearching` ——
+                    // "已经开了搜索但一次都还没落地"那一档若报 `0 张`，就是把"还没搜"说成"没有结果"。
+                    resultCount = searchWall.cards.size.takeIf { svm.page > 0 },
+                )
+            }
         }
 
         // ── 吸附态的条件胶囊 ──
@@ -1240,11 +1344,13 @@ fun GalleryScreen(
         AnimatedVisibility(
             visible = searchCollapsed,
             // 淡入 + 从下方一小段滑上来：卡片就在它下方，这个方向读起来是"被顶栏吸上去"。
-            enter = fadeIn(animationSpec = tween(durationMillis = tokens.motion.medium)) +
+            // 与那一颗 spring **同一份 spec**：胶囊上来的过程正是卡片缩回去的过程，
+            // 一上一下共一条曲线，读起来是"这张卡收进顶栏、留下一行胶囊"。
+            enter = fadeIn(animationSpec = SEARCH_CARD_SHOW_SPEC) +
                 slideInVertically(
-                    animationSpec = tween(durationMillis = tokens.motion.medium),
+                    animationSpec = SEARCH_CARD_SHOW_SLIDE_SPEC,
                 ) { height -> height / 2 },
-            exit = fadeOut(animationSpec = tween(durationMillis = tokens.motion.short)),
+            exit = fadeOut(animationSpec = SEARCH_CARD_HIDE_SPEC),
             modifier = Modifier.align(Alignment.TopStart),
         ) {
             GallerySearchCollapsedChips(
@@ -1276,22 +1382,49 @@ private val TOP_BAR_HIDE_DISTANCE = 400.dp
 private const val SEARCH_SCRIM_ALPHA = 0.32f
 
 /**
- * 搜索浮层进出场的起始缩放。
+ * 结果态那张搜索卡「收进顶栏」的阈值 = **顶栏居中标题的出现点** = 1/3。
  *
- * 从 0.94 长到 1：`transformOrigin` 钉在**顶边中点**（那条入口条的位置），
- * 所以这一下读起来是"入口条自己长开成一张卡"，而不是"一块面板从中间放大"。
- * 幅度刻意很轻 —— 再大就成了"弹窗"，而这是同一页上的一次形变。
+ * 不是拍出来的：miuix 顶栏里大标题 `alpha = 1 − (collapsedFraction × 3f).coerceIn(0f, 1f)`、
+ * 居中那行小标题 `visible = collapsedFraction × 3f >= 1f`，两条都落在 1/3
+ * （`.reference/miuix-ui-094/…/basic/TopAppBar.kt:647-682`）。取同一个点，
+ * "居中标题出来"与"搜索卡收起"才是同一件事的两面，而不是先后两下。
  */
-private const val SEARCH_OVERLAY_INITIAL_SCALE = 0.94f
+private const val SEARCH_CARD_COLLAPSE_AT = 1f / 3f
 
 /**
- * 顶栏"已经折平"的判据 —— 到了这个点才把结果态那张搜索卡收走。
+ * 结果态那张搜索卡「回到屏上」的阈值 ≈ 回到顶部。
  *
- * 取 0.99 而不是 1：折叠进度是 `heightOffset / heightOffsetLimit`，滚到深处被夹在 1，
- * 但那是浮点除法，边界上可能停在 0.9999…。留一丝余量，语义上仍然是"完全折叠"。
- * 之所以要"完全折叠"而不取中间值，见 [GalleryScreen] 里 [searchCollapsed] 那段注释。
+ * 与 [SEARCH_CARD_COLLAPSE_AT] 一起构成**滞回**：滚回来要几乎到顶才放它出来
+ * （用户 2026-10-16 口径「向下拉到最顶的位置才重新显示」）。
+ * 取 0.02 而不是 0：折叠进度是浮点除法，回顶那一下不一定精确落在 0。
  */
-private const val COLLAPSE_SETTLED_FRACTION = 0.99f
+private const val SEARCH_CARD_RESTORE_AT = 0.02f
+
+/**
+ * 结果态搜索卡（与它收起后顶栏那行胶囊）的进出场曲线 —— **miuix 顶栏居中标题那一颗 spring**。
+ *
+ * `folmeSpring(damping = 1.0f, response = 0.3f / 0.15f)` 与
+ * `.reference/miuix-ui-094/…/basic/TopAppBar.kt:688` 那两颗逐字同源（显示 0.3、隐藏 0.15）。
+ * 抄同一颗曲线是刻意的：居中标题淡入与搜索卡收起在**同一帧**触发，若两边曲线不同，
+ * 用户读到的是"两个东西各动各的"；同源之后它是一个动作。
+ *
+ * ⚠️ 2026-10-16（第七轮）起**那两个数字搬到 `GallerySearchContainer.kt`**：那一对共享元素
+ * （常驻入口条 ↔ 展开的搜索卡）的 bounds 转场与这两颗必须**同一时长** —— 时长对不上时，
+ * 内容会在 bounds 动画跑完之前被 `AnimatedVisibility` 移除、尾巴被硬切。数字只留那一处，这里是别名。
+ *
+ * `damping = 1.0` 是临界阻尼（不过冲）—— alpha 与 scale 都不过冲，不会出现"闪一下"；
+ * 弹性来自曲线形状本身（速度先快后缓、带 settle 尾巴），而不是靠回弹。
+ */
+private val SEARCH_CARD_SHOW_SPEC = SEARCH_CONTAINER_SHOW_SPEC
+private val SEARCH_CARD_HIDE_SPEC = SEARCH_CONTAINER_HIDE_SPEC
+
+/**
+ * 同一条曲线、给位移那一路用的一份实例。
+ *
+ * `slideInVertically` 的参数类型是 `FiniteAnimationSpec<IntOffset>`（不是 Float），
+ * 所以按类型参数各建一份 —— 参数值逐字相同，两路仍是同一条弹簧。
+ */
+private val SEARCH_CARD_SHOW_SLIDE_SPEC = SEARCH_CONTAINER_SHOW_SLIDE_SPEC
 
 /**
  * 续页判定所需的一切，收成一个值。
@@ -1686,6 +1819,16 @@ internal fun GalleryPostCard(
         // 16dp，MIUIX 模式下比别处卡片小一档，洗底（同按 shape.card 裁）也对不上。
         cornerRadius = tokens.shape.card,
         modifier = Modifier.fillMaxWidth(),
+        /*
+         * 按下去整卡下沉（0.94）。**这张卡此前是全画廊手感最"死"的一块** —— miuix `Card`
+         * 的 `pressFeedbackType` 默认 None，而这一面墙上十几张卡全靠"点得动"这一件事，
+         * 按下没有任何回话就等于让人怀疑点空了。
+         *
+         * 缩的是**卡面**，不是外面那圈 [SelectableCardFrame]：多选态那层洗底与右上角那枚选择框
+         * 是"选择"这套 chrome，它们不跟着缩才是对的（要缩一起缩的话，那枚选择框会在按下的
+         * 一百多毫秒里从卡角上滑开，读起来像两块东西没对齐）。
+         */
+        pressFeedbackType = VeneraPressFeedback.card,
         // 多选态下点整张卡 = 勾选（只让人去够右上角那个小圈太费劲）；非多选态才是点开大图页。
         onClick = { if (selecting) onToggleSelect?.invoke() else onOpen(coverBounds) },
         onLongPress = onLongPress,
@@ -1760,7 +1903,7 @@ internal fun GalleryPostCard(
  * 摆右下角。给视频打标不是装饰 ——
  * 站方那档 preview 是**静帧 jpg**，不打标它就是一张看着正常、点开什么也不会动的图，
  * 用户没法知道那张可以播。时长在 yande.re 那侧拿不到（实测字段表里没有），
- * 所以只在有的时候显示，不写"0″"。
+ * 所以只在有的时候显示，不写"0s"（秒数单位的口径见 `GalleryPost.durationLabel`）。
  *
  * ⚠️ 2026-09-30 起**左下角那枚来源胶囊撤了**：来源搬到封面下方那一行
  * （与标题并排，见 [GalleryCardCaption]）。所以这里的"与来源分角不抢位"那条理由
@@ -1972,6 +2115,13 @@ internal fun GalleryDailyPage(
                     if (sourceNotice != null) append("\n$sourceNotice")
                 },
                 icon = Icons.Outlined.Image,
+                /*
+                 * 行动层只在"站方这一轮没回内容"那一档给：另两档（命中屏蔽规则 / 被分级收起）的
+                 * 出路是去收那条规则或改「成人内容处理」，重试还是同一个结果 ——
+                 * 按下去屏上纹丝不动的那枚按钮是本仓最忌的假开关（那两档的正解消息里已经说清了去哪儿改）。
+                 */
+                actionText = if (blocked == 0 && hidden == 0) "重试" else null,
+                onAction = if (blocked == 0 && hidden == 0) onRetry else null,
             )
         }
 

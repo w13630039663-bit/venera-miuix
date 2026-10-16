@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.platform.PreferenceKeys
+import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
@@ -16,6 +17,7 @@ import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
 import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
+import com.venera.compose.gallery.domain.GalleryDailyFeed
 import com.venera.compose.gallery.domain.GalleryLegGuard
 import com.venera.compose.gallery.domain.GalleryLegOutcome
 import com.venera.compose.gallery.domain.GalleryMerge
@@ -28,9 +30,11 @@ import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GallerySearchSource
 import com.venera.compose.gallery.domain.GalleryTagFilter
+import com.venera.compose.gallery.domain.GelbooruWindowBounds
+import com.venera.compose.gallery.domain.GelbooruWindowBoundary
 import com.venera.compose.gallery.domain.GelbooruWindowBreak
+import com.venera.compose.gallery.domain.GelbooruWindowEnd
 import com.venera.compose.gallery.domain.GelbooruWindowFinder
-import com.venera.compose.gallery.domain.GelbooruWindowHunt
 import com.venera.compose.gallery.domain.allLegsExhausted
 import com.venera.compose.gallery.domain.decodeGallerySearchHistory
 import com.venera.compose.gallery.domain.encodeGallerySearchHistory
@@ -721,9 +725,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     fun pickPeriod(target: GalleryRanking, anchor: LocalDate?) {
         if (!GalleryRankings.supportsHistory(target)) return
-        // 「全部」档里 Gelbooru 给不出时间窗 → 这一路整档不通。菜单那一侧已经不摆这个入口，
-        // 这里再挡一道是状态层的判据（与 setRanking 同一条理由：入口不止菜单一个）。
-        if (!GalleryRankings.supportsAll(source.sites, target)) return
+        // 这一路通不通问的是**移动端那把**（[GalleryRankings.supportsForApp]）：Gelbooru 的历史期由
+        // id 边界合成（两枚：这一期的头一条、以及出这一期的头一条），站方自己不给 `date:`。
+        // 从前这里用的是原生那把，于是菜单那一行摆出来了、点下去却一言不发 —— 假入口。
+        // 「全部」档里带着一条给不出窗口的腿，这一档整档不通，与菜单同一条口径。
+        if (!GalleryRankings.supportsForApp(source.sites, target)) return
         if (target == ranking && anchor == periodAnchor) return
         ranking = target
         periodAnchor = anchor
@@ -928,11 +934,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             // 换来快的那条立刻出图。预算与包装那份都复用日榜那头（`GalleryLegGuard`），
                             // 三处各写一遍迟早分叉 —— 而分叉出来的差别不报错，只出假读数。
                             // ⚠️ Gelbooru 合成档的**定界探测也算在这笔预算里**：它是几笔 `limit=1` 的轻请求
-                            // （稠密桩上实跑：天 5 / 周 6 / 月 6 / 年 6 笔，见 `GelbooruWindowFinderTest`；
-                            // 真站有删帖空洞时可能多一两笔，上限 18 笔），另起一台计时就会出现
+                            // （2026-10-16 真站台架：本期那一枚 5–8 笔，历史期两枚合计 11 请求 ≈ 10–12 秒，
+                            // 上限 18 笔，见 `GelbooruWindowBoundary` 那颗文件头），另起一台计时就会出现
                             // "这一腿既超了预算、又没人说得清它为什么缺席"。定不出来 = 这一腿缺席，
-                            // **绝不发一串没有后缀的**。
-                            val byOriginal = GalleryLegGuard.guard(legSite) {
+                            // **绝不发一串没有后缀的**。预算因此分两档（[legBudgetMs]）：翻历史期那一腿
+                            // 要探两枚边界，12 秒那档会把"再等五六秒就探完"掐成超时。
+                            val byOriginal = GalleryLegGuard.guard(
+                                legSite,
+                                timeoutMs = legBudgetMs(legSite, rankingAtRequest, anchorAtRequest, todayUtc),
+                            ) {
                                 when (val leg = legQuery(legSite, sent, rankingAtRequest, anchorAtRequest, todayUtc)) {
                                     is LegQuery.Ready -> searchLeg(legSite, leg.query, legPage)
                                     is LegQuery.Skip -> Result.failure(
@@ -1069,6 +1079,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * - 排行档要窗口而窗口边界算不出来。
      * ⚠️ **绝不能退回"没有后缀的那一串"** —— 那按站方语义就是全站最新/全站高分，
      * 而胶囊上写着「周」，就是本仓最忌的静默交错。
+     *
+     * 翻历史期（[anchorAtRequest] 非空）时这一趟要定**两枚**边界：这一期的第一天、以及
+     * "这一期之后的第一天"（不含的上界）。第二枚吃第一枚的读数当种子，两枚共用一份探测预算
+     * （见 `huntWindowBounds`）。上界那枚断在"问到站方最新一条仍在这期之内"时**不算断** ——
+     * 那是证到了这一期就是收到最新，交回不带上界的那一串才是对的（`GelbooruWindowEnd.Unbounded`）。
      */
     private suspend fun legQuery(
         site: GallerySite,
@@ -1077,44 +1092,109 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         anchorAtRequest: LocalDate?,
         todayUtc: LocalDate,
     ): LegQuery {
-        val targetDay = GalleryRankings.boundaryTargetDay(site, rankingAtRequest, anchorAtRequest, todayUtc)
-        val hunt = targetDay?.let { gelbooruWindowFinder.hunt(it, todayUtc) }
+        val firstDay = GalleryRankings.boundaryTargetDay(site, rankingAtRequest, anchorAtRequest, todayUtc)
+        val startId: Long?
+        val end: GelbooruWindowEnd
+        if (firstDay == null) {
+            startId = null
+            end = GelbooruWindowEnd.Unbounded
+        } else {
+            val dayAfter = GalleryRankings.boundaryEndTargetDay(site, rankingAtRequest, anchorAtRequest, todayUtc)
+            val bounds = gelbooruWindowFinder.huntWindowBounds(firstDay, dayAfter, todayUtc)
+            if (bounds is GelbooruWindowBounds.Blocked) {
+                return LegQuery.Skip(bounds.at, bounds.detail, atEnd = dayAfter != null)
+            }
+            val ready = bounds as GelbooruWindowBounds.Ready
+            startId = ready.startId
+            end = ready.end
+        }
         val query = GalleryRankings.searchQueryFor(
             site,
             filters,
             rankingAtRequest,
             anchorAtRequest,
             todayUtc,
-            hunt?.startId,
-        ) ?: return LegQuery.Skip(
-            (hunt as? GelbooruWindowHunt.Broken)?.at,
-            (hunt as? GelbooruWindowHunt.Broken)?.detail,
-        )
+            startId,
+            end,
+        ) ?: return LegQuery.Skip(null, null, atEnd = false)
         return LegQuery.Ready(query)
+    }
+
+    /**
+     * 这一腿的时间预算：**只有一处**要放宽 —— 要探两枚边界的那一腿（Gelbooru 的历史期）。
+     *
+     * 日/周/月/年**本期**那一档仍然吃日榜那头的 12 秒（真机 2026-10-15 实测在那档内出图），
+     * 三处共用一份预算这条纪律不变；这里不是"给 Gelbooru 单独松绑"，是"多探一枚边界的那一腿多等一会儿" ——
+     * 同一站在本期那一档照旧 12 秒。数值与量测见 [GelbooruWindowBoundary.CLOSED_WINDOW_LEG_TIMEOUT_MS]。
+     */
+    private fun legBudgetMs(
+        site: GallerySite,
+        ranking: GalleryRanking,
+        anchor: LocalDate?,
+        todayUtc: LocalDate,
+    ): Long = if (GalleryRankings.needsGelbooruEndBoundary(site, ranking, anchor, todayUtc)) {
+        GelbooruWindowBoundary.CLOSED_WINDOW_LEG_TIMEOUT_MS
+    } else {
+        GalleryDailyFeed.PER_SITE_TIMEOUT_MS
     }
 
     /**
      * 屏上那一句缺席原因：先说清"这一站不给时间查询，要先探几次"，再把**断在哪一步**接上去。
      *
-     * 光一句"没探成"是不够的：那五种成因里只有一种该去设置里补凭据，其余几种该等站方缓过来，
+     * 光一句"没探成"是不够的：那几种成因里只有一种该去设置里补凭据，其余几种该等站方缓过来，
      * 而用户分不出来的结果就是把凭据改一遍再截一张图过来。站方原话（401 那句）直接带上。
+     *
+     * ⚠️ 凭据被拒那一族**必须把那句原话摆在最前**：`galleryNotices` 那层按前缀归类
+     * （见 [com.venera.compose.gallery.domain.kindOfReason]），归到那一档屏上才长出
+     * 「去配置账号」这枚真能到达设置页的按钮。档名与机制退到后半句说。
      */
     private fun legSkipped(ranking: GalleryRanking, skip: LegQuery.Skip): String {
+        if (skip.at.isCredentialShaped()) {
+            val hint = skip.detail?.takeIf { it.startsWith(GelbooruCredentialState.REJECTED_HINT) }
+                ?: GelbooruCredentialState.REJECTED_HINT
+            return "$hint。${ranking.shortLabel}排行的窗口边界要靠这一笔定出来，" +
+                "定不出来 ⇒ 这一腿这一轮不发（不发好过发一串没有后缀的：那按站方语义就是全站高分）"
+        }
         val why = when (skip.at) {
             GelbooruWindowBreak.ProbeNotWired -> "这一档的探测通道没接上"
             GelbooruWindowBreak.LatestIdRejected -> skip.detail ?: "Gelbooru 没接受这组凭据"
             GelbooruWindowBreak.LatestIdUnusable -> "Gelbooru 没给出最新一条的编号"
             GelbooruWindowBreak.ProbeRejected -> skip.detail ?: "Gelbooru 没接受定界那一笔请求"
             GelbooruWindowBreak.ProbeNoEntry -> "定界问到的位置上没有条目"
-            GelbooruWindowBreak.StampUnparsable -> "Gelbooru 的上传时间读不出日子"
+            // 站方这一笔**压根没带** `created_at`：要去查的是请求参数与 DTO，不是解析器。
+            // 从前这一档与下面那档共用一句话，2026-10-16 才分开（真机那张截图把排查带去过早了）。
+            GelbooruWindowBreak.StampMissing -> "Gelbooru 这一笔没带上传时间"
+            // 带了、可读不出 ⇒ 把**原文带上屏**。这一格的存在理由就是：下一次截图是一条读数，
+            // 而不是又一次"看起来像格式问题"的往返。站方的串可能很长，截一段就够认格式。
+            // ⚠️ 措辞不套第二层括号：这一整句本来就在「（$why）」里面，
+            // 真机 00:30 那张读成了「…读不出日子（原文「…」））」—— 三层括号糊成一团。
+            GelbooruWindowBreak.StampUnparsable -> "Gelbooru 的上传时间读不出日子，站方给的是" +
+                (skip.detail?.takeIf { it.isNotBlank() }?.let { "「${it.take(48)}」" } ?: "一串空东西")
             GelbooruWindowBreak.CountInconsistent -> "Gelbooru 的编号过滤没按语义生效"
             GelbooruWindowBreak.SameReadingRepeated -> "连着几笔探到同一个位置，没往前走"
             GelbooruWindowBreak.ProbeBudget -> "探满上限还没括住这一档"
             GelbooruWindowBreak.TopReachedWithoutBracket -> "问到最新一条仍没括住这一档"
             null -> "窗口边界算不出来"
         }
-        return "${ranking.shortLabel}排行：这一站的窗口要先把起止探出来，这一次没探成（$why），所以这一腿这一轮不发"
+        // 断在哪一枚要说清：历史期那一趟是两枚边界，起点与上界的排查出路不同。
+        val which = if (skip.atEnd) "这一期的上界" else "窗口起点"
+        return "${ranking.shortLabel}排行：这一站的窗口要先探出$which，这一次没探成（$why），" +
+            "所以这一腿这一轮不发"
     }
+
+    /**
+     * 这一笔断点**是不是凭据那一族**。
+     *
+     * 判据按**断在哪一步**（枚举成员），不按"报错里含不含『凭据』"：那两笔请求都带着
+     * `api_key` 与 `user_id` 出去（[GelbooruWindowBreak.LatestIdRejected] 是锚点那一笔、
+     * [GelbooruWindowBreak.ProbeRejected] 是探针那一笔），被拒就是"这一组凭据现在不好使"，
+     * 与站方回了空表 / 探不够 / 计数不自洽是四种完全不同的事。
+     *
+     * ⚠️ 这一族给的是「去配置账号」的出口，判宽了会把"再等一分钟就好"的处境指去设置页，
+     * 判窄了就是 2026-10-15 真机那个样子：一句"窗口没探成" + 一枚按下去没用的重试。
+     */
+    private fun GelbooruWindowBreak?.isCredentialShaped(): Boolean =
+        this == GelbooruWindowBreak.LatestIdRejected || this == GelbooruWindowBreak.ProbeRejected
 
     /**
      * Gelbooru 合成档的定界器（2026-10-13）。
@@ -1391,6 +1471,14 @@ private class GalleryLegAttempt(
 private sealed interface LegQuery {
     data class Ready(val query: String) : LegQuery
 
-    /** @param at null = 不是 Gelbooru 合成档那一路（这一档压根要不到窗口边界）。 */
-    data class Skip(val at: GelbooruWindowBreak?, val detail: String?) : LegQuery
+    /**
+     * @param at null = 不是 Gelbooru 合成档那一路（这一档压根要不到窗口边界）。
+     * @param atEnd 断在**上界**那一枚上（翻历史期才有第二枚）。屏上那一句得说清是起是止 ——
+     *   两枚的排查出路不同：起点定不出是探针/凭据的问题，上界定不出多半是那段日子站方没货。
+     */
+    data class Skip(
+        val at: GelbooruWindowBreak?,
+        val detail: String?,
+        val atEnd: Boolean,
+    ) : LegQuery
 }

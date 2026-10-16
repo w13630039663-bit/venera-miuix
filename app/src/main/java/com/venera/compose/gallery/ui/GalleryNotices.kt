@@ -126,6 +126,9 @@ internal fun noticeTitle(notice: GalleryNotice): String {
         // 未配账号那一档：标题用那句**唯一来源**的标题半句（不另造措辞）。
         // 站名不重复前缀 —— 那句话自己就以 "Gelbooru" 起头。
         GalleryNoticeKind.MissingAccount -> GallerySearchSource.NEEDS_ACCOUNT_TITLE
+        // 标题只说"是什么事"，站方原话（401 还是 403）留在正文里逐站念 ——
+        // 那句 `REJECTED_HINT` 有 40 来个字，压在一行档的标题上只会读成省略号。
+        GalleryNoticeKind.CredentialRejected -> "$sites 不认这组凭据"
         GalleryNoticeKind.LegFailed -> "$sites 这一轮没答上"
         GalleryNoticeKind.NoContent -> "$sites 这一轮没有内容"
         GalleryNoticeKind.NoRecommendTags -> "$sites 还没有可推荐的标签"

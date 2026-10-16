@@ -204,12 +204,29 @@ class GalleryHistoryWiringTest {
         assertTrue("夹界那句不在 domain 里", domain.any { it.value.contains("coerceIn(0.4f, 2.5f)") })
     }
 
-    /** ⑩ 长按那一圈水波纹是显式挂的（miuix 的 indication 画的是整层洗底，不是涟漪）。 */
+    /**
+     * ⑩ 瓦片的按压反馈走**全画廊那一档**（下沉 0.94）—— 2026-10-16 口径变更。
+     *
+     * 此前这一处钉的是 material3 的 `ripple()`，理由是"长按要那一圈从触点扩开的东西"。
+     * 那条理由在整面图墙统一成"沉一下"之后不成立了：全画廊只剩这一格泛涟漪，
+     * 而涟漪盖的又恰好是用户正在看的画面（这一格整个就是一张图）。
+     *
+     * 判据钉**出处**而不是符号：`indication` 必须取 `VeneraPressFeedback.indication`
+     * （唯一出处），且 material3 那颗涟漪工厂**不得**再出现在这一屏。
+     */
     @Test
-    fun `历史瓦片显式挂 material3 涟漪`() {
+    fun `历史瓦片按压反馈走全画廊同一档下沉`() {
         val lines = screenLines()
-        assertEquals(1, lines.count { it.value.contains("indication = ripple()") })
-        assertTrue("没 import 那颗涟漪工厂", lines.any { it.value.contains("import androidx.compose.material3.ripple") })
+        assertEquals(
+            "瓦片的 indication 没走唯一出处",
+            1,
+            lines.count { it.value.contains("indication = VeneraPressFeedback.indication") },
+        )
+        assertEquals(
+            "material3 涟漪还在这一屏里（口径变更没落干净）",
+            0,
+            lines.count { it.value.contains("ripple()") || it.value.contains("material3.ripple") },
+        )
         assertTrue("长按没接上（只有单击那一档）", lines.any { it.value.contains("onLongClick = onLongPress") })
     }
 

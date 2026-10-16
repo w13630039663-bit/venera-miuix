@@ -36,7 +36,6 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +67,7 @@ import com.venera.compose.components.selection.rememberMultiSelectState
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraPressFeedback
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.blurBackdropSource
@@ -332,6 +332,7 @@ internal fun GalleryHistoryScreen(
                     filtered = rows.isNotEmpty(),
                     siteFilter = siteFilter,
                     onShowAll = { siteFilter = null },
+                    onClear = { showClearDialog = true },
                 )
             }
         } else {
@@ -547,9 +548,16 @@ private fun GalleryHistoryGroupHeader(group: GalleryDayGroup) {
  * 比例是当初记下行时从 `GalleryPost.cardRatio` 抄的一份；取不到（0）时与墙上同一条退路 ——
  * 退占位比例再夹进 0.4~2.5，判据在 [GalleryBrowseRows.tileRatio]。
  *
- * 反馈用 material3 的 `ripple()` 而**不是**这一屏本来的 miuix 按压洗底：
- * `MiuixIndication` 画的是整层 alpha 洗底（`_qa/mxsrc/.../MiuixIndication.kt` 现读），
- * 按下去没有从触点扩开的那一圈。长按要的就是那一圈，所以这一处显式递 `indication`。
+ * 反馈改用**下沉**（`VeneraPressFeedback.indication`，0.94 等比缩放）。
+ *
+ * ⚠️ 2026-10-16 口径变更：此前这一处显式递 material3 的 `ripple()`，理由是"长按要那一圈从触点
+ * 扩开的东西，而 miuix 的 indication 是整层洗底"。那条理由今天不成立了 ——
+ * 现在整面图墙（`GalleryPostCard` / 预览行 / 画师头像卡）统一走"沉一下"，
+ * 全画廊只剩这一格按下去泛涟漪，读起来像两个不同时代的界面拼在一起。
+ *
+ * 涟漪退场的第二条理由更实在：这一格**整个就是一张图**，涟漪那圈半透明色盖上去
+ * 恰好糊在用户正看的画面上；而"沉一下"只动几何、一个像素都不遮。
+ * 长按的"我按住了"由 0.94 那个位移 + 调用方那颗 `HapticFeedbackConstants.LONG_PRESS` 一起给。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -585,7 +593,7 @@ private fun GalleryHistoryTile(
                 .clip(RoundedCornerShape(tokens.shape.medium))
                 .combinedClickable(
                     interactionSource = interactionSource,
-                    indication = ripple(),
+                    indication = VeneraPressFeedback.indication,
                     onClick = onClick,
                     onLongClick = onLongPress,
                 ),
@@ -614,12 +622,18 @@ private fun GalleryHistoryEmpty(
     filtered: Boolean,
     siteFilter: GallerySite?,
     onShowAll: () -> Unit,
+    /** 打开「清空浏览历史」那枚确认浮层（**两步**：这一颗不直接删）。 */
+    onClear: () -> Unit,
 ) {
     when {
         brokenNotice != null -> VeneraEmptyView(
             title = "浏览历史读不出来",
             message = brokenNotice,
             tone = VeneraEmptyTone.Failed,
+            // 行动层：这份档已经读不出来了，唯一真能往下走的一件事就是把它清掉重来
+            // （走顶栏那颗同一枚确认浮层，不在这里静默删）。
+            actionText = "清掉这份历史",
+            onAction = onClear,
         )
 
         // 筛子点空了：这不是"没历史"，是"这一站没有"。给一枚真能点回去的出口，
