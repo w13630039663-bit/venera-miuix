@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -30,11 +31,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
+import com.venera.compose.components.contentMaxWidthFor
 import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
@@ -43,6 +47,8 @@ import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraCoverShimmer
 import com.venera.compose.components.venera.VeneraGallerySourceMark
+import com.venera.compose.components.venera.VeneraPressFeedback
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.feature.MiuixSectionHeader
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
@@ -200,6 +206,9 @@ private fun GalleryPosterRow(
                     GalleryFlyIn.capture(view, coverBounds)
                     onOpen(card.post)
                 },
+                // 与墙上那张卡同一档反馈（口径见 [VeneraPressFeedback]）：这一行的卡在主墙上有同 uid 的
+                // 孪生卡，两处按下去的力度不一样会读成"两张卡不是同一个东西"。
+                pressFeedback = VeneraPressFeedback.card,
             ) {
                 VeneraCover(
                     url = card.post.previewUrl,
@@ -296,10 +305,15 @@ private fun GalleryArtistRow(
             // squircle 裁剪层级会吞掉手势（VeneraCard 的注释里记着这条真机结论）。
             // 原先那个 `indication = null`（怕涟漪糊掉圆头像）也一并作废 —— 卡面自带按压反馈，
             // 涟漪压在卡底上碰不到头像的圆边。
+            //
+            // ⚠️ 2026-10-16 补正：上面那句"卡面自带按压反馈"当时是**不成立的** —— miuix `Card` 的
+            // `pressFeedbackType` 默认 `None`，VeneraCard 又没有把它透出来，所以这一栏此前一直是
+            // "按下去没回话"。今天把那一档显式传进来了（口径见 [VeneraPressFeedback]）。
             VeneraCard(
                 modifier = Modifier.width(tokens.spacing.artistAvatarSlotWidth),
                 onClick = { onPick(artist) },
                 onLongClick = { onOpenProfile(artist) },
+                pressFeedback = VeneraPressFeedback.card,
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -515,7 +529,7 @@ internal fun galleryHomeSections(
     return GALLERY_HOME_SECTION_ORDER.map { key ->
         GalleryGridSection(key) {
             when (key) {
-                GalleryHomeSectionKey.ARTISTS -> GalleryHomeSection {
+                GalleryHomeSectionKey.ARTISTS -> GalleryHomeSection(wallAdjacent = false) {
                     MiuixSectionHeader(
                         title = "正在关注的画师",
                         trailing = artists.takeIf { it.overflow > 0 }?.let { readout ->
@@ -543,7 +557,7 @@ internal fun galleryHomeSections(
                     }
                 }
 
-                GalleryHomeSectionKey.DAILY -> GalleryHomeSection {
+                GalleryHomeSectionKey.DAILY -> GalleryHomeSection(wallAdjacent = false) {
                     MiuixSectionHeader(
                         title = GalleryWallFeed.DAILY.label,
                         // 只留「查看全部」：它进二级页看全量，而「换一批」搬到了那一页
@@ -558,7 +572,10 @@ internal fun galleryHomeSections(
                     }
                 }
 
-                GalleryHomeSectionKey.FOR_YOU -> GalleryHomeSection {
+                GalleryHomeSectionKey.FOR_YOU -> GalleryHomeSection(
+                    // 这一节就是脚下那面墙本身 ⇒ 不收口（收了会让节头比墙窄、左缘对不齐）。
+                    wallAdjacent = true,
+                ) {
                     MiuixSectionHeader(
                         title = GalleryWallFeed.FOR_YOU.label,
                         // 猜你喜欢**没有「查看全部」**：它本身就是下面那条墙。
@@ -606,17 +623,47 @@ internal fun galleryHomeSections(
  * `containerColorFor(CONTAINER)` 那一处（批次 N · N1：容器色从 `surface` 换成
  * `surfaceContainerHigh`）。这里只负责"表面该摆在哪一层"。**两处别互相顶**：
  * 在这里加背板救不了抬亮，在那里加也救不了分层。
+ *
+ * ## 宽窗收口（2026-10-15，问题清单 G3）
+ *
+ * [wallAdjacent] 是**必填**而不是带默认值的开关：默认值会让下一节忘了收口而没人报错
+ * （本仓那条"漏传不报错的参数不要用默认值"）。判据只有一条 —— **这一节自己是不是墙的一部分**：
+ *  - `false`（画师行、每日热门预览行）：内容是本节自己的横滑行，与下面那面墙不成列，
+ *    所以宽窗按现成的 `contentMaxWidthFor` 收口并居中（Medium 720 / Expanded 840，
+ *    **Compact 恒 null ⇒ 手机档逐像素不变**，用户 2026-10-02 的硬约束）；
+ *  - `true`（「猜你喜欢」那一节，只有节头）：它紧接着的就是**它自己的全部卡片**，
+ *    节头就是这面墙的第一行。把节头收到 720 居中，平板上会得到"节头比墙窄、
+ *    左边对不齐"这一种**新的**错位 —— 收口这一格要防的正是它（清单 §一-4 那句"墙本体不限宽"的边界）。
  */
 @Composable
-private fun GalleryHomeSection(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 节间距：M7 时它挂在卡外（先 padding 再画表面，玻璃不会把留白也涂进去），
-            // 背板撤了之后它仍然只能是外壳的第一道 padding —— 放进内容里就会跟着条目一起被裁。
-            .padding(bottom = VeneraTokens.spacing.sectionGap),
-        content = content,
-    )
+private fun GalleryHomeSection(
+    wallAdjacent: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    // 手机档 contentMaxWidth = null ⇒ 下面那道 `.then` 不挂任何 Modifier，逐像素走旧几何
+    //（与 `GalleryArtistProfileScreen` 那处收口同一形状）。
+    val contentMaxWidth = if (wallAdjacent) {
+        null
+    } else {
+        contentMaxWidthFor(wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp))
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        // 收口之后要在满宽的 item 里居中。用 Box 的 contentAlignment 而不是子件的
+        // `.align(Alignment.CenterHorizontally)` —— 那一枚是 ColumnScope 的用法（`GalleryArtistProfileScreen`
+        // 那处住在 Column 里），而这里子件住在 Box 里，BoxScope 的 `align` 要的是整枚 `Alignment`。
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                // 节间距：M7 时它挂在卡外（先 padding 再画表面，玻璃不会把留白也涂进去），
+                // 背板撤了之后它仍然只能是外壳的第一道 padding —— 放进内容里就会跟着条目一起被裁。
+                .padding(bottom = VeneraTokens.spacing.sectionGap),
+            content = content,
+        )
+    }
 }
 
 // 「最近搜索」的渲染件 2026-09-30 第二轮**搬回 `GallerySearchArea.kt`**（改回原名

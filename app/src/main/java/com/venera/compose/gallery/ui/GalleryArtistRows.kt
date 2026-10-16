@@ -47,6 +47,7 @@ import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraPressFeedback
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryArtistAvatarProbe
@@ -288,6 +289,9 @@ internal fun GalleryArtistCreditRows(
                     VeneraCard(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onOpenArtist(name) },
+                        // 这一张卡的头像就是"这个人的图"，按下去要跟墙上那些图同一档反馈
+                        // （口径见 [VeneraPressFeedback]）。
+                        pressFeedback = VeneraPressFeedback.card,
                         onLongClick = if (onBlockArtist != null || onCopyArtistName != null) {
                             {
                                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)

@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 /**
  * Venera 通用卡片容器（基础层）。
@@ -29,12 +30,22 @@ import top.yukonga.miuix.kmp.basic.Card
  *
  * @param onClick 可空；提供时整卡可点击。
  * @param onLongClick 可空；提供时整卡响应长按（如多选/移除确认）。
+ * @param pressFeedback 按下时的几何反馈。**默认 [PressFeedbackType.None]** —— miuix `Card`
+ *   自己的默认档，所以既有的三十几处调用点外观与手感逐字不变（漫画侧那几个页面是冻结区，
+ *   不许被顺带改）。
+ *
+ *   显式传 [VeneraPressFeedback.card] 才会上"下沉"：画廊那几面**图片墙**要的就是它
+ *   （口径与理由全在 [VeneraPressFeedback] 的类头注，这里不重复一遍）。
+ *
+ *   ⚠️ 它**不吃** `onClick == null`：挂上之后 miuix 会把 pressable 无条件接起来，
+ *   于是"按得动但什么都不发生"——那是本仓最忌的假开关。不可点的那一档请传 None。
  */
 @Composable
 fun VeneraCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    pressFeedback: PressFeedbackType = PressFeedbackType.None,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = VeneraTokens
@@ -45,6 +56,7 @@ fun VeneraCard(
         modifier = modifier.veneraGlassSurface(VeneraGlassRole.CARD, cornerRadius),
         cornerRadius = cornerRadius,
         colors = veneraGlassCardColors(),
+        pressFeedbackType = pressFeedback,
         onClick = onClick,
         onLongPress = onLongClick,
     ) {

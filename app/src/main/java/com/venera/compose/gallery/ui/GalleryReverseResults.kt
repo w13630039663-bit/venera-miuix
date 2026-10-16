@@ -37,6 +37,7 @@ import coil3.compose.AsyncImage
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.isWideScreen
+import com.venera.compose.components.venera.VeneraPressFeedback
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
@@ -46,6 +47,7 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
@@ -168,11 +170,25 @@ private fun SauceNaoHitRow(
     val thumbSize = if (wide) 96.dp else 72.dp
     val ref = hit.siteRef
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    /*
+     * 点整卡 = 开我们自己的大图页（`ref != null` 那一档才开）。
+     *
+     * 按压反馈跟着**可点性**走，两条必须同进同退：miuix 的 `pressable` 只看
+     * `pressFeedbackType` 是不是 None，**不看有没有 `onClick`**（`basic/Card.kt:113` 现读），
+     * 所以 `ref == null` 那一档若还挂着 Sink，就是"按得动、屏上什么都不发生"的假开关 ——
+     * 这一屏的 `aesthetic` 条目十有八九没有我方条目，那一档是常态，不是边角。
+     *
+     * 反馈挂在**卡**上而不是里面那行：行是透明的，缩它只会让内容从卡底上浮起来一块，
+     * 卡面本身纹丝不动 —— 那是"两层东西没对齐"，不是"我按住了这一条"。
+     */
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        pressFeedbackType = if (ref != null) VeneraPressFeedback.card else PressFeedbackType.None,
+        onClick = ref?.let { resolved -> { onOpenPost(resolved.site, resolved.id) } },
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = ref != null) { ref?.let { onOpenPost(it.site, it.id) } }
                 .padding(tokens.spacing.space6),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),

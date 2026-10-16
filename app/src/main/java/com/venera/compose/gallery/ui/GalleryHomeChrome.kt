@@ -1,6 +1,9 @@
 package com.venera.compose.gallery.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +23,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.venera.compose.components.venera.veneraGlassSurface
+import com.venera.compose.components.venera.veneraSurfaceShadowElevation
+import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.ui.tokens.veneraGlassEnabled
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -68,6 +76,11 @@ import top.yukonga.miuix.kmp.basic.Text
  * 阴影取 `elevation.attached` —— 三条与搜索卡**逐字同源**，所以展开成那张卡时是同一块面在长高，
  * 不是换了一副皮。一个新数字都不立。
  *
+ * ⚠️ 第三条（阴影）2026-10-16 起**要经 `veneraSurfaceShadowElevation` 过一道**：玻璃档下它归零。
+ * 原因是那一档卡底透明，平台投影会从卡底透出来（读数与判据写在 `VeneraGlass` 那个函数上）。
+ * "三条逐字同源"这条契约不变 —— 两处仍然读**同一个表达式的同一条来源**，
+ * 只是那条来源现在是"按档取"，于是两态继续逐像素同步（该有投影时两处一起有、该没有时一起没有）。
+ *
  * ── 为什么高度是常量而不是逐帧量 ──
  *
  * 网格的顶部避让要拿这个高度去算，而"逐帧量顶栏高度"那条路在本仓已经失败过一次
@@ -101,83 +114,131 @@ import top.yukonga.miuix.kmp.basic.Text
  */
 @Composable
 internal fun GalleryHomeChrome(
+    /**
+     * 搜索是不是开着（调用方传 `svm.active`）。开着时这一条**让位**给从它身上长开的那张卡 ——
+     * 两边挂同一个 key 的共享元素，展开/收起读起来是"这一块面在长高 / 缩回"，
+     * 口径与取舍见 `GallerySearchContainer.kt`。
+     *
+     * 刻意**不给默认值**：默认 `false` 会让下一个调用点忘传时静默退化成"永远显示"
+     * （= 这一轮之前的样子，也就是两块东西各动各的），而那种退化在屏上看得见、
+     * 在代码里看不见。同一个理由见 `GallerySearchArea.resultCount`。
+     */
+    searchOpen: Boolean,
     onOpenSearch: () -> Unit,
     onOpenReverse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
     val view = LocalView.current
-    Surface(
-        shape = RoundedCornerShape(tokens.shape.extraLarge),
-        color = tokens.color.surfaceContainerHigh,
-        shadowElevation = tokens.elevation.attached,
-        modifier = modifier
-            .fillMaxWidth()
-            // 左右内缩与搜索卡同档：展开时两边不会横跳。
-            .padding(
-                start = tokens.spacing.screenHorizontal,
-                end = tokens.spacing.screenHorizontal,
-                // ⚠️ 下面这两个内缩与 [galleryHomeChromeHeight] 里的加法必须逐项对应。
-                top = tokens.spacing.space2,
-                bottom = tokens.spacing.space3,
-            )
-            // 定高（常量口径的那一条，理由见类头注）。不用 heightIn(min=)：
-            // 那会让这一格随字体缩放长高，而避让公式吃的是常量 —— 两者会悄悄错开。
-            .height(tokens.spacing.dockedSearchBarHeight)
-            // 不给涟漪：与搜索卡同一条口径（那张卡整块也不给），
-            // 按下反馈交给震动，免得"点这里"的暗示比搜索卡本身还强。
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                onOpenSearch()
-            },
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.space8),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+    // 恒占位：这一格是**墙的第一行**，高度参与墙的布局；而"让位给卡"是把内容撤下来做的 ——
+    // 撤下来的那一行若不兜住，墙会硬跳一行（正是 2026-10-15 要修的那一条，只是从前靠
+    // "常驻不撤"绕开，现在靠这块固定高度的外框兜住）。
+    //
+    // 高度取 `galleryHomeChromeHeight()` 而不是另写一个数：它就是这个组件的自然高度，
+    // 那条"常量与实际摆件逐项对应"的尺子（`GalleryHomeChromeTest`）同时管着这里。
+    Box(modifier = modifier.height(galleryHomeChromeHeight())) {
+        AnimatedVisibility(
+            visible = !searchOpen,
+            // ⚠️ **位移恒 0**：只借时长、不要视觉动效。
+            //
+            // 这一层是"展开"那一下的**源**（outgoing），而共享元素按
+            // `renderInOverlayDuringTransition = false` 就地渲染 ⇒ 父级的 alpha 会乘到飞行体上。
+            // 它若按常规 `fadeOut`，飞行体会在 150ms 内被父级淡到 0，而 bounds 动画要跑 300ms
+            // ⇒ 后半程什么都看不见，读起来又回到用户抱怨的"淡出淡入"。
+            // 内容的交叉淡变交给 `sharedBounds` 自己的 enter/exit（默认 fadeIn/fadeOut）。
+            // 完整推演见 `GallerySearchContainer.kt` 头注第 3 条。
+            enter = slideInVertically(animationSpec = SEARCH_CONTAINER_SHOW_SLIDE_SPEC) { 0 },
+            exit = slideOutVertically(animationSpec = SEARCH_CONTAINER_HIDE_SLIDE_SPEC) { 0 },
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Search,
-                contentDescription = null,
-                tint = tokens.color.onSurfaceVariant,
-                modifier = Modifier.size(tokens.spacing.chipIconSize),
-            )
-            Text(
-                // 占位文案沿用搜索卡那一句（**不另造**）：两处说的是同一个框能敲什么，
-                // 抄成两句迟早分叉，而用户会以为是两个不同的入口。
-                text = SEARCH_ENTRY_HINT,
-                fontSize = tokens.type.body,
-                color = tokens.color.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Box(
-                // 触达位取图标按钮那一档（40dp），不是图标自身的 16dp ——
-                // 后者按不准，而这一枚还紧挨着"点整条展开搜索"的落点，误触代价是走错一层。
+            Surface(
+                shape = RoundedCornerShape(tokens.shape.extraLarge),
+                // 与搜索卡**同一个材质口径**（2026-10-16 修，用户点名「补回材质的问题」）：
+                // 实色档不透明铺 surfaceContainerHigh，玻璃档置透明 + 由 veneraGlassSurface(PANEL)
+                // 采氛围层做真模糊。这条是"展开时是同一块面在长高"能不能成立的关键 ——
+                // 从前的入口条是实色、展开后的卡是 0.90 伪透，用户在按下那一下就读到"换了一块东西"。
+                color = if (veneraGlassEnabled()) Color.Transparent else tokens.color.surfaceContainerHigh,
+                // 玻璃档归零：卡底透明时，miuix Surface 那层平台投影会从卡底透出来
+                // （用户 2026-10-16「浅色模式下还是有这种色块」的真凶，读数与判据见
+                //  `VeneraGlass.veneraSurfaceShadowElevation`）。实色档照旧吃 3dp。
+                shadowElevation = veneraSurfaceShadowElevation(tokens.elevation.attached),
                 modifier = Modifier
-                    .size(tokens.spacing.iconButtonSize)
-                    .clip(RoundedCornerShape(tokens.shape.small))
+                    // 与展开的搜索卡**同一个 key**的共享元素 —— 这一条与那张卡是"同一块面"。
+                    // 挂在整条的最外层（不是内缩后那一层）：卡那一端包在调用点的 Box 里，
+                    // 两端外框同构（同样满屏宽、同样那三个 padding）⇒ 飞行时相对关系一致。
+                    // 挂进内缩层会让两端一个是"面"、一个是"面 + 边距" —— 那会在飞行途中横跳一下。
+                    .gallerySearchContainerElement(this@AnimatedVisibility)
+                    // 纯绘制修饰符：不参与布局，所以上面那条"外框高度必须等于
+                    // galleryHomeChromeHeight()"的硬约束不受影响（间距仍是
+                    // space2 + dockedSearchBarHeight + space3 三项）。
+                    .veneraGlassSurface(VeneraGlassRole.PANEL, tokens.shape.extraLarge)
+                    .fillMaxWidth()
+                    // 左右内缩与搜索卡同档：展开时两边不会横跳。
+                    .padding(
+                        start = tokens.spacing.screenHorizontal,
+                        end = tokens.spacing.screenHorizontal,
+                        // ⚠️ 下面这两个内缩与 [galleryHomeChromeHeight] 里的加法必须逐项对应。
+                        top = tokens.spacing.space2,
+                        bottom = tokens.spacing.space3,
+                    )
+                    // 定高（常量口径的那一条，理由见类头注）。不用 heightIn(min=)：
+                    // 那会让这一格随字体缩放长高，而避让公式吃的是常量 —— 两者会悄悄错开。
+                    .height(tokens.spacing.dockedSearchBarHeight)
+                    // 不给涟漪：与搜索卡同一条口径（那张卡整块也不给），
+                    // 按下反馈交给震动，免得"点这里"的暗示比搜索卡本身还强。
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onOpenReverse()
+                        onOpenSearch()
                     },
-                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.ImageSearch,
-                    contentDescription = "以图搜图",
-                    tint = tokens.color.textSecondary,
-                    modifier = Modifier.size(tokens.spacing.chipIconSize),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.space8),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        tint = tokens.color.onSurfaceVariant,
+                        modifier = Modifier.size(tokens.spacing.chipIconSize),
+                    )
+                    Text(
+                        // 占位文案沿用搜索卡那一句（**不另造**）：两处说的是同一个框能敲什么，
+                        // 抄成两句迟早分叉，而用户会以为是两个不同的入口。
+                        text = SEARCH_ENTRY_HINT,
+                        fontSize = tokens.type.body,
+                        color = tokens.color.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        // 触达位取图标按钮那一档（40dp），不是图标自身的 16dp ——
+                        // 后者按不准，而这一枚还紧挨着"点整条展开搜索"的落点，误触代价是走错一层。
+                        modifier = Modifier
+                            .size(tokens.spacing.iconButtonSize)
+                            .clip(RoundedCornerShape(tokens.shape.small))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onOpenReverse()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ImageSearch,
+                            contentDescription = "以图搜图",
+                            tint = tokens.color.textSecondary,
+                            modifier = Modifier.size(tokens.spacing.chipIconSize),
+                        )
+                    }
+                }
             }
         }
     }

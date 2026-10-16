@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.LocalSurfaceMaterial
 import com.venera.compose.ui.tokens.SurfaceMaterialPolicy
@@ -53,6 +54,34 @@ val LocalGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  */
 private const val ContainerAlphaLight = 0.22f
 private const val ContainerAlphaDark = 0.28f
+
+/**
+ * 面板档（[VeneraGlassRole.PANEL]）在**浅色**主题下的容器不透明度 —— 只有浅色需要它。
+ *
+ * ## 归因订正：它**不是**"消灰块"的开关（2026-10-16 二次真机复核）
+ *
+ * 这一档最初是照着「玻璃把面板压暗了 ⇒ 抬容器 alpha」写下的，**那个归因是错的**。
+ * 真凶是 [veneraSurfaceShadowElevation] 那一条：玻璃档卡底透明，miuix `Surface` 挂在
+ * 调用方 modifier **之内**的平台投影（不透明黑剪影）就从卡底透出来了。读数与判据见那里。
+ *
+ * 反证就在这一轮里：把 0.22 抬到 0.86 之后，用户截图上的灰块**一点没退**。
+ * 因为投影画在容器色**之后**（层序 ① 模糊 → ② 容器色 → ③ 投影 → ④ 子元素），
+ * 调 ② 的量动不了 ③ 之后的结果 —— 逐通道比值恒为 0.785 的那一族数，就是这个道理。
+ *
+ * ## 那它为什么还要留着 —— 换成站得住的那条理由
+ *
+ * 玻璃的"分层量" = alpha × (容器色 − 采样底)。浅色下 `surfaceContainerHigh`(#F6E4E2) 与
+ * 氛围层顶部(#EFDCD5)几乎是同一个亮度（抬亮只有 **+7**），于是 0.22 这一档在浅色下
+ * 算出来的分层只有 **+1.5** —— 面板与页面背景肉眼分不开，用户会读到"卡片不见了"。
+ * 浅色下要让面板"是自己一块面"，只能让容器色自己说话。
+ *
+ * ⚠️ 深色档**不动**（仍 [ContainerAlphaDark]）：深色下采样底与容器色都近黑，
+ * 同一个 alpha 的语义是成立的（真机验证过），没有对应读数就不拆两份。
+ *
+ * ⚠️ 本档**不是**玻璃在浅色下的"亮度档"。想让它更"透"就调它是可以的，但先读上面这条：
+ * 调低不会让面板变灰（灰是 [veneraSurfaceShadowElevation] 那一层的事），只会让面板变淡。
+ */
+private const val PanelAlphaLight = 0.86f
 
 /**
  * 玻璃补底那一层的染色强度：顶栏、药丸、详情页背板与这颗件共用一个数。
@@ -145,6 +174,13 @@ fun Modifier.veneraGlass(
         blendColors = listOf(BlendColorEntry(color = base.copy(alpha = GlassTintAlpha))),
     )
     val highlight = SurfaceMaterialPolicy.highlightFor(isDark, tier)?.let(::miuixHighlight)
+    // 容器不透明度按档取。面板档在浅色下单独走 [PanelAlphaLight]（反向变暗那一条的处置，
+    // 读数与判据写在那个常量上）；其余两档、以及所有档的深色一律照旧。
+    val containerAlpha = when {
+        isDark -> ContainerAlphaDark
+        role == VeneraGlassRole.PANEL -> PanelAlphaLight
+        else -> ContainerAlphaLight
+    }
     return when (tier) {
         VeneraGlassTier.CONTAINER, VeneraGlassTier.CONTROL ->
             // 先采后铺：链上靠前的先画（在底），所以模糊层在下、半透明容器色在中、内容在上 ——
@@ -155,7 +191,7 @@ fun Modifier.veneraGlass(
                 blurRadius = BlurDefaults.BlurRadius,
                 colors = colors,
                 highlight = highlight,
-            ).background(base.copy(alpha = if (isDark) ContainerAlphaDark else ContainerAlphaLight))
+            ).background(base.copy(alpha = containerAlpha))
         // 点缀档：一屏能到二十个，绝不建模糊；只染一层色，连容器底都不铺。
         VeneraGlassTier.INLINE -> drawBackdrop(
             backdrop = backdrop,
@@ -180,6 +216,58 @@ fun Modifier.veneraGlassSurface(role: VeneraGlassRole, cornerRadius: Dp): Modifi
     } else {
         this
     }
+
+/**
+ * 一块表面该用多少投影 —— **唯一出处**。与 [veneraGlassSurface] / [veneraGlassCardColors]
+ * 同一条口径：玻璃档归零、实色档照旧，调用方不许自己比枚举。
+ *
+ * ## 为什么玻璃档必须把投影关掉（2026-10-16，用户报「浅色模式下还是有这种色块」）
+ *
+ * miuix `Surface` 把投影挂在 `Modifier.graphicsLayer(shadowElevation, shape, clip = false)` 上
+ * （`basic/Surface.kt:128-146`），而那一格位于**调用方 modifier 之内**：
+ *
+ * ```
+ * .veneraGlassSurface(...)            ← 调用方给的，在**外**
+ *   .graphicsLayer(shadowElevation)   ← 库自己加的，在**内**
+ *     .clip(shape).background(color)
+ * ```
+ *
+ * Compose 的绘制是**外层先画**，所以真实层序是
+ * **① 模糊 → ② 容器色(alpha) → ③ 平台投影 → ④ 子元素**。
+ * 平铺不透明的 Surface 时 ③ 被 ② 盖住，谁也不会发现它在那儿；玻璃档 ② 是透明的
+ * （"底色置透明"正是"不挡采样"的前提），**③ 那层黑剪影就从卡底里透出来了**。
+ *
+ * ## 读数（4 张真机截图的连通域分割，不是目测）
+ *
+ * 两块挂了 `shadowElevation` 的玻璃面，颜色**都**等于 `surfaceContainerHigh × 0.785`：
+ * 入口药丸 `#CDBBB9`(L=0.520)、搜索卡 `#C1B3B2`(L=0.468)/`#C9B0AD`/`#BCB0AE`；
+ * 而旁边不挂投影的同类表面（Info 通知 `#F7E5DF`）是满值。×0.785 逐通道吻合到 ±1，
+ * ⇒ 那层黑的不透明度 ≈ **0.215**，而且**与背后是什么无关**：
+ * s2 的页面底 `#A5A1A0`(L=0.36) 与 s3 的 `#EFE4E1`(L=0.79) 亮度差一倍，卡色只动 ±9。
+ *
+ * ## 决定性证据：投影夹在"卡底"和"子元素"之间
+ *
+ * 同一张卡里，胶囊是**亮**的、胶囊周围的卡底是**灰**的。按上面的层序，③ 在 ④ 之下
+ * ⇒ 不透明的胶囊照常发亮、透明的卡底把黑透出来。这一条把"投影"钉死，也顺带排掉了
+ * "容器 alpha 太低"那个假设：那是第 ② 层的量，动不了 ③ 之后的结果 ——
+ * 上一轮把 0.22 抬到 0.86 却没消掉灰块，正是这条。
+ *
+ * ## n=6 vs n=2 的受控对照
+ *
+ * 全仓 8 处玻璃挂载点里**只有这 2 处**传了非零 `shadowElevation`
+ * （`GalleryHomeChrome` 入口条 / `GallerySearchArea` 搜索卡）——
+ * 而用户 4 张截图里报灰的**恰好就是这两个元素**；另外 6 处（`VeneraCard` / `VeneraChip` /
+ * `VeneraFilterPill` / `VeneraControls` / `SettingsComponents` / `GallerySheetBlock`）
+ * 没挂投影，截图里全部正常。miuix `Card` 自身不含 `graphicsLayer`（已逐字核过），卡片不踩这一脚。
+ *
+ * ## 为什么不直接在调用点写 0.dp
+ *
+ * 实色档**要**这个投影：它是实色面上唯一的纵深线索。所以拆成"按档取"，
+ * 玻璃档的纵深交给模糊与描边高光、实色档交给投影，各归各的。
+ */
+@Composable
+fun veneraSurfaceShadowElevation(solidElevation: Dp): Dp =
+    if (veneraGlassEnabled()) 0.dp else solidElevation
 
 /**
  * 配套：玻璃开着时容器本体必须透明，否则 Card 的不透明底会把刚采的样全盖掉。
