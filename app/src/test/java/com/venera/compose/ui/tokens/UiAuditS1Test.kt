@@ -102,7 +102,14 @@ class UiAuditS1Test {
         assertTrue("列表卡又自己写了一遍裸圆角", tile.none { it.contains("RoundedCornerShape(12.dp)") })
         // 对照：VeneraCover 那处仍是同一个槽位（两边同档才是"一把尺子"）。
         val cover = codeLines("com/venera/compose/components/venera/VeneraCover.kt")
-        assertEquals(1, cover.count { it.contains("val shape = RoundedCornerShape(tokens.shape.medium)") })
+        assertEquals(1, cover.count { it.contains("val shape = RoundedCornerShape(veneraCoverCornerRadius())") })
+        // 那颗函数本身必须落在 `shape.medium` 这个槽位 —— 才是"两边同一个槽位"。
+        // 2026-10-16 订正：裁封面由"直接读 token"改成读唯一出处 `veneraCoverCornerRadius()`（飞行体也要读它）；
+        // 意图（与 ComicTileLayout 同档）不变，形态更新，并把"那把尺子落在哪个槽位"补钉上。
+        assertTrue(
+            "封面圆角没落在 shape.medium 这个槽位",
+            cover.any { it.contains("fun veneraCoverCornerRadius(): Dp = VeneraTokens.shape.medium") },
+        )
     }
 
     /** ⑤ 裸 `RoundedCornerShape(N.dp)` 存量封顶，只许往下带（口径见下）。 */

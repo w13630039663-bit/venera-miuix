@@ -1,6 +1,7 @@
 package com.venera.compose.gallery
 
 import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.payloadCornerRadiusPx
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -100,5 +101,46 @@ class GalleryFlyGeometryTest {
         val rect = coverSourceRect(imageWidth = 850, imageHeight = 1200, dstWidth = 1048f, dstHeight = 1479.5f)
         assertEquals(850, rect.width)
         assertEquals(1200, rect.height)
+    }
+
+    // ── 位图那一圈"封面圆角"落到框上是多少（[payloadCornerRadiusPx]，2026-10-16 白角那条）──
+
+    /**
+     * **不缩放时逐字等于封面圆角**。这是那条口径的核心：截来的位图宽 = 封面布局宽（同一个缩放
+     * 系数相抵），所以"位图里的圆角半径"与"封面在布局里的圆角半径"同值；贴在卡片原位那一帧，
+     * 飞行体的角与封面自己的角**逐像素重合**。
+     */
+    @Test
+    fun `原位不缩放时等于封面圆角`() {
+        assertEquals(14f, payloadCornerRadiusPx(payloadCornerPx = 14f, srcWidthPx = 750, dstWidthPx = 750f), 0f)
+    }
+
+    /** 放大到画面框（1080 屏上的 872 宽框 / 卡里 750 宽的封面）：圆角同比放大，不留白角。 */
+    @Test
+    fun `放大时圆角同比放大`() {
+        val r = payloadCornerRadiusPx(payloadCornerPx = 14f, srcWidthPx = 750, dstWidthPx = 1500f)
+        assertEquals(28f, r, 0.001f)
+    }
+
+    /**
+     * 源被 [coverSourceRect] 裁过之后，圆角按**裁过那块**算：裁得越狠、放大得越多，
+     * 角也要跟着涨 —— 用位图全宽去算会让角偏小、白角又露出来。
+     */
+    @Test
+    fun `源被裁过时按裁后宽度算`() {
+        // 位图 750 宽，但 cover 语义只取中间 500 宽 → 画到 1000 宽的框上，倍率是 2 不是 1.33
+        val cropped = payloadCornerRadiusPx(payloadCornerPx = 14f, srcWidthPx = 500, dstWidthPx = 1000f)
+        val full = payloadCornerRadiusPx(payloadCornerPx = 14f, srcWidthPx = 750, dstWidthPx = 1000f)
+        assertEquals(28f, cropped, 0.001f)
+        assertTrue("按全宽算会偏小（$full vs $cropped），那就是白角的来源", full < cropped)
+    }
+
+    /** 退化输入交回 0（不是崩溃点，也不许编一个"至少 1px"的角）。 */
+    @Test
+    fun `退化输入交回零`() {
+        assertEquals(0f, payloadCornerRadiusPx(14f, 0, 800f), 0f)
+        assertEquals(0f, payloadCornerRadiusPx(14f, 750, 0f), 0f)
+        assertEquals(0f, payloadCornerRadiusPx(0f, 750, 800f), 0f)
+        assertEquals(0f, payloadCornerRadiusPx(-3f, 750, 800f), 0f)
     }
 }

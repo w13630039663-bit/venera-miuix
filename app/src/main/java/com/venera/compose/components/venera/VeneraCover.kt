@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.imageLoader
@@ -35,6 +36,25 @@ import com.venera.compose.ui.tokens.VeneraTokens
  * - [Masked]   : 命中内容守卫，需打码（模糊 + 暗色磨砂遮罩 + R18 角标）
  */
 enum class VeneraCoverMask { Visible, Masked }
+
+/**
+ * 封面自己那圈圆角 —— **唯一出处**（[VeneraCover] 裁封面用的就是它，任何调用侧都不许另写一个 dp）。
+ *
+ * ## 为什么外面要读得到（2026-10-16，用户报「飞行体把按压那层白一起带进来了」）
+ *
+ * 跨 activity 的飞行体截的是"卡片里**封面那一块**的**屏幕像素**"（见 `GalleryFlyIn` 头注），
+ * 而**封面的四角不属于图**：`VeneraCover` 先按这圈圆角把封面裁掉，四角露出来的是**卡片自己的面色**
+ * （浅色档下几乎是白）。于是"飞行体"/"垫帧"只要比这圈圆角**松**，四角就把那层卡片色一起带上屏 ——
+ * 落到深色背景上就是四枚白角。
+ *
+ * 2026-10-16 真机图证（用户截图逐像素量的）：四角白块的半径 ≈ 32~37px ≈ 这圈圆角本身，
+ * 位置正好落在封面圆的四角；而飞行体读的是 `shape.large`（比 `shape.medium` 松一档）⇒ 必露。
+ *
+ * 判据是"松/紧"：**谁画这块像素，就得用封面自己的那一档裁**。所以这一圈由这里下发，
+ * 不许 `GalleryPostScreen` 那侧各自 copy 一个 dp 值。
+ */
+@Composable
+fun veneraCoverCornerRadius(): Dp = VeneraTokens.shape.medium
 
 /**
  * Venera 统一漫画封面（基础层）。
@@ -76,7 +96,7 @@ fun VeneraCover(
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
-    val shape = RoundedCornerShape(tokens.shape.medium)
+    val shape = RoundedCornerShape(veneraCoverCornerRadius())
     val isMasked = mask == VeneraCoverMask.Masked
     val loader = imageLoader ?: remember(context) { context.imageLoader }
 

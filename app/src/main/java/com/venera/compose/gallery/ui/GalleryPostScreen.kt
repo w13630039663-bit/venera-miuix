@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.core.view.WindowCompat
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -103,6 +104,7 @@ import com.venera.compose.components.venera.VeneraIconButtonTouchSize
 import com.venera.compose.components.VeneraEmptyTone
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
+import com.venera.compose.components.venera.veneraCoverCornerRadius
 import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.feature.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryConnectivity
@@ -128,6 +130,7 @@ import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.gallery.domain.nextExitGesture
+import com.venera.compose.gallery.domain.payloadCornerRadiusPx
 import com.venera.compose.gallery.domain.watercolorEntryVisible
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
@@ -756,6 +759,15 @@ fun GalleryPostScreen(
      * 那里才是 Density。
      */
     val flyCornerRadius = tokens.shape.large
+    /**
+     * **封面自己那圈圆角**（唯一出处见 [veneraCoverCornerRadius]）。去程飞行体与垫帧都要按它
+     * 把位图四角那点"卡片面色"裁掉：位图截的是"卡片里封面那一块"，而封面四角不属于图。
+     *
+     * 与 [flyCornerRadius] 是**两件事**，不许互换：那一颗管"落到画面框时形状对得上"（画面框
+     * 就是 `shape.large`），这一颗管"这块像素本身圆到哪儿"。旧写法两处都用前者 ⇒ `shape.large`
+     * 比 `shape.medium` 松一档 ⇒ 四角露白（2026-10-16 真机图证）。
+     */
+    val coverCornerRadius = veneraCoverCornerRadius()
     var exitFrame by remember { mutableStateOf<ImageBitmap?>(null) }
     var exitStart by remember { mutableStateOf<Rect?>(null) }
     var exitTarget by remember { mutableStateOf<Rect?>(null) }
@@ -1324,9 +1336,18 @@ fun GalleryPostScreen(
                         // 圆角必须跟着走：飞行体本身画的是**矩形**，而落点那一框是 `shape.large` 圆角。
                         // 不裁它，交棒那一刻就是"方角 → 圆角"的一次跳变 —— 2026-10-01 12:09 那两张
                         // 真机截图量出来的就是这条：飞行中四角全是直角、到位后四角全是圆角。
-                        // 半径按当前宽度等比缩放，所以落到终点时**逐像素等于框的圆角**，形状差归零。
-                        val radius = flyCornerRadius.toPx() *
-                            (width / end.width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        //
+                        // ⚠️ 半径取的是**这块位图自己的圆角**（封面那一档 `shape.medium`），
+                        // **不是**画面框那一档：位图的四角画的是卡片面色（封面被裁掉的那圈），
+                        // 用更松的圆角去裁等于把那四枚白角原样放行 —— 2026-10-16 用户报的
+                        // 「飞行体把按压那层白一起带进来了」就是这条。换算见 [payloadCornerRadiusPx]：
+                        // 位图里的长度在框上是 `长度 × dst / src`，`src` 用的是**裁过之后**那一块，
+                        // 所以比例不同档时圆角也跟着放大，不会因为被裁而变软。
+                        val radius = payloadCornerRadiusPx(
+                            payloadCornerPx = coverCornerRadius.toPx(),
+                            srcWidthPx = src.width,
+                            dstWidthPx = width,
+                        )
                         clipPath(
                             Path().apply {
                                 addRoundRect(
@@ -1391,7 +1412,16 @@ fun GalleryPostScreen(
                         val src = frame.source
                         // 圆角同一条口径（按当前宽度等比缩放）：到终点时等于框的圆角，
                         // 与卡片自己的圆角同档，落回去那一瞬间没有形状差。
-                        val radius = flyCornerRadius.toPx() * frame.cornerRadiusScale
+                        //
+                        // ⚠️ 2026-10-16：两头那一档**不是同一个**圆角 —— 起点是画面框（`shape.large`），
+                        // 终点是**卡里那张封面**（`shape.medium`，见 [veneraCoverCornerRadius]）。
+                        // 旧写法两处都用 `shape.large` ⇒ 落回卡片时飞行体的角比封面圆 4dp，
+                        // 于是"贴上去"的那一帧在卡片四角盖着一小块**不属于卡片**的图，
+                        // 飞行体一撤，卡片自己的四角（露的是卡片面色）才补上来 —— 一次角上的补白。
+                        // 进度插值即可：`cornerRadiusScale` 管的是"同一比例缩到多大"，
+                        // 而"哪一档圆角"是随路程换的，两者相乘正交。
+                        val radius = lerp(flyCornerRadius, coverCornerRadius, exitFly.value.coerceIn(0f, 1f))
+                            .toPx() * frame.cornerRadiusScale
                         clipPath(
                             Path().apply {
                                 addRoundRect(
@@ -1651,6 +1681,13 @@ private fun GalleryViewerMedia(
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
+    /**
+     * 垫帧（= 去程那一帧）**自己那圈圆角**：与飞行体同一条口径 —— 位图四角画的是卡片面色，
+     * 得按封面那一档裁掉（见 [veneraCoverCornerRadius] 与 [payloadCornerRadiusPx]）。
+     * 垫帧画在这块框里是 `ContentScale.Crop`，倍率就是下面这颗 `padCornerRadius`。
+     */
+    val coverCornerRadius = veneraCoverCornerRadius()
+    val density = LocalDensity.current
     val ratio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
     // 共享元素的落点回报。挂在布局回调上而不是自己算：那一框的尺寸是下面"按真实比例定框"
     // 那段逻辑的产物，复制一份算式就是第二处真相（改圆角/改留白时必然漂）。
@@ -1852,12 +1889,24 @@ private fun GalleryViewerMedia(
                     //
                     // ⚠️ 撤它的条件**只有中档落位**，不能再带"快照档也落位"：快照档比它还糊，
                     // 交棒到它等于先把图换糊一次（同上面 `onReadyChange` 那处头注）。
+                    //
+                    // ⚠️ 必须先按**封面自己那圈圆角**裁（倍率就是 Crop 的倍率）：这一帧的四角画的
+                    // 是卡片面色，不裁就是四枚白角挂在图上（2026-10-16 用户报的那条）。
+                    val padCornerRadius = with(density) {
+                        // 倍率按 `Crop` 的定义取两个方向的**大者**（比例一致时两个方向相等）。
+                        val scale = maxOf(
+                            boxWidth.toPx() / cardFrame.width.coerceAtLeast(1),
+                            boxHeight.toPx() / cardFrame.height.coerceAtLeast(1),
+                        )
+                        (coverCornerRadius.toPx() * scale).toDp()
+                    }
                     Image(
                         bitmap = cardFrame,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
+                            .clip(RoundedCornerShape(padCornerRadius))
                             .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                     )
                 }
