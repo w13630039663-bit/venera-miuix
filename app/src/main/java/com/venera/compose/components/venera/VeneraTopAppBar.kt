@@ -5,11 +5,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
@@ -19,11 +22,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.CHROME_BAND_TOP_BAR
 import com.venera.compose.components.ChromeCaptureSuppress
@@ -115,6 +121,63 @@ fun VeneraTopAppBar(
     }
     val activeProgress = scrollProgressOverride ?: scrollProgress
 
+    // 折叠态那一行的**顶部 inset**（hero 路径下有两处要用：自绘小标题的居中基准、以及把整条顶栏
+    // 钉成"恒折叠态"的高度）。算一次、两处共用，不然两处各算一遍迟早会漂。
+    //
+    // ⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）：这里**必须**读 miuix 自己用的那一份 ——
+    // miuix 的 `TopAppBarLayout` 挂的是 `WindowInsets.systemBars.only(WindowInsetsSides.Top)`
+    // （`TopAppBar.kt:806`，挂在这颗 Layout 自己身上），而不是 `WindowInsets.statusBars`。
+    // 两者在多数机型数值恰好相等（本机实测也相等：胶囊行 188px = inset 49.2dp + 26dp），
+    // 所以从前读 `statusBars`"看起来对"其实只是碰巧；一旦不等，自绘小标题就会与 miuix 的
+    // 按钮行整整错开那一份差值。跟着 miuix 读同一份，才与设备无关。
+    val collapsedTopInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
+        .asPaddingValues().calculateTopPadding()
+    // ── 覆盖进度路径：整条顶栏必须是**恒折叠态**（2026-10-16，真机「上滑标题不居中」）──
+    //
+    // 这一路的折叠机制整个退场（调用方不挂 nestedScroll，见 [scrollProgressOverride]），于是
+    // miuix 的 `barHeight` 会**一直停在展开态** —— miuix `TopAppBar.kt:862-879`：
+    //   `barHeight = lerp(collapsedHeight, collapsedHeight + expansion, 1f - collapseFraction)`，
+    //   而 `collapseFraction` 由 `scrolledOffset` 推 ⇒ 连接不挂 ⇒ 恒 0 ⇒ 恒 = collapsedHeight + expansion。
+    // `expansion` 那一份就是大标题那一行（`largeTitle` 的 Box 自带 `padding(top = CollapsedHeight)`，
+    // 见 `TopAppBar.kt:747`），所以顶栏比"折叠到位"的样子**高出一整行**。
+    //
+    // 而标题那一侧呢：miuix 原生小标题的 alpha 挂 `collapsedFraction`（`TopAppBar.kt:672-682`
+    // 的 `smallTitleVisible = collapsedFraction * 3f >= 1f`）⇒ 同样恒 0 ⇒ 原生小标题**永不出现**，
+    // 屏上那个「画廊」只能是本文件自绘的那一份。它按 `CollapsedHeight` 那条带居中 ⇒ 落在这条
+    // "多出一整行"的背板的上三分之一处。两件事叠起来读就是「标题贴在顶上、下面留一截空白」。
+    //
+    // 所以这一路把高度**钉死**成 顶部 inset + 折叠高度：背板、分割线、标题、actions 全部落回
+    // 折叠态该有的位置。只在 `largeTitle` 为空时钉 —— 万一将来有人拿覆盖进度配一个非空大标题，
+    // 宁可退回现状，也不能把它静默裁掉。
+    //
+    // ⚠️⚠️ 2026-10-16 三修 —— 钉法**只许裁、不许挤压**，这一条是把前两轮白改的根因（真机
+    // 原话：「居中标题栏还是没有居中」）：
+    //
+    // 这一支的 `layout{}` 里**不能**把 miuix 的 `maxHeight` 压到它自然高以下。压了之后
+    // 它整棵子树会被**居中上顶** `(自然高 − 允许高) / 2`，与真机逐像素读数完全对上：
+    //   · miuix 本体自然高 = inset(49.2dp) + `layoutHeight`(≈94.4dp) ≈ 143.6dp
+    //     （`layoutHeight = barHeight + LargeTitleBottomPadding`，`barHeight = 52dp + expansion`，
+    //      而 `expansion` 正是那个**空大标题**占的一整行 ≈ 38dp —— 见 `TopAppBar.kt:864-890`）
+    //   · 这里钉的允许高 = 49.2 + 52 ≈ 101.2dp ⇒ 上顶 (143.6 − 101.2) / 2 ≈ 21.2dp ≈ 53px
+    // 真机读数（同一台机、同一份包，逐张截图量右上两枚胶囊里图标笔画的中心 y）：
+    //   · 普通页（没有这颗盒子）8 张截图**全部** 188px —— 即 miuix 的正位 = inset + 26dp
+    //   · 头图页有这颗盒子时：旧包 134px、新包 132px —— 两次几乎一样，因为第二版我只换了
+    //     **摆放方式**（`place(0, 0)`）而没动这条 `maxHeight` ⇒ 挤压照旧 ⇒ 白改一轮
+    //   · 188 − 134 = 54px ≈ 21.2dp × 2.5 ✓ 闭环
+    // 而自绘小标题一直按 `inset + 26dp` 落（它在普通页那条基准上，实测也正是 188px）——
+    // 所以"标题不居中"其实是**按钮被顶上去**，不是标题掉下来。
+    //
+    // 修法：测量时把高度**完全放开**（`Constraints.Infinity`），让它按自然高报出来；多出来的
+    // 那一整行空大标题由外层 `clipToBounds` 裁掉 —— "钉成折叠态高度"照样成立，而 miuix 内部
+    // 那套 `insets padding + verticalCenter` 一点不动，`actionIcons` 便落回 `inset + 26dp`，
+    // 与自绘小标题**同一条线**。
+    val pinCollapsedHeight = scrollProgressOverride != null && largeTitle.isEmpty()
+    // 钉高度那一路用的像素高度 = `顶部 inset + 折叠高度`。组合期取好：`layout{}` 是测量期，
+    // 那里读不到 `collapsedTopInset` 这个组合期局部量。
+    val pinnedBarHeightPx = with(density) {
+        (collapsedTopInset + TopAppBarDefaults.CollapsedHeight).roundToPx()
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -190,21 +253,43 @@ fun VeneraTopAppBar(
         // ── 折叠小标题（scrollProgressOverride 路径专用）──
         //
         // miuix 自带的小标题挂在 collapsedFraction 上，而覆盖进度路径下折叠机制整个
-        // 不参与（collapsedFraction 恒 0），它永远不会出现 —— 所以这里自绘一份，
-        // 位置与 miuix 标题行同位（状态栏下 CollapsedHeight 那一行、水平居中），
-        // alpha 与玻璃背板共用同一条 activeProgress：玻璃起、标题现，玻璃没、标题隐。
+        // 不参与（collapsedFraction 恒 0，见 `TopAppBar.kt:672-682`），它永远不会出现 ——
+        // 所以这里自绘一份，alpha 与玻璃背板共用同一条 activeProgress：玻璃起、标题现，玻璃没、标题隐。
+        //
+        // ⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）：居中基准改用**与 miuix 同一个
+        // inset 修饰符**，不再自己读一个 Dp 再算。
+        //
+        // miuix 的标题行与按钮行都在 `windowInsetsPadding(WindowInsets.systemBars.only(Top))`
+        // **之内**：`TopAppBar.kt:806` 那个 padding 挂在这颗 Layout 自己身上，`:881` 的
+        // `verticalCenter = collapsedHeight / 2` 从 inset 之后起算，`:906`(title) 与 `:920`
+        // (actionIcons) 同式落位 ⇒ 那一行的绝对中心 = `inset + CollapsedHeight / 2`。
+        // 这里挂同一个 padding、再 `height(CollapsedHeight)`：盒子内容区 = `[inset, inset + 52dp]`，
+        // 居中 ⇒ 中心同为 `inset + 26dp` —— **同一个修饰符消费同一份 inset，逐像素同线**。
+        //
+        // 从前写的是 `.height(statusBarTop + CollapsedHeight).padding(top = statusBarTop)`
+        // （自己读 `WindowInsets.statusBars`）。它在多数机型数值恰好等于 miuix 那一份，所以
+        // "看起来是对的"；但两者本来就不是同一个来源，一旦不等就会整整错一份差值（而且尺子
+        // 也量不出来 —— 本机两者相等，实测自绘标题与 miuix 按钮行同在 188px）。把"同线"
+        // 建立在巧合上不行，一并收口到 miuix 那一个表达式。
         if (scrollProgressOverride != null && title.isNotEmpty()) {
-            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(statusBarTop + TopAppBarDefaults.CollapsedHeight)
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                    .height(TopAppBarDefaults.CollapsedHeight)
                     .graphicsLayer { alpha = activeProgress.value },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = title,
-                    fontSize = tokens.type.itemTitle,
+                    // ⚠️ 2026-10-16 改口径（真机「滑后『画廊』…字体明显小很多」）：
+                    // 原来写的是 `tokens.type.itemTitle`（MD3 16 / MIUIX 17sp），而 miuix 原生小标题
+                    // 用的是 `MiuixTheme.textStyles.title3.fontSize`（`TopAppBar.kt:732`）+ Medium。
+                    // 真机实测：探索页（走原生那一份）字高 38px、画廊这枚只有 30px，差 20%。
+                    // 这里直接读**同一个主题槽位**，不再自己挑一格 —— 于是
+                    // ① 与原生逐像素同号；② 我们的 `miuixTextStylesOf` 把 title3 映射到
+                    // `statNumber`(20sp)，仍然是表里的现成档，没有库外数字；③ 换风格档一起走。
+                    fontSize = MiuixTheme.textStyles.title3.fontSize,
                     fontWeight = tokens.type.weightMedium,
                     color = tokens.color.textPrimary,
                     maxLines = 1,
@@ -217,21 +302,106 @@ fun VeneraTopAppBar(
         // 顶栏里的图标按钮（VeneraTopBarPill）要磨砂就得拿到**同一份**采样层，
         // 否则它会采到别层内容、颜色与背后那条对不上（收藏页那颗当初就是这么对齐的）。
         CompositionLocalProvider(LocalTopBarBackdrop provides backdrop) {
-            TopAppBar(
-                title = title,
-                largeTitle = largeTitle,
-                subtitle = subtitle,
-                color = Color.Transparent,
-                titleColor = tokens.color.textPrimary,
-                largeTitleColor = tokens.color.textPrimary,
-                subtitleColor = tokens.color.textSecondary,
-                navigationIcon = navigationIcon,
-                actions = actions,
-                scrollBehavior = scrollBehavior,
-                bottomContent = bottomContent,
-            )
+            // ⚠️ `pinCollapsedHeight` 那一路的高度钉死（成因见函数上半部分的长注与"三修"那一段）：
+            //
+            // `clipToBounds` 是**必须**的 —— miuix 的 `TopAppBarLayout` 内部是
+            // `layout(constraints.maxWidth, layoutHeight)`（`TopAppBar.kt:892`），它**不看
+            // `maxHeight`**，报出来的高度会超出这里给的约束；不裁的话那一整行大标题的空白区
+            // 仍旧画出去，钉高度就白钉了（而且背板 `matchParentSize` 也会跟着回到旧高度）。
+            // 这一路下大标题恒为空串（见 `pinCollapsedHeight` 的判据），所以裁不掉任何内容。
+            if (pinCollapsedHeight) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // ⚠️⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）——**这一行就是
+                        // 前两轮的根因**：测量 miuix 本体时**不许**把高度压到它自然高以下。
+                        //
+                        // 压了之后它整棵子树会被**居中上顶** `(自然高 − 允许高) / 2`：
+                        //   · miuix 本体自然高 = inset(49.2dp) + `layoutHeight`(≈94.4dp) ≈ 143.6dp
+                        //     （`layoutHeight = barHeight + LargeTitleBottomPadding`，
+                        //      `barHeight = 52dp + expansion`，而 `expansion` 正是那个**空大标题**
+                        //      占的一整行 ≈ 38dp —— `TopAppBar.kt:864-890`）
+                        //   · 钉的允许高 = 49.2 + 52 ≈ 101.2dp ⇒ 上顶 (143.6 − 101.2)/2 ≈ 21.2dp ≈ 53px
+                        // 真机读数（同机同包、逐张截图量右上两枚胶囊里图标笔画的中心 y）：
+                        //   · 普通页（没有这颗盒子）**8 张截图全部 188px** = miuix 的正位
+                        //   · 头图页有这颗盒子时：旧包 134px、新包 132px
+                        //   · 188 − 134 = 54px ≈ 21.2dp × 2.5 ✓ 闭环
+                        // 而自绘小标题一直落在 188px（与普通页同一基准）—— 所以"标题不居中"
+                        // 其实是**按钮被顶上去**。第二版只把摆放从 SizeNode 换成 `place(0, 0)`、
+                        // 没动这条 `maxHeight` ⇒ 挤压照旧 ⇒ 白改一轮（这正是它被白赔的原因）。
+                        //
+                        // 修法：把高度**完全放开**（`Constraints.Infinity`），让它按自然高报出来；
+                        // 多出来的那一整行空大标题交给外层 `clipToBounds` 裁 —— "钉成折叠态高度"
+                        // 照样成立，而 miuix 内部那套 `insets padding + verticalCenter` 一点不动，
+                        // 于是它的 `actionIcons` 落回 `inset + 26dp`，与自绘小标题**同一条线**。
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(
+                                constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity)
+                            )
+                            val width = if (constraints.maxWidth == Constraints.Infinity) {
+                                placeable.width
+                            } else {
+                                constraints.maxWidth
+                            }
+                            layout(width, pinnedBarHeightPx) { placeable.place(0, 0) }
+                        }
+                        .clipToBounds(),
+                ) {
+                    VeneraTopAppBarBody(
+                        title = title,
+                        largeTitle = largeTitle,
+                        subtitle = subtitle,
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = navigationIcon,
+                        actions = actions,
+                        bottomContent = bottomContent,
+                    )
+                }
+            } else {
+                VeneraTopAppBarBody(
+                    title = title,
+                    largeTitle = largeTitle,
+                    subtitle = subtitle,
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = navigationIcon,
+                    actions = actions,
+                    bottomContent = bottomContent,
+                )
+            }
         }
     }
+}
+
+/**
+ * miuix [TopAppBar] 本体的那一份装配（底色透明，视觉背景交给背板）。
+ *
+ * 单独抽出来只为一件事：上面那条"钉高度"的分支要和原样分支**共用同一份参数表**，
+ * 否则将来加一个参数只改一边，两路就悄悄分叉了（这正是本仓反复踩过的"两处各写一遍"形状）。
+ */
+@Composable
+private fun VeneraTopAppBarBody(
+    title: String,
+    largeTitle: String,
+    subtitle: String,
+    scrollBehavior: ScrollBehavior?,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+    bottomContent: @Composable () -> Unit,
+) {
+    val tokens = VeneraTokens
+    TopAppBar(
+        title = title,
+        largeTitle = largeTitle,
+        subtitle = subtitle,
+        color = Color.Transparent,
+        titleColor = tokens.color.textPrimary,
+        largeTitleColor = tokens.color.textPrimary,
+        subtitleColor = tokens.color.textSecondary,
+        navigationIcon = navigationIcon,
+        actions = actions,
+        scrollBehavior = scrollBehavior,
+        bottomContent = bottomContent,
+    )
 }
 
 /**

@@ -25,6 +25,10 @@ class GalleryHeroWiringTest {
         return f.readText().replace("\r\n", "\n")
     }
 
+    /** 注释行不参与匹配（扫描类的口径与 TokenBudgetFrozenTest 同一把）。 */
+    private fun codeLines(rel: String): List<String> = src(rel).lines().map { it.trim() }
+        .filter { !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
+
     @Test fun `画廊头图用独立键与独立槽位`() {
         val prefs = src("com/venera/compose/data/prefs/VeneraPreferences.kt")
         val store = src("com/venera/compose/feature/settings/SettingsHeroImage.kt")
@@ -66,8 +70,17 @@ class GalleryHeroWiringTest {
 
     @Test fun `头图摆在 chrome 之上而不新增墙内项`() {
         val body = src("com/venera/compose/gallery/ui/GalleryForYouScreen.kt")
-        val heroAt = body.indexOf("hero?.invoke()")
-        val chromeAt = body.indexOf("chrome?.invoke()")
+        val headerAt = body.indexOf("header = {")
+        assertTrue("header 那一块都找不到，量具失效", headerAt >= 0)
+        // ⚠️ 2026-10-16 订正**形态**（原文：`body.indexOf("hero?.invoke()")`）。
+        //
+        // 用户「左右还是有空白」这一轮之后，头图外面裹了一层通栏 Box，那一行从
+        // `hero?.invoke()` 变成了 `hero?.let { heroSlot -> … }`。**判据意图一个字没变** ——
+        // 它仍是 header 里、chrome **之上**的那一格，也仍然不许新插 grid item（见下方负向断言）。
+        // 所以这里不再钉死内层的调用写法（下次再包一层不该又误报），只认
+        // 「`hero?.` 这个前缀」+「必须落在 header 块之内」+「排在 chrome 之前」这三件事。
+        val heroAt = body.indexOf("hero?.", startIndex = headerAt)
+        val chromeAt = body.indexOf("chrome?.invoke()", startIndex = headerAt)
         assertTrue("header 里找不到 hero 那一格", heroAt >= 0 && chromeAt >= 0)
         assertTrue("hero 必须摆在 chrome **之上**（$heroAt vs $chromeAt）", heroAt < chromeAt)
         // 负向：不许为它新插一枚 grid item（锚定漂移那一族）
@@ -83,6 +96,127 @@ class GalleryHeroWiringTest {
         // 一旦有人把 hero 高度算进这两处，搜索卡的落点与收栏手感会一起漂。
         val screen = src("com/venera/compose/gallery/ui/GalleryScreen.kt")
         assertTrue("gridTopPadding 必须仍只等于 topBarFloor", screen.contains("val gridTopPadding = topBarFloor"))
-        assertTrue("搜索卡落点必须仍只等于 topBarFloor", screen.contains("val searchOverlayTop = topBarFloor"))
+        assertTrue("gridTopPadding 必须仍只等于 topBarFloor", screen.contains("val gridTopPadding = topBarFloor"))
+
+        // ⚠️ 2026-10-16 订正这一条（原文：`searchOverlayTop` 必须仍只等于 topBarFloor）。
+        //
+        // 头图**出血**之后（用户「表现方式应该和图二一样才对」），入口条本身整体上移了
+        // topBarFloor 那一段 —— 落点若还钉在 topBarFloor，"从入口条原地长开"就退化成
+        // "卡从上方掉下来盖住入口条"。所以**在场那一支必须跟随**，不在场那一支仍钉原地。
+        // 这条尺子的精神（不许把 hero 高度算进**顶栏避让地板**）没变，漂的只是"落点"这一半。
+        assertTrue(
+            "搜索卡落点必须分两支：无头图 = topBarFloor；有头图 = 头图那一段的占位高",
+            screen.contains("val searchOverlayTop = if (galleryHeroFile != null) {") &&
+                screen.contains("statusBarTop + VeneraSpacing.settingsHeroHeightSubpage - VeneraSpacing.settingsHeroOverlap"),
+        )
+        // ⚠️ 2026-10-16 换档（用户「空位有点太多…1选A吧」）：头图用**设置子页那一档** 148dp。
+        // 两条**必须同一个常量** —— 占位高与落点是同一条式子，只改一处，搜索卡就会停在旧落点上，
+        // "从入口条原地长开"退化成"卡从上方掉下来盖住入口条"。
+        assertTrue(
+            "头图 totalHeight 没用子页那一档（148dp）",
+            screen.contains("totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeightSubpage,"),
+        )
+        assertTrue(
+            "头图 totalHeight 与搜索卡落点用的不是同一个高度常量 ⇒ 两处会各漂各的",
+            !screen.contains("totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeight,"),
+        )
+    }
+
+    /**
+     * 头图在场时的**出血契约**（2026-10-16，用户「画廊的头图有问题，表现方式应该和图二一样才对」）。
+     *
+     * 图二 = 画廊设置页。头图在那边摆在**内容列之外**、天然从屏幕最顶出血；画廊这边它是墙的
+     * 第一行，必须靠这四件事凑出同一个观感 —— 缺任何一件都会退回"一条标题栏 + 一张图"两张皮：
+     * ① 墙顶留白归零；② 顶栏大标题让位；③ 标题改由头图画成图上白字；④ 折叠连接不挂。
+     */
+    @Test fun `头图在场时出血并让位`() {
+        val screen = src("com/venera/compose/gallery/ui/GalleryScreen.kt")
+        assertTrue(
+            "墙顶留白没做头图分支 ⇒ 头图出不了血（还是被顶栏压在下面）",
+            screen.contains("val wallTopPadding = if (galleryHeroFile != null) 0.dp else gridTopPadding"),
+        )
+        assertTrue(
+            "主墙没吃 wallTopPadding ⇒ 分支白算",
+            screen.contains("topPadding = wallTopPadding,"),
+        )
+        assertTrue(
+            "顶栏大标题没在头图在场时让位 ⇒ 一条深色大字横压在图的上段上",
+            screen.contains("largeTitle = if (heroPresent) \"\" else \"画廊\""),
+        )
+        assertTrue(
+            "标题没交给头图（图上应当是白字「画廊」）",
+            screen.contains("title = \"画廊\","),
+        )
+        assertTrue(
+            "头图在场时没摘掉折叠连接 ⇒ 空大标题的\"幽灵折叠行程\"会先吃掉一段上滑",
+            screen.contains("else Modifier.nestedScroll(topBarBehavior.nestedScrollConnection)"),
+        )
+        assertTrue(
+            "玻璃进度没改由墙的滚动状态喂（不挂连接之后它会恒 0 ⇒ 玻璃永不出现）",
+            screen.contains("scrollProgressOverride = if (heroPresent) heroScrollProgress else null,"),
+        )
+        assertTrue(
+            "没接状态栏图标翻转 ⇒ 深色图标压在图上",
+            screen.contains("SettingsHeroSystemBarIcons(heroPresent = heroPresent"),
+        )
+    }
+
+    /**
+     * 有头图的那面墙**禁掉过度滚动**（2026-10-16，用户「钳制效果，禁止在设置了头图的页面使用过度滚动，
+     * 不然效果不好」）。
+     *
+     * 机制走 `GalleryCardsGrid.disableOverscroll` → `overscrollEffect` 这条**组件参数**
+     * （`LazyVerticalStaggeredGrid` 本身就收 `OverscrollEffect?`），不去包 CompositionLocal：
+     * 一处开关、一处取舍，比往组合树上挂一层隐式状态好读也好删。
+     */
+    @Test fun `头图墙禁掉过度滚动`() {
+        val screen = src("com/venera/compose/gallery/ui/GalleryScreen.kt")
+        assertTrue("GalleryCardsGrid 缺 disableOverscroll 参数", screen.contains("disableOverscroll: Boolean = false,"))
+        assertTrue(
+            "没按开关取舍 overscrollEffect（要么恒 null 要么从不生效）",
+            screen.contains("overscrollEffect = if (disableOverscroll) null else platformOverscrollEffect,"),
+        )
+        // ⚠️ 必须**无条件**先 remember 出来再取舍：把 `rememberOverscrollEffect()` 写进 if 分支
+        // 就是条件调用 Composable（组合期就会崩），所以这一行必须独立存在。
+        assertTrue(
+            "rememberOverscrollEffect() 必须无条件先取出来（写进 if 分支 = 条件调用 Composable）",
+            screen.contains("val platformOverscrollEffect = rememberOverscrollEffect()"),
+        )
+        val forYou = src("com/venera/compose/gallery/ui/GalleryForYouScreen.kt")
+        assertTrue("有头图那面墙没把开关传下去", forYou.contains("disableOverscroll = hero != null,"))
+    }
+
+    /**
+     * 头图**整屏通栏**（2026-10-16，用户「而且左右还是有空白」）。
+     *
+     * 设置页那头图摆在内容列**之外**（外/内双 Column），天然从屏幕最左到最右；画廊这边它是网格的
+     * header item，会跟着吃到 `contentPadding` 的左右内缩（实测截图逐像素：左右各 26px ≈ 11dp，
+     * 正是 `screenHorizontal` 那一档）。所以只能自己把那一圈还回去 —— 而"还"的手法**必须**
+     * 是"报告宽仍是容器宽、只把绘制往两侧各拉 inset"：占位一变，网格那一行的高度与相邻列的
+     * 对齐就跟着漂（这就是"吃内缩"的另一种写法，只是反向）。
+     *
+     * ⚠️ 不能用负 `padding` —— `Modifier.padding` 对负值有 `require` 检查，会直接崩。
+     */
+    @Test fun `头图整屏通栏`() {
+        val rel = "com/venera/compose/gallery/ui/GalleryForYouScreen.kt"
+        val forYou = src(rel)
+        assertTrue(
+            "头图没裹通栏 Box ⇒ 左右还是各留一圈内缩",
+            forYou.contains("Box(Modifier.fullBleedHorizontal(tokens.spacing.screenHorizontal)) {"),
+        )
+        assertTrue(
+            "通栏修饰符没定义",
+            forYou.contains("private fun Modifier.fullBleedHorizontal(inset: Dp): Modifier"),
+        )
+        assertTrue(
+            "通栏后报告的宽度必须是容器宽（占位一点不许变）",
+            forYou.contains("layout(constraints.maxWidth, placeable.height) {"),
+        )
+        assertTrue("没把内容拉到左侧负偏移（等于只是量宽了、没真的画出去）", forYou.contains("placeable.place(-insetPx, 0)"))
+        // 容器宽未知（无限约束）时不许硬算 —— 宁可少通栏也不要量出一个荒谬的宽度。
+        assertTrue("缺 Constraints.Infinity 守卫", forYou.contains("Constraints.Infinity"))
+        // 负向：通栏只许被头图用一处（定义 1 + 调用 1 = 2）。搜索条是个圆角条，左右本来就该有内缩。
+        val hits = codeLines(rel).count { it.contains("fullBleedHorizontal") }
+        assertTrue("通栏修饰符只该被头图用到（定义 1 + 调用 1 = 2），实际 $hits 处", hits == 2)
     }
 }

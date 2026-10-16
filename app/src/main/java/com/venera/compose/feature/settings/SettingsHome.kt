@@ -2,7 +2,7 @@ package com.venera.compose.feature.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -207,7 +207,17 @@ private fun SettingsHomeContent(
     // hero 在场时 scrollConnection 传 null：折叠 behavior 不参与（见 SettingsHome 注释）。
     // 禁掉 overscroll：到顶继续下拉会把 hero 图拉伸变形（Android 12+ 的 stretch 效果
     // 恰好作用在图上），设置页宁可没有回弹反馈。用户 2026-10-02 拍板「直接禁止」。
-    CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+    //
+    // ⚠️⚠️ 2026-10-16 修：这里原来是 `LocalOverscrollConfiguration provides null` ——
+    // **从写下那天起就一直是空转**。现读 foundation **1.12.0** sources
+    // （`androidMain/…/OverscrollConfiguration.android.kt`）：该 CompositionLocal 已
+    // `@Deprecated`，弃用文案把处置写死了原话 ——
+    // 「To disable overscroll, instead of `LocalOverscrollConfiguration provides null`,
+    //   **use `LocalOverscrollFactory provides null`**」。
+    // 两者是**两个不同的 CompositionLocal 实例**，滚动容器(1.12)只读新的那个 ⇒ 老的
+    // provide 连"被忽略"都算不上，只是没人再读。用户 15:29 那张"设置页下拉把 hero 顶下去、
+    // 上方露出一大块背景"的截图，就是它空转的现场。
+    CompositionLocalProvider(LocalOverscrollFactory provides null) {
     Column(
         Modifier
             .fillMaxSize()

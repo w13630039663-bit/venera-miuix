@@ -4,13 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.core.view.WindowCompat
@@ -37,6 +40,7 @@ import com.venera.compose.ui.tokens.ImageOverlayColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import java.io.File
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import android.app.Activity
 
@@ -94,9 +98,12 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
  * z 序为什么成立：Compose 同层兄弟按布局顺序绘制，内容列在 hero 之后 —— 溢出的
  * 模糊层自然垫在卡片背后（参考图的图透到卡后正是这个）。
  *
- * 其余决策承前：标题在返回胶囊下方（statusBar+64dp，两层不重叠）；覆盖层色取
- * [ImageOverlayColors] 固定色板（图亮度不可控），溶接渐变终点色除外 —— 那一段要的
- * 就是「融入页面背景」，跟主题走。
+ * 其余决策承前：覆盖层色取 [ImageOverlayColors] 固定色板（图亮度不可控），溶接渐变终点色除外
+ * —— 那一段要的就是「融入页面背景」，跟主题走。
+ *
+ * 标题那一格**不是**自己挑的几何：2026-10-16 起它的左边距、顶边、字号、字重四项全部读
+ * miuix `TopAppBar` 大标题用的同一批常量与主题槽位（详见下面标题段的长注）。这幅字顶替的
+ * 就是那一格，所以只有"压在图上"这件事是本地的事，尺寸口径一律跟顶栏同源。
  *
  * @param file 已解析好的本地文件（调用方先过 [SettingsHeroImageStore.resolve]）。
  * @param title 压在图上的标题（首页「设置」/ 子页各自的页名）。
@@ -117,7 +124,12 @@ internal fun SettingsHeroImage(
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // ⚠️ 读 miuix 顶栏用的**那一份**顶部 inset，不是 `WindowInsets.statusBars`。
+    // miuix 的 `TopAppBarLayout` 挂的是 `WindowInsets.systemBars.only(Top)`（`TopAppBar.kt:806`），
+    // 两者在多数机型数值恰好相等，但一旦不等，下面那一条"标题落在顶栏大标题同一格"的
+    // 对齐就会整体错开那一份差值。同源才与设备无关（同一个坑在 `VeneraTopAppBar` 里量过）。
+    val topBarInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
+        .asPaddingValues().calculateTopPadding()
     val pageBackground = MiuixTheme.colorScheme.background
     // tokens 的 getter 是 @Composable：所有要带进绘制期的量都在组合期取成局部值。
     val fadeHeight = tokens.spacing.space11 * 3 // 清晰层下缘淡出带 96dp
@@ -230,24 +242,53 @@ internal fun SettingsHeroImage(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(statusBarTop + tokens.spacing.space11 * 4)
+                .height(topBarInset + tokens.spacing.space11 * 4)
                 .background(
                     Brush.verticalGradient(listOf(ImageOverlayColors.ScrimTop, Color.Transparent))
                 ),
         )
-        // 标题 + 副标题：返回胶囊下方（胶囊浮在 hero 顶部，标题从 64dp 起不与它重叠）。
+        // ── 标题 + 副标题：钉在顶栏大标题那一格上（2026-10-16 全对齐）──
+        //
+        // hero 在场时顶栏的 `largeTitle` 传空串（`GalleryScreen` / `SettingsHome` 那几处），
+        // 这幅字**顶替的就是那一格**，所以三个定位量一律读 miuix `TopAppBar` 自己用的常量，
+        // 不再自己挑：
+        //   · 左边距  ← `TopAppBarDefaults.TitlePadding`（26dp，`TopAppBar.kt:749` 的
+        //     `padding(horizontal = titlePadding)`）。从前吃 `rowHorizontal` 14dp，真机量到
+        //     图上字左 x=43 vs 探索页 x=73，差 30px ≈ 12dp。
+        //   · 顶边    ← `TopAppBarDefaults.CollapsedHeight`（52dp，`TopAppBar.kt:747` 的
+        //     `padding(top = CollapsedHeight)`，在同一份 `windowInsetsPadding(systemBars.only(Top))`
+        //     之内）。从前是 `space11 * 2` = 64dp，比那一格低 12dp。
+        //     让位给胶囊这件事仍然成立：胶囊行占 `inset..inset+52`，标题从 `inset+52` 起，
+        //     两层零重叠 —— 原生大标题本来就是这么落的。
+        //
+        // 唯一**刻意不同**的是颜色：仍用 `ImageOverlayColors.OnImage` 纯白而不是 `textPrimary`。
+        // 图是用户随手选的、亮度不可控，深色字压亮图会直接读不出（那一条理由写在
+        // `ui/tokens/Color.kt` 的 `ImageOverlayColors` 头注）。切页时字形/大小/位置完全一致，
+        // 只有颜色随底变 —— 这是"全对齐"里唯一不肯让的一格，用户 2026-10-16 拍板。
         Column(
             Modifier
                 .padding(
-                    start = tokens.spacing.rowHorizontal,
-                    end = tokens.spacing.rowHorizontal,
-                    top = statusBarTop + tokens.spacing.space11 * 2,
+                    start = TopAppBarDefaults.TitlePadding,
+                    end = TopAppBarDefaults.TitlePadding,
+                    top = topBarInset + TopAppBarDefaults.CollapsedHeight,
                 ),
         ) {
             Text(
                 text = title,
-                fontSize = tokens.type.screenTitle,
-                fontWeight = tokens.type.weightSemibold,
+                // ⚠️ 2026-10-16 改口径（真机「他收起前画廊的字都要小很多」）：
+                // 头图上的白字**顶替的是顶栏大标题那一格**（hero 在场时 `largeTitle` 传空串），
+                // 所以字号必须跟 `largeTitle` 同档 —— miuix 给 largeTitle 用的是
+                // `MiuixTheme.textStyles.title1.fontSize`（`TopAppBar.kt:763`），这里直接读**同一个
+                // 主题槽位**。原来是 `tokens.type.screenTitle`（MD3 22 / MIUIX 24sp），比原生大标题
+                // 小了 20% 上下，真机上读起来就是"同一个页面名，图上那个明显小一号"。
+                //
+                // ⚠️ 2026-10-16 二修（真机「画廊的未收起大字和其他页面的字体和颜色对不上」）：
+                // 字重从 `weightSemibold` 改成与原生**逐字同值**的 `FontWeight.Normal`
+                // （`TopAppBar.kt:764`）。前一版留 SemiBold 的理由是"白字压亮图要有厚度"，
+                // 但代价是切页时同一档标题两种笔画粗细（实测墨覆盖率 37.0% vs 31.6%），
+                // 用户口径是"切换页面会很奇怪"⇒ 粗细让位，对比度交给顶 scrim 单独兜。
+                fontSize = MiuixTheme.textStyles.title1.fontSize,
+                fontWeight = FontWeight.Normal,
                 color = ImageOverlayColors.OnImage,
             )
             if (!subtitle.isNullOrBlank()) {

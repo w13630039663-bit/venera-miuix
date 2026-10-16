@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import coil3.ImageLoader
 import com.venera.compose.components.VeneraEmptyTone
@@ -137,6 +138,9 @@ internal fun GalleryForYouPage(
             contentPadding = contentPadding,
             modifier = pageModifier,
             onOpen = onOpen,
+            // 有头图就禁掉过度滚动（2026-10-16，用户「禁止在设置了头图的页面使用过度滚动」）：
+            // 到顶继续下拉会把整张头图连内容一起顶下去、上方露出一大片背景，观感很糟。
+            disableOverscroll = hero != null,
             header = {
                 // ⚠️ 必须包进一个 Column：懒列表 item 的内容是按「单一根」量的，
                 // 这里如果摆两个并列的根级组件（chrome 与失败提示），它们会被当成
@@ -144,9 +148,20 @@ internal fun GalleryForYouPage(
                 // 错误提示整段压在搜索栏上）。Column 是唯一正确的容器。
                 Column {
                     // 头图（未设置 = null，整段不参与，见参数文档）。
-                    hero?.invoke()
+                    //
+                    // ⚠️ 头图必须**整屏通栏**（2026-10-16，用户「左右还是有空白」）：
+                    // 它住在网格的 header item 里，会跟着吃到 `contentPadding` 的左右内缩。
+                    // 设置页那边的头图摆在内容列**之外**（见 SettingsHome 的外/内双 Column），
+                    // 所以天然通栏；画廊这边它在网格里，只能自己把那圈内缩还回去。
+                    // 实测（截图逐像素）：头图左右各留 26px ≈ 11dp，正是 screenHorizontal 那一档。
+                    hero?.let { heroSlot ->
+                        Box(Modifier.fullBleedHorizontal(tokens.spacing.screenHorizontal)) {
+                            heroSlot()
+                        }
+                    }
                     // 常驻 chrome（一条搜索入口条）是**内容的第一行**：
                     // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
+                    // ⚠️ 它**不**通栏 —— 搜索条左右本来就该有内缩（它是个圆角条，不是整幅图）。
                     chrome?.invoke()
                     // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──
                     //
@@ -361,5 +376,35 @@ private fun GalleryForYouEnd(
                 )
             }
         GalleryLoadMoreRetryLine(loadMoreError, onRetryLoadMore)
+    }
+}
+
+/**
+ * 让这一格**吃掉容器的左右内缩**，按整屏宽铺开（只在本容器水平居中、两侧等宽时成立）。
+ *
+ * 用在哪：首页头图。它住在网格的 header item 里，而网格的 `contentPadding` 是**所有项共用**
+ * 的（搜索条、卡片那几行都靠它留出左右边距），所以只能由头图自己把这个内缩还回去。
+ *
+ * 做法：把宽度约束放到 `内容宽 + 2 × inset`，量完之后按 `-inset` 摆 —— 报告的高度仍是子元素的
+ * 高度，所以网格那一行的占位**一点没变**（变的只有绘制范围）。这跟 `SettingsHeroImage` 内部
+ * 「占位矮一截、画面画全高」是同一类手法：**报告的尺寸与绘制范围解耦**。
+ *
+ * ⚠️ 不要改用 `.padding(horizontal = -inset)`：`Modifier.padding` 对负值有 `require` 检查，会崩。
+ *
+ * @param inset 容器左右各自的内缩（本仓口径 = `tokens.spacing.screenHorizontal`）。
+ */
+private fun Modifier.fullBleedHorizontal(inset: Dp): Modifier = layout { measurable, constraints ->
+    val insetPx = inset.roundToPx()
+    // 容器宽未知（无限约束）时不做任何事，宁可少通栏也不要量出一个荒谬的宽度。
+    if (insetPx <= 0 || constraints.maxWidth == androidx.compose.ui.unit.Constraints.Infinity) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val fullWidth = constraints.maxWidth + insetPx * 2
+    val placeable = measurable.measure(
+        constraints.copy(minWidth = fullWidth, maxWidth = fullWidth)
+    )
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.place(-insetPx, 0)
     }
 }

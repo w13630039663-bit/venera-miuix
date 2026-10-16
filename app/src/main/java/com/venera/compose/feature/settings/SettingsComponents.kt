@@ -3,7 +3,7 @@ package com.venera.compose.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -331,7 +331,11 @@ internal fun SettingsPage(
     Box(Modifier.fillMaxSize()) {
         // 禁掉 overscroll：stretch 会把 hero 图拉变形（用户 2026-10-02 拍板「直接禁止」）。
         // 下拉的其余消费者（behavior 展开、overscroll）在 hero 页全部退场，见上。
-        CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+        //
+        // ⚠️ 2026-10-16 修：原来写的 `LocalOverscrollConfiguration provides null` 在
+        // foundation 1.12 下已失效（官方弃用文案指明改用 `LocalOverscrollFactory provides null`，
+        // 两者是两个不同的 CompositionLocal）。详细取证见 `SettingsHome` 那一处。
+        CompositionLocalProvider(LocalOverscrollFactory provides null) {
         Column(
             Modifier
                 .fillMaxSize()

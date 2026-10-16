@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -47,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import android.widget.Toast
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -111,6 +113,7 @@ import com.venera.compose.gallery.domain.depthToApply
 import com.venera.compose.gallery.domain.galleryNotices
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.feature.settings.SettingsHeroImage
+import com.venera.compose.feature.settings.SettingsHeroSystemBarIcons
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -323,6 +326,40 @@ fun GalleryScreen(
     // 提前到这里算：滚动判据与网格避让读同一个值，两处不会漂。
     val chromeHeight = galleryHomeChromeHeight()
     val hideThresholdPx = with(LocalDensity.current) { chromeHeight.toPx() }
+
+    // ── 头图在场时的顶栏契约（2026-10-16，与设置页同源）──
+    //
+    // 抄设置页那套（理由见 `SettingsHome` 的「hero 页的滚动契约」，是真机量出来的坑）：
+    // 头图在场时 behavior 的 nestedScroll 连接**不挂** —— 空 `largeTitle` 仍占一行字体度量，
+    // miuix 会给它留几十 dp 的"幽灵折叠行程"，上滑先被它在 pre-scroll 里吃掉（列表看似
+    // 没反应）、回顶后展开支路又把顶栏"拉开"。折叠机制整个退场后，玻璃与小标题的进度
+    // 改由**墙自己的滚动状态**直接推导：48dp 淡满，与其余页 contentOffset 的口径一致。
+    //
+    // 为什么不用 `topBarBehavior.state.contentOffset` 那条原路：那条路要求连接在链上，
+    // 而这里恰恰不能挂（上面那条）。头图在墙的第一项（header item）里 ⇒ 第 0 项被滚走
+    // 多少像素就是头图被推上去多少，这正是要的那个进度。
+    val heroPresent = galleryHeroFile != null
+    val heroGlassRangePx = with(LocalDensity.current) { HERO_TOP_BAR_FADE_RANGE.toPx() }
+    val heroScrollProgress = remember(forYouGridState, heroGlassRangePx, heroPresent) {
+        derivedStateOf {
+            when {
+                !heroPresent -> 1f
+                // 第 0 项（头图那一颗 header item）已经整个滚出去了 ⇒ 满进度。
+                forYouGridState.firstVisibleItemIndex > 0 -> 1f
+                else -> (forYouGridState.firstVisibleItemScrollOffset / heroGlassRangePx)
+                    .coerceIn(0f, 1f)
+            }
+        }
+    }
+    val heroScrolledPast by remember(forYouGridState, heroGlassRangePx, heroPresent) {
+        derivedStateOf {
+            heroPresent && (
+                forYouGridState.firstVisibleItemIndex > 0 ||
+                    forYouGridState.firstVisibleItemScrollOffset >= heroGlassRangePx
+                )
+        }
+    }
+    SettingsHeroSystemBarIcons(heroPresent = heroPresent, scrolledPastHero = heroScrolledPast)
     // 累计位移带着走（不用 remember：它只服务于下一次判定，丢了只是"要从头累计"）。
     var scrollAccumulated by remember { mutableStateOf(0f) }
     /**
@@ -615,14 +652,48 @@ fun GalleryScreen(
     val gridTopPadding = topBarFloor
 
     /**
+     * 首页头图在场时，**墙的顶部避让归零** —— 头图从屏幕最顶出血。
+     *
+     * 2026-10-16（用户「画廊的头图有问题，表现方式应该和图二一样才对」，图二 = 设置页）。
+     * 头图复用 [SettingsHeroImage]，但 2026-10-15 加它时只挂上了那颗件、**没同步设置页
+     * 那套"出血契约"**：墙的顶留白仍是 [gridTopPadding]（= 顶栏展开地板那一档），
+     * 于是头图被顶栏整个推到它下面 —— 真机上读起来是"一条标题栏 + 一张图"两张皮，
+     * 而不是"图铺满顶部、标题压在图上的白字"。
+     *
+     * 设置页那边头图摆在**内容列之外**（不吃 `topPadding`）所以天然出血；画廊的头图是
+     * 墙的第一行（与 chrome 同处一颗 header item，见 [GalleryForYouPage.hero]），
+     * 只能在这里把留白归零。
+     *
+     * 未设头图时恒为 [gridTopPadding] —— 首帧几何与从前逐像素一致。
+     */
+    val wallTopPadding = if (galleryHeroFile != null) 0.dp else gridTopPadding
+
+    /**
      * 搜索浮层的纵向落点 = 常驻 chrome 上边缘（状态栏之下、顶栏大标题之下）。
      *
      * chrome 现在是墙里的第一行内容（2026-09-30 第三版），首屏时它的上边缘恰好在
      * [topBarFloor] —— 卡片弹出来时**正好盖住**入口条的位置，"从入口条原地长开"的语义不变。
      * 顶栏展开高度用与各主 Tab 同一条地板常量（`statusBarTop + 104.dp` 那一档里的 104dp），
      * 不另量（同一处理由：`heightOffsetLimit` 读不可靠）。
+     *
+     * ⚠️ **头图在场时**入口条整体上移了 [topBarFloor] 那一段（墙顶留白归零，见 [wallTopPadding]）
+     * ⇒ 落点必须跟着走，否则"从入口条原地长开"会退化成"卡从上方掉下来盖住入口条"。
+     * 头图那一段的**占位高**就是 `状态栏 + settingsHeroHeightSubpage − settingsHeroOverlap`
+     * （与 [SettingsHeroImage] 报给布局的高度同一个式子），入口条紧随其后 ⇒ 这里等于它的上边缘。
+     *
+     * ⚠️ 2026-10-16 换档（用户「画廊这个空位有点太多了…1选A吧」）：头图从 `settingsHeroHeight`
+     * (208dp) 降到 `settingsHeroHeightSubpage` (148dp) —— 就是设置子页那一档，**不造新数字**。
+     * 占位从 `状态栏 + 160dp` 收到 `状态栏 + 100dp`（少 60dp），图自己也矮一档。
+     * 如实记两笔代价：清晰段只剩 **52dp**（`148 − fadeHeight 96`），标题白字落在图的中下段、
+     * 正好压在淡出带上 —— 靠顶 scrim 保对比。真要再瘦，得动淡出带本身（那是共享件 C 方案）。
+     * 两处**必须同一个常量**：这里写的式子与下面 `SettingsHeroImage` 的 `totalHeight` 是同一条，
+     * 改一处不改另一处，"从入口条原地长开"立刻退化。
      */
-    val searchOverlayTop = topBarFloor
+    val searchOverlayTop = if (galleryHeroFile != null) {
+        statusBarTop + VeneraSpacing.settingsHeroHeightSubpage - VeneraSpacing.settingsHeroOverlap
+    } else {
+        topBarFloor
+    }
 
     /**
      * 结果态给搜索结果墙的**稳定**顶部内缩（方案 B，2026-10-16 用户拍板「直接方案 b」）。
@@ -1046,7 +1117,13 @@ fun GalleryScreen(
                     // pre 段是"近的先看"，而 miuix 顶栏折叠会在 pre 段把位移吃掉 ——
                     // 摆到外面就只能拿到顶栏吃剩的，得等顶栏完全折平才开始累计，
                     // 读起来就是"滑了一大段栏才收"。本连接恒回 Offset.Zero，不抢顶栏的位移。
-                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    // 头图在场时**不挂**折叠连接（见上面「头图在场时的顶栏契约」）：
+                    // 空大标题仍占一行字体度量，behavior 会留一段"幽灵折叠行程"，
+                    // 上滑先被它在 pre 段吃掉 —— 读起来是"滑了一段列表没反应"。
+                    .then(
+                        if (heroPresent) Modifier
+                        else Modifier.nestedScroll(topBarBehavior.nestedScrollConnection)
+                    )
                     .nestedScroll(chromeHideConnection),
             ) {
                 GalleryForYouPage(
@@ -1057,21 +1134,31 @@ fun GalleryScreen(
                     imageLoader = imageLoader,
                     columnCount = columnCount,
                     state = forYouGridState,
-                    topPadding = gridTopPadding,
+                    // 头图在场时归零 ⇒ 头图从屏幕顶出血（见 [wallTopPadding]）。
+                    topPadding = wallTopPadding,
                     backdrop = topBarBackdrop,
                     // 三节**必须带**：不带就会让画师/热门/节头整片消失 ——
                     // 屏上少一大块内容、视口锚点跟着漂，读起来像页面坏了。
                     sections = homeSections,
                     // 头图摆在 chrome **之上**、同一颗 header item 里（理由见 GalleryForYouPage 的
-                    // hero 参数文档）。标题传空串：这一屏的大标题「画廊」住在顶栏里，图上再压一遍
-                    // 就是同一屏两处同名标题；设置页那边反过来（hero 在场时顶栏大标题让位）。
+                    // hero 参数文档）。
+                    //
+                    // ── 标题归属（2026-10-16 改口径）──
+                    // 从前这里传空串，理由是"这一屏的大标题「画廊」住在顶栏里，图上再压一遍
+                    // 就是同一屏两处同名标题"。那是**头图还被顶栏压在下面**时的情形 ——
+                    // 头图出血之后顶栏大标题必须让位（见下面 `VeneraTopAppBar.largeTitle`），
+                    // 否则一条深色大字会直接横压在图的上段上，既挡图又读不清。
+                    // 现在与设置页同一套分工：**标题是头图自己画的图上白字**。
                     hero = if (galleryHeroFile != null) {
                         @Composable {
                             SettingsHeroImage(
                                 file = galleryHeroFile,
-                                title = "",
+                                title = "画廊",
                                 subtitle = null,
-                                totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeight,
+                                // 矮一档（2026-10-16，用户「空位有点太多…1选A吧」）：用设置**子页**
+                                // 那一档 148dp，不造新数字。与上面 `searchOverlayTop` 是同一条式子，
+                                // 两处必须一起改 —— 只改这里，搜索卡的落点会停在旧的 160dp 上。
+                                totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeightSubpage,
                                 overlapBottom = VeneraSpacing.settingsHeroOverlap,
                                 imageDescription = "画廊首页头图",
                             )
@@ -1135,9 +1222,15 @@ fun GalleryScreen(
         )
         VeneraTopAppBar(
             title = "画廊",
-            largeTitle = "画廊",
+            // 头图在场时大标题退场 —— 标题已由头图画成图上的白字（见上面的 hero 调用）。
+            // 与设置页同一套分工（`SettingsHome.kt` 那处的 `if (heroFile != null) "" else 大标题`）。
+            // 传空串而不是 null：miuix 的 `largeTitle` 是 String，空串即不渲染；其余调用点零影响。
+            largeTitle = if (heroPresent) "" else "画廊",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
+            // 头图在场时不挂 behavior 的连接（见上面「头图在场时的顶栏契约」），
+            // 玻璃进度改由墙自己的滚动状态喂进来；null = 其余情形照旧走 contentOffset 原路。
+            scrollProgressOverride = if (heroPresent) heroScrollProgress else null,
             // 双击任意空白处回顶部（2026-09-30 新增，加性参数：其余调用点不传即零改动）。
             onDoubleTap = {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1370,6 +1463,15 @@ fun GalleryScreen(
  * 400dp 覆盖"状态栏 + 大标题 + chrome"全部实际高度之和还有余量，
  * 而多滑走的那一点是屏幕外，肉眼不可见。
  */
+/**
+ * 头图在场时，顶栏玻璃"淡满"所需的滚动行程（48dp）。
+ *
+ * 与设置页那一档**同源**（`SettingsHome` 里 `heroGlassRangePx` 用的就是 48dp，2026-10-02
+ * 第五轮定的口径）：两处都是"滚过 48dp 玻璃就满、小标题接管"。**别只改单边** ——
+ * 两个 hero 页若用不同行程，同一个手势在两屏读起来的快慢会不一样。
+ */
+private val HERO_TOP_BAR_FADE_RANGE = 48.dp
+
 private val TOP_BAR_HIDE_DISTANCE = 400.dp
 
 /**
@@ -1547,10 +1649,24 @@ internal fun GalleryCardsGrid(
      * 为什么不做成布尔开关而要一个函数：key 的身份是 `uid`（带站键），这层判断留在调用方更清楚。
      */
     sharedElementKey: ((GalleryPost) -> String)? = null,
+    /**
+     * 是否禁掉这面墙的**过度滚动**（2026-10-16，用户「禁止在设置了头图的页面使用过度滚动」）。
+     *
+     * 有头图的那面墙（首页主墙）传 true：到顶继续下拉，`stretch` 会整张带头图顶下去、
+     * 上方露出一大片页面背景 —— 观感很糟。没有头图的墙保持默认，回弹是正常的触感反馈。
+     *
+     * ⚠️ 走 `overscrollEffect = null` 这条**组件参数**，不是包一层 CompositionLocal：
+     * 这一面墙就是那颗滚动容器本身，参数是最短的路径，也不必让"禁没禁"这件事
+     * 依赖读者去别处找一个 provider。
+     */
+    disableOverscroll: Boolean = false,
 ) {
     val tokens = VeneraTokens
     val view = LocalView.current
     val context = LocalContext.current
+    // 平台默认的过度滚动效果。⚠️ 必须**无条件**先 remember 出来再按开关取舍：
+    // 把 `rememberOverscrollEffect()` 写进 `if` 的分支里就是条件调用 Composable，会崩。
+    val platformOverscrollEffect = rememberOverscrollEffect()
     /*
      * 长按一张卡 → 那张动作表（用户 2026-10-04 第 2 条点名的五项）。
      *
@@ -1577,6 +1693,8 @@ internal fun GalleryCardsGrid(
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5),
         verticalItemSpacing = tokens.spacing.gridGap,
+        // 头图那面墙禁掉过度滚动（见 [disableOverscroll]）；其余墙保持平台默认。
+        overscrollEffect = if (disableOverscroll) null else platformOverscrollEffect,
         modifier = modifier.fillMaxSize(),
     ) {
         header?.let { slot ->
