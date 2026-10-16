@@ -20,6 +20,9 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -118,9 +121,27 @@ fun StatsScreen(
                 CircularProgressIndicator(color = MiuixTheme.colorScheme.primary)
             }
         } else {
+            /*
+             * 大屏内容收口（2026-10-15 问题清单 T1a 第一颗）。这一页三块都住在**同一棵** LazyColumn 里，
+             * 所以收口只在这一处挂、四个 item 跟着一起收 —— 不逐 item 套（清单 §二-4：一屏一个点，
+             * 逐 item 包就是 20 个页面各打一个补丁那种错法）。
+             *
+             * 坐标凭据（`_qa/ui-verify-2026-10-15/tab/ui-t6-stats.xml`，density 1920px÷1291dp≈1.487）：
+             *  - 四格大卡两列起点 x=39 / x=985 ⇒ 每列 ≈943px = **634dp**；
+             *  - 14 天的柱从 x=98 铺到 x=1822 ⇒ 图表横轴 ≈1724px = **1159dp**；
+             *  - 榜单第一行标题右缘 x=321、读数左缘 x=1827 ⇒ 一行里隔 **1506px = 1010dp**。
+             *
+             * `Compact` 恒 `null` ⇒ 手机档一个像素都不动（已由 `WideScreenPolicyTest.phoneBandNeverGetsAContentWidthCap` 钉住）。
+             */
+            val contentMaxWidth = contentMaxWidthFor(
+                wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+            )
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                    // 收宽之后要在满宽的 Box 里居中；父是 Box ⇒ 用 BoxScope 的 align（整枚 Alignment）。
+                    .align(Alignment.TopCenter)
                     .nestedScroll(topBarBehavior.nestedScrollConnection)
                     .blurBackdropSource(topBarBackdrop),
                 contentPadding = PaddingValues(

@@ -17,6 +17,7 @@ import com.venera.compose.gallery.data.bySite
 import com.venera.compose.gallery.data.toFavorite
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.gallery.data.toSiteRows
+import com.venera.compose.gallery.domain.GalleryEmptyRound
 import com.venera.compose.gallery.domain.GalleryFeedRefreshPolicy
 import com.venera.compose.gallery.domain.GalleryMerge
 import java.time.LocalDate
@@ -88,6 +89,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      * 提示块要按档分色、还要给未配账号那一档挂一枚真能到配置页的按钮 ——
      * 从一个 `站：原因 · 站：原因` 的串里反解结构只能靠猜关键词，猜错不报错、
      * 只在屏上换个颜色，所以结构必须在发车那一处就留住。
+     *
+     * ⚠️ 整轮没成时也要写它（见 [reject]）：那一轮没有任何卡，屏上能说的失败就只剩这一排。
      */
     var failures by mutableStateOf<Map<GallerySite, String>>(emptyMap())
         internal set
@@ -188,6 +191,24 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             posts = list.map { it.toFavorite() },
         )
         viewModelScope.launch { GalleryFeedCache.write(app, snapshot) }
+    }
+
+    /**
+     * 收下整轮失败（与 [accept] 对称：一轮只落地一种结果）。
+     *
+     * 两处调用点（首页与二级页）从前各写一遍同一句 `feedError = "…"` —— 同一份事实两个来源，
+     * 改一处漏一处；收进来之后每处只许改一件"这一轮没成"的形状。
+     *
+     * ⚠️ [e] 是 [GalleryEmptyRound] 时**必须**把那三句按站原因一起收下：整页那面"加载失败"
+     * 视图的门是"屏上没有卡"，而冷启动铺的是缓存那一屏（有卡）。不收下它，断网时屏上
+     * 纹丝不动 —— 用户读到"这几站没图"，实情是没网（2026-10-15 真机读数）。
+     * 那一排按档上屏的提示（`GalleryNotices`）吃的就是 [failures]，所以这里只补数据，
+     * 页面与提示件一行都不用改。
+     */
+    fun reject(e: Throwable) {
+        // 屏上不出现原始异常：各站失败原因已由 [failures] 那份结构分档表达。
+        feedError = "这次没读到内容 🥲 稍后再试一次"
+        (e as? GalleryEmptyRound)?.reasons?.let { failures = it }
     }
 
     /**

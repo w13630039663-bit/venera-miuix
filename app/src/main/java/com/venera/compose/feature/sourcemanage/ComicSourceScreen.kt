@@ -28,6 +28,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -158,9 +161,22 @@ fun ComicSourceScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(modifier = Modifier.fillMaxSize()) {
+        /*
+         * 大屏内容收口（2026-10-15 问题清单 T1a 第二颗）。这一页是一列**源卡**，
+         * 满宽时每一张都被拉到 1920px（清单 P1-2 的 `tab/scr-b25-sourcemanage.png` 那一屏），
+         * 而卡片里那一排六枚裸图标钮（P1-5）本来就在抢注意力 —— 收口只收内容列，
+         * 挂在页面级那一棵 LazyColumn 上（一屏一个点，同 StatsScreen 那颗）。
+         * 内部四棵 `heightIn(max=…)` 的子列表是弹层/展开区，不是这一格要管的对象，一行没动。
+         * `Compact` 恒 null ⇒ 手机档逐像素不变。
+         */
+        val contentMaxWidth = contentMaxWidthFor(
+            wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+        )
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                .align(Alignment.TopCenter)
                 .nestedScroll(topBarBehavior.nestedScrollConnection)
                 .blurBackdropSource(topBarBackdrop),
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = statusBarTop + VeneraSpacing.topBarFloor, bottom = LocalBottomBarClearance.current + VeneraSpacing.space9),

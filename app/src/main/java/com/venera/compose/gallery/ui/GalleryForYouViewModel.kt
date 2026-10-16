@@ -544,6 +544,11 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             android.util.Log.w("VeneraDebug", "gallery for-you round failed", e)
             val message = "这一轮没取到内容 🥲 稍后再试一次"
             if (nextPage == 1) error = message else loadMoreError = message
+            // 结构那一份**照样落地**（从前只在成功那一支写）：整页的空/错视图门在
+            // "屏上没有卡"之后，而 `posts` 可能是缓存铺的那一屏 —— 不收这一笔，
+            // 断网时屏上纹丝不动，用户读到的是"这几站没图"而实情是没网（2026-10-15 真机读数）。
+            // 理由与 `GalleryViewModel.reject` 那条同一件事，只是这一头的原因串本来就在 outcome 里。
+            failures = outcome.reasons
         }
     }
 

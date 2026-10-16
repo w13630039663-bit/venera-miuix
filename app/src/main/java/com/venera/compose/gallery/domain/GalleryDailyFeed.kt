@@ -85,8 +85,7 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
         // 三站都没给上内容时，merge 只能报一句笼统的"没有可用内容"，真正的原因（401 / 超时 /
         // 池子空 / 返回非 JSON）就死在这里了 —— 优先把原因交出去。
         if (yande.posts.isEmpty() && gelbooru.posts.isEmpty() && safebooru.posts.isEmpty()) {
-            val notice = failures.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" }
-            return Result.failure(IllegalStateException(notice.ifBlank { "三站都没有返回内容" }))
+            return Result.failure(GalleryEmptyRound(failures))
         }
         return GalleryMerge.mix(pools, seed).map {
             Daily(merged = it, failures = failures, date = date, pools = pools)
@@ -119,3 +118,28 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
         }
     }
 }
+
+/**
+ * 这一轮**三站都没给出可摆的内容**。
+ *
+ * ── 为什么要专门一颗类型，而不是把原因拼进 `message` 就交出去 ──
+ *
+ * 那份「站 → 原因」的结构在这一处本来就算得出来（它就是 [reasons]），从前却只以
+ * 一句 `站：原因 · 站：原因` 的显示串活下来。后果落在屏上：日榜那面墙的整页失败视图
+ * 门在"屏上没有卡"之后，而冷启动铺的是**缓存**那一屏（有卡），于是断网时
+ * 那一整排按档上屏的提示拿不到本轮事实、整页错误视图又被门挡住 —— 用户读到的是
+ * "这几站没图"，实情是"没有网"（2026-10-15 真机读数，`_qa/ui-verify-2026-10-15/scr-a8-gallery.png`）。
+ *
+ * 结构必须由发车那一处带走：页面上那块提示要按档分色、还要给「重试」，
+ * 从显示串里反解结构只能靠猜关键词（同一条理由见 `GalleryViewModel.failures` 的头注）。
+ *
+ * [message] 仍按从前的形状给（`站：原因 · 站：原因`）：日志与桌面上那一把"失败消息点名三站"
+ * 的尺子读的是它，换类型不换读数。
+ */
+class GalleryEmptyRound(
+    /** 站 → 这一轮为什么没给内容，**原样**带着（一个字的加工都没有）。 */
+    val reasons: Map<GallerySite, String>,
+) : Exception(
+    reasons.entries.joinToString(" · ") { "${it.key.displayName}：${it.value}" }
+        .ifBlank { "三站都没有返回内容" },
+)

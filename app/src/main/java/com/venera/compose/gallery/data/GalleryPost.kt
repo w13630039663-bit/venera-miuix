@@ -197,9 +197,15 @@ data class GalleryPost(
         get() = if (isVideo) videoPosterUrl
         else largeUrl.takeIf { it.isNotBlank() } ?: previewUrl
 
-    /** 时长角标。站方没给时长时返回空串而不是 "0″" —— 编一个看不出来的数比不写更糟。 */
+    /**
+     * 时长角标。站方没给时长时返回空串而不是 `"0s"` —— 编一个看不出来的数比不写更糟。
+     *
+     * ⚠️ 单位从前写 `″`（双撇号 = 英寸的排版记号），2026-10-15 归位到本模块一直在用的那一档
+     * （`GalleryLegGuard` 的"超过 12s 没返回"、顶栏熔断那句"熔断中，Ns 后重试"）——
+     * 同一屏两种秒数写法，且 `″` 在缩略图角标那个尺寸下看着像个噪点。
+     */
     val durationLabel: String
-        get() = durationSeconds?.takeIf { it > 0.0 }?.let { "${it.toInt()}″" } ?: ""
+        get() = durationSeconds?.takeIf { it > 0.0 }?.let { "${it.toInt()}s" } ?: ""
 
     /** 站内唯一身份。列表 key 与"这一屏已经出现过"的判据都用它。 */
     val uid: String get() = "${site.routeKey}:$id"
