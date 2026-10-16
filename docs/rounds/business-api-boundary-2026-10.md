@@ -31,7 +31,7 @@ app/src/main/java/com/venera/compose/data/api/          ← 漫画侧契约（�
     PreferencesApi.kt         Reader(20) + Appearance(20) + Comic(15) + Network(14)
                               + NamedStoreFactory(1)                                  【B2】
     LibraryApi.kt             ReadingHistory(5) + ReadingStats(5)                          【B4】
-    SourceApi.kt              ComicContentApi(12) + SourceCatalog(8)                     【B3】
+    SourceApi.kt              ComicContentApi(12) + SourceCatalog(9)                     【B3】
     NetworkApi.kt             NetworkHygiene(4) + HttpTextFetch(1)
     android/AndroidBusinessPorts.kt   全部适配器 + install()
 app/src/main/java/com/venera/compose/gallery/data/
@@ -62,7 +62,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | **B0** | 骨架 + 守卫：`data/api/` 三颗契约文件 + 容器 + 适配层、`VeneraApp.kt` 一行 install、`BusinessApiBoundaryTest`（A-F 六条断言，白名单 = 当前全量） | 改引 **0** 处 | ✅ 已落地 |
 | **B1** | `ContentGuard` + `GuardRuleBook` 改引（23 处 − 9 处冻结 = 14），画廊侧同时立 `gallery/data/GalleryPorts.kt` 那颗自持的 `GalleryContentGuard` | 14 | ✅ 已落地 |
 | **B2** | 偏好五颗契约（`PreferencesApi.kt`：`Reader` / `Appearance` / `Comic` / `Network` + `stores`；画廊侧 `GalleryPreferences` 落在 `gallery/data/GalleryPorts.kt`，getter-only） | 23 + 2 处 `AndroidKeyValueStore(` | ✅ 已落地 |
-| **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 8 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
+| **B3** | `SourceApi.kt`（`ComicContentApi` 12 枚 + `SourceCatalog` 9 枚）+ 收 `feature/SearchViewModel.kt:167` 的 `as? JsComicSource`（收成 `tagSuggestionKeyword`） | 12 | ✅ 已落地 |
 | **B4** | `ReadingHistory` + `ReadingStats`，含审计点名的 `reader/VeneraReaderScreen.kt:306,446` | 7 | ✅ 已落地 |
 | B5 | `FavoriteLibrary`(21) + `DownloadQueue`(11) + `LocalComicLibrary`(5)，一颗新文件 `data/api/FavoritesOfflineApi.kt` | 15（`chapterOffline` 那颗文件整行留着，理由见 §十一） | ✅ 已落地（2026-10-03 的 D2） |
 | **B6** | `NetworkHygiene`（补 `httpCacheSizeBytes` / `clearHttpCache` 两枚）+ `ComicSourceViewModel.kt:569-571` 裸 okhttp 的 `HttpTextFetch` 外科手术 | 5 | ✅ 已落地 | |
@@ -152,7 +152,7 @@ app/src/main/java/com/venera/compose/gallery/data/
 | 新契约 | 成员 | 消费面 |
 |---|---|---|
 | `ComicContentApi` | `search` / `getComicDetails` / `getChapterPages` / `loadThumbnails` / `resolveThumbnailConfigs` / `resolveImageLoadingConfig` / `getSourceExplorations` / `loadExplorePage` / `loadCategoryComics` / `getCategoryComicsOptions` / `loadCategoryRanking` / `tagSuggestionKeyword` | `feature/ComicDetailViewModel`、`feature/HomeViewModel`、`feature/SearchViewModel`、`reader/VeneraReaderScreen`（含 `resolveDynamicPageUrl` 那颗私有函数的参数位）、四颗冻结屏（未迁，宽度已备） |
-| `SourceCatalog` | `sourcesFlow` / `activeSourceKey` / `latencyMapFlow` / `availableUpdates` / `getSource` / `searchTargets` / `refreshPings` / `checkUpdates` | `MainActivity`、`feature/NetworkFavoritesViewModel`、`feature/ComicDetailViewModel`、`feature/SearchViewModel`、`feature/settings/ExploreSettings`、`reader/ChapterCommentsSheet` |
+| `SourceCatalog` | `sourcesFlow` / `activeSourceKey` / `latencyMapFlow` / `availableUpdates` / `getSource` / `searchTargets` / `sourceSupportsLogin` / `refreshPings` / `checkUpdates` | `MainActivity`、`feature/NetworkFavoritesViewModel`、`feature/ComicDetailViewModel`、`feature/SearchViewModel`、`feature/settings/ExploreSettings`、`reader/ChapterCommentsSheet` |
 
 三处判据值得单独记：
 
