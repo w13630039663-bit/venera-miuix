@@ -255,8 +255,7 @@ fun buildVeneraColorTokens(
     pressedOverlay = m.onSurface.copy(alpha = 0.06f),
     badgeTint = if (miuixSurface == Color.Unspecified) m.surface else miuixOnSurface,
 
+    // 状态型动作的身份色（为什么只剩两枚、点赞为什么不借 error，见 Color.kt 那处头注）
     actionFavorite = if (fixedActions) StatusColors.Favorite else m.primary,
-    actionLike = if (fixedActions) StatusColors.Like else m.error,
-    actionComment = if (fixedActions) StatusColors.Comment else m.tertiary,
-    actionShare = if (fixedActions) StatusColors.Share else m.secondary,
+    actionLike = if (fixedActions) StatusColors.Like else m.tertiary,
 )

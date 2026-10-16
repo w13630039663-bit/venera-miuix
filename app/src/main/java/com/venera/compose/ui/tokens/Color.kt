@@ -110,22 +110,27 @@ data class VeneraColorTokens(
     val pressedOverlay: Color,
     val badgeTint: Color,
 
-    // ── 详情页动作色 ──
+    // ── 状态型动作的「身份色」 ──
     /**
-     * 收藏 / 点赞 / 评论 / 分享 四个动作钮的着色。
+     * 只有**记录「我做过什么」的钮**才有身份色：收藏、点赞。
+     * 没有状态的动作（评论 / 分享 / 复制链接）**不从这里取色** —— 它们恒中性，
+     * 见 `DetailActionButton` 的 `identityColor` 默认值。
      *
-     * **MD3 风格下由主题色板派生**（Android 12+ 即壁纸取色），MIUIX 风格下仍用
-     * [StatusColors] 的固定四色 —— 映射见 [VeneraTokens.color]，理由与代价：
-     *  - 动态色板只给 3 个壁纸色相（primary/secondary/tertiary）+ 1 个不随壁纸的
-     *    error 红，凑不出「四色互异且保留原语义」，所以只能按角色分配；
-     *  - 点赞吃 error：error 不参与壁纸取色，恒为红族，心形语义得以保留；
-     *  - 分享吃 secondary：动态色板里 secondary 是刻意低饱和的，真机上可能偏灰、
-     *    看起来像次要动作 —— 这是选了四角色映射的已知代价，不是缺陷。
+     * 为什么这一族从四色缩成两色（真机现量，`_qa/ui-verify-2026-10-15/audit_glyphs.ps1`）：
+     *  旧的 MD3 四角色映射是 `primary / error / tertiary / secondary`，屏上实测字形最暗像素
+     *  收藏 (174,47,52) 与点赞 (186,26,26) **同为红族**，分享与链接同为 (119,86,85)、
+     *  饱和只剩 29% —— 也就是"四色互异"这个目标本来就没达成，而低饱和那两枚挨在高饱和
+     *  那两枚旁边，读起来像"越往右越不可用"。旧头注把这一条记成"已知代价，不是缺陷"，
+     *  现在有新读数说明代价落在**编码失效**上，故撤掉那个前提。
+     *  - 点赞不再借 `error`：那是全站唯一的破坏性色，心形语义靠字形与标签就够；
+     *    改吃 `tertiary`（壁纸第三色相，与 primary 拉开）。
+     *  - 评论 / 分享两枚槽位**删除**：留着不生效就是假开关。
+     *
+     * MIUIX 风格下仍吃 [StatusColors] 固定色 —— 那边色板只有一个主蓝，
+     * 跟着取色会让两枚状态型撞成同色系（映射见 `VeneraTokens.color`）。
      */
     val actionFavorite: Color,
     val actionLike: Color,
-    val actionComment: Color,
-    val actionShare: Color,
 )
 
 /**
@@ -198,6 +203,17 @@ internal object StatusColors {
      * 源名在任何封面上都可读 —— 这与「状态色」同理，属功能性固定色。
      */
     val BadgeSurface = Color(0xCC1F1F1F)
+    /**
+     * 阅读器三张设置面板的背板：**与 [BadgeSurface] 同色相，只有 alpha 拉满**。
+     *
+     * 那一档从前被这三张 sheet 直接借用，后果是 80% 的半透明压在**还活着**的底栏上：
+     * 面板最后一行与透出来的底栏那一排同区并置，红色的开关正压在「设置」图标上
+     * （2026-10-15 裁图 `audit-crop-sheet-bottom.png`；亮度摆幅实测从 199 级被压到 28 级 ——
+     * 仍读得出，但整块看着"脏"，且像还有第二层内容）。
+     * 徽标那一档**必须**半透明（它压在颜色不可控的封面上），面板不必 —— 它覆盖的是自己的应用。
+     * 所以这里不是新造颜色，是把"压封面"与"盖应用"这两种用途分开各给一档。
+     */
+    val SheetSurface = Color(0xFF1F1F1F)
     /** SourceBadge 上的文字色；与 [BadgeSurface] 对比度 ≈ 12:1，远超 WCAG AA。 */
     val OnBadgeSurface = Color(0xFFF5F5F5)
     // ── 详情页动作语义色（原 ComicDetailScreen 字面量归位；色值保持不变）──

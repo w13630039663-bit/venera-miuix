@@ -116,6 +116,7 @@ import com.venera.compose.reader.*
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.api.ContentGuard
 import com.venera.compose.source.model.*
+import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 
@@ -340,7 +341,10 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 start = tokens.spacing.rowHorizontal,
                 end = tokens.spacing.rowHorizontal,
                 top = statusBarTop + tokens.spacing.detailTopBarClearance,
-                bottom = tokens.spacing.space8,
+                // 悬浮底栏是盖在内容上的，不是排在外面的：这一页从前只垫 8dp，
+                // 滑到底那一行永远压在栏底下（2026-10-15 平板右栏读数：底栏带 y978~1051
+                // 与「预览 (12 页)」行 y1028~1055 坐标重叠）。让位量吃现成契约，不手写栏高。
+                bottom = LocalBottomBarClearance.current + tokens.spacing.space8,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap)
         ) {
@@ -633,7 +637,8 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 3. 辅助操作行：收藏 / 点赞 / 评论 / 分享 四联功能钮（MD3 下自动取色，MIUIX 下固定语义色）
+            // 3. 辅助操作行：两枚状态型（收藏 / 点赞，递身份色）+ 三枚动作型（评论 / 分享 / 复制链接，恒中性）
+            //    分族与"为什么不再凑四色"的读数见 ui/tokens/Color.kt 的状态型头注
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -647,7 +652,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             isNetworkFav -> "源已藏"
                             else -> "收藏"
                         },
-                        iconColor = tokens.color.actionFavorite,
+                        identityColor = tokens.color.actionFavorite,
                         isActive = isFav || isNetworkFav,
                         onLongClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -662,7 +667,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         icon = if (detailState.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         // 数字必须带名词：光秃秃的「7」只能靠图标颜色猜是什么计数
                         label = if (detailState.likesCount > 0) "点赞 " + detailState.likesCount else "点赞",
-                        iconColor = tokens.color.actionLike,
+                        identityColor = tokens.color.actionLike,
                         isActive = detailState.isLiked,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -673,7 +678,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     DetailActionButton(
                         icon = Icons.Outlined.Comment,
                         label = if (commentCount > 0) "评论 $commentCount" else "评论",
-                        iconColor = tokens.color.actionComment,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             showCommentSheet = true
@@ -682,7 +686,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     DetailActionButton(
                         icon = Icons.Outlined.Share,
                         label = "分享",
-                        iconColor = tokens.color.actionShare,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             val shareIntent = Intent().apply {
@@ -696,7 +699,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     DetailActionButton(
                         icon = Icons.Outlined.Link,
                         label = "复制链接",
-                        iconColor = tokens.color.actionShare,
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             val link = shareLink(liveDetails, comic)
