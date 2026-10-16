@@ -164,9 +164,13 @@ class DesktopGalleryDetailP1Test {
     @Test
     fun 当前档与当前张都要念在屏上() {
         val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
+        // ⚠️ 批 92 改判：那三串屏名搬进了 `desktopDetailTierLabel`（取证读数 `D_档位种子` 要与屏上同一颗生产者），
+        // 面板里只剩一行委托。从前钉的是"面板里有那三串"，搬家后那条恒红（新坑 ㊞ 的同族），改钉**委托那一行**。
+        val labels = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPolicy.kt"))
         listOf("预览", "大图", "原图").forEach { label ->
-            assertTrue("档排上少了「$label」那一枚", panel.contains(label))
+            assertTrue("档排上少了「$label」那一枚（现在住在 desktopDetailTierLabel）", labels.contains("\"$label\""))
         }
+        assertTrue("面板不再委托那颗共用的屏名函数（那就是第二份词，改名会有一处指错地方）", panel.contains("desktopDetailTierLabel(this)"))
         assertTrue("页码读数不在屏上（翻页翻到哪了没人知道）", panel.contains("张"))
         assertTrue("步进没接 onStep", panel.contains("onStep"))
         assertTrue("换档没接 tier 状态", panel.contains("DesktopDetailTier"))

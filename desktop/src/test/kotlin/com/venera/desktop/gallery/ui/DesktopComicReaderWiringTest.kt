@@ -163,7 +163,20 @@ class DesktopComicReaderWiringTest {
     @Test
     fun 章节行点得动而那句兜底话只有一处字面() {
         val detail = DesktopSourceTree.codeText(detailFile)
-        assertEquals("章节行没挂上点击", 1, DesktopSourceTree.codeOccurrences(detailFile, ".clickable { onOpenEpisode("))
+        // 批 96 改判：那一行从前是 `.clickable { onOpenEpisode(reading) }`，而"整话下载"第一版是**在行里再嵌一枚
+        // clickable** —— 那颗嵌进去的把整行的点击吃掉了（三颗语义树判据当场红："按一行该恰好落一次"变成 0 次），
+        // 那是屏上真按不动而不是测试噪音。桌面这一族的既有口径是**第二枚动作走长按**
+        //（`combinedClickable` 有 `onLongClick` 而没有 `onRightClick`）⇒ 一行一颗 `combinedClickable` 两枚动作。
+        // 这一条从"钉存在"升成"钉两枚动作各就各位"：只钉 `combinedClickable(` 在不在，会放过"长按那一笔写死成空 lambda"。
+        assertEquals("章节行该换成一颗两用的点击件", 1, DesktopSourceTree.codeOccurrences(detailFile, ".combinedClickable("))
+        assertTrue(
+            "那一颗的普通点击仍交回进阅读：",
+            detail.contains("onClick = { onOpenEpisode(reading) }"),
+        )
+        assertTrue(
+            "那一颗的长按交回整话下载（而递的是**行号**，不是话号也不是题名）：",
+            detail.contains("onLongClick = { onDownloadEpisode(index) }"),
+        )
         assertTrue("点击回调没沿形参递下来（形参收了而调用点写死一枚 lambda 也算没接）",
             detail.contains("onOpenEpisode = onOpenEpisode"))
         // 那句兜底话从前在详情里手拼一遍，如今两处共用一颗件：字面量只许活在那一颗件里

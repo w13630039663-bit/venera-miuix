@@ -62,6 +62,13 @@ import io.github.composefluent.component.Text
 @Composable
 internal fun DesktopGalleryTopBar(
     onSearch: () -> Unit,
+    /**
+     * 右侧那一格念的那句话（第一百零一批：由队列表算出来，**不再**是写死的字面量）。
+     *
+     * 必填、不给默认值：漏传的形状是那枚牌子恒念一句过期的话 —— 而这一格从前写的正是
+     * 「三站 · 本地无任务队列」那句硬编码，注释还断言"这句是真的"（队列落地后它变假，见本文件末尾那颗灯的注释）。
+     */
+    statusText: String,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -81,7 +88,7 @@ internal fun DesktopGalleryTopBar(
         ToriiBrand()
         SearchField(onClick = onSearch)
         Spacer(Modifier.weight(1f))
-        StatusLamp("三站 · 本地无任务队列")
+        StatusLamp(statusText)
     }
 }
 
@@ -174,7 +181,11 @@ private fun SearchField(onClick: () -> Unit) {
  *
  * 稿上有两枚（"网络正常" + "三站 · 本地无任务队列"），本批只落后者 ——
  * 前者要一枚常驻的网络状态源，桌面今天没有（类注释第 3 条）。
- * 而"本地无任务队列"这句是**真的**：桌面取数是"拉一次画一次"，没有队列这个东西。
+ *
+ * ⚠️ 后面那半句**已经改判**（第一百零一批）：它从前是写死的字面量，而注释断言"本地无任务队列这句是真的"
+ * —— 那句在批 101 之前确实是真的（桌面一次只下一话），队列落地后就变假了。
+ * 今天它念的是由任务表算出来的那一句（空 / 几话排队中 / 正在下第几话与页码 / 几笔已排完），
+ * 判据是 `DesktopComicDownloadQueueTest` ⑩⑪ 两把（一枚钉"有人在收那枚表"，一枚钉"这句不是写死的"）。
  */
 @Composable
 private fun StatusLamp(text: String) {

@@ -90,6 +90,21 @@ class LocalFavoritesManagerTest {
         coverPath = "https://cover/$id",
     )
 
+    /**
+     * 拆表那一下（改名 / 删夹）之前，先等完在飞的后台刷新。
+     *
+     * 成因（第一百零五批全量回归抓到的那一枚未捕获异常，栈在 `refreshFolders` → `countInternal`）：
+     * 那颗刷新先取一遍表名、再逐枚去数，而这两拍之间用户可能已经把那张表换了名或删掉；
+     * `countInternal` 自己的守卫也有一次同样的窗口（它查完表名再去数，中间照样能被拆）。
+     * 撞上了就落在 `Dispatchers.IO` 的未捕获处理里 —— 下一个 `runComposeUiTest` 于是收到
+     * `UncaughtExceptionsBeforeTest`（谁排在后面全凭顺序运气）。
+     *
+     * **真修在 `app/` 那颗件里，而那是受保域，本批一字未动**；这里只把测试排成确定性的。
+     * ⚠️ 代价要写清：`close()` 之后那颗作用域不再发刷新，所以「刷新会不会跟着改名走」这一格
+     *    今天没有判据覆盖（这两条用例的断言全走公开 suspend 口，它们现读库、不读那份内存态，所以照旧成立）。
+     */
+    private fun drainInFlightRefreshes() = manager.close()
+
     private fun tableNames(): List<String?> =
         fav.db.query("SELECT name FROM sqlite_master WHERE type='table'").map { it.string("name") }
 
@@ -135,6 +150,7 @@ class LocalFavoritesManagerTest {
             val folder = manager.createFolder("要删的")
             manager.linkFolderToNetwork(folder, "jm", "线上夹")
             assertTrue(folder in manager.currentFolders())
+            drainInFlightRefreshes()
 
             manager.deleteFolder(folder)
 
@@ -152,6 +168,7 @@ class LocalFavoritesManagerTest {
             manager.addComic(before, item("c1"))
             manager.updateOrder(listOf("默认", before))
             prefs.setFollowUpdatesFolder(before)
+            drainInFlightRefreshes()
 
             manager.rename(before, "改名后")
 

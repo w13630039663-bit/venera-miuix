@@ -1,5 +1,9 @@
 package com.venera.desktop.gallery.ui
 
+import androidx.compose.runtime.collectAsState
+import com.venera.desktop.gallery.data.DesktopComicDownloadQueue
+import com.venera.desktop.gallery.data.desktopComicQueueLampText
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -257,6 +261,16 @@ internal fun VeneraDesktopApp(
      */
     startViewerZoom: Float?,
     /**
+     * 起窗后**落在哪一档**（批 92，`--detail-tier=`）。`null` = 本轮不改档位，用「预览清晰度」偏好推出来的那一档。
+     *
+     * 必填、不给默认值 —— 漏传的形状是"参数打进来了而档位照旧"，判读层念了「认成 档=原图」而屏上是另一档，
+     * 编译不响而读数自相矛盾（这一族第五次栽在同一枚形状上）。
+     * ⚠️ 它**不是** `tier` 的初值：初值会在同一次点卡里被"升档"那一步盖掉（取证那颗 `--detail` 走的
+     * 就是同一枚 `LocalDesktopWallPick`），写成初值就只剩参数判读那一行，屏上永远是「大图」。
+     * 落点住在下面那枚 pick lambda 里，且**经 `desktopDetailTiers` 那张表**（摆不出这一档的卡不许硬取）。
+     */
+    startDetailTier: DesktopDetailTier?,
+    /**
      * 设置页的写侧。类型是**桌面那颗具体件**而不是共享接口 ——
      * `GalleryPreferences` 只有读面（Android 侧的 setter 也在具体类上），
      * 而"UI 只吃形参"这条不许破，所以由集成方取一次再传下来（见 `DesktopGalleryPorts.preferences`）。
@@ -308,6 +322,10 @@ internal fun VeneraDesktopApp(
     // 两条轨的形状在批 47 刚踩过 —— 预取算的地址与屏上取的不是同一枚档，
     // 就是"预取白费、点下去重取一趟"，而屏上看不出任何异常。
     var tier by remember { mutableStateOf(desktopDetailInitialTier(previewQuality)) }
+    // 手里那枚档位对**当前这一张**该不该兑现（批 92）。浮层、大图那一屏、预取三条轨都吃这一枚的结果，
+    // 而不是各自回头读上面那颗原始状态 —— 从前只有浮层自己会钳，翻到一条视频时那一层要的就是原片 mp4。
+    // 没有选中卡时（浮层没开）原样交回，钳档那一步在这一轮没有对象。
+    val effectiveTier = selected?.card?.let { desktopDetailTierForCard(tier, desktopDetailTiers(it.post, it.masked)) } ?: tier
     // 缩放态住在根上而不是大图那一层里：连播那颗判据要读 `scale`，而它住在集成方这一层。
     val zoomState = rememberZoomState(maxScale = VIEWER_MAX_SCALE)
     // 大图那一层开没开（点卡 = 两层一起开；Esc 一层层退）
@@ -367,6 +385,8 @@ internal fun VeneraDesktopApp(
             "viewer".takeIf { startViewer == true },
             "viewer关".takeIf { startViewer == false },
             "viewerZoom".takeIf { startViewerZoom != null },
+            // 这一枚也是"请求"那一侧（批 92）：它**落到哪一档**由 `D_档位种子` 那一行回答，这里只登记种子。
+            "detailTier".takeIf { startDetailTier != null },
             "comic".takeIf { startComic != null },
             "read".takeIf { startRead != null },
         ).joinToString("+").ifBlank { "无" }
@@ -429,7 +449,11 @@ internal fun VeneraDesktopApp(
         // ⓪ 标题栏：**全宽一条，横跨 rail / pane / 主区**。
         //    稿把 `.tb` 放在 `.body` **之外**（`:340` 的 `.tb` 与 `:352` 的 `.body` 是兄弟节点），
         //    所以它不该缩进任何一栏里 —— 这是它唯一说得通的位置。
+        // 第一百零一批：那枚牌子从前摆的是硬编码的「三站 · 本地无任务队列」，注释还断言"这句是真的"。
+        // 队列一落地那句就变假 ⇒ 现在它在**任何域**里都念得出任务表算出来的那一句（这就是状态挂进程级单例的收益）。
+        val queueTasks = DesktopComicDownloadQueue.tasks.collectAsState().value
         DesktopGalleryTopBar(
+            statusText = desktopComicQueueLampText(queueTasks),
             onSearch = {
                 // 搜索位是同一个判法的正反两面：上一版它弹一条提示就完事
                 // （`DESKTOP_GALLERY_SEARCH_NOTICE`，本批删掉），于是那枚**看起来能输入**的框
@@ -511,8 +535,16 @@ internal fun VeneraDesktopApp(
                             // 被挡那张表是空的、视频与原图那两条撤档规则都住在表里（判据 ⑥）。
                             val picked = selection.card
                             if (picked != null) {
-                                desktopViewerEntryTier(desktopDetailTiers(picked.post, picked.masked))
-                                    ?.let { entry -> tier = entry }
+                                val offered = desktopDetailTiers(picked.post, picked.masked)
+                                // 取证那颗种子排在默认升档**前面**，而它同样要经那张表：
+                                // 递到一条视频（或站方没给 file_url 的一张）时不许硬取一枚站方没给的地址。
+                                val entry = desktopViewerEntryTier(offered, startDetailTier)
+                                // 给了档位种子才念这一行：没给参数 = 本轮与它无关（`state` 同一族口径）。
+                                // 念的是**落点**而不是请求 —— `落在=` 由上面那枚 entry 现算递进去，摆不出时那一格与 `要=` 不同。
+                                if (startDetailTier != null) {
+                                    println(desktopTierSeedReading(startDetailTier, offered, entry))
+                                }
+                                entry?.let { chosen -> tier = chosen }
                             }
                             viewerOpen = viewerOpensOnPick
                         },
@@ -634,12 +666,15 @@ internal fun VeneraDesktopApp(
                     val preloadContext = LocalPlatformContext.current
                     // 取哪一档**吃共用那一枚**而不是设置里那枚（第五十批）：档位上提之后两者可以分岔，
                     // 按设置推会让"翻到的下一张命中缓存"成假（同批 ⑧ 判据）。
-                    LaunchedEffect(preloadMode, selection.index, selection.size, tier) {
-                        val plan = desktopPreloadPlan(preloadMode, selection.index, selection.cards, tier)
+                    LaunchedEffect(preloadMode, selection.index, selection.size, effectiveTier) {
+                        // 批 92 改判：这里从前吃的是**没钳过**的那枚 `tier`，于是"手里那档在这一张摆不出"时
+                        // 预取排的是站方没给的那一枚地址（原图档 × 一条视频 = 原片 mp4），而面板显示静帧。
+                        // 三条轨（浮层 / 那一层 / 这一跳）从这一批起读同一颗 `effectiveTier`。
+                        val plan = desktopPreloadPlan(preloadMode, selection.index, selection.cards, effectiveTier)
                         val urls = plan.urls
                         // 这一行排在"空不空"那一步**之前**：空批也要念得出（OFF 与"开了但没货"是两句话，
                         // 静默则把这两种压成同一种哑巴）。判据 ⑨ 钉的就是这个次序。
-                        println(desktopPreloadReading(preloadMode, plan, tier))
+                        println(desktopPreloadReading(preloadMode, plan, effectiveTier))
                         if (urls.isEmpty()) {
                             return@LaunchedEffect
                         }
@@ -740,7 +775,9 @@ internal fun VeneraDesktopApp(
                         if (viewerOpen) {
                             DesktopGalleryViewer(
                                 selection = selection,
-                                tier = tier,
+                                // 吃**钳过的那一枚**（批 92）：这一层自己不再判"这一张摆不摆得出那一档"，
+                                // 它的取址只有这一枚形参（`DesktopGalleryViewerTest` ① 数着取址处）。
+                                tier = effectiveTier,
                                 zoomState = zoomState,
                                 viewerZoomSeed = startViewerZoom,
                                 contentWidth = desktopViewerContentWidth(maxWidth, overlayOpen = true),
@@ -767,7 +804,8 @@ internal fun VeneraDesktopApp(
                                 // 交**整批与序号**而不是单张卡：翻页要有数据源，而"共几张"只有墙知道。
                                 selection = selection,
                                 // 档位由根上那一颗持有（第五十批）：这一层只读它与写回它。
-                                tier = tier,
+                                // 批 92 起递的是**钳过的那一枚**，而这一层内部也走那颗共用算式（幂等，判据 ⑥ 数着两处）。
+                                tier = effectiveTier,
                                 onTierChange = { tier = it },
                                 // 步进只改序号、不换那一份快照：批是点那一刻的批，
                                 // 中途墙自己变了（续页到了）也不该把用户正翻着的这一批换掉。

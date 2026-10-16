@@ -84,6 +84,8 @@ internal fun DesktopGallerySettingsBody(
         DesktopGallerySectionContent.ComicFavorites,
         DesktopGallerySectionContent.ComicHistory,
         DesktopGallerySectionContent.ComicSources,
+        DesktopGallerySectionContent.ComicDownloads,
+        DesktopGallerySectionContent.ComicQueue,
         DesktopGallerySectionContent.GalleryFavorites,
         DesktopGallerySectionContent.GallerySearch,
         DesktopGallerySectionContent.Downloads,

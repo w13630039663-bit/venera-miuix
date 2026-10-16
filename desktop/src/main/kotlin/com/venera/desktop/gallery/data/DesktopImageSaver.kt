@@ -30,8 +30,10 @@ import java.nio.file.Files
  *
  * ## 落点为什么不是 Coil 那份盘缓存
  *
- * 批 79 量过：Coil 的磁盘缓存在 `%LOCALAPPDATA%\Temp\coil3_disk_cache`，键是地址的哈希、
- * 文件名不是那张图的名字，而且**随时会被容量闸清掉**。用户按「存到本机」要的是
+ * 批 79 量过：Coil 的磁盘缓存当时落在**系统 Temp**（`%LOCALAPPDATA%\Temp\coil3_disk_cache`），
+ * 批 90 把它搬进数据根（`CacheDirs.inCache(paths.cacheRoot, "venera_image_cache")`）——
+ * 但**这一格不变**：键是地址的哈希、文件名不是那张图的名字，而且**随时会被容量闸清掉**。
+ * 用户按「存到本机」要的是
  * 一只数得出、删得掉、重启还在的目录 —— 那是缓存与落盘的区别，不是实现细节。
  */
 

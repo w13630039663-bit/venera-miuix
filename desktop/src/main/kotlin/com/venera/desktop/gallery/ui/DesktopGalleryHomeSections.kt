@@ -106,6 +106,10 @@ internal sealed interface DesktopGallerySectionContent {
 
     /** 漫画域：源管理（批 83 —— 有哪几颗源、当前用哪一颗、哪几颗被停用）。 */
     data object ComicSources : DesktopGallerySectionContent
+    /** 批 97：本机存过的那些整话（`数据根/downloads` 那一棵树）。 */
+    data object ComicDownloads : DesktopGallerySectionContent
+    /** 第一百零五批：队列里每一笔那一屏（`数据根/downloads/download_tasks.json` 那张表）。 */
+    data object ComicQueue : DesktopGallerySectionContent
 
     /** 画廊收藏域：本机 `gallery_favorites.json` 那面墙。 */
     data object GalleryFavorites : DesktopGallerySectionContent
@@ -214,8 +218,16 @@ internal data class DesktopGalleryHomeRow(
  * **已于第八十五批点亮**：那两条判据今天都成立 —— 落点是 `数据根/downloads/图库`
  * （那颗对岸件因为 MediaStore 整颗在排除清单里，桌面自持一颗只写字节的 `DesktopImageSaver`），
  * 枚举读侧就是 [DesktopGallerySectionContent.Downloads] 那一屏。
- * ⚠️ 仍然缺的是**漫画章节下载**（那是 feature 侧的另一件事，不是这一行的判据），别把两件事记成一件。
- * Coil 自己的盘缓存在 `%LOCALAPPDATA%\Temp\coil3_disk_cache`（批 79 量过）—— 那是缓存不是落盘，
+ * ⚠️ **这一格改了账（第九十六批）**：从前那半句连写的是"仍然缺的是"（**漫画章节下载**，说它是 feature 侧的另一件事），
+ * 而今天整话落盘接上了 —— 详情那一屏长按某一话就把整话写进 `数据根/downloads/<站名键>/<号>/<话目录>/NNNN.jpg`
+ * （命名逐字沿用对岸，见 `gallery/data/DesktopComicChapterDownload.kt`）。"别把两件事记成一件"仍然成立，只是两件事都做了：
+ * 这一屏数的是 `downloads/图库` 里的散图（`listFiles` 不递归，所以漫画那三层混不进来），
+ * 而**已下的那些今天数得着了**（第九十七批：漫画域首页「本机已下载」那一屏，读盘上那一棵树、逐页查盘），
+ * 而那一屏**删得掉**了（第九十八批：每一行右边那颗把手，按两次才真删，删完回读盘才定档 ——
+ * 对岸那一形丢掉返回值再恒说已删除，桌面不照抄，见 `gallery/data/DesktopComicChapterDelete.kt`）。
+ * 判据在 `DesktopStaleClaimsTest` ㉓ 与 ㉔：它们扫全文含注释（那句从前躲在 `codeText` 看不见的地方活了六批），
+ * 而它禁的是**那句连写的形状** —— 本行故意把引号与括号隔开写，账读得出，禁串也不被再抄一遍。
+ * Coil 自己的盘缓存住在数据根下那份 `cache/venera_image_cache`（批 90 搬进来的；从前在系统 Temp）—— 那仍是缓存不是落盘，
  * 名字是地址哈希、随时会被容量闸清掉，所以那一屏数的不是它。
  * ~~**排行榜**：那一屏自己有得摆（选哪一档时间 + 按它分页）。~~
  * **已于第二十八批 批 28 点亮**：`GalleryRankings` 给六档、各站分数串与窗口，
@@ -317,6 +329,8 @@ internal fun DesktopGalleryHomeNavRow(row: DesktopGalleryHomeRow, selected: Bool
         DesktopGallerySectionContent.ComicFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.ComicHistory -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.ComicSources -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.ComicDownloads -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
+        DesktopGallerySectionContent.ComicQueue -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.GalleryFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.GallerySearch -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
         DesktopGallerySectionContent.GalleryDisplay -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
@@ -370,6 +384,8 @@ internal fun DesktopGalleryHomeBody(
         DesktopGallerySectionContent.ComicFavorites,
         DesktopGallerySectionContent.ComicHistory,
         DesktopGallerySectionContent.ComicSources,
+        DesktopGallerySectionContent.ComicDownloads,
+        DesktopGallerySectionContent.ComicQueue,
         DesktopGallerySectionContent.GalleryFavorites,
         DesktopGallerySectionContent.GallerySearch,
         DesktopGallerySectionContent.GalleryDisplay,

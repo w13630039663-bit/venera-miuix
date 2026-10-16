@@ -383,6 +383,16 @@ tasks.register<JavaExec>("app") {
             // 第八十七批：把阅读那一屏顶到某一档模式（`-PreadMode=HORIZONTAL_RTL`）。
             // 没有这一跳，横向那一面墙在帧上永远不存在 —— 它要"点模式那一排的一枚"才出来，而取证不许动鼠标。
             providers.gradleProperty("readMode").orNull?.let { "--read-mode=$it" },
+            // 批 92：把浮层与大图那一屏**起在哪一档**种下来（`-PdetailTier=原图`，屏名与枚举名都认）。
+            // 同一颗纪律第十一次：**判读层与消费点接好了也不算通**，漏了这一跳 `-PdetailTier=…` 就是
+            // "不报错也不做事"，而"原图档那一格拍不到图"会被读成"那一层坏了"。判读见 ForensicFlags.detailTier。
+            providers.gradleProperty("detailTier").orNull?.let { "--detail-tier=$it" },
+            // 批 96：把某一话**整话写进本机**那颗种子（`-Pdownload=<漫画号>/<话号>`）。
+            // 同一颗纪律第十二次：**判读层与消费点接好了也不算通**，漏了这一跳 `-Pdownload=…` 就是
+            // "不报错也不做事"，而"那一格拍不到落盘"会被读成"整话下载坏了"。
+            // 它没有别的入口可点：桌面那一格挂在**长按**上（`combinedClickable` 有 onLongClick 而没有 onRightClick），
+            // 而取证不许动鼠标（手册 §8.1）⇒ 只能让种子去按同一颗 runner。判读见 ForensicFlags.download。
+            providers.gradleProperty("download").orNull?.let { "--download=$it" },
             // 把某一颗随包源当成本台"停用着"起来（批 83.1）：只为拍到帧 —— 那一格今天只有离屏语义树量过。
             // 同一颗纪律第十次：**判读层与消费点接好了也不算通**，漏了这一跳 `-Pdisable=jm` 就是
             // "不报错也不做事"，而"源管理那一屏说一颗都没停用"会被读成"停用那枚开关坏了"。

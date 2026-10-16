@@ -96,6 +96,7 @@ private val UnscriptedPrefs = object : GalleryPreferences {
     override val galleryAiBadge: StateFlow<Boolean> get() = unscripted("galleryAiBadge")
     override val galleryHideTopBar: StateFlow<Boolean> get() = unscripted("galleryHideTopBar")
     override val galleryHideBottomBar: StateFlow<Boolean> get() = unscripted("galleryHideBottomBar")
+    override val galleryWatercolorBeta: StateFlow<Boolean> get() = unscripted("galleryWatercolorBeta")
 }
 
 private val UnscriptedFavorites = object : GalleryFavorites {

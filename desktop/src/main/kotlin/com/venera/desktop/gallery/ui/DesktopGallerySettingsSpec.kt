@@ -192,6 +192,7 @@ internal object DesktopGallerySettingsSpec {
     val notOnScreen: List<Absent> = listOf(
         Absent("galleryKeepScreenOn", "大图页保持屏幕常亮", "看大图的时候不让屏幕自己熄下去 —— 桌面今天不做这件事"),
         Absent("galleryVolumeKeyTurn", "音量键翻大图页", "按音量键翻下一张是手机上的键位；桌面上翻页走浮层里那两枚按钮，键盘的 ← 与 → 也认"),
+        Absent("galleryWatercolorBeta", "把大图重画成水彩", "那一层重绘要 Android 的位图管线（Canvas 与模糊笔刷），桌面没有那层，所以这一枚在桌面上恒关"),
     )
 
     /** 两枚结构性不参与：桌面走侧栏，没有那两条栏可收（P5 拍板，见 DesktopGalleryPreferences 类注释）。 */

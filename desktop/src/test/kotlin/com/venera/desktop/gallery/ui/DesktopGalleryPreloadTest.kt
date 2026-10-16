@@ -170,7 +170,7 @@ class DesktopGalleryPreloadTest {
         val editable = DesktopGallerySettingsSpec.editable
         val absent = DesktopGallerySettingsSpec.notOnScreen.map { it.pref }
         assertEquals("屏上能改的八枚（批 52 搬进动图、批 61 搬进 backdrop）", 8, editable.size)
-        assertEquals("屏上点名的两枚", 2, absent.size)
+        assertEquals("屏上点名的三枚", 3, absent.size)
         assertFalse("搬走了还留在点名区（那等于两本账各说一遍）", absent.contains("galleryPreload"))
         val row = editable.first { it.pref == "galleryPreload" }
         assertEquals("写口名对不上", "setGalleryPreload", row.setter)
@@ -278,8 +278,12 @@ class DesktopGalleryPreloadTest {
         assertFalse("预取的形参里又出现了设置那枚质量：" + signature, signature.contains("GalleryPreviewQuality"))
         assertEquals("预取不该再吃设置里那枚质量", 0, DesktopSourceTree.codeOccurrences(policy, "quality: GalleryPreviewQuality"))
         // 整串实参一起钉：只数 `desktopPreloadPlan(` 会被"另一处合法调用"喂饱（批 34 那一族）。
+        // ⚠️ 批 92 改判：这一枚从前递的是**没钳过**的 `tier`，而浮层那一条轨会自己钳档 —— 翻到一条视频时
+        // 预取排的是原片 mp4（站方没有更小的视频转码档）而屏上显示静帧，两条轨不同串。
+        // 现在三条轨（浮层 / 大图那一屏 / 这一跳）都吃应用根那一枚 `effectiveTier`，判据跟着换锚点。
         val app = DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt")
-        val wired = DesktopSourceTree.codeLinesOf(app).count { it.contains("desktopPreloadPlan(") && it.contains(", tier)") }
-        assertEquals("调用点应把共用那枚 tier 原样递进去，恰好一处", 1, wired)
+        val wired = DesktopSourceTree.codeLinesOf(app).count { it.contains("desktopPreloadPlan(") && it.contains(", effectiveTier)") }
+        assertEquals("调用点应把**钳过的那一枚**档位原样递进去，恰好一处", 1, wired)
+        assertEquals("这一跳还留着没钳过的那枚（那就是两条轨）", 0, DesktopSourceTree.codeLinesOf(app).count { it.contains("desktopPreloadPlan(") && it.contains(", tier)") })
     }
 }

@@ -95,7 +95,7 @@ class DesktopAutoPlayTest {
             "屏上能改那一区里没有这一枚",
             spec.editable.any { it.pref == "galleryAutoPlaySec" },
         )
-        assertEquals("点名缺席那一区应收成两枚（批 46 起四枚，批 52 动图、批 61 backdrop 各搬走一枚）", 2, spec.notOnScreen.size)
+        assertEquals("点名缺席那一区应收成三枚（批 46 起四枚，批 52 动图、批 61 backdrop 各搬走一枚，批 108 给「画成水彩」补点名的一枚）", 3, spec.notOnScreen.size)
     }
 
     /** ④ 设置屏真调那一枚写口（写了 setter 而界面不调 = 第二枚假开关）。 */

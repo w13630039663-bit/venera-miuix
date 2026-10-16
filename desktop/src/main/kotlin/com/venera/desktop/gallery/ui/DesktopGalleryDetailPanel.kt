@@ -274,7 +274,7 @@ internal fun DesktopGalleryDetailPanel(
     val tiers = desktopDetailTiers(post, masked)
     // 换到一张"当前这档不该摆"的卡（从有原图的一条换到视频的一条）时落回这一张的第一档，
     // 而不是让面板去取一枚站方没给的地址、再把灰块说成"站方没给"。
-    val shownTier = if (tiers.contains(tier)) tier else tiers.firstOrNull() ?: DesktopDetailTier.PREVIEW
+    val shownTier = desktopDetailTierForCard(tier, tiers)
     val url = if (masked) null else desktopDetailTierUrl(post, shownTier)
 
     // 按一次「找同一张图」—— 按钮与取证种子（`--reverse`，第三十六批）**共用这一枚**，
@@ -778,18 +778,13 @@ internal fun DesktopGalleryDetailPanel(
 }
 
 /**
- * 三档在屏上的名字。
+ * 三档在屏上的名字 —— **委托给策略件那一颗**（批 92）。
  *
- * ⚠️ 「大图」而不是「清晰预览」或「样本」：用户在这排上要选的是"看多大"，
- * 而站方那两枚名字（`sample` / `large`）在两端指的不是同一档 ——
- * 枚举里那枚 `LARGE` 是"墙上摆 sample 档"，照搬上屏就成了"大图 = 原图"的误读。
- * 「原图」是站方 `file_url` 那一枚，也是稿 `.acts4` 里那枚"原图"的同一颗词。
+ * 那三串字面量从前住在这里，而取证读数 `D_档位种子` 要念同一套词；两处各写一份的话，
+ * 改名之后读数念旧词而屏上摆新词（判据 `DesktopDetailTierSeedTest` ③ 钉"这一颗只剩一行委托"）。
+ * 保留这一枚扩展函数的名字，是为了这一屏那十几处调用不必跟着改（改名的账不该由这一批付）。
  */
-private fun DesktopDetailTier.panelLabel(): String = when (this) {
-    DesktopDetailTier.PREVIEW -> "预览"
-    DesktopDetailTier.SAMPLE -> "大图"
-    DesktopDetailTier.ORIGINAL -> "原图"
-}
+private fun DesktopDetailTier.panelLabel(): String = desktopDetailTierLabel(this)
 
 /** 图位取不到时的底：灰块 + 一句"是哪一档取不到"。与墙上同一族，但这里只有一句（没有站名，站名在头顶那行已经念过）。 */
 @Composable

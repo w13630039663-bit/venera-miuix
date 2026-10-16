@@ -87,14 +87,28 @@ internal fun DesktopGalleryViewer(
         // 缩放层与覆盖层**分家**（第五十五批图证抓到的那一条）：`.zoomable` 的变换吃的是它那一格的
         // 整棵子树，覆盖层若住在里面，放大到 2.5 倍时页码与倍数会被一起推出屏外 —— 而那一格存在的
         // 唯一理由就是「放大之后还看得见」。第一版就栽在这里：帧上整屏没有那两格。
+        // 取址全文件只这一处（`DesktopGalleryViewerTest` ① 钉它），底下两轨吃同一份。
+        val regionUrl = card?.takeIf { !it.masked }?.let { desktopDetailTierUrl(it.post, tier) }.orEmpty()
         DesktopViewerStage(
             card = card,
             tier = tier,
+            url = regionUrl,
             zoomState = zoomState,
             animateGifs = animateGifs,
             // 失败那句交给上面那一格摆：覆盖层不住在变换里。
             onFailure = { why -> failure = why },
         )
+        // 批 89：放大到"这一块还有更多细节可取"那一档以上时，盖一层现解的源像素。
+        // ⚠️ 它**不住在 `.zoomable` 里面** —— 分块图本身已经是看得见的那一块，再吃一遍变换会错两回；
+        // 位置由 DesktopVisibleRegion 那一处算式给，与底下那层对齐（对不齐只有图证抓得到）。
+        if (desktopRegionOverlayLands && regionUrl.isNotBlank()) {
+            DesktopRegionOverlay(
+                url = regionUrl,
+                zoomState = zoomState,
+                tier = tier.name,
+                onFallback = { why -> failure = why },
+            )
+        }
         failure?.let { why -> Text(why, Modifier.align(Alignment.BottomStart)) }
         Text(
             "第 ${selection.index + 1} / ${selection.size} 张",
@@ -144,6 +158,8 @@ internal fun DesktopGalleryViewer(
 private fun DesktopViewerStage(
     card: DesktopWallCard?,
     tier: DesktopDetailTier,
+    // 批 89：地址由外层算一次递进来 —— 取址那一处全文件只许有一处（旧尺子钉的就是它）。
+    url: String,
     zoomState: ZoomState,
     animateGifs: Boolean,
     /** 必填、不给默认值：漏传的形状就是「取图失败而屏上什么都不念」，那一枚正是本仓最忌的静默。 */
@@ -163,7 +179,6 @@ private fun DesktopViewerStage(
             // 序号不在这一批里：说清而不是摆一张空卡（同一句在浮层那边是 requireNotNull + 报错）。
             card == null -> Text("这一批里没有这一张", textAlign = TextAlign.Center)
             else -> {
-                val url = desktopDetailTierUrl(card.post, tier)
                 // 走不走逐帧那一档：先看地址像不像，再看这一屏该不该动（两枚都是纯函数）。
                 // 播放器一旦退化就把这一格翻回 false ⇒ 落到下面那条 `AsyncImage`，**不许留白屏**。
                 var playAnimated by remember(url, animateGifs) {

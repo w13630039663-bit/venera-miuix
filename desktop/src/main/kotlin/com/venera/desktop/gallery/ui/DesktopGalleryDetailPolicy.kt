@@ -106,6 +106,40 @@ internal fun desktopDetailTiers(post: GalleryPost, masked: Boolean): List<Deskto
 }
 
 /**
+ * 三档在屏上的名字（批 92 收成一颗；从前住在浮层那颗件里，是一颗 `private` 的 `when`）。
+ *
+ * ⚠️ 「大图」而不是「清晰预览」或「样本」：用户在这排上要选的是"看多大"，
+ * 而站方那两枚名字（`sample` / `large`）在两端指的不是同一档 ——
+ * 枚举里那枚 `LARGE` 是"墙上摆 sample 档"，照搬上屏就成了"大图 = 原图"的误读。
+ * 「原图」是站方 `file_url` 那一枚，也是稿 `.acts4` 里那枚"原图"的同一颗词。
+ *
+ * 搬出来的理由是**取证读数要念同一套词**：`D_档位种子` 那一句要说"落在=原图"，
+ * 而屏上那排分段控件的字住在浮层里 —— 两处各写一份的话，改名之后读数念旧词，
+ * 那是把一次量过的落点说成另一档（与本仓"文案说没有而东西已在"同族，方向相反）。
+ * 判据 `DesktopDetailTierSeedTest` ③ 钉"三串各一处、浮层里 0 处"。
+ */
+internal fun desktopDetailTierLabel(tier: DesktopDetailTier): String = when (tier) {
+    DesktopDetailTier.PREVIEW -> "预览"
+    DesktopDetailTier.SAMPLE -> "大图"
+    DesktopDetailTier.ORIGINAL -> "原图"
+}
+
+/**
+ * 当前这一张**该用**哪一档（批 92）：手里那枚摆得出来就用它，摆不出来落回这一张的第一档。
+ *
+ * 从前这一格只有浮层自己会钳，而**大图那一屏与预取吃的是没钳的那枚状态** —— 停在有原图的一张
+ * 选「原图」，再按一次「下一张」翻到一条视频，那一层要的地址就是原片 mp4（站方没有更小的视频转码档，
+ * 解码器解不出来），而面板底下显示的是静帧。三条轨读同一颗状态却不同轨，就是本仓那一族。
+ * 取证种子 `--detail-tier=原图` 把这一格从"要靠手翻到视频才碰得上"变成"起窗即到达"，
+ * 所以钳档算式与它的三个消费者同批收口，不留半条改判。
+ *
+ * `tiers` 为空（被分级挡住）时给 `PREVIEW` 而不是 null：那一格的说法是"没什么可取"，
+ * 而三个消费者各自已有遮挡分支（浮层画那张灰块、那一层整层不取址），这里再造一档只会多一个分支。
+ */
+internal fun desktopDetailTierForCard(tier: DesktopDetailTier?, tiers: List<DesktopDetailTier>): DesktopDetailTier =
+    tier?.takeIf { tiers.contains(it) } ?: tiers.firstOrNull() ?: DesktopDetailTier.PREVIEW
+
+/**
  * 步进**钳在两端而不回绕**。
  *
  * 回绕（最后一张再往前跳回第一张）会被读成"这面墙自己重排了"，而它没有 ——

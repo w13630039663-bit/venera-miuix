@@ -35,6 +35,38 @@ internal fun desktopViewerEntryTier(tiers: List<DesktopDetailTier>): DesktopDeta
     if (tiers.contains(DesktopDetailTier.SAMPLE)) DesktopDetailTier.SAMPLE else tiers.firstOrNull()
 
 /**
+ * 点卡之后落在哪一档，而**取证种子要说话**（批 92）。
+ *
+ * ⚠️ 种子排在前面而**仍要经那张表**：`--detail-tier=原图` 递到一条视频（或站方没给 `file_url` 的一张）
+ * 时不许硬取一枚站方没给的地址 —— 那张表就是那两条撤档规则住的地方，绕过它等于把它们的判据绕过去。
+ * 摆不出时**照旧走默认升档**而不是猜一档：那一格由 [desktopTierSeedReading] 念成两句
+ * （`要=原图` 与 `落在=大图`），读数与屏上同一颗。
+ *
+ * 为什么是**重载**而不是改那一枚的签名：`seed == null` 时行为必须与第五十批一字不变
+ * （现有判据 `DesktopGalleryViewerPolicyTest` ④⑤⑥ 三条真跑就是那条纪律的账）。
+ */
+internal fun desktopViewerEntryTier(tiers: List<DesktopDetailTier>, seed: DesktopDetailTier?): DesktopDetailTier? =
+    seed?.takeIf { tiers.contains(it) } ?: desktopViewerEntryTier(tiers)
+
+/**
+ * 档位那颗种子**落到哪一档**的实话（批 92；只在给过种子时念 —— 没给参数 = 本轮与它无关）。
+ *
+ * 三格各自独立，是因为"我给了它却没做到"与"它本来就不该做"必须分得开：
+ * - `要=` 是**请求**（参数原话那串屏名）；
+ * - `这一张摆得出=` 是**这一张的性质**（视频与站方没给 `file_url` 那两条撤档规则的结果）；
+ * - `落在=` 是**结果**（真正被三条轨吃走的那一档，由调用点现算递进来，这里不重算）。
+ * 少了第三格就成了"拿请求当结果"（批 48 那一族的正解是把结果从状态取）。
+ */
+internal fun desktopTierSeedReading(
+    seed: DesktopDetailTier,
+    offered: List<DesktopDetailTier>,
+    landed: DesktopDetailTier?,
+): String =
+    "D_档位种子 要=" + desktopDetailTierLabel(seed) +
+        " 这一张摆得出=" + (if (offered.contains(seed)) "能" else "不能") +
+        " 落在=" + (landed?.let { desktopDetailTierLabel(it) } ?: "一档都不摆")
+
+/**
  * 取证种子的倍数夹进合法区间。
  *
  * 库那枚 `changeScale` 内部也会 `coerceIn`，但它夹得**不出声** ——

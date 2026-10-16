@@ -18,6 +18,7 @@ import com.venera.engineprobe.EngineAssets
 import com.venera.engineprobe.EngineSession
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.desktop.platform.DesktopDatabasePorts
@@ -285,6 +286,25 @@ fun main(args: Array<String>) {
     // 第八十七批：把阅读那一屏顶到某一档模式（`--read-mode=`）。它只作本次初值、不写那枚键 ——
     // 顶过的那一句实话由那一屏自己念（`desktopReaderModeSeedNote`）。
     val readerModeSeed = ForensicFlags.readMode(args.asList())
+    // 第九十六批：起窗后把哪一话整话写进本机（`--download=<漫画号>/<话号>`）。
+    // 它走的是详情那一屏**长按那一条路**（同一颗 runner、同一套目录名、同一行 `D_下载`），不是另开一条取证专用路。
+    val downloadSeed = ForensicFlags.download(args.asList())
+    ForensicFlags.downloadNote(downloadSeed, detailOpens = comicSeed != null && comicLanding.domain == DesktopDomain.COMIC)?.let(::println)
+    // 第一百批：那一趟写下几页之后停手（`--download-cancel-after=<N>`，扳的是屏上那枚「取消」同一颗闸）。
+    val downloadCancelAfter = ForensicFlags.downloadCancelAfter(args.asList())
+    ForensicFlags.downloadCancelAfterNote(
+        downloadCancelAfter, downloadSeed, detailOpens = comicSeed != null && comicLanding.domain == DesktopDomain.COMIC,
+    )?.let(::println)
+    // 第九十八批：起窗后把哪一话从本机删掉（`--delete=<漫画号>/<话号>`，与上面那枚同一把写法）。
+    // 它走的是屏上那颗把手**第二次按下**那一条路（同一颗 runner、同一行 `D_删除`），不是另开一条取证专用路。
+    val deleteSeed = ForensicFlags.delete(args.asList())
+    ForensicFlags.deleteNote(deleteSeed, comicDomainOpens = comicLanding.domain == DesktopDomain.COMIC)?.let(::println)
+    val repairSeed = ForensicFlags.repair(args.asList())
+    ForensicFlags.repairNote(repairSeed, comicDomainOpens = comicLanding.domain == DesktopDomain.COMIC)?.let(::println)
+    // 档位那颗种子（批 92，`--detail-tier=预览|大图|原图`，屏名与枚举名都认）。
+    // ⚠️ 它的落点**不在** `tier` 的初值那一格，而在应用根的点卡那一跳 —— 写成初值会被同一次点卡里
+    // 的"升档"盖掉（取证那颗 `--detail` 走的正是同一枚 lambda），那是"stdout 念了而屏上没动"那一族。
+    val detailTierSeed = ForensicFlags.detailTier(args.asList())
     val startDomain = readLanding.domain
     val startSection = readLanding.section
     // 正面读数只在**真落到那一格**时念：两枚种子同给而赢的是 `--artist` 时，这一枚没接管落点，
@@ -362,15 +382,25 @@ fun main(args: Array<String>) {
     // 浮层开不开由那颗纯函数判（`--detail` 开，或被 `--reverse` / `--copy` / `--save` 接管）—— 这一格不许写在 main 里：
     // main 要建窗口，测试碰不到，留在里面就只剩文本锚点而锚点看不见死分支（批 30 那条规矩的第三次应用）。
     val panelOpen = ForensicFlags.detailPanel(detail, reverse, copy, save)
+    // 给了档位而浮层根本不开 ⇒ 那一档哪儿也没去，必须出声（`readPageNote` 同一族纪律）。
+    // 吃的是上面那一枚 `panelOpen` 而不是 `--detail` 自己：`--reverse` / `--copy` / `--save` 那三枚
+    // 顺带接管浮层时，档位种子是真落得下去的，那时念这一句就是假读数。
+    ForensicFlags.detailTierNote(detailTierSeed, panelOpen)?.let(::println)
 
     val sources = EngineAssets.listSourceKeys(assetDir)
     println("D_启动 sources=${sources.size} 起始=$startKey proxy=${proxy ?: "直连"} 仓库兜底=${assetDir.path}")
     // jpackage.app-path 只有从打包 exe 进来才有值 —— 用它区分"gradle 起的"和"真产物"，
     // 两者的坑不通用（本轮 ImageIO 缓存那条就只在后者复现）。
+    // 批 90 把那句从"推测"变成"读数"：交付包里 `ImageIO.createImageInputStream` 实测抛
+    // `IIOException: Can't create cache file!`（`_qa/b90_pkgC.log`），也就是**包内进程不能在
+    // `java.io.tmpdir` 下建那颗 scratch**（成因仍未定论，与"包内取不到 jar 里的原生库"同一族）。
+    // 正解不是去修那条成因，是**别依赖它**：我们喂给 ImageIO 的全是内存里的 `ByteArray`，
+    // 落盘 scratch 本来就是纯开销 ⇒ `setUseCache(false)` 一次关掉，两条路（开发跑与包内跑）同轨。
+    javax.imageio.ImageIO.setUseCache(false)
     println(
         "D_环境 jdk=${System.getProperty("java.version")} " +
             "tmp=${System.getProperty("java.io.tmpdir")} " +
-            "打包=${System.getProperty("jpackage.app-path") != null}"
+            "打包=${System.getProperty("jpackage.app-path") != null} imageio=内存"
     )
     println("D_数据目录 ${paths.dataRoot.path}（写入回读已验）")
     // Task 5a：把 data/db 接到桌面（只装 factory lambda，不碰 SQLite —— 建目录/建库推迟到第一次取用）。
@@ -384,7 +414,12 @@ fun main(args: Array<String>) {
     DesktopGalleryPorts.install(galleryHandle)
     // 取图那一跳的防盗链头（第七十九批）：装在**任何开窗与取图之前**，而 `install` 全应用只这一处 ——
     // 装两处是后一处静默盖掉前一处（判据 ④ 数的就是这一句的出现次数）。
-    DesktopImagePipeline.install(galleryHandle.engine)
+    // 批 90：盘缓存那颗目录一起递进去（从前没配 ⇒ Coil 把它放在**系统 Temp**，与数据目录不同轨；
+    // 落点与 http 那颗同一条路：`CacheDirs.inCache(paths.cacheRoot, …)`）。
+    DesktopImagePipeline.install(
+        galleryHandle.engine,
+        CacheDirs.inCache(paths.cacheRoot, DesktopImagePipeline.IMAGE_CACHE_DIR_NAME),
+    )
     // 设置页要写侧（共享接口只有读面），所以在集成方拿一次那颗具体件，往下**以形参传**。
     // 不在界面里 cast：那等于把"取静态口"这件事教给每一颗要用的件。
     val gallerySettings = DesktopGalleryPorts.preferences(galleryHandle)
@@ -493,6 +528,9 @@ fun main(args: Array<String>) {
                     // `== true` 而不是 `?: false`：没给参数与给了 `=0` 都是关，但"没登记进 KNOWN"
                     // 那种形状会被上面那条 `unknown` 报出来，不在这里替它兜。
                     startDetail = panelOpen,
+                    // 批 92：那一屏起在哪一档。`null` = 本轮不改（用「预览清晰度」偏好推出来的那一档）。
+                    // 必填 —— 漏传的形状是"参数打进来了而屏上照旧"，判读层念过而落点没有那一格。
+                    startDetailTier = detailTierSeed,
                     // 同上：漏传就是"结果那一格永远拍不到"（那一格在浮层里，且要按一下才出来，第三十六批）。
                     startReverse = reverse == true,
                     startReverseFile = reverseFile,
@@ -552,6 +590,15 @@ fun main(args: Array<String>) {
                         // 批 88·下半：`--cookie=` 那几枚凭据种子。同样必填不给默认值 —— 漏在这一跳上
                         // 就是"参数递上而请求照旧不带凭据"，与本批要抓的缺陷同形。
                         seedCookies = seedCookies,
+                        // 第九十六批：`--download=` 那一话的种子。同样必填不给默认值 —— 漏在这一跳上
+                        // 就是"参数递上而盘上一颗文件都没有"，与本批要抓的缺陷同形（同一颗纪律第十一次）。
+                        downloadSeed = downloadSeed,
+                        // 第一百批：`--download-cancel-after=` 那一档。同样必填不给默认值 ——
+                        // 漏在这一跳上就是"参数递上而那一趟照旧跑到尾"，与本批要抓的缺陷同形。
+                        downloadCancelAfter = downloadCancelAfter,
+                        // 第九十八批：`--delete=` 那一话的种子。同样必填不给默认值（同一颗纪律第十二次）。
+                        deleteSeed = deleteSeed,
+                        repairSeed = repairSeed,
                         // 第八十七批：阅读那一屏的模式偏好。与 `history` / `favorites` 同一条处理 ——
                         // 装配参数在集成方手里，界面只吃形参。同一数据根只建一颗（两颗各自缓存同一份 JSON）。
                         readerPrefs = DesktopComicReaderPreferences.getInstance(paths),

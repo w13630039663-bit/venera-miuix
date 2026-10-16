@@ -1,5 +1,12 @@
 package com.venera.desktop.gallery.ui
 
+import androidx.compose.runtime.collectAsState
+import com.venera.desktop.gallery.data.DesktopComicDownloadQueue
+import com.venera.desktop.gallery.data.DesktopComicQueueStatus
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +52,10 @@ import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.desktop.gallery.data.DesktopReaderMode
+import com.venera.desktop.gallery.data.desktopComicDownloadsRoot
+import com.venera.desktop.gallery.data.DesktopComicOfflineBadge
+import com.venera.desktop.gallery.data.desktopComicOfflineKey
+import com.venera.desktop.gallery.data.desktopComicOfflineHitReading
 import com.venera.desktop.gallery.data.DesktopCookieLogin
 import com.venera.desktop.gallery.data.DesktopComicReaderPreferences
 import com.venera.desktop.gallery.data.DesktopSourceCatalog
@@ -126,6 +137,23 @@ data class DesktopComicEngineConfig(
      */
     val seedDisabled: Set<String>,
     /**
+     * `--download=<漫画号>/<话号>` 那枚取证种子（批 96）。必填、不给默认值：
+     * 漏在这一跳上就是"`--download=…` 递上而屏上什么都没发生"，与本批要防的那一类长得一模一样。
+     */
+    val downloadSeed: Pair<String, String>?,
+    /**
+     * `--download-cancel-after=<N>` 那枚取证种子（批 100）。必填、不给默认值：
+     * 漏在这一跳上就是「参数递上而那一趟照旧跑到尾」，与 `downloadSeed` 那一条纪律同形。
+     */
+    val downloadCancelAfter: Int?,
+    /**
+     * `--delete=<漫画号>/<话号>` 那枚取证种子（批 98）。必填、不给默认值：
+     * 漏在这一跳上就是「种子递上而盘上一棵都没少」，与 `downloadSeed` 那一条纪律同形。
+     */
+    val deleteSeed: Pair<String, String>?,
+    /** 第一百一十一批：`--repair=` 那一枚种子（把某一话排回队列），与删除同一族、同一屏。 */
+    val repairSeed: Pair<String, String>?,
+    /**
      * `--cookie=<host>:<名>=<值>` 那几枚取证种子（批 88·下半），原样递给宿主去并罐。
      *
      * 必填、不给默认值（同一颗纪律）：漏传的形状是「`-Pcookie=…` 递上而请求照旧不带凭据」，
@@ -147,6 +175,11 @@ internal object DesktopComicSectionKey {
     const val FAVORITES = "comic-favorites"
     const val HISTORY = "comic-history"
     const val SOURCES = "comic-sources"
+    // 批 97：本机存过的那些整话（盘上那一棵树终于有了一屏数它）。key 追加在末尾而不插进中间：
+    // 既有尺子按 rows[2]/rows[3] 点 key（`DesktopComicHistoryScreenTest` ①），插中间会把那两枚指到别的话上去。
+    const val DOWNLOADS = "comic-downloads"
+    // 第一百零五批：队列里每一笔那一屏。同样**追加在末尾**（同一条理由，且既有尺子现在逐枚点五行的 key）。
+    const val QUEUE = "comic-queue"
 }
 
 /** 漫画域的两页，次序就是 pane 里自上而下的次序。 */
@@ -181,6 +214,24 @@ internal fun desktopComicRows(): List<DesktopGalleryHomeRow> = listOf(
         content = DesktopGallerySectionContent.ComicSources,
         reason = null,
     ),
+    // 批 97：本机存过的那些整话 —— 写的那一路在批 96 落地，这一行是它缺的读侧。
+    // 追加在末尾（不插进「源管理」之前）：既有尺子按 rows[2]/rows[3] 点 key 与题名，插中间会把那两枚指到别处。
+    DesktopGalleryHomeRow(
+        key = DesktopComicSectionKey.DOWNLOADS,
+        title = "本机已下载",
+        glyph = "本",
+        content = DesktopGallerySectionContent.ComicDownloads,
+        reason = null,
+    ),
+    // 第一百零五批：批 101 让队列能跑，这一行补的是"看得见"—— 每一笔一行、两枚把手（停手 / 撤掉）。
+    // 同样追加在末尾：既有尺子逐枚点前五行的 key 与次序（`DesktopComicQueueScreenTest` ① 钉着这件事）。
+    DesktopGalleryHomeRow(
+        key = DesktopComicSectionKey.QUEUE,
+        title = "下载队列",
+        glyph = "队",
+        content = DesktopGallerySectionContent.ComicQueue,
+        reason = null,
+    ),
 )
 
 @Composable
@@ -212,7 +263,9 @@ internal fun DesktopComicBody(
         if (content != DesktopGallerySectionContent.ComicExplore &&
             content != DesktopGallerySectionContent.ComicFavorites &&
             content != DesktopGallerySectionContent.ComicHistory &&
-            content != DesktopGallerySectionContent.ComicSources
+            content != DesktopGallerySectionContent.ComicSources &&
+            content != DesktopGallerySectionContent.ComicDownloads &&
+            content != DesktopGallerySectionContent.ComicQueue
         ) {
             error("「${row.title}」不是漫画域的页 —— 分岔见 VeneraDesktopApp.DesktopDomainBody")
         }
@@ -225,7 +278,17 @@ internal fun DesktopComicBody(
         // 引擎吃的是折过停用之后的那一颗：停用了还照它装载，那枚开关就是假的。
         val sources = rememberDesktopSources(config)
         val activeConfig = config.copy(sourceKey = sources.activeKey)
-        val engine = rememberComicEngine(activeConfig, needed = desktopComicEngineNeeded(screen))
+        // 第一百零一批：队列表在**这一层**收一次再递给详情那一屏（展示那一件只吃纯数据，不吃那颗件本身）。
+        val queueTasks = DesktopComicDownloadQueue.tasks.collectAsState().value
+        // 第一百零五批：那一屏还要多知道一格"这张表读回来过没有"—— 没读回来时不许念「本机队列空」
+        //（包内实测到那一帧，成因与修法见 rounds `desktop-comic-queue-screen-2026-10-13.md` §7c）。
+        val queuePrimed = DesktopComicDownloadQueue.primed.collectAsState().value
+        // 第一百零六批：「下载队列」那一行要不要引擎，由那张表**有没有活**决定（泵挂在句柄上，句柄没了泵就不跑）。
+        // ⚠️ `RUNNING` 那一档必须一起数：手上那一笔在内存里正是 RUNNING，只认 PENDING 的话跑第一笔的同一刻
+        // `needed` 就翻假 ⇒ 句柄被回收 ⇒ 泵被掐 ⇒ `abandonRunning` 把它交回 PENDING ⇒ `needed` 又翻真 ——
+        // 起一颗引擎、掐一圈泵来回打转，而每转一圈都重新问一遍页表。这一形是实施前从接线推出来的，不是量到的。
+        val queueHasWork = queueTasks.any { it.status == DesktopComicQueueStatus.PENDING || it.status == DesktopComicQueueStatus.RUNNING }
+        val engine = rememberComicEngine(activeConfig, needed = desktopComicEngineNeeded(screen, queueHasWork))
         val session = engine.session
         when (screen) {
             // `requireNotNull` 不是兜底：载荷在不在是上面那颗纯判断吃进的两枚布尔，
@@ -242,11 +305,33 @@ internal fun DesktopComicBody(
                 )
             DesktopComicScreen.DETAIL ->
                 DesktopComicDetailPane(
-                    session, requireNotNull(comicTarget), activeConfig.sourceKey, config.favorites, onBackComic, onOpenEpisode,
+                    // 全部改**命名实参**（批 96）：那一屏的形参表已经十枚，而 `onBack`/`onFavorite`/
+                    // `onOpenEpisode`/`onDownloadEpisode` 之间全是同形的 lambda —— 位置实参插一枚进去
+                    // 会安静地把下载种子递进别人的格子里，编译照过。
+                    session = session,
+                    target = requireNotNull(comicTarget),
+                    sourceKey = activeConfig.sourceKey,
+                    favorites = config.favorites,
+                    history = config.history,
+                    // 章节下载的根：懒装载那一族（批 96）—— 建目录由写那一侧做，这一跳只递"该写到哪里"。
+                    // 必填不给默认值：漏传的形状是行上那枚「下载」按下去静默无反馈。
+                    downloadsRoot = { desktopComicDownloadsRoot(config.dataDir) },
+                    // 取证种子：必填不给默认值 —— 漏在这一跳上就是"`-Pdownload=…` 递上而盘上一颗文件都没有"。
+                    downloadSeed = config.downloadSeed,
+                    // 第一百批：取消那一档的种子必填不给默认值（同一颗纪律）。
+                    downloadCancelAfter = config.downloadCancelAfter,
+                    // 第一百零一批：那一屏那一行念的是队列里这一本的那一笔（必填不给默认值）。
+                    queueTasks = queueTasks,
+                    onBack = onBackComic,
+                    onOpenEpisode = onOpenEpisode,
                 )
             DesktopComicScreen.EXPLORE -> ComicExplorePane(engine, activeConfig, onOpenComic)
             DesktopComicScreen.FAVORITES -> ComicFavoritesPane(config)
             DesktopComicScreen.HISTORY -> DesktopComicHistoryPane(activeConfig, sources.nameOf(sources.activeKey), onOpenComic)
+            // 批 97：这一屏不吃饭局与引擎，只吃 downloads 根（懒装载那一族：建不建目录归写那一侧管）。
+            DesktopComicScreen.DOWNLOADS -> DesktopComicDownloadsPane(desktopComicDownloadsRoot(config.dataDir), deleteSeed = config.deleteSeed, repairSeed = config.repairSeed)
+            // 第一百零五批：这一屏也不吃饭局 —— 它的对象是那张任务表（盘上那份），与顶栏那枚牌子同一份数据。
+            DesktopComicScreen.QUEUE -> DesktopComicQueuePane(desktopComicDownloadsRoot(config.dataDir), queueTasks, queuePrimed)
             DesktopComicScreen.SOURCES -> DesktopComicSourcesPane(
                 sources,
                 // 「登录」那一下才起引擎（这一屏平时刻意不起，见 desktopComicEngineNeeded）。
@@ -268,7 +353,7 @@ internal fun DesktopComicBody(
 }
 
 /** 漫画域此刻渲染的是哪一层（批 82.7：从前这一格由**行**决定，于是从「阅读历史」按一行进不去详情）。 */
-internal enum class DesktopComicScreen { READER, DETAIL, EXPLORE, FAVORITES, HISTORY, SOURCES }
+internal enum class DesktopComicScreen { READER, DETAIL, EXPLORE, FAVORITES, HISTORY, SOURCES, DOWNLOADS, QUEUE }
 
 /**
  * 载荷优先于行：详情与阅读是**域层**的落点（两枚槽由应用根持有），不是「探索」那一行的私产。
@@ -284,6 +369,8 @@ internal fun desktopComicScreen(
     content == DesktopGallerySectionContent.ComicFavorites -> DesktopComicScreen.FAVORITES
     content == DesktopGallerySectionContent.ComicHistory -> DesktopComicScreen.HISTORY
     content == DesktopGallerySectionContent.ComicSources -> DesktopComicScreen.SOURCES
+    content == DesktopGallerySectionContent.ComicDownloads -> DesktopComicScreen.DOWNLOADS
+    content == DesktopGallerySectionContent.ComicQueue -> DesktopComicScreen.QUEUE
     else -> DesktopComicScreen.EXPLORE
 }
 
@@ -291,9 +378,19 @@ internal fun desktopComicScreen(
  * 当前这一屏要不要问源站。「收藏」「阅读历史」「源管理」三屏读的是本地（盘上那份清单与状态），
  * 白起一颗 GraalJS 加一整源装载（30 张封面）是代价不是准备；
  * 而从历史那一行进详情时这一格变成"要"，装载就在那一刻开始。
+ *
+ * [hasQueueWork] 只有两档吃它：「下载队列」与「本机已下载」（第一百一十一批起后者也会自己造队列活）。
+ * **必填、不给默认值**（同一颗纪律第四次 ——
+ * 漏传的形状是"参数在而永远恒真/恒假"，编译面什么都看不见）。
  */
-internal fun desktopComicEngineNeeded(screen: DesktopComicScreen): Boolean = when (screen) {
+internal fun desktopComicEngineNeeded(screen: DesktopComicScreen, hasQueueWork: Boolean): Boolean = when (screen) {
+    // 「本机已下载」读的是盘上那一棵树，一站都不问源站（批 97）—— 但第一百一十一批起那一行**自己会造队列活**
+    // （缺页那一档的「补齐」把手只入队），所以它与 `QUEUE` 同一档：有活才起，空表不白起一颗 GraalJS。
+    DesktopComicScreen.DOWNLOADS, DesktopComicScreen.QUEUE -> hasQueueWork
     DesktopComicScreen.FAVORITES, DesktopComicScreen.HISTORY, DesktopComicScreen.SOURCES -> false
+    // 第一百零五批把那一屏做出来了，第一百零六批才发现它**只读不驱动**：句柄为 null 时泵那一圈走不到，
+    // 盘上那一笔 `PENDING` 永远不动（包内读数 `D_队列 笔=3 跑=0 待=1`）。所以这一档改吃"表里有没有活"：
+    // 有活才起引擎（空表还去装载整源是代价），没活就交回 null（跑完了一行也不留一颗没人用的句柄）。
     DesktopComicScreen.EXPLORE, DesktopComicScreen.DETAIL, DesktopComicScreen.READER -> true
 }
 
@@ -359,6 +456,10 @@ private fun rememberComicEngine(config: DesktopComicEngineConfig, needed: Boolea
     // 把上一颗 context 关掉。写 `Unit` 的话它在这一屏存活期间只 dispose 一次，
     // 于是"重取"一次就泄漏一颗。
     var session by remember { mutableStateOf<EngineSession?>(null) }
+    // 第一百零一批：队列那一圈泵的宿主。它必须活得比详情那一屏久（换屏不断），而**不必**活得比这一域久
+    // —— 退出漫画域就协作式停手，任务留在盘上，回到这一域接着跑。
+    // key 与 session 同一枚：换一颗引擎就换一圈泵，绝不留一圈泵打在已经关掉的 context 上。
+    val queueScope = remember(session) { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     DisposableEffect(session) {
         // ⚠️ 必须**在这一刻把值取出来**再交给闭包：`onDispose { session?.close() }` 读的是变量当下的值，
         // 于是 `null → 引擎` 那一次切换时它关掉的是刚建好的那一颗，而不是上一颗。
@@ -366,7 +467,11 @@ private fun rememberComicEngine(config: DesktopComicEngineConfig, needed: Boolea
         // "在 session 换过之后还要用同一颗"的消费点，第一次真跑就得到
         // `D_详情 … 态=没成 因=PolyglotException: Context execution was cancelled.`
         val closing = session
-        onDispose { closing?.close() }
+        desktopComicStartQueuePump(queueScope, closing, desktopComicDownloadsRoot(config.dataDir))
+        // ⚠️ 顺序要紧：先掐作用域（那一圈泵从此不再问引擎要下一页），再关 context。
+        // 反过来就是"任务还在跑而句柄已被关"，其近亲是批 80 真跑撞到的 `PolyglotException: Context execution was cancelled.`
+        // 判据钉的是这一整串而不是"两件事都在"（钉存在会放过写反的那一版）。
+        onDispose { queueScope.cancel(); closing?.close() }
     }
     LaunchedEffect(config.sourceKey, attempt, needed) {
         if (!needed) {
@@ -445,6 +550,22 @@ private fun ComicExplorePane(
     val state = engine.state
     val scope = rememberCoroutineScope()
     var favoriteOutcome by remember { mutableStateOf<DesktopComicFavoriteOutcome?>(null) }
+    // 卡上那一枚「已下载 / 离线不全」：读盘那一跳住在另一颗文件里（见 `DesktopComicOfflineMark.kt`），
+    // 这一屏只吃它交回的那张表 —— 引擎装载那一跳与它不同轨，重取一次源不该顺手把本机的那棵树也重数一遍。
+    val offline = rememberDesktopComicOfflineBadges(config.dataDir, config.sourceKey)
+    // 「墙上那排卡里贴出来几枚」：盘上数得着 ≠ 屏上贴得出。包内那一帧量到的正是这一档 ——
+    // 墙上 30 张卡而本机那棵树里只有 `1461316`（它不在墙上），所以那一枚一枚都没贴出来。
+    // 没有这句读数，"没贴上"与"贴上了而我没拍到"就分不开。
+    LaunchedEffect(offline, state) {
+        val ready = state as? ComicExploreState.Ready ?: return@LaunchedEffect
+        println(
+            desktopComicOfflineHitReading(
+                config.sourceKey,
+                offline,
+                ready.sections.flatMap { it.comics }.map { it.id },
+            )
+        )
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -481,7 +602,7 @@ private fun ComicExplorePane(
                         fontSize = 12.sp,
                     )
                     current.sections.forEach { section ->
-                        ComicSection(section, current.covers, { card ->
+                        ComicSection(section, current.covers, config.sourceKey, offline, { card ->
                             // 写那一笔走的是屏上这颗懒装载（第一次按下才建库），三态里哪一种落回 favoriteOutcome。
                             scope.launch {
                                 favoriteOutcome = desktopAddComicFavorite(config.favorites, config.sourceKey, card)
@@ -512,6 +633,8 @@ private fun ComicExplorePane(
 private fun ComicSection(
     section: EngineSession.Section,
     covers: Map<String, ImageBitmap>,
+    sourceKey: String,
+    offline: Map<String, DesktopComicOfflineBadge>,
     onFavorite: (EngineSession.ComicCard) -> Unit,
     onOpen: (EngineSession.ComicCard) -> Unit,
 ) {
@@ -531,7 +654,15 @@ private fun ComicSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.height(estimatedGridHeight(section.comics.size)),
         ) {
-            items(section.comics) { card -> ComicCard(card, covers[card.id], onFavorite, onOpen) }
+            items(section.comics) { card ->
+                ComicCard(
+                    card,
+                    covers[card.id],
+                    offline[desktopComicOfflineKey(sourceKey, card.id)],
+                    onFavorite,
+                    onOpen,
+                )
+            }
         }
     }
 }
@@ -549,6 +680,7 @@ private fun estimatedGridHeight(count: Int): androidx.compose.ui.unit.Dp {
 private fun ComicCard(
     card: EngineSession.ComicCard,
     cover: ImageBitmap?,
+    offline: DesktopComicOfflineBadge?,
     onFavorite: (EngineSession.ComicCard) -> Unit,
     onClick: (EngineSession.ComicCard) -> Unit,
 ) {
@@ -583,6 +715,9 @@ private fun ComicCard(
             // 压在封面上那一角（与画廊卡那两枚角标同一个位置口径），高度就不动 `estimatedGridHeight` 那笔账。
             // 常驻而不是 hover 才出现：桌面没有"鼠标悬停=可点"的暗示，藏起来的入口等于没有入口。
             ComicFavoritePill(Modifier.align(Alignment.BottomStart).padding(6.dp)) { onFavorite(card) }
+            // 右下角那一枚「已下载 / 离线不全」（左下角那枚是收藏，两枚不抢同一格）。它**不可点**，
+            // 也不加行 —— 行高由 `estimatedGridHeight` 那笔算式定。
+            if (offline != null) ComicOfflineMark(offline, Modifier.align(Alignment.BottomEnd).padding(6.dp))
         }
         Text(
             card.title,

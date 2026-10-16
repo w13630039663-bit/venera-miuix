@@ -1,5 +1,6 @@
 package com.venera.desktop.gallery.ui
 
+import com.venera.desktop.gallery.data.DesktopReaderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,12 +42,32 @@ class DesktopReaderPagedSeedTest {
         assertEquals("桌面这边写的键名与对岸不同串", 1, DesktopSourceTree.codeOccurrences(prefsFile, "\"$key\""))
     }
 
+    /**
+     * ② 默认档与对岸同一档 —— **两边各归一再比**，而不是比字面串。
+     *
+     * 从前这一条比的是"对岸那串原样出现在桌面那颗文件里"。行 164 那批把对岸默认从别名 `"VERTICAL"`
+     * 换成表名 `"HORIZONTAL_LTR"` 之后，那种比法与 ③（档位的键与名字只有那张表一个出处，不许在表外写死串）
+     * **互相咬死**：照 ② 就得写死串，照 ③ 就找不到那串。所以比的是**归一之后的那一档** ——
+     * 那才是"两端起手同一档"这件行为本身，而 ③ 一个字不放宽。
+     */
     @Test
     fun 模式那枚默认值逐字回核对岸() {
         val against = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("data/prefs/VeneraPreferences.kt"))
         val fallback = Regex("""getString\(KEY_DEFAULT_READING_MODE, "([^"]*)"\)""").find(against)?.groupValues?.get(1)
         checkNotNull(fallback) { "对岸那句默认值找不到了（写法变了就重判这一条）" }
-        assertEquals("桌面这边写的默认值与对岸不同串", 1, DesktopSourceTree.codeOccurrences(prefsFile, "\"$fallback\""))
+        val code = DesktopSourceTree.codeText(prefsFile)
+        val declared = Regex("""READING_MODE_FALLBACK = DesktopReaderMode\.([A-Z_]+)\.key""").find(code)?.groupValues?.get(1)
+        checkNotNull(declared) { "桌面那颗默认值不再是「从那张表取」的形状（改了写法就重判这一条，不许放宽）" }
+        assertEquals(
+            "桌面这边写的默认档与对岸不是同一档（对岸那串=$fallback）",
+            DesktopReaderMode.fromKey(fallback),
+            DesktopReaderMode.valueOf(declared),
+        )
+        assertEquals(
+            "默认那枚必须真的喂给读侧（声明了而没用上就是假轨道）",
+            1,
+            DesktopSourceTree.codeOccurrences(prefsFile, "store.getString(READING_MODE_KEY, READING_MODE_FALLBACK)"),
+        )
     }
 
     @Test

@@ -78,5 +78,11 @@ class DesktopComicReaderPreferences internal constructor(private val store: KeyV
 /** 对岸那枚键（`VeneraPreferences.KEY_DEFAULT_READING_MODE` = `pref_reading_mode`），由判据回读对岸源码核对。 */
 private const val READING_MODE_KEY = "pref_reading_mode"
 
-/** 对岸那句默认值（`getString(KEY_DEFAULT_READING_MODE, "VERTICAL")`）。 */
-private const val READING_MODE_FALLBACK = "VERTICAL"
+/**
+ * 对岸那句默认值（`VeneraPreferences.kt:72` 的 `getString(KEY_DEFAULT_READING_MODE, "HORIZONTAL_LTR")`
+ * —— 手册行 164 那批按用户点名「播放器设置成默认美漫，左至右」改判过，桌面跟着同轨）。
+ *
+ * ⚠️ 这一枚**从那张表取**而不是在这里写死串：档位的键与名字只有 `DesktopReaderMode` 一个出处
+ * （同批尺子的 ③ 会咬写死的档位串），而"桌面默认与对岸同一档"由 ② 现取对岸那串、两边各归一再比。
+ */
+private val READING_MODE_FALLBACK = DesktopReaderMode.HORIZONTAL_LTR.key

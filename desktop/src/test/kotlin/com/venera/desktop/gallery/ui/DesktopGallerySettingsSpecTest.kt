@@ -51,11 +51,11 @@ class DesktopGallerySettingsSpecTest {
         assertFalse("对照组失效：不存在的键名也被 contains 命中了", prefsFile.contains("\"pref_gallery_no_such_key\""))
     }
 
-    /** ② 屏上点名的缺席档正好 2 枚（批 61 起：backdrop 有了消费点，搬进能改那一区），且每枚都是 `GalleryPreferences` 上真有的成员。 */
+    /** ② 屏上点名的缺席档正好 3 枚（批 61 起：backdrop 有了消费点，搬进能改那一区；批 108 起「画成水彩」补点名的一枚），且每枚都是 `GalleryPreferences` 上真有的成员。 */
     @Test
-    fun 屏上点名的两枚缺席档逐枚回核接口() {
+    fun 屏上点名的三枚缺席档逐枚回核接口() {
         val absent = DesktopGallerySettingsSpec.notOnScreen
-        assertEquals("该点名的缺席档数目变了（现在是 ${absent.joinToString { it.pref }}）", 2, absent.size)
+        assertEquals("该点名的缺席档数目变了（现在是 ${absent.joinToString { it.pref }}）", 3, absent.size)
         val iface = DesktopSourceTree.codeText(
             DesktopSourceTree.androidSource("gallery/data/GalleryPorts.kt"),
         )
@@ -67,21 +67,21 @@ class DesktopGallerySettingsSpecTest {
         assertTrue("对照组失效：没读到接口本体", iface.contains("interface GalleryPreferences"))
     }
 
-    /** ③ 那条加法：4 + 6 + 2 = 12，一枚不多一枚不少，且不重叠。 */
+    /** ③ 那条加法：8 + 3 + 2 = 13，一枚不多一枚不少，且不重叠。 */
     @Test
-    fun 十二枚偏好每一枚都有下落() {
+    fun 十三枚偏好每一枚都有下落() {
         val editable = DesktopGallerySettingsSpec.editable.map { it.pref }
         val absent = DesktopGallerySettingsSpec.notOnScreen.map { it.pref }
         val structural = DesktopGallerySettingsSpec.STRUCTURAL_ABSENT
         assertEquals("能改的与点名缺席的有重叠 —— 同一枚不许既说能改又说没有", 0, (editable intersect absent).size)
         assertEquals("两批里出现了那两枚结构性不参与的档", 0, (editable + absent).intersect(structural.toSet()).size)
-        assertEquals("12 枚偏好每一枚都要有下落", 12, (editable + absent + structural).distinct().size)
+        assertEquals("13 枚偏好每一枚都要有下落", 13, (editable + absent + structural).distinct().size)
 
-        // 而且这 12 个名字必须就是接口上那 12 个（不多不少）—— 否则"每一枚都有下落"是句空话。
+        // 而且这 13 个名字必须就是接口上那 13 个（不多不少）—— 否则"每一枚都有下落"是句空话。
         val iface = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("gallery/data/GalleryPorts.kt"))
         val members = Regex("val (gallery[A-Za-z]+): StateFlow").findAll(iface).map { it.groupValues[1] }.toList()
-        assertEquals("对照组失效：接口上抽出的成员数不是 12（现在是 ${members.size}：$members）", 12, members.size)
-        assertEquals("账上的 12 枚与接口上的 12 枚不是同一批", members.sorted(), (editable + absent + structural).sorted())
+        assertEquals("对照组失效：接口上抽出的成员数不是 13（现在是 ${members.size}：$members）", 13, members.size)
+        assertEquals("账上的 13 枚与接口上的 13 枚不是同一批", members.sorted(), (editable + absent + structural).sorted())
     }
 
     /** ④ 缺席那一句不许用不承诺任何东西的措辞（与域缺席那条同族，但这里管的是**档位**级）。 */
@@ -112,9 +112,9 @@ class DesktopGallerySettingsSpecTest {
             "还有缺席理由在写「桌面没有大图页」（桌面今天有详情浮层，能换档能翻页）：" + offenders.joinToString(" ｜ "),
             offenders.isEmpty(),
         )
-        // 对照组：那两枚仍在账上（读空了上面那条恒真），且每句各自点名差的是哪一层。
+        // 对照组：那三枚仍在账上（读空了上面那条恒真），且每句各自点名差的是哪一层。
         val rows = DesktopGallerySettingsSpec.notOnScreen
-        assertEquals("点名缺席的枚数变了 —— 那笔 8+2+2=12 要跟着改", 2, rows.size)
+        assertEquals("点名缺席的枚数变了 —— 那笔 8+3+2=13 要跟着改", 3, rows.size)
         assertEquals("三句理由撞成了同一句（那等于没在说每一枚各自差什么）", rows.size, rows.map { it.why }.distinct().size)
         rows.forEach { row ->
             assertTrue("「${row.pref}」那句说不清差的是哪一层：${row.why}", row.why.length >= 14)

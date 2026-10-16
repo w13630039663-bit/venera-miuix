@@ -300,7 +300,7 @@ class DesktopDomainNavigationTest {
         // 与那条负向一起钉；撤掉 close 仍然会红在这里。
         assertTrue(
             "onDispose 里必须关掉**这一刻取出来**的那一颗（写 `session?.close()` 关的是变量当下的值）",
-            comic.contains("onDispose { closing?.close() }"),
+            comic.contains("onDispose { queueScope.cancel(); closing?.close() }"),
         )
     }
 

@@ -50,6 +50,7 @@ internal object DesktopSurfaceLiterals {
         "0xFFFFFFFF", "0xFFA0A0A0", "0xFF8B8B8B",
         // ── 强调 / 半透明 ──────────────────────────────────────────────────
         "0xFFCBB6FF", // 藤紫 AccentFuji
+        "0xFF5B47A8", // 填充型强调 AccentFill（稿 `--accent-fill`，批 95 添；不登记就等着别人再写一遍同值）
         "0xFFD6463C", // 博丽朱 AccentBeni
         "0xFF3A2A55", // 选中行渐变起点
         "0x80000000", // 作品卡遮罩终点（半透明黑；旧表只认 0xFF 与后来补的 0xB0）

@@ -37,7 +37,8 @@ suspend fun desktopCoilBytes(context: PlatformContext, url: String): ByteArray? 
     }
 
 /**
- * 只读缓存，不发请求。没开过 `diskCache`（null）与没命中（快照 null）都交回 null，
+ * 只读缓存，不发请求。那颗 `diskCache` 为 null（批 90 起由 `DesktopImagePipeline.install` 递目录进来配，
+ * 撤掉它就交回 null）与没命中（快照 null）都交回 null，
  * 因为这两种在界面上说同一句话：这一张此刻不在缓存里。
  */
 private fun readCachedBytes(loader: ImageLoader, url: String): ByteArray? =

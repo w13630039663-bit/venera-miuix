@@ -160,29 +160,6 @@ class EngineSession(
     }
 
     /**
-     * 走源的 `onImageLoad` 拿真实图地址与请求头，再用宿主取字节。
-     * 源常塞 `Accept-Encoding: gzip`，OkHttp 因此关掉透明解压 —— 兜法与 Android 侧一致（见 S0-3 事实 4）。
-     */
-    fun imageBytes(imageKey: String, comicId: String, episodeId: String): ByteArray {
-        val cfg = gson.fromJson<Map<String, Any?>>(
-            host.evaluateAsync(
-                """
-                return (async function(){ return await ComicSource.sources['$key'].comic.onImageLoad(
-                    ${gson.toJson(imageKey)}, ${gson.toJson(comicId)}, ${gson.toJson(episodeId)}, undefined); })()
-                """.trimIndent()
-            ), mapType
-        )
-        val data = cfg["data"] as? Map<*, *> ?: error("onImageLoad 无 data: ${cfg["error"]}")
-        val url = data["url"]?.toString() ?: imageKey
-        val headers = (data["headers"] as? Map<*, *>)
-            ?.entries?.associate { it.key.toString() to it.value.toString() }
-            ?: emptyMap()
-        val (status, bytes) = host.fetchBytes(url, headers)
-        if (status != 200 || bytes.isEmpty()) error("取图失败 http=$status bytes=${bytes.size} url=$url")
-        return bytes
-    }
-
-    /**
      * 缩略图：源若有 `onThumbnailLoad` 必须先过它（它给的是 `{url, headers}`，
      * 直接拿 `cover` 原值去打常缺 Referer），没有才原地址取。与 Android 侧同一判据。
      */
@@ -264,38 +241,41 @@ class EngineSession(
      * 取一页并**按需去混淆**：`modifyImage` 里的 `const num` 就是 jm 的切块数（权威口径见
      * `doc` 与 `ImagePipelinePolicy`），`num<=1` 原样返回。
      * 还原不了时抛错，不把混淆图当正常图交回去。
+     *
+     * 第一百零九批：`comic.onImageLoad` 是**能力位**而不是必需 —— 随包 34 份脚本里 16 份没声明它
+     * （goda / gelbooru / zaimanhua / wnacg / kavita / happy…）。没声明的那些，`loadEp` 交回的
+     * 每一项本身就是完整地址，所以守卫那一档直接回 `{ __none: true }`；怎么把信封读成
+     * 「地址 + 请求头 + 切块数」全在 [desktopImageRequestOf]，判据是 `DesktopImageLoadCapabilityTest`。
+     * 守卫那一形与同文件 [coverBytes] 的缩略图守卫**同一颗**，不加第三种说法。
      */
     fun pageImage(imageKey: String, comicId: String, episodeId: String): ByteArray {
         val env = gson.fromJson<Map<String, Any?>>(
             host.evaluateAsync(
                 """
-                return (async function(){ return await ComicSource.sources['$key'].comic.onImageLoad(
-                    ${gson.toJson(imageKey)}, ${gson.toJson(comicId)}, ${gson.toJson(episodeId)}, undefined); })()
+                return (async function(){
+                    var s = ComicSource.sources['$key'];
+                    if (!s.comic || !s.comic.onImageLoad) return { __none: true };
+                    return await s.comic.onImageLoad(
+                        ${gson.toJson(imageKey)}, ${gson.toJson(comicId)}, ${gson.toJson(episodeId)}, undefined);
+                })()
                 """.trimIndent()
             ), mapType
         )
-        if (env["success"] == false) error("onImageLoad 失败: ${env["error"]}")
-        val data = env["data"] as? Map<*, *> ?: error("onImageLoad 没有 data")
-        val url = data["url"]?.toString() ?: imageKey
-        val headers = (data["headers"] as? Map<*, *>)
-            ?.entries?.associate { it.key.toString() to it.value.toString() } ?: emptyMap()
-        val num = Regex("""const\s+num\s*=\s*(\d+)""")
-            .find(data["modifyImage"]?.toString().orEmpty())
-            ?.groupValues?.get(1)?.toIntOrNull() ?: 0
-        val (status, bytes) = host.fetchBytes(url, headers)
+        val request = desktopImageRequestOf(imageKey, env)
+        val (status, bytes) = host.fetchBytes(request.url, request.headers)
         if (status != 200 || bytes.isEmpty()) error("取页失败 http=$status bytes=${bytes.size}")
-        if (num <= 1) return bytes
+        if (request.scrambleBlocks <= 1) return bytes
         val img = try {
             JvmImageOps.decode(bytes)
         } catch (t: Throwable) {
             throw IllegalStateException(
-                "页图解不开 num=$num 头=${JvmImageOps.magic(bytes)} " +
+                "页图解不开 num=${request.scrambleBlocks} 头=${JvmImageOps.magic(bytes)} " +
                     "解码器=[${JvmImageOps.readerFormats()}] <- ${t.message}",
                 t,
             )
         }
-        return JvmImageOps.descrambleBlocks(img, num)
-            ?: error("${img.height}px 不够切 $num 块，去混淆无从谈起")
+        return JvmImageOps.descrambleBlocks(img, request.scrambleBlocks)
+            ?: error("${img.height}px 不够切 ${request.scrambleBlocks} 块，去混淆无从谈起")
     }
 
     /**

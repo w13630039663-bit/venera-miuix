@@ -93,6 +93,23 @@ internal object DesktopTheme {
     /** 藤紫：选中态文字、指示条、focus。稿 `--fuji-lite` = `#CBB6FF`。 */
     val AccentFuji: Color = Color(0xFFCBB6FF)
 
+    /**
+     * **填充型**强调那一档（主按钮/主胶囊那种"整块涂色"的底）。稿 `--accent-fill` = `#5B47A8`
+     * （`windows-gallery-home-touhou-2026-10-03.html:20`，与 `--accent`（=`--fuji-lite`）**是两枚**：
+     * 稿里 `--accent` 管文字与指示条，`--accent-fill` 管底）。
+     *
+     * 为什么桌面从前没有这一档而批 95 要添：桌面第一枚"整块涂色"的控件是详情那一屏那枚主胶囊（批 94），
+     * 而它本来挂的是 compose-fluent 的 `AccentButton` —— 那颗控件的填充读的是 `Colors.fillAccent`，
+     * 而 `darkColors(accent = AccentFuji)` 那一步**吃不到我们递进去的色**（库里那张预置表按色查表，
+     * 不在表里就整条回落到默认那套蓝；四条判据见 `DesktopAccentFillTest`，包内图证抓到的是天蓝）。
+     * 换色也解决不了 —— 那张表**只有一颗键**（`#0078D4`）而回落值恰好就是它自己那份（③ 现数），
+     * 递进六枚候选量到的全是同一枚 `#60CCFE`（④）⇒ 任何 accent 都动不了那一格，只能不经过那条链 ⇒ 这一档由我们自己出。
+     *
+     * ⚠️ 它**不是** surface 阶梯里的第六档灰：色相明确（`#5B47A8` 是藤紫压深的那一档，
+     * 比 [SelectionGradientStart] 更饱和、比 [AccentFuji] 深），只许出现在"填充型强调"那一形上。
+     */
+    val AccentFill: Color = Color(0xFF5B47A8)
+
     /** 博丽朱：神社档装饰与警示。稿 `--beni` = `#D6463C`。 */
     val AccentBeni: Color = Color(0xFFD6463C)
 

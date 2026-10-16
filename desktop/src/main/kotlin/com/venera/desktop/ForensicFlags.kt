@@ -7,9 +7,11 @@ import com.venera.desktop.gallery.data.DesktopReaderMode
 import com.venera.desktop.gallery.ui.DesktopArtistTarget
 import com.venera.desktop.gallery.ui.DesktopComicReading
 import com.venera.desktop.gallery.ui.DesktopComicTarget
+import com.venera.desktop.gallery.ui.DesktopDetailTier
 import com.venera.desktop.gallery.ui.DesktopDomain
 import com.venera.desktop.gallery.ui.DesktopGalleryHomeSectionKey
 import com.venera.desktop.gallery.ui.DesktopRankingSeed
+import com.venera.desktop.gallery.ui.desktopDetailTierLabel
 import com.venera.desktop.gallery.ui.desktopDomainRows
 import java.time.LocalDate
 
@@ -171,6 +173,41 @@ internal object ForensicFlags {
     private const val READ_MODE = "--read-mode"
 
     /**
+     * 起窗后把某一话**整话写进本机**（第九十六批，`--download=<漫画号>/<话号>`）。
+     *
+     * 为什么需要它：那一枚动作挂在**长按**上（桌面没有右键，第二枚动作只能走长按 —— 见批 96 rounds §2），
+     * 而取证这一路不许动鼠标与光标（手册 §8.1）⇒ 没有它，"真源站取一整话落盘"这一格在交付物里
+     * 永远量不到（10 颗纯判据 + 3 颗语义树都证不了网络与盘那一段）。
+     *
+     * ⚠️ 它走的是**与长按同一条代码路**（同一颗 runner、同一套目录名、同一行 `D_下载` 读数），
+     * 不是另开一条"只为取证"的路 —— 否则量到的是种子那条路而不是用户那一条（本仓那一族第六次）。
+     */
+    private const val DOWNLOAD = "--download"
+
+    /**
+     * 起窗后那一趟整话下载**写下 N 页就自己停手**（第一百批，`--download-cancel-after=<N>`）。
+     *
+     * 为什么需要它：取消那一路跑在 IO 线程的一圈页循环里，而"人在恰好那一秒按下去"复现不了
+     * （89 页那一趟还要等真网络）⇒ 没有这一枚，交付物里量不到"停在第 N 页而盘上那 N 页还在、
+     * 清单说没齐"这一整档，而那正是这一批唯一的新降级路径。
+     *
+     * ⚠️ 它扳的是**与屏上那枚「取消」同一颗闸**（`DesktopComicDetail` 里那一格 `shouldCancel`），
+     * 不是另开一条"只为取证"的取消路（批 98 那条纪律的同一形）。
+     * ⚠️ `N<=0` 当**读不出**处理（念一句实话）而不是"立刻停手"：那一档与"没给这枚参数"在屏上同形，
+     * 收下来就会让下一次取证以为量过了。
+     */
+    private const val DOWNLOAD_CANCEL_AFTER = "--download-cancel-after"
+
+    /** 起窗后**把某一话从本机删掉**（第九十八批，`--delete=<漫画号>/<话号>`）：那一屏的把手要按两次才真删，
+     *  而鼠标自验那一条路量不到"回读盘"那一档 ⇒ 走同一颗 runner。判读与纪律见 [delete]。 */
+    private const val DELETE = "--delete"
+
+    /** 起窗后**把某一话排回下载队列**（第一百一十一批，`--repair=<漫画号>/<话号>`）：
+     *  「本机已下载」那一屏对缺页那一行新添的把手，鼠标自验量不到"按下之后表里多几笔、盘上一颗没动"
+     *  那一格 ⇒ 走同一颗种子（与 [DELETE] 同一族，两枚号之间那一截斜杠照旧要 `%2F`）。 */
+    private const val REPAIR = "--repair"
+
+    /**
      * 起窗后**自动按一次「找同一张图」**（第三十六批）。
      *
      * 为什么需要它：结果那一格是"按一下才出来的那一层"，而鼠标自验是禁的（手册 §8）——
@@ -211,6 +248,20 @@ internal object ForensicFlags {
     private const val VIEWER_ZOOM = "--viewer-zoom"
 
     /**
+     * 起窗后**落在哪一档**（批 92，`--detail-tier=预览|大图|原图|PREVIEW|SAMPLE|ORIGINAL`）。
+     *
+     * 为什么需要它：三档里只有「大图」是默认落点，而**分块解码那一层只在放大之后才跑** ——
+     * "原图档 × 2.5 倍"那一格从前要靠手点两下（先换档再放大），而鼠标自验是禁的（手册 §8）
+     * ⇒ 不带这枚参数时那一格结构性拍不到，批 89 落的那条「原图档在轨」只能停在"结构上在轨"。
+     *
+     * ⚠️ 它与 [VIEWER_ZOOM] 是两枚而不是复用一枚：前者定"看哪一份字节"，后者定"那一屏放大多少"，
+     * 两件事的读数形状（档位名 vs 一个数）与三档都不同。
+     * ⚠️ 落点不住在初值而住在**点卡那一跳**：`tier` 那颗状态的初值会在同一次点卡里被升档那一步盖掉
+     * （取证那颗 `--detail` 走的就是同一枚 lambda），写成初值就是"念了而屏上没动"那一族第五次。
+     */
+    private const val DETAIL_TIER = "--detail-tier"
+
+    /**
      * 起窗后**自动按一次「复制图片」**（第五十四批）。
      *
      * 为什么需要它：「剪贴板里到底进去了一张什么」只有按下去才量得出，而那一枚按钮在浮层里
@@ -241,7 +292,7 @@ internal object ForensicFlags {
     val KNOWN = listOf(
         "--proxy", "--shot", "--autofav", "--favcheck",
         START_DOMAIN, QUERY, START_SECTION, DETAIL, ARTIST, RANKING, REVERSE, REVERSE_FILE,
-        VIEWER, VIEWER_ZOOM, COPY, SAVE, CRASH, COMIC, READ, READ_PAGE, READ_MODE, DISABLE, COOKIE,
+        VIEWER, VIEWER_ZOOM, COPY, SAVE, CRASH, COMIC, READ, READ_PAGE, READ_MODE, DISABLE, COOKIE, DETAIL_TIER, DOWNLOAD, DELETE, REPAIR,
     )
 
     private val ON = setOf("1", "true", "on")
@@ -512,6 +563,16 @@ internal object ForensicFlags {
      * 读不出时**不中止启动**（同 [artist]）：这一枚落空只是"没进详情屏"，漫画域照常停在列表，
      * 代价是半轮取证白跑；由下面那句 stdout 念出来（绝不静默）。
      */
+    /**
+     * 号那一段的百分号解码：`%2F` → `/`，而 `%25` **最后**才解。
+     *
+     * 为什么只有号这一段：切分吃的是**裸**斜杠，而 goda / nhentai 那一族的漫画号自己就以 `/manga/` 开头
+     * ⇒ 号段不解码就恒被切成空串（批 106 包内那一趟念出的 `号=C:` 就是这一格）。题名、话号、章名那几段
+     * 装的是显示文字与站方 id，本来不含斜杠，多解一道只会把"字面的 %2F"读成斜杠。
+     * ⚠️ 次序就是语义：先解 `%25` 会把 `%252F` 连解两次，变成一道真斜杠。
+     */
+    private fun desktopForensicSegment(raw: String): String = raw.replace("%2F", "/").replace("%2f", "/").replace("%25", "%")
+
     fun comic(args: List<String>): DesktopComicTarget? {
         val given = args.firstOrNull { it == COMIC || it.startsWith("$COMIC=") } ?: return null
         val raw = given.removePrefix("$COMIC=").let { if (it == given) "" else it }
@@ -520,9 +581,9 @@ internal object ForensicFlags {
             return null
         }
         val slash = raw.indexOf('/')
-        val comicId = if (slash < 0) raw else raw.substring(0, slash)
+        val comicId = desktopForensicSegment(if (slash < 0) raw else raw.substring(0, slash))
         if (comicId.isBlank()) {
-            println("D_取证参数 --comic=$raw 漫画号段是空的（要写成 <漫画号>[/<题名>]，例如 12345）")
+            println("D_取证参数 --comic=$raw 漫画号段是空的（要写成 <漫画号>[/<题名>]，例如 12345；号里要放斜杠就写 %2F）")
             return null
         }
         val title = if (slash < 0) comicId else raw.substring(slash + 1).ifBlank { comicId }
@@ -530,6 +591,138 @@ internal object ForensicFlags {
         // 种子这一趟没有入口卡：那枚封面留空是实话，而不是猜一张（详情若回了封面仍会填上）。
         return DesktopComicTarget(comicId, title, "")
     }
+
+    /**
+     * `--download=` 的判读（第九十六批）：起窗后把**哪一话整话写进本机**。
+     *
+     * 值是两截 `<漫画号>/<话号>`（话号用源站那一枚 id 而不是行号 —— 行号会漂，见批 94 那条欠账；
+     * 拿行号当种子就会种一次对、下一次错）。读不出时**不中止启动**（同 [comic]）：代价只是半轮取证白跑，
+     * 而那一格由 stdout 念出一句实话（绝不静默）。
+     */
+    fun download(args: List<String>): Pair<String, String>? {
+        val given = args.firstOrNull { it == DOWNLOAD || it.startsWith("$DOWNLOAD=") } ?: return null
+        val raw = given.removePrefix("$DOWNLOAD=").let { if (it == given) "" else it }
+        val slash = raw.indexOf('/')
+        if (raw.isBlank() || slash <= 0 || slash == raw.length - 1) {
+            println("D_取证参数 $DOWNLOAD=$raw 不是两截（要写成 <漫画号>/<话号>，例如 1461316/1461318；号里要放斜杠就写 %2F；本轮不下载）")
+            return null
+        }
+        val comicId = desktopForensicSegment(raw.substring(0, slash))
+        val episodeId = raw.substring(slash + 1)
+        println("D_取证参数 $DOWNLOAD 起窗后下载整话（号=$comicId 话=$episodeId 走的是长按那一条路）")
+        return comicId to episodeId
+    }
+
+    /**
+     * `--download=` 那枚种子**落空**时的实话（配着 [download] 用）。返回 `null` = 不必说。
+     *
+     * 只念一种情形：给了它而详情那一屏根本没开（没有配套的 `--comic`，或那一枚被别的种子接管走了）。
+     * 下载这一格住在详情那一屏的章表里，那一屏没组合就没有任何消费点 —— 静默会把"我参数打错了"
+     * 读成"整话下载坏了"（与 [detailTierNote] / [readPageNote] 同一条纪律）。
+     * 种子自己读不出时 [download] 已经念过一句，这里不重复。
+     */
+    fun downloadNote(seed: Pair<String, String>?, detailOpens: Boolean): String? =
+        if (seed != null && !detailOpens) {
+            "D_取证参数 $DOWNLOAD=${seed.first}/${seed.second} 没有配套的 --comic ⇒ 本轮不开详情那一屏，那一话没种进去（不下载）"
+        } else {
+            null
+        }
+
+    /**
+     * `--download-cancel-after=` 的判读（第一百批）：这一趟写下几页之后停手。交回 `null` = 没给或读不出。
+     *
+     * 读不出的三档各念各的一句（空值 / 不是数 / 非正数）—— 静默会把"我参数打错了"读成"取消坏了"。
+     * ⚠️ 它**单独给也没有消费点**（要配 `--download=` 才有那一趟可停），所以 [cancelAfterNote] 负责念那一格。
+     */
+    fun downloadCancelAfter(args: List<String>): Int? {
+        val given = args.firstOrNull { it == DOWNLOAD_CANCEL_AFTER || it.startsWith("$DOWNLOAD_CANCEL_AFTER=") } ?: return null
+        val raw = given.removePrefix("$DOWNLOAD_CANCEL_AFTER=").let { if (it == given) "" else it }
+        val n = raw.trim().toIntOrNull()
+        if (n == null) {
+            println("D_取证参数 $DOWNLOAD_CANCEL_AFTER=$raw 不是一个数（要写成 --download-cancel-after=3；本轮不停手）")
+            return null
+        }
+        if (n <= 0) {
+            println("D_取证参数 $DOWNLOAD_CANCEL_AFTER=$n 不是正数（0 与负数当没给，本轮不停手 —— 与「没给这枚参数」同形的那一档不收）")
+            return null
+        }
+        println("D_取证参数 $DOWNLOAD_CANCEL_AFTER 这一趟写下 $n 页后停手（扳的是屏上那枚「取消」同一颗闸）")
+        return n
+    }
+
+    /** 给了 `--download-cancel-after=` 而这一趟根本没开下载：念一句实话。返回 `null` = 不必说。 */
+    fun downloadCancelAfterNote(after: Int?, downloadSeed: Pair<String, String>?, detailOpens: Boolean): String? =
+        if (after != null && (downloadSeed == null || !detailOpens)) {
+            "D_取证参数 $DOWNLOAD_CANCEL_AFTER=$after 没有配套的 $DOWNLOAD（或详情那一屏没开）⇒ 本轮没有可停的那一趟"
+        } else {
+            null
+        }
+
+    /**
+     * `--delete=` 的判读（第九十八批）：起窗后把**哪一话从本机删掉**。
+     *
+     * 值与 [download] **同一把写法** `<漫画号>/<话号>` —— 两枚种子指的是同一格盘上的东西，
+     * 一枚收话号而另一枚收行号就是本仓那一族"复合键两端不同轨"的现形（屏上那行永远命中不了）。
+     * 读不出时不中止启动，只念一句实话。
+     *
+     * ⚠️ 它走的是**与那一行右边那颗把手第二次按下同一条代码路**（同一颗 `desktopComicDeleteChapter`），
+     * 不是另开一条"只为取证"的删除路 —— 否则量到的是种子那条路而用户那一条可以仍是坏的（本仓那一族第六次）。
+     */
+    fun delete(args: List<String>): Pair<String, String>? {
+        val given = args.firstOrNull { it == DELETE || it.startsWith("$DELETE=") } ?: return null
+        val raw = given.removePrefix("$DELETE=").let { if (it == given) "" else it }
+        val slash = raw.indexOf('/')
+        if (raw.isBlank() || slash <= 0 || slash == raw.length - 1) {
+            println("D_取证参数 $DELETE=$raw 不是两截（要写成 <漫画号>/<话号>，例如 1461316/1461318；号里要放斜杠就写 %2F；本轮不删）")
+            return null
+        }
+        val comicId = desktopForensicSegment(raw.substring(0, slash))
+        val chapterId = raw.substring(slash + 1)
+        println("D_取证参数 $DELETE 起窗后删掉那一话（号=$comicId 话=$chapterId 走的是屏上那颗把手第二次按下那一条路）")
+        return comicId to chapterId
+    }
+
+    /**
+     * `--delete=` 那枚种子**落空**时的实话（配着 [delete] 用）。返回 `null` = 不必说。
+     *
+     * 只念一种情形：给了它而**起始域根本不是漫画** —— 那一屏住在漫画域里，域都不对就没有任何消费点。
+     * （落在漫画域而没落在那一行时不必这里重复：`--start-section=` 认不认得那一句 [sectionNote] 已经念过了。）
+     * 静默会把"我参数打错了"读成"删除坏了"（与 [downloadNote] 同一条纪律）。
+     */
+    fun deleteNote(seed: Pair<String, String>?, comicDomainOpens: Boolean): String? =
+        if (seed != null && !comicDomainOpens) {
+            "D_取证参数 $DELETE=${seed.first}/${seed.second} 起始域不是漫画 ⇒ 那一屏根本没开，本轮不动盘（不删）"
+        } else {
+            null
+        }
+
+    /**
+     * `--repair=<漫画号>/<话号>` 的判读（第一百一十一批）：起窗后把那一行**排回下载队列**。
+     *
+     * 与 [delete] 同一族、同一条路（屏上那枚把手办的就是这一步，种子只是替鼠标按一次），
+     * 所以两枚号之间那一截斜杠仍要写 `%2F`（批 107 那颗口径），且号段先过 [desktopForensicSegment] 解码。
+     */
+    fun repair(args: List<String>): Pair<String, String>? {
+        val given = args.firstOrNull { it == REPAIR || it.startsWith("$REPAIR=") } ?: return null
+        val raw = given.removePrefix("$REPAIR=").let { if (it == given) "" else it }
+        val slash = raw.indexOf('/')
+        if (raw.isBlank() || slash <= 0 || slash == raw.length - 1) {
+            println("D_取证参数 $REPAIR=$raw 不是两截（要写成 <漫画号>/<话号>，例如 1461316/1461318；号里要放斜杠就写 %2F；本轮不补齐）")
+            return null
+        }
+        val comicId = desktopForensicSegment(raw.substring(0, slash))
+        val chapterId = raw.substring(slash + 1)
+        println("D_取证参数 $REPAIR 起窗后把那一话排回队列（号=$comicId 话=$chapterId 走的是屏上那颗「补齐」把手同一条路）")
+        return comicId to chapterId
+    }
+
+    /** `--repair=` 落空那一档的实话（与 [deleteNote] 同一判据：域都不对就没有消费点，不许静默）。 */
+    fun repairNote(seed: Pair<String, String>?, comicDomainOpens: Boolean): String? =
+        if (seed != null && !comicDomainOpens) {
+            "D_取证参数 $REPAIR=${seed.first}/${seed.second} 起始域不是漫画 ⇒ 那一屏根本没开，本轮不排队（不补齐）"
+        } else {
+            null
+        }
 
     /**
      * `--disable=<源键>` 的判读（批 83.1）：起窗后把那一颗源当成本台**停用着**，让"停用真折进装载"
@@ -614,9 +807,9 @@ internal object ForensicFlags {
             return null
         }
         val parts = raw.split('/')
-        val comicId = parts[0]
+        val comicId = desktopForensicSegment(parts[0])
         if (comicId.isBlank()) {
-            println("D_取证参数 --read=$raw 漫画号段是空的（要写成 <漫画号>[/<话号>[/<章名>]]，例如 12345/g）")
+            println("D_取证参数 --read=$raw 漫画号段是空的（要写成 <漫画号>[/<话号>[/<章名>]]，例如 12345/g；号里要放斜杠就写 %2F）")
             return null
         }
         val episodeId = parts.getOrNull(1)?.trim().orEmpty()
@@ -693,6 +886,50 @@ internal object ForensicFlags {
         println("D_取证参数 $READ_MODE=$raw 认成 档=${hit.label}")
         return hit
     }
+
+    /**
+     * `--detail-tier=<屏名或枚举名>` → 浮层与大图那一屏起在哪一档（批 92）。
+     *
+     * 认**屏名**（`原图`）而不只认内部名：递参数的人看的是屏上那排分段控件摆的那三串字，
+     * 而那一套词现在只有一颗生产者（`desktopDetailTierLabel`），读数与屏上不会漂。
+     *
+     * ⚠️ 认不出**不猜**（与 [readMode] 同一条纪律）：悄悄落回默认档会把"我参数打错了"读成
+     * "这一档今天兑现不了"，而这两句的下一步动作完全不同（改参数 / 改判据）。
+     * ⚠️ 这里只回答"参数要的是哪一档"，**不回答"这一张摆不摆得出这一档"** —— 后者住在
+     * `desktopDetailTiers` 那张表里（视频与站方没给 `file_url` 那两条撤档规则），由落点那一行念。
+     */
+    fun detailTier(args: List<String>): DesktopDetailTier? {
+        val given = args.firstOrNull { it == DETAIL_TIER || it.startsWith("$DETAIL_TIER=") } ?: return null
+        val raw = given.removePrefix("$DETAIL_TIER=").takeIf { it != given }
+        if (raw == null || raw.isBlank()) {
+            println("D_取证参数 $DETAIL_TIER 没带上那一串（本轮不改档位，用设置里那一档）")
+            return null
+        }
+        val value = raw.trim()
+        val hit = DesktopDetailTier.entries.firstOrNull {
+            it.name.equals(value, ignoreCase = true) || desktopDetailTierLabel(it) == value
+        }
+        if (hit == null) {
+            println("D_取证参数 $DETAIL_TIER=$value 认不出是哪一档（认枚举名与屏名 预览/大图/原图），不替你猜一档")
+            return null
+        }
+        println("D_取证参数 $DETAIL_TIER=$value 认成 档=${desktopDetailTierLabel(hit)}（${hit.name}）")
+        return hit
+    }
+
+    /**
+     * 档位那颗种子**落空**时的实话（配着 [detailTier] 用）。返回 `null` = 不必说。
+     *
+     * 只念一种情形：给了 `--detail-tier` 而**浮层根本没开**（没给 `--detail` 那一族，且没有
+     * 任何一枚会顺带接管浮层的种子）⇒ 那一档哪儿也没去，而 stdout 上刚念过一句"认成 档=原图"。
+     * 不补这一句就是假开关的口径（与 [readPageNote] 同一条纪律）。
+     */
+    fun detailTierNote(seed: DesktopDetailTier?, overlayOpens: Boolean): String? =
+        if (seed != null && !overlayOpens) {
+            "D_取证参数 $DETAIL_TIER=${desktopDetailTierLabel(seed)} 没有配套的 --detail ⇒ 本轮不开浮层，那一档没种进去"
+        } else {
+            null
+        }
 
     /**
      * 页号那颗种子**落空**时的实话（配着 [read] 用）。返回 `null` = 不必说。

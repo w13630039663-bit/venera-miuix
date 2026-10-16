@@ -169,6 +169,13 @@ class DesktopGalleryPreferences(paths: PathProvider) : GalleryPreferences {
 
     override val galleryHideBottomBar: StateFlow<Boolean> = ALWAYS_FALSE
 
+    /**
+     * 「画成水彩」那枚 Beta 档：桌面**没有那个入口**（它长在 Android 大图页的「关于这张图」面板里，
+     * 桌面今天没有那一行），所以给常量而不是给一条能写却没人读的键 —— 与上面那两条 hide 档同一形。
+     * 哪天桌面接了那一行，就把它换成 `store.getBoolean(那一枚键, false)` 并按 `DesktopGalleryPreferencesTest` ①② 补回核。
+     */
+    override val galleryWatercolorBeta: StateFlow<Boolean> = ALWAYS_FALSE
+
     /** 解码口径逐字照 `VeneraPreferences.readEnum`：存枚举名，认不出来就退默认档。 */
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T) =
         MutableStateFlow(enumValues<T>().firstOrNull { it.name == store.getString(key, null) } ?: fallback)

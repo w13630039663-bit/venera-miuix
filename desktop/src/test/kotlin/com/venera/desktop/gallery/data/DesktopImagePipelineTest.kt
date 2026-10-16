@@ -182,6 +182,79 @@ class DesktopImagePipelineTest {
         assertTrue("对照组失效：对岸那张表里没有 gelbooru 那一行", counterpart.contains("\"gelbooru.com\" to"))
     }
 
+    // ── 批 90 · 图片盘缓存那颗落点（包内那两趟量出来的那一格）────────────────
+    // 从前这里**没配过** diskCache ⇒ Coil 用它自己的默认落点（系统 Temp 下的 `coil3_disk_cache`），
+    // 于是"起窗脚本隔离 LOCALAPPDATA"对图片缓存不成立，而开发那一跑与交付包那一跑共用同一颗 journal。
+    // 这三条尺子钉的是"落点由我们递进来、且走数据根那条路"，不钉那条 delete 失败的成因（未定论）。
+
+    @Test
+    fun 盘缓存那一格由调用点递进来而不吃默认落点() {
+        val pipeline = DesktopSourceTree.codeText(
+            DesktopSourceTree.desktopSourceOf("gallery/data/DesktopImagePipeline.kt"),
+        )
+        val flat = pipeline.filterNot { it.isWhitespace() }
+        assertEquals("`.diskCache(` 只许一处（两处就是两条轨）", 1, pipeline.split(".diskCache(").size - 1)
+        assertTrue(
+            "那一处没把目录递进去（「不吃默认落点」这件事就没做）",
+            flat.contains(".diskCache(DiskCache.Builder().directory(cacheDir.path.toPath()).build())"),
+        )
+        assertTrue(
+            "install 的形参表里没有 cacheDir ⇒ 调用点想递也递不进来",
+            flat.contains("funinstall(engine:HttpEngine,cacheDir:File){"),
+        )
+    }
+
+    @Test
+    fun 缓存目录走数据根那条路而与http那颗同一条() {
+        val root = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"))
+            .filterNot { it.isWhitespace() }
+        assertEquals("install 全应用只一处", 1, root.split("DesktopImagePipeline.install(").size - 1)
+        assertTrue(
+            "缓存目录不是从 cacheRoot 派生的（那就是又去摸系统 Temp）",
+            root.contains("CacheDirs.inCache(paths.cacheRoot,DesktopImagePipeline.IMAGE_CACHE_DIR_NAME),"),
+        )
+        // 对照组：http 那颗确实走同一颗件 —— 不是我把名字记错了才"扫得到"
+        val engine = DesktopSourceTree.codeText(
+            DesktopSourceTree.desktopSourceOf("platform/DesktopHttpEngine.kt"),
+        )
+        assertTrue("对照组失效：http 那颗没在用 CacheDirs.inCache", engine.contains("CacheDirs.inCache("))
+    }
+
+    @Test
+    fun 目录名口径与读数那半句都在而默认落点那串不许长回来() {
+        val pipeline = DesktopSourceTree.codeText(
+            DesktopSourceTree.desktopSourceOf("gallery/data/DesktopImagePipeline.kt"),
+        )
+        assertTrue("目录名换了而这条没跟着换", pipeline.contains("\"venera_image_cache\""))
+        assertTrue(
+            "读数没带 ASCII 半句 `cache=`（包内 stdout 的中文会成 U+FFFD，念不出等于没量到）",
+            pipeline.contains("cache=\${cacheDir.path}"),
+        )
+        // 上限那一格**不设**：吃 Coil 自己的默认口径，桌面这边不另造一个 MB 数（对岸没有可抄的值）
+        assertEquals("出现了自造的 maxSizeBytes ⇒ 换了口径要连这条判据一起改", 0, pipeline.split(".maxSizeBytes(").size - 1)
+    }
+
+    /**
+     * ImageIO 那颗 scratch 不许再依赖（批 90）：交付包里 `createImageInputStream` 实测抛
+     * `IIOException: Can't create cache file!` —— 包内进程不能在 `java.io.tmpdir` 下建那颗目录
+     * （成因未定论，与"包内取不到 jar 里的原生库"同一族）。我们喂的全是内存里的 ByteArray，
+     * 落盘 scratch 本来就是纯开销 ⇒ 起手一句 `setUseCache(false)`，且**必须早于任何取图**。
+     */
+    @Test
+    fun ImageIO那颗scratch在起图之前就关掉而不靠系统Temp() {
+        val root = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"))
+            .filterNot { it.isWhitespace() }
+        assertEquals("关缓存那一句只许一处", 1, root.split("ImageIO.setUseCache(false)").size - 1)
+        assertTrue(
+            "它排到了取图那一跳之后（第一笔还是会去摸系统 Temp）",
+            root.indexOf("ImageIO.setUseCache(false)") < root.indexOf("DesktopImagePipeline.install("),
+        )
+        assertTrue(
+            "读数没带 ASCII 半句 imageio=（包内中文 stdout 会成 U+FFFD，念不出等于没量到）",
+            root.contains("imageio=内存"),
+        )
+    }
+
     private companion object {
         /** 对岸表里其余那些 host：桌面一枚都不许写。 */
         val OTHER_HOSTS = listOf(

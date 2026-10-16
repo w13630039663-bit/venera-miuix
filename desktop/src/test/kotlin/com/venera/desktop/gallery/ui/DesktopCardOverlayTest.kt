@@ -47,6 +47,14 @@ class DesktopCardOverlayTest {
         assertEquals("浮起档必须是 #353535", 0xFF353535.toInt(), DesktopTheme.SurfaceRaised.toArgb())
         assertEquals("rail 必须是 #1C1C1C", 0xFF1C1C1C.toInt(), DesktopTheme.RailBackground.toArgb())
 
+        // 批 95：`填充型`强调那一档（稿 `--accent-fill` = `#5B47A8`，`windows-gallery-home-touhou-2026-10-03.html:20`）。
+        // 为什么现在才要它：桌面从前没有"填色跟着 accent"的控件，直到详情那一屏那枚主胶囊 ——
+        // 而库那条链吃不到我们的 accent（`DesktopAccentFillTest` 三条判据钉着），所以这一档必须自家出。
+        assertEquals(
+            "填充档必须是稿 `--accent-fill` = #5B47A8（不许多一档也不许顺手改深成 surface 那一族）",
+            0xFF5B47A8.toInt(), DesktopTheme.AccentFill.toArgb(),
+        )
+
         assertTrue(
             "rail 与 pane 必须不同档 —— 同档就等于两级导航没有层级差" +
                 "（DesktopGalleryHome 的注释曾声称更深一档，实际两处是同一个色）",

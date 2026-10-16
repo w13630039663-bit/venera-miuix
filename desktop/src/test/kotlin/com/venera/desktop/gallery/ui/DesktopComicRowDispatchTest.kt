@@ -55,11 +55,13 @@ class DesktopComicRowDispatchTest {
     @Test
     fun 只有真要问源站的那几屏才起引擎() {
         // 「收藏」「阅读历史」两屏读的是本地库，白起一颗 GraalJS + 整源装载是代价不是准备。
-        assertFalse(desktopComicEngineNeeded(DesktopComicScreen.HISTORY))
-        assertFalse(desktopComicEngineNeeded(DesktopComicScreen.FAVORITES))
-        assertTrue("探索那一屏的墙要图要卡", desktopComicEngineNeeded(DesktopComicScreen.EXPLORE))
-        assertTrue("详情要 `loadInfo`", desktopComicEngineNeeded(DesktopComicScreen.DETAIL))
-        assertTrue("阅读要取页", desktopComicEngineNeeded(DesktopComicScreen.READER))
+        // 第一百零六批：`hasQueueWork` 这一路只喂 false —— 「那一行有没有活」的两档由
+        // `DesktopComicQueueRowPumpTest` ①/② 钉，这里不双轨钉同一件事。
+        assertFalse(desktopComicEngineNeeded(DesktopComicScreen.HISTORY, hasQueueWork = false))
+        assertFalse(desktopComicEngineNeeded(DesktopComicScreen.FAVORITES, hasQueueWork = false))
+        assertTrue("探索那一屏的墙要图要卡", desktopComicEngineNeeded(DesktopComicScreen.EXPLORE, hasQueueWork = false))
+        assertTrue("详情要 `loadInfo`", desktopComicEngineNeeded(DesktopComicScreen.DETAIL, hasQueueWork = false))
+        assertTrue("阅读要取页", desktopComicEngineNeeded(DesktopComicScreen.READER, hasQueueWork = false))
     }
 
     @Test
@@ -87,10 +89,10 @@ class DesktopComicRowDispatchTest {
     @Test
     fun 退场那颗不许跟着分支走() {
         val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertEquals("引擎句柄的 dispose 全树恰好一处", 1, code.split("onDispose { closing?.close() }").size - 1)
+        assertEquals("引擎句柄的 dispose 全树恰好一处", 1, code.split("onDispose { queueScope.cancel(); closing?.close() }").size - 1)
         assertTrue(
             "dispose 必须挂在引擎那颗持有件里，而不是探索那一屏的 UI 段（否则换行就漏一颗）",
-            code.indexOf("private fun rememberComicEngine(") in 0 until code.indexOf("onDispose { closing?.close() }"),
+            code.indexOf("private fun rememberComicEngine(") in 0 until code.indexOf("onDispose { queueScope.cancel(); closing?.close() }"),
         )
     }
 }

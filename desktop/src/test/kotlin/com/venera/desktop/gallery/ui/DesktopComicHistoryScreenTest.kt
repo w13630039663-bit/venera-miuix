@@ -87,17 +87,24 @@ class DesktopComicHistoryScreenTest {
         val rows = desktopComicRows()
         // 批 83 添了第四行「源管理」⇒ 这一条从"三行"改成"四行"，并逐行点名（只数颗数的话，
         // 谁被换掉都看不出来 —— 那是本仓那一族"计数判据放过内容漂移"的形状）。
-        assertEquals("漫画域从今天起四行（探索 / 收藏夹 / 阅读历史 / 源管理）", 4, rows.size)
-        val history = rows[2]
-        assertEquals("comic-history", history.key)
+        // 批 96/97 之后是五行：添的那一行是「本机已下载」，它**追加在末尾**而不是插进中间。
+        // ⚠️ 本条从前用 `rows[2]` / `rows[3]` 按**索引**点名，而"插中间会把这两枚指到别的话上去"这件事
+        // 正是这一族自己刚踩过的形状（批 94 那条「行号会漂」同形）⇒ 改成按 key 找：以后谁插在哪都点得准。
+        // 批 96/97 之后是五行，第一百零五批之后是六行：添的那两行都**追加在末尾**而不是插进中间。
+        assertEquals("漫画域从今天起六行（探索 / 收藏夹 / 阅读历史 / 源管理 / 本机已下载 / 下载队列）", 6, rows.size)
+        val history = rows.first { it.key == "comic-history" }
         assertEquals("阅读历史", history.title)
         assertEquals("转正的那一行必须带内容件而不是理由", DesktopGallerySectionContent.ComicHistory, history.content)
         assertEquals("已转正的那一行不许再留「未实现」那句", null, history.reason)
-        val sources = rows[3]
-        assertEquals("comic-sources", sources.key)
+        val sources = rows.first { it.key == "comic-sources" }
         assertEquals("源管理", sources.title)
         assertEquals(DesktopGallerySectionContent.ComicSources, sources.content)
         assertEquals("源管理那一屏是真屏，不许挂「未实现」的理由", null, sources.reason)
+        // 批 97 那一行：写侧在批 96 已经落地，这一行是它缺的**读侧**，所以它同样不许挂「未实现」。
+        val downloads = rows.first { it.key == "comic-downloads" }
+        assertEquals("本机已下载", downloads.title)
+        assertEquals(DesktopGallerySectionContent.ComicDownloads, downloads.content)
+        assertEquals("那一屏是真屏（数盘上那一棵树），不许留「未实现」的理由", null, downloads.reason)
     }
 
     @Test

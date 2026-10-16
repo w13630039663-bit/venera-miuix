@@ -524,5 +524,89 @@ class DesktopStaleClaimsTest {
         assertTrue("对照组失效：阅读那一屏没问页表了", reader.contains("engine.pages("))
     }
 
+    /**
+     * ㉓ 「仍然缺的是漫画章节下载」那半句是假话了（第九十六批把整话落盘接上了）。
+     *
+     * 它住在 `DesktopGalleryHomeSections.kt` 的**注释**里（那条"下载"缺席说明的历史账），
+     * 正是这颗尺子故意扫全文而不跳注释的那一族 —— 用 `codeText` 扫它恒绿。
+     * 排期 `remaining-plan-and-reuse-2026-10-10.md` 批 96 那一行点名要**同批**改掉它：
+     * 同一族那五句假话平均活四批，而这一句已经活到第六批才落地。
+     */
+    @Test
+    fun 章节下载那句不再说缺() {
+        assertEquals("还有文件写着「仍然缺的是漫画章节下载」：" + hits("仍然缺的是**漫画章节下载**"), 0, hits("仍然缺的是**漫画章节下载**").size)
+        // 对照：这句被禁**是因为整话落盘真接上了消费点**（不是"声明在"）。撤掉接线会先红在这里。
+        // ⚠️ 2026-10-13 搬家预备（批 104）：从前这两枚钉的是"**详情那一屏那颗文件里**含有这一串"，
+        //    而批 101 定档 C 要把那颗 runner 抽成共用件 —— 调用点会搬家，届时这两枚必须跟着改指新址，
+        //    有一段"文档证据悬空"的时间。改成**跨全 main 数次数**之后：搬家不用动这一把，而"消费点恰好一处、
+        //    不许第二条落盘路"那一层含义一字未减（`codeOccurrences` 跳注释，而那颗**声明**写的是
+        //    `desktopComicDownloadChapter(` 换行再接 `dir: File` ⇒ 不含 `(dir,` 那一串，不会被数进来）。
+        val runnerCalls = DesktopSourceTree.desktopMainSources()
+            .sumOf { DesktopSourceTree.codeOccurrences(it, "desktopComicDownloadChapter(dir,") }
+        assertEquals("那颗 runner 的调用点在全 main 里必须恰一处（零处=那句'还缺'成实话；两处=第二条落盘路）：" + runnerCalls, 1, runnerCalls)
+        val dirCalls = DesktopSourceTree.desktopMainSources()
+            .sumOf { DesktopSourceTree.codeOccurrences(it, "DesktopComicDownloadQueue.enqueue(") }
+        // 第一百一十一批：入队那一路多了一枚（「本机已下载」那一行的「补齐」）⇒ 对照组从 1 抬到 2。
+        assertEquals("对照组失效：全 main 不再有人把那一话排进队列（按下去没反馈那一族）：" + dirCalls, 2, dirCalls)
+    }
+
+    /** 某句禁串活在 `desktop/src/main` **整棵树**的哪一行（含注释；比 [hits] 宽一档）。 */
+    private fun hitsMain(banned: String): List<String> =
+        DesktopSourceTree.desktopMainSources().flatMap { file ->
+            file.readText().lines().filter { it.contains(banned) }.map { "${file.name}: ${it.trim().take(90)}" }
+        }
+
+    /**
+     * ㉔ 「已下载的整话在屏上数不着」那半句也过期了（第九十七批接上了「本机已下载」那一屏）。
+     *
+     * 同一族**第二次**栽在同一批里：㉓ 那条是批 96 接手时把别人留下的假话和自己的工作一起改的，
+     * 而这一句是批 96 自己新写的账，批 97 把读侧接上之后它**在同批内**就变假了 ——
+     * 改 README 的时候把界面里那句漏了，而新建那颗读侧件的 own 注释里又写了一遍。
+     * 所以这一条扫**整个 main**（不只 `gallery/ui/`）：那句说的是"桌面到处都没有"，本来就不该只钉一个目录。
+     * 对照钉的是那一屏真在树上、且真接在漫画域的分支上。
+     */
+    @Test
+    fun 已下的整话不再说屏上数不着() {
+        val banned = "任何一屏都数不着"
+        assertEquals("main 树里还有文件写着「已下的整话屏上数不着」：" + hitsMain(banned), 0, hitsMain(banned).size)
+        // 对照一：这句被禁**是因为读侧真在数盘**（不是"那颗件声明在"）。
+        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt"))
+        assertTrue(
+            "对照组失效：那一屏不再读盘上那一棵树（那句'数不着'就又成实话，该把它放回来）",
+            pane.contains("desktopComicDownloadedChapters("),
+        )
+        // 对照二：它挂在漫画域那一行的分支上（读了盘而没接进浮层 = 用户仍然数不着）。
+        val section = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
+        assertTrue(
+            "对照组失效：那一屏没接到漫画域的分支上",
+            section.contains("DesktopComicScreen.DOWNLOADS -> DesktopComicDownloadsPane("),
+        )
+    }
+
+    /**
+     * ㉕ 「那一屏删不掉已下的话」也过期了（第九十八批接上了删除）。
+     *
+     * 同一族**第三次**栽在同一批里：㉓ 是批 96 接手时改别人的账，㉔ 是批 96 自己写的账被批 97 顶假，
+     * 而这一句是批 97 自己新写的账（那颗读侧件的 KDoc 与 README 各一遍），批 98 接上删除后它**在同批内**又假了。
+     * 所以禁串取的是那一屏**连写的形状**，而扫的是整个 main（含注释）。
+     */
+    @Test
+    fun 已下的整话不再说删不掉() {
+        val banned = "**删不掉**已下的话"
+        assertEquals("main 树里还有文件写着「那一屏删不掉已下的话」：" + hitsMain(banned), 0, hitsMain(banned).size)
+        // 对照一：那句被禁是因为屏上真有一颗按得动的把手在调那颗 runner（声明在不算）。
+        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt"))
+        assertTrue(
+            "对照失效：那一屏不再调删除那颗（那句「还删不掉」就又成实话，该把它放回来）",
+            pane.contains("desktopComicDeleteChapter("),
+        )
+        // 对照二：删完**回读盘**那一判还在（不吃返回值才是这一批要顶住的那条对岸缺陷）。
+        val data = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("gallery/data/DesktopComicChapterDelete.kt"))
+        assertTrue(
+            "对照失效：删除那颗不再回读盘（那一句「删掉了」就又没说准）",
+            data.contains("if (!dir.exists()) return DesktopComicDeleteOutcome.Deleted"),
+        )
+    }
+
     private val 数词 = listOf("零", "一", "二", "三", "四", "五", "六", "七", "八")
 }
