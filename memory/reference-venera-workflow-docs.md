@@ -8,7 +8,7 @@ metadata:
 Venera (branch `compose-migration`, package `com.venera.compose`) UI 迁移有几份必须先看的地方文档：
 
 - `docs/Venera_AI_完整工作流程_交接手册_2026-09.txt` — 9 阶段闭环流程（审计 → 设计 → 实施 → Static QA → Build QA → 真机 QA → Freeze）、Scope/Stop Condition 任务模板、Venera Components 冻结清单、Token 分层原则、Source-native capability 规则、禁止改动项（ViewModel / Data Model / Source / Network / Reader / Navigation / BottomBar / 已稳定 Dialog-Sheet Host）。
-- `FREEZE-STATEMENT.md`（仓库根目录）— 已冻结页面清单与批次、导航层 Tab 枚举顺序决策、组件契约变更（VeneraCard `onLongClick`）。
+- `docs/rounds/FREEZE-STATEMENT.md`（2026-10-17 前在仓库根）— 已冻结页面清单与批次、导航层 Tab 枚举顺序决策、组件契约变更（VeneraCard `onLongClick`）。
 - `docs/rounds/venera-tag-multilang-plan.md`（仓库根目录）— 标签多语言 L1/L2 方案与实施记录。**做标签相关改动前必读**：§4.1 合并范围（只合字面同义；语义同义不合并，因为合并会削减可点检索面词 = 功能损失；跨脚本简↔繁无转换表所以实现不了）、§6 决策记录（默认跟随系统语言、`中文 (原文)` 常驻双显、L2a 未立项）、§8 实施记录（L1 已落地的文件与两处实施收窄、仍待用户豁免的渲染点、顺带发现的既存缺陷）。根目录另有一批 `explore-*.md` / `venera-*-plan.md` / `official-gap-analysis*.md` 历史设计文档，改对应模块前先看对应文件；注意部分对照表（如 `docs/rounds/venera-gap-analysis.md` 里的设置章节）可能已过时，以代码实测为准。
 - `docs/rounds/settings-audit-2026-09.md`（仓库根目录）— 设置树全量审计：每个设置项的 file:line、写了哪个键、被谁消费，并区分三类问题（隐形缺口 / 僵尸键 / 名不副实文案）。改或加设置项前先看它，配合 [[project-settings-placeholder-policy]] 的灰行判据。
 - `docs/rounds/comic-detail-polish-2026-09.md`（仓库根目录）— 漫画详情页本轮视觉打磨的 Scope 与决策记录。**再动详情页前先看**：§2 记了「标签分组名翻译不走 `JsComicSource.translate()`」的否决理由（多语言文档 §1.3 + 保护域），§4 记了两项**已明确暂缓**的美化（预览 3 列网格改横向 LazyRow = 偏离官方；封面衍生主色 Hero 背景 = 仓库无调色板基础设施且官方无此效果），别当新点子重新提。§3.2 记了预览加载最终口径是「固定灰底 + 流光骨架 + 200ms 淡入」，**封面模糊底已被用户要求删除**。

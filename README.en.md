@@ -399,10 +399,10 @@ venera-compose/
 │   └── src/test/java/                  # 119 pure JVM correctness test files (116 carry cases, 3 are helpers; one of them is the source-scan base)
 ├── gradle/libs.versions.toml           # Single source of dependency versions (with reasons for pins)
 ├── screenshots/                        # Images used by this README
-├── docs/                               # Workflow manual and per-topic designs
-│   └── rounds/                         # Per-round plans, audits and measurement archives
-├── memory/                             # Project knowledge base: decision records and measured limits
-└── FREEZE-STATEMENT.md                 # Page freeze statement and exemptions
+├── docs/                               # Workflow manual, freeze statement and per-topic designs
+│   ├── rounds/                         # Per-round plans, audits and measurement archives
+│   │   └── FREEZE-STATEMENT.md         # Page freeze statement and per-batch exemptions
+└── memory/                             # Project knowledge base: decision records and measured limits
 ```
 
 ## Writing a comic source
@@ -435,7 +435,7 @@ Please align with these before opening a PR:
 3. **Degraded paths fail loudly, never silently wrong** — if an adaptive branch fails it throws and explains; a partial result is never handed back as if complete.
 4. **Take dimensions from existing sources** — upstream values or tokens already in the app; no invented numbers. Visual issues get measured in pixels before code changes.
 5. **Push correctness into pure functions** — new correctness logic is extracted into Android-framework-free functions with JVM tests.
-6. **Page freezes** — accepted pages (see `FREEZE-STATEMENT.md`) only accept real bug fixes and explicit regressions; drive-by visual refactoring is forbidden, and changes require review plus a recorded exemption.
+6. **Page freezes** — accepted pages (see `docs/rounds/FREEZE-STATEMENT.md`) only accept real bug fixes and explicit regressions; drive-by visual refactoring is forbidden, and changes require review plus a recorded exemption.
 
 ### How to contribute
 
