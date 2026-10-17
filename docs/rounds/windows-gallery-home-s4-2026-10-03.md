@@ -1,6 +1,6 @@
 # S4 · Gelbooru 凭据与「缺席必须明说」（含 S5 稿件回改的已落地部分）
 
-> 上级方案：`~/.qoder-cn/plans/wistful-inlet-snipe.md` §S4 / §S5
+> 上级方案：`docs/rounds/windows-gallery-home-plan-2026-10-03.md` §S4 / §S5
 > 上一批：S1 `windows-gallery-home-s1-2026-10-03.md` · S2-A `…-s2a-wiring-…` · S2-B `…-s2b-shell-…` · S3 提交 `3f8c133`
 
 ## 一、这一批真正做掉的事

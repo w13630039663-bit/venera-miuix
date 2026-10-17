@@ -3,7 +3,7 @@
 > 你是谁、在干什么：你是**同时开工的两个执行方之一（B）**，只做"桌面首页的两级导航骨架 + 节的注册表 +
 > pane 六项上屏（缺的四项显式标『未实现』）"这一半。另一半（A）在另一个 git worktree 里同时做桌面接线，
 > 你们**不共享任何一颗文件**。
-> 上级方案：`~/.qoder-cn/plans/wistful-inlet-snipe.md` · 上一批读数：`docs/rounds/windows-gallery-home-s1-2026-10-03.md`
+> 上级方案：`docs/rounds/windows-gallery-home-plan-2026-10-03.md` · 上一批读数：`docs/rounds/windows-gallery-home-s1-2026-10-03.md`
 > 你的对岸计划：`docs/rounds/windows-gallery-home-s2a-wiring-2026-10-03.md`（只读，别改它）
 > 设计稿（视觉的唯一出处）：`docs/designs/windows-gallery-home-touhou-2026-10-03.html`
 

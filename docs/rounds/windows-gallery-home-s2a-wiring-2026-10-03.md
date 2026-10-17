@@ -2,7 +2,7 @@
 
 > 你是谁、在干什么：你是**同时开工的两个执行方之一（A）**，只做"把画廊业务口在桌面上接成真路"这一半。  
 > 另一半（B）在另一个 git worktree 里同时做桌面 UI 壳，你们**不共享任何一颗文件**。  
-> 上级方案：`~/.qoder-cn/plans/wistful-inlet-snipe.md` · 上一批读数：`docs/rounds/windows-gallery-home-s1-2026-10-03.md`  
+> 上级方案：`docs/rounds/windows-gallery-home-plan-2026-10-03.md` · 上一批读数：`docs/rounds/windows-gallery-home-s1-2026-10-03.md`  
 > 你的对岸计划：`docs/rounds/windows-gallery-home-s2b-shell-2026-10-03.md`（只读，别改它）
 
 ## 0. 硬约束（违反一条就等于这批白做）

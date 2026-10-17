@@ -1,5 +1,7 @@
 # 「关于这张图」面板两个 bug —— 交接文档（2026-10-05）
 
+> ⚠️ **2026-10-17 仓库卫生改判**：本文里所有 `docs/forensics/…` 路径的日志原文**已撤出仓库** —— 那是本机 logcat 取证原文，含成人站标签原文（`1girl`/`1boy` 等 84 行）与本机进程号，按本仓纪律不入库。镜像在本机 `_qa/forensics-mirror-2026-10-17/forensics/`（78 颗 / 3,563,150 B，与撤出前逐字节相同）；本文引用的行号、`grep -c` 命令与读数**都在镜像上复现得了**，把路径前缀换成镜像即可。
+
 > **这份是交接件，给接手的 AI 一次性读全。**
 > 前身是两份平行文档（`gallery-sheet-dead-tap-forensics-2026-10-05.md` = 「点不动」、
 > `gallery-sheet-jitter-forensics-2026-10-05.md` = 「鬼畜」）。本文件把它们**合成一条时间线**，
@@ -323,7 +325,7 @@ Column(
 
 ## 5. 日志内容（关键原文，可复查）
 
-日志落盘位置：`docs/forensics/`。三批：
+日志落盘位置：`docs/forensics/`（**2026-10-17 已撤出仓库**，镜像 `_qa/forensics-mirror-2026-10-17/forensics/`）。三批：
 
 | 批次 | 目录 | 大小 | 覆盖时段 |
 | --- | --- | --- | --- |
@@ -555,7 +557,7 @@ $ grep -o "面板内容 滚动 value=[0-9]* max=[0-9]*" ... | grep -o "max=[0-9]
    以及为探针加的 4 个 import（`awaitEachGesture` / `awaitFirstDown` / `PointerEventPass` / `pointerInput`）。
 4. ⚠️ **不要跟着撤** `components/ChromeCaptureSuppress.kt` 与 `gallery/ui/GalleryFlyIn.kt` 里那条 alpha 让位
    —— 那是 hero 转场的**修复**（同一轮里落的），有 8 颗单测 `ChromeCaptureSuppressTest` 钉着。
-5. 取证目录（**待清理**）：
+5. 取证目录（**2026-10-17 已清理**：下面三目录已从仓库撤出，原文留本机镜像 `_qa/forensics-mirror-2026-10-17/`；`.tmp_shot_probe/` 本来就没入库）：
    - `.tmp_shot_probe/`
    - `docs/forensics/jitter-verify-2026-10-05-0300/`
    - `docs/forensics/jitter-verify-2026-10-05-0312/`

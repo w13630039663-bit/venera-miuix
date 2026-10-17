@@ -1,6 +1,6 @@
 # Windows 图库首页 · S1「脐带」落地（2026-10-03）
 
-> 方案：`~/.qoder-cn/plans/wistful-inlet-snipe.md`（S1–S5 五批，本文件只结 S1）
+> 方案：`docs/rounds/windows-gallery-home-plan-2026-10-03.md`（S1–S5 五批，本文件只结 S1）
 > 设计稿：`docs/designs/windows-gallery-home-touhou-2026-10-03.html`（回改清单在方案里，属 S5）
 > 上一批桌面读数：`docs/rounds/windows-r1f-stage1-plan-2026-10-02.md`
 
