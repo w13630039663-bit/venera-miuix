@@ -365,6 +365,43 @@ fun LayoutCoordinates.boundsInWindow(clipBounds: Boolean = true): Rect {
 
 **下一刀**（依赖顺序未变）：④一标量两层 + 删三条曲线（与①同刀）→ ③圆角锚点 → ⑦无锚侧滑退路 → ②离场起点换页图块。
 
+---
+
+## 9.3c 批 B 第三刀 = ② 离场起点换页图块 + ③ 圆角换锚（2026-10-19 后半夜，主人钦定顺序：先③②）
+
+**这一刀要收的**（两件都对着 §4.4 那一行）：
+
+- ②：多 P 作翻到第 3 页按返回，旧代码截 `fullFrameBox`（**整屏**）⇒ 飞行体带着整摞页（三页图 + 动作条 + 标签）缩回一张**小卡**，而落点是一张作品卡 —— 两者不是同一张画，末段只能淡掉才读得下去。pixez 那一族是"**同一个视图**变形成卡"。
+- ③：圆角补偿吃 `dst.width / to.width`（当帧宽 ÷ **终点宽**）—— 那是一把借来的尺，只在"起点与终点同宽"的整屏场景里蒙对；§4.4 圆角那一行记的"末段补白"就是它。
+
+**做法：**
+
+| 那一格 | 落在哪 | 现量 |
+|---|---|---|
+| ② 起点查哪儿 | `PixivWorkScreen.exitStartOrNull(post)`（新） | ✅ 拿 `back` 手里那颗 `post`（身份链仍只一句，尺子钉着）换成**逐页键** `post.copy(pageOrdinal = pageIndex)` 去查同一张落点表。页位来自每槽自报的 `pageIndex`（`onPageIndexChanged`），不另起一颗 state |
+| ② 截哪儿 | `back` 里 `captureRegion(host, start)` | ✅ 从 `fullFrameBox`（1080×2376）换成当前页块（实测 1080×1527）——**849px 的差额**就是从前飞行体多带的动作条 + 标签 + 详情段那一摞 |
+| ② 门闩 | 渲染条件去掉 `leaving &&` | ✅ 与样板 `GalleryPostScreen` **逐字一致**。挂着 `leaving &&` 时录屏逐帧证：返回全程屏上**没有飞行体**（359ms 太短 + 门闩把它关在门外）。三样齐了本身就是"正在飞"的充分条件（`exitFrame` 只在 capture 成功那一瞬非空），不需要第四颗布尔 |
+| ③ 换锚 | `exitExpansion` 的 `cornerRadiusScale` | ✅ 从 `dst.width / to.width` 换成 **cover 那颗 scale**（`maxOf(dst宽÷源宽, dst高÷源高)`，两向恒等，`maxOf` 只为吸收源块取整的 1px 漂移）。**不钳上界**（旧式的 `coerceIn(0f, 1f)` 跟着退休）：宽屏作品那一档内容被**放大**（scale 1.5），圆角补偿必须跟着放大 |
+| ③ 屏上两档 | `PixivWorkScreen` 离场件 | ✅ 起点档 = **0dp 方角**（`PixivPageImage` 是裸 Box、压根不裁圆角），终点档 = `veneraCoverCornerRadius()`（卡封面 `medium`）—— 比原来的 `extraLarge → medium` 更合语义 |
+| 判据层摸底 | `_probe/l0/probe_scale.kt` + `probe.sh`（一次性） | ✅ 把"两式何时相等"从传闻变成实测：**只在起点那一帧重合**（那一刻当帧框就是位图本身）；同宽族其余全程旧式恒 1（= "圆角永远不补偿"），而内容在被放大；异宽族终点档新式 0.3448 vs 旧式 1.0 |
+| 新尺 | `GalleryExitExpansionTest` 两笔 | ✅ `圆角锚两式只在起点那一帧重合`（同宽族除起点外必须分家 + 异宽族 0.3448）+ 对表那一格从"与老锚逐位相同"改成"= cover scale"；`终点那一帧圆角缩放应为 1` 那条旧规格按新口径改成"= 内容缩放比"（宽屏那一档 >1，这正是③要的行为） |
+| 接线尺 | `GalleryPixivWorkPageWiringTest` 一笔 | ✅ `离场起点是当前那一页图块不是整屏`：captureRegion 不许再吃 `fullFrameBox`、起点查逐页键、页位只从每槽自报那颗问。另有两处口径就地改对（身份链升到 `back` 一颗、起点复用它） |
+
+**真机同步验（设备 8bfdaeb5；主人 02:49 献策"放慢系统动画再抓"——`window/transition/animator_animation_scale = 10`，弹簧全程从 359ms 拉成约 3.6s，`screencap` 才来得及；取证 `_probe/b34.mp4` + `_probe/frames/s004.png`、`s006.png`）：**
+
+| 帧 | 看见什么 | 判读 |
+|---|---|---|
+| s004（约 1.5s，返回后 0.7s） | 飞行体带**一页图块**（方角）悬在排行榜上方，背后是模糊的墙 | **② 成立**：飞行体里是用户正在看的那一页，不是整屏那一大摞；起点档方角与 `PixivPageImage` 裸盒一致 |
+| s006（约 2.5s） | 飞行体已化进那张卡，屏上只剩主墙，**无残留、无二次落位** | 末段淡出与落点衔接正常；③ 的圆角从方角走到卡封面档，两端各自精确落在该档 |
+
+FlyProbe 同步读数：`返回查落点 target=Rect(64,1144,437,1499) start=Rect(0,0,1080,1527) fullFrame=Rect(0,0,1080,2376)` —— start 比 fullFrame **少 849px**，正是②要砍掉的那一摞。
+
+**顺带量到的一条（不属本刀，记账）**：`退出摘模糊 剩余flag=0 radius=84` —— `setBackgroundBlurRadius(0)` 之后 flag 摘净了，radius 还留着 84（本机这一族 ROM 的行为）。返回全程后面那面墙可能仍是糊的，**待核**（§4.4 之外的独立一格）。
+
+**这一刀没动的**：飞行体里仍是**截图像图**（活画面是①）；`exitBodyAlpha` 末段淡出仍在（⑤ 要删的三条曲线之一，与①同刀）。
+
+**批 B 剩下的**：①+④+⑤ 机制换体那一大刀（活画面 / 一标量两层 / 删三条曲线 / 淡源卡）→ ⑦ 无锚侧滑退路。③② 已 ✅。
+
 ### 9.4 还没做的
 
 | 什么 | 状态 |

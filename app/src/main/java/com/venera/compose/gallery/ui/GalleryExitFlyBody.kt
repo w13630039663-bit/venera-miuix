@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.ui
+package com.venera.compose.gallery.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,14 +44,18 @@ import kotlin.math.roundToInt
  *
  * 缺任何一件就**什么都不画**：让调用方老实 finish，不许把"飞不起来"演成"飞完了"。
  *
- * ## 圆角为什么随路程换
+ * ## 圆角为什么随路程换（批 B②③ 之后换了两个端点）
  *
- * 起点是画面框（`flyCornerRadius` = `shape.large`），终点是**卡里那张封面**
- * （`coverCornerRadius` = `shape.medium`，见 `veneraCoverCornerRadius`）。两处都用大圆角的话，
- * 落回卡片时飞行体的角比封面圆 4dp ⇒ "贴上去"那一帧在卡片四角盖着一小块**不属于卡片**的图，
- * 飞行体一撤、卡片自己的四角才补上来 —— 一次角上的补白（2026-10-16 真机读数）。
+ * 起点这一端在 2026-10-19 批 B② 之后不再是**整屏**，而是**当前那一页图块**
+ * （`PixivPageImage` 是裸 Box、不裁圆角 ⇒ 起点档就是方角 0dp）；终点仍是卡里那张封面
+ * （`coverCornerRadius` = `shape.medium`，见 `veneraCoverCornerRadius`）。两档之间随路程插值，
+ * 两端各自精确落在该档。
  *
- * 进度插值与"哪一档圆角"是**正交**的两件事：前者管"同一比例缩到多大"（`cornerRadiusScale`），
+ * 补偿那一枚（`cornerRadiusScale`）在批 B③ 换了锚：从"当帧宽 ÷ **终点宽**"换成
+ * "当帧宽 ÷ **源块宽**"（内容真的被缩放了多少）。旧式只在起点与终点同宽的整屏场景里
+ * 与它相等；起点换成页块之后两者分家，用旧式会在中途软掉/硬掉。
+ *
+ * 进度插值与"哪一档圆角"是**正交**的两件事：前者管"缩到多大"（`cornerRadiusScale`），
  * 后者管"随路程换用哪一档"，所以两处相乘而不是二选一。
  *
  * @param progress 0 = 还在起点，1 = 已落到卡片那一格。**传 lambda 不传值**：动画值在

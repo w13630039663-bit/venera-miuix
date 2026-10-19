@@ -620,6 +620,43 @@ fun PixivWorkScreen(
     val topBarBackdrop = rememberTopBarBackdrop()
 
     /**
+     * **离场起点**：屏上**当前那一页图块**的矩形（2026-10-19 · 批 B②）。
+     *
+     * ## 为什么从整屏换成那一页
+     *
+     * 从前起点是 `fullFrameBox`（整屏截一块再飞）—— 多 P 作翻到第 3 页按返回，飞行体带着
+     * 整摞页（三页图 + 动作条 + 标签）从整屏那么大一框缩回一张**小卡**上；而落点是一张
+     * 作品卡，两者不是同一张画。末段必须淡掉才读得下去（`exitBodyAlpha`），
+     * 落地那一帧是"一张小号页面压在封面之上"（§9.3b 记的那一族）。换成当前页之后，
+     * 飞行体带的就是**用户此刻正在看的那一页**，落回卡上时是同源构图 —— 这才是 pixez 那一族
+     * "同一个视图变形成卡"的形状（计划 §5 批 B② 的原话：不许 `fullFrameBox`）。
+     *
+     * ## 键与 [exitTargetOrNull] 是两把，故意如此
+     *
+     * - 起点查**逐页键** `uid:pN`（这一屏自己的每一页按 `PixivWorkFlow` 报的 `pageIndex`）；
+     * - 终点查**作品键** `uid`（墙上那张卡登记的那把）。
+     *
+     * 两把都从 `GalleryFlyIn.cardBoundsOf` 这一张表问 —— 表里两类键都在（页自己登记 `uid:pN`，
+     * 墙登记 `uid`），屏上不另拼任何一把。
+     *
+     * ## 取不到就交 null（不演）
+     *
+     * 那一页还没量出矩形（刚滑过来还没布局完）/ 没登记（打码命中那一族压根不登记）⇒ null ⇒
+     * 调用方整页抬回去。宁可不飞，也不飞一块不属于用户正在看的那页的图。
+     *
+     * ## 身份从 [exitTargetOrNull] 那一颗接过来（不另起一条链）
+     *
+     * 批 B② 一开始在这里重写了一遍"队列 → 详情 post"，被接线尺当场红（`离场取身份只许这一句`）
+     * —— 两句话逐字相同，可那就是**第二处真相**：明天改身份链的人只改一处，这一屏的起点就
+     * 悄悄退化回旧行为。所以现在吃参数：身份仍只那一句，本颗只管"换成逐页键去查"。
+     */
+    fun exitStartOrNull(post: GalleryPost): Rect? {
+        // 逐页键与页轴同一颗算式（`pageWallOf` 的 `viewerKey` = `uid:pN`），屏上不自己拼。
+        val pagePost = post.copy(pageOrdinal = pageIndex)
+        return GalleryFlyIn.cardBoundsOf(pagePost.viewerKey)
+    }
+
+    /**
      * **返回程的落点**：墙上那一格在窗口里的矩形（2026-10-19 · 批 231-E）。
      *
      * ## 两端不是同一把键 —— 这是这一批最容易静默写错的一处
@@ -654,12 +691,11 @@ fun PixivWorkScreen(
      *
      * 所以这一半（**查哪儿**）先落地并被判据钉住；"怎么画"等离场动画那一套接进来时再补，
      * 那时这一段不用改。判据：`作品页离场要按同一把键取落点`。
+     *
+     * 批 B② 之后身份链升到 `back` 那一颗（起点终点都要用），这里吃参数 ——
+     * 两句话逐字相同就是第二处真相（接线尺 `离场取身份只许这一句` 钉着）。
      */
-    fun exitTargetOrNull(): Rect? {
-        val post = works.getOrNull(workIndex) ?: detail?.post ?: return null
-        return GalleryFlyIn.cardBoundsOf(post.viewerKey)
-    }
-
+    fun exitTargetOrNull(post: GalleryPost): Rect? = GalleryFlyIn.cardBoundsOf(post.viewerKey)
     /**
      * 顶栏那颗返回。
      *
@@ -675,11 +711,14 @@ fun PixivWorkScreen(
      * 就会飞得不一样，而那种错只有真机能看见。
      */
     val back: () -> Unit = {
-        val target = exitTargetOrNull()
-        // ── 临时取证探针（`FlyProbe` 同批）：回程查到的落点是什么、整屏框多大一块 ──
-        Log.i("FlyProbe", "pixiv 返回查落点 target=$target fullFrame=$fullFrameBox")
-        if (target == null) {
-            Log.d(TAG, "返回程没有落点（墙那一格已回收，或不是从墙上点进来的）⇒ 整页退")
+        val post = works.getOrNull(workIndex) ?: detail?.post
+        val target = post?.let { exitTargetOrNull(it) }
+        // 起点那一页：身份接 `post`（不另起一条链，见 `exitStartOrNull` 头注）。
+        val start = post?.let { exitStartOrNull(it) }
+        // ── 临时取证探针（`FlyProbe` 同批）：回程查到的落点是什么、起点那一页多大一块 ──
+        Log.i("FlyProbe", "pixiv 返回查落点 target=$target start=$start fullFrame=$fullFrameBox")
+        if (target == null || start == null) {
+            Log.d(TAG, "返回程没有落点或没有起点那一页（墙那一格已回收 / 该页没登记 / 不是从墙上点进来的）⇒ 整页退")
             onBack()
         } else {
             val host = view
@@ -702,12 +741,16 @@ fun PixivWorkScreen(
                         "radius=${w.attributes.blurBehindRadius}",
                 )
             }
-            GalleryFlyIn.captureRegion(host, fullFrameBox) { frame, capturedRect ->
+            // 起点改成**当前那一页图块**（批 B②）：截的就是那一页所在的矩形，飞行体带的
+            // 是用户此刻正在看的那一页，不是整摞页 + 动作条 + 标签那一大框。
+            GalleryFlyIn.captureRegion(host, start) { frame, capturedRect ->
                 if (frame == null || capturedRect == null) {
                     // 截不到帧：直接退。把"没能飞"演成"飞完了"是本仓最忌的那种假开关。
+                    Log.w("FlyProbe", "pixiv 离场没截到帧 start=$start ⇒ 整页退")
                     leaving = false
                     onBack()
                 } else {
+                    Log.i("FlyProbe", "pixiv 离场截到帧 from=$capturedRect to=$target")
                     exitFrame = frame
                     // 起点用**钳到窗口后**的那一块：飞行体的像素与矩形必须同一块（批 B §3 地基）。
                     exitFrom = capturedRect
@@ -715,7 +758,20 @@ fun PixivWorkScreen(
                     scope.launch {
                         // 与下滑关闭、进场同一档弹簧（数值同 `GalleryPostScreen`，不另造一个）。
                         exitFly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+                        Log.i("FlyProbe", "pixiv 离场飞完 value=${exitFly.value}")
                         onBack()
+                    }
+                    // ── 临时取证：飞行期逐帧进度（看清 200ms 那一刻屏上该有什么）──
+                    scope.launch {
+                        var last = -1f
+                        while (exitFly.value < 1f) {
+                            val v = exitFly.value
+                            if (kotlin.math.abs(v - last) >= 0.1f) {
+                                last = v
+                                Log.i("FlyProbe", "pixiv 离场途中 value=$v bodyAlpha=${exitBodyAlpha(v)}")
+                            }
+                            kotlinx.coroutines.delay(16)
+                        }
                     }
                 }
             }
@@ -1000,16 +1056,24 @@ fun PixivWorkScreen(
         val flyFrom = exitFrom
         val flyTo = exitTo
         val flyBitmap = exitFrame
-        if (leaving && flyBitmap != null && flyFrom != null && flyTo != null) {
+        // ⚠️ 与样板 `GalleryPostScreen` 逐字一致：**不**要求 `leaving`。
+        // 2026-10-19 真机读数：挂着 `leaving &&` 时返回全程屏上没有飞行体（录屏逐帧证）——
+        // `leaving` 是 `remember(postId)` 的 state，`back()` 里翻真之后这一层理应重组，
+        // 可实测它把飞行体关在了门外。三样齐了本身就是"正在飞"的充分条件
+        // （`exitFrame` 只在 capture 成功那一瞬才非空），不需要第四颗布尔。
+        if (flyBitmap != null && flyFrom != null && flyTo != null) {
+            // 批 B③：起点是**当前那一页图块**（`PixivPageImage` 是裸 Box、压根不裁圆角，
+            // 见那颗函数的定义），所以起点档就是 0dp 方角；终点是卡里那张封面
+            // （`veneraCoverCornerRadius()` = `shape.medium`）。两档之间随路程插值，
+            // 两端各自精确落在该档 —— 不再吃 `dst.width / to.width` 那把旧锚
+            // （批 B② 之后起点换成页块，旧锚量的是"整屏缩到卡那么大"，与新起点不再同义）。
+            val pageCornerRadius = 0.dp
             GalleryExitFlyBody(
                 progress = { exitFly.value },
                 from = flyFrom,
                 to = { flyTo },
                 frame = flyBitmap,
-                // 起点是整屏（`shape.extraLarge`，这一屏的根容器圆角档），
-                // 终点是卡里那张封面（`veneraCoverCornerRadius()`，`shape.medium`）——
-                // 两处不同档是刻意的，见 `GalleryExitFlyBody` 头注里 2026-10-16 那条读数。
-                flyCornerRadius = tokens.shape.extraLarge,
+                flyCornerRadius = pageCornerRadius,
                 coverCornerRadius = veneraCoverCornerRadius(),
                 alpha = { exitBodyAlpha(exitFly.value) },
             )

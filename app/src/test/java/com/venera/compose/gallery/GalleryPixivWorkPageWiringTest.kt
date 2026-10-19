@@ -583,10 +583,64 @@ class GalleryPixivWorkPageWiringTest {
         // 由 `site.routeKey:id` 长出（pageOrdinal 只住页轴，列表腿与详情腿都是 null），
         // 与墙登记那侧逐字同串 —— 是同一把键的另一条来路，不是第二把键。
         // 钉整串而不是钉"有没有 detail?.post"：存在性判式拦得住删掉，拦不住"退到别的什么上"。
+        //
+        // 批 B②（2026-10-19）之后有两个消费者：**终点**查作品键、**起点**查逐页键。
+        // 身份链仍只许一处：起点吃 `back` 手里那颗 `post`（`post?.let { exitStartOrNull(it) }`），
+        // 不另起一条 —— 两句话逐字相同就是第二处真相，明天改链的人只改一处，
+        // 起点就悄悄退化回旧行为（这一笔就是那天被接线尺当场红出来的）。
         assertEquals(
             "离场取身份只许这一句（队列 → 本件详情 post → null）",
             1,
-            body.countWith("val post = works.getOrNull(workIndex) ?: detail?.post ?: return null"),
+            body.countWith("val post = works.getOrNull(workIndex) ?: detail?.post"),
+        )
+        assertEquals(
+            "起点复用 back 手里那颗 post，不另起一条身份链（批 B②）",
+            1,
+            body.countWith("post?.let { exitStartOrNull(it) }"),
+        )
+        assertEquals(
+            "起点那一颗只换页位再查（屏上不自己拼 \":pN\"）",
+            1,
+            body.countWith("val pagePost = post.copy(pageOrdinal = pageIndex)"),
+        )
+    }
+
+    /**
+     * 批 B②（2026-10-19）：离场起点从**整屏**换成**当前那一页图块**。
+     *
+     * 立案（§9.3b）：多 P 作翻到第 3 页按返回，旧代码截 `fullFrameBox`（整屏）⇒ 飞行体带着
+     * 整摞页 + 动作条 + 标签缩回一张小卡，而落点是一张作品卡 —— 两者不是同一张画，
+     * 末段只能淡掉（`exitBodyAlpha`）才读得下去。换成当前页之后飞行体带的是用户正在看的那一页。
+     *
+     * 三笔各钉一件事：
+     * 1. 截的那一块**不许**再是整屏（`fullFrameBox` 从 captureRegion 的实参里退场）；
+     * 2. 起点来自 `exitStartOrNull()`（那一页图块的矩形），拿不到 ⇒ 整页退，不演；
+     * 3. 页位来自**每槽自报**的 `pageIndex`（不是宿主自己猜的那一颗）。
+     */
+    @Test
+    fun `离场起点是当前那一页图块不是整屏`() {
+        val body = code(screen)
+        assertEquals(
+            "captureRegion 吃的那一块是起点那一页（批 B②），整屏退场",
+            0,
+            body.countWith("GalleryFlyIn.captureRegion(host, fullFrameBox)"),
+        )
+        assertEquals(
+            "截之前先问那一页在哪（问不到 ⇒ 整页退，不演飞完了）",
+            1,
+            body.countWith("GalleryFlyIn.captureRegion(host, start)"),
+        )
+        // 起点与终点两把键都是 `cardBoundsOf` 那一张表：页登记 `uid:pN`、墙登记 `uid`。
+        assertEquals(
+            "起点查逐页键（页轴同一颗算式，屏上不自己拼）",
+            1,
+            body.countWith("GalleryFlyIn.cardBoundsOf(pagePost.viewerKey)"),
+        )
+        // 页位每槽自报（`onPageIndexChanged` → 宿主 `pageIndex`），不另起一颗 state。
+        assertEquals(
+            "页位只从那一颗问（每槽自己报上来的那个）",
+            1,
+            body.countWith("var pageIndex by remember(currentId)"),
         )
     }
 

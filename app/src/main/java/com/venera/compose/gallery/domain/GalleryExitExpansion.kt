@@ -40,6 +40,18 @@ package com.venera.compose.gallery.domain
 data class GalleryExitFrame(
     val dst: FlyRect,
     val source: FlySourceRect,
+    /**
+     * 圆角的**等比补偿**（批 B③ 换锚，2026-10-19）。
+     *
+     * 旧值是 `dst.width / to.width`（当帧框相对**终点框**缩了多少）—— 那是一把借来的尺：
+     * 只在"起点与终点同宽"的整屏场景里恰好等于内容缩放比。批 B② 把离场起点换成
+     * **当前那一页图块**之后起点与终点宽高都不同，宽比就此与缩放比分家。
+     *
+     * 新值是 `dst.width / source.width`（当帧框宽 ÷ cover 之后那一块源宽）= 内容真的被缩放了多少。
+     * 两枚在旧场景下数值相等（等价改写，旧尺不会红），新场景下各自正确。
+     *
+     * 档位（哪一枚圆角）由调用侧插值后乘这一枚，"哪一档"与"缩多少"从此是两件事。
+     */
     val cornerRadiusScale: Float,
 )
 
@@ -122,10 +134,24 @@ fun exitBodyAlpha(progress: Float, fadeFraction: Float = EXIT_BODY_FADE_FRACTION
  * - `progress = 1` 逐像素等于 [to]（卡片封面那一块），落点归位不需要收尾补偿。
  *
  * 源像素走 cover 语义（复用 [coverSourceRect]，已有单测）：起点框与终点框比例未必同档，
- * 拉伸会让交棒读起来像"闪"。圆角按当前宽度相对**终点框**等比缩放，到终点时逐像素等于卡片圆角。
+ * 拉伸会让交棒读起来像"闪"。
  *
- * @param from 画面框（截屏那一刻的起点）。
- * @param to 墙上那张卡的落点。
+ * ## 圆角（批 B③ 换锚，2026-10-19）
+ *
+ * 旧锚是 `dst.width / to.width` —— "当帧框相对终点框缩了多少"。它在**整屏起点**那一族里是对的
+ * （`from` 与 `to` 宽相同、只有高在变 ⇒ 宽比恰好等于内容缩放比），可它是一把**借来的尺**：
+ * 一旦起点不再是整屏（批 B② 把起点换成当前那一页图块，`from` 与 `to` 宽高都不同），
+ * 宽比与内容缩放比就此分家，圆角会在中途软掉/硬掉。
+ *
+ * 新锚换成**内容真的被缩放了多少**（cover 那颗 `scale`，`maxOf(宽比, 高比)` 两向恒等，
+ * `maxOf` 只为吸收源块取整的 1px 漂移）。与旧式的关系由 `_probe/l0/probe_scale.kt` 实测：
+ * 同宽族（整屏起点）两式相等 ⇒ **等价改写**；异宽族（批 B② 之后的页块起点）分家，
+ * 新式量的是"内容缩多少"（圆角该跟着缩的那枚），旧式量的是"相对终点缩多少"。
+ * 档位本身仍由调用侧插值（两档之间随路程走）再乘这一枚 —— 从此"哪一档"与"缩多少"两件事分开，
+ * 与 [com.venera.compose.gallery.domain.flightFrame] 的 `clipRadius` 同一条口径。
+ *
+ * @param from 起点框（批 B② 之后：当前那一页图块）。
+ * @param to 终点框（墙上那张卡的落点）。
  * @param sourceWidthPx 截屏那张位图的像素宽。
  * @param sourceHeightPx 截屏那张位图的像素高。
  */
@@ -143,9 +169,22 @@ fun exitExpansion(
         width = from.width + (to.width - from.width) * t,
         height = from.height + (to.height - from.height) * t,
     )
+    val source = coverSourceRect(sourceWidthPx, sourceHeightPx, dst.width, dst.height)
+    // 批 B③：补偿换成**内容真的被缩放了多少**。
+    //
+    // cover 的定义就是"源块放大后恰好盖满 dst"，所以 `dst宽÷源宽` 与 `dst高÷源高`
+    // **恒等**（同是 cover 那颗 `scale`，实测见 `_probe/l0/probe_scale.kt`：两向都是 0.3448）。
+    // 取 `maxOf` 不是为选大，是为**吸收 `roundToInt` 的取整漂移**（源块是 Int，两向可能差 1px）。
+    //
+    // ⚠️ **不钳上界**（旧式有 `coerceIn(0f, 1f)`，那一条跟着旧式一起退休）：落点比起点还宽
+    // 那一档（宽屏作品，见 `GalleryExitExpansionTest` 第三档用例）内容是被**放大**的
+    // （scale 1.5），圆角补偿必须跟着放大 —— 钳成 1 会让那一档的圆角比内容细一圈。
+    // 只钳下界：负面积/零源宽不许产出负数。
+    val scaleX = dst.width / source.width.toFloat().coerceAtLeast(1f)
+    val scaleY = dst.height / source.height.toFloat().coerceAtLeast(1f)
     return GalleryExitFrame(
         dst = dst,
-        source = coverSourceRect(sourceWidthPx, sourceHeightPx, dst.width, dst.height),
-        cornerRadiusScale = (dst.width / to.width.coerceAtLeast(1f)).coerceIn(0f, 1f),
+        source = source,
+        cornerRadiusScale = maxOf(scaleX, scaleY).coerceAtLeast(0f),
     )
 }

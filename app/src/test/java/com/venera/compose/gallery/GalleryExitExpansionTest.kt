@@ -18,6 +18,10 @@ import kotlin.math.abs
  *
  * 1. **搬过去没搬坏**：把 `GalleryPostScreen` 里原来那句就地表达式逐字复刻成 [legacy]，
  *    与 [exitExpansion] 在同一批输入上逐位对表（这条只能证"等价"，证不了"正确"）。
+ *    ⚠️ 批 B③（2026-10-19）起**圆角那一格除外**：那一格的锚从"当帧宽 ÷ 终点宽"换成
+ *    "当帧宽 ÷ 源块宽"（内容真的被缩放了多少），计划 §5 批 B③ 的原话就是"不再是那一把"。
+ *    两者只在"起点与终点同宽"时才相等（[圆角锚两式只在同宽那族下相等] 钉着）。
+ *    其余各格（几何 / 源块 / 页面 alpha）仍逐位对表 —— 那一族没动。
  * 2. **这一帧本来该是什么样**：起点/终点逐像素重合、宽度单调、越界被钳住、退化输入不产出负尺寸
  *    —— 这几条与复刻无关，是独立的行为规格（复刻错了它们会红）。
  */
@@ -110,11 +114,79 @@ class GalleryExitExpansionTest {
         assertEquals("src.top @$at", old.srcTop, frame.source.top)
         assertEquals("src.width @$at", old.srcWidth, frame.source.width)
         assertEquals("src.height @$at", old.srcHeight, frame.source.height)
-        assertEquals("圆角缩放 @$at", old.cornerRadiusScale, frame.cornerRadiusScale, 0f)
+        // 批 B③：圆角那一格**不再**与老锚对表（锚换了，见本文件头注与
+        // `圆角锚两式在同宽族相等异宽族分家`）。对的是 cover 那颗 `scale` 本身 ——
+        // 实测（`_probe/l0/probe_scale.kt`）两向恒等，`maxOf` 只为吸收源块取整漂移
+        // （源块是 Int，900px 上 1px 就是 1.1e-3，故容差放到 2e-2）。
+        assertEquals(
+            "圆角补偿 = cover scale @$at",
+            frame.dst.width / frame.source.width.toFloat().coerceAtLeast(1f),
+            frame.cornerRadiusScale,
+            2e-2f,
+        )
         assertEquals("页面 alpha @$at", old.pageAlpha, exitPageAlpha(at), 0f)
     }
 
     // ── 1. 搬过去没搬坏 ──
+
+    /**
+     * 批 B③ 的**换锚判据**：新锚（内容缩放比，cover 那颗 `scale`）与旧锚（当帧宽 ÷ 终点宽）
+     * 什么场景下相等。**期望值全部来自实测**（`_probe/l0/probe_scale.kt` 一次性量具）：
+     *
+     * | 场景 | 当帧 | 新式 | 旧式 |
+     * |---|---|---|---|
+     * | 同宽族 p=0（起点 = 位图） | 1080×1554 | 1.0 | 1.0 |
+     * | 同宽族 p=0.1（落点更高 ⇒ 放大） | 1080×1586 | 1.0208 | 1.0 |
+     * | 同宽族 p=1 | 1080×1877 | 1.2081 | 1.0 |
+     * | 异宽族 p=1（高驱动缩小） | 340×500 | 0.3448 | 1.0 |
+     *
+     * 真相：旧式 `dst宽 ÷ 终点宽` 在**同宽族里恒为 1**（宽不变）—— 那是"圆角永远不补偿"，
+     * 而那一族里内容全程在被**放大**（落点比起点高）⇒ 圆角该跟着放大却纹丝不动，
+     * 这正是 §4.4 圆角那一行记的"末段补白"。新式量的是内容缩放比，四档全部正确。
+     *
+     * 两式**只在起点那一帧**相等（那一刻当帧框就是位图本身，内容没缩放）——
+     * 这一笔钉的正是"唯一的重合点"与"其余全程分家"。
+     */
+    @Test
+    fun `圆角锚两式只在起点那一帧重合`() {
+        // 同宽族（整屏起点那一族，批 B② 之前唯一的场景）。
+        val sameWidth = Triple(
+            FlyRect(left = 0f, top = -291f, width = 1080f, height = 1554f),
+            FlyRect(left = 0f, top = 100f, width = 1080f, height = 1877f),
+            1080 to 1554,
+        )
+        // ① 起点帧：当帧框 = 位图 ⇒ 内容没缩放 ⇒ 两式都 1 ⇒ 重合。
+        run {
+            val f = exitExpansion(0f, sameWidth.first, sameWidth.second, sameWidth.third.first, sameWidth.third.second)
+            val old = f.dst.width / sameWidth.second.width.coerceAtLeast(1f)
+            assertEquals("起点帧两式应重合（内容没缩放）", old, f.cornerRadiusScale, 1e-3f)
+            assertEquals(1f, f.cornerRadiusScale, 1e-3f)
+        }
+        // ② 其余全程：旧式恒 1（同宽），新式跟着内容缩放走 ⇒ 必须分家。
+        var diverged = 0
+        for (p in sweep()) {
+            if (p < 1e-6f) continue
+            val f = exitExpansion(p, sameWidth.first, sameWidth.second, sameWidth.third.first, sameWidth.third.second)
+            val old = f.dst.width / sameWidth.second.width.coerceAtLeast(1f)
+            if (abs(old - f.cornerRadiusScale) > 2e-2f) diverged++
+        }
+        assertTrue("同宽族除起点外一档都没分家 ⇒ 换锚没生效（$diverged 档）", diverged > 0)
+
+        // ③ 异宽族（批 B② 之后的页块起点）：终点档旧式 = 1（假的"没缩"），新式 = 0.3448（真缩到 34%）。
+        val diffWidth = Triple(
+            FlyRect(left = 28f, top = 120f, width = 1016f, height = 1450f),
+            FlyRect(left = 640f, top = 2100f, width = 340f, height = 500f),
+            1016 to 1450,
+        )
+        val f = exitExpansion(1f, diffWidth.first, diffWidth.second, diffWidth.third.first, diffWidth.third.second)
+        val old = f.dst.width / diffWidth.second.width.coerceAtLeast(1f)
+        assertEquals("异宽族旧式（当帧宽÷终点宽）", 1f, old, 1e-3f)
+        assertEquals("异宽族新式（内容缩放比，实测 0.3448）", 0.3448f, f.cornerRadiusScale, 1e-3f)
+        assertTrue(
+            "异宽族两式必须分家（相等即证换锚没生效）",
+            abs(old - f.cornerRadiusScale) > 0.5f,
+        )
+    }
 
     @Test
     fun `每一档进度都与搬走之前的就地表达式逐位相同`() {
@@ -149,7 +221,16 @@ class GalleryExitExpansionTest {
         for ((from, to, bitmap) in cases) {
             val frame = exitExpansion(1f, from, to, bitmap.first, bitmap.second)
             assertEquals(to, frame.dst)
-            assertEquals("落点那一帧圆角缩放应为 1", 1f, frame.cornerRadiusScale, 0f)
+            // 批 B③：圆角补偿那一格换了口径，不再恒为 1。
+            // 旧规格"落点那一帧圆角缩放应为 1"的本意是"收尾不需要补偿"—— 新锚下这件事
+            // 变成"内容相对自己那一档缩了多少"：起点与落点同比例那两档仍是 1，
+            // 而**落点比起点宽**那一档（宽屏作品）内容是被放大的，补偿 >1（圆角该跟着放大）。
+            // 由 `圆角锚两式在同宽族相等异宽族分家` 与下面那一笔分管。
+            val expected = maxOf(
+                to.width / bitmap.first.toFloat().coerceAtLeast(1f),
+                to.height / bitmap.second.toFloat().coerceAtLeast(1f),
+            )
+            assertEquals("落点那一帧圆角补偿 = 内容缩放比", expected, frame.cornerRadiusScale, 2e-2f)
         }
     }
 
