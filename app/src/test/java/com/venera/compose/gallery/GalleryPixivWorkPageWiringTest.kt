@@ -533,10 +533,11 @@ class GalleryPixivWorkPageWiringTest {
     fun `墙回写的落点与作品页查询的键是同一把 viewerKey`() {
         val home = code(pixivHome)
         // 墙：写落点用 viewerKey（写错成 uid 就查不到）。
+        // （2026-10-19 批 B §3 地基：登记改吃双矩形 `(键, full, visible)` —— 定位那把要没裁过的。）
         assertEquals(
             "墙回写落点必须用 viewerKey",
             1,
-            home.countWith("GalleryFlyIn.noteCardBounds(work.post.viewerKey, bounds)"),
+            home.countWith("GalleryFlyIn.noteCardBounds(work.post.viewerKey, full, bounds)"),
         )
         assertEquals(
             "墙的回写用 uid 是那一族静默错的形状",

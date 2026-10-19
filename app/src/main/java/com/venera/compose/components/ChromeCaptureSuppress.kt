@@ -109,7 +109,8 @@ fun Modifier.reportChromeBand(key: String): Modifier {
     }
     return then(
         Modifier.onGloballyPositioned { coords ->
-            if (coords.isAttached) ChromeCaptureSuppress.reportBand(key, coords.boundsInWindow())
+            // band 报的是"屏上真正盖住内容的那一块"（与 capture 的裁过矩形做相交）⇒ 吃裁过的那一把。
+            if (coords.isAttached) ChromeCaptureSuppress.reportBand(key, coords.boundsInWindow(clipBounds = true))
         },
     )
 }

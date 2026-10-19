@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.ui
+package com.venera.compose.gallery.ui
 
 import android.content.Context
 import android.content.Intent
@@ -1058,10 +1058,13 @@ private fun PixivWorkCard(
                     .fillMaxWidth()
                     .aspectRatio(GalleryPixivHome.RANKING_COVER_ASPECT)
                     .onGloballyPositioned { coords ->
-                        val bounds = coords.boundsInWindow()
+                        // 截像素那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
+                        val bounds = coords.boundsInWindow(clipBounds = true)
+                        // 批 B §3 地基：登记落点吃没裁过的那一把（定位），截像素才吃裁过的。
+                        val full = coords.boundsInWindow(clipBounds = false)
                         if (bounds != coverRect) {
                             coverRect = bounds
-                            if (!masked) GalleryFlyIn.noteCardBounds(work.post.viewerKey, bounds)
+                            if (!masked) GalleryFlyIn.noteCardBounds(work.post.viewerKey, full, bounds)
                         }
                     },
             )

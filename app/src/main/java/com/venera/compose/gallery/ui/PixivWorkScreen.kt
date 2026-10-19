@@ -692,14 +692,15 @@ fun PixivWorkScreen(
                         "radius=${w.attributes.blurBehindRadius}",
                 )
             }
-            GalleryFlyIn.captureRegion(host, fullFrameBox) { frame ->
-                if (frame == null) {
+            GalleryFlyIn.captureRegion(host, fullFrameBox) { frame, capturedRect ->
+                if (frame == null || capturedRect == null) {
                     // 截不到帧：直接退。把"没能飞"演成"飞完了"是本仓最忌的那种假开关。
                     leaving = false
                     onBack()
                 } else {
                     exitFrame = frame
-                    exitFrom = fullFrameBox
+                    // 起点用**钳到窗口后**的那一块：飞行体的像素与矩形必须同一块（批 B §3 地基）。
+                    exitFrom = capturedRect
                     exitTo = target
                     scope.launch {
                         // 与下滑关闭、进场同一档弹簧（数值同 `GalleryPostScreen`，不另造一个）。
@@ -744,7 +745,8 @@ fun PixivWorkScreen(
                 )
             }
             .onGloballyPositioned { coords ->
-                val bounds = coords.boundsInWindow()
+                // 整屏框只给 captureRegion 截像素用（PixelCopy 只读窗口内表面）：显式吃裁过的。
+                val bounds = coords.boundsInWindow(clipBounds = true)
                 if (bounds.width > 0f && bounds.height > 0f) fullFrameBox = bounds
             },
     ) {
@@ -1712,13 +1714,18 @@ private fun PixivPageImage(
             .fillMaxWidth()
             .then(if (boxAspect != null) Modifier.aspectRatio(boxAspect) else Modifier.wrapContentHeight())
             .onGloballyPositioned {
-                val bounds = it.boundsInWindow()
+                // 截像素/点击矩形那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
+                val bounds = it.boundsInWindow(clipBounds = true)
+                // 批 B §3 地基：登记落点吃没裁过的那一把。pixiv 的页是竖长条，
+                // 真机读数 width 2400 / height 4000 而窗口那格只有 [0,0][1080,979] ——
+                // 从前把裁短的矩形当落点，交棒那一帧画面高度对不上（读起来"错位/压一下"）。
+                val full = it.boundsInWindow(clipBounds = false)
                 // 零尺寸只忽略不注销（Lazy 项回收前最后一次回调给的就是 0×0），
                 // 真没了由上面那颗 DisposableEffect 负责。
                 if (bounds.width > 0f && bounds.height > 0f) {
                     if (bounds != rect) rect = bounds
                     // 返回程的落点：大图那一屏离场时按**同一把键**来查这一格。
-                    if (viewerKey.isNotBlank()) GalleryFlyIn.noteCardBounds(viewerKey, bounds)
+                    if (viewerKey.isNotBlank()) GalleryFlyIn.noteCardBounds(viewerKey, full, bounds)
                 }
             }
             // 点整页 = 交大图播放器（那一层才有缩放与 1:1）；这一屏自己不挂缩放层。

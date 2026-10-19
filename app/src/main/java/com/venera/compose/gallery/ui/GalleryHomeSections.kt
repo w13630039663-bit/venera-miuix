@@ -407,10 +407,13 @@ private fun GalleryPosterRow(
                         .fillMaxWidth()
                         .height(tokens.spacing.historyCoverHeight)
                         .onGloballyPositioned {
-                            val rect = it.boundsInWindow()
+                            // 截像素那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
+                            val rect = it.boundsInWindow(clipBounds = true)
+                            // 批 B §3 地基：定位那一把要没裁过的（clipBounds=false）。
+                            val full = it.boundsInWindow(clipBounds = false)
                             coverBounds = rect
                             // 返回程的落点，与墙上的卡同一把：打码卡不回写（红线：两边都不飞）。
-                            if (!card.masked) GalleryFlyIn.noteCardBounds(card.post.viewerKey, rect)
+                            if (!card.masked) GalleryFlyIn.noteCardBounds(card.post.viewerKey, full, rect)
                         }
                         // 打码命中不飞行：飞行内容会渲染进 SharedTransitionLayout 的 overlay，
                         // 等于绕开页面级裁剪 —— 遮罩不能有机会被揭开（与漫画侧同一条硬口径）。

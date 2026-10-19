@@ -383,11 +383,12 @@ internal fun GalleryHistoryScreen(
                                 selected = multi.contains(row.uid),
                                 onOpen = { bounds -> tapTile(row, bounds) },
                                 onLongPress = { longPressTile(row) },
-                                onCoverBounds = { bounds ->
+                                onCoverBounds = { full, visible ->
                                     // 大图页返回程的落点，与墙上那张卡同一把口径。
                                     // 键统一 viewerKey（批 A）：列表腿它就等于 uid，
                                     // 但查询侧只认 viewerKey，登记侧不再各念各的键。
-                                    GalleryFlyIn.noteCardBounds(row.viewerKey, bounds)
+                                    // 批 B §3 地基：定位吃没裁过的那一把，锚判式另看裁过的那一把。
+                                    GalleryFlyIn.noteCardBounds(row.viewerKey, full, visible)
                                 },
                             )
                         }
@@ -577,7 +578,11 @@ private fun GalleryHistoryTile(
     /** 非多选态点开：把**封面那一块**的窗口矩形一并交出去（去程截图要它）。 */
     onOpen: (Rect) -> Unit,
     onLongPress: () -> Unit,
-    onCoverBounds: (Rect) -> Unit,
+    /**
+     * 封面矩形回报：[full] 是**没裁过**的那一把（`clipBounds = false`，用来登记落点），
+     * [visible] 是裁过的（屏上可见那一块，批 B §3 地基：定位与截像素各吃各的）。
+     */
+    onCoverBounds: (full: Rect, visible: Rect) -> Unit,
 ) {
     val tokens = VeneraTokens
     val interactionSource = remember { MutableInteractionSource() }
@@ -616,9 +621,12 @@ private fun GalleryHistoryTile(
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned {
-                        val rect = it.boundsInWindow()
+                        // 截像素那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
+                        val rect = it.boundsInWindow(clipBounds = true)
+                        // 批 B §3 地基：登记落点要没裁过的那一把（定位），截像素才吃裁过的。
+                        val full = it.boundsInWindow(clipBounds = false)
                         coverBounds = rect
-                        onCoverBounds(rect)
+                        onCoverBounds(full, rect)
                     },
             )
         }

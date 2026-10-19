@@ -892,13 +892,16 @@ fun GalleryPostScreen(
         val (box, target) = rects
         leaving = true
         clearChromeForExit()
-        GalleryFlyIn.captureRegion(view, box) { frame ->
-            if (frame == null) {
+        GalleryFlyIn.captureRegion(view, box) { frame, capturedRect ->
+            if (frame == null || capturedRect == null) {
                 onBack()
                 return@captureRegion
             }
             exitFrame = frame
-            exitStart = box
+            // 起点用**钳到窗口后**的那一块（批 B §3 地基：像素与矩形同一块）。
+            // 画面框现在是"没裁过"的位置那把，竖长条页会被钳短 —— 飞行体装的是钳后的像素，
+            // 矩形也必须是钳后的那一块，否则第一帧就不是"逐像素相同"。
+            exitStart = capturedRect
             exitTarget = target
             scope.launch {
                 // ── 临时取证探针（与那 9 处 `FlyProbe` 同批，验收完一起撤）──
@@ -953,13 +956,14 @@ fun GalleryPostScreen(
                             val (box, target) = rects
                             leaving = true
                             clearChromeForExit()
-                            GalleryFlyIn.captureRegion(view, box) { frame ->
-                                if (frame == null) {
+                            GalleryFlyIn.captureRegion(view, box) { frame, capturedRect ->
+                                if (frame == null || capturedRect == null) {
                                     android.util.Log.w("FlyProbe", "gesture exit: no pixels for $box")
                                     onExitGestureEvent(GalleryExitGestureEvent.PixelsFailed)
                                 } else {
                                     exitFrame = frame
-                                    exitStart = box
+                                    // 起点 = 钳到窗口后那一块（与像素同块，批 B §3 地基）。
+                                    exitStart = capturedRect
                                     exitTarget = target
                                     onExitGestureEvent(GalleryExitGestureEvent.PixelsReady)
                                 }
@@ -1679,14 +1683,17 @@ private fun GalleryViewerMedia(
             // 且回报的矩形是"宽恒定、高在长"—— 与定框算式对不上。这里一次量齐三样：
             // 布局给的尺寸、坐标自己算的窗口矩形、以及**不含 graphicsLayer 位移**的根相对矩形。
             // 三者一比就能分清：是页面在被平移（那就是入场动画在动落点）、还是尺寸真在长（布局在抖）。
-            val window = coordinates.boundsInWindow()
+            // 批 B §3 地基：这一框**两用**——落点/终点是"位置"（要没裁过的），离场截像素是"表面"（要裁过的）。
+            // 这里只把**没裁过**的那一把交出去当位置；截像素那一路在 [GalleryFlyIn.captureRegion] 内部
+            // 自己钳回窗口（PixelCopy 只能读窗口内的表面），所以消费侧存 full、不存两份真相。
+            val full = coordinates.boundsInWindow(clipBounds = false)
             // `size` 是布局给的尺寸（不含 graphicsLayer 位移），`window` 含位移。
             // 两者一比就够分：size 在长 = 布局在抖；size 恒定而 window 在动 = 入场平移在动落点。
             android.util.Log.i(
                 "FlyProbe",
-                "landing size=${coordinates.size.width}x${coordinates.size.height} window=$window",
+                "landing size=${coordinates.size.width}x${coordinates.size.height} full=$full",
             )
-            onImageBounds(window)
+            onImageBounds(full)
         }
     }
 

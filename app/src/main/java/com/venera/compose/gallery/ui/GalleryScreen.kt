@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.ui
+package com.venera.compose.gallery.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -3065,6 +3065,9 @@ internal fun GalleryPostCard(
      * 真共享元素的口径 —— `coverSharedElement` 挂的本来就是封面（见 [GalleryPosterRow]）。
      */
     var coverBounds by remember { mutableStateOf(Rect.Zero) }
+    // 批 B §3 地基：同一块封面的**没裁过**那一份（`boundsInWindow(clipBounds = false)`）。
+    // 裁过的那一把只用来截像素（PixelCopy 只能读窗口内的表面），没裁过的那一把才用来定位。
+    var coverFullBounds by remember { mutableStateOf(Rect.Zero) }
     // 卡片被 LazyGrid 回收（滚出屏幕、换了一批）时把自己的落点撤掉：
     // 大图页返回时若还查得到一条过期矩形，就会朝屏幕外飞。
     // 键统一 viewerKey（批 A）：墙上的卡没有页序，它就等于 uid —— 行为不变，
@@ -3147,7 +3150,11 @@ internal fun GalleryPostCard(
                     .fillMaxWidth()
                     .aspectRatio(ratio)
                     .onGloballyPositioned {
-                        val rect = it.boundsInWindow()
+                        // 截像素那一路**必须**吃裁过的那一把（PixelCopy 只能读窗口内的表面）：显式写出来。
+                        val rect = it.boundsInWindow(clipBounds = true)
+                        // 批 B §3 地基：定位那一把要**没裁过**的（`clipBounds = false`）。
+                        // pixiv 竖长条页常年有几屏高住在窗口外，裁过的那一把只配截像素、不配当位置。
+                        val full = it.boundsInWindow(clipBounds = false)
                         // 只在矩形**真的变了**才写。这不是省几行开销的打磨：`boundsInWindow()`
                         // 每次返回一个新的 `Rect` 实例，而 `mutableStateOf` 默认按引用比较 ——
                         // 无条件赋值等于"滚动每一帧都把这张卡重组一遍"（Lazy 项在窗口坐标系里的
@@ -3155,10 +3162,11 @@ internal fun GalleryPostCard(
                         // 最直接的自激环就在这里。
                         // 读 `coverBounds` 再比是安全的：`Rect` 的 equals 是结构相等。
                         if (rect != coverBounds) coverBounds = rect
+                        if (full != coverFullBounds) coverFullBounds = full
                         // 顺手给**返回程**留一个落点（大图页离场时按 uid 来查）。
                         // ⚠️ 打码卡**不回写** —— 红线是"打码那张两边都不飞"，
                         // 而"表里压根没有它"是这条红线最不容易被绕过的一种落法。
-                        if (!card.masked) GalleryFlyIn.noteCardBounds(post.viewerKey, rect)
+                        if (!card.masked) GalleryFlyIn.noteCardBounds(post.viewerKey, full, rect)
                     }
                     // 不挂飞行时压根不调那一层（而不是传一个空 key 进去）：
                     // key 两端必须逐字相同才触发，空串是个"看起来挂了其实永远对不上"的假状态。

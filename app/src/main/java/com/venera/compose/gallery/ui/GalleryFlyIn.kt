@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.venera.compose.components.ChromeCaptureSuppress
+import com.venera.compose.gallery.domain.anchorAcceptable
 
 /**
  * 起点那一帧的读数档位。**四档不同脸**，因为调用方要按档位决定退不退路：
@@ -226,22 +227,49 @@ object GalleryFlyIn {
     /**
      * 一级的卡片在布局时回写（`onGloballyPositioned` 每帧一次，同一 uid 覆盖）。
      *
-     * **零尺寸的上报只忽略、不注销**：Lazy 网格回收一个项之前，最后一次布局回调给的就是
-     * `0×0`（组合噪声，不是"这张卡没了"的信号）。照单覆盖的话，用户点进大图那一下存进去的
-     * 真实矩形会被一个空矩形抹掉，返回程查到的落点是 0×0 —— 要么不飞、要么往一个点上飞。
-     * 项真的没了由 [forgetCardBounds] 负责，不靠这条噪声。
+     * ## 两把矩形各司其职（批 B 的 §3 地基，2026-10-19）
+     *
+     * [full] 必须是 `boundsInWindow(clipBounds = false)`（**没裁过**的那一块才叫位置），
+     * [visible] 是 `boundsInWindow()`（裁过的）。原因：Compose 1.12 的 `boundsInWindow()`
+     * 默认把矩形**裁到窗口内**，pixiv 的竖长条页约 821px 常年住在窗口外（手册行 233-② 读数），
+     * 从前这里收的是裁过的 ⇒ 进场落点是一幅"被裁短的真图矩形"，交棒那一帧高度对不上；
+     * 完全裁掉时它直接给 `Rect.Zero`，被下面"零尺寸只忽略"挡住，看起来正常、其实落点已失踪。
+     * 真机又抓到活体证据：`落点首次登记 size=495x16` —— 卡被裁到 16px 高照样入表。
+     *
+     * 所以这一颗现在收两把，判式在 domain（[hasAnchor]）：**可见比（宽高各）不足 25% ⇒ 不收**。
+     * 截像素那一路（[capture]）继续吃裁过的那一块 —— PixelCopy 只能读窗口内的表面，
+     * "裁过的那一块只用来截像素，没裁过的那一块才用来定位"是 pixez 现量的正确分法。
+     *
+     * **零尺寸与无锚的回报都只忽略、不注销**：Lazy 网格回收一个项之前，最后一次布局回调给的
+     * 就是 `0×0`（组合噪声，不是"这张卡没了"的信号）；滚出可视 25% 以下也只是"这一次没锚"，
+     * 不是"这张卡没了"。项真的没了由 [forgetCardBounds] 负责，不靠这两档噪声。
      */
-    fun noteCardBounds(uid: String, bounds: Rect) {
-        if (bounds.width <= 0f || bounds.height <= 0f) return
+    fun noteCardBounds(uid: String, full: Rect, visible: Rect) {
+        if (full.width <= 0f || full.height <= 0f) return
+        val f = full.toFlyRect()
+        val v = visible.toFlyRect()
+        if (anchorAcceptable(f, v) == null) {
+            // 无锚的回报进不了表：消费侧查不到落点 ⇒ 走退路。这条要说得出话（不许静默交错）。
+            if (uid !in probedNoAnchorKeys) {
+                probedNoAnchorKeys += uid
+                Log.i(
+                    "FlyProbe",
+                    "落点判无锚 key=$uid full=${f.width.toInt()}x${f.height.toInt()} " +
+                        "visible=${v.width.toInt()}x${v.height.toInt()} ⇒ 不收",
+                )
+            }
+            return
+        }
         // ── 临时取证探针：每个键只报**第一次**登记（布局回调每帧都来，全报会把 logcat 冲掉）──
         if (uid !in probedBoundsKeys) {
             probedBoundsKeys += uid
-            Log.i("FlyProbe", "落点首次登记 key=$uid size=${bounds.width.toInt()}x${bounds.height.toInt()}")
+            Log.i("FlyProbe", "落点首次登记 key=$uid size=${f.width.toInt()}x${f.height.toInt()}")
         }
-        cardBounds[uid] = bounds
+        cardBounds[uid] = full
     }
 
     private val probedBoundsKeys = mutableSetOf<String>()
+    private val probedNoAnchorKeys = mutableSetOf<String>()
 
     /** 卡片离开组合（滚出屏幕、换了一批）时撤掉自己的落点。 */
     fun forgetCardBounds(uid: String) {
@@ -260,29 +288,51 @@ object GalleryFlyIn {
      * 起点为什么值得截屏而不是让页面自己缩小：截的是**屏上已经画好的那一帧**，
      * 所以离场第一帧的飞行体与它盖住的那张图**逐像素相同** —— 页面淡出期间看不出任何替换，
      * 这正是返回程不需要"淡入"这一半的原因。
+     *
+     * ## 批 B §3 地基：入参可以是**没裁过**的那一把，内部自己钳回窗口
+     *
+     * 离场起点框来自 `frameBounds`（= 画面框，批 B 起是 `clipBounds = false` 那把"位置"），
+     * pixiv 竖长条页那把能到 2400×4000 而窗口只有一屏高 —— PixelCopy 喂窗口外的源矩形会
+     * **整笔失败**（ERROR_TIMEOUT / ERROR_UNKNOWN，10-01 那批读数见过）。所以这里先把源钳到
+     * 窗口表面、截**钳后**那一块，并把钳后的矩形（[onResult] 的第二参）一起交回：飞行体的
+     * `from` 必须与像素**同一块**，喂错就又是"两份同一张画叠着"。钳到没面积 ⇒ 交回 (null, null)
+     * ⇒ 调用方老实 finish（"宁可错慢不可静默交错"，同 [capture] 的 FAILED 档口径）。
      */
-    fun captureRegion(view: View, bounds: Rect, onResult: (ImageBitmap?) -> Unit) {
-        val width = bounds.width.toInt()
-        val height = bounds.height.toInt()
+    fun captureRegion(view: View, bounds: Rect, onResult: (ImageBitmap?, Rect?) -> Unit) {
         val window = (view.context as? Activity)?.window
-        if (window == null || width <= 0 || height <= 0) {
-            Log.w(TAG, "离场不截：window=${window != null} size=${width}x$height bounds=$bounds")
-            onResult(null)
+        if (window == null) {
+            Log.w(TAG, "离场不截：认不出 Activity 的 window bounds=$bounds")
+            onResult(null, null)
             return
         }
-        val source = AndroidRect(
-            bounds.left.toInt(),
-            bounds.top.toInt(),
-            bounds.right.toInt(),
-            bounds.bottom.toInt(),
+        val surfaceW = view.rootView.width
+        val surfaceH = view.rootView.height
+        val clamped = AndroidRect(
+            bounds.left.toInt().coerceIn(0, surfaceW),
+            bounds.top.toInt().coerceIn(0, surfaceH),
+            bounds.right.toInt().coerceIn(0, surfaceW),
+            bounds.bottom.toInt().coerceIn(0, surfaceH),
         )
+        val width = clamped.width()
+        val height = clamped.height()
+        if (width <= 0 || height <= 0) {
+            Log.w(TAG, "离场不截：钳到窗口后没面积 $clamped（原框 $bounds，表面 ${surfaceW}x$surfaceH）")
+            onResult(null, null)
+            return
+        }
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        PixelCopy.request(window, source, bitmap, { result ->
+        PixelCopy.request(window, clamped, bitmap, { result ->
             if (result == PixelCopy.SUCCESS) {
-                onResult(bitmap.asImageBitmap())
+                val clampedRect = Rect(
+                    clamped.left.toFloat(),
+                    clamped.top.toFloat(),
+                    clamped.right.toFloat(),
+                    clamped.bottom.toFloat(),
+                )
+                onResult(bitmap.asImageBitmap(), clampedRect)
             } else {
                 Log.w(TAG, "离场 PixelCopy 没给像素 result=$result bounds=$bounds")
-                onResult(null)
+                onResult(null, null)
             }
         }, Handler(Looper.getMainLooper()))
     }
