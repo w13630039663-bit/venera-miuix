@@ -1,7 +1,10 @@
 package com.venera.compose.components.venera
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -65,3 +68,74 @@ fun Modifier.hScrollEndFade(
 @Composable
 fun hScrollEndContentPadding(width: Dp = VeneraTokens.spacing.space8): PaddingValues =
     PaddingValues(end = width)
+
+/**
+ * [hScrollEndContentPadding] 的 **`Row + horizontalScroll` 版**（2026-10-17 第三十轮）。
+ *
+ * `Row` 没有 `contentPadding` 参数（那是懒容器独有的）⇒ "滑到底时末枚整个退出渐隐区"
+ * 这件事在裸横滑行上只能靠**末尾一枚等宽占位件**做到。画廊首页「每日热门」那一排
+ * （`GalleryPosterRow`）与它的骨架（`GalleryRowSkeleton`）正是这种形状：一张白卡里
+ * 一条裸 `Row`，卡片定宽、全量摆不贵（见那边"为什么用 Row 而不是 LazyRow"的注）。
+ *
+ * 宽度默认与渐隐带宽同档 [VeneraTokens.spacing.space8]：两处从**同一个默认值**走，
+ * 改带宽时不会只改一半（"渐隐与尾部内衬成对"那条纪律的 Row 形态）。
+ *
+ * ⚠️ 它是**内容**不是 Modifier —— 要摆在横滑行的**最后一格**，与 [hScrollEndFade]
+ * （挂在容器 modifier 上）各司其职：一个让末枚退得出渐隐区，一个让"还能往右滑"看得见。
+ */
+@Composable
+fun HScrollEndSpacer(width: Dp = VeneraTokens.spacing.space8) {
+    Spacer(modifier = Modifier.width(width))
+}
+
+/**
+ * 横向可滚动容器**左缘**那道渐隐 —— [hScrollEndFade] 的左半边（2026-10-17 第二十一轮）。
+ *
+ * ## 为什么左端要单独一颗，而不是把 [hScrollEndFade] 改成两端一起画
+ *
+ * 右端那道**恒亮**是对的：只要还有内容在屏幕外，「还能往右滑」就该有视觉证据。
+ * 左端不是 —— 滑到起点时左侧根本没有内容被裁，这时候画一道渐隐，等于把第一位头像的
+ * 左缘（以及卡面内衬）白白糊掉。所以左端必须**跟着滚动位置**：离开起点才淡入、
+ * 回到起点就淡出。
+ *
+ * ## 为什么 `visible` 收的是 `State<Float>` 而不是 `Float`
+ *
+ * [drawWithContent] 的 lambda 在**绘制阶段**执行。在绘制期读 `state.value`，Compose 会把
+ * 这次绘制登记成该 state 的订阅者 —— 于是透明度每帧变时**只重绘、不重组**。
+ * 换成 `Float` 参数就是每帧把新 Modifier 递给 `LazyRow`（连带重组它的宿主），
+ * 而 fling 那一秒里要跑 60 次。同一条纪律见记忆里「`tokens.*` 是 @Composable getter
+ * ⇒ 绘制期读不到，组合期取局部量」那条的反面用法：**该在绘制期读的，就别在组合期读**。
+ *
+ * ## 左端不需要配对的内容内边距
+ *
+ * 右端那截 [hScrollEndContentPadding] 是为了「滑到底时末枚能整个退出渐隐区」。
+ * 左端没有这件事：起点时 `visible = 0`，渐隐本身就不存在。
+ *
+ * @param container 这一行底下的那块颜色（与右端那颗同一个 `container`，否则两端色不一样）。
+ * @param visible 0..1 的可见度，由调用方按滚动位置驱动（`animateFloatAsState` 的 `State` 直接传进来）。
+ * @param width 渐隐带宽，默认与右端同档 [VeneraTokens.spacing.space8]。
+ */
+@Composable
+fun Modifier.hScrollStartFade(
+    container: Color,
+    visible: State<Float>,
+    width: Dp = VeneraTokens.spacing.space8,
+): Modifier = drawWithContent {
+    drawContent()
+    val alpha = visible.value.coerceIn(0f, 1f)
+    if (alpha <= 0f) return@drawWithContent
+    val w = width.toPx().coerceAtMost(size.width)
+    if (w <= 0f) return@drawWithContent
+    drawRect(
+        // 两端点同样写在**节点坐标**里（与右端那颗对称）：`startX` 已经在节点左缘，
+        // 仍显式给出，省掉它就会退化成一对重合端点 = 一块实色。
+        brush = Brush.horizontalGradient(
+            0f to container.copy(alpha = container.alpha * alpha),
+            1f to Color.Transparent,
+            startX = 0f,
+            endX = w,
+        ),
+        topLeft = Offset.Zero,
+        size = Size(w, size.height),
+    )
+}

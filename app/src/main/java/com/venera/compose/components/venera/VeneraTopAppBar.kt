@@ -240,16 +240,6 @@ fun VeneraTopAppBar(
             )
         }
 
-        // ── 底部分割线：alpha = 0.08 * fraction（折叠越深越明显，顶置时完全透明不可见）──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(0.5.dp)
-                .graphicsLayer { alpha = 0.08f * activeProgress.value }
-                .background(tokens.color.textPrimary)
-                .align(Alignment.BottomStart),
-        )
-
         // ── 折叠小标题（scrollProgressOverride 路径专用）──
         //
         // miuix 自带的小标题挂在 collapsedFraction 上，而覆盖进度路径下折叠机制整个

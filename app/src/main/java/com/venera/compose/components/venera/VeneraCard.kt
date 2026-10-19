@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Card
@@ -46,6 +47,20 @@ fun VeneraCard(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     pressFeedback: PressFeedbackType = PressFeedbackType.None,
+    /**
+     * 内容**通栏**（封面直接贴到卡边，圆角由 miuix `Card` 自己裁）。
+     *
+     * 「封面就是这张卡」的那种形状要的就是它。排行榜卡用的是它：
+     * 用户 2026-10-17 报「卡面太小了」，实测封面两侧各缩了 8dp `cardContentPadding`，
+     * 而设计稿上的封面是**通栏**的（`d2_rank.png`：红图一直顶到卡片边缘，四个圆角就是封面的四个角）。
+     *
+     * 刻意做成**布尔语义**而不是一个 `contentPadding: Dp` 参数 —— 后者要表达"不要内衬"
+     * 就得在调用点写 `0.dp`，而裸 `N.dp` 字面量是本仓封顶的存量（`TokenBudgetFrozenTest`）：
+     * 新增尺寸一律要过 token 一遍。布尔不需要任何新数字。
+     *
+     * 代价要自己负：内衬归零后**文字区得自己补**水平内衬，否则标题会顶到卡边。
+     */
+    edgeToEdge: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = VeneraTokens
@@ -63,7 +78,15 @@ fun VeneraCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(tokens.spacing.cardContentPadding),
+                // `edgeToEdge` 时**不挂**任何 padding，而不是挂一个 0.dp ——
+                // 理由见那个参数的头注（裸 dp 是封顶存量）。
+                .then(
+                    if (edgeToEdge) {
+                        Modifier
+                    } else {
+                        Modifier.padding(tokens.spacing.cardContentPadding)
+                    },
+                ),
             content = content,
         )
     }
