@@ -300,14 +300,47 @@ fun LayoutCoordinates.boundsInWindow(clipBounds: Boolean = true): Rect {
 - 图库三站那一屏（播放器）从历史/收藏进**也不受影响**：`GalleryPostScreen.kt:708` 那条 `if (wall.isNotEmpty()) return@LaunchedEffect` 之后有**单张补取**回填 `pages = listOf(loaded)`（:726）⇒ `current` 拿得到、`exitRectsOrNull()` 查得到落点（代价是要等那一趟网络回来）。
 - ⇒ 缺这一条回退的**只有 pixiv 作品页那一屏**，本批已补。批 B 的"接线成对尺"（判据④延长线）仍值得做，但它要防的是"新墙漏写队列"，不是"现存某面墙已漏"。
 
-### 9.3 还没做的
+### 9.3 批 B · 已开工（2026-10-19 深夜，第一刀 = 判据层 + §3 地基）
+
+**做完的（全部有尺、编译过、L0 与 gallery 单测全绿）：**
+
+| 批 B 那一格 | 落在哪 | 现量 |
+|---|---|---|
+| 判据①核心纯函数 `flightFrame(expansion, card, to, imgW, imgH, rCard, rTo)` | `gallery/domain/GalleryFlightFrame.kt`（新） | ✅ 一条 expansion 定形：dst 逐边插值 + **裁切窗 = 卡 cover 窗与落点 cover 窗的逐边插值**（不再每帧重解 ⇒ 主体不漂）+ 唯一一枚 `uniformScale = maxOf(宽比,高比)`（内容不可能被拉伸）+ 圆角两档插值。轴与 pixez 同向（0=卡、1=落位），与 `exitExpansion` 反（1-p 换算即可，倒着走回同一帧有尺钉） |
+| 判据①配套尺 | `GalleryFlightFrameTest.kt`（新，8 笔） | ✅ 逐格钉计划那六条：两端逐像素重合 / 全程等比不拉伸 / 单向溢出另一向被裁 / 倒着走同帧 / 退化不产负尺寸 / 圆角落档单调 + 扰动重放全等。写法照 `GalleryExitExpansionTest` |
+| 判据⑥⑦落点闸门纯函数 | `gallery/domain/GalleryAnchorGate.kt`（新） | ✅ `visibleRatios`（宽高各一枚）+ `hasAnchor`（两枚都 ≥25% 且有面积）+ `anchorAcceptable`（无锚只忽略不注销）。**没写纵横比那一档**——§4.3 冲突表第 4 行那条"注释里有、代码里没有"的幽灵分支，尺子里有一笔专门防它被抄进来 |
+| 判据⑥⑦配套尺 | `GalleryAnchorGateTest.kt`（新，6 笔） | ✅ 含 495×2 真机活体读数那一档、门槛卡线（≥ 非 >）、零面积、纵横比幽灵分支反向钉 |
+| §3 地基：定位一律 `boundsInWindow(clipBounds = false)`，截像素吃裁过的 | 五面登记宿主 + `GalleryPostScreen` 画面框回报 + `ChromeCaptureSuppress` + `GalleryFlyIn.noteCardBounds` 改双矩形契约 | ✅ 主墙/预览行/历史/pixiv 首页/作品页内五处登记全部改 `(键, full, visible)`；播放器画面框回报改交**没裁过**那把（进场落点从此是 2400×4000 而不是 1080×979）；`captureRegion` 内部自己钳回窗口并**回报钳后矩形**当飞行体起点（像素与矩形同一块，三处调用点跟改双参回调） |
+| 判据③负向扫描尺 | `GalleryBoundsInWindowClipBoundsTest.kt`（新，2 笔） | ✅ "main 里不许出现无参 `boundsInWindow()`"（现量违例 0，白名单都不必设——9 处全显式了）+ 登记侧双矩形形状尺 |
+| L0 量具修复 | `_probe/l0/run-judgment-tests.sh` | ✅ jar 版本写死被缓存升级挤掉（10-13 同坑复发）：改版本自适应（从高往低、stdlib 跟 compiler 同代）+ JAVA 三处退路 + `ls -V`（本机 git bash 不认）换 `sort -V`；两颗新判据入列，**224 笔全绿** |
+
+**改红的旧尺一处，就地改对**：`GalleryPixivWorkPageWiringTest.墙回写的落点与作品页查询的键是同一把 viewerKey` 的字面锚跟着双矩形契约换成 `noteCardBounds(work.post.viewerKey, full, bounds)`。
+
+**真机同步验（用户 10-19 深夜拍板"可以，真机同步验"；设备 PJZ110/8bfdaeb5，本刀 APK 22:33 构建；取证 `_probe/b_fly_step1.log`/`b_fly_step2.log`，截图 `_probe/b2_ranking_open.png`/`b4_wall_open.png`）**：
+
+| 入口 | 去程截起点 | 去程起飞 | 回程查落点 | 判读 |
+|---|---|---|---|---|
+| 排行榜那排（若返る#246，本机无该 id 缓存） | ✅ 封面块 373×355 | ❌ **详情 700ms 才回 > 600ms 进场预算 ⇒ `entryGaveUp` 放弃档**（两条进场读数隔 700ms：`detail=false`→`detail=true`） | ✅ `target=Rect(64,1144,437,1499)` 与起点逐字重合 | 去程不飞**正是 §4.3 第 1 条"pixez 从不等落点"的活体证据**——批 B⑥"首帧用列表腿 width/height 定真比例"要收的就是这一格；不是本刀回归（批 A 验那排时那个 id 恰好有缓存） |
+| 主墙网格（#150840358） | ✅ 496×456，`obstructed=true` ⇒ chrome 让位两条复位路都走全 | ✅ `起飞 target=Rect(0,-291,1080,1263)`——落点是**没裁过**的整页画面框（1554 高，顶上 291 在窗口外）+ `落点真画出像素=true` | ✅ `target=Rect(32,1878,528,2592)`（714 高 = 卡的真实布局框） | **§3 那块地基的真机闭环**：进场落点第一次拿到的是全框而不是裁剩的一条；回程落点从"裁过的可见块"换成"布局真框" ⇒ 飞行体末端与卡片逐像素对位。`consume stage=READY` 收账正常 |
+
+⇒ 本刀（判据层 + §3 地基）真机过，两格读数都念得出话；新钉出一格归批 B⑥（慢网去程不飞 = 等落点那档病，机制换体第一件收它）。
+
+**§7 第 2 件已答**：真机同步验 = 是（上面这套流程就是验收口径，之后每刀照跑）。
+
+**批 B 剩下的（按依赖顺序）：**
+1. **机制换体①③⑤⑥⑦**（飞行体换活画面 / 淡的对象换成源卡 / 不等落点 / 无锚退路换侧滑）——这一族是一件事，半接会比重接更糟；下一步先做⑥的"首帧真比例"（作品页第 0 页在未收到详情前用列表腿 post 的 width/height 定 `aspectRatio`，pixez 同形），它不依赖活画面就能把 `ENTRY_WAIT_MS`/`entryGaveUp` 那对拆掉。
+2. **④一标量两层 + 删三条曲线**（`handoffPageAlpha`/`handoffBodyAlpha`/`exitBodyAlpha`）+ 判据⑤负向尺——必须与①同刀（曲线是"飞截图"的补丁，截图不走就没人给它们送终）。
+3. **离场起点换成那一页图块**（§2.3，尺子②钉"不许 `fullFrameBox`"）——批 A 后作品页离场已量过键路，这一格独立可做。
+4. §7 第 2 件（**批 B 要不要真机同步验**）用户仍未答——机制换体那一刀开工前需要这个答案；交付包口径与批 A 相同（APK + FlyProbe logcat + 三步操作回贴帧号）。
+
+### 9.4 还没做的
 
 | 什么 | 状态 |
 |---|---|
 | **批 A 的 commit** | ✅ **已提交**（2026-10-19 晚）。工作树里 110 颗压着 ≥7 轮且互相咬住（批 A 的尺子已改锚到账号页新建的文件上），按轮拆不开 ⇒ 安卓侧一次入账（`feat(app)【10-19 安卓批】`，65 颗文件）；桌面侧改动（A2 那一轮）**不入**，留在工作区归桌面自己收。`:app` 全量 1724 笔安卓侧 0 失败；仅两颗桌面账尺红（红因在工作区未提交的 A2 `srcDir(components)`，与本 commit 无关）。**用户口径（10-19 晚）**："不用修别人的桌面端，管好安卓端" ⇒ 桌面账尺那 4 笔红**不由本族收**。 |
 | 手册行 242 | ⛔ 不记 —— 用户 2026-10-19 晚点名 `docs/HANDOFF-2026-10-04.md` **作废**，本族的账改记本文件 §9 |
-| §3 的 `boundsInWindow(clipBounds)` 地基坑 | ❌ 未动。**10-19 晚现量：`app/src/main` 下 9 处代码行调用（另有 3 处活在注释里），仍 0 处显式传 `clipBounds`** —— 上午快照那句"18 处"含注释与后来被批 A 并掉的抄本，别按它定位。真机又抓到一条活体证据：日志里 `落点首次登记 key=pixiv:144439742 size=495x16`、`size=495x2` —— **卡片被窗口裁到只剩 16px/2px 高时照样登记**，之后被 `forgetCardBounds` 摘掉才补登记正常的。批 B 顺带收（定位一律 `clipBounds = false` + 可见比 25% 门槛） |
-| 批 B（机制：一条 expansion + 一幅真图 + 图像空间裁切） | ❌ 未开工。§7 那四件待拍板里，第 1 件已按推荐落地（那排卡**接上飞**）；第 2/3/4 件**用户仍未答** |
+| §3 的 `boundsInWindow(clipBounds)` 地基坑 | ✅ **已收**（2026-10-19 深夜，批 B 第一刀）：`app/src/main` 下全部调用显式写 `clipBounds` —— 定位吃 `false`、截像素/chrome 相交吃 `true`，违例 0，负向扫描尺 `GalleryBoundsInWindowClipBoundsTest` 钉着"白名单都不必有"；登记契约改双矩形 + 可见比 25% 锚闸门（`GalleryAnchorGate`）。详见 §9.3 |
+| 批 B（机制：一条 expansion + 一幅真图 + 图像空间裁切） | 🟡 **已开工**（2026-10-19 深夜，第一刀 = 判据层 `flightFrame`/`GalleryAnchorGate` + §3 地基，见 §9.3）。机制换体（活画面/删曲线/侧滑退路）**未做**；§7 第 2/3/4 件**用户仍未答**，其中第 2 件（要不要真机同步验）卡着机制换体那一刀 |
 | 批 C（单窗口化） | ❌ 未开工，按计划排在批 B 之后且要用户点头 |
 | 批 D（撤 `FlyProbe` 探针 / workbuddy 那轮入账 / 旧文档改判划线） | ❌ 未做。**撤探针的前提已达成**（三格真机读数归档），但 §C 那六格（批 2 播放器跟手返回）仍未关 ⇒ 探针先留着 |
 | 打码卡那一格的真机读数 | ⬜ 未验（红线"打码命中两边都不飞"，尺子钉着；本轮没刻意去点打码卡） |
