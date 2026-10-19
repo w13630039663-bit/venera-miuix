@@ -48,6 +48,7 @@ import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraPressFeedback
+import com.venera.compose.components.venera.veneraAvatarRing
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryArtistAvatarProbe
@@ -167,6 +168,11 @@ internal suspend fun loadArtistCredits(
         GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
         GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
         GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        // 这里按**画师名**问端点，而 pixiv 的画师身份是 `user_id` —— 两本账不同轨
+        // （调研稿 §3.4 要单独拍板）。交一张空表并让调用方那句日志说话，不拿名字去撞 user_id。
+        GallerySite.PIXIV -> Result.failure(
+            UnsupportedOperationException("pixiv 的画师身份是 user_id，按名字问不到外链（§3.4 未拍板）"),
+        )
     }.getOrElse { failure ->
         Log.w(TAG, "画师「$name」($site) 的外链没取到：${failure.message}")
         emptyList()
@@ -429,6 +435,15 @@ internal fun GalleryArtistCreditRows(
  * **备用水缩略图那条至今不过屏蔽/分级那把**（它是收藏里那张图本身，而收藏记录里没存
  * 该不该挡的判据）—— 已知的口子，方案文档里挂着。要关它得给收藏加一档"落库时就算好"的字段，
  * 老数据默认 false 就成了静默错答，比不关更糟，所以宁可不关。
+ *
+ * ## 为什么带一圈发丝描边（2026-10-17 第三十轮补上）
+ *
+ * 第二十三轮用户那句「给页面所有的头像都加一层淡淡的描边」当时只落到了 pixiv 那几处
+ * （画师排 / 排行榜卡 / 账号那颗），这颗共用件漏了。本轮图库站的关注画师行**进了白卡**
+ * （用户「关注画师和每日热门 做成相同风格的ui」），正撞上那条理由的原文：裸圆压在
+ * 白卡上时边界只有色差，滑动时那圈会被抗锯齿吃掉、读成"糊了一圈"。
+ * 一圈 1dp `outlineVariant` 把轮廓钉回来（[veneraAvatarRing]）。另两处调用点
+ * （信息卡 / 介绍页头图）同在卡面或照片底上，同一理由成立 —— 顺带补齐，不是新样式。
  */
 @Composable
 internal fun GalleryArtistAvatar(
@@ -441,7 +456,10 @@ internal fun GalleryArtistAvatar(
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(tokens.color.surfaceVariant),
+            .background(tokens.color.surfaceVariant)
+            // 发丝描边排在最后：`border` 画的是"它内侧所有内容"之上的那一圈
+            // （`veneraAvatarRing` 内部先 clip 再描），所以底色与真图都被它框住。
+            .veneraAvatarRing(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         if (avatarUrl != null) {
@@ -625,6 +643,11 @@ internal suspend fun artistAvatarOnSite(context: Context, site: GallerySite, nam
         GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
         GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
         GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        // 这里按**画师名**问端点，而 pixiv 的画师身份是 `user_id` —— 两本账不同轨
+        // （调研稿 §3.4 要单独拍板）。交一张空表并让调用方那句日志说话，不拿名字去撞 user_id。
+        GallerySite.PIXIV -> Result.failure(
+            UnsupportedOperationException("pixiv 的画师身份是 user_id，按名字问不到外链（§3.4 未拍板）"),
+        )
     }.getOrElse { failure ->
         Log.w(TAG, "画师「$name」($site) 的外链没取到，头像这一路到此为止：${failure.message}")
         emptyList()

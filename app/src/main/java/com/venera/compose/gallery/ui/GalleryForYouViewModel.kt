@@ -25,6 +25,7 @@ import com.venera.compose.gallery.domain.GalleryForYouMerge
 import com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy
 import com.venera.compose.gallery.domain.GalleryLegGuard
 import com.venera.compose.gallery.domain.GalleryRecommendation
+import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GalleryTagFilter
@@ -209,6 +210,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         GallerySite.GELBOORU -> boards.gelbooru.pageSize
         GallerySite.YANDERE -> boards.yandere.pageSize
         GallerySite.SAFEBOORU -> boards.safebooru.pageSize
+        GallerySite.PIXIV -> GallerySite.notWired("推荐那一腿的每页条数")
     }
 
     /** 前面各页已上屏条目的去重键（跨页去重全靠它，`mix` 那头没有这一维）。 */
@@ -395,7 +397,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
      * 否则页尾念的那串和真发出去的那串会长得不一样。
      */
     private fun queriesOf(recommendations: Map<GallerySite, GalleryRecommendation>): Map<GallerySite, String> =
-        GallerySite.entries.mapNotNull { site ->
+        GalleryRecommendations.RECOMMEND_LEG_SITES.mapNotNull { site ->
             val tags = (recommendations[site] as? GalleryRecommendation.Tags)?.tags ?: return@mapNotNull null
             site to GallerySearch.queryOf(tags.map { GalleryTagFilter(it) })
         }.toMap()
@@ -444,7 +446,10 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         // 每笔只**返回**自己的结果，不在 async 里写共享容器：这几路跑在 Dispatchers.IO 的不同线程上，
         // 并发写一个 HashMap 是竞态（`GalleryFeedSource` 那头也是 `async` 出值、外面合并）。
         val legs = coroutineScope {
-            GallerySite.entries.filterNot { it in sitesDone }.map { site ->
+            // 发车名单读的是 domain 那一份（唯一的一份）；这里从前写 `GallerySite.entries` ——
+            // 收藏里一有 pixiv 的图，pixiv 就被发进一条它取不了数的腿，抛出的异常穿过
+            // `GalleryLegGuard.guard`（它只兜 Result 与超时）打死进程。判据与读数见 `RECOMMEND_LEG_SITES` 头注。
+            GalleryRecommendations.RECOMMEND_LEG_SITES.filterNot { it in sitesDone }.map { site ->
                 async { leg(site, nextPage, queries[site]) }
             }.awaitAll()
         }
@@ -494,6 +499,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
                 GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, nextPage, limitOf(site))
                 GallerySite.YANDERE -> boards.yandere.searchPosts(query, nextPage, limitOf(site))
                 GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, nextPage, limitOf(site))
+                GallerySite.PIXIV -> GallerySite.notWired("推荐那一腿的取数")
             }
         }
         // "空"有两种：站方真给了 0 条，与请求本身失败（401 / 解析不出来）。
@@ -521,7 +527,9 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             error = null
             loadMoreError = null
             posts = if (nextPage == 1) paged.posts else posts + paged.posts
-            perSite = GallerySite.entries.associateWith { site ->
+            // 只累加**这一轴问过的站**：写 `GallerySite.entries` 会给没问过的站凭空造出一格 0，
+            // 屏上那行读数就读成"Pixiv 0 条"—— 那是"问了它、它回了 0 条"的意思，而真话是"这一轴不问它"。
+            perSite = GalleryRecommendations.RECOMMEND_LEG_SITES.associateWith { site ->
                 (perSite[site] ?: 0) + (paged.perSite[site] ?: 0)
             }
             excludedFavourite += paged.excludedFavourite

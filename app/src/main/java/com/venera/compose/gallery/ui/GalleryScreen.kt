@@ -1,4 +1,4 @@
-package com.venera.compose.gallery.ui
+﻿package com.venera.compose.gallery.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -36,14 +36,17 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PersonSearch
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import android.util.Log
 import androidx.compose.runtime.LaunchedEffect
 import android.widget.Toast
 import androidx.compose.runtime.SideEffect
@@ -60,25 +63,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.ImageLoader
+import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.venera.compose.artistProfileIntent
 import com.venera.compose.components.VeneraEmptyTone
@@ -98,16 +112,23 @@ import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.domain.GalleryArtistLinks
 import com.venera.compose.openGalleryArtistProfile
 import com.venera.compose.gallery.domain.GalleryChromeHidePolicy
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryFollowedArtists
 import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryGuard
+import com.venera.compose.gallery.data.PixivAuthState
+import com.venera.compose.gallery.data.PixivRankingMode
+import com.venera.compose.gallery.data.PixivWork
+import com.venera.compose.gallery.domain.GalleryHomeDomain
+import com.venera.compose.gallery.domain.GalleryRecommendation
 import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GalleryWallFeed
+import com.venera.compose.gallery.domain.PixivSearchKind
 import com.venera.compose.gallery.domain.SavedWallDepth
 import com.venera.compose.gallery.domain.depthToApply
 import com.venera.compose.gallery.domain.galleryNotices
@@ -118,6 +139,7 @@ import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -175,6 +197,17 @@ fun GalleryScreen(
      */
     onOpenHistory: () -> Unit,
     /**
+     * 顶栏那枚 🔖「收藏」（2026-10-17 第三十一轮，用户「在搜索和历史记录两个圆形按钮之间，
+     * 新增一个书签按钮……按照这个方式去做收藏」）。
+     *
+     * 它落在搜索与浏览历史两枚**之间**：三枚都是"去另一屏取一批东西"，
+     * 顺序按用户点名的那句原话钉死（判据见 `GalleryBooruBookmarksTest`）。
+     *
+     * 递出去的是导航动作（`GalleryBookmarksHubRoute`，两颗卡那一页），不是页内状态：
+     * 收藏 hub 是**另一屏内容**，且本地收藏那颗最终要走到 FAVORITES 主 Tab 上。
+     */
+    onOpenBookmarks: () -> Unit = {},
+    /**
      * 首页头图的**绝对路径**，空串 = 未设置（2026-10-15，用户「图廊首页也加上和设置页一样的可切换头图」）。
      *
      * 为什么是一根字符串而不是这一屏自己去读偏好：`BusinessApiBoundaryTest` 的 A/B 两条钉着
@@ -218,7 +251,7 @@ fun GalleryScreen(
             // 反搜排在最前：它开着时屏上是"一张图 → 一批相似图"，返回要先退回标签搜索
             // 那一具身体，而不是一下子把人丢回首页。
             rvm.open -> rvm.closeLayer()
-            svm.mode == GallerySearchMode.INPUT && svm.filters.isNotEmpty() -> svm.collapseToResults()
+            svm.mode == GallerySearchMode.INPUT && svm.hasQuery -> svm.collapseToResults()
             // 上一轮（"搜 touhou 那会儿的 100 张"）：整片从快照抄回来。
             svm.canPopContext() -> svm.popContext()
             else -> svm.closeSearch()
@@ -276,6 +309,11 @@ fun GalleryScreen(
      * 但这份数据**照留** —— 它是猜你喜欢那条墙的取数种子，也是搜索卡空框态那行推荐的来路。
      */
     val galleryFavorites by GalleryPorts.of(context).favorites.favorites.collectAsState()
+    // 收藏 uid 集合（2026-10-17 第十八轮）：排行榜那张卡的 ♥ 要按 uid 查"这张收没收藏"。
+    // 只认 `siteKey:id`（= [GalleryPost.uid] 的构造法），不看别的字段 —— 两条账必须同一个键。
+    val galleryFavoriteUids = remember(galleryFavorites) {
+        galleryFavorites.mapTo(HashSet(galleryFavorites.size)) { "${it.siteKey}:${it.id}" }
+    }
     val recommendations = remember(galleryFavorites, rules, fvm.seed) {
         GalleryRecommendations.recommendBySite(galleryFavorites, seed = fvm.seed) { tag ->
             guard.blockedGalleryRule(author = "", tags = listOf(tag)) != null
@@ -339,6 +377,18 @@ fun GalleryScreen(
     // 而这里恰恰不能挂（上面那条）。头图在墙的第一项（header item）里 ⇒ 第 0 项被滚走
     // 多少像素就是头图被推上去多少，这正是要的那个进度。
     val heroPresent = galleryHeroFile != null
+    //
+    // ⚠️ **让位契约只对画廊首页成立**（2026-10-18，用户「还是没有左边的大标题」）：
+    // `heroPresent` 只回答"设没设过头图"；凡是"让位给图 / 因为图而不挂折叠 / 玻璃改由墙喂"这一类
+    // 判断都要再问一句"现在是不是搜索态"—— 搜索态的大标题是「搜索」（不是空串），"幽灵折叠行程"
+    // 那一档根本不发生，照旧让位就会让顶栏左边永远空一行、卡片也收不进顶栏。
+    //
+    // ⚠️ 同日 01:32 收窄（用户「在首页搜索框的时候，头图会异常显示」）：**落点类不在这一条里**。
+    // 原先这里写的是"搜索态那一屏摆的是另一面墙，屏幕上根本没有头图" —— 那条不成立：
+    // `GalleryForYouPage` 是无条件组合的（下面没有任何 `if (svm.active)` 包着它），搜索卡只是
+    // 压在它之上的浮层，INPUT 态的 scrim 把它连同头图、入口条一起压暗，图仍在原位。
+    // 于是墙顶留白与卡的落点继续只问 `galleryHeroFile != null`：跟的是**入口条实际画在哪**。
+    val heroActive = heroPresent && !svm.active
     val heroGlassRangePx = with(LocalDensity.current) { HERO_TOP_BAR_FADE_RANGE.toPx() }
     val heroScrollProgress = remember(forYouGridState, heroGlassRangePx, heroPresent) {
         derivedStateOf {
@@ -436,7 +486,13 @@ fun GalleryScreen(
         vm.isLoadingFeed = true
         scope.launch {
             try {
-                source.loadDaily(seed = vm.seed)
+                source.loadDaily(
+                    seed = vm.seed,
+                    // 哪一站先回来就先摆哪一站（见 `GalleryDailyFeed.loadDaily` 的 `onLeg`）：
+                    // 三笔并发但整轮要等最慢那站，屏上原本那十几秒是纯骨架。
+                    // 回调跑在取数线程上 ⇒ 这里借 scope 切回主线程再写状态。
+                    onLeg = { pools -> scope.launch { vm.acceptPartial(pools) } },
+                )
                     .onSuccess { daily ->
                         vm.accept(
                             list = daily.merged.posts,
@@ -665,6 +721,12 @@ fun GalleryScreen(
      * 只能在这里把留白归零。
      *
      * 未设头图时恒为 [gridTopPadding] —— 首帧几何与从前逐像素一致。
+     *
+     * ⚠️ **判据不吃 `heroActive`**（2026-10-18 用户「在首页搜索框的时候，头图会异常显示」那条）：
+     * 这一条量的是**头图自己摆在哪**，而头图住在主墙的 header item 里 ——
+     * 搜索态那一屏主墙照旧在背景里（scrim 把它压暗，所以截图里仍看得见画师排与排行榜），
+     * 头图也跟着照旧。搜索态把留白放回去 = 头图在背景里**凭空下移一截**，
+     * 用户读到的就是"打开搜索、头图跳了一下 / 露出半张"。所以这里仍只问"设没设过头图"。
      */
     val wallTopPadding = if (galleryHeroFile != null) 0.dp else gridTopPadding
 
@@ -688,12 +750,45 @@ fun GalleryScreen(
      * 正好压在淡出带上 —— 靠顶 scrim 保对比。真要再瘦，得动淡出带本身（那是共享件 C 方案）。
      * 两处**必须同一个常量**：这里写的式子与下面 `SettingsHeroImage` 的 `totalHeight` 是同一条，
      * 改一处不改另一处，"从入口条原地长开"立刻退化。
+     *
+     * ⚠️ **判据同样不吃 `heroActive`**（2026-10-18，同 `wallTopPadding` 那条理由）：
+     * 落点跟着的是**入口条**（chrome）在哪儿，而入口条在主墙 header item 里、头图**下面** ——
+     * 这与搜索态开不开没有关系（搜索态主墙仍在背景里，入口条还在老位置）。
+     * 改成"搜索态一律 topBarFloor"会让卡从入口条上方掉下来盖住它。
      */
     val searchOverlayTop = if (galleryHeroFile != null) {
         statusBarTop + VeneraSpacing.settingsHeroHeightSubpage - VeneraSpacing.settingsHeroOverlap
     } else {
         topBarFloor
     }
+
+    /**
+     * 搜索卡**跟着顶栏折叠一起往上收**的那一段（2026-10-18，用户「搜索栏和顶部的间距还是太高了，压下」）。
+     *
+     * ── 那截空白是怎么来的 ──
+     *
+     * [searchOverlayTop] 取的是**展开态**地板（`statusBar + 104dp`）。但用户点 🔍 那一刻，
+     * 墙往往已经滚过一段 —— 顶栏早就折成 52dp 那一行，大标题「搜索」的 alpha 归零、
+     * **不占任何可见高度**，而卡照旧锚在 104dp 处 ⇒ 屏上读到的是
+     * 「折叠顶栏 52dp + 一片什么都没有的 52dp + 卡片」，就是那句"间距还是太高"。
+     *
+     * ── 取值 ──
+     *
+     * `topBarFloor − topBarCollapsedHeight` = 104 − 52 = **52dp**，正是大标题那一行的高度，
+     * 一枚新数字都没有。首屏（`collapsedFraction = 0`）位移为零 ⇒ 未滚动时的几何**逐像素不变**。
+     *
+     * ⚠️ 有头图时是 **96dp**（落点 148 − 52）：跟着 [searchOverlayTop] 走，不另立一套数字。
+     * 首页态不挂折叠连接（`collapsedFraction` 恒 0）⇒ 这一截在首页本来就不动；
+     * 搜索态连接挂回去之后（`heroActive`，见它的定义）它才开始起作用。
+     *
+     * ── 为什么用 `offset { }` 的 lambda 而不是直接算进 [searchOverlayTop] ──
+     *
+     * `collapsedFraction` 是滚动的逐帧读数。在组合期读它 = 滚动全程每帧重组这一整屏；
+     * 放进布局阶段的 lambda 里读，只会让这一层重跑布局，组合照旧跳过。
+     * （同一处理由：本文件那两处"读折叠进度会逐帧重组"的注释。）
+     */
+    val searchOverlayFollow =
+        (searchOverlayTop - statusBarTop - VeneraSpacing.topBarCollapsedHeight).coerceAtLeast(0.dp)
 
     /**
      * 结果态给搜索结果墙的**稳定**顶部内缩（方案 B，2026-10-16 用户拍板「直接方案 b」）。
@@ -811,6 +906,598 @@ fun GalleryScreen(
     val artists = remember(follows, galleryFavorites) {
         GalleryFollowedArtists.rowOf(follows, galleryFavorites)
     }
+    // ── 首页内容域与 Pixiv 那三节的取数（2026-10-17）──────────────────────────────
+    //
+    // 状态留在屏上而不是塞进 GalleryViewModel：那颗管的是"一屏墙 + 缓存 + 每日热门那台合并机器"，
+    // 而 pixiv 这两条匿名腿今天**不参与任何合并**（选型⑤：它只从首页那一格进）。
+    // 域与档位用 rememberSaveable（存的是枚举名，Bundle 认），到货的卡片用 remember（不落盘）。
+    var homeDomain by rememberSaveable { mutableStateOf(GalleryHomeDomain.BOORU.name) }
+    var pixivModeName by rememberSaveable { mutableStateOf(PixivRankingMode.DAILY.name) }
+    var pixivExpanded by rememberSaveable { mutableStateOf(false) }
+    val domain = GalleryHomeDomain.entries.first { it.name == homeDomain }
+    // 内容域**同步进搜索那侧**（2026-10-17）：搜索卡要按域换一整套语法（booru 的标签胶囊
+    // vs pixiv 的"一个词 + 站内参数"），而那面墙只认 `svm.results` —— 所以"这一墙是谁的图"
+    // 必须由 ViewModel 自己知道，页面这一侧只负责把域报过去。
+    //
+    // 换域时 `setDomain` 会把手上那一轮清掉（在途掐掉 + 结果清空）：卡上写着 pixiv 的筛选、
+    // 身下的墙却是 booru 的图，是本仓最忌的那种假读数。条件不抹，两边各留各的。
+    LaunchedEffect(domain) { svm.setDomain(domain) }
+    val rankingMode = PixivRankingMode.entries.first { it.name == pixivModeName }
+    var pixivRanking by remember { mutableStateOf(emptyList<PixivWork>()) }
+    var pixivRankingLoading by remember { mutableStateOf(false) }
+    /** 这一档为什么是空的（站方那句原文）。null = 没有失败，空就是真的空。 */
+    var pixivRankingCaption by remember { mutableStateOf<String?>(null) }
+    /** 排行榜那一条也吃「下拉刷新」：它的 effect 键里没有别的用户动作可挂，单独给一枚计数器。 */
+    var pixivRankingTick by remember { mutableStateOf(0) }
+    /**
+     * 榜单**按档缓存**（`"${mode}#${app|www}"` → 那一档那一次的结果）。
+     *
+     * 加它是因为 2026-10-17 第七轮用户那句「不要每次切页面都刷新，手动下拉才刷新」：
+     * 从前 `domain` 是 effect 的键，但域一变 effect 就重跑 —— 切去图库站再切回 pixiv，
+     * 排行榜与推荐各重发一遍，用户读到的是"每次切过来都在转"。
+     * 现在 effect 仍挂在域上（否则切回来那一屏没人填），但**命中缓存就直接摆**。
+     * 缓存只在「下拉刷新」那一下清空（`pixivRankingTick` 变 ⇒ 整批作废）。
+     *
+     * ⚠️ 它住在 [GalleryPixivHomeStore] 里（进程级），不是 `remember` —— 切主 Tab 时
+     * 这条目的地会被 pop、`remember` 全部丢失，那一路也得靠这份存档才不重取。
+     */
+    val pixivRankingCache = GalleryPixivHomeStore.ranking
+    val pixivStore = GalleryPixivHomeStore
+    var pixivRecommend by remember { mutableStateOf(pixivStore.recommendWorks) }
+    var pixivRecommendLoading by remember { mutableStateOf(false) }
+    /** 瀑布流"下一屏"是否在取（与首屏分开：首屏空态与页脚转圈不是同一件事）。 */
+    var pixivRecommendLoadingMore by remember { mutableStateOf(false) }
+    var pixivRecommendCaption by remember { mutableStateOf(pixivStore.recommendCaption) }
+    // 「还没判过档」那一道（口径同猜你喜欢的 `stage == IDLE`）：首帧既没到货也没失败，
+    // 那一刻摆空态就是假读数 —— 屏上会说"pixiv 没回图"，而请求还没发出去。
+    var pixivRecommendIdle by remember { mutableStateOf(pixivStore.recommendIdle) }
+    // 空态那枚「重试」的把手：这一池的取数挂在 LaunchedEffect 的键上，不另起一台定时器。
+    var pixivRecommendTick by remember { mutableStateOf(0) }
+    // 「换一批」期间为真。刻意**不进存档**：它是一次操作的瞬时态，
+    // 切走 Tab 时若还存着"正在换"，回来那颗胶囊就永远是禁按的（换早就结束了）。
+    var pixivRecommendRemixLoading by remember { mutableStateOf(false) }
+    /** 这一池是不是**站方推荐**（要登录）。false = 走"按收藏标签"那一跳（匿名可读）。 */
+    var pixivRecommendStation by remember { mutableStateOf(pixivStore.recommendStation) }
+    /** 站方推荐下一页的地址（`next_url` 原样）；null = 到底。 */
+    var pixivRecommendNext by remember { mutableStateOf(pixivStore.recommendNext) }
+    /** 种子那一跳当前取到第几页（它是 `p=` 翻页，与站方的游标不是一回事）。 */
+    var pixivRecommendSeedPage by remember { mutableStateOf(pixivStore.recommendSeedPage) }
+    var pixivRecommendExhausted by remember { mutableStateOf(pixivStore.recommendExhausted) }
+    /**
+     * 「这一档已经取过」的凭证（见 [GalleryPixivHomeStore]）。
+     *
+     * 与榜单那份缓存同一个理由，但推荐这一池没有"按档缓存"的形状可言（它的键里包着种子表），
+     * 所以用一份"取过就不再动"的凭证：同键 ⇒ 直接 return，屏上原样留着。
+     * 下拉刷新与空态「重试」都把它清成 null，所以它们仍能真的重发。
+     *
+     * ⚠️ 凭证里**不拼刷新计数**：拼了的话，重新组合（切 Tab 回来）计数归零、凭证永远对不上，
+     * 于是每次回来都重取 —— 那正是这一条要治的病。
+     */
+    var pixivRecommendLoadedKey by remember { mutableStateOf(pixivStore.recommendLoadedKey) }
+
+    /**
+     * 关注画师 / 推荐用户（2026-10-17 第八轮，用户「关注画师你参考 pixez-miuix 是怎么拿到的」）。
+     *
+     * 两条腿都在 `app-api`、都要票据，形状同族（`user_previews[]`）：
+     *  - `/v1/user/following?filter=for_android&user_id={自己}&restrict=public`
+     *  - `/v1/user/recommended?filter=for_android`
+     * 参数照 pixez-miuix 的 `UserRepository` 抄。**`filter=for_android` 是那条端点能不能答的关键** ——
+     * 2026-10-17 我们先前量到 `user/recommended` 回 400/191，就是因为少了这一枚。
+     *
+     * ⚠️ 两栏**各存各的**：混成一排的话，用户会以为自己关注了根本没关注的人。
+     */
+    var pixivFollowing by remember { mutableStateOf(pixivStore.followingUsers) }
+    var pixivRecommendedUsers by remember { mutableStateOf(pixivStore.recommendedUsers) }
+    var pixivArtistsLoading by remember { mutableStateOf(false) }
+    var pixivFollowCaption by remember { mutableStateOf(pixivStore.followingCaption) }
+    var pixivUsersCaption by remember { mutableStateOf(pixivStore.usersCaption) }
+    /** 「这两栏取过没有」的凭证。键 = 自己的 uid；登录态一变就作废（见 clear）。 */
+    var pixivUsersLoadedKey by remember { mutableStateOf(pixivStore.usersLoadedKey) }
+    /** 下拉刷新那枚把手：它一变就重发（凭证同时被清空）。 */
+    var pixivArtistsTick by remember { mutableStateOf(0) }
+    /**
+     * 「画师」那一格摆哪一半（已关注 / 发现）。
+     *
+     * 与 `pixivRecommendStation` 同一层：这是**界面选择**，不是取数条件 —— 两条腿都取好了，
+     * 它只决定摆哪一份。所以切它不触发任何 effect（也就不会闪一帧空态）。
+     */
+    var pixivArtistTab by remember { mutableStateOf(PixivArtistTab.FOLLOWING) }
+
+    // 离开这一屏（切主 Tab / 返回）时把这一池写回进程级存档：回来直接摆，不重取。
+    DisposableEffect(Unit) {
+        onDispose {
+            pixivStore.recommendWorks = pixivRecommend
+            pixivStore.recommendCaption = pixivRecommendCaption
+            pixivStore.recommendIdle = pixivRecommendIdle
+            pixivStore.recommendStation = pixivRecommendStation
+            pixivStore.recommendNext = pixivRecommendNext
+            pixivStore.recommendSeedPage = pixivRecommendSeedPage
+            pixivStore.recommendExhausted = pixivRecommendExhausted
+            pixivStore.recommendLoadedKey = pixivRecommendLoadedKey
+            pixivStore.followingUsers = pixivFollowing
+            pixivStore.recommendedUsers = pixivRecommendedUsers
+            pixivStore.followingCaption = pixivFollowCaption
+            pixivStore.usersCaption = pixivUsersCaption
+            pixivStore.usersLoadedKey = pixivUsersLoadedKey
+        }
+    }
+    val pixivWorks = GalleryPorts.of(context).pixiv
+    // 登录态只从这一条流读（与顶栏那颗头像、「关注画师」那一节同一个来源）。
+    val pixivAccount = remember(context) { GalleryPorts.of(context).pixivAccount }
+    val pixivAuth = pixivAccount?.authState?.collectAsState()?.value ?: PixivAuthState.Anonymous
+
+    // 「推荐」那一节的种子：**图库站收藏里抽出来的推荐标签**。
+    // 为什么借那一侧的语料：pixiv 今天还没有可收藏的卡（这一批才让它上墙），所以"你在 p 站
+    // 收藏过什么"恒为空；而"你常看 1girl / mountain_river 这类标签"是真读数，
+    // 拿它去 p 站按标签那一跳取几张新作，说的是同一件事实（现量：1girl 那一跳 60 条命中）。
+    val pixivSeeds = remember(recommendations) {
+        GallerySite.entries.filter { it != GallerySite.PIXIV }
+            .mapNotNull { (recommendations[it] as? GalleryRecommendation.Tags)?.tags }
+            .flatten().distinct().take(3)
+    }
+
+    // ── 排行榜（2026-10-17 第七轮重写）──
+    //
+    // 两件事在这条 effect 里定：
+    // 1. **切域回来不重发**：命中 [pixivRankingCache] 就直接摆那一档（用户「不要每次切页面都刷新」）。
+    //    缓存只在"用户下拉"那一下整批清空（见 [refreshWholePage]），所以刷新仍是真刷新。
+    // 2. **登录着就走 app-api**：www 那条是匿名的，站方给不给看运气，而一旦不给屏上只有一句
+    //    "这一档没有答上" —— 那张截图上排行榜整档空着就是它。app-api 要票据、答复里还带标题。
+    LaunchedEffect(domain, rankingMode, pixivWorks, pixivRankingTick, pixivAuth) {
+        val works = pixivWorks ?: return@LaunchedEffect
+        if (domain != GalleryHomeDomain.PIXIV) return@LaunchedEffect
+        val signedIn = pixivAuth is PixivAuthState.SignedIn
+        // 档名 + 哪条腿一起进键：同一档在登录前后是两份不同的内容（www 匿名 / app-api 带票据），
+        // 共用一个键就会把匿名那一批当成登录后的那一批摆上屏。
+        val cacheKey = rankingMode.name + if (signedIn) "#app" else "#www"
+        pixivRankingCache[cacheKey]?.let { snap ->
+            pixivRanking = snap.works
+            pixivRankingCaption = snap.caption
+            return@LaunchedEffect
+        }
+        pixivRankingLoading = true
+        pixivRankingCaption = null
+        if (signedIn) {
+            val bearer = pixivAccount?.bearerOrNull()
+            if (bearer == null) {
+                pixivRanking = emptyList()
+                pixivRankingCaption = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
+            } else {
+                val result = works.rankingInApp(rankingMode, bearer)
+                pixivRanking = result.getOrNull()?.works.orEmpty()
+                pixivRankingCaption = result.exceptionOrNull()?.message
+            }
+        } else {
+            // 匿名那一档仍走 www（带 `p=` 翻页、每页 50 条）。失败**不再吞掉**：
+            // 从前 `.getOrNull().orEmpty()` 一吞，屏上只剩"没有答上"，读不出是限流还是真空。
+            val result = works.ranking(rankingMode, page = 1)
+            pixivRanking = result.getOrNull().orEmpty()
+            pixivRankingCaption = result.exceptionOrNull()?.message
+        }
+        // 展开态要跟着档位一起重算：换了档还留着上一档的 21 张，读起来像"周榜和日榜一样"。
+        pixivRankingCache[cacheKey] = PixivRankingSnapshot(pixivRanking, pixivRankingCaption)
+        pixivRankingLoading = false
+    }
+
+    // ── 关注画师 / 推荐用户（2026-10-17 第八轮）──
+    //
+    // 两条腿都在 app-api、都要票据，形状同族（`user_previews[]`）：
+    //  - `/v1/user/following?filter=for_android&user_id={自己}&restrict=public`
+    //  - `/v1/user/recommended?filter=for_android`
+    // 参数照 pixez-miuix 的 `UserRepository` 抄。**`filter=for_android` 是那条端点能不能答的关键** ——
+    // 我们先前量到 `user/recommended` 回 400/191，缺的就是这一枚。
+    //
+    // 两栏**各存各的**：混成一排的话，用户会以为自己关注了根本没关注的人。
+    LaunchedEffect(domain, pixivAuth, pixivWorks, pixivArtistsTick) {
+        val works = pixivWorks ?: return@LaunchedEffect
+        if (domain != GalleryHomeDomain.PIXIV) return@LaunchedEffect
+        val me = (pixivAuth as? PixivAuthState.SignedIn)?.userId
+        if (me.isNullOrBlank()) {
+            // 未登录（或这一档没带 user_id）：这两栏本来就要票据与自己的用户号。
+            // 屏上那几句由节里按登录态念，不在这里造第二套文案。
+            pixivFollowing = emptyList()
+            pixivRecommendedUsers = emptyList()
+            pixivFollowCaption = null
+            pixivUsersCaption = null
+            pixivUsersLoadedKey = null
+            // 已登录却**没存下用户号**（老版本写下的登录记录）：关注那一跳的 `user_id` 没有值可传。
+            // 这一档不能沉默 —— 否则顶栏说"已登录"、这一栏说"你还没关注人"，两句话在屏上打架。
+            if (pixivAuth is PixivAuthState.SignedIn) {
+                val line = "这一版没记下你的 pixiv 用户号 —— 点顶栏那颗头像重新登录一次，这里就能读出来。"
+                pixivFollowCaption = line
+                pixivUsersCaption = line
+            }
+            return@LaunchedEffect
+        }
+        val requestKey = "users:$me"
+        if (pixivUsersLoadedKey == requestKey) return@LaunchedEffect
+        val bearer = pixivAccount?.bearerOrNull()
+        if (bearer == null) {
+            // 票据取不到是**这一刻**的事，不记账：下一次组合还能再试，别把失败钉成空态。
+            pixivFollowCaption = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
+            pixivUsersCaption = null
+            return@LaunchedEffect
+        }
+        pixivArtistsLoading = true
+        val following = works.following(bearer, me)
+        pixivFollowing = following.getOrNull()?.users.orEmpty()
+        pixivFollowCaption = following.exceptionOrNull()?.message
+        val recommended = works.recommendedUsers(bearer)
+        pixivRecommendedUsers = recommended.getOrNull()?.users.orEmpty()
+        pixivUsersCaption = recommended.exceptionOrNull()?.message
+        pixivArtistsLoading = false
+        pixivUsersLoadedKey = requestKey
+    }
+
+    // 登录态一变，两条腿的缓存整批作废：登录前是匿名那份、登录后该是站方那份（反之亦然）。
+    // 不做这件事的话，用户刚登完仍然看着匿名那一批，直到下拉一次才换 —— 屏上看不出来的错配。
+    //
+    // ⚠️ 首帧**不许**清：这条 effect 在每次组合开始都会跑一次，而那一刻屏上的数据正是
+    // 上一屏写回 [GalleryPixivHomeStore] 的存档（切 Tab 回来就靠它）。所以先记一枚"见过的登录态"，
+    // 只有它**真的变了**才清 —— 否则每次回到画廊都会把刚恢复的那一池抹掉。
+    var pixivAuthSeen by remember { mutableStateOf(pixivAuth) }
+    LaunchedEffect(pixivAuth) {
+        if (pixivAuth == pixivAuthSeen) return@LaunchedEffect
+        pixivAuthSeen = pixivAuth
+        pixivStore.clear()
+        pixivRecommendLoadedKey = null
+        pixivRecommend = emptyList()
+        pixivRecommendCaption = null
+        pixivRecommendStation = false
+        pixivRecommendNext = null
+        pixivRecommendSeedPage = 1
+        pixivRecommendExhausted = false
+        pixivRecommendIdle = true
+        // 关注 / 推荐画师也整批作废：换了账号之后还摆着上一个号关注的人，那是错认。
+        pixivFollowing = emptyList()
+        pixivRecommendedUsers = emptyList()
+        pixivFollowCaption = null
+        pixivUsersCaption = null
+        pixivUsersLoadedKey = null
+    }
+
+    LaunchedEffect(domain, pixivSeeds, pixivWorks, pixivRecommendTick, pixivAuth) {
+        val works = pixivWorks ?: return@LaunchedEffect
+        if (domain != GalleryHomeDomain.PIXIV) return@LaunchedEffect
+        val signedIn = pixivAuth is PixivAuthState.SignedIn
+        // 「这一次该取什么」的键：登录态 + （未登录时的）种子表。
+        // 键没变 ⇒ 屏上这一池就是它的结果，直接留着 —— 切来切去不再重发（同排行榜那条）。
+        // ⚠️ 里面**不拼刷新计数**：拼了的话重新组合时计数归零、凭证永远对不上（见存档那段）。
+        val requestKey = if (signedIn) "app" else "seeds:" + pixivSeeds.joinToString(",")
+        if (pixivRecommendLoadedKey == requestKey) return@LaunchedEffect
+        // ── 已登录：读**站方推荐**（2026-10-17 第五轮，用户「下面推荐应该自动换成 pixiv 站方的推荐」）──
+        //
+        // 这一档与下面那一档不是"同一个东西的两种实现"：
+        //  - 站方推荐按**你看过谁、收藏过谁**算，要不要给是站方决定的（`/v1/illust/recommended`，必须带票据）；
+        //  - 种子那一跳是拿图库站的标签去 p 站搜，它是**我们的**口味推断，匿名也能读。
+        // 同一句空态会把两种处境读成一种，所以读数那份也分了两档（`pixivRecommendReading(station=…)`）。
+        if (signedIn) {
+            pixivRecommendStation = true
+            pixivRecommendLoading = true
+            pixivRecommendIdle = false
+            pixivRecommendCaption = null
+            // 翻页状态跟着首屏一起重置：不重置的话第一屏落下来、页脚却以为还有"下一页"，
+            // 一滑到底就把第一页又取一遍。
+            pixivRecommendNext = null
+            pixivRecommendSeedPage = 1
+            pixivRecommendExhausted = false
+            // 票据**现取**（`bearerOrNull` 内部会在快过期时先刷一次）；取不到就如实说，
+            // 不许静默退回种子那一跳 —— 那会让"登录着却还是旧内容"成为屏上看不出来的错配。
+            val bearer = pixivAccount?.bearerOrNull()
+            if (bearer == null) {
+                pixivRecommend = emptyList()
+                pixivRecommendExhausted = true
+                pixivRecommendCaption = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
+            } else {
+                val result = works.recommended(bearer)
+                val page = result.getOrNull()
+                pixivRecommend = page?.works.orEmpty()
+                pixivRecommendNext = page?.nextUrl
+                // `next_url` 缺席 = 站方说没有了（这一池到底）。失败那一档也照此：墙上没内容，
+                // 续页判据本来就不会跑（它要求墙上已有卡片）。
+                pixivRecommendExhausted = page?.nextUrl == null
+                pixivRecommendCaption = result.exceptionOrNull()?.message
+            }
+            pixivRecommendLoading = false
+            pixivRecommendLoadedKey = requestKey
+            return@LaunchedEffect
+        }
+        // ── 未登录：种子标签那一跳（匿名可读，见上）──
+        pixivRecommendStation = false
+        pixivRecommendNext = null
+        pixivRecommendSeedPage = 1
+        pixivRecommendExhausted = false
+        if (pixivSeeds.isEmpty()) {
+            pixivRecommend = emptyList()
+            pixivRecommendCaption = "还没有能当种子的收藏：在大图上点收藏，这里会按那些标签去 pixiv 取"
+            pixivRecommendIdle = false
+            pixivRecommendLoadedKey = requestKey
+            return@LaunchedEffect
+        }
+        pixivRecommendLoading = true
+        val picked = ArrayList<PixivWork>()
+        pixivSeeds.forEach { seed ->
+            val found = works.tagWorks(seed, page = 1).getOrNull().orEmpty()
+            picked += found.take(GalleryPixivHome.RECOMMEND_PER_SEED)
+        }
+        // 三枚种子之间去重：同一张图会在好几个标签下命中，不去重就是同一张连着摆两遍
+        // （这一族本仓犯过：见记忆「按收藏推荐那轮的复读页」）。
+        // 与**排行榜那一排**没有去重：那是「按分数/时间排行」的取数、这是「按种子标签的最新作」，
+        // 两批不是同一次命中，而墙上这一池是瀑布流、上面那排是带标题的小卡，形状也不同。
+        pixivRecommend = picked.distinctBy { it.post.uid }
+        pixivRecommendCaption = if (pixivRecommend.isEmpty())
+            "种子那几枚标签这一轮没从 pixiv 取回图（「${pixivSeeds.joinToString("、")}」）" else null
+        pixivRecommendLoading = false
+        pixivRecommendIdle = false
+        pixivRecommendLoadedKey = requestKey
+    }
+
+    // ── 推荐那一面墙的**无限下拉**（2026-10-17 第七轮，用户「这个推荐也是要做成瀑布流的无限下拉的」）──
+    //
+    // 判据复用图库站那道 [GalleryLoadMoreState]（同一套三道闸门：墙得是活的、到底了不判、在取时不并发），
+    // 只是"下一页"的取法分两档：
+    //  - 站方推荐：地址就是上一页答复里的 `next_url`（站方自己带的 `offset`/`filter`，我们不拼）；
+    //  - 种子那一跳：`p = 页码 + 1`，三枚种子各取一页、去重后追加。
+    // 追加时**一律按 uid 去重**：站方推荐跨页会重复（它按兴趣打分，不是按页切），
+    // 不去重就是同一张图在瀑布流里连着出现两遍 —— 这一族本仓犯过一次（复读页那轮）。
+    LaunchedEffect(forYouGridState, domain, pixivWorks) {
+        val works = pixivWorks ?: return@LaunchedEffect
+        if (domain != GalleryHomeDomain.PIXIV) return@LaunchedEffect
+        snapshotFlow {
+            val info = forYouGridState.layoutInfo
+            GalleryLoadMoreState(
+                wallActive = pixivRecommend.isNotEmpty(),
+                exhausted = pixivRecommendExhausted,
+                busy = pixivRecommendLoading || pixivRecommendLoadingMore,
+                failed = false,
+                settled = true,
+                lastIndex = info.totalItemsCount - 1,
+                visibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                if (!state.wallActive || state.exhausted || state.busy) return@collect
+                if (state.lastIndex < 0 || state.visibleIndex < state.lastIndex - LOAD_MORE_AHEAD) return@collect
+                pixivRecommendLoadingMore = true
+                if (pixivRecommendStation) {
+                    val next = pixivRecommendNext
+                    val bearer = pixivAccount?.bearerOrNull()
+                    if (next == null || bearer == null) {
+                        // 没有游标 / 票据这一刻取不到：这一轮到此为止，别把页脚永远转着。
+                        pixivRecommendExhausted = true
+                    } else {
+                        val result = works.recommended(bearer, next)
+                        val page = result.getOrNull()
+                        if (page == null) {
+                            pixivRecommendCaption = result.exceptionOrNull()?.message
+                        } else {
+                            val seen = pixivRecommend.mapTo(HashSet()) { it.post.uid }
+                            pixivRecommend = pixivRecommend + page.works.filter { it.post.uid !in seen }
+                            pixivRecommendNext = page.nextUrl
+                            if (page.nextUrl == null) pixivRecommendExhausted = true
+                        }
+                    }
+                } else {
+                    val nextPage = pixivRecommendSeedPage + 1
+                    val picked = ArrayList<PixivWork>()
+                    pixivSeeds.forEach { seed ->
+                        picked += works.tagWorks(seed, page = nextPage).getOrNull().orEmpty()
+                    }
+                    val seen = pixivRecommend.mapTo(HashSet()) { it.post.uid }
+                    val fresh = picked.filter { it.post.uid !in seen }
+                    if (fresh.isEmpty()) {
+                        // 三枚种子这一页都没新东西 = 到底了（再往后取只会是同一批）。
+                        pixivRecommendExhausted = true
+                    } else {
+                        pixivRecommend = pixivRecommend + fresh.distinctBy { it.post.uid }
+                        pixivRecommendSeedPage = nextPage
+                    }
+                }
+                pixivRecommendLoadingMore = false
+            }
+    }
+
+    /**
+     * 「换一批」= 把整面墙换成**下一批**（2026-10-17 第二十三轮，用户「推荐标题右边要多个换一批的胶囊」）。
+     *
+     * ## 两腿各有各的"下一批"
+     *
+     * - **站方推荐**（登录态）：`next_url` 那一页；
+     * - **种子腿**（匿名）：`pixivRecommendSeedPage + 1`，按 `page` 参数翻 —— 续页那一段就是走这条，
+     *   所以换批不是新发明的一条取数路，只是把它**提前触发**。
+     *
+     * ## 关键差别：**替换**，不是追加
+     *
+     * 续页是追加（用户滑到底想要更多），换一批是替换（按下去要看见"整墙都换了"）。
+     * 追加会让按过之后屏上多出十几张旧图 —— 那读起来是"加载更多"，不是"换一批"。
+     *
+     * 换完把墙**滚回顶**（`scrollToItem(0)`，第 0 项是头图）：留在原滚动位置的话，
+     * 用户看到的是"中间某一段忽然变成别的图"，读不出刚才那一下是换批。
+     *
+     * 失败时**保留原来那一墙**并念站方原话 —— 换批失败就把屏清空的话，按一下等于删了一屏内容。
+     */
+    fun remixPixivRecommend() {
+        val works = pixivWorks ?: return
+        if (pixivRecommendRemixLoading) return
+        scope.launch {
+            pixivRecommendRemixLoading = true
+            pixivRecommendCaption = null
+            try {
+                if (pixivRecommendStation) {
+                    val next = pixivRecommendNext
+                    val bearer = pixivAccount?.bearerOrNull()
+                    if (next == null || bearer == null) {
+                        pixivRecommendCaption = "这一池已经翻到底了，站方没有给下一批。"
+                    } else {
+                        val result = works.recommended(bearer, next)
+                        val page = result.getOrNull()
+                        if (page == null || page.works.isEmpty()) {
+                            pixivRecommendCaption =
+                                result.exceptionOrNull()?.message ?: "下一批这一回没有答上东西。"
+                        } else {
+                            pixivRecommend = page.works
+                            pixivRecommendNext = page.nextUrl
+                            pixivRecommendExhausted = page.nextUrl == null
+                            forYouGridState.scrollToItem(0)
+                        }
+                    }
+                } else {
+                    if (pixivSeeds.isEmpty()) {
+                        pixivRecommendCaption = "还没有可用来换的种子标签（先下拉刷新一次）。"
+                    } else {
+                        val nextPage = pixivRecommendSeedPage + 1
+                        val picked = ArrayList<PixivWork>()
+                        pixivSeeds.forEach { seed ->
+                            picked += works.tagWorks(seed, page = nextPage).getOrNull().orEmpty()
+                        }
+                        val fresh = picked.distinctBy { it.post.uid }
+                        if (fresh.isEmpty()) {
+                            // 换批失败/翻到底都落到这里：**不动原来那一墙**，只说一声。
+                            pixivRecommendExhausted = true
+                            pixivRecommendCaption = "这几枚标签的下一页也没有新东西了。"
+                        } else {
+                            pixivRecommend = fresh
+                            pixivRecommendSeedPage = nextPage
+                            pixivRecommendExhausted = false
+                            forYouGridState.scrollToItem(0)
+                        }
+                    }
+                }
+            } finally {
+                pixivRecommendRemixLoading = false
+            }
+        }
+    }
+
+    // ── 整页下拉刷新（2026-10-17 第五轮）──
+    //
+    // "整页"= 这一屏上所有腿都重发：图库站那侧是日榜 + 猜你喜欢两腿；Pixiv 那侧是排行榜 + 推荐两腿。
+    // 只刷脚下那面墙会留下"上面那排还是旧的"，而用户读到的是一屏没刷新。
+    //
+    // `pullRefreshing` 是**屏上自己记的一次**，不直接吃任何一条腿的 loading：那几条 loading
+    // 同时被"切域""换档位""加载更多"复用，照搬会把那些动作也点亮成"正在下拉刷新"。
+    // 收尾的条件与网络收藏那屏同形：**先见过 loading 起来、再落下**才算这次结束；
+    // 一条腿都没起 loading（比如刷新同步早退）时兜一个 600ms，别让那一行永远挂着。
+    var pullRefreshing by remember { mutableStateOf(false) }
+    var pullSawLoading by remember { mutableStateOf(false) }
+    val pullLoading = vm.isLoadingFeed || fvm.isLoading || pixivRecommendLoading || pixivRankingLoading
+    LaunchedEffect(pullRefreshing, pullLoading) {
+        if (!pullRefreshing) {
+            pullSawLoading = false
+            return@LaunchedEffect
+        }
+        if (pullLoading) {
+            pullSawLoading = true
+            return@LaunchedEffect
+        }
+        if (!pullSawLoading) {
+            delay(600)
+            if (pullRefreshing && !pullLoading && !pullSawLoading) pullRefreshing = false
+        } else {
+            pullRefreshing = false
+        }
+    }
+    val refreshWholePage: () -> Unit = {
+        pullSawLoading = false
+        pullRefreshing = true
+        if (domain == GalleryHomeDomain.PIXIV) {
+            // 下拉 = **唯一**清缓存的地方（用户 2026-10-17：「不要每次切页面都刷新，手动下拉才刷新」）。
+            // 那几枚 tick 只是让对应 effect 重跑；真正让它们"不命中缓存"的是这几行清空。
+            pixivRankingCache.clear()
+            pixivRecommendLoadedKey = null
+            // 关注 / 推荐画师也一起重取（这三栏都在同一屏，用户下拉时的心智是"整页都刷"）。
+            pixivUsersLoadedKey = null
+            pixivRankingTick++
+            pixivRecommendTick++
+            pixivArtistsTick++
+        } else {
+            // 两腿都走"用户主动"那条路：先清 60 秒熔断再置 force，否则按下必然还是同一句
+            // "熔断中" —— 那就是一枚假按钮（这两枚把手存在的意义正是防它）。
+            //
+            // ⚠️ 日榜这一腿用 [GalleryViewModel.refreshKeepingContent] 而不是 `refresh()`：
+            // 后者会把 `posts` 清空 ⇒ 下拉那一下整面墙换成骨架、等三站都回来才重新长出来
+            // （用户同一条反馈里的「每日热门这个加载时间太长了」多半就是这个"先清再等"）。
+            // 现在旧屏留着，新的一批落地时整屏替换。
+            resetBreakers()
+            forceNextLoad = true
+            vm.refreshKeepingContent()
+            retryForYouFromUser()
+        }
+    }
+
+    // 切域 = 第 2~4 节的 key 整批改换。懒列表在第 0 项之后换项会让视口锚点漂 ——
+    // 所以回到顶部，别让用户落在"换了内容的那一格"上。
+    LaunchedEffect(domain) { forYouGridState.scrollToItem(0) }
+
+    // 打码那一把与首页其余三批**同一颗** `buildGalleryWall`（同一张图在两处待遇不同是最难解释的不一致）。
+    //
+    // ⚠️ 2026-10-17 第八轮（用户截图「排行榜为啥都说这样显示 r18，我这边屏蔽也没开」）：
+    // 这里从前写的是 `cards.mapTo(HashSet()) { … }` —— 而 `GalleryWall.cards` 是**保留下来的全部卡**
+    // （`buildGalleryWall` 里 `masked = true` 与 `masked = false` **都**进 `kept`），
+    // 所以那一句等于"每一张都在打码集合里" ⇒ 排行榜**恒全糊 + 恒画 R18 角标**，
+    // 与 rating、与 `nsfw_mode` 全都无关（`maskMode = OFF` 时也一样糊，因为这条判据根本不看 mode）。
+    // 正确写法是先按 `card.masked` 滤一遍：这个集合的语义是"命中打码的那几张"，不是"这一墙有哪几张"。
+    val pixivRankingMasked = remember(pixivRanking, maskMode, rules, blockAi) {
+        buildGalleryWall(pixivRanking.map { it.post }, maskMode, blockAi = blockAi) { post ->
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
+        }.cards.filter { it.masked }.mapTo(HashSet()) { it.post.uid }
+    }
+
+    // ── 首页那面墙由谁填（2026-10-17 用户点名：pixiv 的推荐走「猜你喜欢」那种墙，不再是卡片排）──
+    // 打码那把仍是同一颗 buildGalleryWall：同一张图在两处待遇不同是最难解释的不一致。
+    val pixivRecommendWall = remember(pixivRecommend, maskMode, rules, blockAi) {
+        buildGalleryWall(pixivRecommend.map { it.post }, maskMode, blockAi = blockAi) { post ->
+            guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
+        }
+    }
+    /**
+     * 推荐那面墙的**站方标题**（`uid → title`，2026-10-17 第七轮）。
+     *
+     * 病根：那一池的卡在屏上**只有图、没有标题行** —— 墙上那行标题是 `GalleryCardTitle`
+     * 拿标签去离线词典**算**出来的，而 pixiv 的标签是日文（`女の子`、`制服`），
+     * 词典里一条都没有 ⇒ 算不出来 ⇒ 整行不画。
+     * 站方其实每行都给了 `title`（`PixivWork.title`），直接摆它就行。
+     *
+     * ⚠️ **空串也收进表**：`PixivWork.title` 有时是空串，那表示"站方这一张就是无题"。
+     * 收进去 = 覆盖掉算出来的那批；不收 = 又退回去摆我们猜的那个（两种来源混成一层）。
+     * 墙那一侧会把空串折成"这一行不画"。
+     */
+    val pixivRecommendTitles = remember(pixivRecommend) {
+        pixivRecommend.associate { it.post.uid to it.title }
+    }
+    /**
+     * 作者头像表（`uid → 地址`，第二十四轮）。
+     *
+     * 同 [pixivRecommendTitles] 那把路径：整批摊平成一张表，而不是让每张卡自己回头找那条作品 ——
+     * 地址本来就躺在 `PixivWork` 里，跟着那一池走，缺哪条就是空串 ⇒ 卡上退回首字母座。
+     */
+    val pixivRecommendAvatars = remember(pixivRecommend) {
+        pixivRecommend.associate { it.post.uid to it.authorAvatarUrl }
+    }
+    val homeWallReading = if (domain == GalleryHomeDomain.PIXIV) {
+        pixivRecommendReading(
+            wall = pixivRecommendWall,
+            pending = pixivRecommendIdle || pixivRecommendLoading,
+            seeds = pixivSeeds,
+            caption = pixivRecommendCaption,
+            onRetry = { pixivRecommendTick++ },
+            station = pixivRecommendStation,
+            loadingMore = pixivRecommendLoadingMore,
+            exhausted = pixivRecommendExhausted,
+        )
+    } else {
+        // 空态那句"有 N 张收藏却抽不出标签"要说得出张数 —— 不说就与"你还没收藏"分不开。
+        // 首页没有"另一面墙"可切（每日热门搬去了独立二级页），所以 onGoToDaily 恒 null：
+        // 摆一枚把同一面墙重滚一次的按钮就是假开关。
+        forYouWallReading(
+            fvm = fvm,
+            wall = forYouWall,
+            favoriteCount = galleryFavorites.size,
+            onRetry = { retryForYouFromUser() },
+            onGoToDaily = null,
+        )
+    }
     val homeSections = galleryHomeSections(
         daily = wall.cards,
         dailyLoading = vm.isLoadingFeed,
@@ -842,6 +1529,60 @@ fun GalleryScreen(
         // 重取期间那枚轻指示（用户 2026-09-30：「换一批不要整个页面刷新」——
         // 三节与上一批卡片都留着，"正在换"这件事由节头这枚环去说）。
         forYouLoading = fvm.isLoading,
+        domain = domain,
+        pixiv = PixivHomeState(
+            rankingMode = rankingMode,
+            ranking = if (pixivExpanded) pixivRanking.take(GalleryPixivHome.RANKING_EXPANDED_ITEMS) else pixivRanking,
+            rankingLoading = pixivRankingLoading,
+            rankingExpanded = pixivExpanded,
+            maskedOf = { post -> post.uid in pixivRankingMasked },
+            onPickRankingMode = { picked ->
+                pixivModeName = picked.name
+                pixivExpanded = false
+            },
+            onToggleRankingExpanded = { pixivExpanded = !pixivExpanded },
+            onOpen = { pool, post ->
+                GalleryViewerQueue.set(pool.map { it.post })
+                onOpenPost(post.site, post.id)
+            },
+            // 「关注画师」那一节的话要跟顶栏那颗头像同源（同一个 authState，不另算一遍）。
+            credentials = GalleryPorts.of(context).pixivAccount,
+            // 未登录时「推荐」那一池是**按收藏标签**取的，不是站方推荐 —— 屏上要说出来，
+            // 否则会被读成"站方推荐就长这样"。站方推荐在场时不摆话（真读数不需要解释自己）。
+            recommendNote = if (pixivRecommendStation) null else
+                "还没登录 pixiv：这一栏暂时按你收藏里的标签去站里找。登录后换成站方推荐。",
+            // 空那一档念站方原话（见 `PixivHomeState.rankingCaption` 的理由）。
+            rankingCaption = pixivRankingCaption,
+            // 「换一批」（第二十三轮）：能不能摆 = 那一腿现在**有没有下一批**。
+            // 站方腿看 `next_url`（翻到底就不摆，那一按没有下一批可取）；
+            // 种子腿看有没有种子标签（匿名那一跳的"下一批"是按 `page` 往后翻，不会真的翻到底）。
+            recommendRemixable = if (pixivRecommendStation) {
+                pixivRecommendNext != null
+            } else {
+                pixivSeeds.isNotEmpty()
+            },
+            recommendRemixLoading = pixivRecommendRemixLoading,
+            onRemixRecommend = { remixPixivRecommend() },
+            // 关注 / 推荐画师（2026-10-17 第八轮）：两栏分开放，各自一套空/忙/失败。
+            following = pixivFollowing,
+            recommendedUsers = pixivRecommendedUsers,
+            artistsLoading = pixivArtistsLoading,
+            followingCaption = pixivFollowCaption,
+            usersCaption = pixivUsersCaption,
+            // 点一位画师 = **进画师页**（用户 2026-10-19：「改成点击画师头像进入画师页」）。
+            // 从前这里开的是站方网页（`openPixivUserPage`）—— 那时确实没有一屏可去。
+            // 现在有了，网页退成屏内那枚「在 pixiv 打开」的正当出口。
+            onOpenUser = { user -> context.openPixivArtistPage(user.id, user.name) },
+            artistTab = pixivArtistTab,
+            onPickArtistTab = { pixivArtistTab = it },
+            // 排行榜卡那颗 ♥：走**本地收藏档**（与收藏页 / 大图页那颗同一份数据）。
+            // 集合按 uid 建，"这张在不在收藏里"是一次哈希查表 —— 榜单一排三张，逐张线性扫
+            // 收藏表在几百条时会变成每帧几百次比较。
+            favoritedOf = { post -> post.uid in galleryFavoriteUids },
+            onToggleFavorite = { post ->
+                scope.launch { GalleryPorts.of(context).favorites.toggle(post) }
+            },
+        ),
         imageLoader = imageLoader,
     )
 
@@ -859,7 +1600,7 @@ fun GalleryScreen(
     // 只在 RESULTS 态成立：INPUT 态是编辑态（卡片要完整背板承载补全 / 历史列表），
     // 而且那一态键盘起着，本来也滚不动网格。
     // （`searchWallActive` 的定义搬到了上面那几个 remember 之后，因为三个墙都要用同一句判据。）
-    val searching = svm.active && svm.filters.isNotEmpty()
+    val searching = svm.active && svm.hasQuery
     // 结果墙只在「这一轮真的取过（page > 0）或正在取**或这一轮已经说过一句失败**」时接管。
     //
     // `searchError != null` 那一支是 2026-10-15 补的：此前只有前两支，于是**第 1 页整轮失败**
@@ -874,15 +1615,25 @@ fun GalleryScreen(
     // 一腿成、一腿败时屏上是有内容的，那一档由页尾与展开区说，不该把整面墙换成错误页。
     val searchWallActive = searching && (svm.page > 0 || svm.isSearching || svm.searchError != null)
 
+    /**
+     * pixiv 那一屏现在是不是在**画师**页签上。
+     *
+     * 这一格决定的是"摆哪一面墙"，与 `searchWallActive`（作品那面瀑布流）是**并列**的两件事，
+     * 不是它的子集：画师那一栏没有 `page` / `exhausted` 那套（它有自己的 `pixivArtistPage`），
+     * 拿作品那面墙的判据去推它，只会在两边各写一遍之后慢慢分叉。
+     */
+    val pixivArtistMode = domain == GalleryHomeDomain.PIXIV &&
+        svm.pixivKind == PixivSearchKind.ARTIST
+
     // 页尾那一行：搜索与猜你喜欢各一句，**类型显式写出来**（`when` 里混 `@Composable {}` 字面量
     // 会被推成 Unit?，编译器就不认了）。
-    val searchFooter: (@Composable () -> Unit)? = if (searchWallActive) {
+    val searchFooter: (@Composable () -> Unit)? = if (searchWallActive && !pixivArtistMode) {
         @Composable {
             GallerySearchEnd(
                 cards = searchWall.cards.size,
                 // 报的是**真正发出去的那串**（预算内那几枚），不是全部胶囊 ——
                 // 页尾是读数，读数与实际请求不一致就是假读数。
-                query = GallerySearch.queryOf(svm.effectiveFilters()),
+                query = svm.footerQuery,
                 page = svm.page,
                 exhausted = svm.exhausted,
                 loadingMore = svm.isLoadingMore,
@@ -892,10 +1643,10 @@ fun GalleryScreen(
                 videos = searchWall.cards.count { it.post.isVideo },
                 noImage = svm.noImageNotice(),
                 // 排法与日期区间一起念：切了档而页尾读不出区别，用户只会怀疑那一下没生效。
-                ranking = svm.rankingReading(),
+                ranking = svm.footerRankingReading(),
                 // 条件被预算砍过也要在这儿说一遍：收成一条之后展开区不画了，
                 // 那句提示只在展开态看得见，页尾得自己承担这个交代。
-                trimmedNote = svm.budgetTrimNotice(),
+                trimmedNote = svm.footerTrimmedNote(),
                 // 续页失败：页尾如实说 + 给一枚「重试」。没有它，失败之后页面怎么滑都不会再发请求。
                 loadMoreError = svm.loadMoreError,
                 onRetryLoadMore = { svm.retryLoadMore() },
@@ -914,7 +1665,9 @@ fun GalleryScreen(
     // 那一次滚动能真跑。主墙恒在（2026-09-30 起），所以这条判据只对搜索墙有意义。
     LaunchedEffect(gridState) {
         snapshotFlow {
-            val wallActive = svm.active && svm.filters.isNotEmpty() && (svm.page > 0 || svm.isSearching)
+            // 判据吃 `svm.hasQuery`（与下面续页那一处同一条）：pixiv 那一域没有标签胶囊，
+            // 按 `filters` 判会让它的落点一次都记不下来。
+            val wallActive = svm.active && svm.hasQuery && (svm.page > 0 || svm.isSearching)
             wallActive to (gridState.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0)
         }
             .distinctUntilChanged()
@@ -934,16 +1687,21 @@ fun GalleryScreen(
     LaunchedEffect(svm.searchGeneration) {
         if (svm.searchGeneration == 0) return@LaunchedEffect
         if (svm.appliedGeneration == svm.searchGeneration) return@LaunchedEffect
-        if (!(svm.active && svm.filters.isNotEmpty())) return@LaunchedEffect
+        if (!(svm.active && svm.hasQuery)) return@LaunchedEffect
         gridState.scrollToItem(svm.consumeScrollRestore() ?: 0)
         svm.appliedGeneration = svm.searchGeneration
     }
 
     // 结果滚到离底几张以内就续下一页（搜索那面墙）。
     // 三道闸门原样保留（没滚回顶部不判、续页刚失败不自动重试、在取时不并发）。
+    //
+    // ⚠️ 2026-10-18「pixiv 搜索下滑无法继续获取更多新图」的根因就在这一行：
+    // 判据原先是 `svm.filters.isNotEmpty()` —— 那是 **booru 的标签胶囊**，而 pixiv 那一域
+    // 根本没有胶囊（词在 `pixivTerm` 里）⇒ `wallActive` 恒为假 ⇒ 续页 effect 一次都不触发。
+    // 现在走 `svm.hasQuery`（两个域各按各的判据），与返回键、空态那几处同一个口径。
     LaunchedEffect(gridState) {
         snapshotFlow {
-            val wallActive = svm.active && svm.filters.isNotEmpty() && (svm.page > 0 || svm.isSearching)
+            val wallActive = svm.active && svm.hasQuery && (svm.page > 0 || svm.isSearching)
             val info = gridState.layoutInfo
             GalleryLoadMoreState(
                 wallActive = wallActive,
@@ -975,6 +1733,70 @@ fun GalleryScreen(
                 topPadding = gridTopPadding,
                 allowNsfw = allowNsfw,
                 onOpenPost = onOpenPost,
+                modifier = Modifier
+                    .nestedScroll(topBarBehavior.nestedScrollConnection)
+                    .blurBackdropSource(topBarBackdrop),
+            )
+
+            // ── pixiv 的「画师」页签（2026-10-18）──
+            //
+            // 这一栏摆的是**人**，不是图：它走 `/v1/search/user`，结果是一份名单，
+            // 与下面那面瀑布流不是同一种墙（所以三支都排在那面墙前面）。
+            // 判据里带 `svm.active`：退出搜索之后这一屏该回到首页主墙，而不是留着上一次的名单。
+            pixivArtistMode && svm.active &&
+                svm.pixivArtists.isEmpty() && svm.isSearchingArtists -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = gridTopPadding + searchResultsInset)
+                    .imePadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularWavyProgressIndicator(
+                    modifier = Modifier.size(tokens.spacing.loaderPage),
+                    color = tokens.color.primary,
+                    trackColor = tokens.color.surfaceVariant,
+                )
+            }
+
+            pixivArtistMode && svm.active &&
+                svm.pixivArtists.isEmpty() && !svm.isSearchingArtists -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = gridTopPadding + searchResultsInset,
+                        start = tokens.spacing.screenHorizontal,
+                        end = tokens.spacing.screenHorizontal,
+                    )
+                    .imePadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                VeneraEmptyView(
+                    // 两档分开说：**取失败**（没登录 / 站方没答上）与**真的没有这个人**是不同的事。
+                    // 合成一句"没找到"会让用户以为名字打错了，而实际是没登录。
+                    title = if (svm.pixivArtistError != null) "画师没取到" else "没有这位画师",
+                    message = svm.pixivArtistError
+                        ?: "pixiv 的画师是按名字搜的。换个写法，或者切回「作品」那一栏试试。",
+                    icon = Icons.Outlined.PersonSearch,
+                    actionText = "改条件",
+                    onAction = { svm.backToInput() },
+                )
+            }
+
+            pixivArtistMode && svm.active -> GalleryPixivArtistResults(
+                users = svm.pixivArtists,
+                imageLoader = imageLoader,
+                loading = svm.isSearchingArtists,
+                error = svm.pixivArtistError,
+                exhausted = svm.pixivArtistsExhausted,
+                // 搜索「画师」分栏那一行：同样进画师页（与首页横排同一个动作）。
+                onOpen = { user -> context.openPixivArtistPage(user.id, user.name) },
+                onLoadMore = { svm.loadMorePixivArtists() },
+                contentPadding = PaddingValues(
+                    start = tokens.spacing.screenHorizontal,
+                    end = tokens.spacing.screenHorizontal,
+                    top = gridTopPadding + searchResultsInset,
+                    bottom = LocalBottomBarClearance.current,
+                ),
                 modifier = Modifier
                     .nestedScroll(topBarBehavior.nestedScrollConnection)
                     .blurBackdropSource(topBarBackdrop),
@@ -1030,42 +1852,27 @@ fun GalleryScreen(
             ) {
                 VeneraEmptyView(
                     /*
-                     * 标题分三档而不是两档：**"这一站现在用不了"与"这一轮搜失败了"是不同的事**。
+                     * 标题分档而不是一刀切：**"这一站现在用不了"与"这一轮搜失败了"是不同的事**。
                      * 前者（目前只有 Gelbooru 未配账号）一次请求都没发出去，说成"没搜成"
                      * 会让用户去重试、去改网络 —— 而他该做的是去配置页填两个字段。
                      * 判据用 `searchError` 是否就是那句固定文案，而不是再加一个状态位：
                      * 那句话本身就是"发车前被拦住"的唯一来源，多一个旗标就多一处会不同步的状态。
+                     *
+                     * 2026-10-17 起这一整段搬进 `svm.emptyTitle()`：pixiv 那一域说的
+                     * 是"这个词没有可摆的图"，与"这串标签没有"不是同一句话（它没有胶囊）。
                      */
-                    title = when {
-                        svm.searchError == GallerySearchViewModel.NEEDS_GELBOORU_ACCOUNT ->
-                            "这一站还不能用"
-                        svm.searchError != null -> "这一轮没搜成"
-                        // 窗口内 0 条 ≠ 这一串标签搜不到东西（实测两站对不认识的伪标签也回空表），
-                        // 所以设了窗口的档要用另一句读数，免得用户去怀疑自己写的标签。
-                        // 历史期那句不能说"新增"：2024 年 3 月那一月里搜不到东西，与"本期没有新增"是两件事。
-                        svm.rankingWindowActive() ->
-                            if (svm.periodAnchor == null) "这一档里没有新增命中" else "这一期里没有命中的图"
-                        else -> "这一串标签没有可摆的图"
-                    },
+                    title = svm.emptyTitle(),
                     message = svm.searchError
-                        ?: listOfNotNull(
-                            "条件：${GallerySearch.queryOf(svm.effectiveFilters())}",
-                            // 排行档连日期区间一起念 —— "本周"不带日期就是说不出对错的读数。
-                            svm.rankingReading()?.let { "排行：$it" },
-                            svm.budgetTrimNotice(),
-                            svm.noImageNotice(),
-                            // 有一条腿没跑起来而另一条回了 0 张：空态必须点名是哪条腿。
-                            // 只写"这一串标签没有可摆的图"就是把"我们没问到"说成"站里没有"。
-                            svm.legFailureNotice(),
-                            // 换过名还是 0 张也要说：否则用户读到的是"这个名字没图"，
-                            // 而真原因是"站方把它记成另一个名字的别名，那个名字也没图"。
-                            svm.artistAliasNotice,
-                            if (searchWall.blockedRules.isNotEmpty()) {
-                                "命中屏蔽规则 ${searchWall.blockedRules.joinToString("、")}"
-                            } else {
-                                null
-                            },
-                        ).joinToString("\n"),
+                        ?: (
+                            svm.emptyDetailLines() +
+                                listOfNotNull(
+                                    if (searchWall.blockedRules.isNotEmpty()) {
+                                        "命中屏蔽规则 ${searchWall.blockedRules.joinToString("、")}"
+                                    } else {
+                                        null
+                                    },
+                                )
+                            ).joinToString("\n"),
                     icon = Icons.Outlined.Image,
                     actionText = "改条件",
                     onAction = { svm.backToInput() },
@@ -1095,6 +1902,20 @@ fun GalleryScreen(
                     GalleryViewerQueue.set(searchWall.cards.map { it.post })
                     onOpenPost(post.site, post.id)
                 },
+                // pixiv 那一域：卡片文字区走「头像 + 标题 + 作者名」那一档（用户 2026-10-17：
+                // 「p 站搜索出来的图片卡片就不要带 p 站图标了，按照外面的头像 + 标题 + 作者名」）。
+                // 传空表 = 其余域与从前逐字一致 —— 那张头像表就是判据（见 `GalleryCardCaption`），
+                // 非空即换档，所以 booru 那三站一个字都不用改。
+                stationTitles = if (domain == GalleryHomeDomain.PIXIV) {
+                    svm.pixivTitles
+                } else {
+                    emptyMap()
+                },
+                authorAvatars = if (domain == GalleryHomeDomain.PIXIV) {
+                    svm.pixivAvatars
+                } else {
+                    emptyMap()
+                },
                 footer = searchFooter,
             )
 
@@ -1120,20 +1941,55 @@ fun GalleryScreen(
                     // 头图在场时**不挂**折叠连接（见上面「头图在场时的顶栏契约」）：
                     // 空大标题仍占一行字体度量，behavior 会留一段"幽灵折叠行程"，
                     // 上滑先被它在 pre 段吃掉 —— 读起来是"滑了一段列表没反应"。
+                    //
+                    // ⚠️ 同样只对画廊首页成立（`heroActive`）：搜索态的大标题是「搜索」，空标题
+                    // 那一档不会发生，所以连接照挂 ——
+                    // 不挂会让顶栏整屏折不下去，`searchCollapsed` 那族判据永远为假，
+                    // 搜索卡从此收不进顶栏。挂不挂连接只改首页契约，搜索态回到多数派那条。
                     .then(
-                        if (heroPresent) Modifier
+                        if (heroActive) Modifier
                         else Modifier.nestedScroll(topBarBehavior.nestedScrollConnection)
                     )
                     .nestedScroll(chromeHideConnection),
             ) {
                 GalleryForYouPage(
-                    fvm = fvm,
-                    wall = forYouWall,
-                    // 空态那句"有 N 张收藏却抽不出标签"要说得出张数 —— 不说就与"你还没收藏"分不开。
-                    favoriteCount = galleryFavorites.size,
+                    reading = homeWallReading,
                     imageLoader = imageLoader,
                     columnCount = columnCount,
                     state = forYouGridState,
+                    // 下拉刷新：整页那四条腿一起重发，动画长在搜索条下面那一行（见 GalleryForYouPage）。
+                    onRefresh = refreshWholePage,
+                    refreshing = pullRefreshing,
+                    // 站方标题只在 pixiv 那一域有意义（booru 三站的 API 根本没有标题这一格，
+                    // 它们的标题是标签算出来的）。传空表 = 墙的行为与从前逐字一致。
+                    stationTitles = if (domain == GalleryHomeDomain.PIXIV) {
+                        pixivRecommendTitles
+                    } else {
+                        emptyMap()
+                    },
+                    // 作者头像**只给 pixiv 域**：booru 三站那侧响应里根本没有头像这一格，
+                    // 传一张空表等于给墙画首字母座，而那三站的卡面形状不该被 pixiv 的
+                    // 一轮改版带着走。非空表 ⇒ 卡片文字区走「头像 + 两行」那一档
+                    // （第三十二轮，见 [GalleryCardCaption]；第二十四~三十一轮的
+                    // 浮层毛玻璃已在第三十二轮退役）。
+                    authorAvatars = if (domain == GalleryHomeDomain.PIXIV) {
+                        pixivRecommendAvatars
+                    } else {
+                        emptyMap()
+                    },
+                    // 推荐那一节包一张**实色**卡面（2026-10-17 第二十四轮撤掉了模糊底图：
+                    // 用户报「整个推荐面会有这种模糊效果」—— 86% 不透明挡不住底图透出的颜色，
+                    // 那一大片读成"雾蒙蒙"，而上面两节是干净的实色白卡，三节必须一致）。
+                    //
+                    // 只有 pixiv 域有这一节（`galleryHomeSectionOrder` 里 booru 三站没有）。
+                    sectionSurface = if (domain == GalleryHomeDomain.PIXIV) {
+                        GallerySectionSurface(
+                            sectionKey = GalleryHomeSectionKey.PIXIV_RECOMMEND,
+                            inset = VeneraTokens.spacing.screenHorizontal,
+                        )
+                    } else {
+                        null
+                    },
                     // 头图在场时归零 ⇒ 头图从屏幕顶出血（见 [wallTopPadding]）。
                     topPadding = wallTopPadding,
                     backdrop = topBarBackdrop,
@@ -1153,7 +2009,17 @@ fun GalleryScreen(
                         @Composable {
                             SettingsHeroImage(
                                 file = galleryHeroFile,
-                                title = "画廊",
+                                // 与顶栏那一枚同一个判据（2026-10-18）：搜索态这一屏叫「搜索」。
+                                // 头图上的白字是**这一屏唯一的大标题**（顶栏那一格这时是空的），
+                                // 所以它必须跟着换名，否则搜索态屏上会留着「画廊」两个字。
+                                title = if (svm.active) "搜索" else "画廊",
+                                // 2026-10-17 第十八轮（用户稿）：头图上那一行副标题。
+                                // 稿上标题下面还有小字，一整片只有「画廊」两个字会读成"标题没加载完"。
+                                //
+                                // ⚠️ 同日晚些时候用户又改了：**「去掉那个副标题」**。
+                                // 原因是那一行小字是她当时随口读到的文案，不是站方信息 ——
+                                // 头图上摆一句编出来的话，等于给这一屏加了一条"读数"。
+                                // 所以回到 `null`（= 只有标题），不另换一句话上去。
                                 subtitle = null,
                                 // 矮一档（2026-10-16，用户「空位有点太多…1选A吧」）：用设置**子页**
                                 // 那一档 148dp，不造新数字。与上面 `searchOverlayTop` 是同一条式子，
@@ -1173,6 +2039,10 @@ fun GalleryScreen(
                     // 读到的"没有过渡"。现在条留在原地，卡片从它身上原地盖过来、收回时缩回去。
                     chrome = {
                         GalleryHomeChrome(
+                            // 内容域那一排第三轮起住在这一行（用户稿：「看下站源切换能不能做成这样」）。
+                            // 必填、没有默认值：漏传就是把切换器整排摘掉，而"切不回图库站"是当天刚修过那一族。
+                            domain = domain,
+                            onPickDomain = { picked -> homeDomain = picked.name },
                             // 搜索一开，这一条就让位给从它身上长开的卡（两端同一个共享元素 key，
                             // 2026-10-16 第七轮）。传 `svm.active` 而不是 `active && !collapsed`：
                             // 结果态滚到 1/3 那一路的对面是**顶栏胶囊**那一对（本轮不做），
@@ -1192,14 +2062,12 @@ fun GalleryScreen(
                         )
                     },
                     onOpen = { post ->
-                        GalleryViewerQueue.set(forYouWall.cards.map { it.post })
+                        // 队列 = 屏上这一池。从前这里写死 `forYouWall`，切到 Pixiv 域就变成
+                        // 「卡是 pixiv 的、左右滑过去全是 booru 的」—— 与本仓那族"复读页"同一形。
+                        GalleryViewerQueue.set(homeWallReading.wall.cards.map { it.post })
                         onOpenPost(post.site, post.id)
                     },
                     onRetry = { retryForYouFromUser() },
-                    // 首页不再有"日榜那一面墙"可切，所以这条出口去掉 ——
-                    // 而它原本的作用（空态里给一枚"去看每日热门"）现在由节头那枚「查看全部」
-                    // 与它的二级页承担。留着它会让空态指向一个**首页上没有的状态**。
-                    onGoToDaily = null,
                 )
             }
         }
@@ -1221,16 +2089,45 @@ fun GalleryScreen(
             label = "galleryTopBarHideOffset",
         )
         VeneraTopAppBar(
-            title = "画廊",
+            // 折叠后**居中**的小标题（用户 2026-10-18：「搜索页面的居中标题显示搜索才对」）。
+            // 搜索态换名而不是继续叫「画廊」：那一屏做的事已经不是"看画廊"了。
+            title = if (svm.active) "搜索" else "画廊",
             // 头图在场时大标题退场 —— 标题已由头图画成图上的白字（见上面的 hero 调用）。
             // 与设置页同一套分工（`SettingsHome.kt` 那处的 `if (heroFile != null) "" else 大标题`）。
+            //
+            // ⚠️ **只在画廊首页让位**（判据 `heroActive`，见它的定义）：搜索态那一屏头图仍在背景里
+            // （主墙无条件组合），但顶栏左边该照常给标题 —— 这一格再空着就等于"搜索页左边
+            // 永远没有标题"（用户 2026-10-18：「还是没有左边的大标题」）。
             // 传空串而不是 null：miuix 的 `largeTitle` 是 String，空串即不渲染；其余调用点零影响。
-            largeTitle = if (heroPresent) "" else "画廊",
+            //
+            // ⚠️ 2026-10-18：搜索态的大标题同样叫「搜索」（用户：「搜索好像缺失了大标题」）。
+            // 同一条理由：这一格空着时，展开态顶栏会留下**一整行空白**（miuix 的 `expansion` 仍然占位），
+            // 读起来就是"搜索卡离顶部还有一大截"—— 填上「搜索」之后那一截是标题，不是空隙。
+            largeTitle = if (heroActive) "" else if (svm.active) "搜索" else "画廊",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
+            // 左槽 = pixiv 账号那颗圆形头像（2026-10-17 用户点名：「在顶栏的左边做圆形头像，要和其他按钮对齐」）。
+            // 对齐不是抄数字：外壳就是右侧那排用的同一颗 [VeneraTopBarPill]（触达 48 / 视觉 40，批次 H 那一档）。
+            //
+            // ⚠️ **只在画廊首页摆**（用户 2026-10-17 第二轮：「头像挡住了，头像只显示在画廊首页就行」）：
+            // 进搜索态之后顶栏标题居中、搜索卡又顶上来，这颗圆头像正好落在两者之间被压住 ——
+            // 一个被遮一半的入口比没有它更糟。判据用 `svm.active`（搜索层开没开）而不是"标题居没居中"：
+            // 后者是布局的结果，拿它当条件会让这颗按钮跟着滚动高度闪。
+            navigationIcon = {
+                if (!svm.active) {
+                    GalleryPorts.of(context).pixivAccount?.let { account ->
+                        GalleryPixivAccountButton(account = account, imageLoader = imageLoader)
+                    }
+                }
+            },
             // 头图在场时不挂 behavior 的连接（见上面「头图在场时的顶栏契约」），
             // 玻璃进度改由墙自己的滚动状态喂进来；null = 其余情形照旧走 contentOffset 原路。
-            scrollProgressOverride = if (heroPresent) heroScrollProgress else null,
+            //
+            // ⚠️ 同样是 `heroActive`（不是 heroPresent）：搜索态的大标题是「搜索」、不空，
+            // 不挂连接的理由（空大标题的"幽灵折叠行程"）在那里不成立 —— 连接既然挂上了，
+            // 玻璃进度就回到 contentOffset 原路；硬喂主墙的滚动进度会让它跟着背景那面墙跑，
+            // 与 `searchCollapsed` 那一族判据互相矛盾。
+            scrollProgressOverride = if (heroActive) heroScrollProgress else null,
             // 双击任意空白处回顶部（2026-09-30 新增，加性参数：其余调用点不传即零改动）。
             onDoubleTap = {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -1278,24 +2175,44 @@ fun GalleryScreen(
                         tint = tokens.color.textPrimary,
                     )
                 }
-                // 「浏览历史」（2026-10-14 起占住这枚位置，取代原来的「换一批」）。
+                // 「收藏」hub（2026-10-17 第三十一轮，用户「在搜索和历史记录两个圆形按钮之间，
+                // 新增一个书签按钮」）：这一枚就落在搜索与浏览历史**之间**，三颗都是
+                // "去另一屏取一批东西"（搜结果 / 看历史 / 翻收藏）。
                 //
-                // 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
-                // —— 下拉刷新 2026-09-30 撤下时那条注释就写明节头那枚「承担」了「我要新内容」
-                // 的出口，所以这一格换成历史入口之后，首页换一批仍在节头。
-                //
-                // 不套 `if (!svm.active)` 那道门：搜索态同样要能翻历史（正在搜的时候回头看
-                // 一张图是常事），而旧那枚被门控住是因为「换一批」在搜索结果上看不见效果 ——
-                // 历史没有这个问题，它在哪一态都摆同一份名单。
-                VeneraTopBarPill(onClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    onOpenHistory()
-                }) {
-                    Icon(
-                        imageVector = Icons.Outlined.History,
-                        contentDescription = "浏览历史",
-                        tint = tokens.color.textPrimary,
-                    )
+                // ⚠️ 2026-10-18 改判（用户：「顶栏收藏和历史图标只需要出现在画廊首页就行，
+                // 其他二级页面不要出现」）：这一枚与下面那枚都套上 `!svm.active` 那道门。
+                // 上一版刻意不门控（"搜索态也要能翻收藏"），但真机上看是**顶栏被四颗图标塞满**，
+                // 而搜索态的主角是那张卡 —— 四颗并列里有两颗与当前这件事无关。
+                // 门控之后搜索态只剩「改条件 / 关掉搜索」两枚，与卡上的条件入口不重复。
+                if (!svm.active) {
+                    VeneraTopBarPill(onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onOpenBookmarks()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Outlined.BookmarkBorder,
+                            contentDescription = "收藏",
+                            tint = tokens.color.textPrimary,
+                        )
+                    }
+                    // 「浏览历史」（2026-10-14 起占住这枚位置，取代原来的「换一批」）。
+                    //
+                    // 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
+                    // —— 下拉刷新 2026-09-30 撤下时那条注释就写明节头那枚「承担」了「我要新内容」
+                    // 的出口，所以这一格换成历史入口之后，首页换一批仍在节头。
+                    //
+                    // 与上面那枚同一道门（见它的注）：搜索态里"最近搜过什么"由卡里的历史块承担，
+                    // 顶栏再摆一枚是同一件事的第二个入口。
+                    VeneraTopBarPill(onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onOpenHistory()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = "浏览历史",
+                            tint = tokens.color.textPrimary,
+                        )
+                    }
                 }
             },
             // ── 常驻 chrome（一条搜索入口条）**不在顶栏的 bottomContent 里了** ──
@@ -1371,7 +2288,7 @@ fun GalleryScreen(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
-                        if (svm.filters.isNotEmpty()) svm.collapseToResults() else svm.closeSearch()
+                        if (svm.hasQuery) svm.collapseToResults() else svm.closeSearch()
                     },
             )
         }
@@ -1387,7 +2304,17 @@ fun GalleryScreen(
             visible = svm.active && !searchCollapsed,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = searchOverlayTop),
+                // 纵向落点 = [searchOverlayFloor] 之上再收掉 [searchOverlayFollow] 那一截
+                // （见那两处的文档：收起的是"顶栏已折叠、大标题不占高"的那 52dp 空白）。
+                // 放布局 lambda 里读 `collapsedFraction`：惰性读取只重跑布局，不逐帧重组这一屏。
+                .offset {
+                    IntOffset(
+                        x = 0,
+                        y = (searchOverlayTop.toPx() -
+                            searchOverlayFollow.toPx() * topBarBehavior.state.collapsedFraction)
+                            .roundToInt(),
+                    )
+                },
             // 进出场只留 fade（2026-10-16 第七轮）：原先那对
             // `scaleIn / scaleOut(initialScale = 0.94f, transformOrigin = 顶边中点)` 是
             // "容器变化"的**近似物**，真容器变化落地后退休 —— 它俩叠在共享元素的 bounds
@@ -1408,11 +2335,6 @@ fun GalleryScreen(
             ) {
                 GallerySearchArea(
                     svm = svm,
-                    recommendations = recommendations,
-                    // 点一枚 = 切站 + 装条件 + 开搜，**一步**（理由见 acceptHandoff：
-                    // 拆成 setSite + setFilters 会先拿旧条件在新站发一笔）。
-                    // 与大图页交接同一个入口，所以上一轮也压栈 —— 三条入口口径必须一致。
-                    onPickRecommendation = { site, tags -> svm.acceptHandoff(site, tags) },
                     rvm = rvm,
                     allowNsfw = allowNsfw,
                     // 结果态读数槽要报的张数：**与页尾 `GallerySearchEnd` 同一个来源、同一个数**
@@ -1421,7 +2343,15 @@ fun GalleryScreen(
                     // 第一轮在途时传 null（那一格改画波浪环），不报 0。
                     // 判据取 `page > 0`（有一轮到过货）而不是 `!isSearching` ——
                     // "已经开了搜索但一次都还没落地"那一档若报 `0 张`，就是把"还没搜"说成"没有结果"。
-                    resultCount = searchWall.cards.size.takeIf { svm.page > 0 },
+                    //
+                    // 画师那一栏吃的是它自己那份读数（`pixivArtistPage` / `pixivArtists`）：
+                    // 两栏的"到货了没"是两条腿，拿作品那面墙的 `page` 去推它，
+                    // 切到画师时就会先报一次"0 位"再跳成真实人数。
+                    resultCount = if (pixivArtistMode) {
+                        svm.pixivArtists.size.takeIf { svm.pixivArtistPage > 0 }
+                    } else {
+                        searchWall.cards.size.takeIf { svm.page > 0 }
+                    },
                 )
             }
         }
@@ -1534,8 +2464,12 @@ private val SEARCH_CARD_SHOW_SLIDE_SPEC = SEARCH_CONTAINER_SHOW_SLIDE_SPEC
  * 收起来是为了让 `snapshotFlow { … }.distinctUntilChanged()` 能一次比干净：
  * 只要其中任一项变了就重新判一次，都没变就不做任何事（滚动里 `layoutInfo` 每帧都在动，
  * 不过这一层就会出现"每帧判一次"的无效工作）。
+ *
+ * ⚠️ 2026-10-17 第三十一轮起 `internal`：pixiv 云端书签二级页（`GalleryPixivBookmarksScreen`）
+ * 与 pixiv 推荐墙是同一套三道闸门 —— 两颗件各写一版就会漂（书签页那份要是少了"在取时不并发"，
+ * 用户甩到尾就会连发三四跳）。判据钉在 `GalleryBooruBookmarksTest` 里。
  */
-private data class GalleryLoadMoreState(
+internal data class GalleryLoadMoreState(
     /** 屏上这面墙是不是"有条件的搜索结果墙"（日榜没有下一页，直接短路）。 */
     val wallActive: Boolean,
     val exhausted: Boolean,
@@ -1551,8 +2485,10 @@ private data class GalleryLoadMoreState(
  * 离底还剩几张就预取。
  *
  * 4 张在 2 列瀑布流里差不多就是一屏 —— 用户滑到底时下一批刚好接上，不会先看到一次"空一阵"。
+ *
+ * 同上：`internal` 是给书签二级页共用（第三十一轮）。
  */
-private const val LOAD_MORE_AHEAD = 4
+internal const val LOAD_MORE_AHEAD = 4
 
 /**
  * 落屏清单 + 两类"少了"的成因 —— 日榜与搜索结果**共用这一把判据**。
@@ -1582,7 +2518,7 @@ internal fun buildGalleryWall(
     var hiddenByRating = 0
     posts.forEach { post ->
         val blocked = blockedRuleOf(post)
-            ?: if (blockAi && GalleryAi.isAiMarked(post.tagList)) AI_BLOCKED_RULE else null
+            ?: if (blockAi && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList)) AI_BLOCKED_RULE else null
         when (GalleryGuard.maskStateFor(post, maskMode, blockedByUser = blocked != null)) {
             GalleryGuard.HIDDEN -> if (blocked != null) {
                 blockedCount++
@@ -1593,6 +2529,114 @@ internal fun buildGalleryWall(
         }
     }
     return GalleryWall(kept, blockedCount, blockedRules.toList(), hiddenByRating)
+}
+
+/**
+ * 「这一面墙上有一段内容坐在一张卡面上」（2026-10-17 第二十二轮）。
+ *
+ * 用户拍板原话：「推荐区包卡，但是还是目前这样的瀑布流，然后卡面会有图片的很低的模糊」。
+ *
+ * ## 为什么卡面只能画在网格**外面**
+ *
+ * 推荐那一节是「节头 + 脚下整面瀑布流」，而 `LazyVerticalStaggeredGrid` 里**没有"行"**
+ * —— 卡片逐列往下排、高度各不相同。所以"给这一段包一张卡"不能逐 item 画：
+ * 相邻两列的卡片结束位置不同，逐 item 画出来的卡面会在先结束那一列旁边露出**阶梯缺口**。
+ * 唯一成立的位置是网格**下面**的一整层（[SectionSurfaceLayer]）。
+ *
+ * ## 与「节背板」那条被否的方案不是一回事
+ *
+ * `GalleryHomeSection` 的头注记着：M7 给每节套一块 `VeneraCard` 背板被撤了，因为
+ * "节卡 + 条目卡 = 卡中卡，两层颜色只差一档，实测条目卡面比页面底只亮 +7，糊成一层"。
+ * 这里能成立是因为**卡面上有图**：一层 `blur` 过的图给出纹理，卡面与卡片的分界不再只靠那 +7 的色差。
+ * 纯色档（`imageUrl = null`）只用于"这一池没好图"的兜底，那种处境下它确实会偏弱。
+ *
+ * @param sectionKey 从**这一节的节头顶**开始铺卡面（含节头本身），一路延伸到视口底。
+ * @param inset 卡面左右内缩（递页面的水平内边距）—— 卡面不贴屏幕边。
+ * @param imageUrl 卡面上的模糊图。⚠️ null 不是"忘了传"，见 [SectionSurfaceLayer] 那条。
+ */
+internal data class GallerySectionSurface(
+    val sectionKey: String,
+    val inset: Dp,
+)
+
+/**
+ * [GallerySectionSurface] 的那层卡面 —— 画在网格**下面**。
+ *
+ * ## 定位（全部在 **draw 阶段**读，零重组零重布局）
+ *
+ * 卡面顶端 = 节头 item 的 `offset.y`：
+ * - 节头还在可见集合里 ⇒ 直接取它的 y（跟随滚动）；
+ * - 节头已滚到视口上方（可见首项的 index 比它大）⇒ 顶端取 0，卡面铺满整个视口；
+ * - 节头还没进入视口 ⇒ 这一屏不该有卡面，什么都不画。
+ *
+ * 底端恒为视口底：推荐段后面只有页尾，卡面"延伸出屏"正是这类设计的常态。
+ * 圆角只有上两角 —— 下沿在屏外，画了也看不见。
+ *
+ * ## 卡面是**纯色**，不再挂模糊底图（2026-10-17 第二十四轮，推翻本日第二十二轮的做法）
+ *
+ * 那一轮给这层铺过「首图模糊 32dp + 压 86% 卡面色」，理由是"纯色卡中卡只差 +7 色差会糊，
+ * 用模糊图给纹理拉开分界"。真机反馈是**反的**：用户报「整个推荐面会有这种模糊效果」——
+ * 86% 的不透明挡不住底图的颜色透出来，那一大片就读成"这一区雾蒙蒙的"，
+ * 而上面两节（画师 / 排行榜）是干净的实色白卡，三节放一起反而是推荐这一节脏。
+ *
+ * 所以撤掉底图、只铺 `surface` 实色：三节用**同一种**包裹，卡面只负责"这段属于这一节"。
+ * ⚠️ 这条同时把 M7 那个顾虑又请回来了（卡中卡只差一档色差）——
+ * 但那是取舍，不是缺陷：用户要的是一致，不是一个节另有一套材质。
+ */
+@Composable
+private fun SectionSurfaceLayer(
+    spec: GallerySectionSurface,
+    state: LazyStaggeredGridState,
+    sectionIndex: Int,
+) {
+    val tokens = VeneraTokens
+    val density = LocalDensity.current
+    val insetPx = with(density) { spec.inset.toPx() }
+    val cornerPx = with(density) { tokens.shape.large.toPx() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawWithContent {
+                val top = sectionSurfaceTopPx(state, sectionIndex) ?: return@drawWithContent
+                // 节头在屏下方（top ≥ 视口高）时矩形是退化/反向的，`RoundRect` 会炸；
+                // 极窄窗口下左右内缩吃光整宽也一样 ⇒ 两种都直接不画。
+                if (top >= size.height || size.width <= insetPx * 2f) return@drawWithContent
+                val surfacePath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(insetPx, top, size.width - insetPx, size.height),
+                            topLeft = CornerRadius(cornerPx),
+                            topRight = CornerRadius(cornerPx),
+                            bottomRight = CornerRadius.Zero,
+                            bottomLeft = CornerRadius.Zero,
+                        ),
+                    )
+                }
+                clipPath(surfacePath) { this@drawWithContent.drawContent() }
+            },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(tokens.color.surface),
+        )
+    }
+}
+
+/**
+ * 卡面顶端在**视口坐标**里的 y；null = 这一屏不该画卡面。
+ *
+ * ⚠️ 只许在 draw 阶段调用（读 `state.layoutInfo`）—— 在组合期读它就是每帧重组。
+ */
+private fun sectionSurfaceTopPx(
+    state: LazyStaggeredGridState,
+    sectionIndex: Int,
+): Float? {
+    val items = state.layoutInfo.visibleItemsInfo
+    items.firstOrNull { it.index == sectionIndex }?.let { return it.offset.y.toFloat() }
+    // 节头不在可见集合里只剩两种处境：已滚到视口上方（卡面铺满），或还没滚进来（不画）。
+    val firstVisible = items.firstOrNull()?.index ?: return null
+    return if (firstVisible > sectionIndex) 0f else null
 }
 
 /**
@@ -1660,9 +2704,44 @@ internal fun GalleryCardsGrid(
      * 依赖读者去别处找一个 provider。
      */
     disableOverscroll: Boolean = false,
+    /**
+     * 站方自己给的标题（`uid → 标题`），**盖过**下面那批由标签算出来的标题。
+     *
+     * 出处是 2026-10-17 第七轮用户那句「推荐下面的图标题没了，直接用 p 站自己的标题就行」：
+     * pixiv 每行都带 `title`，而 booru 三站没有 —— 后者的标题是 `GalleryCardTitle`
+     * 从标签里**算**的，前者被算成空（那一池的标签是日文，词典里没有）。
+     *
+     * ⚠️ 只在"这一格真的有字"时覆盖：`PixivWork.title` 可能为空串（站方给了但空），
+     * 那时那一行整行不画（同 [GalleryCardCaption] 的 `title == null` 那档），
+     * **不拿标签算出来的那批顶上去** —— 那会让"站方标题"与"我们猜的标题"在屏上混成同一层。
+     */
+    stationTitles: Map<String, String> = emptyMap(),
+    /**
+     * 作者头像（`uid → 地址`），与 [stationTitles] 同一条透传路径 —— 同理也是
+     * "整批算好再摊平"，而不是卡内各查一次（那要开网络/查库）。
+     * 空 map = 这一面墙不画头像（其余五处调用点逐像素不变）；非空 ⇒ 卡片文字区走
+     * 「头像 + 标题/画师名」两行（2026-10-17 第三十二轮，见 [GalleryCardCaption]）。
+     */
+    authorAvatars: Map<String, String> = emptyMap(),
+    /**
+     * 非空 = 这一面墙上**有一段内容坐在一张卡面上**（[GallerySectionSurface]，眼下只有推荐那一节）。
+     *
+     * null = 与从前逐字一致（其余四处调用点都不传）。**不做成布尔开关**：
+     * "哪一段"与"卡面长什么样"是同一件事的两半，拆成两个参数就会对不上。
+     */
+    sectionSurface: GallerySectionSurface? = null,
 ) {
     val tokens = VeneraTokens
     val view = LocalView.current
+    // 卡面那一节的 item index：`header` 占一格，之后按 [sections] 的顺序排。
+    // 找不到那个 key（调用方传了本节没有的 key）⇒ null ⇒ 不画 —— 静默退化成"没包卡"，
+    // 而不是把卡面画到错的节上。
+    val surfaceSectionIndex = remember(sectionSurface, sections, header != null) {
+        sectionSurface?.let { spec ->
+            val order = sections.indexOfFirst { it.key == spec.sectionKey }
+            if (order < 0) null else order + (if (header != null) 1 else 0)
+        }
+    }
     val context = LocalContext.current
     // 平台默认的过度滚动效果。⚠️ 必须**无条件**先 remember 出来再按开关取舍：
     // 把 `rememberOverscrollEffect()` 写进 `if` 的分支里就是条件调用 Composable，会崩。
@@ -1679,7 +2758,24 @@ internal fun GalleryCardsGrid(
     var actionCard by remember { mutableStateOf<GalleryCard?>(null) }
     // 这一面墙所有卡片的标题**整批算一次**（要开 SQLite 查离线词典，逐卡各查一次就是几十趟）。
     // 墙是唯一知道"这批卡是哪些"的地方，所以取数落在这里；下面按 uid 交给每张卡。
-    val titles = rememberGalleryCardTitles(cards.map { it.post })
+    //
+    // 站方那一批（见 [stationTitles]）**在后覆盖**：一张卡只有一个标题格，站方给了真题就摆真题。
+    // 覆盖值是空串也算"给了" —— 那把 `dict + station` 里该 uid 已经被空串盖掉，
+    // 传到卡上之前统一折成 null（`takeIf { isNotBlank() }`）⇒ 那一行整行不画，
+    // 而**不是**又摆回我们算的那个（两种来源混成一层是这里最要防的错配）。
+    val dictTitles = rememberGalleryCardTitles(cards.map { it.post })
+    val titles = remember(dictTitles, stationTitles) {
+        if (stationTitles.isEmpty()) {
+            dictTitles
+        } else {
+            // 覆盖值是空串也算"站方给了"：那颗 uid 从 dict 那批里摘掉、又不进结果
+            // ⇒ 卡上取到 null ⇒ 那一行整行不画（同 `GalleryCardCaption` 的 null 档）。
+            val merged = HashMap<String, String>(dictTitles.size + stationTitles.size)
+            dictTitles.forEach { (uid, title) -> if (uid !in stationTitles) merged[uid] = title }
+            stationTitles.forEach { (uid, title) -> if (title.isNotBlank()) merged[uid] = title }
+            merged
+        }
+    }
     // 滚动越界预取（2026-09-30「预览能不能更快」那轮）：见 [rememberGalleryPreviewPrefetch]。
     rememberGalleryPreviewPrefetch(
         cards = cards,
@@ -1687,53 +2783,80 @@ internal fun GalleryCardsGrid(
         state = state,
         leadingItemCount = (if (header != null) 1 else 0) + sections.size,
     )
-    LazyVerticalStaggeredGrid(
-        state = state,
-        columns = StaggeredGridCells.Fixed(columnCount),
-        contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5),
-        verticalItemSpacing = tokens.spacing.gridGap,
-        // 头图那面墙禁掉过度滚动（见 [disableOverscroll]）；其余墙保持平台默认。
-        overscrollEffect = if (disableOverscroll) null else platformOverscrollEffect,
-        modifier = modifier.fillMaxSize(),
-    ) {
-        header?.let { slot ->
-            item(key = "grid-header", span = StaggeredGridItemSpan.FullLine) { slot() }
-        }
-        // 节头（首页三节）。**恒定项**（数量不许跟着数据变，理由见 [GalleryGridSection]）。
-        sections.forEach { section ->
-            item(key = section.key, span = StaggeredGridItemSpan.FullLine) { section.content() }
-        }
-        // key 必须带站点：两站 id 各自编号，同 id 是两张不同的图，撞 key 会直接崩。
-        items(cards, key = { it.post.uid }) { card ->
-            GalleryPostCard(
-                card = card,
-                imageLoader = imageLoader,
-                titles = titles,
-                onOpen = { bounds ->
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    // 整页向上滑入时垫在最上面的那一帧：趁卡片还在屏上截下来（见 GalleryFlyIn）。
-                    GalleryFlyIn.capture(view, bounds)
-                    onOpen(card.post)
-                },
-                onLongPress = onLongPress?.let { handler ->
-                    {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        handler(card.post)
-                    }
-                } ?: {
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    actionCard = card
-                },
-                selected = selection?.invoke(card.post) == true,
-                selecting = selection != null,
-                onToggleSelect = onToggleSelect?.let { handler -> { handler(card.post) } },
-                overlay = overlay,
-                sharedElementKey = sharedElementKey?.invoke(card.post),
+    // 卡面层与网格包在一个 Box 里：卡面在**下**、网格在**上**，卡面因此不会盖住任何一张卡。
+    //
+    // `modifier`（含调用方的 `blurBackdropSource`）挂在 Box 上 —— 它描述的是"这一整块区域"，
+    // 挂在 Box 与挂在网格上等价；网格自己要 `fillMaxSize()` 铺满这个 Box。
+    Box(modifier = modifier.fillMaxSize()) {
+        if (sectionSurface != null && surfaceSectionIndex != null) {
+            SectionSurfaceLayer(
+                spec = sectionSurface,
+                state = state,
+                sectionIndex = surfaceSectionIndex,
             )
         }
-        footer?.let { slot ->
-            item(key = "grid-footer", span = StaggeredGridItemSpan.FullLine) { slot() }
+        LazyVerticalStaggeredGrid(
+            state = state,
+            columns = StaggeredGridCells.Fixed(columnCount),
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space5),
+            verticalItemSpacing = tokens.spacing.gridGap,
+            // 头图那面墙禁掉过度滚动（见 [disableOverscroll]）；其余墙保持平台默认。
+            overscrollEffect = if (disableOverscroll) null else platformOverscrollEffect,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            header?.let { slot ->
+                item(key = "grid-header", span = StaggeredGridItemSpan.FullLine) { slot() }
+            }
+            // 节头（首页三节）。**恒定项**（数量不许跟着数据变，理由见 [GalleryGridSection]）。
+            sections.forEach { section ->
+                item(key = section.key, span = StaggeredGridItemSpan.FullLine) { section.content() }
+            }
+            // key 必须带站点：两站 id 各自编号，同 id 是两张不同的图，撞 key 会直接崩。
+            items(cards, key = { it.post.uid }) { card ->
+                GalleryPostCard(
+                    card = card,
+                    imageLoader = imageLoader,
+                    titles = titles,
+                    authorAvatar = authorAvatars[card.post.uid],
+                    onOpen = { bounds ->
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        // 整页向上滑入时垫在最上面的那一帧：趁卡片还在屏上截下来（见 GalleryFlyIn）。
+                        GalleryFlyIn.capture(view, bounds)
+                        onOpen(card.post)
+                    },
+                    onLongPress = onLongPress?.let { handler ->
+                        {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            handler(card.post)
+                        }
+                    } ?: {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        actionCard = card
+                    },
+                    selected = selection?.invoke(card.post) == true,
+                    selecting = selection != null,
+                    onToggleSelect = onToggleSelect?.let { handler -> { handler(card.post) } },
+                    overlay = overlay,
+                    sharedElementKey = sharedElementKey?.invoke(card.post),
+                    // 点署名头像 = 进画师页（用户 2026-10-19）。**只对 pixiv 生效**：
+                    // 图库三站没有「用户号」这个身份（它们的画师是标签名），
+                    // 硬套会让点脸去搜一个同名标签 —— 那是另一件事。
+                    onOpenArtist = if (card.post.site == GallerySite.PIXIV) {
+                        val id = GalleryArtistLinks.pixivUserId(card.post.source)
+                        if (id != null) {
+                            { context.openPixivArtistPage(id, card.post.author) }
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+            footer?.let { slot ->
+                item(key = "grid-footer", span = StaggeredGridItemSpan.FullLine) { slot() }
+            }
         }
     }
 
@@ -1841,6 +2964,18 @@ private fun rememberGalleryPreviewPrefetch(
 /** 一张卡片：条目 + 要不要打码。打码判定在派生列表时一次算好，卡片本身不做判断。 */
 internal class GalleryCard(val post: GalleryPost, val masked: Boolean)
 
+/**
+ * 排行榜某一档的**一次**结果（含"为什么空"），用于切域回来直接摆。
+ *
+ * 为什么连 [caption] 一起缓存：失败也是一种"这一轮已经问过了"。只缓存成功那一档的话，
+ * 站方一直不给内容时，用户每次切回 pixiv 都要再等一轮超时 —— 那正好是用户点名的
+ * 「不要每次切页面都刷新」。缓存住之后，屏上那句话就是上一轮站方给的原话（本来就是真读数）。
+ */
+internal class PixivRankingSnapshot(
+    val works: List<PixivWork>,
+    val caption: String?,
+)
+
 /** 一屏的落屏结果：摆出来的卡片 + 两类"少了"的成因，页尾那一行全靠它报数。 */
 internal class GalleryWall(
     val cards: List<GalleryCard>,
@@ -1851,6 +2986,12 @@ internal class GalleryWall(
     /** 按「成人内容处理 = 彻底隐藏」收起的张数。 */
     val hiddenByRating: Int,
 )
+
+/**
+ * 卡片比例取证那一条日志的标签（用法与为什么只加读数见 [GalleryPostCard] 内那一处）。
+ * 取走：`adb logcat -d -s GalleryCardRatio`。
+ */
+internal const val CARD_RATIO_TAG = "GalleryCardRatio"
 
 @Composable
 internal fun GalleryPostCard(
@@ -1890,6 +3031,19 @@ internal fun GalleryPostCard(
      * 不是白拿的 —— 首页主墙那种瀑布流不该传它（那里列与列各自往下排，错落是刻意的）。
      */
     fixedRatio: Float? = null,
+    /**
+     * 作者头像地址（`uid → 地址`，与 `titles` 同一条透传路径）。
+     * `null`（map 里没这一项）= 文字区走「站标 + 标题」那一行；
+     * 非 null = 「头像 + 标题/画师名」两行（2026-10-17 第三十二轮，见 [GalleryCardCaption]）。
+     */
+    authorAvatar: String? = null,
+    /**
+     * 点**署名行那颗头像** = 进这位作者的画师页（用户 2026-10-19：「改成点击画师头像进入画师页」）。
+     *
+     * `null` ⇒ 头像不可点（图库三站的墙不传头像表，天然走不到这一档）。
+     * 与整卡点击**分开**：整卡是"看这张图"，头像那一下是"看这个人"。
+     */
+    onOpenArtist: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val post = card.post
@@ -1919,8 +3073,25 @@ internal fun GalleryPostCard(
     // 不像本地插图那样要靠加载成功回填 —— 所以这里不会有"各列先等分再集体跳动"。
     // 比例夹在 0.4~2.5，与图片收藏那面墙同一口径：防一张横长条把整列撑出屏幕。
     // 钉死比例那一档**不再夹取**：它是调用方给的设计值（现成 token），不是站方数据。
-    val ratio = fixedRatio?.takeIf { it > 0f }
-        ?: (post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio).coerceIn(0.4f, 2.5f)
+    val naturalRatio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
+    val ratio = fixedRatio?.takeIf { it > 0f } ?: naturalRatio.coerceIn(0.4f, 2.5f)
+    // ── 取证（2026-10-19，用户报「画师页这样画面显示不全」，附 pixez 同图对照）──
+    //
+    // 上面那对 0.4~2.5 会把**框**与**原图**掰开，而封面是 `Crop` ⇒ 一旦不相等，
+    // 屏上就是"图被裁掉一条"。这一格到底是没被夹（那就是另一处成因）、还是被夹了
+    // （那就是这一条在咬），本机量不出来 —— 用户给的截图是裁过的，8% 那一族的淡边
+    // 像素法也读不到。所以这里只加读数、不改行为：装包滚一遍画师页，`logcat -s GalleryCardRatio`
+    // 就知道该改夹取范围、改 ContentScale，还是压根改比例来源。
+    val clamped = naturalRatio != ratio
+    LaunchedEffect(post.uid, clamped, naturalRatio, ratio) {
+        if (clamped) {
+            Log.d(
+                CARD_RATIO_TAG,
+                "${post.site}#${post.id} 原图比例=${"%.3f".format(naturalRatio)} " +
+                    "框比例=${"%.3f".format(ratio)} 被夹到区间外（0.4~2.5）→ Crop 会裁掉一条",
+            )
+        }
+    }
     // 选中态与那枚选择框交给 SelectableCardFrame —— 四处收藏面板同一份实现
     // （洗底不透明度、框的位置与画法全在那一处，这里不再各画一遍）。
     SelectableCardFrame(
@@ -1948,12 +3119,22 @@ internal fun GalleryPostCard(
          */
         pressFeedbackType = VeneraPressFeedback.card,
         // 多选态下点整张卡 = 勾选（只让人去够右上角那个小圈太费劲）；非多选态才是点开大图页。
-        onClick = { if (selecting) onToggleSelect?.invoke() else onOpen(coverBounds) },
+        onClick = {
+            if (selecting) {
+                onToggleSelect?.invoke()
+            } else {
+                onOpen(coverBounds)
+            }
+        },
         onLongPress = onLongPress,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // 封面地址取一次：存成局部量，免得两次调用之间设置项变化
+        // （那会让封面与文字区里的头像不同源）。
+        val wallUrl = GallerySettingsModel.wallUrl(post, quality)
+        @Composable
+        fun CoverNode() {
             VeneraCover(
-                url = GallerySettingsModel.wallUrl(post, quality),
+                url = wallUrl,
                 contentDescription = "${post.site.displayName} #${post.id}",
                 // 宽高由外部 aspectRatio 定死，封面再自持 3:4 会在槽位里横向留缝（轮播那条同因）。
                 preserveAspectRatio = false,
@@ -1962,7 +3143,6 @@ internal fun GalleryPostCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(ratio)
-                    // 起点矩形在这里量：它必须与落点（画面框）同构，所以量的是封面而不是整卡。
                     .onGloballyPositioned {
                         val rect = it.boundsInWindow()
                         // 只在矩形**真的变了**才写。这不是省几行开销的打磨：`boundsInWindow()`
@@ -1988,20 +3168,43 @@ internal fun GalleryPostCard(
                 // 摆右下角。**来源不再压角**（2026-09-30）：它搬到封面下方那一行与标题并排，
                 // 压角方案在两站混排时要用户从图的四个角里找，而参考图那枚就在标题左边。
                 if (post.isVideo) GalleryVideoPill(post.durationLabel)
-                // AI 角标（批次 C2）：命中站方 AI 标签才摆，摆不摆由画廊自己那枚开关管
-                // （与漫画守卫页的 block_ai 是两把，词表仍是同一份）。
+                // AI 角标（批次 C2 → 2026-10-18 接硬字段）：判据 = **站方硬位优先、标签词表兜底**。
+                // 摆不摆由画廊自己那枚开关管，与漫画守卫页的 block_ai 是两把；
+                // ⚠️ 词表也**不是同一份**（漫画侧收裸 `ai`、画廊侧剔掉它）—— 设置页那句文案已跟着改真话。
                 // 屏蔽开着时这条根本不会上屏，所以角标的真正用途是"我不屏蔽，但我要看得出来"。
                 // 偏好读法与上面「预览清晰度」同一条口径：按卡片各读一次，不往下透传四个调用方。
                 val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
                     .galleryAiBadge.collectAsState()
-                if (aiBadgeOn && GalleryAi.isAiMarked(post.tagList)) GalleryAiPill()
+                if (aiBadgeOn && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList)) GalleryAiPill()
+                // 多页角标（2026-10-18）：站方报了页数且大于一才摆，判据在 `GalleryPost.pagesBadge`。
+                post.pagesBadge?.let { GalleryPagesPill(it) }
                 overlay?.invoke(this, post)
             }
+        }
+        @Composable
+        fun CaptionNode(mod: Modifier) {
             GalleryCardCaption(
                 site = post.site,
                 // 没有作品/角色标签时给 null ⇒ 那一行只画来源标识，不画空文字。
                 title = titles[post.uid],
-                modifier = Modifier
+                authorAvatar = authorAvatar,
+                authorName = post.author.takeIf { it.isNotBlank() },
+                imageLoader = imageLoader,
+                onOpenArtist = onOpenArtist,
+                modifier = mod,
+            )
+        }
+        // 封面在上、文字区在下（2026-10-17 第三十二轮回改）：第二十四~三十一轮 pixiv
+        // 推荐墙的文字区曾浮在封面下沿（半透明毛玻璃），用户第三十二轮「改成图片能在外面
+        // 预览全部显示那种不要浮层，这样飞行动画也会好很多」把它撤了 —— 浮层压掉封面底沿
+        // 一条，图在网格里看不全；且飞行起点（PixelCopy 截的封面那一块）带着那条 UI，
+        // 要额外做「两段画 + 随进度淡出」才接得上画面框。现在六处墙同一形状：`Column`，
+        // 封面 + 下方文字区（递了头像表的墙多一颗头像两行，见 [GalleryCardCaption]）。
+        // 卡比浮层那一版高一个文字区，瀑布流会重排一回。
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CoverNode()
+            CaptionNode(
+                Modifier
                     .fillMaxWidth()
                     .padding(
                         start = tokens.spacing.space4,
@@ -2015,74 +3218,8 @@ internal fun GalleryPostCard(
     }
 }
 
-/**
- * 视频角标：一个「▶」，站方给了时长就带上秒数。
- *
- * 摆右下角。给视频打标不是装饰 ——
- * 站方那档 preview 是**静帧 jpg**，不打标它就是一张看着正常、点开什么也不会动的图，
- * 用户没法知道那张可以播。时长在 yande.re 那侧拿不到（实测字段表里没有），
- * 所以只在有的时候显示，不写"0s"（秒数单位的口径见 `GalleryPost.durationLabel`）。
- *
- * ⚠️ 2026-09-30 起**左下角那枚来源胶囊撤了**：来源搬到封面下方那一行
- * （与标题并排，见 [GalleryCardCaption]）。所以这里的"与来源分角不抢位"那条理由
- * 已经不存在，四个角只剩视频与 AI 两枚。
- */
-@Composable
-private fun BoxScope.GalleryVideoPill(durationLabel: String) {
-    GalleryCornerPill(if (durationLabel.isEmpty()) "▶" else "▶ $durationLabel", Alignment.BottomEnd)
-}
-
-/**
- * AI 角标：一枚「AI」。
- *
- * 摆**左上角**（左下那枚来源胶囊已撤，但左上仍然是它与视频角标最远的一角，不会撞）。
- * 判据与"没有信号就不摆"这条硬口径同一条：站方没打 AI 标签的条目一律不摆，
- * 不靠"画风像 AI"编一个读数出来。
- */
-@Composable
-private fun BoxScope.GalleryAiPill() {
-    GalleryCornerPill("AI", Alignment.TopStart)
-}
-
 /** 被画廊那把 AI 开关收起时，页尾念出来的"规则名"。它不是一条文本规则，是一枚开关。 */
 const val AI_BLOCKED_RULE = "AI 生成"
-
-/**
- * 卡片角上那枚小胶囊。
- *
- * 不复用 [com.venera.compose.components.venera.VeneraSourceBadge]：那枚是**左上角小圆角**、
- * 且被漫画侧 6 个页面共用，改它等于一起动别人。这里的口径是"胶囊 + 更小"，
- * 但**尺寸全部取现成 token**（badge 字号 / badge 内边距 / extraLarge 圆角），不新造数字。
- * 底板仍用固定深色：封面颜色不可控，只有固定底板能保证任何图上都可读。
- *
- * 刻意**不可点**：点下去要的是"只看这一站"，本仓还没有筛选态的出口，做了就是假按钮。
- *
- * 2026-09-30 第二轮：它只剩视频 / AI 两枚在用（来源那一枚换成了
- * [VeneraGallerySourceMark] 图形标识），所以这里只留形状，不再有"源名"这个用途。
- */
-@Composable
-private fun BoxScope.GalleryCornerPill(text: String, alignment: Alignment) {
-    val tokens = VeneraTokens
-    Text(
-        text = text,
-        fontSize = tokens.type.badge,
-        fontWeight = tokens.type.weightMedium,
-        color = StatusColors.OnBadgeSurface,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .align(alignment)
-            .padding(tokens.spacing.badgeInset)
-            .background(
-                StatusColors.BadgeSurface.copy(alpha = 0.72f),
-                RoundedCornerShape(tokens.shape.extraLarge),
-            )
-            .padding(
-                horizontal = tokens.spacing.badgeHorizontalPadding,
-                vertical = tokens.spacing.badgeVerticalPadding / 2,
-            ),
-    )
-}
 
 /**
  * 页尾那一行「已经到底了」。

@@ -81,24 +81,35 @@ class GalleryHistoryWiringTest {
         )
     }
 
-    /** ③ 历史入口不套搜索态门控：正在搜的时候也要能翻历史。 */
+    /**
+     * ③ 顶栏那两枚「收藏 / 历史」**只在画廊首页摆**，搜索态收起来。
+     *
+     * ⚠️ 2026-10-18 改判（用户：「顶栏收藏和历史图标只需要出现在画廊首页就行，其他二级页面不要出现」）。
+     * 这条用例原先叫「搜索态顶栏也摆得出历史入口」，钉的正是相反的那件事（`depth == 1`，不许套 if）。
+     * 真机上四颗图标并排在搜索态读起来是"顶栏被塞满"，而那一态的主角是搜索卡 ——
+     * 所以现在**必须**套一层 `if (!svm.active)`（`depth == 2`），并且两枚共用同一道门。
+     */
     @Test
-    fun `搜索态顶栏也摆得出历史入口`() {
+    fun `收藏与历史入口只在画廊首页摆，搜索态收起来`() {
         val lines = codeLines("com/venera/compose/gallery/ui", "GalleryScreen.kt")
-        val label = lines.filter { it.value.contains("contentDescription = \"浏览历史\"") }
-        assertEquals(1, label.size)
-        val at = label.single().index
-        val pill = lines.lastOrNull {
-            it.index < at && it.value.trim().startsWith("VeneraTopBarPill(onClick = {")
-        }
-        assertNotNull("那枚图标没装在药丸里", pill)
         val actions = lines.single { it.value.contains("actions = {") }
-        assertEquals(
-            "顶栏这枚被包进了某个 if 里（搜索态就把出口收掉了）——  depth=${depthBefore(lines, actions.index, pill!!.index)}",
-            1,
-            depthBefore(lines, actions.index, pill!!.index),
-        )
+        listOf("浏览历史", "收藏").forEach { name ->
+            val label = lines.filter { it.value.contains("contentDescription = \"$name\"") }
+            assertEquals("顶栏那枚「$name」不见了", 1, label.size)
+            val at = label.single().index
+            val pill = lines.lastOrNull {
+                it.index < at && it.value.trim().startsWith("VeneraTopBarPill(onClick = {")
+            }
+            assertNotNull("「$name」那枚图标没装在药丸里", pill)
+            assertEquals(
+                "「$name」没套搜索态门控（搜索态顶栏会变成四颗图标并排）—— " +
+                    "depth=${depthBefore(lines, actions.index, pill!!.index)}",
+                2,
+                depthBefore(lines, actions.index, pill.index),
+            )
+        }
         assertEquals("导航动作只许交给这一枚", 1, lines.count { it.value.contains("onOpenHistory()") })
+        assertEquals("收藏入口只许接这一处", 1, lines.count { it.value.contains("onOpenBookmarks()") })
     }
 
     /** ④ 设置里那一行不是光杆标题：它真调 clear()。 */

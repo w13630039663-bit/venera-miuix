@@ -107,6 +107,54 @@ class GalleryHomeChromeTest {
         )
     }
 
+    @Test fun `搜索条的内缩长在外框上而不是 Surface 里`() {
+        // 2026-10-17 第四轮（用户第二次点「搜索栏大小还是没有对齐」）。
+        //
+        // 上一轮把两处 `height` 从 `dockedSearchBarHeight`(56) 改成 `segmentedHeight`(48) 之后
+        // 仍然不齐 —— 真凶是**内缩挂在哪一层**：miuix `Surface` 的底色铺的是它自己的节点
+        // （`basic/Surface.kt:57-69`），`padding` 串在链上更外，于是「内缩 + 48」整块被涂色。
+        // 真机读数（1080×572，密度 2.625）：切换器药丸 129px ≈ 48dp，搜索条底色 152px ≈ 58dp
+        // = space2 + 48 + space3 —— 差的正是那 10dp 内缩。
+        //
+        // 所以钉的不是数字，是**链的形状**：从共享元素外框到定高之间只许有"铺满 + 定高"，
+        // 一个 `padding` 都不许有；而那条内缩必须留在外框上（否则两件会顶到墙边）。
+        val lines = file("GalleryHomeChrome.kt")
+        val code = lines.filter {
+            val t = it.trim()
+            !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"))
+        }.joinToString("\n")
+        val anchor = ".gallerySearchContainerElement(this@AnimatedVisibility)"
+        val tail = ".height(tokens.spacing.segmentedHeight)"
+        val start = code.indexOf(anchor)
+        val end = if (start >= 0) code.indexOf(tail, start) else -1
+        assertTrue(
+            "量具找不到「共享元素外框」与「定高」两个锚点（$start, $end）——组件形状变了，重写这条尺子",
+            start >= 0 && end > start,
+        )
+        // 切**两段**：外框（锚点 → `Surface(`）与这一块面自己的修饰符链（`Surface(` → 定高）。
+        // 内缩只许出现在前一段 —— 出现在后一段就是本轮那个 58dp 的形态。
+        val surfaceAt = code.indexOf("Surface(", start)
+        assertTrue("量具在共享元素外框与定高之间找不到 `Surface(`（$surfaceAt）", surfaceAt > start && surfaceAt < end)
+        val chain = code.substring(surfaceAt, end)
+        assertTrue(
+            "内缩不许串在 Surface 自己的修饰符链上：那样底色会把 space2/space3 一起涂上，" +
+                "条目就比左边的切换器高出一整条内缩（真机 152px vs 129px）。链上的件是：\n$chain",
+            !chain.contains("padding("),
+        )
+        val frame = code.substring(start, surfaceAt)
+        assertTrue(
+            "内缩要留在共享元素**外框**上（top=space2 / bottom=space3），否则这一条会顶到屏幕边上：" +
+                "现在这一段是\n$frame",
+            frame.contains("top = tokens.spacing.space2") &&
+                frame.contains("bottom = tokens.spacing.space3"),
+        )
+        // 配偶：左右内缩也在外框上
+        assertTrue(
+            "左右内缩（start = tokens.spacing.screenHorizontal）必须留在共享元素外框上",
+            frame.contains("start = tokens.spacing.screenHorizontal"),
+        )
+    }
+
     @Test fun `高度常量与那一行实际摆的件逐项对应`() {
         val lines = file("GalleryHomeChrome.kt")
         val compStart = lines.indexOfFirst { it.contains("internal fun GalleryHomeChrome(") }
@@ -123,9 +171,10 @@ class GalleryHomeChromeTest {
             .map { it.groupValues[1] }
             .toSet()
         assertEquals(
-            "高度常量只许加「内缩 + 一条定高条 + 下内缩」这三项；再出现 segmentedHeight 那一族 " +
-                "就说明有人在首页补了第二行而没改这条常量（收栏阈值会跟着算少）",
-            setOf("space2", "dockedSearchBarHeight", "space3"),
+            "高度常量只许加「内缩 + 一条定高条 + 下内缩」这三项；再出现别的档位 " +
+                "就说明有人在首页补了第二行而没改这条常量（收栏阈值会跟着算少）。" +
+                "定高条那一档 2026-10-17 起是 `segmentedHeight`（用户：搜索框缩成和切换源一样大小）",
+            setOf("space2", "segmentedHeight", "space3"),
             used,
         )
         // 组件侧配偶：那一格里不该再有第二种"行间距"件

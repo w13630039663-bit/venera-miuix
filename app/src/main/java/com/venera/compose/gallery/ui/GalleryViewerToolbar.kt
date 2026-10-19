@@ -65,6 +65,11 @@ import top.yukonga.miuix.kmp.basic.Text
  * - `下载` —— 原样存下来（[com.venera.compose.gallery.data.GallerySaver]），
  *   进行中把图标换成波浪环并吃掉点击，避免出现"点了没反应"的那一下。
  * - `信息` —— 拉起 [GalleryInfoSheet]（顶栏没了，"在站点打开"也搬进那里）。
+ *   **这一枚可以整格撤掉**（`showInfo = false`，2026-10-18 用户点名 pixiv 大图模式不要它）。
+ *   撤整格 = 右边那几枚各往左挪半枚（≈25dp），这正是批 F 第 8 条当年"视频不摆 HD 但要留空位"
+ *   要防的事。这里仍然撤整格而不是留空位：那条判据的前提是**同一屏会在两种形状之间翻**
+ *   （图片 ↔ 视频，手按记忆伸出去落进空档），而页轴那一屏翻的是同一作的几页，全是图、
+ *   形状恒定，没有"翻一页就少一枚"的那一下。
  *   **「画成水彩」这一枚不在本条 dock 上**（2026-10-14 搬进那张面板底部的动作条）。
  *   360dp 上量过的算术：可用内宽 = 360 − 2×`screenHorizontal`(12) − 2×`space2`(4) = **328dp**，
  *   加回水彩那时有 **7** 个 48dp 槽（♥/HD/下载/笔刷/信息/分享/连播）+ 6 条 `space1`(2) 间距
@@ -97,6 +102,8 @@ fun GalleryViewerToolbar(
     onToggleFavorite: () -> Unit,
     onToggleHd: () -> Unit,
     onDownload: () -> Unit,
+    /** 摆不摆「信息」那一枚。**必填**而不是默认 true：调用点要说清这一屏的信息有没有第二条路（见文件头注）。 */
+    showInfo: Boolean,
     onInfo: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -200,12 +207,14 @@ fun GalleryViewerToolbar(
                     )
                 }
             }
-            VeneraIconButton(onClick = onInfo) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = "关于这张图",
-                    tint = tokens.color.textPrimary,
-                )
+            if (showInfo) {
+                VeneraIconButton(onClick = onInfo) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = "关于这张图",
+                        tint = tokens.color.textPrimary,
+                    )
+                }
             }
             VeneraIconButton(onClick = onShare, enabled = !sharing) {
                 if (sharing) {

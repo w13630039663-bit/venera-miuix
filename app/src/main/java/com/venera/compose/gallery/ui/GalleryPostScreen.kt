@@ -114,6 +114,7 @@ import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.FlyRect
+import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryAutoPlay
 import com.venera.compose.gallery.domain.GalleryExitGestureCommand
 import com.venera.compose.gallery.domain.GalleryExitGestureEvent
@@ -124,6 +125,7 @@ import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
 import com.venera.compose.gallery.watercolor.WatercolorPainterScreen
 import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.exitBodyAlpha
 import com.venera.compose.gallery.domain.exitExpansion
 import com.venera.compose.gallery.domain.exitPageAlpha
 import com.venera.compose.gallery.domain.galleryArtistNames
@@ -242,14 +244,32 @@ fun GalleryPostScreen(
         mutableIntStateOf(if (autoPlaySec > 0) autoPlaySec else AUTOPLAY_DEFAULT_SEC)
     }
 
-    // ── 左右翻页的上下文（用户 2026-09-26）──
-    // 点开那一面墙的条目列表由 `GalleryCardsGrid` 在点击那一刻交过来（[GalleryViewerQueue]）：
-    // 有它 = 可以左右翻，翻的就是刚才屏上那批、同一个顺序；没有它（深链进来、
-    // 或上次留下的列表已经换过一轮）就退回单张模式，这一条自己去站方取。
-    val wall = remember(site, postId) { GalleryViewerQueue.snapshot(site, postId) }
+    // ── 左右翻页的上下文（用户 2026-09-26；页轴那一版见 2026-10-18）──
+    // 两种"墙"各归各的交接件，**页轴优先**：
+    // - [GalleryPageAxis] = 这一条作品自己的几页（pixiv 作品页点图进来，用户点名"不能切换其他作品"）；
+    // - [GalleryViewerQueue] = 把我送进来的那面邻居墙（点开哪张翻哪张）。
+    // 从前只有一颗，两件事就会互相 `set` 掉：作品页把「相关图片」写进邻居墙那一刻，
+    // 播放器正拿着它翻页 —— 所以这里分成两颗，而不是在同一颗里加一枚类型旗标。
+    // 认不出（深链、或列表已换过一轮）就退回单张模式，这一条自己去站方取。
+    val axis = remember(site, postId) { GalleryPageAxis.peek(site, postId) }
+    val wall = remember(site, postId) { axis?.pages ?: GalleryViewerQueue.snapshot(site, postId) }
     val initialIndex = remember(wall, site, postId) {
-        wall.indexOfFirst { it.site == site && it.id == postId }.coerceAtLeast(0)
+        axis?.startIndex?.coerceIn(0, (wall.size - 1).coerceAtLeast(0))
+            ?: wall.indexOfFirst { it.site == site && it.id == postId }.coerceAtLeast(0)
     }
+    /**
+     * **整屏档**：图吃整扇窗口，不再被"顶部让开状态栏 / 左右各一枚 `screenHorizontal` / 底部让开
+     * 底栏净空"三面夹住（用户 2026-10-18：「放大的时候应该是像图三那样全屏放大」）。
+     *
+     * 判据是"这一屏翻的是不是同一作的几页"（页轴），**不是入口姓什么**：只有作品页那条路会写
+     * [GalleryPageAxis]，而那条路上点开的正是详情页里**已经整屏宽**的那一页 —— 三面留白把它夹回
+     * 一张悬浮卡，屏上就成了"点开反而小一圈、上下还挂着玻璃带"。
+     *
+     * 图库三站（邻居墙、深链、单张补取）继续走留白那一档：2026-09-25 定的「图悬浮在玻璃上」不动。
+     * 顺带这一档把放大的天花板顶到整屏 —— [galleryCoverZoomFactor] 吃的就是这一框的视口，
+     * 视口被夹小，`covered` 那一档就跟着够不着全屏（2026-10-15 那一轮的同一条因，只是这次在留白上）。
+     */
+    val fullBleed = axis != null
     // 页状态只此一份：单张模式 = "只有一页的 pager"，翻页模式 = 整面墙。
     // 一套渲染、一套手势，不必为两种入口各写一份（差别只在页数、以及要不要发那笔补取）。
     var pages by remember(site, postId) { mutableStateOf(wall) }
@@ -279,8 +299,11 @@ fun GalleryPostScreen(
 
     val current = pages.getOrNull(pagerState.currentPage)
     val currentUid = current?.uid
-    val preferHd = currentUid != null && hdUids.contains(currentUid)
-    val zoomedIn = currentUid != null && zoomedPages[currentUid] == true
+    // HD 与放大态按**逐页身份**记（页轴里四页共用一个 uid：按 uid 记就是"第 1 页开了 HD，
+    // 第 2 页的钮也亮着而画的是中档"）。非页轴那些 `viewerKey` 逐字等于 `uid`，三站零变化。
+    val currentViewerKey = current?.viewerKey
+    val preferHd = currentViewerKey != null && hdUids.contains(currentViewerKey)
+    val zoomedIn = currentViewerKey != null && zoomedPages[currentViewerKey] == true
 
     // ── 屏幕常亮（C1.1）：口径逐字照抄阅读器那段（VeneraReaderScreen 的常亮块）。 ──
     // 没有算式可抽，所以这一条**没有单测点**：验点只能在真机上停一张图等它灭。
@@ -495,23 +518,30 @@ fun GalleryPostScreen(
      *
      * 为什么不是一份：去程要的是"打开那一张"的落点，而返回程要的是"**当前页**"的起点 ——
      * 用户翻过页之后这两个已经不是同一张（框的尺寸还随图的比例变）。pager 会预组左右邻页，
-     * 所以各页都会陆续回报，按 uid 存才分得清谁是谁。
+     * 所以各页都会陆续回报，按**逐页身份键**（[GalleryPost.viewerKey]）存才分得清谁是谁。
+     *
+     * ⚠️ 键不许退回 `uid`：页轴那一屏里一个作品的四页**共用同一个 uid**（uid 说的是"这一条作品"，
+     * 收藏与历史按它记是对的），四页各自回报的画面框盖进同一个键，去程落点就成了邻页那一框 ——
+     * 邻页比例与这一页不同 ⇒ 飞到位还差一截（用户 2026-10-18 报的"进大图错位很严重"里的一路）。
+     * 非页轴那些 `viewerKey` 逐字等于 `uid`，图库三站一个像素都不受影响。
      */
     val frameBounds = remember(site, postId) { mutableStateMapOf<String, Rect>() }
     /**
-     * 打开时那一张的 uid —— 去程的落点、以及"垫帧只垫它"那几条都按它认。
+     * 打开时那一张的**逐页身份键** —— 去程的落点、以及"垫帧只垫它"那几条都按它认。
      *
-     * ⚠️ 它**就是路由里那一条**（`站点键:id`，与 [GalleryViewerQueue] 认领时用的是同一条算式），
+     * ⚠️ 认不出页轴时**退回路由里那一条**（`站点键:id`，与 [GalleryViewerQueue] 认领时同一条算式），
      * 不能写成 `wall.getOrNull(initialIndex)?.uid` —— 那一串在**没交队列的入口**上是空列表，
      * 于是它成了 `null` ⇒ 落点那一路 `await` 的对象永远不存在 ⇒ 吃满超时预算、一路退回
      * "整页抬上来"。用户 2026-10-01 第 4 条报的"收藏页点图没有飞入、返回却有"就是这一条：
-     * 返回程查的是**当前这张**的 uid（[GalleryFlyIn.cardBoundsOf]），与有没有交队列无关，
+     * 返回程查的是**当前这张**的键（[GalleryFlyIn.cardBoundsOf]），与有没有交队列无关，
      * 所以那一半一直是好的 —— **两半的判据不一致**才是真成因。
      *
      * 墙里认不认得出这一条，是 `pages` 那一层的事（认不出就退回单张模式、自己补取），
-     * 与"这一页要打开哪一个 uid"无关：那是路由已经说死了的。
+     * 与"这一页要打开哪一个键"无关：那是路由已经说死了的。
      */
-    val initialUid = remember(site, postId) { "${site.routeKey}:$postId" }
+    val initialViewerKey = remember(site, postId, axis) {
+        axis?.pages?.getOrNull(initialIndex)?.viewerKey ?: "${site.routeKey}:$postId"
+    }
     val entrance = remember { Animatable(1f) }
     val fly = remember { Animatable(0f) }
     /**
@@ -584,7 +614,7 @@ fun GalleryPostScreen(
         // 这一条短路存在的理由是**别让人家为一笔永远不会来的落点白等一笔预算**。
         // ⚠️ 判据只能是 [GalleryFlyIn.origin]（点击那一刻同步写的那个矩形），**不是"入口姓什么"**：
         // 收藏页曾经被写在这一串里（它当年确实没飞），但它今天与画廊一级走同一条路 ——
-        // 交队列 + 截帧都做了，只是 `initialUid` 当时取的是墙里的那一条（空 → null），
+        // 交队列 + 截帧都做了，只是那一格（旧名 `initialUid`，现名 [initialViewerKey]）当时取的是墙里的那一条（空 → null），
         // 落点永远等不到（2026-10-01 第 4 条）。别再按入口名去猜这一条。
         if (GalleryFlyIn.origin == null) {
             flightDone = true
@@ -607,7 +637,7 @@ fun GalleryPostScreen(
         }
         val boundsJob = async {
             withTimeoutOrNull(FLY_WAIT_MS) {
-                snapshotFlow { initialUid?.let { frameBounds[it] } }.filterNotNull().first()
+                snapshotFlow { frameBounds[initialViewerKey] }.filterNotNull().first()
             }
         }
         frameJob.await()
@@ -694,6 +724,10 @@ fun GalleryPostScreen(
             GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.fetchById(postId)
             GallerySite.GELBOORU -> GalleryPorts.of(context).boards.gelbooru.fetchById(postId)
             GallerySite.SAFEBOORU -> GalleryPorts.of(context).boards.safebooru.fetchById(postId)
+            // pixiv 走自己那三条腿（不是 board）：`/ajax/illust/{id}` 现量 200，五档图址齐。
+            // 端口槽在桌面是 null ⇒ 那一侧交一句"桌面不接 pixiv"，而不是悄悄交回空。
+            GallerySite.PIXIV -> GalleryPorts.of(context).pixiv?.fetchById(postId)
+                ?: Result.failure(UnsupportedOperationException("这一侧不接 pixiv（桌面）"))
         }
         result.onSuccess { loaded ->
             // 取到了空 = 站方没有这条（被删/合并），要说话，不要留一屏黑。
@@ -813,8 +847,10 @@ fun GalleryPostScreen(
      */
     fun exitRectsOrNull(): Pair<Rect, Rect>? {
         val post = current ?: return null
-        val box = frameBounds[post.uid] ?: return null
-        val target = GalleryFlyIn.cardBoundsOf(post.uid) ?: return null
+        // 两半用**同一把键**（`viewerKey`）：起点是这一页自己回报的画面框，落点是"把我送进来
+        // 那一侧"按同一把键回写的矩形。页轴里四页共用一个 uid，退回 uid 就是把邻页的框当这一页。
+        val box = frameBounds[post.viewerKey] ?: return null
+        val target = GalleryFlyIn.cardBoundsOf(post.viewerKey) ?: return null
         if (box.width <= 0f || box.height <= 0f || maskedOf(post)) return null
         return box to target
     }
@@ -826,6 +862,9 @@ fun GalleryPostScreen(
     fun clearChromeForExit() {
         val host = view.context as? Activity
         host?.window?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        // 新字段也要归零：Android 12 起窗口背景模糊走 `setBackgroundBlurRadius` 这条独立字段，
+        // 只摘 flag 在部分 ROM 上会留着一层糊（2026-10-19 作品页返回那条读数同因）。
+        host?.window?.setBackgroundBlurRadius(0)
         host?.window?.let { WindowCompat.getInsetsController(it, view) }
             ?.isAppearanceLightStatusBars = !isDarkTheme
     }
@@ -846,6 +885,10 @@ fun GalleryPostScreen(
         exitTarget = null
         val host = view.context as? Activity
         host?.window?.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        // 与 [clearChromeForExit] 成对：摘的时候把新字段归零了，这里要放回去，
+        // 否则"拖到一半松手回弹"之后这一屏的玻璃底就永久没了。
+        // 半径不另写常量 —— `LayoutParams.blurBehindRadius` 那一位从头到尾没被动过，直接照抄回来。
+        host?.window?.setBackgroundBlurRadius(host.window.attributes.blurBehindRadius)
         host?.window?.let { WindowCompat.getInsetsController(it, view) }
             ?.isAppearanceLightStatusBars = false
     }
@@ -1122,7 +1165,8 @@ fun GalleryPostScreen(
                             ),
                     ) {
                         // 没有顶栏了，所以只让开状态栏那一档 + 一点呼吸（图要像浮在玻璃上）。
-                        Spacer(modifier = Modifier.height(statusBarTop + tokens.spacing.space5))
+                        // 整屏档不留这一格（判据与理由见 [fullBleed]，下面左右与底部那两格同一档）。
+                        if (!fullBleed) Spacer(modifier = Modifier.height(statusBarTop + tokens.spacing.space5))
                         // ── 左右翻页 ──
                         // 横向翻与纵向下滑分属两个方向，各自被各自的 Orientation 锁住，不会互相抢；
                         // 放大之后 telephoto 会吃掉单指拖拽，那时翻页自然让位（正在看图的人不该被翻走）。
@@ -1135,14 +1179,14 @@ fun GalleryPostScreen(
                         HorizontalPager(
                             state = pagerState,
                             beyondViewportPageCount = GalleryPreload.beyondPages(preloadMode),
-                            key = { index -> pages.getOrNull(index)?.uid ?: index },
+                            key = { index -> pages.getOrNull(index)?.viewerKey ?: index },
                             modifier = Modifier.weight(1f),
                         ) { page ->
                             val pagePost = pages[page]
                             GalleryViewerPage(
                                 post = pagePost,
                                 masked = maskedOf(pagePost),
-                                preferHd = hdUids.contains(pagePost.uid),
+                                preferHd = hdUids.contains(pagePost.viewerKey),
                                 animated = animateGifs,
                                 imageLoader = imageLoader,
                                 // 垫着的那一帧只属于**打开时那一张**：翻到别处它已经不成立了。
@@ -1150,7 +1194,7 @@ fun GalleryPostScreen(
                                 // 框里同时摆一份就会看见"两个起点"。
                                 cardFrame = if (page == initialIndex && flightDone) cardFrame else null,
                                 onReady = { if (page == initialIndex) contentReady = true },
-                                // **每一页**都回报（按 uid 存）：去程要"打开那一张"的落点，
+                                // **每一页**都回报（按逐页身份键存）：去程要"打开那一张"的落点，
                                 // 返回程要"当前页"的起点 —— 翻过页之后这两个不是同一张。
                                 onImageBounds = { rect ->
                                     // 落点**只认有面积的那一版**。`boundsInWindow()` 报的是裁到窗口
@@ -1159,27 +1203,29 @@ fun GalleryPostScreen(
                                     // 屏幕左上角消失。姿态已按 [Entrance] 修对（等待期间站在原位），
                                     // 这一道留着当保险：一个零面积的目的地永远不该被拿去飞。
                                     if (rect.width > 0f && rect.height > 0f) {
-                                        if (page == initialIndex && frameBounds[pagePost.uid] == null) {
+                                        if (page == initialIndex && frameBounds[pagePost.viewerKey] == null) {
                                             android.util.Log.i("FlyProbe", "first landing rect=$rect")
                                         }
-                                        frameBounds[pagePost.uid] = rect
+                                        frameBounds[pagePost.viewerKey] = rect
                                     }
                                 },
-                                onZoomedChange = { zoomedPages[pagePost.uid] = it },
+                                onZoomedChange = { zoomedPages[pagePost.viewerKey] = it },
                                 onHdError = { reason ->
                                     // HD 档取不到要说出来，并且**把钮拨回去**：
                                     // 留着 HD 亮着、画的却是原档，就是一个假开关。
-                                    hdUids = ArrayList(hdUids).also { it.remove(pagePost.uid) }
+                                    hdUids = ArrayList(hdUids).also { it.remove(pagePost.viewerKey) }
                                     Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
                                 },
                                 onImageTap = ::toggleChrome,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = tokens.spacing.screenHorizontal),
+                                    .padding(horizontal = if (fullBleed) 0.dp else tokens.spacing.screenHorizontal),
                             )
                         }
                         // 工具条是浮层，所以底部留白自己给，图不会被它盖住。
-                        Spacer(modifier = Modifier.height(LocalBottomBarClearance.current))
+                        // 整屏档让位给"图吃满整扇窗"：那一档里 chrome 压在图上是**要的**（图三同一形状），
+                        // 而 chrome 只在 `showChrome && !zoomedIn` 时出现，点一下就没了。
+                        if (!fullBleed) Spacer(modifier = Modifier.height(LocalBottomBarClearance.current))
                     }
 
                     // ── 连播进度线（§一）──
@@ -1222,6 +1268,14 @@ fun GalleryPostScreen(
                                     total = pages.size,
                                 )
                             }
+                            // AI 位也带进大图页（2026-10-18）：同一张图在卡上带过角标、点开就没了，
+                            // 会被读成"换一页就不是 AI 了"。套一层 Box 只是为了拿到 BoxScope ——
+                            // 借的是卡上那颗**同一个**胶囊，不在这里另画一份形状。
+                            val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
+                                .galleryAiBadge.collectAsState()
+                            if (aiBadgeOn && GalleryAi.isAiMarked(target.siteAiFlag, target.tagList)) {
+                                Box { GalleryAiPill() }
+                            }
                         }
                     }
 
@@ -1260,10 +1314,15 @@ fun GalleryPostScreen(
                             onToggleHd = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 hdUids = ArrayList(hdUids).also { set ->
-                                    if (!set.remove(target.uid)) set.add(target.uid)
+                                    if (!set.remove(target.viewerKey)) set.add(target.viewerKey)
                                 }
                             },
                             onDownload = { download(target) },
+                            // 页轴那一屏（从 pixiv 作品页点图进来）**不摆信息钮**（用户 2026-10-18 点名）：
+                            // 这一作的标题、计数、标签、画师在详情页本来就整屏摆着，大图里再拉一层是重复。
+                            // 与上面那档 `fullBleed` 同判据但**各写一次** —— 那是"图多大"，这是"摆不摆钮"，
+                            // 合成一枚旗标就会在下次只想改其中一件时把另一件带走。
+                            showInfo = axis == null,
                             onInfo = {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                 infoOpen = true
@@ -1321,7 +1380,7 @@ fun GalleryPostScreen(
                     .drawBehind {
                         // 落点还没量出来时**冻在封面原位**垫着（这正是这一层最初"垫着不空"的职责），
                         // 量到了才起程。直接不画的话，等落点那几帧屏上只剩窗口模糊。
-                        val end = initialUid?.let { frameBounds[it] } ?: startRect
+                        val end = frameBounds[initialViewerKey] ?: startRect
                         val t = fly.value.coerceIn(0f, 1f)
                         val left = startRect.left + (end.left - startRect.left) * t
                         val top = startRect.top + (end.top - startRect.top) * t
@@ -1361,22 +1420,27 @@ fun GalleryPostScreen(
                                 )
                             },
                         ) {
+                            // 去程**全程不淡**（2026-10-01 第四次报"打开还是闪"，录屏量出来的）：
+                            // 老写法让它在这条弹簧的尾段淡出，可"弹簧的百分比"不是"路程" ——
+                            // 页面同时开始淡入，两份图错着位叠在一起 = 重影，而且两层 alpha
+                            // 相乘后总不透明度只有 0.75，图还会先暗一下。现在它整程不透明，
+                            // 淡出挪到**飞完之后的交棒后半程**（那时页面已不透明，见 [handoff]）。
+                            val bodyAlpha = if (entranceMode == Entrance.FLY) {
+                                handoffBodyAlpha(handoff.value)
+                            } else {
+                                1f
+                            }
+                            // 整张位图一次画完。浮层 caption 那一档退役后（2026-10-17 第三十二轮：
+                            // 用户「改成图片能在外面预览全部显示那种不要浮层」—— 卡片文字区搬回
+                            // 封面下方，不再叠在图上），截帧里只有图，起点与落点同构，
+                            // 不再需要「切两段 + 条子随进度淡出」那道减退机理。
                             drawImage(
                                 image = frame,
                                 srcOffset = IntOffset(src.left, src.top),
                                 srcSize = IntSize(src.width, src.height),
                                 dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
                                 dstSize = IntSize(width.roundToInt(), height.roundToInt()),
-                                // 去程**全程不淡**（2026-10-01 第四次报"打开还是闪"，录屏量出来的）：
-                                // 老写法让它在这条弹簧的尾段淡出，可"弹簧的百分比"不是"路程" ——
-                                // 页面同时开始淡入，两份图错着位叠在一起 = 重影，而且两层 alpha
-                                // 相乘后总不透明度只有 0.75，图还会先暗一下。现在它整程不透明，
-                                // 淡出挪到**飞完之后的交棒后半程**（那时页面已不透明，见 [handoff]）。
-                                alpha = if (entranceMode == Entrance.FLY) {
-                                    handoffBodyAlpha(handoff.value)
-                                } else {
-                                    1f
-                                },
+                                alpha = bodyAlpha,
                             )
                         }
                     },
@@ -1385,9 +1449,10 @@ fun GalleryPostScreen(
 
         // ── 返回程那一帧：画面框 → 墙上那张卡 ──
         // 与上面那一层是镜像：去程画"卡片 → 画面框"，这一层画"画面框 → 卡片"。
-        // **不淡入也不淡出**：起点是屏上那一帧的真实像素（与它盖住的那张图逐像素相同），
-        // 终点正好是卡片封面那一块，finish 之后卡片把它接住 —— 两头都无缝，中间加淡入淡出
-        // 反而会把身后的东西露出来。
+        // 首程**不淡**：起点是屏上那一帧的真实像素（与它盖住的那张图逐像素相同），
+        // 淡了就是"图还没飞就先虚了"。但**末段必须淡**（算式在判据层 [exitBodyAlpha]）——
+        // 落点那一侧自己画着同一张图且一直全亮，飞行体不淡就是一块不透明的同一张画
+        // 压在同一张画上滑过去（2026-10-19 真机帧：返回第 12 帧两份比例不同的同一张叠着）。
         val exitFrom = exitStart
         val exitTo = exitTarget
         val exitBitmap = exitFrame
@@ -1441,13 +1506,32 @@ fun GalleryPostScreen(
                                 srcSize = IntSize(src.width, src.height),
                                 dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
                                 dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
+                                // 末段化进落点那一份（判据层 [exitBodyAlpha]）。首程恒为 1，
+                                // 所以"屏上只有飞行体"的那一段不会被提前虚掉。
+                                alpha = exitBodyAlpha(exitFly.value),
                             )
                         }
                     },
             )
         }
 
-        if (infoOpen && current != null) {
+        // 信息面板那一格有**两版**：页轴时交回"把我送进来那一侧"给的那一版（pixiv 作品页的那一版，
+        // 用户 2026-10-18 点名「点信息面板用回为 p 站做的信息面板」），其余一律走本页自己的那颗。
+        // 判据只有一枚布尔，两处不会同时画；这一颗播放器**不解释** `panelData` 是什么类型，
+        // 所以它不需要认识任何新屏的模型（隔离那条尺子钉的就是这个）。
+        val axisPanel = axis?.infoPanel
+        if (infoOpen && current != null && axisPanel != null) {
+            axisPanel(
+                axis?.panelData,
+                GalleryPageAxis.PanelParams(
+                    post = current,
+                    imageLoader = imageLoader,
+                    onOpenArtist = { name, postSource -> onOpenArtist(name, postSource) },
+                    onDownload = { download(current) },
+                    onDismiss = { infoOpen = false },
+                ),
+            )
+        } else if (infoOpen && current != null) {
             GalleryInfoSheet(
                 post = current,
                 categories = tagCategories,
@@ -1784,8 +1868,14 @@ private fun GalleryViewerMedia(
              * 其中 `covered` 在这里就是"把这一框铺满整屏要几倍"，由定框那两个尺寸现算，不猜数。
              */
             val coverToFill = galleryCoverZoomFactor(boxWidth, boxHeight, maxWidth, maxHeight)
+            // 1:1 那一档吃**原图像素**：站方报的 `width` 就是原图宽（HD 关掉时画的仍是中档，
+            // 但"放大到 1:1"指的是把原图那一档的像素一个一个摆出来，用户 2026-10-18 点名的正是这一句）。
+            val nativeZoom = galleryNativeZoomFactor(
+                post.width,
+                with(density) { boxWidth.toPx() }.toInt(),
+            )
             val zoomState = rememberZoomableState(
-                zoomSpec = ZoomSpec(maxZoomFactor = coverToFill * GALLERY_ZOOM_OVERCOVER_FACTOR),
+                zoomSpec = ZoomSpec(maxZoomFactor = maxOf(coverToFill, nativeZoom) * GALLERY_ZOOM_OVERCOVER_FACTOR),
             )
             LaunchedEffect(zoomState) {
                 snapshotFlow { (zoomState.zoomFraction ?: 0f) > 0f }
@@ -1795,14 +1885,15 @@ private fun GalleryViewerMedia(
             Box(
                 Modifier
                     .fillMaxSize()
-                    // 双击走"铺满那一档"，不走默认那枚 `cycle()`：默认会在 min 与**上限**之间来回，
-                    // 而上限是 ×10 —— 双击想要的是"放大到整屏"，不是"跳到糊到底"。
-                    // 已经铺满（cover ≈ 1）时把这枚撤掉：按下去什么都不变的那一枚就是假开关。
+                    // 双击走**原图像素 1:1**，不走"铺满整屏"那一档，也不走默认的上限（×10 那一档）：
+                    // 铺满会把屏外两头裁掉并且比 1:1 还糊（用户 2026-10-18：「放大整个图片而不是限制在
+                    // 一个大小里放大」）。算不出 1:1（站方没给宽高，或小图本来就不止 1:1）时把这枚撤掉 ——
+                    // 按下去什么都不变的那一枚就是假开关。
                     .zoomable(
                         state = zoomState,
                         onClick = { onImageTap() },
-                        onDoubleClick = if (coverToFill > COVER_TOLERANCE) {
-                            DoubleClickToZoomListener.cycle(coverToFill)
+                        onDoubleClick = if (nativeZoom > COVER_TOLERANCE) {
+                            DoubleClickToZoomListener.cycle(nativeZoom)
                         } else {
                             null
                         },
@@ -1907,6 +1998,9 @@ private fun GalleryViewerMedia(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(padCornerRadius))
+                            // 位图就是封面那一块（只有图）—— 浮层 caption 那一档第三十二轮已退役
+                            // （用户「改成图片能在外面预览全部显示那种不要浮层」），整张铺进来
+                            // 与画面框同构，不再需要把底部那一绺裁掉。
                             .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                     )
                 }
@@ -1966,10 +2060,28 @@ internal fun galleryCoverZoomFactor(
 }
 
 /** 上限 = 铺满那一档再乘的头数。照 master 图片收藏页那档：`covered * 10.0`。 */
-private const val GALLERY_ZOOM_OVERCOVER_FACTOR = 10f
+internal const val GALLERY_ZOOM_OVERCOVER_FACTOR = 10f
+
+/**
+ * 放大到**原图像素 1:1** 要几倍（用户 2026-10-18：「双击放大图片应该是放大整个图片，
+ * 而不是限制在一个大小里放大」，并点了「循环：适应屏宽 ↔ 原图像素 1:1」那一档）。
+ *
+ * 与 [galleryCoverZoomFactor] 的分别是真的：`covered` 是"把这一框裁到铺满视口"，
+ * 宽幅图放大后左右两头都在屏外，而它常常比 1:1 还大（1080 宽的屏把 2000 px 的图拉到 3200 px）
+ * —— 双击跳到那一档，用户读到的是"放大=裁掉+糊"。
+ *
+ * 入参是**像素**：`boxWidthPx` 就是定框那一框在屏上占的物理宽（1 倍时画面就铺在那一框里，
+ * 所以要的倍数 = 原图宽 / 那一框宽）。
+ * 退化输入一律回 1：站方没给宽高时 1 会顺着调用点那条判据退成"这一张不摆双击"（按下去
+ * 什么都不变的那一枚就是假开关），而不是把 NaN 喂进 `ZoomSpec` 让捏合整个失灵。
+ */
+internal fun galleryNativeZoomFactor(naturalWidthPx: Int, boxWidthPx: Int): Float {
+    if (naturalWidthPx <= 0 || boxWidthPx <= 0) return 1f
+    return naturalWidthPx.toFloat() / boxWidthPx.toFloat()
+}
 
 /** 已经铺满的容差：小于这一档就别摆双击那一枚（按下去看不出变化 = 假开关）。 */
-private const val COVER_TOLERANCE = 1.01f
+internal const val COVER_TOLERANCE = 1.01f
 
 /** 位移超过 25% 屏高就算"要关"（阈值口径照参考实现）。 */
 private const val DISMISS_DISTANCE_FRACTION = 0.25f
@@ -1999,7 +2111,8 @@ private const val BACKDROP_ENTRY_FRACTION = 0.8f
  * **必须带站点**：两站 id 各自独立编号，只按 id 做 key 会让另一站的同号条目直接命中
  * yande.re #123 的缓存位 —— 那是"点这张看到那张"的静默错图。
  */
-internal fun galleryCacheKey(kind: String, post: GalleryPost) = "gallery-$kind-${post.site.routeKey}-${post.id}"
+internal fun galleryCacheKey(kind: String, post: GalleryPost) =
+    "gallery-$kind-${post.site.routeKey}-${post.id}" + (post.pageOrdinal?.let { "-p$it" } ?: "")
 
 /**
  * 大图页的**开门档**请求。

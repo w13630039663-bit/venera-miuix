@@ -14,10 +14,15 @@ import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
+import com.venera.compose.gallery.data.PixivAuthState
+import com.venera.compose.gallery.data.PixivPremium
+import com.venera.compose.gallery.data.PixivUser
+import com.venera.compose.gallery.data.PixivWork
 import com.venera.compose.gallery.data.refineGalleryTagSuggestions
 import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryDailyFeed
+import com.venera.compose.gallery.domain.GalleryHomeDomain
 import com.venera.compose.gallery.domain.GalleryLegGuard
 import com.venera.compose.gallery.domain.GalleryLegOutcome
 import com.venera.compose.gallery.domain.GalleryMerge
@@ -35,6 +40,8 @@ import com.venera.compose.gallery.domain.GelbooruWindowBoundary
 import com.venera.compose.gallery.domain.GelbooruWindowBreak
 import com.venera.compose.gallery.domain.GelbooruWindowEnd
 import com.venera.compose.gallery.domain.GelbooruWindowFinder
+import com.venera.compose.gallery.domain.PixivSearchFilter
+import com.venera.compose.gallery.domain.PixivSearchKind
 import com.venera.compose.gallery.domain.allLegsExhausted
 import com.venera.compose.gallery.domain.decodeGallerySearchHistory
 import com.venera.compose.gallery.domain.encodeGallerySearchHistory
@@ -44,6 +51,7 @@ import com.venera.compose.gallery.domain.pushGallerySearchHistory
 import java.io.IOException
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -142,6 +150,108 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         internal set
 
     var filters by mutableStateOf<List<GalleryTagFilter>>(emptyList())
+        internal set
+
+    /**
+     * 当前**内容域**（图库站 / Pixiv）。它决定这张搜索卡吃哪一套语法，也决定这一墙是谁的图。
+     *
+     * ⚠️ 与 [source] 不是一件事：`source` 是**来源轴**（booru 那三站里这一句打哪几站），
+     * 域是"这一屏整个换了一套站"。两套并存会有两个来源切换器，所以 pixiv 不进 `source`。
+     *
+     * 换域必须**把手上这一轮清掉**（见 [setDomain]）：pixiv 卡上写着「筛选 · 横图」，
+     * 身下的墙却是 booru 的搜索结果 —— 那就是本仓最忌的假读数。
+     */
+    var domain by mutableStateOf(GalleryHomeDomain.BOORU)
+        internal set
+
+    /**
+     * pixiv 那一框里敲的词（**不拆成胶囊**）。
+     *
+     * 为什么不复用 [term]：那个字段是 booru 的"待加胶囊的半截词"，加一枚就清空；
+     * pixiv 这一跳词就是查询本身（站方把它当标签名解释），它得留在框里，
+     * 用户才能看见"我在搜什么"并接着改。
+     */
+    var pixivTerm by mutableStateOf("")
+        internal set
+
+    /**
+     * pixiv 那一排条件（排序 / 标签模式 / 比例 / 时间窗）。
+     *
+     * 与 booru 的 [filters] **各存各的**：换域来回切不该把对方挑好的条件抹掉
+     * （用户已经为此改判过一次 —— 换站不抹条件）。但结果**不各存各的**：
+     * 那是上一套语法取回来的图，留着就会出现"卡是这一域、图是那一域"。
+     */
+    var pixivFilter by mutableStateOf(PixivSearchFilter.DEFAULT)
+        internal set
+
+    /** 「筛选」那块面板开没开。只影响画法，不影响查询 —— 收起面板**不重搜**。 */
+    var pixivPanelOpen by mutableStateOf(false)
+        internal set
+
+    /**
+     * pixiv 有没有登录态 —— **它决定这一屏摆哪几段筛选**。
+     *
+     * 人气（`sort=popular_desc`）与收藏（`bookmark_num_min`）只有带票据的 `app-api` 发得出去；
+     * 匿名那条 www 跳对这两枚是静默忽略的（读数见 `PixivSearchFilter`）。
+     * 所以没登录时面板**不摆**这两段，而不是摆一枚点了没反应的开关。
+     */
+    var pixivLoggedIn by mutableStateOf(false)
+        internal set
+
+    /**
+     * 票据**这一会儿**拿不拿得到 —— 与 [pixivLoggedIn] 分开的那一格（2026-10-18，
+     * 用户「人气和收藏 xxx+ 的筛选没有生效」）。
+     *
+     * 为什么必须分两格：`authState` 只说"有这个账号"，`bearerOrNull()` 才说"这一跳发得出去"。
+     * 两者会不一致 —— token 过期而刷新失败、或者刚登录票据还没落地时，
+     * 屏上是登录态、请求却退回匿名腿，于是**人气 / 收藏被站方静默忽略**，
+     * 而旧的 notice 判据吃的是 [pixivLoggedIn]，屏上什么都不说 —— 用户读到的就是"点了没生效"。
+     *
+     * 三态：`null` = 还没探到（首帧不拦人，等探）；`true` = 发得出去；`false` = 发不出去。
+     */
+    var pixivBearerReady by mutableStateOf<Boolean?>(null)
+        internal set
+
+    /**
+     * pixiv **会员**身份（2026-10-18，用户「人气 / 收藏 xx+ 照 pixez 的做法」）。
+     *
+     * 与登录态是第三格：登录着 ≠ 会员。`sort=popular_desc` 在站方是付费档（pixez 非会员直接 toast
+     * 并且不发），而 `bookmark_num_min` 那一枚**也是**付费档 —— 从前我们把收藏全押在它上面，
+     * 于是非会员（含未登录）点「100+」= 站方静默忽略 = 用户读到的"筛选没有生效"。
+     *
+     * 现在按身份二选一：会员发真参数，其余走词尾 `users入り`（**匿名实测就真生效**，
+     * 读数在 `PixivSearchFilter.PixivBookmark` 那一段）。两档都真筛 ⇒ 这一格探不到就留 false，
+     * 不会长成"屏上亮着已选中、请求里根本没发"。
+     */
+    var pixivPremium by mutableStateOf(false)
+        internal set
+
+    /**
+     * 登录腿的分页游标（站方 `next_url`，自带 `offset`）。null = 第一页 / 已经到底。
+     * 匿名腿不用它（那一跳认页码 `p=`）。
+     */
+    private var pixivNextUrl: String? = null
+
+    /**
+     * 上一页走的是哪条腿（true = 带票据的 `app-api`）。
+     *
+     * 续页要知道这件事：登录腿的页码对站方没意义，它只认 `next_url`；那一格空着还去发，
+     * 拿回来的就是第一页 —— 去重会把整页吃光，屏上读起来像"滚到底了但什么都没加载"。
+     */
+    private var pixivLoginLeg: Boolean = false
+
+    /**
+     * pixiv 搜索结果的**站方标题**与**作者头像**（`uid → 值`），与结果同批落地。
+     *
+     * 为什么不让它们跟着 `GalleryPost` 走：那一颗是三站共用的行模型，加一格 `title` 就会让
+     * booru 那三站永远空着（它们的标题是 `GalleryCardTitle` 从标签算的），两种来源混一层。
+     * 所以按 uid 单独存一份，由网格按 `stationTitles` / `authorAvatars` 两个槽喂进去 ——
+     * 那也是 pixiv 首页那几节在用的同一条通道。
+     */
+    var pixivTitles by mutableStateOf<Map<String, String>>(emptyMap())
+        internal set
+
+    var pixivAvatars by mutableStateOf<Map<String, String>>(emptyMap())
         internal set
 
     var results by mutableStateOf<List<GalleryPost>>(emptyList())
@@ -295,10 +405,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         GallerySite.GELBOORU -> boards.gelbooru.pageSize
         GallerySite.YANDERE -> boards.yandere.pageSize
         GallerySite.SAFEBOORU -> boards.safebooru.pageSize
+        // pixiv 这一跳**恒给 60 条**（2026-10-17 现量：`illustManga.data` 长度就是 60，
+        // 翻到最后一页才不满）。从前这里是 `notWired`，因为搜索腿没接 ——
+        // 现在接了，所以这一格必须答得出来："到底"判据和页尾读数都吃它。
+        GallerySite.PIXIV -> PIXIV_PAGE_SIZE
     }
 
     private val gelbooruIdentity = GalleryPorts.of(app).credentials.gelbooruIdentity
     private val boards = GalleryPorts.of(app).boards
+    private val pixivAccount = GalleryPorts.of(app).pixivAccount
 
     /**
      * Gelbooru **配没配账号**。
@@ -316,6 +431,41 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     init {
         viewModelScope.launch {
             gelbooruIdentity.collect { gelbooruConfigured = it != null }
+        }
+        // pixiv 登录态：面板摆哪几段由它定（人气 / 收藏只有带票据那条腿发得出去）。
+        // 订阅 `authState` 而不是在取数时现判：登录 / 退出之后面板要**立刻**跟着变，
+        // 而不是等下一次搜索才发现少了一段或多了一段。
+        pixivAccount?.let { account ->
+            pixivLoggedIn = account.authState.value is PixivAuthState.SignedIn
+            // `pixivBearerReady` 的首值留给下面那次 collect：`authState` 是 StateFlow，
+            // collect 一启动就把当前值发过来，所以首帧之后它必然有一个真值（而不是 null）。
+            viewModelScope.launch {
+                account.authState.collect { state ->
+                    pixivLoggedIn = state is PixivAuthState.SignedIn
+                    // 登录态一变就**现探一次票据**：它是 suspend 的（自带刷新），
+                    // 所以只能在协程里问。探不到的那一小段时间 `pixivBearerReady` 还是旧值，
+                    // 面板按旧值摆 —— 比"闪一下空"好，且搜索那一跳仍会按真票据判 notice。
+                    pixivBearerReady = if (state is PixivAuthState.SignedIn) {
+                        runCatching { account.bearerOrNull() != null }.getOrElse { false }
+                    } else {
+                        null
+                    }
+                    // 会员身份：**拿到票据就探一次**，不等搜索那一笔。
+                    // 等到搜索才探，"登录着但还没搜过"的用户点人气会被当成非会员拒掉 —— 拒错方向
+                    // 也是一枚假开关（明明点得动的那一档说成点不动）。
+                    // 探失败（没票据 / 站方没答）时**不记下这一号**，下次状态变化再试一次；
+                    // 中间按非会员走词尾那条收藏，那一档真生效，所以不会静默不筛。
+                    val userId = (state as? PixivAuthState.SignedIn)?.userId
+                    val probeBearer = runCatching { account.bearerOrNull() }.getOrNull()
+                    pixivPremium = PixivPremium.of(userId) {
+                        if (probeBearer == null || userId.isNullOrBlank()) {
+                            null
+                        } else {
+                            GalleryPorts.of(app).pixiv?.userPremium(probeBearer, userId)?.getOrNull()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -551,6 +701,71 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         return if (label == null) ranking.shortLabel else "${ranking.shortLabel}（$label）"
     }
 
+    // ── 页尾 / 空态那几句读数：两个域各按各的语法念（2026-10-17）──
+    //
+    // 从前这几句直接写在页面里、而且逐字是 booru 的话（`tags=` 那串、排行档、预算）。
+    // pixiv 那一侧没有胶囊、没有排行档、也没有预算，照念就是假读数：
+    // 屏上会写出"条件：（空）"这种句子，而用户明明搜了一个词。
+
+    /** 页尾那句"搜的是什么"。pixiv 侧念那个词，booru 侧念真正发出去的胶囊串。 */
+    val footerQuery: String
+        get() = if (domain == GalleryHomeDomain.PIXIV) {
+            pixivTerm
+        } else {
+            GallerySearch.queryOf(effectiveFilters())
+        }
+
+    /** 页尾那句"按什么排 / 筛了什么"。pixiv 侧没有排行档，念的是那一排条件。 */
+    fun footerRankingReading(): String? = if (domain == GalleryHomeDomain.PIXIV) {
+        pixivFilter.summary().drop(1).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+    } else {
+        rankingReading()
+    }
+
+    /** 预算那一句只有 booru 那侧有：pixiv 一次只发一个词，没有"条件被砍"这回事。 */
+    fun footerTrimmedNote(): String? =
+        if (domain == GalleryHomeDomain.PIXIV) null else budgetTrimNotice()
+
+    /**
+     * 空态标题。三档 → 四档：pixiv 那一侧"没有图"说的是"这个词没有"，不是"这串标签没有"。
+     */
+    fun emptyTitle(): String = when {
+        searchError == NEEDS_GELBOORU_ACCOUNT -> "这一站还不能用"
+        searchError != null -> "这一轮没搜成"
+        domain == GalleryHomeDomain.PIXIV -> "这个词没有可摆的图"
+        // 窗口内 0 条 ≠ 这一串标签搜不到东西（实测两站对不认识的伪标签也回空表），
+        // 所以设了窗口的档要用另一句读数，免得用户去怀疑自己写的标签。
+        rankingWindowActive() ->
+            if (periodAnchor == null) "这一档里没有新增命中" else "这一期里没有命中的图"
+        else -> "这一串标签没有可摆的图"
+    }
+
+    /**
+     * 空态那几行说明（不含页面自己那两行：屏蔽规则命中数、以及整轮失败的原文）。
+     *
+     * 每一行都是"屏上少掉的那部分有个交代"：条件、筛了什么、哪条腿没跑起来、换过名。
+     */
+    fun emptyDetailLines(): List<String> = if (domain == GalleryHomeDomain.PIXIV) {
+        listOfNotNull(
+            "词：$pixivTerm",
+            pixivFilter.summary().drop(1).takeIf { it.isNotEmpty() }
+                ?.joinToString(" · ")?.let { "筛选：$it" },
+            noImageNotice(),
+        )
+    } else {
+        listOfNotNull(
+            "条件：${GallerySearch.queryOf(effectiveFilters())}",
+            // 排行档连日期区间一起念 —— "本周"不带日期就是说不出对错的读数。
+            rankingReading()?.let { "排行：$it" },
+            budgetTrimNotice(),
+            noImageNotice(),
+            // 有一条腿没跑起来而另一条回了 0 张：空态必须点名是哪条腿。
+            legFailureNotice(),
+            // 换过名还是 0 张也要说：否则用户读到的是"这个名字没图"。
+            artistAliasNotice,
+        )
+    }
+
     /**
      * 这一屏是不是"设了时间窗口"的档。
      *
@@ -690,8 +905,17 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 该由顶栏那枚 ✕ 直接关掉整层。所以这里什么都不做，让调用方去看 `filters`。
      */
     fun collapseToResults() {
-        if (filters.isNotEmpty()) mode = GallerySearchMode.RESULTS
+        if (hasQuery) mode = GallerySearchMode.RESULTS
     }
+
+    /**
+     * 屏上此刻有没有"一轮真的搜索"可收条。
+     *
+     * 两个域各按各的判据：booru 是"胶囊至少一枚"，pixiv 是"框里至少一个词"。
+     * 各处（返回键、✕、收条）都读这一格，免得 pixiv 那一侧被判成"没有条件"而直接关掉整层搜索。
+     */
+    val hasQuery: Boolean
+        get() = if (domain == GalleryHomeDomain.PIXIV) pixivTerm.isNotBlank() else filters.isNotEmpty()
 
     /**
      * 换排行档：**原地重搜**，不压上下文栈。
@@ -870,6 +1094,29 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * - **在途作废按腿判**：换档之后旧档那条腿的响应不能落地，但同一笔里另一条腿可能仍是当前档。
      */
     fun runSearch(nextPage: Int) {
+        // ── 内容域分流（2026-10-17）──
+        // 两个域的语法**不通用**（booru 吃 `tags=a+b order:score`，pixiv 吃"一个词 + s_mode/order"），
+        // 所以这一格只做路由，两条腿各在自己的方法里。页面那边一个字都不用改：
+        // 墙滚到底那一处调的仍是 `runSearch(page + 1)`。
+        when (domain) {
+            GalleryHomeDomain.BOORU -> runBooruSearch(nextPage)
+            // pixiv 那一域里还有两个页签：画师那一栏只取一页、只认 `next_url`，
+            // 它的续页由名单自己的滚动触发（见 `loadMorePixivArtists`）。
+            GalleryHomeDomain.PIXIV -> if (pixivKind == PixivSearchKind.ARTIST) {
+                if (nextPage == 1) runPixivArtistSearch(first = true)
+            } else {
+                runPixivSearch(nextPage)
+            }
+        }
+    }
+
+    /**
+     * booru 那三站的那一笔（原 `runSearch` 的本体，2026-10-17 分流之后改名）。
+     *
+     * 改名而不是另起一颗：这一条链上压着两腿并发、别名重搜、Gelbooru 窗口定界、去重合并
+     * 这一整套判据，复制一份出来改语法就是让两边慢慢分叉 —— 而分叉出来的差别不报错，只出假读数。
+     */
+    private fun runBooruSearch(nextPage: Int) {
         if (filters.isEmpty()) {
             notice = "先选至少一个标签（点补全列表里的标签加入）"
             return
@@ -1069,6 +1316,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, page, pageSizeFor(site))
             GallerySite.YANDERE -> boards.yandere.searchPosts(query, page, pageSizeFor(site))
             GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, page, pageSizeFor(site))
+            GallerySite.PIXIV -> GallerySite.notWired("搜索腿")
         }
 
     /**
@@ -1278,6 +1526,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                                 GallerySite.GELBOORU -> boards.gelbooru.searchTags(term)
                                 GallerySite.YANDERE -> boards.yandere.searchTags(term)
                                 GallerySite.SAFEBOORU -> boards.safebooru.searchTags(term)
+                                GallerySite.PIXIV -> GallerySite.notWired("标签候选")
                             }
                         }
                     }.awaitAll()
@@ -1310,25 +1559,94 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    /** 历史：进 ViewModel 时读一次，成功搜索后写回键值门面。 */
+    /**
+     * 历史：**按内容域各存一份键**，进 ViewModel 就读一次，成功搜索后写回键值门面。
+     *
+     * ⚠️ **恢复放在 init 里**（2026-10-18，用户「搜索历史经常会自动没了」）：
+     * 从前这件事挂在 [restoreHistoryIfNeeded]，而它唯一的调用点是
+     * `GallerySearchArea` 的 `LaunchedEffect(Unit)` —— 那个 effect 只在**搜索卡组合时**跑一次。
+     * 于是"ViewModel 重建后直接进入收起态（那一态不组合搜索卡）/ 搜索卡被回收 / 从别的入口开搜索"
+     * 这几条路上，恢复压根没跑：盘上那几条还在，屏上一开始是空的，读起来就是"历史自动没了"。
+     *
+     * ⚠️ **一枚键一件事**（同日改判，用户点「分域各存一份」）：两域从前共用 `history` 那一枚键、
+     * 只在读取侧按域过滤。于是同一个词在 pixiv 与 booru 都搜过之后，会被
+     * [pushGallerySearchHistory] **并成一条含两域的条目**，而屏上按域过滤正好把它从另一域里滤掉 ——
+     * 那一行就"永久没了"。键按域分开之后，并键这件事在**结构上**不可能发生。
+     * 旧的合并档由 [migrateSharedHistory] 摊一次，一条都不丢。
+     */
     private val prefs by lazy {
         GalleryPorts.of(app).stores.open(PreferenceKeys.PREFS_GALLERY_SEARCH)
     }
 
+    /** 每一域自己那一枚键（名字定在共享那颗，桌面与对岸同一个来源）。 */
+    private fun historyKey(d: GalleryHomeDomain): String = GallerySearch.historyKeyOf(d)
+
+    init {
+        acceptHistory(loadHistoryFor(domain))
+    }
+
+    /** 读这一域的历史；这一域还没写过时，先把旧的共用档摊开。 */
+    private fun loadHistoryFor(d: GalleryHomeDomain): List<GallerySearchEntry> {
+        prefs.getString(historyKey(d), null)?.let { return decodeGallerySearchHistory(it) }
+        return migrateSharedHistory()[d] ?: emptyList()
+    }
+
+    /**
+     * 把旧那一枚共用 `history` 摊成两份、写回各自的键。
+     *
+     * 摊完**删掉旧键**：留着它，下一次读到的就是"旧档 + 新档"两份，而人眼里只有一份历史；
+     * 而一条被并过域的旧条目会同时摊进两域（它本来就属于两边），这正是它从前在屏上消失的那一半。
+     */
+    private fun migrateSharedHistory(): Map<GalleryHomeDomain, List<GallerySearchEntry>> {
+        val legacyKey = GallerySearch.LEGACY_SHARED_HISTORY_KEY
+        val legacy = decodeGallerySearchHistory(prefs.getString(legacyKey, null))
+        if (legacy.isEmpty()) {
+            prefs.remove(legacyKey)
+            return emptyMap()
+        }
+        val split = GalleryHomeDomain.entries.associateWith { d -> legacy.filter { it.belongsTo(d) } }
+        split.forEach { (d, list) ->
+            if (list.isNotEmpty()) prefs.put(historyKey(d), encodeGallerySearchHistory(list))
+        }
+        prefs.remove(legacyKey)
+        return split
+    }
+
+    /** 换域 = 换那一份历史（条件与结果清空，但**不动**用户挑好的条件，见 [setDomain] 那三条纪律）。 */
+    private fun reloadHistory() {
+        acceptHistory(loadHistoryFor(domain))
+    }
+
+    /**
+     * 老入口保留（UI 侧那一行还在）：现在 init 已经读过一次盘，这里只在"盘上比内存新"时补。
+     */
     fun restoreHistoryIfNeeded() {
         if (history.isNotEmpty()) return
-        acceptHistory(decodeGallerySearchHistory(prefs.getString("history", null)))
+        acceptHistory(loadHistoryFor(domain))
     }
 
     private fun saveHistory(entry: GallerySearchEntry) {
         val next = pushGallerySearchHistory(history, entry)
         acceptHistory(next)
-        prefs.put("history", encodeGallerySearchHistory(next))
+        prefs.put(historyKey(domain), encodeGallerySearchHistory(next))
     }
 
+    /**
+     * 屏上那几条历史 —— `history` 现在**本来就只装当前域**（键都分开了，读出来就是一域的那几行）。
+     *
+     * 名字与形状留着：UI 有几处在读它。从前它按 `belongsTo(domain)` 过滤，那是两域共用一枚键时的
+     * 权宜，也正是"同一个词被并成一条、另一域那一行看不见"的落点 —— 键分开之后这层过滤无事可做。
+     */
+    val visibleHistory: List<GallerySearchEntry>
+        get() = history
+
+    /** 清空 —— 只清**当前这一域**（用户在 pixiv 上点「清空」，不该把 booru 那些一起抹掉）。 */
     fun clearHistory() {
         acceptHistory(emptyList())
-        prefs.remove("history")
+        // 走 remove 而不是"写入编码后的空表"：两种读法今天都返回空表，明天不一样 ——
+        // 写成空表在盘上留下的是「v2」哨兵，读侧哪天改成"没这个键就带一份默认词"时会被当成"用户清过"。
+        // 桌面那颗 `desktopHistoryClear` 走的正是 remove，两端同语义（改分域键时这里一度滑成 put，已改回）。
+        prefs.remove(historyKey(domain))
     }
 
     /**
@@ -1340,7 +1658,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun removeHistory(entry: GallerySearchEntry) {
         val next = history.filterNot { it == entry }
         acceptHistory(next)
-        prefs.put("history", encodeGallerySearchHistory(next))
+        prefs.put(historyKey(domain), encodeGallerySearchHistory(next))
     }
 
     /**
@@ -1363,13 +1681,463 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 返回能回到点历史之前那面墙。三条"换一轮上下文"的入口口径必须一致，
      * 否则同屏里出现两种语义（点标签能回退、点历史不能），下一轮一定被当成缺陷再报一次。
      */
-    fun applyHistory(entry: GallerySearchEntry) = openContext(
-        // 一条在两站都搜过的历史，点开就该回到「全部」那一档。退回单站等于把他上次
-        // 看到的两站结果少摆一半 —— 而那正是这条历史被合并成一条的理由。
-        if (entry.sites.size > 1) GallerySearchSource.ALL else GallerySearchSource.single(entry.site),
-        entry.filters,
-        thenCollapse = true,
-    )
+    fun applyHistory(entry: GallerySearchEntry) {
+        // pixiv 那一条走另一条路：它不是"一串胶囊"，而是"一个词 + 那一排条件"，
+        // 而条件**不跟着历史走**（历史只记词 —— 见 `PixivSearchFilter`：那一排是"怎么看这一句"，
+        // 与"我搜过什么"不是一件事）。所以这里只把词装回框里，条件留在用户手上。
+        if (entry.belongsTo(GalleryHomeDomain.PIXIV)) {
+            pixivTerm = entry.query
+            pixivPanelOpen = false
+            notice = null
+            searchError = null
+            // 与 booru 那条 `thenCollapse = true` 对齐：点历史 = "把那次搜索再跑一遍"，
+            // 跑起来就把卡收成一条，让用户直接看到结果墙（而不是继续对着输入框）。
+            mode = GallerySearchMode.RESULTS
+            runPixivSearch(1)
+            return
+        }
+        openContext(
+            // 一条在两站都搜过的历史，点开就该回到「全部」那一档。退回单站等于把他上次
+            // 看到的两站结果少摆一半 —— 而那正是这条历史被合并成一条的理由。
+            if (entry.sites.size > 1) GallerySearchSource.ALL else GallerySearchSource.single(entry.site),
+            entry.filters,
+            thenCollapse = true,
+        )
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // pixiv 那一侧（2026-10-17 方案 C：卡内展开的筛选面板）
+    //
+    // 与上面那一整套**平行**，不是"塞进 filters 里换一种拼法"：
+    // booru 吃 `tags=a+b order:score`，pixiv 吃"一个词 + s_mode/order/ratio/scd/ecd"。
+    // 两条语法硬并进同一颗 `runSearch` 会逼出十来个 `if (site == PIXIV)`，
+    // 而那些分支里任何一处走错都不报错，只出假读数。
+    //
+    // 共用的是**状态**（results / page / exhausted / isSearching / mode）：
+    // 那面墙、页尾、读数槽、滚动落点全都只认这几个字段，复制一份出来就是两套墙。
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * 换内容域（首页那一排「图库站 / Pixiv」）。
+     *
+     * 三件事必须一起做，少一件就是假读数：
+     * 1. **在途那一笔掐掉** —— 旧域的结果落地会写进新域的墙；
+     * 2. **手上这一轮清空** —— 卡上写着 pixiv 的排序与筛选、身下的墙却是 booru 的图，
+     *    这是最难被发现的一种错（图看起来"就是些图"）；
+     * 3. **条件各留各的** —— 用户挑好的条件不抹（换站不抹条件那条改判的同一个道理），
+     *    但也**不自动重搜**：来回切两下就是四笔网络往返，而他此刻还没决定要搜什么。
+     */
+    fun setDomain(next: GalleryHomeDomain) {
+        if (next == domain) return
+        domain = next
+        reloadHistory()
+        searchJob?.cancel()
+        suggestJob?.cancel()
+        isSearching = false
+        isLoadingMore = false
+        suggestions = emptyList()
+        suggestError = null
+        results = emptyList()
+        page = 0
+        pageBySite = emptyMap()
+        exhausted = false
+        exhaustedBySite = emptySet()
+        seenKeys = HashSet()
+        legFailures = emptyMap()
+        artistAliasNotice = null
+        searchError = null
+        loadMoreError = null
+        droppedNoImage = 0
+        notice = null
+        pixivPanelOpen = false
+        // 画师那一栏也跟着清：换域之后屏上不该留着上一域的人名（与"结果不各存各的"同一条）。
+        pixivArtists = emptyList()
+        pixivArtistError = null
+        pixivArtistsExhausted = false
+        pixivArtistPage = 0
+        pixivArtistNextUrl = null
+        isSearchingArtists = false
+        mode = GallerySearchMode.INPUT
+        // 轮次 +1：已经发出去的那一笔即使取消不掉（底层不配合），落地时也会被这一格判成过期。
+        contextRound++
+    }
+
+    /** pixiv 那一框里的字。改字**不触发**查询 —— 这一框没有"打一个字就搜一次"的理由。 */
+    fun setPixivTerm(next: String) {
+        pixivTerm = next
+        notice = null
+        if (mode != GallerySearchMode.INPUT) mode = GallerySearchMode.INPUT
+    }
+
+    /** 键盘上那枚「搜索」/ 框尾那枚箭头。按当前页签走对应那条腿。 */
+    fun submitPixivTerm() {
+        if (pixivTerm.isBlank()) {
+            notice = "先打一个词 —— pixiv 把这一框当标签名搜"
+            return
+        }
+        if (pixivKind == PixivSearchKind.ARTIST) {
+            runPixivArtistSearch(first = true)
+        } else {
+            runPixivSearch(1)
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // pixiv 搜索的两个页签：作品 / 画师（2026-10-18）
+    //
+    // 出处：pixez 的 `result_page.dart` 就是 `TabBar(插画 / 画师)`，画师那一栏只调
+    // `/v1/search/user`。同一个词、两个端点、两种答复形状 ⇒ 两条独立的取数腿，
+    // 但**共用同一份"我在搜什么"**（`pixivTerm`）与同一个 `pixivNextUrl` 之外的游标。
+    // ══════════════════════════════════════════════════════════════════════
+
+    /** 这一屏要作品还是要画师。换页签 = 整片换掉（两栏的结果不能混着摆）。 */
+    var pixivKind by mutableStateOf(PixivSearchKind.ILLUST)
+        internal set
+
+    /**
+     * 画师那一栏的结果（`/v1/search/user`）。
+     *
+     * 为什么不塞进 `results`：那一格是 `GalleryPost`，喂的是瀑布流、大图页、页尾读数、
+     * 滚动落点这一整套。画师不是图，塞进去要么长出一堆假 `GalleryPost`，
+     * 要么在每一处调用点加一个 `if (kind == ARTIST)`。两栏各存各的，墙也是两面。
+     */
+    var pixivArtists by mutableStateOf<List<PixivUser>>(emptyList())
+        internal set
+
+    var pixivArtistError by mutableStateOf<String?>(null)
+        internal set
+
+    var isSearchingArtists by mutableStateOf(false)
+        internal set
+
+    var pixivArtistsExhausted by mutableStateOf(false)
+        internal set
+
+    /** 画师那一栏的分页游标（站方 `next_url`）。null = 第一页 / 到底。 */
+    private var pixivArtistNextUrl: String? = null
+
+    private var artistJob: Job? = null
+
+    /** 画师那一栏取到第几页（0 = 还没取过）。只给"到底"读数与续页判据用。 */
+    var pixivArtistPage by mutableIntStateOf(0)
+        internal set
+
+    /**
+     * 换页签。
+     *
+     * 两栏**各存各的结果**（作品那面墙留着，切回来不用重搜）：用户切到"画师"看一眼、
+     * 再切回"作品"，屏上该是他刚才那一批图，而不是一片空白 + 一笔新请求。
+     * 但**已发的请求按轮次作废**：切走那一刻还在飞的那一笔不能落进另一栏。
+     */
+    fun setPixivKind(next: PixivSearchKind) {
+        if (next == pixivKind) return
+        pixivKind = next
+        artistJob?.cancel()
+        isSearchingArtists = false
+        pixivArtistError = null
+        notice = null
+        contextRound++
+        // 切过去时手上还没有那一栏的货、也没在飞 ⇒ 就地补一笔（"我打好了词，点画师就该有人"）。
+        if (next == PixivSearchKind.ARTIST &&
+            pixivArtists.isEmpty() &&
+            pixivTerm.isNotBlank()
+        ) {
+            runPixivArtistSearch(first = true)
+        }
+    }
+
+    /**
+     * 画师那一栏取一页。
+     *
+     * 与作品那一栏的三条不同：
+     * - **没有匿名腿**（这一条端点只认票据）⇒ 没登录时直接给一句人话，不发请求；
+     * - **没有筛选**（收藏门槛 / 比例 / 时间只作用于作品）⇒ 只发 `word`；
+     * - **一页就是一页**（不本地筛、不补页）。
+     */
+    private fun runPixivArtistSearch(first: Boolean) {
+        val word = pixivTerm.trim()
+        if (word.isEmpty()) {
+            notice = "先打一个词 —— 画师那一栏按名字搜"
+            return
+        }
+        if (first) artistJob?.cancel() else if (isSearchingArtists) return
+        val roundAtRequest = contextRound
+        if (first) {
+            pixivArtists = emptyList()
+            pixivArtistPage = 0
+            pixivArtistsExhausted = false
+            pixivArtistNextUrl = null
+            isSearchingArtists = true
+        }
+        val cursorAtRequest = if (first) null else pixivArtistNextUrl
+        if (!first && cursorAtRequest == null) {
+            pixivArtistsExhausted = true
+            return
+        }
+        pixivArtistError = null
+        artistJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val port = GalleryPorts.of(app).pixiv
+                    ?: throw IOException("这一侧没有接 pixiv 的取数腿")
+                val bearer = pixivAccount?.bearerOrNull()
+                    ?: throw IOException("画师那一栏要登录 pixiv 才搜得动")
+                val page = port.searchUser(bearer, word, cursorAtRequest).getOrThrow()
+                if (roundAtRequest != contextRound ||
+                    domain != GalleryHomeDomain.PIXIV ||
+                    pixivKind != PixivSearchKind.ARTIST ||
+                    pixivTerm.trim() != word
+                ) {
+                    return@launch
+                }
+                // 去重按用户号：站方翻页边界会重复给同一位（与作品那面墙同一条尺子）。
+                val fresh = if (first) {
+                    page.users
+                } else {
+                    val seen = pixivArtists.mapTo(HashSet()) { it.id }
+                    page.users.filter { it.id !in seen }
+                }
+                pixivArtists = if (first) fresh else pixivArtists + fresh
+                pixivArtistNextUrl = page.nextUrl
+                pixivArtistsExhausted = page.nextUrl == null
+                pixivArtistPage = if (first) 1 else pixivArtistPage + 1
+                pixivArtistError = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                pixivArtistError = t.message?.takeIf { it.isNotBlank() } ?: "pixiv 没答上"
+            } finally {
+                if (artistJob === coroutineContext[Job]) isSearchingArtists = false
+            }
+        }
+    }
+
+    /** 画师名单滚到底时续一页（与作品那面墙的自动续页同一个语义）。 */
+    fun loadMorePixivArtists() {
+        if (isSearchingArtists || pixivArtistsExhausted || pixivArtistError != null) return
+        runPixivArtistSearch(first = false)
+    }
+
+    /**
+     * 改 pixiv 那一排条件。**改完立刻重搜**（与胶囊同一条纪律：这套 UI 没有"提交"钮）。
+     *
+     * 框里没词时**不发**：空查询在站方语义里是"全站最新"，把它当搜索结果摆出来就是假结果
+     * （booru 那侧清空到零枚退回输入态，是同一条判据的另一种长相）。
+     */
+    fun setPixivFilter(next: PixivSearchFilter) {
+        if (next == pixivFilter) return
+        // 「人气」点不点得动，判据收在**这一处**（不散到各颗 UI）：拒的时候**连条件都不改** ——
+        // pixez 也是 toast 之后 selectSort 不动。改了不改请求是同一个下场：屏上亮着「人气」，
+        // 请求里发的是「最新」，那就是假开关。
+        if (next.order.needsPremium) {
+            pixivPopularBlockedNotice()?.let { refusal ->
+                notice = refusal
+                return
+            }
+        }
+        pixivFilter = next
+        notice = null
+        if (pixivTerm.isNotBlank()) runPixivSearch(1)
+    }
+
+    /** 面板右下角那枚「重置全部」—— 只重置面板里那几段（排序常驻可见，不跟着重置）。 */
+    fun resetPixivFilter() = setPixivFilter(PixivSearchFilter.DEFAULT)
+
+    fun setPixivPanelOpen(open: Boolean) {
+        pixivPanelOpen = open
+    }
+
+    /**
+     * pixiv 那一笔取数。
+     *
+     * 只有一条腿（没有 booru 那种"两腿并发 + 合并 + 缺席原因"），所以这里不套 `GalleryLegGuard`
+     * 那套包装 —— 套上去会凭空长出一份"哪条腿没跑起来"的读数，而 pixiv 只有一个"跑没跑"。
+     *
+     * ## 两条腿按登录态二选一（2026-10-17 深夜，按 pixez 的口径补齐）
+     *
+     * - **登录着**：`app-api /v1/search/illust`（带票据）。人气（`sort=popular_desc`）与
+     *   收藏（`bookmark_num_min`）只有这条发得出去，翻页只认站方的 `next_url`；
+     * - **没登录**：`www /ajax/search/artworks/{词}`。只发得出排序（旧序）、标签模式、比例、时间窗，
+     *   翻页认页码 `p=`。
+     *
+     * 2026-10-19 再分第三岔：**登录着但非会员**点「人气」时走 `popular-preview`
+     * （[GalleryPixivWorks.popularPreview]）。它只在"票 + 非会员 + 人气"三样同时成立时才选上，
+     * 代价是那一条**只认词、只给一页** —— 被丢掉的几枚由 [PIXIV_PREVIEW_NOTICE] 说上屏，
+     * 而不是静默按其余条件发出去。
+     *
+     * 两条腿**不混发**：混起来就是"这一页按一套参数、下一页按另一套"，而屏上读不出对错。
+     * 票据取不到时**不静默降级**成"人气看起来选着、其实没发"——[pixivAccountNotice] 会先说话。
+     *
+     * 落地前复验三样：域、条件、轮次。任何一样变过就整笔作废（这条腿没有"按腿作废"那一层）。
+     */
+    private fun runPixivSearch(nextPage: Int) {
+        val word = pixivTerm.trim()
+        if (word.isEmpty()) {
+            notice = "先打一个词 —— pixiv 把这一框当标签名搜"
+            return
+        }
+        if (nextPage == 1) searchJob?.cancel() else if (isSearching || isLoadingMore) return
+        val filterAtRequest = pixivFilter
+        val roundAtRequest = contextRound
+        val first = nextPage == 1
+        // 登录腿的续页只认站方给的 `next_url`：它空着 = 上一页就是最后一页。
+        // 这时再发一次会拿回第一页（去重把整页吃光），屏上读起来是"滚到底了却什么都没加载"。
+        if (!first && pixivLoginLeg && pixivNextUrl == null) {
+            exhausted = true
+            isLoadingMore = false
+            return
+        }
+        // 翻页游标在发车前定死：在途期间用户可能换条件，这一笔仍按发起那一刻的游标查。
+        val cursorAtRequest = if (first) null else pixivNextUrl
+        if (first) {
+            beginSearch(PIXIV_PAGE_SIZE)
+            pixivNextUrl = null
+            // 第一页整片换过一轮 ⇒ 那两张表也从头攒：留着上一轮的就成了
+            // "这一轮的墙上摆着上一轮的头像"，而 uid 撞不上时谁也看不出来。
+            pixivTitles = emptyMap()
+            pixivAvatars = emptyMap()
+            // 这一格先按登录态给一句（用户点「人气」那一刻就有回响）；协程里拿到真票据后
+            // 会再核一次 —— 两者不一致时以票据为准（见下面 bearer 那一行）。
+            notice = pixivAccountNotice(pixivLoggedIn && pixivBearerReady != false)
+        } else {
+            isLoadingMore = true
+            loadMoreError = null
+        }
+        searchJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ports = GalleryPorts.of(app)
+                val port = ports.pixiv
+                    ?: throw IOException("这一侧没有接 pixiv 的取数腿")
+                // 票据**现取**（`bearerOrNull` 自带刷新）：它 null 就是这一会儿给不出，
+                // 那就退回匿名腿 —— 那时人气发不出去，所以 notice 要按它重说一遍
+                // （判据见 `pixivAccountNotice(bearerReady)`：登录态与票据会不一致）。
+                val bearer = pixivAccount?.bearerOrNull()
+                val bearerReady = bearer != null
+                // 会员位按这一笔现取的值用：它决定两件事 ——
+                // 收藏那档的发法（会员走 `bookmark_num_min`，其余走词尾 `users入り`，两种都真生效），
+                // 以及「人气」发哪一条腿（会员走搜索腿的 `sort=popular_desc`，其余走预览腿）。
+                val premium = bearer != null && pixivPremium
+                // 非会员点「人气」不再被拒，改走**人气预览**那一跳（2026-10-19 · 批 233-4，
+                // 用户「参考原版 pixez 是怎么做无会员能用这个人气榜的」）。依据与代价都在
+                // `PixivAppClient.popularPreview` 那颗的注释里：只认词、只给一页。
+                val previewLeg = bearer != null && !premium && filterAtRequest.order.needsPremium
+                // 预览腿连词尾的 `Nusers入り` 都不加：那一枚是给搜索腿做的收藏门槛，
+                // 这一条不认收藏 —— 往词里塞它是"看起来筛过"，不是筛。
+                val query = if (previewLeg) word else filterAtRequest.searchWord(word, premium)
+                if (first) {
+                    pixivBearerReady = bearerReady
+                    notice = if (previewLeg) PIXIV_PREVIEW_NOTICE else pixivAccountNotice(bearerReady)
+                }
+                val collected = ArrayList<GalleryPost>(PIXIV_PAGE_SIZE)
+                val titles = HashMap<String, String>()
+                val avatars = HashMap<String, String>()
+                var cursor = cursorAtRequest
+                var pageNo = nextPage
+                var done = false
+                var hops = 0
+                // 作品类型与比例只筛得到"已取到的这一页"（站方没有这枚参数 / app 腿没有 ratio）。
+                // 一页被筛空**不等于到底**，所以同一笔里最多再往前要 [PIXIV_EMPTY_PAGE_HOPS] 页。
+                // 上限是硬的：不能靠"一直翻到有货"，那在冷门词上就是几十趟请求。
+                while (true) {
+                    val works: List<PixivWork>
+                    val nextCursor: String?
+                    if (bearer != null) {
+                        val page = if (previewLeg) {
+                            port.popularPreview(bearer, query).getOrThrow()
+                        } else {
+                            port.searchIllust(bearer, query, filterAtRequest, premium, cursor).getOrThrow()
+                        }
+                        works = page.works
+                        // 预览腿**不接游标**：它那一跳的调用面没有 offset（见那颗函数的注释）。
+                        // 接了站方随手回的那一枚 = 第二页按一套没量过的口径取，屏上读不出对错。
+                        nextCursor = if (previewLeg) null else page.nextUrl
+                        // 到底判据吃站方的 `next_url`，不吃"这一页剩几条"：筛过的条数与翻不翻页无关。
+                        done = nextCursor == null
+                    } else {
+                        val list = port.tagWorks(query, pageNo, filterAtRequest).getOrThrow()
+                        works = list
+                        nextCursor = null
+                        // 匿名腿没有游标，到底判据吃**站方回了几条**（不是筛完剩几条）。
+                        done = list.size < PIXIV_PAGE_SIZE
+                    }
+                    if (roundAtRequest != contextRound ||
+                        domain != GalleryHomeDomain.PIXIV ||
+                        pixivFilter != filterAtRequest
+                    ) {
+                        return@launch
+                    }
+                    for (work in works) {
+                        if (!filterAtRequest.keeps(work.ugoira, work.post.width, work.post.height)) continue
+                        collected += work.post
+                        if (work.title.isNotBlank()) titles[work.post.uid] = work.title
+                        // 空串也照写：整面墙都走"头像 + 标题 + 作者名"那一档，
+                        // 站方没给头像的那几张画首字母座（`GalleryCardCaption` 的降级），
+                        // 不在一面墙里混两种形状。
+                        avatars[work.post.uid] = work.authorAvatarUrl
+                    }
+                    cursor = nextCursor
+                    pageNo += 1
+                    if (collected.isNotEmpty() || done || ++hops >= PIXIV_EMPTY_PAGE_HOPS) break
+                }
+                // 去重与 booru 那一侧同一把尺子（`GalleryMerge.dedupKeys`）：
+                // 站方翻页边界上会重复给同一条，不挡就会在墙中间出现两张一样的图。
+                val fresh = ArrayList<GalleryPost>(collected.size)
+                for (post in collected) {
+                    val keys = with(GalleryMerge) { post.dedupKeys() }
+                    if (keys.any { it in seenKeys }) continue
+                    seenKeys.addAll(keys)
+                    fresh += post
+                }
+                pixivLoginLeg = bearer != null
+                pixivNextUrl = cursor
+                pixivTitles = pixivTitles + titles
+                pixivAvatars = pixivAvatars + avatars
+                searchError = null
+                loadMoreError = null
+                // `pageNo - 1` 是**这一笔最后取到的那一页**（自动补页时它可能大于 nextPage）：
+                // 匿名腿的续页按它 +1 要，报成 nextPage 就会把补过的那几页再取一遍。
+                appendPage(fresh, pageNo - 1, done)
+                if (first) saveHistory(GallerySearchEntry(GallerySite.PIXIV, word))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                val message = t.message?.takeIf { it.isNotBlank() } ?: "pixiv 没答上"
+                if (first) searchError = message else loadMoreError = message
+            } finally {
+                if (searchJob === coroutineContext[Job]) {
+                    isSearching = false
+                    isLoadingMore = false
+                }
+            }
+        }
+    }
+
+    /**
+     * 「人气」这一档这会儿点不点得动 —— **只要票据**（2026-10-19 改口径：会员那一条限制撤了）。
+     *
+     * 撤的依据不是猜：非会员的人气有另一条腿可走（`popular-preview`，见 `PixivAppClient.popularPreview`），
+     * 而 donor 的调用点正是"toast 一句 + 紧接着发这一条"。会员与否则只决定**发哪一跳**，
+     * 不再决定**能不能点** —— 上一版在这里回"要会员"并且连条件都不改，那一版是对的（那时预览腿还没接）。
+     *
+     * 回 null = 点得动；回一句 = 调用点**不要改条件**、把这句上屏。拒的时候不改条件是故意的：
+     * 改了条件而不发参数，屏上就亮着「人气」而请求里发的是「最新」，那正是本仓零容忍的假开关。
+     */
+    private fun pixivPopularBlockedNotice(): String? =
+        if (!pixivLoggedIn || pixivBearerReady == false) PIXIV_NEEDS_ACCOUNT else null
+
+    /**
+     * 「这一轮有筛了却发不出去的条件」那句读数。
+     *
+     * ⚠️ 判据吃的是**票据**（[pixivBearerReady] / 调用点现取的那一枚），不是 [pixivLoggedIn]：
+     * 登录态与票据会不一致（token 过期而刷新失败、刚登录票据还没落地），
+     * 那时匿名腿会**静默忽略**人气与收藏 —— 屏上再不说一句，用户读到的就是"点了没生效"
+     * （2026-10-18 用户原话）。宁可多念一句，不可静默。
+     */
+    private fun pixivAccountNotice(bearerReady: Boolean): String? =
+        if (!bearerReady && pixivFilter.needsAccount) {
+            "$PIXIV_NEEDS_ACCOUNT —— 这一轮按其余条件搜"
+        } else {
+            null
+        }
 
     /**
      * "站方给了行但没给图"那句读数；没有跳过就 null。
@@ -1443,8 +2211,64 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
          * 空态那一档是靠"错误串是不是这一句"来分"这一站还不能用"与"这一轮没搜成"的。
          */
         const val NEEDS_GELBOORU_ACCOUNT: String = GallerySearchSource.NEEDS_ACCOUNT_REASON
+
+        /**
+         * pixiv 搜索那一跳**每页恒 60 条**（2026-10-17 现量：`body.illustManga.data` 长度 60，
+         * 只有最后一页不满）。这一格同时是"到底"判据：回不满一页 = 到底。
+         *
+         * 不放在 [GallerySite] 上：那一颗是路由与展示面（站名、地址、字母标），
+         * 页宽是**取数腿**的事，而 pixiv 这条腿只有搜索这一个调用点。
+         */
+        const val PIXIV_PAGE_SIZE: Int = 60
+
+        /**
+         * 一页被**本地筛**空之后，同一笔里最多再往前要几页。
+         *
+         * 作品类型（仅动图 / 排除动图）与比例只能本地筛（站方没有那枚参数 / app 腿没有 `ratio`），
+         * 而 60 条里通常只有一两条动图 —— 「仅动图」那一档第一页很可能一张不剩。
+         * 一页空**不等于到底**，所以补几页；但上限是硬的：靠"一直翻到有货"在冷门词上
+         * 就是几十趟请求，用户等的是图不是这一笔的往返次数。
+         */
+        const val PIXIV_EMPTY_PAGE_HOPS: Int = 3
     }
 }
+
+/**
+ * 「人气这一档要登录」那一句话（点的时候说一次、发车时也说一次）。
+ *
+ * 写成常量而不是两处各写一遍：这两处说的是同一件事，两串字迟早会分叉，
+ * 而用户会以为是两种不同的问题。
+ *
+ * ⚠️ 只剩「人气」这一枚用它：收藏那排的门槛早就是词尾标签（匿名实测生效），不再要求登录。
+ */
+private const val PIXIV_NEEDS_ACCOUNT: String = "人气这一档要登录 pixiv 账号才排得动"
+
+/**
+ * 「这一档走的是非会员的人气预览」那一句话（2026-10-19 · 批 233-4）。
+ *
+ * 为什么必须占一枚常量而不许省：这一跳的调用面**只有一个词**，面板里那几枚条件一枚都没发出去
+ * （会员那条腿才发得动）。不说的话，屏上就是"日期窗亮着、请求里根本没有它"——
+ * 本仓对假开关那族的判据正是这一句（另一例见 [PIXIV_NEEDS_ACCOUNT]）。
+ *
+ * 比例与作品类型**不在被丢的那几枚里**：那两枚一直是本地筛，这一页照样筛（见 [PixivSearchFilter.keeps]），
+ * 所以句子里不提它们，免得读成"这两枚也没生效"。
+ */
+private const val PIXIV_PREVIEW_NOTICE: String =
+    "这一档走的是非会员的人气预览：只有这一页，日期窗、收藏门槛与排除 AI 都没发出去，标签模式按部分匹配"
+
+/**
+ * 这一条历史属于哪个内容域。
+ *
+ * 判据只有一处：pixiv 的条目里 `sites` 只有 pixiv（它不进来源轴，见 `GallerySearchSource`），
+ * 而 booru 那几条永远不含它。所以"含不含 PIXIV"就是域，**不需要**在历史里另存一格 ——
+ * 那一格一旦加上去，旧数据全是空的，而空值会被读成"哪一域都不是"，历史就整片消失。
+ */
+private fun GallerySearchEntry.belongsTo(domain: GalleryHomeDomain): Boolean =
+    if (domain == GalleryHomeDomain.PIXIV) {
+        GallerySite.PIXIV in sites
+    } else {
+        GallerySite.PIXIV !in sites
+    }
 
 /**
  * 一条腿最终交回的东西：要上屏的那批图，加上**这一次换名**说的那句话（没换就是 null）。

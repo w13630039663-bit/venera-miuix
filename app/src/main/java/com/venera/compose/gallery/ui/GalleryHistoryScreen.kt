@@ -283,6 +283,8 @@ internal fun GalleryHistoryScreen(
                     GallerySite.YANDERE -> ports.boards.yandere.fetchById(row.postId)
                     GallerySite.GELBOORU -> ports.boards.gelbooru.fetchById(row.postId)
                     GallerySite.SAFEBOORU -> ports.boards.safebooru.fetchById(row.postId)
+                    GallerySite.PIXIV -> ports.pixiv?.fetchById(row.postId)
+                ?: Result.failure(UnsupportedOperationException("桌面这一侧不接 pixiv"))
                 }
                 val post = fetched.getOrNull()
                 when {
@@ -716,7 +718,7 @@ private fun galleryPostWouldBeMasked(
     blockedRuleOf: (author: String, tags: List<String>) -> Any?,
 ): Boolean {
     val blockedByUser = blockedRuleOf(post.author, post.tagList) != null ||
-        (blockAi && GalleryAi.isAiMarked(post.tagList))
+        (blockAi && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList))
     return GalleryGuard.maskStateFor(post, maskMode, blockedByUser = blockedByUser) != GalleryGuard.VISIBLE
 }
 

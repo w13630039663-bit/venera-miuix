@@ -140,6 +140,30 @@ internal fun GalleryArtistProfileScreen(
     onBack: () -> Unit,
     onBrowseAllWorks: () -> Unit,
 ) {
+    // ── 2026-10-19：这屏**只服务图库三站**，pixiv 走 `PixivArtistScreen` ──
+    //
+    // 宿主（`GalleryArtistProfileActivity`）已经按 site 分派，正常路径进不来。
+    // 这一道闸门是给"将来某个漏网调用点"留的：它不比闪退更糟，但也不该在场。
+    // 摆的是**退不出去的一屏**（无按钮），因为正常路径根本看不到它 ——
+    // 真看到了就是编码错了，那句话该被看见。
+    if (site == GallerySite.PIXIV) {
+        val tokens = VeneraTokens
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(tokens.spacing.space10),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "pixiv 画师页走的是另一屏（PixivArtistScreen）。",
+                fontSize = tokens.type.body,
+                color = tokens.color.textSecondary,
+            )
+        }
+        return
+    }
     val context = LocalContext.current
     val tokens = VeneraTokens
     val view = LocalView.current
@@ -160,22 +184,53 @@ internal fun GalleryArtistProfileScreen(
     }
     LaunchedEffect(site, artistName) {
         val today = LocalDate.now(ZoneOffset.UTC)
-        val query = GalleryRankings.searchQuery(
-            site = site,
-            filters = listOf(GalleryTagFilter(artistName)),
-            ranking = GalleryRanking.ALL,
-            anchor = null,
-            todayUtc = today,
-        )
-        // `ALL` 那一档本身就是"全站按分数"（两站后缀 `order:score` / `sort:score:desc`
-        // 都在 GalleryRankings 那一处钉着），这里不另造参数、也不互抄写法。
+        // ⚠️ **pixiv 不走这条算式**（2026-10-19）。从前这一句在 `when (site)` 之外无条件先算，
+        // 而 `GalleryRankings.suffix(PIXIV, ALL)` 走的是 `GallerySite.notWired()` ⇒ **当场抛**
+        // ⇒ 画师页一进去就闪退（屏还没画出来，下面那个 `PIXIV -> Result.failure` 分支永远跑不到）。
+        //
+        // 现在两个闸门：
+        // ① 本屏只服务图库三站，pixiv 由 `PixivArtistScreen` 接管（本函数开头就提前 return，见下）；
+        // ② 就算哪天有漏网调用点进来，`when` 也已经把 PIXIV 归到"不发这一腿"，
+        //    抛的那一句就再也到不了屏上。
         val outcome = when (site) {
-            GallerySite.YANDERE ->
+            GallerySite.YANDERE -> {
+                val query = GalleryRankings.searchQuery(
+                    site = site,
+                    filters = listOf(GalleryTagFilter(artistName)),
+                    ranking = GalleryRanking.ALL,
+                    anchor = null,
+                    todayUtc = today,
+                )
+                // `ALL` 那一档本身就是"全站按分数"（两站后缀 `order:score` / `sort:score:desc`
+                // 都在 GalleryRankings 那一处钉着），这里不另造参数、也不互抄写法。
                 GalleryPorts.of(context).boards.yandere.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
-            GallerySite.GELBOORU ->
+            }
+            GallerySite.GELBOORU -> {
+                val query = GalleryRankings.searchQuery(
+                    site = site,
+                    filters = listOf(GalleryTagFilter(artistName)),
+                    ranking = GalleryRanking.ALL,
+                    anchor = null,
+                    todayUtc = today,
+                )
                 GalleryPorts.of(context).boards.gelbooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
-            GallerySite.SAFEBOORU ->
+            }
+            GallerySite.SAFEBOORU -> {
+                val query = GalleryRankings.searchQuery(
+                    site = site,
+                    filters = listOf(GalleryTagFilter(artistName)),
+                    ranking = GalleryRanking.ALL,
+                    anchor = null,
+                    todayUtc = today,
+                )
                 GalleryPorts.of(context).boards.safebooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+            }
+            // 画师面板那一面墙按**画师名**发查询串，而 pixiv 那一跳把词**一律当标签名解释**
+            // （现量：`ajax/search/artworks/{词}` 的 `extraData.meta.canonical` 就是 `/tags/{词}`），
+            // 按画师名问回来的其实是"同名标签下的作品" ⇒ 会出现同名不同人。
+            // ⇒ 这一腿**根本不发**（不是"发了没答上"）。pixiv 自己的那一屏在 `PixivArtistScreen`，
+            // 它按 `user_id` 取数，不经过这里的任何一行。
+            GallerySite.PIXIV -> return@LaunchedEffect
         }
         outcome.onFailure { failure ->
             // "这一站没答上"与"这位只有这几张"是两句话，前者**在屏上也要说出来**（那是真话），
@@ -599,6 +654,13 @@ private suspend fun loadCredits(
             }
             urls = record?.urls.orEmpty()
             otherNames = record?.otherNames.orEmpty()
+        }
+        GallerySite.PIXIV -> {
+            // 与上面三站不同形：pixiv 的画师身份是 `user_id`，而这一整段是按**画师名**问
+            // danbooru / yande.re 的外链表与别名表 —— 拿 pixiv 的用户名去问必然问不到（§3.4 未拍板）。
+            // 交两张空表：外链那一排什么都不摆，别名读数那一行也不亮。
+            urls = emptyList()
+            otherNames = emptyList()
         }
     }
     val preliminary = GalleryArtistProfile.profilePlan(urls, source = source)

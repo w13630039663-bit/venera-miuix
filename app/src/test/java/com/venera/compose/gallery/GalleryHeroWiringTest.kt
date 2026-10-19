@@ -106,6 +106,12 @@ class GalleryHeroWiringTest {
         // 这条尺子的精神（不许把 hero 高度算进**顶栏避让地板**）没变，漂的只是"落点"这一半。
         assertTrue(
             "搜索卡落点必须分两支：无头图 = topBarFloor；有头图 = 头图那一段的占位高",
+            // ⚠️ 2026-10-18 01:32 改判（用户「在首页搜索框的时候，头图会异常显示」）：判据回到
+            // `galleryHeroFile != null`。当天早些时候把它换成 heroActive 的前提是"搜索态那一屏
+            // 没有头图" —— 那条**不成立**：主墙 `GalleryForYouPage` 在 1947 行是**无条件**组合的，
+            // 搜索卡只是叠在它之上的浮层（见本文件「这两层都不许再被 if (svm.active) 包着」），
+            // INPUT 态那层 scrim 把它连同头图、入口条一起压暗，图还在原位。
+            // 落点跟的是**入口条实际画在哪**，与搜索态开不开无关 ⇒ 跟随判据必须问"设没设过头图"。
             screen.contains("val searchOverlayTop = if (galleryHeroFile != null) {") &&
                 screen.contains("statusBarTop + VeneraSpacing.settingsHeroHeightSubpage - VeneraSpacing.settingsHeroOverlap"),
         )
@@ -128,11 +134,20 @@ class GalleryHeroWiringTest {
      * 图二 = 画廊设置页。头图在那边摆在**内容列之外**、天然从屏幕最顶出血；画廊这边它是墙的
      * 第一行，必须靠这四件事凑出同一个观感 —— 缺任何一件都会退回"一条标题栏 + 一张图"两张皮：
      * ① 墙顶留白归零；② 顶栏大标题让位；③ 标题改由头图画成图上白字；④ 折叠连接不挂。
+     *
+     * ⚠️ 2026-10-18 给这四条重新划过作用域（「搜索态会被连坐」），当天 01:32 又把它**收窄成两条**：
+     * 让位类 —— 顶栏大标题让位、折叠连接不挂、玻璃进度改由墙自己喂 —— 只对画廊首页成立，
+     * 判据 `heroActive`（搜索态的大标题是「搜索」，不是空串，"幽灵折叠行程"那一档根本不发生）。
+     * 落点类 —— 墙顶留白、搜索卡落点 —— 问的是图与入口条**实际画在哪**，而主墙在搜索态照旧
+     * 无条件组合（`GalleryForYouPage` 没被 `if (svm.active)` 包着，搜索卡只是压在它之上的浮层），
+     * 所以仍只问"设没设过头图"。落点类换成 heroActive 是有读数的失败：头图在搜索态凭空下移一截
+     * （用户「在首页搜索框的时候，头图会异常显示」）。
      */
     @Test fun `头图在场时出血并让位`() {
         val screen = src("com/venera/compose/gallery/ui/GalleryScreen.kt")
         assertTrue(
             "墙顶留白没做头图分支 ⇒ 头图出不了血（还是被顶栏压在下面）",
+            // 落点类：判据是"设没设过头图"，不是 heroActive（理由见本类 KDoc 与 wallTopPadding 自己那条）。
             screen.contains("val wallTopPadding = if (galleryHeroFile != null) 0.dp else gridTopPadding"),
         )
         assertTrue(
@@ -141,11 +156,13 @@ class GalleryHeroWiringTest {
         )
         assertTrue(
             "顶栏大标题没在头图在场时让位 ⇒ 一条深色大字横压在图的上段上",
-            screen.contains("largeTitle = if (heroPresent) \"\" else \"画廊\""),
+            // 2026-10-18：让位只对首页（heroActive），搜索态那一档渲染「搜索」
+            // （用户：「搜索页面的居中标题显示搜索才对」+「还是没有左边的大标题」）。
+            screen.contains("largeTitle = if (heroActive) \"\" else if (svm.active) \"搜索\" else \"画廊\""),
         )
         assertTrue(
-            "标题没交给头图（图上应当是白字「画廊」）",
-            screen.contains("title = \"画廊\","),
+            "标题没交给头图（图上应当是白字「画廊」/ 搜索态「搜索」）",
+            screen.contains("title = if (svm.active) \"搜索\" else \"画廊\","),
         )
         assertTrue(
             "头图在场时没摘掉折叠连接 ⇒ 空大标题的\"幽灵折叠行程\"会先吃掉一段上滑",
@@ -153,10 +170,52 @@ class GalleryHeroWiringTest {
         )
         assertTrue(
             "玻璃进度没改由墙的滚动状态喂（不挂连接之后它会恒 0 ⇒ 玻璃永不出现）",
-            screen.contains("scrollProgressOverride = if (heroPresent) heroScrollProgress else null,"),
+            screen.contains("scrollProgressOverride = if (heroActive) heroScrollProgress else null,"),
         )
         assertTrue(
             "没接状态栏图标翻转 ⇒ 深色图标压在图上",
+            screen.contains("SettingsHeroSystemBarIcons(heroPresent = heroPresent"),
+        )
+    }
+
+    /**
+     * 头图**让位契约**不许泄漏进搜索态（2026-10-18，用户「还是没有左边的大标题」那张截图）。
+     *
+     * 那条截图里搜索态顶栏左边是空的 —— 因为大标题让位那条判据问的是"设没设过头图"，
+     * 没问"现在是不是搜索态"。所以这里钉两件事：
+     * ① 有一枚把两者都问上的判据（`heroActive`），且它不是 `heroPresent` 的别名；
+     * ② 凡是"因为头图而让位 / 而摘连接"的地方都必须吃 `heroActive`。
+     *
+     * ⚠️ 2026-10-18 01:32 收窄：这一条**只管让位类**。落点类（墙顶留白、搜索卡落点、跟着折叠收的那一截）
+     * 仍只问"设没设过头图"，各自钉在本类 `头图不参与避让地板与收栏阈值` / `头图在场时出血并让位`
+     * 和 `GalleryPixivArtistSearchTest` 的「顶栏折起来那一截空白」那把尺子里 —— 别把它们再塞回这个名单，
+     * 同一件事只许一把尺子。
+     */
+    @Test fun `头图契约不泄漏进搜索态`() {
+        val rel = "com/venera/compose/gallery/ui/GalleryScreen.kt"
+        val screen = src(rel)
+        // ① 判据本身存在，且同时问了"设没设"与"是不是搜索态"。
+        assertTrue(
+            "缺 heroActive 这枚判据（= 设了头图 且 不在搜索态）",
+            screen.contains("val heroActive = heroPresent && !svm.active"),
+        )
+        // ② 让位类三处（大标题、玻璃进度、折叠连接的摘除）都必须吃 heroActive。
+        for (anchor in listOf(
+            "largeTitle = if (heroActive) \"\" else if (svm.active) \"搜索\" else \"画廊\"",
+            "scrollProgressOverride = if (heroActive) heroScrollProgress else null,",
+            "if (heroActive) Modifier",
+        )) {
+            assertTrue("这一处没按首页收窄（还在让搜索态连坐）：$anchor", screen.contains(anchor))
+        }
+        // ③ 负向：折叠连接的摘除也不许再吃 heroPresent（搜索态要挂回去，否则卡收不进顶栏）。
+        val code = codeLines(rel)
+        assertTrue(
+            "折叠连接的摘除还在吃 heroPresent（搜索态会被连坐 ⇒ 顶栏折不下去）",
+            !code.any { it.contains("if (heroPresent) Modifier") },
+        )
+        // ④ heroPresent 仍要活在它两件本职上：头图自己摆不摆、系统栏图标翻不翻。
+        assertTrue(
+            "heroPresent 只剩 heroActive 一个用处 ⇒ 头图本身与系统栏图标会一起失灵",
             screen.contains("SettingsHeroSystemBarIcons(heroPresent = heroPresent"),
         )
     }

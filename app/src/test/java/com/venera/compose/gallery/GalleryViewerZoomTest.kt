@@ -116,9 +116,11 @@ class GalleryViewerZoomTest {
         val creates = lines.filter { it.value.contains("rememberZoomableState(") }
         assertEquals(1, creates.size)
         assertEquals(
-            "上限没有吃算出来的铺满档（写死一个数就是第二处真相）",
+            "上限没有吃算出来的那一档（写死一个数就是第二处真相）",
             1,
-            lines.count { it.value.contains("ZoomSpec(maxZoomFactor = coverToFill * GALLERY_ZOOM_OVERCOVER_FACTOR)") },
+            lines.count {
+                it.value.contains("ZoomSpec(maxZoomFactor = maxOf(coverToFill, nativeZoom) * GALLERY_ZOOM_OVERCOVER_FACTOR)")
+            },
         )
         val cover = lines.single { it.value.contains("val coverToFill = galleryCoverZoomFactor(") }.index
         assertTrue(
@@ -130,17 +132,31 @@ class GalleryViewerZoomTest {
         assertTrue("创建点被挪回了 GalleryViewerPage（它算不出那一框）", creates.single().index > media)
     }
 
-    /** 双击那一枚走"铺满"而不是默认的上限（默认那枚会一步跳到 ×10 那一档）。 */
+    /**
+     * 双击那一枚走**原图像素 1:1**，不再是"铺满整屏"那一档。
+     *
+     * 2026-10-18 改判（用户真机：「双击放大图片应该是放大整个图片而不是限制在一个大小里放大」，
+     * 并在三枚候选档位里点了「循环：适应屏宽 ↔ 原图像素 1:1」）：
+     * `coverToFill` 那一档是"把这一框裁到铺满视口"，宽幅图放大后左右两头都在屏外，
+     * 而它比原图像素还大（1080 宽的屏把 2000 px 的图拉到 3200 px）⇒ 放大出来是糊的。
+     * 从前那一版钉的是 `cycle(coverToFill)`，这条尺子就是它被换掉的现场。
+     */
     @Test
-    fun `双击走铺满那一档并且铺满时撤掉`() {
+    fun `双击走原图 1 比 1 那一档并且算不出就撤掉`() {
         val lines = postScreen()
         assertEquals(
+            "双击仍只该有一处",
             1,
+            lines.count { it.value.contains("DoubleClickToZoomListener.cycle(nativeZoom)") },
+        )
+        assertEquals(
+            "「铺满那一档」这一版已换掉：它裁掉屏外两头，比 1:1 更差",
+            0,
             lines.count { it.value.contains("DoubleClickToZoomListener.cycle(coverToFill)") },
         )
         assertTrue(
-            "已经铺满时还摆着双击（按下去看不出变化）",
-            lines.any { it.value.contains("if (coverToFill > COVER_TOLERANCE)") },
+            "算不出 1:1（站方没给宽高）时还摆着双击 = 按下去没变化的假开关",
+            lines.any { it.value.contains("if (nativeZoom > COVER_TOLERANCE)") },
         )
         assertEquals(
             "×10 那档口径要有一个出处，写死在屏上就成了本仓自己造的数",

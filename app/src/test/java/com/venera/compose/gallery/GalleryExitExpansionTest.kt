@@ -1,9 +1,11 @@
 package com.venera.compose.gallery
 
+import com.venera.compose.gallery.domain.EXIT_BODY_FADE_FRACTION
 import com.venera.compose.gallery.domain.EXIT_FLIGHT_FADE_FRACTION
 import com.venera.compose.gallery.domain.FlyRect
 import com.venera.compose.gallery.domain.GalleryExitFrame
 import com.venera.compose.gallery.domain.coverSourceRect
+import com.venera.compose.gallery.domain.exitBodyAlpha
 import com.venera.compose.gallery.domain.exitExpansion
 import com.venera.compose.gallery.domain.exitPageAlpha
 import org.junit.Assert.assertEquals
@@ -204,12 +206,53 @@ class GalleryExitExpansionTest {
         assertEquals(1f, exitPageAlpha(0f), 1e-6f)
         assertEquals(0.5f, exitPageAlpha(EXIT_FLIGHT_FADE_FRACTION / 2f), 1e-6f)
         assertEquals(0f, exitPageAlpha(EXIT_FLIGHT_FADE_FRACTION), 1e-6f)
-        // 首程走完，后面那一整段页面都已经让开（飞行体自己不许淡，两头才都无缝）。
+        // 首程走完，后面那一整段页面都已经让开。飞行体自己那一半在 `exitBodyAlpha`
+        // 那条判据里：它起步得比这里晚（页面归零那一刻仍是满的），末段才收到 0。
         for (p in listOf(0.3f, 0.5f, 0.75f, 1f, 1.5f)) {
             assertEquals("progress=$p 之后页面应当已经全透明", 0f, exitPageAlpha(p), 1e-6f)
         }
         // 负进度（回弹过头那一档）与老写法一样钳回全不透明，不外推。
         assertEquals(1f, exitPageAlpha(-0.5f), 1e-6f)
+    }
+
+    /**
+     * 飞行体自己的淡出：**页面早已归零之后**才起步，末段收到 0。
+     *
+     * 钉三件事：首程恒不透明（那一段屏上只有它）、起步点晚于页面让开的终点（两条曲线不许重叠，
+     * 重叠就是"页面和飞行体同时半透明"那种相乘变暗）、越界不回弹。
+     */
+    @Test
+    fun `页面让开之后飞行体才淡，末段归零`() {
+        // 与页面那条的归零点严格错开：页面到 0 的那一档，飞行体必须还是满的。
+        assertEquals(1f, exitBodyAlpha(EXIT_FLIGHT_FADE_FRACTION), 1e-6f)
+        assertEquals(1f, exitBodyAlpha(0f), 1e-6f)
+        // 起步点 = 1 - fadeFraction：0.75 那一档 ⇒ 0.25（页面让开的终点）之前恒为 1。
+        assertEquals(1f, exitBodyAlpha(1f - EXIT_BODY_FADE_FRACTION), 1e-6f)
+        assertEquals(0.5f, exitBodyAlpha(1f - EXIT_BODY_FADE_FRACTION / 2f), 1e-6f)
+        assertEquals(0f, exitBodyAlpha(1f), 1e-6f)
+        // 弹簧回弹过头与负进度：钳住，不许越界又亮回来。
+        assertEquals(0f, exitBodyAlpha(1.5f), 1e-6f)
+        assertEquals(1f, exitBodyAlpha(-0.5f), 1e-6f)
+        // 整程单调不增（中途翘起来一次就是一次闪）。
+        var prev = exitBodyAlpha(0f)
+        for (p in sweep(0.01f)) {
+            val now = exitBodyAlpha(p)
+            assertTrue("progress=$p 处飞行体 alpha 反弹了：$prev → $now", now <= prev + 1e-6f)
+            prev = now
+        }
+    }
+
+    @Test
+    fun `飞行体淡出那一段分数钉住`() {
+        // 与页面那枚（0.25）是两件事，不许互相借用：页面是"让开"，这是"化进落点"。
+        // 0.75 ⇒ 起步点正好落在页面归零那一档（首尾相接、不重叠）。
+        assertEquals(0.75f, EXIT_BODY_FADE_FRACTION, 0f)
+        assertEquals(
+            "飞行体的起步点必须与页面让开的终点相接",
+            EXIT_FLIGHT_FADE_FRACTION,
+            1f - EXIT_BODY_FADE_FRACTION,
+            1e-6f,
+        )
     }
 
     @Test

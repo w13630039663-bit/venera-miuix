@@ -71,10 +71,14 @@ class GallerySearchRealDeviceFixesTest {
     @Test
     fun `收条与展开的两枚出口各自钉死`() {
         // 逐字钉整串：只钉 `collapseToResults` 会放过"分支条件写反"那种形状。
+        //
+        // ⚠️ 2026-10-17 方案 C 之后那枚条件改成 `svm.hasQuery`：pixiv 那一域没有胶囊，
+        // 条件是"框里有没有词"。判据搬进 ViewModel 一处，这里钉的仍是"**返回键是唯一出口**"
+        // 这件事，不是它写成哪个名字 —— 换成裸符号名就量不出"条件写反"了。
         assertTrue(
             "系统返回那枚收条出口变了形状（现在它是唯一出口）",
             screenCode().any {
-                it.contains("svm.mode == GallerySearchMode.INPUT && svm.filters.isNotEmpty() -> svm.collapseToResults()")
+                it.contains("svm.mode == GallerySearchMode.INPUT && svm.hasQuery -> svm.collapseToResults()")
             },
         )
         assertTrue(
@@ -100,7 +104,11 @@ class GallerySearchRealDeviceFixesTest {
                 it.contains("val searchWallActive = searching && (svm.page > 0 || svm.isSearching || svm.searchError != null)")
             },
         )
-        val narrow = "val wallActive = svm.active && svm.filters.isNotEmpty() && (svm.page > 0 || svm.isSearching)"
+        // ⚠️ 2026-10-18：闸门里的域判据从 `svm.filters.isNotEmpty()` 换成 `svm.hasQuery`。
+        // 前者是 **booru 的标签胶囊**，而 pixiv 那一域没有胶囊（词在 `pixivTerm` 里）⇒
+        // 那面墙的自动续页一次都不会触发（用户：「pixiv 搜索下滑无法继续获取更多新图」）。
+        // 这条用例要钉的是"窄"（不许把 `searchError` 也喂进来），域判据换名不影响那个意图。
+        val narrow = "val wallActive = svm.active && svm.hasQuery && (svm.page > 0 || svm.isSearching)"
         assertEquals(
             "那两道闸门被顺手改宽了（它们一宽，失败轮就变成无限自动重试）",
             2,
@@ -363,8 +371,12 @@ class GallerySearchRealDeviceFixesTest {
             joined.contains("veneraSurfaceShadowElevation(tokens.elevation.attached)"),
         )
         assertEquals(
-            "走按档口的赋值点数量变了（本轮修的是入口条 + 搜索卡两处；新增玻璃面要同步改这把尺子）",
-            2,
+            "走按档口的赋值点数量变了（本轮修的是入口条 + 搜索卡两处；" +
+                "2026-10-17 源切换那一枚先做成下拉（多一处玻璃面、计数 3），同日晚些时候" +
+                "用户又改回分段器 —— 它没有 miuix Surface、不交投影 ⇒ 回到两处；" +
+                "同日晚上方案 C 给 pixiv 加了**第二张搜索卡**（它也是玻璃面、也要按档取），计数 3。" +
+                "新增玻璃面要同步改这把尺子）",
+            3,
             assignments.count { it.second.contains("veneraSurfaceShadowElevation(") },
         )
     }
@@ -409,20 +421,28 @@ class GallerySearchRealDeviceFixesTest {
         assertTrue("渐隐没接到最近搜索那个容器上", areaCode().any { it.contains(".fadeBottomEdge(") })
     }
 
-    /** ⑨ 「根据你的收藏」那一行标题撤了，两条推荐本身**仍在**（那是真入口，不顺手砍）。 */
+    /**
+     * ⑨ 「根据你的收藏」那一块**整块撤下**（用户 2026-10-17 点名「删掉这个区域」）。
+     *
+     * 这一条经历过两版口径：先只撤标题、留着两条推荐（那是真入口），后来用户看着截图
+     * 直接点了整块 —— 所以现在钉的是"标题与那两条**都不在**"。
+     * 负向尺配对照：撤块时**不能顺手把 `GallerySearchArea` 的入参也改坏** ——
+     * 那颗函数的签名仍是 `(svm, rvm, allowNsfw, resultCount)` 四个。
+     */
     @Test
-    fun `收藏推荐那行标题不再上屏而入口仍在`() {
+    fun `收藏推荐那一块整块撤下`() {
+        val banned = listOf("根据你的收藏", "RecommendationRows(")
         val hits = RepoSources.allMainLines()
             .filter { (_, _, line) ->
                 val t = line.trim()
                 !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*") &&
-                    t.contains("text = \"根据你的收藏\"")
+                    banned.any { t.contains(it) }
             }
             .map { (rel, no, _) -> "$rel:$no" }
-        assertEquals("那行标题又回到代码行上了：$hits", emptyList<String>(), hits)
-        // 对照：撤的是标题，不是那两条 —— 点下去仍是"换站 + 装条件 + 开搜"。
+        assertEquals("那块推荐又回到代码行上了：$hits", emptyList<String>(), hits)
+        // 对照：搜索卡仍在、而且入口那一行还在（撤的是推荐块，不是整张卡）。
         val joined = areaCode().joinToString("\n")
-        assertTrue("推荐行整块被顺手砍掉了（用户点名的只有那一行标题）", joined.contains("RecommendationRows("))
-        assertTrue("推荐行的出口断了", joined.contains("onPick(site, tags)"))
+        assertTrue("搜索卡整块没了（用户点名的只有推荐那一块）", joined.contains("fun GallerySearchArea("))
+        assertTrue("输入行那枚入口也不见了", joined.contains("rvm.openLayer()"))
     }
 }

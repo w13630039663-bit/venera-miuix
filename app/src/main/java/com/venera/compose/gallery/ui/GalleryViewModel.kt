@@ -160,6 +160,43 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
+     * 用户**下拉刷新**要的那一轮：换种子、让下一次 effect 真去取，但**不清屏上已有的内容**。
+     *
+     * 与 [refresh] 的分工（2026-10-17 第七轮）：
+     * - [refresh] 是「换一批」那一档 —— 它要的是"这一轮池子换了、屏上从新一批开始"，清屏是对的；
+     * - 这一颗是"我想看看有没有新的"。清屏的代价在真机上是**整面墙先换成骨架、等三站都回来**
+     *   （用户同一条反馈：「每日热门这个加载时间太长了」）。这里让旧屏留着，新的一批落地时
+     *   由 [accept] 整屏替换 —— 加载期间用户至少还能看、能点。
+     *
+     * ⚠️ `feedLoadedKey` 必须清：它就是 `LaunchedEffect(vm.refreshTick)` 的"这一轮已经拉过"凭证，
+     * 不清的话这次刷新会被当成"已经拉过"而什么都不做，又是一枚假按钮。
+     */
+    fun refreshKeepingContent() {
+        refreshTick++
+        seed = System.currentTimeMillis()
+        feedLoadedKey = null
+        // 缓存那一屏的"今天已存"判据要作废：用户明确要新内容，下一次判断必须放行。
+        hydratedFromCache = false
+        cachedOnEpochDay = null
+    }
+
+    /**
+     * 日榜某一站**刚回来**那一笔：先把它画到屏上，其余各站还在路上。
+     *
+     * 三站是并发的，但整轮要等**最慢的那一站**（`GalleryDailyFeed.loadDaily` 里的 `Triple(...)`）。
+     * 慢站一档单站预算 12s ⇒ 屏上能空等十几秒。这里让"已经到的那几站"先落屏：
+     * 取数与合并口径完全同 [accept]（同一个 [seed]），只是**不写缓存、不动日期与提示**。
+     *
+     * 刻意不做的事：不写 `feedLoadedKey`（本轮还没成）、不写磁盘快照（中途那一屏不是最终结果）。
+     */
+    fun acceptPartial(pools: Map<GallerySite, List<GalleryPost>>) {
+        if (pools.isEmpty()) return
+        val merged = GalleryMerge.mix(pools, seed).getOrNull() ?: return
+        this.pools = pools
+        posts = merged.posts
+    }
+
+    /**
      * 收下本轮产出（整屏替换，不是追加 —— 日榜只有一轮）。
      *
      * @param failures 这一轮没给内容的站及原因，**按站一份**（与 [notice] 是同一份事实的

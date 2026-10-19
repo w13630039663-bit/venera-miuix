@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.View
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
@@ -128,6 +129,9 @@ object GalleryFlyIn {
             return
         }
         stage = GalleryFlyInStage.WAITING
+        // ── 临时取证探针（tag 与 `GalleryPostScreen` 那批 `FlyProbe` 同一条，验收完一起撤）──
+        // 去程起点是谁递的、多大一块、要不要先收 chrome：这三样在屏上全都读不出来。
+        Log.i("FlyProbe", "capture 起点 bounds=$coverBounds obstructed=${ChromeCaptureSuppress.obstructs(coverBounds)}")
         // 矩形**同步**先给（它不需要像素）：对面那一头靠它立刻分清"我是从一张卡点进来的"
         // 与"深链/收藏那些压根没有卡片当起点的入口"，两种入场动画在首次组合就要分岔，
         // 等像素回来再分的话会先按错的那一档摆一帧。
@@ -154,6 +158,7 @@ object GalleryFlyIn {
                     if (result == PixelCopy.SUCCESS) {
                         payload = bitmap.asImageBitmap()
                         stage = GalleryFlyInStage.READY
+                        Log.i("FlyProbe", "capture 到手像素 size=${width}x$height")
                     } else {
                         // 这几种是站得住的失败：超出窗口边界（卡片只露半截）、窗口还没 surface、超时。
                         // 都不飞，退路照常 —— 但屏上看不出成因，所以只有这里说得出是哪一种。
@@ -180,6 +185,8 @@ object GalleryFlyIn {
 
     /** 大图那一档到位就交还，别把这张位图一直攥在手里。 */
     fun consume() {
+        // ── 临时取证探针：清账发生在哪一档（WAITING 就被清 = 对面压根没等到像素）──
+        Log.i("FlyProbe", "consume 当时 stage=$stage payload=${payload != null}")
         payload = null
         origin = null
         stage = GalleryFlyInStage.NONE
@@ -197,10 +204,24 @@ object GalleryFlyIn {
      * 卡片被 LazyGrid 回收（滚出屏幕）时由卡片自己 [forgetCardBounds] 撤掉 ——
      * 留着一条过期矩形比"这一次不飞"糟得多。
      *
-     * 刻意**不是** Compose 状态：写它的人在大图页下面那一屏、读它的人在大图页，
-     * 两边不在同一次组合里，做成 state 只会白拖一次重组。
+     * ## 这颗底为什么是快照状态（2026-10-19 改判，批 233-5）
+     *
+     * 从前这里是**一只普通 `HashMap`**，理由写的是"两边不在同一次组合里，做成 state 只会白拖一次重组"。
+     * 那句话本身没错（确实没人在组合期读它），但它漏了一件事：**作品页那条进场飞行体在等这一格** ——
+     *
+     * ```
+     * snapshotFlow { GalleryFlyIn.cardBoundsOf(entryKey) }.first { it != null }
+     * ```
+     *
+     * 现量（`desktop/src/test/.../DesktopSnapshotFlowObservationTest.kt`，进程内零窗口）：
+     * 没有第二帧时，普通 Map 的写入**一次读数也不发**（等待者只能赌"别人恰好画了一帧"），
+     * 而 `mutableStateMapOf` 的写入**当场叫醒**等待者。那一赌在屏上分不出差别 ——
+     * 表现就是用户 2026-10-19 那句「hero 动画还是有很大问题，返回也没 hero 动画」。
+     *
+     * 所以这一格改成快照状态：写入自己作数，不靠别人的帧。既然没人组合期读它，
+     * 原来担心的"白拖一次重组"仍然没有发生（改判的是"等什么叫醒等待者"，不是"谁在读"）。
      */
-    private val cardBounds = HashMap<String, Rect>()
+    private val cardBounds = mutableStateMapOf<String, Rect>()
 
     /**
      * 一级的卡片在布局时回写（`onGloballyPositioned` 每帧一次，同一 uid 覆盖）。
@@ -212,8 +233,15 @@ object GalleryFlyIn {
      */
     fun noteCardBounds(uid: String, bounds: Rect) {
         if (bounds.width <= 0f || bounds.height <= 0f) return
+        // ── 临时取证探针：每个键只报**第一次**登记（布局回调每帧都来，全报会把 logcat 冲掉）──
+        if (uid !in probedBoundsKeys) {
+            probedBoundsKeys += uid
+            Log.i("FlyProbe", "落点首次登记 key=$uid size=${bounds.width.toInt()}x${bounds.height.toInt()}")
+        }
         cardBounds[uid] = bounds
     }
+
+    private val probedBoundsKeys = mutableSetOf<String>()
 
     /** 卡片离开组合（滚出屏幕、换了一批）时撤掉自己的落点。 */
     fun forgetCardBounds(uid: String) {

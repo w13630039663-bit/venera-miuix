@@ -9,10 +9,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ImageSearch
@@ -24,14 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.venera.compose.components.venera.PILL_TINT_BOTTOM
+import com.venera.compose.components.venera.PILL_TINT_TOP
+import com.venera.compose.components.venera.veneraFaceSheen
 import com.venera.compose.components.venera.veneraGlassSurface
 import com.venera.compose.components.venera.veneraSurfaceShadowElevation
+import com.venera.compose.gallery.domain.GalleryHomeDomain
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
-import com.venera.compose.ui.tokens.veneraGlassEnabled
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -85,7 +91,7 @@ import top.yukonga.miuix.kmp.basic.Text
  *
  * 网格的顶部避让要拿这个高度去算，而"逐帧量顶栏高度"那条路在本仓已经失败过一次
  * （`FREEZE-STATEMENT.md` 第七轮：`heightOffsetLimit` 是普通 `var`、composition 期读不到真值，
- * 于是首帧算出的避让要等到用户滚一下才生效）。本条的**内容是定高件**（就一条 56dp 的条），
+ * 于是首帧算出的避让要等到用户滚一下才生效）。本条的**内容是定高件**（就一条 48dp 的条），
  * 高度在写的时候就已知，用常量既准确又首帧就对。
  *
  * 与之配套的硬约束：**这条 chrome 的实际高度必须等于 [galleryHomeChromeHeight]**。
@@ -124,6 +130,16 @@ internal fun GalleryHomeChrome(
      * 在代码里看不见。同一个理由见 `GallerySearchArea.resultCount`。
      */
     searchOpen: Boolean,
+    /**
+     * 首页那一排选中的内容域，以及点其中一格。
+     *
+     * 2026-10-17 第三轮（用户另一张稿「看下站源切换能不能做成这样」）：那一排从前是自己占一行的
+     * 一节（`section-domain`），现在并进这一行摆在搜索条左边 —— 左右各 11dp 的空是这一行自己给的，
+     * 所以**这两枚参数必填、不给默认值**：给默认值的话下一个调用点会静默把切换器摘掉，
+     * 而"整页只剩 Pixiv 那一池、切不回去"正是这一族最贵的形状（同日刚修的那条空态吞页同一族）。
+     */
+    domain: GalleryHomeDomain,
+    onPickDomain: (GalleryHomeDomain) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenReverse: () -> Unit,
     modifier: Modifier = Modifier,
@@ -137,106 +153,216 @@ internal fun GalleryHomeChrome(
     // 高度取 `galleryHomeChromeHeight()` 而不是另写一个数：它就是这个组件的自然高度，
     // 那条"常量与实际摆件逐项对应"的尺子（`GalleryHomeChromeTest`）同时管着这里。
     Box(modifier = modifier.height(galleryHomeChromeHeight())) {
-        AnimatedVisibility(
-            visible = !searchOpen,
-            // ⚠️ **位移恒 0**：只借时长、不要视觉动效。
-            //
-            // 这一层是"展开"那一下的**源**（outgoing），而共享元素按
-            // `renderInOverlayDuringTransition = false` 就地渲染 ⇒ 父级的 alpha 会乘到飞行体上。
-            // 它若按常规 `fadeOut`，飞行体会在 150ms 内被父级淡到 0，而 bounds 动画要跑 300ms
-            // ⇒ 后半程什么都看不见，读起来又回到用户抱怨的"淡出淡入"。
-            // 内容的交叉淡变交给 `sharedBounds` 自己的 enter/exit（默认 fadeIn/fadeOut）。
-            // 完整推演见 `GallerySearchContainer.kt` 头注第 3 条。
-            enter = slideInVertically(animationSpec = SEARCH_CONTAINER_SHOW_SLIDE_SPEC) { 0 },
-            exit = slideOutVertically(animationSpec = SEARCH_CONTAINER_HIDE_SLIDE_SPEC) { 0 },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
         ) {
-            Surface(
-                shape = RoundedCornerShape(tokens.shape.extraLarge),
-                // 与搜索卡**同一个材质口径**（2026-10-16 修，用户点名「补回材质的问题」）：
-                // 实色档不透明铺 surfaceContainerHigh，玻璃档置透明 + 由 veneraGlassSurface(PANEL)
-                // 采氛围层做真模糊。这条是"展开时是同一块面在长高"能不能成立的关键 ——
-                // 从前的入口条是实色、展开后的卡是 0.90 伪透，用户在按下那一下就读到"换了一块东西"。
-                color = if (veneraGlassEnabled()) Color.Transparent else tokens.color.surfaceContainerHigh,
-                // 玻璃档归零：卡底透明时，miuix Surface 那层平台投影会从卡底透出来
-                // （用户 2026-10-16「浅色模式下还是有这种色块」的真凶，读数与判据见
-                //  `VeneraGlass.veneraSurfaceShadowElevation`）。实色档照旧吃 3dp。
-                shadowElevation = veneraSurfaceShadowElevation(tokens.elevation.attached),
+            // ── 内容域那一排（2026-10-17 第三轮，用户稿「看下站源切换能不能做成这样」）──
+            //
+            // 从前它自己占一行（`section-domain`），右边整片空着；稿上要求它与搜索条**同一行**、
+            // 坐在搜索条左边那一格。这一行的总高度仍是 `galleryHomeChromeHeight()` 那三项之和，
+            // 一个字没改 —— 常量与摆件逐项对应那条硬约束（见文件头注与 `GalleryHomeChromeTest`）不受影响。
+            //
+            // 摆法：外框吃**与条同一条带**（top=space2 起、`segmentedHeight` 那一档 ——
+            // 2026-10-17 用户点名「搜索框缩成和切换源一样大小」之后两边同高），
+            // 里面按 Center 摆那颗分段器（它自己也是 48dp，正中坐下就是齐的）。不写"往下挪 4dp"这种数：
+            // 那条带就是条自己占的那一段，两者共用同一组 token 就是唯一的对齐方式。
+            Box(
                 modifier = Modifier
-                    // 与展开的搜索卡**同一个 key**的共享元素 —— 这一条与那张卡是"同一块面"。
-                    // 挂在整条的最外层（不是内缩后那一层）：卡那一端包在调用点的 Box 里，
-                    // 两端外框同构（同样满屏宽、同样那三个 padding）⇒ 飞行时相对关系一致。
-                    // 挂进内缩层会让两端一个是"面"、一个是"面 + 边距" —— 那会在飞行途中横跳一下。
-                    .gallerySearchContainerElement(this@AnimatedVisibility)
-                    // 纯绘制修饰符：不参与布局，所以上面那条"外框高度必须等于
-                    // galleryHomeChromeHeight()"的硬约束不受影响（间距仍是
-                    // space2 + dockedSearchBarHeight + space3 三项）。
-                    .veneraGlassSurface(VeneraGlassRole.PANEL, tokens.shape.extraLarge)
-                    .fillMaxWidth()
-                    // 左右内缩与搜索卡同档：展开时两边不会横跳。
-                    .padding(
-                        start = tokens.spacing.screenHorizontal,
-                        end = tokens.spacing.screenHorizontal,
-                        // ⚠️ 下面这两个内缩与 [galleryHomeChromeHeight] 里的加法必须逐项对应。
-                        top = tokens.spacing.space2,
-                        bottom = tokens.spacing.space3,
-                    )
-                    // 定高（常量口径的那一条，理由见类头注）。不用 heightIn(min=)：
-                    // 那会让这一格随字体缩放长高，而避让公式吃的是常量 —— 两者会悄悄错开。
-                    .height(tokens.spacing.dockedSearchBarHeight)
-                    // 不给涟漪：与搜索卡同一条口径（那张卡整块也不给），
-                    // 按下反馈交给震动，免得"点这里"的暗示比搜索卡本身还强。
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onOpenSearch()
-                    },
+                    .padding(top = tokens.spacing.space2, bottom = tokens.spacing.space3)
+                    .height(tokens.spacing.segmentedHeight),
+                contentAlignment = Alignment.Center,
             ) {
-                Row(
+                GalleryHomeDomainChips(selected = domain, onPick = onPickDomain)
+            }
+            AnimatedVisibility(
+                modifier = Modifier.weight(1f),
+                visible = !searchOpen,
+                // ⚠️ **位移恒 0**：只借时长、不要视觉动效。
+                //
+                // 这一层是"展开"那一下的**源**（outgoing），而共享元素按
+                // `renderInOverlayDuringTransition = false` 就地渲染 ⇒ 父级的 alpha 会乘到飞行体上。
+                // 它若按常规 `fadeOut`，飞行体会在 150ms 内被父级淡到 0，而 bounds 动画要跑 300ms
+                // ⇒ 后半程什么都看不见，读起来又回到用户抱怨的"淡出淡入"。
+                // 内容的交叉淡变交给 `sharedBounds` 自己的 enter/exit（默认 fadeIn/fadeOut）。
+                // 完整推演见 `GallerySearchContainer.kt` 头注第 3 条。
+                enter = slideInVertically(animationSpec = SEARCH_CONTAINER_SHOW_SLIDE_SPEC) { 0 },
+                exit = slideOutVertically(animationSpec = SEARCH_CONTAINER_HIDE_SLIDE_SPEC) { 0 },
+            ) {
+                // ── 外框与"那一块面"必须分两层（2026-10-17 第四轮，用户第二次点「搜索栏大小还是没有对齐」）──
+                //
+                // 真凶不是那个高度数字，是**内缩挂在哪一层**：原先三个 `padding` 直接串在
+                // `Surface` 的修饰符链上，而 miuix `Surface` 的底色铺的是**它自己的节点**
+                // （`basic/Surface.kt:57-69`：`Box(modifier = modifier.…clip(shape).background(color))`
+                // —— `padding` 在链上更外，于是「内缩 + 48dp」整块都被涂上了色）。
+                //
+                // 读数（用户截图 1080×572，密度 2.625）：切换器的药丸 391~519 = 129px ≈ **48dp**；
+                // 搜索条底色 382~533 = 152px ≈ **58dp** = `space2 + 48 + space3` 那条带。
+                // ⇒ 上一轮把 56 改成 48 确实生效了（卡片内缩仍是 4+6），只是被这 10dp 的内缩盖过去了。
+                // 所以改法只有一个：**内缩留在外框，`Surface` 自己只拿 48dp**，
+                // 左边那颗分段器的外框也是同一条带（`padding(top=space2, bottom=space3).height(48)`），
+                // 两边从此逐像素同高。
+                Box(
                     modifier = Modifier
+                        // 共享元素挂在**外框**（不是 Surface）：卡那一端包在调用点的 Box 里，
+                        // 两端外框同构（同样满屏宽、同样那三个内缩）⇒ 飞行时相对关系一致。
+                        // 挂进内缩层会让两端一个是"面"、一个是"面 + 边距"，飞行途中横跳一下。
+                        // ⚠️ 外框高度仍是 `space2 + 48 + space3`，与 `galleryHomeChromeHeight()` 逐项对应，
+                        // 所以共享元素的 bounds 与改动前逐像素相同 —— 这一刀不动转场。
+                        .gallerySearchContainerElement(this@AnimatedVisibility)
                         .fillMaxWidth()
-                        .padding(horizontal = tokens.spacing.space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+                        // 左右内缩与搜索卡同档：展开时两边不会横跳。
+                        .padding(
+                            start = tokens.spacing.screenHorizontal,
+                            end = tokens.spacing.screenHorizontal,
+                            // ⚠️ 下面这两个内缩与 [galleryHomeChromeHeight] 里的加法必须逐项对应。
+                            top = tokens.spacing.space2,
+                            bottom = tokens.spacing.space3,
+                        ),
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Search,
-                        contentDescription = null,
-                        tint = tokens.color.onSurfaceVariant,
-                        modifier = Modifier.size(tokens.spacing.chipIconSize),
-                    )
-                    Text(
-                        // 占位文案沿用搜索卡那一句（**不另造**）：两处说的是同一个框能敲什么，
-                        // 抄成两句迟早分叉，而用户会以为是两个不同的入口。
-                        text = SEARCH_ENTRY_HINT,
-                        fontSize = tokens.type.body,
-                        color = tokens.color.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Box(
-                        // 触达位取图标按钮那一档（40dp），不是图标自身的 16dp ——
-                        // 后者按不准，而这一枚还紧挨着"点整条展开搜索"的落点，误触代价是走错一层。
+                    Surface(
+                        shape = RoundedCornerShape(tokens.shape.extraLarge),
+                        // ⚠️ 两档都置透明 —— 这是方案 B 那一刀能生效的**前提**，不是随手改的：
+                        //
+                        // 面的底色改由 Surface **内部**那枚 [veneraFaceSheen] 独家提供
+                        // （见下面 Row 上那一处）。若这里还铺 `surfaceContainerHigh`，
+                        // 它就压在渐变**之上**（miuix `Surface` 的 `background(color)` 在
+                        // `basic/Surface.kt:146`，位于调用方 modifier **之内**，而外层先画）
+                        // ⇒ 渐变被整个盖死，屏上仍是那张平涂的面。
+                        //
+                        // 为什么渐变不挂在这个**外框**上（挂这儿最省事）：
+                        //  ① 同样会被上面的底色盖死；
+                        //  ② 外框带 `padding`，它**没有圆角** —— 渐变顶端会画成方角，
+                        //     而圆角只由 Surface 的 `clip(shape)` 提供。
+                        // 落在内部则两件事都成立：clip 由 Surface 给、底色由渐变给。
+                        color = Color.Transparent,
+                        // 玻璃档归零：卡底透明时，miuix Surface 那层平台投影会从卡底透出来
+                        // （用户 2026-10-16「浅色模式下还是有这种色块」的真凶，读数与判据见
+                        //  `VeneraGlass.veneraSurfaceShadowElevation`）。
+                        //
+                        // 方案 B 把实色档从 `attached`(3dp) 抬到 `floating`(6dp)：
+                        // 那一档本来就写着「悬浮元素」，而这一条正是整行里唯一的"浮"的那一头
+                        // （站源分段器**没有**投影）。抬一档就是"一浮一沉"里"沉"的另一半。
+                        // ⚠️ 与搜索卡那一端（仍是 `attached`）不再同档：那是"同一块面在长高"的契约，
+                        // 而这里的投影读作"这块面浮在墙面上"。共享元素按 bounds 插值、不插值投影，
+                        // 起飞那一帧的投影差 3dp 用户读不出来（真要读得出来，得改的是两端的**高度**）。
+                        shadowElevation = veneraSurfaceShadowElevation(tokens.elevation.floating),
                         modifier = Modifier
-                            .size(tokens.spacing.iconButtonSize)
-                            .clip(RoundedCornerShape(tokens.shape.small))
+                            // 玻璃层与 Surface 的底色**必须同一个节点**：它跟着 Surface 一起被
+                            // 内缩框住，才不会又铺成一整条 58dp（玻璃档下这一层就是那块可见的底）。
+                            .veneraGlassSurface(VeneraGlassRole.PANEL, tokens.shape.extraLarge)
+                            .fillMaxWidth()
+                            // 定高（常量口径的那一条，理由见类头注）。不用 heightIn(min=)：
+                            // 那会让这一格随字体缩放长高，而避让公式吃的是常量 —— 两者会悄悄错开。
+                            //
+                            // 2026-10-17 用户点名「搜索框缩成和切换源一样大小」：这一格从
+                            // `dockedSearchBarHeight`（56dp）换成左边那颗分段器的 `segmentedHeight`（48dp），
+                            // 两件从此等高。展开成搜索卡那一端仍是 56dp —— 共享元素按 bounds 插值，
+                            // 8dp 的差在起飞那一刻是"长高一点"，不是横跳。
+                            .height(tokens.spacing.segmentedHeight)
+                            // 不给涟漪：与搜索卡同一条口径（那张卡整块也不给），
+                            // 按下反馈交给震动，免得"点这里"的暗示比搜索卡本身还强。
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                             ) {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                onOpenReverse()
+                                onOpenSearch()
                             },
-                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ImageSearch,
-                            contentDescription = "以图搜图",
-                            tint = tokens.color.textSecondary,
-                            modifier = Modifier.size(tokens.spacing.chipIconSize),
-                        )
+                        Row(
+                            modifier = Modifier
+                                // 方案 B 顺带修的一处居中：此前只有 `fillMaxWidth`，而 Surface 是定高 48dp
+                                // —— Row 自己的高度是**内容高**，整条居中靠父级 Box 的默认对齐兜着。
+                                // 现在 Row 自己就是 48dp，图标 / 占位字 / 圆钮三者的中线由这一层保证
+                                // （用户 2026-10-17「标题和按钮也没居中」里属于这一条的那一半）。
+                                //
+                                // ⚠️ 吃得到定高是因为 miuix `Surface` 那个 Box 传了
+                                // `propagateMinConstraints = true`（`basic/Surface.kt:67`），
+                                // 而 `.height(48)` 挂在外层 —— 于是这里拿到的约束 min=max=48。
+                                .fillMaxSize()
+                                // ── 方案 B 的「浮」：这块面的**唯一**底色出处──
+                                //
+                                // 顶更白、底落到卡面色：从槽位插值，不写死 CSS 里那对
+                                // `#FFFFFF/#FDF6F6`（动态取色与深色档下写死值会整片脱节）。
+                                // 玻璃档下这条整体 no-op（[veneraFaceSheen] 开头就 return），
+                                // 那一档的底色由 `veneraGlassSurface(PANEL, …)` 的真模糊负责。
+                                .veneraFaceSheen(
+                                    topColor = lerp(tokens.color.surfaceContainerHigh, tokens.color.surface, 0.55f),
+                                    bottomColor = tokens.color.surfaceContainerHigh,
+                                )
+                                // 左侧内缩比右侧大（CSS `padding:0 12px 0 22px`）——
+                                // 左边紧挨着 🔍 图标、右边紧挨着图搜圆钮，两侧呼吸该对称才对称。
+                                // ⚠️ 这一刀只动**横向**：纵向那三个内缩在上游外框上，
+                                // 与 [galleryHomeChromeHeight] 那条常量的耦合一字未动。
+                                .padding(start = tokens.spacing.space9, end = tokens.spacing.space6),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Search,
+                                contentDescription = null,
+                                // 方案 B：占位与 🔍 一起降一档到 `textTertiary`。
+                                // 原先占位用 `onSurfaceVariant`，浅色下实测 #534343 ——
+                                // 比正文还艳，读起来像"里面已经有一行字了"，而不像一个待输入的框。
+                                tint = tokens.color.textTertiary,
+                                modifier = Modifier.size(tokens.spacing.chipIconSize),
+                            )
+                            Text(
+                                // 占位文案沿用搜索卡那一句（**不另造**）：两处说的是同一个框能敲什么，
+                                // 抄成两句迟早分叉，而用户会以为是两个不同的入口。
+                                text = SEARCH_ENTRY_HINT,
+                                fontSize = tokens.type.body,
+                                color = tokens.color.textTertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            // ── 方案 B：图搜收进一枚粉圆钮（整条唯一的彩色焦点）──
+                            //
+                            // 从前它是一枚裸灰图标（`textSecondary`），与左边那颗 🔍 同一档 ——
+                            // 于是"点条本体展开搜索"与"以图搜图"两个动作在屏上**没有主次**。
+                            // 收进粉圆钮之后：面是 `primaryContainer`、图标是 `onPrimaryContainer`
+                            // （深色档下靠这套配对保证对比度，不靠手调 alpha），
+                            // 而这一行里**只有它带彩色** ⇒ 一眼扫到"这里还能干另一件事"。
+                            Box(
+                                // 触达位仍是 40dp 那一档，不因为"变成一枚钮"就缩小 ——
+                                // 误触代价是走错一层（走错 = 展开的是搜索而不是反搜）。
+                                modifier = Modifier
+                                    .size(tokens.spacing.iconButtonSize)
+                                    .clip(CircleShape)
+                                    // 同一套材质语言（渐变 + 顶部高光），插值比例与站源那枚粉块一致 ——
+                                    // 两处都是"这一行的粉色"，屏上该读成同一件事。
+                                    .veneraFaceSheen(
+                                        topColor = lerp(
+                                            tokens.color.primaryContainer,
+                                            tokens.color.primary,
+                                            PILL_TINT_TOP,
+                                        ),
+                                        bottomColor = lerp(
+                                            tokens.color.primaryContainer,
+                                            tokens.color.primary,
+                                            PILL_TINT_BOTTOM,
+                                        ),
+                                        highlightAlpha = 0.65f,
+                                    )
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) {
+                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        onOpenReverse()
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ImageSearch,
+                                    contentDescription = "以图搜图",
+                                    tint = tokens.color.onPrimaryContainer,
+                                    modifier = Modifier.size(tokens.spacing.chipIconSize),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -261,7 +387,7 @@ internal fun GalleryHomeChrome(
 internal fun galleryHomeChromeHeight(): Dp {
     val tokens = VeneraTokens
     return tokens.spacing.space2 +
-        tokens.spacing.dockedSearchBarHeight +
+        tokens.spacing.segmentedHeight +
         tokens.spacing.space3
 }
 

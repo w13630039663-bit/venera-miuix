@@ -38,13 +38,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.ReportProblem
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -60,7 +58,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import com.venera.compose.gallery.data.GalleryPorts
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -109,9 +106,8 @@ import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.components.venera.veneraGlassSurface
 import com.venera.compose.components.venera.veneraSurfaceShadowElevation
 import com.venera.compose.feature.LocalVeneraDarkTheme
-import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.GalleryTagSuggestion
-import com.venera.compose.gallery.domain.GalleryRecommendation
+import com.venera.compose.gallery.domain.GalleryHomeDomain
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.compose.gallery.domain.GallerySearch
@@ -181,10 +177,6 @@ import java.util.Locale
 @Composable
 fun GallerySearchArea(
     svm: GallerySearchViewModel,
-    /** 「根据你的收藏」抽出来的标签集，按站一份。成因三种，见 [RecommendationRows]。 */
-    recommendations: Map<GallerySite, GalleryRecommendation>,
-    /** 点一枚推荐 = 把那一站的这串条件装好并开搜。 */
-    onPickRecommendation: (GallerySite, List<String>) -> Unit,
     /** 「以图搜图」那一层。开着时**同一张卡原地形变**成反搜的输入形态（2026-09-28 改，见下）。 */
     rvm: GalleryReverseViewModel,
     /** 与那面墙同一把的分级判据，直接透传给 SauceNAO 的 `hide` 参数。 */
@@ -199,6 +191,19 @@ fun GallerySearchArea(
      */
     resultCount: Int?,
 ) {
+    // ── 内容域分流（2026-10-17）──
+    // pixiv 吃的是**另一套语法**：一个词 + 站内参数，连"标签胶囊进框"这个概念都没有
+    // （它不把词拆成多枚，也不吃 `tags=`）。所以整张卡换掉，而不是在这张卡里长分支 ——
+    // 那些分支里任何一处走错都不报错，只会在屏上留下"条件写着 A、结果是 B"。
+    if (svm.domain == GalleryHomeDomain.PIXIV) {
+        GalleryPixivSearchArea(
+            svm = svm,
+            rvm = rvm,
+            allowNsfw = allowNsfw,
+            resultCount = resultCount,
+        )
+        return
+    }
     val tokens = VeneraTokens
     val focusRequester = remember { FocusRequester() }
     val reverseFocusRequester = remember { FocusRequester() }
@@ -867,21 +872,9 @@ fun GallerySearchArea(
                                     )
                                 }
                             } else {
-                                // 「根据你的收藏」排在历史**上面**：它是"我们替你算出来的"，
-                                // 历史是"你自己搜过的"，前者要用户先知道有这条路。
-                                //
-                                // ⚠️ 2026-09-30 第二轮：首页那一栏「根据你的收藏」已撤下
-                                // （用户点名），但**这一份保留** —— 它是"手动挑一枚推荐串"的入口，
-                                // 与首页那排展示栏是两件事（首页那份只是展示，这份点下去即开搜）。
-                                //
-                                // 「关注的画师」那一排 2026-09-30 从这一栏撤掉了（用户拍板）：
-                                // 首页那一节整个换成了「正在关注的画师」，同一份名单在两处长得还不一样，
-                                // 读起来像两个功能。名单本身没动，动的只是它住在哪儿。
-                                RecommendationRows(
-                                    recommendations = recommendations,
-                                    onPick = onPickRecommendation,
-                                )
-                                if (svm.history.isNotEmpty()) {
+                                // 「最近搜索」只摆**当前域**那几条（2026-10-17 用户点名「两个站源的
+                                // 搜索历史要分离」）。判据在 `visibleHistory` 里，盘上的形状没动。
+                                if (svm.visibleHistory.isNotEmpty()) {
                                     HistoryHeader(onClearAll = { svm.clearHistory() })
                                     Spacer(modifier = Modifier.height(tokens.spacing.space1))
                                 }
@@ -894,7 +887,7 @@ fun GallerySearchArea(
                                         .fadeBottomEdge(tokens.spacing.space6),
                                 ) {
                                     HistoryList(
-                                        history = svm.history,
+                                        history = svm.visibleHistory,
                                         onPick = { svm.applyHistory(it) },
                                         onRemove = { svm.removeHistory(it) },
                                     )
@@ -935,7 +928,7 @@ fun GallerySearchArea(
  * 否则形变前后"这一格会干什么"就变了，那是形变做出来最隐蔽的一种坏。
  */
 @Composable
-private fun ReverseTrailingActions(rvm: GalleryReverseViewModel) {
+internal fun ReverseTrailingActions(rvm: GalleryReverseViewModel) {
     val tokens = VeneraTokens
     val clipboard = LocalClipboardManager.current
     val picked = rvm.picked
@@ -1291,6 +1284,43 @@ internal fun GallerySearchCollapsedChips(
     val tokens = VeneraTokens
     // 结果态不可能条件为空（清空到零枚时 ViewModel 会把整段退回输入态），
     // 但空列表画一个零宽 Box 没有任何意义，直接不画。
+    //
+    // pixiv 那一域没有"胶囊"这回事（它的查询是一个词 + 一排站内参数），所以那一侧
+    // 摆的是**词 + 条件摘要**：吸附进顶栏时，"我在搜什么"这条读数不能因为换了域就没了。
+    if (svm.domain == GalleryHomeDomain.PIXIV) {
+        if (svm.pixivTerm.isBlank()) return
+        Box(
+            modifier = modifier
+                .padding(start = tokens.spacing.topBarTitlePadding)
+                .height(tokens.spacing.topBarCollapsedHeight)
+                .widthIn(
+                    max = LocalConfiguration.current.screenWidthDp.dp *
+                        tokens.spacing.collapsedChipWidthFraction,
+                ),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VeneraChip(
+                    text = svm.pixivTerm,
+                    selected = true,
+                    variant = VeneraChipVariant.Filter,
+                    onClick = onExpand,
+                )
+                svm.pixivFilter.summary().drop(1).forEach { line ->
+                    VeneraChip(
+                        text = line,
+                        variant = VeneraChipVariant.Tonal,
+                        onClick = onExpand,
+                    )
+                }
+            }
+        }
+        return
+    }
     if (svm.filters.isEmpty()) return
     Box(
         modifier = modifier
@@ -1564,120 +1594,6 @@ private fun SuggestionRow(
     }
 }
 
-/**
- * 「根据你的收藏」那一栏。
- *
- * ## 一枚条目 = **整串条件**，不是一枚标签一行
- *
- * 这几枚标签的价值全在"它们在同一张收藏里**一起出现过**"那条共现约束上
- * （判据见 `GalleryRecommendations.pickTags`）。拆成单枚标签摆，用户点下去就是
- * "搜一个高频词" —— 那正是这套算法要避开的 `1girl solo long_hair` 式废组合。
- * 所以行上写的那串，就是点下去发出去的搜索串：读起来什么样，点下去就什么样。
- *
- * ## 两种"没有推荐"分开说（不许静默交错）
- *
- * - 一站都没收藏 → 引导去收藏；
- * - 有收藏但标签全被屏蔽规则挡完（或标签本身是空的）→ 点名是哪一站、为什么。
- *   这一种**不能**退化成上面那句"快去收藏" —— 那是把我们的缺陷说成用户没干活。
- */
-@Composable
-private fun RecommendationRows(
-    recommendations: Map<GallerySite, GalleryRecommendation>,
-    onPick: (GallerySite, List<String>) -> Unit,
-) {
-    val tokens = VeneraTokens
-    val picks = recommendations.entries.mapNotNull { entry ->
-        (entry.value as? GalleryRecommendation.Tags)?.tags?.let { entry.key to it }
-    }
-    if (picks.isEmpty()) {
-        val blockedOut = recommendations.entries.filter { it.value is GalleryRecommendation.NoUsableTags }
-        Text(
-            text = if (blockedOut.isEmpty()) {
-                "还没有画廊收藏。收藏几张图，这里会长出「按你的口味」的入口。"
-            } else {
-                blockedOut.joinToString("、") {
-                    "${it.key.displayName}：你收藏的那些标签都被屏蔽规则挡完了（或标签本身是空的），算不出推荐"
-                }
-            },
-            fontSize = tokens.type.caption,
-            color = tokens.color.textTertiary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = tokens.spacing.space4),
-        )
-        return
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 「根据你的收藏」那一行**标题**按用户点名撤了（2026-10-16），**两条推荐本身保留** ——
-        // 点下去是"换站 + 装条件 + 开搜"一步到位的真入口（撤整块的代价是少一条路，
-        // 而这一句本来就在抢卡片高度：这一屏每一行都在抢，见本文件头注）。
-        // 认不出这是什么的成本比从前低：行上带着 ✨、站名与「>」，读起来就是一排可点的入口。
-        //
-        // 参考图那一档：两条推荐**框在一起**（一颗填充面，不是描边）。
-        // 底色与输入行那颗胶囊同一档（`surfaceVariant`，比卡底低一档）—— 全卡只有一层台阶，
-        // 读起来就是"卡上浮着几块能按的面"，而屏上一根线都不画。
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(tokens.shape.large))
-                .background(tokens.color.surfaceVariant),
-        ) {
-            picks.forEachIndexed { index, (site, tags) ->
-                if (index > 0) {
-                    HorizontalDivider(color = tokens.color.divider)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = tokens.spacing.listRowMinHeight)
-                        .clip(RoundedCornerShape(tokens.shape.large))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                        ) { onPick(site, tags) }
-                        .padding(start = tokens.spacing.space4, end = tokens.spacing.space4),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AutoAwesome,
-                        contentDescription = null,
-                        // 参考图那枚星形是**主色**而不是灰的：这一行点下去是"换站 + 装条件 + 开搜"
-                        // 三件事一步做完，得比旁边那串站名更像入口。
-                        tint = tokens.color.primary,
-                        modifier = Modifier.size(tokens.spacing.chipIconSize),
-                    )
-                    Spacer(modifier = Modifier.width(tokens.spacing.space6))
-                    Text(
-                        // 走 queryOf 而不是自己 join：这一串**就是**要发出去的搜索条件，
-                        // 拼法必须与真正发请求那处同一个来源，否则会出现"看着一样、搜出来不一样"。
-                        text = GallerySearch.queryOf(tags.map { GalleryTagFilter(it) }),
-                        fontSize = tokens.type.body,
-                        color = tokens.color.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = site.displayName,
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textTertiary,
-                        modifier = Modifier.padding(start = tokens.spacing.space6),
-                    )
-                    Icon(
-                        // 行尾 chevron = "这行点进去还有下一步"。摆这里而不是靠用户试：
-                        // 整行的可点区域与它的视觉边界从前不一致（框都没有，谈不上边界）。
-                        imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = tokens.color.textTertiary,
-                        modifier = Modifier
-                            .padding(start = tokens.spacing.space2)
-                            .size(tokens.spacing.chipIconSize),
-                    )
-                }
-            }
-        }
-    }
-}
-
 // 「最近搜索」的渲染件整块搬回本文件（2026-09-30 第二轮）：用户拍板
 // "最近搜索放回点击搜索框后下面框框着"，所以它重新住进这张卡的空框态。
 // 形状与搬到首页之前**逐字相同**（双列紧凑 chip、字母小徽标、`×` 删单条）——
@@ -1724,12 +1640,17 @@ private fun HistoryHeader(onClearAll: () -> Unit) {
  *  - 同一个词跨站并成一条之后，历史短了，整行布局十行就顶到键盘底下、密度反而更差；
  *  - 每条自持半宽，长查询串自己省略 —— 这一块的用途是"认出我搜过哪个"，不是读全文。
  * 外层那个 `heightIn(max =)` 的限高照旧：行数超了在这块里自己滚，卡片不再跟着长高。
+ *
+ * @param showSourceMark 前置那枚字母站标画不画。booru 那侧要（同一条历史可能跨过两站，
+ *   字母是它唯一还有信息量的差别）；pixiv 那一格不要 —— 那里每一条都属于同一站，
+ *   摆一枚 "P" 只把那个词挤窄一截（用户 2026-10-17：「p 站搜索历史不需要显示站点」）。
  */
 @Composable
-private fun HistoryList(
+internal fun HistoryList(
     history: List<GallerySearchEntry>,
     onPick: (GallerySearchEntry) -> Unit,
     onRemove: (GallerySearchEntry) -> Unit,
+    showSourceMark: Boolean = true,
 ) {
     val tokens = VeneraTokens
     // ── 删除改成两步（2026-10-16 用户点名「太小很难按到而且还容易删除」）──
@@ -1758,7 +1679,7 @@ private fun HistoryList(
                         text = entry.query,
                         // 字母小徽标（Y / G / Y·G）：这一条在哪些站搜过，是历史里唯一还有信息量的
                         // 差别；摆站名整行会把关键词挤没。
-                        leadingText = gallerySourceMarkText(entry.sites),
+                        leadingText = if (showSourceMark) gallerySourceMarkText(entry.sites) else null,
                         // 第一下 × → 这颗自己变档（`selected` = primaryContainer 实底）并把把手换成 ✓，
                         // 第二下 ✓ 才真删。文案与哪一条都还在原处 —— 只撤掉"一触即删"这一件事。
                         // ✓ 是这一屏既有的"这就是当前那一个"记号（排行下拉里就在用），不立新符号。
