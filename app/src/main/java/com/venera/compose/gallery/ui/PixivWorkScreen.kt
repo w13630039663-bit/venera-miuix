@@ -145,6 +145,7 @@ import com.venera.compose.gallery.domain.HANDOFF_DETAIL_MS
 import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.gallery.domain.pixivEmojiId
 import com.venera.compose.gallery.domain.pixivEmojiUrl
+import com.venera.compose.gallery.domain.sideSlideTopOffset
 import com.venera.compose.gallery.domain.splitPixivComment
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.delay
@@ -453,6 +454,20 @@ fun PixivWorkScreen(
      * 取 1 当默认，退路天然是对的。
      */
     val entryDetail = remember(postId) { Animatable(1f) }
+    /**
+     * 批 B⑦：无锚那一趟的**侧滑**钟（0 = 屏外，1 = 归位）。
+     *
+     * 与 hero 那两颗（[entryFly] / [entryHandoff]）**互斥**：有锚才飞、无锚才侧滑，
+     * 分岔判据只有 [hasAnchor] 那一枚（可见比两档 ≥25%）。三条"不飞了"的退路
+     * （没有起点 / 没有逐页键 / 量不到落点）从前是"页面直接显示"，现在起动这一颗 ——
+     * 计划 §5 ⑦ 的原话：不再走"整页从下沿抬上来"。
+     *
+     * 初值 1（= 已归位）：五条退路之外的所有路径（压根没有起点那一族、页面正常显示）
+     * 都不该被侧滑拖住，取 1 当默认就不必每条都记得抬回来。
+     */
+    val sideSlide = remember(postId) { Animatable(1f) }
+    /** 这一趟是不是在走侧滑（UI 层按它平移；hero 那两颗不为空时不许为真）。 */
+    var sideSliding by remember(postId) { mutableStateOf(false) }
     var pageZeroDrawn by remember(currentId) { mutableStateOf(false) }
     // 逐页键仍由 `pageWallOf` 长出（屏上不自己拼 "…:p0"，那是第二处真相）。
     // 批 B⑥（不等落点）：详情没到时用"把我送进来的那条作品"长出一枚**种子**走同一颗算式，
@@ -462,6 +477,30 @@ fun PixivWorkScreen(
         val source = detail ?: works.firstOrNull { it.id == currentId }?.let { PixivWorkPage.seedDetailOf(it) }
         pageWallOf(source).firstOrNull()?.viewerKey.orEmpty()
     }
+    /**
+     * 批 B⑦：起动**侧滑退路**（无锚那一趟）。
+     *
+     * 三条"不飞了"的路径共用它（没有逐页键 / 量不到落点 / 落点在预算边缘回来而超时已放弃）——
+     * 口径只此一份，三条各写一遍就是三处真相。计划 §5 ⑦ 的原话：
+     * 「可见比不足 25% ⇒ 当场判无锚、走全宽侧滑，**不再**走整页从下沿抬上来」。
+     *
+     * 与 hero 互斥：这一颗只在**没有起飞**的路径上被调（起飞那一段直接走 [entryFly]），
+     * 两条路都上屏就是"既飞又滑"。
+     */
+    fun startSideSlide() {
+        if (entryFlying) return
+        sideSliding = true
+        // 复用进场那一颗 coroutine scope：侧滑与 hero 不会同时跑（上面那道闸门），
+        // 另起一颗只会多一处"取消时忘了管"的隐患。
+        // `snapTo` 是 suspend，与动画同一段里跑（先归位再走，不会出现"跳一半"）。
+        scope.launch {
+            entryDetail.snapTo(1f)
+            // 与进场同一档弹簧：侧滑也是"进场"，手感不该因为是退路就轻一档。
+            sideSlide.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+            sideSliding = false
+        }
+    }
+
     /**
      * 这一屏此刻页面该有多不透明。
      *
@@ -505,8 +544,7 @@ fun PixivWorkScreen(
             entryWaiting = false
             onEnterStart()
             return@LaunchedEffect
-        }
-        // 这一次的等待已经被下面那条兜底放弃了：不再起飞 —— 否则页面先露出来、再被抽走，
+        }        // 这一次的等待已经被下面那条兜底放弃了：不再起飞 —— 否则页面先露出来、再被抽走，
         // 比一开始就不飞难看（这一条同时挡住"像素迟到"那一档）。
         if (entryGaveUp) return@LaunchedEffect
         // 像素还在路上（PixelCopy 是异步的）：继续等，页面保持透明、垫帧继续站着。
@@ -517,10 +555,13 @@ fun PixivWorkScreen(
         // 600ms ⇒ 排行榜那一格"点卡进去压根不飞"（§9.3 读数，`起飞` 那行压根没打）。
         // 连种子都没有（深链直开 / 认不出邻居）⇒ 这一屏不飞，页面照常显示
         // （口径同上面那条"压根没有起点"；`entryKey` 在同样处境下也是空串，两处不是两把尺）。
+        // 批 B⑦：不飞 ≠ 直接显示 —— 起动侧滑（无锚退路，见 [sideSlide]）。
         if (entryKey.isBlank()) {
+            Log.w("FlyProbe", "pixiv 进场没有逐页键 key=空 ⇒ 走侧滑退路")
             entryWaiting = false
             onEnterStart()
             if (GalleryFlyIn.payload === frame) GalleryFlyIn.consume()
+            startSideSlide()
             return@LaunchedEffect
         }
         val target = withTimeoutOrNull(ENTRY_WAIT_MS) {
@@ -528,19 +569,21 @@ fun PixivWorkScreen(
                 .first { it != null && it.width > 0f && it.height > 0f }
         }
         if (target == null) {
-            // 量不到落点：老实显示，不演"飞完了"（同 [back] 那一步的口径）。
-            Log.w("FlyProbe", "pixiv 进场落点没等到 key=$entryKey 预算=${ENTRY_WAIT_MS}ms ⇒ 不飞")
+            // 量不到落点：不演"飞完了"（同 [back] 那一步的口径），走侧滑退路。
+            Log.w("FlyProbe", "pixiv 进场落点没等到 key=$entryKey 预算=${ENTRY_WAIT_MS}ms ⇒ 走侧滑退路")
             entryWaiting = false
             onEnterStart()
             if (GalleryFlyIn.payload === frame) GalleryFlyIn.consume()
+            startSideSlide()
             return@LaunchedEffect
         }
         Log.i("FlyProbe", "pixiv 进场起飞 target=$target origin=$start")
         // 落点是在预算边缘回来的：这几百毫秒里超时那一条可能已经放弃了，页面也已经露出来了。
-        // 这时再起飞就是把页面抽走，所以宁可不飞（判据同上面那一条）。
+        // 这时再起飞就是把页面抽走，所以宁可不飞（判据同上面那一条）⇒ 也走侧滑退路。
         if (entryGaveUp) {
             entryWaiting = false
             if (GalleryFlyIn.payload === frame) GalleryFlyIn.consume()
+            startSideSlide()
             return@LaunchedEffect
         }
         entryWaiting = false
@@ -804,6 +847,15 @@ fun PixivWorkScreen(
     Box(
         Modifier
             .fillMaxSize()
+            // 批 B⑦：无锚那一趟走**全宽侧滑**（顶层平移）。走 hero 时这一层不许动
+            // （`sideSliding` 只在三条退路上翻真），两条路都上屏就是"既飞又滑"。
+            // 用 `graphicsLayer` 而不是 padding：平移是纯绘制层的，几何零变化 ——
+            // 起点矩形是点击那一刻量的，挪了就对不上屏上那一块（`ChromeCaptureSuppress` 同族）。
+            .graphicsLayer {
+                if (sideSliding) {
+                    translationX = size.width * sideSlideTopOffset(sideSlide.value)
+                }
+            }
             // 底**不是**一块恒定的不透明色：入场那两档它必须让开（见 [pageAlpha]）。
             // 用 `drawBehind` 而不是 `background`：后者在组合期取值，每帧都会把整页拖进重组。
             //

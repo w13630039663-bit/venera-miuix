@@ -702,9 +702,68 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
+    // ── 十四、批 B⑦ 无锚退路换侧滑（2026-10-19）─────────────────────────────
+    //
+    // ⑦ 的原话：「可见比不足 25% ⇒ 当场判无锚、走全宽侧滑（顶层平移、底层 -25% 视差 +
+    // alpha 0.9），**不再**走"整页从下沿抬上来"」。判式那一颗（`hasAnchor`）与投影
+    // （`sideSlideTopOffset` / `sideSlideBackOffset`）在 domain 层，由
+    // `GalleryAnchorGateTest` 钉；这里只钉**接线**：三条"不飞了"的路径是不是都改成侧滑了。
+
+    @Test
+    fun `无锚三条退路都改成侧滑`() {
+        val body = code(screen)
+        // 三条路径各调一次那颗辅助函数（没有逐页键 / 量不到落点 / 落点边缘回来而超时已放弃）。
+        // 定义句是 `fun startSideSlide() {`（以 `fun ` 开头），调用句是光秃秃的 `startSideSlide()`
+        // —— 两者都要数，且必须是"1 处定义 + 3 处调用"这一个组合。
+        // 少一处调用 = 有一条不飞了的路径还在"直接显示"；多一处 = 又有人就地起了一趟侧滑。
+        assertEquals(
+            "三条不飞了的路径都起动侧滑（批 B⑦）",
+            4,
+            body.countWith("startSideSlide()"),
+        )
+        assertEquals(
+            "其中只有一处是定义",
+            1,
+            body.countWith("fun startSideSlide()"),
+        )
+        // 口径只此一份：三处各写一遍动画就是三处真相（改弹簧档要改三个地方）。
+        // 定义那一笔与上面那笔合起来看：1 处定义 + 3 处调用 = 口径只有一份、三条路径都接上。
+        assertEquals(
+            "侧滑起动只住在一颗函数里（口径不重复）",
+            1,
+            body.countWith("sideSlide.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))"),
+        )
+        // 侧滑与 hero 互斥：起动那一颗带闸门，UI 层的平移也带闸门。
+        assertEquals(
+            "起动带 hero 闸门（正在飞就不侧滑）",
+            1,
+            body.countWith("if (entryFlying) return"),
+        )
+        assertEquals(
+            "顶层平移只在这一趟走（走 hero 时不许动）",
+            1,
+            body.countWith("if (sideSliding) {"),
+        )
+        // 平移必须来自判据层那一颗，不许在 UI 层就地写 `1f - progress`。
+        assertEquals(
+            "顶层平移吃判据层 sideSlideTopOffset",
+            1,
+            body.countWith("translationX = size.width * sideSlideTopOffset(sideSlide.value)"),
+        )
+        assertEquals(
+            "屏上不许就地写侧滑投影（判据只住一份）",
+            0,
+            body.countWith("translationX = size.width * (1f - "),
+        )
+        // 退路不许再演成"飞完了"：三条路径的日志都要念得出自己走了侧滑。
+        assertTrue(
+            "日志要念得出走侧滑（不许静默交回）",
+            body.any { it.contains("⇒ 走侧滑退路") },
+        )
+    }
+
     @Test
     fun `活画面件自带边界清单`() {
-        // 那颗件里有一条"组合期取位图 / 绘制期只做几何"的界，栽过七八次的那条。
         // 尺子只钉"界写在文件里"：下次谁再在 drawWithCache 里找 density，能看见这条。
         val live = src("com/venera/compose/gallery/ui/GalleryLiveFlyBody.kt")
         assertTrue(

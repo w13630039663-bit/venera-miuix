@@ -2,8 +2,12 @@ package com.venera.compose.gallery
 
 import com.venera.compose.gallery.domain.FlyRect
 import com.venera.compose.gallery.domain.MIN_VISIBLE_RATIO
+import com.venera.compose.gallery.domain.SIDE_SLIDE_BACK_ALPHA
+import com.venera.compose.gallery.domain.SIDE_SLIDE_PARALLAX
 import com.venera.compose.gallery.domain.anchorAcceptable
 import com.venera.compose.gallery.domain.hasAnchor
+import com.venera.compose.gallery.domain.sideSlideBackOffset
+import com.venera.compose.gallery.domain.sideSlideTopOffset
 import com.venera.compose.gallery.domain.visibleRatios
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,5 +93,54 @@ class GalleryAnchorGateTest {
         // 再滚一点只剩 100/500 = 20% ⇒ 无锚。
         val mostlyOut = FlyRect(left = 0f, top = 0f, width = 100f, height = 600f)
         assertFalse(hasAnchor(fullWin, mostlyOut))
+    }
+
+    // ── 批 B⑦ 侧滑退路的投影（2026-10-19）──────────────────────────────────
+    //
+    // ⑦ 的原话：「可见比不足 25% ⇒ 当场判无锚、走全宽侧滑（顶层平移、底层 -25% 视差 +
+    // alpha 0.9），不再走整页从下沿抬上来」。上面那几把尺钉的是"什么时候走侧滑"，
+    // 这里钉的是"走起来长什么样"。
+
+    @Test
+    fun `顶层从窗口外一径直插到归位`() {
+        // 0 = 整幅宽在外（还没进场），1 = 归位；中间线性。
+        assertEquals(1f, sideSlideTopOffset(0f), 1e-6f)
+        assertEquals(0f, sideSlideTopOffset(1f), 1e-6f)
+        assertEquals(0.5f, sideSlideTopOffset(0.5f), 1e-6f)
+    }
+
+    @Test
+    fun `顶层投影钳在两端不外推`() {
+        // 弹簧回弹过头那一档（>1）与外插（<0）都按端点算：侧滑不是 hero，
+        // 没有"飞出窗口再弹回来"那一说。
+        assertEquals(1f, sideSlideTopOffset(-0.5f), 1e-6f)
+        assertEquals(0f, sideSlideTopOffset(1.5f), 1e-6f)
+    }
+
+    @Test
+    fun `底层视差是负的且走四分之一幅`() {
+        assertEquals(-0.25f, SIDE_SLIDE_PARALLAX, 1e-6f)
+        // 起点那一刻底层已经退开一整格（= 常量），归位时回到 0。
+        assertEquals(-0.25f, sideSlideBackOffset(0f), 1e-6f)
+        assertEquals(0f, sideSlideBackOffset(1f), 1e-6f)
+        assertEquals(-0.125f, sideSlideBackOffset(0.5f), 1e-6f)
+        // 全程**不许变正**：正的会把底层也往右带，两屏一起动，视差就没了。
+        assertTrue(sideSlideBackOffset(0.3f) < 0f)
+    }
+
+    @Test
+    fun `底层不淡出停在零点九`() {
+        // 侧滑要的是"被推开"的体感；淡下去会读成"顶层在盖上去"。
+        assertEquals(0.9f, SIDE_SLIDE_BACK_ALPHA, 1e-6f)
+    }
+
+    @Test
+    fun `侧滑与 hero 是互斥的两条路`() {
+        // 这一笔钉的是**用法**而不是算式：有锚（≥25%）才飞，无锚才侧滑。
+        // 两条路都上屏就是"既飞又滑"，那种错只有真机能看见。
+        val card = FlyRect(left = 0f, top = 0f, width = 1000f, height = 2000f)
+        assertTrue("有锚 ⇒ 走 hero，不该侧滑", hasAnchor(full, card))
+        val clipped = FlyRect(left = 0f, top = 1998f, width = 1000f, height = 2f)
+        assertFalse("无锚 ⇒ 走侧滑，不该飞", hasAnchor(full, clipped))
     }
 }

@@ -59,3 +59,45 @@ fun hasAnchor(full: FlyRect, rect: FlyRect): Boolean {
  */
 fun anchorAcceptable(full: FlyRect, rect: FlyRect): FlyRect? =
     if (hasAnchor(full, rect)) rect else null
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 批 B⑦：无锚那一趟的**侧滑退路**（2026-10-19，计划 §5 ⑦ 的原话）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 侧滑退路第 [progress] 成时，**顶层**（进场那一屏）该平移多少 —— 单位是**它自己的宽度**。
+ *
+ * 0 = 停在窗口右缘外（还没进场），1 = 归位（进完了）。取整幅宽度而不是固定 dp：
+ * 窗口多宽它就从多远处来，窄屏（分屏）上不会出现"滑了半截停住"。
+ *
+ * 这一族与 [GalleryFlightFrame] 那条 hero 路**互斥**：有锚才飞，无锚才侧滑
+ * （[hasAnchor] 是唯一的分岔判据）。两条路都画在屏上就是"既飞又滑"，
+ * 而那种错只有真机能看见。
+ */
+fun sideSlideTopOffset(progress: Float): Float {
+    val t = progress.coerceIn(0f, 1f)
+    return 1f - t
+}
+
+/**
+ * 侧滑退路第 [progress] 成时，**底层**（后面那一屏）的视差平移 —— 单位同样是它自己的宽度。
+ *
+ * 取 **-25%**：往反方向走四分之一幅，读起来是"顶层把底层推开"而不是"顶层盖上去"。
+ * 符号必须是负的 —— 正的会把底层也往右带，两屏一起动，视差就没了。
+ */
+const val SIDE_SLIDE_PARALLAX = -0.25f
+
+/** 侧滑退路第 [progress] 成时底层的**不透明度**（停在 0.9，不跟到 0）。 */
+const val SIDE_SLIDE_BACK_ALPHA = 0.9f
+
+/**
+ * 侧滑退路第 [progress] 成时底层的视差平移（单位：底层自己的宽度）。
+ *
+ * 与 [SIDE_SLIDE_PARALLAX] 分开写的理由：那枚是**常量**（口径），这一颗是**投影**
+ * （乘上进度）。常量给尺子钉"值是多少"，投影给接线用"这一帧该多少"——
+ * 两件事混在一起，改口径就会顺手改错投影。
+ *
+ * 底层**不淡出**：它全程停在 [SIDE_SLIDE_BACK_ALPHA]（0.9），不随进度走 ——
+ * 侧滑要的是"被推开"的体感，淡下去会读成"顶层在盖上去"。
+ */
+fun sideSlideBackOffset(progress: Float): Float = SIDE_SLIDE_PARALLAX * (1f - progress.coerceIn(0f, 1f))
