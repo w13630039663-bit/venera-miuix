@@ -149,14 +149,33 @@ object GalleryRecommendations {
     }
 
     /**
+     * 「按收藏推荐」这一轴**会去问的站** —— 这份表就是这条轴的发车名单，唯一的一份。
+     *
+     * 为什么必须是一张表而不是 `GallerySite.entries`（2026-10-18 立案，真机闪退的根因）：
+     * 枚举里有 pixiv（10-16 选型⑤ 那一批开的），而 pixiv 的**推荐腿取数**与**每页条数**两处
+     * 都故意留在 `GallerySite.notWired(...)` 那一侧 —— 那条门是"抛错"设计的（走到就说明有东西
+     * 把 pixiv 塞进了它不该进的面）。问题在于发车名单当时跟着枚举长：**收藏里一有 pixiv 的图**
+     * （10-18 起 pixiv 收藏是真存档并会同步到站方），`recommendBySite` 就真算得出一份 pixiv 的标签，
+     * 于是那条腿被发车、抛出的 `UnsupportedOperationException` 穿过 `GalleryLegGuard.guard`
+     * （它只兜 `Result` 与超时，不兜抛出的异常）打死后台协程 ⇒ 一进画廊整个进程没了。
+     *
+     * ⚠️ 加一枚进这份表的前置条件是**两处都接好**（取数 + 每页条数），只接一处就是又一次闪退。
+     * 搜索那一条早就是这么收口的（`GallerySearchSource.ALL` 同样 `filter { it != PIXIV }`），
+     * 这一条是同族漏补的那一格。
+     */
+    val RECOMMEND_LEG_SITES: List<GallerySite> = GallerySite.entries.filter { it != GallerySite.PIXIV }
+
+    /**
      * 每站各算一份。两站用**各自的抽样流**（种子 + 站点序号），
      * 与 `GalleryMerge.mix` 同一条理由：共用一段随机数会让两站的抽法互相牵连。
+     *
+     * ⚠️ 发车名单是 [RECOMMEND_LEG_SITES] 而不是枚举全体，理由与真机读数见那颗的头注。
      */
     fun recommendBySite(
         favourites: List<GalleryFavorite>,
         seed: Long,
         isBlocked: (String) -> Boolean = { false },
-    ): Map<GallerySite, GalleryRecommendation> = GallerySite.entries.associateWith { site ->
+    ): Map<GallerySite, GalleryRecommendation> = RECOMMEND_LEG_SITES.associateWith { site ->
         recommend(
             seeds = favourites.filter { it.site == site },
             seed = seed + site.ordinal,

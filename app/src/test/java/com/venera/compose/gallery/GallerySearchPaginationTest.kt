@@ -48,7 +48,7 @@ class GallerySearchPaginationTest {
 
     @Test
     fun `认不出的站点整条丢掉而不是硬归某一站`() {
-        val raw = "pixiv=hime\ngelbooru=hime_cut\n=只有查询\nyandere="
+        val raw = "danbooru=hime\ngelbooru=hime_cut\n=只有查询\nyandere="
         val out = decodeGallerySearchHistory(raw)
         assertEquals(listOf(entry(GallerySite.GELBOORU, "hime_cut")), out)
     }

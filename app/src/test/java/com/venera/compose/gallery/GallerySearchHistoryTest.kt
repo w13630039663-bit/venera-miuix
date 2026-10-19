@@ -78,7 +78,7 @@ class GallerySearchHistoryTest {
 
     @Test
     fun `认不出站点的整行丢掉而不是硬归某站`() {
-        val out = decodeGallerySearchHistory("pixiv=1girl\nyandere=ok")
+        val out = decodeGallerySearchHistory("danbooru=1girl\nyandere=ok")
         // 把一串 Pixiv 标签硬当成某个 booru 的写法，会得到一句"没有结果"—— 比少一条历史更坏。
         assertEquals(listOf("ok"), out.map { it.query })
         assertEquals(setOf(GallerySite.YANDERE), out.single().sites)

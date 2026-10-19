@@ -5,14 +5,17 @@ import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
+import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.security.guard.GuardRule
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * 画廊侧的**业务 API 容器 + 守卫口 + 偏好口**（适配器在 `android/GalleryPortsAndroid.kt`，
- * 其余十二颗必给契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`；
- * 第十三颗 [GalleryPorts.gelbooruWindows] 与第十四颗 [GalleryPorts.history] 有默认值，只有移动端接 ——
- * 前者见那颗口上的「为什么不并进 ScoredBoard」，后者见那颗槽上的注）。
+ * 其余必给契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`；
+ * 构造尾部那几颗**有默认值**的槽只有移动端接 —— [GalleryPorts.gelbooruWindows]、
+ * [GalleryPorts.history]、[GalleryPorts.pixiv]、[GalleryPorts.pixivAccount]、
+ * [GalleryPorts.googleIdentity]、[GalleryPorts.pixivWork]，每颗自己的理由写在那颗槽上。
+ * （这里刻意不数第几颗：加一颗就全体改号，是这种计数句最便宜的坏法。）
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -48,6 +51,23 @@ class GalleryPorts(
     // （`DesktopGalleryBrowseHistory` + 首页「历史」那一行），压根不会问画廊共享口上的这一颗 ——
     // 所以默认 null 不是"移动端专用开关"，是"这一侧没有这一档"。
     val history: GalleryBrowseHistory? = null,
+    // pixiv 那三条匿名腿（2026-10-17）：同一条理由的可空槽 —— 桌面那一侧**不接 pixiv**
+    // （既有口径：对它交 `Result.failure` 而不是 `success(null)`，见
+    // `docs/rounds/windows-gallery-home-s2a-wiring-2026-10-03.md` §67），
+    // 所以默认 null 是"这一侧没有这一档"，不是"接了但坏掉"。
+    val pixiv: GalleryPixivWorks? = null,
+    // pixiv 的登录态（2026-10-17 账号系统 · P2）：同一条理由的可空槽。桌面这一侧既没有 pixiv 的
+    // 取数腿、也没有 OAuth 回跳的接收面（回跳靠 AndroidManifest 里那颗 intent-filter 落到
+    // MainActivity，桌面没有对应的东西），所以它问都不会问 —— 默认 null 是"这一侧没有这一档"。
+    val pixivAccount: PixivCredentials? = null,
+    // 本机 Google 账号身份（2026-10-17 第四轮）：同一条理由的可空槽。桌面没有账号框架
+    // （`AccountManager` / 系统账号选择器都在移动端），界面拿到 null 就把那一行整块收起来。
+    // ⚠️ 它不是登录态 —— 只记"这台机器上是哪个 Google 账号"，判据与理由见 [LocalGoogleIdentity]。
+    val googleIdentity: LocalGoogleIdentity? = null,
+    // pixiv 作品页那两档（2026-10-18）：同一条理由的可空槽 —— 那一屏 Android 独有，桌面既没有
+    // 它也没有读这三档的地方，所以它问都不会问。为什么单立一颗接口而不塞进 `GalleryPreferences`：
+    // 见 [PixivWorkPreferences] 的头注。
+    val pixivWork: PixivWorkPreferences? = null,
 ) {
 
     companion object {
@@ -108,16 +128,21 @@ interface GalleryContentGuard {
 }
 
 /**
- * 画廊**显示与播放行为**读的那 12 枚偏好，getter-only。
+ * 画廊**显示与播放行为**读的那些偏好，getter-only。
  *
- * 为什么没有写口：逐颗核过调用点 —— 画廊侧（`gallery/ui` 全部 10 处取用）对这些值**只读**，
- * 15 枚 `setGalleryXxx` 的写口今天全在漫画侧的设置页 `feature/settings/GallerySettings.kt`
+ * ⚠️ 这里刻意**不写枚数**：这张账涨过三次（水彩、画廊存名规则、…），而每涨一次"那 12 枚"这种
+ * 计数句就跟着过期一次，过期的一句会被下一个人当事实引用。枚数由两处现量：这颗接口上的
+ * `val gallery…: StateFlow` 行数，与桌面 `DesktopGallerySettingsSpecTest` ③ 那笔加法 —— 后者会红。
+ *
+ * 为什么没有写口：逐颗核过调用点 —— 画廊侧（`gallery/ui` 那些取用点）对这些值**只读**，
+ * `setGalleryXxx` 的写口今天全在漫画侧的设置页 `feature/settings/GallerySettings.kt`
  * （它是"给画廊配开关"的界面，不是画廊本身）。把写口收进画廊契约就等于把设置页搬进画廊，
  * 那是 Part B 的 W5（`docs/rounds/business-api-boundary-2026-10.md` §八）要一起做的一件事：
  * W5 落 `gallery/data/GalleryPreferences.kt` 实现类时直接接上这颗接口，本轮的声明就是它的前置。
  *
  * 存储语义不在这里发明：值仍然来自漫画侧那一份 `VeneraPreferences`（只读共享的档，
- * `docs/rounds/gallery-module-isolation-plan-2026-09.md:36-47`），存储名与 15 枚键名逐字不变。
+ * `docs/rounds/gallery-module-isolation-plan-2026-09.md:36-47`），存储名与那些 `pref_gallery_*`
+ * 键名逐字不变。pixiv 作品页那两枚（`pref_pixiv_work_*`）在隔壁 [PixivWorkPreferences]，不在这张账上。
  */
 interface GalleryPreferences {
 
@@ -150,4 +175,24 @@ interface GalleryPreferences {
 
     /** 「画成水彩」入口开关（Beta，默认关）：见 VeneraPreferences 该条说明。 */
     val galleryWatercolorBeta: StateFlow<Boolean>
+}
+
+/**
+ * pixiv 作品页那两档（2026-10-18）——**故意不挂进 [GalleryPreferences]**。
+ *
+ * 那一颗是**跨端共享**的读面：桌面那颗 `DesktopGalleryPreferences` 逐枚实现它，
+ * 而 pixiv 作品页这一屏只在 Android 存在（桌面有它自己的详情浮层与设置页）。
+ * 挂进去就等于替这两档各写一个桌面没人读的 getter，还要把桌面那笔"每一枚都有下落"的账
+ * 一起改宽 —— 那是给一侧没有的档位编一个下落。
+ *
+ * 口径与 [GalleryPorts.history] 同一条：槽位可空 = **这一侧没有这一档**，不是"接了但坏掉"。
+ * 写侧今天全在漫画侧的设置页（`feature/settings/GallerySettings.kt`），与那 15 枚同一形态。
+ */
+interface PixivWorkPreferences {
+
+    /** 同作品两页之间那条缝：0dp 无缝 / 1dp 一条边。默认一条边。 */
+    val pageSeam: StateFlow<PixivPageSeam>
+
+    /** 详情接不接在最后一页之后（关掉则详情只走抽屉）。默认接。 */
+    val detailsInFlow: StateFlow<Boolean>
 }

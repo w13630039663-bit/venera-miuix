@@ -54,6 +54,17 @@ import kotlinx.coroutines.coroutineScope
 class GalleryDailyFeed(private val boards: GalleryBoards) {
 
     /**
+     * @param onLeg 某一条腿**刚回来**时回调一次，参数是"到目前为止已经到货的那些站的池子"。
+     *
+     *   为什么要有它（2026-10-17 第七轮，用户「每日热门这个加载时间太长了」）：
+     *   下面三笔是并发的，但整轮要等**最慢的那一站**（单站预算 12s），而那期间屏上除了一排骨架
+     *   什么都没有。真机上读起来就是"每日热门一直不出来"。
+     *   有了这个回调，先回来的那一站可以在 1~3 秒内就把卡摆上屏，慢的那站到货时整屏换成
+     *   这一轮的最终结果（[Daily.merged]，口径不变）。
+     *
+     *   回调在**取数线程**上被调用（可能就是 IO 线程）——实现方自己负责切回自己的线程/作用域。
+     *   传空 `onLeg` = 与从前逐字一致（本仓单测都走这一档）。
+     *
      * @param failures 这轮**没给内容**的站及原因。非空时页面要挂一条提示 ——
      *                 否则"三站混搭"会静默退化成一两站刷屏，那是本仓最忌的静默交错。
      * @param date     实际请求的那一天（只用于 yande.re 那一路的日榜）。
@@ -68,12 +79,31 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
         val pools: Map<GallerySite, List<GalleryPost>>,
     )
 
-    suspend fun loadDaily(seed: Long): Result<Daily> {
+    suspend fun loadDaily(
+        seed: Long,
+        onLeg: (Map<GallerySite, List<GalleryPost>>) -> Unit = {},
+    ): Result<Daily> {
         val date = yesterdayString()
+        // 三笔并发各自落地 → 这里收"到货集合"。用并发安全的表：三笔真在不同的线程上跑。
+        val landed = java.util.concurrent.ConcurrentHashMap<GallerySite, List<GalleryPost>>()
+        fun publish(site: GallerySite, posts: List<GalleryPost>) {
+            if (posts.isEmpty()) return
+            landed[site] = posts
+            onLeg(landed.toMap())
+        }
         val (yande, gelbooru, safebooru) = coroutineScope {
-            val y = async { GalleryLegGuard.guard(GallerySite.YANDERE) { boards.yandere.fetchDailyPopular() } }
-            val g = async { GalleryLegGuard.guard(GallerySite.GELBOORU) { boards.gelbooru.fetchTopScored() } }
-            val s = async { GalleryLegGuard.guard(GallerySite.SAFEBOORU) { boards.safebooru.fetchTopScored() } }
+            val y = async {
+                GalleryLegGuard.guard(GallerySite.YANDERE) { boards.yandere.fetchDailyPopular() }
+                    .also { publish(GallerySite.YANDERE, it.posts) }
+            }
+            val g = async {
+                GalleryLegGuard.guard(GallerySite.GELBOORU) { boards.gelbooru.fetchTopScored() }
+                    .also { publish(GallerySite.GELBOORU, it.posts) }
+            }
+            val s = async {
+                GalleryLegGuard.guard(GallerySite.SAFEBOORU) { boards.safebooru.fetchTopScored() }
+                    .also { publish(GallerySite.SAFEBOORU, it.posts) }
+            }
             Triple(y.await(), g.await(), s.await())
         }
         val failures = listOf(yande, gelbooru, safebooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()

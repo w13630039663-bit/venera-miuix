@@ -98,8 +98,8 @@ class DebtReadinessTest {
         ),
         Debt(
             id = "W5（画廊偏好**写口**）",
-            unlock = "gallery/data/ 的画廊契约出现写成员（今天 `GalleryPreferences` 12 枚 getter-only，" +
-                "而唯一写者 feature/settings/GallerySettings.kt 要吃的是 15 枚 setGalleryXxx）⇒ " +
+            unlock = "gallery/data/ 的画廊契约出现写成员（今天 `GalleryPreferences` 13 枚 getter-only，" +
+                "而唯一写者 feature/settings/GallerySettings.kt 要吃的是 17 枚 setGalleryXxx）⇒ " +
                 "那两行才有的契约可引",
             // ⚠️ 判式不是「实现类存在」：读侧实现 AndroidGalleryPreferences 早已接在 GalleryPorts 上
             //   （B2 那批顺手落了，方案 §六/§八 却还写着 W5 未做 —— 文档那句已按实码纠正）。
@@ -119,7 +119,7 @@ class DebtReadinessTest {
     private companion object {
         /**
          * 「画廊侧契约有写成员」的判式：`fun setGalleryXxx` / `fun toggleGalleryXxx` / `var galleryXxx:` 三种形状之一。
-         * 今天三种都没有（`GalleryPreferences` 是 12 枚 `val`），所以这条探测器现在**不该亮**。
+         * 今天三种都没有（`GalleryPreferences` 是 13 枚 `val`，2026-10-18 现量），所以这条探测器现在**不该亮**。
          */
         val GALLERY_PREFS_WRITE = Regex("""\b(?:fun\s+(?:set|toggle)Gallery[A-Z]\w*|var\s+gallery[A-Z]\w*\s*:)""")
     }

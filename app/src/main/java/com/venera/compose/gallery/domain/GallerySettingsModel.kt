@@ -94,7 +94,15 @@ object GallerySettingsModel {
             }
             GallerySaveNaming.TIMESTAMP -> requireNotNull(timestamp) { "时间戳命名必须给时间戳" }
         }
-        return "$base.$ext"
+        // 页轴那几页共用同一个作品号：默认那一档四页算出来同名，落盘要靠 `uniqueName` 补 " (1)"，
+        // 屏上读起来就像"存了四张一模一样的"。带上页位之后第 3 页就是 `-p2`。
+        // ORIGINAL 那一档不加 —— 站方原文件名自己就带 `_p2`，两处不必各说一遍。
+        val pageTail = if (post.pageOrdinal != null && naming != GallerySaveNaming.ORIGINAL) {
+            "-p${post.pageOrdinal}"
+        } else {
+            ""
+        }
+        return "$base$pageTail.$ext"
     }
 
     /** 原图地址里的最后一段（去掉查询串）。地址里没有文件名时返回 null，由调用方退化。 */

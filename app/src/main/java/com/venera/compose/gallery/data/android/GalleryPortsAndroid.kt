@@ -7,6 +7,7 @@ import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
+import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.security.guard.GuardRule
 import kotlinx.coroutines.flow.StateFlow
@@ -39,9 +40,12 @@ object AndroidGalleryPorts {
                 ?: throw IllegalStateException(
                     "画廊业务 API 的 Android 接线需要 Context，实际收到：${handle?.javaClass?.name ?: "null"}"
                 )
+            // 共享读面与 pixiv 作品页那两档交**同一颗**实例：那些流本来就出自 `VeneraPreferences`
+            // 单例（换个实例读数一样），这里只是不给同一件事造第二个对象。
+            val galleryPrefs = AndroidGalleryPreferences(context)
             GalleryPorts(
                 contentGuard = AndroidGalleryContentGuard(context),
-                prefs = AndroidGalleryPreferences(context),
+                prefs = galleryPrefs,
                 favorites = AndroidGalleryFavorites(context),
                 follows = AndroidGalleryArtistFollows(context),
                 avatars = AndroidGalleryArtistAvatars(context),
@@ -54,6 +58,11 @@ object AndroidGalleryPorts {
                 hygiene = AndroidGalleryNetworkHygiene(context),
                 gelbooruWindows = AndroidGelbooruWindowProbe(context),
                 history = AndroidGalleryHistory(context),
+                pixiv = AndroidGalleryPixivWorks(context),
+                pixivAccount = PixivAccount.getInstance(context),
+                // 本机 Google 账号身份（不是登录态）：装配口是**唯一**允许取它单例的地方。
+                googleIdentity = GoogleIdentityAndroid.getInstance(context),
+                pixivWork = galleryPrefs,
             ).also { ports = it }
         }
     }
@@ -75,8 +84,8 @@ private class AndroidGalleryContentGuard(private val context: Context) : Gallery
         manager.addRule(type, pattern, isRegex)
 }
 
-/** 12 枚只读 getter，交回同一个 `StateFlow` 实例：订阅对象没换、重组时序没换。 */
-private class AndroidGalleryPreferences(private val context: Context) : GalleryPreferences {
+/** 只读 getter，交回同一个 `StateFlow` 实例：订阅对象没换、重组时序没换。枚数不写在这颗的头注上，理由见接口那颗。 */
+private class AndroidGalleryPreferences(private val context: Context) : GalleryPreferences, PixivWorkPreferences {
 
     private val prefs: VeneraPreferences get() = VeneraPreferences.getInstance(context)
 
@@ -93,4 +102,7 @@ private class AndroidGalleryPreferences(private val context: Context) : GalleryP
     override val galleryHideTopBar: StateFlow<Boolean> get() = prefs.galleryHideTopBar
     override val galleryHideBottomBar: StateFlow<Boolean> get() = prefs.galleryHideBottomBar
     override val galleryWatercolorBeta: StateFlow<Boolean> get() = prefs.galleryWatercolorBeta
+    // pixiv 作品页那两档走隔壁那颗接口（`GalleryPreferences` 是跨端共享读面，桌面不实现这两枚）。
+    override val pageSeam: StateFlow<PixivPageSeam> get() = prefs.pixivWorkSeam
+    override val detailsInFlow: StateFlow<Boolean> get() = prefs.pixivWorkDetailsInFlow
 }

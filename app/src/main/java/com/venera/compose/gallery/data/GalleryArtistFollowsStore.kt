@@ -36,9 +36,13 @@ private data class ArtistFollowEntry(
 /**
  * 画廊的**关注画师名单**。
  *
- * 语义按用户 2026-09-30 拍板的那一档：「名单 + 直达入口」—— 我们**不与站方发生任何关注关系**
- * （两站都没有匿名可写的关注端点），这份名单只在我们这一侧成立：它决定搜索卡上那一排入口，
- * 以及画师行上那颗胶囊的亮/灭。
+ * 语义分两档，**pixiv 那一档是 2026-10-19 新开的**：
+ * - **图库两站**：用户 2026-09-30 拍板的那一档「名单 + 直达入口」—— 不与站方发生任何关注关系
+ *   （两站都没有匿名可写的关注端点），这份名单只在我们这一侧成立：它决定搜索卡上那一排入口，
+ *   以及画师行上那颗胶囊的亮/灭。
+ * - **pixiv**：真相在站方（`/v1/user/detail` 的 `is_followed` + `/v1/user/follow/add|delete`），
+ *   这份名单对 pixiv **退成缓存** —— 站方答上成功之后由 [setFollowed] 按目标状态对齐，
+ *   而不是让它自己说了算。用户那一轮的原话是「我这些操作全部都是有登录的」。
  *
  * 存储照 [GalleryFavoritesStore] 同一份规格：
  * - 构造时**同步**读一次（名单只有几十条，收益是第一帧那排入口就是对的，不会先空一下再蹦出来）；
@@ -70,8 +74,24 @@ class GalleryArtistFollowsStore internal constructor(private val paths: PathProv
     /** 关注/取消，返回**操作之后**的状态（true = 已关注），供 UI 决定说哪句话。 */
     suspend fun toggle(site: GallerySite, name: String): Boolean {
         val adding = !isFollowing(site, name)
+        setFollowed(site, name, adding)
+        return adding
+    }
+
+    /**
+     * 把一位摆成**指定状态**（幂等），返回这一次是否真的动了。
+     *
+     * 为什么单独一颗：pixiv 那一侧以**站方**为真相（用户 2026-10-19 拍板「站方为准，本地只当
+     * 缓存」）。写腿答上成功之后，本地这本账要按目标状态对齐，而不是"拿当前本地值翻一格"——
+     * 站方成功、本地翻错方向，屏上就亮着一段站方并不存在的关注关系。
+     *
+     * 本来就是这个状态时**不重排名单、也不写盘**：站方回一句"成功"就把用户名单的顺序洗一遍，
+     * 是凭空造出来的抖动。
+     */
+    suspend fun setFollowed(site: GallerySite, name: String, followed: Boolean): Boolean {
+        if (isFollowing(site, name) == followed) return false
         _follows.value = GalleryArtistFollows.sorted(
-            if (adding) {
+            if (followed) {
                 GalleryArtistFollows.withAdded(
                     _follows.value,
                     GalleryArtistFollow(site, name, System.currentTimeMillis()),
@@ -81,7 +101,7 @@ class GalleryArtistFollowsStore internal constructor(private val paths: PathProv
             },
         )
         persist(_follows.value)
-        return adding
+        return true
     }
 
     /**

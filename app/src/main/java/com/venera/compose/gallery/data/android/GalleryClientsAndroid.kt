@@ -39,6 +39,9 @@ private fun engineFor(context: Context): HttpEngine = AndroidHttpEngine(context.
 fun PixivClient.Companion.getInstance(context: Context): PixivClient =
     getInstance(engineFor(context))
 
+fun PixivAppClient.Companion.getInstance(context: Context): PixivAppClient =
+    getInstance(engineFor(context))
+
 fun YandeReClient.Companion.getInstance(context: Context): YandeReClient =
     getInstance(engineFor(context))
 

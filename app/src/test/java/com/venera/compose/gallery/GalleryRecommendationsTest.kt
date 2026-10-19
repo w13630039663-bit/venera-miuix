@@ -153,6 +153,67 @@ class GalleryRecommendationsTest {
         assertEquals(listOf("gelbooru_only_tag"), gelbooru.tags)
     }
 
+    /**
+     * 收藏里有 pixiv 的图时，那一站**不许进这条轴**（2026-10-18 真机闪退的根因，非回归用例）。
+     *
+     * 崩的形状：`recommendBySite` 从前按 `GallerySite.entries` 发车 ⇒ 收藏里一有 pixiv 的图，
+     * pixiv 就真算得出一份标签 ⇒ 那条腿被发出去，而它的取数住在 `GallerySite.notWired(...)`
+     * （**抛错**设计）那一侧；抛出的 `UnsupportedOperationException` 穿过 `GalleryLegGuard.guard`
+     * （它只兜 `Result` 与超时）打死后台协程 ⇒ 用户切到画廊整个进程没了。
+     * 10-18 起 pixiv 收藏是真存档并会同步到站方，所以这条路的门槛只是"你收藏过一张 pixiv 的图"。
+     */
+    @Test
+    fun `收藏里有 pixiv 的图时那一站不进推荐这条轴`() {
+        val favourites = listOf(
+            fav(GallerySite.YANDERE, 1, tags = "yandere_only_tag"),
+            fav(GallerySite.GELBOORU, 2, tags = "gelbooru_only_tag"),
+            fav(GallerySite.PIXIV, 3, tags = "pixiv_only_tag"),
+        )
+        val bySite = GalleryRecommendations.recommendBySite(favourites, seed = 3L)
+        assertFalse(
+            "pixiv 拿到了推荐标签 = 会被发进一条它取不了数的腿（取数与每页条数两处都还是 notWired）",
+            bySite.containsKey(GallerySite.PIXIV),
+        )
+        // 对照组：另外三站一枚不少 —— 把整条轴清空也能让上面那条成立，所以必须钉住剩下的。
+        assertEquals(
+            "这条轴该问的站一枚不能少：${GalleryRecommendations.RECOMMEND_LEG_SITES}",
+            GallerySite.entries.filterNot { it == GallerySite.PIXIV }.toSet(),
+            bySite.keys,
+        )
+        // 对照组的对照组：读空了上面两条会一起变真 —— 确认 booru 那三站真拿到了标签。
+        assertTrue(
+            "yande.re 那份算不出标签，说明 seeds 根本没分组：$bySite",
+            bySite.getValue(GallerySite.YANDERE) is GalleryRecommendation.Tags,
+        )
+    }
+
+    /**
+     * 发车名单**只许有一份**（同一件事两把尺 = 迟早分叉）。
+     *
+     * 这条轴上有四处按站走：算推荐（domain）、拼 query、逐站发车、每站计数、屏上那行读数。
+     * 只要有一处还写 `GallerySite.entries`，它就有可能问出一站 domain 没算过的腿 ——
+     * 而崩点会落在"那条腿的取数"上，与这里的名单隔了三个文件，最难归因。
+     */
+    @Test
+    fun `推荐这条轴的四处都不再按枚举全体发车`() {
+        val base = com.venera.compose.testsupport.RepoSources.appMain
+        listOf(
+            "com/venera/compose/gallery/ui/GalleryForYouViewModel.kt",
+            "com/venera/compose/gallery/ui/GalleryForYouScreen.kt",
+        ).forEach { rel ->
+            val file = java.io.File(base, rel)
+            assertTrue("找不到 $rel，量具失效", file.isFile)
+            val lines = file.readText().replace("\r\n", "\n").lines().map { it.trim() }
+                .filter { !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
+            val offenders = lines.filter { it.contains("GallerySite.entries") }
+            assertTrue(
+                "$rel 还在按枚举全体发车（那些位置必须读 RECOMMEND_LEG_SITES）：$offenders",
+                offenders.isEmpty(),
+            )
+            assertTrue("对照组失效：$rel 没读到发车那一份表", lines.any { it.contains("GalleryRecommendations.RECOMMEND_LEG_SITES") })
+        }
+    }
+
     @Test
     fun `认不出站点的那条收藏不参与任何一站`() {
         // `GalleryFavorite.site` 对未知站点键回 null（不是"当成某一站"），

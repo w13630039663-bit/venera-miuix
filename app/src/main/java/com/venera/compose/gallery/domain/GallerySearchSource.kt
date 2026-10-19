@@ -100,8 +100,17 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
         const val NEEDS_ACCOUNT_REASON: String =
             NEEDS_ACCOUNT_TITLE + "：" + NEEDS_ACCOUNT_BODY
 
-        /** 两站都打。顺序恒为站表序。 */
-        val ALL = GallerySearchSource(GallerySite.entries.toList())
+        /**
+         * 两站都打。顺序恒为站表序。
+         *
+         * ⚠️ **pixiv 被显式剥出去**（2026-10-16 选型⑤ + 那份调研稿 §八「不把 pixiv 塞进来源轴的
+         * 『全部』」）：它是"一个词 + 站内那串 `s_mode/order`"的语法，与 booru 的 `tags=a+b order:score`
+         * **不同轴** —— 并进「全部」就是"半面墙按标签、半面墙按另一套"那种假读数。
+         * 它只从首页那一格（内容域）进，不进这一排。
+         * ⚠️ 2026-10-16 深夜改判一句：这里给出的理由**不是**"匿名搜索不通"。
+         * `ajax/search/artworks/{词}` 现量 200 / 每页 60 条 / `p=2` 真换页 —— 剥出去是**选择**，不是数据墙。
+         */
+        val ALL = GallerySearchSource(GallerySite.entries.filter { it != GallerySite.PIXIV })
 
         fun single(site: GallerySite): GallerySearchSource = GallerySearchSource(listOf(site))
 
@@ -113,7 +122,7 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
          * 就会出现"分段器点亮第一格、状态层其实在单站档"那种错位。
          */
         val options: List<GallerySearchSource> =
-            listOf(ALL) + GallerySite.entries.map { single(it) }
+            listOf(ALL) + GallerySite.entries.filter { it != GallerySite.PIXIV }.map { single(it) }
     }
 }
 
@@ -178,4 +187,7 @@ val GallerySite.sourceMarkLetter: String
         GallerySite.YANDERE -> "Y"
         GallerySite.GELBOORU -> "G"
         GallerySite.SAFEBOORU -> "S"
+        // 永远画不出来：pixiv 不在来源轴里（见上面 ALL 那条），留着这枚字母是为了
+        // 万一哪天它进了某一排，读起来是 "P" 而不是撞走别人的 "S"。
+        GallerySite.PIXIV -> "P"
     }

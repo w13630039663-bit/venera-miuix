@@ -10,6 +10,7 @@ import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GallerySaveNaming
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
+import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.ui.tokens.ThemeSeedPresets
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -349,6 +350,30 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _galleryAiBadge = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_AI_BADGE, true))
     val galleryAiBadge: StateFlow<Boolean> = _galleryAiBadge.asStateFlow()
 
+    // ---- pixiv 作品页的两档（2026-10-18，方案 docs/rounds/gallery-pixiv-work-page-v4-vertical-2026-10-18.html §一⑤）----
+    // 两枚都**只有 pixiv 作品页消费**：图库三站仍走旧看图器，那些档位对它们没有意义（两屏隔离）。
+
+    /**
+     * 同作品两页之间那条缝。默认**留一条边**（`hairline` 1dp）——
+     * 无缝那一档接续感最强，但两页同色时用户会以为还在同一页（方案里那张对照图量的就是这个）。
+     */
+    private val _pixivWorkSeam = MutableStateFlow(readEnum(KEY_PIXIV_WORK_SEAM, PixivPageSeam.HAIRLINE))
+    val pixivWorkSeam: StateFlow<PixivPageSeam> = _pixivWorkSeam.asStateFlow()
+
+    /** 详情接不接在最后一页之后（关掉则详情只走抽屉，图与详情分开看）。默认接。 */
+    private val _pixivWorkDetailsInFlow = MutableStateFlow(prefs.getBoolean(KEY_PIXIV_WORK_DETAILS_IN_FLOW, true))
+    val pixivWorkDetailsInFlow: StateFlow<Boolean> = _pixivWorkDetailsInFlow.asStateFlow()
+
+    fun setPixivWorkSeam(seam: PixivPageSeam) {
+        prefs.put(KEY_PIXIV_WORK_SEAM, seam.name)
+        _pixivWorkSeam.value = seam
+    }
+
+    fun setPixivWorkDetailsInFlow(on: Boolean) {
+        prefs.put(KEY_PIXIV_WORK_DETAILS_IN_FLOW, on)
+        _pixivWorkDetailsInFlow.value = on
+    }
+
     /**
      * 画廊：**上滑**（手指向上推、浏览下面的图）时**收起顶栏**。默认**关**。
      *
@@ -441,6 +466,14 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /** 自定义取色的种子色（ARGB）。只有 [themeColorSource] 为 CUSTOM 时才参与色板生成。 */
     private val _themeSeedColor = MutableStateFlow(prefs.getInt(KEY_THEME_SEED_COLOR, ThemeSeedPresets.DefaultArgb))
     val themeSeedColor: StateFlow<Int> = _themeSeedColor.asStateFlow()
+
+    /**
+     * 首页顶栏那只桌宠摆不摆。**默认关**（新能力默认关闭 = 零回归，与画成水彩 Beta 同一条判据）。
+     *
+     * 关着时 `navigationIcon` 那一格根本不组合，不是"画了个隐形的"。
+     */
+    private val _homePetSticker = MutableStateFlow(prefs.getBoolean(KEY_HOME_PET_STICKER, false))
+    val homePetSticker: StateFlow<Boolean> = _homePetSticker.asStateFlow()
 
     // Unknown values from backups/newer versions must not prevent the app from opening.
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T): T =
@@ -623,6 +656,11 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _navigationBarStyle.value = style
     }
 
+    fun setHomePetSticker(on: Boolean) {
+        prefs.put(KEY_HOME_PET_STICKER, on)
+        _homePetSticker.value = on
+    }
+
     fun setSurfaceMaterial(material: SurfaceMaterial) {
         prefs.put(KEY_SURFACE_MATERIAL, material.name)
         _surfaceMaterial.value = material
@@ -788,6 +826,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_THEME_MODE = "pref_theme_mode"
         private const val KEY_APPEARANCE_STYLE = "pref_appearance_style"
         private const val KEY_NAVIGATION_BAR_STYLE = "pref_navigation_bar_style"
+        private const val KEY_HOME_PET_STICKER = "pref_home_pet_sticker"
         private const val KEY_SURFACE_MATERIAL = "pref_surface_material"
         private const val KEY_TAG_TRANSLATION_MODE = "pref_tag_translation_mode"
         private const val KEY_THEME_COLOR_SOURCE = "pref_theme_color_source"
@@ -832,6 +871,8 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_GALLERY_HIDE_TOP_BAR = "pref_gallery_hide_top_bar"
         private const val KEY_GALLERY_HIDE_BOTTOM_BAR = "pref_gallery_hide_bottom_bar"
         private const val KEY_GALLERY_WATERCOLOR_BETA = "pref_gallery_watercolor_beta"
+    private const val KEY_PIXIV_WORK_SEAM = "pref_pixiv_work_seam"
+    private const val KEY_PIXIV_WORK_DETAILS_IN_FLOW = "pref_pixiv_work_details_in_flow"
         private const val KEY_NEW_FAVORITE_ADD_TO = PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO
         private const val KEY_MOVE_FAVORITE_AFTER_READ = PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"

@@ -59,13 +59,15 @@ class GalleryBackupRowsTest {
 
     @Test
     fun `认不出的站点键摘掉而不是当成某一站`() {
-        // "pixiv" 是头像反查那条路用到的站，它不在 GallerySite 里：
+        // 夹具从前用 "pixiv" 当那枚"不认识的站"（它是头像反查那条路用到的站、不在 GallerySite 里）。
+        // 2026-10-16 pixiv 进了枚举 ⇒ 那个前提没了，换成 "danbooru"：它同样是真实存在、
+        // 且我们**故意不收进 GallerySite** 的站（只当画师端点的供体），判据的精神一字不变 ——
         // 若退化成"随便算某一站"，就会把一个人的关注挂到另一个人的入口上。
-        val dropped = GalleryBackupRows.decodeFollows("""[{"site":"pixiv","name":"a","added_at":1}]""")
+        val dropped = GalleryBackupRows.decodeFollows("""[{"site":"danbooru","name":"a","added_at":1}]""")
         assertEquals(emptyList<GalleryArtistFollow>(), dropped)
 
         val kept = GalleryBackupRows.decodeFollows(
-            """[{"site":"pixiv","name":"a","added_at":1},{"site":"yandere","name":"b","added_at":2}]"""
+            """[{"site":"danbooru","name":"a","added_at":1},{"site":"yandere","name":"b","added_at":2}]"""
         )
         assertEquals(listOf(GalleryArtistFollow(GallerySite.YANDERE, "b", 2L)), kept)
     }

@@ -317,7 +317,10 @@ object GalleryRankings {
         if (ranking == GalleryRanking.ALL) return when (site) {
             GallerySite.GELBOORU -> GELBOORU_SCORE
             GallerySite.SAFEBOORU -> SAFEBOORU_SCORE
-            else -> YANDERE_SCORE
+            GallerySite.YANDERE -> YANDERE_SCORE
+            // 从前这一支是 `else -> YANDERE_SCORE`：任何新站进来都会被静默发一串 yande.re 的
+            // 高分伪标签（调研稿 §三 坑 3）。改成逐站点名，加站必须在这里表态。
+            GallerySite.PIXIV -> GallerySite.notWired("排行后缀")
         }
         val (start, end) = windowBounds(ranking, anchor, todayUtc) ?: return null
         return when (site) {
@@ -325,6 +328,7 @@ object GalleryRankings {
             GallerySite.SAFEBOORU -> "date:$start..$end $SAFEBOORU_SCORE"
             // Gelbooru 到不了这一支：[supports] 已经把它的四档时间窗判死（菜单不列 + 状态层落回默认档）。
             GallerySite.GELBOORU -> null
+            GallerySite.PIXIV -> GallerySite.notWired("时间窗后缀")
         }
     }
 

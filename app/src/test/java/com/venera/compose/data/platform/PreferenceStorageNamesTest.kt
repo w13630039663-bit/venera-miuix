@@ -33,6 +33,7 @@ class PreferenceStorageNamesTest {
         PreferenceKeys.PREFS_COPY_MANGA,
         PreferenceKeys.PREFS_GELBOORU_ACCOUNT,
         PreferenceKeys.PREFS_SAUCENAO_ACCOUNT,
+        PreferenceKeys.PREFS_PIXIV_ACCOUNT,
     )
 
     @Test
@@ -52,13 +53,14 @@ class PreferenceStorageNamesTest {
                 "venera_source_copy_manga",
                 "venera_gelbooru_account",
                 "venera_saucenao_account",
+                "venera_pixiv_account",
             ),
             allNames,
         )
     }
 
     @Test
-    fun `十三枚存储名两两不等`() {
+    fun `存储名两两不等`() {
         // 撞名 = 两个模块往同一个文件里写键，后写的一方静默覆盖前一方。
         assertEquals(
             "存储名撞车：${allNames.groupingBy { it }.eachCount().filterValues { it > 1 }.keys}",

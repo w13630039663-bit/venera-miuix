@@ -89,6 +89,17 @@ class GalleryRoundFailureReadoutTest {
         fileExt = "jpg",
     )
 
+    /**
+     * 「每一站都要有自己的原因」与「这条通知点名了哪几站」里的**那一排站**。
+     *
+     * 指的是**每日热门这台机器真打的那几腿**，不是 [GallerySite] 的枚举全集 —— 写成字面量是**故意的**：
+     * 2026-10-16 pixiv 进了枚举但**不进**每日热门（选型⑤：pixiv 只从首页那一格=内容域进，
+     * 另吃 `ranking.php` 那条榜单腿与 `ajax/search/artworks/{词}` 那一跳）。
+     * 以后谁把第四站接进这台机器却忘了改这里，这把尺子要红并逼一次表态，
+     * 而不是拿 `entries.toSet()` 自动把它算成"欠一个原因"（那正是本批一开始量到的那两枚红）。
+     */
+    private val dailyFeedLegs = setOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.SAFEBOORU)
+
     @Test
     fun `三站全没货时交出的那笔失败带着按站原因`() = runBlocking {
         val result = GalleryDailyFeed(AllLegsDown()).loadDaily(seed = 7L)
@@ -100,7 +111,7 @@ class GalleryRoundFailureReadoutTest {
             e is GalleryEmptyRound,
         )
         val reasons = (e as GalleryEmptyRound).reasons
-        assertEquals("每一站都要有自己的原因：${reasons.keys}", GallerySite.entries.toSet(), reasons.keys)
+        assertEquals("每一站都要有自己的原因：${reasons.keys}", dailyFeedLegs, reasons.keys)
         reasons.values.forEach {
             assertTrue("原因不许是空串（空串等于没说过）：$reasons", it.isNotBlank())
         }
@@ -129,9 +140,12 @@ class GalleryRoundFailureReadoutTest {
         assertEquals(GalleryNoticeKind.LegFailed, notice.kind)
         assertEquals(GalleryNoticeTone.Error, notice.tone)
         assertEquals("失败必须给得出路，出路就是重试", GalleryNoticeAction.Retry, notice.action)
-        assertEquals(GallerySite.entries.toList(), notice.sites)
+        // 同 :103 那一条的口径：这条通知覆盖的是**每日热门真打的那三腿**，不是枚举全集。
+        // pixiv 于 2026-10-16 进枚举但不进这台机器（选型⑤ 走首页那一格=内容域，另吃 `ranking.php`），
+        // 所以它不该出现在这条通知里 —— 用字面量写死，将来接进这台机器时必须改这里并留一句为什么。
+        assertEquals(dailyFeedLegs.toList(), notice.sites)
         // 正文逐站念原始原因，一个字都不合并（合并就读不出是哪一站、也读不出为什么）。
-        GallerySite.entries.forEach {
+        dailyFeedLegs.forEach {
             assertTrue("正文要点名 ${it.displayName}：${notice.body}", notice.body.contains(it.displayName))
         }
     }

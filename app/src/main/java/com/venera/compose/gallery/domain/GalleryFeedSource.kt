@@ -2,6 +2,8 @@ package com.venera.compose.gallery.domain
 
 import android.content.Context
 import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.data.GallerySite
 import java.util.Calendar
 
 /**
@@ -32,7 +34,10 @@ class GalleryFeedSource private constructor(context: Context) {
      */
     private val feed by lazy { GalleryDailyFeed(GalleryPorts.of(appContext).boards) }
 
-    suspend fun loadDaily(seed: Long): Result<GalleryDailyFeed.Daily> = feed.loadDaily(seed)
+    suspend fun loadDaily(
+        seed: Long,
+        onLeg: (Map<GallerySite, List<GalleryPost>>) -> Unit = {},
+    ): Result<GalleryDailyFeed.Daily> = feed.loadDaily(seed, onLeg)
 
     companion object {
         /** 转发到 [GalleryDailyFeed]。`const` 不能转发，所以这里是一枚属性 —— 值仍是同一个数。 */

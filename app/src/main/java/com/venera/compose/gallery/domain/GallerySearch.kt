@@ -79,6 +79,11 @@ object GallerySearch {
         // `tags=` 上限 2 枚，超了站方直接 422。与 Danbooru 账号那套
         // （匿名/Restricted/Member=2，见 GallerySearchViewModel 的 tagsPerSearch）同源。
         GallerySite.SAFEBOORU -> 2
+        // pixiv 不进来源轴（2026-10-16 选型⑤：首页那一格是**内容域**切换，不是第五枚来源 chip），
+        // 它的入口是榜单档名，不是 booru 那套 `tags=` 语法。
+        // ⚠️ 别把这句读成"pixiv 匿名搜不到"：`ajax/search/artworks/{词}` 现量 200 / 每页 60 条，
+        // 那是首页「最新作品」那一腿要用的，跟来源轴无关（来源轴并进去就是两套语法一张墙，假读数）。
+        GallerySite.PIXIV -> GallerySite.notWired("标签预算")
     }
 
     /**
@@ -128,6 +133,20 @@ object GallerySearch {
     /** 历史最多存几条、空态摆几条 —— 与漫画搜索同口径（`feature/SearchViewModel.kt:440`）。 */
     const val HISTORY_MAX = 20
     const val HISTORY_SHOWN = 5
+
+    /**
+     * 盘上那枚历史键名：**按内容域各一份**（2026-10-18，用户点「分域各存一份」）。
+     *
+     * 为什么放在这一颗而不是各端自己写：Android 与桌面**读写的是同一个文件**
+     * （`PreferenceKeys.PREFS_GALLERY_SEARCH`，桌面那颗 `desktopHistoryStore` 的注释自己就这么说），
+     * 键名各定一份的话，一端改名另一端不会跟着 —— 那是"两端不同轨"那一族的老账。
+     *
+     * 桌面搜索只有图库站那一域（pixiv 那条它直接抛不支持），所以它用 `BOORU` 这一枚。
+     */
+    fun historyKeyOf(domain: GalleryHomeDomain): String = "history_${domain.name.lowercase()}"
+
+    /** 旧的**混域**键：两域共用一份、同词会被并成一条。只读一次摊平，然后删掉。 */
+    const val LEGACY_SHARED_HISTORY_KEY = "history"
 }
 
 /**

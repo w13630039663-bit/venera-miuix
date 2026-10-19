@@ -1,4 +1,4 @@
-package com.venera.compose.gallery.data
+﻿package com.venera.compose.gallery.data
 
 import android.content.Context
 import com.venera.compose.data.network.HostCircuitBreaker
@@ -8,6 +8,7 @@ import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
 import com.venera.compose.gallery.domain.GalleryBrowseRow
 import com.venera.compose.gallery.domain.GalleryTitleTag
+import com.venera.compose.gallery.domain.PixivSearchFilter
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -29,12 +30,58 @@ import kotlinx.coroutines.flow.StateFlow
 internal class AndroidGalleryFavorites(private val context: Context) : GalleryFavorites {
 
     private val store: GalleryFavoritesStore get() = GalleryFavoritesStore.getInstance(context)
+    private val account: PixivAccount get() = PixivAccount.getInstance(context)
+    private val appClient: PixivAppClient get() = PixivAppClient.getInstance(context)
 
     override val favorites: StateFlow<List<GalleryFavorite>> get() = store.favorites
-    override suspend fun toggle(post: GalleryPost): Boolean = store.toggle(post)
+
+    /**
+     * 收藏 / 取消收藏：**本地先落**（这一步是唯一保证成功的），pixiv 那一站再往站方同步一笔
+     * （2026-10-18 用户「pixiv 站点收藏图片自动同步到 pixiv 站点」，并点头按推荐的档位做）。
+     *
+     * 四条纪律：
+     * - **只有 pixiv 这一站往站方写**：booru 那三家没有写接口，于是不摆"会同步"的暗示，也不做假开关；
+     * - 未登录或这一会儿取不到票据 ⇒ 只落本地，并把这句说上屏；
+     * - `restrict` 按会员位给（会员私密、非会员公开）—— 私密书签是 pixiv 的会员档，
+     *   非会员发过去会被站方拒 ⇒ 宁可公开，也不要留一条"看着收藏上了、其实站方没收"的假记录；
+     * - 站方那一跳失败 ⇒ **本地那条留着**（用户真要收藏它），另说一句"站方那份没加上"。
+     */
+    override suspend fun toggle(post: GalleryPost): Boolean {
+        val now = store.toggle(post)
+        syncToPixiv(post, added = now)
+        return now
+    }
+
     override suspend fun removeAll(uids: Collection<String>) = store.removeAll(uids)
     override suspend fun clear() = store.clear()
     override fun consumeNotice(): String? = store.consumeNotice()
+
+    /** 同步那一跳的落点。[added] = 这一次是"收藏"还是"取消"。 */
+    private suspend fun syncToPixiv(post: GalleryPost, added: Boolean) {
+        if (post.site != GallerySite.PIXIV) return
+        val userId = (account.authState.value as? PixivAuthState.SignedIn)?.userId
+        val bearer = runCatching { account.bearerOrNull() }.getOrNull()
+        if (bearer == null || userId.isNullOrBlank()) {
+            if (added) store.notice("这条只存进本地收藏 —— 没登录 pixiv，站方那份加不上")
+            return
+        }
+        val private = PixivPremium.of(userId) { appClient.userPremium(bearer, userId).getOrNull() }
+        val outcome = if (added) {
+            appClient.bookmarkAdd(bearer, post.id, private = private)
+        } else {
+            appClient.bookmarkRemove(bearer, post.id)
+        }
+        val failure = outcome.exceptionOrNull()
+        val line = when {
+            failure != null && added ->
+                "本地收藏好了，站方那份没加上：${failure.message ?: "pixiv 没答"}"
+            failure != null ->
+                "本地已取消，站方那份没撤掉：${failure.message ?: "pixiv 没答"}"
+            added -> if (private) "已同步到 pixiv 的私密收藏" else "已同步到 pixiv 的公开收藏"
+            else -> null // 取消成功不必再啰嗦一句
+        }
+        if (line != null) store.notice(line)
+    }
 }
 
 internal class AndroidGalleryArtistFollows(private val context: Context) : GalleryArtistFollows {
@@ -43,6 +90,9 @@ internal class AndroidGalleryArtistFollows(private val context: Context) : Galle
 
     override val follows: StateFlow<List<GalleryArtistFollow>> get() = store.follows
     override suspend fun toggle(site: GallerySite, name: String): Boolean = store.toggle(site, name)
+    override suspend fun setFollowed(site: GallerySite, name: String, followed: Boolean) {
+        store.setFollowed(site, name, followed)
+    }
     override fun consumeNotice(): String? = store.consumeNotice()
 }
 
@@ -154,6 +204,102 @@ internal class AndroidGalleryArtistDirectory(private val context: Context) : Gal
     override suspend fun pixivArtworkAuthor(illustId: Long) = pixiv.artworkAuthor(illustId)
     override suspend fun pixivAvatarUrl(userId: Long) = pixiv.avatarUrl(userId)
     override suspend fun probeAvatarUrl(endpoint: GalleryAvatarProbeEndpoint) = probe.avatarUrl(endpoint)
+}
+
+internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryPixivWorks {
+
+    private val client: PixivClient get() = PixivClient.getInstance(context)
+
+    /** 带凭据那一侧（app-api）。与上面那颗**分开持有**，理由见 `PixivAppClient` 文件头。 */
+    private val appClient: PixivAppClient get() = PixivAppClient.getInstance(context)
+
+    override suspend fun ranking(mode: PixivRankingMode, page: Int) = client.ranking(mode, page)
+
+    override suspend fun tagWorks(word: String, page: Int, filter: PixivSearchFilter) =
+        client.tagWorks(word, page, filter)
+
+    override suspend fun searchIllust(
+        bearer: String,
+        word: String,
+        filter: PixivSearchFilter,
+        premium: Boolean,
+        nextUrl: String?,
+    ) = appClient.searchIllust(bearer, word, filter, premium, nextUrl)
+
+    override suspend fun popularPreview(
+        bearer: String,
+        word: String,
+    ) = appClient.popularPreview(bearer, word)
+
+    override suspend fun userPremium(bearer: String, userId: String) =
+        appClient.userPremium(bearer, userId)
+
+    override suspend fun searchUser(bearer: String, word: String, nextUrl: String?) =
+        appClient.searchUser(bearer, word, nextUrl)
+
+    override suspend fun fetchById(id: Long) = client.workById(id)
+
+    /**
+     * 作品页详情：**有票据先走登录腿**，登录腿"答上了却读不出图"才退匿名腿。
+     *
+     * 为什么屏上那些卡需要这一层（2026-10-18 第四批第七件）：卡的来源已经是登录腿
+     * （关注画师 / 推荐 / 排行榜 / 书签），而详情从前只有匿名腿 —— 站方对未登录读者把
+     * 成人向、仅登录可见、私密那几条整条撤图 ⇒ "卡明明在墙上、点开说没有"。
+     *
+     * ⚠️ 登录腿**失败（抛）时不退**：那一句（票据过期 / 403 / 这一条不存在）就是真成因，
+     * 退匿名腿会把它盖成"这一条没有图" —— 静默交错那一族，本仓反复立过案。
+     * 只有 isSuccess 且 getOrNull() == null（读得懂、可没给可看的图）才退，
+     * 让匿名腿去分那四面旗标（它分得出来就抛，分不出来才交 null）。
+     */
+    override suspend fun workDetail(illustId: Long, bearer: String?): Result<PixivWorkDetail?> {
+        if (bearer == null) return client.workDetail(illustId)
+        val viaApp = appClient.illustDetail(bearer, illustId)
+        return if (viaApp.isSuccess && viaApp.getOrNull() == null) client.workDetail(illustId) else viaApp
+    }
+
+    override suspend fun recommended(bearer: String, nextUrl: String?) =
+        appClient.recommendedIllusts(bearer, nextUrl)
+
+    override suspend fun rankingInApp(mode: PixivRankingMode, bearer: String, nextUrl: String?) =
+        appClient.rankingIllusts(mode, bearer, nextUrl)
+
+    override suspend fun following(bearer: String, userId: String, nextUrl: String?) =
+        appClient.following(bearer, userId, nextUrl)
+
+    override suspend fun recommendedUsers(bearer: String, nextUrl: String?) =
+        appClient.recommendedUsers(bearer, nextUrl)
+
+    override suspend fun bookmarkedIllusts(bearer: String, userId: String, nextUrl: String?) =
+        appClient.bookmarkIllusts(bearer, userId, nextUrl)
+
+    // ── 画师页那三条匿名腿（2026-10-19）：转发到 `client`（PixivClient，匿名）。──
+    // 它们住在这条契约上而不是让 UI 直连，理由见 `GalleryPixivWorks.userHead` 的注释。
+    override suspend fun illustComments(bearer: String, illustId: Long, nextUrl: String?) =
+        appClient.illustComments(bearer, illustId, nextUrl)
+
+    override suspend fun userHead(userId: Long) = client.userHead(userId)
+
+    override suspend fun profileAll(userId: Long) = client.profileAll(userId)
+
+    override suspend fun worksByIds(
+        userId: Long,
+        ids: List<Long>,
+        workCategory: String,
+        firstPage: Boolean,
+    ) = client.worksByIds(userId, ids, workCategory, firstPage)
+
+    // ── 画师页的登录版那几腿：转发到 `appClient`（PixivAppClient，带 Bearer）。──
+    override suspend fun userIllusts(bearer: String, userId: String, type: String, nextUrl: String?) =
+        appClient.userIllusts(bearer, userId, type, nextUrl)
+
+    override suspend fun userDetail(bearer: String, userId: String) =
+        appClient.userDetail(bearer, userId)
+
+    override suspend fun followAdd(bearer: String, userId: String, private: Boolean) =
+        appClient.followAdd(bearer, userId, private)
+
+    override suspend fun followRemove(bearer: String, userId: String) =
+        appClient.followRemove(bearer, userId)
 }
 
 internal class AndroidGalleryReverseSearch(private val context: Context) : GalleryReverseSearch {

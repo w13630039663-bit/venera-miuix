@@ -76,6 +76,18 @@ object PreferenceKeys {
     /** SauceNAO API key（`gallery/data/SauceNaoAccount`）。 */
     const val PREFS_SAUCENAO_ACCOUNT = "venera_saucenao_account"
 
+    /** pixiv 的 OAuth 票据与身份（`gallery/data/android/PixivAccount`）。 */
+    const val PREFS_PIXIV_ACCOUNT = "venera_pixiv_account"
+
+    /**
+     * 本机 Google 账号的**身份标记**（`gallery/ui/GoogleAccountIdentity`）。
+     *
+     * 与 [PREFS_PIXIV_ACCOUNT] 分开一份是刻意的：`PixivCredentialState.signOut()` 走
+     * `store.clear()`，两者同文件的话"退出 pixiv"会顺手把这枚身份也删掉 ——
+     * 而它跟 pixiv 的登录态没有任何关系（口径见 `GoogleAccountIdentity` 头注）。
+     */
+    const val PREFS_GOOGLE_IDENTITY = "venera_google_identity"
+
     /**
      * 自动翻页间隔**允许选到哪**的秒数区间 —— 三处共用这一把：
      * 写入钳位（`data/prefs/VeneraPreferences.setAutoScrollPageIntervalSec`）、

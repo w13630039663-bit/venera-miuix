@@ -51,41 +51,41 @@ class GalleryViewerPoliciesC2Test {
         // 2026-09-29 复探针：Gelbooru `tags=ai_generated` 与 `tags=ai-generated` 第一页各 9 张卡片
         // （阴性对照 `zzz_not_a_tag` = 0 张），而条目标签串上写的是连字符那一版。
         // 上一轮这里记的"yande.re 只有 ai-generated（83 条）"复现不出来：那一站这四种写法现在全是 0 条。
-        assertTrue(GalleryAi.isAiMarked(listOf("1girl", "ai-generated")))
-        assertTrue(GalleryAi.isAiMarked(listOf("ai_generated")))
+        assertTrue(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("1girl", "ai-generated")))
+        assertTrue(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("ai_generated")))
     }
 
     @Test
     fun `裸标签 ai 不算 —— 它是角色名`() {
         // yande.re `tags=ai` 那 19 条的标签串是 `ai maid pointy_ears sage shuffle suzuhira_hiro tick_tack`，
         // 即《Artery Gear》的角色 AI。漫画侧需要裸 `ai` 那一枚（EH 的 AI生成 系），画廊侧剔掉它。
-        assertFalse(GalleryAi.isAiMarked(listOf("ai")))
-        assertFalse(GalleryAi.isAiMarked(listOf("ai", "maid", "suzuhira_hiro")))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("ai")))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("ai", "maid", "suzuhira_hiro")))
     }
 
     @Test
     fun `含 ai 子串的普通标签不算`() {
         // `long_hair` / `hair_bun` 这类是历史上真出过的误伤形状：必须整词比，不能 contains。
-        assertFalse(GalleryAi.isAiMarked(listOf("long_hair", "rain", "chain", "painting")))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("long_hair", "rain", "chain", "painting")))
     }
 
     @Test
     fun `命名空间前缀不剥`() {
         // 与漫画侧那把同一口径（isAiTagValue 刻意不剥 `female:` 前缀）：
         // 剥了就会把 `female:hair` 这类判成别的什么，而 AI 标记在两站都是**裸标签**。
-        assertFalse(GalleryAi.isAiMarked(listOf("female:ai")))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("female:ai")))
     }
 
     @Test
     fun `没有标签不算 AI`() {
-        assertFalse(GalleryAi.isAiMarked(emptyList()))
-        assertFalse(GalleryAi.isAiMarked(listOf("", "  ")))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = emptyList()))
+        assertFalse(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("", "  ")))
     }
 
     @Test
     fun `中文那两枚沿用漫画侧词表`() {
-        assertTrue(GalleryAi.isAiMarked(listOf("ai生成")))
-        assertTrue(GalleryAi.isAiMarked(listOf("AI绘图")))
+        assertTrue(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("ai生成")))
+        assertTrue(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("AI绘图")))
     }
 
     // ---------- 大图页背景 ----------

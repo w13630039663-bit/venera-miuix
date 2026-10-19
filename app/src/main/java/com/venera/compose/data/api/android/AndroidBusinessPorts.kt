@@ -296,6 +296,7 @@ private class AndroidAppearancePreferences(private val context: Context) : Appea
     override val settingsHeroPath: StateFlow<String> get() = prefs.settingsHeroPath
     override val settingsQuoteAvatarPath: StateFlow<String> get() = prefs.settingsQuoteAvatarPath
     override val startPage: StateFlow<String> get() = prefs.startPage
+    override val homePetSticker: StateFlow<Boolean> get() = prefs.homePetSticker
 
     override fun setThemeMode(mode: ThemeMode) = prefs.setThemeMode(mode)
     override fun setAppearanceStyle(style: AppearanceStyle) = prefs.setAppearanceStyle(style)
@@ -307,6 +308,7 @@ private class AndroidAppearancePreferences(private val context: Context) : Appea
     override fun setSettingsHeroPath(path: String) = prefs.setSettingsHeroPath(path)
     override fun setSettingsQuoteAvatarPath(path: String) = prefs.setSettingsQuoteAvatarPath(path)
     override fun setStartPage(tab: String) = prefs.setStartPage(tab)
+    override fun setHomePetSticker(on: Boolean) = prefs.setHomePetSticker(on)
 }
 
 private class AndroidComicPreferences(private val context: Context) : ComicPreferences {

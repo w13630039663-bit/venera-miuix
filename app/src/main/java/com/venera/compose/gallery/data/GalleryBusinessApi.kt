@@ -5,6 +5,7 @@ import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
 import com.venera.compose.gallery.domain.GalleryBrowseRow
 import com.venera.compose.gallery.domain.GalleryTitleTag
+import com.venera.compose.gallery.domain.PixivSearchFilter
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -48,6 +49,16 @@ interface GalleryArtistFollows {
     val follows: StateFlow<List<GalleryArtistFollow>>
 
     suspend fun toggle(site: GallerySite, name: String): Boolean
+
+    /**
+     * 把某一位**摆成指定状态**（true = 关注，false = 取关），幂等。
+     *
+     * 为什么需要它而 `toggle` 不够：pixiv 那一侧今天以**站方**为真相（用户 2026-10-19 拍板
+     * 「站方为准，本地只当缓存」）。写腿答上"关注成功了"之后，本地这本账要按**目标状态**对齐，
+     * 不能按"当前本地是什么"去翻 —— 站方成功、本地翻错方向，屏上就会亮着一个站方没有的关系。
+     * 图库两站没有写腿，那边照旧走 [toggle]。
+     */
+    suspend fun setFollowed(site: GallerySite, name: String, followed: Boolean)
 
     fun consumeNotice(): String?
 }
@@ -246,6 +257,269 @@ interface GalleryArtistDirectory {
     suspend fun pixivAvatarUrl(userId: Long): Result<String?>
 
     suspend fun probeAvatarUrl(endpoint: GalleryAvatarProbeEndpoint): Result<String?>
+}
+
+/**
+ * pixiv 的三条匿名腿（2026-10-17）。
+ *
+ * 为什么不塞进 [GalleryBoards]：那颗的形状是 booru 那一族（`searchPosts(tags=…)`、`fetchById` 走
+ * `tags=id:N`、`searchTags`、`artistLinks`），pixiv 一条都不吃 —— 硬并进去就会出现
+ * "pixiv 那一枚的成员抛 notWired 而它的 else 分支替三站说话"那种假抽象（选型稿 §3.2 数的就是这一族）。
+ */
+interface GalleryPixivWorks {
+
+    suspend fun ranking(mode: PixivRankingMode, page: Int): Result<List<PixivWork>>
+
+    /**
+     * 按标签搜（`ajax/search/artworks/{词}`）。
+     *
+     * [filter] 是 2026-10-17 方案 C 那排条件（排序 / 标签模式 / 比例 / 时间窗）。
+     * 默认值刻意给在**契约这一层**：默认态一枚参数都不发，所以"没接这块面板的调用点"
+     * 与"接了但没动过"是同一串请求（判据见 `PixivSearchFilter` 的类注释）。
+     */
+    suspend fun tagWorks(
+        word: String,
+        page: Int,
+        filter: PixivSearchFilter = PixivSearchFilter.DEFAULT,
+    ): Result<List<PixivWork>>
+
+    /**
+     * 搜索的**登录腿**：`app-api /v1/search/illust`（2026-10-17 深夜，按 pixez 的口径）。
+     *
+     * 与 [tagWorks] 不是重复：那一条是匿名可用的 `www` 跳，只发得出排序（旧序）、标签模式、
+     * 比例、时间窗与**排除 AI**（`ai_type=1`，2026-10-18 现量匿名就真生效）；
+     * **人气**（`sort=popular_desc`，会员档）与**会员那一档收藏**（`bookmark_num_min`）只有这条发得出去。
+     * 非会员的人气由 [popularPreview] 那一跳代劳（2026-10-19）。
+     *
+     * @param bearer 当前账号的 access token（调用方从 `PixivCredentials.bearerOrNull()` 现取）。
+     *   给 null 的调用方**不许把这一笔当"人气/收藏筛过了"** —— 退回 [tagWorks] 时那两档的发法不同。
+     * @param premium 会员身份（[userPremium]）。非会员**不发** `bookmark_num_min`（站方按付费墙拒绝 ⇒
+     *   屏上"点了没生效"），那一档改由调用方走 [PixivSearchFilter.searchWord] 的词尾标签。
+     * @param nextUrl 上一页的 `next_url`；null = 第一页。翻页只认它。
+     */
+    suspend fun searchIllust(
+        bearer: String,
+        word: String,
+        filter: PixivSearchFilter,
+        premium: Boolean,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage>
+
+    /**
+     * **人气预览**：`app-api /v1/search/popular-preview/illust`（2026-10-19 · 批 233-4）。
+     *
+     * 它是 [searchIllust] 的**同档替代品**，不是第四条搜索腿：非会员点「人气」时
+     * `sort=popular_desc` 会被付费墙挡掉，而这一条只要票据不要会员（依据是 donor 的调用面，
+     * 逐枚参数记在 `PixivAppClient.popularPreview` 那颗的注释里）。
+     *
+     * **签名里只有词**，没有 [PixivSearchFilter]：这一条不吃面板里的任何一枚（`search_target` 是写死的）。
+     * 接一枚不读的参数就是"屏上亮着一排条件、请求里一枚都没发"那一族假开关 ——
+     * 被丢掉的几枚由调用点**说上屏**，不许静默。
+     *
+     * 两条口径差别，调用点必须落屏：只有**一页**（取完把"到底"置上）；**要票据**（没有匿名腿，
+     * 没登录时说明白"这一档要登录"，不许悄悄退回日期序）。
+     */
+    suspend fun popularPreview(
+        bearer: String,
+        word: String,
+    ): Result<PixivAppPage>
+
+    /**
+     * 会员身份：`/v1/user/detail` 的 `user.is_premium`（2026-10-18，用户「人气 / 收藏照 pixez 的做法」）。
+     *
+     * 取不到就是 `false`（当非会员）—— 那一档只决定收藏用哪一种发法，两种都真生效，
+     * 所以这里**没有"未知"这一态**，也就不会长成"屏上说不清我按哪档筛的"。
+     */
+    suspend fun userPremium(bearer: String, userId: String): Result<Boolean>
+
+    /**
+     * 搜索的**画师分栏**：`app-api /v1/search/user`（2026-10-18）。
+     *
+     * 与 [searchIllust] 是**同一屏的两个页签**（pixez 的 `result_page.dart` 就是
+     * `TabBar(插画 / 画师)`），不是两种"搜索方式"：同一个词，一栏给作品、一栏给画师。
+     *
+     * 只收 `bearer`（没有匿名腿）：`www` 那一侧早就不给 JSON 了，所以没登录时
+     * 调用点要**说明白**这一栏为什么空着，不许静默退回作品那一栏。
+     */
+    suspend fun searchUser(
+        bearer: String,
+        word: String,
+        nextUrl: String? = null,
+    ): Result<PixivUserPage>
+
+    suspend fun fetchById(id: Long): Result<GalleryPost?>
+
+    /**
+     * **作品页**那一腿（2026-10-18，pixiv 站源独用）：原题、页数与逐页原图、逐枚标签、
+     * 作者号、浏览数、发布时间、评论数与评论开关、动图旗标。
+     *
+     * 为什么不让 [fetchById] 长成一枚可空参数齐的大对象：`GalleryPost` 是三站共用的行模型，
+     * 给它开 pixiv 才有的格子，另外两站就永远带着恒 null 的那几格 —— 屏上"这一站没有"
+     * 与"站方没给"就分不开了。
+     *
+     * `pageCount > 1` 时内部打第二跳取齐；**第二跳失败整条失败**，不交半份（理由见
+     * [PixivClient.workDetail]）。
+     *
+     * @param bearer 当前账号的 access token，**没有就交 null**（口径同 [recommended] 那几条：
+     *   契约这一层不碰登录态，票据由调用方现取再传进来，免得"谁在用这个账号"长出第二份判断）。
+     *   有票据时实现先走登录腿（`app-api/v1/illust/detail`）、答上了却读不出图才退匿名腿；
+     *   登录腿**抛**（票据过期 / 站方 403 / 这一条不存在）不退 —— 那一句就是真成因，
+     *   退匿名腿只会把它盖成"这一条没有图"（2026-10-18 第四批第七件）。
+     *
+     * null = 站方答上了、这一条既没给图也没竖任何旗标（≈已被删 / 号错 / 审核中）。
+     * 被挡的四种（私密 / 隐藏 / 成人向 / 仅登录）**带各自的句子抛**，不并进这一档。
+     */
+    suspend fun workDetail(illustId: Long, bearer: String?): Result<PixivWorkDetail?>
+
+    /**
+     * **作品评论**（2026-10-19 · 批 231-F）：`app-api /v3/illust/comments`。
+     *
+     * ⚠️ 这条腿**必须带票据**：匿名那侧四种形状全是 404（见
+     * [PixivAppClient.illustComments] 头注的实测记录）。没有票据时调用方要照实说
+     * "登录才看得到"，不许摆空排 —— 那是本仓反复修掉的那种假件。
+     *
+     * ⚠️ 版本号只认**量过那一条**：`/v1/illust/comments` 现在是 404（路由不存在），
+     * 判别法是"无票据时 400 = 路由在、404 = 路由不存在"，同一颗 client 现量对照过。
+     *
+     * @param nextUrl 上一页答复里的 `next_url`（自带站方的游标）。传 null 取第一页。
+     */
+    suspend fun illustComments(
+        bearer: String,
+        illustId: Long,
+        nextUrl: String? = null,
+    ): Result<PixivCommentPage>
+
+    /**
+     * 站方推荐（`/v1/illust/recommended`）—— 2026-10-17 用户点名
+     * 「下面推荐应该自动换成 pixiv 站方的推荐」。
+     *
+     * ⚠️ 与上面那三条**不同类**：那三条匿名也通，这一条**必须带票据**。票据由调用方从
+     * `PixivCredentials.bearerOrNull()` 现取再传进来 —— 契约这一层不碰登录态，
+     * 否则"谁在用这个账号"会长出第二份判断（本仓为这类分叉付过账）。
+     */
+    suspend fun recommended(bearer: String, nextUrl: String? = null): Result<PixivAppPage>
+
+    /**
+     * 榜单的**登录态**腿：`app-api/v1/illust/ranking`。
+     *
+     * 与上面 [ranking] 那条不是重复：那条打 `www.pixiv.net/ranking.php`，**匿名**、按 `p` 翻页；
+     * 这条要票据、按站方给的 `next_url` 翻页，答复里还带标题与 `rank`。
+     * 2026-10-17 用户那张截图上排行榜整档是空的 —— 匿名的 www 那条对这台机器不给内容，
+     * 而屏上只说"这一档没有答上"，读不出是限流还是真空。登录着就该走这条。
+     */
+    suspend fun rankingInApp(
+        mode: PixivRankingMode,
+        bearer: String,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage>
+
+    /**
+     * 自己关注的画师：`/v1/user/following`（2026-10-17 第八轮）。
+     *
+     * 与 [recommendedUsers] 是**两条腿、两栏**：前者是"你已经在关注的人"，
+     * 后者是"站方觉得你可能想看的人"。界面必须分开摆 —— 混成一排的话，
+     * 用户会以为自己关注了根本没关注的人（那是最容易产生误解的一种假读数）。
+     *
+     * @param userId 自己的 pixiv 用户号（`PixivAuthState.SignedIn.userId`）。
+     */
+    suspend fun following(
+        bearer: String,
+        userId: String,
+        nextUrl: String? = null,
+    ): Result<PixivUserPage>
+
+    /** 站方推荐用户：`/v1/user/recommended?filter=for_android`（同上一族形状）。 */
+    suspend fun recommendedUsers(
+        bearer: String,
+        nextUrl: String? = null,
+    ): Result<PixivUserPage>
+
+    /**
+     * 云端书签（收藏）：`/v1/user/bookmarks/illust`（2026-10-17 第三十一轮）。
+     *
+     * 与 [following] 同族：都要票据 + 自己的用户号，答复是与推荐同一个 `illusts[]` 形状。
+     *
+     * ⚠️ 它与本地收藏（[GalleryFavorites]）是**两套账**，见 [PixivAppClient.bookmarkIllusts] 那条注：
+     * 屏上两个入口分开摆，这一条读的始终是 pixiv 账号里的那一份，不并、不去重、不互相删。
+     *
+     * @param userId 自己的 pixiv 用户号（`PixivAuthState.SignedIn.userId`）。
+     * @param nextUrl 上一页答复的 `next_url`（自带 `max_bookmark_id` 游标）；null = 第一页。
+     */
+    suspend fun bookmarkedIllusts(
+        bearer: String,
+        userId: String,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage>
+
+    /**
+     * **画师页**那三条匿名腿（2026-10-19）。
+     *
+     * ## 为什么必须住在这条契约上
+     *
+     * 本仓有一条架构守卫（`BusinessApiBoundaryTest`）钉着「**UI 不许直连实现类，白名单只许缩短**」。
+     * 让画师屏自己 `PixivClient.getInstance(context)` 在这条守卫下就是**新增违规** ——
+     * 而开口子的正确做法是**在这里加契约**，不是往白名单里塞一行：
+     * 白名单一旦能变长，"不许直连"这条就只剩自我约束了。
+     *
+     * 这三条是**匿名**的（不带任何凭据，与 [PixivClient] 头注那条红线一致），
+     * 而它们**不再是这一屏唯一的一条路**：下面那组登录腿才是主路，这三条退成"没有票据"
+     * 那一档的兜底（2026-10-19 用户读数：匿名 `profile/all` 给 3 张，站方网页给 26 张）。
+     * 桌面那一侧 `GalleryPorts.pixiv` 是可空槽（`= null`），所以加在这里不会逼桌面表态 ——
+     * 它照旧走进"这一侧没有 pixiv"那一档。
+     */
+    suspend fun userHead(userId: Long): Result<PixivUserHead>
+
+    /** 作品索引：插画 / 漫画两张全量 id 表 + 公开收藏总数（`profile/all`）。 */
+    suspend fun profileAll(userId: Long): Result<PixivUserWorks>
+
+    /**
+     * 按 id 取一批作品卡（`profile/illusts`）。
+     *
+     * @param workCategory `"illust"` / `"manga"` —— 站方按它切桶。
+     *   ⚠️ **传错桶不会报错**，只会回一批对不上的作品，所以调用方必须把段与它绑死。
+     * @param firstPage 第一批传 true（站方口径；**不是**分页游标 —— 游标是 id 表本身）。
+     */
+    suspend fun worksByIds(
+        userId: Long,
+        ids: List<Long>,
+        workCategory: String,
+        firstPage: Boolean = false,
+    ): Result<List<PixivWork?>>
+
+    // ── 画师页的**登录版**那几腿（2026-10-19，用户「我这些操作全部都是有登录的」）──
+    //
+    // 上面三条匿名腿**不删**：它们是"没有票据"那一档的退路，屏上要明说那一档少给什么。
+    // 这一组全部要 Bearer，所以签名上就把 bearer 摆成第一枚参数 —— 少一枚就是假接线
+    // （编译期看不出"忘了带票据"，运行期只表现为 401 后一整屏空）。
+
+    /**
+     * 画师的作品列表（含成人档）：`/v1/user/illusts`。
+     *
+     * 与 [profileAll] + [worksByIds] 那两跳**是同一件事的两条路**：这一条一次给一页带全字段的
+     * 作品并直接交出 `next_url`，不再需要"先要 id 表、再按 id 取卡"。
+     *
+     * @param type `"illust"` / `"manga"` —— 站方自己的桶，与屏上那三段的前两段一一对应。
+     */
+    suspend fun userIllusts(
+        bearer: String,
+        userId: String,
+        type: String,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage>
+
+    /** 画师详情：投稿总数 / 粉丝数 / 公开收藏数 + **我是否关注了这位**（`is_followed`）。 */
+    suspend fun userDetail(bearer: String, userId: String): Result<PixivUserDetail>
+
+    /**
+     * **关注**一位画师（写站方）。
+     *
+     * ⚠️ 这一跳会改变用户在 pixiv 账号上的真实状态 ⇒ 只在用户点了那一下才发，
+     * 装载时绝不自动补写（与 `bookmarkAdd` 同一条纪律）。
+     */
+    suspend fun followAdd(bearer: String, userId: String, private: Boolean): Result<Unit>
+
+    /** **取关**一位画师（写站方）。与 [followAdd] 成对：只删本地会把站方那一份留成暗账。 */
+    suspend fun followRemove(bearer: String, userId: String): Result<Unit>
 }
 
 /** 以图搜图。返回类型 `SauceNaoPage` 与本文件同包（`gallery/data/SauceNao.kt:56`）。 */

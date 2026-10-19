@@ -32,8 +32,8 @@ private val INFRA_FACING_PAGE =
 
 /** B2 之后仍抓 `VeneraPreferences` 的**画廊设置那一页**（写口只有它用，见 GalleryPorts 那颗接口）。 */
 private val GALLERY_PREFS_TO_W5 =
-    "解锁条件：这一页是 15 枚 setGalleryXxx 写口的唯一消费者（feature/settings/GallerySettings.kt:107-284），" +
-        "而画廊侧契约按隔离口径是 getter-only（gallery/data/GalleryPorts.kt 的 GalleryPreferences，12 枚只读）。" +
+    "解锁条件：这一页是 17 枚 setGalleryXxx 写口的唯一消费者（feature/settings/GallerySettings.kt，2026-10-18 现量），" +
+        "而画廊侧契约按隔离口径是 getter-only（gallery/data/GalleryPorts.kt 的 GalleryPreferences，13 枚只读）。" +
         "与 Part B 的 W5 同批：W5 落 gallery/data/GalleryPreferences.kt 实现类接上那颗接口，本行随之改引"
 
 private val FEATURE_RESIDENT_IMPL =
@@ -128,7 +128,7 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
         "解锁条件：这条只读 `installedMeta`（feature/settings/PreferredIpSpeedTestScreen.kt:88），" +
             "其类型 InstalledSourceMeta 声明在 source/ComicSourceManager.kt:61 那颗类体里 ⇒ 契约签名要它就必须 import 实现类拿嵌套类型；" +
             "方案 §二 明确「故意不收」，与 W1 同批搬家后本行自动消失",
-    // ── 画廊偏好写口：B2 把 12 枚只读口收进 GalleryPorts，写口唯一消费者留在实现类上，与 W5 同批 ──
+    // ── 画廊偏好写口：B2 把那批只读口收进 GalleryPorts（2026-10-18 现量 13 枚），写口唯一消费者留在实现类上，与 W5 同批 ──
     "feature/settings/GallerySettings.kt#VeneraPreferences" to GALLERY_PREFS_TO_W5,
     "feature/SettingsHost.kt#VeneraPreferences" to GALLERY_PREFS_TO_W5,
     // ── 导航保护域（FREEZE-STATEMENT.md:32 只管 Tab 枚举顺序 / 路由映射 / 顶栏齿轮入口这三项）──

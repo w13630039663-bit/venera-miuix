@@ -106,7 +106,12 @@ object GalleryMerge {
         var droppedDuplicates = 0
         val posts = ArrayList<GalleryPost>(SCREEN_SIZE)
         // GallerySite.entries 的顺序即"先去重的优先序"，固定下来才不会因为 HashMap 无序而飘。
-        for (site in GallerySite.entries) {
+        // 但**只走这一轮真给了键的那些站**：2026-10-16 pixiv 进枚举之后，按 `entries` 全遍历再
+        // `getValue` 会让每一台没有 pixiv 的生产端当场抛 `NoSuchElementException: Key PIXIV`
+        // （现量：GalleryMergeTest 12 笔 + GalleryRoundFailureReadoutTest 1 笔一起红）。
+        // 这一把写法不是新造的 —— 隔壁 `GallerySearchMerge.kt:58` 与 `GalleryForYouMerge.kt:123`
+        // 早就是"按给到的键走"，这里对齐它们（调研稿 §三 坑 1 指出的"三处三把写法"收敛成一把）。
+        for (site in GallerySite.entries.filter { it in usable }) {
             val kept = ArrayList<GalleryPost>(PER_SITE)
             // 每站一个**独立且可复现**的抽样流：种子 + 站点序号。不然两站会抽到同一段随机数，
             // 观感上就是"两站的排序长得像"。

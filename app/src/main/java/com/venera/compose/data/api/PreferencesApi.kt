@@ -120,6 +120,9 @@ interface AppearancePreferences {
     /** 冷启动落在哪一档 Tab。 */
     val startPage: StateFlow<String>
 
+    /** 首页顶栏那只桌宠摆不摆（默认关）。 */
+    val homePetSticker: StateFlow<Boolean>
+
     fun setThemeMode(mode: ThemeMode)
     fun setAppearanceStyle(style: AppearanceStyle)
     fun setNavigationBarStyle(style: NavigationBarStyle)
@@ -130,6 +133,7 @@ interface AppearancePreferences {
     fun setSettingsHeroPath(path: String)
     fun setSettingsQuoteAvatarPath(path: String)
     fun setStartPage(tab: String)
+    fun setHomePetSticker(on: Boolean)
 }
 
 /** 收藏与阅读行为、默认搜索目标、防窥、检查更新。 */

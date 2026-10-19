@@ -52,6 +52,19 @@ data class GalleryPost(
      */
     val favCount: Int? = null,
     /**
+     * 站方**自己给的** AI 生成位（2026-10-18，用户「开了 AI 角标没见到一个图片有角标」）。
+     * `null` = 这一腿站方压根不给这一格，**不等于**"站方说这不是 AI"。
+     *
+     * 谁能给（逐条实测，读数记在 [pixivAiFlagOf]）：
+     * - pixiv 匿名搜索腿 `aiType`、pixiv 单张详情 `aiType` ⇒ 有；
+     * - pixiv 登录腿（app-api 四条腿共用一颗行解析）`illust_ai_type` ⇒ 有；
+     * - pixiv 榜单腿 `ranking.php`：载荷那 25 枚键里**没有**这一格 ⇒ null；
+     * - booru 三站：站方没有 AI 旗标这一说 ⇒ 恒 null，那一侧只能继续吃标签词表。
+     *
+     * 判据在 `gallery/domain/GalleryAi.kt`：**这一位优先**，标签词表退成"站方没给时"的兜底。
+     */
+    val siteAiFlag: Boolean? = null,
+    /**
      * 画师。三站的取法不同，而且**语义不完全同宽**（都是实测）：
      * - yande.re：站方 `author` 字段；
      * - Gelbooru：它的 `owner`（**上传者**，与"画师"不是一回事）；
@@ -115,6 +128,32 @@ data class GalleryPost(
      * 那两站一律 null，**不当 0**（"0 秒"是被编出来的事实）。
      */
     val durationSeconds: Double? = null,
+    /**
+     * 站方报的**这一作有几页**（2026-10-18，用户「要能在图片卡片上另加看出这张有几页」）。
+     *
+     * 谁能给（逐条实测，形状记在 `PixivFeedParse` 那两条用例上）：
+     * - pixiv 匿名榜腿 `illust_page_count` 是**字符串**（`"8"`）；
+     * - pixiv 匿名搜索腿 `pageCount` 是**数字**（`5`）；
+     * - pixiv 登录腿 `page_count` 是数字；pixiv 单张详情 `pageCount` 也是数字；
+     * - booru 三站：一张 = 一幅，字段表里根本没有这一说 ⇒ 恒 null；
+     * - 收藏存档（`GalleryFavoritesStore`）没有这一列 ⇒ 从存档复原的那张卡也恒 null。
+     *
+     * ⚠️ `null` = **"不知道有几页"**，不等于"站方说只有一页"。所以缺格一律**不补 1** ——
+     * 补了就会在收藏那一屏凭空多出一枚"1P"，而那一枚没有任何出处（同一族口径见 [favCount]）。
+     */
+    val pageCount: Int? = null,
+    /**
+     * 页轴专用：这一颗是**同一条作品里的第几页**（0 起算）。
+     *
+     * 只有 pixiv 作品页「点图进大图」那一条路会填它（见 `GalleryPageAxis`）：四页共用同一个作品号，
+     * 而缓存键、HD 那一档的记忆、"这一张正在放大"的那一枚状态都必须**逐页**分得开 ——
+     * 页位挂在行模型上而不是挂在调用点传下来的参数里，是因为吃这颗键的地方有四处
+     * （三档叠画、水彩取底、…），参数法迟早漏一处，漏的那处就是"翻到第 2 页画的还是第 1 页"。
+     *
+     * 它**不进** [uid]：收藏、历史、去重记的都是"这一条作品"，翻到第 3 页不等于收藏了第 3 页。
+     * 图库三站与列表一律 null ⇒ 那几处的缓存键与身份串逐字不变。
+     */
+    val pageOrdinal: Int? = null,
 ) {
     val tagList: List<String> get() = splitGalleryTags(tags)
 
@@ -207,8 +246,28 @@ data class GalleryPost(
     val durationLabel: String
         get() = durationSeconds?.takeIf { it > 0.0 }?.let { "${it.toInt()}s" } ?: ""
 
+    /**
+     * 卡片右上角那枚「几 P」。判据与时长那一枚同一条口径：**没有出处就不摆**。
+     *
+     * 单页摆一枚"1P"是噪声（那张卡本来就只有一张），0 与负数更不是页数 ——
+     * 站方给过 `page_count` 那几档里最小的是 1，所以非正值只可能是坏读数，退成"不摆"而不是"1"。
+     */
+    val pagesBadge: String?
+        get() = pageCount?.takeIf { it > 1 }?.let { "${it}P" }
+
     /** 站内唯一身份。列表 key 与"这一屏已经出现过"的判据都用它。 */
     val uid: String get() = "${site.routeKey}:$id"
+
+    /**
+     * **播放器**那一侧的逐页身份（2026-10-18，页轴）。
+     *
+     * 与 [uid] 的分工不是口味：收藏、历史、去重记的是"这一条作品"，四页必须共用一个 `uid`；
+     * 而"这一页开了 HD"与"这一页正在放大"必须是**逐页**的 —— 用 uid 记的话，翻到第 2 页 HD 那颗
+     * 还亮着而画面上是中档，放大态还会让 chrome 在新的一页上无故躲开。
+     *
+     * 没有页位的那些（图库三站与所有列表）算出来**逐字等于** [uid]，那几处的存档与屏上零变化。
+     */
+    val viewerKey: String get() = pageOrdinal?.let { "$uid:p$it" } ?: uid
 
     /**
      * 出处归一键：跨站同一张画常常是同一个上游链接（pixiv / twitter）。
