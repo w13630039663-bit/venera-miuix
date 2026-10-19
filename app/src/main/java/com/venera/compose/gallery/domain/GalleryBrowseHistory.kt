@@ -29,6 +29,14 @@ data class GalleryBrowseRow(
 ) {
     /** 身份键，与收藏 / 关注同一族口径：`站点的 routeKey` + 图号（两站 id 各自编号，撞了是两张不同的图）。 */
     val uid: String get() = "${site.routeKey}:$postId"
+
+    /**
+     * 飞行落点登记的键（批 A 键统一，2026-10-19）：与 [com.venera.compose.gallery.data.GalleryPost.viewerKey]
+     * 同一族 —— 历史是列表腿、没有页序，它就等于 [uid]。
+     * 查询侧（大图页返回程）只认 `viewerKey`，登记侧从此不再各念各的键；
+     * 两者字面相同是有意的，不是"碰巧相等"。
+     */
+    val viewerKey: String get() = uid
 }
 
 /** 浏览历史的时间分组。次序即屏上自上而下的次序。 */

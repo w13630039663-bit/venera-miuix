@@ -248,6 +248,15 @@
             android:name=".GalleryArtistProfileActivity"
             android:exported="false"
             android:theme="@style/Theme.Venera.GlassOverlay" />
+        <!--
+            pixiv 个人账号页（2026-10-19）：独立 Activity 只为跨 Activity 的预测式返回。
+            2026-10-19 真机改判：这一页是正常内容页，不是浮在首页上的图片层 ——
+            窗口主题与主界面同一颗不透明主题，不再走 GlassOverlay 的透明窗。
+        -->
+        <activity
+            android:name=".PixivAccountActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Venera" />
         <activity
             android:name=".data.network.CloudflareBypassActivity"
             android:exported="false"

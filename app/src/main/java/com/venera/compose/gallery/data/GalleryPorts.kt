@@ -6,6 +6,7 @@ import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.gallery.domain.PixivPageSeam
+import com.venera.compose.gallery.domain.PixivReadScope
 import com.venera.compose.security.guard.GuardRule
 import kotlinx.coroutines.flow.StateFlow
 
@@ -14,8 +15,9 @@ import kotlinx.coroutines.flow.StateFlow
  * 其余必给契约与它们的适配器在 `GalleryBusinessApi.kt` / `android/GalleryAdaptersAndroid.kt`；
  * 构造尾部那几颗**有默认值**的槽只有移动端接 —— [GalleryPorts.gelbooruWindows]、
  * [GalleryPorts.history]、[GalleryPorts.pixiv]、[GalleryPorts.pixivAccount]、
- * [GalleryPorts.googleIdentity]、[GalleryPorts.pixivWork]，每颗自己的理由写在那颗槽上。
- * （这里刻意不数第几颗：加一颗就全体改号，是这种计数句最便宜的坏法。）
+ * [GalleryPorts.pixivWork]，每颗自己的理由写在那颗槽上。
+ * （这里刻意不数第几颗：加一颗就全体改号，是这种计数句最便宜的坏法。
+ * 2026-10-19 撤掉的那颗 `googleIdentity` 也照这一条走 —— 槽删了，上面这句一个字没动。）
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -60,14 +62,13 @@ class GalleryPorts(
     // 取数腿、也没有 OAuth 回跳的接收面（回跳靠 AndroidManifest 里那颗 intent-filter 落到
     // MainActivity，桌面没有对应的东西），所以它问都不会问 —— 默认 null 是"这一侧没有这一档"。
     val pixivAccount: PixivCredentials? = null,
-    // 本机 Google 账号身份（2026-10-17 第四轮）：同一条理由的可空槽。桌面没有账号框架
-    // （`AccountManager` / 系统账号选择器都在移动端），界面拿到 null 就把那一行整块收起来。
-    // ⚠️ 它不是登录态 —— 只记"这台机器上是哪个 Google 账号"，判据与理由见 [LocalGoogleIdentity]。
-    val googleIdentity: LocalGoogleIdentity? = null,
     // pixiv 作品页那两档（2026-10-18）：同一条理由的可空槽 —— 那一屏 Android 独有，桌面既没有
     // 它也没有读这三档的地方，所以它问都不会问。为什么单立一颗接口而不塞进 `GalleryPreferences`：
     // 见 [PixivWorkPreferences] 的头注。
     val pixivWork: PixivWorkPreferences? = null,
+    // pixiv 账号页那两档（2026-10-19，方案 §2 的 ⑭）：同一条理由的可空槽 —— 那一屏 Android 独有
+    // （它由 `PixivAccountActivity` 承载，桌面没有对应物），所以桌面问都不会问。
+    val pixivAccountPrefs: PixivAccountPreferences? = null,
 ) {
 
     companion object {
@@ -195,4 +196,27 @@ interface PixivWorkPreferences {
 
     /** 详情接不接在最后一页之后（关掉则详情只走抽屉）。默认接。 */
     val detailsInFlow: StateFlow<Boolean>
+}
+
+/**
+ * pixiv 账号页的「进来先看哪一批」（2026-10-19，方案 §2 的 ⑭）。
+ *
+ * 为什么带写口而隔壁 [GalleryPreferences] 只读：那十五枚的写侧全在漫画侧的设置页，
+ * 而这两枚的写侧**就是账号页自己**（账号管理那一子页那两行）。把写口推到别处，
+ * 等于替一屏自有的档位在外面再造一个入口。
+ *
+ * 两枚是一套而不是两套：[showPrivate] 是那把总闸，关掉之后 [restrictDefault] 里的
+ * 「全部 / 非公开」两档**不发请求也不摆进下拉**（闸管的是"读不读"，范围管的是"先读哪一批"）。
+ */
+interface PixivAccountPreferences {
+
+    /** 进账号页时先给哪一批。 */
+    val restrictDefault: StateFlow<PixivReadScope>
+
+    /** 总闸：关掉后非公开那一趟根本不发。 */
+    val showPrivate: StateFlow<Boolean>
+
+    fun setRestrictDefault(scope: PixivReadScope)
+
+    fun setShowPrivate(on: Boolean)
 }

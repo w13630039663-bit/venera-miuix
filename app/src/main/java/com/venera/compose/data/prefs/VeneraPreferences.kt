@@ -11,6 +11,7 @@ import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GallerySaveNaming
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.gallery.domain.PixivPageSeam
+import com.venera.compose.gallery.domain.PixivReadScope
 import com.venera.compose.ui.tokens.ThemeSeedPresets
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -372,6 +373,29 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     fun setPixivWorkDetailsInFlow(on: Boolean) {
         prefs.put(KEY_PIXIV_WORK_DETAILS_IN_FLOW, on)
         _pixivWorkDetailsInFlow.value = on
+    }
+
+    // ---- pixiv 账号页的两档（2026-10-19，方案 §2 的 ⑭）----
+    // 只有账号页消费。两枚合起来是一句话：**进来先看哪一批**。
+    // 「默认范围」管进屏初值，「显示非公开」是那把总闸 —— 闸关掉之后私密腿**根本不发请求**，
+    // 而不是"发了再在屏上藏起来"（后者会把私密条目的标题与封面写进内存与日志）。
+
+    /** 进账号页时先给哪一批。默认都要（站方两档各发一趟再合）。 */
+    private val _pixivRestrictDefault = MutableStateFlow(readEnum(KEY_PIXIV_RESTRICT_DEFAULT, PixivReadScope.All))
+    val pixivRestrictDefault: StateFlow<PixivReadScope> = _pixivRestrictDefault.asStateFlow()
+
+    /** 总闸：关掉后非公开那一趟不发、也不出现在任何计数与下拉档位里。默认开。 */
+    private val _pixivShowPrivate = MutableStateFlow(prefs.getBoolean(KEY_PIXIV_SHOW_PRIVATE, true))
+    val pixivShowPrivate: StateFlow<Boolean> = _pixivShowPrivate.asStateFlow()
+
+    fun setPixivRestrictDefault(scope: PixivReadScope) {
+        prefs.put(KEY_PIXIV_RESTRICT_DEFAULT, scope.name)
+        _pixivRestrictDefault.value = scope
+    }
+
+    fun setPixivShowPrivate(on: Boolean) {
+        prefs.put(KEY_PIXIV_SHOW_PRIVATE, on)
+        _pixivShowPrivate.value = on
     }
 
     /**
@@ -873,6 +897,8 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_GALLERY_WATERCOLOR_BETA = "pref_gallery_watercolor_beta"
     private const val KEY_PIXIV_WORK_SEAM = "pref_pixiv_work_seam"
     private const val KEY_PIXIV_WORK_DETAILS_IN_FLOW = "pref_pixiv_work_details_in_flow"
+    private const val KEY_PIXIV_RESTRICT_DEFAULT = "pref_pixiv_restrict_default"
+    private const val KEY_PIXIV_SHOW_PRIVATE = "pref_pixiv_show_private"
         private const val KEY_NEW_FAVORITE_ADD_TO = PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO
         private const val KEY_MOVE_FAVORITE_AFTER_READ = PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"

@@ -335,6 +335,10 @@ internal fun pixivWorkInfoPanel(data: Any?, params: GalleryPageAxis.PanelParams)
             imageLoader = params.imageLoader,
             onOpenWork = { params.onDismiss() },
             aiBadgeOn = aiBadgeOn,
+            // 面板里的标签也接上搜索（用户 2026-10-19 第 3 条）。顺序是先收面板再交标签：
+            // 留在原地的面板会盖住"已经跳去搜索"这件事；而 `params.onSearchTag` 为 null 时
+            // 这里传 null，标签保持纯展示（不摆点了没反应的那一枚）。
+            onSearchTag = params.onSearchTag,
         )
     }
 }

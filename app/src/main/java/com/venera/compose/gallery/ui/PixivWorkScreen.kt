@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.ui
+package com.venera.compose.gallery.ui
 
 import android.content.Context
 import android.content.Intent
@@ -6,6 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -77,7 +78,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -90,11 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
@@ -109,8 +108,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -139,7 +136,6 @@ import com.venera.compose.gallery.domain.PixivCommentSegment
 import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.gallery.domain.PixivWorkFact
 import com.venera.compose.gallery.domain.PixivWorkPage
-import com.venera.compose.gallery.domain.coverSourceRect
 import com.venera.compose.gallery.domain.exitBodyAlpha
 import com.venera.compose.gallery.domain.exitPageAlpha
 import com.venera.compose.gallery.domain.handoffBodyAlpha
@@ -147,16 +143,15 @@ import com.venera.compose.gallery.domain.handoffDetailAlpha
 import com.venera.compose.gallery.domain.HANDOFF_DETAIL_LEAD_FLY
 import com.venera.compose.gallery.domain.HANDOFF_DETAIL_MS
 import com.venera.compose.gallery.domain.handoffPageAlpha
-import com.venera.compose.gallery.domain.payloadCornerRadiusPx
 import com.venera.compose.gallery.domain.pixivEmojiId
 import com.venera.compose.gallery.domain.pixivEmojiUrl
 import com.venera.compose.gallery.domain.splitPixivComment
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.roundToInt
 
 /**
  * **pixiv 作品页**（2026-10-18 落地，站源独用）。
@@ -382,6 +377,20 @@ fun PixivWorkScreen(
     // 用户读到的就是"点进来这一页被顶得很上"（真机两帧：顶边对齐、底边 1132 vs 1439）。
     // 现在每槽自持（`PixivWorkFlow` 里面 `rememberLazyListState()`），页位由那一槽自己报上来。
     var pageIndex by remember(currentId) { mutableIntStateOf(0) }
+    /**
+     * 顶栏模糊的滚动进度（0 = 停在顶部、完全不出；1 = 已滑过 48dp、全显）。
+     *
+     * 由 [PixivWorkFlow] 那面墙自己算好报上来（它才拿得到那槽的 `LazyListState`），
+     * 这里只存一份给背板层用。换作品时归零：新的一件从顶部起手。
+     */
+    var scrollBlur by remember(currentId) { mutableFloatStateOf(0f) }
+    /**
+     * 背板这一层要不要挂在组合里。
+     *
+     * 只在**跨过 0** 那一刻翻面：`scrollBlur > 0f` 直接写进 `if` 会每帧变一次组合结构，
+     * 滚动全程都在重组整页；而透明度本身由 `graphicsLayer` 绘制期读，不需要重组。
+     */
+    val needsBackdrop by remember { derivedStateOf { scrollBlur > 0f } }
 
     // ── 离场飞行体（批 231-E）──
     // 三份状态 + 一个动画值，与 `GalleryPostScreen` 同名同义：那一屏是样板，
@@ -614,7 +623,17 @@ fun PixivWorkScreen(
      * 没有一个"第几页"的格子可落。用逐页键去查会永远查不到，表现是"返回时整页抬回去"：
      * 不报错、不崩溃，谁也不会来报（`GalleryPostScreen` 头注里记着同一条静默错）。
      *
-     * 交回 null = 这一趟飞不了（墙那一格已被 Lazy 回收 / 从搜索或画师页直接进来）。
+     * ## 邻居队列不是这件作品的身份（2026-10-19 批 A 真机验收补）
+     *
+     * `works` 是**把我送进来的那面邻居墙**，它只服务横轴翻邻居，可以正当为空：
+     * 历史那一格的 `tapTile` 只写飞行交接件、不写队列（历史列表混着站点与多页，
+     * 左右翻出去的顺序根本不是用户刚才看到的顺序）。旧版在这里"队列认不出 ⇒ 交回 null"，
+     * 真机读数（17:25:38，`pixiv:150828286`）是**落点就在屏上登记着，返回照样不飞** ——
+     * 队列认不出只等于"没有邻居"，不等于"这件作品没有落点"。
+     * 所以身份链退回一级：邻居队列 → **本件作品的详情 post**（它的 `viewerKey` 由
+     * `site.routeKey:id` 长出，与墙登记那侧逐字同串，不是第二把键）。
+     *
+     * 交回 null = 这一趟飞不了（墙那一格已被 Lazy 回收 / 详情还没回来）。
      *
      * ## 为什么这一步只到"查得到"为止
      *
@@ -627,7 +646,7 @@ fun PixivWorkScreen(
      * 那时这一段不用改。判据：`作品页离场要按同一把键取落点`。
      */
     fun exitTargetOrNull(): Rect? {
-        val post = works.getOrNull(workIndex) ?: return null
+        val post = works.getOrNull(workIndex) ?: detail?.post ?: return null
         return GalleryFlyIn.cardBoundsOf(post.viewerKey)
     }
 
@@ -777,6 +796,16 @@ fun PixivWorkScreen(
                     onPageIndexChanged = { index ->
                         if (slotId == currentId) pageIndex = index
                     },
+                    // 顶栏模糊的滚动读数：同样只认当前槽 —— 邻槽被 pager 预组合、停在顶部，
+                    // 它报上来的 0 会把正在滑的那一面顶回"顶部不模糊"。
+                    onScrollProgress = { progress ->
+                        if (slotId == currentId) scrollBlur = progress
+                    },
+                    // 点作品标签 → 交回画廊那面墙去搜这一枚（用户 2026-10-19 第 3 条）。
+                    // 走 `GallerySearchHandoff` 而不是本地跳转：这一屏是独立 Activity，
+                    // 搜索状态的宿主在 MainActivity 那一侧（交接件的由来写在它头上）。
+                    // 交出去之后**不自己 finish** —— 由宿主层把用户送回画廊，返回时还能退回这一屏。
+                    onSearchTag = { tag -> GallerySearchHandoff.postTag(GallerySite.PIXIV, tag) },
                     // 两条钟只对**当前这一作**有读数：邻槽是 pager 预组合的，
                     // 它跟着进场归零就会在旁边闪一下（用户横翻回来时读到的"隔壁那页空了一下"）。
                     pageEntryAlpha = { if (slotId == postId) pageAlpha() else 1f },
@@ -788,17 +817,28 @@ fun PixivWorkScreen(
         // 顶栏背板：全站主页面那一档（渐变高斯模糊从上往下收 + 轻补底保文字对比），
         // 玻璃色采的就是上面那堵被 `blurBackdropSource` 标记的图墙。
         // ⚠️ 它必须画在采样层**之外**：放进采样层里就是"把模糊再录一遍"，逐帧回灌。
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(topBandHeight)
-                .graphicsLayer { alpha = pageAlpha() }
-                .align(Alignment.TopCenter),
-        ) {
-            VeneraTopBarBackdrop(
-                backdrop = topBarBackdrop,
-                modifier = Modifier.matchParentSize(),
-            )
+        //
+        // 2026-10-19 用户改的口径：「在顶部的时候不要有顶栏模糊，往上滑的时候再出现，
+        // 这个过程要流畅过渡」—— 所以背板不再恒显，改由 [scrollBlur] 那一条跟手的读数驱动：
+        // 顶部 = 完全不出，上滑 48dp 内线性推到全显，回弹再原路收回。
+        //
+        // ⚠️ 挂不挂这一层读的是 [needsBackdrop]（`derivedStateOf`，只在**跨过 0** 那一刻翻），
+        // 不是 `scrollBlur > 0f` 直接读 —— 后者每帧都在变，等于滚动全程把整页拖进重组。
+        // 真正的透明度交给 `graphicsLayer` 在绘制期取，滚动只失效图层、不重组。
+        if (needsBackdrop) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(topBandHeight)
+                    .graphicsLayer { alpha = pageAlpha() }
+                    .align(Alignment.TopCenter),
+            ) {
+                VeneraTopBarBackdrop(
+                    backdrop = topBarBackdrop,
+                    modifier = Modifier.matchParentSize(),
+                    progress = { scrollBlur },
+                )
+            }
         }
 
         // ── 顶部 chrome：④ 两枚按钮走全站同一颗玻璃座（批次 H 定的「顶栏图标按钮唯一形态」）──
@@ -830,18 +870,9 @@ fun PixivWorkScreen(
                         modifier = Modifier.size(tokens.spacing.badgeIconSize),
                     )
                 }
-                if (pages.isNotEmpty()) {
-                    Text(
-                        text = "${pageIndex + 1} / ${pages.size}",
-                        fontSize = tokens.type.body,
-                        color = tokens.color.textPrimary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(tokens.color.surfaceContainerHigh.copy(alpha = tokens.current.selectedSurfaceAlpha))
-                            .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space2)
-                            .semantics { contentDescription = "第 ${pageIndex + 1} 页，共 ${pages.size} 页" },
-                    )
-                }
+                // 中间那枚「1 / N」页数指示器已撤（用户 2026-10-19：「去掉中间的页数指示器」）。
+                // SpaceBetween 在只剩两枚时仍把返回钉在左、更多钉在右，中间那一格天然空出来，
+                // 页位读数改由这一屏的滚动本身表达，不再在顶栏上重复念一遍。
                 VeneraTopBarPill(onClick = { sheetOpen = true }) {
                     Icon(
                         Icons.Outlined.MoreVert,
@@ -917,64 +948,26 @@ fun PixivWorkScreen(
         }
 
         // ── 进场飞行体（墙那一格 → 第 0 页那一格）：三样齐了才画 ──
-        // 与 [GalleryExitFlyBody] 是镜像：那一颗画"屏上那一帧 → 卡片"，这一颗画"卡片 → 落点那一格"。
-        // 算式**复用判据层那两颗**（`coverSourceRect` / `payloadCornerRadiusPx`，各有单测逐位钉着），
-        // 不在这里另写一遍几何 —— 两处各算一遍，同一部作品从两面墙点进来就会飞得不一样。
+        // 与离场那一层互为镜像，共用同一颗共享件（[GalleryEntryFlyBody] / [GalleryExitFlyBody]）：
+        // 几何只住一份（判据层 `exitExpansion`），同一部作品从两面墙点进来飞得一样。
+        // 等像素 / 等详情那一段由 progress 冻在 0 垫着（进度 0 = 站在卡片原位，与点击前
+        // 那一帧同位同像素）—— 屏上必须还有东西，否则透出来的就是后面那面墙 + 一块空白。
         val entryBitmap = cardFrame
         val entryFrom = flyOrigin
-        // 落点没量出来时**冻在起点原位**垫着（与 `GalleryPostScreen` 那条"垫着不空"同一条职责）：
-        // 等像素/等详情那一段屏上必须还有东西，否则透出来的就是后面那面墙 + 一块空白。
-        val entryTo = entryTarget ?: entryFrom
-        if ((entryFlying || entryWaiting) && entryBitmap != null && entryFrom != null && entryTo != null) {
-            // ⚠️ 圆角那一档在**组合期**读（那颗是 @Composable getter），`drawBehind` 里只换算不读：
-            // 绘制阶段读 compositionLocal 拿不到随主题变的值，本仓为这一格栽过（见 GalleryFlyIn 头注）。
-            val entryCoverCorner = veneraCoverCornerRadius()
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        // 等待期这一档停 0：垫帧站在卡片原位，与点击前那一帧同位同像素。
-                        val t = if (entryFlying) entryFly.value.coerceIn(0f, 1f) else 0f
-                        val left = entryFrom.left + (entryTo.left - entryFrom.left) * t
-                        val top = entryFrom.top + (entryTo.top - entryFrom.top) * t
-                        val width = entryFrom.width + (entryTo.width - entryFrom.width) * t
-                        val height = entryFrom.height + (entryTo.height - entryFrom.height) * t
-                        // 源像素按 **cover 语义**取（保持比例、居中裁切），不是拉伸填满：
-                        // 卡封面那一块与落点那一格比例常不同档，拉伸会在交棒那一下读成"闪"。
-                        val src = coverSourceRect(entryBitmap.width, entryBitmap.height, width, height)
-                        // 圆角取**位图自己那一档**（卡封面的 `veneraCoverCornerRadius`），换算同样板：
-                        // 位图里的长度画到框上是 `× dst / src`，被裁过就会跟着放大。
-                        val radius = payloadCornerRadiusPx(
-                            payloadCornerPx = entryCoverCorner.toPx(),
-                            srcWidthPx = src.width,
-                            dstWidthPx = width,
-                        )
-                        clipPath(
-                            Path().apply {
-                                addRoundRect(
-                                    RoundRect(
-                                        left = left,
-                                        top = top,
-                                        right = left + width,
-                                        bottom = top + height,
-                                        cornerRadius = CornerRadius(radius, radius),
-                                    ),
-                                )
-                            },
-                        ) {
-                            // 去程**全程不淡**（同 `GalleryPostScreen` 那条 2026-10-01 的读数）：
-                            // 弹簧的百分比不是路程，中途淡出会和身后的页面叠成重影。
-                            // 飞行全程不淡；交棒后半程才淡出（此刻页面已经接住了那一块）。
-                            drawImage(
-                                image = entryBitmap,
-                                srcOffset = IntOffset(src.left, src.top),
-                                srcSize = IntSize(src.width, src.height),
-                                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                                dstSize = IntSize(width.roundToInt(), height.roundToInt()),
-                                alpha = handoffBodyAlpha(entryHandoff.value),
-                            )
-                        }
-                    },
+        if ((entryFlying || entryWaiting) && entryBitmap != null && entryFrom != null) {
+            GalleryEntryFlyBody(
+                progress = { if (entryFlying) entryFly.value else 0f },
+                from = entryFrom,
+                // 落点是晚到的那一样：量出来之前冻在起点（`entryTarget` 由等落点那段写），
+                // 所以在 lambda 里每帧现取，不冻在组合期。
+                to = { entryTarget ?: entryFrom },
+                frame = entryBitmap,
+                // ⚠️ 圆角那一档在**组合期**读（那颗是 @Composable getter），`drawBehind` 里只换算不读：
+                // 绘制阶段读 compositionLocal 拿不到随主题变的值，本仓为这一格栽过（见 GalleryFlyIn 头注）。
+                coverCornerRadius = veneraCoverCornerRadius(),
+                // 去程**全程不淡**（同播放器那条 2026-10-01 的读数）：弹簧的百分比不是路程，
+                // 中途淡出会和身后的页面叠成重影。交棒后半程才淡出（此刻页面已经接住了那一块）。
+                alpha = { handoffBodyAlpha(entryHandoff.value) },
             )
         }
 
@@ -991,16 +984,16 @@ fun PixivWorkScreen(
         val flyBitmap = exitFrame
         if (leaving && flyBitmap != null && flyFrom != null && flyTo != null) {
             GalleryExitFlyBody(
-                progress = exitFly.value,
+                progress = { exitFly.value },
                 from = flyFrom,
-                to = flyTo,
+                to = { flyTo },
                 frame = flyBitmap,
                 // 起点是整屏（`shape.extraLarge`，这一屏的根容器圆角档），
                 // 终点是卡里那张封面（`veneraCoverCornerRadius()`，`shape.medium`）——
                 // 两处不同档是刻意的，见 `GalleryExitFlyBody` 头注里 2026-10-16 那条读数。
                 flyCornerRadius = tokens.shape.extraLarge,
                 coverCornerRadius = veneraCoverCornerRadius(),
-                alpha = exitBodyAlpha(exitFly.value),
+                alpha = { exitBodyAlpha(exitFly.value) },
             )
         }
     }
@@ -1144,22 +1137,90 @@ private fun PixivCommentsSection(
                         color = tokens.color.textSecondary,
                     )
                 } else {
+                    val shown = if (expanded) state.comments else state.comments.take(COMMENTS_SHOWN)
                     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
                         // 未展开只摆最新那一条；展开后摆**已取到的这一整页**（不是再要一页）。
-                        (if (expanded) state.comments else state.comments.take(COMMENTS_SHOWN))
-                            .forEach { comment ->
+                        //
+                        // 2026-10-19 用户第 4 条：「展开评论的时候应该，逐条错峰淡入，每条评论
+                        // 依次出现，列表从下往上轻微滑入」。所以每条外面套一颗**按序错开**的入场动画，
+                        // 键用评论 id —— 换一批评论（投稿换了 / 重新取数）时序列从头再演一遍，
+                        // 而**已经演完的那些不会因为重组重新演**（同一个 key ⇒ 同一个 remember 槽）。
+                        shown.forEachIndexed { index, comment ->
+                            StaggeredCommentEntry(
+                                key = comment.id,
+                                index = index,
+                                // 同一批里最多错开 8 条：再多的评论同时落进屏内也读不出"先后"，
+                                // 只会让最后那几条等到用户以为卡住了。
+                                staggerCap = COMMENT_STAGGER_CAP,
+                            ) {
                                 PixivCommentRow(comment, imageLoader)
                             }
+                        }
                     }
                 }
         }
     }
 }
 
+/**
+ * 一条评论的**错峰入场**外壳：淡入 + 自下而上轻微滑入（用户 2026-10-19 第 4 条）。
+ *
+ * ## 只用一条 Animatable，不做"透明度一条钟、位移另一条钟"
+ *
+ * 两条钟各自缓动会让同一条评论的"变亮"与"落位"错开，读起来像两层东西在叠；
+ * 一条 `0f → 1f` 同时喂 alpha 与位移，只有一个起止，视觉上就是"这一条整体浮上来"。
+ *
+ * ## 位移只许小
+ *
+ * 12dp —— 超过这个量，评论会像是从屏外另一处飞进来；用户要的是"轻微滑入"，
+ * 不是列表元素在做转场。位移方向固定**从下往上**（起点 `+12dp`，落位 `0`）。
+ *
+ * ## 键与重演
+ *
+ * `key`（评论 id）与 `index` 一起进 [LaunchedEffect] 的键：
+ * - 评论 id 变了 ⇒ 这是另一条评论 ⇒ 从头演；
+ * - 位置变了（展开后前面插进新的）⇒ 也重演，读起来与"新出现"一致；
+ * - 只是重组（滚动、主题切换）⇒ 键不变 ⇒ 不重演，不会边滚边闪。
+ *
+ * 延迟按 `index × COMMENT_STAGGER_STEP` 递增，但只取前 [staggerCap] 档：
+ * 一条帖子可能一次回来几十条评论，让第 40 条等 40×40ms 会被读成"卡住了"；
+ * 超过那一档之后统一按同一档起手，屏内读起来仍是"一批接一批"。
+ */
+@Composable
+private fun StaggeredCommentEntry(
+    key: Long,
+    index: Int,
+    staggerCap: Int,
+    content: @Composable () -> Unit,
+) {
+    val enter = remember(key, index) { Animatable(0f) }
+    LaunchedEffect(key, index) {
+        val step = index.coerceAtMost(staggerCap)
+        if (step > 0) delay((step * COMMENT_STAGGER_STEP_MS).toLong())
+        enter.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = COMMENT_ENTER_MS,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+    val lift = with(LocalDensity.current) { COMMENT_ENTER_LIFT.toPx() }
+    Box(
+        modifier = Modifier.graphicsLayer {
+            val p = enter.value
+            alpha = p
+            // 起点在下方（+lift），随进度回到原位 —— "从下往上"就是这一条符号。
+            translationY = (1f - p) * lift
+        },
+    ) {
+        content()
+    }
+}
+
 /** 一条评论：头像 + 名字 + 时间 + 正文；回复别条时带一句「回复 #id」。 */
 @Composable
-private fun PixivCommentRow(comment: PixivComment, imageLoader: ImageLoader) {
-    val tokens = VeneraTokens
+private fun PixivCommentRow(comment: PixivComment, imageLoader: ImageLoader) {    val tokens = VeneraTokens
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
@@ -1324,6 +1385,26 @@ private const val RELATED_MAX = 9
 private const val COMMENTS_SHOWN = 1
 
 /**
+ * 评论展开时逐条错峰入场的三枚观感数字（用户 2026-10-19 第 4 条）。
+ *
+ * 三枚一起改才有意义：
+ * - [COMMENT_STAGGER_STEP_MS] 是**相邻两条**的起手间隔。太小（<20ms）读不出"依次"，
+ *   太大（>80ms）会让十几条评论排成一条长队、像加载卡住；40ms 落在"看得出来是先后、
+ *   又不像在等"的那一档。
+ * - [COMMENT_ENTER_MS] 是**单条**的入场时长。必须大于步长，否则每条都演完了下一条才起手，
+ *   读起来是一串独立的小闪；比步长长一些才会叠成一条连续的流。
+ * - [COMMENT_STAGGER_CAP] 是**最多错开几档**。一条帖子一次可能回来几十条评论，
+ *   不封顶的话第 40 条要等 1.6 秒（用户会读成"点了没反应"）；封顶之后剩下的按同一档
+ *   起手，屏内读起来仍是"一批接一批"。
+ */
+private const val COMMENT_STAGGER_STEP_MS = 40
+private const val COMMENT_ENTER_MS = 260
+private const val COMMENT_STAGGER_CAP = 8
+
+/** 单条评论入场的上浮行程：只许"轻微"，量取 12dp（超过这个量就像从屏外另一处飞进来）。 */
+private val COMMENT_ENTER_LIFT = 12.dp
+
+/**
  * 进场飞行体等**落点量出来**的预算（毫秒）。值与 `GalleryPostScreen` 那颗同名常量同一档，
  * 因为那条读数就是这里要防的：先前停在 400ms 时真机 `target=null waited=406ms`，放宽到 600ms
  * 仍然不飞 —— 真实原因是页面站在窗口外、落点被裁成 0×0。**预算不是病，姿态才是病。**
@@ -1405,10 +1486,23 @@ private fun PixivWorkFlow(
      * 与 [pageEntryAlpha] 分开的理由就是 2026-10-19 用户报的那一条：合在一条上，内容区只能等图飞完。
      */
     detailEntryAlpha: () -> Float = { 1f },
+    /**
+     * 这一槽的**滚动进度**（0..1，一旦到顶就是 0）。
+     *
+     * 顶栏那颗模糊背板要"顶部不出、上滑跟手渐显"，读数只能从真正在滚的那面墙里取 ——
+     * 而每槽一颗 `LazyListState`（见上面那条注释），所以由槽自己算好递上去。
+     *
+     * 交的是 lambda 不是 Float：滚动时这个值每帧都在变，当参数传等于把整条流每帧拖进重组。
+     */
+    onScrollProgress: ((Float) -> Unit)? = null,
+    /** 点一枚作品标签 → 按它搜一轮（透传给 [PixivWorkDetails]，理由见那里）。 */
+    onSearchTag: ((String) -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val gap = if (seam == PixivPageSeam.NONE) tokens.spacing.none else tokens.spacing.hairline
     val pages = detail?.pages.orEmpty()
+    // 顶栏模糊的淡入行程（与 `VeneraTopAppBar` 同一个 48dp 口径，不在这里另造一个数）。
+    val scrollBlurThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
     // **每槽一颗**（不是宿主发下来的一颗共享 state，理由见调用处那条注释）：
     // `rememberLazyListState()` 本身走 `rememberSaveable`，键在组合槽上 ⇒ 横翻回来还在原来那一页。
     val listState = rememberLazyListState()
@@ -1450,6 +1544,28 @@ private fun PixivWorkFlow(
             onPageIndexChanged(if (pages.isEmpty()) 0 else it.coerceAtMost(pages.size - 1))
         }
     }
+    // ── 顶栏模糊的滚动读数（用户 2026-10-19：「在顶部的时候不要有顶栏模糊，往上滑的时候再出现」）──
+    //
+    // 口径照全站顶栏那一档（`VeneraTopAppBar`）：**走 48dp 线性淡入**，不看 `canScrollBackward`
+    // 那一类布尔 —— 布尔只能给两档，而这里要的是跟手。
+    //
+    // 用 `snapshotFlow` + `distinctUntilChanged` 而不是每帧无条件报：列表布局每帧都会刷新
+    // `firstVisibleItemScrollOffset`，无条件写上去等于让宿主每帧重组一次。
+    LaunchedEffect(listState, pages.size, onScrollProgress) {
+        if (onScrollProgress == null) return@LaunchedEffect
+        snapshotFlow {
+            val offsetPx = listState.firstVisibleItemScrollOffset.toFloat()
+            val index = listState.firstVisibleItemIndex
+            // 第 0 项之外（详情段、末页之后那几格）一律算"已经滑走"：那时顶栏必须全显，
+            // 不能因为回到某一项的顶端就把模糊收掉。
+            if (index > 0) 1f else {
+                val thresholdPx = scrollBlurThresholdPx
+                if (thresholdPx <= 0f) 0f else (offsetPx / thresholdPx).coerceIn(0f, 1f)
+            }
+        }
+            .distinctUntilChanged()
+            .collect(onScrollProgress)
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -1461,6 +1577,24 @@ private fun PixivWorkFlow(
             item(key = "ugoira-${detail.post.id}") {
                 // 这一格是**字**不是图：跟着内容区那条钟走（ugoira 没有页 ⇒ 压根不飞，两档都是 1）。
                 Box(Modifier.graphicsLayer { alpha = detailEntryAlpha() }) {
+                    // 2026-10-19 用户报「动图这一作整屏上半是白的」—— 立案读数：这一支从前**只摆一句字**，
+                    // 而站方对 ugoira 同样给了 `image_urls` 那几档（第一帧的静图，见 `PixivAppParse` /
+                    // `PixivFeedParse` 的 workDetail：它们照常长出了 `pages`）。于是图上那几百像素
+                    // 一片空白，读起来像"这一屏没加载出来"。
+                    //
+                    // 现在把手里那第一帧摆上去（中档，与连读同一档，不为静帧去拉原图），
+                    // 提示语与出口接在图下面 —— 明说"只画得出第一帧"这件事没变，只是不再空着。
+                    val still = pages.firstOrNull()
+                    if (still != null) {
+                        PixivPageImage(
+                            page = still,
+                            loader = imageLoader,
+                            description = pageSemantic(0, pages.size),
+                            viewerKey = wallPages.firstOrNull()?.viewerKey.orEmpty(),
+                            onClick = { rect -> openPages(detail, 0, rect) },
+                            onDrawn = { onPageDrawn(0) },
+                        )
+                    }
                     UgoiraNotice { onOpenViewer(detail.post.id) }
                 }
             }
@@ -1502,6 +1636,7 @@ private fun PixivWorkFlow(
                     comments = comments,
                     commentsExpanded = commentsExpanded,
                     onToggleCommentsExpanded = onToggleCommentsExpanded,
+                    onSearchTag = onSearchTag,
                     // `graphicsLayer` 必须排在 `background` **之前**（更外层）：排后面时
                     // 底色画在图层外面，淡入会变成"一块不透明的底 + 一层淡的字"。
                     modifier = Modifier
@@ -1729,6 +1864,14 @@ internal fun PixivWorkDetails(
     /** 评论是否已展开（两个宿主共用同一份，见 `PixivWorkFlow` 那侧同名参数）。 */
     commentsExpanded: Boolean = false,
     onToggleCommentsExpanded: () -> Unit = {},
+    /**
+     * 点一枚作品标签 → 按它搜一轮（用户 2026-10-19：「作品标签目前不可以点击，
+     * 点击后跳转到标签的搜索页面」）。
+     *
+     * `null` = 这一版**没有搜索出口**，标签保持纯展示（不摆点了没反应的假开关）。
+     * 两个宿主都接得上：作品页交的是 `GallerySearchHandoff`，播放器面板交的是它自己那条。
+     */
+    onSearchTag: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -1884,7 +2027,9 @@ internal fun PixivWorkDetails(
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
             ) {
                 // 同屏最多 8 枚；不足 8 枚时 hidden==0 ⇒ 节头右侧根本不会出现「查看全部」那枚把手
-                shown.forEach { tag -> TagChip(tag) }
+                shown.forEach { tag ->
+                    TagChip(tag, onClick = onSearchTag?.let { search -> { search(tag) } })
+                }
             }
         }
         // 评论从前在这里单独占一行（「评论 N 条 · 在浏览器里看」），而动作行那枚已经同时念数
@@ -1942,21 +2087,35 @@ internal fun PixivWorkDetails(
 }
 
 @Composable
-private fun TagChip(tag: String) {
+private fun TagChip(
+    tag: String,
+    /**
+     * 点这一枚去搜这个标签。**null = 这一层没有搜索出口**，那就保持纯展示（不加可点语义、
+     * 不加涟漪）：摆一枚点不动却长得像把手的药丸，比不摆更糟。
+     */
+    onClick: (() -> Unit)? = null,
+) {
     val tokens = VeneraTokens
+    val base = Modifier
+        .clip(RoundedCornerShape(percent = 50))
+        .background(tokens.color.surfaceVariant)
     Text(
         tag,
         fontSize = tokens.type.caption,
         color = tokens.color.textPrimary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .clip(RoundedCornerShape(percent = 50))
-            .background(tokens.color.surfaceVariant)
-            .padding(
-                horizontal = tokens.spacing.chipHorizontalPadding,
-                vertical = tokens.spacing.chipVerticalPadding,
-            ),
+        modifier = (if (onClick != null) {
+            base
+                // 与「查看全部」那枚把手同一档：先 clip 再 clickable，涟漪才被药丸裁住。
+                .clickable(onClick = onClick)
+                .semantics { contentDescription = "搜索标签 $tag" }
+        } else {
+            base
+        }).padding(
+            horizontal = tokens.spacing.chipHorizontalPadding,
+            vertical = tokens.spacing.chipVerticalPadding,
+        ),
     )
 }
 

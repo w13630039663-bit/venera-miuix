@@ -65,14 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -84,11 +79,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.core.view.WindowCompat
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -113,7 +106,6 @@ import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.domain.FlyRect
 import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryAutoPlay
 import com.venera.compose.gallery.domain.GalleryExitGestureCommand
@@ -124,15 +116,12 @@ import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryPreload
 import com.venera.compose.gallery.domain.GalleryVolumeKeys
 import com.venera.compose.gallery.watercolor.WatercolorPainterScreen
-import com.venera.compose.gallery.domain.coverSourceRect
 import com.venera.compose.gallery.domain.exitBodyAlpha
-import com.venera.compose.gallery.domain.exitExpansion
 import com.venera.compose.gallery.domain.exitPageAlpha
 import com.venera.compose.gallery.domain.galleryArtistNames
 import com.venera.compose.gallery.domain.handoffBodyAlpha
 import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.gallery.domain.nextExitGesture
-import com.venera.compose.gallery.domain.payloadCornerRadiusPx
 import com.venera.compose.gallery.domain.watercolorEntryVisible
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.ui.tokens.StatusColors
@@ -1359,8 +1348,10 @@ fun GalleryPostScreen(
 
         // ── 飞行途中的那一帧（共享元素的"主体"）──
         // 画在整页之上、sheet 之下：它只负责"卡片原位 → 大图位置"那一段。
-        // `fly.value` / `exitFly.value` 与各页的画面框都在 drawBehind 的 lambda 里读 = 绘制阶段读，
+        // `fly.value` / `handoff.value` / `frameBounds[...]` 都在 drawBehind 的 lambda 里读 = 绘制阶段读，
         // 每帧只重绘这一块，不把整页拖进重组（与上面 graphicsLayer 同一条口径）。
+        // 2026-10-19 批 A：两趟绘制并成共享件（进场 [GalleryEntryFlyBody]、离场 [GalleryExitFlyBody]），
+        // 几何与圆角不再在这颗 2219 行的屏里各写一遍。
         val frame = cardFrame
         val startRect = flyOrigin
         // 抬页那一档**不画飞行体**：走到那一档时像素可能已经在手上（`payload` 非空）但落点没量出来，
@@ -1374,76 +1365,18 @@ fun GalleryPostScreen(
                     "overlay composed frame=${frame.width}x${frame.height} start=$startRect",
                 )
             }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        // 落点还没量出来时**冻在封面原位**垫着（这正是这一层最初"垫着不空"的职责），
-                        // 量到了才起程。直接不画的话，等落点那几帧屏上只剩窗口模糊。
-                        val end = frameBounds[initialViewerKey] ?: startRect
-                        val t = fly.value.coerceIn(0f, 1f)
-                        val left = startRect.left + (end.left - startRect.left) * t
-                        val top = startRect.top + (end.top - startRect.top) * t
-                        val width = startRect.width + (end.width - startRect.width) * t
-                        val height = startRect.height + (end.height - startRect.height) * t
-                        // 源像素按 **cover 语义**取（保持它自己的比例、居中裁切），**不是**拉伸填满：
-                        // 起点框与落点框的比例并不总是同一档（墙上卡片被夹在 0.4~2.5、预览行的封面固定
-                        // 124×170，而落点框按原图比例定）。拉伸会把整块内容拉扯变形，交棒那一下再把形状
-                        // 还回来，读起来就是"闪"。算式抽在判据层（`coverSourceRect`，带单测）——
-                        // 比例一致时算出来的就是整张位图，与老写法逐像素等价。
-                        val src = coverSourceRect(frame.width, frame.height, width, height)
-                        // 圆角必须跟着走：飞行体本身画的是**矩形**，而落点那一框是 `shape.large` 圆角。
-                        // 不裁它，交棒那一刻就是"方角 → 圆角"的一次跳变 —— 2026-10-01 12:09 那两张
-                        // 真机截图量出来的就是这条：飞行中四角全是直角、到位后四角全是圆角。
-                        //
-                        // ⚠️ 半径取的是**这块位图自己的圆角**（封面那一档 `shape.medium`），
-                        // **不是**画面框那一档：位图的四角画的是卡片面色（封面被裁掉的那圈），
-                        // 用更松的圆角去裁等于把那四枚白角原样放行 —— 2026-10-16 用户报的
-                        // 「飞行体把按压那层白一起带进来了」就是这条。换算见 [payloadCornerRadiusPx]：
-                        // 位图里的长度在框上是 `长度 × dst / src`，`src` 用的是**裁过之后**那一块，
-                        // 所以比例不同档时圆角也跟着放大，不会因为被裁而变软。
-                        val radius = payloadCornerRadiusPx(
-                            payloadCornerPx = coverCornerRadius.toPx(),
-                            srcWidthPx = src.width,
-                            dstWidthPx = width,
-                        )
-                        clipPath(
-                            Path().apply {
-                                addRoundRect(
-                                    RoundRect(
-                                        left = left,
-                                        top = top,
-                                        right = left + width,
-                                        bottom = top + height,
-                                        cornerRadius = CornerRadius(radius, radius),
-                                    ),
-                                )
-                            },
-                        ) {
-                            // 去程**全程不淡**（2026-10-01 第四次报"打开还是闪"，录屏量出来的）：
-                            // 老写法让它在这条弹簧的尾段淡出，可"弹簧的百分比"不是"路程" ——
-                            // 页面同时开始淡入，两份图错着位叠在一起 = 重影，而且两层 alpha
-                            // 相乘后总不透明度只有 0.75，图还会先暗一下。现在它整程不透明，
-                            // 淡出挪到**飞完之后的交棒后半程**（那时页面已不透明，见 [handoff]）。
-                            val bodyAlpha = if (entranceMode == Entrance.FLY) {
-                                handoffBodyAlpha(handoff.value)
-                            } else {
-                                1f
-                            }
-                            // 整张位图一次画完。浮层 caption 那一档退役后（2026-10-17 第三十二轮：
-                            // 用户「改成图片能在外面预览全部显示那种不要浮层」—— 卡片文字区搬回
-                            // 封面下方，不再叠在图上），截帧里只有图，起点与落点同构，
-                            // 不再需要「切两段 + 条子随进度淡出」那道减退机理。
-                            drawImage(
-                                image = frame,
-                                srcOffset = IntOffset(src.left, src.top),
-                                srcSize = IntSize(src.width, src.height),
-                                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                                dstSize = IntSize(width.roundToInt(), height.roundToInt()),
-                                alpha = bodyAlpha,
-                            )
-                        }
-                    },
+            GalleryEntryFlyBody(
+                progress = { fly.value },
+                from = startRect,
+                // 落点还没量出来时**冻在封面原位**垫着（"垫着不空"的职责）：等落点那几帧屏上
+                // 不能只剩窗口模糊。量到了下一帧就改道，所以落点在 lambda 里每帧现取。
+                to = { frameBounds[initialViewerKey] ?: startRect },
+                frame = frame,
+                coverCornerRadius = coverCornerRadius,
+                // 去程全程不淡；交棒后半程才淡出（那时页面已不透明，见 [handoff]）。
+                alpha = {
+                    if (entranceMode == Entrance.FLY) handoffBodyAlpha(handoff.value) else 1f
+                },
             )
         }
 
@@ -1457,61 +1390,14 @@ fun GalleryPostScreen(
         val exitTo = exitTarget
         val exitBitmap = exitFrame
         if (exitBitmap != null && exitFrom != null && exitTo != null) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        // 整帧算式在判据层（`exitExpansion`，有单测逐位钉着它与搬过来之前那句相同）：
-                        // 给定进度 → 落点框 + 源裁切 + 圆角缩放。进度就是这一层的唯一输入，
-                        // 所以批 2 换成手势直驱时不必再动这一处。
-                        val frame = exitExpansion(
-                            progress = exitFly.value,
-                            from = exitFrom.toFlyRect(),
-                            to = exitTo.toFlyRect(),
-                            sourceWidthPx = exitBitmap.width,
-                            sourceHeightPx = exitBitmap.height,
-                        )
-                        val dst = frame.dst
-                        // 源像素同样是 cover 语义：起点是画面框的截屏、终点是卡片封面那一块，
-                        // 两者比例未必同档（卡封面被夹过、预览行那条还是固定的 124×170）。
-                        val src = frame.source
-                        // 圆角同一条口径（按当前宽度等比缩放）：到终点时等于框的圆角，
-                        // 与卡片自己的圆角同档，落回去那一瞬间没有形状差。
-                        //
-                        // ⚠️ 2026-10-16：两头那一档**不是同一个**圆角 —— 起点是画面框（`shape.large`），
-                        // 终点是**卡里那张封面**（`shape.medium`，见 [veneraCoverCornerRadius]）。
-                        // 旧写法两处都用 `shape.large` ⇒ 落回卡片时飞行体的角比封面圆 4dp，
-                        // 于是"贴上去"的那一帧在卡片四角盖着一小块**不属于卡片**的图，
-                        // 飞行体一撤，卡片自己的四角（露的是卡片面色）才补上来 —— 一次角上的补白。
-                        // 进度插值即可：`cornerRadiusScale` 管的是"同一比例缩到多大"，
-                        // 而"哪一档圆角"是随路程换的，两者相乘正交。
-                        val radius = lerp(flyCornerRadius, coverCornerRadius, exitFly.value.coerceIn(0f, 1f))
-                            .toPx() * frame.cornerRadiusScale
-                        clipPath(
-                            Path().apply {
-                                addRoundRect(
-                                    RoundRect(
-                                        left = dst.left,
-                                        top = dst.top,
-                                        right = dst.left + dst.width,
-                                        bottom = dst.top + dst.height,
-                                        cornerRadius = CornerRadius(radius, radius),
-                                    ),
-                                )
-                            },
-                        ) {
-                            drawImage(
-                                image = exitBitmap,
-                                srcOffset = IntOffset(src.left, src.top),
-                                srcSize = IntSize(src.width, src.height),
-                                dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
-                                dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
-                                // 末段化进落点那一份（判据层 [exitBodyAlpha]）。首程恒为 1，
-                                // 所以"屏上只有飞行体"的那一段不会被提前虚掉。
-                                alpha = exitBodyAlpha(exitFly.value),
-                            )
-                        }
-                    },
+            GalleryExitFlyBody(
+                progress = { exitFly.value },
+                from = exitFrom,
+                to = { exitTo },
+                frame = exitBitmap,
+                flyCornerRadius = flyCornerRadius,
+                coverCornerRadius = coverCornerRadius,
+                alpha = { exitBodyAlpha(exitFly.value) },
             )
         }
 
@@ -1529,6 +1415,15 @@ fun GalleryPostScreen(
                     onOpenArtist = { name, postSource -> onOpenArtist(name, postSource) },
                     onDownload = { download(current) },
                     onDismiss = { infoOpen = false },
+                    // 面板里点标签 → 收起面板、把这一枚交回画廊那面墙去搜（用户 2026-10-19 第 3 条）。
+                    // 三步顺序：先 `postTag`（交接槽必须先写上，否则消费方读不到），再收面板，
+                    // 最后 `onBack()` 把这一层退掉 —— 与画师介绍页那条链同一形状（`postTag` + finish），
+                    // 不多造一条"跳走了但还压在栈上"的路。
+                    onSearchTag = { tag ->
+                        GallerySearchHandoff.postTag(site, tag)
+                        infoOpen = false
+                        onBack()
+                    },
                 ),
             )
         } else if (infoOpen && current != null) {
@@ -2216,16 +2111,3 @@ private const val TIER_RING_TRACK_ALPHA = 0.24f
  * 5 秒是用户原话里给的那个数（「比如每 5 秒切一张」），不另造一个。
  */
 private const val AUTOPLAY_DEFAULT_SEC = 5
-
-/**
- * 落点框翻成 domain 那层的 [FlyRect]。
- *
- * 为什么在调用侧翻而不是让 `exitExpansion` 直接吃 `Rect`：判据层刻意不碰 Compose 类型，
- * 它才能脱离 gradle 单跑（口径见 `GalleryFlyGeometry.kt` 文件头注）。
- */
-private fun Rect.toFlyRect() = FlyRect(
-    left = left,
-    top = top,
-    width = width,
-    height = height,
-)

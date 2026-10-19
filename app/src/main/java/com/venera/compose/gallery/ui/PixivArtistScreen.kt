@@ -71,6 +71,7 @@ import com.venera.compose.gallery.data.PixivArtistSection
 import com.venera.compose.gallery.data.PixivUserDetail
 import com.venera.compose.gallery.data.PixivUserHead
 import com.venera.compose.gallery.data.PixivUserWorks
+import com.venera.compose.gallery.data.PixivRestrict
 import com.venera.compose.gallery.data.PixivWork
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import com.venera.compose.gallery.domain.GalleryArtistLinks
@@ -365,7 +366,7 @@ internal fun PixivArtistScreen(
         bookmarkError = null
         // `bookmarkIllusts` 的 `userId` 就是"读**这位**的公开收藏"—— 那条腿自己带
         // `restrict=public`，读不到私密档（那是用户给站方划的界，见文件头）。
-        ports.pixiv?.bookmarkedIllusts(bearer, id.toString())?.onFailure { failure ->
+        ports.pixiv?.bookmarkedIllusts(bearer, id.toString(), PixivRestrict.Public)?.onFailure { failure ->
             Log.w(TAG, "画师 $id 的公开收藏没取到：${failure.message}")
             bookmarkError = failure.message?.takeIf { it.isNotBlank() } ?: "站方没答上"
         }?.onSuccess { page ->
@@ -405,7 +406,7 @@ internal fun PixivArtistScreen(
                     return@collect
                 }
                 bookmarkLoading = true
-                ports.pixiv?.bookmarkedIllusts(bearer, id.toString(), next)?.onFailure { failure ->
+                ports.pixiv?.bookmarkedIllusts(bearer, id.toString(), PixivRestrict.Public, next)?.onFailure { failure ->
                     // 续页失败**不清屏**（按一下等于删一屏），也不置到底 —— 再划一下会重判。
                     Log.w(TAG, "画师 $id 的公开收藏续页没取到：${failure.message}")
                 }?.onSuccess { page ->

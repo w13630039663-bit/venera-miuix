@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -23,17 +24,22 @@ import kotlin.math.roundToInt
  * ## 为什么抽
  *
  * pixiv 作品页要接返回程，而这段绘制原本**只长在** `GalleryPostScreen` 里（那 55 行
- * `drawBehind` 埋在极深的组合里）。两处各写一遍不行：飞行体只要有一处算式不同，
- * 同一部作品从这面墙点进去和从那一面墙点进去就会**飞得不一样**，而那种错只有真机能看见。
+ * `drawBehind` 埋在极深的组合里），2026-10-19 上午又被抄进了作品页进场与播放器进场 ——
+ * 同一个动作"把一块位图画进一个从 A 框变到 B 框的圆角矩形"共有四份抄本。各写一遍不行：
+ * 飞行体只要有一处算式不同，同一部作品从这面墙点进去和从那一面墙点进去就会**飞得不一样**，
+ * 而那种错只有真机能看见。
  *
  * 所以这里留**一份渲染**，算式继续吃 [com.venera.compose.gallery.domain.exitExpansion]
- * （那颗纯判据早就有单测逐位钉着）。`GalleryPostScreen` 那一处暂未替换成这一颗 ——
- * 它在 2219 行的屏里、回归面大，本轮只先让作品页用上（见 §8 的交付说明）。
+ * （那颗纯判据早就有单测逐位钉着）。进场那一趟见 [GalleryEntryFlyBody] —— 两颗件同一包、
+ * 同一套形参形状，几何共用同一颗判据（`exitExpansion` 就是"逐边插值 + cover 取源"，
+ * 方向无关，它的名字是历史包袱），只有圆角那一档各按自己的位图模型走（见两颗件各自的头注）。
  *
  * ## 三件输入缺一不可
  *
  * - [from]：起点，屏上那一帧在窗口里的框；
- * - [to]：终点，墙上那张卡封面那一块（由一级页面按 `viewerKey` 回写）；
+ * - [to]：终点，墙上那张卡封面那一块（由一级页面按 `viewerKey` 回写）。它是**lambda**而不是
+ *   值：落点是晚到的那一样（等墙里那一格量出来），冻在组合期就会把"没量到那一帧"的画法
+ *   一路带到飞完。每帧现取，量到的那一刻下一帧就改道。
  * - [frame]：**像素**，起点那一帧的截图（`GalleryFlyIn.capture` 得来）。
  *
  * 缺任何一件就**什么都不画**：让调用方老实 finish，不许把"飞不起来"演成"飞完了"。
@@ -48,29 +54,34 @@ import kotlin.math.roundToInt
  * 进度插值与"哪一档圆角"是**正交**的两件事：前者管"同一比例缩到多大"（`cornerRadiusScale`），
  * 后者管"随路程换用哪一档"，所以两处相乘而不是二选一。
  *
- * @param progress 0 = 还在起点，1 = 已落到卡片那一格。
+ * @param progress 0 = 还在起点，1 = 已落到卡片那一格。**传 lambda 不传值**：动画值在
+ *   `drawBehind` 里每帧现取，只重绘这一块；当 `Float` 实参递就等于把动画值读回组合期，
+ *   每帧重组这一层（2026-10-19 批 A 之前的形状，那一条把较好的绘制期取值降级成了较差的）。
  * @param alpha 飞行体自己的不透明度。默认 1 = 整程不透明（老口径）。调用方若要"末段化进落点"
- *   就传 `exitBodyAlpha(progress)` —— 见 [com.venera.compose.gallery.domain.exitBodyAlpha] 头注。
+ *   就传 `{ exitBodyAlpha(exitFly.value) }` —— 见 [com.venera.compose.gallery.domain.exitBodyAlpha] 头注。
  */
 @Composable
 internal fun GalleryExitFlyBody(
-    progress: Float,
-    from: androidx.compose.ui.geometry.Rect,
-    to: androidx.compose.ui.geometry.Rect,
+    progress: () -> Float,
+    from: Rect,
+    to: () -> Rect,
     frame: ImageBitmap,
     flyCornerRadius: Dp,
     coverCornerRadius: Dp,
     modifier: Modifier = Modifier,
-    alpha: Float = 1f,
+    alpha: () -> Float = { 1f },
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
             .drawBehind {
+                // 三颗 lambda 各取一次，同一帧内同一个值（不然几何与圆角可能差半帧）。
+                val p = progress()
+                val bodyAlpha = alpha()
                 val computed = exitExpansion(
-                    progress = progress,
+                    progress = p,
                     from = from.toFlyRect(),
-                    to = to.toFlyRect(),
+                    to = to().toFlyRect(),
                     sourceWidthPx = frame.width,
                     sourceHeightPx = frame.height,
                 )
@@ -80,7 +91,7 @@ internal fun GalleryExitFlyBody(
                 val radius = lerp(
                     flyCornerRadius,
                     coverCornerRadius,
-                    progress.coerceIn(0f, 1f),
+                    p.coerceIn(0f, 1f),
                 ).toPx() * computed.cornerRadiusScale
                 clipPath(
                     Path().apply {
@@ -101,7 +112,7 @@ internal fun GalleryExitFlyBody(
                         srcSize = IntSize(src.width, src.height),
                         dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
                         dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
-                        alpha = alpha,
+                        alpha = bodyAlpha,
                     )
                 }
             },
@@ -111,11 +122,11 @@ internal fun GalleryExitFlyBody(
 /**
  * `Rect` → 判据层的 `FlyRect`。
  *
- * 与 `GalleryPostScreen` 里那颗**同形**：那是 `private`，而且它所在的那颗文件正被别人频繁改，
- * 所以这里各留一份转换（纯数据搬运，没有判断）。两边同形由
- * `GalleryExitFlyBodyTest` 钉着 —— 一处漂了当场红。
+ * 全仓**只此一份**（`internal`，进出两颗飞行体共用）：从前 `GalleryPostScreen` 里还有一颗
+ * 同形 private，各留一份是"那颗文件正被别人频繁改、不想互相等"；批 A 把播放器那两趟也换成
+ * 共享件之后两份抄本并成一份，「两边同形由尺子钉着」那句话由本函数自身成立，不再需要尺子。
  */
-private fun androidx.compose.ui.geometry.Rect.toFlyRect() = com.venera.compose.gallery.domain.FlyRect(
+internal fun Rect.toFlyRect() = com.venera.compose.gallery.domain.FlyRect(
     left = left,
     top = top,
     width = width,

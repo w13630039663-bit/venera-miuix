@@ -233,11 +233,15 @@ internal fun GalleryHistoryScreen(
     LaunchedEffect(siteFilter) { gridState.scrollToItem(0) }
 
     /** 多选态下点卡 = 勾选；非多选态 = 开大图页。两条路都从这一枚把手走。 */
-    fun tapTile(row: GalleryBrowseRow) {
+    fun tapTile(row: GalleryBrowseRow, coverBounds: Rect) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (multi.active) {
             multi.toggle(row.uid)
         } else {
+            // 与三面墙同一个动作（批 A 接上，此前没截 ⇒ 历史这一格点进去恒走
+            // "整页从下沿抬上来"那条退路）：趁瓦片还在屏上把封面那一帧截下来
+            // 交给大图页当飞行体的起点。量的是封面那一块，与落点登记同一份矩形。
+            GalleryFlyIn.capture(view, coverBounds)
             onOpenPost(row.site, row.postId)
         }
     }
@@ -377,11 +381,13 @@ internal fun GalleryHistoryScreen(
                                 imageLoader = imageLoader,
                                 selecting = multi.active,
                                 selected = multi.contains(row.uid),
-                                onClick = { tapTile(row) },
+                                onOpen = { bounds -> tapTile(row, bounds) },
                                 onLongPress = { longPressTile(row) },
                                 onCoverBounds = { bounds ->
                                     // 大图页返回程的落点，与墙上那张卡同一把口径。
-                                    GalleryFlyIn.noteCardBounds(row.uid, bounds)
+                                    // 键统一 viewerKey（批 A）：列表腿它就等于 uid，
+                                    // 但查询侧只认 viewerKey，登记侧不再各念各的键。
+                                    GalleryFlyIn.noteCardBounds(row.viewerKey, bounds)
                                 },
                             )
                         }
@@ -568,7 +574,8 @@ private fun GalleryHistoryTile(
     imageLoader: ImageLoader,
     selecting: Boolean,
     selected: Boolean,
-    onClick: () -> Unit,
+    /** 非多选态点开：把**封面那一块**的窗口矩形一并交出去（去程截图要它）。 */
+    onOpen: (Rect) -> Unit,
     onLongPress: () -> Unit,
     onCoverBounds: (Rect) -> Unit,
 ) {
@@ -576,13 +583,13 @@ private fun GalleryHistoryTile(
     val interactionSource = remember { MutableInteractionSource() }
     var coverBounds by remember { mutableStateOf(Rect.Zero) }
     // 瓦片被懒网格回收（滚出屏幕）时撤掉自己那条返回落点：留着过期矩形比"这一次不飞"糟得多。
-    DisposableEffect(row.uid) {
-        onDispose { GalleryFlyIn.forgetCardBounds(row.uid) }
+    DisposableEffect(row.viewerKey) {
+        onDispose { GalleryFlyIn.forgetCardBounds(row.viewerKey) }
     }
     SelectableCardFrame(
         selecting = selecting,
         selected = selected,
-        onToggleSelect = onClick,
+        onToggleSelect = { onOpen(coverBounds) },
         // 洗底要跟着这一格的圆角裁：默认档是 `shape.card`，而这一格裁的是 `shape.medium`，
         // 不显式递就会在四个角外头染出一小片主色（那颗件的头注专门写着这件事）。
         cornerRadius = tokens.shape.medium,
@@ -596,7 +603,7 @@ private fun GalleryHistoryTile(
                 .combinedClickable(
                     interactionSource = interactionSource,
                     indication = VeneraPressFeedback.indication,
-                    onClick = onClick,
+                    onClick = { onOpen(coverBounds) },
                     onLongClick = onLongPress,
                 ),
         ) {

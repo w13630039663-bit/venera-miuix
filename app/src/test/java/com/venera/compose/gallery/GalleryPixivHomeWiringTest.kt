@@ -235,7 +235,11 @@ class GalleryPixivHomeWiringTest {
     @Test
     fun `关注与推荐是两条腿，参数照 pixez 那一套`() {
         // `filter=for_android` 是这条端点能不能答的关键（我们先前量到 recommended 回 400/191 就是缺它）。
-        val following = firstIndex("works.following(bearer, me)")
+        //
+        // 2026-10-19：`restrict` 从端点里写死的 `"public"` 变成了调用点给的形参（账号页要读非公开那一档）。
+        // 首页这一栏**仍是公开**，所以锚点把档位一起钉住 —— 谁把它改成 Private，
+        // 首页就会出现"你关注了一些你根本没关注的人"那种最容易误解的假读数。
+        val following = firstIndex("works.following(bearer, me, PixivRestrict.Public)")
         assertTrue("关注列表要真打那一跳：\n" + textBetween(following, following + 3), following > 0)
         val recommended = firstIndex("works.recommendedUsers(bearer)")
         assertTrue("推荐用户也要打（两栏分开取）：\n" + textBetween(recommended, recommended + 3), recommended > 0)

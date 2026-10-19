@@ -81,6 +81,31 @@ fun DrawScope.drawVeneraAmbient(
 }
 
 /**
+ * 把页面那一份氛围光**不透明**地再铺一层，给「不许内容透出来」的顶栏用。
+ *
+ * 走的是与 [VeneraAmbientBackground] 完全同一颗 [drawVeneraAmbient]，且只按宽度定位
+ * （光斑几何不读高度），所以铺在顶栏那一小条上与底下的整屏氛围光**同一套颜色、没有接缝**。
+ * 不读 [LocalGlassBackdrop]：这层是实底的，不是玻璃。
+ */
+@Composable
+fun VeneraAmbientChrome(modifier: Modifier = Modifier) {
+    val isDark = LocalVeneraDarkTheme.current
+    val primaryColor = MiuixTheme.colorScheme.primary
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val secondaryColor = MiuixTheme.colorScheme.tertiaryContainer.let {
+        if (it != Color.Unspecified) it else Color(0xFF6750A4)
+    }
+    Canvas(modifier) {
+        drawVeneraAmbient(
+            primary = primaryColor,
+            secondary = secondaryColor,
+            surface = surfaceColor,
+            isDark = isDark,
+        )
+    }
+}
+
+/**
  * Apple Music 风格主题色沉浸式氛围光背景
  * 1:1 对齐原版 Flutter [AppBackground._buildAmbient] 效果：
  * - 底部铺满系统 surface 底色

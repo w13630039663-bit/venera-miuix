@@ -29,6 +29,10 @@ import java.io.File
  * - 去程飞行体、垫帧、返回程落点三处都不许再用 `flyCornerRadius` 当"裁这块像素"的半径
  *   （它管的是"落到画面框时形状对得上"）。
  *
+ * ⚠️ 2026-10-19 批 A：两趟绘制并成共享件之后，**去程那一支住 `GalleryEntryFlyBody.kt`、
+ * 返回程那一支住 `GalleryExitFlyBody.kt`**。下面 ②③ 两条跟着搬到那两颗件上量 ——
+ * 尺子跟着代码走，代码搬了而尺子留在原地，量具就成了替违例者打掩护的那一个。
+ *
  * 负向对照（每一轮都当场验过会红）：
  * - 去程半径改回 `flyCornerRadius.toPx() * (width / end.width)` ⇒ 第 2 条红；
  * - `VeneraCover` 改回 `RoundedCornerShape(tokens.shape.medium)` ⇒ 第 1 条红；
@@ -46,6 +50,8 @@ class GalleryFlyCornerBleedTest {
 
     private val cover = "com/venera/compose/components/venera/VeneraCover.kt"
     private val post = "com/venera/compose/gallery/ui/GalleryPostScreen.kt"
+    private val entry = "com/venera/compose/gallery/ui/GalleryEntryFlyBody.kt"
+    private val exitBody = "com/venera/compose/gallery/ui/GalleryExitFlyBody.kt"
 
     /**
      * 只保留**代码行**。
@@ -75,10 +81,14 @@ class GalleryFlyCornerBleedTest {
         assertTrue("GalleryPostScreen 不许直接读 shape.medium，现读：$postHits", postHits.isEmpty())
     }
 
-    /** 去程飞行体：半径来自位图那一档（`payloadCornerRadiusPx`），源宽取的是**裁过之后**那块。 */
+    /**
+     * 去程飞行体：半径来自位图那一档（`payloadCornerRadiusPx`），源宽取的是**裁过之后**那块。
+     *
+     * 2026-10-19 批 A：去程那一支搬进共享件 `GalleryEntryFlyBody.kt`，所以在这里量。
+     */
     @Test
     fun `去程飞行体按位图自己的圆角裁`() {
-        val body = src(post)
+        val body = src(entry)
         val calls = codeLines(body).filter { it.contains("payloadCornerRadiusPx(") && !it.contains("import ") }
         assertEquals("payloadCornerRadiusPx 在飞行体上只该有一处调用，现读：$calls", 1, calls.size)
         assertTrue("半径必须按封面那一档算", body.contains("payloadCornerPx = coverCornerRadius.toPx()"))
@@ -102,14 +112,25 @@ class GalleryFlyCornerBleedTest {
     /**
      * 返回程落点：两头不是同一档圆角 —— 起点是画面框（`shape.large`）、终点是**卡里那张封面**
      * （`shape.medium`），所以半径要随路程插值，落回去那一帧才与封面逐像素重合。
+     *
+     * 2026-10-19 批 A：返回程那一支搬进共享件 `GalleryExitFlyBody.kt`，尺子跟着搬。
+     * 形参从 `Float` 改成 `() -> Float` 之后（§2.7 那条：动画值在绘制阶段每帧现取），
+     * 局部量改叫 `p`，所以插值那句与缩放那句的锚点也跟着换。
+     * ⚠️ 锚点用**压平空白**的正则匹配，不认字面整行：那颗件里 `lerp(` 是四行写法，
+     * 拿单行 contains 去钉会被格式化变动搅黄（尺子该拦"谁在飞、按哪档裁"，
+     * 不该顺带规定换行怎么断）。
      */
     @Test
     fun `返回程圆角从画面框那档收到封面那档`() {
-        val body = src(post)
+        val flat = src(exitBody).replace(Regex("\\s+"), " ")
         assertTrue(
             "返回程半径缺插值（落点会用画面框那档圆角，比封面圆 4dp ⇒ 撤走飞行体时四角补一次白）",
-            body.contains("lerp(flyCornerRadius, coverCornerRadius, exitFly.value.coerceIn(0f, 1f))"),
+            Regex("lerp\\(\\s*flyCornerRadius\\s*,\\s*coverCornerRadius\\s*,\\s*p\\.coerceIn\\(0f,\\s*1f\\)")
+                .containsMatchIn(flat),
         )
-        assertTrue("返回程仍要按当前宽度等比缩放", body.contains("* frame.cornerRadiusScale"))
+        assertTrue(
+            "返回程仍要按当前宽度等比缩放",
+            Regex("\\*\\s*computed\\.cornerRadiusScale").containsMatchIn(flat),
+        )
     }
 }

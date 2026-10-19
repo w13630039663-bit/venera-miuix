@@ -425,8 +425,23 @@ interface GalleryPixivWorks {
     suspend fun following(
         bearer: String,
         userId: String,
+        restrict: PixivRestrict,
         nextUrl: String? = null,
     ): Result<PixivUserPage>
+
+    /**
+     * **关注动态**：`/v2/illust/follow`（2026-10-19，账号页「动态 › 关注动态」那一档）。
+     *
+     * 与 [following] 的分别是"人 ⇄ 作品"：那一腿回关注名单，这一腿回这批人最近画的东西。
+     * 它**不带 `user_id`** —— 是谁的动态由票据决定，所以这一腿没有"看别人的动态"这种用法。
+     *
+     * @param restrict 「全部」那一档由调用方发两趟再合（见 `PixivAccountFeed`），这里一次只答一档。
+     */
+    suspend fun followIllustFeed(
+        bearer: String,
+        restrict: PixivRestrict,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage>
 
     /** 站方推荐用户：`/v1/user/recommended?filter=for_android`（同上一族形状）。 */
     suspend fun recommendedUsers(
@@ -443,11 +458,13 @@ interface GalleryPixivWorks {
      * 屏上两个入口分开摆，这一条读的始终是 pixiv 账号里的那一份，不并、不去重、不互相删。
      *
      * @param userId 自己的 pixiv 用户号（`PixivAuthState.SignedIn.userId`）。
+     * @param restrict 读公开还是非公开那一份（2026-10-19 拍板：两档都读，但非公开只出现在账号页里）。
      * @param nextUrl 上一页答复的 `next_url`（自带 `max_bookmark_id` 游标）；null = 第一页。
      */
     suspend fun bookmarkedIllusts(
         bearer: String,
         userId: String,
+        restrict: PixivRestrict,
         nextUrl: String? = null,
     ): Result<PixivAppPage>
 

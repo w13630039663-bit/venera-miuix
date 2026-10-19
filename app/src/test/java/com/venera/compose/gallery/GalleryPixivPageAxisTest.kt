@@ -195,7 +195,11 @@ class GalleryPixivPageAxisTest {
         // 2026-10-18 hero 那一轮：点击要把**这一页此刻的窗口矩形**一起交出去（去程起点重新截），
         // lambda 多了一枚 `rect`。**同日第四批**按用户那句「只留竖着连续翻页模式」撤掉横向那一档 ⇒
         // 两支成一档，条数从 2 改到 1（意图没变：屏上那几页每一页都得点得开）。
-        assertEquals("连读那一档的每一页都得能点开", 1, body.countWith("onClick = { rect -> openPages("))
+        //
+        // 2026-10-19：动图那一支也摆上了第一帧（用户「整屏上半是白的」），而那一帧复用**同一颗**
+        // `PixivPageImage`、同样交 `openPages` ⇒ 点击出口成两处。意图没变（每一页都点得开），
+        // 所以这里是**数出口**而不是数行：钉的是"每一支挂载点都交同一个出口"，不是"只有一支"。
+        assertEquals("连读那一档的每一页都得能点开", 2, body.countWith("onClick = { rect -> openPages("))
         assertEquals("交接只写一处", 1, body.countWith("GalleryPageAxis.open("))
         assertEquals("那一面墙由 domain 那颗纯函数长出来", 1, body.countWith("PixivWorkPage.pageWallOf("))
         // 屏上仍不碰原图档（第一批那条尺子的延续）：页轴的 fileUrl 由共用那颗函数填。

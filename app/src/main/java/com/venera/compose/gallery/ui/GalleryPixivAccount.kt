@@ -1,21 +1,16 @@
 package com.venera.compose.gallery.ui
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import coil3.ImageLoader
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraDialog
@@ -42,6 +36,7 @@ import com.venera.compose.components.venera.VeneraTextButton
 import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.veneraAvatarRing
+import com.venera.compose.openPixivAccountPage
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivCredentials
@@ -74,17 +69,18 @@ import top.yukonga.miuix.kmp.basic.Text
  * 念的是 `authState.screenLine` 那一份，不是这里另抄的一句）；
  * 已登录 = 真头像或名字首字母，点下去是"这是谁 + 退出登录"。
  *
- * ## 登录弹层里为什么有四件（2026-10-17 第四轮，用户点了 B）
+ * ## 登录弹层里那两件（2026-10-17 第四轮定，2026-10-19 撤掉第三件）
  *
  * 1. **去浏览器登录** —— 站方唯一认的那条路：密码 / Google / Apple 都在它自己那一页上接
  *    （WebView 里点 Google 会被 `disallowed_useragent` 拦，这一条 P6 量过）。
  * 2. **粘贴一条** —— 浏览器那一路偶尔断在半路（回跳没交回来、或在别的机器上登的）。
  *    认 token JSON / 回跳链接 / 光秃秃的 refresh token 三种形状，判据在
  *    `PixivCredentialState.signInWithPasted` 的注释里。
- * 3. **本机 Google 账号** —— 系统账号选择器，只作**身份标记**，界面上写死它不等于 pixiv 登录
- *    （为什么这条路不能当 pixiv 登录，逐条写在 `GoogleAccountIdentity` 头注上）。
- * 4. 那句说明文字 —— 上面第 3 条是这一轮最容易读错的一格：一枚写着"Google"的按钮躺在登录框里，
- *    不写明就一定会被读成"点它能登进 pixiv"。所以那句话是**契约的一部分**，不是文案装饰。
+ *
+ * 曾经还有第三件「本机 Google 账号」（系统账号选择器，只记邮箱、认机器用）。2026-10-19 用户拍板
+ * 「本机 Google 登录撤掉，暂时用不上」⇒ 连同 `LocalGoogleIdentity` 那一族一起撤。
+ * 撤它没有代价：它**从来不是** pixiv 的登录（协议层的三条理由记在该件头注的历史里），
+ * 而一枚写着 Google 的按钮躺在登录框里，是本仓最容易读错的一格。
  */
 @Composable
 internal fun GalleryPixivAccountButton(
@@ -104,36 +100,13 @@ internal fun GalleryPixivAccountButton(
         is PixivAuthState.NeedsRelogin, is PixivAuthState.LoginRejected -> "重新登录 pixiv 账号"
     }
 
-    var manageOpen by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
 
     var loginOpen by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
     var pastedBusy by remember { mutableStateOf(false) }
     var pastedError by remember { mutableStateOf<String?>(null) }
-    // 本机 Google 账号从**画廊业务口**读（判据与理由见 `LocalGoogleIdentity`）：
-    // 这一侧没接（比如桌面没有账号框架）时它是 null，下面那一整块就不摆 —— 不摆半件。
-    val googleIdentity = GalleryPorts.of(context).googleIdentity
-    var googleEmail by remember { mutableStateOf(googleIdentity?.email()) }
-    var googleNotice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-
-    // 系统账号选择器：选完只把**邮箱**记下来，不换任何票据（理由见 GoogleAccountIdentity 头注）。
-    val googlePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        val picked = GoogleAccountIdentity.emailFrom(result.resultCode, result.data)
-        when {
-            picked != null -> {
-                googleIdentity?.remember(picked)
-                googleEmail = picked
-                googleNotice = null
-            }
-            // 取消不算失败，什么都不说；只有"看着选了却读不回来"才值得念一句。
-            result.resultCode == Activity.RESULT_OK -> googleNotice = GOOGLE_PICK_FAILED
-            else -> Unit
-        }
-    }
 
     // 回跳在别处落地（manifest → MainActivity → completeLogin）：登上了就把弹层收掉，
     // 否则用户在浏览器里登完回到 app，屏上还摆着一张"登录 pixiv"的框。
@@ -166,12 +139,11 @@ internal fun GalleryPixivAccountButton(
     VeneraTopBarPill(
         onClick = {
             when {
-                signedIn != null -> manageOpen = true
+                signedIn != null -> context.openPixivAccountPage()
                 // 没配 client 凭据也开弹层：弹层里有"粘贴一条"那一路，它不依赖 client 凭据以外的条件
                 // （凭据真没配时两条都会念同一句话，见弹层里那颗按钮）。
                 else -> {
                     pastedError = null
-                    googleNotice = null
                     loginOpen = true
                 }
             }
@@ -214,45 +186,14 @@ internal fun GalleryPixivAccountButton(
         }
     }
 
-    // 已登录点开的是"这是谁 + 要不要退出"。退出是**破坏性**动作（清掉本机票据），
-    // 所以走弹层确认这一档，而不是点头像那一下就生效。
-    VeneraDialog(
-        show = manageOpen,
-        onDismissRequest = { manageOpen = false },
-        title = signedIn?.userName?.takeIf { it.isNotBlank() } ?: "已登录 pixiv",
-        content = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "退出会清掉这台机器上的 pixiv 登录凭据。收藏与关注都存在站方那边，不受影响。",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textSecondary,
-                )
-                // 本机 Google 账号只在这里与登录弹层里露一行 —— 它不是账号体系的一部分，
-                // 摆进"这是谁"这一格里正好当一句备注用。
-                googleEmail?.let { email ->
-                    Text(
-                        text = "本机 Google 账号：$email",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = tokens.spacing.space3),
-                    )
-                }
-            }
-        },
-        confirmText = "退出登录",
-        confirmDestructive = true,
-        onConfirm = {
-            account.signOut()
-            manageOpen = false
-        },
-        dismissText = "先不",
-    )
+    // 2026-10-19：以前这里是一颗「这是谁 + 退出登录」弹层。账号页发车之后整颗撤掉 ——
+    // 那三样读数（这是谁 / 票据新鲜度 / 退出）搬进账号页的「账号管理」那一子页，
+    // 而**退出的二次确认照旧**（它是破坏性动作，判据跟着搬到 `PixivAccountScreen` 那颗）。
+    // 留两颗入口做同一件事，就是"两个入口两套读数"那一族错。
 
     // ── 登录弹层（2026-10-17 第四轮）──
     //
-    // 四件摆在一处，顺序就是"哪条路最可能成"：浏览器 → 粘贴 → 本机 Google 账号 → 说明。
+    // 两件摆在一处，顺序就是"哪条路最可能成"：浏览器 → 粘贴。
     VeneraDialog(
         show = loginOpen,
         onDismissRequest = { loginOpen = false },
@@ -333,73 +274,6 @@ internal fun GalleryPixivAccountButton(
                         modifier = Modifier.padding(top = tokens.spacing.space2),
                     )
                 }
-
-                // 这一侧没接账号框架时整块不摆（不摆半件：一枚点了没反应的"Google"按钮，
-                // 比没有这枚按钮更糟）。
-                if (googleIdentity != null) {
-                    Spacer(modifier = Modifier.height(tokens.spacing.space4))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "本机 Google 账号",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.textPrimary,
-                            )
-                            Text(
-                                text = googleEmail ?: "还没选",
-                                fontSize = tokens.type.caption,
-                                color = tokens.color.textTertiary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        VeneraTextButton(
-                            text = if (googleEmail == null) "选择账号" else "更换",
-                            onClick = {
-                                val intent = GoogleAccountIdentity.pickerIntent()
-                                if (intent == null) {
-                                    googleNotice = NO_GOOGLE_PICKER
-                                } else {
-                                    googleNotice = null
-                                    googlePicker.launch(intent)
-                                }
-                            },
-                        )
-                        if (googleEmail != null) {
-                            VeneraTextButton(
-                                text = "清除",
-                                onClick = {
-                                    googleIdentity.forget()
-                                    googleEmail = null
-                                    googleNotice = null
-                                },
-                            )
-                        }
-                    }
-                    // ⚠️ 这句是本轮那张"Google"按钮的护栏：不写清楚，它一定会被读成
-                    // "点这里能用 Google 登进 pixiv"（`PixivLoginPathsTest` 钉着它）。
-                    // ⚠️ 别在这句里写 Markdown：`Text` 不解析星号，星号会连字一起印上屏。
-                    // 强调走「」这一档；判据（`PixivLoginPathsTest`）认的是那两个关键词。
-                    Text(
-                        text = "这枚只代表这台手机上的 Google 账号（用来认机器），「不等于」pixiv 登录 —— " +
-                            "pixiv 那边仍在上面的浏览器页里登。",
-                        fontSize = tokens.type.caption,
-                        color = tokens.color.textTertiary,
-                        modifier = Modifier.padding(top = tokens.spacing.space2),
-                    )
-                    googleNotice?.let { line ->
-                        Text(
-                            text = line,
-                            fontSize = tokens.type.caption,
-                            color = tokens.color.textTertiary,
-                            modifier = Modifier.padding(top = tokens.spacing.space2),
-                        )
-                    }
-                }
             }
         },
     )
@@ -417,12 +291,6 @@ internal fun GalleryPixivAccountButton(
 /** 顶栏那颗件里唯一一句界面话：没配 client 凭据时念它（不编一句"密码错了"）。 */
 private const val MISSING_CLIENT_CREDENTIALS =
     "这台机器还没填 pixiv 的客户端凭据，登录这一路暂时走不了。"
-
-/** 拉不起账号选择器时的那一句（不静默：点了没反应与"系统里没有"是两件事）。 */
-private const val NO_GOOGLE_PICKER =
-    "这台机器拉不起系统账号选择器（多半没有 Google 服务），只能手动填。"
-private const val GOOGLE_PICK_FAILED =
-    "系统把账号交回来了，但没带邮箱这一项 —— 这次没记下来。"
 
 /**
  * `Throwable.message` 的可读版（与 `PixivCredentialState.readableReason` 同一条口径：
@@ -449,8 +317,9 @@ private fun Throwable.readableLine(): String =
  *
  * 真浏览器（Chrome）里点 pixiv 那一页的 Google 按钮，Google 的账号选择页会列出**这台设备上
  * 已登录的那个 Google 账号** —— 那一步就是原生账号列表，不用敲邮箱密码。协议上这是唯一处
- * "设备账号列表"出现的地方：pixiv 的 Google client 归站方，我们的原生选择器换不到它认的凭据
- * （逐条理由见 `GoogleAccountIdentity` 头注）。
+ * "设备账号列表"出现的地方：pixiv 的 Google client 归站方，我们自己的原生选择器换不到它认的凭据
+ * （三条理由逐条记在 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四；
+ * 2026-10-19 那枚"本机 Google 账号"选择器已按用户拍板撤掉，浏览器这一条不受影响）。
  *
  * 回跳由 `AndroidManifest.xml` 里那两条 intent-filter（`pixiv://account…` 与
  * 站方登记的 https 回跳）交回 MainActivity，再走 [PixivCredentials.completeLogin] ——
@@ -473,7 +342,7 @@ private fun Throwable.readableLine(): String =
  *
  * @return null = 已经交出去了；非 null = 那句要上屏的原因（连裸 VIEW 都起不来）。
  */
-private fun openPixivLoginInBrowser(context: Context, authorizeUrl: String): String? {
+internal fun openPixivLoginInBrowser(context: Context, authorizeUrl: String): String? {
     val uri = Uri.parse(authorizeUrl)
     // ① Custom Tab：要的就是 Chrome 那份会话。
     val viaTab = runCatching {

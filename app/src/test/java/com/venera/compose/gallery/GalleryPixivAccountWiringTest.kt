@@ -105,23 +105,26 @@ class GalleryPixivAccountWiringTest {
     }
 
     @Test
-    fun `退出登录排在确认那一格里，不挂在点头像那一路`() {
-        // 破坏性小把手两步确认（既有口径）。只钉"存在"会被"onConfirm 里置个旗、真退出写在别处"骗过去，
-        // 所以钉**顺序**：`account.signOut()` 必须是 `onConfirm = {` 之后第一条动作行，且全文件只此一处。
-        val signOuts = account.linesWith("account.signOut()")
+    fun `退出登录搬进账号页之后仍排在确认那一格里，点头像只做导航`() {
+        // 2026-10-19：那颗「这是谁 + 退出」弹层整颗撤掉，退出搬进账号页的「账号管理」那一子页。
+        // 两步确认这条纪律**不随搬家放松**：破坏性小把手恒要两步（既有口径）。
+        val page = codeLines("com/venera/compose/gallery/ui", "PixivAccountScreen.kt")
+        val signOuts = page.linesWith("account?.signOut()")
         assertTrue("退出只许一处调用点，实测 ${signOuts.size} 处", signOuts.size == 1)
-        val confirm = account.indexOfContaining("onConfirm = {", "确认格")
-        val next = account.first { it.index > confirm }
+        val confirm = page.indexOfContaining("onConfirm = {", "确认格")
+        val next = page.first { it.index > confirm }
         assertTrue(
             "退出没紧跟在确认之后（第 ${next.index} 行：${next.value.trim()}）",
-            next.value.contains("account.signOut()"),
+            next.value.contains("account?.signOut()"),
         )
-        val click = account.indexOfContaining("onClick = {", "点头像那一格")
+        page.indexOfContaining("confirmDestructive = true", "破坏色")
+        // 旧那一颗里**一颗退出都不许留**：两颗入口做同一件破坏动作，用户永远说不清按的是哪一颗。
         assertTrue(
-            "点头像那一路里就出现了退出",
-            signOuts.none { it.index in click until confirm },
+            "顶栏那颗件里不许再有 signOut：\n" + account.joinToString("\n") { it.value },
+            account.none { it.value.contains("signOut(") },
         )
-        account.indexOfContaining("confirmDestructive = true", "破坏色")
+        // 点头像已登录那一支交的是导航（不是弹层、不是页内状态）。
+        account.indexOfContaining("signedIn != null -> context.openPixivAccountPage()", "头像导航")
     }
 
     @Test

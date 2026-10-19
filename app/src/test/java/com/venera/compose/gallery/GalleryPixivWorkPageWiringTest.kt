@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery
+package com.venera.compose.gallery
 
 import com.venera.compose.testsupport.RepoSources
 import java.io.File
@@ -256,6 +256,23 @@ class GalleryPixivWorkPageWiringTest {
         val body = code(screen)
         assertTrue("ugoira 没被分流出去", body.any { it.contains("if (detail?.ugoira == true)") })
         assertTrue("那一屏没有明说的出口", body.any { it.contains("UgoiraNotice { onOpenViewer(detail.post.id) }") })
+        // 2026-10-19 用户报「动图这一作整屏上半是白的」：那一支从前只摆一句字、静帧不画。
+        // 现在第一帧要真摆上去（同一颗 `PixivPageImage`，不为静帧另写一支渲染件），
+        // 而"只画得出第一帧"这句明说照旧在图下面 —— 两件事一起钉。
+        assertTrue(
+            "动图那一支没把第一帧摆上去",
+            body.any { it.contains("val still = pages.firstOrNull()") },
+        )
+        assertEquals(
+            "静帧复用同一颗渲染件（不另写第二支）",
+            2,
+            body.count { it == "PixivPageImage(" },
+        )
+        assertEquals(
+            "静帧也接同一条点击出口",
+            2,
+            body.countWith("onClick = { rect -> openPages("),
+        )
         assertEquals("旧看图器收到动图那一支", 1, code(activity).countWith("Intent(this, GalleryPostActivity::class.java)"))
     }
 
@@ -265,7 +282,14 @@ class GalleryPixivWorkPageWiringTest {
     fun `页码两处说法都在，接缝那条边不承担唯一说法`() {
         val body = code(screen)
         assertTrue("每页的语义没了", body.any { it.contains("contentDescription = description") })
-        assertTrue("顶栏那枚页码胶囊没了", body.any { it.contains("第 \${pageIndex + 1} 页，共 \${pages.size} 页") })
+        // 2026-10-19 用户：「去掉中间的页数指示器」—— 顶栏那枚「1 / N」胶囊整格撤掉，
+        // 屏上不再念页位。这一格的语义**不再缺**：每页自己的 `pageSemantic` 仍逐页念
+        // 「第 N 页 / 共 M 页」，读屏用户照样拿得到页位（撤的只是视觉那一枚）。
+        assertEquals(
+            "顶栏那枚页码胶囊已撤干净",
+            0,
+            body.countWith("第 \${pageIndex + 1} 页，共 \${pages.size} 页"),
+        )
         assertEquals("页码语义只从 pageSemantic 一颗出来", 1, body.countWith("private fun pageSemantic("))
     }
 
@@ -526,9 +550,10 @@ class GalleryPixivWorkPageWiringTest {
             home.countWith("GalleryFlyIn.forgetCardBounds(work.post.viewerKey)"),
         )
         // 只在真的变了才写：布局回调每帧都来，无条件赋值 = 每帧重组这一格。
+        // （2026-10-19 批 A：登记从整卡搬到封面那一块，局部量随之改名 coverRect。）
         assertTrue(
             "回写必须带'变了才写'的闸门（否则滚动每帧重组）",
-            home.any { it.contains("if (bounds != cardRect)") },
+            home.any { it.contains("if (bounds != coverRect)") },
         )
     }
 
@@ -549,6 +574,18 @@ class GalleryPixivWorkPageWiringTest {
             "不许用 uid 去查（与墙那侧的写入口径必须一致）",
             0,
             body.countWith("GalleryFlyIn.cardBoundsOf(post.uid"),
+        )
+        // 2026-10-19 批 A 真机验收补（读数 17:25:38，`pixiv:150828286`）：历史那一格**落点就在表里
+        // 登记着，返回照样 target=null 整页退** —— 旧版第一跳只吃邻居队列，而历史的 tapTile
+        // 只写飞行交接件、从不写 GalleryViewerQueue（队列认不出只等于"没有邻居"，
+        // 不等于"这件作品没有落点"）。身份链必须退回本件作品的详情 post：它的 viewerKey
+        // 由 `site.routeKey:id` 长出（pageOrdinal 只住页轴，列表腿与详情腿都是 null），
+        // 与墙登记那侧逐字同串 —— 是同一把键的另一条来路，不是第二把键。
+        // 钉整串而不是钉"有没有 detail?.post"：存在性判式拦得住删掉，拦不住"退到别的什么上"。
+        assertEquals(
+            "离场取身份只许这一句（队列 → 本件详情 post → null）",
+            1,
+            body.countWith("val post = works.getOrNull(workIndex) ?: detail?.post ?: return null"),
         )
     }
 

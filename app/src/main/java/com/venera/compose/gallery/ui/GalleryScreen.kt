@@ -121,6 +121,7 @@ import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivRankingMode
+import com.venera.compose.gallery.data.PixivRestrict
 import com.venera.compose.gallery.data.PixivWork
 import com.venera.compose.gallery.domain.GalleryHomeDomain
 import com.venera.compose.gallery.domain.GalleryRecommendation
@@ -1119,7 +1120,7 @@ fun GalleryScreen(
             return@LaunchedEffect
         }
         pixivArtistsLoading = true
-        val following = works.following(bearer, me)
+        val following = works.following(bearer, me, PixivRestrict.Public)
         pixivFollowing = following.getOrNull()?.users.orEmpty()
         pixivFollowCaption = following.exceptionOrNull()?.message
         val recommended = works.recommendedUsers(bearer)
@@ -3066,8 +3067,10 @@ internal fun GalleryPostCard(
     var coverBounds by remember { mutableStateOf(Rect.Zero) }
     // 卡片被 LazyGrid 回收（滚出屏幕、换了一批）时把自己的落点撤掉：
     // 大图页返回时若还查得到一条过期矩形，就会朝屏幕外飞。
-    DisposableEffect(post.uid) {
-        onDispose { GalleryFlyIn.forgetCardBounds(post.uid) }
+    // 键统一 viewerKey（批 A）：墙上的卡没有页序，它就等于 uid —— 行为不变，
+    // 但登记侧与查询侧（`cardBoundsOf(post.viewerKey)`）从此念同一把键。
+    DisposableEffect(post.viewerKey) {
+        onDispose { GalleryFlyIn.forgetCardBounds(post.viewerKey) }
     }
     // 高度在**摆放前**就知道：两站的 JSON 都直接带中间档宽高，
     // 不像本地插图那样要靠加载成功回填 —— 所以这里不会有"各列先等分再集体跳动"。
@@ -3155,7 +3158,7 @@ internal fun GalleryPostCard(
                         // 顺手给**返回程**留一个落点（大图页离场时按 uid 来查）。
                         // ⚠️ 打码卡**不回写** —— 红线是"打码那张两边都不飞"，
                         // 而"表里压根没有它"是这条红线最不容易被绕过的一种落法。
-                        if (!card.masked) GalleryFlyIn.noteCardBounds(post.uid, rect)
+                        if (!card.masked) GalleryFlyIn.noteCardBounds(post.viewerKey, rect)
                     }
                     // 不挂飞行时压根不调那一层（而不是传一个空 key 进去）：
                     // key 两端必须逐字相同才触发，空串是个"看起来挂了其实永远对不上"的假状态。

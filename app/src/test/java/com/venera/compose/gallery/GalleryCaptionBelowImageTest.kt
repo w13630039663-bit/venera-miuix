@@ -83,14 +83,20 @@ class GalleryCaptionBelowImageTest {
     private val forYou = codeLines("com/venera/compose/gallery/ui", "GalleryForYouScreen.kt")
     private val flyIn = codeLines("com/venera/compose/gallery/ui", "GalleryFlyIn.kt")
     private val post = codeLines("com/venera/compose/gallery/ui", "GalleryPostScreen.kt")
-    private val bookmarks = codeLines("com/venera/compose/gallery/ui", "GalleryPixivBookmarksScreen.kt")
+    // 2026-10-19：云端书签墙那一屏收进了 **pixiv 账号页**（`PixivTwoLegWall` 是它的共用件），
+    // 独立那颗文件已撤。这一族判据问的是"递没递头像表"，与住在哪一颗文件无关 ⇒ 跟着搬锚点。
+    private val bookmarks = codeLines("com/venera/compose/gallery/ui", "PixivAccountScreen.kt")
 
-    /** 去程飞行体那一段：从源窗算式到返回程那一层之前。 */
-    private val flightBody: String = regionBetween(
-        post,
-        "val src = coverSourceRect(frame.width, frame.height, width, height)",
-        "val exitFrom = exitStart",
-    )
+    /**
+     * 去程飞行体那一段。
+     *
+     * 2026-10-19 批 A 之前它长在 `GalleryPostScreen` 里（从 `coverSourceRect` 那句到
+     * `val exitFrom = exitStart` 之前）；批 A 把两趟绘制并成共享件之后，这一段住
+     * `GalleryEntryFlyBody.kt`，**整份文件就是那一段** —— 所以锚点从"屏里的一段"
+     * 换成那颗共享件本身。三条断言（只画一次 / 不随进度淡 / 源尺寸取整块）原样适用。
+     */
+    private val flightBody: String =
+        all(codeLines("com/venera/compose/gallery/ui", "GalleryEntryFlyBody.kt"))
 
     /** 垫帧那一段：从圆角倍率到加载态分流之前。 */
     private val padFrame: String = regionBetween(
@@ -284,7 +290,7 @@ class GalleryCaptionBelowImageTest {
             countIn(all(forYou), """authorAvatars = authorAvatars,"""),
         )
         assertEquals(
-            "云端书签墙也要递头像表（`authorAvatars = avatars,`）：那一屏也是 pixiv 单站，" +
+            "账号页那三面墙也要递头像表（`authorAvatars = avatars,`）：那一屏也是 pixiv 单站，" +
                 "且与推荐墙共用同一颗 `GalleryCardsGrid`：\n${all(bookmarks)}",
             1,
             countIn(all(bookmarks), """authorAvatars = avatars,"""),

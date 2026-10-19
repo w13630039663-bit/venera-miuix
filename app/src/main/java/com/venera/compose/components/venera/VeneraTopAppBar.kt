@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.CHROME_BAND_TOP_BAR
 import com.venera.compose.components.ChromeCaptureSuppress
+import com.venera.compose.components.VeneraAmbientChrome
 import com.venera.compose.components.drawVeneraAmbient
 import com.venera.compose.components.reportChromeBand
 import com.venera.compose.feature.LocalVeneraDarkTheme
@@ -91,6 +92,10 @@ val LocalTopBarBackdrop = compositionLocalOf<Backdrop?> { null }
  *   hero 页调用方**不挂** scrollBehavior 的 nestedScroll 连接（原因见
  *   [SettingsHome]），折叠机制整个不参与，玻璃/分割线/小标题的进度由调用方从
  *   列表 scrollState 直接推导传入。null（默认）= 其余页面走 contentOffset 原路。
+ * @param opaqueChrome 整条顶栏（含 bottomContent）铺一层不透明的页面氛围光（2026-10-19，加性可选）。
+ *   默认 false = 现有 13 个调用点零变化。为真的页必须同时**不传 backdrop**，也不要把内容
+ *   挂进 `blurBackdropSource` —— 玻璃采的是录制下来的内容层，不是屏幕像素；采了的话
+ *   内容会绕过这层实底继续从顶栏里透出来（pixiv 账号页真机读数就是这么来的）。
  */
 @Composable
 fun VeneraTopAppBar(
@@ -100,6 +105,7 @@ fun VeneraTopAppBar(
     subtitle: String = "",
     scrollBehavior: ScrollBehavior? = null,
     backdrop: Backdrop? = null,
+    opaqueChrome: Boolean = false,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
@@ -204,6 +210,13 @@ fun VeneraTopAppBar(
                 },
             ),
     ) {
+        // ── 实底那一路：把页面同一份氛围光铺满整条顶栏（含 bottomContent）──
+        // 画在背板与 miuix 本体之前，且住在这一颗 Box 里 —— `ChromeCaptureSuppress` 的
+        // 整条 alpha 对它同样生效，起始帧截图不会把这条实底截进飞行体。
+        if (opaqueChrome) {
+            VeneraAmbientChrome(modifier = Modifier.matchParentSize())
+        }
+
         // ── 真实渐变高斯模糊背板（对齐 pixez-miuix 规范）──
         if (backdrop != null && isRuntimeShaderSupported()) {
             Box(

@@ -901,9 +901,9 @@ internal fun PixivArtistRail(
  *
  * 展开态仍是网格：那时用户已经明说要"看全部"，一列列铺开比横滑更好扫。
  *
- * ⚠️ 这一排的卡**不参与共享元素飞行**（`GalleryPosterRow` 那套 `GalleryFlyIn.capture` +
- * `coverSharedElement` 这里没接）。没接的表现是"点进去走整页从下沿抬上来"那条既有退路，
- * 不是缺陷；要接飞行得与 `GalleryPostActivity` 那侧的 key 同串，不同串会**静默不飞**。
+ * 飞行：这一排的卡**参与**跨窗口飞行（2026-10-19 批 A 把半接线接上 —— 从前去程没截，
+ * 点进去恒走"整页从下沿抬上来"那条退路）。去程截图与返回程落点都收在 `PixivWorkCard`
+ * 一处（键 `viewerKey`，与作品页查询侧同串），不在这层网格里另接一遍。
  */
 @Composable
 internal fun PixivRankedWorkGrid(
@@ -994,32 +994,36 @@ private fun PixivWorkCard(
     // 那 8dp 让"卡面"整整小了一圈，也正是这一轮报"太小"里最直接的一笔。
     // 内衬归零的代价在下面：文字区自己补水平内衬。
     //
-    // ── 飞行转场：回写"这张卡在窗口里的那一块"（2026-10-19 · 批 231-E）──
+    // ── 飞行转场：登记**封面那一块**，去程截它，返回程落回它（2026-10-19 批 A 收口）──
     //
-    // 作品的去程由 `openPages` 自己截那一页的画面（它手上有真矩形），**不需要**这一笔；
-    // 这一笔服务的是**返回程**：作品页离场时按同一把键
-    // （`GalleryFlyIn.cardBoundsOf(post.viewerKey)`）来查"飞回哪儿"。
+    // 从前登记挂在整张卡上（`VeneraCard`），去程压根没截 —— 排行榜那排点进去恒走
+    // "整页从下沿抬上来"那条退路；回来即便有落点也是整卡（带着下面那条文字区），
+    // 与作品页离场的"封面那一格"不同构，交棒那一刻就是一圈包裹凭空消失。
+    // 批 A 把两半都接上：
+    //
+    // - 去程：点下那一刻把**封面那一块**的像素截下来（`GalleryFlyIn.capture`，与主墙
+    //   `GalleryCardsGrid` 的 onOpen 同一个动作）—— 截的是封面，落点也是封面，两端同构；
+    // - 返回程：作品页离场按同一把键（`GalleryFlyIn.cardBoundsOf(post.viewerKey)`）查
+    //   "飞回哪儿"，矩形改挂封面（学 `GalleryPostCard` 的挂法）。
     //
     // 两端必须**同串**（`viewerKey`，不是 `uid`）—— `GalleryPostScreen` 的头注写着这条，
     // 不同串的表现是"静默不飞"，谁也不会报。
     //
     // ⚠️ 只在**真的变了**才写：布局回调每帧都来，无条件赋值等于每帧把这格重组一遍
     // （墙上那颗卡片栽过同一条，见 `GalleryFlyIn` 头注）。
+    // ⚠️ 打码卡**不回写** —— 红线是"打码那张两边都不飞"，"表里压根没有它"是这条红线
+    // 最不容易被绕过的一种落法（主墙 `GalleryPostCard` 同款）。
     val view = LocalView.current
-    var cardRect by remember(work.post.uid) { mutableStateOf<Rect?>(null) }
+    var coverRect by remember(work.post.uid) { mutableStateOf<Rect?>(null) }
     DisposableEffect(work.post.viewerKey) {
         onDispose { GalleryFlyIn.forgetCardBounds(work.post.viewerKey) }
     }
     VeneraCard(
-        onClick = { onOpen(work.post) },
-        edgeToEdge = true,
-        modifier = Modifier.onGloballyPositioned { coords ->
-            val bounds = coords.boundsInWindow()
-            if (bounds != cardRect) {
-                cardRect = bounds
-                GalleryFlyIn.noteCardBounds(work.post.viewerKey, bounds)
-            }
+        onClick = {
+            coverRect?.let { GalleryFlyIn.capture(view, it) }
+            onOpen(work.post)
         },
+        edgeToEdge = true,
     ) {
         // ── 名次角标（2026-10-17 第九轮，设计稿左上角那枚数字）──
         //
@@ -1052,7 +1056,14 @@ private fun PixivWorkCard(
                 // 两种情况下宽度都确定 ⇒ 高度确定（那条链条见下面 `heightIn` 的注）。
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(GalleryPixivHome.RANKING_COVER_ASPECT),
+                    .aspectRatio(GalleryPixivHome.RANKING_COVER_ASPECT)
+                    .onGloballyPositioned { coords ->
+                        val bounds = coords.boundsInWindow()
+                        if (bounds != coverRect) {
+                            coverRect = bounds
+                            if (!masked) GalleryFlyIn.noteCardBounds(work.post.viewerKey, bounds)
+                        }
+                    },
             )
             work.rank?.let { rank ->
                 Box(

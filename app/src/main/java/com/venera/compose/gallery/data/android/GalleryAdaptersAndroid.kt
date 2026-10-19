@@ -263,14 +263,28 @@ internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryP
     override suspend fun rankingInApp(mode: PixivRankingMode, bearer: String, nextUrl: String?) =
         appClient.rankingIllusts(mode, bearer, nextUrl)
 
-    override suspend fun following(bearer: String, userId: String, nextUrl: String?) =
-        appClient.following(bearer, userId, nextUrl)
+    override suspend fun following(
+        bearer: String,
+        userId: String,
+        restrict: PixivRestrict,
+        nextUrl: String?,
+    ) = appClient.following(bearer, userId, restrict, nextUrl)
+
+    override suspend fun followIllustFeed(
+        bearer: String,
+        restrict: PixivRestrict,
+        nextUrl: String?,
+    ) = appClient.followIllustFeed(bearer, restrict, nextUrl)
 
     override suspend fun recommendedUsers(bearer: String, nextUrl: String?) =
         appClient.recommendedUsers(bearer, nextUrl)
 
-    override suspend fun bookmarkedIllusts(bearer: String, userId: String, nextUrl: String?) =
-        appClient.bookmarkIllusts(bearer, userId, nextUrl)
+    override suspend fun bookmarkedIllusts(
+        bearer: String,
+        userId: String,
+        restrict: PixivRestrict,
+        nextUrl: String?,
+    ) = appClient.bookmarkIllusts(bearer, userId, restrict, nextUrl)
 
     // ── 画师页那三条匿名腿（2026-10-19）：转发到 `client`（PixivClient，匿名）。──
     // 它们住在这条契约上而不是让 UI 直连，理由见 `GalleryPixivWorks.userHead` 的注释。

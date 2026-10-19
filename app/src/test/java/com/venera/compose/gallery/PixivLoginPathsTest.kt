@@ -1,23 +1,22 @@
 package com.venera.compose.gallery
 
-import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.testsupport.RepoSources
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 登录那几颗"**看起来像"登录、实际不是"的件，以及它们必须带着的那句话（2026-10-17 第四轮）。
+ * pixiv 登录那几路的接线尺子（2026-10-17 第四轮起，2026-10-19 撤掉本机 Google 那一件后收窄）。
  *
  * 用户当时的原话是「我的要求是加上个原生谷歌登录（能拉起手机的谷歌账号那种的）」。
  * 查完 pixez-miuix（它自己也没有原生 Google 登录）之后定的是 B：**A 全量**（站方 App 登录页 +
- * 深链回跳 + 粘贴兜底）+ 一枚**系统账号选择器**，但后者只作"本机 Google 身份"，
- * 界面上必须写明它不等于 pixiv 登录。
+ * 深链回跳 + 粘贴兜底）+ 一枚**系统账号选择器**（只作"本机 Google 身份"，界面上写明它不等于 pixiv 登录）。
  *
- * 为什么值得单钉：那一枚按钮上写着 Google、又长在登录弹层里 —— 不写明就一定会被读成
- * "点它能登进 pixiv"，而它换了任何人也换不到一张 pixiv 的票据。这是本仓最忌讳的那一类：
- * 开关在、看着像、按下去什么也不会发生（假开关）。
+ * 2026-10-19 用户拍板「本机 Google 登录撤掉，暂时用不上」⇒ 那一件连同 `LocalGoogleIdentity` /
+ * `GoogleIdentityAndroid` / `GalleryPorts.googleIdentity` 一起撤了（原件在 `_trash/google-identity-2026-10-19/`，
+ * 三条协议层的理由记在 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四）。
+ * 它留下的那四条用例（选择器形状、不联网、独立配置、那句护栏）跟着一起撤 —— **判据不能比被判的件活得久**，
+ * 留着只会在下一轮变成"量具失效"那种红。这里剩下的是浏览器那一路自己的四条。
  *
  * 判据只读源码文本（`app/` 没有 Robolectric，composable 组合不出来），扫描口径与
  * `GalleryPixivAccountWiringTest` 同一把：注释行不参与匹配。
@@ -34,102 +33,8 @@ class PixivLoginPathsTest {
     }
 
     private val uiDir = "com/venera/compose/gallery/ui"
-    private val dataDir = "com/venera/compose/gallery/data"
 
-    /** 原始文本（**不**滤注释）：`/* allowableAccountTypes = */` 这种行首块注释会被 [codeLines] 滤掉。 */
-    private fun rawText(dir: String, name: String): String {
-        val file = RepoSources.kotlinFiles(dir).firstOrNull { it.name == name }
-            ?: error("找不到 $name（目录 $dir）")
-        return file.readText()
-    }
-
-    private val identity = codeLines(uiDir, "GoogleAccountIdentity.kt")
-    private val identityStore = codeLines("$dataDir/android", "GoogleIdentityAndroid.kt")
     private val account = codeLines(uiDir, "GalleryPixivAccount.kt")
-
-    @Test
-    fun `本机 Google 账号走系统账号选择器，不走要 client id 的 Credential Manager`() {
-        // 两边的区别是"能不能零配置拉起手机里那几个账号"：系统选择器能，Credential Manager 要有
-        // 一枚 Google OAuth client id（还要包名+签名在 Google Cloud 登记过）。本仓没有那一枚，
-        // 也不该替用户申请一个 —— 于是选了前者，而它换回来的是邮箱、不是票据（正好对上 B 的口径）。
-        assertTrue(
-            "要用系统账号选择器：\n" + identity.joinToString("\n") { "${it.index}:${it.value}" },
-            identity.any { it.value.contains("newChooseAccountIntent(") },
-        )
-        for (banned in listOf("CredentialManager", "GetGoogleIdOption", "SignInWithGoogleOption")) {
-            val hits = identity.filter { it.value.contains(banned) }
-            assertTrue("这一件里不许出现 $banned（那一路要有 Google OAuth client id）：$hits", hits.isEmpty())
-        }
-        // 只认 Google 那一类账号，别把整机所有账号都列出来。
-        // 这一条要读**原文**：`/* allowableAccountTypes = */` 在行首，[codeLines] 会把整行当注释滤掉。
-        val raw = rawText(uiDir, "GoogleAccountIdentity.kt")
-        assertTrue(
-            "allowableAccountTypes 要钉在 com.google 上（现在一个都没找到）",
-            raw.contains("arrayOf(GOOGLE_ACCOUNT_TYPE)") && raw.contains("\"com.google\""),
-        )
-    }
-
-    @Test
-    fun `本机 Google 账号不联网、不碰票据`() {
-        // 它是一枚**身份标记**：取 token / 打网络 / 读登录态，一项都不许有。
-        // 有了一项，界面那句"不等于 pixiv 登录"就开始撒谎了。两段（选择器 + 落盘）一起扫。
-        for (banned in listOf("OkHttpClient", "bearerOrNull", "access_token", "refresh_token", "HttpUrl", "VeneraNetworkClient")) {
-            val hits = (identity + identityStore).filter { it.value.contains(banned) }
-            assertTrue("本题里出现了 $banned：\n" + hits.joinToString("\n") { "${it.index}:${it.value}" }, hits.isEmpty())
-        }
-    }
-
-    @Test
-    fun `本机 Google 账号落在一份自己的配置里，退出 pixiv 不会顺手把它删掉`() {
-        // `PixivCredentialState.signOut()` 走 `store.clear()`：两者同文件的话，
-        // "退出 pixiv"会把这枚与登录态毫无关系的身份一起抹掉，而屏上只会表现为"怎么又没了"。
-        assertNotEquals(
-            "两枚配置名不许相同",
-            PreferenceKeys.PREFS_GOOGLE_IDENTITY,
-            PreferenceKeys.PREFS_PIXIV_ACCOUNT,
-        )
-        assertTrue(
-            "落盘那一半要读自己的那份配置：\n" + identityStore.joinToString("\n") { "${it.index}:${it.value}" },
-            identityStore.any { it.value.contains("PreferenceKeys.PREFS_GOOGLE_IDENTITY") },
-        )
-        // 反向一：选择器那一半（界面目录）不许自己碰存储 —— 那是 `BusinessApiBoundaryTest` 的红线。
-        for (banned in listOf("AndroidKeyValueStore", "getSharedPreferences", "PREFS_GOOGLE_IDENTITY")) {
-            val hits = identity.filter { it.value.contains(banned) }
-            assertTrue("界面那一件里出现了 $banned：\n" + hits.joinToString("\n") { "${it.index}:${it.value}" }, hits.isEmpty())
-        }
-        // 反向二：pixiv 那两件里不许出现这枚配置名（出现了就是两处各读一份，迟早分叉）。
-        val pixivFiles = RepoSources.kotlinFiles(dataDir) + RepoSources.kotlinFiles("$dataDir/android")
-        for (file in pixivFiles.filter { it.name.startsWith("Pixiv") }) {
-            assertTrue(
-                "${file.name} 里不许读 PREFS_GOOGLE_IDENTITY",
-                file.readText().lines().none { it.contains("PREFS_GOOGLE_IDENTITY") },
-            )
-        }
-    }
-
-    @Test
-    fun `登录弹层里那枚 Google 按钮旁边必须写着它不等于 pixiv 登录`() {
-        // 这一条是本轮唯一真正的"文案即判据"：那一枚按钮的一切风险都在被误读上，
-        // 而误读的代价是"用户以为点了它就该登进去，结果什么都没发生"。
-        val honest = account.filter { it.value.contains("不等于") && it.value.contains("pixiv") }
-        assertEquals(
-            "屏幕说明只许有一句（多写一句就会与另一句分叉）：\n" +
-                honest.joinToString("\n") { "${it.index}:${it.value}" },
-            1,
-            honest.size,
-        )
-        // 那句说明要排在 Google 那一行的动作之后 —— 写成"先说不是、再给按钮"也不行：
-        // 用户读的顺序是"按钮→说明"，而说明得紧跟着那一枚。
-        val pickerAction = account.firstOrNull { it.value.contains("GoogleAccountIdentity.pickerIntent(") }
-        assertTrue("找不到拉起选择器那一处", pickerAction != null)
-        assertTrue(
-            "说明（第 ${honest[0].index} 行）必须排在拉起选择器（第 ${pickerAction!!.index} 行）之后",
-            honest[0].index > pickerAction.index,
-        )
-        // 也不许把"能登进 pixiv"这种话写进去（那正是要防的那一种读法）。
-        val lie = honest[0].value.contains("登进 pixiv") || honest[0].value.contains("可以登")
-        assertTrue("说明里出现了会误导的话：${honest[0].value}", !lie)
-    }
 
     @Test
     fun `粘贴兜底真的接到判据件上，不是一颗摆着不动的按钮`() {

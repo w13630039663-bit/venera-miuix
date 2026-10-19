@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -42,8 +43,29 @@ fun VeneraTopBarBackdrop(
     backdrop: Backdrop?,
     modifier: Modifier = Modifier,
     visible: () -> Boolean = { true },
+    /**
+     * **滚动驱动的连续进度**（0..1）。非 null 时不再走 [visible] 那支 200ms 的一刀切淡入，
+     * 而是每帧按这个读数定透明度：顶栏模糊跟着手指走，随滚随出、回弹随收（用户 2026-10-19
+     * 「在顶部不要模糊，往上滑的时候再出现，这个过程要流畅过渡」）。
+     *
+     * 交的是取数 lambda 而不是 Float：这个值每帧都在变，当参数传会把整棵顶栏每帧拖进重组；
+     * 交给 `graphicsLayer` 在**绘制期**读，只失效图层。
+     *
+     * 调用方那一侧仍应做"进度贴 0 就不组合这一层"的裁剪（见 `PixivWorkScreen`）：
+     * 模糊本身是 RuntimeShader，alpha=0 时也照样跑一遍 —— 停在顶部那段时间不该付这笔钱。
+     */
+    progress: (() -> Float)? = null,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
+    if (progress != null) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = progress().coerceIn(0f, 1f) }
+                .then(glassBlurModifier(backdrop, surfaceColor)),
+        )
+        return
+    }
     val fraction by animateFloatAsState(
         targetValue = if (visible()) 1f else 0f,
         animationSpec = tween(200),
@@ -54,23 +76,31 @@ fun VeneraTopBarBackdrop(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer { alpha = fraction }
-            .then(
-                if (backdrop != null && isRuntimeShaderSupported()) {
-                    Modifier.progressiveTextureBlur(
-                        backdrop = backdrop,
-                        shape = RectangleShape,
-                        gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
-                        blurRadius = 10f,
-                        colors = BlurDefaults.blurColors(
-                            blendColors = listOf(
-                                // 与 `VeneraTopAppBar` 同步：轻补底只保文字对比，玻璃色交给采样层氛围光。
-                                BlendColorEntry(color = surfaceColor.copy(alpha = GlassTintAlpha)),
-                            ),
-                        ),
-                    )
-                } else {
-                    Modifier.background(surfaceColor.copy(alpha = 0.85f))
-                },
-            ),
+            .then(glassBlurModifier(backdrop, surfaceColor)),
     )
 }
+
+/**
+ * 背板那层"玻璃"本体：两档（真模糊 / 可见回落底）共用同一份配方。
+ *
+ * 抽成一颗只为让"常显淡入"与"滚动驱动"两条路吃到完全相同的半径、曲线与补底色 ——
+ * 两条路各写一遍，同一块顶栏就会随滚动与否长得不一样。
+ */
+@Composable
+private fun glassBlurModifier(backdrop: Backdrop?, surfaceColor: Color): Modifier =
+    if (backdrop != null && isRuntimeShaderSupported()) {
+        Modifier.progressiveTextureBlur(
+            backdrop = backdrop,
+            shape = RectangleShape,
+            gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
+            blurRadius = 10f,
+            colors = BlurDefaults.blurColors(
+                blendColors = listOf(
+                    // 与 `VeneraTopAppBar` 同步：轻补底只保文字对比，玻璃色交给采样层氛围光。
+                    BlendColorEntry(color = surfaceColor.copy(alpha = GlassTintAlpha)),
+                ),
+            ),
+        )
+    } else {
+        Modifier.background(surfaceColor.copy(alpha = 0.85f))
+    }

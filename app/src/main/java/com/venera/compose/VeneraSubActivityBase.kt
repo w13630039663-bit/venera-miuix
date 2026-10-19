@@ -40,6 +40,15 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
     protected open val blurBehindDp: Float get() = BlurBehindDp
 
     /**
+     * 这个窗口要不要挂背后模糊。
+     *
+     * 默认 true 保现状。稿上要**不透明底**的页（pixiv 账号页）必须显式关掉：
+     * 哪怕不透明 Canvas 盖住了糊层，blur-behind 仍会白烧 GPU，并在窗口入场那一两帧
+     * 先露出一层糊 —— 用户原话「整个页面背景怎么是模糊背景」。
+     */
+    protected open val blurBehindEnabled: Boolean = true
+
+    /**
      * 要不要**推迟**挂 blur-behind：不跟着 `onStart` 一起挂，等页面自己调 [armBlurBehind]。
      *
      * 为什么有的页需要它（2026-10-01 12:26 录屏逐帧量出来的）：那一层糊盖住的正是**后面那屏
@@ -132,7 +141,7 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
      * 还有一道门：[blurBehindArmed] 为假时一律摘掉（推迟型页面在起飞之前就该露出清晰的主界面）。
      */
     private fun applyBlurBehind(enabled: Boolean) {
-        if (!enabled || !blurBehindArmed) {
+        if (!enabled || !blurBehindArmed || !blurBehindEnabled) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
             // ⚠️ 新版那一半也必须归零（2026-10-19 真机读数）：Android 12 起窗口背景模糊
             // 走的是 `Window.setBackgroundBlurRadius` 这条**独立字段**，只摘 `FLAG_BLUR_BEHIND`

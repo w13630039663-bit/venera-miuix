@@ -33,6 +33,16 @@ object GalleryPageAxis {
         /** 下载当前这一页：进度与 toast 归播放器那一层持有，面板只显示。 */
         val onDownload: () -> Unit,
         val onDismiss: () -> Unit,
+        /**
+         * 面板里点一枚作品标签 → 按它搜一轮（用户 2026-10-19：「作品标签目前不可以点击，
+         * 点击后跳转到标签的搜索页面」）。
+         *
+         * 默认 `null` = **这一层没有搜索出口**：面板照旧摆标签、只是点不动（与
+         * [GalleryPageAxis.Wall] 那条"绝不摆点了没反应的把手"同一口径，所以这里不硬塞一个空实现
+         * —— 空实现就是一按没反应的假开关）。播放器那一侧给的是一个真出口：收起面板、把这一枚
+         * 标签交给 `GallerySearchHandoff`。
+         */
+        val onSearchTag: ((String) -> Unit)? = null,
     )
 
     /**

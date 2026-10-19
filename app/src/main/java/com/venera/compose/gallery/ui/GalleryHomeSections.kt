@@ -379,9 +379,9 @@ private fun GalleryPosterRow(
             // （整卡像素里带着下面那条标题，落到大图页的画面框里就会多出一圈"包裹"再消失 —— 那就是闪）。
             var coverBounds by remember { mutableStateOf(Rect.Zero) }
             // 这一行也会被回收（横滑出屏那一侧、整节换了一批）——撤掉自己的返回落点，
-            // 与墙上那张卡同一口径（`GalleryPostCard`）。
-            DisposableEffect(card.post.uid) {
-                onDispose { GalleryFlyIn.forgetCardBounds(card.post.uid) }
+            // 与墙上那张卡同一口径（`GalleryPostCard`）。键统一 viewerKey（批 A）。
+            DisposableEffect(card.post.viewerKey) {
+                onDispose { GalleryFlyIn.forgetCardBounds(card.post.viewerKey) }
             }
             VeneraCard(
                 modifier = Modifier.width(tokens.spacing.historyCardWidth),
@@ -410,7 +410,7 @@ private fun GalleryPosterRow(
                             val rect = it.boundsInWindow()
                             coverBounds = rect
                             // 返回程的落点，与墙上的卡同一把：打码卡不回写（红线：两边都不飞）。
-                            if (!card.masked) GalleryFlyIn.noteCardBounds(card.post.uid, rect)
+                            if (!card.masked) GalleryFlyIn.noteCardBounds(card.post.viewerKey, rect)
                         }
                         // 打码命中不飞行：飞行内容会渲染进 SharedTransitionLayout 的 overlay，
                         // 等于绕开页面级裁剪 —— 遮罩不能有机会被揭开（与漫画侧同一条硬口径）。

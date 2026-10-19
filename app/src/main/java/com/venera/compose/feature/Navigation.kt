@@ -78,12 +78,13 @@ import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
+import com.venera.compose.openPixivAccountPage
+import com.venera.compose.PixivAccountSectionEntry
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.ui.GalleryBookmarksHubScreen
 import com.venera.compose.gallery.ui.GalleryChromeAutoHide
 import com.venera.compose.gallery.ui.GalleryDailyScreen
 import com.venera.compose.gallery.ui.GalleryHistoryScreen
-import com.venera.compose.gallery.ui.GalleryPixivBookmarksScreen
 import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.GalleryScreen
 import com.venera.compose.gallery.ui.GalleryViewModel
@@ -190,7 +191,6 @@ import androidx.compose.material3.IconButton
  * 读 `/v1/user/bookmarks/illust`（带票据 + 自己的用户号，只读公开书签），
  * 与本地收藏是两套账 —— 这边只能读，删除要走站方。同为主 Tab 子页（算 GALLERY）。
  */
-@Serializable data object GalleryPixivBookmarksRoute
 
 /**
  * 画廊二级（单张大图）。
@@ -492,7 +492,6 @@ private fun NavDestination.tabIndex(): Int? {
         hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         // 收藏 hub 与 pixiv 书签页：同样是从画廊 Tab 往下走一层（第三十一轮那枚 🔖 的落点）。
         hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
-        hasRoute(GalleryPixivBookmarksRoute::class) -> VeneraNavTab.GALLERY
         hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         else -> return null
     }
@@ -587,7 +586,6 @@ fun VeneraComposeApp() {
         destination.hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         // 收藏 hub 与 pixiv 书签页同样算 GALLERY（第三十一轮，同一条理由）。
         destination.hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
-        destination.hasRoute(GalleryPixivBookmarksRoute::class) -> VeneraNavTab.GALLERY
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
@@ -1065,20 +1063,10 @@ fun VeneraComposeApp() {
                             },
                             onOpenPixivBookmarks = {
                                 haptic()
-                                navController.navigate(GalleryPixivBookmarksRoute)
-                            },
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                        )
-                    }
-                    composable<GalleryPixivBookmarksRoute> {
-                        // Pixiv 云端书签墙（第三十一轮）。不包 CoverTransitionHost：
-                        // 对面是跨 Activity 的大图页，没有同 key 的落地槽位（同历史页那条注）。
-                        GalleryPixivBookmarksScreen(
-                            onOpenPost = { site, postId ->
-                                (view.context as? Activity)?.openGalleryPost(site, postId)
+                                // 2026-10-19 拍板 ⑦：这枚 🔖 **不再进独立那一屏**，改跳 pixiv 账号页的收藏段。
+                                // 那一屏是这一段的超集（多了「非公开」那一档），两条路并存就是
+                                // 同一件事两个入口两套读数 —— 所以旧的 `GalleryPixivBookmarksRoute` 整条撤掉。
+                                (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
                             },
                             onBack = {
                                 haptic()

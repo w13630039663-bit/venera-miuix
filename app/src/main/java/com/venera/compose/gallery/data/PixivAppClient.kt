@@ -94,25 +94,60 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
      * 关注列表：`/v1/user/following`（2026-10-17 第八轮，用户「关注画师你参考 pixez-miuix 是怎么拿到的」）。
      *
      * 参数就是 pixez 那一套（`UserRepository.getUserFollowingResponse`）：
-     * `filter=for_android` + `user_id={自己}` + `restrict=public`。
-     * 三枚都必须在 —— 少了 `user_id` 站方会按"匿名"回 401/400，少了 `restrict` 只回公开关注里的一部分。
+     * `filter=for_android` + `user_id={自己}` + `restrict={档}`。
+     * 三枚都必须在 —— 少了 `user_id` 站方会按"匿名"回 401/400，少了 `restrict` 只回该档的一部分。
      *
      * @param userId 自己的 pixiv 用户号（`PixivAuthState.SignedIn.userId`，登录响应里那枚）。
+     * @param restrict 看哪一份关注账（2026-10-19 从写死 `public` 改成形参）。账号页「全部」那一档
+     *   由调用方**发两趟再合**，不是这一腿一次给的 —— 站方没有"两档都要"这一个值。
      * @param nextUrl 上一页的 `next_url`；传 null 取第一页。翻页只认它，不自己拼 `offset`。
      */
     suspend fun following(
         bearer: String,
         userId: String,
+        restrict: PixivRestrict,
         nextUrl: String? = null,
     ): Result<PixivUserPage> = withContext(Dispatchers.IO) {
         runCatching {
             val url = nextUrl ?: FOLLOWING.toHttpUrl().newBuilder()
                 .addQueryParameter("filter", "for_android")
                 .addQueryParameter("user_id", userId)
-                .addQueryParameter("restrict", "public")
+                .addQueryParameter("restrict", restrict.param)
                 .build()
                 .toString()
             PixivUserParse.userPreviews(execute(url, bearer), "pixiv 关注列表")
+        }
+    }
+
+    /**
+     * **关注动态**：`/v2/illust/follow`（2026-10-19，pixiv 个人账号页「动态 › 关注动态」那一档）。
+     *
+     * ## 它与 [following] 不是一回事，别合用
+     *
+     * [following] 给的是**人**（`user_previews[]`，不带作品），这一腿给的是**作品**（`illusts[]`）——
+     * 也就是"我关注的人最近画了什么"。端点与参数形状由 `Notsfsssf/pixez-flutter` 的
+     * `api_client.dart:getFollowIllusts` 互证（GPL 档，**只出表不搬码**）：
+     * 只有 `restrict` 一枚查询参数，**不带 `user_id`** —— 这一腿问的是"谁的动态"，
+     * 答案由票据自己决定。所以带错凭据不会"看到别人的动态"，只会 401。
+     *
+     * 答复与推荐/榜单/书签**同一个 `illusts[]` 形状**，因此复用 [PixivAppParse] 那一颗行解析。
+     * 翻页同样只认站方的 `next_url`（它自带 `max_id` 游标）。
+     *
+     * ⚠️ 本仓**没有这一腿的真机读数**（形状只由外部 donor 与同族端点互证）。
+     * 落地当轮要按本仓规矩带日期现量一次：公开档与私密档各打一趟，核 `illusts[]` 在不在、
+     * `next_url` 给不给、私密档是不是真的只回非公开关注的那批。
+     */
+    suspend fun followIllustFeed(
+        bearer: String,
+        restrict: PixivRestrict,
+        nextUrl: String? = null,
+    ): Result<PixivAppPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = nextUrl ?: FOLLOW_ILLUST_FEED.toHttpUrl().newBuilder()
+                .addQueryParameter("restrict", restrict.param)
+                .build()
+                .toString()
+            PixivAppParse.illustrationFollowFeed(execute(url, bearer))
         }
     }
 
@@ -141,9 +176,10 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
      *
      * 三枚参数与 [following] 同源（都要票据 + 自己的用户号）：
      * - `user_id={自己}` —— 书签是**账号维度**的，少了它站方按匿名回 401；
-     * - `restrict=public` —— 只读公开书签。`private` 那一档**不接**：不是取不到
-     *   （带有效票据是取得到的），而是"私密书签"这四个字本身就是用户给站方划的界 ——
-     *   我们把它铺进一屏截图就能看到的墙里，等于替用户把那道界擦了；
+     * - `restrict={档}` —— 2026-10-19 从写死 `public` 改成形参（用户拍板「非公开接」，
+     *   **推翻**了这一条原先写的"`private` 那一档不接"）。改判的理由：那道界是号主自己划的，
+     *   由他本人在他的账号页上擦，不是我们替他擦 —— 但私密那一档**只出现在账号页选了非公开的时候**，
+     *   首页、收藏 hub、分享出去的读数里都不含它（[PixivRestrict] 的头注那条边界）；
      * - `filter=for_android` —— 同族端点能不能答的关键（缺它回 400/191）。
      *
      * 翻页**只认站方的 `next_url`**（它自带 `max_bookmark_id` 游标），同 [recommendedIllusts]。
@@ -156,13 +192,14 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
     suspend fun bookmarkIllusts(
         bearer: String,
         userId: String,
+        restrict: PixivRestrict,
         nextUrl: String? = null,
     ): Result<PixivAppPage> = withContext(Dispatchers.IO) {
         runCatching {
             val url = nextUrl ?: BOOKMARK_ILLUSTS.toHttpUrl().newBuilder()
                 .addQueryParameter("filter", "for_android")
                 .addQueryParameter("user_id", userId)
-                .addQueryParameter("restrict", "public")
+                .addQueryParameter("restrict", restrict.param)
                 .build()
                 .toString()
             PixivAppParse.illustrationBookmarks(execute(url, bearer))
@@ -618,6 +655,7 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
         private const val RECOMMENDED = "https://app-api.pixiv.net/v1/illust/recommended"
         private const val RANKING = "https://app-api.pixiv.net/v1/illust/ranking"
         private const val FOLLOWING = "https://app-api.pixiv.net/v1/user/following"
+        private const val FOLLOW_ILLUST_FEED = "https://app-api.pixiv.net/v2/illust/follow"
         private const val USER_ILLUSTS = "https://app-api.pixiv.net/v1/user/illusts"
         private const val FOLLOW_ADD = "https://app-api.pixiv.net/v1/user/follow/add"
         private const val FOLLOW_DELETE = "https://app-api.pixiv.net/v1/user/follow/delete"

@@ -101,6 +101,16 @@ internal object PixivAppParse {
         page(body, "pixiv 书签", withRank = false)
 
     /**
+     * `/v2/illust/follow` 的答复（2026-10-19，账号页「动态 › 关注动态」）。
+     *
+     * 与推荐/榜单/书签**同一个 `illusts[]` 形状**，所以仍复用 [page] 那一颗行解析 ——
+     * 这里单独立一个名字只为让调用点说清"我读的是动态不是书签"，不是为了另一套字段判据。
+     * 站方这一腿多给一枚 `users[]`（作者档，与每行的 `user` 重复），不读。
+     */
+    fun illustrationFollowFeed(body: String): PixivAppPage =
+        page(body, "pixiv 关注动态", withRank = false)
+
+    /**
      * `/v1/search/illust` 的答复（2026-10-17 深夜，用户「这三段应该是有的，看看 pixez 怎么做的」）。
      *
      * 与推荐/榜单/书签**同一个 `illusts[]` 形状**，所以复用同一颗行解析。
