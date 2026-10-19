@@ -644,6 +644,85 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
+    // ── 十三、批 B①④⑤ 活画面飞行体（2026-10-19）─────────────────────────────
+    //
+    // ① 飞行体里换活画面（与墙卡同 URL 的封面），④⑤ 于是把"淡出补丁"从飞行体上摘掉。
+    // 三笔各钉一件事，外加一笔负向扫描：
+    // 1. **件在那儿**：`GalleryLiveFlyBody` 这一族进场时被实例化一次；
+    // 2. **URL 与比例从哪儿来**：只从 `detail.post` / `works` 那颗 `GalleryPost` 上取
+    //    （`previewUrl` + `cardRatio`），屏上不另拼地址、不猜比例；
+    // 3. **两颗严格互斥**：活画面接管时截图族那颗不许画（同一 from/to 画两遍 = "同一张画两份"，
+    //    而那是本仓反复在治的那一族）；
+    // 4. **离场那一半的补丁不许被顺手删**：离场仍是截图族（②③ 的成果：带一页图块缩回小卡），
+    //    页块与卡封面不是同一张画 ⇒ `exitBodyAlpha` 那一笔必须还在。删了它，落地那一帧
+    //    就是"一张小号页面压在封面之上"（用户读到"贴错了再撕下来"）。
+
+    @Test
+    fun `进场活画面与截图族二选一`() {
+        val body = code(screen)
+        assertEquals(
+            "活画面那一族进场时被实例化一次（批 B①）",
+            1,
+            body.countWith("GalleryLiveFlyBody("),
+        )
+        // 两颗互斥靠同一颗布尔：截图族那颗带 `!liveTakesOver`，活画面那颗带 `liveTakesOver`。
+        assertEquals(
+            "截图族那颗在活画面接管时不许画（互斥）",
+            1,
+            body.countWith("entryBitmap != null && entryFrom != null && !liveTakesOver"),
+        )
+        assertEquals(
+            "活画面那颗只在这一族接管时才画",
+            1,
+            body.countWith("entryFrom != null && liveTakesOver"),
+        )
+        // URL 与比例的唯一出处：`detail.post`（详情腿）或 `works` 里同一号码（列表腿 / 种子那一格）。
+        assertEquals(
+            "封面地址只从 GalleryPost 上取（屏上不另拼）",
+            1,
+            body.countWith("detail?.post ?: works.firstOrNull { it.id == currentId }"),
+        )
+        assertEquals(
+            "比例只取 cardRatio 且 > 0（0 = 站方没给，不拿 1:1 顶一个）",
+            1,
+            body.countWith("livePost?.cardRatio?.takeIf { it > 0f }"),
+        )
+        // 负向扫描：活画面接管时**不许**再喂淡出补丁（没有"两份"就不需要淡）。
+        // 截图族那颗仍喂（深链那一族靠它），所以全文件里 `handoffBodyAlpha(` 只该出现一次。
+        assertEquals(
+            "淡出补丁只服务截图族那一颗（批 B⑤ 进场那一半）",
+            1,
+            body.countWith("alpha = { handoffBodyAlpha(entryHandoff.value) }"),
+        )
+        // 离场那一半**必须留着**：离场还是截图族，页块 ≠ 卡封面（②③ 那一族）。
+        assertEquals(
+            "离场末段淡出不许被顺手删（离场仍是截图族，见②③）",
+            1,
+            body.countWith("alpha = { exitBodyAlpha(exitFly.value) }"),
+        )
+    }
+
+    @Test
+    fun `活画面件自带边界清单`() {
+        // 那颗件里有一条"组合期取位图 / 绘制期只做几何"的界，栽过七八次的那条。
+        // 尺子只钉"界写在文件里"：下次谁再在 drawWithCache 里找 density，能看见这条。
+        val live = src("com/venera/compose/gallery/ui/GalleryLiveFlyBody.kt")
+        assertTrue(
+            "活画面件要写明组合期 / 绘制期那条界",
+            live.contains("组合期取位图，绘制期只做几何"),
+        )
+        assertTrue(
+            "活画面件要写明不重组那一档（drawWithCache 按位图做键）",
+            live.contains("不重组"),
+        )
+        // 几何只住一份：活画面件自己也走判据层那一颗，不另写一遍插值。
+        assertEquals(
+            "几何走判据层 flightFrame（不另写一遍插值）",
+            1,
+            live.split("flightFrame(").size - 1,
+        )
+    }
+
     // ── 十二、2026-10-19 那一轮"效果有点差"的四件 ─────────────────────────────
     //
     // 读数出处是用户那三张真机截图：进图要往下拉才正常大小（A）、按钮里的数字换行裁切（B）、
@@ -763,8 +842,16 @@ class GalleryPixivWorkPageWiringTest {
             1,
             code(screen).countWith("val source = detail ?: works.firstOrNull { it.id == currentId }?.let { PixivWorkPage.seedDetailOf(it) }"),
         )
-        // 圆角那一档是 @Composable getter：在 drawBehind 里读 = 绘制阶段读 compositionLocal，拿不到主题值
-        assertEquals("圆角必须在组合期读完再进绘制期", 0, code(screen).countWith("veneraCoverCornerRadius().toPx()"))
+        // 圆角那一档是 @Composable getter：**绘制期**直接读它 = 读 compositionLocal，拿不到主题值
+        // （本仓为这一格栽过，见 `GalleryFlyIn` 头注）。批 B① 的活画面件参数收的是 Float
+        // （`drawWithCache` 里换算不了 Dp），所以那一颗的圆角在**组合期**就 `.toPx()` 完递进去 ——
+        // 这正是允许的那一种。尺子于是钉"只准那一处、且必须是递给活画面件"：
+        // 多一处就是又有人在绘制期读主题，少一处就是活画面件在拿 0dp 飞。
+        assertEquals(
+            "组合期换算圆角只准那一处（递给活画面件，批 B①）",
+            1,
+            code(screen).countWith("cardCornerRadiusPx = with(density) { veneraCoverCornerRadius().toPx() }"),
+        )
         // **只清自己那一笔**：等落点那几百毫秒里用户可能已经点进某一页，那一跳会重新 capture 一份起点
         // （见 openPages 那头）。那时这一屏若无条件 consume，就是把播放器的起点清走 —— 表现为"进大图不飞"。
         // 2026-10-19 多出一处：落点在预算边缘回来、而超时那一条已经放弃时，这一趟不起飞，

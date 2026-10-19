@@ -38,6 +38,8 @@ class GalleryExitFlyBodyTest {
     private val uiDir = "com/venera/compose/gallery/ui"
     private val entryFile = "GalleryEntryFlyBody.kt"
     private val exitFile = "GalleryExitFlyBody.kt"
+    /** 批 B① 的活画面件：与墙卡同 URL，几何仍走判据层那一颗。 */
+    private val liveFile = "GalleryLiveFlyBody.kt"
 
     /** 只保留**代码行**（注释里写着同样的符号名，不滤就等于判据读我们自己的解释）。 */
     private fun codeLines(rel: String): List<String> {
@@ -55,25 +57,57 @@ class GalleryExitFlyBodyTest {
             !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"))
         }
 
-    /** 飞行体渲染只许住在这两颗件里：`drawImage(` 恰好两处，各带一个 `addRoundRect(`。 */
+    /**
+     * 飞行体渲染只许住在这三颗件里：`drawImage(` 恰好三处，各带一个 `addRoundRect(`。
+     *
+     * 批 B①（2026-10-19）从两颗变三颗：多出来的是**活画面件** `GalleryLiveFlyBody` ——
+     * 它与墙卡同 URL，飞的仍是同一颗判据层（[flightFrame]）算出来的几何，所以它是合法的第三处。
+     * 这把尺防的仍然是"有人就地抄一遍飞行体"：多出第四处就是抄本，
+     * 而抄本的漂移只有真机能看见（同一部作品从两面墙点进去飞得不一样）。
+     */
     @Test
-    fun `飞行体渲染只许住在这两颗件里`() {
+    fun `飞行体渲染只许住在这三颗件里`() {
         val hits = codeLinesOfDir(uiDir).filter { (_, _, line) -> line.contains("drawImage(") }
         assertEquals(
-            "gallery/ui 下 drawImage( 只许两处（进场共享件 + 离场共享件）—— 多一处就是" +
-                "又有人就地抄了一遍飞行体：\n" + hits.joinToString("\n") { "${it.first}:${it.second} ${it.third.trim()}" },
-            2,
+            "gallery/ui 下 drawImage( 只许三处（进场共享件 + 离场共享件 + 活画面件）—— " +
+                "多出第四处就是又有人就地抄了一遍飞行体：\n" +
+                hits.joinToString("\n") { "${it.first}:${it.second} ${it.third.trim()}" },
+            3,
             hits.size,
         )
         assertEquals(
-            "两处必须各自落在那两颗共享件里",
-            setOf(entryFile, exitFile),
+            "三处必须各自落在那三颗共享件里",
+            setOf(entryFile, exitFile, liveFile),
             hits.map { it.first.substringAfterLast('/') }.toSet(),
         )
-        for (name in listOf(entryFile, exitFile)) {
+        for (name in listOf(entryFile, exitFile, liveFile)) {
             val rects = codeLines("$uiDir/$name").count { it.contains("addRoundRect(") }
             assertEquals("$name 只许有一个 addRoundRect(（一个圆角矩形一次画完）", 1, rects)
         }
+    }
+
+    /**
+     * 活画面件**不许自己写几何**：那一颗的 `drawImage(` 附近必须出现判据层那一颗。
+     *
+     * 这是三处 `drawImage(` 能共存的唯一理由：三颗件画的是不同的内容（截图 / 截图 / 活画面），
+     * 但几何只住一份。就地写 `(to.left - from.left)` 这类插值，就是第二份真相的开头。
+     */
+    @Test
+    fun `活画面件吃判据层不自己写几何`() {
+        val body = codeLines("$uiDir/$liveFile")
+        assertTrue(
+            "活画面件要走判据层 flightFrame（同两颗截图件）",
+            body.any { it.contains("flightFrame(") },
+        )
+        assertTrue(
+            "活画面件不许就地插值（几何只住一份）",
+            body.none { it.contains("(to.left - from.left)") || it.contains("(from.left + (to.left - from.left)") },
+        )
+        // 形参形状：动画值走 lambda 不传值（同两颗截图件，理由见 `GalleryExitFlyBody` 头注）。
+        assertTrue(
+            "progress 必须是 lambda（动画值每帧现取，只重绘这一层）",
+            body.any { it.contains("progress: () -> Float") },
+        )
     }
 
     /** 去程全程不淡那条口径：进场件的 alpha 是形参，不带随进度衰减的默认值。 */

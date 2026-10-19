@@ -417,6 +417,12 @@ fun PixivWorkScreen(
      * 缺了这一档的时候，飞行体是画在一张**已经全不透明**的页面上 —— 同一张画两份同时可见
      * （2026-10-19 真机帧证：卡片截图 496×634 停在左上角，而详情大图 1080×1058 已经全亮）。
      * 样板那一屏早就是三档（等落点 / 飞 / 交棒），这一屏漏抄了中间与末尾两档。
+     *
+     * 批 B④⑤（2026-10-19）之后它的职责**收窄成一格**：只驱动**页面**的交棒（[pageAlpha]），
+     * 不再兼飞行体的淡出。活画面那一族压根没有 alpha（同一份画从卡片形变到落点形，
+     * 没有"两份"可淡）；只有截图族那一颗还要它（深链那一族没有 URL 可用）。
+     * 于是"一标量两层"在这里的形状是：**几何一颗**（[entryFly]，两族共用）、
+     * **交棒一颗**（这一颗，只服务页面）、**内容区一颗**（[entryDetail]，起止都不同故不并）。
      */
     val entryHandoff = remember(postId) { Animatable(0f) }
     /**
@@ -1028,7 +1034,17 @@ fun PixivWorkScreen(
         // 那一帧同位同像素）—— 屏上必须还有东西，否则透出来的就是后面那面墙 + 一块空白。
         val entryBitmap = cardFrame
         val entryFrom = flyOrigin
-        if ((entryFlying || entryWaiting) && entryBitmap != null && entryFrom != null) {
+        // 活画面那一族能不能接管（批 B①）：手里得有那颗**与墙卡同源**的封面地址与比例。
+        // 两边都是 `GalleryPost`：详情腿 `detail.post`（`pageWallOf` 的第 0 页吃 `previewUrl` 那一档），
+        // 列表腿 `works` 里同一号码那一颗（⑥ 的种子那一格吃的就是它的 `previewUrl`）。
+        // 认不出来（深链、列表换过一轮、`cardRatio` 还没量出来）⇒ 交 false ⇒ 走截图族。
+        val livePost: GalleryPost? = detail?.post ?: works.firstOrNull { it.id == currentId }
+        val liveUrl = livePost?.previewUrl.orEmpty()
+        val liveRatio = livePost?.cardRatio?.takeIf { it > 0f }
+        val liveTakesOver = liveUrl.isNotBlank() && liveRatio != null
+        // 两颗**严格互斥**：活画面接管时截图族那颗不画（同一 from/to 画两遍就是"同一张画两份"，
+        // 而那正是本仓反复在治的那一族；活画面自己没到手也不画，见那颗函数里的提前返回）。
+        if ((entryFlying || entryWaiting) && entryBitmap != null && entryFrom != null && !liveTakesOver) {
             GalleryEntryFlyBody(
                 progress = { if (entryFlying) entryFly.value else 0f },
                 from = entryFrom,
@@ -1042,6 +1058,31 @@ fun PixivWorkScreen(
                 // 去程**全程不淡**（同播放器那条 2026-10-01 的读数）：弹簧的百分比不是路程，
                 // 中途淡出会和身后的页面叠成重影。交棒后半程才淡出（此刻页面已经接住了那一块）。
                 alpha = { handoffBodyAlpha(entryHandoff.value) },
+            )
+        }
+
+        // ── 活画面飞行体（批 B①）：飞的是**与墙上那张卡同一颗 URL** 的封面 ──
+        // 与上面那颗截图族**二选一**（同一个 from / to / 几何，只是内容换了）：
+        // - 图已到手（同 URL ⇒ 命中墙卡那个缓存项）⇒ 走活画面：同一份画从卡片形变到落点形，
+        //   没有"两份"，末段也就不需要淡出补丁（`handoffBodyAlpha` 这一路整条不用上）。
+        // - 没到手 ⇒ 仍走截图族（上面那颗）—— 屏上必须还有东西，否则透出来的是后面那面墙。
+        // 所以这里**不**是替换：`GalleryEntryFlyBody` 仍留着（没有 URL 可用的深链那一族靠它）。
+        //
+        // 比例为什么取 `cardRatio`：两端（墙上那张卡 / 这一作第 0 页那一格）都按同一个比例构图
+        // （列表腿与详情腿同源），所以由调用侧量一次递进去，飞行体里不猜。
+        if ((entryFlying || entryWaiting) && entryFrom != null && liveTakesOver) {
+            GalleryLiveFlyBody(
+                progress = { if (entryFlying) entryFly.value else 0f },
+                coverUrl = liveUrl,
+                from = entryFrom,
+                to = { entryTarget ?: entryFrom },
+                imageRatio = liveRatio,
+                // 起点那一档 = 墙上卡封面自己的圆角（唯一出处 `veneraCoverCornerRadius`）；
+                // 终点那一档 = 这一作第 0 页那一格的圆角（`PixivPageImage` 是裸 Box ⇒ 0dp 方角）。
+                // ⚠️ 两档都在**组合期**读（那颗是 @Composable getter）：绘制期读 compositionLocal
+                // 拿不到随主题变的值，本仓为这一格栽过（见 `GalleryFlyIn` 头注）。
+                cardCornerRadiusPx = with(density) { veneraCoverCornerRadius().toPx() },
+                toCornerRadiusPx = 0f,
             )
         }
 

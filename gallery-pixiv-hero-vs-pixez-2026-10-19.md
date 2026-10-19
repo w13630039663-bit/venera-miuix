@@ -402,6 +402,32 @@ FlyProbe 同步读数：`返回查落点 target=Rect(64,1144,437,1499) start=Rec
 
 **批 B 剩下的**：①+④+⑤ 机制换体那一大刀（活画面 / 一标量两层 / 删三条曲线 / 淡源卡）→ ⑦ 无锚侧滑退路。③② 已 ✅。
 
+---
+
+## 9.3d 批 B 第四刀 = ①④⑤ 进场换活画面（2026-10-19，无人值守，主人钦定「不用上机测，一直做完第二批」）
+
+**这一刀要收的**（§4.3 第 1 条 + §4.4 一整族）：进场飞行体里装的是**起点那一刻的截图**，于是同一张画有两份（截图一份、页面一份），只能靠 `handoffBodyAlpha` 二选一地淡；截图还带着封面四角的卡片色（2026-10-16 用户报的白角）；慢网首开时截图压根不存在。pixez 那一族飞的是**同一份画**。
+
+**做法（三件一次落地，因为它们互为前提）：**
+
+| 那一格 | 落在哪 | 现量 |
+|---|---|---|
+| ① 活画面件 | `gallery/ui/GalleryLiveFlyBody.kt`（新，`internal`） | ✅ 与墙卡**同一颗 URL**（`detail.post.previewUrl` 或 `works` 里同一号码那颗 —— ⑥ 的种子那一格吃的就是它）⇒ 命中同一个 Coil 缓存项 ⇒ 墙卡画出来了它就画得出来。组合期取位图（口径同 `WatercolorPainterScreen:120`：`SuccessResult` → `BitmapImage` → `asImageBitmap`），绘制期只做几何（`drawWithCache` 按位图做键 ⇒ 位图一到手只重算一次，之后每帧只重绘、**不重组**） |
+| ① 几何 | 仍走判据层 `flightFrame` | ✅ **不另写一遍插值**（三颗件画不同内容，几何只住一份；`GalleryExitFlyBodyTest` 新增一把尺钉这个） |
+| ① 圆角两档 | 起点 = `veneraCoverCornerRadius()`（卡封面档，组合期读完 `.toPx()` 递 Float）、终点 = 0dp（`PixivPageImage` 裸盒） | ✅ 与③同一口径 |
+| ① 比例 | `cardRatio`（列表腿与详情腿同源） | ✅ 两端同比例 ⇒ Crop 不改构图，大图到位是"变清晰"不是"跳一下" |
+| ④ 一标量 | `entryHandoff` 职责收窄 | ✅ 只驱动**页面**交棒（`pageAlpha`），不再兼飞行体淡出。形状：**几何一颗**（`entryFly`，两族共用）+ **交棒一颗** + **内容区一颗**（`entryDetail`，起手在飞行 65%、时长 300ms，与弹簧不同 ⇒ **不并**，并了就是"内容区跟着弹簧走"，回到用户报的那一条） |
+| ⑤ 淡出补丁 | 活画面件**没有 alpha 形参** | ✅ 同一份画没有"两份"可淡 ⇒ `handoffBodyAlpha` 在进场这一路整条不用上。截图族那一颗仍喂（深链那一族没有 URL 可用）⇒ 全文件里 `handoffBodyAlpha(` 只许出现一次（尺子钉着） |
+| ⑤ 淡源卡 | **这一屏够不着，记账不做** | ⚠️ 墙卡住在另一个窗口（MainActivity），而本仓没有跨窗口共享元素能力（SDK 33~36 的 `android.window` 里没有 `SplashScreenViewProvider`、没有 `overrideNextTransitionSplashScreenStartingPoint`，逐字理由见 `GalleryFlyIn` 头注）。进场这一侧能做的全部就是"不淡飞行体" |
+| 两颗互斥 | 同一颗布尔 `liveTakesOver` | ✅ 截图族带 `!liveTakesOver`、活画面带 `liveTakesOver` —— 同一 from/to 画两遍就是"同一张画两份"，而那正是本仓反复在治的那一族 |
+| 离场那一侧 | **原样不动** | ⚠️ `exitBodyAlpha` 仍在：离场还是截图族（②③ 的成果：带**一页图块**缩回小卡），页块与卡封面不是同一张画 ⇒ 末段不淡就是"贴错再撕"。谁想连它也删，先把离场也换成活画面（另一刀） |
+
+**踩过的坑（记下来，下一刀别再栽）**：这一轮在 Compose 的**组合期/绘制期边界**上连栽七八次 —— `toImageBitmapOrNull`（不存在，仓里口径是 `asImageBitmap`）、`coil3.compose.State`（不存在，是 `AsyncImagePainter.State` 嵌套类）、`Size.isUnspecified`（不存在，用 `== Size.Unspecified`）、重复 import `Size`（`unit.Size` 与 `geometry.Size` 撞名）、臆造 `flightFrame` 的 `imageRatio` 参数（七参签名不许动，236 颗尺钉着）、`imgHOf` 写成恒等于 1000 的废话。**病根是没先把"组合期取什么、绘制期算什么"钉死就下笔**，那条界现在写在 `GalleryLiveFlyBody` 头注里，并有尺子钉着。
+
+**尺子**（`GalleryPixivWorkPageWiringTest` 两把新 + `GalleryExitFlyBodyTest` 一把改）：`进场活画面与截图族二选一`（件实例化一次 / 互斥那颗布尔两头都在 / URL 与比例的唯一出处 / `handoffBodyAlpha` 全文件只一处 / `exitBodyAlpha` **必须还在**）、`活画面件自带边界清单`（头注写明界 + 不重组那一档 + 走判据层）；`飞行体渲染只许住在这三颗件里`（`drawImage(` 从 2 处改 3 处 + 三处各在哪颗件 + 新尺 `活画面件吃判据层不自己写几何`）；`进场飞行体按…这个顺序走` 里那笔圆角尺改成"组合期换算只准那一处（递给活画面件）"。
+
+**批 B 剩下的**：⑦ 无锚侧滑退路（现在还是"老实显示"）。①②③④⑤⑥ 已 ✅。
+
 ### 9.4 还没做的
 
 | 什么 | 状态 |
