@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixiv 作品页 · v4 纵向无缝连读 + 横向换作品 · 2026-10-18</title>
+<style>
+  :root{
+    --atmo:#EFDCD5; --surface:#FBF4F3; --cont:#F7EAE8; --chigh:#F6E4E2; --chighest:#F0DAD8;
+    --ink:#201A1B; --var:#544346; --outline:#8A7679; --hair:#E7D6D4;
+    --pri:#9A4A57; --pri-c:#FFDAD9; --pri-ink:#3E0A12;
+    --pillbg:rgba(31,31,31,.80); --pillink:#F5F5F5; --pixiv:#0096FA; --exp:#C62828;
+    --page:#140F11; --ink2:#F0E7E7; --var2:#B6A6A8; --line2:rgba(255,255,255,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--page);color:var(--ink2);padding:40px 32px 76px;
+    font-family:"Microsoft YaHei UI","PingFang SC","Noto Sans SC",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  h1{font-size:26px}
+  h2{font-size:14px;letter-spacing:2px;color:var(--var2);text-transform:uppercase;margin:42px 0 14px}
+  p.lede{font-size:13.5px;line-height:1.95;color:var(--var2);max-width:1040px;margin-top:8px}
+  p.lede b{color:var(--ink2)}
+  code{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;color:#F3C9C9}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px;margin-top:18px}
+  .box{border:1px solid var(--line2);border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.03)}
+  .box h4{font-size:12.5px;margin-bottom:8px;color:#F3C9C9;letter-spacing:.5px}
+  .box ul{list-style:none;font-size:12px;line-height:1.9;color:var(--var2)}
+  .box.warn{border-color:rgba(229,115,115,.42);background:rgba(229,115,115,.08)}
+  .rail{display:flex;gap:24px;overflow-x:auto;padding:6px 2px 20px;scrollbar-width:thin}
+  figure.shot{flex:0 0 auto}
+  figure.shot figcaption{font-size:12px;line-height:1.75;color:var(--var2);margin-top:10px;max-width:393px}
+  figure.shot figcaption b{color:var(--ink2)}
+  .ph{position:relative;width:393px;height:812px;border-radius:34px;overflow:hidden;background:#0E0A0C;color:var(--ink);
+    box-shadow:0 0 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,0,0,.55)}
+  .sb{position:absolute;top:0;left:0;right:0;height:30px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 16px;font-size:11px;color:#fff;z-index:60}
+  .sb .d{display:flex;gap:3px}.sb .d i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.7}
+  svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.75;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .i16 svg{width:16px;height:16px}.i18 svg{width:18px;height:18px}
+  .m1{background:radial-gradient(44% 32% at 28% 24%,#FBE3EA 0,rgba(251,227,234,0) 70%),
+    radial-gradient(50% 38% at 74% 74%,#EFA6BC 0,rgba(239,166,188,0) 70%),linear-gradient(158deg,#8E7788 0,#4C3B48 52%,#241A20 100%)}
+  .m2{background:radial-gradient(42% 30% at 62% 22%,#FFE6CF 0,rgba(255,230,207,0) 70%),
+    radial-gradient(46% 34% at 26% 66%,#8FB8D6 0,rgba(143,184,214,0) 72%),linear-gradient(150deg,#6F80A4 0,#3B3550 58%,#1E1A28 100%)}
+  .m3{background:radial-gradient(40% 28% at 34% 28%,#FFDCE8 0,rgba(255,220,232,0) 70%),
+    radial-gradient(48% 34% at 70% 68%,#B992C0 0,rgba(185,146,192,0) 70%),linear-gradient(162deg,#A68FB2 0,#5A4A6C 55%,#2A2230 100%)}
+  .m4{background:radial-gradient(46% 34% at 40% 30%,#D9F0E2 0,rgba(217,240,226,0) 70%),
+    linear-gradient(150deg,#8FAF9B 0,#4C6659 58%,#243029 100%)}
+  .m5{background:radial-gradient(44% 32% at 66% 26%,#FFD9C4 0,rgba(255,217,196,0) 70%),
+    linear-gradient(155deg,#C79A86 0,#7A5248 58%,#3A2724 100%)}
+  .cp{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:28px;background:var(--pillbg);
+    color:var(--pillink);font-size:10px;font-weight:600;white-space:nowrap}
+  .src{width:14px;height:14px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:800}
+  .pil{display:flex;align-items:center;justify-content:center;gap:7px;height:40px;min-width:40px;padding:0 10px;border-radius:28px;
+    background:rgba(31,25,27,.42);color:#fff;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.2);font-size:12.5px;
+    backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
+  .top{position:absolute;top:30px;left:12px;right:12px;height:52px;display:flex;align-items:center;justify-content:space-between;z-index:55}
+  .cnt{font-size:16px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
+  /* 纵向连读流：页与页之间 seam */
+  .flow{position:absolute;top:0;bottom:0;left:0;right:0;overflow:hidden}
+  .flow.seam0 > .pg{margin:0}
+  .flow.seam1 > .pg{margin:0 0 1px}
+  .pg{position:relative;width:393px;overflow:hidden}
+  .pg i{display:block;position:absolute;inset:0}
+  .pg .cp{position:absolute;left:6px;top:6px}
+  .pg .edge{position:absolute;right:0;top:0;bottom:0;width:26px;background:rgba(31,25,27,.30);
+    display:flex;align-items:center;justify-content:center;color:#fff}
+  .pg .lab{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;color:#fff;opacity:.75}
+  .dr{position:absolute;left:0;right:0;bottom:0;z-index:40;border-radius:28px 28px 0 0;overflow:hidden;
+    background:rgba(247,234,232,.80);backdrop-filter:blur(28px) saturate(180%);-webkit-backdrop-filter:blur(28px) saturate(180%);
+    box-shadow:inset 0 0 0 .5px rgba(255,255,255,.6),0 -8px 28px rgba(20,14,16,.28)}
+  .dr.solid{background:var(--surface);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .handle{width:36px;height:4px;border-radius:4px;background:rgba(32,26,27,.18);margin:8px auto 4px}
+  .peek{display:flex;align-items:center;gap:10px;padding:6px 14px 12px}
+  .av{width:40px;height:40px;border-radius:50%;flex:0 0 auto;background:conic-gradient(from 220deg,#EFC0CE,#A98BB8,#7FA9C6,#EFC0CE)}
+  .g{flex:1 1 auto;min-width:0}.e{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t1{font-size:16px;font-weight:600;line-height:1.3;color:var(--ink)}
+  .t2{font-size:12px;color:var(--var);line-height:1.45}
+  .btn{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:28px;font-size:12px;font-weight:600;
+    background:var(--pri-c);color:var(--pri-ink);flex:0 0 auto}
+  .btn.o{background:transparent;box-shadow:inset 0 0 0 1px var(--outline);color:var(--var);font-weight:400}
+  .blk{padding:10px 14px;position:relative}
+  .row{display:flex;align-items:center;gap:10px}
+  .card{background:var(--chigh);border-radius:16px;padding:10px;position:relative}
+  .sec{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;position:relative}
+  .sec h5{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;color:var(--ink)}
+  .sec h5 svg{width:18px;height:18px;stroke-width:1.6;color:var(--var)}
+  .sec span{font-size:11px;color:var(--var)}
+  .chip{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 12px;border-radius:28px;background:var(--chighest);
+    font-size:12px;color:var(--ink);white-space:nowrap}
+  .chip.o{background:transparent;box-shadow:inset 0 0 0 1px var(--outline);color:var(--var)}
+  .chip.pri{background:var(--pri-c);color:var(--pri-ink);font-weight:600}
+  .wrap{display:flex;gap:8px;flex-wrap:wrap}
+  .stat{display:flex}.stat div{flex:1 1 0;text-align:center}
+  .stat b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .stat i{font-style:normal;font-size:11px;color:var(--var)}.stat b.c{color:var(--pri)}
+  /* 标题下那一行计数：小单色图标 + 数字 */
+  .mt{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--var);line-height:1.45;white-space:nowrap;overflow:hidden}
+  .mt svg{width:13px;height:13px;stroke-width:1.7;flex:0 0 auto;opacity:.9}
+  .mt em{font-style:normal;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+  .mt .dot{width:2px;height:2px;border-radius:50%;background:currentColor;opacity:.45;flex:0 0 auto}
+  .by{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--ink);line-height:1.4}
+  .by s{text-decoration:none;font-weight:400;font-size:11px;color:var(--var)}
+  .chip.more{background:transparent;box-shadow:inset 0 0 0 1px var(--pri);color:var(--pri);font-weight:600;gap:2px}
+  .chip.more svg{width:13px;height:13px;stroke-width:2.1}
+  .wall{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 14px;align-items:start}
+  .tile{position:relative;border-radius:12px;overflow:hidden;background:#2A2024}
+  .tile i{display:block;position:absolute;inset:0}
+  .r1{aspect-ratio:1/1.3}.r2{aspect-ratio:1/0.78}.r3{aspect-ratio:1/1.02}
+  .dock{position:absolute;left:12px;right:12px;bottom:12px;height:64px;z-index:50;display:flex;align-items:center;
+    justify-content:space-around;padding:0 4px;border-radius:32px;background:rgba(246,228,226,.82);
+    backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);
+    box-shadow:inset 0 0 0 .5px rgba(255,255,255,.6),0 6px 18px rgba(32,26,27,.2)}
+  .act{width:48px;height:48px;border-radius:28px;display:flex;align-items:center;justify-content:center;position:relative;color:var(--ink)}
+  .act svg{width:21px;height:21px}.act.on{background:var(--pri-c);color:var(--pri-ink)}
+  .act b{position:absolute;right:2px;top:2px;font-size:9px;font-weight:700;color:var(--pri-ink);background:var(--pri-c);
+    padding:0 3px;border-radius:8px;font-variant-numeric:tabular-nums}
+  .sg{width:1px;height:26px;background:rgba(32,26,27,.10)}
+  .n{position:absolute;z-index:70;width:19px;height:19px;border-radius:50%;background:#FFD24A;color:#241a00;font-size:11px;
+    font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .dim{position:absolute;z-index:65;font-size:10px;color:#8A5B00;background:#FFD24A;padding:1px 5px;border-radius:6px;
+    font-variant-numeric:tabular-nums;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+  .dim.rd{background:#E57373;color:#2A0B0B}
+  .arr{position:absolute;z-index:65;display:flex;align-items:center;gap:4px;font-size:10px;color:#241a00;background:#FFD24A;
+    padding:2px 7px;border-radius:28px;font-weight:700}
+  /* 设置页 */
+  .set{position:absolute;inset:0;background:linear-gradient(180deg,var(--atmo),var(--surface) 34%);padding-top:96px}
+  .sgrp{margin:0 12px 12px;background:var(--chigh);border-radius:18px;overflow:hidden}
+  .srow{padding:12px 14px;position:relative}
+  .srow + .srow{box-shadow:inset 0 1px 0 var(--hair)}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .knob{width:44px;height:24px;border-radius:24px;background:var(--pri);position:relative;flex:0 0 auto}
+  .knob::after{content:"";position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff}
+  .seg{display:flex;gap:6px;margin-top:10px}
+  .seg span{flex:1 1 0;height:44px;border-radius:28px;background:var(--chighest);display:flex;align-items:center;justify-content:center;
+    gap:6px;font-size:12px;color:var(--var)}
+  .seg span.on{background:var(--pri-c);color:var(--pri-ink);font-weight:600}
+  table{border-collapse:collapse;width:100%;max-width:1140px;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line2);padding:8px 10px;text-align:left;vertical-align:top;line-height:1.75}
+  th{color:#F3C9C9}td{color:var(--var2)}td b{color:var(--ink2)}
+  .opt{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;max-width:1180px}
+  .it{border:1px solid var(--line2);border-left:3px solid #FFD24A;border-radius:0 12px 12px 0;padding:11px 14px;
+    background:rgba(255,210,74,.05);font-size:12.5px;line-height:1.85;color:var(--var2)}
+  .it b{color:var(--ink2);display:block;margin-bottom:2px;font-size:13px}
+  .it.no{border-left-color:#E57373;background:rgba(229,115,115,.07)}
+  .it.wait{border-left-color:#64B5F6;background:rgba(100,181,246,.07)}
+  .it em{font-style:normal;color:#FFD24A}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-9.3A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.7C19 15.6 12 20 12 20Z"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.3"/><circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="18.5" r="2.3"/><path d="M8.1 10.9 15.9 6.6M8.1 13.1l7.8 4.3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8.5 9.5h7M8.5 12.5h4"/></symbol>
+  <symbol id="i-v" viewBox="0 0 24 24"><path d="M12 4v16m0 0-5-5m5 5 5-5"/></symbol>
+  <symbol id="i-h" viewBox="0 0 24 24"><path d="M4 12h16m0 0-5-5m5 5-5 5"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 4h7l9 9-7 7-9-9V4Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.4 12S6.2 6 12 6s9.6 6 9.6 6-3.8 6-9.6 6-9.6-6-9.6-6Z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="i-bm" viewBox="0 0 24 24"><path d="M6.5 3.8h11V20l-5.5-4.1L6.5 20V3.8Z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.6" y="5.4" width="16.8" height="15" rx="2.6"/><path d="M3.6 10.2h16.8M8.4 3.4v3.6M15.6 3.4v3.6"/></symbol>
+  <symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9.5 5.5l6.5 6.5-6.5 6.5"/></symbol>
+</defs></svg>
+
+<h1>v4 · 默认纵向无缝连读，横向换成「下一张作品」</h1>
+<p class="lede">
+按你改的口径重画：<b>纵轴 = 同一作品的多页自然接续</b>（默认档），<b>横轴 = 在不同作品之间走</b>（沿送你进来的那条列表的顺序），
+两轴都能在设置里换回来。连读档的<b>页间距从 12dp 改掉</b> —— 你说得对，那是网格的口径不是接续的口径，
+这版给两档让你挑：<b>无缝 0dp</b> 与 <b>只留一条边 1dp</b>（<code>hairline</code>，现成档）。
+<b>本轮再改两格</b>：标题下面那行换成 <b>浏览 · 收藏 · 发布</b>（三枚 12dp 单色描边小图标，值取自详情腿现量），
+标签<b>同屏封顶 8 枚</b>，超出才出「更多」把手。
+</p>
+
+<div class="grid3">
+  <div class="box"><h4>轴向（默认档）</h4><ul>
+    <li>竖滑 = 本作品下一页 / 上一页；滚过最后一页自然接详情</li>
+    <li>横滑 = 下一张作品 / 上一张作品（整屏换，抽屉档位<b>保持</b>）</li>
+    <li>双指 = 缩放；&gt;1x 时两轴都锁给缩放层，回 1x 解锁</li>
+    <li>抽屉：peek 88dp → half 365 → full 747（上滑推起，与 v3 同一套）</li>
+  </ul></div>
+  <div class="box warn"><h4>横向换作品：相邻号从哪来（现量）</h4><ul>
+    <li>2026-10-18 现量 <code>/ajax/illust/{id}</code>：<b>没有</b> <code>nextUrl</code> / <code>previousUrl</code> / <code>hasNext</code>；<code>seriesNavData</code> 实测为 <b>null</b>（只有作品属于系列时才有）。</li>
+    <li>⇒ 主路只能是：<b>用把你送进来的那条列表的本地顺序</b>（首页墙 / 搜索结果 / 画师页 / 相关推荐）。</li>
+    <li>深链或分享链接<b>直接打开一张</b>时没有序列 ⇒ 横向那一轴<b>明说"没有上一张/下一张"</b>并停住，不静默、不自己编一张。</li>
+  </ul></div>
+  <div class="box"><h4>页间距改判</h4><ul>
+    <li>v3 用的 <code>gridGap</code> 12dp —— <b>撤</b>（那是网格口径）</li>
+    <li>A 档 <b>0dp 无缝</b>：接续感最强，代价是两页同色时看不出翻页</li>
+    <li>B 档 <b>1dp</b>（<code>hairline</code>）：一条极淡的边，翻页有交代又不打断</li>
+    <li>两档都<b>不加圆角、不加卡片底</b>（加了就又是网格）</li>
+  </ul></div>
+  <div class="box"><h4>标题下那行（本轮改）</h4><ul>
+    <li>三格：<b>浏览</b> <code>viewCount</code> · <b>收藏</b> <code>bookmarkCount</code> · <b>发布</b> <code>uploadDate</code> —— 10-18 现量 <b>851 / 32 / 2026-10-01</b>，匿名腿就有，不用等登录</li>
+    <li>三枚 <b>12dp 单色描边图标</b>（眼睛 / 书签 / 日历），<code>stroke=currentColor</code>，不铺底、不涂品牌色</li>
+    <li>撤下三样：<b>画师名</b>（升到展开档的画师行）、<b>页数</b>（顶栏胶囊 4/4 在说）、<b>作品号</b>（进"更多"菜单）</li>
+    <li><b>四格统计卡整块撤</b>：三格已搬进这行，评论数在操作栏 —— 同一屏不说两遍</li>
+  </ul></div>
+  <div class="box"><h4>标签同屏 8 枚</h4><ul>
+    <li>作者标签<b>最多平铺 8 枚</b>；<code>≤8</code> 时<b>不摆</b>"更多"把手 —— 没东西可展开就不该有把手</li>
+    <li><code>&gt;8</code> 才出「更多 N ›」，点开<b>就地铺开</b>剩下的，不跳屏、不在抽屉里再开一层</li>
+    <li>转载者标签是另一条腿，<b>不混进这一排</b>（混排会把 8 枚那本账算错）</li>
+  </ul></div>
+</div>
+
+<h2>一 · 七张屏</h2>
+<div class="rail">
+
+  <!-- ① 默认纵向连读 + peek -->
+  <figure class="shot"><div class="ph">
+    <div class="flow seam1">
+      <div class="pg m2" style="height:250px;margin-top:-60px"><i></i></div>
+      <div class="pg m3" style="height:330px"><i></i><span class="cp">2 / 4</span></div>
+      <div class="pg m1" style="height:330px"><i></i><span class="cp">3 / 4</span></div>
+    </div>
+    <div class="sb"><span>09:41</span><span class="d"><i></i><i></i><i></i></span></div>
+    <div class="top"><span class="pil"><svg><use href="#i-back"/></svg></span>
+      <span class="cp" style="align-self:center"><span class="src" style="background:var(--pixiv)">P</span>コイカツ · AI 无</span>
+      <span class="pil"><svg><use href="#i-more"/></svg></span></div>
+    <div class="dr" style="height:88px"><div class="handle"></div>
+      <div class="peek"><span class="av"></span>
+        <div class="g"><div class="t1 e">[CHARA] Kakkoi Elbertson</div>
+          <div class="mt"><svg><use href="#i-eye"/></svg><em>851</em><span class="dot"></span>
+            <svg><use href="#i-bm"/></svg><em>32</em><span class="dot"></span>
+            <svg><use href="#i-cal"/></svg><em>2026-10-01</em></div></div>
+        <span class="btn">关注</span></div></div>
+    <div class="dock" style="bottom:100px"><span class="act on"><svg><use href="#i-heart"/></svg><b>32</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-grid"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span></div>
+    <span class="dim" style="left:12px;top:296px">接缝 1dp（B 档）</span>
+    <span class="arr" style="left:150px;top:596px"><svg style="width:12px;height:12px"><use href="#i-v"/></svg>竖滑 = 下一页</span>
+    <span class="n" style="left:12px;top:620px">1</span>
+  </div><figcaption><b>① 默认态：纵向无缝连读</b>。页码胶囊压在<b>每一页</b>左上（滚到哪页哪页带号，不用另设一条进度）；
+    抽屉仍是 peek 一行摘要 —— 标题下面那行换成<b>浏览 · 收藏 · 发布</b>三格带小图标。<b>操作栏浮在抽屉上沿之上</b>（peek/half 档贴着抽屉顶，full 档落在屏底）。
+    竖滑一路向下就是"读这本作品"，滚过第 4 页自然接上详情。</figcaption></figure>
+
+  <!-- ② 滚过末页接详情 -->
+  <figure class="shot"><div class="ph">
+    <div class="flow" style="bottom:auto;height:214px">
+      <div class="pg m1" style="height:214px"><i></i></div></div>
+    <div style="position:absolute;top:214px;bottom:0;left:0;right:0;background:var(--surface);overflow:hidden">
+      <div class="blk" style="padding-top:12px"><div class="row"><span class="av"></span>
+        <div class="g"><div class="by">Big Red<s>@jaymonoto</s></div>
+          <div class="t1" style="font-size:17px">[CHARA] Kakkoi Elbertson</div>
+          <div class="mt"><svg><use href="#i-eye"/></svg><em>851</em><span class="dot"></span>
+            <svg><use href="#i-bm"/></svg><em>32</em><span class="dot"></span>
+            <svg><use href="#i-cal"/></svg><em>2026-10-01</em></div></div>
+        <span class="btn">关注</span></div></div>
+      <div class="blk" style="padding-top:0"><div class="wrap">
+        <span class="chip">コイカツ</span><span class="chip">東方Project</span><span class="chip">東方</span>
+        <span class="chip">キャラ配布</span><span class="chip">よその子</span><span class="chip">gensokyoodyssey</span>
+        <span class="chip">kakkoi</span><span class="chip">水着</span>
+        <span class="chip more">更多 4<svg><use href="#i-chevr"/></svg></span></div></div>
+      <div class="sec"><h5><span class="i18"><svg><use href="#i-chat"/></svg></span>评论 · 6</h5><span>看全部 ›</span></div>
+      <div class="blk" style="padding-top:0"><div class="card"><div class="row" style="align-items:flex-start"><span class="av" style="width:34px;height:34px"></span>
+        <div class="g"><div class="t2">あかね · 3 天前</div><div style="font-size:13px;line-height:1.6">構図が良い…！</div></div></div></div></div>
+      <div class="sec"><h5><span class="i18"><svg><use href="#i-grid"/></svg></span>相关图片</h5><span>同标签 / 同画师混排</span></div>
+      <div class="wall"><div class="tile r1"><i class="m2"></i></div><div class="tile r3"><i class="m3"></i></div><div class="tile r2"><i class="m4"></i></div></div>
+    </div>
+    <div class="sb"><span>09:41</span><span class="d"><i></i><i></i><i></i></span></div>
+    <div class="top"><span class="pil" style="background:rgba(246,228,226,.82);color:var(--ink)"><svg><use href="#i-back"/></svg></span>
+      <span class="pil" style="background:rgba(246,228,226,.82);color:var(--ink)">4 / 4</span>
+      <span class="pil" style="background:rgba(246,228,226,.82);color:var(--ink)"><svg><use href="#i-chevd"/></svg></span></div>
+    <div class="dock"><span class="act on"><svg><use href="#i-heart"/></svg><b>32</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-grid"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span></div>
+    <span class="n" style="left:12px;top:178px">2</span>
+  </div><figcaption><b>② 滚过最后一页 → 详情自然接上</b>：详情<b>不是另一屏</b>，就是这条纵向流里第 4 页后面的那一段
+    （<b>一个滚动容器</b>，不是抽屉里的第二个滚动者 —— v3 那条风险在这里被消掉了）。顶部 sticky 换成浅色圆座带页码。
+    展开档多一行<b>画师行</b>（头像 + 名 + 关注），标题升为 17sp 不截断；<b>四格统计卡撤掉</b>，标签这排<b>铺到 8 枚封顶</b>再出「更多 4 ›」。</figcaption></figure>
+
+  <!-- ③ 横向换作品 -->
+  <figure class="shot"><div class="ph">
+    <div class="flow seam1">
+      <div class="pg m3" style="height:400px"><i></i></div>
+      <div class="pg m1" style="height:404px"><i></i><span class="cp">3 / 4</span></div>
+    </div>
+    <div class="pg m5" style="position:absolute;top:0;height:100%;width:30px;right:0;z-index:20;border-left:1px solid rgba(255,255,255,.22)"><i></i></div>
+    <span class="dim" style="right:40px;top:300px;transform:rotate(90deg);transform-origin:right top">下一张作品 · 露 30dp</span>
+    <div class="sb"><span>09:41</span><span class="d"><i></i><i></i><i></i></span></div>
+    <div class="top"><span class="pil"><svg><use href="#i-back"/></svg></span>
+      <span class="pil" style="gap:6px"><svg style="width:14px;height:14px"><use href="#i-h"/></svg>换作品</span>
+      <span class="pil"><svg><use href="#i-more"/></svg></span></div>
+    <div class="dr" style="height:212px"><div class="handle"></div>
+      <div class="peek" style="padding-top:2px"><span class="av"></span>
+        <div class="g"><div class="t1 e">[CHARA] Kakkoi Elbertson</div>
+          <div class="mt"><svg><use href="#i-eye"/></svg><em>851</em><span class="dot"></span>
+            <svg><use href="#i-bm"/></svg><em>32</em><span class="dot"></span>
+            <svg><use href="#i-cal"/></svg><em>2026-10-01</em></div></div>
+        <span class="btn">关注</span></div>
+      <div class="blk" style="padding-top:0"><div class="wrap"><span class="chip">コイカツ</span><span class="chip">東方Project</span>
+        <span class="chip">東方</span><span class="chip">キャラ配布</span><span class="chip">よその子</span>
+        <span class="chip">gensokyoodyssey</span><span class="chip">kakkoi</span><span class="chip">水着</span>
+        <span class="chip more">更多 4<svg><use href="#i-chevr"/></svg></span></div></div></div>
+    <div class="dock" style="bottom:224px"><span class="act on"><svg><use href="#i-heart"/></svg><b>32</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-grid"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span></div>
+    <span class="arr" style="right:58px;top:250px">左滑整屏换<svg style="width:12px;height:12px"><use href="#i-h"/></svg></span>
+    <span class="n" style="left:12px;top:486px">3</span>
+  </div><figcaption><b>③ 横滑换作品</b>：横向整屏走的是<b>列表里的相邻作品</b>（本地序列，不额外发请求）；
+    换过去之后抽屉<b>保持当前档</b>（这里停在 half），页码归新作品的第 1 页。抽屉摘要行里的<b>标题与那行计数一起换</b>，标签那排重铺（仍封顶 8 枚）。</figcaption></figure>
+
+  <!-- ④ 接缝 A/B 对照 -->
+  <figure class="shot"><div class="ph">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:196px">
+      <div class="flow seam0" style="right:0">
+        <div class="pg m1" style="height:300px;width:196px"><i></i></div>
+        <div class="pg m1" style="height:300px;width:196px"><i></i></div>
+        <div class="pg m1" style="height:212px;width:196px"><i></i></div>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:10px;color:#fff;text-shadow:0 1px 3px #000">A · 0dp 无缝</div>
+    </div>
+    <div style="position:absolute;right:0;top:0;bottom:0;width:196px">
+      <div class="flow seam1" style="right:0">
+        <div class="pg m1" style="height:299px;width:196px"><i></i></div>
+        <div class="pg m1" style="height:299px;width:196px"><i></i></div>
+        <div class="pg m1" style="height:210px;width:196px"><i></i></div>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:10px;color:#fff;text-shadow:0 1px 3px #000">B · 1dp 一条边</div>
+    </div>
+    <div style="position:absolute;top:0;bottom:0;left:195px;width:3px;background:#FFD24A;z-index:70"></div>
+    <div class="sb"><span>同一张图连排三页</span><span class="d"><i></i><i></i><i></i></span></div>
+    <span class="n" style="left:12px;top:44px">4</span>
+  </div><figcaption><b>④ 接缝对照</b>：同色背景连排时，<b>A 档会看不出翻页</b>（本鱼拿三页同色图试的，就是这一张）；
+    B 档那 1dp 在浅色图上几乎隐形、在深色图上刚好成一条边。默认建议 <b>B</b>，A 留给"要沉浸"的用户，两档都进设置。</figcaption></figure>
+
+  <!-- ⑤ 设置那一枚 -->
+  <figure class="shot"><div class="ph">
+    <div class="set">
+      <div class="blk" style="padding-top:0"><div class="t1" style="font-size:22px">画廊设置</div>
+        <div class="t2">图片流量、屏蔽、浏览方式（与漫画侧分开）</div></div>
+      <div class="sgrp">
+        <div class="srow"><div class="t1" style="font-size:14px">多图浏览方向</div>
+          <div class="t2" style="margin-top:2px">同一作品多页怎么翻。换作品那一轴跟着换到另一个方向上。</div>
+          <div class="seg"><span class="on"><svg style="width:15px;height:15px"><use href="#i-v"/></svg>纵向连读</span>
+            <span><svg style="width:15px;height:15px"><use href="#i-h"/></svg>横向翻页</span></div></div>
+        <div class="srow"><div class="sw"><div><div class="t1" style="font-size:14px">页之间留一条边</div>
+          <div class="t2">关掉就完全无缝：接续感最强，但两页同色时看不出翻页。</div></div><span class="knob"></span></div></div>
+        <div class="srow"><div class="sw"><div><div class="t1" style="font-size:14px">详情接在最后一页之后</div>
+          <div class="t2">关掉则详情仍走抽屉上滑，图与详情分开看。</div></div><span class="knob"></span></div></div>
+      </div>
+      <div class="sgrp"><div class="srow"><div class="t1" style="font-size:14px">给 AI 条目摆角标</div>
+        <div class="t2">这一枚已经在了，位置不动 —— 新开关排在它上面那一组。</div></div></div>
+    </div>
+    <span class="n" style="left:12px;top:56px">5</span>
+  </div><figcaption><b>⑤ 设置里那三枚</b>：方向（两档，<b>必填真生效</b>：作品页 + 看图器两处消费点）、
+    接缝 0/1dp、详情是否接在末页之后。<b>默认档 = 纵向连读 + 留一条边 + 详情接上</b>（就是①②画的那套）。</figcaption></figure>
+
+  <!-- ⑥ full 抽屉 -->
+  <figure class="shot"><div class="ph">
+    <div class="flow seam1" style="bottom:auto;height:120px"><div class="pg m3" style="height:120px"><i></i><span class="cp">2 / 4</span></div></div>
+    <div class="dr solid" style="height:692px;top:120px"><div class="handle"></div>
+      <div class="blk" style="padding-top:0"><div class="row"><span class="av"></span>
+        <div class="g"><div class="by">Big Red<s>@jaymonoto</s></div>
+          <div class="t1" style="font-size:17px">[CHARA] Kakkoi Elbertson</div>
+          <div class="mt"><svg><use href="#i-eye"/></svg><em>851</em><span class="dot"></span>
+            <svg><use href="#i-bm"/></svg><em>32</em><span class="dot"></span>
+            <svg><use href="#i-cal"/></svg><em>2026-10-01</em></div></div>
+        <span class="btn o">已关注</span></div></div>
+      <div class="blk" style="padding-top:0"><div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px"><h5 style="font-size:13px">标签 · 12</h5><span class="t2">译名 开</span></div>
+        <div class="wrap"><span class="chip">コイカツ</span><span class="chip">東方Project</span><span class="chip">東方</span>
+          <span class="chip">キャラ配布</span><span class="chip">よその子</span><span class="chip">gensokyoodyssey</span>
+          <span class="chip">kakkoi</span><span class="chip">水着</span>
+          <span class="chip more">更多 4<svg><use href="#i-chevr"/></svg></span></div></div></div>
+      <div class="sec"><h5><span class="i18"><svg><use href="#i-chat"/></svg></span>评论 · 6</h5><span>看全部 ›</span></div>
+      <div class="blk" style="padding-top:0"><div class="card"><div class="row" style="align-items:flex-start"><span class="av" style="width:34px;height:34px"></span>
+        <div class="g"><div class="t2">あかね · 3 天前</div><div style="font-size:13px;line-height:1.6">構図が良い…！ 衣装の描き込みがすごい</div></div>
+        <span class="n" style="position:static;display:inline-flex">6</span></div></div></div>
+      <div class="sec"><h5><span class="i18"><svg><use href="#i-grid"/></svg></span>相关图片</h5><span>往下滑接着给</span></div>
+      <div class="wall"><div class="tile r1"><i class="m2"></i></div><div class="tile r3"><i class="m4"></i></div><div class="tile r2"><i class="m5"></i></div></div>
+    </div>
+    <div class="dock"><span class="act on"><svg><use href="#i-heart"/></svg><b>32</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-grid"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="sg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span></div>
+  </div><figcaption><b>⑥ 抽屉推到 full</b>（上滑把手仍然有）：给"不想在图流里滚到底"的人一条捷径 —— 抽屉铺满时画布收成顶部一条，
+    底色换实底。<b>② 与 ⑥ 是同一批内容的两种走法</b>，不是两套界面。</figcaption></figure>
+
+  <!-- ⑦ 状态机 -->
+  <figure class="shot"><div class="ph" style="background:#1A1417;color:#F0E7E7">
+    <div style="padding:52px 16px 16px;font-size:12px;line-height:1.95;color:#B6A6A8">
+      <div style="font-size:15px;font-weight:600;color:#F0E7E7;margin-bottom:12px">状态机 · 两轴各归谁</div>
+      <div class="box" style="margin-bottom:8px"><b style="color:#F3C9C9">纵轴</b><br>
+        1x 时 = 本作品翻页；滚过末页进详情；详情区继续滚；到顶再下拉 = 回图区。<b>全程一个滚动容器</b></div>
+      <div class="box" style="margin-bottom:8px"><b style="color:#F3C9C9">横轴</b><br>
+        = 列表相邻作品。到序列两端<b>停住并说一句"到这头了"</b>，不循环、不自动去站方再要一批（那是要另开一条腿的事）</div>
+      <div class="box" style="margin-bottom:8px"><b style="color:#F3C9C9">缩放 &gt;1x</b><br>
+        两轴都锁给缩放层；回 1x 解锁；<b>放大时抽屉淡出</b>，松手回到淡出前那一档</div>
+      <div class="box" style="margin-bottom:8px"><b style="color:#F3C9C9">深链直开（没有序列）</b><br>
+        横轴不可用 ⇒ 那一轴<b>明说</b>「这张是直接打开的，没有上一张/下一张」，并给一个"去看这位画师的作品"出口。不做假滑动</div>
+      <div class="box"><b style="color:#F3C9C9">设置换轴</b><br>
+        选"横向翻页"时两轴<b>整体互换</b>（页=横、作品=纵），接缝与详情接续那两枚开关的语义跟着换，不留半套</div>
+      <div style="margin-top:14px"><b style="color:#F0E7E7">无障碍</b>：每页带「第 N 页 / 共 M 页」语义；接缝那条边<b>不承担唯一说法</b>（页码胶囊也在）；
+        淡出留 <code>prefers-reduced-motion</code> 退路；抽屉把手可聚焦。</div>
+    </div>
+  </div><figcaption><b>⑦ 状态机</b>：这一版比 v3 少一个滚动者（详情并进纵轴），但多了一条"横轴两端怎么办"与"深链没序列"的诚实交代。</figcaption></figure>
+</div>
+
+<h2>二 · 接缝、页码与那行计数的账</h2>
+<table><thead><tr><th>档</th><th>页间距</th><th>翻页有没有别说法</th><th>什么时候会出问题</th></tr></thead><tbody>
+  <tr><td>A 无缝</td><td><b>0dp</b></td><td>只有页码胶囊（滚到哪页哪页带号）</td><td>两页同色 / 跨页大图被切成两屏时，用户以为还在同一页</td></tr>
+  <tr><td>B 一条边（默认）</td><td><b>1dp</b> <code>hairline</code></td><td>边 + 页码胶囊两说</td><td>深色底图上那条边几乎看不见（所以页码那说不能撤）</td></tr>
+  <tr><td>旧 v3 那档</td><td>12dp <code>gridGap</code></td><td>—</td><td><b>已撤</b>：那是网格口径，摆在连读里就是"三张明信片挂墙上"</td></tr>
+</tbody></table>
+
+<table style="margin-top:14px"><thead><tr><th>标题下那格的</th><th>取自哪个字段</th><th>10-18 现量（<code>150320368</code> 匿名详情腿）</th><th>图标</th></tr></thead><tbody>
+  <tr><td>浏览</td><td><code>body.viewCount</code></td><td><b>851</b></td><td>眼睛 · 12dp 描边</td></tr>
+  <tr><td>收藏</td><td><code>body.bookmarkCount</code></td><td><b>32</b></td><td>书签 · 12dp 描边</td></tr>
+  <tr><td>发布</td><td><code>body.uploadDate</code>（ISO 串带时区）</td><td><b>2026-10-01</b>（原值 <code>2026-10-01T06:12:00+00:00</code>）</td><td>日历 · 12dp 描边</td></tr>
+  <tr><td>标签那排</td><td><code>body.tags.tags[]</code>，内层键叫 <code>tag</code> 不叫 <code>name</code></td><td>现量 <b>7</b> 枚 ⇒ 全平铺、<b>不摆</b>"更多"；稿里补到 12 枚只为演示封顶那一档</td><td>—</td></tr>
+</tbody></table>
+
+<h2>三 · 落地时要钉的判据（防假开关）</h2>
+<div class="opt">
+  <div class="it"><b>方向那枚开关必须两处消费</b>
+    作品页与看图器都读同一枚键；判据数<b>出现次数 = 2</b>（数存在会被同屏另一处喂饱）。只改一处 = 两屏行为不一致。</div>
+  <div class="it"><b>接缝 0/1dp 要钉值本身</b>
+    判据吃"页距取自这枚开关的两档常量"，不吃"有没有写 padding"—— 写死 0 也能骗过存在性判式。</div>
+  <div class="it"><b>横轴两端要说得出话</b>
+    到序列头/尾时那一滑<b>必须回一句"到这头了"</b>并停住；静默弹回就是"页面在抽风"，也读不出是没数据还是坏了。</div>
+  <div class="it no"><b>深链没有序列 = 明说，不装</b>
+    直接打开一张时横轴禁用并给出口。<b>不许</b>偷偷拿"相关推荐"当序列填上 —— 那是我们编的顺序。</div>
+  <div class="it no"><b>miuix 拖拽那颗坑还在</b>
+    抽屉与详情接续共用一条滚之后，抽屉只剩 peek/half/full 三档拖拽 —— 仍要复用 <code>GalleryInfoSheet</code> 那颗落定看门狗，并配"full 档内容层点得下去"的判据。</div>
+  <div class="it"><b>标签 8 枚是上限、不是目标（要两笔判据）</b>
+    <code>≤8</code> 时"更多"把手<b>不渲染</b>；<code>&gt;8</code> 时渲染且回值=剩下的枚数。只测后一笔 = 假开关正好藏在前一档里。</div>
+  <div class="it"><b>计数行三格各钉一个字段名</b>
+    <code>viewCount</code>/<code>bookmarkCount</code>/<code>uploadDate</code> 逐格钉，不写"取详情里的数"这种糊话；发布那格屏上<b>只到日</b>。</div>
+  <div class="it no"><b>评论数据面仍未通</b>
+    匿名四形状 404、<code>commentCount</code>/<code>commentOff</code> 可取（现量）⇒ 评论那一节走登录腿；拿不到就整块撤下，不摆空壳。</div>
+</div>
+
+<p class="lede" style="margin-top:24px;color:#8E7F82">
+数据出处：画师 <b>Big Red</b> / 标题 / 4 页 / 浏览 851 / 收藏 32 / 评论 6 / 发布 2026-10-01 / 7 枚标签名 —— <b>全部取自 <code>/ajax/illust/150320368</code> 的现量响应</b>；
+为演示"同屏 8 枚 + 更多"那一档，标签补到 12 枚（多出的 5 枚名字是编的）。评论正文与评论用户名仍是编的。
+接缝两档都按现成档给（0dp / <code>hairline</code> 1dp），图标 12dp 走 <code>stroke=currentColor</code>，没造新色新数；
+色阶与胶囊沿用画廊现状。
+</p>
+
+<h3 style="margin-top:18px">落地回执（同日，批 225）—— 这一节才是当前状态</h3>
+<div class="box">
+  <div class="it"><b>已按本稿落地（Android 独用）</b>
+    <code>PixivWorkActivity</code> + <code>gallery/ui/PixivWorkScreen.kt</code>；入口分流<b>只有一处</b>
+    （<code>GalleryPostActivity.openGalleryPost</code>：pixiv 落作品页，其余三站落旧看图器）；
+    <code>GalleryPostScreen</code> 一个字没改 —— 用户点名"图库源的用回之前的，两个隔离开"，机械判据是
+    旧屏里搜不到 <code>PixivWork</code>、作品页里搜不到三站站点名。</div>
+  <div class="it"><b>虚假数据一枚都没进代码</b>
+    那条尺子（<code>稿子里那些编出来的数字与名字一枚都不许进代码</code>，扫的是<b>作品页 + 它那颗 Activity 两份源码拼起来的文本</b>）
+    把 <b>9 串字面量</b>逐串挡在源码外：编出来的画师名与账号、标题片段、演示读数
+    <code>851</code>/<code>1.2k</code>/<code>38k</code>/<code>32 收藏</code>，
+    <b>连真的那两枚标签名</b>（<code>コイカツ</code>/<code>東方Project</code>）也不许写死 ——
+    "值必须由字段现取"这件事只有"代码里找不到任何一枚读数当字面量"才证得明，
+    而把某一天的真读数写进判式，就是本仓反复立案的"措辞锚点把读数冻成规格"那一族。
+    屏上每个数各自钉一个字段名，<b>取不到就整格不摆</b>（不是摆 0、不是摆"暂无"）。</div>
+  <div class="it"><b>画师那一行的两枚都接上了（关注 / 屏蔽）</b>
+    关注走 <code>ports.follows.toggle</code>（与「画廊 → 关注画师」同一份存档，点完那一栏当场多一枚）；
+    屏蔽挂在<b>长按</b>那一层（菜单本身就是那一步确认），存的是 <code>AUTHOR</code> 规则而不是画师卡那条
+    <code>TAG</code> —— pixiv 的 tags 是<b>作品</b>标签（现量 150320368 里没有画师名），照抄 TAG 会存一条
+    <b>永远挡不住</b>的规则而 Toast 照样说"已屏蔽"。墙侧判定 <code>blockedGalleryRule(author, tags)</code>
+    的 AUTHOR 那一支吃的是 <code>post.author</code> ⇒ 加下去真生效。</div>
+  <div class="it no"><b>与本稿的三处偏差（有意为之，不是漏了）</b>
+    ① 底部那一叠做成<b>摘要条 + 半屏面板两档</b>，不是三档拖拽 —— 抽屉里放的是"这一条的其余信息"，
+    而详情本身已经接在滚动流末尾，拖拽第三档没有对象；
+    ② 头像那一格在批 225 是<b>首字母座</b>（详情腿不带 <code>userImage</code>）—— <b>批 227 已改真取</b>，
+    见下面「第二轮改口径」那一节；
+    ③ 评论那一节仍是<b>降级</b>（见下一条）。</div>
+  <div class="it no"><b>评论仍是降级</b>：匿名四形状现量 404 ⇒ 屏上只念 <code>commentCount</code> 那个数，
+    点开交外部浏览器；<code>commentOff=1</code> 时那一行整块不摆。</div>
+
+  <h3 style="margin-top:18px">第二轮改口径（同日真机五条，批 227）</h3>
+  <div class="it"><b>第一批已落地（① ② ③ ⑥）</b>
+    ① 屏底那排 dock <b>整排撤掉</b>（<code>PixivWorkDock</code> + <code>DockAction</code> 连定义带调用一起没）——
+    立案读数：dock 里的「详情」与顶栏那枚「更多信息」置的是<b>同一个</b> <code>sheetOpen</code>，
+    用户读到的是一枚重复入口；四枚动作（收藏 / 评论 / 下载 / 分享）搬进<b>详情段开头</b>，
+    于是滚动流末尾与抽屉画的是<b>同一颗</b>件、动作不会分叉；<b>失败横幅留在屏上</b>
+    （取数失败时那一层是空的，把错误也搬进去等于让用户对着白屏找"为什么没图"）。<br>
+    ② 横向档那一页改<b>铺满翻页视口</b>（从前按"屏宽 ÷ 宽高比"算高，pager 给了整屏也不用 ⇒ 横图只长 1/4 屏）；
+    两支<b>共用一颗</b> <code>PixivPageImage</code>，由 <code>fillsViewport</code> 分开，
+    翻页档 <code>fillMaxSize</code> + <code>ContentScale.Fit</code>，连读档 <code>fillMaxWidth</code> + 真比例占位。<br>
+    ③ 这一屏摆<b>中档</b>（<code>urls.regular</code>）而不是原图：数据模型 <code>pageUrls: List&lt;String&gt;</code>
+    改成 <code>pages: List&lt;PixivPage&gt;</code>（<code>mediumUrl</code>/<code>originalUrl</code>/<code>width</code>/<code>height</code>），
+    多页那一跳逐页读两档与宽高、<b>两档都缺就算丢页</b>（与 <code>pageCount</code> 对账 ⇒ 抛，不退回第一页）；
+    占位比例走新纯判据 <code>PixivWorkPage.placeholderAspect</code>（缺格或 ≤0 ⇒ null ⇒ <b>不预留</b>），
+    图没落位前在同一格摆现成件 <code>VeneraShimmer</code>。<br>
+    ⑥ 画师头像按 <code>authorId</code> 现取（<code>peek</code> → <code>pixivAvatarUrl</code> → <code>remember</code> 落盘，
+    与画师卡同一份键），屏上那颗 <code>AuthorAvatar</code> <b>整颗删掉</b>，两处改用现成件
+    <code>GalleryArtistAvatar</code>（取不到时它自己退回首字母座 —— 那是<b>明说的降级</b>，屏上不另写一份兜底）。</div>
+  <div class="it"><b>第二批已落地（④ ⑤ + 三条新增，批 228）</b>
+    ④ 点图交<b>大图播放器</b>（复用图库那颗 <code>GalleryPostScreen</code>，不另画一颗画面件）：
+    那一层左右翻的是<b>这一作的这几页</b> —— 墙由纯函数 <code>PixivWorkPage.pageWallOf</code> 长出来
+    （中档进 <code>fast/large/preview</code>、<b>原图只进 fileUrl ⇒ HD 那一档才取原图</b>、逐页宽高、
+    扩展名逐页从地址尾巴取），经新那颗进程内交接件 <code>GalleryPageAxis</code>（<b>同站同号才应答</b>）递进去，
+    所以<b>翻不出别条作品</b>（用户那句"不能切换其他作品"就是这条判据）。<br>
+    ⑤ 双击改走<b>原图像素 1:1</b>（<code>galleryNativeZoomFactor</code>），上限抬到
+    <code>maxOf(coverToFill, nativeZoom) × 10</code>；算不出 1:1（站方没给宽高，或原图本来就不止 1:1）
+    就<b>把那一枚撤掉</b>，不摆按下去没变化的假开关。这一改对图库三站同样生效 —— 一支件不分叉两种双击语义，
+    旧的 <code>cycle(coverToFill)</code> 那把尺就地改判并在用例里写了为什么。<br>
+    ⑦ <b>卡片上标出多页</b>（用户「不用点进作品也能看出这张有几页」）：先量过数据面 ——
+    <b>两腿本来就给页数</b>（榜腿 <code>illust_page_count</code> 是字符串、搜索腿 <code>pageCount</code> 是数字），
+    从前解析时丢了这格 ⇒ 零额外请求。行模型开 <code>pageCount</code>，判据 <code>pagesBadge</code>
+    「&gt;1 才摆」，胶囊复用现成 <code>GalleryCornerPill</code>（<code>4P</code>，摆右下），
+    两个宿主各接一枚（主墙那张卡 + pixiv 首页那族卡）；booru 三站与收藏存档恒 null ⇒ 那一侧一枚都不摆。<br>
+    ⑧ <b>播放器里能看出第几页</b>：页码那颗 <code>GalleryViewerPageCounter</code> 本来就在，
+    页轴生效即显示「N / M」= 第 N 页 / 共 M 页，<b>没有另画一枚</b>。<br>
+    ⑨ <b>播放器里能下载</b>：工具条那枚下载把手本来就在，页轴时每页的 <code>fileUrl</code> 是那一页的原图 ⇒
+    下载的就是当前这一页；默认命名档带上页位（<code>pixiv-&lt;号&gt;-p2.png</code>），免得四页落成同名靠 " (1)" 区分。<br>
+    <b>逐页身份这一格</b>：HD 那一档的记忆与"这一张正在放大"从前按 <code>uid</code> 记，
+    而四页共用一个 <code>uid</code> ⇒ 翻到第 2 页 HD 还亮着画的却是中档。新增 <code>viewerKey</code>
+    （<code>uid</code> + 页位；<b>不进 uid</b> —— 收藏/历史/去重记的仍是"这一条作品"），
+    缓存键 <code>galleryCacheKey</code> 也带上页位（水彩取底那颗共用同一颗函数，所以跟着一起对）。
+    <b>非页轴那些算出来的串逐字不变</b>（有用例钉着），图库三站零变化。</div>
+  <div class="it no"><b>第二批的两处明说降级</b>
+    ① 播放器那一版信息面板<b>不摆「相关图片」那一排</b>：那一排每次点击都是"离开播放器、换一条作品"，
+    而播放器这一层只有 <code>onOpenArtist</code> 没有那条出口 ⇒ 宁可少一排，也不摆一枚点了没反应的把手
+    （那一排在作品页里原样都在）；
+    ② 「几 P」这一枚<b>只在站方给了页数的屏上摆</b>：收藏与历史那一屏的卡是从存档复原的（没落这一列）⇒ 不摆，
+    也不补一个"1P" —— 那是编出来的读数。</div>
+
+  <h3 style="margin-top:18px">第三轮改口径（同日真机两张图，批 229）</h3>
+  <div class="it"><b>四条一起落地：撤屏底条 · 两支同构 · 顶栏留边并垫模糊 · 按钮走全站玻璃座</b>
+    ① 屏底那条摘要条（<code>PixivWorkPeek</code> 与它专用的 <code>CHROME_ALPHA</code> 半透明底）<b>整颗撤掉，两支一起撤</b>
+    —— 立案读数：连读档滚到详情段时，摘要条与它正上方那行画师信息是<b>同一份读数画两遍</b>；
+    而"两支同一套 chrome"是用户那句「横着一页一页翻应该和竖着连续翻页模式结构一样」的直接推论，
+    留半套就是又一处分叉。<b>失败横幅留在屏上</b>，「更多信息」的入口留在顶栏那一枚上。
+    屏底让位改由 <code>navBarBottom + chromeHeight + space6</code> 自己补（从前那一格是摘要条顺带盖住的）。<br>
+    ② 横向档与连读<b>同一套结构</b>：顶栏三枚一样、屏底一样空，只是页轴走左右。两件事一起修 ——
+    (a) <b>页码从前恒念「1 / N」</b>：<code>pageIndex</code> 只由连读那条流的 <code>firstVisibleItemIndex</code> 喂，
+    横向档压根不走那条流 ⇒ 屏上一句假数而编译器不报；现在由该 slot 的页 pager 真喂。<br>
+    (b) <b>末页之后多一格提醒</b>（用户「在最后一页再滑动设计个提醒，然后再切换下一个作品」）：
+    格子数只问纯判据 <code>PixivWorkPage.horizontalSlotCount(pageCount, hasNextWork)</code> ——
+    只在<b>墙里认得出下一位</b>时才多摆一格；那一格底上是<b>下一位的中档大图模糊版</b>，
+    上面念"下一作品" + 那一位的画师名 + 一句怎么走。滑过去停稳与<b>直接点这里</b>走同一颗
+    <code>advanceToNext</code>（一处置位、一处推外层 pager），换不换由
+    <code>PixivWorkPage.advancesToNextWork</code> 那四道闸说了算（没停稳 / 停在真正的最后一页 /
+    详情还没回来 / 这一位已经触发过 ⇒ 都不换）。作品轴原本的上下滑<b>保留</b>。<br>
+    ③ 顶栏那一格<b>不再"全贴"</b>：高度 = 状态栏 + 顶栏塌下来那一档，两支内容各让出这一格；
+    空出来的那一格画<b>当前页大图的模糊版</b>（现成件 <code>CoverHeroBackdrop</code>，档位取画师介绍页
+    那一档轻模糊 <code>artistHeroBackdropBlur</code> / <code>artistHeroBackdropScale</code>，两处同一把尺）。
+    地址为空（详情没回来、或站方这一页没给地址）时那颗件什么都不画 ⇒ 这一格退回页面底色，
+    <b>不拿一块纯色冒充"这张画的模糊"</b>。<br>
+    ④ 顶栏两枚按钮换成全站那一颗玻璃座 <code>VeneraTopBarPill</code>（批次 H 定的"顶栏图标按钮唯一形态"，
+    视觉 40 / 触达 48），本屏自己那颗实心圆 <code>ChromePill</code> <b>整颗删掉</b>。
+    磨砂要<b>三件一起接</b>：<code>rememberTopBarBackdrop()</code> 记一份采样源 + 图墙那堵 Box 挂
+    <code>.blurBackdropSource()</code> + <code>CompositionLocalProvider(LocalTopBarBackdrop provides …)</code>
+    把采样层递到按钮手里 —— 少任何一件，那颗件<b>可见地</b>回落成实心底，而不是什么都不画。</div>
+  <div class="it no"><b>第三批的两处明说降级</b>
+    ① 撤掉摘要条之后，横向档屏上<b>不再有任何标题／画师摘要</b>（那一档的详情段本来就不在滚动流里）——
+    要看详情就点顶栏那枚「更多信息」，而<b>不是</b>再补一条屏底条；
+    ② 边界那一格<b>只在认得出下一位时才摆</b>：深链直开、或这一排已到最后一条 ⇒ 一格都不许多，
+    到头就是到头（与"不足 8 枚标签时『更多』把手不许出现"同族）。</div>
+</div>
+</body>
+</html>

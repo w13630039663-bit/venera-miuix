@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixiv 作品页 · UI 规划（2026-10-18）</title>
+<style>
+  :root{
+    /* 色一律是"语义槽位"的近似观感；落地时吃 VeneraColorTokens，不抄这些 hex */
+    --surface:#F6F1F5; --surface-c:#ECE6EC; --surface-chigh:#E4DDE4; --surface-chighest:#DBD4DB;
+    --on-surface:#1B1B1F; --on-var:#4C4550; --outline:#7F7585; --primary:#8B4E74; --primary-c:#F3DCEB;
+    --on-image:#FFFFFF; --glass:rgba(255,255,255,.16); --badge-bg:rgba(24,20,26,.72);
+    --page:#0E0B10; --ink:#EFE9EF; --ink-var:#B4AAB4; --line:rgba(255,255,255,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--page);color:var(--ink);
+    font-family:"Microsoft YaHei UI","PingFang SC","Noto Sans SC",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:40px 32px 72px}
+  h1{font-size:26px;letter-spacing:.5px;margin-bottom:6px}
+  h2{font-size:15px;letter-spacing:2px;color:var(--ink-var);text-transform:uppercase;margin:44px 0 14px}
+  .lede{font-size:13.5px;line-height:1.9;color:var(--ink-var);max-width:960px}
+  .lede b{color:var(--ink);font-weight:600}
+  code{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;color:#F0C8E0}
+  /* ── 分层图 ─────────────────────────────────────────── */
+  .layers{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .layer{flex:1 1 210px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:rgba(255,255,255,.03)}
+  .layer h4{font-size:12.5px;letter-spacing:.6px;margin-bottom:8px;color:#F0C8E0}
+  .layer ul{list-style:none;font-size:12px;line-height:1.85;color:var(--ink-var)}
+  .layer.new{background:rgba(139,78,116,.16);border-color:rgba(240,200,224,.34)}
+  .layer.new h4{color:#FFD9F0}
+  /* ── 屏 ─────────────────────────────────────────────── */
+  .rail{display:flex;gap:26px;overflow-x:auto;padding:6px 2px 22px;scrollbar-width:thin}
+  .shot{flex:0 0 auto}
+  .shot figcaption{font-size:12px;color:var(--ink-var);margin-top:10px;line-height:1.7;max-width:393px}
+  .shot figcaption b{color:var(--ink)}
+  .phone{position:relative;width:393px;height:812px;border-radius:34px;overflow:hidden;
+    background:var(--surface);color:var(--on-surface);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 24px 60px rgba(0,0,0,.55)}
+  .scr{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+  .status{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+    font-size:11px;color:var(--on-var);flex:0 0 auto}
+  .status .dots{display:flex;gap:3px}.status .dots i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.7}
+  .scroll{flex:1 1 auto;overflow:hidden;padding:0 0 96px}
+  /* 顶栏：玻璃圆座 */
+  .bar{position:absolute;left:0;right:0;top:30px;height:52px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 12px;z-index:30}
+  .pill{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:28px;
+    background:var(--glass);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+    box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28),0 1px 3px rgba(0,0,0,.18);position:relative}
+  .pill.wide{width:auto;padding:0 12px;gap:7px;font-size:12.5px}
+  .pill.onimg{background:var(--badge-bg);box-shadow:none;color:#fff}
+  .bar .who{display:flex;align-items:center;gap:8px}
+  svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .ico16 svg{width:16px;height:16px}.ico18 svg{width:18px;height:18px}
+  /* 图片区 */
+  .stage{position:relative;flex:0 0 auto;background:linear-gradient(180deg,#241d26,#171219);overflow:hidden}
+  .art{position:absolute;inset:0}
+  .art i{position:absolute;inset:0;display:block}
+  /* 占位"作品图"：三档 mesh，够读出轮廓与明暗，才看得出布局压不压图 */
+  .art-a i{background:
+    radial-gradient(46% 34% at 30% 26%,#FBE1EC 0%,rgba(251,225,236,0) 70%),
+    radial-gradient(40% 30% at 68% 20%,#CFE4F7 0%,rgba(207,228,247,0) 72%),
+    radial-gradient(52% 40% at 74% 72%,#F0A9C6 0%,rgba(240,169,198,0) 70%),
+    radial-gradient(38% 30% at 22% 74%,#7E6AA0 0%,rgba(126,106,160,0) 74%),
+    linear-gradient(158deg,#8C7AA6 0%,#4A3B5C 48%,#241C2E 100%)}
+  .art-b i{background:
+    radial-gradient(44% 30% at 62% 22%,#FFE3D0 0%,rgba(255,227,208,0) 70%),
+    radial-gradient(46% 36% at 28% 62%,#8FB6D8 0%,rgba(143,182,216,0) 72%),
+    radial-gradient(40% 30% at 78% 78%,#3C5A78 0%,rgba(60,90,120,0) 70%),
+    linear-gradient(150deg,#6E7FA8 0%,#3A3550 58%,#1F1A2A 100%)}
+  .art-c i{background:
+    radial-gradient(40% 28% at 34% 30%,#FFD9E6 0%,rgba(255,217,230,0) 70%),
+    radial-gradient(48% 34% at 70% 66%,#B98FC4 0%,rgba(185,143,196,0) 70%),
+    linear-gradient(162deg,#A48FB4 0%,#5A4A72 55%,#2A2334 100%)}
+  .art-rail i,.art-rail{background:
+    radial-gradient(50% 40% at 30% 26%,#F2D2E2 0%,rgba(242,210,226,0) 72%),
+    linear-gradient(155deg,#C9A9C4 0%,#7A6288 60%,#463A55 100%)}
+  .art-rail2 i,.art-rail2{background:
+    radial-gradient(50% 40% at 66% 24%,#CFE0F3 0%,rgba(207,224,243,0) 72%),
+    linear-gradient(155deg,#9FB4CE 0%,#5E6E8C 60%,#38405A 100%)}
+  .art-rail3 i,.art-rail3{background:
+    radial-gradient(50% 40% at 40% 70%,#F0D3C8 0%,rgba(240,211,200,0) 72%),
+    linear-gradient(155deg,#C7A79B 0%,#84625C 60%,#4A3634 100%)}
+  .rcov i,.pg i{position:absolute;inset:0;display:block}
+  .cap{position:absolute;left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .cap.bottom{bottom:12px}.cap.top{top:12px}
+  .chip-dark{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 6px;border-radius:28px;
+    background:var(--badge-bg);color:#fff;font-size:10px;font-weight:600;letter-spacing:.3px}
+  .counter{font-size:16px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5);
+    font-variant-numeric:tabular-nums}
+  /* 缩略条 */
+  .thumbs{display:flex;gap:6px;padding:8px 12px;overflow:hidden;position:relative}
+  .th{flex:0 0 44px;height:56px;border-radius:8px;background:linear-gradient(160deg,#C9B7C6,#8E7C8C);opacity:.55;position:relative}
+  .th.on{opacity:1;box-shadow:0 0 0 2px var(--primary)}
+  .th em{position:absolute;left:3px;bottom:2px;font-style:normal;font-size:9px;color:#fff;text-shadow:0 1px 2px #000}
+  /* 展开态的缩略网格（③） */
+  .grid-th{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:6px 12px 0;position:relative}
+  .grid-th .th{flex:none;width:100%;height:74px;opacity:.72}
+  .grid-th .th.on{opacity:1}
+  /* 内容块 */
+  .block{background:var(--surface);border-radius:0 0 0 0;padding:12px;position:relative}
+  .row{display:flex;align-items:center;gap:10px}
+  .avatar{width:40px;height:40px;border-radius:50%;flex:0 0 auto;
+    background:conic-gradient(from 220deg,#E7B7D4,#9C7FB8,#6FA8C9,#E7B7D4)}
+  .avatar.sm{width:34px;height:34px}
+  .t1{font-size:16px;font-weight:600;line-height:1.35}
+  .t2{font-size:12px;color:var(--on-var);line-height:1.5}
+  .t3{font-size:13px;color:var(--on-var);line-height:1.7}
+  .grow{flex:1 1 auto;min-width:0}
+  .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border-radius:28px;
+    font-size:12px;font-weight:600;background:var(--primary-c);color:#5B2549;flex:0 0 auto}
+  .btn.ghost{background:transparent;box-shadow:inset 0 0 0 1px var(--outline);color:var(--on-var)}
+  .card{background:var(--surface-chigh);border-radius:16px;padding:10px;position:relative}
+  .sec{display:flex;align-items:center;justify-content:space-between;padding:14px 12px 6px;position:relative}
+  .sec h5{font-size:13px;font-weight:600;letter-spacing:.3px}
+  .sec span{font-size:11px;color:var(--on-var)}
+  .tag{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:28px;background:var(--surface-chighest);
+    font-size:12px;color:var(--on-surface);white-space:nowrap}
+  .tag.jp{background:transparent;box-shadow:inset 0 0 0 1px var(--outline)}
+  .tag.hot{background:var(--primary-c);color:#5B2549;font-weight:600}
+  .tagwrap{display:flex;gap:8px;flex-wrap:wrap}
+  .stat{display:flex;gap:0;padding:2px 0}
+  .stat div{flex:1 1 0;text-align:center}
+  .stat b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat i{font-style:normal;font-size:11px;color:var(--on-var)}
+  .rail-h{display:flex;gap:12px;padding:0 12px;overflow:hidden;position:relative}
+  /* 相关图片：三列网格，图要多 —— 一屏先给 9 张、往下滑接着给 */
+  .grid-rel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 12px;position:relative}
+  .rel{aspect-ratio:1/1.24;border-radius:10px;position:relative;overflow:hidden}
+  .rel em{position:absolute;right:4px;bottom:3px;font-style:normal;font-size:9px;color:#fff;background:var(--badge-bg);
+    padding:0 4px;border-radius:28px;font-variant-numeric:tabular-nums}
+  .rcard{flex:0 0 90px}
+  .rcov{width:90px;height:120px;border-radius:10px;background:linear-gradient(150deg,#D6C2D4,#8E7C8C);position:relative;overflow:hidden}
+  .rcov b{position:absolute;left:4px;top:4px;font-size:9px;font-weight:700;color:#fff;background:var(--badge-bg);
+    padding:1px 5px;border-radius:28px}
+  .rail-h .cap2{font-size:11px;color:var(--on-var);margin-top:4px}
+  .hair{height:1px;background:var(--surface-chighest);margin:2px 12px}
+  .progress{height:1.5px;background:var(--surface-chighest);position:relative}
+  .progress i{position:absolute;left:0;top:0;bottom:0;width:25%;background:var(--primary)}
+  /* 底部悬浮玻璃操作栏 */
+  .dock{position:absolute;left:12px;right:12px;bottom:24px;height:64px;z-index:40;
+    display:flex;align-items:center;justify-content:space-around;padding:0 6px;border-radius:32px;
+    background:rgba(255,255,255,.62);backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);
+    box-shadow:inset 0 0 0 .5px rgba(255,255,255,.55),0 6px 18px rgba(27,20,30,.22)}
+  .dock .act{width:48px;height:48px;border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1px;color:var(--on-surface);position:relative}
+  .dock .act svg{width:19px;height:19px}
+  .dock .act.on{background:var(--primary-c);color:#5B2549}
+  .dock .act b{position:absolute;right:4px;top:3px;font-size:9px;font-weight:700;color:#5B2549;
+    background:var(--primary-c);padding:0 3px;border-radius:8px;font-variant-numeric:tabular-nums}
+  .dock .seg{width:1px;height:26px;background:rgba(27,20,30,.10)}
+  /* 连读模式 */
+  .reader{position:absolute;inset:0;background:#141017;display:flex;flex-direction:column}
+  .reader .rhead{height:82px;flex:0 0 auto;display:flex;align-items:flex-end;padding:0 12px 8px;
+    background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,0))}
+  .reader .pages{flex:1 1 auto;overflow:hidden;padding:8px 0 96px;display:flex;flex-direction:column;gap:12px}
+  .pg{margin:0 12px;border-radius:10px;position:relative;overflow:hidden;background:#1E1820}
+  .pg .lab{position:absolute;left:6px;top:6px;font-size:10px;color:#fff;background:var(--badge-bg);padding:1px 6px;border-radius:28px}
+  /* 半模态（更多面板）*/
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:45;background:var(--surface-c);
+    border-radius:28px 28px 0 0;padding:8px 0 18px;box-shadow:0 -6px 24px rgba(27,20,30,.28)}
+  .shandle{width:36px;height:4px;border-radius:4px;background:var(--surface-chighest);margin:2px auto 8px}
+  .srow{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 16px;font-size:14px}
+  .srow b{font-weight:600}
+  .shead{font-size:11px;color:var(--on-var);padding:10px 16px 4px;letter-spacing:.4px}
+  .shair{height:1px;background:var(--surface-chighest);margin:6px 12px}
+  /* 评论项 */
+  .cmt{display:flex;gap:10px;padding:12px;border-bottom:1px solid var(--surface-chighest);position:relative}
+  .cimgs{display:flex;gap:6px;margin-top:8px}
+  .ci{width:64px;height:64px;border-radius:10px}
+  .stamp{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:28px;
+    background:var(--surface-chighest);font-size:11px;color:var(--on-var);font-variant-numeric:tabular-nums}
+  .stamp.on{background:var(--primary-c);color:#5B2549;font-weight:600}
+  .reply{margin-top:8px;padding:8px 10px;background:var(--surface-chighest);border-radius:12px;
+    border-left:2px solid var(--primary)}
+  .note{font-size:12px;line-height:1.75;color:var(--on-var);background:var(--surface-chighest);
+    border-radius:12px;padding:10px}
+  /* 标注 */
+  .n{position:absolute;z-index:60;width:19px;height:19px;border-radius:50%;background:#FFD24A;color:#241a00;
+    font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .dim{position:absolute;z-index:55;font-size:10px;color:#8A5B00;background:#FFD24A;padding:1px 5px;border-radius:6px;
+    font-variant-numeric:tabular-nums;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .mask{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,7,11,.0) 55%,rgba(10,7,11,.72));z-index:5}
+  /* 内容在悬浮栏后面继续滚 —— 用一层同色渐隐说明"下面还有"，别让它读成被裁坏了 */
+  .fade{position:absolute;left:0;right:0;bottom:0;height:132px;z-index:35;pointer-events:none;
+    background:linear-gradient(180deg,rgba(246,241,245,0),var(--surface) 58%)}
+  .fade.dk{background:linear-gradient(180deg,rgba(20,16,23,0),#141017 58%)}
+  /* 表 */
+  table{border-collapse:collapse;width:100%;max-width:1100px;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;line-height:1.7}
+  th{color:#F0C8E0;font-weight:600;letter-spacing:.4px}
+  td b{color:var(--ink)}td{color:var(--ink-var)}
+  .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px 22px;font-size:12px;
+    color:var(--ink-var);line-height:1.8;max-width:1100px}
+  .legend b{color:var(--ink);font-weight:600}
+  .ask{border-left:3px solid #FFD24A;padding:10px 14px;background:rgba(255,210,74,.07);border-radius:0 10px 10px 0;
+    font-size:13px;line-height:1.9;color:var(--ink-var);max-width:1000px;margin-bottom:10px}
+  .ask b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="i-back"><path d="M15 5 8 12l7 7"/></g>
+  <g id="i-close"><path d="M6 6l12 12M18 6 6 18"/></g>
+  <g id="i-heart"><path d="M12 20s-7-4.4-7-9.3A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.7C19 15.6 12 20 12 20Z"/></g>
+  <g id="i-dl"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14"/></g>
+  <g id="i-share"><path d="M8 12h8M12 8l4 4-4 4M12 4v4"/></g>
+  <g id="i-more"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></g>
+  <g id="i-layers"><path d="M12 4 4 8l8 4 8-4-8-4ZM4 12l8 4 8-4M4 16l8 4 8-4"/></g>
+  <g id="i-grid"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></g>
+  <g id="i-chev"><path d="M9 6l6 6-6 6"/></g>
+  <g id="i-chevd"><path d="M6 9l6 6 6-6"/></g>
+  <g id="i-zoom"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.3-4.3M11 8.6v4.8M8.6 11h4.8"/></g>
+  <g id="i-text"><path d="M5 6h14M9 6v12M5 12h9"/></g>
+  <g id="i-eye"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.4"/></g>
+  <g id="i-star"><path d="M12 5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4L7.5 18.3l.9-5L4.8 9.8l5-.7L12 5Z"/></g>
+  <g id="i-chat"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8.5 9.5h7M8.5 12.5h4"/></g>
+  <g id="i-block"><circle cx="12" cy="12" r="8"/><path d="M6.3 6.3 17.7 17.7"/></g>
+  <g id="i-reply"><path d="M9 7 4 12l5 5M4 12h9a6 6 0 0 1 6 6v1"/></g>
+  <g id="i-smile"><circle cx="12" cy="12" r="8"/><path d="M9 10.5h.01M15 10.5h.01M8.5 14.5a4.5 4.5 0 0 0 7 0"/></g>
+  <g id="i-lang"><path d="M4 6h9M8.5 6c0 4-1.5 6.5-4 8.5M6 10c1.4 2.4 3.6 3.9 6 4.6M13 20l4-9 4 9M14.4 17h5.2"/></g>
+</defs></svg>
+
+<h1>Pixiv 作品页 · UI 规划</h1>
+<p class="lede">
+一句话：<b>打开一张 pixiv 作品，先在原地处看图，往下滑就把画师 / 标题 / 标签 / 推荐一并读完，不用退出播放器再进详情页。</b>
+底层（取图、缩放、手势、缓存、下载、收藏写口）整条沿用现成件，<b>上层只新做这一屏的编排</b>。
+横向多图 = pager；纵向详情 = 外层滚动；操作栏 = 浮在屏底的玻璃条（<b>不排在推荐之后</b>）；连读模式 = 同一批页换一种排法，不是另一条取数路。
+</p>
+
+<div class="layers">
+  <div class="layer"><h4>底层 · 原样复用（零改动）</h4><ul>
+    <li>取图与缓存（Coil 管线、缩略/原图两档）</li>
+    <li>缩放与手势（zoomable 层、双指/拖动）</li>
+    <li>下载写口、收藏写口（含 pixiv 站方同步）</li>
+    <li>卡片面（<code>VeneraCard</code> / 角标胶囊 / 站标）</li>
+    <li>玻璃圆座（<code>VeneraTopBarPill</code>）、顶栏折叠那套</li>
+  </ul></div>
+  <div class="layer new"><h4>上层 · 这一屏新做</h4><ul>
+    <li>作品页编排：pager 段 + 详情段同处一条滚动链</li>
+    <li>多图进度两种说法：页码胶囊 + 缩略条（可折叠）</li>
+    <li>底部悬浮玻璃操作栏（5 枚 + 分隔）</li>
+    <li>纵向连续阅读档（与横向 pager 一键互换）</li>
+    <li>相关图片三列网格（同标签 / 同画师混排）</li>
+    <li>评论整屏（只读：头像 / 附图 / 表情 / 回复）</li>
+  </ul></div>
+  <div class="layer"><h4>口径 · 尺寸全部取现成 token</h4><ul>
+    <li>页边 <code>screenHorizontal</code> 12dp、行内 <code>cardContentPadding</code> 8dp</li>
+    <li>圆角 <code>shape.extraLarge</code>（MD3 28 / Miuix 30）、卡 <code>shape.card</code> 16dp</li>
+    <li>字阶 <code>type.itemTitle</code> 16sp / <code>body</code> 14 / <code>caption</code> 12 / <code>badge</code> 10</li>
+    <li>胶囊高 <code>filterChipHeight</code> 32dp、动作位 <code>sheetActionHeight</code> 48dp</li>
+    <li>底栏 <code>bottomBarHeight</code> 64 + <code>bottomBarBottomGap</code> 12 ⇒ 留白 <code>bottomBarClearance</code> 76dp</li>
+  </ul></div>
+</div>
+
+<h2>一 · 八张屏</h2>
+<div class="rail">
+
+  <!-- 1 首屏 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="bar">
+      <div class="who">
+        <span class="pill"><svg><use href="#i-back"/></svg></span>
+        <span class="pill wide"><span class="avatar sm" style="width:22px;height:22px"></span>ilkayu</span>
+      </div>
+    </div>
+    <div class="scroll">
+      <div class="stage" style="height:474px">
+        <div class="art art-a"><i></i></div>
+        <div class="mask"></div>
+        <div class="cap bottom">
+          <div class="row" style="gap:6px">
+            <span class="chip-dark">原创</span><span class="chip-dark">AI 生成</span>
+          </div>
+          <span class="counter">1/8</span>
+        </div>
+        <span class="n" style="left:12px;top:120px">1</span>
+        <span class="dim" style="right:12px;top:96px">图区高 ≤ 屏宽 × 1.2</span>
+      </div>
+      <div class="hair"></div>
+      <div class="block" style="padding-top:8px">
+        <div class="row">
+          <span class="avatar"></span>
+          <div class="grow">
+            <div class="t1 ell">夏祭、雨上がり</div>
+            <div class="t2 ell">ilkayu · 2026-08-14 21:03 · 8 页</div>
+          </div>
+          <span class="btn">关注</span>
+        </div>
+        <span class="n" style="left:12px;top:6px">2</span>
+      </div>
+      <div class="block" style="padding-top:0">
+        <div class="tagwrap">
+          <span class="tag hot">100users入り</span><span class="tag">夏祭り</span>
+          <span class="tag jp">和風</span><span class="tag jp">オリジナル</span>
+          <span class="tag" style="background:transparent;box-shadow:none;color:var(--on-var)">+6</span>
+        </div>
+        <span class="n" style="right:12px;top:-9px">3</span>
+      </div>
+      <div class="thumbs" style="padding-top:2px">
+        <span class="th on art-rail"><em>1</em></span><span class="th art-rail2"><em>2</em></span><span class="th art-rail3"><em>3</em></span>
+        <span class="th art-rail"><em>4</em></span><span class="th art-rail2"><em>5</em></span><span class="th art-rail3"><em>6</em></span>
+      </div>
+    </div>
+    <div class="dock">
+      <span class="act on"><svg><use href="#i-heart"/></svg><b>4.2k</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-layers"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span>
+      <span class="n" style="right:-4px;top:-6px">4</span>
+    </div>
+  </div></div>
+  <figcaption><b>① 首屏（横向多图）</b>：图占满上部，页码在图内右下（不额外占一行），画师 + 标题 + 标签头几枚直接露出；缩略条压在下方当"挑页"把手。</figcaption>
+  </figure>
+
+  <!-- 2 下滚 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="bar">
+      <div class="who"><span class="pill"><svg><use href="#i-back"/></svg></span>
+        <span class="pill wide">夏祭、雨上がり</span></div>
+    </div>
+    <div class="scroll" style="padding-top:82px">
+      <div class="block" style="padding-top:0">
+        <div class="row">
+          <span class="avatar"></span>
+          <div class="grow"><div class="t1 ell">夏祭、雨上がり</div><div class="t2 ell">ilkayu · 2026-08-14 · 8 页 · R-18 无</div></div>
+          <span class="btn">已关注</span>
+        </div>
+      </div>
+      <div class="card" style="margin:0 12px">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <h5 style="font-size:13px">标签 · 10</h5><span style="font-size:11px;color:var(--on-var)">译名 开</span>
+        </div>
+        <div class="tagwrap">
+          <span class="tag hot">100users入り</span><span class="tag">夏祭り</span><span class="tag">和風</span>
+          <span class="tag">浴衣</span><span class="tag">髪飾り</span><span class="tag">雨</span>
+          <span class="tag jp">オリジナル</span><span class="tag jp">ai-generated</span>
+          <span class="tag" style="background:transparent;box-shadow:none;color:var(--on-var)">收起</span>
+        </div>
+        <span class="n" style="right:8px;top:-9px">5</span>
+      </div>
+      <div class="card" style="margin:12px">
+        <div class="stat">
+          <div><b>4.2k</b><i>收藏</i></div><div><b>38k</b><i>浏览</i></div>
+          <div style="position:relative"><b style="color:var(--primary)">6</b><i>评论 ›</i>
+            <span class="n" style="right:-2px;top:-4px">10</span></div><div><b>8</b><i>页</i></div>
+        </div>
+      </div>
+      <div class="card" style="margin:0 12px 12px">
+        <div style="font-size:13px;line-height:1.75;color:var(--on-var)">
+          作品简介与标签默认收起，点击后展开。收起态只给两行 + 一个「展开」把手。
+        </div>
+        <div class="row" style="margin-top:8px;justify-content:flex-end"><span class="btn ghost">展开全文</span></div>
+      </div>
+      <div class="sec"><h5>评论 · 6</h5><span>看全部 ›</span></div>
+      <div class="card" style="margin:0 12px">
+        <div class="row" style="align-items:flex-start;gap:8px">
+          <span class="avatar sm"></span>
+          <div class="grow"><div class="t2 ell">あかね · 3 天前</div>
+            <div style="font-size:13px;line-height:1.6">構図が良い…！ 衣装の描き込みがすごい</div>
+            <div class="row" style="gap:6px;margin-top:6px"><span class="chip-dark" style="background:var(--surface-chighest);color:var(--on-surface)">いいね 12</span>
+              <span style="font-size:11px;color:var(--on-var)">附 1 图</span></div></div>
+          <span class="n" style="position:static;display:inline-flex">11</span>
+        </div>
+        <div class="hair" style="margin:8px 0"></div>
+        <div class="row" style="align-items:flex-start;gap:8px">
+          <span class="avatar sm" style="background:conic-gradient(from 40deg,#F0C9A8,#B0786A,#7E9AB8,#F0C9A8)"></span>
+          <div class="grow"><div class="t2 ell">mochi_draw · 上周</div>
+            <div style="font-size:13px;line-height:1.6">雨の表現が綺麗です</div></div>
+        </div>
+      </div>
+      <div class="sec"><h5>相关图片<span style="font-weight:400;color:var(--on-var)"> · 同标签 / 同画师混排</span></h5>
+        <span>按收藏数 ›<span class="n" style="position:static;display:inline-flex;margin-left:6px;vertical-align:middle">6</span></span></div>
+      <div class="grid-rel">
+        <span class="rel art-rail"><em>1.2k</em></span><span class="rel art-rail2"><em>903</em></span>
+        <span class="rel art-rail3"><em>2.4k</em></span><span class="rel art-rail2"><em>771</em></span>
+        <span class="rel art-rail"><em>3.1k</em></span><span class="rel art-rail3"><em>508</em></span>
+        <span class="rel art-rail3"><em>1.6k</em></span><span class="rel art-rail"><em>412</em></span>
+        <span class="rel art-rail2"><em>2.0k</em></span><span class="rel art-rail"><em>356</em></span>
+        <span class="rel art-rail3"><em>1.1k</em></span><span class="rel art-rail2"><em>688</em></span>
+      </div>
+      <div class="row" style="justify-content:space-between;padding:8px 12px 0">
+        <span style="font-size:11px;color:var(--on-var)">再往下滑接着给（这一节没有"查看全部"那一跳）</span></div>
+    </div>
+    <div class="fade"></div>
+    <div class="dock">
+      <span class="act on"><svg><use href="#i-heart"/></svg><b>4.2k</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-layers"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span>
+    </div>
+  </div></div>
+  <figcaption><b>② 下滚一层</b>：图滚走之后顶栏收成玻璃圆座带标题；标签墙（译名开关 + 计数）、数据条（含「评论 6 ›」）、简介、评论摘要两条、<b>相关图片三列网格</b>依次接上。操作栏<b>始终浮在屏底</b>。</figcaption>
+  </figure>
+
+  <!-- 3 缩略条展开 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="bar"><div class="who"><span class="pill"><svg><use href="#i-back"/></svg></span></div>
+      </div>
+    <div class="scroll">
+      <div class="stage" style="height:330px">
+        <div class="art art-b"><i></i></div>
+        <div class="mask"></div>
+        <div class="cap bottom"><span class="chip-dark">第 2 / 8 页</span><span class="counter">2/8</span></div>
+      </div>
+      <div class="row" style="justify-content:space-between;padding:8px 12px 0">
+        <span style="font-size:12px;color:var(--on-var)">全部缩略图</span>
+        <span class="ico16" style="color:var(--on-var);transform:rotate(180deg)"><svg><use href="#i-chevd"/></svg></span>
+      </div>
+      <div class="grid-th">
+        <span class="th art-rail"><em>1</em></span>
+        <span class="th on art-rail2"><em>2</em></span>
+        <span class="th art-rail3"><em>3</em></span>
+        <span class="th art-rail"><em>4</em></span>
+        <span class="th art-rail2"><em>5</em></span>
+        <span class="th art-rail3"><em>6</em></span>
+        <span class="th art-rail"><em>7</em></span>
+        <span class="th art-rail2"><em>8</em></span>
+        <span class="n" style="right:12px;top:6px">7</span>
+      </div>
+      <div class="hair" style="margin-top:10px"></div>
+      <div class="block">
+        <div class="row"><span class="avatar"></span>
+          <div class="grow"><div class="t1 ell">夏祭、雨上がり</div><div class="t2 ell">ilkayu · 8 页 · 10 标签</div></div>
+          <span class="btn">关注</span></div>
+      </div>
+      <div class="block" style="padding-top:0">
+        <div class="tagwrap"><span class="tag hot">100users入り</span><span class="tag">夏祭り</span><span class="tag">和風</span></div>
+      </div>
+    </div>
+    <div class="dock">
+      <span class="act on"><svg><use href="#i-heart"/></svg><b>4.2k</b></span>
+      <span class="act"><svg><use href="#i-chat"/></svg><b>6</b></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-dl"/></svg></span><span class="act"><svg><use href="#i-layers"/></svg></span>
+      <span class="act"><svg><use href="#i-share"/></svg></span><span class="seg"></span>
+      <span class="act"><svg><use href="#i-more"/></svg></span>
+    </div>
+  </div></div>
+  <figcaption><b>③ 缩略条展开（挑页）</b>：点「查看全部缩略图」→ 图区压到 330dp 让出网格，缩略图吃 <code>gridGap</code> 12dp；点某张 = pager 跳到那页，<b>不换屏、不重取</b>（缩略档已在缓存里）。</figcaption>
+  </figure>
+
+  <!-- 4 连读模式 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status" style="color:#fff"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="reader">
+      <div class="rhead">
+        <div class="row" style="width:100%;justify-content:space-between">
+          <span class="pill onimg"><svg><use href="#i-close"/></svg></span>
+          <span class="pill onimg wide">2 / 8 · 连读</span>
+          <span class="pill onimg"><svg><use href="#i-text"/></svg></span>
+        </div>
+      </div>
+      <div class="pages">
+        <div class="pg art-a" style="height:300px"><i></i><span class="lab">2 / 8</span>
+          <span class="n" style="left:8px;bottom:8px">8</span></div>
+        <div class="pg art-b" style="height:250px"><i></i><span class="lab">3 / 8</span></div>
+        <div class="pg art-c" style="height:210px"><i></i><span class="lab">4 / 8</span></div>
+      </div>
+      <div class="progress" style="position:absolute;left:0;right:0;bottom:88px;background:rgba(255,255,255,.16)">
+        <i style="width:25%"></i>
+      </div>
+      <div class="dock" style="background:rgba(28,22,32,.62);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.18),0 6px 18px rgba(0,0,0,.4)">
+        <span class="act" style="color:#fff"><svg><use href="#i-heart"/></svg><b style="color:#fff;background:rgba(255,255,255,.18)">4.2k</b></span>
+        <span class="act" style="color:#fff"><svg><use href="#i-chat"/></svg><b style="color:#fff;background:rgba(255,255,255,.18)">6</b></span><span class="seg" style="background:rgba(255,255,255,.16)"></span>
+        <span class="act" style="color:#fff"><svg><use href="#i-dl"/></svg></span>
+        <span class="act on" style="background:rgba(255,255,255,.18);color:#fff"><svg><use href="#i-grid"/></svg></span>
+        <span class="act" style="color:#fff"><svg><use href="#i-share"/></svg></span><span class="seg" style="background:rgba(255,255,255,.16)"></span>
+        <span class="act" style="color:#fff"><svg><use href="#i-more"/></svg></span>
+      </div>
+    </div>
+  </div></div>
+  <figcaption><b>④ 纵向连续阅读</b>：同一批页换排法（<code>LazyColumn</code> + <code>gridGap</code> 12dp 页距），页码胶囊在顶部，底部进度线吃 <code>autoPlayProgressThickness</code> 1.5dp；深色档操作栏换半透明深底，<b>玻璃层次与浅色档同一条式子</b>。</figcaption>
+  </figure>
+
+  <!-- 5 沉浸放大 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr" style="background:#0B080D">
+    <div class="status" style="color:#fff;position:absolute;z-index:20;width:100%"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div style="position:absolute;inset:0;background:
+      radial-gradient(90% 70% at 40% 30%,#F0C6DC 0%,rgba(240,198,220,0) 55%),
+      linear-gradient(150deg,#6E5F80 0%,#332B42 55%,#1B1622 100%)"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(180deg,rgba(11,8,13,0),rgba(11,8,13,.8))"></div>
+    <div class="cap bottom" style="bottom:16px"><span class="chip-dark">双指缩放中 · 单击回到常态</span><span class="counter">2/8</span></div>
+    <span class="n" style="left:12px;bottom:96px">9</span>
+  </div></div>
+  <figcaption><b>⑤ 沉浸态（放大看图）</b>：chrome 与操作栏一起淡出（<code>motion.medium</code> 220ms），只留图 + 页码；单击任意处回到 ①/④。<b>这一档要不要淡出是待拍板 #1。</b></figcaption>
+  </figure>
+
+  <!-- 7 评论整屏 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="bar"><div class="who"><span class="pill"><svg><use href="#i-back"/></svg></span>
+      <span class="pill wide">评论 · 6</span></div></div>
+    <div class="scroll" style="padding-top:82px">
+      <div class="row" style="padding:0 12px 8px;justify-content:space-between">
+        <span style="font-size:12px;color:var(--on-var)">按时间正序</span>
+        <span class="btn ghost">只看有图</span></div>
+      <div class="cmt">
+        <span class="avatar"></span>
+        <div class="grow">
+          <div class="row" style="gap:6px"><b style="font-size:13px">あかね</b>
+            <span style="font-size:11px;color:var(--on-var)">2026-08-15 22:04</span></div>
+          <div style="font-size:14px;line-height:1.65;margin-top:2px">構図が良い…！ 衣装の描き込みがすごいですね</div>
+          <div class="cimgs"><span class="ci art-rail"></span><span class="ci art-rail2"></span></div>
+          <div class="row" style="gap:6px;margin-top:8px">
+            <span class="stamp on"><svg style="width:12px;height:12px"><use href="#i-smile"/></svg>12</span>
+            <span class="stamp">2</span><span class="stamp">3</span>
+            <span class="grow"></span><span class="ico16" style="color:var(--on-var)"><svg><use href="#i-reply"/></svg></span></div>
+          <div class="reply">
+            <div class="row" style="gap:6px"><b style="font-size:12px">ilkayu</b>
+              <span class="tag" style="height:18px;padding:0 6px;font-size:10px">作者</span>
+              <span style="font-size:11px;color:var(--on-var)">2026-08-16 08:11</span></div>
+            <div style="font-size:13px;line-height:1.6;color:var(--on-var)">ありがとうございます！ 衣装は参考資料を見ながら描きました</div></div>
+        </div>
+        <span class="n" style="right:8px;top:6px">12</span>
+      </div>
+      <div class="cmt">
+        <span class="avatar" style="background:conic-gradient(from 40deg,#F0C9A8,#B0786A,#7E9AB8,#F0C9A8)"></span>
+        <div class="grow">
+          <div class="row" style="gap:6px"><b style="font-size:13px">mochi_draw</b>
+            <span style="font-size:11px;color:var(--on-var)">2026-08-17 01:32</span></div>
+          <div style="font-size:14px;line-height:1.65;margin-top:2px">雨の表現が綺麗です</div>
+          <div class="row" style="gap:6px;margin-top:8px"><span class="stamp">5</span>
+            <span class="grow"></span><span class="ico16" style="color:var(--on-var)"><svg><use href="#i-reply"/></svg></span></div>
+        </div>
+      </div>
+      <div class="cmt">
+        <span class="avatar" style="background:conic-gradient(from 200deg,#CDE7D2,#7FA08A,#5E7C8C,#CDE7D2)"></span>
+        <div class="grow">
+          <div class="row" style="gap:6px"><b style="font-size:13px">yuki_05</b>
+            <span style="font-size:11px;color:var(--on-var)">2026-08-19 14:20</span></div>
+          <div style="font-size:14px;line-height:1.65;margin-top:2px">次の作品も楽しみにしています</div>
+          <div class="cimgs"><span class="ci art-rail3"></span></div>
+        </div>
+      </div>
+      <div class="note" style="margin:12px">这一屏<b>只读</b>：发评论、按表情、回复都没有写口，所以不摆输入框与"按表情"的假把手。屏蔽单个评论者走「屏蔽与过滤」里那份名单。</div>
+    </div>
+    <div class="fade"></div>
+  </div></div>
+  <figcaption><b>⑦ 评论整屏</b>：头像 + 昵称 + 发布时间 + 正文 + <b>评论里附的图</b> + 表情计数 + 嵌套回复（作者那一条带「作者」标）。点①②里的「评论 6」或 dock 那枚进入。</figcaption>
+  </figure>
+
+  <!-- 8 更多面板 -->
+  <figure class="shot">
+  <div class="phone"><div class="scr">
+    <div class="status"><span>09:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div style="position:absolute;inset:0;background:
+      radial-gradient(46% 34% at 30% 26%,#FBE1EC 0%,rgba(251,225,236,0) 70%),
+      linear-gradient(158deg,#8C7AA6 0%,#4A3B5C 48%,#241C2E 100%)"></div>
+    <div style="position:absolute;inset:0;background:rgba(20,15,22,.42);z-index:10"></div>
+    <div class="sheet">
+      <div class="shandle"></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-chat"/></svg></span><div class="grow">查看评论 · 6</div><span class="t2">›</span></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-share"/></svg></span><div class="grow">分享</div><span class="t2">系统分享面板</span></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-dl"/></svg></span><div class="grow">下载全部 8 页</div><span class="t2">›</span></div>
+      <div class="shair"></div>
+      <div class="shead">屏蔽（改完在「屏蔽与过滤」里能撤回）</div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-block"/></svg></span><div class="grow">屏蔽标签 <b>オリジナル</b></div><span class="t2">加规则</span></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-block"/></svg></span><div class="grow">屏蔽画师 <b>ilkayu</b></div><span class="t2">加规则</span></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-block"/></svg></span><div class="grow">屏蔽这一分级（R-18）</div><span class="t2">›</span></div>
+      <div class="shair"></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-grid"/></svg></span><div class="grow">在浏览器打开原页</div><span class="t2">›</span></div>
+      <div class="srow"><span class="ico18"><svg><use href="#i-text"/></svg></span><div class="grow">复制标题与作品号</div><span class="t2">›</span></div>
+      <span class="n" style="left:8px;top:96px">13</span>
+    </div>
+  </div></div>
+  <figcaption><b>⑧ 更多面板</b>：dock 右端那枚「更多」拉出来的半模态。<b>分享</b>走系统面板；<b>屏蔽</b>三条各对应本仓已有的一份规则表（标签 / 画师 / 分级），不新造第二本账。</figcaption>
+  </figure>
+
+  <!-- 6 结构图 -->
+  <figure class="shot">
+  <div class="phone" style="background:#15111A;color:#EFE9EF"><div class="scr" style="padding:56px 16px 16px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">z 序与手势归属</div>
+    <div style="font-size:12px;line-height:1.9;color:#B4AAB4">
+      <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;margin-bottom:8px">
+        <b style="color:#FFD9F0">z40 底部操作栏（浮层）</b><br>不随滚动、不排在推荐之后；只吃点击，不吃滑动
+      </div>
+      <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;margin-bottom:8px">
+        <b style="color:#FFD9F0">z30 顶栏玻璃圆座（浮层）</b><br>竖滑进度驱动折叠；点击返回 / 更多
+      </div>
+      <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;margin-bottom:8px">
+        <b style="color:#FFD9F0">z10 内容列（唯一滚动者）</b><br>
+        竖滑 = 外层详情滚动<br>
+        图区段内：单指横滑 = pager 切页；双指 = 缩放层；缩放 &gt;1x 时拖动归缩放层，1x 时把竖滑交还外层
+      </div>
+      <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px">
+        <b style="color:#FFD9F0">z0 取数与缓存</b><br>
+        详情 + 推荐一次拿齐；缩略档先上屏、原图档到位再淡入（<code>imageFadeInMillis</code> 200ms）
+      </div>
+    </div>
+    <div style="font-size:12px;line-height:1.9;color:#B4AAB4;margin-top:14px">
+      <b style="color:#EFE9EF">一条硬约束</b>：pager 段与详情段<b style="color:#EFE9EF">不能各是一条独立滚动</b>，
+      否则竖滑会互相抢（本仓 <code>LazyVerticalGrid × verticalScroll</code> 那一族整屏崩的教训）。
+      图区高度<b style="color:#EFE9EF">定值封顶</b>、不随图片比例跳，比例只影响图内部的 ContentScale。
+    </div>
+  </div></div>
+  <figcaption><b>⑥ 结构图</b>：四层各管什么、谁吃哪种手势。这页决定实现难度，比配色重要。</figcaption>
+  </figure>
+</div>
+
+<h2>二 · 标注对照</h2>
+<div class="legend">
+  <div><b>1 图区</b>：按真实比例摆，竖长页封顶 <code>屏宽 × 1.2</code>，超出部分靠缩放看全；两侧留白用同图模糊垫底（复用 <code>artistHeroBackdrop*</code> 那对 blur/scale 口径）。</div>
+  <div><b>2 画师行</b>：头像吃 <code>iconButtonSize</code> 40dp（与顶栏圆座同档，不造新数）；「关注」吃 <code>filterChipHeight</code> 32dp；已关注态换 <code>surfaceContainerHighest</code> 而不是压主色透明度。</div>
+  <div><b>3 标签头</b>：收起态只给一行 + 计数，点开拓成整墙；<b>译名开</b>时中文在上、日文原文在下（描边胶囊区分"这是原文"，颜色不是唯一说法）。</div>
+  <div><b>4 操作栏</b>：外壳 64dp 高 + 距屏底 12dp（<code>bottomBarHeight</code> / <code>bottomBarBottomGap</code>），内容底部留白读 <code>LocalBottomBarClearance</code>；每枚<b>视觉 40dp / 触达 48dp</b>。</div>
+  <div><b>5 标签墙</b>：胶囊间距 <code>chipSpacing</code> 8dp、内衬 <code>chipHorizontalPadding</code> 12dp；命中"屏蔽与过滤"里那条规则的标签照常打码，不在这里另立一套。</div>
+  <div><b>6 相关图片</b>：三列网格、格距 <code>space4</code> 8dp、圆角 <code>shape.small</code> 10dp，一屏先给 9 张（原「同画师」那一排撤了，画师入口在顶部那一行 + 关注钮）；<b>卡面直接复用画廊卡</b>（AI 角标与分级遮罩同一条规则），右下那枚数字是收藏数（同 <code>GalleryCornerPill</code> 口径）。</div>
+  <div><b>7 缩略网格</b>：格与格 <code>gridGap</code> 12dp，选中态用 2dp 主色描边（<b>同时</b>抬不透明度，不靠颜色单独说话）。</div>
+  <div><b>8 连读档</b>：页距 <code>gridGap</code> 12dp、进度线 1.5dp；顶部胶囊念「2 / 8 · 连读」，退出把手在左上（<code>close</code> 而不是 <code>back</code>，因为它改的是排法不是页面）。</div>
+  <div><b>10 评论入口</b>：数据条里那一格改成可点的「评论 6 ›」（主色 + ›，<b>颜色不是唯一说法</b>）；dock 第二枚同样带计数，两处同一个数、同一个来源。</div>
+  <div><b>11 评论预览</b>：详情流里只给两条带头像的摘要，点进整屏；预览<b>不摆</b>表情与附件图（那一屏才给全），免得同一屏两种密度。</div>
+  <div><b>12 评论项</b>：头像吃 <code>iconButtonSize</code> 40dp；时间走 <code>caption</code> 12sp；附件图 64dp 一方（点进看图器）；表情计数走小药丸；嵌套回复缩进一层 + 2dp 主色左线，作者那条带「作者」标。</div>
+  <div><b>13 更多面板</b>：行高吃 <code>listRowMinHeight</code> 48dp、圆角 <code>shape.extraLarge</code>；<b>屏蔽</b>那三行各自写进已有规则表（标签 / 画师 / 分级），撤回入口在「屏蔽与过滤」，这里不重复摆开关。</div>
+  <div><b>9 沉浸态</b>：淡出用 <code>motion.medium</code> 220ms；页码保留（用户放大时最容易丢"我在第几页"）。</div>
+</div>
+
+<h2>三 · 首屏高度预算（393dp 宽的手机）</h2>
+<table><thead><tr><th>块</th><th>高</th><th>说法</th></tr></thead><tbody>
+  <tr><td>状态栏 inset</td><td><b>≈30dp</b></td><td>系统给，页面不写死</td></tr>
+  <tr><td>图区（含页码）</td><td><b>≤474dp</b></td><td>封顶式：min(图按比例的实高, 屏宽 × 1.2)</td></tr>
+  <tr><td>画师 + 标题行</td><td><b>64dp</b></td><td>头像 40 + 上下各 12</td></tr>
+  <tr><td>标签头（收起）</td><td><b>44dp</b></td><td>一行胶囊 32 + 上下 6</td></tr>
+  <tr><td>缩略条</td><td><b>72dp</b></td><td>缩略图 56 + 上下 8</td></tr>
+  <tr><td>操作栏占位（浮层）</td><td><b>76dp</b></td><td><code>bottomBarClearance</code>，内容底部留白读它</td></tr>
+  <tr><td colspan="3">⇒ 首屏"图 + 画师 + 标题 + 标签头"齐活，缩略条压线可见；推荐落在第二屏（与用户那句"继续向下滚动就能看标签与推荐"对齐）。</td></tr>
+</tbody></table>
+
+<h2>四 · 待你拍的三处</h2>
+<div class="ask"><b>#1 沉浸淡出</b>：放大看图时操作栏要不要消失？消失 = 图最大，代价是"下载/收藏"少一次可达。本鱼倾向<b>消失、单击回</b>，但这是观感账，你说了算。</div>
+<div class="ask"><b>#2 缩略条默认态</b>：展开（挑页快，但首屏图被压到 330dp）还是收起（图大，挑页多一步）？稿①按<b>收起 + 只露一条</b>画，稿③是展开态。</div>
+<div class="ask"><b>#3 连读模式的边界</b>：只做"本作品多页纵向连读"，还是顺手把"同画师接着读"也接上？后者要新的取数编排，<b>不是同一批工作量</b>。</div>
+
+<div class="ask"><b>#4 评论这一屏的数据面还没通</b>（2026-10-18 现量）：匿名侧 <code>/ajax/illust/{id}/comments</code>、<code>/ajax/illusts/comments/page/{id}</code> 等<b>四个形状全回 404</b>，作品页本体 <code>/illusts/{id}</code> 也回 404；只有 <code>/ajax/illust/{id}</code> 给得到 <code>commentCount</code>（现量一枚 6 条、一枚 0 条，另有 <code>commentOff</code> 那枚开关位）。⇒ 评论列表要<b>走登录腿</b>才能喂饱，字段表（头像 / 附件图 / 表情 / 嵌套回复到底叫什么）必须拿账号现量之后再定，<b>不照猜的字段画界面</b>。稿⑦给的是"拿到之后长什么样"。</div>
+
+<h2>五 · 明确不做</h2>
+<table><tbody>
+  <tr><td>不做评论 / 相关作品"算法推荐"那一块</td><td>匿名接口拿不到，硬做就是假内容</td></tr>
+  <tr><td>不做页内跳转漫画阅读器那套（跨页预取、双向翻页）</td><td>pixiv 作品页的"页"是同一作品的多张图，语义不同</td></tr>
+  <tr><td>不做点赞/ Bookmark 列表可见性管理</td><td>写口只有 add/remove；改可见性等 pixiv 侧接口确认</td></tr>
+  <tr><td>不做"发评论 / 按表情 / 回复"三个写口</td><td>评论屏只读；没有写口就不摆输入框（摆了就是假按钮）</td></tr>
+</tbody></table>
+
+<p class="lede" style="margin-top:26px;color:#8A818C">
+稿内 hex 只为表达"浅色档的层次关系"，落地一律吃 <code>VeneraColorTokens</code> 的语义槽位；图标全部线性 SVG（不用 emoji 当图标）；
+所有可点处触达位 ≥48dp；动效时长走 <code>VeneraMotionTokens</code>，并留 <code>prefers-reduced-motion</code> 的退路。
+</p>
+</body>
+</html>

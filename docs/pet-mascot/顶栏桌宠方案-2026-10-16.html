@@ -202,7 +202,7 @@ pre code{background:none;padding:0;font-size:12.5px;line-height:1.7;color:#c9c9d
   <div class="kv"><div class="k">折叠行为</div><div class="v"><span class="pass">位置、尺寸全不变</span></div></div>
   <div class="kv"><div class="k">素材处理</div><div class="v">直接缩图，无需裁切与重绘</div></div>
   <div class="kv"><div class="k">取舍</div><div class="v">角色轮廓完整、辨识度最好；但纵向只占 26.5dp，存在感偏弱</div></div>
-  <div class="note"><b class="flag">必须处理的对比度问题：</b>角色主色是深靛蓝（约 #2b4a7d），叠在深色顶栏（surface 系）上，轮廓会糊进背景。落地时必须加一圈 1.5dp 浅色描边（或外发光），或给它垫一块浅色底板——「状态 A 设计稿」里那枚圆角图标之所以看得清，正是因为有底板。</div>
+  <div class="note" style="border-left-color:#5DCAA5"><b style="color:#5DCAA5">2026-10-16 落地时改判 —— 下面那句判重了：</b>拿重编码后的素材逐像素量过，对页面底（真机实测 rgb(20,19,24)）的<b>中位对比 3.27:1</b>，53% 的不透明像素 ≥3:1，只有 <b>12%</b> 低于 1.5:1。糊的不是整只轮廓，是深蓝身体与尾鳍那 12%（她自带浅色坐垫和白色头饰在撑）。所以描边从「必须」降级成口味题 —— <b>用户最后点的正是不加任何处理的裸贴纸</b>。原判断照旧留在下面当对照，别拿它当规格。<br><br><b class="flag">原判断：</b>角色主色是深靛蓝（约 #2b4a7d），叠在深色顶栏（surface 系）上，轮廓会糊进背景。落地时必须加一圈 1.5dp 浅色描边（或外发光），或给它垫一块浅色底板——「状态 A 设计稿」里那枚圆角图标之所以看得清，正是因为有底板。</div>
 </div>
 
 <div class="scheme">
@@ -280,7 +280,8 @@ pre code{background:none;padding:0;font-size:12.5px;line-height:1.7;color:#c9c9d
 <div class="note" style="margin-top:16px"><b class="flag">手势冲突提醒：</b>miuix 顶栏在根节点挂了 <code>detectTapGestures { }</code> 抢占空白区点击；<code>VeneraTopAppBar</code> 还会在外层挂双击回顶。<b>子组件的 clickable 会先拿到事件</b>，所以角色的轻点 / 长按都不受影响——这一点与「三颗胶囊照常可点」是同一套机制。另外角色不要在左边缘做 8dp 以内的贴边裁切，否则会压到 Android 的侧滑返回热区。</div>
 
 <h2>落地要点</h2>
-<p>首页目前调用 <code>VeneraTopAppBar</code> 时 <code>navigationIcon</code> 是空的，加一个即可，其余 12 个调用点零改动。</p>
+<p>首页调用 <code>VeneraTopAppBar</code> 时 <code>navigationIcon</code> 从前是空的，加一个即可。<b style="color:#5DCAA5">2026-10-16 落地时现量改数</b>：全仓 <code>VeneraTopAppBar</code> 调用点是 <b>15 处</b>（本句从前写 12），其中 <b>4 处</b>没传 <code>navigationIcon</code>（首页 / 探索 / 收藏 / 图库首页），其余 11 处已各自传了返回钮或源名 —— 所以「零改动」只对那 11 处成立，不是对全部调用点成立。另：本篇从前说「13 个页面共用顶栏」，同一枚旧数。</p>
+<p><b style="color:#5DCAA5">落地状态（2026-10-16 晚）</b>：走的是<b>裸贴纸 66×39.5dp</b>（下面那段示例代码里的 40dp 圆角徽章是方案 A 的形状，未采用），常驻无限循环，开关在 设置 → 外观与主题 → 首页顶栏 → 桌宠小肥鱼（默认关）。示例代码里的 <code>onClick</code> 那一格<b>没有实现</b> —— 台词池还不存在，摆一枚按下去没反应的贴纸就是假开关，所以桌宠刻意不可点击。逐批读数见手册 §16 行 207，五套摆法的实测稿在 <code>首页顶栏桌宠摆法稿-2026-10-16.html</code>。</p>
 <pre><code>VeneraTopAppBar(
     title = "首页",
     largeTitle = "首页",

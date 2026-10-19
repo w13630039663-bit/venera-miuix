@@ -2956,3 +2956,22 @@ gallery-search-realdevice-2026-10-16.md` §一，最重的一条是：**缺席�
 同批另三件（整轮失败不再退回首页 / G 站 `created_at` 定界三处改动 / 凭据被拒新增一档给设置页出口）
 不改任何冻结面，判定与读数都在同一份 rounds 文档里；手册 §196。
 
+
+## 2026-10-16 追加：`HomeScreen.kt`（FROZEN 第四批）用户点名豁免，为的是接首页顶栏桌宠
+
+豁免依据同 2026-09-19 那一次（"用户点名豁免"）：用户在五套摆法稿里点定方案 B「完整贴纸」，
+并追加一句「在设置里可以选择自行开启」⇒ 必须改这颗冻结文件才能接线。
+
+**这一批在 `HomeScreen.kt` 里一共只加了 8 行（`git diff --numstat` 现量 8/0）—— 5 行代码 + 3 行注释**：
+
+- 两行 import（`data.api.BusinessPorts`、`feature.pet.PetMascot`）；
+- 顶栏那一段取偏好两行（`appearancePrefs` + `petStickerOn`，走契约不碰 `VeneraPreferences.getInstance` ——
+  `BusinessApiBoundaryTest` 把取用点位钉在 33 颗，多一颗就红）+ 一行注释；
+- `VeneraTopAppBar(...)` 里加一枚实参 `navigationIcon = { if (petStickerOn) PetMascot() }` + 两行注释。
+
+**未动**：顶栏大标题折叠 + 毛玻璃页内自治架构、`actions` 里那三颗 `VeneraTopBarPill`（一行没改）、
+五个分区的结构与顺序、底栏避让契约（`bottomBarClearance` / `statusBarTop + topBarFloor` 那条相加链）、
+`contentPadding`。顶栏高度一字未动 ⇒ `TopBarFloorGuardTest` 白名单仍为空。
+
+配套件全在新文件（`feature/pet/` 两颗 + 素材 `assets/pet/idle.gif` + 判据 `PetStickerEntryTest`），
+设置页那一行落在未冻结的 `AppearanceSettings.kt`。细则与读数见手册 §16 行 207。

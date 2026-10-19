@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画廊搜索：结果态摘要条评审与美化方案 · 2026-10-16</title>
+<style>
+  :root{
+    --bg:#141413; --surface:#1F1F1E; --surface-2:#262625; --line:#3A3A38;
+    --fg:#F1EFE8; --fg-2:#B4B2A9; --fg-3:#888780;
+    --accent:#F0997B; --accent-ink:#D85A30; --warn:#F09595;
+    /* 以下六枚从用户 2026-10-16 02:49 真机截图反推（本机动态取色，棕色系壁纸） */
+    --app-bg:#261A1A; --app-card:#392D2A; --app-chip:#5D3F3D;
+    --app-onchip:#FFDAD9; --app-ink:#E8DEDC; --app-ink-2:#B9A9A6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.75;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:56px 28px 96px}
+  h1{font-size:26px;font-weight:600;margin:0 0 10px;letter-spacing:-.2px}
+  .sub{color:var(--fg-3);font-size:13px;margin:0 0 8px}
+  h2{font-size:18px;font-weight:600;margin:56px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;font-weight:600;margin:32px 0 10px}
+  h4{font-size:13.5px;font-weight:600;margin:22px 0 8px;color:var(--fg-2)}
+  p{margin:10px 0;color:var(--fg-2)}
+  strong{color:var(--fg);font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--accent)}
+  ul{margin:10px 0;padding-left:20px;color:var(--fg-2)}
+  li{margin:6px 0}
+  .lede{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent-ink);
+    border-radius:12px;padding:18px 22px;margin:24px 0}
+  .lede p{margin:6px 0;color:var(--fg)}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--fg-3);font-weight:500;font-size:12px;white-space:nowrap}
+  td{color:var(--fg-2)}
+  td:first-child{color:var(--fg)}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--fg-3);white-space:nowrap}
+  .tag.ok{color:#A5D6A7;border-color:#2E4A2E;background:#1B2A1B}
+  .tag.warn{color:#F0C075;border-color:#4A3A1E;background:#2A2318}
+  .tag.no{color:var(--warn);border-color:#4A2222;background:#2A1A1A}
+  .tag.rec{color:#3A1F17;background:var(--accent);border-color:var(--accent);font-weight:600}
+  .figure{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:20px 18px;margin:22px 0;overflow-x:auto}
+  .figure svg{display:block;width:100%;height:auto;min-width:660px}
+  .cap{color:var(--fg-3);font-size:12px;margin:12px 0 0;text-align:center}
+  .rule{border-left:2px solid var(--line);padding-left:14px;margin:16px 0;color:var(--fg-3);font-size:13px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}
+  @media(max-width:860px){.two{grid-template-columns:1fr}}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .box h4{margin-top:0}
+  .box.good{border-left:3px solid #2E4A2E}
+  .box.bad{border-left:3px solid #4A2222}
+  footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--fg-3);font-size:12px}
+
+  /* ── 真机示意：1dp = 1px，屏宽 411dp ── */
+  .mock{background:var(--app-bg);border:1px solid var(--line);border-radius:14px;
+    padding:14px 12px 0;display:flex;justify-content:center;overflow-x:auto}
+  .phone{position:relative;width:411px;height:392px;overflow:hidden;background:var(--app-bg)}
+  .sbar{height:26px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 14px;font-size:10.5px;color:var(--app-ink);opacity:.85}
+  .tbrow{position:absolute;top:34px;right:20px;display:flex;gap:8px}
+  .tbpill{width:40px;height:40px;border-radius:50%;background:#3C3B41;
+    display:flex;align-items:center;justify-content:center;color:#DADDE3;font-size:16px}
+  .ltitle{position:absolute;top:88px;left:12px;font-size:30px;font-weight:500;color:var(--app-ink);letter-spacing:1px}
+  .tile{position:absolute;top:150px;width:189.5px;height:242px;border-radius:12px;overflow:hidden}
+  .tile .art{position:absolute;inset:0}
+  .a1{background:linear-gradient(150deg,#6E8FA8 0%,#CBD6DC 34%,#8E6E63 70%,#2E2A2C 100%)}
+  .a2{background:linear-gradient(200deg,#4A5A6E 0%,#D9CBB6 40%,#8A6A5C 74%,#33292A 100%)}
+  .caption{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:8px;
+    padding:8px 10px;background:linear-gradient(transparent,#1A1414 60%);color:var(--app-ink);font-size:13px}
+  .gicon{width:22px;height:22px;border-radius:5px;background:#2F6FD0;color:#fff;font-size:13px;
+    display:flex;align-items:center;justify-content:center;font-weight:600}
+  /* 摘要条 */
+  .strip{position:absolute;top:154px;height:48px;border-radius:22px;
+    display:flex;align-items:center;box-shadow:0 6px 18px rgba(0,0,0,.55)}
+  .strip.before{left:128px;right:12px;background:rgba(57,45,42,.90);padding:0 16px;gap:4px}
+  .strip.after{right:12px;background:var(--app-card);padding:0 16px;gap:4px}
+  .chip{display:flex;align-items:center;gap:4px;height:29px;border-radius:22px;
+    padding:0 12px;font-size:12px;white-space:nowrap}
+  .chip.sel{background:var(--app-chip);color:var(--app-onchip)}
+  .chip.out{border:1px solid #6E5F5C;color:var(--app-ink-2)}
+  .chip .x{font-size:14px;opacity:.9;margin-left:2px}
+  .draw{display:flex;align-items:center;gap:6px;font-size:12px;
+    color:var(--app-ink-2);white-space:nowrap;padding-left:12px}
+  .dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--app-ink-2);display:inline-block}
+  .mockwrap{position:relative}
+  .emptyband{position:absolute;top:154px;height:48px;border-radius:0 22px 22px 0;
+    background:repeating-linear-gradient(135deg,rgba(240,149,123,.34) 0 6px,rgba(240,149,123,.08) 6px 12px);
+    border:1px dashed rgba(240,149,123,.85);border-left:none;
+    display:flex;align-items:center;justify-content:center;font-size:11px;color:#FFD9C9}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>画廊搜索：结果态摘要条 · 评审与美化方案</h1>
+  <p class="sub">范围：<code>gallery/ui/GallerySearchArea.kt</code> 的两个形态 —— <strong>结果态（收成一条，即截图这一态）</strong> 与 <strong>展开态（输入框那一态）</strong>，外加它在 <code>GalleryScreen</code> 里的收起时机与网格避让。</p>
+  <p class="sub">依据：源码通读（<code>GallerySearchArea</code> / <code>GalleryHomeChrome</code> / <code>VeneraChip</code> / <code>VeneraGlass</code> / <code>ui/tokens</code>）＋ 用户 2026-10-16 02:49 真机截图逐像素测量 ＋ 官方 miuix 源码（<code>.reference/miuix-ui-094</code>）</p>
+
+  <div style="border-left:3px solid #B98A6E;padding:2px 0 2px 14px;margin:18px 0">
+  <p style="margin:0 0 6px"><strong>第三轮（2026-10-16 12:2x，已落地）· 用户改口径：「设成全宽吧，可以在搜索框里加入其他信息。搜索框离下面的图片要有点边距，另外 ui 有问题」＋「（入口条）这里也是莫名其妙的黑了」</strong></p>
+  <p style="margin:0 0 6px">下面第一 ~ 四章的"收窄 / 挂右 / 减遮挡"那一套<strong>已被本轮取代</strong>，留作过程记录。本轮四条：</p>
+  <ul style="margin:0">
+    <li><strong>满宽</strong>：结果态那张卡从 <code>widthIn(max = 屏宽 × 66%)</code> 改成 <code>fillMaxWidth()</code>，起排口径收成常量 <code>Alignment.Start</code>。它现在与身下的常驻入口条<strong>逐像素同宽</strong>（同吃 <code>screenHorizontal</code> 内缩），"同一块面在长高"在宽度上也成立；顺带消掉了 66% ↔ 满宽的横向跳。</li>
+    <li><strong>读数槽</strong>（新增 <code>SearchResultReadout</code>）：尾巴上多一格 —— 第一轮在途画波浪环 / 到货报 <code>N 张</code> / 有腿缺席前置一枚警示字形（点它回展开态看原因）。张数由调用方喂（与页尾 <code>GallerySearchEnd</code> 同一个 <code>searchWall.cards.size</code>）。读数槽<strong>不进横滑</strong>。</li>
+    <li><strong>边距</strong>：<code>searchResultsInset</code> 的收口 4dp → <strong>12dp</strong> ⇒ 卡底到第一排图上沿 <strong>2dp → 10dp</strong>。<span style="color:#B83A3A">（当时写成"旧值 2dp 会被卡片自己的 3dp 投影吃光" —— 第四轮已知玻璃档那张卡<strong>没有</strong>投影，这一半是错的；12dp 这个值不变，它本来就是按"看得出是一段留白"定的。）</span></li>
+    <li><strong>灰化</strong>（⚠️ 本节归因已于第四轮**订正**）：用户第 4 张截图里有受控对照 —— 挂玻璃的入口条实测 <code>#BEACAA</code>（相对亮度 <strong>0.47</strong>），不挂玻璃的 Info 通知条（同一个 <code>surfaceContainerHigh</code>）实测 <code>#F6E4E2</code>（<strong>0.90</strong>）。差异只在玻璃那一层，方向是<strong>反向</strong>的 ⇒ 面板比自己本该有的底色暗了一半，即用户那句"莫名其妙地黑了"。当时处置：<code>VeneraGlass</code> 新增面板档专用的 <code>PanelAlphaLight = 0.86f</code>（浅色），深色与卡片/CONTROL 档一律不动。<br><span style="color:#B83A3A"><strong>订正</strong>：这一处置<strong>没有消掉灰块</strong>（用户随后又报「浅色模式下还是有这种色块」）。真凶是平台投影，见下面第四轮。0.86 这一档保留，但理由换成了"浅色下透换不到分层"。</span></li>
+    <li><strong>硬切</strong>：补全列表与最近搜索那两个限高容器加了底部渐隐（<code>fadeBottomEdge</code>，<code>DstIn</code>）。成因：<code>listMaxHeight = listRowMinHeight × 行数</code> 不是行距的整数倍（一行实际占 <code>listRowMinHeight + space2</code>）⇒ 最下面那枚胶囊总被切成一半，就是用户截图上那半枚。<br><span style="color:#B83A3A"><strong>订正（第四轮补丁）</strong>：<code>DstIn</code> <strong>必须配一层离屏层</strong>，否则它的 dst 是"整张画布"而不是"这一段自己"，渐隐会穿透卡底抹到窗口背景 —— 见下面第五轮。</span></li>
+  </ul>
+  </div>
+
+  <div style="border-left:3px solid #B83A3A;padding:2px 0 2px 14px;margin:18px 0">
+  <p style="margin:0 0 6px"><strong>第四轮（2026-10-16 12:37，已落地）· 用户：「浅色模式下还是有这种色块，你认真排查下」</strong></p>
+  <p style="margin:0 0 8px">四条截图 + 连通域色彩分割量出来的读数把第三轮那个归因<strong>推翻了</strong>。结论一句话：<strong>灰块不是"透出来的底"，是"没被盖住的投影"。</strong></p>
+
+  <table style="margin:0 0 10px">
+    <thead><tr><th>元素</th><th>实测色</th><th>÷ <code>surfaceContainerHigh</code></th><th>旁边不挂玻璃的同 token 面</th></tr></thead>
+    <tbody>
+      <tr><td>入口药丸（s4）</td><td><code>#CDBBB9</code> L=0.520</td><td>0.833 / 0.820 / 0.819</td><td><code>#F7E5DF</code>（Info 通知）</td></tr>
+      <tr><td>搜索卡（s3）</td><td><code>#C1B3B2</code> L=0.468</td><td>0.785 / 0.785 / 0.788</td><td><code>#F1E4DE</code>（紧下方页面底）</td></tr>
+      <tr><td>搜索卡（s2）</td><td><code>#BCB0AE</code></td><td>≈0.78</td><td><code>#F7DFDF</code></td></tr>
+      <tr><td>展开面板（s1）</td><td><code>#C4B5B4</code></td><td>0.797 / 0.794 / 0.796</td><td><code>#F7E5E4</code>（面板**内部**的胶囊/输入框）</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin:0 0 6px"><strong>三条把"容器 alpha 太低"钉死的反证：</strong></p>
+  <ol style="margin:0 0 8px">
+    <li><strong>物理上不可能</strong>：<code>α·base</code> 叠在任何不暗于纯黑的东西上，最小也是 <code>0.86 × base = #D3C4BE</code>；实测 <code>#C1B3B2</code> 比它还暗 ⇒ 0.86 那一档<strong>之后</strong>还有一层黑。（编译产物常量池里确认过 <code>0.86f</code> 确实在包里 —— 用户装的就是新包。）</li>
+    <li><strong>与背景无关</strong>：s2 的页面底 <code>#A5A1A0</code>（L=0.36）与 s3 的 <code>#EFE4E1</code>（L=0.79）亮度差一倍，卡色只动 ±9 ⇒ 那层黑不来自采样底。</li>
+    <li><strong>夹在卡底与子元素之间</strong>：同一张卡里<strong>胶囊是亮的、胶囊周围的卡底是灰的</strong>。</li>
+  </ol>
+
+  <p style="margin:0 0 6px"><strong>成因（逐层核 miuix <code>basic/Surface.kt:128-146</code>）</strong>：库把投影挂在 <code>Modifier.graphicsLayer(shadowElevation, shape, clip = false)</code>，而那一格在<strong>调用方 modifier 之内</strong>：</p>
+  <pre style="margin:0 0 8px">.veneraGlassSurface(...)            ← 调用方给的，在**外**
+  .graphicsLayer(shadowElevation)   ← 库自己加的，在**内**
+    .clip(shape).background(color)</pre>
+  <p style="margin:0 0 8px">Compose 外层先画 ⇒ 真实层序 <strong>① 模糊 → ② 容器色 → ③ 平台投影 → ④ 子元素</strong>。不透明底的 Surface 上 ③ 被 ② 盖住；玻璃档 ② 是透明的，③ 那层黑剪影就透出来了 —— 且它在 ④ 之下，所以不透明的胶囊照常发亮。</p>
+
+  <p style="margin:0 0 6px"><strong>n=6 vs n=2 的受控对照（最终定案的那一刀）</strong>：全仓 8 处玻璃挂载点里，<strong>只有这 2 处</strong>传了非零 <code>shadowElevation</code>（<code>GalleryHomeChrome</code> 入口条 / <code>GallerySearchArea</code> 搜索卡）—— 而用户 4 张截图里报灰的<strong>恰好就是这两个元素</strong>。另外 6 处（<code>VeneraCard</code> / <code>VeneraChip</code> / <code>VeneraFilterPill</code> / <code>VeneraControls</code> / <code>SettingsComponents</code> / <code>GallerySheetBlock</code>）没挂投影，截图里<strong>全部正常</strong>。miuix <code>Card</code> 自身不含 <code>graphicsLayer</code>（已逐字核过），卡片不踩这一脚。</p>
+
+  <p style="margin:0 0 6px"><strong>处置</strong>：新增 <span class="tag ok">唯一出处</span> <code>veneraGlassSurface</code> 的姊妹件 <code>veneraSurfaceShadowElevation(solidElevation)</code> —— 玻璃档返 <code>0.dp</code>、实色档照旧。两个调用点改走它。<strong>不立新数字</strong>：玻璃档的纵深交给模糊与描边高光、实色档交给投影，各归各的。第三轮那个 <code>PanelAlphaLight</code> 保留、但注释与尺子里的归因订正。</p>
+  <p style="margin:0"><strong>结果</strong>：用户 12:51 截图确认灰块消失 —— 卡内回到 <code>#F5DDDD</code>(L=0.763)，与页面同一族色。但同一次截图暴露了第三轮 <code>fadeBottomEdge</code> 自己的 bug，见第五轮。</p>
+  </div>
+
+  <div style="border-left:3px solid #B83A3A;padding:2px 0 2px 14px;margin:18px 0">
+  <p style="margin:0 0 6px"><strong>第五轮（2026-10-16 12:52，已落地）· 用户：「但是这下下面有黑边了」</strong></p>
+  <p style="margin:0 0 8px">灰块遮着的正是这条 —— 第三轮那个 <code>fadeBottomEdge</code> 把 <code>DstIn</code> 用在了<strong>没有离屏层的画布上</strong>。</p>
+
+  <p style="margin:0 0 6px"><strong>读数是"单调压暗到纯黑"，不是"露出下面的图"</strong>（这两个形状非常像，必须用数分开）：</p>
+  <table style="margin:0 0 10px">
+    <thead><tr><th>位置</th><th>实测</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>卡内（渐变之上）</td><td><code>#F5DDDD</code> L=0.763</td><td>玻璃修好后本该有的色 ✓</td></tr>
+      <tr><td>渐变起点 y≈1189</td><td><code>#E9D4D3</code> L=0.691</td><td>开始被乘 alpha</td></tr>
+      <tr><td>渐变末端 y=1212</td><td><code>#0F0B08</code> L=<strong>0.004</strong></td><td><strong>纯黑</strong> —— 不是卡底之下那张图</td></tr>
+      <tr><td>下一像素 y=1214</td><td><code>#F4E8E8</code> L=0.828</td><td>陡沿：渐变的矩形边界</td></tr>
+      <tr><td>横向 y=1206</td><td><code>#454042</code>，x=60..813</td><td>正是卡内宽度（卡 x=33..840），即"卡自己的粉被乘剩的残值"</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin:0 0 8px"><strong>成因</strong>：<code>drawWithContent { drawContent(); drawRect(brush, blendMode = DstIn) }</code> <strong>不带离屏层</strong>时，<code>DstIn</code> 的 dst 是<strong>当前画布上已经画过的一切</strong>，而不是"这一段自己刚画的内容"。于是渐变把卡底之下的氛围层与图墙一起乘 alpha 抹掉；抹到 alpha=0 就透到窗口背景 = 纯黑。<br>
+  "单调压暗 + 终点是纯黑 + 横向范围正好是卡内宽度"三条合起来，把它与"露出底下那张图"彻底分开 —— 后者会看到**图的内容**且不会有单调梯度。</p>
+
+  <p style="margin:0 0 6px"><strong>处置</strong>：给这条链前置一层 <code>graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }</code>，dst 收窄成"这一段自己"，渐隐才恢复它字面上的意思。<strong>没有改颜色、没有改 <code>fadeHeight</code>、没有换成盖色块</strong>（盖色块在玻璃档会盖出一道比卡底更实的带子，第三轮已否）。</p>
+  <p style="margin:0"><strong>尺子</strong>：新增 ⑧d，钉的是<strong>成对 + 顺序</strong>（离屏层必须存在、且排在 <code>DstIn</code> <strong>之前</strong>），不是"文件里出现过这两个符号"—— 光有离屏层却没接进这条链是同一个 bug 的另一种形状。负向对照当场验过：删掉那一句 ⇒ ⑧d 红。</p>
+  </div>
+
+  <div style="border-left:3px solid #B98A6E;padding:2px 0 2px 14px;margin:18px 0">
+  <p style="margin:0 0 6px"><strong>第六轮（2026-10-16 13:1x，<span class="tag warn">结论：能做</span>，未落地）<span class="tag no">第七轮订正：下面第 3 条与"入口条那一侧"的 API 选型作废，做法已换</span> · 用户：「另外我想你另外看看画廊的主页搜索框真的做不了容器变化动画吗，现在还是淡出淡入的」</strong></p>
+
+  <p style="margin:0 0 8px"><strong>先把话说准：之前那句"做不了容器变化"是错的。</strong>准确的说法是 —— <strong>当时用的那一套 API 做不出来</strong>（<code>AnimatedVisibility</code> + <code>scaleIn</code>/<code>fadeIn</code>），而能做这件事的那颗 API，本仓<strong>宿主与版本早就齐了</strong>，只是从来没接。</p>
+
+  <p style="margin:0 0 6px"><strong>四条现读的证据</strong>（都不是记忆，是从产物/源码里读出来的）：</p>
+  <table style="margin:0 0 10px">
+    <thead><tr><th>#</th><th>读到的事实</th><th>出处</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>整个内容层已经被 <code>SharedTransitionLayout</code> 包住 ⇒ 入口条（图墙 header 槽里）与搜索卡（页面顶层 Box 里）<strong>同在一个共享元素作用域内</strong>，且都在 <code>LocalCoverTransitionScopes</code> 覆盖范围内</td><td><code>feature/Navigation.kt:649</code> / <code>:268</code></td></tr>
+      <tr><td>2</td><td>实际解析的 compose animation 是 <strong>1.12.0</strong>（<code>libs.versions.toml</code> 里那个 <code>compose = "1.7.8"</code> 不是最终值；<code>ComicSharedTransition.kt:37</code> 那句注释也是按 1.12 写的）。<code>sharedBounds</code> 是 1.7 之后才有的</td><td>gradle 缓存 <code>animation-android/1.12.0</code></td></tr>
+      <tr><td>3</td><td><s><strong>决定性的一条</strong>：<code>SharedTransitionScopeImpl$sharedBoundsWithCallerManagedVisibility</code> 确实存在于 1.12.0 的 <code>classes.jar</code> 里</s><br><strong>⚠️ 订正（第七轮）</strong>：它确实在 <code>classes.jar</code> 里，但**是 <code>internal</code>** —— <code>SharedTransitionScope.kt:1252</code> 的签名就是 <code>internal fun Modifier.sharedBoundsWithCallerManagedVisibility(…)</code>。<strong>"产物里存在"不等于"本模块能调"</strong>。公开的只有 <code>sharedBounds</code>（要一个 <code>AnimatedVisibilityScope</code>）和 <code>sharedElementWithCallerManagedVisibility</code>（后者是 <code>sharedElement</code> 语义：只有变成可见的那一端被渲染、且要求两端"视觉内容一致"，与这里"两端内容完全不同"不匹配）</td><td>gradle 缓存 <code>animation-android/1.12.0</code></td></tr>
+      <tr><td>4</td><td>官方对这颗 API 的说明正好是这次要的形状：<br>「when <code>visible == false</code>, <strong>the layout will continue to occupy space in its parent layout</strong>」</td><td><code>animation-1.12.0-samples-sources.jar</code> → <code>SharedTransitionSamples.kt</code></td></tr>
+    </tbody>
+  </table>
+  <p style="margin:0 0 8px"><s>第 3、4 条合起来说明一件事：<strong>"源那一侧不能撤、得继续占位"这个约束，官方专门开了一颗 API 来满足</strong> —— 而这条约束正是 10-15 那条口径的由来（入口条一撤，墙就上跳一行的距离）。换句话说，当初挡路的那个理由，官方已经有正解了。</s><br><strong>订正（第七轮）</strong>：那条"源要继续占位"的约束官方确实认，但它给的机制是 <code>sharedBounds</code> 的 <code>placeholderSize</code>（转场期间退出方按内容大小占位），不是那颗 caller-managed 版 —— 那颗在 Android 侧根本调不到。本仓最后的做法更直接：<strong>给入口条外面套一层固定高度的框</strong>（高度取它自己的自然高度 <code>galleryHomeChromeHeight()</code>），于是转场结束后也照样占着。比 <code>placeholderSize</code> 省事，且不存在"转场一结束墙又跳一下"的尾巴。</p>
+
+  <p style="margin:0 0 6px"><strong>那为什么现在还是淡出淡入</strong>：现在的实现是 <code>AnimatedVisibility(fadeIn + scaleIn(initialScale = 0.94f, transformOrigin = 顶边中点))</code>。<code>scaleIn</code> 是<strong>等比缩放</strong>，而"56dp 的入口条 → 约 200dp 的卡"要的是<strong>竖向独立插值</strong>（宽度其实已经逐像素相同了，第三轮那条满宽改动做的就是这件事）。0.94 对 "56 ÷ 200 = 0.28" 这个落差没有任何表达力 ⇒ 上屏读起来就是"淡入 + 轻微放大"，也就是用户说的"还是淡出淡入的"。<strong>不是做不到，是当初拿了一个近似物。</strong></p>
+
+  <p style="margin:0 0 6px"><strong>真做的话，三处改动</strong>：</p>
+  <ol style="margin:0 0 10px">
+    <li><s><strong>入口条那一侧</strong>：<code>sharedBoundsWithCallerManagedVisibility(rememberSharedContentState(key), visible = !svm.active)</code>。选这颗 API 的<strong>唯一理由</strong>就是 <code>visible = false</code> 时它照旧占着那一行的高度（墙不跳），行内内容淡出。</s><br><strong>订正（第七轮）</strong>：那颗 API 调不到（见上）。改成给入口条**也包一层 <code>AnimatedVisibility(visible = !searchOpen)</code>**、挂同一 key 的 <code>sharedBounds</code>；"占位"另用一层固定高度的 <code>Box</code> 兜。额外一条：这一层的 <code>enter</code>/<code>exit</code> 必须用<strong>位移恒 0 的 slide</strong>而不是 fade（与 <code>renderInOverlayDuringTransition = false</code> 成对，理由见第七轮）。</li>
+    <li><strong>卡那一侧</strong>：同一把 key、<code>visible = svm.active</code>、<code>resizeMode = RemeasureToBounds</code>。必须 Re-measure 而不是 <code>scaleToBounds</code>：卡里有一枚<strong>带文字的输入框</strong>，等比拉伸会把那些字拉变形。</li>
+    <li><strong>曲线沿用现有的两颗 spring</strong>：<code>SEARCH_CARD_SHOW_SPEC</code> / <code>SEARCH_CARD_HIDE_SPEC</code>（= miuix 顶栏居中标题那一对）。这两颗与"居中标题出现"同源是同一条契约，换掉就等于把 10-15 那条又拆了。</li>
+  </ol>
+
+  <p style="margin:0 0 6px"><strong>三个已知的坎（都要真机才判得出来）</strong>：</p>
+  <ol style="margin:0 0 10px">
+    <li>⚠️ <strong>玻璃背板</strong>（最大的一条）：卡挂 <code>veneraGlassSurface(PANEL)</code>，它的模糊是 <code>textureEffect</code> 去采一块<strong>录制下来的背板</strong>。共享元素默认 <code>renderInOverlay = true</code> —— 会被搬进 SharedTransitionLayout 的 overlay 里画，那一层在正常绘制序之外，采到的背板可能是空/错位的。首选处置是显式 <code>renderInOverlay = false</code> 让它在原位插值。<strong>这一条只能真机看</strong>（本轮到"编译 + 单测 + 出包"为止）。</li>
+    <li><strong>焦点时序</strong>：输入框现在"等一小段再要焦点"，等的就是 <code>AnimatedVisibility</code> 内容 attach 完成。内容组合时机一换，这一档要重调 —— 否则键盘会在飞行途中弹出来。</li>
+    <li><strong>收起那一路是第二对</strong>：滚到 1/3 时卡收进顶栏那一行胶囊，那是<strong>另一半动作</strong>。第一轮只做"入口条 ↔ 搜索卡"这一对，收起那一路先不动 —— 一次只动一对，坏了才分得清是哪一对。</li>
+  </ol>
+
+  <p style="margin:0"><strong>建议的落地顺序</strong>：一对、<code>renderInOverlay = false</code>、曲线沿用现有两颗 spring。退路是"不做共享元素、改做高度插值"（<code>AnimatedContent</code> + <code>SizeTransform</code>）—— 但那条要么把墙顶下去、要么得把入口条搬进浮层槽位，代价比这条大。等用户发话再动。</p>
+  </div>
+
+  <div style="border-left:3px solid #2E6A2E;padding:2px 0 2px 14px;margin:18px 0">
+  <p style="margin:0 0 6px"><strong>第七轮（2026-10-16 13:3x，<span class="tag ok">已落地</span>）· 用户：「先做看下效果」</strong></p>
+
+  <p style="margin:0 0 8px">把第六轮那个"能做"真做出来了。核心是<strong>换了一颗 API</strong>：<code>sharedBoundsWithCallerManagedVisibility</code> 是 <code>internal</code>（本模块调不到），所以形状变成 <strong>两端各包一层 <code>AnimatedVisibility</code> + 挂同一个 key 的公开 <code>sharedBounds</code></strong>。新建的唯一出处是 <code>gallery/ui/GallerySearchContainer.kt</code>（key、曲线、挂载修饰符三样都在里面）。</p>
+
+  <p style="margin:0 0 6px"><strong>三个定死了的取舍</strong> —— 每一条都对应一个"看起来更默认、其实会坏"的取值：</p>
+  <table style="margin:0 0 10px">
+    <thead><tr><th>取舍</th><th>取什么</th><th>为什么不取默认 / 另一档</th></tr></thead>
+    <tbody>
+      <tr><td><code>resizeMode</code></td><td><code>RemeasureToBounds</code></td><td>默认的 <code>scaleToBounds</code> 会把卡里那行输入字与分段器<strong>整体缩放</strong>。这一下宽度其实几乎不变（两端同吃 <code>screenHorizontal</code> 内缩 ⇒ 第三轮那条满宽改动做的正是这件事），动的只有高度；<code>56 → 200dp</code> 这个量级的等比缩放下文字必糊</td></tr>
+      <tr><td><code>renderInOverlayDuringTransition</code></td><td><code>false</code></td><td>默认 <code>true</code> 会把内容搬进 <code>SharedTransitionLayout</code> 的 overlay 去画 —— 那一层在 <strong>NavHost 之外</strong>，而玻璃档的模糊采的是挂在 NavHost 上的那块 <code>layerBackdrop</code>。搬进去就等于采不到底 ⇒ 玻璃档的卡褪成一块死色</td></tr>
+      <tr><td>入口条那端的 enter / exit</td><td><code>slideInVertically { 0 }</code> / <code>slideOutVertically { 0 }</code></td><td><strong>与上一条成对</strong>：<code>renderInOverlay = false</code> 时共享元素<strong>就地渲染</strong>，父级 alpha 会乘到飞行体上。入口条在"展开"这一下是<strong>源</strong>，它若按常规 <code>fadeOut</code>，飞行体会在 150ms 内被父级淡到 0，而 bounds 动画要跑 300ms ⇒ 后半程什么都看不见 —— <strong>又回到用户抱怨的那四个字</strong>。位移恒 0 只借它的时长，不产生任何视觉动效</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin:0 0 8px"><strong>曲线的数字只留一处</strong>：<code>SEARCH_CONTAINER_RESPONSE_SHOW / _HIDE</code>（0.3 / 0.15）落在新文件里，<code>SEARCH_CARD_SHOW_SPEC</code> / <code>_HIDE_SPEC</code> 改成指向它的<strong>别名</strong>。理由是硬的：内容会在 bounds 动画跑完之前被 <code>AnimatedVisibility</code> 移除，时长差一档就<strong>硬切尾巴</strong>。</p>
+
+  <p style="margin:0 0 8px"><strong>入口条外面套了一层固定高度的框</strong>（<code>Box(modifier.height(galleryHomeChromeHeight()))</code>）：它是墙的第一行，让位时若不兜住那一行的高度，墙会硬跳一行 —— 正是 10-15 要修的那一条，从前靠"常驻不撤"绕开，现在靠这层框兜住。转场结束后它仍然成立，比 <code>placeholderSize</code> 干净。</p>
+
+  <p style="margin:0 0 8px"><strong>顺手退休了一样东西</strong>：卡那端的 <code>scaleIn / scaleOut(0.94f, 顶边中点)</code> 撤了 —— 它本来就是"容器变化"的<strong>近似物</strong>，留着会叠在 bounds 插值上变成双重形变。<code>fadeIn / fadeOut</code> 保留，因为它还要给<strong>配不上对</strong>的两路兜底（结果态滚到 1/3 收起、从收起态 <code>backToInput</code> 展开 —— 那两下入口条恒不可见，共享元素无从匹配）。</p>
+
+  <p style="margin:0 0 8px"><strong>只做了一对</strong>：「滚到 1/3 收进顶栏那行胶囊」是<strong>另一对</strong>（卡 ↔ 顶栏胶囊），本轮没碰 —— 一次只动一对，坏了才分得清是哪一对。</p>
+
+  <p style="margin:0 0 8px"><strong>尺子</strong>：新增 <code>GallerySearchContainerTest</code>（7 条），钉的是这一对能成立的几条<strong>耦合</strong>而不是"动画调了没有" —— key / 曲线只有一个出处、两端都挂着它、<strong>入口条那端不许出现 fade</strong>、入口条恒占位、卡那端的等比缩放近似物不许复活、曲线数字不许分叉、让位开关不给默认值。<strong>两条负向对照当场验红过</strong>（入口条那端改回常态位移 ⇒ 红；<code>renderInOverlay</code> 改回 <code>true</code> ⇒ 红）。没立任何新 token。</p>
+
+  <p style="margin:0"><strong>⚠️ 两处只能真机判</strong>：① <strong>玻璃档下的模糊</strong> —— 上面第 2 / 3 条就是为它选的，但"就地渲染 + 父级中性转场"能不能让玻璃档的卡在整个飞行过程里都糊得对，只有真机能看；② <strong>焦点时序</strong> —— 输入框那句"等一小段再要焦点"等的就是内容 attach 完成，共享元素接进来之后这一档可能要重调（否则键盘会在飞行途中弹出来）。</p>
+  </div>
+
+  <div class="lede" style="border-left-color:#2E4A2E">
+    <p><strong>落地状态（2026-10-16 更新）</strong>：用户口径「直接方案 b吧，顺便补回材质的问题」＋「向上滑动内容到显示居中标题的时候搜索栏收入消失，向下拉到最顶的位置才重新显示，必须要有弹性过渡，且过渡动画自然」。</p>
+    <p>已落地三项：<span class="tag ok">方案 B</span> 结果态给搜索结果墙 52dp 稳定内缩<span class="tag ok">材质</span>摘要条与入口条走 <code>SurfaceMaterial</code> 轴<span class="tag ok">收起时机</span>阈值对齐 miuix 居中标题出现点 1/3 ＋ 滞回 ＋ 同源 spring。</p>
+    <p>本文上半部分（一～三节）保留当时的评审读数与方案 A 全貌；<strong>方案 A 里只有"材质"那一条落地</strong>，宽度内容驱动 / 描边 / 排行图标三条未采纳（方案 B 取代了"减少遮挡"这个思路）。</p>
+  </div>
+
+  <div class="lede">
+    <p><strong>一句话结论：这一条不是"好不好看"的问题，是三条硬伤叠在同一块面上。</strong></p>
+    <p>① 它<strong>按上限长、不按内容长</strong> —— 卡宽 272dp，内容只有 162dp，右侧 <strong>94dp（占卡宽 35%／占屏宽 23%）是纯遮挡</strong>，一寸信息都没有；<br>
+       ② 它的<strong>底色是"底下那张图"的函数</strong> —— <code>alpha 0.90</code> 让同一条卡内三处采样得到三个不同底色（<code>#352A28 / #3A3230 / #403635</code>），而旁边的入口条是不透明同色，于是"从入口条原地长出来的同一块面"这条契约在收起的那一下断了；<br>
+       ③ 它里面的<strong>胶囊与卡底只差 1.34:1</strong>（非文字对比度门槛 3:1）—— 选中态 filter chip 不画描边，两枚胶囊分得开靠的是中间那 4dp 间隙，不是胶囊自己。</p>
+    <p>美化因此不是加装饰，是<strong>把这三条各自收口</strong>：宽度改成"内容驱动＋上限兜底"、底色走材质轴、右侧那片死区换成读数。<strong>不动高度、不立新数字、不改胶囊组件。</strong></p>
+  </div>
+
+  <h2>一、我量到了什么</h2>
+
+  <p>截图是 1079×827 的裁切（只保留顶部），我先用两个已知 token 反推出密度与屏宽，再用同一把尺子量其余全部：<strong>网格左右外边距 31px = <code>screenHorizontal</code> 12dp</strong>，<strong>两列间距 21px = <code>space4</code> 8dp</strong> ⇒ 密度 <strong>2.625 px/dp</strong>、屏宽 <strong>411dp</strong>。这个密度随后被摘要条高度独立验证：实测 123px ÷ 2.625 = <strong>46.9dp ≈ <code>listRowMinHeight</code> 48dp</strong>。</p>
+
+  <table>
+    <thead><tr><th>量</th><th>实测 (px)</th><th>换算 (dp)</th><th>对照 token</th></tr></thead>
+    <tbody>
+      <tr><td>网格左／右外边距</td><td>31 / 30</td><td>11.8 / 11.4</td><td><code>screenHorizontal</code> = 12 ✓</td></tr>
+      <tr><td>两列间距</td><td>21</td><td>8</td><td><code>space4</code> = 8 ✓</td></tr>
+      <tr><td>网格顶（首排图上沿）</td><td>393</td><td>149.7</td><td><code>gridTopPadding</code> = <code>topBarFloor</code></td></tr>
+      <tr><td>摘要条上沿 / 下沿</td><td>405 / 528</td><td>154.3 / 201.1</td><td>网格顶 + <code>space2</code> 4dp ✓</td></tr>
+      <tr><td><strong>摘要条高</strong></td><td>123</td><td><strong>46.9</strong></td><td><code>listRowMinHeight</code> 48 ✓</td></tr>
+      <tr><td><strong>摘要条左沿 / 右沿</strong></td><td>336 / 1049</td><td>128 / 399.6</td><td>右沿 = 屏宽−12dp（与网格右缘<strong>同线</strong>）；左沿 = 屏宽 <strong>34.2%</strong></td></tr>
+      <tr><td><strong>摘要条宽</strong></td><td>713</td><td><strong>271.6</strong></td><td>= 屏宽 66%（<code>1 − collapsedChipWidthFraction</code>）</td></tr>
+      <tr><td>胶囊行内容左沿 / 右沿</td><td>378 / 803</td><td>144 / 305.9</td><td>左沿 = 卡左沿 + <code>space8</code> 16dp ✓</td></tr>
+      <tr><td><strong>胶囊行内容宽</strong></td><td>425</td><td><strong>161.9</strong></td><td>「loli ✕」+ 4dp +「排行：年 2008」</td></tr>
+      <tr><td><strong>卡片右侧无信息的宽带</strong></td><td><strong>246</strong></td><td><strong>93.7</strong></td><td class="no" style="color:#F09595"><strong>占卡宽 34.5%／占屏宽 22.8%</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 470" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+      <defs>
+        <pattern id="hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <rect width="8" height="8" fill="rgba(240,149,123,.10)"/>
+          <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(240,149,123,.55)" stroke-width="3"/>
+        </pattern>
+      </defs>
+
+      <!-- 两格图（占位） -->
+      <rect x="88" y="75" width="284" height="300" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <rect x="384" y="75" width="284.5" height="300" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <text x="230" y="230" fill="#7A7570" font-size="12" text-anchor="middle">结果第 1 排 · 左格</text>
+      <text x="526" y="230" fill="#7A7570" font-size="12" text-anchor="middle">结果第 1 排 · 右格</text>
+
+      <!-- 摘要条 -->
+      <rect x="262" y="81" width="406.5" height="72" rx="33" fill="rgba(93,63,61,.55)" stroke="#8A7370" stroke-dasharray="4 3"/>
+      <!-- 内容 -->
+      <rect x="286" y="102" width="243" height="44" rx="22" fill="none" stroke="#A5D6A7" stroke-dasharray="3 3"/>
+      <text x="407" y="128" fill="#A5D6A7" font-size="12" text-anchor="middle">内容 162dp</text>
+      <!-- 死区 -->
+      <rect x="529" y="81" width="121" height="72" fill="url(#hatch)"/>
+      <text x="589" y="122" fill="#FFD9C9" font-size="12.5" text-anchor="middle" font-weight="600">94dp</text>
+      <text x="589" y="139" fill="#FFD9C9" font-size="10.5" text-anchor="middle">纯遮挡</text>
+
+      <!-- 尺寸线：卡宽 -->
+      <line x1="262" y1="176" x2="668.5" y2="176" stroke="#888780" stroke-width="1"/>
+      <line x1="262" y1="170" x2="262" y2="182" stroke="#888780"/>
+      <line x1="668.5" y1="170" x2="668.5" y2="182" stroke="#888780"/>
+      <text x="465" y="196" fill="#B4B2A9" font-size="12" text-anchor="middle">卡宽 272dp（= 屏宽 66%）</text>
+      <text x="300" y="196" fill="#F0997B" font-size="12" text-anchor="middle">↑ 左沿在 34%</text>
+
+      <!-- 尺寸线：网格外边距 -->
+      <line x1="70" y1="390" x2="88" y2="390" stroke="#888780"/>
+      <line x1="70" y1="384" x2="70" y2="396" stroke="#888780"/>
+      <line x1="88" y1="384" x2="88" y2="396" stroke="#888780"/>
+      <text x="46" y="380" fill="#888780" font-size="11" text-anchor="middle">12dp</text>
+      <line x1="668.5" y1="390" x2="686.5" y2="390" stroke="#888780"/>
+      <line x1="668.5" y1="384" x2="668.5" y2="396" stroke="#888780"/>
+      <line x1="686.5" y1="384" x2="686.5" y2="396" stroke="#888780"/>
+      <text x="700" y="380" fill="#888780" font-size="11" text-anchor="middle">12dp</text>
+
+      <!-- 高度标注 -->
+      <line x1="236" y1="81" x2="236" y2="153" stroke="#888780"/>
+      <line x1="230" y1="81" x2="242" y2="81" stroke="#888780"/>
+      <line x1="230" y1="153" x2="242" y2="153" stroke="#888780"/>
+      <text x="176" y="122" fill="#B4B2A9" font-size="11.5" text-anchor="middle">48dp</text>
+
+      <!-- 网格顶 -->
+      <line x1="88" y1="75" x2="668.5" y2="75" stroke="#F0997B" stroke-dasharray="5 4"/>
+      <text x="88" y="66" fill="#F0997B" font-size="11.5">网格顶 = topBarFloor（截图里 150dp）</text>
+
+      <!-- 下沿提示 -->
+      <text x="88" y="432" fill="#888780" font-size="12">摘要条压在结果第 1 排的上沿：左格被盖住右侧 39% 宽度，右格整格被盖住顶部一条。</text>
+      <text x="88" y="452" fill="#888780" font-size="12">（图示按 1dp = 1.5px 绘制；两格为占位色块，非真实结果图。）</text>
+    </svg>
+    <p class="cap">图 1 · 实测几何（结果态）。红色斜纹那一块是"占着位置但不载信息"的宽度。</p>
+  </div>
+
+  <h3>底色与对比度（WCAG 标准相对亮度公式，非目测）</h3>
+
+  <table>
+    <thead><tr><th>采样对</th><th>实测值</th><th>门槛</th><th>判定</th></tr></thead>
+    <tbody>
+      <tr><td>胶囊文字 ← 胶囊底</td><td><code>#FFDAD9</code> on <code>#5D3F3D</code> = <strong>7.26 : 1</strong></td><td>4.5 : 1</td><td><span class="tag ok">通过</span> —— 字本身没问题，别去"调亮文字"</td></tr>
+      <tr><td>胶囊底 ← 卡底（偏亮处）</td><td><strong>1.34 : 1</strong></td><td>3 : 1</td><td><span class="tag no">不过</span> —— 选中态 filter chip 不画描边，胶囊边界只剩"填色差"这一条线索</td></tr>
+      <tr><td>胶囊底 ← 卡底（偏暗处）</td><td><strong>1.48 : 1</strong></td><td>3 : 1</td><td><span class="tag no">不过</span> —— 同一屏两个值，说明它随底下那张图变</td></tr>
+      <tr><td>卡底 ← 卡外图</td><td><strong>8.67 : 1</strong></td><td>—</td><td>卡片把图压暗了 8.67 倍 —— 观感上是"一块黑板"，不是"一层薄纱"</td></tr>
+      <tr><td>卡内底色三处采样</td><td><code>#352A28</code> / <code>#3A3230</code> / <code>#403635</code></td><td>—</td><td><span class="tag no">不是常量</span> —— 0.90 alpha 让 10% 的图色透上来，卡的色相由内容决定</td></tr>
+    </tbody>
+  </table>
+
+  <div class="rule">
+    关于「0.90 透底」这一档，本鱼认为它落在<strong>最不划算的中间地带</strong>：透得太少（只有 10%），读不出玻璃的层次与景深；又透得足够多，能把卡的色相染成底下那张图的颜色。结果是<strong>既没换来"轻"的观感，又失掉了"底色可预测"这条读数纪律</strong>。要么实色（清晰、恒定），要么真玻璃（模糊 + 染色，见 §3.2），不要 0.90。
+  </div>
+
+  <h2>二、问题清单（按优先级）</h2>
+
+  <h3><span class="tag no">阻塞</span> P1 · 卡按上限长、不按内容长：右侧 94dp 是纯遮挡</h3>
+  <p><strong>成因（已定位到行）</strong>：<code>GallerySearchArea.kt:350-354</code> 给卡设了 <code>widthIn(max = 屏宽 × 66%)</code>，而 <code>:373</code> 内层 <code>Column</code> 写了 <code>fillMaxWidth()</code> —— 在 Compose 里 <code>fillMaxWidth</code> 取的是<strong>传入的最大约束</strong>，于是卡的宽度恒等于那个上限，<strong>与内容多少无关</strong>。<code>:437</code> 那行 <code>Row.fillMaxWidth().horizontalScroll()</code> 同理：横滑容器占满 66%，胶囊靠左排，右边空着。</p>
+  <p><strong>影响</strong>：94dp × 48dp ≈ 4500dp² 的宽度压在图上，不换来任何信息；同时它让整条读起来像"没加载完"。</p>
+  <p><strong>修法</strong>：上限保留（兜住条件很多时的溢出），但卡内不再 <code>fillMaxWidth</code> ⇒ 卡宽 = min(内容 + 2×16dp, 上限)。本例内容 162dp ⇒ 卡宽 <strong>194dp</strong>，遮挡面积 <strong>−29%</strong>；若同时做 P4（排行加图标，内容 +20dp）则为 <strong>214dp / −21%</strong>。</p>
+  <p class="rule">⚠️ 这里正好解释上一轮为什么会翻车：上一轮把 <code>collapsedChipWidthFraction</code>（34%，那是<strong>顶栏一行</strong>的尺子，它要和居中的大标题抢位）当成卡的<strong>固定宽度</strong>用，而这一行内容本来就有 162dp + 32dp = 194dp = 屏宽 47% ⇒ 越界被截，用户看到"一枚胶囊被切掉半截"。<strong>正确的修法不是把上限调大（那是这一版 66% 的来历，等于用更多遮挡去换不截断），而是"内容驱动 + 上限兜底"。</strong></p>
+
+  <h3><span class="tag no">阻塞</span> P2 · 材质契约断裂：收起的那一下"同一块面"变了色</h3>
+  <p><strong>成因</strong>：<code>GallerySearchArea.kt:344-345</code> 结果态取 <code>surfaceContainerHigh.copy(alpha = tagContainerAlpha)</code>。<code>tagContainerAlpha</code> 是<strong>封面标签</strong>那一档的现成语义（<code>VeneraTokens.kt:63</code> = 0.90），被借到了"浮动容器"上 —— 两件事对透明度的要求正好相反：标签要"贴在图上看得出是标签"，容器要"承载文字且恒定"。</p>
+  <p>而它的兄弟件 <code>GalleryHomeChrome.kt:110-113</code>（那条常驻入口条）用的是<strong>不透明的</strong> <code>surfaceContainerHigh</code>，同一形状、同一阴影、同一色槽，文档里写着"三条与搜索卡逐字同源，所以展开成那张卡时是同一块面在长高"。现在：展开态（不透明）→ 结果态（0.90），<strong>同一块面在收起过程中改了材质</strong>。</p>
+  <p><strong>更硬的一条</strong>：它<strong>绕过了 <code>SurfaceMaterial</code> 轴</strong>。用户把材质选成"实色"（默认档）时，全站实色，唯独这一条仍然是半透明 —— 这正是本项目明令禁止的<strong>假开关</strong>形态（"用户明令禁止只在单一档位成立的效果"）。</p>
+  <p><strong>修法</strong>：两态都取不透明 <code>surfaceContainerHigh</code>；要"透"就走 <code>Modifier.veneraGlass(VeneraGlassRole.PANEL, cardShape)</code>（受材质轴控制：实色档就是不透明，玻璃档才有模糊 + 染色 + 高光描边）。见 §3.2。</p>
+
+  <h3><span class="tag no">阻塞</span> P3 · 胶囊分不开：1.34:1 的边界靠 4dp 间隙在撑</h3>
+  <p><strong>成因</strong>：<code>VeneraChip.kt:227-229</code> —— Filter 变体只有<strong>未选中</strong>时才画 <code>outline</code> 描边；选中态（= 已包含的筛选条件）<strong>没有任何描边</strong>，只靠 <code>secondaryContainer</code> 实底。这在本来的语境里没问题（MD3 里选中 filter chip 就是靠容器色差），但那需要<strong>卡底是稳定的</strong>。现在卡底是 0.90 透底的函数，差值在 1.25～1.48:1 之间浮动 ⇒ 亮图上胶囊等于没有边界。</p>
+  <p><strong>修法（不动 <code>VeneraChip</code>）</strong>：把卡做成实色（P2）之后，胶囊与卡底的差值是<strong>可测且恒定</strong>的，但按本机这套动态取色算下来仍只有约 <strong>1.42:1</strong> —— 所以真正要动的是<strong>胶囊自己的身份</strong>：在摘要条这一排里给条件胶囊补一层 <code>outlineVariant</code> 发丝描边（或换成"描边 + 淡底"的双线索）。项目里已有先例：Tag 变体就是"淡底 + 极弱描边"，理由写的正是"单纯提高 alpha 若与背景仍接近，边框能保证 Tag 与背景分离"。</p>
+
+  <h3><span class="tag warn">建议</span> P4 · 同一排里"筛选"与"设置"同形，"排除"与"默认"同形</h3>
+  <p>摘要条这一排现在混着两类东西，外观完全一样：<strong>筛什么</strong>（条件胶囊）与<strong>怎么排</strong>（排行胶囊）。读者要读完字才知道哪枚是哪类。更难解的是第二组撞车：</p>
+  <ul>
+    <li>排除项 <code>-loli</code> 渲染成<strong>描边空胶囊</strong>（<code>selected = !excluded</code> 为 false）；</li>
+    <li>排行处于默认档时也渲染成<strong>描边空胶囊</strong>（<code>GalleryRanking.NEWEST</code> ⇒ <code>selected = false</code>）。</li>
+  </ul>
+  <p>一个外观两种语义。修法：排行胶囊加<strong>前置图标</strong>（<code>Icons.Outlined.Sort</code>，<code>VeneraChip</code> 已有 <code>leadingIcon</code> 口子）把它从"条件"里摘出来；排除项给删除线或降一档文字色，别只靠描边。</p>
+
+  <h3><span class="tag">可选</span> P5 · 右侧空间换成读数 —— 与"省遮挡"是<strong>二选一</strong></h3>
+  <p>P1 修好之后右侧会腾出 78dp。它有两种花法，<strong>不能同时要</strong>：</p>
+  <ul>
+    <li><strong>空着（推荐）</strong>：卡宽 194～214dp，遮挡 −21%～−29%。理由见下面那条"它其实是滚动就走的东西"；</li>
+    <li><strong>换成读数槽</strong>：取数中 → 波浪环（<code>CircularWavyProgressIndicator</code> 本文件已在用）；到位 → <code>128 张</code>（<code>type.caption</code> + <code>textSecondary</code>）。加上它卡宽回到 ≈277dp，<strong>省下的遮挡被吃光</strong>。</li>
+  </ul>
+  <p><strong>为什么倾向空着</strong>：这一条只在<strong>滚到顶时</strong>存在 —— <code>searchCollapsed</code>（<code>GalleryScreen.kt:638</code>）在顶栏折平那一刻就把整条收走、换成顶栏那一行胶囊。也就是说用户一旦开始看图，这条就没了。<strong>一个"滚动即消失"的浮层，首要任务是别挡东西，而不是多装读数。</strong>结果规模本来就有两个归宿：页尾 <code>GallerySearchEnd</code>，以及"还想知道"时点开搜索。</p>
+
+  <h3><span class="tag warn">建议</span> P6 · 展开态：已选条件没有行数上限</h3>
+  <p><code>:416-435</code> 的 <code>FlowRow</code> 是自由的：条件多了它会一直换行，而卡片只有 <code>heightIn(min = …)</code>。<code>listMaxHeight</code> 管的是<strong>补全列表</strong>（2 / 4 行封顶），管不到胶囊。八枚条件就能把卡顶到半屏，把补全列表和网格一起挤掉。</p>
+  <p>修法：胶囊行限 <strong>2 行</strong>，溢出收成一枚 <code>+N</code> 尾枚（点它展开成完整条件页/继续换行）。</p>
+
+  <h3><span class="tag">可选</span> P7 · 吸附态（顶栏那一行）才是"看图时的常驻读数位"</h3>
+  <p><code>GallerySearchCollapsedChips</code>（<code>:1230</code>）刻意只摆条件胶囊、不摆排行，理由是那一行宽度封在 34%、要和居中大标题抢位。<strong>后果是：用户往下滑看图时，"这一墙是 2008 年的"这条信息正好消失</strong> —— 而那正是最需要它的时刻（"为什么全是三年前的图"）。</p>
+  <p>同一处还欠另一件事：<strong>缺席原因（<code>GalleryNotices</code>）目前只住在展开区</strong>（<code>GallerySearchArea.kt:742 / 757 / 766 / 777</code>），收成一条时整块不画。而结果态那条摘要条<strong>滚动即消失</strong>（见 P5），所以"这一轮哪条腿没跑起来"在真正看图的那一段时间里，屏上没有任何落点 —— 这是本仓自己记在注释里的已知痛点。</p>
+  <p>修法（一条改动，两件事一起解决，且不破 34% 封顶）：吸附态不再逐枚摆胶囊，改成<strong>一行摘要</strong>：</p>
+  <ul>
+    <li>「loli · 排行 年2008」，超出用 <code>+N</code> 收尾 —— 排行档因此常驻；</li>
+    <li>有腿缺席时前置一枚小警示字形（<code>tertiaryContainer</code> 系），点它回展开态。</li>
+  </ul>
+  <p>顺带让两种收起形态的<strong>信息口径统一</strong>：现在一个是"全部胶囊"、一个是"缺了排行的胶囊"，同一次搜索在两种形态下说两套话。</p>
+
+  <h3><span class="tag">可选</span> P8 · 顶栏三枚圆钮同权重，其中两枚都在"改搜索"</h3>
+  <p>结果态下顶栏是 🔍（改条件）＋ ✕（关搜索，只隐藏不清条件）＋ 🕘（历史）三枚同径 40dp 圆钮并排（实测：直径 103px ÷ 2.625 = 39.2dp ≈ <code>iconButtonSize</code>，圆心间距 48dp = 40 + <code>space4</code>），而摘要条本体也是"点哪都能改条件"的入口。✕ 在搜索语境里常被读成"清空条件"（实际语义是"收起搜索 UI、退回猜你喜欢"，<code>closeSearch()</code> 只把 <code>active = false</code>）。</p>
+  <p>修法（择一，不必都做）：结果态下撤掉顶栏那枚 🔍（摘要条自己已是最显眼的入口，且修好 P5 后它带读数、更像控件）；或给 ✕ 单独一档视觉（例如放进实底容器），让它不可能被误读成"清空"。</p>
+
+  <h2>三、方案 A：就地美化（推荐）</h2>
+
+  <p>结构不动、锚点不动、避让不动。<strong>只改三件事</strong>：宽度、底色、胶囊身份。（右侧读数槽是可选项，与"省遮挡"二选一，见 P5。）</p>
+
+  <div class="two">
+    <div>
+      <div class="mockwrap">
+        <div class="mock"><div class="phone">
+          <div class="sbar"><span>02:49</span><span>5G &#9679; 100%</span></div>
+          <div class="tbrow">
+            <div class="tbpill">&#9906;</div><div class="tbpill">&#10005;</div><div class="tbpill">&#8634;</div>
+          </div>
+          <div class="ltitle">画廊</div>
+          <div class="tile" style="left:12px"><div class="art a1"></div>
+            <div class="caption"><span class="gicon">G</span><span>原创</span></div></div>
+          <div class="tile" style="left:209.5px"><div class="art a2"></div>
+            <div class="caption"><span class="gicon">G</span><span>Chirima</span></div></div>
+          <!-- 现在的摘要条 -->
+          <div class="strip before">
+            <div class="chip sel">loli<span class="x">&#10005;</span></div>
+            <div class="chip sel">排行：年 2008</div>
+          </div>
+        </div></div>
+        <div class="emptyband" style="left:306px;right:12px">94dp 空着</div>
+      </div>
+      <p class="cap"><strong>现在</strong> · 卡宽 272dp，内容 162dp；右侧 94dp 透着一块压暗的图。</p>
+    </div>
+
+    <div>
+      <div class="mockwrap">
+        <div class="mock"><div class="phone">
+          <div class="sbar"><span>02:49</span><span>5G &#9679; 100%</span></div>
+          <div class="tbrow">
+            <div class="tbpill">&#9906;</div><div class="tbpill">&#10005;</div><div class="tbpill">&#8634;</div>
+          </div>
+          <div class="ltitle">画廊</div>
+          <div class="tile" style="left:12px"><div class="art a1"></div>
+            <div class="caption"><span class="gicon">G</span><span>原创</span></div></div>
+          <div class="tile" style="left:209.5px"><div class="art a2"></div>
+            <div class="caption"><span class="gicon">G</span><span>Chirima</span></div></div>
+          <!-- 改后的摘要条：内容驱动 + 实色 + 排行胶囊分形 -->
+          <div class="strip after">
+            <div class="chip sel" style="box-shadow:inset 0 0 0 1px #8A7370">
+              loli<span class="x">&#10005;</span></div>
+            <div class="chip sel" style="box-shadow:inset 0 0 0 1px #8A7370">
+              <span style="opacity:.85">&#8645;</span> 排行：年 2008</div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap"><strong>改后（推荐）</strong> · 卡宽 = 内容 ≈214dp；两侧都不再有"占位不载信息"的宽度。</p>
+    </div>
+  </div>
+
+  <div class="figure">
+    <svg viewBox="0 0 780 340" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+      <defs>
+        <pattern id="hatch2" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <rect width="8" height="8" fill="rgba(240,149,123,.12)"/>
+          <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(240,149,123,.55)" stroke-width="3"/>
+        </pattern>
+      </defs>
+
+      <!-- 变体 1：现在 -->
+      <text x="20" y="20" fill="#B4B2A9" font-size="12.5">现在 · 卡宽 272dp</text>
+      <rect x="20" y="32" width="408" height="62" rx="28" fill="#392D2A"/>
+      <rect x="40" y="48" width="68" height="30" rx="15" fill="#5D3F3D"/>
+      <text x="74" y="68" fill="#FFDAD9" font-size="12" text-anchor="middle">loli &#10005;</text>
+      <rect x="116" y="48" width="150" height="30" rx="15" fill="#5D3F3D"/>
+      <text x="191" y="68" fill="#FFDAD9" font-size="12" text-anchor="middle">排行：年 2008</text>
+      <rect x="282" y="32" width="146" height="62" rx="0" fill="url(#hatch2)"/>
+      <text x="355" y="68" fill="#FFD9C9" font-size="12" text-anchor="middle">94dp 无信息</text>
+
+      <!-- 变体 2：推荐 -->
+      <text x="20" y="128" fill="#A5D6A7" font-size="12.5" font-weight="600">改后 · 卡宽 = 内容 ≈ 214dp（推荐）</text>
+      <rect x="20" y="140" width="321" height="62" rx="28" fill="#392D2A" stroke="#5A4A46"/>
+      <rect x="40" y="156" width="70" height="30" rx="15" fill="#5D3F3D" stroke="#8A7370"/>
+      <text x="75" y="176" fill="#FFDAD9" font-size="12" text-anchor="middle">loli &#10005;</text>
+      <rect x="118" y="156" width="172" height="30" rx="15" fill="#5D3F3D" stroke="#8A7370"/>
+      <text x="204" y="176" fill="#FFDAD9" font-size="12" text-anchor="middle">&#8645; 排行：年 2008</text>
+      <text x="356" y="178" fill="#A5D6A7" font-size="12">遮挡 −21%（272 → 214dp）</text>
+
+      <!-- 变体 3：可选读数槽 -->
+      <text x="20" y="236" fill="#F0C075" font-size="12.5">可选项 · 再加读数槽 ≈ 277dp（把省下的宽度换回信息）</text>
+      <rect x="20" y="248" width="416" height="62" rx="28" fill="#392D2A" stroke="#5A4A46"/>
+      <rect x="40" y="264" width="70" height="30" rx="15" fill="#5D3F3D" stroke="#8A7370"/>
+      <text x="75" y="284" fill="#FFDAD9" font-size="12" text-anchor="middle">loli &#10005;</text>
+      <rect x="118" y="264" width="172" height="30" rx="15" fill="#5D3F3D" stroke="#8A7370"/>
+      <text x="204" y="284" fill="#FFDAD9" font-size="12" text-anchor="middle">&#8645; 排行：年 2008</text>
+      <circle cx="322" cy="279" r="7" fill="none" stroke="#B9A9A6" stroke-width="2"/>
+      <text x="372" y="284" fill="#B9A9A6" font-size="12" text-anchor="middle">128 张</text>
+      <text x="452" y="286" fill="#F0C075" font-size="12">遮挡回到现状</text>
+    </svg>
+    <p class="cap">图 2 · 三种卡片宽度（<strong>示意按 1dp = 1.5px 放大</strong>；三者右沿均与网格右缘同线）。<strong>二选一</strong>：省遮挡，或信息密度。</p>
+  </div>
+
+  <h3>3.1 宽度：内容驱动 + 上限兜底（修 P1）</h3>
+  <p>把卡的宽度交给内容，上限仍留在外面兜住"条件很多"那一档：</p>
+  <ul>
+    <li><code>:373-375</code> 内层 <code>Column</code> 去掉 <code>fillMaxWidth()</code>，只留 <code>heightIn</code>；</li>
+    <li><code>:437-440</code> 那一行 <code>Row</code> 去掉 <code>fillMaxWidth()</code>，保留 <code>horizontalScroll</code>（超过上限时仍横滑）；</li>
+    <li><code>:350-354</code> 的 <code>widthIn(max = 屏宽 × (1 − collapsedChipWidthFraction))</code> <strong>一字不动</strong> —— 它从"被当成宽度用"回到"真的是上限"。</li>
+  </ul>
+  <p>展开态不受影响：那一态的宽度由外层的 <code>if (expanded) fillMaxWidth()</code> 给，卡内那两条 <code>fillMaxWidth</code> 本来就是冗余的。</p>
+
+  <h3>3.2 底色：走材质轴（修 P2 / P3 的一半）</h3>
+  <div class="two">
+    <div class="box good">
+      <h4>默认档（SurfaceMaterial = SOLID）</h4>
+      <p>两态都取不透明 <code>tokens.color.surfaceContainerHigh</code> —— 与入口条同源，收起/展开是同一块面在变大小，契约接回来。底色从此是常量。</p>
+    </div>
+    <div class="box good">
+      <h4>玻璃档（= LIQUID_GLASS）</h4>
+      <p>卡底透明 + <code>Modifier.veneraGlass(VeneraGlassRole.PANEL, cardShape)</code> —— 拿到模糊 + <code>GlassTintAlpha</code> 染色 + 玻璃描边高光。这一档是真的"透"（容器 alpha 0.28），不是 0.90 的伪透。</p>
+      <p style="color:#888780;font-size:12.5px">PANEL 与 CARD 同属 CONTAINER 档，走的是同一套读数（<code>SurfaceMaterialPolicy</code>），没有新数字。</p>
+    </div>
+  </div>
+  <p class="rule">这一条同时兑现了项目自己的规矩：<strong>任何"看起来更透"的效果必须在两个档位下都成立</strong>，否则就是假开关。0.90 那版在实色档下偷偷半透明，是最典型的形态。</p>
+
+  <h3>3.3 胶囊身份（修 P3 / P4）</h3>
+  <ul>
+    <li><strong>条件胶囊（结果态这一排）</strong>：补一层 <code>outlineVariant</code> 发丝描边。理由与 Tag 变体同源 —— 底色差不够时用描边保证分离。只在摘要条这一排加，<strong>展开态那一排不加</strong>（那里卡底是不透明的，差值本来就够，而且 FlowRow 更要紧的是密度）。</li>
+    <li><strong>排行胶囊</strong>：<code>leadingIcon = Icons.Outlined.Sort</code>，与条件胶囊一眼分形。</li>
+    <li><strong>排除项</strong>：在 <code>-loli</code> 的描边之外加删除线（或文字退到 <code>textSecondary</code>），不要和"默认排行"共用一个外观。</li>
+  </ul>
+
+  <h2>四、方案 B：给网格一条稳定的空白带 <span class="tag ok">已拍板 · 已落地</span></h2>
+
+  <p>方案 A 那一批（把卡收窄到内容宽）只能<strong>减少</strong>遮挡面积，做不到归零。要让"压图"这件事归零，只有一条路：给网格一个<strong>稳定</strong>的顶部内缩 —— 让摘要条落进自己的空白带里，而不是压在第一排图上。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+      <text x="20" y="24" fill="#B4B2A9" font-size="13">A（现状 + 本方案）· 浮层压图</text>
+      <rect x="20" y="40" width="330" height="180" rx="8" fill="#1B1B1A" stroke="#3A3A38"/>
+      <rect x="40" y="70" width="195" height="130" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <rect x="243" y="70" width="87" height="130" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <rect x="150" y="70" width="180" height="48" rx="22" fill="rgba(93,63,61,.75)" stroke="#8A7370"/>
+      <text x="240" y="100" fill="#FFDAD9" font-size="11" text-anchor="middle">摘要条</text>
+      <text x="20" y="244" fill="#888780" font-size="11.5">卡片常驻在图上；首排图的顶部一条被盖住。</text>
+
+      <text x="410" y="24" fill="#B4B2A9" font-size="13">B · 结果态给网格一个稳定内缩</text>
+      <rect x="410" y="40" width="330" height="180" rx="8" fill="#1B1B1A" stroke="#3A3A38"/>
+      <rect x="430" y="40" width="290" height="48" rx="22" fill="#392D2A" stroke="#5A4A46"/>
+      <text x="575" y="70" fill="#E8DEDC" font-size="11" text-anchor="middle">摘要条（占位，不压图）</text>
+      <rect x="430" y="102" width="195" height="118" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <rect x="633" y="102" width="87" height="118" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <line x1="410" y1="97" x2="740" y2="97" stroke="#F0997B" stroke-dasharray="5 4"/>
+      <text x="410" y="244" fill="#888780" font-size="11.5">首排图完整可见；代价是首屏少 48dp 视高。</text>
+    </svg>
+    <p class="cap">图 3 · 方案 B：让摘要条落在自己的空白带上，而不是压在图的第一排。</p>
+  </div>
+
+  <p><strong>历史包袱与它为什么这次成立</strong>：2026-09-30 撤掉"网格避让"时的反对理由，<strong>针对的是"padding 随滚动状态变化"</strong>（会让整面墙跳一下）。这一条不犯它 —— 内缩只随<strong>"进 / 出结果态"</strong>变化（那本来就是一次整页切换，卡片 <code>scaleIn</code> 长开、墙跟着让半屏高是顺的），<strong>滚动过程中它是常量</strong>。</p>
+
+  <h3>4.1 落地写法</h3>
+  <table>
+    <thead><tr><th>件</th><th>值 / 写在哪</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>内缩量</td><td><code>listRowMinHeight</code>(48dp) + <code>space2</code>(4dp) = <strong>52dp</strong><br><code>GalleryScreen.searchResultsInset</code></td><td>卡顶在 <code>topBarFloor + space2</code>、卡高 48dp ⇒ 卡底在 <code>topBarFloor + 50</code>，带子从 <code>+52</code> 起，中间留 2dp。<strong>一枚 token 都不新立</strong>（两枚都是现成的）</td></tr>
+      <tr><td>生效条件</td><td><code>svm.active &amp;&amp; svm.mode == RESULTS</code></td><td>只随"进/出结果态"变，**不随收没收起变** —— 这是它不违反 09-30 那条的全部理由</td></tr>
+      <tr><td>消费点</td><td>搜索结果墙 <code>contentPadding.top</code>、结果态空态与在途态的 <code>padding(top)</code></td><td>三处同一把尺子；反搜层与首页主墙<strong>不加</strong>（那一态不摆这张卡）</td></tr>
+    </tbody>
+  </table>
+  <p><strong>收起之后这段空白照旧占位</strong>是刻意的：那一刻它在屏上看不见了（已滚到顶栏之上），而回滚到顶时卡片正好落回它里面 —— 两边位置对得上，不会出现"卡回来了但底下挤着"。</p>
+
+  <h3>4.2 材质（方案 A 里唯一落地的那一条）</h3>
+  <p>原先 <code>surfaceContainerHigh.copy(alpha = tagContainerAlpha)</code> 是<strong>伪透</strong>，两处都错：</p>
+  <ul>
+    <li><strong>绕过材质轴</strong> —— 用户把 <code>SurfaceMaterial</code> 切到"实色"，这一张照旧半透明，正是本仓明令禁止的假开关（与 <code>veneraGlassCardColors</code> 头注同一条）；</li>
+    <li><strong>0.90 落在最不划算的凹谷</strong> —— 只透 10%，读不出玻璃，却足够把卡色染成底下那张图的颜色（真机采样：同卡内三点 <code>#352A28</code> / <code>#3A3230</code> / <code>#403635</code> 各不相同）。</li>
+  </ul>
+  <p>现在两态<strong>同一个材质</strong>：实色档不透明铺 <code>surfaceContainerHigh</code>；玻璃档底色置透明、由 <code>veneraGlassSurface(PANEL, extraLarge)</code> 采氛围层做真模糊。<strong>入口条（<code>GalleryHomeChrome</code>）同步改</strong> —— 否则"从入口条原地长出来的同一块面"这条契约会在按下那一下又断一次（从前的断法是实色 vs 0.90 伪透，现在是玻璃档下一条玻璃一条实色）。</p>
+  <p class="rule">玻璃采的是<strong>氛围层</strong>（全站唯一采样源，静态 Canvas），不采页面内容 —— 所以卡压在图上也不会"模糊了底下那张图"，且滚动时不重捕。</p>
+
+  <h2>四·三、滚动收起：时机对齐居中标题，曲线与它同源 <span class="tag ok">已落地</span></h2>
+
+  <p>用户口径（原话）：「<strong>当向上滑动内容到显示居中标题的时候搜索栏收入消失，向下拉到最顶的位置才重新显示，必须要有弹性过渡，且过渡动画自然</strong>」。</p>
+
+  <h3>4.3.1 时机：1/3 不是拍出来的，是 miuix 源码里的同一个点</h3>
+  <p>miuix 顶栏（<code>.reference/miuix-ui-094/…/basic/TopAppBar.kt:647-682</code>）两条逐字：</p>
+  <table>
+    <thead><tr><th>件</th><th>表达式</th><th>落在 <code>collapsedFraction</code> 的哪一点</th></tr></thead>
+    <tbody>
+      <tr><td>大标题淡出</td><td><code>alpha = 1 − (frac × 3f).coerceIn(0f, 1f)</code></td><td><strong>1/3</strong> 时归零</td></tr>
+      <tr><td>居中标题出现</td><td><code>visible = frac × 3f &ge; 1f</code></td><td><strong>1/3</strong> 时出现</td></tr>
+    </tbody>
+  </table>
+  <p>两条都落在 <strong>1/3</strong> ⇒ 取同一个值，于是<strong>"居中标题一出来"与"搜索卡收起"是同一件事的两面</strong>，而不是先后两下。从前这里是 <code>COLLAPSE_SETTLED_FRACTION = 0.99</code>（完全折平才收）—— 用户真机读到的是"我都滚过一屏了它还在"。</p>
+
+  <h3>4.3.2 回程：为什么要滞回</h3>
+  <p>单阈值做不到口径的后半截 —— 那样滚回 1/3 之上它就会弹回来，而"退回到刚刚折平的位置"与"回顶"在用户心里是两件事。所以两个方向各给一条：<strong>上滑</strong>越过 <code>1/3</code> ⇒ 收起；<strong>下滑</strong>回到 <code>&le; 0.02</code> ⇒ 才放出来（几乎到顶）。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 230" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,PingFang SC,Microsoft YaHei,sans-serif">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#B4B2A9"/>
+        </marker>
+      </defs>
+      <text x="70" y="20" fill="#888780" font-size="11.5">↓ 回顶（frac → 0）</text>
+      <text x="560" y="20" fill="#888780" font-size="11.5">上滑浏览（frac → 1）↓</text>
+
+      <!-- 轴 -->
+      <line x1="70" y1="196" x2="700" y2="196" stroke="#3A3A38" stroke-width="1"/>
+      <text x="70" y="214" fill="#888780" font-size="11" text-anchor="middle">0</text>
+      <text x="700" y="214" fill="#888780" font-size="11" text-anchor="middle">1</text>
+      <text x="385" y="214" fill="#888780" font-size="11" text-anchor="middle">collapsedFraction</text>
+
+      <!-- 两条阈值线 -->
+      <line x1="83" y1="36" x2="83" y2="196" stroke="#A5D6A7" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <text x="89" y="52" fill="#A5D6A7" font-size="10.5">0.02 恢复点</text>
+      <line x1="280" y1="36" x2="280" y2="196" stroke="#F0997B" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <text x="286" y="52" fill="#F0997B" font-size="10.5">1/3 收起点 = 居中标题出现点</text>
+
+      <!-- 泳道 1：顶栏 -->
+      <text x="70" y="80" fill="#B4B2A9" font-size="11.5">顶栏</text>
+      <rect x="70" y="66" width="210" height="22" rx="6" fill="#2C2A2E" stroke="#3A3A38"/>
+      <text x="175" y="81" fill="#E8DEDC" font-size="11" text-anchor="middle">大标题「画廊」</text>
+      <rect x="280" y="66" width="420" height="22" rx="6" fill="#392D2A" stroke="#8A7370"/>
+      <text x="490" y="81" fill="#FFDAD9" font-size="11" text-anchor="middle">居中标题「画廊」 + 模糊背板</text>
+
+      <!-- 泳道 2：搜索卡 -->
+      <text x="70" y="118" fill="#B4B2A9" font-size="11.5">搜索卡</text>
+      <rect x="70" y="104" width="210" height="22" rx="6" fill="#392D2A" stroke="#5A4A46"/>
+      <text x="175" y="119" fill="#E8DEDC" font-size="11" text-anchor="middle">在屏上（摘要条）</text>
+      <rect x="280" y="104" width="420" height="22" rx="6" fill="#1F1F1E" stroke="#3A3A38" stroke-dasharray="3 3"/>
+      <text x="490" y="119" fill="#888780" font-size="11" text-anchor="middle">收起（spring 0.15s 缩回顶边中点）</text>
+
+      <!-- 泳道 3：顶栏胶囊 -->
+      <text x="70" y="156" fill="#B4B2A9" font-size="11.5">吸附胶囊</text>
+      <rect x="70" y="142" width="210" height="22" rx="6" fill="#1F1F1E" stroke="#3A3A38" stroke-dasharray="3 3"/>
+      <text x="175" y="157" fill="#888780" font-size="11" text-anchor="middle">无</text>
+      <rect x="280" y="142" width="420" height="22" rx="6" fill="#392D2A" stroke="#5A4A46"/>
+      <text x="490" y="157" fill="#E8DEDC" font-size="11" text-anchor="middle">一行条件胶囊（看图时的落点）</text>
+
+      <!-- 滞回箭头 -->
+      <path d="M92,182 L272,182" stroke="#B4B2A9" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="182" y="178" fill="#B4B2A9" font-size="10.5" text-anchor="middle">上滑：1/3 越线即收</text>
+      <path d="M272,190 L92,190" stroke="#A5D6A7" stroke-width="1.2" marker-end="url(#ar)"/>
+      <text x="182" y="205" fill="#A5D6A7" font-size="10.5" text-anchor="middle">下滑：只有回到 ≤0.02 才放出来</text>
+    </svg>
+    <p class="cap">图 4 · 收起 / 恢复的两个阈值与三件东西的状态。中间那一段（0.02 &lt; frac &lt; 1/3）是滞回区：两边都不动，不会来回跳。</p>
+  </div>
+
+  <h3>4.3.3 曲线：抄顶栏居中标题那一颗 spring，不另立一条</h3>
+  <p>收起/展开出场取 <code>folmeSpring(damping = 1.0f, response = 0.3f)</code>（显示）与 <code>0.15f</code>（隐藏）—— 与 <code>TopAppBar.kt:688</code> 那两颗<strong>逐字同源</strong>。抄同一颗曲线是刻意的：居中标题淡入与搜索卡收起在<strong>同一帧</strong>触发，若两边曲线不同，用户读到的是"两个东西各动各的"；同源之后它是一个动作。</p>
+  <ul>
+    <li>方向仍锚在<strong>顶边中点</strong>（<code>transformOrigin = TransformOrigin(0.5f, 0f)</code>）—— 收回去读起来是"这条入口条自己缩回顶栏"，不是"一块面板淡出"；</li>
+    <li><code>damping = 1.0</code> 是临界阻尼、<strong>不过冲</strong>：alpha 与 scale 都不会越界闪一下。弹性来自曲线形状（速度先快后缓、带 settle 尾巴），不是靠回弹；</li>
+    <li>吸附胶囊那一行的 <code>slideInVertically</code> 用<strong>同一组参数</strong>的另一份实例（它的 spec 类型是 <code>FiniteAnimationSpec&lt;IntOffset&gt;</code>，与 Float 不是同一个类型参数，<strong>必须</strong>按类型各建一份，参数值相同）。</li>
+  </ul>
+  <p class="rule">判据走 <code>snapshotFlow { collapsedFraction }</code> 而不是 <code>derivedStateOf</code>：滞回<strong>有记忆</strong>、要写状态，而 <code>derivedStateOf</code> 只能算纯函数。滚动全程只在越线那两下各写一次，不是逐帧写。</p>
+
+  <h2>五、交接规格</h2>
+
+  <table>
+    <thead><tr><th>件</th><th>改法</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><code>GallerySearchArea.kt</code><br>卡底下色</td><td>伪透 <code>copy(alpha = tagContainerAlpha)</code> → <code>if (veneraGlassEnabled()) Color.Transparent else surfaceContainerHigh</code>，并挂 <code>veneraGlassSurface(PANEL, extraLarge)</code></td><td><span class="tag ok">已落地</span></td></tr>
+      <tr><td><code>GalleryHomeChrome.kt</code><br>入口条底色</td><td>同一句材质轴 —— 保住"从入口条原地长出来的同一块面"</td><td><span class="tag ok">已落地</span></td></tr>
+      <tr><td><code>GalleryScreen.kt</code><br><code>searchResultsInset</code></td><td>新值 <strong>52dp</strong>（<code>listRowMinHeight + space2</code>），进 / 出结果态时变、<strong>滚动中恒定</strong>；消费点 3 处（搜索墙 / 空态 / 在途态）</td><td><span class="tag ok">已落地</span></td></tr>
+      <tr><td><code>GalleryScreen.kt</code><br><code>searchCollapsed</code></td><td><code>derivedStateOf(frac &ge; 0.99)</code> → <code>snapshotFlow</code> 滞回（收 &ge; 1/3、放 &le; 0.02）</td><td><span class="tag ok">已落地</span></td></tr>
+      <tr><td><code>GalleryScreen.kt</code><br>卡 / 胶囊进出场</td><td>tween → <code>folmeSpring</code>（与顶栏居中标题逐字同源）</td><td><span class="tag ok">已落地</span></td></tr>
+      <tr><td><code>GallerySearchArea.kt</code><br>宽度（<code>:373/:437</code> 的 <code>fillMaxWidth()</code>）</td><td>去掉内层 <code>fillMaxWidth()</code>，宽度 = 内容 + 上限兜底</td><td><span class="tag no">未采纳</span><br>方案 B 取代了"减遮挡"这个思路</td></tr>
+      <tr><td><code>FilterChipItem</code> / <code>RankingChip</code></td><td>条件胶囊补发丝描边 / 排行胶囊补 <code>Icons.Outlined.Sort</code></td><td><span class="tag no">未采纳</span></td></tr>
+      <tr><td><code>:443-458</code> 结果态那一支</td><td>尾增"读数槽"（波浪环 / 张数 / 缺席预警，原 P5）</td><td><span class="tag warn">待定</span></td></tr>
+      <tr><td>FlowRow 行数上限（原 P6）</td><td>限 2 行 + <code>+N</code> 尾枚</td><td><span class="tag warn">待定</span></td></tr>
+      <tr><td><code>GallerySearchCollapsedChips</code>（原 P7）</td><td>吸附态改一行摘要 + <code>+N</code>，<strong>补回排行档</strong></td><td><span class="tag warn">待定</span><br>本轮没删它，仍是一行条件胶囊</td></tr>
+    </tbody>
+  </table>
+
+  <p class="rule">本轮<strong>一枚 token 都没新立</strong>：<code>listRowMinHeight</code> / <code>space2</code> / <code>surfaceContainerHigh</code> / <code>VeneraGlassRole.PANEL</code> / <code>extraLarge</code> 全是现成的；那条 spring 走 miuix 的 <code>folmeSpring</code>，不是新 token 档。<code>TokenBudgetFrozenTest</code> 不动。</p>
+
+  <p>全部改动<strong>不新增任何 token</strong>：<code>surfaceContainerHigh</code>、<code>outlineVariant</code>、<code>space6</code> / <code>space8</code>、<code>listRowMinHeight</code>、<code>elevation.attached</code>、<code>VeneraGlassRole.PANEL</code> 全部是现成的。<code>TokenBudgetFrozenTest</code> 不会红。</p>
+
+  <h2>六、验收判据</h2>
+
+  <ul>
+    <li><span class="tag ok">本轮</span> <strong>不压图</strong>：结果态首屏，摘要条与第一排图<strong>不重叠</strong> —— 卡底 <code>topBarFloor+50</code>、网格第一排图上沿 <code>topBarFloor+60</code>，中间 <strong>10dp</strong>（第三轮从 2dp 调到 10dp：2dp 会被卡片自己的 3dp 投影吃光，读起来是"贴在图上"）。</li>
+    <li><span class="tag ok">本轮</span> <strong>满宽 + 同宽</strong>：结果态那张卡的左右沿与常驻入口条<strong>同一条线</strong>；展开 / 收起全程<strong>不出现横向位移</strong>（66% 那一版会横跳一下）。</li>
+    <li><span class="tag ok">本轮</span> <strong>读数一致</strong>：尾巴读数槽报的张数 <strong>=</strong> 页尾 <code>GallerySearchEnd</code> 报的张数（同一个 <code>searchWall.cards.size</code>）；第一轮在途时不报 <code>0 张</code> 而画波浪环。</li>
+    <li><span class="tag ok">本轮</span> <strong>灰化不再出现</strong>：液态玻璃档下，入口条 / 结果态摘要条 / 展开态卡<strong>三者同色</strong>，且亮度与"实色档的 <code>surfaceContainerHigh</code>"同向（不再是 <code>#BEACAA</code> 那种比本色暗一半的灰）。实色档逐像素不变。</li>
+    <li><span class="tag ok">本轮</span> <strong>硬切不再出现</strong>：补全列表 / 最近搜索被限高切断的最下面那一行<strong>渐隐</strong>收口，不出现半枚胶囊。</li>
+    <li><span class="tag ok">本轮</span> <strong>墙不跳</strong>：结果态下滚动来回，网格 <code>topPadding</code> 的值<strong>全程不变</strong>（60dp 是常量，不随收没收起变）。判据：同一轮搜索里连续上下滚，首排图的 y 不出现"额外一次的位移"。</li>
+    <li><span class="tag ok">本轮</span> <strong>材质轴两档都成立</strong>：<code>SurfaceMaterial</code> 切实色 ⇒ 摘要条<strong>不透明</strong>且卡内三点采样<strong>完全相等</strong>（不再是 <code>#352A28 / #3A3230 / #403635</code> 三个值）；切液态玻璃 ⇒ <strong>真模糊</strong>（不是 0.90 的伪透）。入口条与卡片在<strong>同一档下同一种材质</strong>。</li>
+    <li><span class="tag ok">本轮</span> <strong>收起时机</strong>：上滑到<strong>居中标题出现</strong>那一刻搜索卡收起（不是折平之后）；继续滚到深处它保持收起。</li>
+    <li><span class="tag ok">本轮</span> <strong>回程滞回</strong>：下滑到 <code>frac ≈ 1/3 以内</code>时<strong>不</strong>恢复；只有拉回接近顶部（<code>&le; 0.02</code>）才重新显示。</li>
+    <li><span class="tag ok">本轮</span> <strong>过渡自然</strong>：收起/展开是弹性曲线（<code>folmeSpring</code>，与居中标题同源）—— 不出现"卡片瞬间消失"或"两个东西各动各的"；<strong>不要</strong>用 220ms 线性 tween 的观感去验收。</li>
+    <li><span class="tag warn">待定</span> <strong>对比度</strong>：胶囊与卡底的边界 ≥ 3:1；胶囊文字保持 ≥ 4.5:1（<strong>文字那半 7.26:1 本来就达标</strong>，未动）。</li>
+    <li><span class="tag ok">第三轮采纳</span> <strong>宽度：满宽</strong>（原标"未采纳"的那条"卡宽仍是补数上限"已撤 —— 用户 2026-10-16 拍板"设成全宽吧"）。右侧那块无信息区换成了读数槽（原 P5 待定项），见开头第三轮那段。</li>
+    <li><span class="tag ok">第四轮采纳</span> <strong>玻璃面无投影</strong>：浅色下不许再出现"色块"。判据是<strong>层序</strong>而不是颜色值 —— 玻璃档 <code>shadowElevation</code> 必须为 0，因而卡底不得比它自己那块 <code>surfaceContainerHigh</code> 暗出可测量的一档。反过来说：<strong>不要</strong>用"容器 alpha 调了多少"去验收这一条（第三轮就是栽在这个误判上，把 0.22 抬到 0.86 之后灰块一点没退）。</li>
+    <li><span class="tag ok">第五轮采纳</span> <strong>被切断的内容用渐隐收口，且渐隐必须关在离屏层里</strong>：判据是<strong>"渐变终点是不是卡自己的色"</strong>，而不是"有没有渐变"。终点是<strong>纯黑</strong>（<code>#0F0B08</code> 那一档）就说明 <code>DstIn</code> 穿透到了窗口层 —— 那种形状与"露出卡底之下那张图"不同：后者会看到<strong>图的内容</strong>，不会有单调梯度，也不会横向正好止于卡内宽度。</li>
+    <li><span class="tag ok">第七轮采纳</span> <strong>入口条 ↔ 搜索卡是真容器变化，不是淡入</strong>：判据是<strong>"卡的初始高度是不是等于入口条的高度"</strong>，而不是"有没有动画"（第七轮之前那颗 <code>scaleIn(0.94)</code> 的初始高度是 <code>卡高 × 0.94</code> ≈188dp，与入口条的 56dp 差着一整个数量级 —— 所以它必然读成淡入）。<strong>不要</strong>用"动画时长 / 曲线调了没有"去验收这一条（第三轮就是拿 alpha 去顶一个层序问题的同类误判）。做法与三条取舍见开头第七轮，那儿同时记着真机上待判的两处（玻璃档模糊 / 焦点时序）。</li>
+    <li><span class="tag no">未采纳</span> <strong>高度纪律</strong>：展开态 8 枚条件时胶囊行仍会无上限换行（原 P6，待定）。</li>
+  </ul>
+
+  <h2>七、数据来源与两处不确定</h2>
+
+  <p>全部读数来自用户 2026-10-16 02:49 的真机截图裁切（1079×827）。密度 2.625 px/dp 由两个已知 token 交叉反推并被第三项独立验证，误差量级 ±0.5dp；<strong>颜色 token 值是从截图反推的（本机开着动态取色，棕色系壁纸 ⇒ <code>secondaryContainer</code> = <code>#5D3F3D</code>，不是默认蓝色板）</strong>，换主题/换壁纸后具体数值会变，但"底色的差值随内容浮动"这条结论不变。</p>
+
+  <div class="box good">
+    <h4>✅ 那处"与工作区现状不一致"已消解（第三轮）</h4>
+    <p>本文初稿写时，<code>GallerySearchArea.kt</code> 里是 <code>horizontalAlignment = Alignment.Start, // 扰动C2 …</code>，而当时给我的截图里卡片是<strong>挂右</strong>的 —— 两者矛盾，故标了告警。</p>
+    <p>第三轮用户拍板「设成全宽吧」之后，这条矛盾<strong>自己消失了</strong>：满宽之后"挂左挂右"不再是一个可选项，那一行也已从"可疑的扰动实验"升格为<strong>正式口径</strong>（<code>Alignment.Start</code> 为常量，三处同源：展开态、结果态、身下的常驻入口条）。本文 §1–§3 里"挂右 / 66% 补数"的示意均属<strong>过程记录</strong>，以第三轮那段为准。</p>
+  </div>
+
+  <footer>
+    像素君 · UI 设计评审与落地记录 · 2026-10-16 · <strong>已改动源码</strong>（<code>VeneraGlass.kt</code> / <code>GallerySearchArea.kt</code> / <code>GalleryHomeChrome.kt</code> / <code>GalleryScreen.kt</code> / <code>GallerySearchContainer.kt</code>（新）+ 三把尺子）。<br>
+    第三轮四条、第四轮"玻璃面无投影"、第五轮"渐隐关进离屏层"、第七轮"真容器变化"均已编译、单测、出包验证通过；每条负向尺的对照都当场验红过。<strong>第六轮是结论稿、未改动源码，且它那条 API 判断在第七轮被订正</strong>（<code>sharedBoundsWithCallerManagedVisibility</code> 是 <code>internal</code>，本模块调不到）—— 订正留在原处，没有删掉，免得下一个人再走一遍。未采用原截图作为插图（其中是真实内容），几何与配色按实测数值重绘。
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pixiv 搜索栏 · 方案 C · 卡内展开面板 · 2026-10-17</title>
+<style>
+  :root{
+    --bg:#141413; --surface:#1F1F1E; --surface-2:#262625; --line:#3A3A38;
+    --fg:#F1EFE8; --fg-2:#B4B2A9; --fg-3:#888780;
+    --accent:#F0997B; --accent-ink:#D85A30; --warn:#F09595;
+    --app-bg:#261A1A; --app-card:#392D2A; --app-field:#4A3835; --app-chip:#5D3F3D;
+    --app-onchip:#FFDAD9; --app-ink:#E8DEDC; --app-ink-2:#B9A9A6; --app-ink-3:#8E7E7B;
+    --app-primary:#FFB4A8; --app-line:#5A4642;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.75;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 96px}
+  h1{font-size:27px;font-weight:600;margin:0 0 10px;letter-spacing:-.2px}
+  .sub{color:var(--fg-3);font-size:13px;margin:0 0 6px}
+  h2{font-size:19px;font-weight:600;margin:62px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;font-weight:600;margin:30px 0 10px}
+  h4{font-size:13.5px;font-weight:600;margin:0 0 8px;color:var(--fg-2)}
+  p{margin:10px 0;color:var(--fg-2)}
+  strong{color:var(--fg);font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--accent)}
+  ul,ol{margin:10px 0;padding-left:20px;color:var(--fg-2)}
+  li{margin:6px 0}
+  .lede{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent-ink);
+    border-radius:12px;padding:16px 22px;margin:26px 0}
+  .lede p{margin:7px 0;color:var(--fg)}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--fg-3);font-weight:500;font-size:12px;white-space:nowrap}
+  td{color:var(--fg-2)}
+  td:first-child{color:var(--fg)}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--fg-3);white-space:nowrap}
+  .tag.ok{color:#A5D6A7;border-color:#2E4A2E;background:#1B2A1B}
+  .tag.warn{color:#F0C075;border-color:#4A3A1E;background:#2A2318}
+  .tag.no{color:var(--warn);border-color:#4A2222;background:#2A1A1A}
+  .rule{border-left:2px solid var(--line);padding-left:14px;margin:16px 0;color:var(--fg-3);font-size:13px}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:18px 0}
+  .box h4{margin-top:0}
+  .box p{margin:6px 0;font-size:13px}
+  .box.good{border-left:3px solid #2E4A2E}
+  .box.bad{border-left:3px solid #4A2222}
+  .box.info{border-left:3px solid var(--accent-ink)}
+  footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:var(--fg-3);font-size:12px}
+
+  .stage{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:22px 18px 18px;margin:22px 0}
+  .fig{flex:0 0 auto;width:411px;max-width:100%}
+  .fig > figcaption{margin-top:12px;font-size:12px;color:var(--fg-3);text-align:center;line-height:1.6}
+  .phone{position:relative;width:411px;height:873px;overflow:hidden;
+    background:var(--app-bg);border-radius:20px;border:1px solid #3E302D;
+    font-size:13px;line-height:1.4}
+  .sbar{position:absolute;top:0;left:0;right:0;height:28px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 16px;font-size:11px;color:var(--app-ink);opacity:.8}
+  .ltitle{position:absolute;top:56px;left:14px;font-size:30px;font-weight:500;
+    color:var(--app-ink);letter-spacing:.5px;opacity:.9}
+  .wall{position:absolute;top:150px;left:12px;right:12px;display:grid;
+    grid-template-columns:1fr 1fr;gap:8px}
+  .tile{height:242px;border-radius:12px}
+  .a1{background:linear-gradient(150deg,#6E8FA8 0%,#CBD6DC 34%,#8E6E63 70%,#2E2A2C 100%)}
+  .a2{background:linear-gradient(200deg,#4A5A6E 0%,#D9CBB6 40%,#8A6A5C 74%,#33292A 100%)}
+  .a3{background:linear-gradient(170deg,#3B4A52 0%,#B9A08C 46%,#6E5650 78%,#2A2224 100%)}
+  .a4{background:linear-gradient(120deg,#7C6A78 0%,#E0CFC4 38%,#7A5F58 72%,#2C2426 100%)}
+  .scrim{position:absolute;inset:0;background:rgba(12,7,6,.70)}
+
+  .card{position:absolute;top:150px;left:12px;right:12px;border-radius:28px;
+    background:var(--app-card);padding:16px 16px 8px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .card .row{margin-top:10px}
+  .field{height:56px;border-radius:28px;background:var(--app-field);
+    display:flex;align-items:center;gap:10px;padding:0 12px}
+  .ph{flex:1;font-size:14px;color:var(--app-ink-3);white-space:nowrap;overflow:hidden}
+  .vline{width:1px;height:24px;background:rgba(255,255,255,.14)}
+  .ic{width:18px;height:18px;flex:0 0 auto;stroke:currentColor;fill:none;
+    stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .ic.xs{width:13px;height:13px;stroke-width:2}
+  .dim{color:var(--app-ink-2);opacity:.85}
+  .ftoken{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;
+    border-radius:14px;background:rgba(255,255,255,.09);font-size:12.5px;
+    color:var(--app-ink);white-space:nowrap;flex:0 0 auto}
+
+  .ctl{display:flex;align-items:center;gap:6px;height:32px}
+  .ctl-lbl{font-size:12px;color:var(--app-ink-3);margin-right:2px}
+  .sp{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 13px;
+    border-radius:16px;font-size:13px;color:var(--app-ink-2);
+    border:1px solid var(--app-line);white-space:nowrap}
+  .chip.on{background:var(--app-chip);border-color:transparent;color:var(--app-onchip)}
+  .fbtn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;
+    border-radius:16px;font-size:13px;color:var(--app-ink-2);border:1px solid var(--app-line)}
+  .fbtn.act{background:var(--app-chip);border-color:transparent;color:var(--app-onchip)}
+  .fbtn b{font-size:11px;font-weight:600;min-width:16px;height:16px;border-radius:8px;
+    background:rgba(0,0,0,.32);display:inline-flex;align-items:center;justify-content:center;
+    padding:0 4px;font-family:inherit}
+  .selrow{display:flex;align-items:center;gap:6px;height:32px;overflow:hidden}
+
+  /* 卡内面板 */
+  .panel{margin-top:10px;border-radius:18px;background:rgba(255,255,255,.035);padding:12px 12px 2px}
+  .prow{display:flex;gap:10px;margin-bottom:14px;align-items:flex-start}
+  .prow > .k{width:44px;flex:0 0 44px;font-size:12px;color:var(--app-ink-3);padding-top:7px}
+  .prow > .v{flex:1;display:flex;gap:5px;flex-wrap:wrap}
+  .prow .chip{height:30px;border-radius:15px;padding:0 11px;font-size:12.5px}
+  .panel-foot{display:flex;justify-content:flex-end;padding:0 0 10px}
+  .panel-foot span{font-size:12.5px;color:var(--app-primary)}
+  .dates{display:flex;align-items:center;gap:6px}
+  .datebox{height:32px;border-radius:10px;background:rgba(255,255,255,.06);
+    display:flex;align-items:center;gap:5px;padding:0 8px;font-size:11.5px;color:var(--app-ink)}
+  .dates .to{font-size:11.5px;color:var(--app-ink-3)}
+  .presets{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+  .presets span{font-size:11.5px;color:var(--app-ink-2);border:1px solid var(--app-line);
+    border-radius:11px;padding:1px 9px}
+  .lad{position:relative;display:grid;grid-template-columns:repeat(7,1fr);width:100%;padding-top:2px}
+  .lad::before{content:"";position:absolute;left:7.1%;right:7.1%;top:8px;height:1px;background:#6B534F}
+  .lad-cell{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .lad-cell i{width:8px;height:8px;border-radius:50%;background:#6B534F;display:block;margin-top:4px}
+  .lad-cell.on i{width:12px;height:12px;background:var(--app-primary);margin-top:2px;
+    box-shadow:0 0 0 3px rgba(255,180,168,.16)}
+  .lad-cell span{font-size:9.5px;color:var(--app-ink-3);letter-spacing:-.3px}
+  .lad-cell.on span{color:var(--app-onchip);font-weight:600}
+
+  .hhead{display:flex;align-items:center;justify-content:space-between;margin:10px 0 8px}
+  .hhead .t{font-size:12px;color:var(--app-ink-3)}
+  .hhead .c{font-size:12px;color:var(--app-ink-3)}
+  .hist{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .hchip{height:40px;border-radius:12px;background:rgba(255,255,255,.055);
+    display:flex;align-items:center;gap:6px;padding:0 10px;font-size:13px;color:var(--app-ink)}
+  .hchip .mk{font-size:10px;color:var(--app-ink-3);border:1px solid var(--app-line);
+    border-radius:4px;padding:0 3px;line-height:14px;flex:0 0 auto}
+  .hchip .x{margin-left:auto;color:var(--app-ink-3);opacity:.9}
+
+  .kb{position:absolute;left:0;right:0;bottom:0;height:300px;background:#1A1210;
+    border-top:1px solid rgba(255,255,255,.05);padding:9px 5px;display:flex;
+    flex-direction:column;gap:7px}
+  .kb-row{display:flex;gap:5px;justify-content:center}
+  .key{height:40px;flex:1;border-radius:6px;background:#2E2220;display:flex;
+    align-items:center;justify-content:center;font-size:13px;color:#A28F8B}
+  .key.w1{flex:1.5}
+  .key.w5{flex:5}
+  .key.dark{background:#241917}
+
+  .strip{display:flex;align-items:center;gap:6px;background:var(--app-card);
+    border:1px solid #4A3835;border-radius:14px;padding:10px 12px;margin:14px 0 0}
+  .strip .lbl{font-size:11.5px;color:var(--fg-3);margin-right:6px;white-space:nowrap}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8L20 20"/></symbol>
+  <symbol id="i-img" viewBox="0 0 24 24"><rect x="3.6" y="4.6" width="16.8" height="14.8" rx="3"/><circle cx="9" cy="10" r="1.5"/><path d="M4.6 16.4l4.4-3.9 3.9 3.4 2.9-2.4 3.6 3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+  <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 7h9M18 7h2M4 17h4M13 17h7"/><circle cx="15.5" cy="7" r="2.1"/><circle cx="10.5" cy="17" r="2.1"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.6" width="16" height="14" rx="3"/><path d="M4 10.2h16M8.6 3.6v4M15.4 3.6v4"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+
+  <h1>方案 C · 卡内展开面板</h1>
+  <p class="sub">触发：首页内容域切到 Pixiv（pixiv 不在来源轴上，所以这一档卡里没有那排分段器）。范围：展开的搜索卡。依据：<code>GallerySearchArea.kt</code> 实读 + headless 量盒高。</p>
+
+  <div class="lede">
+    <p><strong>形态</strong>：点「筛选」，卡自己长出一块面板 —— 不遮罩、不跳转、不多一层。「标签部分 / 标签完全」仍在框里（D 那一刀保留），所以面板只有四段：收藏 / 作品 / 画面比例 / 发布时间。</p>
+    <p><strong>卡高</strong>：收起 245dp、展开 <strong>429dp</strong>；而键盘在时可用高度是 423dp。多出来的 6dp 不是取舍问题 —— <strong>面板一开就必须收键盘</strong>，跟 A 的抽屉同一条规矩。</p>
+    <p><strong>代价照实说</strong>：面板开着的时候，补全与历史都不在（卡装不下）。所以收起时必须有一行条件摘要，否则关掉就忘了自己筛了什么。</p>
+  </div>
+
+  <h2>一、两态</h2>
+
+  <div class="stage">
+    <figure class="fig">
+      <div class="phone">
+        <div class="sbar"><span>22:17</span><span>5G ▮ 87%</span></div>
+        <div class="ltitle">画廊</div>
+        <div class="wall"><div class="tile a1"></div><div class="tile a2"></div><div class="tile a3"></div><div class="tile a4"></div></div>
+        <div class="scrim"></div>
+
+        <div class="card">
+          <div class="field">
+            <span class="ftoken">部分<svg class="ic xs"><use href="#i-down"/></svg></span>
+            <span class="ph">标签 / 画师 / 作品</span>
+            <span class="vline"></span>
+            <svg class="ic dim"><use href="#i-img"/></svg>
+            <svg class="ic dim"><use href="#i-x"/></svg>
+          </div>
+
+          <div class="row ctl">
+            <span class="ctl-lbl">排序</span>
+            <span class="chip">人气</span>
+            <span class="chip">旧序</span>
+            <span class="chip on">最新</span>
+            <span class="sp"></span>
+            <span class="fbtn"><svg class="ic"><use href="#i-tune"/></svg>筛选<svg class="ic xs"><use href="#i-down"/></svg></span>
+          </div>
+
+          <div class="hhead"><span class="t">最近搜索</span><span class="c">清空</span></div>
+          <div class="hist">
+            <div class="hchip"><span class="mk">P</span>オリジナル<svg class="ic xs x"><use href="#i-x"/></svg></div>
+            <div class="hchip"><span class="mk">P</span>横長<svg class="ic xs x"><use href="#i-x"/></svg></div>
+            <div class="hchip"><span class="mk">P</span>百合<svg class="ic xs x"><use href="#i-x"/></svg></div>
+            <div class="hchip"><span class="mk">P</span>風景<svg class="ic xs x"><use href="#i-x"/></svg></div>
+          </div>
+        </div>
+
+        <div class="kb">
+          <div class="kb-row"><span class="key">q</span><span class="key">w</span><span class="key">e</span><span class="key">r</span><span class="key">t</span><span class="key">y</span><span class="key">u</span><span class="key">i</span><span class="key">o</span><span class="key">p</span></div>
+          <div class="kb-row"><span class="key">a</span><span class="key">s</span><span class="key">d</span><span class="key">f</span><span class="key">g</span><span class="key">h</span><span class="key">j</span><span class="key">k</span><span class="key">l</span></div>
+          <div class="kb-row"><span class="key w1">⇧</span><span class="key">z</span><span class="key">x</span><span class="key">c</span><span class="key">v</span><span class="key">b</span><span class="key">n</span><span class="key">m</span><span class="key w1">⌫</span></div>
+          <div class="kb-row"><span class="key w1 dark">123</span><span class="key w5">空格</span><span class="key w1 dark">搜索</span></div>
+        </div>
+      </div>
+      <figcaption><strong>收起</strong>：排序一行 + 筛选入口 + 历史。<br>卡高 245dp，键盘在，补全与历史照常。</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <div class="phone">
+        <div class="sbar"><span>22:17</span><span>5G ▮ 87%</span></div>
+        <div class="ltitle">画廊</div>
+        <div class="wall"><div class="tile a1"></div><div class="tile a2"></div><div class="tile a3"></div><div class="tile a4"></div></div>
+        <div class="scrim"></div>
+
+        <div class="card">
+          <div class="field">
+            <span class="ftoken">部分<svg class="ic xs"><use href="#i-down"/></svg></span>
+            <span class="ph">标签 / 画师 / 作品</span>
+            <span class="vline"></span>
+            <svg class="ic dim"><use href="#i-img"/></svg>
+            <svg class="ic dim"><use href="#i-x"/></svg>
+          </div>
+
+          <div class="row ctl">
+            <span class="ctl-lbl">排序</span>
+            <span class="chip">人气</span>
+            <span class="chip">旧序</span>
+            <span class="chip on">最新</span>
+            <span class="sp"></span>
+            <span class="fbtn act"><svg class="ic"><use href="#i-tune"/></svg>筛选<b>2</b><svg class="ic xs"><use href="#i-up"/></svg></span>
+          </div>
+
+          <div class="panel">
+            <div class="prow">
+              <span class="k">收藏</span>
+              <span class="v" style="display:block">
+                <span class="lad">
+                  <span class="lad-cell"><i></i><span>全部</span></span>
+                  <span class="lad-cell"><i></i><span>100+</span></span>
+                  <span class="lad-cell"><i></i><span>250+</span></span>
+                  <span class="lad-cell on"><i></i><span>500+</span></span>
+                  <span class="lad-cell"><i></i><span>1000+</span></span>
+                  <span class="lad-cell"><i></i><span>5000+</span></span>
+                  <span class="lad-cell"><i></i><span>10000+</span></span>
+                </span>
+              </span>
+            </div>
+            <div class="prow">
+              <span class="k">作品</span>
+              <span class="v"><span class="chip on">全部</span><span class="chip">仅动图</span><span class="chip">排除动图</span></span>
+            </div>
+            <div class="prow">
+              <span class="k">比例</span>
+              <span class="v"><span class="chip">全部</span><span class="chip on">横图</span><span class="chip">竖图</span><span class="chip">方图</span></span>
+            </div>
+            <div class="prow">
+              <span class="k">时间</span>
+              <span class="v" style="display:block">
+                <span class="dates">
+                  <span class="datebox"><svg class="ic xs dim"><use href="#i-cal"/></svg>2024-01-01</span>
+                  <span class="to">至</span>
+                  <span class="datebox"><svg class="ic xs dim"><use href="#i-cal"/></svg>2026-10-17</span>
+                </span>
+                <span class="presets"><span>近 7 天</span><span>近 30 天</span><span>近 1 年</span><span>不限</span></span>
+              </span>
+            </div>
+            <div class="panel-foot"><span>重置全部</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><strong>展开</strong>：四段一次看全，卡高 429dp。<br>键盘已收，补全与历史让位 —— 这一态是「改条件」，不是「挑词」。</figcaption>
+    </figure>
+  </div>
+
+  <h2>二、面板怎么排</h2>
+
+  <p>两列：左边一枚 44dp 的标签，右边是这一段的控件。竖排（标签在上、控件在下）看着更松，但四段要多花约 90dp —— 而这一屏的预算是按 10dp 算的。</p>
+
+  <table>
+    <thead><tr><th>段</th><th>摆法</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>收藏</td><td>七档刻度尺，占满右侧 300dp</td><td>七枚胶囊并排要 346dp，放不下；刻度尺还顺带说明了「这是递进的门槛，不是七个互斥选项」</td></tr>
+      <tr><td>作品</td><td>三枚胶囊一行</td><td>全部 / 仅动图 / 排除动图，互斥且只有三档，一行正好</td></tr>
+      <tr><td>比例</td><td>四枚胶囊一行</td><td>同上，四档</td></tr>
+      <tr><td>时间</td><td>两枚日期格 + 四个快捷</td><td>精确到日走系统日期选择；快捷是「近 7 天 / 30 天 / 1 年 / 不限」，覆盖九成用法</td></tr>
+    </tbody>
+  </table>
+
+  <p>「重置全部」放在面板右下角、只在这一块里 —— 它不重置排序（排序常驻可见，重置它反而会让人找不到自己刚选的序）。</p>
+
+  <h2>三、卡高与键盘</h2>
+
+  <table>
+    <thead><tr><th>态</th><th>卡高</th><th>键盘在时可用 423dp</th></tr></thead>
+    <tbody>
+      <tr><td>收起（有历史）</td><td>245dp</td><td><span class="tag ok">余 178</span></td></tr>
+      <tr><td>展开（面板全开）</td><td><strong>429dp</strong></td><td><span class="tag no">超 6dp</span></td></tr>
+    </tbody>
+  </table>
+
+  <p>6dp 是个很尴尬的数：它意味着「面板 + 键盘」在任何一台 873dp 的机器上都差一点点。<strong>所以规矩不是「尽量收键盘」，而是「点筛选先收键盘」</strong> —— 与 A 的抽屉同一条，只是 C 更没得商量：抽屉至少还能压着键盘弹出来，面板压在卡里，键盘一在就顶到屏底。</p>
+
+  <div class="box info">
+    <h4>收起面板时不把键盘弹回来</h4>
+    <p>用户点「看结果」/再点一次筛选收起面板，此刻他要看的是结果墙，不是接着打字。硬弹键盘会把他刚改的条件挡在键盘后面。</p>
+  </div>
+
+  <h2>四、收起时的那一行条件</h2>
+
+  <p>面板关掉之后，屏上只剩一枚带数字的「筛选」钮 —— 那不够：用户记不住自己是筛了 500+ 还是 1000+。所以收起时把生效条件压成一行（32dp），每枚带 ×：</p>
+
+  <div class="strip">
+    <span class="lbl">收起态 · 条件行 32dp</span>
+    <span class="chip on">收藏 500+<svg class="ic xs x"><use href="#i-x"/></svg></span>
+    <span class="chip on">横图<svg class="ic xs x"><use href="#i-x"/></svg></span>
+    <span class="chip on">标签完全<svg class="ic xs x"><use href="#i-x"/></svg></span>
+  </div>
+
+  <p style="font-size:12.5px;color:var(--fg-3)">这一行是从 A 那儿借的，也是 C 唯一需要「借」的地方。标签模式虽然住在框里，改了档也要出现在这一行 —— 它是生效中的条件，不能在摘要里缺席。</p>
+
+  <h2>五、和 A 的差别</h2>
+
+  <table>
+    <thead><tr><th>　</th><th>C 卡内面板</th><th>A 抽屉</th></tr></thead>
+    <tbody>
+      <tr><td>层数</td><td><strong>1 层</strong>（面板是卡的子件）</td><td>2 层（卡 + 抽屉 + 遮罩）</td></tr>
+      <tr><td>卡高（展开）</td><td>429dp</td><td>245dp（抽屉不在卡里）</td></tr>
+      <tr><td>结果墙</td><td>面板开着时被卡压住（无遮罩）</td><td>抽屉 + 遮罩盖住</td></tr>
+      <tr><td>补全 / 历史</td><td><strong>让位</strong></td><td>让位（被抽屉盖）</td></tr>
+      <tr><td>和「同一块面长高」这条语言</td><td><span class="tag ok">完全一致</span></td><td>另起一层，靠遮罩过渡</td></tr>
+      <tr><td>关掉后还记得筛了什么</td><td>要靠条件行补</td><td>条件行常驻</td></tr>
+      <tr><td>实现</td><td>卡里加一个 <code>AnimatedVisibility</code></td><td>新写一颗 sheet</td></tr>
+    </tbody>
+  </table>
+
+  <p>C 最值钱的一条是最后两行：它<strong>不多一层</strong>，而且和这张卡从 9 月就在用的「同一块面长高」是同一句话。A 的抽屉再顺，也是这个页面里突然出现的一块浮层 —— 而这张卡一直是「自己变高」的。</p>
+
+  <h2>六、落地要点</h2>
+
+  <ol>
+    <li><strong>面板长在卡里，排序行下面</strong>：输入行是锚点（也是共享元素那一端），不能动；长在它下面，切域与开合都读作「这块面在长高」。</li>
+    <li><strong>开面板 = 收键盘 + 收列表</strong>：两件事同一次动作里做完，用同一对 <code>expandVertically / shrinkVertically</code>（160ms）。列表不是「隐藏」，是让位 —— 面板关掉它原样回来。</li>
+    <li><strong>筛选钮的双向箭头</strong>：收起时 ⌄、展开时 ⌃，与面板开合同步。数字徽标只数「非默认」的项（标签模式不算，它在框里）。</li>
+    <li><strong>不新增任何尺寸 token</strong>：44dp 标签列取 <code>space9 + space6</code>，面板圆角取 <code>shape.large</code>，行距取 <code>space7</code>，全是现成的。</li>
+  </ol>
+
+  <h2>七、一条待定</h2>
+  <p><strong>面板展开时，要不要留一行补全？</strong> 现在的画法是整块让位。另一种是留最后一行（44dp）在面板下面，好处是「边改筛选边挑词」不用来回关。代价是卡再长 44dp（473dp），而 429 已经贴着上限了 —— 我按「全让位」画。</p>
+
+  <footer>
+    像素君 · 方案 C 稿 · 2026-10-17 · 示意图按真机几何 1:1 画（411dp 屏、873dp 高、密度 2.625）。<br>
+    这一稿的结构前提：pixiv 走<strong>内容域</strong>进、不在卡里那排<strong>来源轴</strong>上，所以 Pixiv 档没有分段器（那 44dp 换成了排序行）。<br>
+    卡内那两行「根据你的收藏」已按你的要求从代码里删掉（<code>GallerySearchArea</code> + 调用点 + 组件本体），这一稿的卡里也没有它。
+  </footer>
+
+</div>
+</body>
+</html>

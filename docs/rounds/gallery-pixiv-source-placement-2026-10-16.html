@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画廊接入 pixiv 的入口形态方案 · 2026-10-16</title>
+<style>
+  :root{
+    --bg:#141413; --surface:#1F1F1E; --surface-2:#262625; --line:#3A3A38;
+    --fg:#F1EFE8; --fg-2:#B4B2A9; --fg-3:#888780;
+    --accent:#F0997B; --accent-ink:#D85A30; --warn:#F09595;
+    --pixiv:#0096FA; --yandere:#EE8887; --gelbooru:#006FFA;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.75;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:56px 28px 96px}
+  h1{font-size:26px;font-weight:600;margin:0 0 10px;letter-spacing:-.2px}
+  .sub{color:var(--fg-3);font-size:13px;margin:0 0 8px}
+  h2{font-size:18px;font-weight:600;margin:56px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;font-weight:600;margin:32px 0 10px}
+  h4{font-size:13.5px;font-weight:600;margin:22px 0 8px;color:var(--fg-2)}
+  p{margin:10px 0;color:var(--fg-2)}
+  strong{color:var(--fg);font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--accent)}
+  ul{margin:10px 0;padding-left:20px;color:var(--fg-2)}
+  li{margin:6px 0}
+  .lede{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent-ink);
+    border-radius:12px;padding:18px 22px;margin:24px 0}
+  .lede p{margin:6px 0;color:var(--fg)}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--fg-3);font-weight:500;font-size:12px;white-space:nowrap}
+  td{color:var(--fg-2)}
+  td:first-child{color:var(--fg)}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--fg-3);white-space:nowrap}
+  .tag.ok{color:#A5D6A7;border-color:#2E4A2E;background:#1B2A1B}
+  .tag.warn{color:#F0C075;border-color:#4A3A1E;background:#2A2318}
+  .tag.no{color:var(--warn);border-color:#4A2222;background:#2A1A1A}
+  .tag.rec{color:#3A1F17;background:var(--accent);border-color:var(--accent);font-weight:600}
+  .figure{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:20px 18px;margin:22px 0;overflow-x:auto}
+  .figure svg{display:block;width:100%;height:auto;min-width:660px}
+  .cap{color:var(--fg-3);font-size:12px;margin:12px 0 0;text-align:center}
+  .rule{border-left:2px solid var(--line);padding-left:14px;margin:16px 0;color:var(--fg-3);font-size:13px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 0}
+  @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .box h4{margin-top:0}
+  .box.good{border-left:3px solid #2E4A2E}
+  .box.bad{border-left:3px solid #4A2222}
+  footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--fg-3);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>画廊接入 pixiv：入口形态方案</h1>
+  <p class="sub">范围：只谈 <code>app/</code> 手机档的信息架构与入口形态。未动一行代码，本文是方案稿。</p>
+  <p class="sub">依据：<code>gallery/ui/*</code> 与 <code>ui/tokens/*</code> 通读 ＋ 用户 2026-10-16 提供的画廊首页真机截图（1080×2376）</p>
+
+  <div class="lede">
+    <p><strong>一句话结论：建议「分区」，不建议「混成第四站」。</strong></p>
+    <p>不是审美偏好，是一条算出来的硬约束：<strong>现在那一排来源分段器实得 337dp，4 格时每格文字可用 56.8dp 已经在临界；
+    加到 5 格掉到 39.4dp，三个拉丁站名全部进省略号</strong>（§二 有完整推导）。
+    而 pixiv 与 booru 的差异不只是"多一个站"，是<strong>搜索语法、分级字形、排行档三套语义全都不同</strong> ——
+    硬塞进同一条来源轴，会让「全部」这一档变成一句读不出对错的假读数。</p>
+    <p>分区之后，两个世界的轴各自自持，而分段器永远回到<strong>今天已经验收过的 4 格密度</strong>。</p>
+  </div>
+
+  <div class="lede" style="border-left-color:#F09595">
+    <p><strong>2026-10-16 现量改判（本文件下面三处结论已过期，原文保留不删）</strong></p>
+    <p>① <strong>§三 的位置不成立</strong>：来源轴今天不在 chrome 下面，它长在展开的搜索卡里
+    （<code>gallery/ui/GallerySearchArea.kt:778</code>），首页那一排 2026-10-15 已被点名摘掉
+    （<code>gallery/ui/GalleryHomeChrome.kt:51-67</code>「顶栏下因此永远不会同时出现两套来源切换器：只有一套，长在卡里」）。</p>
+    <p>② <strong>§一 的档名是错的</strong>：匿名 JSON 认的是 <code>daily/weekly/monthly/rookie/original/male/female</code>，
+    而 <code>day/week/month</code> 回 404「ランキングが見つかりません」。</p>
+    <p>③ <strong>§一 的 R-18 那句要改</strong>：<code>mode=daily_r18</code> 与 <code>male_r18</code> 是 <strong>403 整档登录墙</strong>，
+    不是"被静默过滤"。另：§二 那 337dp 的账<strong>成立</strong>，只是它算的是卡内那一排，不是首页。</p>
+    <p>全站放法调研与端点状态表：<code>docs/rounds/gallery-pixiv-placement-options-2026-10-16.md</code>。
+    用户 2026-10-16 另给了一张新示意（搜索框下面三格「综合 / 图库站 / Pixiv」），它落在<strong>内容层第一行</strong>，
+    三把尺子（66dp 常量、卡内分段器计数、收栏阈值）一个字都不用改。</p>
+  </div>
+
+  <h2>一、先说清楚：pixiv 与现有三站的差异有多大</h2>
+
+  <p>这三条决定了它能不能跟 booru 共用一根轴。全部来自实测（子代理 2026-10-16 逐端点跑过，未本机复现）。</p>
+
+  <table>
+    <thead><tr><th>轴</th><th>现有三站（booru）</th><th>pixiv</th><th>能不能共用一根轴</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>搜索条件</td>
+        <td><code>tags=1girl solo order:score</code><br>空格分隔的标签，前缀 <code>-</code> 排除</td>
+        <td><code>word=…&amp;search_target=…&amp;sort=…&amp;mode=…</code><br>单关键词 + 五个正交参数</td>
+        <td><span class="tag no">不能</span> 同一串打过去，pixiv 那腿会把 <code>order:score</code> 当成搜索词</td>
+      </tr>
+      <tr>
+        <td>排行档</td>
+        <td>天 / 周 / 月 / 年 / 全部<br>（Gelbooru 只有后两档，已有特例分支）</td>
+        <td>日 / 周 / 月 / <strong>新人</strong> / 原创 / 男性向 / 女性向<br><strong>没有年榜</strong></td>
+        <td><span class="tag warn">勉强</span> 交集只有天/周/月；pixiv 有「新人」而 booru 没有，booru 有「年」而 pixiv 没有</td>
+      </tr>
+      <tr>
+        <td>分级字形</td>
+        <td><code>s/q/e</code>（yande.re）<br><code>general/sensitive/questionable/explicit</code>（Gelbooru）<br><code>g/s/q/e</code>（Safebooru）</td>
+        <td><code>xRestrict</code> 0/1/2 ＋ <code>sl</code> 数值档<br>且<strong>匿名时 R-18 被静默过滤</strong></td>
+        <td><span class="tag no">不能</span> 又是两套新字形；且匿名档根本拿不到 R-18 样本去验映射</td>
+      </tr>
+      <tr>
+        <td>一条作品 = ？</td>
+        <td>一张图</td>
+        <td><strong>一组图</strong>（可几十页）＋ 动图（ugoira）</td>
+        <td><span class="tag warn">要建模</span> 这是模型层的事，但它会渗到 UI：卡片角要不要标「12 页」</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="rule">
+    这张表就是「分区 vs 混排」的全部理由。<strong>差异集中在"怎么问"这一层，而不在"怎么摆"那一层</strong> ——
+    所以正确的切法是切在<strong>入口</strong>，不是切在卡片墙。
+  </div>
+
+  <h2>二、硬约束：那一排分段器已经装不下了</h2>
+
+  <p>这一条是算出来的。<code>VeneraSegmentedButton</code> 自己不定宽（组件头注："整条宽度仍由<strong>调用方</strong>推导"），
+  而搜索卡里那个调用点传的是 <code>fillMaxWidth()</code> —— 所以每格宽度由<strong>真实的 padding 链</strong>决定，不是屏宽除以格数。
+  把链子走一遍（截图 1080px 宽，<strong>按密度 2.75 折</strong> ≈ 393dp —— 密度这一项是假设，
+  但仓内多处注释引用的正是 393dp 参考机，且下面的结论只依赖"<strong>337dp 实宽</strong>"这一个相对量，不依赖绝对值）：</p>
+
+  <table>
+    <thead><tr><th>环节</th><th>来源</th><th>剩余宽</th></tr></thead>
+    <tbody>
+      <tr><td>屏宽</td><td>393dp 手机档</td><td>393dp</td></tr>
+      <tr><td>搜索卡外层左右内缩</td><td><code>screenHorizontal</code> 12dp × 2</td><td>369dp</td></tr>
+      <tr><td>卡内那一列左右内衬</td><td><code>space8</code> 16dp × 2</td><td><strong>337dp</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>也就是分段器实得 <strong>337dp</strong>。再扣掉格间 <code>segmentedGap</code>（10dp）与每格内部文字左右各 <code>space5</code>（10dp）：</p>
+
+  <table>
+    <thead><tr><th>格数</th><th>格间占用</th><th>每格总宽</th><th>文字可用宽</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>4 格（今天：全部 / yande.re / Gelbooru / Safebooru）</td>
+        <td>3 × 10 = 30dp</td>
+        <td>76.8dp</td>
+        <td><strong>56.8dp</strong></td>
+        <td><span class="tag warn">已到临界</span> "Safebooru"（9 字符）就在边上</td>
+      </tr>
+      <tr>
+        <td>5 格（＋ pixiv）</td>
+        <td>4 × 10 = 40dp</td>
+        <td>59.4dp</td>
+        <td><strong>39.4dp</strong></td>
+        <td><span class="tag no">掉 31%</span> 三个拉丁站名全进省略号</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="rule">
+    <strong>关于字宽的诚实标注：</strong>上面"每格总宽 / 文字可用宽"两列是<strong>从 token 精确算出的</strong>（12、16、10、10 都是源码里的确定值）；
+    而"某个站名要多少 dp"是<strong>按 14sp 拉丁字均宽估的，本机没有设备量过</strong>。
+    但结论不依赖那个估算 —— <strong>文字可用宽从 56.8dp 掉到 39.4dp 是确定的</strong>，
+    而任何一个 8~9 字符的拉丁站名都不可能塞进 39dp。所以 5 格必然大面积省略号，这一条成立。
+  </div>
+
+  <p>更糟的是宽屏档：<code>isWideScreen</code>（&gt;600dp）会把高度升到 <code>segmentedHeightWide</code>（56dp）、
+  字号升到 <code>itemTitle</code>（MD3 16sp / MIUIX 17sp），<strong>字更大而格数不变</strong> —— 平板上 5 格崩得比手机更早。</p>
+
+  <div class="figure">
+    <svg viewBox="0 0 700 250" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>分段器宽度实测对比：4 格 vs 5 格</title>
+      <text x="20" y="26" font-size="12" font-weight="500" fill="#888780" font-family="system-ui, sans-serif">4 格（今天）· 实得 337dp · 每格 76.8dp · 文字可用 56.8dp</text>
+      <!-- 4 segments -->
+      <rect x="20" y="38" width="150" height="42" rx="21" fill="#F0997B"/>
+      <text x="95" y="64" text-anchor="middle" font-size="13" font-weight="500" fill="#3A1F17" font-family="system-ui, sans-serif">全部</text>
+      <rect x="180" y="38" width="150" height="42" rx="21" fill="#262625"/>
+      <text x="255" y="64" text-anchor="middle" font-size="13" fill="#F1EFE8" font-family="system-ui, sans-serif">yande.re</text>
+      <rect x="340" y="38" width="150" height="42" rx="21" fill="#262625"/>
+      <text x="415" y="64" text-anchor="middle" font-size="13" fill="#F1EFE8" font-family="system-ui, sans-serif">Gelbooru</text>
+      <rect x="500" y="38" width="150" height="42" rx="21" fill="#262625"/>
+      <text x="575" y="64" text-anchor="middle" font-size="13" fill="#F1EFE8" font-family="system-ui, sans-serif">Safebooru</text>
+      <!-- text width marker -->
+      <line x1="510" y1="90" x2="640" y2="90" stroke="#4A3A1E" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="575" y="106" text-anchor="middle" font-size="10.5" fill="#F0C075" font-family="system-ui, sans-serif">9 字符 ≈ 57dp，正好顶到 56.8dp</text>
+
+      <text x="20" y="152" font-size="12" font-weight="500" fill="#888780" font-family="system-ui, sans-serif">5 格（＋ pixiv）· 每格 59.4dp · 文字可用 39.4dp</text>
+      <!-- 5 segments -->
+      <rect x="20" y="164" width="120" height="42" rx="21" fill="#F0997B"/>
+      <text x="80" y="190" text-anchor="middle" font-size="13" font-weight="500" fill="#3A1F17" font-family="system-ui, sans-serif">全部</text>
+      <rect x="150" y="164" width="120" height="42" rx="21" fill="#262625"/>
+      <text x="210" y="190" text-anchor="middle" font-size="13" fill="#F09595" font-family="system-ui, sans-serif">yande…</text>
+      <rect x="280" y="164" width="120" height="42" rx="21" fill="#262625"/>
+      <text x="340" y="190" text-anchor="middle" font-size="13" fill="#F09595" font-family="system-ui, sans-serif">Gelboo…</text>
+      <rect x="410" y="164" width="120" height="42" rx="21" fill="#262625"/>
+      <text x="470" y="190" text-anchor="middle" font-size="13" fill="#F09595" font-family="system-ui, sans-serif">Safebo…</text>
+      <rect x="540" y="164" width="120" height="42" rx="21" fill="#262625"/>
+      <text x="600" y="190" text-anchor="middle" font-size="13" fill="#F1EFE8" font-family="system-ui, sans-serif">pixiv</text>
+      <text x="350" y="228" text-anchor="middle" font-size="11" fill="#F09595" font-family="system-ui, sans-serif">文字可用宽掉 31%（56.8 → 39.4dp），三个拉丁站名全进省略号</text>
+    </svg>
+    <p class="cap">图 1 · 那一排分段器的实际容量。5 格不是"挤一点"，是"三格认不出"。</p>
+  </div>
+
+  <h2>三、三个方案</h2>
+
+  <div class="figure">
+    <svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>三个入口形态并排对比</title>
+
+      <!-- ===== A ===== -->
+      <text x="150" y="22" text-anchor="middle" font-size="13" font-weight="600" fill="#F1EFE8" font-family="system-ui, sans-serif">A · 混成第四站</text>
+      <text x="150" y="40" text-anchor="middle" font-size="11" fill="#F09595" font-family="system-ui, sans-serif">不推荐</text>
+      <rect x="20" y="54" width="260" height="350" rx="18" fill="#1F1F1E" stroke="#3A3A38" stroke-width="0.5"/>
+      <text x="38" y="78" font-size="10" fill="#5F5E5A" font-family="system-ui, sans-serif">17:02</text>
+      <text x="38" y="112" font-size="19" font-weight="500" fill="#F1EFE8" font-family="system-ui, sans-serif">画廊</text>
+      <!-- chrome -->
+      <rect x="36" y="126" width="228" height="40" rx="20" fill="#262625"/>
+      <text x="60" y="151" font-size="11.5" fill="#888780" font-family="system-ui, sans-serif">标签 / 画师 / 作品</text>
+      <circle cx="238" cy="146" r="6" fill="none" stroke="#888780" stroke-width="1"/>
+      <!-- 5 segments -->
+      <rect x="36" y="180" width="42" height="28" rx="14" fill="#F0997B"/>
+      <text x="57" y="198" text-anchor="middle" font-size="8.5" fill="#3A1F17" font-family="system-ui, sans-serif">全部</text>
+      <rect x="82" y="180" width="42" height="28" rx="14" fill="#262625"/>
+      <text x="103" y="198" text-anchor="middle" font-size="8.5" fill="#F09595" font-family="system-ui, sans-serif">yand…</text>
+      <rect x="128" y="180" width="42" height="28" rx="14" fill="#262625"/>
+      <text x="149" y="198" text-anchor="middle" font-size="8.5" fill="#F09595" font-family="system-ui, sans-serif">Gelb…</text>
+      <rect x="174" y="180" width="42" height="28" rx="14" fill="#262625"/>
+      <text x="195" y="198" text-anchor="middle" font-size="8.5" fill="#F09595" font-family="system-ui, sans-serif">Safe…</text>
+      <rect x="220" y="180" width="42" height="28" rx="14" fill="#262625"/>
+      <text x="241" y="198" text-anchor="middle" font-size="8.5" fill="#F1EFE8" font-family="system-ui, sans-serif">pixiv</text>
+      <!-- notice -->
+      <rect x="36" y="220" width="228" height="34" rx="8" fill="#2A2318" stroke="#4A3A1E" stroke-width="0.5"/>
+      <text x="48" y="234" font-size="9.5" fill="#F0C075" font-family="system-ui, sans-serif">⚠ 同一串条件打四站</text>
+      <text x="48" y="247" font-size="9.5" fill="#F0C075" font-family="system-ui, sans-serif">「周」这一档 pixiv 认、年榜不认</text>
+      <!-- wall -->
+      <rect x="36" y="266" width="70" height="94" rx="6" fill="#262625"/>
+      <rect x="112" y="266" width="70" height="72" rx="6" fill="#262625"/>
+      <rect x="188" y="266" width="70" height="84" rx="6" fill="#262625"/>
+      <rect x="36" y="366" width="70" height="30" rx="6" fill="#262625"/>
+      <rect x="112" y="344" width="70" height="52" rx="6" fill="#262625"/>
+      <rect x="188" y="356" width="70" height="40" rx="6" fill="#262625"/>
+      <text x="150" y="396" text-anchor="middle" font-size="9.5" fill="#888780" font-family="system-ui, sans-serif">卡片墙本身不用改</text>
+
+      <!-- ===== B ===== -->
+      <text x="470" y="22" text-anchor="middle" font-size="13" font-weight="600" fill="#F0997B" font-family="system-ui, sans-serif">B · 分区（推荐）</text>
+      <text x="470" y="40" text-anchor="middle" font-size="11" fill="#A5D6A7" font-family="system-ui, sans-serif">分段器回到已验收的密度</text>
+      <rect x="340" y="54" width="260" height="350" rx="18" fill="#1F1F1E" stroke="#F0997B" stroke-width="1"/>
+      <text x="358" y="78" font-size="10" fill="#5F5E5A" font-family="system-ui, sans-serif">17:02</text>
+      <text x="358" y="112" font-size="19" font-weight="500" fill="#F1EFE8" font-family="system-ui, sans-serif">画廊</text>
+      <rect x="356" y="126" width="228" height="40" rx="20" fill="#262625"/>
+      <text x="380" y="151" font-size="11.5" fill="#888780" font-family="system-ui, sans-serif">标签 / 画师 / 作品</text>
+      <circle cx="558" cy="146" r="6" fill="none" stroke="#888780" stroke-width="1"/>
+      <!-- zone selector: 2 cells -->
+      <rect x="356" y="176" width="112" height="34" rx="17" fill="#F0997B"/>
+      <text x="412" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#3A1F17" font-family="system-ui, sans-serif">图站</text>
+      <rect x="474" y="176" width="112" height="34" rx="17" fill="#262625"/>
+      <text x="530" y="198" text-anchor="middle" font-size="12" fill="#F1EFE8" font-family="system-ui, sans-serif">pixiv</text>
+      <!-- site axis 4 cells -->
+      <rect x="356" y="220" width="52" height="26" rx="13" fill="#3A3A38"/>
+      <text x="382" y="237" text-anchor="middle" font-size="9" fill="#F1EFE8" font-family="system-ui, sans-serif">全部</text>
+      <rect x="412" y="220" width="52" height="26" rx="13" fill="#2A2A29"/>
+      <text x="438" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">yande.re</text>
+      <rect x="468" y="220" width="52" height="26" rx="13" fill="#2A2A29"/>
+      <text x="494" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">Gelbooru</text>
+      <rect x="524" y="220" width="60" height="26" rx="13" fill="#2A2A29"/>
+      <text x="554" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">Safebooru</text>
+      <text x="470" y="264" text-anchor="middle" font-size="9" fill="#888780" font-family="system-ui, sans-serif">↑ 选「图站」时是这一排（4 格）</text>
+      <!-- wall -->
+      <rect x="356" y="278" width="70" height="82" rx="6" fill="#262625"/>
+      <rect x="432" y="278" width="70" height="64" rx="6" fill="#262625"/>
+      <rect x="508" y="278" width="70" height="76" rx="6" fill="#262625"/>
+      <rect x="356" y="366" width="70" height="30" rx="6" fill="#262625"/>
+      <rect x="432" y="348" width="70" height="48" rx="6" fill="#262625"/>
+      <rect x="508" y="360" width="70" height="36" rx="6" fill="#262625"/>
+
+      <!-- ===== B' pixiv zone ===== -->
+      <text x="790" y="22" text-anchor="middle" font-size="13" font-weight="600" fill="#0096FA" font-family="system-ui, sans-serif">B′ · 切到 pixiv 那一区</text>
+      <text x="790" y="40" text-anchor="middle" font-size="11" fill="#888780" font-family="system-ui, sans-serif">同一屏，只换第二排</text>
+      <rect x="660" y="54" width="260" height="350" rx="18" fill="#1F1F1E" stroke="#3A3A38" stroke-width="0.5"/>
+      <text x="678" y="78" font-size="10" fill="#5F5E5A" font-family="system-ui, sans-serif">17:02</text>
+      <text x="678" y="112" font-size="19" font-weight="500" fill="#F1EFE8" font-family="system-ui, sans-serif">画廊</text>
+      <rect x="676" y="126" width="228" height="40" rx="20" fill="#262625"/>
+      <text x="700" y="151" font-size="11.5" fill="#888780" font-family="system-ui, sans-serif">标签 / 画师 / 作品</text>
+      <circle cx="878" cy="146" r="6" fill="none" stroke="#888780" stroke-width="1"/>
+      <rect x="676" y="176" width="112" height="34" rx="17" fill="#262625"/>
+      <text x="732" y="198" text-anchor="middle" font-size="12" fill="#F1EFE8" font-family="system-ui, sans-serif">图站</text>
+      <rect x="794" y="176" width="112" height="34" rx="17" fill="#0096FA"/>
+      <text x="850" y="198" text-anchor="middle" font-size="12" font-weight="600" fill="#FFFFFF" font-family="system-ui, sans-serif">pixiv</text>
+      <!-- pixiv ranking axis 4 cells -->
+      <rect x="676" y="220" width="52" height="26" rx="13" fill="#0096FA"/>
+      <text x="702" y="237" text-anchor="middle" font-size="9" fill="#FFFFFF" font-family="system-ui, sans-serif">日榜</text>
+      <rect x="732" y="220" width="52" height="26" rx="13" fill="#2A2A29"/>
+      <text x="758" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">周榜</text>
+      <rect x="788" y="220" width="52" height="26" rx="13" fill="#2A2A29"/>
+      <text x="814" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">月榜</text>
+      <rect x="844" y="220" width="60" height="26" rx="13" fill="#2A2A29"/>
+      <text x="874" y="237" text-anchor="middle" font-size="9" fill="#B4B2A9" font-family="system-ui, sans-serif">新人榜</text>
+      <text x="790" y="264" text-anchor="middle" font-size="9" fill="#888780" font-family="system-ui, sans-serif">↑ pixiv 自己的档，不与 booru 混</text>
+      <rect x="676" y="278" width="70" height="82" rx="6" fill="#262625"/>
+      <rect x="752" y="278" width="70" height="64" rx="6" fill="#262625"/>
+      <rect x="828" y="278" width="70" height="76" rx="6" fill="#262625"/>
+      <rect x="676" y="366" width="70" height="30" rx="6" fill="#262625"/>
+      <rect x="752" y="348" width="70" height="48" rx="6" fill="#262625"/>
+      <rect x="828" y="360" width="70" height="36" rx="6" fill="#262625"/>
+    </svg>
+    <p class="cap">图 2 · A 是"多加一格"；B 是"多一层分区，两边的轴各自自持"。卡片墙三者都不用改。</p>
+  </div>
+
+  <h3>方案 A · 混成第四站</h3>
+
+  <div class="two">
+    <div class="box good">
+      <h4>好处</h4>
+      <ul>
+        <li>改动最小：<code>GallerySearchSource.options</code> 自动多一格，「全部」自动包含它</li>
+        <li>与现有「一次打多站」的心智完全一致</li>
+        <li>收藏 / 历史 / 关注那些存储**天然不用动**</li>
+      </ul>
+    </div>
+    <div class="box bad">
+      <h4>代价（前两条是致命的）</h4>
+      <ul>
+        <li><strong>分段器三格变省略号</strong>（§二已量）</li>
+        <li><strong>「全部」这一档变成假读数</strong>：同一串条件打四站，pixiv 那腿的 <code>order:score</code> 会被当搜索词、排行档两边交集只有三个 —— 胶囊上写「周」，实际有一站按别的口径出的图</li>
+        <li>要额外加第三套分级字形 + 第三套排序后缀，全塞进已经有两个特例分支的 <code>GalleryRankings</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>方案 B · 分区（推荐）</h3>
+
+  <p>在 chrome 下面加<strong>一层两格的分区选择器</strong>，它决定第二排是哪一根轴：</p>
+
+  <table>
+    <thead><tr><th></th><th>分区 = 图站</th><th>分区 = pixiv</th></tr></thead>
+    <tbody>
+      <tr><td>第二排（轴）</td><td>全部 / yande.re / Gelbooru / Safebooru<br><span class="tag ok">4 格 · 今天已验收</span></td><td>日榜 / 周榜 / 月榜 / 新人榜<br><span class="tag ok">4 格</span></td></tr>
+      <tr><td>搜索语法</td><td><code>tags=… order:score</code></td><td><code>word=…&amp;sort=…&amp;mode=…</code></td></tr>
+      <tr><td>「全部」的含义</td><td>三个 booru 的并（语义同源，合并成立）</td><td><span class="tag ok">不摆这一档</span> pixiv 自己就是一站，没有"并"可言</td></tr>
+      <tr><td>分级</td><td>沿用现有两套字形</td><td>新增 <code>xRestrict</code>/<code>sl</code> 一套</td></tr>
+      <tr><td>排序后缀</td><td><code>GalleryRankings.suffix()</code> 现有分支</td><td>走 pixiv 自己的表</td></tr>
+    </tbody>
+  </table>
+
+  <div class="two">
+    <div class="box good">
+      <h4>好处</h4>
+      <ul>
+        <li><strong>两根轴各自自持</strong>：两边的排序档、语法、分级都不互相污染</li>
+        <li><strong>分段器回到 4 格</strong>，也就是今天已经在真机上验收过的密度</li>
+        <li>两格的分区选择器每格 ≈163dp（同样 337dp 实宽下 (337−10)/2），<strong>怎么写都不会省略号</strong></li>
+        <li>「全部」这一档的语义重新变真：它只并同源的三个 booru</li>
+        <li>将来 pixiv 若要上鉴权（关注 / R-18），影响面被关在第二排之内</li>
+      </ul>
+    </div>
+    <div class="box bad">
+      <h4>代价</h4>
+      <ul>
+        <li>多一层。第一排两格 + 第二排四格 = <strong>两排控件</strong>，比今天多占一层的高度。
+          具体多少取决于第一排用哪一档：走 <code>VeneraSegmentedButton</code>（<code>segmentedHeight</code> 48dp）＋ 行距 ≈ <strong>56~58dp</strong>；
+          走 chip 那一档（<code>filterChipHeight</code> 32dp）≈ <strong>40~44dp</strong>。方案稿里画的是后者。</li>
+        <li><code>GallerySearchViewModel.source</code> 要变成"分区 + 轴"两段状态（换分区 = 换一轮上下文，与现有"换来源=换一轮"同一条判据）</li>
+        <li>首次进入要有个默认分区（建议默认「图站」，不改变老用户观感）</li>
+      </ul>
+    </div>
+  </div>
+
+  <h4>关于那多出来的一层高度</h4>
+  <p>可以用<strong>把分区选择器折进 chrome 那一行</strong>来省掉：chrome 右边那枚反搜入口挪进搜索卡，
+  腾出来的位置摆一个两格的小分段器。这样净增高 ≈ 0。但那一行是定高件
+  （<code>galleryHomeChromeHeight()</code> = space2 + 56 + space3 = 66dp，且与收栏阈值有硬耦合、有用例钉着），
+  动它要同时改常量与 <code>GalleryHomeChromeTest</code>。建议<strong>第一版先老老实实摆两排</strong>，真机看过再决定要不要折。</p>
+
+  <h3>方案 C · pixiv 独立成第六个 Tab</h3>
+
+  <div class="two">
+    <div class="box good">
+      <h4>好处</h4>
+      <ul><li>隔离最彻底，画廊那一屏一行都不用改</li></ul>
+    </div>
+    <div class="box bad">
+      <h4>代价</h4>
+      <ul>
+        <li>底栏今天 5 格（<code>VeneraNavTab.entries</code>：首页/收藏/搜索/画廊/探索）。6 格在 393dp 上每格 ≈61dp，图标 + 文字挤</li>
+        <li>加一格要动 <code>tabIndex</code> / <code>currentTab</code> / <code>hasRoute</code> 三处映射 + 底栏那套物理回弹指示器</li>
+        <li><strong>底栏是最贵的常驻位置</strong>，为"第四个图源"占一格不划算 —— 它本该留给"另一类内容"</li>
+        <li>pixiv 与画廊共用卡片墙、收藏、历史、画师页，拆成两个 Tab 会让这些共享件出现两份入口</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>四、推荐：方案 B，分三步走</h2>
+
+  <table>
+    <thead><tr><th>步</th><th>做什么</th><th>为什么先做它</th><th>验收</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>B1</strong></td>
+        <td>只加分区选择器 + 两根轴，<strong>先不接 pixiv 的网</strong>（第二排先摆假档，或整块隐藏）</td>
+        <td>先把"多一层"这件事在真机上量掉：高度、收栏阈值、与 chrome 的关系。这一步零网络风险</td>
+        <td>真机截图：两排控件的间距、滚动时收栏是否还正常</td>
+      </tr>
+      <tr>
+        <td><strong>B2</strong></td>
+        <td>pixiv 只进<strong>排行 + 搜索</strong>，不进日榜混合墙</td>
+        <td>用户显式选了 pixiv 才发车，影响面最小；分级与多页建模可以在这里单独验</td>
+        <td>pixiv 那一区出图、卡片分级正确、页尾读数对</td>
+      </tr>
+      <tr>
+        <td><strong>B3</strong></td>
+        <td>真机验过之后再考虑进「每日热门」混合墙</td>
+        <td>混合墙会把四站各抽 20 洗成 80 张一屏，错了就是整屏内容不对</td>
+        <td>首页混合墙里 pixiv 卡片比例正确、无 ugoira 黑卡</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="lede">
+    <p><strong>为什么不建议一上来就做 A：</strong>A 的"改动最小"是真的，但它把两个成本藏到了后面 ——
+    分段器崩掉是<strong>立刻可见</strong>的，而「全部」这一档的语义污染是<strong>静默</strong>的：
+    用户选了「周」，屏上四站的图都有，而他读不出 pixiv 那几张其实按别的口径出的。
+    本仓对这类"读不出对错"的形态一贯是零容忍，所以宁可先多一层。</p>
+  </div>
+
+  <h2>五、几个待你拍板的点</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>问题</th><th>我的建议</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>分区选择器的<strong>默认档</strong>是「图站」还是「pixiv」？</td><td><strong>图站</strong>。默认档不该改变老用户的观感（与"全部作为默认档"那次拍板同一条理由）</td></tr>
+      <tr><td>2</td><td>分区选择器<strong>折进 chrome</strong> 还是<strong>单独一排</strong>？</td><td>先单独一排。折进去要动定高常量与它的守卫用例，等真机量过高度的代价再说</td></tr>
+      <tr><td>3</td><td>pixiv 那一区第二排摆<strong>排行档</strong>还是<strong>搜索</strong>？</td><td>摆排行档（日/周/月/新人）—— 它是"打开就有内容"的那一档；搜索走 chrome 那条，两区共用</td></tr>
+      <tr><td>4</td><td>多页作品（一条 illust 几十页）在<strong>卡片角</strong>要不要标「12 页」？</td><td>要标。否则点进去才发现是组图，与"点开看到 12 张"的预期不符</td></tr>
+      <tr><td>5</td><td>ugoira（动图）在卡片上怎么表达？</td><td>沿用现有视频角标那一套（<code>durationLabel</code> 那条），但**先不播** —— 点开给首帧 + 一句"暂不支持播放"</td></tr>
+    </tbody>
+  </table>
+
+  <h2>六、明确不做</h2>
+  <ul>
+    <li><strong>不动卡片墙</strong>。三个方案的墙都一样，pixiv 卡片复用现有 <code>GalleryCardsGrid</code>。</li>
+    <li><strong>不做第六个底栏 Tab</strong>（方案 C 的理由见上）。</li>
+    <li><strong>不把 pixiv 塞进「全部」</strong>。哪怕将来做 A，也不该让「全部」包含一个语法不同的站。</li>
+    <li><strong>不在第一版做鉴权</strong>（关注 / 书签 / R-18）。匿名已覆盖浏览 + 搜索 + 排行，鉴权带进来的是凭据存储、刷新失败、账号风控三件长期负担。</li>
+  </ul>
+
+  <footer>
+    方案稿 · 2026-10-16 · 未动一行代码。<br>
+    依据：<code>gallery/ui/GalleryHomeChrome.kt</code>、<code>gallery/ui/GallerySearchArea.kt</code>（来源轴那一处）、
+    <code>components/venera/VeneraSegmentedButton.kt</code>、<code>ui/tokens/Spacing.kt</code>、<code>ui/tokens/Color.kt</code>，
+    以及 pixiv 匿名数据面的实测结论（<code>docs/rounds/gallery-pixiv-source-feasibility-2026-10-16.md</code>，若已落档）。
+  </footer>
+
+</div>
+</body>
+</html>
