@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.domain
 
 import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.data.PixivPage
 import com.venera.compose.gallery.data.PixivWorkDetail
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -84,6 +85,53 @@ object PixivWorkPage {
                 pageOrdinal = index,
             )
         }
+
+    /**
+     * 首帧那一格的**种子**（批 B⑥，2026-10-19）：详情腿还没到，用列表腿那条作品长出一枚
+     * "只有第 0 页"的假详情，交给 [pageWallOf] 走**同一颗算式** —— 逐页键于是与真详情那一档
+     * 天然相等（`uid:p0`，屏上不另拼 ":p0"，那是第二处真相），落点登记 / 交棒 / `openPages`
+     * 三条都接得住同一把键。
+     *
+     * pixez 从不"等落点"的凭据就压在这一格上（计划 §4.3 第 1 条）：它的首帧有真比例，落点
+     * 第一帧就量得出来；而这一屏从前把"详情到手"当成起飞前置 —— 真机慢首开（详情 700ms >
+     * 预算 600ms）读起来就是"点卡进去压根不飞"（§9.3 排行榜那一格的读数，`起飞` 那行压根没打）。
+     *
+     * **只许用来摆第 0 页那一格、量落点、报逐页键、喂 `openPages`**（点首帧那格进播放器时
+     * 手里得有东西，否则是死把手）；"读数的脸"一律留空 —— 空 = 站方没给，屏上那一格随之不摆
+     * （与 [facts] / [tagsShown] 既有口径同一条，绝不摆"0 浏览 / 共 1 页"这种看着像读数的假话）：
+     * - 标题空、`viewCount`/`uploadDate`/`commentCount` 全 null ⇒ 三格计数与评论节都不出现；
+     *   详情段那一格仍由**真 detail 非空**守卫（见 `PixivWorkFlow`），种子不把它顶出来；
+     * - `tags` 空表 ⇒ 标签节没有可摆的枚数；`authorId=null` ⇒ 关注/看这位作品两把手都不摆；
+     * - `ugoira=false` ⇒ 走页那一支（ugoira 判据只认真 detail，种子不承担）；
+     * - `pageCount` 取列表腿的真值，站方没给就 0（`pageSemantic` 遇 0 交空串，不编"共 1 页"）；
+     * - 图源吃 [GalleryPost.previewUrl]：墙上那张卡载的就是它，Coil 内存缓存就在手边，
+     *   首帧因此是"糊一点的真图"而不是骨架；详情到手换中档（regular）是**变清晰**、不是跳一下
+     *   （`PixivPageImage` 头注那条"同比例 Crop 不改构图"的口径，两腿同比例故格子不跳、落点稳）。
+     * - `originalUrl` 仍交真原图档：若详情永不到而用户点了首帧那格，播放器 HD 那一档是真的；
+     * - 宽高取站方报的那一对（列表腿恒有；真机现量 2400×4000），缺则 null ⇒ [placeholderAspect]
+     *   照旧交"不预留比例"，不替站方编一个形状。
+     */
+    fun seedDetailOf(post: GalleryPost): PixivWorkDetail = PixivWorkDetail(
+        post = post,
+        title = "",
+        authorId = null,
+        authorAccount = post.author,
+        pages = listOf(
+            PixivPage(
+                mediumUrl = post.previewUrl,
+                originalUrl = post.fileUrl,
+                width = post.width.takeIf { it > 0 },
+                height = post.height.takeIf { it > 0 },
+            ),
+        ),
+        pageCount = post.pageCount ?: 0,
+        tags = emptyList(),
+        viewCount = null,
+        uploadDate = null,
+        commentCount = null,
+        commentsOff = false,
+        ugoira = false,
+    )
 
     /**
      * 标题下面那一行：三格各自"站方给了才算一格"。

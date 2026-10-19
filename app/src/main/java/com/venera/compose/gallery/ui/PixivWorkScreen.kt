@@ -449,7 +449,13 @@ fun PixivWorkScreen(
     val entryDetail = remember(postId) { Animatable(1f) }
     var pageZeroDrawn by remember(currentId) { mutableStateOf(false) }
     // 逐页键仍由 `pageWallOf` 长出（屏上不自己拼 "…:p0"，那是第二处真相）。
-    val entryKey = remember(detail) { pageWallOf(detail).firstOrNull()?.viewerKey.orEmpty() }
+    // 批 B⑥（不等落点）：详情没到时用"把我送进来的那条作品"长出一枚**种子**走同一颗算式，
+    // 于是 `uid:p0` 首帧就有（种子与真详情第 0 页的键逐字相等，见 `PixivWorkPage.seedDetailOf`）。
+    // 认不出邻居（深链、列表换过一轮）⇒ works 里没这条 ⇒ 交空串 ⇒ 照旧不飞、老实显示。
+    val entryKey = remember(detail, currentId, works) {
+        val source = detail ?: works.firstOrNull { it.id == currentId }?.let { PixivWorkPage.seedDetailOf(it) }
+        pageWallOf(source).firstOrNull()?.viewerKey.orEmpty()
+    }
     /**
      * 这一屏此刻页面该有多不透明。
      *
@@ -494,13 +500,17 @@ fun PixivWorkScreen(
             onEnterStart()
             return@LaunchedEffect
         }
-        // 这一次的等待已经被下面那条超时放弃了：不再起飞 —— 否则页面先露出来、再被抽走，
+        // 这一次的等待已经被下面那条兜底放弃了：不再起飞 —— 否则页面先露出来、再被抽走，
         // 比一开始就不飞难看（这一条同时挡住"像素迟到"那一档）。
         if (entryGaveUp) return@LaunchedEffect
         // 像素还在路上（PixelCopy 是异步的）：继续等，页面保持透明、垫帧继续站着。
         if (frame == null) return@LaunchedEffect
-        // 详情还没到 ⇒ 第 0 页压根没组合，落点量不出来。这一刻**不清交接件**，等详情那一笔。
-        if (detail == null) return@LaunchedEffect
+        // 批 B⑥（不等落点）：**详情不再是起飞前置**。首帧那一格由"送我进来的那条作品"
+        // 长出的种子摆出来（`PixivWorkPage.seedDetailOf` 走 `pageWallOf` 同一颗算式 ⇒ 键逐字
+        // 相等），量落点从此只等布局与像素，不再等网络。真机旧病：慢首开详情 700ms > 预算
+        // 600ms ⇒ 排行榜那一格"点卡进去压根不飞"（§9.3 读数，`起飞` 那行压根没打）。
+        // 连种子都没有（深链直开 / 认不出邻居）⇒ 这一屏不飞，页面照常显示
+        // （口径同上面那条"压根没有起点"；`entryKey` 在同样处境下也是空串，两处不是两把尺）。
         if (entryKey.isBlank()) {
             entryWaiting = false
             onEnterStart()
@@ -766,8 +776,14 @@ fun PixivWorkScreen(
             // 顶栏那一行不把内容压下去，改由下面那颗全站同档的模糊背板保文字对比。
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { slot ->
                 val slotId = works.getOrNull(slot)?.id ?: postId
+                // 批 B⑥：这一槽的详情没到，就按**这一位在墙上的那条**长出种子，首帧摆得出
+                // 第 0 页那一格（量落点从此不等网络）。详情到了种子自动退场（见 `pages` 那行）。
+                // 认不出 ⇒ null ⇒ 与从前逐字一致（页面等详情，不飞）。
+                val slotSeed = if (details[slotId] != null) null
+                else works.firstOrNull { it.id == slotId }?.let { PixivWorkPage.seedDetailOf(it) }
                 PixivWorkFlow(
                     detail = details[slotId],
+                    seedDetail = slotSeed,
                     seam = seam,
                     detailsInFlow = detailsInFlow,
                     imageLoader = imageLoader,
@@ -1450,6 +1466,15 @@ private const val PIXIV_WORK_TOP_CHROME_BAND = "pixiv-work-top"
 @Composable
 private fun PixivWorkFlow(
     detail: PixivWorkDetail?,
+    /**
+     * 批 B⑥（不等落点）：详情没到时**只用来摆第 0 页那一格**的种子。
+     *
+     * 为什么单开这一枚而不复用 `detail`：详情段（标题 / 动作 / 标签 / 评论）那一支读的是
+     * `detail` 本体，拿种子顶上去就是拿空标题空计数摆一张脸 —— 屏上念的没人看得懂的读数。
+     * 所以这里画页只问种子，其余三处（详情段 / ugoira 分流 / 页码语义）一概仍只认真 `detail`。
+     * 由宿主在"这一槽没有详情 + 墙里认得出这位"时算好递进来；认不出 ⇒ null ⇒ 与从前逐字一致。
+     */
+    seedDetail: PixivWorkDetail? = null,
     seam: PixivPageSeam,
     detailsInFlow: Boolean,
     imageLoader: ImageLoader,
@@ -1502,7 +1527,9 @@ private fun PixivWorkFlow(
 ) {
     val tokens = VeneraTokens
     val gap = if (seam == PixivPageSeam.NONE) tokens.spacing.none else tokens.spacing.hairline
-    val pages = detail?.pages.orEmpty()
+    // 批 B⑥：详情没到时画种子那一格。**只有页那一条**用种子：`detail` 为空的槽是"连详情都没
+    // 到位"的槽，`detail` 非空就不必种子（种子页只有一枚且带糊图，下去只会把稳的页顶掉）。
+    val pages = detail?.pages.orEmpty().ifEmpty { (detail ?: seedDetail)?.pages.orEmpty() }
     // 顶栏模糊的淡入行程（与 `VeneraTopAppBar` 同一个 48dp 口径，不在这里另造一个数）。
     val scrollBlurThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
     // **每槽一颗**（不是宿主发下来的一颗共享 state，理由见调用处那条注释）：
@@ -1522,11 +1549,16 @@ private fun PixivWorkFlow(
      *
      * 归零只发生在**"这一作第一次有页"**那一刻：横翻走再翻回同一作时页数不变 ⇒ 不归零，
      * 那条"横翻回来还在原来那一页"的既有裁决照旧成立（所以键不能写成 `Unit`）。
+     *
+     * 批 B⑥（不等落点）之后这一条依然成立，只是**名单换了**：从前等的是详情长出的那一摞，
+     * 现在首帧就是种子那一格（糊图、只有一枚）—— 见下面 `pages` 那行与 `pagesAppeared` 那处。
      */
-    val workId = detail?.post?.id ?: 0L
+    val workId = (detail ?: seedDetail)?.post?.id ?: 0L
     var pagesAppeared by remember(workId) { mutableStateOf(false) }
     LaunchedEffect(workId, pages.size) {
-        if (pages.isNotEmpty() && !pagesAppeared) {
+        // 归零只认**真页**：批 B⑥ 的种子只有一枚糊图，不算"页长出来了"。详情一到立刻归零 ——
+        // 那时整摞真页醒着，多 P 作一次多出好几摞，正是批 233-2 防的那一"顶出屏外"。
+        if (pages.isNotEmpty() && !pagesAppeared && detail != null) {
             pagesAppeared = true
             // ── 临时取证探针（`FlyProbe` 同批）：归零**之前**锚在哪儿，就是被顶上去的那一段 ──
             Log.i(
@@ -1534,12 +1566,17 @@ private fun PixivWorkFlow(
                 "页第一次长出 id=$workId idx=${listState.firstVisibleItemIndex} " +
                     "off=${listState.firstVisibleItemScrollOffset} 页数=${pages.size}",
             )
+            // ⚠️ 归零只认**真页**：`pages` 在批 B⑥ 里可能是种子那一格（只有一枚糊图）。
+            // 拿种子当"页长出来了"的话，详情到手那一刻 `pagesAppeared` 已经翻真，锚不再归零 ——
+            // 而那一刻醒着的是整摞真页（多 P 作一次多出好几摞），正是这一条要防的那一跳。
+            // 批 B⑥：种子那一格首帧就在锚上 ⇒ 真页到手时不再有"整摞插在锚之上"那一跳
+            // （批 233-2 那条"第一页被顶出屏外"读数的成因）。归零照旧只在第一次有页时发生。
             listState.scrollToItem(0)
         }
     }
-    // 逐页身份键与大图播放器那一侧**同一条算式**：交 `pageWallOf` 长出来的那一份，屏上不自己拼
-    // "$uid:p$index"（拼一份就是第二处真相，而它连着的正是"返回程飞不回这一页"那一条）。
-    val wallPages = remember(detail) { pageWallOf(detail) }
+    // 逐页墙仍由 domain 那颗纯函数长出来：屏上不自己拼 "$uid:p$index"（拼一份就是第二处真相，
+    // 而它连着的正是"返回程飞不回这一页"那一条）。批 B⑥:详情或种子任一场合都走这一颗。
+    val wallPages = remember(detail, seedDetail) { pageWallOf(detail ?: seedDetail) }
     LaunchedEffect(listState, pages.size) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect {
             // 条目里除了页还有详情段那几格，页位要夹在 [0, pages-1] 内再报上去。
@@ -1601,6 +1638,9 @@ private fun PixivWorkFlow(
                 }
             }
         } else {
+            // 批 B⑥：没详情时 `pages` 是种子那一格（只有第 0 页，糊图，站方真比例）。
+            // 页码语义与点击出口仍只认真 `detail`：种子还没资格念"共几页"，也还不能把一摞
+            // 半份页轴交给播放器（那正是"站方说 4 页而手里只有 1 页"的假话）。
             items(pages.size, key = { "page-$it" }) { index ->
                 Column(
                     Modifier
@@ -1612,7 +1652,7 @@ private fun PixivWorkFlow(
                     PixivPageImage(
                         page = pages[index],
                         loader = imageLoader,
-                        description = pageSemantic(index, pages.size),
+                        description = if (detail != null) pageSemantic(index, pages.size) else "",
                         viewerKey = wallPages.getOrNull(index)?.viewerKey.orEmpty(),
                         onClick = { rect -> openPages(detail, index, rect) },
                         onDrawn = { onPageDrawn(index) },

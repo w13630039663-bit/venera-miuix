@@ -82,6 +82,11 @@ class GalleryFlyWiringPairTest {
      * 唯一放行的别名是 `entryKey`（作品页进场落点键的局部名）：放行的前提是它的
      * **每一处定义**都由 `viewerKey` 派生（下面第二段断言）—— 派生断了这一尺当场红，
      * 而不是把一个不相干的变量悄悄放进来。
+     *
+     * 批 B⑥（不等落点）之后派生式挪进了 `remember { }` 的 lambda 体里（料从"详情"换成
+     * "详情或种子"，算式仍是 `pageWallOf(...).viewerKey` 那一颗）。扫描窗因此放大到
+     * 该行之后 3 行：合法来源仍只有 `viewerKey` 与 `seedDetailOf`（种子本身也走
+     * `pageWallOf` ⇒ 同一个算式），其余一切来源一律红 —— 原意"不许第二种键源"不变。
      */
     @Test
     fun `落点表登记注销查询三侧只许念 viewerKey`() {
@@ -94,7 +99,14 @@ class GalleryFlyWiringPairTest {
             "entryKey 这个别名没有定义（量具失效或它被改名了 —— 两把断言要一起改）",
             entryKeyDefs.isNotEmpty(),
         )
-        val badDefs = entryKeyDefs.filter { (_, _, line) -> !line.contains("viewerKey") }
+        fun derivesFromDomain(rel: String, no: Int): Boolean {
+            // 派生式就在本行，或紧随的 lambda 体里（批 B⑥ 的 remember 体）：窗口 3 行。
+            val body = RepoSources.kotlinFiles(uiDir).first { it.name == rel }
+                .readText().replace("\r\n", "\n").lines()
+            return body.drop(no).take(3)
+                .any { it.contains("viewerKey") || it.contains("seedDetailOf") }
+        }
+        val badDefs = entryKeyDefs.filter { (rel, no, _) -> !derivesFromDomain(rel, no) }
         assertTrue(
             "entryKey 必须由 viewerKey 派生（它是落点表键的别名，不是第二种键），违例：\n" +
                 badDefs.joinToString("\n") { (rel, no, l) -> "$rel:$no: ${l.trim()}" },

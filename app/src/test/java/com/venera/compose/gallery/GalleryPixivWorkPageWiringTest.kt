@@ -701,11 +701,13 @@ class GalleryPixivWorkPageWiringTest {
         assertTrue("必须先量到落点再起飞（量不到就老实不飞）", iWait in 0 until iAnim)
         assertTrue("飞完还要等落点那一格真画出像素，撤早了就是闪", iAnim in 0 until iDrawn)
         assertTrue("清交接件排在最后", iDrawn in 0 until iConsume)
-        // 落点键必须由 pageWallOf 长出：屏上不自己拼 ":p0"（那是第二处真相）
+        // 落点键必须由 domain 那一颗长：屏上不自己拼 ":p0"（那是第二处真相）。
+        // 批 B⑥（不等落点）之后来源换了"详情或种子"（种子与真第 0 页的键逐字相等，见
+        // `PixivWorkPage.seedDetailOf`），但算式仍只有那一颗 —— 改的是喂给它的料。
         assertEquals(
-            "落点键只从 domain 那一颗长",
+            "落点键只从 domain 那一颗长（详情或种子二选一，屏上不另拼 \":p0\"）",
             1,
-            code(screen).countWith("pageWallOf(detail).firstOrNull()?.viewerKey"),
+            code(screen).countWith("val source = detail ?: works.firstOrNull { it.id == currentId }?.let { PixivWorkPage.seedDetailOf(it) }"),
         )
         // 圆角那一档是 @Composable getter：在 drawBehind 里读 = 绘制阶段读 compositionLocal，拿不到主题值
         assertEquals("圆角必须在组合期读完再进绘制期", 0, code(screen).countWith("veneraCoverCornerRadius().toPx()"))
@@ -902,15 +904,19 @@ class GalleryPixivWorkPageWiringTest {
      *
      * 三把尺各钉一件事：归零**只有一处**、它排在自持那颗 state **之后**、
      * 且**不许**挂在 `LaunchedEffect(Unit)` 上（每次组合都归零会把"横翻回来还在原来那一页"那条既有裁决打掉）。
+     *
+     * 批 B⑥（不等落点）之后名单换了，尺子跟着换：首帧那一格可能是**种子**（列表腿那条长出来的
+     * 糊图，只有一枚），归零只认**真页**。否则详情到手那一刻 `pagesAppeared` 已翻真、锚不再归零，
+     * 而那一刻醒着的是整摞真页（多 P 作一次多出好几摞）⇒ 正是这一条要防的那一跳。
      */
     @Test
     fun `页第一次长出来时这一槽把锚拽回顶部`() {
         val body = code(screen)
         assertEquals("归零只有一处", 1, body.countWith("listState.scrollToItem(0)"))
         assertEquals(
-            "只在「这一作第一次有页」那一刻归零",
+            "只在「这一作**真**页第一次铺出来」那一刻归零（种子那一格不算）",
             1,
-            body.countWith("if (pages.isNotEmpty() && !pagesAppeared) {"),
+            body.countWith("if (pages.isNotEmpty() && !pagesAppeared && detail != null) {"),
         )
         assertEquals(
             "键是作品号与页数（不是 Unit ⇒ 不会每次组合都归零）",
@@ -920,7 +926,11 @@ class GalleryPixivWorkPageWiringTest {
         val declared = body.indexOfFirst { it.contains("val listState = rememberLazyListState()") }
         val reset = body.indexOfFirst { it.contains("listState.scrollToItem(0)") }
         assertTrue("量到 state 之后才归零（顺序反了就是打在不存在的那颗上）", declared in 0 until reset)
-        assertEquals("作品号只从 detail 那一颗问（不另拼一份身份）", 1, body.countWith("val workId = detail?.post?.id ?: 0L"))
+        assertEquals(
+            "作品号从详情或种子那一颗问（批 B⑥：种子首帧就有，屏上不另拼一份身份）",
+            1,
+            body.countWith("val workId = (detail ?: seedDetail)?.post?.id ?: 0L"),
+        )
     }
 
     /**
