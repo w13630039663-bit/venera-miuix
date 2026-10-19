@@ -42,6 +42,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
     val tagTranslation by prefs.tagTranslationMode.collectAsState()
     val colorSource by prefs.themeColorSource.collectAsState()
     val seedArgb by prefs.themeSeedColor.collectAsState()
+    val petSticker by prefs.homePetSticker.collectAsState()
     SettingsPage("外观", onBack, largeTitle = "外观与主题", heroSubtitle = "主题 · 材质 · 主图") {
         // 对照原版顶部手机模型，直接跟随真实 Miuix 色板。
         Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
@@ -131,6 +132,14 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        SettingsGroup("首页顶栏") {
+            SettingsToggle(
+                "桌宠小肥鱼",
+                petSticker,
+                prefs::setHomePetSticker,
+                summary = "在首页左上角趴一条会动的小肥鱼，常驻循环。她只是陪着，点她没有反应。",
             )
         }
         SettingsGroup("标签") {

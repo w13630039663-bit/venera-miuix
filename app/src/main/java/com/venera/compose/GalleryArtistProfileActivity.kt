@@ -1,4 +1,4 @@
-package com.venera.compose
+﻿package com.venera.compose
 
 import android.app.Activity
 import android.content.Context
@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.core.app.ActivityOptionsCompat
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.ui.GalleryArtistProfileScreen
+import com.venera.compose.gallery.ui.PixivArtistScreen
 
 /**
  * 画廊画师介绍页的宿主 —— **独立 Activity**，与大图页同一承载（用户 2026-10-01 拍板）。
@@ -54,6 +55,21 @@ class GalleryArtistProfileActivity : VeneraSubActivityBase() {
 
     @Composable
     override fun SubScreen() {
+        // ── 2026-10-19：按站分派。pixiv 走自己那一屏 ──────────────────────────
+        //
+        // 为什么不并进下面那一颗：那一屏的骨架是 booru 的查询语言
+        // （`GalleryRankings.searchQuery` 拼 `标签 order:score`），而 pixiv 一条都不吃它 ——
+        // 那一句对 PIXIV 是 `GallerySite.notWired()`，**直接抛**，这就是"点画师闪退"的根因。
+        // 两套形状没有一个可复用点，所以两屏各侍各的站，图库三站那一屏一行未改。
+        if (site == GallerySite.PIXIV) {
+            PixivArtistScreen(
+                artistName = artistName,
+                source = source,
+                onBack = { finish() },
+                onOpenPost = { post -> (this as Activity).openGalleryPost(post.site, post.id) },
+            )
+            return
+        }
         GalleryArtistProfileScreen(
             site = site,
             artistName = artistName,

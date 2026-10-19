@@ -47,6 +47,37 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+                pixiv 授权登录的**回跳**，两条形态都要声明（2026-10-17 第四轮）：
+                 ① 自定义 scheme `pixiv://account/…` —— 站方登完直接交给系统的那一条；
+                 ② 站方自己登记的 https 回调 —— 换 token 时 `redirect_uri` 回填的就是它，
+                    浏览器那一侧若先落到这里，再由系统把这一跳交给我们。
+                值只在 `gallery/data/PixivPkce.kt`（`REDIRECT_URI` / `DEEP_LINK_PREFIX`）一处，
+                这里必须与它逐字相同 —— 写错的表现是"浏览器里登录成功、回到 app 毫无反应"
+                （屏上没有任何一句报错，因为系统找不到接这条地址的 Activity）。
+                自定义 scheme 刻意**不写 autoVerify**：与下面那批漫画域同一条理由（域名不是我们的）。
+                这两条与漫画那批共用 ACTION_VIEW，分流判据在 `MainActivity.handleEntryIntent`。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pixiv" android:host="account" />
+            </intent-filter>
+
+            <!--
+                ⚠️ 这一条**刻意不带 `pathPrefix`**：`ComicUrlTableAppLinkScopeTest` 把本清单里所有
+                `(host, pathPrefix)` 与 `ComicUrlTable.appLinkScopes` 逐条对齐，而这条不是漫画链接，
+                带上就会被那张表判成"表里没有这一条"。代价是 app-api 这个 host 下的任何 https 链接
+                都会被交给本 app（那台机器只跑 OAuth 接口，用户几乎不会从外部点进来），
+                落到 `MainActivity.handleEntryIntent` 之后不认回跳的那一支会照旧走进漫画链接解析。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app-api.pixiv.net" />
+            </intent-filter>
             <!-- 拷贝漫画 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -198,6 +229,14 @@
         -->
         <activity
             android:name=".GalleryPostActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Venera.GlassOverlay" />
+        <!--
+            pixiv 作品页（2026-10-18）：站源独用，与上面那颗平行 —— 同一份承载（只有独立
+            Activity 才透得出 blur-behind），两套界面各走各的轴。分流只发生在 openGalleryPost 一处。
+        -->
+        <activity
+            android:name=".PixivWorkActivity"
             android:exported="false"
             android:theme="@style/Theme.Venera.GlassOverlay" />
         <!--

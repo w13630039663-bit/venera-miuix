@@ -134,12 +134,19 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
     private fun applyBlurBehind(enabled: Boolean) {
         if (!enabled || !blurBehindArmed) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            // ⚠️ 新版那一半也必须归零（2026-10-19 真机读数）：Android 12 起窗口背景模糊
+            // 走的是 `Window.setBackgroundBlurRadius` 这条**独立字段**，只摘 `FLAG_BLUR_BEHIND`
+            // 在部分 ROM 上会留着一层糊 —— 作品页返回时读到的正是这个：探针里
+            // `剩余flag=0 radius=0`，而屏上后面那面墙整段还是糊的，直到 finish 才变清。
+            window.setBackgroundBlurRadius(0)
             return
         }
         val radiusPx = (blurBehindDp * resources.displayMetrics.density)
             .toInt()
             // AOSP《Window blurs》建议上限 150px，超了只是白烧 GPU。
             .coerceAtMost(MaxBlurBehindPx)
+        // 两条一起下：新字段管"背景模糊半径"，老 flag 管"要不要挂"。
+        window.setBackgroundBlurRadius(radiusPx)
         // addFlags / clearFlags 在 Window 上，LayoutParams 只有 setBlurBehindRadius。
         val params = window.attributes
         params.blurBehindRadius = radiusPx

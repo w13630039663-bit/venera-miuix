@@ -78,9 +78,12 @@ import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.feature.explore.SourceSectionScreen
 import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
+import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.gallery.ui.GalleryBookmarksHubScreen
 import com.venera.compose.gallery.ui.GalleryChromeAutoHide
 import com.venera.compose.gallery.ui.GalleryDailyScreen
 import com.venera.compose.gallery.ui.GalleryHistoryScreen
+import com.venera.compose.gallery.ui.GalleryPixivBookmarksScreen
 import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.GalleryScreen
 import com.venera.compose.gallery.ui.GalleryViewModel
@@ -168,6 +171,26 @@ import androidx.compose.material3.IconButton
  * （底栏不消失的理由同 `GalleryDailyRoute` 那条注）。
  */
 @Serializable data object GalleryHistoryRoute
+
+/**
+ * 画廊二级页：**收藏 hub**（2026-10-17 第三十一轮，用户稿那两颗卡）。
+ *
+ * 入口是画廊首页顶栏那枚 🔖（在搜索与浏览历史两枚之间，见 `GalleryScreen` 的 actions）。
+ * 这一页本身不摆任何图：它只有「本地收藏」与「Pixiv 书签」两颗卡 —— 两套账的分岔口，
+ * 卡下那行说明把边界说死（本地存这台机器 / 云端读账号，不合并）。
+ *
+ * 与 `GalleryDailyRoute` / `GalleryHistoryRoute` 同样是主 Tab 的子页：`currentTab` 判据里
+ * 落在这条路由上时算 `GALLERY`（底栏不消失的理由同 `GalleryDailyRoute` 那条注）。
+ */
+@Serializable data object GalleryBookmarksHubRoute
+
+/**
+ * 画廊二级页：**Pixiv 云端书签**（收藏 hub 那枚 🔖 卡点进来的地方）。
+ *
+ * 读 `/v1/user/bookmarks/illust`（带票据 + 自己的用户号，只读公开书签），
+ * 与本地收藏是两套账 —— 这边只能读，删除要走站方。同为主 Tab 子页（算 GALLERY）。
+ */
+@Serializable data object GalleryPixivBookmarksRoute
 
 /**
  * 画廊二级（单张大图）。
@@ -270,10 +293,19 @@ private fun SharedTransitionScope.CoverTransitionHost(
     )
 }
 
-/** 外部入口（应用链接 / 别的 app 分享文本）要做的两件事。 */
+/** 外部入口（应用链接 / 别的 app 分享文本 / 登录回跳）要做的几件事。 */
 sealed interface EntryIntent {
     /** ACTION_VIEW：浏览器或别的 app 点进来的一条漫画链接。 */
     data class ComicLink(val url: String) : EntryIntent
+
+    /**
+     * ACTION_VIEW：pixiv 授权页交回来的**登录回跳**（`pixiv://account?code=…`）。
+     *
+     * 与 [ComicLink] 分两档是必需的：那条的判据是"认不出就 Toast 一句"，
+     * 回跳走进那里得到的是一句"认不出这条链接里的漫画：pixiv://account?code=…" ——
+     * 既把授权码念上了屏，又让登录失败长成一个链接错误。判定见 MainActivity 那一问。
+     */
+    data class PixivLoginCallback(val url: String) : EntryIntent
 
     /** ACTION_SEND(text/plain)：分享进来的纯文本，当关键词去搜（master 的 handle_text_share 口径）。 */
     data class SearchText(val text: String) : EntryIntent
@@ -329,6 +361,16 @@ internal suspend fun NavHostController.handleEntryIntent(
                 false
             }
         }
+
+    is EntryIntent.PixivLoginCallback -> {
+        // 回跳**不推页**：它换的是票据，而票据的去向只有一条 StateFlow（`pixivAccount.authState`）——
+        // 顶栏那颗头像与首页「关注画师」那一行读的都是同一份，所以没有新目的地要开。
+        // 等在这一笔上是故意的：这一跳只有几百毫秒，而"两条回跳并发换票据"比"排队慢半拍"难解释得多。
+        // 没接这一路（pixivAccount 为 null）就回 false —— 这条链接确实没被处理，不许报成处理过。
+        val account = GalleryPorts.of(context).pixivAccount
+        account?.completeLogin(intent.url)
+        account != null
+    }
 
     is EntryIntent.SearchText -> {
         // 复用标签下钻那条目的地：它已带 initialQuery→viewModel.search 的一次性入参链，
@@ -448,6 +490,9 @@ private fun NavDestination.tabIndex(): Int? {
         hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
         // 浏览历史同理：它是画廊 Tab 下的一层，底栏不消失（同 GalleryDailyRoute 的理由）。
         hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
+        // 收藏 hub 与 pixiv 书签页：同样是从画廊 Tab 往下走一层（第三十一轮那枚 🔖 的落点）。
+        hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
+        hasRoute(GalleryPixivBookmarksRoute::class) -> VeneraNavTab.GALLERY
         hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         else -> return null
     }
@@ -540,6 +585,9 @@ fun VeneraComposeApp() {
         destination.hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
         // 浏览历史同样算 GALLERY（同一条理由：从画廊 Tab 往下走一层）。
         destination.hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
+        // 收藏 hub 与 pixiv 书签页同样算 GALLERY（第三十一轮，同一条理由）。
+        destination.hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
+        destination.hasRoute(GalleryPixivBookmarksRoute::class) -> VeneraNavTab.GALLERY
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
@@ -935,6 +983,12 @@ fun VeneraComposeApp() {
                                     haptic()
                                     navController.navigate(GalleryHistoryRoute)
                                 },
+                                // 「收藏」hub（2026-10-17 第三十一轮）：顶栏那枚 🔖 在
+                                // 搜索与浏览历史两枚之间，点它进两颗卡那一页。
+                                onOpenBookmarks = {
+                                    haptic()
+                                    navController.navigate(GalleryBookmarksHubRoute)
+                                },
                             )
                         }
                     }
@@ -983,6 +1037,46 @@ fun VeneraComposeApp() {
                         // 所以「从那一格回到原卡」在 Android 侧是天然成立的（桌面那颗件没有这一手，
                         // 见它的 README 注）。
                         GalleryHistoryScreen(
+                            onOpenPost = { site, postId ->
+                                (view.context as? Activity)?.openGalleryPost(site, postId)
+                            },
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                        )
+                    }
+                    composable<GalleryBookmarksHubRoute> {
+                        // 收藏 hub（2026-10-17 第三十一轮）：两颗卡 + 一行说明，本身不摆图。
+                        // 同样**不包 CoverTransitionHost**：卡面上没有封面，没有对面那一头。
+                        //
+                        // 「本地收藏」那颗走 **FAVORITES 主 Tab**（收藏页里那个画廊分段，
+                        // 见 FavoritesScreen 的 ImageSection.Gallery）—— 不复制一份墙到画廊侧：
+                        // 两份墙意味着两份多选、两份删除、两处"到底显示多少张"，迟早对不上。
+                        GalleryBookmarksHubScreen(
+                            onOpenLocalFavorites = {
+                                haptic()
+                                navController.navigate(FavoritesRoute) {
+                                    // 跳到主 Tab：把画廊这一支弹掉，否则返回栈会是
+                                    // 画廊 → hub → 收藏，用户按返回先回 hub 再回画廊，多绕一层。
+                                    popUpTo(GalleryRoute) { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            },
+                            onOpenPixivBookmarks = {
+                                haptic()
+                                navController.navigate(GalleryPixivBookmarksRoute)
+                            },
+                            onBack = {
+                                haptic()
+                                navController.popBackStack()
+                            },
+                        )
+                    }
+                    composable<GalleryPixivBookmarksRoute> {
+                        // Pixiv 云端书签墙（第三十一轮）。不包 CoverTransitionHost：
+                        // 对面是跨 Activity 的大图页，没有同 key 的落地槽位（同历史页那条注）。
+                        GalleryPixivBookmarksScreen(
                             onOpenPost = { site, postId ->
                                 (view.context as? Activity)?.openGalleryPost(site, postId)
                             },

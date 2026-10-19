@@ -102,11 +102,25 @@ class GalleryPostActivity : VeneraSubActivityBase() {
  * 两套同时跑会出现"整页淡入 + 图从卡片飞过来"叠在一起。
  * 只压打开，不压关闭 —— 返回要留系统那套跨 activity 预测式动画。
  */
+/**
+ * 从一级打开大图页 —— **唯一分流点**（2026-10-18）。
+ *
+ * pixiv 走 [PixivWorkActivity]（纵轴同作品多页连读、横轴换作品），图库三站继续走
+ * [GalleryPostActivity]（一张 = 一屏、左右翻邻居）。两屏互不吃对方的界面，
+ * 但**入口只有这一颗**：调用点（墙、搜索、画师页、收藏、历史、日榜）不必知道谁是谁，
+ * 也就不会出现"某一处忘了分流，pixiv 落进旧看图器"那种只在那一面墙上才复现的裂口。
+ *
+ * `makeCustomAnimation(0, 0)` 是把**打开**那套系统转场压掉：向上滑入由页面自己画，
+ * 两套同时跑会出现"整页淡入 + 图从卡片飞过来"叠在一起。
+ * 只压打开，不压关闭 —— 返回要留系统那套跨 activity 预测式动画。
+ */
 fun Activity.openGalleryPost(site: GallerySite, postId: Long) {
-    startActivity(
+    val target = if (site == GallerySite.PIXIV) {
+        PixivWorkActivity.intent(this, postId)
+    } else {
         Intent(this, GalleryPostActivity::class.java)
             .putExtra(GalleryPostActivity.EXTRA_SITE, site.routeKey)
-            .putExtra(GalleryPostActivity.EXTRA_POST_ID, postId),
-        ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle(),
-    )
+            .putExtra(GalleryPostActivity.EXTRA_POST_ID, postId)
+    }
+    startActivity(target, ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle())
 }

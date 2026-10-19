@@ -66,6 +66,8 @@ import com.venera.compose.components.rememberContentWidth
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.data.db.HistoryRecord
+import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.feature.pet.PetMascot
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.model.Comic
 import com.venera.compose.data.prefs.AppearanceStyle
@@ -166,6 +168,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 桌宠开关**直接订阅偏好**：设置页拨完立刻生效，不留一份本地副本（同 VeneraReaderScreen 那条判据）。
+    val appearancePrefs = remember(context) { BusinessPorts.of(context).appearancePrefs }
+    val petStickerOn by appearancePrefs.homePetSticker.collectAsState()
     // 避让口径与历史/收藏/搜索完全一致（`statusBarTop + 104.dp`）。真机诊断实测这个留白
     // 本身没问题（pad=149dp、顶栏 ho=0 全展开），首页那几轮「重叠」另有原因，见下方 stats 项。
 
@@ -502,6 +507,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
         largeTitle = "首页",
         scrollBehavior = topBarBehavior,
         backdrop = topBarBackdrop,
+        // 设置 → 外观与主题 → 首页顶栏 → 桌宠小肥鱼（默认关）。
+        // 关着时这一格根本不组合，不是"画了个隐形的"。
+        navigationIcon = { if (petStickerOn) PetMascot() },
         actions = {
             // 源更新角标 + 刷新 + 设置齿轮（低频操作收口）。
             // 三个动作钮走 VeneraTopBarPill（40dp 磨砂圆座 + 48dp 触达），与收藏页那颗同源；

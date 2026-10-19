@@ -25,6 +25,7 @@ import com.venera.compose.feature.sourcemanage.SauceNaoKeyCard
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
+import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
@@ -82,6 +83,8 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val hideBottomBar by prefs.galleryHideBottomBar.collectAsState()
     // 「画成水彩」Beta 开关（2026-10-13）：默认关，见 VeneraPreferences 该条说明。
     val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
+    val pixivWorkSeam by prefs.pixivWorkSeam.collectAsState()
+    val pixivWorkDetailsInFlow by prefs.pixivWorkDetailsInFlow.collectAsState()
 
     /*
      * 浏览历史（2026-10-14）。可空读而不是 checkNotNull：这一颗在契约上就是"移动端才有"，
@@ -321,23 +324,46 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             )
         }
 
+        SettingsGroup("pixiv 作品页") {
+            SettingsSelect(
+                "页之间留一条边", pixivWorkSeam.name,
+                listOf(
+                    PixivPageSeam.HAIRLINE.name to "留一条极淡的边（默认）",
+                    PixivPageSeam.NONE.name to "完全无缝",
+                ),
+                { prefs.setPixivWorkSeam(PixivPageSeam.valueOf(it)) },
+                summary = "只有竖着连续翻页那一档用得上。" +
+                    "无缝的接续感最强，但两页颜色接近时看不出已经翻页，那一页的号还在左上角；" +
+                    "留一条边在浅色图上几乎隐形，在深色图上刚好成一条边。",
+            )
+            SettingsToggle(
+                "详情接在最后一页之后", pixivWorkDetailsInFlow, { prefs.setPixivWorkDetailsInFlow(it) },
+                summary = "开着的时候，画完这一作的最后一页再往下滑就是标签与相关图片，中间不用换屏。" +
+                    "关掉之后详情只在底栏那枚详情钮里看，图与详情分开。",
+            )
+        }
+
         SettingsGroup("内容与屏蔽") {
             SettingsToggle(
                 "屏蔽 AI 生成的条目", blockAi, { prefs.setGalleryBlockAi(it) },
                 summary = "图库单独的开关，和屏蔽与过滤里漫画那一侧互不影响。" +
-                    "只认站方标的 ai-generated 或 ai_generated 标签，没有标签就不算，" +
-                    "也不按看起来像不像来判断。单独的 ai 标签不算：它在 yande.re 上是一个角色名，" +
-                    "算进来会把 19 张手工图误判成 AI。",
+                    "先认站方自己标的 AI 位（p 站作品上那一格），" +
+                    "站方不给这一格的站才退回标签：只认 ai-generated、ai_generated 这一类整词，" +
+                    "没有标签就不算，也不按看起来像不像来判断。" +
+                    "单独的 ai 标签不算：它在 yande.re 上是一个角色名，算进来会把 19 张手工图误判成 AI。",
             )
             SettingsToggle(
                 "给 AI 条目摆角标", aiBadge, { prefs.setGalleryAiBadge(it) },
-                summary = "在卡片左上角标一个 AI。开着屏蔽时基本看不到（那些条目不会上屏），" +
-                    "用处是关掉屏蔽以后还能分辨哪张是 AI 画的。",
+                summary = "在图片左上角标一个 AI。搜索那面墙、首页的预览排、p 站首页那几节、" +
+                    "点开的大图页都会标；浏览历史那一屏不标，那里只存了缩略图，没存标签和站方的标记。" +
+                    "开着屏蔽时基本看不到（那些条目根本不上屏），用处是关掉屏蔽以后还能分辨哪张是 AI 画的。" +
+                    "yande.re 上不会出角标：那一站没人打 AI 标签，这不是开关坏了。",
             )
             SettingsAction(
                 "分级遮罩与屏蔽规则在「屏蔽与过滤」里改",
                 "那两样漫画和图库共用一份设置，这里不重复摆开关，免得两边不一致。" +
-                    "AI 这一条是例外：两边分开设置，但用的词表是同一份。",
+                    "AI 这一条两边各有一份词表：漫画侧认单独的 ai 标签（那是 AI 汉化那一类标记），" +
+                    "图库侧不认它，另外多认 p 站在用的那几枚。",
             )
         }
     }

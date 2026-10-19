@@ -15,6 +15,7 @@ import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
 import com.venera.compose.feature.settings.StartupUpdateHost
 import com.venera.compose.data.api.BusinessPorts
+import com.venera.compose.gallery.data.PixivCredentialState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -73,7 +74,18 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             Intent.ACTION_VIEW ->
                 intent.dataString?.takeIf { it.isNotBlank() }
-                    ?.let { EntryIntentHandoff.send(EntryIntent.ComicLink(it)) }
+                    ?.let { url ->
+                        // 顺序不能反：先认 pixiv 的登录回跳，剩下的才交给漫画链接解析器。
+                        // 反了的表现是"登录成功回来看见一句 Toast：认不出这条链接里的漫画"，
+                        // 而那一句里就原样带着授权码。判定只问数据层那一颗函数，本文件不写 `pixiv://`。
+                        EntryIntentHandoff.send(
+                            if (PixivCredentialState.isLoginCallbackUrl(url)) {
+                                EntryIntent.PixivLoginCallback(url)
+                            } else {
+                                EntryIntent.ComicLink(url)
+                            },
+                        )
+                    }
 
             Intent.ACTION_SEND -> if (intent.type == "text/plain") {
                 intent.getStringExtra(Intent.EXTRA_TEXT)

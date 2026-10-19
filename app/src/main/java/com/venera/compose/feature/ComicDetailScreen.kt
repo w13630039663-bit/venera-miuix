@@ -109,6 +109,7 @@ import top.yukonga.miuix.kmp.blur.ProgressiveBlur
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import com.venera.compose.components.venera.rememberTopBarBackdrop
+import com.venera.compose.components.venera.VeneraTopBarBackdrop
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.download.GALLERY_CHAPTER_ID
 import com.venera.compose.download.downloadChapters
@@ -1441,7 +1442,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 .fillMaxWidth()
                 .align(Alignment.TopCenter),
         ) {
-            DetailTopBarBackdrop(
+            VeneraTopBarBackdrop(
                 visible = { collapsed },
                 backdrop = detailBackdrop,
                 modifier = Modifier.matchParentSize(),
@@ -2278,61 +2279,6 @@ private fun DetailOverlayIconButton(
     ) { content() }
 }
 
-/**
- * 详情页顶栏渐变高斯模糊背板（对齐 pixez-miuix 规范）：
- * - 滑动后由透明平滑过渡到全宽 HyperOS 渐变式高斯模糊；
- * - 底色 30% alpha 通透微调，彻底消除纯白死板色块。
- */
-@Composable
-private fun DetailTopBarBackdrop(
-    visible: () -> Boolean,
-    backdrop: Backdrop? = null,
-    modifier: Modifier = Modifier,
-) {
-    val tokens = VeneraTokens
-    val surfaceColor = MiuixTheme.colorScheme.surface
-    val textPrimary = tokens.color.textPrimary
-    val target = if (visible()) 1f else 0f
-    val fraction by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = target,
-        animationSpec = androidx.compose.animation.core.tween(200),
-        label = "DetailTopBarBlur",
-    )
-    if (fraction <= 0f) return
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                alpha = fraction
-            }
-            .then(
-                if (backdrop != null && isRuntimeShaderSupported()) {
-                    Modifier.progressiveTextureBlur(
-                        backdrop = backdrop,
-                        shape = RectangleShape,
-                        gradient = ProgressiveBlur.Top.copy(curve = 2.2f),
-                        blurRadius = 10f,
-                        colors = BlurDefaults.blurColors(
-                            blendColors = listOf(
-                                // 与 VeneraTopAppBar 同步：轻补底保文字对比，玻璃色交给采样层氛围光。
-                                BlendColorEntry(color = surfaceColor.copy(alpha = GlassTintAlpha)),
-                            ),
-                        ),
-                    )
-                } else {
-                    Modifier.background(surfaceColor.copy(alpha = 0.85f))
-                }
-            )
-            .drawBehind {
-                drawRect(
-                    color = textPrimary.copy(alpha = 0.08f * fraction),
-                    topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 0.5.dp.toPx()),
-                    size = androidx.compose.ui.geometry.Size(size.width, 0.5.dp.toPx()),
-                )
-            },
-    )
-}
 
 /**
  * 「收藏那一页」在详情目录里的落点。
