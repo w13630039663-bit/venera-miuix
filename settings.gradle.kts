@@ -29,4 +29,8 @@ include(":app")
 include(":desktop")
 // S0-3 探针：GraalJS 顶替 WebView 跑真源脚本（复用 :app 的 engine handler 源文件）
 include(":engine-probe")
+// A0 探针（docs/rounds/desktop-reuse-android-ui-2026-10-18.md §6）：一颗粒真正的 KMP 模块，
+// 两端各引一次，只回答"`:shared` 能否同时被 androidJvm 与 jvm 依赖并起窗"这一个问题。
+// 红了要退就删三处：本行 + `:app`/`:desktop` 各那一行 project 依赖 + 这棵 shared-probe/ 目录。
+include(":shared-probe")
 

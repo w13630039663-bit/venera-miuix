@@ -194,10 +194,14 @@ function icoToPng(ico) {
   }
   const bmp = ico.subarray(offset);
   const bitCount = bmp.readUInt16LE(14);
-  if (bitCount !== 8) {
-    throw new Error(`色深 ${bitCount}bpp 不在预期内（实测是 8bpp 调色板）—— 需要人工复核`);
+  // 两档实测过的色深：8bpp 调色板（yande.re / safebooru 那两枚 16×16）与
+  // 32bpp 直彩（pixiv 那枚 48×48，自带 alpha）。别的一律报错退出，不猜。
+  if (bitCount !== 8 && bitCount !== 32) {
+    throw new Error(`色深 ${bitCount}bpp 不在预期内（实测过 8bpp 调色板与 32bpp 直彩）—— 需要人工复核`);
   }
-  const paletteSize = bmp.readUInt32LE(32) || 256;
+  // 32bpp 没有调色板，像素紧跟在那 40 字节头后面 —— 所以这一项要按色深算，
+  // 从前无条件读 `paletteSize` 会把 32bpp 的第一颗像素当成调色板长度。
+  const paletteSize = bitCount === 8 ? bmp.readUInt32LE(32) || 256 : 0;
   const palette = [];
   for (let i = 0; i < paletteSize; i++) {
     const o = 40 + i * 4;
@@ -215,14 +219,22 @@ function icoToPng(ico) {
     const srcRow = height - 1 - y;   // BMP 自底向上
     const maskRow = ico.subarray(offset + maskOffset + y * maskRowBytes, offset + maskOffset + (y + 1) * maskRowBytes);
     for (let x = 0; x < width; x++) {
-      const index = bmp[pixelOffset + srcRow * rowBytes + x];
-      const [r, g, b] = palette[index] ?? [0, 0, 0];
       const o = (y * width + x) * 4;
-      rgba[o] = r;
-      rgba[o + 1] = g;
-      rgba[o + 2] = b;
+      if (bitCount === 32) {
+        const p = pixelOffset + srcRow * rowBytes + x * 4;
+        rgba[o] = bmp[p + 2];
+        rgba[o + 1] = bmp[p + 1];
+        rgba[o + 2] = bmp[p];
+        rgba[o + 3] = bmp[p + 3];
+      } else {
+        const [r, g, b] = palette[bmp[pixelOffset + srcRow * rowBytes + x]] ?? [0, 0, 0];
+        rgba[o] = r;
+        rgba[o + 1] = g;
+        rgba[o + 2] = b;
+        rgba[o + 3] = 255;
+      }
       const transparent = ((maskRow[x >> 3] >> (7 - (x & 7))) & 1) === 1;
-      rgba[o + 3] = transparent ? 0 : 255;
+      if (transparent) rgba[o + 3] = 0;
     }
   }
   return encodePng(width, height, rgba);
@@ -252,4 +264,22 @@ const safebooruPng = icoToPng(safebooruIco);
 const safebooruTarget = path.join(DRAWABLE_NODPI, 'ic_source_safebooru.png');
 fs.writeFileSync(safebooruTarget, safebooruPng);
 console.log(`  写 ${path.relative(ROOT, safebooruTarget)}（${safebooruPng.length} B）`);
+
+/*
+ * ── pixiv：favicon.ico → 48×48 RGBA PNG（2026-10-17）────────────────────────────────
+ *
+ * 用户点名：「推荐下面的图片的 P 图标都换成 pixiv 站点图标」。从前那枚是**字母药丸**
+ * （`surfaceVariant` 底 + "P"），理由是"这一站没有随包图形资产"—— 现量：站方
+ * `www.pixiv.net/favicon.ico` 就是那枚**蓝底白 p** 的方标，48×48、32bpp 直彩、单条目，
+ * 正好对上 18dp 那枚徽标在 2.5~3.0 密度下的物理像素（45~54px），不需要放大。
+ *
+ * 与另外三枚的关键差别：这是**彩色原档**，不是单色矢量 ⇒ 组件侧不许染色
+ * （`tint = Color.Unspecified`），也不许另铺底板 —— 它自己就带底板与圆角。
+ */
+const PIXIV_ICO = 'https://www.pixiv.net/favicon.ico';
+const pixivIco = fs.readFileSync(fetch(PIXIV_ICO, path.join(CACHE, 'pixiv-favicon.ico')));
+const pixivPng = icoToPng(pixivIco);
+const pixivTarget = path.join(DRAWABLE_NODPI, 'ic_source_pixiv.png');
+fs.writeFileSync(pixivTarget, pixivPng);
+console.log(`  写 ${path.relative(ROOT, pixivTarget)}（${pixivPng.length} B）`);
 console.log('完成。');

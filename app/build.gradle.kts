@@ -117,6 +117,14 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    // A0 探针（docs/rounds/desktop-reuse-android-ui-2026-10-18.md §6.2 第 3 条）：**只加这一行**。
+    // 拿到的是一颗 KMP 模块的 `-android` 变体，入口 Activity 声明在那颗模块自己的 manifest 里
+    // （靠 manifest 合并进来），本模块的页面结构与任何现有文件都没动。
+    // 判据是"APK 出得来 + material3 解析结果一字不变"，读数在 §6.5。
+    implementation(project(":shared-probe"))
+    // pixiv 登录交浏览器那一跳：Custom Tabs 走 Chrome 自己的会话，Google 账号列表才在
+    // （系统默认浏览器可能是别的，那份会话里没有 Google）。
+    implementation(libs.androidx.browser)
 
     // Compose 基础
     implementation(libs.androidx.compose.ui)
