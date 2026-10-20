@@ -224,7 +224,7 @@ class GalleryPixivAccountWiringTest {
         )
         // 登录态只从 authState 那一条流读，不在节里另算"看着像登过"。
         sections.indexOfContaining("pixiv.credentials?.authState?.collectAsState()", "同源那一读")
-        sections.indexOfContaining("点顶栏左边那颗头像登录 pixiv", "未登录那一档")
+        sections.indexOfContaining("登录 pixiv 后，关注和推荐画师会出现在这里。", "未登录那一档")
         // 那一档要念的是判据件里那一份 `screenLine`（P6 之后它是屏上唯一的失败读点）。
         assertTrue(
             "未登录/要重登那一档要用 screenLine 同源念，不在节里另抄一句",

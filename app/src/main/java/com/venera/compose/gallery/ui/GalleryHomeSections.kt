@@ -27,9 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocalFireDepartment
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -42,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
@@ -256,18 +260,32 @@ private const val ROW_ITEMS = GalleryFollowedArtists.ROW_SIZE
 private const val ROW_SKELETON_ITEMS = 4
 
 @Composable
-private fun GalleryRowCaption(text: String) {
+private fun GalleryRowCaption(text: String, icon: ImageVector? = null) {
     val tokens = VeneraTokens
-    Text(
-        text = text,
-        fontSize = tokens.type.caption,
-        color = tokens.color.textTertiary,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = tokens.spacing.space4),
-    )
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tokens.color.textSecondary,
+                modifier = Modifier.size(tokens.spacing.chipIconSize),
+            )
+        }
+        Text(
+            text = text,
+            fontSize = tokens.type.caption,
+            color = tokens.color.textTertiary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 /**
@@ -908,16 +926,21 @@ internal fun galleryHomeSections(
 
                         // 已登录 + 没有失败 + 空表 = 真读数（这一档不必解释自己）。
                         auth is PixivAuthState.SignedIn -> GalleryRowCaption(
-                            failure ?: if (onFollowing) {
+                            text = failure ?: if (onFollowing) {
                                 "你在 pixiv 上还没有关注画师 —— 这一栏会跟着你的关注自动长出来。"
                             } else {
                                 "站方这一轮没有给推荐用户。"
                             },
+                            icon = Icons.Outlined.Person,
                         )
 
                         else -> GalleryRowCaption(
-                            "这一栏要读 pixiv 的画师，而" + auth.screenLine +
-                                " —— 点顶栏左边那颗头像登录 pixiv。",
+                            text = if (auth == PixivAuthState.Anonymous) {
+                                "登录 pixiv 后，关注和推荐画师会出现在这里。"
+                            } else {
+                                auth.screenLine
+                            },
+                            icon = Icons.Outlined.Lock,
                         )
                     }
                 }
@@ -960,8 +983,11 @@ internal fun galleryHomeSections(
                         pixiv.rankingLoading -> GalleryRowSkeleton(
                             coverAspect = GalleryPixivHome.RANKING_COVER_ASPECT,
                         )
-                        // 空那一档念**站方给的原话**（限流 / 票据 / 真没图）；取数没给原因时才退回那句。
-                        else -> GalleryRowCaption(pixiv.rankingCaption ?: "pixiv 这一档这一轮没有答上")
+                        // 空那一档只说人话；技术异常在取数处写日志，不把 HTML / 异常栈摆到屏上。
+                        else -> GalleryRowCaption(
+                            text = pixiv.rankingCaption ?: "排行榜暂时没有内容，稍后再来看看。",
+                            icon = Icons.Outlined.Info,
+                        )
                     }
                 }
 
@@ -1006,7 +1032,7 @@ internal fun galleryHomeSections(
                     // 不说清就会被读成"站方推荐就长这样"。
                     pixiv.recommendNote?.let { note ->
                         Spacer(modifier = Modifier.height(tokens.spacing.space2))
-                        GalleryRowCaption(note)
+                        GalleryRowCaption(note, icon = Icons.Outlined.AutoAwesome)
                     }
                 }
             }

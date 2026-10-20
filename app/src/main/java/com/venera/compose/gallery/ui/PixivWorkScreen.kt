@@ -12,9 +12,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.ImageBitmap
-import android.view.WindowManager
 import com.venera.compose.components.venera.veneraCoverCornerRadius
-import android.app.Activity
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -200,8 +198,6 @@ fun PixivWorkScreen(
      * 两条都只交一个作品号：那一层自己去交接件里读它该翻什么。
      */
     onOpenViewer: (Long) -> Unit = {},
-    /** 入场动作开始才挂玻璃底（口径照 GalleryPostActivity 的 deferredBlurBehind）。 */
-    onEnterStart: () -> Unit = {},
 ) {
     val context = LocalContext.current
     // 去程起点那一帧要 PixelCopy **这一扇窗口**已经合成的表面（与墙上那一跳同一口径）。
@@ -369,11 +365,6 @@ fun PixivWorkScreen(
                 .take(RELATED_MAX)
         }
     }
-    // 玻璃底是**推迟型**的（`PixivWorkActivity.deferredBlurBehind = true`）：它盖住的正是后面
-    // 那一面墙，挂早了等于"新窗口一出现就把后面糊掉"。原先这里无条件挂 —— 与推迟型的契约相反，
-    // 入场第一帧本该与点击前逐像素相同的那一条就守不住（理由写在基类那颗属性头上）。
-    // 现在只有"压根不飞"的入口在这里挂；要飞的那些由起飞那一刻（或退路那一刻）自己挂。
-    LaunchedEffect(Unit) { if (GalleryFlyIn.origin == null) onEnterStart() }
     LaunchedEffect(currentId) { tagsExpanded = false }
 
     // ⚠️ 这条滚动状态**不许由本屏持有**（2026-10-19 读数改口径）。
@@ -406,14 +397,6 @@ fun PixivWorkScreen(
     var exitFrom by remember(postId) { mutableStateOf<Rect?>(null) }
     var exitTo by remember(postId) { mutableStateOf<Rect?>(null) }
     val exitFly = remember(postId) { Animatable(0f) }
-
-    // ── 玻璃底**跟着飞淡掉**（2026-10-20，主人「返回手势的模糊动画有点怪」）──
-    // 从前是**一帧跳清**：手指刚动，背后那面墙先"啪"地变清，然后图才缩 —— 两件事分开读。
-    // 现在半径跟着 `exitFly` 收到 0，于是"图缩回去"与"背后变清"是同一件事的两面。
-    // 三颗状态：在淡（开关）/ 起点半径（窗口当前那一 px）/ 上一次写下去的 px（只为省重复写）。
-    var blurFading by remember(postId) { mutableStateOf(false) }
-    var blurFromPx by remember(postId) { mutableFloatStateOf(0f) }
-    var blurLastPx by remember(postId) { mutableIntStateOf(-1) }
 
     // ── 进场飞行体（批 231-E 的另一半：墙上那一格 → 这一屏第 0 页那一格）──
     // 三份输入与去程同一套，且**只从交接件读**：起点那一帧（`GalleryFlyIn.payload`）、
@@ -555,7 +538,6 @@ fun PixivWorkScreen(
         // 压根没有起点（深链直开 / 从搜索页换进来时那笔已被读过）：不飞，页面照常显示。
         if (start == null) {
             entryWaiting = false
-            onEnterStart()
             return@LaunchedEffect
         }        // 这一次的等待已经被下面那条兜底放弃了：不再起飞 —— 否则页面先露出来、再被抽走，
         // 比一开始就不飞难看（这一条同时挡住"像素迟到"那一档）。
@@ -572,7 +554,6 @@ fun PixivWorkScreen(
         if (entryKey.isBlank()) {
             Log.w("FlyProbe", "pixiv 进场没有逐页键 key=空 ⇒ 走侧滑退路")
             entryWaiting = false
-            onEnterStart()
             if (GalleryFlyIn.payload === frame) GalleryFlyIn.consume()
             startSideSlide()
             return@LaunchedEffect
@@ -585,7 +566,6 @@ fun PixivWorkScreen(
             // 量不到落点：不演"飞完了"（同 [back] 那一步的口径），走侧滑退路。
             Log.w("FlyProbe", "pixiv 进场落点没等到 key=$entryKey 预算=${ENTRY_WAIT_MS}ms ⇒ 走侧滑退路")
             entryWaiting = false
-            onEnterStart()
             if (GalleryFlyIn.payload === frame) GalleryFlyIn.consume()
             startSideSlide()
             return@LaunchedEffect
@@ -625,18 +605,6 @@ fun PixivWorkScreen(
         Log.i("FlyProbe", "pixiv 进场落点真画出像素=$handed")
         // 飞完才交棒：此刻飞行体正好压在落点那一格上，是"两份图重合"的唯一时刻。
         entryHandoff.animateTo(1f, tween(durationMillis = ENTRY_HANDOFF_MS.toInt()))
-        // 玻璃底挂在**交棒走完之后**，不是起飞那一刻（2026-10-19 第二版，慢放帧证）。
-        //
-        // 窗口模糊是一枚**开关**，没有 alpha 可拉：起飞那一刻挂上，整屏背景就从"清晰的主界面"
-        // 一帧变成"糊成一片的主界面"——而此刻页面还是全透明（`pageAlpha` 在飞行档恒为 0），
-        // 没有任何东西能盖住这次跳变。慢放里读得清清楚楚：点卡后一帧之内，后面那面墙整体糊掉，
-        // 卡片还停在原位没动。原注释写的"起飞这一刻才挂"只解决了"比窗口出现时挂晚"，没解决"跳"。
-        //
-        // 挂到交棒走完：那时页面 alpha 已经是 1、整屏被 `tokens.color.background` 盖住，
-        // 模糊只从半透明的那几块（玻璃卡片、顶栏背板）里透出来 —— 换开关也看不出来。
-        // 代价是飞行全程后面那面墙是**清晰**的；这比"整屏跳一下"好，而且与播放器那一屏
-        // （`GalleryPostScreen` 的 `backdropEntryAlpha` 也是从 0 慢慢起来）同一口径。
-        onEnterStart()
         // ⚠️ 只清**自己那一笔**：等落点的这几百毫秒里用户可能已经点进了某一页，
         // 那一跳会重新 capture 一份起点（见 [openPages]）—— 那时这一屏不许把别人的账清了，
         // 否则播放器到手是空的，表现成"从作品页进大图不飞"。判据 = 手里那帧还是不是当初那一帧。
@@ -653,8 +621,6 @@ fun PixivWorkScreen(
         delay(ENTRY_WAIT_MS)
         entryGaveUp = true
         entryWaiting = false
-        // 放弃等待 = 页面要露出来了，玻璃底这时候必须挂上（飞行那条路不会再来挂）。
-        onEnterStart()
     }
 
     /**
@@ -759,71 +725,7 @@ fun PixivWorkScreen(
      */
     fun exitTargetOrNull(post: GalleryPost): Rect? = GalleryFlyIn.cardBoundsOf(post.viewerKey)
     /**
-     * 玻璃底**跟着飞淡掉**（2026-10-20，主人「看下能不能删掉返回手势的模糊动画？因为这样有点怪」）。
-     *
-     * ## 从前为什么"怪"
-     *
-     * 老写法是**一帧跳清**：`clearFlags` + `setBackgroundBlurRadius(0)` 在同一帧做完。
-     * 于是屏上读起来是两步 —— 手指刚开始拖，背后那面墙先"啪"地一下从糊变清，
-     * **然后**图才开始缩。先变清、后飞图，两件事分开读，就是主人说的"怪"。
-     *
-     * ## 现在的口径：半径跟着 `exitFly` 走
-     *
-     * 不跳变，而是**随离场进度线性收到 0**：`radius = 起点半径 × (1 - 进度)`。
-     * 于是"图缩回去"与"背后变清"是同一件事的两面，落地那一刻正好收干净。
-     *
-     * 起点半径取**窗口当前那一位**（`attributes.blurBehindRadius`，真机读数 84px = 32 × 2.625），
-     * 不另写常量 —— 基类挂的时候写的就是这一位（见 `VeneraSubActivityBase.applyBlurBehind`）。
-     *
-     * ## 为什么两件事都要写（flag 与半径）
-     *
-     * 基类挂的时候是"半径 + flag"两条一起下的，摘的时候也必须两条一起下：
-     * 只摘 flag 在某些 ROM 上半径还留着（2026-10-19 慢放帧证：探针里 flag=0 而
-     * `radius=84`，屏上后面那面墙整段还是糊的）。所以淡到 0 那一刻才摘 flag。
-     *
-     * 批 C1 起它被**两条路共用**（跟手那条在 `Prepare` 里调、三键那条在自驱飞里调），
-     * 所以抽成一颗具名函数 —— 两处各写一遍就是两处真相。
-     */
-    fun clearChromeForExit() {
-        val win = (view.context as? Activity)?.window ?: return
-        if (blurFading) return
-        // 起点半径：窗口当前那一位（基类挂的时候写的就是它）。已经为 0 就不必淡。
-        val from = win.attributes.blurBehindRadius.takeIf { it > 0 } ?: return
-        blurFromPx = from.toFloat()
-        blurLastPx = from
-        blurFading = true
-        Log.i("FlyProbe", "退出开始淡模糊 起点半径=${from}px（跟着离场进度收到 0）")
-    }
-
-    /**
-     * 半径跟随器：**每一帧**按 [exitFly] 把窗口半径收到 0（[clearChromeForExit] 起的那一趟）。
-     *
-     * 只在整数像素真的变了时才写窗口属性 —— 每帧无条件写等于每帧让窗口重算一次，
-     * 84px 的行程最多 84 次，够用且不白烧。
-     */
-    LaunchedEffect(blurFading, postId) {
-        if (!blurFading) return@LaunchedEffect
-        val win = (view.context as? Activity)?.window ?: return@LaunchedEffect
-        snapshotFlow { exitFly.value }.collect { progress ->
-            val px = (blurFromPx * (1f - progress.coerceIn(0f, 1f)))
-                .toInt().coerceIn(0, blurFromPx.toInt())
-            if (px == blurLastPx) return@collect
-            blurLastPx = px
-            win.setBackgroundBlurRadius(px)
-            // 两位都写：`setBackgroundBlurRadius` 只改那一层，`attributes.blurBehindRadius`
-            // 是基类挂的时候写进去的那一位 —— 只改一处就是"探针说 0、屏上还糊"那一族。
-            val params = win.attributes
-            params.blurBehindRadius = px
-            win.attributes = params
-            if (px == 0) {
-                win.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                Log.i("FlyProbe", "模糊已收到 0 ⇒ 摘 flag")
-            }
-        }
-    }
-
-    /**
-     * **备料**：查起点 / 落点、摘模糊、起一次 `PixelCopy`（批 C1 从 [back] 里抽出来的那一半）。
+     * **备料**：查起点 / 落点、起一次 `PixelCopy`（批 C1 从 [back] 里抽出来的那一半）。
      *
      * 交回 false = 这一趟压根备不了料（没有落点 / 那一页没登记）—— 调用方老实 finish，
      * 不演"飞完了"。交回 true 时**像素还在路上**：`exitFrame` 要等 `captureRegion` 的回调。
@@ -842,7 +744,6 @@ fun PixivWorkScreen(
             Log.d(TAG, "返回程没有落点或没有起点那一页（墙那一格已回收 / 该页没登记 / 不是从墙上点进来的）⇒ 整页退")
             return false
         }
-        clearChromeForExit()
         // 起点改成**当前那一页图块**（批 B②）：截的就是那一页所在的矩形，飞行体带的
         // 是用户此刻正在看的那一页，不是整摞页 + 动作条 + 标签那一大框。
         GalleryFlyIn.captureRegion(view, start) { frame, capturedRect ->
@@ -976,34 +877,18 @@ fun PixivWorkScreen(
                         }
                     }
 
-                    // 取消：画面**回原位**、玻璃底挂回去、把离场那三样输入清掉。
+                    // 取消：画面**回原位**、把离场那三样输入清掉。
                     //
                     // 次序（与样板 `restoreChromeAfterCancel` 逐字同形）：
                     // 1. 决策层交回的 [SetVisualTarget(0f)] 先跑完 —— 那一刻画面已经站回原位，
                     //    所以看不见"背景先清晰、页面还在缩"的两步；
                     // 2. 三样必须清：渲染条件只看"三样齐不齐"（②③那轮删掉了 `leaving`），
                     //    不清就是**旧那一趟的截屏压在新那一趟上面**；
-                    // 3. 玻璃底**必须挂回去** —— 不挂就是"拖到一半松手回弹"之后
-                    //    这一屏的模糊底**永久没了**（样板那句注释记着同一个坑）；
-                    //    半径不另写常量：`LayoutParams.blurBehindRadius` 那一位从头到尾没被动过，照抄回来。
                     GalleryExitGestureCommand.Restore -> {
                         leaving = false
                         exitFrame = null
                         exitFrom = null
                         exitTo = null
-                        // 模糊那一位要**还原到起点**：淡到一半被取消时，半径已经停在某个中间值，
-                        // 不还原就是"这一屏的玻璃底永久变淡了"（样板那句"不挂就永久没了"同一族）。
-                        blurFading = false
-                        val win = (view.context as? Activity)?.window
-                        win?.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                        win?.setBackgroundBlurRadius(blurFromPx.toInt())
-                        win?.let {
-                            val params = it.attributes
-                            params.blurBehindRadius = blurFromPx.toInt()
-                            it.attributes = params
-                        }
-                        blurLastPx = -1
-                        Log.i("FlyProbe", "pixiv 手势取消：模糊还原到 ${blurFromPx.toInt()}px")
                     }
 
                     GalleryExitGestureCommand.FlySelfDriven -> flySelfDrivenExit()

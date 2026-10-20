@@ -3,6 +3,7 @@ package com.venera.compose.gallery
 import com.venera.compose.testsupport.RepoSources
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -721,38 +722,28 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
-    // ── 十六、玻璃底跟着飞淡掉（2026-10-20，主人「返回手势的模糊动画有点怪」）────
+    // ── 十六、返回手势不再动窗口模糊（2026-10-20，主人「看下能不能删掉返回手势的模糊动画」）──
     //
-    // 从前是**一帧跳清**：手指刚动，背后那面墙先"啪"地变清，**然后**图才缩 ——
-    // 两件事分开读，就是那句"怪"。现在半径跟着 `exitFly` 收到 0，
-    // 于是"图缩回去"与"背后变清"是同一件事的两面。
+    // 作品页内容本身就是照片墙，窗口模糊只会在返回手势里露出来；那层半径变化与页面缩回
+    // 分成两件事读，就是"怪"的来源。口径改成：窗口压根不挂 blur-behind，离场只动页面。
 
     @Test
-    fun `模糊跟着离场进度淡掉不许一帧跳清`() {
-        val raw = src(screen).replace("\r\n", "\n")
-        // 一帧跳清那种写法必须退场：`clearChromeForExit` 里不许再出现 `clearFlags(`
-        // （那是 10-20 之前的形状：flag 与半径同一帧归零）。
-        val from = raw.indexOf("fun clearChromeForExit() {")
-        val to = raw.indexOf("LaunchedEffect(blurFading, postId)")
-        assertTrue("找不到那一颗，量具失效", from > 0 && to > from)
-        val branch = raw.substring(from, to)
-        assertEquals(
-            "淡掉那一颗不许再一帧摘 flag（那是一帧跳清）",
-            0,
-            branch.lines().count { it.contains("clearFlags(") && !it.trimStart().startsWith("//") },
-        )
-        val body = code(screen)
-        // 半径跟着进度线性收到 0，起点取窗口当前那一位（不另写常量）。
+    fun `作品页不挂窗口模糊，返回手势也不再改半径`() {
+        val act = code(activity)
         assertTrue(
-            "半径要按离场进度收到 0",
-            body.any { it.contains("blurFromPx * (1f - progress.coerceIn(0f, 1f))") },
+            "窗口 blur-behind 必须关",
+            act.any { it.contains("blurBehindEnabled: Boolean = false") },
         )
-        assertTrue("起点半径取窗口当前那一位", body.any { it.contains("val from = win.attributes.blurBehindRadius") })
-        assertTrue("淡到 0 那一刻才摘 flag", body.any { it.contains("模糊已收到 0 ⇒ 摘 flag") })
-        // 两位都要写（只改一处就是"探针说 0、屏上还糊"那一族）。
-        assertTrue("半径要写回 attributes", body.any { it.contains("params.blurBehindRadius = px") })
-        // 取消那一笔要**还原**（淡到一半被取消时不能停在中间值）。
-        assertTrue("取消要还原半径", body.any { it.contains("模糊还原到") })
+        assertFalse("不再指定 blur-behind 半径", act.any { it.contains("blurBehindDp") })
+        assertFalse("不再推迟挂模糊", act.any { it.contains("deferredBlurBehind") })
+        assertFalse("不再由页面 arm 模糊", act.any { it.contains("armBlurBehind") })
+
+        val body = code(screen)
+        assertFalse("离场不再摘模糊", body.any { it.contains("clearChromeForExit") })
+        assertFalse("离场不再改窗口半径", body.any { it.contains("setBackgroundBlurRadius") })
+        assertFalse("离场不再动 blur flag", body.any { it.contains("FLAG_BLUR_BEHIND") })
+        assertFalse("不再保留模糊淡出状态", body.any { it.contains("blurFromPx") })
+        assertFalse("取消手势不再把模糊挂回来", body.any { it.contains("模糊还原到") })
     }
 
     // ── 十五、批 C1 跟手返回（2026-10-20）──────────────────────────────────
@@ -790,7 +781,7 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     @Test
-    fun `取消那一笔要归位要清帧要挂回玻璃底`() {
+    fun `取消那一笔要归位要清帧`() {
         // 取两支的原文（Restore 到 FlySelfDriven 之间）。
         val body = src(screen).replace("\r\n", "\n")
         val from = body.indexOf("GalleryExitGestureCommand.Restore ->")
@@ -811,13 +802,9 @@ class GalleryPixivWorkPageWiringTest {
         assertTrue("要清起点", branch.contains("exitFrom = null"))
         assertTrue("要清落点", branch.contains("exitTo = null"))
         assertTrue("要撤 leaving（页面要重新显示）", branch.contains("leaving = false"))
-        // ③ 玻璃底**必须挂回去**：不挂就是"拖到一半松手回弹"之后这一屏的模糊底永久没了
-        //    （样板 `restoreChromeAfterCancel` 那句注释记着同一个坑）。
-        assertTrue("要挂回 FLAG_BLUR_BEHIND", branch.contains("addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)"))
-        assertTrue(
-            "半径要还原到离场前记下的起点（淡到一半取消时不能停在中间值）",
-            branch.contains("setBackgroundBlurRadius(blurFromPx.toInt())"),
-        )
+        // ③ 这一屏压根没有窗口模糊，取消时也就不许再挂回来。
+        assertFalse("取消不许挂回 FLAG_BLUR_BEHIND", branch.contains("FLAG_BLUR_BEHIND"))
+        assertFalse("取消不许改窗口半径", branch.contains("setBackgroundBlurRadius"))
     }
 
     @Test
@@ -829,14 +816,6 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("两条路都调它（跟手 + 三键）", 2, body.countWith("prepareExit {"))
         // 自驱那条也只住一颗：三键 / 顶栏 / 决策层 `FlySelfDriven` 三处都走它。
         assertEquals("自驱飞只住一颗函数", 1, body.countWith("fun flySelfDrivenExit()"))
-        // 摘模糊抽成具名函数（两条路共用），且窗口那两件都做齐。
-        assertEquals("摘模糊只住一颗函数", 1, body.countWith("fun clearChromeForExit()"))
-        assertTrue("要摘 flag", body.any { it.contains("FLAG_BLUR_BEHIND") })
-        assertTrue(
-            "半径要跟离场进度收到 0（只摘 flag 在某些 ROM 上还留着）",
-            body.any { it.contains("win.setBackgroundBlurRadius(px)") } &&
-                body.any { it.contains("blurFromPx * (1f - progress.coerceIn(0f, 1f))") },
-        )
         // 顶栏那颗 / 三键那条仍走自驱（没有手指可跟），不许被手势那条吞掉。
         assertEquals("back 仍走自驱那条", 1, body.countWith("val back: () -> Unit = { flySelfDrivenExit() }"))
     }

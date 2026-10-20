@@ -14,8 +14,8 @@ import com.venera.compose.gallery.ui.PixivWorkScreen
  * 这一颗承载 pixiv 的"纵轴同作品多页连读、横轴换作品"。两屏互不吃对方的界面
  * （用户 2026-10-18 点名：「这个作品页是 pixiv 站源独用的，之前图库源的应该用回之前的，两个隔离开」）。
  *
- * 承载方式照旧是独立 Activity —— 只有跨窗口才拿得到实时 blur-behind 与跨 activity 的预测式返回，
- * 三条理由与 [GalleryPostActivity] 逐字同一份，不在这儿重述。
+ * 承载方式照旧是独立 Activity：这一页要跨 activity 的预测式返回。窗口模糊不挂
+ * （见 [blurBehindEnabled]），因为作品页本身就是照片墙，那层底只在返回手势里露馅。
  */
 class PixivWorkActivity : VeneraSubActivityBase() {
 
@@ -24,11 +24,14 @@ class PixivWorkActivity : VeneraSubActivityBase() {
     /** 这一页要透出后面那屏，所以基类那层不透明氛围底必须关掉。 */
     override val opaqueAmbientBackground: Boolean = false
 
-    /** 底是整面照片墙，取 32dp：与 [GalleryPostActivity] 同一口径，两屏不许糊得不一样。 */
-    override val blurBehindDp: Float = 32f
-
-    /** 推迟型：入场那一下屏上必须与点击前同一帧，图起飞之后才挂玻璃底。 */
-    override val deferredBlurBehind: Boolean = true
+    /**
+     * 这一屏不挂窗口模糊。
+     *
+     * 作品页的内容本身就是照片墙，模糊底几乎不会露出来；真正会被看见的是返回手势里
+     * 那层半径变化 —— 用户读成"背景先糊后清"，与页面缩回的形变分成两件事。
+     * 关掉之后返回只剩页面离场动画，和其他内容页一致。
+     */
+    override val blurBehindEnabled: Boolean = false
 
     private val artistProfile = registerForActivityResult(ArtistProfileResultContract()) { outcome ->
         val (targetSite, artistName) = outcome ?: return@registerForActivityResult
@@ -68,7 +71,6 @@ class PixivWorkActivity : VeneraSubActivityBase() {
                         .putExtra(GalleryPostActivity.EXTRA_POST_ID, id),
                 )
             },
-            onEnterStart = { armBlurBehind() },
         )
     }
 

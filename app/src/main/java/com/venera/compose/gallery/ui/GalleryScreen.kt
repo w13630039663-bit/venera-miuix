@@ -1068,14 +1068,20 @@ fun GalleryScreen(
             } else {
                 val result = works.rankingInApp(rankingMode, bearer)
                 pixivRanking = result.getOrNull()?.works.orEmpty()
-                pixivRankingCaption = result.exceptionOrNull()?.message
+                pixivRankingCaption = result.exceptionOrNull()?.let { error ->
+                    Log.w("VeneraDebug", "pixiv ranking failed (signed in)", error)
+                    "排行榜暂时没加载出来，稍后再试。"
+                }
             }
         } else {
-            // 匿名那一档仍走 www（带 `p=` 翻页、每页 50 条）。失败**不再吞掉**：
-            // 从前 `.getOrNull().orEmpty()` 一吞，屏上只剩"没有答上"，读不出是限流还是真空。
+            // 匿名那一档仍走 www（带 `p=` 翻页、每页 50 条）。技术异常只进日志：
+            // 站方偶尔回整页 HTML，把原文直接摆到屏上既读不懂，也会撑坏卡片高度。
             val result = works.ranking(rankingMode, page = 1)
             pixivRanking = result.getOrNull().orEmpty()
-            pixivRankingCaption = result.exceptionOrNull()?.message
+            pixivRankingCaption = result.exceptionOrNull()?.let { error ->
+                Log.w("VeneraDebug", "pixiv ranking failed (anonymous)", error)
+                "排行榜暂时没加载出来，稍后再试。"
+            }
         }
         // 展开态要跟着档位一起重算：换了档还留着上一档的 21 张，读起来像"周榜和日榜一样"。
         pixivRankingCache[cacheKey] = PixivRankingSnapshot(pixivRanking, pixivRankingCaption)
@@ -1553,7 +1559,7 @@ fun GalleryScreen(
             // 未登录时「推荐」那一池是**按收藏标签**取的，不是站方推荐 —— 屏上要说出来，
             // 否则会被读成"站方推荐就长这样"。站方推荐在场时不摆话（真读数不需要解释自己）。
             recommendNote = if (pixivRecommendStation) null else
-                "还没登录 pixiv：这一栏暂时按你收藏里的标签去站里找。登录后换成站方推荐。",
+                "登录后，这里会换成 pixiv 官方推荐。",
             // 空那一档念站方原话（见 `PixivHomeState.rankingCaption` 的理由）。
             rankingCaption = pixivRankingCaption,
             // 「换一批」（第二十三轮）：能不能摆 = 那一腿现在**有没有下一批**。

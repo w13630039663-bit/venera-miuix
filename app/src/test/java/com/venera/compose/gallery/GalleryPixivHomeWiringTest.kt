@@ -103,6 +103,21 @@ class GalleryPixivHomeWiringTest {
     }
 
     @Test
+    fun `匿名排行榜失败只念人话，技术异常留在日志`() {
+        val fetch = firstIndex("val result = works.ranking(rankingMode, page = 1)")
+        val body = textBetween(fetch, fetch + 12)
+        assertTrue("失败要写日志，方便排查：\n$body", body.contains("Log.w("))
+        assertTrue(
+            "匿名失败要在屏上念人话：\n$body",
+            body.contains("排行榜暂时没加载出来，稍后再试。"),
+        )
+        assertTrue(
+            "不许把原始异常 / HTML 直接塞进 caption：\n$body",
+            !body.contains("pixivRankingCaption = result.exceptionOrNull()?.message"),
+        )
+    }
+
+    @Test
     fun `推荐取数之前先看这一档取过没有`() {
         val guard = firstIndex("if (pixivRecommendLoadedKey == requestKey)")
         val fetch = firstIndex("works.recommended(bearer)", guard)
