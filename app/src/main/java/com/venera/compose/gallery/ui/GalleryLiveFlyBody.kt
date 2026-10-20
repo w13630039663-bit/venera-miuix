@@ -22,6 +22,27 @@ import com.venera.compose.gallery.domain.flightFrame
 import kotlin.math.roundToInt
 
 /**
+ * 活画面那一枚位图（**组合期**取；没到手交 null）。
+ *
+ * 为什么单独一颗、而不是藏在飞行体里：调用侧要靠它决定"这一趟走活画面还是截图族"。
+ * 藏起来的话，调用侧只能按"URL 非空"猜 —— 而那正是 2026-10-20 真机那一格泛白的病根：
+ * 截图族按"活画面会接管"让开，而活画面这边图还没到手也什么都没画 ⇒ **两条路都不画，屏上空的**。
+ * 现在把这份判据交出去：拿得到位图才是"活画面接管"，拿不到就老实走截图族。
+ *
+ * 口径同 `WatercolorPainterScreen:120`（coil3 的真位图在 `SuccessResult.image` 里，
+ * 且只有 `BitmapImage` 有 `.bitmap`）。
+ */
+@Composable
+internal fun rememberLiveFlyBitmap(coverUrl: String): ImageBitmap? {
+    if (coverUrl.isBlank()) return null
+    val painter = rememberAsyncImagePainter(model = coverUrl)
+    return (painter.state as? SuccessResult)
+        ?.let { it.image as? BitmapImage }
+        ?.bitmap
+        ?.asImageBitmap()
+}
+
+/**
  * **活画面飞行体**（批 B①，2026-10-19）：飞的不再是一帧截图，而是**与墙上那张卡同一颗 URL
  * 解析件**的封面（pixez 那条路，§4.3 第 1 条的对照物）。
  *
@@ -84,7 +105,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun GalleryLiveFlyBody(
     progress: () -> Float,
-    coverUrl: String,
+    bitmap: ImageBitmap?,
     from: Rect,
     to: () -> Rect,
     imageRatio: Float,
@@ -92,15 +113,7 @@ internal fun GalleryLiveFlyBody(
     cardCornerRadiusPx: Float = 0f,
     toCornerRadiusPx: Float = 0f,
 ) {
-    if (coverUrl.isBlank() || imageRatio <= 0f) return
-    // 组合期取位图（口径同 `WatercolorPainterScreen:120`）。没到手就什么都不画：
-    // 调用方那一边是截图族垫着的，屏上不空；活画面这一族也没有"加载中"那一态。
-    val painter = rememberAsyncImagePainter(model = coverUrl)
-    val bitmap: ImageBitmap? = (painter.state as? SuccessResult)
-        ?.let { it.image as? BitmapImage }
-        ?.bitmap
-        ?.asImageBitmap()
-    if (bitmap == null) return
+    if (bitmap == null || imageRatio <= 0f) return
     Box(
         modifier = modifier
             .fillMaxSize()

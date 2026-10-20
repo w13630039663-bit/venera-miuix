@@ -676,6 +676,25 @@ class GalleryPixivWorkPageWiringTest {
             1,
             body.countWith("entryFrom != null && liveTakesOver"),
         )
+        // ⚠️ 2026-10-20 真机那一格泛白的病根：接管判据**必须**是"位图到手"，不许只是"URL 非空"。
+        // 按 URL 判会让截图族提前让开（`!liveTakesOver`），而活画面那边图还没到手也什么都不画
+        // ⇒ 两条路都不画、屏上只剩半透明的页面压在墙上（录屏 `g007` 逐帧证）。
+        assertEquals(
+            "接管判据必须是位图到手（不是 URL 非空）",
+            1,
+            body.countWith("val liveTakesOver = liveBitmap != null && liveRatio != null"),
+        )
+        assertEquals(
+            "位图在组合期取一次（判据与绘制吃同一份）",
+            1,
+            body.countWith("val liveBitmap = rememberLiveFlyBitmap(liveUrl)"),
+        )
+        // 负向扫描：不许再有"按 URL 判接管"那种写法（演回来就是同一格泛白）。
+        assertEquals(
+            "不许按 URL 判接管（那是泛白的病根）",
+            0,
+            body.countWith("liveUrl.isNotBlank() && liveRatio != null"),
+        )
         // URL 与比例的唯一出处：`detail.post`（详情腿）或 `works` 里同一号码（列表腿 / 种子那一格）。
         assertEquals(
             "封面地址只从 GalleryPost 上取（屏上不另拼）",

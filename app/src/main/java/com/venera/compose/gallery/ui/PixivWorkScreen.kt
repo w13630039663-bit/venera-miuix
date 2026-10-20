@@ -1093,7 +1093,12 @@ fun PixivWorkScreen(
         val livePost: GalleryPost? = detail?.post ?: works.firstOrNull { it.id == currentId }
         val liveUrl = livePost?.previewUrl.orEmpty()
         val liveRatio = livePost?.cardRatio?.takeIf { it > 0f }
-        val liveTakesOver = liveUrl.isNotBlank() && liveRatio != null
+        // ⚠️ 接管判据必须是**位图到手**，不能只是"URL 非空"（2026-10-20 真机那一格泛白的病根）：
+        // 按 URL 判会让截图族提前让开，而活画面这边图还没到手也什么都没画 ⇒ 两条路都不画、
+        // 屏上只剩半透明的页面压在墙上（录屏逐帧证：`g007`）。所以位图在组合期取一次，
+        // 拿得到才是"活画面接管"，拿不到就老实走截图族。
+        val liveBitmap = rememberLiveFlyBitmap(liveUrl)
+        val liveTakesOver = liveBitmap != null && liveRatio != null
         // 两颗**严格互斥**：活画面接管时截图族那颗不画（同一 from/to 画两遍就是"同一张画两份"，
         // 而那正是本仓反复在治的那一族；活画面自己没到手也不画，见那颗函数里的提前返回）。
         if ((entryFlying || entryWaiting) && entryBitmap != null && entryFrom != null && !liveTakesOver) {
@@ -1125,7 +1130,7 @@ fun PixivWorkScreen(
         if ((entryFlying || entryWaiting) && entryFrom != null && liveTakesOver) {
             GalleryLiveFlyBody(
                 progress = { if (entryFlying) entryFly.value else 0f },
-                coverUrl = liveUrl,
+                bitmap = liveBitmap,
                 from = entryFrom,
                 to = { entryTarget ?: entryFrom },
                 imageRatio = liveRatio,
