@@ -151,10 +151,12 @@ import com.venera.compose.gallery.domain.sideSlideTopOffset
 import com.venera.compose.gallery.domain.splitPixivComment
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -1026,8 +1028,21 @@ fun PixivWorkScreen(
                     // 点作品标签 → 交回画廊那面墙去搜这一枚（用户 2026-10-19 第 3 条）。
                     // 走 `GallerySearchHandoff` 而不是本地跳转：这一屏是独立 Activity，
                     // 搜索状态的宿主在 MainActivity 那一侧（交接件的由来写在它头上）。
-                    // 交出去之后**不自己 finish** —— 由宿主层把用户送回画廊，返回时还能退回这一屏。
-                    onSearchTag = { tag -> GallerySearchHandoff.postTag(GallerySite.PIXIV, tag) },
+                    //
+                    // ⚠️ 2026-10-20 修「点标签没反应」：从前这里**只写槽、不离开本屏**，
+                    // 而槽的消费方（`GalleryScreen` 里那条 `LaunchedEffect`）只有在画廊那一屏
+                    // **组合活着**时才跑得起来。可这一屏压在它上面、它是 paused 的；
+                    // 更糟的是从收藏页那面墙点进来时，画廊那一屏组合**压根没了**
+                    // （见 `Navigation.kt` 那条"谁先到谁吃掉"的注释）。于是槽写进去，没人读 ——
+                    // 用户点了没反应，直到他手动返回，槽才被读到：那时屏上会切进 pixiv 那一域、
+                    // 卡在空词上（空词不发请求），看起来正是"首页冒出个空搜索框"。
+                    // 所以这里与图库三站那颗 `GalleryPostScreen` 同一形状：先写上槽，再退掉本层。
+                    onSearchTag = { tag ->
+                        GallerySearchHandoff.postTag(GallerySite.PIXIV, tag)
+                        // 与上面那颗旧看图器同一理由：用户要的是立刻看到结果，
+                        // 多那一段离场飞行挡在前面读起来就是"点了没反应"。
+                        back()
+                    },
                     // 两条钟只对**当前这一作**有读数：邻槽是 pager 预组合的，
                     // 它跟着进场归零就会在旁边闪一下（用户横翻回来时读到的"隔壁那页空了一下"）。
                     pageEntryAlpha = { if (slotId == postId) pageAlpha() else 1f },
@@ -1159,6 +1174,14 @@ fun PixivWorkScreen(
                         onOpenWork(id)
                     },
                     aiBadgeOn = aiBadgeOn,
+                    // 抽屉里点标签与流里那一枚走**同一条**链（写交接槽 + 退本层）：
+                    // 两处各写一份就会出现"流里点得动、抽屉里点了没反应"那种半接线。
+                    onSearchTag = { tag ->
+                        GallerySearchHandoff.postTag(GallerySite.PIXIV, tag)
+                        // 先收抽屉再退：抽屉是这一屏的浮层，留着它就会盖在退场动画上。
+                        sheetOpen = false
+                        back()
+                    },
                     // 「更多信息」那一层也摆评论（与滚动流里那一节同一份状态，
                     // 切到抽屉看到的是同一句话，不会两处对不上）。
                     comments = commentStates[currentId] ?: PixivCommentsState.Loading,
@@ -2174,6 +2197,12 @@ internal fun PixivWorkDetails(
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
+    // 复制与屏蔽两个动作要有 Context（剪贴板 / Toast / 落库那一路的端口），
+    // 与信息卡那面标签墙同一套取法（那边也是 `LocalContext.current` 现取，不收形参）。
+    val chipContext = LocalContext.current
+    // 屏蔽是 suspend 的，作用域建在**详情段这一级**（理由见 `blockTagText` 头注）：
+    // 每枚 chip 自己建的话，菜单关闭那一刻 chip 已被移出组合就会把那一笔写库掐掉。
+    val tagScope = rememberCoroutineScope()
     val shown = PixivWorkPage.tagsShown(detail.tags, tagsExpanded)
     val hidden = PixivWorkPage.tagsHidden(detail.tags)
     var artistMenu by remember(detail.post.author) { mutableStateOf(false) }
@@ -2327,7 +2356,21 @@ internal fun PixivWorkDetails(
             ) {
                 // 同屏最多 8 枚；不足 8 枚时 hidden==0 ⇒ 节头右侧根本不会出现「查看全部」那枚把手
                 shown.forEach { tag ->
-                    TagChip(tag, onClick = onSearchTag?.let { search -> { search(tag) } })
+                    // 三件事一起接（2026-10-20，用户「作品标签加入 pixiv 的多语言/翻译 tag 和
+                    // 长按标签可以屏蔽 复制 搜索的选项」）：
+                    // - 显示文本走**站方给的译名**（`detail.tagTranslations`，只改显示）；
+                    // - 点 = 按**原名**去搜（译文会变，检索引擎只认站方那个词）；
+                    // - 长按 = 搜索 / 复制 / 屏蔽三项（与画廊信息卡那面标签墙同一颗件、同一份措辞）。
+                    //
+                    // 为什么用共用那颗 `GalleryTagChip` 而不在本地画一枚：菜单项的顺序、屏蔽落的是
+                    // 哪种规则、双显的括号形，这三件在信息卡那边已经定过；抄一份到这里就成了两处真相。
+                    GalleryTagChip(
+                        tag = tag,
+                        text = tagDisplayLabel(tag, detail.tagTranslations),
+                        onClick = onSearchTag?.let { search -> { search(tag) } },
+                        onCopy = { copyTagText(chipContext, tag) },
+                        onBlock = { tagScope.launch { blockTagText(chipContext, tag) } },
+                    )
                 }
             }
         }
@@ -2385,37 +2428,47 @@ internal fun PixivWorkDetails(
     }
 }
 
-@Composable
-private fun TagChip(
-    tag: String,
-    /**
-     * 点这一枚去搜这个标签。**null = 这一层没有搜索出口**，那就保持纯展示（不加可点语义、
-     * 不加涟漪）：摆一枚点不动却长得像把手的药丸，比不摆更糟。
-     */
-    onClick: (() -> Unit)? = null,
-) {
-    val tokens = VeneraTokens
-    val base = Modifier
-        .clip(RoundedCornerShape(percent = 50))
-        .background(tokens.color.surfaceVariant)
-    Text(
-        tag,
-        fontSize = tokens.type.caption,
-        color = tokens.color.textPrimary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = (if (onClick != null) {
-            base
-                // 与「查看全部」那枚把手同一档：先 clip 再 clickable，涟漪才被药丸裁住。
-                .clickable(onClick = onClick)
-                .semantics { contentDescription = "搜索标签 $tag" }
-        } else {
-            base
-        }).padding(
-            horizontal = tokens.spacing.chipHorizontalPadding,
-            vertical = tokens.spacing.chipVerticalPadding,
-        ),
-    )
+/**
+ * 长按菜单那两个**写动作**（复制 / 屏蔽），住在这一颗文件里是因为它们只服务作品页这一处。
+ *
+ * ## 复制的永远是**站方原名**
+ *
+ * 用户手上可能显示着「女の子 (女孩子)」，但复制要给他 `女の子` —— 那一串才是能拿去搜、
+ * 能贴给别人的词。译文只改显示（口径与 `tagDisplayLabel` 的注释同一条）。
+ *
+ * ## 屏蔽落的是 **TAG 规则**
+ *
+ * 这个选择是**量出来的差异**，不是照抄：`PixivWorkInfoPanel` 那颗头注记着 ——
+ * pixiv 的 `post.tagList` 就是这些**作品标签**，所以 TAG 规则加下去在墙上真生效；
+ * 而画师名**不在** tagList 里（pixiv 那一格是作品标签），所以画师那一条存 AUTHOR。
+ * 抄错成 KEYWORD 会把作者名一起误伤（同一个词出现在别人的标签里就挡人）。
+ */
+private fun copyTagText(context: Context, tag: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        ?: return
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("标签", tag))
+    Toast.makeText(context, "已复制「$tag」", Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * 屏蔽一枚标签（suspend 落库，作用域由调用方给）。
+ *
+ * 为什么 scope 要**在详情段那一级**建、而不是每枚 chip 自己建：写库是 suspend 的，
+ * 而菜单关闭那一刻这一枚 chip 完全可能已被移出组合（标签墙收起 / 横翻换作品）——
+ * 跟着 chip 走的 scope 会在写库半路被取消，表现为"点了屏蔽、Toast 没出、规则也没落"。
+ * 详情段这一级活得比任何一枚 chip 都久，而这一笔写的又是用户明确点下的存档。
+ */
+private suspend fun blockTagText(context: Context, tag: String) {
+    val guard = com.venera.compose.gallery.data.GalleryPorts.of(context).contentGuard
+    val exists = guard.rules.value.any { it.type == "TAG" && it.pattern.equals(tag, ignoreCase = true) }
+    val message = when {
+        exists -> "「$tag」已经在屏蔽列表里了"
+        guard.addRule("TAG", tag) >= 0 -> "已屏蔽「$tag」，可在 设置 → 内容屏蔽管理 里改"
+        else -> "屏蔽没成功，再试一次"
+    }
+    withContext(kotlinx.coroutines.Dispatchers.Main) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
 }
 
 /** 动图那一档的明说 + 出口：不说"看不了"，也不摆一枚点了没反应的播放钮。 */

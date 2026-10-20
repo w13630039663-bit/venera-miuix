@@ -70,6 +70,24 @@ data class GallerySearchContext(
      * 悄悄换词正是这个功能从第一天就该防的事。
      */
     val aliasNotice: String? = null,
+    /**
+     * 这一轮属于哪个**内容域**（图库站 / Pixiv）。
+     *
+     * 2026-10-20 补：两个域的"我在搜什么"根本不是同一格（booru 是 [filters] 那串胶囊，
+     * pixiv 是一个词 [pixivTerm]）。快照若只存 booru 那一半，弹栈回到 pixiv 那一轮时
+     * 屏上就是"一片结果 + 一个空搜索框"—— 而**返回程从来不会自己发请求**，
+     * 所以这一格不存就永远补不回来（用户读到的是"返回后搜索词没了"）。
+     */
+    val domain: GalleryHomeDomain = GalleryHomeDomain.BOORU,
+    /** pixiv 那一轮的词。booru 那一轮恒为空串（两个域各存各的，见 [domain]）。 */
+    val pixivTerm: String = "",
+    /**
+     * pixiv 那一轮的翻页游标（站方 `next_url`；null = 第一页 / 到底）。
+     *
+     * 必须一起存：弹栈不发请求、也不重翻页，游标丢掉就会让"弹回那一轮 → 往下滚"
+     * 直接被判成到底（屏上什么都没加载，而墙还有内容）。
+     */
+    val pixivNextUrl: String? = null,
 ) {
     /**
      * 单站那一档的便捷读法。多腿时取站表序第一个。
@@ -123,6 +141,28 @@ object GallerySearchContextStack {
         // 换来源 = 换一轮：条件一串不差但打的站不一样，结果也不同源（两站词表不通）。
         // 「全部」与单站之间来回切同理 —— 屏上的张数会变，压栈才回得去刚才那一屏。
         incomingSource == currentSource && incomingFilters == currentFilters ->
+            GalleryContextPlan.RESEARCH_IN_PLACE
+        else -> GalleryContextPlan.PUSH
+    }
+
+    /**
+     * **跨域**那一版的处置（2026-10-20）。
+     *
+     * 两个域"搜什么"不是同一格（booru 是胶囊串、pixiv 是一个词），所以进来的这一轮只用
+     * 两个归一化后的条件去比：`incomingKey` 为 null/空 ⇒ 这一轮没东西可装（[SKIP_EMPTY]）；
+     * 与当前这一轮**同域同词** ⇒ [RESEARCH_IN_PLACE]（再跑一次，不压栈）；
+     * 其余一律 [PUSH]（含"从 pixiv 那轮点进 booru 标签"—— 换了域，结果必然不同源）。
+     *
+     * @param currentDomain 当前这一轮属于哪个域；[currentKey] 是它"搜什么"的归一化读数。
+     */
+    fun plan(
+        currentDomain: GalleryHomeDomain,
+        currentKey: String?,
+        incomingDomain: GalleryHomeDomain,
+        incomingKey: String?,
+    ): GalleryContextPlan = when {
+        incomingKey.isNullOrBlank() -> GalleryContextPlan.SKIP_EMPTY
+        currentDomain == incomingDomain && currentKey == incomingKey ->
             GalleryContextPlan.RESEARCH_IN_PLACE
         else -> GalleryContextPlan.PUSH
     }

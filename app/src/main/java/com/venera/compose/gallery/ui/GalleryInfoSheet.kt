@@ -1138,25 +1138,36 @@ internal fun tagDisplayLabel(tag: String, translations: Map<String, String>): St
  * 一枚可交互的标签药丸 —— **画法照 `feature/ComicDetailScreen.kt` 的 `DetailTagChip`**：
  * 点击直达该标签搜索，长按起菜单。按压反馈由 `VeneraChip` 统一持有，这里只给回调。
  *
- * 菜单**逐项各挂一个**：FlowRow 排布下共用一个锚会让菜单永远从第一枚的位置弹出来
- * （详情页已经踩过，`FavoriteImagesScreen.kt:601` 那条注释记着同一件事）。
+ * ## 为什么是 `internal` 而不是 `private`（2026-10-20）
  *
- * 三项里"搜索"与点击重复，是**刻意**的：长按菜单是"这块区域能做什么"的目录，
- * 少了这一项，用户只能靠猜知道点击也可以。
+ * 用户在同一条反馈里要了两件事：作品页标签要**接上译名**、并且「长按标签可以屏蔽 / 复制 / 搜索」。
+ * 而这三项动作 + 长按菜单的形状在这颗文件里已经有一份（画廊信息卡那面标签墙用的就是它）。
+ * 再抄一份到 `PixivWorkScreen` 里，两处迟早在"菜单项顺序""屏蔽存的是哪种规则""译文显不显"
+ * 上分叉 —— 而分叉出来的差别不报错，只在某个屏上少一项或点不动。
  *
- * [onCopy]/[onBlock] 给 null 就是"这一枚不带菜单"（画师那一行用它）。
+ * ## 菜单项是**按给了什么就摆什么**（不是三项硬编码）
+ *
+ * 画廊那面墙三项全给；pixiv 作品页三项也都给（屏蔽走 TAG 规则，实测有效：
+ * pixiv 的 `post.tagList` 就是这些作品标签，见 `PixivWorkInfoPanel` 头注那条对比）。
+ * 但将来若有宿主只给其中两项，菜单就只摆那两项 —— **摆一枚点了没反应的项比不摆更糟**，
+ * 而"三项永远都在"这种硬编码会让漏传变成静默的假开关。
+ *
+ * [onCopy]/[onBlock] 给 null 就是"这一枚不带那一项"（画师那一行用它：画师名不是标签，
+ * 落 TAG 规则挡不住，所以那里只给复制）。
  */
 @Composable
-private fun GalleryTagChip(
+internal fun GalleryTagChip(
     tag: String,
     text: String,
-    onClick: () -> Unit,
-    onCopy: (() -> Unit)?,
-    onBlock: (() -> Unit)?,
+    onClick: (() -> Unit)?,
+    onCopy: (() -> Unit)? = null,
+    onBlock: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val view = LocalView.current
     var menuExpanded by remember { mutableStateOf(false) }
+    // 有没有菜单可起：给了任意一项次要动作就该有长按。
+    val hasMenu = onClick != null || onCopy != null || onBlock != null
     Box {
         VeneraChip(
             text = text,
@@ -1164,21 +1175,22 @@ private fun GalleryTagChip(
             // 站方标签原文最长能到五六十字符（`red_rose_(flower)` 这类带括号的），单行省略后
             // 用户既读不到全词、也复制不到全词。标签墙在面板内自己滚，多一行不抢别的高度。
             textMaxLines = 2,
+            // 点击那一路只在真有搜索出口时才挂：没有出口的标签（纯展示）不该吃走按压缩放。
             onClick = onClick,
             // 条件与下面那块菜单**各写一次**，不用一个布尔变量接着：
             // 那样 Kotlin 认不出 `onCopy` 已经不是 null，只能写成 `?.invoke()` 反而更绕。
-            onLongClick = if (onCopy != null && onBlock != null) {
+            onLongClick = if (hasMenu) {
                 {
                     view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     menuExpanded = true
                 }
             } else null,
         )
-        if (onCopy != null && onBlock != null) DropdownMenu(
+        if (hasMenu) DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
         ) {
-            DropdownMenuItem(
+            if (onClick != null) DropdownMenuItem(
                 text = {
                     Text("搜索「$tag」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
                 },
@@ -1187,7 +1199,7 @@ private fun GalleryTagChip(
                     onClick()
                 },
             )
-            DropdownMenuItem(
+            if (onCopy != null) DropdownMenuItem(
                 text = {
                     Text("复制「$tag」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
                 },
@@ -1196,7 +1208,7 @@ private fun GalleryTagChip(
                     onCopy()
                 },
             )
-            DropdownMenuItem(
+            if (onBlock != null) DropdownMenuItem(
                 text = {
                     Text("屏蔽该标签", fontSize = tokens.type.caption, color = StatusColors.Failing)
                 },

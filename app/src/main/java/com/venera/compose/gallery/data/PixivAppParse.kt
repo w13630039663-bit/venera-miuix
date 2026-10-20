@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.data
+package com.venera.compose.gallery.data
 
 import java.io.IOException
 import kotlinx.serialization.json.Json
@@ -435,6 +435,21 @@ internal object PixivAppParse {
             tags = (record["tags"] as? JsonArray)
                 ?.mapNotNull { (it as? JsonObject)?.get("name").textOrNull() }
                 ?: emptyList(),
+            // 标签译名（2026-10-20）：这一腿的格子是**平铺字符串** `translated_name`，
+            // 与匿名腿那个 `translation` 对象不是同一条形状（两边各读各的）。
+            // 它只在请求带了 `Accept-Language` 时才有值 —— 那枚头由 `PixivAppClient` 统一挂上。
+            tagTranslations = (record["tags"] as? JsonArray)
+                ?.mapNotNull { element ->
+                    val item = element as? JsonObject ?: return@mapNotNull null
+                    val name = item["name"].textOrNull() ?: return@mapNotNull null
+                    val label = item["translated_name"].textOrNull() ?: return@mapNotNull null
+                    // 站方有时把 `translated_name` 照着原名再写一遍（尤其 ja 那一头），
+                    // 收进来就会在屏上长出「女の子 (女の子)」——只改显示的东西不许这样占字符。
+                    // 键存**小写**：消费点按 `tag.lowercase()` 查（与 `tagDisplayLabel` 同一口径）。
+                    if (label.equals(name, ignoreCase = true)) null else name.lowercase() to label
+                }
+                ?.toMap()
+                ?: emptyMap(),
             viewCount = record["total_view"].numberOrStringOrNull()?.toIntOrNull(),
             uploadDate = record["create_date"].textOrNull(),
             commentCount = null,

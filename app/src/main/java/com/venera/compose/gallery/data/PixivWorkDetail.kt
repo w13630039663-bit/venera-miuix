@@ -51,6 +51,21 @@ data class PixivWorkDetail(
      * （现量一例 `キャラ配布(コイカツ)` 同族），并成串再切回来就会把一枚标签劈成两枚。
      */
     val tags: List<String>,
+    /**
+     * 站方给的**标签译名**（`标签原名 → 译文`），2026-10-20 补。
+     *
+     * 两条腿的字段名不同，取值口径也不同：
+     * - 匿名腿 `/ajax/illust/{id}`：每枚标签是 `{"tag": "...", "translation": {"en": "..."}}` ——
+     *   那个对象的**键跟着请求的 `Accept-Language` 走**（zh-cn 就回 `zh-cn`），所以读的时候
+     *   不按固定键捞，见 [PixivFeedParse.tagTranslationOf]；
+     * - 登录腿 `/v1/illust/detail`：每枚是 `{"name": "...", "translated_name": "..."}`，
+     *   同样只在带了 `Accept-Language` 时才非空（pixivpy 的 `set_accept_language` 就是为这一格）。
+     *
+     * **只改显示**：点标签去搜的、复制的、落屏蔽表的都必须是 [tags] 里那颗原串
+     * （译文会随站方词表变，检索引擎只认原名）。空表 = 站方这次没给译文 ⇒ 屏上只摆原名，
+     * 不拿离线词典顶（那份是三站共用词表，对 pixiv 的日文标签覆盖很低，见 `GalleryTagChip` 的注释）。
+     */
+    val tagTranslations: Map<String, String> = emptyMap(),
     /** 浏览量（`viewCount`，现量 851）。 */
     val viewCount: Int?,
     /** 站方原样 ISO 串带时区（`uploadDate`，现量 `2026-10-01T06:12:00+00:00`）；换算与截日在 `domain/PixivWorkPage` 判。 */

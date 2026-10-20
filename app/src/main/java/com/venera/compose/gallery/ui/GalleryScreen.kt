@@ -925,6 +925,18 @@ fun GalleryScreen(
     // 换域时 `setDomain` 会把手上那一轮清掉（在途掐掉 + 结果清空）：卡上写着 pixiv 的筛选、
     // 身下的墙却是 booru 的图，是本仓最忌的那种假读数。条件不抹，两边各留各的。
     LaunchedEffect(domain) { svm.setDomain(domain) }
+    // ── 反向同步（2026-10-20，用户报「pixiv 作品页点标签后返回，首页出现搜索框却没有词」）──
+    //
+    // 上面那条是**页面 → ViewModel**（用户点了切换器）。但域还有第二个写入口：**交接**
+    // （`GallerySearchHandoff` 消费时按"这张图属于哪个站"切域，见 `acceptHandoff`）。
+    // 那一条写的是 ViewModel，页面这一格 `homeDomain` 若不同步，屏上就会出现最难看的一种错配：
+    // 搜索卡按 `svm.domain` 画成 **pixiv 那一套**（一个词的框），而身下的墙与那几节
+    // 仍按 `domain` 画成 **booru 的**（标签胶囊 + 每日热门）—— 两半各说各的。
+    //
+    // 写成"只在真不一样时才写"是刻意的：两条 effect 互为镜像，任一条无条件写都会来回抖。
+    LaunchedEffect(svm.domain) {
+        if (homeDomain != svm.domain.name) homeDomain = svm.domain.name
+    }
     val rankingMode = PixivRankingMode.entries.first { it.name == pixivModeName }
     var pixivRanking by remember { mutableStateOf(emptyList<PixivWork>()) }
     var pixivRankingLoading by remember { mutableStateOf(false) }

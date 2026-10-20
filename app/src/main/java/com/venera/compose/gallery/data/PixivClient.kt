@@ -208,6 +208,11 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
+            // 标签译名（`tags.tags[].translation`）**只在这枚头存在时才有值**（2026-10-20）。
+            // 这一格与上一行的 `Accept` 不是一回事：那枚说的是"答复给我 JSON"，
+            // 这一枚说的是"里面那几段人话给我哪种语言"。不挂它，译名那一路永远是空表，
+            // 而"站方没给译文"与"我们压根没问"在屏上长得一模一样。
+            .header("Accept-Language", PixivAppClient.PIXIV_TAG_LANGUAGE)
             // 与日榜同一条口径：画廊这一路**不弹过盾窗口**（挂在那儿等交互会把整屏挂死）。
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()

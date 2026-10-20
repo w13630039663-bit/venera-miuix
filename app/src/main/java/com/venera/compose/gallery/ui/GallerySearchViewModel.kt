@@ -604,6 +604,23 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 只有当前那一档根本不含这张图的站时（例如从收藏页那面墙进来），才落到那一个站。
      */
     fun acceptHandoff(site: GallerySite, tags: List<String>) {
+        // ── 内容域分流（2026-10-20，用户报「pixiv 作品页点标签没反应，返回后只剩一个空搜索框」）──
+        //
+        // 病因链在这一句：交接从前**一律**走上面那条 booru 的路 —— 把标签塞进 `filters`（胶囊），
+        // 而 pixiv 那一域读的是 `pixivTerm`（一个词）。于是两个域各自都"按设计执行"：
+        // 1. `switchSource(single(PIXIV), reSearch = false)` 先把来源改成只有 pixiv 一腿；
+        // 2. `filters = [标签]`、`runSearch(1)` → 落到 `runPixivSearch` → 它读 `pixivTerm` = **空串**
+        //    ⇒ 走"先打一个词"那条早退，**一笔请求都没发**；
+        // 3. `thenCollapse = false` ⇒ 卡片保持在 INPUT 态。
+        // 屏上于是只有"一个空搜索框"，而用户点的那枚标签去了一个 pixiv 永远不读的格子里 ——
+        // 这就是"点了完全没反应"。
+        //
+        // 所以这里按**这张图属于哪个站**分流，而不是按"当前这一屏是什么域"：
+        // 用户点的是一枚 pixiv 标签，他要的就是"按这个词去 pixiv 搜"，那一刻屏上是什么域不重要。
+        if (site == GallerySite.PIXIV) {
+            openPixivContext(tags.firstOrNull().orEmpty())
+            return
+        }
         val next = if (site in source.sites) source else GallerySearchSource.single(site)
         openContext(next, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
     }
@@ -648,6 +665,16 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             GalleryContextPlan.SKIP_EMPTY -> Unit
         }
         switchSource(nextSource, reSearch = false)
+        // ── 域回位（2026-10-20）──
+        // 反向那一条同样要修：在 pixiv 内容域里点一枚 **booru** 标签时，`source` 会被换成
+        // 单站 booru，而 `domain` 还停在 PIXIV ⇒ `runSearch` 按域路由到 `runPixivSearch`，
+        // 读的是 `pixivTerm`（那是上一轮 pixiv 的词，或者空）⇒ 要么搜错词、要么一笔都不发。
+        // booru 的来源轴**永远不含 pixiv**（`GallerySearchSource.ALL` 显式剥了它），
+        // 所以走到这里就意味着"这一轮是 booru 的"。
+        if (domain != GalleryHomeDomain.BOORU) {
+            domain = GalleryHomeDomain.BOORU
+            reloadHistory()
+        }
         active = true
         // 轮次一 +1：在途那笔（可能是上一轮的续页）落地时会被 [isStaleContext] 作废。
         contextRound++
@@ -669,6 +696,94 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         runSearch(1)
     }
 
+    /**
+     * **pixiv 那一侧的换一轮上下文**（2026-10-20）—— 与 [openContext] 平行，不是它的一个分支。
+     *
+     * 为什么不能并进 [openContext]：两个域"搜什么"根本不是同一格（booru 是胶囊串、pixiv 是一个词），
+     * 而上游那个入口（[acceptHandoff]）只知道"用户点了一枚哪一站的标签"。并进去就得在每个字段上
+     * 加一次 `if (domain == PIXIV)`，而那类分支里任何一处走错都不报错、只出假读数。
+     *
+     * 三件事按这个次序做，与 [openContext] 逐条对齐（少了任何一条都会长出"返回回不去"那一族）：
+     * 1. 先按 [GallerySearchContextStack.plan] 处置上一轮（压栈 / 原地重搜 / 不压空壳）；
+     * 2. 再切域 + 装词 + 清场（在途掐掉、轮次 +1 让旧响应作废）；
+     * 3. 最后 [runPixivSearch] —— **不绕 [setPixivTerm]**，它会把 `mode` 翻回 INPUT
+     *    （那是"用户还在打字"的意思），于是刚装好的这一轮当场退回空搜索框 ——
+     *    正是用户报的那个"点了没反应、只剩一个框"。
+     *
+     * @param word 这一轮要搜的词（pixiv 一次只发一个词；空词 = 没有这一轮）。
+     */
+    private fun openPixivContext(word: String) {
+        val incoming = word.trim()
+        when (
+            GallerySearchContextStack.plan(
+                currentDomain = domain,
+                currentKey = if (domain == GalleryHomeDomain.PIXIV) pixivTerm.trim() else filters.joinToString(" "),
+                incomingDomain = GalleryHomeDomain.PIXIV,
+                incomingKey = incoming,
+            )
+        ) {
+            GalleryContextPlan.PUSH -> contexts = GallerySearchContextStack.push(contexts, snapshot())
+            GalleryContextPlan.RESEARCH_IN_PLACE -> Unit
+            GalleryContextPlan.SKIP_EMPTY -> Unit
+        }
+        // 换域那一笔清场**不能走 [setDomain]**：它会把 `mode` 拍回 INPUT 并且不装词，
+        // 而这里紧跟着就要装。两件事拆成两句就会先闪一帧空卡再长回结果（同一轮两次重组）。
+        if (domain != GalleryHomeDomain.PIXIV) {
+            domain = GalleryHomeDomain.PIXIV
+            reloadHistory()
+        }
+        active = true
+        // 在途那一笔掐掉：旧域 / 旧词的结果落地会写进这一轮的墙（域已经变了，落地就是脏数据）。
+        searchJob?.cancel()
+        suggestJob?.cancel()
+        artistJob?.cancel()
+        isSearching = false
+        isLoadingMore = false
+        isSearchingArtists = false
+        suggestions = emptyList()
+        suggestError = null
+        results = emptyList()
+        page = 0
+        pageBySite = emptyMap()
+        exhausted = false
+        exhaustedBySite = emptySet()
+        seenKeys = HashSet()
+        legFailures = emptyMap()
+        artistAliasNotice = null
+        searchError = null
+        loadMoreError = null
+        droppedNoImage = 0
+        notice = null
+        pixivPanelOpen = false
+        pixivNextUrl = null
+        pixivLoginLeg = false
+        pixivTitles = emptyMap()
+        pixivAvatars = emptyMap()
+        pixivArtists = emptyList()
+        pixivArtistError = null
+        pixivArtistsExhausted = false
+        pixivArtistPage = 0
+        pixivArtistNextUrl = null
+        // 新条件 = 新一轮 = 回到默认档（同 [openContext] 那一条：用户点的是"这个词的结果"）。
+        ranking = GalleryRanking.NEWEST
+        periodAnchor = null
+        // 作品那一栏：用户点的是一枚作品标签，落在"作品"页签上才对得上他看到的那个词。
+        pixivKind = PixivSearchKind.ILLUST
+        pixivTerm = incoming
+        contextRound++
+        if (incoming.isEmpty()) {
+            // 空词没有"这一轮"可装（站方对空 word 回的是"全站最新"，那不是搜索结果）。
+            mode = GallerySearchMode.INPUT
+            return
+        }
+        // ⚠️ **这一档与 booru 不同，有意为之**：`openContext` 把"收不收条"交给调用方
+        // （它经手的都是"用户可能还想接着改条件"的情形）。而这里进来的都是**点了一枚标签**：
+        // 词已经定了，用户要的就是"这个词的结果"。不收条的话，他从作品页退回来会看见
+        // 一张展开的输入卡 + 键盘，而那恰好就是用户报的"只剩一个搜索框"的另一种长相。
+        mode = GallerySearchMode.RESULTS
+        runPixivSearch(1)
+    }
+
     /** 当前这一屏的可逆快照。只读，不改任何东西。 */
     private fun snapshot() = GallerySearchContext(
         source = source,
@@ -684,6 +799,10 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         pageBySite = pageBySite,
         exhaustedBySite = exhaustedBySite,
         aliasNotice = artistAliasNotice,
+        // pixiv 那一轮的东西（两个域各存各的，见那颗的注释）。
+        domain = domain,
+        pixivTerm = pixivTerm,
+        pixivNextUrl = pixivNextUrl,
     )
 
     /** 还有没有"上一轮"可回（页面那侧的返回分支按这一档决定弹栈还是关搜索）。 */
@@ -792,10 +911,17 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         val popped = GallerySearchContextStack.pop(contexts) ?: return
         searchJob?.cancel()
         suggestJob?.cancel()
+        artistJob?.cancel()
         contexts = popped.second
         val ctx = popped.first
         pendingScrollRestore = ctx.scrollIndex
         currentScrollIndex = ctx.scrollIndex
+        // 域与词**先**回位（2026-10-20）：上一轮若是 pixiv 那一轮，`filters` 本来就是空的，
+        // 只抄 booru 那一半就会得到"一片结果 + 一个空搜索框"—— 而弹栈**不发请求**，
+        // 那个词永远补不回来（用户读到的正是"返回后搜索词没了、只剩一个框"）。
+        domain = ctx.domain
+        pixivTerm = ctx.pixivTerm
+        pixivNextUrl = ctx.pixivNextUrl
         source = ctx.source
         filters = ctx.filters
         results = ctx.results
@@ -817,12 +943,16 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         periodAnchor = ctx.periodAnchor
         isSearching = false
         isLoadingMore = false
+        isSearchingArtists = false
         searchError = null
         loadMoreError = null
         notice = null
         term = ""
         suggestions = emptyList()
         suggestError = null
+        // pixiv 那一轮回来时落地的那批是**作品**，页签也跟着回位（快照只记域不记页签，
+        // 而画师那一栏没有"上一轮"可回 —— 它压根不吃 `contexts`）。
+        if (ctx.domain == GalleryHomeDomain.PIXIV) pixivKind = PixivSearchKind.ILLUST
         // 一律回"看墙"那一态：用户离开那一轮是去别处看图，回来该看到墙，不是键盘。
         mode = GallerySearchMode.RESULTS
         contextRound++
@@ -1686,14 +1816,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 而条件**不跟着历史走**（历史只记词 —— 见 `PixivSearchFilter`：那一排是"怎么看这一句"，
         // 与"我搜过什么"不是一件事）。所以这里只把词装回框里，条件留在用户手上。
         if (entry.belongsTo(GalleryHomeDomain.PIXIV)) {
-            pixivTerm = entry.query
-            pixivPanelOpen = false
-            notice = null
-            searchError = null
-            // 与 booru 那条 `thenCollapse = true` 对齐：点历史 = "把那次搜索再跑一遍"，
-            // 跑起来就把卡收成一条，让用户直接看到结果墙（而不是继续对着输入框）。
-            mode = GallerySearchMode.RESULTS
-            runPixivSearch(1)
+            // 走与"点一枚 pixiv 标签"同一条入口（`openPixivContext`）：点历史 = "把那次搜索再跑一遍"，
+            // 与交接唯一的差别是它**要把上一轮压栈**——那条判据在两处都成立，而清场 / 装词 /
+            // 收条 / 开搜这一整套只有一份。从前这里自己写一遍，于是「点历史不收条」「在途没掐」
+            // 这类改一处漏一处的偏差迟早出现（同一族已在 booru 那侧立案过）。
+            openPixivContext(entry.query)
             return
         }
         openContext(

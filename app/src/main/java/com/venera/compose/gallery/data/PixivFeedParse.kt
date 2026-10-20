@@ -215,6 +215,7 @@ internal object PixivFeedParse {
             tags = ((detail["tags"] as? JsonObject)?.get("tags") as? JsonArray)
                 ?.mapNotNull { (it as? JsonObject)?.get("tag").textOrNull() }
                 ?: emptyList(),
+            tagTranslations = tagTranslationsOf((detail["tags"] as? JsonObject)?.get("tags") as? JsonArray),
             viewCount = detail["viewCount"].numberOrStringOrNull()?.toIntOrNull(),
             uploadDate = detail["uploadDate"].textOrNull(),
             commentCount = detail["commentCount"].numberOrStringOrNull()?.toIntOrNull(),
@@ -349,6 +350,42 @@ internal object PixivFeedParse {
 
     private fun JsonElement?.asArrayOrNullOf(key: String): JsonArray? =
         ((this as? JsonObject)?.get(key) as? JsonArray)
+
+    /**
+     * 匿名腿的**标签译名**（2026-10-20）：`tags.tags[]` 每枚带一个 `translation` 对象。
+     *
+     * ## 形状与依据
+     *
+     * 现成的三份外部依据都指向同一件事：这一格**只在请求带了 `Accept-Language` 时才有值** ——
+     * pixivpy 的 `set_accept_language` 注释原文就是「用于获取 tags 的对应语言 translated_name」，
+     * 它自己那条 issue #76 记着"缺这枚头时字段恒为 None"；pixiv 网站的译名也是按这一枚头切的。
+     *
+     * 而 `translation` 里的**键就是那枚语言标签**（`{"zh-cn": "..."}` / `{"en": "..."}`），
+     * 所以这里**不按固定键捞**：站方回哪一枚我们就读哪一枚，全都不认识就交空表
+     * （空表 = 这次没有译文 ⇒ 屏上只摆原名，绝不猜）。
+     *
+     * 登录腿那一格叫 `translated_name`（平铺字符串），由 `PixivAppParse` 自己读 ——
+     * 两条腿的字段名不同是站方的形状，不是我们抄漏了。
+     */
+    private fun tagTranslationsOf(tags: JsonArray?): Map<String, String> {
+        if (tags == null) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        for (element in tags) {
+            val item = element as? JsonObject ?: continue
+            val name = item["tag"].textOrNull() ?: continue
+            val translation = item["translation"] as? JsonObject ?: continue
+            // 取第一枚**非空且不等于原名**的译文：键是语言码，不该在屏上把它们排个序比漂亮。
+            val label = translation.values
+                .mapNotNull { it.textOrNull() }
+                .firstOrNull { !it.equals(name, ignoreCase = true) }
+                ?: continue
+            // ⚠️ 键一律**小写**：消费点 `tagDisplayLabel` 是按 `tag.lowercase()` 查的
+            // （画廊那边同一套口径）。这里存原名的话，`東方Project` 这种带大写的标签
+            // 在屏上就永远取不到译名 —— 而那与"站方没给译文"长得一模一样。
+            out[name.lowercase()] = label
+        }
+        return out
+    }
 
     private fun JsonElement?.textOrNull(): String? =
         (this as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }

@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery.data
+package com.venera.compose.gallery.data
 
 import com.venera.compose.data.platform.HttpEngine
 import com.venera.compose.data.platform.NoInteractiveBypassTag
@@ -634,6 +634,10 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
             .header("App-OS-Version", APP_OS_VERSION)
             .header("App-Version", APP_VERSION)
             .header("User-Agent", "PixivAndroidApp/$APP_VERSION (Android $APP_OS_VERSION)")
+            // 标签译名（`tags[].translated_name`）**只在这枚头存在时才有值**（2026-10-20，
+            // 依据：pixivpy `set_accept_language` 的注释原文 + 它那条 issue #76「缺这枚头时字段恒为 None」）。
+            // 不挂它的话，我们的译名那一路永远是空表 —— 而屏上"没有译文"与"我们没问"长得一模一样。
+            .header("Accept-Language", PIXIV_TAG_LANGUAGE)
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
         engine.okHttpClient.newCall(request).execute().use { response ->
@@ -677,6 +681,18 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
         private const val APP_VERSION = "6.0.0"
         private const val APP_OS_VERSION = "14"
         private const val SNIPPET = 160
+
+        /**
+         * 要站方按哪种语言回**标签译名**（`tags[].translated_name`）。
+         *
+         * 取 `zh-cn` 而不是跟系统走：这个字段只影响**屏上那几个字的显示**，
+         * 而界面语言是中文（`values/strings.xml` 与全仓文案都是中文）——
+         * 系统语言是英文时跟过去，屏上就会变成「女の子 (Girl)」混一串中文界面里的英文。
+         * 用户若真要看原文，标签本身就是原文，就在括号里。
+         *
+         * ⚠️ 这是**显示口径**，不参与任何查询：`word=` 发的永远是站方原名。
+         */
+        internal const val PIXIV_TAG_LANGUAGE = "zh-cn"
 
         @Volatile
         private var INSTANCE: PixivAppClient? = null
