@@ -302,11 +302,14 @@ class GalleryBookmarksWiringTest {
             countIn(bookmarks, """actionText = if \(gate\.retryIsMeaningful\) """),
         )
         assertTrue("按钮按下去要真重读票据：\n$body", body.contains("onAction = if (gate.retryIsMeaningful) onRetry else null"))
-        // 墙自己失败那一档另给一枚重试（与闸门那两档是两件事：那一档按下去确实会重发趟）。
+        // 墙自己失败那一档另给一枚出路按钮（与闸门那两档是两件事：那一档按下去确实会重发趟）。
         // 2026-10-19 起"再发一趟"不再是推一枚计数，而是直接调仓的 refresh（取数由仓发车）。
+        // ⚠️ 2026-10-20 文案纪律之后那枚按钮不再统一叫「重试」（各场景按自己的话说：
+        // 这一档是"取票据/关注列表"，所以说「重新获取」），所以这把尺钉**有出路按钮 + 按下去真重发**，
+        // 不钉具体措辞 —— 钉措辞的尺会逼着人把话说回机器腔。
         assertTrue(
-            "失败档要有重试、且按下去真重发一趟：\n$body",
-            body.contains("actionText = \"重试\"") &&
+            "失败档要有出路按钮、且按下去真重发一趟：\n$body",
+            body.contains("actionText = \"重新获取\"") &&
                 body.contains("onAction = refresh,") &&
                 body.contains("session.refresh(legs, fetch)"),
         )

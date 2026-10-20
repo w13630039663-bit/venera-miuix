@@ -721,6 +721,40 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
+    // ── 十六、玻璃底跟着飞淡掉（2026-10-20，主人「返回手势的模糊动画有点怪」）────
+    //
+    // 从前是**一帧跳清**：手指刚动，背后那面墙先"啪"地变清，**然后**图才缩 ——
+    // 两件事分开读，就是那句"怪"。现在半径跟着 `exitFly` 收到 0，
+    // 于是"图缩回去"与"背后变清"是同一件事的两面。
+
+    @Test
+    fun `模糊跟着离场进度淡掉不许一帧跳清`() {
+        val raw = src(screen).replace("\r\n", "\n")
+        // 一帧跳清那种写法必须退场：`clearChromeForExit` 里不许再出现 `clearFlags(`
+        // （那是 10-20 之前的形状：flag 与半径同一帧归零）。
+        val from = raw.indexOf("fun clearChromeForExit() {")
+        val to = raw.indexOf("LaunchedEffect(blurFading, postId)")
+        assertTrue("找不到那一颗，量具失效", from > 0 && to > from)
+        val branch = raw.substring(from, to)
+        assertEquals(
+            "淡掉那一颗不许再一帧摘 flag（那是一帧跳清）",
+            0,
+            branch.lines().count { it.contains("clearFlags(") && !it.trimStart().startsWith("//") },
+        )
+        val body = code(screen)
+        // 半径跟着进度线性收到 0，起点取窗口当前那一位（不另写常量）。
+        assertTrue(
+            "半径要按离场进度收到 0",
+            body.any { it.contains("blurFromPx * (1f - progress.coerceIn(0f, 1f))") },
+        )
+        assertTrue("起点半径取窗口当前那一位", body.any { it.contains("val from = win.attributes.blurBehindRadius") })
+        assertTrue("淡到 0 那一刻才摘 flag", body.any { it.contains("模糊已收到 0 ⇒ 摘 flag") })
+        // 两位都要写（只改一处就是"探针说 0、屏上还糊"那一族）。
+        assertTrue("半径要写回 attributes", body.any { it.contains("params.blurBehindRadius = px") })
+        // 取消那一笔要**还原**（淡到一半被取消时不能停在中间值）。
+        assertTrue("取消要还原半径", body.any { it.contains("模糊还原到") })
+    }
+
     // ── 十五、批 C1 跟手返回（2026-10-20）──────────────────────────────────
     //
     // 从 `BackHandler`（按一下才飞）换成 `PredictiveBackHandler`（手指拖着图缩回卡）。
@@ -780,7 +814,10 @@ class GalleryPixivWorkPageWiringTest {
         // ③ 玻璃底**必须挂回去**：不挂就是"拖到一半松手回弹"之后这一屏的模糊底永久没了
         //    （样板 `restoreChromeAfterCancel` 那句注释记着同一个坑）。
         assertTrue("要挂回 FLAG_BLUR_BEHIND", branch.contains("addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)"))
-        assertTrue("半径要照抄回来（不另写常量）", branch.contains("setBackgroundBlurRadius(win.attributes.blurBehindRadius)"))
+        assertTrue(
+            "半径要还原到离场前记下的起点（淡到一半取消时不能停在中间值）",
+            branch.contains("setBackgroundBlurRadius(blurFromPx.toInt())"),
+        )
     }
 
     @Test
@@ -795,7 +832,11 @@ class GalleryPixivWorkPageWiringTest {
         // 摘模糊抽成具名函数（两条路共用），且窗口那两件都做齐。
         assertEquals("摘模糊只住一颗函数", 1, body.countWith("fun clearChromeForExit()"))
         assertTrue("要摘 flag", body.any { it.contains("FLAG_BLUR_BEHIND") })
-        assertTrue("半径也要归零（只摘 flag 在某些 ROM 上还留着）", body.any { it.contains("setBackgroundBlurRadius(0)") })
+        assertTrue(
+            "半径要跟离场进度收到 0（只摘 flag 在某些 ROM 上还留着）",
+            body.any { it.contains("win.setBackgroundBlurRadius(px)") } &&
+                body.any { it.contains("blurFromPx * (1f - progress.coerceIn(0f, 1f))") },
+        )
         // 顶栏那颗 / 三键那条仍走自驱（没有手指可跟），不许被手势那条吞掉。
         assertEquals("back 仍走自驱那条", 1, body.countWith("val back: () -> Unit = { flySelfDrivenExit() }"))
     }

@@ -2132,7 +2132,7 @@ private fun ReaderSinglePageItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "第 ${index + 1} 页加载失败，点按重试",
+                            text = "第 ${index + 1} 页没读出来，点一下再来",
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 12.sp
                         )
@@ -2259,7 +2259,7 @@ private fun ReaderTelephotoPageItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "第 ${index + 1} 页加载失败，点按重试",
+                            text = "第 ${index + 1} 页没读出来，点一下再来",
                             color = Color.White,
                             fontSize = 14.sp
                         )

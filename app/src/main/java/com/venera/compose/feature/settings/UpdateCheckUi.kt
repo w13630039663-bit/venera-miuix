@@ -224,27 +224,26 @@ internal fun UpdateAvailableDialog(
  * 一句通用的"下载完成"会把两种不同的可信度盖成一样。
  */
 private fun downloadLine(apk: ReleaseAsset?, download: UpdateDownload): String = when {
-    apk == null -> "这一版没有适配本机机型的安装包，请到发布页手动选择"
+    apk == null -> "这一版没有适合本机的安装包，请到发布页手动选择"
     download is UpdateDownload.Running -> {
         val done = formatMib(download.downloadedBytes)
         val total = if (download.totalBytes > 0L) " / ${formatMib(download.totalBytes)}" else ""
         val speed = if (download.speedBytesPerSec > 0L) " · ${formatMib(download.speedBytesPerSec)}/秒" else ""
         "正在下载 $done$total$speed" + if (download.viaMirror) "，官方直链不通，改走加速镜像" else ""
     }
-    download is UpdateDownload.Verifying -> "已下完 ${formatMib(apk.size)}，正在核对文件指纹"
+    download is UpdateDownload.Verifying -> "已下载 ${formatMib(apk.size)}，正在校验文件"
     download is UpdateDownload.Ready ->
-        if (download.verified) "已下载并核对无误，点安装即可覆盖当前版本"
-        else "已下载。这一版发布通道没有给出文件指纹，所以没能核对"
+        if (download.verified) "已下载并校验完成，可以安装"
+        else "已下载，但发布页没有提供校验信息"
     download is UpdateDownload.Failed -> "没能下载成功：${download.reason}"
     else -> "安装包 ${formatMib(apk.size)}，来自 GitHub 发布页"
 }
 
 private fun installBlockedText(outcome: InstallOutcome): String = when (outcome) {
     InstallOutcome.NeedsUnknownSources ->
-        "这台机器还没允许本应用安装应用。点「去授权」打开系统那一页，允许之后再回来点安装。"
+        "请先允许本应用安装应用。授权后返回这里点安装。"
     InstallOutcome.SignatureMismatch ->
-        "下载到的安装包与本机这个不是同一把签名（多是自己构建的包，或从前的 Flutter 版）。" +
-            "要先卸载才能装新版，而卸载会带走收藏与历史 —— 请先到设置里导出备份。"
+        "安装包与当前版本签名不一致。需要先卸载旧版，卸载会删除收藏和历史，请先导出备份。"
     is InstallOutcome.Failed -> "系统安装页没起来：${outcome.reason}"
     InstallOutcome.Launched -> ""
 }

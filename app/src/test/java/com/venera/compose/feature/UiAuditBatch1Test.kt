@@ -43,7 +43,7 @@ class UiAuditBatch1Test {
     @Test
     fun `并发滑块的说明不再承诺一个不存在的生效时机`() {
         val summary = networkSettings.first { it.contains("同时下载几章") }
-        assertTrue("说明没写当场生效：$summary", summary.contains("当场生效"))
+        assertTrue("说明没写立即生效：$summary", summary.contains("立即生效"))
         assertFalse("又写回'新排进队列才生效'那套旧说法：$summary", summary.contains("对新排进队列的任务生效"))
     }
 
@@ -65,7 +65,13 @@ class UiAuditBatch1Test {
     fun `封面查看器有加载与失败两态`() {
         assertTrue("没有失败回调：取不到图仍然是一片纯黑", coverViewer.any { it.contains("onError =") })
         assertTrue("没有加载中指示：慢网下与'坏了'分不清", coverViewer.any { it.contains("CircularWavyProgressIndicator(") })
-        assertTrue("失败态没有出路（只说坏了不给重试）", coverViewer.any { it.contains("text = \"重试\"") })
+        // ⚠️ 2026-10-20 文案纪律（`CopyDisciplineTest`）之后，"出路按钮"不再统一叫「重试」——
+        // 各场景按自己的话说（再来一次 / 再试一次 / 重新加载…）。所以这把尺钉**有没有出路**，
+        // 而不是钉那个具体的词：VeneraTextButton 出现在失败分支里就算有出路。
+        assertTrue(
+            "失败态没有出路（只说坏了不给按钮）",
+            coverViewer.any { it.contains("VeneraTextButton(") },
+        )
         assertTrue(
             "重试没绕开内存里那份失败结果 —— 点一下只是把同一个错误再放一遍",
             coverViewer.any { it.contains("memoryCacheKey(") && it.contains("retryTick") },

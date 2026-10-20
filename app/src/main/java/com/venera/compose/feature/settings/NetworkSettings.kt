@@ -47,12 +47,12 @@ fun NetworkSettings(prefs: NetworkPreferences, onBack: () -> Unit, onSpeedTest: 
 
     val threads by prefs.downloadThreads.collectAsState()
 
-    SettingsPage(title = "网络", onBack = onBack, largeTitle = "网络与代理", heroSubtitle = "代理 · 缓存 · 超时") {
+    SettingsPage(title = "网络", onBack = onBack, largeTitle = "网络与代理", heroSubtitle = "代理 · 下载 · 线路") {
         SettingsGroup {
             SettingsAction("代理", proxySummary, onClick = { showProxy = true })
             SettingsSlider("下载并发", threads.toFloat(), 1f..16f,
                 { prefs.setDownloadThreads(it.toInt()) }, steps = 14, suffix = " 线程",
-                summary = "同时下载几章。改完当场生效，正在下的那几章不受影响。")
+                summary = "同时下载几章。改完立即生效，正在下载的不受影响。")
             // 审计后删掉「DNS 覆盖」灰行：DoH 客户端已 import 但未接线，且在国内网络下
             // 强制 DoH 可能整体不可达 —— 属高风险网络变更，不是"差一个开关"。
             // 僵尸键 enableDoH（默认 true 且无人读）已在 settings-audit-2026-09.md §3 记录。
@@ -61,12 +61,12 @@ fun NetworkSettings(prefs: NetworkPreferences, onBack: () -> Unit, onSpeedTest: 
             PreferredIpSettingsGroup(prefs)
             SettingsAction(
                 "线路测速",
-                "一键测速并自动选点：测到已装源站点的直连延迟，自动应用最优线路",
+                "测试已安装站点的直连速度，自动使用最快的线路",
                 onClick = onSpeedTest,
             )
         }
         SettingsGroup("网络诊断") {
-            SettingsAction("重置失败记录", "清除暂时连不上的站点记录，这些站点会马上重新尝试") {
+            SettingsAction("重置失败记录", "清除连不上的站点记录，立即重新尝试") {
                 BusinessPorts.of(context).network.resetAllBreakers()
                 Toast.makeText(context, "已清除失败记录", Toast.LENGTH_SHORT).show()
             }

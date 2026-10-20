@@ -158,7 +158,7 @@ fun AppSettings(
         }
     }
 
-    SettingsPage(title = "应用", onBack = onBack, largeTitle = "应用与数据", heroSubtitle = "备份 · 下载 · 日志") {
+    SettingsPage(title = "应用", onBack = onBack, largeTitle = "应用与数据", heroSubtitle = "存储 · 备份 · 下载") {
         SettingsGroup(title = "数据") {
             SettingsAction(
                 title = "本地漫画存储路径",
@@ -173,7 +173,7 @@ fun AppSettings(
             if (!storageWritable) {
                 SettingsAction(
                     "开启「所有文件访问」权限",
-                    "回到本页会自动重新检测。没给权限时下载会直接失败，不会写到别的地方",
+                    "授权后返回本页会自动重新检测。没有权限时无法下载。",
                     onClick = { showGrantPrompt = storagePath }
                 )
             }
@@ -205,7 +205,7 @@ fun AppSettings(
                     network.rebuildHttpClient()
                 },
                 steps = 62, suffix = " MB",
-                summary = "只统计漫画源接口和网页的缓存，不含下载下来的图片。",
+                summary = "只统计网页和接口缓存，不含已下载的图片。",
             )
             SettingsAction(
                 "网络缓存占用与清理",
@@ -236,26 +236,22 @@ fun AppSettings(
                     sourceAccountMode = SourceAccountMode.entries.firstOrNull { it.name == name }
                         ?: SourceAccountMode.NONE
                 },
-                summary = "可选择是否把各漫画源的登录状态与源内设置一并写入备份。" +
-                    "导入时只补齐本机尚未安装的源，已装源不动；" +
-                    "登录凭据会以明文出现在备份文件里，请不要把备份文件发给他人。",
+                summary = "登录信息会明文写进备份。",
             )
             SettingsAction(
                 "导出数据",
-                "自己选保存位置。导出阅读历史、漫画收藏、画廊收藏与关注画师、插图收藏的地址、" +
-                    "阅读统计、屏蔽规则" +
+                "包含收藏、阅读历史、阅读统计、屏蔽规则和插图收藏地址" +
                     if (sourceAccountMode == SourceAccountMode.NONE) {
-                        "。不含偏好设置、Cookie、已装的漫画源和收藏里那些图片文件本身"
+                        "。不含设置、Cookie 和图片文件"
                     } else {
-                        "、以及按上面所选的漫画源账号数据。不含偏好设置、Cookie 与已装的漫画源脚本本身"
+                        "，以及上面所选的漫画源登录信息。不含设置、Cookie 和图片文件"
                     },
                 enabled = !busy,
                 onClick = { exportLauncher.launch(BackupTransfers.suggestedFileName()) }
             )
             SettingsAction(
                 "导入数据",
-                "选 .venera 或 .picadata 文件。本应用自己的备份全量恢复；" +
-                    "官方 Venera 与 PicaComic 的归档只能导入收藏和阅读历史",
+                "支持 .venera 和 .picadata。官方 Venera 或 PicaComic 的备份只能导入收藏和阅读历史。",
                 enabled = !busy,
                 onClick = { importLauncher.launch(arrayOf("*/*")) }
             )
@@ -265,9 +261,9 @@ fun AppSettings(
             SettingsAction("打开日志", "查看运行日志", onClick = onLogs)
         }
         SettingsGroup(title = "离线与本地漫画") {
-            SettingsAction("下载管理", "管理下载队列与离线章节", onClick = onDownloads)
-            SettingsAction("本地漫画", "浏览、导入和管理本地漫画", onClick = onLocalComics)
-            SettingsAction("追更更新", "挑一个收藏夹每天检查更新", onClick = onFollowUpdates)
+            SettingsAction("下载管理", "查看下载队列和离线章节", onClick = onDownloads)
+            SettingsAction("本地漫画", "浏览和管理本地漫画", onClick = onLocalComics)
+            SettingsAction("追更更新", "每天检查收藏夹里的新章节", onClick = onFollowUpdates)
         }
     }
 
@@ -279,9 +275,8 @@ fun AppSettings(
             title = "需要「所有文件访问」权限",
             content = {
                 Text(
-                    "Android 11 之后应用不能直接往公共目录写文件，刚才往「$path」写入失败了。\n\n" +
-                        "开了这个权限才能把漫画库放在你自己选的目录（包括内存卡）。" +
-                        "它只影响文件读写，随时可以在系统设置里关掉。"
+                    "无法写入「$path」。\n\n" +
+                        "开启「所有文件访问」后，才能把漫画放在自己选的目录。随时可以在系统设置里关闭。"
                 )
             },
             confirmText = "打开系统设置",
@@ -305,10 +300,9 @@ fun AppSettings(
             content = {
                 Text(
                     "新目录：$target\n\n" +
-                        "当前目录里有 $comics 部漫画、$chapters 章。\n" +
-                        "· 移动到所选目录：把这些内容搬过去，旧目录清空。\n" +
-                        "· 只对新下载生效：旧目录里的内容不再出现在本地书架，已下载的会变成" +
-                        "未下载，再点会重新下。"
+                        "当前目录有 $comics 部漫画、$chapters 章。\n" +
+                        "· 移动：搬到新目录，并清空旧目录。\n" +
+                        "· 只对新下载生效：旧内容不再显示，已下载的会重新计算。"
                 )
             },
             confirmText = "移动到所选目录",
@@ -349,8 +343,7 @@ internal sealed interface DirChoice {
 internal fun evaluatePickedDir(context: Context, uri: Uri): DirChoice {
     val path = ComicStorageRoot.resolveTreePath(context, uri)
         ?: return DirChoice.Reject(
-            "系统选择器给的是虚拟地址，换算不出真实路径。请在里面进入「内部存储」或 SD 卡，" +
-                "选一个普通文件夹，比如 Download/漫画"
+            "这个位置无法作为存储目录。请进入「内部存储」或 SD 卡，选择一个普通文件夹。"
         )
     ComicStorageRoot.rejectReason(path)?.let { return DirChoice.Reject(it) }
     if (!ComicStorageRoot.probeWritable(File(path))) return DirChoice.NeedsPermission(path)

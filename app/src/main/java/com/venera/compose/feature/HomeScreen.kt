@@ -336,7 +336,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             )
                             if (recommend.canRetry) {
                                 Text(
-                                    text = "重试",
+                                    text = "再来一次",
                                     fontSize = tokens.type.caption,
                                     fontWeight = tokens.type.weightSemibold,
                                     color = tokens.color.primary,

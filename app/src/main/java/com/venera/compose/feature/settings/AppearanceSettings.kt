@@ -43,7 +43,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
     val colorSource by prefs.themeColorSource.collectAsState()
     val seedArgb by prefs.themeSeedColor.collectAsState()
     val petSticker by prefs.homePetSticker.collectAsState()
-    SettingsPage("外观", onBack, largeTitle = "外观与主题", heroSubtitle = "主题 · 材质 · 主图") {
+    SettingsPage("外观", onBack, largeTitle = "外观与主题", heroSubtitle = "主题 · 材质 · 标签") {
         // 对照原版顶部手机模型，直接跟随真实 Miuix 色板。
         Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
             Column(Modifier.size(196.dp, 296.dp).clip(RoundedCornerShape(28.dp))
@@ -84,7 +84,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                     { prefs.setThemeColorSource(ThemeColorSource.valueOf(it)) },
                     summary = if (colorSource == ThemeColorSource.WALLPAPER &&
                         Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                    ) "此 Android 版本拿不到壁纸动态色板，会退回 MD3 静态色板" else null,
+                    ) "这个系统版本取不到壁纸颜色" else null,
                 )
                 if (colorSource == ThemeColorSource.CUSTOM) {
                     var paletteOpen by rememberSaveable { mutableStateOf(false) }
@@ -99,10 +99,10 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 text = when {
                     appearance == AppearanceStyle.MIUIX -> "用 Miuix 自带的浅色/深色配色。"
                     colorSource == ThemeColorSource.CUSTOM ->
-                        "按你选的这个颜色算出一整套配色。上面看到的色块是种子色，不是最后的效果。"
+                        "用这个颜色生成整套配色。"
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
                         "跟随系统壁纸取色，所有页面一起变。"
-                    else -> "这个 Android 版本不支持跟随壁纸取色，改用固定的一套 MD3 配色。"
+                    else -> "这个系统版本取不到壁纸颜色，改用固定配色。"
                 },
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
@@ -117,9 +117,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                     "LIQUID_GLASS" to "Miuix 液态悬浮玻璃",
                 ),
                 { prefs.setSurfaceMaterial(SurfaceMaterial.valueOf(it)) },
-                summary = "卡片、分组、按钮这些表面要不要半透明浮起来。这里只管透明度，" +
-                    "配色和形状还是由上面的界面风格决定，两边互不影响。选实色时没有任何透明效果。" +
-                    "底部导航栏由下面的导航栏样式单独决定。两处都开透明会多一层全屏模糊，配置低的机器可能掉帧。",
+                summary = "实色最省电，液态玻璃更好看但更吃性能。",
             )
         }
         SettingsGroup("导航栏") {
@@ -127,8 +125,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 listOf("MD3" to "Miuix 悬浮栏", "LIQUID_GLASS" to "Liquid Glass 液态玻璃（默认）"),
                 { prefs.setNavigationBarStyle(NavigationBarStyle.valueOf(it)) })
             Text(
-                "把底栏做成玻璃质感：背景模糊、边缘折射和高光，拖动时还有形变效果。" +
-                    "折射要 Android 13 以上的系统能力，低版本会退回普通悬浮栏，这一项的选择不受影响。",
+                "玻璃效果需要 Android 13 及以上，低版本显示普通悬浮栏。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -139,7 +136,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 "桌宠小肥鱼",
                 petSticker,
                 prefs::setHomePetSticker,
-                summary = "在首页左上角趴一条会动的小肥鱼，常驻循环。她只是陪着，点她没有反应。",
+                summary = "在首页左上角显示一条会动的小肥鱼。",
             )
         }
         SettingsGroup("标签") {
@@ -152,9 +149,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 ),
                 { prefs.setTagTranslationMode(TagTranslationMode.valueOf(it)) })
             Text(
-                "命中的英文标签会同时给出译文和原文，括号里是原文。" +
-                    "词典里没有的标签（多数是中文站的词）只显示原文。" +
-                    "搜索时发给各源的词还是原文，不受这里影响。",
+                "英文标签会显示译文，括号里保留原文。没有收录的标签只显示原文，搜索时仍使用原文。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

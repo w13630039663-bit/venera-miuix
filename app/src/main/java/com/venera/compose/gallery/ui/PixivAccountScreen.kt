@@ -973,7 +973,7 @@ private fun PixivTwoLegWall(
                     title = "这一屏没取上",
                     message = session.pageError.orEmpty(),
                     tone = VeneraEmptyTone.Failed,
-                    actionText = "重试",
+                    actionText = "重新获取",
                     onAction = refresh,
                 )
             }
@@ -1188,7 +1188,7 @@ private fun PixivFollowingSection(
                     title = "关注列表没取上",
                     message = session.error.orEmpty(),
                     tone = VeneraEmptyTone.Failed,
-                    actionText = "重试",
+                    actionText = "重新获取",
                     onAction = refresh,
                 )
             }

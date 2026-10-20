@@ -100,7 +100,7 @@ fun CoverViewerScreen(
                     fontSize = tokens.type.caption,
                     color = Color.White.copy(alpha = 0.72f),
                 )
-                VeneraTextButton(text = "重试", onClick = { retryTick++ })
+                VeneraTextButton(text = "再来一次", onClick = { retryTick++ })
             }
         }
 

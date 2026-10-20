@@ -929,7 +929,7 @@ fun ComicSourceScreen(
                                 ) {
                                     Column {
                                         Text(text = "重新登录", fontSize = tokens.type.body, fontWeight = tokens.type.weightMedium, color = tokens.color.textPrimary)
-                                        Text(text = "点击此处如果登录已过期", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
+                                        Text(text = "登录过期了就点这里", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
                                     }
                                     VeneraIconButton(
                                         onClick = { viewModel.relogin(row.key) },

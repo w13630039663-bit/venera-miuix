@@ -906,7 +906,7 @@ private fun FailedTasksBanner(
                         modifier = Modifier.clickable { onRetry(task) }
                     ) {
                         Text(
-                            text = "重试",
+                            text = "再试一次",
                             fontSize = tokens.type.caption,
                             color = tokens.color.onPrimary,
                             modifier = Modifier.padding(

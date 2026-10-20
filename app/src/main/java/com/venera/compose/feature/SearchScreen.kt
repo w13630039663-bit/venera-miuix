@@ -1040,7 +1040,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.AggregatedResults(
                 when {
                     event.error != null -> VeneraEmptyView(
                         message = event.error,
-                        actionText = "重试",
+                        actionText = "再搜一次",
                         onAction = onRetry,
                     )
                     event.isLoading -> SearchLoadingIndicator(compact = true)
@@ -1089,9 +1089,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
 
         ui.error != null && ui.results.isEmpty() -> item(key = "ss-error") {
             VeneraEmptyView(
-                title = "搜索失败",
+                title = "这次没搜到东西",
                 message = ui.error,
-                actionText = "重试",
+                actionText = "再搜一次",
                 onAction = onRetry,
             )
         }
@@ -1179,7 +1179,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.SingleSourceResults(
                     item(key = "ss-more-error") {
                         VeneraEmptyView(
                             message = reason,
-                            actionText = "重试",
+                            actionText = "再搜一次",
                             onAction = onLoadMore,
                         )
                     }

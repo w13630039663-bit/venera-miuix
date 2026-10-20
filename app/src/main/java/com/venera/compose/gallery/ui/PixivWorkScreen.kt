@@ -407,6 +407,14 @@ fun PixivWorkScreen(
     var exitTo by remember(postId) { mutableStateOf<Rect?>(null) }
     val exitFly = remember(postId) { Animatable(0f) }
 
+    // ── 玻璃底**跟着飞淡掉**（2026-10-20，主人「返回手势的模糊动画有点怪」）──
+    // 从前是**一帧跳清**：手指刚动，背后那面墙先"啪"地变清，然后图才缩 —— 两件事分开读。
+    // 现在半径跟着 `exitFly` 收到 0，于是"图缩回去"与"背后变清"是同一件事的两面。
+    // 三颗状态：在淡（开关）/ 起点半径（窗口当前那一 px）/ 上一次写下去的 px（只为省重复写）。
+    var blurFading by remember(postId) { mutableStateOf(false) }
+    var blurFromPx by remember(postId) { mutableFloatStateOf(0f) }
+    var blurLastPx by remember(postId) { mutableIntStateOf(-1) }
+
     // ── 进场飞行体（批 231-E 的另一半：墙上那一格 → 这一屏第 0 页那一格）──
     // 三份输入与去程同一套，且**只从交接件读**：起点那一帧（`GalleryFlyIn.payload`）、
     // 起点矩形（`origin`，唯一写入口是墙上点击那一刻的 `capture`）、落点（这一作第 0 页那一格，
@@ -751,25 +759,67 @@ fun PixivWorkScreen(
      */
     fun exitTargetOrNull(post: GalleryPost): Rect? = GalleryFlyIn.cardBoundsOf(post.viewerKey)
     /**
-     * 摘窗口模糊：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
+     * 玻璃底**跟着飞淡掉**（2026-10-20，主人「看下能不能删掉返回手势的模糊动画？因为这样有点怪」）。
      *
-     * 两件事都要做：`clearFlags` 摘开关，`blurBehindRadius` 归零 —— 基类挂的时候
-     * 是"设半径 + addFlags"两条一起下的，只摘开关在某些 ROM 上半径还留着
-     * （2026-10-19 慢放帧证：返回全程后面那面墙一直是糊的，直到落地前才变清）。
+     * ## 从前为什么"怪"
+     *
+     * 老写法是**一帧跳清**：`clearFlags` + `setBackgroundBlurRadius(0)` 在同一帧做完。
+     * 于是屏上读起来是两步 —— 手指刚开始拖，背后那面墙先"啪"地一下从糊变清，
+     * **然后**图才开始缩。先变清、后飞图，两件事分开读，就是主人说的"怪"。
+     *
+     * ## 现在的口径：半径跟着 `exitFly` 走
+     *
+     * 不跳变，而是**随离场进度线性收到 0**：`radius = 起点半径 × (1 - 进度)`。
+     * 于是"图缩回去"与"背后变清"是同一件事的两面，落地那一刻正好收干净。
+     *
+     * 起点半径取**窗口当前那一位**（`attributes.blurBehindRadius`，真机读数 84px = 32 × 2.625），
+     * 不另写常量 —— 基类挂的时候写的就是这一位（见 `VeneraSubActivityBase.applyBlurBehind`）。
+     *
+     * ## 为什么两件事都要写（flag 与半径）
+     *
+     * 基类挂的时候是"半径 + flag"两条一起下的，摘的时候也必须两条一起下：
+     * 只摘 flag 在某些 ROM 上半径还留着（2026-10-19 慢放帧证：探针里 flag=0 而
+     * `radius=84`，屏上后面那面墙整段还是糊的）。所以淡到 0 那一刻才摘 flag。
      *
      * 批 C1 起它被**两条路共用**（跟手那条在 `Prepare` 里调、三键那条在自驱飞里调），
      * 所以抽成一颗具名函数 —— 两处各写一遍就是两处真相。
      */
     fun clearChromeForExit() {
         val win = (view.context as? Activity)?.window ?: return
-        win.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-        win.setBackgroundBlurRadius(0)
-        // ── 临时取证探针：摘完还剩不剩那一枚开关 ──
-        Log.i(
-            "FlyProbe",
-            "退出摘模糊 剩余flag=${win.attributes.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND} " +
-                "radius=${win.attributes.blurBehindRadius}",
-        )
+        if (blurFading) return
+        // 起点半径：窗口当前那一位（基类挂的时候写的就是它）。已经为 0 就不必淡。
+        val from = win.attributes.blurBehindRadius.takeIf { it > 0 } ?: return
+        blurFromPx = from.toFloat()
+        blurLastPx = from
+        blurFading = true
+        Log.i("FlyProbe", "退出开始淡模糊 起点半径=${from}px（跟着离场进度收到 0）")
+    }
+
+    /**
+     * 半径跟随器：**每一帧**按 [exitFly] 把窗口半径收到 0（[clearChromeForExit] 起的那一趟）。
+     *
+     * 只在整数像素真的变了时才写窗口属性 —— 每帧无条件写等于每帧让窗口重算一次，
+     * 84px 的行程最多 84 次，够用且不白烧。
+     */
+    LaunchedEffect(blurFading, postId) {
+        if (!blurFading) return@LaunchedEffect
+        val win = (view.context as? Activity)?.window ?: return@LaunchedEffect
+        snapshotFlow { exitFly.value }.collect { progress ->
+            val px = (blurFromPx * (1f - progress.coerceIn(0f, 1f)))
+                .toInt().coerceIn(0, blurFromPx.toInt())
+            if (px == blurLastPx) return@collect
+            blurLastPx = px
+            win.setBackgroundBlurRadius(px)
+            // 两位都写：`setBackgroundBlurRadius` 只改那一层，`attributes.blurBehindRadius`
+            // 是基类挂的时候写进去的那一位 —— 只改一处就是"探针说 0、屏上还糊"那一族。
+            val params = win.attributes
+            params.blurBehindRadius = px
+            win.attributes = params
+            if (px == 0) {
+                win.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                Log.i("FlyProbe", "模糊已收到 0 ⇒ 摘 flag")
+            }
+        }
     }
 
     /**
@@ -941,10 +991,19 @@ fun PixivWorkScreen(
                         exitFrame = null
                         exitFrom = null
                         exitTo = null
+                        // 模糊那一位要**还原到起点**：淡到一半被取消时，半径已经停在某个中间值，
+                        // 不还原就是"这一屏的玻璃底永久变淡了"（样板那句"不挂就永久没了"同一族）。
+                        blurFading = false
                         val win = (view.context as? Activity)?.window
                         win?.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                        win?.setBackgroundBlurRadius(win.attributes.blurBehindRadius)
-                        Log.i("FlyProbe", "pixiv 手势取消：玻璃底挂回 radius=${win?.attributes?.blurBehindRadius}")
+                        win?.setBackgroundBlurRadius(blurFromPx.toInt())
+                        win?.let {
+                            val params = it.attributes
+                            params.blurBehindRadius = blurFromPx.toInt()
+                            it.attributes = params
+                        }
+                        blurLastPx = -1
+                        Log.i("FlyProbe", "pixiv 手势取消：模糊还原到 ${blurFromPx.toInt()}px")
                     }
 
                     GalleryExitGestureCommand.FlySelfDriven -> flySelfDrivenExit()
@@ -1188,7 +1247,7 @@ fun PixivWorkScreen(
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
                 ) {
                     Text(failure, fontSize = tokens.type.caption, color = tokens.color.onErrorContainer, modifier = Modifier.weight(1f))
-                    Text("重试", fontSize = tokens.type.caption, color = tokens.color.onErrorContainer)
+                    Text("再试一次", fontSize = tokens.type.caption, color = tokens.color.onErrorContainer)
                 }
                 Spacer(Modifier.height(tokens.spacing.space3))
             }

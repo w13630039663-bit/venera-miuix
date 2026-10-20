@@ -74,7 +74,7 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
                 is UpdateCheck.Available -> availableRelease = result.release
                 // 拿不到远端版本 ≠ 没有更新，播报必须分开，否则一次断网就是一次假成功
                 UpdateCheck.UpToDate -> notice = "已经是最新版"
-                UpdateCheck.Failed -> notice = "找不到 ${ProjectChannel.SLUG} 的发布记录，稍后再试"
+                UpdateCheck.Failed -> notice = "暂时无法检查更新，请稍后再试"
             }
             checking = false
         }
@@ -133,7 +133,7 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
         ignored?.let { skipped ->
             SettingsAction(
                 title = "已跳过版本 $skipped",
-                summary = "清除后下次冷启动会重新提醒这一版",
+                summary = "清除后，下次启动会再次提醒",
             ) {
                 prefs.ignoredUpdateVersion = null
                 ignored = null
@@ -151,7 +151,7 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
 }
 
 /**
- * 外链快捷行：三枚等宽胶囊（项目主页 / 原始项目 / 上游频道）。
+ * 外链快捷行：三枚等宽胶囊（项目主页 / 原始项目 / 发布频道）。
  *
  * 位置在应用身份卡正下方 —— 参考图那一行「关于/项目/社区」的同位。
  * 打不开浏览器时 toast（原 AboutSection 的行为照搬）。
@@ -171,7 +171,7 @@ internal fun SettingsQuickLinks() {
         Spacer(Modifier.size(tokens.spacing.space4))
         QuickLink("原始项目", Modifier.weight(1f)) { open("https://github.com/venera-app/venera") }
         Spacer(Modifier.size(tokens.spacing.space4))
-        QuickLink("上游频道", Modifier.weight(1f)) { open("https://t.me/venera_release") }
+        QuickLink("发布频道", Modifier.weight(1f)) { open("https://t.me/venera_release") }
     }
     Spacer(Modifier.size(tokens.spacing.space4))
 }

@@ -25,12 +25,12 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
     val mode by guard.nsfwMaskMode.collectAsState()
     val blockAi by guard.blockAiComics.collectAsState()
     val rules by ruleBook.rules.collectAsState()
-    SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤", heroSubtitle = "规则类型 · AI 标签") {
+    SettingsPage("屏蔽", onBack, largeTitle = "屏蔽与过滤", heroSubtitle = "隐私 · 分级 · 规则") {
         SettingsGroup("隐私") {
             // FLAG_SECURE 由 MainActivity 订阅同一个偏好应用到窗口，拨一下当前界面即刻生效。
             SettingsToggle(
                 "屏幕防窥", secureScreen, prefs::setSecureScreen,
-                summary = "禁止截图、录屏和最近任务里的缩略图，重启后仍然有效。系统的长截屏也会失效。",
+                summary = "禁止截图、录屏和任务预览。",
             )
         }
         // 原「成人内容处理」与本组这条是**同一个偏好**（nsfwMaskMode）在两页各摆了一份，
@@ -41,17 +41,12 @@ internal fun BlockingSettings(onBack: () -> Unit, onRules: (String) -> Unit) {
                 "R18 敏感内容分级遮罩", mode,
                 listOf("OFF" to "不过滤", "BLUR" to "封面打码", "HIDE" to "彻底隐藏"),
                 { guard.setNsfwMaskMode(it) },
-                summary = "被判定为敏感内容的条目怎么显示。" +
-                    "打码之后点击不会恢复清晰；彻底隐藏只在部分列表页完全生效。",
+                summary = "打码后点击也不会恢复。",
             )
             SettingsToggle(
                 "屏蔽 AI 生成漫画", blockAi, guard::setBlockAiComics,
-                summary = "整个条目不再出现，与上面的遮罩各管各的。" +
-                    "只认明确的 AI 标记：标签 ai-generated / ai_generated，" +
-                    "或者标题里的 [AI Generated]、[AI Art]、【AI】。单独的 ai 字样不算，以免误伤。",
+                summary = "只认明确的 AI 标记，单独的 ai 不算，避免误伤。",
             )
-            // 逐源预设其实已经生效（assets/source_content_warning.json，33 源），
-            // 缺的是逐源用户覆盖与选择 UI —— 移入底部「尚未实现」折叠区，不占主区。
         }
         // KEYWORD 原先只有守卫二级页能进；页面合并后必须在这里补上入口，
         // 否则已保存的关键词规则就没地方查看和删除了。
@@ -80,7 +75,7 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
         SettingsGroup {
             SettingsAction("匹配说明", when(type) {
                 "TAG" -> "标签按包含匹配，不是精确匹配。"
-                "AUTHOR" -> "作者按包含匹配，只有提供作者信息的源生效。"
+                "AUTHOR" -> "作者按包含匹配，只有提供作者信息的源才生效。"
                 "COMIC_ID" -> "填写作品编号，按编号精确匹配，不区分源。"
                 else -> "标题按包含匹配，不区分大小写。"
             })
@@ -89,7 +84,7 @@ internal fun BlockingRulesSettings(type: String, onBack: () -> Unit) {
                 // addRule 本身已支持 isRegex，这里只是把入口补上。
                 SettingsToggle(
                     "按正则匹配", regexMode, { regexMode = it; error = null },
-                    summary = "关掉按普通文字匹配，打开按正则匹配。",
+                    summary = "开启后按正则表达式匹配。",
                 )
                 VeneraTextField(
                     value = input,

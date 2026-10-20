@@ -245,9 +245,9 @@ fun SourceSectionScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 VeneraEmptyView(
-                    title = "加载失败",
+                    title = "这一节没读出来",
                     message = error.orEmpty(),
-                    actionText = "重试",
+                    actionText = "再拉一次",
                     onAction = { load(1) },
                 )
             }

@@ -162,17 +162,17 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
                     // 运行期 runtime 探活会自动回退系统解析）。
                     val best = PreferredIpRules.bestIpsFromLines(summarized)
                     if (best.isEmpty()) {
-                        error = "抽样 ${ips.size} 台没有一台对任何目标站点答上话，可再按一次重抽一批"
+                        error = "测试了 ${ips.size} 个地址，没有一个能连接目标站点。可以再试一次。"
                     } else {
                         applyBest(
                             ipsText = best.joinToString("\n"),
-                            message = "已自动选点 ${best.size} 台并应用",
+                            message = "已自动选用 ${best.size} 个地址",
                         )
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("VeneraDebug", "preferred-ip speed test failed", e)
-                error = "测速没跑成 🥲 检查网络后再试一次"
+                error = "测速失败，请检查网络后重试。"
             } finally {
                 probing = false
             }
@@ -186,9 +186,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
         SettingsGroup("测速目标网站") {
             targets.forEach { t -> SpeedTestTargetRow(t) }
             Text(
-                "列表跟随你安装的漫画源与画廊站点：装了才测，没装不出现。" +
-                    "测速通过真实 HTTPS 请求，测量你这台设备到这些站点 Cloudflare 边缘节点的直连延迟" +
-                    "（不经过应用内代理，量的是直连这一条路）。",
+                "只测试已安装的站点，测的是直连延迟，不经过代理。",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textTertiary,
                 modifier = Modifier.padding(
@@ -206,7 +204,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
                 .fillMaxWidth()
                 .padding(vertical = tokens.spacing.space4),
         ) {
-            Text(if (probing) "测速中…" else "一键测速并自动选点")
+            Text(if (probing) "正在测速…" else "一键测速并自动选点")
         }
         // 只看模式：量「当前已保存的候选」今天还行不行，不动任何配置。
         // 用自动选点落盘后，这颗就是复核按钮 —— 两颗的关系在说明组里也讲了一遍。
@@ -215,13 +213,13 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
             enabled = !probing,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("测当前候选（只看，不改配置）")
+            Text("测试当前候选（不改设置）")
         }
         if (proxyInUse) {
             // 与「候选节点与探活」同一句真话：代理在的时候目标域名由代理解析，
             // 优选 IP 这一层根本不参与 —— 自动选点写回的表没人用，等于白测。
             Text(
-                "当前设置了代理，优选 IP 这一层不会参与，自动选点已停用；要用它请先把代理切回「跟随系统默认」。",
+                "当前使用代理，优选 IP 不会生效。请先把代理改为「跟随系统默认」。",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textTertiary,
                 modifier = Modifier.padding(
@@ -264,7 +262,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
             if (lines.isEmpty()) {
                 if (error == null) {
                     VeneraEmptyView(
-                        message = "还没有测速结果，点上方「一键测速并自动选点」。",
+                        message = "还没有测速结果，请点上方「一键测速并自动选点」。",
                         tone = VeneraEmptyTone.NotYet,
                         size = VeneraEmptySize.Compact,
                         modifier = Modifier.fillMaxWidth(),
@@ -298,8 +296,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
         // ── 说明：不一定可靠 + 推荐开代理 ──
         SettingsGroup("说明") {
             Text(
-                "⚠️ 测速结果不一定可靠：只测量单次请求的延迟，不反映实际浏览或图片加载体验，" +
-                    "且 Cloudflare 边缘节点会随时间变化。",
+                "测速结果仅供参考，不代表实际浏览速度。节点也可能随时间变化。",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textSecondary,
                 modifier = Modifier.padding(
@@ -308,8 +305,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
                 ),
             )
             Text(
-                "想要流畅访问这些站点，推荐开启代理：优选 IP 只优化直连路径的延迟，" +
-                    "而代理通常能更稳地访问（开代理后这一层不会参与，见「候选节点与探活」）。",
+                "想要更稳定地访问，建议使用代理。开启代理后，优选 IP 不会生效。",
                 fontSize = tokens.type.caption,
                 color = tokens.color.textSecondary,
                 modifier = Modifier.padding(
@@ -396,7 +392,7 @@ private fun SpeedTestLineCard(line: PreferredIpLine, isBest: Boolean, isInUse: B
                 val sub = if (line.status == PreferredIpLineStatus.Failing) {
                     line.failureReason ?: "未通过"
                 } else {
-                    "最慢 ${line.slowestLatencyMs} ms · ${line.passedEntries}/${line.totalEntries} 域名通过"
+                    "最慢 ${line.slowestLatencyMs} ms · ${line.passedEntries}/${line.totalEntries} 个域名通过"
                 }
                 Text(
                     sub,

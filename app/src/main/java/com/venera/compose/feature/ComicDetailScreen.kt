@@ -293,7 +293,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             val error = detailState.error
             if (error != null) {
                 readTargetFired = true
-                Toast.makeText(context, "详情加载失败，没能定位到「${target.chapterTitle}」：$error", Toast.LENGTH_LONG)
+                Toast.makeText(context, "没打开那一章 🥲「${target.chapterTitle}」还没准备好", Toast.LENGTH_LONG)
                     .show()
             }
             return@LaunchedEffect
@@ -1904,7 +1904,7 @@ private fun CommentLoadStatus(thread: DetailCommentState, supported: Boolean, on
                 fontSize = tokens.type.caption,
                 color = StatusColors.Failing
             )
-            VeneraTextButton(text = "重试", onClick = onRetry)
+            VeneraTextButton(text = "再试一次", onClick = onRetry)
         }
         !supported && thread.items.isEmpty() -> Text(
             "该源未提供评论加载功能",
@@ -2113,7 +2113,7 @@ private fun FavoritePanelSheet(
                             color = tokens.color.textTertiary,
                         )
                         state.networkError != null -> Text(
-                            text = "查询失败",
+                            text = "没查到",
                             fontSize = tokens.type.overline,
                             color = StatusColors.Degraded,
                         )
@@ -2149,7 +2149,7 @@ private fun FavoritePanelSheet(
 
                     state.networkError != null -> {
                         Text(
-                            text = "网络收藏加载失败：" + state.networkError,
+                            text = "网络收藏没读出来",
                             fontSize = tokens.type.caption,
                             color = StatusColors.Failing,
                             modifier = Modifier.padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4),

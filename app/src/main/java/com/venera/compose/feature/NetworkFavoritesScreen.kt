@@ -314,9 +314,9 @@ fun AndroidNetworkFavoritesScreen(
             firstLoading && !pullInFlight -> item(key = "nf-loading") { AccordionLoader() }
             error != null && shownComics.isEmpty() -> item(key = "nf-error") {
                 VeneraEmptyView(
-                    title = "收藏加载失败",
+                    title = "收藏没加载出来",
                     message = error,
-                    actionText = "重试",
+                    actionText = "再同步一次",
                     onAction = { vm.refresh() },
                 )
             }

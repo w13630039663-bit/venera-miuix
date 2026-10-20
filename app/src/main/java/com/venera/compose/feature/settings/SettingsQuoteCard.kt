@@ -90,14 +90,14 @@ internal fun SettingsQuoteCard(prefs: AppearancePreferences) {
                 if (avatarFile != null) {
                     AsyncImage(
                         model = avatarFile,
-                        contentDescription = "名言卡小图（点按更换，长按恢复默认）",
+                        contentDescription = "名言卡小图，点按更换，长按恢复默认",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(tokens.spacing.quoteAvatarSize),
                     )
                 } else {
                     Image(
                         painter = painterResource(R.drawable.app_icon),
-                        contentDescription = "名言卡小图（点按更换）",
+                        contentDescription = "名言卡小图，点按更换",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(tokens.spacing.quoteAvatarSize),
                     )

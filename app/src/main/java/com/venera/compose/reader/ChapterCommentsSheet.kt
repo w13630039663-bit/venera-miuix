@@ -153,7 +153,7 @@ fun ChapterCommentsSheetContent(
                 Text(text = error ?: "", fontSize = 13.sp, color = Color(0xFFEF5350))
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(onClick = { scope.launch { reload() } }) {
-                    Text("重试", color = Color.White)
+                    Text("再试一次", color = Color.White)
                 }
             }
             comments.isEmpty() && loadedOnce -> Text(

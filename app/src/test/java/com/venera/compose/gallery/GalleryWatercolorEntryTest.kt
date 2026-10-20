@@ -162,7 +162,7 @@ class GalleryWatercolorEntryTest {
      */
     @Test
     fun `设置页那句说明指的是新位置`() {
-        val line = settings.lines().firstOrNull { it.contains("实验功能，默认关闭") }
+        val line = settings.lines().firstOrNull { it.contains("可在「关于这张图」面板") }
             ?: error("GallerySettings.kt 里找不到「画成水彩」那条 summary")
         assertTrue("summary 不再指向新的落点（「关于这张图」面板）：$line", line.contains("关于这张图"))
         assertFalse("summary 还写着旧的落点「底栏」：$line", line.contains("底栏"))

@@ -34,7 +34,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             listOf(SearchViewModel.KEY_ALL to "全部源") +
             sources.map { it.key to it.name }
     }
-    SettingsPage("探索", onBack, largeTitle = "探索与卡片", heroSubtitle = "漫画源 · 关键词屏蔽") {
+    SettingsPage("探索", onBack, largeTitle = "浏览与卡片", heroSubtitle = "卡片 · 搜索 · 启动页") {
         SettingsGroup("漫画卡片") {
             SettingsSelect("漫画卡片显示模式", mode, listOf("detailed" to "详细（单列）", "brief" to "简洁（双列）"), { mode = it })
         }
@@ -47,7 +47,7 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
         SettingsGroup("搜索与默认值") {
             SettingsSelect(
                 "默认搜索目标", defaultTarget, targetOptions, comicPrefs::setDefaultSearchTarget,
-                summary = "进搜索页时先选好的源，不会自动开始搜索。",
+                summary = "进搜索页时默认选这个源。",
             )
             SettingsSelect(
                 "启动页面", startPage,

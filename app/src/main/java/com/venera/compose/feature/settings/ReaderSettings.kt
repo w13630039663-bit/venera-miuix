@@ -42,49 +42,38 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
     val contrast by prefs.readerEnhanceContrast.collectAsState()
     val saturation by prefs.readerEnhanceSaturation.collectAsState()
     val brightness by prefs.readerEnhanceBrightness.collectAsState()
-    SettingsPage("阅读", onBack, largeTitle = "阅读设置", heroSubtitle = "翻页 · 预加载 · 音量键") {
+    SettingsPage("阅读", onBack, largeTitle = "阅读设置", heroSubtitle = "翻页 · 显示 · 预加载") {
         SettingsGroup("翻页与模式") {
             SettingsSelect("阅读模式", ReaderReadingMode.fromKey(mode).key,
                 listOf("HORIZONTAL_LTR" to "翻页（从左到右）", "HORIZONTAL_RTL" to "翻页（从右到左）",
                     "HORIZONTAL_CONTINUOUS" to "连续（从左到右）", "VERTICAL_CONTINUOUS" to "连续（从上到下）",
                     "DOUBLE_PAGE" to "对开双页"), prefs::setDefaultReadingMode)
             // 翻页特效默认「无（原样）」：守仓库"新能力默认不改动观感"铁律（同图片增强总开关、内容层材质）。
-            // 3D 翻书接入所有横向翻页模式；仿真卷边为单页横向专用，该模式下不再走双指缩放。
-            // ⚠️ 选项名与阅读器面板**必须同源**：那一边显示的是 ReaderPageTurnEffect.shortLabel /
-            // glyph 这一对，这边是 label。同一颗枚举的两个字段，不是两处各写一份文案。
             SettingsSelect("翻页特效", ReaderPageTurnEffect.fromKey(pageTurnEffect).key,
                 ReaderPageTurnEffect.entries.map { it.key to it.label },
                 prefs::setPageTurnEffect,
-                summary = "默认无（原样）。3D 翻书接入所有横向翻页模式；仿真卷边仅单页横向（美漫/日漫），" +
-                    "该模式下不支持双指缩放。")
+                summary = "只在单页左右翻时生效。")
             SettingsToggle("点击翻页", tap, prefs::setClickToTurn)
             SettingsToggle("反转点击翻页方向", reverseTap, prefs::setReverseTapDirection,
                 summary = "左右两半屏的作用互换。日漫模式本身的反向不受影响。")
-            // 条漫连续流用的是阅读器面板里的 px/s 速度（临时态，不持久化）；
-            // 这个间隔只对翻页模式（美漫 LTR / 日漫 RTL）的自动巡航生效。
-            // 区间只有一把尺子（AUTO_PAGE_INTERVAL_SEC_RANGE）：面板上那两枚 −/+ 与写入钳位都读它。
             SettingsSlider("自动翻页间隔", autoInterval, PreferenceKeys.AUTO_PAGE_INTERVAL_SEC_RANGE,
                 prefs::setAutoScrollPageIntervalSec, steps = 9, suffix = " 秒",
-                summary = "只在翻页模式下自动翻页；阅读器面板上那两枚 −/+ 调的就是这一枚值。" +
-                    "连续滚动请在面板里调速度。")
+                summary = "只在左右翻页时生效。连续滚动请在阅读器面板里调速度。")
             SettingsToggle("自动翻页续到下一话", autoNextChapter, prefs::setAutoNextChapter,
-                summary = "无人值守翻页翻到本话最后一页时，自动联网取下一话并从第 1 页接着播；" +
-                    "全书最后一话翻完才停。关掉就停在本话末页。连续滚动模式同样适用。")
+                summary = "翻到本话最后一页后，自动读取下一话。全书结束后停止。")
         }
         SettingsGroup("图片") {
             SettingsSlider("页间距", gap, 0f..32f, prefs::setPageGapDp, steps = 31, suffix = " dp")
             SettingsSlider("预加载图片数量", preload.toFloat(), 0f..20f,
                 { prefs.setPreloadImageCount(it.toInt()) }, steps = 19, suffix = " 页",
-                summary = "往后多加载几页。有的源每页都要单独请求，调大更费流量和内存；0 是只加载当前页。")
+                summary = "提前加载后面几页。调大更流畅，也更费流量和内存；0 只加载当前页。")
         }
         SettingsGroup("图片增强") {
-            // 默认**全关**：总开关关着时四个旋钮一律置灰，渲染路径与没做这个功能时逐像素相同
-            // （判据在 ReaderEnhancement.readerColorMatrix：全中性返回 null，一个 ColorFilter 都不挂）。
             SettingsToggle("锐化与色彩调整", enhanceOn, prefs::setReaderEnhanceEnabled,
-                summary = "默认关闭。开启后画面不再是原图。")
+                summary = "开启后会调整画面颜色，不再是原图。")
             SettingsSlider("锐化", percentOf(sharpen), 0f..100f,
                 { prefs.setReaderEnhanceSharpen(it / 100f) }, steps = 19, suffix = " %",
-                summary = "把线条边缘拉清楚。0 是原图。", enabled = enhanceOn)
+                summary = "让线条更清楚。0 是原图。", enabled = enhanceOn)
             SettingsSlider("对比度", percentOf(contrast), 50f..150f,
                 { prefs.setReaderEnhanceContrast(it / 100f) }, steps = 19, suffix = " %",
                 summary = "100 是原图。", enabled = enhanceOn)
@@ -93,15 +82,13 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
                 summary = "100 是原图，0 是黑白。", enabled = enhanceOn)
             SettingsSlider("亮度", percentOf(brightness), -25f..25f,
                 { prefs.setReaderEnhanceBrightness(it / 100f) }, steps = 9, suffix = " %",
-                summary = "0 是原图。夜间反色滤镜叠在最后，所以调的是原图的亮暗。", enabled = enhanceOn)
+                summary = "0 是原图。夜间反色会在之后叠加。", enabled = enhanceOn)
         }
         SettingsGroup("显示") {
             SettingsToggle("音量键翻页", volume, prefs::setVolumeKeyTurn)
             SettingsToggle("保持屏幕常亮", keepOn, prefs::setKeepScreenOn)
-            // 措辞与实现对齐：这一枚做的是**反色**（黑白互换），不是柔光/降亮度。
-            // 阅读器面板里那枚一直写的是"夜间反色滤镜"。
             SettingsToggle("夜间反色滤镜", night, prefs::setNightFilter,
-                summary = "黑白互换，减轻夜间刺眼。")
+                summary = "黑白反转，降低夜间亮度。")
         }
         SettingsGroup("入口") {
             SettingsAction("单页与插图收藏", onClick = onImages)

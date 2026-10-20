@@ -3338,12 +3338,12 @@ internal fun GalleryDailyPage(
             contentAlignment = Alignment.Center,
         ) {
             VeneraEmptyView(
-                title = "最新流加载失败",
+                title = "最新流没读出来",
                 message = error,
                 // 「加载失败」不许配**内容**图标（这里原来是 `Icons.Outlined.Image`，
                 // 那枚图标的意思是"这儿有图"）。语义档自己去挑一枚说"没取回来"的。
                 tone = VeneraEmptyTone.Failed,
-                actionText = "重试",
+                actionText = "重新加载",
                 onAction = onRetry,
             )
         }

@@ -78,7 +78,7 @@ internal fun GalleryLoadMoreRetryLine(
     )
     Spacer(modifier = Modifier.height(tokens.spacing.space2))
     VeneraChip(
-        text = "重试",
+        text = "再拉一次",
         variant = VeneraChipVariant.Assist,
         onClick = onRetryLoadMore,
     )

@@ -65,7 +65,7 @@ internal fun PreferredIpSettingsGroup(prefs: NetworkPreferences) {
     )
     SettingsAction(
         title = "候选节点与探活",
-        summary = "手动粘贴候选地址并逐个探活；一键测速自动选点请用「线路测速」页",
+        summary = "手动填写候选地址并逐个测试。自动选点请用「线路测速」。",
         onClick = { showEditor = true },
     )
 
@@ -83,15 +83,15 @@ internal fun PreferredIpSettingsGroup(prefs: NetworkPreferences) {
 
 /** 页面上那一行读数：把"开了但没用"的三种情形分别说出来，不留一句笼统的"已开启"。 */
 private fun summaryOf(enabled: Boolean, ipsRaw: String, hostsRaw: String, proxyInUse: Boolean): String {
-    if (!enabled) return "未开启 · 全部走正常解析"
+    if (!enabled) return "未开启 · 使用正常网络解析"
     val recognized = PreferredIpRules.parseIps(ipsRaw).size
     val tokens = PreferredIpRules.countIpTokens(ipsRaw)
     val entryCount = PreferredIpRules.parseHosts(hostsRaw).size
     return when {
-        proxyInUse -> "已开启，但当前走代理 · 这一层不参与"
-        recognized == 0 -> "已开启，但还没有可用的候选地址"
-        entryCount == 0 -> "已开启，但没有域名用它"
-        else -> "已绑 $recognized 台候选（共 $tokens 项）· $entryCount 个域名"
+        proxyInUse -> "已开启，但当前使用代理，优选 IP 不生效"
+        recognized == 0 -> "已开启，但还没有候选地址"
+        entryCount == 0 -> "已开启，但没有设置适用域名"
+        else -> "$entryCount 个域名使用 $recognized 个候选地址（共 $tokens 项）"
     }
 }
 
@@ -138,22 +138,21 @@ private fun PreferredIpEditorDialog(
                     //（抽样 → 探活 → 自动写回），这里只留手动粘贴这条高级路。
                     supportingText = {
                         Text(
-                            "一般不用手填：到「线路测速」页点「一键测速并自动选点」，测完会自动填好这里。" +
-                                "也可手动粘贴 IP（IPv4 / IPv6 字面量）；域名不填这里，填下面的「适用域名」。"
+                            "通常不用手动填写。到「线路测速」自动选点即可。这里只填 IP，域名填在下面。"
                         )
                     },
                 )
                 // 认不出来的那些必须当场说出来：默默丢掉等于让用户以为"我粘了 15 台但只通 3 台"。
                 Text(
-                    "识别出 ${recognized.size} 台（共 ${PreferredIpRules.countIpTokens(ips)} 项）· " +
-                        "上限 ${PreferredIpRules.MAX_IPS_PER_HOST} 台",
+                    "识别到 ${recognized.size} 个地址（共 ${PreferredIpRules.countIpTokens(ips)} 项），" +
+                        "最多 ${PreferredIpRules.MAX_IPS_PER_HOST} 个",
                 )
 
                 Text("适用域名")
                 OutlinedTextField(
                     value = hosts,
                     onValueChange = { hosts = it; failure = null; rows = emptyMap() },
-                    placeholder = { Text("只有这些域名会绑优选 IP，其余一律走正常解析") },
+                    placeholder = { Text("只有这些域名会使用优选 IP") },
                     minLines = 2,
                     maxLines = 5,
                     enabled = !probing,
@@ -163,19 +162,19 @@ private fun PreferredIpEditorDialog(
 
                 if (!enabled) {
                     // 探活与开关是两件事：这里只测"这几台通不通"，不替用户把路开上。
-                    Text("总开关还没开：这一轮结果只做参考，保存不会自动开启它。")
+                    Text("总开关未开启，测试结果仅供参考。")
                 }
                 if (proxyInUse) {
                     // 这一句是**真话而不是免责**：代理在的时候 OkHttp 只把 Dns 用在代理主机上，
                     // 目标域名由代理解析 —— 探活也因此不跑（量到的不是这台机器的距离）。
-                    Text("当前设置了代理，优选 IP 这一层不会参与；要用它请先把代理切回「跟随系统默认」。")
+                    Text("当前使用代理，优选 IP 不会生效。请先把代理改为「跟随系统默认」。")
                 }
                 if (failure != null) Text(failure.orEmpty())
 
                 if (probing) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularWavyProgressIndicator()
-                        Text("正在探活…")
+                        Text("正在测试…")
                     }
                 } else if (rows.isNotEmpty()) {
                     rows.forEach { (entry, list) ->
@@ -197,16 +196,16 @@ private fun PreferredIpEditorDialog(
                         // 屏上摆的是新表"这种两处真相。开关状态照当前的来，不替用户偷偷开。
                         savePreferredIp(prefs, enabled, ips, hosts, clearReadings = true)
                         if (recognized.isEmpty() || entries.isEmpty()) {
-                            failure = if (recognized.isEmpty()) "先填至少一个候选地址" else "先填至少一个适用域名"
+                            failure = if (recognized.isEmpty()) "请先填写候选地址" else "请先填写适用域名"
                         } else if (proxyInUse) {
-                            failure = "当前走代理，探活量不到这台机器的真实距离，已按「不参与」处理"
+                            failure = "当前使用代理，无法测试直连速度"
                         } else {
                             probing = true
                             rows = withContext(Dispatchers.IO) {
                                 runCatching { PreferredIpProbe.probeAll() }
                                     .getOrElse { cause ->
                                         android.util.Log.w("VeneraDebug", "preferred-ip probeAll failed", cause)
-                                        failure = "探活没跑成 🥲 稍后再试一次"
+                                        failure = "测试失败，请稍后再试"
                                         emptyMap()
                                     }
                             }

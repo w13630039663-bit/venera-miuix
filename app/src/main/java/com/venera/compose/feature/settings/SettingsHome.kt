@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ChromeReaderMode
 import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,28 +62,38 @@ private data class SettingsCategory(
 )
 
 /**
- * 设置分区清单（2026-10-02 分组重组：8 个分区按语义归 4 组，一个不丢）。
+ * 设置分区清单（2026-10-20 重排：按"多久改一次"排，常用的在上）。
+ *
+ * 前一轮（同为 10-20）按使用场景分组，这一轮在组内再按**改动频率**排序：
+ * - 「外观与主题」从第 3 提到第 1 —— 深色/材质/头图是这一页最常动的东西；
+ * - 「收藏」从第 5 降到第 6 —— 它多半是设一次就不动；
+ * - 「应用与数据」「网络与代理」压到最后 —— storage / proxy 是一辈子改两次那一档。
  *
  * 颜色来自 [SettingsBadgeColors] Token，不在页面内联 Color(0xFF…)（A3.1）。
  * listOf 在顶层求值，因此这里读的是编译期常量，不涉及 Compose 运行时。
  */
-private val groupContent = listOf(
-    SettingsCategory(SettingsSubScreen.EXPLORE, "探索", Icons.Filled.Explore, SettingsBadgeColors.Discovery),
-    SettingsCategory(SettingsSubScreen.GALLERY, "画廊", Icons.Filled.Image, SettingsBadgeColors.Gallery),
-    SettingsCategory(SettingsSubScreen.BLOCKING, "屏蔽与过滤", Icons.Filled.FilterAlt, SettingsBadgeColors.Moderation),
-)
-private val groupPersonalization = listOf(
+private val groupBrowsing = listOf(
     SettingsCategory(
-        SettingsSubScreen.APPEARANCE, "外观", Icons.Filled.ColorLens, SettingsBadgeColors.Theming,
-        subtitle = "主题 · 材质 · 主图",
+        SettingsSubScreen.APPEARANCE, "外观与主题", Icons.Filled.ColorLens, SettingsBadgeColors.Theming,
+        subtitle = "主题 · 材质 · 标签",
+    ),
+    SettingsCategory(SettingsSubScreen.GALLERY, "画廊", Icons.Filled.Image, SettingsBadgeColors.Gallery),
+    SettingsCategory(SettingsSubScreen.EXPLORE, "浏览与卡片", Icons.Filled.Explore, SettingsBadgeColors.Discovery),
+)
+private val groupReading = listOf(
+    SettingsCategory(
+        SettingsSubScreen.READER, "阅读设置", Icons.AutoMirrored.Filled.ChromeReaderMode, SettingsBadgeColors.Reading,
+        subtitle = "翻页 · 显示 · 预加载",
+    ),
+    SettingsCategory(SettingsSubScreen.BLOCKING, "屏蔽与过滤", Icons.Filled.FilterAlt, SettingsBadgeColors.Moderation),
+    SettingsCategory(
+        SettingsSubScreen.LOCAL_FAVORITES, "收藏", Icons.Filled.CollectionsBookmark, SettingsBadgeColors.Library,
+        subtitle = "新收藏位置 · 快捷收藏",
     ),
 )
-private val groupData = listOf(
-    SettingsCategory(SettingsSubScreen.LOCAL_FAVORITES, "本地收藏", Icons.Filled.CollectionsBookmark, SettingsBadgeColors.Library),
-)
 private val groupSystem = listOf(
-    SettingsCategory(SettingsSubScreen.APP, "应用", Icons.Filled.Apps, SettingsBadgeColors.Application),
-    SettingsCategory(SettingsSubScreen.NETWORK, "网络", Icons.Filled.Public, SettingsBadgeColors.Connectivity),
+    SettingsCategory(SettingsSubScreen.APP, "应用与数据", Icons.Filled.Apps, SettingsBadgeColors.Application),
+    SettingsCategory(SettingsSubScreen.NETWORK, "网络与代理", Icons.Filled.Public, SettingsBadgeColors.Connectivity),
 )
 
 /**
@@ -258,18 +269,13 @@ private fun SettingsHomeContent(
         ) {
             AppIdentityCard(comicPrefs)
             SettingsQuickLinks()
-            SettingsGroup("内容") {
-                groupContent.forEach { category ->
+            SettingsGroup("浏览") {
+                groupBrowsing.forEach { category ->
                     SettingsEntryRow(category) { onOpen(category.screen!!) }
                 }
             }
-            SettingsGroup("个性化") {
-                groupPersonalization.forEach { category ->
-                    SettingsEntryRow(category) { onOpen(category.screen!!) }
-                }
-            }
-            SettingsGroup("数据") {
-                groupData.forEach { category ->
+            SettingsGroup("阅读与收藏") {
+                groupReading.forEach { category ->
                     SettingsEntryRow(category) { onOpen(category.screen!!) }
                 }
                 // 阅读历史与「本地收藏」同属数据，但语义不同：它不是偏好项，而是
@@ -283,7 +289,7 @@ private fun SettingsHomeContent(
                     onClick = onOpenHistory,
                 )
             }
-            SettingsGroup("系统") {
+            SettingsGroup("应用") {
                 groupSystem.forEach { category ->
                     SettingsEntryRow(category) { onOpen(category.screen!!) }
                 }

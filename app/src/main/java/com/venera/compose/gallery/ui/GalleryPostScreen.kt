@@ -1331,7 +1331,7 @@ fun GalleryPostScreen(
                         message = error.orEmpty(),
                         // 与「最新流加载失败」同一条：这一档说"没取回来"，不是"这儿有图"。
                         tone = VeneraEmptyTone.Failed,
-                        actionText = "重试",
+                        actionText = "重新加载",
                         onAction = { retryTick++ },
                     )
                 }

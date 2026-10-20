@@ -370,7 +370,7 @@ internal fun pixivRecommendReading(
         ForYouEmptyCopy(
             title = "pixiv 这一轮没给你推荐",
             message = caption ?: "站方推荐的答复是空的 —— 再多收藏几张、或过一会儿再刷一次。",
-            actionText = "重试",
+            actionText = "再刷一次",
             onAction = onRetry,
             tone = VeneraEmptyTone.Failed,
         )
@@ -387,7 +387,7 @@ internal fun pixivRecommendReading(
             title = "pixiv 这一轮没有回图",
             message = (caption ?: "种子那几枚标签（「${seeds.joinToString("、")}」）这一轮没从 pixiv 取回图。") +
                 "\n稍后再刷一次，或者多收藏几张换换口味。",
-            actionText = "重试",
+            actionText = "再刷一次",
             onAction = onRetry,
             tone = VeneraEmptyTone.Failed,
         )
@@ -522,7 +522,7 @@ private fun emptyCopyOf(
             title = "这一轮没取成",
             message = fvm.error.orEmpty(),
             tone = VeneraEmptyTone.Failed,
-            actionText = "重试",
+            actionText = "再刷一次",
             // 走调用方那枚 onRetry：它会先清域名熔断再置 force。
             // 直接 fvm.refresh() 的话，撞上 60s 熔断窗口时这一按必然还是同一句"熔断中"，是假按钮。
             onAction = onRetry,
@@ -554,7 +554,7 @@ private fun emptyCopyOf(
                 },
                 wall.blockedRules.takeIf { it.isNotEmpty() }?.let { "命中屏蔽规则 ${it.joinToString("、")}" },
             ).joinToString("\n").ifBlank { "两站这一轮都没有给出可摆的条目" },
-            actionText = "重试",
+            actionText = "再刷一次",
             onAction = onRetry,
         )
     }

@@ -112,8 +112,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 is DirChoice.Reject -> Toast.makeText(context, outcome.reason, Toast.LENGTH_LONG).show()
                 is DirChoice.NeedsPermission -> Toast.makeText(
                     context,
-                    "${outcome.path} 写不进去，需要所有文件访问权限。可以先在 应用 → 本地漫画存储路径 里授予，" +
-                        "再回到这里重新选目录）",
+                    "无法写入 ${outcome.path}。请先在「应用 → 本地漫画存储路径」里授权。",
                     Toast.LENGTH_LONG,
                 ).show()
 
@@ -125,7 +124,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         }
     }
 
-    SettingsPage(title = "画廊", onBack = onBack, largeTitle = "画廊设置", heroSubtitle = "图片来源 · 缓存 · 保存") {
+    SettingsPage(title = "画廊", onBack = onBack, largeTitle = "画廊设置", heroSubtitle = "浏览 · 缓存 · 下载") {
         // 两张卡本身已经是 VeneraCard，所以这一组只借标题、不再套一层 SettingsGroup 的 Card。
         SettingsGroupTitle("账号与密钥")
         GalleryAccountCard()
@@ -144,7 +143,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             }
             SettingsAction(
                 title = "更换首页头图",
-                summary = if (heroFile != null) "已设置：只影响画廊首页顶部那一段" else "未设置：首页保持现在的样子",
+                summary = if (heroFile != null) "只影响画廊首页顶部" else "未设置，首页保持默认样式",
             ) { pickGalleryHero() }
             SettingsAction(
                 title = "恢复默认头图",
@@ -162,7 +161,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryColumnMode.THREE.name to "三列",
                 ),
                 { prefs.setGalleryColumnMode(GalleryColumnMode.valueOf(it)) },
-                summary = "自动按屏幕宽度决定。平板上觉得格子太大就手动选两列。",
+                summary = "自动按屏幕宽度决定。平板上觉得太大，可以选两列。",
             )
             SettingsSelect(
                 "预览清晰度", previewQuality.name,
@@ -171,26 +170,15 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryPreviewQuality.LARGE.name to "更清晰（站方 sample 图，流量大约十倍）",
                 ),
                 { prefs.setGalleryPreviewQuality(GalleryPreviewQuality.valueOf(it)) },
-                summary = "只影响列表里的小图。点开大图仍然按中档、原图两步加载，" +
-                    "不受这里影响。",
+                summary = "只影响列表小图，点开后仍按原方式加载。",
             )
-            // 两枚"滚动收起"（2026-09-30 新增）。分开摆而不是合成一枚，是用户点名的口径：
-            // 有人只要底栏让位、有人只要顶栏让位。
-            //
-            // ⚠️ 标题当天先写成「下滑时收起」，而实现把方向接反了（真机反馈"搞反了，应该是上滑收起"）。
-            // 判据已按 material3 源码的符号量回正（见 GalleryChromeHidePolicy 类头注），标题跟着改。
-            // 另外"上滑/下滑"这两个字本身就有歧义（手指方向 vs 内容往哪走），
-            // 所以说明里一律写成"手指向上推"这种不会读反的说法。
             SettingsToggle(
                 "上滑时收起顶栏", hideTopBar, { prefs.setGalleryHideTopBar(it) },
-                summary = "手指向上推、浏览到搜索框以下时，顶栏（连同大标题）整条收起，把屏高让给图；" +
-                    "往回一滑立刻回来。双击顶栏也能直接回到顶部。" +
-                    "关闭时顶栏只按原来的方式折叠成一行小标题。",
+                summary = "向上浏览时收起顶栏，给图片留出空间。向下滑会重新显示。",
             )
             SettingsToggle(
                 "上滑时收起底栏", hideBottomBar, { prefs.setGalleryHideBottomBar(it) },
-                summary = "同样的触发条件，收的是底下那条导航栏。" +
-                    "只影响画廊这一屏：切到其他页面它照常出现，不会跟着一起消失。",
+                summary = "向上浏览时收起底部导航栏，只影响画廊。",
             )
             history?.let { store ->
                 // 张数直接订阅存储件那份名单：清完自己归零，不需要图片缓存那种重取读数。
@@ -216,7 +204,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     scope.launch(Dispatchers.IO) { GalleryImageLoader.reset(context) }
                     Toast.makeText(context, "图片缓存已按 $mb MB 重建", Toast.LENGTH_SHORT).show()
                 },
-                summary = "超过上限会自动淘汰最久没用过的，不用手动清理。",
+                summary = "超过上限会自动清理最久未使用的内容。",
             )
             SettingsAction(
                 "立即清除图片缓存",
@@ -238,11 +226,11 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         SettingsGroup("下载") {
             SettingsAction(
                 "下载目录",
-                if (customDownloadPath.isBlank()) "$downloadPath（沿用漫画存储目录下的 图库 子目录）" else "$downloadPath（自己选的目录）",
+                if (customDownloadPath.isBlank()) "$downloadPath（默认）" else "$downloadPath（自定义）",
                 onClick = { pickDirLauncher.launch(null) },
             )
             if (customDownloadPath.isNotBlank()) {
-                SettingsAction("改回沿用漫画目录", "当前：$customDownloadPath") {
+                SettingsAction("恢复默认下载目录", "当前：$customDownloadPath") {
                     prefs.setGalleryDownloadPath("")
                     Toast.makeText(context, "已改回用漫画存储目录下的 图库", Toast.LENGTH_SHORT).show()
                 }
@@ -256,26 +244,23 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GallerySaveNaming.TIMESTAMP.name to "时间戳（20260929-113045.png）",
                 ),
                 { prefs.setGallerySaveNaming(GallerySaveNaming.valueOf(it)) },
-                summary = "取不到画师时改用站名-编号；文件名撞了会自动加 (1)。",
+                summary = "取不到画师时使用站名和编号，重名会自动加编号。",
             )
         }
 
         SettingsGroup("大图页") {
             SettingsToggle(
                 "屏幕常亮", keepScreenOn, { prefs.setGalleryKeepScreenOn(it) },
-                summary = "看大图时不让屏幕熄灭，离开这一页就恢复。",
+                summary = "看大图时保持屏幕常亮，离开后恢复。",
             )
             SettingsToggle(
                 "音量键翻页", volumeKeyTurn, { prefs.setGalleryVolumeKeyTurn(it) },
-                summary = "音量键向下是下一张、向上是上一张，到头就停，不循环。" +
-                    "关闭时音量键还是系统的音量条。",
+                summary = "音量下键下一张，上键上一张，不循环。",
             )
             SettingsSlider(
                 "自动连播间隔", autoPlaySec.toFloat(), 0f..30f,
                 { prefs.setGalleryAutoPlaySec(it.toInt()) }, steps = 29, suffix = " 秒",
-                summary = "在当前列表里自动翻到下一张，翻到头就停，填 0 关闭。" +
-                    "信息面板开着、放大看、或者这一张是视频的时候不会自动翻。" +
-                    "大图页底栏的播放按钮可以临时改间隔（长按出滑条），离开那一页就恢复成这里的设置。",
+                summary = "到头就停，0 关闭。",
             )
             SettingsSelect(
                 "预加载", preloadMode.name,
@@ -285,9 +270,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryPreloadMode.BOTH_TWO.name to "提前加载前后各两张",
                 ),
                 { prefs.setGalleryPreload(GalleryPreloadMode.valueOf(it)) },
-                summary = "决定翻页之前先把旁边几张的中档图取进缓存。" +
-                    "关闭时当前这张照常加载，但翻过去时旁边的要现取，会白一下。" +
-                    "调大更跟手，也更费流量和缓存。",
+                summary = "提前加载前后几张图。调大更流畅，也更费流量。",
             )
             SettingsSelect(
                 "动图自动播放", animatedMode.name,
@@ -297,10 +280,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryAnimatedMode.NEVER.name to "从不（停在第一帧）",
                 ),
                 { prefs.setGalleryAnimated(GalleryAnimatedMode.valueOf(it)) },
-                summary = "只影响大图页里的这一张，列表中的动图一直显示第一帧，" +
-                    "一屏同时解很多动画会很占内存。" +
-                    "是不是计费网络按系统判断，判断不了就按计费网络处理，不自动播。" +
-                    "进入这一页时判断一次，中途换网络不会让动画忽开忽停。",
+                summary = "只影响大图页。列表里的动图始终显示第一帧。",
             )
             SettingsSelect(
                 "大图页背景", backdrop.name,
@@ -311,16 +291,11 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryViewerBackdrop.WHITE.name to "纯白",
                 ),
                 { prefs.setGalleryBackdrop(GalleryViewerBackdrop.valueOf(it)) },
-                summary = "没有跟随图片主色调这一项：试过，深色主题下顶部会出现一块颜色很硬的色块，已经撤掉。" +
-                    "选纯黑、深灰或纯白时背景会马上挡住后面的模糊；" +
-                    "改回模糊那一档要重新进入大图页才生效。",
+                summary = "只影响大图页背景。改回模糊后，需要重新进入大图页。",
             )
             SettingsToggle(
                 "画成水彩（Beta）", watercolorBeta, { prefs.setGalleryWatercolorBeta(it) },
-                summary = "实验功能，默认关闭。开启后在大图页点「关于这张图」，" +
-                    "面板底部会多出一行「画成水彩」，点它就把当前这张图按水彩笔触重新画一遍。" +
-                    "目前重绘后的构图和五官还不够稳定，画完的作品可以直接存进相册，" +
-                    "原图不受影响。",
+                summary = "开启后，可在「关于这张图」面板把当前图片重画成水彩，原图不变。",
             )
         }
 
@@ -332,38 +307,26 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     PixivPageSeam.NONE.name to "完全无缝",
                 ),
                 { prefs.setPixivWorkSeam(PixivPageSeam.valueOf(it)) },
-                summary = "只有竖着连续翻页那一档用得上。" +
-                    "无缝的接续感最强，但两页颜色接近时看不出已经翻页，那一页的号还在左上角；" +
-                    "留一条边在浅色图上几乎隐形，在深色图上刚好成一条边。",
+                summary = "只影响竖向连续翻页。留边更容易看出已经翻页。",
             )
             SettingsToggle(
                 "详情接在最后一页之后", pixivWorkDetailsInFlow, { prefs.setPixivWorkDetailsInFlow(it) },
-                summary = "开着的时候，画完这一作的最后一页再往下滑就是标签与相关图片，中间不用换屏。" +
-                    "关掉之后详情只在底栏那枚详情钮里看，图与详情分开。",
+                summary = "开启后，看完最后一页继续下滑就是作品详情。",
             )
         }
 
         SettingsGroup("内容与屏蔽") {
             SettingsToggle(
                 "屏蔽 AI 生成的条目", blockAi, { prefs.setGalleryBlockAi(it) },
-                summary = "图库单独的开关，和屏蔽与过滤里漫画那一侧互不影响。" +
-                    "先认站方自己标的 AI 位（p 站作品上那一格），" +
-                    "站方不给这一格的站才退回标签：只认 ai-generated、ai_generated 这一类整词，" +
-                    "没有标签就不算，也不按看起来像不像来判断。" +
-                    "单独的 ai 标签不算：它在 yande.re 上是一个角色名，算进来会把 19 张手工图误判成 AI。",
+                summary = "只认站方 AI 标记，不靠画风判断。",
             )
             SettingsToggle(
                 "给 AI 条目摆角标", aiBadge, { prefs.setGalleryAiBadge(it) },
-                summary = "在图片左上角标一个 AI。搜索那面墙、首页的预览排、p 站首页那几节、" +
-                    "点开的大图页都会标；浏览历史那一屏不标，那里只存了缩略图，没存标签和站方的标记。" +
-                    "开着屏蔽时基本看不到（那些条目根本不上屏），用处是关掉屏蔽以后还能分辨哪张是 AI 画的。" +
-                    "yande.re 上不会出角标：那一站没人打 AI 标签，这不是开关坏了。",
+                summary = "在卡片左上角标出 AI。浏览历史里不显示角标。",
             )
             SettingsAction(
                 "分级遮罩与屏蔽规则在「屏蔽与过滤」里改",
-                "那两样漫画和图库共用一份设置，这里不重复摆开关，免得两边不一致。" +
-                    "AI 这一条两边各有一份词表：漫画侧认单独的 ai 标签（那是 AI 汉化那一类标记），" +
-                    "图库侧不认它，另外多认 p 站在用的那几枚。",
+                "漫画和画廊共用这些规则。",
             )
         }
     }

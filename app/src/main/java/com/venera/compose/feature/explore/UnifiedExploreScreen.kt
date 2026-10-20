@@ -597,9 +597,9 @@ fun UnifiedExploreScreen(
                 contentError != null -> item {
                     Column {
                         VeneraEmptyView(
-                            title = "探索内容加载失败",
+                            title = "探索页没读出来",
                             message = contentError.orEmpty(),
-                            actionText = "重试",
+                            actionText = "重新检测",
                             onAction = { modeTick++ },
                         )
                         // 错误态也给换源出口：403 这类源站拒绝，重试未必立刻好，
@@ -626,8 +626,8 @@ fun UnifiedExploreScreen(
                 // 内容 effect 对这颗源必然空转，重试按钮走 refreshTick 才真有用。
                 src.probeFailed -> item {
                     VeneraEmptyView(
-                        title = "这颗源暂时探测不到",
-                        message = "探索能力检测失败，可能是网络波动。重新检测一下，或换一颗源看看。",
+                        title = "这颗源暂时连不上",
+                        message = "点下面的按钮再试一次，或者换一颗源。",
                         actionText = "重新检测",
                         onAction = { refreshTick++ },
                     )
@@ -1423,7 +1423,7 @@ private fun LoadMoreFooter(isLoading: Boolean, error: String?, onRetry: () -> Un
                 modifier = Modifier.size(VeneraTokens.spacing.loaderInline),
             )
             error != null -> Text(
-                text = "加载失败：$error · 点击重试",
+                text = "这一段没读出来",
                 fontSize = VeneraTokens.type.caption,
                 color = VeneraTokens.color.primary,
                 modifier = Modifier.clickable(onClick = onRetry),
