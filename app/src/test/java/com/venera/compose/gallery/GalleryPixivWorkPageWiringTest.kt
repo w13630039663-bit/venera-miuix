@@ -628,7 +628,7 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals(
             "截之前先问那一页在哪（问不到 ⇒ 整页退，不演飞完了）",
             1,
-            body.countWith("GalleryFlyIn.captureRegion(host, start)"),
+            body.countWith("GalleryFlyIn.captureRegion(view, start)"),
         )
         // 起点与终点两把键都是 `cardBoundsOf` 那一张表：页登记 `uid:pN`、墙登记 `uid`。
         assertEquals(
@@ -719,6 +719,85 @@ class GalleryPixivWorkPageWiringTest {
             1,
             body.countWith("alpha = { exitBodyAlpha(exitFly.value) }"),
         )
+    }
+
+    // ── 十五、批 C1 跟手返回（2026-10-20）──────────────────────────────────
+    //
+    // 从 `BackHandler`（按一下才飞）换成 `PredictiveBackHandler`（手指拖着图缩回卡）。
+    // 决策层与算式**全是现成的**（`GalleryExitGesture` 四道门闩 + `GalleryExitExpansion`），
+    // 这一刀只做接线。四笔各钉一件事：
+    // 1. 手势那条挂上了、而且**不许挂 `leaving`** 当 enabled；
+    // 2. 决策层的事件流形状与样板同形（Started/Progress/Cancel/Commit 四笔齐）；
+    // 3. 跟手用**高刚度弹簧**追赶，不许 `snapTo`（稀疏进度点会整页跳位）；
+    // 4. 取消那一笔必须**先归位再清帧**（反了就是画面空一帧），且三样都要清干净
+    //    （渲染条件不查 `leaving`，漏一样飞行体就永远挂在屏上）。
+
+    @Test
+    fun `跟手返回接到现值判据层上`() {
+        val body = code(screen)
+        // 手势那条挂上了；旧那颗裸 BackHandler 退场（同一屏挂两个会抢同一次返回手势）。
+        assertEquals("系统返回走 PredictiveBackHandler（批 C1）", 1, body.countWith("PredictiveBackHandler {"))
+        assertEquals("裸 BackHandler 退场（两颗会抢同一次手势）", 0, body.countWith("BackHandler(enabled = !leaving)"))
+        // ⚠️ enabled 不许挂 `leaving`：`Prepare` 那一笔就把它翻真，挂上去等于手势一开始就关掉自己。
+        assertEquals("enabled 不许挂 leaving（会把自己这条流关掉）", 0, body.countWith("PredictiveBackHandler(enabled = !leaving)"))
+        // 事件流四笔齐（与 `GalleryPostScreen` 同形，少一笔就是某种结局没人接）。
+        assertEquals("起手交 Started", 1, body.countWith("if (first) GalleryExitGestureEvent.Started(event.progress)"))
+        assertEquals("拖动交 Progress", 1, body.countWith("else GalleryExitGestureEvent.Progress(event.progress)"))
+        assertEquals("取消交 Cancel（仅在真动过画面时）", 1, body.countWith("if (receivedProgress) onExitGestureEvent(GalleryExitGestureEvent.Cancel)"))
+        assertEquals("松手交 Commit", 1, body.countWith("else GalleryExitGestureEvent.BackWithoutProgress"))
+        // 跟手用高刚度弹簧，不用 snapTo（稀疏进度点 snap 会整页跳位）。
+        assertEquals("跟手用高刚度弹簧追赶", 1, body.countWith("exitFly.animateTo(command.target, exitFollowSpec)"))
+        assertEquals("跟手不许 snapTo 到目标", 0, body.countWith("exitFly.snapTo(command.target)"))
+        // 决策层与算式都吃现成那颗，屏上不另写判断。
+        assertEquals("决策层吃现成那颗（屏上不另判）", 1, body.countWith("nextExitGesture(exitPhase, exitLastProgress, event)"))
+        assertEquals("四条指令都要接（Prepare/Restore/FlySelfDriven/Finish）",
+            4, listOf("GalleryExitGestureCommand.Prepare", "GalleryExitGestureCommand.Restore",
+                "GalleryExitGestureCommand.FlySelfDriven", "GalleryExitGestureCommand.Finish").count { body.countWith(it) == 1 })
+    }
+
+    @Test
+    fun `取消那一笔要归位要清帧要挂回玻璃底`() {
+        // 取两支的原文（Restore 到 FlySelfDriven 之间）。
+        val body = src(screen).replace("\r\n", "\n")
+        val from = body.indexOf("GalleryExitGestureCommand.Restore ->")
+        val to = body.indexOf("GalleryExitGestureCommand.FlySelfDriven ->")
+        assertTrue("找不到 Restore 那一支，量具失效", from > 0 && to > from)
+        val branch = body.substring(from, to)
+        // ① "先归位"由**决策层**保证：`Cancel` 那一档交回的是 `SetVisualTarget(0f)` 再 `Restore`
+        //    （指令顺序执行，见 `GalleryExitGesture.kt` 的 Cancel 支）—— 所以 UI 侧不再自己 snapTo，
+        //    两处都做就是"归位两次"，而且 snap 会把这一帧钉死、看不见回弹。
+        val gesture = src("com/venera/compose/gallery/domain/GalleryExitGesture.kt").replace("\r\n", "\n")
+        assertTrue(
+            "决策层的 Cancel 必须先归位再 Restore",
+            gesture.contains("listOf(GalleryExitGestureCommand.SetVisualTarget(0f), GalleryExitGestureCommand.Restore)"),
+        )
+        assertTrue("UI 侧不许再自己 snapTo 归位（归位只住决策层）", !branch.contains("snapTo(0f)"))
+        // ② 三样都要清：渲染条件不查 `leaving`（②③那轮删掉的），漏一样飞行体就永远挂在屏上。
+        assertTrue("要清像素", branch.contains("exitFrame = null"))
+        assertTrue("要清起点", branch.contains("exitFrom = null"))
+        assertTrue("要清落点", branch.contains("exitTo = null"))
+        assertTrue("要撤 leaving（页面要重新显示）", branch.contains("leaving = false"))
+        // ③ 玻璃底**必须挂回去**：不挂就是"拖到一半松手回弹"之后这一屏的模糊底永久没了
+        //    （样板 `restoreChromeAfterCancel` 那句注释记着同一个坑）。
+        assertTrue("要挂回 FLAG_BLUR_BEHIND", branch.contains("addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)"))
+        assertTrue("半径要照抄回来（不另写常量）", branch.contains("setBackgroundBlurRadius(win.attributes.blurBehindRadius)"))
+    }
+
+    @Test
+    fun `两条路共用同一颗备料与算式`() {
+        val body = code(screen)
+        // 备料只住一颗：跟手那条（Prepare 指令里）与三键那条（flySelfDrivenExit 里）都调它。
+        // 两处各写一遍就是两处真相（"点顶栏与按手势落点不一样"，只有真机能看见）。
+        assertEquals("备料只住一颗函数", 1, body.countWith("fun prepareExit("))
+        assertEquals("两条路都调它（跟手 + 三键）", 2, body.countWith("prepareExit {"))
+        // 自驱那条也只住一颗：三键 / 顶栏 / 决策层 `FlySelfDriven` 三处都走它。
+        assertEquals("自驱飞只住一颗函数", 1, body.countWith("fun flySelfDrivenExit()"))
+        // 摘模糊抽成具名函数（两条路共用），且窗口那两件都做齐。
+        assertEquals("摘模糊只住一颗函数", 1, body.countWith("fun clearChromeForExit()"))
+        assertTrue("要摘 flag", body.any { it.contains("FLAG_BLUR_BEHIND") })
+        assertTrue("半径也要归零（只摘 flag 在某些 ROM 上还留着）", body.any { it.contains("setBackgroundBlurRadius(0)") })
+        // 顶栏那颗 / 三键那条仍走自驱（没有手指可跟），不许被手势那条吞掉。
+        assertEquals("back 仍走自驱那条", 1, body.countWith("val back: () -> Unit = { flySelfDrivenExit() }"))
     }
 
     // ── 十四、批 B⑦ 无锚退路换侧滑（2026-10-19）─────────────────────────────

@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -136,6 +136,10 @@ import com.venera.compose.gallery.domain.PixivCommentSegment
 import com.venera.compose.gallery.domain.PixivPageSeam
 import com.venera.compose.gallery.domain.PixivWorkFact
 import com.venera.compose.gallery.domain.PixivWorkPage
+import com.venera.compose.gallery.domain.GalleryExitGestureCommand
+import com.venera.compose.gallery.domain.GalleryExitGestureEvent
+import com.venera.compose.gallery.domain.GalleryExitGesturePhase
+import com.venera.compose.gallery.domain.nextExitGesture
 import com.venera.compose.gallery.domain.exitBodyAlpha
 import com.venera.compose.gallery.domain.exitPageAlpha
 import com.venera.compose.gallery.domain.handoffBodyAlpha
@@ -148,6 +152,7 @@ import com.venera.compose.gallery.domain.pixivEmojiUrl
 import com.venera.compose.gallery.domain.sideSlideTopOffset
 import com.venera.compose.gallery.domain.splitPixivComment
 import com.venera.compose.ui.tokens.VeneraTokens
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -746,6 +751,96 @@ fun PixivWorkScreen(
      */
     fun exitTargetOrNull(post: GalleryPost): Rect? = GalleryFlyIn.cardBoundsOf(post.viewerKey)
     /**
+     * 摘窗口模糊：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
+     *
+     * 两件事都要做：`clearFlags` 摘开关，`blurBehindRadius` 归零 —— 基类挂的时候
+     * 是"设半径 + addFlags"两条一起下的，只摘开关在某些 ROM 上半径还留着
+     * （2026-10-19 慢放帧证：返回全程后面那面墙一直是糊的，直到落地前才变清）。
+     *
+     * 批 C1 起它被**两条路共用**（跟手那条在 `Prepare` 里调、三键那条在自驱飞里调），
+     * 所以抽成一颗具名函数 —— 两处各写一遍就是两处真相。
+     */
+    fun clearChromeForExit() {
+        val win = (view.context as? Activity)?.window ?: return
+        win.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        win.setBackgroundBlurRadius(0)
+        // ── 临时取证探针：摘完还剩不剩那一枚开关 ──
+        Log.i(
+            "FlyProbe",
+            "退出摘模糊 剩余flag=${win.attributes.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND} " +
+                "radius=${win.attributes.blurBehindRadius}",
+        )
+    }
+
+    /**
+     * **备料**：查起点 / 落点、摘模糊、起一次 `PixelCopy`（批 C1 从 [back] 里抽出来的那一半）。
+     *
+     * 交回 false = 这一趟压根备不了料（没有落点 / 那一页没登记）—— 调用方老实 finish，
+     * 不演"飞完了"。交回 true 时**像素还在路上**：`exitFrame` 要等 `captureRegion` 的回调。
+     *
+     * 跟手那条与三键那条共用它：跟手期手指已经拖出去时，像素一到就能补到那一档
+     * （决策层 `Arming` 期间把进度攒着，见 `GalleryExitGesture`）。
+     */
+    fun prepareExit(onPixels: (ok: Boolean) -> Unit): Boolean {
+        val post = works.getOrNull(workIndex) ?: detail?.post
+        val target = post?.let { exitTargetOrNull(it) }
+        // 起点那一页：身份接 `post`（不另起一条链，见 `exitStartOrNull` 头注）。
+        val start = post?.let { exitStartOrNull(it) }
+        // ── 临时取证探针（`FlyProbe` 同批）：回程查到的落点是什么、起点那一页多大一块 ──
+        Log.i("FlyProbe", "pixiv 返回查落点 target=$target start=$start fullFrame=$fullFrameBox")
+        if (target == null || start == null) {
+            Log.d(TAG, "返回程没有落点或没有起点那一页（墙那一格已回收 / 该页没登记 / 不是从墙上点进来的）⇒ 整页退")
+            return false
+        }
+        clearChromeForExit()
+        // 起点改成**当前那一页图块**（批 B②）：截的就是那一页所在的矩形，飞行体带的
+        // 是用户此刻正在看的那一页，不是整摞页 + 动作条 + 标签那一大框。
+        GalleryFlyIn.captureRegion(view, start) { frame, capturedRect ->
+            if (frame == null || capturedRect == null) {
+                // 截不到帧：直接退。把"没能飞"演成"飞完了"是本仓最忌的那种假开关。
+                Log.w("FlyProbe", "pixiv 离场没截到帧 start=$start ⇒ 整页退")
+                onPixels(false)
+            } else {
+                Log.i("FlyProbe", "pixiv 离场截到帧 from=$capturedRect to=$target")
+                exitFrame = frame
+                // 起点用**钳到窗口后**的那一块：飞行体的像素与矩形必须同一块（批 B §3 地基）。
+                exitFrom = capturedRect
+                exitTo = target
+                onPixels(true)
+            }
+        }
+        return true
+    }
+
+    /**
+     * **自己驱动**的固定弹簧离场（三键导航 / `adb` 送按键这类**没有进度事件**的返回用它）。
+     *
+     * 与跟手那条共用同一颗算式（`GalleryExitExpansion`）与同一份落点账本 ——
+     * 两处各飞一遍就会"点顶栏与按手势落点不一样"，而那种错只有真机能看见。
+     */
+    fun flySelfDrivenExit() {
+        leaving = true
+        if (!prepareExit { ok ->
+                if (!ok) {
+                    leaving = false
+                    onBack()
+                } else {
+                    scope.launch {
+                        // 与下滑关闭、进场同一档弹簧（数值同 `GalleryPostScreen`，不另造一个）。
+                        exitFly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
+                        Log.i("FlyProbe", "pixiv 离场飞完 value=${exitFly.value}")
+                        onBack()
+                    }
+                }
+            }
+        ) {
+            // 备不了料（没有落点 / 没有起点那一页）：一步都还没动，直接退。
+            leaving = false
+            onBack()
+        }
+    }
+
+    /**
      * 顶栏那颗返回。
      *
      * **飞得起来就先飞，飞不起来直接退**（2026-10-19 · 批 231-E 补齐"怎么画"）。
@@ -758,87 +853,138 @@ fun PixivWorkScreen(
      * 飞行体本身是**共享件** `GalleryExitFlyBody`（渲染）+ `GalleryExitExpansion`（整帧算式，
      * 有单测逐位钉着）—— 不在这里另写一遍绘制：两处各画一遍，同一部作品从两面墙点进去
      * 就会飞得不一样，而那种错只有真机能看见。
+     *
+     * 批 C1 起它**只管三键 / 顶栏那一档**（没有手指可跟）；手势那一条走 [onExitGestureEvent]，
+     * 两条共用 [prepareExit] 与同一颗算式。
      */
-    val back: () -> Unit = {
-        val post = works.getOrNull(workIndex) ?: detail?.post
-        val target = post?.let { exitTargetOrNull(it) }
-        // 起点那一页：身份接 `post`（不另起一条链，见 `exitStartOrNull` 头注）。
-        val start = post?.let { exitStartOrNull(it) }
-        // ── 临时取证探针（`FlyProbe` 同批）：回程查到的落点是什么、起点那一页多大一块 ──
-        Log.i("FlyProbe", "pixiv 返回查落点 target=$target start=$start fullFrame=$fullFrameBox")
-        if (target == null || start == null) {
-            Log.d(TAG, "返回程没有落点或没有起点那一页（墙那一格已回收 / 该页没登记 / 不是从墙上点进来的）⇒ 整页退")
-            onBack()
-        } else {
-            val host = view
-            leaving = true
-            // 摘窗口模糊：图要飞回的是清晰的那一屏，落在一张糊掉的卡片上不算"回去"。
-            //
-            // 两件事都要做：`clearFlags` 摘开关，`blurBehindRadius` 归零 —— 基类挂的时候
-            // 是"设半径 + addFlags"两条一起下的，只摘开关在某些 ROM 上半径还留着
-            // （2026-10-19 慢放帧证：返回全程后面那面墙一直是糊的，直到落地前才变清）。
-            val win = (host.context as? Activity)?.window
-            win?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            // 新字段也要归零（理由见 `VeneraSubActivityBase.applyBlurBehind` 那一行）：
-            // 只摘 flag 的话，这一整趟返回后面那面墙都是糊的。
-            win?.setBackgroundBlurRadius(0)
-            win?.let { w ->
-                // ── 临时取证探针：摘完还剩不剩那一枚开关 ──
-                Log.i(
-                    "FlyProbe",
-                    "退出摘模糊 剩余flag=${w.attributes.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND} " +
-                        "radius=${w.attributes.blurBehindRadius}",
-                )
-            }
-            // 起点改成**当前那一页图块**（批 B②）：截的就是那一页所在的矩形，飞行体带的
-            // 是用户此刻正在看的那一页，不是整摞页 + 动作条 + 标签那一大框。
-            GalleryFlyIn.captureRegion(host, start) { frame, capturedRect ->
-                if (frame == null || capturedRect == null) {
-                    // 截不到帧：直接退。把"没能飞"演成"飞完了"是本仓最忌的那种假开关。
-                    Log.w("FlyProbe", "pixiv 离场没截到帧 start=$start ⇒ 整页退")
-                    leaving = false
-                    onBack()
-                } else {
-                    Log.i("FlyProbe", "pixiv 离场截到帧 from=$capturedRect to=$target")
-                    exitFrame = frame
-                    // 起点用**钳到窗口后**的那一块：飞行体的像素与矩形必须同一块（批 B §3 地基）。
-                    exitFrom = capturedRect
-                    exitTo = target
-                    scope.launch {
-                        // 与下滑关闭、进场同一档弹簧（数值同 `GalleryPostScreen`，不另造一个）。
-                        exitFly.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow))
-                        Log.i("FlyProbe", "pixiv 离场飞完 value=${exitFly.value}")
-                        onBack()
-                    }
-                    // ── 临时取证：飞行期逐帧进度（看清 200ms 那一刻屏上该有什么）──
-                    scope.launch {
-                        var last = -1f
-                        while (exitFly.value < 1f) {
-                            val v = exitFly.value
-                            if (kotlin.math.abs(v - last) >= 0.1f) {
-                                last = v
-                                Log.i("FlyProbe", "pixiv 离场途中 value=$v bodyAlpha=${exitBodyAlpha(v)}")
-                            }
-                            kotlinx.coroutines.delay(16)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val back: () -> Unit = { flySelfDrivenExit() }
 
     /**
-     * 系统返回（三键 / 手势）与顶栏那颗走**同一条链**。
+     * 系统返回（三键 / 手势）与顶栏那颗走**同一条链**，但**手势那一条是跟手的**（批 C1）。
      *
      * 这一屏原先没有接 `OnBackPressed`：顶栏那颗有飞行，而系统返回直接把 Activity finish 掉 ——
      * 2026-10-19 真机读数，返回后第 7 帧（约 0.1s）屏上已经是画廊，中间一帧飞行体都没有。
      * 用户读到的"返回没动画"就是这一条，不是落点算错（同一趟点顶栏返回，探针里
      * `返回查落点 target=Rect(32,1385,528,2046)` 是拿得到的）。
      *
-     * 用 `BackHandler` 而不是 `PredictiveBackHandler`：这一屏的离场是"整屏一帧缩回卡片"，
-     * 没有跟手的中间态可言，接上进度反而要再编一套它没有的姿态。
+     * ## 为什么从 `BackHandler` 换成 `PredictiveBackHandler`（批 C1，2026-10-20）
+     *
+     * 原先那句注释写的是「这一屏的离场是"整屏一帧缩回卡片"，没有跟手的中间态可言」——
+     * **那是批 B②③ 之前的老判断，已经过期**：起点换成**当前那一页图块**、圆角换成内容缩放比
+     * 之后，离场是一次真正的形变（页块 → 卡封面），跟手有中间态可画了。
+     *
+     * 决策层仍是现成那颗 [GalleryExitGesture]（四道门闩：杂散事件 / 像素未到 / 截不到装飞 / 确认后回滚），
+     * 视觉算式仍是 [GalleryExitExpansion] —— 这一屏**不另写一套判断**，只把系统事件喂进去、
+     * 按交回的指令顺序执行（与 `GalleryPostScreen` 那条逐字同形）。
+     *
+     * 代价如实记账：页面自己接管之后，系统那套**整窗口**预览没有了（它给的是整扇窗，不是元素级）。
      */
-    BackHandler(enabled = !leaving) { back() }
+    var exitPhase by remember(postId) { mutableStateOf(GalleryExitGesturePhase.Idle) }
+    /** 最近一次收到的手势进度：`Arming` 期间攒着，像素一到就补到手指已经拖到的那一档。 */
+    var exitLastProgress by remember(postId) { mutableFloatStateOf(0f) }
+    /**
+     * 跟手期的高刚度弹簧。
+     *
+     * 不用 `snapTo`：澎湃 / HyperOS 这类机器在拖动期间只派发少量进度点，直接落位就是整页跳位。
+     * 3000f 无回弹那一档是"几乎贴手指、稀疏时平滑追赶"，与仓内既有的跟手口径同源
+     * （`components/PredictiveBack.kt` 的回弹用 600f，那是回弹不是跟手）。
+     */
+    val exitFollowSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 3000f,
+            visibilityThreshold = 0.0005f,
+        )
+    }
+
+    fun onExitGestureEvent(event: GalleryExitGestureEvent) {
+        val decision = nextExitGesture(exitPhase, exitLastProgress, event)
+        exitPhase = decision.phase
+        if (decision.commands.isEmpty()) return
+        // 用组合那侧的 scope，不用手势事件自己的协程：回弹这一笔正是发生在事件协程被取消之后。
+        scope.launch {
+            for (command in decision.commands) {
+                when (command) {
+                    is GalleryExitGestureCommand.SetVisualTarget ->
+                        exitFly.animateTo(command.target, exitFollowSpec)
+
+                    // 备料（跟手那一趟）：守卫 + 摘玻璃底 + 起 `PixelCopy`。
+                    // 像素回来之前画面**钉在 0**（决策层的 `Arming` 档），所以那几帧不会先空一下。
+                    GalleryExitGestureCommand.Prepare -> {
+                        leaving = true
+                        if (!prepareExit { ok ->
+                                if (ok) {
+                                    onExitGestureEvent(GalleryExitGestureEvent.PixelsReady)
+                                } else {
+                                    onExitGestureEvent(GalleryExitGestureEvent.PixelsFailed)
+                                }
+                            }
+                        ) {
+                            // 备不了料（没有落点 / 没有起点那一页）：交回失败，让决策层直接 finish
+                            // —— 半路没有帧可画，别自己编一帧（"宁可错慢不可静默交错"）。
+                            onExitGestureEvent(GalleryExitGestureEvent.PixelsFailed)
+                        }
+                    }
+
+                    // 取消：画面**回原位**、玻璃底挂回去、把离场那三样输入清掉。
+                    //
+                    // 次序（与样板 `restoreChromeAfterCancel` 逐字同形）：
+                    // 1. 决策层交回的 [SetVisualTarget(0f)] 先跑完 —— 那一刻画面已经站回原位，
+                    //    所以看不见"背景先清晰、页面还在缩"的两步；
+                    // 2. 三样必须清：渲染条件只看"三样齐不齐"（②③那轮删掉了 `leaving`），
+                    //    不清就是**旧那一趟的截屏压在新那一趟上面**；
+                    // 3. 玻璃底**必须挂回去** —— 不挂就是"拖到一半松手回弹"之后
+                    //    这一屏的模糊底**永久没了**（样板那句注释记着同一个坑）；
+                    //    半径不另写常量：`LayoutParams.blurBehindRadius` 那一位从头到尾没被动过，照抄回来。
+                    GalleryExitGestureCommand.Restore -> {
+                        leaving = false
+                        exitFrame = null
+                        exitFrom = null
+                        exitTo = null
+                        val win = (view.context as? Activity)?.window
+                        win?.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                        win?.setBackgroundBlurRadius(win.attributes.blurBehindRadius)
+                        Log.i("FlyProbe", "pixiv 手势取消：玻璃底挂回 radius=${win?.attributes?.blurBehindRadius}")
+                    }
+
+                    GalleryExitGestureCommand.FlySelfDriven -> flySelfDrivenExit()
+                    GalleryExitGestureCommand.Finish -> onBack()
+                }
+            }
+        }
+    }
+
+    // 系统返回 / 侧滑手势：**跟手**。进度直接驱动离场那一帧，松手确认就落回卡片、回弹就原路退回。
+    // 三键点返回与 `adb` 送按键**没有**进度事件，照旧走 `back` 那趟自驱弹簧 ——
+    // 两条共用同一颗算式与同一份落点账本（见 [back] 头注）。
+    //
+    // ⚠️ `enabled` **不挂 `leaving`**：`Prepare` 那一笔就会把 `leaving` 翻真，挂上去等于
+    // **手势一开始就把自己这条事件流关掉**（进度全丢、画面钉在原地）。样板 `GalleryPostScreen`
+    // 挂的是弹层开关（与离场状态无关）—— 这里跟它同形，恒开。
+    // 防重入交给上面那个决策层（`Idle` 才激活、`Committed` 之后一律丢）。
+    PredictiveBackHandler { events ->
+        var receivedProgress = false
+        try {
+            events.collect { event ->
+                exitLastProgress = event.progress
+                val first = !receivedProgress
+                receivedProgress = true
+                onExitGestureEvent(
+                    if (first) GalleryExitGestureEvent.Started(event.progress)
+                    else GalleryExitGestureEvent.Progress(event.progress),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            // 平台在取消手势时撤掉这一笔协程：画面回原位，然后把取消交回去。
+            // 没有进度事件就没有动过画面（`Arming` 都没进），什么都不必做。
+            if (receivedProgress) onExitGestureEvent(GalleryExitGestureEvent.Cancel)
+            throw cancelled
+        }
+        onExitGestureEvent(
+            if (receivedProgress) GalleryExitGestureEvent.Commit
+            else GalleryExitGestureEvent.BackWithoutProgress,
+        )
+    }
 
     // 根容器：**自己量自己**整屏矩形（离场起点用它，见 `fullFrameBox`）。
     // 挂在最外层那个 Box 上而不是内层图墙：图墙是横轴 pager，它的矩形不等于整屏。

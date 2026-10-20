@@ -115,6 +115,8 @@ import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryArtistLinks
 import com.venera.compose.openGalleryArtistProfile
 import com.venera.compose.gallery.domain.GalleryChromeHidePolicy
+import com.venera.compose.gallery.domain.cardBoxRatio
+import com.venera.compose.gallery.domain.cardBoxRatioClamped
 import com.venera.compose.gallery.domain.GalleryFeedSource
 import com.venera.compose.gallery.domain.GalleryFollowedArtists
 import com.venera.compose.gallery.domain.GalleryAi
@@ -3074,24 +3076,28 @@ internal fun GalleryPostCard(
     }
     // 高度在**摆放前**就知道：两站的 JSON 都直接带中间档宽高，
     // 不像本地插图那样要靠加载成功回填 —— 所以这里不会有"各列先等分再集体跳动"。
-    // 比例夹在 0.4~2.5，与图片收藏那面墙同一口径：防一张横长条把整列撑出屏幕。
+    //
+    // ⚠️ 夹取区间**不再就地写**（2026-10-20）：它搬进 `cardBoxRatio`（唯一出处），
+    // 因为"框比例"与"作品页那一页图块的比例"必须是**同一把尺** —— 两处各夹一次、
+    // 或者一处夹一处不夹，飞行体两端比例就不同，几何必须变形成另一个比例（读起来"乱变"）。
+    // pixiv 那一档按主人的口径放宽到 0.2~4.0（竖向跨页 0.27 / 横向大图 3.0 都不裁），
+    // 图库三站保持原样（`LEGACY_*`），不动它们一根手指。
     // 钉死比例那一档**不再夹取**：它是调用方给的设计值（现成 token），不是站方数据。
-    val naturalRatio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
-    val ratio = fixedRatio?.takeIf { it > 0f } ?: naturalRatio.coerceIn(0.4f, 2.5f)
+    val ratio = fixedRatio?.takeIf { it > 0f }
+        ?: cardBoxRatio(post, tokens.spacing.coverAspectRatio)
     // ── 取证（2026-10-19，用户报「画师页这样画面显示不全」，附 pixez 同图对照）──
     //
-    // 上面那对 0.4~2.5 会把**框**与**原图**掰开，而封面是 `Crop` ⇒ 一旦不相等，
-    // 屏上就是"图被裁掉一条"。这一格到底是没被夹（那就是另一处成因）、还是被夹了
-    // （那就是这一条在咬），本机量不出来 —— 用户给的截图是裁过的，8% 那一族的淡边
-    // 像素法也读不到。所以这里只加读数、不改行为：装包滚一遍画师页，`logcat -s GalleryCardRatio`
-    // 就知道该改夹取范围、改 ContentScale，还是压根改比例来源。
-    val clamped = naturalRatio != ratio
-    LaunchedEffect(post.uid, clamped, naturalRatio, ratio) {
+    // 夹取会把**框**与**原图**掰开，而封面是 `Crop` ⇒ 一旦不相等，屏上就是"图被裁掉一条"。
+    // 2026-10-20 主人点名「限制 pixiv 站点图片卡片的显示比例，要整张卡全部显示出来」⇒
+    // pixiv 区间放宽到 0.2~4.0（`cardBoxRatio`），夹取到 0 的图**不再裁**。
+    // 这一格留读数：真机上若还看见被裁，`logcat -s GalleryCardRatio` 会念出是哪一张、差多少。
+    val clamped = cardBoxRatioClamped(post, tokens.spacing.coverAspectRatio)
+    LaunchedEffect(post.uid, clamped, ratio) {
         if (clamped) {
             Log.d(
                 CARD_RATIO_TAG,
-                "${post.site}#${post.id} 原图比例=${"%.3f".format(naturalRatio)} " +
-                    "框比例=${"%.3f".format(ratio)} 被夹到区间外（0.4~2.5）→ Crop 会裁掉一条",
+                "${post.site}#${post.id} 原图比例=${"%.3f".format(post.cardRatio)} " +
+                    "框比例=${"%.3f".format(ratio)} 被夹到区间外 → Crop 会裁掉一条",
             )
         }
     }
