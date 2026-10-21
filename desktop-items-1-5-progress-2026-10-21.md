@@ -286,13 +286,31 @@ D_裸调对照 样本=24 抢走=0 抛=18 收进本颗=0
 ## 仍然开着的评审项（本轮一条没关，除 H4）
 
 - **A 条（阻断）**：分区 2.5 语义未定（漫画推荐 vs 图片挑选）。
-  两条独立理由挡着：本地阅读标签会外流到 `jm`；缺 nsfw 预设表。
+  ⚠️ **2026-10-21 重新量过：原先记的"两条独立理由"两条都不成立，本喵把它们撤掉**
+  （读数在 `_qa` 之外的代码里，逐条可查）：
+  - ~~理由①「本地阅读标签会外流到 `jm`」~~ ⇒ **不成立**：`EngineSession.explore()`（`EngineSession.kt:82-93`）
+    送进 JS 的**只有页码**，压根没有标签这一路。
+  - ~~理由②「缺 nsfw 预设表」~~ ⇒ **不成立**：表已存在
+    （`app/src/main/assets/source_content_warning.json`，量到 **33 条 `"level"`**），
+    桌面侧 `DesktopSourceContentPresets` 已在读它，且 `"jm"` 那一格明写着 `level: "nsfw"`。
+  ⇒ **所以 A 条现在只剩一个真问题：探索默认源用谁 + 默认遮罩档设什么**，
+  不再是"语义未定所以不能动"。下面那三格量出来的读数是给主人裁决用的：
+  - 探索默认源 = `jm`（`DesktopRoute.kt:63` `DESKTOP_EXPLORE_SOURCE = "jm"`）。
+  - 默认遮罩档 = `OFF`（`DesktopGalleryContentGuard.kt:138` `DEFAULT_MASK_MODE = "OFF"`，
+    **照安卓抄的**：`ContentGuardManager.kt:82-89` store `venera_guard_prefs` / 键 `nsfw_mode` / 默认 `OFF`）
+    ⇒ 擅自改会让两端分叉。
+  - ⚠️ **遮罩对探索卡确实生效**（本喵量过，不是推测）：`coverMaskStateOf` →
+    `looksAdult(sourceKey, tags)` → `DesktopSourceContentPresets.isGuarded(sourceKey) || tags.any{…}`
+    （`DesktopUxPlatformServices.kt:103-104`）。探索屏拿不到 tags，但**源级那一道是真的**，
+    所以把默认档改成 `BLUR`/`HIDE` **会**把 jm 的探索封面糊起来/藏起来 ⇒ 选项 (b) 不是空头支票。
+  - ⚠️ **本清单原话有个错**（上一版写「`copy_manga`/`manhuagui`/`comick` 在预设表里都是 `safe`」）：
+    实测 `copy_manga` = `safe`、`comick` = `safe`，而 **`manhuagui` 根本不在这 33 条里**
+    （`grep -c manhuagui` = 0；表里有的是 `manhua`、`manhuaren`）⇒ 它走 `isGuarded` 的 `else -> false`
+    那一档（**当成不遮**）。主人若选换源，`manhuagui` 是"表里没记"而不是"表里记为 safe"，
+    这一格区别要分清喵。
+  - 四颗候选**都有 `explore`**（`grep explore` 命中：jm / copy_manga / manhuagui / comick）
+    ⇒ 换默认源不会换来一片空屏。
   ⇒ **需要主人裁决**，本喵不再自己猜。
-  ⚠️ 本轮把 `jm` 设成探索默认源，成人封面在 `OFF` 档下直接铺出来了 ——
-  这正是 A 条担心的那件事，本喵把它做出来了。要么换默认源（`copy_manga`/`manhuagui`/`comick`
-  在预设表里都是 `safe`），要么把默认档设成 `BLUR`。
-  但默认档 `OFF` 是**照安卓抄的**（`ContentGuardManager.kt:89` 也是 `"OFF"`），
-  擅自改会让两端分叉 ⇒ 这条也**待主人裁决**。
 - R6 `onRetest = {}` 假开关 · R7 `comic_info.json` · R8 `onOpenHistory` 默认 `{}` 无处可去 ·
   R9 删掉的三把尺子 · R11 三套 `Text` 实现 · R12 exclude 表成了尺子输入 ·
   R13 `HistoryDao` 每次实例化漏一个 `CoroutineScope` ·
