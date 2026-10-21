@@ -95,10 +95,14 @@ object AppUpdateChecker {
         }
     }
 
-    /** `v1.6.6-miuix` → `1.6.6`。展示用；比较不依赖它。 */
-    fun displayVersion(tag: String): String = tag
-        .removePrefix("v").removePrefix("V")
-        .substringBefore('-').substringBefore('+')
+    /**
+     * `v1.6.6-miuix` → `1.6.6`。展示用；比较不依赖它。
+     *
+     * 2026-10-20：实现已下放到 `ReleaseFeed.kt` 的顶层 `displayVersionOf(…)` —— 那一侧是
+     * 纯数据文件、要进两端共享的编译面，不能反向依赖本 object（本 object 绑 Context /
+     * 通知渠道）。这里保留一行委托，**行为逐字相同**，调用点一个都不用改。
+     */
+    fun displayVersion(tag: String): String = displayVersionOf(tag)
 
     fun isNewer(remote: String, local: String): Boolean {
         val a = versionSegments(remote)

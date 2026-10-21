@@ -48,23 +48,6 @@ data class HomeRecommendState(
     val sourcesLabel: String = "",
 )
 
-/**
- * 「可能你感兴趣」的内容分级。两档各自绑定一组源（见 [HomeViewModel] 里的源集常量）：
- *
- * - [NORMAL] 全年龄向：MangaDex / 爱看漫 / 拷贝漫画
- * - [R18] 成人向：禁漫天堂 / nhentai
- *
- * 存的是 [key]（大小写不敏感读回），所以改枚举名不会让老用户的档位掉回默认。
- */
-enum class HomeRecommendMode(val key: String, val label: String) {
-    NORMAL("NORMAL", "正常"),
-    R18("R18", "R18");
-
-    companion object {
-        fun fromKey(key: String?): HomeRecommendMode =
-            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: NORMAL
-    }
-}
 
 /** 首页各分区的数据（全部来自本地库，不再有 sampleComics 兜底） */
 data class HomeUiState(

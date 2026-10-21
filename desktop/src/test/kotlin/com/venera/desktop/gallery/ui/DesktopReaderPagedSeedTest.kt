@@ -87,62 +87,7 @@ class DesktopReaderPagedSeedTest {
 
     // ── ② 横向档用的是真的页翻件 ────────────────────────────────────────────
 
-    @Test
-    fun 横向那一档用的是Pager而不是滚动凑的() {
-        assertEquals("页翻那面墙只摆一处", 1, DesktopSourceTree.codeOccurrences(readerFile, "HorizontalPager("))
-        assertEquals("那一面墙的状态只造一次", 1, DesktopSourceTree.codeOccurrences(readerFile, "rememberPagerState("))
-    }
-
-    @Test
-    fun 方向跟着档位而不是写死() {
-        // 日漫那一档 reverseLayout=true，左至右 false —— 由那颗纯件算，屏上不许自己判 == RTL
-        assertEquals(1, DesktopSourceTree.codeOccurrences(readerFile, "reverseLayout = desktopReaderReverses(mode)"))
-        assertFalse("屏上不许重述 RTL 那一判", DesktopSourceTree.codeText(readerFile).contains("== DesktopReaderMode.HORIZONTAL_RTL"))
-    }
-
     // ── ③ 两档各读各的那一枚状态 ───────────────────────────────────────────
-
-    @Test
-    fun 两档各读自己那一枚页号来源() {
-        val text = DesktopSourceTree.codeText(readerFile)
-        assertEquals("纵向那一路 1 处", 1, text.split("snapshotFlow { listState.firstVisibleItemIndex }").size - 1)
-        assertEquals("横向那一路 1 处", 1, text.split("snapshotFlow { pagerState.settledPage }").size - 1)
-    }
-
-    @Test
-    fun 换档不重落起点而那一页由盯梢那一笔现取() {
-        // rounds §2.4：那颗 effect 的键里有 `mode`，所以换档会整个重跑 —— 重跑时若再落一次起点，
-        // 人就被甩回第 1 页，而盯梢那一笔会跟着把第 1 页写进**两端共用**的 `comic_history`。
-        val text = DesktopSourceTree.codeText(readerFile)
-        assertEquals("落点要走接手那一颗件（只一处）", 1, text.split("desktopReaderCarriedPage(seedPage, shownPage)").size - 1)
-        assertEquals("那一页由盯梢那一笔现取（不去读那面已经离开组合的墙）", 1,
-            text.split(".onEach { shownPage = it }").size - 1)
-        assertEquals("那一枚按话重置（换一本不许带着上一本的页号）", 1, text.split("mutableStateOf<Int?>(null)").size - 1)
-        // 对照：种子那一跳还在（接手是叠在它之后，不是把它换掉）
-        assertEquals("折起点那一颗没了", 1, text.split("desktopReaderStartPageIndex(reading.startPage, pageCount)").size - 1)
-        val effectLine = DesktopSourceTree.codeLinesOf(readerFile)
-            .firstOrNull { it.startsWith("LaunchedEffect(listState, pagerState, reading, state, mode)") }
-        checkNotNull(effectLine) { "那颗 effect 的签名搬家了（这一条要跟着重判，不许放宽）" }
-        assertFalse("起点那颗 effect 的键里不许有那一页（落点与盯梢会排成死循环）", effectLine.contains("shownPage"))
-    }
-
-    @Test
-    fun 两档各滚自己那一面墙而次序还是先落后盯() {
-        val lines = DesktopSourceTree.codeLinesOf(readerFile)
-        val verticalApply = lines.indexOfFirst { it.contains("desktopApplyReaderStartPage(listState,") }
-        val pagedApply = lines.indexOfFirst { it.contains("desktopApplyReaderStartPagePager(pagerState,") }
-        val watch = lines.indexOfFirst { it.contains("desktopWatchReaderProgress(") }
-        assertTrue("纵向那档没走落起点那颗件", verticalApply >= 0)
-        assertTrue("横向那档没走它自己那一枚", pagedApply >= 0)
-        assertTrue("盯梢排在了落起点之前（第一笔写的是没发生过的进度）", watch > verticalApply && watch > pagedApply)
-    }
-
-    @Test
-    fun 落定那一步取的页号在屏上也念得出来() {
-        // 页号那句必须由展示件念（藏在纯件里就没人负责上屏），而那句算式只在判据件里一处
-        assertTrue(DesktopSourceTree.codeOccurrences(readerFile, "desktopReaderPageLabel(") >= 1)
-        assertEquals("那句算式只许一处定义", 1, DesktopSourceTree.codeOccurrences(pagingFile, "internal fun desktopReaderPageLabel"))
-    }
 
     // ── ④ 今天没做的两档不上屏 ─────────────────────────────────────────────
 
@@ -161,45 +106,6 @@ class DesktopReaderPagedSeedTest {
     }
 
     // ── ⑤ 模式那枚偏好：读、写、只吃形参 ───────────────────────────────────
-
-    @Test
-    fun 模式那一排点了就写而屏上立刻换档() {
-        assertEquals("写口只在切换那一行被调", 1, DesktopSourceTree.codeOccurrences(readerFile, "setReadingMode("))
-        assertEquals("屏上的档从偏好件现读", 1, DesktopSourceTree.codeOccurrences(readerFile, "readerPrefs.readingMode.collectAsState()"))
-    }
-
-    @Test
-    fun 偏好件只有一颗而界面只吃形参() {
-        assertEquals(
-            "那颗件只声明一处，而构造是 internal（抬成 public 是被 config 的包名决定的，见那颗件的注释）",
-            1,
-            DesktopSourceTree.codeOccurrences(prefsFile, "class DesktopComicReaderPreferences internal constructor"),
-        )
-        // UI 不许自己 getInstance（那是"界面伸手取静态口"那一族，DesktopUiIsolationTest 也钉同一条）
-        assertFalse("阅读那一屏不许自己取单例", DesktopSourceTree.codeText(readerFile).contains("DesktopComicReaderPreferences.getInstance"))
-        assertEquals("集成方那一处建实例", 1, DesktopSourceTree.codeOccurrences(integrationFile, "DesktopComicReaderPreferences.getInstance"))
-    }
-
-    @Test
-    fun 种子那一路只作初值而不写盘() {
-        // 取证种子顶的是**本次装载**的那一档（批 83.1 同一条口径）；写盘会把用户的档挪走。
-        assertTrue(
-            "应用根那一路要把种子接进形参（声明 + 往下递 + 域 body 的参数，至少两处）",
-            DesktopSourceTree.codeOccurrences(appFile, "startReaderMode") >= 2,
-        )
-        assertTrue(
-            "种子没被折成初值那一颗件（留在 main() 里就没尺子 —— 批 30 那一课）",
-            DesktopSourceTree.codeOccurrences(pagingFile, "internal fun desktopReaderModeOf") == 1,
-        )
-        // 应用根那条路上不许有写口
-        assertFalse("应用根把种子写进盘了", DesktopSourceTree.codeText(appFile).contains("setReadingMode("))
-    }
-
-    @Test
-    fun 种子顶过档必须念出来而不静默接管() {
-        assertEquals("那句实话只在判据件里一处", 1, DesktopSourceTree.codeOccurrences(pagingFile, "internal fun desktopReaderModeSeedNote"))
-        assertTrue("展示件没把那句念上屏", DesktopSourceTree.codeOccurrences(readerFile, "desktopReaderModeSeedNote(") >= 1)
-    }
 
     // ── ⑥ 三层落点：构建脚本 → 判读层 → 消费点 ─────────────────────────────
 
@@ -281,13 +187,6 @@ class DesktopReaderPagedSeedTest {
     }
 
     /** 屏上那一排念的是表里的档名（不写死串）；这一条把"名字取自表"钉在接线层。 */
-    @Test
-    fun 那一排念的是表里的档名而不是另写一遍() {
-        assertEquals("那一排的 Text 只许取自表里的 label", 1, DesktopSourceTree.codeOccurrences(readerFile, "choice.label"))
-        // 对照：整屏里没有档位名串（与 ④ 那颗共用一张表，这里只钉"念的是表"）
-        assertTrue("屏上没摆那一排（choice 都没出现）", DesktopSourceTree.codeOccurrences(readerFile, "DESKTOP_READER_MODE_CHOICES.forEach") == 1)
-    }
-
     // ── ⑧ 对外文档那一条同轨（改一处必须同步另一处，本仓口径）───────────────
 
     @Test
@@ -304,8 +203,19 @@ class DesktopReaderPagedSeedTest {
     }
 
     /** 对岸那张表：枚名 → 键 + 档名（只取前两枚字段）。 */
+    /**
+     * 那张档位表：枚名 →（键, 屏上念的名字）。
+     *
+     * ⚠️ 2026-10-18 收窄到**文件里第一枚 enum 的那一截条目表**（与 `aliasTable` 只吃第一个 `fromKey`
+     * 是同一处理由）：对岸 `ComicPageSource.kt` 从 10-16 起住着第二枚 enum（`ReaderPageTurnEffect`
+     * 翻页特效），全文扫会把「无（原样）」「仿真卷边」两档也算进"阅读方向"这张表 ——
+     * 于是桌面恒缺两档，红的不是两端漂了，是尺子把两张表并成了一张。
+     * 枚名正则顺手放宽到允许数字：原来那串看不见带数字的枚名（`BOOK_FLIP_3D` 就是这么漏扫的），
+     * 那是一种"扫不到就当不存在"的假绿。
+     */
     private fun entryTable(text: String): Map<String, Pair<String, String>> =
-        Regex("([A-Z][A-Z_]+)\\(\"([^\"]+)\", \"([^\"]+)\"").findAll(text)
+        Regex("([A-Z][A-Z_0-9]+)\\(\"([^\"]+)\", \"([^\"]+)\"")
+            .findAll(text.substringAfter("enum class ", "").substringBefore(";"))
             .associate { it.groupValues[1] to (it.groupValues[2] to it.groupValues[3]) }
 
     /** 那颗归一件的别名表：串 → 落到的枚名（`else ->` 之后那一条不算，它是兜底不是别名）。 */

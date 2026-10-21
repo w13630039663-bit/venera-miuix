@@ -36,7 +36,7 @@ import com.venera.compose.components.ChromeCaptureSuppress
 import com.venera.compose.components.VeneraAmbientChrome
 import com.venera.compose.components.drawVeneraAmbient
 import com.venera.compose.components.reportChromeBand
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.ScrollBehavior

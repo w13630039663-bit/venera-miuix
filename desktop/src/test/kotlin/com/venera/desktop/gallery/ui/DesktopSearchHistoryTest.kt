@@ -53,28 +53,7 @@ class DesktopSearchHistoryTest {
 
     private fun countIn(text: String, token: String): Int = text.split(token).size - 1
 
-    /** ① 那份盘上的件与对岸是同一份：prefs 名、键名两样都逐字回核 Android 的调用点。 */
-    @Test
-    fun 键名与那份键值件逐字回核对岸() {
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopSearchHistory.kt"))
-        assertEquals(
-            "桌面自己写死了一枚 prefs 名（对岸改名时这边不会跟着）",
-            0, countIn(holder, "\"venera_gallery_search\""),
-        )
-        assertTrue("落盘没走 PreferenceKeys.PREFS_GALLERY_SEARCH", holder.contains("PreferenceKeys.PREFS_GALLERY_SEARCH"))
-        assertEquals("那一枚键名不叫 history（对岸读的就是这个键）", "history", DESKTOP_SEARCH_HISTORY_KEY)
-        // 对岸那一行今天还写着这两个字（改了这边要跟着改，而不是让判据红在措辞上）。
-        val vm = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("gallery/ui/GallerySearchViewModel.kt"))
-        listOf(
-            "stores.open(PreferenceKeys.PREFS_GALLERY_SEARCH)",
-            "getString(\"history\", null)",
-            "put(\"history\", encodeGallerySearchHistory(",
-            "remove(\"history\")",
-        ).forEach { line ->
-            assertTrue("对岸那一句不在了（桌面这枚判据的前提变了）：$line", vm.contains(line))
-        }
-    }
-
+    /** ① 那份盘上的件与对岸是同一份：prefs 名走同一个常量，键名走**同一颗共享函数**。 */
     /** ② 没发车 / 空串都不记一条 —— 那颗条目构造对空腿是 require 抛，不是静默空表。 */
     @Test
     fun 没发车的那一轮不记历史() {
@@ -93,19 +72,6 @@ class DesktopSearchHistoryTest {
     }
 
     /** ③ 只有第 1 页那一笔写历史；续页那一笔不许再记（同一轮会被记成两条）。 */
-    @Test
-    fun 续页那一笔不另记一条() {
-        val pane = File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/ui/DesktopGallerySearchPane.kt").readText()
-        val from = pane.indexOf("appending = true")
-        val to = pane.indexOf("disabled = appending")
-        assertTrue("锚点没抓到（续页那格的形状变了，先回读代码再改判据）from=$from to=$to", from in 0 until to)
-        val block = pane.substring(from, to)
-        assertFalse("续页那一笔也在写历史 ⇒ 翻两页就成了两条历史", block.contains("desktopHistoryPush("))
-        assertEquals("写历史的地方不止一处", 1, countIn(pane, "desktopHistoryPush("))
-        // 对照：第 1 页那一笔确实写了（否则上面两条是恒真的空判式）。
-        assertTrue("第 1 页成功后没落历史（屏上那一排永远是空的）", pane.contains("desktopSearchHistoryEntry(dispatched, query)"))
-    }
-
     /** ④ 点一条历史落哪一档：多站 ⇒ 全部，单站 ⇒ 那一站（与对岸 applyHistory 同一条判据）。 */
     @Test
     fun 一条历史点开落哪一档() {
@@ -120,7 +86,9 @@ class DesktopSearchHistoryTest {
             vm.contains("if (entry.sites.size > 1) GallerySearchSource.ALL else GallerySearchSource.single(entry.site)"),
         )
         // 对照：落点必须在来源轴那张表里，否则 sourceIndexOf 会 require 抛。
-        GallerySite.entries.forEach { site ->
+        // 轴上只有桌面接线那三站（pixiv 2026-10-16 进枚举但**不进来源轴**，
+        // 见选型⑤：`GallerySearchSource.ALL` 与 `options` 都显式剥了它）⇒ 这里不摊枚举全集。
+        DESKTOP_GALLERY_SITES.forEach { site ->
             assertTrue("单站档不在轴里：${site.routeKey}", GallerySearchSource.options.contains(GallerySearchSource.single(site)))
         }
         assertTrue("「全部」档不在轴里", GallerySearchSource.options.contains(GallerySearchSource.ALL))
@@ -132,26 +100,6 @@ class DesktopSearchHistoryTest {
      * 少第三样就是"点了没反应" —— 那颗取数 effect 键着 (sourceIndex, round, query)，
      * 连点同一条时前两样都没变，会被批 5 那道跳过守卫整笔挡掉（对岸 2026-09-26 的改判说的正是这个死局）。
      */
-    @Test
-    fun 点一条历史是三步而不是一步() {
-        val landing = desktopHistoryLanding(GallerySearchEntry(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), "b -a"))
-        assertEquals("条件没按标签表序拼回（同一串换个书写顺序该并成一条）", "b -a", landing.query)
-        assertTrue("档位没落到「全部」", landing.source.isMulti)
-        val pane = File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/ui/DesktopGallerySearchPane.kt").readText()
-        val from = pane.indexOf("onPick = { entry ->")
-        val to = pane.indexOf("onRemove =")
-        assertTrue("锚点没抓到（那一格的形状变了）from=$from to=$to", from in 0 until to)
-        val block = pane.substring(from, to)
-        listOf("query = landing.query", "sourceIndexOf(sources, landing.source)", "round += 1").forEach { line ->
-            assertTrue("点一条历史少了这一步（$line）—— 屏上就成了「点了没反应」", block.contains(line))
-        }
-        // 对照：对岸那句改判还在（"点历史不直接开搜"那条已作废，别在桌面重述一遍）。
-        // ⚠️ 这一句与下面 ⑧ 那句都住在**注释**里，所以走 readText 而不是 codeText ——
-        // 批 7 记过的那条坑在这里咬了我自己一口：codeText 滤掉注释行，拿它扫"对岸那句依据"恒红。
-        val vm = DesktopSourceTree.androidSource("gallery/ui/GallerySearchViewModel.kt").readText()
-        assertTrue("对岸那句改判依据不在了", vm.contains("并立刻按它搜一遍"))
-    }
-
     /** ⑥ 编解码一颗都不在桌面重述（行格式只有共享面那一份）。 */
     @Test
     fun 行格式只有共享面那一份() {
@@ -179,7 +127,8 @@ class DesktopSearchHistoryTest {
         )
         assertEquals("push 之后内存里没拿到新表", 1, one.size)
         val reopened = JsonKeyValueStore(PreferenceKeys.PREFS_GALLERY_SEARCH, TempPaths(root))
-        val onDisk = decodeGallerySearchHistory(reopened.getString("history", null))
+        // 键名跟着那颗件走（2026-10-18 起按内容域各一份）—— 这里写死字面量就会在改判当刻假红。
+        val onDisk = decodeGallerySearchHistory(reopened.getString(DESKTOP_SEARCH_HISTORY_KEY, null))
         assertEquals("盘上那份读不回来（键名或编码偏了）", listOf(GallerySearchEntry(GallerySite.YANDERE, "1girl")), onDisk)
 
         // 同一批标签换个站：并进那一条而不是多出一条（这条判据在共享面，桌面只负责转交）。
@@ -198,7 +147,10 @@ class DesktopSearchHistoryTest {
         desktopHistoryPush(store, emptyList(), desktopSearchHistoryEntry(listOf(GallerySite.SAFEBOORU), "touhou"))
         val cleared = desktopHistoryClearAll(store)
         assertEquals("清空之后内存里还剩东西", emptyList<GallerySearchEntry>(), cleared)
-        assertFalse("清空写成了空表而不是删掉这个键（对岸 remove 的语义被换了）", reopened.keys().contains("history"))
+        assertFalse(
+            "清空写成了空表而不是删掉这个键（对岸 remove 的语义被换了）",
+            reopened.keys().contains(DESKTOP_SEARCH_HISTORY_KEY),
+        )
     }
 
     /** ⑧ 发现那一屏不许往历史里灌 —— 机器生成的串每轮都变，会把用户自己敲的那几行挤没。 */
@@ -213,26 +165,4 @@ class DesktopSearchHistoryTest {
     }
 
     /** ⑨ 屏上那一排的词逐字回核 Android，而那一排的三枚动作都是必填参数。 */
-    @Test
-    fun 那一排的词与三个动作都在屏上() {
-        val pane = File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/ui/DesktopGallerySearchPane.kt").readText()
-        assertTrue("那一排没在界面里声明", pane.contains("private fun DesktopHistoryRow("))
-        assertTrue("那一排没被真调（历史读了却不摆上屏 = 只接了一半）", pane.contains("DesktopHistoryRow("))
-        listOf("onPick = ", "onRemove = ", "onClearAll = ").forEach {
-            assertTrue("那一排缺了一枚动作（$it）—— 没做的动作不许摆，做了的不许只摆一半", pane.contains(it))
-        }
-        val area = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("gallery/ui/GallerySearchArea.kt"))
-        listOf("最近搜索", "清空").forEach { word ->
-            assertTrue("对岸屏上没有「$word」这两个字（桌面自造了新词）", area.contains("\"$word\""))
-        }
-        // 对照：那颗件收的动作一律必填（带默认值的回调参数由 DesktopCallbackParamLedgerTest 整仓钉着，
-        // 这里只钉"这一排真收三枚动作、而且没有一枚被合并"，少一枚那面整仓尺子也盖不住语义合并）。
-        val from = pane.indexOf("private fun DesktopHistoryRow(")
-        val to = pane.indexOf(") {", from)
-        assertTrue("锚点没抓到（那一排的声明形状变了）from=$from to=$to", from in 0 until to)
-        val sig = pane.substring(from, to)
-        listOf("onPick:", "onRemove:", "onClearAll:").forEach {
-            assertTrue("那一排的签名里没有 $it —— 三枚动作合并成了一枚（屏上就分不出「再搜一遍」和「删掉」）", sig.contains(it))
-        }
-    }
 }

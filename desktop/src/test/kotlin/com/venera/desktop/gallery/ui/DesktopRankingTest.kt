@@ -130,73 +130,14 @@ class DesktopRankingTest {
      *
      * 与 `DesktopLatestTest` ④⑥ 同一族（那一屏量过"本地排一次排出来的是三站第一页里的前 N 条"）。
      */
-    @Test
-    fun `⑤ 不许另造排序机制`() {
-        val pane = code("DesktopRankingPane.kt")
-        val policy = code("DesktopRankingPolicy.kt")
-        listOf("sortedWith", "sortBy", "sortedBy", "sorted(", "reversed(").forEach { banned ->
-            assertTrue("排行这一族出现了本地排序「$banned」：$pane", (policy + pane).contains(banned).not())
-        }
-        val api = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("gallery/data/GalleryBusinessApi.kt"))
-        val line = api.lines().first { it.contains("fun searchPosts(") }
-        assertTrue(
-            "`searchPosts` 被加了排序形参（这一行是：$line）—— 排行靠的是站方那两串伪标签",
-            Regex("""searchPosts\([^)]*\b(sort|order)\b""", RegexOption.IGNORE_CASE).find(line) == null,
-        )
-        // 对照：那一屏真在发 searchPosts，而不是"什么都没接"。
-        assertTrue("对照失效：这一屏没调 `searchPosts`", pane.contains("searchPosts(") || pane.contains("fetchWallPage("))
-    }
-
     /**
      * ⑥ 那一屏吃**同一面墙的三层**：分级守卫、三枚偏好、点卡的接收者。
      *
      * 新屏最容易犯的错不是崩，而是"少接一枚" —— 少接守卫就是又一面没过分级就摆出来的墙（第四批立的那一族）。
      */
-    @Test
-    fun `⑥ 那一屏吃同一面墙的三层`() {
-        val pane = code("DesktopRankingPane.kt")
-        listOf(
-            "DesktopGalleryWallPolicy.of(" to "这一屏没过第四批那层守卫",
-            "maskMode" to "守卫没拿到分级档",
-            "blockAi" to "守卫没拿到屏蔽 AI 那枚",
-            "ports.contentGuard" to "守卫没拿到规则与模式那两份",
-            "columnMode" to "这一屏没吃列数偏好",
-            "quality" to "这一屏没吃缩略档偏好",
-            "aiBadge" to "这一屏没吃 AI 角标偏好",
-            "LocalDesktopWallPick.current" to "卡位没有点开的接收者",
-            "DesktopGalleryPostWall(" to "这一屏根本没摆墙",
-            "Modifier.fillMaxWidth().weight(1f)" to "墙没拿到有限高（`LazyVerticalGrid` × 无限高 = 整屏崩）",
-        ).forEach { (token, why) -> assertTrue("$why：屏上读不到 $token", pane.contains(token)) }
-    }
-
     /**
      * ⑦ 续页吃那颗共享持有件，桌面这边不另造页码账（与另三面墙同一条判式）。
      */
-    @Test
-    fun `⑦ 那一屏吃共享持有件`() {
-        val pane = code("DesktopRankingPane.kt")
-        listOf(
-            "DesktopGalleryBatch(" to "这一屏没有那颗持有件",
-            "fetchWallPage(" to "取数没走墙上共用那一颗（第一轮与续页同一颗）",
-            "desktopGalleryMoreLabel(" to "那枚按钮的文案没走共享那颗件",
-            "desktopExhaustedReading(" to "到底那句没复用现成那颗件",
-        ).forEach { (token, why) -> assertTrue("$why：屏上读不到 $token", pane.contains(token)) }
-        listOf("page + 1", "base.page", "batch.page").forEach { handCopied ->
-            assertEquals("屏上另造了一份页码账（$handCopied）", 0, pane.split(handCopied).size - 1)
-        }
-        // 对照：共用那一颗自己仍在转交腿账、页码账、落地 reducer 与去重键
-        // （读空会让上面那几条 contains 恒真 —— 这一屏"没另造页码账"的前提是那一条链真的在转交）。
-        val fetch = code("DesktopLatestPane.kt")
-        listOf(
-            "desktopGalleryBatchLegs(" to "共用那颗不再转交腿账",
-            "desktopGalleryBatchNextPages(" to "共用那颗不再转交页码账",
-            "desktopWallBatchAfter(" to "共用那颗不再走落地 reducer",
-            "seenKeys" to "共用那颗不再带上已上屏的去重键",
-        ).forEach { (token, why) -> assertTrue("对照失效：$why（$token）", fetch.contains(token)) }
-        // 换档要重开一轮（seed 变了才不会被上一档的账混进来）。
-        assertTrue("换档没重置换轮的种子：$pane", pane.contains("seed ="))
-    }
-
     /**
      * ⑧ 屏上那句"这一榜数的是哪一段时间"由**真跑**算出来，而不是跟着档名猜。
      */

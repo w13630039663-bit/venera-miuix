@@ -70,14 +70,6 @@ class DesktopShellLayoutTest {
      * fluent 的 `Text` —— 那个组件需要 `FluentTheme` 提供的 CompositionLocal scope。
      * 拆掉它整窗会塌成 fluent 的默认浅色。
      */
-    @Test
-    fun `FluentTheme 仍在场`() {
-        assertTrue(
-            "深色档由 FluentTheme(colors = DesktopTheme.colors()) 提供，拆掉它整窗会塌回浅色",
-            shell.contains("FluentTheme(") && shell.contains("DesktopTheme.colors()"),
-        )
-    }
-
     /**
      * ③ 默认窗尺寸走**按屏钳制**，目标是设计稿画板 1440×900。
      *
@@ -128,19 +120,6 @@ class DesktopShellLayoutTest {
      * **应用根**之后，三级壳（标题栏 / rail / pane / 主区）由那颗文件统一画，
      * 旧的 `DesktopGalleryHome` 连同它的 Katherine Column/Row 一起删了。
      */
-    @Test
-    fun `rail 与 pane 引不同的底色 token`() {
-        val shell = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue(
-            "rail 应引 RailBackground（#1C1C1C，比 pane 更暗）",
-            shell.contains("DesktopTheme.RailBackground"),
-        )
-        assertTrue(
-            "pane 应引 SidebarBackground（#272727）",
-            shell.contains("DesktopTheme.SidebarBackground"),
-        )
-    }
-
     /**
      * ⑤ 标题栏在**三栏之外**，且搜索位不是一枚假开关。
      *
@@ -153,32 +132,4 @@ class DesktopShellLayoutTest {
      * 搜索位也跟着**真的把人带到搜索域** —— 该守住的东西升级成了"点了Destination 真的换了"。
      * 一条 cue 会被删空，一次导航不会。
      */
-    @Test
-    fun `标题栏跨三栏且搜索位不是假开关`() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue(
-            "根布局里应把 DesktopGalleryTopBar 放在三栏之外（Column 直接子节点，与 Row 平级）",
-            app.contains("DesktopGalleryTopBar("),
-        )
-        assertTrue(
-            "搜索位点下去必须把当前域换成 SEARCH（真导航），而不是吐一句话原地不动",
-            app.contains("domain = DesktopDomain.SEARCH"),
-        )
-        // 反过来：旧的"提示吐丝"那条路必须真的没有了 —— 留着它就是两个说法并存，
-        // 而同一件事讲两处的时候，改动迟早只改一处。
-        assertTrue(
-            "DESKTOP_GALLERY_SEARCH_NOTICE / railNotice 应已随旧根一起删掉，缺席说法现在只有搜索域坦白页一处",
-            app.contains("DESKTOP_GALLERY_SEARCH_NOTICE").not() && app.contains("railNotice").not(),
-        )
-
-        // 三枚自绘窗口按钮：系统标题栏已经有了，跟着稿再画一排就是两排。
-        // （稿上那三枚是它在浏览器里模拟窗口 chrome，不是应用内容。）
-        val bar = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryTopBar.kt"))
-        listOf("最小化", "最大化", "关闭").forEach { label ->
-            assertTrue(
-                "标题栏里出现了「$label」—— 系统标题栏已有窗口按钮，再自绘一排就是两排按钮",
-                bar.contains(label).not(),
-            )
-        }
-    }
 }

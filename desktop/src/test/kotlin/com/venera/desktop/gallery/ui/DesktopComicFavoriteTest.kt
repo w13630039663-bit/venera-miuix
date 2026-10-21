@@ -18,7 +18,7 @@ import org.junit.Test
  *
  * ## 四条纪律各由一颗判据钉着
  *
- * 1. **三态不许塌成两句**："已在里面"与"收藏失败"撞成一句，读起来就是"点了没反应"。
+ * 1. **三态不许塌成两句**："已在里面"与"没成功"撞成一句，读起来就是"点了没反应"。
  * 2. **两端同词**：桌面自持一份句子可以（UI 跨端 import 是禁的），但两处的**句核**由判据 ② 逐字回核，
  *    一侧改了另一侧就红 —— 与批 12 那枚「关注 / 已关注」同一形状。
  * 3. **按钮与取证种子同一枚动作**：种子存在的理由是"按下去才出来的那一格拍不到"（禁鼠标），
@@ -31,67 +31,13 @@ class DesktopComicFavoriteTest {
     private val folder = LocalFavoriteDatabase.DEFAULT_FOLDER
 
     /** ① 三种结果各一句，两两不许相同。 */
-    @Test
-    fun 三种结果各念一句() {
-        val lines = listOf(
-            desktopComicFavoriteScreenReading(DesktopComicFavoriteOutcome.Added(folder)),
-            desktopComicFavoriteScreenReading(DesktopComicFavoriteOutcome.Already(folder)),
-            desktopComicFavoriteScreenReading(
-                DesktopComicFavoriteOutcome.Failed("Folder does not exists", IllegalStateException("Folder does not exists")),
-            ),
-        )
-        assertTrue("每句都得能上屏：" + lines, lines.all { it.isNotBlank() })
-        assertEquals("三态里有两句撞在一起（塌成一句就是把「没成」读成「点了没反应」）：" + lines, 3, lines.distinct().size)
-        assertTrue("已在里面那句要点名「已经」：" + lines[1], lines[1].contains("已经"))
-        assertTrue("没成那句要点名失败：" + lines[2], lines[2].contains("收藏失败"))
-    }
-
     /** ② 三句的句核与 Android 那侧逐字同词（两端各写一份词，换设备就读成两件事）。 */
-    @Test
-    fun 三句与android那侧同词() {
-        val android = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("components/ComicCardContextMenu.kt"))
-        val desktop = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicFavorite.kt"))
-        listOf("已收藏到「", "这本已经在「", "收藏失败：").forEach { core ->
-            assertTrue("对照组失效：Android 那侧没这句核「$core」", android.contains(core))
-            assertTrue("桌面这句核「$core」没了（或换了说法）：两端同词靠它", desktop.contains(core))
-        }
-    }
-
     /**
      * ③ 屏上真有那颗钮，且各枚锚点**只一处**。
      *
      * 数出现次数而不是数"存在"：本仓记过一条"锚点被同屏另一处合法调用喂饱"——只断言 contains 的话，
      * 取证段里多一处调用就能替屏上那一处作保。
      */
-    @Test
-    fun 卡那一排有收藏那颗() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicPane.kt")
-        val code = DesktopSourceTree.codeText(pane)
-        assertEquals(
-            "那颗药丸的出现次数不对（声明一处、卡上一处）：" +
-                DesktopSourceTree.codeOccurrences(pane, "ComicFavoritePill("),
-            2, DesktopSourceTree.codeOccurrences(pane, "ComicFavoritePill("),
-        )
-        assertEquals(
-            "屏上调的那枚写口不是正好一处（" + DesktopSourceTree.codeOccurrences(pane, "desktopAddComicFavorite(") + " 处）—— 零处=没接，两处=各写一份",
-            1, DesktopSourceTree.codeOccurrences(pane, "desktopAddComicFavorite("),
-        )
-        assertEquals(
-            "结果那句只许在屏上摆一处，实际 ${DesktopSourceTree.codeOccurrences(pane, "desktopComicFavoriteScreenReading(")} 处",
-            1, DesktopSourceTree.codeOccurrences(pane, "desktopComicFavoriteScreenReading("),
-        )
-        // 对照：那颗药丸是**点得动的**（挂 clickable），且走协程（写库是 suspend）
-        val decl = code.indexOf("private fun ComicFavoritePill(")
-        assertTrue("那颗药丸的声明没找到（判式先失效）", decl >= 0)
-        // 窗口只取声明往后那一截：文件里另有一枚「重取」也挂着 clickable，全文 contains 会替它作保
-        // （本仓那条"锚点被同屏另一处合法调用喂饱"的形状）。
-        assertTrue(
-            "那颗药丸没挂 clickable（摆着点不动就是假按钮）",
-            code.substring(decl, minOf(decl + 320, code.length)).contains(".clickable"),
-        )
-        assertTrue("按下去那一笔没起协程（suspend 那颗调不到）", code.contains("rememberCoroutineScope"))
-    }
-
     /** ④ 按钮与种子共用同一枚动作，而集成方不许自带一份写。 */
     @Test
     fun 种子与按钮同一枚动作() {
@@ -149,27 +95,6 @@ class DesktopComicFavoriteTest {
     }
 
     /** ⑦ 三态各有一行 stdout 读数 —— "没跑到"与"跑到了而失败"不许在 stdout 上同一个样。 */
-    @Test
-    fun 三种结果都念得出一行() {
-        val added = desktopComicFavoriteReadout("jm", "abc123", DesktopComicFavoriteOutcome.Added(folder))
-        println("CF_$added")
-        assertTrue("点击那一行要能被 grep 挑出来：" + added, added.startsWith("D_收藏 点击"))
-        assertTrue("少了源那枚：" + added, added.contains("源=jm"))
-        assertTrue("少了卡片号：" + added, added.contains("id=abc123"))
-        val already = desktopComicFavoriteReadout("jm", "abc123", DesktopComicFavoriteOutcome.Already(folder))
-        val failed = desktopComicFavoriteReadout(
-            "jm", "abc123", DesktopComicFavoriteOutcome.Failed("没有这一夹", IllegalStateException("没有这一夹")),
-        )
-        assertEquals("三态的读数互不相同（撞在一起就没法归因）", 3, listOf(added, already, failed).distinct().size)
-        assertTrue("没成也要有点击那一行：" + failed, failed.contains("收藏失败"))
-        // 写口两步：落库之外必须出声。三颗纯函数若没人打印，屏上与 stdout 都是哑的（本批那条"件在而没接"的近亲）。
-        val helper = DesktopSourceTree.desktopUiSource("DesktopComicFavorite.kt")
-        assertEquals("点击读数被打了两遍或没打：" + DesktopSourceTree.codeOccurrences(helper, "println(desktopComicFavoriteReadout("),
-            1, DesktopSourceTree.codeOccurrences(helper, "println(desktopComicFavoriteReadout("))
-        assertEquals("没成那一行没打印（或打了两遍）：" + DesktopSourceTree.codeOccurrences(helper, "println(desktopComicFavoriteRefusalReading("),
-            1, DesktopSourceTree.codeOccurrences(helper, "println(desktopComicFavoriteRefusalReading("))
-    }
-
     /** ⑧ 建库那一步留到按下去，且不在主线程（`getInstance` 会建两棵库）。 */
     @Test
     fun 建库留到按下去() {

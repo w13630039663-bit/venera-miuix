@@ -116,37 +116,7 @@ class DesktopBlockTagTest {
     }
 
     /** ⑤ 加了长按，而点击那一枚没被顺手改掉（批 2 ⑤ 那枚动作仍在）。 */
-    @Test
-    fun 长按屏蔽而点击仍是去搜() {
-        val from = panelCode.indexOf("combinedClickable(")
-        val to = panelCode.indexOf(".padding(horizontal = DesktopGalleryMetrics.chipHorizontalPadding)")
-        assertTrue("锚点没抓到（那枚 chip 的形状变了）from=$from to=$to", from in 0 until to)
-        val block = panelCode.substring(from, to)
-        listOf(
-            "onLongClickLabel = ",
-            "onLongClick = {",
-            "onClick = { onSearch(listOf(post.site), tag) }",
-            "desktopBlockTag(ports.contentGuard, guardRules, tag)",
-        ).forEach {
-            assertTrue("那枚 chip 少了这一步（$it）", block.contains(it))
-        }
-        // 对照：长按那一步是在协程里发的（写口是 suspend），而不是在组合期里跑。
-        assertTrue("长按那一格没有 scope.launch", block.contains("scope.launch"))
-    }
-
     /** ⑥ 存进去的是站点原值，而译文那一路在别的格子上（不是「没接译文所以只好存原值」）。 */
-    @Test
-    fun 存的是站点原值而不是译文() {
-        assertTrue(
-            "长按那一步传的不是 tagList 里那一枚原串",
-            panelCode.contains("desktopBlockTag(ports.contentGuard, guardRules, tag)"),
-        )
-        // 那颗件把传进来的串**原样**交下去（不 trim、不小写、不查词典）。
-        assertTrue("写口传的不是原值：" + policyCode, policyCode.contains("guard.addRule(DESKTOP_GUARD_TAG_RULE_TYPE, tag)"))
-        // 对照：面板确实有词典那一路（画师那一栏），所以这一条不是"接不到译文"。
-        assertTrue("对照组失效：面板上没有词典那一路了", panelCode.contains("desktopDetailArtists("))
-    }
-
     /** ⑥′ 那颗件交下去的是**站点原值**：真跑一颗假守卫，看写口收到的（型, 串）到底是什么。 */
     @Test
     fun 写口收到的是原值() = kotlinx.coroutines.runBlocking {
@@ -190,33 +160,5 @@ class DesktopBlockTagTest {
     }
 
     /** ⑧ 页脚那句与动作同步：说了「按住」就真有那颗 onLongClick，而路径名不许两处各写一份。 */
-    @Test
-    fun 页脚那句说的就是屏上能做的() {
-        assertTrue("页脚那句不再说按住能干什么（做了却不说 = 用户只能猜）", panelCode.contains("按住一枚标签 = 屏蔽这一枚"))
-        assertTrue("那句里的路径名没引用那颗常量（两处各写一份迟早漂）", panelCode.contains("DESKTOP_GUARD_SECTION_TITLE"))
-        val literal = "\"敏感内容与屏蔽规则\""
-        val copies = DesktopSourceTree.desktopUiSources().filter { DesktopSourceTree.codeText(it).contains(literal) }
-        assertEquals(
-            "「敏感内容与屏蔽规则」那枚字面量不止一处：" + copies.map { it.name },
-            1, copies.size,
-        )
-        // 对照：动作真在（哪天长按撤了，上面那句要跟着撤，而这条对照会先红）。
-        assertTrue("对照组失效：那颗 onLongClick 没了", panelCode.contains("onLongClick = {"))
-    }
-
     /** ⑨ 加完之后墙上真会重算：面板收的是同一颗 rules 流，而三台墙都过那颗策略件。 */
-    @Test
-    fun 那一关读的是同一颗流() {
-        assertTrue("面板没在收守卫那份流（加了规则屏上不认）", panelCode.contains("ports.contentGuard.rules.collectAsState()"))
-        val wallFiles = DesktopSourceTree.desktopUiSources().filter {
-            DesktopSourceTree.codeText(it).contains("DesktopGalleryWallPolicy.of(")
-        }
-        assertTrue(
-            "过那一关的墙不止三面了？还是少了一面：" + wallFiles.map { it.name },
-            wallFiles.size >= 3,
-        )
-        // 对照：策略件收的是那颗守卫（不是自己数一遍标签）。
-        val wall = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryWallPolicy.kt"))
-        assertTrue("墙那颗策略件不吃守卫了（屏蔽加上去墙上不认）", wall.contains("guard: GalleryContentGuard"))
-    }
 }

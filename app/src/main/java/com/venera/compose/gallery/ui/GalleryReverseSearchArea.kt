@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -137,7 +137,7 @@ fun GalleryReverseSearchArea(
                 modifier = Modifier
                     .padding(horizontal = tokens.spacing.space8)
                     .padding(bottom = tokens.spacing.space6)
-                    .size(if (isWideScreen(LocalConfiguration.current.screenWidthDp.dp)) 96.dp else 64.dp)
+                    .size(if (isWideScreen(LocalWindowWidthDp)) 96.dp else 64.dp)
                     .clip(cardShape)
                     .background(tokens.color.surfaceVariant),
             ) {

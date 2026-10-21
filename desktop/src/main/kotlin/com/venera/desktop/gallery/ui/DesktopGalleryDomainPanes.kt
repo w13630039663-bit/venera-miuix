@@ -3,27 +3,6 @@ package com.venera.desktop.gallery.ui
 import androidx.compose.runtime.Composable
 import com.venera.compose.gallery.data.GalleryPorts
 
-/**
- * 收藏域与搜索域的页条 —— 2026-10-04 第二批把这两域从坦白页转成真页面时落的。
- *
- * ## 为什么这两域各只有**一行**
- *
- * 缺席域那一行是"占位"，真页面的行数由**这一域真有几页**决定：
- * - 收藏域只有一份数据（`GalleryFavorites.favorites`），按站分组、筛选、排序都是同一份名单的视图 ——
- *   摆成三行就是给同一个 StateFlow 装三个入口，而其中两个必然是假开关。
- * - 搜索域同理：一次搜索的结果就是一面墙，**历史**那一页本批**不做** —— 差的也是界面那一段接线，
- *   判据与落盘件都在桌面编译面上（同一句账写在 `DesktopGallerySearchPane` 那颗文件的类注释里）。
- *
- * 判据 `DesktopDomainNavigationTest` ⑤ 只要求"每域至少一行且 key 不重复"，它**不**要求行数对齐。
- * 那一行是"这个域有没有东西"的立足点，不是"这个域应该有几页"的规格。
- *
- * ## 缺席转真之后，那张 `wired` 清单去了哪
- *
- * 原先五枚缺席域各带一张"已经接好、只是没界面去看"的清单（`DesktopAbsence.wired`），
- * 坦白页逐颗念出来。转成真页面之后**清单随缺席一起消失** —— 它不是被删了，是它要回答的问题
- * （"差的是哪一层"）已经没有答案了：现在差的是"还没做的功能"，那属于页内的缺席读数与文档，
- * 不属于域级缺席。硬留着它会变成"这一域有内容，同时又说缺三层界面"的自相矛盾。
- */
 internal object DesktopFavoritesSectionKey {
     const val WALL = "gallery-favorites-wall"
 }
@@ -82,68 +61,6 @@ internal fun desktopSettingsRows(): List<DesktopGalleryHomeRow> = listOf(
  * 下面那两枚 `error` 与 `DesktopGalleryHomeBody` / `DesktopComicBody` 里的同一条纪律：
  * **域路不许串**。别的域的行流到这一颗 body 那一刻就崩，而不是静默画出一屏少了一半的东西。
  */
-@Composable
-internal fun DesktopGalleryFavoritesBody(
-    row: DesktopGalleryHomeRow,
-    ports: GalleryPorts,
-    /** 那份收藏档读不出来时 store 留的那一句，由应用根消费一次后递下来（必填、不给默认值）。 */
-    favoritesNotice: String?,
-) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.GalleryFavorites -> DesktopGalleryFavoritesPane(ports, favoritesNotice = favoritesNotice)
-        DesktopGallerySectionContent.Daily,
-        DesktopGallerySectionContent.FollowedArtists,
-        DesktopGallerySectionContent.ComicExplore,
-        DesktopGallerySectionContent.ComicFavorites,
-        DesktopGallerySectionContent.ComicHistory,
-        DesktopGallerySectionContent.ComicSources,
-        DesktopGallerySectionContent.ComicDownloads,
-        DesktopGallerySectionContent.ComicQueue,
-        DesktopGallerySectionContent.GallerySearch,
-        DesktopGallerySectionContent.GalleryDisplay,
-        DesktopGallerySectionContent.Downloads,
-        DesktopGallerySectionContent.BrowseHistory,
-        DesktopGallerySectionContent.ArtistsWall,
-        DesktopGallerySectionContent.ForYouWall,
-        DesktopGallerySectionContent.Latest,
-        DesktopGallerySectionContent.Ranking,
-        -> error("「${row.title}」不是收藏域的页 —— 域路的分岔在 VeneraDesktopApp.DesktopDomainBody")
-        null -> error("收藏域今天没有未实现的行，「${row.title}」却带了空的 content 位")
-    }
-}
-
-@Composable
-internal fun DesktopGallerySearchBody(
-    row: DesktopGalleryHomeRow,
-    ports: GalleryPorts,
-    searchSeed: DesktopSearchSeed,
-    /** `--reverse-file=` 那一枚取证种子（必填、不给默认值，理由见 `DesktopGallerySearchPane` 的签名）。 */
-    seedLocalReverse: String?,
-) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.GallerySearch -> DesktopGallerySearchPane(ports, searchSeed, seedLocalReverse)
-        DesktopGallerySectionContent.Daily,
-        DesktopGallerySectionContent.FollowedArtists,
-        DesktopGallerySectionContent.ComicExplore,
-        DesktopGallerySectionContent.ComicFavorites,
-        DesktopGallerySectionContent.ComicHistory,
-        DesktopGallerySectionContent.ComicSources,
-        DesktopGallerySectionContent.ComicDownloads,
-        DesktopGallerySectionContent.ComicQueue,
-        DesktopGallerySectionContent.GalleryFavorites,
-        DesktopGallerySectionContent.GalleryDisplay,
-        DesktopGallerySectionContent.Downloads,
-        DesktopGallerySectionContent.BrowseHistory,
-        DesktopGallerySectionContent.ArtistsWall,
-        DesktopGallerySectionContent.ForYouWall,
-        DesktopGallerySectionContent.Latest,
-        DesktopGallerySectionContent.Ranking,
-        -> error("「${row.title}」不是搜索域的页 —— 域路的分岔在 VeneraDesktopApp.DesktopDomainBody")
-        null -> error("搜索域今天没有未实现的行，「${row.title}」却带了空的 content 位")
-    }
-}
-
-/** 画师域的那一行（第八批：这一域从坦白页转正）。 */
 internal object DesktopArtistsSectionKey {
     const val FOLLOWS = "gallery-artists-follows"
 }
@@ -178,66 +95,3 @@ internal fun desktopDiscoverRows(): List<DesktopGalleryHomeRow> = listOf(
     ),
 )
 
-@Composable
-internal fun DesktopGalleryArtistsBody(
-    row: DesktopGalleryHomeRow,
-    ports: GalleryPorts,
-    /** 名单档读不出来时 store 留的那一句，由应用根消费一次后递下来（必填、不给默认值）。 */
-    followsNotice: String?,
-    /** 那一行「看他的图」按下去要走到的目的地（必填：漏传的形状是一枚按不动的入口）。 */
-    onOpenArtist: (DesktopArtistTarget) -> Unit,
-) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.ArtistsWall ->
-            DesktopArtistsPage(ports, followsNotice = followsNotice, onOpenArtist = onOpenArtist)
-        DesktopGallerySectionContent.Daily,
-        DesktopGallerySectionContent.FollowedArtists,
-        DesktopGallerySectionContent.ComicExplore,
-        DesktopGallerySectionContent.ComicFavorites,
-        DesktopGallerySectionContent.ComicHistory,
-        DesktopGallerySectionContent.ComicSources,
-        DesktopGallerySectionContent.ComicDownloads,
-        DesktopGallerySectionContent.ComicQueue,
-        DesktopGallerySectionContent.GalleryFavorites,
-        DesktopGallerySectionContent.GallerySearch,
-        DesktopGallerySectionContent.GalleryDisplay,
-        DesktopGallerySectionContent.Downloads,
-        DesktopGallerySectionContent.BrowseHistory,
-        DesktopGallerySectionContent.ForYouWall,
-        DesktopGallerySectionContent.Latest,
-        DesktopGallerySectionContent.Ranking,
-        -> error("「${row.title}」不是画师域的页 —— 域路的分岔在 VeneraDesktopApp.DesktopDomainBody")
-        null -> error("画师域今天没有未实现的行，「${row.title}」却带了空的 content 位")
-    }
-}
-
-/**
- * 发现域的 body。
- *
- * 与另三条域路同一条纪律：`when` 不留 `else`，别的域的行流到这里那一刻就 `error`，
- * 而不是静默画出一屏少了一半的东西。
- */
-@Composable
-internal fun DesktopGalleryDiscoverBody(row: DesktopGalleryHomeRow, ports: GalleryPorts) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.ForYouWall -> DesktopForYouPane(ports)
-        DesktopGallerySectionContent.Daily,
-        DesktopGallerySectionContent.FollowedArtists,
-        DesktopGallerySectionContent.ComicExplore,
-        DesktopGallerySectionContent.ComicFavorites,
-        DesktopGallerySectionContent.ComicHistory,
-        DesktopGallerySectionContent.ComicSources,
-        DesktopGallerySectionContent.ComicDownloads,
-        DesktopGallerySectionContent.ComicQueue,
-        DesktopGallerySectionContent.GalleryFavorites,
-        DesktopGallerySectionContent.GallerySearch,
-        DesktopGallerySectionContent.GalleryDisplay,
-        DesktopGallerySectionContent.Downloads,
-        DesktopGallerySectionContent.BrowseHistory,
-        DesktopGallerySectionContent.ArtistsWall,
-        DesktopGallerySectionContent.Latest,
-        DesktopGallerySectionContent.Ranking,
-        -> error("「${row.title}」不是发现域的页 —— 域路的分岔在 VeneraDesktopApp.DesktopDomainBody")
-        null -> error("发现域今天没有未实现的行，「${row.title}」却带了空的 content 位")
-    }
-}

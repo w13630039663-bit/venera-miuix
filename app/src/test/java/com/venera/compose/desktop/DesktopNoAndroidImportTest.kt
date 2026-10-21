@@ -44,19 +44,41 @@ class DesktopNoAndroidImportTest {
 
     @Test
     fun `桌面编译面不许反向依赖任何一端的 UI`() {
-        // 约束原文：「严禁两端 UI 互相耦合」。编译器今天也管得住（那些包不在 srcDir 里），
-        // 这条的存在是为了让"越界"这件事有一个说人话的名字，而不是某天有人把某颗 UI 目录
-        // 也 srcDir 进来时，整条口径静默消失。
+        // 约束原文：「严禁两端 UI 互相耦合」。
+        //
+        // ⚠️ 2026-10-20 口径改判（写法 A，用户裁决「之前做的平行线就不要了，按照大屏端复用」）：
+        // 本条的**意图没变** —— 禁的是"桌面去依赖**某一端专属**的 UI"（`feature/` 与
+        // `gallery/ui/` 那两棵属于 Android：38 处 `LocalContext`、18 处 `Toast`、
+        // `AndroidViewModel` / `Intent` / Activity 承载，桌面侧根本没有那套宿主）。
+        // 但 `components/` 与 `ui/tokens/` 这一批**已经改成两端共用同一份源码**了
+        // （`desktop/build.gradle.kts` 的 srcDir + 本轮把最后 5 颗的平台调用抽进了
+        // `UxPlatformServices` 接口）。它们不再是"某一端的 UI"，而是**共享基建层** ——
+        // 再禁就等于禁止复用本身，与用户这次的裁决直接冲突。
+        //
+        // 判据的收紧面说清楚，别让它变成"什么都放行"：
+        //  - 仍禁：`feature` / `gallery.ui` / `reader` / `MainActivity`（真·端专属）；
+        //  - 新禁：`com.venera.compose.platform`（Android 平台实现，桌面不许碰它）；
+        //  - 放行：`components` / `ui.tokens` / `source.model`（共享面，两端编译同一份）。
         val hits = (DesktopFace.sharedFiles() + DesktopFace.ownFiles()).flatMap { file ->
             val rel = DesktopFace.relOf(file)
             file.readLines().mapIndexedNotNull { index, line ->
                 val t = line.trim()
                 if (!t.startsWith("import ")) return@mapIndexedNotNull null
-                val m = UI_PACKAGE.find(t) ?: return@mapIndexedNotNull null
+                val m = UI_PACKAGE.find(t)
+                if (m == null) {
+                    // `feature` 那一族按**文件级**判：共享白名单外的仍禁。
+                    val fm = Regex("""com\.venera\.compose\.feature\.(\w+)""").find(t)
+                    val sym = fm?.groupValues?.get(1)
+                    return@mapIndexedNotNull if (sym == null || sym in sharedFeatureStems) {
+                        null
+                    } else {
+                        "$rel:${index + 1}  $t  ← com.venera.compose.feature.$sym（不在共享面里）"
+                    }
+                }
                 "$rel:${index + 1}  $t  ← ${m.value}"
             }
         }
-        assertTrue("桌面编译面 import 了某一端的 UI 包：\n$hits", hits.isEmpty())
+        assertTrue("桌面编译面 import 了某一端专属的 UI 包：\n$hits", hits.isEmpty())
     }
 
     /**
@@ -77,9 +99,50 @@ class DesktopNoAndroidImportTest {
             """\bandroid\.(app|content|graphics|media|net|os|provider|text|util|view|webkit|database|widget)\b""",
         )
 
-        /** 两端 UI 面：`feature/` `gallery/ui/` `reader/` `components/` 与漫画侧的 Activity。 */
+        /**
+         * 端**专属**的 UI 面（2026-10-20 改判后）。
+         *
+         * `feature/` `gallery/ui/` `reader/` `MainActivity` 仍然禁 —— 那几棵靠 Android 宿主
+         * （`LocalContext` / `Toast` / `Intent` / `AndroidViewModel` / Activity 承载）活着，
+         * 桌面侧没有对应物。
+         *
+         * **`components/` 与 `ui/tokens/` 已从这里移除**：本轮（写法 A）把它们改成了两端共用，
+         * 理由是用户裁决「按照大屏端复用」——那是共享基建层，不是"某一端的 UI"。
+         * 移除不是放宽，是口径跟着事实改：那两颗目录现在确实两端编译同一份源码。
+         */
+        /**
+         * 端专属 UI 的包前缀。
+         *
+         * **`feature` 不再整包禁**（2026-10-20）：`feature/HomeHomeWidgets.kt` 那一批
+         * 首页展示零件已经是两端编译同一份源码，整包禁就等于禁止复用本身 —— 与用户
+         * 「按照大屏端复用」的裁决直接冲突。
+         *
+         * 现在 `feature` 的判据是**文件级**的（见 [sharedFeatureStems]）：从
+         * `desktop/build.gradle.kts` 把 `feature` 的排除清单读出来，没被排除的就是共享的。
+         * 下一轮谁再共享一颗不必回来改这里；谁把某颗踢出共享，判据自动跟上。
+         *
+         * 这不是放宽：`gallery.ui` / `reader` / `MainActivity` / `platform` 仍然整包禁。
+         */
         val UI_PACKAGE = Regex(
-            """com\.venera\.compose\.(feature|gallery\.ui|reader|components|MainActivity)\b""",
+            """com\.venera\.compose\.(gallery\.ui|reader|MainActivity|platform)\b""",
         )
+
+        /** `com.venera.compose.feature.X` 里真正共享的名字（= 没被 gradle 排除的那些）。 */
+        val sharedFeatureStems: Set<String> by lazy {
+            // 判据要的是"这个名字定义在哪颗文件里、那颗文件共享了吗"，
+            // 不是"符号名等于文件名"（PillButton 是函数名，它住在 HomeHomeWidgets.kt）。
+            // 所以：对每颗**未被排除**的 feature 文件，把它的顶层声明名全部收进来。
+            val excluded = DesktopFace.excludedNames
+            DesktopFace.candidateFiles
+                .filter { it.parentFile?.name == "feature" || it.parentFile?.parentFile?.name == "feature" }
+                .filterNot { it.name in excluded }
+                .flatMap { f ->
+                    Regex("""(?m)^(?:internal |private |public )?(?:fun|val|class|object|interface|enum class) (\w+)""")
+                        .findAll(f.readText())
+                        .map { it.groupValues[1] }
+                        .toList()
+                }
+                .toSet()
+        }
     }
 }

@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import com.venera.compose.components.venera.veneraGlassSurface
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.GallerySheetSection
 import com.venera.compose.ui.tokens.GallerySheetSectionColors
 import com.venera.compose.ui.tokens.VeneraGlassRole

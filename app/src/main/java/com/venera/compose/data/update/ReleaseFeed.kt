@@ -1,5 +1,6 @@
 package com.venera.compose.data.update
 
+import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -77,7 +78,7 @@ internal fun parseLatestRelease(body: String): LatestRelease? {
     }.orEmpty()
     return LatestRelease(
         tagName = tag,
-        version = AppUpdateChecker.displayVersion(tag),
+        version = displayVersionOf(tag),
         changelog = root.stringOf("body").orEmpty(),
         apks = assets.filter { it.url.isNotBlank() },
     )
@@ -100,3 +101,42 @@ private fun JsonObject.stringOf(key: String): String? = this[key]?.jsonPrimitive
 
 private fun kotlinx.serialization.json.JsonElement?.asArrayOrNull() =
     runCatching { this?.jsonArray }.getOrNull()
+
+/** 一次应用内更新下载的进度。`Failed` 的话必须带**实际读数**，见 [UpdateDownload.Failed]。 */
+sealed interface UpdateDownload {
+    data object Idle : UpdateDownload
+
+    /** [viaMirror] 为真表示此刻走的是加速镜像，界面上要念出来 —— 用户有权知道字节从谁家来的。 */
+    data class Running(
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val speedBytesPerSec: Long,
+        val viaMirror: Boolean,
+    ) : UpdateDownload
+
+    /** 字节下完了，正在算散列。14 MB 量级一百来毫秒，但这一段不该被跳过去写成"完成"。 */
+    data object Verifying : UpdateDownload
+
+    /**
+     * 落盘完成。[verified] 为假表示发布通道这次没给 `digest`，那份文件**没有被校验过** ——
+     * UI 必须把这句话说出来，不许用同一句"下载完成"盖掉两种情况。
+     */
+    data class Ready(val file: File, val verified: Boolean, val size: Long) : UpdateDownload
+
+    /**
+     * [reason] 要么带"哪个候选 + 什么码/什么异常"，要么带"散列期望前缀 vs 实得前缀"。
+     * 一句"下载失败"没法让人判断该重试、该换网、还是该去浏览器 —— 所以这里不收那种写法。
+     */
+    data class Failed(val reason: String) : UpdateDownload
+}
+
+/**
+ * `v1.6.6-miuix` → `1.6.6`。展示用；版本比较不依赖它（比较走 `AppUpdateChecker.isNewer`）。
+ *
+ * 2026-10-20：从 `AppUpdateChecker` 下放到这里 —— 它是零依赖的字符串处理，
+ * 而本文件是纯数据（只依赖 kotlinx.serialization），要进两端共享的编译面。
+ * 让纯数据文件反向依赖一颗绑 Context 的 Android object，依赖方向是反的。
+ */
+internal fun displayVersionOf(tag: String): String = tag
+    .removePrefix("v").removePrefix("V")
+    .substringBefore('-').substringBefore('+')

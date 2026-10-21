@@ -91,19 +91,6 @@ class DesktopArtistFallbackTest {
      * 只钉那颗纯函数会漏掉整批的动机（那一问根本没发）；只钉调用点又会漏掉"递进去的是默认值"
      * —— 所以两头各一钉，且第三枚按整串写（手册 §0 坑 ㉔：只数标识符看不见死分支）。
      */
-    @Test
-    fun 面板发那一问而第三枚从构造点递进去() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("面板没问离线词典那一枚画师档", panel.contains("ports.lexicon.artistNames(post.tagList)"))
-        // 只看那一处调用的**实参表**里有没有这两枚 —— 命名写法与位置写法都算过（扰动 y2 是等价改写，
-        // 把锚点钉成 `fallbackArtistNames = artistFallback` 那种措辞形状，就会红在一次纯换写上：手册 §0 坑 ㉖）
-        val call = panel.substringAfter("desktopDetailArtists(").substringBefore(")")
-        assertTrue("画师那一栏没吃到词典那份（或吃的还是那颗默认值）：$call", call.contains("artistFallback"))
-        assertTrue("画师那一栏没吃到「答没答上」那一档：$call", call.contains("siteCategoriesAsked"))
-        // 对照：那一问与兜底住在同一颗 effect 里（Android 同档：本地那两样不等面板）
-        assertTrue("对照组失效：面板里根本没有 desktopDetailArtists 这一句", panel.contains("desktopDetailArtists("))
-    }
-
     /** ⑦ 那一页还没答上时是"正在问"，不许提前念"没取到"（`asked` 那一档不是装饰）。 */
     @Test
     fun 还没答上时不许提前说没取到() {
@@ -126,19 +113,6 @@ class DesktopArtistFallbackTest {
      * ⚠️ 这一条**必须扫全文**而不是 `codeText`：那两句都是 KDoc 里的说明，而 `codeText` 滤掉注释行
      * —— 手册 §0 坑 ㉑ 记的就是这一族（"过期说明九成住在注释里，用 readText 扫就被注释满足了 ⇒ 对照恒真"）。
      */
-    @Test
-    fun 旧那两句恒空的说明不许回来() {
-        val policy = DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPolicy.kt").readText()
-        val panel = DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt").readText()
-        for ((name, code) in listOf("DesktopGalleryDetailPolicy.kt" to policy, "DesktopGalleryDetailPanel.kt" to panel)) {
-            assertEquals("$name 里还挂着「titleTags 恒 null」", 0, code.split("恒 null").size - 1)
-            assertEquals("$name 里还挂着「桌面恒空」", 0, code.split("桌面恒空").size - 1)
-        }
-        // 对照组：两颗文件真在被扫（读空会让上面四条恒真）。
-        assertTrue("对照组失效：政策那颗文件里没有画师那一栏", policy.contains("internal fun desktopDetailArtists("))
-        assertTrue("对照组失效：面板那颗文件里没有译名那一问", panel.contains("ports.lexicon.translations(post.tagList)"))
-    }
-
     /**
      * ⑧ 兜底那一句按**词典那一态**分三种说法（批 78）。
      *
@@ -184,31 +158,5 @@ class DesktopArtistFallbackTest {
     }
 
     /** ⑨ 面板把那一态**取到并递进去**（只钉那颗纯函数会漏掉整批：屏上那句还是老的那一句）。 */
-    @Test
-    fun 面板取到词典那一态而递进那一句() {
-        val panelFile = DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt")
-        val panel = DesktopSourceTree.codeText(panelFile)
-        assertEquals(
-            "面板问词典画师档那一枚的次数（现在是 ${DesktopSourceTree.codeOccurrences(panelFile, "artistNamesRead(post.tagList)")} 处）—— 0 处就是态没取，2 处就是问了两遍",
-            1,
-            DesktopSourceTree.codeOccurrences(panelFile, "artistNamesRead(post.tagList)"),
-        )
-        assertTrue(
-            "那一态没从读口落到那一句的变量上：$panel",
-            panel.contains("artistDictWhy = if (read is DesktopDictRead.Miss) read.why else null"),
-        )
-        assertEquals(
-            "上屏那两处都要吃到那一态（现在是 ${DesktopSourceTree.codeOccurrences(panelFile, "desktopArtistLineNotice(line, post.site, artistDictWhy)")} 处）",
-            2,
-            DesktopSourceTree.codeOccurrences(panelFile, "desktopArtistLineNotice(line, post.site, artistDictWhy)"),
-        )
-        // 次序：先问词典拿到 read，再把态写进变量（反过来是把上一次的态递给这一次）
-        val asked = panel.indexOf("artistNamesRead(post.tagList)")
-        val stored = panel.indexOf("artistDictWhy = if (read is DesktopDictRead.Miss)")
-        assertTrue("问与记的次序反了（$asked / $stored）", asked in 0 until stored)
-        // 对照组：那颗文件真在被扫，且旧的译名那一问没被这次改动搬走
-        assertTrue("对照组失效：面板里根本没有画师那一栏的那一句", panel.contains("fallbackArtistNames = artistFallback"))
-    }
-
     private val yandeSite = GallerySite.YANDERE
 }

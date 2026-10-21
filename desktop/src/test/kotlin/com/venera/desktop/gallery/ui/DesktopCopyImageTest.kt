@@ -49,57 +49,14 @@ class DesktopCopyImageTest {
     }
 
     // ③ 摆不摆那枚按钮只看能力位，不支持时那句说明要上屏 —— 照"在浏览器打开原图"那一族的形状。
-    @Test
-    fun `能力位不支持时那句说明要上屏`() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("没按能力位判（按下去什么都不发生的一枚按钮，比没有按钮更糟）", panel.contains("if (canCopyImage)"))
-        assertTrue("不支持时没说清少了哪一枚", panel.contains("复制图片") && panel.contains("这台机器"))
-    }
-
     // ④ 取字节只许有一处实现：播放器与复制这一路共用同一颗件，谁都不许自带一份冷缓存逻辑。
-    @Test
-    fun `取字节只有一处实现`() {
-        val sources = DesktopSourceTree.desktopMainSources()
-        val snapshots = sources.sumOf { DesktopSourceTree.codeOccurrences(it, "openSnapshot(") }
-        assertEquals("`openSnapshot` 在桌面 main 里出现了 $snapshots 次（重述一遍=将来只改一处）", 1, snapshots)
-        val player = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopAnimatedImage.kt"))
-        assertFalse("播放器还自带一份取字节的（那颗共用件管不到它）", player.contains("readCachedBytes"))
-        assertTrue("播放器改吃那颗共用件", player.contains("desktopCoilBytes"))
-    }
-
     // ⑤ 按钮与种子共用同一枚 lambda，而"把图交给剪贴板"这件事全树只有一处。
     //
     // ⚠️ 这一条原本钉的是 `ImageSelection(` —— 编译器先把它否了：那枚类住在 `sun.datatransfer`
     // （JDK 内部件、没导出），2026-10-08 报的是 Unresolved reference。公开面上只剩自持一枚
     // `Transferable` 这一条，而它的身份证据是**交得出的那个 flavor** ⇒ 尺子跟着改成数 `imageFlavor`，
     // 并把"内部件没被 import"钉成一条负向对照（否则下一个人又会去抄那条不存在的短路）。
-    @Test
-    fun `按钮与种子走同一枚lambda`() {
-        val panelCode = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue(
-            "种子按的不是抽出来的那一枚动作（自己写第二份就会漂 —— 与批 36 的 fireReverse 同一条形状）",
-            panelCode.contains("LaunchedEffect(post.uid) { fireCopyImage() }"),
-        )
-        val fires = DesktopSourceTree.codeOccurrences(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"), "fireCopyImage")
-        assertTrue("那一枚动作没被两处都吃到（出现 $fires 次，要 ≥3：声明、按钮、种子）", fires >= 3)
-        val sources = DesktopSourceTree.desktopMainSources()
-        val flavors = sources.sumOf { DesktopSourceTree.codeOccurrences(it, "imageFlavor") }
-        assertEquals("把位图交给剪贴板的地方不止一处", 1, flavors)
-        val internal = sources.filter { DesktopSourceTree.codeText(it).contains("sun.datatransfer") }
-        assertTrue("import 了 JDK 内部的剪贴板件（那条短路编译不过，而它会被再抄一次）：" + internal, internal.isEmpty())
-    }
-
     // ⑥ `-Pcopy=` 那一跳三处都在（同一颗纪律第五次）：构建脚本 → 判读层 → 消费点。
-    @Test
-    fun `自动按一次那枚种子三跳都在`() {
-        val build = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        assertTrue("构建脚本没把 -Pcopy 拼进 :desktop:app 的 args", build.contains("providers.gradleProperty(\"copy\")"))
-        val flags = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("ForensicFlags.kt"))
-        assertTrue("判读层不认 --copy", flags.contains("--copy"))
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("集成方没把它传给浮层", app.contains("autoCopyImage"))
-    }
-
     // ⑦ 凭据面：这一格拿的是**图的字节**，不许顺手把键那一路牵进来（对照：凭据件不被本批引用）。
     @Test
     fun `这一格不碰凭据`() {

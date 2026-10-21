@@ -110,6 +110,7 @@ private val UnscriptedFavorites = object : GalleryFavorites {
 private val UnscriptedFollows = object : GalleryArtistFollows {
     override val follows: StateFlow<List<GalleryArtistFollow>> get() = unscripted("GalleryArtistFollows.follows")
     override suspend fun toggle(site: GallerySite, name: String): Boolean = unscripted("GalleryArtistFollows.toggle")
+    override suspend fun setFollowed(site: GallerySite, name: String, followed: Boolean) = unscripted("GalleryArtistFollows.setFollowed")
     override fun consumeNotice(): String? = unscripted("GalleryArtistFollows.consumeNotice")
 }
 

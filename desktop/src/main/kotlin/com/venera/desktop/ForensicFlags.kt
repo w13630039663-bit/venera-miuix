@@ -3,6 +3,7 @@ package com.venera.desktop
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryRanking
 import com.venera.compose.gallery.domain.GalleryRankings
+import com.venera.desktop.gallery.data.DesktopDecoTier
 import com.venera.desktop.gallery.data.DesktopReaderMode
 import com.venera.desktop.gallery.ui.DesktopArtistTarget
 import com.venera.desktop.gallery.ui.DesktopComicReading
@@ -260,6 +261,7 @@ internal object ForensicFlags {
      * （取证那颗 `--detail` 走的就是同一枚 lambda），写成初值就是"念了而屏上没动"那一族第五次。
      */
     private const val DETAIL_TIER = "--detail-tier"
+    private const val DECO = "--deco"
 
     /**
      * 起窗后**自动按一次「复制图片」**（第五十四批）。
@@ -293,6 +295,7 @@ internal object ForensicFlags {
         "--proxy", "--shot", "--autofav", "--favcheck",
         START_DOMAIN, QUERY, START_SECTION, DETAIL, ARTIST, RANKING, REVERSE, REVERSE_FILE,
         VIEWER, VIEWER_ZOOM, COPY, SAVE, CRASH, COMIC, READ, READ_PAGE, READ_MODE, DISABLE, COOKIE, DETAIL_TIER, DOWNLOAD, DELETE, REPAIR,
+        DECO, DOWNLOAD_CANCEL_AFTER,
     )
 
     private val ON = setOf("1", "true", "on")
@@ -884,6 +887,35 @@ internal object ForensicFlags {
             return null
         }
         println("D_取证参数 $READ_MODE=$raw 认成 档=${hit.label}")
+        return hit
+    }
+
+    /**
+     * `--deco=<屏名或键名>` → 首页装饰那一档起在哪（批 116，三档：素 / 纹样 / 神社）。
+     *
+     * 为什么这一枚**必须有**：桌面 OS 级鼠标键盘是自验禁域，设置那一屏那三枚按钮在交付包里
+     * 没法用真点击逐档验证，而「三档各一帧」的图证只能由启动参数驱动（与 `--detail-tier=` 同一条理由）。
+     *
+     * ⚠️ 认不出**不猜**（与 [readMode] / [detailTier] 同一条纪律）：悄悄落回默认档会把「参数打错了」
+     * 读成「这一档今天兑现不了」，那两句的下一步动作完全不同。
+     * ⚠️ 这一枚只回答「参数要哪一档」，不回答「这一档今天摆不摆得出来」——
+     * 后者是窄窗那一格的活（`desktopDecoTierForContentWidth`），由 `D_装饰档` 那句念读数。
+     */
+    fun decoTier(args: List<String>): DesktopDecoTier? {
+        val given = args.firstOrNull { it == DECO || it.startsWith("$DECO=") } ?: return null
+        val raw = given.removePrefix("$DECO=").takeIf { it != given }
+        if (raw == null || raw.isBlank()) {
+            println("D_取证参数 $DECO 没带上那一串（本轮不改装饰档，用盘上那一档）")
+            return null
+        }
+        val hit = DesktopDecoTier.entries.firstOrNull { it.label == raw || it.key == raw }
+        if (hit == null) {
+            println(
+                "D_取证参数 $DECO=$raw 认不出（屏名是 素/纹样/神社，键名是 plain/pattern/shrine）⇒ 本轮不改档",
+            )
+            return null
+        }
+        println("D_取证参数 $DECO=$raw 认成 档=${hit.label}")
         return hit
     }
 

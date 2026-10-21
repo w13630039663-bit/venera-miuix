@@ -99,7 +99,7 @@ import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.veneraCoverCornerRadius
 import com.venera.compose.data.platform.CacheDirs
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryConnectivity
 import com.venera.compose.gallery.data.allowAnimatedImage
 import com.venera.compose.gallery.data.GalleryImageLoader

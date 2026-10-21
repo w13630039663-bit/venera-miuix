@@ -54,8 +54,8 @@ class DesktopLatestTest {
     @Test
     fun 配了凭据时三腿都发而没有不发出去的站() {
         assertEquals(
-            "配好凭据就该三腿都发（次序恒为枚举自然序）",
-            GallerySite.entries.toList(),
+            "配好凭据就该把桌面接线的三腿都发（次序恒为枚举自然序；pixiv 桌面不接 ⇒ 不在 [DESKTOP_GALLERY_SITES] 里）",
+            DESKTOP_GALLERY_SITES,
             desktopWallLegs(gelbooruConfigured = true),
         )
         assertTrue(
@@ -65,41 +65,12 @@ class DesktopLatestTest {
     }
 
     /** ③ 那一屏必须过第四批那层守卫，且墙上三枚偏好显式传下去（漏一枚 = 某一屏静默不生效）。 */
-    @Test
-    fun 那一屏的墙要过守卫而三枚偏好必须显式传() {
-        assertTrue("这一屏没走 `DesktopGalleryWallPolicy.of` —— 那就是又一面没过守卫的墙", pane.contains("DesktopGalleryWallPolicy.of("))
-        assertTrue("守卫没拿到分级档", pane.contains("maskMode"))
-        assertTrue("守卫没拿到屏蔽 AI 那枚", pane.contains("blockAi"))
-        assertTrue("守卫没拿到 contentGuard（规则与模式那两份）", pane.contains("ports.contentGuard"))
-        val at = pane.indexOf("DesktopGalleryPostWall(")
-        assertTrue("找不到那一面墙的调用点", at >= 0)
-        val call = pane.substring(at).take(320)
-        listOf("wall = wall", "columnMode", "quality", "aiBadge", "weight(1f)").forEach { arg ->
-            assertTrue("那一面墙没收到「$arg」：$call", call.contains(arg))
-        }
-        // 对照组：真跑过守卫的产物才走这一颗墙。
-        assertTrue("对照组失效：没读到那一颗共用的墙", call.isNotEmpty())
-    }
-
     /**
      * ④ 屏上要说清"最新 = 站方默认序"，而**桌面自己一行都不排**。
      *
      * 负向那一半防的是：有人为了让这一屏"看起来像最新"，在桌面侧补一次本地排序 ——
      * 那既不是站方的序（我们只拿到第一页），又会把"这一站没答上"掩盖成"排完就是这样"。
      */
-    @Test
-    fun 桌面自己不许排序而屏上那句要念出默认序() {
-        listOf("sortedWith", "sortBy", "sortedBy", "sorted(", "reversed(").forEach { banned ->
-            val where = "$policy\n$pane"
-            assertTrue("桌面这一族里出现了本地排序「$banned」—— 最新只许是站方默认序", where.contains(banned).not())
-        }
-        // 对照组：不排序 ≠ 什么都没做，腿与混排确实转交了共享判据。
-        assertTrue("对照组失效：没转交每腿预算件", pane.contains("GalleryLegGuard.guard("))
-        assertTrue("对照组失效：没转交跨站混排件", pane.contains("GallerySearchMerge.interleave("))
-        assertTrue("屏上那句没念出「默认序」这一层", pane.contains("默认序"))
-        assertTrue("屏上那句没念出「桌面不重排」这一层", pane.contains("不重排") || pane.contains("不二次排序"))
-    }
-
     /** ⑤ 那一行**已转正**：内容件在、缺席说明撤掉。 */
     @Test
     fun 最新那一行已转正() {

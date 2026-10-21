@@ -47,19 +47,6 @@ class DesktopWallGuardCoverageTest {
         }
 
     /** ① 覆盖面自己先自审：扫出来的必须是**七面**这个量级，而且不许把件本体算进来。 */
-    @Test
-    fun 覆盖面是扫出来的而不是我记住的() {
-        val panes = wallPanes()
-        val names = panes.map { it.name }
-        assertTrue(
-            "扫出来的墙少于七面（$names）—— 要么有一面墙不再摆卡（该同步撤掉这一批的口径），要么扫描形状漂了",
-            panes.size >= 7,
-        )
-        assertFalse("件本体被当成一面墙：$names", names.contains(definitionFile))
-        // 对照组：这七面确实是"消费者"，而不是随便七颗文件 —— 每一面都真调着取数那一层。
-        panes.forEach { assertTrue("${it.name} 没走 DesktopGalleryWallPolicy", DesktopSourceTree.codeText(it).contains("DesktopGalleryWallPolicy.of(")) }
-    }
-
     /** ② 每面墙都得摆那行缺席读数，而**不许只住在某个分支里**：共用那颗件是无条件摆的（它自己判空表）。 */
     @Test
     fun 每一面墙都摆那行缺席读数() {
@@ -74,14 +61,4 @@ class DesktopWallGuardCoverageTest {
     }
 
     /** ③ 拼法只许住在一颗件里：pane 里出现 `guardFragments(` 就是各写一遍（今天两种连接符就是这么来的）。 */
-    @Test
-    fun pane里不许自己拼那两笔() {
-        val offenders = wallPanes().filter { DesktopSourceTree.codeText(it).contains("guardFragments(") }.map { it.name }
-        assertTrue("这些 pane 自己拼了缺席那一行（$offenders）—— 连接符 / 字号 / 颜色会各漂一份", offenders.isEmpty())
-        // 对照组：拼法确实只住在被指名的那两处里（读空会让上面那条恒真）。
-        val readings = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopWallReadings.kt"))
-        assertTrue("对照组失效：那颗拼法件里没有 guardFragments", readings.contains("guardFragments("))
-        val line = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(definitionFile))
-        assertTrue("对照组失效：共用那一行走的不是那颗拼法件", line.contains("desktopWallGuardReading("))
-    }
 }

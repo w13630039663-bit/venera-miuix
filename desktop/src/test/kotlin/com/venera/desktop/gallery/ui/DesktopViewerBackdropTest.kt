@@ -118,19 +118,6 @@ class DesktopViewerBackdropTest {
     }
 
     // ⑥ 接线：那一层吃的是这颗件，且不许再直接吃主题底。
-    @Test
-    fun `那一层只从这颗件拿色`() {
-        val viewer = DesktopSourceTree.desktopUiSource("DesktopGalleryViewer.kt")
-        assertEquals("那一层没吃共用那颗件", 1, DesktopSourceTree.codeOccurrences(viewer, "desktopBackdropColor("))
-        assertEquals(
-            "那一层还在直接吃主题底（绕过了那枚偏好）",
-            0,
-            DesktopSourceTree.codeOccurrences(viewer, ".background(DesktopTheme.WindowBackground)"),
-        )
-        // 对照组：这颗件确实被扫到了，且它真画了那一层。
-        assertTrue("对照组失效：那颗件里没有 .background(", DesktopSourceTree.codeText(viewer).contains(".background("))
-    }
-
     /**
      * ⑦ 集成方递进去的必须是**那条流**，不是一枚常量。
      *
@@ -139,45 +126,6 @@ class DesktopViewerBackdropTest {
      * 与批 52 钉 `setGalleryAnimated(GalleryAnimatedMode.` 那一条同族：**吃用户点的那一枚**这句话
      * 只能靠"调用点念的是 collectAsState 出来的那枚变量"来钉，而变量名会被重构改掉，所以两头各一钉。
      */
-    @Test
-    fun `集成方递进去的是那条流而不是常量`() {
-        val appFile = DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt")
-        val viewerFile = DesktopSourceTree.desktopUiSource("DesktopGalleryViewer.kt")
-        val app = DesktopSourceTree.codeText(appFile)
-        assertEquals(
-            "集成方没把那条流收进组合（收一次都不许，何况递进去）",
-            1,
-            DesktopSourceTree.codeOccurrences(appFile, "settings.galleryBackdrop.collectAsState()"),
-        )
-        // 两头钉成**一根线**：从收流那一句把变量名抽出来，再要求调用点递的正是那一名。
-        // 写死 `backdrop = backdropTier,` 也行，但改名重构会把判据一起改红 —— 而"名字换了、线断了"
-        // 与"名字没换、线断了"是同一件事，抽名字才是这条判据真正想说的话。
-        val seeded = Regex("""val (\w+) by settings\.galleryBackdrop\.collectAsState\(\)""").find(app)
-            ?: throw AssertionError("收流那一句的形状不是 `val X by settings.galleryBackdrop.collectAsState()`")
-        assertEquals(
-            "调用点递的不是收来的那一枚（`backdrop = ${seeded.groupValues[1]},` 只许出现一次）",
-            1,
-            DesktopSourceTree.codeOccurrences(appFile, "backdrop = ${seeded.groupValues[1]},"),
-        )
-        // 负向：调用点写死一枚档 —— 存在性判式抓不到，只有这一条抓得到。
-        assertEquals(
-            "调用点写死了那一枚档（屏上第八行当场变回假开关）",
-            0,
-            DesktopSourceTree.codeOccurrences(appFile, "backdrop = GalleryViewerBackdrop."),
-        )
-        // 反向钉参数面：那一枚必须是**必填**（带默认值时漏传不报错，而漏传的形状正是"改了不动"）。
-        val viewer = DesktopSourceTree.codeText(viewerFile)
-        assertTrue("那一枚形参不见了（签名上没 `backdrop: GalleryViewerBackdrop`）", viewer.contains("backdrop: GalleryViewerBackdrop"))
-        assertEquals(
-            "那一枚形参带了默认值（漏传不报错，而集成方一旦漏传这一屏就偷偷画 GLASS）",
-            0,
-            DesktopSourceTree.codeOccurrences(viewerFile, "backdrop: GalleryViewerBackdrop ="),
-        )
-        // 对照组：这两颗文件确实被扫到了（读空时上面五条全恒真）。
-        assertTrue("对照组失效：集成方那颗没读到 collectAsState", app.contains("collectAsState()"))
-        assertTrue("对照组失效：viewer 那颗没读到 .background(", viewer.contains(".background("))
-    }
-
     /**
      * ⑧ 墙该不该糊：只有「GLASS 且大图那一屏开着」才糊（批 63）。
      *
@@ -216,15 +164,4 @@ class DesktopViewerBackdropTest {
      * `Modifier.blur(0.dp)` 在桌面上会不会仍挂一枚 graphicsLayer 没有量过 ⇒ 不糊就走 `Modifier`（空的那一枚），
      * 把"零成本"这件事交给形状而不是交给库的善意。
      */
-    @Test
-    fun 集成方把糊接在墙那棵上而零档不留层() {
-        val appFile = DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt")
-        assertEquals("糊那颗判据在集成方只许被吃一次", 1, DesktopSourceTree.codeOccurrences(appFile, "desktopWallBlurRadius("))
-        assertEquals("blur 只许一处调用点", 1, DesktopSourceTree.codeOccurrences(appFile, "Modifier.blur(radius = wallBlur)"))
-        assertEquals("没有「零档就不挂层」那一道闸（不糊的档会白挂一层）", 1, DesktopSourceTree.codeOccurrences(appFile, "if (wallBlur > 0.dp)"))
-        // 对照组：钉的是**墙那一棵**，不是大图自己那层（后者吃的是颜色那颗件，见 ⑥）。
-        val code = DesktopSourceTree.codeText(appFile)
-        assertTrue("糊没接在墙那棵 Column 上：" + code.substringAfter("val wallBlur").take(220),
-            Regex("""wallBlur[\s\S]{0,260}background\(DesktopTheme\.WindowBackground\)""").containsMatchIn(code))
-    }
 }

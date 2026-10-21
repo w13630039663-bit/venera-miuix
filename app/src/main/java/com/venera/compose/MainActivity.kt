@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.ui.unit.dp
 import com.venera.compose.feature.EntryIntent
 import com.venera.compose.feature.EntryIntentHandoff
 import com.venera.compose.feature.VeneraComposeApp
@@ -35,10 +36,38 @@ class MainActivity : ComponentActivity() {
         val contentStarted = android.os.SystemClock.elapsedRealtime()
         setContent {
             StartupTrace.mark("Compose: VeneraTheme body enter")
-            VeneraTheme {
-                VeneraComposeApp()
-                // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
-                StartupUpdateHost()
+            // 大屏取宽的**平台供给口**（2026-10-20，写法 A）：
+            // 供给值仍是 `LocalConfiguration.current.screenWidthDp` —— 与替换前那个表达式**逐字相同**，
+            // 所以手机档 / 平板档的现有观感一个像素都不动（用户 2026-10-02 的硬约束）。
+            //
+            // 为什么要在这一层供给，而不是让共享面自己读 `LocalConfiguration`：
+            // 那颗件是 AndroidX 的，桌面侧的 Compose Multiplatform **没有**（已现量 Unresolved），
+            // 共享面一旦直接读它，整个大屏 UI 就上不了桌面 —— 那正是这次要拆掉的锁。
+            // 供给口放在 Activity（平台侧），共享面只留一个跨平台兜底（LocalWindowInfo）。
+            //
+            // ⚠️ 必须在 `VeneraTheme` **外面**：主题内部可能读宽（分段控制器加高等），
+            // 供给若挂在里面，它自己那一帧读到的还是兜底值。
+            val windowWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+            // 平台服务的**注入点**（同一批，写法 A）：`components/` 里那五处平台调用
+            // （触觉 / 吐司 / 帧钟 / 偏好监听 / 预测性返回 / 收藏屏蔽 / 剪贴板）现在都从
+            // `LocalUxPlatformServices` 取。这里挂 Android 实现，行为逐字不变。
+            //
+            // `LocalView.current` 就是 Activity 的 decorView —— 原 `VeneraFloatingNavBar`
+            // 自己取的就是它，所以触觉反馈落点逐字相同。
+            val decorView = androidx.compose.ui.platform.LocalView.current
+            val uxServices = androidx.compose.runtime.remember(decorView) {
+                com.venera.compose.platform.AndroidUxPlatformServices(decorView, applicationContext)
+            }
+            com.venera.compose.components.ProvideLocalWindowWidth(windowWidth = windowWidthDp) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.venera.compose.components.LocalUxPlatformServices provides uxServices,
+                ) {
+                    VeneraTheme {
+                        VeneraComposeApp()
+                        // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
+                        StartupUpdateHost()
+                    }
+                }
             }
         }
         StartupTrace.recordElapsed("Activity: setContent", contentStarted)

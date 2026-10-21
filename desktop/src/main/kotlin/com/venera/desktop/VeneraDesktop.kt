@@ -1,6 +1,7 @@
 package com.venera.desktop
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +21,7 @@ import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.LocalFavoritesManager
 import com.venera.compose.data.platform.CacheDirs
 import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.desktop.gallery.data.DesktopDecoTierPreferences
 import com.venera.compose.gallery.domain.GalleryRankings
 import com.venera.desktop.platform.DesktopDatabasePorts
 import com.venera.desktop.platform.DesktopPaths
@@ -30,13 +32,11 @@ import com.venera.desktop.gallery.data.DesktopTagDictionaryAsset
 import com.venera.desktop.gallery.data.DesktopComicReaderPreferences
 import com.venera.desktop.gallery.data.DesktopGalleryBrowseHistory
 import com.venera.desktop.gallery.data.desktopGallerySaveDir
-import com.venera.desktop.gallery.ui.DesktopComicEngineConfig
 import com.venera.desktop.gallery.ui.DesktopComicFavoriteOutcome
 import com.venera.desktop.gallery.ui.DesktopDomain
 import com.venera.desktop.gallery.ui.DesktopGalleryHomeSectionKey
 import com.venera.desktop.gallery.ui.DesktopGalleryMetrics
 import com.venera.desktop.gallery.ui.DesktopTheme
-import com.venera.desktop.gallery.ui.VeneraDesktopApp
 import com.venera.desktop.gallery.ui.desktopAddComicFavorite
 import com.venera.desktop.gallery.ui.desktopCanCopyImage
 import com.venera.desktop.gallery.ui.desktopDomainRows
@@ -47,6 +47,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.ZoneOffset
 import javax.imageio.ImageIO
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -96,6 +97,13 @@ private fun favorites(): LocalFavoritesManager =
  * 而关库那一串是按端口走的（`closePersistenceInOrder`），不是按这颗件走的。
  */
 private fun history(): HistoryDao = HistoryDao.getInstance(DesktopDatabasePorts.PLATFORM)
+
+/**
+ * `FavoriteDao` 与 `HistoryDao` 同一形状：`getInstance` 自己在 companion 里缓存，
+ * 这里**不留引用**（留了就会与那颗缓存脱钩）。
+ */
+private fun favorite(): com.venera.compose.data.db.FavoriteDao =
+    com.venera.compose.data.db.FavoriteDao.getInstance(DesktopDatabasePorts.PLATFORM)
 
 /**
  * `--autofav` 的取证链路：**不碰 UI**，自己在 IO 上走完"装载源 → 探索页 → 第一张卡"。
@@ -412,6 +420,9 @@ fun main(args: Array<String>) {
     // （从前这里写的是"首问规则时"才取，那句读起来像可以推迟 —— 实际是构造期，早得多。）
     val galleryHandle = com.venera.desktop.gallery.data.DesktopGalleryHandle.of(paths)
     DesktopGalleryPorts.install(galleryHandle)
+    // 画廊共享口：桌面壳的那面墙要真数据，而它只吃形参（`DesktopUiIsolationTest` ② 钉着
+    // "UI 里不许取静态口"）。所以在集成方取一次，往下传 —— 与 `gallerySettings` 同一条形状。
+    val galleryPorts: GalleryPorts = GalleryPorts.of(galleryHandle)
     // 取图那一跳的防盗链头（第七十九批）：装在**任何开窗与取图之前**，而 `install` 全应用只这一处 ——
     // 装两处是后一处静默盖掉前一处（判据 ④ 数的就是这一句的出现次数）。
     // 批 90：盘缓存那颗目录一起递进去（从前没配 ⇒ Coil 把它放在**系统 Temp**，与数据目录不同轨；
@@ -423,6 +434,11 @@ fun main(args: Array<String>) {
     // 设置页要写侧（共享接口只有读面），所以在集成方拿一次那颗具体件，往下**以形参传**。
     // 不在界面里 cast：那等于把"取静态口"这件事教给每一颗要用的件。
     val gallerySettings = DesktopGalleryPorts.preferences(galleryHandle)
+    // 批 116：首页装饰那一档。它**不在 gallerySettings 上**是刻意的 ——
+    // 那一颗的键名逐枚要与对岸 `VeneraPreferences.kt` 同串，而手机侧没有 rail 也没有首页装饰层，
+    // 对岸从来没有这一枚；写成 `pref_gallery_` 就是伪造一枚对岸有的键。
+    val galleryDeco = DesktopDecoTierPreferences(paths)
+    val decoSeedTier = ForensicFlags.decoTier(args.asList())
     // 同一形状的第二例（第十二批 批 6）：分级档与屏蔽规则的写侧也在桌面那颗具体件上。
     val guard = DesktopGalleryPorts.contentGuard(galleryHandle)
     // 同一形状的第三例（第三十四批 批 34）：设置那一屏要写 SauceNao 的 key，而契约面只有读流。
@@ -502,6 +518,42 @@ fun main(args: Array<String>) {
                 height = windowSize.height,
             ),
         ) {
+            // 源启停那份盘上状态的持有者（`venera_desktop_sources.json`）。
+            // 放在这里而不是 `remember`：它无状态、只是读一个 json，重建的代价为零，
+            // 而 `readSources` 那根 lambda 会在组合外被调用（不是 @Composable）。
+            val sourceState = remember {
+                com.venera.desktop.gallery.data.DesktopSourceState(paths)
+            }
+
+            // ── 常驻引擎（2026-10-21）──
+            //
+            // 为什么不能复用 `runAutofavEvidence` 那颗：那颗是**一次性探针**，
+            // `try { ... } finally { engine.close() }`，用完就关。递给 UI 会拿到一颗
+            // 已关闭的引擎，每次调用都抛（`Context execution was cancelled` 那一族）。
+            //
+            // 阅读器要反复用：进详情 `details()`、进话 `pages()`、每页 `pageImage()`，
+            // 所以这里建一颗**跟窗口同寿命**的。`remember` 保证只装配一次 ——
+            // 放在外面会让每次重组都新建一颗 JS 宿主（几百 MB）。
+            val uiEngine = remember {
+                runCatching {
+                    val host = com.venera.engineprobe.DesktopJsHost(
+                        assetDir,
+                        paths.dataRoot,
+                        proxy,
+                        seedCookies,
+                    )
+                    EngineSession(host, assetDir)
+                }.onFailure {
+                    // 起不来要念出来：静默的话详情页只会显示"没有章节"，
+                    // 而那是把"引擎没起"谎报成"这本没内容"。
+                    println("D_引擎 UI 起不来 ${it::class.java.simpleName}: ${it.message?.take(200)}")
+                }.getOrNull()
+            }
+            // 窗口销毁时收尾。不收的话进程退出前 JS 上下文还挂着。
+            DisposableEffect(uiEngine) {
+                onDispose { runCatching { uiEngine?.close() } }
+            }
+
             // 深色主题**钉死**（2026-10-04 视觉重构）：`colors` 走 Fluent 的 darkColors（accent=藤紫），
             // 其余 surface 走 DesktopTheme 的五档阶梯。理由写在 `DesktopTheme` 的类注释里 ——
             // 之前让 Fluent 自己跟系统，于是浅底上那几枚深色档色值（#8B8B8B 灰、#CBB6FF 藤紫、
@@ -513,99 +565,133 @@ fun main(args: Array<String>) {
             // ⚠️ 拆掉 `NavigationView` **不等于**拆掉 `FluentTheme`：后者给全窗提供深色档，
             // 且 `gallery/ui/` 多处在用 fluent 的 `Text`（需要它 provide 的 CompositionLocal scope）。
             // 由 `DesktopShellLayoutTest` ② 钉住这一条，防止连它一起被拆掉。
-            FluentTheme(colors = DesktopTheme.colors()) {
-                VeneraDesktopApp(
-                    ports = GalleryPorts.of(null),
-                    // 必填而不是带默认值的新参数：带默认值时漏传不报错，而"漏传"的形状正好是
-                    // 取证时最坏的那种 —— 截图照样出，域照样是默认那一域。
-                    startDomain = startDomain,
-                    // 同上：查询串漏传就是"搜索那一屏永远拍不到内容"，而它不会报错。
-                    startQuery = startQuery,
-                    // 同上：起始行漏传就是"那一行永远拍不到"，而它不会报错。
-                    startSection = startSection,
-                    // 同上：漏传就是"浮层永远拍不到"，而它同样不会报错。
-                    // 开不开由 `ForensicFlags.detailPanel` 判（`--detail` 开，或被 `--reverse` / `--copy` 接管）。
-                    // `== true` 而不是 `?: false`：没给参数与给了 `=0` 都是关，但"没登记进 KNOWN"
-                    // 那种形状会被上面那条 `unknown` 报出来，不在这里替它兜。
-                    startDetail = panelOpen,
-                    // 批 92：那一屏起在哪一档。`null` = 本轮不改（用「预览清晰度」偏好推出来的那一档）。
-                    // 必填 —— 漏传的形状是"参数打进来了而屏上照旧"，判读层念过而落点没有那一格。
-                    startDetailTier = detailTierSeed,
-                    // 同上：漏传就是"结果那一格永远拍不到"（那一格在浮层里，且要按一下才出来，第三十六批）。
-                    startReverse = reverse == true,
-                    startReverseFile = reverseFile,
-                    // 同上：漏传就是"那一枚按钮从没被按过"，而剪贴板这件事只有按过才量得出（第五十四批）。
-                    startCopy = copy == true,
-                    // 同上：漏传就是"那一枚按钮从没被按过"，而存图这件事只有按过才量得出盘上多没多那颗文件。
-                    startSave = save == true,
-                    // 存图落点：这一颗是**算出来的路径**（不建目录 —— 建目录那一笔在真往下写的那一刻），
-                    // 所以起窗这一步不会因为"看一眼下载那一屏"而在盘上造出东西。
-                    gallerySaveDir = desktopGallerySaveDir(paths),
-                    // 同一族口径的第五枚（第八十六批）：那颗历史件在**这里**建，浮层与首页那一屏共用这一颗。
-                    // 「看一眼不许在盘上造出东西」那条纪律管的是路径，而这一颗是**要往下写的**那一份内存，
-                    // 建它的时机因此与建落点路径不同：它读自己那份档是在构造里同步发生的一次。
-                    galleryHistory = DesktopGalleryBrowseHistory.getInstance(paths),
-                    // 同上：漏传就是"单人页永远拍不到"（那一屏在第二层里），而它同样不会报错（第二十批）。
-                    startArtist = artistTarget,
-                    // 同上：漏传就是"排行榜永远停在默认档、期次那一排永远不出现"（第三十批），
-                    // 而它同样不会报错 —— 批 29 欠的那张图就缺这一跳。
-                    startRanking = rankingTarget,
-                    // 同上：漏传就是"漫画详情那一屏永远停在列表"，而它不会报错（第八十批）。
-                    // 只在**域真跟过去**时才递：`--artist` 或 `--ranking` 赢而这一枚没接管时，
-                    // 递下去会得到一句假读数（`详情=开` 而那一屏根本没组合）。那一格由 comicNote 念实话。
-                    startComic = comicSeed.takeIf { comicLanding.domain == DesktopDomain.COMIC },
-                    // 同上（第八十一批）：漏传就是"阅读那一屏永远停在详情"，而它不会报错。
-                    // 也只在域真跟过去时才递。这一枚**不顺手把详情也种上**：那样会得到
-                    // `详情=开 阅读=开` 两格都"开"而底下那一屏从没装载过，是另一种假读数。
-                    startRead = readSeed.takeIf { readLanding.domain == DesktopDomain.COMIC },
-                    // 第八十七批：顶上哪一档阅读模式。这一枚**不跟着域走** —— 它不改落点，只在阅读那一屏
-                    // 真的出现时决定那一屏摆哪一面墙；跟着域走反而会把"没进阅读屏"读成"参数没生效"。
-                    startReaderMode = readerModeSeed,
-                    // 大图那一层（第五十批）：`null` = 没给参数，而应用根把"没给"读成**进**（默认行为）。
-                    // 必填三态原样递 —— 在这里塌成二态就分不出"没给"与"给了 0"，
-                    // 而那两个在 `D_落点` 的 `种子=` 那一格里必须是两句话。
-                    startViewer = viewer,
-                    startViewerZoom = viewerZoom,
-                    // 设置页的写侧。必填不给默认值 —— 漏传的形状是"那一屏只能看不能改"，
-                    // 而那与"桌面今天没有设置页"是同一种用户观感，却少了一句实话。
-                    settings = gallerySettings,
-                    // 分级档与屏蔽规则的写侧，同上：必填不给默认值。
-                    guard = guard,
-                    credentials = galleryCredentials,
-                    comic = DesktopComicEngineConfig(
-                        assetDir = assetDir,
-                        dataDir = paths.dataRoot,
-                        proxy = proxy,
-                        sourceKey = startKey,
-                        // 懒装载：见 DesktopComicEngineConfig.favorites 的注释。
-                        favorites = ::favorites,
-                        // 阅读那一屏写历史要用它（批 82）。同一颗懒装载，同一理由。
-                        history = ::history,
-                        // 批 83：源管理那一屏读写「哪几颗被停用」。同一口径的懒装载 —— 建它要数据目录，
-                        // 而"今天切到漫画域"不等于"要看源"。那份状态只影响这台机器（详见 DesktopSourceState）。
-                        sourceState = { DesktopSourceState(paths) },
-                        // 批 83.1：`--disable=` 那枚取证种子。必填、不给默认值 —— 漏在这一跳上就是
-                        // "`-Pdisable=jm` 递上而屏上照旧"，与本批要抓的缺陷同形（同一颗纪律第十次）。
-                        seedDisabled = seedDisabled,
-                        // 批 88·下半：`--cookie=` 那几枚凭据种子。同样必填不给默认值 —— 漏在这一跳上
-                        // 就是"参数递上而请求照旧不带凭据"，与本批要抓的缺陷同形。
-                        seedCookies = seedCookies,
-                        // 第九十六批：`--download=` 那一话的种子。同样必填不给默认值 —— 漏在这一跳上
-                        // 就是"参数递上而盘上一颗文件都没有"，与本批要抓的缺陷同形（同一颗纪律第十一次）。
-                        downloadSeed = downloadSeed,
-                        // 第一百批：`--download-cancel-after=` 那一档。同样必填不给默认值 ——
-                        // 漏在这一跳上就是"参数递上而那一趟照旧跑到尾"，与本批要抓的缺陷同形。
-                        downloadCancelAfter = downloadCancelAfter,
-                        // 第九十八批：`--delete=` 那一话的种子。同样必填不给默认值（同一颗纪律第十二次）。
-                        deleteSeed = deleteSeed,
-                        repairSeed = repairSeed,
-                        // 第八十七批：阅读那一屏的模式偏好。与 `history` / `favorites` 同一条处理 ——
-                        // 装配参数在集成方手里，界面只吃形参。同一数据根只建一颗（两颗各自缓存同一份 JSON）。
-                        readerPrefs = DesktopComicReaderPreferences.getInstance(paths),
-                    ),
-                )
+            // 2026-10-20（写法 A，用户裁决「之前做的平行线就不要了，按照大屏端复用」）：
+            // 桌面上只剩这一条渲染路 —— **安卓大屏那一份 UI**。
+            //
+            // 这一段替换掉的是原先的 `--fluent` 双分支：那时候默认走 `VeneraDesktopApp`
+            // （Fluent 平行线，72 颗），`--fluent` 反而去开它；另一条 `desktop/ui/` 九个 pane
+            // 是第三份。三条线并存就是"维护两份 UI"的来源，正是用户最初要解决的问题。
+            //
+            // 现在 `components/` 与 `ui/tokens/` 由 `desktop/build.gradle.kts` 的 srcDir
+            // 真接进本模块编译面（两端同一份源码），侧栏 / 断点 / 列数尺 / 卡片 / token
+            // 全部来自共享面，本模块自持的只有窗口、进程、数据接线这些**平台事**。
+            com.venera.desktop.VeneraDesktopLargeScreen(
+                windowWidth = windowSize.width,
+                ports = galleryPorts,
+                // 分级遮罩档的**当前值**：直接读守卫件那条流的 `.value`（不另记一份）。
+                // 另记一份会与用户改设置的那一刻脱钩 —— 那正是"假开关"的形状。
+                maskModeOf = { guard.nsfwMaskMode.value },
+                // 用户黑名单：命中任意一条启用中的规则就 `HIDDEN`。
+                //
+                // 判据复用 `GalleryBlockMatch.blocked(rule, author, tags)` —— 与画廊墙
+                // **同一套规则表、同一套匹配语义**（`security/guard/GalleryBlockMatch.kt`，
+                // 零平台耦合、已在桌面编译面）。不另立一份「漫画侧黑名单」：
+                // 两份规则表一定会漂，而用户只会记得"我屏蔽过这个词"。
+                //
+                // `AUTHOR` 类要求 `author` 非空（看 `GalleryBlockMatch.blocked` 的实现），
+                // 空值不命中 —— 不把"没有作者信息"当成"命中黑名单"。
+                // 墙上那颗守卫：整颗递过去（取数层自己调 `blockedGalleryRule`）。
+                // 与 `maskModeOf` 同源 —— 都来自装配点手上那颗 `DesktopGalleryContentGuard`。
+                wallGuardOf = { guard },
+                // 详情/阅读器要的引擎 + 写历史那一跳。
+                // `writeHistory` 只递 `saveHistory` 这一个动作，**不把整个 DAO 递进 UI** ——
+                // UI 不该能删历史、能读全表。
+                engine = uiEngine,
+                writeHistory = { record -> history().saveHistory(record) },
 
-                if (shot != null) {
+                // ── 遮罩档 / 屏蔽 AI（安全评审 H4：此前零调用点）──
+                //
+                // H4 原文：`setNsfwMaskMode` 零调用点 ⇒ 用户不改键值文件，遮罩永远不开。
+                // 这两根 lambda 就是那个"改法"。
+                setMaskMode = { mode -> guard.setNsfwMaskMode(mode) },
+                setBlockAi = { on -> gallerySettings.setGalleryBlockAi(on) },
+
+                // ── 源清单 / 启停 ──
+                //
+                // 清单来自**随包的 34 颗 js**（`EngineAssets.listSourceKeys`，与第 390 行
+                // `D_启动 sources=34` 同一口径）；停用状态来自桌面本地那份
+                // `venera_desktop_sources.json`（`DesktopSourceState`，与共享表 `comic_source`
+                // 刻意不同轨 —— 那个理由写在 `DesktopSourceState` 的类注释里）。
+                readSources = {
+                    val keys: List<String> = EngineAssets.listSourceKeys(assetDir).sorted()
+                    val pairs: List<Pair<String, String>> = keys.mapNotNull { k ->
+                        val n: String? = com.venera.desktop.gallery.data.DesktopSourceNames
+                            .displayNameOfKey(assetDir, k)
+                        if (n == null) null else Pair(k, n)
+                    }
+                    val names: Map<String, String> = pairs.toMap()
+                    val catalog = com.venera.desktop.gallery.data.DesktopSourceCatalog
+                        .rows(keys = keys, names = names, disabled = sourceState.disabled())
+                    catalog.map { r ->
+                        com.venera.desktop.sourcemanage.DesktopSourceRowUi(
+                            key = r.key,
+                            title = r.title,
+                            enabled = r.enabled,
+                        )
+                    }
+                },
+                writeSourceEnabled = { key, enabled ->
+                    val cur = sourceState.disabled().toMutableSet()
+                    if (enabled) cur.remove(key) else cur.add(key)
+                    sourceState.setDisabled(cur)
+                },
+
+                // ── 收藏 ──
+                //
+                // 等一个**非空**的值：`FavoriteDao.init { refresh() }` 是
+                // `scope.launch { _favoritesFlow.value = … }`，发起即返回，而初值是 `emptyList()`。
+                // 直接读 `.value` 会拿到空表 ⇒ 屏上把"还没读回来"说成"没有收藏"。
+                // 超时后回退 `.value`：库里确实空的时候不白等 2 秒。
+                readFavorites = {
+                    val dao = favorite()
+                    val list = kotlinx.coroutines.withTimeoutOrNull(2_000) {
+                        dao.favoritesFlow.first { it.isNotEmpty() }
+                    } ?: dao.favoritesFlow.value
+                    list to true
+                },
+                removeFavorite = { comicId -> favorite().removeFavorite(comicId) },
+
+                // ── 详情页那枚收藏钮（2026-10-21）──
+                //
+                // 这一格是**收藏格唯一的造数据入口**：库里 0 条收藏时，收藏屏永远量不出
+                // "还没读回来"与"确实没有"谁在说话 —— 没数据，那句分叉就只是文案。
+                //
+                // 查"收没收过"直接问库，**不走** `FavoriteDao.toggleFavorite`：那颗拿
+                // `_favoritesFlow.value` 判存在与否，而那颗流是 `scope.launch` 发起即返回的
+                // （`readFavorites` 踩过同一个坑）⇒ 冷启动头几下会把"还没读回来"当成"已收过"，
+                // 于是用户点「收藏」反而执行 DELETE —— 想收的结果是取消，屏上还念成"已收藏"。
+                // 这里交真查库的结果，由壳显式选 add / remove，那一格就绕过去了。
+                isFavoriteOf = { comicId -> favorite().isFavorite(comicId) },
+                addFavorite = { record -> favorite().addFavorite(record) },
+
+                // ── 搜索 ──
+                // 搜索也过同一把锁：它与探索/详情/阅读器共用那一颗引擎，
+                // 用户在搜索框敲回车时墙上/探索可能正在取数。
+                searchComics = { query ->
+                    val e = uiEngine
+                    if (e == null) {
+                        emptyList()
+                    } else {
+                        desktopEngineCall(e) {
+                            e.load(DESKTOP_EXPLORE_SOURCE)
+                            e.search(query).comics
+                        }.getOrDefault(emptyList())
+                    }
+                },
+                wallBlockAiOf = { gallerySettings.galleryBlockAi.value },
+                blockedByUserOf = { _, _, author, tags ->
+                    guard.rules.value.any { rule ->
+                        rule.isEnabled &&
+                            com.venera.compose.security.guard.GalleryBlockMatch.blocked(
+                                rule = rule,
+                                author = author,
+                                tags = tags,
+                            )
+                    }
+                },
+            )
+
+            if (shot != null) {
                     // 无人值守取证等 UI 落地后再截。这段**留在集成方**（本文件）而不是搬进
                     // `VeneraDesktopApp`：截图与"起来就退出"都是取证的形状，不是应用的形状 ——
                     // 塞进应用根的话，每个正式用户每一次启动都要多走一个 `shot != null` 的判断。
@@ -616,7 +702,6 @@ fun main(args: Array<String>) {
                         kotlin.system.exitProcess(0)
                     }
                 }
-            }
         }
     }
 }

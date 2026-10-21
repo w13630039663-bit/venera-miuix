@@ -307,3 +307,22 @@ data class CategoryComicsResult(
     val maxPage: Int? = null,
     val next: String? = null
 )
+
+/**
+ * 远程仓库索引条目（字段与官方 index.json 完全一致）。
+ *
+ * [url] 对应官方 index.json 中可选的 `url` 字段：允许某个源的脚本托管在
+ * 仓库目录之外。为空时按「与 index.json 同目录」拼接 fileName（官方同等逻辑）。
+ *
+ * 2026-10-20：从 `ComicSourceManager` 的内嵌 data class 搬到这里 —— 它只有 6 个
+ * String 字段、零平台耦合，而 `SourceSettingItem` / `SourceAccountInfo` 那一族
+ * 要它才能进两端共享的编译面。搬出来不等于改语义，`ComicSourceManager` 的行为一字未动。
+ */
+data class RepoIndexEntry(
+    val name: String,
+    val fileName: String,
+    val key: String,
+    val version: String,
+    val description: String? = null,
+    val url: String? = null,
+)

@@ -1,10 +1,10 @@
 package com.venera.compose.feature.sourcemanage
 
 /**
- * 仓库条目统一使用 [com.venera.compose.source.RepoIndexEntry]，
+ * 仓库条目统一使用 [com.venera.compose.source.model.RepoIndexEntry]，
  * 其字段与官方 `index.json` 逐字对齐（name / fileName / key / version / description）。
  */
-typealias RepoSourceItem = com.venera.compose.source.RepoIndexEntry
+typealias RepoSourceItem = com.venera.compose.source.model.RepoIndexEntry
 
 sealed class SourceSettingItem(
     open val key: String,

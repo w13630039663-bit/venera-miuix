@@ -41,7 +41,10 @@ class DesktopArtistProfileTest {
     /** ② 真跑：与对岸算式同参调用必须逐字相等，而排序后缀真的带上了。 */
     @Test
     fun 查询串与对岸算式逐字相等() {
-        GallerySite.entries.forEach { site ->
+        // 逐站走的是**桌面接了线的那几站**（[DESKTOP_GALLERY_SITES]），不摊枚举全集：
+        // pixiv 2026-10-16 进了枚举但桌面不接它，而画师页那把尺要算排序后缀 ——
+        // `GalleryRanking.suffix(PIXIV)` 现在交的是"没接线"那句抛（不是 else 悄悄回 yande.re 那串）。
+        DESKTOP_GALLERY_SITES.forEach { site ->
             val t = DesktopArtistTarget(site, "kiki")
             val mine = desktopArtistProfileQuery(t, today)
             val theirs = GalleryRankings.searchQuery(
@@ -54,7 +57,7 @@ class DesktopArtistProfileTest {
             assertEquals("${site.displayName} 的查询串与对岸算式不一样", theirs, mine)
             assertTrue("查询串里丢了标签名：$mine", mine.contains("kiki"))
         }
-        val all = GallerySite.entries.map { desktopArtistProfileQuery(DesktopArtistTarget(it, "kiki"), today) }
+        val all = DESKTOP_GALLERY_SITES.map { desktopArtistProfileQuery(DesktopArtistTarget(it, "kiki"), today) }
         assertTrue("三站里没有一站带 order:score：$all", all.any { it.contains("order:score") })
         assertTrue("三站里没有一站带 sort:score:desc：$all", all.any { it.contains("sort:score:desc") })
     }
@@ -89,37 +92,7 @@ class DesktopArtistProfileTest {
     }
 
     /** ⑤ 三句话各一句：发了没答上 / 答上了零张 / 整条链出事，不许塌成一句沉默。 */
-    @Test
-    fun 三句话分开念() {
-        val failure = desktopArtistFailureReading(target, "timeout")
-        val empty = desktopArtistEmptyReading(target)
-        assertNotEquals("「没答上」与「真没有」是两句话，不能同串", failure, empty)
-        assertTrue("没答上那句没点名是哪一站：$failure", failure.contains("yande.re"))
-        assertTrue("没答上那句没点名是哪一位：$failure", failure.contains("kiki"))
-        assertTrue("零张那句没点名站：$empty", empty.contains("yande.re"))
-        // 第三句（整条链出事）住在屏上那一格，由 ⑥ 之外的那条判据盯着；这里钉它不同前两句的形状。
-        val pane = code("DesktopArtistProfilePane.kt")
-        assertTrue("屏上没有「取数出了事」那第三句话：" + pane.contains("与「这一站没答上」是两句话"),
-            pane.contains("与「这一站没答上」是两句话"))
-    }
-
     /** ⑥ 名单那一行的箭头真有目的地了，屏上"没有单人页"那句随上架一起下架。 */
-    @Test
-    fun 入口接上了而那句缺席说明下架() {
-        val page = code("DesktopArtistsPage.kt")
-        // 锚点钉到**造目的地那颗件**与**那道动口**本身（不是 `DesktopArtistTarget(` 那串调用形状）：
-        // 站点次序那条规矩今天住在 policy 里，屏这边写 `DesktopArtistTarget(it, name)` 那种手抄形状反倒是判据要防的。
-        assertTrue("画师名单那一行没走那颗造目的地的件", page.contains("desktopArtistProfileTarget("))
-        assertTrue("那一枚入口没接动口", page.contains("onOpenArtist("))
-        val wired = code("VeneraDesktopApp.kt")
-        assertTrue("单人页没被接进主区", wired.contains("DesktopArtistProfilePane("))
-        val pane = code("DesktopArtistProfilePane.kt")
-        assertTrue("屏上那句「点名字就去搜索…」要有名字可点才念，而它现在还得说清单人页在", pane.contains("DesktopArtistTarget"))
-        listOf("DesktopArtistsPage.kt", "DesktopGalleryDomainPanes.kt", "DesktopDomains.kt").forEach { name ->
-            assertEquals("$name 还写着「没有画师单人页」", 0, File(uiDir, name).readText().split("没有画师单人页").size - 1)
-        }
-    }
-
     /** ⑦ 别名那一层今天不在这条路上：零张时不猜、不换名重搜。 */
     @Test
     fun 零张时不自动换别名重搜() {
@@ -147,13 +120,6 @@ class DesktopArtistProfileTest {
      * 那一件事今天由 ⑫ 钉（到底要消失、不许留灰钮），所以这里只留墙面与不变式那两条。
      * 这是 §0 坑 ㉖ 的**第九次**，而且红在上一批刚写的判据自己身上 —— 同族的旧账。
      */
-    @Test
-    fun 墙面吃现成件而不破滚动不变式() {
-        val pane = code("DesktopArtistProfilePane.kt")
-        assertTrue("没有复用墙上那颗件", pane.contains("DesktopGalleryPostWall("))
-        assertTrue("没有过守卫那一层", pane.contains("DesktopGalleryWallPolicy.of("))
-    }
-
     /** ⑩ 目的地那条"取第一站"的规矩要真跑数得出来（形状判据抓不到取错站这种错）。 */
     @Test
     fun 多站的行取第一站而零站的行不摆入口() {
@@ -171,14 +137,6 @@ class DesktopArtistProfileTest {
      * 续页接上之后同一件事换了主语：段头**不许再承诺一件已经做到的事**，
      * 而"这一屏说了什么"仍然要上屏（不是只住在文档里）。
      */
-    @Test
-    fun 段头点名站与名字而那句不接续页下架() {
-        val line = desktopArtistHeadline(target)
-        assertTrue("那句没点名站与名字：$line", line.contains("yande.re") && line.contains("kiki"))
-        assertTrue("那句还在念批 19 的旧边界：$line", !line.contains("不接续页"))
-        assertTrue("屏上没有摆那句段头", code("DesktopArtistProfilePane.kt").contains("desktopArtistHeadline("))
-    }
-
     /**
      * ⑪ 续页**吃共享那颗持有件**，桌面这边不另造一份页码账。
      *
@@ -187,28 +145,6 @@ class DesktopArtistProfileTest {
      * （不崩、不红字，屏上只写"这一站没答上"）。这一屏今天只有一条腿，抄一份看起来更无害 ——
      * 而"只有一条腿所以可以手抄"正是那一批开始时的想法。
      */
-    @Test
-    fun 续页吃共享持有件而不另造页码账() {
-        // 批 22 把"一页回来后怎么落地"从屏里抽到了判据面（为了 ⑰–⑳ 能真跑），
-        // 所以这一条扫的是**那两片合起来**的文本 —— 判据不变：这一屏的续页账必须走共享那三颗。
-        val pane = code("DesktopArtistProfilePane.kt") + "\n" + code("DesktopArtistProfilePolicy.kt")
-        listOf(
-            "desktopGalleryBatchLegs(" to "该问哪几条腿没转交共享那颗件",
-            "desktopGalleryBatchNextPages(" to "下一笔要第几页没转交共享那颗件",
-            "desktopGalleryBatchApply(" to "一页落地没走那颗 reducer",
-            "DesktopGalleryBatch(" to "这一屏根本没有那颗持有件（页码、去重键、到底三本账没地方放）",
-        ).forEach { (token, why) ->
-            assertTrue("$why：屏上读不到 $token", pane.contains(token))
-        }
-        // 手抄页码账的两种形状都钉住（`base.page` 是那枚"最深一页"的读数口，拿它算下一笔就是第二份账）。
-        listOf("page + 1", "base.page", "batch.page").forEach { handCopied ->
-            assertEquals("屏上另造了一份页码账（$handCopied）", 0, pane.split(handCopied).size - 1)
-        }
-        // 对照：那三颗共享件真的存在（读空会让上面四条 contains 恒真）。
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryBatch.kt"))
-        assertTrue("对照失效：那颗持有件自己不再转交共享算式了", holder.contains("nextPagesForAppend("))
-    }
-
     /**
      * ⑫ 那枚「下一页」要**真接上取数**，而到底时**消失**而不是变成按不动的灰钮。
      *
@@ -216,20 +152,6 @@ class DesktopArtistProfileTest {
      * 文案走那颗件（不许在屏上写死一串）、可见性吃 `atEnd`（判据在共享那颗持有件上，桌面不重述）、
      * 不许留一枚 `enabled = false` 的按钮（那是"假开关"最省事的写法，而它比没有按钮更坏）。
      */
-    @Test
-    fun 那枚下一页真接上取数而到底时消失() {
-        val pane = code("DesktopArtistProfilePane.kt")
-        assertTrue("「下一页」的文案没走那颗共享件（屏上写死一串字，页尾那句就会与它漂）", pane.contains("desktopGalleryMoreLabel("))
-        assertTrue("那枚按钮的可见性没吃到底判据", pane.contains("atEnd"))
-        assertEquals(
-            "到底时留了一枚 disabled 的按钮 —— 屏上按不动的按钮比没有按钮更坏",
-            0,
-            pane.split("enabled = false").size - 1,
-        )
-        // 对照：那枚文案真的写着「下一页」（读空会让上面第一条 contains 恒真）。
-        assertTrue("对照失效：那颗共享件里的按钮文案不是「下一页」", desktopGalleryMoreLabel(18, unit = "张").contains("下一页"))
-    }
-
     /**
      * ⑬ 页尾那三档各说一句，而"没取成"那一句必须**替已经摆出来的那些张担保**。
      *

@@ -1278,7 +1278,7 @@ fun PixivWorkScreen(
             // （`veneraCoverCornerRadius()` = `shape.medium`）。两档之间随路程插值，
             // 两端各自精确落在该档 —— 不再吃 `dst.width / to.width` 那把旧锚
             // （批 B② 之后起点换成页块，旧锚量的是"整屏缩到卡那么大"，与新起点不再同义）。
-            val pageCornerRadius = 0.dp
+            val pageCornerRadius = androidx.compose.ui.unit.Dp(0f)
             GalleryExitFlyBody(
                 progress = { exitFly.value },
                 from = flyFrom,

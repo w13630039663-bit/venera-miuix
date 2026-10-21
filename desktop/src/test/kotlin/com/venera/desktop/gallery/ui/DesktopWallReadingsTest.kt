@@ -135,41 +135,12 @@ class DesktopWallReadingsTest {
      * 三面墙的「进屏 N 张」接在标题后面 ⇒ 用带前导分隔符的那一档；最新那一屏是独立一行 ⇒ 用不带的那一档。
      * 用错的读数没有测试可跑（差的就是屏上那一枚「 · 」），所以这里按"哪一处该用哪一颗"一对一钉死。
      */
-    @Test
-    fun 四处调用点各用对那一档() {
-        val expected = listOf(
-            "DesktopDailyPane.kt" to "desktopWallReadingLine(",
-            "DesktopGalleryFavoritesPane.kt" to "desktopWallReadingLine(",
-            "DesktopGallerySearchPane.kt" to "desktopWallReadingLine(",
-            "DesktopLatestPane.kt" to "desktopWallReading(",
-        )
-        expected.forEach { (name, call) ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("$name 没走「$call」那一档", code.contains(call))
-        }
-        val exhausted = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        assertTrue("页尾那句没走那颗件", exhausted.contains("desktopExhaustedReading("))
-    }
-
     /**
      * ⑩′ 单位词各点自己给：三面墙数的是**摆上屏的图**（张），最新那一屏数的是**取回的条目**（条）。
      *
      * 这一条钉的是值而不是形状 —— 谁把某一处顺手改成"张"，屏上那句话就换了主语，
      * 而那种改动在纯函数的判据里量不出来（①′ 只证明那颗件吃参数）。
      */
-    @Test
-    fun 三面墙数张而最新那一屏数条() {
-        mapOf(
-            "DesktopDailyPane.kt" to "unit = \"张\"",
-            "DesktopGallerySearchPane.kt" to "unit = \"张\"",
-            "DesktopGalleryFavoritesPane.kt" to "unit = \"张\"",
-            "DesktopLatestPane.kt" to "unit = \"条\"",
-        ).forEach { (name, unit) ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("$name 的单位档不是「$unit」", code.contains(unit))
-        }
-    }
-
     /** ⑪ 分隔符口径只有一处字面量（两处：段与段、站与站），别处再写一份就会漂。 */
     @Test
     fun 两枚分隔符全仓只许那颗件写一次() {

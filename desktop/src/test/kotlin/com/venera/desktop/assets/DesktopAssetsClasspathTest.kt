@@ -89,15 +89,20 @@ class DesktopAssetsClasspathTest {
             "/venera-init.js",
             "/venera-shim.js",
             "/gallery_tags_79415.sqlite",   // 三处译名消费点的数据源（DesktopGalleryTagDictionary 真在读）
+            "/source_content_warning.json",  // 源级内容分级预设表（DesktopSourceContentPresets 真在读，2026-10-21）
         )) {
             assertNotNull("包内应有 $hit", javaClass.getResource(hit))
         }
         // 这些是 app/src/main/assets 里的资源，桌面链路一行都不读 ⇒ 不许进包
+        //
+        // ⚠️ `source_content_warning.json` 已从这张表里**移出**（2026-10-21）。
+        // 它原本在这里，理由是「桌面侧今天一行都不读它」——那句话当时是真的。
+        // 安全评审 C 发现桌面因此少了一整道内容判据（历史卡无 tags ⇒ 永远判不出成人向），
+        // 现在 `DesktopSourceContentPresets` 真在读它，所以改成**必须有**。
         for (miss in listOf(
             "/opencc.txt",              // 唯一消费点在 data/tags/ChineseVariantConverter（不在桌面编译面）
             "/tags.json",
             "/tags_tw.json",
-            "/source_content_warning.json",
             "/licenses",
             "/sources/index.json",      // 源清单是枚举出来的，不是读这份索引
         )) {

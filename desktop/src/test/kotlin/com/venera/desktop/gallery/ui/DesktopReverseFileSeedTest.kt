@@ -25,72 +25,9 @@ import java.io.File
 class DesktopReverseFileSeedTest {
 
     /** ① 三跳一处不缺：构建脚本 → 集成方（读 + 出声 + 递进应用根）→ 消费点。 */
-    @Test
-    fun 三跳一处不缺() {
-        val gradle = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        assertTrue("`app` 任务没读 gradleProperty(\"reverseFile\")", gradle.contains("""gradleProperty("reverseFile")"""))
-        assertTrue("那一枚没被拼进 args（值传不下去，判读层再对也接不到）", gradle.contains("\"--reverse-file=\$it\""))
-        assertTrue("对照组失效：这份构建脚本里没有 :desktop:app 那颗粒任务", gradle.contains("""tasks.register<JavaExec>("app")"""))
-
-        val main = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"))
-        assertTrue("集成方没读 --reverse-file", main.contains("""ForensicFlags.reverseFile(args.asList())"""))
-        assertTrue("集成方没让那一枚落空时出声", main.contains("ForensicFlags.reverseFileNote("))
-        assertTrue(
-            "集成方没把它递进应用根（整串都得钉：只数前缀的话恒传 null 也绿 —— 坑 ㉔）",
-            main.contains("startReverseFile = reverseFile"),
-        )
-        assertTrue("对照组失效：`--reverse` 那一跳不在这颗文件里了", main.contains("startReverse = reverse == true"))
-
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("应用根没收它", app.contains("startReverseFile: String?"))
-        assertTrue("应用根没把它递给那一片 body", app.contains("seedLocalReverse = startReverseFile"))
-        assertTrue("那一格没从构造点吃到它（覆盖层读不到 provider，批 36 那一课）",
-            app.contains("DesktopGallerySearchBody(row, ports, searchSeed, seedLocalReverse)"))
-        assertTrue("对照组失效：`--reverse` 那一跳不在应用根里了", app.contains("seedReverse = startReverse"))
-    }
-
     /** ② 中间两跳不许断：域 body 与搜索那一屏各把这一枚往下递一次。 */
-    @Test
-    fun 中间两跳各递一次() {
-        val panes = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDomainPanes.kt"))
-        assertTrue("域 body 没收这一枚", panes.contains("seedLocalReverse: String?"))
-        assertTrue("域 body 没递给搜索那一屏", panes.contains("DesktopGallerySearchPane(ports, searchSeed, seedLocalReverse)"))
-        val paneFile = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopGallerySearchPane.kt")
-        val pane = DesktopSourceTree.codeText(paneFile)
-        assertTrue("搜索那一屏没收这一枚", pane.contains("seedLocalReverse: String?"))
-        assertEquals("入口那一行吃到的种子不止一处", 1, DesktopSourceTree.codeOccurrences(paneFile, "seedPath = seedLocalReverse"))
-    }
-
     /** ③ 种子那条路**不许去开文件框**（开了就是无人值守时挂死在模态框上）。 */
-    @Test
-    fun 种子不去开文件框() {
-        val section = DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt")
-        val body = DesktopSourceTree.codeText(section)
-        assertTrue("种子没落到那枚动作上", body.contains("fireLocalReverse(seedPath)"))
-        val seedLine = DesktopSourceTree.codeLinesOf(section).first { it.contains("fireLocalReverse(seedPath)") }
-        assertTrue("种子那一格自己去开文件框了：" + seedLine, !seedLine.contains("desktopPickLocalImage("))
-        assertEquals("文件框那一枚只许按钮走得到", 1, DesktopSourceTree.codeOccurrences(section, "desktopPickLocalImage("))
-        // 对照组：那颗文件真在被扫（读空会让上面三条恒真）。
-        assertTrue("对照组失效：那颗文件里根本没有那枚入口的名字", body.contains("DESKTOP_LOCAL_REVERSE_ENTRY_LABEL"))
-    }
-
     /** ④ 那枚种子走**必填参数**，不许又做成覆盖层读得到的局部槽（同一颗坑第三次的那一条）。 */
-    @Test
-    fun 那颗种子走必填参数() {
-        val section = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt"))
-        assertTrue("种子没做成必填参数（漏传不报错的形状不许有）", section.contains("seedPath: String?"))
-        assertEquals(
-            "为这一族新造了一枚局部槽 —— 覆盖层永远读到默认值",
-            0,
-            DesktopSourceTree.codeOccurrences(DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt"), "compositionLocalOf"),
-        )
-        // 对照组：既有的那两枚局部槽仍在原处（读空了会让上面第二条恒真）。
-        assertTrue(
-            "对照组失效：那颗文件里根本没有形参这一族（读错文件了）",
-            section.contains("ports: GalleryPorts"),
-        )
-    }
-
     /** ⑤ 判读层那颗纯函数：没给 / 给了空串 / 给了路径而域不对，三档各一句。 */
     @Test
     fun 判读三档各归各() {

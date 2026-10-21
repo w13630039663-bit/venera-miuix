@@ -1,5 +1,6 @@
 package com.venera.compose.components.venera
 
+import com.venera.compose.components.LocalUxPlatformServices
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -20,12 +21,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
-import coil3.imageLoader
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
 
@@ -95,10 +94,14 @@ fun VeneraCover(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val tokens = VeneraTokens
-    val context = LocalContext.current
     val shape = RoundedCornerShape(veneraCoverCornerRadius())
     val isMasked = mask == VeneraCoverMask.Masked
-    val loader = imageLoader ?: remember(context) { context.imageLoader }
+    // 2026-10-20（写法 A）：原句是 `remember(context) { context.imageLoader }` ——
+    // Coil 的 `Context` 扩展（Android 取法）。改成平台服务报"本平台那颗 ImageLoader"：
+    // Android 侧仍是同一颗实例（`context.imageLoader`），桌面侧返回它自己那颗。
+    // 显式传进来的 [imageLoader] 优先级不变（逐字保留 `?:` 的短路顺序）。
+    // 平台报"本平台那颗 ImageLoader"；null = 没配过 ⇒ 保留 AsyncImage 的默认单例行为。
+    val loader = imageLoader ?: LocalUxPlatformServices.current.imageLoader()
 
     // 是否有过成功加载：用于区分「首次加载」与「加载失败」。
     var hadError by remember(url) { mutableStateOf(false) }
@@ -123,17 +126,33 @@ fun VeneraCover(
             VeneraCoverShimmer(Modifier.fillMaxSize())
         }
         if (url.isNotBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = contentDescription,
-                imageLoader = loader,
-                contentScale = ContentScale.Crop,
-                onSuccess = { loaded = true },
-                onError = { hadError = true },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(if (isMasked) Modifier.blur(tokens.spacing.space10) else Modifier),
-            )
+            // 两条分支只为让"不指定 loader"这件事成立：`AsyncImage` 的 `imageLoader` 形参
+            // 是非空型（缺省值就是平台单例），没有"传 null 让它自己挑"的重载。
+            // 平台服务返回 null ⇒ 走缺省那一支，取到的仍是 Coil 的进程级单例（原行为）。
+            if (loader != null) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = contentDescription,
+                    imageLoader = loader,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { loaded = true },
+                    onError = { hadError = true },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (isMasked) Modifier.blur(tokens.spacing.space10) else Modifier),
+                )
+            } else {
+                AsyncImage(
+                    model = url,
+                    contentDescription = contentDescription,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { loaded = true },
+                    onError = { hadError = true },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (isMasked) Modifier.blur(tokens.spacing.space10) else Modifier),
+                )
+            }
         }
         if (isMasked) {
             // 暗色磨砂遮罩：不依赖 blur 生效，保证任何设备上打码视觉 100% 可见。

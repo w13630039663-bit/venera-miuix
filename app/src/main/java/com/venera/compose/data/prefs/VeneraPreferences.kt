@@ -1,8 +1,14 @@
 package com.venera.compose.data.prefs
 
 import android.content.Context
+import com.venera.compose.data.platform.AppearanceStyle
 import com.venera.compose.data.platform.KeyValueStore
+import com.venera.compose.data.platform.NavigationBarStyle
 import com.venera.compose.data.platform.PreferenceKeys
+import com.venera.compose.data.platform.SurfaceMaterial
+import com.venera.compose.data.platform.TagTranslationMode
+import com.venera.compose.data.platform.ThemeColorSource
+import com.venera.compose.data.platform.ThemeMode
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
@@ -17,47 +23,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class ThemeMode {
-    SYSTEM, LIGHT, DARK
-}
-
-enum class AppearanceStyle {
-    MIUIX, MD3
-}
-
-enum class NavigationBarStyle {
-    MD3, LIQUID_GLASS
-}
-
-/**
- * 内容层的表面材质 —— 与 [AppearanceStyle]（色板/形状/字号）、[NavigationBarStyle]（只管底栏）
- * **正交的第三轴**（2026-09-29 拍板）。
- *
- * 为什么不塞进 `AppearanceStyle`：那一枚同时驱动色板派生、形状阶梯、字号阶梯三件事
- * （见 `feature/VeneraTheme.kt:63-98`），把材质并进去就等于强迫「开玻璃必然改色板与圆角」，
- * 而用户要的是材质能单独开关；分开还保得住「MD3 + 玻璃」与「Miuix + 玻璃」两种组合都成立。
- *
- * 默认 [SOLID] —— 这一条不是保守，是**零回归的判据本身**：默认关闭 ⇒ 升级后所有人看到的
- * 东西与今天逐像素相同，测试也钉这一点（`SurfaceMaterialPolicyTest.默认档是实色`）。
- */
-enum class SurfaceMaterial {
-    SOLID, LIQUID_GLASS
-}
-
-/**
- * 色板来源。仅在 [AppearanceStyle.MD3] 下有意义 —— Miuix 风格用的是它自己设计好的固定色板。
- *
- * WALLPAPER = 系统壁纸动态取色（`DynamicColors`，Android 12+）；
- * CUSTOM = 用户选定的种子色，经 MaterialKolor 展开成整套 MD3 色板。
- */
-enum class ThemeColorSource {
-    WALLPAPER, CUSTOM
-}
-
-/** 标签译文显示模式。SYSTEM = 由系统语言同时决定「译不译」与「译成简还是繁」。 */
-enum class TagTranslationMode {
-    SYSTEM, SIMPLIFIED, TRADITIONAL, OFF
-}
+// 2026-10-20：六枚枚举已搬到 `data/platform/PreferenceEnums.kt`（那颗目录本来就共享给桌面）。
+// 搬家的理由是「桌面要复用大屏 UI ⇒ 得读这几枚枚举 ⇒ 而它们零 Android 依赖，不该被
+// `getInstance(Context)` 这颗 Android 入口连坐」。语义一字未改，见那颗文件的头注。
 
 /**
  * 全应用偏好设置。

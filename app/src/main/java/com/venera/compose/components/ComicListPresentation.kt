@@ -1,10 +1,8 @@
 package com.venera.compose.components
 
-import android.content.SharedPreferences
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -12,8 +10,6 @@ import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraTagChip
-import com.venera.compose.data.prefs.ComicListPreferences
-import com.venera.compose.feature.searchVisibleTags
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -21,25 +17,26 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Shared by all lists. Writes immediately; preference callbacks keep mounted screens in sync. */
 @Composable
 fun rememberComicListDisplayMode(): MutableState<String> {
-    val context = LocalContext.current.applicationContext
-    val preferences = remember(context) { ComicListPreferences(context) }
-    val current = remember(preferences) { mutableStateOf(preferences.displayMode) }
-    DisposableEffect(preferences) {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-            current.value = preferences.displayMode
-        }
-        preferences.registerListener(listener)
-        current.value = preferences.displayMode
-        onDispose { preferences.unregisterListener(listener) }
+    // 2026-10-20（写法 A）：存取从 `ComicListPreferences(context)` 换成平台服务。
+    // 原实现直接 new 那颗类（吃 `android.content.Context` + `SharedPreferences`），
+    // 而本文件住在 `components/` —— 那一层要上桌面，就不能有 Android import。
+    // 读写的**语义与键名一字未改**：Android 实现逐字转发给 `ComicListPreferences`
+    // （见 `AndroidUxPlatformServices`）。
+    val ux = LocalUxPlatformServices.current
+    val current = remember(ux) { mutableStateOf(ux.readComicDisplayMode()) }
+    DisposableEffect(ux) {
+        val cancel = ux.observeComicDisplayMode { current.value = ux.readComicDisplayMode() }
+        current.value = ux.readComicDisplayMode()
+        onDispose { cancel() }
     }
-    return remember(preferences, current) {
+    return remember(ux, current) {
         object : MutableState<String> {
             override var value: String
                 get() = current.value
                 set(value) {
                     val normalized = normalizeComicDisplayMode(value)
                     current.value = normalized
-                    preferences.displayMode = normalized
+                    ux.writeComicDisplayMode(normalized)
                 }
             override fun component1(): String = value
             override fun component2(): (String) -> Unit = { value = it }
@@ -49,15 +46,14 @@ fun rememberComicListDisplayMode(): MutableState<String> {
 
 /** Observe real source metrics without querying a source from a card or changing favorite schemas. */
 @Composable
-fun rememberCachedComicMetrics(sourceKey: String, comicId: String): State<com.venera.compose.data.prefs.CachedComicMetrics> {
-    val context = LocalContext.current.applicationContext
-    val cache = remember(context) { com.venera.compose.data.prefs.ComicMetricsCache(context) }
-    val state = remember(cache, sourceKey, comicId) { mutableStateOf(cache.get(sourceKey, comicId)) }
-    DisposableEffect(cache, sourceKey, comicId) {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> state.value = cache.get(sourceKey, comicId) }
-        cache.registerListener(listener)
-        state.value = cache.get(sourceKey, comicId)
-        onDispose { cache.unregisterListener(listener) }
+fun rememberCachedComicMetrics(sourceKey: String, comicId: String): State<CachedComicMetricsSnapshot> {
+    // 同上一颗：`ComicMetricsCache(context)` 也是 Android 面，改走平台服务转发。
+    val ux = LocalUxPlatformServices.current
+    val state = remember(ux, sourceKey, comicId) { mutableStateOf(ux.cachedComicMetrics(sourceKey, comicId)) }
+    DisposableEffect(ux, sourceKey, comicId) {
+        val cancel = ux.observeComicMetrics { state.value = ux.cachedComicMetrics(sourceKey, comicId) }
+        state.value = ux.cachedComicMetrics(sourceKey, comicId)
+        onDispose { cancel() }
     }
     return state
 }

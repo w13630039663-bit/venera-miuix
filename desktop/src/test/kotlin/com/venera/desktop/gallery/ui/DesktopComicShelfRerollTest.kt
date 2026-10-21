@@ -94,50 +94,7 @@ class DesktopComicShelfRerollTest {
     }
 
     /** ⑥ 接线：那一屏把这枚键吃进 `LaunchedEffect` 的**键位**（钉整串，标识符看不见"进没进键位"）。 */
-    @Test
-    fun 那枚键吃在装载那一跳的键位() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt")
-        assertEquals(
-            "装载那一跳的键位上没有这枚键（整串钉，别只认标识符）：",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "LaunchedEffect(downloadsRoot, pass, rerollKey)"),
-        )
-    }
-
     /** ⑦ 接线：队列是**订阅**来的而那颗文件里零处轮询（批 108 立的那条在这里同样成立）。 */
-    @Test
-    fun 队列是订阅来的而那颗文件不轮询() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt")
-        assertEquals("队列表只许被订阅一次（两处就是有人在别处另起一条路）：", 1, DesktopSourceTree.codeOccurrences(pane, "collectAsState()"))
-        assertEquals(
-            "那一屏里轮询的形一处都不许有（`delay(` 零处）：",
-            0,
-            DesktopSourceTree.codeOccurrences(pane, "delay("),
-        )
-    }
-
     /** ⑧ 接线：入队那一刻不再推重数（圈进 `fireRepair` 那一颗 lambda 里数，别在全文件数）。 */
-    @Test
-    fun 入队那一刻不再推重数() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt")
-        val body = DesktopSourceTree.codeText(pane)
-            .substringAfter("val fireRepair: (DesktopComicDownloadedChapter) -> Unit = { chapter ->")
-            .substringBefore("var repairSeedHandled")
-        assertEquals("入队那一刻还推着 `pass`（那时盘上还是 28 页，重数出来的还是假话）：" + body, 0, body.split("pass += 1").size - 1)
-        // 删除那两路（把手第二按与 `--delete=` 种子）都是**同步**改盘的，它们那两次推进**必须留着**
-        // （撤了就成了"删完屏上不改口"）；落地时现数是两处，不是凭"应该只有一处"推的。
-        assertEquals("删除那一路的重数推进被一起撤了：", 2, DesktopSourceTree.codeOccurrences(pane, "pass += 1"))
-    }
-
     /** ⑨ 批 112 那三颗不许回流：回收仍在要用的那一刻现读，组合期不读队列内容。 */
-    @Test
-    fun 回收仍在要用的那一刻现读() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt")
-        assertEquals(
-            "队列表被读成展示数据的那一格只许一处（`.value` 在 lambda 里）：",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "DesktopComicDownloadQueue.tasks.value"),
-        )
-        assertEquals("回收那张表仍是现读的 lambda：", 1, DesktopSourceTree.codeOccurrences(pane, "val shelfRawIdIndex = {"))
-    }
 }

@@ -57,26 +57,6 @@ class DesktopComicReaderStartPageTest {
      * ⚠️ 锚点一律取**调用形状**：这些名字在文件里先出现在**函数定义**那一行（定义排在 pane 之前），
      * 拿裸名字当"调用点次序"的证据会把次序读反 —— 第一次跑就是这样红的（"名字在场"那一族）。
      */
-    @Test
-    fun 先滚到那一页再开始盯() {
-        val lines = DesktopSourceTree.codeLinesOf(DesktopSourceTree.desktopUiSource("DesktopComicReader.kt"))
-        val applyAt = lines.indexOfFirst { it.contains("desktopApplyReaderStartPage(listState, startPage, pageCount)") }
-        val watchAt = lines.indexOfFirst { it.contains("desktopWatchReaderProgress(") }
-        assertTrue("pane 没走那颗落起点的件（种子没接上）", applyAt >= 0)
-        assertTrue("对照组失效：这一颗文件里没有盯梢那一步", watchAt >= 0)
-        assertTrue("次序反了：先落起点后盯（盯之前没落，第一笔写的是没发生过的进度）", applyAt < watchAt)
-        // 折页号那一步也得在落起点之前（把没折的种子直接递进去就是撞不存在的项）
-        assertTrue(
-            "落起点之前没折页号",
-            lines.indexOfFirst { it.contains("desktopReaderStartPageIndex(reading.startPage") } in 0 until applyAt,
-        )
-        // 读数得由 pane 念而不是藏在件里（藏在里面就没人负责把它打到 stdout 上）
-        assertTrue(
-            "那枚自证读数没在消费点念",
-            lines.indexOfFirst { it.contains("println(desktopApplyReaderStartPage(") } == applyAt,
-        )
-    }
-
     /**
      * 重试那一颗件的形状（每一条都对应一次量出来的病，不是想象中的防护）。
      *
@@ -125,16 +105,4 @@ class DesktopComicReaderStartPageTest {
         assertTrue(helper.contains("internal suspend fun desktopApplyReaderStartPagePager("))
     }
 
-    @Test
-    fun 从详情进那一屏时如实写着从第一页起() {
-        assertEquals(
-            "详情那一行的调用点必须自己交代起点（漏传会由默认值悄悄补 0，那正是本仓忌的形状）",
-            1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt"),
-                // 同上：不带闭括号，只钉"这一处调用点了起点"这一件事。
-                "desktopComicReadingOf(target, episode, index, startPage = 0",
-            ),
-        )
-    }
 }

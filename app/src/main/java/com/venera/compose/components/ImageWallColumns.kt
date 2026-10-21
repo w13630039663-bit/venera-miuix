@@ -1,8 +1,6 @@
 package com.venera.compose.components
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.unit.dp
 
 /**
  * 图片墙的自适应列数 —— 四颗页共用的一次调用。
@@ -25,6 +23,6 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun rememberImageWallColumnCount(): Int {
-    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val windowWidth = LocalWindowWidthDp
     return imageWallColumnCount(windowWidth, wideScreenLayoutMode(windowWidth), imageWallHorizontalPadding())
 }

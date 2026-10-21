@@ -1,5 +1,6 @@
 package com.venera.compose.feature.settings
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -35,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.contentMaxWidthFor
@@ -305,7 +305,7 @@ internal fun SettingsPage(
 
     // 大屏内容收口宽度；手机档为 null（= 不收口，逐像素走旧几何）。
     val contentMaxWidth = contentMaxWidthFor(
-        wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+        wideScreenLayoutMode(LocalWindowWidthDp),
     )
 
     // ── hero 页的滚动契约：与 SettingsHome 同一套（2026-10-02 第五轮）──

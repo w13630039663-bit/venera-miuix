@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -44,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -258,7 +258,7 @@ internal fun GalleryArtistProfileScreen(
     val aliasLine = GalleryArtistProfile.aliasLine(credits.canonicalName, credits.aliasReadout)
     // 宽屏档与内容收口宽度（2026-10-12 平板排查）：手机档 contentMaxWidth = null ⇒
     // 下面各处 `.then(...)` 都不挂 Modifier，本页手机观感逐像素不变。
-    val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
+    val layoutMode = wideScreenLayoutMode(LocalWindowWidthDp)
     val wideScreen = layoutMode != WideScreenLayoutMode.Compact
     val contentMaxWidth = contentMaxWidthFor(layoutMode)
     // 「热门作品」那一排的列数：**用墙上那把尺子**（与主墙 / 日榜二级页 / 画廊收藏同一颗

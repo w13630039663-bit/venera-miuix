@@ -25,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import com.venera.compose.components.VeneraAmbientBackground
-import com.venera.compose.data.prefs.AppearanceStyle
-import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.data.platform.AppearanceStyle
+import com.venera.compose.data.platform.SurfaceMaterial
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraPreviewTheme
 import com.venera.compose.ui.tokens.VeneraTokens

@@ -15,6 +15,7 @@
 // 关键约束（官方文档《Backdrop effects》）：效果顺序必须是 color filter ⇒ blur ⇒ lens。
 package com.venera.compose.components.backdrop
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
@@ -44,7 +45,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -132,7 +132,7 @@ fun VeneraLiquidGlassNavBar(
     // 必须用 requiredWidth 而不是 widthIn：宿主传进来的 modifier 以 .fillMaxWidth() 结尾，
     // 它把子约束钉成 min == max == 可用宽，widthIn 会被这层 min 约束顶回去（收口无效）；
     // requiredWidth 走 fixedWidth，直接改写约束，且父级仍按实测宽度做 BottomCenter 居中。
-    val capScreenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val capScreenWidth = LocalWindowWidthDp
     val cap = wideScreenChromeMaxWidth(capScreenWidth)
         ?.let { Modifier.requiredWidth(it) }
         ?: Modifier

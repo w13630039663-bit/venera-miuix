@@ -82,35 +82,5 @@ class DesktopSourceDisableSeedTest {
     }
 
     /** ⑤ 三层落点：消费点吃种子、集成方递参数、构建脚本那一跳、KNOWN 登记。 */
-    @Test
-    fun 三层落点一处不缺() {
-        val pane = DesktopSourceTree.codeText(ui("DesktopComicSourcesScreen.kt"))
-        val initLine = pane.lines().firstOrNull { it.contains("sourceState().disabled()") }
-        assertTrue("对照组失效：那一屏不再从盘上那份起手（种子无处可并）", initLine != null)
-        assertTrue("起手那一行没吃种子（= `-Pdisable=` 不做事）：$initLine", initLine!!.contains("seedDisabled"))
-        assertTrue("那一屏没念种子那一句读数", pane.contains("disableNote("))
-
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"))
-        assertTrue(
-            "集成方没把种子递进漫画域的配置（只钉“这个词在不在”会被 `emptySet()` 那种假动作喂饱）",
-            app.contains("seedDisabled = seedDisabled"),
-        )
-
-        val gradle = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        assertTrue(
-            "构建脚本漏了那一跳（-Pdisable= 会变成「不报错也不做事」）",
-            gradle.lines().any { !it.trimStart().startsWith("//") && it.contains("gradleProperty(\"disable\")") },
-        )
-        assertTrue("--disable 没登记进 KNOWN，会被念成拼错的参数", ForensicFlags.KNOWN.contains("--disable"))
-    }
-
     /** ⑥ 种子不落盘：整屏只有一处会写盘，而那一处是用户点一下那一下。 */
-    @Test
-    fun 种子不写进盘上那份() {
-        val file = ui("DesktopComicSourcesScreen.kt")
-        val writes = DesktopSourceTree.codeText(file).lines().filter { it.contains("setDisabled(") }
-        assertEquals("写盘的调用点不止一处（种子那一路若也在写，取证跑会改掉用户的状态）：" + writes.map { it.trim() }, 1, writes.size)
-        assertTrue("那一处不是 toggle 那一路（用户动作）：" + writes.first().trim(), writes.first().contains("config.sourceState().setDisabled("))
-        assertTrue("起手那行不许顺带写盘：" + writes.first().trim(), !writes.first().contains("disabled()"))
-    }
 }

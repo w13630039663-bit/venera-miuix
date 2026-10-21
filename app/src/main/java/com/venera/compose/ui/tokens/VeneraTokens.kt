@@ -10,7 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.platform.AppearanceStyle
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**

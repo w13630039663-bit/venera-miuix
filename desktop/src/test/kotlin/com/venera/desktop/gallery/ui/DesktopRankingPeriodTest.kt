@@ -124,42 +124,11 @@ class DesktopRankingPeriodTest {
     }
 
     /** ④ 换期 = 换一轮：锚点必须进那两枚 key，否则上一期的账会混进这一期。 */
-    @Test
-    fun `④ 换期要重开一轮`() {
-        val pane = code("DesktopRankingPane.kt")
-        assertTrue(
-            "取数 effect 的 key 没带锚点（换期不会重取）",
-            pane.contains("LaunchedEffect(ports, hasGelbooru, landing, anchor, round)"),
-        )
-        assertTrue(
-            "状态那格的 key 没带锚点（换期还留着上一期的墙）",
-            pane.contains("rememberSaveable(ports, hasGelbooru, landing, anchor, round)"),
-        )
-        // 对照：锚点真的进了查询串（不是一枚只挂在按钮上的装饰）。
-        assertTrue("发出去的串没吃锚点", pane.contains("desktopRankingQuery(it, landing, anchor, todayUtc)"))
-    }
-
     /**
      * ⑤ 三枚按钮只在开那一层时摆；不开时要念出为什么少这一层（不许静默少一层）。
      *
      * "没摆"与"摆不了而说清为什么"是两句话 —— 前者用户会以为坏了。
      */
-    @Test
-    fun `⑤ 不开那一层也要说清为什么少`() {
-        val pane = code("DesktopRankingPane.kt")
-        listOf(
-            "desktopRankingHistoryAllowed(" to "这一屏没问过共享那两条判",
-            "上一期" to "少了那一枚按钮",
-            "下一期" to "少了那一枚按钮",
-            "回到本期" to "少了那一枚按钮",
-            "回看历史期" to "不开这一层时那句为什么没说（屏上得念出这是判过的，不是漏了）",
-        ).forEach { (token, why) -> assertTrue("$why：屏上读不到 $token", pane.contains(token)) }
-        // 对照：三枚按钮都在那一层为真时才摆（负向：不许无条件摆）。
-        val at = pane.indexOf("if (historyOpen) {")
-        assertTrue("摆那三枚之前没判 `historyOpen`", at >= 0)
-        assertTrue("那三枚不在 `historyOpen` 那一支里", pane.substring(at).take(400).contains("上一期"))
-    }
-
     /**
      * ⑥ 换档时锚点要落回本期（月档挑了 2024-03 再切到年档，那一串年月对年档没有意义）。
      *
@@ -167,21 +136,6 @@ class DesktopRankingPeriodTest {
      * （`--ranking=MONTH/2024-03` 要落在 2024-03），而"换档即落回本期"这件事的真跑判据是 ⑦：
      * 锚点只在种子那一档与真发出去的那一档**对上**时才带过来。钉字面形状只会把某一版的写法当规格（§0 坑 ㉖）。
      */
-    @Test
-    fun `⑥ 换档时锚点落回本期`() {
-        val pane = code("DesktopRankingPane.kt")
-        assertTrue(
-            "选档那一下没把锚清回本期（换档后带着上一档的锚点发车）",
-            pane.contains("selected = choice.ranking") && pane.contains("anchor = null"),
-        )
-        // 对照：锚点状态跟着档走（key 里带 landing ⇒ 换档就是新造一格）。
-        assertTrue("锚点状态没跟着档走", pane.contains("rememberSaveable(landing)"))
-        assertTrue(
-            "锚点的初值没走那颗纯函数（种子那条路就只是装饰）",
-            pane.contains("desktopRankingSeedAnchor("),
-        )
-    }
-
     /**
      * ⑦ 种子怎么落成档与锚点 —— 两颗真跑的纯函数（第三十批）。
      *
@@ -227,19 +181,4 @@ class DesktopRankingPeriodTest {
      * 钉的是三个调用点：形参、档的初值、锚点的初值。少任一处都不会红在编译上 ——
      * 那正是"参数打进去了而屏上没反应"最省事的一种做法。
      */
-    @Test
-    fun `⑧ 那一屏收种子并拿它作两枚初值`() {
-        val pane = code("DesktopRankingPane.kt")
-        assertTrue("那一屏没收这颗种子（形参里没有 DesktopRankingSeed）", pane.contains("seed: DesktopRankingSeed?"))
-        assertTrue(
-            "档的初值没吃种子（屏上永远是默认档）",
-            pane.contains("mutableStateOf(desktopRankingSeedRanking(seed))"),
-        )
-        assertTrue(
-            "锚点的初值没吃种子与档的配对结果",
-            pane.contains("desktopRankingSeedAnchor(seed, landing)"),
-        )
-        // 对照组：这份文本真读到了内容（读空会让上面三条 contains 恒真）。
-        assertTrue("对照组失效：这一屏连档行那颗件都没读到", pane.contains("desktopRankingChoices("))
-    }
 }

@@ -8,34 +8,6 @@ import com.venera.compose.gallery.domain.GalleryGuard
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GallerySettingsModel
 
-/**
- * 桌面三面墙**共用**的分级判据层 —— 把 Android 侧 `buildGalleryWall` 的那一套待遇搬到桌面。
- *
- * ## 为什么这一颗必须存在（它补的是一个安全相关的缺口，不是"顺手对齐"）
- *
- * 桌面从 S2-A 起就在读 [GalleryContentGuard.nsfwMaskMode] 与 `.rules`，
- * 而**没有任何一处消费它们**：Android 侧那把过滤判据 `buildGalleryWall` 住在 `gallery/ui/`，
- * 那颗目录**不在桌面编译面内**（桌面只共享 `gallery/data` 与 `gallery/domain`）。
- * 于是同一份存档、同一条屏蔽规则，在手机上被挡着、在桌面上直接摆出来 ——
- * 用户设置的「成人内容处理 = 隐藏」与「屏蔽 AI 生成」在桌面**形同虚设**。
- *
- * ## 判据不重抄：调的是共享那颗 `GalleryGuard.maskStateFor`
- *
- * 这一层只做"把三档待遇落到桌面上"，**不自己判**：
- * 每一张卡走的是与 Android 逐字同一颗 [GalleryGuard.maskStateFor]（同一个 `maskMode` 字符串、
- * 同一个 `blockedByUser` 形状）。理由很硬：判据抄第二份就会漂，而漂的那一侧永远是桌面
- * （桌面没人拿它跟漫画侧对表）。用例 `DesktopWallGuardPolicyTest` 钉的就是"这里只许调它、不许自己写条件"。
- *
- * ## 与 Android 唯一不同的地方：遮挡档**不发起取图**
- *
- * Android 的 `BLURRED` 档是"图取回来再糊掉"。桌面改成"根本不去取"：
- * 一张注定要盖住的内容，没必要先花一次流量和一次解码再盖住它。
- * 这不是省 —— 是**少一次外泄**：遮挡的语义本来就是"这台机器的这个人不该看到它"。
- * 这一条差异写在卡上的角标里（「分级遮挡」），不藏在代码注释里。
- *
- * ⚠️ 只有 `HIDDEN` 与 `BLURRED` 两档的**判定**与 Android 同源；
- * `OFF` 档（不遮挡）桌面与 Android 一样原样摆。
- */
 internal object DesktopGalleryWallPolicy {
 
     /**
@@ -68,7 +40,11 @@ internal object DesktopGalleryWallPolicy {
         var hiddenByRating = 0
         posts.forEach { post ->
             val blocked = guard.blockedGalleryRule(author = post.author, tags = post.tagList)?.pattern
-                ?: if (blockAi && GalleryAi.isAiMarked(post.tagList)) AI_BLOCKED_RULE else null
+                // 2026-10-20：`GalleryAi.isAiMarked` 在 `:app` 侧收了第一个形参 `siteAiFlag`
+                // （2026-10-18 那批「开了 AI 角标没见到一个图片有角标」的修复：站方自己给的
+                // AI 位现在也算数，不再只看标签）。桌面这颗判据跟着递 `post.siteAiFlag` ——
+                // `null` 的语义是"这一腿站方压根不给这一格"，由 `isAiMarked` 内部当作"没说"处理。
+                ?: if (blockAi && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList)) AI_BLOCKED_RULE else null
             when (GalleryGuard.maskStateFor(post, maskMode, blockedByUser = blocked != null)) {
                 GalleryGuard.HIDDEN -> if (blocked != null) {
                     blockedCount++
@@ -162,7 +138,10 @@ const val AI_BADGE_TEXT = "AI"
  * 它与 `blockAi` 是两枚独立开关：屏蔽关着时总得有个读数，所以默认档是"摆"。
  */
 internal fun aiBadgeFor(post: GalleryPost, badgeOn: Boolean): Boolean =
-    badgeOn && GalleryAi.isAiMarked(post.tagList)
+    // 同 [DesktopGalleryWallPolicy] 里那一处：`isAiMarked` 现在也吃站方自己给的 AI 位
+    // （`post.siteAiFlag`）。这一颗是**角标**的判据，与上面那颗屏蔽判据共用同一个真值源 ——
+    // 分成两套会让"角标不亮但屏蔽生效"这种自相矛盾的状态出现。
+    badgeOn && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList)
 
 /**
  * 墙上那两笔缺席读数。返回空表 = 这一墙没有任何东西被挡，调用方一句都不该念。

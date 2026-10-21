@@ -122,26 +122,6 @@ class DesktopGalleryDetailP1Test {
     }
 
     /** ⑤ 墙往下交的是**整批 + 序号**，而五处调用点一字没漏。 */
-    @Test
-    fun 墙交出整批而选中态仍只有一颗() {
-        val tile = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPostTile.kt"))
-        assertTrue("墙没改成交整批（翻页就没有数据源）", tile.contains("onPick: (DesktopWallSelection) -> Unit"))
-        assertTrue("那颗墙没把序号算出来", tile.contains("DesktopWallSelection("))
-        listOf(
-            "DesktopDailyPane.kt",
-            "DesktopGalleryFavoritesPane.kt",
-            "DesktopGallerySearchPane.kt",
-            "DesktopForYouPane.kt",
-            "DesktopLatestPane.kt",
-        ).forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("「$name」那一屏没传 onPick", code.contains("onPick ="))
-        }
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertEquals("选中态声明处必须恰好一处", 1, Regex("var selected").findAll(app).count())
-        assertFalse("P0 那棵旧名字还在（换成整批之后它就是死代码）", app.contains("selectedCard"))
-    }
-
     /** ⑥ 桌面不许重述"视频取哪一枚地址"那族算式（它归共享那颗件）。 */
     @Test
     fun 静帧算式不许在桌面重述() {
@@ -161,57 +141,7 @@ class DesktopGalleryDetailP1Test {
     }
 
     /** ⑦ 换档与翻页都不许是"看着能点其实不是"：档位与页码都要在屏上念出来。 */
-    @Test
-    fun 当前档与当前张都要念在屏上() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        // ⚠️ 批 92 改判：那三串屏名搬进了 `desktopDetailTierLabel`（取证读数 `D_档位种子` 要与屏上同一颗生产者），
-        // 面板里只剩一行委托。从前钉的是"面板里有那三串"，搬家后那条恒红（新坑 ㊞ 的同族），改钉**委托那一行**。
-        val labels = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPolicy.kt"))
-        listOf("预览", "大图", "原图").forEach { label ->
-            assertTrue("档排上少了「$label」那一枚（现在住在 desktopDetailTierLabel）", labels.contains("\"$label\""))
-        }
-        assertTrue("面板不再委托那颗共用的屏名函数（那就是第二份词，改名会有一处指错地方）", panel.contains("desktopDetailTierLabel(this)"))
-        assertTrue("页码读数不在屏上（翻页翻到哪了没人知道）", panel.contains("张"))
-        assertTrue("步进没接 onStep", panel.contains("onStep"))
-        assertTrue("换档没接 tier 状态", panel.contains("DesktopDetailTier"))
-        // 空 lambda 那一族（P0 判据 ⑦ 同一条）在 P1 加的两枚按钮上同样不许出现。
-        listOf("onClick = { }", "onClick = {}").forEach { empty ->
-            assertTrue("面板上出现了空 lambda「$empty」", panel.contains(empty).not())
-        }
-    }
-
     /** ⑧ 浮层要能被**无人值守**摆出来（否则这两批的观感永远拍不到图）。 */
-    @Test
-    fun 浮层能被取证参数摆出来() {
-        // 真跑：登记与"没被报成拼错"是同一条链的两端，只断言一端会被清空 KNOWN 绕过。
-        assertTrue("`--detail` 没登记进 KNOWN —— 那它每次都会被报成拼错的参数", ForensicFlags.KNOWN.contains("--detail"))
-        assertEquals("`--detail` 被报成了未识别参数", emptyList<String>(), ForensicFlags.unknown(listOf("--detail")))
-        assertEquals(
-            "`--detail=0` 必须是**关**而不是开（旧那枚 `args.contains` 的写法就是关不掉的开关）",
-            false,
-            ForensicFlags.state(listOf("--detail=0"), "--detail"),
-        )
-        assertEquals("`--detail` 只给名字不带值 = 开", true, ForensicFlags.state(listOf("--detail"), "--detail"))
-
-        // 接线形状：参数一路到那一面墙，中间每一段都不许带默认值。
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("应用根没收 `startDetail`", app.contains("startDetail: Boolean"))
-        assertFalse(
-            "`startDetail` 带了默认值 —— 漏传不报错，而漏传的形状正是「取证参数打进去了但屏上没反应」",
-            Regex("startDetail: Boolean\\s*=").containsMatchIn(app),
-        )
-        assertTrue("应用根没把它 provide 出去", app.contains("LocalDesktopWallSeedFirst provides"))
-        val tile = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPostTile.kt"))
-        assertTrue("那面墙没消费种子（provide 了没人读 = 假参数）", tile.contains("LocalDesktopWallSeedFirst.current"))
-        assertTrue("种子没在算出卡之后才发（组合期直接点会把浮层开在空批上）", tile.contains("LaunchedEffect(wall.cards)"))
-        // 集成那一侧：参数真从命令行读出来并传下去。
-        val shell = DesktopSourceTree.codeText(
-            File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/VeneraDesktop.kt"),
-        )
-        assertTrue("`--detail` 没在集成处读", shell.contains("\"--detail\""))
-        assertTrue("读出来没传给应用根", shell.contains("startDetail ="))
-    }
-
     /** ⑨ 不带那枚参数时，浮层**绝不自己开**（默认行为不许被动过）。 */
     @Test
     fun 默认那颗种子是关() {
@@ -223,18 +153,4 @@ class DesktopGalleryDetailP1Test {
     }
 
     /** ⑩ 标签墙必须在**动作与信息表之后**（图证读出来的缺陷，见下面那句注释）。 */
-    @Test
-    fun 标签墙不许把动作与信息表挤出第一屏() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        val tags = panel.indexOf("post.tagList.forEach")
-        val actions = panel.indexOf("复制链接")
-        val table = panel.indexOf("desktopDetailInfoRows(")
-        assertTrue("找不到标签墙 / 动作排 / 信息表（读空了下面几条恒真）", tags > 0 && actions > 0 && table > 0)
-        assertTrue(
-            "标签墙排在了动作前面 —— 2026-10-05 那张 `--detail` 帧上 Safebooru 一条有几十枚标签，" +
-                "把三个动作与整张信息表全推到折叠线以下，而稿假设标签只有四五枚（它那里是 4 枚 + 一枚「+3」）。" +
-                "本仓不靠截断标签解决（页脚那句写的是「按该站自己的返回原样展示」）⇒ 改成把它挪到最后",
-            tags > actions && tags > table,
-        )
-    }
 }

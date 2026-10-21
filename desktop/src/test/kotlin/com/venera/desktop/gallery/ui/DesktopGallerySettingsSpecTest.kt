@@ -133,32 +133,6 @@ class DesktopGallerySettingsSpecTest {
      * 类型这一头要先把原始类型折算成包装类型：泛型实参只会给包装那一头（`StateFlow<Boolean>`
      * 反射读到的是 `java.lang.Boolean`），而写口收的是原始 `boolean`，不对齐就会把对的说成错的。
      */
-    @Test
-    fun 四枚能改的档各自那道写口被这一屏真调过() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        val face = DesktopGalleryPreferences::class.java
-        DesktopGallerySettingsSpec.editable.forEach { row ->
-            val setter = face.methods.singleOrNull { it.name == row.setter && it.parameterCount == 1 }
-                ?: throw AssertionError(
-                    "写口 ${row.setter} 在 DesktopGalleryPreferences 上找不到唯一的一元方法 —— 账上记了一颗不存在的开关",
-                )
-            val getter = face.methods.single { it.name == "get" + row.pref.replaceFirstChar { c -> c.uppercaseChar() } }
-            val valueType = (getter.genericReturnType as ParameterizedType).actualTypeArguments.single() as Class<*>
-            assertEquals(
-                "「${row.title}」：写口收 ${setter.parameterTypes[0]}，而 ${row.pref} 吐 $valueType —— 这两头不是同一枚档",
-                valueType,
-                setter.parameterTypes[0].wrapped(),
-            )
-            assertTrue(
-                "这一屏没调 ${row.setter} —— 「${row.title}」那一行是按下去什么都不发生的假开关",
-                pane.contains("settings.${row.setter}("),
-            )
-        }
-        // 对照组：拼串或反射抽取一旦失效，上面三条都会恒真 —— 拿一枚不存在的写口把三条各过一遍。
-        assertTrue("对照组失效：不存在的写口在偏好件上被找到了", face.methods.none { it.name == "setGalleryNoSuchThing" })
-        assertTrue("对照组失效：拼串判式抓不到不存在的写口调用", pane.contains("settings.setGalleryNoSuchThing(").not())
-    }
-
     /**
      * ⑧ 动图那一行的三档与那句"桌面分不出哪种网"（批 52）。
      *
@@ -171,23 +145,6 @@ class DesktopGallerySettingsSpecTest {
      * `GalleryMotion.animates` 里，而 `DesktopGalleryViewerMotionTest` ⑥ 扫的正是
      * "枚举成员 + 分支箭头"那个形状 —— 它分不清"重述判定"与"给档位起名"，就别去撞它。
      */
-    @Test
-    fun 动图那一行给全三档并说明桌面分不出哪种网() {
-        val row = DesktopGallerySettingsSpec.editable.single { it.pref == "galleryAnimated" }
-        val tiers = DesktopGallerySettingsSpec.animatedTierLabels
-        assertEquals("档位对不上共享枚举（自造或删档了）：" + tiers.map { it.first.name },
-            GalleryAnimatedMode.entries.toList().sortedBy { it.name }, tiers.map { it.first }.sortedBy { it.name })
-        assertEquals("三档各一个屏上叫法", tiers.size, tiers.map { it.second }.distinct().size)
-        assertTrue("那一行没说清桌面分不出哪种网：${row.caption}", row.caption.contains("分不出"))
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        assertTrue("这一屏没调写口（假开关）", pane.contains("settings.setGalleryAnimated("))
-        assertFalse(
-            "那一行写的是常量档而不是用户点的那一枚 ⇒ 三档全落到同一档，而选中态看着是对的",
-            pane.contains("setGalleryAnimated(GalleryAnimatedMode."),
-        )
-        assertTrue("那一行没吃档位表", pane.contains("animatedTierLabels.forEach"))
-    }
-
     /** ⑤ 设置域已**转正**：不再是坦白页，且只有一行（这一屏就是那一行）。 */
     @Test
     fun 设置域已转正且只有一行() {

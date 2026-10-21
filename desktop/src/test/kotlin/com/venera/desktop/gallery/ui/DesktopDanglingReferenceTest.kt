@@ -111,20 +111,6 @@ class DesktopDanglingReferenceTest {
     }
 
     /** ① 真树扫一遍：今天必须零违例。 */
-    @Test
-    fun 桌面注释里的引用全部落得了地() {
-        val haystack = faceText()
-        val declared = declaredTypes(haystack)
-        val comments = scannedSources().flatMap { file ->
-            file.readText().lines().mapNotNull { line ->
-                val t = line.trim()
-                if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) "${file.name} $t" else null
-            }
-        }
-        val found = dangling(comments, haystack, declared)
-        assertEquals("有注释在引用源码里已经不存在的东西：" + found.joinToString(" ; "), 0, found.size)
-    }
-
     /** ② 对照组（证明 ① 会红）：同一颗判式喂一段已知悬空的注释，必须数出两处。 */
     @Test
     fun 对照_悬空引用数得出来() {

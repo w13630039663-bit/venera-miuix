@@ -33,7 +33,6 @@ import com.venera.desktop.gallery.data.desktopBrowseHeaderReading
 import com.venera.desktop.gallery.data.desktopBrowseRowLine
 import io.github.composefluent.component.Text
 
-/** 那一格现在摆的是什么：三档各念各的（灰块与"坏图"同形是量过的缺陷）。 */
 private enum class BrowseThumbPhase { Loading, Loaded, Failed }
 
 /**
@@ -63,82 +62,3 @@ private enum class BrowseThumbPhase { Loading, Loaded, Failed }
  * 因为它们那两枚是**读走即清**的：挂在屏里就会随那一屏离开组合而消失。
  * 这一颗不清 —— 它说的是"盘上那份坏了"，那是一件一直成立的事，所以直接 `collectAsState` 读。
  */
-@Composable
-internal fun DesktopGalleryBrowseHistoryPane(history: DesktopGalleryBrowseHistory) {
-    val rows by history.rows.collectAsState()
-    val broken by history.notice.collectAsState()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                horizontal = DesktopGalleryMetrics.imageWallHorizontalPadding,
-                vertical = DesktopGalleryMetrics.detailBodyGap,
-            ),
-        verticalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.tightGap),
-    ) {
-        Text(
-            desktopBrowseHeaderReading(rows),
-            color = DesktopTheme.TextSecondary,
-            fontSize = 12.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        broken?.let {
-            // 颜色与字号口径照画师那一屏那句（同一件事在两屏不该长两个样）。
-            Text(it, color = DesktopTheme.AccentBeni, fontSize = 12.5.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.tightGap)) {
-            items(rows, key = { "${it.site.routeKey}-${it.postId}" }) { row ->
-                BrowseHistoryRow(row)
-            }
-        }
-    }
-}
-
-/** 一格：预览档那一座（尺寸口径照「正在关注的画师」那一栏的 44 座）+ 站名、号与那一刻。 */
-@Composable
-private fun BrowseHistoryRow(row: DesktopBrowseView) {
-    val shape = RoundedCornerShape(6.dp)
-    Row(horizontalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.tightGap)) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(shape)
-                .border(1.dp, DesktopTheme.SurfaceRaised, shape)
-                .background(DesktopTheme.ImagePlaceholder),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (row.thumbUrl.isBlank()) {
-                Text("站方没给缩略档", color = DesktopTheme.OnImagePlaceholder, fontSize = 9.sp, maxLines = 2)
-            } else {
-                var phase by remember(row.thumbUrl) { mutableStateOf(BrowseThumbPhase.Loading) }
-                AsyncImage(
-                    model = row.thumbUrl,
-                    contentDescription = "${row.site.displayName} 的作品",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    onSuccess = { phase = BrowseThumbPhase.Loaded },
-                    onError = { phase = BrowseThumbPhase.Failed },
-                )
-                when (phase) {
-                    BrowseThumbPhase.Loaded -> Unit
-                    // 正在取与取不到念两句：只留一块灰，用户分不出这两件事。
-                    BrowseThumbPhase.Loading -> Text("正在取图", color = DesktopTheme.OnImagePlaceholder, fontSize = 9.sp, maxLines = 2)
-                    BrowseThumbPhase.Failed -> Text("图没加载出来", color = DesktopTheme.OnImagePlaceholder, fontSize = 9.sp, maxLines = 2)
-                }
-            }
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                desktopBrowseRowLine(row),
-                color = DesktopTheme.TextPrimary,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}

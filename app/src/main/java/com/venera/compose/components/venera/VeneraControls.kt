@@ -15,7 +15,7 @@ import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import androidx.compose.material3.MaterialTheme as Md3MaterialTheme
 import androidx.compose.material3.OutlinedTextField as Md3OutlinedTextField
-import com.venera.compose.data.prefs.AppearanceStyle
+import com.venera.compose.data.platform.AppearanceStyle
 import com.venera.compose.ui.tokens.VeneraGlassRole
 import com.venera.compose.ui.tokens.VeneraTokens
 import com.venera.compose.ui.tokens.veneraGlassEnabled

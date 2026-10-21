@@ -1,5 +1,6 @@
 package com.venera.compose.feature.explore
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -275,7 +275,7 @@ fun SourceSectionScreen(
                  * `Compact` 恒 null ⇒ 手机档逐像素不变。
                  */
                 val contentMaxWidth = contentMaxWidthFor(
-                    wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+                    wideScreenLayoutMode(LocalWindowWidthDp),
                 )
                 LazyColumn(
                     modifier = Modifier

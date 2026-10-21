@@ -117,6 +117,20 @@ internal object DesktopGalleryMetrics {
     val paneWidth: Dp = 224.dp
 
     /**
+     * **设计窗**的内容区宽（dp）= [DESIGN_WINDOW_WIDTH] − [railWidth] − [paneWidth]。
+     *
+     * 2026-10-20 补回：`DesktopShrineDecor` 用它做两件事 —— 算设计档的列数
+     * （`designColumnCount`，用来反推"神社档还留得住的最小内容宽"），以及那个 while 的起点。
+     * 它原先在那批未提交的 deco 改动里，`git checkout` 时一起丢了；这里按定义补上。
+     *
+     * 之所以写成**推导**而不是写死 1168：写死的那一刻，"有人改了 rail 或 pane 宽度而
+     * 这一枚没跟着走"就会静默发生 —— 而这颗数的全部意义就是"与
+     * [imageWallColumnCount] 共用同一把尺"。
+     */
+    val designContentWidthDp: Float
+        get() = DESIGN_WINDOW_WIDTH.toFloat() - railWidth.value - paneWidth.value
+
+    /**
      * 图片墙的左右内边距**合计**。对岸 = `WideScreenPolicy.imageWallHorizontalPadding()`
      * （= `VeneraSpacing.screenHorizontal` 的 12dp × 2，`:121`）。
      */
@@ -178,6 +192,18 @@ internal object DesktopGalleryMetrics {
      * 将来真做神社档装饰时，只需要改这一处。
      */
     val heroHeight: Dp = 330.dp
+
+    /**
+     * 神社档（`DesktopDecoTier.SHRINE`）的 Hero 高 —— **360dp**。
+     *
+     * 2026-10-20 补回：这枚数不是猜的，[heroHeight] 上面那段注释已经把出处记下来了 ——
+     * 稿 `windows-gallery-home-touhou-2026-10-03.html:268` 有
+     * `body[data-deco="shrine"] .hero{height:360px}`，那是**装饰档覆盖值**。
+     * 当时（没做装饰层）取的是基础值 330，注释末尾写着"将来真做神社档装饰时，
+     * 只需要改这一处"—— deco 那批就是这么加的，然后在本轮 `git checkout` 里丢了。
+     * 现在按那行稿值补回，两个数并排摆着，谁也不会再猜。
+     */
+    val heroHeightShrine: Dp = 360.dp
 
     /**
      * Hero 右侧两小卡的**固定**列宽。设计稿 `.top{grid-template-columns:1fr 320px}`（`:146`）——

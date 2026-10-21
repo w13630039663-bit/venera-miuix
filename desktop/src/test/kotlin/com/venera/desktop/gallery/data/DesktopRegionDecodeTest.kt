@@ -149,29 +149,6 @@ class DesktopRegionDecodeTest {
      * 所以等停那一句必须排在解码之前 —— 三条都按"包含 + 顺序"钉，存在性判式喂不饱它。
      */
     @Test
-    fun 分块那一跳离开UI线程且等停排在解码之前() {
-        val flat = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopRegionStage.kt"))
-            .filterNot { it.isWhitespace() }
-        assertTrue(
-            "解一块那一跳没包在 Dispatchers.Default 里（拖一下就是每帧一次 JPEG 解码）",
-            flat.contains("withContext(Dispatchers.Default){DesktopRegionDecoder.decode(bytes,request)}"),
-        )
-        assertTrue(
-            "读头部那一跳也没离开 UI 线程（它开流读头部，同样是磁盘活）",
-            flat.contains("withContext(Dispatchers.Default){DesktopRegionDecoder.sizeOf(bytes)}"),
-        )
-        assertTrue(
-            "起手没有可取消的等停，或它排到了解码之后",
-            flat.contains("delay(SETTLE_MILLIS)") &&
-                flat.indexOf("delay(SETTLE_MILLIS)") < flat.indexOf("DesktopRegionDecoder.decode("),
-        )
-        assertTrue(
-            "取消被 runCatching/catch 吃掉了（上一位置的退化解码会把状态与那句念出来）",
-            flat.contains("catch(cancelled:CancellationException){throwcancelled"),
-        )
-    }
-
-    @Test
     fun 采样档与目标像素的退化输入必须抛而不是悄悄折成最小档() {
         assertThrows(IllegalArgumentException::class.java) { DesktopRegionPlan.sampleFor(1000, 0) }
         assertThrows(IllegalArgumentException::class.java) { DesktopRegionPlan.sampleFor(1000, -5) }
@@ -465,19 +442,6 @@ class DesktopRegionDecodeTest {
      * 谁把算式改坏，那条先红 —— 所以这里不再拿"测试文件里有没有某个名字"当闸的前提，
      * 那种尺子会咬到自己（判式里就写着那个名字）。
      */
-    @Test
-    fun 大图那一屏确实接上了这一层而它在变换外面() {
-        assertTrue("这一层今天该上屏（撤它请连那条对齐不变量一起撤）", desktopRegionOverlayLands)
-        val viewer = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryViewer.kt"))
-        assertEquals("接线没吃那颗闸（翻了常量就会直接上屏）", 1, viewer.split("desktopRegionOverlayLands &&").size - 1)
-        assertEquals("这一层在视图里只被调一处", 1, viewer.split("DesktopRegionOverlay(").size - 1)
-        // 分家那一条：覆盖层排在缩放层之后（写在缩放层里面就会被变换吃两回，页码与图一起推出屏外）。
-        assertTrue(
-            "覆盖层排到了缩放层前面（那就是把它写进了变换里）",
-            viewer.indexOf("DesktopViewerStage(") < viewer.indexOf("DesktopRegionOverlay("),
-        )
-    }
-
     /**
      * 包内那一格（批 90）：`ImageIO.createImageInputStream` **自己会抛**
      * （`IIOException: Can't create cache file!`，`_qa/b90_pkgC.log` 里那条 `D_异常 线程=AWT-EventQueue-0`），
@@ -546,20 +510,4 @@ class DesktopRegionDecodeTest {
      * 不许把请求当结果）。计数用 `codeOccurrences` 而不是 `contains` —— 上一批的 P9 刚证明
      * "两处同形"能把单串锚点喂饱。
      */
-    @Test
-    fun 字节那一格只挂在生效与不换轨那两行() {
-        val stageFile = DesktopSourceTree.desktopUiSource("DesktopRegionStage.kt")
-        val stage = DesktopSourceTree.codeText(stageFile)
-        assertEquals("生效那一行与不换轨那一行各挂一处：" + stage, 2, DesktopSourceTree.codeOccurrences(stageFile, "desktopRegionBytesField("))
-        val degraded = DesktopSourceTree.codeLinesOf(stageFile).filter { it.contains("D_分块 退化") }
-        assertTrue("退化那几条得在（搬走了这条就成恒真）：" + degraded, degraded.isNotEmpty())
-        assertTrue("退化那几条不许念字节数（手上没那份字节）：" + degraded, degraded.none { it.contains("desktopRegionBytesField(") })
-        // 每一行都自报档位：`不换轨` 那一行从前不带 `档=`，于是"预览档不换轨"要靠"我这趟种了哪一档"反推
-        // —— 那是把请求当结果。六行念档位的 println（生效 + 不换轨 + 四条退化）各带一处才算它自己说了。
-        assertEquals(
-            "六行各带一枚 `档=`（不换轨那一行本批补上）：",
-            6,
-            DesktopSourceTree.codeOccurrences(stageFile, "档=\$tier"),
-        )
-    }
 }

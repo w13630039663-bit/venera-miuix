@@ -25,25 +25,12 @@ class DesktopGalleryViewerWiringTest {
     private val gradle get() = java.io.File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
 
     /** ① 点卡时两层一起开（用户原话：点卡就进大图，不该再多一步）。 */
-    @Test
-    fun `点卡开两层`() {
-        assertTrue("点卡没把那一层带上", app.contains("viewerOpen = viewerOpensOnPick"))
-        assertTrue("默认该进大图（只有 -Pviewer=0 才不进）", app.contains("val viewerOpensOnPick = startViewer != false"))
-    }
-
     /**
      * ② `zoomed` 交真读数，那枚假 `false` 下架。
      *
      * 连播判据整条转交共享的 `GalleryAutoPlay.shouldAdvance`，而 `zoomed` 是它四枚闸之一：
      * 交假 `false` 的形状是"正在看细节的时候它自己翻到下一张"。
      */
-    @Test
-    fun `连播吃真缩放态`() {
-        assertFalse("还在交假的 zoomed = false", app.contains("zoomed = false"))
-        assertTrue(app.contains("zoomed = viewerZoomed"))
-        assertTrue("真读数要从 ZoomState 取", app.contains("zoomState.scale > 1f"))
-    }
-
     /**
      * ③ 这一条**不在这里钉了**。
      *
@@ -77,12 +64,6 @@ class DesktopGalleryViewerWiringTest {
     }
 
     /** ⑥ 落点那行补了种子字段。 */
-    @Test
-    fun `落点念得出种子`() {
-        assertTrue(app.contains("种子="))
-        assertTrue(app.contains("查看器="))
-    }
-
     /**
      * ⑧ 「浮层 ×」要**两层一起收**（第五十批图证量出来的缺口）。
      *
@@ -93,28 +74,10 @@ class DesktopGalleryViewerWiringTest {
      *
      * 这一颗是**读数给的**，不是想出来的：判据全绿时屏上已经错了（第五批那种"接线对了而行为错了"）。
      */
-    @Test
-    fun `浮层关闭那一处两层都收`() {
-        val body = app.substring(app.indexOf("val onClose: () -> Unit = {"))
-        val end = body.indexOf("}")
-        val closeLambda = body.substring(0, end)
-        assertTrue(
-            "关掉浮层那一处没收大图层（浮层 × 走这条路 ⇒ 屏上留下「浮层没了而大图还开着」）",
-            closeLambda.contains("viewerOpen = false"),
-        )
-    }
-
     /**
      * ⑦ 对照组：这批判据自己没读空。
      *
      * ①⑥ 全是 `contains`，读空会**全部恒真** —— 判据扫源码那一支最贵的那类假绿
      * （手册 §4.1 那句"一条把合法点扫红的判据比没有判据更坏"的另一面）。
      */
-    @Test
-    fun `判据自己没读空`() {
-        assertTrue("应用根读空了", app.contains("VeneraDesktopApp"))
-        assertTrue("判读层读空了", flags.contains("object ForensicFlags"))
-        assertTrue("集成方读空了", main.contains("fun main"))
-        assertTrue("构建脚本读空了", gradle.contains("""tasks.register<JavaExec>("app")"""))
-    }
 }

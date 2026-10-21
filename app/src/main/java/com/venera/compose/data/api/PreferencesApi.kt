@@ -1,11 +1,11 @@
 package com.venera.compose.data.api
 
-import com.venera.compose.data.prefs.AppearanceStyle
-import com.venera.compose.data.prefs.NavigationBarStyle
-import com.venera.compose.data.prefs.SurfaceMaterial
-import com.venera.compose.data.prefs.TagTranslationMode
-import com.venera.compose.data.prefs.ThemeColorSource
-import com.venera.compose.data.prefs.ThemeMode
+import com.venera.compose.data.platform.AppearanceStyle
+import com.venera.compose.data.platform.NavigationBarStyle
+import com.venera.compose.data.platform.SurfaceMaterial
+import com.venera.compose.data.platform.TagTranslationMode
+import com.venera.compose.data.platform.ThemeColorSource
+import com.venera.compose.data.platform.ThemeMode
 import com.venera.compose.data.platform.KeyValueStore
 import kotlinx.coroutines.flow.StateFlow
 

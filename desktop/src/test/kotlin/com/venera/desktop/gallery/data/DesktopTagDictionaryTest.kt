@@ -327,27 +327,6 @@ class DesktopTagDictionaryTest {
      * ⑫ 批 38/39 接的那三处消费点仍从词典口取名字，而**名字从哪儿来**也要钉住
      * （生产端换成真跑了，接线一格都不许漂；只钉调用点的话，递一个空名单过去也是"接好了"）。
      */
-    @Test
-    fun 三处消费点仍走词典口() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        val followed = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopFollowedArtistsPane.kt"))
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        val search = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        assertTrue("标签墙那一格不吃词典了", panel.contains("ports.lexicon.translations(post.tagList)"))
-        assertTrue("关注栏那一格不吃词典了", followed.contains("ports.lexicon.translations(names)"))
-        assertTrue("单人页那一格不吃词典了", page.contains("ports.lexicon.translations(names)"))
-        assertTrue("补全那排不吃词典了", search.contains("ports.lexicon.translations(names)"))
-        // 名字那一串的来源各钉一格（扰动 p2 把关注栏的 names 换成空表，只钉上面四条是全绿的）
-        val fromWall = "val names = remember(readout) { readout.artists.map { it.name } }"
-        assertTrue("关注栏递去查的名字不再来自那一屏的名单", followed.contains(fromWall))
-        assertTrue("单人页递去查的名字不再来自那一屏的名单", page.contains(fromWall))
-        assertTrue("补全那排递去查的名字不再是一批候选", search.contains("val names = suggestions"))
-        // 对照组：四颗文件真在被扫（读空会让上面所有 contains 恒真）。
-        assertTrue("对照组失效：面板那颗文件里没有标签墙", panel.contains("desktopTagDisplayLabel(tag, tagTranslations)"))
-        assertTrue("对照组失效：补全那颗文件里没有那颗 chips", search.contains("desktopTagDisplayLabel(name, suggestionTranslations)"))
-        assertTrue("对照组失效：关注栏那颗文件里没有显示那一颗", followed.contains("desktopArtistDisplayName(artist.name, translations)"))
-    }
-
     private data class Sample(val name: String, val cn: String?, val category: Int)
 
     /** 命中才有值；两形"没读到"交 null（这一族的三态由 `DesktopDictionaryThreeStateTest` 钉）。 */

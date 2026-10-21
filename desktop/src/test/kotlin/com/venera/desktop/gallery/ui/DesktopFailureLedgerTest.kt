@@ -118,30 +118,4 @@ class DesktopFailureLedgerTest {
      * 反向那三条不是修辞：并集方向写反**不崩不报错**，只有屏上那一句是假的，
      * 而"少掉的那一批图没人会去数"这条老规矩说明它能量到五批不被发现（手册 §0 坑 ㉓）。
      */
-    @Test
-    fun `④ 四处只许一处并`() {
-        val files = listOf(
-            "DesktopLatestPane.kt",
-            "DesktopForYouPane.kt",
-            "DesktopGallerySearchPane.kt",
-            "DesktopArtistProfilePolicy.kt",
-        )
-        files.forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("$name 没吃那颗账件", code.contains("desktopFailureLedgerAfter("))
-        }
-        // 三种"自己并"的形状（本批与批 31/32 各抓到一种，另一种是批 31 改掉之前的写法）。
-        listOf("failures + ", "failures.forEach", "failures.toMutableMap").forEach { banned ->
-            val hits = files.flatMap { name ->
-                DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-                    .lines().filter { it.contains(banned) }.map { "$name: ${it.trim()}" }
-            }
-            assertTrue("又有人自己并那本账（「$banned」）：$hits", hits.isEmpty())
-        }
-        // 对照组：那颗件确实住在那份"持有件"文件里（**规则本身对不对由 ① 真跑管** ——
-        // 这里不再钉表达式字面，否则一件同义改写（`previous.filterKeys { it !in asked } + fresh`）就会红在措辞上，
-        // 那正是手册 §0 坑 ㉖ / 批 14 那条"同一件事只许一把尺子钉措辞"）。
-        val piece = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryBatch.kt"))
-        assertTrue("对照组失效：那颗账件不在持有件那颗文件里", piece.contains("internal fun desktopFailureLedgerAfter("))
-    }
 }

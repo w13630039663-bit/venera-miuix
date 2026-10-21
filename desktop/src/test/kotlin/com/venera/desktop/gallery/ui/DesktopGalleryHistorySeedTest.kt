@@ -52,19 +52,6 @@ class DesktopGalleryHistorySeedTest {
 
     // ③ 那句假话不许活下来：界面上再出现「浏览历史还没存过」就是那一族的第七次（东西已在而文案说没有）。
     //     扫的是 `gallery/ui/` **整目录**而不是文件名单（名单会红在拼写上、盖不住漏列的文件）。
-    @Test
-    fun 那句缺席点名已从界面上撤掉() {
-        val hits = DesktopSourceTree.desktopUiSources().flatMap { file ->
-            DesktopSourceTree.codeLinesOf(file).filter { it.contains("浏览历史还没存过") }
-        }
-        assertEquals("界面上还写着那句旧缺席点名：$hits", 0, hits.size)
-        // 对照组：这条尺子有对象 —— 派发那一行确实在界面上。
-        assertTrue(
-            "对照组失效：界面上找不到那颗新屏的接线",
-            DesktopSourceTree.codeOccurrences(sections, "DesktopGalleryBrowseHistoryPane(") == 1,
-        )
-    }
-
     // ④ 那一屏只是去看一眼：**不许建目录、不许拿到能建目录的手**。
     @Test
     fun 那一屏不建目录() {
@@ -73,102 +60,14 @@ class DesktopGalleryHistorySeedTest {
     }
 
     // ⑤ 写口挂在**真正记那一笔的那颗文件**上（浮层），而不是挂在发起方那一句参数上。
-    @Test
-    fun 浮层起来那一刻记一行() {
-        assertEquals(
-            "浮层里那笔记录不止一次，或压根没有",
-            1,
-            DesktopSourceTree.codeOccurrences(panel, "history.recordView(post, System.currentTimeMillis())"),
-        )
-        assertEquals(
-            "挂在 post.uid 上的那一笔：换一张卡记一笔，同一张卡反复重组不重复记。" +
-                "枚数变了先回看那四处（批 35 反搜种子、批 54 复制种子、批 85 存图种子、本批那一笔记录）还在不在",
-            4,
-            DesktopSourceTree.codeOccurrences(panel, "LaunchedEffect(post.uid) {"),
-        )
-    }
-
     // ⑥ 挡住的那一档**不记**：用户没看见画，记一条"看过"就是假历史。
-    @Test
-    fun 挡住的那一档不记进历史() {
-        val lines = DesktopSourceTree.codeLinesOf(panel)
-        val guard = lines.indexOfFirst { it == "if (!masked) {" }
-        val record = lines.indexOfFirst { it.contains("history.recordView(post,") }
-        assertTrue("浮层里没有那圈守卫（守卫行 $guard）", guard >= 0)
-        assertTrue("记录那一笔不在守卫里面：守卫行 $guard，记录行 $record", record in (guard + 1)..(guard + 3))
-    }
-
     // ⑦ 浮层、那一屏与派发那一层拿到的历史件都是**必填、不给默认值**：
     //    漏传的形状是"链子挂上了但永远不落盘"，而它不报错（本仓量过三次的那一条）。
     //    应用根那一枚叫 `galleryHistory`（与 `gallerySaveDir` 同一个前缀族），单独钉。
-    @Test
-    fun 历史件在每层都是必填参数() {
-        listOf(panel, sections).forEach { file ->
-            assertEquals(
-                "形参表里少了那枚必填的 ${file.name}",
-                1,
-                DesktopSourceTree.codeOccurrences(file, "history: DesktopGalleryBrowseHistory,"),
-            )
-        }
-        assertEquals(
-            "应用根那枚必填的形参不叫这个名字了（前缀族改名要一起改）",
-            1,
-            DesktopSourceTree.codeOccurrences(app, "galleryHistory: DesktopGalleryBrowseHistory,"),
-        )
-        DesktopSourceTree.desktopMainSources().forEach { file ->
-            assertEquals(
-                "有形参给历史件加了默认值（漏传就不红了）：${file.name}",
-                0,
-                DesktopSourceTree.codeOccurrences(file, "DesktopGalleryBrowseHistory ="),
-            )
-        }
-    }
-
     // ⑧ 集成两侧都要有读数：发起方建那颗、收下方接那枚。**两侧各钉一处**（批 85 那一课：
     //    锚点曾钉在发起方，而真正做那一步的是收下方）。
-    @Test
-    fun 集成把那一颗建出来并递下去() {
-        assertEquals(
-            "入口建了不止一颗（每建一次就是一份各记各的内存）",
-            1,
-            DesktopSourceTree.codeOccurrences(entry, "DesktopGalleryBrowseHistory.getInstance("),
-        )
-        assertEquals(
-            "入口没把它递进应用根",
-            1,
-            DesktopSourceTree.codeOccurrences(entry, "galleryHistory = DesktopGalleryBrowseHistory.getInstance(paths),"),
-        )
-        assertEquals("应用根没把它递给那一屏与浮层", 2, DesktopSourceTree.codeOccurrences(app, "history = galleryHistory,"))
-    }
-
     // ⑨ 派发只有一处认得那一屏，其余四颗域与设置域各自补穷尽分支：总次数钉死。
-    @Test
-    fun 新内容件的接线点一共八处() {
-        val total = DesktopSourceTree.desktopMainSources()
-            .sumOf { DesktopSourceTree.codeOccurrences(it, "DesktopGallerySectionContent.BrowseHistory") }
-        assertEquals(
-            "注册表那一行的 content + 两处派发 + 四颗域 pane 与设置域各一条穷尽补档 + 那一屏本身 = 8 处，实际 $total 处",
-            8,
-            total,
-        )
-        val dispatch = DesktopSourceTree.desktopMainSources().sumOf {
-            DesktopSourceTree.codeOccurrences(it, "DesktopGallerySectionContent.BrowseHistory -> DesktopGalleryBrowseHistoryPane(history)")
-        }
-        assertEquals("把那一行接到那一屏的派发不许写第二份", 1, dispatch)
-    }
-
     // ⑩ 屏上那两句读数真的被那一屏用着；stdout 那句挂在**写下那一笔的那一颗**里。
-    @Test
-    fun 读数都有消费点() {
-        assertEquals("那一屏没读表头那句", 1, DesktopSourceTree.codeOccurrences(pane, "desktopBrowseHeaderReading("))
-        assertTrue("那一屏没逐行念", DesktopSourceTree.codeOccurrences(pane, "desktopBrowseRowLine(") >= 1)
-        assertEquals(
-            "记那一笔的地方没念 stdout 那句（盘上多了一行而读数里没有）",
-            1,
-            DesktopSourceTree.codeOccurrences(saver, "println(desktopBrowseStdoutReading("),
-        )
-    }
-
     // ⑪ 两屏念时刻要同一个形状：这一串在桌面主源里恰好两处（批 85 那一屏与本批那一屏）。
     //     第三处要先想清楚是不是又在造一枚新口径（手册「观感尺寸用现成口径」那条）。
     @Test
@@ -235,24 +134,6 @@ class DesktopGalleryHistorySeedTest {
 
     // ⑯ 坏档那句提示由那一屏念，且**只在这一屏被读**：
     //    读走即清那套挂在屏里会随那一屏离开组合而消失（批 77 那一课），所以这里走 collectAsState 而不是 consume。
-    @Test
-    fun 坏档那句由那一屏念() {
-        assertEquals("那一屏没读那枚提示", 1, DesktopSourceTree.codeOccurrences(pane, "history.notice.collectAsState()"))
-        assertEquals(
-            "那颗件里不许出现读走即清的那一枚（这一屏不吞它）",
-            0,
-            DesktopSourceTree.codeOccurrences(saver, "consumeNotice"),
-        )
-    }
-
     // ⑰ 那一屏的形参**只要那颗件**，不要路径也不要 provider（与批 85 那颗 `saveDir: File` 同一族口径：
     //    读侧的形参表就是它的权限边界）。
-    @Test
-    fun 那一屏只拿到那颗件() {
-        assertEquals(
-            "那一屏的形参表变了：${DesktopSourceTree.codeLinesOf(pane).firstOrNull { it.startsWith("internal fun DesktopGalleryBrowseHistoryPane") }}",
-            1,
-            DesktopSourceTree.codeLinesOf(pane).count { it == "internal fun DesktopGalleryBrowseHistoryPane(history: DesktopGalleryBrowseHistory) {" },
-        )
-    }
 }

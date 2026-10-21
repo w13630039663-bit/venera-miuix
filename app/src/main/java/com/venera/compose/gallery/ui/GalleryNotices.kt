@@ -5,11 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import com.venera.compose.components.venera.VeneraNotice
 import com.venera.compose.components.venera.VeneraNoticeTone
-import com.venera.compose.feature.SettingsSubScreen
-import com.venera.compose.feature.openSettingsSubScreen
+import com.venera.compose.components.LocalUxPlatformServices
 import com.venera.compose.gallery.domain.GalleryNotice
 import com.venera.compose.gallery.domain.GalleryNoticeAction
 import com.venera.compose.gallery.domain.GalleryNoticeKind
@@ -66,7 +64,7 @@ internal fun GalleryNotices(
 ) {
     if (notices.isEmpty()) return
     val tokens = VeneraTokens
-    val context = LocalContext.current
+    val ux = LocalUxPlatformServices.current
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -83,7 +81,7 @@ internal fun GalleryNotices(
             // 让 `when` 自己去推会得到 `Any?`（一个 lambda 字面量与一个可空函数引用混在一支里），
             // 编译器当场报"actual type is Any?"—— 而那正是本仓不许的"参数类型靠猜"。
             val openAccountSettings: () -> Unit = {
-                context.openSettingsSubScreen(SettingsSubScreen.GALLERY)
+                ux.openSettingsSubScreen("GALLERY")
             }
             val onAction: (() -> Unit)? = when (notice.action) {
                 GalleryNoticeAction.ConfigureAccount -> openAccountSettings

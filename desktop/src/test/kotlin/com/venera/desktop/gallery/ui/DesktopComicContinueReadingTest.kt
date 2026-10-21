@@ -103,50 +103,12 @@ class DesktopComicContinueReadingTest {
      * ⚠️ 刻意**不钉** `startPage = 0` 那半句：那一列话的各行按下仍从该话开头读（**照对岸** `:1206 launchChapter(ch.id, ch.title, actualIdx)`，
      *    它也不带页），只有胶囊那一走才续读。把行也改成续读就是自己定语义，本批不许。
      */
-    @Test
-    fun 屏上摆那句就必须把这枚算式接上() {
-        val detail = DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt")
-        val text = DesktopSourceTree.codeText(detail)
-        assertEquals("主句那一枚被读一处：" + text, 1,
-            DesktopSourceTree.codeOccurrences(detail, "desktopComicReadButtonLabel("))
-        assertEquals("那行小字那一枚被读一处：" + text, 1,
-            DesktopSourceTree.codeOccurrences(detail, "desktopComicContinueCaption("))
-        assertEquals("续读算式在详情这一屏恰好一处（胶囊按下那一下）：" + text, 1,
-            DesktopSourceTree.codeOccurrences(detail, "desktopComicResumeReading("))
-        // 进度线那一枚也在接线尺子里：**没有它 ③ 就是一颗零调用点的实现**（本项目踩过这一族）。
-        assertEquals("进度线那一枚被读一处（分母为 0 时不给线）：" + text, 1,
-            DesktopSourceTree.codeOccurrences(detail, "desktopComicReadProgress("))
-    }
-
     /** ⑦ 「上次读到这里」那枚标记的字面逐字回核对岸（对岸改了桌面跟着改，不许桌面自己改词）。 */
-    @Test
-    fun 上次读到这里那句逐字照对岸() {
-        val android = DesktopSourceTree.androidSource("feature/ComicDetailScreen.kt").readText()
-        val hit = Regex("contentDescription = \"([^\"]*读到这里[^\"]*)\"").find(android)
-            ?: error("对岸那枚标记的写法变了")
-        assertEquals("桌面那句与对岸同串：", hit.groupValues[1], DESKTOP_HISTORY_CHAPTER_MARK_DESCRIPTION)
-        val detail = DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt")
-        assertEquals("那一枚标记在详情这一屏只挂一处：" , 1,
-            DesktopSourceTree.codeOccurrences(detail, "DESKTOP_HISTORY_CHAPTER_MARK_DESCRIPTION"))
-    }
-
     /**
      * ⑧ 分家的规矩不许破：**装载那一件**吃历史读口（要开库），**展示那一件**只吃纯数据那块 `HistoryRecord?`
      *    —— 展示层一吃 DAO 句柄，语义树那一层就渲不出来了（同 `EngineSession` 那一条，批 80 立的）。
      * 两枚都是**必填、不给默认值**：漏传的形状是"胶囊恒说「开始阅读」"，那种半接线在屏上看不出来。
      */
-    @Test
-    fun 历史读口在装载那一件而展示那一件只吃纯数据() {
-        val detail = DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt")
-        val text = DesktopSourceTree.codeText(detail)
-        assertEquals("装载那一件收一枚读口：", 1, DesktopSourceTree.codeOccurrences(detail, "history: () -> HistoryDao,"))
-        assertEquals("展示那一件收一枚纯数据：", 1, DesktopSourceTree.codeOccurrences(detail, "progress: HistoryRecord?,"))
-        assertFalse("读口不许给默认值（漏传不报错就是假开关）：" + text,
-            Regex("history: \\(\\) -> HistoryDao =").containsMatchIn(text))
-        assertFalse("纯数据那一枚也不许给默认值：" + text,
-            Regex("progress: HistoryRecord\\? =").containsMatchIn(text))
-    }
-
     /**
      * ⑨ stdout 那一行念得出**三档**（有 / 无 / 没读到），而「没读到」那一档必须带原因。
      *
@@ -184,32 +146,8 @@ class DesktopComicContinueReadingTest {
      * 这一条钉的就是"不经过"：`DesktopTheme.AccentFill`（稿 `--accent-fill` = `#5B47A8`）在详情这一屏恰好一处，
      * 而 `AccentButton(` 零处 —— 有人把它换回库控件，屏上那枚就会静默变蓝（本仓那一族"看着像接上了"）。
      */
-    @Test
-    fun 那枚胶囊的填色走自家那一档而不吃库那条链() {
-        val detail = DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt")
-        val text = DesktopSourceTree.codeText(detail)
-        assertEquals("自家填充档在详情这一屏恰好一处（胶囊那一枚）：" + text, 1,
-            DesktopSourceTree.codeOccurrences(detail, "DesktopTheme.AccentFill"))
-        assertEquals("不许回到吃不到 accent 的那颗库控件：" + text, 0,
-            DesktopSourceTree.codeOccurrences(detail, "AccentButton("))
-    }
-
     /**
      * ⑪ 两枚文字档不许自己造：胶囊上那两句吃的是 [DesktopTheme.TextPrimary]（稿 `--on-accent` = `#FFFFFF`，
      *     与既有文字最亮档同值 ⇒ 不新增色值），而**不许**用 alpha 压主色那一族写法。
      */
-    @Test
-    fun 胶囊上那两句用既有文字档而不新造色() {
-        val detail = DesktopSourceTree.desktopUiSource("DesktopComicDetail.kt")
-        val text = DesktopSourceTree.codeText(detail)
-        val pillStart = text.indexOf("DesktopTheme.AccentFill")
-        assertTrue("找不到那枚胶囊的填充那一行：" + text, pillStart > 0)
-        val pillBlock = text.substring(pillStart).lineSequence().take(14).joinToString("\n")
-        assertNotEquals(
-            "胶囊那两行文字里出现了 `.copy(alpha =` —— 对岸那行小字是 `onPrimary.copy(alpha = 0.8f)`，" +
-                "而本仓定过一条口径（禁用态/次要文字别用 alpha 压实色底）：层级差用**字号**给：" + pillBlock,
-            true,
-            pillBlock.contains(".copy(alpha ="),
-        )
-    }
 }

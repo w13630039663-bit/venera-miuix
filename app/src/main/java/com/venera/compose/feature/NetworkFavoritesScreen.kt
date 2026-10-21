@@ -12,6 +12,7 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.components.searchVisibleTags
 import androidx.compose.animation.core.animateDpAsState
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
@@ -641,7 +642,7 @@ private fun NetComicCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            val visibleTags = com.venera.compose.feature.searchVisibleTags(comic.tags, emptyList())
+            val visibleTags = com.venera.compose.components.searchVisibleTags(comic.tags, emptyList())
             if (visibleTags.isNotEmpty()) {
                 Spacer(Modifier.height(tokens.spacing.space1))
                 Text(

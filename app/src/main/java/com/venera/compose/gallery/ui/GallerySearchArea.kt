@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -88,7 +89,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -105,7 +105,7 @@ import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
 import com.venera.compose.components.venera.veneraGlassSurface
 import com.venera.compose.components.venera.veneraSurfaceShadowElevation
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.domain.GalleryHomeDomain
 import com.venera.compose.gallery.domain.GalleryRanking
@@ -1294,7 +1294,7 @@ internal fun GallerySearchCollapsedChips(
                 .padding(start = tokens.spacing.topBarTitlePadding)
                 .height(tokens.spacing.topBarCollapsedHeight)
                 .widthIn(
-                    max = LocalConfiguration.current.screenWidthDp.dp *
+                    max = LocalWindowWidthDp *
                         tokens.spacing.collapsedChipWidthFraction,
                 ),
             contentAlignment = Alignment.CenterStart,
@@ -1328,7 +1328,7 @@ internal fun GallerySearchCollapsedChips(
             // 定高 = 折叠态顶栏那一行的高度，内容在其中垂直居中 → 与顶栏既有元素同一条中心线。
             .height(tokens.spacing.topBarCollapsedHeight)
             .widthIn(
-                max = LocalConfiguration.current.screenWidthDp.dp *
+                max = LocalWindowWidthDp *
                     tokens.spacing.collapsedChipWidthFraction,
             ),
         contentAlignment = Alignment.CenterStart,

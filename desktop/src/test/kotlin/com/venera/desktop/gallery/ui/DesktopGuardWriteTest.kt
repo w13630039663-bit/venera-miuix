@@ -75,22 +75,6 @@ class DesktopGuardWriteTest {
     }
 
     /** ③ 四型标题同样逐字回核 Android（那一行是 `listOf("KEYWORD" to "关键词", …)`）。 */
-    @Test
-    fun 四型标题逐字回核Android() {
-        val pairs = androidPairs({ it.contains("""listOf("KEYWORD" to""") }, 4)
-        assertEquals("桌面的四型与 Android 分叉", pairs, desktopRuleTypes())
-
-        // 每一型那句"怎么匹配"也逐字回核：这一句决定用户往里填什么（填作品编号还是填标题片段），
-        // 两端各写一份措辞，就是"在手机上懂、换到电脑上又开始猜"。
-        val android = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("feature/settings/BlockingSettings.kt"))
-        desktopRuleTypes().forEach { (type, 名) ->
-            val hint = desktopRuleTypeHint(type)
-            assertTrue("「$名」那句匹配说明在 Android 里找不到同一句：$hint", android.contains("\"$hint\""))
-            assertTrue("「$名」那句没在说怎么匹配：$hint", hint.contains("匹配"))
-        }
-        assertEquals("认不出的那一型不许编一句匹配说明", "", desktopRuleTypeHint("WEIRD"))
-    }
-
     /** ④ 加一条的四档判据：空 / 坏正则 / 重复 / 收。四档各说一句，且**不写库**就能判出来。 */
     @Test
     fun 加一条的四档判据() {
@@ -175,29 +159,6 @@ class DesktopGuardWriteTest {
     }
 
     /** ⑦ 四跳接线：具体件由集成方取、根上收下、设置页真调着三处写口。 */
-    @Test
-    fun 写侧四跳真通() {
-        val ports = DesktopSourceTree.codeText(
-            java.io.File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/data/DesktopGalleryPorts.kt"),
-        )
-        assertTrue("DesktopGalleryPorts 没给那颗具体件的取法（界面不许自己 as 静态口）", ports.contains("fun contentGuard("))
-        assertTrue("取法没在读不对时抛（退成「读得到但改不动」就是假开关）", ports.contains("?: error("))
-
-        val shell = DesktopSourceTree.codeText(
-            java.io.File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/VeneraDesktop.kt"),
-        )
-        assertTrue("main() 没把那颗具体件取出来传给应用根", shell.contains("DesktopGalleryPorts.contentGuard("))
-        assertTrue("应用根没收这颗参数", shell.contains("guard = guard"))
-
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("应用根没有 guard: DesktopGalleryContentGuard 这颗必填参数", app.contains("guard: DesktopGalleryContentGuard"))
-
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        listOf("setNsfwMaskMode(", "addRule(", "deleteRule(").forEach { call ->
-            assertTrue("设置页没真调 $call（账上写着能改而屏上没接线）", pane.contains(call))
-        }
-    }
-
     /**
      * ⑧ 这一批**没有**动共享契约，也没在桌面另起一套判据。
      *
@@ -229,19 +190,4 @@ class DesktopGuardWriteTest {
     }
 
     /** ⑨ 落点分档各说一句：正在写 / 写成了 / 写砸了 / 重复 / 坏模式，不许合成一句"已保存"。 */
-    @Test
-    fun 写侧读数分档() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        listOf("正在保存", "保存失败", "这条已经加过了", "正则写法有误", "已删掉").forEach { 句 ->
-            assertTrue("设置页少了那一句「$句」", pane.contains(句))
-        }
-        assertFalse("把几种落点压成了一句「已保存」（那正好是屏上最没信息量的一句）", pane.contains("Text(\"已保存\")"))
-
-        // 三句**与 Android 同一份**的读数逐字回核：那三句是同一件事在两端的两种说法的话，
-        // 用户换设备就得重新学一次"这句到底指没指写进去了"。
-        val android = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("feature/settings/BlockingSettings.kt"))
-        listOf("正在保存", "这条已经加过了", "正则写法有误").forEach { 句 ->
-            assertTrue("「$句」在 Android 那侧没有同一句（桌面自己造了一枚新词）", android.contains(句))
-        }
-    }
 }

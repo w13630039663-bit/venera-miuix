@@ -1,6 +1,5 @@
 package com.venera.compose.components
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -24,8 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,10 +64,15 @@ fun VeneraFloatingNavBar(
     modifier: Modifier = Modifier,
     tabs: List<VeneraNavTab> = VeneraNavTab.entries
 ) {
-    val view = LocalView.current
     val isDark = isSystemInDarkTheme()
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
+    // 取宽走跨端口（LocalWindowWidth）：Android 侧供给 screenWidthDp（值逐值不变），
+    // 桌面侧读窗口容器宽 —— 大屏底栏因此两端口径同源。替换前这两行是
+    // `LocalConfiguration.current.screenWidthDp.dp`，那是 AndroidX 的件，桌面没有。
+    val screenWidth = LocalWindowWidthDp
+    // 触觉反馈从平台服务来（2026-10-20，写法 A）：`android.view.HapticFeedbackConstants`
+    // 是 Android SDK 的件，桌面没有。默认实现静默无操作，Android 侧由入口挂
+    // `AndroidUxPlatformServices`，震动手感逐字不变（原 `KEYBOARD_TAP`）。
+    val ux = LocalUxPlatformServices.current
 
     // 宽屏档走共享口径（WideScreenPolicy）；手机档保持 screenWidth - 28dp 的现定稿观感。
     val barWidth = wideScreenChromeMaxWidth(screenWidth) ?: (screenWidth - 28.dp)
@@ -163,7 +165,7 @@ fun VeneraFloatingNavBar(
                                     indication = null
                                 ) {
                                     if (tab != currentTab) {
-                                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                        ux.hapticTap()
                                         onTabSelected(tab)
                                     }
                                 },

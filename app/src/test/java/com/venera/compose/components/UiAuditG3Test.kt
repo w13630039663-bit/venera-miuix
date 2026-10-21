@@ -96,9 +96,17 @@ class UiAuditG3Test {
             Regex("""wallAdjacent = true""").findAll(sections).count(),
         )
         // 对照：外壳真的去吃现成口径，而不是自己写一个数。
+        //
+        // 2026-10-20 改判：取宽的入口从 `LocalConfiguration.current.screenWidthDp.dp`
+        // 换成了 `LocalWindowWidthDp`（写法 A：桌面复用安卓大屏 UI 的那道闸门）。
+        // **判据的意图一字未改** —— 它钉的始终是「这一行吃现成判据、不自造数字」，
+        // 形状仍是 `contentMaxWidthFor(wideScreenLayoutMode(<取宽>))` 三层嵌套，
+        // 只是第三层由 AndroidX 那颗件换成了跨端的读口。
+        // ⚠️ 别把这条改成"包含 contentMaxWidthFor 就算过" —— 那会让
+        // 「自己写个数绕过判据」重新变成绿的，正是这条尺子当初要抓的缺陷。
         assertEquals(
             1,
-            Regex("""contentMaxWidthFor\(wideScreenLayoutMode\(LocalConfiguration\.current\.screenWidthDp\.dp\)\)""")
+            Regex("""contentMaxWidthFor\(wideScreenLayoutMode\(LocalWindowWidthDp\)\)""")
                 .findAll(sections).count(),
         )
         assertTrue("收口之后要居中，否则 720 那一档会贴左缘空出右半屏", sections.contains("contentAlignment = Alignment.TopCenter"))

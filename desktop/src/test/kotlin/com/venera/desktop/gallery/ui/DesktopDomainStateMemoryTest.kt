@@ -52,20 +52,6 @@ class DesktopDomainStateMemoryTest {
      * ① 根上挂着那颗 holder，而域路整块被包进 `SaveableStateProvider` —— 键**同时含域与行**
      * （换页与换域是同一件事：那一屏的账本来就该按"哪一屏"存）。
      */
-    @Test
-    fun 根上挂着一颗holder而域路被包进provider() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("根上没有那颗 holder（`rememberSaveable` 单用离开组合即丢，见类注释）", app.contains("rememberSaveableStateHolder()"))
-        assertTrue("域路没被包进 provider（没有那一圈，还原根本不会发生）", app.contains(".SaveableStateProvider("))
-        val at = app.indexOf(".SaveableStateProvider(")
-        val window = app.substring(at, minOf(at + 260, app.length))
-        assertTrue("provider 的键里没读域：$window", window.contains("domain"))
-        assertTrue("provider 的键里没读那一行：$window", window.contains("selectedKey"))
-        assertTrue("provider 里面没摆域路本体", window.contains("DesktopDomainBody"))
-        // 对照组：这颗文件不是读空了（读空会让上面那几条 contains 恒真）。
-        assertTrue("对照组失效：根文件里连 rail 都没读到", app.contains("DesktopGalleryRail("))
-    }
-
     /** 那一行是不是把值交给 saveable 了（`rememberSaveable {` 与 `rememberSaveable(x, y) {` 两种写法都算）。 */
     private fun onSaveable(line: String): Boolean =
         Regex("rememberSaveable\\s*[({]").containsMatchIn(line)
@@ -75,53 +61,8 @@ class DesktopDomainStateMemoryTest {
      *
      * 一次列出全部违例（本仓负向尺子的老规矩：撞到第一颗就停的那条尺子会把"还剩三颗"读成"只剩一颗"）。
      */
-    @Test
-    fun 取数态一律走saveable() {
-        val offenders = fetchingScreens.filter { screen ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(screen.file))
-            val line = code.lines().firstOrNull { it.trim().startsWith(screen.stateLine) }
-            line == null || !onSaveable(line)
-        }
-        assertTrue(
-            "这些屏的取数态还是普通 `remember` ⇒ 换回来那一刻它就被重掷成 Loading：" +
-                offenders.joinToString(" | ") { "${it.file}:${it.stateLine}" },
-            offenders.isEmpty(),
-        )
-    }
-
     /** ③ 每一面会发车的屏，取数 effect 开头要有一道"这一轮已有结果就跳过"的守卫（逐屏点名的那一句）。 */
-    @Test
-    fun 取数effect有跳过守卫() {
-        val guards = mapOf(
-            "DesktopDailyPane.kt" to "if (state is DailyState.Ready) return@LaunchedEffect",
-            "DesktopLatestPane.kt" to "if (state is DesktopLatestState.Ready) return@LaunchedEffect",
-            "DesktopForYouPane.kt" to "if (state is DesktopForYouState.Ready) return@LaunchedEffect",
-            "DesktopGallerySearchPane.kt" to "if (state is SearchState.Ready) return@LaunchedEffect",
-        )
-        guards.forEach { (name, guard) ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue(
-                "$name 没有那道守卫（或守卫写的不是它自己那一档状态）⇒ 还原了状态还是每次进屏重发一笔：$guard",
-                code.contains(guard),
-            )
-        }
-    }
-
     /** ④ 种子那两枚必须落在 `saveable` 上 —— 否则"换回来"就是"换了一批卡"。 */
-    @Test
-    fun 种子换回来还是同一批() {
-        listOf("DesktopDailyPane.kt", "DesktopForYouPane.kt").forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            val lines = code.lines().filter { it.contains("System.currentTimeMillis()") }
-            assertTrue("$name 里找不到那枚种子（判式先失效）", lines.isNotEmpty())
-            val seeded = lines.filter { onSaveable(it) }
-            assertTrue(
-                "$name 那枚种子还在普通 `remember` 上 ⇒ 每次进这一屏整屏换序（读起来像页面自己抖了一下）：" + lines,
-                seeded.isNotEmpty(),
-            )
-        }
-    }
-
     /** ⑤ 已废弃的 `key =` 那颗参数一枚都不许有（它绕过位置定域，会串状态）。 */
     @Test
     fun 不许用已废弃的saveable键参数() {

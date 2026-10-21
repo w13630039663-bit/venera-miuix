@@ -238,22 +238,6 @@ class DesktopReverseSearchTest {
     }
 
     /** ⑩ 那一格真接在浮层上：入口一枚、跑一次、结果排在动作之后而标签墙之前。 */
-    @Test
-    fun 浮层上那枚入口真接着而结果那一格排得对() {
-        val panel = DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt")
-        val body = DesktopSourceTree.codeText(panel)
-        assertEquals("跑那一笔的调用点必须恰好一处", 1, DesktopSourceTree.codeOccurrences(panel, "desktopReverseRun("))
-        assertTrue("入口没上屏", body.contains(DESKTOP_REVERSE_ENTRY_LABEL))
-        assertTrue("结果那一格没画", body.contains("desktopReverseHitReading("))
-        assertTrue("没读守卫那一把判据", body.contains("desktopAllowNsfw("))
-        val actions = body.indexOf("复制链接")
-        val results = body.indexOf("desktopReverseHitReading(")
-        val tags = body.indexOf("post.tagList.forEach")
-        assertTrue("找不到动作排、结果那一格、标签墙（读空了下面两条恒真）", actions > 0 && results > 0 && tags > 0)
-        assertTrue("结果那一格排到了动作之前 —— 按完看不见东西就是一枚假开关", results > actions)
-        assertTrue("结果那一格排到了标签墙之后 —— 与判据 ⑩（那条图证）同一个失败形状", results < tags)
-    }
-
     /** ⑪ 分级那把判据与对岸同一把（逐字回核，不留第二份口径）。 */
     @Test
     fun `⑪ AllowNsfw 与对岸同一把`() {

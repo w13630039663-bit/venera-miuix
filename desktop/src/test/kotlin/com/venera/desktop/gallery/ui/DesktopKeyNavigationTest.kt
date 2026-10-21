@@ -133,19 +133,6 @@ class DesktopKeyNavigationTest {
      * 没有焦点 ⇒ 三枚键一律送不进来（见类注释里那三行择路），而屏上一点反应都没有、
      * stdout 一个字都不说，用户只会得到"这软件的 Esc 坏了"。
      */
-    @Test
-    fun 焦点拿不到要说出来() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("根上没要焦点（没有焦点这三枚键根本送不进来）", app.contains("requestFocus()"))
-        assertTrue(
-            "requestFocus() 的返回值被丢掉了 —— 拿不到焦点就是静默失败",
-            app.contains("if (!granted)"),
-        )
-        assertTrue("拿不到焦点时那条读数不在（KEYNAV 那一行是这条链唯一的可见证据）", app.contains("KEYNAV"))
-        // 对照组：这个文件不是读空了（读空会让上面三条 contains 恒真）。
-        assertTrue("对照组失效：根文件里连浮层那一格都没读到", app.contains("DesktopGalleryDetailPanel("))
-    }
-
     /**
      * ⑥ 按键接线**一屏一处**，而每一处三件齐（focusRequester + focusTarget + onKeyEvent）。
      *
@@ -158,85 +145,17 @@ class DesktopKeyNavigationTest {
      * 少 `focusTarget()` ⇒ 节点不在焦点序里，`requestFocus()` 恒 false；
      * 少 `focusRequester(` ⇒ 没有要焦点的手；少 `onKeyEvent` ⇒ 拿到了焦点也没人读键。
      */
-    @Test
-    fun 按键接线一屏一处而两处各自三件齐() {
-        // 判式带右花括号：import 那行 `androidx.compose.ui.input.key.onKeyEvent` 里也含 `.onKeyEvent`，
-        // 不带花括号会把"import 了这颗修饰"数成一次接线 —— 数出 2 处然后红在一行无害的 import 上。
-        val attachments = DesktopSourceTree.desktopMainSources()
-            .flatMap { file ->
-                DesktopSourceTree.codeLinesOf(file)
-                    .filter { it.contains(".onKeyEvent {") || it.contains(".onPreviewKeyEvent {") }
-                    .map { file.name }
-            }
-            .sorted()
-        assertEquals(
-            "按键接线该是一屏一处（画廊浮层那一屏与阅读那一屏），多一处就有人在同一枚键上读两遍：" +
-                attachments.joinToString(" | "),
-            listOf("DesktopComicReader.kt", "VeneraDesktopApp.kt"),
-            attachments,
-        )
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue(
-            "换域不再收浮层 ⇒ 那两层同时站着、各自要焦点，同一枚键被读两遍（这条的前提塌了）。" +
-                "钉的是**相邻两行**而不是那句键名：这一格里另有第二枚同键 `LaunchedEffect`，" +
-                "只数「那串存在」会被第二枚喂饱（台架 P12 量的正是这一格）",
-            app.contains("LaunchedEffect(domain, selectedKey) {\nselected = null"),
-        )
-        listOf("VeneraDesktopApp.kt", "DesktopComicReader.kt").forEach { name ->
-            val text = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            val start = text.indexOf(".focusRequester(")
-            assertTrue("$name 里没有 focusRequester（那一屏根本没要焦点）", start >= 0)
-            val chain = text.substring(start, minOf(start + 500, text.length))
-            assertTrue("$name 那条修饰链里没有 focusTarget() —— 节点不在焦点序里", chain.contains(".focusTarget()"))
-            assertTrue("$name 那条修饰链里没有 onKeyEvent", chain.contains(".onKeyEvent {"))
-            assertTrue(
-                "$name 那条链没把事件交给共享判据件（写了第二份键位判据就是第二份真相）",
-                chain.contains("asDesktopKeySignal()"),
-            )
-        }
-        // 对照组：根文件没读空（读空会让上面那几串 contains 恒真）。
-        assertTrue("对照组失效：根文件里连浮层那一格都没读到", app.contains("DesktopGalleryDetailPanel("))
-    }
-
     /**
      * ⑦ 键盘与鼠标走**同一份**状态改动：步进与关闭各只有一个主人。
      *
      * 复制一份 `selected = selection.copy(...)` 给键盘，两份的差别会在第一次翻页时现形
      * （一边钳位、一边不钳位是这一族最常见的写法差）。
      */
-    @Test
-    fun 键盘与鼠标共用同一份步进() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertEquals(
-            "`selected = selection.copy(` 出现了多处 —— 键盘那一路复制了步进算式：" + app,
-            1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"),
-                "selected = selection.copy(",
-            ),
-        )
-        assertTrue("浮层那两枚按钮没吃抽出来的那颗 step（接线还是各写各的）", app.contains("onStep = step"))
-        assertTrue("键盘那一路没吃同一颗 onClose", app.contains("onClose = onClose"))
-        // 对照组：步进算式本身仍在这份文件里（否则上面那条"恰一处"会因为读空而恒真）。
-        assertTrue("对照组失效：根文件里找不到钳位步进件", app.contains("desktopDetailStep("))
-    }
-
     /**
      * ⑧ 搜索框回车**不造第二步**：那一屏即输入即重查，`KeyboardActions` 一条都不许接。
      *
      * 计划单第 ⑥ 条这一项是被量掉的，不是被遗忘的 —— 这条判据的作用是逼后来人先读那一句再决定。
      */
-    @Test
-    fun 搜索框回车没有第二步() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        assertFalse(
-            "搜索屏接了 KeyboardActions —— 那一屏每敲一个字就重查一次，回车再发一次就是第二步（多一笔同样的请求）",
-            pane.contains("KeyboardActions("),
-        )
-        // 对照组：输入框是真输入框（改掉 onValueChange 就是真的重查通路，读空会让上面那条恒真）。
-        assertTrue("对照组失效：搜索屏里没有 onValueChange，那它根本没有输入框", pane.contains("onValueChange"))
-    }
-
     /**
      * ⑨ `-Pdetail=` 必须真被拼进 `:desktop:app` 的参数（本批动手前量出来的洞）。
      *

@@ -55,6 +55,20 @@ object DesktopFace {
     /** 排除项连同它在 gradle 里的行号（"每条排除都要说得出成因"那条要按行号回看上面的理由）。 */
     data class ExcludeEntry(val name: String, val lineNo: Int)
 
+    /**
+     * 排除清单的条目。**含 glob 的也收**（2026-10-20 改）。
+     *
+     * 原实现把带 `*` 的条目直接丢掉，理由是"`android` 子目录那一族由 [sharedFiles] 按目录判"。
+     * 那条仍然成立，但它把**另一类** glob 一起丢了：`**` 加斜杠再跟文件名那种
+     * 「点名某个子目录里的单颗文件」的写法。于是那颗文件在账本里永远算作
+     * "该排除而未排除"，而 gradle 那边其实真的排掉了 —— 判据与事实相反。
+     * （本仓 2026-10-20 真的踩到了：`VeneraGallerySourceMark.kt` 在 `venera/` 子目录，
+     *  裸文件名排不掉它，只能写 glob，而 glob 又被解析器丢掉。）
+     *
+     * 现在分类记：
+     *  - 不含 `*` 的 ⇒ 按裸文件名匹配（与既有口径一致）；
+     *  - 含 `*` 的 ⇒ 按 glob 匹配**相对 srcDir 根**的路径（见 [isExcluded]）。
+     */
     fun excludeEntries(): List<ExcludeEntry> {
         val out = mutableListOf<ExcludeEntry>()
         var inside = false
@@ -65,7 +79,7 @@ object DesktopFace {
                 val inline = Regex("""exclude\("([^"]+)"\)""").find(line)
                 if (inline != null) {
                     inside = false
-                    inline.groupValues[1].takeUnless { it.contains('*') }?.let { out += ExcludeEntry(it, index + 1) }
+                    out += ExcludeEntry(inline.groupValues[1], index + 1)
                     return@forEachIndexed
                 }
             }
@@ -76,10 +90,68 @@ object DesktopFace {
             }
             if (line.isEmpty() || line.startsWith("//")) return@forEachIndexed
             val name = Regex(""""([^"]+)"""").find(line)?.groupValues?.get(1) ?: return@forEachIndexed
-            if (!name.contains('*')) out += ExcludeEntry(name, index + 1)
+            out += ExcludeEntry(name, index + 1)
         }
         check(out.isNotEmpty()) { "没从 $GRADLE 解析出任何排除项 —— 判式失效，不能当作通过" }
         return out
+    }
+
+    /** 裸文件名那一档（不含 `*`）。 */
+    val excludedFileNames: Set<String> by lazy {
+        excludeEntries().map { it.name }.filterNot { it.contains('*') }.toSet()
+    }
+
+    /**
+     * **文件级** glob 条目（含 `*` 且末尾落在某个 `.kt` 上）。
+     *
+     * `android` 子目录那一族（斜杠接双星）**不在此列** —— 它由 [candidateFiles] 的
+     * `hasAndroidParent()` 按目录判，不是"点名某一颗文件"，所以：
+     *  - 放进 [excludedFileNames] 会让"每颗排除都要说得出成因"那条去找一颗名叫
+     *    `android` 的文件而永远找不到（假红）；
+     *  - 而它确实**是**一条排除项，所以 [excludeEntries] 仍要收它（用于完整性核对）。
+     *
+     * ⚠️ 本段注释刻意不写那两个字符连写（斜杠紧跟星号）：Kotlin 块注释可嵌套，
+     * 写出来就开了第二层，整颗文件从那一行起被吞掉（本仓已踩过三次，见类头注）。
+     */
+    val excludedFileGlobs: Set<String> by lazy {
+        excludeEntries().map { it.name }
+            .filter { it.contains('*') && it.endsWith(".kt") }
+            .toSet()
+    }
+
+    /** 目录级 glob（目前只有 `android` 那一族）。只用于把"目录排除"与"文件排除"分开记。 */
+    val excludedDirGlobs: Set<String> by lazy {
+        excludeEntries().map { it.name }.filter { it.contains('*') && !it.endsWith(".kt") }.toSet()
+    }
+
+    /**
+     * 某颗文件是否真的被排除。两道判：
+     *  1. 裸文件名命中（无 glob 的条目）—— 与改判前逐值等价；
+     *  2. 含 `*` 的条目按 glob 匹配**相对 srcDir 根**的路径。
+     */
+    fun isExcluded(file: File): Boolean {
+        if (file.name in excludedFileNames) return true
+        val rel = srcDirs.firstNotNullOfOrNull { dir ->
+            file.relativeToOrNull(File(RepoSources.root, dir))?.path?.replace('\\', '/')
+        } ?: return false
+        return excludeEntries().any { it.name.contains('*') && globMatches(it.name, rel) }
+    }
+
+    /** 极简 glob：`**` 加斜杠 ⇒ 任意层级（含零层），`**` ⇒ 任意串，`*` ⇒ 段内任意，`?` ⇒ 单字符。 */
+    private fun globMatches(pattern: String, path: String): Boolean {
+        val sb = StringBuilder("^")
+        var i = 0
+        while (i < pattern.length) {
+            when {
+                pattern.startsWith("**/", i) -> { sb.append("(?:.*/)?"); i += 3 }
+                pattern.startsWith("**", i) -> { sb.append(".*"); i += 2 }
+                pattern[i] == '*' -> { sb.append("[^/]*"); i++ }
+                pattern[i] == '?' -> { sb.append("[^/]"); i++ }
+                else -> { sb.append(Regex.escape(pattern[i].toString())); i++ }
+            }
+        }
+        sb.append('$')
+        return Regex(sb.toString()).matches(path)
     }
 
     /**
@@ -100,9 +172,9 @@ object DesktopFace {
 
     /**
      * 真的进了桌面编译面的那些 `:app` 源文件：在 [srcDirs] 之下、不是 `android/` 子目录里的、
-     * 且没被 [excludedNames] 点名的。
+     * 且没被排除清单点名的（裸文件名与 glob 两种写法都认，见 [isExcluded]）。
      */
-    fun sharedFiles(): List<File> = candidateFiles.filterNot { it.name in excludedNames }
+    fun sharedFiles(): List<File> = candidateFiles.filterNot { isExcluded(it) }
 
     /** 桌面自己的源（`desktop/src/main`）。 */
     fun ownFiles(): List<File> =

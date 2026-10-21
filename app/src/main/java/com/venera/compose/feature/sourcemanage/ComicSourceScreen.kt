@@ -1,5 +1,6 @@
 package com.venera.compose.feature.sourcemanage
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -28,7 +29,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalConfiguration
 import com.venera.compose.components.contentMaxWidthFor
 import com.venera.compose.components.wideScreenLayoutMode
 import androidx.compose.ui.Modifier
@@ -170,7 +170,7 @@ fun ComicSourceScreen(
          * `Compact` 恒 null ⇒ 手机档逐像素不变。
          */
         val contentMaxWidth = contentMaxWidthFor(
-            wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+            wideScreenLayoutMode(LocalWindowWidthDp),
         )
         LazyColumn(
             modifier = Modifier

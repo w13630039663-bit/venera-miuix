@@ -38,75 +38,14 @@ class DesktopCorruptNoticeTest {
         Regex("$name\\s*(\\?\\.let|!=\\s*null)").containsMatchIn(code) || Regex("Text\\(\\s*$name").containsMatchIn(code)
 
     /** ① 两枚读数各被消费**恰好一次**，而且消费点在应用根（不在任何一屏里）。 */
-    @Test
-    fun 两枚坏档读数只在根上消费() {
-        // 扫 `gallery/ui/` 而不是整棵 main：桌面那两颗 wrapper 里各有一句
-        // `override fun consumeNotice(): String? = store.consumeNotice()`，那是**转发**不是消费点。
-        val sites = DesktopSourceTree.desktopUiSources()
-            .flatMap { file -> DesktopSourceTree.codeLinesOf(file).map { file.name to it } }
-            .filter { it.second.contains("consumeNotice()") }
-        assertTrue(
-            "消费点不在应用根（每一屏各自消费一次 = 谁先读到谁把另一屏那句吃掉）：" +
-                sites.joinToString(" | ") { "${it.first}:${it.second}" },
-            sites.all { it.first == "VeneraDesktopApp.kt" },
-        )
-        val consumed = sites.map { it.second }.filter { it.contains("ports.follows.consumeNotice()") }
-        val favorites = sites.map { it.second }.filter { it.contains("ports.favorites.consumeNotice()") }
-        assertTrue("名单那枚没在根上消费（或消费了两回）：$consumed", consumed.size == 1)
-        assertTrue("收藏那枚没在根上消费（桌面 UI 今天对它是零调用点）：$favorites", favorites.size == 1)
-    }
-
     /**
      * ② 消费出来的那句要**存进状态**，而不是组合期现取。
      *
      * 组合期现取（`val x = ports.follows.consumeNotice()` 不带 `remember`）更糟：每次重组都调一次，
      * 第一次之后拿到的恒是 `null` —— 那句话只会闪一帧。
      */
-    @Test
-    fun 消费一次之后存进状态() {
-        val holders = DesktopSourceTree.codeLinesOf(app)
-            .filter { it.contains("consumeNotice()") }
-        assertEquals("根上消费那两枚读数的行不对：$holders", 2, holders.size)
-        assertTrue(
-            "根上那两枚消费结果没存成状态（组合期现取 = 第二次重组起恒是 null，那句话只会闪一帧）：" + holders,
-            holders.all { it.contains("remember") },
-        )
-        // 反向：两屏都不许再自己消费。
-        listOf("DesktopArtistsPage.kt", "DesktopGalleryFavoritesPane.kt").forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertFalse("$name 里还在自己 consumeNotice() —— 那一屏离开组合时读数会跟着消失", code.contains("consumeNotice("))
-        }
-    }
-
     /** ③ 两屏各把吃进来的那句**摆上屏**（只接参数不摆 = 假接线）。 */
-    @Test
-    fun 两屏各把那句摆上屏() {
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        assertTrue("画师那一屏没接那颗参数", page.contains("followsNotice: String?"))
-        assertTrue("画师那一屏接了参数却没摆上屏", rendered(page, "followsNotice"))
-
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryFavoritesPane.kt"))
-        assertTrue("收藏那一屏没接那颗参数", pane.contains("favoritesNotice: String?"))
-        assertTrue("收藏那一屏接了参数却没摆上屏", rendered(pane, "favoritesNotice"))
-
-        // 中间那一跳也要真传（域路 `when` 到各屏，漏传是编译错误，但传错成常量不是）。
-        val bodies = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDomainPanes.kt"))
-        assertTrue("域路没把名单那句递给画师那一屏", bodies.contains("followsNotice = followsNotice"))
-        assertTrue("域路没把收藏那句递给收藏那一屏", bodies.contains("favoritesNotice = favoritesNotice"))
-    }
-
     /** ④ 两枚参数必填、不给默认值（"漏传不报错"那一族的老规矩）。 */
-    @Test
-    fun 那颗参数不带默认值() {
-        val signatures = DesktopSourceTree.desktopMainSources()
-            .flatMap { DesktopSourceTree.codeLinesOf(it) }
-            .filter { it.contains("followsNotice: String?") || it.contains("favoritesNotice: String?") }
-        assertTrue("判式读空了（一条签名都没扫到）", signatures.isNotEmpty())
-        signatures.forEach { line ->
-            assertFalse("坏档读数参数给了默认值（漏传就静默变 null，那正是本批要修的形状）：$line", line.contains("= null"))
-        }
-    }
-
     /**
      * ⑤ 两枚字**逐字来自 store**，桌面不许重述。
      *

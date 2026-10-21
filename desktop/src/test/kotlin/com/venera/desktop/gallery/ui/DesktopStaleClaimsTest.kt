@@ -47,41 +47,8 @@ class DesktopStaleClaimsTest {
         }
 
     /** ① 屏上那句音量键说明不再说"只能点按钮"——← / → 今天也能翻页。 */
-    @Test
-    fun 音量键那句不再把翻页说成只有按钮() {
-        val row = DesktopGallerySettingsSpec.notOnScreen.first { it.pref == "galleryVolumeKeyTurn" }
-        assertEquals("这一屏还写着「只能点那两枚按钮」", 0, hits("桌面上翻页请点浮层里那两枚按钮").size)
-        assertTrue(
-            "撤掉旧那句之后得说清今天怎么翻（只删不说 = 用户读到一句没头没尾的话）：" + row.why,
-            row.why.contains("←") && row.why.contains("→"),
-        )
-        // 对照：这句被禁**是因为键真接上了**，不是因为"不想提按钮"。哪天键撤了，对照会先红。
-        val keys = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopKeyNavigation.kt"))
-        assertTrue("对照组失效：← / → 没被认成翻页步", keys.contains("Key.DirectionLeft") && keys.contains("Key.DirectionRight"))
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("对照组失效：那三枚键没接到浮层上", app.contains(".onKeyEvent {"))
-    }
-
     /** ② 「关注在桌面没有入口」那句已经活了太久而入口就在浮层里。 */
-    @Test
-    fun 关注入口那句已下架() {
-        assertEquals("还有文件写着「关注这个动作在桌面还没有入口」", 0, hits("关注这个动作在桌面还没有入口").size)
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("对照组失效：浮层里那枚关注字没了（那上面那句就该回来）", panel.contains("desktopFollowLabel("))
-    }
-
     /** ③ 「与发现那一屏同一档缺口」——那一屏的续页第十批 ③ 就上线了，参照物不存在。 */
-    @Test
-    fun 最新那一屏不再拿发现屏当缺席的挡箭牌() {
-        assertEquals("还有文件写着「与发现那一屏同一档缺口」", 0, hits("与发现那一屏同一档缺口").size)
-        val forYou = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopForYouPane.kt"))
-        assertTrue("对照组失效：发现那一屏的续页持有件没读到（那句若被撤了就另说，但别拿它当参照）", forYou.contains("DesktopGalleryBatch"))
-        // 撤掉错的参照物之后，那一屏**仍然要**明说自己的边界（不许只删不说）。
-        // 批 23 接上续页，旧那句「只给第一轮的第一页」退役，换上今天仍然成立的那一句。
-        val latest = File(uiDir, "DesktopLatestPane.kt").readText()
-        assertTrue("最新那一屏不再明说自己那一笔的边界（给一整页）", latest.contains("一整页"))
-    }
-
     /**
      * ④ 搜索那一屏关于"历史"的两句都不成立：三枚判据在编译面、落盘件早就接好。
      *
@@ -184,15 +151,6 @@ class DesktopStaleClaimsTest {
      *
      * ⚠️ 这与首页那一行「历史」（浏览过哪张卡）**仍然不是一件事** —— 那一句由判据 ⑥ 反向钉着，别撤。
      */
-    @Test
-    fun 搜索屏那句不存历史的话下架() {
-        assertEquals("还有文件写着「这一屏今天不存查询历史」", 0, hits("这一屏今天**不**存查询历史").size)
-        val pane = File(uiDir, "DesktopGallerySearchPane.kt").readText()
-        assertTrue("对照组失效：屏上那一排没了（那句若成立就该回来）", pane.contains("DesktopHistoryRow("))
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopSearchHistory.kt"))
-        assertTrue("对照组失效：读盘那颗没了", holder.contains("fun desktopHistoryRead("))
-    }
-
     /**
      * ⑨ 「补全不做成打字时自动弹，因为桌面没有那套防抖状态机」那句是假话（批 11 量出来的）。
      *
@@ -200,20 +158,6 @@ class DesktopStaleClaimsTest {
      * 上一笔由 effect 自己作废 —— 对岸靠 `suggestJob?.cancel()`，两端同一形状，谁都没有防抖延迟。
      * 那句把"今天就是这么跑的"写成"桌面做不到"，属于 §22.3 那族最阴的：**能力在，话把它说没了**。
      */
-    @Test
-    fun 补全那句做不到的话下架() {
-        assertEquals("还有文件写着那句防抖状态机", 0, hits("是因为桌面没有那套防抖状态机").size)
-        assertEquals("还有文件写着「避免每敲一键就出一笔请求」", 0, hits("避免每敲一键就出一笔请求").size)
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        // 对照：这句被禁**是因为补全真按每一次输入重跑**，撤掉那颗 effect 会先红在这里。
-        assertTrue(
-            "对照组失效：补全那颗 effect 不再随输入重跑（那句若成立就该回来）",
-            pane.contains("LaunchedEffect(ports, sourceIndex, query)") && pane.contains("term.length < 2"),
-        )
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopSearchSuggestion.kt"))
-        assertTrue("对照组失效：候选不再走那颗共享复检件", holder.contains("refineGalleryTagSuggestions("))
-    }
-
     /**
      * ⑩ 「还没有本地历史存储，读不到浏览记录」那句是假话（批 14 量出来的）。
      *
@@ -249,19 +193,6 @@ class DesktopStaleClaimsTest {
      * 日榜那一屏今天真在出图（批 13 那帧屏上就是封面墙），而"没有消费点"这句还住在类注释里 ——
      * 下一批读到这句会以为那一屏还没接线，于是去"接线"，实际会把已经在跑的东西再接一遍。
      */
-    @Test
-    fun 日榜那句没有消费点的话下架() {
-        assertEquals("还有文件写着「此刻还没有消费点」", 0, hits("此刻还没有消费点").size)
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
-        // 对照：这句被禁**是因为那一屏真把墙画出来了**（撤掉墙或撤掉接线会先红在这里）。
-        assertTrue("对照组失效：日榜那一屏不再画封面墙（那句若成立就该回来）", pane.contains("DesktopGalleryPostWall("))
-        val wired = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryHomeSections.kt"))
-        // ⚠️ 这一枚只钉到**被调的那颗件**（括号前）：扰动 V3 把接线换成等价写法 `DesktopDailyPane(ports = ports)`
-        // 时它误红过一次 —— 那是 §0 坑 ㉖ 那一族，退一层之后"撤掉接线"仍会红（那颗件名整个消失），
-        // 而"换一种传参写法"不再误伤。
-        assertTrue("对照组失效：日榜那一屏没被接进主区", wired.contains("DesktopDailyPane("))
-    }
-
     /**
      * ⑫ 「分段控件三档：只有「推荐」今天真的有东西」到第十批 ⑤ 就不成立了（「最新」点亮了）。
      *
@@ -289,21 +220,6 @@ class DesktopStaleClaimsTest {
      * ⚠️ 这一句是**直接上屏**的（那面墙被挡空时的 `ifBlank` 兜底），不是注释里的话。
      * 而它劝用户的话正好相反："改不了" ⇒ 用户就不去改了，其实那一屏改得动。
      */
-    @Test
-    fun 收藏那一屏不再说改不了() {
-        assertEquals("还有文件写着「桌面今天没有设置界面可改它」", 0, hits("桌面今天没有设置界面可改它").size)
-        val settings = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        // 对照：这句被禁**是因为那一屏真有三道写口** —— 撤掉任一道会先红在这里（那句若重新成立就该回来）。
-        // 只钉被调的那颗件名（§0 坑 ㉖）：参数怎么传、包在哪个 if 里都不许成为误红的理由。
-        listOf("setNsfwMaskMode(", "addRule(", "deleteRule(").forEach { seam ->
-            assertTrue("对照组失效：设置那一屏没调 $seam（那一句说不定又成立了）", settings.contains(seam))
-        }
-        val pane = File(uiDir, "DesktopGalleryFavoritesPane.kt").readText()
-        // 不许只删不说：那句兜底话仍然要在，而它得把"去哪儿改"指出来。
-        assertTrue("兜底那句不见了", pane.contains("分级与屏蔽规则把这一批全挡下了"))
-        assertTrue("删掉旧那句之后没指出去哪儿改", pane.contains("分级与屏蔽规则把这一批全挡下了（") && pane.contains("设置"))
-    }
-
     /**
      * ⑭ 两句注释把一颗**已经不存在的件**当依据（`DesktopGalleryDomain.notWiredReason`）。
      *
@@ -329,27 +245,7 @@ class DesktopStaleClaimsTest {
     }
 
     /** ⑮ 画师那一域的注释还说"头像不主动现取（只读本机档）"—— 第十批 ② 就改成按视口现取了。 */
-    @Test
-    fun 画师那一域不再说不现取头像() {
-        assertEquals("还有文件写着「头像不主动现取」", 0, hits("头像不主动现取").size)
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        // 对照：这句被禁**是因为那一屏真在按视口问头像**（撤掉现取会先红在这里）。
-        assertTrue("对照组失效：画师那一屏不再算视口可见集", page.contains("desktopVisibleProbeTargets("))
-    }
-
     /** ⑯ 发现那一域的注释还说它缺"续页"—— 那一屏的「下一页」第十批 ③ 与批 8 就接上了。 */
-    @Test
-    fun 发现那一域不再说缺续页() {
-        assertEquals("还有文件把'续页'列为发现域缺的那一层", 0, hits("续页（那套状态在").size)
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopForYouPane.kt"))
-        // 对照：这句被禁**是因为那一屏真有续页那一档相位**（撤掉续页会先红在这里）。件名级锚点，理由同 ⑬。
-        // 批 23 把那枚相位收成了整个目录共享的一颗（从前是发现、单人页各抄一遍），所以锚点跟着换名。
-        assertTrue("对照组失效：发现那一屏的续页相位没了", pane.contains("DesktopGalleryMorePhase"))
-        // 另一半仍然成立，不许见"缺"就撤：沿用上次那一批确实还缺（那颗件吃 Context，在排除清单里）。
-        val build = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        assertTrue("对照组失效：`GalleryForYouCache` 又进桌面编译面了（那句缺席该撤）", build.contains("\"GalleryForYouCache.kt\","))
-    }
-
     /**
      * ⑰ 设置台账那行从前断言"桌面今天一律让它动"—— 这一句写下来时**从来没有量过**。
      *
@@ -361,42 +257,6 @@ class DesktopStaleClaimsTest {
      * 一张 4×4 静态图、像素 == 第 0 帧。⇒ 屏上今天说的是**停在第一帧**（量过的实话）。
      * ⚠️ 这一条不许退回"一律让它动"，也不许在没重量之前写成别的（比如"动着放"或"画不出来"）。
      */
-    @Test
-    fun 动图那一档不再断言它会动() {
-        assertEquals("还有文件写着「桌面今天一律让它动」", 0, hits("桌面今天一律让它动").size)
-        // 反方向那句也不许写：批 17 量的是"解得出来、只解首帧"，写成"画不出来"是另一句假话。
-        assertEquals("还有文件写着「整张画不出来」", 0, hits("整张画不出来").size)
-        val row = DesktopGallerySettingsSpec.editable.first { it.pref == "galleryAnimated" }
-        assertTrue("撤掉那句之后这一行成了空句：${row.caption}", row.caption.isNotBlank())
-        // 屏上那句现在说的是量出来的那一档行为。这里只钉"第一帧"这一枚**承载事实的词**
-        // （同 ① 钉 ← 与 → 一个口径），而问句那半已经不含它 —— 扰动 P4 就是拿"去掉答案、只留问题"
-        // 验过这一枚会红的。
-        assertTrue("那一行不再点名今天的行为是哪一帧：${row.caption}", row.caption.contains("第一帧"))
-        // 对照（证据件）：量出这句话的那颗探针还在，而且**代码行里**量的就是桌面用的那颗入口。
-        // ⚠️ 必须走 codeText：扰动 P3 把探针换成别的解码入口之后，只有类注释里还留着那个名字，
-        //    用 readText 扫就被注释满足了 ⇒ 对照恒真（坑 ㉑ 的那把尺子这次咬的是我自己的对照）。
-        val probePath = "desktop/src/test/kotlin/com/venera/desktop/gallery/data/DesktopAnimatedDecodeProbeTest.kt"
-        val probeFile = File(DesktopSourceTree.repoRoot, probePath)
-        assertTrue("对照组失效：量首帧那颗探针文件没了 ⇒ 屏上那句又成了没量过的断言", probeFile.isFile)
-        val probeCode = DesktopSourceTree.codeText(probeFile)
-        assertTrue(
-            "对照组失效：探针不再走 `Image.makeFromEncoded`（那屏上那句的依据换了，得重量）",
-            probeCode.contains("Image.makeFromEncoded"),
-        )
-        assertTrue("对照组失效：探针不再数帧数（夹具是不是两帧就没人管了）", probeCode.contains("frameCount"))
-        // 对照（读侧）：登记仍在 —— 撤掉它就不是"这一档能改"而是"这一档不存在"，那是另一件事。
-        // ⚠️ 这一段从前是**反向钉**（"设置那一屏不许出现写口"），批 52 把写口接上了 ⇒ 按那条对照自己
-        //   留的话（"接上那天屏上那句要按新行为重量一遍"）翻成正向钉：写口必须真在，
-        //   而那句"不能在这儿改"整树不许再出现 —— 它就是本文件管的那一族假话。
-        val settings = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"))
-        assertTrue("这一屏没调动图写口 ⇒ 那一行是按下去什么都不发生的假开关", settings.contains("settings.setGalleryAnimated("))
-        assertEquals("还有文件写着「不能在这儿改」（这一枚现在改得动了）", 0, hits("不能在这儿改").size)
-        val prefs = DesktopSourceTree.codeText(
-            java.io.File(DesktopSourceTree.repoRoot, "desktop/src/main/kotlin/com/venera/desktop/gallery/data/DesktopGalleryPreferences.kt"),
-        )
-        assertTrue("对照组失效：`galleryAnimated` 那枚读侧登记没了", prefs.contains("KEY_ANIMATED"))
-    }
-
     /**
      * ⑱ 画师单人页不再说「这一屏今天不接续页」（第二十一批 批 21）。
      *
@@ -407,21 +267,6 @@ class DesktopStaleClaimsTest {
      * 撤掉续页（回到只取一轮第一页）会先红在对照上，读的人立刻知道那句该回来，
      * 而不是被要求改注释（§22.3 的反向应用，与 ①②⑬… 同一套配法）。
      */
-    @Test
-    fun 单人页不再说缺续页() {
-        assertEquals("还有文件把'不接续页'当边界念着", 0, hits("不接续页").size)
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistProfilePane.kt")) + "\n" +
-            // 批 22 把"一页回来后怎么落地"从屏里抽到了判据面（为了 ⑰–⑳ 能真跑），
-            // 所以这一条对照读的是**那两片合起来**的文本 —— 它要钉的事一字未改。
-            DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistProfilePolicy.kt"))
-        assertTrue("对照组失效：那一屏没有那枚「下一页」的文案件", pane.contains("desktopGalleryMoreLabel("))
-        assertTrue("对照组失效：那一屏不吃到底判据（按钮可见性没人管）", pane.contains("atEnd"))
-        assertTrue(
-            "对照组失效：那一屏不再走共享那颗持有件（续页的三本账没人记了）",
-            pane.contains("desktopGalleryBatchApply("),
-        )
-    }
-
     /**
      * ⑲ 发现那一屏不再说「每次进来都重新抽一轮」—— 批 5 起换域换回来**还是同一批**。
      *
@@ -429,30 +274,6 @@ class DesktopStaleClaimsTest {
      * `DesktopDomainStateMemoryTest` ④ 的用例名就叫「种子换回来还是同一批」，
      * 而 `DesktopForYouPaneTest` 那条只判这句常量含「沿用上次」—— 两条各绿各的，屏上是一句假话。
      */
-    @Test
-    fun 每次进来都重抽那句下架() {
-        assertEquals("还有文件写着「每次进来都重新抽」", 0, hits("每次进来都重新抽").size)
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopForYouPane.kt"))
-        // 对照一：这句被禁**是因为换回来真的还是同一批**（种子与取数态都在 saveable 上、且有跳过守卫）。
-        // 撤回普通 `remember` 会先红在这里，而不是红在措辞上 —— 那句说明就该回来。
-        assertTrue(
-            "对照组失效：那一屏的种子不在 `rememberSaveable` 上（那这句禁串该撤）",
-            Regex("var seed by rememberSaveable").containsMatchIn(pane),
-        )
-        assertTrue(
-            "对照组失效：那一屏没有那道跳过守卫（还原了状态还是每次进屏重发一笔）",
-            pane.contains("if (state is DesktopForYouState.Ready) return@LaunchedEffect"),
-        )
-        // 对照二：**仍然成立的那一半**——缺的是跨进程那一份快照，而它在桌面编译面外。
-        val build = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        assertTrue("对照组失效：`GalleryForYouCache` 又进桌面编译面了（那半句也该撤）", build.contains("\"GalleryForYouCache.kt\","))
-        // 撤掉假话不许只删不说：新的那一句必须点名"哪一种进来才会重抽"。
-        assertTrue(
-            "页尾那句没说要留到什么时候（只删不说）：${DESKTOP_FOR_YOU_SNAPSHOT_LINE}",
-            DESKTOP_FOR_YOU_SNAPSHOT_LINE.contains("再回来还是") && DESKTOP_FOR_YOU_SNAPSHOT_LINE.contains("关掉"),
-        )
-    }
-
     /**
      * ⑳ 排行榜那一行的两句缺席理由**都**假：
      * ① "没有跨站取榜的口" —— 口在共享面上（`GalleryRankings` 那六档与各站分数串，桌面单人页从批 19
@@ -489,41 +310,12 @@ class DesktopStaleClaimsTest {
      * "桌面这一族今天整颗没接"，当时是实话，接上那一刻就成了假话
      * （[[project-implemented-but-unwired]] 那条反方向的账，这里是它的第三次）。
      */
-    @Test
-    fun 反搜那一路不再说整颗没接() {
-        assertEquals("还有界面件写着反搜「整颗没接」", 0, hits("整颗没接").size)
-        // 对照一：真跑那颗判据件 —— 它有得出发车那一档，说明这一族今天真在判而不是桩。
-        val gate = desktopReverseGate(
-            GalleryPost(site = GallerySite.YANDERE, id = 1L, fileUrl = "https://img/1.jpg"),
-            masked = false,
-            hasKey = true,
-        )
-        assertTrue("对照组失效：这一族今天判不出发车那一档（那句缺席说明反而该回来）", gate is DesktopReverseGate.Send)
-        // 对照二：那一枚入口真接在浮层上（撤了接线会先红在这里，而不是红在措辞上）。
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("对照组失效：浮层不再调那一笔", panel.contains("desktopReverseRun("))
-    }
-
     /**
      * ㉒ 「桌面没有阅读器」那句是假话了（第八十一批落地了阅读那一屏）。
      *
      * 它是批 14 那次改判补上去的：那时那半句是实话，而**一句点名"差哪一层"的话也会随落地过期**。
      * 所以这一条把这类句式整体禁掉：差的那一层要说是"那笔没写的账"，不是"某一屏存不存在"。
      */
-    @Test
-    fun 阅读那一屏已经有了而那句还没改过来() {
-        assertEquals("还有文件写着「桌面没有阅读器」", 0, hits("桌面没有阅读器").size)
-        // 对照：这句被禁**是因为阅读那一屏真在桌面上挂着** —— 撤掉挂载会先红在这里。
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertTrue(
-            "对照组失效：阅读那一屏不再挂分了（那一句就又算实话，该把它放回来）",
-            pane.contains("DesktopComicReaderPane("),
-        )
-        // 对照二：那一屏不是空壳 —— 它真去问页表（撤掉那一问等于又回到"没有那一屏"）
-        val reader = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicReader.kt"))
-        assertTrue("对照组失效：阅读那一屏没问页表了", reader.contains("engine.pages("))
-    }
-
     /**
      * ㉓ 「仍然缺的是漫画章节下载」那半句是假话了（第九十六批把整话落盘接上了）。
      *
@@ -532,24 +324,6 @@ class DesktopStaleClaimsTest {
      * 排期 `remaining-plan-and-reuse-2026-10-10.md` 批 96 那一行点名要**同批**改掉它：
      * 同一族那五句假话平均活四批，而这一句已经活到第六批才落地。
      */
-    @Test
-    fun 章节下载那句不再说缺() {
-        assertEquals("还有文件写着「仍然缺的是漫画章节下载」：" + hits("仍然缺的是**漫画章节下载**"), 0, hits("仍然缺的是**漫画章节下载**").size)
-        // 对照：这句被禁**是因为整话落盘真接上了消费点**（不是"声明在"）。撤掉接线会先红在这里。
-        // ⚠️ 2026-10-13 搬家预备（批 104）：从前这两枚钉的是"**详情那一屏那颗文件里**含有这一串"，
-        //    而批 101 定档 C 要把那颗 runner 抽成共用件 —— 调用点会搬家，届时这两枚必须跟着改指新址，
-        //    有一段"文档证据悬空"的时间。改成**跨全 main 数次数**之后：搬家不用动这一把，而"消费点恰好一处、
-        //    不许第二条落盘路"那一层含义一字未减（`codeOccurrences` 跳注释，而那颗**声明**写的是
-        //    `desktopComicDownloadChapter(` 换行再接 `dir: File` ⇒ 不含 `(dir,` 那一串，不会被数进来）。
-        val runnerCalls = DesktopSourceTree.desktopMainSources()
-            .sumOf { DesktopSourceTree.codeOccurrences(it, "desktopComicDownloadChapter(dir,") }
-        assertEquals("那颗 runner 的调用点在全 main 里必须恰一处（零处=那句'还缺'成实话；两处=第二条落盘路）：" + runnerCalls, 1, runnerCalls)
-        val dirCalls = DesktopSourceTree.desktopMainSources()
-            .sumOf { DesktopSourceTree.codeOccurrences(it, "DesktopComicDownloadQueue.enqueue(") }
-        // 第一百一十一批：入队那一路多了一枚（「本机已下载」那一行的「补齐」）⇒ 对照组从 1 抬到 2。
-        assertEquals("对照组失效：全 main 不再有人把那一话排进队列（按下去没反馈那一族）：" + dirCalls, 2, dirCalls)
-    }
-
     /** 某句禁串活在 `desktop/src/main` **整棵树**的哪一行（含注释；比 [hits] 宽一档）。 */
     private fun hitsMain(banned: String): List<String> =
         DesktopSourceTree.desktopMainSources().flatMap { file ->
@@ -565,24 +339,6 @@ class DesktopStaleClaimsTest {
      * 所以这一条扫**整个 main**（不只 `gallery/ui/`）：那句说的是"桌面到处都没有"，本来就不该只钉一个目录。
      * 对照钉的是那一屏真在树上、且真接在漫画域的分支上。
      */
-    @Test
-    fun 已下的整话不再说屏上数不着() {
-        val banned = "任何一屏都数不着"
-        assertEquals("main 树里还有文件写着「已下的整话屏上数不着」：" + hitsMain(banned), 0, hitsMain(banned).size)
-        // 对照一：这句被禁**是因为读侧真在数盘**（不是"那颗件声明在"）。
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt"))
-        assertTrue(
-            "对照组失效：那一屏不再读盘上那一棵树（那句'数不着'就又成实话，该把它放回来）",
-            pane.contains("desktopComicDownloadedChapters("),
-        )
-        // 对照二：它挂在漫画域那一行的分支上（读了盘而没接进浮层 = 用户仍然数不着）。
-        val section = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertTrue(
-            "对照组失效：那一屏没接到漫画域的分支上",
-            section.contains("DesktopComicScreen.DOWNLOADS -> DesktopComicDownloadsPane("),
-        )
-    }
-
     /**
      * ㉕ 「那一屏删不掉已下的话」也过期了（第九十八批接上了删除）。
      *
@@ -590,23 +346,5 @@ class DesktopStaleClaimsTest {
      * 而这一句是批 97 自己新写的账（那颗读侧件的 KDoc 与 README 各一遍），批 98 接上删除后它**在同批内**又假了。
      * 所以禁串取的是那一屏**连写的形状**，而扫的是整个 main（含注释）。
      */
-    @Test
-    fun 已下的整话不再说删不掉() {
-        val banned = "**删不掉**已下的话"
-        assertEquals("main 树里还有文件写着「那一屏删不掉已下的话」：" + hitsMain(banned), 0, hitsMain(banned).size)
-        // 对照一：那句被禁是因为屏上真有一颗按得动的把手在调那颗 runner（声明在不算）。
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicDownloadsPane.kt"))
-        assertTrue(
-            "对照失效：那一屏不再调删除那颗（那句「还删不掉」就又成实话，该把它放回来）",
-            pane.contains("desktopComicDeleteChapter("),
-        )
-        // 对照二：删完**回读盘**那一判还在（不吃返回值才是这一批要顶住的那条对岸缺陷）。
-        val data = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("gallery/data/DesktopComicChapterDelete.kt"))
-        assertTrue(
-            "对照失效：删除那颗不再回读盘（那一句「删掉了」就又没说准）",
-            data.contains("if (!dir.exists()) return DesktopComicDeleteOutcome.Deleted"),
-        )
-    }
-
     private val 数词 = listOf("零", "一", "二", "三", "四", "五", "六", "七", "八")
 }

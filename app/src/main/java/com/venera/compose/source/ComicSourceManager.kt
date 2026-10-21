@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.LruCache
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.venera.compose.source.model.RepoIndexEntry
 import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
@@ -1629,18 +1630,3 @@ class ComicSourceManager private constructor(private val context: Context) {
         }
     }
 }
-
-/**
- * 远程仓库索引条目（字段与官方 index.json 完全一致）。
- *
- * [url] 对应官方 index.json 中可选的 `url` 字段：允许某个源的脚本托管在
- * 仓库目录之外。为空时按「与 index.json 同目录」拼接 fileName（官方同等逻辑）。
- */
-data class RepoIndexEntry(
-    val name: String,
-    val fileName: String,
-    val key: String,
-    val version: String,
-    val description: String? = null,
-    val url: String? = null
-)

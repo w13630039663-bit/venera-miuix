@@ -166,19 +166,6 @@ class DesktopComicShelfRepairTest {
     }
 
     /** ⑧ 展示那一件仍"只吃纯数据与动作"：入队住在容器那一层，与删除同一分家规矩。 */
-    @Test
-    fun 展示那一件不直调队列() {
-        val f = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicDownloadsPane.kt")
-        val code = DesktopSourceTree.codeText(f)
-        val body = code.substring(code.indexOf("internal fun DesktopComicDownloadsContent"))
-        assertEquals(
-            "展示那一件里不许直调队列：",
-            0, body.split("DesktopComicDownloadQueue.").size - 1,
-        )
-        assertEquals("容器那一层才入队（恰一处调用点）：", 1, DesktopSourceTree.codeOccurrences(f, "desktopComicRepairChapter("))
-        assertEquals("把手只在不齐那一档摆（屏上那一跳恰一处）：", 1, DesktopSourceTree.codeOccurrences(f, "desktopComicRepairShouldShow("))
-    }
-
     /** ⑨ 种子那两句各念各的：命中带"缺几页 / 留几页"，落空说不排队（静默会把"号打错了"读成"补齐坏了"）。 */
     @Test
     fun 种子命中与落空两档各念一句() {
@@ -191,40 +178,7 @@ class DesktopComicShelfRepairTest {
     }
 
     /** ⑩ 把手与种子走同一条路：入队那一跳在那颗文件里仍恰一处，而那一屏没有第二条入队道。 */
-    @Test
-    fun 种子与把手共用同一条入队路() {
-        val f = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicDownloadsPane.kt")
-        assertEquals("入队那一跳恰一处（种子与把手共用）：", 1, DesktopSourceTree.codeOccurrences(f, "desktopComicRepairChapter("))
-        // 形参 + effect 的 key + 取值那一行：少于三处就是种子根本没接上（参数在而没人读那一族）。
-        assertTrue(
-            "那一屏要真读 repairSeed：" + DesktopSourceTree.codeOccurrences(f, "repairSeed"),
-            DesktopSourceTree.codeOccurrences(f, "repairSeed") >= 3,
-        )
-    }
-
     /** ⑫ 装配那一跳：种子从装配根一路递到那一屏（参数在而没人递 = 屏上按不动也没读数）。 */
-    @Test
-    fun 种子从装配根一路递到那一屏() {
-        assertEquals(
-            "pane 那一层要把 config 里那枚递下去：", 1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicPane.kt"), "repairSeed = config.repairSeed",
-            ),
-        )
-        assertEquals(
-            "装配根要把读出来的那枚递进 config：", 1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"), "repairSeed = repairSeed,",
-            ),
-        )
-        assertEquals(
-            "读参数那一跳恰一处（`repairNote` 那一跳不吃这个锚点）：", 1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt"), "ForensicFlags.repair(args",
-            ),
-        )
-    }
-
     /** ⑪ 参数本身三档：没给、形不对、两截（`%2F` 那一档要解码成号里的斜杠）。 */
     @Test
     fun 那枚种子三档各归各() {

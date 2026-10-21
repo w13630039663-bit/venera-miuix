@@ -76,9 +76,20 @@ internal data class DesktopComicPage(
 ) {
     val cacheKey: String = desktopComicPageCacheKey(sourceKey, comicId, episodeId, imageKey)
 
-    /** 锁的粒度 = 一颗引擎。身份哈希在这里是**对的**（它挡的正是同一颗 Context）。 */
-    val lockKey: String get() = "engine-${engine?.let { System.identityHashCode(it) } ?: "none"}"
+    val lockKey: String get() = desktopEngineLockKey(engine)
 }
+
+/**
+ * 锁键的唯一公式（2026-10-21 从 `lockKey` 里抽出来）。
+ *
+ * 抽出来而不是在第二处重写：锁键公式一旦有两份就会漂，
+ * 漂成的样子正是「取页上了锁、取章节没上锁」—— 那等于没有锁，
+ * 而且只在并发时才露出来。
+ *
+ * 锁的粒度 = 一颗引擎。身份哈希在这里是**对的**（它挡的正是同一颗 Context）。
+ */
+internal fun desktopEngineLockKey(engine: EngineSession?): String =
+    "engine-${engine?.let { System.identityHashCode(it) } ?: "none"}"
 
 /** 这一格能不能真取到字节 —— 引擎没装载就不取。 */
 internal fun desktopComicPageCanFetch(page: DesktopComicPage): Boolean = page.engine != null

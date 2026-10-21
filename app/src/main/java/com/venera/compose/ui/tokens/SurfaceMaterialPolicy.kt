@@ -3,7 +3,7 @@ package com.venera.compose.ui.tokens
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
-import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.data.platform.SurfaceMaterial
 
 /**
  * 内容层材质（实色 / 液态玻璃）—— 与 `AppearanceStyle`（色板/形状/字号）、`NavigationBarStyle`

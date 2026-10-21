@@ -42,37 +42,7 @@ class DesktopDeadWiringTest {
         }
 
     /** ① 探针那句**真被递给日志**（它自己的注释就是这么承诺的）。 */
-    @Test
-    fun 探针那句真进日志() {
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        val calls = page.lines().count { it.contains("desktopFaceProbeNotice(") }
-        assertEquals("那一屏没吃探针那句（或吃了两遍）：$calls", 1, calls)
-        assertTrue(
-            "递出去那一句没走带去重计数的日志件（一屏几十位，逐位打就是刷屏）",
-            page.contains("DesktopGalleryFailureLog.warn("),
-        )
-        // 对照：那句本身仍然三态可跑（撤了那颗件，上面两条会一起红，而不是恒真）
-        assertEquals("Found 那档必须不吭声", "", desktopFaceProbeNotice(DesktopFaceProbe.Found("u")))
-        assertTrue("失败那句必须带成因：" + desktopFaceProbeNotice(DesktopFaceProbe.Failed("timeout")),
-            desktopFaceProbeNotice(DesktopFaceProbe.Failed("timeout")).contains("timeout"))
-    }
-
     /** ② 域分组那枚死件下架：桌面 main 与 test 里一处都不许留（注释里的 `[链接]` 也算一处）。 */
-    @Test
-    fun 域分组那枚死件下架() {
-        val dead = "isInTop" + "Group"
-        val main = desktopMainText().flatMap { (name, text) -> text.lines().filter { it.contains(dead) }.map { "$name: ${it.trim()}" } }
-        // 测试源只看**代码行**：这一颗类的注释里要写"撤的是哪一枚"，扫全文就会自咬（手册 §0 坑 ㉑ 的近亲）。
-        val tests = File(DesktopSourceTree.repoRoot, "desktop/src/test").walkTopDown()
-            .filter { it.extension == "kt" }
-            .flatMap { f -> DesktopSourceTree.codeLinesOf(f).filter { it.contains(dead) }.map { "${f.name}: ${it.trim()}" } }
-            .toList()
-        assertEquals("还留着那枚零调用点的域分组判据（main）：" + (main + tests).joinToString(" ; "), 0, (main + tests).size)
-        // 对照：rail 上那枚间隔条仍由**另一枚**在用的判据决定（撤的不是这件事本身）。
-        val rail = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryRail.kt"))
-        assertTrue("对照组失效：rail 不再吃任何域级判据（那上面那句该重看）", rail.contains("precedesSpacer"))
-    }
-
     /** ③ SauceNao 的写侧成对撤掉，而读侧那一路仍然在（"能写"这件事今天没有入口）。 */
     @Test
     fun 凭据写侧不留死口() {

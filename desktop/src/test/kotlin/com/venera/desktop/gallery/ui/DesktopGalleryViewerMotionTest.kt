@@ -85,17 +85,6 @@ class DesktopGalleryViewerMotionTest {
     //    ⚠️ 判式**不能**按枚举成员名扫：`DesktopGalleryPreferences.kt:95` 那句
     //    `readEnum(KEY_ANIMATED, GalleryAnimatedMode.ALWAYS)` 是**合法默认档**而不是重述 ——
     //    第一版就红在那一行上（§0 坑 ①：禁串把合法代码扫红）。要禁的是"分支形状"本身。
-    @Test
-    fun `共享那颗判据只被调一次也没被重述`() {
-        val sources = DesktopSourceTree.desktopMainSources()
-        val calls = sources.sumOf { DesktopSourceTree.codeOccurrences(it, "GalleryMotion.animates(") }
-        assertEquals("该动与否只许一处现算（多了就是有人重述了）", 1, calls)
-        val restated = sources.filter {
-            Regex("GalleryAnimatedMode\\.[A-Z_]+\\s*->").containsMatchIn(DesktopSourceTree.codeText(it))
-        }
-        assertTrue("有人在自己文件里重写那一族分支：" + restated.map { it.name }, restated.isEmpty())
-    }
-
     // ⑦ 层已拍板"只在大图那一屏动"（2026-10-09）⇒ 墙上那张卡与浮层那颗件里不许出现解码器。
     //    这条是那一拍的唯一机械凭据：没有它，"只在大图"就只是一句说过的话。
     @Test
@@ -107,13 +96,6 @@ class DesktopGalleryViewerMotionTest {
     }
 
     // ⑧ 退化必须**回落到 AsyncImage**，而不是把那一格撤空：静默白屏是这一族最坏的失败形状。
-    @Test
-    fun `大图那一屏留着回落那条路`() {
-        val viewer = DesktopSourceTree.desktopUiSource("DesktopGalleryViewer.kt")
-        assertEquals("AsyncImage 这一路要留着当兜底", 1, DesktopSourceTree.codeOccurrences(viewer, "AsyncImage("))
-        assertTrue("要真吃播放器那颗件", DesktopSourceTree.codeOccurrences(viewer, "DesktopAnimatedImage(") == 1)
-    }
-
     // ⑨ "像不像动图"只看地址，且**不许被 query 上的过期参数骗进去**：
     //    站方那一路地址常带 `?…` 尾巴，只看 endsWith 就会把静帧当动图起一趟解码。
     @Test
@@ -131,26 +113,4 @@ class DesktopGalleryViewerMotionTest {
     //    ⚠️ 三把各管一种偷懒：数 alloc 抓"新加一处"，钉顺序抓"把那一处搬进循环"
     //    （同一处、每帧跑一遍，存在性判式对它全绿 —— §0 那条"钉顺序不钉存在"的旧账），
     //    数 `<ImageBitmap>` 抓"存成一整片"（`List` / `Array` / `ArrayList` 三种写法都撞这一枚字面）。
-    @Test
-    fun `播放器一次只持一帧位图`() {
-        val player = DesktopSourceTree.desktopUiSource("DesktopAnimatedImage.kt")
-        assertEquals("位图只许有一处 alloc（复用同一颗）", 1, DesktopSourceTree.codeOccurrences(player, "allocPixels"))
-        assertEquals(
-            "交上屏的位图每帧只新建一颗",
-            // 带括号才数得是"调用"：`import …toComposeImageBitmap` 那一行也是代码行 ——
-            // 第一版没带括号，这把尺子红在自己的 import 上（§0 坑 ① 那一族）。
-            1, DesktopSourceTree.codeOccurrences(player, "toComposeImageBitmap()"),
-        )
-        assertEquals(
-            "帧类型只许出现在那一枚单帧状态上（多一处就是有人把帧存起来了）",
-            // 锚点写 `<ImageBitmap` 而不是 `<ImageBitmap>`：真形状是 `mutableStateOf<ImageBitmap?>`，
-            // 带闭括号那把尺子数出 0 颗，红在拼写上而不是红在代码上。
-            1, DesktopSourceTree.codeOccurrences(player, "<ImageBitmap"),
-        )
-        val lines = DesktopSourceTree.codeLinesOf(player)
-        val alloc = lines.indexOfFirst { it.contains("allocPixels") }
-        val loop = lines.indexOfFirst { it.contains("while (true)") }
-        assertTrue("找不到那趟逐帧循环 ⇒ 这一颗判式要看的东西变了", loop >= 0)
-        assertTrue("allocPixels 在循环里/之后 ⇒ 每帧新建一颗位图，`每帧=` 那行读数不够用", alloc in 0 until loop)
-    }
 }

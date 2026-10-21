@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.LocalSurfaceMaterial
 import com.venera.compose.ui.tokens.SurfaceMaterialPolicy
 import com.venera.compose.ui.tokens.VeneraGlassHighlight

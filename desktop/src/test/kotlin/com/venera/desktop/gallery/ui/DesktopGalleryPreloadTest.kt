@@ -37,42 +37,6 @@ class DesktopGalleryPreloadTest {
         )
 
     /** ① 计划转交共享那颗件；初始档位两头同一颗件。 */
-    @Test
-    fun 预取计划转交共享那颗而初始档位两头同一颗件() {
-        val piece = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopGalleryPreloadPolicy.kt")
-        val code = DesktopSourceTree.codeText(piece)
-        assertEquals(
-            "桌面自有件里 GalleryPreload.plan( 必须恰好一处（两处 = 两份计划会漂）",
-            1,
-            DesktopSourceTree.codeOccurrences(piece, "GalleryPreload.plan("),
-        )
-        // 桌面不许自己再写一遍那张跨度表，也不许把它塞进死支（坑：锚点替死支作保）
-        listOf("OFF -> 0", "NEXT -> 1", "BOTH_TWO -> 2", "if (false").forEach { literal ->
-            assertFalse("重述（或塞死支）了共享件的那张表：「$literal」", code.contains(literal))
-        }
-        // 初始档位那颗件（第五十批改判）：档位上提之后，**只有应用根**算初值了 ——
-        // 浮层改吃必填形参、预取改吃共用档位，于是从「声明 + 浮层 + 预取 = 3」变成「声明 + 应用根 = 2」。
-        // 原来那 3 里的两处调用正是两条轨的起点：初值在浮层自己手里一份、预取手里另一份。
-        // ⚠️ 改判的理由是「谁还在算初值」，不是「数字对得上」—— 留着 3 才是错判据。
-        val tierHits = DesktopSourceTree.desktopMainSources().sumOf {
-            DesktopSourceTree.codeOccurrences(it, "desktopDetailInitialTier(")
-        }
-        assertEquals(
-            "初值只许应用根算一处（声明 + 应用根初值 = 2；浮层与预取都该吃共用那一枚）",
-            2,
-            tierHits,
-        )
-        // 那条 ternary 只许活在那颗件里：两处各写一遍就是两条轨的起点
-        val splitTier = DesktopSourceTree.desktopMainSources().filter {
-            DesktopSourceTree.codeText(it).contains("initialQuality == GalleryPreviewQuality.LARGE")
-        }
-        assertEquals(
-            "「初始取哪一档」在桌面写了两遍：" + splitTier.joinToString(" · ") { it.name },
-            listOf("DesktopGalleryPreloadPolicy.kt"),
-            splitTier.map { it.name },
-        )
-    }
-
     /** ② 三档各自预取哪几张：不含当前、近的先来、夹在墙范围内。 */
     @Test
     fun 三档各自预取哪几张() {
@@ -188,27 +152,6 @@ class DesktopGalleryPreloadTest {
     }
 
     /** ⑥ 屏上真调那道写口，而集成方真把计划递给取图器。 */
-    @Test
-    fun 屏上真调写口而集成方真发预取() {
-        val pane = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopGallerySettingsPane.kt")
-        val paneCode = DesktopSourceTree.codeText(pane)
-        assertEquals(
-            "屏上那道写口调了两遍（一次点击改两次档）",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "settings.setGalleryPreload("),
-        )
-        assertTrue("屏上没读那条流（改完不重画 = 假开关）", paneCode.contains("settings.galleryPreload"))
-        val app = DesktopSourceTree.desktopSourceOf("gallery/ui/VeneraDesktopApp.kt")
-        val appCode = DesktopSourceTree.codeText(app)
-        assertEquals("集成方只许一处发预取", 1, DesktopSourceTree.codeOccurrences(app, "desktopPreloadPlan("))
-        assertEquals("集成方只许一处拿那枚取图器", 1, DesktopSourceTree.codeOccurrences(app, "SingletonImageLoader.get("))
-        assertTrue(
-            "预取必须先算计划再发请求（反过来是拿默认档发）",
-            appCode.indexOf("desktopPreloadPlan(") < appCode.indexOf("SingletonImageLoader.get("),
-        )
-        assertFalse("集成方写死了要预取的地址（那颗纯件被绕过）", appCode.contains("https://cdn"))
-    }
-
     /**
      * ⑦ 桌面 classpath 上必须有**一枚供得出 `Dispatchers.Main` 的模块**。
      *
@@ -240,20 +183,6 @@ class DesktopGalleryPreloadTest {
      * ⚠️ 判式是**顺序**而不是"有没有 dispose"：先 `enqueue`、再 `awaitCancellation`（效应活着才继续挂着这批）、
      *   最后 `dispose` —— 少了中间那一枚，实现会变成"排完立刻停掉"，那既没预取也不报错，是一格更难的假动作。
      */
-    @Test
-    fun 预取那几笔在效应重起时被停掉() {
-        val appFile = DesktopSourceTree.desktopSourceOf("gallery/ui/VeneraDesktopApp.kt")
-        val code = DesktopSourceTree.codeText(appFile)
-        val enq = code.indexOf(".enqueue(")
-        val hold = code.indexOf("awaitCancellation(")
-        val stop = code.indexOf(".dispose()")
-        assertTrue("一笔都没发预取（没有 .enqueue(）", enq >= 0)
-        assertTrue("预取那几笔没有停手（没有 .dispose()）", stop >= 0)
-        assertTrue("效应没有活着等取消（缺 awaitCancellation ⇒ 排完立刻停 = 根本没预取）", hold >= 0)
-        assertEquals("发预取只许一处", 1, DesktopSourceTree.codeOccurrences(appFile, ".enqueue("))
-        assertTrue("顺序必须是 发预取 → 等取消 → 停手", enq < hold && hold < stop)
-    }
-
     /**
      * ⑧ 预取吃的是**屏上那一档**，不是设置里那一枚（第五十批）。
      *
@@ -267,23 +196,4 @@ class DesktopGalleryPreloadTest {
      * 把合法的第二处算成缺陷（红在 `expected:<1> but was:<2>`）。**换成只切计划那颗自己的签名**：
      * 判式吃的仍是"预取按哪一档取"这件事本身，不再管旁件叫什么。
      */
-    @Test
-    fun 预取跟着共用档位走() {
-        val policy = DesktopSourceTree.desktopUiSource("DesktopGalleryPreloadPolicy.kt")
-        val code = DesktopSourceTree.codeText(policy)
-        val start = code.indexOf("internal fun desktopPreloadPlan(")
-        assertTrue("预取计划那颗件不在（换名了要连判式一起改）", start >= 0)
-        val signature = code.substring(start, code.indexOf("):", start))
-        assertTrue("预取的形参应是共用档位：" + signature, signature.contains("tier: DesktopDetailTier"))
-        assertFalse("预取的形参里又出现了设置那枚质量：" + signature, signature.contains("GalleryPreviewQuality"))
-        assertEquals("预取不该再吃设置里那枚质量", 0, DesktopSourceTree.codeOccurrences(policy, "quality: GalleryPreviewQuality"))
-        // 整串实参一起钉：只数 `desktopPreloadPlan(` 会被"另一处合法调用"喂饱（批 34 那一族）。
-        // ⚠️ 批 92 改判：这一枚从前递的是**没钳过**的 `tier`，而浮层那一条轨会自己钳档 —— 翻到一条视频时
-        // 预取排的是原片 mp4（站方没有更小的视频转码档）而屏上显示静帧，两条轨不同串。
-        // 现在三条轨（浮层 / 大图那一屏 / 这一跳）都吃应用根那一枚 `effectiveTier`，判据跟着换锚点。
-        val app = DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt")
-        val wired = DesktopSourceTree.codeLinesOf(app).count { it.contains("desktopPreloadPlan(") && it.contains(", effectiveTier)") }
-        assertEquals("调用点应把**钳过的那一枚**档位原样递进去，恰好一处", 1, wired)
-        assertEquals("这一跳还留着没钳过的那枚（那就是两条轨）", 0, DesktopSourceTree.codeLinesOf(app).count { it.contains("desktopPreloadPlan(") && it.contains(", tier)") })
-    }
 }

@@ -114,7 +114,10 @@ class DesktopComicLoadInfoTest {
 
     @Test
     fun `cover 那一栏的键名回核 Android 侧而不是桌面自定`() {
-        val counterpart = DesktopSourceTree.androidSource("source/js/JsComicSource.kt").readText()
+        // 行尾归一之后才回核：这条钉的是**相邻关系**（详情那一段读完 `cover` 紧接着读 `desc`），不是字节。
+        // 对岸那颗文件什么时候变成 CRLF 不归桌面管（且它正被并行线改），拿 `\n` 去夹就会假红 ——
+        // 批 115 现量：`app/…/JsComicSource.kt` 1918 行全是 CRLF，归一后这条立刻匹配（`:464` 紧接 `:465` 一字未漂）。
+        val counterpart = DesktopSourceTree.androidSource("source/js/JsComicSource.kt").readText().replace("\r\n", "\n")
         // 对岸 `getComicDetails` 读的就是 `res["cover"]`，**没有**第二个候选键。
         // 桌面要是"顺手多认一个 coverUrl"，两端的章节表会一致而封面不一致 —— 那正是共用的表上最难查的漂。
         assertTrue(

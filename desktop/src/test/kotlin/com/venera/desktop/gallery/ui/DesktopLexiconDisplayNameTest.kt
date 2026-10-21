@@ -52,45 +52,5 @@ class DesktopLexiconDisplayNameTest {
     }
 
     /** ③ 关注栏接线：那一问只发一次、走效果、显示吃那颗件，而**动线仍交原名**。 */
-    @Test
-    fun 关注栏用译名而那枚点击仍搜原名() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopFollowedArtistsPane.kt")
-        val code = DesktopSourceTree.codeText(pane)
-        assertTrue("那一栏没走那颗显示件", code.contains("desktopArtistDisplayName("))
-        assertEquals(
-            "词典那一问的调用点不是一处（每帧多问一次就是多开一次库查询）",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "lexicon.translations("),
-        )
-        assertTrue("那一问没挂在 LaunchedEffect 上（摆放期发问 = 每帧重组那一族）", code.contains("LaunchedEffect("))
-        assertTrue(
-            "点击那一步被换成显示串了（译名不是站方那串，点一下搜出一条空结果）",
-            code.contains("handoff(artist.sites, artist.name)"),
-        )
-        // 对照：空清单不发问这道闸在（对岸两条都写着 `if (… .isEmpty()) emptyMap() else …`）。
-        // 两种写法都算（㉖ 第八次就红在本批这条对照上：锚点钉的是 `names` 那枚变量名而不是那道闸）。
-        assertTrue("空清单那一档的闸不见了（没有名字可查时白开一次库）", code.lines().any { it.contains("isEmpty()") && it.contains("emptyMap()") })
-    }
-
     /** ④ 候选那一排接线：显示吃批 38 那颗括号形件，而**接进查询的那一步仍交候选原文**。 */
-    @Test
-    fun 候选那一排用译名而接入仍交原文() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt")
-        val code = DesktopSourceTree.codeText(pane)
-        assertTrue("那一排候选没走括号形那颗件", code.contains("desktopTagDisplayLabel("))
-        assertEquals(
-            "候选那一问在整颗文件里的调用点不是一处（多问一遍就是每帧多开一次库查询）",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "lexicon.translations("),
-        )
-        assertTrue("那一问没挂在 LaunchedEffect 上", code.contains("LaunchedEffect("))
-        // 点候选 = 把这枚标签接在后面，走 `GalleryTagFilter.of(name)`：交显示串会拼出一条没打过的标签。
-        assertTrue("那一步不再走站方语法那颗件", code.contains("GalleryTagFilter.of(name)"))
-        assertFalse(
-            "显示串被递进了查询（屏上会写着一条用户没打过的标签）",
-            code.contains("GalleryTagFilter.of(desktopTagDisplayLabel"),
-        )
-        // 对照：空候选那一档不发问（对岸那条 `if (suggestions.isEmpty()) emptyMap() else …`）。
-        assertTrue("空候选那一档的闸不见了", code.lines().any { it.contains("isEmpty()") && it.contains("emptyMap()") })
-    }
 }

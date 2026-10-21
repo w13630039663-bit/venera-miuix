@@ -109,16 +109,6 @@ class DesktopPageChromeTest {
     // ── ③ 文本负向 ────────────────────────────────────────────────────────
 
     @Test
-    fun `预算不写死 状态栏念的数必须来自那一颗超时常量`() {
-        val header = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPageHeader.kt"))
-        // 「12s」如果出现在段头代码里，说明预算被抄成了字面量 —— 改预算时它不会跟着变。
-        assertFalse("段头不许写死预算：", header.contains("12s"))
-
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
-        assertTrue("预算须引 PER_SITE_TIMEOUT_MS：", pane.contains("GalleryDailyFeed.PER_SITE_TIMEOUT_MS"))
-    }
-
-    @Test
     fun `段头与 pane 对同一份六项表说话 不再各自写一份未实现原因`() {
         val header = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPageHeader.kt"))
         assertTrue("段头的原因串须复用注册表：", header.contains("desktopGalleryHomeRows()"))
@@ -152,61 +142,6 @@ class DesktopPageChromeTest {
      * 把它一起关掉就是**少报**（本仓另一个方向的错）。所以反向断言是
      * 「日榜那一档三处闸都不许出现」。
      */
-    @Test
-    fun `收藏屏那一档三句读数都必须关掉 日榜那一档必须都开着`() {
-        val status = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryStatusBar.kt"))
-        assertTrue(
-            "siteTotal 那句要有闸（`siteTotal >= 0`）—— 不写闸的话收藏屏会念「0 站 · 都给内容」",
-            status.contains("if (siteTotal >= 0)"),
-        )
-        assertTrue(
-            "budgetMs 那句要有闸（`budgetMs >= 0`）—— 这条 2026-10-04 之前就有了，保留",
-            status.contains("if (budgetMs >= 0)"),
-        )
-
-        val fav = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryFavoritesPane.kt"))
-        listOf(
-            "siteTotal = STATUS_NO_SITE_TALLY" to "首句（站出勤）",
-            "budgetMs = STATUS_NO_BUDGET_MS" to "末句（每站预算）",
-            "elapsedLabelPrefix = LOCAL_READ_LABEL" to "中间那句（本次取数）",
-        ).forEach { (call, what) ->
-            assertTrue(
-                "收藏屏的$what 必须走关掉/改写的那一档 —— 照抄日榜就是一句主语不存在的读数",
-                fav.contains(call),
-            )
-        }
-        assertTrue(
-            "站分布不能因此少讲：它挪到段头那句「本机存档 N 条 · 摆上屏 M 张 · 某某站 k 张」。" +
-                "⚠️ 这一枚钉过两次字面形状：批 12 之前钉 `projection.perSiteLabel`、批 12 当时改成钉" +
-                "`desktopPerSiteReading(那颗实参)` —— 而批 13 把实参换成墙之后**又红了一次**。" +
-                "同一族连犯两次（§0 坑 ㉖），这次退到**只钉被调的那颗件**：各站分布由谁供、数的是哪一份，" +
-                "由 `DesktopWallCountSourceTest` ⑥ 与那颗件自己的判据去管。",
-            fav.contains("desktopPerSiteReading("),
-        )
-
-        val daily = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
-        listOf("STATUS_NO_SITE_TALLY", "STATUS_NO_BUDGET_MS", "LOCAL_READ_LABEL").forEach { sentinel ->
-            assertFalse(
-                "日榜那一档**不许**用收藏的哨兵（它真的出网、真的有站出勤）—— 关掉就是少报：$sentinel",
-                daily.contains(sentinel),
-            )
-        }
-        assertTrue("日榜仍要传真站数：", daily.contains("daily.pools.size"))
-    }
-
-    @Test
-    fun `旧页脚没有复活 三站口径只由 Hero 侧卡说一次`() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt"))
-        assertFalse(
-            "旧页脚不许复活（重复第二遍三站口径会各自漂移）：",
-            pane.contains("yande.re 取的是"),
-        )
-        assertTrue("状态栏已接上：", pane.contains("DesktopGalleryStatusBar("))
-        // 缺席计数必须来自真数据，不是我们另数一遍
-        assertTrue("站点总数须取 daily.pools.size：", pane.contains("daily.pools.size"))
-        assertTrue("缺席数须取 failures.size：", pane.contains("daily.failures.size"))
-    }
-
     @Test
     fun `状态栏贴窗底 必须在吃 weight 的那一层之外`() {
         // 这条是结构性的：状态栏若落在 weight(1f) 那一层里面，会跟着墙一起被压缩，

@@ -180,8 +180,15 @@ class DesktopBlurCostProbeTest {
         )
         assertTrue("步进没上归属那一行（两跑对不上是哪一档就是白跑）", code.contains("步进=\${stepPx}px"))
         val gradle = File(DesktopSourceTree.repoRoot, "desktop/build.gradle.kts").readText()
-        val block = gradle.substringAfter("""tasks.register<JavaExec>("blurcost") {""").take(700)
-        assertTrue("构建脚本那一跳没把 step 传下去（三环的第三环）", block.contains("gradleProperty(\"step\")"))
+        // 取**那一颗任务闭包的整块**（到顶格的 `}` 为止），不取字节窗。
+        // 从前这里写的是 `.take(700)`：并行线给那块添了两条注释，`step` 那行落到偏移 688，
+        // 而那串字面量长 22 ⇒ 700 的窗正好把它切在半截上（批 115 现量：窗尾停在 `providers.gradleProper`）——
+        // 量具自己假红，真传递一字没断（`desktop/build.gradle.kts:299` 现读得到那一行）。
+        val block = gradle.substringAfter("""tasks.register<JavaExec>("blurcost") {""").substringBefore("\n}")
+        // 四枚把手逐档点名（"只钉 step"那一形少传一枚也没人管）：少传谁都红，注释怎么加都不会截断。
+        listOf("hold", "step", "overlay", "rounds").forEach { name ->
+            assertTrue("构建脚本那一跳没把 $name 传下去（三环的第三环）：$block", block.contains("gradleProperty(\"$name\")"))
+        }
     }
 
     /**

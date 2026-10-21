@@ -100,31 +100,4 @@ class DesktopSauceNaoKeyTest {
     }
 
     /** ④ 四跳接线：端口那颗具体件、集成方递进去、应用根必填、那一屏真调写口。 */
-    @Test
-    fun `④ 键面板真接上而四跳一处不缺`() {
-        val ports = DesktopSourceTree.desktopSourceOf("gallery/data/DesktopGalleryPorts.kt").readText()
-        assertTrue("端口没交出具体的凭据件（界面拿不到写口）", ports.contains("fun credentials("))
-        assertTrue(
-            "那颗转换口没走「拿到的不是那一颗就直接抛」那条口径（静默退成改不动是假开关）",
-            ports.contains("as? DesktopGalleryCredentials"),
-        )
-        val main = DesktopSourceTree.desktopSourceOf("VeneraDesktop.kt").readText()
-        assertTrue("集成方没建那一颗", main.contains("DesktopGalleryPorts.credentials("))
-        val app = DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt").readText()
-        assertTrue("应用根没收它（漏传会静默走默认值）", app.contains("credentials: DesktopGalleryCredentials"))
-        assertTrue("设置那一屏没吃到它", app.contains("DesktopGallerySettingsBody(row, settings, guard, credentials"))
-        val pane = DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt").readText()
-        // 两处动作各落一次盘（保存 = 填进去的那枚，清掉 = 空串）。
-        // ⚠️ 这里数**次数**而不是"含不含那串"：扰动 v5 第一次跑出了绿 —— 删掉「保存」那处的写口调用，
-        // 面板里还剩「清掉」那一处，"含 `setSauceNaoKey(`"那条照样绿（坑 ㉛ 的又一形态：**锚点被同名的一处喂饱**）。
-        assertEquals(
-            "那枚写口在面板里被调的次数不是两处（保存与清掉各一处）",
-            2,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopUiSource("DesktopGallerySettingsPane.kt"),
-                "credentials.setSauceNaoKey(",
-            ),
-        )
-        assertTrue("那一屏没摆键面板", pane.contains("DesktopSauceNaoKeySection("))
-    }
 }

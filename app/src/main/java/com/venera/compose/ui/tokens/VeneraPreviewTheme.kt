@@ -7,8 +7,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import com.venera.compose.data.prefs.AppearanceStyle
-import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.data.platform.AppearanceStyle
+import com.venera.compose.data.platform.SurfaceMaterial
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDark

@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -166,7 +166,7 @@ private fun SauceNaoHitRow(
     onOpenExternal: (String) -> Unit,
 ) {
     val tokens = VeneraTokens
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    val wide = isWideScreen(LocalWindowWidthDp)
     val thumbSize = if (wide) 96.dp else 72.dp
     val ref = hit.siteRef
 

@@ -5,14 +5,14 @@ Date: 2026-10-19
 Scope: `app/src/main/java`（418 个 `.kt`：gallery 148 / data 81 / feature 68 / components 48，其余 73）+ Compose 编译器报告（经技能 init 脚本注入生成）
 Excluded from scoring: `app/src/test`（210 颗判据文件，其中 ~24 颗是源码扫描尺）、`desktop/`（工作树里未提交的桌面侧改动，用户口径"管好安卓端"）、`shared-probe/`（探针模块）
 Confidence: **High** — 全模块逐类扫描 + 编译器报告 + 代表性文件逐行读取（hero 链路四屏、主墙、设置、阅读器、收藏）
-Overall Score: **58/100**（加权：6×35 + 5×25 + 7×20 + 5×20 = 575 → 57.5 → 就近 58）
+Overall Score: **54/100**（加权：5×35 + 5×25 + 7×20 + 5×20 = 540）
 
 ## Scorecard
 
 | Category | Score | Weight | Status | Notes |
 |----------|-------|--------|--------|-------|
-| Performance | 6/10 | 35% | needs work | Strong Skipping ON、具名件可跳过率 88%、动画值读在绘制期是样板级；主要扣分在 182 处非生命周期感知 `collectAsState` 与几处组合期静默吞错 |
-| State management | 5/10 | 25% | needs work | typed state factory 纪律全仓 0 违例、状态上提清楚；hero 这一族"进度散成六条曲线 + 进程内可变单例跨窗共享"是最重的 State 债（本仓自己的窄域审计打分 3/10） |
+| Performance | 5/10 | 35% | needs work | Strong Skipping ON、hero 链动画值全走绘制期是样板级；扣分在骨架件每帧组合期读无限动画、7 处卡内重复订阅偏好、组合期 O(N) 集合运算与 3 处缺 key 的换批列表 |
+| State management | 5/10 | 25% | needs work | typed state factory 已成体系（仅 7 处裸字面量装箱，见 Performance）；hero 这一族"进度散成六条曲线 + 进程内可变单例跨窗共享"是最重的 State 债（本仓自己的窄域审计打分 3/10） |
 | Side effects | 7/10 | 20% | solid | `LaunchedEffect` 键控正确、登记/注销成对且有源码尺；扣分在吞错与复位只靠注释约定 |
 | Composable API quality | 5/10 | 20% | needs work | `modifier`/lambda 事件/无 `MutableState` 形参三项全干净；巨件（3400+ 行的屏）、UI 文案硬编码无资源路径、preview 只覆盖两件旧屏 |
 
@@ -72,13 +72,17 @@ Overall Score: **58/100**（加权：6×35 + 5×25 + 7×20 + 5×20 = 575 → 57.
 - 动画值读在绘制期：`GalleryEntryFlyBody.kt:77-118`、`GalleryExitFlyBody.kt:77-119`（批 A 把 `Float` 实参翻回 `() -> Float`，消掉了唯一一处每帧重组——§2.7 的病灶）
 - Lazy 键：`GalleryScreen.kt:2817` `items(cards, key = { it.post.uid })`、`GalleryHistoryScreen.kt:376`
 - 布局回调写状态的 equals 闸门：`GalleryScreen.kt:3163`、`GalleryPixivHome.kt:1062`
-- `mutableStateOf<Int/Float/Long/Double>` 0 违例（typed factory 全仓干净）
-- `Modifier.offset(x.value…)` 非 lambda 形态 0；`composed{}` 0；`GlobalScope` 0；`animateItemPlacement` 0
+- typed factory 已成体系：`mutableIntStateOf` 71 / `mutableFloatStateOf` 19 / `mutableLongStateOf` 9。**但不是 0 违例**——本喵第一版只扫了显式泛型写法（`mutableStateOf<Int>`），漏掉**裸字面量**那一档；第二路证据 + 就地复扫确认 7 处装箱：`gallery/ui/GalleryScreen.kt:415,932,956,998`、`gallery/ui/GallerySearchArea.kt:1659`、`feature/NetworkFavoritesViewModel.kt:105,109`（机械修：换 `mutableFloatStateOf`/`mutableIntStateOf`）
+- `Modifier.offset(x.value…)` 非 lambda 形态 0（含 `.value.dp` 变体）；`composed{}` 0；`GlobalScope` 0；`animateItemPlacement` 0；`Animatable` 21/21 全在 `remember` 或非组合类字段内
 
 **Issues**
-- Critical 3 的 182 处 `collectAsState()` — <https://developer.android.com/develop/ui/compose/side-effects#collect-as-state>
+- **组合期逐帧读无限动画值**（第一版报告漏判，第二路证据补上）：`components/venera/VeneraShimmer.kt:53-66` 用 `by animateFloat` 在组合期算 `position`，绘制 lambda 只接结果 ⇒ 骨架**每帧重组**，而一屏出几十枚（`VeneraCover.kt:123` 加载期常驻挂它）。修法：`position` 挪进 `drawWithCache`/`onDrawBehind` 的 lambda 里现读 `clock`。 — <https://developer.android.com/develop/ui/compose/performance/bestpractices>
+- **每张墙卡各自订阅同一枚 DataStore 偏好**（7 处，比第一版写的更重）：`gallery/ui/GalleryScreen.kt:3055,3184`、`GalleryHomeSections.kt:429`、`GalleryPixivHome.kt:1106`、`PixivWorkInfoPanel.kt:316`、`GalleryPostScreen.kt:1268`、`PixivWorkScreen.kt:216` — 一屏几十条独立 Flow 订阅、随 Lazy 回收反复建立/拆除。修法：宿主订阅一次，值作参数下发（卡件的 `aiBadgeOn` 形参早已存在，就是没接线到订阅层）。 — <https://developer.android.com/develop/ui/compose/side-effects#collect-as-state>
+- **组合期无 `remember` 的集合运算**（由重到轻）：`feature/FavoritesScreen.kt:806-813`（每次重组整表 O(N) 守卫判定，且 `coverMaskStateFor` 每条两次 `synchronized`）、`feature/SyncBackupScreen.kt:421`（排序发生在 `items()` 参数位，scope 每次重组重排+换引用⇒整列重建）、`feature/StatsScreen.kt:536-540,562-563,655`（`sortedWith`/`sumOf` 体内直算）、`GalleryScreen.kt:3254-3257`（页脚 4 遍全墙 count）。修法：一律 `remember(输入)` 或下沉 VM。
+- **会换批/追加的 lazy 列表缺 key**：`feature/ComicDetailScreen.kt:1591`（评论流可 loadMore）、`:1301`（推荐整批换）、`feature/SyncBackupScreen.kt:421`。修法：补稳定 key；`GalleryHomeSections.kt:563` 那种"故意不挂防重键崩"的写法仓内有注释先例，照抄口径即可。
+- **`mutableStateOf` 装箱原始数字 7 处**（Critical 之外机械修，见上）— <https://developer.android.com/develop/ui/compose/performance/states/typedstate>
+- Critical 3 的 182 处 `collectAsState()`（第二路复核计 183，含新页） — <https://developer.android.com/develop/ui/compose/side-effects#collect-as-state>
 - `contentType` 全仓 0 处（主墙混排 Pixiv/图库三站卡片，异构回收复用可能错位；`key` 已按 uid 钉，实际风险低，记为 Nit）— <https://developer.android.com/develop/ui/compose/lists>
-- `GalleryHomeSections.kt:425` 每张卡各订阅一次 `prefs.galleryAiBadge`（同屏 5 卡 5 订阅，Nit）
 
 ### State management — 5/10
 

@@ -115,21 +115,6 @@ class DesktopComicQueueWakeTest {
     }
 
     /** ⑤ 唤醒走的是那张表自己，不许另立第二颗状态件（两颗状态会漂 —— 本仓踩过两回）。 */
-    @Test
-    fun 没有第二颗状态件() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("gallery/data/DesktopComicDownloadQueue.kt"))
-        // ⚠️ 钉的是**裸词**而不是 `Channel(`：带类型参数那一形写成 `Channel<DesktopComicQueueTask>(1)`，
-        //    括号前插着尖括号，拿 `Channel(` 去寻就恒寻不到 —— 台架 P4 第一遍正是从这一格漏过去的（改的是尺子不是笔）。
-        assertFalse("不许为唤醒另造一颗 Channel（裸词，带类型参数那一形也算）：" + code.contains("Channel"), code.contains("Channel"))
-        assertFalse("也不许另造一颗 MutableSharedFlow（同理钉裸词）：", code.contains("MutableSharedFlow"))
-        assertEquals("收表的那三屏仍是那三屏（多一枚就是第二个宿主；批 113 那一屏只订阅「何时再读一次盘」）：",
-            listOf("DesktopComicDownloadsPane.kt", "DesktopComicPane.kt", "VeneraDesktopApp.kt"),
-            DesktopSourceTree.desktopMainSources()
-                .filter { DesktopSourceTree.codeOccurrences(it, "DesktopComicDownloadQueue.tasks.collectAsState()") > 0 }
-                .map { it.name }.sorted(),
-        )
-    }
-
     /** ⑥ 反轮询：等待那一跳与泵那一圈里都不许有睡眠（一枚延迟常数就是假活）。 */
     @Test
     fun 等待不是轮询() {

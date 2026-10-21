@@ -7,30 +7,6 @@ import com.venera.compose.gallery.domain.GalleryRecommendations
 import com.venera.compose.gallery.domain.GallerySearch
 import com.venera.compose.gallery.domain.GalleryTagFilter
 
-/**
- * 桌面「发现」那一屏的**取数计划**（第九批）。纯数据，不 require `@Composable` ——
- * 为的是它能被单测直接取值（与 `DesktopGalleryWallPolicy` 同一条理由）。
- *
- * ## 这颗件只转交，不重述
- *
- * 三件事一律走共享那颗判据，桌面这边一行都不重写：
- *
- * | 事 | 出处 |
- * |---|---|
- * | 每站抽哪几个标签、抽不出来算哪一档 | [GalleryRecommendations.recommendBySite]（每站各用自己的抽样流，种子 + 站点序号） |
- * | 标签集 → 真发出去的那一串 | [GallerySearch.queryOf] |
- * | 两站结果怎么混、剔掉已收藏、滤掉不能上屏的 | `GalleryForYouMerge.page`（在 pane 那一侧调，本颗不碰） |
- *
- * ⚠️ 桌面**不许自己 `joinToString(" ")` 拼那一串**：拼串口径全仓只该有一处，
- * 否则页尾念的那串与真发出去的那串会长得不一样 —— 那是"读数与行为不符"这一族里最难查的一种。
- * 这条由 `DesktopForYouPlanTest` ⑥ 扫着。
- *
- * ## 为什么这里带着三档空态而不是一个布尔
- *
- * 「你还没收藏」与「我们的判据算不出东西」是两句话（Android 那侧 `stageOf` 的头注就是这么写的）。
- * 合成一句就是拿"用户没干活"替自己的缺陷遮丑；而把两站都没货与只有一站没货混成"屏上是空的"，
- * 又会把"少一站"报成"整屏没内容"。所以这三档分开交回，由屏上逐档说不同的话。
- */
 internal class DesktopForYouPlan(
     /** 每站抽到的那一档（原样交回共享那颗的产物，桌面不加工）。 */
     val perSite: Map<GallerySite, GalleryRecommendation>,

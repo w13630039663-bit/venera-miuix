@@ -160,32 +160,5 @@ class DesktopPreloadReadingTest {
     }
 
     // ⑨ 接线两处，且**顺序**对：发那行在"空不空"判之前（空批也要念），收那行在 dispose 之后。
-    @Test
-    fun `两行读数各在其位`() {
-        val app = DesktopSourceTree.desktopSourceOf("gallery/ui/VeneraDesktopApp.kt")
-        val code = DesktopSourceTree.codeText(app)
-        assertTrue(
-            "发那一行没排在「空不空」之前（空批就静默了，OFF 与没接分不出）",
-            code.indexOf("desktopPreloadReading(") in 0 until code.indexOf("urls.isEmpty()"),
-        )
-        assertTrue(
-            "收手那一行排在 dispose 之前（先念后停是拿请求当结果）",
-            code.indexOf("dispose()") in 0 until code.indexOf("desktopPreloadStopReading("),
-        )
-        // 对照组：这两行读的是真在被扫的那颗集成方文件，且那一本账只算一次。
-        assertEquals("对照组失效：预取计划不在这颗文件里了", 1, DesktopSourceTree.codeOccurrences(app, "desktopPreloadPlan("))
-    }
-
     // ⑪ 出口只许有这两颗：谁在调用点自己拼一句 `D_预取` 就是第二份口径（将来只改一处）。
-    @Test
-    fun `读数只许从两颗件里念`() {
-        val app = DesktopSourceTree.desktopSourceOf("gallery/ui/VeneraDesktopApp.kt")
-        assertEquals(
-            "集成方自己拼了 `D_预取` 那句（该走读数件）",
-            0,
-            DesktopSourceTree.codeOccurrences(app, "\"D_预取"),
-        )
-        val printed = DesktopSourceTree.codeOccurrences(app, "println(desktopPreload")
-        assertEquals("发与收两行读数没各走一处（现数出 $printed 处）", 2, printed)
-    }
 }

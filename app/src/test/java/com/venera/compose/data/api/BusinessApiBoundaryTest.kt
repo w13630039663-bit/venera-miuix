@@ -292,6 +292,10 @@ class BusinessApiBoundaryTest {
             "VeneraApp.kt",
             "data/api/android/AndroidBusinessPorts.kt",
             "data/platform/android/AndroidDatabasePorts.kt",
+            // 2026-10-20：平台实现层。AndroidUxPlatformServices 是**唯一**允许直连
+            // Android 侧静态单例（内容守卫 / 剪贴板 / ImageLoader）的地方 —— 那正是它
+            // 存在的理由：把散在 UI 里的 getInstance(context) 收成一处。与上面两颗同类。
+            "platform/AndroidUxPlatformServices.kt",
         )
 
         /** 基础设施目录：它们之间的互调不算「UI 穿透」（如 `gallery/domain/GalleryFeedSource.kt:75-77`）。 */

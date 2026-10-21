@@ -96,7 +96,6 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
     "FavoriteImagesStore" to FEATURE_RESIDENT_IMPL,
     "ReadingStatsStore" to FEATURE_RESIDENT_IMPL,
     "ComicLinkResolver" to "解锁条件两段：① feature/Navigation.kt 属导航保护域（FREEZE-STATEMENT.md:32）需重新评审；② 硬技术前提 = ComicLinkResolver.Outcome 是嵌套在吃 Context 的类体里的 sealed interface（source/ComicLinkResolver.kt:3,23,25-36），而 feature/Navigation.kt:313 逐条消费那四档 ⇒ 契约签名要它必须先做一次 W1 同族的类型搬家",
-    "ComicListPreferences" to "解锁条件：它的 registerListener 签名带 SharedPreferences.OnSharedPreferenceChangeListener（data/prefs/ComicListPreferences.kt:27），契约化要先断掉那个 Android 类型；范围内仅 components/ComicListPresentation.kt:15 一处引用，不构成散落多处",
     "AppLogManager" to "解锁条件：feature/LogViewerScreen.kt:27 那颗屏就是来看日志的界面（engine/AppLogManager 是日志汇），与源管理页同一判据（INFRA_FACING_PAGE 那条）",
     "GelbooruAccount" to CROSS_SIDE_CREDENTIAL,
     "SauceNaoAccount" to CROSS_SIDE_CREDENTIAL,
@@ -109,7 +108,6 @@ private val SITE_OVERRIDE: Map<String, String> = mapOf(
     "feature/explore/SourceSectionScreen.kt#ComicSourceManager" to FROZEN_SCREEN,
     "feature/explore/SourceSectionScreen.kt#ContentGuardManager" to FROZEN_SCREEN,
     "feature/HomeScreen.kt#ComicSourceManager" to FROZEN_SCREEN,
-    "feature/HomeScreen.kt#ContentGuardManager" to FROZEN_SCREEN,
     "feature/SearchScreen.kt#ContentGuardManager" to FROZEN_SCREEN,
     "feature/SearchScreen.kt#VeneraPreferences" to FROZEN_SCREEN,
     "feature/FavoritesScreen.kt#ContentGuardManager" to FROZEN_SCREEN,
@@ -156,7 +154,6 @@ internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERR
 
 /** A ——「UI import 业务实现类」。最新：20 颗文件 / 32 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
-        "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
         "feature/ComicDetailScreen.kt" to setOf("TagTranslationManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
@@ -186,7 +183,7 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
         "feature/FavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
         "feature/HistoryScreen.kt" to setOf("ContentGuardManager"),
-        "feature/HomeScreen.kt" to setOf("ComicSourceManager", "ContentGuardManager"),
+        "feature/HomeScreen.kt" to setOf("ComicSourceManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver", "VeneraPreferences"),
         "feature/NetworkFavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/SearchScreen.kt" to setOf("ContentGuardManager", "VeneraPreferences"),
@@ -209,12 +206,14 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
  * 有了它，"文件 → 符号"的折叠就不会把重复点位藏起来，而它又不受行号漂移影响。
  * B0 当天 152 ⇒ B1 摘 14（内容守卫）⇒ B2 摘 23（偏好四颗与 stores）= 115。
  */
-internal const val SITE_TOTAL_GET_INSTANCE = 33
+// 2026-10-20：33 → 31。迁走的两处是 eature/HomeScreen.kt 里那两个
+// ContentGuardManager.getInstance(LocalContext.current)（历史卡封面 + 推荐轮播卡），
+// 判定链一字未改，只是"怎么拿到那颗单例"收进了 LocalUxPlatformServices。
+internal const val SITE_TOTAL_GET_INSTANCE = 31
 
 /** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：15 颗文件 / 20 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(
         "MainActivity.kt" to setOf("JsComicSource"),
-        "components/ComicListPresentation.kt" to setOf("ComicListPreferences"),
         "feature/LogViewerScreen.kt" to setOf("AppLogManager"),
         "feature/Navigation.kt" to setOf("ComicLinkResolver"),
         "feature/SearchViewModel.kt" to setOf("ComicSourceManager"),

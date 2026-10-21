@@ -615,4 +615,34 @@ class ForensicFlagsTest {
         // 对照组：那张表仍然真在管不认识的那一族（清空 KNOWN 会让上面两条恒真）。
         assertEquals("对照组失效：不认识的参数也没被报出来了", listOf("--nonsense=1"), ForensicFlags.unknown(listOf("--nonsense=1")))
     }
+
+    /**
+     * **机械那条**：每一枚在 `ForensicFlags.kt` 里声明过的种子名，都必须登记在 [ForensicFlags.KNOWN]。
+     *
+     * 为什么上一颗不够：上面那种"一枚种子一颗判据"是**手写名单**，写新种子的人只要忘记给那一枚补一颗，
+     * 这一族就照旧漏 —— 批 53 的 `--crash` 漏过一次（当时补了手写那颗），第一百一十六批的 `--deco`
+     * **又漏了一次**，而且这次是包内起窗念出「`D_参数 未识别 --deco=shrine`」、两句之后又念「认成 档=神社」
+     * 才被发现：同一件事在一份日志里有两个读数。手写名单抓不到"没写的那一颗"，只有整颗文件的名单能。
+     *
+     * 判式取 `= "--xxx"` 那一形（常量声明），所以 `KNOWN` 里那三枚字面量（`--proxy`/`--shot`/`--autofav`）
+     * 不在必检之列 —— 它们本来就是登记侧，不是声明侧。
+     */
+    @Test
+    fun 声明过的每枚种子名都登记在KNOWN() {
+        val file = com.venera.desktop.gallery.ui.DesktopSourceTree.desktopSourceOf("ForensicFlags.kt")
+        val declared = Regex("""= ("--[a-z][a-z-]*)""")
+            .findAll(com.venera.desktop.gallery.ui.DesktopSourceTree.codeText(file))
+            .map { it.groupValues[1].trim('"') }
+            .toSet()
+        assertTrue(
+            "对照组失效：整颗文件只读到 ${declared.size} 枚声明（写法变了要重判这一条而不是放行）",
+            declared.size >= 25,
+        )
+        val missing = declared.filter { !ForensicFlags.KNOWN.contains(it) }.sorted()
+        assertEquals(
+            "这些种子有判读却没登记进 KNOWN ⇒ 带它起窗时 D_参数 会念「未识别」而判读那颗又念「认成…」：",
+            emptyList<String>(),
+            missing,
+        )
+    }
 }

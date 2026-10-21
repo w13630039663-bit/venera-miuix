@@ -1,5 +1,7 @@
 package com.venera.compose.feature
 
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
+import com.venera.compose.components.LocalWindowWidthDp
 import android.content.Intent
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -36,7 +38,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
@@ -95,7 +96,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.platform.LocalContext
-import com.venera.compose.data.prefs.NavigationBarStyle
+import com.venera.compose.data.platform.NavigationBarStyle
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.data.prefs.VeneraPreferences
@@ -659,7 +660,7 @@ fun VeneraComposeApp() {
     // 「有底栏 ⟺ 有留白」由构造保证，而不是靠各页面自己记。
     // 包在最外层 Box 之外（不是 Scaffold 的 slot 上）：内容层与底栏 overlay 是它的两个子节点，
     // 这样两侧读到同一个数。宽度源与既有 11 处 isWideScreen 消费点同为 screenWidthDp。
-    val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
+    val layoutMode = wideScreenLayoutMode(LocalWindowWidthDp)
     // 侧栏档（Medium/Expanded）用左侧栏替代底栏；Compact 档原样走底栏。
     // 判定只在这一处发生 —— 底栏可见性、底部留白、侧栏有无三件事由同一个布尔驱动，
     // 「有底栏 ⟺ 有留白 ⟺ 无侧栏」由构造保证，不靠各页面自己记。
@@ -833,7 +834,7 @@ fun VeneraComposeApp() {
                             // 档位判据收口在 feature/favorites/FavoritesSplitPanePolicy.kt（有单测），
                             // 这里不再自己抄一个 600。**冻结文件 FavoritesScreen.kt 零 diff** ——
                             // 列表那一屏原样复用，只是 onSelect 在双栏档换成「填右栏」。
-                            if (favoritesUsesSplitPane(LocalConfiguration.current.screenWidthDp.dp)) {
+                            if (favoritesUsesSplitPane(LocalWindowWidthDp)) {
                                 FavoritesSplitPaneHost(
                                     onStartLiveReading = { session ->
                                         haptic()

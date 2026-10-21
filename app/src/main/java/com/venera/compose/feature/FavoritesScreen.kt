@@ -7,6 +7,8 @@
  */
 package com.venera.compose.feature
 
+import com.venera.compose.components.searchVisibleTags
+import com.venera.compose.components.LocalWindowWidthDp
 import android.app.Activity
 import com.venera.compose.feature.favoriteimages.FavoriteImageItem
 import com.venera.compose.gallery.ui.GalleryFavoritesBody
@@ -116,7 +118,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -220,7 +221,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     // 分段器所在行（FavoritesModeToggle：上下 space3 + 分段高度，宽屏档换 56dp）的真实高度，
     // 由 token 推导而非写死，顶栏加高时内容避让自动跟随。
     val segmentedRowHeight =
-        (if (isWideScreen(LocalConfiguration.current.screenWidthDp.dp)) {
+        (if (isWideScreen(LocalWindowWidthDp)) {
             tokens.spacing.segmentedHeightWide
         } else {
             tokens.spacing.segmentedHeight
@@ -619,7 +620,7 @@ private fun ImageSectionToggle(
     onSectionChange: (ImageSection) -> Unit,
 ) {
     val modes = remember { ImageSection.entries.toList() }
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    val wide = isWideScreen(LocalWindowWidthDp)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -647,7 +648,7 @@ private fun FavoritesModeToggle(
     // 形态出处见 VeneraSegmentedButton 的头注（2026-09-28 换掉了旧的"药丸中的药丸"容器描边）。
     // 手机档收成居中一小条（用户真机反馈「太宽太散」）；平板档维持全宽不动。
     val modes = remember { favoritesModesNetworkFirst }
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    val wide = isWideScreen(LocalWindowWidthDp)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1003,7 +1004,7 @@ private fun FavoriteCard(
                 )
                 // 复用现成的 Tag 截断/归一化逻辑（searchVisibleTags），不另写一套。
                 // 最多 2 个，空 tags 时整段不渲染（不产生空白区域）。
-                val visibleTags = com.venera.compose.feature.searchVisibleTags(item.tags, emptyList())
+                val visibleTags = com.venera.compose.components.searchVisibleTags(item.tags, emptyList())
                 if (visibleTags.isNotEmpty()) {
                     Spacer(Modifier.height(tokens.spacing.space3))
                     Row(

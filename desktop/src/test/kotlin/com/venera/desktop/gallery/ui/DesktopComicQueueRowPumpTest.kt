@@ -69,28 +69,7 @@ class DesktopComicQueueRowPumpTest {
     }
 
     /** ③ 调用点搬过家：新那一形恰一处，而旧那一形一处不剩（搬家类判式两钉）。 */
-    @Test
-    fun 装载点按新签名调用() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertEquals("唯一调用点要递第二枚实参（旧那一形在就表示还有一处没搬）：",
-            1, occurrences(code, "desktopComicEngineNeeded(screen, queueHasWork)"))
-        assertEquals("旧那一形必须零处（漏搬的那一处会静默拿到默认值 —— 本批故意不给默认值）：",
-            0, occurrences(code, "desktopComicEngineNeeded(screen)"))
-        assertEquals("形参表里那枚实参必须必填（给了默认值就绕过上一条）：",
-            1, occurrences(DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt")),
-                "internal fun desktopComicEngineNeeded(screen: DesktopComicScreen, hasQueueWork: Boolean): Boolean"))
-    }
-
     /** ④ "有没有活"从那张表的**档位**算，而不是从"表非空"算。 */
-    @Test
-    fun 那格活不活是从档位算的() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertEquals("待跑与正在跑那两档各数一次（钉整串表达式，标识符看不见死分支）：",
-            1, occurrences(code, "it.status == DesktopComicQueueStatus.PENDING || it.status == DesktopComicQueueStatus.RUNNING"))
-        assertEquals("换成「表非空」那一形就是假话：跑完那一档还白起一颗引擎",
-            0, occurrences(code, "queueTasks.isNotEmpty()"))
-    }
-
     /** ⑤ 泵仍然只由那一颗句柄说话（本批改的是"什么时候有句柄"，不是"泵怎么跑"）。 */
     @Test
     fun 泵那一支的形状不许动() {

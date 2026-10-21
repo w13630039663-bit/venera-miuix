@@ -1,5 +1,6 @@
-﻿package com.venera.compose.gallery.ui
+package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
@@ -49,7 +50,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
@@ -137,7 +137,7 @@ internal fun PixivArtistScreen(
     // 用户号：**从 source 取，不从名字猜**（名字可改可重名；拿名字当身份会串人）。
     val userId = remember(source) { GalleryArtistLinks.pixivUserId(source) }
 
-    val layoutMode = wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp)
+    val layoutMode = wideScreenLayoutMode(LocalWindowWidthDp)
     val wideScreen = layoutMode != WideScreenLayoutMode.Compact
     val contentMaxWidth = contentMaxWidthFor(layoutMode)
     val columnMode by ports.prefs.galleryColumnMode.collectAsState()

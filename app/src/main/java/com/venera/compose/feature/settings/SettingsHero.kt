@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.core.view.WindowCompat
 import coil3.compose.AsyncImage
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.ui.tokens.ImageOverlayColors
 import com.venera.compose.ui.tokens.VeneraTokens
 import java.io.File

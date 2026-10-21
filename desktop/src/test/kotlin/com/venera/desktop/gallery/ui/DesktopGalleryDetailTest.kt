@@ -117,33 +117,6 @@ class DesktopGalleryDetailTest {
     }
 
     /** ①② 卡位可点：`onClick` 必填、五处调用点都真传，且点击面是**整张卡**。 */
-    @Test
-    fun 卡位可点而点击面是整张卡() {
-        val tile = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPostTile.kt"))
-        assertTrue("tile 那颗件没收到 onClick", tile.contains("onClick: (GalleryPost) -> Unit"))
-        assertTrue(
-            "onClick 带了默认值 —— 漏传不报错，而漏传的形状正是「某一屏的卡点不动」（与第五批那枚墙参数同一条教训）",
-            Regex("onClick: \\(GalleryPost\\) -> Unit\\s*=").containsMatchIn(tile).not(),
-        )
-        assertTrue("点击修饰没挂在整张卡上（挂在小件上就是「看得见的一圈字能点、图不能点」）", tile.contains("clickable"))
-        // 墙往下传的是**整批与序号**而不是裸 post：`masked` 那一档必须跟着进面板，
-        // 否则"墙上挡住的那张图，点开面板就看到了"就是第四批那层守卫的一个绕出口。
-        // ⚠️ P0 时这一枚是 `(DesktopWallCard) -> Unit`，P1 加翻页后改成整批（判据 ⑤ of P1 同一条）。
-        assertTrue("那颗共用的墙没收到 onPick（或收到了裸 post，挡住那一档就丢了）",
-            tile.contains("onPick: (DesktopWallSelection) -> Unit"))
-
-        listOf(
-            "DesktopDailyPane.kt",
-            "DesktopGalleryFavoritesPane.kt",
-            "DesktopGallerySearchPane.kt",
-            "DesktopForYouPane.kt",
-            "DesktopLatestPane.kt",
-        ).forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("「$name」那一屏没传 onPick（这一屏的卡就点不动）", code.contains("onPick ="))
-        }
-    }
-
     /**
      * ⑥ 浮层不吃 `weight`：它是覆盖层，进了权重分配就是把列数压掉一档的那种旧账。
      *
@@ -153,19 +126,6 @@ class DesktopGalleryDetailTest {
      * **宽**由面板自己从口径表取（谁画谁负责），**渐隐**由骨架挂（它要压在别人的内容上）。
      * 少了任何一枚，屏上就会出现"浮层凭空窄/宽一档"或"面板边上一条脏带"。
      */
-    @Test
-    fun 浮层是覆盖层而不参与宽度分配() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertTrue("面板没叠在右上角", app.contains("Alignment.TopEnd"))
-        assertTrue("左缘那道渐隐不在骨架这一层（画进面板自己框内就只是边上一条脏带）", app.contains("DesktopGalleryMetrics.detailScrimWidth"))
-        assertTrue("关掉浮层那条路不在", app.contains("selected = null"))
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("面板宽没走口径表", panel.contains("width(DesktopGalleryMetrics.detailWidth)"))
-        assertTrue("面板里出现了 weight( —— 覆盖层不该参与分配", panel.contains("weight(").not())
-        // 对照组：主区那一格仍然吃权重（换成 Box 之后不许把它弄丢，否则整屏塌成一排）。
-        assertTrue("主区没吃 weight(1f)：", app.contains(".weight(1f)"))
-    }
-
     /**
      * ⑦ 三个动作各有真落点，且没有一处是空 lambda。
      *
@@ -175,36 +135,5 @@ class DesktopGalleryDetailTest {
      * 所以锚点跟着搬家：面板这侧钉的是"它在调用那颗件"，真调 AWT 的那一行钉在它的新家里。
      * 少钉任何一侧都会漏掉两种坏法（面板不再调用 / 那颗件被掏空）。
      */
-    @Test
-    fun 三个动作都真接上了() {
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        listOf(
-            "openInBrowser(" to "在浏览器打开原图",
-            "systemClipboard" to "复制链接",
-            "toggle(" to "收藏开关",
-        ).forEach { (token, what) ->
-            assertTrue("「$what」没真接上（源码里找不到 $token）", panel.contains(token))
-        }
-        assertEquals(
-            "面板自己又去调 AWT 了（那一步的唯一出处在 DesktopOpenInBrowser.kt）",
-            0,
-            DesktopSourceTree.codeOccurrences(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"), "Desktop.getDesktop()"),
-        )
-        val browser = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopOpenInBrowser.kt"))
-        assertTrue("那颗件里真调 AWT 的那一行没了（面板调用还在，按下去却是空的）：$browser", browser.contains("browse("))
-        listOf("onClick = { }", "onClick = {}", "Unit }").forEach { empty ->
-            assertTrue("面板上出现了空 lambda「$empty」—— 那就是一枚假开关", panel.contains(empty).not())
-        }
-    }
-
     /** ⑤ 选中态只有一处声明（散成几处就会互相看不见）。 */
-    @Test
-    fun 选中态只住在应用根一颗() {
-        val app = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("VeneraDesktopApp.kt"))
-        assertEquals("选中态的声明处必须恰好一处", 1, Regex("var selected\\b").findAll(app).count())
-        assertTrue("面板没吃到选中态（声明了却没人用）", app.contains("DesktopGalleryDetailPanel("))
-        // 对照组：面板那颗件真存在且收这一批。
-        val panel = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"))
-        assertTrue("对照组失效：面板那颗件没收到这一批", panel.contains("selection: DesktopWallSelection"))
-    }
 }

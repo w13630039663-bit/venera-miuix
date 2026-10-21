@@ -264,17 +264,6 @@ class DesktopWallGuardPolicyTest {
      * 「屏上的头三条」还在读 `daily.merged.posts` —— 于是墙上念着「3 张被挡下」、右列却照旧报那三条的
      * 站名与分数。只报名字确实没把内容摆出去，但同一屏上互相打脸的话也不该留，所以判据按整文件收。
      */
-    @Test
-    fun hero也走这一层而不是自己挑第一张() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
-        assertTrue("hero 必须经 heroBackdropOf 决定取不取图", code.contains("heroBackdropOf("))
-        assertTrue(
-            "hero 还在直接读 merged.posts —— 那是绕过分级那一关挑内容，" +
-                "墙上第一张被挡下时大位会把同一张原样摆出来、右列会照旧报名",
-            !code.contains("merged.posts"),
-        )
-    }
-
     /** 只装这一批要用的那一问；其余成员在这一条路径上不该被碰到，碰到了就抛。 */
     private class FakeGuard : GalleryContentGuard {
         var blockedByTag: String? = null

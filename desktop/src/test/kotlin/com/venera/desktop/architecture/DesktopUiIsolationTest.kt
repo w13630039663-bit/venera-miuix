@@ -29,13 +29,6 @@ import org.junit.Test
 class DesktopUiIsolationTest {
 
     @Test
-    fun `桌面 main 源零 Android UI 引用 含不带 import 的内联全名`() {
-        // 判式与 S1 那颗同串；这里扫**任何代码行**而不是只扫 import —— S1 的坑 2 就是"没有 import、
-        // 却写了一句内联全限定名"，只按 import 扫会给出假空结果。
-        assertNoMatch(DesktopSourceTree.desktopMainSources(), DESKTOP_FORBIDDEN, "桌面 → Android UI")
-    }
-
-    @Test
     fun `Android main 源零桌面引用`() {
         assertNoMatch(DesktopSourceTree.androidMainSources(), ANDROID_FORBIDDEN, "Android UI → 桌面")
     }

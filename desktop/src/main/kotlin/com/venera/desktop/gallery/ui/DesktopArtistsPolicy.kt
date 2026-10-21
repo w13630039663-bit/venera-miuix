@@ -172,6 +172,14 @@ internal suspend fun desktopArtistLinkUrls(
 ): Result<List<String>> = when (site) {
     GallerySite.YANDERE -> ports.boards.yandere.artistLinks(name)
     GallerySite.GELBOORU, GallerySite.SAFEBOORU -> ports.artists.danbooruArtistUrls(name)
+    // 2026-10-20：`GallerySite` 在 `:app` 侧加了 `PIXIV`（那批 Pixiv 接入），
+    // 于是这颗 `when` 不再穷尽 —— 编译器把缺口指出来了，这里补上那一支。
+    //
+    // Pixiv **没有**"画师外链"这种端点：它的画挂在 `artworks/<id>`，画师是一个 `userId`
+    // 而不是可枚举的外链串。所以答**空表**而不是 `failure`：
+    // 空表在上层读作"这位没有可点的外链"，与 yande.re 查无此人是同一个观感；
+    // 答 failure 会让那一格显示成错误，而"这站不提供"并不是错误。
+    GallerySite.PIXIV -> Result.success(emptyList())
 }
 
 /**

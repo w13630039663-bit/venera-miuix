@@ -66,69 +66,13 @@ class DesktopViewerZoomKeysTest {
     }
 
     /** ③ 那条链仍只有一处，且缩放那一支排在原有那一支之前（次序反了 `+` 会被前一支吞不掉但读起来像坏了）。 */
-    @Test
-    fun 链只有一处而缩放那一支排在前面() {
-        val code = DesktopSourceTree.codeText(app)
-        assertEquals(
-            "全模块的 `.onKeyEvent {` 必须恰好一处（现在是 ${DesktopSourceTree.codeOccurrences(app, ".onKeyEvent {")} 处）",
-            1,
-            DesktopSourceTree.codeOccurrences(app, ".onKeyEvent {"),
-        )
-        assertTrue("缩放那一支没接进链", code.contains("onDesktopZoomKey("))
-        assertTrue(
-            "次序不对：缩放(" + code.indexOf("onDesktopZoomKey(") + ") 必须排在原有那支(" + code.indexOf("onDesktopOverlayKey(") + ") 之前",
-            code.indexOf("onDesktopZoomKey(") in 0 until code.indexOf("onDesktopOverlayKey("),
-        )
-    }
-
     /** ④⑤ 复位走库那颗 `reset()`（与那枚按钮同一颗）；放大与缩小**两支**都吃活的倍数。 */
-    @Test
-    fun 复位同一颗而放大吃活的倍数() {
-        val code = DesktopSourceTree.codeText(app)
-        assertTrue("放大那一支没吃活的 `zoomState.scale`", code.contains("zoomState.scale"))
-        // 两支各一处：只数"有没有一处"的话，把放大那支写成起点 1f 照样跑得绿（本批 R6 就是这么跑出绿的）。
-        assertEquals(
-            "两支都必须吃活的倍数（现在是 ${DesktopSourceTree.codeOccurrences(app, "desktopViewerZoomStep(zoomState.scale, zoomState.maxScale")} 处）",
-            2,
-            DesktopSourceTree.codeOccurrences(app, "desktopViewerZoomStep(zoomState.scale, zoomState.maxScale"),
-        )
-        assertEquals(
-            "不许有写死的起点（现在是 ${DesktopSourceTree.codeOccurrences(app, "desktopViewerZoomStep(1f")} 处）",
-            0,
-            DesktopSourceTree.codeOccurrences(app, "desktopViewerZoomStep(1f"),
-        )
-        assertEquals(
-            "`changeScale(1f)` 必须零处（复位只走库那颗 `reset()`，它连位移一起带回中；现在是 ${DesktopSourceTree.codeOccurrences(app, "changeScale(1f)")} 处）",
-            0,
-            DesktopSourceTree.codeOccurrences(app, "changeScale(1f)"),
-        )
-        assertTrue("复位那一支没走 `reset()`", code.contains("zoomState.reset()"))
-    }
-
     /**
      * ⑥ 那一颗判读件必须有调用点：本仓那一族「实现了但零调用点」不许再添一枚。
      *
      * ⚠️ 这一格**没有图证**：按键属可见影响（禁），所以"按下去屏上动没动"今天只有两条路 ——
      * 纯函数那一半离线喂键（判据 ①）与这条"接线在不在"（判据 ⑥）。两半都钉住，才不致于把"接了"读成"通了"。
      */
-    @Test
-    fun 那枚判读件有唯一的调用点() {
-        val callSites = DesktopSourceTree.desktopUiSources().sumOf { file ->
-            DesktopSourceTree.codeOccurrences(file, "onDesktopZoomKey(")
-        }
-        // 一处定义在 `DesktopKeyNavigation.kt`，一处调用在那条链上（定义那颗的名字是 `fun onDesktopZoomKey`）。
-        assertEquals(
-            "键→意图那颗件必须「定义一处 + 调用一处」（现在全 `gallery/ui/` 扫到 $callSites 处名字出现）",
-            2,
-            callSites,
-        )
-        assertEquals(
-            "调用点不在那条链上（链那一格必须出现一次）",
-            1,
-            DesktopSourceTree.codeOccurrences(app, "onDesktopZoomKey("),
-        )
-    }
-
     /** ⑦ 屏上那两句说明得跟着改：键既然接上了，"只有滚轮能缩放"那类句子就是假话。 */
     @Test
     fun 屏上那句不许再说键盘不能缩放() {

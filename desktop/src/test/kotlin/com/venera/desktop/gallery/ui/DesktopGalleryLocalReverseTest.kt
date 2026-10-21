@@ -259,19 +259,6 @@ class DesktopGalleryLocalReverseTest {
     }
 
     /** ⑩ 屏上那几句**全部**来自共享那颗件：新那两颗不许自带第二份反搜口径。 */
-    @Test
-    fun 屏上那几句没有第二份口径() {
-        val section = DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt")
-        val body = DesktopSourceTree.codeText(section)
-        assertTrue("结果那一格没读命中的读数", body.contains("desktopReverseHitReading("))
-        assertTrue("没读等结果那一句", body.contains("desktopReverseWaitingReading("))
-        assertTrue("没读失败那一句", body.contains("desktopReverseFailedReading("))
-        listOf("正在等 SauceNAO 回话", "这一张没搜成").forEach { literal ->
-            val total = DesktopSourceTree.desktopMainSources().sumOf { DesktopSourceTree.codeOccurrences(it, literal) }
-            assertEquals("那句反搜读数的字面量不止一份：$literal", 1, total)
-        }
-    }
-
     /** ⑪ 挑中的那一句要念得出**是哪一张、多大**，并明说整张原样交出去。 */
     @Test
     fun 挑中那一句念得出哪一张与多大() {
@@ -334,38 +321,7 @@ class DesktopGalleryLocalReverseTest {
     }
 
     /** ⑬ 接线：那一格里发车只有一条路，而挑图那一步只有按钮走得到。 */
-    @Test
-    fun 那一格里发车只有一条路() {
-        val section = DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt")
-        val body = DesktopSourceTree.codeText(section)
-        assertEquals("发车点不止一处", 1, DesktopSourceTree.codeOccurrences(section, "desktopLocalReverseRun("))
-        assertEquals("挑图那一步不止一处（种子不许也去开文件框）", 1, DesktopSourceTree.codeOccurrences(section, "desktopPickLocalImage("))
-        val pickLine = DesktopSourceTree.codeLinesOf(section).first { it.contains("desktopPickLocalImage(") }
-        assertTrue("挑图没挂在按钮的 onClick 上：" + pickLine, pickLine.contains("onClick"))
-        assertFalse("种子那一格去开文件框了：" + pickLine, pickLine.contains("LaunchedEffect"))
-        assertTrue("按钮挂的是那颗入口的名字常量", body.contains("DESKTOP_LOCAL_REVERSE_ENTRY_LABEL"))
-        assertEquals("失败那第二行读数只许一处", 1, DesktopSourceTree.codeOccurrences(section, "desktopLocalReverseRefusalReading("))
-        assertTrue(
-            "那句没递真异常进去（型与栈猜不出来，念成「没给出异常」等于什么都没念）",
-            body.contains("desktopLocalReverseRefusalReading(outcome.reason, state.pendingError)"),
-        )
-    }
-
     /** ⑭ 那一格真挂在搜索那一屏上，且排在输入行之后（按完看不见东西与没做同一件事）。 */
-    @Test
-    fun 那一格真挂在搜索那一屏() {
-        val pane = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopGallerySearchPane.kt")
-        assertEquals("那一格没被摆上屏", 1, DesktopSourceTree.codeOccurrences(pane, "DesktopGalleryLocalReverseEntryRow("))
-        assertEquals("那一格的结果本体没被摆上屏", 1, DesktopSourceTree.codeOccurrences(pane, "DesktopGalleryLocalReverseResults("))
-        val lines = DesktopSourceTree.codeLinesOf(pane)
-        // 锚点挑**同一行里真出现得了的那一串**：`AccentButton(` 与它的 `onClick` 在两行上，
-        // 拿"两个都含"作样会永远找不到 ⇒ 那条次序断言会退化成恒假（量具自己坏掉的那种红）。
-        val input = lines.indexOfFirst { it.contains("onClick = { round += 1 },") }
-        val entry = lines.indexOfFirst { it.contains("DesktopGalleryLocalReverseEntryRow(") }
-        assertTrue("找不到输入行那一枚按钮（读错文件或它被改了）", input >= 0)
-        assertTrue("那一格排在了输入行之前（按完看不见东西，与没做同一件事）", entry > input)
-    }
-
     /** ⑮ 旧说明下架：那颗数据层不许再写「界面上没有入口」。 */
     @Test
     fun 那句没有入口的旧说明已下架() {
@@ -375,21 +331,5 @@ class DesktopGalleryLocalReverseTest {
     }
 
     /** ⑯ 开浏览器那枚能力判据只有一份（两处界面共用一颗件）。 */
-    @Test
-    fun 开浏览器那枚能力判据只有一份() {
-        val total = DesktopSourceTree.desktopMainSources().sumOf { DesktopSourceTree.codeOccurrences(it, "Desktop.isDesktopSupported()") }
-        assertEquals("那枚能力判据被抄成了两份", 1, total)
-        val home = DesktopSourceTree.desktopUiSource("DesktopOpenInBrowser.kt")
-        assertEquals("它不在该住的那颗文件里", 1, DesktopSourceTree.codeOccurrences(home, "Desktop.isDesktopSupported()"))
-        assertEquals("开浏览器那颗件也只有一份", 1, DesktopSourceTree.codeOccurrences(home, "suspend fun openInBrowser("))
-        assertEquals("浮层那一屏没改成共用那颗", 1, DesktopSourceTree.codeOccurrences(DesktopSourceTree.desktopUiSource("DesktopGalleryDetailPanel.kt"), "desktopCanBrowseExternally()"))
-    }
-
     /** ⑰ 没量过的那一跳不许写成验过了。 */
-    @Test
-    fun 文件框那一跳的边界写在读数里() {
-        val picker = DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt").readText()
-        assertTrue("没说出文件框那一跳拍不到：" + picker, picker.contains("鼠标"))
-        assertTrue("没接能力判据（不支持时该把那一枚收起来）", DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryLocalReverseSection.kt")).contains("desktopCanPickLocalImage("))
-    }
 }

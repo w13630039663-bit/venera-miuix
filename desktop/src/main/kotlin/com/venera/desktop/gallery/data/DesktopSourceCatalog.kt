@@ -13,7 +13,7 @@ import java.io.File
  * 而对岸那颗 `JsComicSource` 的 `name` 读的就是脚本头部那一行赋值 ⇒ 这里读同一行，
  * 不另造一套口径（同一份脚本两处读成两种形状，就是"桌面看到的与手机不同"那一族成因）。
  */
-internal object DesktopSourceNames {
+object DesktopSourceNames {
 
     /** 顶层那一行 `name = "显示名"`；**冒号**那种（`name: "每週必看"`）是分区名，不算。 */
     private val HEADER = Regex("""^\s*name\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)
@@ -71,13 +71,18 @@ internal object DesktopSourceNames {
 }
 
 /** 列表里的一行。[title] 取不到名字时就是 [key]（屏上永远有字可念，且那是实话）。 */
-internal data class DesktopSourceRow(
+data class DesktopSourceRow(
     val key: String,
     val title: String,
     val enabled: Boolean,
 )
 
-internal object DesktopSourceCatalog {
+object DesktopSourceCatalog {
+
+    // ⚠️ `public` 是因为装配点 `VeneraDesktop`（public）要用 `rows` / `displayNameOfKey`，
+    // 而 Kotlin 不许 public 文件里的 lambda 暴露 internal object 的返回类型。
+    // 同文件另两颗 `DesktopSourceNames` / `DesktopSourceSelection` 保持 internal ——
+    // 它们没有被 public 签名需要，摊开只是无谓扩大面。
 
     /** 停用**不是删除**：那颗还在列表里，只是标着停用（否则用户会以为源被抹掉了）。 */
     fun rows(

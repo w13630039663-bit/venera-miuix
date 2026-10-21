@@ -18,13 +18,11 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
-import coil3.imageLoader
 import com.venera.compose.ui.tokens.VeneraTokens
 
 /**
@@ -110,7 +108,10 @@ fun CoverHeroBackdrop(
     backdropScale: Float = 1.35f,
 ) {
     val tokens = VeneraTokens
-    val context = LocalContext.current
+    // 2026-10-20（写法 A）：原句是 `context.imageLoader` —— Coil 的 `Context` 扩展属性，
+    // Android 侧取全局单例的写法。改成由平台服务报"本平台的 ImageLoader 是哪一颗"：
+    // Android 侧仍是 `context.imageLoader`（逐字同值），桌面侧返回它自己那颗（或 null 走默认单例）。
+    val platformImageLoader = LocalUxPlatformServices.current.imageLoader()
     // tokens.current 是 @Composable getter：先在组合里取成局部量，再带进 graphicsLayer。
     // （两个新参数是普通值类型，不受这条约束。）
     val backdropAlpha = tokens.current.heroBackdropAlpha
@@ -139,17 +140,32 @@ fun CoverHeroBackdrop(
                 drawRect(brush = FadeToBottom, blendMode = BlendMode.DstIn)
             },
     ) {
-        AsyncImage(
-            model = coverUrl,
-            contentDescription = null,
-            imageLoader = imageLoader ?: context.imageLoader,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                // 放大一档只是为了给下面的模糊留外扩余量（见 backdropScale 那条注释）。
-                // 注意顺序：scale 在外层 ⇒ 屏上模糊 ≈ blurRadius × backdropScale。
-                .scale(backdropScale)
-                .blur(blurRadius),
-        )
+        // 同 `VeneraCover`：`AsyncImage` 的 `imageLoader` 是非空型，没有"传 null 自己挑"的重载，
+        // 所以平台服务返回 null 时走缺省那一支（Coil 进程级单例 = 原行为）。
+        val resolvedLoader = imageLoader ?: platformImageLoader
+        if (resolvedLoader != null) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                imageLoader = resolvedLoader,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 放大一档只是为了给下面的模糊留外扩余量（见 backdropScale 那条注释）。
+                    // 注意顺序：scale 在外层 ⇒ 屏上模糊 ≈ blurRadius × backdropScale。
+                    .scale(backdropScale)
+                    .blur(blurRadius),
+            )
+        } else {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(backdropScale)
+                    .blur(blurRadius),
+            )
+        }
     }
 }

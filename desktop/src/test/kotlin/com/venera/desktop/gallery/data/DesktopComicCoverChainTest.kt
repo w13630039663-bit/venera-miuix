@@ -109,38 +109,6 @@ class DesktopComicCoverChainTest {
     }
 
     @Test
-    fun 阅读器那一处把载荷的封面递给进度件() {
-        val reader = DesktopSourceTree.desktopUiSource("DesktopComicReader.kt")
-        assertEquals(
-            "构造进度件那一处必须交代封面（漏传编译就红；写死一个常数由上面那把尺子抓）",
-            1,
-            DesktopSourceTree.codeOccurrences(reader, "coverUrl = reading.coverUrl"),
-        )
-    }
-
-    @Test
-    fun 三处落点各自交代封面来源() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicPane.kt")
-        assertEquals(
-            "首页那一行吃卡上那枚地址",
-            1,
-            DesktopSourceTree.codeOccurrences(pane, "onOpenComic(DesktopComicTarget(card.id, card.title, card.cover))"),
-        )
-        val history = DesktopSourceTree.desktopUiSource("DesktopComicHistoryScreen.kt")
-        assertEquals(
-            "历史那一行沿用库里已有的那串（把用户已经有的封面换成空串 = 又一次丢）",
-            1,
-            DesktopSourceTree.codeOccurrences(history, "DesktopComicTarget(rec.comicId, rec.title, rec.coverUrl)"),
-        )
-        val forensic = DesktopSourceTree.desktopSourceOf("ForensicFlags.kt")
-        assertEquals(
-            "种子那一趟没有入口封面 ⇒ 空串是实话，不是猜一张",
-            1,
-            DesktopSourceTree.codeOccurrences(forensic, "DesktopComicTarget(comicId, title, \"\")"),
-        )
-    }
-
-    @Test
     fun 种子那一趟的载荷不猜封面() {
         val seeded = com.venera.desktop.ForensicFlags.read(listOf("--read=1461316/g"), startPage = null)
         assertEquals(

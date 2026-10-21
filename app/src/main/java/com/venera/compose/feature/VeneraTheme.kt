@@ -1,5 +1,6 @@
 package com.venera.compose.feature
 
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -18,9 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.materialkolor.rememberDynamicColorScheme
-import com.venera.compose.data.prefs.AppearanceStyle
-import com.venera.compose.data.prefs.ThemeColorSource
-import com.venera.compose.data.prefs.ThemeMode
+import com.venera.compose.data.platform.AppearanceStyle
+import com.venera.compose.data.platform.ThemeColorSource
+import com.venera.compose.data.platform.ThemeMode
 import com.venera.compose.ui.tokens.LocalSurfaceMaterial
 import com.venera.compose.ui.tokens.LocalVeneraColorTokens
 import com.venera.compose.ui.tokens.LocalVeneraTokens
@@ -42,8 +43,10 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
 import androidx.compose.material3.darkColorScheme as materialDarkColorScheme
 import androidx.compose.material3.lightColorScheme as materialLightColorScheme
 
-val LocalVeneraDarkTheme = staticCompositionLocalOf { false }
-
+// 2026-10-20：`LocalVeneraDarkTheme` 已搬到 `ui/tokens/LocalVeneraDarkTheme.kt`。
+// 理由是五颗 components 吃它，而 `components/` 要上桌面；这颗声明零依赖，
+// 住在本文件里会被 `android.app.Activity` / `WindowCompat` 那一堆绑定连坐。
+// provider 仍在下面 `VeneraTheme` 里，位置与语义一字未改。
 
 /** One palette for both component families; MD3 uses wallpaper colors on Android 12+. */
 @Composable

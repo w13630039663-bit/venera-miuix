@@ -96,6 +96,230 @@ kotlin.sourceSets["main"].kotlin {
     srcDir("../app/src/main/java/com/venera/compose/gallery/data")
     srcDir("../app/src/main/java/com/venera/compose/gallery/domain")
     srcDir("../app/src/main/java/com/venera/compose/security/guard")
+
+    // ── 写法 A 第一批（2026-10-20）：把安卓大屏 UI 的**基建层**真接进桌面编译面 ──
+    //
+    // 用户的裁决：「之前做的平行线就不要了，按照大屏端复用」。
+    // 此前桌面自持一整套 Fluent 平行线（`desktop/gallery/ui/`，72 颗）与另一套仿制 pane
+    // （`desktop/ui/`），那就是"维护两份"。这一批开始改成**同一份源码两端编译**。
+    //
+    // 先接这两颗目录，理由是它们的依赖闭合性最好（现量 2026-10-20）：
+    //  - `components/`  48 颗 —— 侧栏（`VeneraSideBar`）、顶栏（`VeneraTopAppBar`）、
+    //    卡片（`VeneraCard`）、封面（`VeneraCover`）、宽屏判据（`WideScreenPolicy`）全在这一层；
+    //    **零 `import android.`**（本轮把最后 5 颗的平台调用抽进了 `UxPlatformServices` 接口）。
+    //  - `ui/tokens/`   7 颗 —— 色板 / 间距 / 字号 / 形状，**零 Android 依赖**（原本就是）。
+    //
+    // 为什么这两颗必须一起点名：`components/` 有 56 处 import `ui.tokens`，
+    // KGP 又不许按单文件挑（见上面"include 的坑"）。只挂一颗编不过。
+    //
+    // ⚠️ 排除清单的判据仍是**禁引集合**（`DesktopSharedFaceLedgerTest.FORBIDDEN`），
+    //    不是 `^import android`：`AndroidUxPlatformServices.kt` 已经搬出本目录
+    //    （它现在住 `com/venera/compose/platform/`，那颗目录**不进**桌面编译面）。
+    srcDir("../app/src/main/java/com/venera/compose/components")
+    srcDir("../app/src/main/java/com/venera/compose/ui/tokens")
+    // `source/model/ComicSourceModels.kt`（309 行、零 import、24 个纯 data class）。
+    // 加它的直接触发点很具体：`components/ComicCardContextMenu.kt` 要 `Comic` 这个类型
+    // （长按菜单画的是漫画卡），而 `Comic` 住这里。整颗目录只有这一颗文件，点名进来即可。
+    srcDir("../app/src/main/java/com/venera/compose/source/model")
+    // ── 目标③：把 gallery/ui 里**与 Android 宿主无关**的那 11 颗挂进来 ──
+    srcDir("../app/src/main/java/com/venera/compose/gallery/ui")
+    // ── 目标③ 续：feature/ 里与 Android 宿主无关的那些 ──
+    srcDir("../app/src/main/java/com/venera/compose/feature")
+    // ── 2026-10-20：业务门面（`BusinessPorts` 那 17 个成员的接口层 + 它引用的纯模型）──
+    // 量过：data/api 的 8 颗接口需要 31 个外部符号，其中 30 个定义在**干净的纯模型**文件里，
+    // 只有 `UpdateDownload`（在 `data/update/ApkDownloader.kt`，那颗是 Android 下载器）例外。
+    // 所以这些目录按**文件**挑着挂，不整目录挂。
+    srcDir("../app/src/main/java/com/venera/compose/data/api")
+    srcDir("../app/src/main/java/com/venera/compose/stats")
+    srcDir("../app/src/main/java/com/venera/compose/download")
+    srcDir("../app/src/main/java/com/venera/compose/data/update")
+    srcDir("../app/src/main/java/com/venera/compose/source")
+    srcDir("../app/src/main/java/com/venera/compose/source/explore")
+    srcDir("../app/src/main/java/com/venera/compose/feature/sourcemanage")
+    exclude(
+        // sourcemanage 只有那颗 94 行的纯模型能进；另两颗（Screen 1629 行 / ViewModel 621 行）绑 Android。
+        "**/ComicSourceScreen.kt",
+        "**/ComicSourceViewModel.kt",
+    )
+
+    // ── AUTO-EXCLUDE 自动收敛段（`_tools/auto_exclude.py` 写，勿手改）──
+    exclude(
+        "**/ApkDownloader.kt",
+        "**/ApkInstallLauncher.kt",
+        "**/AppUpdateChecker.kt",
+        "**/BaoziMangaSource.kt",
+        "**/ComicLinkResolver.kt",
+        "**/ComicSourceManager.kt",
+        "**/ComicSourceParser.kt",
+        "**/ComicSourceScreen.kt",
+        "**/ComicSourceViewModel.kt",
+        "**/ComicStorageRoot.kt",
+        "**/CopyMangaSource.kt",
+        "**/DownloadManager.kt",
+        "**/DownloadNotificationChannel.kt",
+        "**/GalleryAccountCard.kt",
+        "**/JsComicSource.kt",
+        "**/LocalComicManager.kt",
+        "**/MangaDexSource.kt",
+        "**/ReadingStatsManager.kt",
+        "**/SauceNaoKeyCard.kt",
+        "**/SourcePayloadParser.kt",
+        "**/TagStatsAggregation.kt",
+        "**/WebLoginScreen.kt",
+    )
+    // ── AUTO-EXCLUDE 结束 ──
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    exclude(
+        // ⚠️ 必须带 `sourcemanage/` 这一层：`**/ComicSourceModels.kt` 会把
+        // `source/model/ComicSourceModels.kt`（那颗 309 行纯模型，两端都在用）一起排掉。
+        "**/sourcemanage/ComicSourceModels.kt",
+        "**/ComicItem.kt",
+        "**/DetailActionButton.kt",
+        "**/ReaderSettings.kt",
+        "**/PreferredIpSettings.kt",
+        "**/ExploreViewModel.kt",
+        "**/ExplorePolicy.kt",
+        "**/ExploreState.kt",
+        // ↑ 这几颗依赖 `data.prefs`（桌面禁引族）或 material3 实验组件。
+        "**/AboutSection.kt",
+        "**/AppearanceSettings.kt",
+        "**/AppSettings.kt",
+        "**/BlockingSettings.kt",
+        "**/ComicDetailScreen.kt",
+        "**/ComicDetailViewModel.kt",
+        "**/ComicSourceScreen.kt",
+        "**/ComicSourceViewModel.kt",
+        "**/CoverViewerScreen.kt",
+        "**/DownloadScreen.kt",
+        "**/ExploreSettings.kt",
+        "**/FavoriteImagesManager.kt",
+        "**/FavoriteImagesScreen.kt",
+        "**/FavoritesScreen.kt",
+        "**/FavoritesSplitPaneHost.kt",
+        "**/FavoritesViewModel.kt",
+        "**/FollowUpdatesScreen.kt",
+        "**/FollowUpdatesViewModel.kt",
+        "**/GalleryAccountCard.kt",
+        "**/GallerySettings.kt",
+        "**/HistoryScreen.kt",
+        "**/HistoryViewModel.kt",
+        "**/HomeScreen.kt",
+        "**/HomeViewModel.kt",
+        "**/LocalComicScreen.kt",
+        "**/LocalFavoritesSettings.kt",
+        "**/LogViewerScreen.kt",
+        "**/Navigation.kt",
+        "**/NetworkFavoritesScreen.kt",
+        "**/NetworkFavoritesViewModel.kt",
+        "**/NetworkSettings.kt",
+        "**/PetImageLoader.kt",
+        "**/PetMascot.kt",
+        "**/PreferredIpSpeedTestScreen.kt",
+        "**/SauceNaoKeyCard.kt",
+        "**/SearchScreen.kt",
+        "**/SearchViewModel.kt",
+        "**/SettingsComponents.kt",
+        "**/SettingsHero.kt",
+        "**/SettingsHeroImage.kt",
+        "**/SettingsHome.kt",
+        "**/SettingsHost.kt",
+        "**/SettingsQuoteCard.kt",
+        "**/SettingsScreen.kt",
+        "**/SourceEditScreen.kt",
+        "**/SourceSectionScreen.kt",
+        "**/StatsScreen.kt",
+        "**/SyncBackupScreen.kt",
+        "**/UnifiedExploreScreen.kt",
+        "**/UpdateCheckUi.kt",
+        "**/VeneraTheme.kt",
+        "**/WebLoginScreen.kt",
+    )
+
+    exclude(
+        // 这 5 颗虽然自己不含 Android 绑定，但引用了被排除的同包文件
+        // （CardsGrid / CardsAxis / 分享条 / fly 动画状态机…），挂进来会连带 200+ 错。
+        // 它们是"干净的叶子"才有意义，一旦依赖被排除的兄弟就不是叶子了。
+        "**/GalleryForYouScreen.kt",
+        "**/GalleryBookmarksHubScreen.kt",
+        "**/GalleryLiveFlyBody.kt",
+        "**/GalleryDisintegration.kt",
+        // ↑ `asAndroidBitmap`（androidx.compose.ui.graphics 的 Android 位图互转），桌面侧没有。
+        "**/GalleryViewerToolbar.kt",
+        // ↑ 需要 material3 的 `CircularWavyProgressIndicator`（实验性），桌面侧那颗版本没带。
+        "**/GalleryPixivSearchArea.kt",
+        // 2026-10-20：`GalleryNotices` 已改走 LocalUxPlatformServices（原来那处 `context.openSettingsSubScreen`），
+        // 它现在是干净叶子 —— 不再排除。
+"**/GalleryArtistProfileScreen.kt",
+"**/GalleryArtistRows.kt",
+"**/GalleryCardActionSheet.kt",
+"**/GalleryCardCaption.kt",
+"**/GalleryDailyScreen.kt",
+"**/GalleryFavoritesBody.kt",
+"**/GalleryFlyIn.kt",
+"**/GalleryForYouViewModel.kt",
+"**/GalleryHistoryScreen.kt",
+"**/GalleryHomeChrome.kt",
+"**/GalleryHomeSections.kt",
+"**/GalleryImageShare.kt",
+"**/GalleryInfoSheet.kt",
+"**/GalleryPageAxis.kt",
+"**/GalleryPixivAccount.kt",
+"**/GalleryPixivHome.kt",
+"**/GalleryPostScreen.kt",
+"**/GalleryReverseResults.kt",
+"**/GalleryReverseSearchArea.kt",
+"**/GalleryReverseViewModel.kt",
+"**/GalleryScreen.kt",
+"**/GallerySearchArea.kt",
+"**/GallerySearchViewModel.kt",
+"**/GallerySharedTransition.kt",
+"**/GalleryVideoViewer.kt",
+"**/GalleryViewModel.kt",
+"**/PixivAccountScreen.kt",
+"**/PixivAccountSessionStore.kt",
+"**/PixivArtistScreen.kt",
+"**/PixivWorkInfoPanel.kt",
+"**/PixivWorkScreen.kt",
+    )
+
+    exclude(
+        // 「预测性返回」是 AndroidX 的系统手势（`androidx.activity.compose.PredictiveBackHandler`），
+        // 桌面侧没有那颗件。共享面已经把**状态机**与**handler 调用**拆开了：
+        // `PredictiveBack.kt` 里 `rememberPredictiveBackState` 按
+        // `UxPlatformServices.supportsPredictiveBack` 分支，但 handler 那一段
+        // （`PredictiveBackGestureReceiver`）仍 import 了 androidx.activity ⇒ 桌面编不过。
+        // 所以整颗排除，桌面上"多选退出跟手"退化成不跟手（浮层仍可点关）。
+        // 将来要收口：把 handler 也抽进平台层（`supportsPredictiveBack` 已经预留了那个开关）。
+        // 站点标记：`VeneraGallerySourceMark.kt` 用四颗 `R.drawable.ic_source_*` 位图
+        // （gelbooru / yandere / safebooru / pixiv）。`R` 是 AGP 生成的资源索引类，
+        // 桌面侧根本没有这套资源管线；要收口得先把四颗矢量搬成 Compose `ImageVector`
+        // 或 Compose Resources（那是一次独立的资源迁移，不在本批）。
+        // 调用点只有 `VeneraCard` 的站点角标那一处 —— 桌面侧的卡因此不画角标。
+        //
+        // ⚠️ 写成 `**/VeneraGallerySourceMark.kt` 而不是裸文件名：`exclude` 的匹配对象是
+        // **相对各 srcDir 根**的路径，而这颗文件在 `components/venera/` 子目录里。
+        // 裸文件名在顶层 srcDir（`data/platform` 等）有效，但对子目录里的文件不命中 ——
+        // 实测（2026-10-20）裸名此处**静默不生效**，编译照样去编它并报 `Unresolved 'R'`。
+        "**/VeneraGallerySourceMark.kt",
+        "**/PredictiveBack.kt",
+    )
+
     // 逐颗点名，每颗的成因各不相同（写在这里而不是"一张总理由"，是因为撤排除时要按颗重判）。
     exclude(
         // Android 接线那半边：包名没变、只是搬进 `android/` 子目录，
@@ -131,6 +355,8 @@ kotlin.sourceSets["main"].kotlin {
         // 桌面屏蔽判据直连 data/db 的 GuardRuleStore，不需要这颗（那是 4b 抽出来的内核）。
         "ContentGuardManager.kt",
     )
+
+
 }
 
 // Task 6：源脚本**随包分发**。桌面链路真用得上的只有这几类（逐个点名，不整个目录搬）：
@@ -142,8 +368,15 @@ kotlin.sourceSets["main"].kotlin {
 //     （`DesktopGalleryTagDictionary` 复制成真实路径再只读打开；3,257,344 B 的包体增量就是它）。
 // **不带** `opencc.txt`：它唯一的消费点是 `app/…/data/tags/ChineseVariantConverter.kt`
 //   （`data/tags` 不在本模块 srcDir 的编译面里），桌面侧今天一行都不读它。
-// 同理不带 `tags.json` / `tags_tw.json` / `source_content_warning.json`
-// / `licenses/` / `sources/index.json`（源清单是枚举 `sources/` 得来的，不是读这份索引）。
+// 同理不带 `tags.json` / `tags_tw.json` / `licenses/` / `sources/index.json`
+// （源清单是枚举 `sources/` 得来的，不是读这份索引）。
+//
+// ⚠️ **2026-10-21 更正**：`source_content_warning.json` 从「不带」改成**带上**。
+// 原注释把它和 tags.json 归成一类（"桌面侧今天一行都不读它"），那句话当时是真的；
+// 但安全评审 C 发现桌面因此**少了一整道内容判据** ——
+// 安卓 `ContentGuardManager.maskHit:441-443` 靠这张表判 `nsfw`/`mixed` 源，
+// 桌面没有它 ⇒ 历史记录那种**不带 tags** 的模型永远判不出成人向 ⇒ 封面恒裸。
+// 现在 `DesktopSourceContentPresets` 真在读它（包内优先，走 classpath）。
 // 批 40 起**带上** `gallery_tags_*.sqlite`：桌面那颗 `DesktopGalleryTagDictionary` 真在读它
 // （标签墙译名 / 关注栏 / 补全那排三处消费点），取的是"包内优先"那条 classpath 路，
 // 名字里的行数就是词典的版本号 ⇒ include 写成 `*` 而不是钉死 `79415`，换一批词典不必改构建脚本。
@@ -155,20 +388,52 @@ sourceSets["main"].resources.include(
     "venera-init.js",
     "venera-shim.js",
     "gallery_tags_*.sqlite",
+    // 源级内容分级预设表：`DesktopSourceContentPresets` 读它判 `nsfw`/`mixed` 源。
+    // 不带这颗，历史卡（无 tags）就永远判不出成人向 —— 安全评审 C。
+    "source_content_warning.json",
 )
 
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.foundation)
     implementation(compose.ui)
+    implementation(compose.material)
+    implementation(compose.materialIconsExtended)
     implementation(compose.components.uiToolingPreview)
+
+    // ── 写法 A（2026-10-20）：安卓大屏 UI 那一层的 material3 ──
+    //
+    // `components/` 与 `ui/tokens/` 有 60 余处 `androidx.compose.material3.*`
+    // （`MiuixTheme` 的色板桥接、`MaterialTheme`、`DropdownMenu`、`Icon`、`Surface`…）。
+    // 桌面侧原本只用 `compose.material`（M2），编不过。
+    //
+    // 坐标取 **JetBrains 的 `org.jetbrains.compose.material3`**（由
+    // `compose.material3` 那枚 DSL 提供），不是 `androidx.compose.material3`：
+    // 前者是对桌面/JS/iOS 打过包的 CMP 产物，后者是 Android-only 的 AAR。
+    //
+    // **版本共存的既有事实**（方案文档 §6.5 判据 4 的 A0 实测）：
+    // `:app` 今天就已经经由 `com.materialkolor:material-kolor:5.0.1` 把 JetBrains 那颗
+    // material3 带在 runtimeClasspath 上（`_qa/a0/baseline_app_deps.txt:887`），
+    // 所以"两颗坐标族同挂而不撞同名类"不是本条新引入的风险。
+    // 而 `:app` 自己仍解析为 `androidx.compose.material3:1.5.0-alpha22`，一个字节都没变 ——
+    // 那正是"隔离安卓端"这条硬约束的兑现方式。
+    @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+    implementation(compose.material3)
 
     implementation(libs.compose.fluent.desktop)
     implementation(libs.window.styler)
     // 端到端最小闭环：真源脚本 + GraalJS 宿主 + 取图，全走 :engine-probe 那批共享 handler
     implementation(project(":engine-probe"))
-    // 只是解析探针：桌面侧最终不需要 Miuix，这里量的是它能否与 fluent-desktop 同域共存
+    // A0 探针（docs/rounds/desktop-reuse-android-ui-2026-10-18.md §6.2 第 3 条）：同一份 `Hello()`，
+    // 桌面侧吃的是那颗 KMP 模块的 `-jvm`/`-desktop` 变体。入口见 SharedProbeWindow.kt（任务 `sharedprobe`）。
+    implementation(project(":shared-probe"))
+    // Miuix 的 desktop 变体：同一版本目录里能不能与 fluent-desktop 并存，是 S0-1 要量的一格
     implementation(libs.miuix.ui.desktop)
+    // 写法 A（2026-10-20）：`components/ComicTileLayout.kt` 用 Miuix 官方图标集那对
+    // `MiuixIcons.ListView` / `MiuixIcons.GridView`（注释写明"线宽与其余 Miuix chrome 同源"）。
+    // 那颗坐标的依赖面已核：只拉 miuix-core + compose foundation，**不引用 material3**
+    // ⇒ 不会顶掉被 Miuix 钉住的那一版（见 libs.versions.toml 的登记）。
+    implementation(libs.miuix.icons)
     // S0-7：现有 4 个玻璃消费点都先过 isRuntimeShaderSupported()，
     // 它在 desktop 返回什么决定"玻璃整段静默跳过"还是"真能画"
     implementation(libs.miuix.blur)
@@ -264,6 +529,19 @@ tasks.register<JavaExec>("spike") {
     group = "probe"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.venera.desktop.SpikeWindowKt"
+}
+
+// A0 探针判据 3：`:shared` 那颗 KMP 模块在桌面侧起一扇窗（同一颗 runtimeClasspath，
+// 与 `:desktop:run` 解析到的东西一致 —— 换的只有 main class，手法与上面 `spike` 同一族）。
+//   sh gradlew :desktop:sharedprobe                读数打完 4 秒自己关
+//   加 -Phold=20000 让它多停一会儿（要给窗口捕获留时间）
+tasks.register<JavaExec>("sharedprobe") {
+    group = "probe"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.venera.desktop.SharedProbeWindowKt"
+    workingDir = rootDir
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+    args("hold=" + providers.gradleProperty("hold").getOrElse("4000"))
 }
 
 // S0-7：玻璃能力三层读数（纯 stdout，不需要窗口）

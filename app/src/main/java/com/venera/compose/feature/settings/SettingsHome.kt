@@ -1,5 +1,6 @@
 package com.venera.compose.feature.settings
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollFactory
@@ -26,7 +27,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -213,7 +213,7 @@ private fun SettingsHomeContent(
     val tokens = VeneraTokens
     // 大屏内容收口宽度；手机档为 null（= 不收口，逐像素走旧几何）。
     val contentMaxWidth = contentMaxWidthFor(
-        wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp),
+        wideScreenLayoutMode(LocalWindowWidthDp),
     )
     // hero 在场时 scrollConnection 传 null：折叠 behavior 不参与（见 SettingsHome 注释）。
     // 禁掉 overscroll：到顶继续下拉会把 hero 图拉伸变形（Android 12+ 的 stretch 效果

@@ -4,24 +4,6 @@ import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 
-/**
- * 桌面设置页那一屏的**账本**（第七批）。纯数据，不 require `@Composable` ——
- * 为的是它能被单测直接取值（与 `desktopDomainRows` 同一条理由：能真跑的判据比能扫的可靠）。
- *
- * ## 这份清单存在的唯一目的：让"假开关"在结构上长不出来
- *
- * `GalleryPreferences` 有 12 枚。桌面今天真消费的有 8 枚（第四、五批接的四枚，批 46 的连播、批 47 的预取、
- * 批 52 的动图与批 61 的那层底），2 枚属于桌面**根本没有那一档**（常亮与音量键，都来自手机形态），
- * 2 枚结构性不参与（那两条栏）。
- * 所以这一屏的规矩是：**每一枚都必须在这份账里占一格** ——
- * 要么进 [editable]（屏上真能改、改完那面墙立刻重算），
- * 要么进 [notOnScreen]（屏上逐颗点名"为什么这一屏没有它"），
- * 要么在 [STRUCTURAL_ABSENT]（连点名的地方都没有，因为桌面没有那两条栏）。
- * 少一枚、重一枚、把没消费的说成能改的，`DesktopGallerySettingsSpecTest` ③ 那条加法就红。
- *
- * ⚠️ 加一枚进 [editable] 之前先答得出"这一枚今天被谁读"。答不出就别加 ——
- * 那正是本仓零容忍的那颗东西：按下去存盘成功、屏上什么都不变。
- */
 internal object DesktopGallerySettingsSpec {
 
     /**

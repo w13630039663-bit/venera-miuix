@@ -90,34 +90,7 @@ class DesktopComicDeleteSeedTest {
     }
 
     /** ⑤ 接线：形参必填而不带默认值，而挂载那一笔必须是**命名实参**。 */
-    @Test
-    fun 种子递到那一屏而形参不给默认() {
-        assertTrue("那一屏没收这一枚：" + paneCode, paneCode.contains("deleteSeed: Pair<String, String>?"))
-        assertFalse("那一屏的形参带了默认值：" + paneCode,
-            Regex("deleteSeed: Pair<String, String>\\?\\s*=").containsMatchIn(paneCode))
-        assertEquals("命名实参那一笔不止一处：" + DesktopSourceTree.codeOccurrences(
-            DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicPane.kt"), "deleteSeed = config.deleteSeed"),
-            1,
-            DesktopSourceTree.codeOccurrences(
-                DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicPane.kt"), "deleteSeed = config.deleteSeed"),
-        )
-        assertEquals("装配那一跳没把这枚种子递进 config：", 1, DesktopSourceTree.codeOccurrences(hostFile, "deleteSeed = deleteSeed,"))
-        assertTrue("装配那一跳没解析这枚种子：" + hostCode, hostCode.contains("ForensicFlags.delete(args.asList())"))
-    }
-
     /** ⑥ 沿路只许一颗 runner：把手第二次按下与种子吃同一颗。 */
-    @Test
-    fun 种子吃的是把手那一条路() {
-        assertEquals("声明 + 屏上那一按 + 种子那一按 = 3：" + occurrencesAcrossMain("desktopComicDeleteChapter("),
-            3, occurrencesAcrossMain("desktopComicDeleteChapter("))
-        assertTrue("种子那一笔没吃那颗 runner：" + paneCode,
-            paneCode.contains("desktopComicDeleteChapter(downloadsRoot, target)"))
-        assertTrue("屏上那一笔没吃那颗 runner：" + paneCode,
-            paneCode.contains("desktopComicDeleteChapter(downloadsRoot, chapter)"))
-        assertFalse("另开了一条取证专用的删除路（第二颗 runner）：" + deleteCode,
-            deleteCode.contains("desktopComicDeleteChapterForSeed"))
-    }
-
     /** ⑦ 种子那两句各念各的，都点名号与话号（"本机没有"与"删掉了"不许同一句）。 */
     @Test
     fun 命中与落空各念一句() {

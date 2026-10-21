@@ -1,17 +1,12 @@
 package com.venera.compose.components
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.LocalFavoriteDatabase
-import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.source.model.Comic
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -36,7 +31,11 @@ fun ComicCardContextMenu(
     onOpenDetail: () -> Unit,
 ) {
     if (!expanded) return
-    val context = LocalContext.current
+    // 2026-10-20（写法 A）：`LocalContext.current` + `BusinessPorts.of(context)` 换成平台服务。
+    // 那颗 `of(context)` 吃 `android.content.Context`，一句话就把整颗文件钉在 Android 上，
+    // 而它在 `components/` —— 那一层要上桌面。收藏 / 屏蔽 / 剪贴板三个动作与原来的
+    // **调用顺序、异常语义、吐司文案逐字保留**，实现搬到 `AndroidUxPlatformServices`。
+    val ux = LocalUxPlatformServices.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val tokens = VeneraTokens
@@ -50,7 +49,7 @@ fun ComicCardContextMenu(
             onClick = {
                 onDismiss()
                 clipboard.setText(AnnotatedString(comic.title))
-                toast(context, "标题已复制")
+                ux.toast("标题已复制")
             },
         )
         DropdownMenuItem(
@@ -61,25 +60,23 @@ fun ComicCardContextMenu(
                     val folder = LocalFavoriteDatabase.DEFAULT_FOLDER
                     // addComic 抛异常=收藏夹不存在，返回 false=这本已经在里面了。两种要分开说，
                     // 否则重复收藏看起来像"点了没反应"。
-                    val added = runCatching {
-                        BusinessPorts.of(context).favorites.addComic(
-                            folder,
-                            FavoriteItem(
-                                id = comic.id,
-                                name = comic.title,
-                                author = comic.subTitle,
-                                sourceKey = comic.sourceKey,
-                                tags = comic.tags,
-                                coverPath = comic.cover,
-                            ),
-                        )
-                    }
-                    toast(context, when {
-                        added.getOrDefault(false) -> "已收藏到「$folder」"
-                        added.isSuccess -> "这本已经在「$folder」里了"
-                        // 本地收藏夹是设备上的库操作，异常原文（SQLite / IO）对用户没有可操作性。
-                        else -> "收藏没成功，再试一次"
-                    })
+                    val result = ux.saveComicToFavorites(
+                        id = comic.id,
+                        title = comic.title,
+                        author = comic.subTitle,
+                        sourceKey = comic.sourceKey,
+                        tags = comic.tags,
+                        coverPath = comic.cover,
+                        folder = folder,
+                    )
+                    ux.toast(
+                        when (result) {
+                            is FavoriteSaveResult.Added -> "已收藏到「${result.folder}」"
+                            is FavoriteSaveResult.AlreadyThere -> "这本已经在「${result.folder}」里了"
+                            // 本地收藏夹是设备上的库操作，异常原文（SQLite / IO）对用户没有可操作性。
+                            FavoriteSaveResult.Failed -> "收藏没成功，再试一次"
+                        },
+                    )
                 }
             },
         )
@@ -88,15 +85,11 @@ fun ComicCardContextMenu(
             onClick = {
                 onDismiss()
                 scope.launch {
-                    val saved = BusinessPorts.of(context).guardRuleBook
-                        .addRule("COMIC_ID", comic.id) >= 0
-                    toast(context, if (saved) "已屏蔽本作，可在 设置→屏蔽与过滤→作品 里撤销"
+                    val saved = ux.blockComic(comic.id)
+                    ux.toast(if (saved) "已屏蔽本作，可在 设置→屏蔽与过滤→作品 里撤销"
                         else "屏蔽失败，请重试")
                 }
             },
         )
     }
 }
-
-private fun toast(context: Context, message: String) =
-    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()

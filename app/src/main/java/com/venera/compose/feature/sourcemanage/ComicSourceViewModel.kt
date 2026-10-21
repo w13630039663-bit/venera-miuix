@@ -7,7 +7,7 @@ import com.venera.compose.engine.explainSourceFailure
 import com.venera.compose.source.ComicSource
 import com.venera.compose.source.ComicSourceManager
 import com.venera.compose.source.InstalledSourceMeta
-import com.venera.compose.source.RepoIndexEntry
+import com.venera.compose.source.model.RepoIndexEntry
 import com.venera.compose.source.humanizeSourceError
 import com.venera.compose.source.js.JsComicSource
 import kotlinx.coroutines.Dispatchers

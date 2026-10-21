@@ -35,6 +35,17 @@ class DampedDragAnimation(
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
+    /**
+     * 帧钟来源。2026-10-20 加（写法 A：`components/` 上桌面）：
+     * `release()` 里那句 `awaitFrame()` 原先直连 `Choreographer`（`android.view`），
+     * 桌面没有那颗件。现在由集成方把平台服务递进来。
+     *
+     * **默认值是"真的等一帧"**（`withFrameNanos`）而不是空实现：`withFrameNanos` 是
+     * Compose 自带的跨平台帧钟，两端都有，语义与 `Choreographer.postFrameCallback` 一致
+     * （都是"至少过一帧再回来"）。所以这个默认值不会改变任何现有行为 ——
+     * Android 侧即便调用方不传，拿到的也是同一个先后关系。
+     */
+    private val awaitFrame: suspend () -> Unit = { androidx.compose.runtime.withFrameNanos { } },
 ) {
 
     private val valueAnimationSpec =

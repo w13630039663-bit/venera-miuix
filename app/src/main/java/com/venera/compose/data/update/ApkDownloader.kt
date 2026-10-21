@@ -20,34 +20,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.Request
 
-/** 一次应用内更新下载的进度。`Failed` 的话必须带**实际读数**，见 [UpdateDownload.Failed]。 */
-sealed interface UpdateDownload {
-    data object Idle : UpdateDownload
-
-    /** [viaMirror] 为真表示此刻走的是加速镜像，界面上要念出来 —— 用户有权知道字节从谁家来的。 */
-    data class Running(
-        val downloadedBytes: Long,
-        val totalBytes: Long,
-        val speedBytesPerSec: Long,
-        val viaMirror: Boolean,
-    ) : UpdateDownload
-
-    /** 字节下完了，正在算散列。14 MB 量级一百来毫秒，但这一段不该被跳过去写成"完成"。 */
-    data object Verifying : UpdateDownload
-
-    /**
-     * 落盘完成。[verified] 为假表示发布通道这次没给 `digest`，那份文件**没有被校验过** ——
-     * UI 必须把这句话说出来，不许用同一句"下载完成"盖掉两种情况。
-     */
-    data class Ready(val file: File, val verified: Boolean, val size: Long) : UpdateDownload
-
-    /**
-     * [reason] 要么带"哪个候选 + 什么码/什么异常"，要么带"散列期望前缀 vs 实得前缀"。
-     * 一句"下载失败"没法让人判断该重试、该换网、还是该去浏览器 —— 所以这里不收那种写法。
-     */
-    data class Failed(val reason: String) : UpdateDownload
-}
-
 /**
  * 把发布通道上的 APK 下到本地并**证明它是我们发出去的那一份**。
  *

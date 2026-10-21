@@ -113,6 +113,31 @@ internal object DesktopTheme {
     /** 博丽朱：神社档装饰与警示。稿 `--beni` = `#D6463C`。 */
     val AccentBeni: Color = Color(0xFFD6463C)
 
+    // ── Hero 插画的渐变色（deco 神社档那一支）──────────────────────────────
+
+    /**
+     * Hero 插画渐变的**深**那一端 —— 藤紫标准档。稿 `--fuji` = `#8A6BC4`
+     * （`docs/designs/windows-gallery-home-touhou-2026-10-03.html:15`）。
+     *
+     * 2026-10-20 补回：`DesktopShrineDecor.desktopDecoHeroArtColors()` 用
+     * `listOf(DecoHeroArtDeep, DecoHeroArtFuji, AccentBeni)` 做出"深藤紫 → 浅藤紫 → 博丽朱"
+     * 那一道渐变。这两枚原先在 deco 那批改动里，`git checkout` 时丢了；
+     * 稿值在 `:15`（`--fuji`）与 `:16`（`--fuji-lite`）逐字可查，按它们补。
+     *
+     * ⚠️ 与 [AccentFuji]（= `--fuji-lite` = `#CBB6FF`）是**两枚**：那一枚管文字与指示条，
+     * 这一枚管插画的深端。合成一枚会让渐变退化成单色，而稿上那一段正是要有层次。
+     */
+    val DecoHeroArtDeep: Color = Color(0xFF8A6BC4)
+
+    /**
+     * Hero 插画渐变的**浅**那一端 —— 藤紫浅档，与 [AccentFuji] **同值**（`--fuji-lite`）。
+     *
+     * 为什么另起一个名字而不是直接写 `AccentFuji`：这两个数今天相等，但**语义不同** ——
+     * 前者是"插画渐变的浅端"，后者是"强调色文字/指示条"。共用一枚会让"哪天设计师
+     * 只调插画浅端"这件事必须改强调色才能做到，那是一次误伤。名字分开，值放一起对得上就好。
+     */
+    val DecoHeroArtFuji: Color = AccentFuji
+
     // ── 标签 chip 的 beni 强调档（稿 `:139` 的 `.chip.beni`）──────────────────
 
     /**

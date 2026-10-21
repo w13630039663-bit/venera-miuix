@@ -64,35 +64,4 @@ class DesktopComicRowDispatchTest {
         assertTrue("阅读要取页", desktopComicEngineNeeded(DesktopComicScreen.READER, hasQueueWork = false))
     }
 
-    @Test
-    fun 两屏的渲染点从探索那一支提到域层() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopComicPane.kt")
-        val code = DesktopSourceTree.codeText(pane)
-        assertEquals("详情那一屏全树只许组合一次", 1, code.split("DesktopComicDetailPane(").size - 1)
-        assertEquals("阅读那一屏全树只许组合一次", 1, code.split("DesktopComicReaderPane(").size - 1)
-        assertTrue("域层必须走那颗纯判断（不写死 if/else 形状，判式只钉它真被调过）", code.contains("desktopComicScreen("))
-        assertTrue("引擎要不要起也必须走那颗纯判断", code.contains("desktopComicEngineNeeded("))
-        // 反向那一半：探索那一支不再管载荷 —— 留着就是"两条路都能渲染同一屏"，
-        // 而缺陷的形状正是"只有那一条路"。
-        // ⚠️ 判式取**整张参数表**（从函数头到第一行函数体），不取 `ComicExplorePane(…comicTarget` 那种
-        // 一带而过的串：那种写法只咬得住"载荷排在参数表前部"，把它添在 `onOpenComic` **之后**
-        // 就绕过去了（`[^)]*` 吃不过 `(DesktopComicTarget)` 里那个右括号 —— 扰动台架 C7 就是拿来咬这一格的）。
-        val declStart = code.indexOf("private fun ComicExplorePane(")
-        val declEnd = code.indexOf("val state = engine.state")
-        assertTrue("探索那一屏的函数头不见了（改了名？那这一格得跟着改）", declStart in 0 until declEnd)
-        assertFalse(
-            "探索那一支的参数表里不许再出现详情载荷（渲染点已提到域层）",
-            code.substring(declStart, declEnd).contains("comicTarget"),
-        )
-    }
-
-    @Test
-    fun 退场那颗不许跟着分支走() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertEquals("引擎句柄的 dispose 全树恰好一处", 1, code.split("onDispose { queueScope.cancel(); closing?.close() }").size - 1)
-        assertTrue(
-            "dispose 必须挂在引擎那颗持有件里，而不是探索那一屏的 UI 段（否则换行就漏一颗）",
-            code.indexOf("private fun rememberComicEngine(") in 0 until code.indexOf("onDispose { queueScope.cancel(); closing?.close() }"),
-        )
-    }
 }

@@ -38,21 +38,6 @@ class DesktopGalleryPagingTest {
         }?.sorted() ?: emptyList()
 
     /** ① 一颗相位：抄第二遍的那一刻就是漂移的开始。 */
-    @Test
-    fun 下一页的相位整个目录只许有一颗() {
-        val found = phaseDeclarations()
-        assertEquals(
-            "页尾那三档相位被抄成了多颗（每一颗都会自己漂一句措辞）：" + found.joinToString(" ; "),
-            1,
-            found.size,
-        )
-        assertTrue("那颗唯一的名字应是 DesktopGalleryMorePhase：" + found.first(), found.first().contains("DesktopGalleryMorePhase"))
-        // 对照：三屏真在吃它（只留一颗声明而没人用，等于把旧的两颗删了没接新的）。
-        listOf("DesktopForYouPane.kt", "DesktopArtistProfilePane.kt", "DesktopLatestPane.kt").forEach { name ->
-            assertTrue("对照失效：$name 没引用那颗共享相位", code(name).contains("DesktopGalleryMorePhase"))
-        }
-    }
-
     /**
      * ② 那枚按钮的文案与页尾那句是**一颗件**，而量词是**入参**不是写死的「张」。
      *
@@ -91,71 +76,18 @@ class DesktopGalleryPagingTest {
      * 与单人页 ⑪ 同一条判式（那一族的两屏版）：该发哪几条腿、下一笔第几页、一页怎么落地三处
      * 全转交现成件；`page + 1` / `base.page` 那两种手抄形状一次列全。
      */
-    @Test
-    fun 最新那一屏吃共享持有件() {
-        val pane = code("DesktopLatestPane.kt")
-        listOf(
-            "desktopGalleryBatchLegs(" to "该发哪几条腿没转交共享那颗件",
-            "desktopGalleryBatchNextPages(" to "下一笔要第几页没转交共享那颗件",
-            "desktopGalleryBatchApply(" to "一页落地没走那颗 reducer",
-            "DesktopGalleryBatch(" to "这一屏根本没有那颗持有件",
-            "GallerySearchMerge.interleave(" to "混排没走共享那颗（而它第二入参就是去重键）",
-            "seenKeys" to "追加没带上已上屏的去重键（同一张会摆两遍）",
-        ).forEach { (token, why) -> assertTrue("$why：屏上读不到 $token", pane.contains(token)) }
-        listOf("page + 1", "base.page", "batch.page").forEach { handCopied ->
-            assertEquals("屏上另造了一份页码账（$handCopied）", 0, pane.split(handCopied).size - 1)
-        }
-        assertTrue("那枚按钮的文案没走共享那颗件", pane.contains("desktopGalleryMoreLabel("))
-        assertTrue("那枚按钮的可见性没吃到底判据", pane.contains("atEnd"))
-        assertEquals("到底时留了一枚 disabled 的按钮", 0, pane.split("enabled = false").size - 1)
-        assertTrue(
-            "Ready 那档交回的还是裸张数表（页码、去重键、到底三本账没人记）",
-            pane.contains("data class Ready(") && pane.contains("val batch: DesktopGalleryBatch,"),
-        )
-        // 对照：那颗持有件自己仍在转交共享算式（读空会让上面几条 contains 恒真）。
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryBatch.kt"))
-        assertTrue("对照失效：持有件不再转交 `nextPagesForAppend`", holder.contains("nextPagesForAppend("))
-    }
-
     /**
      * ⑤ 那句假话下架：「桌面没有那一层分页状态」。
      *
      * 扫**全文**（含注释）—— 坑 ㉑ 那条：过期说明九成住在注释里。
      * 对照钉的是"这一屏真接上了"，撤掉续页会先红在对照上，而不是要求后人改注释。
      */
-    @Test
-    fun 那句桌面没有分页状态的假话下架() {
-        val banned = "桌面没有那一层分页状态"
-        val hits = uiDir.listFiles()?.filter { it.extension == "kt" }?.flatMap { file ->
-            file.readText().lines().filter { it.contains(banned) }.map { "${file.name}: ${it.trim().take(80)}" }
-        } ?: emptyList()
-        assertEquals("还有文件写着那句假话：" + hits.joinToString(" ; "), 0, hits.size)
-        val pane = code("DesktopLatestPane.kt")
-        assertTrue("对照失效：那一屏没接上分页状态件", pane.contains("desktopGalleryBatchApply("))
-        assertTrue("对照失效：那一屏没有页尾那三档", pane.contains("desktopGalleryMoreReading("))
-    }
-
     /**
      * ⑥ 到底那一句**复用现成那颗** [desktopExhaustedReading]，而旧那句手写的「已经到底的站：…」下架。
      *
      * 那颗件带着一枚图证教出来的规矩（站名与中文之间要留空格，否则 `yande.re这一页` 会被念成
      * 一枚站名）—— 手写那一份躲不过这一条，而文本判据也抓不到它。
      */
-    @Test
-    fun 到底那句复用现成那颗件() {
-        val pane = code("DesktopLatestPane.kt")
-        assertTrue("那一屏的页尾没吃现成的到底那句", pane.contains("desktopExhaustedReading("))
-        val hits = uiDir.listFiles()?.filter { it.extension == "kt" }?.flatMap { file ->
-            DesktopSourceTree.codeLinesOf(file).filter { it.contains("已经到底的站") }.map { "${file.name}: $it" }
-        } ?: emptyList()
-        assertEquals("还有文件在手写到底那一句：" + hits.joinToString(" ; "), 0, hits.size)
-        // 真跑那颗件：点名每一站、说清"这一页之后没有更多"。
-        val line = requireNotNull(desktopExhaustedReading(listOf("yande.re", "Gelbooru")))
-        assertTrue("那句没点名两站：$line", line.contains("yande.re") && line.contains("Gelbooru"))
-        assertTrue("那句没说清到底的是哪一段：$line", line.contains("没有更多"))
-        assertEquals("对照失效：空名单不再交回 null（那会念出一句空壳）", null, desktopExhaustedReading(emptyList()))
-    }
-
     /**
      * ⑦ 落地那颗是**纯函数**（不发网络），所以这一族的判据能真跑而不是扫字。
      *

@@ -78,7 +78,7 @@ import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraButton
 import com.venera.compose.components.venera.VeneraGallerySourceMark
 import com.venera.compose.components.venera.VeneraIconButton
-import com.venera.compose.feature.LocalVeneraDarkTheme
+import com.venera.compose.ui.tokens.LocalVeneraDarkTheme
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GalleryTagGroup
 import com.venera.compose.gallery.data.galleryTagCategoryLabel

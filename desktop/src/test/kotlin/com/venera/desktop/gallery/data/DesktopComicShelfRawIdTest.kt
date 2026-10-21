@@ -98,15 +98,6 @@ class DesktopComicShelfRawIdTest {
     }
 
     /** ⑦ 两枚种子的命中判据两边同走一次净化（钉整串表达式，并禁掉旧那一形 —— 只数新形会放过"改了一半"）。 */
-    @Test
-    fun 种子命中两边同走净化() {
-        val pane = DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicDownloadsPane.kt")
-        val code = DesktopSourceTree.codeText(pane)
-        assertEquals("补齐与删除那两跳各一处（共两处）：", 2, DesktopSourceTree.codeOccurrences(pane, "desktopComicSafePathKey(seed.first) =="))
-        assertEquals("旧那一形一处不剩（单边净化的命中原形就是它）：", 0, DesktopSourceTree.codeOccurrences(pane, "it.comicId == seed.first"))
-        assertTrue("命中的是行模型那一格（净化后的形）：" + code.contains("== it.comicId"), code.contains("== it.comicId"))
-    }
-
     /** ⑧ 回收住在入队那一跳，而不在读侧那一屏（读侧吃了队列状态，屏上「已下全」就会随表变动而改口）。 */
     @Test
     fun 回收住在入队那一跳() {

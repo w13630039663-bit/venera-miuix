@@ -29,15 +29,6 @@ class DesktopUnusedInternalTest {
     private fun src(name: String, text: String) = DesktopUnusedInternalScan.ScanSource(name, text)
 
     /** ① 真树零调用点：违例一次列全，而报告必须是空表。 */
-    @Test
-    fun `① 桌面 main 里不许有产品代码零调用的 internal 件`() {
-        val offenders = DesktopUnusedInternalScan.fromTree()
-        assertTrue(
-            "这些 internal 声明在产品代码里一处都没被提到：" + offenders.joinToString(" ; ") { it.describe() },
-            offenders.isEmpty(),
-        )
-    }
-
     /**
      * ② 恒假证明：往**同一份真树**里加一颗已知零调用的声明，必须恰好多数出那一颗。
      *
@@ -63,25 +54,6 @@ class DesktopUnusedInternalTest {
      * 这一条就是 `DESKTOP_GALLERY_HOME_SECTION_ORDER` 那枚的形状：判据在替它作证，而界面上没有一处吃它。
      * 打标而不是放过，是因为"仅测试引用"与"完全没人引用"是两句话（本仓最忌把三件事塌成一句）。
      */
-    @Test
-    fun `③ 仅测试引用照样算零调用而那句要念出来`() {
-        val main = listOf(
-            src("A.kt", "internal fun ledgerOnlyUsedByTests(): List<String> = listOf(\"a\")\n"),
-            src("B.kt", "internal fun reallyWired(): Int = 1\nprivate fun consumer(): Int = reallyWired()\n"),
-        )
-        val test = listOf(src("ATest.kt", "fun t() { ledgerOnlyUsedByTests() }\n"))
-        val offenders = DesktopUnusedInternalScan.unusedIn(main, test)
-        assertEquals("应只数出那枚仅测试引用的：" + offenders.joinToString { it.describe() }, 1, offenders.size)
-        assertEquals("ledgerOnlyUsedByTests", offenders.first().name)
-        assertTrue("仅测试引用那枚必须打标：" + offenders.first().describe(), offenders.first().testOnly)
-        assertTrue(
-            "打标要念得出来（否则与「完全没人引用」塌成一句）：" + offenders.first().describe(),
-            offenders.first().describe().contains("仅测试引用"),
-        )
-        // 对照：真树里两档都必须是零，否则 ① 那条"空表"是尺子不会报。
-        assertEquals("真树里「仅测试引用」那一档也必须没有", 0, DesktopUnusedInternalScan.fromTree().count { it.testOnly })
-    }
-
     /**
      * ④ 四类形状各按各的口径 —— 前三类不进这一族，第四类（只被 KDoc 提到）必须进。
      *

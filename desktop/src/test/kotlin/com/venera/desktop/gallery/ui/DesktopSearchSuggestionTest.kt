@@ -228,29 +228,7 @@ class DesktopSearchSuggestionTest {
     }
 
     /** ⑫ 负向：那个把失败吞成空列表的形状不许回来（全文件只此一处用过，整文件扫）。 */
-    @Test
-    fun 补全那一腿不再把失败吞成空列表() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        // ⚠️ 这条从前扫的是整颗文件里有没有 `getOrDefault(`（批 39 当场被咬一次）：
-        // 它要防的是**网络候选那一路**把"没答上"吞成"没有"，那一种吞的形状是空**表**；
-        // 本机词典那一问（`lexicon.translations`）失败时退回"没有译名"是另一种形状（空映象），
-        // 它没有"答上了/没有"两档可分（那颗契约交回的就是非空 Map）。所以判式钉到那一枚字面形状为止。
-        assertFalse("`getOrDefault(emptyList())` 把「没答上」吞成「没有」", pane.contains("getOrDefault(emptyList())"))
-        assertTrue("补全那一段还在（撤了它这条负向就没对象了）", pane.contains("searchTags(term)"))
-    }
-
     /** ⑬ 接线：pane 调这颗件，而这颗件调的正是对岸那颗共享复检件。 */
-    @Test
-    fun 桌面这一侧不再自己拼候选() {
-        val holder = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopSearchSuggestion.kt"))
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGallerySearchPane.kt"))
-        // 只钉"调的是哪颗件"到括号这一层：参数写法以后怎么排版都不该红，
-        // 而"桌面自己又拼一份前缀过滤"这一族必须由行为判据（①..⑥）之外再挡一次。
-        assertTrue("那颗件没走共享复检件", holder.contains("refineGalleryTagSuggestions("))
-        assertTrue("pane 没接 merge", pane.contains("desktopMergeSuggestionLegs("))
-        assertTrue("pane 没接读数", pane.contains("desktopSuggestionReading("))
-    }
-
     /** ⑭ 回核：对岸那三句原话仍在（我们抄的是它，不是自己造的词）。 */
     @Test
     fun 三句话的出处逐字回核对岸() {

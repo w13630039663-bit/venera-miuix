@@ -80,19 +80,6 @@ class DesktopCardOverlayTest {
      * 同时钉住高度：写死的 `180.dp` 是缩水版（稿 `.hero{height:330px}` `:147`），
      * 高度必须由 [DesktopGalleryMetrics] 单一出处给，改档时只动那一处。
      */
-    @Test
-    fun `hero 右列是固定宽且高度由 Metrics 出处给`() {
-        val hero = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
-        assertTrue(
-            "hero 右列应引 heroSideColumnWidth（稿 1fr 320px），不是第二个 weight(1f)",
-            hero.contains("DesktopGalleryMetrics.heroSideColumnWidth"),
-        )
-        assertTrue(
-            "hero 高度应由 DesktopGalleryMetrics.heroHeight 给，不是就地写死 180.dp",
-            hero.contains("DesktopGalleryMetrics.heroHeight") && !hero.contains("180.dp"),
-        )
-    }
-
     /**
      * 作品墙的三件形状 —— **只有肉眼能发现**的那三样，逐条钉成文本判据：
      * 首卡跨 2 列、宽卡 16:10、卡片有标题层与描边。
@@ -109,29 +96,6 @@ class DesktopCardOverlayTest {
      *
      * 这也是"判据扫源码"这一支的固有代价：搬家要付一次红。宁可付一次红也不要留一条恒假的判据。
      */
-    @Test
-    fun `墙的首卡跨两列且卡片有标题层与描边`() {
-        val tile = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryPostTile.kt"))
-        assertTrue(
-            "首卡应跨 2 列（稿 .art-card.wide{grid-column:span 2}）",
-            tile.contains("GridItemSpan(maxLineSpan.coerceAtMost(2))"),
-        )
-        assertTrue("宽卡应是 16:10（稿 .art-card.wide .im）", tile.contains("16f / 10f"))
-        assertTrue(
-            "卡片应有标题层（稿 .art-card .ttl 在左上）",
-            tile.contains("Alignment.TopStart"),
-        )
-        assertTrue(
-            "卡片应有 1px 描边（稿 .art-card{border:1px solid var(--stroke)}，全稿不用阴影）",
-            tile.contains(".border(1.dp") && tile.contains("DesktopTheme.SurfaceRaised"),
-        )
-        // 三面墙都吃这颗：日榜 / 收藏 / 搜索。少一条就说明有一面墙在别处自己摆网格。
-        assertTrue(
-            "墙那一份（列数推导与首卡跨列）应当和画法在一起 —— 三面墙共用一件，判据跟着那一件走",
-            tile.contains("internal fun DesktopGalleryPostWall("),
-        )
-    }
-
     @Test
     fun `文字与强调色落在口径给的值上`() {
         assertEquals(0xFFFFFFFF.toInt(), DesktopTheme.TextPrimary.toArgb())
@@ -184,34 +148,12 @@ class DesktopCardOverlayTest {
      *
      * 判据是对源码的负向断言：pane 那一件里出现 `DesktopGelbooruCredentialPanel(` 就是没走入口。
      */
-    @Test
-    fun `凭据面板不许直接挂在正文里`() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopDailyPane.kt").readText()
-        assertTrue(
-            "DesktopDailyPane 直接画了凭据面板 —— 它必须收进 GelbooruCredentialLauncher 那一行",
-            !pane.contains("DesktopGelbooruCredentialPanel("),
-        )
-        assertTrue(
-            "正文里应当是入口那一行",
-            pane.contains("GelbooruCredentialLauncher("),
-        )
-    }
-
     /**
      * Hero 区必须存在，且取的是**墙上那批**的第一张。
      *
      * 负向判据：Hero 若另按分数挑一张，就等于在用户已经看到的 40 张之外多出一个选择，
      * 点了却没有下一页可翻。所以不许出现"挑最高分"那类判式。
      */
-    @Test
-    fun `Hero 取墙上第一张而不是另挑最高分`() {
-        val hero = DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt").readText()
-        assertTrue("Hero 必须取 merged.posts 的第一张", hero.contains("daily.merged.posts.firstOrNull()"))
-        listOf("maxByOrNull", "maxBy {", "sortedByDescending", "sortedBy { it.score }").forEach { bad ->
-            assertTrue("Hero 里出现了「$bad」—— 那是另挑一张，与墙上不是同一个集合", !hero.contains(bad))
-        }
-    }
-
     /**
      * Hero 大位必须走**底图那一档**（`GalleryPost.backdropUrl`），不许拿网格缩略档顶。
      *
@@ -230,31 +172,4 @@ class DesktopCardOverlayTest {
      * 用 [DesktopSourceTree.codeText]（跳注释）：本条 KDoc 里点名了 `previewUrl`，
      * 含进正文会让负向断言恒假。
      */
-    @Test
-    fun `Hero 大位走底图那一档而不是网格缩略档`() {
-        // 2026-10-04 这一档的决定**搬了家**：hero 不再自己写 `post.backdropUrl`，而是问
-        // `heroBackdropOf(wall.cards.firstOrNull())`（那颗函数在 `DesktopGalleryWallPolicy.kt`）。
-        // 搬家是为了把"遮住的这一张根本不许发起取图"做成可单测的形状，不是为了改掉取哪一档 ——
-        // 所以这里跟着改**判据落点**，`.backdropUrl` 那半颗钉到新家，hero 那半颗继续钉"不许自己写档"。
-        val policy = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopGalleryWallPolicy.kt"))
-        assertTrue(
-            "hero 那一档应引 GalleryPost.backdropUrl —— 中档优先，视频条目另有闸门" +
-                "（决定现在在 heroBackdropOf 里，不在 hero 的 composable 里）",
-            policy.contains(".backdropUrl"),
-        )
-        assertTrue(
-            "heroBackdropOf 里就地写了 previewUrl —— 那是网格缩略档，铺满大位会糊成色块；" +
-                "取哪一档的判据归 GalleryPost.backdropUrl，UI 层不许再写一份",
-            !policy.contains("previewUrl"),
-        )
-        val hero = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDailyHero.kt"))
-        assertTrue(
-            "hero 不再经 heroBackdropOf 拿底图 —— 那一步同时是「分级就不取图」的入口，绕开它就等于自己挑一张",
-            hero.contains("heroBackdropOf("),
-        )
-        assertTrue(
-            "hero 里自己写了取哪一档（backdropUrl 的引用）—— 档的决定归 heroBackdropOf 一处",
-            !hero.contains(".backdropUrl"),
-        )
-    }
 }

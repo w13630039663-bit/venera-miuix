@@ -1,5 +1,6 @@
 package com.venera.compose.feature
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -37,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -158,7 +158,7 @@ fun FavoriteImagesBody(
     var isLoading by remember { mutableStateOf(true) }
     // 列数与画廊墙同一把自适应（每列预算 200dp，手机档恒 2 列），理由见 GalleryScreen 那一处。
     // `wide` 另有一处消费点（卡片最小宽高比），所以档位算一次、两处共用。
-    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val windowWidth = LocalWindowWidthDp
     val layoutMode = wideScreenLayoutMode(windowWidth)
     val wide = layoutMode != WideScreenLayoutMode.Compact
     val columnCount = rememberImageWallColumnCount()

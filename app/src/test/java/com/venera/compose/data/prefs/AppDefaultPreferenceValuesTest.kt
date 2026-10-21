@@ -1,5 +1,6 @@
 package com.venera.compose.data.prefs
 
+import com.venera.compose.data.platform.NavigationBarStyle
 import com.venera.compose.reader.ReaderPageTurnEffect
 import com.venera.compose.reader.ReaderReadingMode
 import com.venera.compose.testsupport.RepoSources

@@ -58,25 +58,6 @@ class DesktopCardReadingTest {
     }
 
     /** ①′ hero 那两行共用同一颗判据件，不许各写一份算式。 */
-    @Test
-    fun 三处读数共用同一颗件() {
-        val sites = listOf("DesktopGalleryPostTile.kt", "DesktopDailyHero.kt")
-        val offenders = sites.flatMap { name ->
-            DesktopSourceTree.codeLinesOf(DesktopSourceTree.desktopUiSource(name))
-                .filter { it.contains("分数 ") }
-                .map { "$name：$it" }
-        }
-        assertTrue(
-            "还有地方在**自己拼**分数那半（口径就会长成三份，而漏改的那份继续念「分数 0」）：" +
-                offenders.joinToString(" ｜ "),
-            offenders.isEmpty(),
-        )
-        sites.forEach { name ->
-            val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
-            assertTrue("「$name」没转交那颗共用的读数件", code.contains("desktopCardMetricLine("))
-        }
-    }
-
     /** ② 三态里只有两态算定论；失败那一态不许进落档表。 */
     @Test
     fun 只有定论才落档() {

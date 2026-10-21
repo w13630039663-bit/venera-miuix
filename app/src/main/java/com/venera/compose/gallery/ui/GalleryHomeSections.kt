@@ -1,5 +1,6 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -48,7 +49,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -1110,7 +1110,7 @@ private fun GalleryHomeSection(
     val contentMaxWidth = if (wallAdjacent) {
         null
     } else {
-        contentMaxWidthFor(wideScreenLayoutMode(LocalConfiguration.current.screenWidthDp.dp))
+        contentMaxWidthFor(wideScreenLayoutMode(LocalWindowWidthDp))
     }
     Box(
         modifier = Modifier.fillMaxWidth(),

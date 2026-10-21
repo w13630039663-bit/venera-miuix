@@ -68,32 +68,6 @@ class DesktopGalleryFavoritesClearTest {
     }
 
     /** ④ 屏上次序钉：真清那一支排在武装之后，且屏上不许绕过那颗件直接 `clear(`。 */
-    @Test
-    fun 屏上那颗走的是同一枚动作() {
-        val code = DesktopSourceTree.codeText(pane)
-        assertEquals("屏上调的那枚清空动作不是正好一处：" +
-                DesktopSourceTree.codeOccurrences(pane, "desktopClearGalleryFavorites("),
-            1, DesktopSourceTree.codeOccurrences(pane, "desktopClearGalleryFavorites("))
-        assertEquals("两档那句只许摆一处", 1,
-            DesktopSourceTree.codeOccurrences(pane, "desktopFavoritesClearLabel("))
-        assertEquals(
-            "那一屏绕过那颗件自己按了共享面的 clear（读数与确认层就都管不到它）：" +
-                DesktopSourceTree.codeLinesOf(pane).filter { it.contains("favorites.clear(") }.joinToString(" ｜ "),
-            0, DesktopSourceTree.codeOccurrences(pane, "favorites.clear("),
-        )
-        // 两步确认得**能反悔**：武装之后只剩"再按就删"一条路，那就不叫确认层，叫多一步误删。
-        // 两处各一次：真清之后复位、与那枚「先不清了」。
-        assertEquals("复位那一格出现次数不对（FIRE 之后 + 反悔那枚，各一处）：" +
-                DesktopSourceTree.codeOccurrences(pane, "armedAt = null"),
-            2, DesktopSourceTree.codeOccurrences(pane, "armedAt = null"))
-        // 对照：共享面那三枚写动作确实都在（读空了上面几条会恒真）
-        val api = DesktopSourceTree.codeText(DesktopSourceTree.androidSource("gallery/data/GalleryBusinessApi.kt"))
-        assertTrue("对照组失效：共享面的 clear 声明没了", api.contains("suspend fun clear()"))
-        assertTrue("对照组失效：桌面那份转交没了",
-            DesktopSourceTree.codeText(DesktopSourceTree.desktopSourceOf("gallery/data/DesktopGalleryFavorites.kt"))
-                .contains("override suspend fun clear()"))
-    }
-
     /** ⑤ 清完要**读回存档还剩几条**，那句不许把"没生效"说成"已清空"。 */
     @Test
     fun 读回非零不许说已清空() {
@@ -158,23 +132,6 @@ class DesktopGalleryFavoritesClearTest {
     }
 
     /** ⑨ 旧那句"本屏没有移除/清空按钮"必须随入口一起下架（§22.3 那条回查）。 */
-    @Test
-    fun 旧那句没有按钮不许残留() {
-        val offenders = DesktopSourceTree.desktopUiSources().flatMap { file ->
-            DesktopSourceTree.codeLinesOf(file)
-                .filter { it.contains("没有移除") || it.contains("刻意不摆它们的入口") }
-                .map { "${file.name}: ${it.trim()}" }
-        }
-        assertTrue("还写着本屏没有清空入口：" + offenders.joinToString(" ｜ "), offenders.isEmpty())
-        // 对照：那句理由撤了，而**这件事本身**还在代码里 —— 两步那一步必须是屏上的一处判断，
-        // 不是只写在注释里（`codeText` 跳注释，拿"两步""武装"这类词当对照等于恒假）。
-        val paneCode = DesktopSourceTree.codeText(pane)
-        assertTrue(
-            "两步那一步只剩说明了（屏上不再按档判断）：",
-            paneCode.contains("desktopFavoritesClearNext(") && paneCode.contains("DesktopFavoritesClearStage.ARMED"),
-        )
-    }
-
     /**
      * ⑩ 那颗件**真跑得动盘**：三张 → 清 → 档里 0 张。
      *

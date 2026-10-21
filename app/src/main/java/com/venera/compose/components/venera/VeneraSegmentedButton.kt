@@ -1,5 +1,6 @@
 package com.venera.compose.components.venera
 
+import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -18,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +64,7 @@ fun VeneraSegmentedButton(
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    val wide = isWideScreen(LocalConfiguration.current.screenWidthDp.dp)
+    val wide = isWideScreen(LocalWindowWidthDp)
     val barHeight = if (wide) tokens.spacing.segmentedHeightWide else tokens.spacing.segmentedHeight
     val labelSize = if (wide) tokens.type.itemTitle else tokens.type.body
     val shape = RoundedCornerShape(percent = 50)

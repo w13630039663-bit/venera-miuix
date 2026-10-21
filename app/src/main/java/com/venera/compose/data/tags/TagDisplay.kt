@@ -7,7 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.venera.compose.data.prefs.TagTranslationMode
+import com.venera.compose.data.platform.TagTranslationMode
 import com.venera.compose.data.prefs.VeneraPreferences
 
 /**

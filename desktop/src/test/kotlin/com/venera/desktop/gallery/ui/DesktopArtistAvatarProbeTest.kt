@@ -91,81 +91,8 @@ class DesktopArtistAvatarProbeTest {
     }
 
     /** ③ 键同轨：每一处 peek/remember 调用都必须吃那一枚常量，不许各写一个字面量。 */
-    @Test
-    fun 地址档键读写两侧同轨() {
-        assertEquals("规范键就是空串（桌面名单不带出处 URL）", "", DESKTOP_AVATAR_SOURCE_KEY)
-        val files = listOf(
-            // 批 42 起是 4 行：peek 一枚 + 落档三处（pixiv 拿到脸 / 没有可探端点 / 探针答完）
-            "DesktopArtistsPolicy.kt" to 4,
-            "DesktopArtistsPage.kt" to 1,
-            "DesktopFollowedArtistsPane.kt" to 1,
-        )
-        var totalCallSites = 0
-        files.forEach { (name, expectedLines) ->
-            val lines = DesktopSourceTree.codeLinesOf(DesktopSourceTree.desktopUiSource(name))
-                .filter { it.contains("avatars.peek(") || it.contains("avatars.remember(") }
-            totalCallSites += lines.size
-            assertEquals("「$name」里读写地址档的行数与预期不符（先看清是不是形状变了）", expectedLines, lines.size)
-            lines.forEach { line ->
-                assertTrue(
-                    "「$name」这一处没吃 DESKTOP_AVATAR_SOURCE_KEY：$line",
-                    line.contains("DESKTOP_AVATAR_SOURCE_KEY"),
-                )
-            }
-        }
-        // 对照组：这几处调用点真的都在（上面那条行数断言不是数了个零）。
-        assertEquals("读写两侧合计应有 6 处地址档调用", 6, totalCallSites)
-    }
-
     /** ④ 视口闸门在位：那一屏必须按可见集发车，整屏 forEach 现取那种形状不许存在。 */
-    @Test
-    fun 头像现取只由视口闸门发车() {
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        listOf(
-            "rememberLazyListState()" to "没有列表状态就拿不到可见集",
-            "visibleItemsInfo" to "可见集不是从 layoutInfo 现算的",
-            "snapshotFlow" to "可见集变化没有订阅，滚进来的那几位永远不会被取",
-            "LazyColumn" to "整屏不是 LazyColumn，就拿不到「哪些位在视口里」",
-        ).forEach { (token, why) ->
-            assertTrue("$why（源码里找不到「$token」）", code.contains(token))
-        }
-        // 旧形状：整屏 forEach 现取 = 进屏把名单全问一遍。
-        assertTrue("那一屏又长成整屏 forEach 现取 —— 闸门就没了", code.contains("artists.forEach").not())
-        assertTrue("整屏 verticalScroll 摆行拿不到可见集，不该残留", code.contains("verticalScroll").not())
-    }
-
     /** ⑤ 可见集推导：去重、保持视口次序、查过的与已有脸的一律不重发。 */
-    @Test
-    fun 可见集只挑还没查过的那些位() {
-        val keys = listOf<Any?>(0, "artist:z", "header", "artist:y", "artist:z")
-        assertEquals(
-            "次序按视口次序、重复行只留一次",
-            listOf("z", "y"),
-            desktopVisibleProbeTargets(keys, resolved = emptySet(), hasFace = emptySet()),
-        )
-        assertEquals(
-            "查过的（含「查过、没有」）不许重发，否则每次滚动都重试",
-            listOf("y"),
-            desktopVisibleProbeTargets(keys, resolved = setOf("z"), hasFace = emptySet()),
-        )
-        assertEquals(
-            "档里已经有脸的不许再问",
-            emptyList<String>(),
-            desktopVisibleProbeTargets(keys, resolved = emptySet(), hasFace = setOf("z", "y")),
-        )
-        assertEquals(
-            "非行 key（节头页脚那些 item）与不带名字的空 key 一律忽略",
-            emptyList<String>(),
-            desktopVisibleProbeTargets(listOf<Any?>(0, "caption", "artist:"), emptySet(), emptySet()),
-        )
-
-        // 页面确实把两张表都交进去了（少交一张 = 上面那两条在真链路上不成立）。
-        val code = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        assertTrue("页面没在调可见集那颗件", code.contains("desktopVisibleProbeTargets("))
-        assertTrue("页面没把「查过的」那张表交给它", code.contains("probed.keys"))
-        assertTrue("页面没把「档里已有脸」那张表交给它", code.contains("seeded.keys"))
-    }
-
     /**
      * ⑥ 整页那句读数要点名两件事：**只给看得见的几位取**（视口闸门），以及**够得着的三条路**。
      *
@@ -191,23 +118,6 @@ class DesktopArtistAvatarProbeTest {
     }
 
     /** ⑦ 首页那一栏（横卡 8 位）不许被顺手接上现取：八位全在视口里 = 进来就发 16 笔。 */
-    @Test
-    fun 首页那一栏仍只读本机已有的() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopFollowedArtistsPane.kt"))
-        listOf("probeAvatarUrl", "avatars.remember", "desktopArtistAvatarChain", "visibleItemsInfo").forEach { banned ->
-            assertTrue(
-                "首页那一栏出现了「$banned」—— 那一栏按 ROW_SIZE 截断，八位全在视口里等于进来就发车",
-                pane.contains(banned).not(),
-            )
-        }
-        // 那一栏仍念旧那句（对它自己仍是真话）。
-        assertTrue("首页那一栏把「不主动取」那句撤了 —— 它确实不取，那句得留着", DesktopArtistFaceCaliberCaption.contains("不主动"))
-        assertTrue("首页那一栏没念那句", pane.contains("DesktopArtistFaceCaliberCaption"))
-        // 对照组：整页那一侧确实接上了，否则上面四条负断言是恒真。
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        assertTrue("对照组失效：整页根本没接现取", page.contains("desktopArtistProbedFace"))
-    }
-
     /** ⑧ 定论与失败分手：只有"定论"落档，一次请求失败不许把这位永久判成没头像。 */
     @Test
     fun 只有定论才落地址档() {

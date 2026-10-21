@@ -1,5 +1,6 @@
 package com.venera.compose.reader
 
+import com.venera.compose.components.LocalWindowWidthDp
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -72,7 +73,6 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -169,7 +169,7 @@ private fun ReaderSessionContent(
 
     // 宽屏档收口：顶栏与底部控制岛在 >600dp 时与底栏共用同一个 540dp 口径并居中，
     // 手机档拿到 null、仍走 fillMaxWidth，几何零改动（口径出处见 WideScreenPolicy）。
-    val chromeWidth = wideScreenChromeMaxWidth(LocalConfiguration.current.screenWidthDp.dp)
+    val chromeWidth = wideScreenChromeMaxWidth(LocalWindowWidthDp)
     val chromeWidthModifier = if (chromeWidth == null) {
         Modifier.fillMaxWidth()
     } else {

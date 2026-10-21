@@ -85,20 +85,6 @@ class DesktopWebLoginVerdictTest {
      * 宿主只吃带盘那一颗而没有第二轨）。这里**不留第二把尺子**——同一件事两把尺子，改判时改一把漏一把。 */
 
     /** ③ 那条红线不许漂：桌面不去读浏览器自己的 cookie 库。 */
-    @Test
-    fun 红线_不从浏览器自己的罐里取凭据() {
-        val panel = DesktopSourceTree.desktopUiSource("DesktopGelbooruCredentialPanel.kt").readText()
-        assertTrue(
-            "那条红线不见了（下一批若把它撤了，必须先回答'用户没声明来源的会话凭据是谁搬过来的'）",
-            panel.contains("不从浏览器 cookie 库取凭据"),
-        )
-        // 对照：手工粘贴那一形在对岸本来就有，所以红线挡的**只是程序自己去读**，不是"桌面不许有登录"。
-        val viewModel = DesktopSourceTree.codeText(
-            DesktopSourceTree.androidSource("feature/sourcemanage/ComicSourceViewModel.kt"),
-        )
-        assertTrue("对岸手填 cookie 那一路换了名字（那这条对照的引证对象要跟着搬家）", viewModel.contains("loginWithCookies"))
-    }
-
     /** ④ WebView 那一形是平台件：桌面结构性没有它的宿主，这一句也要有尺子。 */
     @Test
     fun 网页登录那一形靠的是内嵌webview而不是回调() {

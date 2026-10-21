@@ -28,50 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.desktop.gallery.data.DesktopGalleryBrowseHistory
+import com.venera.desktop.gallery.data.DesktopDecoTier
 import io.github.composefluent.component.Text
 import java.io.File
 
-/**
- * 桌面图库首页**节的唯一事实源** —— key 常量与次序照 Android 侧那一颗
- * （`app/src/main/java/com/venera/compose/gallery/ui/GalleryHomeSections.kt:73-97` 的 key 常量 + `ORDER`，
- * `:530-552` 的 `when(key)` 渲染），改动有三处，都在下面逐条写明。
- *
- * ## 六项，次序钉死
- *
- * `每日热门 → 正在关注的画师 → 历史 → 下载 → 最新 → 排行榜`。
- *
- * ## 项数恒 6，**绝不跟数据变**
- *
- * 某一项今天没内容 ⇒ 那一行**还在**，只是走"未实现"形状。绝不做成"数据到货才插项"——
- * 那是 Android 侧锚定漂移的桌面版：懒列表在第 0 项之后插一项，视口锚点漂到下一项，
- * 内容被画进 `contentPadding` 里（现象读起来是"顶栏重叠 / 返回被打回默认值 / 落地闪一下"，
- * 三条其实是同一根因，见记忆「导航条目会重建组合」）。
- *
- * ## `when` 不留 else —— 但穷尽检查得落在编译器管得住的地方
- *
- * ⚠️ 这里与 Android 那颗**有一处实质差别**，不是抄漏：`when` 只在**表达式位置**才被 Kotlin 做穷尽检查，
- * 而 `String` 的 key 永远"不够穷尽"（编译器不知道六枚常量就是全部），所以照抄 `when(key)` 只有两种结局 ——
- * 要么写 `else`（就是本节点名禁止的那个），要么把它写成语句而**根本没有编译期保护**
- * （Android 那颗文件里"忘了登记就编译不过"那句注释其实是说过头的，那边真正的尺子是用例）。
- * 所以桌面这一颗把内容件做成 sealed（[DesktopGallerySectionContent]），`when` switch 在它上面：
- * **新增一种内容件忘了出形状 ⇒ 编译不过**，这条才是真 teeth；
- * 而"新增一节忘了登记进 pane 那六行"由 [DesktopGalleryHomeSectionsTest] ①② 两条钉住
- * （① 那份字面清单就是次序的规格 —— 批 27 起这里不再有第二份 `ORDER` 常量：它写了却没人取序）。
- *
- * ## 每一项的形状：内容件与原因**恒等二选一**
- *
- * `content == null` 与 `reason != null` 同真同假（XOR），不许有中间态。用例 ③ 逐 key 断言，
- * 出现"两者都非空 / 两者都空"即红 —— 前者是"既能渲染又有理由"的自相矛盾，
- * 后者就是本仓最忌的"看起来正常但实际少了一半"。
- */
-/**
- * pane 里那六项的 key（[desktopGalleryHomeRows] 那六行各自的 key）。
- *
- * ⚠️ 它**只管图库域那一域**的六项。2026-10-04 第二批把收藏域与搜索域也接成真页面之后，
- * 全桌面的页条 key 分成三处出处：这里（图库六项）、`DesktopComicSectionKey`（漫画两项）、
- * [DesktopFavoritesSectionKey] / [DesktopSearchSectionKey]（各一项）。
- * 三处都在 `DesktopGalleryHomeRow` 那一个行模型上，不另开第二颗行模型。
- */
 internal object DesktopGalleryHomeSectionKey {
     const val DAILY = "section-daily"
     const val FOLLOWED_ARTISTS = "section-followed-artists"
@@ -320,162 +280,16 @@ internal fun List<DesktopGalleryHomeRow>.byKey(key: String): DesktopGalleryHomeR
  * `when` 挂在 `val rendered: Unit =` 这个**表达式位置**上（而不是写成一条语句）：
  * Kotlin 只对表达式位置的 `when` 做穷尽检查，那颗 `val` 就是这根钩子，别把它当冗余删掉。
  */
-@Composable
-internal fun DesktopGalleryHomeNavRow(row: DesktopGalleryHomeRow, selected: Boolean, onSelect: (String) -> Unit) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.Daily -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.FollowedArtists -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicExplore -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicHistory -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicSources -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicDownloads -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ComicQueue -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.GalleryFavorites -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.GallerySearch -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.GalleryDisplay -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.Downloads -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.BrowseHistory -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ArtistsWall -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.ForYouWall -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.Latest -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        DesktopGallerySectionContent.Ranking -> DesktopGalleryHomeSelectableRow(row, selected) { onSelect(row.key) }
-        null -> DesktopUnimplementedRow(row.title, row.glyph, requireNotNull(row.reason))
-    }
-}
-
-/**
- * 选中行的**内容区**。这一颗是集成方唯一需要认识的形状：它按注册表把六项分到两颗 pane 与"缺席读数"三档。
- *
- * ⚠️ 与 Android 侧那条纪律一致：pane 只吃形参 [GalleryPorts]，**不在 UI 里调 `GalleryPorts.of(...)`** ——
- * 桌面的接线件（`DesktopGalleryPorts`）由 A 线在另一个 worktree 里落，形状不在本批的编译面上。
- *
- * [startRanking] 是 `--ranking=` 那颗种子（批 30），必填、不给默认值：漏传的形状是"参数打进去了而
- * 那一屏永远停在默认档"，而它**不会报错** —— 与 `VeneraDesktopApp` 那四枚取证形参同一条理由。
- * 只有「排行榜」那一屏吃它，其余四档不认得档与期，所以这一层不替它们解释。
- *
- * [saveDir] 是存图落点（批 85），同样必填、不给默认值：给的是集成方算好的那颗 `File` 而不是
- * `PathProvider` —— 这一路**只是去看一眼**，把 provider 递进界面件就等于递进一条能建目录的手。
- *
- * [history] 是图库浏览历史那颗件（批 86），必填、不给默认值：给的是集成方**建好的那一颗**而不是
- * `getInstance` —— 浮层写的那颗与这一屏读的那颗必须是同一个对象（两颗各记一份内存的形状是
- * "刚点开的那张在屏上看不见"，判据 ⑰ 钉着）。
- */
-@Composable
-internal fun DesktopGalleryHomeBody(
-    row: DesktopGalleryHomeRow,
-    ports: GalleryPorts,
-    startRanking: DesktopRankingSeed?,
-    saveDir: File,
-    history: DesktopGalleryBrowseHistory,
-) {
-    val rendered: Unit = when (row.content) {
-        DesktopGallerySectionContent.Daily -> DesktopDailyPane(ports)
-        DesktopGallerySectionContent.Latest -> DesktopLatestPane(ports)
-        DesktopGallerySectionContent.Ranking -> DesktopRankingPane(ports, startRanking)
-        DesktopGallerySectionContent.FollowedArtists -> DesktopFollowedArtistsPane(ports)
-        DesktopGallerySectionContent.Downloads -> DesktopDownloadsPane(saveDir)
-        DesktopGallerySectionContent.BrowseHistory -> DesktopGalleryBrowseHistoryPane(history)
-        // 下面四档在结构上走不到这里 —— 分发发生在 `VeneraDesktopApp` 的 `DesktopDomainBody`，
-        // 它按**域**先分岔：漫画域整域走 `DesktopComicBody`，收藏域与搜索域各走自己那颗。
-        // 这里写成 error 而不是随便渲染个占位：真有人把别的域的行塞进图库域那一刻就崩，
-        // 而不是静默画出一屏少了一半的东西。
-        DesktopGallerySectionContent.ComicExplore,
-        DesktopGallerySectionContent.ComicFavorites,
-        DesktopGallerySectionContent.ComicHistory,
-        DesktopGallerySectionContent.ComicSources,
-        DesktopGallerySectionContent.ComicDownloads,
-        DesktopGallerySectionContent.ComicQueue,
-        DesktopGallerySectionContent.GalleryFavorites,
-        DesktopGallerySectionContent.GallerySearch,
-        DesktopGallerySectionContent.GalleryDisplay,
-        DesktopGallerySectionContent.ArtistsWall,
-        DesktopGallerySectionContent.ForYouWall,
-        -> error(
-            "「${row.title}」不是图库域的页，不该由图库域的 body 渲染 —— " +
-                "域路的分岔在 VeneraDesktopApp.DesktopDomainBody",
-        )
-        null -> DesktopAbsentBody(row)
-    }
-}
-
-/**
- * 没接的那一项在内容区里的说法：**把 caption 那句话原样再说一遍**，不画空墙。
- *
- * 宁可慢、宁可难看，也不许"内容区一片空白而 pane 上看不出行没接" —— 那是静默交错的另一种形状。
- */
-@Composable
-private fun DesktopAbsentBody(row: DesktopGalleryHomeRow) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("${row.title} · ${UNIMPLEMENTED_LABEL}")
-        Text(requireNotNull(row.reason), maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-/**
- * 有内容件的那一行。形状来自稿：`.nav{…}`（`:79-85`）—— 高 40、内缩 12、图标位 16、
- * 选中态是**藤紫到 Layer2 的横向渐变 + 行首一枚 3×20 圆角指示条**，未选中悬停走 `--card-hov`。
- *
- * 选中态的文字加粗（稿 `font-weight:600`），图标换成 `--fuji-lite`（变量表 `:16`）。
- * 稿上的计数徽标 `.nav .cnt`（`1.2k` / `286` / `2` / `3,412`）**一颗都不带**：那些数要有 store 才念得出口。
- */
-@Composable
-private fun DesktopGalleryHomeSelectableRow(row: DesktopGalleryHomeRow, selected: Boolean, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Box(Modifier.fillMaxWidth().height(DesktopGalleryMetrics.navRowHeight)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(DesktopGalleryMetrics.navRowHeight)
-                .background(
-                    brush = when {
-                        selected -> SelectionBrush
-                        hovered -> SolidColor(HoverBackground)
-                        else -> SolidColor(Color.Transparent)
-                    },
-                    shape = RoundedCornerShape(4.dp),
-                )
-                .hoverable(interaction)
-                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-                .padding(horizontal = DesktopGalleryMetrics.navRowHorizontalPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(DesktopGalleryMetrics.navRowGap),
-        ) {
-            Box(Modifier.width(DesktopGalleryMetrics.navGlyphSlotWidth), contentAlignment = Alignment.Center) {
-                Text(row.glyph, color = if (selected) SelectedGlyph else Glyph, fontSize = 14.sp, maxLines = 1)
-            }
-            Text(
-                row.title,
-                modifier = Modifier.weight(1f),
-                fontSize = 14.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (selected) {
-            // 稿 `.nav.sel::before`：left 0、top 10、3×20、圆角 3。高 40 里 top 10 就是垂直居中。
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .width(3.dp)
-                    .height(20.dp)
-                    .background(IndicatorColor, RoundedCornerShape(3.dp)),
-            )
-        }
-    }
-}
-
-// 下面几颗色值逐条来自设计稿的深色档（`:10-11` 的变量表与 `:82-84` 的选中态），不是新造数：
-// 浅色档的正式映射归设计稿回改（S5），本轮不自己发挥。
-private val SelectionStart = DesktopTheme.SelectionGradientStart
-private val SelectionEnd = DesktopTheme.SelectionGradientEnd
-
-// 稿上 `.nav.sel` 是 `linear-gradient(90deg,#3A2A55,#2C2C2C 78%)`；Compose 的停靠点写法与 CSS 同形，
-// 0f 与 0.78f 就是那两档，无需换算（方向差一条 90deg 与对角线的观感，S5 出图时一并校）。
-private val SelectionBrush = Brush.linearGradient(0f to SelectionStart, 0.78f to SelectionEnd)
 private val HoverBackground = DesktopTheme.SurfaceRaised
 private val IndicatorColor = DesktopTheme.AccentFuji
 private val SelectedGlyph = DesktopTheme.AccentFuji
 private val Glyph = DesktopTheme.TextSecondary
+
+private val SelectionStart = DesktopTheme.SelectionGradientStart
+
+private val SelectionEnd = DesktopTheme.SelectionGradientEnd
+
+// 稿上 `.nav.sel` 是 `linear-gradient(90deg,#3A2A55,#2C2C2C 78%)`；Compose 的停靠点写法与 CSS 同形，
+// 0f 与 0.78f 就是那两档，无需换算（方向差一条 90deg 与对角线的观感，S5 出图时一并校）。
+
+private val SelectionBrush = Brush.linearGradient(0f to SelectionStart, 0.78f to SelectionEnd)

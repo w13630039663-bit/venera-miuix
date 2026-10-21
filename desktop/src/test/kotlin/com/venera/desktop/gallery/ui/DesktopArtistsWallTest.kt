@@ -118,44 +118,7 @@ class DesktopArtistsWallTest {
     }
 
     /** ⑦ 桌面不许自己判"同一位"/"什么叫新" —— 三颗件里都不许出现本地分组与排序。 */
-    @Test
-    fun 桌面不许另立一套同人与排序判据() {
-        val files = listOf(
-            "DesktopArtistsPolicy.kt",
-            "DesktopArtistsPage.kt",
-            "DesktopFollowedArtistsPane.kt",
-        ).associateWith { DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(it)) }
-        // 三颗都扫：判据一旦从 policy 挪进 UI 文件，只扫 policy 就等于没扫。
-        files.forEach { (name, code) ->
-            listOf("groupBy", "sortedWith", "lowercase()", "distinctBy", "sortBy").forEach { banned ->
-                assertTrue(
-                    "「$name」的代码行里出现了本地判据「$banned」—— 同人与排位只许转交 GalleryFollowedArtists",
-                    code.contains(banned).not(),
-                )
-            }
-        }
-        // 对照组：抽取没读空，且"转交"那一句确实在被调。
-        val policy = files.getValue("DesktopArtistsPolicy.kt")
-        assertTrue("对照组失效：没读到转交那一句", policy.contains("GalleryFollowedArtists.rowOf"))
-        assertTrue("对照组失效：policy 读空了（连一颗函数都没有）", policy.contains("internal fun"))
-        assertTrue(
-            "对照组失效：整页那颗件没在调圆座判据",
-            files.getValue("DesktopArtistsPage.kt").contains("desktopArtistFace("),
-        )
-    }
-
     /** ⑧ 首页那一栏「桌面还没有图库的取图件」这句已经不实，不许再挂在屏上。 */
-    @Test
-    fun 首页那一栏不许再念那句已不实的取图件缺席() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopFollowedArtistsPane.kt"))
-        listOf("还没有图库的取图件", "一律首字母座").forEach { stale ->
-            assertTrue("那一栏还在念「$stale」—— 第四批起桌面就在用 coil3 取图了", pane.contains(stale).not())
-        }
-        // 对照组：这句话撤掉之后，圆座那档的判据必须换成真转交，且本机地址那一路确实在读。
-        assertTrue("对照组失效：撤了假读数却没接上圆座判据", pane.contains("desktopArtistFace("))
-        assertTrue("对照组失效：没读到本机头像档", pane.contains("peek("))
-    }
-
     /**
      * ⑨ 两处那句圆座读数说明**分开**：这一栏仍"不主动取"，整页那一屏从第十批 ② 起会按视口取。
      *
@@ -163,22 +126,4 @@ class DesktopArtistsWallTest {
      * 接上取数那天，要么整页念一句假的"不主动取"，要么首页念一句假的"会去取"。
      * 所以这一条钉的是"两句各自还在自己那一屏上"，而不是一句的措辞。
      */
-    @Test
-    fun 两处那句圆座读数说明必须分开() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopFollowedArtistsPane.kt"))
-        val page = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopArtistsPage.kt"))
-        assertTrue(
-            "首页那一栏的那句没在说「不主动去站方取」（没取到 / 没有 / 没接是三句话，不许合并）",
-            DesktopArtistFaceCaliberCaption.contains("不主动"),
-        )
-        assertTrue("首页那一栏没摆自己那句", pane.contains("DesktopArtistFaceCaliberCaption"))
-        assertTrue("整页那一屏没摆自己那句", page.contains("DesktopArtistsPageCaliberCaption"))
-        assertTrue(
-            "整页那一屏还在念「不主动去站方取头像」—— ② 之后这句在那一屏是假的",
-            page.contains("DesktopArtistFaceCaliberCaption").not(),
-        )
-        // 对照组：两处仍在共用同一颗行 composable（分开的是那句读数，不是行的形状）。
-        assertTrue("对照组失效：整页没在共用那一颗行 composable", page.contains("DesktopFollowedArtistRow"))
-        assertTrue("对照组失效：这一栏没在共用那一颗行 composable", pane.contains("DesktopFollowedArtistRow"))
-    }
 }

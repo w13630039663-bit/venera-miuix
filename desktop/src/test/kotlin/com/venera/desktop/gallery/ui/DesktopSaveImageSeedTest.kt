@@ -55,43 +55,10 @@ class DesktopSaveImageSeedTest {
     }
 
     // ③ 内容区的分岔真走到那一屏（表达式位置整串钉住，别只钉一半）。
-    @Test
-    fun `内容区 routed 到那一屏`() {
-        assertTrue("body 没把那一档接到屏上：" + home, home.contains("DesktopGallerySectionContent.Downloads -> DesktopDownloadsPane(saveDir)"))
-        assertTrue("行摆那一路漏了这一档（摆不出来就点不到）", home.contains("DesktopGallerySectionContent.Downloads -> DesktopGalleryHomeSelectableRow"))
-    }
-
     // ④ 那一屏**不许建目录**：去看一眼不该在盘上造出一只目录。
-    @Test
-    fun `那一屏不建目录`() {
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopDownloadsPane.kt"))
-        assertEquals("界面件里出现了 mkdirs：" + pane, 0, DesktopSourceTree.codeOccurrences(DesktopSourceTree.desktopUiSource("DesktopDownloadsPane.kt"), "mkdirs"))
-        assertTrue("那一屏走的是枚举读侧而不是写侧", pane.contains("desktopListSavedImages("))
-    }
-
     // ⑤ 按钮与取证种子共用同一枚 lambda（种子跑通的那条路必须就是用户按的那条）。
-    @Test
-    fun `按钮与种子共用同一枚 lambda`() {
-        assertTrue("按钮没走那枚共用 lambda：" + panel, panel.contains("Button(onClick = fireSaveImage)"))
-        assertTrue("种子自己又写了一份发车（那它量的就不是用户那条路）：" + panel, panel.contains("LaunchedEffect(post.uid) { fireSaveImage() }"))
-    }
-
     // ⑥ 两枚新形参都是必填（覆盖层在 provider 外面，漏传不报错的形状不许有）。
-    @Test
-    fun `新形参必填不给默认值`() {
-        assertTrue("没给那一屏落点（写到哪里去）：" + panel, panel.contains("saveDir: File,"))
-        assertTrue("种子那枚没进形参表：" + panel, panel.contains("autoSaveImage: Boolean,"))
-        assertFalse("给了默认值（漏传就是静默不干事）", panel.contains("autoSaveImage: Boolean =") || panel.contains("saveDir: File ="))
-    }
-
     // ⑦ 存的原图档，不是屏上正在摆的那一档（与「复制图片」刻意不同轨）。
-    @Test
-    fun `存的是原图那一档`() {
-        assertTrue("没把落点递给那颗件：" + panel, panel.contains("desktopSaveImageRun(platformContext, saveDir, post)"))
-        val line = panel.lines().first { it.contains("desktopSaveImageRun(") }
-        assertFalse("调用里出现了屏上那一档的 url（那就会把降档的那张当原图存）：" + line, line.contains(", url"))
-    }
-
     // ⑧ `--save` 登记过，不然带它起窗时 unknown 会多念一句"不认识的参数"。
     @Test
     fun `参数登记过`() {
@@ -123,23 +90,6 @@ class DesktopSaveImageSeedTest {
     }
 
     // ⑪ 五层接线一层都不能少：判读、集成方、界面、那一跳 gradle、种子清单。
-    @Test
-    fun `五层接线都在`() {
-        assertTrue("main 没判读这一枚：" + main, main.contains("ForensicFlags.state(args.asList(), \"--save\")"))
-        assertTrue("main 没把落点算出来递进去：" + main, main.contains("gallerySaveDir = desktopGallerySaveDir(paths)"))
-        assertTrue("main 没走那颗接管浮层的纯函数（四枚）：" + main, main.contains("ForensicFlags.detailPanel(detail, reverse, copy, save)"))
-        // `startSave = save == true` 住在**集成方**（VeneraDesktop.kt），应用根只是收下来往下递 ——
-        // 这一格第一轮把它写成 app 的锚点，红过一次：锚点要钉在真正做那一步的文件上。
-        assertTrue("集成方没把三态折成开关：" + main, main.contains("startSave = save == true,"))
-        assertTrue("应用根没把它收进形参表：" + app, app.contains("startSave: Boolean,"))
-        assertTrue("浮层没收到种子：" + app, app.contains("autoSaveImage = startSave,"))
-        assertTrue("D_落点 那行的种子清单漏了这一枚：" + app, app.contains("\"save\".takeIf { startSave },"))
-        assertTrue(
-            "gradle 那一跳漏了的话 -Psave=1 就是「不报错也不做事」：" + gradle,
-            gradle.contains("providers.gradleProperty(\"save\").orNull?.let { \"--save=\$it\" },"),
-        )
-    }
-
     // ⑫ 取字节仍只有一颗实现：新加这一格不许自带第二份冷缓存逻辑。
     @Test
     fun `取字节仍只有一处`() {
@@ -175,22 +125,7 @@ class DesktopSaveImageSeedTest {
     }
 
     // ⑮ 那一屏的落点由集成方算好递进来（界面件自己别碰 PathProvider —— 一碰就有第二条建目录的路）。
-    @Test
-    fun `落点由外面递进来`() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopDownloadsPane.kt")
-        val text = DesktopSourceTree.codeText(pane)
-        assertEquals("那一屏自己算了落点：" + text, 0, DesktopSourceTree.codeOccurrences(pane, "desktopGallerySaveDir("))
-        assertEquals("那一屏自己 import 了 PathProvider", 0, DesktopSourceTree.codeOccurrences(pane, "PathProvider"))
-        assertTrue("形参表里没有递进来的落点：" + text, text.contains("saveDir: File"))
-    }
-
     // ⑯ 枚举那颗在界面件里只被叫一次（每次重组都重读盘就是自己造负载）。
-    @Test
-    fun `枚举那一颗只被叫一次`() {
-        val pane = DesktopSourceTree.desktopUiSource("DesktopDownloadsPane.kt")
-        assertEquals("读盘那一笔出现了 ${DesktopSourceTree.codeOccurrences(pane, "desktopListSavedImages(")} 次：" + DesktopSourceTree.codeText(pane), 1, DesktopSourceTree.codeOccurrences(pane, "desktopListSavedImages("))
-    }
-
     // ⑰ 两份 README 那一格同轨：旧那句不许留，新那句两边都得有（改一处必须同步另一处，本仓口径）。
     @Test
     fun `两份 README 的那一条同轨`() {

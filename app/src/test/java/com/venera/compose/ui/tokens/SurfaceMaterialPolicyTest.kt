@@ -1,6 +1,6 @@
 package com.venera.compose.ui.tokens
 
-import com.venera.compose.data.prefs.SurfaceMaterial
+import com.venera.compose.data.platform.SurfaceMaterial
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

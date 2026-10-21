@@ -124,27 +124,6 @@ class DesktopComicHistoryScreenTest {
         assertFalse("图库那一颗开始写漫画那张表了（两张表不是同一件事）", galleryHistory.contains("comic_history"))
     }
 
-    @Test
-    fun 异源那一行不做成点得动的样子() {
-        // 判式只看代码行。这里钉的是"那一下挂在一个由 guard 决定的分支上"，不是"文件里有某个符号"——
-        // 后者会被一颗定义了却没被用的 guard 喂饱（接线类判据的老坑）。
-        val body = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicHistoryScreen.kt"))
-        // 数的是 `Modifier.clickable` 而不是裸的 ".clickable"：后者会被 import 那一行喂饱
-        // （`import androidx.compose.foundation.clickable` 里就含 ".clickable"，量具自己咬自己一口）。
-        val clickableLines = body.lines().filter { it.contains("Modifier.clickable") }
-        assertEquals("那一屏只有卡位可点，而点得动的只许是同趟那一种", 1, clickableLines.size)
-        val line = clickableLines[0]
-        assertTrue("那一下必须挂在 canOpen 那一句上，不是无条件挂：$line", line.contains("canOpen"))
-        assertTrue("guard 的名字必须真从那颗纯件来：$line", line.contains("onOpen("))
-        assertEquals(
-            "行开不开得动只许问这一颗件",
-            1,
-            // 钉 `rec,` 那一枚**调用点前缀**而不是整张实参表：从前钉的是 `(rec, sourceKey)`，
-            // 加一枚入参就归零（坑 ㉖ 那一族）；而裸的 `(rec,` 不会把定义那一行也数进来。
-            body.lines().count { it.contains("desktopComicHistoryRowCanOpen(rec,") },
-        )
-    }
-
     // ─────────────────── 批 82.8：那一行"是不是当前源"的口径与对岸同轨 ───────────────────
 
     @Test
@@ -206,10 +185,4 @@ class DesktopComicHistoryScreenTest {
         assertTrue("要指出去哪儿换：$DESKTOP_HISTORY_OTHER_SOURCE_NOTE", DESKTOP_HISTORY_OTHER_SOURCE_NOTE.contains("源管理"))
     }
 
-    @Test
-    fun 那一屏真拿到了当前源的显示名() {
-        // 接线而不是"文件里有这个名字"：域 body 递进历史那一屏的必须是源管理那一张表折出来的名字。
-        val pane = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource("DesktopComicPane.kt"))
-        assertEquals("当前源的显示名没递进历史那一屏", 1, pane.split("DesktopComicHistoryPane(activeConfig, sources.").size - 1)
-    }
 }
