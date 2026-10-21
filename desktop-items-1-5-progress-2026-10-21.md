@@ -286,35 +286,59 @@ D_裸调对照 样本=24 抢走=0 抛=18 收进本颗=0
 ## 仍然开着的评审项（本轮一条没关，除 H4）
 
 - **A 条（阻断）**：分区 2.5 语义未定（漫画推荐 vs 图片挑选）。
-  ⚠️ **2026-10-21 重新量过：原先记的"两条独立理由"两条都不成立，本喵把它们撤掉**
-  （读数在 `_qa` 之外的代码里，逐条可查）：
-  - ~~理由①「本地阅读标签会外流到 `jm`」~~ ⇒ **不成立**：`EngineSession.explore()`（`EngineSession.kt:82-93`）
-    送进 JS 的**只有页码**，压根没有标签这一路。
-  - ~~理由②「缺 nsfw 预设表」~~ ⇒ **不成立**：表已存在
-    （`app/src/main/assets/source_content_warning.json`，量到 **33 条 `"level"`**），
-    桌面侧 `DesktopSourceContentPresets` 已在读它，且 `"jm"` 那一格明写着 `level: "nsfw"`。
-  ⇒ **所以 A 条现在只剩一个真问题：探索默认源用谁 + 默认遮罩档设什么**，
-  不再是"语义未定所以不能动"。下面那三格量出来的读数是给主人裁决用的：
-  - 探索默认源 = `jm`（`DesktopRoute.kt:63` `DESKTOP_EXPLORE_SOURCE = "jm"`）。
-  - 默认遮罩档 = `OFF`（`DesktopGalleryContentGuard.kt:138` `DEFAULT_MASK_MODE = "OFF"`，
-    **照安卓抄的**：`ContentGuardManager.kt:82-89` store `venera_guard_prefs` / 键 `nsfw_mode` / 默认 `OFF`）
-    ⇒ 擅自改会让两端分叉。
-  - ⚠️ **遮罩对探索卡确实生效**（本喵量过，不是推测）：`coverMaskStateOf` →
-    `looksAdult(sourceKey, tags)` → `DesktopSourceContentPresets.isGuarded(sourceKey) || tags.any{…}`
-    （`DesktopUxPlatformServices.kt:103-104`）。探索屏拿不到 tags，但**源级那一道是真的**，
-    所以把默认档改成 `BLUR`/`HIDE` **会**把 jm 的探索封面糊起来/藏起来 ⇒ 选项 (b) 不是空头支票。
-  - ⚠️ **本清单原话有个错**（上一版写「`copy_manga`/`manhuagui`/`comick` 在预设表里都是 `safe`」）：
+  ⚠️ **2026-10-21 重新量过：原先记的"两条独立理由"要逐条重判**（本喵在 `7dc27ce8` 那笔更正里
+  一度把理由①写成"不成立"，**那是判读过头**：那条讲的是"推荐区拿本地题材名去调 `search`"，
+  而本喵量的是 `explore()` 不传标签 —— 答非所问。这一笔把它改回正确的形状）：
+  - **理由①（本地阅读偏好外发到成人站）⇒ 状态是「通道尚未存在」，不是「不成立」**：
+    桌面**根本没做那个推荐区**（`grep TAG_SEPARATOR|题材名|推荐区` 在 `desktop/src/main` 里
+    **0 命中**）。⇒ 今天没有活的外发通道，可**这条约束还立在那儿**：主人若选"做 (b) 推荐区"，
+    这一条就是必须先出方案的前置，不能被"桌面还没做"当成已解决。
+    （与本喵量到的另一件事一起看：`EngineSession.explore()` 送进 JS 的只有页码
+    （`EngineSession.kt:82-93`），而 `searchComics` 只在搜索屏那一跳用（键 `searchTick`，
+    取的是用户自己敲的 `searchQuery`，`VeneraDesktopLargeScreen.kt:374-377`）
+    ⇒ **现存两路都不涉及本地题材聚合**。）
+  - **理由②（遮罩会裸奔）⇒ 两条子因一开一闭**：
+    - ~~子因 (1)「预设表没进资源清单」~~ ⇒ **已闭**：`desktop/build.gradle.kts:374` 明写
+      2026-10-21 把 `source_content_warning.json` 从"不带"改成"带上"，产物实测
+      `desktop/build/resources/main/source_content_warning.json` = **3751 字节**、表里 **33 条 level**，
+      且 `"jm"` 那一格写着 `level: "nsfw"`。
+    - ⚠️ 子因 (2) 仍开：`ContentGuardManager` 仍在 exclude 里，桌面走的是**替代实现**
+      `DesktopUxPlatformServices.looksAdult`（`DesktopUxPlatformServices.kt:103-106`）——
+      那颗的类注释自己写着「**这是比安卓窄的替代判据**……只判标签里明确的成人标记，
+      **宁可漏判，也不假装有那份词表**」⇒ 桌面**没有安卓那套 R18 词表正则**。
+      源级预设这一道是真的（探索屏拿不到 tags 也仍生效），但条目级那一一道比安卓松。
+  - ⚠️ **本清单原话还有一个错**（上一版写「`copy_manga`/`manhuagui`/`comick` 在预设表里都是 `safe`」）：
     实测 `copy_manga` = `safe`、`comick` = `safe`，而 **`manhuagui` 根本不在这 33 条里**
     （`grep -c manhuagui` = 0；表里有的是 `manhua`、`manhuaren`）⇒ 它走 `isGuarded` 的 `else -> false`
     那一档（**当成不遮**）。主人若选换源，`manhuagui` 是"表里没记"而不是"表里记为 safe"，
     这一格区别要分清喵。
-  - 四颗候选**都有 `explore`**（`grep explore` 命中：jm / copy_manga / manhuagui / comick）
-    ⇒ 换默认源不会换来一片空屏。
+  - **遮罩对探索卡确实生效**（量过，不是推测）：`coverMaskStateOf` → `looksAdult(sourceKey, tags)`
+    （`DesktopUxPlatformServices.kt:57-72`）⇒ 把默认档改成 `BLUR`/`HIDE` **会**真把 jm 的探索
+    封面糊起来/藏起来，选项 (b) 不是空头支票。
+  - 四颗候选**都有 `explore`**（jm / copy_manga / manhuagui / comick）⇒ 换默认源不会换来一片空屏。
+  - **要裁决的就是这两个旋钮**（现值与本喵量到的出处）：
+    - 探索默认源 = `jm`：`DesktopRoute.kt:63` `DESKTOP_EXPLORE_SOURCE = "jm"`
+      —— 壳里探索那一跳与装配点 `searchComics` 都用它（`VeneraDesktopLargeScreen.kt:479`、
+      `VeneraDesktop.kt:676`）。
+    - 默认遮罩档 = `OFF`：`DesktopGalleryContentGuard.kt:138` `DEFAULT_MASK_MODE = "OFF"`
+      —— **照安卓抄的**（`ContentGuardManager.kt:82-89`：store `venera_guard_prefs`、
+      键 `nsfw_mode`、默认 `OFF`）⇒ 擅自改会让两端分叉。
+    - 二者叠加后的既成事实：本喵把 `jm`（表里 `level: nsfw`）设成探索默认源，而默认档 `OFF`
+      ⇒ **成人封面现在就裸铺在探索屏上**。这正是 A 条担心的那件事，本喵把它做出来了。
+  ⇒ **语义那一问（"漫画推荐"还是"图片精选"）本来就不是技术阻断，是要主人拍板**；
+  技术侧剩下的真口子只有一条：**桌面缺安卓那份成人词表（子因 2）**。
   ⇒ **需要主人裁决**，本喵不再自己猜。
 - R6 `onRetest = {}` 假开关 · R7 `comic_info.json` · R8 `onOpenHistory` 默认 `{}` 无处可去 ·
   R9 删掉的三把尺子 · R11 三套 `Text` 实现 · R12 exclude 表成了尺子输入 ·
   R13 `HistoryDao` 每次实例化漏一个 `CoroutineScope` ·
   F1/F2/F3 `EngineAssets` 键清洗 / 4 MB 上限 / `listSourceKeys` 空 vs 不可用 ·
   G1 下载写侧缺 canonical 包含检查 · H2 `openInBrowser` scheme 检查 · H3 `assetDir` CWD 兜底
-- **H4 已关**（遮罩档写口接上源管理屏）—— 但因为源管理屏**没有入口**，
-  实际效果仍是"用户够不着"。严格说 H4 只关了一半。
+- **H4 本轮才真正关严**（分两段记，别混成一句"早就关了"）：
+  - 上一批接上了**写口**：`guard.setNsfwMaskMode(mode)`（`VeneraDesktop.kt:606` 那一路），
+    但源管理屏**当时没有入口** ⇒ 实际仍是"用户够不着"，严格说只关了一半。
+  - 本轮（2026-10-21）补上入口（探索屏顶栏「源管理」）⇒ 链条第一次通：
+    入口 → 源管理屏那三颗 `MaskChoice("OFF"/"BLUR"/"HIDE")`（`DesktopSourceManageScreen.kt:136-138`）
+    → `setMaskMode` → `guard.setNsfwMaskMode` → 落盘 + 推流。
+  - ⚠️ 仍欠的那一格：**没在真窗口点过**（§5 验证受限）。尺子只钉到"按钮存在且按得动"
+    （`DesktopNewScreensSemanticsTest` 那两条 + `DesktopMaskJudgementSingleSourceTest`）。
+    ⇒ 状态写**已接、已配尺、未实测**，比原来那句"只关了一半"准。
