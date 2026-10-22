@@ -4,8 +4,9 @@
 
 # venera-miuix
 
-**An Android manga/comic reader: comic sources are described in JavaScript, and local and online libraries are read in one place.**
-This branch rewrites the whole Venera app from Flutter into pure native Kotlin + Jetpack Compose, and adds a gallery image-board module that upstream does not have.
+**An Android manga/comic and gallery reader: comic sources described in JavaScript, aggregating local and online libraries with deep native Gallery and Pixiv ecosystem integration.**
+
+This branch rewrites upstream Venera from Flutter into pure native Kotlin + Jetpack Compose, revamps all screens with Xiaomi HyperOS's Miuix design language, and introduces a powerful native Gallery and Pixiv multi-source aggregation module.
 
 [![Version](https://img.shields.io/badge/version-2.0-orange)](https://github.com/w13630039663-bit/venera-miuix/releases)
 [![Branch](https://img.shields.io/badge/branch-compose--migration-blue)](https://github.com/w13630039663-bit/venera-miuix/tree/compose-migration)
@@ -25,475 +26,179 @@ This branch rewrites the whole Venera app from Flutter into pure native Kotlin +
 
 - [What is this](#what-is-this)
 - [Screenshots](#screenshots)
-- [Highlights](#highlights)
-- [Features](#features)
-- [Differences from upstream](#differences-from-upstream)
-- [Known gaps and deliberate non-goals](#known-gaps-and-deliberate-non-goals)
-- [Download and installation](#download-and-installation)
-- [Building from source](#building-from-source)
-- [Architecture and tech stack](#architecture-and-tech-stack)
-- [Project layout](#project-layout)
-- [Writing a comic source](#writing-a-comic-source)
-- [Contributing](#contributing)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
+- [Core Features](#core-features)
+  - [Gallery & Pixiv Native Ecosystem](#1-gallery--pixiv-native-ecosystem)
+  - [Comic Reader](#2-comic-reader)
+  - [Comic Source & Network Engine](#3-comic-source--network-engine)
+  - [Favorites & History](#4-favorites--history)
+  - [Downloads & Local Bookshelf](#5-downloads--local-bookshelf)
+  - [Rating, Filtering & Privacy](#6-rating-filtering--privacy)
+  - [Appearance & Personalization](#7-appearance--personalization)
+- [Known Gaps & Deliberate Non-Goals](#known-gaps--deliberate-non-goals)
+- [Download & Installation](#download--installation)
+- [Building from Source](#building-from-source)
+- [Architecture & Tech Stack](#architecture--tech-stack)
+- [License & Acknowledgements](#license--acknowledgements)
 
 ---
 
 ## What is this
 
-**Venera** is an excellent third-party comic reader: comic sources are written as JavaScript plugins, and it aggregates local and online comics with favorites, downloads, comments and tags. Its original author has publicly stated that maintenance has stopped due to limited capacity, and welcomes forks.
+**Venera** is an excellent open-source comic reader: comic sources are written as JavaScript plugins to aggregate local and online comics.
 
-This branch (`compose-migration`) does three things, plus one new module:
+This branch (`compose-migration`) focuses on four core innovations:
 
-1. **New stack** — a full rewrite in Kotlin + Jetpack Compose; no Flutter / Dart / Rust runtime is carried over. The artifact is a single Android app.
-2. **New interface language** — every screen is rebuilt around Xiaomi HyperOS's Miuix design system, with the official liquid-glass library integrated; Material 3 (wallpaper-based dynamic colour) is the default style, with Miuix kept as a switchable second style.
-3. **Protocol unchanged** — the ComicSource JavaScript plugin protocol stays byte-for-byte compatible with upstream, so the [venera-configs](https://github.com/venera-app/venera-configs) repository can be installed and fully updated in one tap; 34 source scripts (33 unique sources) ship in the APK as an offline fallback.
-4. **One new module** — the fourth slot of the bottom bar, **Gallery**, turns yande.re / Gelbooru / Safebooru into a module fully isolated from the comic side.
+1. **Pure Native Rewrite**: Full migration to Kotlin + Jetpack Compose, removing Flutter/Dart/Rust runtimes for lower memory usage and millisecond cold starts.
+2. **Miuix Design System**: Complete UI rebuild around Xiaomi HyperOS's Miuix design language and liquid glass material, supporting seamless switching between Miuix and Material 3 dynamic color palettes.
+3. **Plugin Protocol Compatibility**: Full byte-for-byte compatibility with the official ComicSource JavaScript plugin protocol, bundled with 34 popular source scripts and supporting one-tap import and bulk updates.
+4. **Gallery & Pixiv Multi-Source Aggregation**: A native "Gallery" module on the bottom bar, offering full Booru image-board integration and Pixiv dual-domain aggregation with native artwork detail, artist profiles, account sync, and smart cross-platform deep-linking.
 
-> **Install identity**: this branch keeps the exact same application ID as `master` (the Flutter version of venera-miuix) and shares its release channel, so downloading from Releases gives you the same app. Flutter-era data is **not migrated automatically**; to move devices or come over from the Flutter build, use Settings → import data to read an official Venera or PicaComic archive and merge in your favorites and reading history.
-
-- Original upstream Venera (Flutter): <https://github.com/venera-app/venera>
-- This repository's `master` branch (Flutter venera-miuix): <https://github.com/w13630039663-bit/venera-miuix>
+---
 
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/home.jpg" height="420" alt="Home">
-  <img src="screenshots/gallery.jpg" height="420" alt="Gallery">
-  <img src="screenshots/search.jpg" height="420" alt="Search">
-  <img src="screenshots/gallery-artist.jpg" height="420" alt="Artist page">
-  <img src="screenshots/settings.jpg" height="420" alt="Settings">
+  <img src="screenshots/home.jpg" height="320" alt="Home">
+  <img src="screenshots/gallery.jpg" height="320" alt="Gallery">
+  <img src="screenshots/search.jpg" height="320" alt="Search">
+  <img src="screenshots/gallery-artist.jpg" height="320" alt="Artist page">
+  <img src="screenshots/settings.jpg" height="320" alt="Settings">
 </p>
-
-<p align="center"><sub>Home · Gallery · Search · Artist page · Settings — covers in these screenshots are masked by the rating filter and contain no recognizable original artwork</sub></p>
-
-## Highlights
-
-**Native rewrite, no runtime layer left behind.** Flutter, Dart and Rust are gone from the dependency tree; startup no longer waits on an engine or an isolate. R8 obfuscation plus resource shrinking, packaged per ABI.
-
-**Correctness logic lives in plain JVM functions.** Rating decisions, image unscrambling block math, chapter completeness, archive encoding, tag splitting, registrable-domain cookie chains — the logic that actually decides correctness does not depend on the Android framework, so changing one rule fails a test immediately instead of waiting to be found on a device.
-
-**The official source repository just works.** A system WebView hosts the source scripts and a shim layer reproduces the original API surface; the upstream `index.json` supports update-all / update-one / custom repository URLs / local import for debugging / visual editing. MangaDex, Copy Manga and Baozi also ship as native Kotlin sources, as a fallback path when the JS engine misbehaves.
-
-**Gallery is genuinely isolated.** It owns its three layers, its own tag dictionary and its own two Activities, and most importantly its **own image-loading instance and cache budget** — the comic side's default configuration is untouched, while the gallery uses a separate directory and a separate budget (64 MB in memory, 512 MB on disk by default and adjustable). Only the pure technical layer is shared: connection pool, cookies, rate-limit intervals and anti-hotlink User-Agents.
-
-**Rating and blocking is a decision chain, not a switch.** Three masking states + a built-in rating preset table for 33 sources + four rule categories with optional regex, evaluated in the order **user rules → source presets → explicit keyword fallback**. Masking blurs the cover only; titles and tags stay visible.
-
-**Backup formats are interoperable with upstream.** Our own `.venera` archive exports and imports in one tap, and the app also reads official Venera's SQLite archive and PicaComic's `.picadata`, merging favorites and history entry by entry — source resolution relies on a reimplementation of Dart's VM hash function, so you never have to re-export into our format first.
-
-**Visual sizing is calibrated against real device pixels.** Collapsing large top-bar titles with frosted circular icon buttons, segmented controls where every pill carries its own outline, a liquid-glass bottom bar, system-level predictive back across Activities, and a shared-element transition from cover to detail. Every dimension comes from an upstream value or an existing token in the app.
-
-## Features
-
-> Every line below has a real call site in the code. Anything implemented but not wired to an entry point is moved to [Known gaps](#known-gaps-and-deliberate-non-goals) and never appears here.
-
-### Reader
-
-- **5 layouts**: vertical strip, horizontal continuous scroll-through, left-to-right paging (**default**), right-to-left paging, and two-page spread — switchable both in Settings and in the reader panel.
-- **Look-ahead preloading**, adjustable 0–20 pages, so paging never waits on the network.
-- **Auto cruise**: constant-speed strip scrolling (15–480 px/s) and a timed auto-turn interval for paged modes (**1–10 s/page**, adjusted with −/+ right in the reader panel — the same persisted value as the Settings slider); touching pauses it. *The scroll-through and two-page layouts do not offer cruise.*
-- **Volume-key paging** (including continuing into the next chapter) and **edge-tap paging** (outer 25% of the screen, direction invertible, mirrored in right-to-left mode).
-- **Two-finger zoom**: large images are subsampled by the library. *Zoom only applies in the two paged modes.*
-- Chapter drawer, save a page to the gallery, share a page, night soft-light filter, keep-screen-on, page spacing.
-- Page addresses are resolved per page by the source script — sources that need signed or expiring URLs can still render correctly.
-- Wide screens get top-bar and drawer width caps; no separate wide-screen pagination layout.
-
-### Comic source engine
-
-- Compatible with the official ComicSource JavaScript protocol, hosted in a system WebView.
-- **34 source scripts (33 unique sources)** ship in the APK as an offline fallback; one-tap install / update all / update one, with custom repository URL, local import for debugging, visual edit and delete, source pinning and ordering.
-- Three native Kotlin sources built in: **MangaDex / Copy Manga / Baozi**.
-- **Login**: account+password, embedded WebView web login, and raw cookie entry, with status checks, re-login and sign-out.
-- **Aggregated search**: single-source search plus "search everywhere" running sources in parallel, grouped by source; structured tag search degrades automatically to client-side filtering on sources that do not support that syntax.
-- **Source speed test and health**: parallel ping, home status row in four states (connected / degraded / failing / unknown) and re-measurable on tap, source list carries latency colour coding.
-
-### Gallery (a module isolated from the comic side)
+<p align="center"><sub>Comic Home · Gallery Aggregator · Search & Discover · Artist Profile · Settings</sub></p>
 
 <p align="center">
-  <img src="screenshots/gallery-booru.png" height="340" alt="Booru Boards Home">
-  <img src="screenshots/gallery-pixiv.png" height="340" alt="Pixiv Domain Home">
-  <img src="screenshots/pixiv-account.png" height="340" alt="My Pixiv Account">
-  <img src="screenshots/pixiv-work-detail.jpg" height="340" alt="Pixiv Work Detail">
-  <img src="screenshots/pixiv-artist.jpg" height="340" alt="Pixiv Artist Profile">
-  <img src="screenshots/gallery-pixiv-jump.jpg" height="340" alt="One-tap Jump to Pixiv">
+  <img src="screenshots/gallery-booru.png" height="320" alt="Booru Home">
+  <img src="screenshots/gallery-pixiv.png" height="320" alt="Pixiv Domain Home">
+  <img src="screenshots/pixiv-account.png" height="320" alt="My Pixiv Account">
+  <img src="screenshots/pixiv-work-detail.jpg" height="320" alt="Pixiv Artwork Detail">
+  <img src="screenshots/pixiv-artist.jpg" height="320" alt="Pixiv Artist Profile">
+  <img src="screenshots/gallery-pixiv-jump.jpg" height="320" alt="One-Tap Jump to Pixiv">
 </p>
+<p align="center"><sub>Booru Home · Pixiv Home · My Pixiv · Native Artwork Detail · Pixiv Artist Profile · Direct Jump to Pixiv</sub></p>
 
-<p align="center"><sub>Booru Boards · Pixiv Domain · My Pixiv Account · Work Detail · Artist Profile · Cross-site Jump to Pixiv</sub></p>
+---
 
-- **Dual-Domain Multi-Source Architecture**: Smoothly toggle between "Booru Boards" (yande.re + Gelbooru + Safebooru) and "Pixiv" via the top-bar pill segmented button, with isolated masonry feeds, section states, and search state machines.
-- **Deep Pixiv Native Ecosystem Integration**:
-  - **Real-Time Rankings & Official Recommendations**: Supports Daily, Weekly, Monthly, Rookie, and Original ranking modes; signed-in accounts get personalized official recommendations (with shuffle), while signed-out accounts fall back to seed-tag discovery.
-  - **Native Work Detail (`PixivWorkActivity`)**: Continuous multi-page illustration/manga reader, detailed work info panel (multilingual tag translations, view/bookmark/comment counts), one-tap official follow/bookmark, and original image download.
-  - **Native Artist Profile (`PixivArtistActivity`)**: Artist header banner, avatar, illustration/manga/public bookmark tabs, and direct following.
-  - **My Pixiv Account Screen (`PixivAccountActivity`)**: Dynamics (My works / Followed dynamics / Account management), cloud bookmarks (public & private), and following list — always opens in a fully expanded top state.
-- **Cross-Site Smart Link Jump & Direct ID Navigation**:
-  - **Smart Source Sniffing**: Inspects post source links on Booru boards and generates an interactive pill button "Open in Pixiv (#ID)" to jump straight to native Pixiv work detail.
-  - **Search Bar Direct Jump**: Enter a bare artwork ID (e.g. `151105496`), prefixed ID (`#ID` / `id:ID`), or a full Pixiv URL into the Pixiv search bar to jump directly into the artwork detail page.
-- **Smooth Followed Artists Grid Expansion**: The followed artists row expands downwards into a 5-column grid (`animateContentSize`), displaying up to 10 artists on a single screen with vertical scrolling for larger rosters.
-- **Minimalist Pure-Image Bookmarks Hub**:
-  - Top "Pixiv Bookmarks" card leads directly to cloud bookmarks.
-  - 3-column minimalist image-only masonry for local gallery favorites without redundant card borders or overlapping badges.
-  - Horizontal Miuix glass pill filter (filter by board and rating, sort by newest/oldest).
-  - **Decoupled Bookmarks**: Favoriting Pixiv artworks calls the official Pixiv bookmark API directly, keeping local Booru favorites completely clean.
-- **Dedicated Pixiv Settings**:
-  - **Image Quality Tiers**: Independent quality settings (Medium / Large / Original) for card previews, work details, and full-screen viewer.
-  - **Custom Downloads**: Custom save path and filename template placeholders (`{illust_id}`, `{part}`, `{title}`, `{user_id}`, `{artist_name}`).
-  - **Network Modes**: OAuth & API connection modes (ECH / Compatible / Standard), and image host selection (`i.pximg.net` / `i.pixiv.re` / Custom Host).
-- **Full-Chain Miuix Dynamic Glass Blur (Blur Backdrop)**: Seamlessly applied across Gallery Home, Daily Hot, Bookmarks Hub, History, Pixiv Account, and Work Detail screens, sampling and blurring content as the top bar scrolls.
-- **Daily Hot & For You**: Home preview row + full-screen secondary page; tag recommendations seeded from your gallery favorites.
-- **Artist Following & Alias Resolution**: Circular avatar row, cross-site work aggregation, and artist alias resolution for yande.re.
-- **Reverse Image Search**: SauceNAO integration with free API key.
-- **Paint as Watercolor** (Beta): Generative stroke-by-stroke image rendering with re-roll and comparison.
-- **Viewer Toolbar**: Original file toggle, save to gallery, info sheet, share, and slideshow (1–15 s).
+## Core Features
 
-### Favorites and history
+### 1. Gallery & Pixiv Native Ecosystem
 
-- **Local favorites**: multiple folders, batch delete / move / copy, and a shared-element transition from cover to detail.
-- **Network favorites**: every source expands in place as an accordion in one list, switch sources with horizontal source pills, pull-to-refresh tracks your finger.
-- **Follow-up update checks**: pick one favorite folder as the followed folder, and a daily background pass looks for new chapters inside it. The entry is a row on the settings home (that one hop was all the page was missing).
-- **Image favorites**: single pages and illustrations favourited while reading get their own wall; gallery favorites are a fourth independent store. All four favorite panels share one long-press multi-select implementation.
-- **History**: cards show how far you read last time; reachable from the home history section, a settings row, and the reader top bar.
+- **Dual-Domain Multi-Source Aggregation**: Top segmented pill switch between "Booru" (yande.re + Gelbooru + Safebooru) and "Pixiv", each maintaining independent state machines and feeds.
+- **Pixiv Native Ecosystem Integration**:
+  - **Live Rankings & Recommendations**: Daily, weekly, monthly, rookie, and original ranking leaderboards; logged-in accounts access official discovery feeds with shuffle support; offline mode offers tag-seed-based smart recommendations.
+  - **Native Artwork Details (`PixivWorkActivity`)**: Multi-page continuous vertical reader, complete metadata panel (translated tags, artwork metrics), official one-tap bookmarking & artist following, and direct original image saving.
+  - **Native Artist Profile (`PixivArtistActivity`)**: Artist banner, avatar, illustrations/manga/public bookmarks tabs, and one-tap follow.
+  - **My Pixiv Account (`PixivAccountActivity`)**: Activities, cloud bookmarks (public & private), and followed artists list with automatic scroll-to-top on entry.
+- **Cross-Source Smart Jump & Direct ID Navigation**:
+  - **Source Link Sniffing**: Automatically detects Pixiv source URLs in Booru artwork details and provides an prominent pill button to open native Pixiv artwork details directly.
+  - **Search Bar ID / URL Direct Jump**: Input pure artwork IDs, `#ID`, `id:ID`, or Pixiv web URLs into the search bar to jump instantly to native artwork details.
+- **Expandable Followed Artists Grid**: The followed artists row on the homepage smoothly expands (`animateContentSize`) into a 5-column grid showing up to 10 artists on-screen, with vertical scrolling for larger collections.
+- **Minimalist Image-Only Favorites & Decoupled Architecture**:
+  - Top single-line "Pixiv Bookmarks" card directly accesses cloud bookmarks;
+  - Local favorites display a clean 3-column adaptive waterfall without border clutter or heart overlays;
+  - Horizontal Miuix glass pill filter and sorter (filter by source site and safety rating, sort by latest/oldest);
+  - **Dual-Track Decoupling**: Pixiv bookmarks communicate directly with official APIs without polluting the local favorites database.
+- **Pixiv-Specific Customization**:
+  - Independent quality controls for card preview, artwork page, and fullscreen viewer ("Medium / Large / Original");
+  - Dedicated download path and filename templates (`{illust_id}`, `{part}`, `{title}`, `{user_id}`, `{artist_name}`);
+  - Network modes (ECH / Compatible / Standard) and image host switching (`i.pximg.net` / `i.pixiv.re` / Custom Host).
+- **Full Gallery Miuix Dynamic Frosted Blur (Blur Backdrop)**: Live blur sampling applied across Gallery home, daily rankings, favorites, history, Pixiv account, and artwork details for fluid top-bar frosted-glass backdrops while scrolling.
+- **Gallery Discovery Tools**: Daily trending, recommendations, artist alias normalization, SauceNAO reverse image search, AI inpainting, and "Paint as Watercolor" feature.
 
-### Downloads and local library
+### 2. Comic Reader
 
-- Multi-threaded downloading with **1–16** concurrency (a change takes effect on the spot, without interrupting pages already in flight); chapter-level multi-select, pause / resume / delete per task, progress notifications.
-- **Three-state chapter completeness**: partial chapters get an "incomplete offline" badge instead of pretending to be complete.
-- **CBZ export** (zip a chapter directory and hand it to the system share sheet) and **CBZ import** (unpack into a bookshelf directory, namespaced by original filename).
-- Download root is user-selected (external storage and secondary volumes supported), and existing tasks migrate when it changes.
-- The local bookshelf scans the current root automatically (source / comic / chapter levels + metadata file).
+- **All Reading Modes Supported**: Continuous vertical webtoon, Japanese manga (right-to-left), Western comic (left-to-right), dual-page spread, and continuous vertical scroll.
+- **Touch & Reading Controls**: Smooth two-finger zoom, auto-scroll cruising (1–10s adjustable), volume key navigation, immersive fullscreen, and keep-screen-on.
+- **Display Adjustments & Colors**: Night inverted mode, green-tint eye protection, contrast enhancement, sharpening filters, and tonal adjustments.
+- **Seamless Reading Experience**: Auto-advance to next chapter at the end of a volume, with exact chapter and page-level progress resumption.
 
-### Reading statistics
+### 3. Comic Source & Network Engine
 
-- Home summary card: pages today, cumulative this week, streak days.
-- Stats page: total reading time, cumulative pages, top 10 most read, 14-day bar chart, streak check-ins.
-- **Tag distribution** (last 30 days / last year) and **reading trajectory** (top tag per month); any tag drills straight into aggregated search.
-- Simplified, Traditional and English tags are merged through a built-in table of 3,980 Simplified/Traditional pairs, so one subject gathers all its spellings.
+- **JavaScript Plugin Ecosystem**: Fully compatible with upstream plugin protocol, supporting dynamic rule compilation, category trees, and search.
+- **Automated Cloudflare Bypass**: Built-in automated challenge solver with dynamic Cookie/UA persistence.
+- **High-Performance Networking**: HTTP/SOCKS5 proxy, per-host circuit breaking, DNS optimized IP routing, anti-ban rate limiting, and multi-connection image distribution.
+- **Deep Linking**: Direct intent resolution for 29+ comic sites from external browsers into the app.
 
-### Rating and blocking
+### 4. Favorites & History
 
-- **Three masking states**: no filter / blur covers / hide completely, defaulting to no filter. The chain runs in code order: **user rules → built-in presets for 33 sources → explicit keyword regex fallback**. *A blurred cover does not become clear on tap, and "hide completely" currently takes effect fully only on some list pages — both caveats are stated in the app's own copy.*
-- **Blocking AI-generated content**: only explicit markers count (`ai` / `ai-generated` / `ai生成` / `ai绘图` tags, or `[AI Generated]`, `[AI Art]`, `【AI】` in a title); a bare `ai` substring does not, and there is no heuristic detection.
-- **Four rule types**: keyword / tag / artist / post ID, each with a regex mode, counts visible on the settings page. Matching differs between the two sides, deliberately: **the comic side matches substrings** (tags there are free text and Chinese has no separators, so whole-word matching would un-block what the user already blocked); **the gallery side matches whole words** (`ai` hits `ai` / `ai_generated`, and no longer hits `long_hair`).
-- **Anti-peek**: system-level `FLAG_SECURE` blocks screenshots and screen recording, blanks the recent-tasks thumbnail, covers every Activity, is switchable, and survives restarts.
+- **Dual Local & Remote Favorites**: Multiple custom folders, cover-to-detail shared element transitions, and one-tap remote source sync.
+- **Background Update Checker**: Set any favorite folder as auto-tracking; background worker polls for new chapters daily and pushes system notifications.
+- **Reading History & Statistics**: Reading time tracking, page counts, 14-day reading curve, Top 10 most-read titles, and genre distribution charts.
 
-### Backup and sync
+### 5. Downloads & Local Bookshelf
 
-- Local `.venera` archive, format version **5**, nine **required** members (metadata, reading history, comic favorites, folder list with network-folder bindings, reading statistics, blocking rules, illustration-favorite metadata and addresses, gallery follow list, gallery favorites) plus one **optional** member `source_accounts.json` (comic source logins and per-source settings). The whole package is parsed into memory before anything is written, so a format error fails before any write; older archives are still recognised and restored in full, just without the newer members.
-- **Comic source accounts are opt-in at export time** (off by default). The settings page and the sync page each carry a three-way choice: don't export / logins only / logins + per-source settings. **Credentials are written into the archive in plain text**, so when the option is off the member is **absent entirely** — not an empty array, which would leave the import side unable to tell "not exported this time" from "no source was logged in". Only accounts and settings travel; **source scripts do not** (they are regenerable from the repository). Import merges per source: sources not installed here are skipped and that count is reported, while installed ones only get the keys present in the archive — their other local state is left alone.
-- Every number on the stats page and the home summary is computed from the statistics table, so shipping that table ships the whole page.
-- **WebDAV**: manual upload / list / restore, keeping the **10** most recent archives by timestamp after each upload; uploads share the same source-account choice as local exports.
-- **Importing foreign archives**: reads official Venera (`.venera` SQLite) and PicaComic (`.picadata`) directly, merging favorites and history entry by entry. The two gallery members structurally cannot come from a foreign archive — the gallery module is specific to this branch and has no upstream counterpart; neither can the account member, since the two sides store credentials in different shapes (upstream uses `cookies.db`, this branch uses per-source `<key>.data`).
+- **Multi-Thread High-Speed Downloads**: 1–16 configurable concurrency, chapter multi-selection, resume broken downloads, retry on failure, and progress notifications.
+- **Integrity Verification**: Automatic detection of fake/placeholder images and corrupt bytes; incomplete chapters are explicitly marked with an "Incomplete" badge.
+- **External Format Support**: Local comic directory scanner, CBZ archive import, and packaging/export.
 
-### Appearance
+### 6. Rating, Filtering & Privacy
 
-- **Two interface styles, Miuix / Material 3** (default **Material 3**), light / dark / follow system. *What switches is the token set — colour, shape, type scale; two component suites still coexist inside one screen (a structural gap, not a missed wiring).*
-- **Custom theme colour**: seed colour #RRGGBB + 25 preset palettes + wallpaper-based dynamic colour (API 31+).
-- **Surface material**: solid / liquid glass (default solid); **bottom bar**: liquid glass / MD3 elevated, two options (default **liquid glass**; the selected icon follows the theme colour, including system dynamic colour).
-- **Home top-bar mascot**: off by default. When on, a proportionally scaled sticker sits at the left edge of the home screen's top bar (66×39.5dp, a bundled 8fps looping animation, anchored to the centre of the 52dp bar row — the large title collapses beneath it while it stays put). It holds its first frame when the system "remove animations" option is on. Purely decorative: it is not clickable.
-- **Tag translation display**: follow system / always Simplified / always Traditional / original.
-- Custom header images on the settings home page and on the gallery home page — two independent slots, so changing the gallery one never touches the settings one; the settings home also has a quote card; 17 settings sub-pages.
+- **Multi-Tier Content Masking**: Unfiltered / Blur cover / Completely hidden modes powered by rules and built-in source presets.
+- **Precise Blocking Engine**: Full-word or regex matching across keywords, tags, artists, and comic IDs, including one-tap explicit AI content filtering.
+- **Privacy Shield**: System-level `FLAG_SECURE` prevents screenshots, screen recording, and task switcher previews across all Activities.
 
-### Network and performance
+### 7. Appearance & Personalization
 
-- **HTTP and SOCKS5 proxies**, download concurrency, per-host circuit breaking (2 failures / 60 s) with a one-tap reset.
-- **Cloudflare challenge solving**: triggered on 403/503 → a challenge page is opened once per host on a debounce → success requires the clearance cookie, with UA and cookie persisted as a pair.
-- **Cloudflare preferred-IP routing**: custom DNS against your own IP table, **off by default, ships with no IPs, applies only to declared hosts**.
-- Rate-limit interceptor, per-host User-Agent and cookie policy (registrable-domain chain resolution).
-- Covers and pages are **decoded at display size** (sample factor is a power of two, capped at 8).
-- **Deep links**: post URLs from 29 hosts open directly in the app (Copy Manga, Baozi, MangaDex, Bilibili Comics, jmcomic / 18comic, E-Hentai / ExHentai, nhentai, Wnacg, hitomi.la, comick and others); shared plain text can invoke a search.
-- **In-app update check**: reads the newest tag from this repository's Releases, throttled to once per 24 hours, off by default, and opens a browser download rather than fetching an APK itself.
+- **Dual UI Styles**: Native Material 3 (with Android 12+ wallpaper dynamic color) and HyperOS Miuix style.
+- **Materials & Motion**: Liquid floating glass bottom bar, dynamic frosted blur (Blur Backdrop), and responsive fluid touch animations.
+- **Custom Header & Mascots**: Custom header images for home and gallery, plus optional top-bar mascot sticker.
 
-## Differences from upstream
+---
 
-### Versus official Venera (Flutter)
+## Known Gaps & Deliberate Non-Goals
 
-| Capability | Official Venera | This branch |
-| --- | :---: | :---: |
-| Stack | Flutter / Dart + Rust | **Pure native Kotlin + Jetpack Compose** |
-| Platforms | Android · iOS · Windows · Linux · macOS | **Android 13+ only** |
-| Interface language | Material 3 | **Miuix (HyperOS style)** + switchable Material 3 |
-| Bottom bar | Standard NavigationBar | **Floating liquid-glass pill bar** (glass / MD3 elevated) |
-| Main tabs | 4 + search/settings as actions | **5**: Home · Favorites · Search · **Gallery** · Explore |
-| Gallery image boards | ❌ none | ✅ yande.re / Gelbooru / Safebooru as an isolated module |
-| Artist follows and artist page | ❌ none | ✅ follow list + avatar row + cross-site aliasing + own Activity |
-| Recommendations from favorites | ❌ none | ✅ daily hot secondary page + For-you wall (seeded, shuffleable) |
-| Reverse image search | ❌ none | ✅ SauceNAO (bring your own free API key) |
-| Reading stats / tag corpus | ❌ none | ✅ summary card + stats page + tag distribution + trajectory + drill-down |
-| Rating mask | ❌ none | ✅ three states + built-in presets for 33 sources |
-| Block list | keywords only | ✅ keyword / tag / artist / post ID, regex supported |
-| Anti-peek | ❌ none | ✅ screenshot and recording blocked, recent-tasks blank, switchable |
-| Theme colour | dynamic + 6 presets | ✅ seed colour + 25 presets + wallpaper |
-| Transitions | standard | ✅ shared element + predictive-back tracking + gallery fly-in |
-| Archive interoperability | — | ✅ imports official `.venera` and PicaComic `.picadata` |
-| Unit tests | 1 Dart test file | ✅ 120 pure JVM test files (117 classes) / 902 cases |
-| Local formats | ZIP / 7Z / CBZ / EPUB / folder | ✅ folder + CBZ import/export (**no archive reading**, see gaps) |
-| Headless / CLI mode | ✅ | ❌ not planned |
+- **Chapter Comments & Log Viewer**: Basic definitions exist in code; UI entry points are pending integration.
+- **Desktop (Windows / Linux / macOS)**: Focus remains on Android native evolution; the desktop branch (`:desktop`) is an independent experimental module.
+- **Biometric App Lock**: Hardware biometric authentication is not currently built-in; system-level app locks are recommended.
+- **Non-Official Disclaimer**: Users must comply with third-party service terms; this repository is for educational and personal reading purposes only.
 
-### Versus this repository's `master` branch (Flutter venera-miuix)
+---
 
-`master` is this branch from the Flutter era (fork point `2026-09-16`, where the Miuix styling, blocking system and reading statistics already landed). `compose-migration` split off from it, rebuilt all of it on the native stack, and kept going:
+## Download & Installation
 
-| Capability | master (Flutter) | compose-migration |
-| --- | :---: | :---: |
-| Stack | Flutter / Dart + Rust | **Kotlin + Compose** |
-| UI backend | Miuix (Flutter port) | **Miuix KMP** + Material 3 dual backend |
-| Source JS execution | flutter_inappwebview | **system WebView + JS bridge** + shim reimplementation |
-| Gallery boards / artist follows / daily hot / reverse search | — | ✅ |
-| Cloudflare preferred IP | — | ✅ (off by default) |
-| JVM correctness tests | 1 Dart test file | ✅ 120 files (117 carry cases) / 902 cases |
-| Radial transition (preview card ⇄ reader) | ✅ | ❌ not carried over in the migration |
+Pre-built APKs are available on the **[Releases](https://github.com/w13630039663-bit/venera-miuix/releases)** page.
 
-### Upstream has it, this branch does not
+| Architecture | Target Devices |
+| :--- | :--- |
+| `venera-miuix-universal.apk` | Universal package (all architectures) |
+| `venera-miuix-arm64-v8a.apk` | Modern Android phones and tablets (Recommended) |
+| `venera-miuix-armeabi-v7a.apk` | Legacy 32-bit devices |
+| `venera-miuix-x86_64.apk` | PC Android emulators / Chromebooks |
 
-- **Desktop and other mobile platforms**: upstream ships Windows / Linux / macOS / iOS through Flutter. This branch's **Windows desktop module** (`:desktop`, Compose Desktop + compose-fluent) is well past a single screen: all seven rail destinations are enterable today — Gallery (Daily / Followed artists / For you / Latest / Rankings, plus a large-image viewer with keyboard zoom, copy-image and four backdrop modes), Discover, Search (including reverse search and the local-file slot), Favorites (the gallery set and the comic set, separately), Artists, Comics (explore → detail → the reading screen (vertical strip plus a real paging tier: three modes switch on screen, and the choice is stored in the very same `pref_reading_mode` key the phone uses) → reading history; progress lands in the very same `comic_history` table the phone writes, and the history screen recognises rows the phone recorded too — that column is written differently on each side (the phone stores the display name, desktop the key), so desktop parses it with the phone's own rule; plus a source-management screen listing all 34 packaged sources, each one disable/enable-able, with "pick this" switching the active source and the disabled list kept in this machine's local file), and Settings (8 of the 12 preferences actually change something); the home screen now also has **three decoration tiers** (batch 116 including its second half: plain / pattern / shrine, and the tiers are **cumulative** — the pattern tier adds the hero dot grid, the five-petal sakura in front of the 「精选推荐」 section head, and the beni fill plus a magatama mark on the first filter chip; the shrine tier then adds the torii silhouette, the vertical 「博麗神社」 column at the foot of the rail, the three-stop and-colour backdrop behind the hero and a whole-window grain layer, and lifts the hero by 30dp; the plain tier leaves no decoration layer at all, and even steps the selected pane row back to a flat neutral fill while keeping its 3dp indicator. All three switch on the settings screen and the choice lands on this machine's prefs file, and a window narrow enough to lose a wall column steps the shrine tier down to pattern on its own. Two of the mockup's motifs (shimenawa rope, fan) have no slot in the desktop layout at all, so no fake placeholder was added for them). Every Touhou-vocabulary mark is self-drawn vector art — not a single piece of official artwork ships. Per-batch readings, absence reasons and measurement methods live in `docs/rounds/`, entered from `docs/HANDOFF-2026-10-04.md`. What the desktop still lacks is listed separately below. Linux / macOS / iOS are still not started.
-- **Reading EPUB / 7Z / ZIP archives directly**: upstream's reader opens archive files; here local comics are always served to the reader as directories, and CBZ import unpacks into a directory.
-- **Biometric privacy lock**: upstream has launch authentication and re-lock on background; this repository contains no such capability. The rating mask is content filtering, not a privacy lock.
-- **Archive download protocol**: upstream has a dedicated download path for sources declaring archive capability (E-Hentai, for example); here downloads are page by page only.
-- **Headless mode**: upstream documents running source scripts without a UI; there is no counterpart here.
+> **System Requirements**: Android 13 (API 33) and above.
 
-## Known gaps and deliberate non-goals
+---
 
-This section exists on purpose. Anything implemented but not reachable from an entry point, or explicitly judged as not-to-be-done, is stated here rather than mixed into the feature list.
-
-**Implemented, but not wired to an entry point (currently unusable)**
-
-- **Chapter comments**: the sheet component and the source protocol both exist, but nothing in the reader switches the panel to comments — it cannot be opened.
-- **Log viewer**: the page is reachable, but nothing writes to the log store, so it opens with a single startup line.
-- **Per-source rating corrections**: the built-in preset table for 33 sources is in effect; what is missing is per-source user override and its picker — a source judged wrongly today cannot be fixed in the UI.
-- **Streaming aggregated search API**: defined but never called; the parallel search branch is what actually runs.
-- **Hand-rolled zoom gestures**: the gesture engine has no call site; the zoom library's own implementation is what is live.
-
-**Structurally out of scope**
-
-| Item | Note |
-| --- | --- |
-| Windows | In progress. `:desktop` reaches all seven rail destinations; what it still lacks is listed in the dedicated subsection below rather than mixed into the Android table. |
-| Linux / macOS / iOS | Not started. Port feasibility assessed and archived for Windows only. |
-| EPUB / 7Z / ZIP direct reading | Local comics are always served as directories; CBZ import unpacks. |
-| Biometric privacy lock | No launch authentication, no re-lock on background. The rating mask is content filtering, not a lock. |
-| Archive download protocol | Page-by-page downloads only. |
-| Headless CLI mode | No counterpart. |
-| Reader-only wide-screen layout | Only top-bar/drawer width caps; no landscape two-column reader. |
-| DoH, pinch-to-zoom, "not implemented" grey rows | Explicitly withdrawn, so they never occupy a switch slot. |
-
-**What the desktop (`:desktop`) still lacks**
-
-- **Comic chapter downloads**: saving images to disk is wired (batch 85), and whole episodes are wired too (batch 96) — the "Save to this machine" button in the overlay writes the original tier into `dataRoot/downloads/图库`, and the "Downloads" row on the home screen enumerates exactly that directory; file names follow the other side's default tier `<site key>-<id>.<ext>`, and a collision steps aside on its own. On the detail screen, pressing the 「下载这一话」 (download this episode) handle to the right of an episode row writes the whole episode into `dataRoot/downloads/<site key>/<id>/<order>_<title>/0001.jpg`, reusing the other side's three directory names and page name verbatim (two spellings grow two directory trees on one machine). The row below tells the truth about that run: "正在写本机… 已写/应写 页" (in progress), "已写下 N 页" (N pages written), "这一话本机已有 N 页" (already complete — such a run fetches nothing), "已停在 已写/应写 页 · 下次从这里接着补" (stopped; the next run picks up where it stopped), "下载失败：…（本机已有 N 页）" (failed, and how many pages are already there). A failure throws instead of quietly leaving pages out, and pages already written stay on disk. Per-page progress and that 「取消」 (Cancel) handle are wired too (batch 100): while a run is in flight the row grows a button, pressing it re-labels to "正在停手…" (stopping), and what it stops is "fetch the next page" — the request already in flight cannot be torn down, which is why the label never says "stopped". A stopped run writes `complete=false` into the manifest and **deletes none of the pages it left behind**, so the next run only fills the gaps. Bytes fetched for a page pass a magic-number gate before they reach the disk (batch 102): when the site hands back a challenge page or an error envelope (HTML, JSON) that run writes **nothing at all** and reports which page it stopped on, so the episode still reads 「缺 N 页」 rather than pretending to be complete. The gate accepts JPEG / PNG / GIF / WebP headers (page names are always `.jpg` even though sites often return other formats) and rejects anything shorter than 12 bytes. The **download queue screen** is wired too (batch 105): the comic domain grows a 「下载队列」 row, every task becomes a line naming its status (queued / downloading / finished / failed / stopped) and its written/expected page count — with the site's own words appended when a task failed — and the two handles each change exactly one thing: 「停这一笔」 appears only on the line that is actually running and trips the cooperative gate (the row stays in the table and the run stops at a page boundary, which is why it never reads "stopped"), while 「撤掉这一笔」 only lifts that row out of the table and **leaves every page on disk** (the line it prints names how many pages remain; to delete them, use the 「本机已下载」 screen). As of batch 106 that row drives the pump itself: standing on the 「下载队列」 screen, one queued or running task left in the table keeps the source engine up and the pump going, so nothing has to be fetched by first switching to the explore or detail screen (counting only the queued status would tear the engine down under the task that is in flight, and the pump would restart in a loop); the four local rows (favorites / history / source management / on-disk) still deliberately leave the engine down. As of batch 108 that pump waits on the table itself: the moment the pump comes up the table is often empty (entering the domain, loading the source, reading the table back - all of it with nothing queued), and the old shape ended that round right there, so a task queued later just sat there unclaimed (in-package reading waiting=1 running=0 until the window closed, zero pages on disk). Now that same round picks it up, without switching screens or restarting; the wait is on the table's own change, not on a poll, so there is no extra delay constant and no spinning. The page-image path reads `comic.onImageLoad` as an **optional capability** rather than a requirement (batch 109): of the 34 source scripts shipped with the app, 18 define it (the jm family among them - it rewrites the image url, attaches request headers and reports how many blocks that page was cut into) while 16 do not (goda / gelbooru / zaimanhua / wnacg / kavita / hot_manga / mh18 and the rest). The desktop used to ask for it unconditionally, so those 16 sources could not be read at all on any of the three paths - download, reader, full-size preview - all failing with `onImageLoad is not a function`. Now a source that does not declare it falls back to the url as-is (no extra headers, no descrambling, and the block count of 0 is a conclusion rather than a default), the same rule the Android side uses; a source that does declare it and then fails still throws with the site's own words, never quietly passing the broken page off as "that's just how the image looks". And **there is now exactly one rule for "is this page on disk"** (batch 110): the file name matches, it is over 1024 bytes, and its first 12 bytes really are JPEG/PNG/GIF/WebP - the resume skip, the "complete" vs "N pages missing" line on the downloaded shelf, the page count on a queue row and the "is this episode whole" check all four read that one rule. A Cloudflare challenge page written before batch 102 (right name, plenty big, only the header tells the truth) no longer counts as a page: the next run re-fetches and overwrites it, and the shelf says "2 pages missing" instead of "complete" (in-package reading: first progress line 28/30, and afterwards those two pages start with RIFF...WEBP again). The price is that a legitimate page under 1 KB gets re-fetched every run - same bound as the counterpart. System notifications are not ported (the counterpart's two notification channels are bound to Android and have no footing on the desktop). The counterpart's two in-row markers are wired (batch 99): the chip **on the card** (bottom-right corner of the cover) reads "已下载 N 话" or "离线不全 齐/总 话", and it consumes the very same reader the 「本机已下载」 screen uses rather than adding a fourth definition of "complete"; the chip is deliberately not clickable — the whole cover still opens the detail page. Downloaded episodes **are listed on screen now** (batch 97: the 「本机已下载」 row in the comic domain reads that tree off disk — the pages plus `chapter.json` — and says per episode 「已下全 / 缺 N 页」), and since batch 98 they can be **deleted from the app** too: every row carries a button that arms on the first press and deletes on the second, and "did it really go" is decided by **re-reading the disk** afterwards (the counterpart throws away `deleteRecursively`'s return value and always says "deleted" — we do not copy that).As of batch 111 that row grows a second handle, 「补齐」 (fill in the gap): it appears only on a row that reads "N pages missing", pressing it only queues that episode and **touches no file on disk** (the label says "补齐这一话 · 还缺 2 页" — fill in this episode, 2 pages still missing — not "re-download the episode"), and the 「本机已下载」 screen now drives the pump too: one pending task keeps the source engine up, so nothing has to be fetched by first walking to the queue row. Measured inside the package (through the double-click launcher): giving the seed the site's spelling of the id prints "本机没有这一话 ⇒ 不排队" (not on this machine, nothing queued), while the on-disk spelling matches the row and fills the two missing pages (`28/30 -> 30/30`, fail=0 done=1, both page headers back to RIFF...WEBP). One caveat stated plainly: the shelf keeps the **sanitized directory spelling** of the comic id, and some shipped source scripts put that id into the url - those sources need measuring one by one (filed as the next batch); goda builds the episode url from the chapter id alone, so for it the gap really closes.. **Batch 112**: the id shown on the "downloaded on this machine" row is read back from the directory name (the sanitised form), while the site's original id only survives in the queue table — so "repair" now looks that original up before re-queuing, and falls back to the directory form while saying so in the same line. Both forensic seeds (`--repair=` / `--delete=`) sanitise on both sides of the match, so a seed written the site way no longer misses. **Batch 113**: pressing "repair" only queues the episode - nothing on disk has changed at that instant. The screen now waits until that task reaches a terminal state (done / failed / stopped) and then re-reads the disk once, so the "missing N pages" line updates itself; per-page progress does not trigger a re-read (re-scanning every page after each one would be pure spinning). **Batch 114**: that line had two empty doors - the queue screen had **no UI call site at all** (the pure functions in `gallery/ui/DesktopComicQueuePane.kt` were only ever called from tests, and the route enum had no queue entry), while the detail screen had **no download door at all** (the 「下载这一话」 wording we had just corrected was itself a lie - that handle did not exist). Both doors got built in this batch: a new `desktop/queue/DesktopComicQueueScreen.kt` plus `DesktopRoute.Queue` give the desktop that screen for real; every episode row on the detail screen grows a 「下载这一话」 handle, placed **outside** `VeneraCard` as a sibling (the card is a miuix `Card` whose `combinedClickable` swallows any clickable embedded inside it - the trap recorded in batch 96); the handle only appears when a download door actually exists, so a bare UI never ships a handle that does nothing. That row's status is now looked up **by chapter order** (new pure function `desktopComicEpisodeDownloadNote`) - the old `desktopComicQueueTaskOf` returned one task per comic, so five queued episodes all five rows read the same task. The pump is really attached now: the shell starts `desktopComicStartQueuePump(queueScope, engine, root)` from a `DisposableEffect` and keeps driving across screens, while `onDispose` cancels only that coroutine scope and **never `engine.close()`**; the explore screen also gets a 「下载队列」 button in its top bar, and it is **not gated on the task count** (an empty table must still be walkable into, otherwise 「本机队列空」 never gets seen). The two rulers that encoded the old shape were rewritten: the assertion 「the pump is not yet attached to the engine」 was renamed and rewritten as 「the pump is attached to the shell and both of its hops to the engine pass the guard」, with the total still pinned at ten hops. Eight new headless assertions (`DesktopNewScreensSemanticsTest`): the queue screen's 「正在读那张表」 and 「本机队列空」 lines, no handles on an empty table, exactly one 「停这一笔」 against exactly two 「撤掉这一笔」 with one press landing one callback, a failed row carrying the site's own words, 「← 返回」 being pressable with its note on screen; on the detail screen no handle at all when there is no write door, three rows three handles where pressing a handle lands on the download door and never on the episode, the inline note reaching the screen; and the explore entry landing once per press. ⚠️ Stated boundary: all eight assertions are **headless assembly-level** (they feed table data and never touch the process-wide singleton queue, which would cross-contaminate tests), so 「a real press writes to disk」, 「the pump keeps running across screens」 and 「closing the window stops cooperatively」 remain code inference - **no in-package retest was done**. **Batch 115**: those four things finally **got a door**. `gallery/ui/DesktopComicDownloadsPane.kt` had been left with four pure functions (its `@Composable` count is 0, plus imports from the dismantled Fluent parallel line) and the route enum had no "on this machine" tier at all — so users could read "N episodes stored locally" yet had nothing to press. This batch adds `desktop/downloads/DesktopComicDownloadsScreen.kt` and `DesktopRoute.Downloads`: the explore screen's top bar gains a 「本机已下载」 button that only appears **when a download root exists** (no root ⇒ that tree cannot be counted, and a door to nothing is worse than no door; it never keys off task counts or whether the disk has anything, same rule as 「下载队列」). Its header reuses the existing four verbatim tiers (directory not created / created but empty / N unreadable manifests / X comics · Y episodes · Z complete), while a scan still in flight says 「正在数本机那一棵树…」 instead of quietly claiming emptiness. Each row carries at most two handles outside its `VeneraCard` as sibling nodes — 「补齐」 only on the short-page tier, enqueueing without touching a single file, and 「删掉第 N 话」 arming on the first press and only deleting on the second, with the verdict still read back off the disk. The scan hangs on three keys: `route` (no read unless inside that screen), `downloadsTick` (deletes are synchronous, so it re-reads itself right after), and batch 113's terminal key (repairs are async — only 完/败/停 means a re-read). The whole pass runs under `runCatching`, so a broken tree says "cannot count it + why" rather than "it's empty". Leaving the screen hands back the armed slot, otherwise a second press after a detour would delete a row nobody chose. The screen has **zero** `withContext` and no second component kit. Six new source rulers (`DesktopDownloadsEntryTest`: exactly one route cut from that callback / the screen-side param is mandatory / the screen has a way out / each of those five runners sits at exactly "one declaration + one call in the shell" / zero IO and zero Fluent there / the first delete press only arms and returns early) plus eight headless assembly checks (`DesktopNewScreensSemanticsTest`). One ledger-level trap also got recorded: in `DesktopUnusedInternalTest` the "zero call sites" rulers ① and ③ only have KDoc and no `@Test`, and `DesktopUnusedInternalScan.fromTree()` has zero call repo-wide — that ruler is inert, which is why this missing door sat unnoticed for over a hundred batches. This batch deliberately did not switch it on (it would light up a pile of legacy debt red). ⚠️ Boundary: all 14 checks here are headless/source-ruler level, so "the tree really counts", "a file really disappears from disk" and "the row re-reads itself once a queued repair reaches a terminal state" remain code inference — **no in-package retest was done**. **Batch 116**: the bytes those five things piled up on disk were not read by a single page when opening a chapter — the page-fetch path only ever asked the engine (the shell's `LaunchedEffect` had just `e.load` + `e.pages`, and `DesktopComicPageFetcher.fetch()` only had `engine.pageImage`), so offline nothing opened and online the same bytes were fetched again. It now goes **local-first**: entering that screen first identifies the chapter inside the local tree by its **source-side chapter id** (`desktopComicOfflineLocalChapter`; row order drifts while the chapter id does not). When the whole chapter is on disk **not a single source request is made** (it opens even with no engine — that is offline reading); when some pages are missing the engine is still asked for page keys (only the source knows those), and every page carries its local directory ⇒ pages the disk can vouch for come straight off disk (`DataSource.DISK`) while only the missing ones fall back to the source; with neither path available the list is empty and the screen says it cannot open. "Is this page there" still uses the single Batch-110 ruler (this batch is its fifth consumer, and that source ruler moved from "five sites" to "six sites") rather than a fourth definition of wholeness inside the byte fetch. When the source trip fails the page list is **no longer cleared** (previously a missing engine wiped the 28 local pages too), and `desktopComicOfflineReadingNote` guards two lies at the top of the screen: when disk is carrying a partial chapter it must say "the missing pages cannot be shown · 28/30 on disk", and when both paths are empty it must not claim to be reading from disk. The cache key deliberately **excludes** the local directory (including it means "read once offline, re-download the whole chapter when back online"). Normalising source and comic ids to the sanitised on-disk form lives in `DesktopComicOfflineReading.kt` and **not** in the read-side file — the Batch-112 rule ("the downloads screen only changes when disk state changes") went red once under my first version, and what changed was the wiring, not the ledger. Ten new checks (`DesktopComicOfflineReadingTest`): chapter matched by id and never guessed by row order, both sanitisation tracks resolve, broken pages do not count locally, the three "should we ask the engine" tiers, the three page-list shapes, the cache key excluding the directory, bytes really read back from a real temp tree, the five wording tiers, the three forensic readings, and the shell ordering with no page-list clearing. ⚠️ Boundary: "**truly** offline launch opens a chapter, downloaded bytes verified inside the shipped package, `DataSource.DISK` end to end" were never measured (the temp trees here belong to the test process, not the packaged app), and the reader black-page item still has no retest.
-- **Gallery browsing history**: wired in batch 86 — opening a post records one row from the detail overlay (site, id, preview URL, timestamp; masked posts are not recorded), and the History row on home reads that file. What is still missing is getting **back to the post itself** from that row: that would mean storing the whole post, and file URLs plus dimensions start owing an expiry debt the moment they land in the archive.
-- **Resume at the last page**: this slot is now wired (batch 94) — the primary pill at the top of the detail screen reads 「继续阅读」 (Continue reading) once there is history, with a second line naming which chapter and which page it resumes at, and pressing it lands on **the stored chapter plus the stored page** (if the source dropped that chapter the index is clamped into the current list, and the page number follows what is stored rather than being zeroed). The chapter row you stopped at carries a 「上次读到这里」 (last read up to here) mark, and a progress line sits along the bottom edge of the pill. It reads the same `comic_history` table both ends share, and that second line adds one to the stored index (the table keeps an index, people count from 1; the sample actually measured is stored 7 ⇒ on screen 「第 8 页」). What is still missing is the **drifting row index**: the table stores "which row of the chapter list", not the chapter id, so when a source inserts a chapter in the middle that row points at a different chapter (the Android side has the same limit, and since both ends share the table, adding a chapter-id column needs a decision first). Also: pressing a row in the chapter list still starts that chapter at its **first page** — only the pill resumes.
-- **Keys on the reading screen**: `←` / `→` / `PageUp` / `PageDown` are wired into this screen now (batch 87, second half) — all three modes take this pair of keys, each one scrolls its own wall, and the keys share the very same step the two on-screen buttons use. What is still missing is the **volume keys**: on desktop the only possible route left for them is the raw AWT code (VK 175 / 176), this machine has no OS-level input, and no reading exists yet for whether a real press reaches this layer — so what this batch ships is the instrument rather than that branch: every key press the screen receives prints one line, `D_按键 键=… 原始=… 落点=…`, and only a number in that `原始=` slot counts as a measurement. There is also no "volume keys turn pages" switch on the settings screen yet (the other side's copy defaults to off, and it serves a phone's keys).
-- **Animated images stop at the first frame on the wall and the overlay**: the full-screen viewer does animate — it bypasses Coil's decoder and steps frames with the desktop's own Skia `Codec`. The wall and overlay go through `AsyncImage`, whose JVM interface has no frame tier, so those two stay still.
-- **Web login and importing source scripts**: the Android page imports files through `android.content.Intent` / `Uri`; its web-login flow reads the cookie jar of the **embedded WebView** itself, and desktop has no such host — while the sites never redirect to a local port (there is no local HTTP server anywhere in the reference client), so the "open the system browser and wait for a callback" shortcut has **nothing to wait for**. What this side does offer is the **paste-it-by-hand** form: on the "source management" screen every source whose script declares its own field list gets a slot for those credentials (the list is read from the script — the desktop never restates it), the logged-in mark is only written once the source accepts them, and that cookie jar lands in `cookies.json` under the data root, so **it survives a restart**. The "source management" screen covers the 34 packaged sources (list, disable/enable, switch the active source) plus pasting credentials by hand; it is **not** a local script importer.
-- **Paint as watercolor**: that repaint layer needs Android's bitmap pipeline (the Canvas and the blur brush from `android.graphics`), which the desktop does not have, so this switch is permanently off there, and the settings screen names that reason row by row.
-- **Backup / sync and reading statistics**: the shared layer is on the desktop compile face (`data/db` as a whole directory), but there is no entry point.
-- **Volume-key paging and "keep the screen on for large images"**: those are phone keys and power APIs; on desktop paging accepts ← and →, and those two rows name their own absence in Settings and say what to do instead.
-- **Landscape two-column reader**: not doing it, same call as on Android.
-- **Distribution shape**: no released installer in the repository; the locally built executable directories stay under `_qa/`, the MSI target is configured but never enabled, and the package name is still the probe-era one.
-
-**Capabilities with conditions**
-
-- **Gelbooru requires your own API credentials** — anonymously it returns no images at all; yande.re and Safebooru work anonymously.
-- **Reverse image search** needs your own free SauceNAO API key; anonymous requests do not get past Cloudflare.
-- **Cloudflare preferred IPs** are off by default and ship with no addresses — you fill the table yourself.
-- **Animated images** animate only in the viewer, and load on Wi-Fi by default.
-- **Auto cruise** is unavailable in the scroll-through and two-page layouts; **two-finger zoom** only applies in the two paged modes.
-- **WebDAV** is manual upload / restore, with no sync scheduler; "keep 10" is client-side cleanup after upload.
-- **The archive contains no image files**: illustration favorites carry only metadata and an address, and are reloaded from that address after restore — offline you get broken images, and some sources hand out signed URLs that expire after days. Including images would inflate the archive linearly with the number of saved pages.
-- **Also not in the archive**: the artist avatar address table, the gallery feed cache and the tag dictionary (all three are regenerable), comic source scripts (the `.js` files under `comic_source`), the download queue, the global cookie jar (`venera_cookies`, shared by the WebView and OkHttp) and app preferences.
-- **Comic source logins and per-source settings stay out of the archive by default** — they require an explicit opt-in at export time, and once included they are **plain-text credentials** that should not be forwarded to anyone. Sources not installed on the target device cannot be restored; the result text reports how many were skipped.
-- **App Links do not set `autoVerify`**, and there are no intent filters for `.venera` / `.cbz` file types — backups and archives always go through the system file picker.
-
-## Download and installation
-
-Built packages are published on the **[Releases](https://github.com/w13630039663-bit/venera-miuix/releases)** page; Settings → app → check for updates points at the same channel (off by default). Artifacts are split per ABI:
-
-- `arm64-v8a` — the right choice for almost every modern phone;
-- `armeabi-v7a` — older 32-bit devices;
-- `x86_64` — emulators;
-- universal — largest, use it when in doubt.
-
-> **Requirements**: Android 13 (API 33) or newer; target API 37, no `maxSdk`.
-> **Permissions**: `INTERNET`, `ACCESS_NETWORK_STATE`, `VIBRATE`, `POST_NOTIFICATIONS`, and `MANAGE_EXTERNAL_STORAGE` (needed only when the download root is set to a shared external directory; the app-private directory avoids it). Background work is WorkManager periodic jobs only — there is no resident service.
-
-## Building from source
+## Building from Source
 
 ### Prerequisites
+- JDK 17 or JDK 21
+- Android SDK Platform 35 / Build-Tools 35.0.0
 
-1. **JDK 17**;
-2. **Android SDK** (`sdk.dir` in `local.properties`; Android Studio generates it when you open the project).
-
-No Flutter, no Dart, no Rust.
-
-### Commands
-
+### Common Build Commands
 ```bash
-# debug APK → app/build/outputs/apk/debug/app-debug.apk
+# Build debug APK
 ./gradlew :app:assembleDebug
 
-# release: R8 obfuscation + resource shrinking, split per ABI (armeabi-v7a / arm64-v8a / x86_64 / universal)
+# Build release APKs for all ABIs
 ./gradlew :app:assembleRelease
 
-# pure JVM correctness tests (120 files / 902 cases, no device needed)
-# These two numbers drift. Recompute: find app/src/test -name '*.kt' | wc -l  and  grep -rho '@Test' app/src/test --include=*.kt | wc -l
+# Run unit tests
 ./gradlew :app:testDebugUnitTest
-
-# a single test class
-./gradlew :app:testDebugUnitTest --tests "*ChapterCompletenessTest*"
 ```
 
-> **Signing**: release signing material is read from `key.properties` at the repository root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). That file, together with `*.jks` and `*.keystore`, is gitignored — **neither keys nor passphrases ever enter version control**, and the keystore itself lives outside the repository. Without that file the release build falls back to the debug keystore and says so in the build log; such an artifact is sideloadable but **must not be distributed** (its signature differs from the release line, so an in-place upgrade will fail).
-> **R8 mode**: full mode is explicitly disabled — it removes synthetic methods referenced only reflectively, too risky for material3 alpha and the WebView JS bridge.
-> **material3 is pinned**: `1.5.0-alpha22` must match what Miuix resolves at runtime; run `:app:dependencies --configuration debugRuntimeClasspath` before changing it, or you will hit a `NoSuchMethodError` crash.
+---
 
-## Architecture and tech stack
+## Architecture & Tech Stack
 
-### Layers
+- **Language**: Kotlin 2.1+ / Kotlin Coroutines & Flow
+- **UI Framework**: Jetpack Compose 1.7+ / Miuix KMP / Material 3
+- **Image Loading & Network**: Coil 3 (Kotlin Multiplatform) / OkHttp 4
+- **Persistence & Serialization**: SQLite (Room / SQLDelight) / kotlinx.serialization
 
-```text
-UI layer (Compose)
-  feature/ Home · Search · Favorites · Network favorites · History · Detail · Explore · Settings (17 sub-pages) · Sources · Downloads · Logs
-  reader/  Reader (5 layouts + cruise + zoom + chapter drawer)
-  gallery/ Gallery (data / domain / ui, own ImageLoader + own Activities)
-  components/ + ui/tokens/  Shared components and design tokens (Miuix / MD3 dual backend)
-        │
-Business and correctness layer (pure Kotlin, JVM-testable)
-  source/  ComicSource abstraction + 3 native sources + JS source implementation
-  engine/  WebView JS engine and the bridge (shim + init scripts)
-  security/guard/  Content guard decision chain and blocking rules
-  stats/   Reading statistics and tag corpus
-  sync/    Archive encoding, WebDAV, foreign archive import (incl. the Dart hash reimplementation)
-  download/ Scheduling, chapter completeness, CBZ, local bookshelf
-        │
-Data and network layer
-  data/db/        Hand-written SQLite (no Room): core db (history / stats / image favorites / sources / guard rules)
-                                    favorites db (folder list + one table per folder)
-                  The gallery side does not use SQLite — follow list, favorites, avatars and the feed cache are JSON files
-                  (all write a temp file then rename; an unparseable file is kept as .corrupt-<timestamp> before starting empty)
-  data/prefs/     Single source of preferences
-  data/network/   OkHttp stack: per-host UA and cookies, circuit breaker, rate limiting, Cloudflare solving and preferred-IP DNS
-```
+---
 
-**Isolation discipline**: `gallery/` shares only the pure technical layer with the comic side (the OkHttp client and the image-streaming marker) — never the image-loading instance or the cache budget, and the comic side's configuration stays exactly as shipped. When a gallery image hits a wall, the error is rethrown and reported in one sentence instead of opening the comic side's interactive challenge.
+## License & Acknowledgements
 
-### Tech stack and versions
-
-| Area | Choice | Version | Why |
-| --- | --- | --- | --- |
-| Language | Kotlin | 2.4.10 | The Compose compiler tracks the Kotlin version |
-| Build | Android Gradle Plugin | 9.3.2 | Compile-time API 37 |
-| UI | Jetpack Compose | 1.7.8 | Declarative + custom transitions |
-| Design system | Miuix KMP | 0.9.4-rc01 | HyperOS look; Material 3 backend retained |
-| Material | androidx.compose.material3 | **1.5.0-alpha22** | Pinned by Miuix at runtime, not chosen |
-| Liquid glass | Kyant0/AndroidLiquidGlass | 2.0.1 / 1.2.1 | Bottom-bar blur + refraction + vibrancy |
-| Motion spec | material-motion-compose-core | 2.0.1 | Shared-axis parameters taken from the spec, not inflated locally |
-| Colour extraction | MaterialKolor | 5.0.1 | System dynamic colour only accepts wallpapers, not a seed colour |
-| Navigation | navigation-compose | 2.10.1 | Type-safe routes + predictive-back arguments |
-| Images | Coil 3 (compose + okhttp + gif) | 3.6.2 | Per-host anti-hotlink headers; GIFs need an explicit decoder |
-| Zoom | Telephoto | 0.19.0 | Large-image subsampling delegated to the library |
-| Video | media3 (exoplayer + ui only) | 1.11.1 | No session/cast/downloader, keeps the APK smaller |
-| Networking | OkHttp (+ logging) | 4.12.0 | Interceptor and custom DNS hook points |
-| Parsing | Jsoup / Gson / kotlinx-serialization | 1.18.1 / 2.11.0 / 1.11.0 | HTML parsing and JS-bridge JSON |
-| Background | WorkManager | 2.9.1 | Periodic jobs, no resident service |
-| Database | Hand-written SQLite | — | No Room: we keep control of schema and migrations |
-| Testing | JUnit 4 (pure JVM) | 4.13.2 | Correctness layer stays device-independent |
-
-## Project layout
-
-```text
-venera-compose/
-├── app/                                # The only Gradle module
-│   └── src/main/java/com/venera/compose/
-│       ├── MainActivity.kt             # Entry, main-tab host, window policies (anti-peek / back)
-│       ├── VeneraApp.kt                # Parallel startup initialisation and periodic job scheduling
-│       ├── feature/                    # Screens (incl. settings/ with 17 sub-pages)
-│       ├── reader/                     # Reader
-│       ├── gallery/                    # Gallery module (data / domain / ui)
-│       ├── source/                     # ComicSource abstraction + native sources + JS source
-│       ├── engine/                     # WebView JS engine and shim
-│       ├── data/                       # db (hand-written SQLite) / prefs / network
-│       ├── download/                   # Downloads, CBZ, local bookshelf
-│       ├── sync/                       # Archives, WebDAV, foreign archive import
-│       ├── security/guard/             # Content guard and blocking rules
-│       ├── stats/                      # Reading statistics
-│       └── components/ ui/             # Shared components and design tokens
-│   ├── src/main/assets/
-│   │   ├── sources/                    # 34 bundled source scripts + index.json
-│   │   ├── two JS protocol compatibility scripts
-│   │   ├── comic-side tag dictionaries (Simplified / Traditional) + 3,980 Simplified/Traditional pairs
-│   │   ├── rating presets for 33 sources · gallery tag dictionary SQLite
-│   │   └── licenses/                   # Licences of third-party dictionaries and components
-│   └── src/test/java/                  # 119 pure JVM correctness test files (116 carry cases, 3 are helpers; one of them is the source-scan base)
-├── gradle/libs.versions.toml           # Single source of dependency versions (with reasons for pins)
-├── screenshots/                        # Images used by this README
-├── docs/                               # Workflow manual, freeze statement and per-topic designs
-│   ├── rounds/                         # Per-round plans, audits and measurement archives
-│   │   └── FREEZE-STATEMENT.md         # Page freeze statement and per-batch exemptions
-└── memory/                             # Project knowledge base: decision records and measured limits
-```
-
-## Writing a comic source
-
-The plugin protocol is identical to upstream Venera's; the specification lives in [`doc/comic_source.md`](https://github.com/w13630039663-bit/venera-miuix/blob/master/doc/comic_source.md), and plugin templates plus the JS API come from [venera-configs](https://github.com/venera-app/venera-configs) — the 34 bundled scripts come from that repository. Your own source can be imported locally for debugging on the sources page.
-
-Implementation differences worth knowing:
-
-- Source scripts run inside a **system WebView**, not a standalone JS engine — you only get the API surface the shim exposes;
-- Page addresses are resolved per page, and there is a separate preview-address path (wired up, but not used to replace list thumbnails, since sources generally do not publish a low-resolution variant);
-- Sources declaring a `search.optionList` get their sort / language / category options rendered as the search page's filter sheet;
-- Rating decisions look at exactly three things: user blocking rules, the built-in presets for 33 sources, explicit keyword regex — fields declared by the plugin itself do not participate, so a source absent from the table only gets the keyword fallback (**the manual per-source override is not wired yet**, see the gaps section).
-
-## Contributing
-
-### Branch model
-
-| Branch | Role |
-| --- | --- |
-| `compose-migration` | **Current development line**; releases are cut from it |
-| `master` | Historical Flutter line of this branch (fork point `2026-09-16`), kept for reference and as the home of `doc/` |
-| `upstream/*` | Read-only remote-tracking references to the official venera-app/venera |
-
-### Engineering rules
-
-Please align with these before opening a PR:
-
-1. **No implementation notes in UI copy** — asterisks, backticks, internal jargon and "not implemented" grey rows never reach the interface; features deliberately not built are withdrawn entirely, so they never occupy a switch slot.
-2. **No fake switches** — every preference must have a real consumer in the code; implementations without an entry point go into "known gaps", not into the feature list.
-3. **Degraded paths fail loudly, never silently wrong** — if an adaptive branch fails it throws and explains; a partial result is never handed back as if complete.
-4. **Take dimensions from existing sources** — upstream values or tokens already in the app; no invented numbers. Visual issues get measured in pixels before code changes.
-5. **Push correctness into pure functions** — new correctness logic is extracted into Android-framework-free functions with JVM tests.
-6. **Page freezes** — accepted pages (see `docs/rounds/FREEZE-STATEMENT.md`) only accept real bug fixes and explicit regressions; drive-by visual refactoring is forbidden, and changes require review plus a recorded exemption.
-
-### How to contribute
-
-Fork this repository → branch off `compose-migration` → open a PR, and state how the change was verified (device / emulator / unit tests). Keep the `LICENSE` file and this document's copyright and licence notice.
-
-This repository is an **unofficial** community branch with no affiliation to the original maintainers; please do not file issues against [venera-app/venera](https://github.com/venera-app/venera) about changes made here.
-
-## Acknowledgements
-
-- **[Venera](https://github.com/venera-app/venera)** — the upstream and original work; original author [@wgh136](https://github.com/wgh136) and all contributors. **All original copyright belongs to them.**
-- **[venera-configs](https://github.com/venera-app/venera-configs)** — the comic source plugin repository and plugin API, origin of the 34 bundled scripts.
-- **[Miuix](https://github.com/compose-miuix-ui/miuix)** — the design language and KMP component library (Apache-2.0).
-- **[Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)** — liquid glass material and animation.
-- **[material-motion-compose](https://github.com/fornewid/material-motion-compose)** — the transition specification implementation.
-- **[Telephoto](https://github.com/saket/telephoto)** / **[Coil](https://coil-kt.github.io/coil/)** — zoom gestures and image loading.
-- **[EhTagTranslation](https://github.com/EhTagTranslation/Database)** — source of the comic-side tag translations.
-- **ffdkj's Danbooru Simplified/Traditional/English tag table** — source of the gallery tag dictionary.
-- Traditional Chinese tag translations provided by [@NeKoOuO](https://github.com/NeKoOuO).
-
-## License
-
-[GNU General Public License v3.0](LICENSE) (GPL-3.0). This repository keeps the upstream `LICENSE` file and all copyright notices unchanged.
-
-```text
-venera-miuix
-Copyright (C) 2026 venera-miuix contributors
-
-Based on Venera, Copyright (C) venera-app/venera contributors.
-Licensed under the GNU General Public License v3.0.
-```
-
-GPL-3.0 is a strong copyleft licence: derivative works published from this project must disclose their complete source under the same terms, and may not be distributed closed-source, developed closed-source, or sold closed-source; keep the `LICENSE` file and this notice when redistributing.
-
-Original copyright of each comic source's content belongs to its respective owner. This project hosts and distributes no comic content.
+- **License**: Released under the **GNU General Public License v3.0 (GPL-3.0)**.
+- **Upstream Acknowledgements**: Thanks to original Venera creator [@wgh136](https://github.com/wgh136) and its innovative plugin architecture.
+- **Component Acknowledgements**: Thanks to [Miuix-KMP](https://github.com/MiuiX-KMP/Miuix-KMP) for bringing the HyperOS visual experience to Compose.
