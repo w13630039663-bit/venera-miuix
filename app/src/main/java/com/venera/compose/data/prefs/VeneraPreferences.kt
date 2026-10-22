@@ -14,6 +14,7 @@ import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
+import com.venera.compose.gallery.domain.GallerySaveFormatHelper
 import com.venera.compose.gallery.domain.GallerySaveNaming
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.gallery.domain.PixivPageSeam
@@ -216,6 +217,10 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _gallerySaveNaming = MutableStateFlow(readEnum(KEY_GALLERY_SAVE_NAMING, GallerySaveNaming.SITE_ID))
     val gallerySaveNaming: StateFlow<GallerySaveNaming> = _gallerySaveNaming.asStateFlow()
 
+    /** 画廊下载自定义保存格式（2026-10-22 支持占位符）。 */
+    private val _gallerySaveFormat = MutableStateFlow(prefs.getString(KEY_GALLERY_SAVE_FORMAT, GallerySaveFormatHelper.DEFAULT_FORMAT) ?: GallerySaveFormatHelper.DEFAULT_FORMAT)
+    val gallerySaveFormat: StateFlow<String> = _gallerySaveFormat.asStateFlow()
+
     fun setGalleryColumnMode(mode: GalleryColumnMode) {
         prefs.put(KEY_GALLERY_COLUMNS, mode.name)
         _galleryColumnMode.value = mode
@@ -240,6 +245,11 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     fun setGallerySaveNaming(naming: GallerySaveNaming) {
         prefs.put(KEY_GALLERY_SAVE_NAMING, naming.name)
         _gallerySaveNaming.value = naming
+    }
+
+    fun setGallerySaveFormat(format: String) {
+        prefs.put(KEY_GALLERY_SAVE_FORMAT, format)
+        _gallerySaveFormat.value = format
     }
 
     // ---- 画廊大图页的行为档位（批次 C1，2026-09-29）----
@@ -929,6 +939,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_GALLERY_CACHE_MB = "pref_gallery_cache_max_mb"
         private const val KEY_GALLERY_DOWNLOAD_PATH = "pref_gallery_download_path"
         private const val KEY_GALLERY_SAVE_NAMING = "pref_gallery_save_naming"
+        private const val KEY_GALLERY_SAVE_FORMAT = "pref_gallery_save_format"
         private const val KEY_GALLERY_KEEP_SCREEN_ON = "pref_gallery_keep_screen_on"
         private const val KEY_GALLERY_VOLUME_KEY = "pref_gallery_volume_key"
         private const val KEY_GALLERY_AUTOPLAY_SEC = "pref_gallery_autoplay_sec"

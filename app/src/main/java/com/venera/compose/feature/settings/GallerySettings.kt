@@ -1,5 +1,27 @@
 package com.venera.compose.feature.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import com.venera.compose.gallery.domain.GallerySaveFormatHelper
+
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +92,8 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val previewQuality by prefs.galleryPreviewQuality.collectAsState()
     val cacheMaxMb by prefs.galleryCacheMaxMb.collectAsState()
     val saveNaming by prefs.gallerySaveNaming.collectAsState()
+    val saveFormat by prefs.gallerySaveFormat.collectAsState()
+    var formatDialogVisible by remember { mutableStateOf(false) }
     val customDownloadPath by prefs.galleryDownloadPath.collectAsState()
     // 大图页那四条（批次 C1）：常亮 / 音量键 / 连播间隔 / 智能预加载。
     val keepScreenOn by prefs.galleryKeepScreenOn.collectAsState()
@@ -238,16 +262,10 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     Toast.makeText(context, "已改回用漫画存储目录下的 图库", Toast.LENGTH_SHORT).show()
                 }
             }
-            SettingsSelect(
-                "文件名规则", saveNaming.name,
-                listOf(
-                    GallerySaveNaming.SITE_ID.name to "站名-编号（yandere-1234567.png）",
-                    GallerySaveNaming.ORIGINAL.name to "原图文件名（站方给的名字，通常是一串乱码）",
-                    GallerySaveNaming.ARTIST_ID.name to "画师_编号（wlop_1234567.png）",
-                    GallerySaveNaming.TIMESTAMP.name to "时间戳（20260929-113045.png）",
-                ),
-                { prefs.setGallerySaveNaming(GallerySaveNaming.valueOf(it)) },
-                summary = "取不到画师时使用站名和编号，重名会自动加编号。",
+            SettingsAction(
+                title = "保存格式",
+                summary = saveFormat,
+                onClick = { formatDialogVisible = true },
             )
         }
 
@@ -383,4 +401,133 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             )
         }
     }
+
+    if (formatDialogVisible) {
+        GallerySaveFormatDialog(
+            currentFormat = saveFormat,
+            onDismiss = { formatDialogVisible = false },
+            onConfirm = { newFormat ->
+                prefs.setGallerySaveFormat(newFormat)
+                formatDialogVisible = false
+            },
+        )
+    }
+}
+
+/**
+ * 图库站保存格式自定义对话框。
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun GallerySaveFormatDialog(
+    currentFormat: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val tokens = VeneraTokens
+    var text by remember { mutableStateOf(currentFormat) }
+
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(tokens.shape.extraLarge))
+                .background(tokens.color.surface)
+                .padding(tokens.spacing.space6),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "保存格式",
+                    fontSize = tokens.type.screenTitle,
+                    fontWeight = tokens.type.weightSemibold,
+                    color = tokens.color.textPrimary,
+                )
+
+                Spacer(Modifier.height(tokens.spacing.space5))
+
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("保存格式") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Spacer(Modifier.height(tokens.spacing.space4))
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+                ) {
+                    GallerySaveFormatHelper.AVAILABLE_TOKENS.forEach { (label, token) ->
+                        FormatTokenChip(
+                            label = label,
+                            onClick = { text += token },
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(tokens.spacing.space6))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(tokens.spacing.space11),
+                    ) {
+                        Text(
+                            text = "取消",
+                            fontSize = tokens.type.itemTitle,
+                            color = tokens.color.textSecondary,
+                        )
+                    }
+
+                    Button(
+                        onClick = { onConfirm(text.ifBlank { GallerySaveFormatHelper.DEFAULT_FORMAT }) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(tokens.spacing.space11),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = tokens.color.primary,
+                            contentColor = tokens.color.onPrimary,
+                        ),
+                        shape = RoundedCornerShape(tokens.shape.large),
+                    ) {
+                        Text(
+                            text = "确定",
+                            fontSize = tokens.type.itemTitle,
+                            fontWeight = tokens.type.weightSemibold,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FormatTokenChip(label: String, onClick: () -> Unit) {
+    val tokens = VeneraTokens
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(tokens.spacing.space11))
+            .background(tokens.color.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space2),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = tokens.type.caption,
+            color = tokens.color.textPrimary,
+        )
+    }
+
 }

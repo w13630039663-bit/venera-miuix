@@ -11,6 +11,7 @@ import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.GallerySettingsModel
+import com.venera.compose.gallery.domain.GallerySaveFormatHelper
 import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -82,6 +83,19 @@ object GallerySaver {
             }
         }
 
+    internal suspend fun resolveBooruArtist(context: Context, post: GalleryPost): String {
+        if (post.site == GallerySite.SAFEBOORU) {
+            return post.author.trim()
+        }
+        val dict = runCatching { GalleryTagDictionary.getInstance(context) }.getOrNull()
+        val artists = dict?.lookupArtists(post.tagList)?.filter { it.isNotBlank() }.orEmpty()
+        return if (artists.isNotEmpty()) {
+            artists.joinToString("_")
+        } else {
+            ""
+        }
+    }
+
     /** @param path 真实落点的绝对路径（给 UI 如实报位置）；@param bytesSaved 实际落盘字节数。 */
     data class Saved(val path: String, val bytesSaved: Long)
 
@@ -126,9 +140,17 @@ object GallerySaver {
                     ext = ext,
                 )
             } else {
-                val naming = prefs.gallerySaveNaming.value
+                val formatTpl = prefs.gallerySaveFormat.value
                 val stamp = LocalDateTime.now().format(TIMESTAMP)
-                GallerySettingsModel.fileName(post, naming, stamp)
+                val ext = post.fileExt.ifBlank { "jpg" }
+                val artist = resolveBooruArtist(context, post)
+                GallerySaveFormatHelper.format(
+                    template = formatTpl,
+                    post = post,
+                    artistName = artist,
+                    timestamp = stamp,
+                    ext = ext,
+                )
             }
 
             val name = GallerySaveTarget.uniqueName(dir, wanted)

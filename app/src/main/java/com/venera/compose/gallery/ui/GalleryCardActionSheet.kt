@@ -25,6 +25,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -34,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
@@ -127,14 +132,25 @@ internal fun GalleryCardActionSheet(
                     onDismiss()
                 }
             }
-            // 作者名来自站方那一个字段（yande.re 的 `author` / Gelbooru 的 `owner` /
-            // Safebooru 的 `tag_string_artist`），三站语义不完全同宽（见 GalleryPost.author 头注）。
-            // 空就**不摆这一行**：摆一枚点进去是空介绍页的入口，就是假开关。
-            val artist = post.author.trim()
-            if (artist.isNotEmpty()) {
-                ActionRow(Icons.Outlined.Person, "查看画师「$artist」") {
+            // 作者名优先提取真实画师（Safebooru/Pixiv 自身字段即是，yande.re/Gelbooru 从标签中识别，
+            // 避免误将上传者当作画师展示）。
+            var artistName by remember(post.uid) {
+                mutableStateOf(
+                    if (post.site == GallerySite.SAFEBOORU || post.site == GallerySite.PIXIV) post.author.trim() else ""
+                )
+            }
+            LaunchedEffect(post.uid) {
+                if (post.site == GallerySite.SAFEBOORU || post.site == GallerySite.PIXIV) return@LaunchedEffect
+                val dict = runCatching { GalleryTagDictionary.getInstance(context) }.getOrNull()
+                val artists = dict?.lookupArtists(post.tagList)?.filter { it.isNotBlank() }.orEmpty()
+                if (artists.isNotEmpty()) {
+                    artistName = artists.first()
+                }
+            }
+            if (artistName.isNotEmpty()) {
+                ActionRow(Icons.Outlined.Person, "查看画师「$artistName」") {
                     onDismiss()
-                    onOpenArtist(artist)
+                    onOpenArtist(artistName)
                 }
             }
         }
