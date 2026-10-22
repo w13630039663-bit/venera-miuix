@@ -267,6 +267,11 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 summary = saveFormat,
                 onClick = { formatDialogVisible = true },
             )
+            SettingsAction(
+                "下载任务管理",
+                "查看全部、运行中、已完成与失败的图片任务",
+                onClick = { context.openSettingsSubScreen(SettingsSubScreen.GALLERY_DOWNLOADS) },
+            )
         }
 
         SettingsGroup("大图页") {

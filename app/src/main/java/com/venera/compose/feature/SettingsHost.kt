@@ -25,6 +25,7 @@ import com.venera.compose.feature.settings.AppSettings
 import com.venera.compose.feature.settings.BlockingRulesSettings
 import com.venera.compose.feature.settings.BlockingSettings
 import com.venera.compose.feature.settings.ExploreSettings
+import com.venera.compose.feature.settings.GalleryDownloadScreen
 import com.venera.compose.feature.settings.GallerySettings
 import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
@@ -117,6 +118,7 @@ enum class SettingsSubScreen {
     LOGS,
     PIXIV_DOWNLOAD,
     PIXIV_NETWORK,
+    GALLERY_DOWNLOADS,
 }
 
 /** 从上一级打开一个设置子页（每次都是新 Activity，返回落回来源页）。 */
@@ -261,6 +263,7 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onOpenNetworkSettings = { open(SettingsSubScreen.PIXIV_NETWORK) },
             )
             SettingsSubScreen.PIXIV_NETWORK -> PixivNetworkSettings(prefs = prefs, onBack = ::back)
+            SettingsSubScreen.GALLERY_DOWNLOADS -> GalleryDownloadScreen(onBack = ::back)
         }
     }
 }

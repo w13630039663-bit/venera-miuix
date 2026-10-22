@@ -105,6 +105,7 @@ import com.venera.compose.gallery.data.allowAnimatedImage
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
+import com.venera.compose.gallery.data.GalleryDownloadManager
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryAutoPlay
@@ -1036,23 +1037,22 @@ fun GalleryPostScreen(
         if (saving) return
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         saving = true
-        scope.launch {
-            GallerySaver.save(context, target)
-                .onSuccess {
-                    // 两件事都要说：**存到哪了**（落点跟着"本地漫画存储路径"走，用户改过，
-                    // 不报路径就只能靠猜）与**存了多大**（一条视频原片实测 16~26 MB，
-                    // 不报数用户不知道刚才存了什么）。
-                    Toast.makeText(
-                        context,
-                        "已保存 ${it.path} · ${"%.1f".format(it.bytesSaved / 1024.0 / 1024.0)} MB",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-                .onFailure { e ->
-                    android.util.Log.w("VeneraDebug", "save gallery post failed", e)
-                    Toast.makeText(context, "保存没成功 🥲 看一眼存储空间再试一次", Toast.LENGTH_LONG).show()
-                }
+        val artist = artistNames.firstOrNull()
+        GalleryDownloadManager.getInstance(context).enqueue(
+            post = target,
+            artistName = artist,
+        ) { outcome ->
             saving = false
+            outcome.onSuccess {
+                Toast.makeText(
+                    context,
+                    "已保存 " + it.path + " · " + "%.1f".format(it.bytesSaved / 1024.0 / 1024.0) + " MB",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }.onFailure { e ->
+                android.util.Log.w("VeneraDebug", "save gallery post failed", e)
+                Toast.makeText(context, "保存没成功 🥲 看一眼存储空间再试一次", Toast.LENGTH_LONG).show()
+            }
         }
     }
 

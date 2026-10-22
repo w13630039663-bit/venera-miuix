@@ -12,6 +12,7 @@ import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.GallerySettingsModel
 import com.venera.compose.gallery.domain.GallerySaveFormatHelper
+import com.venera.compose.gallery.domain.GalleryTagCategory
 import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -87,10 +88,22 @@ object GallerySaver {
         if (post.site == GallerySite.SAFEBOORU) {
             return post.author.trim()
         }
+        // 1. 先查缓存或从帖子页 HTML 获取的 tag-type 分类（最权威）
+        val categories = runCatching {
+            GalleryPorts.of(context).lexicon.fetchTagCategories(post.pageUrl)
+        }.getOrNull()
+        if (!categories.isNullOrEmpty()) {
+            val artistTags = categories.filter { it.value == GalleryTagCategory.ARTIST }.keys
+            if (artistTags.isNotEmpty()) {
+                return artistTags.first()
+            }
+        }
+
+        // 2. 查离线标签词典中的画师分类
         val dict = runCatching { GalleryTagDictionary.getInstance(context) }.getOrNull()
         val artists = dict?.lookupArtists(post.tagList)?.filter { it.isNotBlank() }.orEmpty()
         return if (artists.isNotEmpty()) {
-            artists.joinToString("_")
+            artists.first()
         } else {
             ""
         }
@@ -110,7 +123,13 @@ object GallerySaver {
         return originalUrl
     }
 
-    suspend fun save(context: Context, post: GalleryPost): Result<Saved> = withContext(Dispatchers.IO) {
+    suspend fun save(
+        context: Context,
+        post: GalleryPost,
+        title: String? = null,
+        userId: Long? = null,
+        artistName: String? = null,
+    ): Result<Saved> = withContext(Dispatchers.IO) {
         runCatching {
             val url = resolveDownloadUrl(context, post)
             val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(url)
@@ -130,20 +149,22 @@ object GallerySaver {
             val wanted = if (post.site == GallerySite.PIXIV) {
                 val formatTpl = prefs.pixivSaveFormat.value
                 val ext = post.fileExt.ifBlank { "jpg" }
+                val effectiveTitle = title?.takeIf { it.isNotBlank() } ?: ""
+                val effectiveArtist = artistName?.takeIf { it.isNotBlank() } ?: post.author
                 PixivSaveFormatHelper.format(
                     template = formatTpl,
                     illustId = post.id,
                     part = post.pageOrdinal ?: 0,
-                    title = post.author,
-                    userId = null,
-                    artistName = post.author,
+                    title = effectiveTitle,
+                    userId = userId,
+                    artistName = effectiveArtist,
                     ext = ext,
                 )
             } else {
                 val formatTpl = prefs.gallerySaveFormat.value
                 val stamp = LocalDateTime.now().format(TIMESTAMP)
                 val ext = post.fileExt.ifBlank { "jpg" }
-                val artist = resolveBooruArtist(context, post)
+                val artist = artistName?.takeIf { it.isNotBlank() } ?: resolveBooruArtist(context, post)
                 GallerySaveFormatHelper.format(
                     template = formatTpl,
                     post = post,

@@ -126,6 +126,7 @@ import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
+import com.venera.compose.gallery.data.GalleryDownloadManager
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivComment
@@ -304,7 +305,33 @@ fun PixivWorkScreen(
     }
 
     /** 屏底摘要条那一条动作的下载那一枚：作品页自己持有进度，不借用播放器那一层的。 */
-    val saveWork: (PixivWorkDetail) -> Unit = { one -> scope.launch { GallerySaver.save(context, one.post) } }
+    var isSaving by remember(currentId) { mutableStateOf(false) }
+    /** 屏底摘要条那一条动作的下载那一枚：进入统一下载管理器并带友好吐司反馈与防重复点击。 */
+    val saveWork: (PixivWorkDetail) -> Unit = { one ->
+        if (isSaving) {
+            Toast.makeText(context, "正在下载中，请稍候...", Toast.LENGTH_SHORT).show()
+        } else {
+            isSaving = true
+            Toast.makeText(context, "开始下载《" + one.title + "》...", Toast.LENGTH_SHORT).show()
+            GalleryDownloadManager.getInstance(context).enqueue(
+                post = one.post,
+                title = one.title,
+                userId = one.authorId,
+                artistName = one.post.author,
+            ) { result ->
+                isSaving = false
+                result.fold(
+                    onSuccess = { saved ->
+                        Toast.makeText(context, "已保存《" + one.title + "》到：" + saved.path, Toast.LENGTH_LONG).show()
+                    },
+                    onFailure = { err ->
+                        val msg = err.message ?: "网络异常"
+                        Toast.makeText(context, "下载失败：" + msg, Toast.LENGTH_LONG).show()
+                    },
+                )
+            }
+        }
+    }
 
     LaunchedEffect(currentId, retryTick) {
         if (pixiv == null || details.containsKey(currentId)) return@LaunchedEffect

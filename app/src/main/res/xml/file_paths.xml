@@ -21,4 +21,5 @@
     <cache-path name="exports" path="exports/" />
     <cache-path name="backups" path="backups/" />
     <cache-path name="app_update" path="app_update/" />
+    <external-path name="external_files" path="." />
 </paths>

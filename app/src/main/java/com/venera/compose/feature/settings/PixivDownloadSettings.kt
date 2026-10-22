@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.feature.SettingsSubScreen
+import com.venera.compose.feature.openSettingsSubScreen
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -112,6 +114,11 @@ internal fun PixivDownloadSettings(
                 title = "保存格式",
                 summary = saveFormat,
                 onClick = { formatDialogVisible = true },
+            )
+            SettingsAction(
+                title = "下载任务管理",
+                summary = "查看全部、运行中、已完成与失败的图片任务",
+                onClick = { context.openSettingsSubScreen(SettingsSubScreen.GALLERY_DOWNLOADS) },
             )
         }
 

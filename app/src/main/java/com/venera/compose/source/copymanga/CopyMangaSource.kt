@@ -33,7 +33,7 @@ class CopyMangaSource(private val context: Context) : ComicSource {
 
     override val key: String = "copy_manga"
     override val name: String = "拷贝漫画"
-    override val version: String = "1.4.2"
+    override val version: String = "1.4.3"
     override val iconUrl: String = "https://www.copymanga.tv/favicon.ico"
 
     private val networkClient by lazy { VeneraNetworkClient.getInstance(context) }

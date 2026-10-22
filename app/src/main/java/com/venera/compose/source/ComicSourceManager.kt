@@ -813,13 +813,14 @@ class ComicSourceManager private constructor(private val context: Context) {
         val meta = _installedMeta.value.firstOrNull { it.fileName == fileName }
             ?: return@withContext Result.failure(Exception("源不存在: $fileName"))
 
-        val declared = registeredSources[meta.key]?.url?.trim().orEmpty()
-        val url = if (declared.isNotBlank() && isHttpUrl(declared)) {
-            declared
-        } else {
-            repoIndexCache.value.firstOrNull { it.fileName == fileName }
-                ?.let { resolveSourceUrl(it, repoUrl) }
-                ?: concatRepoFileName(repoUrl, fileName)
+        val entry = repoIndexCache.value.firstOrNull { it.fileName == fileName }
+        val url = when {
+            entry != null -> resolveSourceUrl(entry, repoUrl)
+            else -> {
+                val declared = registeredSources[meta.key]?.url?.trim().orEmpty()
+                if (declared.isNotBlank() && isHttpUrl(declared)) declared
+                else concatRepoFileName(repoUrl, fileName)
+            }
         }
 
         try {
@@ -892,7 +893,7 @@ class ComicSourceManager private constructor(private val context: Context) {
         val updates = mutableMapOf<String, String>()
         for (m in _installedMeta.value) {
             val remote = byFileName[m.fileName] ?: continue
-            val current = registeredSources[m.key]?.version ?: m.version
+            val current = m.version.ifBlank { registeredSources[m.key]?.version.orEmpty() }
             if (compareVersion(remote.version, current) > 0) {
                 updates[m.fileName] = remote.version
             }
