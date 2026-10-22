@@ -25,6 +25,11 @@ class PixivAccountActivity : VeneraSubActivityBase() {
     override val opaqueAmbientBackground: Boolean = true
 
     override val blurBehindEnabled: Boolean = false
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        com.venera.compose.gallery.ui.PixivAccountSessionStore.resetScrollPositions()
+    }
+
 
     /**
      * 进来落在哪一段。

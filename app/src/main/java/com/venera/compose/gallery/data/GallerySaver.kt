@@ -11,6 +11,7 @@ import com.venera.compose.data.network.VeneraNetworkClient
 import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.GallerySettingsModel
+import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -74,7 +75,8 @@ object GallerySaver {
     suspend fun fetchBytes(context: Context, post: GalleryPost): Result<ByteArray> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(post.fileUrl)
+                val url = resolveDownloadUrl(context, post)
+                val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(url)
                 if (bytes.isEmpty()) throw IOException("站方给了 0 字节")
                 bytes
             }
@@ -83,20 +85,52 @@ object GallerySaver {
     /** @param path 真实落点的绝对路径（给 UI 如实报位置）；@param bytesSaved 实际落盘字节数。 */
     data class Saved(val path: String, val bytesSaved: Long)
 
+    private fun resolveDownloadUrl(context: Context, post: GalleryPost): String {
+        val originalUrl = post.fileUrl
+        if (post.site == GallerySite.PIXIV) {
+            val customHost = VeneraPreferences.getInstance(context).pixivImageHost.value
+            if (customHost.isNotBlank() && customHost != "i.pximg.net" && originalUrl.contains("i.pximg.net")) {
+                return originalUrl.replace("i.pximg.net", customHost)
+            }
+        }
+        return originalUrl
+    }
+
     suspend fun save(context: Context, post: GalleryPost): Result<Saved> = withContext(Dispatchers.IO) {
         runCatching {
-            val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(post.fileUrl)
+            val url = resolveDownloadUrl(context, post)
+            val bytes = VeneraNetworkClient.getInstance(context).downloadBytes(url)
             // 0 字节在 OkHttp 这条路上是"成功但空 body"，不能当保存成功。
             if (bytes.isEmpty()) throw IOException("站方给了 0 字节")
 
             val mime = mimeOf(post)
-            val dir = GallerySaveTarget.directory(context)
-            val naming = VeneraPreferences.getInstance(context).gallerySaveNaming.value
-            // 文件名规则由画廊设置那一档定（判据与被钉住的用例见 GallerySettingsModel）。
-            val stamp = LocalDateTime.now().format(TIMESTAMP)
-            val wanted = GallerySettingsModel.fileName(post, naming, stamp)
-            // 重名由我们**先**处理掉（`name (1).jpg`）：MediaStore 自己也会改名，
-            // 但它改完的名字我们只能再查一次才拿得到，"存到哪了"就会变成一句猜的话。
+            val prefs = VeneraPreferences.getInstance(context)
+            val dir = if (post.site == GallerySite.PIXIV) {
+                val customPixivDir = prefs.pixivDownloadPath.value
+                if (customPixivDir.isNotBlank()) File(customPixivDir)
+                else File(ComicStorageRoot.resolve(context), "Pixiv")
+            } else {
+                GallerySaveTarget.directory(context)
+            }
+
+            val wanted = if (post.site == GallerySite.PIXIV) {
+                val formatTpl = prefs.pixivSaveFormat.value
+                val ext = post.fileExt.ifBlank { "jpg" }
+                PixivSaveFormatHelper.format(
+                    template = formatTpl,
+                    illustId = post.id,
+                    part = post.pageOrdinal ?: 0,
+                    title = post.author,
+                    userId = null,
+                    artistName = post.author,
+                    ext = ext,
+                )
+            } else {
+                val naming = prefs.gallerySaveNaming.value
+                val stamp = LocalDateTime.now().format(TIMESTAMP)
+                GallerySettingsModel.fileName(post, naming, stamp)
+            }
+
             val name = GallerySaveTarget.uniqueName(dir, wanted)
             val path = saveToAlbum(context, dir, name, mime, bytes)
                 ?: saveToFile(context, dir, name, mime, bytes)

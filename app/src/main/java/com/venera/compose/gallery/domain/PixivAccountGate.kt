@@ -32,6 +32,21 @@ internal sealed interface PixivAccountGate {
         override val retryIsMeaningful: Boolean = true
     }
 
+    /**
+     * 票据**还没量到**（`bearerOrNull()` 是 suspend，第一帧它必然没回来）。
+     *
+     * 为什么单独一档，而不是"先当 Ready"或"先当取不到"：前者会让三段墙各发一趟必然被 401 的
+     * 请求，然后才跳到 [BearerUnavailable]（用户读到"先空一下、再变成一句取不到"）；
+     * 后者会让没登录的用户也先看见一句"这会儿没接上"。这一档什么都不说，量完再判真档。
+     *
+     * 它与 [BearerUnavailable] 的区别是**有没有量过**：这一档的重试没有意义（再点也还是同一句
+     * "正在确认登录态"），所以 [retryIsMeaningful] 为 false。
+     */
+    data object Measuring : PixivAccountGate {
+        override val screenLine: String? = "正在确认登录态…"
+        override val retryIsMeaningful: Boolean = false
+    }
+
     /** 这台机器上根本没有 pixiv 登录。 */
     data object NotSignedIn : PixivAccountGate {
         override val screenLine = "登录后才看得到。你关注的人的动态、你的收藏、你的关注列表都存在 pixiv 账号里。"
@@ -57,7 +72,7 @@ internal sealed interface PixivAccountGate {
      * 票据取不到的时候它们一起取不到。屏上写"切回公开就能看"，用户切过去看到的还是这一段。
      */
     data object BearerUnavailable : PixivAccountGate {
-        override val screenLine = "登录信息这会儿取不到，可能刚过期。再点一次看看。"
+        override val screenLine = "pixiv 这会儿没接上，稍后再试。如果一直这样，再重新登录一次。"
         override val retryIsMeaningful: Boolean = true
     }
 }

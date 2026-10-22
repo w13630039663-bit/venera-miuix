@@ -61,6 +61,18 @@ internal object PixivAccountSessionStore {
      * 退出登录时清仓。不清的话换一个账号进来，旧的收藏墙还挂在新账号的用户号下面
      * （那些 key 里带着旧 id，看着不会串，但也没有一条理由继续留着别人的数据）。
      */
+    /** 每次重新进入账号页时，将各面墙的滚动偏移置顶，避免出现半山腰恢复错位（2026-10-22）。 */
+    fun resetScrollPositions() {
+        walls.values.forEach {
+            it.scrollIndex = 0
+            it.scrollOffset = 0
+        }
+        following.values.forEach {
+            it.scrollIndex = 0
+            it.scrollOffset = 0
+        }
+    }
+
     fun clear() {
         walls.clear()
         following.clear()
@@ -134,7 +146,14 @@ internal class PixivWallSession {
                 val line = results.firstOrNull()?.second?.exceptionOrNull()?.readableWallError()
                 if (pages.isEmpty()) pageError = line else moreError = "这一回没刷新上，下面还是上次那批。"
             } else {
-                pages = ok.associate { (restrict, page) -> restrict to page.getOrThrow() }
+                // 按腿覆盖，**不动没答的腿**：整体替换的话，「全部」这一档里另一趟失败
+                // 会把已经取到的那一档从屏上抹掉（2026-10-22 审计：刷新一次私密档失败，
+                // 屏上那批私密作品凭空消失，而提示说的是"少了一档"）。
+                val acc = pages.toMutableMap()
+                ok.forEach { (restrict, page) ->
+                    page.getOrNull()?.let { acc[restrict] = it }
+                }
+                pages = acc
                 // 一趟成、一趟败：内容照摆，但那一句必须说 —— 不说就是把"这一档没取上"读成"这一档没有"。
                 if (ok.size < results.size) moreError = "另一档没取上，上面这些只是取上的那一档。"
             }
@@ -264,7 +283,12 @@ internal class PixivFollowingSession {
                 val line = results.firstOrNull()?.second?.exceptionOrNull()?.readableWallError()
                 if (mergedUsers().isEmpty()) error = line else moreError = "这一回没刷新上，下面还是上次那批。"
             } else {
-                userPages = ok.associate { (restrict, page) -> restrict to page.getOrThrow() }
+                // 与墙同一条口径：按腿覆盖，失败那一腿的旧名单留在原处（见上面那段说明）。
+                val acc = userPages.toMutableMap()
+                ok.forEach { (restrict, page) ->
+                    page.getOrNull()?.let { acc[restrict] = it }
+                }
+                userPages = acc
                 if (ok.size < results.size) moreError = "另一档没取上，上面这些只是取上的那一档。"
             }
             asked = true
@@ -339,5 +363,9 @@ internal suspend fun <T> runLeg(block: suspend () -> Result<T>): Result<T> = try
 /** 站方那几族异常里最容易被读成"这站没图"的那一类，翻成一句人话（口径同云端书签墙那一条）。 */
 internal fun Throwable?.readableWallError(): String = when (this) {
     null -> "这一回没取上"
-    else -> message?.take(160)?.ifBlank { null } ?: "这一回没取上（${javaClass.simpleName}）"
+    // 只留异常自己的话，**不往屏上拼站方正文**：[PixivAppClient] 那族 IOException 的 message 是
+    // `pixiv 返回 ${code}：${body.take(160)}` —— 那是 JSON/HTML 原文，上屏就是一段机器味。
+    // 站方那几族自己已经写成了人话（401「票据不能用了」/ 403「设备登录态被判异常」），原样带出去即可；
+    // 兜底那一档换成一句不含正文的话，正文只进日志（调用方已 `Log.w`）。
+    else -> message?.take(160)?.ifBlank { null } ?: "这一回没取上"
 }

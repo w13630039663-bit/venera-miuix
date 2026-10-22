@@ -111,6 +111,8 @@ internal class PixivWorkActions(
  */
 internal class PixivArtistActions(
     val isFollowed: Boolean,
+    val busy: Boolean = false,
+    val notice: String? = null,
     val onToggleFollow: () -> Unit,
     val onBlock: () -> Unit,
 )
@@ -124,15 +126,40 @@ internal fun pixivWorkActions(detail: PixivWorkDetail?, onDownload: () -> Unit):
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val ports = remember { GalleryPorts.of(context) }
-    val favorites by ports.favorites.favorites.collectAsState()
+    var siteBookmarked by remember(detail?.post?.id, detail?.isBookmarked) {
+        mutableStateOf(detail?.isBookmarked)
+    }
+    // pixiv 收藏只进站方、只认站方状态，不进本地收藏
+    val effectiveBookmarked = siteBookmarked ?: false
     return PixivWorkActions(
-        isFavorite = detail != null && favorites.any { it.uid == detail.post.uid },
+        isFavorite = effectiveBookmarked,
         showComments = detail != null && !detail.commentsOff && detail.commentCount != null,
-        // 收藏数走 `post.favCount`（详情腿那一格 `bookmarkCount`，与计数行同一份读处，不另取一遍）；
-        // 评论数只有详情腿给（现量 `commentCount`，作者关了评论时那一枚把手整枚不摆）。
         favoriteCount = detail?.post?.favCount,
         commentCount = detail?.commentCount,
-        onFavorite = { detail?.let { one -> scope.launch { ports.favorites.toggle(one.post) } } },
+        onFavorite = {
+            detail?.let { one ->
+                scope.launch {
+                    val bearer = runCatching { ports.pixivAccount?.bearerOrNull() }.getOrNull()
+                    if (bearer.isNullOrBlank()) {
+                        android.widget.Toast.makeText(context, "请先登录 pixiv 账号", android.widget.Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+                    val target = !effectiveBookmarked
+                    val res = if (target) {
+                        ports.pixiv?.bookmarkAdd(bearer, one.post.id, private = false)
+                    } else {
+                        ports.pixiv?.bookmarkRemove(bearer, one.post.id)
+                    }
+                    if (res?.isSuccess == true) {
+                        siteBookmarked = target
+                        ports.favorites.removeAll(listOf(one.post.uid))
+                    } else {
+                        val msg = res?.exceptionOrNull()?.message ?: "网络未响应"
+                        android.widget.Toast.makeText(context, "站方书签操作失败：$msg", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        },
         onDownload = onDownload,
         onShare = { detail?.let { one -> scope.launch { shareGalleryPost(context, one.post) } } },
         onOpenComments = { detail?.let { one -> openWorkInBrowser(context, pixivWorkUrl(one.post.id)) } },
@@ -141,15 +168,36 @@ internal fun pixivWorkActions(detail: PixivWorkDetail?, onDownload: () -> Unit):
 
 /** 画师那一行两枚把手的装配（与「画廊 → 关注画师」读同一份存档，点完那一栏当场多一枚）。 */
 @Composable
-internal fun pixivArtistActions(author: String): PixivArtistActions {
+internal fun pixivArtistActions(author: String, authorId: Long? = null, initialFollowed: Boolean? = null): PixivArtistActions {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val ports = remember { GalleryPorts.of(context) }
     val guard = ports.contentGuard
     val follows by ports.follows.follows.collectAsState()
+    val isLocalFollowed = GalleryArtistFollows.isFollowing(follows, GallerySite.PIXIV, author)
+    var siteFollowed by remember(author, initialFollowed) { mutableStateOf(initialFollowed) }
+    // pixiv 关注只认站方状态，不写入本地图库；但若本地有历史残留，允许显示并清理
+    val effectiveFollowed = siteFollowed ?: isLocalFollowed
+    var notice by remember(author) { mutableStateOf<String?>(null) }
+    var busy by remember(author) { mutableStateOf(false) }
     return PixivArtistActions(
-        isFollowed = GalleryArtistFollows.isFollowing(follows, GallerySite.PIXIV, author),
-        onToggleFollow = { scope.launch { ports.follows.toggle(GallerySite.PIXIV, author) } },
+        isFollowed = effectiveFollowed,
+        busy = busy,
+        notice = notice,
+        onToggleFollow = {
+            scope.launch {
+                val target = !effectiveFollowed
+                togglePixivFollow(
+                    ports = ports,
+                    userId = authorId,
+                    artistName = author,
+                    target = target,
+                    setBusy = { busy = it },
+                    setNotice = { notice = it },
+                    alignSite = { siteFollowed = it },
+                )
+            }
+        },
         onBlock = {
             scope.launch {
                 val exists = guard.rules.value.any {
@@ -322,7 +370,7 @@ internal fun pixivWorkInfoPanel(data: Any?, params: GalleryPageAxis.PanelParams)
             tagsExpanded = tagsExpanded,
             onExpandTags = { tagsExpanded = true },
             onOpenArtist = { _, name, source -> params.onOpenArtist(name, source) },
-            artist = pixivArtistActions(detail.post.author),
+            artist = pixivArtistActions(detail.post.author, detail.authorId, detail.isAuthorFollowed),
             actions = pixivWorkActions(
                 detail = detail,
                 onDownload = {

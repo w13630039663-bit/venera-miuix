@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import com.venera.compose.PixivWorkActivity
+import com.venera.compose.gallery.domain.GalleryArtistLinkPlatform
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
@@ -627,20 +630,50 @@ private fun GallerySourceLinks(
     onOpenPage: () -> Unit,
 ) {
     val tokens = VeneraTokens
+    val context = LocalContext.current
     val tint = sheetSectionTint(GallerySheetSection.Source)
     SheetBlock(tint = tint) {
         SheetSectionHeader(icon = Icons.Outlined.Link, title = "来源链接")
         Column(modifier = Modifier.fillMaxWidth()) {
+            val pixivArtworkId = GalleryArtistLinks.pixivArtworkId(post.source)
             if (post.source.isNotBlank()) {
                 GallerySourceLinkRow(
                     headline = sourceHeadline(post.source),
                     url = post.source,
-                    // 认不出平台时 PlatformBadge 退中性底 + 通用链接字形（见它自己的头注）——
-                    // 那是对的：给一个未知域名安一枚品牌色等于宣称它属于某个已知服务。
                     badge = { PlatformBadge(GalleryArtistLinks.platformOf(post.source)) },
                     onCopy = onCopySource,
                     onOpen = onOpenSource,
                 )
+                if (pixivArtworkId != null) {
+                    Spacer(modifier = Modifier.height(tokens.spacing.space2))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(tokens.shape.medium))
+                            .background(tokens.color.primary.copy(alpha = 0.12f))
+                            .clickable {
+                                context.startActivity(PixivWorkActivity.intent(context, pixivArtworkId))
+                            }
+                            .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space3),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+                    ) {
+                        PlatformBadge(GalleryArtistLinkPlatform.PIXIV)
+                        Text(
+                            text = "在 Pixiv 源中打开此作品 (#$pixivArtworkId)",
+                            fontSize = tokens.type.body,
+                            fontWeight = tokens.type.weightMedium,
+                            color = tokens.color.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                            contentDescription = "打开",
+                            tint = tokens.color.primary,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(tokens.spacing.space2))
+                }
                 SheetDivider()
             }
             GallerySourceLinkRow(

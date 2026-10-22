@@ -1,7 +1,10 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.gallery.domain.GalleryArtistLinks
+
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -957,6 +960,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         mode = GallerySearchMode.RESULTS
         contextRound++
         searchGeneration++
+        if (!hasQuery) closeSearch()
     }
 
     /** 退格删最后一枚（输入框里没字时）。返回是否真删了，页面据此决定要不要吃掉这次按键。 */
@@ -1902,6 +1906,19 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             notice = "先打一个词 —— pixiv 把这一框当标签名搜"
             return
         }
+        val trimmed = pixivTerm.trim()
+        val directId = trimmed.toLongOrNull()
+            ?: GalleryArtistLinks.pixivArtworkId(trimmed)
+            ?: (if (trimmed.startsWith("id:", ignoreCase = true)) trimmed.substring(3).trim().toLongOrNull() else null)
+            ?: (if (trimmed.startsWith("#")) trimmed.substring(1).trim().toLongOrNull() else null)
+
+        if (directId != null && directId > 0) {
+            pendingDirectArtworkId = directId
+            return
+        }
+
+        // 收条：词已经交了，用户要的是"这个词的结果"。
+        mode = GallerySearchMode.RESULTS
         if (pixivKind == PixivSearchKind.ARTIST) {
             runPixivArtistSearch(first = true)
         } else {
@@ -1920,6 +1937,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /** 这一屏要作品还是要画师。换页签 = 整片换掉（两栏的结果不能混着摆）。 */
     var pixivKind by mutableStateOf(PixivSearchKind.ILLUST)
         internal set
+
+    /** 输入作品号或网页链接时直接唤起大图/作品页的交接槽 */
+    var pendingDirectArtworkId by mutableStateOf<Long?>(null)
 
     /**
      * 画师那一栏的结果（`/v1/search/user`）。
@@ -1960,6 +1980,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         if (next == pixivKind) return
         pixivKind = next
         artistJob?.cancel()
+        // 作品那一栏在飞的那一笔**也**要掐：从前只 cancel `artistJob`，于是"作品栏发起一笔 →
+        // 立刻切到画师再切回"会让第一笔的 `finally` 跑掉（`searchJob` 已指向新协程则不动
+        // `isSearching`），而 `contextRound` 已 +1 使它在落地前就 return —— `exhausted` 保持
+        // 进入时的 false，页尾与续页判据都认为还能翻。后果是滑到底白转一圈、第二次才到底
+        // （2026-10-22 审计）。
+        searchJob?.cancel()
+        // 游标一并作废：那一笔带走的 `next_url` 属于被作废的那一轮，不该留在原地
+        // 让下一轮当"上一页的游标"用。
+        pixivNextUrl = null
         isSearchingArtists = false
         pixivArtistError = null
         notice = null
@@ -2031,7 +2060,8 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (t: Throwable) {
-                pixivArtistError = t.message?.takeIf { it.isNotBlank() } ?: "pixiv 没答上"
+                Log.w(PIXIV_SEARCH_TAG, "pixiv 画师搜索失败", t)
+                pixivArtistError = PIXIV_SEARCH_FAILED
             } finally {
                 if (artistJob === coroutineContext[Job]) isSearchingArtists = false
             }
@@ -2186,9 +2216,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                         // 匿名腿没有游标，到底判据吃**站方回了几条**（不是筛完剩几条）。
                         done = list.size < PIXIV_PAGE_SIZE
                     }
+                    // 词也进作废判据：画师腿（上面那一支）早就有 `pixivTerm.trim() != word` 这一条，
+                    // 作品腿漏了。匿名腿按 `pageNo` 翻页、与词无关，于是"在途时换词"会把新词的
+                    // 第二页追加进旧词的结果墙 —— 屏上读不出对错（2026-10-22 审计）。
                     if (roundAtRequest != contextRound ||
                         domain != GalleryHomeDomain.PIXIV ||
-                        pixivFilter != filterAtRequest
+                        pixivFilter != filterAtRequest ||
+                        pixivTerm.trim() != word
                     ) {
                         return@launch
                     }
@@ -2227,7 +2261,10 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (t: Throwable) {
-                val message = t.message?.takeIf { it.isNotBlank() } ?: "pixiv 没答上"
+                // 技术异常只进日志：那一串可能带着站方正文片段（现量一例是整页 HTML），
+                // 直接上屏读不懂，也会把空态那一块撑坏。屏上留一句人话即可。
+                Log.w(PIXIV_SEARCH_TAG, "pixiv 搜索失败", t)
+                val message = PIXIV_SEARCH_FAILED
                 if (first) searchError = message else loadMoreError = message
             } finally {
                 if (searchJob === coroutineContext[Job]) {
@@ -2368,6 +2405,18 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
  *
  * ⚠️ 只剩「人气」这一枚用它：收藏那排的门槛早就是词尾标签（匿名实测生效），不再要求登录。
  */
+/** 这一族的日志统一走这个 tag（与首页那几块同一条口径）。 */
+private const val PIXIV_SEARCH_TAG = "VeneraDebug"
+
+/**
+ * pixiv 搜索两栏失败时上屏的那句话。
+ *
+ * 不把 `Throwable.message` 直接摆上去：那一串里可能带着站方正文片段
+ * （现量一例是整页 `<!DOCTYPE html>`），读不懂也会把空态撑坏。技术异常走
+ * `Log.w(PIXIV_SEARCH_TAG, …, t)`，屏上只留这一句。
+ */
+private const val PIXIV_SEARCH_FAILED = "pixiv 这一回没答上，稍后再试。"
+
 private const val PIXIV_NEEDS_ACCOUNT: String = "人气这一档要登录 pixiv 账号才排得动"
 
 /**

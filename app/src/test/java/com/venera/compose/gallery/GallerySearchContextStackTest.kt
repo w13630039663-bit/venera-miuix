@@ -203,4 +203,16 @@ class GallerySearchContextStackTest {
         assertNull(pop(emptyList()))
         assertTrue(pop(listOf(touhou))!!.second.isEmpty())
     }
+
+    @Test
+    fun `跨域 plan - 当前没有搜索词时不压栈空壳`() {
+        val plan = com.venera.compose.gallery.domain.GallerySearchContextStack.plan(
+            currentDomain = com.venera.compose.gallery.domain.GalleryHomeDomain.PIXIV,
+            currentKey = "",
+            incomingDomain = com.venera.compose.gallery.domain.GalleryHomeDomain.PIXIV,
+            incomingKey = "女の子",
+        )
+        assertEquals(GalleryContextPlan.SKIP_EMPTY, plan)
+    }
+
 }

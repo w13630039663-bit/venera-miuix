@@ -3,6 +3,8 @@ package com.venera.compose.gallery.ui
 import com.venera.compose.components.LocalWindowWidthDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +34,12 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -795,34 +803,60 @@ internal fun galleryHomeSections(
                     surface = true,
                     gapAfter = VeneraTokens.spacing.space2,
                 ) {
+                    var artistsExpanded by rememberSaveable { mutableStateOf(false) }
                     MiuixSectionHeader(
                         title = "正在关注的画师",
                         icon = Icons.Outlined.Person,
-                        // 这一节**没有全量页**：那枚「›」画出来也点不动，是假把手（去掉它，
-                        // 不是把整行做成链接 —— 整行链接同样无处可去）。
                         chevron = false,
-                        trailing = artists.takeIf { it.overflow > 0 }?.let { readout ->
+                        trailing = artists.takeIf { it.allArtists.size > 5 }?.let { readout ->
                             @Composable {
-                                Text(
-                                    text = "另有 ${readout.overflow} 位",
-                                    fontSize = tokens.type.caption,
-                                    color = tokens.color.textTertiary,
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(tokens.shape.small))
+                                        .clickable { artistsExpanded = !artistsExpanded }
+                                        .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space1),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space1),
+                                ) {
+                                    Text(
+                                        text = if (artistsExpanded) "收起" else "展开 (${readout.distinctTotal})",
+                                        fontSize = tokens.type.caption,
+                                        color = tokens.color.primary,
+                                    )
+                                    Icon(
+                                        imageVector = if (artistsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                        contentDescription = if (artistsExpanded) "收起" else "展开",
+                                        tint = tokens.color.primary,
+                                        modifier = Modifier.size(tokens.spacing.space6),
+                                    )
+                                }
                             }
                         },
                     )
                     Spacer(modifier = Modifier.height(tokens.spacing.space2))
-                    when (artists.gap) {
-                        GalleryFollowedArtistsGap.NONE -> GalleryArtistRow(
-                            artists.artists,
-                            imageLoader,
-                            translations,
-                            onPickArtist,
-                            onOpenArtistProfile,
-                        )
-                        // 一个都没关注 —— 这一节**照样摆**（首页恒三节，撤一节会让懒列表的锚点漂），
-                        // 只把内容换成一句引导。它说的是"你还没做"，不是"这里坏了"。
-                        GalleryFollowedArtistsGap.NO_FOLLOWS -> GalleryRowCaption("在大图上点关注，这一栏会列出你关注的人")
+                    Box(modifier = Modifier.animateContentSize()) {
+                        when (artists.gap) {
+                            GalleryFollowedArtistsGap.NONE -> {
+                                if (artistsExpanded) {
+                                    GalleryArtistExpandedGrid(
+                                        artists = artists.allArtists,
+                                        imageLoader = imageLoader,
+                                        translations = translations,
+                                        onPick = onPickArtist,
+                                        onOpenProfile = onOpenArtistProfile,
+                                    )
+                                } else {
+                                    GalleryArtistRow(
+                                        artists.artists,
+                                        imageLoader,
+                                        translations,
+                                        onPickArtist,
+                                        onOpenArtistProfile,
+                                    )
+                                }
+                            }
+                            GalleryFollowedArtistsGap.NO_FOLLOWS -> GalleryRowCaption("在大图上点关注，这一栏会列出你关注的人")
+                        }
                     }
                 }
 
@@ -1174,3 +1208,78 @@ private fun GalleryHomeSection(
 // 同一份历史只该在全站出现一处。这里刻意不留副本、也不留空壳 ——
 // 两份实现会在"在一处删掉、另一处还在"那里分叉，而那正是本轮要收口的事。
 
+
+/**
+ * 关注画师展开网格（2026-10-22）：
+ * 5 列网格，限定最高 2 排（10 位画师），超出 10 位可纵向滚动。
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun GalleryArtistExpandedGrid(
+    artists: List<FollowedArtistRef>,
+    imageLoader: ImageLoader,
+    translations: Map<String, String>,
+    onPick: (FollowedArtistRef) -> Unit,
+    onOpenProfile: (FollowedArtistRef) -> Unit,
+) {
+    val tokens = VeneraTokens
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val avatars = remember(context) { GalleryPorts.of(context).avatars }
+    var faces by remember(artists) {
+        mutableStateOf(GalleryFollowedArtists.seedFaces(artists) { site, name -> avatars.peek(site, name, "") })
+    }
+    LaunchedEffect(artists) {
+        artists.forEach { artist ->
+            if (faces[artist.name] != null) return@forEach
+            val avatar = artist.sites.firstNotNullOfOrNull { site ->
+                artistAvatarOnSite(context, site, artist.name)
+            }
+            if (avatar != null) faces = faces + (artist.name to avatar)
+        }
+    }
+    val nameLineHeight = with(androidx.compose.ui.platform.LocalDensity.current) {
+        (tokens.type.caption * TEXT_LINE_HEIGHT).toDp()
+    }
+    val singleItemHeight = tokens.spacing.artistAvatarSize + tokens.spacing.space1 + nameLineHeight
+    val maxGridHeight = singleItemHeight * 2 + tokens.spacing.space3
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(5),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = maxGridHeight),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+    ) {
+        items(artists) { artist ->
+            val face = GalleryFollowedArtists.faceOf(faces[artist.name], artist.previewUrl)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = VeneraPressFeedback.indication,
+                        onClick = { onPick(artist) },
+                        onLongClick = { onOpenProfile(artist) },
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                GalleryArtistAvatar(
+                    avatarUrl = face,
+                    name = artist.name,
+                    imageLoader = imageLoader,
+                )
+                Text(
+                    text = translations[artist.name] ?: artist.name,
+                    fontSize = tokens.type.caption,
+                    lineHeight = TEXT_LINE_HEIGHT.em,
+                    color = tokens.color.textSecondary,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.space1),
+                )
+            }
+        }
+    }
+}

@@ -176,13 +176,14 @@ internal object PixivAppParse {
         rethrowAppError(root, "pixiv 画师详情")
         val profile = root["profile"] as? JsonObject
             ?: throw IOException("pixiv 画师详情答复里没有 profile：${body.take(SAMPLE)}")
+        val user = root["user"] as? JsonObject
         return PixivUserDetail(
             totalIllusts = profile["total_illusts"].numberOrStringOrNull()?.toIntOrNull(),
             totalManga = profile["total_manga"].numberOrStringOrNull()?.toIntOrNull(),
             totalFollowers = profile["total_follow_users"].numberOrStringOrNull()?.toIntOrNull(),
             totalBookmarksPublic = profile["total_illust_bookmarks_public"]
                 .numberOrStringOrNull()?.toIntOrNull(),
-            isFollowed = root["is_followed"].booleanOrNull(),
+            isFollowed = (user?.get("is_followed") ?: root["is_followed"]).booleanOrNull(),
         )
     }
 
@@ -398,11 +399,13 @@ internal object PixivAppParse {
             val original = urls?.get("original").textOrNull()
             val one = urls?.get("medium").textOrNull() ?: urls?.get("large").textOrNull() ?: original
             if (one == null && original == null) return@mapNotNull null
+            val large = urls?.get("large").textOrNull() ?: one ?: original.orEmpty()
             PixivPage(
                 mediumUrl = one ?: original.orEmpty(),
                 originalUrl = original ?: one.orEmpty(),
                 width = page["width"].numberOrStringOrNull()?.toIntOrNull(),
                 height = page["height"].numberOrStringOrNull()?.toIntOrNull(),
+                largeUrl = large,
             )
         }
         // 单页那一形：站方只给 `meta_single_page.original_image_url`，中档退回 `image_urls.medium`。
@@ -410,12 +413,14 @@ internal object PixivAppParse {
             val original = (record["meta_single_page"] as? JsonObject)
                 ?.get("original_image_url").textOrNull() ?: post.fileUrl.ifBlank { null }
             val first = medium ?: original
+            val singleLarge = images?.get("large").textOrNull() ?: first
             if (first == null || first.isBlank()) emptyList() else listOf(
                 PixivPage(
                     mediumUrl = first,
                     originalUrl = original ?: first,
                     width = record["width"].numberOrStringOrNull()?.toIntOrNull(),
                     height = record["height"].numberOrStringOrNull()?.toIntOrNull(),
+                    largeUrl = singleLarge ?: first,
                 ),
             )
         }
@@ -455,6 +460,8 @@ internal object PixivAppParse {
             commentCount = null,
             commentsOff = false,
             ugoira = record["type"].textOrNull() == "ugoira",
+            isAuthorFollowed = ((record["user"] as? JsonObject)?.get("is_followed") ?: record["is_followed"]).booleanOrNull(),
+            isBookmarked = record["is_bookmarked"].booleanOrNull(),
         )
     }
 

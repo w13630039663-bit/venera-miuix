@@ -70,6 +70,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -93,6 +94,8 @@ import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
 import com.venera.compose.components.venera.rememberVeneraTopAppBarBehavior
+import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.components.venera.veneraAvatarRing
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPixivWorks
@@ -172,12 +175,22 @@ internal fun PixivAccountScreen(
 
     // 票据**这一刻**有没有：每次登录态一变、或用户按了「再试一次」就现读一次。
     // 读一次就钉住是假读数 —— 自动续期发生在屏外。
-    var bearerReady by remember { mutableStateOf(true) }
+    //
+    // ⚠️ 初值是 null（"还没量"）而不是 true：`bearerOrNull()` 是 suspend，第一帧它必然还没回来。
+    // 给 true 的话，那一帧会把闸门判成 [PixivAccountGate.Ready]，三段墙各发一趟必被 401 的请求，
+    // 然后才跳到 BearerUnavailable —— 用户读到的是"先空一下、再变成一句取不到"。
+    var bearerReady by remember { mutableStateOf<Boolean?>(null) }
     var bearerTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(pixivAuth, account, bearerTick) {
         bearerReady = account?.bearerOrNull() != null
     }
-    val gate = pixivAccountGate(signedIn = signed != null, userId = me, bearerReady = bearerReady)
+    // 还没量到票据 ⇒ 停在「测量中」那一档：不判 NotSignedIn / BearerUnavailable，
+    // 也不放行三段墙（那会发出必然被 401 的一趟）。量完才判真档。
+    val gate = if (bearerReady == null) {
+        PixivAccountGate.Measuring
+    } else {
+        pixivAccountGate(signedIn = signed != null, userId = me, bearerReady = bearerReady!!)
+    }
 
     // 三段的位置归 Pager 管（左滑进、右滑回），`section` 只是"当前停在哪一页"的派生读数。
     // `rememberPagerState` 自带 saveable：旋转后仍停原来那一页。
@@ -217,9 +230,13 @@ internal fun PixivAccountScreen(
     val detail = identity?.detail
     // 下拉刷新与票据重试各推一下它；0 且取过 = 什么都不做（"只在下拉时刷新"）。
     var identityTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(me, works, account, bearerTick, identityTick) {
+    // 票据续期也新建一个 SignedIn 实例，所以这里**不能拿 `pixivAuth` 当 key**：拿的话每次
+    // 自动续票都重启一次，`userHead` + `userDetail` 白跑两趟。身份真的换了才重取 —— 票据
+    // 新鲜度本来就由 `bearerTick` 单独驱动（2026-10-22 审计）。
+    val signedUserId = signed?.userId
+    LaunchedEffect(signedUserId, works, account, bearerTick, identityTick) {
         val session = identity ?: return@LaunchedEffect
-        val userId = me ?: return@LaunchedEffect
+        val userId = signedUserId ?: return@LaunchedEffect
         if (identityTick == 0 && bearerTick == 0 && session.asked) return@LaunchedEffect
         val id = userId.toLongOrNull() ?: return@LaunchedEffect
         if (works == null) return@LaunchedEffect
@@ -243,9 +260,17 @@ internal fun PixivAccountScreen(
     val mineCount = detail?.totalIllusts
 
     val topBarBehavior = rememberVeneraTopAppBarBehavior()
+    // 顶栏玻璃的采样源：三面墙各挂 [blurBackdropSource]，顶栏那一层才采得到内容。
+    // 不挂的话 ackdrop 传了也采到空层 —— 玻璃看着像一层灰，读起来就是"顶栏糊了"。
+    val topBarBackdrop = rememberTopBarBackdrop()
     // 三页共用一条顶栏：翻到新那一页时把折叠进度归零，否则上一页滚下去的状态会原样带过来
     // （新页明明停在顶部，大标题却还是收着的）。用 settledPage 而不是 currentPage —— 后者在
     // 滑动过半那一刻就变了，归零会把大标题在滑到一半时突然弹出来。
+    // 每次从外部页面进入我的 pixiv 页面时必须处于完全置顶状态（2026-10-22）
+    LaunchedEffect(Unit) {
+        PixivAccountSessionStore.resetScrollPositions()
+        topBarBehavior.state.contentOffset = 0f
+    }
     LaunchedEffect(pagerState.settledPage) { topBarBehavior.state.contentOffset = 0f }
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // chrome 附加高各页自留（不进 `topBarFloor` 那枚地板常量 —— 那把尺子只钉"地板"）。
@@ -257,7 +282,12 @@ internal fun PixivAccountScreen(
     } else {
         tokens.spacing.pixivAccountPrimaryRow + tokens.spacing.space4
     }
-    val contentTop = statusBarTop + VeneraSpacing.topBarFloor + chromeExtraOf(section)
+    // 让位量与收起量**同一个式子**：顶栏折叠到底时那两排药丸高度归零（见下面
+    // `bottomContent` 的 `.height(chromeExtra * (1f - collapsed))`），内容第一行若还按展开态让位，
+    // 顶上就空出一条 154dp 的空白带（2026-10-22 审计：改玻璃 + 收 chrome 之后新引入的回归）。
+    val collapsedForTop = topBarBehavior.state.collapsedFraction
+    val contentTop = statusBarTop + VeneraSpacing.topBarFloor +
+        chromeExtraOf(section) * (1f - collapsedForTop)
     // 不适用 restrict 的那一屏退回「公开」：那一趟压根没有这一枚参数，但墙本身照发。
     fun wallScopeFor(target: PixivAccountSection, tab: PixivAccountFeedTab): PixivReadScope =
         if (target.restrictApplies(tab)) scope else PixivReadScope.Public
@@ -306,7 +336,11 @@ internal fun PixivAccountScreen(
             // ⚠️ 每一页自己算让位：动态段多一行二级，chrome 的实高随段变，所以不能共用一份 top。
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                // 采样源挂在**Pager 自己**身上而不是三面墙各挂一次：横滑时左右两页都在场上，
+                // 各挂各的会让玻璃在滑动中途采到隔壁那一页 —— 顶栏颜色跟着手势跳。
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blurBackdropSource(topBarBackdrop),
                 key = { PixivAccountSection.entries[it].name },
             ) { page ->
                 val target = PixivAccountSection.entries[page]
@@ -460,9 +494,11 @@ internal fun PixivAccountScreen(
             title = "我的 pixiv",
             largeTitle = "我的 pixiv",
             scrollBehavior = topBarBehavior,
-            // 2026-10-19 用户点名 ④「顶栏…不要透过」：不传 backdrop（玻璃采的是内容层，传了就必透），
-            // 实底由 opaqueChrome 把同一份氛围光铺满整条顶栏 —— 与全站顶栏的折叠行为一致，只是不透。
-            opaqueChrome = true,
+            // 2026-10-22 用户点名「下滑顶栏也要收起，一样做顶栏模糊」：改走玻璃背板那一路
+            //（与画廊首页 / 画师页 / 作品页同一套），撤掉 2026-10-19 的 `opaqueChrome`。
+            // ⚠️ 采样源必须已经挂在 Pager 上（见上面那处 `blurBackdropSource`）——
+            // 玻璃采的是录制下来的内容层，不挂的话这一层采到空层，看着像"顶栏糊了一层灰"。
+            backdrop = topBarBackdrop,
             navigationIcon = {
                 VeneraTopBarPill(onClick = onBack) {
                     Icon(
@@ -473,7 +509,10 @@ internal fun PixivAccountScreen(
                 }
             },
             actions = {
-                if (restrictApplies) {
+                // 闸门没通（票据量不到 / 没登录）那一屏**不摆这两处把手**：分段器点下去 Pager
+                // 不在场，屏上零变化；「看哪一份」点下去会真的落盘 setRestrictDefault 却看不到结果。
+                // 那是假开关（2026-10-22 审计）。
+                if (restrictApplies && gate == PixivAccountGate.Ready) {
                     // 稿上那一枚是「锁 + 档位 + 尖角」的下拉把手，不是一句"看：全部"的裸文字：
                     // 尖角说"点开还有别的档"，锁说"这一档管的是看不看得到非公开"。
                     VeneraChip(
@@ -485,43 +524,72 @@ internal fun PixivAccountScreen(
                 }
             },
             bottomContent = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // 稿 §1 的 `.seg` / `.sub2` 都留 12dp 屏边、二级行再留 8dp 上距与 8dp 收尾；
-                        // 少了边距就是两行药丸贴着屏边跑（2026-10-19 真机读数的"两段 pill 重叠"之一）。
-                        .padding(
-                            start = tokens.spacing.screenHorizontal,
-                            end = tokens.spacing.screenHorizontal,
-                            bottom = tokens.spacing.space4,
-                        ),
-                ) {
-                    PixivAccountSegmentTrack(
-                        selected = section,
-                        counts = sectionCounts,
-                        onPick = { target ->
-                            uiScope.launch { pagerState.animateScrollToPage(target.ordinal) }
-                        },
-                    )
-                    if (section == PixivAccountSection.DYNAMIC) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = tokens.spacing.space4)
-                                .height(tokens.spacing.pixivAccountSecondaryRow),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
-                        ) {
-                            PixivAccountFeedTab.entries.forEach { picked ->
-                                PixivAccountSubPill(
-                                    text = picked.screenLabel,
-                                    count = picked.takeIf { it == PixivAccountFeedTab.MINE }?.let { mineCount },
-                                    selected = feedTab == picked,
-                                    onClick = { feedTabName = picked.name },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                )
+                // 与 actions 同一条口径：闸门没通时这一屏只有一句状态，两排药丸没有可作用的对象。
+                // 这里只能整段不组合（`bottomContent` 不是 `() -> Unit` 的 lambda 标签能早退的形态），
+                // 不是把药丸摆成灰的 —— 灰的按下去还是没反应，那还是假把手。
+                if (gate == PixivAccountGate.Ready) {
+                    // 下滑时这两行选择器**跟着收走**，到顶才回来（用户 2026-10-22 点名）。
+                    //
+                    // 判据用 `collapsedFraction` 而不是另记一个"滚动过半"的布尔：它就是 miuix 顶栏
+                    // 折叠进度本身，0 = 完全展开（在顶），1 = 完全折叠（下滑中）。折叠态只留
+                    // 「我的 pixiv」那一行小标题，两排药丸退场 —— 否则折叠之后顶上还压着两排
+                    // 38/48dp 的把手，内容可视区被吃掉一整块，而它们此刻一个也用不上
+                    // （动态/收藏/已关注 在折叠态没有切换的余地）。
+                    //
+                    // 高与 [chromeExtraOf] 同一个式子（动态段多一排二级）—— 两处各写一套数字的话，
+                    // 让位量与收起量会差一份，顶栏背板会留一条缝。
+                    //
+                    // ⚠️ 只退 alpha 与高度，**不摘出组合**：摘出去的话分段器与二级行每次滚动到底
+                    // 再回来都要重建，Pager 的 `settledPage` 监听会跟着抖。
+                    val chromeExtra = if (section == PixivAccountSection.DYNAMIC) {
+                        tokens.spacing.pixivAccountPrimaryRow + tokens.spacing.space4 +
+                            tokens.spacing.pixivAccountSecondaryRow + tokens.spacing.space4
+                    } else {
+                        tokens.spacing.pixivAccountPrimaryRow + tokens.spacing.space4
+                    }
+                    val collapsed = topBarBehavior.state.collapsedFraction
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { alpha = 1f - collapsed }
+                            // 收起时把高度也归零：alpha = 0 的那两排若还占着位，顶栏背板
+                            // （matchParentSize）会跟着留一条空白。
+                            .height(chromeExtra * (1f - collapsed))
+                            // 稿 §1 的 `.seg` / `.sub2` 都留 12dp 屏边、二级行再留 8dp 上距与 8dp 收尾；
+                            // 少了边距就是两行药丸贴着屏边跑（2026-10-19 真机读数的"两段 pill 重叠"之一）。
+                            .padding(
+                                start = tokens.spacing.screenHorizontal,
+                                end = tokens.spacing.screenHorizontal,
+                                bottom = tokens.spacing.space4,
+                            ),
+                    ) {
+                        PixivAccountSegmentTrack(
+                            selected = section,
+                            counts = sectionCounts,
+                            onPick = { target ->
+                                uiScope.launch { pagerState.animateScrollToPage(target.ordinal) }
+                            },
+                        )
+                        if (section == PixivAccountSection.DYNAMIC) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = tokens.spacing.space4)
+                                    .height(tokens.spacing.pixivAccountSecondaryRow),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space3),
+                            ) {
+                                PixivAccountFeedTab.entries.forEach { picked ->
+                                    PixivAccountSubPill(
+                                        text = picked.screenLabel,
+                                        count = picked.takeIf { it == PixivAccountFeedTab.MINE }?.let { mineCount },
+                                        selected = feedTab == picked,
+                                        onClick = { feedTabName = picked.name },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -794,9 +862,10 @@ private fun PixivAccountGateState(
     ) {
         VeneraEmptyView(
             title = when (gate) {
+                PixivAccountGate.Measuring -> "正在确认登录态…"
                 PixivAccountGate.NotSignedIn -> "还没登录 pixiv"
                 PixivAccountGate.MissingUserId -> "这个登录没记下用户号"
-                PixivAccountGate.BearerUnavailable -> "登录信息这会儿取不到"
+                PixivAccountGate.BearerUnavailable -> "pixiv 这会儿没接上"
                 PixivAccountGate.Ready -> "这一屏暂时没有内容"
             },
             // 那句话由 domain 那侧说（四档两两不同、不许带机器味 —— 判据在 `PixivAccountGateTest`）。
@@ -1863,6 +1932,12 @@ private fun PixivAccountManageSection(
         onDismiss = { pasteOpen = false },
         onDone = {
             pasteOpen = false
+            // 换账号（重新登录 / 贴进来）**必须清会话仓**：A→B→A 之后
+            // `identities[A].asked` 还是 true，屏上会用进程里可能已过期的旧身份读数，
+            // 而没有任何一条路径能刷新它（2026-10-22 审计）。
+            // 清仓就够：`identity` 由 `remember(me)` 持有，仓一清就是新对象（`asked = false`），
+            // 屏级那颗 `LaunchedEffect` 的早退条件随之失效，下一帧自己会重取一趟。
+            PixivAccountSessionStore.clear()
             notice = "登录信息已经换上，这一屏重新读一遍。"
         },
         onError = { line -> notice = line },

@@ -202,6 +202,31 @@ class GalleryPixivArtistSearchTest {
 
     // ── 五、GalleryScreen：独立的三支 + 读数分流 ────────────────────────────
 
+    /**
+     * 交了词就要**收条**（2026-10-22，用户报「pixiv 站点搜索后返回画廊，会显示这个搜索框」）。
+     *
+     * 立案读数：`runPixivSearch` 从头到尾不碰 `mode`，而 booru 那条路 `runSearch(thenCollapse)`
+     * 会在提交时收成 RESULTS。于是 pixiv 这边交完词，屏上留着一张**展开的**输入卡 + 键盘，
+     * 结果墙在它底下 —— 用户从大图页退回来看到的就是"只剩一个搜索框"。
+     *
+     * 钉的是 `submitPixivTerm` 里那一行的位置：收条必须排在**两条腿之前**。
+     * 排在之后的话，画师那一栏（`runPixivArtistSearch` 自己也会动 mode）会先落一帧 INPUT。
+     */
+    @Test
+    fun `交了词就收条，不留一张展开的输入卡`() {
+        val fn = vm.drop(vm.rowOf("fun submitPixivTerm()"))
+        val collapseAt = fn.indexOfFirst { it.contains("mode = GallerySearchMode.RESULTS") }
+        assertTrue("submitPixivTerm 里必须收条：\n$fn", collapseAt >= 0)
+        val legAt = fn.indexOfFirst { it.contains("runPixivArtistSearch(first = true)") }
+        assertTrue("画师那条腿要还在：\n$fn", legAt >= 0)
+        assertTrue("收条要排在两条腿之前（collapse=$collapseAt leg=$legAt）", collapseAt < legAt)
+        // 空词那一档不许收条：那一档直接 return，屏上留的是"先打一个词"。
+        assertTrue(
+            "空词要提前返回：\n$fn",
+            fn.indexOfFirst { it.contains("pixivTerm.isBlank()") } < collapseAt,
+        )
+    }
+
     @Test
     fun `画师那一栏有加载中、空态、名单三支`() {
         assertTrue(

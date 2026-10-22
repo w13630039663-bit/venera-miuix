@@ -1,5 +1,8 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.gallery.domain.PixivImageQuality
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -319,7 +322,20 @@ fun PixivWorkScreen(
                     details[currentId] = head
                 }
             }
-            .onFailure { failures[currentId] = it.message ?: "取这一条的时候没接通" }
+            .onFailure { failure ->
+                // 技术异常只进日志：那一串里可能带着站方正文片段（现量一例是整页 HTML），
+                // 直接上屏读不懂也会把详情段撑坏。屏上留一句人话即可。
+                Log.w(TAG, "pixiv 作品 $currentId 详情没取到：${failure.message}")
+                // 但 401 / 403 那两族**原样带上屏**：`PixivAppClient.execute` 特意把它们分开念
+                // （票据不能用了 / 设备登录态被判异常），合回一句"稍后再试"之后用户就分不清
+                // 该重登还是该换网络（2026-10-22 审计）。其余异常仍是固定文案。
+                val line = failure.message.orEmpty()
+                failures[currentId] = when {
+                    line.contains("401") -> line
+                    line.contains("403") -> line
+                    else -> DETAIL_FAILED_LINE
+                }
+            }
     }
 
     // ── 评论（批 231-F，2026-10-19）：**只有登录腿拿得到正文** ──
@@ -338,7 +354,7 @@ fun PixivWorkScreen(
         if (bearer == null) {
             // 票据这一会儿取不到是**这一刻**的事，不记账成失败 —— 说清去哪重登。
             commentStates[currentId] = PixivCommentsState.Failed(
-                "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。",
+                "pixiv 这会儿没接上，稍后再试；如果一直这样，再点顶栏头像重新登录。",
             )
             return@LaunchedEffect
         }
@@ -353,7 +369,10 @@ fun PixivWorkScreen(
             }
             .onFailure { failure ->
                 commentStates[currentId] = PixivCommentsState.Failed(
-                    failure.message?.takeIf { it.isNotBlank() } ?: "评论这一栏没取上",
+                    run {
+                        Log.w(TAG, "pixiv 评论没取上：${failure.message}")
+                        COMMENTS_FAILED_LINE
+                    },
                 )
             }
     }
@@ -1013,6 +1032,13 @@ fun PixivWorkScreen(
                     comments = commentStates[slotId] ?: PixivCommentsState.Loading,
                     commentsExpanded = commentsExpanded,
                     onToggleCommentsExpanded = { commentsExpanded = !commentsExpanded },
+                    // 评论那一档失败的重试：抬 `retryTick` 之前先把这一槽的旧读数清掉 ——
+                    // 评论腿的早退判据是 `if (commentStates[currentId] is Loaded) return`，
+                    // `Failed` 不会自己重取，而表里除了这一条也没有别的清理路径。
+                    onRetryComments = {
+                        commentStates.remove(slotId)
+                        retryTick++
+                    },
                     // 只有**当前这一位**的第 0 页算数：邻位是 pager 预组合的，它画没画过不影响进场落点。
                     onPageDrawn = { index -> if (index == 0 && slotId == currentId) pageZeroDrawn = true },
                     // 页位（顶栏那颗「2/4」）只认当前槽自己那面墙的读数：
@@ -1164,7 +1190,7 @@ fun PixivWorkScreen(
                     tagsExpanded = true,
                     onExpandTags = {},
                     onOpenArtist = openArtist,
-                    artist = pixivArtistActions(detail.post.author),
+                    artist = pixivArtistActions(detail.post.author, detail.authorId, detail.isAuthorFollowed),
                     actions = pixivWorkActions(detail, onDownload = { saveWork(detail) }),
                     avatarUrl = artistAvatar,
                     imageLoader = imageLoader,
@@ -1340,6 +1366,13 @@ private fun PixivCommentsSection(
     /** 是否已展开全部（由宿主持有，两个宿主读同一份 —— 滚动流里展开了，抽屉那一版也必须是展开的）。 */
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
+    /**
+     * 失败那一档的重试。null = 不摆重试（宿主持有的那颗 `retryTick` 抬不动评论腿时）。
+     *
+     * 为什么要有这一颗：评论腿自己的失败屏上原本**一个重试入口都没有** —— 唯一的
+     * `retryTick` 挂在详情横幅上，而那一栏要 `details[currentId]` 缺失才出现（2026-10-22 审计）。
+     */
+    onRetry: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     if (state is PixivCommentsState.Hidden) return
@@ -1418,9 +1451,12 @@ private fun PixivCommentsSection(
                 color = tokens.color.textTertiary,
             )
             is PixivCommentsState.Failed -> Text(
-                state.message,
+                // 失败那一档**可点**（宿主给了 onRetry 时）：评论腿自己的失败屏上原本一个
+                // 重试入口都没有，用户只能退出重进（2026-10-22 审计）。
+                if (onRetry != null) state.message + " · 点这里重试" else state.message,
                 fontSize = tokens.type.caption,
                 color = tokens.color.error,
+                modifier = if (onRetry != null) Modifier.clickable { onRetry() } else Modifier,
             )
             is PixivCommentsState.Loaded ->
                 if (state.comments.isEmpty()) {
@@ -1657,8 +1693,11 @@ private fun PixivCommentBody(comment: PixivComment, imageLoader: ImageLoader) {
  * 布局那一头要按页取 viewerKey 回写落点，起跳那一头要交整面墙 —— 两处各抄一遍
  * 就是两把算式，改日页序或档位一变，只有真机能看见。
  */
-private fun pageWallOf(detail: PixivWorkDetail?): List<GalleryPost> =
-    detail?.let { PixivWorkPage.pageWallOf(it) }.orEmpty()
+private fun pageWallOf(
+    detail: PixivWorkDetail?,
+    viewerQuality: PixivImageQuality = PixivImageQuality.ORIGINAL,
+): List<GalleryPost> =
+    detail?.let { PixivWorkPage.pageWallOf(it, viewerQuality) }.orEmpty()
 
 /** 相关图片那一排最多摆几枚：三列 × 三行，再多就是另一屏（那一屏叫搜索结果）。 */
 private const val RELATED_MAX = 9
@@ -1771,6 +1810,8 @@ private fun PixivWorkFlow(
     /** 评论是否已展开（宿主持有：滚动流与抽屉两个宿主读同一份，见 `PixivWorkScreen` 那侧的 `commentsExpanded`）。 */
     commentsExpanded: Boolean = false,
     onToggleCommentsExpanded: () -> Unit = {},
+    /** 评论失败那一档的重试（透传给 [PixivWorkDetails]，理由见那里）。 */
+    onRetryComments: (() -> Unit)? = null,
     /** 第几页**真画出像素**了（进场飞行体落点那一格要等这一句，见 [PixivPageImage]）。 */
     onPageDrawn: (Int) -> Unit = {},
     /** 这一槽自己滚到了第几条（顶栏那颗页位读数）。由本槽的 state 报上来，宿主按位号过滤。 */
@@ -1851,7 +1892,9 @@ private fun PixivWorkFlow(
     }
     // 逐页墙仍由 domain 那颗纯函数长出来：屏上不自己拼 "$uid:p$index"（拼一份就是第二处真相，
     // 而它连着的正是"返回程飞不回这一页"那一条）。批 B⑥:详情或种子任一场合都走这一颗。
-    val wallPages = remember(detail, seedDetail) { pageWallOf(detail ?: seedDetail) }
+    val context = LocalContext.current
+    val viewerQuality by remember(context) { VeneraPreferences.getInstance(context) }.pixivViewerQuality.collectAsState()
+    val wallPages = remember(detail, seedDetail, viewerQuality) { pageWallOf(detail ?: seedDetail, viewerQuality) }
     LaunchedEffect(listState, pages.size) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect {
             // 条目里除了页还有详情段那几格，页位要夹在 [0, pages-1] 内再报上去。
@@ -1944,7 +1987,7 @@ private fun PixivWorkFlow(
                     tagsExpanded = tagsExpanded,
                     onExpandTags = onExpandTags,
                     onOpenArtist = onOpenArtist,
-                    artist = pixivArtistActions(detail.post.author),
+                    artist = pixivArtistActions(detail.post.author, detail.authorId, detail.isAuthorFollowed),
                     actions = pixivWorkActions(detail, onDownload = { onDownload(detail) }),
                     avatarUrl = pixivAvatarUrl(detail),
                     imageLoader = imageLoader,
@@ -1953,6 +1996,7 @@ private fun PixivWorkFlow(
                     comments = comments,
                     commentsExpanded = commentsExpanded,
                     onToggleCommentsExpanded = onToggleCommentsExpanded,
+                    onRetryComments = onRetryComments,
                     onSearchTag = onSearchTag,
                     // `graphicsLayer` 必须排在 `background` **之前**（更外层）：排后面时
                     // 底色画在图层外面，淡入会变成"一块不透明的底 + 一层淡的字"。
@@ -2010,7 +2054,9 @@ private fun PixivPageImage(
     onDrawn: () -> Unit,
 ) {
     val context = LocalContext.current
-    val url = page?.mediumUrl.orEmpty()
+    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
+    val detailQuality by prefs.pixivDetailQuality.collectAsState()
+    val url = page?.urlFor(detailQuality).orEmpty()
     val aspect = PixivWorkPage.placeholderAspect(page?.width, page?.height)
     var drawn by remember(url) { mutableStateOf(false) }
     // 站方没报比例时，图自己落位后报回来的那一档就是这一格的比例（不是我们编的）。
@@ -2187,6 +2233,13 @@ internal fun PixivWorkDetails(
     commentsExpanded: Boolean = false,
     onToggleCommentsExpanded: () -> Unit = {},
     /**
+     * 评论失败那一档的重试（null = 不摆）。透传到 [PixivCommentsSection]。
+     *
+     * 为什么必须透传：评论腿自己的失败屏上原本一个重试入口都没有（唯一的 `retryTick`
+     * 挂在详情横幅上，而那一栏要详情缺失才出现）—— 用户只能退出重进。
+     */
+    onRetryComments: (() -> Unit)? = null,
+    /**
      * 点一枚作品标签 → 按它搜一轮（用户 2026-10-19：「作品标签目前不可以点击，
      * 点击后跳转到标签的搜索页面」）。
      *
@@ -2247,8 +2300,9 @@ internal fun PixivWorkDetails(
                     )
                     PixivWorkFactsLine(detail, aiBadgeOn)
                 }
-                // 关注胶囊：判定复用 `GalleryArtistFollows.isFollowing`，写侧走 `ports.follows.toggle`
-                // —— 与「画廊 → 关注画师」那一档读同一份存档，点完那一栏当场多一枚。
+                // 关注胶囊：判定读本地名单（与「画廊 → 关注画师」读同一份存档），写侧**先写站方**
+                // （`togglePixivFollow`，与画师页那颗同一颗函数）—— 只翻本地的话，屏上亮着"已关注"
+                // 而 pixiv 那边并没有这位，正是本仓反复修的那一族假开关。
                 // 2026-10-19 规格照那一档：**没关注时是实心的主色药丸 + 一枚「+」**（从前是光秃秃一行字，
                 // 与它左边那行画师名同色，读起来不像把手）；已关注退成灰底、不带「+」。
                 Row(
@@ -2257,7 +2311,8 @@ internal fun PixivWorkDetails(
                         .background(
                             if (artist.isFollowed) tokens.color.surfaceContainerHigh else tokens.color.primary
                         )
-                        .clickable(onClick = artist.onToggleFollow)
+                        // 站方那一跳在飞的时候**吃掉点击**：网络往返期间连点两下会发出两笔相反的请求。
+                        .clickable(enabled = !artist.busy, onClick = artist.onToggleFollow)
                         .semantics {
                             contentDescription =
                                 if (artist.isFollowed) "已关注 ${detail.post.author}，点按取消关注" else "关注 ${detail.post.author}"
@@ -2278,9 +2333,23 @@ internal fun PixivWorkDetails(
                         )
                     }
                     Text(
-                        if (artist.isFollowed) "已关注" else "关注",
+                        when {
+                            artist.busy -> "处理中…"
+                            artist.isFollowed -> "已关注"
+                            else -> "关注"
+                        },
                         fontSize = tokens.type.caption,
                         color = if (artist.isFollowed) tokens.color.textSecondary else tokens.color.onPrimary,
+                    )
+                }
+                // 站方那一跳没写成 / 只记了本地时那句话。成功不占这一格（按钮那两个字就是反馈）。
+                artist.notice?.let { note ->
+                    Text(
+                        text = note,
+                        fontSize = tokens.type.overline,
+                        color = tokens.color.textTertiary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -2385,6 +2454,7 @@ internal fun PixivWorkDetails(
             imageLoader = imageLoader,
             expanded = commentsExpanded,
             onToggleExpanded = onToggleCommentsExpanded,
+            onRetry = onRetryComments,
         )
         if (related.isNotEmpty()) {
             Text(
@@ -2505,3 +2575,9 @@ private fun UgoiraNotice(onOpen: () -> Unit) {
 }
 /** 这一屏 的日志标签（返回程落点那一档要能从 logcat 分清「没落点」与「落点有但动画没接」）。 */
 private const val TAG = "PixivWork"
+
+/** 评论那一栏取不到时上屏的那句话（技术异常走 `Log.w`，见调用点）。 */
+private const val COMMENTS_FAILED_LINE = "评论这一栏没取上，稍后再试。"
+
+/** 作品详情那一跳取不到时上屏的那句话（技术异常走 `Log.w`，见调用点）。 */
+private const val DETAIL_FAILED_LINE = "这一条作品这会儿没取上，稍后再试。"

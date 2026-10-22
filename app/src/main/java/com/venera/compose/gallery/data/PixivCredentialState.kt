@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -19,6 +21,10 @@ import okhttp3.Request
  * 而换新的那一跳可能撞上风控、断网、站方 500。这时候"没登录"与"登过但现在刷不动"是两件事：
  * 前者该请用户去登录，后者该请他**重新登一次**（而不是把界面退回匿名档假装一切正常 ——
  * 方案 §三 第 4 步钉的就是这条：降级不许静默）。
+ *
+ * 2026-10-21 补一条边界：只有**站方明确判 refresh token 失效**（400 `invalid_grant` / 401）
+ * 才进 [NeedsRelogin]。403 是出口/风控，408/429/5xx 与连接失败是暂时性故障；那些档
+ * 只要旧 access token 还没真过期，就继续用它，不能因为换票失败而把用户踢去重登。
  */
 sealed interface PixivAuthState {
 
@@ -48,7 +54,7 @@ sealed interface PixivAuthState {
      * 界面可以把它当副标题念出来；念不出成因的失败会被读成"这站没图"。
      */
     data class NeedsRelogin(val reason: String) : PixivAuthState {
-        override val screenLine: String = "pixiv 的登录态过期了，要重新登录"
+        override val screenLine: String = "pixiv 登录失效了，重新登录一次吧"
     }
 
     /**
@@ -146,17 +152,52 @@ class PixivCredentialState(
 
     override val isClientConfigured: Boolean get() = client.isConfigured
 
+    /**
+     * 同一时刻只允许一笔换票。
+     *
+     * 首页、推荐、画师页会几乎同时问票据；refresh token 在站方是**会轮换**的，
+     * 几笔并发的 refresh 可能只有第一笔成功，后到的 400/403 再把刚写好的新登录态盖掉。
+     * 拿到锁之后必须重新读一次盘：前一笔若已经换好，后来者直接用新 access token。
+     */
+    private val refreshMutex = Mutex()
+
     override suspend fun bearerOrNull(): String? = withContext(Dispatchers.IO) {
-        val refresh = store.getString(KEY_REFRESH_TOKEN, "").orEmpty()
         // 连可换新的那枚都没有 ⇒ 真的没登录。不做"拿旧 access 顶一下"：那条会把
         // "登过但票据没了"与"从没登过"读成同一件事。
-        if (refresh.isBlank()) return@withContext null
-        val cached = store.getString(KEY_ACCESS_TOKEN, "").orEmpty()
-        if (cached.isNotBlank() && clock() < expiryAt() - EARLY_REFRESH_MS) return@withContext cached
-        runCatching { postForTokens(refreshForm(refresh), keepRefreshOnAbsent = refresh) }
-            .onSuccess(::persist)
-            .onFailure { _authState.value = PixivAuthState.NeedsRelogin(it.readableReason()) }
-            .getOrNull()?.accessToken
+        if (store.getString(KEY_REFRESH_TOKEN, "").orEmpty().isBlank()) return@withContext null
+        usableCachedAccess()?.let { return@withContext it }
+
+        refreshMutex.withLock {
+            // 排队期间前一笔可能已经把新票据写回来了，这里必须重读，不能拿锁外那份旧值再换一次。
+            if (store.getString(KEY_REFRESH_TOKEN, "").orEmpty().isBlank()) return@withLock null
+            usableCachedAccess()?.let { return@withLock it }
+
+            val refresh = store.getString(KEY_REFRESH_TOKEN, "").orEmpty()
+            val previousAccess = store.getString(KEY_ACCESS_TOKEN, "").orEmpty()
+            val previousExpiry = expiryAt()
+            runCatching { postForTokens(refreshForm(refresh), keepRefreshOnAbsent = refresh) }
+                .onSuccess(::persist)
+                .onFailure { failure ->
+                    // 提前 5 分钟刷新只是"尽量别卡到过期那一刻"，并不代表旧票据已经不能用。
+                    // 数据网络抖动、代理节点被风控、站方 5xx 都会让这一笔失败；此时把仍然
+                    // 有效的旧 access token 丢掉并判成登录过期，是用户看到的"经常过期"。
+                    if (previousAccess.isNotBlank() && clock() < previousExpiry) {
+                        return@onFailure
+                    }
+                    if (failure.isDefinitiveAuthFailure() || failure is NotWiredOnDesktop) {
+                        _authState.value = PixivAuthState.NeedsRelogin(failure.readableReason())
+                    }
+                }
+                .getOrNull()?.accessToken
+                ?: previousAccess.takeIf { it.isNotBlank() && clock() < previousExpiry }
+        }
+    }
+
+    /** 仍可直接使用的盘上票据；进入提前刷新窗口时返回 null，让调用方去换票。 */
+    private fun usableCachedAccess(): String? {
+        val access = store.getString(KEY_ACCESS_TOKEN, "").orEmpty()
+        if (access.isBlank()) return null
+        return access.takeIf { clock() < expiryAt() - EARLY_REFRESH_MS }
     }
 
     private var attempt: PixivLoginChallenge? = null
@@ -342,11 +383,30 @@ class PixivCredentialState(
             .url(TOKEN_URL)
             .post(body)
             .header("Accept", "application/json")
+            // token 端点和 app-api 一样会按客户端身份筛请求。2026-10-21 现量：
+            // 只带 Accept 时同一份 refresh 请求回 403 HTML；补上 User-Agent 后回
+            // 400 `invalid_grant`（说明端点认出了请求，只是票据假）。这几枚必须和
+            // PixivAppClient 保持一致，否则首登与后台刷新会同时表现成"换票 403"。
+            .header("App-OS", "android")
+            .header("App-OS-Version", APP_OS_VERSION)
+            .header("App-Version", APP_VERSION)
+            .header("User-Agent", "PixivAndroidApp/$APP_VERSION (Android $APP_OS_VERSION)")
+            .header("Accept-Language", PIXIV_LANGUAGE)
             .tag(NoInteractiveBypassTag::class.java, NoInteractiveBypassTag())
             .build()
         return client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw IOException("pixiv 换 token 回了 ${response.code}")
+            if (!response.isSuccessful) {
+                val reason = when (response.code) {
+                    400 -> text.pixivTokenError() ?: "站方说这一枚 refresh token 不能用了"
+                    401 -> "站方不认这一枚 refresh token 了"
+                    403 -> "站方把换票请求挡下了（可能是网络出口或风控），换网络或稍后再试"
+                    408, 429 -> "站方这一会儿太忙或限流了，稍后再试"
+                    in 500..599 -> "站方暂时出错了，稍后再试"
+                    else -> "站方回了 HTTP ${response.code}"
+                }
+                throw IOException("pixiv 换 token 失败（${response.code}）：$reason")
+            }
             PixivPkce.tokensOf(text, keepRefreshOnAbsent = keepRefreshOnAbsent)
         }
     }
@@ -390,6 +450,11 @@ class PixivCredentialState(
          */
         private const val TOKEN_URL = "https://oauth.secure.pixiv.net/auth/token"
 
+        /** 与 `PixivAppClient` 同一套客户端标识；只用于让站方按 App 请求处理。 */
+        private const val APP_VERSION = "6.0.0"
+        private const val APP_OS_VERSION = "14"
+        private const val PIXIV_LANGUAGE = "zh-cn"
+
         /**
          * 提前 5 分钟就换新（留一段"取回来之后还要用它打几笔"的余量）。
          * 卡到 0 秒的写法会让请求正好落在过期的那一刻，症状是偶发一片 401。
@@ -402,6 +467,47 @@ class PixivCredentialState(
 private fun Throwable.readableReason(): String {
     val line = (this as? IOException)?.message ?: this.message ?: ""
     return line.trim().take(160).ifBlank { "站方没说什么（${this.javaClass.simpleName}）" }
+}
+
+/**
+ * 这次换票失败是否**足以判定 refresh token 已死**。
+ *
+ * token 端点把真正的票据失效放在 400 `invalid_grant` / 401 里；403 是风控或出口被挡，
+ * 408 / 429 / 5xx 与连接异常是暂时性失败。把后者也读成"登录过期"，就会让用户在家里
+ * 换个 Wi-Fi、代理节点抖一下时反复被要求重登 —— 而重登本身又可能撞同一个 403。
+ */
+private fun Throwable.isDefinitiveAuthFailure(): Boolean {
+    val message = this.message.orEmpty()
+    if (message.contains("invalid_grant", ignoreCase = true) ||
+        message.contains("Invalid refresh token", ignoreCase = true)
+    ) {
+        return true
+    }
+    val status = TOKEN_STATUS_REGEX.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    return status == 400 || status == 401
+}
+
+private val TOKEN_STATUS_REGEX = Regex("""\b(\d{3})\b""")
+
+/**
+ * 从 token 端点的 400 答复里取一句**能上屏的**原因。
+ *
+ * 只认站方的错误形状，不把整个正文交出去：答复可能很长，而其中绝不能包含请求体里的票据。
+ * 常见的 `invalid_grant` / `Invalid refresh token` 读成同一句人话；其余 400 原样截一小段。
+ */
+private fun String.pixivTokenError(): String? {
+    val root = runCatching {
+        kotlinx.serialization.json.Json.parseToJsonElement(this)
+            .let { it as? kotlinx.serialization.json.JsonObject }
+    }.getOrNull() ?: return take(120).takeIf { it.isNotBlank() }
+    val system = ((root["errors"] as? kotlinx.serialization.json.JsonObject)
+        ?.get("system") as? kotlinx.serialization.json.JsonObject)
+    val code = (system?.get("code") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+    val message = (system?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content
+    if (code == 1508 || message?.contains("refresh token", ignoreCase = true) == true) {
+        return "站方说这一枚 refresh token 不能用了"
+    }
+    return message?.take(120)?.takeIf { it.isNotBlank() }
 }
 
 /**

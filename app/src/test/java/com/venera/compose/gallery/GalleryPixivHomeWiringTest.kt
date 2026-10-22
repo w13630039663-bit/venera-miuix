@@ -363,4 +363,63 @@ class GalleryPixivHomeWiringTest {
         assertTrue("收藏集合按 uid 建：\n$fav", fav.contains("\"\${it.siteKey}:\${it.id}\""))
         assertTrue("点 ♥ 要真写档：\n$fav", fav.contains("favorites.toggle(post)"))
     }
+
+    // ── 2026-10-22 审计：续页失败不许被念成"到底了" ────────────────────────
+
+    /**
+     * 推荐墙的续页失败与"这一池到底"必须是**两档**。
+     *
+     * 从前失败走的是 `pixivRecommendExhausted = true`：一次网络抖动被写成"站方没有更多了"，
+     * 页尾改念「pixiv 这一池到底了」，而 `GalleryLoadMoreState` 的闸门（`state.exhausted`）
+     * 从此**永久**拦住续页 —— 屏上既是一句假话，又一个重试入口都没有。
+     *
+     * 这条钉三件事：失败读数独立存在、续页那段在失败支上**不**置 exhausted、
+     * 页尾那一档可点（不可点就等于没有）。
+     */
+    @Test
+    fun `推荐墙续页失败与到底是两档，且失败那一档可点`() {
+        val screen = codeLines("com/venera/compose/gallery/ui", "GalleryScreen.kt")
+            .joinToString("\n") { it.value }
+        val forYou = codeLines("com/venera/compose/gallery/ui", "GalleryForYouScreen.kt")
+            .joinToString("\n") { it.value }
+        assertTrue("要有一格独立的续页失败读数：\n$screen", screen.contains("var pixivRecommendMoreFailed"))
+        assertTrue(
+            "站方腿失败支上不许置 exhausted（置了就永久拦住续页）：\n$screen",
+            screen.contains("pixivRecommendMoreFailed = true") &&
+                !screen.contains("""pixivRecommendMoreFailed = true
+                    pixivRecommendExhausted = true"""),
+        )
+        assertTrue("失败读数要透到页尾：\n$forYou", forYou.contains("moreFailed = moreFailed"))
+        assertTrue(
+            "失败那一档必须可点（不可点就等于没有出路）：\n$forYou",
+            forYou.contains("if (moreFailed && onRetryMore != null)"),
+        )
+    }
+
+    /**
+     * 种子那一跳的"取败"与"这一页没有新东西"必须分开。
+     *
+     * 从前三个 `getOrNull()` 一吞了之：三枚种子全败时 `fresh` 为空，于是走
+     * `pixivRecommendExhausted = true` —— 把"我们没取成"写成"这几枚标签没有新东西了"。
+     */
+    @Test
+    fun `种子腿把取败与没有新东西分开念`() {
+        val screen = codeLines("com/venera/compose/gallery/ui", "GalleryScreen.kt")
+            .joinToString("\n") { it.value }
+        assertTrue(
+            "种子那一跳要按枚记成败（不记就分不出'没取到'与'没人用）：\n$screen",
+            screen.contains("var seedFailures = 0"),
+        )
+        assertTrue(
+            "续页那段也要按枚记：\n$screen",
+            screen.contains("seedFailures++"),
+        )
+        assertTrue(
+            "换一批那段同样分开（同族第四处）：\n$screen",
+            screen.contains("pixiv remix seed"),
+        )
+        // 三处（首屏 / 续页 / 换一批）各记一次，谁也不能替谁说话。
+        val seedCount = screen.split("var seedFailures = 0").size - 1
+        assertTrue("三处种子取数各记一份成败，实际 $seedCount 处：\n$screen", seedCount == 3)
+    }
 }

@@ -380,11 +380,19 @@ internal fun GalleryArtistProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing),
             ) {
                 credits.links.forEach { link ->
+                    val isPixiv = link.platform == GalleryArtistLinkPlatform.PIXIV
+                    val linkPixivId = if (isPixiv) GalleryArtistLinks.pixivUserId(link.url) else null
                     VeneraChip(
-                        text = GalleryArtistLinks.chipLabel(link),
+                        text = if (linkPixivId != null) "${GalleryArtistLinks.chipLabel(link)} · 打开主页" else GalleryArtistLinks.chipLabel(link),
                         variant = VeneraChipVariant.Assist,
                         leading = { PlatformBadge(link.platform) },
-                        onClick = { openExternal(context, link.url) },
+                        onClick = {
+                            if (linkPixivId != null) {
+                                context.openPixivArtistPage(linkPixivId, artistName)
+                            } else {
+                                openExternal(context, link.url)
+                            }
+                        },
                     )
                 }
             }
@@ -413,6 +421,19 @@ internal fun GalleryArtistProfileScreen(
                 primary = false,
                 onClick = onBrowseAllWorks,
                 modifier = Modifier.weight(1f),
+            )
+        }
+        val pixivUserId = credits.links.firstNotNullOfOrNull { GalleryArtistLinks.pixivUserId(it.url) }
+        if (pixivUserId != null) {
+            Spacer(modifier = Modifier.height(tokens.spacing.space4))
+            ArtistActionPill(
+                text = "在 Pixiv 中查看该画师",
+                primary = false,
+                onClick = { context.openPixivArtistPage(pixivUserId, artistName) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
+                    .align(Alignment.CenterHorizontally),
             )
         }
 

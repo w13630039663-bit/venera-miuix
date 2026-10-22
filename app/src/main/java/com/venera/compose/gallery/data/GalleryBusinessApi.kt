@@ -537,6 +537,12 @@ interface GalleryPixivWorks {
 
     /** **取关**一位画师（写站方）。与 [followAdd] 成对：只删本地会把站方那一份留成暗账。 */
     suspend fun followRemove(bearer: String, userId: String): Result<Unit>
+
+    /** 收藏作品（写站方）。 */
+    suspend fun bookmarkAdd(bearer: String, illustId: Long, private: Boolean = false): Result<Unit>
+
+    /** 取消收藏作品（写站方）。 */
+    suspend fun bookmarkRemove(bearer: String, illustId: Long): Result<Unit>
 }
 
 /** 以图搜图。返回类型 `SauceNaoPage` 与本文件同包（`gallery/data/SauceNao.kt:56`）。 */

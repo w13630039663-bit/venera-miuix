@@ -82,14 +82,19 @@ object PixivWorkPage {
      * - [GalleryPost.uid] **不带页位**（收藏、历史、去重记的是这一条作品），逐页分开的那几处
      *   吃 [GalleryPost.viewerKey] 与缓存键里的页位。
      */
-    fun pageWallOf(detail: PixivWorkDetail): List<GalleryPost> =
+    fun pageWallOf(
+        detail: PixivWorkDetail,
+        viewerQuality: PixivImageQuality = PixivImageQuality.ORIGINAL,
+    ): List<GalleryPost> =
         detail.pages.mapIndexed { index, page ->
+            val target = page.urlFor(viewerQuality)
+            val medium = page.urlFor(PixivImageQuality.MEDIUM)
             detail.post.copy(
-                previewUrl = page.mediumUrl,
-                fastUrl = page.mediumUrl,
-                largeUrl = page.mediumUrl,
-                fileUrl = page.originalUrl,
-                fileExt = page.originalUrl.substringAfterLast('.', "").substringBefore('?'),
+                previewUrl = medium,
+                fastUrl = medium,
+                largeUrl = page.urlFor(PixivImageQuality.LARGE),
+                fileUrl = target,
+                fileExt = target.substringAfterLast('.', "").substringBefore('?').ifBlank { "jpg" },
                 width = page.width ?: 0,
                 height = page.height ?: 0,
                 pageCount = detail.pages.size,

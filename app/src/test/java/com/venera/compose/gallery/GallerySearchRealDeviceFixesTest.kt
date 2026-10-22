@@ -55,10 +55,19 @@ class GallerySearchRealDeviceFixesTest {
                 .none { it.name == "GallerySearchCollapse.kt" },
         )
         // 对照：`collapseToResults` 本身没被撤走（宿主仍要用它），撤的只是"键盘"那一个调用方。
+        //
+        // 2026-10-22：2 → 3。多出来的那一处是 ON_STOP 那一路（离开这一屏时把**展开着的**
+        // 搜索层收成一条），与"键盘"那一路不是同一件事 —— 键盘那一路仍然不存在
+        // （上面 `banned` 那三条判的就是它）。
+        val exits = screenCode().filter { it.contains("collapseToResults") }
         assertEquals(
             "宿主那层的收条出口数量变了（判式钉的是『键盘这一路没了』，不是『这颗符号没了』）",
-            2,
-            screenCode().count { it.contains("collapseToResults") },
+            3,
+            exits.size,
+        )
+        assertTrue(
+            "三处出口里没有一处挂在键盘判据上：$exits",
+            exits.none { it.contains("isImeVisible") || it.contains("imeWasVisible") },
         )
         // 键盘仍然参与**高度**判据 —— 撤的是收条，不是"知道键盘在不在"。
         assertTrue(

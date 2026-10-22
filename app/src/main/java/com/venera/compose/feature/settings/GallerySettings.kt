@@ -26,6 +26,9 @@ import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.PixivPageSeam
+import com.venera.compose.gallery.domain.PixivImageQuality
+import com.venera.compose.feature.SettingsSubScreen
+import com.venera.compose.feature.openSettingsSubScreen
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
@@ -296,6 +299,56 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
             SettingsToggle(
                 "画成水彩（Beta）", watercolorBeta, { prefs.setGalleryWatercolorBeta(it) },
                 summary = "开启后，可在「关于这张图」面板把当前图片重画成水彩，原图不变。",
+            )
+        }
+
+        val pixivPreviewQuality by prefs.pixivPreviewQuality.collectAsState()
+        val pixivDetailQuality by prefs.pixivDetailQuality.collectAsState()
+        val pixivViewerQuality by prefs.pixivViewerQuality.collectAsState()
+
+        SettingsGroup("pixiv 画质设置") {
+            SettingsSelect(
+                "卡片预览画质", pixivPreviewQuality.name,
+                listOf(
+                    PixivImageQuality.MEDIUM.name to "中画质",
+                    PixivImageQuality.LARGE.name to "大图",
+                    PixivImageQuality.ORIGINAL.name to "原图",
+                ),
+                { prefs.setPixivPreviewQuality(PixivImageQuality.valueOf(it)) },
+                summary = "只影响画廊首页瀑布流卡片、画师作品列表等小图。",
+            )
+            SettingsSelect(
+                "作品/漫画详情页画质", pixivDetailQuality.name,
+                listOf(
+                    PixivImageQuality.MEDIUM.name to "中画质",
+                    PixivImageQuality.LARGE.name to "大图",
+                    PixivImageQuality.ORIGINAL.name to "原图",
+                ),
+                { prefs.setPixivDetailQuality(PixivImageQuality.valueOf(it)) },
+                summary = "影响作品详情页连续滑动阅读流中的画质。",
+            )
+            SettingsSelect(
+                "大图画质", pixivViewerQuality.name,
+                listOf(
+                    PixivImageQuality.MEDIUM.name to "中画质",
+                    PixivImageQuality.LARGE.name to "大图",
+                    PixivImageQuality.ORIGINAL.name to "原图",
+                ),
+                { prefs.setPixivViewerQuality(PixivImageQuality.valueOf(it)) },
+                summary = "影响全屏看图器/播放器中的高清档画质。",
+            )
+        }
+
+        SettingsGroup("pixiv 下载与网络") {
+            SettingsAction(
+                "pixiv 下载设置",
+                "自定义保存路径、保存格式命名规则、收藏自动保存",
+                onClick = { context.openSettingsSubScreen(SettingsSubScreen.PIXIV_DOWNLOAD) },
+            )
+            SettingsAction(
+                "pixiv 网络设置",
+                "OAuth、API 服务网络模式及图片源 Host 配置",
+                onClick = { context.openSettingsSubScreen(SettingsSubScreen.PIXIV_NETWORK) },
             )
         }
 

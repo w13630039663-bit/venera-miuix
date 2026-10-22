@@ -344,12 +344,58 @@ class GalleryPixivAccountPageWiringTest {
     }
 
     @Test
-    fun `顶栏实底且内容接上 nestedScroll`() {
-        // 用户点名 ④「顶栏…不要透过」：玻璃采的是内容层，传 backdrop 就一定透。
-        assertTrue("顶栏要走实底那一路：\n$body", body.contains("opaqueChrome = true"))
-        assertFalse("这一屏不许再传玻璃采样源", body.contains("backdrop = topBarBackdrop") || body.contains("blurBackdropSource("))
+    /**
+     * 顶栏走**玻璃背板**那一路，且内容接上 nestedScroll。
+     *
+     * 2026-10-22 改判（用户「下滑顶栏也要收起，一样做顶栏模糊」）：这一条从 2026-10-19 的
+     * 「实底 + 不许传 backdrop」翻过来。当初的理由是「玻璃采的是内容层，传了就必透」——
+     * 那条判据本身没错，错在**当时没有可采的层**：三面墙都没挂 `blurBackdropSource`，
+     * 于是传了 backdrop 也采到空层，看着就是"顶栏糊了一层灰"。挂上采样源之后
+     * 玻璃与画廊首页 / 画师页 / 作品页同一套，顶栏也照常跟着滚动收起。
+     *
+     * ⚠️ 采样源必须**挂在 Pager 上**而不是三面墙各挂一次：横滑时左右两页都在场上，
+     * 各挂各的会让玻璃在滑动中途采到隔壁那一页 —— 顶栏颜色跟着手势跳。
+     */
+    fun `顶栏走玻璃背板且内容接上 nestedScroll`() {
+        assertTrue("顶栏要走玻璃那一路：\n$body", body.contains("backdrop = topBarBackdrop"))
+        assertFalse("这一屏不许再铺实底（实底会把玻璃整块盖住）", body.contains("opaqueChrome = true"))
+        assertTrue(
+            "采样源要挂在 Pager 上（三面墙各挂会让玻璃在横滑时采到隔壁页）：\n$body",
+            body.contains("blurBackdropSource(topBarBackdrop)"),
+        )
         // 三处可滚内容都要接 nestedScroll，否则内容从顶栏底下直穿。
         assertEquals("墙、已关注、账号管理各接一次", 3, count("""nestedScroll\(scrollBehavior.nestedScrollConnection\)"""))
+    }
+
+    /**
+     * 顶栏那两排选择器**跟着滚动折叠**（2026-10-22，用户「往下滑的时候这两个顶栏选择器也要隐藏掉，到顶才显示」）。
+     *
+     * 立案读数：改玻璃之前那一版是实底顶栏，折叠之后顶上仍压着分段器（48dp）与二级行（38dp）
+     * —— 内容可视区被吃掉一整块，而那两排在折叠态一个也用不上（动态/收藏/已关注 没有切换的余地）。
+     *
+     * 判据吃 `collapsedFraction` 而不是另记一个"滚动过半"的布尔：它就是 miuix 顶栏折叠进度本身，
+     * 0 = 在顶，1 = 折叠到位。**alpha 与高度必须一起退** —— 只退 alpha 的话，那两排仍占着位，
+     * 顶栏背板（matchParentSize）会跟着留一条空白。
+     */
+    fun `两排选择器跟着顶栏折叠退场，且 alpha 与高度一起退`() {
+        val chrome = body.substringAfter("bottomContent = {").substringBefore("PixivAccountSegmentTrack(")
+        assertTrue(
+            "折叠进度要从顶栏 behavior 读，不另记一份：\n$chrome",
+            chrome.contains("topBarBehavior.state.collapsedFraction"),
+        )
+        assertTrue(
+            "alpha 要跟着折叠进度退：\n$chrome",
+            chrome.contains("alpha = 1f - collapsed"),
+        )
+        assertTrue(
+            "高度也要归零（只退 alpha 会留一条占位空白）：\n$chrome",
+            chrome.contains(".height(chromeExtra * (1f - collapsed))"),
+        )
+        // 收起量必须与让位量同一个式子：两处各写一套数字会差一份，顶栏背板留一条缝。
+        assertTrue(
+            "收起量按段的附加高算（动态段多一排二级）：\n$chrome",
+            chrome.contains("if (section == PixivAccountSection.DYNAMIC) {"),
+        )
     }
 
     @Test

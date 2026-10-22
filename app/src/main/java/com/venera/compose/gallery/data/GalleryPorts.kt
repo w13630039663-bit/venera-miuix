@@ -1,5 +1,7 @@
 package com.venera.compose.gallery.data
 
+import com.venera.compose.gallery.domain.PixivImageQuality
+
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
@@ -176,6 +178,7 @@ interface GalleryPreferences {
 
     /** 「画成水彩」入口开关（Beta，默认关）：见 VeneraPreferences 该条说明。 */
     val galleryWatercolorBeta: StateFlow<Boolean>
+    val pixivPreviewQuality: StateFlow<PixivImageQuality>
 }
 
 /**

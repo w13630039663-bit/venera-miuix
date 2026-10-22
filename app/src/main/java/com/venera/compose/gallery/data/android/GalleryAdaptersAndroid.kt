@@ -47,6 +47,18 @@ internal class AndroidGalleryFavorites(private val context: Context) : GalleryFa
      * - 站方那一跳失败 ⇒ **本地那条留着**（用户真要收藏它），另说一句"站方那份没加上"。
      */
     override suspend fun toggle(post: GalleryPost): Boolean {
+        if (post.site == GallerySite.PIXIV) {
+            val userId = (account.authState.value as? PixivAuthState.SignedIn)?.userId
+            val bearer = runCatching { account.bearerOrNull() }.getOrNull()
+            if (bearer == null || userId.isNullOrBlank()) {
+                store.notice("请先登录 pixiv 账号，站方收藏需要登录凭据")
+                return false
+            }
+            val private = PixivPremium.of(userId) { appClient.userPremium(bearer, userId).getOrNull() }
+            val outcome = appClient.bookmarkAdd(bearer, post.id, private = private)
+            store.removeAll(listOf(post.uid))
+            return outcome.isSuccess
+        }
         val now = store.toggle(post)
         syncToPixiv(post, added = now)
         return now
@@ -314,6 +326,12 @@ internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryP
 
     override suspend fun followRemove(bearer: String, userId: String) =
         appClient.followRemove(bearer, userId)
+
+    override suspend fun bookmarkAdd(bearer: String, illustId: Long, private: Boolean): Result<Unit> =
+        appClient.bookmarkAdd(bearer, illustId, private)
+
+    override suspend fun bookmarkRemove(bearer: String, illustId: Long): Result<Unit> =
+        appClient.bookmarkRemove(bearer, illustId)
 }
 
 internal class AndroidGalleryReverseSearch(private val context: Context) : GalleryReverseSearch {

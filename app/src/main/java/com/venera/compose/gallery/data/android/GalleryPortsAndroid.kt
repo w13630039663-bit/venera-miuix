@@ -8,6 +8,7 @@ import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.gallery.domain.PixivPageSeam
+import com.venera.compose.gallery.domain.PixivImageQuality
 import com.venera.compose.gallery.domain.PixivReadScope
 import com.venera.compose.security.guard.ContentGuardManager
 import com.venera.compose.security.guard.GuardRule
@@ -105,6 +106,7 @@ private class AndroidGalleryPreferences(private val context: Context) :
     override val galleryHideTopBar: StateFlow<Boolean> get() = prefs.galleryHideTopBar
     override val galleryHideBottomBar: StateFlow<Boolean> get() = prefs.galleryHideBottomBar
     override val galleryWatercolorBeta: StateFlow<Boolean> get() = prefs.galleryWatercolorBeta
+    override val pixivPreviewQuality: StateFlow<PixivImageQuality> get() = prefs.pixivPreviewQuality
     // pixiv 作品页那两档走隔壁那颗接口（`GalleryPreferences` 是跨端共享读面，桌面不实现这两枚）。
     override val pageSeam: StateFlow<PixivPageSeam> get() = prefs.pixivWorkSeam
     override val detailsInFlow: StateFlow<Boolean> get() = prefs.pixivWorkDetailsInFlow

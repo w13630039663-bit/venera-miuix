@@ -247,7 +247,9 @@ internal fun PixivArtistScreen(
                 Log.w(TAG, "画师 $id 的站方详情没取到，整屏退匿名档：${failure.message}")
                 detail = null
                 ticketMode = false
-                anonymousReason = "站方详情这一跳没答上（${failure.message ?: "未知原因"}）"
+                // 技术原文只进日志：站方正文可能是 JSON/HTML 片段，上屏就是一段机器味
+                // （2026-10-22 审计，同 bookmarkError 那一处的口径）。
+                anonymousReason = DETAIL_FAILED_LINE
             }.onSuccess { stats ->
                 detail = stats
                 ticketMode = true
@@ -350,7 +352,11 @@ internal fun PixivArtistScreen(
         if (tab != PixivArtistSection.BOOKMARK) return@LaunchedEffect
         if (bookmarkAsked) return@LaunchedEffect
         // 未登录：不读、不置失败 —— 屏上摆的是"为什么读不到 + 怎么才读得到"那个有出口的空态。
+        // 但同时要把**上一个账号**取回的那一批清掉：登出后屏上一边念"读不到"一边摆着
+        // 285 张别人的收藏，两句互相矛盾，而那其中一排是别人的账号数据。
         if (pixivAuth !is PixivAuthState.SignedIn) {
+            bookmarkWorks = emptyList()
+            bookmarkNext = null
             bookmarkError = null
             bookmarkLoading = false
             return@LaunchedEffect
@@ -358,7 +364,7 @@ internal fun PixivArtistScreen(
         val bearer = ports.pixivAccount?.bearerOrNull()
         if (bearer == null) {
             // 票据**这一刻**取不到（刚过期之类），不记账：下一次组合还能再试。
-            bookmarkError = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
+            bookmarkError = "pixiv 这会儿没接上，稍后再试；如果一直这样，再点顶栏头像重新登录。"
             bookmarkLoading = false
             return@LaunchedEffect
         }
@@ -368,7 +374,8 @@ internal fun PixivArtistScreen(
         // `restrict=public`，读不到私密档（那是用户给站方划的界，见文件头）。
         ports.pixiv?.bookmarkedIllusts(bearer, id.toString(), PixivRestrict.Public)?.onFailure { failure ->
             Log.w(TAG, "画师 $id 的公开收藏没取到：${failure.message}")
-            bookmarkError = failure.message?.takeIf { it.isNotBlank() } ?: "站方没答上"
+            // 技术异常只进日志：站方正文片段上屏读不懂，也会把这一段撑坏。
+            bookmarkError = BOOKMARK_FAILED_LINE
         }?.onSuccess { page ->
             bookmarkWorks = page.works
             bookmarkNext = page.nextUrl
@@ -449,19 +456,28 @@ internal fun PixivArtistScreen(
     // 头图三档回退：自设背景 → 他的第一张插画 → 卡面色块（见文件头第 1 条）。
     // ⚠️ 回退取的是**插画段的第一张**，不是"当前这一段的第一张"：切到收藏段时头图不该
     // 换成别人的作品 —— 那会读成"这张是这位画的"。
-    val heroUrl = head?.backgroundUrl
-        ?: cards.firstOrNull()?.post?.previewUrl
+    //
+    // 所以那张插画地址要**钉住**（不跟着 `cards` 变）：切到收藏段时 `onPick` 会把 `cards`
+    // 清空，直接读 `cards.firstOrNull()` 的话头图当场变成纯色块 —— 与上面那句注释的意图正相反
+    // （2026-10-22 审计）。这里只认插画/漫画段的第一张，且只在还没有时记一次。
+    var heroFallbackUrl by remember(userId) { mutableStateOf<String?>(null) }
+    if (heroFallbackUrl == null && tab != PixivArtistSection.BOOKMARK && cards.isNotEmpty()) {
+        heroFallbackUrl = cards.firstOrNull()?.post?.previewUrl
+    }
+    val heroUrl = head?.backgroundUrl ?: heroFallbackUrl
     // 高度按宽算再夹。宽窗下与正文一起受 contentMaxWidth 收口 ⇒ 不会被拉成扁条。
     val heroHeight = if (wideScreen) tokens.spacing.pixivArtistHeroMaxHeight else tokens.spacing.pixivArtistHeroMinHeight
 
-    // 关注态：**站方为准，本地只当缓存**（用户 2026-10-19 拍板）。
-    // `is_followed` 有值就照它 —— 那是站方眼里的关系；null（没票据 / 站方没答这一格）才退本地那本账。
+    // 关注态：**只认站方**（用户 2026-10-22 拍板「读 pixiv 我关注的画师，不要读本地的」）。
     //
-    // ⚠️ 两本账的**键不同轨**：站方按 `user_id`，本地按画师名（名单里刻意不存编号，理由写在
-    // `GalleryArtistFollowsStore` 头注）。所以退本地那一档答的其实是"这个名字我记过没有"，
-    // 与站方那一格不是同一个问题 —— 这一格差别必须靠上面那句匿名档读数说出来，不许静默。
-    val followingLocal = GalleryArtistFollows.isFollowing(follows, GallerySite.PIXIV, artistName)
-    val following = detail?.isFollowed ?: followingLocal
+    // 2026-10-19 那一版是"站方优先、本地兜底"，兜底在实际使用中读起来就是反的：用户在
+    // pixiv 上关注了这位，而本地名单里没有（关注是从别处/网页上做的）⇒ 屏上显示"关注"，
+    // 按下去还会往站方发一笔 add。所以现在 `is_followed` 拿不到就**什么都不显示**：
+    // 那一档退化成"还不知道"，比拿一本键不同轨的账（站方按 user_id、本地按画师名）
+    // 顶一个错答案诚实。
+    val hasLocalResidual = GalleryArtistFollows.isFollowing(follows, GallerySite.PIXIV, artistName)
+    // pixiv 画师关注完全以站方为准，不写入本地图库；如果本地有历史残留，允许点按清理
+    val following: Boolean? = detail?.isFollowed ?: if (hasLocalResidual) true else null
 
     val sidePadding = tokens.spacing.screenHorizontal
     // 宽屏收口：hero 与正文同一宽度，否则外链 chips 会沿 1891dp 铺满整行。
@@ -558,7 +574,9 @@ internal fun PixivArtistScreen(
                         following = following,
                         busy = followBusy,
                         onClick = {
-                            val target = !following
+                            // 还不知道时这一枚按不动：那一档发出去的是"取关"，而我们从没确认过
+                            // 关注关系 —— 那就是凭一个没据的读数改用户的账号状态。
+                            val target = following?.let { !it } ?: return@FollowPill
                             scope.launch {
                                 togglePixivFollow(
                                     ports = ports,
@@ -567,6 +585,7 @@ internal fun PixivArtistScreen(
                                     target = target,
                                     setBusy = { followBusy = it },
                                     setNotice = { followError = it },
+                                    // 写成了就把站方那一格对齐：本地那本账从此只是缓存。
                                     alignSite = { detail = detail?.copy(isFollowed = it) },
                                 )
                             }
@@ -659,8 +678,12 @@ internal fun PixivArtistScreen(
             item(key = "anonymous-notice", span = StaggeredGridItemSpan.FullLine) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = sidePadding)) {
                     PixivArtistLine(
+                        // 这一行带 onClick：站方详情这一跳失败时 `following == null`（关注胶囊
+                        // 按不动），而三处重试行都要 `cards.isEmpty()` —— 作品取到了就一行都不渲染，
+                        // 屏上**一个可点的出路都没有**（2026-10-22 审计）。这里补上。
                         text = "现在是匿名档（$reason）：成人档与部分作品取不到，" +
                             "上面的张数会比 pixiv 网页少。",
+                        onClick = { retryTick += 1 },
                     )
                 }
             }
@@ -816,7 +839,15 @@ internal fun PixivArtistScreen(
                     failed = batchFailed,
                     exhausted = works != null && batchIds.isEmpty(),
                     total = works?.idsFor(tab)?.size,
-                    onLoadMore = { if (!loadingBatch) batchIndex += 1 },
+                    // 失败那一档抬 `retryTick`（重发当前批）而不是 `batchIndex++`（跳过失败那一批）：
+                    // 页脚写着"重试"，按下去却把失败的 24 个 id 永久跳过，那是假把手
+                    // （2026-10-22 审计）。`retryTick` 那棵 effect 带 `batchIds` 重发，
+                    // 成功时是 `cards + fresh`，不会重复。
+                    onLoadMore = {
+                        if (!loadingBatch) {
+                            if (batchFailed) retryTick += 1 else batchIndex += 1
+                        }
+                    },
                 )
             }
         }
@@ -900,7 +931,7 @@ private fun PixivArtistFace(
  * @param target 按下去**之后**该是什么状态（true = 关注）。由调用方按当前显示值取反，
  *   不在这里读任何状态 —— 这里读一次快照，晚到的那一笔就会把屏上的值当成本地值。
  */
-private suspend fun togglePixivFollow(
+internal suspend fun togglePixivFollow(
     ports: GalleryPorts,
     userId: Long?,
     artistName: String,
@@ -909,7 +940,25 @@ private suspend fun togglePixivFollow(
     setNotice: (String?) -> Unit,
     alignSite: (Boolean) -> Unit,
 ) {
-    val id = userId ?: return
+    // 站方这一条没给用户号：写腿压根发不出去。从前这里是静默 `return` ——
+    // 用户按下「关注」，屏上什么都不会变也没有一句话，读起来就是"这钮是画的"。
+    //
+    // ⚠️ 这里**不许只写本地了事**：本地那一翻会让胶囊当场从「关注」变成「已关注」，
+    // 而唯一的失败信号是一行贴在作者名右下角的 textTertiary 小字 —— 用户读到的是"我关注成功了"
+    // （2026-10-22 审计）。这一档连本地都不动，只把为什么说清楚；调用方那边 `following == null`
+    // 的 pill 本来就不吃点击，走到这里说明是从作品页 `detail.authorId` 那颗可空读进来的。
+    val id = userId
+    if (id == null) {
+        if (GalleryArtistFollows.isFollowing(ports.follows.follows.value, GallerySite.PIXIV, artistName)) {
+            ports.follows.setFollowed(GallerySite.PIXIV, artistName, false)
+            alignSite(false)
+            setNotice("已清理本地关注残留。")
+        } else {
+            setNotice("这一位没有 pixiv 用户号，关注写不到站方。")
+        }
+        setBusy(false)
+        return
+    }
     val bearer = ports.pixivAccount?.bearerOrNull()
     if (bearer == null) {
         setBusy(true)
@@ -918,7 +967,14 @@ private suspend fun togglePixivFollow(
         setNotice("没有登录票据：这一笔只记进了本地名单，pixiv 那边没有动。")
         return
     }
-    val client = ports.pixiv ?: return
+    val client = ports.pixiv
+    if (client == null) {
+        setNotice("这一侧没有接 pixiv 的关注写腿，只能记进本地名单。")
+        setBusy(true)
+        ports.follows.toggle(GallerySite.PIXIV, artistName)
+        setBusy(false)
+        return
+    }
     setBusy(true)
     // `restrict=private` 是会员档（非会员发过去站方拒），所以这里恒给 public ——
     // 宁可公开，也不留一条"看起来关注上了其实站方没收"的假记录。
@@ -926,9 +982,12 @@ private suspend fun togglePixivFollow(
     else client.followRemove(bearer, id.toString())
     outcome.onFailure { failure ->
         Log.w(TAG, "画师 $id 的关注没写成：${failure.message}")
-        setNotice(failure.message?.takeIf { it.isNotBlank() } ?: "站方没答上，这一笔没记上。")
+        // 技术异常只进日志：那一串可能带着站方正文片段，上屏读不懂。这一笔**没有**写进去，
+        // 所以本地一个字都不动 —— 屏上只要一句"没记上"就够。
+        setNotice(FOLLOW_FAILED_LINE)
     }.onSuccess {
-        ports.follows.setFollowed(GallerySite.PIXIV, artistName, target)
+        // pixiv 画师关注不写入本地图库，同时清除可能存在的旧本地残留
+        ports.follows.setFollowed(GallerySite.PIXIV, artistName, false)
         alignSite(target)
         setNotice(null)
     }
@@ -949,28 +1008,43 @@ private suspend fun togglePixivFollow(
  * - [busy] 那一档把文案换成"处理中…"并吃掉点击：站方那一跳是网络往返，按下去没反应
  *   会被读成"这钮是画的"，连点两下更会发出两笔相反的请求。
  */
+/**
+ * 关注 pill（38dp）。
+ *
+ * @param following 站方眼里的关系。null = **还不知道**（`is_followed` 没拿到，多半是票据那一跳
+ *   没答上）⇒ 那一档摆「关注」但按不动，并说明为什么。从前这里拿本地名单兜底，读起来是反的：
+ *   用户在 pixiv 上关注了这位、本地名单没有，屏上就说"关注"。
+ */
 @Composable
-private fun FollowPill(following: Boolean, busy: Boolean, onClick: () -> Unit) {
+private fun FollowPill(following: Boolean?, busy: Boolean, onClick: () -> Unit) {
     val tokens = VeneraTokens
     val shape = RoundedCornerShape(tokens.shape.large)
     Box(
         modifier = Modifier
             .height(tokens.spacing.pixivFollowPillHeight)
             .clip(shape)
-            .background(if (following) tokens.color.surfaceContainerHigh else tokens.color.primary)
-            .then(if (busy) Modifier else Modifier.clickable(onClick = onClick))
+            // 三态：已关注 = tonal 灰底；未关注 = primary 实底；还不知道 = 灰底但**不吃点击**
+            // （发出去的是"取关"，而我们从没确认过关注关系）。
+            .background(
+                when (following) {
+                    true -> tokens.color.surfaceContainerHigh
+                    false -> tokens.color.primary
+                    null -> tokens.color.surfaceContainerHigh
+                },
+            )
+            .then(if (busy || following == null) Modifier else Modifier.clickable(onClick = onClick))
             .padding(horizontal = tokens.spacing.space9),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = when {
                 busy -> "处理中…"
-                following -> "已关注"
+                following == true -> "已关注"
                 else -> "关注"
             },
             fontSize = tokens.type.caption,
             fontWeight = tokens.type.weightSemibold,
-            color = if (following) tokens.color.textPrimary else tokens.color.onPrimary,
+            color = if (following == false) tokens.color.onPrimary else tokens.color.textPrimary,
             maxLines = 1,
         )
     }
@@ -1237,3 +1311,12 @@ private fun PixivArtistSection.ticketType(): String = when (this) {
 private const val MAX_LINKS = 3
 
 private const val TAG = "PixivArtist"
+
+/** 公开收藏这一段取不到时上屏的那句话（技术异常走 `Log.w`，见调用点）。 */
+private const val BOOKMARK_FAILED_LINE = "公开收藏这一回没取上，稍后再试。"
+
+/** 关注那一跳没写成时上屏的那句话。**这一笔没有写进去**，本地也不动。 */
+private const val FOLLOW_FAILED_LINE = "这一笔没记上，pixiv 那边也没动 —— 稍后再试。"
+
+/** 站方详情那一跳没答上时上屏的那句话（技术异常走 `Log.w`，见调用点）。 */
+private const val DETAIL_FAILED_LINE = "站方详情这一跳没答上，稍后再试。"

@@ -31,6 +31,7 @@ data class GalleryFollowedArtistsReadout(
     val artists: List<FollowedArtistRef>,
     val gap: GalleryFollowedArtistsGap,
     val distinctTotal: Int,
+    val allArtists: List<FollowedArtistRef> = artists,
 ) {
     /** 行里摆不下的那几位。念得出来才不装成"就这么些人"。 */
     val overflow: Int get() = (distinctTotal - artists.size).coerceAtLeast(0)
@@ -99,7 +100,12 @@ object GalleryFollowedArtists {
                 count = owned.size,
             )
         }
-        return GalleryFollowedArtistsReadout(refs.take(rowSize), GalleryFollowedArtistsGap.NONE, refs.size)
+        return GalleryFollowedArtistsReadout(
+            artists = refs.take(rowSize),
+            gap = GalleryFollowedArtistsGap.NONE,
+            distinctTotal = refs.size,
+            allArtists = refs,
+        )
     }
 
     /**

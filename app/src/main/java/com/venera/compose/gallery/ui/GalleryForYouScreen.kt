@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.ui
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -362,6 +363,18 @@ internal fun pixivRecommendReading(
     loadingMore: Boolean = false,
     /** 这一池已经到底（站方没给 `next_url` / 种子那一页没新东西）。 */
     exhausted: Boolean = false,
+    /**
+     * 续页**这一下**没取上（与"到底了"分开的那一档，2026-10-22 审计 P0）。
+     *
+     * 从前这一档走的是 `exhausted = true`：一次网络抖动被念成「pixiv 这一池到底了」，
+     * 而闸门（`state.exhausted`）从此永久拦住续页。分开之后页尾多一档"没续上 · 重试"。
+     */
+    moreFailed: Boolean = false,
+    /**
+     * 续页失败那一档的重试。默认与 [onRetry] 同一颗 —— 空态那颗重试重发的是首屏，
+     * 而续页这颗要的是"再发一次下一页"（首屏内容已经在了，重发它等于把整墙换掉）。
+     */
+    onRetryMore: () -> Unit = onRetry,
 ): GalleryHomeWallReading = GalleryHomeWallReading(
     wall = wall,
     // `pending` 由调用点给"还没判过档 || 正在取"两道的并（口径同图库站那档的 `stage == IDLE`）。
@@ -375,11 +388,15 @@ internal fun pixivRecommendReading(
             tone = VeneraEmptyTone.Failed,
         )
     } else if (seeds.isEmpty()) {
+        // 「真·用户还没干活」（没有种子）与「取数失败」分开：前者不给按钮（点了也是同一句
+        // "先去收藏几张"），后者必须给 —— 否则票据取不到那一句上屏时连"再刷一次"都没有
+        // （2026-10-22 审计）。
+        val noSeedsYet = caption == null
         ForYouEmptyCopy(
             title = "还没有能推荐的基础",
             message = caption ?: "先去大图页点收藏几张图，这一栏就照着那些标签去 pixiv 找。",
-            actionText = null,
-            onAction = null,
+            actionText = if (noSeedsYet) null else "再刷一次",
+            onAction = if (noSeedsYet) null else onRetry,
             tone = VeneraEmptyTone.NotYet,
         )
     } else {
@@ -398,34 +415,62 @@ internal fun pixivRecommendReading(
     footer = if (wall.cards.isEmpty()) {
         null
     } else {
-        @Composable { PixivRecommendEnd(loadingMore = loadingMore, exhausted = exhausted) }
+        @Composable {
+            PixivRecommendEnd(
+                loadingMore = loadingMore,
+                exhausted = exhausted,
+                moreFailed = moreFailed,
+                onRetryMore = onRetryMore,
+            )
+        }
     },
 )
 
 /**
  * 推荐那面墙的页尾（2026-10-17 第七轮，无限下拉配套）。
  *
- * 只说两件事：正在取下一屏 / 已经到底。**没有"上滑继续取"那一句** —— 无限下拉是滑到底
- * 自动发的，不像搜索页要用户再滑一下。
+ * 三档：正在取下一屏 / 已经到底 / **这一下没续上**（可点，重发续页）。
+ * 没有"上滑继续取"那一句 —— 无限下拉是滑到底自动发的，不像搜索页要用户再滑一下。
+ *
+ * 失败那一档必须是**可点的**：续页挂在 `LaunchedEffect(forYouGridState…)` 的滚动读数上，
+ * 失败之后不置 exhausted 就不会自己重发，而没有把手的话用户唯一能做的事是退出重进。
  */
 @Composable
-private fun PixivRecommendEnd(loadingMore: Boolean, exhausted: Boolean) {
+private fun PixivRecommendEnd(
+    loadingMore: Boolean,
+    exhausted: Boolean,
+    moreFailed: Boolean = false,
+    onRetryMore: (() -> Unit)? = null,
+) {
     val tokens = VeneraTokens
     val line = when {
         loadingMore -> "正在取下一屏…"
+        moreFailed -> "这一下没续上 · 点这里重试"
         exhausted -> "pixiv 这一池到底了"
         // 还有下一页但还没滑到：**不念**"上滑继续取"（那是搜索页的手动口径，这里自动发）。
         else -> null
     }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = tokens.spacing.space6),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                // 只有失败那一档可点（"到底了"点一万次还是到底，那是假把手）。
+                if (moreFailed && onRetryMore != null) {
+                    Modifier.clickable { onRetryMore() }
+                } else {
+                    Modifier
+                },
+            )
+            .padding(vertical = tokens.spacing.space6),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (line != null) {
             Text(
                 text = line,
                 fontSize = tokens.type.overline,
-                color = tokens.color.textTertiary,
+                // 失败那一档用 primary 色 + 可点：与"到底了"那行同色同手感的话，
+                // 用户会以为点它也没用（那正是这条要治的）。
+                color = if (moreFailed) tokens.color.primary else tokens.color.textTertiary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )

@@ -1,5 +1,7 @@
 package com.venera.compose.gallery.data
 
+import com.venera.compose.gallery.domain.PixivImageQuality
+
 /**
  * pixiv **作品页**那一屏的一张作品全貌（2026-10-18 落地，站源独用：图库三站仍走
  * [com.venera.compose.gallery.ui.GalleryPostScreen]，两颗互不吃对方的模型）。
@@ -76,6 +78,9 @@ data class PixivWorkDetail(
     val commentsOff: Boolean,
     /** 动图（ugoira，现量 `illustType == 2`）：作品页只做静图与多页组图，这一条由入口分流回旧看图器放。 */
     val ugoira: Boolean,
+    /** 站方是否关注该作者（登录腿 /v1/illust/detail user.is_followed）。null = 匿名腿或未提供 */
+    val isAuthorFollowed: Boolean? = null,
+    val isBookmarked: Boolean? = null,
 )
 
 /**
@@ -96,4 +101,11 @@ data class PixivPage(
     val originalUrl: String,
     val width: Int?,
     val height: Int?,
-)
+    val largeUrl: String = mediumUrl,
+) {
+    fun urlFor(quality: PixivImageQuality): String = when (quality) {
+        PixivImageQuality.MEDIUM -> mediumUrl.ifBlank { largeUrl }.ifBlank { originalUrl }
+        PixivImageQuality.LARGE -> largeUrl.ifBlank { mediumUrl }.ifBlank { originalUrl }
+        PixivImageQuality.ORIGINAL -> originalUrl.ifBlank { largeUrl }.ifBlank { mediumUrl }
+    }
+}

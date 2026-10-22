@@ -1,5 +1,9 @@
 package com.venera.compose.gallery.ui
 
+import com.venera.compose.PixivWorkActivity
+
+import com.venera.compose.gallery.domain.PixivImageQuality
+
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -91,6 +95,9 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -236,6 +243,37 @@ fun GalleryScreen(
     // 状态机互相清（搜索层当年分出去也是同一条理由）。为什么不复用 svm，见该类头注。
     val fvm: GalleryForYouViewModel = viewModel()
 
+    // 离开这一屏（点进大图页 / 画师页 / 切底部 Tab）就把**展开着的**搜索层收成一条。
+    //
+    // 立案读数（2026-10-22 真机复现路径：搜一个词 → 直接返回 → 屏上剩一张摊开的输入卡 +
+    // scrim + 键盘区）：`closeSearch()` 只置 `active = false`，从不动 `mode`。于是用户在
+    // INPUT 态离开（打字打到一半、或刚提交还没收条），回来时 `active` 仍是 true、
+    // `mode` 仍是 INPUT —— 搜索层一直开着，读起来就是"返回后还显示这个搜索框"。
+    //
+    // 为什么挂在 ON_STOP 而不是 ON_PAUSE：大图页是**透明窗**，这一屏只是 paused
+    // （见 `GallerySearchHandoff` 那条注），pause 就收会把交接状态一起搅了。
+    // ON_STOP 才是"这一屏真的看不见了"。
+    //
+    // 只收 **INPUT** 态：RESULTS 那一态是用户正在看的结果墙，收回会把墙上的滚动位置
+    // 与翻页游标一起搅掉，而那正是 `contexts` 弹栈要保的东西。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP &&
+                // 反搜层开着时**不收**：那一态输入行画的是反搜框（`expanded || rvm.open`），
+                // 而反搜结果墙照旧。收条会把搜索卡收成一行、焦点清掉，两层状态开始各说各话
+                // （2026-10-22 审计）。
+                !rvm.open &&
+                svm.active &&
+                svm.mode == GallerySearchMode.INPUT
+            ) {
+                if (svm.hasQuery) svm.collapseToResults() else svm.closeSearch()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // 系统返回**逐级**：反搜 → 展开态收成一条（接着看图）→ 上一轮搜索上下文 → 关掉整个搜索。
     //
     // 2026-09-28 之前这里只有两档、而且最后一档就是 `closeSearch()`：搜了 touhou → 点进大图 →
@@ -256,7 +294,10 @@ fun GalleryScreen(
             rvm.open -> rvm.closeLayer()
             svm.mode == GallerySearchMode.INPUT && svm.hasQuery -> svm.collapseToResults()
             // 上一轮（"搜 touhou 那会儿的 100 张"）：整片从快照抄回来。
-            svm.canPopContext() -> svm.popContext()
+            svm.canPopContext() -> {
+                svm.popContext()
+                if (!svm.hasQuery) svm.closeSearch()
+            }
             else -> svm.closeSearch()
         }
     }
@@ -280,6 +321,14 @@ fun GalleryScreen(
         // 本轮的换站会顺手重搜一次，拆成 setSite + setFilters 就会先拿旧条件在新站发一笔，
         // 同一轮两个请求。
         svm.acceptHandoff(request.site, request.tags)
+    }
+
+    // pixiv 搜索框输入纯作品 ID 或作品网页链接时，直接唤起原生作品详情大图页
+    LaunchedEffect(svm.pendingDirectArtworkId) {
+        val directId = svm.pendingDirectArtworkId ?: return@LaunchedEffect
+        svm.pendingDirectArtworkId = null
+        svm.closeSearch()
+        context.startActivity(PixivWorkActivity.intent(context, directId))
     }
 
     val source = remember { GalleryFeedSource.getInstance(context) }
@@ -962,6 +1011,14 @@ fun GalleryScreen(
     var pixivRecommendLoading by remember { mutableStateOf(false) }
     /** 瀑布流"下一屏"是否在取（与首屏分开：首屏空态与页脚转圈不是同一件事）。 */
     var pixivRecommendLoadingMore by remember { mutableStateOf(false) }
+    /**
+     * 续页**这一下**没取上（与"到底了"分开的那一档）。
+     *
+     * 从前失败走的是 `pixivRecommendExhausted = true` —— 一次网络抖动被写成"站方没有更多了"，
+     * 页尾改念「pixiv 这一池到底了」，此后 [GalleryLoadMoreState] 的闸门永久拦住续页，
+     * 而屏上没有一个重试入口（2026-10-22 审计 P0）。这一格只记"刚才那一下败了"。
+     */
+    var pixivRecommendMoreFailed by remember { mutableStateOf(false) }
     var pixivRecommendCaption by remember { mutableStateOf(pixivStore.recommendCaption) }
     // 「还没判过档」那一道（口径同猜你喜欢的 `stage == IDLE`）：首帧既没到货也没失败，
     // 那一刻摆空态就是假读数 —— 屏上会说"pixiv 没回图"，而请求还没发出去。
@@ -1075,7 +1132,8 @@ fun GalleryScreen(
         if (signedIn) {
             val bearer = pixivAccount?.bearerOrNull()
             if (bearer == null) {
-                pixivRanking = emptyList()
+                // 票据**这一刻**取不到就清屏，等于一次抖动抹掉整屏已取回的榜（画师那一侧
+                // 刻意不记账，见下面 1167 附近）。这里保留旧内容，只说这一句。
                 pixivRankingCaption = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
             } else {
                 val result = works.rankingInApp(rankingMode, bearer)
@@ -1142,10 +1200,17 @@ fun GalleryScreen(
         pixivArtistsLoading = true
         val following = works.following(bearer, me, PixivRestrict.Public)
         pixivFollowing = following.getOrNull()?.users.orEmpty()
-        pixivFollowCaption = following.exceptionOrNull()?.message
+        // 技术异常只进日志：站方偶尔回整页 HTML，把原文直接摆到屏上既读不懂，也会撑坏卡片高度。
+        pixivFollowCaption = following.exceptionOrNull()?.let { error ->
+            Log.w("VeneraDebug", "pixiv following failed", error)
+            FOLLOW_CAPTION_FAILED
+        }
         val recommended = works.recommendedUsers(bearer)
         pixivRecommendedUsers = recommended.getOrNull()?.users.orEmpty()
-        pixivUsersCaption = recommended.exceptionOrNull()?.message
+        pixivUsersCaption = recommended.exceptionOrNull()?.let { error ->
+            Log.w("VeneraDebug", "pixiv recommended users failed", error)
+            RECOMMENDED_USERS_CAPTION_FAILED
+        }
         pixivArtistsLoading = false
         pixivUsersLoadedKey = requestKey
     }
@@ -1169,6 +1234,8 @@ fun GalleryScreen(
         pixivRecommendSeedPage = 1
         pixivRecommendExhausted = false
         pixivRecommendIdle = true
+        // 上一轮续页留下的"没续上"一并作废（登录态都换了，那句失败读数更没有意义）。
+        pixivRecommendMoreFailed = false
         // 关注 / 推荐画师也整批作废：换了账号之后还摆着上一个号关注的人，那是错认。
         pixivFollowing = emptyList()
         pixivRecommendedUsers = emptyList()
@@ -1206,8 +1273,13 @@ fun GalleryScreen(
             // 不许静默退回种子那一跳 —— 那会让"登录着却还是旧内容"成为屏上看不出来的错配。
             val bearer = pixivAccount?.bearerOrNull()
             if (bearer == null) {
-                pixivRecommend = emptyList()
-                pixivRecommendExhausted = true
+                // 与排行榜同一条口径：票据这一刻取不到**不清屏**。`bearerOrNull()` 在刷新失败时
+                // 仍可能续用旧 token，null 的真实含义比"登录态没了"窄得多；此刻清掉整池，
+                // 一次票据抖动就抹掉一屏已经取回的推荐（2026-10-22 审计）。
+                // 上一次取回的那一池留在原处（此刻它仍然是屏上那份真相），只把这一句加上。
+                // 真正该清的两条路是登录态变化（上面那颗 effect）与下拉刷新，都不是这里。
+                pixivRecommendNext = null
+                pixivRecommendExhausted = false
                 pixivRecommendCaption = "这枚登录票据这一会儿取不到（可能刚过期）—— 点顶栏那颗头像重新登录一次。"
             } else {
                 val result = works.recommended(bearer)
@@ -1217,7 +1289,10 @@ fun GalleryScreen(
                 // `next_url` 缺席 = 站方说没有了（这一池到底）。失败那一档也照此：墙上没内容，
                 // 续页判据本来就不会跑（它要求墙上已有卡片）。
                 pixivRecommendExhausted = page?.nextUrl == null
-                pixivRecommendCaption = result.exceptionOrNull()?.message
+                pixivRecommendCaption = result.exceptionOrNull()?.let { error ->
+                    Log.w("VeneraDebug", "pixiv recommend failed", error)
+                    RECOMMEND_CAPTION_FAILED
+                }
             }
             pixivRecommendLoading = false
             pixivRecommendLoadedKey = requestKey
@@ -1237,8 +1312,17 @@ fun GalleryScreen(
         }
         pixivRecommendLoading = true
         val picked = ArrayList<PixivWork>()
+        // 按种子记成败：三个 `getOrNull()` 一吞了之的话，"这一枚没取到"与"这个标签没人用"
+        // 在屏上分不开，而部分成功（两枚答了一枚败）连 caption 都不显示 —— 只在全空时才念
+        // （2026-10-22 审计）。
+        var seedFailures = 0
         pixivSeeds.forEach { seed ->
-            val found = works.tagWorks(seed, page = 1).getOrNull().orEmpty()
+            val outcome = works.tagWorks(seed, page = 1)
+            outcome.onFailure { error ->
+                seedFailures++
+                Log.w("VeneraDebug", "pixiv recommend seed '$seed' page 1 failed", error)
+            }
+            val found = outcome.getOrNull().orEmpty()
             picked += found.take(GalleryPixivHome.RECOMMEND_PER_SEED)
         }
         // 三枚种子之间去重：同一张图会在好几个标签下命中，不去重就是同一张连着摆两遍
@@ -1246,8 +1330,17 @@ fun GalleryScreen(
         // 与**排行榜那一排**没有去重：那是「按分数/时间排行」的取数、这是「按种子标签的最新作」，
         // 两批不是同一次命中，而墙上这一池是瀑布流、上面那排是带标题的小卡，形状也不同。
         pixivRecommend = picked.distinctBy { it.post.uid }
-        pixivRecommendCaption = if (pixivRecommend.isEmpty())
-            "种子那几枚标签这一轮没从 pixiv 取回图（「${pixivSeeds.joinToString("、")}」）" else null
+        pixivRecommendCaption = when {
+            // 全败且一张没有：这一句说的是"我们没取成"，不是"你的标签没有作品"。
+            seedFailures == pixivSeeds.size ->
+                "这几枚标签这一回都没从 pixiv 取上图（「${pixivSeeds.joinToString("、")}」）—— 稍后再试。"
+            // 一部分败了：内容照摆，但那几枚要**点名**。不说的话用户只会读到"推荐少了几张"。
+            seedFailures > 0 ->
+                "有 $seedFailures 枚标签这一回没取上，上面这些是取上的那些。"
+            pixivRecommend.isEmpty() ->
+                "种子那几枚标签这一轮没从 pixiv 取回图（「${pixivSeeds.joinToString("、")}」）"
+            else -> null
+        }
         pixivRecommendLoading = false
         pixivRecommendIdle = false
         pixivRecommendLoadedKey = requestKey
@@ -1281,6 +1374,9 @@ fun GalleryScreen(
                 if (!state.wallActive || state.exhausted || state.busy) return@collect
                 if (state.lastIndex < 0 || state.visibleIndex < state.lastIndex - LOAD_MORE_AHEAD) return@collect
                 pixivRecommendLoadingMore = true
+                // 每发一新的一轮就把上一轮的失败读数清掉：留着的话页脚会在新一趟成功之后
+                // 还念"没取上"。
+                pixivRecommendMoreFailed = false
                 if (pixivRecommendStation) {
                     val next = pixivRecommendNext
                     val bearer = pixivAccount?.bearerOrNull()
@@ -1291,7 +1387,13 @@ fun GalleryScreen(
                         val result = works.recommended(bearer, next)
                         val page = result.getOrNull()
                         if (page == null) {
-                            pixivRecommendCaption = result.exceptionOrNull()?.message
+                            // 失败**不是**"到底了"：置 exhausted 会让闸门永久拦住续页，
+                            // 而页尾念的是"站方没有更多了" —— 一句假话（2026-10-22 审计 P0）。
+                            pixivRecommendCaption = result.exceptionOrNull()?.let { error ->
+                                Log.w("VeneraDebug", "pixiv recommend next page failed", error)
+                                RECOMMEND_CAPTION_FAILED
+                            }
+                            pixivRecommendMoreFailed = true
                         } else {
                             val seen = pixivRecommend.mapTo(HashSet()) { it.post.uid }
                             pixivRecommend = pixivRecommend + page.works.filter { it.post.uid !in seen }
@@ -1302,14 +1404,29 @@ fun GalleryScreen(
                 } else {
                     val nextPage = pixivRecommendSeedPage + 1
                     val picked = ArrayList<PixivWork>()
+                    // 三枚种子**全败**才算这一下没取上；只要有一枚答了，墙就有新东西可加。
+                    // 从前是三个 `getOrNull()` 一吞了之：全败走到"fresh 为空"那支，
+                    // 于是把"我们没取成"写成"这几枚标签没有新东西了"。
+                    var seedFailures = 0
                     pixivSeeds.forEach { seed ->
-                        picked += works.tagWorks(seed, page = nextPage).getOrNull().orEmpty()
+                        val outcome = works.tagWorks(seed, page = nextPage)
+                        outcome.onFailure { error ->
+                            seedFailures++
+                            Log.w("VeneraDebug", "pixiv recommend seed '$seed' page $nextPage failed", error)
+                        }
+                        picked += outcome.getOrNull().orEmpty()
                     }
                     val seen = pixivRecommend.mapTo(HashSet()) { it.post.uid }
                     val fresh = picked.filter { it.post.uid !in seen }
                     if (fresh.isEmpty()) {
-                        // 三枚种子这一页都没新东西 = 到底了（再往后取只会是同一批）。
-                        pixivRecommendExhausted = true
+                        if (seedFailures > 0) {
+                            // 败了，不是到底：不动 exhausted，页尾给一条重试（见下面那格）。
+                            pixivRecommendMoreFailed = true
+                            pixivRecommendCaption = "推荐这一回没续上，稍后再试。"
+                        } else {
+                            // 三枚种子这一页都没新东西 = 到底了（再往后取只会是同一批）。
+                            pixivRecommendExhausted = true
+                        }
                     } else {
                         pixivRecommend = pixivRecommend + fresh.distinctBy { it.post.uid }
                         pixivRecommendSeedPage = nextPage
@@ -1355,7 +1472,10 @@ fun GalleryScreen(
                         val page = result.getOrNull()
                         if (page == null || page.works.isEmpty()) {
                             pixivRecommendCaption =
-                                result.exceptionOrNull()?.message ?: "下一批这一回没有答上东西。"
+                                result.exceptionOrNull()?.let { error ->
+                                    Log.w("VeneraDebug", "pixiv recommend remix failed", error)
+                                    RECOMMEND_CAPTION_FAILED
+                                } ?: "下一批这一回没有答上东西。"
                         } else {
                             pixivRecommend = page.works
                             pixivRecommendNext = page.nextUrl
@@ -1369,14 +1489,26 @@ fun GalleryScreen(
                     } else {
                         val nextPage = pixivRecommendSeedPage + 1
                         val picked = ArrayList<PixivWork>()
+                        var seedFailures = 0
                         pixivSeeds.forEach { seed ->
-                            picked += works.tagWorks(seed, page = nextPage).getOrNull().orEmpty()
+                            val outcome = works.tagWorks(seed, page = nextPage)
+                            outcome.onFailure { error ->
+                                seedFailures++
+                                Log.w("VeneraDebug", "pixiv remix seed '$seed' page $nextPage failed", error)
+                            }
+                            picked += outcome.getOrNull().orEmpty()
                         }
                         val fresh = picked.distinctBy { it.post.uid }
                         if (fresh.isEmpty()) {
-                            // 换批失败/翻到底都落到这里：**不动原来那一墙**，只说一声。
-                            pixivRecommendExhausted = true
-                            pixivRecommendCaption = "这几枚标签的下一页也没有新东西了。"
+                            if (seedFailures > 0) {
+                                // 败了**不是**翻到底：置 exhausted 会把后续续页永久拦住，
+                                // 而屏上念的是"没有新东西了" —— 一句假话（2026-10-22 审计 P0）。
+                                pixivRecommendCaption = RECOMMEND_CAPTION_FAILED
+                            } else {
+                                // 换批翻到底：**不动原来那一墙**，只说一声。
+                                pixivRecommendExhausted = true
+                                pixivRecommendCaption = "这几枚标签的下一页也没有新东西了。"
+                            }
                         } else {
                             pixivRecommend = fresh
                             pixivRecommendSeedPage = nextPage
@@ -1427,6 +1559,9 @@ fun GalleryScreen(
             // 那几枚 tick 只是让对应 effect 重跑；真正让它们"不命中缓存"的是这几行清空。
             pixivRankingCache.clear()
             pixivRecommendLoadedKey = null
+            // 上一轮续页留下的"没续上"也作废：留着的话新一趟还没发，页脚先念一句旧的失败。
+            pixivRecommendMoreFailed = false
+            pixivRecommendCaption = null
             // 关注 / 推荐画师也一起重取（这三栏都在同一屏，用户下拉时的心智是"整页都刷"）。
             pixivUsersLoadedKey = null
             pixivRankingTick++
@@ -1506,6 +1641,20 @@ fun GalleryScreen(
             station = pixivRecommendStation,
             loadingMore = pixivRecommendLoadingMore,
             exhausted = pixivRecommendExhausted,
+            moreFailed = pixivRecommendMoreFailed,
+            // 续页挂在滚动读数上、失败之后不会自己重发，所以页尾那枚重试要把
+            // 失败读数清掉再把网格踢回底部附近：`forYouGridState` 一动，续页那条 snapshotFlow
+            // 会重新判定"快到页尾了"并发下一趟。
+            onRetryMore = {
+                pixivRecommendMoreFailed = false
+                pixivRecommendCaption = null
+                scope.launch {
+                    val last = pixivRecommend.size + LOAD_MORE_AHEAD + 1
+                    if (forYouGridState.layoutInfo.totalItemsCount > 0) {
+                        forYouGridState.scrollToItem(minOf(last, forYouGridState.layoutInfo.totalItemsCount - 1))
+                    }
+                }
+            },
         )
     } else {
         // 空态那句"有 N 张收藏却抽不出标签"要说得出张数 —— 不说就与"你还没收藏"分不开。
@@ -2426,6 +2575,22 @@ private val HERO_TOP_BAR_FADE_RANGE = 48.dp
 private val TOP_BAR_HIDE_DISTANCE = 400.dp
 
 /**
+ * pixiv 首页那三块「关注画师 / 推荐用户 / 推荐墙」失败时上屏的那三句话。
+ *
+ * 为什么不把 `exceptionOrNull()?.message` 直接摆上去：那一串里可能带着站方正文片段
+ * （现量一例是整页 `<!DOCTYPE html>`），读不懂、也会把卡片撑坏。所以屏上只留一句人话，
+ * 技术异常走 `Log.w("VeneraDebug", …)` —— 要排查时有据可查，用户只看到该看的那句。
+ *
+ * 三块各说各的：关注那栏与推荐画师那栏的出路不同（一个去看关注列表、一个等下一轮），
+ * 而推荐墙那一句与「排行榜」共用同一档口径（都是稍后再试）。
+ */
+private const val FOLLOW_CAPTION_FAILED = "关注的画师这一回没取上，稍后再试。"
+
+private const val RECOMMENDED_USERS_CAPTION_FAILED = "推荐画师这一回没取上，稍后再试。"
+
+private const val RECOMMEND_CAPTION_FAILED = "推荐这一回没取上，稍后再试。"
+
+/**
  * 搜索浮层背后那层 scrim 的不透明度。
  *
  * 0.32 是"能看出下面还有东西、但读得出上面那张卡是主角"的一档。它只在 INPUT 态出现
@@ -3073,6 +3238,8 @@ internal fun GalleryPostCard(
     // 往下透传要改四个调用方（主墙/搜索/推荐/收藏），往上提又要改 GalleryWall 的派生 —— 都不值。
     val quality by GalleryPorts.of(LocalContext.current).prefs
         .galleryPreviewQuality.collectAsState()
+    val pixivQuality by GalleryPorts.of(LocalContext.current).prefs
+        .pixivPreviewQuality.collectAsState()
     /**
      * 飞行体的**起点矩形**：卡片里**封面那一块**的窗口矩形，**不是整张卡**。
      *
@@ -3157,7 +3324,11 @@ internal fun GalleryPostCard(
     ) {
         // 封面地址取一次：存成局部量，免得两次调用之间设置项变化
         // （那会让封面与文字区里的头像不同源）。
-        val wallUrl = GallerySettingsModel.wallUrl(post, quality)
+        val wallUrl = if (post.site == GallerySite.PIXIV) {
+            GallerySettingsModel.pixivWallUrl(post, pixivQuality)
+        } else {
+            GallerySettingsModel.wallUrl(post, quality)
+        }
         @Composable
         fun CoverNode() {
             VeneraCover(

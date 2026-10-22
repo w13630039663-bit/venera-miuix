@@ -162,6 +162,7 @@ object GallerySearchContextStack {
         incomingKey: String?,
     ): GalleryContextPlan = when {
         incomingKey.isNullOrBlank() -> GalleryContextPlan.SKIP_EMPTY
+        currentKey.isNullOrBlank() -> GalleryContextPlan.SKIP_EMPTY
         currentDomain == incomingDomain && currentKey == incomingKey ->
             GalleryContextPlan.RESEARCH_IN_PLACE
         else -> GalleryContextPlan.PUSH

@@ -23,10 +23,23 @@ class PixivAccountGateTest {
 
     private val all = listOf(
         PixivAccountGate.Ready,
+        PixivAccountGate.Measuring,
         PixivAccountGate.NotSignedIn,
         PixivAccountGate.MissingUserId,
         PixivAccountGate.BearerUnavailable,
     )
+
+    @Test
+    fun `票据还没量到的那一档既不说没接上也不放行`() {
+        // 首帧 `bearerOrNull()` 必然没回来。给 true 会让三段墙各发一趟必被 401 的请求；
+        // 给 false 会让没登录的用户先看见一句"这会儿没接上"。所以单独一档。
+        assertFalse("量到之前不许说已登录态可用", PixivAccountGate.Measuring.retryIsMeaningful)
+        assertTrue("这一档要有自己的话", PixivAccountGate.Measuring.screenLine != null)
+        assertTrue(
+            "那一句不许与 BearerUnavailable 撞车：${PixivAccountGate.Measuring.screenLine}",
+            PixivAccountGate.Measuring.screenLine != PixivAccountGate.BearerUnavailable.screenLine,
+        )
+    }
 
     @Test
     fun `三档空态各说一句不一样的话`() {
@@ -34,8 +47,9 @@ class PixivAccountGateTest {
             PixivAccountGate.NotSignedIn.screenLine,
             PixivAccountGate.MissingUserId.screenLine,
             PixivAccountGate.BearerUnavailable.screenLine,
+            PixivAccountGate.Measuring.screenLine,
         )
-        assertEquals(3, lines.map { it!! }.distinct().size)
+        assertEquals(4, lines.map { it!! }.distinct().size)
         // Ready 是正常那一档，它没有话要说（有话就被读成出事了）。
         assertEquals(null, PixivAccountGate.Ready.screenLine)
     }
@@ -88,7 +102,7 @@ class PixivAccountGateTest {
     @Test
     fun `话与把手对得上`() {
         // 摆得出「重试」的那一档才许说"再点一次"；不许摆的那两档跟着说就是骗用户再点。
-        assertTrue(PixivAccountGate.BearerUnavailable.screenLine!!.contains("再点一次"))
+        assertTrue(PixivAccountGate.BearerUnavailable.screenLine!!.contains("稍后再试"))
         assertFalse(PixivAccountGate.NotSignedIn.screenLine!!.contains("再点一次"))
         assertFalse(PixivAccountGate.MissingUserId.screenLine!!.contains("再点一次"))
     }

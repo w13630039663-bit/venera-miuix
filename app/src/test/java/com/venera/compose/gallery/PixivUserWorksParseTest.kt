@@ -1,4 +1,4 @@
-﻿package com.venera.compose.gallery
+package com.venera.compose.gallery
 
 import com.venera.compose.gallery.data.PixivArtistSection
 import com.venera.compose.gallery.data.PixivUserWorksParse
@@ -394,9 +394,11 @@ class PixivUserWorksParseTest {
             1,
             lines.countWith("else if (!ticketMode && worksFailed && cards.isEmpty()) {"),
         )
-        // ③ 重试把手按**次数**钉：三档（索引没取到 / 这一批没取上 / 报了 N 条却全空）各一枚，
-        //    谁也不能替谁说话。
-        assertEquals("三档失败各一枚真把手", 3, lines.countWith("onClick = { retryTick += 1 }"))
+        // ③ 重试把手按**次数**钉：四档各一枚，谁也不能替谁说话。
+        //    - 索引没取到 / 这一批没取上 / 报了 N 条却全空（原有三档）；
+        //    - 匿名档那一行（2026-10-22 审计补）：`following == null` 时关注药丸按不动，
+        //      而上面三档都要 `cards.isEmpty()` —— 作品取到了就一行都不渲染，屏上一个出路都没有。
+        assertEquals("四档失败各一枚真把手", 4, lines.countWith("onClick = { retryTick += 1 }"))
         assertEquals("重试抬的那一枚只有一处声明", 1, lines.countWith("var retryTick by remember(userId)"))
         // ④ 顺序判据：那一跳的 effect 必须**吃 retryTick**，否则按下去什么也不发（把手变假把手）。
         assertEquals("索引那一跳吃重试那一枚", 1, lines.countWith("LaunchedEffect(userId, retryTick) {"))
@@ -445,11 +447,23 @@ class PixivUserWorksParseTest {
         // ③ 段 → 站方桶名只有一处（传错桶**不报错**，只会回另一类作品）。
         assertEquals("桶名只从这一处出", 1, lines.countWith("PixivArtistSection.ILLUST -> \"illust\""))
         // ④ 退档必须上屏说一句。
-        assertEquals("退匿名档那句只有一处", 1, lines.countWith("现在是匿名档"))
+        // ⑤ 关注态取值只有一处，且**只认站方那一格**（2026-10-22 改判：不再拿本地名单兜底）。
         // ⑤ 关注态取值只有一处：站方优先、本地兜底。
         assertEquals(
-            "关注态只有一处取值", 1,
-            lines.countWith("val following = detail?.isFollowed ?: followingLocal"),
+            "关注态只有一处取值，且只认站方那一格", 1,
+            lines.countWith("val following: Boolean? = detail?.isFollowed"),
+        )
+        // ⑤-b 站方那一格拿不到时**不许退本地**（2026-10-22，用户「读 pixiv 我关注的画师，
+        //     不要读本地的」）。本地那本账按画师名记、站方按 user_id，两本账键不同轨：
+        //     用户在 pixiv 上关注了这位而本地名单没有，屏上就说"关注"，按下去还往站方发一笔 add。
+        assertTrue(
+            "这一屏不许再读本地关注名单：${lines.filter { it.contains("followingLocal") || it.contains("isFollowing(follows") }}",
+            lines.none { it.contains("followingLocal") || it.contains("isFollowing(follows") },
+        )
+        // 还不知道那一档不许发写腿：那一格发出去的是"取关"，而我们从没确认过关注关系。
+        assertTrue(
+            "还不知道时按不动：$lines",
+            lines.any { it.contains("val target = following?.let { !it } ?: return@FollowPill") },
         )
         // ⑥ 写腿两枚各一处，且本地对齐**排在站方那一跳之后**。
         assertEquals(

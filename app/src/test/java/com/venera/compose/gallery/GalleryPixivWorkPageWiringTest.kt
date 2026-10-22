@@ -177,20 +177,47 @@ class GalleryPixivWorkPageWiringTest {
      * 而"有没有那一枚"这种尺子全绿。所以钉的是**onClick 里出现的是哪颗写口**，
      * 外加屏蔽存的**规则类型必须是 AUTHOR**：照抄画师卡那条 TAG 会在 pixiv 存一条永远挡不住的规则
      * （pixiv 的 tags 是作品标签，画师名不在里面），而 Toast 会照样说"已屏蔽"。
+     *
+     * 2026-10-22 改判：关注那一枚的写口从 `ports.follows.toggle`（只翻本地）换成
+     * [togglePixivFollow]（先写站方，写成了才对齐本地）—— 与画师页那颗同一颗函数。
+     * 从前这里钉的是“只在一处调 `ports.follows.toggle`”，而那正是缺陷本身：屏上亮着“已关注”
+     * 而 pixiv 那边并没有这位，用户下次进 pixiv 主页看不到他，读起来就是“应用替我关注了个寂寞”。
      */
     @Test
     fun `画师那一行的关注与屏蔽各接到自己那枚真写口`() {
         // 装配在共用那颗（`PixivWorkInfoPanel.kt`）：两个宿主各抄一份写口就是等着分叉的两处。
         val body = hosts()
         assertEquals("关注判定只从共享那颗走一次", 1, body.countWith("GalleryArtistFollows.isFollowing(follows, GallerySite.PIXIV, author)"))
-        assertEquals("关注写口只在这一处调", 1, body.countWith("ports.follows.toggle(GallerySite.PIXIV, author)"))
+        assertEquals(
+            "关注写口只走画师页那一颗（先写站方，写成了才对齐本地）",
+            1,
+            body.countWith("togglePixivFollow("),
+        )
+        // 3 = 定义一颗 + 两个宿主各调一次（作品页滚动流、作品页抽屉、播放器面板共用同一颗）。
+        assertEquals(
+            "作者用户号必须递进去，否则写腿发不出去",
+            3,
+            body.countWith("pixivArtistActions(detail.post.author, detail.authorId, detail.isAuthorFollowed)"),
+        )
         assertEquals("屏蔽存的是 AUTHOR 规则，且用既有的 >= 0 判成功", 1, body.countWith("guard.addRule(\"AUTHOR\", author) >= 0"))
         assertEquals("守卫只从 ports 取一次", 1, body.countWith("val guard = ports.contentGuard"))
-        assertEquals("关注那一枚只有一份措辞（两处渲染共用同一个 composable）", 1, body.countWith("if (artist.isFollowed) \"已关注\" else \"关注\""))
+        assertEquals("关注那一枚只有一份措辞（两处渲染共用同一个 composable）", 1, body.countWith("artist.isFollowed -> \"已关注\""))
         assertEquals("屏蔽那一项只有一枚", 1, body.countWith("Text(\"屏蔽该画师\""))
         // 对照组：上面那几条不是"文件读空了才恒 1"。
         assertTrue("对照组失效：没读到作品页本体", code(screen).any { it.startsWith("fun PixivWorkScreen(") })
         assertTrue("对照组失效：没读到共用装配那颗", code(infoPanel).any { it.startsWith("internal fun pixivArtistActions(") })
+        // 站方那一跳在飞的时候要吃得下点击，且屏上要念得出"处理中…" —— 网络往返期间连点两下
+        // 会发出两笔相反的请求，而一声不吭会被读成"这钮是画的"。
+        assertEquals("在飞时吃掉点击", 1, body.countWith("clickable(enabled = !artist.busy, onClick = artist.onToggleFollow)"))
+        assertEquals("在飞时念一句", 1, body.countWith("artist.busy -> \"处理中…\""))
+        // 写腿那一颗必须真的存在，且没用户号时不许静默 return。
+        val artist = code("com/venera/compose/gallery/ui/PixivArtistScreen.kt")
+        assertTrue("对照组失效：没读到 togglePixivFollow 本体", artist.any { it.startsWith("internal suspend fun togglePixivFollow(") })
+        assertEquals("没用户号时不许静默 return", 1, artist.countWith("if (id == null) {"))
+        assertTrue(
+            "没票据时只落本地并说明（不许装作同步过）",
+            artist.any { it.contains("没有登录票据：这一笔只记进了本地名单") },
+        )
     }
 
     // ── 四、接缝与详情接续：钉值本身，不钉"有没有写 padding" ─────────
@@ -1100,11 +1127,15 @@ class GalleryPixivWorkPageWiringTest {
             1,
             code(infoPanel).countWith("if (actions.showComments) {"),
         )
-        // 判据的**出处**也钉一下：这一枚吃的是站方那两个硬字段（评论开关 + 评论数），不是本地猜的。
+        // 判据的**出处**也钉一下：这一枚吃的是站方那个硬字段（评论开关），不是本地猜的。
+        //
+        // ⚠️ 2026-10-22 起**不再**要求 `commentCount != null`：登录腿（`PixivAppParse`）恒
+        // `commentCount = null` 而 `commentsOff = false`，照旧判据那一枚对登录用户永远不出现，
+        // 而它正是"去浏览器看评论"的唯一出口（同屏评论节读得到 totalCount，动作条却少这一格）。
         assertEquals(
             "入口的判据只从站方字段长",
             1,
-            code(infoPanel).countWith("showComments = detail != null && !detail.commentsOff && detail.commentCount != null"),
+            code(infoPanel).countWith("showComments = detail != null && !detail.commentsOff"),
         )
         assertEquals(
             "关注那一枚：没关注是实心主色",

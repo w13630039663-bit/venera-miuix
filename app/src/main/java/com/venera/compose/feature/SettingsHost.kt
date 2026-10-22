@@ -28,6 +28,8 @@ import com.venera.compose.feature.settings.ExploreSettings
 import com.venera.compose.feature.settings.GallerySettings
 import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
+import com.venera.compose.feature.settings.PixivDownloadSettings
+import com.venera.compose.feature.settings.PixivNetworkSettings
 import com.venera.compose.feature.settings.PreferredIpSpeedTestScreen
 import com.venera.compose.feature.settings.ReaderSettings
 import com.venera.compose.feature.sourcemanage.ComicSourceScreen
@@ -113,6 +115,8 @@ enum class SettingsSubScreen {
     FAVORITE_IMAGES,
     SYNC,
     LOGS,
+    PIXIV_DOWNLOAD,
+    PIXIV_NETWORK,
 }
 
 /** 从上一级打开一个设置子页（每次都是新 Activity，返回落回来源页）。 */
@@ -251,6 +255,12 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             )
             SettingsSubScreen.SYNC -> SyncBackupScreen(onBack = ::back)
             SettingsSubScreen.LOGS -> LogViewerScreen(onBack = ::back)
+            SettingsSubScreen.PIXIV_DOWNLOAD -> PixivDownloadSettings(
+                prefs = prefs,
+                onBack = ::back,
+                onOpenNetworkSettings = { open(SettingsSubScreen.PIXIV_NETWORK) },
+            )
+            SettingsSubScreen.PIXIV_NETWORK -> PixivNetworkSettings(prefs = prefs, onBack = ::back)
         }
     }
 }

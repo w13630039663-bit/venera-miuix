@@ -329,4 +329,168 @@ class GalleryPixivAccountWiringTest {
         }
         assertEquals("全树共七处（四处声明 + 两处转发 + 一处调用）", 7, total)
     }
+
+    // ── 2026-10-22 审计：账号页与画师页这五条 ─────────────────────────────
+
+    /**
+     * 刷新时**一腿失败不许把另一腿已经取到的内容抹掉**。
+     *
+     * 从前 `pages = ok.associate { … }` 是整体替换：「全部」这一档里私密那一趟失败时
+     * `ok` 只剩公开，整张表被换成单腿表，屏上那批私密作品凭空消失 —— 而提示说的是
+     * "另一档没取上"，用户读到的是"少了一档"，实际是"多出来的一档被删了"。
+     */
+    @Test
+    fun `一腿失败不抹掉另一腿已取到的内容`() {
+        val store = codeLines("PixivAccountSessionStore.kt").joinToString("\n") { it.value }
+        // 四处（墙的 load/loadMore + 关注名单的 load/loadMore）都走"拷出来、按腿覆盖、写回去"。
+        assertEquals(
+            "四处合并全是按腿覆盖",
+            4,
+            store.split("ok.forEach { (restrict, page) ->").size - 1,
+        )
+        // 真正要守的是这一条：整体替换一处都不许有。它正是"另一腿失败 ⇒ 已取到的那一腿
+        // 从屏上凭空消失"的成因。
+        assertEquals(
+            "合并表不许再出现整体替换",
+            0,
+            store.split("pages = ok.associate {").size - 1,
+        )
+        assertEquals(
+            "关注名单也不许整体替换",
+            0,
+            store.split("userPages = ok.associate {").size - 1,
+        )
+    }
+
+    /**
+     * 换账号（重新登录 / 贴进来）必须清会话仓。
+     *
+     * 从前 `clear()` 只有退出登录一处调用：A→B→A 之后 `identities[A].asked` 仍为 true，
+     * 屏上会用进程里可能已过期的旧身份读数，而没有任何一条路径能刷新它。
+     */
+    @Test
+    fun `换账号也要清会话仓`() {
+        val store = codeLines("PixivAccountSessionStore.kt").joinToString("\n") { it.value }
+        assertEquals("clear() 只声明一处", 1, store.split("fun clear()").size - 1)
+        val screen = codeLines("PixivAccountScreen.kt").joinToString("\n") { it.value }
+        assertEquals(
+            "退出与换凭据两条路各清一次",
+            2,
+            screen.split("PixivAccountSessionStore.clear()").size - 1,
+        )
+    }
+
+    /**
+     * 闸门没通那一屏，顶栏两处把手不许在场。
+     *
+     * 从前 `VeneraTopAppBar` 无条件渲染：分段器点下去 Pager 不在场、屏上零变化；
+     * 「看哪一份」点下去会**真的落盘** `setRestrictDefault` 却看不到任何结果 —— 假开关。
+     */
+    @Test
+    fun `闸门没通时顶栏两处把手不摆`() {
+        val screen = codeLines("PixivAccountScreen.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "actions 那颗要把闸门算进去：\n$screen",
+            screen.contains("if (restrictApplies && gate == PixivAccountGate.Ready) {"),
+        )
+        assertTrue(
+            "两排药丸那段也要整段不组合：\n$screen",
+            screen.contains("if (gate == PixivAccountGate.Ready) {"),
+        )
+    }
+
+    /**
+     * 顶栏折叠到底时，内容让位量要跟着收起。
+     *
+     * 从前 `contentTop` 是常量：折叠到底时两排药丸高度归零，而内容第一行仍按展开态让位，
+     * 顶上空出一条 154dp 的空白带（2026-10-22 改玻璃 + 收 chrome 之后新引入的回归）。
+     */
+    @Test
+    fun `内容让位量跟着折叠进度收`() {
+        val screen = codeLines("PixivAccountScreen.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "让位量要乘同一份 (1f - collapsed)：\n$screen",
+            screen.contains("chromeExtraOf(section) * (1f - collapsedForTop)"),
+        )
+    }
+
+    /**
+     * 异常原文不许上屏。
+     *
+     * `PixivAppClient` 那族 IOException 的 message 是 `pixiv 返回 ${code}：${body.take(160)}`
+     * —— 站方正文原文，上屏就是一段机器味。`readableWallError()` 的兜底那一档因此换成
+     * 不含正文的一句。
+     */
+    @Test
+    fun `墙失败那句话不带站方正文`() {
+        val store = codeLines("PixivAccountSessionStore.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "兜底那一档不许拼 javaClass.simpleName 之类：\n$store",
+            store.contains("""else -> message?.take(160)?.ifBlank { null } ?: "这一回没取上""""),
+        )
+        val artist = codeLines("PixivArtistScreen.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "画师页站方详情失败也走固定文案：\n$artist",
+            artist.contains("anonymousReason = DETAIL_FAILED_LINE"),
+        )
+        assertTrue(
+            "那句话要有声明：\n$artist",
+            artist.contains("private const val DETAIL_FAILED_LINE"),
+        )
+    }
+
+    /**
+     * 画师页登出后收藏段那批别人的收藏要清掉。
+     *
+     * 从前 `bookmarkAsked` 拦下 effect ⇒ 一个字不清：屏上一边念"读不到"一边摆着 285 张
+     * 上一个账号取回的收藏，两句互相矛盾，而其中一排是**别人的账号数据**。
+     */
+    @Test
+    fun `画师页登出后收藏段清空`() {
+        val artist = codeLines("PixivArtistScreen.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "未登录那一支要清 bookmarkWorks：\n$artist",
+            artist.contains("bookmarkWorks = emptyList()"),
+        )
+        assertTrue(
+            "游标一起作废：\n$artist",
+            artist.contains("bookmarkNext = null"),
+        )
+    }
+
+    /**
+     * 续页失败那一批要能**重发**，不是被跳过。
+     *
+     * 从前页脚写着"重试"而 `onLoadMore = { batchIndex += 1 }`：按下去把失败的 24 个 id
+     * 永久跳过，那是假把手。
+     */
+    @Test
+    fun `画师页续页失败重发当前批而不是跳过`() {
+        val artist = codeLines("PixivArtistScreen.kt").joinToString("\n") { it.value }
+        assertTrue(
+            "失败那一档抬 retryTick：\n$artist",
+            artist.contains("if (batchFailed) retryTick += 1 else batchIndex += 1"),
+        )
+    }
+
+    /**
+     * 关注态读不到时屏上要有一条出路。
+     *
+     * 从前三处重试行都要求 `cards.isEmpty()`，而 `userDetail` 失败时作品通常取得到 ⇒
+     * 一行都不渲染；FollowPill 那一档又按不动 ⇒ 屏上一个可点的出路都没有。
+     */
+    @Test
+    fun `画师页关注态读不到时有出路`() {
+        val artist = codeLines("PixivArtistScreen.kt").joinToString("\n") { it.value }
+        // 四档各一枚（索引没取到 / 这一批没取上 / 报了 N 条却全空 / 匿名那一行），
+        // 总数由 `PixivUserWorksParseTest` 那颗钉；这里只钉**匿名那一行**这一枚 ——
+        // 认的是"上面那句张数会比网页少"后面紧跟的那一个 onClick。
+        assertTrue(
+            "匿名那一行要挂着重试（关注态读不到时它是唯一出路）：\n$artist",
+            artist.contains(
+                """"上面的张数会比 pixiv 网页少。",
+                        onClick = { retryTick += 1 },""",
+            ),
+        )
+    }
 }

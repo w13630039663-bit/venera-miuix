@@ -5,6 +5,11 @@ import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivClientCredentials
 import com.venera.compose.gallery.data.PixivCredentialState
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -61,10 +66,17 @@ class PixivCredentialStateTest {
     private val now = 1_700_000_000_000L
 
     /** 站方回 200 那一档；[body] 就是换 token 的答复原文。 */
-    private fun stubEngine(body: String, code: Int = 200): Pair<OkHttpClient, MutableList<String>> {
+    private fun stubEngine(
+        body: String,
+        code: Int = 200,
+        headers: MutableMap<String, String>? = null,
+    ): Pair<OkHttpClient, MutableList<String>> {
         val seen = mutableListOf<String>()
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             seen += "${chain.request().method} ${chain.request().url}"
+            headers?.let { out ->
+                chain.request().headers.forEach { out[it.first] = it.second }
+            }
             Response.Builder()
                 .request(chain.request())
                 .protocol(Protocol.HTTP_1_1)
@@ -75,6 +87,23 @@ class PixivCredentialStateTest {
         }.build()
         return client to seen
     }
+
+    private fun delayedStubEngine(
+        body: String,
+        code: Int = 200,
+        delayMs: Long,
+        calls: AtomicInteger,
+    ): OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
+        calls.incrementAndGet()
+        Thread.sleep(delayMs)
+        Response.Builder()
+            .request(chain.request())
+            .protocol(Protocol.HTTP_1_1)
+            .code(code)
+            .message("stub")
+            .body(body.toResponseBody("application/json".toMediaType()))
+            .build()
+    }.build()
 
     private fun stateWith(
         store: FakeStore,
@@ -142,11 +171,15 @@ class PixivCredentialStateTest {
     }
 
     @Test
-    fun `过期判定喂两种时间：还剩一分钟也算该换`() {
+    fun `过期判定喂两种时间：还剩一分钟先换票，换不动仍用旧票`() {
         // 卡到 0 秒的写法会让请求正好落在过期那一刻，症状是偶发一片 401。
         val almostGone = stateWith(seededStore(expiresAt = now + 60_000L))
-        assertNull("还剩 1 分钟仍在提前换的窗口里", runBlocking { almostGone.bearerOrNull() })
-        assertEquals(PixivAuthState.NeedsRelogin::class, almostGone.authState.value::class)
+        assertEquals(
+            "还剩 1 分钟时该尝试换票；没接出网口而换不动，就继续用旧票",
+            "OLD-ACCESS",
+            runBlocking { almostGone.bearerOrNull() },
+        )
+        assertEquals(PixivAuthState.SignedIn("77", "旧名"), almostGone.authState.value)
 
         val gone = stateWith(seededStore(expiresAt = now - 1L))
         assertNull(runBlocking { gone.bearerOrNull() })
@@ -159,7 +192,8 @@ class PixivCredentialStateTest {
 
     @Test
     fun `刷新成功时两枚票据与身份一起换，请求走的是 token 端点`() {
-        val (client, seen) = stubEngine(freshResponse)
+        val requestHeaders = mutableMapOf<String, String>()
+        val (client, seen) = stubEngine(freshResponse, headers = requestHeaders)
         val store = seededStore(expiresAt = now - 1L)
         val state = stateWith(store, engine = { client })
         assertEquals("NEW-ACCESS", runBlocking { state.bearerOrNull() })
@@ -178,6 +212,69 @@ class PixivCredentialStateTest {
             seen[0].startsWith("POST https://oauth.secure.pixiv.net/auth/token"),
         )
         assertTrue("URL 里不许挂票据：${seen[0]}", !seen[0].contains("OLD-REFRESH"))
+        assertEquals("android", requestHeaders["App-OS"])
+        assertEquals("14", requestHeaders["App-OS-Version"])
+        assertEquals("6.0.0", requestHeaders["App-Version"])
+        assertEquals(
+            "PixivAndroidApp/6.0.0 (Android 14)",
+            requestHeaders["User-Agent"],
+        )
+        assertEquals("zh-cn", requestHeaders["Accept-Language"])
+    }
+
+    @Test
+    fun `并发取票据只换一次，后来者复用刚写回来的新票据`() = runBlocking {
+        val calls = AtomicInteger()
+        val client = delayedStubEngine(freshResponse, delayMs = 250L, calls = calls)
+        val store = seededStore(expiresAt = now - 1L)
+        val state = stateWith(store, engine = { client })
+        val start = CountDownLatch(1)
+        val results = coroutineScope {
+            (1..8).map {
+                async {
+                    start.await()
+                    state.bearerOrNull()
+                }
+            }.also { start.countDown() }.awaitAll()
+        }
+        assertEquals("八次并发都要拿到新票据：$results", List(8) { "NEW-ACCESS" }, results)
+        assertEquals("同一枚 refresh token 只许换一次", 1, calls.get())
+    }
+
+    @Test
+    fun `旧票据真的过期时，403 不把登录态判死`() {
+        val (client, _) = stubEngine("<html>blocked</html>", code = 403)
+        val state = stateWith(seededStore(expiresAt = now - 1L), engine = { client })
+        assertNull(runBlocking { state.bearerOrNull() })
+        assertEquals(
+            "403 是出口/风控问题，不该让用户白重登：${state.authState.value}",
+            PixivAuthState.SignedIn("77", "旧名"),
+            state.authState.value,
+        )
+    }
+
+    @Test
+    fun `提前刷新撞 403 时继续用仍然有效的旧票据，不误报过期`() {
+        val (client, _) = stubEngine("<html>blocked</html>", code = 403)
+        val store = seededStore(expiresAt = now + 60_000L)
+        val state = stateWith(store, engine = { client })
+        assertEquals("旧票据还有一分钟，403 不该把它判死", "OLD-ACCESS", runBlocking { state.bearerOrNull() })
+        assertEquals(PixivAuthState.SignedIn("77", "旧名"), state.authState.value)
+        assertEquals("OLD-REFRESH", store.table[PixivCredentialState.KEY_REFRESH_TOKEN])
+    }
+
+    @Test
+    fun `真正过期且 invalid_grant 时才要求重新登录`() {
+        val (client, _) = stubEngine(
+            """{"has_error":true,"errors":{"system":{"message":"Invalid refresh token","code":1508}},"error":"invalid_grant"}""",
+            code = 400,
+        )
+        val state = stateWith(seededStore(expiresAt = now - 1L), engine = { client })
+        assertNull(runBlocking { state.bearerOrNull() })
+        val pushed = state.authState.value as PixivAuthState.NeedsRelogin
+        assertTrue("要说清是票据失效：${pushed.reason}", pushed.reason.contains("refresh token"))
+        assertFalse("失败消息里不许带手里的 refresh_token：${pushed.reason}", pushed.reason.contains("OLD-REFRESH"))
+        assertFalse("失败消息里不许带 client_secret：${pushed.reason}", pushed.reason.contains("CSECRET"))
     }
 
     @Test

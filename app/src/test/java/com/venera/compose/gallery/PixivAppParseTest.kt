@@ -369,6 +369,11 @@ class PixivAppParseTest {
         val silent = PixivAppParse.userDetail("""{"user":{"id":1},"profile":{"total_illusts":3}}""")
         assertNull("缺 is_followed 不许折成 false", silent.isFollowed)
 
+        val userObjFollowed = PixivAppParse.userDetail(
+            """{"user":{"id":1,"is_followed":true},"profile":{"total_illusts":10}}""",
+        )
+        assertEquals("user 对象里的 is_followed 必须认得出", true, userObjFollowed.isFollowed)
+
         val thrown = runCatching { PixivAppParse.userDetail("""{"user":{"id":1}}""") }.exceptionOrNull()
         assertTrue("缺 profile 那一层要抛而不是交一份全 null：" + thrown, thrown is IOException)
     }

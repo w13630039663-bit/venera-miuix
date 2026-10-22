@@ -1052,21 +1052,14 @@ fun VeneraComposeApp() {
                         // 「本地收藏」那颗走 **FAVORITES 主 Tab**（收藏页里那个画廊分段，
                         // 见 FavoritesScreen 的 ImageSection.Gallery）—— 不复制一份墙到画廊侧：
                         // 两份墙意味着两份多选、两份删除、两处"到底显示多少张"，迟早对不上。
+                        val navContext = LocalContext.current
                         GalleryBookmarksHubScreen(
-                            onOpenLocalFavorites = {
+                            onOpenPost = { post ->
                                 haptic()
-                                navController.navigate(FavoritesRoute) {
-                                    // 跳到主 Tab：把画廊这一支弹掉，否则返回栈会是
-                                    // 画廊 → hub → 收藏，用户按返回先回 hub 再回画廊，多绕一层。
-                                    popUpTo(GalleryRoute) { inclusive = false }
-                                    launchSingleTop = true
-                                }
+                                (view.context as? Activity)?.openGalleryPost(post.site, post.id)
                             },
                             onOpenPixivBookmarks = {
                                 haptic()
-                                // 2026-10-19 拍板 ⑦：这枚 🔖 **不再进独立那一屏**，改跳 pixiv 账号页的收藏段。
-                                // 那一屏是这一段的超集（多了「非公开」那一档），两条路并存就是
-                                // 同一件事两个入口两套读数 —— 所以旧的 `GalleryPixivBookmarksRoute` 整条撤掉。
                                 (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
                             },
                             onBack = {

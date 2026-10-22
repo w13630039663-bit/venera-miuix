@@ -73,6 +73,13 @@ object GallerySettingsModel {
         else -> post.previewUrl
     }
 
+    /** pixiv 卡片预览根据用户配置的画质档位取图（中画质 / 大图 / 原图）。 */
+    fun pixivWallUrl(post: GalleryPost, quality: PixivImageQuality): String = when (quality) {
+        PixivImageQuality.MEDIUM -> post.previewUrl.ifBlank { post.largeUrl }.ifBlank { post.fileUrl }
+        PixivImageQuality.LARGE -> post.largeUrl.ifBlank { post.previewUrl }.ifBlank { post.fileUrl }
+        PixivImageQuality.ORIGINAL -> post.fileUrl.ifBlank { post.largeUrl }.ifBlank { post.previewUrl }
+    }
+
     /**
      * 文件名（不含目录，含扩展名）。
      *

@@ -17,6 +17,9 @@ import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GallerySaveNaming
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
 import com.venera.compose.gallery.domain.PixivPageSeam
+import com.venera.compose.gallery.domain.PixivImageQuality
+import com.venera.compose.gallery.domain.PixivNetworkMode
+import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import com.venera.compose.gallery.domain.PixivReadScope
 import com.venera.compose.ui.tokens.ThemeSeedPresets
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -364,6 +367,80 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     fun setPixivShowPrivate(on: Boolean) {
         prefs.put(KEY_PIXIV_SHOW_PRIVATE, on)
         _pixivShowPrivate.value = on
+    }
+
+    // ---- pixiv 画质设置（卡片预览画质、作品漫画详情页画质、大图画质）----
+    private val _pixivPreviewQuality = MutableStateFlow(readEnum(KEY_PIXIV_PREVIEW_QUALITY, PixivImageQuality.MEDIUM))
+    val pixivPreviewQuality: StateFlow<PixivImageQuality> = _pixivPreviewQuality.asStateFlow()
+
+    private val _pixivDetailQuality = MutableStateFlow(readEnum(KEY_PIXIV_DETAIL_QUALITY, PixivImageQuality.MEDIUM))
+    val pixivDetailQuality: StateFlow<PixivImageQuality> = _pixivDetailQuality.asStateFlow()
+
+    private val _pixivViewerQuality = MutableStateFlow(readEnum(KEY_PIXIV_VIEWER_QUALITY, PixivImageQuality.ORIGINAL))
+    val pixivViewerQuality: StateFlow<PixivImageQuality> = _pixivViewerQuality.asStateFlow()
+
+    fun setPixivPreviewQuality(quality: PixivImageQuality) {
+        prefs.put(KEY_PIXIV_PREVIEW_QUALITY, quality.name)
+        _pixivPreviewQuality.value = quality
+    }
+
+    fun setPixivDetailQuality(quality: PixivImageQuality) {
+        prefs.put(KEY_PIXIV_DETAIL_QUALITY, quality.name)
+        _pixivDetailQuality.value = quality
+    }
+
+    fun setPixivViewerQuality(quality: PixivImageQuality) {
+        prefs.put(KEY_PIXIV_VIEWER_QUALITY, quality.name)
+        _pixivViewerQuality.value = quality
+    }
+
+    // ---- pixiv 下载与网络设置 ----
+    private val _pixivDownloadPath = MutableStateFlow(prefs.getString(KEY_PIXIV_DOWNLOAD_PATH, "") ?: "")
+    val pixivDownloadPath: StateFlow<String> = _pixivDownloadPath.asStateFlow()
+
+    private val _pixivSaveFormat = MutableStateFlow(prefs.getString(KEY_PIXIV_SAVE_FORMAT, PixivSaveFormatHelper.DEFAULT_FORMAT) ?: PixivSaveFormatHelper.DEFAULT_FORMAT)
+    val pixivSaveFormat: StateFlow<String> = _pixivSaveFormat.asStateFlow()
+
+    private val _pixivAutoSaveOnFavorite = MutableStateFlow(prefs.getBoolean(KEY_PIXIV_AUTO_SAVE_ON_FAVORITE, false))
+    val pixivAutoSaveOnFavorite: StateFlow<Boolean> = _pixivAutoSaveOnFavorite.asStateFlow()
+
+    private val _pixivOAuthNetworkMode = MutableStateFlow(readEnum(KEY_PIXIV_OAUTH_NETWORK_MODE, PixivNetworkMode.ECH))
+    val pixivOAuthNetworkMode: StateFlow<PixivNetworkMode> = _pixivOAuthNetworkMode.asStateFlow()
+
+    private val _pixivApiNetworkMode = MutableStateFlow(readEnum(KEY_PIXIV_API_NETWORK_MODE, PixivNetworkMode.ECH))
+    val pixivApiNetworkMode: StateFlow<PixivNetworkMode> = _pixivApiNetworkMode.asStateFlow()
+
+    private val _pixivImageHost = MutableStateFlow(prefs.getString(KEY_PIXIV_IMAGE_HOST, "i.pximg.net") ?: "i.pximg.net")
+    val pixivImageHost: StateFlow<String> = _pixivImageHost.asStateFlow()
+
+    fun setPixivDownloadPath(path: String) {
+        prefs.put(KEY_PIXIV_DOWNLOAD_PATH, path)
+        _pixivDownloadPath.value = path
+    }
+
+    fun setPixivSaveFormat(format: String) {
+        prefs.put(KEY_PIXIV_SAVE_FORMAT, format)
+        _pixivSaveFormat.value = format
+    }
+
+    fun setPixivAutoSaveOnFavorite(on: Boolean) {
+        prefs.put(KEY_PIXIV_AUTO_SAVE_ON_FAVORITE, on)
+        _pixivAutoSaveOnFavorite.value = on
+    }
+
+    fun setPixivOAuthNetworkMode(mode: PixivNetworkMode) {
+        prefs.put(KEY_PIXIV_OAUTH_NETWORK_MODE, mode.name)
+        _pixivOAuthNetworkMode.value = mode
+    }
+
+    fun setPixivApiNetworkMode(mode: PixivNetworkMode) {
+        prefs.put(KEY_PIXIV_API_NETWORK_MODE, mode.name)
+        _pixivApiNetworkMode.value = mode
+    }
+
+    fun setPixivImageHost(host: String) {
+        prefs.put(KEY_PIXIV_IMAGE_HOST, host)
+        _pixivImageHost.value = host
     }
 
     /**
@@ -867,6 +944,15 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private const val KEY_PIXIV_WORK_DETAILS_IN_FLOW = "pref_pixiv_work_details_in_flow"
     private const val KEY_PIXIV_RESTRICT_DEFAULT = "pref_pixiv_restrict_default"
     private const val KEY_PIXIV_SHOW_PRIVATE = "pref_pixiv_show_private"
+    private const val KEY_PIXIV_PREVIEW_QUALITY = "pref_pixiv_preview_quality"
+    private const val KEY_PIXIV_DETAIL_QUALITY = "pref_pixiv_detail_quality"
+    private const val KEY_PIXIV_VIEWER_QUALITY = "pref_pixiv_viewer_quality"
+    private const val KEY_PIXIV_DOWNLOAD_PATH = "pref_pixiv_download_path"
+    private const val KEY_PIXIV_SAVE_FORMAT = "pref_pixiv_save_format"
+    private const val KEY_PIXIV_AUTO_SAVE_ON_FAVORITE = "pref_pixiv_auto_save_on_favorite"
+    private const val KEY_PIXIV_OAUTH_NETWORK_MODE = "pref_pixiv_oauth_network_mode"
+    private const val KEY_PIXIV_API_NETWORK_MODE = "pref_pixiv_api_network_mode"
+    private const val KEY_PIXIV_IMAGE_HOST = "pref_pixiv_image_host"
         private const val KEY_NEW_FAVORITE_ADD_TO = PreferenceKeys.KEY_NEW_FAVORITE_ADD_TO
         private const val KEY_MOVE_FAVORITE_AFTER_READ = PreferenceKeys.KEY_MOVE_FAVORITE_AFTER_READ
         private const val KEY_QUICK_FAVORITE = "pref_quick_favorite"
