@@ -424,9 +424,6 @@ dependencies {
     implementation(libs.window.styler)
     // 端到端最小闭环：真源脚本 + GraalJS 宿主 + 取图，全走 :engine-probe 那批共享 handler
     implementation(project(":engine-probe"))
-    // A0 探针（docs/rounds/desktop-reuse-android-ui-2026-10-18.md §6.2 第 3 条）：同一份 `Hello()`，
-    // 桌面侧吃的是那颗 KMP 模块的 `-jvm`/`-desktop` 变体。入口见 SharedProbeWindow.kt（任务 `sharedprobe`）。
-    implementation(project(":shared-probe"))
     // Miuix 的 desktop 变体：同一版本目录里能不能与 fluent-desktop 并存，是 S0-1 要量的一格
     implementation(libs.miuix.ui.desktop)
     // 写法 A（2026-10-20）：`components/ComicTileLayout.kt` 用 Miuix 官方图标集那对
@@ -529,19 +526,6 @@ tasks.register<JavaExec>("spike") {
     group = "probe"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.venera.desktop.SpikeWindowKt"
-}
-
-// A0 探针判据 3：`:shared` 那颗 KMP 模块在桌面侧起一扇窗（同一颗 runtimeClasspath，
-// 与 `:desktop:run` 解析到的东西一致 —— 换的只有 main class，手法与上面 `spike` 同一族）。
-//   sh gradlew :desktop:sharedprobe                读数打完 4 秒自己关
-//   加 -Phold=20000 让它多停一会儿（要给窗口捕获留时间）
-tasks.register<JavaExec>("sharedprobe") {
-    group = "probe"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass = "com.venera.desktop.SharedProbeWindowKt"
-    workingDir = rootDir
-    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
-    args("hold=" + providers.gradleProperty("hold").getOrElse("4000"))
 }
 
 // S0-7：玻璃能力三层读数（纯 stdout，不需要窗口）
