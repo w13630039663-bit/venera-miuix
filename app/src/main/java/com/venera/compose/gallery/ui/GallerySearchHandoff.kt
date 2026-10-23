@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.domain.sanitizeGalleryTagName
 
 /**
  * 大图页点标签 → 一级画廊切进搜索态的**交接槽**。
@@ -31,9 +32,18 @@ object GallerySearchHandoff {
     var pending by mutableStateOf<Request?>(null)
         private set
 
-    /** 大图页里点某一枚标签：带着它所属的站点递回去（两站词表不通，站点不能猜）。 */
+    /**
+     * 大图页里点某一枚标签：带着它所属的站点递回去（两站词表不通，站点不能猜）。
+     *
+     * 标签名先过一道清洗（2026-10-23，用户「去掉多余前缀与非法符号」）：站方原串与画师名
+     * 都可能带前导 `@` / `-` 或引号尖括号一类符号，原样进搜索要么搜错（`-` 会变排除项）、
+     * 要么捅穿拼 URL 那一步。判据与"洗什么、不洗什么"见 [sanitizeGalleryTagName]。
+     * 洗成空串的（整枚都是符号）**不写槽** —— 没有可搜的词，写了也是空转一轮。
+     */
     fun postTag(site: GallerySite, tag: String) {
-        pending = Request(site, listOf(tag))
+        val cleaned = sanitizeGalleryTagName(tag)
+        if (cleaned.isEmpty()) return
+        pending = Request(site, listOf(cleaned))
     }
 
     /** 取走并清空；没有待处理的交接就返回 null。 */
