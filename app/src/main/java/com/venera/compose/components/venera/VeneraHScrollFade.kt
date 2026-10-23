@@ -10,7 +10,10 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import com.venera.compose.ui.tokens.VeneraTokens
 
@@ -50,21 +53,27 @@ fun Modifier.hScrollEndFade(
     drawContent()
     val w = width.toPx().coerceAtMost(size.width)
     if (w <= 0f) return@drawWithContent
-    // 渐隐的两端点写在**节点坐标**里（画刷不跟着 `topLeft` 走）：
-    // 省掉 startX/endX 会得到一对重合端点，那在 Compose 里是退化的线性渐变 —— 读起来就是一块实色。
+    // 2026-10-23 改 **DstIn 透明渐隐**：从前画的是「从透明到 container 色」的颜色渐变，
+    // 隐含假设“这一行底下是纯色 container”。但收藏 hub / 网络收藏那一屏的底是**玻璃渐变背板**
+    // （Liquid Glass 录制层），上面叠一道纯色带，色相对不上就浮成一条「奇怪的黑边」
+    // （用户 2026-10-23 图证：Picacg 胶囊右侧）。DstIn 只把内容自身的 alpha 渐到 0，
+    // 露出的永远是**真实底**，底是什么材质都对。Offscreen 层是把“内容+遮罩”先合成
+    // 成一张图再打洞的必要条件：不隔一层，DstIn 会把底下那层也一起抠掉。
     drawRect(
         brush = Brush.horizontalGradient(
-            0f to Color.Transparent,
-            1f to container,
+            0f to Color.Black,
+            1f to Color.Transparent,
             startX = size.width - w,
             endX = size.width,
         ),
         topLeft = Offset(size.width - w, 0f),
         size = Size(w, size.height),
+        blendMode = BlendMode.DstIn,
     )
+}.graphicsLayer {
+    compositingStrategy = CompositingStrategy.Offscreen
 }
 
-/** 与 [hScrollEndFade] 配对的那截尾部内容内边距（理由见那颗的头注第 2 条）。 */
 @Composable
 fun hScrollEndContentPadding(width: Dp = VeneraTokens.spacing.space8): PaddingValues =
     PaddingValues(end = width)

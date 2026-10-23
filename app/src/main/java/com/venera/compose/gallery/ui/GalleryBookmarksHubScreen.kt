@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.outlined.ExpandMore
+import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraTopAppBar
@@ -115,8 +116,13 @@ internal fun GalleryBookmarksHubScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // 大屏列数不再钉死 3（2026-10-23，用户「画廊收藏页没有对大屏端优化布局」）：
+        // 手机档 3 列不变（那一档列宽 ~120dp 正合适）；宽窗换用与画廊墙同一把尺
+        // （每列预算 200dp 反推），MuMu 那块屏能到 6 列 —— 单张回到阅读尺寸。
+        // 书签卡与筛选行都是 FullLine span，列数变化不影响它们的形状。
+        val wallColumns = rememberImageWallColumnCount().coerceAtLeast(3)
         LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(3),
+            columns = StaggeredGridCells.Fixed(wallColumns),
             modifier = Modifier
                 .fillMaxSize()
                 .blurBackdropSource(topBarBackdrop)

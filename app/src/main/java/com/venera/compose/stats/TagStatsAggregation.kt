@@ -2,6 +2,19 @@ package com.venera.compose.stats
 
 import com.venera.compose.data.db.TaggedReadRow
 
+
+/** 预设属于 R18 / 成人向同人志 / 绅士向的站点标识集合（含 sourceKey 与中文显示名别名）。 */
+internal val R18_SOURCE_KEYS = setOf(
+    "jm", "picacg", "mh18", "hcomic", "wnacg", "nhentai", "hitomi", "hot_manga", "jcomic", "ehentai", "mxs",
+    "禁漫天堂", "哔咔", "哔咔漫画", "18漫画", "h-comic", "绅士漫画", "紳士漫畫", "热辣漫画", "漫小肆", "e-hentai"
+)
+
+/** 判定一个源是否属于 R18 / 成人向站点。 */
+internal fun isR18Source(sourceName: String): Boolean {
+    val norm = sourceName.trim().lowercase()
+    return norm in R18_SOURCE_KEYS || R18_SOURCE_KEYS.any { norm.contains(it) }
+}
+
 /**
  * 题材分布的**聚合**（纯函数，2026-10-13 从 `ReadingStatsManager.getTagStats` 搬出来）。
  *
@@ -23,14 +36,20 @@ import com.venera.compose.data.db.TaggedReadRow
 internal fun aggregateTagStats(
     rows: List<TaggedReadRow>,
     days: Int,
+    rating: ReadingContentRating = ReadingContentRating.ALL,
     normalize: (String) -> String?,
 ): TagStats {
+    val targetRows = when (rating) {
+        ReadingContentRating.ALL -> rows
+        ReadingContentRating.NORMAL -> rows.filterNot { isR18Source(it.sourceName) }
+        ReadingContentRating.R18 -> rows.filter { isR18Source(it.sourceName) }
+    }
     val buckets = HashMap<String, TagBucketAccumulator>()
     val monthly = HashMap<String, HashMap<String, MutableSet<String>>>()
     val countedComics = HashSet<String>()
     var taggedComics = 0
 
-    for (row in rows) {
+    for (row in targetRows) {
         val pages = row.pages
         if (pages <= 0) continue
         val key = comicKey(row.sourceName, row.comicId)

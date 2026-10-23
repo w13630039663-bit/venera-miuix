@@ -109,6 +109,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
+import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.rememberZoomableState
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -2215,7 +2216,7 @@ private fun ReaderTelephotoPageItem(
         modifier = Modifier.fillMaxSize().onSizeChanged { pageWidth = it.width.coerceAtLeast(1) },
         contentAlignment = Alignment.Center
     ) {
-        val zoomState = rememberZoomableState()
+        val zoomState = rememberZoomableState(ZoomSpec(maxZoomFactor = 5f))
         val zoomableImageState = rememberZoomableImageState(zoomState)
 
         when (page) {

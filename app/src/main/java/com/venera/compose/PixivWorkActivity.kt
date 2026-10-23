@@ -3,6 +3,7 @@ package com.venera.compose
 import android.content.Intent
 import android.os.Bundle
 import androidx.compose.runtime.Composable
+import androidx.core.app.ActivityOptionsCompat
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.PixivWorkScreen
@@ -57,11 +58,21 @@ class PixivWorkActivity : VeneraSubActivityBase() {
             onOpenArtist = { site, name, source ->
                 artistProfile.launch(artistProfileIntent(this, site, name, source))
             },
-            // 「相关图片」里点一张 = 原地换号重开（栈深不变，返回仍回那一面墙）。
-            // 那一排的顺序已由页面写进 GalleryViewerQueue ⇒ 换过去之后横轴就是"刚才那排相关图片"。
+            // 「相关图片」里点一张 = **新开一颗作品页**（2026-10-19 第 8 条）。
+            //
+            // 旧写法是 `intent.putExtra(...) + recreate()`，两个病一起长在上面：
+            // 1. `recreate()` 不压栈 ⇒ 返回直接落回画廊主屏（用户：「返回不会回到上一个作品页」）；
+            // 2. `recreate()` 让系统按它自己存的那份 Intent 重开，运行时 `putExtra` 那一笔
+            //    不保证带过去 ⇒ 新那一屏的 `postId` 可能还是上一条，而横轴已经是那一排相关图片
+            //    ⇒ `indexOfFirst` = -1 ⇒ 落在第一张，正好不是用户点的那张（用户：「点开是别的作品」）。
+            //
+            // 现在：那一排先由页面交给 `PixivWorkWallHandoff`（按目标 id 配对、一次性），
+            // 这里只负责 `startActivity` 压一层 —— 返回逐级退回，点击目标由 Intent 里的 id 钉死。
             onOpenWork = { id ->
-                intent.putExtra(GalleryPostActivity.EXTRA_POST_ID, id)
-                recreate()
+                startActivity(
+                    intent(this, id),
+                    ActivityOptionsCompat.makeCustomAnimation(this, R.anim.miuix_activity_open_enter, R.anim.miuix_activity_open_exit).toBundle(),
+                )
             },
             // 动图交回旧看图器：那一颗已经会解逐帧动画，这一屏只画得出第一帧。
             onOpenViewer = { id ->
@@ -69,6 +80,7 @@ class PixivWorkActivity : VeneraSubActivityBase() {
                     Intent(this, GalleryPostActivity::class.java)
                         .putExtra(GalleryPostActivity.EXTRA_SITE, GallerySite.PIXIV.routeKey)
                         .putExtra(GalleryPostActivity.EXTRA_POST_ID, id),
+                    ActivityOptionsCompat.makeCustomAnimation(this, R.anim.miuix_activity_open_enter, R.anim.miuix_activity_open_exit).toBundle(),
                 )
             },
         )

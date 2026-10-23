@@ -78,6 +78,9 @@ fun GalleryArtistFollowsStore.Companion.getInstance(context: Context): GalleryAr
 fun GalleryHistoryStore.Companion.getInstance(context: Context): GalleryHistoryStore =
     getInstance(pathsFor(context))
 
+fun PixivUgoiraStore.Companion.getInstance(context: Context): PixivUgoiraStore =
+    getInstance(engineFor(context), pathsFor(context))
+
 internal fun GalleryArtistAvatarStore.Companion.getInstance(context: Context): GalleryArtistAvatarStore =
     getInstance(pathsFor(context), AndroidLogger)
 

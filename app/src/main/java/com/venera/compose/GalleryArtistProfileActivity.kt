@@ -114,7 +114,10 @@ internal fun artistProfileIntent(
  * 预测式动画 —— 与 [openGalleryPost] 完全同一个理由。
  */
 fun Context.openGalleryArtistProfile(site: GallerySite, artistName: String, source: String = "") {
-    startActivity(artistProfileIntent(this, site, artistName, source), ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle())
+    startActivity(
+        artistProfileIntent(this, site, artistName, source),
+        ActivityOptionsCompat.makeCustomAnimation(this, R.anim.miuix_activity_open_enter, R.anim.miuix_activity_open_exit).toBundle(),
+    )
 }
 
 /**

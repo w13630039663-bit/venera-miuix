@@ -1,5 +1,16 @@
 package com.venera.compose.feature
 
+
+import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.gallery.data.GalleryPost
+import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.PixivAuthState
+import com.venera.compose.gallery.data.PixivRestrict
+import com.venera.compose.gallery.data.android.HomeDailyCache
+import com.venera.compose.gallery.domain.GalleryDailyFeed
+import com.venera.compose.gallery.domain.GalleryMerge
+
+import kotlinx.coroutines.launch
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +22,8 @@ import com.venera.compose.data.platform.PreferenceKeys
 import com.venera.compose.source.model.Comic
 import com.venera.compose.stats.TagStatBucket
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -77,6 +90,22 @@ data class HomeUiState(
  * 说明：原版这些数字来自 read_stats 表（逐话逐页真实计时），那是另有一轮的范围；
  * 本阶段先保证「显示的是真数据、哪怕口径暂时粗略」，不再显示假数据。
  */
+/** 首页关注画师展示模型。 */
+data class FollowedPixivArtist(
+    val id: Long,
+    val name: String,
+    val avatarUrl: String,
+)
+
+/**
+ * 首页画廊那一条要多少张。
+ *
+ * 8 = 手机 2 列 × 4 行、宽屏 3 列 × 2 行多一枚（`HomeScreen` 里 `gridCols * 2` 再 `take`）——
+ * 真摆上屏的比这个少，多出来的 8 张是给 `dailyPosts` 留的余量（部分腿落地时总数会小于 8）。
+ * 快照也只存这 8 张，不把整屏 40~60 条写进首页自己的档里。
+ */
+private const val HomeDailyCount = 8
+
 class HomeViewModel(
     app: Application,
     private val ports: BusinessPorts,
@@ -157,6 +186,134 @@ class HomeViewModel(
     init {
         hydrateRecommendFromCache()
     }
+    /** 画廊每日热门卡片流（纯图海报，取前 4~8 张） */
+    private val _dailyPosts = MutableStateFlow<List<GalleryPost>>(emptyList())
+    val dailyPosts: StateFlow<List<GalleryPost>> = _dailyPosts.asStateFlow()
+
+    /** Pixiv 最新发图画师（仅在已登录 Pixiv 时展示） */
+    private val _pixivArtists = MutableStateFlow<List<FollowedPixivArtist>>(emptyList())
+    val pixivArtists: StateFlow<List<FollowedPixivArtist>> = _pixivArtists.asStateFlow()
+    init {
+        // ⚠️ 这一坨必须放在 _dailyPosts 声明**之后**：Kotlin 属性按声明顺序初始化，
+        // 从前 init 块写在声明前面，hydrateDailyFromCache() 往还没出生的
+        // _dailyPosts 写值 —— 首次启动快照为空侥幸不炸（read 返回 null 直接 return），
+        // 快照落盘后的第二次启动就是必炸的 NPE（真机 crash 实锤，MuMu 17:36）。
+        // 画廊那一条**先铺上次的 8 张**，再让 [loadGalleryDailyAndArtists] 去后台刷。
+        // 同步读、几毫秒：异步读会抢不过首帧组合，"秒出"就白做了。
+        hydrateDailyFromCache()
+        loadGalleryDailyAndArtists()
+    }
+
+    /**
+     * 画廊那一条的在途任务。
+     *
+     * 为哈要它：`HomeScreen` 里有三个触发点（`init`、`LaunchedEffect(Unit)`、`ON_START/ON_RESUME`
+     * 那个 `LifecycleEventObserver`），冷启动时三个会**连着**打到同一个 ViewModel 上。
+     * 不拦就是三倍站方请求，而它们抢的是同一条流 —— 后到的把先到的覆盖掉，屏上还会闪。
+     */
+    private var dailyJob: Job? = null
+
+    /** 画廊那一条上次**真正落到屏上/快照里**的时刻（毫秒）。0 = 从来没拿到过。 */
+    @Volatile
+    private var dailyLoadedAt = 0L
+
+    /** 画师那一行上次拿到的时刻。与画廊分开计 —— 两条腿各自的新鲜度不一样。 */
+    @Volatile
+    private var artistsLoadedAt = 0L
+
+    /**
+     * 冷启动那一条：把上次的快照同步铺上屏。
+     *
+     * 它服务的正是用户那句「开启软件首页后要等 10 多秒才显示画廊的部件」——
+     * 那一条原先只等网络（三站并发、单站超时 12s，全部落地才画）。
+     */
+    private fun hydrateDailyFromCache() {
+        val cached = HomeDailyCache.read(appContext) ?: return
+        _dailyPosts.value = cached.posts.take(HomeDailyCount)
+        // 新鲜窗口读的是**写盘时刻**：这样"刚写过盘"与"刚拉到网络"共用同一条判据。
+        dailyLoadedAt = cached.savedAt
+    }
+
+    fun loadGalleryDailyAndArtists() {
+        if (dailyJob?.isActive == true) return
+        val now = System.currentTimeMillis()
+        // 两条腿各自判新鲜度：30 分钟内重进首页不再打网络。不设这个窗口的话，
+        // `ON_START` 与 `ON_RESUME` 两次回调就是两轮站方请求，而屏幕上什么都没变。
+        val dailyFresh = dailyLoadedAt > 0 && now - dailyLoadedAt < HomeDailyCache.FRESH_WINDOW_MS
+        val artistsFresh = artistsLoadedAt > 0 && now - artistsLoadedAt < HomeDailyCache.FRESH_WINDOW_MS
+        dailyJob = viewModelScope.launch(Dispatchers.IO) {
+            // ⚠️ 两条腿必须**并发**。原先画廊那一腿先跑完（最长 3×12s）才轮到 pixiv，
+            // 串行起来就是两条腿的时长相加 —— 那是"十来秒"的另一半成因。
+            launch { if (!dailyFresh) loadDailyLeg() }
+            launch { if (!artistsFresh) loadArtistLeg() }
+        }
+    }
+
+    /**
+     * 画廊日榜那一腿。
+     *
+     * 关键是 [GalleryFeedSource.loadDaily] 的 `onLeg` 回调：三站**各自落地**就往屏上铺一次。
+     * 等三站齐了才画 = "空十来秒"；先到的那一站已经够填满这一条（8 张）。
+     */
+    private suspend fun loadDailyLeg() {
+        runCatching {
+            val seed = System.currentTimeMillis() / (24 * 3600 * 1000)
+            // 走**本体** [GalleryDailyFeed]（吃端口构造）而不是 `GalleryFeedSource.getInstance`：
+            // 门面那颗存在的唯一理由是让旧调用点零 diff，这里新写就直接用本体 ——
+            // UI 不许再长出一处直连单例（`BusinessApiBoundaryTest` 那把尺）。
+            val result = GalleryDailyFeed(GalleryPorts.of(appContext).boards).loadDaily(seed) { pools ->
+                // `mix` 自己就是 `Result`，不要再包一层 `runCatching`（那会得到 Result<Result<…>>）。
+                GalleryMerge.mix(pools, seed).getOrNull()?.let { merged ->
+                    val partial = merged.posts.take(HomeDailyCount)
+                    if (partial.isNotEmpty()) _dailyPosts.value = partial
+                }
+            }
+            val posts = result.getOrNull()?.merged?.posts.orEmpty().take(HomeDailyCount)
+            // ⚠️ 只在**真拿到东西**时才覆盖：原先无论成败都赋值，网络一挂就把已有内容
+            // 清成空表（而快照里本来有 8 张可以接着看）。
+            if (posts.isNotEmpty()) {
+                _dailyPosts.value = posts
+                HomeDailyCache.write(appContext, posts)
+                dailyLoadedAt = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /** pixiv 关注动态那一腿（没登录就清空那一行）。 */
+    private suspend fun loadArtistLeg() {
+        runCatching {
+            // 登录态与口令都走**端口**（`GalleryPorts.pixivAccount`，实现由适配层装）：
+            // 与上面日榜那一腿同一个口径 —— 新写的 UI 代码不许再长出一处直连单例。
+            val pixivAccount = GalleryPorts.of(appContext).pixivAccount
+            val auth = pixivAccount?.authState?.value
+            if (auth is PixivAuthState.SignedIn) {
+                val bearer = pixivAccount.bearerOrNull()
+                val pixivWorks = GalleryPorts.of(appContext).pixiv
+                if (bearer != null && pixivWorks != null) {
+                    val feedRes = pixivWorks.followIllustFeed(bearer, PixivRestrict.Public)
+                    val works = feedRes.getOrNull()?.works.orEmpty()
+                    val list = works.mapNotNull { work ->
+                        val uid = work.post.source.substringAfterLast("/").toLongOrNull() ?: return@mapNotNull null
+                        val authorName = work.post.author.ifBlank { return@mapNotNull null }
+                        FollowedPixivArtist(
+                            id = uid,
+                            name = authorName,
+                            avatarUrl = work.authorAvatarUrl,
+                        )
+                    }.distinctBy { it.id }.take(10)
+                    _pixivArtists.value = list
+                    artistsLoadedAt = System.currentTimeMillis()
+                } else {
+                    _pixivArtists.value = emptyList()
+                }
+            } else {
+                _pixivArtists.value = emptyList()
+            }
+        }.onFailure {
+            _pixivArtists.value = emptyList()
+        }
+    }
+
 
     /**
      * 切换分级档。**清空当前展示、铺新档的缓存、立刻拉一批** —— 三件事都要做：

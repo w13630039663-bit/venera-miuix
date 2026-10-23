@@ -230,7 +230,42 @@
         <activity
             android:name=".GalleryPostActivity"
             android:exported="false"
-            android:theme="@style/Theme.Venera.GlassOverlay" />
+            android:theme="@style/Theme.Venera.GlassOverlay"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
+        <!--
+            画廊视频的全屏播放页（2026-10-19，用户「重做一遍」）。
+
+            两条都与其它子页不同，且两条都是必需的：
+            - `configChanges` —— **全仓唯一一颗**。转屏（或锁朝向时系统发起的配置变更）
+              不能重建 Activity：重建就是 ExoPlayer 释放 + 重新 prepare，用户报的
+              「旋转几次还要重新加载」就是它。只吃几何那几档（`orientation|screenSize|
+              smallestScreenSize|screenLayout|keyboardHidden`），**不吃** `uiMode` /
+              `density` / `locale` —— 那几档要重画主题与资源，不属于"转个屏"。
+            - `Theme.Venera`（不透明主题）而不是 `GlassOverlay`：这一页是纯黑沉浸播放，
+              背后那层糊既看不见（黑底盖死）又白烧 GPU。
+            ⚠️ **不声明 `screenOrientation`**（2026-10-23 真机定因，这是第三次改这里）。
+            前两版分别试过"运行期 `requestedOrientation`"和"清单静态 `landscape`"，两条都撞同一面墙：
+            ColorOS 的 `hookShouldRelaunchLocked` 对「竖屏任务里启动横屏 Activity」这件事
+            **无视 `android:configChanges` 强制 relaunch**
+            （`adjustedChanges={CONFIG_ORIENTATION, CONFIG_SCREEN_SIZE}`），而 relaunch 出来的
+            新实例因为同样的原因再被 relaunch ⇒ **无限重启**：真机日志里
+            `START …GalleryVideoActivity → removeAppToken (f=finishing) → START … → removeAppToken`
+            循环十几次，用户看到的就是"点全屏闪一下就回来"。
+            所以这一页**不碰朝向**：它继承宿主（竖屏），"全屏"靠藏系统栏 + FIT 铺满实现，
+            视频该多大就多大。要横着看，用户横握手机即可（这一页吃 `configChanges`，
+            几何变更不重建）。
+        -->
+        <activity
+            android:name=".GalleryVideoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Venera"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
+        <!--
+            （2026-10-23）这里原本还有一颗 `.GalleryVideoPortraitActivity`（按视频宽高分流朝向），
+            已删：它撞上 ColorOS「竖屏任务里起横屏 Activity 强制 relaunch」那面墙，
+            造成无限重启。删掉的理由与完整日志读数见 `GalleryVideoActivity` 头注。
+        -->
         <!--
             pixiv 作品页（2026-10-18）：站源独用，与上面那颗平行 —— 同一份承载（只有独立
             Activity 才透得出 blur-behind），两套界面各走各的轴。分流只发生在 openGalleryPost 一处。

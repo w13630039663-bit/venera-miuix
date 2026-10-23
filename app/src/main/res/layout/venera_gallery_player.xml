@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    画廊视频的播放画面（就地与全屏共用这一份）。
+
+    ⚠️ **surface_type 必须是 texture_view**（2026-10-23 真机定因，见下面那段）。
+
+    为什么不能用默认的 surface_view：
+    `SurfaceView` 是**窗口下面**的一枚独立图层。而本应用的大图页窗口挂着
+    `FLAG_BLUR_BEHIND` + `setBackgroundBlurRadius(32dp)`（`GalleryPostActivity`），
+    系统会把**本窗口以下的所有图层**糊掉 —— 视频那枚 surface 正好在窗口下面，于是
+    被自己这一页的背景模糊糊掉了；底图、文字画在窗口里，所以是清楚的。
+    真机读数：播放时 `dumpsys SurfaceFlinger` 里那一层是
+    `backgroundBlurRadius=112`（= 32dp × 3.5），视频图层本身 `alpha=1`、无模糊、
+    缓冲 1408×2144 —— 糊不在视频那一层，在它上面那层窗口的背景模糊。
+    而**返回手势拖拽时视频会突然变清晰**：窗口被缩放后系统不再对变换中的图层做
+    blur-behind，这正好是用户 2026-10-23 报的那条现象。
+
+    `TextureView` 把画面画进**窗口自己**的图层，窗口的背景模糊只作用于它身后的内容，
+    于是视频既不会被糊，也不再依赖 SurfaceView 那套"打洞 + z 序"。
+
+    尺寸/控制器都交给 Compose 与代码（`GalleryPlayerSurface`）设置，这里只钉住
+    surface_type 这一件构造函数级、没法在运行时改的事。
+-->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="true"
+    app:resize_mode="fit" />

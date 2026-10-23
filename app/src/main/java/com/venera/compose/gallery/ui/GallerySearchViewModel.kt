@@ -1101,6 +1101,28 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      *
      * chips 与结果**不清**：再点开搜索图标回到原上下文，用户不用重新搜一遍。
      */
+
+    /**
+     * 清空搜索内容并彻底关闭搜索层（对齐用户体验：点右上角 X 彻底清空并返回）。
+     */
+    fun clearAndCloseSearch() {
+        searchJob?.cancel()
+        suggestJob?.cancel()
+        artistJob?.cancel()
+        active = false
+        mode = GallerySearchMode.RESULTS
+        filters = emptyList()
+        results = emptyList()
+        contexts = emptyList()
+        pixivTerm = ""
+        pixivNextUrl = null
+        clearSuggestions()
+        isSearching = false
+        isLoadingMore = false
+        isSearchingArtists = false
+        searchError = null
+    }
+
     fun closeSearch() {
         active = false
     }

@@ -197,6 +197,9 @@ private class AndroidReadingStats(private val context: Context) : ReadingStats {
     override suspend fun getTopComics(limit: Int): List<ComicStatItem> = manager.getTopComics(limit)
 
     override suspend fun getTagStats(days: Int): TagStats = manager.getTagStats(days)
+
+    override suspend fun getTagStats(days: Int, rating: com.venera.compose.stats.ReadingContentRating): TagStats =
+        manager.getTagStats(days, rating)
 }
 
 /** 熔断与取流客户端的运维动作。 */

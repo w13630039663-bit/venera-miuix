@@ -312,6 +312,48 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
      * 万一某个键名对不上，失败形状是"读不出图"而不是崩 —— 调用点在读不出时退回匿名腿，
      * 屏上维持本轮之前的样子（这一条记在手册的待上机那一格）。
      */
+
+    /**
+     * 作品相关推荐：/v2/illust/related?illust_id=。
+     * 支持官方推荐流及带 next_url 的无限分页。
+     */
+    suspend fun relatedIllusts(bearer: String, illustId: Long): Result<PixivAppPage> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val url = RELATED_ILLUSTS.toHttpUrl().newBuilder()
+                    .addQueryParameter("illust_id", illustId.toString())
+                    .addQueryParameter("filter", "for_android")
+                    .build()
+                    .toString()
+                PixivAppParse.illustrationRecommended(execute(url, bearer))
+            }
+        }
+
+    /**
+     * 沿着 next_url 续拉一页作品流。
+     */
+    suspend fun fetchNextPage(bearer: String, nextUrl: String): Result<PixivAppPage> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                PixivAppParse.illustrationRecommended(execute(nextUrl, bearer))
+            }
+        }
+
+
+    /**
+     * 获取动图元信息（官方 App API 备用通道）：/v1/ugoira/metadata?illust_id=。
+     */
+    suspend fun ugoiraMetadata(bearer: String, illustId: Long): Result<PixivUgoira?> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val url = UGOIRA_METADATA.toHttpUrl().newBuilder()
+                    .addQueryParameter("illust_id", illustId.toString())
+                    .build()
+                    .toString()
+                PixivAppParse.ugoiraMetadata(execute(url, bearer))
+            }
+        }
+
     suspend fun illustDetail(bearer: String, illustId: Long): Result<PixivWorkDetail?> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -672,6 +714,8 @@ class PixivAppClient internal constructor(private val engine: HttpEngine) {
         private const val BOOKMARK_ADD = "https://app-api.pixiv.net/v2/illust/bookmark/add"
         private const val BOOKMARK_DELETE = "https://app-api.pixiv.net/v1/illust/bookmark/delete"
         private const val SEARCH_USER = "https://app-api.pixiv.net/v1/search/user"
+        private const val RELATED_ILLUSTS = "https://app-api.pixiv.net/v2/illust/related"
+        private const val UGOIRA_METADATA = "https://app-api.pixiv.net/v1/ugoira/metadata"
     private const val ILLUST_COMMENTS = "https://app-api.pixiv.net/v3/illust/comments"
 
         /**

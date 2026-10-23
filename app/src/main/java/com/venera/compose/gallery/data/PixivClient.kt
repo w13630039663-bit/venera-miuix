@@ -144,6 +144,23 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
     }
 
     /**
+     * **动图逐帧表**那一腿（2026-10-23，用户报「app pixiv 源的动图无法播放」）。
+     *
+     * `ajax/illust/{id}/ugoira_meta`：站方给的就是那两条 zip 地址 + 逐帧延时表 ——
+     * 只有这一跳能让"这一作到底有几帧、每帧停多久"落地，[PixivWorkDetail.ugoira] 那枚旗标
+     * 只回答"要不要来问这一跳"，帧表本身在这里。
+     *
+     * 现量（真号 151160372）：匿名 200、无凭据；非 ugoira 的号回 `error=true` +
+     * 「指定されたIDはうごイラではありません」⇒ 那一句由 [PixivUgoiraParse] 抛（取数点认错号）。
+     * 这条腿**不带任何凭据**（口径同文件头：只做未登录读取），且照旧挂 [NoInteractiveBypassTag]。
+     *
+     * null = 答上了却没有可播的逐帧（屏上退回静帧，不摆播放）。
+     */
+    suspend fun ugoiraMeta(illustId: Long): Result<PixivUgoira?> = withContext(Dispatchers.IO) {
+        runCatching { PixivUgoiraParse.ugoiraMeta(execute(url("ajax/illust/$illustId/ugoira_meta") {})) }
+    }
+
+    /**
      * **画师页**那三条腿（2026-10-19）。全部匿名、全部不带凭据 —— 与这一颗件的头注同一条红线
      * （「只做未登录读取」），所以它们住在这儿而不是 [PixivAppClient]。
      *

@@ -283,12 +283,13 @@ class GalleryPixivWorkPageWiringTest {
     fun `动图明说一句并给一条真出口，不画成一张静帧冒充能播`() {
         val body = code(screen)
         assertTrue("ugoira 没被分流出去", body.any { it.contains("if (detail?.ugoira == true)") })
-        assertTrue("那一屏没有明说的出口", body.any { it.contains("UgoiraNotice { onOpenViewer(detail.post.id) }") })
+        assertTrue("ugoira 分支就地接播放器", body.any { it.contains("PixivUgoiraPlayer(") })
+        assertEquals("UgoiraNotice 整格退场", 0, body.countWith("UgoiraNotice"))
         // 2026-10-19 用户报「动图这一作整屏上半是白的」：那一支从前只摆一句字、静帧不画。
         // 现在第一帧要真摆上去（同一颗 `PixivPageImage`，不为静帧另写一支渲染件），
-        // 而"只画得出第一帧"这句明说照旧在图下面 —— 两件事一起钉。
+        // 并在之上叠动图播放器 —— 两件事一起钉。
         assertTrue(
-            "动图那一支没把第一帧摆上去",
+            "动图那一支把第一帧摆在底座",
             body.any { it.contains("val still = pages.firstOrNull()") },
         )
         assertEquals(
@@ -473,16 +474,17 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * ② 只剩竖连：页码由那条流的第一个可见项喂，末尾那一格只推外层 pager。
+     * ② 只剩竖连：页码由那条流的第一个可见项喂，**相关图片无限滚动**（2026-10-20）。
      *
      * 两把尺各钉一件事：
      * - **页码要真跟手** —— 立案读数：`pageIndex` 从前只由连读那条流喂，横向档压根不走那条流，
      *   顶栏永远念「1 / N」（屏上一句假数，编译器不报）。现在写它的位置只许有一处；
-     * - **末尾那一格只在认得出下一位时才摆** —— 判据在调用方那一句（`works.getOrNull(slot + 1)`），
-     *   屏上那一格是**提醒 + 真出口**：按下去推的就是那一枚外层 pager，没有第二种换作品写法。
+     * - **相关图片无限滚动** —— 用户 2026-10-20：「相关图片要无限滚动」、「底部那个下一作品删了」。
+     *   所以末尾那一格「下一作品」连渲染件带推 pager 那一句**整条撤干净**，
+     *   "继续往下长"只走 `fetchNextPage` + 站方游标。
      */
     @Test
-    fun `页码只有一处写，末尾那一格只推外层 pager`() {
+    fun `页码只有一处写，相关图片无限滚动而下一作品那一格撤干净`() {
         val body = code(screen)
         // 2026-10-19 批 233-2 之后写页码的那一处搬到宿主，**喂数的那一处**留在槽里：
         // 一颗共享的 LazyListState 会被同屏另一槽的滚动改写（横翻回来页码念的是隔壁那一槽）。
@@ -491,10 +493,12 @@ class GalleryPixivWorkPageWiringTest {
         // 旧那串把"夹到最后一页"写在这次赋值里，搬家后它落在槽内那一处：这一枚钉的是**夹还活着**，
         // 不钉它在哪一行（钉行号会把下一次同名搬家算成违例）。
         assertEquals("尾项号仍要夹到最后一页", 1, body.countWith("it.coerceAtMost(pages.size - 1)"))
-        assertEquals("下一位只从墙里的顺序认", 1, body.countWith("nextWork = works.getOrNull(slot + 1)"))
-        assertEquals("末尾那一格只有一颗渲染件（定义 + 一处调用）", 2, body.countWith("PixivNextWorkRow("))
-        assertEquals("认不出下一位就不摆那一格", 1, body.countWith("if (nextWork != null) {"))
-        assertEquals("换作品只推那一枚外层 pager", 1, body.countWith("pagerState.animateScrollToPage(slot + 1)"))
+        assertEquals("下一页只走站方游标", 1, body.countWith("val nextUrl = relatedNextUrls[id] ?: return"))
+        assertEquals("续页走同一颗翻页端点", 1, body.countWith("client.fetchNextPage(bearer, nextUrl)"))
+        assertEquals("追上来那一批按 id 去重（不然屏上会出两张同号）", 1, body.countWith(".distinctBy { it.id }"))
+        assertEquals("下一作品那一格与它推 pager 那一句一起撤干净", 0, body.countWith("pagerState.animateScrollToPage(slot + 1)"))
+        assertEquals("它那颗渲染件也不许留", 0, body.countWith("PixivNextWorkRow("))
+        assertEquals("哨兵进组合就报一声", 1, body.countWith("LaunchedEffect(related.size) { moreRelated() }"))
     }
 
     // ── 十一、第四批：动作行念数、标签铺开、评论只在动作行念一遍 ───────
@@ -1086,7 +1090,7 @@ class GalleryPixivWorkPageWiringTest {
             code(screen).countWith("graphicsLayer { alpha = pageEntryAlpha() }"),
         )
         assertEquals(
-            "内容区读它自己那条钟（detailEntryAlpha）：ugoira 提示 / 详情段 / 下一作品 三处",
+            "内容区读它自己那条钟（detailEntryAlpha）：ugoira 那一格 / 详情段 / 相关图哨兵 三处",
             3,
             code(screen).countWith("graphicsLayer { alpha = detailEntryAlpha() }"),
         )

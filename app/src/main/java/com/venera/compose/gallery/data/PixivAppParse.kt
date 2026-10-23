@@ -57,6 +57,9 @@ data class PixivUserDetail(
 
 internal object PixivAppParse {
 
+
+    fun ugoiraMetadata(body: String): PixivUgoira? = PixivUgoiraParse.ugoiraMetadataAppApi(body)
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -360,6 +363,8 @@ internal object PixivAppParse {
             largeUrl = images?.get("large").textOrNull().orEmpty(),
             fileUrl = original.orEmpty(),
             fileExt = extensionOf(original ?: preview.orEmpty()),
+            // app-api 的作品类型是字符串 `illust` / `manga` / `ugoira` —— 动图旗标的唯一出处。
+            ugoira = record["type"].textOrNull() == "ugoira",
         )
     }
 

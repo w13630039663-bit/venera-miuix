@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
 import com.venera.compose.gallery.data.PixivAuthState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.snapshotFlow
@@ -483,10 +484,21 @@ internal fun PixivArtistScreen(
     // 宽屏收口：hero 与正文同一宽度，否则外链 chips 会沿 1891dp 铺满整行。
     val capped = contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier
 
+    // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了，
+    // 而这一页（pixiv 分派）和图库三站那一屏一样没有自制入场 —— 不补就是硬切。
+    // 与 GalleryArtistProfileScreen 同一档：整墙淡入，240ms HyperOS 收尾曲线。
+    var entryShown by remember { mutableStateOf(false) }
+    val entryAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (entryShown) 1f else 0f,
+        animationSpec = com.venera.compose.components.PredictiveFinishSpec,
+        label = "PixivArtistEntry",
+    )
+    LaunchedEffect(Unit) { entryShown = true }
+
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columns),
         state = gridState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = entryAlpha },
         contentPadding = PaddingValues(bottom = tokens.spacing.space11),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
         verticalItemSpacing = tokens.spacing.gridGap,

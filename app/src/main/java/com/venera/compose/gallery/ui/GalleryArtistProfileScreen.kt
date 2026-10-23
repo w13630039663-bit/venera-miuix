@@ -33,7 +33,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import com.venera.compose.components.PredictiveFinishSpec
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -271,12 +275,36 @@ internal fun GalleryArtistProfileScreen(
         rememberImageWallColumnCount(),
     )
 
+    // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了，
+    // 而本页没有大图页那套自制飞入 —— 不补一档就是硬切。曲线与时长吃
+    // components/MiuixMotion.kt 的收尾档（240ms HyperOS 减速），不另造数字。
+    var entryShown by remember { mutableStateOf(false) }
+    val entryAlpha by animateFloatAsState(
+        targetValue = if (entryShown) 1f else 0f,
+        animationSpec = PredictiveFinishSpec,
+        label = "ArtistProfileEntry",
+    )
+    LaunchedEffect(Unit) { entryShown = true }
+    // 上移幅度在组合期取好：graphicsLayer 的绘制期块进不了 @Composable 取值器。
+    val entryRisePx = with(LocalDensity.current) { tokens.spacing.artistHeroHeight.toPx() / 8f }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4),
+            .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4)
+            // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了
+            // （与大图页同一个理由），但大图页有「图从卡片飞入」的自制入场，这一页——
+            // 什么都没有，内容就是硬切出现。补一档轻入场：整页淡入 + 上移，
+            // 曲线与时长吃 components/MiuixMotion.kt 的收尾档（240ms HyperOS 减速）。
+            .graphicsLayer {
+                alpha = entryAlpha
+                // 上移幅度吃 artistHeroHeight 的 1/8：手机档约 24dp、宽窗约 35dp，
+                // 不另造数字（token 预算那把尺）。值在组合期取好（entryRisePx），
+                // 绘制期只读 —— tokens.spacing 是 @Composable 取值器，进不了这里。
+                translationY = (1f - entryAlpha) * entryRisePx
+            },
     ) {
         // 顶栏只剩一枚悬浮返回钮：参考图那一页没有标题栏，而「画师」两个字会把这页
         // 读成"某个二级列表页"—— hero 里那行大字已经把这页是什么说清楚了。

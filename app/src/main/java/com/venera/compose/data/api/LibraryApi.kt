@@ -69,4 +69,7 @@ interface ReadingStats {
     suspend fun getTopComics(limit: Int = 10): List<ComicStatItem>
 
     suspend fun getTagStats(days: Int): TagStats
+
+    suspend fun getTagStats(days: Int, rating: com.venera.compose.stats.ReadingContentRating): TagStats =
+        getTagStats(days)
 }

@@ -154,6 +154,22 @@ data class GalleryPost(
      * 图库三站与列表一律 null ⇒ 那几处的缓存键与身份串逐字不变。
      */
     val pageOrdinal: Int? = null,
+    /**
+     * 这一条背后**站方给的是逐帧压缩包**（pixiv 的 ugoira，2026-10-23 动图播放）。
+     *
+     * 与 [isVideo] 一样，它是"这条行模型的普通图档只画得出第一帧"的那枚旗标，而且**同样只能由
+     * 站方的类型位翻译出来**：`fileExt` 判的是扩展名，而 ugoira 的地址尾巴是 `.jpg`
+     * （`…_ugoira0.jpg`），按扩展名判永远为假 —— 与 [isVideo] 那句对 mp4/webm 的判据正好相反。
+     *
+     * 谁能给：pixiv 四条腿都有出处（www 列表/详情腿 `illustType == 2`、app-api 腿
+     * `type == "ugoira"`，翻译记在 [PixivWork.ugoira] 那颗）；booru 三站没有"动图压缩包"这一说 ⇒ 恒 false。
+     * 列表腿（榜单/搜索/画师页）把各自的旗标**原样搬进**这一格，于是墙上的卡片与收藏也能认出"这作会动"。
+     *
+     * ⚠️ 这一格**不是"已经能播"**：能不能播要看 `/ajax/illust/{id}/ugoira_meta` 取不取回帧表
+     * （取数腿见 `PixivClient.ugoiraMeta`）。它只回答"要不要去问那一跳"，
+     * 所以恒 false 的那几站永远不多打那一跳 —— 一枚没有出处的旗标就是白加的网络往返。
+     */
+    val ugoira: Boolean = false,
 ) {
     val tagList: List<String> get() = splitGalleryTags(tags)
 

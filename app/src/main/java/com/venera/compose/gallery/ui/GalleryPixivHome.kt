@@ -932,7 +932,12 @@ internal fun PixivRankedWorkGrid(
             // 间距 6dp → 4dp（第二十三轮，用户「大卡片之间的间距再小点」）：封面通栏之后
             // 视觉间隙 = 4dp + 两张卡各自的圆角留白，再给 6dp 就读成"三张挤在一起"。
             val gap = tokens.spacing.space2
-            val cardWidth = (maxWidth - gap * 2) / GalleryPixivHome.RANKING_PREVIEW_SLOTS
+            val cardWidth = if (maxWidth >= 600.dp) {
+                val slots = ((maxWidth - gap * 2) / 170.dp).coerceIn(3f, 6f)
+                (maxWidth - gap * 2) / slots
+            } else {
+                (maxWidth - gap * 2) / GalleryPixivHome.RANKING_PREVIEW_SLOTS
+            }
             val railScroll = rememberLazyListState()
             LazyRow(
                 state = railScroll,
@@ -955,13 +960,20 @@ internal fun PixivRankedWorkGrid(
         }
         return
     }
-    Column(modifier = modifier.fillMaxWidth()) {
-        works.chunked(GalleryPixivHome.RANKING_ROW_ITEMS).forEach { rowWorks ->
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val gap = tokens.spacing.space4
+        val cols = if (maxWidth >= 600.dp) {
+            ((maxWidth - gap * 2) / 180.dp).toInt().coerceIn(3, 6)
+        } else {
+            GalleryPixivHome.RANKING_ROW_ITEMS
+        }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            works.chunked(cols).forEach { rowWorks ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+                horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                (0 until GalleryPixivHome.RANKING_ROW_ITEMS).forEach { slot ->
+                (0 until cols).forEach { slot ->
                     val work = rowWorks.getOrNull(slot)
                     // 凑不满一行时那两格留空槽而不是把现存的那张拉宽：拉宽会让同一批卡在
                     // 展开/收起两种形状下各长一个样，读起来像"卡片会变大"。
@@ -972,7 +984,8 @@ internal fun PixivRankedWorkGrid(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(tokens.spacing.space4))
+            Spacer(modifier = Modifier.height(gap))
+            }
         }
     }
 }

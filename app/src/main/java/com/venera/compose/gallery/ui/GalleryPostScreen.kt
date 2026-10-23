@@ -1,5 +1,7 @@
 package com.venera.compose.gallery.ui
 
+import android.content.pm.ActivityInfo
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -125,6 +127,7 @@ import com.venera.compose.gallery.domain.handoffPageAlpha
 import com.venera.compose.gallery.domain.nextExitGesture
 import com.venera.compose.gallery.domain.watercolorEntryVisible
 import com.venera.compose.gallery.data.GalleryPorts
+import com.venera.compose.gallery.ui.openGalleryVideoFullscreen
 import com.venera.compose.ui.tokens.StatusColors
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -223,7 +226,7 @@ fun GalleryPostScreen(
      * 而"重进大图页才按新网络判"这条边界用户看得见、也说得清。
      */
     val unmetered = remember { GalleryConnectivity.isUnmetered(context) }
-    val animateGifs = GalleryMotion.animates(animatedMode, unmetered)
+    val animateGifs = animatedMode != com.venera.compose.gallery.domain.GalleryAnimatedMode.NEVER
     val focusRequester = remember { FocusRequester() }
 
     // 底栏那颗 ▶ 调的是**本次这一屏**的速度：进页时取偏好的默认值，页内改动不写回偏好
@@ -1707,19 +1710,27 @@ private fun GalleryViewerMedia(
 
         if (post.isVideo) {
             // 视频没有"再高一档"可切，静帧到位即算落位（滑入不用等原片缓冲完）。
-            // 全屏状态**握在这里、不放进播放器**：要改的是"这一页给视频多大一块框"，
-            // 那是下面那段定框逻辑的事，播放器自己扩不出去。
-            var videoFullscreen by rememberSaveable(post.uid) { mutableStateOf(false) }
+            //
+            // ── 全屏交给独立 Activity（2026-10-19）──
+            //
+            // 用户原话：「横屏视频点击全屏放大后并不是全屏只是个框，我要的是安卓全屏的样式，
+            // 而且你这个做的要旋转几次还要重新加载，重做一遍」。
+            // 旧写法在这里握一枚 `videoFullscreen` + 给宿主 Activity 改 `requestedOrientation`：
+            // 本应用全局没有 `configChanges` ⇒ 改朝向 = **整个大图页重建**（播放器释放、重
+            // `prepare()`、图重下），而"放大"只是把内容区的框撑满 —— 顶栏底栏还在，看起来仍是个框。
+            //
+            // 现在这里一像素不动，全屏是另一颗 Activity（自己锁朝向、自己吃 configChanges、
+            // 自己藏系统栏）。位置经 [GalleryVideoHandoff] 交接，回来接着播。
             Box(
-                (if (videoFullscreen) Modifier.fillMaxSize() else Modifier.size(boxWidth, boxHeight))
-                    .then(boundsReporter)
+                Modifier.size(boxWidth, boxHeight).then(boundsReporter)
             ) {
                 GalleryVideoViewer(
                     post = post,
                     masked = masked,
                     imageLoader = imageLoader,
-                    fullscreen = videoFullscreen,
-                    onToggleFullscreen = { videoFullscreen = it },
+                    onOpenFullscreen = { positionMs ->
+                        context.openGalleryVideoFullscreen(post, positionMs)
+                    },
                 )
                 LaunchedEffect(post.uid) { onReadyChange(true) }
             }
@@ -1777,7 +1788,7 @@ private fun GalleryViewerMedia(
                 with(density) { boxWidth.toPx() }.toInt(),
             )
             val zoomState = rememberZoomableState(
-                zoomSpec = ZoomSpec(maxZoomFactor = maxOf(coverToFill, nativeZoom) * GALLERY_ZOOM_OVERCOVER_FACTOR),
+                zoomSpec = ZoomSpec(maxZoomFactor = maxOf(coverToFill * 3f, nativeZoom * 2f, 12f) * GALLERY_ZOOM_OVERCOVER_FACTOR),
             )
             LaunchedEffect(zoomState) {
                 snapshotFlow { (zoomState.zoomFraction ?: 0f) > 0f }
@@ -1794,11 +1805,7 @@ private fun GalleryViewerMedia(
                     .zoomable(
                         state = zoomState,
                         onClick = { onImageTap() },
-                        onDoubleClick = if (nativeZoom > COVER_TOLERANCE) {
-                            DoubleClickToZoomListener.cycle(nativeZoom)
-                        } else {
-                            null
-                        },
+                        onDoubleClick = DoubleClickToZoomListener.cycle(maxOf(coverToFill, nativeZoom, 2.5f)),
                     ),
             ) {
                 // 三档叠画（用户 2026-09-26 点名）：谁先到谁先显形，后到的直接盖上去。
@@ -1811,7 +1818,14 @@ private fun GalleryViewerMedia(
                         .align(Alignment.Center)
                         .size(boxWidth, boxHeight)
                         .then(boundsReporter)
-                        .clip(RoundedCornerShape(tokens.shape.large))
+                        // 圆角只在静止档保留（2026-10-23，用户「放大最大还是有这些边界」）：
+                        // 放大中/放大后那道 clip 还在的话，图被裁在圆角框里，屏上永远看得出
+                        // 框的边界。zoomFraction > 0 = 用户已离开展开态 -> 摘掉裁切，画面
+                        // 自由铺满整屏；回到 1x 那一刻圆角自动回来。
+                        .then(
+                            if (zoomState.zoomFraction != null && zoomState.zoomFraction!! > 0f) Modifier
+                            else Modifier.clip(RoundedCornerShape(tokens.shape.large))
+                        )
                         .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                 ) {
                     // 底：开门档（两站都用各自的 preview_url）。
@@ -1861,6 +1875,14 @@ private fun GalleryViewerMedia(
                                         "已退回原档。这一档是站方原图，被挡多在 CDN 侧的限流",
                                 )
                             },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (post.ugoira && animated) {
+                        PixivUgoiraPlayer(
+                            illustId = post.id,
+                            original = preferHd,
+                            masked = masked,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

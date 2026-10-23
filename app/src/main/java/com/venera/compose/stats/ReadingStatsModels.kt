@@ -1,5 +1,12 @@
 package com.venera.compose.stats
 
+/** 阅读分级过滤口径：全部 / 正常向 / R18向。 */
+enum class ReadingContentRating {
+    ALL,
+    NORMAL,
+    R18,
+}
+
 data class ReadingStatsSummary(
     val totalSeconds: Long = 0,
     val totalPages: Int = 0,

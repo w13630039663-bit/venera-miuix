@@ -292,6 +292,22 @@ data class VeneraSpacingTokens(
     val historyCardWidth: Dp = 124.dp,
     /** 历史卡片封面高度。 */
     val historyCoverHeight: Dp = 170.dp,
+
+    /**
+     * 首页画廊那一排卡片的目标宽度（手机/宽窗同一档，列数由它反推）。
+     *
+     * 2026-10-23 用户（大屏截图）：「主页画廊这些卡片又太大了」——前一批把列数从 4 改 2/3
+     * 是按手机竖屏调的，到了 600dp+ 宽窗上 3 列就是每张近半屏宽。改口径：**列数由目标宽反推**
+     * （`cols = blockWidth / 目标宽`），手机 2 列不变，宽窗上 1280dp 屏一排能摆 6 张，
+     * 每张回到 ~170dp 的阅读尺寸。
+     */
+    val homeGalleryCardTargetWidth: Dp = 170.dp,
+
+    /**
+     * 首页画廊卡片在宽窗档的行高上限。目标宽 × 竖图比例（0.9）最大高 ≈ 189dp，
+     * 上限留到 220dp 只作保险 —— 手机档不吃这条（手机竖屏的阅读尺寸用户已验收）。
+     */
+    val homeGalleryCardMaxHeight: Dp = 220.dp,
     /**
      * 推荐轮播（中央 Hero）整块高度。
      *

@@ -115,12 +115,46 @@ class GalleryPostActivity : VeneraSubActivityBase() {
  * 只压打开，不压关闭 —— 返回要留系统那套跨 activity 预测式动画。
  */
 fun Activity.openGalleryPost(site: GallerySite, postId: Long) {
-    val target = if (site == GallerySite.PIXIV) {
+    startActivity(
+        galleryPostIntent(site, postId),
+        ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle(),
+    )
+}
+
+/**
+ * 拼“打开大图页”那颗 Intent —— **分流只在这一处判一次**（2026-10-20）。
+ *
+ * 为什么抽成函数：[openGalleryPost] 与 [openGalleryPostSafe] 两条入口各拼一份的话，
+ * `if (site == GallerySite.PIXIV)` 就会出现两处 —— 也就是两个分流点，将来一定有一处
+ * 漏掉（`GalleryPixivWorkPageWiringTest` 那条“只许一处分流”钉的就是这个）。
+ */
+private fun Context.galleryPostIntent(site: GallerySite, postId: Long): Intent =
+    if (site == GallerySite.PIXIV) {
         PixivWorkActivity.intent(this, postId)
     } else {
         Intent(this, GalleryPostActivity::class.java)
             .putExtra(GalleryPostActivity.EXTRA_SITE, site.routeKey)
             .putExtra(GalleryPostActivity.EXTRA_POST_ID, postId)
     }
-    startActivity(target, ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle())
+
+fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+/**
+ * 拿不到 Activity 的那一档（`LocalContext` 可能是外层包装）先往上找宿主；
+ * 实在没有就补上 `NEW_TASK` 直接开 —— 但**分流仍走 [galleryPostIntent]**，不另拼一份。
+ */
+fun Context.openGalleryPostSafe(site: GallerySite, postId: Long) {
+    val act = findActivity()
+    if (act != null) {
+        act.openGalleryPost(site, postId)
+    } else {
+        startActivity(galleryPostIntent(site, postId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 }

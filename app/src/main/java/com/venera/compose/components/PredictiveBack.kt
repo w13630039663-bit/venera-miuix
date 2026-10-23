@@ -3,8 +3,6 @@ package com.venera.compose.components
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
@@ -14,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
+import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
@@ -89,19 +89,28 @@ private fun PredictiveBackGestureReceiver(
             events.collect { event ->
                 receivedProgress = true
                 state.fromRightEdge = event.swipeEdge == BackEventCompat.EDGE_RIGHT
-                state.animation.snapTo(predictiveBackProgress(event.progress))
+                // ── miuix 跟手弹簧（用户 2026-10-20 第 9 条）──
+                // 从前的 `snapTo` 逐点直驱在澎湃 / HyperOS 那类只派发少量进度点的机器上
+                // 是整页跳位；换成高刚度无回弹弹簧（`PredictiveFollowSpec`，与
+                // `GalleryExitGesture` 那条跟手同源）后，读起来是「几乎贴手指、稀疏时平滑追赶」。
+                // 弹簧自己带互斥，后到的事件打断前一笔补间 —— 语义与 snapTo 同级。
+                state.animation.animateTo(predictiveBackProgress(event.progress), PredictiveFollowSpec)
             }
         } catch (cancelled: CancellationException) {
             commit.cancel()
             // The platform cancels this coroutine on gesture cancellation. Keep the surface
             // alive and roll back without mutating the stack; do not swallow other failures.
             withContext(NonCancellable) {
-                state.animation.animateTo(0f, spring(dampingRatio = 1f, stiffness = 600f))
+                // 回弹换 miuix 的 200ms + HyperOS 减速曲线（从前是 600f 弹簧 —— 那一档在
+                // 松手瞬间有一段加速感，与原厂「先快后缓地滑回原位」不一致）。
+                state.animation.animateTo(0f, PredictiveCancelSpec)
             }
             throw cancelled
         }
         if (currentEnabled() && startedKey == currentKey()) {
-            if (receivedProgress) state.animation.animateTo(1f, tween(120))
+            // 确认收尾也换 miuix 的 240ms + HyperOS 曲线（从前 120ms tween 线性 —— 太急，
+            // 且与取消那一侧的两档不等长，松手提交与滑回原位读起来不像同一种动效）。
+            if (receivedProgress) state.animation.animateTo(1f, PredictiveFinishSpec)
             // Recheck after suspension: a button/dialog may already have closed this layer.
             if (commit.tryCommit(currentEnabled(), currentKey())) currentOnBack()
             // Let the new stack/visibility render before resetting the outgoing surface.
@@ -132,4 +141,49 @@ fun PredictiveBackOverlay(
         }.clickable { }) { content() }
     }
 }
+
+/**
+ * 包装整个页面层级的 MIUIX / HyperOS 风格预测性返回手势容器（用于二级子页）。
+ *
+ * 当用户从屏幕左边缘或右边缘侧滑返回时：
+ * - 页面整体平滑跟随手指横向拖拽（向右滑动离开），并同步进行 MIUIX 风格微缩放与圆角过渡；
+ * - 露出的底层产生优雅的微视差与渐隐遮罩效果；
+ * - 若用户松手确认，执行 [onBack] 弹出路由；若取消则按 HyperOS 减速曲线平滑回弹。
+ */
+@Composable
+fun MiuixPredictiveBackPage(
+    enabled: Boolean = true,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val back = rememberPredictiveBackState(enabled = enabled, onBack = onBack)
+    val progress = back.progress
+    val fromRight = back.fromRightEdge
+    val maxRadius = VeneraTokens.shape.large
+    
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                if (progress > 0.001f) {
+                    val sign = if (fromRight) -1f else 1f
+                    // 全宽横向位移
+                    translationX = size.width * progress * sign
+                    // 缩放至 0.94f，增强空间层次感
+                    val scale = 1f - 0.06f * progress
+                    scaleX = scale
+                    scaleY = scale
+                    // 边缘圆角平滑过渡（吃令牌中的大圆角）
+                    val cornerRadius = maxRadius.toPx() * progress
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(cornerRadius)
+                    clip = true
+                    alpha = 1f - 0.2f * progress
+                }
+            }
+    ) {
+        content()
+    }
+}
+
 

@@ -543,6 +543,25 @@ interface GalleryPixivWorks {
 
     /** 取消收藏作品（写站方）。 */
     suspend fun bookmarkRemove(bearer: String, illustId: Long): Result<Unit>
+
+    /**
+     * **动图逐帧包**（2026-10-23，用户报「app pixiv 源的动图无法播放」）。
+     *
+     * 取回元信息（`/ajax/illust/{id}/ugoira_meta`）+ 下 zip + 解压至缓存目录。
+     * 若站方答复没有可用逐帧（非 ugoira 或空 frames），返回 `Result.success(null)`。
+     */
+
+    /**
+     * 官方相关推荐作品流：/v2/illust/related?illust_id=。
+     */
+    suspend fun relatedIllusts(bearer: String, illustId: Long): Result<PixivAppPage> = Result.failure(UnsupportedOperationException())
+
+    /**
+     * 沿 next_url 续拉一页作品流。
+     */
+    suspend fun fetchNextPage(bearer: String, nextUrl: String): Result<PixivAppPage> = Result.failure(UnsupportedOperationException())
+
+    suspend fun ugoiraClip(illustId: Long, original: Boolean): Result<PixivUgoiraClip?>
 }
 
 /** 以图搜图。返回类型 `SauceNaoPage` 与本文件同包（`gallery/data/SauceNao.kt:56`）。 */

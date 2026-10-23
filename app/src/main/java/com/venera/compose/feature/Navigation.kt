@@ -81,6 +81,7 @@ import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
 import com.venera.compose.openPixivAccountPage
 import com.venera.compose.PixivAccountSectionEntry
+import com.venera.compose.components.MiuixPredictiveBackPage
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.ui.GalleryBookmarksHubScreen
 import com.venera.compose.gallery.ui.GalleryChromeAutoHide
@@ -587,6 +588,9 @@ fun VeneraComposeApp() {
         destination.hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         // 收藏 hub 与 pixiv 书签页同样算 GALLERY（第三十一轮，同一条理由）。
         destination.hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
+        // 标签直达搜索（2026-10-23，用户「从漫画详情页点 tag 跳过去的 tag 搜索没底栏」）：
+        // 它是搜索 Tab 往下走的一层 —— 底栏不该消失，切页动画也沿用 SEARCH 的方向。
+        destination.hasRoute(TagSearchRoute::class) -> VeneraNavTab.SEARCH
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
@@ -779,6 +783,21 @@ fun VeneraComposeApp() {
                                     haptic()
                                     context.openSettingsSubScreen(SettingsSubScreen.SOURCE_MANAGE)
                                 },
+                                // 「每日热门 ›」：2026-10-19 用户报「点了还是没有反应」。
+                                // 根因不是手势没挂上，而是**这一格压根没接线** ——
+                                // `AndroidHomeScreen` 的 `onOpenGallery` 默认值是空 lambda，
+                                // 而装配根从来没递过实参（编译器不会报：有默认值就算"可选"）。
+                                // 于是那一枚「每日热门 ›」的 clickable 里跑的是一句什么都不做的
+                                // 空函数 —— 本仓最忌的那种假开关（按下去不报错、不动、也没有日志）。
+                                //
+                                // 落点选 `GalleryDailyRoute` 而不是画廊主 Tab：用户按的是**那一节**
+                                // 的把手（每日热门），不是"画廊"。落到主 Tab 还要再点一次才到日榜，
+                                // 等于把一次点击变成两次。这一页是画廊 Tab 的子页，`currentTab`
+                                // 判据照旧把它算作 GALLERY（底栏口径不变，见上面那几行注释）。
+                                onOpenGallery = {
+                                    haptic()
+                                    navController.navigate(GalleryDailyRoute)
+                                },
                                 // 设置齿轮从外壳迁入首页顶栏（页内自治）。
                                 // 跨 Activity 而不是 NavHost 目的地：只有跨过 Activity 边界，
                                 // 系统才会施加 AOSP 跨 activity 预测式返回动画。
@@ -822,7 +841,9 @@ fun VeneraComposeApp() {
                                         raw = tagRaw,
                                         label = tagLabel.ifBlank { tagRaw },
                                     ),
-                                consumesBottomBarClearance = false,
+                                // 底栏回到了这一屏（TagSearchRoute 已映射进 SEARCH Tab），
+                                // 内容让位也必须跟着回来 —— 不然末行卡片被玻璃底栏盖住。
+                                consumesBottomBarClearance = true,
                             )
                         }
                     }
@@ -1035,15 +1056,22 @@ fun VeneraComposeApp() {
                         // 点一张历史瓦片 = 重新走一遍 openGalleryPost：大图页按「站 + 号」现取，
                         // 所以「从那一格回到原卡」在 Android 侧是天然成立的（桌面那颗件没有这一手，
                         // 见它的 README 注）。
-                        GalleryHistoryScreen(
-                            onOpenPost = { site, postId ->
-                                (view.context as? Activity)?.openGalleryPost(site, postId)
-                            },
+                        MiuixPredictiveBackPage(
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
                             },
-                        )
+                        ) {
+                            GalleryHistoryScreen(
+                                onOpenPost = { site, postId ->
+                                    (view.context as? Activity)?.openGalleryPost(site, postId)
+                                },
+                                onBack = {
+                                    haptic()
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
                     }
                     composable<GalleryBookmarksHubRoute> {
                         // 收藏 hub（2026-10-17 第三十一轮）：两颗卡 + 一行说明，本身不摆图。
@@ -1053,20 +1081,27 @@ fun VeneraComposeApp() {
                         // 见 FavoritesScreen 的 ImageSection.Gallery）—— 不复制一份墙到画廊侧：
                         // 两份墙意味着两份多选、两份删除、两处"到底显示多少张"，迟早对不上。
                         val navContext = LocalContext.current
-                        GalleryBookmarksHubScreen(
-                            onOpenPost = { post ->
-                                haptic()
-                                (view.context as? Activity)?.openGalleryPost(post.site, post.id)
-                            },
-                            onOpenPixivBookmarks = {
-                                haptic()
-                                (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
-                            },
+                        MiuixPredictiveBackPage(
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
                             },
-                        )
+                        ) {
+                            GalleryBookmarksHubScreen(
+                                onOpenPost = { post ->
+                                    haptic()
+                                    (view.context as? Activity)?.openGalleryPost(post.site, post.id)
+                                },
+                                onOpenPixivBookmarks = {
+                                    haptic()
+                                    (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
+                                },
+                                onBack = {
+                                    haptic()
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
                     }
                     composable<ExploreRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {

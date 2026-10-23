@@ -183,4 +183,34 @@ class TagStatsAggregationTest {
         assertEquals("lolicon", b.searchRaw)
         assertEquals(1, b.comics)
     }
+
+    @Test fun normalRatingExcludesR18Sources() {
+        val stats = aggregateTagStats(
+            listOf(
+                row("c1", "2026-10-01", 10, "school", sourceName = "copymanga"),
+                row("c2", "2026-10-01", 10, "pure_love", sourceName = "jm"),
+                row("c3", "2026-10-01", 10, "harem", sourceName = "ehentai"),
+            ),
+            days = 30,
+            rating = ReadingContentRating.NORMAL,
+            normalize = normalize,
+        )
+        assertEquals(listOf("school"), stats.buckets.map { it.display })
+        assertEquals(1, stats.taggedComics)
+    }
+
+    @Test fun r18RatingExcludesNormalSources() {
+        val stats = aggregateTagStats(
+            listOf(
+                row("c1", "2026-10-01", 10, "school", sourceName = "copymanga"),
+                row("c2", "2026-10-01", 10, "pure_love", sourceName = "jm"),
+                row("c3", "2026-10-01", 10, "harem", sourceName = "ehentai"),
+            ),
+            days = 30,
+            rating = ReadingContentRating.R18,
+            normalize = normalize,
+        )
+        assertEquals(setOf("pure_love", "harem"), stats.buckets.map { it.display }.toSet())
+        assertEquals(2, stats.taggedComics)
+    }
 }

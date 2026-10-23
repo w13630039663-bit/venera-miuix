@@ -306,7 +306,7 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                     GalleryAnimatedMode.NEVER.name to "从不（停在第一帧）",
                 ),
                 { prefs.setGalleryAnimated(GalleryAnimatedMode.valueOf(it)) },
-                summary = "只影响大图页。列表里的动图始终显示第一帧。",
+                summary = "只影响大图页与 pixiv 作品页。列表里的动图始终显示第一帧。",
             )
             SettingsSelect(
                 "大图页背景", backdrop.name,

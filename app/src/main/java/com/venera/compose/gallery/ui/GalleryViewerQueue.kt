@@ -22,9 +22,16 @@ object GalleryViewerQueue {
 
     private var posts: List<GalleryPost> = emptyList()
 
-    /** 打开一面墙时调（在跳转之前）。顺序即屏上顺序。 */
+    /**
+     * 打开一面墙时调（在跳转之前）。顺序即屏上顺序。
+     *
+     * 顺手把 [PixivWorkWallHandoff] 那一笔清掉：它的语义是
+     * **「开了一面新墙 ⇒ 上一笔相关图交棒作废」**。不清的话，「点相关图进去 → 退回 → 再从
+     * 画廊墙打开同一条」会读到上一笔，横轴变成一排与眼前那面墙无关的作品。
+     */
     fun set(list: List<GalleryPost>) {
         posts = list
+        PixivWorkWallHandoff.clear()
     }
 
     /**

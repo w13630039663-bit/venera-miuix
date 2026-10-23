@@ -87,11 +87,16 @@ internal object PixivFeedParse {
                 pageCount = record["illust_page_count"].numberOrStringOrNull()?.toIntOrNull(),
                 previewUrl = image,
                 fileExt = extensionOf(image),
+                // 榜单这一腿**给** `illust_type`（现量字符串 `"0"`/`"1"`/`"2"`，逐条对过）
+                // ⇒ 墙上那排卡也能认出"这作会动"（2026-10-23 动图播放）。
+                ugoira = record["illust_type"].numberOrStringOrNull() == "2",
             )
             PixivWork(
                 post = post,
                 title = record["title"].textOrNull().orEmpty(),
                 rank = record["rank"].numberOrStringOrNull()?.toIntOrNull(),
+                // 旗标只有**一处出处**（行模型那一格），这里转交而不是按同一键再读一遍。
+                ugoira = post.ugoira,
             )
         }
         requireRecognized(posts.size, contents.size, "pixiv 榜单")
@@ -138,6 +143,8 @@ internal object PixivFeedParse {
                 pageCount = record["pageCount"].numberOrStringOrNull()?.toIntOrNull(),
                 previewUrl = image,
                 fileExt = extensionOf(image),
+                // `illustType` 0=插画 1=漫画 2=动图（现量三档都出现过）。旗标的唯一出处在行模型。
+                ugoira = record["illustType"].numberOrStringOrNull() == "2",
             )
             // 这一腿站方不给排名 ⇒ rank 交 null：序号摆上去就必须是真序号，
             // 拿"这一排里的第几枚"冒充站方排名就是编读数。
@@ -148,9 +155,9 @@ internal object PixivFeedParse {
                 // 搜索答复里**带头像**（`profileImageUrl`，现量是 `..._50.png`）——
                 // 网格卡走「头像 + 标题 + 画师名」那一档时靠它，取不到留空串（卡上退首字母座）。
                 authorAvatarUrl = record["profileImageUrl"].textOrNull().orEmpty(),
-                // `illustType` 0=插画 1=漫画 2=动图（现量三档都出现过）。
-                // 「仅动图 / 排除动图」那一档只能靠它，站方搜索接口没有对应参数。
-                ugoira = record["illustType"].numberOrStringOrNull() == "2",
+                // 「仅动图 / 排除动图」那一档只能靠它（站方搜索接口没有对应参数）；
+                // 这里转交行模型那一格，两处不各读一遍同一键。
+                ugoira = post.ugoira,
             )
         }
         requireRecognized(posts.size, data.size, "pixiv 标签作品")
@@ -197,8 +204,9 @@ internal object PixivFeedParse {
         // 站方报的页数原样留着（缺格 = null ⇒ 卡上那枚角标不摆）；下面那颗 `pageCount` 才是
         // "对账用的那一档"，缺格时它必须有个数才能把 `pages.size == pageCount` 这条不变式写完。
         val reportedPages = detail["pageCount"].numberOrStringOrNull()?.toIntOrNull()
+        val isUgoira = detail["illustType"].numberOrStringOrNull() == "2"
         return PixivWorkDetail(
-            post = post.copy(pageCount = reportedPages),
+            post = post.copy(pageCount = reportedPages, ugoira = isUgoira),
             title = detail["title"].textOrNull().orEmpty(),
             authorId = detail["userId"].numberOrStringOrNull()?.toLongOrNull(),
             authorAccount = detail["userAccount"].textOrNull().orEmpty(),
@@ -220,7 +228,7 @@ internal object PixivFeedParse {
             uploadDate = detail["uploadDate"].textOrNull(),
             commentCount = detail["commentCount"].numberOrStringOrNull()?.toIntOrNull(),
             commentsOff = detail["commentOff"].numberOrStringOrNull() == "1",
-            ugoira = detail["illustType"].numberOrStringOrNull() == "2",
+            ugoira = isUgoira,
         )
     }
 
@@ -329,6 +337,9 @@ internal object PixivFeedParse {
             largeUrl = urls["regular"].textOrNull().orEmpty(),
             fileUrl = original,
             fileExt = extensionOf(original),
+            // 动图旗标搬进行模型（2026-10-23）：`illustType == 2` 是这条腿的说法。
+            // 不搬的话，深链直开（只有这一腿）的动图在屏上就是一张静帧，谁也不会去问 ugoira_meta。
+            ugoira = detail["illustType"].numberOrStringOrNull() == "2",
         )
     }
 

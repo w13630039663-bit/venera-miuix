@@ -332,6 +332,29 @@ internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryP
 
     override suspend fun bookmarkRemove(bearer: String, illustId: Long): Result<Unit> =
         appClient.bookmarkRemove(bearer, illustId)
+
+
+    override suspend fun relatedIllusts(bearer: String, illustId: Long): Result<PixivAppPage> =
+        appClient.relatedIllusts(bearer, illustId)
+
+    override suspend fun fetchNextPage(bearer: String, nextUrl: String): Result<PixivAppPage> =
+        appClient.fetchNextPage(bearer, nextUrl)
+
+    override suspend fun ugoiraClip(illustId: Long, original: Boolean): Result<PixivUgoiraClip?> =
+        runCatching {
+            var meta = client.ugoiraMeta(illustId).getOrNull()
+            if (meta == null) {
+                val bearer = runCatching { PixivAccount.getInstance(context).bearerOrNull() }.getOrNull()
+                if (bearer != null) {
+                    val appMeta = appClient.ugoiraMetadata(bearer, illustId).getOrNull()
+                    if (appMeta != null) {
+                        meta = appMeta
+                    }
+                }
+            }
+            if (meta == null) return@runCatching null
+            PixivUgoiraStore.getInstance(context).clip(illustId, meta, original).getOrThrow()
+        }
 }
 
 internal class AndroidGalleryReverseSearch(private val context: Context) : GalleryReverseSearch {

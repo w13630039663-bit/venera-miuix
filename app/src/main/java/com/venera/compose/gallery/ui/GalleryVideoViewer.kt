@@ -1,6 +1,6 @@
 package com.venera.compose.gallery.ui
 
-import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -28,24 +28,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.ImageLoader
-import com.venera.compose.data.network.ImageHeaderPolicy
-import com.venera.compose.data.network.UserAgentPolicy
+import com.venera.compose.R
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
@@ -60,6 +54,20 @@ import top.yukonga.miuix.kmp.basic.Text
  *
  * 三级（原图 + 缩放）那层对视频没有意义，所以本页**不进三级**：点画面是切播放/暂停，
  * 交给 [PlayerView] 自己的控制器。
+ *
+ * ## 全屏改由独立 Activity 承担（2026-10-19，用户「重做一遍」）
+ *
+ * 旧版在这里把框换成 `fillMaxSize()` 再改宿主 Activity 的 `requestedOrientation`，
+ * 三件事一起坏：
+ * 1. 改朝向 ⇒ 宿主 Activity 没有 `configChanges` ⇒ **整页重建**：ExoPlayer 释放、
+ *    重新 `prepare()`、图重下 —— 就是用户说的"要旋转几次还要重新加载"；
+ * 2. 只把框放大、画面仍是 `RESIZE_MODE_ZOOM`（裁切）⇒ 看着"变大了但不清"；
+ * 3. 大图页那一层还有顶栏 / 底栏 / 系统栏，`fillMaxSize()` 只是铺满了**内容区**，
+ *    在用户眼里仍然是"一个框"。
+ *
+ * 现在这里**只管就地这一块**，全屏交给 `GalleryVideoActivity`：它自己锁朝向、自己吃
+ * `configChanges`（旋转不重建）、自己藏系统栏，本页一个像素都不动。
+ * 播放位置通过 [GalleryVideoHandoff] 交接，回来接着播。
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -67,9 +75,8 @@ fun GalleryVideoViewer(
     post: GalleryPost,
     masked: Boolean,
     imageLoader: ImageLoader,
-    /** 铺满整屏（由调用方持有，因为它要连带改掉外层容器给本页的尺寸）。 */
-    fullscreen: Boolean,
-    onToggleFullscreen: (Boolean) -> Unit,
+    /** 点播放器那枚全屏钮。参数是**当前播放位置**，全屏页要从那里接着播。 */
+    onOpenFullscreen: (Long) -> Unit,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
@@ -83,30 +90,24 @@ fun GalleryVideoViewer(
     val ratio = post.cardRatio.takeIf { it > 0f } ?: tokens.spacing.coverAspectRatio
 
     Box(
-        (if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(ratio))
-            .background(Color.Black)
-            // 分级打码在这里同样生效：视频页不能成为绕过守卫的后门。
-            .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
+        Modifier.fillMaxWidth().aspectRatio(ratio).background(Color.Black),
     ) {
         coil3.compose.AsyncImage(
             model = request,
             contentDescription = "${post.site.displayName} #${post.id}",
             imageLoader = imageLoader,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                // 打码只在**还没开播**时糊底图：开播之后那层糊会盖在画面上（真机读数），
+                // 而播放器自己已经在画了，遮不遮由 `masked` 与起播状态共同决定。
+                .then(if (masked && !started) Modifier.blur(tokens.spacing.space10) else Modifier),
         )
         if (started) {
-            GalleryPlayer(
-                url = post.videoUrl,
-                headers = videoRequestHeaders(post.videoUrl),
-                fullscreen = fullscreen,
-                onToggleFullscreen = onToggleFullscreen,
-                onError = { reason ->
-                    // 播不了要说一句话，并且**把播放钮还回去**：留着一块黑框什么也不说，
-                    // 用户只能认为页面坏了（本仓口径：失败必须响亮，不许静默交错）。
-                    Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
-                    started = false
-                },
+            GalleryInlinePlayer(
+                post = post,
+                onOpenFullscreen = onOpenFullscreen,
+                onStop = { started = false },
             )
         } else {
             Box(
@@ -127,111 +128,108 @@ fun GalleryVideoViewer(
                     // 那是最容易骗人的假读数（看着像"这文件是空的"）。
                     text = buildString {
                         append("播放")
-                        if (post.fileSize > 0) append(" · ${"%.1f".format(post.fileSize / 1024.0 / 1024.0)} MB")
+                        if (post.fileSize > 0) {
+                            append(" · ${"%.1f".format(post.fileSize / 1024.0 / 1024.0)} MB")
+                        }
                         post.durationSeconds?.takeIf { it > 0.0 }?.let { append(" · ${it.toInt()} 秒") }
                     },
                     fontSize = tokens.type.caption,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = Color.White.copy(alpha = 0.95f),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = tokens.spacing.space5),
                 )
+                if (masked) {
+                    Text(
+                        text = "已按分级打码 · 点击即可开始播放",
+                        fontSize = tokens.type.caption,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.align(Alignment.Center).padding(top = 80.dp),
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * 播放请求要带的头 —— **直接吃防盗链那张表**（[ImageHeaderPolicy]），不在这一层另立口径。
+ * 就地播放器（自带建/释与"回位"）。
  *
- * 真机实测（2026-09-27，拿测试夹具里那条真实视频地址打的，两档都验过）：
- * ```
- * 不带 Referer → 302 https://gelbooru.com/hotlink.php?hash=/images/…   Content-Type: text/html
- * 带 Referer   → 206 video/mp4，前 12 字节 `…ftypisom`，Range 正常（能 seek）
- * ```
- * media3 会**跟着那个 302 走**，然后把 hotlink 页的 HTML 当媒体容器解析 ——
- * 报出来正是 `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED`（不是 403、不是网络问题）。
- * 图片侧早就修过同一个坑（表里 `gelbooru.com` 那条注释记着 302→hotlink.php 与
- * "这不是地域封禁"那段弯路），而**视频这一层当时只补了 UA、没补 Referer**，
- * 于是就成了这里注释原本预言的那句"缩略图看得到、点开播不了"。
- *
- * ⚠️ 表里**没有** UA 的站（yande.re 就是）要补上全局默认串：只交表里那几点，
- * 等于把现在能正常播的那一路改成"不带 UA"，那是修一个坏一个。
- * gzip 不是这一条的成因（实测同一地址带 `Accept-Encoding: gzip` 照样回裸字节 + 206）。
+ * 回位那一截是 2026-10-19 新增的：从全屏页返回时，位置经 [GalleryVideoHandoff] 写回来，
+ * 这里在 `ON_RESUME` 取一次并 `seekTo`。取完即删，所以"下次再点进来从头播"照旧。
  */
-private fun videoRequestHeaders(url: String): Map<String, String> =
-    LinkedHashMap<String, String>(ImageHeaderPolicy.headersFor(url)).apply {
-        putIfAbsent("User-Agent", UserAgentPolicy.DEFAULT_USER_AGENT)
-    }
-
 @OptIn(UnstableApi::class)
 @Composable
-private fun GalleryPlayer(
-    url: String,
-    headers: Map<String, String>,
-    fullscreen: Boolean,
-    onToggleFullscreen: (Boolean) -> Unit,
-    onError: (String) -> Unit,
+private fun GalleryInlinePlayer(
+    post: GalleryPost,
+    onOpenFullscreen: (Long) -> Unit,
+    onStop: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val headers = remember(post.videoUrl) { videoRequestHeaders(post.videoUrl) }
+    val player = rememberGalleryVideoPlayer(url = post.videoUrl, headers = headers)
+
+    DisposableEffect(player) {
+        // 从全屏页回来：接着播到的地方。取完即删（一次性交棒）。
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                GalleryVideoHandoff.take(post.videoUrl)?.let { position ->
+                    if (position > 0L) player.seekTo(position)
+                    player.play()
+                }
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    GalleryPlayerSurface(
+        player = player,
+        post = post,
+        fullscreen = false,
+        // 点全屏那一跳只把**当前位置**交出去（经 [GalleryVideoHandoff]），播放器实例不交：
+        // 实例交棒在 ColorOS 上会被 relaunch 打断（见 `rememberGalleryVideoPlayer` 头注），
+        // 结果是旧实例 release 掉新实例正在用的播放器，全屏页随即报错退回。
+        onFullscreenClick = {
+            onOpenFullscreen(player.currentPosition.coerceAtLeast(0L))
+        },
+        onError = { reason ->
+            // 播不了要说一句话，并且**把播放钮还回去**：留着一块黑框什么也不说，
+            // 用户只能认为页面坏了（本仓口径：失败必须响亮，不许静默交错）。
+            Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
+            onStop()
+        },
+    )
+}
+
+/**
+ * 播放画面本身（控制器 + 缓冲读数 + 首帧口径）。就地与全屏**共用这一颗** ——
+ * 两处各写一遍的话，"全屏能播、就地播不了"这类只在一条路上复现的裂口迟早会出现。
+ *
+ * @param fullscreen 只影响全屏钮的图标朝向。
+ *   ⚠️ 两种形态都用 `RESIZE_MODE_FIT`：用户 2026-10-19 明确说「不应该有裁剪」，
+ *   而 `ZOOM` 就是裁切铺满 —— 横屏视频在竖屏里只看得见中间一条，那正是"看着糊"的来源之一。
+ */
+@OptIn(UnstableApi::class)
+@Composable
+internal fun GalleryPlayerSurface(
+    player: ExoPlayer,
+    post: GalleryPost,
+    fullscreen: Boolean,
+    onFullscreenClick: () -> Unit,
+    onError: (String) -> Unit,
+) {
     val tokens = VeneraTokens
     // 两枚读数各自独立：`buffering` 是"这一笔还在取"，`firstFrame` 是"屏上已经开始动"。
     // 快门色是透明的，所以首帧之前屏上看到的**就是底图那张静帧** —— 没有这两枚读数时，
     // "正在缓冲"和"点了没反应"长得一模一样（用户 2026-09-27 点名的第一条）。
-    var firstFrame by remember(url) { mutableStateOf(false) }
-    var buffering by remember(url) { mutableStateOf(true) }
-    val player = remember(url) {
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(
-                    // 整张头表交出去（含 Referer），而不是只挂一个 UA —— 见 [videoRequestHeaders]。
-                    // 方法名是 `setDefaultRequestProperties`（media3 1.11.1 上没有
-                    // `setRequestProperties`，那是旧名字 —— 按猜的写会直接编译不过）。
-                    DefaultHttpDataSource.Factory()
-                        .setDefaultRequestProperties(headers)
-                        .setAllowCrossProtocolRedirects(true)
-                )
-            )
-            // 起播要攒多少，media3 的默认值是 **2.5 秒"媒体时长"**（bufferForPlaybackMs），
-            // 而这一站的视频码率不低（实测一条 26.3 秒 / 2.4 MB ≈ 92 KB/s 的媒体流），
-            // 2.5 秒就是两百多 KB；池子里那些 16~26 MB 的原片要先攒好几 MB 才肯动。
-            // 本机 curl 实测吞吐 256 KB / 3.06s ≈ 84 KB/s —— 默认值就是"点下去要等好几秒"
-            // 的直接成因。500ms 敢这么给，是因为实测这些 mp4 **是 faststart**
-            // （`moov` 在第 36 字节、`mdat` 在 48413，先读 48 KB 就够起播），
-            // 代价是慢网下更容易中途 rebuffer —— 那有"重新缓冲中"的环在说。
-            .setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        /* minBufferMs = */ 10_000,
-                        /* maxBufferMs = */ 30_000,
-                        /* bufferForPlaybackMs = */ 500,
-                        /* bufferForPlaybackAfterRebufferMs = */ 1_500,
-                    )
-                    .build()
-            )
-            .build()
-            .apply {
-                setMediaItem(MediaItem.fromUri(url))
-                playWhenReady = true
-                prepare()
-            }
-    }
+    var firstFrame by remember(player) { mutableStateOf(false) }
+    var buffering by remember(player) { mutableStateOf(true) }
+
     DisposableEffect(player) {
-        val observer = LifecycleEventObserver { _, event ->
-            // 退到后台要停：Media3 不会自己替我们放掉网络与解码器。
-            if (event == Lifecycle.Event.ON_STOP) player.pause()
-        }
-        // 播放失败必须报出来。media3 用的是自己的 HTTP 栈（不过 VeneraNetworkClient，
-        // 也拿不到防盗链那张表），所以"缩略图看得到、点开播不了"最容易在这一层发作 ——
-        // 没有这个监听器时它的表现就是一块黑框，什么线索都不给。
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                Log.d(
-                    PLAYER_LOG_TAG,
-                    "state=${stateName(state)} playing=${player.isPlaying} " +
-                        "suppressed=${player.playbackSuppressionReason} buffered=${player.bufferedPosition}",
-                )
                 // 只认 STATE_BUFFERING：ENDED 不是"还在取"，把环留在那儿就是假读数。
                 buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY && !firstFrame) {
@@ -244,7 +242,6 @@ private fun GalleryPlayer(
             }
 
             override fun onRenderedFirstFrame() {
-                Log.d(PLAYER_LOG_TAG, "first frame rendered")
                 firstFrame = true
                 buffering = false
             }
@@ -253,43 +250,41 @@ private fun GalleryPlayer(
                 onError("这条播不出来：${error.errorCodeName} ${error.message.orEmpty()}".trim())
             }
         }
-        lifecycle.addObserver(observer)
         player.addListener(listener)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            player.removeListener(listener)
-            player.release()
-        }
+        onDispose { player.removeListener(listener) }
     }
-    Box(Modifier.fillMaxSize()) {
+
+    // 黑底（2026-10-23）：起播后那层糊底图仍在下层（它只是被 PlayerView 盖住，没被移除），
+    // 播放器画面在 letterbox 或合成空隙间露出的任何一像素都会透出那张被放大的低清图 ——
+    // 真机上读起来就是“播着还是糊”。黑底把下层彻底扣住。
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = true
+                // ⚠️ 从布局里充气而不是 `PlayerView(ctx)`：`surface_type` 只在构造函数里读一次，
+                // 没有运行时 setter。必须是 texture_view —— 否则 SurfaceView 落在**窗口下面**，
+                // 会被本页窗口的 `FLAG_BLUR_BEHIND`（32dp）整块糊掉，而底图与文字画在窗口里所以清楚，
+                // 读起来正是「预览清楚、一开播就糊」。定因读数与完整推理写在
+                // `res/layout/venera_gallery_player.xml` 的头注里。
+                (android.view.LayoutInflater.from(ctx)
+                    .inflate(R.layout.venera_gallery_player, null) as PlayerView).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                     controllerAutoShow = false
                     // 快门色透明：不然起播前会闪一块黑盖住底图。
                     setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                     // media3 的控制器**本来就带一枚全屏钮**（`exo_player_control_view.xml`
                     // 里的 fullscreenButton / minimalFullscreenButton），但它只在
                     // "设过监听器"时才显形（PlayerControlView 按 listener != null 判可见）。
-                    // 我们从来没设过 —— 这就是真机上"没有全屏钮"的原因，不是它没有这个钮。
-                    setFullscreenButtonClickListener { wantFullscreen -> onToggleFullscreen(wantFullscreen) }
+                    setFullscreenButtonClickListener { onFullscreenClick() }
                 }
             },
             update = {
                 it.player = player
                 // 同一枚钮按当前状态换图标（进入 / 退出两个样子）。
                 it.setFullscreenButtonState(fullscreen)
-                // **必须同时换 resize mode**：默认是 FIT，而 FIT 下"容器变大"根本不会让
-                // 画面变大 —— 画面尺寸由受限的那一边定，而那一边本来就是屏宽
-                // （实测一条 639×470 的视频在竖屏上已经铺满宽度）。
-                // 只扩框不换 mode = 一枚点了没反应的钮，那是本仓零容忍的假开关。
-                // 代价要说清：ZOOM 是**裁切铺满**，竖屏看横屏视频时只看得见中间那一条。
-                it.resizeMode = if (fullscreen) {
-                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
+                it.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             },
             onRelease = { it.player = null },
             modifier = Modifier.fillMaxSize(),
@@ -319,14 +314,3 @@ private fun GalleryPlayer(
         }
     }
 }
-
-/** 日志里把 media3 那三个状态整数翻成人话（读数要能直接看懂，不然等于没记）。 */
-private fun stateName(state: Int): String = when (state) {
-    Player.STATE_IDLE -> "IDLE"
-    Player.STATE_BUFFERING -> "BUFFERING"
-    Player.STATE_READY -> "READY"
-    Player.STATE_ENDED -> "ENDED"
-    else -> "UNKNOWN($state)"
-}
-
-private const val PLAYER_LOG_TAG = "GalleryVideo"

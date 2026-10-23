@@ -159,12 +159,12 @@ class ReadingStatsManager private constructor(private val context: Context) {
      * 四格屏上读数各自的口径写在那颗文件头：**页加权**是首页推荐用的那把尺，
      * **本数**是统计页那半区念的那把 —— 两把不许混着引。
      */
-    suspend fun getTagStats(days: Int): TagStats = withContext(Dispatchers.IO) {
+    suspend fun getTagStats(days: Int, rating: ReadingContentRating = ReadingContentRating.ALL): TagStats = withContext(Dispatchers.IO) {
         val startKey = dateFormat.format(
             Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -(days - 1)) }.time
         )
         val normalizer = buildNormalizer()
-        aggregateTagStats(store.taggedRows(startKey), days) { normalizer.normalize(it) }
+        aggregateTagStats(store.taggedRows(startKey), days, rating) { normalizer.normalize(it) }
     }
 
     /**

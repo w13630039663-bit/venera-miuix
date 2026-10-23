@@ -652,7 +652,14 @@ private fun GallerySourceLinks(
                             .clip(RoundedCornerShape(tokens.shape.medium))
                             .background(tokens.color.primary.copy(alpha = 0.12f))
                             .clickable {
-                                context.startActivity(PixivWorkActivity.intent(context, pixivArtworkId))
+                                // 淡入（2026-10-23，用户「这一跳没有跳转动画」）：玻璃浮层页
+                                // 在系统默认转场上几乎不可见，显式给一档平台 fade。
+                                context.startActivity(
+                                    PixivWorkActivity.intent(context, pixivArtworkId),
+                                    androidx.core.app.ActivityOptionsCompat.makeCustomAnimation(
+                                        context, android.R.anim.fade_in, 0
+                                    ).toBundle(),
+                                )
                             }
                             .padding(horizontal = tokens.spacing.space4, vertical = tokens.spacing.space3),
                         verticalAlignment = Alignment.CenterVertically,

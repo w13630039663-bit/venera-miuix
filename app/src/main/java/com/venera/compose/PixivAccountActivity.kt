@@ -70,10 +70,11 @@ class PixivAccountActivity : VeneraSubActivityBase() {
  * @param section 落在哪一段；收藏 hub 那枚 🔖 改跳之后交的是 `bookmarks`（2026-10-19 拍板 ⑦）。
  */
 fun Context.openPixivAccountPage(section: String = PixivAccountSectionEntry.DYNAMIC) {
+    // MIUIX / HyperOS 统一转场：全宽平移进场与视差退场（退场返回留系统预测式）
     startActivity(
         Intent(this, PixivAccountActivity::class.java)
             .putExtra(PixivAccountActivity.EXTRA_SECTION, section),
-        ActivityOptionsCompat.makeCustomAnimation(this, 0, 0).toBundle(),
+        ActivityOptionsCompat.makeCustomAnimation(this, R.anim.miuix_activity_open_enter, R.anim.miuix_activity_open_exit).toBundle(),
     )
 }
 

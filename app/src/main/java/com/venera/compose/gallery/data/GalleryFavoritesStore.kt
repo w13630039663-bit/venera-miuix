@@ -62,6 +62,7 @@ data class GalleryFavorite(
     @SerialName("md5") val md5: String = "",
     @SerialName("file_ext") val fileExt: String = "",
     @SerialName("duration") val durationSeconds: Double? = null,
+    @SerialName("ugoira") val ugoira: Boolean = false,
 ) {
     /** 站方键认不出来时返回 null —— 由调用方过滤掉，**不要**退化成"当成某一站"（那会串图）。 */
     val site: GallerySite? get() = GallerySite.fromRouteKey(siteKey)
@@ -100,6 +101,7 @@ fun GalleryFavorite.toPost(site: GallerySite): GalleryPost = GalleryPost(
     md5 = md5,
     fileExt = fileExt,
     durationSeconds = durationSeconds,
+    ugoira = ugoira,
 )
 
 fun GalleryPost.toFavorite(): GalleryFavorite = GalleryFavorite(
@@ -126,6 +128,7 @@ fun GalleryPost.toFavorite(): GalleryFavorite = GalleryFavorite(
     md5 = md5,
     fileExt = fileExt,
     durationSeconds = durationSeconds,
+    ugoira = ugoira,
 )
 
 /**

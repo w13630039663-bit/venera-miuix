@@ -99,6 +99,7 @@ object PixivWorkPage {
                 height = page.height ?: 0,
                 pageCount = detail.pages.size,
                 pageOrdinal = index,
+                ugoira = detail.ugoira,
             )
         }
 

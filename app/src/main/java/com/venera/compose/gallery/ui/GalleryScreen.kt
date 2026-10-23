@@ -289,16 +289,9 @@ fun GalleryScreen(
     // 顶栏那枚 ✕ 只关这一层、不清栈）。
     BackHandler(enabled = svm.active) {
         when {
-            // 反搜排在最前：它开着时屏上是"一张图 → 一批相似图"，返回要先退回标签搜索
-            // 那一具身体，而不是一下子把人丢回首页。
             rvm.open -> rvm.closeLayer()
             svm.mode == GallerySearchMode.INPUT && svm.hasQuery -> svm.collapseToResults()
-            // 上一轮（"搜 touhou 那会儿的 100 张"）：整片从快照抄回来。
-            svm.canPopContext() -> {
-                svm.popContext()
-                if (!svm.hasQuery) svm.closeSearch()
-            }
-            else -> svm.closeSearch()
+            else -> svm.clearAndCloseSearch()
         }
     }
 
@@ -328,7 +321,12 @@ fun GalleryScreen(
         val directId = svm.pendingDirectArtworkId ?: return@LaunchedEffect
         svm.pendingDirectArtworkId = null
         svm.closeSearch()
-        context.startActivity(PixivWorkActivity.intent(context, directId))
+        context.startActivity(
+            PixivWorkActivity.intent(context, directId),
+            androidx.core.app.ActivityOptionsCompat.makeCustomAnimation(
+                context, com.venera.compose.R.anim.miuix_activity_open_enter, com.venera.compose.R.anim.miuix_activity_open_exit
+            ).toBundle(),
+        )
     }
 
     val source = remember { GalleryFeedSource.getInstance(context) }
@@ -2333,10 +2331,8 @@ fun GalleryScreen(
                 VeneraTopBarPill(onClick = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (svm.active) {
-                        // 关搜索要把反搜那一层一起关掉：它的输入挂在搜索卡里，
-                        // 只关搜索会留下"卡片没了但墙还在摆反搜结果"这种孤儿态。
                         rvm.closeLayer()
-                        svm.closeSearch()
+                        svm.clearAndCloseSearch()
                     } else svm.openSearch()
                 }) {
                     Icon(

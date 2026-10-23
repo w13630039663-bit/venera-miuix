@@ -175,20 +175,6 @@ fun GalleryViewerToolbar(
                         tint = if (preferHd) tokens.color.primary else tokens.color.textPrimary,
                     )
                 }
-            } else {
-                /*
-                 * 视频**没有清晰档**（站方只有一档），但不能因此把这枚钮的位置删掉。
-                 *
-                 * 这条 dock 是居中排的（父层 weight + CenterVertically），少一枚 48dp 的钮
-                 * 整行就窄一档，右边那几枚各自往左挪约半枚的距离（≈25dp）。用户从图片翻到视频时
-                 * 手是按**记忆**去的 —— 结果那一下点在钮与钮之间的空隙里，"没有任何反应"
-                 * （用户 2026-10-04 报的第 8 条，实测出处见本轮方案文档批 F）。
-                 *
-                 * 留的是**空位不是假钮**：这里没有 clickable、没有图标、没有染色，
-                 * 读不出"这里有个不能按的东西"；它唯一的作用是让「关于这张图」那一枚
-                 * 在两类内容下停在同一个 x。
-                 */
-                Spacer(modifier = Modifier.size(VeneraIconButtonTouchSize))
             }
             VeneraIconButton(onClick = onDownload, enabled = !saving) {
                 if (saving) {

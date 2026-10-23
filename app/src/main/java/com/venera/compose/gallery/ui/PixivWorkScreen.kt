@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -42,6 +43,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,7 +52,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Bookmarks
@@ -94,7 +95,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
@@ -113,6 +118,10 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.venera.compose.components.LocalWindowHeightDp
+import com.venera.compose.components.LocalWindowWidthDp
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.ChromeCaptureSuppress
 import com.venera.compose.components.reportChromeBand
 import com.venera.compose.components.venera.LocalTopBarBackdrop
@@ -123,16 +132,19 @@ import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.VeneraTopBarBackdrop
 import com.venera.compose.components.venera.rememberTopBarBackdrop
 import com.venera.compose.gallery.data.GalleryImageLoader
+import com.venera.compose.gallery.data.GalleryConnectivity
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
 import com.venera.compose.gallery.data.GalleryDownloadManager
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.PixivAuthState
+import com.venera.compose.gallery.data.PixivAppClient
 import com.venera.compose.gallery.data.PixivComment
 import com.venera.compose.gallery.data.PixivPage
 import com.venera.compose.gallery.data.PixivWorkDetail
 import com.venera.compose.gallery.domain.GalleryAi
+import com.venera.compose.gallery.domain.GalleryMotion
 import com.venera.compose.gallery.domain.GalleryArtistFollows
 import com.venera.compose.gallery.domain.PixivCommentSegment
 import com.venera.compose.gallery.domain.PixivPageSeam
@@ -211,6 +223,9 @@ fun PixivWorkScreen(
     val scope = rememberCoroutineScope()
     val tokens = VeneraTokens
     val ports = remember { GalleryPorts.of(context) }
+    val animatedMode by ports.prefs.galleryAnimated.collectAsState()
+    val unmetered = remember(context) { GalleryConnectivity.isUnmetered(context) }
+    val animated = remember(animatedMode) { animatedMode != com.venera.compose.gallery.domain.GalleryAnimatedMode.NEVER }
     // 那两档读的是隔壁那颗 `PixivWorkPreferences`，不挂在跨端共享的 `GalleryPreferences` 上：
     // 桌面逐枚实现那颗读面，而这一屏桌面没有 ⇒ 挂进去就是替每一档各写一个没人读的 getter。
     // 空槽在 Android 装配口不可能出现（每次都交 `galleryPrefs`）；真出现 = 装配口漏了那一行，
@@ -227,7 +242,13 @@ fun PixivWorkScreen(
     val pixiv = ports.pixiv
 
     // 横轴：把我送进来的那面墙。认不出邻居（深链、或列表已换过一轮）⇒ 空表 ⇒ 那一轴不摆。
-    val works = remember(postId) { GalleryViewerQueue.snapshot(GallerySite.PIXIV, postId) }
+    //
+    // 先问 [PixivWorkWallHandoff]：从「相关图片」点进来时，那一排**只属于被点的那一条**，
+    // 而且与「上一屏那一排」是两件事 —— 全局槽 [GalleryViewerQueue] 装不下两个，
+    // 它会退成"点 A 开 B"（理由写在交棒件头上）。认不出才退回那面墙。
+    val works = remember(postId) {
+        PixivWorkWallHandoff.relatedOf(postId) ?: GalleryViewerQueue.snapshot(GallerySite.PIXIV, postId)
+    }
     var workIndex by remember(postId) {
         mutableIntStateOf(works.indexOfFirst { it.id == postId }.coerceAtLeast(0))
     }
@@ -237,6 +258,8 @@ fun PixivWorkScreen(
     val details = remember(postId) { mutableStateMapOf<Long, PixivWorkDetail>() }
     val failures = remember(postId) { mutableStateMapOf<Long, String>() }
     val related = remember(postId) { mutableStateMapOf<Long, List<GalleryPost>>() }
+    val relatedNextUrls = remember(postId) { mutableStateMapOf<Long, String?>() }
+    val relatedLoading = remember(postId) { mutableStateMapOf<Long, Boolean>() }
     /**
      * 评论那一节的状态，按作品号存（翻到下一件作品各自一份）。
      *
@@ -403,17 +426,72 @@ fun PixivWorkScreen(
                 )
             }
     }
-    LaunchedEffect(currentId, detail?.tags) {
-        val head = detail ?: return@LaunchedEffect
-        val word = head.tags.firstOrNull() ?: return@LaunchedEffect
-        if (pixiv == null || related.containsKey(currentId)) return@LaunchedEffect
-        pixiv.tagWorks(word, page = 1).onSuccess { rows ->
-            related[currentId] = rows.map { it.post }
-                .filter { it.id != currentId && !it.isVideo }
-                .take(RELATED_MAX)
+    LaunchedEffect(currentId) {
+        if (related.containsKey(currentId)) return@LaunchedEffect
+        val bearer = ports.pixivAccount?.bearerOrNull()
+        if (pixiv != null && bearer != null) {
+            relatedLoading[currentId] = true
+            pixiv.relatedIllusts(bearer, currentId).onSuccess { page ->
+                related[currentId] = page.works.map { it.post }.filter { it.id != currentId && !it.isVideo }
+                relatedNextUrls[currentId] = page.nextUrl
+                relatedLoading[currentId] = false
+            }.onFailure {
+                relatedLoading[currentId] = false
+                val head = detail
+                val word = head?.tags?.firstOrNull()
+                if (word != null) {
+                    pixiv.tagWorks(word, page = 1).onSuccess { rows ->
+                        related[currentId] = rows.map { it.post }.filter { it.id != currentId && !it.isVideo }
+                    }
+                }
+            }
+        } else if (pixiv != null) {
+            val head = detail
+            val word = head?.tags?.firstOrNull()
+            if (word != null) {
+                pixiv.tagWorks(word, page = 1).onSuccess { rows ->
+                    related[currentId] = rows.map { it.post }.filter { it.id != currentId && !it.isVideo }
+                }
+            }
         }
     }
     LaunchedEffect(currentId) { tagsExpanded = false }
+
+    /**
+     * 相关图片的**下一页**（用户 2026-10-20：「相关图片要无限滚动」，同时撤掉底部那格
+     * 「下一作品」）。
+     *
+     * 三道闸门全在这一个函数里，屏上只负责说一句"到底了"：
+     * 1. 没有 `next_url`（第一页失败时退的是标签搜索腿，根本没有游标）⇒ 到头了，不再发；
+     * 2. 这一条已经在飞 ⇒ 同一手势里哨兵那格被 Lazy 反复预组合也只发一次；
+     * 3. 落回来那一批全是屏上已有的号 ⇒ `related.size` 不变 ⇒ 哨兵那格的
+     *    `LaunchedEffect` 键不变、不会重触发，循环自然停。但为了避免"站方一直给
+     *    同一批 + 非空 next_url"那种死循环，这里**显式把游标清掉**。
+     */
+    fun loadMoreRelated(id: Long) {
+        if (relatedLoading[id] == true) return
+        val nextUrl = relatedNextUrls[id] ?: return
+        val client = pixiv ?: return
+        // `bearerOrNull()` 是 suspend 的（要读 DataStore），所以口令必须在协程里取 ——
+        // 这里不能先取再 `launch`。代价是闸门 1（在飞）在取口令那一瞬就先拉上了，正好。
+        relatedLoading[id] = true
+        scope.launch {
+            val bearer = ports.pixivAccount?.bearerOrNull()
+            if (bearer == null) {
+                relatedLoading[id] = false
+                return@launch
+            }
+            client.fetchNextPage(bearer, nextUrl).onSuccess { page ->
+                val known = related[id].orEmpty()
+                val merged = (known + page.works.map { it.post }.filter { it.id != id && !it.isVideo })
+                    .distinctBy { it.id }
+                related[id] = merged
+                // 一批新号都没添 ⇒ 就当到头了（留着旧游标会让哨兵每回来一次又发一次同一页）。
+                relatedNextUrls[id] = page.nextUrl.takeIf { merged.size > known.size }
+            }
+            relatedLoading[id] = false
+        }
+    }
 
     // ⚠️ 这条滚动状态**不许由本屏持有**（2026-10-19 读数改口径）。
     // 从前这里是 `rememberLazyListState()` 一颗、再传进 `HorizontalPager` 的**每一个槽**，
@@ -1038,6 +1116,7 @@ fun PixivWorkScreen(
                     seedDetail = slotSeed,
                     seam = seam,
                     detailsInFlow = detailsInFlow,
+                    animated = animated,
                     imageLoader = imageLoader,
                     related = related[slotId].orEmpty(),
                     tagsExpanded = tagsExpanded,
@@ -1046,13 +1125,21 @@ fun PixivWorkScreen(
                     onDownload = saveWork,
                     openPages = openPages,
                     onOpenWork = { id ->
-                        GalleryViewerQueue.set(related[slotId].orEmpty())
+                        // 相关图片点一张 = 新开一颗作品页（宿主那条 `startActivity`）。
+                        // 那一排先交给交棒件、按**被点的那一条**配对：全局槽 [GalleryViewerQueue]
+                        // 装不下两排（从相关图再点一次相关图就是两排），写进去就会“点 A 开 B”。
+                        PixivWorkWallHandoff.put(id, related[slotId].orEmpty())
                         onOpenWork(id)
                     },
                     onOpenViewer = onOpenViewer,
-                    // 流末尾那枚"下一作品"提醒：只在墙里认得出下一位时才递进来（判据在调用方这一句）。
-                    nextWork = works.getOrNull(slot + 1),
-                    onOpenNextWork = { scope.launch { pagerState.animateScrollToPage(slot + 1) } },
+                    // 相关图片无限滚动（用户 2026-10-20）：到底了就把下一页接上；
+                    // 没有游标（第一页就退的是标签搜索腿）就不摆哨兵 —— 屏上不出现“拉不动”的假机关。
+                    relatedLoading = relatedLoading[slotId] == true,
+                    onLoadMoreRelated = if (relatedNextUrls[slotId] != null) {
+                        { loadMoreRelated(slotId) }
+                    } else {
+                        null
+                    },
                     bottomClearance = chromeHeight + navBarBottom + tokens.spacing.space6,
                     aiBadgeOn = aiBadgeOn,
                     // 评论那一节：这一屏自己持有状态（按作品号存），滚动流只是摆。
@@ -1116,11 +1203,32 @@ fun PixivWorkScreen(
         // 不是 `scrollBlur > 0f` 直接读 —— 后者每帧都在变，等于滚动全程把整页拖进重组。
         // 真正的透明度交给 `graphicsLayer` 在绘制期取，滚动只失效图层、不重组。
         if (needsBackdrop) {
+            // 下缘渐隐（用户 2026-10-23 大屏截图：「往下滚顶栏会有奇怪的遮挡」）：
+            // 大屏限宽档下图片列窄、背板却全宽 —— 背板在黑区上隐形，只在图片身上可见，
+            // 于是图片在 topBandHeight 那条线上被"拦腰糊断"，切口是一条水平硬线，
+            // 读起来就像有什么东西挡在那里。给背板的绘制结果叠一层 DstIn 纵向渐变
+            // （上 60% 不动、往下 40% 渐隐到 0），切口从"硬线"变"过渡"。
+            // ⚠️ 必须 Offscreen：DstIn 要作用在**本层已画完的背板**上，不隔离就会
+            // 把下层页面一起抹掉（那是在擦整页）。
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(topBandHeight)
-                    .graphicsLayer { alpha = pageAlpha() }
+                    .graphicsLayer {
+                        alpha = pageAlpha()
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.Black,
+                                0.6f to Color.Black,
+                                1f to Color.Transparent,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    }
                     .align(Alignment.TopCenter),
             ) {
                 VeneraTopBarBackdrop(
@@ -1222,7 +1330,7 @@ fun PixivWorkScreen(
                     avatarUrl = artistAvatar,
                     imageLoader = imageLoader,
                     onOpenWork = { id ->
-                        GalleryViewerQueue.set(related[currentId].orEmpty())
+                        PixivWorkWallHandoff.put(id, related[currentId].orEmpty())
                         sheetOpen = false
                         onOpenWork(id)
                     },
@@ -1726,9 +1834,6 @@ private fun pageWallOf(
 ): List<GalleryPost> =
     detail?.let { PixivWorkPage.pageWallOf(it, viewerQuality) }.orEmpty()
 
-/** 相关图片那一排最多摆几枚：三列 × 三行，再多就是另一屏（那一屏叫搜索结果）。 */
-private const val RELATED_MAX = 9
-
 /**
  * 评论这一节最多摆几条。
  *
@@ -1818,6 +1923,7 @@ private fun PixivWorkFlow(
     seedDetail: PixivWorkDetail? = null,
     seam: PixivPageSeam,
     detailsInFlow: Boolean,
+    animated: Boolean = true,
     imageLoader: ImageLoader,
     related: List<GalleryPost>,
     tagsExpanded: Boolean,
@@ -1827,9 +1933,16 @@ private fun PixivWorkFlow(
     openPages: (PixivWorkDetail?, Int, Rect?) -> Unit,
     onOpenWork: (Long) -> Unit,
     onOpenViewer: (Long) -> Unit,
-    /** 墙里认得出的下一位；认不出（深链直开、或这一排已到最后一条）就交 null ⇒ 末尾那一格不摆。 */
-    nextWork: GalleryPost?,
-    onOpenNextWork: () -> Unit,
+    /**
+     * 相关图片的下一页还没到手（屏底摆一枚转圈，不摆空的占位）。
+     *
+     * 2026-10-20：从前这里是一对 `nextWork` / `onOpenNextWork`（末尾那格「下一作品」提醒）。
+     * 用户要求撤掉那一格、把相关图片改成无限滚动 —— 两件事是同一件：那一排不再自己“到头”，
+     * 往下滚就会继续长。
+     */
+    relatedLoading: Boolean = false,
+    /** 相关图片到底了 ⇒ 去拉下一页（`null` = 没有游标或没登录，不摆哨兵）。 */
+    onLoadMoreRelated: (() -> Unit)? = null,
     bottomClearance: Dp,
     aiBadgeOn: Boolean,
     /** 评论那一节的状态（批 231-F）。默认 Hidden ⇒ 这一版面板不摆评论。 */
@@ -1898,6 +2011,15 @@ private fun PixivWorkFlow(
      */
     val workId = (detail ?: seedDetail)?.post?.id ?: 0L
     var pagesAppeared by remember(workId) { mutableStateOf(false) }
+    // ugoira 那一族（2026-10-23）：种子阶段走的是 else 分支（items(key="page-N")），
+    // 详情到手若 ugoira==true，整段 items 换成 item(key="ugoira-…") —— key 空间换掉了，
+    // 锚按 key 失配退回 index 数字，页顶是否还在 0 全看运气。补一条：详情从无到有
+    // 且这一作是 ugoira 时也强制归零（与下面那个 effect 同一条守则，不破坏
+    // 「横翻回来还在原来那一页」——那条场景里 detail 一直在，这个键不重跑）。
+    val isUgoira = detail?.ugoira == true
+    LaunchedEffect(workId, isUgoira) {
+        if (isUgoira) listState.scrollToItem(0)
+    }
     LaunchedEffect(workId, pages.size) {
         // 归零只认**真页**：批 B⑥ 的种子只有一枚糊图，不算"页长出来了"。详情一到立刻归零 ——
         // 那时整摞真页醒着，多 P 作一次多出好几摞，正是批 233-2 防的那一"顶出屏外"。
@@ -1950,24 +2072,44 @@ private fun PixivWorkFlow(
             .distinctUntilChanged()
             .collect(onScrollProgress)
     }
+    val contentMaxWidth = contentMaxWidthFor(wideScreenLayoutMode(LocalWindowWidthDp))
+    // 竖屏 / 横屏：只看宽高比，不读 `LocalConfiguration`（那颗件桌面侧没有）。
+    val isLandscape = LocalWindowWidthDp > LocalWindowHeightDp
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        // ── 大屏宽度收口（用户 2026-10-19 第 5 条：「改成和 pixez 那种」）──
+        //
+        // 旧写法把这把封顶挂在 `LazyColumn` **本身**上（`fillMaxSize().then(widthIn(max))`），
+        // 而流里每一格又都是 `fillMaxWidth()` ⇒ 封顶和铺满互相拉锯，宽屏上根本看不出区别。
+        // Pixez 的做法是：**列表恒铺满、每一格自己居中收口** —— 顶栏 / 背板 / 背景仍然全幅，
+        // 只有图和详情卡被拉回一列。所以这里算出“那一列有多宽”，交给每一格。
+        val imageColumnWidth = contentMaxWidth?.let { cap ->
+            (minOf(maxWidth, cap) - tokens.spacing.screenHorizontal * 2).coerceAtLeast(0.dp)
+        }
+        // 高度封顶（Pixez `DETAIL_IMAGE_MAX_HEIGHT_FRACTION = 0.8f`）：一张 2400×4000 的竖长图
+        // 在 760dp 宽的列里会算出 1266dp 高 —— 屏上只能看到一小段，往下滑五屏才到底。
+        // 只在大屏 / 横屏时封，手机竖屏照旧按屏宽铺（那一档本来就是一屏一张）。
+        val imageHeightCeiling = if (isLandscape || contentMaxWidth != null) maxHeight * 0.8f else null
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomClearance),
     ) {
         if (detail?.ugoira == true) {
-            // 动图（ugoira）不在这一屏放：站方给的是 zip 加一张静帧，这一屏只会画出那张静帧，
-            // 而旧看图器已经会解动画。所以这里明说一句并给一条真出口，不装作能放。
             item(key = "ugoira-${detail.post.id}") {
-                // 这一格是**字**不是图：跟着内容区那条钟走（ugoira 没有页 ⇒ 压根不飞，两档都是 1）。
-                Box(Modifier.graphicsLayer { alpha = detailEntryAlpha() }) {
-                    // 2026-10-19 用户报「动图这一作整屏上半是白的」—— 立案读数：这一支从前**只摆一句字**，
-                    // 而站方对 ugoira 同样给了 `image_urls` 那几档（第一帧的静图，见 `PixivAppParse` /
-                    // `PixivFeedParse` 的 workDetail：它们照常长出了 `pages`）。于是图上那几百像素
-                    // 一片空白，读起来像"这一屏没加载出来"。
-                    //
-                    // 现在把手里那第一帧摆上去（中档，与连读同一档，不为静帧去拉原图），
-                    // 提示语与出口接在图下面 —— 明说"只画得出第一帧"这件事没变，只是不再空着。
+                // 动图那一格：宽度封顶在**外壳**上，而不是只封里面那张静帧 ——
+                // 否则逐帧播放器（`matchParentSize`）会此静帧宽，两者错位。
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                    Box(
+                        Modifier
+                            .then(
+                                if (imageColumnWidth != null) Modifier.width(imageColumnWidth)
+                                else Modifier.fillMaxWidth(),
+                            )
+                            .graphicsLayer { alpha = detailEntryAlpha() },
+                    ) {
                     val still = pages.firstOrNull()
                     if (still != null) {
                         PixivPageImage(
@@ -1979,7 +2121,14 @@ private fun PixivWorkFlow(
                             onDrawn = { onPageDrawn(0) },
                         )
                     }
-                    UgoiraNotice { onOpenViewer(detail.post.id) }
+                    if (animated) {
+                        PixivUgoiraPlayer(
+                            illustId = detail.post.id,
+                            original = false,
+                            modifier = Modifier.matchParentSize(),
+                        )
+                    }
+                    }
                 }
             }
         } else {
@@ -2001,11 +2150,15 @@ private fun PixivWorkFlow(
                         viewerKey = wallPages.getOrNull(index)?.viewerKey.orEmpty(),
                         onClick = { rect -> openPages(detail, index, rect) },
                         onDrawn = { onPageDrawn(index) },
+                        // 大屏收口那一把（null = 这一档不收，手机竖屏与从前逐字一致）。
+                        columnWidth = imageColumnWidth,
+                        heightCeiling = imageHeightCeiling,
                     )
                 }
             }
         }
         // 详情段：只在"接在末页之后"那一档开着时才是这条流里的一段；关掉它，详情只在抽屉里。
+        // 宽度收口在 [PixivWorkDetails] 自己那一层（三个宿主共用，见那里）。
         if (detail != null && detailsInFlow) {
             item(key = "detail-${detail.post.id}") {
                 PixivWorkDetails(
@@ -2033,16 +2186,42 @@ private fun PixivWorkFlow(
                 )
             }
         }
-        // 「下一作品」那一格（用户 2026-10-18 第三批「在最后一页再滑动设计个提醒，然后再切换下一个
-        // 作品（最好有些 ui 提醒）」的存活形态：横档撤了，这一档的"往下"就是滚到这条流的末尾）。
-        // 只在墙里认得出下一位时才摆 —— 没有下一位还摆一枚把手就是假开关。
-        if (nextWork != null) {
-            item(key = "next-work-${nextWork.id}") {
-                Box(Modifier.graphicsLayer { alpha = detailEntryAlpha() }) {
-                    PixivNextWorkRow(work = nextWork, onOpen = onOpenNextWork)
+        // 相关图片的**无限滚动哨兵**（用户 2026-10-20：「相关图片要无限滚动」、「底部那个
+        // 下一作品删了」）。
+        //
+        // 从前这一格是「下一作品」提醒（推外层 pager 走一格）；用户要的是“往下滚就有更多”。
+        // 现在末尾只留一枚**看不见的哨兵**：它一进组合（= 滚到能看见它）就报一声去拉下一页，
+        // 拉的过程屏底摆一枚转圈（有 `relatedLoading` 才摆，不摆空占位）。
+        //
+        // 键带 `related.size`：一批落回来、枚数变了 ⇒ 哨兵重建、`LaunchedEffect` 再跑一次 ——
+        // 这就是“一直到底”的那条链。拉不到（无游标 / 失败 / 全是旧号）时 `related.size` 不再变，
+        // 链条自己停，屏上不会反复发同一个请求。
+        val moreRelated = onLoadMoreRelated
+        if (moreRelated != null) {
+            // 键恒定，不随 related.size 变（2026-10-23）：带 size 的键在每批新图落回时
+            // 是「旧项删除 + 新项插入」，用户正停在底部附近时锚会漂（LazyColumn 的锚
+            // 认 key，失配就退回 index 数字）——那正是「进场后滑到中间」族病的近亲。
+            // 触发链交给内部的 `LaunchedEffect(related.size)`，键本身不参与。
+            item(key = "related-more") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        // 与详情段同一条钟：拉下一页这一格也是“图以下那一块”，不该抢在飞行体前面亮。
+                        .graphicsLayer { alpha = detailEntryAlpha() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LaunchedEffect(related.size) { moreRelated() }
+                    if (relatedLoading) {
+                        CircularWavyProgressIndicator(
+                            modifier = Modifier
+                                .padding(vertical = tokens.spacing.space6)
+                                .size(tokens.spacing.badgeIconSize),
+                        )
+                    }
                 }
             }
         }
+    }
     }
 }
 
@@ -2079,6 +2258,14 @@ private fun PixivPageImage(
     /** 这一页**真画出像素**了（成功或失败都算，失败时屏上是错误占位而不是骨架）。
      *  进场飞行体撤之前要等这一句：落点还空着就撤，等于把飞行体摞在一块骨架上再抽走 —— 一次闪。 */
     onDrawn: () -> Unit,
+    /**
+     * 大屏收口那一列有多宽（Pixez 口径：**列表铺满、图自己居中收口**）。
+     *
+     * `null` = 这一档不收口（手机竖屏），此时与从前逐字一致 —— 图按屏宽铺。
+     */
+    columnWidth: Dp? = null,
+    /** 高度封顶（横屏 / 大屏时一张竖长图不该占五屏）。`null` = 不封。 */
+    heightCeiling: Dp? = null,
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { VeneraPreferences.getInstance(context) }
@@ -2097,9 +2284,32 @@ private fun PixivPageImage(
     // 有比例（站方报的，或图落位后自己报的）就按它预留；一个都没有才让高度随内容走。
     // 顺序不能反：`wrapContentHeight()` 与 `aspectRatio()` 同时挂是两种互相矛盾的高度口径。
     val boxAspect = aspect ?: loadedAspect
+    // 尺寸口径三档，优先级从高到低：
+    // 1. 有封顶高（横屏 / 大屏）且按宽算出来会超过它 ⇒ 改成按高反推宽（Pixez 同一道判式）；
+    // 2. 只是大屏收口 ⇒ 钉住那一列的宽；
+    // 3. 都不适用 ⇒ 与从前逐字一致（铺满、按比例或随内容高）。
+    val heightLimitedWidth = if (heightCeiling != null && boxAspect != null && columnWidth != null) {
+        heightCeiling * boxAspect
+    } else {
+        null
+    }
+    val widthModifier = when {
+        heightLimitedWidth != null -> Modifier.width(minOf(heightLimitedWidth, columnWidth!!))
+        columnWidth != null -> Modifier.width(columnWidth)
+        else -> Modifier.fillMaxWidth()
+    }
+    val heightModifier = when {
+        // 高度已经由宽 × 比例定下来了，不再另挂 heightIn（两把尺会互相拉锯）。
+        heightLimitedWidth != null -> Modifier
+        heightCeiling != null -> Modifier.heightIn(max = heightCeiling)
+        else -> Modifier
+    }
+    // 外层只管居中：列表铺满，图自己收在中间（Pixez `IllustDetailImageSection` 同一形状）。
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
     Box(
         Modifier
-            .fillMaxWidth()
+            .then(widthModifier)
+            .then(heightModifier)
             .then(if (boxAspect != null) Modifier.aspectRatio(boxAspect) else Modifier.wrapContentHeight())
             .onGloballyPositioned {
                 // 截像素/点击矩形那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
@@ -2142,52 +2352,11 @@ private fun PixivPageImage(
         // 骨架盖在同一格里（`matchParentSize` 不参与父测量，不会因为多一颗子件把格子撑大）。
         if (!drawn) VeneraShimmer(modifier = Modifier.matchParentSize())
     }
+    }
 }
 
 private fun pageSemantic(index: Int, total: Int): String =
     if (total <= 0) "" else "第 ${index + 1} 页，共 $total 页"
-
-/**
- * 这条流末尾那一格提醒（用户 2026-10-18 第三批：「在最后一页再滑动设计个提醒，然后再切换下一个
- * 作品（最好有些 ui 提醒）」；第四批撤了横向那一档之后，它的存活形态就是"滚到这条流的末尾"）。
- *
- * 三条口径：
- * - **只在墙里认得出下一位时才摆**（判据在调用方那一句 `works.getOrNull(slot + 1)`）——
- *   没有下一位还摆一枚把手，按下去不动就是本仓反复立案的假开关；
- * - 念的是**站方给的那一位**的画师名，不写"这一排还有更多"这种屏上验不了的话；
- * - 点这里与左右滑是同一件事（外层 pager 走一格），不另造一条换作品的路。
- */
-@Composable
-private fun PixivNextWorkRow(work: GalleryPost, onOpen: () -> Unit) {
-    val tokens = VeneraTokens
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .semantics { contentDescription = "下一作品，画师 ${work.author}" }
-            .padding(horizontal = tokens.spacing.screenHorizontal, vertical = tokens.spacing.space5),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("下一作品", fontSize = tokens.type.caption, color = tokens.color.textTertiary)
-            Text(
-                work.author,
-                fontSize = tokens.type.itemTitle,
-                color = tokens.color.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = tokens.spacing.space1),
-            )
-        }
-        Icon(
-            Icons.AutoMirrored.Outlined.ArrowForward,
-            contentDescription = "切到下一作品",
-            tint = tokens.color.textSecondary,
-            modifier = Modifier.size(tokens.spacing.badgeIconSize),
-        )
-    }
-}
 
 /**
  * 标题下面那一行：浏览 · 收藏 · 发布，三枚单色描边小图标。
@@ -2286,7 +2455,18 @@ internal fun PixivWorkDetails(
     val shown = PixivWorkPage.tagsShown(detail.tags, tagsExpanded)
     val hidden = PixivWorkPage.tagsHidden(detail.tags)
     var artistMenu by remember(detail.post.author) { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().padding(top = tokens.spacing.space6)) {
+    // ── 大屏收口（用户 2026-10-19 第 5 条：「改成和 pixez 那种」）──
+    //
+    // 三个宿主（这条流 / 底部抽屉 / 播放器面板）都走这一颗函数 ⇒ 只在这里收一次口。
+    // 收到流里那份上会出两个问题：一是抽屉与面板那两条根本没有 `LazyColumn`，
+    // 于是宽屏上“图收口了、详情卡还铺满整屏”；二是同一道算式抄三份，改日一变就只改对一处。
+    val contentMaxWidth = contentMaxWidthFor(wideScreenLayoutMode(LocalWindowWidthDp))
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+    Column(
+        Modifier
+            .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier.fillMaxWidth())
+            .padding(top = tokens.spacing.space6),
+    ) {
         PixivWorkActionRow(actions)
         Spacer(Modifier.height(tokens.spacing.space4))
         Box(Modifier.fillMaxWidth()) {
@@ -2490,9 +2670,18 @@ internal fun PixivWorkDetails(
                 color = tokens.color.textPrimary,
                 modifier = Modifier.padding(horizontal = tokens.spacing.screenHorizontal, vertical = tokens.spacing.space3),
             )
-            // 三列**静态**墙：这一整段住在上面那条 LazyColumn 里，网套滚 = 整屏崩
-            // （桌面侧那条不变式已被量过五次，这里不试第二遍）。
-            related.chunked(3).forEach { line ->
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val cols = if (maxWidth >= 600.dp) {
+                    ((maxWidth - tokens.spacing.screenHorizontal * 2) / 120.dp).toInt().coerceIn(3, 6)
+                } else {
+                    3
+                }
+                // 不再按 RELATED_MAX 截断（用户 2026-10-20：「相关图片要无限滚动」）——
+                // 从前那一句 `maxItems` 算出来根本没人用，是死代码；无限滚动后“最多几枚”
+                // 这个口径本身就不存在了。
+                val displayList = related
+                Column(Modifier.fillMaxWidth()) {
+                    displayList.chunked(cols).forEach { line ->
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.screenHorizontal),
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.gridGap),
@@ -2505,7 +2694,9 @@ internal fun PixivWorkDetails(
                                 .clip(RoundedCornerShape(tokens.shape.card))
                                 .background(tokens.color.surfaceVariant)
                                 .clickable {
-                                    GalleryViewerQueue.set(related)
+                                    // 交棒交的是**被点的那一张**的号（不是屏上那一条作品的号）：
+                                    // 目标屏的横轴得是“我点进来的那一排”。
+                                    PixivWorkWallHandoff.put(post.id, related)
                                     onOpenWork(post.id)
                                 },
                         ) {
@@ -2517,11 +2708,14 @@ internal fun PixivWorkDetails(
                             )
                         }
                     }
-                    repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(cols - line.size) { Spacer(Modifier.weight(1f)) }
                 }
                 Spacer(Modifier.height(tokens.spacing.gridGap))
+                    }
+                }
             }
         }
+    }
     }
 }
 
@@ -2568,38 +2762,6 @@ private suspend fun blockTagText(context: Context, tag: String) {
     }
 }
 
-/** 动图那一档的明说 + 出口：不说"看不了"，也不摆一枚点了没反应的播放钮。 */
-@Composable
-private fun UgoiraNotice(onOpen: () -> Unit) {
-    val tokens = VeneraTokens
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = tokens.spacing.space9)
-            .padding(horizontal = tokens.spacing.screenHorizontal),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-    ) {
-        Text(
-            "这一作是动图，站方给的是逐帧压缩包，这一屏只画得出第一帧。",
-            fontSize = tokens.type.body,
-            color = tokens.color.textSecondary,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            "去看图器放",
-            fontSize = tokens.type.body,
-            color = tokens.color.primary,
-            modifier = Modifier
-                .clip(RoundedCornerShape(percent = 50))
-                .clickable(onClick = onOpen)
-                .padding(
-                    horizontal = tokens.spacing.chipHorizontalPadding,
-                    vertical = tokens.spacing.chipVerticalPadding,
-                ),
-        )
-    }
-}
 /** 这一屏 的日志标签（返回程落点那一档要能从 logcat 分清「没落点」与「落点有但动画没接」）。 */
 private const val TAG = "PixivWork"
 

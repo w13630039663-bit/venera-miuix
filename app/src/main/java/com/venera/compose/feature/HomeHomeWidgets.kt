@@ -633,3 +633,84 @@ enum class HomeRecommendMode(val key: String, val label: String) {
             entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: NORMAL
     }
 }
+
+/**
+ * 首页段标（对齐设计稿 track 规范）：
+ * 彩色垂直小条 + 中文标题 + 极小大写英文 + 弹性占位 + 右侧扩展区域。
+ */
+@Composable
+internal fun HomeTrackHeader(
+    title: String,
+    enTag: String,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    val tokens = VeneraTokens
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = tokens.spacing.space2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.5.dp)
+                .height(13.5.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(accentColor)
+        )
+        Spacer(Modifier.width(tokens.spacing.space3))
+        Text(
+            text = title,
+            fontSize = 15.sp,
+            fontWeight = tokens.type.weightBold,
+            color = tokens.color.textPrimary,
+        )
+        if (enTag.isNotBlank()) {
+            Spacer(Modifier.width(tokens.spacing.space2))
+            Text(
+                text = enTag,
+                fontSize = 8.5.sp,
+                fontWeight = tokens.type.weightBold,
+                letterSpacing = 0.16.sp,
+                color = tokens.color.textTertiary.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 1.dp)
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        trailing?.invoke()
+    }
+}
+
+/** 本地漫画的三本书脊图标件（纯绘制，零静态资源依赖）。 */
+@Composable
+internal fun HomeBookSpines(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.height(34.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(7.dp)
+                .height(34.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFFE58FA6))
+        )
+        Box(
+            modifier = Modifier
+                .width(7.dp)
+                .height(26.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF9F8CD6))
+        )
+        Box(
+            modifier = Modifier
+                .width(7.dp)
+                .height(30.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF78B7AE))
+        )
+    }
+}
