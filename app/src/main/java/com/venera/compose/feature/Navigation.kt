@@ -15,6 +15,8 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
@@ -81,7 +83,8 @@ import com.venera.compose.feature.explore.UnifiedExploreScreen
 import com.venera.compose.openGalleryPost
 import com.venera.compose.openPixivAccountPage
 import com.venera.compose.PixivAccountSectionEntry
-import com.venera.compose.components.MiuixPredictiveBackPage
+import com.venera.compose.components.MiuixDecelerateEasing
+import com.venera.compose.components.VeneraDockedNavBar
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.ui.GalleryBookmarksHubScreen
 import com.venera.compose.gallery.ui.GalleryChromeAutoHide
@@ -437,35 +440,70 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraExit(
     slideDistance: Int,
 ): ExitTransition = materialSharedAxisXOut(forward = true, slideDistance = slideDistance)
 
+internal fun AnimatedContentTransitionScope<NavBackStackEntry>.isMiuixSecondaryRoute(): Boolean =
+    targetState.destination.hasRoute(GalleryBookmarksHubRoute::class) ||
+    targetState.destination.hasRoute(GalleryHistoryRoute::class) ||
+    initialState.destination.hasRoute(GalleryBookmarksHubRoute::class) ||
+    initialState.destination.hasRoute(GalleryHistoryRoute::class)
+
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopEnter(
     slideDistance: Int,
-): EnterTransition = materialSharedAxisXIn(forward = false, slideDistance = slideDistance)
+): EnterTransition = if (isMiuixSecondaryRoute()) {
+    slideInHorizontally(
+        animationSpec = tween(240, easing = MiuixDecelerateEasing),
+    ) { fullWidth -> -fullWidth / 4 } + fadeIn(tween(150))
+} else {
+    materialSharedAxisXIn(forward = false, slideDistance = slideDistance)
+}
 
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPopExit(
     slideDistance: Int,
-): ExitTransition = materialSharedAxisXOut(forward = false, slideDistance = slideDistance)
+): ExitTransition = if (isMiuixSecondaryRoute()) {
+    slideOutHorizontally(
+        animationSpec = tween(240, easing = MiuixDecelerateEasing),
+    ) { fullWidth -> fullWidth } + fadeOut(tween(120))
+} else {
+    materialSharedAxisXOut(forward = false, slideDistance = slideDistance)
+}
 
 /**
  * 预测式返回**跟手**转场：navigation 2.10.1 的 NavHostEventHandler 把系统手势进度喂给
  * SeekableTransitionState.seekTo()，并用 swipeEdge 作 lambda 入参告诉我们是左边缘还是
- * 右边缘起手 —— 所以退出方向能跟随手势。形状一律与上面 popEnter / popExit 同族：
- * 左边缘时 `forward = false`，与点击返回逐参数相同，松手提交不会跳形。
+ * 右边缘起手 —— 所以退出方向能跟随手势。
+ *
+ * 二级页（画廊收藏Hub / 浏览历史等）采用 MIUIX / HyperOS 标准规范：
+ * - 顶层页面 100% 全宽向手势方向平移并轻微淡出（120ms）；
+ * - 底层露出页 25% 视差位移与淡入（240ms）；
+ * 消除双重 PredictiveBackHandler 拦截冲突与松手迟滞。
  */
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveEnter(
     swipeEdge: Int,
     slideDistance: Int,
-): EnterTransition = materialSharedAxisXIn(
-    forward = predictiveBackDirection(swipeEdge) < 0,
-    slideDistance = slideDistance,
-)
+): EnterTransition = if (isMiuixSecondaryRoute()) {
+    slideInHorizontally(
+        animationSpec = tween(240, easing = MiuixDecelerateEasing),
+    ) { fullWidth -> -fullWidth / 4 } + fadeIn(tween(150))
+} else {
+    materialSharedAxisXIn(
+        forward = predictiveBackDirection(swipeEdge) < 0,
+        slideDistance = slideDistance,
+    )
+}
 
 internal fun AnimatedContentTransitionScope<NavBackStackEntry>.veneraPredictiveExit(
     swipeEdge: Int,
     slideDistance: Int,
-): ExitTransition = materialSharedAxisXOut(
-    forward = predictiveBackDirection(swipeEdge) < 0,
-    slideDistance = slideDistance,
-)
+): ExitTransition = if (isMiuixSecondaryRoute()) {
+    val sign = if (swipeEdge == NavigationEvent.EDGE_RIGHT) -1 else 1
+    slideOutHorizontally(
+        animationSpec = tween(240, easing = MiuixDecelerateEasing),
+    ) { fullWidth -> fullWidth * sign } + fadeOut(tween(120))
+} else {
+    materialSharedAxisXOut(
+        forward = predictiveBackDirection(swipeEdge) < 0,
+        slideDistance = slideDistance,
+    )
+}
 
 private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.HOME -> HomeRoute
@@ -698,7 +736,14 @@ fun VeneraComposeApp() {
         mode = layoutMode,
         liquidGlassSelected = navigationBarStyle == NavigationBarStyle.LIQUID_GLASS,
     )
-    CompositionLocalProvider(LocalBottomBarClearance provides bottomBarClearanceFor(layoutMode, useSideBar)) {
+    val isDockedBar = navigationBarStyle == NavigationBarStyle.DOCKED
+    CompositionLocalProvider(
+        LocalBottomBarClearance provides bottomBarClearanceFor(
+            mode = layoutMode,
+            sideBarActive = useSideBar,
+            dockedSelected = isDockedBar,
+        )
+    ) {
     Box(modifier = Modifier.fillMaxSize()) {
         VeneraAmbientBackground {
         val layoutDirection = LocalLayoutDirection.current
@@ -1070,59 +1115,92 @@ fun VeneraComposeApp() {
                             )
                         }
                     }
-                    composable<GalleryHistoryRoute> {
+                    composable<GalleryHistoryRoute>(
+                        enterTransition = {
+                            slideInHorizontally(
+                                animationSpec = tween(300, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> fullWidth } + fadeIn(tween(150))
+                        },
+                        exitTransition = {
+                            slideOutHorizontally(
+                                animationSpec = tween(300, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> -fullWidth / 4 } + fadeOut(tween(150))
+                        },
+                        popEnterTransition = {
+                            slideInHorizontally(
+                                animationSpec = tween(240, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> -fullWidth / 4 } + fadeIn(tween(150))
+                        },
+                        popExitTransition = {
+                            slideOutHorizontally(
+                                animationSpec = tween(240, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> fullWidth } + fadeOut(tween(120))
+                        },
+                    ) {
                         // 浏览历史二级页（2026-10-14）。它**不包 CoverTransitionHost**：
                         // 那一层是给封面共享元素用的，而历史墙的瓦片没有对面那一头
                         // （大图页是独立 Activity，跨窗口没有同 key 的落地槽位 —— 挂了就是白挂）。
                         // 点一张历史瓦片 = 重新走一遍 openGalleryPost：大图页按「站 + 号」现取，
                         // 所以「从那一格回到原卡」在 Android 侧是天然成立的（桌面那颗件没有这一手，
                         // 见它的 README 注）。
-                        MiuixPredictiveBackPage(
+                        //
+                        // 预测返回手势由 NavHost 原生 SeekableTransition 承载（MIUIX 风格 100%全宽平移 + 25%下层视差 + 减速曲线），
+                        // 不在页内套重叠的 MiuixPredictiveBackPage，彻底消除双重拦截与松手卡顿等待。
+                        GalleryHistoryScreen(
+                            onOpenPost = { site, postId ->
+                                (view.context as? Activity)?.openGalleryPost(site, postId)
+                            },
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
                             },
-                        ) {
-                            GalleryHistoryScreen(
-                                onOpenPost = { site, postId ->
-                                    (view.context as? Activity)?.openGalleryPost(site, postId)
-                                },
-                                onBack = {
-                                    haptic()
-                                    navController.popBackStack()
-                                },
-                            )
-                        }
+                        )
                     }
-                    composable<GalleryBookmarksHubRoute> {
+                    composable<GalleryBookmarksHubRoute>(
+                        enterTransition = {
+                            slideInHorizontally(
+                                animationSpec = tween(300, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> fullWidth } + fadeIn(tween(150))
+                        },
+                        exitTransition = {
+                            slideOutHorizontally(
+                                animationSpec = tween(300, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> -fullWidth / 4 } + fadeOut(tween(150))
+                        },
+                        popEnterTransition = {
+                            slideInHorizontally(
+                                animationSpec = tween(240, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> -fullWidth / 4 } + fadeIn(tween(150))
+                        },
+                        popExitTransition = {
+                            slideOutHorizontally(
+                                animationSpec = tween(240, easing = MiuixDecelerateEasing),
+                            ) { fullWidth -> fullWidth } + fadeOut(tween(120))
+                        },
+                    ) {
                         // 收藏 hub（2026-10-17 第三十一轮）：两颗卡 + 一行说明，本身不摆图。
                         // 同样**不包 CoverTransitionHost**：卡面上没有封面，没有对面那一头。
                         //
                         // 「本地收藏」那颗走 **FAVORITES 主 Tab**（收藏页里那个画廊分段，
                         // 见 FavoritesScreen 的 ImageSection.Gallery）—— 不复制一份墙到画廊侧：
                         // 两份墙意味着两份多选、两份删除、两处"到底显示多少张"，迟早对不上。
+                        //
+                        // 同样走 NavHost 原生 MIUIX 全宽侧滑 + 视差预测返回，消除松手迟滞。
                         val navContext = LocalContext.current
-                        MiuixPredictiveBackPage(
+                        GalleryBookmarksHubScreen(
+                            onOpenPost = { post ->
+                                haptic()
+                                (view.context as? Activity)?.openGalleryPost(post.site, post.id)
+                            },
+                            onOpenPixivBookmarks = {
+                                haptic()
+                                (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
+                            },
                             onBack = {
                                 haptic()
                                 navController.popBackStack()
                             },
-                        ) {
-                            GalleryBookmarksHubScreen(
-                                onOpenPost = { post ->
-                                    haptic()
-                                    (view.context as? Activity)?.openGalleryPost(post.site, post.id)
-                                },
-                                onOpenPixivBookmarks = {
-                                    haptic()
-                                    (view.context as? Activity)?.openPixivAccountPage(PixivAccountSectionEntry.BOOKMARKS)
-                                },
-                                onBack = {
-                                    haptic()
-                                    navController.popBackStack()
-                                },
-                            )
-                        }
+                        )
                     }
                     composable<ExploreRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
@@ -1323,7 +1401,21 @@ fun VeneraComposeApp() {
             //
             // ⚠️ 底栏消失是 bottomBarClearanceFor 归 0 的**前提**（见 WideScreenPolicy.kt
             // 那个函数的 KDoc）—— 两者必须同一批落地，回退侧栏时必须同时回退那两档。
-            if (currentTab != null && !useSideBar && contentLayerBackdrop != null) {
+            if (currentTab != null && !useSideBar && isDockedBar) {
+                // ── 新增档位：贴边式画框底栏（Docked Frame Bottom Bar，固定实底，完全承载不透明背景与避让）──
+                VeneraDockedNavBar(
+                    currentTab = currentTab,
+                    onTabSelected = { tab ->
+                        haptic()
+                        navController.gotoTab(tab)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .offset(y = bottomBarOffset)
+                        .reportChromeBand(CHROME_BAND_BOTTOM_BAR),
+                )
+            } else if (currentTab != null && !useSideBar && contentLayerBackdrop != null) {
                 val isDark = LocalVeneraDarkTheme.current
                 VeneraLiquidGlassNavBar(
                     selectedTabIndex = { VeneraNavTab.entries.indexOf(currentTab) },

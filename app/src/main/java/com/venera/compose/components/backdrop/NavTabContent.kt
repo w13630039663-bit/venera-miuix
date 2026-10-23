@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.venera.compose.components.AnimatedNavIcon
 import com.venera.compose.components.VeneraNavTab
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -79,11 +80,11 @@ fun RowScope.VeneraLiquidNavTab(
         // 排版由 Column 统一负责，图标与标签作为整体垂直居中。
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
-        Icon(
-            imageVector = if (selected) tab.filledIcon else tab.outlinedIcon,
-            contentDescription = tab.title,
+        AnimatedNavIcon(
+            tab = tab,
+            selected = selected,
             tint = contentColor,
-            modifier = Modifier.size(if (selected) 23.dp else 21.dp)
+            baseSize = if (selected) 23.dp else 21.dp,
         )
         Text(
             text = tab.title,

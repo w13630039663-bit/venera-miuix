@@ -121,11 +121,9 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
             )
         }
         SettingsGroup("导航栏") {
-            SettingsSelect("导航栏样式", navigationBar.name,
-                listOf("MD3" to "Miuix 悬浮栏", "LIQUID_GLASS" to "Liquid Glass 液态玻璃（默认）"),
-                { prefs.setNavigationBarStyle(NavigationBarStyle.valueOf(it)) })
+            SettingsSelect("导航栏样式", navigationBar.name, listOf("DOCKED" to "贴边式画框栏", "MD3" to "Miuix 悬浮栏", "LIQUID_GLASS" to "Liquid Glass 液态玻璃（默认）"), { prefs.setNavigationBarStyle(NavigationBarStyle.valueOf(it)) })
             Text(
-                "玻璃效果需要 Android 13 及以上，低版本显示普通悬浮栏。",
+                "贴边栏更紧凑；液态玻璃需要 Android 13 及以上，低版本显示普通悬浮栏。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

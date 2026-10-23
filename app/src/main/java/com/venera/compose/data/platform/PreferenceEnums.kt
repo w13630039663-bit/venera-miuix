@@ -39,7 +39,7 @@ enum class AppearanceStyle {
 
 /** 底栏样式 —— 与 [AppearanceStyle] 正交，只管导航栏那一层。 */
 enum class NavigationBarStyle {
-    MD3, LIQUID_GLASS,
+    DOCKED, MD3, LIQUID_GLASS,
 }
 
 /**

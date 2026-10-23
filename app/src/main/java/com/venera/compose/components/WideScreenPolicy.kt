@@ -100,7 +100,12 @@ fun bottomBarClearanceFor(
      * 参数化而不是在这里直读样式，是为了让本文件不反向依赖 `data.prefs`（策略层不认识偏好枚举）。
      */
     sideBarActive: Boolean = mode != WideScreenLayoutMode.Compact,
-): Dp = if (sideBarActive) 0.dp else VeneraSpacing.bottomBarClearance
+    dockedSelected: Boolean = false,
+): Dp = when {
+    sideBarActive -> 0.dp
+    dockedSelected -> 54.dp
+    else -> VeneraSpacing.bottomBarClearance
+}
 
 /**
  * 宽窗下是否由左侧栏替代底部导航栏。

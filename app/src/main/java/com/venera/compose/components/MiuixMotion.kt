@@ -30,8 +30,8 @@ val PredictiveFollowSpec = spring<Float>(
     visibilityThreshold = 0.0005f,
 )
 
-/** 手势确认后的收尾：复用 HyperOS 减速曲线。 */
-val PredictiveFinishSpec = tween<Float>(durationMillis = 240, easing = MiuixDecelerateEasing)
+/** 手势确认后的收尾：敏捷轻快（120ms），消除松手后的迟滞等待感。 */
+val PredictiveFinishSpec = tween<Float>(durationMillis = 120, easing = MiuixDecelerateEasing)
 
-/** 手势取消后的回弹。 */
-val PredictiveCancelSpec = tween<Float>(durationMillis = 200, easing = MiuixDecelerateEasing)
+/** 手势取消后的回弹：160ms 平滑滑回原位。 */
+val PredictiveCancelSpec = tween<Float>(durationMillis = 160, easing = MiuixDecelerateEasing)
