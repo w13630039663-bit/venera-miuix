@@ -610,6 +610,24 @@ fun VeneraComposeApp() {
      * 每日热门二级页那一档同理：`currentTab` 在那儿也算 GALLERY，所以判据读的是
      * **目的地**而不是 Tab，否则从二级页进大图页点标签这一路仍然不跳。
      *
+     * ── 为什么是 navigate(GalleryRoute) + popUpTo(GalleryRoute)，不是 gotoTab（2026-10-23 修）──
+     *
+     * 真机病因：从画廊**二级页**（每日热门 / 浏览历史 / 收藏 hub）点开大图再点标签，
+     * 这一跳过去之后**人还停在二级页上**，槽也没人消费 —— 用户读作"点了没反应"。
+     * 成因在 `gotoTab` 那一族参数上：它带着 `restoreState = true` 去 `navigate(GalleryRoute)`，
+     * 而 `popUpTo(起始页) { saveState = true }` 刚刚把「GalleryRoute + 二级页」**整条**存了
+     * 进去（backStackMap 会把 GalleryRoute 映射到那份"含二级页"的存档）⇒ restoreState
+     * 原样恢复整条栈，目的地一字未变。切主 Tab 要的正是这个语义（每个 Tab 记着自己的栈），
+     * 但交接这一跳要的是"清掉中间的二级页、直达结果墙"。
+     *
+     * 现在的写法把两件事分开说：
+     * - `popUpTo<GalleryRoute>()`（非 inclusive、**不存状态**）—— GalleryRoute 在栈上时，
+     *   把它上面的二级页整批清掉；**不在栈上时这行是库内的安全空操作**
+     *   （`NavControllerImpl.popBackStackInternal` 对找不到的目的地只打日志、不动栈），
+     *   所以从收藏页 / 其它 Tab 点进来的那条老路不受影响；
+     * - `launchSingleTop = true` —— 清完二级页后 GalleryRoute 恰在栈顶，不加这一个
+     *   就会压出两页 Gallery（返回先见到自己）。
+     *
      * 这里**只读不清**（`pending` 是快照属性、`consume()` 才是清）：能消费它的只有
      * `GalleryScreen`，它才拿得到 `GallerySearchViewModel`。宿主层若也清槽，
      * 就变成"谁先到谁吃掉"，两条链互相抢同一笔交接。
@@ -617,7 +635,10 @@ fun VeneraComposeApp() {
     LaunchedEffect(GallerySearchHandoff.pending, destination) {
         if (GallerySearchHandoff.pending == null) return@LaunchedEffect
         if (destination?.hasRoute(GalleryRoute::class) == true) return@LaunchedEffect
-        navController.gotoTab(VeneraNavTab.GALLERY)
+        navController.navigate(GalleryRoute) {
+            launchSingleTop = true
+            popUpTo<GalleryRoute>()
+        }
     }
 
     fun openComic(comic: ComicItem) {

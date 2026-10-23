@@ -613,8 +613,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 而 pixiv 那一域读的是 `pixivTerm`（一个词）。于是两个域各自都"按设计执行"：
         // 1. `switchSource(single(PIXIV), reSearch = false)` 先把来源改成只有 pixiv 一腿；
         // 2. `filters = [标签]`、`runSearch(1)` → 落到 `runPixivSearch` → 它读 `pixivTerm` = **空串**
-        //    ⇒ 走"先打一个词"那条早退，**一笔请求都没发**；
-        // 3. `thenCollapse = false` ⇒ 卡片保持在 INPUT 态。
+        //    ⇒ 走"先打一个词"那条早退，**一笔请求都没发**。
         // 屏上于是只有"一个空搜索框"，而用户点的那枚标签去了一个 pixiv 永远不读的格子里 ——
         // 这就是"点了完全没反应"。
         //
@@ -625,7 +624,15 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             return
         }
         val next = if (site in source.sites) source else GallerySearchSource.single(site)
-        openContext(next, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+        // ── 收条（2026-10-23，用户「点 Tag 直达搜索结果」）──
+        //
+        // 交接这一枚装完就收成 RESULTS 单行态：点标签的人要的就是"这个词的结果墙"，
+        // 不是一张摊开的输入卡 + 键盘（那正是真机上"返回后只剩一个搜索框"的另一种长相）。
+        // 两个域现在同一口径 —— pixiv 那一支（[openPixivContext]）本来就收，booru 这支跟上。
+        //
+        // 键盘由收条顺带收起：RESULTS 态输入行不在组合里，焦点被清掉
+        //（见 `GallerySearchArea` 那个 LaunchedEffect(expanded) 的 else 分支），IME 跟着走。
+        openContext(next, tags.map { GalleryTagFilter(it) }, thenCollapse = true)
     }
 
     /**
@@ -635,9 +642,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 卡上并排摆着两枚徽标，此时还按当前那一档来源搜就会出现"卡上摆两枚、结果只有一站的图"——
      * 屏上自相矛盾，比串台更难解释。只在一站被关注的那位仍走 [acceptHandoff]：
      * 另一站的同名那位本来就没被认下，替他扩大范围就是替用户做决定。
+     *
+     * 收条口径与 [acceptHandoff] 相同（2026-10-23 起）：点画师卡的人要的就是那面墙，
+     * 不是一张摊开的输入卡。
      */
     fun acceptHandoffAllSites(tags: List<String>) {
-        openContext(GallerySearchSource.ALL, tags.map { GalleryTagFilter(it) }, thenCollapse = false)
+        openContext(GallerySearchSource.ALL, tags.map { GalleryTagFilter(it) }, thenCollapse = true)
     }
 
     /**
@@ -647,8 +657,10 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 反过来写就会出现"屏上已经是新的一轮、上一轮却没存下来"—— 正是本轮要修的那条缺陷。
      *
      * @param thenCollapse 装完之后收成一条（[GallerySearchMode.RESULTS]）还是保持当前那一面。
-     *   点历史要收条（用户 2026-09-26 拍板"点历史直接跑并收成一条"）；交接由调用方那侧的
-     *   IME/返回逻辑去收，这里不替用户决定。
+     *   现在**三个调用方全收条**：点历史（用户 2026-09-26 拍板"点历史直接跑并收成一条"）、
+     *   点标签交接与点画师卡（用户 2026-10-23 拍板"点 Tag 直达搜索结果"）—— 两个域同一口径。
+     *   参数本身留着：空条件那一档在收条之前就退回输入态了（见下面 `filters.isEmpty()` 分支），
+     *   这条分档必须写在调用方能看见的地方。
      *
      * 装条件之后**直接 [runSearch]**、不绕 [applyFilters]：它有一条 `next == filters` 的短路，
      * 撞上"看起来一样"（连点同一条历史、同一枚标签点两次）就会被短路掉 —— 那正是"点了没反应"
@@ -1879,9 +1891,35 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      *    这是最难被发现的一种错（图看起来"就是些图"）；
      * 3. **条件各留各的** —— 用户挑好的条件不抹（换站不抹条件那条改判的同一个道理），
      *    但也**不自动重搜**：来回切两下就是四笔网络往返，而他此刻还没决定要搜什么。
+     *
+     * 2026-10-23 加第四件：**主词跟着人走**（用户「双源互搜，切域不重打」）—— 见下面那段。
      */
     fun setDomain(next: GalleryHomeDomain) {
         if (next == domain) return
+        // ── 词条保持（2026-10-23，用户「图库站 ↔ Pixiv 互搜，词不用重打」）──
+        //
+        // 切域时把上一域的**主词**带进下一域的输入格：booru 的主词是第一枚胶囊
+        //（一枚都没有时是框里那半截词），pixiv 的主词就是 `pixivTerm`。带过去之后
+        // 按一下键盘搜索键就能在新域开搜，不用把同一个词再打一遍。
+        //
+        // 三条纪律：
+        // 1. **只带词，不代搜** —— 守住上面第 3 条"不自动重搜"：来回切两下就是四笔往返，
+        //    而他此刻还没决定要搜什么；词进了输入格，按不按那一键由用户决定；
+        // 2. **空词不覆盖** —— 上一域什么都没打时不动下一域的输入格，否则切一圈回来词没了，
+        //    那与"保持"正好相反；
+        // 3. **不做清洗** —— 这里搬的是用户自己敲的字（含 `#123` / `id:123` 这种 pixiv
+        //    直跳写法，见 [submitPixivTerm]）；要清洗的只有站方数据的交接标签（见
+        //    `GallerySearchHandoff.postTag` 调的 `sanitizeGalleryTagName`）。
+        when (next) {
+            GalleryHomeDomain.PIXIV -> {
+                val main = filters.firstOrNull()?.name?.takeIf { it.isNotBlank() } ?: term.trim()
+                if (main.isNotBlank()) pixivTerm = main
+            }
+            GalleryHomeDomain.BOORU -> {
+                val main = pixivTerm.trim()
+                if (main.isNotBlank()) term = main
+            }
+        }
         domain = next
         reloadHistory()
         searchJob?.cancel()
