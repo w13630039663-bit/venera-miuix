@@ -16,6 +16,29 @@
 
 ---
 
+## 界面截图
+
+<p align="center">
+  <img src="screenshots/home.jpg" height="320" alt="首页">
+  <img src="screenshots/search.jpg" height="320" alt="搜索">
+  <img src="screenshots/comic-detail.jpg" height="320" alt="漫画详情">
+  <img src="screenshots/reading-stats.jpg" height="320" alt="阅读统计">
+  <img src="screenshots/search-sources.jpg" height="320" alt="多源搜索">
+</p>
+<p align="center"><sub>漫画首页 · 搜索探索 · 漫画详情 · 阅读统计 · 多源聚合搜索</sub></p>
+
+<p align="center">
+  <img src="screenshots/gallery.jpg" height="320" alt="画廊主墙">
+  <img src="screenshots/gallery-pixiv.jpg" height="320" alt="Pixiv 首页">
+  <img src="screenshots/pixiv-artist.jpg" height="320" alt="Pixiv 画师主页">
+  <img src="screenshots/pixiv-work-detail.jpg" height="320" alt="Pixiv 作品详情">
+  <img src="screenshots/gallery-artist.jpg" height="320" alt="图库直跳画师主页">
+  <img src="screenshots/gallery-pixiv-jump.jpg" height="320" alt="来源一键直跳 Pixiv">
+</p>
+<p align="center"><sub>画廊主墙 · Pixiv 首页 · Pixiv 画师主页 · 原生作品详情 · 图库直跳画师落地 · 来源一键直跳 Pixiv</sub></p>
+
+---
+
 ## 目录
 
 - [这是什么](#这是什么)
@@ -48,29 +71,6 @@
 2. **Miuix 设计语言**：以小米 HyperOS 的 Miuix 体系与液态玻璃材质重做全屏，支持 Material 3 动态取色双风格无缝切换。
 3. **兼容插件协议**：完全兼容官方 ComicSource JavaScript 插件协议，随包内置 34 个常用源脚本，支持一键导入与全部更新。
 4. **画廊与 Pixiv 多源聚合**：底栏原生「画廊」模块，全面支持 Booru 系列图站与 Pixiv 双域聚合，支持原生作品页、画师页、账号体系与智能跨站直跳。
-
----
-
-## 界面截图
-
-<p align="center">
-  <img src="screenshots/home.jpg" height="320" alt="首页">
-  <img src="screenshots/gallery.jpg" height="320" alt="画廊">
-  <img src="screenshots/search.jpg" height="320" alt="搜索">
-  <img src="screenshots/gallery-artist.jpg" height="320" alt="画师主页">
-  <img src="screenshots/settings.jpg" height="320" alt="设置">
-</p>
-<p align="center"><sub>漫画首页 · 画廊聚合 · 搜索探索 · 画师主页 · 系统设置</sub></p>
-
-<p align="center">
-  <img src="screenshots/gallery-booru.png" height="320" alt="图库站首页">
-  <img src="screenshots/gallery-pixiv.png" height="320" alt="Pixiv 域首页">
-  <img src="screenshots/pixiv-account.png" height="320" alt="我的 Pixiv 账号">
-  <img src="screenshots/pixiv-work-detail.jpg" height="320" alt="Pixiv 作品详情">
-  <img src="screenshots/pixiv-artist.jpg" height="320" alt="Pixiv 画师主页">
-  <img src="screenshots/gallery-pixiv-jump.jpg" height="320" alt="图库一键直跳 Pixiv">
-</p>
-<p align="center"><sub>图库站首页 · Pixiv 首页 · 我的 Pixiv · 原生作品详情 · Pixiv 画师主页 · 来源一键直跳 Pixiv</sub></p>
 
 ---
 

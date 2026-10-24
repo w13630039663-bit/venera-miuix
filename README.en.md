@@ -1,12 +1,6 @@
 <div align="center">
 
-<img src="app/src/main/res/drawable-nodpi/app_icon.png" width="112" alt="venera-miuix">
-
-# venera-miuix
-
-**An Android manga/comic and gallery reader: comic sources described in JavaScript, aggregating local and online libraries with deep native Gallery and Pixiv ecosystem integration.**
-
-This branch rewrites upstream Venera from Flutter into pure native Kotlin + Jetpack Compose, revamps all screens with Xiaomi HyperOS's Miuix design language, and introduces a powerful native Gallery and Pixiv multi-source aggregation module.
+<img src="screenshots/readme-banner.svg" width="100%" alt="Venera: Native Manga and Gallery Reader">
 
 [![Version](https://img.shields.io/badge/version-2.0-orange)](https://github.com/w13630039663-bit/venera-miuix/releases)
 [![Branch](https://img.shields.io/badge/branch-compose--migration-blue)](https://github.com/w13630039663-bit/venera-miuix/tree/compose-migration)
@@ -19,6 +13,29 @@ This branch rewrites upstream Venera from Flutter into pure native Kotlin + Jetp
 [简体中文](README.md) | **English**
 
 </div>
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/home.jpg" height="320" alt="Home">
+  <img src="screenshots/search.jpg" height="320" alt="Search">
+  <img src="screenshots/comic-detail.jpg" height="320" alt="Comic Detail">
+  <img src="screenshots/reading-stats.jpg" height="320" alt="Reading Stats">
+  <img src="screenshots/search-sources.jpg" height="320" alt="Multi-Source Search">
+</p>
+<p align="center"><sub>Comic Home · Search & Discover · Comic Detail · Reading Stats · Multi-Source Search</sub></p>
+
+<p align="center">
+  <img src="screenshots/gallery.jpg" height="320" alt="Gallery Wall">
+  <img src="screenshots/gallery-pixiv.jpg" height="320" alt="Pixiv Home">
+  <img src="screenshots/pixiv-artist.jpg" height="320" alt="Pixiv Artist Profile">
+  <img src="screenshots/pixiv-work-detail.jpg" height="320" alt="Pixiv Artwork Detail">
+  <img src="screenshots/gallery-artist.jpg" height="320" alt="Artist via Cross-Site Jump">
+  <img src="screenshots/gallery-pixiv-jump.jpg" height="320" alt="Direct Jump to Pixiv">
+</p>
+<p align="center"><sub>Gallery Wall · Pixiv Home · Pixiv Artist Profile · Native Artwork Detail · Cross-Site Artist Landing · Direct Jump to Pixiv</sub></p>
 
 ---
 
@@ -46,35 +63,14 @@ This branch rewrites upstream Venera from Flutter into pure native Kotlin + Jetp
 
 **Venera** is an excellent open-source comic reader: comic sources are written as JavaScript plugins to aggregate local and online comics.
 
+This branch rewrites upstream Venera from Flutter into pure native Kotlin + Jetpack Compose, revamps all screens with Xiaomi HyperOS's Miuix design language, and introduces a powerful native Gallery and Pixiv multi-source aggregation module.
+
 This branch (`compose-migration`) focuses on four core innovations:
 
 1. **Pure Native Rewrite**: Full migration to Kotlin + Jetpack Compose, removing Flutter/Dart/Rust runtimes for lower memory usage and millisecond cold starts.
 2. **Miuix Design System**: Complete UI rebuild around Xiaomi HyperOS's Miuix design language and liquid glass material, supporting seamless switching between Miuix and Material 3 dynamic color palettes.
 3. **Plugin Protocol Compatibility**: Full byte-for-byte compatibility with the official ComicSource JavaScript plugin protocol, bundled with 34 popular source scripts and supporting one-tap import and bulk updates.
 4. **Gallery & Pixiv Multi-Source Aggregation**: A native "Gallery" module on the bottom bar, offering full Booru image-board integration and Pixiv dual-domain aggregation with native artwork detail, artist profiles, account sync, and smart cross-platform deep-linking.
-
----
-
-## Screenshots
-
-<p align="center">
-  <img src="screenshots/home.jpg" height="320" alt="Home">
-  <img src="screenshots/gallery.jpg" height="320" alt="Gallery">
-  <img src="screenshots/search.jpg" height="320" alt="Search">
-  <img src="screenshots/gallery-artist.jpg" height="320" alt="Artist page">
-  <img src="screenshots/settings.jpg" height="320" alt="Settings">
-</p>
-<p align="center"><sub>Comic Home · Gallery Aggregator · Search & Discover · Artist Profile · Settings</sub></p>
-
-<p align="center">
-  <img src="screenshots/gallery-booru.png" height="320" alt="Booru Home">
-  <img src="screenshots/gallery-pixiv.png" height="320" alt="Pixiv Domain Home">
-  <img src="screenshots/pixiv-account.png" height="320" alt="My Pixiv Account">
-  <img src="screenshots/pixiv-work-detail.jpg" height="320" alt="Pixiv Artwork Detail">
-  <img src="screenshots/pixiv-artist.jpg" height="320" alt="Pixiv Artist Profile">
-  <img src="screenshots/gallery-pixiv-jump.jpg" height="320" alt="One-Tap Jump to Pixiv">
-</p>
-<p align="center"><sub>Booru Home · Pixiv Home · My Pixiv · Native Artwork Detail · Pixiv Artist Profile · Direct Jump to Pixiv</sub></p>
 
 ---
 
