@@ -1,12 +1,6 @@
 <div align="center">
 
-<img src="app/src/main/res/drawable-nodpi/app_icon.png" width="112" alt="venera-miuix">
-
-# venera-miuix
-
-**一个 Android 漫画与画廊聚合阅读器：用 JavaScript 插件描述漫画源，聚合本地与网络漫画，深度集成原生画廊与 Pixiv 生态。**
-
-本分支把上游 Venera 的 Flutter 实现整体换成纯原生 Kotlin + Jetpack Compose，以小米 HyperOS 的 Miuix 设计体系重构全屏界面，并带来强大的原生画廊与 Pixiv 多源聚合模块。
+<img src="screenshots/readme-banner.svg" width="100%" alt="Venera：原生漫画与画廊聚合阅读器">
 
 [![Version](https://img.shields.io/badge/version-2.0-orange)](https://github.com/w13630039663-bit/venera-miuix/releases)
 [![Branch](https://img.shields.io/badge/branch-compose--migration-blue)](https://github.com/w13630039663-bit/venera-miuix/tree/compose-migration)
@@ -45,6 +39,8 @@
 ## 这是什么
 
 **Venera** 是一个优秀的开源漫画阅读器：用 JavaScript 编写漫画源插件，聚合阅读本地与网络漫画。
+
+本分支把上游 Venera 的 Flutter 实现整体换成纯原生 Kotlin + Jetpack Compose，以小米 HyperOS 的 Miuix 设计体系重构全屏界面，并带来强大的原生画廊与 Pixiv 多源聚合模块。
 
 本分支（`compose-migration`）专注以下四项核心革新：
 
