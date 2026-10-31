@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -52,6 +54,9 @@ class GalleryDownloadManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prefs = AndroidKeyValueStore(context, "venera_gallery_downloads")
     private val gson = Gson()
+
+    /** 限制同时落盘的下载任务数，避免连点多张时原图请求齐发撞上源站限流（pixiv 429） */
+    private val downloadSlots = Semaphore(3)
 
     private val _tasks = MutableStateFlow<List<GalleryDownloadTask>>(emptyList())
     val tasks: StateFlow<List<GalleryDownloadTask>> = _tasks.asStateFlow()
@@ -113,16 +118,18 @@ class GalleryDownloadManager private constructor(private val context: Context) {
         saveTasks()
 
         scope.launch {
-            val result = GallerySaver.save(
-                context = context,
-                post = post,
-                title = title,
-                userId = userId,
-                artistName = artistName,
-            )
-            updateTaskResult(taskId, result)
-            withContext(Dispatchers.Main) {
-                onDone?.invoke(result)
+            downloadSlots.withPermit {
+                val result = GallerySaver.save(
+                    context = context,
+                    post = post,
+                    title = title,
+                    userId = userId,
+                    artistName = artistName,
+                )
+                updateTaskResult(taskId, result)
+                withContext(Dispatchers.Main) {
+                    onDone?.invoke(result)
+                }
             }
         }
 
@@ -141,14 +148,16 @@ class GalleryDownloadManager private constructor(private val context: Context) {
         saveTasks()
 
         scope.launch {
-            val result = GallerySaver.save(
-                context = context,
-                post = task.post,
-                title = task.title,
-                userId = task.userId,
-                artistName = task.artistName,
-            )
-            updateTaskResult(taskId, result)
+            downloadSlots.withPermit {
+                val result = GallerySaver.save(
+                    context = context,
+                    post = task.post,
+                    title = task.title,
+                    userId = task.userId,
+                    artistName = task.artistName,
+                )
+                updateTaskResult(taskId, result)
+            }
         }
     }
 

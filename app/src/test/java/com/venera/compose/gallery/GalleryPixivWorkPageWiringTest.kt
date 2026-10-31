@@ -498,7 +498,11 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("追上来那一批按 id 去重（不然屏上会出两张同号）", 1, body.countWith(".distinctBy { it.id }"))
         assertEquals("下一作品那一格与它推 pager 那一句一起撤干净", 0, body.countWith("pagerState.animateScrollToPage(slot + 1)"))
         assertEquals("它那颗渲染件也不许留", 0, body.countWith("PixivNextWorkRow("))
-        assertEquals("哨兵进组合就报一声", 1, body.countWith("LaunchedEffect(related.size) { moreRelated() }"))
+        assertEquals(
+            "哨兵进视口才报一声（边沿触发，不随 size 连发：窗口批 2026-11-01）",
+            1,
+            body.countWith(".collect { visible -> if (visible) moreRelated() }"),
+        )
     }
 
     // ── 十一、第四批：动作行念数、标签铺开、评论只在动作行念一遍 ───────

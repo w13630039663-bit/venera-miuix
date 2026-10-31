@@ -259,6 +259,15 @@ fun PixivWorkScreen(
     val failures = remember(postId) { mutableStateMapOf<Long, String>() }
     val related = remember(postId) { mutableStateMapOf<Long, List<GalleryPost>>() }
     val relatedNextUrls = remember(postId) { mutableStateMapOf<Long, String?>() }
+    /**
+     * 相关图片的**展示窗口**（2026-11-01 用户：「一次性最多获取 6 张，更多下滑再取」）。
+     *
+     * 站方 app-api 每页固定 30 条没法改小，但 [PixivWorkDetails] 的相关网格是**非懒**的
+     * Column——列表里有多少条就组合多少个 `AsyncImage`，整页 30 张的图片请求瞬间齐发。
+     * 所以列表层只把 `take(窗口)` 递上屏：哨兵触发时先放 [RELATED_VISIBLE_STEP] 张
+     * （纯放行，不发请求），取回的批次吃完了才去拉下一页。
+     */
+    val relatedVisibleCount = remember(postId) { mutableStateMapOf<Long, Int>() }
     val relatedLoading = remember(postId) { mutableStateMapOf<Long, Boolean>() }
     /**
      * 评论那一节的状态，按作品号存（翻到下一件作品各自一份）。
@@ -408,6 +417,9 @@ fun PixivWorkScreen(
             )
             return@LaunchedEffect
         }
+        // 详情页三条腿里评论最不急：延后 1 秒再取，让详情请求先独占通道，
+        // 避免进页 3-5 个 app-api 请求齐发撞上站方限速（RateLimitingInterceptor 已兜底，这里是减压）。
+        delay(1_000L)
         commentStates[currentId] = PixivCommentsState.Loading
         pixiv.illustComments(bearer, currentId)
             .onSuccess { page ->
@@ -427,6 +439,8 @@ fun PixivWorkScreen(
             }
     }
     LaunchedEffect(currentId) {
+        // 不再殿后（2026-11-01 复盘：先前的 2 秒延迟让相关图片"半天不出来"）——
+        // 密集请求已由 RateLimitingInterceptor 的 300ms 域名间隔排队，屏幕层不必再让。
         if (related.containsKey(currentId)) return@LaunchedEffect
         val bearer = ports.pixivAccount?.bearerOrNull()
         if (pixiv != null && bearer != null) {
@@ -461,7 +475,8 @@ fun PixivWorkScreen(
      * 相关图片的**下一页**（用户 2026-10-20：「相关图片要无限滚动」，同时撤掉底部那格
      * 「下一作品」）。
      *
-     * 三道闸门全在这一个函数里，屏上只负责说一句"到底了"：
+     * 四道闸门全在这一个函数里，屏上只负责说一句"到底了"：
+     * 0. 展示窗口还没摆完取回的那批（2026-11-01 用户：一次最多 6 张）⇒ 先放 6 张，不发请求；
      * 1. 没有 `next_url`（第一页失败时退的是标签搜索腿，根本没有游标）⇒ 到头了，不再发；
      * 2. 这一条已经在飞 ⇒ 同一手势里哨兵那格被 Lazy 反复预组合也只发一次；
      * 3. 落回来那一批全是屏上已有的号 ⇒ `related.size` 不变 ⇒ 哨兵那格的
@@ -469,6 +484,13 @@ fun PixivWorkScreen(
      *    同一批 + 非空 next_url"那种死循环，这里**显式把游标清掉**。
      */
     fun loadMoreRelated(id: Long) {
+        // 窗口闸（2026-11-01）：取回的那批还没摆完就先放 [RELATED_VISIBLE_STEP] 张，不碰网络 ——
+        // "更多图片下滑再获取"的前半段是纯展示层的放行，只有窗口追平了取回的批次才轮到站方请求。
+        val shown = relatedVisibleCount[id] ?: RELATED_VISIBLE_STEP
+        if (shown < related[id].orEmpty().size) {
+            relatedVisibleCount[id] = shown + RELATED_VISIBLE_STEP
+            return
+        }
         if (relatedLoading[id] == true) return
         val nextUrl = relatedNextUrls[id] ?: return
         val client = pixiv ?: return
@@ -486,6 +508,8 @@ fun PixivWorkScreen(
                 val merged = (known + page.works.map { it.post }.filter { it.id != id && !it.isVideo })
                     .distinctBy { it.id }
                 related[id] = merged
+                // 新一批落到窗口外，先只放 [RELATED_VISIBLE_STEP] 张上屏 —— 与首屏同一条口径。
+                relatedVisibleCount[id] = shown + RELATED_VISIBLE_STEP
                 // 一批新号都没添 ⇒ 就当到头了（留着旧游标会让哨兵每回来一次又发一次同一页）。
                 relatedNextUrls[id] = page.nextUrl.takeIf { merged.size > known.size }
             }
@@ -1118,7 +1142,9 @@ fun PixivWorkScreen(
                     detailsInFlow = detailsInFlow,
                     animated = animated,
                     imageLoader = imageLoader,
-                    related = related[slotId].orEmpty(),
+                    // 展示窗口（2026-11-01 用户：一次最多 6 张）：取回的一批只有窗口内的上屏，
+                    // 哨兵触发时 loadMoreRelated 先放行 6 张、窗口吃完了才真的去拉下一页。
+                    related = related[slotId].orEmpty().take(relatedVisibleCount[slotId] ?: RELATED_VISIBLE_STEP),
                     tagsExpanded = tagsExpanded,
                     onExpandTags = { tagsExpanded = true },
                     onOpenArtist = openArtist,
@@ -1133,9 +1159,12 @@ fun PixivWorkScreen(
                     },
                     onOpenViewer = onOpenViewer,
                     // 相关图片无限滚动（用户 2026-10-20）：到底了就把下一页接上；
-                    // 没有游标（第一页就退的是标签搜索腿）就不摆哨兵 —— 屏上不出现“拉不动”的假机关。
+                    // 2026-11-01 起接**展示窗口**：窗口里还有存货（或还有游标）就摆哨兵，
+                    // 没有游标（第一页就退的是标签搜索腿）且窗口也吃完了就不摆 —— 屏上不出现"拉不动"的假机关。
                     relatedLoading = relatedLoading[slotId] == true,
-                    onLoadMoreRelated = if (relatedNextUrls[slotId] != null) {
+                    onLoadMoreRelated = if (relatedNextUrls[slotId] != null ||
+                        (relatedVisibleCount[slotId] ?: RELATED_VISIBLE_STEP) < related[slotId].orEmpty().size
+                    ) {
                         { loadMoreRelated(slotId) }
                     } else {
                         null
@@ -1321,7 +1350,9 @@ fun PixivWorkScreen(
             ) {
                 PixivWorkDetails(
                     detail = detail,
-                    related = related[currentId].orEmpty(),
+                    // 与滚动流同一扇展示窗口（一次最多 6 张）：抽屉里的网格同样是非懒 Column，
+                    // 整批递进去就是 30 个图片请求齐发 —— 窗口外的那部分留在滚动流里慢慢看。
+                    related = related[currentId].orEmpty().take(relatedVisibleCount[currentId] ?: RELATED_VISIBLE_STEP),
                     tagsExpanded = true,
                     onExpandTags = {},
                     onOpenArtist = openArtist,
@@ -1849,6 +1880,15 @@ private fun pageWallOf(
 private const val COMMENTS_SHOWN = 1
 
 /**
+ * 相关图片一次摆几张（2026-11-01 用户：「一次性最多获取 6 张，更多下滑再获取」）。
+ *
+ * 站方 app-api 每页固定 30 条改不了，但屏上那一格相关网格是**非懒**的 Column——
+ * 摆多少条就发多少个图片请求。所以列表层只把窗口内的条数递上屏：哨兵触发时先放
+ * 这么多张（不发请求），窗口追平取回的批次了才去拉下一页。
+ */
+private const val RELATED_VISIBLE_STEP = 6
+
+/**
  * 评论展开时逐条错峰入场的三枚观感数字（用户 2026-10-19 第 4 条）。
  *
  * 三枚一起改才有意义：
@@ -2201,7 +2241,6 @@ private fun PixivWorkFlow(
             // 键恒定，不随 related.size 变（2026-10-23）：带 size 的键在每批新图落回时
             // 是「旧项删除 + 新项插入」，用户正停在底部附近时锚会漂（LazyColumn 的锚
             // 认 key，失配就退回 index 数字）——那正是「进场后滑到中间」族病的近亲。
-            // 触发链交给内部的 `LaunchedEffect(related.size)`，键本身不参与。
             item(key = "related-more") {
                 Box(
                     Modifier
@@ -2210,7 +2249,19 @@ private fun PixivWorkFlow(
                         .graphicsLayer { alpha = detailEntryAlpha() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    LaunchedEffect(related.size) { moreRelated() }
+                    // 触发器盯**可见性边沿**而不是 size（2026-11-01 窗口批复盘）：
+                    // 从前 `LaunchedEffect(related.size)` 在 size 一变就重跑——展示窗口每次放行
+                    // 6 张都改一次键，快速滑动时哨兵一直被预组合，链条几帧内就把 30 张全放完
+                    // （实测：请求齐发把可见的几张堵在队列后面，表现为"很慢/不加载，然后一起出来"）。
+                    // 改成盯"哨兵出现在视口"这一边沿：放行把它推下屏（false），滚回来才再报（true）
+                    // —— 一滚一发，与"下滑再获取"的手势一一对应，也接得上站方翻页那条链。
+                    LaunchedEffect(listState) {
+                        snapshotFlow {
+                            listState.layoutInfo.visibleItemsInfo.any { it.key == "related-more" }
+                        }
+                            .distinctUntilChanged()
+                            .collect { visible -> if (visible) moreRelated() }
+                    }
                     if (relatedLoading) {
                         CircularWavyProgressIndicator(
                             modifier = Modifier
@@ -2676,9 +2727,8 @@ internal fun PixivWorkDetails(
                 } else {
                     3
                 }
-                // 不再按 RELATED_MAX 截断（用户 2026-10-20：「相关图片要无限滚动」）——
-                // 从前那一句 `maxItems` 算出来根本没人用，是死代码；无限滚动后“最多几枚”
-                // 这个口径本身就不存在了。
+                // 截断发生在**屏层**的展示窗口（2026-11-01 用户：一次最多 6 张）——递进来的
+                // `related` 已经是窗口内的那几条；这一格照实全摆（非懒 Column，摆多少发多少请求）。
                 val displayList = related
                 Column(Modifier.fillMaxWidth()) {
                     displayList.chunked(cols).forEach { line ->

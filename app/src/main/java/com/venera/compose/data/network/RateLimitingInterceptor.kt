@@ -28,7 +28,13 @@ class RateLimitingInterceptor : Interceptor {
     private val hostMinIntervalMs = mapOf(
         "api.mangadex.org" to 300L,
         "api.copymanga.tv" to 200L,
-        "api.copymanga.org" to 200L
+        "api.copymanga.org" to 200L,
+        // pixiv 对密集请求返回 429（body: {"error":{"message":"Rate Limit"}}），
+        // API 域名拉开到 300ms/请求；图片走 HTTP/2 复用，只收窄并发即可
+        "app-api.pixiv.net" to 300L,
+        "www.pixiv.net" to 300L,
+        "i.pximg.net" to 50L,
+        "s.pximg.net" to 50L
     )
 
     /** 同 URL 并发锁，防止同一时刻多个相同请求并发撞车 */
