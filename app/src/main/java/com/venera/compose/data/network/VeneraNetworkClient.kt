@@ -72,7 +72,7 @@ class VeneraNetworkClient private constructor(private val context: Context) {
             .retryOnConnectionFailure(false)
 
         // 响应缓存层：上限走偏好（默认 100MB），改完由 rebuildClient() 生效。
-        val cacheDir = java.io.File(context.cacheDir, "venera_http_cache")
+        val cacheDir = java.io.File(context.cacheDir, HTTP_CACHE_DIR_NAME)
         builder.cache(okhttp3.Cache(cacheDir, prefs.httpCacheMaxMb.value * 1024L * 1024L))
 
         // 代理（支持 HTTP / SOCKS5，后来实装）
@@ -195,6 +195,9 @@ class VeneraNetworkClient private constructor(private val context: Context) {
     }
 
     companion object {
+        /** HTTP 响应缓存的目录名（`cacheDir` 下）。分桶统计读同一颗名，不留第二串字面量。 */
+        const val HTTP_CACHE_DIR_NAME = "venera_http_cache"
+
         @Volatile
         private var INSTANCE: VeneraNetworkClient? = null
 

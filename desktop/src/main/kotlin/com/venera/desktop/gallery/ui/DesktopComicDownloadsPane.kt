@@ -46,10 +46,20 @@ internal data class DesktopComicDownloadListing(
     val groups: List<DesktopComicDownloadedGroup>,
     val skipped: Int,
     val rootExists: Boolean,
+    /**
+     * 那一棵树**数不出来**时的成因（读盘整趟抛了）。
+     *
+     * 为什么要有这一格而不是把它塞进屏上那句 note：屏上要念的「还没数回来 / 确实空了 / 数不出来」
+     * 是**三档不同的话**，而前两档已经由 `groups.isEmpty()` 与 `rootExists` 分开了。
+     * 数不出来却念「目录建好了，里面还一条都没有」就是把"读失败"说成"没有东西"——
+     * 本仓那一族（还没读到 ≠ 读到了没有）的第三种宿主。
+     */
+    val error: String? = null,
 )
 
 /** 表头那一句（上屏的话）。三态各一句，与读数那一行是**两句不同的话**：读数给取证，这句给用户。 */
 internal fun desktopComicDownloadedScreenHeader(listing: DesktopComicDownloadListing): String {
+    listing.error?.let { return "本机那一棵树数不出来：$it" }
     val groups = listing.groups
     val chapters = groups.flatMap { it.chapters }
     return when {
@@ -77,3 +87,11 @@ internal fun desktopComicDownloadedRowLine(chapter: DesktopComicDownloadedChapte
 /** 那一屏的取证读数：六格全从状态现取（与表头那句同一次读盘，不另走一趟）。 */
 internal fun desktopComicDownloadedReading(listing: DesktopComicDownloadListing): String =
     desktopComicDownloadedHeaderReading(listing.groups, listing.skipped)
+
+/**
+ * 「还没数回来」那一句。
+ *
+ * 与「数回来而确实是空的」是**两句话**（与队列屏「正在读那张表」/「本机队列空」同一条口径）：
+ * 前者是这一趟还没跑完，后者是盘上真的什么都没有。塌成一句就会把"慢"说成"没有"。
+ */
+internal fun desktopComicDownloadedPendingLine(): String = "正在数本机那一棵树…"

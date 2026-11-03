@@ -711,55 +711,8 @@ fun SharedTransitionScope.AndroidHomeScreen(
                 }
             }
 
-            // 7. 本地漫画
-            item(key = "local-shelf") {
-                VeneraCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onOpenLocal() },
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        HomeBookSpines()
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "本地漫画",
-                                fontSize = 14.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = tokens.color.textPrimary,
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = when {
-                                    extra.localComicCount < 0 -> "正在扫描本地书架..."
-                                    else -> "共 ${extra.localComicCount} 部本地作品" +
-                                        if (extra.downloadingCount > 0) " · ${extra.downloadingCount} 个下载任务" else ""
-                                },
-                                fontSize = 11.sp,
-                                color = tokens.color.textSecondary,
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = tokens.color.primary.copy(alpha = 0.12f),
-                            modifier = Modifier.clickable { onOpenLocal() }
-                        ) {
-                            Text(
-                                text = "管理 ›",
-                                fontSize = 11.5.sp,
-                                color = tokens.color.primary,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
+            // 7. 本地漫画卡已撤（2026-11-03）：「下载与本地」住底栏第五格，
+            // 全项目下载/本地的唯一入口（HomeViewModel 的 localComicCount 读数一并闲置）。
             // 8. 漫画源
             if (sources.isNotEmpty()) {
                 item(key = "sources-summary") {

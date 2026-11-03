@@ -25,7 +25,6 @@ import com.venera.compose.feature.settings.AppSettings
 import com.venera.compose.feature.settings.BlockingRulesSettings
 import com.venera.compose.feature.settings.BlockingSettings
 import com.venera.compose.feature.settings.ExploreSettings
-import com.venera.compose.feature.settings.GalleryDownloadScreen
 import com.venera.compose.feature.settings.GallerySettings
 import com.venera.compose.feature.settings.LocalFavoritesSettings
 import com.venera.compose.feature.settings.NetworkSettings
@@ -109,8 +108,6 @@ enum class SettingsSubScreen {
     // 分区内部再往下走的叶子页
     LINE_SPEEDTEST,
     SOURCE_MANAGE,
-    DOWNLOADS,
-    LOCAL_COMICS,
     FOLLOW_UPDATES,
     STATS,
     FAVORITE_IMAGES,
@@ -118,7 +115,6 @@ enum class SettingsSubScreen {
     LOGS,
     PIXIV_DOWNLOAD,
     PIXIV_NETWORK,
-    GALLERY_DOWNLOADS,
 }
 
 /** 从上一级打开一个设置子页（每次都是新 Activity，返回落回来源页）。 */
@@ -211,8 +207,6 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onBack = ::back,
                 onSync = { open(SettingsSubScreen.SYNC) },
                 onLogs = { open(SettingsSubScreen.LOGS) },
-                onDownloads = { open(SettingsSubScreen.DOWNLOADS) },
-                onLocalComics = { open(SettingsSubScreen.LOCAL_COMICS) },
                 onFollowUpdates = { open(SettingsSubScreen.FOLLOW_UPDATES) },
             )
             SettingsSubScreen.NETWORK -> NetworkSettings(
@@ -223,16 +217,8 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             SettingsSubScreen.LINE_SPEEDTEST -> PreferredIpSpeedTestScreen(prefs = networkPrefs, onBack = ::back)
 
             SettingsSubScreen.SOURCE_MANAGE -> ComicSourceScreen(onNavigateBack = ::back)
-            SettingsSubScreen.DOWNLOADS -> DownloadScreen(
-                onBack = ::back,
-                onNavigateToLocalLibrary = { open(SettingsSubScreen.LOCAL_COMICS) },
-            )
-            SettingsSubScreen.LOCAL_COMICS -> LocalComicScreen(
-                onBack = ::back,
-                onOpenLocalSession = { session -> escape(SettingsEscape.ReadLocal(session)) },
-                onNavigateToDownloads = { open(SettingsSubScreen.DOWNLOADS) },
-                onOpenComicDetail = { item -> escape(SettingsEscape.OpenComic(item)) },
-            )
+            // 「下载与本地」（2026-11-03）：旧的两条设置入口随两屏合并撤除 ——
+            // 全项目唯一入口固定在底栏第五格（见 DownloadsLocalScreen 头注）。
             // 追更整页早就写完了（列表、挑夹对话框、每日排程都齐），缺的只有这一跳入口：
             // VeneraApp 的排程开关吃 followUpdatesFolder，而那值的唯一写点在这页里，
             // 所以没有这一行之前，用户永远打不开追更。
@@ -263,7 +249,6 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
                 onOpenNetworkSettings = { open(SettingsSubScreen.PIXIV_NETWORK) },
             )
             SettingsSubScreen.PIXIV_NETWORK -> PixivNetworkSettings(prefs = prefs, onBack = ::back)
-            SettingsSubScreen.GALLERY_DOWNLOADS -> GalleryDownloadScreen(onBack = ::back)
         }
     }
 }

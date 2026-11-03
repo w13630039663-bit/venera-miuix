@@ -115,11 +115,8 @@ internal fun PixivDownloadSettings(
                 summary = saveFormat,
                 onClick = { formatDialogVisible = true },
             )
-            SettingsAction(
-                title = "下载任务管理",
-                summary = "查看全部、运行中、已完成与失败的图片任务",
-                onClick = { context.openSettingsSubScreen(SettingsSubScreen.GALLERY_DOWNLOADS) },
-            )
+            // 「下载任务管理」入口已撤（2026-11-04）：图片下载记录住「下载与本地」的图片段，
+            // 全项目唯一入口在底栏第五格。
         }
 
         SettingsGroup("偏好策略") {

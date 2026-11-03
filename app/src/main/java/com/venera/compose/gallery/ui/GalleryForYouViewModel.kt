@@ -21,6 +21,7 @@ import com.venera.compose.gallery.data.toFavorite
 import com.venera.compose.gallery.data.toPost
 import com.venera.compose.gallery.data.toSiteRows
 import com.venera.compose.gallery.domain.GalleryFeedSource
+import com.venera.compose.gallery.domain.GalleryForYouCooldown
 import com.venera.compose.gallery.domain.GalleryForYouMerge
 import com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy
 import com.venera.compose.gallery.domain.GalleryLegGuard
@@ -216,6 +217,17 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     /** 前面各页已上屏条目的去重键（跨页去重全靠它，`mix` 那头没有这一维）。 */
     private var seenKeys = HashSet<String>()
 
+    /**
+     * 最近几轮上屏条目的去重键（「换一批」冷却环，判据在 [GalleryForYouCooldown]）。
+     *
+     * 与 [seenKeys] 分家：seen 只管**本轮**跨页，换一批要归零重来；冷却跨轮，专门用来
+     * 把"刚见过的"再压后几轮。取数时两者并成一颗传给 merge 的同一条去重轴。
+     */
+    private var cooldownRounds: List<List<String>> = emptyList()
+
+    /** 这一轮每站往榜深处挪了几页（0 = 榜首）。首载恒 0，只有「换一批」才随机。 */
+    private var depthBySite: Map<GallerySite, Int> = emptyMap()
+
     /** 已经到底的站。缺席（超时/没账号）的站**不进**这里 —— 见 [GallerySearchMerge.exhaustedSites]。 */
     private var sitesDone = mutableSetOf<GallerySite>()
 
@@ -237,8 +249,12 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             sitesDone = snapshot.sitesDone.toMutableSet()
             exhausted = queryBySite.isNotEmpty() && sitesDone.containsAll(queryBySite.keys)
             // 跨页去重的键**不存**，从恢复出来的那一屏重算：它就是从这些 post 累出来的，
-            // 存第二份只会给"两份不一致"留位置（存了旧键、屏上换了新条，去重就会漏剔或误剔）。
+            // 存了第二份只会给"两份不一致"留位置（存旧键、屏上换了新条，去重就会漏剔或误剔）。
             seenKeys = HashSet<String>().apply { posts.forEach { this += GalleryForYouMerge.keysOf(it) } }
+            // 冷却环与深度是"这一轮抽样"的一部分：不接回来，续页就会从榜首重发
+            // （已摆过的整批被剔空 = "到底了却还在转"那一族假读数）。
+            cooldownRounds = snapshot.cooldownRounds
+            depthBySite = snapshot.depths.countBySite()
             // stage 也要铺：否则页面第一帧念的是 IDLE，那一档摆的是整屏加载环 ——
             // 快照就白存了。判据与 load() 那句一致：发得出标签串才算 READY。
             if (queryBySite.isNotEmpty()) stage = GalleryForYouStage.READY
@@ -367,6 +383,17 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     fun refresh() {
         refreshTick++
         seed = System.currentTimeMillis()
+        // 旧批次当场进冷却环（此刻 `posts` 还是屏上那一批 —— 下面不清它，2026-09-30 那条口径）。
+        // 用户的话是"之前出现过一次的过几轮再出现"：环里留最近 [GalleryForYouCooldown.ROUNDS] 批。
+        cooldownRounds = GalleryForYouCooldown.pushRound(
+            cooldownRounds,
+            posts.flatMap { GalleryForYouMerge.keysOf(it) },
+        )
+        // 换一批 = 每站往榜深处随机挪几页再取。站方排序固定，挪深度才是"同一批标签也能取到不同条目"
+        // 的那一维随机（判据与首载不挪的理由见 `GalleryForYouCooldown` 头注）。
+        depthBySite = GalleryRecommendations.RECOMMEND_LEG_SITES.associateWith {
+            GalleryForYouCooldown.depthPages(seed, it.ordinal)
+        }
         loadJob?.cancel()
         moreJob?.cancel()
         isLoading = false
@@ -464,12 +491,15 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             }
         }
 
-        val merged = GalleryForYouMerge.page(
+        // 冷却与"赦免兜底"的判据在 domain（`GalleryForYouCooldown.page`）：
+        // 上一轮摆过的先剔，池子被吃光则松开冷却重排 —— 宁可重现一张旧图，不摆一屏空白。
+        val merged = GalleryForYouCooldown.page(
             pools = pools,
             seed = round,
             page = nextPage,
             seenKeys = seenKeys,
             favouriteUids = favourites,
+            rounds = cooldownRounds,
         )
         return PageOutcome(returned, reasons, merged)
     }
@@ -495,10 +525,12 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             return Leg(site, reason = GallerySearchViewModel.NEEDS_GELBOORU_ACCOUNT)
         }
         val outcome = GalleryLegGuard.guard(site) {
+            // 「换一批」的那一维随机：本页序号叠上这一站的本轮深度（首载与重试都是 0，行为逐字不变）。
+            val deepPage = nextPage + (depthBySite[site] ?: 0)
             when (site) {
-                GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, nextPage, limitOf(site))
-                GallerySite.YANDERE -> boards.yandere.searchPosts(query, nextPage, limitOf(site))
-                GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, nextPage, limitOf(site))
+                GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, deepPage, limitOf(site))
+                GallerySite.YANDERE -> boards.yandere.searchPosts(query, deepPage, limitOf(site))
+                GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, deepPage, limitOf(site))
                 GallerySite.PIXIV -> GallerySite.notWired("推荐那一腿的取数")
             }
         }
@@ -580,6 +612,8 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             videos = videos,
             failures = failures.toSiteRows(),
             sitesDone = sitesDone.toList(),
+            depths = depthBySite.toCountRows(),
+            cooldownRounds = cooldownRounds,
         )
         viewModelScope.launch { GalleryForYouCache.write(app, snapshot) }
     }

@@ -53,6 +53,14 @@ interface ReaderPreferences {
 
     /** 自动滚动的每页间隔秒数。 */
     val autoScrollPageIntervalSec: StateFlow<Float>
+
+    /** 条漫连续流自动巡航速度（px/s）。与间隔那枚同待遇：持久化，全局一份。 */
+    val autoScrollSpeedPx: StateFlow<Float>
+    fun setAutoScrollSpeedPx(speed: Float)
+
+    /** 「记住速度」开关（默认开）：关时速度只活在本次阅读会话，不落偏好。 */
+    val autoScrollSpeedPersist: StateFlow<Boolean>
+    fun setAutoScrollSpeedPersist(enabled: Boolean)
     val preloadImageCount: StateFlow<Int>
 
     /** 巡航到本话末页时接着开下一话（会**自动联网取下一话**，默认开）。 */
@@ -160,6 +168,9 @@ interface ComicPreferences {
     val followUpdatesFolder: StateFlow<String?>
     val secureScreen: StateFlow<Boolean>
 
+    /** 首次启动引导是否完成（引导完成页写一次；完成后冷启动不再出现引导）。 */
+    val onboardingDone: StateFlow<Boolean>
+
     fun setDefaultSearchTarget(key: String)
     fun setCheckUpdateOnStart(enable: Boolean)
     fun setFavoriteSortOrder(order: String)
@@ -167,6 +178,7 @@ interface ComicPreferences {
     fun setQuickFavorite(folder: String?)
     fun setFollowUpdatesFolder(folder: String?)
     fun setSecureScreen(enabled: Boolean)
+    fun setOnboardingDone()
 }
 
 /** 代理、下载并发、HTTP 缓存、存储根与 Cloudflare 优选 IP。 */
@@ -178,6 +190,14 @@ interface NetworkPreferences {
     val downloadThreads: StateFlow<Int>
     val httpCacheMaxMb: StateFlow<Int>
     val comicStoragePath: StateFlow<String>
+
+    /**
+     * 当前生效的下载根目录绝对路径（配了用配的，没配落应用私有目录）。
+     *
+     * 开口加在契约上而不是让 UI 直连 `ComicStorageRoot`（`BusinessApiBoundaryTest` 的 E 条：
+     * 要开口就加契约）。消费点：设置「应用与数据」与首次启动引导的「下载目录」那一行。
+     */
+    val downloadRootPath: String
     val cfPreferredIpEnabled: StateFlow<Boolean>
     val cfPreferredIps: StateFlow<String>
     val cfPreferredHosts: StateFlow<String>

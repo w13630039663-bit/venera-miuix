@@ -308,6 +308,26 @@ class LocalComicManager private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * 删除**单话**的离线文件（2026-11-03「下载与本地」合并页的话级动作）。
+     *
+     * 只删该话自己的目录（`chapter.folderPath` 整棵），漫画根与兄弟话不动；
+     * 删掉的话想再看就从详情页重新下载（下载侧照常按源+漫画+话入队落盘回这里）。
+     */
+    suspend fun deleteChapter(chapter: LocalChapter): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val dir = File(chapter.folderPath)
+            if (dir.exists()) {
+                dir.deleteRecursively()
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to delete local chapter", e)
+            false
+        }
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: LocalComicManager? = null

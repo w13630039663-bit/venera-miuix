@@ -65,10 +65,34 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _autoScrollPageIntervalSec = MutableStateFlow(prefs.getFloat(KEY_AUTO_SCROLL_INTERVAL_SEC, 4f))
     val autoScrollPageIntervalSec: StateFlow<Float> = _autoScrollPageIntervalSec.asStateFlow()
 
+    /**
+     * 条漫连续流自动巡航的滚动速度（px/s）。
+     *
+     * 2026-11-04 之前它只是阅读器里一枚 `remember { 60f }` 的内存值：调完退出（或换一本
+     * 漫画重进阅读器）就回到 60 —— 用户点名「速度调了也不保存」。与翻页档的间隔那枚同一
+     * 待遇：落偏好，全局一份，所有漫画共用。
+     */
+    private val _autoScrollSpeedPx = MutableStateFlow(prefs.getFloat(KEY_AUTO_SCROLL_SPEED_PX, 60f))
+    val autoScrollSpeedPx: StateFlow<Float> = _autoScrollSpeedPx.asStateFlow()
+
+    /**
+     * 「记住速度」开关（默认开）。
+     *
+     * 开：巡航速度的每次调整都落偏好，全局一份（2026-11-04 修"调了不保存"的正是这条）。
+     * 关：速度只活在本次阅读会话里，换一本漫画回到记住的那一档 —— 想临时快/慢一把、
+     * 又不想动长期习惯的用法。
+     */
+    private val _autoScrollSpeedPersist = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SCROLL_SPEED_PERSIST, true))
+    val autoScrollSpeedPersist: StateFlow<Boolean> = _autoScrollSpeedPersist.asStateFlow()
+
     // 隐私
     /** 屏幕防窥：置位后禁止截图、录屏与任务列表缩略图（窗口级 FLAG_SECURE）。 */
     private val _secureScreen = MutableStateFlow(prefs.getBoolean(KEY_SECURE_SCREEN, false))
     val secureScreen: StateFlow<Boolean> = _secureScreen.asStateFlow()
+
+    /** 首次启动引导是否完成。只有引导完成页的那一下按钮会写它，之后冷启动直达启动页。 */
+    private val _onboardingDone = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_DONE, false))
+    val onboardingDone: StateFlow<Boolean> = _onboardingDone.asStateFlow()
 
     // 审计后从灰行转正的开关（见 settings-audit-2026-09.md §9）
     /** 翻页前额外预加载的页数。原为编译期常量 5。 */
@@ -132,6 +156,18 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /** 启动后停留的主 Tab（VeneraNavTab 名）；默认首页。 */
     private val _startPage = MutableStateFlow(prefs.getString(KEY_START_PAGE, "HOME") ?: "HOME")
     val startPage: StateFlow<String> = _startPage.asStateFlow()
+
+    /**
+     * 「启动页面」旧值一次性迁移（2026-11-03，探索 tab 并进搜索页的分段后）：
+     * `EXPLORE` 已不再是合法落点（下拉里也不再有这一项），读到旧值就写回 `SEARCH`。
+     * 放在读侧而非设置页：设置页只在打开时写，旧值会一直活着。
+     */
+    init {
+        if (_startPage.value == "EXPLORE") {
+            prefs.put(KEY_START_PAGE, "SEARCH")
+            _startPage.value = "SEARCH"
+        }
+    }
 
     /** 章节列表默认倒序（新章在前）。原为详情页会话内状态。 */
     private val _reverseChapterOrder = MutableStateFlow(prefs.getBoolean(KEY_REVERSE_CHAPTERS, false))
@@ -757,9 +793,26 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _autoScrollPageIntervalSec.value = clamped
     }
 
+    fun setAutoScrollSpeedPx(speed: Float) {
+        // 与阅读器 ± 把手同一区间：15..480，步进 15。
+        val clamped = speed.coerceIn(15f, 480f)
+        prefs.put(KEY_AUTO_SCROLL_SPEED_PX, clamped)
+        _autoScrollSpeedPx.value = clamped
+    }
+
+    fun setAutoScrollSpeedPersist(enabled: Boolean) {
+        prefs.put(KEY_AUTO_SCROLL_SPEED_PERSIST, enabled)
+        _autoScrollSpeedPersist.value = enabled
+    }
+
     fun setSecureScreen(enabled: Boolean) {
         prefs.put(KEY_SECURE_SCREEN, enabled)
         _secureScreen.value = enabled
+    }
+
+    fun setOnboardingDone() {
+        prefs.put(KEY_ONBOARDING_DONE, true)
+        _onboardingDone.value = true
     }
 
     fun setPreloadImageCount(count: Int) {
@@ -911,6 +964,8 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_THEME_COLOR_SOURCE = "pref_theme_color_source"
         private const val KEY_THEME_SEED_COLOR = "pref_theme_seed_color"
         private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
+        private const val KEY_AUTO_SCROLL_SPEED_PX = "pref_auto_scroll_speed_px"
+        private const val KEY_AUTO_SCROLL_SPEED_PERSIST = "pref_auto_scroll_speed_persist"
 
         /** 巡航到本话末页时接着开下一话。 */
         private const val KEY_AUTO_NEXT_CHAPTER = "pref_reader_auto_next_chapter"
@@ -926,6 +981,7 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_ENHANCE_SATURATION = "pref_reader_enhance_saturation"
         private const val KEY_ENHANCE_BRIGHTNESS = "pref_reader_enhance_brightness"
         private const val KEY_SECURE_SCREEN = "pref_secure_screen"
+        private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_PRELOAD_COUNT = "pref_preload_image_count"
         private const val KEY_REVERSE_TAP = "pref_reverse_tap_direction"
         private const val KEY_DEFAULT_SEARCH_TARGET = "pref_default_search_target"

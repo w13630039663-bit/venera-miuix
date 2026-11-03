@@ -48,7 +48,9 @@ internal fun desktopComicQueueScreenHeader(tasks: List<DesktopComicQueueTask>, p
     }
     val waiting = tasks.count { it.status == DesktopComicQueueStatus.PENDING }
     if (waiting > 0) return "$waiting 笔排队 · 一次只跑一笔 · 站在这一屏就接着跑"
-    if (tasks.isEmpty()) return "本机队列空 —— 章节表上长按「下载」那一笔会排到这里来"
+    // ⚠️ 2026-10-21（第一百一十四批）改掉「长按」那半句：本仓当前渲染路里从来没有长按
+    //（详情屏那一枚是**看得见的按钮**），留着它就是替一屏已经不存在的操作作伪证。
+    if (tasks.isEmpty()) return "本机队列空 —— 详情那一屏点某一话右侧的「下载这一话」会排到这里来"
     return "这一页上 ${tasks.size} 笔都排完了（盘上那些页归「本机已下载」那一屏说）"
 }
 

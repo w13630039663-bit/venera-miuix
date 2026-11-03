@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.Buffer
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -45,6 +46,20 @@ import java.util.concurrent.ConcurrentHashMap
  * `synchronized`/`Mutex`），而 Coil 会在自己的 fetch 调度器上**并发**跑多枚 fetcher。两枚同时进
  * 一颗 Context 就是批 80 那种 `Context execution was cancelled` 的姊妹形，且只在滚得快时出现。
  * 全局一条锁会把"两本漫画的页"排成一条队；按引擎分一把只挡住真正共享 Context 的那些。
+ *
+ * ## 第一百一十六批：本机那一棵树排在引擎**前面**
+ *
+ * 批 96 把整话写下盘，批 97 数得着，批 98 删得掉，批 111/113 补得齐，批 115 把那些接上了屏 ——
+ * 而**翻开那一屏一页都不吃盘**（`fetch()` 里只有 `engine.pageImage`）。用户攒了 24 MB 在机器上，
+ * 断网还是翻不开，联网还得把同样的字节再取一遍。这一格补的就是那一句。
+ *
+ * ⚠️ 判「这一页在不在盘上」吃的仍是 `desktopComicPageLooksWhole`（第一百一十批那把**唯一**的尺子），
+ *    不在这里另写第四种"齐不齐"。代价是那一页读两次（一次前 12 字节、一次整颗）；
+ *    换来的是「续跑跳过它 / 屏上念缺 N 页 / 翻开吃它」三件事同一把口径 ——
+ *    这里自己判头部的话，坏页那一档就会在屏上念「缺 2 页」而翻开时当成有。
+ *
+ * ⚠️ 缓存键**不掺** `localDir`：盘上那一颗字节就是当初从源站取回的那一颗，同一内容必须是同一个键。
+ *    掺了就是"离线读过一次，联网回来又整话重取一遍"。由 `DesktopComicOfflineReadingTest` 钉。
  */
 internal const val DESKTOP_COMIC_PAGE_SCHEME: String = "comic"
 
@@ -65,6 +80,10 @@ internal fun desktopComicPageCacheKey(
  *
  * ⚠️ [engine] 可以为一枚都没装载引擎的槽留 `null`：那种页**不取**（见 [desktopComicPageCanFetch]），
  * 让 Coil 把它走成错误态，屏上念"这一页没取成"。硬造一颗 fetcher 再在 fetch 里抛，看起来像网络坏了。
+ *
+ * [localDir] 是**第一百一十六批**那一格：这一话在盘上的目录（`…/<话目录>`），`null` = 本机没有这一话。
+ * 非空时那一页只要盘上算「一整页」就直接吃盘而不问引擎；缺的那几页仍回落到 [engine]。
+ * 页序 [page] 就是盘上那一档页名的索引（`0001.jpg` 从 1 数起而库里从 0 数起，两边都 0 基）。
  */
 internal data class DesktopComicPage(
     val sourceKey: String,
@@ -73,6 +92,8 @@ internal data class DesktopComicPage(
     val imageKey: String,
     val page: Int,
     val engine: EngineSession?,
+    /** 这一话在本机那棵树里的目录；`null` = 本机没有 ⇒ 只能问源站。 */
+    val localDir: File? = null,
 ) {
     val cacheKey: String = desktopComicPageCacheKey(sourceKey, comicId, episodeId, imageKey)
 
@@ -91,8 +112,15 @@ internal data class DesktopComicPage(
 internal fun desktopEngineLockKey(engine: EngineSession?): String =
     "engine-${engine?.let { System.identityHashCode(it) } ?: "none"}"
 
-/** 这一格能不能真取到字节 —— 引擎没装载就不取。 */
-internal fun desktopComicPageCanFetch(page: DesktopComicPage): Boolean = page.engine != null
+/**
+ * 这一格能不能真取到字节 —— 引擎与本机**两路都没有**才不取。
+ *
+ * 第一百一十六批把"盘上有那一话"算作一条能取的路（断网时那一话仍翻得开）。
+ * ⚠️ 旧那句「引擎没装载就不取」的判据没有被削弱：两枚都缺的页仍然不造 fetcher
+ *    （屏上念"这一页没取成"，而不是转一下再红得像网络坏了）。
+ */
+internal fun desktopComicPageCanFetch(page: DesktopComicPage): Boolean =
+    page.engine != null || page.localDir != null
 
 private val engineLocks = ConcurrentHashMap<String, Mutex>()
 
@@ -107,12 +135,43 @@ internal fun desktopEngineMutex(lockKey: String): Mutex = engineLocks.computeIfA
 internal suspend fun <R> withDesktopEngineLock(lockKey: String, block: suspend () -> R): R =
     desktopEngineMutex(lockKey).withLock { block() }
 
-/** 把字节包成 Coil 的 `SourceFetchResult`（形状照 `coil3/fetch/ByteArrayFetcher.kt` 那一件）。 */
-internal fun desktopComicPageResult(bytes: ByteArray, options: Options): SourceFetchResult = SourceFetchResult(
+/**
+ * 把字节包成 Coil 的 `SourceFetchResult`（形状照 `coil3/fetch/ByteArrayFetcher.kt` 那一件）。
+ *
+ * `dataSource` 是**必传**而不是默认 `NETWORK`：那一格会被 Coil 写进 `Image.result.dataSource`，
+ * 而"从盘上读的"若报成 NETWORK，屏上看不出来而日志会说谎（本仓那一族「读数说成另一路」）。
+ */
+internal fun desktopComicPageResult(
+    bytes: ByteArray,
+    options: Options,
+    dataSource: DataSource,
+): SourceFetchResult = SourceFetchResult(
     source = ImageSource(source = Buffer().apply { write(bytes) }, fileSystem = options.fileSystem),
     mimeType = null,
-    dataSource = DataSource.NETWORK,
+    dataSource = dataSource,
 )
+
+/**
+ * 从本机那一棵目录里取第 [index] 页的字节；**不该吃盘**或读不出时交回 `null`（调用处回落到引擎）。
+ *
+ * ## 为什么单独抽出来（而不是写在 `fetch()` 里）
+ *
+ * `fetch()` 要吃 Coil 的 `Options`，无头够不到；而"这一页到底吃没吃盘"正是第一百一十六批要钉的那一格。
+ * 抽成这颗之后它可纯跑（真临时目录 + 真字节），壳里只剩「有字节就交回 DISK，没有就问引擎」。
+ *
+ * ## 读两次是刻意的代价
+ *
+ * 先走那颗共用的判式（只读前 12 字节），过了才把整颗读进来。在这里自己判头部 = 第四种"齐不齐"，
+ * 而第一百一十批刚把那种漂移收成一颗 —— 各判各的坏页就会念成「屏上说缺 2 页而翻开时当成有」。
+ *
+ * ⚠️ 判式过了而整颗读不出（正被补下载换掉之类）交回 `null` 而**不是空表**：
+ *    谎称"从盘上读到了空"会让那一页变白图，而真相是"这一页该去问源站"。
+ */
+internal fun desktopComicLocalPageBytes(dir: File, index: Int): ByteArray? {
+    if (!desktopComicPageLooksWhole(dir, index)) return null
+    val bytes = runCatching { File(dir, desktopComicChapterPageFileName(index)).readBytes() }.getOrNull()
+    return if (bytes != null && bytes.isNotEmpty()) bytes else null
+}
 
 internal class DesktopComicPageFetcher(
     private val page: DesktopComicPage,
@@ -120,13 +179,18 @@ internal class DesktopComicPageFetcher(
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
+        // ── 本机排在引擎前面（第一百一十六批）──
+        page.localDir?.let { dir ->
+            val local = desktopComicLocalPageBytes(dir, page.page)
+            if (local != null) return desktopComicPageResult(local, options, DataSource.DISK)
+        }
         val engine = page.engine ?: return null
         // 两跳都在锁里：`pageImage` 里既有 JS 求值也有取字节，而那颗 Context 单线程。
         // `withContext(IO)` 是因为它是阻塞调用，不能让 Coil 的 fetch 调度器替我们排队。
         val bytes = withDesktopEngineLock(page.lockKey) {
             withContext(Dispatchers.IO) { engine.pageImage(page.imageKey, page.comicId, page.episodeId) }
         }
-        return desktopComicPageResult(bytes, options)
+        return desktopComicPageResult(bytes, options, DataSource.NETWORK)
     }
 
     class Factory : Fetcher.Factory<DesktopComicPage> {

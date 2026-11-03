@@ -266,6 +266,27 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             liveDetails?.chapters ?: emptyList()
         }
 
+        // 有阅读历史 =「继续阅读」：按历史落回上次那一章那一页，而不是永远开第一章第 1 页。
+        // 找章用标题跨**所有**分组（与插图收藏的 readTarget 同一条链路）：上次读的章多半
+        // 不在当前选中的分组里，只扫首组会稳定续不回来。
+        val history = historyRecord
+        if (history != null && liveDetails != null) {
+            when (val hit = findReadTargetChapter(liveDetails, history.lastChapterTitle)) {
+                is ReadChapterHit.Found -> {
+                    hit.groupIndex?.let { viewModel.selectGroup(it) }
+                    launchChapter(hit.chapter.id, hit.chapter.title, hit.indexInGroup, history.lastPageIndex)
+                    return
+                }
+                // 图库类源：整本即一章，页码照样续上。
+                is ReadChapterHit.WholeComic -> {
+                    launchChapter(GALLERY_CHAPTER_ID, comic.title, 0, history.lastPageIndex)
+                    return
+                }
+                // 源端已无那一章（改名/下架）：退回老行为开第一章，不打断用户。
+                is ReadChapterHit.NotFound -> Unit
+            }
+        }
+
         if (chs.isNotEmpty()) {
             val target = chs.first()
             launchChapter(target.id, target.title, 0)
@@ -1759,14 +1780,20 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         val toDownload = allChs.filter { selectedIds.contains(it.id) }
                         if (toDownload.isNotEmpty()) {
                             val dlMgr = com.venera.compose.download.DownloadManager.getInstance(context)
-                            dlMgr.enqueue(
+                            val added = dlMgr.enqueue(
                                 sourceKey = viewModel.currentSourceKey(),
                                 comicId = liveDetails?.comic?.id ?: comic.id,
                                 comicTitle = liveDetails?.comic?.title ?: comic.title,
                                 comicCover = liveDetails?.comic?.cover ?: comic.coverUrl,
                                 chapters = toDownload
                             )
-                            Toast.makeText(context, "已将 " + toDownload.size + " 话加入下载队列", Toast.LENGTH_SHORT).show()
+                            // 已离线的章被 enqueue 静默跳过，提示要说清数目，别让人以为全进了队
+                            val skipped = toDownload.size - added
+                            Toast.makeText(
+                                context,
+                                if (skipped > 0) "已加入 $added 话，$skipped 话已下载过，跳过" else "已将 $added 话加入下载队列",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                         showDownloadDialog = false
                     },

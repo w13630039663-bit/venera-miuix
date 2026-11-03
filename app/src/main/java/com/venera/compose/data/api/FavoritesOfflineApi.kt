@@ -96,13 +96,14 @@ interface DownloadQueue {
 
     val tasks: StateFlow<List<DownloadTask>>
 
+    /** @return 实际新加入的章数（已完整离线的章被跳过，调用方据此报"跳过几话"）。 */
     fun enqueue(
         sourceKey: String,
         comicId: String,
         comicTitle: String,
         comicCover: String,
         chapters: List<com.venera.compose.source.model.ComicChapter>,
-    )
+    ): Int
 
     fun pause(taskId: String)
 
@@ -138,6 +139,9 @@ interface LocalComicLibrary {
     suspend fun getLocalChapters(comic: LocalComic): List<LocalChapter>
 
     suspend fun deleteLocalComic(comic: LocalComic): Boolean
+
+    /** 删除**单话**的离线文件（「下载与本地」话级清单那枚动作；漫画根与兄弟话不动）。 */
+    suspend fun deleteChapter(chapter: LocalChapter): Boolean
 
     suspend fun exportToCbz(
         comic: LocalComic,

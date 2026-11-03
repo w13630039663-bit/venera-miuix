@@ -72,6 +72,27 @@ internal fun DesktopExploreScreen(
      * 那正是本仓「灰行不许留在屏上」那一族的形状（评审 R6 的 `onRetest = {}` 同一类）。
      */
     onOpenSourceManage: () -> Unit,
+    /**
+     * 进下载队列屏。
+     *
+     * 与 `onOpenSourceManage` 同一形状、同一位置（顶栏），而且**同样不许给默认值**：
+     * 默认 `{}` 就是一颗按下去什么也不做的假开关。
+     *
+     * 入口也**不许**做成「只有队列里有任务才摆」。队列正在跑、卡住、或某一笔写失败的时候，
+     * 用户最需要的是能进去看与停手；一切正常时空列表反而无所谓。
+     */
+    onOpenQueue: () -> Unit,
+    /**
+     * 进「本机已下载」屏。
+     *
+     * ⚠️ 唯一一处**可为 null** 的入口，而且不是忘了必填：它要的是下载根目录，而
+     * `downloadsRoot == null` 时整个下载域在桌面上没有立足处（详情那枚把手整颗不摆、泵不起、
+     * 这一屏连盘上的树都数不着）。摆一扇门而门后永远念不出东西，比没有那扇门更坏 ——
+     * 与 `DesktopComicDetailScreen.onDownloadEpisode` 完全同一条口径（评审 R6 那一族）。
+     *
+     * 注意它**不是**「按队列里有没有任务摆」，也不是「按盘上有没有东西摆」：只要根目录拿得到就得进得去。
+     */
+    onOpenDownloads: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -108,6 +129,11 @@ internal fun DesktopExploreScreen(
                 // （"取不到探索页"最常见的成因就是那颗源被停用了，而只有源管理屏能把它启回来）。
                 // 若做成「只有取成功才摆」，坏了的时候用户反而进不去改 —— 那是最该能进的时候进不去。
                 VeneraButton(onClick = onOpenSourceManage) { Text("源管理") }
+                VeneraButton(onClick = onOpenQueue) { Text("下载队列") }
+                // 与详情那枚「下载这一话」同一判据：没有那一跳的门就不摆。
+                if (onOpenDownloads != null) {
+                    VeneraButton(onClick = onOpenDownloads) { Text("本机已下载") }
+                }
             }
 
             if (note != null) {

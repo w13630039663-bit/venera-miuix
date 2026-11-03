@@ -27,6 +27,7 @@ import com.venera.compose.data.db.FavoriteItem
 import com.venera.compose.data.db.HistoryDao
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.data.db.LocalFavoritesManager
+import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.download.DownloadManager
 import com.venera.compose.download.DownloadTask
 import com.venera.compose.download.LocalChapter
@@ -216,6 +217,32 @@ private class AndroidNetworkHygiene(private val context: Context) : NetworkHygie
     override fun httpCacheSizeBytes(): Long = VeneraNetworkClient.getInstance(context).httpCacheSizeBytes()
 
     override fun clearHttpCache(): Long = VeneraNetworkClient.getInstance(context).clearHttpCache()
+
+    /**
+     * 扫 `cacheDir`（外加 `codeCacheDir`）按桶归类（判据与"为什么"见契约那头 `cacheBreakdown` 头注）。
+     *
+     * 图片桶认**目录名前缀 coil**而不是死扣一个名字：Coil 2→3 换过默认目录名（coil_cache →
+     * coil3_cache），死扣任何一个都会把另一半漏进"其他"桶，总数照样对得上、分桶却说谎。
+     */
+    override fun cacheBreakdown(): com.venera.compose.data.api.CacheBreakdown {
+        fun sizeOf(file: java.io.File): Long = when {
+            !file.exists() -> 0L
+            file.isFile -> file.length()
+            else -> file.listFiles()?.sumOf { sizeOf(it) } ?: 0L
+        }
+        var http = 0L
+        var image = 0L
+        var other = sizeOf(context.codeCacheDir)
+        for (child in context.cacheDir.listFiles()?.toList().orEmpty()) {
+            val bytes = sizeOf(child)
+            when {
+                child.name == VeneraNetworkClient.HTTP_CACHE_DIR_NAME -> http += bytes
+                child.name.startsWith("coil", ignoreCase = true) -> image += bytes
+                else -> other += bytes
+            }
+        }
+        return com.venera.compose.data.api.CacheBreakdown(httpBytes = http, imageBytes = image, otherBytes = other)
+    }
 }
 
 /**
@@ -255,6 +282,8 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override val nightFilter: StateFlow<Boolean> get() = prefs.nightFilter
     override val pageGapDp: StateFlow<Float> get() = prefs.pageGapDp
     override val autoScrollPageIntervalSec: StateFlow<Float> get() = prefs.autoScrollPageIntervalSec
+    override val autoScrollSpeedPx: StateFlow<Float> get() = prefs.autoScrollSpeedPx
+    override val autoScrollSpeedPersist: StateFlow<Boolean> get() = prefs.autoScrollSpeedPersist
     override val preloadImageCount: StateFlow<Int> get() = prefs.preloadImageCount
     override val autoNextChapter: StateFlow<Boolean> get() = prefs.autoNextChapter
     override val readerEnhanceEnabled: StateFlow<Boolean> get() = prefs.readerEnhanceEnabled
@@ -274,6 +303,8 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override fun setNightFilter(enable: Boolean) = prefs.setNightFilter(enable)
     override fun setPageGapDp(gap: Float) = prefs.setPageGapDp(gap)
     override fun setAutoScrollPageIntervalSec(sec: Float) = prefs.setAutoScrollPageIntervalSec(sec)
+    override fun setAutoScrollSpeedPx(speed: Float) = prefs.setAutoScrollSpeedPx(speed)
+    override fun setAutoScrollSpeedPersist(enabled: Boolean) = prefs.setAutoScrollSpeedPersist(enabled)
     override fun setPreloadImageCount(count: Int) = prefs.setPreloadImageCount(count)
     override fun setAutoNextChapter(enabled: Boolean) = prefs.setAutoNextChapter(enabled)
     override fun setReaderEnhanceEnabled(enabled: Boolean) = prefs.setReaderEnhanceEnabled(enabled)
@@ -331,6 +362,7 @@ private class AndroidComicPreferences(private val context: Context) : ComicPrefe
     override val quickFavorite: StateFlow<String?> get() = prefs.quickFavorite
     override val followUpdatesFolder: StateFlow<String?> get() = prefs.followUpdatesFolder
     override val secureScreen: StateFlow<Boolean> get() = prefs.secureScreen
+    override val onboardingDone: StateFlow<Boolean> get() = prefs.onboardingDone
 
     override fun setDefaultSearchTarget(key: String) = prefs.setDefaultSearchTarget(key)
     override fun setCheckUpdateOnStart(enable: Boolean) = prefs.setCheckUpdateOnStart(enable)
@@ -339,6 +371,7 @@ private class AndroidComicPreferences(private val context: Context) : ComicPrefe
     override fun setQuickFavorite(folder: String?) = prefs.setQuickFavorite(folder)
     override fun setFollowUpdatesFolder(folder: String?) = prefs.setFollowUpdatesFolder(folder)
     override fun setSecureScreen(enabled: Boolean) = prefs.setSecureScreen(enabled)
+    override fun setOnboardingDone() = prefs.setOnboardingDone()
 }
 
 private class AndroidNetworkPreferences(private val context: Context) : NetworkPreferences {
@@ -351,6 +384,7 @@ private class AndroidNetworkPreferences(private val context: Context) : NetworkP
     override val downloadThreads: StateFlow<Int> get() = prefs.downloadThreads
     override val httpCacheMaxMb: StateFlow<Int> get() = prefs.httpCacheMaxMb
     override val comicStoragePath: StateFlow<String> get() = prefs.comicStoragePath
+    override val downloadRootPath: String get() = ComicStorageRoot.resolve(context).absolutePath
     override val cfPreferredIpEnabled: StateFlow<Boolean> get() = prefs.cfPreferredIpEnabled
     override val cfPreferredIps: StateFlow<String> get() = prefs.cfPreferredIps
     override val cfPreferredHosts: StateFlow<String> get() = prefs.cfPreferredHosts
@@ -573,6 +607,9 @@ private class AndroidLocalComicLibrary(private val context: Context) : LocalComi
 
     override suspend fun getLocalChapters(comic: LocalComic): List<LocalChapter> =
         manager.getLocalChapters(comic)
+
+    override suspend fun deleteChapter(chapter: LocalChapter): Boolean =
+        LocalComicManager.getInstance(context).deleteChapter(chapter)
 
     override suspend fun deleteLocalComic(comic: LocalComic): Boolean = manager.deleteLocalComic(comic)
 

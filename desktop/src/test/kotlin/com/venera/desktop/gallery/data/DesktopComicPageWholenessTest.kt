@@ -118,12 +118,15 @@ class DesktopComicPageWholenessTest {
     fun 三处消费点都改吃那颗纯件而旧那一形零处() {
         val all = DesktopSourceTree.desktopMainSources()
         assertEquals("声明恰一处", 1, all.sumOf { DesktopSourceTree.codeOccurrences(it, "fun desktopComicPageLooksWhole(") })
-        // 5 = 那一颗声明 + 四处调用（续跑跳过 / 屏上读侧 / 队列那一行 / 那颗判齐件的逐页循环）
-        assertEquals("声明加四处调用共五处", 5, all.sumOf { DesktopSourceTree.codeOccurrences(it, "desktopComicPageLooksWhole(") })
+        // 6 = 那一颗声明 + 五处调用（续跑跳过 / 屏上读侧 / 队列那一行 / 那颗判齐件的逐页循环 /
+        // **翻开那一屏**）。第一百一十六批把阅读器接上本机那一棵树时用的是同一把尺子，
+        // 而不是在 fetch 里另写第四种「齐不齐」—— 那正是「屏上念缺 2 页而翻开时当成有」的成因。
+        assertEquals("声明加五处调用共六处", 6, all.sumOf { DesktopSourceTree.codeOccurrences(it, "desktopComicPageLooksWhole(") })
         for (name in listOf(
             "DesktopComicChapterDownload.kt",
             "DesktopComicDownloadedList.kt",
             "DesktopComicDownloadQueue.kt",
+            "DesktopComicPageFetcher.kt",
         )) {
             val f = DesktopSourceTree.desktopSourceOf("gallery/data/$name")
             // 两种拼法都要钉：只钉 `> 0L` 会放过 `<= 0L`（判齐件那一处最初就是这么漏网的 —— rounds §9）。

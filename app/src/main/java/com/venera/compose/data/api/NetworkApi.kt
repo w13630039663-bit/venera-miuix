@@ -39,6 +39,34 @@ interface NetworkHygiene {
 
     /** 清空 HTTP 缓存，返回清掉的字节数（同一颗页那颗「清除缓存」按钮）。 */
     fun clearHttpCache(): Long
+
+    /**
+     * 应用缓存的**分桶读数**（2026-11-03，用户「系统显示 1 个 G，应用里只报 99MB」）。
+     *
+     * 为什么要分桶：[httpCacheSizeBytes] 只量 `venera_http_cache` 一颗目录，而那只是
+     * 系统「应用管理 → 缓存」里的一块 —— 图片（Coil 磁盘缓存）与引擎临时件从来没被报过。
+     * 这一颗把 `cacheDir` 整个扫一遍按桶归类（外加 `codeCacheDir`，系统口径也含它），
+     * 屏上的总数与系统读数的差，就只剩系统自己那部分杂项。
+     *
+     * **非 suspend**：与 [httpCacheSizeBytes] 同一理由，调用点已经包在 IO 调度里。
+     */
+    fun cacheBreakdown(): CacheBreakdown
+}
+
+/**
+ * 缓存分桶：网络（OkHttp）、图片（Coil）、其他（代码缓存 + 引擎临时件 + 散件）。
+ *
+ * "其他"今天**只报不删**：那颗桶里有什么，只有各业务临时件的owner自己知道；一把梭删
+ * cacheDir 会把没写耐删判据的件一起带走 —— 宁可让用户去系统设置清，也不在应用里造
+ * 一条没有判据的删除路。
+ */
+data class CacheBreakdown(
+    val httpBytes: Long,
+    val imageBytes: Long,
+    val otherBytes: Long,
+) {
+    /** 与系统「应用管理」缓存读数对表的总数。 */
+    val totalBytes: Long get() = httpBytes + imageBytes + otherBytes
 }
 
 /**

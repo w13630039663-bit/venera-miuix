@@ -9,6 +9,7 @@ import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
 import com.venera.compose.gallery.domain.GalleryPreviewQuality
 import com.venera.compose.gallery.domain.GalleryViewerBackdrop
+import com.venera.compose.gallery.domain.PixivImageQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -175,6 +176,9 @@ class DesktopGalleryPreferences(paths: PathProvider) : GalleryPreferences {
      * 哪天桌面接了那一行，就把它换成 `store.getBoolean(那一枚键, false)` 并按 `DesktopGalleryPreferencesTest` ①② 补回核。
      */
     override val galleryWatercolorBeta: StateFlow<Boolean> = ALWAYS_FALSE
+
+    override val pixivPreviewQuality: StateFlow<PixivImageQuality> =
+        MutableStateFlow(PixivImageQuality.MEDIUM).asStateFlow()
 
     /** 解码口径逐字照 `VeneraPreferences.readEnum`：存枚举名，认不出来就退默认档。 */
     private inline fun <reified T : Enum<T>> readEnum(key: String, fallback: T) =

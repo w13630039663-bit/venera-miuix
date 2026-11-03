@@ -169,6 +169,16 @@ kotlin.sourceSets["main"].kotlin {
     )
     // ── AUTO-EXCLUDE 结束 ──
 
+    // 首次启动引导是 **Android 宿主面**：它读 `Settings.Global` 的动画缩放、跳
+    // `PixivAccountActivity` / `SettingsSubActivity`（桌面没有这两颗），完成标记也写在
+    // Android 的 `BusinessPorts` 装配根上。桌面今天不做引导，按文件名点名摘除
+    // —— 判据与上面 sourcemanage 那两条同一形状（整颗编不过 + 桌面零调用方）。
+    exclude("**/onboarding/OnboardingScreen.kt")
+    // 「下载与本地」同为 Android 宿主面：SAF 文件选择器、Toast、FileProvider 分享、
+    // DownloadManager（Context 绑定）都在这颗屏里；桌面侧下载/本地由自持的
+    // DesktopDownloadsPipelineScreen 承担（用户已在那条线上做完）。
+    exclude("**/DownloadsLocalScreen.kt")
+
 
 
 
@@ -206,7 +216,6 @@ kotlin.sourceSets["main"].kotlin {
         "**/ComicSourceScreen.kt",
         "**/ComicSourceViewModel.kt",
         "**/CoverViewerScreen.kt",
-        "**/DownloadScreen.kt",
         "**/ExploreSettings.kt",
         "**/FavoriteImagesManager.kt",
         "**/FavoriteImagesScreen.kt",
@@ -221,13 +230,14 @@ kotlin.sourceSets["main"].kotlin {
         "**/HistoryViewModel.kt",
         "**/HomeScreen.kt",
         "**/HomeViewModel.kt",
-        "**/LocalComicScreen.kt",
         "**/LocalFavoritesSettings.kt",
         "**/LogViewerScreen.kt",
         "**/Navigation.kt",
         "**/NetworkFavoritesScreen.kt",
         "**/NetworkFavoritesViewModel.kt",
         "**/NetworkSettings.kt",
+        "**/PixivDownloadSettings.kt",
+        "**/PixivNetworkSettings.kt",
         "**/PetImageLoader.kt",
         "**/PetMascot.kt",
         "**/PreferredIpSpeedTestScreen.kt",
@@ -289,13 +299,17 @@ kotlin.sourceSets["main"].kotlin {
 "**/GallerySearchArea.kt",
 "**/GallerySearchViewModel.kt",
 "**/GallerySharedTransition.kt",
-"**/GalleryVideoViewer.kt",
+// 视频播放引擎装配（④，2026-10-20）：`Context` / `Intent` 的 Android 面，
+// 与 `GalleryVideoViewer`（它 import 这一颗）同批排除 —— 桌面侧没有视频播放器。
+        "**/GalleryVideoEngine.kt",
+        "**/GalleryVideoViewer.kt",
 "**/GalleryViewModel.kt",
 "**/PixivAccountScreen.kt",
 "**/PixivAccountSessionStore.kt",
 "**/PixivArtistScreen.kt",
 "**/PixivWorkInfoPanel.kt",
 "**/PixivWorkScreen.kt",
+"**/PixivUgoiraPlayer.kt",
     )
 
     exclude(
@@ -339,6 +353,7 @@ kotlin.sourceSets["main"].kotlin {
         "GalleryImageLoader.kt",
         // 存图到相册：MediaStore/ContentValues/Environment，平台服务，本轮口径明确不碰。
         "GallerySaver.kt",
+        "GalleryDownloadManager.kt",
         // 标签词典：库文件是 assets 复制出来的真实路径，且走 platform.android 的开库口子。
         // （批 40：桌面那两颗自持件补的就是这两件事 —— DesktopTagDictionaryAsset 从 classpath 落成真实路径，
         //  DesktopGalleryTagDictionary 只读打开后交给共享的 data/db/TagDictionaryStore。）

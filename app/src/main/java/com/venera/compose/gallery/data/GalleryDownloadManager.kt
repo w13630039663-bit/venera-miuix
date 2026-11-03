@@ -85,6 +85,11 @@ class GalleryDownloadManager private constructor(private val context: Context) {
 
     /**
      * 提交下载任务。
+     *
+     * **同一张图已下载过就不再重下**（2026-11-04 用户点名）：
+     * 任务表里已有这条的 COMPLETED 记录时直接把旧结果交回 [onDone]，不发起网络请求。
+     * 判据是「站 + 帖 id + 多图页序」—— 同帖第 3 页和第 5 页互不算重复。
+     * 失败/进行中的任务不拦：失败的重下是「重新下载」，进行中再点由信号量与唯一 taskId 兜住。
      */
     fun enqueue(
         post: GalleryPost,
@@ -93,6 +98,20 @@ class GalleryDownloadManager private constructor(private val context: Context) {
         artistName: String? = null,
         onDone: ((Result<GallerySaver.Saved>) -> Unit)? = null,
     ): GalleryDownloadTask {
+        val duplicate = _tasks.value.firstOrNull {
+            it.status == GalleryDownloadStatus.COMPLETED && dedupKeyOf(it.post) == dedupKeyOf(post)
+        }
+        if (duplicate != null) {
+            onDone?.let { callback ->
+                scope.launch {
+                    withContext(Dispatchers.Main) {
+                        callback(Result.success(GallerySaver.Saved(duplicate.localPath.orEmpty(), duplicate.fileSize)))
+                    }
+                }
+            }
+            return duplicate
+        }
+
         val taskId = "${post.site.routeKey}-${post.id}-${System.currentTimeMillis()}"
         val effectiveTitle = title?.takeIf { it.isNotBlank() }
             ?: (if (post.site == GallerySite.PIXIV) "作品 #${post.id}" else "${post.site.displayName} #${post.id}")
@@ -202,6 +221,10 @@ class GalleryDownloadManager private constructor(private val context: Context) {
         _tasks.value = _tasks.value.filter { it.status == GalleryDownloadStatus.RUNNING }
         saveTasks()
     }
+
+    /** 下载去重键：站 + 帖 id + 多图页序（无页序的多图站归到同一格）。 */
+    private fun dedupKeyOf(post: GalleryPost): String =
+        "${post.site.routeKey}-${post.id}-${post.pageOrdinal ?: -1}"
 
     companion object {
         private const val KEY_TASKS = "gallery_download_tasks"

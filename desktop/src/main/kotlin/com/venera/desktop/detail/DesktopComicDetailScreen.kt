@@ -31,6 +31,9 @@ import com.venera.compose.components.WideScreenLayoutMode
 import com.venera.engineprobe.ComicInfo
 import com.venera.engineprobe.EngineSession
 
+/** 章节行右侧那枚把手的文案（这一屏自持，不与队列屏那两枚把手共用同一颗串）。 */
+internal const val DESKTOP_EPISODE_DOWNLOAD_LABEL: String = "下载这一话"
+
 /**
  * 桌面漫画详情屏 —— 对应安卓 `ComicDetailScreen`（2322 行）。
  *
@@ -44,9 +47,20 @@ import com.venera.engineprobe.EngineSession
  * 收藏那一枚 2026-10-21 接上了（它是**收藏格唯一的造数据入口** —— 库里 0 条收藏时
  * 那一屏永远量不出「还没读回来」与「确实没有」谁在说话）。
  * 没做的明确列在这儿，不悄悄省掉：
- * - 下载整话 / 下载队列入口（`DesktopComicChapterDownload` 逻辑已有，缺 UI）
  * - 书源切换、标签跳转、评论
  * - 收藏的**文件夹**选择（`FavoriteRecord.folderName` 恒走默认那一档）
+ *
+ * ## 第一百一十四批（2026-10-21）：把「下载这一话」那一枚摆上章节行
+ *
+ * 那一整条落盘链（入队 → 泵 → 逐页写盘 → 回读判齐 → 停手 / 撤掉）早在批 96~108 就接完并有判据盯着，
+ * 缺的只有**门**：当前这条渲染路（本文件与 `VeneraDesktopLargeScreen`）里没有任何一处能把那一笔排进队，
+ * 于是「下载整话」在桌面上等于不存在。旧说明写的是「长按某一话」，那是**已经被拆掉的 Fluent 平行线**
+ * （`gallery/ui/DesktopComicPane.kt`）里的形状，本屏从来没有长按 ⇒ 那句是假话，本轮改掉。
+ *
+ * 为什么这一枚做成**看得见的按钮**而不是长按：`DesktopComicDetailSemanticsTest` 批 96 记过
+ * 「行里再摆一枚按钮会把整行的点击吃掉」，而那一次的形状是按钮**嵌在整行那颗 clickable 里面**。
+ * 本屏把把手放到卡片**外面**（同一 Row 的两个兄弟节点），整行的"点题名进阅读器"与把手的"排进队列"
+ * 各拿各的命中框，因此没有那一次的问题 —— 这条由新加的无头判据钉（按把手时 `opened` 必须还是 0）。
  *
  * ## 为什么详情是必需的一屏
  *
@@ -86,6 +100,24 @@ internal fun DesktopComicDetailScreen(
     onToggleFavorite: (() -> Unit)?,
     onBack: () -> Unit,
     onOpenEpisode: (EngineSession.Episode) -> Unit,
+    /**
+     * 把某一话排进下载队列。`null` = 桌面没接这一路（装配点没给下载根目录）⇒ **那一枚把手不摆**。
+     *
+     * 为什么不是"摆了而按不动"：与上面那枚收藏钮同一条口径（评审 R6 那一族）。
+     * 更具体的理由是这一路的写口只有一颗：`DesktopComicDownloadQueue.enqueue` 要**绝对根目录**，
+     * 而那一路拿不到根就是拿不到 —— 没有根的时候屏上一个下载把手都不该出现。
+     *
+     * ⚠️ 必传、无默认值（同 `onOpenSourceManage` 那一条：带 `{}` 默认值 = 忘传也不红）。
+     */
+    onDownloadEpisode: ((EngineSession.Episode) -> Unit)?,
+    /**
+     * 某一话在本机/队列里的状态那句话（算好的**成品文案**，`null` = 这一话没有任何可念的）。
+     *
+     * 为什么判据在壳里而不是这一屏自己查那张表：那张队列表是进程级单例，
+     * `DesktopMaskJudgementSingleSourceTest` ③ 对"屏自己去找一份状态"同一口径已经钉过一轮 ——
+     * 屏只搬，不算。这一格与收藏那三态同形：**还没读回来 ≠ 确实没有**。
+     */
+    episodeNoteOf: (EngineSession.Episode) -> String?,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -157,6 +189,8 @@ internal fun DesktopComicDetailScreen(
                     EpisodeList(
                         episodes = info.episodes,
                         onOpenEpisode = onOpenEpisode,
+                        onDownloadEpisode = onDownloadEpisode,
+                        episodeNoteOf = episodeNoteOf,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -167,6 +201,8 @@ internal fun DesktopComicDetailScreen(
                     EpisodeList(
                         episodes = info.episodes,
                         onOpenEpisode = onOpenEpisode,
+                        onDownloadEpisode = onDownloadEpisode,
+                        episodeNoteOf = episodeNoteOf,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -215,6 +251,8 @@ private fun DetailHead(
 private fun EpisodeList(
     episodes: List<EngineSession.Episode>,
     onOpenEpisode: (EngineSession.Episode) -> Unit,
+    onDownloadEpisode: ((EngineSession.Episode) -> Unit)?,
+    episodeNoteOf: (EngineSession.Episode) -> String?,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -244,7 +282,12 @@ private fun EpisodeList(
             // （本仓记过 `LazyVerticalGrid` 进 `verticalScroll` 那条 `infinity maximum height` 崩溃。）
         ) {
             items(episodes) { ep ->
-                EpisodeRow(ep = ep, onOpen = { onOpenEpisode(ep) })
+                EpisodeRow(
+                    ep = ep,
+                    onOpen = { onOpenEpisode(ep) },
+                    onDownload = onDownloadEpisode?.let { { it(ep) } },
+                    note = episodeNoteOf(ep),
+                )
             }
         }
     }
@@ -254,38 +297,70 @@ private fun EpisodeList(
 private fun EpisodeRow(
     ep: EngineSession.Episode,
     onOpen: () -> Unit,
+    onDownload: (() -> Unit)?,
+    note: String?,
 ) {
     val tokens = VeneraTokens
     // `placeholder` 是源站的「占位话」（一般要付费/要登录才给内容）。
     // 这类条目**仍然可点**：点进去由阅读器如实说「这一话取不到页」，
     // 比在这里静默变灰（用户点了没反应，像坏了）要好。
-    VeneraCard(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onOpen,
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.space3,
-                vertical = tokens.spacing.space3,
-            ),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2),
         ) {
-            Text(
-                text = ep.name.ifBlank { ep.id },
-                fontSize = tokens.type.body,
-                color = tokens.color.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            // 整行那颗卡片仍是"点题名进阅读器"（与批 96 之前一致）。
+            VeneraCard(
                 modifier = Modifier.weight(1f),
-            )
-            if (ep.placeholder) {
-                Text(
-                    text = "占位话",
-                    fontSize = tokens.type.caption,
-                    color = tokens.color.textTertiary,
-                )
+                onClick = onOpen,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = tokens.spacing.space3,
+                        vertical = tokens.spacing.space3,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = ep.name.ifBlank { ep.id },
+                        fontSize = tokens.type.body,
+                        color = tokens.color.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (ep.placeholder) {
+                        Text(
+                            text = "占位话",
+                            fontSize = tokens.type.caption,
+                            color = tokens.color.textTertiary,
+                        )
+                    }
+                }
             }
+            // 把手放在卡片**外面**：批 96 那一次"按钮嵌在整行 clickable 里会吃掉点击"
+            // 的坑就是这么避开的（两枚各拿各的命中框；无头判据钉"按把手时没进阅读器"）。
+            // 没有写口（`onDownload == null`）时这一枚**整颗不摆**。
+            if (onDownload != null) {
+                VeneraButton(onClick = onDownload) {
+                    Text(DESKTOP_EPISODE_DOWNLOAD_LABEL, fontSize = tokens.type.caption)
+                }
+            }
+        }
+        // 那一行下面念的是这一话的本机状态（排队中 / 正在下几页 / 已停手 / 失败 / 已有几页）。
+        // 只挂在**这一行**上：从前批 97 量到过"三行一起念同一句进度"，靠的就是话号各归各行。
+        if (note != null) {
+            Text(
+                text = note,
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+                modifier = Modifier.padding(
+                    start = tokens.spacing.space3,
+                    top = tokens.spacing.space1,
+                ),
+            )
         }
     }
 }

@@ -50,8 +50,10 @@ import kotlinx.coroutines.withContext
  *    走 MediaStore 还有个附加好处：**即便父目录里有 `.nomedia`**（漫画根由
  *    [ComicStorageRoot.ensureRoot] 建过一枚，防离线漫画污染系统相册），显式插入的行
  *    仍然登记在册，系统相册收得到。
- * 2. **直接 File 写入**。落点换算不出公共存储相对路径（换到外置卡、或用户选了别处）时兜底。
- *    应用持有 `MANAGE_EXTERNAL_STORAGE`（漫画库本身就靠它写在公共存储上），所以写得进去。
+ * 2. **直接 File 写入**。落点换算不出公共存储相对路径（换到外置卡、或用户选了别处）、
+ *    或 MediaStore 一条路走不通时兜底。
+ *    直写公共目录要求应用持有 `MANAGE_EXTERNAL_STORAGE`（「所有文件访问」），
+ *    没持有时如实抛可读报错（去授权或改回默认目录），不扔裸 EPERM。
  *    写完后 `scanFile` 通知媒体库 —— 这一条会被 `.nomedia` 挡住，所以它只是"尽力"，
  *    返回给 UI 的路径**始终是真实落点**，不拿"已存进相册"糊弄。
  *
@@ -215,9 +217,13 @@ object GallerySaver {
         }
 
     /**
-     * 走 MediaStore。落点不被系统接受（换算不出相对路径 / 插入返回 null / 抛参数错）时返回 null，
-     * 由调用方直写文件 —— **只有"落点被拒"才回落**；占位行建好了却写不进字节属于真失败，
-     * 那种情况清掉占位行后照原样抛错，不能悄悄换个地方写。
+     * 走 MediaStore。**任何一步走不通都返回 null** 交由调用方直写文件：
+     * - 落点换算不出相对路径、插入返回 null / 抛参数错 —— 老的回落条件；
+     * - 占位行建好了却写不进字节（2026-11-04 真机案例：下载目录选了 `/storage/emulated/0/图片`，
+     *   `RELATIVE_PATH=图片` 的顶级目录不在 MediaProvider 认的名册里，插入即被拒；
+     *   还有 ROM 对 pending 写入报 EPERM）—— 从前这条照原样抛错，结果整次保存就死在
+     *   「相册不收、直写又没试」的半路上。
+     * 失败时先清掉占位行再回落，不会留下 0 字节坏图，也不会写出两份。
      */
     private fun saveToAlbum(
         context: Context,
@@ -240,7 +246,7 @@ object GallerySaver {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
         val uri: Uri = runCatching { resolver.insert(collection, values) }.getOrNull() ?: return null
-        try {
+        return try {
             resolver.openOutputStream(uri)?.use { it.write(bytes) }
                 ?: throw IOException("打不开相册的写入流")
             resolver.update(
@@ -249,12 +255,12 @@ object GallerySaver {
                 null,
                 null,
             )
+            File(dir, name).absolutePath
         } catch (e: Exception) {
-            // 半途失败要清掉那条占位记录，否则相册里留一张 0 字节的"坏图"。
+            // 半途失败清掉占位记录（否则相册里留一张 0 字节的"坏图"），回落直写。
             runCatching { resolver.delete(uri, null, null) }
-            throw e
+            null
         }
-        return File(dir, name).absolutePath
     }
 
     /** 直写文件兜底。目录建不出来或写不进去就如实抛错，不换地方藏。 */
@@ -265,6 +271,14 @@ object GallerySaver {
         mime: String,
         bytes: ByteArray,
     ): String {
+        // MediaStore 不收的落点（用户自建顶级目录如「图片」）只能靠 File 直写，
+        // 而分区存储下直写公共目录必须有「所有文件访问」。没授权时把话说清，
+        // 别扔一条裸 EPERM 让人以为 app 坏了（2026-11-04 用户截图里那条原始报错）。
+        if (!Environment.isExternalStorageManager()) {
+            throw IOException(
+                "没有「所有文件访问」权限，写不进 ${dir.absolutePath}；去系统设置授权，或在画廊设置里恢复默认下载目录"
+            )
+        }
         if (!dir.exists() && !dir.mkdirs()) {
             throw IOException("目标目录建不出来：${dir.absolutePath}")
         }

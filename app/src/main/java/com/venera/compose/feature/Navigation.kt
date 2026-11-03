@@ -229,7 +229,6 @@ import androidx.compose.material3.IconButton
     val keyword: String? = null,
 )
 @Serializable data object DownloadRoute
-@Serializable data object LocalComicRoute
 
 /** 详情页的入口载荷。S2 会改成「带 sourceKey+comicId，由 ViewModel 拉真详情」，现在先保持行为一致。 */
 @Serializable data class CoverViewerRoute(val coverUrl: String, val title: String)
@@ -510,32 +509,39 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
     VeneraNavTab.FAVORITES -> FavoritesRoute
     VeneraNavTab.SEARCH -> SearchRoute
     VeneraNavTab.GALLERY -> GalleryRoute
-    VeneraNavTab.EXPLORE -> ExploreRoute
+    VeneraNavTab.DOWNLOADS -> DownloadRoute
 }
 
 /**
- * 这条目的地是第几个主 Tab；不是 Tab 就返回 null。
+ * 这条目的地在第几个主 Tab 槽位；不是 Tab 就返回 null。
+ *
+ * 槽位放大 10 倍（0/10/20/30）是为探索留的：探索并入搜索页分段后（2026-11-03）它不再是
+ * 主 Tab，但与搜索是"同一页的两个分段"，切换仍要整页横推 —— 给它一个紧贴搜索的
+ * **虚拟槽位 15**，方向判定照旧走 compare，而枚举里不用为它留一个假格子。
  *
  * 判据与 [VeneraComposeApp] 里 `currentTab` 那串 `hasRoute` 同源 —— 两处若走了两套口径，
  * 就会出现"底栏点亮了、切页动画却没有方向"这种读不出来的不一致。
  */
 private fun NavDestination.tabIndex(): Int? {
-    val tab = when {
-        hasRoute(HomeRoute::class) -> VeneraNavTab.HOME
-        hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
-        hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
-        hasRoute(GalleryRoute::class) -> VeneraNavTab.GALLERY
+    val slot = when {
+        hasRoute(HomeRoute::class) -> 0
+        hasRoute(FavoritesRoute::class) -> 30
+        hasRoute(SearchRoute::class) -> 10
+        hasRoute(GalleryRoute::class) -> 20
         // 子页同样算 GALLERY：与 `currentTab` 那处同源（两处口径分叉就会出现
         // "底栏点亮了、切页动画却没有方向"，那条注释在 `tabIndex` 上写着）。
-        hasRoute(GalleryDailyRoute::class) -> VeneraNavTab.GALLERY
+        hasRoute(GalleryDailyRoute::class) -> 20
         // 浏览历史同理：它是画廊 Tab 下的一层，底栏不消失（同 GalleryDailyRoute 的理由）。
-        hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
+        hasRoute(GalleryHistoryRoute::class) -> 20
         // 收藏 hub 与 pixiv 书签页：同样是从画廊 Tab 往下走一层（第三十一轮那枚 🔖 的落点）。
-        hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
-        hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
+        hasRoute(GalleryBookmarksHubRoute::class) -> 20
+        // 探索：搜索页的"探索"分段（虚拟槽位，见函数头注）。
+        hasRoute(ExploreRoute::class) -> 15
+        // 下载与本地：第五格（2026-11-03，探索退役后换上来的）。
+        hasRoute(DownloadRoute::class) -> 40
         else -> return null
     }
-    return VeneraNavTab.entries.indexOf(tab)
+    return slot
 }
 
 /**
@@ -573,11 +579,26 @@ private fun titleFor(tab: VeneraNavTab): String = when (tab) {
     VeneraNavTab.FAVORITES -> "我的收藏"
     VeneraNavTab.SEARCH -> "搜索与发现"
     VeneraNavTab.GALLERY -> "画廊"
-    VeneraNavTab.EXPLORE -> "探索"
+    VeneraNavTab.DOWNLOADS -> "下载与本地"
 }
 
 private fun NavHostController.gotoTab(tab: VeneraNavTab) {
     navigate(routeFor(tab)) {
+        launchSingleTop = true
+        restoreState = true
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+    }
+}
+
+/**
+ * 跳到搜索页的「探索」分段（2026-11-03，探索 tab 退役后的唯一入口）。
+ *
+ * 与 [gotoTab] 同一个 pattern（restoreState + popUpTo saveState）：两个分段各自记着自己的
+ * 滚动锚与状态，来回切不丢。区别只在目的地是 [ExploreRoute] —— 它已不在底栏，但仍是
+ * NavHost 上的主层级目的地（转场按"与搜索相邻"的虚拟槽位横推，见 `tabIndex`）。
+ */
+private fun NavHostController.gotoExploreSegment() {
+    navigate(ExploreRoute) {
         launchSingleTop = true
         restoreState = true
         popUpTo(graph.findStartDestination().id) { saveState = true }
@@ -629,7 +650,11 @@ fun VeneraComposeApp() {
         // 标签直达搜索（2026-10-23，用户「从漫画详情页点 tag 跳过去的 tag 搜索没底栏」）：
         // 它是搜索 Tab 往下走的一层 —— 底栏不该消失，切页动画也沿用 SEARCH 的方向。
         destination.hasRoute(TagSearchRoute::class) -> VeneraNavTab.SEARCH
-        destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.EXPLORE
+        // 探索并入搜索页分段（2026-11-03）：目的地还在，但底栏点亮的是**搜索**那格
+        // —— 用户读到的现在是"同一个页面的另一个分段"，不再是第五格。
+        destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.SEARCH
+        // 下载与本地（2026-11-03）：第五格，全项目唯一的下载/本地入口。
+        destination.hasRoute(DownloadRoute::class) -> VeneraNavTab.DOWNLOADS
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
         else -> null
@@ -840,10 +865,6 @@ fun VeneraComposeApp() {
                                     haptic()
                                     context.openSettingsSubScreen(SettingsSubScreen.STATS)
                                 },
-                                onOpenLocal = {
-                                    haptic()
-                                    context.openSettingsSubScreen(SettingsSubScreen.LOCAL_COMICS)
-                                },
                                 // 图片收藏已并入收藏页第三个分段，主页那个入口随之删除。
                                 onOpenSourceManage = {
                                     haptic()
@@ -883,6 +904,13 @@ fun VeneraComposeApp() {
                                 animatedVisibilityScope = this,
                                 onSelect = ::openComic,
                                 consumesBottomBarClearance = true,
+                                // 探索并进本页（2026-11-03）：主搜索亮「搜索」段，胶囊拨「探索」走
+                                // gotoExploreSegment（存档口径与切主 Tab 一致，来回切不丢状态）。
+                                showSegment = true,
+                                onSwitchToExplore = {
+                                    haptic()
+                                    navController.gotoExploreSegment()
+                                },
                             )
                         }
                     }
@@ -1220,6 +1248,11 @@ fun VeneraComposeApp() {
                                         )
                                     )
                                 },
+                                // 分段胶囊往回拨：与 gotoTab(SEARCH) 同一个存档口径，来回切不丢状态。
+                                onSwitchToSearch = {
+                                    haptic()
+                                    navController.gotoTab(VeneraNavTab.SEARCH)
+                                },
                             )
                         }
                     }
@@ -1236,39 +1269,20 @@ fun VeneraComposeApp() {
                             )
                         }
                     }
+                    // 「下载与本地」（2026-11-03）：主 Tab 第五格，全项目唯一的下载/本地入口。
+                    // 旧 DownloadScreen / LocalComicScreen 两屏的功能已并入 DownloadsLocalScreen，
+                    // 两屏间的互跳入口随合并消失。
                     composable<DownloadRoute> {
-                        DownloadScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                            onNavigateToLocalLibrary = {
-                                haptic()
-                                navController.navigate(LocalComicRoute)
-                            }
-                        )
-                    }
-                    composable<LocalComicRoute> {
-                        LocalComicScreen(
-                            onBack = {
-                                haptic()
-                                navController.popBackStack()
-                            },
-                            onOpenLocalSession = { session ->
-                                haptic()
-                                shell.pendingSession = session
-                                navController.navigate(ReaderRoute)
-                            },
-                            onNavigateToDownloads = {
-                                haptic()
-                                navController.navigate(DownloadRoute)
-                            },
-                            onOpenComicDetail = { item ->
-                                haptic()
-                                shell.selectedComic = item
-                                navController.navigate(DetailRoute(comicId = item.id, sourceName = item.sourceName))
-                            }
-                        )
+                        CoverTransitionHost(animatedVisibilityScope = this) {
+                            DownloadsLocalScreen(
+                                onSelectComic = ::openComic,
+                                onOpenLocalSession = { session ->
+                                    haptic()
+                                    shell.pendingSession = session
+                                    navController.navigate(ReaderRoute)
+                                },
+                            )
+                        }
                     }
                     composable<DetailRoute> { entry ->
                         val route = entry.toRoute<DetailRoute>()

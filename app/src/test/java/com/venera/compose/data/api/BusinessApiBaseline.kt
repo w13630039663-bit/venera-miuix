@@ -103,6 +103,12 @@ private val DEFAULT_ATTRIBUTION: Map<String, String> = mapOf(
 
 private val SITE_OVERRIDE: Map<String, String> = mapOf(
     // ── 冻结屏（FREEZE-STATEMENT.md:8-15）：甲裁决下长期留存，逐条写解锁条件 ──
+    // 2026-11-04「下载与本地」图片段：读图廊下载记录表，与 gallery/ui/GalleryPostScreen.kt:1044
+    // 那颗入队点同一实例（记录表只活在这颗单例上，别处再开一份就是两本账）。
+    // 解锁条件：`GalleryPorts` 补一颗 galleryDownloads 口（契约形状照 data/api/FavoritesOfflineApi.kt:95
+    // 的 DownloadQueue 那族）后摘本条，同时能连带收掉 GalleryPostScreen / PixivWorkScreen 那族存量。
+    "feature/DownloadsLocalScreen.kt#GalleryDownloadManager" to
+        "同 gallery/ui/GalleryPostScreen.kt:1044 的入队点；解锁条件 = GalleryPorts 补 galleryDownloads 契约口后摘除",
     "feature/explore/UnifiedExploreScreen.kt#ComicSourceManager" to FROZEN_SCREEN,
     "feature/explore/UnifiedExploreScreen.kt#ContentGuardManager" to FROZEN_SCREEN,
     "feature/explore/SourceSectionScreen.kt#ComicSourceManager" to FROZEN_SCREEN,
@@ -154,6 +160,10 @@ internal val ATTRIBUTION: Map<String, String> = DEFAULT_ATTRIBUTION + SITE_OVERR
 
 /** A ——「UI import 业务实现类」。最新：20 颗文件 / 32 条。 */
 internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
+        // 2026-11-04「下载与本地」：图廊记录表只活在 `GalleryDownloadManager` 那颗上，
+        // 屏侧读它的 `tasks` 流（与 `GalleryPostScreen` 入队那条同源）。
+        // 解锁条件：`GalleryPorts` 补一颗 `galleryDownloads` 口后摘掉本条。
+        "feature/DownloadsLocalScreen.kt" to setOf("GalleryDownloadManager"),
         "feature/ComicDetailScreen.kt" to setOf("TagTranslationManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
@@ -178,7 +188,12 @@ internal val BASELINE_IMPORT: Map<String, Set<String>> = mapOf(
 
 /** B ——「UI 直连取单例」：哪颗文件还直连着谁。最新：20 颗文件 / 29 条，站点总数 33。 */
 internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
+        // 2026-11-03 首次启动引导：装配根取 `GelbooruAccount` 的身份流一条。
+        // 其余开口全走契约（`onboardingDone` 上 `ComicPreferences`、下载根上 `NetworkPreferences.downloadRootPath`）。
+        // 解锁条件：`GalleryCredentials` 契约补上 identity 流后摘掉这条。
+        "MainActivity.kt" to setOf("GelbooruAccount"),
         "feature/ComicDetailScreen.kt" to setOf("DownloadManager", "TagTranslationManager"),
+        "feature/DownloadsLocalScreen.kt" to setOf("GalleryDownloadManager"),
         "feature/FavoriteImagesScreen.kt" to setOf("FavoriteImagesManager"),
         "feature/FavoritesScreen.kt" to setOf("ContentGuardManager"),
         "feature/FollowUpdatesViewModel.kt" to setOf("FollowUpdatesRepository"),
@@ -209,7 +224,9 @@ internal val BASELINE_GET_INSTANCE: Map<String, Set<String>> = mapOf(
 // 2026-10-20：33 → 31。迁走的两处是 eature/HomeScreen.kt 里那两个
 // ContentGuardManager.getInstance(LocalContext.current)（历史卡封面 + 推荐轮播卡），
 // 判定链一字未改，只是"怎么拿到那颗单例"收进了 LocalUxPlatformServices。
-internal const val SITE_TOTAL_GET_INSTANCE = 31
+// 2026-11-03：31 → 32。新增的一处是 MainActivity 为引导屏装配 `GelbooruAccount` 身份流（见 B 表首条）。
+// 2026-11-04：32 → 33。新增的一处是「下载与本地」读图廊下载记录表（见 B 表首注释的解锁条件）。
+internal const val SITE_TOTAL_GET_INSTANCE = 33
 
 /** C ——「把实现类当类型用」（跨两行的间接穿透）。最新：15 颗文件 / 20 条。 */
 internal val BASELINE_TYPE_SITE: Map<String, Set<String>> = mapOf(

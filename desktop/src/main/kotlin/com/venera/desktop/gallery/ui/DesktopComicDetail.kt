@@ -179,7 +179,11 @@ internal fun desktopComicChapterOutcome(
  * 画廊那张卡点开是覆盖层（半屏还能看见墙），而漫画详情要点开某一话——那是**换一屏**，
  * 与画师单人页同形。覆盖层那条路要处理"压在模糊之上"的一整族问题，这里没有收益。
  */
-internal const val DESKTOP_CHAPTER_DOWNLOAD_HINT: String = "长按某一话可把它存到本机"
+// ⚠️ 2026-10-21（第一百一十四批）：这句从前写的是「长按某一话」，而当前渲染路里**没有长按** ——
+// 那是已被拆掉的 Fluent 平行线（`gallery/ui/DesktopComicPane.kt`）的形状。
+// 同一条改口也说明：这一颗今天**没有任何调用点**（详情屏那枚把手用的是
+// `DESKTOP_EPISODE_DOWNLOAD_LABEL`），留着它只因为它是台账记过的措辞债；要么由下一批接上，要么删掉。
+internal const val DESKTOP_CHAPTER_DOWNLOAD_HINT: String = "点某一话右侧的「下载这一话」可把它存到本机"
 
 /**
  * 那一行状态的人话（屏上只摆这一句，`D_下载` / `D_下载进度` / `D_下载取消` 三行只进 stdout —— 取证读数不进界面）。
@@ -259,6 +263,35 @@ internal fun desktopComicChapterDownloadOf(task: DesktopComicQueueTask?): Deskto
             failure = task.error, pagesOnDisk = task.downloadedPages, cancelled = false, queued = false,
         )
     }
+}
+
+/**
+ * 章节表里**某一具体行**下面那一句本机状态（第一百一十四批：详情屏的下载把手用）。
+ *
+ * ## 为什么不是复用 [desktopComicQueueTaskOf]
+ *
+ * 那颗是"这一本当前那一笔"（正在跑 → 排着 → 最近那一笔 三档挑一），它按**本子**取一笔 ——
+ * 拿给整张章节表用就会三行齐念同一句进度。那是批 97 量到并立判据的那条缺陷
+ * （「那一行状态只挂在被长按的那一行上」）。这里按**行号**取，取不到就念"没有可念的"（回 `null`，
+ * 屏上那一行下面一个字都不摆），而不是退回去念"这一本最近那一笔"。
+ *
+ * ## 口径全部抄既有那两枚，不另写一份
+ *
+ * [desktopComicChapterDownloadOf]（档位 → 状态）与 [desktopComicChapterStatusText]（状态 → 人话）
+ * 各自有判据钉着（批 101 ⑯ / 批 96 五档各念一句），这一颗只做"按行取那一笔"这一跳。
+ */
+internal fun desktopComicEpisodeDownloadNote(
+    tasks: List<DesktopComicQueueTask>,
+    sourceKey: String,
+    comicId: String,
+    chapterOrder: Int,
+): String? {
+    if (chapterOrder < 0) return null
+    val task = tasks.firstOrNull {
+        it.sourceKey == sourceKey && it.comicId == comicId && it.chapterOrder == chapterOrder
+    } ?: return null
+    val state = desktopComicChapterDownloadOf(task) ?: return null
+    return desktopComicChapterStatusText(state)
 }
 
 /** 那一枚把手的人话（批 100）：桌面没有右键，动作没有可见把手就没人找得到（本仓那条口径）。 */

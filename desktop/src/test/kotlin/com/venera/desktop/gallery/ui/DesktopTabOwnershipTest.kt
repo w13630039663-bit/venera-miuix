@@ -5,7 +5,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 钉住「五个 tab 不许互相冒充」—— 2026-10-20 用户当场抓到的那一颗越界。
+ * 钉住「主 tab 不许互相冒充」—— 2026-10-20 用户当场抓到的那一颗越界。
+ *
+ * 2026-11-03 更新：探索并入搜索页的分段（`SearchDiscoverSegmentBar`，见
+ * `VeneraDesktopLargeScreen` 的 SEARCH 分支块），`VeneraNavTab` 只剩四格 ——
+ * 探索内容显式住进 SEARCH 分支块里，不再单列一格。
  *
  * ## 越界长什么样
  *
@@ -71,13 +75,15 @@ class DesktopTabOwnershipTest {
     }
 
     @Test
-    fun `五个 tab 各走各的分支 不许 else 兜回某一屏冒充`() {
+    fun `四个 tab 各走各的分支 不许 else 兜回某一屏冒充`() {
         val branches = dispatchBranches()
         assertTrue("一个 VeneraNavTab 分支都没读到，判据失效（不是通过）：${shellFile().name}", branches.isNotEmpty())
 
-        // HOME / FAVORITES / SEARCH / EXPLORE 都必须显式点名：
+        // HOME / FAVORITES / SEARCH 都必须显式点名：
         // 落在 else 里就等于"谁都没给它写屏"，那正是上一版的形状。
-        val mustBeExplicit = listOf("HOME", "FAVORITES", "SEARCH", "EXPLORE")
+        // EXPLORE（2026-11-03）不再是主 tab：它的屏显式住在 SEARCH 分支块的分段里，
+        // 由 DesktopTabOwnershipTest 之外那条「探索分段在 SEARCH 块内」的判据管。
+        val mustBeExplicit = listOf("HOME", "FAVORITES", "SEARCH")
         val missing = mustBeExplicit.filter { it !in branches }
         assertTrue(
             "这些 tab 没有显式分支（掉进 else 就会被别的屏冒充）：$missing\n" +
@@ -105,7 +111,22 @@ class DesktopTabOwnershipTest {
     fun `没接的屏要走如实报的 DesktopNotWiredPane`() {
         val branches = dispatchBranches()
         val notWired = branches.filterValues { it.contains("DesktopNotWiredPane") }
-        val wrong = notWired.keys - setOf("HOME", "FAVORITES", "SEARCH", "EXPLORE")
-        assertTrue("DesktopNotWiredPane 只该给还没接的那四屏用，多出来的：$wrong", wrong.isEmpty())
+        val wrong = notWired.keys - setOf("HOME", "FAVORITES", "SEARCH")
+        assertTrue("DesktopNotWiredPane 只该给还没接的那几屏用，多出来的：$wrong", wrong.isEmpty())
+
+        // 探索分段（2026-11-03）：DesktopExploreScreen 必须显式住在 SEARCH 分支块内，
+        // 不许整块消失（那是"探索没了"的静默回归），也不许另立一格。
+        val searchBlock = branches["SEARCH"].orEmpty()
+        val shell = shellFile().readText().lines()
+            .filter { l -> !l.trimStart().startsWith("//") && !l.trimStart().startsWith("*") && !l.trimStart().startsWith("/*") }
+            .joinToString("\n")
+        val searchIdx = shell.indexOf("VeneraNavTab.SEARCH -> {")
+        assertTrue("SEARCH 分支不是块体，探索分段没了锚点：$searchBlock", searchIdx >= 0)
+        val nextBranch = shell.indexOf("VeneraNavTab.FAVORITES ->", searchIdx).let { if (it < 0) shell.length else it }
+        val block = shell.substring(searchIdx, nextBranch)
+        assertTrue(
+            "SEARCH 分支块里要同时有搜索 pane 与探索 pane（探索并进分段，不是删掉）：DesktopSearchScreen=${block.contains("DesktopSearchScreen(")} DesktopExploreScreen=${block.contains("DesktopExploreScreen(")}",
+            block.contains("DesktopSearchScreen(") && block.contains("DesktopExploreScreen("),
+        )
     }
 }

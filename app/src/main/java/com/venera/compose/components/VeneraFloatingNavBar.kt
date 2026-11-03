@@ -28,6 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/**
+ * 主 Tab 五格（2026-11-03：探索并入搜索页的分段后，第五格换成了「下载与本地」——
+ * 全项目唯一的下载/本地入口，见 `DownloadsLocalScreen` 头注）。
+ */
 enum class VeneraNavTab(
     val title: String,
     val outlinedIcon: ImageVector,
@@ -37,7 +41,7 @@ enum class VeneraNavTab(
     SEARCH("搜索", Icons.Outlined.Search, Icons.Filled.Search),
     GALLERY("图廊", Icons.Outlined.Image, Icons.Filled.Image),
     FAVORITES("收藏", Icons.Outlined.BookmarkBorder, Icons.Filled.Bookmark),
-    EXPLORE("探索", Icons.Outlined.Explore, Icons.Filled.Explore)
+    DOWNLOADS("下载", Icons.Outlined.CloudDownload, Icons.Filled.CloudDownload),
 }
 
 /**

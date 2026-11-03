@@ -95,7 +95,13 @@ class DesktopEngineCallCoverageTest {
         )
     }
 
-    /** 调用点分布：两处 UI 文件、3 + 1 枚。 */
+    /**
+     * 调用点分布：壳 3 + 装配点 1 + 下载泵 2。
+     *
+     * 2026-10-21（第一百一十四批）改：泵接上壳里那颗常驻 `uiEngine` 之后，
+     * `DesktopComicQueueRunner.kt` 里那两跳也与 UI 抢同一颗 Context ⇒ 它同样过那一层，
+     * 分布多出这一行。少一处 = 有人把泵里那两跳的锁撤了。
+     */
     @Test
     fun desktopEngineCall的调用点恰好是那四处() {
         val counts = DesktopSourceTree.desktopMainSources()
@@ -105,7 +111,11 @@ class DesktopEngineCallCoverageTest {
             .toMap()
         assertEquals(
             "`desktopEngineCall` 的分布变了：多一处 = 新接一屏没写进这份口径；少一处 = 有人把某条链的锁撤了。",
-            mapOf("VeneraDesktopLargeScreen.kt" to 3, "VeneraDesktop.kt" to 1),
+            mapOf(
+                "VeneraDesktopLargeScreen.kt" to 3,
+                "VeneraDesktop.kt" to 1,
+                "DesktopComicQueueRunner.kt" to 2,
+            ),
             counts,
         )
     }
@@ -157,30 +167,38 @@ class DesktopEngineCallCoverageTest {
     }
 
     /**
-     * 下载那条泵**至今没接进大屏壳**（如实记账，不是"不需要锁"）。
+     * 下载那条泵**已接进大屏壳**（2026-10-21 第一百一十四批），于是它里面那两跳必须过锁。
      *
-     * 量到的事实：`desktopComicStartQueuePump` 在 `desktop/src/main` 里只有它自己的定义那颗文件，
-     * 零调用点 ⇒ 那条循环里的 `engine.pages(...)` / `engine.pageImage(...)` 今天碰不到 UI 那颗引擎。
-     *
-     * ⚠️ 哪天有人把它接上 `uiEngine`，那两跳就与 UI 抢同一颗 Context ⇒ **必须**改过
-     * `desktopEngineCall`。这一判把这件事钉成一条会红的读数，而不是等运行时翻车。
+     * 旧判据钉的是"零调用点"（那时那两跳碰不到共享那颗 ⇒ 无害）。调用点现在多了壳，
+     * 那条读数已经过期，所以这一判换成它**接上之后**真正要守的东西：
+     * ① 泵确实被壳递了出去（不是只写了没接）；② 递出去的那颗是壳里那枚常驻形参 `engine`，
+     * 也就是装配点的 `uiEngine`；③ runner 里问引擎的那两跳**都**包在 `desktopEngineCall` 里。
      */
     @Test
-    fun 下载那条泵还没接上UI那颗引擎() {
+    fun 下载那条泵已接上壳而它问引擎的两跳都过了锁() {
         val refs = DesktopSourceTree.desktopMainSources().filter {
             DesktopSourceTree.codeOccurrences(it, "desktopComicStartQueuePump(") > 0
         }.map { it.name }.sorted()
         assertEquals(
-            "泵接上了新地方 ⇒ 它里面那几跳（pages / pageImage）现在与 UI 共享同一颗 Context，" +
-                "必须改过 desktopEngineCall 再改这里：",
-            listOf("DesktopComicQueueRunner.kt"),
+            "泵的调用点变了：定义那颗 + 唯一一处递引擎的壳。多出别处 = 有了第二圈泵" +
+                "（两圈一起读同一张表就是同一话下载两遍）：",
+            listOf("DesktopComicQueueRunner.kt", "VeneraDesktopLargeScreen.kt"),
             refs,
         )
-        // 那颗文件里的确有两跳裸问引擎（今天无害，因为没人递那颗共享引擎）。
-        // ⚠️ 判式不锚行首：两跳一处写作 `val pages = engine.pages(...)`、
-        // 一处藏在 lambda 里 `{ page -> engine.pageImage(...) }`（第一版锚了行首，数出 0 跳）。
-        val naked = DesktopSourceTree.codeLinesOf(DesktopSourceTree.desktopSourceOf("gallery/ui/DesktopComicQueueRunner.kt"))
-            .filter { Regex("""\bengine\s*\.\s*(pages|pageImage)\s*\(""").containsMatchIn(it) }
-        assertEquals("下载那颗问引擎的跳数变了（要重判它是否共享 UI 那颗）：", 2, naked.size)
+        // 壳里递出去的那颗必须是常驻形参 `engine`，不能是新造的一颗（每次重组新建 JS 宿主就是几百 MB）。
+        val shell = codeOnly("VeneraDesktopLargeScreen.kt").joinToString("\n")
+        assertTrue(
+            "壳里递泵的引擎不再是那枚常驻形参 ⇒ 要么新建了第二颗引擎，要么泵被拆走：",
+            "desktopComicStartQueuePump(queueScope, engine, root)" in shell,
+        )
+        // runner 里那两跳必须**都**在 `desktopEngineCall` 里面，一处裸调就是与 UI 抢同一颗 Context。
+        val runner = asksOf("gallery/ui/DesktopComicQueueRunner.kt")
+        assertEquals("下载那颗问引擎的跳数变了（要重判它接的是哪颗引擎）：", 2, runner.size)
+        val nakedRunner = runner.filter { it.distanceFromGuard > 2 }
+        assertTrue(
+            "泵接上共享引擎以后，这些跳没过 desktopEngineCall ⇒ 会复现 `取不到 source key`：" +
+                nakedRunner.joinToString("\n") { "  距离=${it.distanceFromGuard}  ${it.line.take(90)}" },
+            nakedRunner.isEmpty(),
+        )
     }
 }

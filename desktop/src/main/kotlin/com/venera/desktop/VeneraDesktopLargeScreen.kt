@@ -20,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +35,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.VeneraNavTab
@@ -54,7 +59,33 @@ import com.venera.desktop.sourcemanage.DesktopSourceManageScreen
 import com.venera.desktop.explore.DesktopExploreScreen
 import com.venera.desktop.detail.DesktopComicDetailScreen
 import com.venera.desktop.reader.DesktopReaderScreen
+import com.venera.desktop.queue.DesktopComicQueueScreen
+import com.venera.desktop.gallery.data.DesktopComicDownloadQueue
+import com.venera.desktop.gallery.ui.desktopComicQueueRemovedLine
+import com.venera.desktop.gallery.ui.desktopComicQueueStoppedLine
+import com.venera.desktop.gallery.ui.desktopComicEpisodeDownloadNote
+import com.venera.desktop.gallery.ui.desktopComicStartQueuePump
 import com.venera.desktop.gallery.ui.DesktopWallCardModel
+import com.venera.desktop.downloads.DesktopComicDownloadsScreen
+import com.venera.desktop.gallery.ui.DesktopComicDownloadListing
+import com.venera.desktop.gallery.data.DesktopComicShelfRawIdIndex
+import com.venera.desktop.gallery.data.DesktopComicLocalChapter
+import com.venera.desktop.gallery.data.DesktopComicSourceOutcome
+import com.venera.desktop.gallery.data.desktopComicOfflineLocalChapter
+import com.venera.desktop.gallery.data.desktopComicOfflineReadingNote
+import com.venera.desktop.gallery.data.desktopComicOfflineReadingReading
+import com.venera.desktop.gallery.data.desktopComicOfflineShouldAskEngine
+import com.venera.desktop.gallery.data.desktopComicReaderPages
+import com.venera.desktop.gallery.data.desktopComicChaptersByComic
+import com.venera.desktop.gallery.data.desktopComicDownloadedScan
+import com.venera.desktop.gallery.data.desktopComicRepairChapter
+import com.venera.desktop.gallery.data.desktopComicShelfRerollKey
+import com.venera.desktop.gallery.ui.desktopComicDeleteChapter
+import com.venera.desktop.gallery.ui.desktopComicDeleteRowKey
+import com.venera.desktop.gallery.ui.desktopComicDeleteScreenLine
+import com.venera.desktop.gallery.ui.desktopComicDeleteShouldFire
+import com.venera.desktop.gallery.ui.desktopComicDeleteNextKey
+import com.venera.desktop.gallery.ui.desktopComicDownloadedReading
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 
@@ -153,6 +184,18 @@ fun VeneraDesktopLargeScreen(
     addFavorite: (suspend (com.venera.compose.data.db.FavoriteRecord) -> Unit)? = null,
     /** 搜索：给关键词，回结果。 */
     searchComics: (suspend (String) -> List<com.venera.engineprobe.EngineSession.ComicCard>)? = null,
+    /**
+     * 漫画章节下载那一格的**根目录**（装配点给的是 `数据根/downloads`）。
+     *
+     * 为什么可空：这一路的写口只有 `DesktopComicDownloadQueue.enqueue(root, …)` 一颗，
+     * 而它必须要绝对根。拿不到根 ⇒ 详情那一屏的「下载这一话」**整颗不摆**、
+     * 那一圈泵也**不起** —— 与「没有写口就没有那枚钮」同一条口径（评审 R6 那一族）。
+     *
+     * 泵为什么挂在这颗壳上而不是详情那一屏：详情那一屏的 runner 从前挂在
+     * `rememberCoroutineScope()` 上 ⇒ **离开那一屏就死**，跑到一半那一话既不完成也不留痕。
+     * 挂在这一层（与窗口同寿命的那颗 `engine` 同一个作用域）才是"换屏不断"。
+     */
+    downloadsRoot: java.io.File? = null,
 ) {
     // 墙上的卡片在**壳里**拉，不在 pane 里拉：pane 只吃 `List<DesktopWallCardModel>`
     // （`DesktopUiIsolationTest` ② 那条"UI 只吃形参"的形状）。
@@ -196,6 +239,8 @@ fun VeneraDesktopLargeScreen(
     var exploreNote by remember { mutableStateOf<String?>(null) }
     // 重取一次的触发器：`reloadTick` 变一次，下面那个 LaunchedEffect 就重跑一次。
     var exploreTick by remember { mutableIntStateOf(0) }
+    // 探索并进搜索分段（2026-11-03，与安卓同一形态）：底栏/侧栏四格，探索内容住搜索格的分段里。
+    var desktopExploreSegment by remember { mutableStateOf(false) }
 
 
     // ── 收藏 / 搜索 / 源管理 的状态（2026-10-21）──
@@ -215,6 +260,20 @@ fun VeneraDesktopLargeScreen(
     var sourceNote by remember { mutableStateOf<String?>(null) }
     var sourceTick by remember { mutableIntStateOf(0) }
 
+    // ── 「本机已下载」那一屏的状态（第一百一十五批）──
+    //
+    // 那一棵树数回来的结果。`null` = **还没数回来**（屏上念另一句，不念"本机没有"）。
+    var downloadsListing by remember { mutableStateOf<DesktopComicDownloadListing?>(null) }
+    // 上一次按下的果（补齐排进队 / 删完了 / 删不动）。
+    var downloadsNote by remember { mutableStateOf<String?>(null) }
+    // 删除是**同步**改盘的（返回就是删完了）⇒ 按完立刻自己重读一次盘，不等队列那张表。
+    var downloadsTick by remember { mutableIntStateOf(0) }
+    // 「武装 → 再按才真删」那两步的状态：记的是**哪一行**武装着（身份串取自那颗纯函数）。
+    //
+    // ⚠️ 它挂在壳里而不是屏里：屏只吃 `armedKey: String?`，于是"第二次按下才真删"那条纪律
+    // 能被无头喂数据钉住（屏里有状态就得靠点界面来确认，而本仓不许靠人眼点）。
+    var armedDeleteKey by remember { mutableStateOf<String?>(null) }
+
 
     // 打码判据：与墙上同一条链（`LocalUxPlatformServices`），不另立一套。
     // 档位判定吃**窗口宽**（不是物理屏宽）：桌面没有"整块屏"这个概念，
@@ -233,6 +292,30 @@ fun VeneraDesktopLargeScreen(
     // 用 `rememberCoroutineScope` 而不是 `LaunchedEffect`：这些是**一次性动作**，
     // 不是"某个状态变了就重跑" —— 用 LaunchedEffect 会让它们跟着重组反复执行。
     val scope = rememberCoroutineScope()
+
+    // ── 漫画章节下载那一圈泵（第一百一十四批：泵接上 UI）──
+    //
+    // 那一圈泵自批 101 起就写好了，而 `desktopComicStartQueuePump` 在全 main 里**零调用点**
+    // —— 也就是"表有人读、没人跑"：详情把那一笔排进去之后，盘上一页都不会多。
+    // 今天接上。
+    //
+    // 为什么用自持的 `CoroutineScope(SupervisorJob() + Dispatchers.IO)` 而不是 `scope`：
+    // `rememberCoroutineScope()` 的那颗作用域跟着**组合**走 —— 详情那一屏从前就是这么挂的，
+    // 于是离开那一屏泵就死（批 101 类注释记的那条）。这里要的是"换屏不断、退窗才停"。
+    //
+    // ⚠️ `onDispose` 只许掐这颗作用域，**不许关 `engine`**：那颗常驻引擎的生命周期在装配点
+    //（`VeneraDesktop.kt` 的 `DisposableEffect(uiEngine)`），壳里关一次就会把探索/详情/阅读一起带走。
+    // 泵被掐掉那一档由 runner 自己的 `finally` 把「正在跑」交回「待跑」，下次起窗接着排。
+    val queueScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    DisposableEffect(engine, downloadsRoot) {
+        val root = downloadsRoot
+        if (root != null) desktopComicStartQueuePump(queueScope, engine, root)
+        onDispose { queueScope.cancel() }
+    }
+    // 那张表与"读回来过没有"由壳 collect 下来递下去（屏自己不碰那颗进程级单例）。
+    val queueTasks by DesktopComicDownloadQueue.tasks.collectAsState()
+    val queuePrimed by DesktopComicDownloadQueue.primed.collectAsState()
+    var queueNote by remember { mutableStateOf<String?>(null) }
 
 
     val ux = com.venera.compose.components.LocalUxPlatformServices.current
@@ -299,46 +382,93 @@ fun VeneraDesktopLargeScreen(
     }
 
 
-    // ── 阅读器取页表（2026-10-21）──
+    // ── 阅读器取页表（2026-10-21；第一百一十六批改成本机优先）──
+    //
+    // **先数本机那一棵树，再决定要不要问源站**。三条路（`desktopComicOfflineShouldAskEngine` 的三档）：
+    //  - 本机整话齐了 ⇒ **一趟都不问源站**（引擎根本不起来也行）—— 断网翻得开就是这一档；
+    //  - 本机有而缺几页 ⇒ 问引擎拿页键（缺页的页键只有源站认得），而每一页都带 `localDir`
+    //    ⇒ 盘上有的那几页直接吃盘，缺的才去取；
+    //  - 本机一颗都没有 ⇒ 与从前同（全问引擎）。
+    //
+    // 键里仍只有 `route`：读盘那一趟**只在进那一屏时问一次**，不进逐页循环
+    // （第一百一十三批刚为"每刷一页就全量读一遍盘是空转"改掉一次同类空转，这里不添回来）。
     LaunchedEffect(route) {
         val r = route
         if (r !is DesktopRoute.Reader) return@LaunchedEffect
+        val root = downloadsRoot
+        // 读盘（含每页头部那判）在 IO 线程上，且与"问引擎"分开：塌了不影响另一路。
+        val local: DesktopComicLocalChapter? =
+            if (root == null) null else withContext(Dispatchers.IO) {
+                runCatching {
+                    // 源与号先归一到盘上那一形（净化）再去认话，见那颗件自己的 KDoc。
+                    desktopComicOfflineLocalChapter(root, r.sourceKey, r.comicId, r.episode.id)
+                }.getOrNull()
+            }
+        val shouldAsk = desktopComicOfflineShouldAskEngine(local)
         val e = engine
-        if (e == null) {
-            readerNote = "引擎没起来：取不到这一话的页。"
-            return@LaunchedEffect
-        }
-        val got = desktopEngineCall(e) {
-            e.load(r.sourceKey)
-                // `pages` 交回的是**页键**（源站自己的标识），不是能直接 GET 的地址。
-                //
-                // ⚠️ 必须包成 `DesktopComicPage` **对象**，不能拼字符串。
-                // `DesktopComicPageFetcher.Factory : Fetcher.Factory<DesktopComicPage>`
-                // 只认这个类型；字符串会被 Coil 当普通 URL 交给网络 fetcher，而它不是
-                // http(s) ⇒ 直接失败 ⇒ 阅读器一片黑（端到端实测过）。
-                // 那个 `"comic|…"` 字符串是 `desktopComicPageCacheKey` 的**缓存键**，
-                // 不是 model 的格式 —— 这两件事此前被本喵混成了一件。
-                e.pages(r.comicId, r.episode).mapIndexed { i, key ->
-                    com.venera.desktop.gallery.data.DesktopComicPage(
-                        sourceKey = r.sourceKey,
-                        comicId = r.comicId,
-                        episodeId = r.episode.id,
-                        imageKey = key,
-                        page = i,
-                        // 非空 ⇒ 这一格能真取到字节（字节由引擎取，含 jm 系解混淆）。
-                        engine = e,
-                    )
+
+        // 源站那一趟的三档各是一条分支（`DesktopComicSourceOutcome`）。
+        // ⚠️ 「想问而引擎没起来」**不清掉页表**：盘上有的那几页照样翻开，那一档由屏顶那句念成因。
+        //    从前这里是 `e == null` 就整屏失败 + `readerPages = emptyList()`（24 MB 一并清空）。
+        var imageKeys: List<String> = emptyList()
+        val outcome: DesktopComicSourceOutcome = when {
+            // 本机整话已齐 ⇒ 一颗源站都不问（引擎没起来也无所谓，断网翻得开就是这一档）。
+            !shouldAsk -> DesktopComicSourceOutcome.NotNeeded
+            e == null -> DesktopComicSourceOutcome.Unreachable("引擎没起来")
+            else -> {
+                val got = desktopEngineCall(e) {
+                    e.load(r.sourceKey)
+                    // `pages` 交回的是**页键**（源站自己的标识），不是能直接 GET 的地址。
+                    //
+                    // ⚠️ 必须包成 `DesktopComicPage` **对象**，不能拼字符串。
+                    // `DesktopComicPageFetcher.Factory : Fetcher.Factory<DesktopComicPage>`
+                    // 只认这个类型；字符串会被 Coil 当普通 URL 交给网络 fetcher，而它不是
+                    // http(s) ⇒ 直接失败 ⇒ 阅读器一片黑（端到端实测过）。
+                    // 那个 `"comic|…"` 字符串是 `desktopComicPageCacheKey` 的**缓存键**，
+                    // 不是 model 的格式 —— 这两件事此前被本喵混成了一件。
+                    //
+                    // 页对象现在由 `desktopComicReaderPages` 那颗**纯决策件**造（它同时要喂本机那一格，
+                    // 无头才钉得住"哪一页该吃盘"）；这里只交回页键。
+                    e.pages(r.comicId, r.episode)
                 }
+                got.fold(
+                    onSuccess = { keys ->
+                        imageKeys = keys
+                        DesktopComicSourceOutcome.Delivered(keys.size)
+                    },
+                    onFailure = { t ->
+                        DesktopComicSourceOutcome.Unreachable(
+                            "取页失败：${t.javaClass.simpleName} " + (t.message?.take(160) ?: ""),
+                        )
+                    },
+                )
+            }
         }
-        got.fold(
-            onSuccess = { list ->
-                readerPages = list
-                readerNote = if (list.isEmpty()) "源站这一话回了 0 页。" else null
-            },
-            onFailure = { t ->
-                readerPages = emptyList()
-                readerNote = "取页失败：${t.javaClass.simpleName} " + (t.message?.take(160) ?: "")
-            },
+
+        val served = desktopComicReaderPages(
+            sourceKey = r.sourceKey,
+            comicId = r.comicId,
+            episodeId = r.episode.id,
+            imageKeys = imageKeys,
+            localDir = local?.dir,
+            localPages = local?.writtenPages ?: 0,
+            // 纯本机那一趟里引擎可以没有（`null`），那时页表里每一页都带 `localDir` ⇒ 仍算可取。
+            engine = e,
+        )
+        readerPages = served
+        readerNote = desktopComicOfflineReadingNote(
+            local = local,
+            outcome = outcome,
+            servedPages = served.size,
+        )
+        println(
+            desktopComicOfflineReadingReading(
+                episodeId = r.episode.id,
+                local = local,
+                outcome = outcome,
+                servedPages = served.size,
+                pagesWithLocalDir = served.count { it.localDir != null },
+            ),
         )
     }
 
@@ -407,6 +537,75 @@ fun VeneraDesktopLargeScreen(
     }
 
 
+    // ── 「本机已下载」那一屏的读盘（第一百一十五批）──
+    //
+    // 键里有三样，各管一件事（缺一件就有一档不刷）：
+    //  - `route`：进到那一屏才数一趟（不进那一屏不去读盘，与源清单那颗 effect 同一口径）；
+    //  - `downloadsTick`：**删除**那一路是同步改盘的（返回就是删完了），按完立刻自己重读一次；
+    //  - `desktopComicShelfRerollKey(queueTasks)`（第一百一十三批那一枚键）：**补齐**那一路是异步的 ——
+    //    按下只是排进队列，那一刻盘上一颗文件都没多，只有那一笔落到终局（完/败/停）才算真该重读。
+    //    逐页刷进度**不换键**：每刷一页就把整棵树重数一遍是空转（那一枚键自己就是这么设计的）。
+    //
+    // ⚠️ 读盘整趟过 `runCatching`：那一棵树里什么都有（手工放的书、半截的清单、导进来的裸目录），
+    //    塌了要念「数不出来 + 成因」，而不是念「目录建好了，里面还一条都没有」。
+    LaunchedEffect(route, downloadsTick, desktopComicShelfRerollKey(queueTasks)) {
+        if (route !is DesktopRoute.Downloads) return@LaunchedEffect
+        val root = downloadsRoot
+        if (root == null) {
+            downloadsListing = DesktopComicDownloadListing(
+                groups = emptyList(), skipped = 0, rootExists = false,
+                error = "下载根目录拿不到 ⇒ 那棵树数不着",
+            )
+            return@LaunchedEffect
+        }
+        val listing = withContext(Dispatchers.IO) {
+            runCatching {
+                val (chapters, skipped) = desktopComicDownloadedScan(root)
+                DesktopComicDownloadListing(
+                    groups = desktopComicChaptersByComic(chapters),
+                    skipped = skipped,
+                    rootExists = root.isDirectory,
+                )
+            }.getOrElse { t ->
+                DesktopComicDownloadListing(
+                    groups = emptyList(), skipped = 0, rootExists = root.isDirectory,
+                    error = "${t.javaClass.simpleName} ${t.message?.take(160) ?: ""}",
+                )
+            }
+        }
+        downloadsListing = listing
+        // 取证读数（只进 stdout，不进界面）：那六格与表头那句出自**同一次**读盘，不另走一趟。
+        if (listing.error == null) println(desktopComicDownloadedReading(listing))
+    }
+
+
+    /**
+     * 「本机已下载」那一行的删除那两步（第一百一十五批接上门）。
+     *
+     * 第一次按只**武装**（盘上一颗文件都不动），第二次按才真删 —— 而"该不该真删"和"武装记谁"
+     * 都不在这里重写，问的是 `DesktopComicDownloadsDelete.kt` 里那两颗纯函数。
+     * 删完立刻 `downloadsTick++`：删除是同步改盘的，那一行不该等队列那张表才改口。
+     */
+    fun onDownloadsDelete(chapter: com.venera.desktop.gallery.data.DesktopComicDownloadedChapter) {
+        val root = downloadsRoot
+        if (root == null) {
+            downloadsNote = "下载根目录拿不到 ⇒ 这一话删不了"
+            return
+        }
+        val key = desktopComicDeleteRowKey(chapter)
+        if (!desktopComicDeleteShouldFire(armedDeleteKey, key)) {
+            armedDeleteKey = desktopComicDeleteNextKey(armedDeleteKey, key)
+            return
+        }
+        armedDeleteKey = null
+        scope.launch {
+            val outcome = desktopComicDeleteChapter(root, chapter)
+            downloadsNote = desktopComicDeleteScreenLine(chapter, outcome)
+            downloadsTick++
+        }
+    }
+
+
     // ── 写阅读历史（2026-10-21）──
     //
     // **这是首页统计/历史的唯一上游。** 没有它，首页那三格与历史卡永远是空的
@@ -465,8 +664,8 @@ fun VeneraDesktopLargeScreen(
     // 键取 `currentTab + exploreTick`：切到探索那一格才取、点「重新取」才重取。
     // `engine.load(sourceKey)` 是必须的前置 —— `explore()` 内部直接读
     // `ComicSource.sources[key]`，没 load 过就是 undefined。
-    LaunchedEffect(currentTab, exploreTick) {
-        if (currentTab != VeneraNavTab.EXPLORE) return@LaunchedEffect
+    LaunchedEffect(desktopExploreSegment, exploreTick) {
+        if (!desktopExploreSegment) return@LaunchedEffect
         val e = engine
         if (e == null) {
             exploreNote = "引擎没起来：取不到探索页。"
@@ -549,8 +748,14 @@ fun VeneraDesktopLargeScreen(
                 // 不做"每个 tab 记住自己的二级页"—— 那要引入回栈，而清单 §路由 那条口径明写着
                 // "只有两层，不引导航库"。
                 onTabSelected = {
-                    currentTab = it
-                    route = DesktopRoute.Tab
+                    // 「下载与本地」格（2026-11-03）：内容由 DesktopRoute.Files（合并页）承载，
+                    // 不落 currentTab —— 这条分支永远不会渲染，when 完备性各给一个空块。
+                    if (it == VeneraNavTab.DOWNLOADS) {
+                        route = DesktopRoute.Downloads
+                    } else {
+                        currentTab = it
+                        route = DesktopRoute.Tab
+                    }
                 },
                 mode = effectiveMode,
                 modifier = modifier,
@@ -655,6 +860,33 @@ fun VeneraDesktopLargeScreen(
                                 episode = ep,
                             )
                         },
+                        // ── 下载那一格（第一百一十四批）──
+                        //
+                        // 没有根目录 ⇒ 递 `null` ⇒ 那一枚把手**整颗不摆**（不是摆了按不动）。
+                        onDownloadEpisode = if (downloadsRoot == null) null else { ep ->
+                            val order = detailInfo?.episodes?.indexOfFirst { it.id == ep.id } ?: -1
+                            if (order < 0) {
+                                detailNote = "这一话没在章节表里认出来 ⇒ 没排队（话号取自表里的行号）"
+                            } else {
+                                DesktopComicDownloadQueue.enqueue(
+                                    root = downloadsRoot,
+                                    sourceKey = r.sourceKey,
+                                    comicId = r.comicId,
+                                    comicTitle = r.title,
+                                    comicCover = detailInfo?.cover?.ifBlank { r.cover } ?: r.cover,
+                                    chapterId = ep.id,
+                                    chapterTitle = ep.name,
+                                    chapterOrder = order,
+                                    placeholder = ep.placeholder,
+                                )
+                                detailNote = null
+                            }
+                        },
+                        // 那一行下面念的是**这一话自己**的状态（按行号取，三行不许齐念同一句）。
+                        episodeNoteOf = { ep ->
+                            val order = detailInfo?.episodes?.indexOfFirst { it.id == ep.id } ?: -1
+                            desktopComicEpisodeDownloadNote(queueTasks, r.sourceKey, r.comicId, order)
+                        },
                     )
 
 
@@ -674,6 +906,55 @@ fun VeneraDesktopLargeScreen(
                         onBack = { route = DesktopRoute.Detail(r.comicId, r.title, r.cover, r.sourceKey) },
                     )
 
+
+                    DesktopRoute.Queue -> DesktopComicQueueScreen(
+                        mode = layoutMode,
+                        tasks = queueTasks,
+                        primed = queuePrimed,
+                        note = queueNote,
+                        onStop = { task ->
+                            DesktopComicDownloadQueue.requestStop(task.taskId)
+                            queueNote = desktopComicQueueStoppedLine(task)
+                        },
+                        onRemove = { task ->
+                            val root = downloadsRoot
+                            if (root == null) queueNote = "下载根目录拿不到 ⇒ 这一笔撤不掉"
+                            else queueNote = desktopComicQueueRemovedLine(
+                                task,
+                                DesktopComicDownloadQueue.drop(root, task.taskId),
+                            )
+                        },
+                        onBack = { route = DesktopRoute.Tab },
+                    )
+
+
+                    DesktopRoute.Downloads -> DesktopComicDownloadsScreen(
+                        mode = layoutMode,
+                        listing = downloadsListing,
+                        note = downloadsNote,
+                        armedKey = armedDeleteKey,
+                        // 「补齐这一话」：只把那一案排进队列，盘上一颗文件都不动 ——
+                        // 真正的重读由上面那颗 effect 的终局键负责（按下那一刻重数只会念出同一句「缺 N 页」）。
+                        onRepair = { chapter ->
+                            val root = downloadsRoot
+                            if (root == null) {
+                                downloadsNote = "下载根目录拿不到 ⇒ 这一话补不了"
+                            } else {
+                                downloadsNote = desktopComicRepairChapter(
+                                    root,
+                                    chapter,
+                                    DesktopComicShelfRawIdIndex.of(queueTasks),
+                                )
+                            }
+                        },
+                        onDelete = ::onDownloadsDelete,
+                        onBack = {
+                            // 出了那一屏就把武装那格交回去：停在"已武装"出去转一圈再回来，
+                            // 第二按就删的是当初没点过的那一话（批 77 收藏清空同一口径）。
+                            armedDeleteKey = null
+                            route = DesktopRoute.Tab
+                        },
+                    )
 
                     DesktopRoute.Tab -> when (currentTab) {
                     VeneraNavTab.GALLERY -> DesktopGalleryWallPane(layoutMode, cards)
@@ -719,131 +1000,93 @@ fun VeneraDesktopLargeScreen(
                     )
 
 
-                    VeneraNavTab.SEARCH -> DesktopSearchScreen(
-                        mode = layoutMode,
-                        sourceKey = DESKTOP_EXPLORE_SOURCE,
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it },
-                        onSearch = { if (searchQuery.isNotBlank()) searchTick++ },
-                        results = searchResults,
-                        searching = searching,
-                        note = searchNote,
-                        maskedOf = { card ->
-                            ux.coverMaskStateOf(
-                                sourceKey = DESKTOP_EXPLORE_SOURCE,
-                                title = card.title,
-                                author = "",
-                                tags = emptyList(),
-                                comicId = card.id,
-                            ) != "VISIBLE"
-                        },
-                        onOpen = { card ->
-                            detailInfo = null
-                            detailNote = null
-                            route = DesktopRoute.Detail(
-                                comicId = card.id,
-                                title = card.title,
-                                cover = card.cover,
-                                sourceKey = DESKTOP_EXPLORE_SOURCE,
+                    // 「下载与本地」格由 DesktopRoute.Files（合并页）承载：侧栏点下那一下
+                    // 已被 onTabSelected 特判改写路由，这里的 when 落不到 DOWNLOADS。
+                    VeneraNavTab.DOWNLOADS -> {}
+                    VeneraNavTab.SEARCH -> {
+                        // 探索并入搜索分段（2026-11-03，与安卓同一形态）：拨到「探索」时
+                        // 渲染探索 pane；取数键与门见上方 LaunchedEffect(desktopExploreSegment)。
+                        Column {
+                            com.venera.compose.components.SearchDiscoverSegmentBar(
+                                current = if (desktopExploreSegment) {
+                                    com.venera.compose.components.SearchDiscoverSegment.EXPLORE
+                                } else {
+                                    com.venera.compose.components.SearchDiscoverSegment.SEARCH
+                                },
+                                onSwitch = { desktopExploreSegment = it == com.venera.compose.components.SearchDiscoverSegment.EXPLORE },
+                                modifier = Modifier.padding(horizontal = VeneraTokens.spacing.screenHorizontal, vertical = VeneraTokens.spacing.space4),
                             )
-                        },
-                    )
-                    VeneraNavTab.EXPLORE -> DesktopExploreScreen(
-                        mode = layoutMode,
-                        sourceKey = DESKTOP_EXPLORE_SOURCE,
-                        sections = exploreSections,
-                        note = exploreNote,
-                        maskedOf = { card ->
-                            // 打码判据走共享的那一条（`UxPlatformServices`），不在这里另算。
-                            // 探索页拿不到 tags，所以只有源级预设那一道会生效 ——
-                            // 这正是本轮修 C 时补上预设表的原因。
-                            ux.coverMaskStateOf(
-                                sourceKey = DESKTOP_EXPLORE_SOURCE,
-                                title = card.title,
-                                author = "",
-                                tags = emptyList(),
-                                comicId = card.id,
-                            ) != "VISIBLE"
-                        },
-                        onOpen = { card ->
-                            detailInfo = null
-                            detailNote = null
-                            route = DesktopRoute.Detail(
-                                comicId = card.id,
-                                title = card.title,
-                                cover = card.cover,
-                                sourceKey = DESKTOP_EXPLORE_SOURCE,
-                            )
-                        },
-                        onReload = { exploreTick++ },
-                        // 源管理那一屏唯一的入口（此前它挂在那条路由上而全仓无人切过去）。
-                        // 不顺手清 `detailInfo` / `readerPages`：那两路各自有 `LaunchedEffect(route)`
-                        // 在进屏时自己置空重取，这里多清一次只会让人以为"不清就会串数据"。
-                        onOpenSourceManage = { route = DesktopRoute.SourceManage },
-                    )
+                            if (!desktopExploreSegment) {
+                                DesktopSearchScreen(
+                                    mode = layoutMode,
+                                    sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                    query = searchQuery,
+                                    onQueryChange = { searchQuery = it },
+                                    onSearch = { if (searchQuery.isNotBlank()) searchTick++ },
+                                    results = searchResults,
+                                    searching = searching,
+                                    note = searchNote,
+                                    maskedOf = { card ->
+                                        ux.coverMaskStateOf(
+                                            sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                            title = card.title,
+                                            author = "",
+                                            tags = emptyList(),
+                                            comicId = card.id,
+                                        ) != "VISIBLE"
+                                    },
+                                    onOpen = { card ->
+                                        detailInfo = null
+                                        detailNote = null
+                                        route = DesktopRoute.Detail(
+                                            comicId = card.id,
+                                            title = card.title,
+                                            cover = card.cover,
+                                            sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                        )
+                                    },
+                                )
+                            } else {
+                                DesktopExploreScreen(
+                                    mode = layoutMode,
+                                    sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                    sections = exploreSections,
+                                    note = exploreNote,
+                                    maskedOf = { card ->
+                                        // 打码判据走共享的那一条（`UxPlatformServices`），不在这里另算。
+                                        ux.coverMaskStateOf(
+                                            sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                            title = card.title,
+                                            author = "",
+                                            tags = emptyList(),
+                                            comicId = card.id,
+                                        ) != "VISIBLE"
+                                    },
+                                    onOpen = { card ->
+                                        detailInfo = null
+                                        detailNote = null
+                                        route = DesktopRoute.Detail(
+                                            comicId = card.id,
+                                            title = card.title,
+                                            cover = card.cover,
+                                            sourceKey = DESKTOP_EXPLORE_SOURCE,
+                                        )
+                                    },
+                                    onReload = { exploreTick++ },
+                                    // 源管理入口（此前挂在探索格上，随分段一起留在这里）。
+                                    onOpenSourceManage = { route = DesktopRoute.SourceManage },
+                                    onOpenQueue = { route = DesktopRoute.Queue },
+                                    onOpenDownloads = if (downloadsRoot == null) null else {
+                                        { route = DesktopRoute.Downloads }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
-
-
-/**
- * 「这一屏还没接」—— 如实报，不拿别的屏顶上。
- *
- * ## 为什么需要这一颗（2026-10-20）
- *
- * 上一版把画廊那面图墙摆到了 HOME 位置，`else` 也兜回它 —— 于是五个 tab 里有四个
- * 长得一模一样，而用户一眼看出「你这个首页怎么和安卓端的完全不一样？」。
- * 安卓首页是**漫画推荐页**（`feature/HomeScreen.kt`，1124 行：阅读统计 / 可能你感兴趣 /
- * 历史分区），图片墙是 GALLERY 那一屏（`gallery/ui/GalleryScreen.kt`，3453 行）。
- *
- * 假装比空白更糟：空白会让人问"怎么没有"，假装会让人以为"内容全错了"。
- *
- * ## 为什么不直接渲染安卓那几屏
- *
- * 那四屏都 `viewModel()` 到 `AndroidViewModel(Application)` 上（`GalleryViewModel`、
- * `HomeViewModel`…），要 `BusinessPorts` 那 17 个成员门面 + `ComicSourceManager`
- * + `AndroidViewModelFactory`。那不是"再挂一个 srcDir"，是要给整个漫画业务层做一份
- * 桌面实现 —— 独立一批，不在本批伪装成已完成。
- */
-@Composable
-private fun DesktopNotWiredPane(tab: VeneraNavTab) {
-    val tokens = VeneraTokens
-    val androidScreen = when (tab) {
-        VeneraNavTab.HOME -> "漫画推荐首页（阅读统计 · 可能你感兴趣 · 历史）"
-        VeneraNavTab.FAVORITES -> "漫画收藏"
-        VeneraNavTab.SEARCH -> "搜索"
-        VeneraNavTab.EXPLORE -> "探索"
-        VeneraNavTab.GALLERY -> "画廊" // 到不了：GALLERY 那一格走真墙
-    }
-    Box(
-        modifier = Modifier.fillMaxSize().padding(tokens.spacing.screenHorizontal),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = tab.title,
-                fontSize = tokens.type.screenTitle,
-                color = tokens.color.textPrimary,
-            )
-            Spacer(Modifier.height(tokens.spacing.space3))
-            Text(
-                text = "这一屏还没接到桌面：安卓端是「$androidScreen」。",
-                fontSize = tokens.type.body,
-                color = tokens.color.textSecondary,
-                modifier = Modifier.widthIn(max = 520.dp),
-            )
-            Spacer(Modifier.height(tokens.spacing.space2))
-            Text(
-                text = "侧栏、断点、卡片、色板都已经和安卓同一份源码；缺的是驱动这几屏的" +
-                    "业务门面（`BusinessPorts` 的 17 个成员 + `AndroidViewModel`）的桌面实现。",
-                fontSize = tokens.type.caption,
-                color = tokens.color.textTertiary,
-                modifier = Modifier.widthIn(max = 620.dp),
-            )
-        }
     }
 }
 

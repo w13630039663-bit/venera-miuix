@@ -33,20 +33,31 @@ fun AppSettings(
     onBack: () -> Unit,
     onSync: () -> Unit,
     onLogs: () -> Unit,
-    onDownloads: () -> Unit,
-    onLocalComics: () -> Unit,
     onFollowUpdates: () -> Unit
 ) {
     val context = LocalContext.current
     val cacheMaxMb by prefs.httpCacheMaxMb.collectAsState()
     var cacheBytes by remember { mutableLongStateOf(-1L) }
+    // 2026-11-03：系统「应用管理」报 1GB 而这里从前只报 HTTP 那一桶（≈99MB 封顶）。
+    // 分桶读数把 cacheDir 整个扫一遍，屏上总数与系统读数对得上表，差多少一眼就能指出来。
+    var breakdown by remember { mutableStateOf<com.venera.compose.data.api.CacheBreakdown?>(null) }
     val network = remember(context) { BusinessPorts.of(context).network }
     val scope = rememberCoroutineScope()
     val defaultRoot = remember(context) { ComicStorageRoot.defaultDir(context).absolutePath }
 
+    fun remeasure() {
+        cacheBytes = -1L
+        breakdown = null
+        scope.launch {
+            cacheBytes = withContext(Dispatchers.IO) { network.httpCacheSizeBytes() }
+            breakdown = withContext(Dispatchers.IO) { network.cacheBreakdown() }
+        }
+    }
+
     // Cache.size() 读磁盘，不能在组合期直接调。
     LaunchedEffect(Unit) {
         cacheBytes = withContext(Dispatchers.IO) { network.httpCacheSizeBytes() }
+        breakdown = withContext(Dispatchers.IO) { network.cacheBreakdown() }
     }
 
     // ── 本地漫画存储目录自选 ────────────────────────────────────────
@@ -219,9 +230,33 @@ fun AppSettings(
                     scope.launch {
                         withContext(Dispatchers.IO) { network.clearHttpCache() }
                         cacheBytes = withContext(Dispatchers.IO) { network.httpCacheSizeBytes() }
+                        breakdown = withContext(Dispatchers.IO) { network.cacheBreakdown() }
                         Toast.makeText(context, "网络缓存已清空", Toast.LENGTH_SHORT).show()
                     }
                 },
+            )
+            val imageCache = breakdown
+            SettingsAction(
+                "图片缓存占用与清理",
+                if (imageCache == null) "正在统计…"
+                else "当前 ${formatMib(imageCache.imageBytes)} · 点击清空（封面与预览会重新拉取，不影响收藏与下载）",
+                onClick = {
+                    Toast.makeText(context, "正在清空图片缓存", Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        // Coil 的磁盘缓存由单例 loader 自己管：clear() 走它自己的后台调度语义，
+                        // 我们不直接删它的目录 —— 删一半会把在途解码的快照打断。
+                        withContext(Dispatchers.IO) { coil3.SingletonImageLoader.get(context).diskCache?.clear() }
+                        breakdown = withContext(Dispatchers.IO) { network.cacheBreakdown() }
+                        Toast.makeText(context, "图片缓存已清空", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
+            val total = breakdown
+            SettingsAction(
+                "应用缓存总计",
+                if (total == null) "正在统计…"
+                else "网络 ${formatMib(total.httpBytes)} · 图片 ${formatMib(total.imageBytes)} · 其他 ${formatMib(total.otherBytes)} · 合计 ${formatMib(total.totalBytes)}（与系统口径一致），点按重算",
+                onClick = { remeasure() },
             )
             // 覆盖面以 BackupManager 类注释那张表为准（十个成员），文案不许超过它。
             SettingsSelect(
@@ -261,8 +296,7 @@ fun AppSettings(
             SettingsAction("打开日志", "查看运行日志", onClick = onLogs)
         }
         SettingsGroup(title = "离线与本地漫画") {
-            SettingsAction("下载管理", "查看下载队列和离线章节", onClick = onDownloads)
-            SettingsAction("本地漫画", "浏览和管理本地漫画", onClick = onLocalComics)
+            // 「下载管理 / 本地漫画」两行入口已撤（2026-11-03）：底栏第五格是全项目唯一入口。
             SettingsAction("追更更新", "每天检查收藏夹里的新章节", onClick = onFollowUpdates)
         }
     }
@@ -407,8 +441,9 @@ private suspend fun applyStoragePath(
     }
 }
 
-/** 定制 ROM 上带 `package:` 的那个 intent 不一定接得住，接不住就退到总列表页。 */
-private fun openAllFilesSettings(context: Context) {
+/** 定制 ROM 上带 `package:` 的那个 intent 不一定接得住，接不住就退到总列表页。
+ *  「下载与本地」的图片段失败弹层（GalleryTaskActionsSheet）也用它给「去授权」入口。 */
+internal fun openAllFilesSettings(context: Context) {
     val byPackage = Intent(
         Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
         Uri.parse("package:${context.packageName}"),
@@ -433,4 +468,6 @@ private fun openAllFilesSettings(context: Context) {
 internal fun formatMib(bytes: Long): String =
     if (bytes < 1024) "$bytes B"
     else if (bytes < 1024 * 1024) "%.1f KiB".format(bytes / 1024.0)
-    else "%.1f MiB".format(bytes / (1024.0 * 1024.0))
+    else if (bytes < 1024L * 1024 * 1024) "%.1f MiB".format(bytes / (1024.0 * 1024.0))
+    // 2026-11-03 补 GiB 档：分桶总数动辄上 GiB，念「1180.4 MiB」不如「1.15 GiB」像人话。
+    else "%.2f GiB".format(bytes / (1024.0 * 1024.0 * 1024.0))

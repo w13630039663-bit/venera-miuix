@@ -227,9 +227,19 @@ private fun ReaderSessionContent(
     var isControlsVisible by rememberSaveable { mutableStateOf(false) }
 
     // ── Auto-Scroll 自动巡航（Kotatsu 特色，仅条漫连续流生效）──
-    // 播放中按 px/s 匀速下滑；触碰屏幕/手动滑动即暂停。速度不持久化：巡航是临时态。
+    // 播放中按 px/s 匀速下滑；触碰屏幕/手动滑动即暂停。
+    // 速度持久化（2026-11-04）：原先 `remember { 60f }` 纯内存，调完换一本漫画就回 60 ——
+    // 用户点名「速度调了也不保存」。默认全局记住；迷你控制器里有「记住速度」开关，
+    // 关掉时只活在本次会话（临时快/慢一把、不动长期习惯）。
     var isAutoScrolling by remember { mutableStateOf(false) }
-    var scrollSpeed by remember { mutableFloatStateOf(60f) }
+    val speedPersist by prefs.autoScrollSpeedPersist.collectAsState()
+    var sessionScrollSpeed by remember { mutableFloatStateOf(prefs.autoScrollSpeedPx.value) }
+    val persistedScrollSpeed by prefs.autoScrollSpeedPx.collectAsState()
+    val scrollSpeed = if (speedPersist) persistedScrollSpeed else sessionScrollSpeed
+    val nudgeCruiseSpeed: (Float) -> Unit = { delta ->
+        val next = (scrollSpeed + delta).coerceIn(15f, 480f)
+        if (speedPersist) prefs.setAutoScrollSpeedPx(next) else sessionScrollSpeed = next
+    }
 
     // 弹窗状态
     var activePanel by rememberSaveable { mutableStateOf(ReaderPanel.NONE) }
@@ -1350,7 +1360,7 @@ private fun ReaderSessionContent(
                             shape = CircleShape,
                             color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
                             modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
-                                scrollSpeed = (scrollSpeed - 15f).coerceAtLeast(15f)
+                                nudgeCruiseSpeed(-15f)
                             }
                         ) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -1361,7 +1371,7 @@ private fun ReaderSessionContent(
                             shape = CircleShape,
                             color = StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
                             modifier = Modifier.size(tokens.spacing.iconButtonSize - tokens.spacing.space4).clickable {
-                                scrollSpeed = (scrollSpeed + 15f).coerceAtMost(480f)
+                                nudgeCruiseSpeed(+15f)
                             }
                         ) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -1375,6 +1385,24 @@ private fun ReaderSessionContent(
                             fontSize = tokens.type.badge,
                             modifier = Modifier.padding(end = tokens.spacing.space1)
                         )
+                        // 「记住速度」开关：开着时调的速度全局保存；关着只活在本次会话，
+                        // 换一本漫画回到记住的那一档（临时快慢一把、不动长期习惯）。
+                        Surface(
+                            shape = CircleShape,
+                            color = if (speedPersist) tokens.color.primary.copy(alpha = 0.35f)
+                            else StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                            modifier = Modifier.clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                prefs.setAutoScrollSpeedPersist(!speedPersist)
+                            }
+                        ) {
+                            Text(
+                                text = if (speedPersist) "记住速度 开" else "记住速度 关",
+                                color = StatusColors.OnBadgeSurface,
+                                fontSize = tokens.type.badge,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space1)
+                            )
+                        }
                     } else {
                         // 翻页档：与条漫档同一套 −/+ 把手（2026-10-13 用户点名"自动播放加上时间控制 1-10s"）。
                         // 从前这一格只**印**真实间隔（更早之前印死 "4s/页"，那是假读数），

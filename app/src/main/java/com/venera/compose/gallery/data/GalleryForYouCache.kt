@@ -43,6 +43,12 @@ data class GalleryForYouSiteRow(
  *
  * [seed] 是这一屏的"哪一次抽样"身份：它必须与 [posts] 成对在场，判据见
  * [com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy.canHydrate]。
+ *
+ * 2026-11-03「换一批随机化」补的两列，缺一列都会说出假话：
+ * - [depths]：这一轮每站往榜深处挪了几页。不存的话，从快照铺屏后继续翻页会从第 1 页重发，
+ *   下一页把已摆过的头部条目整批剔空 —— 读起来正是"到底了却还在转"那一族；
+ * - [cooldownRounds]：最近几轮上屏条目的去重键。不存的话，杀掉进程再进，
+ *   "出现过一次的过几轮再出现"就只在本次会话里成立。
  */
 @Serializable
 data class GalleryForYouSnapshot(
@@ -56,6 +62,8 @@ data class GalleryForYouSnapshot(
     @SerialName("videos") val videos: Int = 0,
     @SerialName("failures") val failures: List<GalleryForYouSiteRow> = emptyList(),
     @SerialName("sites_done") val sitesDone: List<GallerySite> = emptyList(),
+    @SerialName("depths") val depths: List<GalleryForYouSiteRow> = emptyList(),
+    @SerialName("cooldown_rounds") val cooldownRounds: List<List<String>> = emptyList(),
 )
 
 /** 快照里那几列"按站一份"的读数还原成 Map；站点认不出的行**逐行摘掉**，不整档作废。 */

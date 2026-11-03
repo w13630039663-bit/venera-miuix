@@ -32,6 +32,7 @@ import com.venera.desktop.gallery.data.DesktopTagDictionaryAsset
 import com.venera.desktop.gallery.data.DesktopComicReaderPreferences
 import com.venera.desktop.gallery.data.DesktopGalleryBrowseHistory
 import com.venera.desktop.gallery.data.desktopGallerySaveDir
+import com.venera.desktop.gallery.data.desktopComicDownloadsRoot
 import com.venera.desktop.gallery.ui.DesktopComicFavoriteOutcome
 import com.venera.desktop.gallery.ui.DesktopDomain
 import com.venera.desktop.gallery.ui.DesktopGalleryHomeSectionKey
@@ -678,6 +679,9 @@ fun main(args: Array<String>) {
                         }.getOrDefault(emptyList())
                     }
                 },
+                // 漫画「下载这一话」要落的那个根目录。给到这一层，壳才知道能不能摆那枚钮：
+                // 没有写口的地方整颗不摆，而不是摆一颗按下去什么也不做的假开关。
+                downloadsRoot = desktopComicDownloadsRoot(paths.dataRoot),
                 wallBlockAiOf = { gallerySettings.galleryBlockAi.value },
                 blockedByUserOf = { _, _, author, tags ->
                     guard.rules.value.any { rule ->

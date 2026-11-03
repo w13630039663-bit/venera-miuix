@@ -51,9 +51,11 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             )
             SettingsSelect(
                 "启动页面", startPage,
+                // 2026-11-03 探索并入搜索页分段 → 「探索」不再是启动落点；旧值 EXPLORE
+                // 在 VeneraPreferences 读侧一次性迁成 SEARCH，这里不删第二份。
                 listOf(
                     "HOME" to "首页", "FAVORITES" to "我的收藏",
-                    "SEARCH" to "搜索与发现", "GALLERY" to "画廊", "EXPLORE" to "探索",
+                    "SEARCH" to "搜索与发现", "GALLERY" to "画廊",
                 ),
                 appearancePrefs::setStartPage,
                 summary = "下次打开应用时停在哪个标签页。",

@@ -130,7 +130,11 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     /**
-     * 批量加入下载任务
+     * 批量加入下载任务。
+     *
+     * **已完整离线的章会被跳过**（返回值 = 实际新加入的条数，调用方据此报"跳过几话"）：
+     * 任务表被清掉也认得 —— 判据走 [chapterOffline]，盘上有完整 `chapter.json` 目录就算数。
+     * 只下一半的（PARTIAL）照旧重下，否则截断的书永远补不齐。
      */
     fun enqueue(
         sourceKey: String,
@@ -138,7 +142,7 @@ class DownloadManager private constructor(private val context: Context) {
         comicTitle: String,
         comicCover: String,
         chapters: List<ComicChapter>
-    ) {
+    ): Int {
         val current = _tasks.value.toMutableList()
         var addedCount = 0
 
@@ -153,6 +157,9 @@ class DownloadManager private constructor(private val context: Context) {
                 }
                 continue
             }
+
+            // 已经下完整的章不进队：重复下载白费流量，还会把已离线目录推翻重写
+            if (chapterOffline(sourceKey, comicId, ch.id) == ChapterOffline.COMPLETE) continue
 
             val safeTitle = ch.title.replace(Regex("[/\\\\:*?\"<>|]"), "_").trim()
             val chDir = File(getComicDir(sourceKey, comicId), "${ch.order.toString().padStart(4, '0')}_$safeTitle")
@@ -183,6 +190,7 @@ class DownloadManager private constructor(private val context: Context) {
             _tasks.value = current
             saveTasksToDisk()
         }
+        return addedCount
     }
 
     fun pause(taskId: String) {
@@ -423,49 +431,60 @@ class DownloadManager private constructor(private val context: Context) {
             val pageFileName = "${(idx + 1).toString().padStart(4, '0')}.jpg"
             val targetFile = File(chapterDir, pageFileName)
 
-            // 解析真实 URL（如果源声明了 useOnImageLoad）
-            var pageHeaders = chapterPages.headers
-            val realUrl = if (chapterPages.useOnImageLoad && source is com.venera.compose.source.js.JsComicSource) {
-                val resolved = source.resolveImageLoadingConfig(
-                    comicId = task.comicId,
-                    epId = task.chapterId,
-                    imageKey = item,
-                    nl = null
-                )
-                val config = resolved.getOrNull()
-                if (config != null) {
-                    if (config.headers.isNotEmpty()) {
-                        pageHeaders = pageHeaders + config.headers
-                    }
-                    config.url
-                } else {
-                    item
-                }
-            } else {
-                item
-            }
-
-            // 断点续下判定：文件已存在且**内容确实是图片**才跳过。
-            // ⚠️ 历史缺陷两连：①旧版本把混淆未还原的原始字节落盘；②显式 Accept-Encoding
-            // 导致 OkHttp 关闭透明解压，落盘的是 Brotli/GZIP 压缩包 —— 两类坏图都 >1KB，
-            // 会被大小检查短路跳过，重试永远无法治愈。
-            // 修复：跳过前读取文件头做魔数校验，非图片一律重新下载覆盖；
-            // JM 混淆图恒定不跳过（落盘前已去混淆，重下即治愈历史坏图）。
-            // 判定必须在 realUrl 解析之后（useOnImageLoad 源的 item 是 imageKey，非 URL）。
-            val isScrambledImage = ImagePipelinePolicy.getScrambleNum(realUrl) > 1
-            val existingValid = targetFile.exists() && targetFile.length() > 1024 &&
-                runCatching { isValidImageBytes(targetFile.readBytes()) }.getOrDefault(false)
-            if (!isScrambledImage && existingValid) {
-                downloaded++
-                updateTaskProgress(taskId, downloaded = downloaded, total = totalCount)
-                continue
-            }
+            // 解析真实 URL（如果源声明了 useOnImageLoad）：解析挪进 attempt 圈，
+            // 第 2/3 次重试**带上一轮的 nl 重新解析**（官方 `onLoadFailed` 闭包的语义，
+            // 见 `JsComicSource.resolveImageLoadingConfig` 头注；阅读器 `resolveDynamicPageUrl`
+            // 当年修的就是这条）。
+            // 历史病灶两条，屏上读起来是同一句"第 1 页重试 3 次还是没下来"：
+            //  ① 解析只跑一次、且失败就**静默拿 imageKey 当 URL 硬发** —— 源脚本拒了与
+            //     网络抖动两种完全相反的成因长一张脸，且假 URL 必然三连击全灭；
+            //  ② 源给的地址常带临时签名，第一击失败多半就是过期，重试还拿同一份失效地址
+            //     空转满 3 次 —— 必须重新解析才治得好。
+            val jsSource = source as? com.venera.compose.source.js.JsComicSource
+            val needsResolve = chapterPages.useOnImageLoad && jsSource != null
+            var nl: String? = null
 
             var downloadSuccess = false
+            var skippedExisting = false
             var attempt = 0
-            while (attempt < 3 && !downloadSuccess && currentCoroutineContext().isActive) {
+            while (attempt < 3 && !downloadSuccess && !skippedExisting && currentCoroutineContext().isActive) {
                 attempt++
                 try {
+                    var pageHeaders = chapterPages.headers
+                    val realUrl = if (needsResolve) {
+                        val config = jsSource!!.resolveImageLoadingConfig(
+                            comicId = task.comicId,
+                            epId = task.chapterId,
+                            imageKey = item,
+                            nl = nl,
+                        ).getOrNull()?.takeIf { it.url.isNotBlank() }
+                            ?: throw ImageUrlResolveFailed()
+                        if (config.headers.isNotEmpty()) {
+                            pageHeaders = pageHeaders + config.headers
+                        }
+                        nl = config.nl ?: nl
+                        config.url
+                    } else {
+                        item
+                    }
+
+                    // 断点续下判定：文件已存在且**内容确实是图片**才跳过。
+                    // ⚠️ 历史缺陷两连：①旧版本把混淆未还原的原始字节落盘；②显式 Accept-Encoding
+                    // 导致 OkHttp 关闭透明解压，落盘的是 Brotli/GZIP 压缩包 —— 两类坏图都 >1KB，
+                    // 会被大小检查短路跳过，重试永远无法治愈。
+                    // 修复：跳过前读取文件头做魔数校验，非图片一律重新下载覆盖；
+                    // JM 混淆图恒定不跳过（落盘前已去混淆，重下即治愈历史坏图）。
+                    // 判定必须在 realUrl 解析之后（useOnImageLoad 源的 item 是 imageKey，非 URL）。
+                    val isScrambledImage = ImagePipelinePolicy.getScrambleNum(realUrl) > 1
+                    val existingValid = targetFile.exists() && targetFile.length() > 1024 &&
+                        runCatching { isValidImageBytes(targetFile.readBytes()) }.getOrDefault(false)
+                    if (!isScrambledImage && existingValid) {
+                        downloaded++
+                        updateTaskProgress(taskId, downloaded = downloaded, total = totalCount)
+                        skippedExisting = true
+                        continue
+                    }
+
                     val bytesWritten = downloadSingleImage(realUrl, pageHeaders, targetFile)
                     if (bytesWritten > 0) {
                         downloadSuccess = true
@@ -486,7 +505,15 @@ class DownloadManager private constructor(private val context: Context) {
                 } catch (e: Exception) {
                     Log.w(tag, "Image $idx attempt $attempt failed for ${task.chapterTitle}: ${e.message}")
                     if (attempt >= 3) {
-                        updateTaskError(taskId, "第 ${idx + 1} 页重试 3 次还是没下来 🥲 检查网络后再试一次")
+                        // 两种成因屏上分开说：源解析不出地址不是"换个网络"能治的，别替它遮丑。
+                        updateTaskError(
+                            taskId,
+                            if (e is ImageUrlResolveFailed) {
+                                "第 ${idx + 1} 页：源没能解析出图片地址 🥲 源脚本可能失效了，稍后再试这一本"
+                            } else {
+                                "第 ${idx + 1} 页重试 3 次还是没下来 🥲 检查网络后再试一次"
+                            },
+                        )
                         return
                     }
                     delay(600)
@@ -601,6 +628,9 @@ class DownloadManager private constructor(private val context: Context) {
             bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() && bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte()) return true
         return false
     }
+
+    /** 源侧 `onImageLoad` 给不出可用地址（脚本拒了/没实现/解析异常）。与网络性失败分开报。 */
+    private class ImageUrlResolveFailed : IllegalStateException("源没能解析出图片地址")
 
     private fun formatSpeed(bytesPerSec: Float): String {
         return when {

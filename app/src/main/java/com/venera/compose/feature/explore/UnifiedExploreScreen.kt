@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,6 +56,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.style.TextOverflow
+import com.venera.compose.components.SearchDiscoverSegment
+import com.venera.compose.components.SearchDiscoverSegmentBar
 import com.venera.compose.components.ComicCardContextMenu
 import com.venera.compose.components.ComicLayoutToggleButton
 import com.venera.compose.components.ComicSharedTransition
@@ -139,6 +144,12 @@ import com.venera.compose.components.venera.VeneraTopBarPill
 fun UnifiedExploreScreen(
     onSelectComic: (ComicItem) -> Unit,
     onOpenNativeSection: (NativeSectionArgs) -> Unit,
+    /**
+     * 探索并进搜索页的分段后（2026-11-03），探索屏不再是底栏第五格：本屏顶栏与搜索页
+     * 同念「搜索与发现」，分段胶囊在此侧把当前段指到「探索」。切回搜索走上层导航
+     * （gotoTab(SEARCH)，存档口径与切主 Tab 一致）。
+     */
+    onSwitchToSearch: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -394,6 +405,19 @@ fun UnifiedExploreScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.sectionGap)
         ) {
+            if (onSwitchToSearch != null) {
+                stickyHeader(key = "segment") {
+                    // 分段条钉在顶栏下（sticky）：探索是「搜索与发现」页的第二段（2026-11-03），
+                    // 拨回「搜索」走上层导航（gotoTab(SEARCH)），存档口径与切主 Tab 一致。
+                    SearchDiscoverSegmentBar(
+                        current = SearchDiscoverSegment.EXPLORE,
+                        onSwitch = { seg ->
+                            if (seg == SearchDiscoverSegment.SEARCH) onSwitchToSearch?.invoke()
+                        },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface),
+                    )
+                }
+            }
             if (explorations.isNotEmpty()) {
                 item(key = "source-picker") {
                     SourceDropdownField(
@@ -772,8 +796,8 @@ fun UnifiedExploreScreen(
         }
 
         VeneraTopAppBar(
-            title = "探索",
-            largeTitle = "探索",
+            title = "搜索与发现",
+            largeTitle = "搜索与发现",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             actions = {

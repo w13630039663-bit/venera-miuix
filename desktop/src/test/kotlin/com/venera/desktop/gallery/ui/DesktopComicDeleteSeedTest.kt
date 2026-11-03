@@ -26,7 +26,12 @@ import org.junit.Test
  * ## 沿路只许有一颗 runner
  *
  * 另开一条"只为取证"的删除路，量到的是那条路而屏上那一条可以仍是坏的（本仓那一族第六次）。
- * 判据 ⑥ 钉 `desktopComicDeleteChapter(` 在 main 里恰好「一处声明 + 两处按」，多一处就红。
+ *
+ * ⚠️ 上面那段原本挂着「判据 ⑥」，而**这一颗文件里从来没有 ⑥ 那颗 `@Test`**：那句口径只是 KDoc，
+ * 于是"沿路只许一颗 runner"这条纪律在第一百一十五批之前**没有任何会红判据盯着**（同批记的
+ * `DesktopUnusedInternalTest` 那把惰尺子是同一个形状）。今天把它改准并指到真判据上：
+ * `desktopComicDeleteChapter(` 在 main 里恰好「一处声明 + 一处在壳里按」，由
+ * `DesktopDownloadsEntryTest.那五颗runner各有一处在壳里按` 钉（口径不是 `>=1`，多一处就红）。
  */
 class DesktopComicDeleteSeedTest {
 

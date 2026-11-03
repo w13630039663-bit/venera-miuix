@@ -24,6 +24,7 @@ import com.venera.compose.gallery.data.GelbooruIdentity
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.DanbooruArtistCredits
 import com.venera.compose.gallery.data.PixivArtworkAuthor
+import com.venera.compose.gallery.domain.PixivImageQuality
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryArtistFollow
 import com.venera.compose.gallery.domain.GalleryAvatarProbeEndpoint
@@ -97,6 +98,7 @@ private val UnscriptedPrefs = object : GalleryPreferences {
     override val galleryHideTopBar: StateFlow<Boolean> get() = unscripted("galleryHideTopBar")
     override val galleryHideBottomBar: StateFlow<Boolean> get() = unscripted("galleryHideBottomBar")
     override val galleryWatercolorBeta: StateFlow<Boolean> get() = unscripted("galleryWatercolorBeta")
+    override val pixivPreviewQuality: StateFlow<PixivImageQuality> get() = unscripted("pixivPreviewQuality")
 }
 
 private val UnscriptedFavorites = object : GalleryFavorites {

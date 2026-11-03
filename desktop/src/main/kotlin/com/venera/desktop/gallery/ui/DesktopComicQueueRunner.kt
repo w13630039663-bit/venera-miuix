@@ -9,6 +9,7 @@ import com.venera.desktop.gallery.data.desktopComicChapterProgressLine
 import com.venera.desktop.gallery.data.desktopComicDownloadChapter
 import com.venera.desktop.gallery.data.desktopComicQueueDir
 import com.venera.desktop.gallery.data.desktopComicQueueReading
+import com.venera.desktop.desktopEngineCall
 import com.venera.engineprobe.EngineSession
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,19 @@ import kotlin.coroutines.coroutineContext
  * - **落盘那一跳的口径没换**：页还是由批 96/100/102/103 那颗 [desktopComicDownloadChapter] 写的，
  *   本批只把"谁来跑、跑几笔、跑到哪"这一层挪出了详情那一屏。
  *   ⚠️ 那一整串实参的顺序（**号在前、话号在后**）由 `DesktopComicDetailWiringTest` ⑪ 钉着，改判后钉在本文件。
+ *
+ * ## 2026-10-21：泵接上 UI 那颗引擎之后，那两跳改过锁
+ *
+ * 从前这一圈**没人递引擎**（`desktopComicStartQueuePump` 在 main 里零调用点），那两跳裸调
+ * `engine.pages` / `engine.pageImage` 碰不到共享那颗 ⇒ 今天无害。泵一接上壳里那颗常驻 `uiEngine`，
+ * 它就与探索 / 详情 / 取页 / 搜索**抢同一颗 GraalJS context**（零同步，实测形态是
+ * `IllegalStateException 装载后取不到 source key`）—— 所以 `DesktopEngineCallCoverageTest`
+ * 那条"接上就要改过锁"的前置今天兑现了。
+ *
+ * ⚠️ 锁的粒度是**一跳**而不是**一整话**：整话锁住的话，89 页那一趟会把 UI 一直饿在锁外，
+ * 用户点哪一屏都不动，而那看起来就像死了。所以页表那一问过锁一次、每一页取字节过锁一次，
+ * 两趟之间让锁。代价是这一圈里 `pages` 与 `pageImage` 之间可能被插进别的 UI 调用 ——
+ * 那不影响正确性：页表那一问的答复已经收在本地 `pages` 里，泵不再回头问引擎要第二次。
  */
 internal fun desktopComicStartQueuePump(queueScope: CoroutineScope, session: EngineSession?, downloadsRoot: File) {
     val engine = session
@@ -93,7 +107,11 @@ private suspend fun desktopComicRunOneTask(engine: EngineSession, root: File, ta
     var knownPages = 0
     var onDisk = 0
     val outcome = runCatching {
-        val pages = engine.pages(task.comicId, EngineSession.Episode(task.chapterTitle, task.chapterId, task.placeholder))
+        // 过锁的那一跳：`getOrThrow()` 让失败仍旧落到这一颗 `runCatching` 里
+        // （档位、读数、`desktopComicChapterOutcome` 那一路一个字不改），只是不再与 UI 抢同一颗 context。
+        val pages = desktopEngineCall(engine) {
+            engine.pages(task.comicId, EngineSession.Episode(task.chapterTitle, task.chapterId, task.placeholder))
+        }.getOrThrow()
         knownPages = pages.size
         DesktopComicDownloadQueue.reportTotal(root, taskId, pages.size)
         val run = desktopComicDownloadChapter(dir, task.comicId, task.chapterId, task.chapterOrder, task.chapterTitle, pages.size,
@@ -103,7 +121,12 @@ private suspend fun desktopComicRunOneTask(engine: EngineSession, root: File, ta
                 onDisk = written
                 println(desktopComicChapterProgressLine(task.comicId, task.chapterOrder, written, expected))
             },
-        ) { page -> engine.pageImage(pages[page], task.comicId, task.chapterId) }
+        ) { page ->
+            // 每一页各过各的锁（粒度 = 一跳，见类注释）：整话锁住会把 UI 饿死在锁外。
+            desktopEngineCall(engine) {
+                engine.pageImage(pages[page], task.comicId, task.chapterId)
+            }.getOrThrow()
+        }
         pages.size to run
     }
     val settled = desktopComicChapterOutcome(task.chapterOrder, outcome, knownPages, onDisk)

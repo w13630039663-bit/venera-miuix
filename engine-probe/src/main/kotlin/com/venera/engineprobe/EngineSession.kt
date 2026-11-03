@@ -126,8 +126,15 @@ class EngineSession(
             data0
         }
         val maxPage = (data as? Map<*, *>)?.get("maxPage")?.let { (it as? Number)?.toInt() }
-        // 三种形状都实测存在：search 回 `{comics:[…], maxPage}`；jm 的 explore 回**分区数组**
-        // `[{title, comics:[…]}, …]`；nhentai 的 explore 回**漫画数组** `[{title, id, cover}, …]`
+        // 四种形状都实测存在：search / list 型回 `{comics:[…], maxPage}`；jm 的 explore 回
+        // **分区数组** `[{title, comics:[…]}, …]`；nhentai 回**漫画数组** `[{title, id, cover}, …]`；
+        // ⚠️ `copy_manga` 等 **20 颗**源（`type: "singlePageWithMultiPart"`）回的是**老式 Map**
+        // `{分区名: Comic[]}`（实测那 7 个键是 推荐/热门/最新/完结/今日排行/本周排行/本月排行）。
+        // 这一支从前**完全没有**：那颗解析只找 `data["comics"]`，multipart 没这个键 ⇒
+        // 读成「1 个空分区、0 条」而**信封里 success:true、error:null**（2026-10-21 真网络现量：
+        // jm 6 分区 180 本，copy_manga 装载成"拷贝漫画"却 0 本）。
+        // 对岸是认这一形状的（`JsComicSource.kt:1041-1049` 的 "multiPart" 那一支：
+        // 逐键开分区、**空分区不收**），桌面漏了 ⇒ 照它的口径补，不收空的。
         val sections = when (data) {
             is List<*> -> {
                 val rows = data.mapNotNull { it as? Map<*, *> }
@@ -138,7 +145,20 @@ class EngineSession(
                 }
             }
 
-            is Map<*, *> -> listOf(Section("", cards(data["comics"])))
+            is Map<*, *> -> {
+                val flat = cards(data["comics"])
+                if (data["comics"] != null || flat.isNotEmpty()) {
+                    // 原来那一支的语义保持不动：给了 `comics` 键就照单分区收（哪怕是空的），
+                    // 屏上那句「这一源没回探索内容」的成因才不被本批顺手改掉。
+                    listOf(Section("", flat))
+                } else {
+                    data.entries.mapNotNull { (k, v) ->
+                        val items = cards(v)
+                        if (items.isEmpty()) null else Section(k?.toString() ?: "", items)
+                    }
+                }
+            }
+
             else -> {
                 println("[session] data 形状不认识=${data?.javaClass?.simpleName} raw=${raw.take(240)}")
                 emptyList()

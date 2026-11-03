@@ -6,6 +6,10 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -14,6 +18,7 @@ import com.venera.compose.feature.EntryIntent
 import com.venera.compose.feature.EntryIntentHandoff
 import com.venera.compose.feature.VeneraComposeApp
 import com.venera.compose.feature.VeneraTheme
+import com.venera.compose.feature.openSettingsSubScreen
 import com.venera.compose.feature.settings.StartupUpdateHost
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.gallery.data.PixivCredentialState
@@ -63,9 +68,64 @@ class MainActivity : ComponentActivity() {
                     com.venera.compose.components.LocalUxPlatformServices provides uxServices,
                 ) {
                     VeneraTheme {
-                        VeneraComposeApp()
-                        // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
-                        StartupUpdateHost()
+                        // 首次启动引导：完成页按下之前不组装主应用本体（启动检查更新那枚弹窗也一并让位）。
+                        // 业务件只从 `BusinessPorts` 门面拿（`BusinessApiBoundaryTest` 的 E 条：
+                        // 要开口就加契约）；唯一的直连是 `GelbooruAccount` 的身份流，已在 B 台账登记。
+                        //
+                        // 两个分支包在 AnimatedContent 里：完成页按下「进入 Venera」时主屏
+                        // 以淡入 + 轻缩放进场，不是硬切。曲线与引导共享元素同族（M-B 0.2,0,0,1），
+                        // 全应用只此一套动效语言。
+                        val business = remember { BusinessPorts.of(applicationContext) }
+                        val onboarded by business.comicPrefs.onboardingDone.collectAsState()
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = onboarded,
+                            transitionSpec = {
+                                (
+                                    androidx.compose.animation.fadeIn(
+                                        androidx.compose.animation.core.tween(420, delayMillis = 80),
+                                    ) + androidx.compose.animation.scaleIn(
+                                        initialScale = 0.96f,
+                                        animationSpec = androidx.compose.animation.core.tween(
+                                            420,
+                                            easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f),
+                                        ),
+                                    )
+                                ).togetherWith(
+                                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)),
+                                )
+                            },
+                            label = "app_entry",
+                        ) { ready ->
+                            if (ready) {
+                                VeneraComposeApp()
+                                // 启动时检查更新：挂在主题之下、导航层之外，全应用只有这一个弹窗位
+                                StartupUpdateHost()
+                            } else {
+                                val onboardingPorts = remember(business) {
+                                    val gallery = com.venera.compose.gallery.data.GalleryPorts.of(applicationContext)
+                                    com.venera.compose.feature.onboarding.OnboardingPorts(
+                                        appearance = business.appearancePrefs,
+                                        comic = business.comicPrefs,
+                                        network = business.networkPrefs,
+                                        pixivAuth = gallery.pixivAccount?.authState,
+                                        gelbooruIdentity =
+                                            com.venera.compose.gallery.data.GelbooruAccount.getInstance(applicationContext).identity,
+                                        // ⚠️ 三个入口必须由 **Activity 本身**发起，不能用 applicationContext：
+                                        // 非 Activity 的 Context 发 startActivity 且不带 NEW_TASK 标志时
+                                        // 系统直接抛异常 —— 引导里三个可点入口闪退的根因就是它（2026-11-03 真机）。
+                                        onOpenPixiv = { openPixivAccountPage() },
+                                        onOpenSourceManage = {
+                                            openSettingsSubScreen(com.venera.compose.feature.SettingsSubScreen.SOURCE_MANAGE)
+                                        },
+                                        onOpenAppSettings = {
+                                            openSettingsSubScreen(com.venera.compose.feature.SettingsSubScreen.APP)
+                                        },
+                                        onFinish = { business.comicPrefs.setOnboardingDone() },
+                                    )
+                                }
+                                com.venera.compose.feature.onboarding.VeneraOnboardingScreen(onboardingPorts)
+                            }
+                        }
                     }
                 }
             }

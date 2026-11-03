@@ -7,6 +7,9 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -78,6 +81,8 @@ import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
 import com.venera.compose.components.venera.VeneraSourceBadge
 import com.venera.compose.components.venera.VeneraTagChip
+import com.venera.compose.components.SearchDiscoverSegment
+import com.venera.compose.components.SearchDiscoverSegmentBar
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.blurBackdropSource
 import com.venera.compose.components.venera.rememberTopBarBackdrop
@@ -108,7 +113,7 @@ import com.venera.compose.components.venera.VeneraTopBarPill
  *  - 不制造不存在的业务能力：条件 BottomSheet 只提供 Tag；年份/语言/页数因
  *    数据模型无可靠支持而不显示（记录为 Search Capability 专项）。
  */
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun SharedTransitionScope.AndroidSearchScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -127,6 +132,12 @@ fun SharedTransitionScope.AndroidSearchScreen(
     viewModel: SearchViewModel = viewModel(),
     consumesBottomBarClearance: Boolean = true,
     onNavigateBack: (() -> Unit)? = null,
+    /**
+     * 主搜索（SearchRoute）显示「搜索 / 探索」分段；TagSearch 下钻不显示（它是搜索Tab下的一层）。
+     * 段的切换交给上层导航（gotoTab / gotoExploreSegment），本屏只管画与上报。
+     */
+    showSegment: Boolean = false,
+    onSwitchToExplore: (() -> Unit)? = null,
 ) {
     val tokens = VeneraTokens
     val density = LocalDensity.current
@@ -292,6 +303,19 @@ fun SharedTransitionScope.AndroidSearchScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap),
         ) {
+            if (showSegment && onSwitchToExplore != null) {
+                stickyHeader(key = "segment") {
+                    // 分段条钉在顶栏下（sticky）：滚走后仍可拨回另一段。背景吃同一颗 surface，
+                    // 折叠顶栏的毛玻璃压上来时不会露出内容。
+                    SearchDiscoverSegmentBar(
+                        current = SearchDiscoverSegment.SEARCH,
+                        onSwitch = { seg ->
+                            if (seg == SearchDiscoverSegment.EXPLORE) onSwitchToExplore?.invoke()
+                        },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface),
+                    )
+                }
+            }
             item(key = "header") {
                 SearchHeader(
                     query = ui.query,
@@ -449,8 +473,9 @@ fun SharedTransitionScope.AndroidSearchScreen(
         // 顶栏浮层：大标题折叠 + 毛玻璃。导航图标仅在子页面（下钻）出现，
         // 与列表内搜索框的返回按钮保持同一条可见性契约（主 Tab 不产生重复返回）。
         VeneraTopAppBar(
-            title = "搜索",
-            largeTitle = "搜索",
+            // 探索并进本页后（2026-11-03），主搜索的大标题就是壳上「搜索与发现」那一条。
+            title = if (showSegment) "搜索与发现" else "搜索",
+            largeTitle = if (showSegment) "搜索与发现" else "搜索",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
             navigationIcon = {

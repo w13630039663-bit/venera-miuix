@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTextExactly
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -18,13 +19,28 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.venera.compose.components.WideScreenLayoutMode
 import com.venera.compose.data.db.FavoriteRecord
 import com.venera.desktop.detail.DesktopComicDetailScreen
+import com.venera.desktop.detail.DESKTOP_EPISODE_DOWNLOAD_LABEL
 import com.venera.desktop.explore.DesktopExploreScreen
 import com.venera.desktop.favorites.DesktopFavoritesScreen
 import com.venera.desktop.gallery.data.DesktopComicPage
+import com.venera.desktop.gallery.data.DesktopComicQueueStatus
+import com.venera.desktop.gallery.data.DesktopComicQueueTask
 import com.venera.desktop.reader.DesktopReaderScreen
 import com.venera.desktop.search.DesktopSearchScreen
 import com.venera.desktop.sourcemanage.DesktopSourceManageScreen
 import com.venera.desktop.sourcemanage.DesktopSourceRowUi
+import com.venera.desktop.queue.DesktopComicQueueScreen
+import com.venera.desktop.downloads.DesktopComicDownloadsScreen
+import com.venera.desktop.gallery.data.DesktopComicDownloadedChapter
+import com.venera.desktop.gallery.data.DesktopComicDownloadedGroup
+import com.venera.desktop.gallery.data.desktopComicRepairLabel
+import com.venera.desktop.gallery.ui.DESKTOP_COMIC_QUEUE_REMOVE_LABEL
+import com.venera.desktop.gallery.ui.DESKTOP_COMIC_QUEUE_STOP_LABEL
+import com.venera.desktop.gallery.ui.DesktopComicDownloadListing
+import com.venera.desktop.gallery.ui.desktopComicDeleteArmedLabel
+import com.venera.desktop.gallery.ui.desktopComicDeleteIdleLabel
+import com.venera.desktop.gallery.ui.desktopComicDownloadedRowLine
+import com.venera.desktop.gallery.ui.desktopComicDownloadedScreenHeader
 import com.venera.engineprobe.ComicInfo
 import com.venera.engineprobe.EngineSession
 import org.junit.Assert.assertEquals
@@ -101,7 +117,7 @@ class DesktopNewScreensSemanticsTest {
                     DesktopComicDetailScreen(
                         mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
                         favorited = false, favoriteBusy = false,
-                        onToggleFavorite = { taps++ }, onBack = {}, onOpenEpisode = {},
+                        onToggleFavorite = { taps++ }, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                     )
                 }
             }
@@ -122,7 +138,7 @@ class DesktopNewScreensSemanticsTest {
                         DesktopComicDetailScreen(
                             mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
                             favorited = favorited, favoriteBusy = busy,
-                            onToggleFavorite = {}, onBack = {}, onOpenEpisode = {},
+                            onToggleFavorite = {}, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                         )
                     }
                 }
@@ -143,7 +159,7 @@ class DesktopNewScreensSemanticsTest {
                 DesktopComicDetailScreen(
                     mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
                     favorited = null, favoriteBusy = false,
-                    onToggleFavorite = { taps++ }, onBack = {}, onOpenEpisode = {},
+                    onToggleFavorite = { taps++ }, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                 )
             }
         }
@@ -160,7 +176,7 @@ class DesktopNewScreensSemanticsTest {
             Stage {
                 DesktopComicDetailScreen(
                     mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
-                    favorited = false, onToggleFavorite = null, onBack = {}, onOpenEpisode = {},
+                    favorited = false, onToggleFavorite = null, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                 )
             }
         }
@@ -180,7 +196,7 @@ class DesktopNewScreensSemanticsTest {
                 DesktopComicDetailScreen(
                     mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
                     favorited = false, onToggleFavorite = {}, onBack = {},
-                    onOpenEpisode = { count++; opened = it },
+                    onOpenEpisode = { count++; opened = it }, onDownloadEpisode = null, episodeNoteOf = { null },
                 )
             }
         }
@@ -204,7 +220,7 @@ class DesktopNewScreensSemanticsTest {
                 Stage {
                     DesktopComicDetailScreen(
                         mode = wide, title = "某本漫画", info = info(emptyList()), note = null, masked = false,
-                        favorited = false, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {},
+                        favorited = false, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                     )
                 }
             }
@@ -219,7 +235,7 @@ class DesktopNewScreensSemanticsTest {
                     DesktopComicDetailScreen(
                         mode = wide, title = "某本漫画", info = null,
                         note = "读不到这一本：IllegalStateException 装载后取不到 source key: jm",
-                        masked = false, favorited = null, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {},
+                        masked = false, favorited = null, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                     )
                 }
             }
@@ -239,7 +255,7 @@ class DesktopNewScreensSemanticsTest {
             Stage {
                 DesktopComicDetailScreen(
                     mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
-                    favorited = false, onToggleFavorite = {}, onBack = { backs++ }, onOpenEpisode = {},
+                    favorited = false, onToggleFavorite = {}, onBack = { backs++ }, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                 )
             }
         }
@@ -349,7 +365,7 @@ class DesktopNewScreensSemanticsTest {
                     mode = wide, sourceKey = "jm",
                     sections = listOf(EngineSession.Section("连载更新", cards(3))),
                     note = null, maskedOf = { false },
-                    onOpen = { count++; opened = it.title }, onReload = {}, onOpenSourceManage = {},
+                    onOpen = { count++; opened = it.title }, onReload = {}, onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = {},
                 )
             }
         }
@@ -374,7 +390,7 @@ class DesktopNewScreensSemanticsTest {
                 DesktopExploreScreen(
                     mode = wide, sourceKey = "jm", sections = listOf(EngineSession.Section("A", cards(1))),
                     note = null, maskedOf = { false }, onOpen = {}, onReload = {},
-                    onOpenSourceManage = { taps++ },
+                    onOpenSourceManage = { taps++ }, onOpenQueue = {}, onOpenDownloads = {},
                 )
             }
         }
@@ -392,7 +408,7 @@ class DesktopNewScreensSemanticsTest {
                     mode = wide, sourceKey = "jm", sections = emptyList(),
                     note = "取探索页失败：IllegalStateException 装载后取不到 source key: jm",
                     maskedOf = { false }, onOpen = {}, onReload = {},
-                    onOpenSourceManage = { taps++ },
+                    onOpenSourceManage = { taps++ }, onOpenQueue = {}, onOpenDownloads = {},
                 )
             }
         }
@@ -409,7 +425,7 @@ class DesktopNewScreensSemanticsTest {
                 Stage {
                     DesktopExploreScreen(
                         mode = wide, sourceKey = "jm", sections = emptyList(), note = null,
-                        maskedOf = { false }, onOpen = {}, onReload = {}, onOpenSourceManage = {},
+                        maskedOf = { false }, onOpen = {}, onReload = {}, onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = {},
                     )
                 }
             }
@@ -420,7 +436,7 @@ class DesktopNewScreensSemanticsTest {
                 Stage {
                     DesktopExploreScreen(
                         mode = wide, sourceKey = "jm", sections = emptyList(), note = "这一源没回探索内容。",
-                        maskedOf = { false }, onOpen = {}, onReload = {}, onOpenSourceManage = {},
+                        maskedOf = { false }, onOpen = {}, onReload = {}, onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = {},
                     )
                 }
             }
@@ -737,7 +753,7 @@ class DesktopNewScreensSemanticsTest {
                 Stage {
                     DesktopExploreScreen(
                         mode = wide, sourceKey = "jm", sections = listOf(EngineSession.Section("A", cards(1))),
-                        note = null, maskedOf = { true }, onOpen = {}, onReload = {}, onOpenSourceManage = {},
+                        note = null, maskedOf = { true }, onOpen = {}, onReload = {}, onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = {},
                     )
                 }
             }
@@ -785,7 +801,7 @@ class DesktopNewScreensSemanticsTest {
             Stage {
                 DesktopComicDetailScreen(
                     mode = narrow, title = "某本漫画", info = info(), note = null, masked = false,
-                    favorited = false, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {},
+                    favorited = false, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {}, onDownloadEpisode = null, episodeNoteOf = { null },
                 )
             }
         }
@@ -803,5 +819,453 @@ class DesktopNewScreensSemanticsTest {
             "单栏第二行进了树 ⇒ 上面那条视口判据的量程变了",
             runCatching { onNodeWithText("第 2 话").assertExists() }.isSuccess,
         )
+    }
+
+    // ── ⑦ 第一百一十四批：下载那一格补的是"门"，不是链路 ────────────────────
+
+    /**
+     * 队列表里的一行。
+     *
+     * ⚠️ 这里**只喂数据**，不调 `DesktopComicDownloadQueue.enqueue`：那颗是进程级单例，
+     * 测试里真入队会串味（本文件其余判据与下一批都会被那张表影响）。
+     * 真入队/真落盘那一段由 `DesktopComicDownloadQueueTest` 与泵那几颗钉，这一层只量"摆不摆、按不落"。
+     */
+    private fun queueTask(
+        status: DesktopComicQueueStatus,
+        order: Int,
+        downloaded: Int = 0,
+        total: Int = 0,
+        error: String = "",
+    ) = DesktopComicQueueTask(
+        taskId = "copy_manga_1_c$order",
+        sourceKey = "copy_manga",
+        comicId = "1",
+        comicTitle = "题名",
+        comicCover = "",
+        chapterId = "c$order",
+        chapterTitle = "第 ${order + 1} 话",
+        chapterOrder = order,
+        directoryPath = "copy_manga/1/000${order}_第 ${order + 1} 话",
+        status = status,
+        downloadedPages = downloaded,
+        totalPages = total,
+        error = error,
+        placeholder = false,
+        createTime = 1L,
+        updateTime = 2L,
+    )
+
+    /**
+     * 「还没读回来」与「读回来而确实是空的」必须念两句不同的话，且都不摆行。
+     *
+     * 这一族的原文在 `DesktopComicDownloadQueue` 的注释里（把"还没读到"说成"读到了没有"）。
+     */
+    @Test
+    fun 队列屏表没读回来时念正在读而不摆行() = runComposeUiTest {
+        var stops = 0
+        var removes = 0
+        setContent {
+            Stage {
+                DesktopComicQueueScreen(
+                    mode = wide, tasks = emptyList(), primed = false, note = null,
+                    onStop = { stops++ }, onRemove = { removes++ }, onBack = {},
+                )
+            }
+        }
+        onNodeWithText("正在读那张表…").assertExists()
+        assertFalse(
+            "还没读回来就念「本机队列空」是把两档塌成一句：",
+            runCatching {
+                onNodeWithText("本机队列空 —— 详情那一屏点某一话右侧的「下载这一话」会排到这里来").assertExists()
+            }.isSuccess,
+        )
+        assertTrue(
+            "没有行的时候不许摆把手：" +
+                onAllNodesWithText(DESKTOP_COMIC_QUEUE_REMOVE_LABEL).fetchSemanticsNodes(),
+            onAllNodesWithText(DESKTOP_COMIC_QUEUE_REMOVE_LABEL).fetchSemanticsNodes().isEmpty(),
+        )
+        assertEquals(0, stops)
+        assertEquals(0, removes)
+    }
+
+    /** 读回来而确实空了：那句改口念"空"，并说得出门在哪儿（详情那一屏那枚把手）。 */
+    @Test
+    fun 队列屏空表念得出去哪儿排队而不摆行() = runComposeUiTest {
+        setContent {
+            Stage {
+                DesktopComicQueueScreen(
+                    mode = wide, tasks = emptyList(), primed = true, note = null,
+                    onStop = {}, onRemove = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText("本机队列空 —— 详情那一屏点某一话右侧的「下载这一话」会排到这里来").assertExists()
+        assertTrue(
+            "空表时摆一枚按不到东西的把手就是假开关：",
+            onAllNodesWithText(DESKTOP_COMIC_QUEUE_STOP_LABEL).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * 「停这一笔」只挂在**正在跑**那一行；「撤掉这一笔」每一行都有。
+     *
+     * 两档同屏时数把手的**枚数**（只看一句文案读不出"排队那一行多摆了一枚"）。
+     * 各按一次恰好落一次：这一屏从前没有任何 UI 能碰到那两跳回调。
+     */
+    @Test
+    fun 队列屏两枚把手各挂该挂的行而按一次恰好一次() = runComposeUiTest {
+        var stops = 0
+        var removes = 0
+        val running = queueTask(DesktopComicQueueStatus.RUNNING, 0, downloaded = 7, total = 30)
+        val pending = queueTask(DesktopComicQueueStatus.PENDING, 1)
+        setContent {
+            Stage {
+                DesktopComicQueueScreen(
+                    mode = wide, tasks = listOf(running, pending), primed = true, note = null,
+                    onStop = { stops++ }, onRemove = { removes++ }, onBack = {},
+                )
+            }
+        }
+        // 行里那一句逐字复用既有那颗纯函数（这里钉"真上屏了"，不重算一遍）。
+        onNodeWithText("第 1 话「第 1 话」 · 正在下 · 7/30 页 · 本子 1").assertExists()
+        assertEquals(
+            "「停这一笔」只许有正在跑那一行这一枚（排队那一笔还没开始，没什么可停）：",
+            1, onAllNodesWithText(DESKTOP_COMIC_QUEUE_STOP_LABEL).fetchSemanticsNodes().size,
+        )
+        assertEquals(
+            "「撤掉这一笔」每一行都得有（终局那几档留在表里，没有别的门能清）：",
+            2, onAllNodesWithText(DESKTOP_COMIC_QUEUE_REMOVE_LABEL).fetchSemanticsNodes().size,
+        )
+        onNodeWithText(DESKTOP_COMIC_QUEUE_STOP_LABEL).performClick()
+        onAllNodesWithText(DESKTOP_COMIC_QUEUE_REMOVE_LABEL)[0].performClick()
+        assertEquals(1, stops)
+        assertEquals(1, removes)
+    }
+
+    /** 失败那一行把站方原话带到行尾（只说「失败了」等于让用户再按一次去撞同一堵墙）。 */
+    @Test
+    fun 队列屏失败那一行念得出站方原话() = runComposeUiTest {
+        setContent {
+            Stage {
+                DesktopComicQueueScreen(
+                    mode = wide,
+                    tasks = listOf(queueTask(DesktopComicQueueStatus.FAILED, 2, error = "取页失败 页=3")),
+                    primed = true, note = null, onStop = {}, onRemove = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText("第 3 话「第 3 话」 · 失败了 · 0/0 页 · 本子 1 · 因=取页失败 页=3").assertExists()
+    }
+
+    /** 二级页必须有出路；扳了闸/撤了那一句原话上屏（屏不算话，只搬壳里算好的那句）。 */
+    @Test
+    fun 队列屏返回按得到而note那句原话上屏() = runComposeUiTest {
+        var backs = 0
+        val note = "撤掉了：第 1 话「第 1 话」已从表里摘出去，盘上那 3 页还留着（要删干净去「本机已下载」那一屏）"
+        setContent {
+            Stage {
+                DesktopComicQueueScreen(
+                    mode = wide, tasks = emptyList(), primed = true, note = note,
+                    onStop = {}, onRemove = {}, onBack = { backs++ },
+                )
+            }
+        }
+        onNodeWithText("← 返回").performClick()
+        assertEquals(1, backs)
+        onNodeWithText(note).assertExists()
+    }
+
+    /** 没有下载根目录 ⇒ 那一枚把手**整颗不摆**（与收藏钮同一条"不许假开关"口径）。 */
+    @Test
+    fun 详情屏没有下载根目录时那一枚把手整颗不摆() = runComposeUiTest {
+        setContent {
+            Stage {
+                DesktopComicDetailScreen(
+                    mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
+                    favorited = false, onToggleFavorite = {}, onBack = {}, onOpenEpisode = {},
+                    onDownloadEpisode = null, episodeNoteOf = { null },
+                )
+            }
+        }
+        assertTrue(
+            "没有写口时摆一颗按下去什么都不做的钮，就是评审 R6 那一族：" +
+                onAllNodesWithText(DESKTOP_EPISODE_DOWNLOAD_LABEL).fetchSemanticsNodes(),
+            onAllNodesWithText(DESKTOP_EPISODE_DOWNLOAD_LABEL).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * 有写口时：三行三枚把手，按把手恰好落一次**而没进阅读器**。
+     *
+     * 后半句是本批新立的那条（批 96 那一次是把手**嵌在整行卡片里面**，整行的点击被吃掉）。
+     * 本屏把手放在卡片外面当兄弟节点，所以按它必须只落下载那一跳。
+     */
+    @Test
+    fun 详情屏那枚下载把手按一次落一次而不进阅读器() = runComposeUiTest {
+        var downloads = 0
+        var opens = 0
+        setContent {
+            Stage {
+                DesktopComicDetailScreen(
+                    mode = wide, title = "某本漫画", info = info(), note = null, masked = false,
+                    favorited = false, onToggleFavorite = {}, onBack = {},
+                    onOpenEpisode = { opens++ },
+                    onDownloadEpisode = { downloads++ },
+                    episodeNoteOf = { ep -> if (ep.id == "e1") "排着队 · 回到漫画域就接着跑" else null },
+                )
+            }
+        }
+        assertEquals(
+            "三行章节就该有三枚把手（少一枚就是某一话没有门）：",
+            3, onAllNodesWithText(DESKTOP_EPISODE_DOWNLOAD_LABEL).fetchSemanticsNodes().size,
+        )
+        onAllNodesWithText(DESKTOP_EPISODE_DOWNLOAD_LABEL)[0].performClick()
+        assertEquals("按把手该恰好落一次：", 1, downloads)
+        assertEquals("按把手不许顺带进阅读器：", 0, opens)
+        // 那一行下面念的是这一话的状态（只挂在给了它的那一行上）。
+        onNodeWithText("排着队 · 回到漫画域就接着跑").assertExists()
+    }
+
+    /** 探索屏那枚「下载队列」入口按一次恰好落一次（取失败时仍在顶栏 = 坏了也出得去）。 */
+    @Test
+    fun 探索屏那枚队列入口按一次恰好落一次() = runComposeUiTest {
+        var taps = 0
+        setContent {
+            Stage {
+                DesktopExploreScreen(
+                    mode = wide, sourceKey = "copy_manga", sections = emptyList(),
+                    note = "取探索页失败：引擎没起来", maskedOf = { false }, onOpen = {}, onReload = {},
+                    onOpenSourceManage = {}, onOpenQueue = { taps++ }, onOpenDownloads = {},
+                )
+            }
+        }
+        onNodeWithText("下载队列").performClick()
+        assertEquals("队列入口是假的（摆了而不落）：那屏仍然打不开", 1, taps)
+    }
+
+    /** 探索屏那枚「本机已下载」入口：有根时按一次恰好落一次，没根时**整颗不摆**。 */
+    @Test
+    fun 探索屏那枚本机已下载入口按一次落一次() = runComposeUiTest {
+        var taps = 0
+        setContent {
+            Stage {
+                DesktopExploreScreen(
+                    mode = wide, sourceKey = "copy_manga", sections = emptyList(),
+                    note = null, maskedOf = { false }, onOpen = {}, onReload = {},
+                    onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = { taps++ },
+                )
+            }
+        }
+        onNodeWithText("本机已下载").performClick()
+        assertEquals("入口是假的（摆了而不落）：那一屏仍然打不开", 1, taps)
+    }
+
+    /** 没有下载根目录 ⇒ 那枚入口**整颗不摆**（门后永远数不着东西，摆它比不摆更坏）。 */
+    @Test
+    fun 探索屏没有下载根目录时那枚本机已下载入口不摆() = runComposeUiTest {
+        setContent {
+            Stage {
+                DesktopExploreScreen(
+                    mode = wide, sourceKey = "copy_manga", sections = emptyList(),
+                    note = null, maskedOf = { false }, onOpen = {}, onReload = {},
+                    onOpenSourceManage = {}, onOpenQueue = {}, onOpenDownloads = null,
+                )
+            }
+        }
+        assertTrue(
+            "没有根的时候那扇门不该摆：" + onAllNodesWithText("本机已下载").fetchSemanticsNodes(),
+            onAllNodesWithText("本机已下载").fetchSemanticsNodes().isEmpty(),
+        )
+        // 对照：另外三枚入口照旧在（撤的只是这一扇，不是整排）。
+        onNodeWithText("源管理").assertExists()
+        onNodeWithText("下载队列").assertExists()
+    }
+
+    // ── ⑧ 第一百一十五批：「本机已下载」那一屏的门 ──────────────────────────
+
+    /**
+     * 盘上的一行。
+     *
+     * ⚠️ 同样**只喂数据**：这一层不碰那颗进程级单例队列，也不碰盘（读树、删除、入队各有自己的判据）。
+     *    这里只量「摆不摆、按不落、念的是哪一句」。
+     */
+    private fun downloadedChapter(
+        order: Int,
+        written: Int,
+        expected: Int,
+        complete: Boolean = written == expected,
+    ) = DesktopComicDownloadedChapter(
+        sourceKey = "copy_manga",
+        comicId = "1461316",
+        chapterId = "c$order",
+        order = order,
+        title = "第0${order + 1}话",
+        expectedPages = expected,
+        writtenPages = written,
+        bytes = 1024L * 1024L * 3,
+        complete = complete,
+    )
+
+    private fun downloadedListing(vararg chapters: DesktopComicDownloadedChapter) = DesktopComicDownloadListing(
+        groups = if (chapters.isEmpty()) emptyList()
+        else listOf(DesktopComicDownloadedGroup(comicId = "1461316", sourceKey = "copy_manga", chapters = chapters.toList())),
+        skipped = 0,
+        rootExists = true,
+    )
+
+    /** 表头那一句**逐字**上屏（屏不另写一句，只搬那颗纯函数的原话）。 */
+    @Test
+    fun 已下载屏表头念那颗纯函数的原话() = runComposeUiTest {
+        val listing = downloadedListing(downloadedChapter(0, 30, 30))
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = listing, note = null, armedKey = null,
+                    onRepair = {}, onDelete = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText(desktopComicDownloadedScreenHeader(listing)).assertExists()
+    }
+
+    /**
+     * 「还没数回来」与「数回来而确实空了」念两句不同的话，而**两种都不摆行、不摆把手**。
+     *
+     * 把"还没读到"说成"本机没有"是本仓那一族（队列屏那两条是同一条口径的前一屏）。
+     */
+    @Test
+    fun 已下载屏没数回来时念正在数而不摆行() = runComposeUiTest {
+        var repairs = 0
+        var deletes = 0
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = null, note = null, armedKey = null,
+                    onRepair = { repairs++ }, onDelete = { deletes++ }, onBack = {},
+                )
+            }
+        }
+        onNodeWithText("正在数本机那一棵树…").assertExists()
+        assertTrue(
+            "还没数回来就念「目录建好了，里面还一条都没有」是把两档塌成一句：" +
+                onAllNodesWithText("存话的目录建好了，里面还一条都没有").fetchSemanticsNodes(),
+            onAllNodesWithText("存话的目录建好了，里面还一条都没有").fetchSemanticsNodes().isEmpty(),
+        )
+        assertEquals(0, repairs)
+        assertEquals(0, deletes)
+    }
+
+    /** 数回来而确实空了：那句改口念"空"，而那一行右边一枚把手都没有（没有行就没有把手）。 */
+    @Test
+    fun 已下载屏空表念得出去哪儿排队而不摆行() = runComposeUiTest {
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = downloadedListing(), note = null, armedKey = null,
+                    onRepair = {}, onDelete = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText("存话的目录建好了，里面还一条都没有").assertExists()
+        assertTrue(
+            "没有行的时候不许摆把手：",
+            onAllNodesWithText("补齐这一话 · 还缺 2 页").fetchSemanticsNodes().isEmpty(),
+        )
+        assertEquals(
+            "空表时删除把手也该一枚都没有：",
+            0, onAllNodesWithText(desktopComicDeleteIdleLabel(1)).fetchSemanticsNodes().size,
+        )
+    }
+
+    /**
+     * 「补齐」只挂在**缺页**那一行（齐了摆它就是多一枚没意义的把手），而删除每一行都有。
+     *
+     * 各按一次恰好落一次：这一屏从前没有任何一屏能碰到那两跳回调。
+     */
+    @Test
+    fun 已下载屏两枚把手各挂该行而按一次恰好一次() = runComposeUiTest {
+        var repairs = 0
+        var deletes = 0
+        val whole = downloadedChapter(0, 30, 30)
+        val gap = downloadedChapter(1, 28, 30)
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = downloadedListing(whole, gap), note = null, armedKey = null,
+                    onRepair = { repairs++ }, onDelete = { deletes++ }, onBack = {},
+                )
+            }
+        }
+        // 行里那一句逐字复用既有那颗纯函数（这里钉"真上屏了"，不重算一遍格式）。
+        onNodeWithText(desktopComicDownloadedRowLine(gap)).assertExists()
+        onNodeWithText(desktopComicDownloadedRowLine(whole)).assertExists()
+        assertEquals(
+            "「补齐」只许有缺页那一行这一枚（已下全那一行摆它就是假开关）：",
+            1, onAllNodesWithText(desktopComicRepairLabel(gap)).fetchSemanticsNodes().size,
+        )
+        assertEquals(
+            "「删掉第 N 话的本机文件」每一行都得有：",
+            2, onAllNodesWithText(desktopComicDeleteIdleLabel(1))
+                .fetchSemanticsNodes().size + onAllNodesWithText(desktopComicDeleteIdleLabel(2)).fetchSemanticsNodes().size,
+        )
+        onNodeWithText(desktopComicRepairLabel(gap)).performClick()
+        onNodeWithText(desktopComicDeleteIdleLabel(2)).performClick()
+        assertEquals("按补齐该恰好落 onRepair：", 1, repairs)
+        assertEquals("按删除该恰好落 onDelete：", 1, deletes)
+    }
+
+    /**
+     * 删除那两步的形状：`armedKey` 不是这一行 ⇒ 念「删掉第 N 话的本机文件」；
+     * `armedKey` 正是这一行 ⇒ 改念「再按一次就删」，而按下才真落。
+     *
+     * ⚠️ 屏自己**不**算武装态（它只吃 `armedKey`），所以这条能纯喂数据钉住；
+     *    "第一按只武装而不落 onDelete" 那一格住在壳里，由源码尺钉。
+     */
+    @Test
+    fun 已下载屏武装那一行改口而按下落一次() = runComposeUiTest {
+        val gap = downloadedChapter(1, 28, 30)
+        val armed = "copy_manga/1461316/1"
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = downloadedListing(gap), note = null, armedKey = armed,
+                    onRepair = {}, onDelete = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText(desktopComicDeleteArmedLabel(2)).assertExists()
+        assertTrue(
+            "武装着的那一行不该再念没武装那句：" + onAllNodesWithText(desktopComicDeleteIdleLabel(2)).fetchSemanticsNodes(),
+            onAllNodesWithText(desktopComicDeleteIdleLabel(2)).fetchSemanticsNodes().isEmpty(),
+        )
+        // 对照：别的行仍念没武装那句（武装是**一行**的事，不是整屏的事）。
+        val two = downloadedListing(gap, downloadedChapter(2, 10, 30))
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = two, note = null, armedKey = armed,
+                    onRepair = {}, onDelete = {}, onBack = {},
+                )
+            }
+        }
+        onNodeWithText(desktopComicDeleteIdleLabel(3)).assertExists()
+    }
+
+    /** 二级页必须有出路；上一次按下的果那句原话上屏（屏不算话，只搬壳里算好的那句）。 */
+    @Test
+    fun 已下载屏返回按得到而note那句原话上屏() = runComposeUiTest {
+        var backs = 0
+        val note = "删掉了第 1 话的本机文件（30 页 · 3.0MB）"
+        setContent {
+            Stage {
+                DesktopComicDownloadsScreen(
+                    mode = wide, listing = downloadedListing(), note = note, armedKey = null,
+                    onRepair = {}, onDelete = {}, onBack = { backs++ },
+                )
+            }
+        }
+        onNodeWithText("← 返回").performClick()
+        assertEquals(1, backs)
+        onNodeWithText(note).assertExists()
     }
 }
