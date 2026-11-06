@@ -85,6 +85,33 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _autoScrollSpeedPersist = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SCROLL_SPEED_PERSIST, true))
     val autoScrollSpeedPersist: StateFlow<Boolean> = _autoScrollSpeedPersist.asStateFlow()
 
+    /**
+     * 按本记忆阅读模式（2026-11-05，默认开）。
+     *
+     * 治的是"这本是条漫、下本是日漫，阅读器里切了模式换一本又全不对"：开时阅读器里
+     * 换模式只写这一本的档（JSON map：`<sourceKey>|<comicId>` → `ReaderReadingMode.key`），
+     * 全局默认档不跟着翻；关时回到原行为（换的就是全局档）。设置页改全局默认档两处都照常生效，
+     * 只影响**没记过档**的书 —— 记过档的书以那本自己的档为准。
+     */
+    private val _comicModeMemory = MutableStateFlow(prefs.getBoolean(KEY_COMIC_MODE_MEMORY, true))
+    val comicModeMemoryEnabled: StateFlow<Boolean> = _comicModeMemory.asStateFlow()
+
+    /**
+     * 阅读器常驻信息角标（2026-11-07，方案「双角胶囊」）：左角 当前页/总页，
+     * 右角 时间 + 电量；巡航迷你条出现时右角整组让位上移。默认开 —— 阅读器是全屏
+     * 沉浸（系统栏都藏了），页码/时间/电量是仅剩的常驻参考系。
+     * 入口在**阅读器设置面板**（用户点名），全局设置页不放。
+     */
+    private val _readerHudEnabled = MutableStateFlow(prefs.getBoolean(KEY_READER_HUD, true))
+    val readerHudEnabled: StateFlow<Boolean> = _readerHudEnabled.asStateFlow()
+
+    /**
+     * 阅读时显示系统状态栏（默认关 = 全沉浸）：开着时沉浸只藏导航栏，
+     * 状态栏（时间/信号/电量那一条）保留。同样只住阅读器设置面板。
+     */
+    private val _readerShowStatusBar = MutableStateFlow(prefs.getBoolean(KEY_READER_STATUS_BAR, false))
+    val readerShowStatusBar: StateFlow<Boolean> = _readerShowStatusBar.asStateFlow()
+
     // 隐私
     /** 屏幕防窥：置位后禁止截图、录屏与任务列表缩略图（窗口级 FLAG_SECURE）。 */
     private val _secureScreen = MutableStateFlow(prefs.getBoolean(KEY_SECURE_SCREEN, false))
@@ -805,6 +832,41 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _autoScrollSpeedPersist.value = enabled
     }
 
+    fun setComicModeMemory(enabled: Boolean) {
+        prefs.put(KEY_COMIC_MODE_MEMORY, enabled)
+        _comicModeMemory.value = enabled
+    }
+
+    fun setReaderHudEnabled(enabled: Boolean) {
+        prefs.put(KEY_READER_HUD, enabled)
+        _readerHudEnabled.value = enabled
+    }
+
+    fun setReaderShowStatusBar(enabled: Boolean) {
+        prefs.put(KEY_READER_STATUS_BAR, enabled)
+        _readerShowStatusBar.value = enabled
+    }
+
+    /** 这一本记住的阅读模式 key；开关关着或没记过都回 null（调用方落全局档）。 */
+    fun comicReadingMode(comicKey: String): String? {
+        if (!_comicModeMemory.value) return null
+        return comicModeMap()[comicKey]
+    }
+
+    fun setComicReadingMode(comicKey: String, modeKey: String?) {
+        val map = comicModeMap().toMutableMap()
+        if (modeKey.isNullOrBlank()) map.remove(comicKey) else map[comicKey] = modeKey
+        prefs.put(KEY_COMIC_MODE_MAP, gson.toJson(map))
+    }
+
+    private val gson = com.google.gson.Gson()
+
+    private fun comicModeMap(): Map<String, String> = runCatching {
+        val raw = prefs.getString(KEY_COMIC_MODE_MAP, null) ?: return@runCatching emptyMap()
+        val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
+        gson.fromJson<Map<String, String>>(raw, type) ?: emptyMap()
+    }.getOrDefault(emptyMap())
+
     fun setSecureScreen(enabled: Boolean) {
         prefs.put(KEY_SECURE_SCREEN, enabled)
         _secureScreen.value = enabled
@@ -966,6 +1028,10 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         private const val KEY_AUTO_SCROLL_INTERVAL_SEC = "pref_auto_scroll_interval_sec"
         private const val KEY_AUTO_SCROLL_SPEED_PX = "pref_auto_scroll_speed_px"
         private const val KEY_AUTO_SCROLL_SPEED_PERSIST = "pref_auto_scroll_speed_persist"
+        private const val KEY_COMIC_MODE_MEMORY = "pref_comic_mode_memory"
+        private const val KEY_COMIC_MODE_MAP = "pref_comic_mode_map"
+        private const val KEY_READER_HUD = "pref_reader_hud_enabled"
+        private const val KEY_READER_STATUS_BAR = "pref_reader_show_status_bar"
 
         /** 巡航到本话末页时接着开下一话。 */
         private const val KEY_AUTO_NEXT_CHAPTER = "pref_reader_auto_next_chapter"

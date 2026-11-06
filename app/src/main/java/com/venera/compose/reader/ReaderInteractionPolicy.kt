@@ -1,7 +1,7 @@
 package com.venera.compose.reader
 
 internal enum class ReaderTapAction { TOGGLE_CONTROLS, PREVIOUS_PAGE, NEXT_PAGE, NONE }
-internal enum class ReaderPanel { NONE, SETTINGS, CHAPTERS, COMMENTS }
+internal enum class ReaderPanel { NONE, SETTINGS, CHAPTERS, COMMENTS, BOOKMARKS }
 
 /** Shared by Telephoto's single-click callback and the non-zooming page container. */
 internal fun readerTapAction(

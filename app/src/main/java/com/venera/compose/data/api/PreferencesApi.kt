@@ -61,6 +61,30 @@ interface ReaderPreferences {
     /** 「记住速度」开关（默认开）：关时速度只活在本次阅读会话，不落偏好。 */
     val autoScrollSpeedPersist: StateFlow<Boolean>
     fun setAutoScrollSpeedPersist(enabled: Boolean)
+
+    /**
+     * 按本记忆阅读模式（默认开）：开时在阅读器里换模式只影响这一本，重进同本自动恢复；
+     * 关时阅读器换的就是全局默认档（原行为）。
+     */
+    val comicModeMemoryEnabled: StateFlow<Boolean>
+    fun setComicModeMemory(enabled: Boolean)
+
+    /** 这一本记住的阅读模式 key（`ReaderReadingMode.key`）；没记过返回 null，由调用方落全局档。 */
+    fun comicReadingMode(comicKey: String): String?
+
+    /** 记（或传 null 清）这一本的阅读模式。comicKey = `<sourceKey>|<comicId>`。 */
+    fun setComicReadingMode(comicKey: String, modeKey: String?)
+
+    /**
+     * 阅读器常驻信息角标（默认开）：左角页码、右角时间与电量，双角胶囊。
+     * 入口只在阅读器设置面板。
+     */
+    val readerHudEnabled: StateFlow<Boolean>
+    fun setReaderHudEnabled(enabled: Boolean)
+
+    /** 阅读时保留系统状态栏（默认关 = 全沉浸，只藏导航栏）。入口只在阅读器设置面板。 */
+    val readerShowStatusBar: StateFlow<Boolean>
+    fun setReaderShowStatusBar(enabled: Boolean)
     val preloadImageCount: StateFlow<Int>
 
     /** 巡航到本话末页时接着开下一话（会**自动联网取下一话**，默认开）。 */

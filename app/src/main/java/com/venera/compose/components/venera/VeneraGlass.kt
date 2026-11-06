@@ -162,7 +162,7 @@ fun Modifier.veneraGlass(
     role: VeneraGlassRole,
     shape: Shape,
     backdrop: LayerBackdrop? = LocalGlassBackdrop.current,
-    enabled: Boolean = SurfaceMaterialPolicy.glassEnabled(LocalSurfaceMaterial.current),
+    enabled: Boolean = SurfaceMaterialPolicy.glassEnabled(LocalSurfaceMaterial.current, android.os.Build.VERSION.SDK_INT),
 ): Modifier {
     if (!enabled || backdrop == null) return this
     val isDark = LocalVeneraDarkTheme.current

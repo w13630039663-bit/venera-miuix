@@ -267,11 +267,26 @@ fun GalleryScreen(
                 svm.active &&
                 svm.mode == GallerySearchMode.INPUT
             ) {
-                if (svm.hasQuery) svm.collapseToResults() else svm.closeSearch()
+                // 2026-11-05 改判（用户「打完字返回，输入框还挂在屏上点不动」）：
+                // 只有**真搜过一轮**（结果墙已经起来）才值得收成一条继续看；
+                // 打字没搜就离开，旧的 `closeSearch()` 只关 `active` 不清词不回模式，
+                // 回来时 INPUT 态带残词复现 —— 直接整层清掉。
+                if (svm.inputRoundLive()) svm.collapseToResults() else svm.clearAndCloseSearch()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 切走底部 Tab / 弹出这一屏时，搜索区随组合一起被摘 —— 那条路**不经过 ON_STOP**
+    // （Activity 没停，只是目的地离开组合），上一条就管不着。判据同一条：
+    // 没搜过轮的残输入整层清掉，搜过的收成一条留给回来接着看。
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!rvm.open && svm.active && svm.mode == GallerySearchMode.INPUT) {
+                if (svm.inputRoundLive()) svm.collapseToResults() else svm.clearAndCloseSearch()
+            }
+        }
     }
 
     // 系统返回**逐级**：反搜 → 展开态收成一条（接着看图）→ 上一轮搜索上下文 → 关掉整个搜索。
@@ -290,7 +305,9 @@ fun GalleryScreen(
     BackHandler(enabled = svm.active) {
         when {
             rvm.open -> rvm.closeLayer()
-            svm.mode == GallerySearchMode.INPUT && svm.hasQuery -> svm.collapseToResults()
+            // 收成一条只留给**真搜过一轮**的输入态（接着看结果墙是收条的意义）；
+            // 打字没搜就返回 = 整层关掉，屏上不许残留一张点不动的输入卡。
+            svm.mode == GallerySearchMode.INPUT && svm.inputRoundLive() -> svm.collapseToResults()
             else -> svm.clearAndCloseSearch()
         }
     }

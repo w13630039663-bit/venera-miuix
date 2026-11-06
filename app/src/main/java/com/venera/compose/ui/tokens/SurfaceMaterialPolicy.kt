@@ -25,7 +25,8 @@ val LocalSurfaceMaterial = compositionLocalOf { SurfaceMaterial.SOLID }
  */
 @Composable
 @ReadOnlyComposable
-fun veneraGlassEnabled(): Boolean = SurfaceMaterialPolicy.glassEnabled(LocalSurfaceMaterial.current)
+fun veneraGlassEnabled(): Boolean =
+    SurfaceMaterialPolicy.glassEnabled(LocalSurfaceMaterial.current, android.os.Build.VERSION.SDK_INT)
 
 /**
  * 玻璃按元素体量分成的三档。
@@ -82,11 +83,18 @@ enum class VeneraGlassHighlight(val libName: String) {
 object SurfaceMaterialPolicy {
 
     /**
-     * 玻璃开不开。**只看材质轴，不看 [com.venera.compose.data.prefs.AppearanceStyle]，
-     * 也不看 [com.venera.compose.data.prefs.NavigationBarStyle]** —— 三轴正交是拍板过的，
+     * 玻璃开不开。**只看材质轴与系统版本**，不看 [com.venera.compose.data.prefs.AppearanceStyle]，
+     * 也不看 [com.venera.compose.data.prefs.NavigationBarStyle] —— 其余轴正交是拍板过的，
      * 这里若偷偷联动，就会出现"我没开玻璃它怎么透了"或反之。
+     *
+     * 2026-11-07 加版本参数：miuix-blur 库声明 minSdk 33（内部走 31+ 的 RenderEffect 图形栈），
+     * 而 app 的 minSdk 已降到 30（Android 11）。`sdkInt < 33` 返回 false = 玻璃整条回落实色
+     * —— 不执行库代码，Manifest 那条 `tools:overrideLibrary` 因此是安全的。这是"老系统跑
+     * 不动液态玻璃"的如实降级，不是偷偷砍功能：33+ 的行为一字不变。
+     * 版本由调用口（[veneraGlassEnabled]）递进来，本层保持零 Android 依赖、可单测。
      */
-    fun glassEnabled(material: SurfaceMaterial): Boolean = material == SurfaceMaterial.LIQUID_GLASS
+    fun glassEnabled(material: SurfaceMaterial, sdkInt: Int): Boolean =
+        material == SurfaceMaterial.LIQUID_GLASS && sdkInt >= 33
 
     fun tierOf(role: VeneraGlassRole): VeneraGlassTier = when (role) {
         VeneraGlassRole.CARD, VeneraGlassRole.SETTINGS_GROUP, VeneraGlassRole.PANEL -> VeneraGlassTier.CONTAINER

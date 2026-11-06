@@ -284,6 +284,9 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override val autoScrollPageIntervalSec: StateFlow<Float> get() = prefs.autoScrollPageIntervalSec
     override val autoScrollSpeedPx: StateFlow<Float> get() = prefs.autoScrollSpeedPx
     override val autoScrollSpeedPersist: StateFlow<Boolean> get() = prefs.autoScrollSpeedPersist
+    override val comicModeMemoryEnabled: StateFlow<Boolean> get() = prefs.comicModeMemoryEnabled
+    override val readerHudEnabled: StateFlow<Boolean> get() = prefs.readerHudEnabled
+    override val readerShowStatusBar: StateFlow<Boolean> get() = prefs.readerShowStatusBar
     override val preloadImageCount: StateFlow<Int> get() = prefs.preloadImageCount
     override val autoNextChapter: StateFlow<Boolean> get() = prefs.autoNextChapter
     override val readerEnhanceEnabled: StateFlow<Boolean> get() = prefs.readerEnhanceEnabled
@@ -305,6 +308,11 @@ private class AndroidReaderPreferences(private val context: Context) : ReaderPre
     override fun setAutoScrollPageIntervalSec(sec: Float) = prefs.setAutoScrollPageIntervalSec(sec)
     override fun setAutoScrollSpeedPx(speed: Float) = prefs.setAutoScrollSpeedPx(speed)
     override fun setAutoScrollSpeedPersist(enabled: Boolean) = prefs.setAutoScrollSpeedPersist(enabled)
+    override fun setComicModeMemory(enabled: Boolean) = prefs.setComicModeMemory(enabled)
+    override fun comicReadingMode(comicKey: String): String? = prefs.comicReadingMode(comicKey)
+    override fun setComicReadingMode(comicKey: String, modeKey: String?) = prefs.setComicReadingMode(comicKey, modeKey)
+    override fun setReaderHudEnabled(enabled: Boolean) = prefs.setReaderHudEnabled(enabled)
+    override fun setReaderShowStatusBar(enabled: Boolean) = prefs.setReaderShowStatusBar(enabled)
     override fun setPreloadImageCount(count: Int) = prefs.setPreloadImageCount(count)
     override fun setAutoNextChapter(enabled: Boolean) = prefs.setAutoNextChapter(enabled)
     override fun setReaderEnhanceEnabled(enabled: Boolean) = prefs.setReaderEnhanceEnabled(enabled)

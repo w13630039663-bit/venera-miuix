@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        minSdk 30（Android 11）与 miuix-blur（库声明 minSdk 33）的合并冲突豁免。
+        安全前提：玻璃材质的启用闸在 SurfaceMaterialPolicy.glassEnabled —— SDK < 33
+        一律返回 false，blur 库的任何代码都不会执行（老系统玻璃整条回落实色材质）。
+    -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 画廊动图「仅 Wi-Fi」那一档要问"这条网络计不计费"（GalleryConnectivity）。普通权限，不弹运行时窗。 -->

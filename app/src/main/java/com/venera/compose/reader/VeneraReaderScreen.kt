@@ -35,6 +35,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -48,8 +49,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 // ── 阅读器仍保留的 M3 直连（登记在册，不是漏做）──
 // · ModalBottomSheet ×3（章节表 / 阅读设置 / 亮度色彩调节）：miuix 无窗口级底部面板件。
 // · Icon ×8：玻璃挂外壳不挂图标；指示器沿用「统一走波浪环」的既有裁决。
@@ -76,6 +81,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,6 +110,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -204,7 +212,20 @@ private fun ReaderSessionContent(
     // 再另存一份本地副本只会造成"设置页改完必须重开阅读器"这一个后果，没有别的好处。
     // （此前正是如此：pageGap/夜间滤镜/常亮/音量键/点击翻页全部一次性取值。）
     val modeKey by prefs.defaultReadingMode.collectAsState()
-    val readingMode = ReaderReadingMode.fromKey(modeKey)
+    // 按本记忆（2026-11-05）：开关开着时这一本记过档就吃自己的档，没记过才落全局默认。
+    // 阅读器里换模式 → 只写这一本；设置页换默认档 → 管所有"没记过档"的书。
+    val comicModeMemory by prefs.comicModeMemoryEnabled.collectAsState()
+    val comicKey = remember(session.sourceKey, session.comicId) { "${session.sourceKey}|${session.comicId}" }
+    var perBookModeKey by remember(comicKey) { mutableStateOf(prefs.comicReadingMode(comicKey)) }
+    val readingMode = ReaderReadingMode.fromKey(perBookModeKey ?: modeKey)
+    fun chooseReadingMode(mode: ReaderReadingMode) {
+        if (comicModeMemory) {
+            prefs.setComicReadingMode(comicKey, mode.key)
+            perBookModeKey = mode.key
+        } else {
+            prefs.setDefaultReadingMode(mode.key)
+        }
+    }
     val pageGapDp by prefs.pageGapDp.collectAsState()
     val isNightFilter by prefs.nightFilter.collectAsState()
     val keepScreenOn by prefs.keepScreenOn.collectAsState()
@@ -212,6 +233,8 @@ private fun ReaderSessionContent(
     val clickToTurn by prefs.clickToTurn.collectAsState()
     val reverseTap by prefs.reverseTapDirection.collectAsState()
     val autoNextChapter by prefs.autoNextChapter.collectAsState()
+    val readerHudEnabled by prefs.readerHudEnabled.collectAsState()
+    val readerShowStatusBar by prefs.readerShowStatusBar.collectAsState()
     val pageTurnEffectKey by prefs.pageTurnEffect.collectAsState()
     val pageTurnEffect = ReaderPageTurnEffect.fromKey(pageTurnEffectKey)
     val autoScrollIntervalSec by prefs.autoScrollPageIntervalSec.collectAsState()
@@ -240,6 +263,22 @@ private fun ReaderSessionContent(
         val next = (scrollSpeed + delta).coerceIn(15f, 480f)
         if (speedPersist) prefs.setAutoScrollSpeedPx(next) else sessionScrollSpeed = next
     }
+
+    // ── 定时停止巡航（2026-11-05）──
+    // 迷你控制器上的 ⏱ 循环 关/15/30/60 分。语义如实：**每次进入巡航从头计时** ——
+    // 暂停再播等于重置，睡前挂机按一次就够，中途醒来继续读也不会被突然掐停。
+    // 只影响巡航，不锁屏不睡眠系统。
+    var sleepMinutes by remember { mutableIntStateOf(0) }
+    var sleepRemainSec by remember { mutableIntStateOf(0) }
+
+    // ── 书签 / 跳页（2026-11-05）──
+    // 存储经端口拿（reader/ 在业务边界守卫的扫描目录里，不许直连实现类）。
+    val bookmarkStore = remember {
+        ComicBookmarkStore(BusinessPorts.of(context).stores.open("venera_comic_bookmarks"))
+    }
+    var bookmarks by remember(comicKey) { mutableStateOf(bookmarkStore.bookmarksFor(comicKey)) }
+    var showJumpDialog by remember { mutableStateOf(false) }
+    var jumpInput by remember { mutableStateOf("") }
 
     // 弹窗状态
     var activePanel by rememberSaveable { mutableStateOf(ReaderPanel.NONE) }
@@ -386,6 +425,24 @@ private fun ReaderSessionContent(
         return true
     }
 
+    // ── 书签翻切（气泡行上的那枚 🔖）──
+    fun currentPageBookmarked() =
+        bookmarks.any { it.chapterId == currentChapter.id && it.pageIndex == currentPageIndex }
+
+    fun toggleCurrentBookmark() {
+        val added = bookmarkStore.toggle(
+            comicKey, currentChapter.id, currentChapter.title, currentPageIndex,
+        )
+        bookmarks = bookmarkStore.bookmarksFor(comicKey)
+        Toast.makeText(
+            context,
+            if (added) "书签已加：第 ${currentPageIndex + 1} 页" else "这一页的书签已取消",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    // 动态章节加载与切换
+
     // 动态章节加载与切换
     //
     // [keepAutoScroll] 只有一处传 true：自动巡航自己跨话续播（见下面的巡航协程）。
@@ -448,6 +505,18 @@ private fun ReaderSessionContent(
                 }
             }
         }
+    }
+
+    /** 从书签列表跳过去：章节不在本次目录里就如实说，不开第一章冒充。 */
+    fun jumpToBookmark(bookmark: ComicBookmark) {
+        val idx = chaptersState.indexOfFirst { it.id == bookmark.chapterId }
+        if (idx < 0) {
+            Toast.makeText(context, "这一话已不在目录里", Toast.LENGTH_SHORT).show()
+            return
+        }
+        activePanel = ReaderPanel.NONE
+        // 换章后到页走 switchToChapter 的 pendingChapterPage 通道（页表没加载时它会先联网）。
+        switchToChapter(idx, bookmark.pageIndex)
     }
 
     // ==================== 前瞻预加载流水线 (N+1..N+5，并发发出) ====================
@@ -521,14 +590,20 @@ private fun ReaderSessionContent(
     }
 
     // ==================== 沉浸式全屏与导航栏 ====================
-    DisposableEffect(isControlsVisible, activePanel) {
+    // 「显示状态栏」开着时只藏导航栏：时间/信号/电量那条留给系统 HUD
+    // （2026-11-07，与常驻信息角标同一批，入口都在阅读器设置面板）。
+    DisposableEffect(isControlsVisible, activePanel, readerShowStatusBar) {
         val window = activity?.window
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
             insetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             if (!isControlsVisible && activePanel == ReaderPanel.NONE) {
-                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                if (readerShowStatusBar) {
+                    insetsController.hide(WindowInsetsCompat.Type.navigationBars())
+                } else {
+                    insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                }
             } else {
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
@@ -676,7 +751,14 @@ private fun ReaderSessionContent(
                         lastFrame = now
                         dt
                     }.let { dt ->
-                        if (dt > 0f) verticalListState.scrollBy(scrollSpeed * dt)
+                        // 速度读**实时值**而非组合期快照（与下面翻页档的间隔同一口径）：
+                        // 巡航协程只在 isAutoScrolling/readingMode 变化时重启，协程捕获的
+                        // `scrollSpeed` 普通 val 是开播那一刻的快照 —— ± 调完数字在变、滚动
+                        // 不快（"要退出重进才生效"的正是这条）。委托对象与 prefs 单例都跨
+                        // 重组稳定，从它们身上现读就是现值。
+                        val liveSpeed = if (prefs.autoScrollSpeedPersist.value)
+                            prefs.autoScrollSpeedPx.value else sessionScrollSpeed
+                        if (dt > 0f) verticalListState.scrollBy(liveSpeed * dt)
                         // 改动前这一支**只滚动、从不判到底**：到末尾后 scrollBy 恒返回 0，
                         // 于是"巡航在跑、屏上不动"，既不停也不前进 —— 一种静默假象。
                         // canScrollForward 是 LazyListState 的公开 State，滚到底自然翻转。
@@ -707,6 +789,22 @@ private fun ReaderSessionContent(
             // 其余模式不参与巡航（可用态已在上面的 autoCruiseSupported 闸门判过）
             else -> Unit
         }
+    }
+
+    // 定时停止：与巡航协程**分开的一颗 LaunchedEffect**（协程内联计时会跟帧回调缠一起，
+    // 模式切换/跨话都会打断它）。键是（分钟, 是否在播）：任一变化都从头计时。
+    LaunchedEffect(sleepMinutes, isAutoScrolling) {
+        if (sleepMinutes <= 0 || !isAutoScrolling) return@LaunchedEffect
+        var left = sleepMinutes * 60
+        sleepRemainSec = left
+        while (left > 0) {
+            delay(1000)
+            left--
+            sleepRemainSec = left
+        }
+        isAutoScrolling = false
+        sleepMinutes = 0
+        Toast.makeText(context, "定时到了，自动播放已停", Toast.LENGTH_SHORT).show()
     }
 
     // 用户触碰屏幕 → 自动暂停巡航（Kotatsu 语义：人一介入就交还控制权）。
@@ -1088,15 +1186,39 @@ private fun ReaderSessionContent(
                         Spacer(modifier = Modifier.width(tokens.spacing.space3))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            // 实时页码气泡：悬浮于 Slider 上方居中
-                            Text(
-                                text = (currentPageIndex + 1).toString() + " / " + currentChapter.pages.size.coerceAtLeast(1),
-                                color = StatusColors.OnBadgeSurface,
-                                fontSize = tokens.type.overline,
-                                fontWeight = tokens.type.weightBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            // 实时页码气泡：悬浮于 Slider 上方居中。
+                            // 点页码 = 跳页输入；右端 🔖 = 翻切当前页书签（实心即已有）。
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = (currentPageIndex + 1).toString() + " / " + currentChapter.pages.size.coerceAtLeast(1),
+                                    color = StatusColors.OnBadgeSurface,
+                                    fontSize = tokens.type.overline,
+                                    fontWeight = tokens.type.weightBold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .clip(RoundedCornerShape(tokens.shape.extraSmall))
+                                        .clickable {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            jumpInput = ""
+                                            showJumpDialog = true
+                                        }
+                                        .padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space1),
+                                )
+                                Icon(
+                                    imageVector = if (currentPageBookmarked()) Icons.Filled.Bookmark else Icons.Outlined.Bookmark,
+                                    contentDescription = "书签",
+                                    tint = if (currentPageBookmarked()) tokens.color.primary else StatusColors.OnBadgeSurface.copy(alpha = 0.75f),
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            toggleCurrentBookmark()
+                                        },
+                                )
+                            }
                             Spacer(modifier = Modifier.height(tokens.spacing.space1))
                             VeneraSlider(
                                 value = currentPageIndex.toFloat(),
@@ -1437,9 +1559,45 @@ private fun ReaderSessionContent(
                             }
                         }
                     }
+                    // 定时停止：点按循环 关/15/30/60 分钟；到点自动停巡航。两种巡航模式（滚动/翻页）都在。
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (sleepMinutes > 0) tokens.color.primary.copy(alpha = 0.35f)
+                        else StatusColors.OnBadgeSurface.copy(alpha = 0.10f),
+                        modifier = Modifier.clickable {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            sleepMinutes = when (sleepMinutes) {
+                                0 -> 15
+                                15 -> 30
+                                30 -> 60
+                                else -> 0
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = when {
+                                sleepMinutes <= 0 -> "⏱ 关"
+                                else -> "⏱ %02d:%02d".format(sleepRemainSec / 60, sleepRemainSec % 60)
+                            },
+                            color = StatusColors.OnBadgeSurface,
+                            fontSize = tokens.type.badge,
+                            modifier = Modifier.padding(horizontal = tokens.spacing.space2, vertical = tokens.spacing.space1)
+                        )
+                    }
                 }
             }
         }
+
+        // ==================== 常驻信息角标（双角胶囊，2026-11-07）====================
+        // 左角页码、右角时间+电量；控制栏/面板打开时整组让位消失，巡航时右角上移。
+        // 开关在阅读器设置面板（默认开），见 ReaderHudOverlay 的注释。
+        ReaderHudOverlay(
+            visible = readerHudEnabled && !isControlsVisible && activePanel == ReaderPanel.NONE,
+            currentPage = currentPageIndex + 1,
+            totalPages = currentChapter.pages.size,
+            shifted = isAutoScrolling,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // ==================== 章节列表抽屉 (BottomSheet) ====================
         if (showChapterDrawer) {
@@ -1475,6 +1633,37 @@ private fun ReaderSessionContent(
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space2)
+                        ) {
+                        // 书签入口：计数即这本的书签总数，点进独立清单页。
+                        Surface(
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(tokens.shape.small),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(tokens.shape.small))
+                                .clickable { activePanel = ReaderPanel.BOOKMARKS }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Bookmark,
+                                    contentDescription = "书签",
+                                    tint = tokens.color.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "书签 ${bookmarks.size}",
+                                    fontSize = tokens.type.sectionTitle,
+                                    color = tokens.color.primary,
+                                    fontWeight = tokens.type.weightMedium
+                                )
+                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { isDesc = !isDesc }
@@ -1494,6 +1683,7 @@ private fun ReaderSessionContent(
                                 fontWeight = tokens.type.weightMedium
                             )
                         }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -1506,6 +1696,7 @@ private fun ReaderSessionContent(
                     ) {
                         itemsIndexed(displayChapters, key = { _, pair -> pair.second.id }) { _, (origIdx, ch) ->
                             val isActive = origIdx == currentChapterIndex
+                            val bmCount = bookmarks.count { it.chapterId == ch.id }
                             Surface(
                                 color = if (isActive) tokens.color.primary.copy(alpha = 0.2f) else StatusColors.OnBadgeSurface.copy(alpha = 0.06f),
                                 shape = RoundedCornerShape(tokens.shape.small),
@@ -1533,6 +1724,26 @@ private fun ReaderSessionContent(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
+                                    if (bmCount > 0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(end = tokens.spacing.space2)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Bookmark,
+                                                contentDescription = null,
+                                                tint = tokens.color.primary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(
+                                                text = bmCount.toString(),
+                                                fontSize = tokens.type.badge,
+                                                color = tokens.color.primary,
+                                                fontWeight = tokens.type.weightBold,
+                                            )
+                                        }
+                                    }
                                     if (isActive) {
                                         Surface(
                                             color = tokens.color.primary,
@@ -1553,6 +1764,138 @@ private fun ReaderSessionContent(
                     }
                 }
             }
+        }
+
+        // ==================== 书签清单 (BottomSheet) ====================
+        if (activePanel == ReaderPanel.BOOKMARKS) {
+            val sortedBookmarks = remember(bookmarks, chaptersState) {
+                bookmarks.sortedWith(
+                    compareBy({ chaptersState.indexOfFirst { c -> c.id == it.chapterId } }, { it.pageIndex }),
+                )
+            }
+            ModalBottomSheet(
+                onDismissRequest = { activePanel = ReaderPanel.NONE },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = StatusColors.BadgeSurface,
+                contentColor = StatusColors.OnBadgeSurface,
+                shape = RoundedCornerShape(topStart = tokens.shape.extraLarge, topEnd = tokens.shape.extraLarge)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .then(drawerWidthModifier)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = "书签 (${bookmarks.size})",
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightBold,
+                        color = StatusColors.OnBadgeSurface
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (bookmarks.isEmpty()) {
+                        Text(
+                            text = "还没有书签。读到想记的一页，点控制栏页码旁的书签图标。",
+                            fontSize = tokens.type.caption,
+                            color = StatusColors.OnBadgeSurface.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(vertical = tokens.spacing.space4),
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 380.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(
+                                sortedBookmarks,
+                                key = { "${it.chapterId}:${it.pageIndex}" },
+                            ) { bm ->
+                                Surface(
+                                    color = StatusColors.OnBadgeSurface.copy(alpha = 0.06f),
+                                    shape = RoundedCornerShape(tokens.shape.small),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                            jumpToBookmark(bm)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Bookmark,
+                                            contentDescription = null,
+                                            tint = tokens.color.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(tokens.spacing.space3))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = bm.chapterTitle.ifBlank { "第 ${chaptersState.indexOfFirst { c -> c.id == bm.chapterId } + 1} 话" },
+                                                fontSize = tokens.type.body,
+                                                color = StatusColors.OnBadgeSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = "第 ${bm.pageIndex + 1} 页",
+                                                fontSize = tokens.type.caption,
+                                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.6f),
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            bookmarkStore.remove(comicKey, bm)
+                                            bookmarks = bookmarkStore.bookmarksFor(comicKey)
+                                        }) {
+                                            Icon(
+                                                Icons.Outlined.Close,
+                                                contentDescription = "删除书签",
+                                                tint = StatusColors.OnBadgeSurface.copy(alpha = 0.6f),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==================== 跳页输入 ====================
+        // 页码气泡点出来的那一颗：Slider 在几百页的章里精确落点很挣扎，输入直达才是刚需。
+        if (showJumpDialog) {
+            val pageCount = currentChapter.pages.size.coerceAtLeast(1)
+            AlertDialog(
+                onDismissRequest = { showJumpDialog = false },
+                title = { Text("跳页") },
+                text = {
+                    OutlinedTextField(
+                        value = jumpInput,
+                        onValueChange = { raw -> jumpInput = raw.filter(Char::isDigit).take(5) },
+                        singleLine = true,
+                        label = { Text("页码（1 - $pageCount）") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val target = jumpInput.toIntOrNull()
+                        if (target != null) {
+                            jumpToPage((target - 1).coerceIn(0, pageCount - 1))
+                        }
+                        showJumpDialog = false
+                    }) { Text("跳转") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showJumpDialog = false }) { Text("取消") }
+                },
+            )
         }
 
         // ==================== 阅读设置面板 (BottomSheet) ====================
@@ -1601,7 +1944,7 @@ private fun ReaderSessionContent(
                                     .weight(1f)
                                     .clickable {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        prefs.setDefaultReadingMode(mode.key)
+                                        chooseReadingMode(mode)
                                     }
                             ) {
                                 Column(
@@ -1634,7 +1977,7 @@ private fun ReaderSessionContent(
                                     .weight(1f)
                                     .clickable {
                                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                        prefs.setDefaultReadingMode(mode.key)
+                                        chooseReadingMode(mode)
                                     }
                             ) {
                                 Column(
@@ -1864,6 +2207,56 @@ private fun ReaderSessionContent(
                             checked = clickToTurn,
                             onCheckedChange = {
                                 prefs.setClickToTurn(it)
+                            },
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 开关项 6: 常驻信息角标（2026-11-07，方案「双角胶囊」）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = "常驻信息", fontSize = 14.sp, color = Color.White)
+                            Text(
+                                text = "页码时间电量常驻角标",
+                                fontSize = tokens.type.overline,
+                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f)
+                            )
+                        }
+                        VeneraSwitch(
+                            checked = readerHudEnabled,
+                            onCheckedChange = {
+                                prefs.setReaderHudEnabled(it)
+                            },
+                            checkedThumbColor = MiuixTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 开关项 7: 显示系统状态栏（默认关 = 全沉浸）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = "显示状态栏", fontSize = 14.sp, color = Color.White)
+                            Text(
+                                text = "保留系统时间与电量条",
+                                fontSize = tokens.type.overline,
+                                color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f)
+                            )
+                        }
+                        VeneraSwitch(
+                            checked = readerShowStatusBar,
+                            onCheckedChange = {
+                                prefs.setReaderShowStatusBar(it)
                             },
                             checkedThumbColor = MiuixTheme.colorScheme.primary
                         )

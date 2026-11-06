@@ -1585,12 +1585,16 @@ private fun SuggestionRow(
             )
         }
         // 站方给的是**该标签**的张数，不是本次查询命中数（两站都没有总数端点）。
-        Text(
-            text = " · ${formatTagCount(suggestion.count)}",
-            fontSize = tokens.type.caption,
-            color = tokens.color.textTertiary,
-            maxLines = 1,
-        )
+        // count<=0 不画：词典反查补进来的候选（中文输入那一路）没有张数读数，
+        // 摆 " · 0" 会把"我们不知道"说成"这个标签是零张"。
+        if (suggestion.count > 0) {
+            Text(
+                text = " · ${formatTagCount(suggestion.count)}",
+                fontSize = tokens.type.caption,
+                color = tokens.color.textTertiary,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -1665,6 +1669,10 @@ internal fun HistoryList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // 同屏最多约 8 条（四行 × 双列），其余在这块里下滑看（2026-11-05 用户点名
+            // 「历史太多下滑看不了」）：从前只有 verticalScroll 没有高度上限，
+            // 列表长过搜索卡剩余空间就被裁死在屏外 —— 滚动区量到的是内容全高，等于没滚。
+            .heightIn(max = 208.dp)
             .verticalScroll(rememberScrollState()),
     ) {
         history.chunked(2).forEachIndexed { lineIndex, row ->

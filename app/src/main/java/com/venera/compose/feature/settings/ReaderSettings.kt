@@ -36,6 +36,7 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
     val autoInterval by prefs.autoScrollPageIntervalSec.collectAsState()
     val preload by prefs.preloadImageCount.collectAsState()
     val autoNextChapter by prefs.autoNextChapter.collectAsState()
+    val comicModeMemory by prefs.comicModeMemoryEnabled.collectAsState()
     val pageTurnEffect by prefs.pageTurnEffect.collectAsState()
     val enhanceOn by prefs.readerEnhanceEnabled.collectAsState()
     val sharpen by prefs.readerEnhanceSharpen.collectAsState()
@@ -48,6 +49,8 @@ internal fun ReaderSettings(prefs: ReaderPreferences, onBack: () -> Unit, onImag
                 listOf("HORIZONTAL_LTR" to "翻页（从左到右）", "HORIZONTAL_RTL" to "翻页（从右到左）",
                     "HORIZONTAL_CONTINUOUS" to "连续（从左到右）", "VERTICAL_CONTINUOUS" to "连续（从上到下）",
                     "DOUBLE_PAGE" to "对开双页"), prefs::setDefaultReadingMode)
+            SettingsToggle("按本记忆模式", comicModeMemory, prefs::setComicModeMemory,
+                summary = "阅读器里换模式只影响那一本。")
             // 翻页特效默认「无（原样）」：守仓库"新能力默认不改动观感"铁律（同图片增强总开关、内容层材质）。
             SettingsSelect("翻页特效", ReaderPageTurnEffect.fromKey(pageTurnEffect).key,
                 ReaderPageTurnEffect.entries.map { it.key to it.label },

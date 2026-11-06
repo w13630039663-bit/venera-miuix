@@ -22,12 +22,18 @@ class SurfaceMaterialPolicyTest {
     fun `默认档是实色`() {
         // 首项即默认值（与 GalleryAnimatedMode 同一口径），所以 entries.first() 就是没配过的新用户看到的档。
         assertEquals(SurfaceMaterial.SOLID, SurfaceMaterial.entries.first())
-        assertFalse(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.SOLID))
+        assertFalse(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.SOLID, sdkInt = 33))
     }
 
     @Test
     fun `只有液态玻璃档开玻璃`() {
-        assertTrue(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.LIQUID_GLASS))
+        assertTrue(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.LIQUID_GLASS, sdkInt = 33))
+    }
+
+    @Test
+    fun `版本不足33时玻璃整条回落（miuix-blur 声明 minSdk 33）`() {
+        assertFalse(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.LIQUID_GLASS, sdkInt = 32))
+        assertFalse(SurfaceMaterialPolicy.glassEnabled(SurfaceMaterial.LIQUID_GLASS, sdkInt = 30))
     }
 
     // ---------- 角色 → 档位 ----------

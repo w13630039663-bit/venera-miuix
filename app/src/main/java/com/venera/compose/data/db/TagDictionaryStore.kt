@@ -60,6 +60,29 @@ class TagDictionaryStore(private val dictionary: SqlDatabase) {
             )
         }
     }
+
+    /**
+     * 按**中文译名**反查标签行（2026-11-05，画廊搜索"用翻译的 tag 搜"）。
+     *
+     * 判据 = 全等优先 + 前缀：`东方` 要能命中译名恰好是"东方"的，也要命中"东方Project"那类
+     * 带后缀的。值走占位符绑定（外部词不许拼 SQL），`cn` 没建索引 —— 单等值/前缀一次全表扫，
+     * 词表单次查询在 IO 线程几十毫秒级，被 250ms 输入防抖兜住，够用；
+     * 真觉得慢再加 `CREATE INDEX`，那是迁移一步的事，不在这里顺手。
+     */
+    fun rowsByCn(prefix: String): List<TagDictRow> {
+        val term = prefix.trim()
+        if (term.isEmpty()) return emptyList()
+        return dictionary.query(
+            "SELECT name, category, cn FROM tags WHERE cn = ? OR cn LIKE ? LIMIT 40",
+            term, "$term%",
+        ).map { row ->
+            TagDictRow(
+                name = row.requiredString("name").lowercase(),
+                category = row.long("category").toInt(),
+                cn = row.string("cn"),
+            )
+        }
+    }
 }
 
 /** 词典里的一行：小写标签名、站方档位、中文译名（没有译名时为 null）。 */

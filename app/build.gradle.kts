@@ -30,10 +30,15 @@ android {
         // 本包要接管该仓库的发布线，用户按 releases 下载时才是同一个应用。
         // 代码包名（namespace）仍是 com.venera.compose，不随之改动。
         applicationId = "com.github.w13630039663bit.venera.miuix"
-        minSdk = 33
+        // minSdk 30（Android 11，2026-11-07 从 33 降）：MANAGE_EXTERNAL_STORAGE /
+        // MediaStore pending 写入 / 「所有文件访问」设置页都是 30 起步，再低（29-）
+        // 分区存储语义整个不同，不值得。全部高版本 API 均有 SDK_INT 闸（动态取色/预测返回/
+        // ImageDecoder/通知权限），低版本各自走降级分支；miuix-blur（库 minSdk 33）在
+        // <33 上由 SurfaceMaterialPolicy.glassEnabled 整条回落，Manifest 有 override 豁免。
+        minSdk = 30
         targetSdk = 37
-        versionCode = 2130
-        versionName = "2.1.3"
+        versionCode = 2140
+        versionName = "2.1.4"
     }
 
     signingConfigs {

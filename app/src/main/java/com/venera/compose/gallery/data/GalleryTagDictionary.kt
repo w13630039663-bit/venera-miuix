@@ -110,6 +110,25 @@ class GalleryTagDictionary private constructor(context: Context) {
             ?.toMap() ?: emptyMap()
 
     /**
+     * 按**中文译名反查**标签行（2026-11-05，用户「现在都需要用英文搜索，看下能不能用翻译的 tag 搜」）。
+     *
+     * 正向的 [translations] 是 `英文名 → 译名`（卡片显示用），这一个反着走 `译名 → 行`（搜索输入用）。
+     * 排序按"当搜索词最有用的档"：作品(3) > 角色(4) > 画师(1) > 通用(0)，元数据(5) 不交 ——
+     * 与卡片标题那条优先链同一口径。库里没这个词回**空表**；库打不开回 **null**（我们的故障
+     * 与"词典就是没有"分开，同 [lookupArtists] 的纪律）。
+     */
+    suspend fun reverseTranslate(zh: String): List<TagDictRow>? = withContext(Dispatchers.IO) {
+        val store = openDatabase() ?: return@withContext null
+        val rows = runCatching { store.rowsByCn(zh) }
+            .onFailure { android.util.Log.w(TAG, "按译名反查画廊标签词典失败", it) }
+            .getOrNull() ?: return@withContext null
+        val priority = mapOf(TITLE_COPYRIGHT to 0, TITLE_CHARACTER to 1, TITLE_ARTIST to 2, TITLE_GENERAL to 3)
+        rows.filter { it.category in priority.keys && it.name.isNotBlank() }
+            .distinctBy { it.name }
+            .sortedBy { priority[it.category] }
+    }
+
+    /**
      * 这批名字里**能当卡片标题用**的那些（通用 / 画师 / 作品 / 角色四档），连同中文译名与档位。
      *
      * 2026-09-30 新增：画廊卡片那一行标题用的就是它（两站的 post JSON **都没有标题字段**，

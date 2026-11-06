@@ -16,6 +16,7 @@ import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
+import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivPremium
@@ -26,6 +27,7 @@ import com.venera.compose.gallery.domain.GalleryArtistAlias
 import com.venera.compose.gallery.domain.GalleryContextPlan
 import com.venera.compose.gallery.domain.GalleryDailyFeed
 import com.venera.compose.gallery.domain.GalleryHomeDomain
+import com.venera.compose.gallery.domain.GalleryTagFilter
 import com.venera.compose.gallery.domain.GalleryLegGuard
 import com.venera.compose.gallery.domain.GalleryLegOutcome
 import com.venera.compose.gallery.domain.GalleryMerge
@@ -37,7 +39,6 @@ import com.venera.compose.gallery.domain.GallerySearchContextStack
 import com.venera.compose.gallery.domain.GallerySearchEntry
 import com.venera.compose.gallery.domain.GallerySearchMerge
 import com.venera.compose.gallery.domain.GallerySearchSource
-import com.venera.compose.gallery.domain.GalleryTagFilter
 import com.venera.compose.gallery.domain.GelbooruWindowBounds
 import com.venera.compose.gallery.domain.GelbooruWindowBoundary
 import com.venera.compose.gallery.domain.GelbooruWindowBreak
@@ -61,6 +62,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 搜索区当前那一面：**展开**改条件（输入 + 补全 / 历史），还是**收成一条**看结果。 */
 enum class GallerySearchMode { INPUT, RESULTS }
@@ -992,6 +994,40 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 按空格拆成多枚（`loli -rating:explicit` 这种粘贴串一次全收），逐枚过预算与去重。
      */
     fun submitTerm() {
+        // 中文词先走**本地词典反查**（2026-11-05 用户「现在都需要用英文搜索，看下能不能用翻译的 tag 搜」）：
+        // booru 两站的词表没有中文，直接提交 `东方` 只会拿到 0 张；词典里 `东方 → touhou`
+        // 这类反查命中时按英文标签搜，并把这一笔在屏上说清（悄悄换词比不换更难察觉）。
+        // 反查没命中（或词典打不开）就原样提交 —— 有些词本来就两边同形。
+        val text = term.trim()
+        if (domain == GalleryHomeDomain.BOORU && text.containsCjk()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val hit = runCatching { GalleryTagDictionary.getInstance(app).reverseTranslate(text) }
+                    .getOrNull()?.firstOrNull()
+                if (hit == null) {
+                    withContext(Dispatchers.Main) { submitTermAsTyped() }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        val translated = GalleryTagFilter(name = hit.name)
+                        term = ""
+                        suggestions = emptyList()
+                        if (filters.any { it.name == translated.name }) {
+                            // 反查出来的那枚已经在胶囊堆里：不重复加，直接开搜（同 submitTermAsTyped 那条短路口径）。
+                            runSearch(1)
+                        } else {
+                            applyFilters(filters + translated, autoSearch = true)
+                            // notice 必须在开搜之后写（beginSearch 会清 notice），同预算句那条次序。
+                            notice = "按译名搜了：$text → ${hit.name}"
+                        }
+                    }
+                }
+            }
+            return
+        }
+        submitTermAsTyped()
+    }
+
+    /** [submitTerm] 的原路径：把框里那串按站方语法当标签提交。 */
+    private fun submitTermAsTyped() {
         val parsed = GallerySearch.parseQuery(term)
         var next = filters
         var rejected = false
@@ -1062,6 +1098,16 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      */
     val hasQuery: Boolean
         get() = if (domain == GalleryHomeDomain.PIXIV) pixivTerm.isNotBlank() else filters.isNotEmpty()
+
+    /**
+     * 屏上这一态**搜过一轮没有**（2026-11-05）：返回键/离开收条的判据从 `hasQuery` 换成功这一颗。
+     *
+     * `hasQuery` 只说明"框里有东西"，分不清"词已经变成了墙"：打字没回车就返回时按它收条，
+     * 屏上残留一条带着残词的收条（点它本应回输入态，真机上焦点链断了点不动）—— 用户报的
+     * 「输入框一直显示、点击没反应」就是这条残影。判"搜没搜过"用现成的分页读数：
+     * 第 1 页起来（`page > 0`）或正在起（`isSearching`）才算真有一轮，与结果墙那两处同判据。
+     */
+    fun inputRoundLive(): Boolean = hasQuery && (page > 0 || isSearching)
 
     /**
      * 换排行档：**原地重搜**，不压上下文栈。
@@ -1712,6 +1758,17 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             merged.putIfAbsent(suggestion.name, suggestion)
                         }
                     }.onFailure { failedLegs++ }
+                }
+                // 中文输入：两站词表都没有中文词，候选改从**本地词典反查**（2026-11-05）。
+                // count 给 0：词典行没有张数读数，那一格由渲染件隐掉（count<=0 不画），
+                // 不许编一个数。档位带着走，颜色与站方候选同一把尺。
+                if (term.containsCjk()) {
+                    GalleryTagDictionary.getInstance(app).reverseTranslate(term)?.take(4)?.forEach { row ->
+                        merged.putIfAbsent(
+                            row.name,
+                            GalleryTagSuggestion(site, row.name, count = 0, category = row.category, deprecated = false),
+                        )
+                    }
                 }
                 if (merged.isEmpty() && failedLegs == results.size) {
                     suggestError = "标签补全失败"
@@ -2542,3 +2599,12 @@ private sealed interface LegQuery {
         val atEnd: Boolean,
     ) : LegQuery
 }
+
+/**
+ * 串里有没有中日韩汉字（常用 4E00-9FFF + 扩展 A 3400-4DBF + 兼容 F900-FAFF）。
+ *
+ * booru 标签是小写拉丁下划线串；含汉字的输入永远不可能是站方标签 —— 它是"待译词"，
+ * 走本地词典反查（2026-11-05「用翻译的 tag 搜」）。判据只在这一颗，提交与候选两路共读。
+ */
+internal fun String.containsCjk(): Boolean =
+    any { it.code in 0x4E00..0x9FFF || it.code in 0x3400..0x4DBF || it.code in 0xF900..0xFAFF }
