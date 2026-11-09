@@ -178,6 +178,9 @@ kotlin.sourceSets["main"].kotlin {
     // DownloadManager（Context 绑定）都在这颗屏里；桌面侧下载/本地由自持的
     // DesktopDownloadsPipelineScreen 承担（用户已在那条线上做完）。
     exclude("**/DownloadsLocalScreen.kt")
+    // 章节下载面板吃 `android.os.StatFs` 做剩余空间实测警示（Android 存储语义）；
+    // 桌面侧的下载选择由桌面自持管线负责。账本：DesktopSharedFaceLedgerTest 双向对账。
+    exclude("**/ChapterDownloadSheet.kt")
 
 
 

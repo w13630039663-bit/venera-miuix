@@ -1,4 +1,5 @@
 package com.venera.compose.gallery.ui
+import com.venera.compose.ui.tokens.VeneraTokens
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -103,6 +104,7 @@ fun PixivUgoiraPlayer(
     masked: Boolean = false,
     contentScale: ContentScale = ContentScale.Fit,
 ) {
+    val tokens = VeneraTokens
     var retryAttempt by remember(illustId, original) { mutableIntStateOf(0) }
     val playbackState = rememberUgoiraPlayback(illustId, original, retryAttempt)
 
@@ -127,7 +129,7 @@ fun PixivUgoiraPlayer(
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = "动图加载中...",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = Color.White
                         )
                     }
@@ -154,7 +156,7 @@ fun PixivUgoiraPlayer(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = "动图加载失败 · 点击重试",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = Color(0xFFFF8B8B)
                         )
                     }

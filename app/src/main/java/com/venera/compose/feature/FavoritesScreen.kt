@@ -1055,6 +1055,7 @@ private fun InputDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val tokens = VeneraTokens
     var text by remember(initialValue) { mutableStateOf(initialValue) }
     Scrim(onDismiss = onDismiss) {
         Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
@@ -1067,7 +1068,7 @@ private fun InputDialog(
             )
             if (text.isBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(text = hint, fontSize = 12.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+                Text(text = hint, fontSize = tokens.type.caption, color = MiuixTheme.colorScheme.onBackgroundVariant)
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1097,6 +1098,7 @@ private fun FolderPickerDialog(
     onDismiss: () -> Unit,
     onPick: (String) -> Unit,
 ) {
+    val tokens = VeneraTokens
     Scrim(onDismiss = onDismiss) {
         Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
             Text(text = title, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
@@ -1104,7 +1106,7 @@ private fun FolderPickerDialog(
             if (folders.isEmpty()) {
                 Text(
                     text = "没有其他收藏夹，请先新建一个",
-                    fontSize = 13.sp,
+                    fontSize = tokens.type.sectionTitle,
                     color = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
                 )
             } else {
@@ -1140,6 +1142,7 @@ private fun ReorderDialog(
     onDismiss: () -> Unit,
     onConfirm: (List<String>) -> Unit,
 ) {
+    val tokens = VeneraTokens
     val order = remember(folders) { mutableStateOf(folders.toList()) }
 
     fun move(index: Int, delta: Int) {
@@ -1167,14 +1170,14 @@ private fun ReorderDialog(
                         Text(text = folder, fontSize = 15.sp, modifier = Modifier.weight(1f))
                         Text(
                             text = "↑",
-                            fontSize = 16.sp,
+                            fontSize = tokens.type.itemTitle,
                             color = if (i == 0) MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.3f)
                             else MiuixTheme.colorScheme.primary,
                             modifier = Modifier.clickable { move(i, -1) }.padding(horizontal = 10.dp),
                         )
                         Text(
                             text = "↓",
-                            fontSize = 16.sp,
+                            fontSize = tokens.type.itemTitle,
                             color = if (i == order.value.lastIndex) MiuixTheme.colorScheme.onBackgroundVariant.copy(alpha = 0.3f)
                             else MiuixTheme.colorScheme.primary,
                             modifier = Modifier.clickable { move(i, 1) }.padding(horizontal = 10.dp),
@@ -1206,6 +1209,7 @@ private fun ExportDialog(
     folder: String,
     onDismiss: () -> Unit,
 ) {
+    val tokens = VeneraTokens
     Scrim(onDismiss = onDismiss) {
         Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
             Text(text = "导出收藏夹", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
@@ -1216,7 +1220,7 @@ private fun ExportDialog(
                 } else {
                     "「$folder」的导出功能将在 S7（同步/备份）阶段与 WebDAV 一同落地。"
                 },
-                fontSize = 13.sp,
+                fontSize = tokens.type.sectionTitle,
                 color = com.venera.compose.ui.tokens.VeneraTokens.color.textSecondary,
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -1239,12 +1243,13 @@ private fun FolderMenuSheet(
     onReorder: () -> Unit,
     onExport: () -> Unit,
 ) {
+    val tokens = VeneraTokens
     Scrim(onDismiss = onDismiss) {
         Column(modifier = Modifier.padding(com.venera.compose.ui.tokens.VeneraTokens.spacing.space8)) {
             Text(
                 text = if (canEditFolder) folderName else "收藏夹操作",
                 fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = tokens.type.weightSemibold,
             )
             Spacer(modifier = Modifier.height(10.dp))
             MenuItem(text = "新建收藏夹", icon = { Icon(Icons.Outlined.Add, null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }) { onDismiss(); onCreate() }
@@ -1270,6 +1275,7 @@ private fun MenuItem(
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
 ) {
+    val tokens = VeneraTokens
     Row(
         modifier = Modifier
             .fillMaxWidth()

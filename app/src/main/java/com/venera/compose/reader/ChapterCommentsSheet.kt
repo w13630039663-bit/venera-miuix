@@ -84,8 +84,8 @@ fun ChapterCommentsSheetContent(
     ) {
         Text(
             text = "本章评论 · " + chapterTitle,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.chevron,
+            fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
             color = Color.White
         )
         Spacer(modifier = Modifier.height(14.dp))
@@ -95,7 +95,7 @@ fun ChapterCommentsSheetContent(
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                placeholder = { Text("说点什么...", fontSize = 13.sp, color = Color.Gray) },
+                placeholder = { Text("说点什么...", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = Color.Gray) },
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
                 shape = RoundedCornerShape(12.dp),
@@ -139,7 +139,7 @@ fun ChapterCommentsSheetContent(
                 enabled = input.isNotBlank() && !sending,
                 colors = ButtonDefaults.buttonColors(containerColor = MiuixTheme.colorScheme.primary)
             ) {
-                Text(if (sending) "发送中" else "发表", fontSize = 13.sp, color = Color.White)
+                Text(if (sending) "发送中" else "发表", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = Color.White)
             }
         }
 
@@ -150,7 +150,7 @@ fun ChapterCommentsSheetContent(
                 CircularProgressIndicator(color = MiuixTheme.colorScheme.primary, strokeWidth = 2.dp)
             }
             error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
-                Text(text = error ?: "", fontSize = 13.sp, color = Color(0xFFEF5350))
+                Text(text = error ?: "", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = Color(0xFFEF5350))
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(onClick = { scope.launch { reload() } }) {
                     Text("再试一次", color = Color.White)
@@ -158,7 +158,7 @@ fun ChapterCommentsSheetContent(
             }
             comments.isEmpty() && loadedOnce -> Text(
                 text = "本章还没有评论 · 来抢首评吧",
-                fontSize = 13.sp,
+                fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
                 color = Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.padding(vertical = 20.dp)
             )
@@ -172,13 +172,13 @@ fun ChapterCommentsSheetContent(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = comment.userName,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
+                                    fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold,
                                     color = MiuixTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (comment.time != null) {
-                                    Text(text = comment.time, fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                                    Text(text = comment.time, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge, color = Color.White.copy(alpha = 0.4f))
                                 }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
@@ -187,7 +187,7 @@ fun ChapterCommentsSheetContent(
                             Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                                 Spacer(modifier = Modifier.weight(1f))
                                 if ((comment.replyCount ?: 0) > 0) {
-                                    Text(text = comment.replyCount.toString() + " 回复", fontSize = 11.sp, color = Color.White.copy(alpha = 0.45f))
+                                    Text(text = comment.replyCount.toString() + " 回复", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline, color = Color.White.copy(alpha = 0.45f))
                                 }
                             }
                         }

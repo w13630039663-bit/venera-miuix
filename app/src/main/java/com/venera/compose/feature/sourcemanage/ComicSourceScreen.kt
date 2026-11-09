@@ -208,9 +208,9 @@ fun ComicSourceScreen(
                 item(key = "sort-hint") {
                     Text(
                         text = "按住上下箭头调整排序，点星标把常用的源置顶。列表顺序决定聚合搜索里各源的先后。",
-                        fontSize = 12.sp,
+                        fontSize = tokens.type.caption,
                         color = tokens.color.textSecondary,
-                        lineHeight = 18.sp,
+                        lineHeight = tokens.type.lineHeightCaption,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                 }
@@ -265,8 +265,8 @@ fun ComicSourceScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = row.name,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontSize = tokens.type.body,
+                                        fontWeight = tokens.type.weightBold,
                                         color = if (row.enabled) tokens.color.textPrimary else tokens.color.textDisabled
                                     )
                                     if (row.key == activeKey) {
@@ -277,8 +277,8 @@ fun ComicSourceScreen(
                                         ) {
                                             Text(
                                                 text = "默认",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = tokens.type.badge,
+                                                fontWeight = tokens.type.weightBold,
                                                 color = StatusColors.OnBadgeSurface,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                             )
@@ -287,7 +287,7 @@ fun ComicSourceScreen(
                                 }
                                 Text(
                                     text = if (row.enabled) "已启用 · v${row.version}" else "已停用 · v${row.version}",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = tokens.color.textTertiary
                                 )
                             }
@@ -336,14 +336,14 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = enabledCount.toString(),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = tokens.type.chevron,
+                                    fontWeight = tokens.type.weightBold,
                                     color = tokens.color.textPrimary
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "已启用",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = tokens.color.textSecondary
                                 )
                             }
@@ -361,14 +361,14 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = updateCount.toString(),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = tokens.type.chevron,
+                                    fontWeight = tokens.type.weightBold,
                                     color = if (updateCount > 0) StatusColors.Degraded else tokens.color.textPrimary
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "待更新",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = tokens.color.textSecondary
                                 )
                             }
@@ -386,14 +386,14 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = unreachableCount.toString(),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = tokens.type.chevron,
+                                    fontWeight = tokens.type.weightBold,
                                     color = if (unreachableCount > 0) StatusColors.Failing else tokens.color.textPrimary
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "连不上",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = tokens.color.textSecondary
                                 )
                             }
@@ -468,8 +468,8 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = "${filter.label} $count",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = tokens.type.caption,
+                                    fontWeight = if (isSelected) tokens.type.weightBold else tokens.type.weightRegular,
                                     color = if (isSelected) tokens.color.primary else tokens.color.textSecondary,
                                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                                 )
@@ -483,8 +483,8 @@ fun ComicSourceScreen(
                     item(key = "sec-pinned") {
                         Text(
                             text = "置顶",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = tokens.type.overline,
+                            fontWeight = tokens.type.weightSemibold,
                             color = tokens.color.textSecondary,
                             modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                         )
@@ -522,8 +522,8 @@ fun ComicSourceScreen(
                 item(key = "sec-all") {
                     Text(
                         text = if (pinnedRows.isNotEmpty()) "全部源" else "漫画源",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = tokens.type.overline,
+                        fontWeight = tokens.type.weightSemibold,
                         color = tokens.color.textSecondary,
                         modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                     )
@@ -582,8 +582,8 @@ fun ComicSourceScreen(
                     TextButton(onClick = { inSortMode = false }) {
                         Text(
                             text = "完成",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = tokens.type.body,
+                            fontWeight = tokens.type.weightBold,
                             color = tokens.color.primary
                         )
                     }
@@ -625,13 +625,13 @@ fun ComicSourceScreen(
                 Text(
                     text = "添加漫画源",
                     fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = tokens.type.weightBold,
                     color = tokens.color.textPrimary
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "源脚本是一个 .js 文件，装进来就会出现在列表里",
-                    fontSize = 12.sp,
+                    fontSize = tokens.type.caption,
                     color = tokens.color.textSecondary
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -665,8 +665,8 @@ fun ComicSourceScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "官方清单", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tokens.color.textPrimary)
-                        Text(text = "${repoItems.size.takeIf { it > 0 } ?: 33} 个源，按需安装或整体更新", fontSize = 11.sp, color = tokens.color.textSecondary)
+                        Text(text = "官方清单", fontSize = tokens.type.body, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                        Text(text = "${repoItems.size.takeIf { it > 0 } ?: 33} 个源，按需安装或整体更新", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                     }
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                 }
@@ -701,8 +701,8 @@ fun ComicSourceScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "从链接安装", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tokens.color.textPrimary)
-                        Text(text = "粘贴以 .js 结尾的地址", fontSize = 11.sp, color = tokens.color.textSecondary)
+                        Text(text = "从链接安装", fontSize = tokens.type.body, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                        Text(text = "粘贴以 .js 结尾的地址", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                     }
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                 }
@@ -737,8 +737,8 @@ fun ComicSourceScreen(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "本地导入", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = tokens.color.textPrimary)
-                        Text(text = "从手机里挑一个 .js 文件", fontSize = 11.sp, color = tokens.color.textSecondary)
+                        Text(text = "本地导入", fontSize = tokens.type.body, fontWeight = tokens.type.weightBold, color = tokens.color.textPrimary)
+                        Text(text = "从手机里挑一个 .js 文件", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                     }
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                 }
@@ -763,13 +763,13 @@ fun ComicSourceScreen(
                     } else {
                         Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("一键安装 / 更新全部官方源", fontWeight = FontWeight.Bold)
+                        Text("一键安装 / 更新全部官方源", fontWeight = tokens.type.weightBold)
                     }
                 }
 
                 Text(
                     text = "已装且版本一致的源会自动跳过",
-                    fontSize = 11.sp,
+                    fontSize = tokens.type.overline,
                     color = tokens.color.textTertiary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
@@ -854,9 +854,9 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = option.text,
-                                    fontSize = 14.sp,
+                                    fontSize = tokens.type.body,
                                     color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (isSelected) tokens.type.weightBold else tokens.type.weightRegular
                                 )
                                 if (isSelected) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = MiuixTheme.colorScheme.primary)
@@ -891,7 +891,7 @@ fun ComicSourceScreen(
                     if (accountInfo?.loginUnavailable == true) {
                         Text(
                             text = "该源未在脚本中声明登录方式",
-                            fontSize = 13.sp,
+                            fontSize = tokens.type.sectionTitle,
                             color = Color.Gray
                         )
                     }
@@ -970,7 +970,7 @@ fun ComicSourceScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("去注册账号", fontSize = 12.sp)
+                            Text("去注册账号", fontSize = tokens.type.caption)
                         }
                     }
 
@@ -1328,12 +1328,12 @@ fun ComicSourceScreen(
                             ) {
                                 Text(
                                     text = name,
-                                    fontSize = 14.sp,
+                                    fontSize = tokens.type.body,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
                                     text = "→ v$newVersion",
-                                    fontSize = 13.sp,
+                                    fontSize = tokens.type.sectionTitle,
                                     color = MiuixTheme.colorScheme.primary
                                 )
                             }
@@ -1349,7 +1349,7 @@ fun ComicSourceScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "正在更新 $done/$total ...",
-                                fontSize = 12.sp,
+                                fontSize = tokens.type.caption,
                                 color = Color.Gray
                             )
                         }
@@ -1451,8 +1451,8 @@ private fun RenderSourceItem(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = row.name,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = tokens.type.body,
+                            fontWeight = tokens.type.weightBold,
                             color = if (row.enabled) tokens.color.textPrimary else tokens.color.textDisabled,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1465,8 +1465,8 @@ private fun RenderSourceItem(
                             ) {
                                 Text(
                                     text = "默认",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = tokens.type.badge,
+                                    fontWeight = tokens.type.weightBold,
                                     color = StatusColors.OnBadgeSurface,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
@@ -1479,7 +1479,7 @@ private fun RenderSourceItem(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "v${row.version}",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = tokens.color.textTertiary
                         )
 
@@ -1487,8 +1487,8 @@ private fun RenderSourceItem(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "新版 ${row.latestVersion}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = tokens.type.overline,
+                                fontWeight = tokens.type.weightSemibold,
                                 color = StatusColors.Degraded
                             )
                         }
@@ -1497,16 +1497,16 @@ private fun RenderSourceItem(
 
                         when {
                             row.testing -> {
-                                Text(text = "测速中...", fontSize = 11.sp, color = tokens.color.textTertiary)
+                                Text(text = "测速中...", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
                             }
                             !row.enabled -> {
-                                Text(text = "已停用", fontSize = 11.sp, color = tokens.color.textDisabled)
+                                Text(text = "已停用", fontSize = tokens.type.overline, color = tokens.color.textDisabled)
                             }
                             isUnreachable -> {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(StatusColors.Failing))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(text = "连不上", fontSize = 11.sp, color = StatusColors.Failing)
+                                    Text(text = "连不上", fontSize = tokens.type.overline, color = StatusColors.Failing)
                                 }
                             }
                             latency != null -> {
@@ -1518,11 +1518,11 @@ private fun RenderSourceItem(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(dotColor))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(text = "${latency}ms", fontSize = 11.sp, color = dotColor)
+                                    Text(text = "${latency}ms", fontSize = tokens.type.overline, color = dotColor)
                                 }
                             }
                             else -> {
-                                Text(text = if (row.isJs) "扩展源" else "原生", fontSize = 11.sp, color = tokens.color.textTertiary)
+                                Text(text = if (row.isJs) "扩展源" else "原生", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
                             }
                         }
                     }
@@ -1556,8 +1556,8 @@ private fun RenderSourceItem(
                 if (settings.isNotEmpty()) {
                     Text(
                         text = "源设置",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = tokens.type.overline,
+                        fontWeight = tokens.type.weightBold,
                         color = tokens.color.textSecondary,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
@@ -1573,7 +1573,7 @@ private fun RenderSourceItem(
                                 ) {
                                     Text(
                                         text = setting.title,
-                                        fontSize = 13.sp,
+                                        fontSize = tokens.type.sectionTitle,
                                         color = tokens.color.textPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -1594,13 +1594,13 @@ private fun RenderSourceItem(
                                 ) {
                                     Text(
                                         text = setting.title,
-                                        fontSize = 13.sp,
+                                        fontSize = tokens.type.sectionTitle,
                                         color = tokens.color.textPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
                                         text = setting.value.ifBlank { "点击设置" },
-                                        fontSize = 12.sp,
+                                        fontSize = tokens.type.caption,
                                         color = tokens.color.textSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -1626,13 +1626,13 @@ private fun RenderSourceItem(
                                 ) {
                                     Text(
                                         text = setting.title,
-                                        fontSize = 13.sp,
+                                        fontSize = tokens.type.sectionTitle,
                                         color = tokens.color.textPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
                                         text = currentText,
-                                        fontSize = 12.sp,
+                                        fontSize = tokens.type.caption,
                                         color = tokens.color.textSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -1655,12 +1655,12 @@ private fun RenderSourceItem(
                                 ) {
                                     Text(
                                         text = setting.title,
-                                        fontSize = 13.sp,
+                                        fontSize = tokens.type.sectionTitle,
                                         color = tokens.color.textPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedButton(onClick = { onExecuteCallback(setting.key) }) {
-                                        Text(setting.buttonText, fontSize = 11.sp)
+                                        Text(setting.buttonText, fontSize = tokens.type.overline)
                                     }
                                 }
                             }
@@ -1673,8 +1673,8 @@ private fun RenderSourceItem(
                 if (accountInfo?.hasAccount == true) {
                     Text(
                         text = "账号",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = tokens.type.overline,
+                        fontWeight = tokens.type.weightBold,
                         color = tokens.color.textSecondary,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
@@ -1687,16 +1687,16 @@ private fun RenderSourceItem(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "已登录", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tokens.color.textPrimary)
+                                Text(text = "已登录", fontSize = tokens.type.sectionTitle, fontWeight = tokens.type.weightSemibold, color = tokens.color.textPrimary)
                                 Text(
                                     text = "${accountInfo.username ?: "已登录"} · 凭证有效",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = StatusColors.Healthy
                                 )
                             }
                             Text(
                                 text = "重新登录",
-                                fontSize = 12.sp,
+                                fontSize = tokens.type.caption,
                                 color = tokens.color.primary,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
@@ -1721,7 +1721,7 @@ private fun RenderSourceItem(
                         ) {
                             Text(
                                 text = "退出登录",
-                                fontSize = 13.sp,
+                                fontSize = tokens.type.sectionTitle,
                                 color = StatusColors.Failing
                             )
                         }
@@ -1733,22 +1733,22 @@ private fun RenderSourceItem(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "未登录", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = tokens.color.textPrimary)
-                                Text(text = "登录后可访问收藏与源专属资源", fontSize = 11.sp, color = tokens.color.textSecondary)
+                                Text(text = "未登录", fontSize = tokens.type.sectionTitle, fontWeight = tokens.type.weightSemibold, color = tokens.color.textPrimary)
+                                Text(text = "登录后可访问收藏与源专属资源", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                             }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (accountInfo.supportsWebLogin) {
                                     OutlinedButton(onClick = { onWebLogin(accountInfo.loginWebsite ?: "") }) {
-                                        Text("网页登录", fontSize = 11.sp)
+                                        Text("网页登录", fontSize = tokens.type.overline)
                                     }
                                 } else if (accountInfo.supportsPasswordLogin) {
                                     Button(onClick = onLogin) {
-                                        Text("登录", fontSize = 11.sp)
+                                        Text("登录", fontSize = tokens.type.overline)
                                     }
                                 } else if (accountInfo.supportsCookieLogin) {
                                     OutlinedButton(onClick = onCookieLogin) {
-                                        Text("填Cookie", fontSize = 11.sp)
+                                        Text("填Cookie", fontSize = tokens.type.overline)
                                     }
                                 }
                             }
@@ -1759,8 +1759,8 @@ private fun RenderSourceItem(
                 // 3. 维护操作
                 Text(
                     text = "维护",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = tokens.type.overline,
+                    fontWeight = tokens.type.weightBold,
                     color = tokens.color.textSecondary,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                 )
@@ -1776,8 +1776,8 @@ private fun RenderSourceItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "设为默认源", fontSize = 13.sp, color = tokens.color.textPrimary)
-                            Text(text = "聚合搜索和详情首选", fontSize = 11.sp, color = tokens.color.textSecondary)
+                            Text(text = "设为默认源", fontSize = tokens.type.sectionTitle, color = tokens.color.textPrimary)
+                            Text(text = "聚合搜索和详情首选", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                         }
                         Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                     }
@@ -1795,12 +1795,12 @@ private fun RenderSourceItem(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (row.pinned) "取消置顶" else "置顶此源",
-                            fontSize = 13.sp,
+                            fontSize = tokens.type.sectionTitle,
                             color = tokens.color.textPrimary
                         )
                         Text(
                             text = if (row.pinned) "当前已置顶在最上方" else "将常用源排在最前面",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = tokens.color.textSecondary
                         )
                     }
@@ -1821,11 +1821,11 @@ private fun RenderSourceItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "更新到 ${row.latestVersion}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = StatusColors.Degraded)
-                            Text(text = "当前版本 v${row.version}", fontSize = 11.sp, color = tokens.color.textSecondary)
+                            Text(text = "更新到 ${row.latestVersion}", fontSize = tokens.type.sectionTitle, fontWeight = tokens.type.weightBold, color = StatusColors.Degraded)
+                            Text(text = "当前版本 v${row.version}", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                         }
                         Button(onClick = onUpdateSource) {
-                            Text("立即更新", fontSize = 11.sp)
+                            Text("立即更新", fontSize = tokens.type.overline)
                         }
                     }
                 } else {
@@ -1838,8 +1838,8 @@ private fun RenderSourceItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "检查更新", fontSize = 13.sp, color = tokens.color.textPrimary)
-                            Text(text = "当前已是最新版本 v${row.version}", fontSize = 11.sp, color = tokens.color.textSecondary)
+                            Text(text = "检查更新", fontSize = tokens.type.sectionTitle, color = tokens.color.textPrimary)
+                            Text(text = "当前已是最新版本 v${row.version}", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                         }
                         Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                     }
@@ -1855,8 +1855,8 @@ private fun RenderSourceItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "测试网络连通性", fontSize = 13.sp, color = tokens.color.textPrimary)
-                        Text(text = "实测向源发起一次连接测试", fontSize = 11.sp, color = tokens.color.textSecondary)
+                        Text(text = "测试网络连通性", fontSize = tokens.type.sectionTitle, color = tokens.color.textPrimary)
+                        Text(text = "实测向源发起一次连接测试", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                     }
                     Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                 }
@@ -1872,8 +1872,8 @@ private fun RenderSourceItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "编辑源脚本", fontSize = 13.sp, color = tokens.color.textPrimary)
-                            Text(text = "查看或在线修改 JS 规则", fontSize = 11.sp, color = tokens.color.textSecondary)
+                            Text(text = "编辑源脚本", fontSize = tokens.type.sectionTitle, color = tokens.color.textPrimary)
+                            Text(text = "查看或在线修改 JS 规则", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                         }
                         Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = tokens.color.textTertiary)
                     }
@@ -1889,8 +1889,8 @@ private fun RenderSourceItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "删除此源", fontSize = 13.sp, color = StatusColors.Failing)
-                        Text(text = "收藏与阅读记录会保留", fontSize = 11.sp, color = tokens.color.textSecondary)
+                        Text(text = "删除此源", fontSize = tokens.type.sectionTitle, color = StatusColors.Failing)
+                        Text(text = "收藏与阅读记录会保留", fontSize = tokens.type.overline, color = tokens.color.textSecondary)
                     }
                 }
             }

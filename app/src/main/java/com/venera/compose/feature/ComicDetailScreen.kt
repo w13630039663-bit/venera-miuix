@@ -193,6 +193,37 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     var newCommentText by remember(comic.sourceName, comic.id, detailState.replyTo?.id) { mutableStateOf("") }
     val isSendingComment = detailState.isSendingComment
     var showDownloadDialog by remember { mutableStateOf(false) }
+    /** 完整目录面板（屏 01 落地）：页内胶囊只给前 80，两百话的本子在这里看全量。 */
+    var showChapterSheet by remember { mutableStateOf(false) }
+
+    // 磁盘态的**唯一一份预扫快照**（目录面板与下载面板共用）：
+    // 面板只做 O(1) 查表，不在组合里逐话扫盘（用户两轮真机反馈同一病根）。
+    // ⚠️ 两条被真机打出来的规矩：
+    //  ① 扫描腿必须是 `chaptersOfflineBatch`（每个章目录只读一次）—— 逐问的
+    //     chapterOffline 对 117 话 = 一万三千次目录探测，IO 线程也要好几秒，
+    //     面板就停在「正在核对离线文件…」出不来（用户 2026-11-09 报的这条）；
+    //  ② key 里**不许有 downloadTasks** —— 任务流每 tick 都重启扫描并掐死上一轮，
+    //     扫描永远跑不完 = 永远「核对中」。改 openEpoch 驱动：每次开面板扫一次，
+    //     面板关掉的瞬间作废快照，下次打开拿到的是最新落盘态。
+    val dlScanMgr = com.venera.compose.download.DownloadManager.getInstance(context)
+    val offlineScanChapters = remember(liveDetails, detailState.selectedGroupIndex) {
+        downloadChapters(liveDetails, detailState.selectedGroupIndex)
+    }
+    val dlScanSourceKey = viewModel.currentSourceKey()
+    val dlScanComicId = liveDetails?.comic?.id ?: comic.id
+    var offlineOpenEpoch by remember { mutableIntStateOf(0) }
+    var offlineMap by remember(offlineScanChapters, offlineOpenEpoch) {
+        mutableStateOf<Map<String, com.venera.compose.download.ChapterOffline>?>(null)
+    }
+    LaunchedEffect(offlineScanChapters, offlineOpenEpoch) {
+        if (offlineOpenEpoch > 0) {
+            offlineMap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                dlScanMgr.chaptersOfflineBatch(
+                    dlScanSourceKey, dlScanComicId, offlineScanChapters.map { it.id },
+                )
+            }
+        }
+    }
 
     // ── 预览图挂载窗口 ──
     // 折叠态只渲染前 PREVIEW_LIMIT 张：详情自带全量预览的源（nhentai、hitomi）一次返回整本
@@ -634,7 +665,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             .height(tokens.spacing.detailPrimaryButtonHeight)
                             .clickable {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                showDownloadDialog = true
+                                offlineOpenEpoch++; showDownloadDialog = true
                             },
                     ) {
                         Row(
@@ -1106,18 +1137,39 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 var showAllChapters by rememberSaveable { mutableStateOf(false) }
 
                 VeneraCard(modifier = Modifier.fillMaxWidth()) {
-                    // 标题与正倒序切换（无章节可排时不显示排序按钮）
+                    // 标题与正倒序切换（无章节可排时不显示排序按钮）。
+                    // 标题整行可点 = 打开完整目录面板（两列网格 + 索引轨）；
+                    // 摘要带特典数，页内那份截断目录不再谎称「全部」。
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = hasRealChapters) { offlineOpenEpoch++; showChapterSheet = true },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (hasRealChapters) "章节目录 (共 " + totalChapterCount + " 话)" else "章节目录",
-                            fontWeight = tokens.type.weightBold,
-                            fontSize = tokens.type.sectionTitle,
-                            color = tokens.color.textPrimary
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (hasRealChapters)
+                                    "章节目录 · 共 ${totalChapterCount} 话"
+                                else
+                                    "章节目录",
+                                fontWeight = tokens.type.weightBold,
+                                fontSize = tokens.type.sectionTitle,
+                                color = tokens.color.textPrimary
+                            )
+                            if (hasRealChapters) {
+                                val spec = remember(currentChapters) {
+                                    currentChapters.count { isSpecialTitle(it.title) }
+                                }
+                                if (spec > 0) {
+                                    Text(
+                                        text = "含 $spec 特典 · 点按查看全部",
+                                        fontSize = tokens.type.overline,
+                                        color = tokens.color.textSecondary,
+                                    )
+                                }
+                            }
+                        }
                         if (hasRealChapters) {
                             VeneraChip(
                                 text = if (isReversed) "正序 ↑" else "倒序 ↓",
@@ -1200,56 +1252,81 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             val list = if (isReversed) currentChapters.reversed() else currentChapters
                             val visibleChapters =
                                 if (showAllChapters) list else list.take(CHAPTER_CHIP_LIMIT)
-                            // 章节网格：VeneraCard 胶囊 + 已读/未读对比度走 Token
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
-                                verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)
-                            ) {
-                                visibleChapters.forEachIndexed { idx, ch ->
-                                    val actualIdx = if (isReversed) currentChapters.lastIndex - idx else idx
-                                    val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
-                                    VeneraCard(
-                                        modifier = Modifier
-                                            .widthIn(min = tokens.spacing.detailChapterChipMinWidth)
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isCurrentHistoryChapter) tokens.color.primary else Color.Transparent,
-                                                shape = RoundedCornerShape(tokens.shape.card)
-                                            ),
-                                        onClick = { launchChapter(ch.id, ch.title, actualIdx) }
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = ch.title,
-                                                fontSize = tokens.type.caption,
-                                                color = if (isCurrentHistoryChapter) tokens.color.primary else tokens.color.textPrimary,
-                                                fontWeight = if (isCurrentHistoryChapter) tokens.type.weightBold else tokens.type.weightRegular,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            if (isCurrentHistoryChapter) {
-                                                Spacer(modifier = Modifier.width(tokens.spacing.space2))
-                                                Icon(
-                                                    imageVector = Icons.Filled.CheckCircle,
-                                                    contentDescription = "上次读到这里",
-                                                    tint = tokens.color.primary,
-                                                    modifier = Modifier.size(tokens.spacing.statusDotSize * 2)
-                                                )
+                            // 章节双列网格（2026-11-09 定稿，参照拷贝漫画目录页）：严格两列等宽。
+                            // 列宽 = BoxWithConstraints 的约束宽换算 —— 读组合约束，不写回状态。
+                            // 前两版的坑都在这条线上：rememberContentWidth 的首帧窗宽快照在懒列项
+                            // 里量到 0（(0-间距)/2 把整段胶囊裁成 0 宽 = 「详情页没有章节显示」那块
+                            // 空白）；改 onSizeChanged 回写又踩了 measure→compose 的跨相位回写
+                            // （官方反模式，反复重组合 = 卡）。coerceAtLeast 兜底，零宽永不出现。
+                            val chipGap = tokens.spacing.space4
+                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                val chipWidth = ((maxWidth - chipGap) / 2)
+                                    .coerceAtLeast(tokens.spacing.detailChapterChipMinWidth)
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                visibleChapters.chunked(2).forEachIndexed { rowIdx, rowChs ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(chipGap)) {
+                                        rowChs.forEachIndexed { colInRow, ch ->
+                                            val idx = rowIdx * 2 + colInRow
+                                            val actualIdx = if (isReversed) currentChapters.lastIndex - idx else idx
+                                            val isCurrentHistoryChapter = historyRecord?.lastChapterIndex == actualIdx
+                                            VeneraCard(
+                                                modifier = Modifier
+                                                    .width(chipWidth)
+                                                    .border(
+                                                        width = 1.dp,
+                                                        color = if (isCurrentHistoryChapter) tokens.color.primary else Color.Transparent,
+                                                        shape = RoundedCornerShape(tokens.shape.card)
+                                                    ),
+                                                onClick = { launchChapter(ch.id, ch.title, actualIdx) }
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = ch.title,
+                                                        fontSize = tokens.type.caption,
+                                                        color = if (isCurrentHistoryChapter) tokens.color.primary else tokens.color.textPrimary,
+                                                        fontWeight = if (isCurrentHistoryChapter) tokens.type.weightBold else tokens.type.weightRegular,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    if (isSpecialTitle(ch.title)) {
+                                                        Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                                                        Text(
+                                                            text = "特典",
+                                                            fontSize = tokens.type.badge,
+                                                            color = tokens.color.primary,
+                                                        )
+                                                    }
+                                                    if (isCurrentHistoryChapter) {
+                                                        Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                                                        Icon(
+                                                            imageVector = Icons.Filled.CheckCircle,
+                                                            contentDescription = "上次读到这里",
+                                                            tint = tokens.color.primary,
+                                                            modifier = Modifier.size(tokens.spacing.statusDotSize * 2)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
+                                        // 尾行奇数补同宽空槽：最后一格不会横跨两列把行拉歪。
+                                        repeat(2 - rowChs.size) { Spacer(modifier = Modifier.width(chipWidth)) }
                                     }
+                                    Spacer(modifier = Modifier.height(chipGap))
                                 }
                             }
-                            // 出口文案直说还剩多少，别只写「显示全部」让人猜是不是被裁了。
+                            }
+                            // 出口直说去处：展平单列近 60 屏没有赢家，超过截断的就走完整目录
+                            // 面板（两列网格 + 分卷带 + 索引轨，一屏约 24 话）。
                             if (!showAllChapters && list.size > CHAPTER_CHIP_LIMIT) {
                                 Text(
-                                    text = "显示全部 ${list.size} 章（已列出 $CHAPTER_CHIP_LIMIT 章）",
+                                    text = "打开完整目录 · 共 ${list.size} 话（此处列出前 $CHAPTER_CHIP_LIMIT 话）",
                                     fontSize = tokens.type.caption,
                                     fontWeight = tokens.type.weightMedium,
                                     color = tokens.color.primary,
                                     modifier = Modifier
                                         .padding(top = tokens.spacing.space4)
-                                        .clickable { showAllChapters = true },
+                                        .clickable { offlineOpenEpoch++; showChapterSheet = true },
                                 )
                             }
                         }
@@ -1552,7 +1629,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Text(
                         text = if (replyTo == null) "全部评论 (" + thread.items.size + ")" else "回复 " + replyTo.userName,
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = tokens.type.weightBold,
                         modifier = Modifier.weight(1f)
                     )
                     if (detailState.commentCapabilities.canLoad) {
@@ -1564,7 +1641,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     }
                 }
                 if (replyTo != null) {
-                    Text(replyTo.content, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(replyTo.content, fontSize = tokens.type.sectionTitle, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 if (detailState.commentCapabilities.canSend) {
@@ -1573,7 +1650,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             value = newCommentText,
                             onValueChange = { newCommentText = it },
                             enabled = !isSendingComment,
-                            placeholder = { Text(if (replyTo == null) "说点什么吧..." else "回复这条评论...", fontSize = 13.sp) },
+                            placeholder = { Text(if (replyTo == null) "说点什么吧..." else "回复这条评论...", fontSize = tokens.type.sectionTitle) },
                             modifier = Modifier.weight(1f).heightIn(min = 52.dp, max = 140.dp),
                             maxLines = 5,
                             shape = RoundedCornerShape(12.dp),
@@ -1593,7 +1670,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                     Toast.makeText(context, if (success) "评论发表成功" else errMsg ?: "发表失败", Toast.LENGTH_SHORT).show()
                                 }
                             }
-                        ) { Text(if (isSendingComment) "发送中" else "发送", fontSize = 13.sp) }
+                        ) { Text(if (isSendingComment) "发送中" else "发送", fontSize = tokens.type.sectionTitle) }
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1607,13 +1684,13 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (thread.loaded && thread.items.isEmpty() && !thread.isLoading && thread.error == null) {
-                        item { Text("暂无评论", fontSize = 13.sp) }
+                        item { Text("暂无评论", fontSize = tokens.type.sectionTitle) }
                     }
                     items(thread.items) { c ->
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = c.userName, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Text(text = c.time.orEmpty(), fontSize = 11.sp, color = MiuixTheme.colorScheme.onBackgroundVariant)
+                                Text(text = c.userName, fontSize = tokens.type.sectionTitle, fontWeight = tokens.type.weightBold, modifier = Modifier.weight(1f))
+                                Text(text = c.time.orEmpty(), fontSize = tokens.type.overline, color = MiuixTheme.colorScheme.onBackgroundVariant)
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             RichCommentContent(content = c.content)
@@ -1676,135 +1753,65 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
         )
     }
 
-    // 批量离线下载对话框
+    // 批量离线下载面板（设计稿屏 02）：居中 Dialog + 117 个勾换三档抓手——
+    // 下一批 +30（从在读位置）、区间芯片整取整放、三列勾选网格可拖动圈选。
     if (showDownloadDialog) {
-        val allChs = downloadChapters(liveDetails, detailState.selectedGroupIndex)
-        val downloadManager = com.venera.compose.download.DownloadManager.getInstance(context)
-        val detailSourceKey = viewModel.currentSourceKey()
-        val detailComicId = liveDetails?.comic?.id ?: comic.id
-        val isGallery = liveDetails != null && liveDetails.chapters.isEmpty() &&
-            liveDetails.chapterGroups.all { it.chapters.isEmpty() }
-        // 默认仅选中「尚未下载」的章节，避免重复下载已离线内容
-        val undownloadedIds = allChs
-            .filterNot { downloadManager.isChapterDownloaded(detailSourceKey, detailComicId, it.id) }
-            .map { it.id }
-            .toSet()
-        var selectedIds by remember(allChs) { mutableStateOf(undownloadedIds) }
-
-        AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(if (isGallery) "下载整本" else "选择下载章节", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    VeneraTextButton(
-                        text = if (undownloadedIds.isNotEmpty() && selectedIds.size == undownloadedIds.size) "全不选" else "全选未下载",
-                        onClick = {
-                            selectedIds = if (selectedIds.size == undownloadedIds.size) emptySet() else undownloadedIds
-                        },
+        val allChs = offlineScanChapters
+        ChapterDownloadSheet(
+            chapters = allChs,
+            offlineMap = offlineMap,
+            presetOffset = historyRecord?.lastChapterIndex ?: -1,
+            storagePath = context.getExternalFilesDir(null) ?: context.filesDir,
+            onDismiss = { showDownloadDialog = false; offlineMap = null },
+            onConfirm = { toDownload ->
+                if (toDownload.isNotEmpty()) {
+                    val added = dlScanMgr.enqueue(
+                        sourceKey = dlScanSourceKey,
+                        comicId = dlScanComicId,
+                        comicTitle = liveDetails?.comic?.title ?: comic.title,
+                        comicCover = liveDetails?.comic?.cover ?: comic.coverUrl,
+                        chapters = toDownload
                     )
+                    // 已齐的章被 enqueue 静默跳过，提示要说清数目，别让人以为全进了队
+                    val skipped = toDownload.size - added
+                    Toast.makeText(
+                        context,
+                        if (skipped > 0) "已加入 $added 话，$skipped 话已下载过，跳过" else "已将 $added 话加入下载队列",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
+                showDownloadDialog = false
+                offlineMap = null
             },
-            text = {
-                if (allChs.isEmpty()) {
-                    Text(if (liveDetails == null) "详情尚未加载完成，请稍后重试" else "当前分组暂无可下载章节", fontSize = 13.sp)
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 340.dp)
-                    ) {
-                        items(allChs, key = { it.id }) { ch ->
-                            val isChecked = selectedIds.contains(ch.id)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedIds = if (isChecked) selectedIds - ch.id else selectedIds + ch.id
-                                    }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                VeneraCheckbox(
-                                    checked = isChecked,
-                                    onCheckedChange = { checked ->
-                                        selectedIds = if (checked) selectedIds + ch.id else selectedIds - ch.id
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = ch.title,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                @Composable
-                                fun BadgeChip(text: String, color: androidx.compose.ui.graphics.Color) {
-                                    Surface(
-                                        shape = RoundedCornerShape(tokens.shape.extraSmall),
-                                        color = color.copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = text,
-                                            color = color,
-                                            fontSize = tokens.type.badge,
-                                            modifier = Modifier.padding(horizontal = tokens.spacing.badgeHorizontalPadding, vertical = tokens.spacing.badgeVerticalPadding)
-                                        )
-                                    }
-                                }
+        )
+    }
 
-                                // 离线状态分两档说：**齐了**才是绿色「已下载」，
-                                // 只下一半的挂黄色「离线不全」—— 挂绿徽章等于把它从默认选中里排除，
-                                // 那本截断的书就永远不会被重下（旧写法正是这样，判据是"目录里有图"）。
-                                when (downloadManager.chapterOffline(detailSourceKey, detailComicId, ch.id)) {
-                                    com.venera.compose.download.ChapterOffline.COMPLETE ->
-                                        BadgeChip("已下载", StatusColors.Healthy)
-
-                                    com.venera.compose.download.ChapterOffline.PARTIAL ->
-                                        BadgeChip("离线不全", StatusColors.Degraded)
-
-                                    else -> Unit
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val toDownload = allChs.filter { selectedIds.contains(it.id) }
-                        if (toDownload.isNotEmpty()) {
-                            val dlMgr = com.venera.compose.download.DownloadManager.getInstance(context)
-                            val added = dlMgr.enqueue(
-                                sourceKey = viewModel.currentSourceKey(),
-                                comicId = liveDetails?.comic?.id ?: comic.id,
-                                comicTitle = liveDetails?.comic?.title ?: comic.title,
-                                comicCover = liveDetails?.comic?.cover ?: comic.coverUrl,
-                                chapters = toDownload
-                            )
-                            // 已离线的章被 enqueue 静默跳过，提示要说清数目，别让人以为全进了队
-                            val skipped = toDownload.size - added
-                            Toast.makeText(
-                                context,
-                                if (skipped > 0) "已加入 $added 话，$skipped 话已下载过，跳过" else "已将 $added 话加入下载队列",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        showDownloadDialog = false
-                    },
-                    enabled = selectedIds.isNotEmpty()
-                ) {
-                    Text("开始下载 (" + selectedIds.size + ")")
-                }
-            },
-            dismissButton = {
-                VeneraTextButton(text = "取消", onClick = { showDownloadDialog = false })
-            }
+    // 完整章节目录面板（设计稿 `_design/chapter-list-redesign.html` 屏 01）：
+    // 页内 FlowRow 是「首屏只组合 80 颗」的性能地板，展平又近 60 屏 —— 两头都要，
+    // 于是全量目录住进面板：面板 own 的 LazyVerticalGrid 两列 + 50 话虚拟分卷 + 索引轨。
+    if (showChapterSheet) {
+        val sheetGroups = liveDetails?.chapterGroups ?: emptyList()
+        val sheetChapters = if (sheetGroups.isNotEmpty()) {
+            sheetGroups.getOrNull(detailState.selectedGroupIndex)?.chapters ?: sheetGroups.firstOrNull()?.chapters ?: emptyList()
+        } else {
+            liveDetails?.chapters ?: emptyList()
+        }
+        val dlMgr = com.venera.compose.download.DownloadManager.getInstance(context)
+        val sheetSourceKey = viewModel.currentSourceKey()
+        val sheetComicId = liveDetails?.comic?.id ?: comic.id
+        val currentReadId = historyRecord?.lastChapterIndex?.takeIf { it in sheetChapters.indices }
+            ?.let { sheetChapters[it].id }
+        ChapterDirectorySheet(
+            chapters = sheetChapters,
+            groups = sheetGroups,
+            selectedGroupIndex = detailState.selectedGroupIndex,
+            reversed = isReversed,
+            onReverse = { viewModel.setReversed(!isReversed) },
+            onSelectGroup = { viewModel.selectGroup(it) },
+            currentChapterId = currentReadId,
+            offlineMap = offlineMap,
+            onDismiss = { showChapterSheet = false; offlineMap = null },
+            onPickChapter = { ch -> launchChapter(ch.id, ch.title, sheetChapters.indexOf(ch)) },
         )
     }
 }
@@ -2074,7 +2081,7 @@ private fun FavoritePanelSheet(
         ) {
             Text(
                 text = "收藏",
-                fontSize = 18.sp,
+                fontSize = tokens.type.chevron,
                 fontWeight = tokens.type.weightBold,
                 color = tokens.color.textPrimary,
             )

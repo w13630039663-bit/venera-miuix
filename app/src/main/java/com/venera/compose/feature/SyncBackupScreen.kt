@@ -110,8 +110,8 @@ fun SyncBackupScreen(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "云同步与备份恢复",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.chevron,
+                    fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
                     color = MiuixTheme.colorScheme.onSurface
                 )
             }
@@ -140,8 +140,8 @@ fun SyncBackupScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text(text = "WebDAV 云端同步", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text(text = "支持坚果云、Nextcloud、Alist 等标准 WebDAV 网盘", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "WebDAV 云端同步", fontSize = 15.sp, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
+                                Text(text = "支持坚果云、Nextcloud、Alist 等标准 WebDAV 网盘", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
                         }
 
@@ -313,9 +313,9 @@ fun SyncBackupScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text(text = "本地归档文件 (.venera)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text(text = "含阅读历史、漫画收藏与收藏夹、画廊收藏、关注画师、插图收藏的地址、阅读统计、屏蔽规则", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                                Text(text = "无需网络。可导入本应用备份，也可导入官方 Venera / PicaComic 的归档（那两种只带漫画收藏与历史）", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "本地归档文件 (.venera)", fontSize = 15.sp, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
+                                Text(text = "含阅读历史、漫画收藏与收藏夹、画廊收藏、关注画师、插图收藏的地址、阅读统计、屏蔽规则", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                Text(text = "无需网络。可导入本应用备份，也可导入官方 Venera / PicaComic 的归档（那两种只带漫画收藏与历史）", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
                         }
 
@@ -325,10 +325,10 @@ fun SyncBackupScreen(
                         // 这份文件就不再适合随手发给别人。
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "漫画源账号", fontSize = 13.sp)
+                                Text(text = "漫画源账号", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle)
                                 Text(
                                     text = "登录凭据会以明文写进备份文件，请勿分享给他人；导入时只补齐本机尚未安装的源",
-                                    fontSize = 10.sp,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge,
                                     color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                 )
                             }
@@ -349,7 +349,7 @@ fun SyncBackupScreen(
                                         SourceAccountMode.ACCOUNT_ONLY -> "只导登录"
                                         SourceAccountMode.ALL -> "登录+设置"
                                     },
-                                    fontSize = 11.sp,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline,
                                     color = MiuixTheme.colorScheme.onSurface
                                 )
                             }
@@ -412,8 +412,8 @@ fun SyncBackupScreen(
                 item {
                     Text(
                         text = "云端可用备份版本 (${remoteBackups.size})",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.body,
+                        fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
                         color = MiuixTheme.colorScheme.onSurface
                     )
                 }
@@ -430,14 +430,14 @@ fun SyncBackupScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = backup.name,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
+                                    fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightMedium,
                                     color = MiuixTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "时间: ${if (backup.lastModified > 0) dateFormat.format(Date(backup.lastModified)) else "未知"} · 大小: ${backup.size / 1024} KB",
-                                    fontSize = 10.sp,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge,
                                     color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                 )
                             }
@@ -458,7 +458,7 @@ fun SyncBackupScreen(
                                 },
                                 colors = ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.primaryContainer.copy(alpha = 0.4f))
                             ) {
-                                Text("恢复此版本", fontSize = 11.sp, color = MiuixTheme.colorScheme.primary)
+                                Text("恢复此版本", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline, color = MiuixTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -480,7 +480,7 @@ fun SyncBackupScreen(
                     ) {
                         CircularProgressIndicator(color = MiuixTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text("正在处理云端/数据操作，请稍候...", fontSize = 14.sp)
+                        Text("正在处理云端/数据操作，请稍候...", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.body)
                     }
                 }
             }

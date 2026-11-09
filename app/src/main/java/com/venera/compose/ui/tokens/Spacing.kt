@@ -563,6 +563,22 @@ data class VeneraSpacingTokens(
     val detailCategoryLabelWidth: Dp = 56.dp,
     /** 详情页章节胶囊最小宽度。 */
     val detailChapterChipMinWidth: Dp = 96.dp,
+    /**
+     * 完整目录面板（ChapterDirectorySheet）网格单格高度。
+     *
+     * 44dp 是「caption 一行 + 上下各 8dp 呼吸」的触控下限，比页内胶囊行（约 38dp）略高 ——
+     * 网格里没有 FlowRow 的换行余量，格高必须容得下整行触控。设计稿 `_design/
+     * chapter-list-redesign.html` 屏 01 定稿；不许页内抄数，改这里两边一起改。
+     */
+    val chapterGridCellHeight: Dp = 44.dp,
+    /**
+     * 完整目录面板右侧索引轨的**占列宽**。
+     *
+     * 28dp 是「数字 12dp 方糖 + 两侧呼吸」的下限，也是轨不被网格挤压的地板：
+     * 原先吃 `space9`(20dp)，padding 一扣数字盒只剩 12dp 一根，用户 2026-11-09 报
+     * 「右边的标被压的太小了」就是它。触控热区另由轨内 Box 的 height 撑到 28dp。
+     */
+    val directoryRailWidth: Dp = 28.dp,
     /** 详情页相关推荐封面宽度。 */
     val detailRecommendWidth: Dp = 90.dp,
     /** 详情页相关推荐封面高度。 */

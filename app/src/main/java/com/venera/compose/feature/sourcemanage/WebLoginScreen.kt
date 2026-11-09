@@ -1,4 +1,5 @@
 package com.venera.compose.feature.sourcemanage
+import com.venera.compose.ui.tokens.VeneraTokens
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -79,6 +80,7 @@ fun WebLoginScreen(
     ) -> Result<Unit>,
     onFinish: (Boolean) -> Unit
 ) {
+    val tokens = VeneraTokens
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gson = remember { Gson() }
@@ -179,13 +181,13 @@ fun WebLoginScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "登录 $sourceName",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = tokens.type.itemTitle,
+                            fontWeight = tokens.type.weightBold,
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "在网页中完成登录后会自动识别并保存凭证",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = Color.Gray
                         )
                     }

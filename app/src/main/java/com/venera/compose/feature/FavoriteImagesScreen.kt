@@ -106,7 +106,7 @@ fun FavoriteImagesScreen(
                 Text(
                     text = "单页与插图收藏",
                     fontSize = tokens.type.itemTitle,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = tokens.type.weightBold,
                     color = MiuixTheme.colorScheme.onSurface
                 )
             }
@@ -316,7 +316,7 @@ fun FavoriteImagesBody(
                                     Text(
                                         text = item.comicTitle,
                                         fontSize = tokens.type.caption,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = tokens.type.weightMedium,
                                         color = MiuixTheme.colorScheme.onSurface,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
@@ -485,7 +485,7 @@ fun FavoriteImagePreviewScreen(
                 Text(
                     text = "${item.comicTitle} - ${item.chapterTitle} (P.${item.pageIndex + 1})",
                     fontSize = tokens.type.body,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = tokens.type.weightMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

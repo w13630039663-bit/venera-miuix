@@ -82,9 +82,10 @@ fun ComicCardLayout(
 /** Numeric text only: the source did not supply a maximum, so do not invent a five-star scale. */
 @Composable
 fun ComicMetrics(rating: Double? = null, likesCount: Int? = null, modifier: Modifier = Modifier) {
+    val tokens = VeneraTokens
     val text = comicMetricsText(rating, likesCount)
     if (text.isNotEmpty()) {
-        Text(text = text, fontSize = 11.sp, color = MiuixTheme.colorScheme.primary, modifier = modifier)
+        Text(text = text, fontSize = tokens.type.overline, color = MiuixTheme.colorScheme.primary, modifier = modifier)
     }
 }
 

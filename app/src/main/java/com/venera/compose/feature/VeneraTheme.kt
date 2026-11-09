@@ -35,6 +35,7 @@ import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokenSet
 import com.venera.compose.ui.tokens.buildVeneraColorTokens
 import com.venera.compose.ui.tokens.miuixTextStylesOf
+import com.venera.compose.ui.tokens.veneraMaterial3TypographyOf
 import com.venera.compose.data.api.BusinessPorts
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -122,6 +123,14 @@ fun VeneraTheme(content: @Composable () -> Unit) {
     // 所以这是一次"把巧合式相等改成同一份真相"的接线，不是改观感。
     val veneraMiuixTextStyles = remember { miuixTextStylesOf(MiuixTypography) }
 
+    // Material3 件的字阶同样接进我们这份表（桥的槽位与"库外四档为什么沿用 MD3 官方值"见
+    // veneraMaterial3TypographyOf 头注）。此前这里不传 typography，MD3 件读到的
+    // `MaterialTheme.typography` 是库默认表 —— 与 tokens 阶梯是第三份真相。
+    // 恒以 Md3Typography 为底：MD3 阶梯的档位值就是 MD3 官方值，逐槽等值，屏上零位移；
+    // 它同时是 Button/TextField/Dialog/DropdownMenu/Navigation 这些没显式传样式的 MD3 件
+    // 唯一的默认字阶来源，接上之后全应用的字族统一走 FontFamily.Default（= 系统字体）。
+    val veneraMaterial3Typography = remember { veneraMaterial3TypographyOf(Md3Typography) }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -144,7 +153,11 @@ fun VeneraTheme(content: @Composable () -> Unit) {
         androidx.compose.material3.LocalContentColor provides materialColors.onBackground,
     ) {
         MiuixTheme(colors = miuixColors, textStyles = veneraMiuixTextStyles) {
-            MaterialTheme(colorScheme = materialColors, content = content)
+            MaterialTheme(
+                colorScheme = materialColors,
+                typography = veneraMaterial3Typography,
+                content = content,
+            )
         }
     }
 }

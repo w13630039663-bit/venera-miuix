@@ -67,12 +67,41 @@ class TopBarTitleScaleTest {
      *
      * 把这条钉住，是为了让下一个人看见 `title1/title3` 时不用去翻 miuix —— 也防止有人
      * 顺手把 `title1` 改成别的档（那会同时改掉**全库**所有用 title1 的地方，是大动作）。
+     *
+     * ⚠️ 2026-11-09 判式换形：原先吃整串连续文本 `title1 = TextStyle(fontSize = t.display)`，
+     * 那等于把"参数必须写在一行"钉成了规矩 —— 字族接线（`TextStyle(fontSize = t.display,
+     * fontFamily = t.fontFamily)`）拆成多行后旧串就找不到了，红在书写形态而不是红在映射。
+     * 现在按**行锚点**判：同一行里「槽名 = TextStyle(」与「fontSize = t.档位」同时在场即可，
+     * 参数怎么换行都判得着，档位换掉照样红。
      */
     @Test fun `主题里这两格的映射没被改掉`() {
         val rel = "com/venera/compose/ui/tokens/MiuixTextStyles.kt"
         val body = src(rel)
-        assertTrue("title1 不再映射到 display", body.contains("title1 = TextStyle(fontSize = t.display)"))
-        assertTrue("title3 不再映射到 statNumber", body.contains("title3 = TextStyle(fontSize = t.statNumber)"))
+        assertTrue("title1 不再映射到 display", body.slotMapsToFontSize("title1", "t.display"))
+        assertTrue("title3 不再映射到 statNumber", body.slotMapsToFontSize("title3", "t.statNumber"))
+    }
+
+    /**
+     * 槽位判式：自 `name = ` 起，参数写到下一槽为止，中间任一行出现 `fontSize = value` 即命中。
+     *
+     * ⚠️ 起锚与扫描都**只吃代码行**：`MiuixTextStyles.kt` 的头注里就写着
+     * `title1/title3/title4` 这些槽名（"库里 title4 = 18sp…"），按全文找锚会先撞进注释，
+     * 判式就红在了注释的书写上 —— 与本文件 `codeLines` 同一把口径。
+     */
+    private fun String.slotMapsToFontSize(name: String, value: String): Boolean {
+        val lines = this.lines().map { it.trim() }
+            .filter { !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
+        val start = lines.indexOfFirst { it.startsWith("$name = ") }
+        if (start < 0) return false
+        for (i in (start + 1) until lines.size) {
+            val t = lines[i]
+            if (t.startsWith("//")) continue
+            // 先判命中再判边界：`fontSize = ` 自身也长成"下一槽"的形状（`word = ` 起头），
+            // 边界放前面会把正主先 break 掉（2026-11-09 第一版就是这么红的）。
+            if (t.contains("fontSize = $value")) return true
+            if (Regex("""^[a-zA-Z][a-zA-Z0-9]* = """).containsMatchIn(t)) break
+        }
+        return false
     }
 
     /**

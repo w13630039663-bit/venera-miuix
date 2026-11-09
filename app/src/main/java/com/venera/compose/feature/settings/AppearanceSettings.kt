@@ -35,6 +35,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit) {
+    val tokens = VeneraTokens
     val mode by prefs.themeMode.collectAsState()
     val appearance by prefs.appearanceStyle.collectAsState()
     val navigationBar by prefs.navigationBarStyle.collectAsState()
@@ -50,7 +51,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                 .background(MiuixTheme.colorScheme.surfaceVariant).padding(10.dp)) {
                 Column(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
                     .background(MiuixTheme.colorScheme.surface).padding(12.dp)) {
-                    Text("薇奈拉", fontSize = 12.sp)
+                    Text("薇奈拉", fontSize = tokens.type.caption)
                     Spacer(Modifier.height(12.dp))
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -62,7 +63,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                     }
                     Box(Modifier.fillMaxWidth().height(26.dp).clip(RoundedCornerShape(13.dp))
                         .background(MiuixTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                        Text("●     ·     ·     ·", color = MiuixTheme.colorScheme.primary, fontSize = 13.sp)
+                        Text("●     ·     ·     ·", color = MiuixTheme.colorScheme.primary, fontSize = tokens.type.sectionTitle)
                     }
                 }
             }
@@ -105,7 +106,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
                     else -> "这个系统版本取不到壁纸颜色，改用固定配色。"
                 },
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                fontSize = 12.sp,
+                fontSize = tokens.type.caption,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
@@ -125,7 +126,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
             Text(
                 "贴边栏更紧凑；液态玻璃需要 Android 13 及以上，低版本显示普通悬浮栏。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                fontSize = 12.sp,
+                fontSize = tokens.type.caption,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
@@ -149,7 +150,7 @@ internal fun AppearanceSettings(prefs: AppearancePreferences, onBack: () -> Unit
             Text(
                 "英文标签会显示译文，括号里保留原文。没有收录的标签只显示原文，搜索时仍使用原文。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                fontSize = 12.sp,
+                fontSize = tokens.type.caption,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }

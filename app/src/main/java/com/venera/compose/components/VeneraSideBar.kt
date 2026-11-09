@@ -168,8 +168,8 @@ fun VeneraSideBar(
                             Spacer(modifier = Modifier.width(16.dp))
                             Text(
                                 text = tab.title,
-                                fontSize = 14.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = tokens.type.body,
+                                fontWeight = if (selected) tokens.type.weightBold else tokens.type.weightMedium,
                                 color = contentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -216,8 +216,8 @@ fun VeneraSideBar(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = tab.title,
-                                fontSize = 11.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontSize = tokens.type.overline,
+                                fontWeight = if (selected) tokens.type.weightSemibold else tokens.type.weightRegular,
                                 color = contentColor,
                                 maxLines = 1,
                                 textAlign = TextAlign.Center,

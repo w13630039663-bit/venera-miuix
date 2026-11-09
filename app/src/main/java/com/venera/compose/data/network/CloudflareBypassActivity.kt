@@ -129,13 +129,13 @@ class CloudflareBypassActivity : ComponentActivity() {
                     Text(
                         text = "Cloudflare 安全验证",
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
                         color = MiuixTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "域名: $targetHost - $pageTitle",
-                        fontSize = 12.sp,
+                        fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                         color = MiuixTheme.colorScheme.onBackgroundVariant
                     )
                 }

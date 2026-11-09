@@ -673,7 +673,7 @@ internal fun HomeTrackHeader(
                 text = enTag,
                 fontSize = 8.5.sp,
                 fontWeight = tokens.type.weightBold,
-                letterSpacing = 0.16.sp,
+                letterSpacing = tokens.type.letterSpacingWide,
                 color = tokens.color.textTertiary.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 1.dp)
             )

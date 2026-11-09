@@ -119,7 +119,7 @@ fun CoverViewerScreen(
                 Text(
                     text = title,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = tokens.type.weightMedium,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

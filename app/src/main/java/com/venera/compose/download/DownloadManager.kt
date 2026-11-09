@@ -280,6 +280,58 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     /**
+     * 整本一次性扫离线态 —— **面板唯一该用的形态**。
+     *
+     * [chapterOffline] 每问一章都要把整本目录 `listFiles` 一遍并逐目录试读
+     * `chapter.json`：117 话的本子 = 一万三千多次目录探测，从 IO 线程也要好几秒。
+     * 用户 2026-11-09 报「下载面板一直在核对离线文件」就是它 —— 扫描没跑完之前
+     * 面板永远停在等待态。这里反过来：**每个章目录只读一次**，按其中的 chapterId
+     * 归账成表；同 id 多目录取最强档（齐 > 不全 > 无），与逐问口径一致。
+     * 队列里 COMPLETED 的任务直接盖成齐，不等落盘目录。
+     */
+    internal fun chaptersOfflineBatch(
+        sourceKey: String,
+        comicId: String,
+        chapterIds: List<String>,
+    ): Map<String, ChapterOffline> {
+        val result = HashMap<String, ChapterOffline>(chapterIds.size)
+        val wanted = chapterIds.toSet()
+        val comicDir = getComicDir(sourceKey, comicId)
+        val chapterDirs: List<File> = comicDir.listFiles { f: File -> f.isDirectory }?.toList() ?: emptyList()
+        for (dir in chapterDirs) {
+            val json = runCatching { JSONObject(File(dir, "chapter.json").readText()) }.getOrNull() ?: continue
+            val id = json.optString("chapterId")
+            if (id.isEmpty() || id !in wanted) continue
+            val pages = dir.listFiles { f -> f.isFile && isPageImage(f.name) }?.size ?: 0
+            val expected = if (json.has("expectedPages")) json.getInt("expectedPages") else null
+            val state = chapterOfflineState(
+                expectedPages = expected,
+                complete = json.optBoolean("complete", false),
+                pageCount = pages,
+            )
+            val prev = result[id]
+            val keep = when {
+                prev == null -> state
+                prev == ChapterOffline.COMPLETE -> prev
+                state == ChapterOffline.COMPLETE -> state
+                prev == ChapterOffline.PARTIAL -> prev
+                else -> state
+            }
+            result[id] = keep
+        }
+        val tasksSnapshot = _tasks.value
+        for (id in chapterIds) {
+            val queued = tasksSnapshot.any {
+                it.sourceKey == sourceKey && it.comicId == comicId && it.chapterId == id &&
+                    it.status == DownloadStatus.COMPLETED
+            }
+            if (queued) result[id] = ChapterOffline.COMPLETE
+            else result.putIfAbsent(id, ChapterOffline.NONE)
+        }
+        return result
+    }
+
+    /**
      * 获取已下载章节的图片本地文件列表（按自然序号排序）
      */
     fun getDownloadedChapterFiles(sourceKey: String, comicId: String, chapterId: String): List<File>? {

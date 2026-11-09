@@ -190,7 +190,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = tokens.color.textPrimary,
-                            lineHeight = 34.sp,
+                            lineHeight = tokens.type.lineHeightDisplay,
                         )
                         if (ui.streakDays > 0) {
                             Surface(
@@ -203,11 +203,11 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text(text = "🔥", fontSize = 10.sp)
+                                    Text(text = "🔥", fontSize = tokens.type.badge)
                                     Text(
                                         text = "${ui.streakDays} 天",
                                         fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = tokens.type.weightBold,
                                         color = Color(0xFFE8A45C)
                                     )
                                 }
@@ -317,7 +317,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                         Text(
                                             text = record.title,
                                             fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            fontWeight = tokens.type.weightBold,
                                             color = Color.White,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -386,7 +386,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                     Text(
                                         text = record.lastChapterTitle.ifBlank { record.title },
                                         fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = tokens.type.weightMedium,
                                         color = Color.White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -444,7 +444,7 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         if (recommend.sourcesLabel.isNotEmpty()) {
                             Text(
                                 text = "来自 ${recommend.sourcesLabel}",
-                                fontSize = 10.sp,
+                                fontSize = tokens.type.badge,
                                 color = tokens.color.textTertiary.copy(alpha = 0.8f),
                                 modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
                             )
@@ -698,11 +698,11 @@ fun SharedTransitionScope.AndroidHomeScreen(
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         text = artist.name,
-                                        fontSize = 10.sp,
+                                        fontSize = tokens.type.badge,
                                         color = tokens.color.textSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = tokens.type.weightMedium
                                     )
                                 }
                             }
@@ -729,14 +729,14 @@ fun SharedTransitionScope.AndroidHomeScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "漫画源",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = tokens.type.body,
+                                    fontWeight = tokens.type.weightSemibold,
                                     color = tokens.color.textPrimary,
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = "${sources.size} 个可用源 · 点击进入源管理与网络测速",
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.type.overline,
                                     color = tokens.color.textSecondary,
                                 )
                             }

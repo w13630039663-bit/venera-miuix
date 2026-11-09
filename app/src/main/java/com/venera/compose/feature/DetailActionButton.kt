@@ -82,7 +82,7 @@ fun DetailActionButton(
             text = label,
             fontSize = tokens.type.badge,
             color = glyphColor,
-            fontWeight = if (active) tokens.type.weightBold else FontWeight.Normal
+            fontWeight = if (active) tokens.type.weightBold else tokens.type.weightRegular
         )
     }
 }

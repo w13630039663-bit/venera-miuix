@@ -1,4 +1,5 @@
 package com.venera.compose.feature.sourcemanage
+import com.venera.compose.ui.tokens.VeneraTokens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -54,6 +55,7 @@ fun SourceEditScreen(
     onSave: (content: String, onResult: (Boolean, String?) -> Unit) -> Unit,
     onClose: () -> Unit
 ) {
+    val tokens = VeneraTokens
     var text by remember { mutableStateOf(initialText) }
     var saving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
@@ -96,13 +98,13 @@ fun SourceEditScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "编辑 $sourceName",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = tokens.type.itemTitle,
+                            fontWeight = tokens.type.weightBold,
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Text(
                             text = fileName + if (dirty) " · 未保存" else "",
-                            fontSize = 11.sp,
+                            fontSize = tokens.type.overline,
                             color = if (dirty) Color(0xFFFFA000) else Color.Gray
                         )
                     }
@@ -146,7 +148,7 @@ fun SourceEditScreen(
                     ) {
                         Text(
                             text = "解析失败，未保存：$err",
-                            fontSize = 12.sp,
+                            fontSize = tokens.type.caption,
                             color = Color(0xFFE53935)
                         )
                     }
@@ -165,7 +167,7 @@ fun SourceEditScreen(
                     placeholder = "JavaScript 源脚本",
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
+                        fontSize = tokens.type.caption,
                         color = MiuixTheme.colorScheme.onSurface
                     ),
                 )

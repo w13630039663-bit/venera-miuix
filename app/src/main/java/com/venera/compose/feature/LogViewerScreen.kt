@@ -72,8 +72,8 @@ fun LogViewerScreen(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "运行日志与诊断",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.chevron,
+                    fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
                     color = MiuixTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -136,8 +136,8 @@ fun LogViewerScreen(
                             Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.overline,
+                                    fontWeight = if (selected) com.venera.compose.ui.tokens.VeneraTokens.type.weightBold else com.venera.compose.ui.tokens.VeneraTokens.type.weightRegular,
                                     color = if (selected) Color.White else MiuixTheme.colorScheme.onSurface
                                 )
                             }
@@ -155,7 +155,7 @@ fun LogViewerScreen(
                 ) {
                     Text(
                         text = "暂无匹配的日志记录",
-                        fontSize = 13.sp,
+                        fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
                         color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
                 }
@@ -184,8 +184,8 @@ fun LogViewerScreen(
                                         ) {
                                             Text(
                                                 text = log.level,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge,
+                                                fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightBold,
                                                 color = Color.White,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                             )
@@ -193,15 +193,15 @@ fun LogViewerScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = log.tag,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
+                                            fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold,
                                             color = MiuixTheme.colorScheme.onSurface
                                         )
                                     }
 
                                     Text(
                                         text = log.formattedTime,
-                                        fontSize = 10.sp,
+                                        fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge,
                                         color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                     )
                                 }
@@ -210,7 +210,7 @@ fun LogViewerScreen(
 
                                 Text(
                                     text = log.message,
-                                    fontSize = 12.sp,
+                                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                                     fontFamily = FontFamily.Monospace,
                                     color = when (log.level) {
                                         "E" -> Color(0xFFE53935)

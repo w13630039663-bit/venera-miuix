@@ -1719,7 +1719,7 @@ private fun ReaderSessionContent(
                                         text = ch.title,
                                         fontSize = tokens.type.body,
                                         color = if (isActive) tokens.color.primary else StatusColors.OnBadgeSurface,
-                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (isActive) tokens.type.weightBold else tokens.type.weightRegular,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
@@ -2112,7 +2112,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "夜间反色滤镜", fontSize = 14.sp, color = Color.White)
+                            Text(text = "夜间反色滤镜", fontSize = tokens.type.body, color = Color.White)
                             Text(text = "黑白互换保护夜间视力", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         VeneraSwitch(
@@ -2133,7 +2133,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "图片增强", fontSize = 14.sp, color = Color.White)
+                            Text(text = "图片增强", fontSize = tokens.type.body, color = Color.White)
                             Text(
                                 text = if (enhanceEnabled) "锐化与色彩调整已生效，画面不是原图" else "默认关闭，画面保持原图",
                                 fontSize = tokens.type.overline,
@@ -2158,7 +2158,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "保持屏幕常亮", fontSize = 14.sp, color = Color.White)
+                            Text(text = "保持屏幕常亮", fontSize = tokens.type.body, color = Color.White)
                             Text(text = "阅读时不自动锁屏", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         VeneraSwitch(
@@ -2179,7 +2179,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "音量键翻页", fontSize = 14.sp, color = Color.White)
+                            Text(text = "音量键翻页", fontSize = tokens.type.body, color = Color.White)
                             Text(text = "音量下键下一页，音量上键上一页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         VeneraSwitch(
@@ -2200,7 +2200,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "点击屏幕边缘翻页", fontSize = 14.sp, color = Color.White)
+                            Text(text = "点击屏幕边缘翻页", fontSize = tokens.type.body, color = Color.White)
                             Text(text = "左右两侧快速点击翻页", fontSize = tokens.type.overline, color = StatusColors.OnBadgeSurface.copy(alpha = 0.55f))
                         }
                         VeneraSwitch(
@@ -2221,7 +2221,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "常驻信息", fontSize = 14.sp, color = Color.White)
+                            Text(text = "常驻信息", fontSize = tokens.type.body, color = Color.White)
                             Text(
                                 text = "页码时间电量常驻角标",
                                 fontSize = tokens.type.overline,
@@ -2246,7 +2246,7 @@ private fun ReaderSessionContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = "显示状态栏", fontSize = 14.sp, color = Color.White)
+                            Text(text = "显示状态栏", fontSize = tokens.type.body, color = Color.White)
                             Text(
                                 text = "保留系统时间与电量条",
                                 fontSize = tokens.type.overline,
@@ -2471,6 +2471,7 @@ private fun ReaderSinglePageItem(
     contentScale: ContentScale,
     modifier: Modifier = Modifier
 ) {
+    val tokens = VeneraTokens
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
@@ -2495,7 +2496,7 @@ private fun ReaderSinglePageItem(
                                 Text(
                                     text = "加载中 (${index + 1}/$total)...",
                                     color = Color.White.copy(alpha = 0.5f),
-                                    fontSize = 12.sp
+                                    fontSize = tokens.type.caption
                                 )
                             }
                         }
@@ -2537,7 +2538,7 @@ private fun ReaderSinglePageItem(
                                     Text(
                                         text = "加载中 (${index + 1}/$total)...",
                                         color = Color.White.copy(alpha = 0.5f),
-                                        fontSize = 12.sp
+                                        fontSize = tokens.type.caption
                                     )
                                 }
                             }
@@ -2556,7 +2557,7 @@ private fun ReaderSinglePageItem(
                         Text(
                             text = "第 ${index + 1} 页没读出来，点一下再来",
                             color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 12.sp
+                            fontSize = tokens.type.caption
                         )
                     }
                     else -> Box(
@@ -2598,7 +2599,7 @@ private fun ReaderSinglePageItem(
                             Text(
                                 text = "第 ${index + 1} 页读取失败",
                                 color = Color.White.copy(alpha = 0.6f),
-                                fontSize = 12.sp
+                                fontSize = tokens.type.caption
                             )
                         }
                     },
@@ -2632,6 +2633,7 @@ private fun ReaderTelephotoPageItem(
     colorFilter: ColorFilter?,
     onTap: (Float) -> Unit
 ) {
+    val tokens = VeneraTokens
     var pageWidth by remember { mutableIntStateOf(1) }
     Box(
         modifier = Modifier.fillMaxSize().onSizeChanged { pageWidth = it.width.coerceAtLeast(1) },
@@ -2683,7 +2685,7 @@ private fun ReaderTelephotoPageItem(
                         Text(
                             text = "第 ${index + 1} 页没读出来，点一下再来",
                             color = Color.White,
-                            fontSize = 14.sp
+                            fontSize = tokens.type.body
                         )
                     }
                     else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

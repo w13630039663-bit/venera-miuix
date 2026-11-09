@@ -212,7 +212,7 @@ fun StatsScreen(
                             Text(
                                 text = "近 14 天阅读趋势 (每日页数)",
                                 fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = tokens.type.weightBold,
                                 color = MiuixTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(16.dp))
@@ -236,7 +236,7 @@ fun StatsScreen(
                                 Text(
                                     text = "常读漫画榜单 Top 10",
                                     fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = tokens.type.weightBold,
                                     color = MiuixTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -265,8 +265,8 @@ fun StatsScreen(
                                         ) {
                                             Text(
                                                 text = (index + 1).toString(),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = tokens.type.caption,
+                                                fontWeight = tokens.type.weightBold,
                                                 color = if (index < 3) Color.Black else MiuixTheme.colorScheme.onSurface
                                             )
                                         }
@@ -276,15 +276,15 @@ fun StatsScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = comic.comicTitle,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
+                                                fontSize = tokens.type.sectionTitle,
+                                                fontWeight = tokens.type.weightMedium,
                                                 color = MiuixTheme.colorScheme.onSurface,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
                                                 text = comic.sourceName,
-                                                fontSize = 10.sp,
+                                                fontSize = tokens.type.badge,
                                                 color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                             )
                                         }
@@ -292,14 +292,14 @@ fun StatsScreen(
                                         Column(horizontalAlignment = Alignment.End) {
                                             Text(
                                                 text = "${comic.pagesRead} 页",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = tokens.type.caption,
+                                                fontWeight = tokens.type.weightSemibold,
                                                 color = MiuixTheme.colorScheme.primary
                                             )
                                             val cMins = comic.durationSeconds / 60
                                             Text(
                                                 text = "${cMins} 分钟",
-                                                fontSize = 10.sp,
+                                                fontSize = tokens.type.badge,
                                                 color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                             )
                                         }
@@ -373,6 +373,7 @@ fun StatCard(
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val tokens = VeneraTokens
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -380,7 +381,7 @@ fun StatCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = title, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text(text = title, fontSize = tokens.type.caption, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                 Box(
                     modifier = Modifier
                         .size(26.dp)
@@ -392,9 +393,9 @@ fun StatCard(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.onSurface)
+            Text(text = value, fontSize = 19.sp, fontWeight = tokens.type.weightBold, color = MiuixTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(text = subtitle, fontSize = 10.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(text = subtitle, fontSize = tokens.type.badge, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
@@ -471,10 +472,11 @@ private const val TOPIC_CLOUD_SIZE = 12
 
 @Composable
 private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    val tokens = VeneraTokens
     Text(
         text = text,
         fontSize = 15.sp,
-        fontWeight = FontWeight.Bold,
+        fontWeight = tokens.type.weightBold,
         color = MiuixTheme.colorScheme.onSurface,
         modifier = modifier,
     )
@@ -493,6 +495,7 @@ private fun TopicScopeCard(days: Int, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun ScopeChip(label: String, value: Int, current: Int, onSelect: (Int) -> Unit) {
+    val tokens = VeneraTokens
     val colors = MiuixTheme.colorScheme
     val selected = value == current
     Box(
@@ -504,8 +507,8 @@ private fun ScopeChip(label: String, value: Int, current: Int, onSelect: (Int) -
     ) {
         Text(
             text = label,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = tokens.type.caption,
+            fontWeight = if (selected) tokens.type.weightSemibold else tokens.type.weightRegular,
             color = if (selected) colors.onPrimary else colors.onSurface,
         )
     }
@@ -531,6 +534,7 @@ private fun TopicShareCard(
     scopeDays: Int,
     onDig: (TagStatBucket) -> Unit,
 ) {
+    val tokens = VeneraTokens
     val colors = MiuixTheme.colorScheme
     val total = taggedComics.coerceAtLeast(1)
     val byComics = buckets.sortedWith(
@@ -579,6 +583,7 @@ private fun ShareRow(
     track: Color,
     onClick: (() -> Unit)?,
 ) {
+    val tokens = VeneraTokens
     val colors = MiuixTheme.colorScheme
     var rowModifier: Modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
     if (onClick != null) {
@@ -590,7 +595,7 @@ private fun ShareRow(
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            fontSize = tokens.type.sectionTitle,
             color = colors.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -615,15 +620,15 @@ private fun ShareRow(
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = "${(share * 100).roundToInt()}%",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = tokens.type.caption,
+            fontWeight = tokens.type.weightMedium,
             color = colors.onSurface.copy(alpha = 0.7f),
             modifier = Modifier.width(36.dp),
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = "$comics 本",
-            fontSize = 11.sp,
+            fontSize = tokens.type.overline,
             color = colors.onSurface.copy(alpha = 0.45f),
         )
     }
@@ -646,6 +651,7 @@ private fun SoulTagCard(
     scopeDays: Int,
     onDig: (TagStatBucket) -> Unit,
 ) {
+    val tokens = VeneraTokens
     val colors = MiuixTheme.colorScheme
     val top = buckets.maxWithOrNull(
         compareBy<TagStatBucket> { it.comics }.thenByDescending { it.display }
@@ -663,7 +669,7 @@ private fun SoulTagCard(
             Text(
                 text = "#${top.display}",
                 fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = tokens.type.weightBold,
                 color = colors.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -673,7 +679,7 @@ private fun SoulTagCard(
             )
             Text(
                 text = "$taggedComics 本里有 ${top.comics} 本 · 占可归类阅读的 ${((top.comics.toFloat() / total) * 100).roundToInt()}%",
-                fontSize = 12.sp,
+                fontSize = tokens.type.caption,
                 color = colors.onSurface.copy(alpha = 0.6f),
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -705,6 +711,7 @@ private fun SoulTagCard(
 /** 追漫轨迹：每月读得最多的两个题材。 */
 @Composable
 private fun TopicTimelineCard(monthly: List<MonthlyTagTop>) {
+    val tokens = VeneraTokens
     if (monthly.isEmpty()) return
     val colors = MiuixTheme.colorScheme
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -718,8 +725,8 @@ private fun TopicTimelineCard(monthly: List<MonthlyTagTop>) {
                 ) {
                     Text(
                         text = entry.month.replace('-', '.'),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = tokens.type.caption,
+                        fontWeight = tokens.type.weightMedium,
                         color = colors.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.width(58.dp),
                     )
@@ -733,7 +740,7 @@ private fun TopicTimelineCard(monthly: List<MonthlyTagTop>) {
                     Text(
                         text = if (entry.tags.isEmpty()) "无题材记录"
                         else entry.tags.joinToString("　") { "${it.first} ${it.second} 本" },
-                        fontSize = 13.sp,
+                        fontSize = tokens.type.sectionTitle,
                         color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -754,6 +761,7 @@ private fun TopicTimelineCard(monthly: List<MonthlyTagTop>) {
  */
 @Composable
 private fun TopicEmptyCard() {
+    val tokens = VeneraTokens
     val colors = MiuixTheme.colorScheme
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -762,7 +770,7 @@ private fun TopicEmptyCard() {
             Text(
                 text = "这段时间还没有可归类的题材。多数源在列表里只给分类词，" +
                     "而不带命名空间（如 female:xxx）的标签按原口径不参与统计。",
-                fontSize = 12.sp,
+                fontSize = tokens.type.caption,
                 color = colors.onSurface.copy(alpha = 0.6f),
             )
         }

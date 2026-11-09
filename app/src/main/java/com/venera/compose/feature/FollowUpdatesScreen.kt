@@ -83,8 +83,8 @@ fun AndroidFollowUpdatesScreen(
                 Spacer(modifier = Modifier.width(14.dp))
                 Text(
                     text = "追更更新",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.chevron,
+                    fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold,
                     modifier = Modifier.weight(1f),
                 )
                 ComicLayoutToggleButton(displayMode.value) { displayMode.value = it }
@@ -98,7 +98,7 @@ fun AndroidFollowUpdatesScreen(
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "设置",
-                    fontSize = 14.sp,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.body,
                     color = MiuixTheme.colorScheme.primary,
                     modifier = Modifier.clickable { showFolderPicker = true }.padding(6.dp),
                 )
@@ -109,11 +109,11 @@ fun AndroidFollowUpdatesScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "🔔", fontSize = 46.sp)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(text = "还没有开启追更", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(text = "还没有开启追更", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "点右上角「设置」选择一个收藏夹作为追更夹",
-                            fontSize = 13.sp,
+                            fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
                             color = MiuixTheme.colorScheme.onBackgroundVariant,
                         )
                     }
@@ -121,14 +121,14 @@ fun AndroidFollowUpdatesScreen(
             } else {
                 Text(
                     text = "追更夹：${vm.followFolder}",
-                    fontSize = 12.sp,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                     color = MiuixTheme.colorScheme.onBackgroundVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
                 if (vm.progress != null) {
                     Text(
                         text = vm.progress!!,
-                        fontSize = 12.sp,
+                        fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                         color = MiuixTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                     )
@@ -139,11 +139,11 @@ fun AndroidFollowUpdatesScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = "✨", fontSize = 42.sp)
                             Spacer(modifier = Modifier.height(10.dp))
-                            Text(text = if (vm.isChecking) "正在检查…" else "暂无新更新", fontSize = 16.sp)
+                            Text(text = if (vm.isChecking) "正在检查…" else "暂无新更新", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.itemTitle)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "每天会自动检查一次，也可以点右上角立即检查",
-                                fontSize = 12.sp,
+                                fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                             )
                         }
@@ -236,16 +236,16 @@ private fun UpdateRow(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
             )
         }) {
-            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            Text(text = title, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.body, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold, maxLines = 2)
             ComicMetrics(rating, likesCount)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = listOfNotNull(sourceKey, updateTime?.takeIf { it.isNotBlank() }).joinToString(" · "),
-                fontSize = 12.sp,
+                fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                 maxLines = 2,
             )
-            Text(text = "NEW", fontSize = 10.sp, color = MiuixTheme.colorScheme.primary)
+            Text(text = "NEW", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge, color = MiuixTheme.colorScheme.primary)
         }
     }
 }
@@ -262,11 +262,11 @@ private fun FollowFolderPicker(
     com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
         Card(modifier = Modifier.padding(horizontal = 28.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(text = "选择追更收藏夹", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "选择追更收藏夹", fontSize = 17.sp, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "选中的收藏夹会每天自动检查一次更新。",
-                    fontSize = 13.sp,
+                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
                     color = MiuixTheme.colorScheme.onBackgroundVariant,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
