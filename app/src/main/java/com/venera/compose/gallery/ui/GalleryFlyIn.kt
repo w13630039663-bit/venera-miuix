@@ -28,7 +28,6 @@ import com.venera.compose.gallery.domain.anchorAcceptable
  * - [READY]：像素拿到了，[GalleryFlyIn.payload] 与 [origin] 都非空 —— 飞。
  * - [FAILED]：窗口不给像素（超出窗口边界、无 surface、超时、认不出 Activity）——
  *   老老实实退回抬页，**并且日志里说得出是哪一种**：静默交回 null 会让"这屏为什么不飞"
- *   变成只能靠猜的问题（2026-10-01 那一版就是这么丢的，见 [GalleryFlyIn.capture] 的头注）。
  */
 enum class GalleryFlyInStage { NONE, WAITING, READY, FAILED }
 
@@ -44,13 +43,11 @@ enum class GalleryFlyInStage { NONE, WAITING, READY, FAILED }
  *
  * 与 §九 被否掉的"一次性截图当背景"不是一回事：背景要的是**活的**那一屏（交给窗口
  * blur-behind 实时糊），而这里要的**本来就是起点那一帧**，冻结才是对的。
- * 2026-09-29 第四轮起它多带一个 [origin]：那一帧不再只是"垫着不空"，而是**从卡片原位
  * 飞到大图位置**的那个飞行体 —— 跨窗口做不了真共享元素，那就把它的两样输入
  * （起点那一帧 + 起点矩形）自己递过去，落地后交叉淡入真图，观感同一条。
  *
  * 只截**起点那一块矩形**，不占整屏内存。
  *
- * ## 起点是"封面那一块"，不是"整张卡"（2026-10-01 12:00 用户报"包裹还会闪一下"）
  *
  * 落点是大图页里按真实比例定出来的**画面框**（只有图）。所以起点也必须是**同一张图的那一块**：
  * 早期版本把 `GalleryPostCard` 整卡的矩形递进来，卡上那条标题与卡片面板的圆角就一起被截进
@@ -58,9 +55,7 @@ enum class GalleryFlyInStage { NONE, WAITING, READY, FAILED }
  * 判据一句话：**起点与终点要同构**（同一比例的一张图 → 同一比例的一张图）。
  * 顺带一提，页内那对真共享元素（`coverSharedElement`）挂的本来就是封面，这下两套口径一致了。
  *
- * ## 为什么从 `view.draw(canvas)` 换成 `PixelCopy`（2026-10-01，读数钉死）
  *
- * 原来那一版是"把卡片所在的 ComposeView 画进一张软件位图"。真机读数是：
  * `IllegalArgumentException: Software rendering doesn't support RuntimeShader`
  * —— 卡面上的**液态玻璃**（`textureBlur` 走 `RuntimeShader`）在软件 canvas 上回放不了，
  * 异常被 `runCatching` 吞掉，`payload`/`origin` 双双不置，于是"点墙上的图"永远不飞。
@@ -89,7 +84,6 @@ object GalleryFlyIn {
      * 起点那一块的矩形（**卡片里封面那一块**，见文件头注）—— 共享元素那一头要的"从哪儿飞过来"。
      *
      * 两个窗口都是 edge-to-edge 全屏（`VeneraSubActivityBase` 与 MainActivity 同一套），
-     * 所以这一串坐标在对面那扇窗口里可以直接用。真机上若发现整体偏了一档状态栏高度，
      * 问题就在这一条假设上，改这里而不是在对面加偏移。
      *
      * 与 [payload] 同时写入（成功回调里一起给），所以对面只要看到 [READY] 就能两样一起用。
@@ -110,7 +104,6 @@ object GalleryFlyIn {
      * ## 这一块被我们自己的 chrome 压住时，先让 chrome 让位两帧
      *
      * PixelCopy 读的是**窗口已经合成好的表面**，它分不出"这一块的像素属于卡片，还是属于压在
-     * 上面的底栏"。2026-10-04 的真机图证：一张下沿被底栏压住的卡，飞行体里横着一条底栏
      * （「首页」「收藏」两枚与那层玻璃都跟着进去了），而落点是纯图 —— 交棒那一刻那条带消失，
      * 就是用户读到的"录制/闪"。
      *
@@ -205,7 +198,6 @@ object GalleryFlyIn {
      * 卡片被 LazyGrid 回收（滚出屏幕）时由卡片自己 [forgetCardBounds] 撤掉 ——
      * 留着一条过期矩形比"这一次不飞"糟得多。
      *
-     * ## 这颗底为什么是快照状态（2026-10-19 改判，批 233-5）
      *
      * 从前这里是**一只普通 `HashMap`**，理由写的是"两边不在同一次组合里，做成 state 只会白拖一次重组"。
      * 那句话本身没错（确实没人在组合期读它），但它漏了一件事：**作品页那条进场飞行体在等这一格** ——
@@ -217,7 +209,6 @@ object GalleryFlyIn {
      * 现量（`desktop/src/test/.../DesktopSnapshotFlowObservationTest.kt`，进程内零窗口）：
      * 没有第二帧时，普通 Map 的写入**一次读数也不发**（等待者只能赌"别人恰好画了一帧"），
      * 而 `mutableStateMapOf` 的写入**当场叫醒**等待者。那一赌在屏上分不出差别 ——
-     * 表现就是用户 2026-10-19 那句「hero 动画还是有很大问题，返回也没 hero 动画」。
      *
      * 所以这一格改成快照状态：写入自己作数，不靠别人的帧。既然没人组合期读它，
      * 原来担心的"白拖一次重组"仍然没有发生（改判的是"等什么叫醒等待者"，不是"谁在读"）。
@@ -227,14 +218,12 @@ object GalleryFlyIn {
     /**
      * 一级的卡片在布局时回写（`onGloballyPositioned` 每帧一次，同一 uid 覆盖）。
      *
-     * ## 两把矩形各司其职（批 B 的 §3 地基，2026-10-19）
      *
      * [full] 必须是 `boundsInWindow(clipBounds = false)`（**没裁过**的那一块才叫位置），
      * [visible] 是 `boundsInWindow()`（裁过的）。原因：Compose 1.12 的 `boundsInWindow()`
      * 默认把矩形**裁到窗口内**，pixiv 的竖长条页约 821px 常年住在窗口外（手册行 233-② 读数），
      * 从前这里收的是裁过的 ⇒ 进场落点是一幅"被裁短的真图矩形"，交棒那一帧高度对不上；
      * 完全裁掉时它直接给 `Rect.Zero`，被下面"零尺寸只忽略"挡住，看起来正常、其实落点已失踪。
-     * 真机又抓到活体证据：`落点首次登记 size=495x16` —— 卡被裁到 16px 高照样入表。
      *
      * 所以这一颗现在收两把，判式在 domain（[hasAnchor]）：**可见比（宽高各）不足 25% ⇒ 不收**。
      * 截像素那一路（[capture]）继续吃裁过的那一块 —— PixelCopy 只能读窗口内的表面，

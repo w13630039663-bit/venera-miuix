@@ -175,11 +175,11 @@ fun LogViewerScreen(
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = RoundedCornerShape(com.venera.compose.ui.tokens.VeneraTokens.shape.extraSmall),
                                             color = when (log.level) {
-                                                "E" -> Color(0xFFD32F2F)
-                                                "W" -> Color(0xFFFF9800)
-                                                else -> Color(0xFF2196F3)
+                                                "E" -> com.venera.compose.ui.tokens.StatusColors.Failing
+                                                "W" -> com.venera.compose.ui.tokens.StatusColors.Degraded
+                                                else -> com.venera.compose.ui.tokens.SettingsBadgeColors.Discovery
                                             }
                                         ) {
                                             Text(
@@ -213,8 +213,8 @@ fun LogViewerScreen(
                                     fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
                                     fontFamily = FontFamily.Monospace,
                                     color = when (log.level) {
-                                        "E" -> Color(0xFFE53935)
-                                        "W" -> Color(0xFFF57C00)
+                                        "E" -> com.venera.compose.ui.tokens.StatusColors.Failing
+                                        "W" -> com.venera.compose.ui.tokens.StatusColors.Degraded
                                         else -> MiuixTheme.colorScheme.onSurface
                                     }
                                 )

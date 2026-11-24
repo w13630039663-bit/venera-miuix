@@ -52,15 +52,14 @@ class GalleryBackupRowsTest {
 
     @Test
     fun `归档的字段名与磁盘档一致`() {
-        val raw = GalleryBackupRows.encodeFollows(listOf(GalleryArtistFollow(GallerySite.SAFEBOORU, "x", 123L)))
-        assertTrue(raw, raw.contains("\"site\":\"safebooru\""))
+        val raw = GalleryBackupRows.encodeFollows(listOf(GalleryArtistFollow(GallerySite.KONACHAN, "x", 123L)))
+        assertTrue(raw, raw.contains("\"site\":\"konachan\""))
         assertTrue(raw, raw.contains("\"added_at\":123"))
     }
 
     @Test
     fun `认不出的站点键摘掉而不是当成某一站`() {
         // 夹具从前用 "pixiv" 当那枚"不认识的站"（它是头像反查那条路用到的站、不在 GallerySite 里）。
-        // 2026-10-16 pixiv 进了枚举 ⇒ 那个前提没了，换成 "danbooru"：它同样是真实存在、
         // 且我们**故意不收进 GallerySite** 的站（只当画师端点的供体），判据的精神一字不变 ——
         // 若退化成"随便算某一站"，就会把一个人的关注挂到另一个人的入口上。
         val dropped = GalleryBackupRows.decodeFollows("""[{"site":"danbooru","name":"a","added_at":1}]""")

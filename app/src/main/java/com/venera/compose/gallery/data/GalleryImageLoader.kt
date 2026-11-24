@@ -30,7 +30,6 @@ import okio.Path.Companion.toPath
  *   （同一标记，理由见 [com.venera.compose.data.network.offersInteractiveBypass]：撞盾就原样抛错，
  *   由 HD 钮报一句话）。
  *
- * ⚠️ 2026-09-29 起，画廊的图**不再**经过 `VeneraImageFetcher`（它只接管需要改写字节的两条路，
  * 判据见 [com.venera.compose.data.network.ImagePipelinePolicy.needsBytePipeline]）。改动的直接收益
  * 是那把 [diskCache] **真的会被写入** —— 之前它配了却从没人往里放东西，"缓存上限"是个假开关。
  */
@@ -59,7 +58,6 @@ object GalleryImageLoader {
     private const val DISK_DIR_NAME = "gallery_img"
 
     /**
-     * 每主机并发上限（2026-09-30「预览能不能更快」那轮调的）。
      *
      * 共享客户端的 Dispatcher 全吃 OkHttp 默认值 —— `maxRequestsPerHost = 5`。
      * 画廊一屏 2 列就是 12~18 张缩略图，全部打在**同一个**图床主机上
@@ -69,10 +67,8 @@ object GalleryImageLoader {
      * 派生客户端只抬这个数字，其余（拦截器链 / 连接池 / Cookie / 缓存）原样共享：
      * - **连接池共享**意味着并发抬高的只是"同时在飞的请求数"，不是新建 24 条连接 ——
      *   HTTP/2 复用同一条连接多路复用，闲置连接也会被池回收；
-     * - 2026-09-29 起画廊取图走 Coil 自带 fetcher（`enqueue` 异步入队），**不**绕开
      *   Dispatcher 的并发闸（同步 `execute()` 才会绕，见记忆 project-coil-image-pipeline-facts），
      *   所以这一抬是真生效的；
-     * - 两站缩略 CDN 都是静态内容（实测两站缩略都回 `max-age=315360000` + ETag），
      *   不存在"并发高了把站打疼"的限流代价；原图/样例大档是用户在大图页手动触发的，
      *   一屏至多几张，不会借这个窗口冲站。
      */
@@ -162,7 +158,6 @@ object GalleryImageLoader {
                 // GIF 必须显式挂动图解码器，否则画廊里的动图**只会解出首帧**：Coil 3.6.2 在 Android 上
                 // 内置的两个解码器都不动图（`StaticImageDecoder` 名字即结论，`BitmapFactoryDecoder`
                 // 显式请求 animated=false），仓库里此前也没有任何一处注册过动图解码器 ——
-                // 2026-09-29 用户反馈"目前无法播放 gif"的根因就是这一条，不是地址错。
                 // 循环不用另设：`AnimatedImage` 默认无限循环。
                 // 注：3.6.2 里这个类叫 `AnimatedImageDecoder`（本机 aar 实测），不叫早期文档里的
                 // `ImageDecoderDecoder`。

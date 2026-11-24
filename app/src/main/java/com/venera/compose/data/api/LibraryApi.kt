@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * 为什么要这一颗：`reader/VeneraReaderScreen.kt:445` 今天在一层 `LaunchedEffect` +
  * `withContext(NonCancellable + Dispatchers.IO)` 里**直调 DAO** —— 审计
- * `responsibility-dependency-audit-2026-10-03.md` §二 第 8 行点名的第一处，§七 又写明
  * 「动它必然改调度时序」。所以这里只收「取用」这一件事：协程上下文、`NonCancellable`、
  * effect 的 key 全部留在调用点，契约只做一行转发。
  *

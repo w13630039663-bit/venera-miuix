@@ -4,7 +4,6 @@ import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 
 /**
- * **卡片框比例**的唯一出处（2026-10-20，主人「限制 pixiv 站点图片卡片的显示比例，
  * 要整张卡全部显示出来而不是被裁掉一点」）。
  *
  * ## 它治的是哪一格：两把尺量同一张图
@@ -22,7 +21,6 @@ import com.venera.compose.gallery.data.GallerySite
  *
  * 裁本身只是"少看一点"，真正贵的是它把**飞行体**带歪了：离场起点是那一页图块（完整 0.27），
  * 落点是墙上那张卡（夹过 0.4），两端比例不同 ⇒ `flightFrame` 的几何必须**变形成另一个比例**，
- * 读起来就是"飞行动画乱变"。主人那句"这样能解决很多飞行动画乱变的问题"说的正是这条因果。
  *
  * ## 为什么不是把 `Crop` 改成 `Fit`
  *
@@ -41,8 +39,6 @@ import com.venera.compose.gallery.data.GallerySite
  *
  * ## 为什么按站点分岔（三站保持原样）
  *
- * `GalleryScreen` 那面墙是**三站共用**的（用户 2026-10-18 点名「两个隔离开」那一条只说界面，
- * 但这面墙的观感口径是三站一起定的）。改夹取区间会同时动三站的整齐度，而主人这次点的是
  * **pixiv 站点**。所以新口径只对 [GallerySite.PIXIV] 生效，其余三站沿用既有的 `0.4~2.5`
  * （`LEGACY_*` 那两颗），不动它们一根手指。
  */

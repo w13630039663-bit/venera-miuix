@@ -9,9 +9,7 @@ import com.venera.compose.feature.SearchViewModel
 /**
  * 对照 explore_settings.dart：漫画卡片 → 页面 → 屏蔽 → 搜索与默认值。
  *
- * 2026-09-19 设置审计后：默认搜索目标、启动页面、章节默认倒序从灰行转正；
  * 删掉 7 条需要新配置链的灰行（卡片大小、卡片收藏/历史徽章、三类页面排序存储、
- * 自动语言筛选）。2026-09-30 用户拍板"未实现项连标题一起撤"，
  * 评论关键词屏蔽这条也一并删掉了（原先在底部「尚未实现」折叠区里）。
  * 完整清单见 settings-audit-2026-09.md。
  */
@@ -51,7 +49,6 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
             )
             SettingsSelect(
                 "启动页面", startPage,
-                // 2026-11-03 探索并入搜索页分段 → 「探索」不再是启动落点；旧值 EXPLORE
                 // 在 VeneraPreferences 读侧一次性迁成 SEARCH，这里不删第二份。
                 listOf(
                     "HOME" to "首页", "FAVORITES" to "我的收藏",
@@ -60,7 +57,6 @@ internal fun ExploreSettings(onBack: () -> Unit, onSources: () -> Unit, onKeywor
                 appearancePrefs::setStartPage,
                 summary = "下次打开应用时停在哪个标签页。",
             )
-            // 2026-09-23 历史降回二级页 → 这一项同时撤掉「历史」选项：留着它就是假开关
             // （选了之后启动仍回首页）。老用户存的 "HISTORY" 不在上面的表里，
             // 启动侧按 Navigation.kt 的 getOrDefault(HOME) 回落首页，
             // 设置这行则显示现成的「未识别的已保存值：HISTORY」（SettingsComponents.kt:218），

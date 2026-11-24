@@ -25,7 +25,6 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ## 为什么抽出来
  *
- * 2026-10-19 那一批把「全屏」从"同一个 Activity 里把框放大"改成**另一个 Activity**
  * （见 `GalleryVideoActivity`）。于是播放器要在两个地方建：就地那一小块，和全屏那一整屏。
  * 建法（防盗链头表、起播缓冲档、跨协议重定向、释放时机）有十几条实测结论垫着，
  * 抄成两份必然漂 —— 而漂了之后的症状是"就地能播、全屏播不了"这种只在一条路上复现的裂口。
@@ -35,7 +34,6 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 播放请求要带的头 —— **直接吃防盗链那张表**（[ImageHeaderPolicy]），不在这一层另立口径。
  *
- * 真机实测（2026-09-27，拿测试夹具里那条真实视频地址打的，两档都验过）：
  * ```
  * 不带 Referer → 302 https://gelbooru.com/hotlink.php?hash=/images/…   Content-Type: text/html
  * 带 Referer   → 206 video/mp4，前 12 字节 `…ftypisom`，Range 正常（能 seek）
@@ -106,8 +104,6 @@ internal fun buildGalleryVideoPlayer(
  * @param startPositionMs 只在**首次**建播放器时生效（`remember(url)` 的 key 里不含它）：
  *   把它算进 key 会让"交棒位置"每变一次就重建播放器。
  *
- * ⚠️ 2026-10-23 拆掉了「播放器**实例**跨 Activity 交棒」那一整套（takeover / giveBack /
- * releaseIfTaken）。真机日志证明它是**净负分**：
  * - 就地页点全屏时把实例存进接管槽，然后 ColorOS 因运行期 `requestedOrientation` 强制 relaunch
  *   （`hookShouldRelaunchLocked ... adjustedChanges={CONFIG_ORIENTATION, CONFIG_SCREEN_SIZE}`，
  *   连 `android:configChanges` 都拦不住）；
@@ -146,7 +142,6 @@ internal fun rememberGalleryVideoPlayer(
 /**
  * 「就地播放器 ↔ 全屏播放页」之间那一枚**位置交棒**。
  *
- * ## 为什么需要它（用户 2026-10-19：「横屏视频点击全屏放大后并不是全屏只是个框，
  * 我要的是安卓全屏的样式，而且你这个做的要旋转几次还要重新加载，重做一遍」）
  *
  * 旧做法是**在同一个 Activity 里**把播放器那块 Box 从"按比例定框"换成 `fillMaxSize()`，
@@ -182,7 +177,6 @@ internal object GalleryVideoHandoff {
 }
 
 /**
- * 打开全屏播放页（2026-10-19）。
  *
  * `makeCustomAnimation(0, 0)` 把系统那套**打开**转场压掉：全屏页自己锁朝向、自己铺黑底，
  * 两套动画同时跑会在中间那两帧看到"就地的框被拉大"。关闭那一下**不压** ——

@@ -10,7 +10,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 
 /**
- * pixiv 画师页那三份匿名答复的解析（2026-10-19）。
  *
  * 三跳、两份模型：
  * ```
@@ -43,7 +42,6 @@ internal object PixivUserWorksParse {
     /**
      * `/ajax/user/{id}?full=1`。
      *
-     * 现量字段（2026-10-19 本机实测，真号 7075448 / 11 / 49384704 三份）：
      * `userId` / `name` / `image` / `imageBig` / `premium` / `background{url,isPrivate,repeat,color}` /
      * `following` / `comment` / `webpage` / `social.{twitter,pawoo}.url` / `official` / `group[]`。
      *
@@ -107,9 +105,7 @@ internal object PixivUserWorksParse {
     /**
      * `/ajax/user/{id}/profile/all` —— 只要 id 表与**公开收藏总数**。
      *
-     * 现量形状（真号 7075448）：
      * ```
-     * {"body":{"illusts":{"148343100":null, …},"manga":{},"novels":[],
      *          "bookmarkCount":{"public":{"illust":860,…},"private":{"illust":…}},…}}
      * ```
      *
@@ -136,7 +132,6 @@ internal object PixivUserWorksParse {
         val illusts = data[BUCKET_ILLUSTS].requireBucket("illusts", body)
         val manga = data[BUCKET_MANGA].requireBucket("manga", body)
         // ⚠️ 收藏数那一格叫 **`public.illust`（单数）**，不是 `illusts` —— 与上面那两个桶
-        // 的键名不同形。2026-10-19 实测原答复：
         // `"bookmarkCount":{"public":{"illust":0,"novel":0,"collection":0},"private":{…}}`。
         // 第一版这里误用了 `BUCKET_ILLUSTS`（"illusts"）⇒ 恒取不到 ⇒ 屏上那格永远「—」，
         // 而且**不会报错**（链式 `?.` 一路 null 到底）。测试 `索引 - 两个桶的 id 表与公开收藏数`
@@ -229,7 +224,6 @@ internal object PixivUserWorksParse {
     /**
      * 一个桶 → id 表。
      *
-     * 三种形状要分清，而**前两种都是合法答复**（2026-10-19 现量改判，病根见 `PixivUserWorksParseTest`
      * 那两条用例）：
      * - 键不在 / `null` ⇒ 空表；
      * - `{}` **或 `[]`** ⇒ 空表。站方对"这一类没有投稿"给的就是空数组
@@ -354,7 +348,6 @@ data class PixivUserWorks(
 }
 
 /**
- * pixiv 画师页那三段。**顺序即屏上顺序**（用户 2026-10-19 点名：插画 / 漫画 / 收藏）。
  *
  * ⚠️ 名字刻意**不叫** `PixivArtistTab`：那个名字已经被首页「画师」那一节的
  * 「已关注 / 发现」两档占了（`GalleryPixivHome.kt`），两者是**不同层级的两件事**

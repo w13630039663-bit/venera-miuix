@@ -161,7 +161,6 @@ import com.venera.compose.ui.tokens.LocalBottomBarClearance
 /**
  * 画廊主 Tab（第 4 位，搜索右侧）。
  *
- * ## 2026-09-30 第二轮的形态（用户按新版效果图点名的信息架构）
  *
  * 一屏自上而下：
  * 1. 顶栏大标题「画廊」+ 常驻 chrome（一条搜索入口条，见 [GalleryHomeChrome]）；
@@ -190,16 +189,13 @@ fun GalleryScreen(
     /**
      * 「每日热门 → 查看全部」：进那面墙的**二级页**看全量与换一批。
      *
-     * 首页这一节从此只是**预览**（一行横卡），全量在二级页 —— 用户 2026-09-30 的拍板。
      * 二级页是独立路由（`GalleryDailyRoute`），所以这里交出去的是一个导航动作，
      * 而不是"在页内切成另一面墙"（后者会让返回语义变成页内状态机）。
      */
     onOpenDailyAll: () -> Unit,
     /**
-     * 顶栏那枚「浏览历史」（2026-10-14 起，占的正是原来「换一批」那枚的位置）。
      *
      * 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
-     * （下拉刷新 2026-09-30 撤下时，注释就写明节头那枚「承担」了「我要新内容」的出口），
      * 所以这一格换成历史入口之后，首页换一批仍在节头。
      *
      * 这里交出去的是导航动作（`GalleryHistoryRoute`，二级页、有返回语义）而不是页内状态：
@@ -207,7 +203,6 @@ fun GalleryScreen(
      */
     onOpenHistory: () -> Unit,
     /**
-     * 顶栏那枚 🔖「收藏」（2026-10-17 第三十一轮，用户「在搜索和历史记录两个圆形按钮之间，
      * 新增一个书签按钮……按照这个方式去做收藏」）。
      *
      * 它落在搜索与浏览历史两枚**之间**：三枚都是"去另一屏取一批东西"，
@@ -218,7 +213,6 @@ fun GalleryScreen(
      */
     onOpenBookmarks: () -> Unit = {},
     /**
-     * 首页头图的**绝对路径**，空串 = 未设置（2026-10-15，用户「图廊首页也加上和设置页一样的可切换头图」）。
      *
      * 为什么是一根字符串而不是这一屏自己去读偏好：`BusinessApiBoundaryTest` 的 A/B 两条钉着
      * 「画廊 UI 那一层不许直连业务实现类单例」，白名单只许缩短。而往 `GalleryPreferences`
@@ -245,7 +239,6 @@ fun GalleryScreen(
 
     // 离开这一屏（点进大图页 / 画师页 / 切底部 Tab）就把**展开着的**搜索层收成一条。
     //
-    // 立案读数（2026-10-22 真机复现路径：搜一个词 → 直接返回 → 屏上剩一张摊开的输入卡 +
     // scrim + 键盘区）：`closeSearch()` 只置 `active = false`，从不动 `mode`。于是用户在
     // INPUT 态离开（打字打到一半、或刚提交还没收条），回来时 `active` 仍是 true、
     // `mode` 仍是 INPUT —— 搜索层一直开着，读起来就是"返回后还显示这个搜索框"。
@@ -262,12 +255,10 @@ fun GalleryScreen(
             if (event == Lifecycle.Event.ON_STOP &&
                 // 反搜层开着时**不收**：那一态输入行画的是反搜框（`expanded || rvm.open`），
                 // 而反搜结果墙照旧。收条会把搜索卡收成一行、焦点清掉，两层状态开始各说各话
-                // （2026-10-22 审计）。
                 !rvm.open &&
                 svm.active &&
                 svm.mode == GallerySearchMode.INPUT
             ) {
-                // 2026-11-05 改判（用户「打完字返回，输入框还挂在屏上点不动」）：
                 // 只有**真搜过一轮**（结果墙已经起来）才值得收成一条继续看；
                 // 打字没搜就离开，旧的 `closeSearch()` 只关 `active` 不清词不回模式，
                 // 回来时 INPUT 态带残词复现 —— 直接整层清掉。
@@ -291,7 +282,6 @@ fun GalleryScreen(
 
     // 系统返回**逐级**：反搜 → 展开态收成一条（接着看图）→ 上一轮搜索上下文 → 关掉整个搜索。
     //
-    // 2026-09-28 之前这里只有两档、而且最后一档就是 `closeSearch()`：搜了 touhou → 点进大图 →
     // 点一枚画师标签回来 → 按一次返回掉回首页，touhou 那一轮再也回不去。
     // 原因是两条按设计执行的语义叠在一起：交接把上一轮**覆盖**了，返回又一格到底。
     // 现在上一轮压在 `svm.contexts` 里，返回先弹它（不发请求、不重转圈）。
@@ -316,7 +306,6 @@ fun GalleryScreen(
     // 切进搜索态、按那枚标签直接开搜。key 读的是快照字段，所以写入方在另一个 Activity 里
     // 也能立刻把这边叫醒 —— 不靠 onResume（大图页是透明窗，底下这屏只是 paused）。
     //
-    // 这条链 2026-09-28 被报过"返回后回到画廊首页、回不到最初那串标签"，当时装了只读探针取现场。
     // 读数证明 ViewModel 全程同一个实例、每次写入都有消费 —— 但**据此判"缺陷没重现出来、
     // 没有代码要改"是错的**：病因从来不是链断，而是这一句把上一轮**整片覆盖**
     // （`filters=[touhou] results=100` → `filters=[wowoguni] results=0`，同一个实例、没换 VM），
@@ -372,11 +361,9 @@ fun GalleryScreen(
      * 用户从没要求过这个联动，而且它正是下面那句"返回时组合重建会重跑出一批不一样的推荐标签"
      * 要防的东西的另一半：真正该防的是**没有任何用户动作就变**。
      *
-     * 2026-09-30 第二轮：首页那排展示栏撤了（用户点名"去掉根据你的收藏这个栏"），
      * 但这份数据**照留** —— 它是猜你喜欢那条墙的取数种子，也是搜索卡空框态那行推荐的来路。
      */
     val galleryFavorites by GalleryPorts.of(context).favorites.favorites.collectAsState()
-    // 收藏 uid 集合（2026-10-17 第十八轮）：排行榜那张卡的 ♥ 要按 uid 查"这张收没收藏"。
     // 只认 `siteKey:id`（= [GalleryPost.uid] 的构造法），不看别的字段 —— 两条账必须同一个键。
     val galleryFavoriteUids = remember(galleryFavorites) {
         galleryFavorites.mapTo(HashSet(galleryFavorites.size)) { "${it.siteKey}:${it.id}" }
@@ -389,7 +376,6 @@ fun GalleryScreen(
 
     // 搜索结果那面墙用的滚动状态。
     //
-    // 2026-09-30 第二轮：原来这里还有第二把（`dailyGridState`，给"日榜那一面墙"用），
     // 现在整条主墙是猜你喜欢、日榜去了二级页（那边自带一把，见 `GalleryDailyScreen`），
     // 所以首页只剩这两把：搜索结果一把、猜你喜欢一把。
     // ⚠️ 两把**不能合并**：节头进墙之后"第几项"不再等于"第几张卡"，而
@@ -402,15 +388,12 @@ fun GalleryScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 列数按窗口宽自适应：每列预算 200dp（照详情页预览格那把 master 原值），手机档恒 2 列不参与计算。
     // 历史：这一档原本"手机 2 / 平板 3"两值定死（3 是当时用户反馈「平板上两列偏大」定的），
-    // 但侧栏落地后宽窗仍恒排 3 列 ⇒ 一格 478dp，2026-10-02 用户再报「图片卡片过大」才改成自适应。
     // 「画廊设置 → 网格列数」的 TWO/THREE 仍是显式覆盖，只有 AUTO 走自适应。
     val columnMode by GalleryPorts.of(context).prefs.galleryColumnMode.collectAsState()
     val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 
-    // ── 下滑收起两栏（2026-09-30，用户点名；两枚开关默认关）──
     val hideTopBarOnScroll by GalleryPorts.of(context).prefs.galleryHideTopBar.collectAsState()
     val hideBottomBarOnScroll by GalleryPorts.of(context).prefs.galleryHideBottomBar.collectAsState()
-    // 首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
     // 路径由装配根递进来（理由见参数上的注）；这一侧只做**收据核验**：
     // 空串 / 文件不在了 / 文件是零字节，三种都必须当成"没设过头图"，绝不摆一张裂图。
     val galleryHeroFile = remember(heroPath) {
@@ -432,9 +415,7 @@ fun GalleryScreen(
     val chromeHeight = galleryHomeChromeHeight()
     val hideThresholdPx = with(LocalDensity.current) { chromeHeight.toPx() }
 
-    // ── 头图在场时的顶栏契约（2026-10-16，与设置页同源）──
     //
-    // 抄设置页那套（理由见 `SettingsHome` 的「hero 页的滚动契约」，是真机量出来的坑）：
     // 头图在场时 behavior 的 nestedScroll 连接**不挂** —— 空 `largeTitle` 仍占一行字体度量，
     // miuix 会给它留几十 dp 的"幽灵折叠行程"，上滑先被它在 pre-scroll 里吃掉（列表看似
     // 没反应）、回顶后展开支路又把顶栏"拉开"。折叠机制整个退场后，玻璃与小标题的进度
@@ -445,7 +426,6 @@ fun GalleryScreen(
     // 多少像素就是头图被推上去多少，这正是要的那个进度。
     val heroPresent = galleryHeroFile != null
     //
-    // ⚠️ **让位契约只对画廊首页成立**（2026-10-18，用户「还是没有左边的大标题」）：
     // `heroPresent` 只回答"设没设过头图"；凡是"让位给图 / 因为图而不挂折叠 / 玻璃改由墙喂"这一类
     // 判断都要再问一句"现在是不是搜索态"—— 搜索态的大标题是「搜索」（不是空串），"幽灵折叠行程"
     // 那一档根本不发生，照旧让位就会让顶栏左边永远空一行、卡片也收不进顶栏。
@@ -486,7 +466,6 @@ fun GalleryScreen(
     val chromeHidden = GalleryChromeAutoHide.hidden
     val chromeHideConnection = remember(hideThresholdPx) {
         object : NestedScrollConnection {
-            // ⚠️ 必须是 **onPreScroll**（2026-09-30 第三轮修的缺陷，原话「上下滑收起顶和底栏没有效果」）。
             //
             // 原来这里挂的是 `onPostScroll(consumed, available)` 读 `available.y` —— 那是
             // **子级消费完之后剩下的那一截**：瀑布流只要还能滚就把整笔位移吃干净，
@@ -496,9 +475,7 @@ fun GalleryScreen(
             //
             // pre 段的 `available` 才是这一笔的真实位移。
             //
-            // ⚠️ 符号（2026-09-30 从 material3 源码量的，别再抄回去）：**负 = 手指向上滑（往下浏览）
             // ⇒ 该收起**，**正 = 手指向下滑（回滚）⇒ 该展开**。这里曾经写成"正 = 手指向上推 = 下滑"，
-            // 于是整条链做反，真机读起来就是"上滑收起搞反了"。依据见 GalleryChromeHidePolicy 类头注。
             // 本连接恒回 Offset.Zero，不抢任何位移，所以它对顶栏折叠与瀑布流都是透明的。
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
@@ -524,12 +501,10 @@ fun GalleryScreen(
      * 只有这一条路径，没有"加载更多"：日榜是一屏到底的固定池子（实测 yande.re 固定 40 条、
      * `page`/`limit` 被忽略；Gelbooru 100 条里抽 20）。
      *
-     * ⚠️ 2026-09-30 第二轮：首页**只**用这一批摆一行预览横卡，
      * 全量在二级页（[GalleryDailyScreen]，那边复用同一个 [GalleryViewModel]）。
      *
      * @param force true = 用户主动要求的那一轮（「刷新」「重试」），**忽略**在途标志。
      *
-     * ## ⚠️ 那个"永久转圈"的缺陷（2026-09-26 修）
      *
      * 旧写法：`isLoadingFeed = true` 之后，只有协程**自己跑完**才在末尾清回 false。
      * 而这笔协程跑在 [rememberCoroutineScope] 里 —— 转圈期间切走 Tab / 转屏 →
@@ -628,7 +603,6 @@ fun GalleryScreen(
         vm.refresh()
     }
 
-    // ⚠️ 2026-09-30 第二轮：这里原来还有一个 `remixDaily()`（"日榜那面墙的换一批"，
     // 零请求本地重排 + 池子不够就真取）。首页现在只有猜你喜欢一面墙，而日榜的「换一批」
     // 搬到了它的二级页（`GalleryDailyScreen.remix`，那边同样走 `vm.remix()` 这条零请求路径）。
     // 撤掉它不是因为不好用，而是**首页已经没有能让用户看见这一下的地方**了。
@@ -656,7 +630,6 @@ fun GalleryScreen(
         if (vm.feedLoadedKey == "feed#${vm.refreshTick}|${vm.seed}" && vm.posts.isNotEmpty()) return@LaunchedEffect
         val force = forceNextLoad
         forceNextLoad = false
-        // 冷启动那一屏是**今天**存的缓存 → 不联网（用户 2026-09-29：「同一天之内不再自动联网，
         // 要新内容靠下拉或那枚刷新」—— 判据与"补拉不清屏"都在 GalleryFeedRefreshPolicy）。
         if (!force && !vm.shouldAutoLoad()) return@LaunchedEffect
         loadDaily(force = force)
@@ -686,7 +659,6 @@ fun GalleryScreen(
     // 新一轮结果落地 → 滚回顶部。不滚的后果与搜索页那条一样：用户落在上一轮的深处，
     // 而续页判据会当场认为已经到底。信号用 [GalleryForYouViewModel.generation]，不用 posts.size。
     //
-    // ⚠️ 2026-09-30 第二轮：这里原来还带一个 [`wallFeed`] 键与"不是猜你喜欢那一面就跳过"
     // 的守卫 —— 那是"两面墙共用一屏、只画当前那一面"时代的产物。现在首页那条主墙**恒为**
     // 猜你喜欢（每日热门搬去了二级页），所以那个守卫恒真、那个键恒不变：
     // 留着它只会让下一个人以为"这一屏还可能不是猜你喜欢"。
@@ -768,7 +740,6 @@ fun GalleryScreen(
     /**
      * 网格的顶部避让 = 顶栏展开地板。
      *
-     * 2026-09-30 第三版：chrome 挪进墙里当第一行后，避让**只剩顶栏地板**这一支 ——
      * chrome 的高度由它自己在网格里占位，不再从 padding 里扣。
      * （第二轮那版"地板 + chrome 高度"是 chrome 当浮层时的口径，浮层已撤。）
      */
@@ -777,10 +748,7 @@ fun GalleryScreen(
     /**
      * 首页头图在场时，**墙的顶部避让归零** —— 头图从屏幕最顶出血。
      *
-     * 2026-10-16（用户「画廊的头图有问题，表现方式应该和图二一样才对」，图二 = 设置页）。
-     * 头图复用 [SettingsHeroImage]，但 2026-10-15 加它时只挂上了那颗件、**没同步设置页
      * 那套"出血契约"**：墙的顶留白仍是 [gridTopPadding]（= 顶栏展开地板那一档），
-     * 于是头图被顶栏整个推到它下面 —— 真机上读起来是"一条标题栏 + 一张图"两张皮，
      * 而不是"图铺满顶部、标题压在图上的白字"。
      *
      * 设置页那边头图摆在**内容列之外**（不吃 `topPadding`）所以天然出血；画廊的头图是
@@ -789,7 +757,6 @@ fun GalleryScreen(
      *
      * 未设头图时恒为 [gridTopPadding] —— 首帧几何与从前逐像素一致。
      *
-     * ⚠️ **判据不吃 `heroActive`**（2026-10-18 用户「在首页搜索框的时候，头图会异常显示」那条）：
      * 这一条量的是**头图自己摆在哪**，而头图住在主墙的 header item 里 ——
      * 搜索态那一屏主墙照旧在背景里（scrim 把它压暗，所以截图里仍看得见画师排与排行榜），
      * 头图也跟着照旧。搜索态把留白放回去 = 头图在背景里**凭空下移一截**，
@@ -800,7 +767,6 @@ fun GalleryScreen(
     /**
      * 搜索浮层的纵向落点 = 常驻 chrome 上边缘（状态栏之下、顶栏大标题之下）。
      *
-     * chrome 现在是墙里的第一行内容（2026-09-30 第三版），首屏时它的上边缘恰好在
      * [topBarFloor] —— 卡片弹出来时**正好盖住**入口条的位置，"从入口条原地长开"的语义不变。
      * 顶栏展开高度用与各主 Tab 同一条地板常量（`statusBarTop + 104.dp` 那一档里的 104dp），
      * 不另量（同一处理由：`heightOffsetLimit` 读不可靠）。
@@ -810,7 +776,6 @@ fun GalleryScreen(
      * 头图那一段的**占位高**就是 `状态栏 + settingsHeroHeightSubpage − settingsHeroOverlap`
      * （与 [SettingsHeroImage] 报给布局的高度同一个式子），入口条紧随其后 ⇒ 这里等于它的上边缘。
      *
-     * ⚠️ 2026-10-16 换档（用户「画廊这个空位有点太多了…1选A吧」）：头图从 `settingsHeroHeight`
      * (208dp) 降到 `settingsHeroHeightSubpage` (148dp) —— 就是设置子页那一档，**不造新数字**。
      * 占位从 `状态栏 + 160dp` 收到 `状态栏 + 100dp`（少 60dp），图自己也矮一档。
      * 如实记两笔代价：清晰段只剩 **52dp**（`148 − fadeHeight 96`），标题白字落在图的中下段、
@@ -818,7 +783,6 @@ fun GalleryScreen(
      * 两处**必须同一个常量**：这里写的式子与下面 `SettingsHeroImage` 的 `totalHeight` 是同一条，
      * 改一处不改另一处，"从入口条原地长开"立刻退化。
      *
-     * ⚠️ **判据同样不吃 `heroActive`**（2026-10-18，同 `wallTopPadding` 那条理由）：
      * 落点跟着的是**入口条**（chrome）在哪儿，而入口条在主墙 header item 里、头图**下面** ——
      * 这与搜索态开不开没有关系（搜索态主墙仍在背景里，入口条还在老位置）。
      * 改成"搜索态一律 topBarFloor"会让卡从入口条上方掉下来盖住它。
@@ -830,7 +794,6 @@ fun GalleryScreen(
     }
 
     /**
-     * 搜索卡**跟着顶栏折叠一起往上收**的那一段（2026-10-18，用户「搜索栏和顶部的间距还是太高了，压下」）。
      *
      * ── 那截空白是怎么来的 ──
      *
@@ -858,7 +821,6 @@ fun GalleryScreen(
         (searchOverlayTop - statusBarTop - VeneraSpacing.topBarCollapsedHeight).coerceAtLeast(0.dp)
 
     /**
-     * 结果态给搜索结果墙的**稳定**顶部内缩（方案 B，2026-10-16 用户拍板「直接方案 b」）。
      *
      * ── 它解决什么 ──
      *
@@ -872,8 +834,6 @@ fun GalleryScreen(
      * 对齐关系：卡顶在 `topBarFloor + space2`、卡高 48dp ⇒ 卡底在 `topBarFloor + 50`，
      * 空白带从 `topBarFloor + 60` 起 ⇒ **卡底与第一排图上沿之间留 10dp**。
      *
-     * ⚠️ 那 12dp 是用户 2026-10-16 点名要的（原话「搜索框离下面的图片要有点边距」）：
-     * 上一版取 `space2`(4dp)，卡底到图上沿只剩 **2dp** —— 真机上读起来是"卡片贴在图上"。
      *
      * ⚠️ 当时把成因写成"卡片自己的投影（`elevation.attached` 3dp）把那条缝吃掉"，
      * 这一半是错的：玻璃档下那张卡**没有**投影了（见 `VeneraGlass.veneraSurfaceShadowElevation`，
@@ -882,7 +842,6 @@ fun GalleryScreen(
      * 12dp 是"看得出是一段留白、又不至于把首屏白白让掉一行"的那一档，且是现成 token。
      * **一枚 token 都不新立**（两枚都是现成的）。
      *
-     * ── 为什么这不犯 2026-09-30 撤"网格避让"那条 ──
      *
      * 当时否掉避让的理由**针对"padding 随滚动状态变化"**（会让整面墙跳一下）。
      * 这一条只随"进 / 出结果态"变化 —— 那本来就是一次整页切换（卡片 scaleIn 长开 / 收起），
@@ -898,7 +857,6 @@ fun GalleryScreen(
     }
 
     /**
-     * 结果态那张搜索卡**收起**的判据 —— 与顶栏**居中标题**的出现同一条线（2026-10-16 用户拍板）。
      *
      * ── 阈值 1/3 的出处是 miuix 源码，不是拍出来的 ──
      *
@@ -908,7 +866,6 @@ fun GalleryScreen(
      * 取 1/3 的语义因此是「居中标题一出来，搜索卡就收起」，两个动作同帧起跑
      * （出场曲线也取 miuix 那一颗 spring，见 [SEARCH_CARD_SHOW_SPEC]）。
      *
-     * 从前这里是 `COLLAPSE_SETTLED_FRACTION`（0.99，完全折平才收）—— 用户真机读到的是
      * "我都滚过一屏了它还在"。
      *
      * ── 为什么是滞回而不是单阈值 ──
@@ -960,7 +917,6 @@ fun GalleryScreen(
 
     // 首页三节（关注的画师 / 热门预览 / 猜你喜欢节头）。**恒为三节**（理由见 galleryHomeSections）。
     //
-    // 这一栏 2026-09-30 从「收藏里的画师」换成「正在关注的画师」（批次 L · L11，用户拍板）：
     // 换名的前提是那之前有了关注名单存储，"关注"这两个字第一次配得上一个真读数。
     // 卡面与张数仍从收藏里取 —— 名单只存「站别 + 名字」，不为此多发任何请求。
     val followsStore = remember(context) { GalleryPorts.of(context).follows }
@@ -973,7 +929,6 @@ fun GalleryScreen(
     val artists = remember(follows, galleryFavorites) {
         GalleryFollowedArtists.rowOf(follows, galleryFavorites)
     }
-    // ── 首页内容域与 Pixiv 那三节的取数（2026-10-17）──────────────────────────────
     //
     // 状态留在屏上而不是塞进 GalleryViewModel：那颗管的是"一屏墙 + 缓存 + 每日热门那台合并机器"，
     // 而 pixiv 这两条匿名腿今天**不参与任何合并**（选型⑤：它只从首页那一格进）。
@@ -982,14 +937,12 @@ fun GalleryScreen(
     var pixivModeName by rememberSaveable { mutableStateOf(PixivRankingMode.DAILY.name) }
     var pixivExpanded by rememberSaveable { mutableStateOf(false) }
     val domain = GalleryHomeDomain.entries.first { it.name == homeDomain }
-    // 内容域**同步进搜索那侧**（2026-10-17）：搜索卡要按域换一整套语法（booru 的标签胶囊
     // vs pixiv 的"一个词 + 站内参数"），而那面墙只认 `svm.results` —— 所以"这一墙是谁的图"
     // 必须由 ViewModel 自己知道，页面这一侧只负责把域报过去。
     //
     // 换域时 `setDomain` 会把手上那一轮清掉（在途掐掉 + 结果清空）：卡上写着 pixiv 的筛选、
     // 身下的墙却是 booru 的图，是本仓最忌的那种假读数。条件不抹，两边各留各的。
     LaunchedEffect(domain) { svm.setDomain(domain) }
-    // ── 反向同步（2026-10-20，用户报「pixiv 作品页点标签后返回，首页出现搜索框却没有词」）──
     //
     // 上面那条是**页面 → ViewModel**（用户点了切换器）。但域还有第二个写入口：**交接**
     // （`GallerySearchHandoff` 消费时按"这张图属于哪个站"切域，见 `acceptHandoff`）。
@@ -1011,7 +964,6 @@ fun GalleryScreen(
     /**
      * 榜单**按档缓存**（`"${mode}#${app|www}"` → 那一档那一次的结果）。
      *
-     * 加它是因为 2026-10-17 第七轮用户那句「不要每次切页面都刷新，手动下拉才刷新」：
      * 从前 `domain` 是 effect 的键，但域一变 effect 就重跑 —— 切去图库站再切回 pixiv，
      * 排行榜与推荐各重发一遍，用户读到的是"每次切过来都在转"。
      * 现在 effect 仍挂在域上（否则切回来那一屏没人填），但**命中缓存就直接摆**。
@@ -1031,7 +983,6 @@ fun GalleryScreen(
      *
      * 从前失败走的是 `pixivRecommendExhausted = true` —— 一次网络抖动被写成"站方没有更多了"，
      * 页尾改念「pixiv 这一池到底了」，此后 [GalleryLoadMoreState] 的闸门永久拦住续页，
-     * 而屏上没有一个重试入口（2026-10-22 审计 P0）。这一格只记"刚才那一下败了"。
      */
     var pixivRecommendMoreFailed by remember { mutableStateOf(false) }
     var pixivRecommendCaption by remember { mutableStateOf(pixivStore.recommendCaption) }
@@ -1063,13 +1014,11 @@ fun GalleryScreen(
     var pixivRecommendLoadedKey by remember { mutableStateOf(pixivStore.recommendLoadedKey) }
 
     /**
-     * 关注画师 / 推荐用户（2026-10-17 第八轮，用户「关注画师你参考 pixez-miuix 是怎么拿到的」）。
      *
      * 两条腿都在 `app-api`、都要票据，形状同族（`user_previews[]`）：
      *  - `/v1/user/following?filter=for_android&user_id={自己}&restrict=public`
      *  - `/v1/user/recommended?filter=for_android`
      * 参数照 pixez-miuix 的 `UserRepository` 抄。**`filter=for_android` 是那条端点能不能答的关键** ——
-     * 2026-10-17 我们先前量到 `user/recommended` 回 400/191，就是因为少了这一枚。
      *
      * ⚠️ 两栏**各存各的**：混成一排的话，用户会以为自己关注了根本没关注的人。
      */
@@ -1123,7 +1072,6 @@ fun GalleryScreen(
             .flatten().distinct().take(3)
     }
 
-    // ── 排行榜（2026-10-17 第七轮重写）──
     //
     // 两件事在这条 effect 里定：
     // 1. **切域回来不重发**：命中 [pixivRankingCache] 就直接摆那一档（用户「不要每次切页面都刷新」）。
@@ -1173,7 +1121,6 @@ fun GalleryScreen(
         pixivRankingLoading = false
     }
 
-    // ── 关注画师 / 推荐用户（2026-10-17 第八轮）──
     //
     // 两条腿都在 app-api、都要票据，形状同族（`user_previews[]`）：
     //  - `/v1/user/following?filter=for_android&user_id={自己}&restrict=public`
@@ -1268,7 +1215,6 @@ fun GalleryScreen(
         // ⚠️ 里面**不拼刷新计数**：拼了的话重新组合时计数归零、凭证永远对不上（见存档那段）。
         val requestKey = if (signedIn) "app" else "seeds:" + pixivSeeds.joinToString(",")
         if (pixivRecommendLoadedKey == requestKey) return@LaunchedEffect
-        // ── 已登录：读**站方推荐**（2026-10-17 第五轮，用户「下面推荐应该自动换成 pixiv 站方的推荐」）──
         //
         // 这一档与下面那一档不是"同一个东西的两种实现"：
         //  - 站方推荐按**你看过谁、收藏过谁**算，要不要给是站方决定的（`/v1/illust/recommended`，必须带票据）；
@@ -1290,7 +1236,6 @@ fun GalleryScreen(
             if (bearer == null) {
                 // 与排行榜同一条口径：票据这一刻取不到**不清屏**。`bearerOrNull()` 在刷新失败时
                 // 仍可能续用旧 token，null 的真实含义比"登录态没了"窄得多；此刻清掉整池，
-                // 一次票据抖动就抹掉一屏已经取回的推荐（2026-10-22 审计）。
                 // 上一次取回的那一池留在原处（此刻它仍然是屏上那份真相），只把这一句加上。
                 // 真正该清的两条路是登录态变化（上面那颗 effect）与下拉刷新，都不是这里。
                 pixivRecommendNext = null
@@ -1329,7 +1274,6 @@ fun GalleryScreen(
         val picked = ArrayList<PixivWork>()
         // 按种子记成败：三个 `getOrNull()` 一吞了之的话，"这一枚没取到"与"这个标签没人用"
         // 在屏上分不开，而部分成功（两枚答了一枚败）连 caption 都不显示 —— 只在全空时才念
-        // （2026-10-22 审计）。
         var seedFailures = 0
         pixivSeeds.forEach { seed ->
             val outcome = works.tagWorks(seed, page = 1)
@@ -1361,7 +1305,6 @@ fun GalleryScreen(
         pixivRecommendLoadedKey = requestKey
     }
 
-    // ── 推荐那一面墙的**无限下拉**（2026-10-17 第七轮，用户「这个推荐也是要做成瀑布流的无限下拉的」）──
     //
     // 判据复用图库站那道 [GalleryLoadMoreState]（同一套三道闸门：墙得是活的、到底了不判、在取时不并发），
     // 只是"下一页"的取法分两档：
@@ -1403,7 +1346,6 @@ fun GalleryScreen(
                         val page = result.getOrNull()
                         if (page == null) {
                             // 失败**不是**"到底了"：置 exhausted 会让闸门永久拦住续页，
-                            // 而页尾念的是"站方没有更多了" —— 一句假话（2026-10-22 审计 P0）。
                             pixivRecommendCaption = result.exceptionOrNull()?.let { error ->
                                 Log.w("VeneraDebug", "pixiv recommend next page failed", error)
                                 RECOMMEND_CAPTION_FAILED
@@ -1452,7 +1394,6 @@ fun GalleryScreen(
     }
 
     /**
-     * 「换一批」= 把整面墙换成**下一批**（2026-10-17 第二十三轮，用户「推荐标题右边要多个换一批的胶囊」）。
      *
      * ## 两腿各有各的"下一批"
      *
@@ -1517,7 +1458,6 @@ fun GalleryScreen(
                         if (fresh.isEmpty()) {
                             if (seedFailures > 0) {
                                 // 败了**不是**翻到底：置 exhausted 会把后续续页永久拦住，
-                                // 而屏上念的是"没有新东西了" —— 一句假话（2026-10-22 审计 P0）。
                                 pixivRecommendCaption = RECOMMEND_CAPTION_FAILED
                             } else {
                                 // 换批翻到底：**不动原来那一墙**，只说一声。
@@ -1538,7 +1478,6 @@ fun GalleryScreen(
         }
     }
 
-    // ── 整页下拉刷新（2026-10-17 第五轮）──
     //
     // "整页"= 这一屏上所有腿都重发：图库站那侧是日榜 + 猜你喜欢两腿；Pixiv 那侧是排行榜 + 推荐两腿。
     // 只刷脚下那面墙会留下"上面那排还是旧的"，而用户读到的是一屏没刷新。
@@ -1570,7 +1509,6 @@ fun GalleryScreen(
         pullSawLoading = false
         pullRefreshing = true
         if (domain == GalleryHomeDomain.PIXIV) {
-            // 下拉 = **唯一**清缓存的地方（用户 2026-10-17：「不要每次切页面都刷新，手动下拉才刷新」）。
             // 那几枚 tick 只是让对应 effect 重跑；真正让它们"不命中缓存"的是这几行清空。
             pixivRankingCache.clear()
             pixivRecommendLoadedKey = null
@@ -1603,7 +1541,6 @@ fun GalleryScreen(
 
     // 打码那一把与首页其余三批**同一颗** `buildGalleryWall`（同一张图在两处待遇不同是最难解释的不一致）。
     //
-    // ⚠️ 2026-10-17 第八轮（用户截图「排行榜为啥都说这样显示 r18，我这边屏蔽也没开」）：
     // 这里从前写的是 `cards.mapTo(HashSet()) { … }` —— 而 `GalleryWall.cards` 是**保留下来的全部卡**
     // （`buildGalleryWall` 里 `masked = true` 与 `masked = false` **都**进 `kept`），
     // 所以那一句等于"每一张都在打码集合里" ⇒ 排行榜**恒全糊 + 恒画 R18 角标**，
@@ -1615,7 +1552,6 @@ fun GalleryScreen(
         }.cards.filter { it.masked }.mapTo(HashSet()) { it.post.uid }
     }
 
-    // ── 首页那面墙由谁填（2026-10-17 用户点名：pixiv 的推荐走「猜你喜欢」那种墙，不再是卡片排）──
     // 打码那把仍是同一颗 buildGalleryWall：同一张图在两处待遇不同是最难解释的不一致。
     val pixivRecommendWall = remember(pixivRecommend, maskMode, rules, blockAi) {
         buildGalleryWall(pixivRecommend.map { it.post }, maskMode, blockAi = blockAi) { post ->
@@ -1623,9 +1559,7 @@ fun GalleryScreen(
         }
     }
     /**
-     * 推荐那面墙的**站方标题**（`uid → title`，2026-10-17 第七轮）。
      *
-     * 病根：那一池的卡在屏上**只有图、没有标题行** —— 墙上那行标题是 `GalleryCardTitle`
      * 拿标签去离线词典**算**出来的，而 pixiv 的标签是日文（`女の子`、`制服`），
      * 词典里一条都没有 ⇒ 算不出来 ⇒ 整行不画。
      * 站方其实每行都给了 `title`（`PixivWork.title`），直接摆它就行。
@@ -1711,7 +1645,6 @@ fun GalleryScreen(
         onOpenDailyAll = onOpenDailyAll,
         // 猜你喜欢节头那枚「换一批」（这一节本身不摆卡片：主墙就在它下面）。
         onRemixForYou = { retryForYouFromUser() },
-        // 重取期间那枚轻指示（用户 2026-09-30：「换一批不要整个页面刷新」——
         // 三节与上一批卡片都留着，"正在换"这件事由节头这枚环去说）。
         forYouLoading = fvm.isLoading,
         domain = domain,
@@ -1748,13 +1681,11 @@ fun GalleryScreen(
             },
             recommendRemixLoading = pixivRecommendRemixLoading,
             onRemixRecommend = { remixPixivRecommend() },
-            // 关注 / 推荐画师（2026-10-17 第八轮）：两栏分开放，各自一套空/忙/失败。
             following = pixivFollowing,
             recommendedUsers = pixivRecommendedUsers,
             artistsLoading = pixivArtistsLoading,
             followingCaption = pixivFollowCaption,
             usersCaption = pixivUsersCaption,
-            // 点一位画师 = **进画师页**（用户 2026-10-19：「改成点击画师头像进入画师页」）。
             // 从前这里开的是站方网页（`openPixivUserPage`）—— 那时确实没有一屏可去。
             // 现在有了，网页退成屏内那枚「在 pixiv 打开」的正当出口。
             onOpenUser = { user -> context.openPixivArtistPage(user.id, user.name) },
@@ -1771,7 +1702,6 @@ fun GalleryScreen(
         imageLoader = imageLoader,
     )
 
-    // ── 结果态"胶囊并入顶栏"的判据（2026-09-26 第九轮，用户口径）──
     // 下拉看图时整张搜索卡收走、条件胶囊去到顶栏左上角与大标题同一行；重新上拉回到顶部，
     // 搜索卡才长回来。
     //
@@ -1788,11 +1718,9 @@ fun GalleryScreen(
     val searching = svm.active && svm.hasQuery
     // 结果墙只在「这一轮真的取过（page > 0）或正在取**或这一轮已经说过一句失败**」时接管。
     //
-    // `searchError != null` 那一支是 2026-10-15 补的：此前只有前两支，于是**第 1 页整轮失败**
     // （`beginSearch` 把 page 归零、失败路径又不走 `appendPage`，page 就停在 0）时这一句判据
     // 当场为假 —— 内容区落回**首页那面墙**，用户读到的是"搜不到就自己退回主页"，
     // 而下面那台专门给失败态的空态（"这一轮没搜成" + 条件 + 排行 + 改条件）永远命中不了。
-    // 真机读数：`_qa/ui-verify-2026-10-15/scr-23-39-search-fail-fell-back-home.jpg` ——
     // 条件行「loli ×」「排行：年」还挂在顶上，身子已经是首页（正在关注的画师 / 每日热门）。
     //
     // ⚠️ 条件刚装好、还没搜时仍显示主墙 —— 否则会摆出一屏"0 张"的假空态（不是没有结果，是还没搜）。
@@ -1847,7 +1775,6 @@ fun GalleryScreen(
 
     // 搜索的滚动记录 / 恢复（`recordScroll` 与 `scrollToItem` 用的都是 item index）。
     // ⚠️ 键里必须带上"这面墙是不是活的"：搜索墙不接管时它根本不在布局，
-    // 那一次滚动能真跑。主墙恒在（2026-09-30 起），所以这条判据只对搜索墙有意义。
     LaunchedEffect(gridState) {
         snapshotFlow {
             // 判据吃 `svm.hasQuery`（与下面续页那一处同一条）：pixiv 那一域没有标签胶囊，
@@ -1880,7 +1807,6 @@ fun GalleryScreen(
     // 结果滚到离底几张以内就续下一页（搜索那面墙）。
     // 三道闸门原样保留（没滚回顶部不判、续页刚失败不自动重试、在取时不并发）。
     //
-    // ⚠️ 2026-10-18「pixiv 搜索下滑无法继续获取更多新图」的根因就在这一行：
     // 判据原先是 `svm.filters.isNotEmpty()` —— 那是 **booru 的标签胶囊**，而 pixiv 那一域
     // 根本没有胶囊（词在 `pixivTerm` 里）⇒ `wallActive` 恒为假 ⇒ 续页 effect 一次都不触发。
     // 现在走 `svm.hasQuery`（两个域各按各的判据），与返回键、空态那几处同一个口径。
@@ -1923,7 +1849,6 @@ fun GalleryScreen(
                     .blurBackdropSource(topBarBackdrop),
             )
 
-            // ── pixiv 的「画师」页签（2026-10-18）──
             //
             // 这一栏摆的是**人**，不是图：它走 `/v1/search/user`，结果是一份名单，
             // 与下面那面瀑布流不是同一种墙（所以三支都排在那面墙前面）。
@@ -2015,7 +1940,6 @@ fun GalleryScreen(
             // **站方给了行却没给图**（条目本身取不到可用的图片地址）——
             // 具体张数由 `svm.noImageNotice()` 如实说。
             //
-            // 这里曾经还有一枚「排掉成人分级再搜一次」的出口，2026-09-26 已删：它的前提是错的。
             // 实测成人分级匿名本来就看得见，那枚按钮按下去是白按，
             // 比没有更糟（它同时在暗示一个不存在的原因）。剩下的正确出口只有一个：改条件。
             // ⚠️ 换到 Gelbooru 之后这条判断**更成立**：它四个分级都正常可看，
@@ -2043,7 +1967,6 @@ fun GalleryScreen(
                      * 判据用 `searchError` 是否就是那句固定文案，而不是再加一个状态位：
                      * 那句话本身就是"发车前被拦住"的唯一来源，多一个旗标就多一处会不同步的状态。
                      *
-                     * 2026-10-17 起这一整段搬进 `svm.emptyTitle()`：pixiv 那一域说的
                      * 是"这个词没有可摆的图"，与"这串标签没有"不是同一句话（它没有胶囊）。
                      */
                     title = svm.emptyTitle(),
@@ -2087,7 +2010,6 @@ fun GalleryScreen(
                     GalleryViewerQueue.set(searchWall.cards.map { it.post })
                     onOpenPost(post.site, post.id)
                 },
-                // pixiv 那一域：卡片文字区走「头像 + 标题 + 作者名」那一档（用户 2026-10-17：
                 // 「p 站搜索出来的图片卡片就不要带 p 站图标了，按照外面的头像 + 标题 + 作者名」）。
                 // 传空表 = 其余域与从前逐字一致 —— 那张头像表就是判据（见 `GalleryCardCaption`），
                 // 非空即换档，所以 booru 那三站一个字都不用改。
@@ -2104,15 +2026,12 @@ fun GalleryScreen(
                 footer = searchFooter,
             )
 
-            // ── 首页主墙：**恒为「猜你喜欢」**（2026-09-30 第二轮，用户点名）──
             //
             // 用户的原话是"主页下面的内容改为猜你喜欢，不接入每日热门"。
             // 所以 [wallFeed] 那套二选一在首页**撤下了**：
             //  - 每日热门在首页只剩一行**预览**（节头「查看全部」进二级页看全量、在那边换一批）；
             //  - 这一整面瀑布流是猜你喜欢，节头就在它上方（`section-for-you`）。
             //
-            // ⚠️ 2026-09-30 第三轮：**下拉刷新撤了**（用户原话「取消掉整个画廊的下拉刷新」）。
-            // 它 2026-09-29 第四轮加进来的理由是"同一天之内不再自动联网，得有个说得出口的动作"，
             // 那个动作现在由猜你喜欢节头那枚「换一批」承担（走的正是同一条清熔断 + force 路径），
             // 所以撤掉它不会让用户失去"我要新内容"的出口。
             else -> Box(
@@ -2162,7 +2081,6 @@ fun GalleryScreen(
                     } else {
                         emptyMap()
                     },
-                    // 推荐那一节包一张**实色**卡面（2026-10-17 第二十四轮撤掉了模糊底图：
                     // 用户报「整个推荐面会有这种模糊效果」—— 86% 不透明挡不住底图透出的颜色，
                     // 那一大片读成"雾蒙蒙"，而上面两节是干净的实色白卡，三节必须一致）。
                     //
@@ -2184,7 +2102,6 @@ fun GalleryScreen(
                     // 头图摆在 chrome **之上**、同一颗 header item 里（理由见 GalleryForYouPage 的
                     // hero 参数文档）。
                     //
-                    // ── 标题归属（2026-10-16 改口径）──
                     // 从前这里传空串，理由是"这一屏的大标题「画廊」住在顶栏里，图上再压一遍
                     // 就是同一屏两处同名标题"。那是**头图还被顶栏压在下面**时的情形 ——
                     // 头图出血之后顶栏大标题必须让位（见下面 `VeneraTopAppBar.largeTitle`），
@@ -2194,11 +2111,9 @@ fun GalleryScreen(
                         @Composable {
                             SettingsHeroImage(
                                 file = galleryHeroFile,
-                                // 与顶栏那一枚同一个判据（2026-10-18）：搜索态这一屏叫「搜索」。
                                 // 头图上的白字是**这一屏唯一的大标题**（顶栏那一格这时是空的），
                                 // 所以它必须跟着换名，否则搜索态屏上会留着「画廊」两个字。
                                 title = if (svm.active) "搜索" else "画廊",
-                                // 2026-10-17 第十八轮（用户稿）：头图上那一行副标题。
                                 // 稿上标题下面还有小字，一整片只有「画廊」两个字会读成"标题没加载完"。
                                 //
                                 // ⚠️ 同日晚些时候用户又改了：**「去掉那个副标题」**。
@@ -2206,7 +2121,6 @@ fun GalleryScreen(
                                 // 头图上摆一句编出来的话，等于给这一屏加了一条"读数"。
                                 // 所以回到 `null`（= 只有标题），不另换一句话上去。
                                 subtitle = null,
-                                // 矮一档（2026-10-16，用户「空位有点太多…1选A吧」）：用设置**子页**
                                 // 那一档 148dp，不造新数字。与上面 `searchOverlayTop` 是同一条式子，
                                 // 两处必须一起改 —— 只改这里，搜索卡的落点会停在旧的 160dp 上。
                                 totalHeight = statusBarTop + VeneraSpacing.settingsHeroHeightSubpage,
@@ -2218,8 +2132,6 @@ fun GalleryScreen(
                         null
                     },
                     // 常驻 chrome（一条搜索入口条）= 墙的第一行内容：
-                    // 随内容滚走（2026-09-30 第三版，用户口径「搜索栏保持在这里就行」）。
-                    // 2026-10-15 起**搜索开着也照旧传**（从前这一格在 `svm.active` 时整块摘走）：
                     // 摘走会让内容硬跳一行，而卡片是另一层浮起来长开的 —— 两处不同步就是用户
                     // 读到的"没有过渡"。现在条留在原地，卡片从它身上原地盖过来、收回时缩回去。
                     chrome = {
@@ -2229,7 +2141,6 @@ fun GalleryScreen(
                             domain = domain,
                             onPickDomain = { picked -> homeDomain = picked.name },
                             // 搜索一开，这一条就让位给从它身上长开的卡（两端同一个共享元素 key，
-                            // 2026-10-16 第七轮）。传 `svm.active` 而不是 `active && !collapsed`：
                             // 结果态滚到 1/3 那一路的对面是**顶栏胶囊**那一对（本轮不做），
                             // 这里只认"搜索开没开"，免得条在屏幕外跟着翻档、给卡一个看不见的落点。
                             searchOpen = svm.active,
@@ -2257,11 +2168,9 @@ fun GalleryScreen(
             }
         }
 
-        // 顶栏**一直在**（用户 2026-09-25 第四轮：不跳页、也不替换标题栏）。
         // ⚠️ 常驻 chrome（一条搜索入口条）**不在顶栏里** —— 它现在是猜你喜欢墙的
         // 第一行内容（见 GalleryForYouPage 调用处），随内容滚走；顶栏的下滑折叠照常工作。
         //
-        // ── 下滑收起（2026-09-30，用户点名；默认关）──
         // 收的是**整条顶栏**（含折叠后那行小标题）。chrome 已挪进墙里当内容（见上面），
         // 所以这一下收的只有顶栏自己。位移走 `animateDpAsState`（与全站同一档时长），
         // 所以上下滑是同一段动作的两个方向。
@@ -2274,7 +2183,6 @@ fun GalleryScreen(
             label = "galleryTopBarHideOffset",
         )
         VeneraTopAppBar(
-            // 折叠后**居中**的小标题（用户 2026-10-18：「搜索页面的居中标题显示搜索才对」）。
             // 搜索态换名而不是继续叫「画廊」：那一屏做的事已经不是"看画廊"了。
             title = if (svm.active) "搜索" else "画廊",
             // 头图在场时大标题退场 —— 标题已由头图画成图上的白字（见上面的 hero 调用）。
@@ -2282,19 +2190,15 @@ fun GalleryScreen(
             //
             // ⚠️ **只在画廊首页让位**（判据 `heroActive`，见它的定义）：搜索态那一屏头图仍在背景里
             // （主墙无条件组合），但顶栏左边该照常给标题 —— 这一格再空着就等于"搜索页左边
-            // 永远没有标题"（用户 2026-10-18：「还是没有左边的大标题」）。
             // 传空串而不是 null：miuix 的 `largeTitle` 是 String，空串即不渲染；其余调用点零影响。
             //
-            // ⚠️ 2026-10-18：搜索态的大标题同样叫「搜索」（用户：「搜索好像缺失了大标题」）。
             // 同一条理由：这一格空着时，展开态顶栏会留下**一整行空白**（miuix 的 `expansion` 仍然占位），
             // 读起来就是"搜索卡离顶部还有一大截"—— 填上「搜索」之后那一截是标题，不是空隙。
             largeTitle = if (heroActive) "" else if (svm.active) "搜索" else "画廊",
             scrollBehavior = topBarBehavior,
             backdrop = topBarBackdrop,
-            // 左槽 = pixiv 账号那颗圆形头像（2026-10-17 用户点名：「在顶栏的左边做圆形头像，要和其他按钮对齐」）。
             // 对齐不是抄数字：外壳就是右侧那排用的同一颗 [VeneraTopBarPill]（触达 48 / 视觉 40，批次 H 那一档）。
             //
-            // ⚠️ **只在画廊首页摆**（用户 2026-10-17 第二轮：「头像挡住了，头像只显示在画廊首页就行」）：
             // 进搜索态之后顶栏标题居中、搜索卡又顶上来，这颗圆头像正好落在两者之间被压住 ——
             // 一个被遮一半的入口比没有它更糟。判据用 `svm.active`（搜索层开没开）而不是"标题居没居中"：
             // 后者是布局的结果，拿它当条件会让这颗按钮跟着滚动高度闪。
@@ -2313,7 +2217,6 @@ fun GalleryScreen(
             // 玻璃进度就回到 contentOffset 原路；硬喂主墙的滚动进度会让它跟着背景那面墙跑，
             // 与 `searchCollapsed` 那一族判据互相矛盾。
             scrollProgressOverride = if (heroActive) heroScrollProgress else null,
-            // 双击任意空白处回顶部（2026-09-30 新增，加性参数：其余调用点不传即零改动）。
             onDoubleTap = {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 scope.launch {
@@ -2358,13 +2261,10 @@ fun GalleryScreen(
                         tint = tokens.color.textPrimary,
                     )
                 }
-                // 「收藏」hub（2026-10-17 第三十一轮，用户「在搜索和历史记录两个圆形按钮之间，
                 // 新增一个书签按钮」）：这一枚就落在搜索与浏览历史**之间**，三颗都是
                 // "去另一屏取一批东西"（搜结果 / 看历史 / 翻收藏）。
                 //
-                // ⚠️ 2026-10-18 改判（用户：「顶栏收藏和历史图标只需要出现在画廊首页就行，
                 // 其他二级页面不要出现」）：这一枚与下面那枚都套上 `!svm.active` 那道门。
-                // 上一版刻意不门控（"搜索态也要能翻收藏"），但真机上看是**顶栏被四颗图标塞满**，
                 // 而搜索态的主角是那张卡 —— 四颗并列里有两颗与当前这件事无关。
                 // 门控之后搜索态只剩「改条件 / 关掉搜索」两枚，与卡上的条件入口不重复。
                 if (!svm.active) {
@@ -2378,10 +2278,8 @@ fun GalleryScreen(
                             tint = tokens.color.textPrimary,
                         )
                     }
-                    // 「浏览历史」（2026-10-14 起占住这枚位置，取代原来的「换一批」）。
                     //
                     // 换一批没有丢：它与猜你喜欢节头那枚走的是同一条 `retryForYouFromUser()` 路径
-                    // —— 下拉刷新 2026-09-30 撤下时那条注释就写明节头那枚「承担」了「我要新内容」
                     // 的出口，所以这一格换成历史入口之后，首页换一批仍在节头。
                     //
                     // 与上面那枚同一道门（见它的注）：搜索态里"最近搜过什么"由卡里的历史块承担，
@@ -2400,7 +2298,6 @@ fun GalleryScreen(
             },
             // ── 常驻 chrome（一条搜索入口条）**不在顶栏的 bottomContent 里了** ──
             //
-            // 2026-09-30 用户口径「顶住在这个位置就行，不需要跟随顶栏」。从前它住在顶栏的
             // `bottomContent` 槽里，而 miuix 顶栏把那一格钉在 `contentTop`（= 折叠中的栏高 +
             // 底距，见 miuix TopAppBar.kt:927）上 —— 大标题一折叠栏高收缩，整条 chrome 就跟着
             // 往上爬，用户读起来是"搜索框自己会跑"。
@@ -2419,10 +2316,8 @@ fun GalleryScreen(
                 .offset(y = topBarHiddenOffset),
         )
 
-        // ── 常驻 chrome（一条搜索入口条）**不再是浮层**（2026-09-30 第三版）──
         //
         // 用户口径（原话）：「顶栏我需要下滑折叠，我只需要搜索栏保持在这里就行而不是图二这样」。
-        // 两版浮层方案都被真机否了：
         // - 钉在 topBarFloor（第一版）：顶栏折叠后 chrome 上方露一段空隙，内容从空隙穿上去，
         //   整个页头读起来散了；
         // - 冻结顶栏折叠：与"顶栏要折叠"直接冲突。
@@ -2431,7 +2326,6 @@ fun GalleryScreen(
         // 与三节一起随内容滚走 —— 搜索栏"保持在这里"= 保持它是页面的一部分。
         // 网格避让 [gridTopPadding] 因此回到 [topBarFloor]（chrome 的高度由内容自己占位）。
 
-        // ── 搜索卡：从**入口条的位置**弹出来的浮层（2026-09-30 第二轮，用户拍板"内容形变"）──
         //
         // 形态与从前那条内联卡的差别只有一条，但它决定了整套做法：**它不再推内容**。
         // 从前它住在顶栏的 `bottomContent` 里，长开时把整个网格往下推（避让公式跟着它算）——
@@ -2446,7 +2340,6 @@ fun GalleryScreen(
         //
         // z 序：它在顶栏**之后**画，所以压在顶栏背板之上；INPUT 态那层 scrim 在它之下。
         //
-        // ⚠️ 这两层都不许再被 `if (svm.active) { … }` 包着（2026-10-15 修「还是没有过渡」）：
         // `AnimatedVisibility` 被包在 `if` 里时，开搜索那一刻它是**新组合进来的**，
         // 内部状态的初值直接等于目标值 `true` —— 没有"false→true"那一跳，
         // `enter` 那套 fadeIn + scaleIn 一个字都不播（它只在 `searchCollapsed` 随滚动翻档时才播）。
@@ -2480,7 +2373,6 @@ fun GalleryScreen(
         // （`SEARCH_CARD_SHOW_SPEC` / `SEARCH_CARD_HIDE_SPEC` = miuix `TopAppBar.kt:688` 那两颗），
         // 否则两边各动各的、读起来是两件事而不是一个动作。
         //
-        // ⚠️ 2026-10-16（第七轮）**这一层不再是这一下的主角**：展开/收起现在是
         // 「入口条 ↔ 这张卡」的真容器变化（同一个共享元素 key，见 `GallerySearchContainer.kt`），
         // 这里退成"配不上对时"的兜底 —— 详见下面 enter/exit 上的注释。
         AnimatedVisibility(
@@ -2498,7 +2390,6 @@ fun GalleryScreen(
                             .roundToInt(),
                     )
                 },
-            // 进出场只留 fade（2026-10-16 第七轮）：原先那对
             // `scaleIn / scaleOut(initialScale = 0.94f, transformOrigin = 顶边中点)` 是
             // "容器变化"的**近似物**，真容器变化落地后退休 —— 它俩叠在共享元素的 bounds
             // 插值上就是双重形变（卡会一边被拉伸一边被缩放）。
@@ -2579,7 +2470,6 @@ fun GalleryScreen(
 /**
  * 头图在场时，顶栏玻璃"淡满"所需的滚动行程（48dp）。
  *
- * 与设置页那一档**同源**（`SettingsHome` 里 `heroGlassRangePx` 用的就是 48dp，2026-10-02
  * 第五轮定的口径）：两处都是"滚过 48dp 玻璃就满、小标题接管"。**别只改单边** ——
  * 两个 hero 页若用不同行程，同一个手势在两屏读起来的快慢会不一样。
  */
@@ -2626,7 +2516,6 @@ private const val SEARCH_CARD_COLLAPSE_AT = 1f / 3f
  * 结果态那张搜索卡「回到屏上」的阈值 ≈ 回到顶部。
  *
  * 与 [SEARCH_CARD_COLLAPSE_AT] 一起构成**滞回**：滚回来要几乎到顶才放它出来
- * （用户 2026-10-16 口径「向下拉到最顶的位置才重新显示」）。
  * 取 0.02 而不是 0：折叠进度是浮点除法，回顶那一下不一定精确落在 0。
  */
 private const val SEARCH_CARD_RESTORE_AT = 0.02f
@@ -2639,7 +2528,6 @@ private const val SEARCH_CARD_RESTORE_AT = 0.02f
  * 抄同一颗曲线是刻意的：居中标题淡入与搜索卡收起在**同一帧**触发，若两边曲线不同，
  * 用户读到的是"两个东西各动各的"；同源之后它是一个动作。
  *
- * ⚠️ 2026-10-16（第七轮）起**那两个数字搬到 `GallerySearchContainer.kt`**：那一对共享元素
  * （常驻入口条 ↔ 展开的搜索卡）的 bounds 转场与这两颗必须**同一时长** —— 时长对不上时，
  * 内容会在 bounds 动画跑完之前被 `AnimatedVisibility` 移除、尾巴被硬切。数字只留那一处，这里是别名。
  *
@@ -2664,7 +2552,6 @@ private val SEARCH_CARD_SHOW_SLIDE_SPEC = SEARCH_CONTAINER_SHOW_SLIDE_SPEC
  * 只要其中任一项变了就重新判一次，都没变就不做任何事（滚动里 `layoutInfo` 每帧都在动，
  * 不过这一层就会出现"每帧判一次"的无效工作）。
  *
- * ⚠️ 2026-10-17 第三十一轮起 `internal`：pixiv 云端书签二级页（`GalleryPixivBookmarksScreen`）
  * 与 pixiv 推荐墙是同一套三道闸门 —— 两颗件各写一版就会漂（书签页那份要是少了"在取时不并发"，
  * 用户甩到尾就会连发三四跳）。判据钉在 `GalleryBooruBookmarksTest` 里。
  */
@@ -2694,8 +2581,6 @@ internal const val LOAD_MORE_AHEAD = 4
  *
  * 遮罩判定在滚动里是"每项每次重组"的密度，所以按输入记忆；HIDDEN 直接不落进列表。
  * 两个"少了"的成因**分开记**：命中黑名单是用户自己的规则，按分级收起是模式选择 ——
- * 混成一个数字就没法告诉用户该动哪一个（2026-09-25 真机反馈的 某一站 整站空白，
- * 当时页尾还写着「那站 40 张」的假读数，正是这次定位真机反馈的唯一线索被抹掉的原因）。
  *
  * @param blockedRuleOf 这条被哪条用户规则挡了（返回规则原文，给页面念出来）。
  *   判据由调用方给：画廊侧是 GalleryPorts.contentGuard.blockedGalleryRule，
@@ -2731,7 +2616,6 @@ internal fun buildGalleryWall(
 }
 
 /**
- * 「这一面墙上有一段内容坐在一张卡面上」（2026-10-17 第二十二轮）。
  *
  * 用户拍板原话：「推荐区包卡，但是还是目前这样的瀑布流，然后卡面会有图片的很低的模糊」。
  *
@@ -2771,10 +2655,8 @@ internal data class GallerySectionSurface(
  * 底端恒为视口底：推荐段后面只有页尾，卡面"延伸出屏"正是这类设计的常态。
  * 圆角只有上两角 —— 下沿在屏外，画了也看不见。
  *
- * ## 卡面是**纯色**，不再挂模糊底图（2026-10-17 第二十四轮，推翻本日第二十二轮的做法）
  *
  * 那一轮给这层铺过「首图模糊 32dp + 压 86% 卡面色」，理由是"纯色卡中卡只差 +7 色差会糊，
- * 用模糊图给纹理拉开分界"。真机反馈是**反的**：用户报「整个推荐面会有这种模糊效果」——
  * 86% 的不透明挡不住底图的颜色透出来，那一大片就读成"这一区雾蒙蒙的"，
  * 而上面两节（画师 / 排行榜）是干净的实色白卡，三节放一起反而是推荐这一节脏。
  *
@@ -2871,13 +2753,11 @@ internal fun GalleryCardsGrid(
      * 墙首那一行（日榜的"只有一站给了内容"说明条）。
      *
      * ⚠️ 传进来的槽位**存在与否不能跟着内容变**：懒列表在第 0 项之后插一个新项，
-     * 视口锚点会漂到第 1 项，于是内容画进 `contentPadding` 里（首页顶栏重叠那次真机缺陷的根因，
      * 见记忆「首页顶栏重叠的真根因：锚定漂移」）。所以判空要**移到槽位内部**：
      * 这一行恒在，里面有没有话由数据决定。
      */
     header: (@Composable () -> Unit)? = null,
     /**
-     * 首页那几节（2026-09-30 起三节：画师 / 每日热门预览 / 猜你喜欢节头）。
      * 每一项都是墙里一个**恒定存在**的 FullLine 项，"这一节有没有货"由项内部判 ——
      * 节的数量不许跟着数据变（锚定漂移那条，见 [GalleryGridSection]）。
      */
@@ -2893,7 +2773,6 @@ internal fun GalleryCardsGrid(
      */
     sharedElementKey: ((GalleryPost) -> String)? = null,
     /**
-     * 是否禁掉这面墙的**过度滚动**（2026-10-16，用户「禁止在设置了头图的页面使用过度滚动」）。
      *
      * 有头图的那面墙（首页主墙）传 true：到顶继续下拉，`stretch` 会整张带头图顶下去、
      * 上方露出一大片页面背景 —— 观感很糟。没有头图的墙保持默认，回弹是正常的触感反馈。
@@ -2906,7 +2785,6 @@ internal fun GalleryCardsGrid(
     /**
      * 站方自己给的标题（`uid → 标题`），**盖过**下面那批由标签算出来的标题。
      *
-     * 出处是 2026-10-17 第七轮用户那句「推荐下面的图标题没了，直接用 p 站自己的标题就行」：
      * pixiv 每行都带 `title`，而 booru 三站没有 —— 后者的标题是 `GalleryCardTitle`
      * 从标签里**算**的，前者被算成空（那一池的标签是日文，词典里没有）。
      *
@@ -2919,7 +2797,6 @@ internal fun GalleryCardsGrid(
      * 作者头像（`uid → 地址`），与 [stationTitles] 同一条透传路径 —— 同理也是
      * "整批算好再摊平"，而不是卡内各查一次（那要开网络/查库）。
      * 空 map = 这一面墙不画头像（其余五处调用点逐像素不变）；非空 ⇒ 卡片文字区走
-     * 「头像 + 标题/画师名」两行（2026-10-17 第三十二轮，见 [GalleryCardCaption]）。
      */
     authorAvatars: Map<String, String> = emptyMap(),
     /**
@@ -2946,7 +2823,6 @@ internal fun GalleryCardsGrid(
     // 把 `rememberOverscrollEffect()` 写进 `if` 的分支里就是条件调用 Composable，会崩。
     val platformOverscrollEffect = rememberOverscrollEffect()
     /*
-     * 长按一张卡 → 那张动作表（用户 2026-10-04 第 2 条点名的五项）。
      *
      * 挂在**这一颗共用件**上而不是四个调用点各接一遍：搜索墙 / 猜你喜欢主墙 / 日榜二级页 /
      * 收藏页走的是同一个 `GalleryCardsGrid`，只在一面墙上有长按就是假开关。
@@ -2975,7 +2851,6 @@ internal fun GalleryCardsGrid(
             merged
         }
     }
-    // 滚动越界预取（2026-09-30「预览能不能更快」那轮）：见 [rememberGalleryPreviewPrefetch]。
     rememberGalleryPreviewPrefetch(
         cards = cards,
         imageLoader = imageLoader,
@@ -3038,7 +2913,6 @@ internal fun GalleryCardsGrid(
                     onToggleSelect = onToggleSelect?.let { handler -> { handler(card.post) } },
                     overlay = overlay,
                     sharedElementKey = sharedElementKey?.invoke(card.post),
-                    // 点署名头像 = 进画师页（用户 2026-10-19）。**只对 pixiv 生效**：
                     // 图库三站没有「用户号」这个身份（它们的画师是标签名），
                     // 硬套会让点脸去搜一个同名标签 —— 那是另一件事。
                     onOpenArtist = if (card.post.site == GallerySite.PIXIV) {
@@ -3079,7 +2953,6 @@ internal fun GalleryCardsGrid(
 private const val GALLERY_PREFETCH_AHEAD = 24
 
 /**
- * 画廊墙的**滚动越界预取**（2026-09-30「预览能不能更快」那轮加的）。
  *
  * 病：懒网格只对"进入视野的项"发请求 —— 卡片组合的那一刻 `AsyncImage` 才开跑，
  * 用户以正常速度上滑时，图开始下载的那一刻他已经看到空卡 + shimmer 了。
@@ -3090,7 +2963,6 @@ private const val GALLERY_PREFETCH_AHEAD = 24
  * 从可见末尾往前看 [GALLERY_PREFETCH_AHEAD] 张，用 `imageLoader.enqueue` 把没请求过的
  * 缩略图**异步**暖进缓存。与网格正式请求是同一条命中链路：
  * - `enqueue` 跑完整引擎管线，成功后位图进**内存缓存**；就算之后被挤掉，原始字节也已落
- *   **磁盘缓存** —— 两站缩略 CDN 都回 `max-age=315360000`（2026-09-30 本机 HEAD 实测），
  *   Coil 的 DiskCache 只由 NetworkFetcher 写，预取恰恰走它，回看零请求；
  * - 内存缓存 key 在无 transformations 时不带尺寸、compose 侧精度恒 INEXACT
  *   （coil 3.6.2 `AsyncImagePainter.updateRequest` 字节码实测），预取解好的位图网格直接命中
@@ -3223,7 +3095,6 @@ internal fun GalleryPostCard(
      * 非空 = **不按原图比例**，一律按这个比例摆（画师介绍页的「热门作品」用）。
      *
      * 取数回来的那几张比例各不相同，按原比例摆就是一行三张高矮不齐 —— 而它们是**按行**摆的
-     * （`Row + weight`，行与行必然对齐），于是矮的那两张底下留出空洞（真机截图里能直接看到）。
      * 钉死比例之后一行三张等高，"参差"这件事从屏上消失。
      *
      * 代价如实写在这里：**原图会被裁**（ContentScale.Crop）。这是"整齐"换"信息完整"，
@@ -3233,11 +3104,9 @@ internal fun GalleryPostCard(
     /**
      * 作者头像地址（`uid → 地址`，与 `titles` 同一条透传路径）。
      * `null`（map 里没这一项）= 文字区走「站标 + 标题」那一行；
-     * 非 null = 「头像 + 标题/画师名」两行（2026-10-17 第三十二轮，见 [GalleryCardCaption]）。
      */
     authorAvatar: String? = null,
     /**
-     * 点**署名行那颗头像** = 进这位作者的画师页（用户 2026-10-19：「改成点击画师头像进入画师页」）。
      *
      * `null` ⇒ 头像不可点（图库三站的墙不传头像表，天然走不到这一档）。
      * 与整卡点击**分开**：整卡是"看这张图"，头像那一下是"看这个人"。
@@ -3256,7 +3125,6 @@ internal fun GalleryPostCard(
     /**
      * 飞行体的**起点矩形**：卡片里**封面那一块**的窗口矩形，**不是整张卡**。
      *
-     * 2026-10-01 12:00 用户报"卡片整个飞进去了，内容包裹还是会闪一下"，成因就在这里：
      * 落点是大图页里"按真实比例定框"的**画面框**（只有图、没有下面那条标题），
      * 而整卡像素里还带着标题条与卡片面板的圆角 —— 飞行末段等于把整块"包裹"一起放大铺进画面框
      * （卡宽约半屏、画面框约一屏，包裹被放大近两倍），交棒那一刻包裹整片消失，读起来就是闪。
@@ -3275,20 +3143,15 @@ internal fun GalleryPostCard(
     // 高度在**摆放前**就知道：两站的 JSON 都直接带中间档宽高，
     // 不像本地插图那样要靠加载成功回填 —— 所以这里不会有"各列先等分再集体跳动"。
     //
-    // ⚠️ 夹取区间**不再就地写**（2026-10-20）：它搬进 `cardBoxRatio`（唯一出处），
     // 因为"框比例"与"作品页那一页图块的比例"必须是**同一把尺** —— 两处各夹一次、
     // 或者一处夹一处不夹，飞行体两端比例就不同，几何必须变形成另一个比例（读起来"乱变"）。
-    // pixiv 那一档按主人的口径放宽到 0.2~4.0（竖向跨页 0.27 / 横向大图 3.0 都不裁），
     // 图库三站保持原样（`LEGACY_*`），不动它们一根手指。
     // 钉死比例那一档**不再夹取**：它是调用方给的设计值（现成 token），不是站方数据。
     val ratio = fixedRatio?.takeIf { it > 0f }
         ?: cardBoxRatio(post, tokens.spacing.coverAspectRatio)
-    // ── 取证（2026-10-19，用户报「画师页这样画面显示不全」，附 pixez 同图对照）──
     //
     // 夹取会把**框**与**原图**掰开，而封面是 `Crop` ⇒ 一旦不相等，屏上就是"图被裁掉一条"。
-    // 2026-10-20 主人点名「限制 pixiv 站点图片卡片的显示比例，要整张卡全部显示出来」⇒
     // pixiv 区间放宽到 0.2~4.0（`cardBoxRatio`），夹取到 0 的图**不再裁**。
-    // 这一格留读数：真机上若还看见被裁，`logcat -s GalleryCardRatio` 会念出是哪一张、差多少。
     val clamped = cardBoxRatioClamped(post, tokens.spacing.coverAspectRatio)
     LaunchedEffect(post.uid, clamped, ratio) {
         if (clamped) {
@@ -3380,10 +3243,8 @@ internal fun GalleryPostCard(
                     },
             ) {
                 // 视频唯一的例外：不标出来，它就是一张"加载失败的图"（缩略图是站方的静帧 jpg）。
-                // 摆右下角。**来源不再压角**（2026-09-30）：它搬到封面下方那一行与标题并排，
                 // 压角方案在两站混排时要用户从图的四个角里找，而参考图那枚就在标题左边。
                 if (post.isVideo) GalleryVideoPill(post.durationLabel)
-                // AI 角标（批次 C2 → 2026-10-18 接硬字段）：判据 = **站方硬位优先、标签词表兜底**。
                 // 摆不摆由画廊自己那枚开关管，与漫画守卫页的 block_ai 是两把；
                 // ⚠️ 词表也**不是同一份**（漫画侧收裸 `ai`、画廊侧剔掉它）—— 设置页那句文案已跟着改真话。
                 // 屏蔽开着时这条根本不会上屏，所以角标的真正用途是"我不屏蔽，但我要看得出来"。
@@ -3391,7 +3252,6 @@ internal fun GalleryPostCard(
                 val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
                     .galleryAiBadge.collectAsState()
                 if (aiBadgeOn && GalleryAi.isAiMarked(post.siteAiFlag, post.tagList)) GalleryAiPill()
-                // 多页角标（2026-10-18）：站方报了页数且大于一才摆，判据在 `GalleryPost.pagesBadge`。
                 post.pagesBadge?.let { GalleryPagesPill(it) }
                 overlay?.invoke(this, post)
             }
@@ -3409,7 +3269,6 @@ internal fun GalleryPostCard(
                 modifier = mod,
             )
         }
-        // 封面在上、文字区在下（2026-10-17 第三十二轮回改）：第二十四~三十一轮 pixiv
         // 推荐墙的文字区曾浮在封面下沿（半透明毛玻璃），用户第三十二轮「改成图片能在外面
         // 预览全部显示那种不要浮层，这样飞行动画也会好很多」把它撤了 —— 浮层压掉封面底沿
         // 一条，图在网格里看不全；且飞行起点（PixelCopy 截的封面那一块）带着那条 UI，
@@ -3445,7 +3304,6 @@ const val AI_BLOCKED_RULE = "AI 生成"
  *
  * 各站张数**含 0 也照报**：以前这一行读的是守卫之前的 `vm.posts`，
  * 于是"整站被一条规则清空"时它照样写出那站的张数、而屏上一张没有 —— 那是假读数，
- * 也正是这次定位真机反馈的唯一线索被抹掉的原因。
  *
  * ⚠️ **日期的措辞要小心**：那两站的"热门"口径不同（yande.re 是官方日榜，
  * Gelbooru 是 `sort:score` 的全站高分池、**没有按天的视图**）。
@@ -3482,11 +3340,9 @@ private fun GalleryFeedEnd(wall: GalleryWall, date: String) {
 /**
  * 每日热门那一面墙（两站上一天热门混合打乱）。
  *
- * 这一层是 2026-09-30 第二轮从首页那个 `when` 里**原样搬过来**的：加载环、错误重试、
  * "被规则挡完了"那档空态、以及那面墙与它的页尾。搬的理由不是省事，是**判据必须各面墙自持** ——
  * 留在宿主层就会出现"屏上是主墙、页尾还写着日榜那一天"这种错配。
  *
- * ⚠️ 2026-09-30 第二轮：首页那条主墙恒为猜你喜欢，这一面墙**只被二级页**
  * （`GalleryDailyScreen`）组合，所以它的 `sections` 恒为空 —— 三节都在首页那面墙上。
  */
 @Composable
@@ -3558,7 +3414,6 @@ internal fun GalleryDailyPage(
              * 归因**只按实际剔掉的张数说**。此前这一支只要墙空着就说"被你的规则挡完了"，
              * 而墙空着还有第三种可能：站方这一轮本来就什么都没回（当天零新增、源被限）。
              * 把"没有"说成"被挡住"是假归因 —— 用户会去收规则，而收完还是空的，
-             * 于是他把一条正常链当成坏了。（2026-09-29 真机报出来的。）
              */
             val blocked = wall.blockedCount
             val hidden = wall.hiddenByRating
@@ -3611,12 +3466,10 @@ internal fun GalleryDailyPage(
                 // 槽位**恒在**（理由见 [GalleryCardsGrid] 的 header 注释）：有没有话由内部判。
                 // 只有一站给上内容时把缺的那站说出来 —— 静默退化成单源最难被发现。
                 //
-                // 2026-10-12 改造：从"一行灰字"换成按档分块的提示组件。
                 // 未配账号那一档带一枚「去配置账号」（真能到 设置 → 画廊），
                 // 出错那一档带「重试」—— 重试走 `onRetry`（= 顶栏那枚「换一批」同一条路径：
                 // 先清熔断再真取），直接调 refresh 撞上 60s 熔断窗口时是一枚假按钮。
                 //
-                // 2026-10-14 改判：这一面墙上的块改成**一行档**（`compact = true`）。
                 // 手机档截图量到：两块各 3~4 行正文，把「正在关注的画师 / 每日热门」
                 // 整块推出首屏 —— 核心模块的第一眼成了故障说明书。
                 // 正文一个字没删，改成点那一行就地展开；判据见 `UiAuditBatch2Test`。

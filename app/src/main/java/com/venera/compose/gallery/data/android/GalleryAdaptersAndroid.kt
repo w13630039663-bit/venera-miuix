@@ -1,6 +1,7 @@
 ﻿package com.venera.compose.gallery.data
 
 import android.content.Context
+import com.venera.compose.data.db.TagDictRow
 import com.venera.compose.data.network.HostCircuitBreaker
 import com.venera.compose.data.platform.KeyValueStore
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
@@ -37,7 +38,6 @@ internal class AndroidGalleryFavorites(private val context: Context) : GalleryFa
 
     /**
      * 收藏 / 取消收藏：**本地先落**（这一步是唯一保证成功的），pixiv 那一站再往站方同步一笔
-     * （2026-10-18 用户「pixiv 站点收藏图片自动同步到 pixiv 站点」，并点头按推荐的档位做）。
      *
      * 四条纪律：
      * - **只有 pixiv 这一站往站方写**：booru 那三家没有写接口，于是不摆"会同步"的暗示，也不做假开关；
@@ -138,6 +138,8 @@ internal class AndroidGalleryTagLexicon(private val context: Context) : GalleryT
     override suspend fun fetchTagCategories(pageUrl: String): Map<String, Int>? = categories.fetch(pageUrl)
     override suspend fun titleTags(names: List<String>): Map<String, GalleryTitleTag>? =
         dictionary.titleTags(names)
+    override suspend fun reverseTranslate(term: String): List<TagDictRow>? =
+        dictionary.reverseTranslate(term)
 }
 
 internal class AndroidGalleryCredentials(private val context: Context) : GalleryCredentials {
@@ -163,10 +165,9 @@ internal class AndroidGelbooruBoard(private val context: Context) : ScoredBoard 
 }
 
 /**
- * Gelbooru 时间窗的定界取数（2026-10-13）：状态机在 `gallery/domain`，这里只把两笔问句递到那颗 client。
  *
- * 走 [GelbooruClient] 而不并进 [AndroidGelbooruBoard]：那颗 `ScoredBoard` 是 Gelbooru 与 Safebooru
- * 共用的契约，往公共口加成员就得给 Safebooru 挂一枚"永远失败"的假实现（理由见 `GalleryBusinessApi.kt`
+ * 走 [GelbooruClient] 而不并进 [AndroidGelbooruBoard]：那颗 `ScoredBoard` 是 Gelbooru 与 Konachan
+ * 共用的契约，往公共口加成员就得给 Konachan 挂一枚"永远失败"的假实现（理由见 `GalleryBusinessApi.kt`
  * 里 `YandeReBoard.fetchDailyPopular` 与 `GelbooruWindowProbeSource` 上那两段说明）。
  */
 internal class AndroidGelbooruWindowProbe(private val context: Context) : GelbooruWindowProbeSource {
@@ -179,9 +180,9 @@ internal class AndroidGelbooruWindowProbe(private val context: Context) : Gelboo
         client.probeWindowStart(atLeastId)
 }
 
-internal class AndroidSafebooruBoard(private val context: Context) : ScoredBoard {
-    private val client: SafebooruClient get() = SafebooruClient.getInstance(context)
-    override val pageSize: Int get() = SafebooruClient.POOL_SIZE
+internal class AndroidKonachanBoard(private val context: Context) : ScoredBoard {
+    private val client: KonachanClient get() = KonachanClient.getInstance(context)
+    override val pageSize: Int get() = KonachanClient.POOL_SIZE
     override suspend fun searchPosts(tags: String, page: Int, limit: Int) = client.searchPosts(tags, page, limit)
     override suspend fun searchTags(term: String) = client.searchTags(term)
     override suspend fun fetchById(id: Long) = client.fetchById(id)
@@ -202,7 +203,7 @@ internal class AndroidYandeReBoard(private val context: Context) : YandeReBoard 
 internal class AndroidGalleryBoards(private val context: Context) : GalleryBoards {
     override val yandere: YandeReBoard by lazy { AndroidYandeReBoard(context) }
     override val gelbooru: ScoredBoard by lazy { AndroidGelbooruBoard(context) }
-    override val safebooru: ScoredBoard by lazy { AndroidSafebooruBoard(context) }
+    override val konachan: ScoredBoard by lazy { AndroidKonachanBoard(context) }
 }
 
 internal class AndroidGalleryArtistDirectory(private val context: Context) : GalleryArtistDirectory {
@@ -254,7 +255,6 @@ internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryP
     /**
      * 作品页详情：**有票据先走登录腿**，登录腿"答上了却读不出图"才退匿名腿。
      *
-     * 为什么屏上那些卡需要这一层（2026-10-18 第四批第七件）：卡的来源已经是登录腿
      * （关注画师 / 推荐 / 排行榜 / 书签），而详情从前只有匿名腿 —— 站方对未登录读者把
      * 成人向、仅登录可见、私密那几条整条撤图 ⇒ "卡明明在墙上、点开说没有"。
      *
@@ -298,7 +298,6 @@ internal class AndroidGalleryPixivWorks(private val context: Context) : GalleryP
         nextUrl: String?,
     ) = appClient.bookmarkIllusts(bearer, userId, restrict, nextUrl)
 
-    // ── 画师页那三条匿名腿（2026-10-19）：转发到 `client`（PixivClient，匿名）。──
     // 它们住在这条契约上而不是让 UI 直连，理由见 `GalleryPixivWorks.userHead` 的注释。
     override suspend fun illustComments(bearer: String, illustId: Long, nextUrl: String?) =
         appClient.illustComments(bearer, illustId, nextUrl)

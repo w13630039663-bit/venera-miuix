@@ -35,19 +35,19 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * Chip 视觉变体。
  *
- * - [Assist]   : 未选中的动作型（描边 + 透明底）
- * - [Selected] : 选中态（强调容器色）
+ * - [Assist]   : 未选中的动作型（描边 + 透明底）；选中后吃强调容器色 ——
+ *   "选中态"由 [VeneraChip.selected] 表达，**不是**一个独立变体（原 `Selected` 档与
+ *   `Assist + selected = true` 逐位相同，已并档，别再加回来）。
  * - [Tag]      : 标签语义（比 Assist 更轻，用于卡片上的 tag）
  * - [Filter]   : MD3 filter chip —— 未选中只有描边，选中填 **secondaryContainer**
  *   （不是 primaryContainer：选中一枚筛选条件不该有"主行动"那么响，规范里两者分档）
  * - [Neutral]  : MD3 tonal chip —— **无描边**、填 surfaceContainerHigh，用于"最近搜索"这类次要项
  * - [Tonal]    : 与 [Neutral] 同形（无描边、无前置圆点），但填 **surfaceVariant**（不透明）。
  *   为什么还要一档：`Neutral` 填的 `surfaceContainerHigh` 与画廊搜索卡的卡底**是同一颗色**
- *   （真机逐像素量过：`#EAE7EE / #EAE7EE` = 1.000:1），住在实色卡里就完全看不见。
  *   `Tonal` 用比卡底低一档的 `surfaceVariant`，层次靠**底色**表达而不是靠描边 —— 参考图那套
  *   读起来"有台阶又不抢眼"的就是这一档（实测卡底/控件底 1.055:1 与 1.115:1 两级）。
  */
-enum class VeneraChipVariant { Assist, Selected, Tag, Filter, Neutral, Tonal }
+enum class VeneraChipVariant { Assist, Tag, Filter, Neutral, Tonal }
 
 /**
  * Venera 基础 Chip（基础层）。
@@ -118,7 +118,6 @@ fun VeneraChip(
      * —— 尺子 `UiAuditChipTouchSplitTest` 数的是调用点，编译器不管（这颗组件有二十来处调用，
      * 全改成必填只会逼出二十行无意义的实参）。
      *
-     * 为什么不让组件自己挑一档：2026-10-16 第一版就是"removable 一律给 40dp"，结果
      * **已选条件那排胶囊跟着一起长高**（用户：「连同搜索tag一起变大了，你分开」）。
      * 同一枚 × 住在两种容器里：历史那一条是要**按**的按钮（48dp 那一档），
      * 条件胶囊是**一排里的一个元素**（这一屏每一行都在抢卡片高度，见 `GallerySearchArea` 头注）。
@@ -266,9 +265,7 @@ fun VeneraChip(
                     vertical = tokens.spacing.chipVerticalPadding,
                 ),
             // ⚠️ 这一档从前给"带次要前缀"那支**收到 space1（2dp）**，理由写的是"两段文字是一体的
-            // （站点名 + 关键词），留出两个独立元素的间距会把一枚 chip 读成两枚"。真机量下来那一档过头了：
             // 前缀与查询词之间实测只剩字形自带的空隙 ⇒ 屏上是 `Y·G·Slong_hair censored`，
-            // 读成一串乱码（2026-10-15 读数：`scr-b16-infosheet.png` 里那两段节点
             // [106,1120][189,1154] 与 [194,1119][419,1156]，间隙 5px ≈ 1.9dp）。
             // 归位到本颗 chip 无前置时就在用的那一档 `space2`，不另立数字；
             // "读成两枚"那条不成立 —— 两段文字同在一枚底色里，间距不是分隔物。
@@ -305,7 +302,6 @@ fun VeneraChip(
                 overflow = TextOverflow.Ellipsis,
             )
             if (trailingIcon != null) {
-                // ── × 的触达位：2026-10-16 真机改判 ──
                 // 从前这一档把 clickable 挂在**图标自己**那颗 16dp 的 `size(chipIconSize)` 上，
                 // 外面那圈 `padding` 只是留白、**不吃点击** —— 所以屏上真正的命中区就是 16×16dp，
                 // 整枚 chip 也才 ~29dp 高（用户原话「太小很难按到而且还容易删除」）。
@@ -316,7 +312,6 @@ fun VeneraChip(
                 // 没给 onRemoveClick 就保持原样，不加任何按不动的假触达位。
                 val removable = onRemoveClick != null
                 // 给了 `removeTouchSize` ⇒ 命中挂在外面那颗盒子上（图标仍是 16dp，视觉一寸不变）。
-                // 没给 ⇒ 逐字退回 2026-10-16 之前的形状：clickable 在图标自己身上，
                 // 外面那圈只是留白。两种形状分开写，是为了"历史那枚要大好按"不再连带把
                 // 条件胶囊那一排顶高（用户点名的就是这一格）。
                 val hit = removeTouchSize

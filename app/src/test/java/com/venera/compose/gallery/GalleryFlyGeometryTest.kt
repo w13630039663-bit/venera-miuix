@@ -9,7 +9,6 @@ import org.junit.Test
 /**
  * 飞行体绘制时"源位图取哪一块"的判据（[coverSourceRect]）。
  *
- * 每一条用例都对着真机上的一个形态写的，出处见 `gallery-hero-transition-and-artist-profile-2026-10-01.md` §十三
  * 与 `GalleryFlyGeometry` 的头注：
  * - 墙上卡片：比例被夹在 0.4~2.5，而落点框按原图比例 —— 夹过的那一档就会不同构；
  * - 首页预览行：封面框固定 124×170，与图上真实比例无关。
@@ -103,7 +102,6 @@ class GalleryFlyGeometryTest {
         assertEquals(1200, rect.height)
     }
 
-    // ── 位图那一圈"封面圆角"落到框上是多少（[payloadCornerRadiusPx]，2026-10-16 白角那条）──
 
     /**
      * **不缩放时逐字等于封面圆角**。这是那条口径的核心：截来的位图宽 = 封面布局宽（同一个缩放

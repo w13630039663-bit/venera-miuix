@@ -242,7 +242,6 @@ internal fun ChapterDirectorySheet(
                         .fillMaxWidth()
                         // 定高视口，不用 fillMaxHeight(0.74f)：面板内容列在 ModalBottomSheet 里
                         // 是**无界高**，分数填充在无界父上等于无界 —— Lazy 网格拿到无限高度会把
-                        // 两百多格**全量组合**（用户 2026-11-09 报「很卡」的主因），索引轨也随
                         // 无限行高被挤成一坨（「右边的标被压得太小」）。定高之后网格才真懒。
                         .height(440.dp),
                 ) {

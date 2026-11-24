@@ -14,7 +14,6 @@ import com.venera.compose.gallery.data.GallerySite
  * - **条目里是空串** = 查过了、站方确实没给脸 → **不许再查**，
  *   否则每一位没头像的画师都会在每次冷启动被重问一遍（这条口径来自原来那份进程内缓存）；
  * - **条目里有地址** = 直接拿来画，图字节由画廊那份 Coil 磁盘缓存负责（实测缩略档
- *   `Cache-Control: max-age=31536000`，回看不回网）。
  *
  * ## 键为什么带出处
  *
@@ -30,9 +29,7 @@ internal object GalleryArtistAvatars {
      * 一条已解析过的头像地址。[avatar] 为**空串**表示"查过了、没有"，不是"没查过"。
      *
      * [resolvedAt] 只在超上限时用来挑最旧的那几条丢，不参与任何"过期"判断 ——
-     * 这一档是用户 2026-10-01 拍的「落盘、不加 TTL」：实测 pixiv 的头像地址
      * 是 `i.pximg.net/user-profile/img/<上传日期>/…_170.jpg` 这种**不带过期参数**的静态路径
-     * （一条 2017 年的头像今天仍回 200，且 `max-age=31536000`）。
      */
     data class Entry(
         val site: GallerySite,

@@ -95,7 +95,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 画廊的**浏览历史**页（2026-10-14 立，2026-10-15 加多选与三把手）。
  *
  * ## 为什么是独立路由
  *
@@ -116,11 +115,9 @@ import top.yukonga.miuix.kmp.basic.Text
  * （与大图页那两枚同一把手、同一结果）。所以选中之后按 `fetchById` 按站现取一条 `GalleryPost`
  * 再交出去 —— 代价如实写在下面那个汇总读数里：N 张选中就是 N 笔请求，取不到的逐档出声。
  *
- * ## 导出前过一遍守卫（2026-10-15 用户拍板）
  *
  * 墙上会被分级/屏蔽规则挡下的那几张，**不从这里导出**（判据就复用 `buildGalleryWall` 那一条，
  * 见 [galleryPostWouldBeMasked]）。屏上的缩略图仍过不了那把尺子（行里没存分级与标签，
- * 那条口子是本文件 2026-10-14 立时就写明并保留的），但**导出是另一回事**：
  * 从历史能整批把墙上看不见的图存进相册，就是给屏蔽规则开了后门。
  *
  * @param onOpenPost 打开大图页（`openGalleryPost(站, 号)` 按号现取，所以"从历史那一格回到原图"
@@ -229,7 +226,6 @@ internal fun GalleryHistoryScreen(
     val columnCount = GallerySettingsModel.gridColumns(columnMode, rememberImageWallColumnCount())
 
     // 换站点筛子等于换一整批项：锚点留在原处会把新名单的中间一节对齐到视口顶，
-    // 于是第一组 header 画进 contentPadding 里（首页顶栏重叠那次真机缺陷的同一根因）。
     LaunchedEffect(siteFilter) { gridState.scrollToItem(0) }
 
     /** 多选态下点卡 = 勾选；非多选态 = 开大图页。两条路都从这一枚把手走。 */
@@ -286,7 +282,7 @@ internal fun GalleryHistoryScreen(
                 val fetched = when (row.site) {
                     GallerySite.YANDERE -> ports.boards.yandere.fetchById(row.postId)
                     GallerySite.GELBOORU -> ports.boards.gelbooru.fetchById(row.postId)
-                    GallerySite.SAFEBOORU -> ports.boards.safebooru.fetchById(row.postId)
+                    GallerySite.KONACHAN -> ports.boards.konachan.fetchById(row.postId)
                     GallerySite.PIXIV -> ports.pixiv?.fetchById(row.postId)
                 ?: Result.failure(UnsupportedOperationException("桌面这一侧不接 pixiv"))
                 }
@@ -399,7 +395,6 @@ internal fun GalleryHistoryScreen(
                             /*
                              * 包上去之后**必须自己按下**：`GalleryDisintegration` 只管"按了之后怎么画"，
                              * `triggered` 恒 false 时它就是一层原样转发的 graphicsLayer ——
-                             * 2026-10-15 真机读数「删除一次动画都没有」就是这一句漏了：
                              * 瓦片原样画满 900ms，然后被定时器整块摘掉。
                              */
                             LaunchedEffect(disState) { disState.disintegrate() }
@@ -559,7 +554,6 @@ private fun GalleryHistoryGroupHeader(group: GalleryDayGroup) {
  *
  * 反馈改用**下沉**（`VeneraPressFeedback.indication`，0.94 等比缩放）。
  *
- * ⚠️ 2026-10-16 口径变更：此前这一处显式递 material3 的 `ripple()`，理由是"长按要那一圈从触点
  * 扩开的东西，而 miuix 的 indication 是整层洗底"。那条理由今天不成立了 ——
  * 现在整面图墙（`GalleryPostCard` / 预览行 / 画师头像卡）统一走"沉一下"，
  * 全画廊只剩这一格按下去泛涟漪，读起来像两个不同时代的界面拼在一起。

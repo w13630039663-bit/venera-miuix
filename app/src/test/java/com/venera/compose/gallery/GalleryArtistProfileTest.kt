@@ -11,7 +11,6 @@ import org.junit.Test
 /**
  * 画师介绍页的判据（批次 Q+R · 批量 5）。
  *
- * **形状来自读数，不来自"这家平台一般长什么样"**。2026-10-01 把仓里已有真样本
  * （`_probe/artist_sample.json` 与 `_probe/hub/` 那七份画师记录）捞了一遍第三方域名
  * （`_probe/third_party_url_shapes.cjs`，4 条）：
  * - instagram 三种写法全是**单段 handle**（`instagram.com/jyaian3399`、`www.instagram.com/pavanioficial/`、
@@ -235,8 +234,6 @@ class GalleryArtistProfileTest {
     fun `别名按大小写无关去重`() {
         assertEquals(listOf("U_U"), GalleryArtistProfile.aliasReadout(listOf("U_U", "u_u"), "setmen").names)
     }
-
-    // ── 名字底下那一行（2026-10-01：正名与别名从两行合成一行）──────────────────────────
 
     @Test
     fun `别名行把正名与别名并成一行`() {

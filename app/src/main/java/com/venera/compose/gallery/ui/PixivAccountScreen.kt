@@ -127,11 +127,9 @@ import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * pixiv **个人账号页**（方案 `docs/rounds/gallery-pixiv-account-page-2026-10-19.html`）。
  *
  * ## 这一屏为什么存在
  *
- * 顶栏那颗头像以前点开只是"这是谁 + 退出"。用户 2026-10-19 要的是把账号里那三样东西
  * 真读出来摆在应用里：**关注的人的新作**、**我的收藏（含非公开）**、**我关注的人（含私密关注）**。
  * 这三样都存在 pixiv 账号维度，匿名那条腿一件都给不了（读数记在
  * `memory/project-pixiv-anonymous-endpoint-facts.md`）。
@@ -224,7 +222,6 @@ internal fun PixivAccountScreen(
     //
     // 从前这三处各自发一趟同一颗端点，于是同一屏对 `/v1/user/detail` 要两次，
     // 而两趟之间站方改了数就会读到两个答案。提到屏级之后只剩一份真相；
-    // 2026-10-19 起这份真相活进会话仓 —— 旋转、切屏、离开再回来都不重取。
     val identity = remember(me) { me?.let { PixivAccountSessionStore.identity(it) } }
     val head = identity?.head
     val detail = identity?.detail
@@ -232,7 +229,6 @@ internal fun PixivAccountScreen(
     var identityTick by remember { mutableIntStateOf(0) }
     // 票据续期也新建一个 SignedIn 实例，所以这里**不能拿 `pixivAuth` 当 key**：拿的话每次
     // 自动续票都重启一次，`userHead` + `userDetail` 白跑两趟。身份真的换了才重取 —— 票据
-    // 新鲜度本来就由 `bearerTick` 单独驱动（2026-10-22 审计）。
     val signedUserId = signed?.userId
     LaunchedEffect(signedUserId, works, account, bearerTick, identityTick) {
         val session = identity ?: return@LaunchedEffect
@@ -266,7 +262,6 @@ internal fun PixivAccountScreen(
     // 三页共用一条顶栏：翻到新那一页时把折叠进度归零，否则上一页滚下去的状态会原样带过来
     // （新页明明停在顶部，大标题却还是收着的）。用 settledPage 而不是 currentPage —— 后者在
     // 滑动过半那一刻就变了，归零会把大标题在滑到一半时突然弹出来。
-    // 每次从外部页面进入我的 pixiv 页面时必须处于完全置顶状态（2026-10-22）
     LaunchedEffect(Unit) {
         PixivAccountSessionStore.resetScrollPositions()
         topBarBehavior.state.contentOffset = 0f
@@ -284,7 +279,6 @@ internal fun PixivAccountScreen(
     }
     // 让位量与收起量**同一个式子**：顶栏折叠到底时那两排药丸高度归零（见下面
     // `bottomContent` 的 `.height(chromeExtra * (1f - collapsed))`），内容第一行若还按展开态让位，
-    // 顶上就空出一条 154dp 的空白带（2026-10-22 审计：改玻璃 + 收 chrome 之后新引入的回归）。
     val collapsedForTop = topBarBehavior.state.collapsedFraction
     val contentTop = statusBarTop + VeneraSpacing.topBarFloor +
         chromeExtraOf(section) * (1f - collapsedForTop)
@@ -332,7 +326,6 @@ internal fun PixivAccountScreen(
                 onRetry = { bearerTick++ },
             )
         } else {
-            // 三段横向翻页（2026-10-19 用户点名 ③）：手指左右划 = 换段，点一级药丸 = 滚过去。
             // ⚠️ 每一页自己算让位：动态段多一行二级，chrome 的实高随段变，所以不能共用一份 top。
             HorizontalPager(
                 state = pagerState,
@@ -490,12 +483,9 @@ internal fun PixivAccountScreen(
 
         VeneraTopAppBar(
             // 主行只报"这是哪一屏"。**名字不在这里** —— 头部（④）与身份卡（⑤）各摆一份大的，
-            // 顶栏再摆一份就是同一屏三处"极东的Djehuty"（2026-10-19 真机读数：三屏都这样）。
             title = "我的 pixiv",
             largeTitle = "我的 pixiv",
             scrollBehavior = topBarBehavior,
-            // 2026-10-22 用户点名「下滑顶栏也要收起，一样做顶栏模糊」：改走玻璃背板那一路
-            //（与画廊首页 / 画师页 / 作品页同一套），撤掉 2026-10-19 的 `opaqueChrome`。
             // ⚠️ 采样源必须已经挂在 Pager 上（见上面那处 `blurBackdropSource`）——
             // 玻璃采的是录制下来的内容层，不挂的话这一层采到空层，看着像"顶栏糊了一层灰"。
             backdrop = topBarBackdrop,
@@ -511,7 +501,6 @@ internal fun PixivAccountScreen(
             actions = {
                 // 闸门没通（票据量不到 / 没登录）那一屏**不摆这两处把手**：分段器点下去 Pager
                 // 不在场，屏上零变化；「看哪一份」点下去会真的落盘 setRestrictDefault 却看不到结果。
-                // 那是假开关（2026-10-22 审计）。
                 if (restrictApplies && gate == PixivAccountGate.Ready) {
                     // 稿上那一枚是「锁 + 档位 + 尖角」的下拉把手，不是一句"看：全部"的裸文字：
                     // 尖角说"点开还有别的档"，锁说"这一档管的是看不看得到非公开"。
@@ -528,7 +517,6 @@ internal fun PixivAccountScreen(
                 // 这里只能整段不组合（`bottomContent` 不是 `() -> Unit` 的 lambda 标签能早退的形态），
                 // 不是把药丸摆成灰的 —— 灰的按下去还是没反应，那还是假把手。
                 if (gate == PixivAccountGate.Ready) {
-                    // 下滑时这两行选择器**跟着收走**，到顶才回来（用户 2026-10-22 点名）。
                     //
                     // 判据用 `collapsedFraction` 而不是另记一个"滚动过半"的布尔：它就是 miuix 顶栏
                     // 折叠进度本身，0 = 完全展开（在顶），1 = 完全折叠（下滑中）。折叠态只留
@@ -556,7 +544,6 @@ internal fun PixivAccountScreen(
                             // （matchParentSize）会跟着留一条空白。
                             .height(chromeExtra * (1f - collapsed))
                             // 稿 §1 的 `.seg` / `.sub2` 都留 12dp 屏边、二级行再留 8dp 上距与 8dp 收尾；
-                            // 少了边距就是两行药丸贴着屏边跑（2026-10-19 真机读数的"两段 pill 重叠"之一）。
                             .padding(
                                 start = tokens.spacing.screenHorizontal,
                                 end = tokens.spacing.screenHorizontal,
@@ -652,8 +639,6 @@ private fun pixivScopeChoices(showPrivate: Boolean): List<PixivReadScope> =
  * `private` 且写死了 `PixivArtistSection.entries`，而画师页此刻归并行改 hero 的那一轮 ——
  * 折成一颗共用件是那一轮收口后的挂账（记在手册里），不在这里偷偷复制第二种形状。
  *
- * 从前这里摆的是三颗各自描边的 `VeneraFilterPill`，真机上与下面那行二级**长得一模一样重**，
- * 一级二级分不开（2026-10-19 那轮读数）。
  */
 @Composable
 private fun PixivAccountSegmentTrack(
@@ -753,7 +738,6 @@ private fun PixivAccountSubPill(
 /**
  * 私密档那一行常驻说明（稿 §1 的 ⑧）：选了含非公开的那几档时钉在**内容第一行**。
  *
- * 从前挂在顶栏副标题上，真机上读起来像"这一屏的标题叫含非公开"；而墙里那些图到底含不含
  * 非公开，是**内容**的事实，归内容说。不涂不透明底（玻璃顶栏内联区那条老约束）。
  */
 @Composable
@@ -832,7 +816,6 @@ internal enum class PixivAccountFeedTab(val screenLabel: String) {
 /**
  * 站方切作品桶那枚 `type` 的唯一出处。
  *
- * ⚠️ 只钉 `illust` 这一支是**刻意的**：稿上「我发布的」不分插画/漫画两桶（2026-10-19 拍板 ⑥），
  * 所以这一屏只发 `illust` 那一桶，漫画在卡上带角标。哪天要接第二桶，加一颗名字而不是改这一颗的值。
  */
 private object PixivWorkCategory {
@@ -1147,7 +1130,6 @@ private fun pixivWallHeader(
 /**
  * 「已关注」那一屏：一列**人**，不是墙。
  *
- * 每位再发一跳取三张低清预览（2026-10-19 拍板 ②）。取不到的那位**不空一格**：
  * 退成只有头像与名字的一行 —— 那一行读起来是"这一位没预览"，不是"这一位没关注上"。
  *
  * ⚠️ 这一屏与首页「正在关注的画师」是同一本账（站方 `restrict` 那一枚决定含不含私密关注），
@@ -1333,7 +1315,6 @@ private fun PixivFollowingSection(
 /**
  * 一行一位（稿 §1 的 ③）：**三张封面拼成一条压在上方**，下方才是头像 + 名字 + @账号。
  *
- * 2026-10-19 真机读数：旧版把三张 56×42 的小图挤在行尾，竖图 / 方图 / 横图混在同一列里
  * 参差成锯齿，第三张几乎贴到屏右缘。改成整行宽三等分之后每一格同宽同高 ——
  * 比例由这一行给，不由图自己给。
  *
@@ -1461,7 +1442,6 @@ private const val PixivFollowingPreviewCount = 3
  * 写成 0 就是替站方编一个它没给过的结论（本仓反复立案的那族假读数）。
  *
  * 头像为什么必须压边而不是摆在 hero 下面：压在照片上那一圈描边环才对着页面底色，
- * 读起来是"这一位的主视觉"；整颗掉到 hero 之下就变成两张不相干的图（2026-10-19 真机读数）。
  */
 @Composable
 private fun PixivMineHeader(
@@ -1732,7 +1712,6 @@ private fun firstWorkUrl(works: GalleryPixivWorks?, userId: String?, account: Pi
 /**
  * 「账号管理」那一子页（稿 §2 的 ⑤）：分组表单，**不是一排同款灰块**。
  *
- * 2026-10-19 真机读数：旧版三行都写「打开」（包括退出登录那一行），既没有分组标题，
  * 也没有稿上那两行"进来先看哪一批"。这一屏的每一行右端那枚把手说的就是这一下会干什么 ——
  * 复制、重新登录、贴进来、打开、一个值、退出，**六样各写各的**，不许复用成一句「打开」。
  *
@@ -1934,7 +1913,6 @@ private fun PixivAccountManageSection(
             pasteOpen = false
             // 换账号（重新登录 / 贴进来）**必须清会话仓**：A→B→A 之后
             // `identities[A].asked` 还是 true，屏上会用进程里可能已过期的旧身份读数，
-            // 而没有任何一条路径能刷新它（2026-10-22 审计）。
             // 清仓就够：`identity` 由 `remember(me)` 持有，仓一清就是新对象（`asked = false`），
             // 屏级那颗 `LaunchedEffect` 的早退条件随之失效，下一帧自己会重取一趟。
             PixivAccountSessionStore.clear()

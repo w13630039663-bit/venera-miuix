@@ -25,7 +25,6 @@ package com.venera.compose.sync
  *
  * ## 校验
  *
- * `hash("Hello Axe") == 154086258`，与公开的 Dart 实测值一致（见 `DartStringHashTest`）。
  * 另外本文件不依赖任何 Android/org.json 类型，单测可直接跑。
  */
 internal object DartStringHash {

@@ -64,6 +64,7 @@ object AndroidGalleryPorts {
                 pixivAccount = PixivAccount.getInstance(context),
                 pixivWork = galleryPrefs,
                 pixivAccountPrefs = galleryPrefs,
+                downloads = GalleryDownloadManager.getInstance(context),
             ).also { ports = it }
         }
     }
@@ -110,6 +111,8 @@ private class AndroidGalleryPreferences(private val context: Context) :
     // pixiv 作品页那两档走隔壁那颗接口（`GalleryPreferences` 是跨端共享读面，桌面不实现这两枚）。
     override val pageSeam: StateFlow<PixivPageSeam> get() = prefs.pixivWorkSeam
     override val detailsInFlow: StateFlow<Boolean> get() = prefs.pixivWorkDetailsInFlow
+    override val viewerQuality: StateFlow<PixivImageQuality> get() = prefs.pixivViewerQuality
+    override val detailQuality: StateFlow<PixivImageQuality> get() = prefs.pixivDetailQuality
     // 账号页那两档也走同一颗实例（写侧就在账号页那一子页，见 `PixivAccountPreferences` 头注）。
     override val restrictDefault: StateFlow<PixivReadScope> get() = prefs.pixivRestrictDefault
     override val showPrivate: StateFlow<Boolean> get() = prefs.pixivShowPrivate

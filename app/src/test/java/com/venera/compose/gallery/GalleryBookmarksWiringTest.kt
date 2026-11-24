@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 「收藏 hub + Pixiv 云端书签」这一轮的接线尺子（源码层面，2026-10-17 第三十一轮）。
  *
  * 用户两条原话：
  * ① 「在搜索和历史记录两个圆形按钮之间，新增一个书签按钮」；
@@ -31,10 +30,8 @@ class GalleryBookmarksWiringTest {
     private val business = codeLines("com/venera/compose/gallery/data", "GalleryBusinessApi.kt")
     private val adapters = codeLines("com/venera/compose/gallery/data/android", "GalleryAdaptersAndroid.kt")
     private val hub = codeLines("com/venera/compose/gallery/ui", "GalleryBookmarksHubScreen.kt")
-    // 2026-10-19 拍板 ⑦：独立那一屏收进了 **pixiv 账号页**的收藏段（共用件 = `PixivTwoLegWall`）。
     // 这一族判据问的是"那面墙怎么翻页、按什么去重、跟谁共用一把尺"，与它住在哪颗文件无关 ⇒ 跟着搬锚点。
     private val bookmarks = codeLines("com/venera/compose/gallery/ui", "PixivAccountScreen.kt")
-    // 2026-10-19 起"切屏要留住数据" ⇒ 墙的三道闸门与在途状态搬进进程级会话仓；
     // 这一族判据问的仍是同一件事，只是第三道闸门的读数现在从仓里来。
     private val sessionStore = codeLines("com/venera/compose/gallery/ui", "PixivAccountSessionStore.kt")
     private val screen = codeLines("com/venera/compose/gallery/ui", "GalleryScreen.kt")
@@ -75,7 +72,6 @@ class GalleryBookmarksWiringTest {
             assertTrue("书签端点必须带$what：\n$body", Regex(regex).containsMatchIn(body))
         }
         // "只读公开"这条界从**端点**搬到了**调用点**（账号页要读非公开，端点不能再替所有人做主）。
-        // 2026-10-19 拍板 ⑦ 之后独立那一屏已撤，现在读这一腿的调用点就是账号页的收藏段 ——
         // 所以这里钉的是"档位在账号页里是**交出去**的"：写死任何一档，另一档就永远读不到。
         // 「看别人的画师页只许走公开」由 `PixivAccountFeedTest` 那一颗钉（同一件事不许两把尺）。
         val wall = bookmarks.joinToString("\n") { it.value }
@@ -154,7 +150,7 @@ class GalleryBookmarksWiringTest {
         // 卡下那行说明：**逐字**对稿（改一个字就是改用户对"图存在哪儿"的理解）。
         assertTrue(
             "卡下说明必须逐字是稿上那一句：\n$body",
-            body.contains("本地收藏继续统一展示 Yande、Gelbooru、Safebooru 和已接入的 Pixiv 作品；") &&
+            body.contains("本地收藏继续统一展示 Yande、Gelbooru、Konachan 和已接入的 Pixiv 作品；") &&
                 body.contains("Pixiv 书签则单独读取账号数据，不与本地收藏混为一谈。"),
         )
         // 两颗卡都可点，且按压反馈走 card 那一档（VeneraCard 默认 None ⇒ 不传就是假开关）。
@@ -303,8 +299,6 @@ class GalleryBookmarksWiringTest {
         )
         assertTrue("按钮按下去要真重读票据：\n$body", body.contains("onAction = if (gate.retryIsMeaningful) onRetry else null"))
         // 墙自己失败那一档另给一枚出路按钮（与闸门那两档是两件事：那一档按下去确实会重发趟）。
-        // 2026-10-19 起"再发一趟"不再是推一枚计数，而是直接调仓的 refresh（取数由仓发车）。
-        // ⚠️ 2026-10-20 文案纪律之后那枚按钮不再统一叫「重试」（各场景按自己的话说：
         // 这一档是"取票据/关注列表"，所以说「重新获取」），所以这把尺钉**有出路按钮 + 按下去真重发**，
         // 不钉具体措辞 —— 钉措辞的尺会逼着人把话说回机器腔。
         assertTrue(

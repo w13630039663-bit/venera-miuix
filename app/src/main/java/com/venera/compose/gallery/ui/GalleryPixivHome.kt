@@ -99,7 +99,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 文本行高倍数（`em`，相对字号）—— 2026-10-17 第二十一轮。
  *
  * **唯一出处是 miuix 的 `paragraph`**（`ui/tokens/MiuixTextStyles.kt:33` 写着
  * `TextStyle(fontSize = t.itemTitle, lineHeight = 1.2f.em)`，那颗注自己说明
@@ -111,7 +110,6 @@ import top.yukonga.miuix.kmp.basic.Text
  * 差这点没人看得出来，但横滑一排的**报高**是"已测项的最大值"，于是"视口里换了谁"
  * 就成了报高，外面那张白卡跟着上下跳。详见 [PixivArtistRail] 头注那条链条。
  *
- * ⚠️ 2026-10-17 第三十轮起**两站共用**：图库站的关注画师行也进了白卡
  * （用户「关注画师和每日热门 做成相同风格的ui」），同一个病灶在同一种容器里，
  * 倍数再各抄一档就会漂。所以它是 `internal` 而不是文件私有。
  */
@@ -127,7 +125,6 @@ internal const val TEXT_LINE_HEIGHT = 1.2f
 private const val RAIL_START_FADE_MILLIS = 120
 
 /**
- * Pixiv 域首页与"内容域那一排"专用的几件控件（2026-10-17，用户那张排行榜稿）。
  *
  * 单独一颗文件而不是塞进 `GalleryHomeSections.kt`：那两把尺子
  * （`GalleryHomeChromeTest` 数 `VeneraSegmentedButton(` 的**所在文件**、
@@ -141,7 +138,6 @@ internal object GalleryPixivHome {
     const val RANKING_ROW_ITEMS = 3
 
     /**
-     * 排行榜**收起态**横滑时摆几张（2026-10-17 第十九轮，用户「只能显示3张，左滑应该有更多，限制10张」）。
      *
      * 与 [RANKING_ROW_ITEMS] 拆开是因为它俩本来是同一颗常量：`3` 既当"收起态张数"又当
      * "展开态列数"用（`PixivRankedWorkGrid` 的 `chunked` / `until` 都读它）。直接改成 10
@@ -150,7 +146,6 @@ internal object GalleryPixivHome {
     const val RANKING_PREVIEW_ITEMS = 10
 
     /**
-     * 收起态**一行露几张**（2026-10-17 第二十二轮，用户「缩到一行只同时显示两个半吧」）。
      *
      * 2.5 = 两张整 + 第三张探出半张。不是"每屏 2.5 张"的取整误差，而是**故意的**：
      * 半张露在渐隐里，"右边还有"这件事在屏上就看得见（与 `horizontalRailFades` 那条纪律同源）。
@@ -164,19 +159,16 @@ internal object GalleryPixivHome {
      *
      * 为什么不再用定值 `historyCoverHeight`(170dp)：那 170 是给历史那一排 124dp 宽的卡定的，
      * 搬到三张均分的排行榜上卡宽只有 102dp ⇒ 图区成 102×172 的**竖条**，作品被裁得只剩中间一条
-     * （现量见 `_probe/ui-diff-2026-10-17/`：卡宽 102dp / 图高 172dp ⇒ 0.59）。
      */
     const val RANKING_COVER_ASPECT = 1.05f
 
     /** 「查看全部」展开之后摆几张（榜单每页 50，这里只多摆几屏之内的）。 */
     const val RANKING_EXPANDED_ITEMS = 21
 
-    /** 每枚种子取几张进墙（2026-10-17：推荐改成「猜你喜欢」那种墙之后，六张铺不满一屏）。 */
     const val RECOMMEND_PER_SEED = 8
 }
 
 /**
- * pixiv 首页那两池的**进程级存档**（2026-10-17 第七轮）。
  *
  * ## 为什么需要它
  *
@@ -227,7 +219,6 @@ internal object GalleryPixivHomeStore {
 
     var recommendIdle: Boolean = true
 
-    // ── 关注画师 / 推荐用户（2026-10-17 第八轮）──
     //
     // 与上面那几枚同一个理由：切主 Tab 时这条目的地被 pop、`remember` 全丢，
     // 而这两条腿都要票据（比匿名那几条更贵），每次回来重打一遍是纯浪费。
@@ -282,15 +273,11 @@ internal object GalleryPixivHomeStore {
  * ## 宽度
  *
  * 外框**不铺满、不居中**：它住在搜索条左边那一格里，整排按字长收（每格吃 `space6` 横向内衬）。
- * 高度仍吃 `segmentedHeight`（48dp），与搜索条同档 —— 用户 2026-10-17 那句
  * 「搜索框缩成和切换源一样大小」是这一行唯一的对齐契约。
  *
  * ## 胶囊的位置：**量宽 + 前缀和**，不走父子坐标换算
  *
- * ⚠️ 2026-10-17 第二十七轮（用户「点到 pixiv 里面的胶囊不会过去」）：从前每格报的是
  * `coords.parentCoordinates?.localBoundingBoxOf(coords)` —— 把子的框换算到**父坐标**再画。
- * 那条路在真机上失效过一次：选中态已经切到右格（字的颜色换了档），底色却停在左格
- * （判据 KDoc 记在 `UiAuditG3Test` 那一笔，2026-10-17 真机截图）。
  * 换算链上任何一环拿不到真值（`parentCoordinates` 为空、父节点不是你以为的那一层），
  * 落地的都是**上一帧的矩形**，而胶囊的四个动画值只认当期目标 ⇒ 屏上读作"胶囊不跟手"。
  *
@@ -312,7 +299,6 @@ internal fun GalleryHomeDomainChips(
     val pill = RoundedCornerShape(percent = 50)
     // 颜色在组合期取（`tokens.color` 那串 getter 是 @Composable 的），`drawBehind` 里只能读现成的值。
     //
-    // ⚠️ 方案 B（2026-10-17，用户拍板「先按方案b」）：粉块**两端都往 primary 那侧插值**，
     // 而从前只有一个平涂的 `primaryContainer` —— 评审的原话是「选中态现在太淡」。
     // 插值而不是换槽位：换槽位会牵动全仓所有"选中态"的读数，而这颗胶囊只需要"厚一点"。
     val pillFill = tokens.color.primaryContainer
@@ -418,7 +404,6 @@ internal fun GalleryHomeDomainChips(
 private const val TRACK_SHEEN_LIFT = 0.35f
 
 /**
- * 「画师」那一格的两种读法（2026-10-17 第九轮）。
  *
  * 用户原话：「推荐画师合并到发现和已关注供切换」。从前它们是**两节**（关注画师 / 推荐画师），
  * 各自一排、各自一个节头，一屏里占掉两段高度；合并成一节之后两排共用同一块地方，切换即可看到另一半。
@@ -439,7 +424,6 @@ internal fun PixivArtistTabRow(
     onPick: (PixivArtistTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 2026-10-17 第十八轮（用户稿）：画师这一格换成**轨道 + 白色选中胶囊**。
     //
     // 稿上它与下面「日榜/周榜/…」不是同一种东西：档位那一排是"标签胶囊"（各自一枚浅底），
     // 而画师这里是 iOS 那种分段器 —— 一条浅灰轨道，选中项是压在轨道上的一枚白胶囊。
@@ -528,7 +512,6 @@ internal fun PixivRankingModeChips(
 }
 
 /**
- * 「换一批」那枚单枚药丸（2026-10-17 第二十三轮，用户「推荐标题右边要多个换一批的胶囊」）。
  *
  * 视觉上就是 [PixivPillRow] 里的**一枚**：同样的 `percent = 50` 圆角、同样的底色与内衬档，
  * 所以它与同屏那两排分段器读起来是同一套控件 —— 一个尺寸不同的动作胶囊会被读成另一种东西。
@@ -629,7 +612,6 @@ internal fun PixivRankingShowAll(
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    // 「查看全部 ›」（2026-10-17 第十九轮）：节头 trailing 现在贴右缘（见 `MiuixSectionHeader`），
     // 配一枚 › 才读成"去另一个地方"，否则那段灰字像标题的注脚。
     Row(
         modifier = modifier.clickable(onClick = onToggle),
@@ -653,9 +635,7 @@ internal fun PixivRankingShowAll(
 }
 
 /**
- * 进 **pixiv 画师页**（`PixivArtistScreen`，2026-10-19）。
  *
- * 这是"点画师"的**唯一动作**（用户 2026-10-19：「改成点击画师头像进入画师页」）：
  * 首页横排、搜索「画师」分栏、卡片署名头像、作品页画师行 —— 全部落这一处，
  * 免得某一处忘了改、只在那面墙上退化成开网页。
  *
@@ -677,7 +657,6 @@ internal fun Context.openPixivArtistPage(userId: Long, artistName: String) {
 /**
  * 打开某位 pixiv 用户的**站方网页**。
  *
- * ⚠️ 2026-10-19 起这**不再是"点画师"的去处**（那一跳改成 [openPixivArtistPage]）。
  * 它退成"看站方原页"的正当出口：小说、约稿、私密收藏档这些只有网页有的东西。
  *
  * 与登录那一跳同一个优先级：先 Custom Tab（Chrome 里有他可能已登录的 pixiv 会话，
@@ -701,7 +680,6 @@ internal fun openPixivUserPage(context: Context, userId: Long) {
 }
 
 /**
- * 横滑一排的**两端渐隐**（2026-10-17 第十九/二十一轮）。
  *
  * ## 右端为什么恒亮
  *
@@ -726,7 +704,6 @@ internal fun openPixivUserPage(context: Context, userId: Long) {
  * @param container 这一排底下的那块颜色（坐在白卡里就传 `surface`，铺在页面底就传 `background`）——
  *   两端必须是同一个色，否则左右两道渐隐深浅不一。
  *
- * ⚠️ 2026-10-17 第三十轮起 `internal`：图库站关注画师行进了白卡之后与
  * [PixivArtistRail] 同档同形（用户「关注画师和每日热门 做成相同风格的ui」）——
  * 两端渐隐是**一颗**，两站各写一版就会漂（`GalleryHScrollRailHeightTest` 钉着这条）。
  */
@@ -771,13 +748,11 @@ internal fun PixivArtistRail(
      *   （见 `GalleryImageLoader.MAX_REQUESTS_PER_HOST` 那段读数），而漫画那份仍吃默认值 5 ——
      *   这一排的头像全打在同一个 `i.pximg.net` 上，第 6 位起就在队列里排队。
      *
-     * 2026-10-17 第二十轮（用户报"快速滑动画师头像时整个框有奇怪的抖动"）一并收掉。
      */
     imageLoader: ImageLoader,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
-    // ── 高度必须由**几何**决定，不能由"视口里正好是谁"决定（2026-10-17 第二十一轮）──
     //
     // 用户报「快速滑动画师头像时整张白卡上下跳 1~2px」，并补一句「排行榜也在抖」。
     // 两处是**同一个形状**：一张 `surface` 白卡里装一条横向 `LazyRow`（画师一排 / 排行榜收起态）。
@@ -811,7 +786,6 @@ internal fun PixivArtistRail(
             .heightIn(min = railHeight)
             // 两端渐隐（右端恒亮 / 左端跟滚动位置，理由见 [horizontalRailFades]）。
             .horizontalRailFades(railScroll, tokens.color.surface),
-        // 禁掉这一排的过度滚动（2026-10-17 第二十轮，用户报"快速滑动画师头像时整个框有奇怪的抖动"）。
         //
         // 这一排只有 5~6 位，一次用力甩动**必然**顶到尽头 ⇒ 平台默认的 stretch 会把整排内容
         // 一起拉伸再弹回；而这一排坐在一张 `clip(RoundedCornerShape)` 的白卡里，被拉伸的
@@ -821,7 +795,6 @@ internal fun PixivArtistRail(
         // ⚠️ 恒传 `null` ⇒ 不需要 `rememberOverscrollEffect()`（那条"必须无条件先 remember"
         // 的规矩是针对"按开关取舍"的写法；这里没有开关，就没有条件调用）。
         overscrollEffect = null,
-        // 间距 4dp → 12dp（2026-10-17 第十九轮，用户「拉大画师头像的间隔」+ 稿上特写）：
         // 裸圆头像之间没有卡面帮忙分隔，4dp 在 64dp 的球之间读起来是"挤在一起的一条"；
         // 稿上那个空气感是「间距 ≈ 头像直径的 1/4」，本仓现成档里 `space6`(12dp) 正好是 64 的 1/5。
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
@@ -892,7 +865,6 @@ internal fun PixivArtistRail(
  * 两者今天恰好相等，但展开、翻页与去重之后就不等了，拿位次冒充排名就是编读数。
  * `rank` 为 null（按标签那一腿）时那一行只剩标题，不补零序号。
  *
- * ## 收起态是**横滑**，不是三列网格（2026-10-17 第八轮，用户「排行榜这些卡片应该是可以左右滑动的」）
  *
  * 从前这里恒是 `chunked(3)` 的三列：第三张右边就是屏幕边，用户没有任何办法看到第 4 名 ——
  * 而"查看全部"那枚把手在节头右上角，读完三张再回顶上去点，与"继续往右划"是两种心智。
@@ -901,7 +873,6 @@ internal fun PixivArtistRail(
  *
  * 展开态仍是网格：那时用户已经明说要"看全部"，一列列铺开比横滑更好扫。
  *
- * 飞行：这一排的卡**参与**跨窗口飞行（2026-10-19 批 A 把半接线接上 —— 从前去程没截，
  * 点进去恒走"整页从下沿抬上来"那条退路）。去程截图与返回程落点都收在 `PixivWorkCard`
  * 一处（键 `viewerKey`，与作品页查询侧同串），不在这层网格里另接一遍。
  */
@@ -922,7 +893,6 @@ internal fun PixivRankedWorkGrid(
     val tokens = VeneraTokens
     if (!expanded) {
         BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-            // 2026-10-17 第二十二轮（用户「缩到一行只同时显示两个半吧」）：一行露 2.5 张。
             //
             // 从前是三张均分（「(本行宽 − 两枚间距) / 3」），卡宽只剩 102dp —— 加上图区是 170dp 定高，
             // 每张读起来是 102×172 的**细长条**，三张挤在卡里，像被压扁了一排。
@@ -1000,14 +970,12 @@ private fun PixivWorkCard(
     onToggleFavorite: ((GalleryPost) -> Unit)?,
 ) {
     val tokens = VeneraTokens
-    // 内容内衬归零 ⇒ **封面通栏**（2026-10-17 第二十三轮，用户「感觉还是太小了」）。
     //
     // 实测 p16：卡宽 140dp，封面只有 124 —— 两边各缩了 8dp `cardContentPadding`。
     // 而设计稿上封面是顶到卡片边缘的，四个圆角就是封面的四个角。
     // 那 8dp 让"卡面"整整小了一圈，也正是这一轮报"太小"里最直接的一笔。
     // 内衬归零的代价在下面：文字区自己补水平内衬。
     //
-    // ── 飞行转场：登记**封面那一块**，去程截它，返回程落回它（2026-10-19 批 A 收口）──
     //
     // 从前登记挂在整张卡上（`VeneraCard`），去程压根没截 —— 排行榜那排点进去恒走
     // "整页从下沿抬上来"那条退路；回来即便有落点也是整卡（带着下面那条文字区），
@@ -1038,7 +1006,6 @@ private fun PixivWorkCard(
         },
         edgeToEdge = true,
     ) {
-        // ── 名次角标（2026-10-17 第九轮，设计稿左上角那枚数字）──
         //
         // 从前序号是拼在标题里的（`"01 · 标题"`），于是"名次"与"标题"在**同一行**抢宽度：
         // 标题长了先被截的是名次后面那几个字，而名次本身也不是一眼能扫到的东西。
@@ -1046,7 +1013,6 @@ private fun PixivWorkCard(
         //
         // `rank == null`（按标签/推荐那两条腿）时**不画角标**：摆一枚"01"就等于编了一个站方没给的名次。
         //
-        // ⚠️ 用户 2026-10-17 第二十二轮拍板：「角标本身 p 站是没有的」。
         // 也就是说这枚角标**不是站方语义**（那三枚 1/2/3 是设计稿自己加的），
         // 所以别再为它去改取数（`record["rank"]` 那个字段名的疑问到此为止，不追）——
         // 留这段只因为：哪天站方真给了 `rank`，摆出来是对的，不是编的。
@@ -1057,7 +1023,6 @@ private fun PixivWorkCard(
                 preserveAspectRatio = false,
                 mask = if (masked) VeneraCoverMask.Masked else VeneraCoverMask.Visible,
                 imageLoader = imageLoader,
-                // 图区高度**跟着卡宽走**（2026-10-17 第二十二轮，用户「卡面太小了，就好像压扁了那样」）。
                 //
                 // 从前是定值 `historyCoverHeight`(170dp) —— 那是给历史那一排 124dp 宽的卡定的比例，
                 // 搬到这里卡宽只有 102dp，图区就成了 102×172 的**竖条**（实测 0.59），
@@ -1105,7 +1070,6 @@ private fun PixivWorkCard(
                     )
                 }
             }
-            // ── AI 角标（2026-10-18，用户「开了 AI 角标，整个画廊一个都没见到」）──
             //
             // 这一族卡此前**一枚角标都没有**（只有名次与 ♥）：六处墙共用的那枚
             // `GalleryPostCard` 早就有 AI 角标，而 pixiv 首页的排行榜 / 推荐卡走的是
@@ -1120,7 +1084,6 @@ private fun PixivWorkCard(
             if (aiBadgeOn && GalleryAi.isAiMarked(work.post.siteAiFlag, work.post.tagList)) {
                 GalleryAiPill()
             }
-            // 多页角标（2026-10-18，用户「不用点进作品也能看出这张有几页」）：与主墙同一条判据
             // （`GalleryPost.pagesBadge`：站方没给或只有一页都不摆）、同一颗胶囊件，摆右下那一格。
             // 从前这一族卡只有名次与 ♥，页数只在详情腿里读得到 ⇒ 榜上那些多页作看不出是多页。
             work.post.pagesBadge?.let { GalleryPagesPill(it) }
@@ -1128,7 +1091,6 @@ private fun PixivWorkCard(
         // 文字区**定高**（理由见 `PixivArtistRail` 头注那条链条）：封面高度由卡宽经
         // `aspectRatio` 定（卡宽在收起态与展开态都确定），所以「封面 + 内衬 + 这一段」就是整卡高度。
         // 这一段若由字体度量决定，收起态那一排的报高就会随"视口里是哪几张"变
-        // ⇒ 外面那张白卡上下跳 1~2px（用户 2026-10-17 报「排行榜也在抖」）。
         val titleLineHeight = with(LocalDensity.current) {
             (tokens.type.itemTitle * TEXT_LINE_HEIGHT).toDp()
         }
@@ -1140,13 +1102,11 @@ private fun PixivWorkCard(
                 .fillMaxWidth()
                 // 卡内衬归零了（封面要通栏）⇒ 文字区把水平内衬自己补回来。
                 // 数值比原来的 `cardContentPadding`(8dp) 各边小一档：文字区一旦变胖，
-                // "卡面就大"这件事在屏上就被吃回去了（用户 2026-10-17「感觉还是太小了」）。
                 .padding(horizontal = tokens.spacing.space3, vertical = tokens.spacing.space2)
                 // 下限而非固定高（理由见 `PixivArtistRail` 那处 `.heightIn` 的注）。
                 .heightIn(min = titleLineHeight + tokens.spacing.space1 + captionLineHeight),
             verticalAlignment = Alignment.Top,
         ) {
-            // 作者头像（2026-10-17 第二十二轮，用户「排行榜也没画师头像」）。
             //
             // 取的地址在 `PixivWork.authorAvatarUrl` —— 就在榜单那个响应的 `user.profile_image_urls`
             // 里，**不按 userId 再发一次请求**（一排 10 张就是 10 次额外往返）。

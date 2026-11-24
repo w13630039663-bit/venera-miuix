@@ -140,7 +140,7 @@ class DesktopArtistAvatarProbeTest {
             val b = FakeAvatars()
             val got = desktopArtistAvatarChain(
                 b,
-                GallerySite.SAFEBOORU,
+                GallerySite.KONACHAN,
                 "setmen",
                 linkUrls = { _, _ -> Result.success(listOf(Urls.FANBOX)) },
                 probe = { Result.success("https://p.fanbox.cc/a.jpg") },
@@ -149,7 +149,7 @@ class DesktopArtistAvatarProbeTest {
             assertEquals("https://p.fanbox.cc/a.jpg", got.getOrThrow())
             assertEquals(
                 "落档的键必须与读侧同轨（source 空串）",
-                listOf(FakeAvatars.Quad(GallerySite.SAFEBOORU, "setmen", "", "https://p.fanbox.cc/a.jpg")),
+                listOf(FakeAvatars.Quad(GallerySite.KONACHAN, "setmen", "", "https://p.fanbox.cc/a.jpg")),
                 b.writes,
             )
 
@@ -267,7 +267,7 @@ class DesktopArtistAvatarProbeTest {
             var probed = 0
             val outcome = desktopArtistAvatarChain(
                 avatars,
-                GallerySite.SAFEBOORU,
+                GallerySite.KONACHAN,
                 "relay",
                 linkUrls = { _, _ -> Result.success(listOf(Urls.PIXIV, Urls.FANBOX)) },
                 probe = { probed++; Result.success("https://p.fanbox.cc/b.jpg") },
@@ -276,7 +276,7 @@ class DesktopArtistAvatarProbeTest {
             assertEquals(1, probed)
             assertEquals("https://p.fanbox.cc/b.jpg", outcome.getOrThrow())
             assertEquals(
-                listOf(FakeAvatars.Quad(GallerySite.SAFEBOORU, "relay", "", "https://p.fanbox.cc/b.jpg")),
+                listOf(FakeAvatars.Quad(GallerySite.KONACHAN, "relay", "", "https://p.fanbox.cc/b.jpg")),
                 avatars.writes,
             )
         }

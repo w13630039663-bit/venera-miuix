@@ -48,7 +48,7 @@ class DesktopGalleryBatchTest {
 
     private fun batch(seed: Long = 7L) = DesktopGalleryBatch(
         seed = seed,
-        queries = mapOf(GallerySite.YANDERE to "a", GallerySite.SAFEBOORU to "b"),
+        queries = mapOf(GallerySite.YANDERE to "a", GallerySite.KONACHAN to "b"),
     )
 
     /** ① 第一页是**替换**、第二页起是**追加**，页码跟着走。 */
@@ -58,11 +58,11 @@ class DesktopGalleryBatchTest {
         val first = desktopGalleryBatchApply(
             current = start.copy(posts = listOf(post(GallerySite.YANDERE, 999L))),
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         assertEquals("第 1 页必须把旧的那一批换掉（换种子之后还追加就是两批混摆）", 2, first.posts.size)
         assertEquals(1, first.page)
@@ -70,11 +70,11 @@ class DesktopGalleryBatchTest {
         val second = desktopGalleryBatchApply(
             current = first,
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.SAFEBOORU to 2),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.KONACHAN to 2),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         assertEquals("第 2 页是追加，不是替换（替换的话用户看到的是同一屏换了内容）", 4, second.posts.size)
         assertEquals(2, second.page)
@@ -87,22 +87,22 @@ class DesktopGalleryBatchTest {
         val landed = desktopGalleryBatchApply(
             current = batch(),
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
             returnedBySite = answered,
-            reasons = mapOf(GallerySite.SAFEBOORU to "超时"),
+            reasons = mapOf(GallerySite.KONACHAN to "超时"),
             pageSizeOf = { 20 },
             paged = paged(GallerySite.YANDERE),
         )
         assertEquals("答上而不足一页的那一站才算到底", setOf(GallerySite.YANDERE), landed.sitesDone)
-        assertEquals("没答上的那一站要留着原因，而不是被记成到底", "超时", landed.failures[GallerySite.SAFEBOORU])
+        assertEquals("没答上的那一站要留着原因，而不是被记成到底", "超时", landed.failures[GallerySite.KONACHAN])
         assertEquals(
             "发过两站而只有一站到底 ⇒ 还没到底（此时页尾不许说「已经到底」）",
             false,
             landed.atEnd,
         )
 
-        val legs = desktopGalleryBatchLegs(landed, mapOf(GallerySite.YANDERE to "a", GallerySite.SAFEBOORU to "b"))
-        assertEquals("已到底的那一站下一轮不该再发车", listOf(GallerySite.SAFEBOORU), legs.keys.toList())
+        val legs = desktopGalleryBatchLegs(landed, mapOf(GallerySite.YANDERE to "a", GallerySite.KONACHAN to "b"))
+        assertEquals("已到底的那一站下一轮不该再发车", listOf(GallerySite.KONACHAN), legs.keys.toList())
     }
 
     /** ③ 去重键跨页累计，且只累计**真上屏那批**的键。 */
@@ -111,11 +111,11 @@ class DesktopGalleryBatchTest {
         val first = desktopGalleryBatchApply(
             current = batch(),
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         assertEquals(
             "去重键必须就是「上屏那批」的键（多算 = 下一轮把没摆过的也剔掉；少算 = 会摆出重复卡）",
@@ -125,8 +125,8 @@ class DesktopGalleryBatchTest {
         val second = desktopGalleryBatchApply(
             current = first,
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.SAFEBOORU to 2),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.KONACHAN to 2),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
             paged = paged(GallerySite.YANDERE),
@@ -146,7 +146,7 @@ class DesktopGalleryBatchTest {
         val stale = desktopGalleryBatchApply(
             current = current,
             round = 4L,
-            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.SAFEBOORU to 2),
+            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.KONACHAN to 2),
             returnedBySite = mapOf(GallerySite.YANDERE to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
@@ -178,8 +178,8 @@ class DesktopGalleryBatchTest {
         val none = DesktopGalleryBatch(seed = 1L)
         assertFalse("没发过任何东西 ⇒ 不叫到底（那叫空屏，是另一句话）", none.atEnd)
         val allDone = batch().copy(
-            sitesDone = setOf(GallerySite.YANDERE, GallerySite.SAFEBOORU),
-            queries = mapOf(GallerySite.YANDERE to "a", GallerySite.SAFEBOORU to "b"),
+            sitesDone = setOf(GallerySite.YANDERE, GallerySite.KONACHAN),
+            queries = mapOf(GallerySite.YANDERE to "a", GallerySite.KONACHAN to "b"),
         )
         assertTrue(allDone.atEnd)
         val extra = allDone.copy(sitesDone = allDone.sitesDone + GallerySite.GELBOORU)
@@ -192,11 +192,11 @@ class DesktopGalleryBatchTest {
         val used = desktopGalleryBatchApply(
             current = batch(seed = 1L),
             round = 1L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(),
             pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         val fresh = DesktopGalleryBatch(seed = 2L)
         assertEquals("新一轮的页码必须从 0 起（带着上一轮的页码，第一笔就会按第 2 页追加进新批次）", 0, fresh.page)
@@ -221,10 +221,10 @@ class DesktopGalleryBatchTest {
         val landed = desktopGalleryBatchApply(
             current = batch(),
             round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
-            // Safebooru 这一笔没答上 ⇒ 它根本不在 returnedBySite 里（缺席不算到底，见 ②）。
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
+            // Konachan 这一笔没答上 ⇒ 它根本不在 returnedBySite 里（缺席不算到底，见 ②）。
             returnedBySite = mapOf(GallerySite.YANDERE to 20),
-            reasons = mapOf(GallerySite.SAFEBOORU to "超时"),
+            reasons = mapOf(GallerySite.KONACHAN to "超时"),
             pageSizeOf = { 20 },
             paged = paged(GallerySite.YANDERE),
         )
@@ -234,11 +234,11 @@ class DesktopGalleryBatchTest {
             landed.pageBySite,
         )
 
-        val legs = desktopGalleryBatchLegs(landed, mapOf(GallerySite.YANDERE to "a", GallerySite.SAFEBOORU to "b"))
+        val legs = desktopGalleryBatchLegs(landed, mapOf(GallerySite.YANDERE to "a", GallerySite.KONACHAN to "b"))
         val pages = desktopGalleryBatchNextPages(landed, legs.keys.toList())
         assertEquals(
-            "下一笔：到底的那站不再问（不在表里），答过的 yande.re 要第 2 页，没答上的 safebooru 补第 1 页",
-            mapOf(GallerySite.YANDERE to 2, GallerySite.SAFEBOORU to 1),
+            "下一笔：到底的那站不再问（不在表里），答过的 yande.re 要第 2 页，没答上的 konachan 补第 1 页",
+            mapOf(GallerySite.YANDERE to 2, GallerySite.KONACHAN to 1),
             pages,
         )
         // 对照：那颗共享件真在（桌面不许自己写页码算式）。
@@ -267,17 +267,17 @@ class DesktopGalleryBatchTest {
         // 对照：`page` 仍是读数，而它由上面那份账导出 —— 两页落地之后读到 2。
         val first = desktopGalleryBatchApply(
             current = batch(), round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.SAFEBOORU to 1),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 1, GallerySite.KONACHAN to 1),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(), pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         val second = desktopGalleryBatchApply(
             current = first, round = 7L,
-            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.SAFEBOORU to 2),
-            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.SAFEBOORU to 20),
+            pages = mapOf(GallerySite.YANDERE to 2, GallerySite.KONACHAN to 2),
+            returnedBySite = mapOf(GallerySite.YANDERE to 20, GallerySite.KONACHAN to 20),
             reasons = emptyMap(), pageSizeOf = { 20 },
-            paged = paged(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            paged = paged(GallerySite.YANDERE, GallerySite.KONACHAN),
         )
         assertEquals(1, first.page)
         assertEquals(2, second.page)

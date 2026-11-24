@@ -1037,7 +1037,6 @@ class JsComicSource(
                 //
                 // ⚠️ 漏掉 multiPartPage 的后果：那 10 颗源的分区对象被当成 Comic 去解析，
                 // `id` 取不到 → 每一条都返回 null → parts 空 → 屏上是「这一格现在没有内容」。
-                // 真机读数（2026-10-14）：禁漫天堂 / 紳士漫畫 / MangaDex 全是这个症状。
                 "multiPart" -> {
                     if (rawData is Map<*, *>) {
                         for ((k, v) in rawData) {
@@ -1100,7 +1099,6 @@ class JsComicSource(
             Result.success(parts)
         } catch (e: CancellationException) {
             // 取消是控制流，不是错误（见 getComicDetails 那条同源注释）。包成 Result.failure
-            // 会让调用方把"用户切走了"读成"加载失败"——真机 2026-10-14 读数：
             // 拷贝漫画偶发在屏上念出 "The coroutine scope left the composition"。
             throw e
         } catch (e: Exception) {

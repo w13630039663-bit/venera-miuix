@@ -4,16 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 源数据档命名规则的判据。
- *
- * 这条规则小到看着不值得测，但它**已经漂移过一次**，代价是一次真机导出整个失败：
- * 备份那一栏按「脚本文件名去扩展名」猜档名（`baozi.js` → `baozi.data`），
- * 而真实档名由**源声明的 key** 决定，两者经常不同 —— `komiic.js` 的 key 是 `Komiic`，
- * `copy_manga.js` 与 `copy_manga_multi_accounts.js` 共用 `copy_manga`。
- * 猜错之后档不存在，而那条路径还会回落成一个同样不存在的 `File`，
- * 调用方一 `readText()` 就抛 `ENOENT`，把整包导出一起带崩。
- *
- * 所以这里钉的是"档名只由 key 决定、与脚本文件名无关"，以及两个反例。
+ * 源数据档命名规则：档名只由源声明的 key 决定，与脚本文件名无关。
+ * `komiic.js` 的 key 是 `Komiic`；`copy_manga.js` 与
+ * `copy_manga_multi_accounts.js` 共用 `copy_manga`。
+ * 按文件名猜档名会回落到不存在的 `File`，`readText()` 抛 `ENOENT`。
  */
 class SourceDataFileNameTest {
 
@@ -33,7 +27,7 @@ class SourceDataFileNameTest {
     @Test
     fun `两个脚本共用一个 key 时共用同一份档 —— 这是源协议允许的`() {
         // copy_manga.js 与 copy_manga_multi_accounts.js 声明同一个 key，
-        // 所以它们的数据档**就是同一份** copy_manga.data（运行期两者也互斥）。
+        // 所以它们的数据档就是同一份 copy_manga.data（运行期两者也互斥）。
         assertEquals(sourceDataFileName("copy_manga"), sourceDataFileName("copy_manga"))
         assertEquals("copy_manga.data", sourceDataFileName("copy_manga"))
     }

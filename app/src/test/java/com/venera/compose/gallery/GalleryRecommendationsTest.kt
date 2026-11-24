@@ -154,7 +154,6 @@ class GalleryRecommendationsTest {
     }
 
     /**
-     * 收藏里有 pixiv 的图时，那一站**不许进这条轴**（2026-10-18 真机闪退的根因，非回归用例）。
      *
      * 崩的形状：`recommendBySite` 从前按 `GallerySite.entries` 发车 ⇒ 收藏里一有 pixiv 的图，
      * pixiv 就真算得出一份标签 ⇒ 那条腿被发出去，而它的取数住在 `GallerySite.notWired(...)`

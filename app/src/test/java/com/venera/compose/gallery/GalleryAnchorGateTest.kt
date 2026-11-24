@@ -37,7 +37,6 @@ class GalleryAnchorGateTest {
 
     @Test
     fun `高被裁到两像素照样判无锚`() {
-        // 真机活体读数那一档：size=495x2（10-19 晚 FlyProbe）。
         val clipped = FlyRect(left = 0f, top = 1998f, width = 1000f, height = 2f)
         val (rw, rh) = visibleRatios(full, clipped)
         assertEquals(1f, rw, 1e-6f)
@@ -95,7 +94,6 @@ class GalleryAnchorGateTest {
         assertFalse(hasAnchor(fullWin, mostlyOut))
     }
 
-    // ── 批 B⑦ 侧滑退路的投影（2026-10-19）──────────────────────────────────
     //
     // ⑦ 的原话：「可见比不足 25% ⇒ 当场判无锚、走全宽侧滑（顶层平移、底层 -25% 视差 +
     // alpha 0.9），不再走整页从下沿抬上来」。上面那几把尺钉的是"什么时候走侧滑"，
@@ -137,7 +135,6 @@ class GalleryAnchorGateTest {
     @Test
     fun `侧滑与 hero 是互斥的两条路`() {
         // 这一笔钉的是**用法**而不是算式：有锚（≥25%）才飞，无锚才侧滑。
-        // 两条路都上屏就是"既飞又滑"，那种错只有真机能看见。
         val card = FlyRect(left = 0f, top = 0f, width = 1000f, height = 2000f)
         assertTrue("有锚 ⇒ 走 hero，不该侧滑", hasAnchor(full, card))
         val clipped = FlyRect(left = 0f, top = 1998f, width = 1000f, height = 2f)

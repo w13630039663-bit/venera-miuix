@@ -13,7 +13,6 @@ import java.io.File
 
 /**
  * 批 117（AI 角标接站方硬位 + 补渲染面）、批 118（历史分域各存一份键）、
- * 批 120（pixiv 收藏同步到站方）的接线（2026-10-18）。
  *
  * 三件事共同的起因都是"静默"：角标整域零枚、历史一行凭空少、收藏只在本地而屏上不说。
  * 所以这里的判据**不钉措辞**，钉的是"数据填没填上、画不画得到、写口通不通、键在哪一枚"。
@@ -38,7 +37,6 @@ class GalleryPixivAiBadgeAndSyncTest {
 
     @Test
     fun `aiType 三形各落一档，缺键不是非 AI`() {
-        // 读数（2026-10-18）：`AI生成画像` 60 条里 59 枚 =2、`NovelAI` 58 枚 =2，
         // 对照词 `オリジナル` =1 有 37 / =2 有 22，而那一页带 AI 味标签的 5 条全部 =2。
         assertEquals(true, pixivAiFlagOf("2"))
         assertEquals(false, pixivAiFlagOf("1"))

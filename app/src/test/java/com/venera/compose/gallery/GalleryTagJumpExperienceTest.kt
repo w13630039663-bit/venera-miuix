@@ -7,14 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 「点 Tag 跳转体验」四件套的源码尺（2026-10-23，用户一次点四件事）：
  *
  * 1. **交接即收条**：`acceptHandoff`（booru 那一支）从 `thenCollapse = false` 改成 true ——
  *    点标签的人要的就是"这个词的结果墙"，不是一张摊开的输入卡 + 键盘；
  * 2. **直达结果**：`Navigation.kt` 交接那一个 effect 改用
  *    `navigate(GalleryRoute) { launchSingleTop = true; popUpTo<GalleryRoute>() }`，
  *    清掉中间的画廊二级页。根因是 `gotoTab` 带 `restoreState`，会把「GalleryRoute + 二级页」
- *    整条已存栈恢复回来，目的地一字未变（真机读作"点了没反应"）；
  * 3. **标签名清洗**：`postTag` 写槽前过 `sanitizeGalleryTagName`（纯函数判据在
  *    `GalleryTagNameSanitizeTest`，这里只钉接线）；
  * 4. **双源词条保持**：`setDomain` 切域时把主词带进下一域的输入格（booru 第一枚胶囊 ↔
@@ -121,7 +119,6 @@ class GalleryTagJumpExperienceTest {
         assertEquals("带去 pixiv 那一格", 1, fn.countWith("if (main.isNotBlank()) pixivTerm = main"))
         assertEquals("带去 booru 那一格", 1, fn.countWith("if (main.isNotBlank()) term = main"))
         // 只带词、不代搜：这一段里出现任何开搜入口都意味着"来回切两下四笔网络往返"
-        // （setDomain 既有纪律第 3 条，用户 2026-09-30 改判立下的）。
         assertEquals("切域不许顺手开搜（booru 腿）", 0, fn.countWith("runSearch("))
         assertEquals("切域不许顺手开搜（pixiv 腿）", 0, fn.countWith("runPixivSearch("))
         assertEquals("切域不许改条件（改条件会触发自动搜）", 0, fn.countWith("applyFilters("))

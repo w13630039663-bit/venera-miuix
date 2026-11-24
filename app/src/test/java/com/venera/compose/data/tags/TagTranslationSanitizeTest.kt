@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * EhTagTranslation 词条的**图标 markdown 清洗**（2026-10-02）。
  *
  * 官方数据库的一部分词条，译名本身带 `![图标](url)` 前缀 —— 那是给官方 wiki 渲染
  * tag 图标用的，我们只取后半段文字。不剥的话，详情页药丸与长按复制里就是一整串

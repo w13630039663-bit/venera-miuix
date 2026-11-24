@@ -5,7 +5,6 @@ import com.venera.compose.gallery.data.GalleryPost
 /**
  * 「我是从**相关图片**那一排点进来的」这一件事的交棒件。
  *
- * ## 为什么不能继续借用 [GalleryViewerQueue]（用户 2026-10-19 第 8 条）
  *
  * 那一颗是**一整格全局槽**：`set()` 覆盖、`snapshot()` 按"这一条在不在里面"认。
  * 从相关图片点进去时它被写成那一排，于是有两个洞：

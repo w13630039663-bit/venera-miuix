@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 「换一批」冷却环与随机深度的行为锁（2026-11-03，用户「换一批总是一模一样，出现过的过几轮再出现」）。
  *
  * builder 抄 `GalleryForYouMergeTest.kt` 那一份：本站本地、不上 Robolectric，只用纯函数。
  */

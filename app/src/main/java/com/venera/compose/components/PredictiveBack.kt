@@ -44,7 +44,6 @@ fun rememberPredictiveBackState(
     val currentKey by rememberUpdatedState(gestureKey)
     val currentOnBack by rememberUpdatedState(onBack)
     // 预测性返回是 Android 的系统手势（`androidx.activity` 那颗件桌面没有）。
-    // 2026-10-20（写法 A）：改成由平台服务报"这台平台支不支持"。
     //  - Android：`AndroidUxPlatformServices.supportsPredictiveBack` ⇒ 挂真 handler，行为不变；
     //  - 桌面：恒 false ⇒ 走 else 分支，不挂 handler。
     val ux = LocalUxPlatformServices.current
@@ -89,7 +88,6 @@ private fun PredictiveBackGestureReceiver(
             events.collect { event ->
                 receivedProgress = true
                 state.fromRightEdge = event.swipeEdge == BackEventCompat.EDGE_RIGHT
-                // ── miuix 跟手弹簧（用户 2026-10-20 第 9 条）──
                 // 从前的 `snapTo` 逐点直驱在澎湃 / HyperOS 那类只派发少量进度点的机器上
                 // 是整页跳位；换成高刚度无回弹弹簧（`PredictiveFollowSpec`，与
                 // `GalleryExitGesture` 那条跟手同源）后，读起来是「几乎贴手指、稀疏时平滑追赶」。
@@ -185,5 +183,4 @@ fun MiuixPredictiveBackPage(
         content()
     }
 }
-
 

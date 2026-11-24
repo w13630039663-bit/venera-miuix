@@ -50,7 +50,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 /**
- * 阅读器常驻信息角标（2026-11-07，用户拍板「双角胶囊」方案）。
  *
  * - **左角**：`当前页/总页`；
  * - **右角**：时钟 + 系统电量（`ACTION_BATTERY_CHANGED` sticky 广播，充电中换充电图标）；

@@ -7,9 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv **app-api 参数名**的判据（2026-10-19）。
  *
- * ## 这一颗是为一次真机事故立的
  *
  * 用户截图：已登录 → 作品页**每一个作品**都报
  * `pixiv 返回 400: {"error":{"user_message":"","message":"","reason":"",…}}`。
@@ -45,7 +43,6 @@ class PixivAppApiParamsTest {
     @Test
     fun `作品详情发的是 illust_id 不是 id`() {
         val body = code(appClient)
-        // 两条腿都发 `illust_id`（详情 + 评论，2026-10-19 批 231-F 加了第二条）。
         // 判据是">= 1"而不是"== 1"：将来再加第三条腿（`/v2/illust/related` 之类）
         // 时不必回来改测试 —— 那条腿同样用 `illust_id`。
         val hits = body.count { it.contains("""addQueryParameter("illust_id", illustId.toString())""") }
@@ -71,9 +68,7 @@ class PixivAppApiParamsTest {
     }
 
     /**
-     * 画师页新接的那几条腿（2026-10-19 晚）：端点与参数名逐枚钉。
      *
-     * 现在就钉的理由与这颗件头注那次事故**同一个**：这几条腿还没有真机读数（要装包在用户那台
      * 登录着的机上复量），而参数名写错的表现正是那次事故那一族 —— 站方回 400 且
      * `user_message` 是空串，屏上只剩一句"没取到"，线索为零。
      *
@@ -134,7 +129,6 @@ class PixivAppApiParamsTest {
     }
 
     /**
-     * **人气预览腿**的参数面：只发 donor 那一串五枚，一枚不多（2026-10-19 · 批 233-4）。
      *
      * 立案：`/v1/search/popular-preview/illust` 这一条是**非会员**唯一走得通的人气
      * （donor 的调用面 `api_client.dart:649-652` 就五个参数，且 `search_target` 是**写死**的）。
@@ -179,10 +173,8 @@ class PixivAppApiParamsTest {
         """POPULAR_PREVIEW = "https://app-api.pixiv.net/v1/search/popular-preview/illust""""
 
     /**
-     * 预览腿的**键表与搜索腿共用同一颗** `page(...)`（2026-10-19）。
      *
      * 两条腿回的是同一个 illust 对象。抄第二遍键表就是两把尺 —— 站方哪天换键名，
-     * 只有一处读空，而那一处恰好是"非会员才走的那一条"，真机上最难复现。
      * 单独一颗 `popularPreview(...)` 只为了让失败读数说的是**这一条腿**（"pixiv 人气预览"而不是"pixiv 搜索"）。
      */
     @Test

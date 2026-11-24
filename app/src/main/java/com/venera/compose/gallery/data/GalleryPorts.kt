@@ -1,6 +1,7 @@
 package com.venera.compose.gallery.data
 
 import com.venera.compose.gallery.domain.PixivImageQuality
+import com.venera.compose.gallery.domain.PixivNetworkMode
 
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
  * [GalleryPorts.history]、[GalleryPorts.pixiv]、[GalleryPorts.pixivAccount]、
  * [GalleryPorts.pixivWork]，每颗自己的理由写在那颗槽上。
  * （这里刻意不数第几颗：加一颗就全体改号，是这种计数句最便宜的坏法。
- * 2026-10-19 撤掉的那颗 `googleIdentity` 也照这一条走 —— 槽删了，上面这句一个字没动。）
  *
  * 为什么不并进漫画侧的 `data/api/BusinessPorts.kt`：画廊与漫画的隔离口径禁的是
  * `feature ↔ gallery` 互引，但更硬的一条是「各侧自持」（`gallery/ui/GalleryFeedReadout.kt:32`
@@ -51,26 +51,21 @@ class GalleryPorts(
     // 有默认值只为让**没接这一路的那一侧**不必改一个字：桌面今天的排行判据不列 Gelbooru 的
     // 四档时间窗，所以它压根不会问这一颗（不是"接了但坏掉"，是"这一侧没有这一档"）。
     val gelbooruWindows: GelbooruWindowProbeSource? = null,
-    // 浏览历史（2026-10-14）：同一条理由的可空槽。桌面那一侧有自己的历史件与历史屏
     // （`DesktopGalleryBrowseHistory` + 首页「历史」那一行），压根不会问画廊共享口上的这一颗 ——
     // 所以默认 null 不是"移动端专用开关"，是"这一侧没有这一档"。
     val history: GalleryBrowseHistory? = null,
-    // pixiv 那三条匿名腿（2026-10-17）：同一条理由的可空槽 —— 桌面那一侧**不接 pixiv**
     // （既有口径：对它交 `Result.failure` 而不是 `success(null)`，见
-    // `docs/rounds/windows-gallery-home-s2a-wiring-2026-10-03.md` §67），
     // 所以默认 null 是"这一侧没有这一档"，不是"接了但坏掉"。
     val pixiv: GalleryPixivWorks? = null,
-    // pixiv 的登录态（2026-10-17 账号系统 · P2）：同一条理由的可空槽。桌面这一侧既没有 pixiv 的
     // 取数腿、也没有 OAuth 回跳的接收面（回跳靠 AndroidManifest 里那颗 intent-filter 落到
     // MainActivity，桌面没有对应的东西），所以它问都不会问 —— 默认 null 是"这一侧没有这一档"。
     val pixivAccount: PixivCredentials? = null,
-    // pixiv 作品页那两档（2026-10-18）：同一条理由的可空槽 —— 那一屏 Android 独有，桌面既没有
     // 它也没有读这三档的地方，所以它问都不会问。为什么单立一颗接口而不塞进 `GalleryPreferences`：
     // 见 [PixivWorkPreferences] 的头注。
     val pixivWork: PixivWorkPreferences? = null,
-    // pixiv 账号页那两档（2026-10-19，方案 §2 的 ⑭）：同一条理由的可空槽 —— 那一屏 Android 独有
     // （它由 `PixivAccountActivity` 承载，桌面没有对应物），所以桌面问都不会问。
     val pixivAccountPrefs: PixivAccountPreferences? = null,
+    val downloads: GalleryDownloadQueue? = null,
 ) {
 
     companion object {
@@ -182,7 +177,6 @@ interface GalleryPreferences {
 }
 
 /**
- * pixiv 作品页那两档（2026-10-18）——**故意不挂进 [GalleryPreferences]**。
  *
  * 那一颗是**跨端共享**的读面：桌面那颗 `DesktopGalleryPreferences` 逐枚实现它，
  * 而 pixiv 作品页这一屏只在 Android 存在（桌面有它自己的详情浮层与设置页）。
@@ -199,10 +193,13 @@ interface PixivWorkPreferences {
 
     /** 详情接不接在最后一页之后（关掉则详情只走抽屉）。默认接。 */
     val detailsInFlow: StateFlow<Boolean>
+
+    val viewerQuality: StateFlow<PixivImageQuality>
+
+    val detailQuality: StateFlow<PixivImageQuality>
 }
 
 /**
- * pixiv 账号页的「进来先看哪一批」（2026-10-19，方案 §2 的 ⑭）。
  *
  * 为什么带写口而隔壁 [GalleryPreferences] 只读：那十五枚的写侧全在漫画侧的设置页，
  * 而这两枚的写侧**就是账号页自己**（账号管理那一子页那两行）。把写口推到别处，
@@ -222,4 +219,32 @@ interface PixivAccountPreferences {
     fun setRestrictDefault(scope: PixivReadScope)
 
     fun setShowPrivate(on: Boolean)
+}
+
+/** Pixiv 设置项契约端口（解耦 UI 对 VeneraPreferences 单例的直连依赖）。 */
+interface PixivPreferences {
+    val pixivDownloadPath: StateFlow<String>
+    val pixivSaveFormat: StateFlow<String>
+    val pixivAutoSaveOnFavorite: StateFlow<Boolean>
+    val pixivOAuthNetworkMode: StateFlow<PixivNetworkMode>
+    val pixivApiNetworkMode: StateFlow<PixivNetworkMode>
+    val pixivImageHost: StateFlow<String>
+
+    fun setPixivDownloadPath(path: String)
+    fun setPixivSaveFormat(format: String)
+    fun setPixivAutoSaveOnFavorite(autoSave: Boolean)
+    fun setPixivOAuthNetworkMode(mode: PixivNetworkMode)
+    fun setPixivApiNetworkMode(mode: PixivNetworkMode)
+    fun setPixivImageHost(host: String)
+}
+
+/** 画廊后台下载任务队列契约端口。 */
+interface GalleryDownloadQueue {
+    fun enqueue(
+        post: GalleryPost,
+        title: String? = null,
+        userId: Long? = null,
+        artistName: String? = null,
+        onDone: ((Result<com.venera.compose.gallery.data.GallerySaver.Saved>) -> Unit)? = null,
+    ): GalleryDownloadTask
 }

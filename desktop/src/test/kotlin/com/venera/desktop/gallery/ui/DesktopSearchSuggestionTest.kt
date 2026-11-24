@@ -138,14 +138,14 @@ class DesktopSearchSuggestionTest {
         val outcome = desktopMergeSuggestionLegs(
             "hime",
             listOf(
-                leg(GallerySite.SAFEBOORU, failed()),
+                leg(GallerySite.KONACHAN, failed()),
                 leg(GallerySite.YANDERE, ok(listOf(suggestion(GallerySite.YANDERE, "hime", 5)))),
                 leg(GallerySite.GELBOORU, failed()),
             ),
             limit = 8,
         )
-        assertEquals(listOf("Safebooru", "Gelbooru"), outcome.unansweredSites)
-        assertEquals(listOf("Safebooru", "yande.re", "Gelbooru"), outcome.askedSites)
+        assertEquals(listOf("Konachan", "Gelbooru"), outcome.unansweredSites)
+        assertEquals(listOf("Konachan", "yande.re", "Gelbooru"), outcome.askedSites)
     }
 
     /** ⑦ 三句话之一：**全部**腿没答上 ⇒ 对岸那句逐字。 */
@@ -204,12 +204,12 @@ class DesktopSearchSuggestionTest {
             listOf(
                 leg(GallerySite.YANDERE, ok(emptyList())),
                 leg(GallerySite.GELBOORU, ok(emptyList())),
-                leg(GallerySite.SAFEBOORU, ok(emptyList())),
+                leg(GallerySite.KONACHAN, ok(emptyList())),
             ),
             limit = 8,
         )
         val reading = requireNotNull(desktopSuggestionReading("hime", outcome))
-        assertEquals("yande.re、Gelbooru、Safebooru 都没有以「hime」开头的标签", reading)
+        assertEquals("yande.re、Gelbooru、Konachan 都没有以「hime」开头的标签", reading)
         assertFalse("三腿不许念成两个站：$reading", reading.contains("两个站"))
     }
 

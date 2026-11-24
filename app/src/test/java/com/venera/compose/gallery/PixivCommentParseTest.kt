@@ -10,11 +10,9 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * pixiv **app-api 评论腿**的解析判据（2026-10-19 · 批 231-F）。
  *
  * ## 这颗单测钉四件事
  *
- * 1. **参数名**：`illust_id` 不是 `id` —— 那是真机事故的根因（已登录时写成 `id`，
  *   站方回 400 且 `user_message` 是空串，于是整个作品页每个作品都报错）。
  *   判据在 `PixivAppApiParamsTest`。
  * 2. **`user: {}`（删号）**：那一条评论**照样交**，只是脸与名字都空 ——
@@ -141,7 +139,6 @@ class PixivCommentParseTest {
 
     /**
      * **贴纸**（stamp）那一格：站方 `stamp` 是个对象，地址在 `stamp.stamp_url`
-     * （2026-10-19 · 批 233-3，用户「也要正常显示评论图」）。
      *
      * 三条各钉一枚：
      * 1. 有 `stamp` ⇒ 号与地址都取出；

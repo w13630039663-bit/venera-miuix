@@ -1,15 +1,13 @@
 package com.venera.compose.components
 
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.venera.compose.data.db.LocalFavoriteDatabase
 import com.venera.compose.source.model.Comic
-import com.venera.compose.ui.tokens.StatusColors
-import com.venera.compose.ui.tokens.VeneraTokens
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
@@ -31,29 +29,29 @@ fun ComicCardContextMenu(
     onOpenDetail: () -> Unit,
 ) {
     if (!expanded) return
-    // 2026-10-20（写法 A）：`LocalContext.current` + `BusinessPorts.of(context)` 换成平台服务。
     // 那颗 `of(context)` 吃 `android.content.Context`，一句话就把整颗文件钉在 Android 上，
     // 而它在 `components/` —— 那一层要上桌面。收藏 / 屏蔽 / 剪贴板三个动作与原来的
     // **调用顺序、异常语义、吐司文案逐字保留**，实现搬到 `AndroidUxPlatformServices`。
     val ux = LocalUxPlatformServices.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
-    val tokens = VeneraTokens
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text("查看详情", fontSize = tokens.type.caption, color = tokens.color.textPrimary) },
+    // 统一菜单（控件体系统一 · 阶段 4）：容器与菜单项走 VeneraMenu，
+    // 「屏蔽本作」改走 destructive 位（错误色统一出口）。业务动作、顺序、文案不动。
+    VeneraDropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+        VeneraMenuItem(
+            text = "查看详情",
             onClick = { onDismiss(); onOpenDetail() },
         )
-        DropdownMenuItem(
-            text = { Text("复制标题", fontSize = tokens.type.caption, color = tokens.color.textPrimary) },
+        VeneraMenuItem(
+            text = "复制标题",
             onClick = {
                 onDismiss()
                 clipboard.setText(AnnotatedString(comic.title))
                 ux.toast("标题已复制")
             },
         )
-        DropdownMenuItem(
-            text = { Text("加入收藏", fontSize = tokens.type.caption, color = tokens.color.textPrimary) },
+        VeneraMenuItem(
+            text = "加入收藏",
             onClick = {
                 onDismiss()
                 scope.launch {
@@ -80,8 +78,9 @@ fun ComicCardContextMenu(
                 }
             },
         )
-        DropdownMenuItem(
-            text = { Text("屏蔽本作", fontSize = tokens.type.caption, color = StatusColors.Failing) },
+        VeneraMenuItem(
+            text = "屏蔽本作",
+            destructive = true,
             onClick = {
                 onDismiss()
                 scope.launch {

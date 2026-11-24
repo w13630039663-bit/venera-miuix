@@ -34,12 +34,9 @@ import androidx.compose.material.icons.outlined.ViewAgenda
 // 标题是**定制排版**（itemTitle 字号 + semibold 字重 + textPrimary 色），按钮用的是自绘的
 // SearchTextAction（caption 字号、无最小触达高），而 VeneraDialog 的标题只是 String、
 // 按钮固定走 VeneraTextButton（miuix 侧 58×40dp 胶囊）。换过去等于把搜索弹窗的紧凑口径改掉，
-// 那是观感决策不是迁移，等真机看过批次 D~F 再定。
 // DropdownMenu / DropdownMenuItem 同族：miuix 只有弹层模型不同的 ListPopup。
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -70,6 +67,8 @@ import com.venera.compose.components.coverSharedElement
 import com.venera.compose.components.comicListColumnCount
 import com.venera.compose.components.rememberComicListDisplayMode
 import com.venera.compose.components.rememberContentWidth
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraNotice
 import com.venera.compose.components.venera.VeneraNoticeTone
 import com.venera.compose.components.venera.hScrollEndContentPadding
@@ -473,7 +472,6 @@ fun SharedTransitionScope.AndroidSearchScreen(
         // 顶栏浮层：大标题折叠 + 毛玻璃。导航图标仅在子页面（下钻）出现，
         // 与列表内搜索框的返回按钮保持同一条可见性契约（主 Tab 不产生重复返回）。
         VeneraTopAppBar(
-            // 探索并进本页后（2026-11-03），主搜索的大标题就是壳上「搜索与发现」那一条。
             title = if (showSegment) "搜索与发现" else "搜索",
             largeTitle = if (showSegment) "搜索与发现" else "搜索",
             scrollBehavior = topBarBehavior,
@@ -970,7 +968,6 @@ private fun SearchControls(
  * 只在严格 AND 过滤会把整页清空、于是退回未过滤结果时出现。不写这句就等于把
  * 「没过滤」伪装成「过滤后就这么多样」，是假信息；写出来用户至少知道该换源或改关键词。
  *
- * 2026-10-14 手机档改判：这句两行灰字从前**直接铺在结果列表上方** —— 没有容器、没有图标、
  * 没有层级，读起来像一条报错。改走 [VeneraNotice] 的一行档：标题一行说清"没精确过滤"，
  * 那半句"为什么"收进点了才展开的正文。措辞一个字没删（这一条存在的理由恰恰是它必须被读到）。
  */
@@ -1427,7 +1424,6 @@ private fun OptionalMetadata(comic: Comic) = ComicRowMetadata(
 /**
  * 搜索页统一的加载指示（M3 Expressive 波浪圆环）。
  *
- * 前身是「双列 shimmer 卡片骨架」—— 真机反馈那两张空卡看起来像**真的搜到了两张空漫画**，
  * 而不是在加载。加载态不该伪造结果形状，故整页换成一枚居中波浪环。
  *
  * @param compact 行内小环（触底「加载更多」、筛选加载）；否则整页居中大环。
@@ -1541,7 +1537,6 @@ private fun SearchConditionSheet(
     // 用 Compose 内置 AlertDialog 承载（与旧版 SearchTagDialog 同 host）。
     // 不用 miuix OverlayBottomSheet：它的内容渲染在独立窗口，CompositionLocal
     // 无法跨窗口传播，miuix 内部的 NavigationBackHandler 读不到
-    // LocalNavigationEventDispatcherOwner 而抛 IllegalStateException（真机复现）。
     // 这里保留本轮的新视觉内容，只换回稳定的 Dialog host。
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1825,24 +1820,20 @@ private fun SearchDropdownOption(
             }
         }
 
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text(text = "清空选择", fontSize = tokens.type.caption) },
+        // 统一菜单（控件体系统一 · 阶段 4）：选中项由行尾对勾表达，不再只靠颜色。
+        VeneraDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            VeneraMenuItem(
+                text = "清空选择",
                 onClick = { onValueChange(null); expanded = false },
             )
-            DropdownMenuItem(
-                text = { Text(text = "恢复源默认值", fontSize = tokens.type.caption) },
+            VeneraMenuItem(
+                text = "恢复源默认值",
                 onClick = { onValueChange(group.defaultKey); expanded = false },
             )
             group.options.forEach { (key, label) ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = label,
-                            fontSize = tokens.type.caption,
-                            color = if (value == key) tokens.color.primary else tokens.color.textPrimary,
-                        )
-                    },
+                VeneraMenuItem(
+                    text = label,
+                    selected = value == key,
                     onClick = { onValueChange(key); expanded = false },
                 )
             }

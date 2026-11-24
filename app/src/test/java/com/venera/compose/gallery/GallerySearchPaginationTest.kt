@@ -66,7 +66,6 @@ class GallerySearchPaginationTest {
         var history = listOf(a, b)
         history = pushGallerySearchHistory(history, a)
         // 批次 K 起去重键**不再含站点**：两站搜过同一串标签就是同一条历史，站点并进去。
-        // 旧档里那两行是同一件事（真机上就是 setmen 连着两行），来源轴上了「全部」之后
         // 一次搜索本来就会写两行，历史区会被自己的重复撑满。
         assertEquals(1, history.size)
         assertEquals(setOf(GallerySite.YANDERE, GallerySite.GELBOORU), history.single().sites)

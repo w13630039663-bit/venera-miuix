@@ -13,7 +13,6 @@ import com.venera.compose.components.LocalCoverTransitionScopes
 import top.yukonga.miuix.kmp.anim.folmeSpring
 
 /**
- * 常驻入口条 ↔ 展开的搜索卡：**同一块面的容器变化**（2026-10-16 第七轮）。
  *
  * ── 它替换掉了什么 ──
  *
@@ -21,7 +20,6 @@ import top.yukonga.miuix.kmp.anim.folmeSpring
  * `fadeIn + scaleIn(initialScale = 0.94f, transformOrigin = 顶边中点)`。那是**近似物** ——
  * `scaleIn` 是等比缩放，而这一下要的是「56dp 的条 → 约 200dp 的卡」这条**竖向独立插值**，
  * `0.94` 对 `56 / 200 = 0.28` 毫无表达力，所以读起来只能是"淡入 + 轻微放大"。
- * 用户 2026-10-16 原话：「我想你另外看看画廊的主页搜索框真的做不了容器变化动画吗，
  * 现在还是淡出淡入的」。
  *
  * ── ⚠️ 一条要钉正的**错结论**（同一轮早先记下的）──

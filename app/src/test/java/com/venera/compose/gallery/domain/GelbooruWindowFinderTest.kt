@@ -12,11 +12,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * [GelbooruWindowFinder] 的图证（2026-10-13）—— 移动端接线这一批**唯一**能证明那台循环真会收口的东西。
  *
- * 桩子是一张贴着今天真实锚点的**稠密理想站**：最新 id 15,078,216 = 2026-10-12，日速取
  * [GelbooruWindowBoundary.IDS_PER_DAY]（今天的现量 6.5k–8.4k 的中间值）。注意模型与真站差一天：
- * 真实读数 `id:>=14994000` 是 09-29，模型按 7,000/天 算出 09-30 —— 这正是**估点不参与判读**的理由：
  * 最终答案只由"读到的日期"决定，常数错了由修正步与二分兜住。所以这里钉的是
  * **落在哪一天、花几笔、什么时候认输**，不钉那一枚 id 的数值。
  *
@@ -53,7 +50,6 @@ class GelbooruWindowFinderTest {
     // ── 收口：四档都要能在预算内落到**目标那一天** ──
     //
     // 那四枚 `assertEquals(探测笔数)` 是**这台桩子上量出来的**（不是预算，也不是手推）：
-    // 天 6 / 周 6 / 月 8 / 年 5（2026-10-16 换成标定表估点之后的桩子读数，改前的读数是 5/6/6/6）。
     // 钉成等式而不是上界，是因为"多问一笔"在这台状态机里只可能是估点或收口粒度被改坏了。
     //
     // ⚠️ **这台桩子的笔数不是产品口径的笔数**：桩子恒 7,000 条/天，而烘进估点的那张表上 2026 那一段
@@ -81,7 +77,6 @@ class GelbooruWindowFinderTest {
 
     /**
      * 年档就是 09-29 那一批判"收不了口"的那一档。常数从 1.2 万/天 改成现量 7,000/天 之后 6 笔收口；
-     * 2026-10-16 换成标定表估点之后是 **5 笔**（表上 2026-01-01 那一枚就是这一档的目标日，估点直接落定）。
      */
     @Test fun yearWindowResolvesInsideTheProbeCap() = runBlocking {
         val probes = mutableListOf<Long>()
@@ -122,7 +117,6 @@ class GelbooruWindowFinderTest {
         }
     }
 
-    // ── 闭环窗口（翻历史期：起、止两枚边界，2026-10-16）──
 
     /**
      * 两枚都定出来时交回 `Before(上界)`，而且上界一定**大于**起点。
@@ -195,8 +189,6 @@ class GelbooruWindowFinderTest {
     /**
      * 第二枚吃第一枚的读数：这一对的探测上限是**共用**的（起点烧光了就不问上界）。
      *
-     * ⚠️ 这里刻意**不**钉"共享读数比各探各的少问笔"：真站上确实省（2026-10-16 `_qa/gb_range_hunt_ledger.txt`：
-     * 2024-04-01 那一枚独立探 14 笔、带着另一枚的读数只问 8 笔），但这台稠密桩量不出来 ——
      * 桩子的日↔id 映射是均匀的，两枚边界的估点各自都已经落在位子上，共享读数不省笔（15 vs 15，量过）。
      * 桩子上量不出来的东西不许当判据，所以这一格钉的是**上限共担**这一条真性质。
      */
@@ -256,7 +248,6 @@ class GelbooruWindowFinderTest {
         val broken = finder.hunt(BoundarySide.WINDOW_START, target, latestDay, emptyList())
         assertTrue(broken.toString(), broken is GelbooruWindowHunt.Broken)
         // 断在哪一步、站方怎么说的，两句都要留在结论里 —— 屏上那句"没探成"就是靠它才分得开
-        // "去设置里补凭据"和"等站方缓过来"（2026-10-13 真机这一笔当时只有前一种被想到过）。
         assertEquals(GelbooruWindowBreak.ProbeRejected, (broken as GelbooruWindowHunt.Broken).at)
         assertEquals("Gelbooru 没接受这组凭据", broken.detail)
         assertNull(broken.boundaryId)
@@ -271,7 +262,6 @@ class GelbooruWindowFinderTest {
     /**
      * 站方这一笔**没带** `created_at` ⇒ `StampMissing`，且不与"读了却认不出"混成一枝。
      *
-     * 2026-10-16 分开的：两枝从前共用一句「上传时间读不出日子」，而那句话把人往解析器上带，
      * 空串这一枝真正该查的是请求参数与 DTO。
      */
     @Test fun blankStampBreaksAsMissingNotUnparsable() = runBlocking {
@@ -324,7 +314,6 @@ class GelbooruWindowFinderTest {
     /**
      * 日期串换了形状（站方改版）⇒ 当作"没读到"，不许拿猜出来的日子去定边界，且**一笔就停**。
      *
-     * ⚠️ 2026-10-16：这一笔原先的桩子是**空串**，而注释写着"站方改版、字段给空"—— 两件事被同一枝
      * 判据盖住，正是屏上那句「上传时间读不出日子」把人带去改解析器的原因。
      * "字段给空"现在有自己那一枝（[blankStampBreaksAsMissingNotUnparsable]），这里只钉"形状变了"。
      */

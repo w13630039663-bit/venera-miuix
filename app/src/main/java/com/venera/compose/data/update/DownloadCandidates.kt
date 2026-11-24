@@ -15,7 +15,6 @@ package com.venera.compose.data.update
  * 不一致就当失败删掉 —— 镜像能篡改"传什么"，篡改不了"我们认哪个哈希"，**前提是哈希不来自它**。
  * 于是有了下面那条收紧的判式。
  *
- * 前缀表取自 2026-10-04 本机 HEAD 实测（同一条 v2.0.3 直链）：
  * `gh-proxy.com` 200 / 1.19s，`ghfast.top` 200 / 1.09s，`ghproxy.net` 200 / 1.69s，
  * 三者返回的 `content_type` 都是 `application/vnd.android.package-archive`；
  * `mirror.ghproxy.com` **连不上（http=000）所以不进表**。

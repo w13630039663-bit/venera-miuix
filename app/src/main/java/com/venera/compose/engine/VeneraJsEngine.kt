@@ -106,7 +106,6 @@ class VeneraJsEngine(appContext: Context) : AutoCloseable {
 
     init {
         // 引擎层去 Android 化后，日志出口默认 stdout；Android 侧必须重新接回 logcat，
-        // 否则真机 QA 读不到 HTTP/Convert 的失败原因。
         EngineLog.sink = { level, tag, message ->
             when (level) {
                 "W" -> Log.w(tag, message)

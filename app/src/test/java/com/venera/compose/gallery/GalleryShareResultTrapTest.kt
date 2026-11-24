@@ -5,9 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 锁住 2026-09-27 那次「分享一次都没成功过」的**成因形状**。
  *
- * 真机报的是 `Parcelable encountered IOException writing serializable object
  * (name = kotlin.Result)` —— 而 `GalleryPostScreen.share()` 里根本没有一处写着 `Result`：
  * ```
  * val uri = runCatching { FileProvider.getUriForFile(…) }.onFailure { …}   // uri 是 Result<Uri>！

@@ -12,7 +12,6 @@ import kotlinx.serialization.json.jsonObject
 /**
  * `user_previews` 那一族答复的解析（关注列表与推荐用户共用）。
  *
- * 现量口径（pixez-miuix 的 `UserPreview.kt` / `UserRepository.kt` 两侧同形，2026-10-17 抄的是它那份）：
  * ```
  * {
  *   "user_previews": [

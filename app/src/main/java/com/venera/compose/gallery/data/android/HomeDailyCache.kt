@@ -15,7 +15,6 @@ import kotlinx.serialization.json.Json
 /**
  * 首页「画廊每日热门」那一条横排的**离线快照**。
  *
- * ## 为什么需要它（2026-10-19 用户原话：「主页的画廊功能加载太慢了，开启软件首页后要等
  * 10 多秒才显示画廊的部件」）
  *
  * 那条横排原先**只等网络**：`loadGalleryDailyAndArtists()` 先 `loadDaily(seed)`，

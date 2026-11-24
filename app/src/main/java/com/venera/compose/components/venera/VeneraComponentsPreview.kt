@@ -126,6 +126,101 @@ private fun CardAndCoverRow() {
     }
 }
 
+/**
+ * VeneraButton 五变体 × 三尺寸（控件体系统一 · 阶段 1）。
+ * onClick 全部为空回调：Preview 只验证**视觉与度量**，不做交互。
+ */
+@Composable
+private fun ButtonMatrixRow() {
+    val tokens = VeneraTokens
+    Column(Modifier.fillMaxWidth().padding(tokens.spacing.space6), verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+            VeneraButton(onClick = {}, variant = VeneraButtonVariant.Primary) { Text("主要") }
+            VeneraButton(onClick = {}, variant = VeneraButtonVariant.Secondary) { Text("辅助") }
+            VeneraButton(onClick = {}, variant = VeneraButtonVariant.Outline) { Text("描边") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+            VeneraButton(onClick = {}, variant = VeneraButtonVariant.Ghost) { Text("幽灵") }
+            VeneraButton(onClick = {}, variant = VeneraButtonVariant.Destructive) { Text("危险") }
+            VeneraButton(onClick = {}, loading = true) { Text("加载") }
+            VeneraButton(onClick = {}, enabled = false) { Text("禁用") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space4), verticalAlignment = Alignment.CenterVertically) {
+            VeneraButton(onClick = {}, size = VeneraButtonSize.Compact) { Text("紧凑") }
+            VeneraButton(onClick = {}, size = VeneraButtonSize.Medium) { Text("常规") }
+            VeneraButton(onClick = {}, size = VeneraButtonSize.Large) { Text("大号") }
+        }
+    }
+}
+
+/**
+ * 选择控件四分工（控件体系统一 · 阶段 2）：
+ * Option Row（单选/多选）、Selection Marker（封面多选框）。
+ * Segmented 在 GallerySearchArea 等页有真身，这里不重复摆静态假货。
+ */
+@Composable
+private fun SelectionMatrixRow() {
+    val tokens = VeneraTokens
+    Row(
+        Modifier.fillMaxWidth().padding(tokens.spacing.space6),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.space6),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            VeneraOptionRow(title = "单选 · 已选", selected = true, onClick = {})
+            VeneraOptionRow(title = "单选 · 未选", selected = false, onClick = {})
+            VeneraOptionRow(title = "多选 · 已选", selected = true, onClick = {}, mode = VeneraOptionMode.Checkbox)
+            VeneraOptionRow(title = "多选 · 未选", selected = false, onClick = null, mode = VeneraOptionMode.Checkbox)
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
+            VeneraSelectBox(selected = true, onClick = null)
+            VeneraSelectBox(selected = false, onClick = null)
+            Text("多选框", fontSize = tokens.type.overline, color = tokens.color.textTertiary)
+        }
+    }
+}
+
+/**
+ * Chip 变体补遗（控件体系统一 · 阶段 3）：Assist/Tag 已在 [ChipRow]，
+ * 这里补 Filter（未选/选中）、Neutral、Tonal 与 FilterPill 的分家展示。
+ */
+@Composable
+private fun ChipVariantsRow() {
+    val tokens = VeneraTokens
+    Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.space6), verticalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing)) {
+            VeneraChip(text = "筛选·未选", variant = VeneraChipVariant.Filter)
+            VeneraChip(text = "筛选·选中", variant = VeneraChipVariant.Filter, selected = true)
+            VeneraChip(text = "次要", variant = VeneraChipVariant.Neutral)
+            VeneraChip(text = "沉底", variant = VeneraChipVariant.Tonal)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.chipSpacing), verticalAlignment = Alignment.CenterVertically) {
+            VeneraFilterPill(text = "来源筛选", selected = false, onClick = {})
+            VeneraFilterPill(text = "已选中", selected = true, onClick = {})
+        }
+    }
+}
+
+/**
+ * 菜单项四态（控件体系统一 · 阶段 4）。
+ * 用素 Column 容器近似菜单容器的观感。
+ */
+@Composable
+private fun MenuItemsRow() {
+    val tokens = VeneraTokens
+    Column(
+        Modifier
+            .padding(tokens.spacing.space6)
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.none),
+    ) {
+        VeneraMenuItem(text = "普通菜单项", onClick = {})
+        VeneraMenuItem(text = "当前选中项", onClick = {}, selected = true)
+        VeneraMenuItem(text = "危险操作", onClick = {}, destructive = true)
+        VeneraMenuItem(text = "禁用项", onClick = {}, enabled = false)
+    }
+}
+
 @Composable
 private fun ComponentMatrix() {
     // 必须套 VeneraAmbientBackground：它就是全站玻璃唯一采样源的**安装点**。
@@ -133,7 +228,11 @@ private fun ComponentMatrix() {
     // 于是"两档看起来一样"会被误读成"玻璃没生效"——其实只是没人装采样层。
     VeneraAmbientBackground {
         Column(Modifier.fillMaxWidth()) {
+            ButtonMatrixRow()
+            SelectionMatrixRow()
             ChipRow()
+            ChipVariantsRow()
+            MenuItemsRow()
             CardAndCoverRow()
         }
     }
@@ -147,7 +246,6 @@ private fun ComponentMatrix() {
  *    （卡片尺寸、行高、胶囊高度两档一致 ⇒ 玻璃没有偷偷占布局）。
  * ❌ 不能证明：模糊/染色/描边高光到底透不透。`drawBackdrop` 内部先过 `isRuntimeShaderSupported()`，
  *    而预览渲染器（layoutlib）有没有 RuntimeShader 我**没有实测过** —— 不支持时它整段静默跳过，
- *    预览里看到的就是"实色"。所以"玻璃透得出氛围光、卡片不泛白、标题读得清"这三条只能在真机判。
  * ⚠️ 深色那两张还有一处已知失真：`VeneraPreviewTheme` 没有 provide `LocalVeneraDarkTheme`
  *    （补它要么引反向依赖要么改 8 个读取点，含 FROZEN 文件），于是深色预览里的氛围层
  *    按**浅色**光斑强度画 —— 别在预览里判深色玻璃的明暗。
@@ -210,7 +308,6 @@ private fun VeneraComponentsMd3DarkGlass() {
 }
 
 /**
- * 顶栏圆座矩阵：[provideSource] 决定 `LocalTopBarBackdrop` 给不给，等价于真机上
  * 「这一屏接没接 `rememberTopBarBackdrop()`」——追更页那类自绘 chrome 就是不给的那档。
  *
  * 每颗都挂到真实配方上：普通（textPrimary 图标）/ 低频（textSecondary）/ 高亮（primary）/
@@ -289,9 +386,7 @@ private fun TopBarPillMatrix(provideSource: Boolean) {
  *    以及**回落态一定有底板**（provideSource=false 那两张是半透明 surface + 描边，不是裸图标）。
  * ❌ 不能证明磨砂本身：`textureBlur` 内部先过 `isRuntimeShaderSupported()`，而预览渲染器
  *    （layoutlib）有没有 RuntimeShader **没有实测过**；不支持时 true/false 两张会长得一模一样，
- *    那**不代表**真机上也一样。
  * ❌ 不能证明按压缩放：pressed 需要真实指针事件，静态预览里 `collectIsPressedAsState` 恒 false。
- * 唯一的凭据是真机逐屏走一遍（结论记在 FREEZE-STATEMENT.md 批次 H）。
  */
 
 @Preview(name = "顶栏圆座 MIUIX Light · 有采样层", showBackground = true, widthDp = 400)

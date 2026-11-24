@@ -14,7 +14,6 @@ import org.junit.Test
 /**
  * 分类分区的随机窗口与合成榜组。
  *
- * 锁的是 2026-10-04 那轮的两件事：
  *
  * 1. `type: "random"` + `randomNumber` 迁移时整个丢了 —— `JsComicSource` 的分类脚本没输出这个字段，
  *    [CategoryPart] 也没有对应位。后果是 nhentai 的「Tags」（`nhentai.js:547-553`，声明只露 20 枚）

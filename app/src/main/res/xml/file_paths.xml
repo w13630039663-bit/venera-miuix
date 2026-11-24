@@ -21,5 +21,6 @@
     <cache-path name="exports" path="exports/" />
     <cache-path name="backups" path="backups/" />
     <cache-path name="app_update" path="app_update/" />
-    <external-path name="external_files" path="." />
+    <!-- 收敛外部存储共享路径至应用专用子目录，防止整卡根路径穿透暴露 -->
+    <external-path name="external_files" path="Venera/" />
 </paths>

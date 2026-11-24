@@ -133,7 +133,6 @@ sealed interface UpdateDownload {
 /**
  * `v1.6.6-miuix` → `1.6.6`。展示用；版本比较不依赖它（比较走 `AppUpdateChecker.isNewer`）。
  *
- * 2026-10-20：从 `AppUpdateChecker` 下放到这里 —— 它是零依赖的字符串处理，
  * 而本文件是纯数据（只依赖 kotlinx.serialization），要进两端共享的编译面。
  * 让纯数据文件反向依赖一颗绑 Context 的 Android object，依赖方向是反的。
  */

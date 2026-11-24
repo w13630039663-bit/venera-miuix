@@ -33,9 +33,8 @@ class GalleryNotice(
     /**
      * 正文。与标题**分工**，不是标题的复述。
      *
-     * ⚠️ 这一格是 2026-10-13 真机截图上读出来的：那一版把 `reasons` 直接当正文，
      * 于是 Gelbooru 那块成了「Gelbooru 需要先配置账号才能用」+「Gelbooru 需要先配置账号才能用：它的接口…」
-     * —— 同一件事在一张块里说了两遍；Safebooru 那块更糟，标题与正文几乎是同一句。
+     * —— 同一件事在一张块里说了两遍；上一代图库源那块更糟，标题与正文几乎是同一句。
      * 所以正文由 [bodyOf] 按 kind 单独给：标题管"是什么事"，正文只管**标题里没有的那部分**
      * （为什么 + 怎么办，或逐站的原始原因）。
      */
@@ -68,7 +67,6 @@ enum class GalleryNoticeKind(
     MissingAccount(GalleryNoticeTone.Warning, GalleryNoticeAction.ConfigureAccount),
 
     /**
-     * **配了，但站方不认这一组**（2026-10-16 补这一档）。
      *
      * 与 [MissingAccount] 分开是因为两句实话不同：一句是"你还没填"，一句是"填的那组被拒了"，
      * 而它们通向同一个出口（那张账号卡）。合成档的定界探测吃的就是带凭据的那一笔，
@@ -173,9 +171,8 @@ fun galleryNotices(failures: Map<GallerySite, String>): List<GalleryNotice> {
  * 标题由 `gallery/ui/GalleryNotices.kt` 给（它管措辞与站名），正文在这里定：
  * 两处分开是因为"逐站念原始原因"这件事要读 [reasons]，而它是域层的数据。
  *
- * ⚠️ 这一格是 2026-10-13 真机截图上读出来的：那一版把 `reasons` 一律当正文，
  * 于是 Gelbooru 那块成了「…需要先配置账号才能用」+「…需要先配置账号才能用：它的接口…」
- * —— 同一件事在一张块里说了两遍；Safebooru 那块更糟，标题与正文几乎是同一句。
+ * —— 同一件事在一张块里说了两遍；上一代图库源那块更糟，标题与正文几乎是同一句。
  *
  * 所以除了"每站原因各不相同"的 [GalleryNoticeKind.LegFailed] 之外，
  * 其余三档的正文一律是**标题答不出的那半句**：要么是"怎么办"，要么是"这不是你的错"。

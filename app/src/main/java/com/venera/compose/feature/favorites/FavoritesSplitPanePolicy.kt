@@ -35,7 +35,6 @@ fun favoritesUsesSplitPane(windowWidth: Dp): Boolean = windowWidth >= CompactMax
  * 双栏两栏各占多少重量（`列表 to 详情`）。
  *
  * 两条读数拼成这一条规则：
- * - 右栏**打开**时 `1 to 2` —— 与换自排两栏之前库给的几何一致（用户 2026-10-13：
  *   「目前这样确实可以」说的就是这一态）；
  * - 右栏**没内容**时 `3 to 0` —— 收藏页三档里「图片收藏 › 画廊收藏」那一档压根不会打开右栏，
  *   而上一版两栏永远各占一份宽，那一屏被永久压在 1/3 宽里（用户读数：「其他页面就挤成一团了」）。
@@ -64,7 +63,6 @@ internal const val DETAIL_KEY_SEPARATOR = "\u001F"
 /**
  * 右栏载荷的键 = 源名 + 分隔符 + 本子号。
  *
- * 为什么载荷不能是 ComicItem 本体（2026-10-13 真机崩溃栈钉的）：
  * `rememberListDetailPaneScaffoldNavigator` 那台导航器是 **rememberSaveable** 存的，
  * 而 Android 侧只认「装得进 Bundle」的那些类型。平板上点开一本、再切到别的页面时，
  * `SaveableStateHolder` 在 dispose 里 `performSave`，当场抛

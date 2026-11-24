@@ -24,6 +24,8 @@ import com.venera.compose.components.selection.MultiSelectState
 import com.venera.compose.components.selection.SelectableCardFrame
 import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.selection.rememberMultiSelectState
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.hScrollEndContentPadding
 import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.SegmentedBackdrop
@@ -47,6 +49,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.ListView
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -58,6 +61,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,8 +107,6 @@ import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -157,6 +160,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
 ) {
     val tokens = VeneraTokens
     val vm: FavoritesViewModel = viewModel()
+    // 追更数据单独一个 VM：它读的是 `followUpdatesFolder` 这一个夹的更新列，
+    // 与收藏夹树（folders/counts/comics）不是同一份查询，混进 FavoritesViewModel
+    // 会让书架每次刷新都顺带把更新列重算一遍。
+    val followVm: FollowUpdatesViewModel = viewModel()
     val displayMode = rememberComicListDisplayMode()
     val folders by vm.folders.collectAsState()
     val counts by vm.counts.collectAsState()
@@ -176,40 +183,47 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     var showMenu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<FolderDialog?>(null) }
     var searchMode by remember { mutableStateOf(false) }
-    // 网络收藏置于首位并作为默认入口。
-    // **必须 rememberSaveable**：从详情页返回时导航条目是重建的，普通 remember 会把
-    // 这里打回默认值 —— 真机实测「从本地收藏点进详情，返回却落在网络收藏」。
-    // 它同时是封面共享元素返回时闪一下的根因之一：目的地那一支整支没被组合出来。
-    var mode by rememberSaveable { mutableStateOf(FavoritesMode.Network) }
+    // 默认落在「更新」：追更是用户打开收藏页的第一诉求（今天有没有新章），
+    // 书架/网络/图片是「翻存货」的第二诉求。**必须 rememberSaveable**：
+    // 从详情页返回时导航条目是重建的，普通 remember 会把它重置。
+    var mode by rememberSaveable { mutableStateOf(FavoritesMode.Updates) }
     // 「图片收藏」那一档内部的两块：**漫画**（阅读器里收入的单页插图）/ **画廊**（图站收藏）。
     // 放在这里而不是顶栏里：顶栏那三枚是"页面级目的地"，这两枚是同一块面板内部的视图切换，
     // 层级不同就该在不同的位置上（见 ImageFavoritesPanel）。
     var imageSection by rememberSaveable { mutableStateOf(ImageSection.Comics) }
-    // 三块面板现在是一个 pager 的三页：本页的横滑只切「网络 / 图片 / 本地」这三段
-    // （09-29 起主 tab 那条内容横滑已经整体撤掉，见 _trash/tab-swipe-pager-2026-09-29/）。
+    // 四块面板现在是一个 pager 的四页：本页的横滑只切「更新 / 书架 / 网络 / 图片」这四段
     // 跟手位移、过阈值提交、不到阈值弹簧回弹，全是 pager 自带的行为。
     val pagerState = rememberPagerState(
-        initialPage = favoritesModesNetworkFirst.indexOf(mode),
-    ) { favoritesModesNetworkFirst.size }
+        initialPage = favoritesModes.indexOf(mode),
+    ) { favoritesModes.size }
     // 滑动 → mode：只在**停稳**之后落。拖到一半就改 mode 会让顶栏 actions、
     // 内容避让高度、分段小药丸三处同时跟着跳，看着像整页在抖。
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
-            .collect { mode = favoritesModesNetworkFirst[it] }
+            .collect { mode = favoritesModes[it] }
     }
-    // mode → 滑动：点分段器走与手滑同一条欠阻尼弹簧，两条路径观感一致。
-    LaunchedEffect(mode) {
-        val index = favoritesModesNetworkFirst.indexOf(mode)
-        if (pagerState.settledPage != index) {
+    // 分段器点击 → pager：由点击处直接驱动，不再靠 `LaunchedEffect(mode)` 反推页码。
+    // 反推那版与「settledPage → mode」的写回构成回路：动画刚起步时 settledPage 还没落，
+    // 状态一被写回就把 animateScrollToPage 的协程取消掉，于是必须再点一次才会真的翻页。
+    val pagerScope = rememberCoroutineScope()
+    fun selectMode(target: FavoritesMode) {
+        mode = target
+        pagerScope.launch {
             pagerState.animateScrollToPage(
-                page = index,
+                page = favoritesModes.indexOf(target),
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = 0.8f,
+                    stiffness = Spring.StiffnessMedium,
                 ),
             )
         }
+    }
+    // 角标与更新列表要跟"夹里现在有什么"同步：进页面先算一次，
+    // 每次落到「更新」段再算一次 —— 在详情页加了追更、或检查完一轮，回来看到的就是新的。
+    LaunchedEffect(Unit) { followVm.refresh() }
+    LaunchedEffect(mode) {
+        if (mode == FavoritesMode.Updates) followVm.refresh()
     }
     val selectionBack = com.venera.compose.components.rememberPredictiveBackState(
         enabled = mode == FavoritesMode.Local && selection.active && !showMenu && dialog == null,
@@ -240,7 +254,6 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
      *
      * 让位是**常量**、并且交给网格的 `contentPadding`（不是把整面墙往下顶）：折叠时顶栏从
      * 682px 收到 426px，而墙的视口始终满屏，卡片只跟着手指走 —— 与另外两屏同一套契约。
-     * 真机实测（2026-09-27，PJZ110）：上一版改用 `onSizeChanged` 逐帧量顶栏真实高度，
      * 空带确实归零（分段器起点 524px / 268px 与顶栏底边分毫不差），但换来两个新问题：
      * 玻璃在顶栏底边留一条横贯全屏的硬边，分段器孤零零坐在硬边之外的裸背景上；
      * 且视口高度跟着顶栏变，折叠那 98px 行程里内容额外多走 256px。归进 chrome 一起解决。
@@ -251,7 +264,7 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     // **按页各存一份**：三块面板现在同时活在 pager 里，共用一格会被相邻页的
     // 「未滚动」覆盖掉，顶置按钮就在切页后消失。
     val panelScrollSlots = remember {
-        List(favoritesModesNetworkFirst.size) {
+        List(favoritesModes.size) {
             mutableStateOf<Pair<Boolean, (() -> Unit)?>?>(null)
         }
     }
@@ -280,7 +293,16 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 val reportScroll: (Boolean, Boolean, () -> Unit) -> Unit = { _, hasScrolled, scrollToTop ->
                     panelScrollSlots[page].value = hasScrolled to scrollToTop
                 }
-                when (favoritesModesNetworkFirst[page]) {
+                when (favoritesModes[page]) {
+                    FavoritesMode.Updates -> FavoritesUpdatesPanel(
+                        vm = followVm,
+                        topPadding = topPadding,
+                        scrollConnection = topBarBehavior.nestedScrollConnection,
+                        backdrop = backdrop,
+                        onSelect = onSelect,
+                        onScrollStateChange = reportScroll,
+                    )
+
                     FavoritesMode.Local -> FavoriteGrid(
                         vm = vm,
                         folders = folders,
@@ -347,7 +369,8 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                 // 布局切换钮收进顶栏 actions：跟随大标题折叠与毛玻璃、常驻右上角
                 // （用户拍板「跟随顶栏在右上角」，不再悬浮于折叠顶栏下缘）。
                 // 图片收藏段是固定两列瀑布流，单双列切换对它无意义 —— 不摆假开关。
-                if (mode != FavoritesMode.Images) {
+                // 更新段是追更条目的固定清单（封面 54×72 + 标题 + 时间），也不吃单双列。
+                if (mode != FavoritesMode.Images && mode != FavoritesMode.Updates) {
                     ComicLayoutToggleButton(
                         displayMode = displayMode.value,
                         onToggle = { displayMode.value = it },
@@ -367,12 +390,12 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
                     ) {
                         FavoritesModeToggle(
                             mode = mode,
-                            onModeChange = { mode = it },
+                            updateBadge = followVm.badgeCount,
+                            onModeChange = { selectMode(it) },
                         )
                     }
                     // 「漫画收藏 / 画廊收藏」这一条**常驻**，而且必须挂在 chrome 里。
                     // 它是这一屏的控制器，顶栏折叠后仍要能切墙，所以不能跟上面那条一起收起；
-                    // 而它一旦被钉在顶栏**外面**，顶栏一收就必然出状况 —— 真机实测过两种：
                     // 让位写常量 → 玻璃底边与药丸之间多一条空带；让位改成逐帧量顶栏高度 →
                     // 空带归零，但玻璃在底边留一条横贯全屏的硬边，药丸孤零零坐在硬边之外的裸背景上。
                     // 挂进 bottomContent 之后它就是顶栏的一部分：跟着走、被同一块玻璃罩住，
@@ -547,11 +570,10 @@ fun SharedTransitionScope.AndroidFavoritesScreen(
     }
 }
 
-/** 收藏页模式：网络收藏（各漫画源账号）/ 图片收藏（单页插图）/ 本地收藏（本地数据库）。 */
-private enum class FavoritesMode { Local, Network, Images }
+/** 收藏页模式：更新（追更）/ 书架（本地数据库）/ 网络收藏（各漫画源账号）/ 图片收藏（单页插图）。 */
+private enum class FavoritesMode { Updates, Local, Network, Images }
 
 /**
- * 「图片收藏」这一档内部的**两块**（用户 2026-09-26 点名要分开）。
  *
  * - [Comics] —— 阅读器里收入的单页插图（原有能力，[FavoriteImagesBody]）；
  * - [Gallery] —— 图站（yande.re / Gelbooru）收藏的整张画（[GalleryFavoritesBody]）。
@@ -642,13 +664,18 @@ private fun ImageSectionToggle(
 @Composable
 private fun FavoritesModeToggle(
     mode: FavoritesMode,
+    updateBadge: Int,
     onModeChange: (FavoritesMode) -> Unit,
 ) {
     // 分段控制器：每颗选项自持一颗药丸（选中 = 实心主题色，未选中 = 半透明底），没有外框。
-    // 形态出处见 VeneraSegmentedButton 的头注（2026-09-28 换掉了旧的"药丸中的药丸"容器描边）。
-    // 手机档收成居中一小条（用户真机反馈「太宽太散」）；平板档维持全宽不动。
-    val modes = remember { favoritesModesNetworkFirst }
+    val modes = remember { favoritesModes }
     val wide = isWideScreen(LocalWindowWidthDp)
+    // 角标只挂在第一段（更新）上：其余三段没有"几件新鲜事"的概念。
+    // 数字超过 99 收成 99+，否则 16dp 圆里会挤成 8pt 的两行。
+    val badgeText = if (updateBadge > 0) (if (updateBadge > 99) "99+" else updateBadge.toString()) else null
+    val badges = remember(badgeText) {
+        List(modes.size) { index -> if (index == 0) badgeText else null }
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -656,34 +683,343 @@ private fun FavoritesModeToggle(
         contentAlignment = Alignment.Center,
     ) {
         VeneraSegmentedButton(
-            options = remember { favoritesModeEntriesWithNetworkFirst },
+            options = remember { favoritesModeEntries },
             selectedIndex = modes.indexOf(mode),
             onSelect = { onModeChange(modes[it]) },
             // 同上：这一排也在玻璃顶栏上，未选档维持半透明无描边。
             backdrop = SegmentedBackdrop.Glass,
-            // 手机档宽度按「每一段占屏宽 25%」推导：用户当初对**两段**控制器定的口径是
-            // 整条 50% 居中，段数变三就是 3×25%。此前宽度写死 50% 没跟着段数走，
-            // 三段各分 16.7% 屏宽，四个字的标签全被削成「网…图…本…」。
+            badges = badges,
+            // 手机档宽度按「每一段占屏宽 22%」推导：四段 ×22% = 88%，两侧各留 6% 呼吸。
+            // 段数从三段变四段后不能还是 25%（4×25% = 100% 会贴到屏幕两边、没有留白，
+            // 且每段变窄后两字标签 + 角标会互相挤）。
             modifier = if (wide) Modifier.fillMaxWidth()
             else Modifier.fillMaxWidth(segmentedCellWidthFraction * modes.size),
         )
     }
 }
 
-/** 手机档分段控制器**单段**占屏宽的比例（源自用户「整条 50% ÷ 两段」的口径）。 */
-private const val segmentedCellWidthFraction = 0.25f
+/** 手机档分段控制器**单段**占屏宽的比例；4 段 × 0.22 = 0.88，两侧各留 6%。 */
+private const val segmentedCellWidthFraction = 0.22f
 
-/** 模式顺序即分段器段序：网络第一、图片第二、本地第三（用户拍板）。与标签列表严格同序。 */
-private val favoritesModesNetworkFirst =
-    listOf(FavoritesMode.Network, FavoritesMode.Images, FavoritesMode.Local)
+/** 模式顺序即分段器段序：更新第一、书架第二、网络第三、图片第四（与 UI 稿一致）。与标签列表严格同序。 */
+private val favoritesModes =
+    listOf(FavoritesMode.Updates, FavoritesMode.Local, FavoritesMode.Network, FavoritesMode.Images)
 
-/** 网络收藏优先排序（用户拍板）。 */
-val favoritesModeEntriesWithNetworkFirst = listOf(
-    "网络收藏",
-    "图片收藏",
-    "本地收藏"
+/** 段标签。四段要挤进 88% 屏宽：首末两枚两字，中间两枚按真实名字标（「本地收藏」→ 与数据同名的叫法）。 */
+val favoritesModeEntries = listOf(
+    "更新",
+    "本地收藏",
+    "网络",
+    "图片"
 )
 
+
+/**
+ * 收藏页「更新」段：追更夹这一轮的检查结果。
+ *
+ * 为什么放在收藏页而不是单开一页：追更的本质是"我收藏的哪些书有新章"，
+ * 它与收藏是同一份数据、同一种动作（点进去读、读完清标记）。
+ * 另开一页就要在底栏再放一格，而底栏已经是 5 格满的。
+ *
+ * 三种相位：未开启追更 / 已开启今天没有新章 / 有更新列表。
+ * 相位切换走 AnimatedContent 而不是直接换内容 —— 检查完从"没有新章"翻成列表时，
+ * 内容突然整块替换会像页面刷新，淡入淡出至少让人看出"是同一块在变"。
+ */
+@Composable
+private fun FavoritesUpdatesPanel(
+    vm: FollowUpdatesViewModel,
+    topPadding: Dp,
+    scrollConnection: NestedScrollConnection?,
+    backdrop: LayerBackdrop?,
+    onSelect: (ComicItem) -> Unit,
+    onScrollStateChange: (canScrollUp: Boolean, hasScrolled: Boolean, scrollToTop: () -> Unit) -> Unit,
+) {
+    val tokens = VeneraTokens
+    var showPicker by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    // 与另外三段同一份上报契约：只报"是否已离开顶部"和"回到顶部"的动作，
+    // 宿主据此显隐悬浮置顶钮。
+    LaunchedEffect(listState, scrollConnection) {
+        snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+            .distinctUntilChanged()
+            .collect { scrolled ->
+                onScrollStateChange(listState.canScrollBackward, scrolled) {
+                    scope.launch { listState.animateScrollToItem(0) }
+                }
+            }
+    }
+
+    val folder = vm.followFolder
+    // transitionSpec 不是 Composable 作用域，token 必须先取出来
+    val mediumMs = tokens.motion.medium
+    // 相位只看"有没有开追更 / 夹里有没有书"，不看"今天有没有新章"：
+    // 没新章时这一屏仍然要列出全部在追的书（用户原话：不要只有更新之后才显示）。
+    val phase = when {
+        folder.isNullOrBlank() -> FollowPanelPhase.Disabled
+        vm.followed.isEmpty() -> FollowPanelPhase.EmptyFolder
+        else -> FollowPanelPhase.Listed
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = tokens.spacing.rowHorizontal,
+            end = tokens.spacing.rowHorizontal,
+            top = topPadding,
+            bottom = LocalBottomBarClearance.current + VeneraSpacing.space9,
+        ),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4),
+    ) {
+        item(key = "follow-summary") {
+            FollowSummaryCard(
+                folder = folder,
+                totalCount = vm.followedTotal,
+                newCount = vm.badgeCount,
+                lastCheckAt = vm.lastCheckAt,
+                isChecking = vm.isChecking,
+                progress = vm.progress,
+                onCheckNow = { vm.checkNow(ignoreCheckTime = true) },
+                onPickFolder = { showPicker = true },
+            )
+        }
+        item(key = "follow-phase") {
+            AnimatedContent(
+                targetState = phase,
+                transitionSpec = {
+                    fadeIn(
+                        animationSpec = androidx.compose.animation.core.tween(durationMillis = mediumMs),
+                    ) togetherWith fadeOut()
+                },
+                label = "followPhase",
+            ) { current ->
+                when (current) {
+                    FollowPanelPhase.Disabled -> FollowHintCard(
+                        title = "还没开启追更",
+                        body = "在漫画详情页点「追更」会自动建一个「追更」收藏夹，并把它设为每天检查一次；" +
+                            "也可以直接选一个现有收藏夹。",
+                        actionLabel = "选择收藏夹",
+                        onAction = { showPicker = true },
+                    )
+
+                    FollowPanelPhase.EmptyFolder -> FollowHintCard(
+                        title = "这个收藏夹还是空的",
+                        body = "追更夹只放你想跟的书。去「网络」或「本地收藏」挑几本，或在漫画详情页点「追更」。",
+                        actionLabel = "换一个收藏夹",
+                        onAction = { showPicker = true },
+                    )
+
+                    FollowPanelPhase.Listed -> Spacer(modifier = Modifier.height(0.dp))
+                }
+            }
+        }
+        if (phase == FollowPanelPhase.Listed) {
+            rowItems(vm.followed, key = { "${it.item.id}-${it.item.type}" }) { entry ->
+                val metrics by rememberCachedComicMetrics(entry.item.sourceKey, entry.item.id)
+                FollowUpdateRow(
+                    detailed = true,
+                    rating = metrics.rating,
+                    likesCount = metrics.likesCount,
+                    title = entry.item.name,
+                    cover = entry.item.coverPath,
+                    sourceKey = entry.item.sourceKey,
+                    tags = entry.item.tags,
+                    author = entry.item.author,
+                    comicId = entry.item.id,
+                    updateTime = entry.updateTime,
+                    hasNewUpdate = entry.hasNewUpdate,
+                    compact = true,
+                    modifier = Modifier.animateItem(),
+                    onClick = {
+                        onSelect(
+                            ComicItem(
+                                id = entry.item.id,
+                                title = entry.item.name,
+                                author = entry.item.author,
+                                coverUrl = entry.item.coverPath,
+                                tags = entry.item.tags,
+                                sourceName = entry.item.sourceKey,
+                            )
+                        )
+                        vm.markAsRead(entry)
+                    },
+                )
+            }
+        }
+    }
+
+    if (showPicker) {
+        FollowFolderPicker(
+            current = folder,
+            onDismiss = { showPicker = false },
+            onPick = {
+                vm.chooseFollowFolder(it)
+                vm.refresh()
+            },
+            vm = vm,
+        )
+    }
+}
+
+private enum class FollowPanelPhase { Disabled, EmptyFolder, Listed }
+
+/** 更新段的摘要行：夹名 / 在追本数 / 上次检查 / 立即检查。 */
+@Composable
+private fun FollowSummaryCard(
+    folder: String?,
+    totalCount: Int,
+    newCount: Int,
+    lastCheckAt: Long?,
+    isChecking: Boolean,
+    progress: String?,
+    onCheckNow: () -> Unit,
+    onPickFolder: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(tokens.spacing.space6)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "更新",
+                        fontSize = tokens.type.itemTitle,
+                        fontWeight = tokens.type.weightSemibold,
+                    )
+                    Spacer(modifier = Modifier.height(tokens.spacing.space2))
+                    Text(
+                        text = buildString {
+                            append(folder ?: "未开启")
+                            if (!folder.isNullOrBlank()) {
+                                append(" · 在追 ")
+                                append(totalCount)
+                                append(" 本")
+                            }
+                        },
+                        fontSize = tokens.type.caption,
+                        color = MiuixTheme.colorScheme.onBackgroundVariant,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = buildString {
+                            append(followCheckLabel(lastCheckAt))
+                            append(" · ")
+                            if (newCount > 0) {
+                                append(newCount)
+                                append(" 本有新章")
+                            } else {
+                                append("暂无新章")
+                            }
+                        },
+                        fontSize = tokens.type.caption,
+                        color = if (newCount > 0) MiuixTheme.colorScheme.primary
+                        else MiuixTheme.colorScheme.onBackgroundVariant,
+                        maxLines = 1,
+                    )
+                }
+                Button(
+                    onClick = onCheckNow,
+                    enabled = !folder.isNullOrBlank() && !isChecking,
+                ) {
+                    Text(if (isChecking) "检查中" else "立即检查")
+                }
+            }
+            // 进度只在检查期间占位：按字数会跳，所以固定显示"当前/总数"
+            AnimatedContent(
+                targetState = progress,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "followProgress",
+            ) { text ->
+                if (text != null) {
+                    Text(
+                        text = text,
+                        fontSize = tokens.type.caption,
+                        color = MiuixTheme.colorScheme.onBackgroundVariant,
+                        modifier = Modifier.padding(top = tokens.spacing.space3),
+                    )
+                }
+            }
+            if (!folder.isNullOrBlank()) {
+                // 整行可点：此前只有那几个字本身挂了 clickable，手指落在行内空白处等于没点，
+                // 这就是"点击更换没反应"的来源。宽度铺满 + 右侧「更换」提示，命中区不再靠猜。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = tokens.spacing.space3)
+                        .clip(RoundedCornerShape(tokens.shape.small))
+                        .clickable(onClick = onPickFolder)
+                        .padding(vertical = tokens.spacing.space2),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "检查的收藏夹：$folder",
+                        fontSize = tokens.type.caption,
+                        color = MiuixTheme.colorScheme.onBackgroundVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "更换",
+                        fontSize = tokens.type.caption,
+                        fontWeight = tokens.type.weightMedium,
+                        color = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = tokens.spacing.space3),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 空态卡：一句结论 + 一句原因 + 一个动作（没有动作时只留前两句）。 */
+@Composable
+private fun FollowHintCard(
+    title: String,
+    body: String,
+    actionLabel: String?,
+    onAction: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(tokens.spacing.space6)) {
+            Text(text = title, fontSize = tokens.type.body, fontWeight = tokens.type.weightSemibold)
+            Spacer(modifier = Modifier.height(tokens.spacing.space2))
+            Text(
+                text = body,
+                fontSize = tokens.type.caption,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+            )
+            if (actionLabel != null) {
+                Spacer(modifier = Modifier.height(tokens.spacing.space4))
+                Button(onClick = onAction) { Text(actionLabel) }
+            }
+        }
+    }
+}
+
+/** 上次检查时刻的口语化：刚刚 / N 分钟前 / 今天 HH:mm / 昨天 HH:mm / N 天前。 */
+private fun followCheckLabel(ts: Long?): String {
+    if (ts == null) return "还没检查过"
+    val now = System.currentTimeMillis()
+    val diff = (now - ts).coerceAtLeast(0L)
+    val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    return when {
+        diff < 60_000L -> "刚刚检查"
+        diff < 3_600_000L -> "${diff / 60_000L} 分钟前检查"
+        isSameFollowDay(ts, now) -> "今天 ${hm.format(java.util.Date(ts))} 检查"
+        isSameFollowDay(ts + 24 * 3_600_000L, now) -> "昨天 ${hm.format(java.util.Date(ts))} 检查"
+        else -> "${diff / (24 * 3_600_000L)} 天前检查"
+    }
+}
+
+private fun isSameFollowDay(a: Long, b: Long): Boolean {
+    val ca = java.util.Calendar.getInstance().apply { timeInMillis = a }
+    val cb = java.util.Calendar.getInstance().apply { timeInMillis = b }
+    return ca.get(java.util.Calendar.YEAR) == cb.get(java.util.Calendar.YEAR) &&
+        ca.get(java.util.Calendar.DAY_OF_YEAR) == cb.get(java.util.Calendar.DAY_OF_YEAR)
+}
 
 /** 收藏夹操作类型。 */
 private sealed interface FolderDialog {
@@ -835,7 +1171,6 @@ private fun FavoriteGrid(
             .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
     ) {
         // 一个收藏夹都没有时整行不渲染：只剩「全部 · N」一颗 pill 不提供任何选择，
-        // 挂在网格顶部就像多出来的一块（用户真机反馈，与网络收藏侧同一处置）。
         if (folders.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "fav-folders") {
                 FolderChipRow(
@@ -1312,26 +1647,12 @@ private fun FavoritesSortMenu(
                 tint = if (sortOrder == FavoriteSortOrder.CUSTOM) tokens.color.textSecondary else tokens.color.primary,
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // 统一菜单（控件体系统一 · 阶段 4）：当前档由行尾对勾表达（VeneraMenuItem.selected）。
+        VeneraDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             FavoriteSortOrder.entries.forEach { order ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = order.label,
-                            fontSize = tokens.type.body,
-                            color = if (order == sortOrder) tokens.color.primary else tokens.color.textPrimary,
-                        )
-                    },
-                    trailingIcon = if (order == sortOrder) {
-                        {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = "当前排序",
-                                tint = tokens.color.primary,
-                                modifier = Modifier.size(tokens.spacing.chipIconSize),
-                            )
-                        }
-                    } else null,
+                VeneraMenuItem(
+                    text = order.label,
+                    selected = order == sortOrder,
                     onClick = {
                         expanded = false
                         onSortOrderChange(order)

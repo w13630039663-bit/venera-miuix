@@ -9,7 +9,6 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * `user_previews` 那一族答复的解析判据（2026-10-17 第八轮）。
  *
  * 这一族有两个调用点（`/v1/user/following` 与 `/v1/user/recommended`），答复形状相同，
  * 所以判据只写一遍、两条腿共用。样本抄的是 pixez-miuix `UserPreview.kt` 那份模型对得上的真实键名

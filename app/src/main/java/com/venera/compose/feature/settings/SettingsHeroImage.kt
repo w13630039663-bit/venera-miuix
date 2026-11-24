@@ -31,7 +31,6 @@ internal object SettingsHeroImageStore {
     const val KIND_HERO = "hero"
 
     /**
-     * 画廊首页头图槽位（2026-10-15）。与 [KIND_HERO] 是**两个目录、两张图**：
      * 共用槽位会让"换画廊的头"顺手改掉设置页（反之亦然），而两处的偏好是独立开关。
      */
     const val KIND_GALLERY_HERO = "gallery_hero"

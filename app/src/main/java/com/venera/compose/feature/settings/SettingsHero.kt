@@ -45,7 +45,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import android.app.Activity
 
 /**
- * 设置 hero 页的系统状态栏图标翻转（2026-10-02 第五轮「处理下状态栏」）。
  *
  * 头图在场且还没滚过头图时，状态栏区域 = 图 + 顶部 scrim，此时用**白图标**
  * （与图上白标题同一套对比逻辑，浅色主题下全局那处 `VeneraTheme` 会设成深图标，
@@ -73,7 +72,6 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
 }
 
 /**
- * 设置页 hero 头图（首页 + 全部子页共用一份实现，2026-10-02）。
  *
  * ── 调用契约 ──
  *
@@ -81,9 +79,7 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
  * [SettingsPage] 与设置首页 —— 没选图的页面走原来的「大标题顶栏」分支，
  * 整条 hero 链路不参与渲染（零降级风险）。
  *
- * ── 过渡模型（2026-10-02 四轮定稿：模糊延伸到内容背后）──
  *
- * 用户要的是「选完图自动模糊过渡」：不是在图底下贴一条带子（v3 的做法在真机上
  * 模糊层与清晰层取景错位，成了一条脏带），而是**同一张图自己往下延续成模糊**：
  *
  * 1. **模糊延伸层**（最底）：同图、同宽、**TopCenter 取景**——比清晰层**高出
@@ -101,7 +97,6 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
  * 其余决策承前：覆盖层色取 [ImageOverlayColors] 固定色板（图亮度不可控），溶接渐变终点色除外
  * —— 那一段要的就是「融入页面背景」，跟主题走。
  *
- * 标题那一格**不是**自己挑的几何：2026-10-16 起它的左边距、顶边、字号、字重四项全部读
  * miuix `TopAppBar` 大标题用的同一批常量与主题槽位（详见下面标题段的长注）。这幅字顶替的
  * 就是那一格，所以只有"压在图上"这件事是本地的事，尺寸口径一律跟顶栏同源。
  *
@@ -111,7 +106,6 @@ internal fun SettingsHeroSystemBarIcons(heroPresent: Boolean, scrolledPastHero: 
  * @param totalHeight hero 视觉全高（**含状态栏段**，调用方算好传入）。
  * @param overlapBottom 布局占位比视觉高度矮多少（其后内容上移叠图）。
  * @param imageDescription 这层图读给无障碍的话。刻意**必填**：这颗件现在既住设置页
- *   也住画廊首页（2026-10-15），留个"设置页头图"的默认值就等于让画廊那枚念错归属。
  */
 @Composable
 internal fun SettingsHeroImage(
@@ -149,7 +143,6 @@ internal fun SettingsHeroImage(
             // 后续内容上移压到图的下段上。
             //
             // ⚠️⚠️ 不能用 `.height(totalHeight)` + 内层 `.layout { layout(w, h - cut) }` 的
-            // 组合实现同一效果（2026-10-01 三轮真机排查踩死的坑）：`Modifier.height` 的
             // SizeNode 会把测出来矮了 cut 的内层内容**垂直居中**在自己强制报告的全高框里，
             // 内容整体下移 cut/2 —— 顶部露出一条 (cut/2) 高的背景带，正是用户反复报告的
             // 「hero 盖不满状态栏、中间隔着一条」（208−48)/2 = 80dp 框在 393dp 屏上约合
@@ -247,13 +240,11 @@ internal fun SettingsHeroImage(
                     Brush.verticalGradient(listOf(ImageOverlayColors.ScrimTop, Color.Transparent))
                 ),
         )
-        // ── 标题 + 副标题：钉在顶栏大标题那一格上（2026-10-16 全对齐）──
         //
         // hero 在场时顶栏的 `largeTitle` 传空串（`GalleryScreen` / `SettingsHome` 那几处），
         // 这幅字**顶替的就是那一格**，所以三个定位量一律读 miuix `TopAppBar` 自己用的常量，
         // 不再自己挑：
         //   · 左边距  ← `TopAppBarDefaults.TitlePadding`（26dp，`TopAppBar.kt:749` 的
-        //     `padding(horizontal = titlePadding)`）。从前吃 `rowHorizontal` 14dp，真机量到
         //     图上字左 x=43 vs 探索页 x=73，差 30px ≈ 12dp。
         //   · 顶边    ← `TopAppBarDefaults.CollapsedHeight`（52dp，`TopAppBar.kt:747` 的
         //     `padding(top = CollapsedHeight)`，在同一份 `windowInsetsPadding(systemBars.only(Top))`
@@ -264,7 +255,6 @@ internal fun SettingsHeroImage(
         // 唯一**刻意不同**的是颜色：仍用 `ImageOverlayColors.OnImage` 纯白而不是 `textPrimary`。
         // 图是用户随手选的、亮度不可控，深色字压亮图会直接读不出（那一条理由写在
         // `ui/tokens/Color.kt` 的 `ImageOverlayColors` 头注）。切页时字形/大小/位置完全一致，
-        // 只有颜色随底变 —— 这是"全对齐"里唯一不肯让的一格，用户 2026-10-16 拍板。
         Column(
             Modifier
                 .padding(
@@ -275,14 +265,11 @@ internal fun SettingsHeroImage(
         ) {
             Text(
                 text = title,
-                // ⚠️ 2026-10-16 改口径（真机「他收起前画廊的字都要小很多」）：
                 // 头图上的白字**顶替的是顶栏大标题那一格**（hero 在场时 `largeTitle` 传空串），
                 // 所以字号必须跟 `largeTitle` 同档 —— miuix 给 largeTitle 用的是
                 // `MiuixTheme.textStyles.title1.fontSize`（`TopAppBar.kt:763`），这里直接读**同一个
                 // 主题槽位**。原来是 `tokens.type.screenTitle`（MD3 22 / MIUIX 24sp），比原生大标题
-                // 小了 20% 上下，真机上读起来就是"同一个页面名，图上那个明显小一号"。
                 //
-                // ⚠️ 2026-10-16 二修（真机「画廊的未收起大字和其他页面的字体和颜色对不上」）：
                 // 字重从 `weightSemibold` 改成与原生**逐字同值**的 `FontWeight.Normal`
                 // （`TopAppBar.kt:764`）。前一版留 SemiBold 的理由是"白字压亮图要有厚度"，
                 // 但代价是切页时同一档标题两种笔画粗细（实测墨覆盖率 37.0% vs 31.6%），

@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 分层边界守卫：**下层不许 import 上层**（审计 `responsibility-dependency-audit-2026-10-03.md` 的 W3）。
  *
  * 为什么现在建它：B 系列每一批都在改「UI 直连实现类」那一条边（`BusinessApiBoundaryTest` 管的是
  * 上→下那半边），而下→上这半边今天**一条用例都没有** —— 也就是说接下来 B5/B7'/构造注入这几批
@@ -76,8 +75,6 @@ class LayeringEdgeTest {
                 rel to t.removePrefix("import com.venera.compose.")
             }
             .sortedBy { (rel, sym) -> "$rel#$sym" }
-
-    // ─────────────────────────── 基线：10 条 / 5 颗（2026-10-03 实测） ───────────────────────────
 
     /**
      * 每条都有「归哪一批摘掉」或「为什么长期留存」，口径照 `data/api/BusinessApiBaseline.kt`：

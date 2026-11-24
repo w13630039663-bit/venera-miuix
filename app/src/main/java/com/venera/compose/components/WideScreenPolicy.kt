@@ -85,7 +85,6 @@ fun sideBarWidthFor(mode: WideScreenLayoutMode): Dp = when (mode) {
  * 批次 2 的 [VeneraSideBar] 接管了侧栏档的导航，`Navigation.kt` 的底栏门同步加上了
  * 档位判断 ⇒ 前提已成立。**若将来回退侧栏落地，必须同时把这两档改回 76。**
  *
- * 2026-10-12 追加：前提从「档位」细化为 `sideBarActive`（见 [sideBarReplacesBottomBar]）。
  * 液态玻璃档在宽窗**保留**底栏 ⇒ 该档必须回到 76dp 留白，否则最后一行会被悬浮栏压住
  * （正是本条 KDoc 上半段记的那个「只在宽窗出现、手机档全好」的失败模式）。
  * 「底栏渲染 ⟺ 留白 76」这条不变量由 `sideBarActive` 一个布尔同时驱动两侧，未被削弱。
@@ -95,7 +94,6 @@ fun bottomBarClearanceFor(
     /**
      * 本档是否真的由侧栏接管导航。默认值 = 「侧栏档就用侧栏」，与批次 2 既有行为逐值相同。
      *
-     * ⚠️ 2026-10-12 起这条不再是 `mode` 的纯函数：用户要求液态玻璃档**横屏也保留底部悬浮栏**，
      * 于是「宽窗是否换侧栏」改由导航栏样式轴决定（见 [sideBarReplacesBottomBar]）。
      * 参数化而不是在这里直读样式，是为了让本文件不反向依赖 `data.prefs`（策略层不认识偏好枚举）。
      */
@@ -110,12 +108,10 @@ fun bottomBarClearanceFor(
 /**
  * 宽窗下是否由左侧栏替代底部导航栏。
  *
- * **2026-10-12 用户新增的第二档选择**：原先把「宽窗 ⇒ 换侧栏」写死成几何必然
  * （`Navigation.kt` 的 `useSideBar = layoutMode != Compact`），导致液态玻璃栏在横屏/平板上
  * 被无条件顶掉、设置里那一项在宽窗形同虚设。现在判据收口在这里，两种样式各自成立：
  *
  *  - `MD3` → 宽窗换侧栏，手机档用悬浮底栏。**与改动前逐像素一致**（这句"默认"已过期：
- *    `cd0e1bd` 起应用默认是 `LIQUID_GLASS`，见 `VeneraPreferences.kt:419`）。
  *  - `LIQUID_GLASS` → 无论宽窄都保留底部悬浮栏（横屏一样能用玻璃栏）。**这是今天的新默认**。
  */
 fun sideBarReplacesBottomBar(
@@ -127,7 +123,6 @@ fun sideBarReplacesBottomBar(
  * 传给 [VeneraSideBar] 的**有效档位**：侧栏不接管时一律降为 `Compact`，
  * 让该组件走它自己的「直通 content」分支。
  *
- * 为什么需要这一层（2026-10-12，我自己改动里抓到的一个真 bug）：
  * `VeneraSideBar` 的短路判据是 `mode == Compact`。引入样式轴后，
  * 「宽窗 + 液态玻璃」这一格 `useSideBar == false` 而 `layoutMode` 仍是 Medium/Expanded ——
  * 若照旧传 `layoutMode`，侧栏**和**底部玻璃栏会同时渲染（两套导航叠在一屏上）。
@@ -145,10 +140,8 @@ fun sideBarModeFor(
  *
  * 为什么需要它：`wideScreenChromeMaxWidth` 只收口了**通栏悬浮件**（底栏 540、抽屉 400），
  * 页面内容此前没有任何宽度口径 —— 1707dp 的平板上设置页单列列表横跨 2560px、
- * 开关被拉到 2182px 宽，这是 2026-10-12 排查里最明显的一条。
  *
  * **Compact 返回 `null`**，与 [wideScreenChromeMaxWidth] 同一约定：手机档一个像素都不改
- * （用户 2026-10-02 的硬约束「我们调的都是大屏版，别动手机版」）。调用点必须显式处理 null 分支。
  *
  * 取值依据（不是新造数）：
  *  - 720dp ≈ 中文正文 45~50 字/行，是「一行读得完」的上限档；
@@ -169,7 +162,6 @@ fun contentMaxWidthFor(mode: WideScreenLayoutMode): Dp? = when (mode) {
  * （见 `ComicPresentationPolicy.comicPreviewColumnCount`），这里沿同一把尺，
  * 连"向上取整"的方向也一致（保证算出来的格宽不超预算，而不是刚好超）。
  *
- * ⚠️ **手机档恒等于 2，不参与预算计算** —— 这是用户 2026-10-02 的硬约束
  * （「现在调的都是大屏版，别动手机版」）的实现，别拿 `ceil` 的裸结果替它：
  * 425dp 以上的手机（大屏机/折叠屏合起）裸算会得 3 列，等于悄悄改了手机版。
  * 侧栏档下限取 3 = 今天 `if (wide) 3 else 2` 的原值 ⇒ **列数只许比今天多，

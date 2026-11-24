@@ -45,7 +45,6 @@ class ChapterCompletenessTest {
     @Test
     fun `两个标记都没有的老数据保持今日语义`() {
         // ⚠️ 这条是迁移判据：没有 expectedPages 的章是这次改动之前下的，
-        // 判成 PARTIAL 会让设备上**所有现存离线章**一夜之间变成"未下载"，
         // 用户看到的是"我的离线书全没了 / 又要重下一遍"。
         assertEquals(
             ChapterOffline.COMPLETE,

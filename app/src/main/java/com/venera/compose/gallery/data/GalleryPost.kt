@@ -2,7 +2,7 @@ package com.venera.compose.gallery.data
 
 /**
  * 画廊的**归一**图片条目：三站官方 API 的字段名几乎全不同（对照表见
- * `gallery-dual-source-hot-pool-plan-2026-09.md` §三与 [SafebooruClient] 文件头），
+ * `gallery-dual-source-hot-pool-plan-2026-09.md` §三与 [KonachanClient] 文件头），
  * 所以这里只留"用途"，站方的字段名各自的 DTO 里去翻译，UI 层不再出现任何单站专属字段。
  *
  * **四档地址按用途各取一档，不要混用**：
@@ -15,7 +15,7 @@ package com.venera.compose.gallery.data
  * |---|---|---|---|
  * | yande.re | `preview_url` 300×212 | `sample_url` 1500×1060 | 原图（PNG 可达 6.6 MB） |
  * | Gelbooru | `preview_url` 350px 级 | `sample_url` 850×… ；**小图/视频时为空串** | `file_url` |
- * | Safebooru | `media_asset.variants` 的 **360 档**（180 档铺满屏会糊） | `large_file_url`（=sample；`has_large=false` 时就是原图）；**视频条目这里是原片 mp4，翻译时换成 720 档静帧** | `file_url` |
+ * | Konachan | `preview_url` 300 级（与网格同址，缓存白拿，同 yande.re 那一档模型） | `sample_url` 1500×…；空时退 `jpeg_url` | `file_url` |
  *
  * **yande.re 的中档曾经错挂 `jpeg_url`**（旧对照表里那句"中档 = jpeg_url"是站方语义读错了）：
  * 实测 30/30 条 `jpeg_width/height` **恒等于** `width/height` —— 它不是降档，
@@ -23,6 +23,7 @@ package com.venera.compose.gallery.data
  * 拿它当中档，打开一张图要先等一个原图大小的文件，观感就是"骨架图停在那儿半天"，
  * 而且每次翻回来都重来一次。站方真正的中档是 `sample_url`：长边 ≤1500，
  * 原图本来就比 sample 小的时候它回落成 `/image/` 原图 —— **实测 70/70 条非空、无 404 风险**。
+ * 同内核的 Konachan 是同一形状（实测 sample 1500×844 / jpeg 恒等原尺寸），**照这个坑防着接**。
  *
  * Gelbooru 的中档同理取 `sample_url`，但那边的空值形态是**空串**（不是缺键、也不是 404），
  * 所以翻译时兜底到 `file_url`，见 `GelbooruDto.toPost`。
@@ -30,29 +31,29 @@ package com.venera.compose.gallery.data
 data class GalleryPost(
     val site: GallerySite,
     val id: Long,
-    /** 空格分隔的标签串。三站都**不带**命名空间前缀（都是平铺的下划线标识符）。
-     *  ⚠️ 站方的键名不同：yande.re/Gelbooru 叫 `tags`，Safebooru 叫 `tag_string`
-     *  （那边**没有** `tags` 键 —— 按 `tags` 声明会静默解成空串，见 [SafebooruPostDto]）。 */
+    /** 空格分隔的标签串。三站的键**都叫 `tags`**、都不带命名空间前缀（都是平铺的下划线标识符）。
+     *  （历史坑：上一代图库源 Safebooru 属 Danbooru 系，键叫 `tag_string`、那边**没有** `tags` 键 ——
+     *  留一句防"照另一系抄字段"。） */
     val tags: String = "",
     /**
      * 站方显式分级。⚠️ **各站不同形**（实测）：
      * - yande.re 单字母 `s`/`q`/`e`；
      * - Gelbooru 单词 `general`/`sensitive`/`questionable`/`explicit`；
-     * - Safebooru 单字母 `g`/`s`/`q`/`e`，且**实测全站只有 `g` 一档**
-     *   （`rating:s`/`rating:q`/`rating:e` 各回 0 条）—— 所以 `g` 漏进安全档的代价是整站被打码。
+     * - Konachan 单字母 `s`/`q`/`e`（同 yande.re 字形，Moebooru 系本来就没 `g` 档），
+     *   且 `.net` 镜像**实测只出 `s`**（500 条样本全 `s`，`rating:e` 回 0 条）—— 但判式不为此放松。
      * 所以这里存的是站方原样值，判据在 [isAdultMarked] 里按"只认安全的那几档"统一处理。
      */
     val rating: String = "",
     val score: Int = 0,
     /**
-     * 收藏数。**只有 Safebooru 给**（实测 `fav_count`，如 170）：
-     * yande.re 的 JSON 实测 44 个键不含它，Gelbooru 字段表里也没有 ——
-     * 所以是 nullable 而不是 0，取不到的那两站交 null。
+     * 收藏数。图库三站今天**没有一站给**：yande.re 与 Konachan 的 JSON（同系）实测都**不含**
+     * `fav_count`，Gelbooru 字段表里也没有 —— 所以是 nullable 而不是 0，取不到的那几站交 null。
      * 加权时把"不知道"当 0 会把整站系统性压到最低档。
+     * 喂这一格的真出处只剩 pixiv：登录腿 `total_bookmarks`、详情腿 `bookmarkCount`
+     * （翻译记在 `PixivAppParse` / `PixivFeedParse`，同一格两处不各读一遍）。
      */
     val favCount: Int? = null,
     /**
-     * 站方**自己给的** AI 生成位（2026-10-18，用户「开了 AI 角标没见到一个图片有角标」）。
      * `null` = 这一腿站方压根不给这一格，**不等于**"站方说这不是 AI"。
      *
      * 谁能给（逐条实测，读数记在 [pixivAiFlagOf]）：
@@ -66,9 +67,8 @@ data class GalleryPost(
     val siteAiFlag: Boolean? = null,
     /**
      * 画师。三站的取法不同，而且**语义不完全同宽**（都是实测）：
-     * - yande.re：站方 `author` 字段；
-     * - Gelbooru：它的 `owner`（**上传者**，与"画师"不是一回事）；
-     * - Safebooru：`tag_string_artist`（站方标好的画师档标签，可能是一串空格分隔的多个名字）。
+     * - yande.re / Konachan（同系）：站方 `author` 字段（实测 Konachan 500 条全非空）；
+     * - Gelbooru：它的 `owner`（**上传者**，与"画师"不是一回事）。
      */
     val author: String = "",
     /** 画师自己的出处链接（不是本站单页地址，那个见 [pageUrl]）。 */
@@ -83,19 +83,19 @@ data class GalleryPost(
      * 大图页的**第一档**：打开那一瞬间就把画面填上的那一张（预览的上一档）。
      *
      * 判据是"最便宜且铺满屏还认得出"，各站拿到的那一档不同（都是实测）：
-     * - yande.re / Gelbooru：`preview_url`（300×212 / 350px 级），顺带与网格卡片同址，
-     *   磁盘/内存缓存直接命中；
-     * - Safebooru：`media_asset.variants` 的 **360 档**。它的最便宜档只有 180（实测 9.7 KB），
-     *   铺满一屏糊到认不出画的是什么，而 360 档实测 32 KB、与另两站的 preview 级同口径 ——
-     *   代价是开门多一笔下载，且**不再**与网格卡同址命中。
+     * - yande.re / Konachan / Gelbooru：`preview_url`（300×212 / 300 级 / 350px 级），
+     *   顺带与网格卡片同址，磁盘/内存缓存直接命中；
+     * （上一代图库源 Safebooru 走的是 `media_asset.variants` 的 360 档 —— 那站最便宜档只有
+     *  口径留在 `KonachanClient` 头注。）
      *
      * 取不到时留空串（站方变体缺项），由 UI 降级成"直接等 [largeUrl]"。
      * **绝不留一个编出来的地址**。
      */
     val fastUrl: String = "",
     /**
-     * 大图页中档：yande.re/Gelbooru 取站方的 `sample_url`（⚠️ Gelbooru 会给空串，翻译时已兜底）；
-     * Safebooru 取 `large_file_url`（`has_large=false` 时它就是原图，见 [SafebooruPostDto]）。
+     * 大图页中档：三站都取站方的 `sample_url`（长边 ≤1500；⚠️ Gelbooru 会给空串、
+     * Konachan 与 yande.re 的 `jpeg_url` 是**原分辨率重编码不是降档**，翻译时各自兜底，
+     * 见 `GelbooruDto.toPost` / `KonachanPostDto` / `YandeReDto` 上那三段同形实测）。
      */
     val largeUrl: String = "",
     val largeWidth: Int = 0,
@@ -106,15 +106,16 @@ data class GalleryPost(
     val md5: String = "",
     val fileExt: String = "",
     /**
-     * 分类归哪儿：`tagGroups` 这一项 2026-09-28 **从归一模型里去掉了**，而且是有意的。
      *
-     * 两站的 post 端点确实都不给分类（实测：yande.re 的 44 个键里没有任何分类字段，
+     * 三站的 post 端点都不给分类（实测：yande.re 与 Konachan 的 44 键里没有任何分类字段，
      * Gelbooru 只有一串平铺 tags，没有 `tag_string_*` 那五串）。
-     * Safebooru 那五串**是给得出的**（实测有 `tag_string_artist` 等），但归一模型不为此多开一栏：
-     * 留着这一项就只有两种写法 —— 要么在两站上硬造一个假分组，要么在三站上永远填一桶「标签」
-     * 而让下一个人以为分类数据根本不存在，两种都是骗人。
+     * （上一代图库源 Safebooru 属 Danbooru 系、那五串是给得出的，但归一模型当时也没为此多开一栏：
+     * 留着这一项就只有两种写法 —— 要么在不给的站上硬造一个假分组，要么在给的站上永远填一桶「标签」
+     * 而让下一个人以为分类数据根本不存在，两种都是骗人。）
      *
-     * 分类的真出处在那张帖的 HTML 上（站方给每一枚标签标了 tag-type-* 类名）：
+     * 分类的真出处在那张帖的 HTML 上（站方给每一枚标签标了 tag-type-* 类名；
+     * Konachan 的帖子页实测同样带 `tag-type-artist`/`tag-type-general`/`tag-type-style`，
+     * 由 [GalleryTagCategories] 按页地址现取，与站系无关）：
      * 由 [GalleryTagCategories] 在「关于这张图」打开时另取一笔，渲染期用
      * buildGalleryTagBuckets(post.tagList, …) 分桶；空桶不产出那条口径仍在那边守着。
      * 取不到时只兜「画师」一栏，判据与实测数字都写在那两个文件里。
@@ -123,13 +124,13 @@ data class GalleryPost(
      *  见 [GalleryTagSuggestion.category]。别把两者混起来。）
      */
     /**
-     * 视频时长（秒）。**只有 Safebooru 给**（实测 `media_asset.duration`，如 9.055782，
-     * 图片条目站方直接给 JSON `null`）；yande.re 与 Gelbooru 的字段表里都没有这一项 →
-     * 那两站一律 null，**不当 0**（"0 秒"是被编出来的事实）。
+     * 视频时长（秒）。图库三站今天**没有一站给**：yande.re / Konachan（Moebooru 系）与 Gelbooru
+     * 的字段表里都没有这一项；上一代图库源 Safebooru 走 `media_asset.duration`（Danbooru 系专属），
+     * 随该站撤下而失去活体出处。⇒ 一律 null，**不当 0**（"0 秒"是被编出来的事实）。
+     * 播放器要时长时自己测（见 `GalleryVideoActivity` 那一路的 `duration` 回写）。
      */
     val durationSeconds: Double? = null,
     /**
-     * 站方报的**这一作有几页**（2026-10-18，用户「要能在图片卡片上另加看出这张有几页」）。
      *
      * 谁能给（逐条实测，形状记在 `PixivFeedParse` 那两条用例上）：
      * - pixiv 匿名榜腿 `illust_page_count` 是**字符串**（`"8"`）；
@@ -155,7 +156,6 @@ data class GalleryPost(
      */
     val pageOrdinal: Int? = null,
     /**
-     * 这一条背后**站方给的是逐帧压缩包**（pixiv 的 ugoira，2026-10-23 动图播放）。
      *
      * 与 [isVideo] 一样，它是"这条行模型的普通图档只画得出第一帧"的那枚旗标，而且**同样只能由
      * 站方的类型位翻译出来**：`fileExt` 判的是扩展名，而 ugoira 的地址尾巴是 `.jpg`
@@ -194,13 +194,11 @@ data class GalleryPost(
      * 未知值或空串一旦放行，就是把内容**静默**放到已经开了打码的界面上。方向要反过来：宁可错打码。
      *
      * ⚠️ 各站的"安全档"**字形不同**（实测），所以这里几种都认：
-     * - yande.re 单字母：`s`（safe）；
-     * - Gelbooru 单词：`general` / `sensitive`；
-     * - Safebooru 单字母：`g`（general，实测**全站只有这一档**）。
+     * - yande.re / Konachan 单字母：`s`（safe）；
+     * - Gelbooru 单词：`general` / `sensitive`。
      *
-     * 沿用第一轮 `rating != "s"` 会把 Gelbooru 的 `general` 与 Safebooru 的 `g` 那批
-     * 最干净的内容**误打码**（后者是整站），而只认单词又会让 yande.re 整站都被打码 ——
-     * 所以判据必须同时覆盖两套字形。
+     * 沿用第一轮 `rating != "s"` 会把 Gelbooru 的 `general` 那批最干净的内容**误打码**，
+     * 而只认单词又会让 yande.re 整站都被打码 —— 所以判据必须同时覆盖两套字形。
      */
     val isAdultMarked: Boolean
         get() = rating.lowercase() !in SAFE_RATINGS
@@ -223,7 +221,6 @@ data class GalleryPost(
      * 不能直接用 [largeUrl]：Gelbooru 对视频条目的 `sample_url` 给**空串**，
      * 翻译时按"小图/视频都要有地址"兜底成了 [fileUrl]（原片 mp4，实测 16~26 MB）。
      * 把 mp4 交给 Coil 的结果是**先白下几十 MB 再解码失败**，
-     * 而失败之前那一屏什么都没有 —— 真机现象就是"视频条目黑屏"。
      *
      * 判据是「large 档与原片同址 = 站方没有静帧」，此时才退到 [previewUrl]
      * （实测这一档**恒非空**）。yande.re 那一路 large 档本来就是 jpg 静帧、
@@ -239,7 +236,6 @@ data class GalleryPost(
      * 画师介绍页的 hero 底图用它。底图这一档的要求与 [previewUrl] 那档**不是**一件事：
      * 缩略档只保证"认得出一格是什么"，而底图要铺满整页宽度
      * （hero 实宽约 361dp，本机 ≈993 物理像素），拿 300×212 铺上去是放大 3.3 倍 ——
-     * 再叠一层模糊就只剩色块，认不出画的是什么（2026-10-01 用户报「模糊过头」）。
      *
      * 所以图片条目直接用中档 [largeUrl]（两站都是站方的 `sample_url`，长边 ≤1500），
      * 缺档才退 [previewUrl]。**不给 [fileUrl]**：那是原图档，yande.re 侧实测见过
@@ -255,7 +251,6 @@ data class GalleryPost(
     /**
      * 时长角标。站方没给时长时返回空串而不是 `"0s"` —— 编一个看不出来的数比不写更糟。
      *
-     * ⚠️ 单位从前写 `″`（双撇号 = 英寸的排版记号），2026-10-15 归位到本模块一直在用的那一档
      * （`GalleryLegGuard` 的"超过 12s 没返回"、顶栏熔断那句"熔断中，Ns 后重试"）——
      * 同一屏两种秒数写法，且 `″` 在缩略图角标那个尺寸下看着像个噪点。
      */
@@ -275,7 +270,6 @@ data class GalleryPost(
     val uid: String get() = "${site.routeKey}:$id"
 
     /**
-     * **播放器**那一侧的逐页身份（2026-10-18，页轴）。
      *
      * 与 [uid] 的分工不是口味：收藏、历史、去重记的是"这一条作品"，四页必须共用一个 `uid`；
      * 而"这一页开了 HD"与"这一页正在放大"必须是**逐页**的 —— 用 uid 记的话，翻到第 2 页 HD 那颗
@@ -309,19 +303,16 @@ data class GalleryPost(
          * 之所以用白名单（而不是列成人档）：未知值必须落进"成人"，
          * 放行一个没见过的分级 = 把内容静默放到已开打码的界面上。
          *
-         * ⚠️ `g` 是 **Safebooru（Danbooru 系）**的"general"档字形。三站三套字形：
-         * - yande.re：`s`（safe）
+         * ⚠️ 三站三套字形（实测）：
+         * - yande.re / Konachan：`s`（Moebooru 系单字母；Konachan `.net` 镜像实测只出 `s`）
          * - Gelbooru：`general` / `sensitive`（单词）
-         * - Safebooru：`g` / `s`（单字母，与 yande.re 同形但多一个 `g`）
-         *
-         * 2026-10-01 接入 Safebooru 时补 `g`：不加的话该站**最干净的那一批会被整站误打码**
-         * （实测抽样里 `rating:"g"` 占绝大多数），而这正是上一轮为 Gelbooru 补
-         * `general` 时踩过的同一个坑 —— 字形表不全 = 静默误判整站。
+         * - `g` 是 **Danbooru 系**的 general 字形（上一代图库源 Safebooru 全站只有这一档，
+         *   多收一枚没有活体的字母不改变今天任何一站的读数 —— 与 `safe` 那行同一条防法。
          */
         val SAFE_RATINGS: Set<String> = setOf(
-            "s",          // yande.re：safe；Safebooru：sensitive（同字母，两站共用）
+            "s",          // yande.re / Konachan：safe（单字母）
             "safe",       // 别名，防站方改写法
-            "g",          // Safebooru：general（最干净的那一档）
+            "g",          // Danbooru 系：general（现无活体出处，防字形表不全的整站误打码）
             "general",    // Gelbooru：一般
             "sensitive",  // Gelbooru：敏感（不露骨，仍算安全档）
         )

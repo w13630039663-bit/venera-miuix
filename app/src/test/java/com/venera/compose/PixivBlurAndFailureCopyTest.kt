@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * **codex 那一轮的收尾尺**（2026-10-20）。
  *
  * 那一轮做了三件事，本文件各钉一把，免得下次有人把它们"顺手改回去"：
  *

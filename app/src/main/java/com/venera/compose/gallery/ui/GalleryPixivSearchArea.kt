@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
@@ -69,6 +68,8 @@ import androidx.compose.ui.unit.em
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraPressFeedback
@@ -94,7 +95,6 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 /**
- * pixiv 那一副搜索卡（2026-10-17 方案 C：**卡内展开的筛选面板**）。
  *
  * ## 它为什么是第二张卡，而不是给原来那张加分支
  *
@@ -119,7 +119,6 @@ import java.time.ZoneOffset
  * 行距也按 `space4` 收过，实测约 250dp，加上排序行与输入行，整张卡约 356dp，键盘在也放得下。
  * 既然放得下，就不该去抢用户的键盘 —— 他很可能正想改那个词。
  *
- * ## 面板里那四段各自为什么成立（2026-10-17 深夜改判）
  *
  * 第一版只摆了比例与时间，理由是"收藏与作品在**匿名腿**上被站方静默忽略"。用户当场改判：
  * 「人气 / 收藏 / 作品这三段应该是有的，你看看 pixez 是怎么做的」。查证之后他是对的 ——
@@ -413,7 +412,6 @@ internal fun GalleryPixivSearchArea(
                 if (rvm.open) {
                     GalleryReverseSearchArea(rvm = rvm, allowNsfw = allowNsfw)
                 } else if (expanded) {
-                    // ── 页签行：作品 / 画师（2026-10-18）──
                     // pixez 的搜索结果页就是一颗两页签的 TabBar（`result_page.dart`），
                     // 用户问「搜索作者（画师）的分栏怎么没做」问的就是这一排。
                     PixivKindRow(
@@ -461,7 +459,6 @@ internal fun GalleryPixivSearchArea(
                         PixivFilterPanel(
                             filter = svm.pixivFilter,
                             onPickBookmark = { mark ->
-                                // 收藏**不再要求登录**（2026-10-18 改判）：非会员走词尾 `users入り`
                                 // （那一档匿名实测真生效 —— 同词「猫」不带它 60 条里只有 2 条有收藏数标签，
                                 // 带上之后 58 条里 47 条是 `100users入り`），会员走 `bookmark_num_min`。
                                 // 从前它只发后者，而后者在站方是付费档 ⇒ 非会员点了被静默忽略 = "没生效"。
@@ -552,22 +549,13 @@ private fun PixivTagModeToken(
                 modifier = Modifier.size(tokens.spacing.chipIconSize),
             )
         }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
+        VeneraDropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
             PixivTagMode.entries.forEach { candidate ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            // 菜单里把两档的区别说全：框里那两个字放不下"标签"两个字，
-                            // 而"部分 / 完全"单看读不出是"标签的哪一部分"。
-                            text = "标签${candidate.label}",
-                            fontSize = tokens.type.body,
-                            color = if (candidate == mode) {
-                                tokens.color.primary
-                            } else {
-                                tokens.color.textPrimary
-                            },
-                        )
-                    },
+                VeneraMenuItem(
+                    // 菜单里把两档的区别说全：框里那两个字放不下"标签"两个字，
+                    // 而"部分 / 完全"单看读不出是"标签的哪一部分"。
+                    text = "标签${candidate.label}",
+                    selected = candidate == mode,
                     onClick = { onPick(candidate) },
                 )
             }
@@ -682,7 +670,6 @@ private fun PixivSortRow(
  * 两列排法：左边一枚 [VeneraTokens.spacing.iconButtonSize] 宽的标签列，右边是控件。
  * 竖排（标签在上、控件在下）看着更松，但每一段都要多花一行 —— 而这一屏的高度是按 10dp 算的。
  *
- * ## 四段各自落在哪条腿上（2026-10-17 深夜补齐）
  *
  * | 段 | 真发得出去的条件 |
  * |---|---|
@@ -692,7 +679,6 @@ private fun PixivSortRow(
  * | 比例 | 匿名腿发 `ratio`，登录腿没有这一枚 ⇒ 登录时也走本地筛 |
  * | 时间 | 匿名腿 `scd/ecd`，登录腿 `start_date/end_date`（单边有效） |
  *
- * 收藏那一段**不再要求登录**（2026-10-18 改判）：非会员走词尾标签那一档、会员走真参数，两种发法都真筛得动。
  * 只剩「人气」还挂会员门，而那句拒词由 `setPixivFilter` 一处说 —— UI 不各自判一次，两处必漂一处。
  *
  * 「重置全部」只重置**面板里**那五段：排序与标签模式都在屏上摆着，把它们一起重置，
@@ -751,7 +737,6 @@ private fun PixivFilterPanel(
         }
 
         // 站方的硬过滤档：www 那一条是 `ai_type=1`、app-api 是 `search_ai_type=1`。
-        // 2026-10-18 现量（词=`猫`）：`ai_type=0` 回 21 条 `aiType=2`，`ai_type=1` 回 **0 条** ——
         // 这一枚**匿名也发得出去**，所以不挂登录门。
         PixivPanelRow(label = "AI") {
             FlowRow(
@@ -990,7 +975,6 @@ private fun PixivHistoryBlock(svm: GallerySearchViewModel) {
         // 复用 booru 那侧的历史列表（双列紧凑网格 + 两步删除）。它吃的是 entry 的 `query`，
         // pixiv 那几条的 `query` 就是那个词。
         //
-        // ⚠️ 站标**不画**（用户 2026-10-17：「p 站搜索历史不需要显示站点」）：这一格里的每一条
         // 都属于 pixiv，摆一枚 "P" 是在回答一个没人问过的问题，还把那个词挤窄一截。
         HistoryList(
             history = history,
@@ -1002,7 +986,6 @@ private fun PixivHistoryBlock(svm: GallerySearchViewModel) {
 }
 
 /**
- * 搜索卡里那一排**页签**：作品 / 画师（2026-10-18）。
  *
  * 出处是 pixez 搜索结果页那颗 `TabBar`（`result_page.dart` 的 `tabs: [illust, painter]`）。
  * 做成两枚 chip 而不是 miuix 的分段控件：这一排只有两项、又坐在卡里，

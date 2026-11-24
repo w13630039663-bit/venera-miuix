@@ -6,7 +6,6 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 页面标题的**两档字号必须与 miuix 顶栏那两档同源**（2026-10-16，真机两轮反馈）。
  *
  * 用户的原话：
  *  - 「滑后『画廊』还是不在同一水平线，**且字体明显小很多**」（折叠态）；
@@ -17,7 +16,6 @@ import java.io.File
  *  - 折叠小标题 → `fontSize = MiuixTheme.textStyles.title3.fontSize` + `FontWeight.Medium`（`:732-733`）
  *  - 展开大标题 → `fontSize = MiuixTheme.textStyles.title1.fontSize` + Medium 之外为 Normal（`:763-764`）
  *
- * 真机读数（同一台机、同一张截图里量）：折叠态我们 30px vs 原生 38px（≈ itemTitle 16sp vs title3 20sp）；
  * 展开态头图白字用的是 `screenTitle`（MD3 22sp）而原生大标题是 `title1`（MD3 28sp）。
  *
  * 这一条**不是**"造一个新数字"：我们的主题（`ui/tokens/MiuixTextStyles.kt`）本来就把
@@ -68,7 +66,6 @@ class TopBarTitleScaleTest {
      * 把这条钉住，是为了让下一个人看见 `title1/title3` 时不用去翻 miuix —— 也防止有人
      * 顺手把 `title1` 改成别的档（那会同时改掉**全库**所有用 title1 的地方，是大动作）。
      *
-     * ⚠️ 2026-11-09 判式换形：原先吃整串连续文本 `title1 = TextStyle(fontSize = t.display)`，
      * 那等于把"参数必须写在一行"钉成了规矩 —— 字族接线（`TextStyle(fontSize = t.display,
      * fontFamily = t.fontFamily)`）拆成多行后旧串就找不到了，红在书写形态而不是红在映射。
      * 现在按**行锚点**判：同一行里「槽名 = TextStyle(」与「fontSize = t.档位」同时在场即可，
@@ -97,7 +94,6 @@ class TopBarTitleScaleTest {
             val t = lines[i]
             if (t.startsWith("//")) continue
             // 先判命中再判边界：`fontSize = ` 自身也长成"下一槽"的形状（`word = ` 起头），
-            // 边界放前面会把正主先 break 掉（2026-11-09 第一版就是这么红的）。
             if (t.contains("fontSize = $value")) return true
             if (Regex("""^[a-zA-Z][a-zA-Z0-9]* = """).containsMatchIn(t)) break
         }
@@ -105,9 +101,7 @@ class TopBarTitleScaleTest {
     }
 
     /**
-     * 展开态那一格**除了字号**，边距与字重也要与顶栏大标题同源（2026-10-16 第二轮）。
      *
-     * 用户的原话：「画廊的未收起大字和其他页面的字体和颜色对不上」。真机读数（两张截图，
      * 同机 1080×2376，量各自标题的墨迹外接框）：
      *  - 字左 x：图上 43 vs 探索页 73 —— 差 30px ≈ 12dp，正是 `rowHorizontal`(14dp)
      *    与 miuix `TopAppBarDefaults.TitlePadding`(26dp) 之差；
@@ -125,7 +119,6 @@ class TopBarTitleScaleTest {
      * 全文尺子会被自己的注释喂饱（恒绿）。
      *
      * 唯一刻意不同的一格是**颜色**：图上仍用 `ImageOverlayColors.OnImage` 纯白。
-     * 深色字压用户自选图（亮度不可控）会直接读不出，这一条用户 2026-10-16 明确保留。
      */
     @Test fun `头图大标题的边距与字重跟 miuix 大标题同源`() {
         val rel = "com/venera/compose/feature/settings/SettingsHero.kt"

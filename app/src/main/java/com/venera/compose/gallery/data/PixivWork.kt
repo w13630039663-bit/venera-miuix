@@ -16,7 +16,6 @@ data class PixivWork(
     val title: String,
     val rank: Int? = null,
     /**
-     * 作者头像（榜单卡文字区左边那一枚，用户 2026-10-17 「排行榜也没画师头像」）。
      *
      * 直接取记录里 `user.profile_image_urls.medium`（与 [PixivUser.avatarUrl] 同一格），
      * **不按 userId 另发一次请求**：一排 10 张卡就是 10 次额外往返，而头像本来就在同一个响应里。
@@ -39,14 +38,12 @@ data class PixivWork(
 )
 
 /**
- * pixiv 榜单的档位（2026-10-16 深夜现量：这五档匿名全 200，每页 50 条、`p=2` 首条 `"rank":51`）。
  *
  * ⚠️ 档名**不是** `day/week/month` —— 那三串现量 404（站方回的是「ランキングが見つかりません」）。
  * 而 R-18 那两档（`daily_r18`/`male_r18`）匿名是 **403 整档墙**，所以这里**一枚都不列**：
  * 摆一档点开必然 403 的开关就是假开关。`male`/`female` 匿名虽 200，但用户那张稿上只有这五档，
  * 加不加由产品定，不由"反正拿得到"定。
  *
- * ## 两套档名，两条腿各用各的（2026-10-17 第七轮）
  *
  * - [siteParam]：`www.pixiv.net/ranking.php?mode=` 那一套（`daily/weekly/…`，**匿名可读**）；
  * - [appParam]：`app-api.pixiv.net/v1/illust/ranking?mode=` 那一套（`day/week/…`，**必须带票据**）。

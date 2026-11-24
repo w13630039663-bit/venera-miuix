@@ -10,6 +10,7 @@ import com.venera.compose.data.platform.TagTranslationMode
 import com.venera.compose.data.platform.ThemeColorSource
 import com.venera.compose.data.platform.ThemeMode
 import com.venera.compose.data.platform.android.AndroidKeyValueStore
+import com.venera.compose.gallery.data.PixivPreferences
 import com.venera.compose.gallery.domain.GalleryAnimatedMode
 import com.venera.compose.gallery.domain.GalleryColumnMode
 import com.venera.compose.gallery.domain.GalleryPreloadMode
@@ -27,7 +28,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-// 2026-10-20：六枚枚举已搬到 `data/platform/PreferenceEnums.kt`（那颗目录本来就共享给桌面）。
 // 搬家的理由是「桌面要复用大屏 UI ⇒ 得读这几枚枚举 ⇒ 而它们零 Android 依赖，不该被
 // `getInstance(Context)` 这颗 Android 入口连坐」。语义一字未改，见那颗文件的头注。
 
@@ -37,10 +37,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * 底下那条存取通道收口到 [KeyValueStore]（Android 侧是 SharedPreferences 的薄壳，桌面侧是
  * 一名一个 JSON 文件）；这层 StateFlow 镜像的语义、键名、默认值一字未动。
  */
-class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
+class VeneraPreferences private constructor(private val prefs: KeyValueStore) : PixivPreferences {
 
     // 阅读器设置
-    // 默认「美漫·左至右」（用户 2026-10-13 点名）。只影响**从没设过这一项**的安装：
     // 盘上有值就照读，不迁移也不覆盖。`ReaderReadingMode.fromKey` 认这一枚键，也认旧值 "VERTICAL"。
     private val _defaultReadingMode =
         MutableStateFlow(prefs.getString(KEY_DEFAULT_READING_MODE, "HORIZONTAL_LTR") ?: "HORIZONTAL_LTR")
@@ -68,7 +67,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /**
      * 条漫连续流自动巡航的滚动速度（px/s）。
      *
-     * 2026-11-04 之前它只是阅读器里一枚 `remember { 60f }` 的内存值：调完退出（或换一本
      * 漫画重进阅读器）就回到 60 —— 用户点名「速度调了也不保存」。与翻页档的间隔那枚同一
      * 待遇：落偏好，全局一份，所有漫画共用。
      */
@@ -78,7 +76,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /**
      * 「记住速度」开关（默认开）。
      *
-     * 开：巡航速度的每次调整都落偏好，全局一份（2026-11-04 修"调了不保存"的正是这条）。
      * 关：速度只活在本次阅读会话里，换一本漫画回到记住的那一档 —— 想临时快/慢一把、
      * 又不想动长期习惯的用法。
      */
@@ -86,7 +83,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     val autoScrollSpeedPersist: StateFlow<Boolean> = _autoScrollSpeedPersist.asStateFlow()
 
     /**
-     * 按本记忆阅读模式（2026-11-05，默认开）。
      *
      * 治的是"这本是条漫、下本是日漫，阅读器里切了模式换一本又全不对"：开时阅读器里
      * 换模式只写这一本的档（JSON map：`<sourceKey>|<comicId>` → `ReaderReadingMode.key`），
@@ -97,7 +93,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     val comicModeMemoryEnabled: StateFlow<Boolean> = _comicModeMemory.asStateFlow()
 
     /**
-     * 阅读器常驻信息角标（2026-11-07，方案「双角胶囊」）：左角 当前页/总页，
      * 右角 时间 + 电量；巡航迷你条出现时右角整组让位上移。默认开 —— 阅读器是全屏
      * 沉浸（系统栏都藏了），页码/时间/电量是仅剩的常驻参考系。
      * 入口在**阅读器设置面板**（用户点名），全局设置页不放。
@@ -185,7 +180,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     val startPage: StateFlow<String> = _startPage.asStateFlow()
 
     /**
-     * 「启动页面」旧值一次性迁移（2026-11-03，探索 tab 并进搜索页的分段后）：
      * `EXPLORE` 已不再是合法落点（下拉里也不再有这一项），读到旧值就写回 `SEARCH`。
      * 放在读侧而非设置页：设置页只在打开时写，旧值会一直活着。
      */
@@ -230,12 +224,12 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /**
      * 允许绑优选 IP 的域名表。
      *
-     * 默认那两条是**本机实测过真实业务路径**的（2026-10-01）：
-     * `safebooru.donmai.us` 的 `/posts.json` 与 JM 图床 `cdn-msp.jmapinodeudzn.net` 的根路径都回 200。
-     * 反面例子也记在探活那侧：`konachan.net` 虽然走 CF 且 TCP 通，HTTP 层恒 403，所以不预置它。
+     * 默认那两条是**本机实测过真实业务路径**的：
+     *   老用户手填过它的，条目仍留在自己的偏好串里，只是不再是出厂默认。
+     *   晚间复测已回 200）—— 所以这里预置它的前提是"最新实测通"，探活仍按真实状态码判、403 不算通。
      */
     private val _cfPreferredHosts = MutableStateFlow(
-        prefs.getString(KEY_CF_PREFERRED_HOSTS, "safebooru.donmai.us\ncdn-msp.jmapinodeudzn.net") ?: "",
+        prefs.getString(KEY_CF_PREFERRED_HOSTS, "konachan.net\ncdn-msp.jmapinodeudzn.net") ?: "",
     )
     val cfPreferredHosts: StateFlow<String> = _cfPreferredHosts.asStateFlow()
 
@@ -253,7 +247,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _comicStoragePath.value = path
     }
 
-    // ---- 画廊（设置页那一整块，2026-09-29 第五轮）----
 
     /** 墙上摆几列。AUTO = 按屏宽定（大屏 3、手机 2）。 */
     private val _galleryColumnMode = MutableStateFlow(readEnum(KEY_GALLERY_COLUMNS, GalleryColumnMode.AUTO))
@@ -280,7 +273,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _gallerySaveNaming = MutableStateFlow(readEnum(KEY_GALLERY_SAVE_NAMING, GallerySaveNaming.SITE_ID))
     val gallerySaveNaming: StateFlow<GallerySaveNaming> = _gallerySaveNaming.asStateFlow()
 
-    /** 画廊下载自定义保存格式（2026-10-22 支持占位符）。 */
     private val _gallerySaveFormat = MutableStateFlow(prefs.getString(KEY_GALLERY_SAVE_FORMAT, GallerySaveFormatHelper.DEFAULT_FORMAT) ?: GallerySaveFormatHelper.DEFAULT_FORMAT)
     val gallerySaveFormat: StateFlow<String> = _gallerySaveFormat.asStateFlow()
 
@@ -315,7 +307,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _gallerySaveFormat.value = format
     }
 
-    // ---- 画廊大图页的行为档位（批次 C1，2026-09-29）----
 
     /**
      * 停在大图页时保持屏幕常亮。默认开，与阅读器那把同口径
@@ -326,7 +317,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
 
     /**
      * 音量键翻大图页的张。默认**关**：阅读器那把默认开，但画廊这页在透明玻璃窗 Activity 里、
-     * 根节点此前没有任何 focus 件 —— 默认开等于把音量键从系统手里抢过来走一条没在真机上验过的链。
      */
     private val _galleryVolumeKeyTurn = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_VOLUME_KEY, false))
     val galleryVolumeKeyTurn: StateFlow<Boolean> = _galleryVolumeKeyTurn.asStateFlow()
@@ -367,7 +357,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _galleryPreload.value = mode
     }
 
-    // ---- 画廊大图页的观感与 AI 判据（批次 C2，2026-09-29）----
 
     /**
      * 动图（GIF / 动图 WebP）要不要解成动画。**默认仅 Wi-Fi**。
@@ -384,7 +373,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /**
      * 画廊**自己的** AI 屏蔽开关。
      *
-     * 与漫画守卫页那把 `block_ai`（在 venera_guard_prefs 里）是两枚独立开关 —— 用户 2026-09-29
      * 拍板"画廊和漫画分开"。分开的是开关，词表仍以 `security.guard.AiTagKeys` 那一张为准
      * （画廊侧只做**收窄**：剔掉裸 `ai`，理由见 `gallery/domain/GalleryAi.kt`）。
      */
@@ -395,7 +383,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _galleryAiBadge = MutableStateFlow(prefs.getBoolean(KEY_GALLERY_AI_BADGE, true))
     val galleryAiBadge: StateFlow<Boolean> = _galleryAiBadge.asStateFlow()
 
-    // ---- pixiv 作品页的两档（2026-10-18，方案 docs/rounds/gallery-pixiv-work-page-v4-vertical-2026-10-18.html §一⑤）----
     // 两枚都**只有 pixiv 作品页消费**：图库三站仍走旧看图器，那些档位对它们没有意义（两屏隔离）。
 
     /**
@@ -419,7 +406,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         _pixivWorkDetailsInFlow.value = on
     }
 
-    // ---- pixiv 账号页的两档（2026-10-19，方案 §2 的 ⑭）----
     // 只有账号页消费。两枚合起来是一句话：**进来先看哪一批**。
     // 「默认范围」管进屏初值，「显示非公开」是那把总闸 —— 闸关掉之后私密腿**根本不发请求**，
     // 而不是"发了再在屏上藏起来"（后者会把私密条目的标题与封面写进内存与日志）。
@@ -469,49 +455,49 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
 
     // ---- pixiv 下载与网络设置 ----
     private val _pixivDownloadPath = MutableStateFlow(prefs.getString(KEY_PIXIV_DOWNLOAD_PATH, "") ?: "")
-    val pixivDownloadPath: StateFlow<String> = _pixivDownloadPath.asStateFlow()
+    override val pixivDownloadPath: StateFlow<String> = _pixivDownloadPath.asStateFlow()
 
     private val _pixivSaveFormat = MutableStateFlow(prefs.getString(KEY_PIXIV_SAVE_FORMAT, PixivSaveFormatHelper.DEFAULT_FORMAT) ?: PixivSaveFormatHelper.DEFAULT_FORMAT)
-    val pixivSaveFormat: StateFlow<String> = _pixivSaveFormat.asStateFlow()
+    override val pixivSaveFormat: StateFlow<String> = _pixivSaveFormat.asStateFlow()
 
     private val _pixivAutoSaveOnFavorite = MutableStateFlow(prefs.getBoolean(KEY_PIXIV_AUTO_SAVE_ON_FAVORITE, false))
-    val pixivAutoSaveOnFavorite: StateFlow<Boolean> = _pixivAutoSaveOnFavorite.asStateFlow()
+    override val pixivAutoSaveOnFavorite: StateFlow<Boolean> = _pixivAutoSaveOnFavorite.asStateFlow()
 
     private val _pixivOAuthNetworkMode = MutableStateFlow(readEnum(KEY_PIXIV_OAUTH_NETWORK_MODE, PixivNetworkMode.ECH))
-    val pixivOAuthNetworkMode: StateFlow<PixivNetworkMode> = _pixivOAuthNetworkMode.asStateFlow()
+    override val pixivOAuthNetworkMode: StateFlow<PixivNetworkMode> = _pixivOAuthNetworkMode.asStateFlow()
 
     private val _pixivApiNetworkMode = MutableStateFlow(readEnum(KEY_PIXIV_API_NETWORK_MODE, PixivNetworkMode.ECH))
-    val pixivApiNetworkMode: StateFlow<PixivNetworkMode> = _pixivApiNetworkMode.asStateFlow()
+    override val pixivApiNetworkMode: StateFlow<PixivNetworkMode> = _pixivApiNetworkMode.asStateFlow()
 
     private val _pixivImageHost = MutableStateFlow(prefs.getString(KEY_PIXIV_IMAGE_HOST, "i.pximg.net") ?: "i.pximg.net")
-    val pixivImageHost: StateFlow<String> = _pixivImageHost.asStateFlow()
+    override val pixivImageHost: StateFlow<String> = _pixivImageHost.asStateFlow()
 
-    fun setPixivDownloadPath(path: String) {
+    override fun setPixivDownloadPath(path: String) {
         prefs.put(KEY_PIXIV_DOWNLOAD_PATH, path)
         _pixivDownloadPath.value = path
     }
 
-    fun setPixivSaveFormat(format: String) {
+    override fun setPixivSaveFormat(format: String) {
         prefs.put(KEY_PIXIV_SAVE_FORMAT, format)
         _pixivSaveFormat.value = format
     }
 
-    fun setPixivAutoSaveOnFavorite(on: Boolean) {
+    override fun setPixivAutoSaveOnFavorite(on: Boolean) {
         prefs.put(KEY_PIXIV_AUTO_SAVE_ON_FAVORITE, on)
         _pixivAutoSaveOnFavorite.value = on
     }
 
-    fun setPixivOAuthNetworkMode(mode: PixivNetworkMode) {
+    override fun setPixivOAuthNetworkMode(mode: PixivNetworkMode) {
         prefs.put(KEY_PIXIV_OAUTH_NETWORK_MODE, mode.name)
         _pixivOAuthNetworkMode.value = mode
     }
 
-    fun setPixivApiNetworkMode(mode: PixivNetworkMode) {
+    override fun setPixivApiNetworkMode(mode: PixivNetworkMode) {
         prefs.put(KEY_PIXIV_API_NETWORK_MODE, mode.name)
         _pixivApiNetworkMode.value = mode
     }
 
-    fun setPixivImageHost(host: String) {
+    override fun setPixivImageHost(host: String) {
         prefs.put(KEY_PIXIV_IMAGE_HOST, host)
         _pixivImageHost.value = host
     }
@@ -519,7 +505,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     /**
      * 画廊：**上滑**（手指向上推、浏览下面的图）时**收起顶栏**。默认**关**。
      *
-     * 两枚"滚动收起"开关**互不联动**（用户 2026-09-30 点名要分开）：
      * 只想要"看图时底栏让位、顶栏留着看标题"的人，与反过来的人，都能配出自己要的。
      * 默认关沿用本仓"新能力不改变现有观感"的惯例（同 `SurfaceMaterial` 默认实色、
      * `checkUpdateOnStart` 默认 false）。
@@ -585,13 +570,11 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     private val _themeMode = MutableStateFlow(readEnum(KEY_THEME_MODE, ThemeMode.SYSTEM))
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
-    // 默认 **MD3 风格**（用户 2026-10-13 点名"界面风格默认使用 md3 取色"）。
     // 取色那一步不用另改：`ThemeColorSource` 的默认已经是 WALLPAPER（系统壁纸动态取色），
     // 而它**只在 MD3 下有意义** —— Miuix 用的是它自己那套固定色板。
     private val _appearanceStyle = MutableStateFlow(readEnum(KEY_APPEARANCE_STYLE, AppearanceStyle.MD3))
     val appearanceStyle: StateFlow<AppearanceStyle> = _appearanceStyle.asStateFlow()
 
-    // 默认**液态玻璃悬浮底栏**（用户 2026-10-13 点名）。这一轴只管底栏，
     // 与内容层材质 `SurfaceMaterial`（默认仍 SOLID，那是它自己 KDoc 写明的零回归判据）是两回事。
     private val _navigationBarStyle = MutableStateFlow(readEnum(KEY_NAVIGATION_BAR_STYLE, NavigationBarStyle.LIQUID_GLASS))
     val navigationBarStyle: StateFlow<NavigationBarStyle> = _navigationBarStyle.asStateFlow()
@@ -691,7 +674,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
         }
 
     /**
-     * 用户在更新弹窗里点过「以后再说」的那一版。2026-10-04 新增，同样是账本不是偏好：
      * 它只决定"这一版还弹不弹"，不改变任何界面观感，也不该出现在备份/恢复里。
      * 判据是**版本号相等**而不是"有值就不弹" —— 出了更高的一档必须恢复提醒，
      * 否则一次误点就把更新通道永久关掉了。
@@ -704,7 +686,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
             prefs.put(KEY_IGNORED_UPDATE_VERSION, value)
         }
 
-    // ---- 设置页 hero 头图 / 名言卡小图（2026-10-02）----
     //
     // 两条都只存**应用私有目录里的绝对路径**（拷贝落盘在 SettingsHeroImageStore），
     // 不存 content URI：相册删图 / URI 授权失效都会让 persisted URI 变裂图，
@@ -725,7 +706,6 @@ class VeneraPreferences private constructor(private val prefs: KeyValueStore) {
     }
 
     /**
-     * 画廊首页头图（2026-10-15）。**独立一键一槽位**，不复用 [settingsHeroPath]：
      * 「和设置页一样」说的是同一套机制（可选可清、空串=整条链路不参与），
      * 而不是同一张图 —— 两处共用一张会让"换画廊的头"顺手改掉设置页，反过来也一样。
      */

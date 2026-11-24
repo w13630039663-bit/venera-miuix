@@ -29,7 +29,7 @@ class DesktopFailureLedgerTest {
 
     private val yandere = GallerySite.YANDERE
     private val gelbooru = GallerySite.GELBOORU
-    private val safebooru = GallerySite.SAFEBOORU
+    private val konachan = GallerySite.KONACHAN
 
     private fun post(site: GallerySite, id: Long) = GalleryPost(
         site = site,
@@ -54,8 +54,8 @@ class DesktopFailureLedgerTest {
         )
         assertEquals(
             "这一轮又失败了 ⇒ 说这一轮那句，不留上一轮的旧话",
-            mapOf(safebooru to "403"),
-            desktopFailureLedgerAfter(previous = mapOf(safebooru to "上一轮那句"), asked = setOf(safebooru), fresh = mapOf(safebooru to "403")),
+            mapOf(konachan to "403"),
+            desktopFailureLedgerAfter(previous = mapOf(konachan to "上一轮那句"), asked = setOf(konachan), fresh = mapOf(konachan to "403")),
         )
         assertEquals(
             "两站各归各档：问过的按这一轮、没问的按旧账",
@@ -92,20 +92,20 @@ class DesktopFailureLedgerTest {
     @Test
     fun `③ 搜索屏第二笔答上就不该还挂着第一笔那句`() {
         val boards = ScriptedBoards(
-            pageSize = mapOf(yandere to 2, safebooru to 2),
+            pageSize = mapOf(yandere to 2, konachan to 2),
             pages = mapOf(
                 yandere to listOf(
                     Result.success(listOf(post(yandere, 1), post(yandere, 2))),
                     Result.success(listOf(post(yandere, 3), post(yandere, 4))),
                 ),
-                safebooru to listOf(Result.success(listOf(post(safebooru, 11), post(safebooru, 12)))),
+                konachan to listOf(Result.success(listOf(post(konachan, 11), post(konachan, 12)))),
             ),
-            failFirst = setOf(safebooru),
+            failFirst = setOf(konachan),
         )
         val ports = fakeGalleryPorts(boards)
-        val base = DesktopGalleryBatch(seed = 3L, queries = mapOf(yandere to "q", safebooru to "q"))
+        val base = DesktopGalleryBatch(seed = 3L, queries = mapOf(yandere to "q", konachan to "q"))
         val first = runBlocking { fetchSearchPage(ports, base).getOrThrow() }
-        assertEquals("第一笔那一站抖了要点名", setOf(safebooru), first.batch.failures.keys)
+        assertEquals("第一笔那一站抖了要点名", setOf(konachan), first.batch.failures.keys)
 
         val second = runBlocking { fetchSearchPage(ports, first.batch).getOrThrow() }
         assertEquals("补上之后失败名单要清空", emptySet<GallerySite>(), second.batch.failures.keys)

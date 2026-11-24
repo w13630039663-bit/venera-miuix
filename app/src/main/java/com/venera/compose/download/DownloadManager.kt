@@ -76,7 +76,6 @@ class DownloadManager private constructor(private val context: Context) {
     // ================================= 系统前台下载通知 =================================
 
     /**
-     * 渠道定义搬到了 `DownloadNotificationChannel`（2026-10-04）——
      * 应用内更新那条链要复用同一条渠道，而它不该依赖"这台设备用过漫画离线下载"。
      * 名字、id、重要级与那一句描述都逐字没动。
      */
@@ -284,7 +283,6 @@ class DownloadManager private constructor(private val context: Context) {
      *
      * [chapterOffline] 每问一章都要把整本目录 `listFiles` 一遍并逐目录试读
      * `chapter.json`：117 话的本子 = 一万三千多次目录探测，从 IO 线程也要好几秒。
-     * 用户 2026-11-09 报「下载面板一直在核对离线文件」就是它 —— 扫描没跑完之前
      * 面板永远停在等待态。这里反过来：**每个章目录只读一次**，按其中的 chapterId
      * 归账成表；同 id 多目录取最强档（齐 > 不全 > 无），与逐问口径一致。
      * 队列里 COMPLETED 的任务直接盖成齐，不等落盘目录。

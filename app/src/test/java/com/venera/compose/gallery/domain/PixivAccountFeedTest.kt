@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 个人账号页「公开 / 非公开 / 全部」那一档的判据（方案 `docs/rounds/gallery-pixiv-account-page-2026-10-19.html` §七）。
  *
  * 这一层要钉的东西全是**错了不会报错、只会静默少一批**的那一类：
  *
@@ -130,7 +129,6 @@ class PixivAccountFeedTest {
             "三条读腿各发一枚 restrict=restrict.param", 3,
             body.count { it.contains("""addQueryParameter("restrict", restrict.param)""") },
         )
-        // 写死字面量那一族（2026-10-19 之前书签与关注两条就是 `"public"` 写死）。
         // 只禁 query 那一形：两条写腿发的是 form 的 restrict，由 private 那枚布尔决定，不在禁内。
         val offenders = body.filter { it.contains("""addQueryParameter("restrict", """") }
         assertTrue("restrict 不许再写死字面量，实测：$offenders", offenders.isEmpty())

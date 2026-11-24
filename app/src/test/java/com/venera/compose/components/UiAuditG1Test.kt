@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-15 问题清单 G1 批的尺子：**整轮失败要留结构** + **底栏让位的接线只许加长**。
  *
  * 两条都是"抄一份不会报错、漏改一处也不报错"的形态，编译器与运行时都管不到：
  *

@@ -49,7 +49,6 @@ class PixivPkceTest {
 
     @Test
     fun `authorize 地址就是站方 App 登录页那几枚参数`() {
-        // 2026-10-17 第四轮改：从标准 OAuth 的 `accounts.pixiv.net/authorize` 换成站方 App
         // 登录页（pixez `buildLoginUrl` 那一条）。钉**整串前缀**而不是"包含某个词"：
         // 端点是这一族最容易悄悄改回去的一格，而改回去的表现是"页面打得开、换 token 恒 400"。
         val url = PixivPkce.authorizeUrl(codeChallenge = "CHAL", state = "ST/ATE~x")
@@ -78,7 +77,6 @@ class PixivPkceTest {
         assertTrue("要说出是 state 的问题：${mismatched.exceptionOrNull()?.message}",
             mismatched.exceptionOrNull()?.message?.contains("state") == true)
 
-        // 2026-10-17 第四轮：站方 App 登录页**不回声** state（pixez 那一条压根不发也能用），
         // 所以"没有这一项"不拒；真正绑住这一枚码的是 PKCE 的 verifier（一次性、只在内存里）。
         assertEquals(
             "没有 state 时应当照收（站方这一页不回声）",

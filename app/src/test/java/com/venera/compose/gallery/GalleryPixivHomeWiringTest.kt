@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 首页 pixiv 那一栏这四件事的**接线判据**（2026-10-17 第七轮）。
  *
  * 用户那张截图上一共点了四样，四条都不是"画得好不好"，而是**读不读得到**：
  * 1. 「推荐下面的图标题没了，直接用 p 站自己的标题就行」⇒ 站方标题必须真接进墙；
@@ -54,7 +53,6 @@ class GalleryPixivHomeWiringTest {
 
         // 交给墙（`GalleryForYouPage` 的 stationTitles）：只在 pixiv 那一域传，其余域保持空表。
         //
-        // ⚠️ 2026-10-17 第二轮：`stationTitles = if (domain == ...)` 这一段现在有**两处**
         // （首页主墙 + 搜索墙，后者交的是 `svm.pixivTitles`）。所以这里不能取"第一处"——
         // 那会去校验搜索墙、而这条用例问的是**首页**那一处。
         val call = screen
@@ -226,11 +224,8 @@ class GalleryPixivHomeWiringTest {
         assertTrue("下拉这一段里不许出现会清屏的 vm.refresh()：\n$body", !body.contains("vm.refresh()"))
     }
 
-    // ── 六、排行榜那排的打码集合（2026-10-17 第八轮，用户那张「全是 R18」的截图）────────
-
     @Test
     fun `排行榜的打码集合只收命中打码的那几张，不是整墙`() {
-        // 病根：`buildGalleryWall` 里 `masked = true` 与 `masked = false` **都**进 `GalleryWall.cards`，
         // 所以 `cards.mapTo(HashSet()){…}` 等于"每一张都要打码" —— 排行榜因此恒全糊 + 恒画 R18 角标，
         // 与 rating、与 nsfw_mode 都无关。这条判据钉的是"先按 masked 滤一遍"。
         val head = firstIndex("val pixivRankingMasked")
@@ -245,13 +240,10 @@ class GalleryPixivHomeWiringTest {
         )
     }
 
-    // ── 七、关注画师 / 推荐用户（2026-10-17 第八轮）────────────────────────────
-
     @Test
     fun `关注与推荐是两条腿，参数照 pixez 那一套`() {
         // `filter=for_android` 是这条端点能不能答的关键（我们先前量到 recommended 回 400/191 就是缺它）。
         //
-        // 2026-10-19：`restrict` 从端点里写死的 `"public"` 变成了调用点给的形参（账号页要读非公开那一档）。
         // 首页这一栏**仍是公开**，所以锚点把档位一起钉住 —— 谁把它改成 Private，
         // 首页就会出现"你关注了一些你根本没关注的人"那种最容易误解的假读数。
         val following = firstIndex("works.following(bearer, me, PixivRestrict.Public)")
@@ -274,8 +266,6 @@ class GalleryPixivHomeWiringTest {
         assertTrue("下拉要抬 tick 让 effect 重跑：\n$body", body.contains("pixivArtistsTick++"))
     }
 
-    // ── 八、画师格合并（2026-10-17 第九轮，用户「推荐画师合并到发现和已关注供切换」）──────
-
     @Test
     fun `画师那一格是两档切换，两栏数据同时在场`() {
         val sections = codeLines("com/venera/compose/gallery/ui", "GalleryHomeSections.kt")
@@ -296,7 +286,6 @@ class GalleryPixivHomeWiringTest {
         assertTrue("两处锚点都要在（要 when 分支那两行，不是次序清单那两行）", from >= 0 && to > from)
         val body = sections.filter { it.index in from until to }.joinToString("\n") { it.value }
         // ① 节头只有「画师」一个，切换器在节头下面（不再有两节）。
-        // 2026-10-17 第十八轮：节头多了图标与 `chevron` 两个参数、写成多行了 —— 判据拆成
         // 「有这个节头」+「标题是『画师』」两条，不再要求挤在同一行（那一版钉的是排版，不是事实）。
         assertTrue("要有节头：\n$body", body.contains("MiuixSectionHeader("))
         assertTrue("节头是「画师」：\n$body", body.contains("title = \"画师\""))
@@ -307,7 +296,6 @@ class GalleryPixivHomeWiringTest {
         assertTrue("推荐那一份仍在：\n$body", body.contains("pixiv.recommendedUsers"))
         // ③ 最后只剩一排（两个 if 分支各交一份，不许并排两排）。
         assertTrue("这一节只许一条画师行：\n$body", body.split("PixivArtistRail(").size - 1 == 1)
-        // ④ 2026-10-17 第十八轮（用户稿）：这节要包在实色卡里（三节各一张白卡）。
         assertTrue("画师这一节要吃到 surface = true：\n$body", body.contains("surface = true"))
         // ④ 切 Tab 不许进取数 effect 的键（进了就会切一次重取一次，还会闪一帧空态）。
         assertTrue(
@@ -334,7 +322,6 @@ class GalleryPixivHomeWiringTest {
     }
 
     /**
-     * 排行榜卡那颗 ♥（2026-10-17 第十八轮，用户稿）。
      *
      * 这条守的是**不给假把手**：卡片只有在调用方给了回调时才画 ♥；收藏集合按 `uid` 建
      * （`siteKey:id`），与本地收藏档同一把键。少任何一条，屏上会出现"点不动的心"。
@@ -349,7 +336,6 @@ class GalleryPixivHomeWiringTest {
         // 收起态的卡宽算法。
         //
         // ⚠️ 这条原来是第十八轮的「三列均分 = `(maxWidth - gap * 2) / 3`」，
-        // 已被用户 2026-10-17 第二十二轮「缩到一行只同时显示两个半吧」推翻 ——
         // 三张均分让卡宽只剩 102dp，叠上 170dp 定高封面就成细长条（用户报「压扁了」）。
         // 所以这里钉**新**口径而不是放宽：分子照旧（要减的仍是两枚间距），
         // 分母换成有名有姓的 `RANKING_PREVIEW_SLOTS`（2.5f），不许写回裸数字。
@@ -363,8 +349,6 @@ class GalleryPixivHomeWiringTest {
         assertTrue("收藏集合按 uid 建：\n$fav", fav.contains("\"\${it.siteKey}:\${it.id}\""))
         assertTrue("点 ♥ 要真写档：\n$fav", fav.contains("favorites.toggle(post)"))
     }
-
-    // ── 2026-10-22 审计：续页失败不许被念成"到底了" ────────────────────────
 
     /**
      * 推荐墙的续页失败与"这一池到底"必须是**两档**。

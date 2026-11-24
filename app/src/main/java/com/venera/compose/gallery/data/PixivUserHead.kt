@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.data
 
 /**
- * pixiv 一位画师的**头部读数**（2026-10-19 · pixiv 画师页）。
  *
  * 一条匿名腿就够：`GET https://www.pixiv.net/ajax/user/{id}?full=1`（本机实测 200，
  * 不带任何头即可读 JSON —— 与 `/ajax/illust/{id}` 同一条口径）。

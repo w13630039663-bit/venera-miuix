@@ -12,7 +12,7 @@ import com.venera.compose.gallery.domain.GallerySearchSource
  *
  * | 站的口 | 默认序 | 实测 |
  * |---|---|---|
- * | Safebooru（那颗 client 走的是 `safebooru.donmai.us`） | 最新在前 | ids `12315048, 12315046, 12315044` |
+ * | Konachan（那颗 client 走的是 `konachan.net`） | 最新在前 | ids `12315048, 12315046, 12315044` |
  * | yande.re | 最新在前 | ids `1269963, 1269962, 1269961`；且它的 `order:` 标签整族不换序 |
  * | Gelbooru | 没量 | 匿名一律 401（既有账），要 `api_key` + `user_id` |
  *

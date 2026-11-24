@@ -55,8 +55,6 @@ class AiTagPredicateTest {
         assertFalse(isAiTagValue("Tag:"))
     }
 
-    // ── 标题判据：e-hentai 把标记写在标题里、tags 没有 ai（2026-09-22 实测截图）──
-
     @Test fun bracketedAiMarkersInTitleHit() {
         // 用户截图里的三条真实形态
         assertTrue(isAiTitleMarked("RENZEN 3 [AI Generated]"))
@@ -83,8 +81,6 @@ class AiTagPredicateTest {
         assertFalse(isAiTitleMarked("RENZEN 3"))
         assertFalse(isAiTitleMarked(""))
     }
-
-    // ── 「AI 汉化 / AI 翻译」刻意**不**命中（2026-09-22 用户截图里那两条）──
 
     @Test fun aiTranslationMarkersDoNotHit() {
         // 这两个词标的是**翻译工具链**是 AI，不是画面是 AI 生成的。

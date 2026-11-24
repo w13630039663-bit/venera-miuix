@@ -14,7 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 画廊「这一轮少了什么」那一块的**归类判据**（2026-10-12 改造）。
  *
  * ## 这一层存在的理由，以及为什么必须有单测
  *
@@ -48,7 +47,7 @@ class GalleryNoticesTest {
         val notices = galleryNotices(
             mapOf(
                 GallerySite.YANDERE to "超过 12s 没返回",
-                GallerySite.SAFEBOORU to "HTTP 500",
+                GallerySite.KONACHAN to "HTTP 500",
             ),
         )
         val notice = notices.single()
@@ -56,7 +55,7 @@ class GalleryNoticesTest {
         assertEquals(GalleryNoticeTone.Error, notice.tone)
         assertEquals(GalleryNoticeAction.Retry, notice.action)
         // 两站同类 → 并成**一条**（不是两条各说一遍），站序按站表序。
-        assertEquals(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), notice.sites)
+        assertEquals(listOf(GallerySite.YANDERE, GallerySite.KONACHAN), notice.sites)
     }
 
     @Test
@@ -66,7 +65,6 @@ class GalleryNoticesTest {
         assertEquals(GalleryNoticeKind.NoContent, notice.kind)
         assertEquals(GalleryNoticeTone.Info, notice.tone)
         // ⚠️ 这一条是整个改造里最要紧的一个"不给"：站方这一轮就是没货，
-        // 同一串标签再发一次还是那批没有 —— 摆一枚「重试」就是本仓明令禁止的假开关。
         assertNull("信息档不许有出口", notice.action)
     }
 
@@ -85,7 +83,7 @@ class GalleryNoticesTest {
             mapOf(
                 GallerySite.YANDERE to GalleryLegGuard.NO_CONTENT,
                 GallerySite.GELBOORU to GallerySearchSource.NEEDS_ACCOUNT_REASON,
-                GallerySite.SAFEBOORU to "超过 12s 没返回",
+                GallerySite.KONACHAN to "超过 12s 没返回",
             ),
         )
         assertEquals(
@@ -100,7 +98,7 @@ class GalleryNoticesTest {
         // 不然 `remember` 与 diff 会跟着抖（与腿序那条纪律同源）。
         val a = galleryNotices(
             linkedMapOf(
-                GallerySite.SAFEBOORU to "超时",
+                GallerySite.KONACHAN to "超时",
                 GallerySite.YANDERE to "超时",
                 GallerySite.GELBOORU to GallerySearchSource.NEEDS_ACCOUNT_REASON,
             ),
@@ -109,12 +107,12 @@ class GalleryNoticesTest {
             linkedMapOf(
                 GallerySite.GELBOORU to GallerySearchSource.NEEDS_ACCOUNT_REASON,
                 GallerySite.YANDERE to "超时",
-                GallerySite.SAFEBOORU to "超时",
+                GallerySite.KONACHAN to "超时",
             ),
         )
         assertEquals(a.map { it.kind to it.sites }, b.map { it.kind to it.sites })
-        // 出错那一档里的两站也必须按站表序（YANDERE 在 SAFEBOORU 之前）。
-        assertEquals(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), a.first().sites)
+        // 出错那一档里的两站也必须按站表序（YANDERE 在 KONACHAN 之前）。
+        assertEquals(listOf(GallerySite.YANDERE, GallerySite.KONACHAN), a.first().sites)
     }
 
     @Test
@@ -151,9 +149,8 @@ class GalleryNoticesTest {
 
     @Test
     fun `正文不许复述标题`() {
-        // 2026-10-13 真机截图上读出来的缺陷：那一版把 reasons 一律当正文，
         // 于是 Gelbooru 那块成了「…需要先配置账号才能用」+「…需要先配置账号才能用：它的接口…」，
-        // Safebooru 那块更糟（标题与正文几乎同一句）。这条用例把"分工"钉住。
+        // Konachan 那块更糟（标题与正文几乎同一句）。这条用例把"分工"钉住。
         val missingAccount = galleryNotices(
             mapOf(GallerySite.GELBOORU to GallerySearchSource.NEEDS_ACCOUNT_REASON),
         ).single()
@@ -170,7 +167,7 @@ class GalleryNoticesTest {
         )
 
         val noTags = galleryNotices(
-            mapOf(GallerySite.SAFEBOORU to noRecommendTagsReason(GallerySite.SAFEBOORU)),
+            mapOf(GallerySite.KONACHAN to noRecommendTagsReason(GallerySite.KONACHAN)),
         ).single()
         assertTrue(
             "还没有可推荐标签那一档的正文不许复述标题：${noTags.body}",

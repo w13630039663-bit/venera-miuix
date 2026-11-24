@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 标签墙「收起 / 展开」的判据（2026-10-01，信息卡按图二重排那一批）。
  *
  * 这一层要钉住的是**三条错了也看不出来**的读数：
  *

@@ -19,14 +19,12 @@ import okhttp3.Request
  * 三条不是顺手就定的口径：
  *
  * - **[GalleryAvatarProbeEndpoint.origin] 照字段带上**。fanbox 那台 api 对「不带 Origin」「只带 Referer」
- *   一律回 400 `general_error`（2026-09-30 14:05 逐档实测，`Origin: https://<子域>.fanbox.cc` 才 200）。
  * - **解析器由 [GalleryAvatarEndpointKind] 选，不嗅 host**。嗅错的表现是"读不懂 → 抛错"，
  *   看着像站方坏了，其实是我们走错了门。
  * - **[NoInteractiveBypassTag]**：与日榜、Danbooru 那两路同口径，画廊不弹过盾窗口。
  *   失败就交回 `failure`，画师行退回首字母座，屏上不出现"这位没有头像"那种我们没资格说的话。
  *
  * 一台量不准的留档：`baraag.net` 的 TLS 握手从**本机出口**（含代理）直接失败，`pawoo.net` 通。
- * 两家是同一套 Mastodon API，所以这里不按实例分叉；baraag 通不通要在真机上再看一次。
  */
 class GalleryArtistProbeClient internal constructor(private val engine: HttpEngine) {
 

@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv **个人账号页**那一屏的接线尺子（方案 `docs/rounds/gallery-pixiv-account-page-2026-10-19.html`，2026-10-19）。
  *
  * 这一族的缺陷全是"屏上看不出来"的那一类，所以判据落在源码文本上（`app/` 没有 Robolectric）：
  *
@@ -138,7 +137,6 @@ class GalleryPixivAccountPageWiringTest {
         // `topBarFloor` 那把尺只钉"地板"；各页的附加高自留（改了它等于改全站 20 屏）。
         assertTrue("这一屏要引用地板常量来算避让：\n$body", body.contains("VeneraSpacing.topBarFloor"))
         // 让位的那笔账必须与 chrome 的实高一致：轨道 + 8dp 上距 + 二级行 + 8dp 收尾。
-        // 少了任何一节，内容第一行就会被两行药丸压住（2026-10-19 真机读数就是这么来的）。
         assertTrue(
             "让位没按 chrome 实高算：\n$body",
             body.contains(
@@ -154,7 +152,6 @@ class GalleryPixivAccountPageWiringTest {
 
     @Test
     fun `已关注那一屏每位再发一跳取三张预览`() {
-        // 2026-10-19 拍板 ②。不接这一跳的话那一屏只有头像与名字，与稿上那三张对不上。
         assertEquals("取预览只发一处", 1, count("""fetchCovers\(user\.id\.toString\(\)\)"""))
         assertTrue("预览张数钉在 3：\n$body", body.contains("private const val PixivFollowingPreviewCount = 3"))
         // 取不到不空一格：那一行退成只有头像与名字（不摆三张空位、也不弹错误）。
@@ -164,7 +161,6 @@ class GalleryPixivAccountPageWiringTest {
     @Test
     fun `四个数退横杠不拿零顶`() {
         // 站方没答那一格与"这位真的零张"是两件事，写成 0 就是替站方编一个它没给过的结论。
-        // 稿上是**四格**（粉丝 / 作品 / 关注 / 收藏）：2026-10-19 真机读数里只有三格，
         // 少的那一格是「关注」—— 它出自匿名那一腿（`PixivUserHead.followingCount`），
         // 与另外三格不同腿，所以最容易漏。
         assertEquals("只有一处把 null 翻成「—」，四格共用它", 1, count("""value\?\.toString\(\) \?: "—""""))
@@ -214,11 +210,9 @@ class GalleryPixivAccountPageWiringTest {
     }
 
 
-    // ── 六、2026-10-19 真机读数的改判（五屏截图逐条对稿）────────────────────
 
     @Test
     fun `顶栏主行不重复摆画师名`() {
-        // 真机读数：顶栏 largeTitle 一份、头部一份、账号管理身份卡一份 —— 同一屏三个"极东的Djehuty"。
         // 稿上主行是紧凑的「返回 + 小头像 + 名字」，而这一屏走的是全站那套大标题 chrome，
         // 所以主行只许报"这是哪一屏"。
         assertTrue("主行要报屏名：\n$body", body.contains("largeTitle = \"我的 pixiv\""))
@@ -261,7 +255,6 @@ class GalleryPixivAccountPageWiringTest {
 
     @Test
     fun `账号管理每一行的把手各说各的`() {
-        // 真机读数：三行右端**全都写「打开」**，包括退出登录那一行 —— 那是本仓最典型的假把手
         // （把手说的动作与行本身的动作对不上）。
         val handles = Regex("""PixivAccountHandle\(\s*text = "([^"]+)"""").findAll(body).map { it.groupValues[1] }.toList()
         assertEquals("五枚把手都在：$handles", listOf("复制账号", "重新登录", "贴进来", "打开", "退出"), handles)
@@ -302,7 +295,6 @@ class GalleryPixivAccountPageWiringTest {
         assertTrue("头部与身份卡各收一份现成读数", count("""head = head,""") >= 4)
     }
 
-    // ── 七、2026-10-19 六条改版（留存 / 下拉 / 翻页 / 实底 / 大按钮）──────────
 
     @Test
     fun `数据活在进程级会话仓，切屏不重取`() {
@@ -347,7 +339,6 @@ class GalleryPixivAccountPageWiringTest {
     /**
      * 顶栏走**玻璃背板**那一路，且内容接上 nestedScroll。
      *
-     * 2026-10-22 改判（用户「下滑顶栏也要收起，一样做顶栏模糊」）：这一条从 2026-10-19 的
      * 「实底 + 不许传 backdrop」翻过来。当初的理由是「玻璃采的是内容层，传了就必透」——
      * 那条判据本身没错，错在**当时没有可采的层**：三面墙都没挂 `blurBackdropSource`，
      * 于是传了 backdrop 也采到空层，看着就是"顶栏糊了一层灰"。挂上采样源之后
@@ -368,7 +359,6 @@ class GalleryPixivAccountPageWiringTest {
     }
 
     /**
-     * 顶栏那两排选择器**跟着滚动折叠**（2026-10-22，用户「往下滑的时候这两个顶栏选择器也要隐藏掉，到顶才显示」）。
      *
      * 立案读数：改玻璃之前那一版是实底顶栏，折叠之后顶上仍压着分段器（48dp）与二级行（38dp）
      * —— 内容可视区被吃掉一整块，而那两排在折叠态一个也用不上（动态/收藏/已关注 没有切换的余地）。

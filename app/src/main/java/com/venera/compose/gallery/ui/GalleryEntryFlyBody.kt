@@ -19,13 +19,11 @@ import com.venera.compose.gallery.domain.payloadCornerRadiusPx
 import kotlin.math.roundToInt
 
 /**
- * **进场飞行体**：把"墙上那一格的封面像素"画成"飞向落点那一格"（2026-10-19 抽成共享件）。
  *
  * ## 为什么抽
  *
  * 这 55 行 `drawBehind` 原本有两份抄本：`GalleryPostScreen`（播放器进场）与
  * `PixivWorkScreen`（作品页进场）。两份各自算几何、各自算圆角，一旦漂一处，同一部作品
- * 从这面墙点进去和从那面墙点进去就**飞得不一样** —— 而这种错只有真机能看见，所以合成一份。
  * 离场那一趟是 [GalleryExitFlyBody]（它的 `from`/`to` 与这一颗同两块矩形，方向相反）。
  *
  * ## 与离场件同形不同档的那一处：圆角
@@ -36,7 +34,6 @@ import kotlin.math.roundToInt
  * - **这一颗**装的是**卡片里封面那一块的屏幕像素**，位图自己的四角画的是卡片面色
  *   （封面被 `VeneraCover` 按 `veneraCoverCornerRadius()` 裁掉的那圈），所以半径必须按
  *   **位图自己那一档**算：`× dst / src`（[com.venera.compose.gallery.domain.payloadCornerRadiusPx]）。
- *   拿更松的画面框档去裁，等于是把那四枚白角原样放行 —— 2026-10-16 用户报的
  *   「飞行体把按压那层白一起带进来了」就是这条。
  *
  * 两条口径都有单测逐位钉着，**不许合并**：它们的分界是"位图里装的是什么"，不是风格偏好。
@@ -57,7 +54,6 @@ import kotlin.math.roundToInt
  * @param coverCornerRadius 卡封面那一档圆角。**组合期**读（`veneraCoverCornerRadius()` 是
  *   @Composable getter，绘制阶段读 compositionLocal 拿不到随主题变的值，本仓为这一格栽过），
  *   进来只当 `Dp`，`.toPx()` 在 DrawScope 里做。
- * @param alpha 飞行体自己的不透明度。默认 1 = 去程全程不淡（2026-10-01 那条"图先暗一下"
  *   的读数：弹簧的百分比不是路程，中途淡出会和身后的页面叠成重影）。要接交棒后半程的
  *   淡出就传 `{ handoffBodyAlpha(handoff.value) }`。
  */
@@ -88,7 +84,6 @@ internal fun GalleryEntryFlyBody(
                 val dst = computed.dst
                 val src = computed.source
                 // 圆角按**位图自己那一档**算，源宽取**裁过之后**那块：比例不同档时圆角跟着放大，
-                // 不会因为被裁而变软。判据见 [payloadCornerRadiusPx] 头注（2026-10-16 白角那条）。
                 val radius = payloadCornerRadiusPx(
                     payloadCornerPx = coverCornerRadius.toPx(),
                     srcWidthPx = src.width,

@@ -7,7 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 分级呈现的判据（2026-10-01，信息卡重排那一批）。
  *
  * 两条要钉住的东西，都不是"风格"：
  *

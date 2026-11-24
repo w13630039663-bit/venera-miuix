@@ -7,7 +7,6 @@ import org.junit.Test
 import java.time.LocalDate
 
 /**
- * 2026-10-16「Gelbooru 翻到具体哪一期」这一批的尺子。
  *
  * 用户给的题面是一句能力问句："凭证给你，你自己测下到底能不能获取到具体到 x月 xx日 xx年"。
  * 答案是**能**，但能的方式不是站方给窗口（`date:` 回 0 条、区间语法被静默忽略），
@@ -39,7 +38,6 @@ class GalleryGelbooruClosedWindowTest {
      * ① 「选具体哪一期…」这一行在移动端必须认**合成档也算**那一把。
      *
      * 桌面那把 `supportsPeriodPickerAll` 只看站方原生给不给，Gelbooru 恒判死 —— 菜单那一行就永远不出现，
-     * 而同一屏的天/周/月/年四档已经由 id 边界合成了（2026-10-13 接的）。两把合流过一次就再分不开。
      */
     @Test fun `期次入口用移动端那把判据`() {
         assertEquals(
@@ -147,7 +145,6 @@ class GalleryGelbooruClosedWindowTest {
     /**
      * ⑦ 标定表自己得是**单调**的（烘错一行，估点就把某一页永远定不出来）。
      *
-     * 这张表是 2026-10-16 拿凭据在真站上逐年量出来的 19 行（`_qa/gb_calibration_ledger.txt`）。
      * 表里任何一行抄反（日期与编号串了、少了一位），屏上不报错 —— 只是某一档的历史期永远在转圈然后说
      * "没探成"。所以这里把形状逐行读回来验：日期严格增、编号严格增、行数对得上。
      */
@@ -167,7 +164,6 @@ class GalleryGelbooruClosedWindowTest {
             assertTrue("表不单调：$earlier 之后是 $later", earlier.first.isBefore(later.first))
             assertTrue("编号不单调：$earlier 之后是 $later", earlier.second < later.second)
         }
-        // 第一行是 2008：站方最老的一条是 2007-07-16 的 id=1（2026-10-16 现量），比 2008-01-01 更早的
         // 目标日一律落到 1 那一枚 —— 于是"表最早一行"与"站方最早一条"之间只可能差半年，不会差一个数量级。
         assertEquals(LocalDate.of(2008, 1, 1), rows.first().first)
         assertEquals(132_780L, rows.first().second)
@@ -180,7 +176,7 @@ class GalleryGelbooruClosedWindowTest {
         assertEquals(
             1,
             rankingCode().count {
-                it == "site == GallerySite.YANDERE || site == GallerySite.SAFEBOORU || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL"
+                it == "site == GallerySite.YANDERE || site == GallerySite.KONACHAN || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL"
             },
         )
         assertEquals(

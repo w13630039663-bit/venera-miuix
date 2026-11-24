@@ -9,10 +9,8 @@ import com.venera.compose.gallery.ui.PixivAccountSection
 import com.venera.compose.gallery.ui.PixivAccountScreen
 
 /**
- * pixiv 个人账号页的宿主 —— **独立 Activity**（2026-10-19，方案 §10 点名的那颗）。
  *
  * 为什么不是 NavHost 里的目的地：跨 Activity 的预测式返回在 animation 1.12 上给不到页内目的地。
- * 从前这一页跟画师页一样靠窗口 blur-behind 透出首页那面墙；2026-10-19 真机截图里整屏是一层
  * 粉色糊底，用户点名「整个页面背景怎么是模糊背景」—— 这一页不是图片浮层，它是**一张正常的内容页**，
  * 于是改回不透明氛围底、blur-behind 一并关掉（关的是能力，不只是拿 Canvas 盖住它）。
  *
@@ -29,7 +27,6 @@ class PixivAccountActivity : VeneraSubActivityBase() {
         super.onCreate(savedInstanceState)
         com.venera.compose.gallery.ui.PixivAccountSessionStore.resetScrollPositions()
     }
-
 
     /**
      * 进来落在哪一段。
@@ -67,7 +64,6 @@ class PixivAccountActivity : VeneraSubActivityBase() {
  * `makeCustomAnimation(0, 0)` 压掉的只是**打开**那套系统转场，返回留系统那套跨 Activity
  * 预测式动画 —— 与 [openGalleryArtistProfile] 完全同一个理由。
  *
- * @param section 落在哪一段；收藏 hub 那枚 🔖 改跳之后交的是 `bookmarks`（2026-10-19 拍板 ⑦）。
  */
 fun Context.openPixivAccountPage(section: String = PixivAccountSectionEntry.DYNAMIC) {
     // MIUIX / HyperOS 统一转场：全宽平移进场与视差退场（退场返回留系统预测式）

@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.data
 
 /**
- * pixiv 会员身份的**唯一一份**缓存（2026-10-18）。
  *
  * 两处要用它，而且必须拿同一个值：
  * - **搜索**：收藏门槛的发法（会员发 `bookmark_num_min`，其余走词尾 `users入り`），

@@ -8,8 +8,8 @@ import org.junit.Test
 /**
  * 画师取数层里**形状不确定**的那几处的解析判据（批次 L · L2）。
  *
- * 为什么这一份要单测：Danbooru 的三个同库站点（danbooru / safebooru / testbooru）在 2026-09-30
- * 本机出口**全部 403 卡在过盾页**（`Just a moment...`），拿不到一份真样例。而"字段形态猜错"的
+ * 本机出口**全部 403 卡在过盾页**（`Just a moment...`），拿不到一份真样例。（这三站是 danbooru 的
+ * 而"字段形态猜错"的
  * 表现是**安静地什么都不显示** —— 编译器不报、运行时不报、用户读成"这位没有外链"。
  * 所以这里不是"猜一个形态去接反序列化"，而是把**源码里查得到的候选形态全部吃掉**，
  * 并让每一种形态都有一条断言兜着：
@@ -97,7 +97,6 @@ class GalleryArtistEndpointParseTest {
 
     @Test
     fun `fanbox 的头像在 body_user_iconUrl 上`() {
-        // 2026-09-30 14:05 真答复（带 Origin 那一次），字段逐字照抄。
         val body = """{"body":{"user":{"userId":"7075448","name":"セットマン","iconUrl":"https://pixiv.pximg.net/c/160x160_90_a2_g5/fanbox/public/images/user/7075448/icon/r5ssgvWzPSdItny2clTedYdM.jpeg"},"creatorId":"setmen","hasPublishedPost":true}}"""
         assertEquals(
             "https://pixiv.pximg.net/c/160x160_90_a2_g5/fanbox/public/images/user/7075448/icon/r5ssgvWzPSdItny2clTedYdM.jpeg",
@@ -147,7 +146,6 @@ class GalleryArtistEndpointParseTest {
 
     @Test
     fun `ajax illust 答复里的作者三档字段`() {
-        // 2026-09-30 14:26 真答复（作品 113455481），三个字段都是**字符串**，逐字照抄形状。
         val ok = """{"error":false,"message":"","body":{"illustId":"113455481","userId":"7075448","userName":"セトマン","userAccount":"tokenbox"}}"""
         val author = GalleryArtistEndpointParse.pixivArtworkAuthor(ok)
         assertEquals(7075448L, author.userId)
@@ -162,7 +160,6 @@ class GalleryArtistEndpointParseTest {
 
     @Test
     fun `ajax illust 的 error 与缺字段都算失败`() {
-        // 作品被删/被锁时站方回 **404 + `{"error":true}`**（15 个样本里 4 个是这一档，含真机那张 109123828）。
         // 取数层非 2xx 先抛，这里再兜一次：把"读不懂"交成 null 就是让画师行少一枚而没人知道为什么。
         listOf(
             """{"error":true,"message":"Not Found","body":[]}""",
@@ -179,7 +176,6 @@ class GalleryArtistEndpointParseTest {
 
     @Test
     fun `同一条记录的外链与别名一次取齐`() {
-        // 这份就是 2026-09-30 的真样本 `_probe/hub/dan_setmen.json` 的形状（多给一个 urls 键，
         // 因为同一站不同 API 版本给的键集不一样，两种都要吃）。
         val body = """[{"id":183883,"name":"setmen","other_names":["u_u","セトマン"],""" +
             """"urls":["https://www.pixiv.net/users/7075448"]}]"""

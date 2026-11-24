@@ -8,7 +8,6 @@ import org.junit.Test
 /**
  * 业务 API 的边界守卫：**UI 不许再直连实现类，白名单只许缩短**。
  *
- * 这是 `responsibility-dependency-audit-2026-10-03.md` §二 第 8 行（UI 直连基础设施）的可执行
  * 翻译。B0 落地时白名单登记的是**当前全量**（150 处取用 + 125 行实现类 import），断言写成
  * **集合相等**而非子集 —— 抄 [com.venera.compose.ui.tokens.TopBarFloorGuardTest] 的纪律：
  * 哪天某个点位自然消失、有人顺手删了名单里的一行，用例要红一次逼人来确认，而不是静默通过。
@@ -198,7 +197,6 @@ class BusinessApiBoundaryTest {
     }
 
     /**
-     * F ——「白名单不许有无主条目」：2026-10-03 那句「为这 15 处明确标注解锁条件」的机器化。
      *
      * 每个条目必须解读成**归属批次**（值以 `B` 开头）或**解锁条件**；后者要求
      * ① 长度 ≥ 20（光写 "FROZEN"、"待办" 不算）、② 含可复核的锚（`文件.kt:行号` / `W1..W6` /
@@ -263,7 +261,6 @@ class BusinessApiBoundaryTest {
         /**
          * 平台 API 不是业务单例：`android.webkit.CookieManager`、`android.view.Choreographer`。
          *
-         * `Calendar` 是 2026-10-03 S1 加进来的：`yesterdayString(now = Calendar.getInstance())`
          * 从前住在 `GalleryFeedSource`（那颗自己声明 `fun getInstance(`，按"声明者整体放过"的
          * 粗口径免疫），搬进 `GalleryDailyFeed` 后那颗不再是声明者，于是一句 JDK 取时钟被
          * 算成了"新增静态取用出处"。本集合的存在理由就是挡这种名字撞规的假阳性，
@@ -292,7 +289,6 @@ class BusinessApiBoundaryTest {
             "VeneraApp.kt",
             "data/api/android/AndroidBusinessPorts.kt",
             "data/platform/android/AndroidDatabasePorts.kt",
-            // 2026-10-20：平台实现层。AndroidUxPlatformServices 是**唯一**允许直连
             // Android 侧静态单例（内容守卫 / 剪贴板 / ImageLoader）的地方 —— 那正是它
             // 存在的理由：把散在 UI 里的 getInstance(context) 收成一处。与上面两颗同类。
             "platform/AndroidUxPlatformServices.kt",

@@ -29,7 +29,7 @@ import org.junit.Test
 class DesktopRankingPeriodTest {
 
     private val today: LocalDate = LocalDate.of(2026, 10, 7)
-    private val twoLegs = listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU)
+    private val twoLegs = listOf(GallerySite.YANDERE, GallerySite.KONACHAN)
     private val threeLegs = twoLegs + GallerySite.GELBOORU
 
     private fun code(name: String) = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))

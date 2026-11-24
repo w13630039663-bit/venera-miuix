@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.domain
 
 /**
- * pixiv 账号页在**发任何一趟之前**要过的闸门（2026-10-19）。
  *
  * ## 为什么四档必须各说各的一句话
  *

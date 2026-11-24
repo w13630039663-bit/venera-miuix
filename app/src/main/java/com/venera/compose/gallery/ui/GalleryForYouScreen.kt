@@ -70,7 +70,6 @@ internal fun GalleryForYouPage(
     onRetry: () -> Unit,
     sections: List<GalleryGridSection> = emptyList(),
     /**
-     * 常驻 chrome（一条搜索入口条）—— 2026-09-30 用户口径「搜索栏保持在这里就行」：
      * 它是**页面内容的第一行**，跟着内容一起滚走，不再钉在顶栏下方。
      *
      * 放在 [GalleryCardsGrid] 的 header 槽位（比节头还靠前），滚动时它与三节一起离屏。
@@ -78,16 +77,12 @@ internal fun GalleryForYouPage(
      */
     chrome: (@Composable () -> Unit)? = null,
     /**
-     * 画廊首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
      *
      * 摆在**同一颗 header item 里、chrome 之上**，而不是新插一枚 item —— 后者会撞本仓
-     * 两族已量过的坑：懒列表"第 0 项之后插入"的锚定漂移（首页顶栏重叠那次真机根因），
-     * 以及"header 必须是单根 Column"（2026-10-01 错误提示压在搜索栏上）。
      * 槽位恒在、判空在调用方（未设置头图时这里就是 null，墙的首帧几何与从前逐像素一致）。
      */
     hero: (@Composable () -> Unit)? = null,
     /**
-     * 整页下拉刷新（2026-10-17 第五轮，用户「做整页刷新：下拉刷新，动画在搜索框下面的区域弹性下拉整页」）。
      *
      * 传 null = 这一面墙不接下拉（其余调用点零改动）。
      *
@@ -111,7 +106,6 @@ internal fun GalleryForYouPage(
     /**
      * 作者头像（`uid → 地址`，与 [stationTitles] 同一条路径，见 [GalleryCardsGrid]）。
      * 空 map = 不画头像（默认值 ⇒ 搜索墙 / 收藏墙那几处逐像素不变）；
-     * 非空 ⇒ 卡片文字区走「头像 + 标题/画师名」两行（2026-10-17 第三十二轮，
      * 见 [GalleryCardCaption]）。
      */
     authorAvatars: Map<String, String> = emptyMap(),
@@ -142,7 +136,6 @@ internal fun GalleryForYouPage(
         bottom = LocalBottomBarClearance.current,
     )
 
-    // ── 空档与加载档**不再整页换脸**（2026-10-17，用户「现在切换到 pixiv 会这样」+ 截图）──
     //
     // 从前这两档各渲染一个占满页面的居中 Box，把 chrome、头图、以及首页那几节一起摘走 ——
     // 而「图库站 / Pixiv」那颗**域切换就住在节里**（`galleryHomeSectionOrder`）。
@@ -154,7 +147,6 @@ internal fun GalleryForYouPage(
     // IDLE = 还没判过档（第一次组合与那次取数触发之间的一帧）。
     // 摆空态是假读数 —— 那一刻只是"还没算"，不是"没有东西"。
     //
-    // ⚠️ `cards.isEmpty()` 这道前提（2026-09-30 第三轮）保留：**换一批**时 `refresh()` 已经不再清
     // `posts`（理由见那里），旧卡片留着、三节不动，"正在换"由猜你喜欢节头那枚环去说 ——
     // 只按 `pending` 判就会在这一刻把脚下的卡换成一个居中环。
     val loadingSlot: @Composable () -> Unit = {
@@ -188,7 +180,6 @@ internal fun GalleryForYouPage(
             contentPadding = contentPadding,
             modifier = pageModifier,
             onOpen = onOpen,
-            // 有头图就禁掉过度滚动（2026-10-16，用户「禁止在设置了头图的页面使用过度滚动」）：
             // 到顶继续下拉会把整张头图连内容一起顶下去、上方露出一大片背景，观感很糟。
             //
             // ⚠️ 这一条与下拉刷新**不冲突**，也不许为了下拉把它撤掉：过度滚动是"内容被拉长/拉飞"，
@@ -200,12 +191,10 @@ internal fun GalleryForYouPage(
             header = {
                 // ⚠️ 必须包进一个 Column：懒列表 item 的内容是按「单一根」量的，
                 // 这里如果摆两个并列的根级组件（chrome 与失败提示），它们会被当成
-                // 同一个 Box 的两个子元素**叠在同一位置画**（2026-10-01 真机缺陷：
                 // 错误提示整段压在搜索栏上）。Column 是唯一正确的容器。
                 Column {
                     // 头图（未设置 = null，整段不参与，见参数文档）。
                     //
-                    // ⚠️ 头图必须**整屏通栏**（2026-10-16，用户「左右还是有空白」）：
                     // 它住在网格的 header item 里，会跟着吃到 `contentPadding` 的左右内缩。
                     // 设置页那边的头图摆在内容列**之外**（见 SettingsHome 的外/内双 Column），
                     // 所以天然通栏；画廊这边它在网格里，只能自己把那圈内缩还回去。
@@ -216,16 +205,13 @@ internal fun GalleryForYouPage(
                         }
                     }
                     // 常驻 chrome（一条搜索入口条）是**内容的第一行**：
-                    // 随内容滚走（2026-09-30 用户口径「搜索栏保持在这里就行」）。
                     // ⚠️ 它**不**通栏 —— 搜索条左右本来就该有内缩（它是个圆角条，不是整幅图）。
                     chrome?.invoke()
-                    // ── 下拉刷新那一行（2026-10-17 第五轮）──
                     //
                     // 位置是**用户点名的那一处**：「动画在搜索框下面的区域」。所以它必须排在
                     // `chrome` 之后、提示块之前 —— 排到 chrome 之前就成了"在搜索框上面"。
                     // 高度 0dp 时不占位，所以屏上有无这一行在静止态**逐像素一致**。
                     if (onRefresh != null) {
-                        // ⚠️ 这一行**必须有东西**（2026-10-17 第七轮，用户「下拉没有加载指示器」）：
                         // 前一版只长高、内容为空 —— 下拉时整页确实被推开了一截，但屏上一个转的东西都没有，
                         // 读起来是"页面被我拉歪了"而不是"正在刷新"。行高由手势驱动，环跟着行高淡入，
                         // 所以「刚拉一点点」时它只是隐约一枚、「松手后满高」时才完整。
@@ -246,7 +232,6 @@ internal fun GalleryForYouPage(
                             }
                         }
                     }
-                    // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──
                     //
                     // 槽位恒在、判空在内部（理由见 [GalleryCardsGrid] 的 header 注释）。
                     // 少了一站必须占一条**可见**的位置：两站混摆静默退化成单源，
@@ -314,7 +299,6 @@ internal class ForYouEmptyCopy(
 )
 
 /**
- * **首页那面墙的读数**（2026-10-17：两档内容域共用同一面墙，读数必须各给各的）。
  *
  * 为什么要把它抽出来而不是在页里加一个 `if (domain == PIXIV)`：这一页在**五处**读 `fvm`
  * （加载档、空态四档、按站提示、页尾那 8 项、以及页尾出现与否那道 `page > 0` 闸）。
@@ -335,7 +319,6 @@ internal class GalleryHomeWallReading(
 )
 
 /**
- * Pixiv 那一档的读数（2026-10-17，用户点名「pixiv 站的推荐应该做成和图库站猜你喜欢那种的」）。
  *
  * 只带这一档**真的知道**的事：种子是哪几枚标签、这一轮取回几张、为什么是空的。两件事刻意不做：
  *  - **不摆页尾** —— 猜你喜欢那串读数（按站各几张 / 第几页 / 排掉几张已收藏）在 pixiv 这一池
@@ -359,12 +342,10 @@ internal fun pixivRecommendReading(
      * 种子空了是"你的标签这一轮没命中"。同一句话会把两种处境读成一种（本仓"四档空态不许同脸"那条）。
      */
     station: Boolean = false,
-    /** 瀑布流正在取下一屏（2026-10-17 第七轮：这一池改成无限下拉）。 */
     loadingMore: Boolean = false,
     /** 这一池已经到底（站方没给 `next_url` / 种子那一页没新东西）。 */
     exhausted: Boolean = false,
     /**
-     * 续页**这一下**没取上（与"到底了"分开的那一档，2026-10-22 审计 P0）。
      *
      * 从前这一档走的是 `exhausted = true`：一次网络抖动被念成「pixiv 这一池到底了」，
      * 而闸门（`state.exhausted`）从此永久拦住续页。分开之后页尾多一档"没续上 · 重试"。
@@ -390,7 +371,6 @@ internal fun pixivRecommendReading(
     } else if (seeds.isEmpty()) {
         // 「真·用户还没干活」（没有种子）与「取数失败」分开：前者不给按钮（点了也是同一句
         // "先去收藏几张"），后者必须给 —— 否则票据取不到那一句上屏时连"再刷一次"都没有
-        // （2026-10-22 审计）。
         val noSeedsYet = caption == null
         ForYouEmptyCopy(
             title = "还没有能推荐的基础",
@@ -427,7 +407,6 @@ internal fun pixivRecommendReading(
 )
 
 /**
- * 推荐那面墙的页尾（2026-10-17 第七轮，无限下拉配套）。
  *
  * 三档：正在取下一屏 / 已经到底 / **这一下没续上**（可点，重发续页）。
  * 没有"上滑继续取"那一句 —— 无限下拉是滑到底自动发的，不像搜索页要用户再滑一下。
@@ -484,7 +463,6 @@ private fun PixivRecommendEnd(
  * 里面的每一条判据都是**从前 [GalleryForYouPage] 函数体里逐字搬过来的**，一个字没改：
  *  - `stage == IDLE || isLoading` 那道加载闸（摆空态就是假读数）；
  *  - 四档空态各说各的话（见 [emptyCopyOf] 那份清单）；
- *  - 页尾多一道 `page > 0`（2026-09-30 第三轮：「换一批」之后 `posts` 留着上一批而页码已清，
  *    那一刻页尾会念出「已摆出 40 张（Yande.re 0 · Gelbooru 0）」——卡明明在屏上）。
  */
 internal fun forYouWallReading(
@@ -580,7 +558,6 @@ private fun emptyCopyOf(
             // "真的没有可摆的"：这一档是前面几层判据都跑通了的结果，
             // 既不是我们没取成，也不是用户还没做。
             tone = VeneraEmptyTone.Nothing,
-            // 2026-09-30 第二轮起这一档多半没有出口了：首页那条主墙恒为猜你喜欢，
             // 没有"另一面墙"可切（热门搬去了二级页）。`onGoToDaily` 传 null 时不摆按钮 ——
             // 这是刻意的：按下去只是把同一面墙重滚一次，那是一枚假按钮。
             actionText = "去看每日热门".takeIf { onGoToDaily != null },

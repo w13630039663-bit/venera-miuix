@@ -2,15 +2,26 @@ package com.venera.compose.components.venera
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.FilledTonalButton as Md3FilledTonalButton
+import androidx.compose.material3.OutlinedButton as Md3OutlinedButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import androidx.compose.material3.MaterialTheme as Md3MaterialTheme
@@ -244,26 +255,219 @@ fun VeneraTextButton(
 }
 
 /**
- * 填充按钮。两家的 `Button` content **都是 `RowScope` 槽位**，所以签名是真交集 ——
- * 建这一件的唯一理由：弹窗里的"提交/登录"按钮要在文字前面挂一根进度条，
+ * 按钮的**语义变体**（控件体系统一 · 阶段 1）。选变体先看语义，再看外观：
+ *
+ * - [Primary]     主要操作：确认、登录、开始下载。一屏一个，别把两个主行动并排放。
+ * - [Secondary]   普通辅助操作：与主行动同框但不是主角（ tonal 容器档）。
+ * - [Outline]     有明确边界的次级入口：跳转、外链、"网页登录"这类**入口**而非终点。
+ * - [Ghost]       取消、返回、关闭等低强调操作：无底无框，纯内容。
+ * - [Destructive] 删除、清空等破坏性操作：错误色实底，任何页面不得用别的色表达"危险"。
+ */
+enum class VeneraButtonVariant { Primary, Secondary, Outline, Ghost, Destructive }
+
+/**
+ * 按钮尺寸档（高/内边距的数值出处见 [VeneraSpacingTokens.buttonHeightCompact] 一组 Token）。
+ * 视觉高度与命中区分开管理：[Compact] 只是视觉矮，触达位由各后端的 min 尺寸另保。
+ */
+enum class VeneraButtonSize { Compact, Medium, Large }
+
+/** 一个尺寸档落到布局上的两个数（最小高 + 内容水平内边距）。 */
+data class VeneraButtonMetrics(val minHeight: Dp, val horizontalPadding: Dp)
+
+/**
+ * 尺寸档 → 布局量的纯映射。数值全部由调用方传入（组件从 Token 取），
+ * 本函数只保证"档位 ↔ 数值"这条路是可断言的，不在组件里散 if。
+ */
+fun veneraButtonMetrics(
+    size: VeneraButtonSize,
+    compactHeight: Dp,
+    mediumHeight: Dp,
+    largeHeight: Dp,
+    horizontalPadding: Dp,
+): VeneraButtonMetrics = when (size) {
+    VeneraButtonSize.Compact -> VeneraButtonMetrics(compactHeight, horizontalPadding)
+    VeneraButtonSize.Medium -> VeneraButtonMetrics(mediumHeight, horizontalPadding)
+    VeneraButtonSize.Large -> VeneraButtonMetrics(largeHeight, horizontalPadding)
+}
+
+/**
+ * 变体 → 颜色规格的**纯映射**（MIUIX 后端消费；MD3 走各原生变体，两者语义必须一致，
+ * 由 [VeneraButtonSpecTest] 把这条一致性钉住）。
+ *
+ * 为什么 Outline/Ghost 的禁用底是透明而不是灰：这两个变体的底本来就是"没有底"，
+ * 禁用时往底上加灰会让"幽灵按钮"变成一块灰饼 —— 禁用只降内容色。
+ *
+ * 为什么返回 [Color.Transparent] 而不是 `null`：透明底是真实状态（要画按下反馈的面），
+ * 与"无边框"（[borderColor] 为 null）不是一个意思。
+ */
+data class VeneraButtonSpec(
+    val container: Color,
+    val content: Color,
+    /** 描边色；null = 本变体不描边。 */
+    val borderColor: Color?,
+    val disabledContainer: Color,
+    val disabledContent: Color,
+)
+
+fun veneraButtonSpec(
+    variant: VeneraButtonVariant,
+    primary: Color,
+    onPrimary: Color,
+    secondaryContainer: Color,
+    onSecondaryContainer: Color,
+    error: Color,
+    onError: Color,
+    outline: Color,
+    disabledContainer: Color,
+    disabledContent: Color,
+): VeneraButtonSpec = when (variant) {
+    VeneraButtonVariant.Primary ->
+        VeneraButtonSpec(primary, onPrimary, null, disabledContainer, disabledContent)
+    VeneraButtonVariant.Secondary ->
+        VeneraButtonSpec(secondaryContainer, onSecondaryContainer, null, disabledContainer, disabledContent)
+    VeneraButtonVariant.Outline ->
+        VeneraButtonSpec(Color.Transparent, primary, outline, Color.Transparent, disabledContent)
+    VeneraButtonVariant.Ghost ->
+        VeneraButtonSpec(Color.Transparent, primary, null, Color.Transparent, disabledContent)
+    VeneraButtonVariant.Destructive ->
+        VeneraButtonSpec(error, onError, null, disabledContainer, disabledContent)
+}
+
+/**
+ * 填充按钮（控件体系统一 · 阶段 1 扩展）。两家的 `Button` content **都是 `RowScope` 槽位**，
+ * 所以签名是真交集 —— 建这一件的理由：弹窗里的"提交/登录"按钮要在文字前面挂进度条，
  * 而 `VeneraTextButton` 走的是 `text: String`，表达不了"按钮里有子件"。
  *
- * ⚠️ M3 的 `OutlinedButton`（全仓 1 处，源管理的登录弹窗）**没有对应物**：
- * miuix 0.9.4-rc01 的 `ButtonColors` 只有 4 个色位、没有描边位，硬凑出来的"描边按钮"
- * 会连描边一起丢掉，那是假件，所以那一处保持 M3 直连并登记在册。
+ * 变体在两家的映射（语义一致、实现各异 —— 这是"共用语义和 Token、底层实现不同"那条原则）：
+ *
+ * | Variant      | MD3                  | MIUIX                                       |
+ * |--------------|----------------------|---------------------------------------------|
+ * | Primary      | `Button` 默认         | `MiuixButton` 默认（submit 实底）             |
+ * | Secondary    | `FilledTonalButton`  | `MiuixButton` + secondaryContainer 实底      |
+ * | Outline      | `OutlinedButton`     | `MiuixButton` 透明底 + `Modifier.border`     |
+ * | Ghost        | `TextButton`         | `MiuixButton` 透明底、无框                   |
+ * | Destructive  | `Button` + error 色位 | `MiuixButton` + error 实底                   |
+ *
+ * Outline 在 MIUIX 是**真实边框适配**（`ButtonColors` 没有描边位，边框由 Modifier 画，
+ * 圆角与按钮本体同档），不是把它静默显示成普通填充按钮 —— 旧头注里"miuix 没有对应物"
+ * 的结论对**库原生**成立，对本转发件不成立：我们自己把描边补上了。
+ *
+ * @param loading 异步进行中。真 isLoading 时整颗按钮**不可点**（`enabled && !loading`），
+ *   并在最前面挂一枚与内容同色的细进度环 —— 调用点原来手写"if (busy) 环 else 文字"的
+ *   那套可以删了，但**状态来源不变**：loading 仍由调用方的异步状态驱动，本组件不自持状态。
  */
 @Composable
 fun VeneraButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    variant: VeneraButtonVariant = VeneraButtonVariant.Primary,
+    size: VeneraButtonSize = VeneraButtonSize.Medium,
+    loading: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val tokens = VeneraTokens
+    val metrics = veneraButtonMetrics(
+        size = size,
+        compactHeight = tokens.spacing.buttonHeightCompact,
+        mediumHeight = tokens.spacing.buttonHeightMedium,
+        largeHeight = tokens.spacing.buttonHeightLarge,
+        horizontalPadding = tokens.spacing.buttonHorizontalPadding,
+    )
+    val clickEnabled = enabled && !loading
+
+    // loading 环要跟内容同色，否则在 Ghost/Outline 上会悬出一枚谁也不认的亮环。
+    val loadingColor: Color
+    val decorated: @Composable RowScope.() -> Unit
     if (useMiuixWidgets) {
-        MiuixButton(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
+        val mc = MiuixTheme.colorScheme
+        val spec = veneraButtonSpec(
+            variant = variant,
+            primary = mc.primary,
+            onPrimary = mc.onPrimary,
+            secondaryContainer = mc.secondaryContainer,
+            onSecondaryContainer = mc.onSecondaryContainer,
+            error = Md3MaterialTheme.colorScheme.error,
+            onError = Md3MaterialTheme.colorScheme.onError,
+            outline = tokens.color.outline,
+            disabledContainer = mc.disabledPrimaryButton,
+            disabledContent = mc.disabledOnPrimaryButton,
+        )
+        loadingColor = if (clickEnabled) spec.content else spec.disabledContent
+        val shape = RoundedCornerShape(MiuixButtonDefaults.CornerRadius)
+        val base = MiuixButtonDefaults.buttonColors()
+        val colors = base.copy(
+            color = spec.container,
+            disabledColor = spec.disabledContainer,
+            contentColor = spec.content,
+            disabledContentColor = spec.disabledContent,
+        )
+        val borderModifier = spec.borderColor?.let {
+            Modifier.border(tokens.spacing.hairline, it, shape)
+        } ?: Modifier
+        decorated = {
+            if (loading) {
+                VeneraLoadingDot(color = loadingColor)
+                Spacer(Modifier.width(tokens.spacing.space3))
+            }
+            content()
+        }
+        MiuixButton(
+            onClick = onClick,
+            modifier = modifier.then(borderModifier),
+            enabled = clickEnabled,
+            minHeight = metrics.minHeight,
+            colors = colors,
+            insideMargin = PaddingValues(
+                horizontal = metrics.horizontalPadding,
+                vertical = tokens.spacing.space3,
+            ),
+            content = decorated,
+        )
     } else {
-        Md3Button(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
+        val cs = Md3MaterialTheme.colorScheme
+        loadingColor = cs.primary
+        decorated = {
+            if (loading) {
+                VeneraLoadingDot(color = loadingColor)
+                Spacer(Modifier.width(tokens.spacing.space3))
+            }
+            content()
+        }
+        // MD3 走各原生变体（禁用/高度/水波纹都是库自己的完整行为），不套 MIUIX 那份 spec。
+        val heightModifier = modifier.heightIn(min = metrics.minHeight)
+        when (variant) {
+            VeneraButtonVariant.Primary ->
+                Md3Button(onClick = onClick, modifier = heightModifier, enabled = clickEnabled, content = decorated)
+            VeneraButtonVariant.Secondary ->
+                Md3FilledTonalButton(onClick = onClick, modifier = heightModifier, enabled = clickEnabled, content = decorated)
+            VeneraButtonVariant.Outline ->
+                Md3OutlinedButton(onClick = onClick, modifier = heightModifier, enabled = clickEnabled, content = decorated)
+            VeneraButtonVariant.Ghost ->
+                Md3TextButton(onClick = onClick, modifier = heightModifier, enabled = clickEnabled, content = decorated)
+            VeneraButtonVariant.Destructive ->
+                Md3Button(
+                    onClick = onClick,
+                    modifier = heightModifier,
+                    enabled = clickEnabled,
+                    colors = Md3ButtonDefaults.buttonColors(
+                        containerColor = cs.error,
+                        contentColor = cs.onError,
+                    ),
+                    content = decorated,
+                )
+        }
     }
+}
+
+/** 按钮内那枚加载环的尺寸（16dp = [VeneraSpacingTokens.chipIconSize]，与图标同档）。 */
+@Composable
+private fun VeneraLoadingDot(color: Color) {
+    CircularProgressIndicator(
+        modifier = Modifier.size(VeneraTokens.spacing.chipIconSize),
+        strokeWidth = VeneraTokens.spacing.space1,
+        color = color,
+    )
 }
 
 /** M3 的复选框是 `Boolean`，miuix 的是 `ToggleableState`（三态里的 Indeterminate 本仓不用）。 */

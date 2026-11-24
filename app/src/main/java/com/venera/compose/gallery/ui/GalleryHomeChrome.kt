@@ -44,20 +44,16 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * 画廊首页的**常驻 chrome**：一条搜索入口条（来源切换只在展开的搜索卡里，见下面第二节）。
  *
- * ── 2026-09-30 第三版：它是**页面内容的第一行**，随内容滚走 ──
  *
  * 用户口径（原话）：「顶栏我需要下滑折叠，我只需要搜索栏保持在这里就行」。
- * 两版浮层方案被真机否掉之后，最终形态是：由 [GalleryScreen] 把它作为
  * 猜你喜欢墙的第一行（`GalleryForYouPage` 的 chrome 槽）传进来 ——
  * 首屏时紧贴顶栏下方（那个位置由网格避让地板保证），往下滚与内容一起离屏。
  * 本组件只管画，不管钉在哪。
  *
- * ── 为什么要有它（2026-09-30 用户拍板）──
  *
  * 此前这一格只在搜索开着时住着 `GallerySearchArea`，也就是说**不点顶栏那枚 🔍，屏上就看不出
  * 这一屏能搜**。用户拿新版效果图对照后的口径是「搜索 + 来源切换要常驻在首屏最显眼处」。
  *
- * ── 2026-10-15 改口径：这一行**常驻不撤**，来源切换搬进卡里 ──
  *
  * 两件事一起改的（用户原话「做个容器变化的动画，现在是没有过渡动画的」+「把首页默认显示的
  * 源站去掉，只在搜索框展开时显示」）：
@@ -70,7 +66,6 @@ import top.yukonga.miuix.kmp.basic.Text
  *     正好是"回到输入框"的一枚额外出口。
  *  2. 首页那一排 `VeneraSegmentedButton` 摘掉了 —— 卡里那一排本来就存在、吃同一份
  *     `GallerySearchSource.options`，两处并摆才是"同一屏两种来源切换器"的成因（见冻结声明
- *     2026-09-28 那一节）。摘掉之后换源只剩"点开搜索再换"这一条路，首页**不留**当前源的提示
  *     （用户原话「只在搜索框展开时显示」）。
  *
  * 顶栏下因此永远不会同时出现两套来源切换器：只有一套，长在卡里。
@@ -82,7 +77,6 @@ import top.yukonga.miuix.kmp.basic.Text
  * 阴影取 `elevation.attached` —— 三条与搜索卡**逐字同源**，所以展开成那张卡时是同一块面在长高，
  * 不是换了一副皮。一个新数字都不立。
  *
- * ⚠️ 第三条（阴影）2026-10-16 起**要经 `veneraSurfaceShadowElevation` 过一道**：玻璃档下它归零。
  * 原因是那一档卡底透明，平台投影会从卡底透出来（读数与判据写在 `VeneraGlass` 那个函数上）。
  * "三条逐字同源"这条契约不变 —— 两处仍然读**同一个表达式的同一条来源**，
  * 只是那条来源现在是"按档取"，于是两态继续逐像素同步（该有投影时两处一起有、该没有时一起没有）。
@@ -133,7 +127,6 @@ internal fun GalleryHomeChrome(
     /**
      * 首页那一排选中的内容域，以及点其中一格。
      *
-     * 2026-10-17 第三轮（用户另一张稿「看下站源切换能不能做成这样」）：那一排从前是自己占一行的
      * 一节（`section-domain`），现在并进这一行摆在搜索条左边 —— 左右各 11dp 的空是这一行自己给的，
      * 所以**这两枚参数必填、不给默认值**：给默认值的话下一个调用点会静默把切换器摘掉，
      * 而"整页只剩 Pixiv 那一池、切不回去"正是这一族最贵的形状（同日刚修的那条空态吞页同一族）。
@@ -147,7 +140,6 @@ internal fun GalleryHomeChrome(
     val tokens = VeneraTokens
     val view = LocalView.current
     // 恒占位：这一格是**墙的第一行**，高度参与墙的布局；而"让位给卡"是把内容撤下来做的 ——
-    // 撤下来的那一行若不兜住，墙会硬跳一行（正是 2026-10-15 要修的那一条，只是从前靠
     // "常驻不撤"绕开，现在靠这块固定高度的外框兜住）。
     //
     // 高度取 `galleryHomeChromeHeight()` 而不是另写一个数：它就是这个组件的自然高度，
@@ -157,14 +149,12 @@ internal fun GalleryHomeChrome(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
         ) {
-            // ── 内容域那一排（2026-10-17 第三轮，用户稿「看下站源切换能不能做成这样」）──
             //
             // 从前它自己占一行（`section-domain`），右边整片空着；稿上要求它与搜索条**同一行**、
             // 坐在搜索条左边那一格。这一行的总高度仍是 `galleryHomeChromeHeight()` 那三项之和，
             // 一个字没改 —— 常量与摆件逐项对应那条硬约束（见文件头注与 `GalleryHomeChromeTest`）不受影响。
             //
             // 摆法：外框吃**与条同一条带**（top=space2 起、`segmentedHeight` 那一档 ——
-            // 2026-10-17 用户点名「搜索框缩成和切换源一样大小」之后两边同高），
             // 里面按 Center 摆那颗分段器（它自己也是 48dp，正中坐下就是齐的）。不写"往下挪 4dp"这种数：
             // 那条带就是条自己占的那一段，两者共用同一组 token 就是唯一的对齐方式。
             Box(
@@ -189,7 +179,6 @@ internal fun GalleryHomeChrome(
                 enter = slideInVertically(animationSpec = SEARCH_CONTAINER_SHOW_SLIDE_SPEC) { 0 },
                 exit = slideOutVertically(animationSpec = SEARCH_CONTAINER_HIDE_SLIDE_SPEC) { 0 },
             ) {
-                // ── 外框与"那一块面"必须分两层（2026-10-17 第四轮，用户第二次点「搜索栏大小还是没有对齐」）──
                 //
                 // 真凶不是那个高度数字，是**内缩挂在哪一层**：原先三个 `padding` 直接串在
                 // `Surface` 的修饰符链上，而 miuix `Surface` 的底色铺的是**它自己的节点**
@@ -237,7 +226,6 @@ internal fun GalleryHomeChrome(
                         // 落在内部则两件事都成立：clip 由 Surface 给、底色由渐变给。
                         color = Color.Transparent,
                         // 玻璃档归零：卡底透明时，miuix Surface 那层平台投影会从卡底透出来
-                        // （用户 2026-10-16「浅色模式下还是有这种色块」的真凶，读数与判据见
                         //  `VeneraGlass.veneraSurfaceShadowElevation`）。
                         //
                         // 方案 B 把实色档从 `attached`(3dp) 抬到 `floating`(6dp)：
@@ -255,7 +243,6 @@ internal fun GalleryHomeChrome(
                             // 定高（常量口径的那一条，理由见类头注）。不用 heightIn(min=)：
                             // 那会让这一格随字体缩放长高，而避让公式吃的是常量 —— 两者会悄悄错开。
                             //
-                            // 2026-10-17 用户点名「搜索框缩成和切换源一样大小」：这一格从
                             // `dockedSearchBarHeight`（56dp）换成左边那颗分段器的 `segmentedHeight`（48dp），
                             // 两件从此等高。展开成搜索卡那一端仍是 56dp —— 共享元素按 bounds 插值，
                             // 8dp 的差在起飞那一刻是"长高一点"，不是横跳。
@@ -275,7 +262,6 @@ internal fun GalleryHomeChrome(
                                 // 方案 B 顺带修的一处居中：此前只有 `fillMaxWidth`，而 Surface 是定高 48dp
                                 // —— Row 自己的高度是**内容高**，整条居中靠父级 Box 的默认对齐兜着。
                                 // 现在 Row 自己就是 48dp，图标 / 占位字 / 圆钮三者的中线由这一层保证
-                                // （用户 2026-10-17「标题和按钮也没居中」里属于这一条的那一半）。
                                 //
                                 // ⚠️ 吃得到定高是因为 miuix `Surface` 那个 Box 传了
                                 // `propagateMinConstraints = true`（`basic/Surface.kt:67`），
@@ -373,7 +359,6 @@ internal fun GalleryHomeChrome(
 /**
  * 这条 chrome 的高度：**「上滑收起顶/底栏」的收栏阈值**（[GalleryChromeHidePolicy] 用）。
  *
- * 2026-09-30 第三版起 chrome 是墙里的第一行内容，它的高度**不再参与网格避让**
  * （避让只剩顶栏地板）—— 这把常量的消费点只剩收栏阈值一处。
  *
  * 逐项对应 [GalleryHomeChrome] 里那两个内缩与那一条定高条 —— 改一处就要改两处，

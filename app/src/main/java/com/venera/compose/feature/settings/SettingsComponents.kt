@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.venera.compose.components.venera.VeneraDialog
+import com.venera.compose.components.venera.VeneraOptionRow
 import com.venera.compose.components.venera.VeneraSlider
 import com.venera.compose.components.venera.VeneraSwitch
 import com.venera.compose.components.venera.VeneraTopAppBar
@@ -58,7 +59,6 @@ import com.venera.compose.data.api.BusinessPorts
  *  - 组件来源：容器一律 miuix（Card / Text）；**控件一律走 `Venera*` 转发件**
  *    （VeneraSwitch / VeneraSlider / VeneraIconButton / VeneraTextButton），由转发件按
  *    [com.venera.compose.data.prefs.AppearanceStyle] 选后端。
- *    这里原来写的是"保持「容器用 miuix、控件用 M3」的既有边界"—— 2026-09-29 用户改判
  *    「整个项目 UI 完全符合 Miuix 设计规范」，所以控件这一半从此跟风格轴走；
  *    MD3 档仍然拿到 M3 控件（那是"现状"那一档，逐像素不变）。
  *  - 材质轴（[com.venera.compose.data.prefs.SurfaceMaterial]）只决定分组卡要不要玻璃，
@@ -208,12 +208,19 @@ internal fun SettingsSelect(
         title = title,
         confirmText = "取消",
         content = {
+            // 弹窗内选项统一走 VeneraOptionRow（控件体系统一 · 阶段 2）：
+            // 单选语义、整行可点、选中由行首 Radio 标记表达（不再用"已选择"文字凑）。
+            // 业务入口不变：仍是 SettingsAction 打开弹窗，onSelected 后关窗。
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 options.forEach { (key, text) ->
-                    SettingsAction(text, if (value == key) "已选择" else null) {
-                        onSelected(key)
-                        open = false
-                    }
+                    VeneraOptionRow(
+                        title = text,
+                        selected = value == key,
+                        onClick = {
+                            onSelected(key)
+                            open = false
+                        },
+                    )
                 }
             }
         },
@@ -263,7 +270,6 @@ internal fun SettingsSlider(
 }
 
 /**
- * 设置子页的公共骨架（2026-10-02 重设计：可选 hero 槽 + 页尾名言卡）。
  *
  * ── hero 契约 ──
  *
@@ -308,7 +314,6 @@ internal fun SettingsPage(
         wideScreenLayoutMode(LocalWindowWidthDp),
     )
 
-    // ── hero 页的滚动契约：与 SettingsHome 同一套（2026-10-02 第五轮）──
     //
     // hero 在场时 behavior 的 nestedScroll 连接不挂（空 largeTitle 会给 miuix 留出
     // 几十 dp 幽灵折叠行程：上滑先被吃一段、回顶下拉又把顶栏拉开），玻璃与小标题
@@ -329,10 +334,8 @@ internal fun SettingsPage(
     SettingsHeroSystemBarIcons(heroPresent = heroFile != null, scrolledPastHero = heroScrolledPast)
 
     Box(Modifier.fillMaxSize()) {
-        // 禁掉 overscroll：stretch 会把 hero 图拉变形（用户 2026-10-02 拍板「直接禁止」）。
         // 下拉的其余消费者（behavior 展开、overscroll）在 hero 页全部退场，见上。
         //
-        // ⚠️ 2026-10-16 修：原来写的 `LocalOverscrollConfiguration provides null` 在
         // foundation 1.12 下已失效（官方弃用文案指明改用 `LocalOverscrollFactory provides null`，
         // 两者是两个不同的 CompositionLocal）。详细取证见 `SettingsHome` 那一处。
         CompositionLocalProvider(LocalOverscrollFactory provides null) {
@@ -370,7 +373,6 @@ internal fun SettingsPage(
                         top = if (heroFile != null) tokens.spacing.space3 else statusBarTop + tokens.spacing.topBarFloor,
                         bottom = LocalBottomBarClearance.current,
                     )
-                    // ── 大屏内容收口（2026-10-12）──────────────────────────────
                     // 与 SettingsHome 同一口径、同一函数。放在这里而不是 17 个调用点：
                     // 全部子页都走 SettingsPage 这一个骨架，改一处即全覆盖。
                     // 手机档 contentMaxWidth 为 null ⇒ 整个 Modifier 不挂，逐像素不变。

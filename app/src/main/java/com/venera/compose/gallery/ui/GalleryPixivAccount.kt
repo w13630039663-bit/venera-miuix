@@ -45,7 +45,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 顶栏左槽那颗 **pixiv 账号头像**（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四 · P3）。
  *
  * ## 对齐靠的是同一颗件，不是同一对数字
  *
@@ -63,13 +62,11 @@ import top.yukonga.miuix.kmp.basic.Text
  * ## 未登录那一档念得出话，不是空圈
  *
  * 空圈会被读成"这张图挂了"。所以：没登录 = 一枚人形图标 + `contentDescription` 直说"登录 pixiv 账号"，
- * 点下去打开**登录弹层**（2026-10-17 第四轮起不再是直接跳浏览器，那一路搬进弹层的第一颗按钮）；
  * 登过但刷不动 / 刚那一趟没登上 = 同一枚图标换成"重新登录 pixiv 账号"那句话
  * （方案 §三 第 4 步：这两档不许静默退回"没登录"，所以话要不一样，而首页「关注画师」那一行
  * 念的是 `authState.screenLine` 那一份，不是这里另抄的一句）；
  * 已登录 = 真头像或名字首字母，点下去是"这是谁 + 退出登录"。
  *
- * ## 登录弹层里那两件（2026-10-17 第四轮定，2026-10-19 撤掉第三件）
  *
  * 1. **去浏览器登录** —— 站方唯一认的那条路：密码 / Google / Apple 都在它自己那一页上接
  *    （WebView 里点 Google 会被 `disallowed_useragent` 拦，这一条 P6 量过）。
@@ -77,7 +74,6 @@ import top.yukonga.miuix.kmp.basic.Text
  *    认 token JSON / 回跳链接 / 光秃秃的 refresh token 三种形状，判据在
  *    `PixivCredentialState.signInWithPasted` 的注释里。
  *
- * 曾经还有第三件「本机 Google 账号」（系统账号选择器，只记邮箱、认机器用）。2026-10-19 用户拍板
  * 「本机 Google 登录撤掉，暂时用不上」⇒ 连同 `LocalGoogleIdentity` 那一族一起撤。
  * 撤它没有代价：它**从来不是** pixiv 的登录（协议层的三条理由记在该件头注的历史里），
  * 而一枚写着 Google 的按钮躺在登录框里，是本仓最容易读错的一格。
@@ -118,7 +114,6 @@ internal fun GalleryPixivAccountButton(
         }
     }
 
-    // 回过浏览器却没登上，必须**当面**说一遍（2026-10-17 第五轮）。
     //
     // `LoginRejected` 只活在这条流上、不落盘，而屏上原本唯一那句在「关注画师」那一行 ——
     // 那一行常常在屏幕外，于是"登录失败"读起来就是"点完回来什么都没发生"。
@@ -186,12 +181,10 @@ internal fun GalleryPixivAccountButton(
         }
     }
 
-    // 2026-10-19：以前这里是一颗「这是谁 + 退出登录」弹层。账号页发车之后整颗撤掉 ——
     // 那三样读数（这是谁 / 票据新鲜度 / 退出）搬进账号页的「账号管理」那一子页，
     // 而**退出的二次确认照旧**（它是破坏性动作，判据跟着搬到 `PixivAccountScreen` 那颗）。
     // 留两颗入口做同一件事，就是"两个入口两套读数"那一族错。
 
-    // ── 登录弹层（2026-10-17 第四轮）──
     //
     // 两件摆在一处，顺序就是"哪条路最可能成"：浏览器 → 粘贴。
     VeneraDialog(
@@ -300,7 +293,6 @@ private fun Throwable.readableLine(): String =
     message?.trim()?.take(160)?.ifBlank { null } ?: "这一条没换到票据（${javaClass.simpleName}）"
 
 /**
- * 把 pixiv 的授权页交给**外部浏览器**（方案 §四 · P6，用户 2026-10-17 点名
  * 「要有跳转到外部网页登录的授权登录和 google 账号登录的办法」）。
  *
  * ## 为什么不再是本 app 里那一屏 WebView
@@ -318,15 +310,12 @@ private fun Throwable.readableLine(): String =
  * 真浏览器（Chrome）里点 pixiv 那一页的 Google 按钮，Google 的账号选择页会列出**这台设备上
  * 已登录的那个 Google 账号** —— 那一步就是原生账号列表，不用敲邮箱密码。协议上这是唯一处
  * "设备账号列表"出现的地方：pixiv 的 Google client 归站方，我们自己的原生选择器换不到它认的凭据
- * （三条理由逐条记在 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四；
- * 2026-10-19 那枚"本机 Google 账号"选择器已按用户拍板撤掉，浏览器这一条不受影响）。
  *
  * 回跳由 `AndroidManifest.xml` 里那两条 intent-filter（`pixiv://account…` 与
  * 站方登记的 https 回跳）交回 MainActivity，再走 [PixivCredentials.completeLogin] ——
  * 这一颗**不等**结果，所以这里返回 null 只说明"浏览器收下了这一跳"，不说明登录成没成
  * （那件事全在 `authState` 那一条流上）。
  *
- * ## 为什么用 Custom Tab 而不是裸 `ACTION_VIEW`（2026-10-17 第五轮）
  *
  * 用户的原话是「我还是要 google 这样登录 pixiv 试试」。**pixiv 那一侧的 Google 登录只能发生在
  * 站方网页里**（我们的 Google 身份是发给我们自己 client 的，站方两把锁一起拒：client 归属站方、

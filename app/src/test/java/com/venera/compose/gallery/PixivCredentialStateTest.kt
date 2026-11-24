@@ -23,7 +23,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 登录态的判据（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四 · P2）。
  *
  * 出网那一半用 **OkHttp 的应用拦截器**伪造（不打网络、也不换掉被测代码里那一笔真实请求）：
  * 假引擎与真引擎走同一条 `newCall().execute()`，所以"什么时候才发这笔"这件事仍然是真读数。
@@ -204,7 +203,6 @@ class PixivCredentialStateTest {
         assertEquals(PixivAuthState.SignedIn("42", "新名"), state.authState.value)
         // 票据只在**请求体**里。出现在 URL 上就是另一种泄露方式（日志里通常只有 URL）。
         assertEquals(1, seen.size)
-        // 端点**逐字**核：少了 `/auth` 那一段，站方回 404（2026-10-17 实测两档：`/token` = 404
         // `404 Not Found`、`/auth/token` = 400 `invalid_grant`/1508）。所以这里钉全路径，
         // 而不是钉一个"含 token 就算过"的宽松式 —— 宽松式正是让 404 那版活下来的原因。
         assertTrue(
@@ -353,7 +351,6 @@ class PixivCredentialStateTest {
         // `pixiv://artworks/…` 那种站内深链会被当成回跳并送去换票据。
         assertTrue(PixivCredentialState.isLoginCallbackUrl("pixiv://account?code=ABC&state=S"))
         assertTrue(PixivCredentialState.isLoginCallbackUrl("pixiv://account/login?code=ABC"))
-        // 2026-10-17 第四轮：站方登记的 https 回跳也要认（浏览器那一侧可能先落在这里）。
         assertTrue(
             "https 回跳没认：${com.venera.compose.gallery.data.PixivPkce.REDIRECT_URI}",
             PixivCredentialState.isLoginCallbackUrl(
@@ -418,7 +415,6 @@ class PixivCredentialStateTest {
         assertNull(runBlocking { state.bearerOrNull() })
     }
 
-    // ── 粘贴兜底那一路（2026-10-17 第四轮，用户点了 B）──
     //
     // 浏览器那一路偶尔断在半路（系统没把回跳交回来、或用户是在另一台机器上登的），
     // 这一条是所有同类客户端的公共出口。三种形状的判据各钉一条 —— 判据错了的表现是

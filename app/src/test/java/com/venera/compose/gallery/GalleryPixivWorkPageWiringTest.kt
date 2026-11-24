@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 作品页的接线判据（2026-10-18）。
  *
  * 这一屏的三条红线各钉一把尺：
  * 1. **分流只有一处** —— 漏掉任何一个入口，pixiv 就会落进旧看图器，表现是"只有那一面墙点开不对"；
@@ -83,14 +82,13 @@ class GalleryPixivWorkPageWiringTest {
     fun `作品页只吃 pixiv 一站，三站站点名一次都不出现`() {
         val body = code(screen)
         assertTrue("作品页要按 pixiv 站点取邻居", body.countWith("GallerySite.PIXIV") >= 1)
-        listOf("YANDERE", "GELBOORU", "SAFEBOORU").forEach { site ->
+        listOf("YANDERE", "GELBOORU", "KONACHAN").forEach { site ->
             assertEquals("作品页里出现了 $site —— 两屏没隔离干净", 0, body.countWith("GallerySite.$site"))
         }
     }
 
     // ── 三、两枚档位：契约、实现、适配器、读点、写点各就各位 ──────────
     //
-    // 从前这里是三枚，第三枚叫「多图浏览方向」。2026-10-18 第四批按用户那句
     // 「还是直接删了横着一页一页那个模式切换吧，只留竖着连续翻页模式」整档撤掉；
     // 它不留半套那一格由下面「横档模式整档撤干净」钉，不在这里靠"少写一枚"来表达。
 
@@ -117,7 +115,6 @@ class GalleryPixivWorkPageWiringTest {
     /**
      * ⚠️ 这一条钉的是**挂在哪一颗接口上**，不是"有没有这三枚"。
      *
-     * 起因（2026-10-18）：这几枚一开始挂在 `GalleryPreferences` 上 —— 那颗是**跨端共享**读面，
      * 桌面那颗 `DesktopGalleryPreferences` 逐枚实现它，挂进去就是让桌面替每一档各写一个没人读的
      * getter，还要把桌面那笔"每一枚都有下落"的账一起改宽。摘回隔壁 `PixivWorkPreferences` 后，
      * 上面那条加法判式对"挂错接口"这件事是**全绿**的（它只数名字），所以这一条单独成一颗。
@@ -171,14 +168,12 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * 画师那一行的两枚把手（**关注** / **屏蔽**）必须真接线 —— 用户 2026-10-18 在稿上点名的两件。
      *
      * 存在性判式在这里不够：摆一枚「关注」而 onClick 是空的，屏上看着对、按下去不动，
      * 而"有没有那一枚"这种尺子全绿。所以钉的是**onClick 里出现的是哪颗写口**，
      * 外加屏蔽存的**规则类型必须是 AUTHOR**：照抄画师卡那条 TAG 会在 pixiv 存一条永远挡不住的规则
      * （pixiv 的 tags 是作品标签，画师名不在里面），而 Toast 会照样说"已屏蔽"。
      *
-     * 2026-10-22 改判：关注那一枚的写口从 `ports.follows.toggle`（只翻本地）换成
      * [togglePixivFollow]（先写站方，写成了才对齐本地）—— 与画师页那颗同一颗函数。
      * 从前这里钉的是“只在一处调 `ports.follows.toggle`”，而那正是缺陷本身：屏上亮着“已关注”
      * 而 pixiv 那边并没有这位，用户下次进 pixiv 主页看不到他，读起来就是“应用替我关注了个寂寞”。
@@ -268,7 +263,6 @@ class GalleryPixivWorkPageWiringTest {
     @Test
     fun `计数行只从纯判据那一颗取值，不各写各的`() {
         assertEquals("三格计数只有一处来源", 1, code(screen).countWith("PixivWorkPage.facts("))
-        // 2026-10-18 第四批改口径：评论那一格的**数与出口合到动作行同一枚**，详情段不再抄一份。
         // 那半的判式在「评论的数与出口只在动作行念一遍」那颗；这里只钉"详情段不再自己念"，
         // 两把尺各钉各的一格（同一件事不许有两把尺子）。
         assertEquals("详情段不再自己念评论数", 0, code(screen).countWith("val comments = detail.commentCount"))
@@ -285,7 +279,6 @@ class GalleryPixivWorkPageWiringTest {
         assertTrue("ugoira 没被分流出去", body.any { it.contains("if (detail?.ugoira == true)") })
         assertTrue("ugoira 分支就地接播放器", body.any { it.contains("PixivUgoiraPlayer(") })
         assertEquals("UgoiraNotice 整格退场", 0, body.countWith("UgoiraNotice"))
-        // 2026-10-19 用户报「动图这一作整屏上半是白的」：那一支从前只摆一句字、静帧不画。
         // 现在第一帧要真摆上去（同一颗 `PixivPageImage`，不为静帧另写一支渲染件），
         // 并在之上叠动图播放器 —— 两件事一起钉。
         assertTrue(
@@ -311,7 +304,6 @@ class GalleryPixivWorkPageWiringTest {
     fun `页码两处说法都在，接缝那条边不承担唯一说法`() {
         val body = code(screen)
         assertTrue("每页的语义没了", body.any { it.contains("contentDescription = description") })
-        // 2026-10-19 用户：「去掉中间的页数指示器」—— 顶栏那枚「1 / N」胶囊整格撤掉，
         // 屏上不再念页位。这一格的语义**不再缺**：每页自己的 `pageSemantic` 仍逐页念
         // 「第 N 页 / 共 M 页」，读屏用户照样拿得到页位（撤的只是视觉那一枚）。
         assertEquals(
@@ -322,7 +314,6 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("页码语义只从 pageSemantic 一颗出来", 1, body.countWith("private fun pageSemantic("))
     }
 
-    // ── 九、第二轮改口径（用户 2026-10-18 真机五条里的第一批）──────────
 
     /**
      * ① 屏底不再常驻一排动作。
@@ -352,7 +343,6 @@ class GalleryPixivWorkPageWiringTest {
     /**
      * ② 一页只有一支渲染件，"铺满视口"那枚形参整格掉出去。
      *
-     * 立案读数（真机，2026-10-18 第三批）：横向下"图片只会 1/4" —— 那一档的页高由 pager 给而
      * 渲染件不用，两支靠 `fillsViewport` 分开。第四批把横向那一档整档撤了 ⇒ 这枚形参**没有第二种
      * 取值**，留着就是"漏传不报错"那一族（本仓为这条立过案）：整格撤，判式改钉它为零。
      */
@@ -388,9 +378,7 @@ class GalleryPixivWorkPageWiringTest {
     /**
      * ⑥ 画师头像按 `authorId` 现取。
      *
-     * 立案读数（真机）：头像那一格"只显示占位符" —— 成因是本屏压根没调那条腿
      * （`AuthorAvatar` 只画首字母），而站方详情腿给了 `userId`，现成的 `pixivAvatarUrl(userId)`
-     * 就是为这一格准备的（`/ajax/user/{id}` → `imageBig`/`image`，地址按 2026-10-01 那条改判落盘）。
      */
     @Test
     fun `画师头像按用户号现取，首字母座那颗整颗撤掉`() {
@@ -401,12 +389,10 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("首字母座那颗撤掉（现成件里已带兜底，屏上不另写一份）", 0, hosts().countWith("AuthorAvatar("))
     }
 
-    // ── 十、第三批改口径（用户 2026-10-18 真机两张图）───────────────────
 
     /**
      * ① 屏底摘要条整颗撤掉。
      *
-     * 立案读数（真机两张图）：连读那一档滚到详情段时，摘要条与它正上方那行画师信息是
      * **同一份读数的两遍**；而横向档按用户那句「横着一页一页翻应该和竖着连续翻页模式结构一样」
      * 也要同一套 chrome —— 两支一起撤，不留半套。
      * 撤完之后顶栏那枚「更多信息」仍在，失败横幅留在屏上（取数失败时屏上必须念得出为什么没图）。
@@ -440,13 +426,11 @@ class GalleryPixivWorkPageWiringTest {
     /**
      * ③ 顶栏那一格：图**穿到状态栏之上**，压在那一格上的改成全站主页面同一颗模糊背板。
      *
-     * 两处改口径（用户 2026-10-18 第四批，把第三批那版推翻）：
      * - 第三批做的是"内容整块往下让位 + 空出来的那一格拿当前页大图的模糊版垫底"，用户看了要改成
      *   「上滑的时候图片还是能过状态栏，不过要有我们现在所有主页面都有的顶栏模糊效果」⇒ 让位那两笔
      *   整格撤（判式改钉 0），顶栏那一行只留一颗背板；
      * - 背板不再自绘一份模糊，改用全站那颗 `VeneraTopBarBackdrop`（渐变高斯模糊 + 轻补底），它从
      *   `ComicDetailScreen` 里那颗 private 件提上来共用 —— 屏上"顶栏磨砂"从此只有一把尺。
-     *   （那颗件从前还画一条下沿 hairline，2026-10-19 用户「全部顶栏那种线去掉」，两处一起撤了。）
      * 高度那一格仍然只从"状态栏 + 顶栏塌下来那一档"这一句出来，不写死数。
      */
     @Test
@@ -474,19 +458,16 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * ② 只剩竖连：页码由那条流的第一个可见项喂，**相关图片无限滚动**（2026-10-20）。
      *
      * 两把尺各钉一件事：
      * - **页码要真跟手** —— 立案读数：`pageIndex` 从前只由连读那条流喂，横向档压根不走那条流，
      *   顶栏永远念「1 / N」（屏上一句假数，编译器不报）。现在写它的位置只许有一处；
-     * - **相关图片无限滚动** —— 用户 2026-10-20：「相关图片要无限滚动」、「底部那个下一作品删了」。
      *   所以末尾那一格「下一作品」连渲染件带推 pager 那一句**整条撤干净**，
      *   "继续往下长"只走 `fetchNextPage` + 站方游标。
      */
     @Test
     fun `页码只有一处写，相关图片无限滚动而下一作品那一格撤干净`() {
         val body = code(screen)
-        // 2026-10-19 批 233-2 之后写页码的那一处搬到宿主，**喂数的那一处**留在槽里：
         // 一颗共享的 LazyListState 会被同屏另一槽的滚动改写（横翻回来页码念的是隔壁那一槽）。
         assertEquals("页码跟手只有一处写", 1, body.countWith("if (slotId == currentId) pageIndex = index"))
         assertEquals("喂页码的那把尺只问第一个可见项", 1, body.countWith("snapshotFlow { listState.firstVisibleItemIndex }"))
@@ -521,7 +502,6 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("铺开两处 FlowRow（标签 + 评论正文的分段）", 2, body.countWith("FlowRow("))
         assertEquals("节头那枚图标", 1, body.countWith("Icons.Outlined.LocalOffer"))
         assertEquals("把手只念「查看全部」", 1, body.countWith("查看全部"))
-        // needle 带引号：钉的是标签把手那句旧措辞「更多」，而 2026-10-19 规格照给评论节头
         // 补了一枚真把手「更多评论」—— 裸串会把那一句也算成违例（尺子咬到邻居，不是邻居错了）。
         assertEquals("旧那句把手措辞没留下", 0, body.countWith("\"更多\""))
         assertEquals("旧那把硬切没留下", 0, body.countWith("chunked(4)"))
@@ -535,7 +515,6 @@ class GalleryPixivWorkPageWiringTest {
      * ④＋⑥ 评论这一件事在屏上只念一遍：动作行那枚同时带**数**与**出口**。
      *
      * 立案读数：详情段里那行「评论 N 条 · 在浏览器里看」与动作行那枚图标念的是同一个数、
-     * 给的是同一条出口（用户 2026-10-18 第四批「优化下面的按钮和 tag 展示 ui，按照图三」）。
      * 撤的是重复那一半，不是出口本身 —— 匿名腿取不到评论内容，所以"点了没反应"的把手一枚都不许有。
      */
     @Test
@@ -552,7 +531,6 @@ class GalleryPixivWorkPageWiringTest {
         assertTrue("对照组失效：没读到动作行那颗", panel.any { it.startsWith("private fun WorkAction(") })
     }
     // ─────────────────────────────────────────────────────────────────────
-    // 批 231-E：墙 ↔ 作品页的 hero 转场（2026-10-19）
     // ─────────────────────────────────────────────────────────────────────
 
     /** 墙那两排卡的宿主（排行榜 + 推荐共用同一颗 `PixivWorkCard`）。 */
@@ -569,7 +547,6 @@ class GalleryPixivWorkPageWiringTest {
     fun `墙回写的落点与作品页查询的键是同一把 viewerKey`() {
         val home = code(pixivHome)
         // 墙：写落点用 viewerKey（写错成 uid 就查不到）。
-        // （2026-10-19 批 B §3 地基：登记改吃双矩形 `(键, full, visible)` —— 定位那把要没裁过的。）
         assertEquals(
             "墙回写落点必须用 viewerKey",
             1,
@@ -587,7 +564,6 @@ class GalleryPixivWorkPageWiringTest {
             home.countWith("GalleryFlyIn.forgetCardBounds(work.post.viewerKey)"),
         )
         // 只在真的变了才写：布局回调每帧都来，无条件赋值 = 每帧重组这一格。
-        // （2026-10-19 批 A：登记从整卡搬到封面那一块，局部量随之改名 coverRect。）
         assertTrue(
             "回写必须带'变了才写'的闸门（否则滚动每帧重组）",
             home.any { it.contains("if (bounds != coverRect)") },
@@ -612,7 +588,6 @@ class GalleryPixivWorkPageWiringTest {
             0,
             body.countWith("GalleryFlyIn.cardBoundsOf(post.uid"),
         )
-        // 2026-10-19 批 A 真机验收补（读数 17:25:38，`pixiv:150828286`）：历史那一格**落点就在表里
         // 登记着，返回照样 target=null 整页退** —— 旧版第一跳只吃邻居队列，而历史的 tapTile
         // 只写飞行交接件、从不写 GalleryViewerQueue（队列认不出只等于"没有邻居"，
         // 不等于"这件作品没有落点"）。身份链必须退回本件作品的详情 post：它的 viewerKey
@@ -620,7 +595,6 @@ class GalleryPixivWorkPageWiringTest {
         // 与墙登记那侧逐字同串 —— 是同一把键的另一条来路，不是第二把键。
         // 钉整串而不是钉"有没有 detail?.post"：存在性判式拦得住删掉，拦不住"退到别的什么上"。
         //
-        // 批 B②（2026-10-19）之后有两个消费者：**终点**查作品键、**起点**查逐页键。
         // 身份链仍只许一处：起点吃 `back` 手里那颗 `post`（`post?.let { exitStartOrNull(it) }`），
         // 不另起一条 —— 两句话逐字相同就是第二处真相，明天改链的人只改一处，
         // 起点就悄悄退化回旧行为（这一笔就是那天被接线尺当场红出来的）。
@@ -642,7 +616,6 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * 批 B②（2026-10-19）：离场起点从**整屏**换成**当前那一页图块**。
      *
      * 立案（§9.3b）：多 P 作翻到第 3 页按返回，旧代码截 `fullFrameBox`（整屏）⇒ 飞行体带着
      * 整摞页 + 动作条 + 标签缩回一张小卡，而落点是一张作品卡 —— 两者不是同一张画，
@@ -680,7 +653,6 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
-    // ── 十三、批 B①④⑤ 活画面飞行体（2026-10-19）─────────────────────────────
     //
     // ① 飞行体里换活画面（与墙卡同 URL 的封面），④⑤ 于是把"淡出补丁"从飞行体上摘掉。
     // 三笔各钉一件事，外加一笔负向扫描：
@@ -712,7 +684,6 @@ class GalleryPixivWorkPageWiringTest {
             1,
             body.countWith("entryFrom != null && liveTakesOver"),
         )
-        // ⚠️ 2026-10-20 真机那一格泛白的病根：接管判据**必须**是"位图到手"，不许只是"URL 非空"。
         // 按 URL 判会让截图族提前让开（`!liveTakesOver`），而活画面那边图还没到手也什么都不画
         // ⇒ 两条路都不画、屏上只剩半透明的页面压在墙上（录屏 `g007` 逐帧证）。
         assertEquals(
@@ -757,7 +728,6 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
-    // ── 十六、返回手势不再动窗口模糊（2026-10-20，主人「看下能不能删掉返回手势的模糊动画」）──
     //
     // 作品页内容本身就是照片墙，窗口模糊只会在返回手势里露出来；那层半径变化与页面缩回
     // 分成两件事读，就是"怪"的来源。口径改成：窗口压根不挂 blur-behind，离场只动页面。
@@ -781,7 +751,6 @@ class GalleryPixivWorkPageWiringTest {
         assertFalse("取消手势不再把模糊挂回来", body.any { it.contains("模糊还原到") })
     }
 
-    // ── 十五、批 C1 跟手返回（2026-10-20）──────────────────────────────────
     //
     // 从 `BackHandler`（按一下才飞）换成 `PredictiveBackHandler`（手指拖着图缩回卡）。
     // 决策层与算式**全是现成的**（`GalleryExitGesture` 四道门闩 + `GalleryExitExpansion`），
@@ -846,7 +815,6 @@ class GalleryPixivWorkPageWiringTest {
     fun `两条路共用同一颗备料与算式`() {
         val body = code(screen)
         // 备料只住一颗：跟手那条（Prepare 指令里）与三键那条（flySelfDrivenExit 里）都调它。
-        // 两处各写一遍就是两处真相（"点顶栏与按手势落点不一样"，只有真机能看见）。
         assertEquals("备料只住一颗函数", 1, body.countWith("fun prepareExit("))
         assertEquals("两条路都调它（跟手 + 三键）", 2, body.countWith("prepareExit {"))
         // 自驱那条也只住一颗：三键 / 顶栏 / 决策层 `FlySelfDriven` 三处都走它。
@@ -855,7 +823,6 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals("back 仍走自驱那条", 1, body.countWith("val back: () -> Unit = { flySelfDrivenExit() }"))
     }
 
-    // ── 十四、批 B⑦ 无锚退路换侧滑（2026-10-19）─────────────────────────────
     //
     // ⑦ 的原话：「可见比不足 25% ⇒ 当场判无锚、走全宽侧滑（顶层平移、底层 -25% 视差 +
     // alpha 0.9），**不再**走"整页从下沿抬上来"」。判式那一颗（`hasAnchor`）与投影
@@ -935,9 +902,7 @@ class GalleryPixivWorkPageWiringTest {
         )
     }
 
-    // ── 十二、2026-10-19 那一轮"效果有点差"的四件 ─────────────────────────────
     //
-    // 读数出处是用户那三张真机截图：进图要往下拉才正常大小（A）、按钮里的数字换行裁切（B）、
     // 评论栏念着一行 404（C）、hero 转场压根没接上（D）。每件各一把尺，尺子只钉"下次再坏能不能看见"。
 
     /**
@@ -1006,7 +971,6 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * C：评论那一腿从前打的是 /v1/illust/comments —— 站方早挪到 v3（2026-10-19 现量：
      * v1 回 404 路由不存在，v3 回 400 缺凭据，同一颗 client 无票据对照）。
      *
      * ⚠️ 这条尺只扫代码行：KDoc 里那句"从前写的是 v1"是改判记录，必须留着
@@ -1066,7 +1030,6 @@ class GalleryPixivWorkPageWiringTest {
         )
         // **只清自己那一笔**：等落点那几百毫秒里用户可能已经点进某一页，那一跳会重新 capture 一份起点
         // （见 openPages 那头）。那时这一屏若无条件 consume，就是把播放器的起点清走 —— 表现为"进大图不飞"。
-        // 2026-10-19 多出一处：落点在预算边缘回来、而超时那一条已经放弃时，这一趟不起飞，
         // 手里那一帧照样要交还（否则这一屏一直攥着位图）。
         assertEquals("这一屏共五处 consume（点图那一处 + 进场那四处）", 5, code(screen).countWith("GalleryFlyIn.consume()"))
         assertEquals(
@@ -1077,8 +1040,6 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * E：图与"图以下那一块"是**两条钟**（2026-10-19 用户：「图片飞入完成才突然几帧内加载出
-     * 下面的界面不好」）。真机帧证：`u5a/0025` → `u5a/0026` 间隔 20ms，前一帧屏上只有飞行体，
      * 后一帧动作条 / 作者行 / 标签 / 评论整块出现。
      *
      * 根因不是淡得快，是起得晚：内容区原来只有交棒那一条钟，而交棒从**落位**才开始。
@@ -1123,7 +1084,6 @@ class GalleryPixivWorkPageWiringTest {
         assertEquals(1, code(screen).countWith("import com.venera.compose.gallery.domain.handoffDetailAlpha"))
     }
 
-    /** 2026-10-19 那张规格照：两节节头各一枚箭头 + 关注那一枚是实心主色药丸。 */
     @Test
     fun `节头把手与关注药丸按 2026-10-19 那张规格照`() {
         val lines = code(screen)
@@ -1137,7 +1097,6 @@ class GalleryPixivWorkPageWiringTest {
         )
         // 判据的**出处**也钉一下：这一枚吃的是站方那个硬字段（评论开关），不是本地猜的。
         //
-        // ⚠️ 2026-10-22 起**不再**要求 `commentCount != null`：登录腿（`PixivAppParse`）恒
         // `commentCount = null` 而 `commentsOff = false`，照旧判据那一枚对登录用户永远不出现，
         // 而它正是"去浏览器看评论"的唯一出口（同屏评论节读得到 totalCount，动作条却少这一格）。
         assertEquals(
@@ -1156,7 +1115,6 @@ class GalleryPixivWorkPageWiringTest {
     // ── 批 233-2：横向档那一槽的滚动状态由槽自己持有 ─────────────────────
 
     /**
-     * 2026-10-19 批 233-2（用户「图二作品点进去后会被顶的很上，图三才是正常大小」）。
      *
      * 立案：那一颗 `LazyListState` 从前由**宿主**建一次、发进 `HorizontalPager` 的**每一个槽**。
      * 两个宿主同时组合时（当前页 + 邻页预组合），后组合那一槽的滚动会把前一颗的锚改掉 ——
@@ -1193,7 +1151,6 @@ class GalleryPixivWorkPageWiringTest {
     // ── 批 233-3：评论只摆最新一条，其余就地展开；表情与贴纸照画 ──────────
 
     /**
-     * 2026-10-19 批 233-3（用户「评论太多了，应该只显示一条最新评论，其他评论放到查看更多评论」）。
      *
      * 钉的是**封顶那一枚的出处**与**把手只在真有余条时才摆**：
      * 上限写死在 `COMMENTS_SHOWN` 一处（屏上不自己数第二遍），展开态由宿主持有、两个宿主读同一份
@@ -1246,9 +1203,7 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * 2026-10-19 批 233-2 的**另一半**（用户：「图还是会被顶上去……往下拉一点就正常，从画廊进来就不正常」）。
      *
-     * 真机读数（这一屏现场取的，不是推断）：
      * - 站方详情腿回的是 `"width":2400,"height":4000` 且 `page_count:1` ⇒ 1080 宽下这一格该有 **1800** 高；
      * - 设备缓存里真正被画的那张 medium 是 **324x540**（比例 0.600，与站方逐页宽高**同档**，没裁）；
      * - `uiautomator` 量到那一格只有 **[0,0][1080,979]**，像素层复量左右**没有黑边**（Fit 满宽）
@@ -1291,7 +1246,6 @@ class GalleryPixivWorkPageWiringTest {
     }
 
     /**
-     * 落点那张表必须是**快照状态**（2026-10-19 · 批 233-5）。
      *
      * 立案与现量都在 `desktop/src/test/kotlin/com/venera/desktop/gallery/ui/DesktopSnapshotFlowObservationTest.kt`：
      * 没有第二帧时，普通 `HashMap` 的写入叫不醒 `snapshotFlow`（实测只报订阅那一刻的 null），

@@ -59,12 +59,12 @@ class DesktopSearchHistoryTest {
     fun 没发车的那一轮不记历史() {
         assertNull("一站都没发出去也要记一条 ⇒ 那条历史点开来没有腿（且构造会抛）", desktopSearchHistoryEntry(emptyList(), "1girl"))
         assertNull("空串不该进历史（屏上根本不发车）", desktopSearchHistoryEntry(listOf(GallerySite.YANDERE), "   "))
-        val entry = desktopSearchHistoryEntry(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), "  1girl  ")
+        val entry = desktopSearchHistoryEntry(listOf(GallerySite.YANDERE, GallerySite.KONACHAN), "  1girl  ")
         assertNotNull("正常那一轮没记上", entry)
         assertEquals("记的串没裁两端", "1girl", entry?.query)
         assertEquals(
             "记的是**这一轮真发过的腿**（未配账号那一站没搜过，不该出现在那条历史的站名里）",
-            setOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), entry?.sites,
+            setOf(GallerySite.YANDERE, GallerySite.KONACHAN), entry?.sites,
         )
         // 对照：这条判据是**承重**的 —— 空腿构造真的抛，不是我想当然。
         val threw = runCatching { GallerySearchEntry(emptyList(), "1girl") }.exceptionOrNull()
@@ -75,7 +75,7 @@ class DesktopSearchHistoryTest {
     /** ④ 点一条历史落哪一档：多站 ⇒ 全部，单站 ⇒ 那一站（与对岸 applyHistory 同一条判据）。 */
     @Test
     fun 一条历史点开落哪一档() {
-        val both = desktopHistorySourceOf(GallerySearchEntry(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), "a"))
+        val both = desktopHistorySourceOf(GallerySearchEntry(listOf(GallerySite.YANDERE, GallerySite.KONACHAN), "a"))
         assertTrue("两站并成的那条点开来不是「全部」档", both.isMulti)
         val single = desktopHistorySourceOf(GallerySearchEntry(GallerySite.GELBOORU, "a"))
         assertEquals("单站那条点开来回到了别站", listOf(GallerySite.GELBOORU), single.sites)
@@ -144,7 +144,7 @@ class DesktopSearchHistoryTest {
         assertTrue("删一条没写盘", desktopHistoryRead(reopened).isEmpty())
 
         // 清空：对岸走的是 remove（这个键**不在盘上**），不是写成版本哨兵 —— 两份语义不同。
-        desktopHistoryPush(store, emptyList(), desktopSearchHistoryEntry(listOf(GallerySite.SAFEBOORU), "touhou"))
+        desktopHistoryPush(store, emptyList(), desktopSearchHistoryEntry(listOf(GallerySite.KONACHAN), "touhou"))
         val cleared = desktopHistoryClearAll(store)
         assertEquals("清空之后内存里还剩东西", emptyList<GallerySearchEntry>(), cleared)
         assertFalse(

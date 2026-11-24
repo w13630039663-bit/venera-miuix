@@ -7,7 +7,6 @@ import com.venera.compose.data.platform.android.AndroidKeyValueStore
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * pixiv 账号的 **Android 接线那一半**（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四 · P2）。
  *
  * 形状逐字照 [GelbooruAccount]：`private constructor(context)` + 自备一枚 SharedPreferences
  * + 把判据整个转发给 [PixivCredentialState] + `getInstance` 单例。

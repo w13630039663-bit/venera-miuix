@@ -78,6 +78,9 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.venera.compose.components.LocalWindowWidthDp
+import com.venera.compose.components.contentMaxWidthFor
+import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.CoverHeroBackdrop
 import com.venera.compose.components.RichCommentContent
 import com.venera.compose.components.comicPreviewColumnCount
@@ -92,6 +95,8 @@ import com.venera.compose.components.venera.hScrollEndContentPadding
 import com.venera.compose.components.venera.hScrollEndFade
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCheckbox
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraDialog
 import com.venera.compose.components.venera.VeneraTextField
 import com.venera.compose.components.venera.VeneraTextButton
@@ -195,13 +200,15 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
     var showDownloadDialog by remember { mutableStateOf(false) }
     /** 完整目录面板（屏 01 落地）：页内胶囊只给前 80，两百话的本子在这里看全量。 */
     var showChapterSheet by remember { mutableStateOf(false) }
+    /** 已在追更时点按那颗钮弹出的面板（移出前的一次确认）。 */
+    var showFollowPanel by remember { mutableStateOf(false) }
+    // 追更两态由 ViewModel 的 Compose 状态驱动：收藏库变更、追更夹被改都会让它重算
+    val inFollowUpdates = viewModel.inFollowUpdates
+    val followFolder = viewModel.followFolder
 
     // 磁盘态的**唯一一份预扫快照**（目录面板与下载面板共用）：
-    // 面板只做 O(1) 查表，不在组合里逐话扫盘（用户两轮真机反馈同一病根）。
-    // ⚠️ 两条被真机打出来的规矩：
     //  ① 扫描腿必须是 `chaptersOfflineBatch`（每个章目录只读一次）—— 逐问的
     //     chapterOffline 对 117 话 = 一万三千次目录探测，IO 线程也要好几秒，
-    //     面板就停在「正在核对离线文件…」出不来（用户 2026-11-09 报的这条）；
     //  ② key 里**不许有 downloadTasks** —— 任务流每 tick 都重启扫描并掐死上一轮，
     //     扫描永远跑不完 = 永远「核对中」。改 openEpoch 驱动：每次开面板扫一次，
     //     面板关掉的瞬间作废快照，下次打开拿到的是最新落盘态。
@@ -263,6 +270,11 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.consumeToast()
         }
+    }
+
+    // 加入 / 移出追更的一次性提示（建夹名、是否重复、失败原因都在这里说清）
+    LaunchedEffect(Unit) {
+        viewModel.followEvents.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
     }
 
     LaunchedEffect(Unit) {
@@ -395,15 +407,12 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 end = tokens.spacing.rowHorizontal,
                 top = statusBarTop + tokens.spacing.detailTopBarClearance,
                 // 悬浮底栏是盖在内容上的，不是排在外面的：这一页从前只垫 8dp，
-                // 滑到底那一行永远压在栏底下（2026-10-15 平板右栏读数：底栏带 y978~1051
                 // 与「预览 (12 页)」行 y1028~1055 坐标重叠）。让位量吃现成契约，不手写栏高。
                 bottom = LocalBottomBarClearance.current + tokens.spacing.space8,
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sectionGap)
         ) {
-            // 0. 详情加载失败**不再摆内联横幅**（2026-10-14 第三轮）：
             //    它排在 LazyColumn 的第 0 项，一出现就把 hero 往下顶 —— 顶掉的那一截正是
-            //    模糊封面铺的位置（真机原话「背景的模糊被顶下去了」）。改走页面级统一弹窗，
             //    见本页末尾的 VeneraDialog；弹窗是独立窗口，不占页面流。
 
             // 1. 顶部封面与作品标题信息
@@ -437,7 +446,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     Row(modifier = Modifier.fillMaxWidth()) {
                     // 封面容器：VeneraCover 的 fillMaxWidth + aspectRatio 契约由定宽 Box 表达，
                     // sharedElement 挂在外层 Box 上。key 与列表卡片同一口径
-                    //（ComicSharedTransition.coverKey，一律 sourceKey —— 真机探针已核对两端逐字相同）。
                     // 打码命中时不挂：共享元素会被渲染进 SharedTransitionLayout 的 overlay，
                     // 不能给遮罩留任何绕开页面裁剪的机会。
                     val coverSharedKey = remember(comic.sourceName, comic.id) {
@@ -690,17 +698,28 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                 }
             }
 
-            // 3. 辅助操作行：两枚状态型（收藏 / 点赞，递身份色）+ 三枚动作型（评论 / 分享 / 复制链接，恒中性）
-            //    分族与"为什么不再凑四色"的读数见 ui/tokens/Color.kt 的状态型头注
+            // 3. 辅助操作行：三枚状态型（收藏 / 追更 / 点赞，递身份色）+ 三枚动作型（评论 / 分享 / 复制链接，恒中性）
+            //    分族与"为什么不再凑四色"的读数见 ui/tokens/Color.kt 的状态型头注。
+            //    六枚用 weight 等分：SpaceEvenly 在 365dp 可用宽下只剩不到 1dp 间隙，会挤成一串硬币。
             item {
+                // 大屏适配：六枚按钮在 840dp 以上会被拉成 6×130dp 的长条，与上面的封面、
+                // 标题列不同宽，看着像另一套版式。整行收口到阅读列宽并居中——
+                // Compact 档 `contentMaxWidthFor` 返回 null，手机一个像素都不改。
+                val actionRowMaxWidth = contentMaxWidthFor(wideScreenLayoutMode(LocalWindowWidthDp))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = if (actionRowMaxWidth != null) {
+                        Modifier.widthIn(max = actionRowMaxWidth).fillMaxWidth()
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     DetailActionButton(
+                        modifier = Modifier.weight(1f),
                         icon = if (isFav || isNetworkFav) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         label = when {
-                            isFav && isNetworkFav -> "本地+源"
+                            isFav && isNetworkFav -> "双收藏"
                             isFav -> "已收藏"
                             isNetworkFav -> "源已藏"
                             else -> "收藏"
@@ -716,7 +735,22 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             viewModel.openFavoritePanel(comic)
                         }
                     )
+                    // 追更：一键放进当前追更夹（没有就建「追更」）。追更是收藏的子集，
+                    // 所以身份色沿用 actionFavorite，只靠铃铛字形与标签区分。
                     DetailActionButton(
+                        modifier = Modifier.weight(1f),
+                        icon = if (inFollowUpdates) Icons.Filled.Notifications else Icons.Outlined.NotificationsNone,
+                        label = if (inFollowUpdates) "在追更" else "追更",
+                        identityColor = tokens.color.actionFavorite,
+                        isActive = inFollowUpdates,
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            if (inFollowUpdates) showFollowPanel = true
+                            else viewModel.joinFollowUpdates(comic)
+                        }
+                    )
+                    DetailActionButton(
+                        modifier = Modifier.weight(1f),
                         icon = if (detailState.isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         // 数字必须带名词：光秃秃的「7」只能靠图标颜色猜是什么计数
                         label = if (detailState.likesCount > 0) "点赞 " + detailState.likesCount else "点赞",
@@ -729,6 +763,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     )
                     val commentCount = liveDetails?.commentCount ?: detailState.comments.size
                     DetailActionButton(
+                        modifier = Modifier.weight(1f),
                         icon = Icons.Outlined.Comment,
                         label = if (commentCount > 0) "评论 $commentCount" else "评论",
                         onClick = {
@@ -737,6 +772,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         }
                     )
                     DetailActionButton(
+                        modifier = Modifier.weight(1f),
                         icon = Icons.Outlined.Share,
                         label = "分享",
                         onClick = {
@@ -750,6 +786,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                         }
                     )
                     DetailActionButton(
+                        modifier = Modifier.weight(1f),
                         icon = Icons.Outlined.Link,
                         label = "复制链接",
                         onClick = {
@@ -769,6 +806,7 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             }
                         }
                     )
+                }
                 }
             }
 
@@ -802,7 +840,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                                         fontWeight = tokens.type.weightBold,
                                         color = tokens.color.textSecondary,
                                         // 组名列只给最小宽度且禁止折行：定宽会把长键从单词中间截断
-                                        // （真机出现过「Categorie / s:」），列宽随内容增长才成词。
                                         maxLines = 1,
                                         softWrap = false,
                                         overflow = TextOverflow.Ellipsis,
@@ -1252,7 +1289,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                             val list = if (isReversed) currentChapters.reversed() else currentChapters
                             val visibleChapters =
                                 if (showAllChapters) list else list.take(CHAPTER_CHIP_LIMIT)
-                            // 章节双列网格（2026-11-09 定稿，参照拷贝漫画目录页）：严格两列等宽。
                             // 列宽 = BoxWithConstraints 的约束宽换算 —— 读组合约束，不写回状态。
                             // 前两版的坑都在这条线上：rememberContentWidth 的首帧窗宽快照在懒列项
                             // 里量到 0（(0-间距)/2 把整段胶囊裁成 0 宽 = 「详情页没有章节显示」那块
@@ -1551,7 +1587,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
                     .statusBarsPadding()
                     .height(tokens.spacing.detailTopBarHeight)
                     // 与 LazyColumn 的 contentPadding 同值：悬浮钮此前用 4dp，比封面/卡片左边缘
-                    // 外凸 10dp，读起来像贴屏幕边（真机反馈）。
                     .padding(horizontal = tokens.spacing.rowHorizontal),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1713,7 +1748,6 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             }
         }
 
-        // 详情加载失败：统一弹窗（2026-10-14 第三轮）。
         // 只在「详情确实没拿到」（liveDetails == null）时弹 —— 拿到了详情只是某个子块失败时，
         // 页面自己会如实标注那一块，再弹一个整页级弹窗就是打扰。
         val detailError = detailState.error
@@ -1750,6 +1784,18 @@ fun SharedTransitionScope.AndroidComicDetailScreen(
             onToggleLocal = { folder -> viewModel.toggleLocalFavorite(comic, folder) },
             onCreateFolder = { name, onErr -> viewModel.createLocalFolder(name, onErr) },
             onToggleNetwork = { folderId, isAdded -> viewModel.toggleNetworkFavorite(comic, folderId, isAdded) },
+        )
+    }
+
+    // 已追更时点按那颗钮 → 移出确认面板
+    if (showFollowPanel) {
+        FollowUpdatesSheet(
+            folder = followFolder,
+            onRemove = {
+                showFollowPanel = false
+                viewModel.removeFromFollowUpdates(comic)
+            },
+            onDismiss = { showFollowPanel = false },
         )
     }
 
@@ -1852,20 +1898,18 @@ private fun DetailTagChip(
                 menuExpanded = true
             },
         )
-        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-            DropdownMenuItem(
-                text = {
-                    Text("复制「$label」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
-                },
+        // 统一菜单（控件体系统一 · 阶段 4）；「屏蔽该标签」走 destructive 位（错误色统一出口）。
+        VeneraDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            VeneraMenuItem(
+                text = "复制「$label」",
                 onClick = {
                     menuExpanded = false
                     onCopy()
                 },
             )
-            DropdownMenuItem(
-                text = {
-                    Text("屏蔽该标签", fontSize = tokens.type.caption, color = StatusColors.Failing)
-                },
+            VeneraMenuItem(
+                text = "屏蔽该标签",
+                destructive = true,
                 onClick = {
                     menuExpanded = false
                     onBlock()
@@ -1945,6 +1989,83 @@ private fun CommentLoadStatus(thread: DetailCommentState, supported: Boolean, on
             fontSize = tokens.type.caption,
             color = tokens.color.textSecondary
         )
+    }
+}
+
+// ==================== 详情页「已在追更」面板 ====================
+
+/**
+ * 已在追更时点按那颗钮弹出的确认面板。
+ *
+ * 只做两件事：说清这本书挂在哪个夹、以及在确认后移出。
+ * 不提供「查看更新列表」那一行 —— 详情页没有通往收藏页的导航回调，
+ * 摆一颗点了没反应的入口比不摆更糟。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FollowUpdatesSheet(
+    folder: String?,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tokens = VeneraTokens
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MiuixTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.space8)
+                .padding(bottom = 28.dp),
+        ) {
+            Text(
+                text = "已在追更",
+                fontSize = tokens.type.chevron,
+                fontWeight = tokens.type.weightBold,
+            )
+            Spacer(modifier = Modifier.height(tokens.spacing.space2))
+            Text(
+                text = "「${folder ?: FOLLOW_FOLDER_NAME}」收藏夹 · 每天检查一次",
+                fontSize = tokens.type.caption,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+            )
+            Spacer(modifier = Modifier.height(tokens.spacing.space6))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(tokens.shape.medium))
+                    .clickable(onClick = onRemove)
+                    .padding(vertical = tokens.spacing.space6),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "移出追更",
+                    fontSize = tokens.type.body,
+                    color = tokens.color.primary,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "只删这一本",
+                    fontSize = tokens.type.caption,
+                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                )
+            }
+            Spacer(modifier = Modifier.height(tokens.spacing.space5))
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                ),
+            ) { Text("取消") }
+            Spacer(modifier = Modifier.height(tokens.spacing.space3))
+            Text(
+                text = "移出只从追更夹删掉这一本；其它收藏夹里的副本不受影响，追更开关也不会因此关闭。",
+                fontSize = tokens.type.caption,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+            )
+        }
     }
 }
 
@@ -2137,7 +2258,6 @@ private fun FavoritePanelSheet(
                     )
                     Spacer(modifier = Modifier.width(tokens.spacing.space4))
                     // 详情 isFavorite 与面板查询结果取或：任一来源确认为真即显示已收藏，
-                    // EH 的二次查询失败也不会把真实状态打回「尚未收藏」。
                     val added = networkFavHint ||
                         (if (state.networkMultiFolder) state.networkAdded.isNotEmpty() else state.networkSingleAdded)
                     when {

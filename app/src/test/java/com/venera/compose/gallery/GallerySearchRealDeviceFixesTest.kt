@@ -15,7 +15,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-16 真机反馈四件的尺子（用户 23:37 / 23:39 两张截图立案）。
  *
  * 四件里有两件是**行为**（G 站窗口定界的解析、缺席提示归类到哪一档），
  * 另两件是"这一路不许再接回来"的**接线**（键盘不再自动收条、整轮失败不退回首页）。
@@ -48,7 +47,6 @@ class GallerySearchRealDeviceFixesTest {
         val banned = listOf("collapseToResults", "imeWasVisible", "shouldCollapseOnImeHidden(")
         val hits = areaCode().filter { line -> banned.any { line.contains(it) } }
         assertEquals("搜索卡里又接回了自动收条那一路：$hits", emptyList<String>(), hits)
-        // 那颗判据件本身也不在源码树里了（整块进 `_trash/gallery-ime-collapse-2026-10-15/`）。
         assertTrue(
             "判据件回到了 gallery/domain",
             RepoSources.kotlinFiles("com/venera/compose/gallery/domain")
@@ -56,7 +54,6 @@ class GallerySearchRealDeviceFixesTest {
         )
         // 对照：`collapseToResults` 本身没被撤走（宿主仍要用它），撤的只是"键盘"那一个调用方。
         //
-        // 2026-10-22：2 → 3。多出来的那一处是 ON_STOP 那一路（离开这一屏时把**展开着的**
         // 搜索层收成一条），与"键盘"那一路不是同一件事 —— 键盘那一路仍然不存在
         // （上面 `banned` 那三条判的就是它）。
         val exits = screenCode().filter { it.contains("collapseToResults") }
@@ -81,7 +78,6 @@ class GallerySearchRealDeviceFixesTest {
     fun `收条与展开的两枚出口各自钉死`() {
         // 逐字钉整串：只钉 `collapseToResults` 会放过"分支条件写反"那种形状。
         //
-        // ⚠️ 2026-10-17 方案 C 之后那枚条件改成 `svm.hasQuery`：pixiv 那一域没有胶囊，
         // 条件是"框里有没有词"。判据搬进 ViewModel 一处，这里钉的仍是"**返回键是唯一出口**"
         // 这件事，不是它写成哪个名字 —— 换成裸符号名就量不出"条件写反"了。
         assertTrue(
@@ -113,7 +109,6 @@ class GallerySearchRealDeviceFixesTest {
                 it.contains("val searchWallActive = searching && (svm.page > 0 || svm.isSearching || svm.searchError != null)")
             },
         )
-        // ⚠️ 2026-10-18：闸门里的域判据从 `svm.filters.isNotEmpty()` 换成 `svm.hasQuery`。
         // 前者是 **booru 的标签胶囊**，而 pixiv 那一域没有胶囊（词在 `pixivTerm` 里）⇒
         // 那面墙的自动续页一次都不会触发（用户：「pixiv 搜索下滑无法继续获取更多新图」）。
         // 这条用例要钉的是"窄"（不许把 `searchError` 也喂进来），域判据换名不影响那个意图。
@@ -167,14 +162,12 @@ class GallerySearchRealDeviceFixesTest {
         )
     }
 
-    // ── 2026-10-16 第二轮（用户 00:30 那张截图带回了原文读数，另加两格观感）──
 
     private fun chipCode() = codeLines("com/venera/compose/components/venera", "VeneraChip.kt")
 
     /**
      * ⑥ × 的命中盒**由住它的那一处表态**，两档各是各的。
      *
-     * 真机立案两轮：第一轮，`.combinedClickable` 挂在 16dp 的图标上，外面那圈 padding 不吃点击
      * ⇒ 真触达只有 16×16dp（用户「太小很难按到」）；第二轮，本鱼把 removable **一律**给 40dp，
      * 于是**已选条件那一排跟着长高**（用户「连同搜索tag一起变大了，你分开」）。
      * 所以这一把钉的不是"多大"，而是"每一处 removable 都必须自己说一句话" ——
@@ -219,10 +212,8 @@ class GallerySearchRealDeviceFixesTest {
     /**
      * ⑧ 结果态那张卡：**满宽 + 走材质轴**，且尾巴上带一枚读数槽。
      *
-     * ── 2026-10-16 第三轮，用户口径又变了：「设成全宽吧，可以在搜索框里加入其他信息」──
      *
      * 前两轮在这件事上走过的路（都记着，免得下次再绕）：
-     *  - 第一轮套顶栏吸附层那一档（34%）→ 真机把第二枚胶囊切了半截；
      *  - 第二轮取它的**补数**（66%）+ 挂右 → 不切了，但带两个隐性代价：
      *    ① 展开/收起时**横向跳一下**（66% ↔ 满宽），"同一块面在长高"这条契约在宽度上断了；
      *    ② 右侧仍是一块无信息区。
@@ -291,7 +282,6 @@ class GallerySearchRealDeviceFixesTest {
     /**
      * ⑧b 面板档玻璃在**浅色**下的容器不透明度必须单列一档，不许再与普通卡片共用 0.22。
      *
-     * ⚠️ 本用例的**判据本身没变**（面板档要单列一档、且真的接进 `when`），但 2026-10-16 二次复核
      * 时订正了它当初的**归因**：这一档**不是**"消灰块"的开关。灰块（用户两次报的「莫名其妙地黑了」
      * 与「还是有这种色块」）的真凶是平台投影从透明卡底透出来，判据在下面 ⑧c。
      * 反证：把 0.22 抬到 0.86 之后灰块**一点没退** —— 投影画在容器色之后，调前者动不了后者。
@@ -325,7 +315,6 @@ class GallerySearchRealDeviceFixesTest {
     }
 
     /**
-     * ⑧c 玻璃面**不许**带平台投影（2026-10-16，用户「浅色模式下还是有这种色块」）。
      *
      * ## 成因（逐层核过 miuix `basic/Surface.kt:128-146`）
      *
@@ -335,7 +324,6 @@ class GallerySearchRealDeviceFixesTest {
      * Compose 外层先画 ⇒ 真实层序 **① 模糊 → ② 容器色 → ③ 平台投影 → ④ 子元素**。
      * 不透明底的 Surface 上 ③ 被 ② 盖住看不见；玻璃档 ② 是透明的，③ 那层黑剪影就透出来了。
      *
-     * ## 读数（4 张真机截图的连通域分割）
      *
      * 两块带投影的玻璃面都等于 `surfaceContainerHigh × 0.785`（入口药丸 `#CDBBB9`、
      * 搜索卡 `#C1B3B2`/`#C9B0AD`/`#BCB0AE`），逐通道吻合 ±1 ⇒ 那层黑不透明度 ≈ 0.215，
@@ -345,7 +333,6 @@ class GallerySearchRealDeviceFixesTest {
      * ## 判据为什么钉"调用点不许出现裸值"而不是钉那个函数
      *
      * 只钉函数存在的话，"函数写好了但没接线"也会全绿，而那正是这次 bug 的形状
-     * （`shadowElevation = tokens.elevation.attached` 从 2026-10-16 第一版起就在那儿）。
      * 所以钉的是 `gallery/ui` 里**每一处** `shadowElevation` 赋值都必须过按档口。
      */
     @Test
@@ -393,12 +380,10 @@ class GallerySearchRealDeviceFixesTest {
     /**
      * ⑧d `fadeBottomEdge` 里的 `DstIn` 必须与**离屏层**成对、且离屏层在前。
      *
-     * 2026-10-16 12:51 用户原话「但是这下下面有黑边了」—— 那一轮刚把玻璃面的灰块修掉，
      * 露出来的就是这一条：`drawWithContent { drawContent(); drawRect(DstIn) }` **不带离屏层**时，
      * `DstIn` 的 dst 是"当前画布上已经画过的一切"，不是"这一段自己刚画的内容"。于是渐变把
      * 卡底之下的氛围层与图墙也一起乘 alpha 抹掉，抹到 0 就透到窗口背景 = 一条**纯黑带**。
      *
-     * 真机读数（浅色玻璃）：卡内 `#F5DDDD`(L=0.763) → 渐变起 `#E9D4D3` → 单调压暗
      * → `#0F0B08`(L=0.004) → 下一像素回 `#F4E8E8`。单调那一段正是 `Brush.verticalGradient`，
      * 而终点是**纯黑**而不是"卡底之下那张图" —— 这一条就把"`DstIn` 穿到窗口层"钉死了。
      *
@@ -431,7 +416,6 @@ class GallerySearchRealDeviceFixesTest {
     }
 
     /**
-     * ⑨ 「根据你的收藏」那一块**整块撤下**（用户 2026-10-17 点名「删掉这个区域」）。
      *
      * 这一条经历过两版口径：先只撤标题、留着两条推荐（那是真入口），后来用户看着截图
      * 直接点了整块 —— 所以现在钉的是"标题与那两条**都不在**"。

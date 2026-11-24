@@ -83,7 +83,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * **pixiv 画师页**（2026-10-19）。图库三站那屏（[GalleryArtistProfileScreen]）一行未改。
  *
  * ## 为什么必须另开一屏
  *
@@ -100,7 +99,6 @@ import top.yukonga.miuix.kmp.basic.Text
  *    9.6:1 的扁带（那是 `artistHeroHeightWide` 记下的旧账）。
  * 2. **三段：插画 / 漫画 / 收藏**（用户点名）。前两段的 id 表来自 `profile/all`，
  *    收藏段要票据腿（未登录那档见 [BookmarkLocked]）。
- * 3. **头部跟着滚走**（用户 2026-10-19 拍板）：整页一条纵向流，hero/头像/名字/简介/数据行/
  *    外链/三段切换全是 `item(span = FullLine)`，卡片才是网格项 —— 与 `GalleryScreen` 主墙
  *    同一种写法，不另造容器。
  * 4. **点画师头像进这一页**：跳转在调用点（`GalleryCardCaption` / 首页横排 / 搜索分栏），
@@ -156,7 +154,6 @@ internal fun PixivArtistScreen(
     /**
      * **作品索引那一腿**（`profile/all`）失败了没有。
      *
-     * 2026-10-19 真机读数补上这一格：从前这一腿只 `Log.w`、不置任何状态位，于是它一抛
      * 整屏就是"四格全「—」+ 一张卡都没有 + 一句失败话都没有"（用户报的"很多画师页不出图"）。
      * 索引是这一屏的**唯一 id 来源**，它断了后面那批根本不会发 —— 那种"断在第一跳"的处境
      * 必须与"这一批没取上"（[batchFailed]）分开念，也要与"这位真的没有投稿"分开念。
@@ -182,7 +179,6 @@ internal fun PixivArtistScreen(
     /**
      * 为什么这一屏是匿名档。null = 走的是票据档（什么都不摆）。
      *
-     * 这句话**必须上屏**：匿名档的张数是站方过滤过的（2026-10-19 读数：屏上 3 张 / 网页 26 张），
      * 不说就等于把"少给"演成"这位只有这些"。用户拍的是「退匿名腿 + 屏上明说」。
      */
     var anonymousReason by remember(userId) { mutableStateOf<String?>(null) }
@@ -204,7 +200,6 @@ internal fun PixivArtistScreen(
     var retryTick by remember(userId) { mutableIntStateOf(0) }
 
     /**
-     * 收藏段的状态（2026-10-19）。
      *
      * 这一段与前两段**不是同一条腿**：前两段是匿名（`profile/all` 的 id 表 + `profile/illusts` 按批），
      * 收藏要票据（`app-api /v1/user/bookmarks/illust`）。所以它自己一套装载态，
@@ -249,7 +244,6 @@ internal fun PixivArtistScreen(
                 detail = null
                 ticketMode = false
                 // 技术原文只进日志：站方正文可能是 JSON/HTML 片段，上屏就是一段机器味
-                // （2026-10-22 审计，同 bookmarkError 那一处的口径）。
                 anonymousReason = DETAIL_FAILED_LINE
             }.onSuccess { stats ->
                 detail = stats
@@ -258,7 +252,6 @@ internal fun PixivArtistScreen(
             }
         }
         // 匿名 id 表**只在退到匿名档时**才是作品的来源。票据档不发这一跳：
-        // 它按站方口径把成人档整批滤掉（2026-10-19 读数：屏上 3 张 / 网页 26 张），
         // 而票据档的作品另有自己那条腿（`/v1/user/illusts`）。
         if (!ticketMode) {
             client.profileAll(id).onFailure {
@@ -460,7 +453,6 @@ internal fun PixivArtistScreen(
     //
     // 所以那张插画地址要**钉住**（不跟着 `cards` 变）：切到收藏段时 `onPick` 会把 `cards`
     // 清空，直接读 `cards.firstOrNull()` 的话头图当场变成纯色块 —— 与上面那句注释的意图正相反
-    // （2026-10-22 审计）。这里只认插画/漫画段的第一张，且只在还没有时记一次。
     var heroFallbackUrl by remember(userId) { mutableStateOf<String?>(null) }
     if (heroFallbackUrl == null && tab != PixivArtistSection.BOOKMARK && cards.isNotEmpty()) {
         heroFallbackUrl = cards.firstOrNull()?.post?.previewUrl
@@ -469,9 +461,7 @@ internal fun PixivArtistScreen(
     // 高度按宽算再夹。宽窗下与正文一起受 contentMaxWidth 收口 ⇒ 不会被拉成扁条。
     val heroHeight = if (wideScreen) tokens.spacing.pixivArtistHeroMaxHeight else tokens.spacing.pixivArtistHeroMinHeight
 
-    // 关注态：**只认站方**（用户 2026-10-22 拍板「读 pixiv 我关注的画师，不要读本地的」）。
     //
-    // 2026-10-19 那一版是"站方优先、本地兜底"，兜底在实际使用中读起来就是反的：用户在
     // pixiv 上关注了这位，而本地名单里没有（关注是从别处/网页上做的）⇒ 屏上显示"关注"，
     // 按下去还会往站方发一笔 add。所以现在 `is_followed` 拿不到就**什么都不显示**：
     // 那一档退化成"还不知道"，比拿一本键不同轨的账（站方按 user_id、本地按画师名）
@@ -484,7 +474,6 @@ internal fun PixivArtistScreen(
     // 宽屏收口：hero 与正文同一宽度，否则外链 chips 会沿 1891dp 铺满整行。
     val capped = contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier
 
-    // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了，
     // 而这一页（pixiv 分派）和图库三站那一屏一样没有自制入场 —— 不补就是硬切。
     // 与 GalleryArtistProfileScreen 同一档：整墙淡入，240ms HyperOS 收尾曲线。
     var entryShown by remember { mutableStateOf(false) }
@@ -692,7 +681,6 @@ internal fun PixivArtistScreen(
                     PixivArtistLine(
                         // 这一行带 onClick：站方详情这一跳失败时 `following == null`（关注胶囊
                         // 按不动），而三处重试行都要 `cards.isEmpty()` —— 作品取到了就一行都不渲染，
-                        // 屏上**一个可点的出路都没有**（2026-10-22 审计）。这里补上。
                         text = "现在是匿名档（$reason）：成人档与部分作品取不到，" +
                             "上面的张数会比 pixiv 网页少。",
                         onClick = { retryTick += 1 },
@@ -751,7 +739,6 @@ internal fun PixivArtistScreen(
         } else if (!loadingBatch && cards.isEmpty() &&
             (if (ticketMode) ticketFirstDone else works != null)
         ) {
-            // "空"有**三种**成因，合成一句就是假话。2026-10-19 真机读数立案：那一屏同时挂着
             // 「这一位还没有插画作品」与「已经到底了 · 共 3 张」—— 一句假一句真，
             // 而那两句本该说的是同一件事。假的那句来自"把没取回当成没有"。
             val idCount = works?.idsFor(tab)?.size
@@ -773,7 +760,6 @@ internal fun PixivArtistScreen(
         // ── 卡片墙：三段共用，与上面那几档状态行**互不排斥** ──
         //
         // 从前这一句挂在上面那条 if-else 链的 `else` 分支上，于是收藏段（走**第一个**分支）
-        // 永远走不到摆卡 —— 2026-10-19 真机读数：页尾念「已经到底了 · 共 285 张」
         // （`bookmarkWorks` 确实装着 285 条），屏上一张卡都没有。
         // 那句"共 285 张"来自 `bookmarkWorks.size`，所以这一屏同时给出了"取到了"与"什么都没画"
         // 两个事实 —— 而它读起来只像"取不到"。
@@ -853,7 +839,6 @@ internal fun PixivArtistScreen(
                     total = works?.idsFor(tab)?.size,
                     // 失败那一档抬 `retryTick`（重发当前批）而不是 `batchIndex++`（跳过失败那一批）：
                     // 页脚写着"重试"，按下去却把失败的 24 个 id 永久跳过，那是假把手
-                    // （2026-10-22 审计）。`retryTick` 那棵 effect 带 `batchIds` 重发，
                     // 成功时是 `cards + fresh`，不会重复。
                     onLoadMore = {
                         if (!loadingBatch) {
@@ -957,7 +942,6 @@ internal suspend fun togglePixivFollow(
     //
     // ⚠️ 这里**不许只写本地了事**：本地那一翻会让胶囊当场从「关注」变成「已关注」，
     // 而唯一的失败信号是一行贴在作者名右下角的 textTertiary 小字 —— 用户读到的是"我关注成功了"
-    // （2026-10-22 审计）。这一档连本地都不动，只把为什么说清楚；调用方那边 `following == null`
     // 的 pill 本来就不吃点击，走到这里说明是从作品页 `detail.authorId` 那颗可空读进来的。
     val id = userId
     if (id == null) {
@@ -1012,7 +996,6 @@ internal suspend fun togglePixivFollow(
  * 已关注走 tonal（`surfaceContainerHigh` + 发丝描边），未关注走 `primary` 实底 ——
  * 两者必须是**不同的形状语言**，否则用户看不出哪个是这页最该按的钮。
  *
- * 2026-10-19 两处改口径（用户「已经关注的画师右边的按钮也要显示已经关注」「关注画师要和 pixiv 对齐」，
  * 并点名「我这些操作全部都是有登录的」）：
  * - 这一格的真相从**本地名单**换成站方 `is_followed`（见调用处 `following`），本地退成缓存；
  * - 按下去**真写站方**（`/v1/user/follow/add|delete`）。此前这里挂着一条判负：
@@ -1065,7 +1048,6 @@ private fun FollowPill(following: Boolean?, busy: Boolean, onClick: () -> Unit) 
 /**
  * 数据行：粉丝 / 插画 / 漫画 / 公开收藏。
  *
- * **每格都有两个来源，站方优先、匿名兜底**（2026-10-19 改口径）：
  * - 站方那一档 = `/v1/user/detail` 的 `profile.total_*`（要票据）—— 含成人档，与 pixiv 网页同数；
  * - 匿名那一档 = `profile/all` 那两张 id 表的长度 —— **站方按口径过滤过**，
  *   所以它是个偏小的数（读数：同一位画师屏上 3 / 网页 26）。退到这一档时上面那行

@@ -6,7 +6,6 @@ enum class GalleryAvatarEndpointKind { FANBOX, MASTODON }
 /**
  * 探针派生出来的一个公开头像端点。
  *
- * [origin] 不是装饰：**fanbox 那台 api 只认带 `Origin` 的请求**（2026-09-30 14:05 逐档实测，
  * 不带 / 只带 Referer 一律 400 `general_error`），而 Mastodon 那边匿名直取就 200、所以留 null。
  * 取数层照这一字段决定带不带请求头 —— 探针只给地址就是给不出可用的东西。
  */
@@ -19,7 +18,6 @@ data class GalleryAvatarProbeEndpoint(
 /**
  * 从出处地址派生**公开、无需凭据**的头像端点（批次 L · L9）。
  *
- * 只有两条，而且是今天逐条量过才留下的（2026-09-30 下午，本机代理出口）：
  * - **fanbox**：`https://api.fanbox.cc/creator.get?creatorId=<子域>` 带 `Origin` 时回 200，
  *   `body.user.iconUrl` 是 160×160（那台图床实测不挡防盗链，`pixiv.pximg.net`）。
  *   注意 `creatorId` 要的是**子域那一段**（`setmen`），不是 pixiv 用户号 —— 同一端点传数字号实测回 400。

@@ -13,7 +13,6 @@ import com.venera.compose.gallery.ui.GallerySearchHandoff
 /**
  * 画廊大图页的宿主 —— **独立 Activity**，不是 NavHost 里的目的地。
  *
- * 三条要求只有跨过 Activity 边界才同时给得到（用户 2026-09-25 点名）：
  * 1. **实时背景模糊**：本窗口的 blur-behind 由系统实时糊掉后面的 MainActivity，
  *    也就是真那一屏一级列表 —— 滚到哪、换哪一批，背景就是哪一屏。
  *    （在同一个 Activity 里"重画一面墙"是假的：它永远从列表第一行开始。）
@@ -31,7 +30,6 @@ class GalleryPostActivity : VeneraSubActivityBase() {
     private var postId: Long = 0L
 
     /**
-     * 画师介绍页那一跳要**收结果**（用户 2026-10-01 拍板：返回栈上不许出现"返回两次"）。
      *
      * 页里那枚「看 TA 全部作品」交回站点与画师名后，这里做两件事：把它写进
      * [com.venera.compose.gallery.ui.GallerySearchHandoff]（一级那侧的消费方与跳转都不必知道
@@ -103,7 +101,6 @@ class GalleryPostActivity : VeneraSubActivityBase() {
  * 只压打开，不压关闭 —— 返回要留系统那套跨 activity 预测式动画。
  */
 /**
- * 从一级打开大图页 —— **唯一分流点**（2026-10-18）。
  *
  * pixiv 走 [PixivWorkActivity]（纵轴同作品多页连读、横轴换作品），图库三站继续走
  * [GalleryPostActivity]（一张 = 一屏、左右翻邻居）。两屏互不吃对方的界面，
@@ -122,7 +119,6 @@ fun Activity.openGalleryPost(site: GallerySite, postId: Long) {
 }
 
 /**
- * 拼“打开大图页”那颗 Intent —— **分流只在这一处判一次**（2026-10-20）。
  *
  * 为什么抽成函数：[openGalleryPost] 与 [openGalleryPostSafe] 两条入口各拼一份的话，
  * `if (site == GallerySite.PIXIV)` 就会出现两处 —— 也就是两个分流点，将来一定有一处

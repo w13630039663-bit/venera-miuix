@@ -7,11 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-14 UI 审查第四批的尺子：横向容器的溢出证据、探索页的空节头、搜索页的两行灰字。
  *
  * 三条各防一种"静默"：
  * ① 渐隐与尾部内边距**只接一半** —— 屏上看着修好了，滑到底末枚仍然压在渐隐底下
- *   （把"被裁"从中途挪到终点），不报错、不崩，只在真机上露出来；
  * ② 渐隐的两端点写成默认 `startX = endX = 0` —— 那是退化的线性渐变，读起来就是一块实色硬边；
  * ③ 节头管着空内容 —— 屏上多一个标题，用户读到的不是"这里有一组筛选"而是"还没加载完"。
  */
@@ -69,7 +67,6 @@ class UiAuditBatch4Test {
         assertTrue("带宽要钳进视口，否则窄屏上端点会跑到左边去", fade.any { it.contains("width.toPx().coerceAtMost(size.width)") })
     }
 
-    /** ④ 探索页：不给任何内容的标题一行都不许留（真机读数是一屏四行标题、下面全是空的）。 */
     @Test
     fun `探索页空区块与套层标题一起撤`() {
         val explore = code("com/venera/compose/feature/explore", "UnifiedExploreScreen.kt")
@@ -91,7 +88,6 @@ class UiAuditBatch4Test {
             "内容节头又回到恒摆了（真机读数：一行「内容」压着一句「该探索方式暂无内容」）",
             explore.any { it.contains("if (!isLoadingContent && contentError == null && !content.isEmpty) {") },
         )
-        // 对照：分类区（常驻，2026-10-14 从「分类 · N」按钮改回来）的可见性判据，
         // 看的是**两本账同一把尺子**。
         //
         // 分类区常驻后那枚 `SectionHeader("本源分类")` 与动作行「分类 · N」按钮都没了，

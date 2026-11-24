@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +52,8 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.outlined.ExpandMore
 import com.venera.compose.components.rememberImageWallColumnCount
 import com.venera.compose.components.venera.blurBackdropSource
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.components.venera.VeneraTopBarPill
@@ -70,7 +71,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 
 /**
- * 画廊「收藏」主页（图 2 原版重构，2026-10-22）。
  *
  * - 顶部 Pixiv 书签横幅卡片，点击一键查看 Pixiv 云端书签；
  * - 本地收藏统计与排序/筛选（支持站点筛选、安全分级筛选、最新/最早排序）；
@@ -116,7 +116,6 @@ internal fun GalleryBookmarksHubScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 大屏列数不再钉死 3（2026-10-23，用户「画廊收藏页没有对大屏端优化布局」）：
         // 手机档 3 列不变（那一档列宽 ~120dp 正合适）；宽窗换用与画廊墙同一把尺
         // （每列预算 200dp 反推），MuMu 那块屏能到 6 列 —— 单张回到阅读尺寸。
         // 书签卡与筛选行都是 FullLine span，列数变化不影响它们的形状。
@@ -200,65 +199,71 @@ internal fun GalleryBookmarksHubScreen(
                             )
                         }
 
-                        DropdownMenu(
+                        VeneraDropdownMenu(
                             expanded = filterMenuExpanded,
                             onDismissRequest = { filterMenuExpanded = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(if (newestFirst) "✓ 最新收藏在前" else "最新收藏在前") },
+                            VeneraMenuItem(
+                                text = "最新收藏在前",
+                                selected = newestFirst,
                                 onClick = {
                                     newestFirst = true
                                     filterMenuExpanded = false
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(if (!newestFirst) "✓ 最早收藏在前" else "最早收藏在前") },
+                            VeneraMenuItem(
+                                text = "最早收藏在前",
+                                selected = !newestFirst,
                                 onClick = {
                                     newestFirst = false
                                     filterMenuExpanded = false
                                 },
                             )
-                            // 站点筛选（完全排除 PIXIV）
-                            DropdownMenuItem(
-                                text = { Text(if (selectedSite == null) "✓ 全部图库站点" else "全部图库站点") },
+                            VeneraMenuItem(
+                                text = "全部图库站点",
+                                selected = selectedSite == null,
                                 onClick = {
                                     selectedSite = null
                                     filterMenuExpanded = false
                                 },
                             )
                             GallerySite.entries.filter { it != GallerySite.PIXIV }.forEach { site ->
-                                DropdownMenuItem(
-                                    text = { Text(if (selectedSite == site) "✓ ${site.displayName}" else site.displayName) },
+                                VeneraMenuItem(
+                                    text = site.displayName,
+                                    selected = selectedSite == site,
                                     onClick = {
                                         selectedSite = site
                                         filterMenuExpanded = false
                                     },
                                 )
                             }
-                            // 分级筛选
-                            DropdownMenuItem(
-                                text = { Text(if (selectedRating == null) "✓ 全部分级" else "全部分级") },
+                            VeneraMenuItem(
+                                text = "全部分级",
+                                selected = selectedRating == null,
                                 onClick = {
                                     selectedRating = null
                                     filterMenuExpanded = false
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(if (selectedRating == "s") "✓ 普通 (Safe)" else "普通 (Safe)") },
+                            VeneraMenuItem(
+                                text = "普通 (Safe)",
+                                selected = selectedRating == "s",
                                 onClick = {
                                     selectedRating = "s"
                                     filterMenuExpanded = false
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(if (selectedRating == "q") "✓ 敏感 (Questionable)" else "敏感 (Questionable)") },
+                            VeneraMenuItem(
+                                text = "敏感 (Questionable)",
+                                selected = selectedRating == "q",
                                 onClick = {
                                     selectedRating = "q"
                                     filterMenuExpanded = false
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(if (selectedRating == "e") "✓ 成人 (Explicit)" else "成人 (Explicit)") },
+                            VeneraMenuItem(
+                                text = "成人 (Explicit)",
+                                selected = selectedRating == "e",
                                 onClick = {
                                     selectedRating = "e"
                                     filterMenuExpanded = false
@@ -317,7 +322,7 @@ private fun PixivBookmarkEntryBanner(onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Outlined.Bookmark,
             contentDescription = null,
-            tint = Color(0xFF9E4747),
+            tint = tokens.color.actionFavorite,
             modifier = Modifier.size(tokens.spacing.space8),
         )
         Column(modifier = Modifier.weight(1f)) {

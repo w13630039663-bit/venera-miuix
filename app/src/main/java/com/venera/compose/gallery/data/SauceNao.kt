@@ -23,8 +23,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /**
  * 一条 SauceNAO 命中。
  *
- * [siteRef] 是这一屏存在的理由：SauceNAO 的 `data` 里带 `yandere_id` / `gelbooru_id`，
- * 对上就是我们自己的两站 —— 于是"以图搜图"的结果能**直接开我们的大图页**（收藏、
+ * [siteRef] 是这一屏存在的理由：SauceNAO 的 `data` 里带 `yandere_id` / `gelbooru_id` / `konachan_id`，
+ * 对上就是我们自己的三站 —— 于是"以图搜图"的结果能**直接开我们的大图页**（收藏、
  * 屏蔽规则、防盗链、混淆全都现成），而不是只把用户丢给一个外部网页。
  * 对不上（pixiv / twitter / 番剧截图 / danbooru）时它是 null，那一行退化成"外链 + 作者"。
  */
@@ -122,7 +122,6 @@ internal fun parseSauceNao(body: String, allowNsfw: Boolean): SauceNaoPage {
         /*
          * 外链的顺序**是给用户看的**，不能按站方给的先后排。
          *
-         * ⚠️ 2026-09-27 真机反馈「打开来源全部跳到 i.pximg.net」：
          * 旧写法先加 `source` 再加 `ext_urls`，而 SauceNAO 对 pixiv 库的 `source`
          * 常常是**图片直链**（`https://i.pximg.net/img-original/...jpg`），
          * `ext_urls` 里才是作品页（`https://www.pixiv.net/artworks/123`）。
@@ -148,7 +147,7 @@ internal fun parseSauceNao(body: String, allowNsfw: Boolean): SauceNaoPage {
         val ref = listOf(
             GallerySite.YANDERE to data.longOrNull("yandere_id"),
             GallerySite.GELBOORU to data.longOrNull("gelbooru_id"),
-            GallerySite.SAFEBOORU to data.longOrNull("safebooru_id"),
+            GallerySite.KONACHAN to data.longOrNull("konachan_id"),
         ).firstOrNull { it.second != null && it.second!! > 0L }
             ?.let { GallerySiteRef(it.first, it.second!!) }
 
@@ -249,7 +248,6 @@ private val IMAGE_ONLY_HOSTS = setOf(
  * 「打开来源」该用哪一条外链：**优先作品页，实在没有才退回直链**。
  *
  * 见 [isDirectImageUrl] 那段说明 —— 直接取 firstOrNull 会拿到 pximg 直链，
- * 正是 2026-09-27 那条真机反馈。
  */
 internal fun preferredExternalUrl(extUrls: List<String>): String? =
     extUrls.firstOrNull { !isDirectImageUrl(it) } ?: extUrls.firstOrNull()
@@ -270,7 +268,6 @@ interface SauceNaoCredentials {
  * ## 三条刻意的取舍
  *
  * - **key 实际上必需，但闸门不在这里**：调用方（[com.venera.compose.gallery.ui.GalleryReverseViewModel.submit]）
- *   没 key 就不发。2026-09-27 实测匿名请求**过盾能成功**（`onBypassSuccess`、存下 cf_clearance、
  *   重试），**重试仍然 403** —— 所以"没 key 照发"这条从前写在这里的说法是错的，已推翻。
  *   本类仍按"有 key 才拼参数"实现，是为了让站方那句 message 有机会原样念出来，
  *   而不是我们在本地替它编一句"额度不够"。
@@ -330,7 +327,6 @@ class SauceNaoClient internal constructor(
         .url(url)
         .header("Accept", "application/json")
         .header("User-Agent", UserAgentStrings.DEFAULT_USER_AGENT)
-    // ⚠️ 这里**刻意不打** [NoInteractiveBypassTag]，与画廊日榜那一路相反 —— 2026-09-27 实测：
     // saucenao.com 挂在 Cloudflare 交互挑战后面，三种 UA（移动端 Chrome 串 / 应用串 / 不带 UA）
     // 全部 403 + `server: cloudflare` + body 是 "Just a moment..."。
     // 也就是说**打过盾豁免标 = 这个功能永远是死的**，而那枚 tag 是为"整屏等结果的图片站流量"设的。

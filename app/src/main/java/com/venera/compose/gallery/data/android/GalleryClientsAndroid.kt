@@ -45,7 +45,7 @@ fun PixivAppClient.Companion.getInstance(context: Context): PixivAppClient =
 fun YandeReClient.Companion.getInstance(context: Context): YandeReClient =
     getInstance(engineFor(context))
 
-fun SafebooruClient.Companion.getInstance(context: Context): SafebooruClient =
+fun KonachanClient.Companion.getInstance(context: Context): KonachanClient =
     getInstance(engineFor(context))
 
 fun GelbooruClient.Companion.getInstance(context: Context): GelbooruClient =

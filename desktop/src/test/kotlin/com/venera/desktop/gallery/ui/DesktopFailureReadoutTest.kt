@@ -2,7 +2,7 @@ package com.venera.desktop.gallery.ui
 
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GelbooruCredentials
-import com.venera.compose.gallery.data.SafebooruClient
+import com.venera.compose.gallery.data.KonachanClient
 import com.venera.compose.gallery.data.ScoredBoard
 import com.venera.compose.gallery.data.YandeReBoard
 import com.venera.compose.gallery.data.YandeReClient
@@ -75,12 +75,12 @@ class DesktopFailureReadoutTest {
      */
     @Test
     fun `两站缺席时名单是两枚不是一枚`() = runBlocking {
-        val feed = dailyFeed(gelbooru = 401, safebooru = 500)
+        val feed = dailyFeed(gelbooru = 401, konachan = 500)
         val daily = feed.loadDaily(seed = 7L).getOrThrow()
 
         assertEquals(
             "缺席要两枚都报出来",
-            setOf("Gelbooru", "Safebooru"),
+            setOf("Gelbooru", "Konachan"),
             daily.failures.keys.map { it.displayName }.toSet(),
         )
     }
@@ -93,12 +93,12 @@ class DesktopFailureReadoutTest {
      */
     @Test
     fun `三站全没货时整体失败且消息里带三句原因`() = runBlocking {
-        val feed = dailyFeed(gelbooru = 401, safebooru = 500, yandeRe = 503)
+        val feed = dailyFeed(gelbooru = 401, konachan = 500, yandeRe = 503)
         val result = feed.loadDaily(seed = 7L)
 
         assertTrue("三站全没货必须是失败而不是空墙", result.isFailure)
         val message = result.exceptionOrNull()?.message.orEmpty()
-        listOf("Gelbooru", "Safebooru", "yande.re").forEach { site ->
+        listOf("Gelbooru", "Konachan", "yande.re").forEach { site ->
             assertTrue("失败消息要点名 $site ：$message", message.contains(site))
         }
     }
@@ -125,16 +125,16 @@ class DesktopFailureReadoutTest {
      *
      * 走的是**真 client**（`FakeHttpEngine` 只掐掉 socket），所以 `GalleryMerge` 的合并、
      * `GalleryLegGuard` 的失败翻话、client 的解信封全部是生产代码。
-     * 缺席那几站按 [gelbooru] / [safebooru] / [yandeRe] 指定的 HTTP 状态码触发。
+     * 缺席那几站按 [gelbooru] / [konachan] / [yandeRe] 指定的 HTTP 状态码触发。
      */
     private fun dailyFeed(
         gelbooru: Int,
-        safebooru: Int = 200,
+        konachan: Int = 200,
         yandeRe: Int = 200,
     ): GalleryDailyFeed {
         val engine = FakeHttpEngine.fresh {
             on("https://gelbooru.com/index.php?page=dapi&s=post", gelbooru, GELBOORU_POOL_BODY)
-            on("https://safebooru.donmai.us/posts.json", safebooru, SAFEBOORU_POOL_BODY)
+            on("https://konachan.net/post.json", konachan, KONACHAN_POOL_BODY)
             on("https://yande.re/post/popular_recent.json", yandeRe, YANDERE_POPULAR_BODY)
         }
 
@@ -176,9 +176,9 @@ class DesktopFailureReadoutTest {
             override suspend fun fetchTopScored() = client.fetchTopScored()
         }
 
-        override val safebooru: ScoredBoard = object : ScoredBoard {
-            private val client: SafebooruClient get() = SafebooruClient.getInstance(engine)
-            override val pageSize: Int get() = SafebooruClient.POOL_SIZE
+        override val konachan: ScoredBoard = object : ScoredBoard {
+            private val client: KonachanClient get() = KonachanClient.getInstance(engine)
+            override val pageSize: Int get() = KonachanClient.POOL_SIZE
             override suspend fun searchPosts(tags: String, page: Int, limit: Int) =
                 client.searchPosts(tags, page, limit)
             override suspend fun searchTags(term: String) = client.searchTags(term)
@@ -206,7 +206,7 @@ class DesktopFailureReadoutTest {
                "file_ext":"png","preview_url":"https://i.example/y.png",
                "file_url":"https://i.example/y-full.png","width":800,"height":600}]"""
 
-        const val SAFEBOORU_POOL_BODY =
+        const val KONACHAN_POOL_BODY =
             """[{"id":9000001,"tag_string":"rating:g solo","score":50,"rating":"g",
                "tag_string_artist":"an","fav_count":12,"file_ext":"jpg",
                "preview_file_url":"https://i.example/s.png",

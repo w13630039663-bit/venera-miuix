@@ -134,7 +134,7 @@ internal suspend fun fetchSearchPage(
 internal fun boardOf(ports: GalleryPorts, site: GallerySite) = when (site) {
     GallerySite.YANDERE -> ports.boards.yandere
     GallerySite.GELBOORU -> ports.boards.gelbooru
-    GallerySite.SAFEBOORU -> ports.boards.safebooru
+    GallerySite.KONACHAN -> ports.boards.konachan
     // 到不了这里：桌面的来源档同样由 `GallerySearchSource.options` 拼，而那张表 2026-10-16 起
     // 显式剥掉 pixiv（选型⑤：它只从首页那一格=内容域进，与 booru 的 tags= 语法不同轴，
     // 并进「全部」就是两套语法一张墙。⚠️ 理由不是"匿名搜索不通"——那一跳现量是 200）。

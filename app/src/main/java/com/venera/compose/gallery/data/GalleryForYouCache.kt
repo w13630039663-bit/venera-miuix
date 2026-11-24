@@ -29,7 +29,6 @@ data class GalleryForYouSiteRow(
  *
  * 切 Tab 会把画廊那条目的地 pop 掉，条目作用域的 VM 随之清空
  * （依据见 [com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy] 类头注）。
- * 日榜那头 2026-09-29 就为这件事存过快照，这一屏当时漏了 —— 于是"每次进画廊整页重取"。
  *
  * ## 为什么存这么多字段
  *
@@ -44,7 +43,6 @@ data class GalleryForYouSiteRow(
  * [seed] 是这一屏的"哪一次抽样"身份：它必须与 [posts] 成对在场，判据见
  * [com.venera.compose.gallery.domain.GalleryForYouRefreshPolicy.canHydrate]。
  *
- * 2026-11-03「换一批随机化」补的两列，缺一列都会说出假话：
  * - [depths]：这一轮每站往榜深处挪了几页。不存的话，从快照铺屏后继续翻页会从第 1 页重发，
  *   下一页把已摆过的头部条目整批剔空 —— 读起来正是"到底了却还在转"那一族；
  * - [cooldownRounds]：最近几轮上屏条目的去重键。不存的话，杀掉进程再进，

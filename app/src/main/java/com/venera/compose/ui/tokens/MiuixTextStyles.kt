@@ -26,7 +26,6 @@ import top.yukonga.miuix.kmp.theme.defaultTextStyles
  * 这里**原样沿用库默认**：既不为了"对齐"造一个没有出处的数，也不把 18 压成 16 或 20 ——
  * 那是观感改动，不是统一。
  *
- * ## 字族（2026-11-09）
  *
  * 每格显式带上 `t.fontFamily`（= [androidx.compose.ui.text.font.FontFamily.Default]）。
  * 库默认表本就不设字族（落到平台 sans-serif），所以这是**等值显式化**：

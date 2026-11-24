@@ -210,7 +210,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     fun limitOf(site: GallerySite): Int = when (site) {
         GallerySite.GELBOORU -> boards.gelbooru.pageSize
         GallerySite.YANDERE -> boards.yandere.pageSize
-        GallerySite.SAFEBOORU -> boards.safebooru.pageSize
+        GallerySite.KONACHAN -> boards.konachan.pageSize
         GallerySite.PIXIV -> GallerySite.notWired("推荐那一腿的每页条数")
     }
 
@@ -310,7 +310,6 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             // 先抓住"这一笔自身的 Job"再进 finally：`withContext(NonCancellable)` 会把
             // `coroutineContext[Job]` 换成 `NonCancellable` **本身**，在块里现读现比就是
-            // 拿一个恒不相等的东西比 → 标志永远清不掉。2026-09-29 那三条真机读数
             // （下拉环转不停 / 同时两枚加载图标 / 墙上只摆 40 张）同一根因，
             // 库行为钉在 `NonCancellableJobIdentityTest`。
             val self = coroutineContext[Job]
@@ -367,10 +366,8 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
      * 熔断那两站要不要连带清，见 [com.venera.compose.gallery.ui.GalleryScreen] 里调用它的那处
      * —— 清的动作留在页面那侧（与日榜那头 `resetBreakers()` 同一处口径），本类不越权碰网络层状态。
      *
-     * ## ⚠️ 这里**刻意不清 [posts]**（2026-09-30 第三轮）
      *
      * 用户原话「换一批不要整个页面刷新，只刷新下面推荐的内容」。旧写法把 `posts` 清空 + `stage`
-     * 打回 IDLE，页面那一档（`stage == IDLE || (isLoading && posts.isEmpty())`）就命中，
      * **整屏**换成一个居中波浪环 —— 首页三节（关注画师 / 每日热门 / 猜你喜欢节头）跟着一起消失，
      * 读起来就是"整页刷新"。留着上一批，页面才会走网格那一档，三节与旧卡片都在屏上，
      * 新第一批到货时由 [applyPage] 的 `nextPage == 1` 那一支**整批替换**（不是追加）。
@@ -383,7 +380,6 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
     fun refresh() {
         refreshTick++
         seed = System.currentTimeMillis()
-        // 旧批次当场进冷却环（此刻 `posts` 还是屏上那一批 —— 下面不清它，2026-09-30 那条口径）。
         // 用户的话是"之前出现过一次的过几轮再出现"：环里留最近 [GalleryForYouCooldown.ROUNDS] 批。
         cooldownRounds = GalleryForYouCooldown.pushRound(
             cooldownRounds,
@@ -530,7 +526,7 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             when (site) {
                 GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, deepPage, limitOf(site))
                 GallerySite.YANDERE -> boards.yandere.searchPosts(query, deepPage, limitOf(site))
-                GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, deepPage, limitOf(site))
+                GallerySite.KONACHAN -> boards.konachan.searchPosts(query, deepPage, limitOf(site))
                 GallerySite.PIXIV -> GallerySite.notWired("推荐那一腿的取数")
             }
         }
@@ -538,7 +534,6 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
         // 吞成一句笼统的"没有内容"就把后者说成了前者 —— 更糟的是 `returned`：
         // 只有**答上了**才记张数。失败也记成"回了 0 条"，`exhaustedSites` 那把判据就会
         // 把那一站当成到底、从此这轮不再问它，而页尾写着「已经到底」
-        // （2026-09-30 收口三处重复实现时在这一份里查到的真缺陷）。
         return Leg(
             site,
             posts = outcome.posts,
@@ -586,7 +581,6 @@ class GalleryForYouViewModel(application: Application) : AndroidViewModel(applic
             if (nextPage == 1) error = message else loadMoreError = message
             // 结构那一份**照样落地**（从前只在成功那一支写）：整页的空/错视图门在
             // "屏上没有卡"之后，而 `posts` 可能是缓存铺的那一屏 —— 不收这一笔，
-            // 断网时屏上纹丝不动，用户读到的是"这几站没图"而实情是没网（2026-10-15 真机读数）。
             // 理由与 `GalleryViewModel.reject` 那条同一件事，只是这一头的原因串本来就在 outcome 里。
             failures = outcome.reasons
         }

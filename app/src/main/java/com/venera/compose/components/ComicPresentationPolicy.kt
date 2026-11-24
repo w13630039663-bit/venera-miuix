@@ -45,7 +45,6 @@ fun comicPreviewColumnCount(availableWidth: Dp): Int =
  *
  * 为什么不用 [comicListColumnCount]：那一把尺是给**整面网格**用的（每 220dp 一列，卡片越大越好吃信息），
  * 而推荐只有**一行**，横在屏幕顶上。1280×800 的平板上它给 4 列 ⇒ 每张约 232dp 宽、
- * 封面约 318dp 高 —— 半屏多高全是封面，用户读到的就是"卡太大、一屏放不下几本"（2026-10-13 反馈）。
  *
  * 这一把改成**按卡片自身应有的宽倒推列数**，而那个宽用的是应用内现成的口径
  * [com.venera.compose.ui.tokens.VeneraSpacing.historyCardWidth]（历史行那 124dp，

@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.domain
 
 /**
- * pixiv 搜索结果的两个**页签**：作品 / 画师（2026-10-18）。
  *
  * ## 为什么单独一格，而不是塞进 [PixivSearchFilter]
  *
@@ -16,7 +15,6 @@ package com.venera.compose.gallery.domain
  * pixez 的搜索结果页是一颗两页签的 `TabBar`（`lib/page/search/result_page.dart`：
  * `tabs: [Tab(illust), Tab(painter)]`），画师那一页只调 `/v1/search/user`
  * （`lib/page/search/result/painter/search_result_painter_page.dart`）。
- * 用户 2026-10-18 原话：「搜索作者（画师）的分栏怎么没做」。
  */
 enum class PixivSearchKind(val label: String) {
 

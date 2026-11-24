@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 常驻入口条 ↔ 展开的搜索卡：**真容器变化**（2026-10-16 第七轮）。
  *
  * 用户原话：「我想你另外看看画廊的主页搜索框真的做不了容器变化动画吗，现在还是淡出淡入的」。
  * 这一轮把它做出来了 —— 形状是两端各包一层 `AnimatedVisibility`、挂**同一个 key** 的
@@ -138,7 +137,6 @@ class GallerySearchContainerTest {
      * ④ 入口条**恒占位**。
      *
      * 它是墙的第一行，高度参与墙的布局；而"让位给卡"是靠 `AnimatedVisibility` 把内容撤下来做的
-     * —— 撤下来的那一行若不兜住，墙会硬跳一行（正是 2026-10-15 要修的那一条）。
      * 高度取 `galleryHomeChromeHeight()` 而不是另写一个数：它就是这个组件的自然高度。
      */
     @Test

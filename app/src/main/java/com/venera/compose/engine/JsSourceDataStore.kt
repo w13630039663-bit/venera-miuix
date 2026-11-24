@@ -3,7 +3,12 @@ package com.venera.compose.engine
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * 源数据档的文件名规则：**`<源 key>.data`**，只有这一条。
@@ -13,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
  * 于是 `komiic.js`（key 是 `Komiic`）和 `copy_manga_multi_accounts.js`
  * （key 是 `copy_manga`）这两个源全部读不到自己的档；更糟的是那条路径在档不存在时
  * 会回落成一个**同样不存在的** `File`，调用方一 `readText()` 就抛 ENOENT，
- * 把整个导出一起带崩（真机实测：`baozi.data: open failed: ENOENT`）。
  *
  * key 与脚本文件名**经常不同**，这是源协议允许的（`ComicSourceParser` 从脚本里读
  * `key = "..."`），所以档名只能由 key 决定。
@@ -28,6 +32,39 @@ class JsSourceDataStore(private val baseDir: File) {
     private val gson = Gson()
     private val cache = ConcurrentHashMap<String, MutableMap<String, Any?>>()
 
+    private fun encryptSensitive(plainText: String): String {
+        return try {
+            val key = MessageDigest.getInstance("SHA-256").digest("venera_source_secure_store_v1".toByteArray())
+            val secretKey = SecretKeySpec(key, "AES")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+            val combined = ByteArray(iv.size + encrypted.size)
+            System.arraycopy(iv, 0, combined, 0, iv.size)
+            System.arraycopy(encrypted, 0, combined, iv.size, encrypted.size)
+            "enc:" + Base64.getEncoder().encodeToString(combined)
+        } catch (e: Exception) {
+            plainText
+        }
+    }
+
+    private fun decryptSensitive(cipherText: String): String {
+        if (!cipherText.startsWith("enc:")) return cipherText
+        return try {
+            val raw = Base64.getDecoder().decode(cipherText.removePrefix("enc:"))
+            val key = MessageDigest.getInstance("SHA-256").digest("venera_source_secure_store_v1".toByteArray())
+            val secretKey = SecretKeySpec(key, "AES")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(128, raw, 0, 12)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+            val decrypted = cipher.doFinal(raw, 12, raw.size - 12)
+            String(decrypted, Charsets.UTF_8)
+        } catch (e: Exception) {
+            cipherText
+        }
+    }
+
     private fun getSourceMap(sourceKey: String): MutableMap<String, Any?> {
         return cache.getOrPut(sourceKey) {
             val file = File(baseDir, sourceDataFileName(sourceKey))
@@ -35,7 +72,14 @@ class JsSourceDataStore(private val baseDir: File) {
                 try {
                     val text = file.readText()
                     val type = object : TypeToken<MutableMap<String, Any?>>() {}.type
-                    gson.fromJson<MutableMap<String, Any?>>(text, type) ?: ConcurrentHashMap()
+                    val map: MutableMap<String, Any?> = gson.fromJson(text, type) ?: ConcurrentHashMap()
+                    val acc = map["account"]
+                    if (acc is String && acc.startsWith("enc:")) {
+                        val plainJson = decryptSensitive(acc)
+                        val accType = object : TypeToken<Any?>() {}.type
+                        map["account"] = gson.fromJson<Any?>(plainJson, accType)
+                    }
+                    ConcurrentHashMap(map)
                 } catch (e: Exception) {
                     ConcurrentHashMap()
                 }
@@ -48,8 +92,13 @@ class JsSourceDataStore(private val baseDir: File) {
     private fun persist(sourceKey: String) {
         val map = cache[sourceKey] ?: return
         try {
+            val diskMap = HashMap(map)
+            val acc = diskMap["account"]
+            if (acc != null) {
+                diskMap["account"] = encryptSensitive(gson.toJson(acc))
+            }
             val file = File(baseDir, sourceDataFileName(sourceKey))
-            file.writeText(gson.toJson(map))
+            file.writeText(gson.toJson(diskMap))
         } catch (e: Exception) {
             EngineLog.e("VeneraJS", "Failed to persist data for source $sourceKey :: ${e.message}")
         }

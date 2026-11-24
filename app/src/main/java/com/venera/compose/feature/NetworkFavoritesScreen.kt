@@ -162,7 +162,6 @@ fun AndroidNetworkFavoritesScreen(
     val pullState = rememberPullToRefreshState()
     var pullInFlight by remember { androidx.compose.runtime.mutableStateOf(false) }
     // 必须「先见过 loading 起来、再落下」才算这次刷新结束：立刻收回，不留延迟。
-    // 之前用固定 delay(250) 收尾，会让环在数据已经回来后还多挂 250ms 才塌 —— 真机看到的就是这一下「闪」。
     var pullSawLoading by remember { androidx.compose.runtime.mutableStateOf(false) }
     LaunchedEffect(pullInFlight, isLoading, isFolderLoading) {
         if (!pullInFlight) {
@@ -458,7 +457,6 @@ private fun FolderChipRow(folders: Map<String, String>?, current: String?, isLoa
             )
         }
         // 只有 0 或 1 个文件夹时整行不渲染：单个「全部」pill 不提供任何选择，
-        // 挂在源栏下方就像多出来的一块（用户真机反馈）。
         folders == null || folders.size <= 1 -> {}
         else -> LazyRow(
             modifier = Modifier.hScrollEndFade(container = tokens.color.background),
@@ -567,7 +565,6 @@ private fun NetComicDetailedCard(
 ) {
     val maskState = netMaskState(comic)
     // 打码命中不飞行；两端比例同为 0.72（行卡封面 = listCoverWidth + coverAspectRatio），
-    // 所以 sharedElement 足够 —— 真机对照过：不同构时改挂 sharedBounds + RemeasureToBounds
     // 会在落地那一帧重测内容，观感就是「封面闪一下」。
     val coverModifier = Modifier.coverSharedElement(
         key = ComicSharedTransition.coverKey(comic.sourceKey, comic.id),

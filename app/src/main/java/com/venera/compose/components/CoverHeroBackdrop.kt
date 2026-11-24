@@ -52,12 +52,10 @@ private val FadeToBottom = Brush.verticalGradient(
  *
  * 为什么是"擦"而不是"盖一圈页面底色的渐变"：页面背景不是纯色，它底下还铺着
  * `VeneraAmbientBackground` 的两团主题色光斑。拿 `surface` 画一圈渐变去遮，
- * 遮出来的是一整块不透明的平面矩形 —— 真机第一版就栽在这里（深色主题下头部变成一块
  * 边缘清晰的紫色矩形）。DstIn 擦出来的洞透出的是**真正那层背景**，淡出才是连续的。
  *
  * 出血走 [graphicsLayer] 的缩放+平移，**不走** `Modifier.padding(负值)`：
  * 后者在 Compose 里是硬校验，运行时直接 `IllegalArgumentException: Padding must be non-negative`
- * （真机闪退实测）。绘制变换不碰布局，item 的测量尺寸一点不变，也就不可能把列表顶乱。
  * 背景本来就是一团模糊，非等比拉伸看不出来。
  *
  * 三条会静默出错的点：
@@ -90,7 +88,6 @@ fun CoverHeroBackdrop(
      * 染成这张封面的颜色"，糊到什么也认不出正是它的职责，所以那一处一个参数都不用传。
      *
      * 换用途时这一档必须跟着换 —— 画师介绍页里底图是**这一页唯一的主视觉**，
-     * 同一条 32dp 叠上放大之后屏上约 43dp，只剩色块（2026-10-01 用户报「模糊过头」）。
      */
     blurRadius: Dp = VeneraTokens.spacing.space11,
     /**
@@ -108,7 +105,6 @@ fun CoverHeroBackdrop(
     backdropScale: Float = 1.35f,
 ) {
     val tokens = VeneraTokens
-    // 2026-10-20（写法 A）：原句是 `context.imageLoader` —— Coil 的 `Context` 扩展属性，
     // Android 侧取全局单例的写法。改成由平台服务报"本平台的 ImageLoader 是哪一颗"：
     // Android 侧仍是 `context.imageLoader`（逐字同值），桌面侧返回它自己那颗（或 null 走默认单例）。
     val platformImageLoader = LocalUxPlatformServices.current.imageLoader()

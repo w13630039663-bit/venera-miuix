@@ -41,7 +41,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 「每日热门」的**二级页**（2026-09-30 新增，用户拍板「查看全部可以转跳二级界面查看」）。
  *
  * ## 为什么是独立路由而不是页内切一面墙
  *
@@ -120,7 +119,6 @@ internal fun GalleryDailyScreen(
     // 根节点是一层 Box：内容与顶栏是**兄弟**，顶栏靠 `align(TopCenter)` 叠在内容之上。
     // 形状与 `GalleryScreen` 那一屏逐字同构（页内自治：外壳不挂 TopAppBar）。
     Box(modifier = Modifier.fillMaxSize()) {
-        // ⚠️ 2026-09-30 第三轮：**下拉刷新撤了**（用户原话「取消掉整个画廊的下拉刷新」）。
         // 这一页"我要新内容"的出口仍在：顶栏那枚「换一批」（先本地重排、池子不够才真取）
         // 与错误态那枚「重试」，两条都走 [refreshFromUser]，不是另造一套取数。
         Box(

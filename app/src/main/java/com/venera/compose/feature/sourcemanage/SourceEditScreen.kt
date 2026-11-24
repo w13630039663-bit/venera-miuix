@@ -105,7 +105,7 @@ fun SourceEditScreen(
                         Text(
                             text = fileName + if (dirty) " · 未保存" else "",
                             fontSize = tokens.type.overline,
-                            color = if (dirty) Color(0xFFFFA000) else Color.Gray
+                            color = if (dirty) com.venera.compose.ui.tokens.StatusColors.Degraded else tokens.color.textSecondary
                         )
                     }
                     if (saving) {
@@ -143,13 +143,13 @@ fun SourceEditScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFE53935).copy(alpha = 0.12f))
+                            .background(tokens.color.errorContainer)
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
                             text = "解析失败，未保存：$err",
                             fontSize = tokens.type.caption,
-                            color = Color(0xFFE53935)
+                            color = tokens.color.onErrorContainer
                         )
                     }
                 }
@@ -178,7 +178,6 @@ fun SourceEditScreen(
     if (confirmDiscard) {
         // 登记在册、刻意不换后端：本屏整体已经是一个 Dialog 窗口，这枚确认框是**弹窗套弹窗**。
         // miuix 那侧走 WindowDialog（独立 compose 窗口），两枚窗口叠在一起时的预测式返回与焦点归属
-        // 还没在真机上验过 —— 与 NetworkSettings 代理表单弹窗同一条裁决，先保持 M3。
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("放弃修改？") },
@@ -188,7 +187,7 @@ fun SourceEditScreen(
                     confirmDiscard = false
                     onClose()
                 }) {
-                    Text("放弃", color = Color(0xFFE53935))
+                    Text("放弃", color = tokens.color.error)
                 }
             },
             dismissButton = {

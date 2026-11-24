@@ -269,7 +269,6 @@ private fun SauceNaoHitRow(
                     }
                     // ⚠️ 用 [preferredExternalUrl] 而不是 firstOrNull：
                     // 站方给的 `source` 常是图片直链（pixiv 库尤其如此），
-                    // 直接取第一条会跳到一张裸图而不是作品页（2026-09-27 真机反馈）。
                     preferredExternalUrl(hit.extUrls)?.let { url ->
                         Text(
                             text = if (ref != null) "原页" else "打开来源",

@@ -3,7 +3,7 @@ package com.venera.desktop.gallery.ui
 import com.venera.compose.gallery.data.GelbooruClient
 import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GelbooruCredentials
-import com.venera.compose.gallery.data.SafebooruClient
+import com.venera.compose.gallery.data.KonachanClient
 import com.venera.compose.gallery.data.YandeReClient
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -43,7 +43,7 @@ class DesktopAbsentSitesTest {
         val engine = FakeHttpEngine.fresh {
             onStatus(GELBOORU_BASE, code = 401)
             on(YANDERE_POPULAR, body = YANDERE_POPULAR_BODY)
-            on(SAFEBOORU_POSTS, body = SAFEBOORU_POOL_BODY)
+            on(KONACHAN_POSTS, body = KONACHAN_POOL_BODY)
         }
 
         val client = GelbooruClient(engine, FakeHttpEngine.AnonymousCredentials)
@@ -55,7 +55,7 @@ class DesktopAbsentSitesTest {
 
         // 另两站不受影响：它们是匿名可用的，这正是"缺席要说清是哪一站"的前提。
         val yande = YandeReClient.getInstance(engine).fetchDailyPopular()
-        val safe = SafebooruClient.getInstance(engine).fetchTopScored()
+        val safe = KonachanClient.getInstance(engine).fetchTopScored()
         assertEquals(1, yande.getOrThrow().size)
         assertEquals(1, safe.getOrThrow().size)
     }
@@ -142,7 +142,7 @@ class DesktopAbsentSitesTest {
         // （`YandeReClient.fetchDailyPopular`）。按记忆写 `post.json` 的症状是假站报
         // 「没有为这枚 URL 登记假响应」—— 那条报错本身在提醒端点写错了，不是假站坏了。
         const val YANDERE_POPULAR = "https://yande.re/post/popular_recent.json"
-        const val SAFEBOORU_POSTS = "https://safebooru.donmai.us/posts.json"
+        const val KONACHAN_POSTS = "https://konachan.net/post.json"
 
         /**
          * 一条真形状的 Gelbooru 响应。
@@ -167,7 +167,7 @@ class DesktopAbsentSitesTest {
                "file_ext":"png","preview_url":"https://i.example/y.png",
                "file_url":"https://i.example/y-full.png","width":800,"height":600}]"""
 
-        const val SAFEBOORU_POOL_BODY =
+        const val KONACHAN_POOL_BODY =
             """[{"id":9000001,"tag_string":"rating:g solo","score":50,"rating":"g",
                "tag_string_artist":"an","fav_count":12,"file_ext":"jpg",
                "preview_file_url":"https://i.example/s.png",

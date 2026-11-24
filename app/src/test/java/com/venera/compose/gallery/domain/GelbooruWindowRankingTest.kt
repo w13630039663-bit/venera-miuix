@@ -10,7 +10,6 @@ import org.junit.Test
 import java.time.LocalDate
 
 /**
- * 移动端「Gelbooru 时间窗合成档」的判据层（2026-10-13）。
  *
  * 这一批的口径是**用户那句「先改移动端的，桌面端的别动」**，所以这里钉的第一件事就是
  * 两把尺子不许合流：站方给不给（[GalleryRankings.supports]）与我们做不做得出
@@ -104,9 +103,6 @@ class GelbooruWindowRankingTest {
     /**
      * 闭环窗口：**两枚各自生效的标签**，不是区间语法。
      *
-     * 2026-10-16 带凭据在真站上量的算术（基线 14,426,357）：
-     * `id:>=14718000` ⇒ 375,233、`id:>=14994000` ⇒ 101,393、两枚合起来 ⇒ **273,840**（严格互补），
-     * 而 `id:14718000..14994000` ⇒ `count` 与基线**逐字相同**（被静默忽略）。
      * 所以 2024 年 3 月那一期的榜只能是 `id:>=A id:<B`，写成区间那一串就是"全站高分配一个写着 2024-03 的胶囊"。
      */
     @Test fun closedWindowQueryCarriesBothBounds() {
@@ -272,7 +268,7 @@ class GelbooruWindowRankingTest {
         listOf(
             GalleryRanking.NEWEST, GalleryRanking.WEEK, GalleryRanking.MONTH, GalleryRanking.ALL,
         ).forEach { r ->
-            listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU).forEach { site ->
+            listOf(GallerySite.YANDERE, GallerySite.KONACHAN).forEach { site ->
                 assertEquals(
                     "$site $r",
                     GalleryRankings.searchQuery(site, filters, r, null, today),

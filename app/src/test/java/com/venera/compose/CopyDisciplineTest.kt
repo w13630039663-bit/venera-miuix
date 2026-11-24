@@ -7,13 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * **文案纪律尺**（2026-10-20，主人「全部一起改掉吧」）。
  *
  * ## 这一族防的是什么
  *
  * 全仓约 600 处用户可见中文字符串，历史上长出了一整套**机器腔**：一句里塞两三个分句、
  * 技术名词直接甩给用户、失败态全用一个模板、把异常串原样贴到屏上。
- * 主人原话是「有什么很像 ai 的话，改成人说的那种简单简洁」。
  *
  * 六笔各钉一件事：
  *
@@ -80,7 +78,6 @@ class CopyDisciplineTest {
 
     @Test
     fun `用户可见文案不许出现内部术语`() {
-        // 这些是**实现细节**，用户不该看到（主人「改成人说的那种」）。
         val jargon = listOf("种子色", "静态色板", "动态色板", "明文字段", "原子替换", "熔断")
         val hits = visibleLines().filter { (_, _, line) -> jargon.any { line.contains(it) } }
         assertEquals(
@@ -92,7 +89,6 @@ class CopyDisciplineTest {
 
     @Test
     fun `失败态不许把异常变量原样甩到屏上`() {
-        // 2026-10-20 之前的两处：`"详情加载失败…：$error"`、`"网络收藏加载失败：" + state.networkError`。
         // 用户读不懂异常串，而且它会把内部路径/类名漏出去。
         val hits = visibleLines().filter { (_, _, line) ->
             (line.contains("text = \"") || line.contains("Text(\"") || line.contains("Toast.makeText(")) &&
@@ -138,7 +134,6 @@ class CopyDisciplineTest {
 
     @Test
     fun `用户可见文案不许是半截话`() {
-        // 2026-10-20 前最长的一条：`"点击此处如果登录已过期"`（明显没写完）。
         // 判据：以「如果 / 当 / 点击此处」**结尾**，或者以「如果」结尾却没有后半句。
         val hits = visibleLines().filter { (_, _, line) ->
             Regex("\"[^\"]*(如果|点击此处)\"\\s*[,)]").containsMatchIn(line)

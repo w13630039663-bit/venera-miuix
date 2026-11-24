@@ -12,7 +12,6 @@ import org.junit.Test
 /**
  * 两站**日榜**合成一屏的行为锁。
  *
- * 用户 2026-09-25 第四次改判的原话：「（两站上一天的热门）**各取 20 张然后打乱**，
  * 如果 donmai 有 mp4 就引入 mp4」。所以这里钉三件事：每站 20 的上限、
  * 同种子必得同序列（组合重建不能换序，见记忆「导航条目会重建组合」）、
  * 以及视频进屏 / `zip` 这类继续被滤。
@@ -47,14 +46,14 @@ class GalleryMergeTest {
     private fun mix(
         yandere: List<GalleryPost> = emptyList(),
         gelbooru: List<GalleryPost> = emptyList(),
-        safebooru: List<GalleryPost> = emptyList(),
+        konachan: List<GalleryPost> = emptyList(),
         seed: Long = 20260925L,
     ) = GalleryMerge.mix(
         // 生产端契约：每站一个键，这一轮缺席的站给空表（GalleryMerge.mix 按 entries 逐站取）。
         pools = mapOf(
             GallerySite.YANDERE to yandere,
             GallerySite.GELBOORU to gelbooru,
-            GallerySite.SAFEBOORU to safebooru,
+            GallerySite.KONACHAN to konachan,
         ),
         seed = seed,
     )
@@ -195,7 +194,6 @@ class GalleryMergeTest {
 
     @Test
     fun `本地重排只在池子真够时放行`() {
-        // 批次 K 把「换一批」改成"只换种子、不再联网"（用户 2026-09-30 拍板）。
         // 池子不够时必须回真取一次 —— 按下去屏上纹丝不动就是假按钮，
         // 而冷启动那一屏是从缓存铺出来的，手上压根没有原始池。
         assertFalse(GalleryMerge.canRemix(emptyMap()))

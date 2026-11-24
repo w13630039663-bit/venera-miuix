@@ -52,7 +52,6 @@ data class SourceExploration(
      *
      * true 时 [modes] / [nativeSections] 都是空的，但这一颗**必须留在列表里** ——
      * 探测失败不等于源没有探索能力，一次网络抖动就把它剔除，屏上表现就是
-     * "源凭空消失"（2026-10-14 真机：16:57 还有禁漫天堂，18:26 就只剩两颗源）。
      * UI 据此摆重试，而不是让用户以为这颗源不能探索。
      */
     val probeFailed: Boolean = false,
@@ -62,7 +61,6 @@ data class SourceExploration(
      *
      * 只服务于错误文案的分支：源站回 401/403 时，支持登录的源十有八九是"要先登录"，
      * 不支持的只能是源站自己拦了 —— 两种情况的下一步完全不同，合成一句话就会把用户
-     * 往错的方向指（2026-10-14 真机：包子漫画被说成"源站防护或网络波动"，
      * 用户在原话里直接否掉了这句）。
      */
     val supportsLogin: Boolean = false,
@@ -167,7 +165,6 @@ object SourceExplorationFactory {
     /**
      * explore 页 `type` 字段的四个取值，一个都不能少。
      *
-     * 2026-10-14 真机读数：nhentai 与禁漫天堂的默认页一个报错、一个空白。根因不在 UI，
      * 在这四个值里有三个没被引擎认全 —— 于是「默认该显示什么」根本无从谈起：
      *  - [TYPE_MULTI_PART] `singlePageWithMultiPart`：单页多分区（包子 / 拷贝 / Komga…），
      *    `load()` 无参，返回 `{分区名: Comic[]}` 或 `[{title, comics}]`；

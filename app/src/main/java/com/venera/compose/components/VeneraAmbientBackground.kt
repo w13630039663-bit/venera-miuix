@@ -93,7 +93,7 @@ fun VeneraAmbientChrome(modifier: Modifier = Modifier) {
     val primaryColor = MiuixTheme.colorScheme.primary
     val surfaceColor = MiuixTheme.colorScheme.surface
     val secondaryColor = MiuixTheme.colorScheme.tertiaryContainer.let {
-        if (it != Color.Unspecified) it else Color(0xFF6750A4)
+        if (it != Color.Unspecified) it else primaryColor
     }
     Canvas(modifier) {
         drawVeneraAmbient(
@@ -122,10 +122,9 @@ fun VeneraAmbientBackground(
     val primaryColor = MiuixTheme.colorScheme.primary
     val surfaceColor = MiuixTheme.colorScheme.surface
     val secondaryColor = MiuixTheme.colorScheme.tertiaryContainer.let {
-        if (it != Color.Unspecified) it else Color(0xFF6750A4)
+        if (it != Color.Unspecified) it else primaryColor
     }
 
-    // 全站玻璃的**唯一采样源**（2026-09-29 拍板：采静态氛围层，不采页面内容层）。
     //
     // 为什么是这一层：下面那个 Canvas 与 content 是**兄弟节点**（Canvas 在底），所以卡片采它
     // 不会自引用 —— 反过来采"页面内容层"就是 `feature/Navigation.kt:504` 注释里记过的那个形状

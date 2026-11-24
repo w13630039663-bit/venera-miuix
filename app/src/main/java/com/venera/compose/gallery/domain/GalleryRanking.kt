@@ -6,7 +6,6 @@ import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 
 /**
- * 画廊搜索的**排行档**（2026-09-29）。
  *
  * 六档而不是五档：必须留一个「默认（最新）」，否则用户按了"周排行"就没有回头路
  * （站方默认序是新→旧，那一档不需要任何后缀）。
@@ -31,14 +30,14 @@ enum class GalleryRanking(val label: String, val shortLabel: String) {
  * 排行档的判据层。全部数字来自实测（`gallery-ranking-windows-2026-09.md` §〇 与 §十一），
  * 不是照另一站推断的：
  *
- * - **yande.re 原生认 `date:A..B`**（四形式都验过：`2026-05-01..2026-05-31` 回的全是 5 月、
- *   `2026-08-01..` 回的全 ≥ 08-01、`..2026-02-28` 回的全 ≤ 02-28、单日 `2026-05-20` 回 2 条都是那天）
  *   → 这一站**一次额外请求都不用发**，六档全真。
  * - **Gelbooru 只认 `sort:score:desc`**，时间窗口那一类它给不了：网页版认 `id:>=`（实测窗口确实收口），
- *   而 App 走的 DAPI 那一路要靠"探 id 边界"把窗口换算出来（真机第二轮：天/周能出图，月/年压根定不出
  *   起点 —— 那站每天约 1.2 万条新 id，月档要跨 36 万个 id，二分收口需要的探测次数超过当时给的预算）。
  *   → 用户拍板：这一站**只摆默认与全部两档**，其余四档连列都不列（同日第五轮由"置灰 +
  *   明写'本站没有'"改成"不列出"，判据没变，只是不再为讲不清来源的行占位）。
+ *   都**真生效**（2020 窗口回的全是 2020 的图；`order:score` 高分 1718/1570/1349 降序）⇒ 六档全真，
+ *   后缀写法照 yande.re 那一族。⚠️ 别用看着像的 `order:rank`：实测在本站**被静默忽略**，
+ *   回的就是默认 id 序那一页（正是下面那句"静默忽略"警告的又一例）。
  *
  * ⚠️ 两站的分排序写法**不能互相照抄**：`order:score` 在 Gelbooru 是 0 结果，
  * `sort:score:desc` 在 yande.re 那侧没验过（而 `order=rank` 这种看着像的会被**静默忽略**，
@@ -48,7 +47,7 @@ object GalleryRankings {
 
     private const val YANDERE_SCORE = "order:score"
     private const val GELBOORU_SCORE = "sort:score:desc"
-    private const val SAFEBOORU_SCORE = "order:score"
+    private const val KONACHAN_SCORE = "order:score"
 
     /** 时间档的窗口起点（按 UTC 日切，与站方 `created_at` 同一时区）；不设窗口的档返回 null。 */
     fun windowStart(ranking: GalleryRanking, todayUtc: LocalDate): LocalDate? = when (ranking) {
@@ -62,14 +61,12 @@ object GalleryRankings {
     /**
      * 这一站这一档**是不是真的**。
      *
-     * Gelbooru 的四档时间窗在 2026-09-29 被撤（成因一半在站方：DAPI 只给 `sort:score:desc`，
      * 窗口要靠探 id 边界换算；一半在我们自己：当时给的探测预算 24 次不够月/年收口，那站每天约
-     * 1.2 万条新 id。撤下的实现与恢复条件见 `_trash/gallery-gelbooru-boundary-2026-09-29/`）。
      * 菜单列哪几行、状态层落回哪一档都照这一把判，
      * 才不会出"点得动、发出去却是全站结果"那种假开关。
      */
     fun supports(site: GallerySite, ranking: GalleryRanking): Boolean =
-        site == GallerySite.YANDERE || site == GallerySite.SAFEBOORU || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL
+        site == GallerySite.YANDERE || site == GallerySite.KONACHAN || ranking == GalleryRanking.NEWEST || ranking == GalleryRanking.ALL
 
     /**
      * 一个**来源**（可能两条腿）能不能摆这一档：每一条腿都得真。
@@ -94,7 +91,6 @@ object GalleryRankings {
         sites.all { supportsPeriodPicker(it) }
 
     /**
-     * 移动端那把「这一组腿有没有具体某一期可挑」（2026-10-16 新加，口径与 [supportsForApp] 同一把）。
      *
      * 为什么不直接把 [supportsPeriodPickerAll] 改成认合成档：那把钉着桌面三面判据，而桌面今天
      * **不接** id 边界这一路（`GelbooruWindowFinder` 那颗契约在桌面上不接线）。两把分开之后，
@@ -106,7 +102,6 @@ object GalleryRankings {
     fun supportsPeriodPickerForApp(sites: List<GallerySite>): Boolean =
         supportsForApp(sites, GalleryRanking.MONTH)
 
-    /** 这一档能往回翻到多早的一期（yande.re 存档实测：`date:..2006-06-01` 已经回 0 条）。 */
     val EARLIEST_PERIOD: LocalDate = LocalDate.of(2007, 1, 1)
 
     /** 窗口**终点**的站方口径：不设窗口的档为 null；有窗口的档是"锚点所在期的最后一天"。 */
@@ -133,7 +128,6 @@ object GalleryRankings {
         todayUtc: LocalDate,
     ): Pair<LocalDate, LocalDate>? {
         // 锚点夹回今天：日期弹层里"今年 12 月"是能点出来的，而窗口终点恒被今天钉住 ——
-        // 不夹就会出现 `date:2026-12-01..2026-09-29` 这种起点在终点之后的串（站方回空，
         // 而空会被读成"那个月没有图"）。
         val pinned = anchor?.let { if (it.isAfter(todayUtc)) todayUtc else it } ?: todayUtc
         val start = windowStart(ranking, pinned) ?: return null
@@ -144,11 +138,9 @@ object GalleryRankings {
     }
 
     /**
-     * 移动端菜单/状态层该不该摆这一档（2026-10-13 新加的一把，**只给移动端用**）。
      *
      * ── 为什么不直接把 [supports] 翻成 true ──
      * 那把尺子今天同时钉着桌面那三面判据（`DesktopRankingTest` / `DesktopRankingPeriodTest` /
-     * `DesktopStaleClaimsTest`）与桌面的菜单。用户 2026-10-13 的口径是「先改移动端的，桌面端的别动」，
      * 而这一档在桌面上要落地还得先翻那三把尺子（桌面测试源集今天编译不过，量不到）。
      *
      * 更要紧的是这两问**本来就不是一件事**，合在一把尺子上才是隐患：
@@ -191,11 +183,9 @@ object GalleryRankings {
      *
      * ── 为什么本期不需要 ──
      * 本期终点就是今天，站方没有比今天更晚的图，`id:>=A` 天然收口 —— 再探一枚上界是多花
-     * 六七笔（2026-10-16 真站量测：每一笔 0.9–2.0 秒往返），换来的那一串与不带上界**逐字等价**。
      *
      * ── 为什么历史期**必须**要 ──
      * 站方不认 `date:`，`id:A..B` 那种区间写法被**静默忽略**（`count` 与全站逐字相同）。
-     * 只带 `id:>=A` 去看 2024 年 3 月，拿回的其实是"2024-03-01 起到今天"的分排序 ——
      * 而胶囊上写着「月 2024-03」。两枚边界合起来才是那一月：`id:>=A id:<B`（实测严格互补，
      * 见 `GelbooruWindowBoundary` 那颗文件头与 `_qa/gb_window_probe.sh` 的读数）。
      *
@@ -276,7 +266,6 @@ object GalleryRankings {
     /**
      * 这一档**允不允许选历史期**。
      *
-     * 只有月/年两档开放（用户 2026-09-29 拍板）：天/周回看是"上一天/上一周"这种一步的事，
      * 为它开一层日期弹层不值，而菜单里那六行每一行都在抢下拉的高度。
      */
     fun supportsHistory(ranking: GalleryRanking): Boolean =
@@ -287,7 +276,6 @@ object GalleryRankings {
      *
      * 为什么自己列而不是用 Material3 的年份选择器：1.5.0-alpha22 里那个 `YearPicker` 是
      * **private**，`showModeToggle` 只切"日历 ↔ 数字输入"，公开 API 到不了年份列表 ——
-     * 于是"按年"只能画成一屏天数日历，用户 2026-09-29 的反馈原话是"按年份也是和按月份一样
      * 是一样的天数选择器"。地板取 [EARLIEST_PERIOD] 的年份，翻得出空页的年份一律不给。
      */
     fun yearChoices(todayUtc: LocalDate): List<Int> =
@@ -316,7 +304,7 @@ object GalleryRankings {
         if (ranking == GalleryRanking.NEWEST) return null
         if (ranking == GalleryRanking.ALL) return when (site) {
             GallerySite.GELBOORU -> GELBOORU_SCORE
-            GallerySite.SAFEBOORU -> SAFEBOORU_SCORE
+            GallerySite.KONACHAN -> KONACHAN_SCORE
             GallerySite.YANDERE -> YANDERE_SCORE
             // 从前这一支是 `else -> YANDERE_SCORE`：任何新站进来都会被静默发一串 yande.re 的
             // 高分伪标签（调研稿 §三 坑 3）。改成逐站点名，加站必须在这里表态。
@@ -325,7 +313,7 @@ object GalleryRankings {
         val (start, end) = windowBounds(ranking, anchor, todayUtc) ?: return null
         return when (site) {
             GallerySite.YANDERE -> "date:$start..$end $YANDERE_SCORE"
-            GallerySite.SAFEBOORU -> "date:$start..$end $SAFEBOORU_SCORE"
+            GallerySite.KONACHAN -> "date:$start..$end $KONACHAN_SCORE"
             // Gelbooru 到不了这一支：[supports] 已经把它的四档时间窗判死（菜单不列 + 状态层落回默认档）。
             GallerySite.GELBOORU -> null
             GallerySite.PIXIV -> GallerySite.notWired("时间窗后缀")

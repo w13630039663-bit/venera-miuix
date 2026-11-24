@@ -161,7 +161,7 @@ fun AndroidFollowUpdatesScreen(
                     ) {
                         items(vm.updates, key = { "${it.item.id}-${it.item.type}" }) { entry ->
                             val metrics by rememberCachedComicMetrics(entry.item.sourceKey, entry.item.id)
-                            UpdateRow(
+                            FollowUpdateRow(
                                 detailed = displayMode.value == "detailed",
                                 rating = metrics.rating,
                                 likesCount = metrics.likesCount,
@@ -172,6 +172,8 @@ fun AndroidFollowUpdatesScreen(
                                 author = entry.item.author,
                                 comicId = entry.item.id,
                                 updateTime = entry.updateTime,
+                                hasNewUpdate = entry.hasNewUpdate,
+                                modifier = Modifier.animateItem(),
                                 onClick = {
                                     onSelect(
                                         ComicItem(
@@ -197,105 +199,8 @@ fun AndroidFollowUpdatesScreen(
                 current = vm.followFolder,
                 onDismiss = { showFolderPicker = false },
                 onPick = { vm.chooseFollowFolder(it) },
+                vm = vm,
             )
-        }
-    }
-}
-
-@Composable
-private fun UpdateRow(
-    detailed: Boolean,
-    rating: Double?,
-    likesCount: Int?,
-    title: String,
-    cover: String,
-    sourceKey: String,
-    tags: List<String>,
-    author: String,
-    comicId: String,
-    updateTime: String?,
-    onClick: () -> Unit,
-) {
-    // 内容守卫：BLUR 命中打码（sourceKey 直查源级预设），HIDE 由调用方列表过滤兜底。
-    val guard = BusinessPorts.of(LocalContext.current).contentGuard
-    val maskState = guard.maskStateFor(
-        sourceKey = sourceKey,
-        title = title,
-        author = author,
-        tags = tags,
-        comicId = comicId,
-    )
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        ComicCardLayout(detailed = detailed, modifier = Modifier.padding(10.dp), cover = {
-            com.venera.compose.components.venera.VeneraCover(
-                url = cover,
-                contentDescription = title,
-                shimmerWhileLoading = false,
-                mask = if (maskState == "VISIBLE") com.venera.compose.components.venera.VeneraCoverMask.Visible
-                       else com.venera.compose.components.venera.VeneraCoverMask.Masked,
-                modifier = Modifier.fillMaxWidth().height(180.dp),
-            )
-        }) {
-            Text(text = title, fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.body, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold, maxLines = 2)
-            ComicMetrics(rating, likesCount)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = listOfNotNull(sourceKey, updateTime?.takeIf { it.isNotBlank() }).joinToString(" · "),
-                fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.caption,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
-                maxLines = 2,
-            )
-            Text(text = "NEW", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.badge, color = MiuixTheme.colorScheme.primary)
-        }
-    }
-}
-
-@Composable
-private fun FollowFolderPicker(
-    current: String?,
-    onDismiss: () -> Unit,
-    onPick: (String?) -> Unit,
-) {
-    val vm: FollowUpdatesViewModel = viewModel()
-    val folders by vm.folderList().collectAsState(initial = emptyList())
-
-    com.venera.compose.components.PredictiveBackOverlay(onDismiss = onDismiss) {
-        Card(modifier = Modifier.padding(horizontal = 28.dp)) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(text = "选择追更收藏夹", fontSize = 17.sp, fontWeight = com.venera.compose.ui.tokens.VeneraTokens.type.weightSemibold)
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "选中的收藏夹会每天自动检查一次更新。",
-                    fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Column {
-                    folders.forEach { folder ->
-                        val isCurrent = folder == current
-                        Text(
-                            text = if (isCurrent) "$folder ✔" else folder,
-                            fontSize = 15.sp,
-                            color = if (isCurrent) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onPick(if (isCurrent) null else folder)
-                                    onDismiss()
-                                }
-                                .padding(vertical = 12.dp),
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ),
-                ) { Text("取消") }
-            }
         }
     }
 }

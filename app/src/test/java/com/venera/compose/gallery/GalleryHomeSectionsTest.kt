@@ -16,14 +16,11 @@ import org.junit.Test
  * 它守的是两件后果都很重的事：
  *
  * 1. **key 不许重复** —— 它进 `LazyStaggeredGrid` 的 `item(key = …)`，重复直接崩，
- *    而崩的位置在真机上读起来像"进画廊就闪退"，跟"我改了个字符串"联系不起来；
- * 2. **次序不许被顺手重排** —— 2026-09-30 第二轮那一版是用户点名定的
  *    （画师 → 每日热门 → 猜你喜欢），重排是一次产品改动，
  *    不该以"整理代码"的名义发生。顺带把"加了一节却忘了登记进清单"也挡住。
  *
  * ⚠️ **这一类测不到表面在哪一层**（批次 N · N2 那次"撤节背板、下放到条目"在这里一条都不会红）。
  * 背板摆不摆、摆在节上还是条目上，是 composable 的布局层，没有 Robolectric 就够不着 ——
- * 所以那类改动的验收**只在真机清单上**（见 `gallery-home-round4-2026-09-30.md` §五）。
  * 记在这里是为了别把"这一类全绿"当成"首页结构没被改坏"的证据。
  */
 class GalleryHomeSectionsTest {
@@ -50,7 +47,6 @@ class GalleryHomeSectionsTest {
         )
     }
 
-    /** 用户 2026-10-17 那句"切换到 pixiv 就换成这些排布"的落地形。 */
     @Test
     fun `Pixiv 那一档的次序是 关注画师 排行榜 推荐`() {
         assertEquals(
@@ -96,11 +92,9 @@ class GalleryHomeSectionsTest {
             .first { it.name == "GalleryHomeChrome.kt" }
             .readLines()
         val code = chrome.map { it.trim() }.filter { !it.startsWith("//") && !it.startsWith("*") && !it.startsWith("/*") }
-        // 2026-10-17：先换成下拉，同日又按用户「改回前面版本的分段切换器」改回来了，锚点跟着改回原名。
         assertEquals("切换器只许在 chrome 那一行里出现一次", 1, code.count { it.contains("GalleryHomeDomainChips(") })
         // 道数而不是"有没有"：搜索条自己就吃那一档高度，只问"文件里有没有那一档"
         // 会被条那一处合法引用喂饱 —— 摘掉切换器那圈外框照样绿（本仓那族锚点被喂饱的形状）。
-        // 2026-10-17：那一档从 56dp 的 `dockedSearchBarHeight` 换成 48dp 的 `segmentedHeight`
         // （用户：搜索框缩成和切换源一样大小），两处仍然同档 —— 道数不变。
         assertEquals(
             "切换器那一圈外框要与搜索条共用同一条 48dp 的带：文件里应恰好两处（条自己 + 切换器那圈）",
@@ -110,7 +104,6 @@ class GalleryHomeSectionsTest {
 
     @Test
     fun `根据你的收藏与最近搜索都不再是首页的一节`() {
-        // 2026-09-30 第二轮：前者整节撤下（推荐标签仍是猜你喜欢的种子，只是不摆在首页），
         // 后者搬回搜索卡。这两条都是用户点名的信息架构改动，别被"顺手加回来"。
         assertTrue(
             "首页不许再出现「根据你的收藏」那一节",
@@ -137,7 +130,6 @@ class GalleryHomeSectionsTest {
     }
 
     /**
-     * 图库站的「正在关注的画师」那一行与 pixiv 那一排**同形**（2026-10-17 第九轮）。
      *
      * 用户原话：「图库那边的关注画师列也要同步更改，不要只改 pixiv 那边的」。
      * 两条判据都写在源码上，因为这两件事都是"形态"而不是"数据"：
@@ -153,10 +145,8 @@ class GalleryHomeSectionsTest {
         assertTrue("要用横滑一排（不是自动换行的网格）：\n$body", body.contains("LazyRow("))
         // 格宽 = 脸的直径：裸摆之后两者是同一个数。
         assertTrue("一格要按 artistAvatarSize 定宽：\n$body", body.contains(".width(tokens.spacing.artistAvatarSize)"))
-        // 卡面撤了 ⇒ 按压反馈得自己挂（这一栏 2026-10-16 修过一次"按下去没回话"）。
         assertTrue("可点面要走 combinedClickable：\n$body", body.contains("combinedClickable("))
         assertTrue("反馈走 SinkFeedback：\n$body", body.contains("indication = VeneraPressFeedback.indication"))
-        // 两个手势都得真：单击直接搜、长按进介绍页（2026-09-30 拍板 2 那条不动）。
         assertTrue("单击仍直接搜：\n$body", body.contains("onClick = { onPick(artist) }"))
         assertTrue("长按仍进介绍页：\n$body", body.contains("onLongClick = { onOpenProfile(artist) }"))
         // 旧形状：方卡 + 卡里那行「[站标] N 张收藏」（56dp 一格装不下第二行读数）。

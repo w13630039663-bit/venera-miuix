@@ -6,9 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * `releases/latest` 的解析层（2026-10-04，应用内自更新批 1）。
  *
- * fixture 逐字取自本机对该发布通道的一次真实响应（见 `docs/rounds/app-self-update-2026-10-04.md` §0.4），
  * 包括那条真的 `digest` 与 `output-metadata.json` 那颗伴生产物 —— 不凭记忆造形状，
  * 因为这一层的价值恰恰在于"字段名与类型写对了没有"。
  *

@@ -37,8 +37,8 @@ class DesktopLatestTest {
     @Test
     fun 没配凭据时Gelbooru不发车而原因转交共享那句() {
         assertEquals(
-            "没配凭据该只发两腿（yande.re 与 Safebooru）",
-            listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU),
+            "没配凭据该只发两腿（yande.re 与 Konachan）",
+            listOf(GallerySite.YANDERE, GallerySite.KONACHAN),
             desktopWallLegs(gelbooruConfigured = false),
         )
         val silent = desktopWallSilentSites(gelbooruConfigured = false)

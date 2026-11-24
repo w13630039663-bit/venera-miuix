@@ -84,7 +84,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 画师介绍页（批次 Q+R · 批量 5；2026-10-01 用户报「感觉不太行」后按参考图重排）。
  *
  * ## 为什么这一版要重排：旧版没有视觉重心
  *
@@ -100,7 +99,6 @@ import top.yukonga.miuix.kmp.basic.Text
  *    但**档位是另传的**（`artistHeroBackdropBlur` / `artistHeroBackdropScale`）：
  *    详情页那套 32dp × 1.35 是把底图当"氛围"用的（它压在封面卡下面），
  *    而这一页的底图**就是主视觉本身**，同一个档摆过来只剩一块色块
- *    —— 2026-10-01 用户报「模糊过头」，这是两处成因之一，另一处是取图档位（见下）。
  *    底图取的是 `wall.cards` 里**第一张没被打码的**，不是 `posts` 的第一张 —— 后者会把
  *    "命中了内容守卫的那一张"画成整页最大的图，那正是遮罩唯一可能被绕开的地方。
  *    取不到（没有作品 / 全被打码 / 这一站没答上）就只是一块卡面，**不留半截实现**。
@@ -120,7 +118,6 @@ import top.yukonga.miuix.kmp.basic.Text
  * ## 三节各自"答上了才摆"，且"没取到"与"没有"在屏上同形
  *
  * 与详情面板那排画师入口同一条红线：别名、外链、Popular posts 三节，**取不到 = 那一节整块不出现**，
- * 屏上永不出现"这位没有别名 / 没有外链"这种我们没资格断言的话 —— danbooru 那台在 2026-09-30
  * 本机出口是 403 卡盾，把"被挡在门外"折叠成"没有"就是假答复。区别只留在日志里，每档失败各一句话。
  *
  * ## 别名只有 Gelbooru 腿有
@@ -144,7 +141,6 @@ internal fun GalleryArtistProfileScreen(
     onBack: () -> Unit,
     onBrowseAllWorks: () -> Unit,
 ) {
-    // ── 2026-10-19：这屏**只服务图库三站**，pixiv 走 `PixivArtistScreen` ──
     //
     // 宿主（`GalleryArtistProfileActivity`）已经按 site 分派，正常路径进不来。
     // 这一道闸门是给"将来某个漏网调用点"留的：它不比闪退更糟，但也不该在场。
@@ -188,7 +184,6 @@ internal fun GalleryArtistProfileScreen(
     }
     LaunchedEffect(site, artistName) {
         val today = LocalDate.now(ZoneOffset.UTC)
-        // ⚠️ **pixiv 不走这条算式**（2026-10-19）。从前这一句在 `when (site)` 之外无条件先算，
         // 而 `GalleryRankings.suffix(PIXIV, ALL)` 走的是 `GallerySite.notWired()` ⇒ **当场抛**
         // ⇒ 画师页一进去就闪退（屏还没画出来，下面那个 `PIXIV -> Result.failure` 分支永远跑不到）。
         //
@@ -219,7 +214,7 @@ internal fun GalleryArtistProfileScreen(
                 )
                 GalleryPorts.of(context).boards.gelbooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
             }
-            GallerySite.SAFEBOORU -> {
+            GallerySite.KONACHAN -> {
                 val query = GalleryRankings.searchQuery(
                     site = site,
                     filters = listOf(GalleryTagFilter(artistName)),
@@ -227,7 +222,7 @@ internal fun GalleryArtistProfileScreen(
                     anchor = null,
                     todayUtc = today,
                 )
-                GalleryPorts.of(context).boards.safebooru.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
+                GalleryPorts.of(context).boards.konachan.searchPosts(query, page = 1, limit = SLOT_FETCH_SIZE)
             }
             // 画师面板那一面墙按**画师名**发查询串，而 pixiv 那一跳把词**一律当标签名解释**
             // （现量：`ajax/search/artworks/{词}` 的 `extraData.meta.canonical` 就是 `/tags/{词}`），
@@ -257,10 +252,8 @@ internal fun GalleryArtistProfileScreen(
     // 头图的取法见文件头注第 1 条：**只从过了守卫的那批里取**，且跳过打码那张。
     // 档位取 `backdropUrl`（中档 `sample`）而**不是** `previewUrl`：缩略档只有 300×212 级，
     // 铺满这一块要放大三倍多，再叠一层模糊就只剩色块、认不出画的是什么
-    // （2026-10-01 用户报「模糊过头」，两处成因之一）。
     val heroImage = wall.cards.firstOrNull { !it.masked }?.post?.backdropUrl.orEmpty()
     val aliasLine = GalleryArtistProfile.aliasLine(credits.canonicalName, credits.aliasReadout)
-    // 宽屏档与内容收口宽度（2026-10-12 平板排查）：手机档 contentMaxWidth = null ⇒
     // 下面各处 `.then(...)` 都不挂 Modifier，本页手机观感逐像素不变。
     val layoutMode = wideScreenLayoutMode(LocalWindowWidthDp)
     val wideScreen = layoutMode != WideScreenLayoutMode.Compact
@@ -268,14 +261,12 @@ internal fun GalleryArtistProfileScreen(
     // 「热门作品」那一排的列数：**用墙上那把尺子**（与主墙 / 日榜二级页 / 画廊收藏同一颗
     // `rememberImageWallColumnCount`，也吃用户那枚列数设置）。此前这里写死 3 列，
     // 而 1097dp 横屏上墙已经排到 6 列 —— 同一类卡在两处一个 179dp 一个 357dp，
-    // 用户 2026-10-13 的读数就是这一排"卡片过大"。手机档那把尺子恒 2 列，逐像素不变。
     val columnMode by GalleryPorts.of(context).prefs.galleryColumnMode.collectAsState()
     val popularColumns = GallerySettingsModel.gridColumns(
         columnMode,
         rememberImageWallColumnCount(),
     )
 
-    // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了，
     // 而本页没有大图页那套自制飞入 —— 不补一档就是硬切。曲线与时长吃
     // components/MiuixMotion.kt 的收尾档（240ms HyperOS 减速），不另造数字。
     var entryShown by remember { mutableStateOf(false) }
@@ -294,7 +285,6 @@ internal fun GalleryArtistProfileScreen(
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = tokens.spacing.space6, vertical = tokens.spacing.space4)
-            // 入场钟（2026-10-23）：入口 openGalleryArtistProfile 把系统打开转场压掉了
             // （与大图页同一个理由），但大图页有「图从卡片飞入」的自制入场，这一页——
             // 什么都没有，内容就是硬切出现。补一档轻入场：整页淡入 + 上移，
             // 曲线与时长吃 components/MiuixMotion.kt 的收尾档（240ms HyperOS 减速）。
@@ -319,7 +309,6 @@ internal fun GalleryArtistProfileScreen(
         Spacer(modifier = Modifier.height(tokens.spacing.space4))
 
         // ── hero：这一页唯一的主视觉 ──────────────────────────────────────────
-        // 2026-10-12 平板排查：宽窗下 hero 仍 fillMaxWidth 而高度不变 ⇒ 1891dp 上被拉成
         // 约 9.6:1 的扁带（用户截图报「显示不合理」）。现在两处一起收：
         //  ① 高度按断点取第二档（手机 196 / 宽屏 280，见 artistHeroHeightWide 的理由）；
         //  ② 整块随正文一起受 contentMaxWidth 收口（手机档为 null ⇒ 不挂，逐像素不变）。
@@ -394,7 +383,6 @@ internal fun GalleryArtistProfileScreen(
             }
         }
 
-        // ── 外链一整排：不受画师行那 MAX_ICONS=2 的约束（用户 2026-10-01 点名"全部展开"），
         //    认不出平台的也照摆，徽标退中性色 + 通用链接字形。
         if (credits.links.isNotEmpty()) {
             Spacer(modifier = Modifier.height(tokens.spacing.space6))
@@ -497,7 +485,6 @@ internal fun GalleryArtistProfileScreen(
  *
  * 这一格是 `Row + weight(1f)` 的**行式**排法（不是首页主墙那种列式瀑布流），
  * 行与行必然对齐。而卡高取自 `post.cardRatio` ⇒ 一行三张里最矮的那张底下会留一块空洞，
- * 数据比例一参差整面墙就读成"没排齐"（真机截图上能直接看到，用户这一轮的原话是"感觉不太行"）。
  * 钉死 3:4（`coverAspectRatio`，现成 token）之后一行三张等高。
  * **代价如实说**：原图会被 `ContentScale.Crop` 裁掉两侧或上下 —— 这是"整齐"换"信息完整"，
  * 点开大图看的仍是全图。首页主墙那种瀑布流**不该**跟着钉（那里列与列各自往下排，错落是刻意的）。
@@ -641,7 +628,6 @@ private fun RowScope.SectionRuleLine() {
 }
 
 /*
- * `PlatformBadge`（那枚品牌色小方块）2026-10-01 **搬到 `GalleryArtistRows.kt` 了**，
  * 改成 `internal` 两处共用：信息卡里那一行外链（`GalleryArtistCreditRows`）现在也要摆它。
  * 同一枚东西在两个文件里各留一份实现，迟早会漂成两种样子
  * （`GalleryArtistLinks.chipLabel` 那条注释记着同一类教训）。
@@ -695,10 +681,13 @@ private suspend fun loadCredits(
             urls = record?.urls.orEmpty()
             otherNames = record?.otherNames.orEmpty()
         }
-        GallerySite.SAFEBOORU -> {
-            // Safebooru 与 Gelbooru 同属 Danbooru 系，画师端点也走 danbooru
+        GallerySite.KONACHAN -> {
+            // Konachan 是 Moebooru 系、与 danbooru **不共享**画师库，但它自己的 artist.json 按
+            // **站内画师档名**建、帖子作者名查不进去（实测 junmin / BattlequeenYume 都回 0 条），
+            // 于是与 Gelbooru 同一条路借 danbooru 供体 —— 取的是那张跨站"画师名 → 外链"对照表。
+            // （旧 Safebooru 借 danbooru 是真的同库；两句理由不同，别混。）
             val record = GalleryPorts.of(context).artists.danbooruArtistCredits(name).getOrElse { failure ->
-                Log.w(TAG, "画师「$name」(safebooru/danbooru 供体) 的记录没取到：${failure.message}")
+                Log.w(TAG, "画师「$name」(danbooru 供体) 的记录没取到：${failure.message}")
                 null
             }
             urls = record?.urls.orEmpty()
@@ -744,7 +733,7 @@ private fun openExternal(context: Context, url: String) {
     }
 }
 
-/** Popular posts 那一节的卡位数（2026-10-01 用户拍的默认档：那一屏是 3 列 × 2 行）。
+/**
  *  列数今天不再由这里定 —— 用墙上那把尺子（见 `popularColumns`），所以宽屏上是一行 6 张。 */
 private const val SLOT_COUNT = 6
 

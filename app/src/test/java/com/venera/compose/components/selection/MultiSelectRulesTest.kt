@@ -8,7 +8,6 @@ import org.junit.Test
  * 区间反选的判据 —— 对着官方 `local_favorites_page.dart:737-757` 逐条钉死。
  *
  * 这段逻辑不在界面上留痕，只能靠单测守：一旦写反（例如不去跳过锚点、或把反选写成全选），
- * 表现是"长按一下，屏幕上跳出一堆没见过的勾"，而这类现象在真机上很难复现定位。
  */
 class MultiSelectRulesTest {
 

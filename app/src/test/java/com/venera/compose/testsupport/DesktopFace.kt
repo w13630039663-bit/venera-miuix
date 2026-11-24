@@ -56,13 +56,11 @@ object DesktopFace {
     data class ExcludeEntry(val name: String, val lineNo: Int)
 
     /**
-     * 排除清单的条目。**含 glob 的也收**（2026-10-20 改）。
      *
      * 原实现把带 `*` 的条目直接丢掉，理由是"`android` 子目录那一族由 [sharedFiles] 按目录判"。
      * 那条仍然成立，但它把**另一类** glob 一起丢了：`**` 加斜杠再跟文件名那种
      * 「点名某个子目录里的单颗文件」的写法。于是那颗文件在账本里永远算作
      * "该排除而未排除"，而 gradle 那边其实真的排掉了 —— 判据与事实相反。
-     * （本仓 2026-10-20 真的踩到了：`VeneraGallerySourceMark.kt` 在 `venera/` 子目录，
      *  裸文件名排不掉它，只能写 glob，而 glob 又被解析器丢掉。）
      *
      * 现在分类记：

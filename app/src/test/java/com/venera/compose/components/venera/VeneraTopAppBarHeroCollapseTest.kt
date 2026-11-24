@@ -7,7 +7,6 @@ import java.io.File
 
 /**
  * 覆盖进度路径（`scrollProgressOverride != null`）下顶栏必须是**恒折叠态**
- * （2026-10-16，真机「上滑标题不居中」）。
  *
  * 这一路折叠机制整个退场（调用方不挂 `nestedScroll`，见 `VeneraTopAppBar` 的参数注），带来两个
  * **互相叠加**的后果，都由 miuix 自己的源码可直接推出：
@@ -23,13 +22,11 @@ import java.io.File
  *    （`:724-727` 把它挂在 title 的 `graphicsLayer` 上）。所以屏上那个「画廊」只能是本文件自绘的
  *    那一份 —— 它必须与 miuix 的按钮行**同一条线**。
  *
- * ⚠️ 2026-10-16 三修（真机原话「居中标题栏还是没有居中」，前两轮白改）——**根因是钉法，不是基准**：
  *
  * 钉高度那一支如果把 miuix 的测量高度**压到它自然高以下**，它整棵子树会被**居中上顶**
  * `(自然高 − 允许高) / 2`：miuix 本体自然高 ≈ 143.6dp（inset 49.2 + `barHeight` 52 + 那个
  * **空大标题**占的一整行 ≈ 38 + 4），钉的允许高 ≈ 101.2dp ⇒ 上顶约 21.2dp。
  *
- * 真机逐像素读数（同一台机、同机同包，量右上两枚胶囊里图标笔画的中心 y）：
  *   · **普通页（没有这颗盒子）8 张截图全部 188px** —— 这就是 miuix 的正位 = `inset + 26dp`
  *   · 头图页有这颗盒子时：旧包（`Modifier.height`）134px、新包（`layout{} + place(0,0)`）132px
  *   · `188 − 134 = 54px ≈ 21.2dp × 2.5` ✓ 闭环 ——**两版几乎一样，因为第二版只换了摆放方式、
@@ -76,9 +73,7 @@ class VeneraTopAppBarHeroCollapseTest {
             "钉高度那一支没有自己 place(0, 0)（不过 SizeNode 的唯一手法）",
             branch.any { it.contains("place(0, 0)") },
         )
-        // ⚠️⚠️ 2026-10-16 三修的核心判据（真机「居中标题栏还是没有居中」，前两轮都是白改）：
         // 测量 miuix 本体时**不许**把高度压到它自然高以下 —— 压了就 `(自然高 − 允许高)/2`
-        // 居中上顶。真机读数：普通页 8 张截图胶囊图标中心恒 188px（miuix 正位），头图页被压时
         // 134 / 132px，差 54px ≈ 21.2dp × 2.5 ✓。高度必须放开成 `Constraints.Infinity`。
         assertTrue(
             "钉高度那一支把 miuix 的高度压到了自然高以下（`maxHeight = pinnedBarHeightPx`）⇒ " +
@@ -102,12 +97,10 @@ class VeneraTopAppBarHeroCollapseTest {
     }
 
     /**
-     * 自绘小标题的字号必须是 **miuix 原生小标题那一档**（2026-10-16，真机「滑后『画廊』…
      * 字体明显小很多」）。
      *
      * miuix 给折叠小标题用的是 `MiuixTheme.textStyles.title3.fontSize` + Medium
      * （`TopAppBar.kt:732-733`）。我们原来自己挑了一格 `tokens.type.itemTitle`（MD3 16sp），
-     * 真机实测字高 30px vs 探索页原生那枚 38px —— 差 20%，用户一眼就看出来了。
      * 读同一个主题槽位之后，两边**同号**；而且我们的 `miuixTextStylesOf` 把 title3 映射到
      * `statNumber`(20sp)，仍是表里的现成档，没有引入库外数字。
      */
@@ -127,7 +120,6 @@ class VeneraTopAppBarHeroCollapseTest {
     }
 
     /**
-     * 自绘小标题的居中基准必须**与 miuix 用同一个 inset 修饰符**（2026-10-16 三修）。
      *
      * miuix 的标题行与按钮行都落在 `windowInsetsPadding(WindowInsets.systemBars.only(Top))`
      * **之内**（`TopAppBar.kt:806` 那个 padding 挂在这颗 Layout 自己身上，`:881` 的

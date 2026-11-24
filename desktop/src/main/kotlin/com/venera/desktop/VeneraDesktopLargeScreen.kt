@@ -1094,7 +1094,7 @@ fun VeneraDesktopLargeScreen(
 /**
  * 画廊那一屏 —— 用**真实的** `VeneraCard` + `VeneraCover` 摆一面自适应墙。
  *
- * 这是今天桌面上**唯一**接了真数据的屏：`GalleryPorts` 拉 yande.re / safebooru
+ * 这是今天桌面上**唯一**接了真数据的屏：`GalleryPorts` 拉 yande.re / konachan
  * 的第一页（gelbooru 要账号，没配就不发车），混排去重后上墙。
  *
  * ⚠️ 它还不是安卓那一颗 `GalleryScreen`（3453 行：日榜三站 · 猜你喜欢 · 搜索 ·

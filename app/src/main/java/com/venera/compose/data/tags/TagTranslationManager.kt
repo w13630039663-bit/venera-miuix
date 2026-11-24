@@ -237,7 +237,6 @@ class TagTranslationManager private constructor(private val context: Context) {
  * 官方数据库（EhTagTranslation）的一部分词条，译名本身长这样：
  * `![阴阳玉图标](https://raw.githubusercontent.com/wiki/EhTagTranslation/Database/database-icon/touhou%20project.webp)东方Project`
  * —— 那段 `![...](...)` 是给官方 wiki 渲染 tag 图标用的，我们只取后半段文字。
- * 2026-10-02 用户报「EH/NH 英文站详情页出现超长 tag」：英文界面不译时看似正常，
  * 一旦译文命中这类词条，药丸上就是一整串 URL（长按复制里也是它）。
  *
  * 全部剥完只剩空串的词条按「没有译文」处理（调用方 `parse` 会跳过它）——

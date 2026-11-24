@@ -27,7 +27,6 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
  *
  * 手势：onClick / onLongClick 走 miuix Card 官方可点击重载（内部 squircleSurface +
  * combinedClickable，press 反馈由 miuix 统一处理）。**不要**把 combinedClickable
- * 挂到外层 modifier 上再叠一层——squircle 裁剪层级会吞掉长按手势（真机实测）。
  *
  * @param onClick 可空；提供时整卡可点击。
  * @param onLongClick 可空；提供时整卡响应长按（如多选/移除确认）。
@@ -51,7 +50,6 @@ fun VeneraCard(
      * 内容**通栏**（封面直接贴到卡边，圆角由 miuix `Card` 自己裁）。
      *
      * 「封面就是这张卡」的那种形状要的就是它。排行榜卡用的是它：
-     * 用户 2026-10-17 报「卡面太小了」，实测封面两侧各缩了 8dp `cardContentPadding`，
      * 而设计稿上的封面是**通栏**的（`d2_rank.png`：红图一直顶到卡片边缘，四个圆角就是封面的四个角）。
      *
      * 刻意做成**布尔语义**而不是一个 `contentPadding: Dp` 参数 —— 后者要表达"不要内衬"

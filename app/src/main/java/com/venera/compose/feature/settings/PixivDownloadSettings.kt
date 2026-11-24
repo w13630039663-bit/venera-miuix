@@ -35,10 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.gallery.data.PixivPreferences
 import com.venera.compose.feature.SettingsSubScreen
 import com.venera.compose.feature.openSettingsSubScreen
-import com.venera.compose.download.ComicStorageRoot
 import com.venera.compose.gallery.domain.PixivSaveFormatHelper
 import com.venera.compose.ui.tokens.VeneraTokens
 import java.io.File
@@ -47,14 +46,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * pixiv 专属下载设置页面（2026-10-22）。
  *
  * 包含：保存路径、保存格式（带 token chips 弹窗）、收藏作品自动保存开关、以及网络设置快捷入口。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PixivDownloadSettings(
-    prefs: VeneraPreferences,
+    prefs: PixivPreferences,
+    defaultPath: String,
     onBack: () -> Unit,
     onOpenNetworkSettings: () -> Unit,
 ) {
@@ -66,9 +65,6 @@ internal fun PixivDownloadSettings(
     val saveFormat by prefs.pixivSaveFormat.collectAsState()
     val autoSaveOnFavorite by prefs.pixivAutoSaveOnFavorite.collectAsState()
 
-    val defaultPath = remember(context) {
-        File(ComicStorageRoot.resolve(context), "Pixiv").absolutePath
-    }
     val downloadPath = customDownloadPath.ifBlank { defaultPath }
 
     val pickDirLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -115,7 +111,6 @@ internal fun PixivDownloadSettings(
                 summary = saveFormat,
                 onClick = { formatDialogVisible = true },
             )
-            // 「下载任务管理」入口已撤（2026-11-04）：图片下载记录住「下载与本地」的图片段，
             // 全项目唯一入口在底栏第五格。
         }
 

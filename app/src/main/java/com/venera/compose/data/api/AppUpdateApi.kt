@@ -5,7 +5,6 @@ import com.venera.compose.data.update.UpdateDownload
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 应用内更新那一笔下载的出口（`data/api/` 的契约层，2026-10-04）。
  *
  * ## 为什么 UI 不直接拿那颗单例
  *

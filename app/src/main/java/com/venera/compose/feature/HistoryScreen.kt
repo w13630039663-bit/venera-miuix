@@ -42,11 +42,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -57,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +79,7 @@ import com.venera.compose.components.rememberPredictiveBackState
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraCover
 import com.venera.compose.components.venera.VeneraCoverMask
+import com.venera.compose.components.venera.VeneraSelectBox
 import com.venera.compose.data.db.HistoryRecord
 import com.venera.compose.ui.tokens.VeneraSpacing
 import com.venera.compose.ui.tokens.VeneraTokens
@@ -324,14 +322,17 @@ private fun HistoryCard(
                 },
             )
             if (multiSelectMode) {
-                Icon(
-                    imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (selected) tokens.color.primary else if (detailed) tokens.color.textPrimary else Color.White,
+                // 统一 Selection Marker（控件体系统一 · 阶段 2）：历史页的自绘
+                // CheckCircle/RadioButtonUnchecked 退役，与收藏页共用同一枚多选框。
+                // 这里是"只展示"那一支（onClick = null）—— 切换挂在整张卡的点击上，
+                // 框不再叠第二个命中区。深底白环的画法同时修掉了旧版"白色空心圈
+                // 压在浅色封面上直接消失"的问题。
+                VeneraSelectBox(
+                    selected = selected,
+                    onClick = null,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(tokens.spacing.space2)
-                        .size(tokens.spacing.badgeSize),
+                        .padding(tokens.spacing.space2),
                 )
             }
         }

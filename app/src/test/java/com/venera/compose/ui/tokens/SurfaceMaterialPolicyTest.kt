@@ -84,14 +84,12 @@ class SurfaceMaterialPolicyTest {
 
     @Test
     fun `点缀档不描边`() {
-        // 小元素描边在真机上读成"脏边"，而且这一档本来就不 blur；宁可不给。
         assertNull(SurfaceMaterialPolicy.highlightFor(isDark = false, VeneraGlassTier.INLINE))
         assertNull(SurfaceMaterialPolicy.highlightFor(isDark = true, VeneraGlassTier.INLINE))
     }
 
     @Test
     fun `预设的库内真名逐字钉住`() {
-        // 这四个串是 2026-09-29 从 miuix-blur 0.9.4-rc01 的 sources jar 里逐字读出来的
         // （highlight/Highlight.kt:34-58，是**扁平名**，不存在 `Highlight.GlassStrokeSmall.Light` 那种点链写法）。
         // 库一升级就改名，这条断言会先把"玻璃描边静默消失"变成一条红测试。
         assertEquals("GlassStrokeMiddleLight", VeneraGlassHighlight.MIDDLE_LIGHT.libName)

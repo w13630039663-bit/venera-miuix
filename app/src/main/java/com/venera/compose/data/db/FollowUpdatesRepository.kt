@@ -156,6 +156,15 @@ class FollowUpdatesRepository(context: Context) {
     /** 有新更新的条目（用于更新列表页）。 */
     suspend fun getUpdates(folder: String): List<FavoriteItemWithUpdateInfo> = favorites.getUpdates(folder)
 
+    /**
+     * 夹内全部条目（含没有新章的）。
+     *
+     * 「在追 N 本」必须用这一把而不是 [getUpdates] 的长度：
+     * 后者只返回 `has_new_update = 1`，刚加进追更的书还没检过、也没新章，会被算成 0 本。
+     */
+    suspend fun getAllInFolder(folder: String): List<FavoriteItemWithUpdateInfo> =
+        favorites.getComicsWithUpdatesInfo(folder)
+
     suspend fun countUpdates(folder: String): Int = favorites.countUpdates(folder)
 
     suspend fun markAsRead(id: String, sourceKey: String) = favorites.markAsRead(id, sourceKey)

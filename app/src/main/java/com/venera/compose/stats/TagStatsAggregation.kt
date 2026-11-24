@@ -2,7 +2,6 @@ package com.venera.compose.stats
 
 import com.venera.compose.data.db.TaggedReadRow
 
-
 /** 预设属于 R18 / 成人向同人志 / 绅士向的站点标识集合（含 sourceKey 与中文显示名别名）。 */
 internal val R18_SOURCE_KEYS = setOf(
     "jm", "picacg", "mh18", "hcomic", "wnacg", "nhentai", "hitomi", "hot_manga", "jcomic", "ehentai", "mxs",
@@ -16,7 +15,6 @@ internal fun isR18Source(sourceName: String): Boolean {
 }
 
 /**
- * 题材分布的**聚合**（纯函数，2026-10-13 从 `ReadingStatsManager.getTagStats` 搬出来）。
  *
  * 搬的理由只有一个：这一圈循环里既有"标签怎么成桶"又有"本数怎么数"，而两样都能对着
  * 构造出来的行判对错 —— 留在 manager 里就得吃 `Context`（等字典、取接线口），

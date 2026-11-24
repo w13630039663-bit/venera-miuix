@@ -5,7 +5,6 @@ import java.time.LocalDate
 /**
  * pixiv 搜索的**排序**。
  *
- * ## 两套腿、两套名字（2026-10-17 深夜按 pixez 的口径补齐）
  *
  * 同一种"怎么排"在两条腿上写法完全不同：
  *
@@ -16,7 +15,6 @@ import java.time.LocalDate
  * | 人气 | **没有**（`order=popular`/`popular_d` 现量被静默忽略） | `sort=popular_desc` |
  *
  * 人气这一档**只在登录腿上有**，而且站方把它划在 pixiv 高级会员里。
- * **2026-10-18 改判**：上一版写的是"非会员点它 app-api 会回 error，我们原样上屏"，
  * 而 pixez 那侧的实际做法是 —— 点 `popular_desc` 时 `isPremium == 0` 就 **toast 一句并且不发请求、
  * 也不改已选排序**（`result_illust_list.dart:689-693`），而 `popular_male_desc` / `popular_female_desc`
  * 两档**只在会员面前才摆出来**（`:556`）。照它改：非会员点了不发，屏上直接说清楚要会员。
@@ -46,15 +44,12 @@ enum class PixivSearchOrder(val label: String, val webParam: String?, val appSor
 }
 
 /**
- * 收藏门槛。**按会员身份二选一发**（2026-10-18 照 pixez 的口径改判）。
  *
  * - **非会员 / 匿名腿** → 词尾标签 `{词} {N}users入り`（pixiv 的收藏数标签是真标签）。
- *   现量（2026-10-18，词=`猫`，`s_mode=tag`）：不带那一枚时 60 条里**只有 2 条**带 `*users入り`，
  *   带上之后 58 条里 **47 条带 `100users入り`** ⇒ 这条路**匿名就真生效**，连登录都不要求。
  * - **会员** → 发 app-api 的真参数 `bookmark_num_min`（pixez 那一排 `bookmark_num` 只在 `isPremium == 1` 才摆）。
  *
  * ⚠️ 从前这一排**只发 `bookmark_num_min`**，而那一枚在站方是会员档：非会员点它 = 被静默忽略 =
- * 用户读到的"选了没变化"（2026-10-18 用户「收藏 xxx+ 的筛选没有生效」，且他明确说了自己是**登录态**
  * ⇒ 上一轮那句"成因是票据没落地、退回匿名腿"只解释了另一条路，**不是本案主因**，就地改判）。
  * www 那一跳的 `blt` / `bgt` 仍是无效的（现量逐条一字不差），所以匿名腿走词尾而不是发参数。
  *
@@ -130,7 +125,6 @@ enum class PixivRatio(val label: String, val param: String?) {
 }
 
 /**
- * pixiv 搜索的那一排条件（2026-10-17 方案 C；深夜按 pixez 的口径补齐五段）。
  *
  * ## 五段各自落在哪条腿上
  *
@@ -139,7 +133,6 @@ enum class PixivRatio(val label: String, val param: String?) {
  * | 排序 | www `order` / app `sort` | 人气只有 app 有，而且是**会员档**（非会员不发） |
  * | 标签模式 | www `s_mode` / app `search_target` | 在输入框里那枚令牌 |
  * | 收藏 | 会员 app `bookmark_num_min` / 其余**词尾 `users入り`** | www 的 `blt` 被忽略，而词尾那枚匿名实测生效 |
- * | 排除 AI | www `ai_type=1` / app `search_ai_type=1` | 2026-10-18 现量：同词 `ai_type=0` 有 21 条 AI、`=1` 剩 **0 条** |
  * | 作品 | **本地筛** | 两条腿的站方参数都被忽略，见 [PixivWorkType] |
  * | 比例 | www `ratio` + **本地筛** | app 没有这一枚 ⇒ 登录腿上退化成本地筛 |
  * | 时间 | www `scd/ecd` / app `start_date/end_date` | 单边有效 |
@@ -170,10 +163,8 @@ data class PixivSearchFilter(
     /**
      * 这一排条件里有没有**只有登录腿才发得出去**的那几枚。
      *
-     * 2026-10-18 只剩「人气」这一枚：收藏那排从前算在这里，是因为它只发 `bookmark_num_min`
      * （会员档）；现在非会员改走词尾 `users入り`，**匿名腿实测就生效**，所以不再要求登录。
      *
-     * ⚠️ 2026-10-19 这一枚的语义**收窄成"要票据"**：非会员点人气不再被拒，改走
      * `popular-preview` 那条单页腿（见 `PixivAppClient.popularPreview`）。那条腿**不吃这一排里的任何一枚**
      * （donor 的调用面只有一个词），所以签名上压根不接 [PixivSearchFilter] —— 接了却不读，
      * 就是"屏上亮着一排条件、请求里一枚都没发"那一族假开关。
@@ -197,9 +188,6 @@ data class PixivSearchFilter(
      *
      * 两端都空 = 不限 ⇒ null。
      *
-     * 单边是真的有意义，2026-10-17 现量（词=`初音ミク`）：
-     * `scd=2026-10-10` 单独发 → `total` 936（首条 2026-10-18，即"那天之后"）；
-     * `ecd=2026-10-12` 单独发 → `total` 46415（首条 2026-10-12，即"截至那天"）。
      * 所以这里**不**把缺的那一端补成另一端：补上之后"从这天起"会静默变成"就这一天"，
      * 而屏上那两格明明一格是空的。
      *
@@ -221,7 +209,6 @@ data class PixivSearchFilter(
      *
      * ⚠️ 人气**不在这里**：www 那一跳对 `order=popular*` 是静默忽略的，发出去等于假装筛过。
      * 收藏也**不在这里**（`blt` / `bgt` 同样被忽略，现量逐条一字不差）—— 那一档走 [searchWord] 的词尾标签。
-     * 排除 AI **在**这里：`ai_type=1` 是匿名腿就生效的硬过滤（2026-10-18 现量，词=`猫`：
      * `ai_type=0` 回 21 条 `aiType=2`，`ai_type=1` 回 **0 条**）。
      */
     fun webParams(): List<Pair<String, String>> = buildList {
@@ -243,7 +230,6 @@ data class PixivSearchFilter(
      * 而我们屏上那枚「最新」必须真的对应 `date_desc`，否则就是拿站方的默认冒充我们的档）。
      *
      * 收藏门槛**只在会员那一边**发：`bookmark_num_min` 在站方是付费墙里的档位，非会员发过去会被静默忽略
-     * （那正是 2026-10-18「收藏 xxx+ 没生效」的主因）；非会员改走 [searchWord] 的词尾标签。
      * 「全部」那一档也不发：`bookmark_num_min=0` 与不传同义，多发一枚只是噪音。
      */
     fun appParams(premium: Boolean): List<Pair<String, String>> = buildList {

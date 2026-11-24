@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 标签那三件（2026-10-20，用户报「作品详情页的 tag 点击后应该进入 tag 搜索，但是没有任何反应，
  * 我返回后反而首页出现了搜索框但是没有任何词」＋「作品标签加入 pixiv 的多语言/翻译 tag 和
  * 长按标签可以屏蔽 复制 搜索的选项」）。
  *

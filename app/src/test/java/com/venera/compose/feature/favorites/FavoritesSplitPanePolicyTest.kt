@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 收藏页双栏档位判据（2026-10-12，用户点名的 B 方案）。
  *
  * 这张用例要钉的是**零回归线**：`< 600dp` 必须走单栏，且 600 这条边界归**双栏**
  * （与 MD3 WindowSizeClass 的 media 档一致，不是本仓 WideScreenPolicy 的 `>` 口径）。
@@ -20,7 +19,6 @@ class FavoritesSplitPanePolicyTest {
      * 手机档全区间必须是单栏。
      *
      * 这是方案 §4「零回归线」的可执行形态 —— 一旦有人把阈值调低，
-     * 手机端会冒出双栏，而真机回归未必抓得到（要特定宽度才复现）。
      */
     @Test
     fun `手机档必须是单栏`() {
@@ -71,8 +69,6 @@ class FavoritesSplitPanePolicyTest {
         }
     }
 
-    // ── 右栏载荷的键（2026-10-13：真机崩溃栈逼出来的一格）──
-
     /**
      * 号里带斜杠与竖线也要原样回来。
      *
@@ -122,7 +118,6 @@ class FavoritesSplitPanePolicyTest {
     }
 
     /**
-     * 宿主那颗**不许再把域对象塞进导航器**（真机崩形的机械尺子）。
      *
      * 崩形是：`rememberListDetailPaneScaffoldNavigator<ComicItem>()` +
      * `navigateTo(Detail, comic)` —— 导航器由 `rememberSaveable` 存，Android 侧
@@ -172,8 +167,6 @@ class FavoritesSplitPanePolicyTest {
             code.none { Regex("""weight\(\s*[0-9]""").containsMatchIn(it) },
         )
     }
-
-    // ── 两栏重量：右栏没内容就不许占宽（2026-10-13 用户读数）──
 
     @Test
     fun `右栏没内容时列表吃满全宽`() {

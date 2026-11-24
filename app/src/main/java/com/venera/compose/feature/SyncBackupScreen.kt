@@ -132,8 +132,8 @@ fun SyncBackupScreen(
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF009688)),
+                                    .clip(RoundedCornerShape(com.venera.compose.ui.tokens.VeneraTokens.shape.badge))
+                                    .background(com.venera.compose.ui.tokens.SettingsBadgeColors.Connectivity),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Outlined.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -285,7 +285,7 @@ fun SyncBackupScreen(
                                         }
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(color = Color(0xFF388E3C)),
+                                colors = ButtonDefaults.buttonColors(color = com.venera.compose.ui.tokens.StatusColors.Healthy),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Outlined.CloudDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -305,8 +305,8 @@ fun SyncBackupScreen(
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFFFF9800)),
+                                    .clip(RoundedCornerShape(com.venera.compose.ui.tokens.VeneraTokens.shape.badge))
+                                    .background(com.venera.compose.ui.tokens.SettingsBadgeColors.Library),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Outlined.FolderZip, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))

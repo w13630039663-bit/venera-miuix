@@ -15,7 +15,6 @@ import kotlinx.coroutines.withContext
 /**
  * 分享一条**原档**（图或视频），并把单页链接一并带上。
  *
- * 从大图页工具条那一段整体搬过来（2026-10-04）：墙上长按也要同一个动作，
  * 复制一份两份迟早漂 —— 而这两份的差别只会体现在"哪一边的失败没说话"上。
  * 防重入（`sharing` 那面旗）与震动反馈**留在调用方**：那是各自主宿的 UI 状态，
  * 搬进来说不清是谁的旗。
@@ -25,7 +24,6 @@ import kotlinx.coroutines.withContext
  * - **取原档**（`GallerySaver.fetchBytes`），与「保存」那条路同源同档 ——
  *   分享出去的和保存下来的必须是同一份。
  * - **原样落字节，不解码不重编码**：不用阅读器那条 `bitmap.compress(JPEG, 95)`，
- *   那会洗掉 png 的 alpha 并把原图降质（`GallerySaver` 顶部注释已明令禁止这条路）。
  * - **MIME 按站方扩展名**（`GallerySaver.mimeOf`），未知扩展名退 `application/octet-stream`
  *   而不是猜一个。
  *
@@ -40,7 +38,6 @@ internal suspend fun shareGalleryPost(context: Context, target: GalleryPost) {
             // `runCatching{…}.onFailure{…}` 交出的是 `Result<Uri>` 而**不是** `Uri`，
             // 于是下面那句 `putExtra(EXTRA_STREAM, uri)` 静默挑中了
             // `putExtra(String, Serializable)` 那个重载（kotlin.Result 声明了 Serializable）——
-            // 编译通过、真机当场 "Parcelable encountered IOException writing serializable
             // object (name = kotlin.Result)"，分享**一次都没有成功过**。
             // 显式类型 + getOrElse 让这一类错落在编译期，而不是落在用户手上。
             // 同一族陷阱见 [cacheShareUri]：那颗的返回类型也**写死成 Uri?**，

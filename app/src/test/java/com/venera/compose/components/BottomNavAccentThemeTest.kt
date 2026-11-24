@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 底栏「选中那一枚」的着色来源（2026-10-15 修）。
  *
  * 用户报：换主题 / 换强调色 / 跟壁纸取色时，别的控件都跟着变，**唯独底部那条液态玻璃导航栏
  * 选中项那枚图标恒是同一支蓝**。根因是"默认值即违规值"：
@@ -18,7 +17,6 @@ import org.junit.Test
  * 修在定义处而不是调用点：这样将来任何新调用点都不会退回硬编码。
  *
  * ⚠️ 那颗文件里 `containerColor`（玻璃壳底）仍写死 `0xFFFAFAFA` / `0xFF121212` —— 那是
- * **另一件事**（半透明玻璃的底色档，改它要先真机看透不透），所以判据只认"含 accent 的行"，
  * 不许把它算成违规，也不许让它往强调色那一族扩散。
  */
 class BottomNavAccentThemeTest {

@@ -36,7 +36,6 @@ data class GuardRule(
  * [com.venera.compose.gallery.domain.GalleryAi]。）
  *
  * `internal` 而不是 private：画廊那把 AI 判据（[com.venera.compose.gallery.domain.GalleryAi]）
- * **以这张表为准再只收窄不放宽**，只把开关分家（用户 2026-09-29 拍板"画廊和漫画分开"= 分开的是开关）。
  * 词表复制第二份迟早会漂，漂的那一半通常是被抄的那份。
  */
 internal val AiTagKeys = setOf("ai", "ai-generated", "ai生成", "ai绘图")

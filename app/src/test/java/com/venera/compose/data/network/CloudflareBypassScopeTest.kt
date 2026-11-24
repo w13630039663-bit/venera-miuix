@@ -8,7 +8,6 @@ import org.junit.Test
 /**
  * "这条请求能不能弹过盾窗口"的判据锁。
  *
- * 起因是真机反馈（2026-09-25）：Danbooru 开 HD 档会整屏弹出 Cloudflare 人机验证页。
  * 撞盾的是 `cdn.donmai.us/original/…` 那一档，而它当时被当成普通 API 请求处理了 ——
  * 于是 Coil 的一个取图线程 `runBlocking` 挂在那里等一次人机交互。
  * 更要紧的是这条链**本身自相矛盾**：过盾成功后绑到该 host 上的 UA 是 WebView 那串真实浏览器串，

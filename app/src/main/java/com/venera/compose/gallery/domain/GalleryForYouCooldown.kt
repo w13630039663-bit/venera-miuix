@@ -5,7 +5,6 @@ import com.venera.compose.gallery.data.GallerySite
 import java.util.Random
 
 /**
- * 「换一批」的随机性与**冷却轮**判据（2026-11-03，用户「换一批总是一模一样的，之前出现过一次的过几轮再出现」）。
  *
  * ## 它治的两件事
  *

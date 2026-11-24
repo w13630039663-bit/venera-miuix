@@ -1,17 +1,28 @@
 package com.venera.compose.components.venera
 
 import com.venera.compose.components.LocalWindowWidthDp
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +33,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.venera.compose.components.isWideScreen
 import com.venera.compose.ui.tokens.VeneraTokens
 import top.yukonga.miuix.kmp.basic.Text
@@ -29,14 +41,10 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * 分段选择器：**每枚选项各自一颗药丸**，没有外框。
  *
- * 2026-09-28 换掉旧形态（用户点名照 pixez-miuix 动态页那排「全部 / 公开 / 私密」改）。
  * 旧版是 MD3 的"药丸中的药丸"：整条大药丸描一根 0.5dp hairline，里面一颗实心块滑动。
  * 那个结构在**实时模糊的玻璃顶栏**上不成立 —— 容器描边贴在亮画作上时几乎看不见，
- * 于是整条读起来像一个断掉的框（真机截图：画廊两页切换与收藏页图片收藏那一行都这样）。
  * 每颗自己带底就不依赖描边了，背后是什么内容都读得清。
  *
- * 保留的既有口径（这些是历轮真机反馈定的，不随这次改动）：
- *  - 高 48dp（`spacing.segmentedHeight`；用户真机反馈 40dp 太矮细弱后升档），
  *    宽屏档 `segmentedHeightWide`（56dp）并升字号到 `itemTitle`（用户平板演示拍板）；
  *  - 单元间隙 `spacing.segmentedGap`（10dp，取现成的 space5）；
  *  - 文字 14sp（`type.body`）Medium，单行省略；
@@ -47,7 +55,6 @@ import top.yukonga.miuix.kmp.basic.Text
  *  - [SegmentedBackdrop.Glass]：`surfaceVariant` 叠现成的 `selectedSurfaceAlpha`（0.5，VeneraChip
  *    禁用态同一档）。刻意**半透明**而不是涂实底 —— 玻璃顶栏上涂不透明底会拉出一条横贯屏幕的硬边（已拍板那条）。
  *  - [SegmentedBackdrop.Opaque]：`surfaceVariant` **不透明**。实色卡（如画廊搜索卡）上那层 0.5 会被
- *    卡底吃掉 —— 真机逐像素量过：未选药丸与卡底 `#F4E4E5 / #F4E1E3` 只差 **1.021:1**，等于看不见，
  *    而这一排是首页摘掉重复件之后**唯一的换源入口**。涂实底就回到 MD3 本来的那一档
  *    （`surfaceVariant` 比 `surfaceContainerHigh` 低一档，约 1.05:1），不靠描边表达层次。
  *
@@ -62,6 +69,13 @@ fun VeneraSegmentedButton(
     /** 这一排落在哪种底上 —— 未选档"看不看得见"完全由它决定（见类头注那两条现量）。 */
     backdrop: SegmentedBackdrop,
     modifier: Modifier = Modifier,
+    /**
+     * 每段右侧的角标文本（null / 缺项 = 这一段不画角标）。
+     *
+     * 为什么做成可选参数而不是新组件：角标是"这一段还有几件事没看"的附属信息，
+     * 与分段器本身的选中语义无关；另造一颗组件会把药丸底、缩放、玻璃档那套规矩抄第二份。
+     */
+    badges: List<String?> = emptyList(),
 ) {
     val tokens = VeneraTokens
     val wide = isWideScreen(LocalWindowWidthDp)
@@ -75,7 +89,8 @@ fun VeneraSegmentedButton(
     ) {
         options.forEachIndexed { index, label ->
             val selected = index == selectedIndex
-            // 缩放只影响绘制，不动布局：三颗的宽度不会因为哪颗在缩而互相推挤。
+            val badge = badges.getOrNull(index)
+            // 缩放只影响绘制，不动布局：几颗的宽度不会因为哪颗在缩而互相推挤。
             val scale by animateFloatAsState(
                 targetValue = if (selected) 1f else 0.96f,
                 animationSpec = spring(
@@ -84,34 +99,78 @@ fun VeneraSegmentedButton(
                 ),
                 label = "segmentedCellScale",
             )
+            val seat by animateColorAsState(
+                targetValue = when {
+                    selected -> tokens.color.primary
+                    backdrop == SegmentedBackdrop.Opaque -> tokens.color.surfaceVariant
+                    else -> tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
+                },
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                label = "segmentedCellSeat",
+            )
+            val labelColor by animateColorAsState(
+                targetValue = if (selected) tokens.color.onPrimary else tokens.color.textPrimary,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                label = "segmentedCellLabel",
+            )
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
                     .scale(scale)
                     .clip(shape)
-                    .background(
-                        if (selected) {
-                            tokens.color.primary
-                        } else if (backdrop == SegmentedBackdrop.Opaque) {
-                            tokens.color.surfaceVariant
-                        } else {
-                            tokens.color.surfaceVariant.copy(alpha = tokens.current.selectedSurfaceAlpha)
-                        },
-                    )
+                    .background(seat)
                     .clickable { onSelect(index) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label,
-                    fontSize = labelSize,
-                    fontWeight = tokens.type.weightMedium,
-                    color = if (selected) tokens.color.onPrimary else tokens.color.textPrimary,
-                    maxLines = 1,
-                    textAlign = TextAlign.Center,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = tokens.spacing.space5),
-                )
+                // 四段档把横衬垫从 10dp 收到 6dp：393dp 屏上每格约 79dp，
+                // 「本地收藏」四个字在 14sp 下约 56dp，10dp×2 的衬垫会把它挤成「本地收…」。
+                val hPad = if (options.size >= 4) tokens.spacing.space3 else tokens.spacing.space5
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = hPad),
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = labelSize,
+                        fontWeight = tokens.type.weightMedium,
+                        color = labelColor,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (badge != null) {
+                        Spacer(modifier = Modifier.width(tokens.spacing.space2))
+                        // 角标本身也走一次换数动画：检查完从 3 变 0 时，直接消失会像点漏了
+                        AnimatedContent(
+                            targetState = badge,
+                            transitionSpec = {
+                                (scaleIn(initialScale = 0.7f) + fadeIn()) togetherWith
+                                    (scaleOut(targetScale = 0.7f) + fadeOut())
+                            },
+                            label = "segmentedBadge",
+                        ) { text ->
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (selected) tokens.color.onPrimary
+                                        else tokens.color.primary.copy(alpha = 0.16f)
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = text,
+                                    fontSize = 10.sp,
+                                    fontWeight = tokens.type.weightBold,
+                                    color = if (selected) tokens.color.primary else tokens.color.primary,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

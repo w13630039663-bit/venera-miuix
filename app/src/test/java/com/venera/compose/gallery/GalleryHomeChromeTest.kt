@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 画廊首页那一格 chrome 的形状（2026-10-15 改口径）。
  *
  * 用户两条：① 「把首页默认显示的源站去掉，只在搜索框展开时显示」；
  * ② 点开搜索那一下要有容器变化的过渡 —— 病是入口条那一行原先**整块从内容里消失**
@@ -89,7 +88,6 @@ class GalleryHomeChromeTest {
     }
 
     @Test fun `搜索卡的进出场动画挂在能被观察到的状态变化上`() {
-        // 2026-10-15 第二笔：用户回「还是没有容器变化动画」。真根因不在动画定义 ——
         // `AnimatedVisibility` 从前被 `if (svm.active) { … }` 包着：开搜索那一刻它是**新组合进来的**，
         // 内部状态初值直接等于目标值，没有 false→true 那一跳 ⇒ enter 一个字都不播。
         // 钉两条：visible 自己吃 svm.active；且 `AnimatedVisibility(` 不许再紧跟在 `if (svm.active)` 之后。
@@ -108,12 +106,10 @@ class GalleryHomeChromeTest {
     }
 
     @Test fun `搜索条的内缩长在外框上而不是 Surface 里`() {
-        // 2026-10-17 第四轮（用户第二次点「搜索栏大小还是没有对齐」）。
         //
         // 上一轮把两处 `height` 从 `dockedSearchBarHeight`(56) 改成 `segmentedHeight`(48) 之后
         // 仍然不齐 —— 真凶是**内缩挂在哪一层**：miuix `Surface` 的底色铺的是它自己的节点
         // （`basic/Surface.kt:57-69`），`padding` 串在链上更外，于是「内缩 + 48」整块被涂色。
-        // 真机读数（1080×572，密度 2.625）：切换器药丸 129px ≈ 48dp，搜索条底色 152px ≈ 58dp
         // = space2 + 48 + space3 —— 差的正是那 10dp 内缩。
         //
         // 所以钉的不是数字，是**链的形状**：从共享元素外框到定高之间只许有"铺满 + 定高"，

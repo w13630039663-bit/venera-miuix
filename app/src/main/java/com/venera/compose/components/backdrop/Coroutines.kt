@@ -9,7 +9,6 @@ import com.venera.compose.components.UxPlatformServices
 /**
  * 等待下一帧 —— 官方 `DampedDragAnimation.release()` 用它让回弹动画慢一拍启动。
  *
- * ## 2026-10-20 改判：从 `Choreographer` 换成平台服务
  *
  * 原实现（保留下来的原文，供后人核对语义）：
  * ```

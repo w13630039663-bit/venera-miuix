@@ -8,7 +8,6 @@ import java.util.Random
 data class SettingsQuote(val text: String, val source: String? = null)
 
 /**
- * 名言池（2026-10-02，设置页重设计）。
  *
  * 两条内容纪律：
  * 1. **不伪造出处** —— 对得上真实出处的（古诗词）才写人名；其余是本应用的原创短句，

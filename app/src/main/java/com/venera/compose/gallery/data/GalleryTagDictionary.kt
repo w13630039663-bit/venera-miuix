@@ -110,7 +110,6 @@ class GalleryTagDictionary private constructor(context: Context) {
             ?.toMap() ?: emptyMap()
 
     /**
-     * 按**中文译名反查**标签行（2026-11-05，用户「现在都需要用英文搜索，看下能不能用翻译的 tag 搜」）。
      *
      * 正向的 [translations] 是 `英文名 → 译名`（卡片显示用），这一个反着走 `译名 → 行`（搜索输入用）。
      * 排序按"当搜索词最有用的档"：作品(3) > 角色(4) > 画师(1) > 通用(0)，元数据(5) 不交 ——
@@ -131,7 +130,6 @@ class GalleryTagDictionary private constructor(context: Context) {
     /**
      * 这批名字里**能当卡片标题用**的那些（通用 / 画师 / 作品 / 角色四档），连同中文译名与档位。
      *
-     * 2026-09-30 新增：画廊卡片那一行标题用的就是它（两站的 post JSON **都没有标题字段**，
      * 判据与理由详见 `GalleryCardTitle`）。返回 `name(lowercase) → GalleryTitleTag`。
      * 批次 M · M6 起它从"只交作品/角色两档"放宽到四档 —— 用户要求「没有标题就不要完全空着」，
      * 回退链要画师名与通用标签译名，这两档就得从库里出来。**元数据档（5）仍然不交**。

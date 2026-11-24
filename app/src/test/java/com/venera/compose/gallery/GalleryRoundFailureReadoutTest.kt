@@ -19,7 +19,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 整轮取数失败时「屏上说得出话」的判据（2026-10-15，问题清单 P0-1）。
  *
  * ── 这条缺陷长什么样 ──
  *
@@ -27,7 +26,6 @@ import org.junit.Test
  * `error != null && !hasPosts` 之后 —— 有卡，所以错误视图上不了屏；而当时**唯一**能
  * 上屏的失败位置（网格首行那排按档提示）吃的是 `GalleryViewModel.failures`，
  * 那份结构只在成功那一轮被 `accept()` 写过。于是失败轮在屏上是**零说法**：
- * 用户读到"这几站没图"，实情是没网。（真机读数：`_qa/ui-verify-2026-10-15/scr-a8-gallery.png`，
  * 语义树里与状态相关的文本只有 `标签 / 画师 / 作品` 与一条上一轮留下的推荐空态。）
  *
  * ── 为什么尺子立在 domain 而不是 UI ──
@@ -35,7 +33,6 @@ import org.junit.Test
  * 根因是**发车那一处把已经算出来的结构丢了**（`GalleryDailyFeed` 全空分支只交出一句
  * 拼好的串）。修复也是在那一处：交出 [GalleryEmptyRound]，页面与提示件一行没改。
  * 所以这里钉的是"结构带得出来 + 归得了档 + 给得了重试"这三件事，全是纯 JVM 判据；
- * 而"屏上真的出现了那一排"要真机成对截图补（本机无设备，见交付说明）。
  */
 class GalleryRoundFailureReadoutTest {
 
@@ -68,7 +65,7 @@ class GalleryRoundFailureReadoutTest {
             override suspend fun fetchTopScored() = Result.failure<List<GalleryPost>>(IOException("Connection reset"))
         }
 
-        override val safebooru = object : ScoredBoard {
+        override val konachan = object : ScoredBoard {
             override val pageSize = 100
             override suspend fun searchPosts(tags: String, page: Int, limit: Int) =
                 Result.failure<List<GalleryPost>>(IOException("ConnectException"))
@@ -93,12 +90,11 @@ class GalleryRoundFailureReadoutTest {
      * 「每一站都要有自己的原因」与「这条通知点名了哪几站」里的**那一排站**。
      *
      * 指的是**每日热门这台机器真打的那几腿**，不是 [GallerySite] 的枚举全集 —— 写成字面量是**故意的**：
-     * 2026-10-16 pixiv 进了枚举但**不进**每日热门（选型⑤：pixiv 只从首页那一格=内容域进，
      * 另吃 `ranking.php` 那条榜单腿与 `ajax/search/artworks/{词}` 那一跳）。
      * 以后谁把第四站接进这台机器却忘了改这里，这把尺子要红并逼一次表态，
      * 而不是拿 `entries.toSet()` 自动把它算成"欠一个原因"（那正是本批一开始量到的那两枚红）。
      */
-    private val dailyFeedLegs = setOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.SAFEBOORU)
+    private val dailyFeedLegs = setOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.KONACHAN)
 
     @Test
     fun `三站全没货时交出的那笔失败带着按站原因`() = runBlocking {
@@ -141,7 +137,6 @@ class GalleryRoundFailureReadoutTest {
         assertEquals(GalleryNoticeTone.Error, notice.tone)
         assertEquals("失败必须给得出路，出路就是重试", GalleryNoticeAction.Retry, notice.action)
         // 同 :103 那一条的口径：这条通知覆盖的是**每日热门真打的那三腿**，不是枚举全集。
-        // pixiv 于 2026-10-16 进枚举但不进这台机器（选型⑤ 走首页那一格=内容域，另吃 `ranking.php`），
         // 所以它不该出现在这条通知里 —— 用字面量写死，将来接进这台机器时必须改这里并留一句为什么。
         assertEquals(dailyFeedLegs.toList(), notice.sites)
         // 正文逐站念原始原因，一个字都不合并（合并就读不出是哪一站、也读不出为什么）。
@@ -179,7 +174,7 @@ class GalleryRoundFailureReadoutTest {
                     Result.success(listOf(post(GallerySite.GELBOORU, 3), post(GallerySite.GELBOORU, 4)))
             }
 
-            override val safebooru = object : ScoredBoard {
+            override val konachan = object : ScoredBoard {
                 override val pageSize = 100
                 override suspend fun searchPosts(tags: String, page: Int, limit: Int) =
                     Result.failure<List<GalleryPost>>(IOException("403"))
@@ -194,6 +189,6 @@ class GalleryRoundFailureReadoutTest {
 
         val daily = GalleryDailyFeed(boards).loadDaily(seed = 7L).getOrThrow()
 
-        assertEquals("只缺 Safebooru 一站", setOf(GallerySite.SAFEBOORU), daily.failures.keys)
+        assertEquals("只缺 Konachan 一站", setOf(GallerySite.KONACHAN), daily.failures.keys)
     }
 }

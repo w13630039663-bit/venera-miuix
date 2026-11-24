@@ -75,7 +75,6 @@ internal fun explorePageTitle(title: String, sourceName: String): String {
 }
 
 /* ------------------------------------------------------------------ *
- * 显隐判据与屏上文案（2026-10-14 模式行 / 筛选 / 容错那一轮）
  * ------------------------------------------------------------------ */
 
 /**
@@ -104,7 +103,6 @@ internal fun filterEntryCount(availability: UnifiedTagAvailability): Int =
 /**
  * 把裸异常 message 翻成人话。
  *
- * **2026-10-14 第三轮：整条逻辑搬去 [com.venera.compose.source.humanizeSourceError]** ——
  * 原来只有探索页用，详情页/二级分类/搜索/网络收藏各写各的 `e.message`，于是同一颗源的
  * 同一个 210 在四个页面是四种说法（探索页"加载失败，请稍后重试"、详情页直接念
  * "Invalid status code: 210"）。收口到一处之后，屏上文案只有一份来源。

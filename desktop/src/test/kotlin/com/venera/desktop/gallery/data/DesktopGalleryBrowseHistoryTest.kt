@@ -95,7 +95,7 @@ class DesktopGalleryBrowseHistoryTest {
     fun 同刻的两行按站键与号定序() {
         val rows = desktopBrowseRowsSorted(
             listOf(
-                view(site = GallerySite.SAFEBOORU, id = 5L, at = 900L),
+                view(site = GallerySite.KONACHAN, id = 5L, at = 900L),
                 view(site = GallerySite.YANDERE, id = 2L, at = 900L),
                 view(site = GallerySite.YANDERE, id = 1L, at = 900L),
                 view(site = GallerySite.YANDERE, id = 3L, at = 1_000L),
@@ -105,7 +105,7 @@ class DesktopGalleryBrowseHistoryTest {
             "倒序 + 同刻按站键再按号",
             listOf(
                 Triple(GallerySite.YANDERE, 3L, 1_000L),
-                Triple(GallerySite.SAFEBOORU, 5L, 900L),
+                Triple(GallerySite.KONACHAN, 5L, 900L),
                 Triple(GallerySite.YANDERE, 1L, 900L),
                 Triple(GallerySite.YANDERE, 2L, 900L),
             ),
@@ -240,10 +240,10 @@ class DesktopGalleryBrowseHistoryTest {
     // ⑬ 一行念「站名 · #号 · 时刻」，用的是站点的**显示名**而不是 routeKey。
     @Test
     fun 每一行念站名与号() {
-        val line = desktopBrowseRowLine(view(site = GallerySite.SAFEBOORU, id = 42L, at = 1_700_000_000_000L))
-        assertTrue("要带站名：$line", line.contains(GallerySite.SAFEBOORU.displayName))
+        val line = desktopBrowseRowLine(view(site = GallerySite.KONACHAN, id = 42L, at = 1_700_000_000_000L))
+        assertTrue("要带站名：$line", line.contains(GallerySite.KONACHAN.displayName))
         assertTrue("要带号：$line", line.contains("#42"))
-        assertFalse("不许把 routeKey 念给用户：$line", line.contains(GallerySite.SAFEBOORU.routeKey))
+        assertFalse("不许把 routeKey 念给用户：$line", line.contains(GallerySite.KONACHAN.routeKey))
     }
 
     // ⑭ 落点这颗**只算不建**（与批 85 那颗存图件同一条：算一下不许在盘上多出目录）。

@@ -9,11 +9,9 @@ import com.venera.compose.gallery.ui.GallerySearchHandoff
 import com.venera.compose.gallery.ui.PixivWorkScreen
 
 /**
- * **pixiv 作品页**的宿主（2026-10-18，站源独用）。
  *
  * 与 [GalleryPostActivity] 平行而不是复用：那颗继续承载图库三站那套"一张 = 一屏、左右翻邻居"，
  * 这一颗承载 pixiv 的"纵轴同作品多页连读、横轴换作品"。两屏互不吃对方的界面
- * （用户 2026-10-18 点名：「这个作品页是 pixiv 站源独用的，之前图库源的应该用回之前的，两个隔离开」）。
  *
  * 承载方式照旧是独立 Activity：这一页要跨 activity 的预测式返回。窗口模糊不挂
  * （见 [blurBehindEnabled]），因为作品页本身就是照片墙，那层底只在返回手势里露馅。
@@ -58,7 +56,6 @@ class PixivWorkActivity : VeneraSubActivityBase() {
             onOpenArtist = { site, name, source ->
                 artistProfile.launch(artistProfileIntent(this, site, name, source))
             },
-            // 「相关图片」里点一张 = **新开一颗作品页**（2026-10-19 第 8 条）。
             //
             // 旧写法是 `intent.putExtra(...) + recreate()`，两个病一起长在上面：
             // 1. `recreate()` 不压栈 ⇒ 返回直接落回画廊主屏（用户：「返回不会回到上一个作品页」）；

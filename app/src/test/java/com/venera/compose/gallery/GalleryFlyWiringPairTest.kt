@@ -6,8 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 飞行接线的两把源码尺（批 A，2026-10-19；计划见
- * `docs/rounds/gallery-pixiv-hero-vs-pixez-2026-10-19.md` 批 A 判据 ③④）。
  *
  * ## 为什么要源码尺而不是运行时判据
  *

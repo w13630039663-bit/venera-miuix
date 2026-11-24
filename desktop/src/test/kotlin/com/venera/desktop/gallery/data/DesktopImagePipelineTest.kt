@@ -80,7 +80,7 @@ class DesktopImagePipelineTest {
         assertEquals("另一枚子域也要吃到（表里那条按后缀匹配）", DESKTOP_PIXIV_REFERER, refererFor("https://s.pximg.net/x.png"))
         assertEquals("裸域本身也要吃到", DESKTOP_PIXIV_REFERER, refererFor("https://pximg.net/x.png"))
         // 对照组三枚：画廊本站、donmai 的 CDN、以及一枚**名字像而不同**的域（后缀匹配写成 contains 就会中）
-        assertNull("对照组被污染：safebooru 那一笔不该吃 pixiv 的 Referer", refererFor("https://safebooru.donmai.us/1.jpg"))
+        assertNull("对照组被污染：konachan 那一笔不该吃 pixiv 的 Referer", refererFor("https://konachan.net/1.jpg"))
         assertNull("yande.re 那一笔不该吃", refererFor("https://yande.re/image/x.jpg"))
         assertNull("`notpximg.net` 不是 pximg.net（后缀匹配不许用 contains / endsWith(不带点)）", refererFor("https://cdn.notpximg.net/x.jpg"))
     }

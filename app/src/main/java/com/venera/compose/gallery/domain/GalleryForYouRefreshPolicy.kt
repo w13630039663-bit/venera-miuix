@@ -10,7 +10,6 @@ package com.venera.compose.gallery.domain
  * pop 时 "ViewModels will be cleared" —— `saveState` 只救 `rememberSaveable`，救不了
  * `viewModel()`。所以每次回到画廊，那一屏的 VM 都是全新的。
  *
- * 日榜那一屏 2026-09-29 就为这件事配过一份离线快照加同日门
  * （[GalleryFeedRefreshPolicy]），但**猜你喜欢这一屏从来没接上同一套**：它没有缓存，
  * 于是每次进来必发一笔请求，而且 `seed` 是新实例的 `System.currentTimeMillis()`，
  * 连推荐标签都重抽一遍 —— 用户读到的就是"整个页面重新加载了一遍，内容还换了"。

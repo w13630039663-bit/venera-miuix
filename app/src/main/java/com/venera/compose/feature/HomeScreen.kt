@@ -158,11 +158,9 @@ fun SharedTransitionScope.AndroidHomeScreen(
                 end = tokens.spacing.rowHorizontal,
                 // ── 顶部内边距**不吃** `topBarFloor` 那枚 104dp 的地板 ──
                 //
-                // 2026-10-19 用户原话：「首页这边的高度边距怎么那么大」。那枚地板是给
                 // **顶栏带大标题**的页面量的：104 = 折叠行 52 + 大标题行 52。而首页的顶栏是
                 // `largeTitle = ""`（大标题由下面 hero 自绘，那颗 30sp 的「首页」就是它），
                 // 于是那 52dp 大标题行在屏上**什么都没画** —— 104dp 里有一半是纯空白，
-                // 真机读数就是「标题离状态栏 106dp」，一屏顶上一大块空。
                 //
                 // 改成「折叠行 + 4dp」：标题顶落在胶囊行（中心 inset + 26dp、视觉 40dp 高）
                 // 下面 12dp 处，与顶栏折叠后那颗小标题同一条基准线。
@@ -540,7 +538,6 @@ fun SharedTransitionScope.AndroidHomeScreen(
                         Spacer(Modifier.height(tokens.spacing.space4))
 
                         val (blockWidth, _) = rememberContentWidth()
-                        // 手机 2 列不变；宽窗列数**由目标宽反推**（用户 2026-10-23 大屏截图：
                         // 「主页画廊这些卡片又太大了」——前一批的固定 3 列在 600dp+ 宽窗上每张
                         // 近半屏宽）。1280dp 宽的屏一排能摆 6 张，每张回到 ~170dp 的阅读尺寸；
                         // 列数夹在 [3, 6]，免得极宽屏上碎成一把瓜子。
@@ -711,7 +708,6 @@ fun SharedTransitionScope.AndroidHomeScreen(
                 }
             }
 
-            // 7. 本地漫画卡已撤（2026-11-03）：「下载与本地」住底栏第五格，
             // 全项目下载/本地的唯一入口（HomeViewModel 的 localComicCount 读数一并闲置）。
             // 8. 漫画源
             if (sources.isNotEmpty()) {
@@ -804,7 +800,6 @@ fun SharedTransitionScope.AndroidHomeScreen(
  * 首页画廊格卡**宽高比**的允许区间（宽 ÷ 高）。
  *
  * 格子比例取自站方报的真宽高（[com.venera.compose.gallery.data.GalleryPost.cardRatio]），
- * 这样 `ContentScale.Fit` 恰好铺满：**不裁剪、不留黑边**（用户 2026-10-19 的两条诉求）。
  *
  * 为什么还要夹：站方数据会飘 —— `0f`（没报宽高）会让比例变 0、长图/横幅会把一行拉成
  * 一根竖条或一条扁带。两头各卡一道：

@@ -7,7 +7,6 @@ import java.util.Random
 /**
  * 把两站的**热门池**合成一屏：滤掉不能摆的 → 去重 → 各抽 20 → 打乱。
  *
- * 2026-09-25 用户第四次改判（方案 §十三）：落地流不再是"两站最新交错"，而是
  * 两站各取一批热门、各抽 20 张然后**打乱**。所以这一版：
  * - **删掉了交错**（旧 `RUN_PATTERN` 那套"允许单源连出 1~3 张"的额度排法）——
  *   打乱之后连出几张是随机的自然结果，不再控制；
@@ -72,7 +71,6 @@ object GalleryMerge {
      * 「换一批」能不能**只在本地重排**：手上那份原始池还够不够再洗一次。
      *
      * 批次 K 把日榜那面墙的「换一批」改成"留存两站原始池、只换种子重排，不重新请求"
-     * （用户 2026-09-30 拍板）。池子不够就必须回真取一次 —— 按下去屏上纹丝不动，
      * 就是那两个按钮存在的意义要防的假按钮。
      *
      * 取 `>= 2` 而不是"非空"：只有一张时重排出来的还是那一张，用户看不出这一下干了什么。
@@ -106,7 +104,6 @@ object GalleryMerge {
         var droppedDuplicates = 0
         val posts = ArrayList<GalleryPost>(SCREEN_SIZE)
         // GallerySite.entries 的顺序即"先去重的优先序"，固定下来才不会因为 HashMap 无序而飘。
-        // 但**只走这一轮真给了键的那些站**：2026-10-16 pixiv 进枚举之后，按 `entries` 全遍历再
         // `getValue` 会让每一台没有 pixiv 的生产端当场抛 `NoSuchElementException: Key PIXIV`
         // （现量：GalleryMergeTest 12 笔 + GalleryRoundFailureReadoutTest 1 笔一起红）。
         // 这一把写法不是新造的 —— 隔壁 `GallerySearchMerge.kt:58` 与 `GalleryForYouMerge.kt:123`

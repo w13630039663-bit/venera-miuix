@@ -7,7 +7,6 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 画廊搜索卡的**色调台阶**（2026-10-15，用户「除了这些整个ui直接改成图一吧」）。
  *
  * 参考图逐像素量出来的账：卡底 `#FCF0F0`，控件底 `#F6E4EA` / `#F0E4E4` —— 两级台阶
  * 1.055:1 与 1.115:1，**全卡零描边**。我们当时整张卡只有一档平面：卡底 `#EAE7EE`、
@@ -19,7 +18,6 @@ import java.io.File
  *  - 输入行 / 推荐容器 / 筹码 / 未选药丸 四处都吃 `surfaceVariant` 那一档；
  *  - 整颗文件里不许再出现 `BorderStroke(` 或 `.border(`（负向，一次列全违例）；
  *  - 输入行那颗必须**定高** —— 它内部有一根 `fillMaxHeight()` 的竖分隔，
- *    只给下限时那一行会被撑成整屏高的拱门（真机截图量过，见那颗 Row 的注释）；
  *  - `VeneraChipVariant.Tonal` 是这一档的载体：填 `surfaceVariant`、不吃玻璃、不描边。
  */
 class GallerySearchCardTonalTest {

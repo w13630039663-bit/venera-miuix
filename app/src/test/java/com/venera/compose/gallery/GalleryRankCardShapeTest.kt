@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 排行榜那排卡的**形状判据**（2026-10-17 第二十二轮）。
  *
  * 触发这一轮的是用户那句「卡面太小了，就好像压扁了那样，排行榜也没画师头像，缩到一行只同时显示两个半吧」。
  * 三件事里前两件是**数据与几何**，第三件是**数量**，它们各自都能悄悄退回去：
@@ -237,7 +236,6 @@ class GalleryRankCardShapeTest {
 
         // ⚠️ 「换一批」是节头那一行的**唯一动作**，不是筛选器 —— 用户第二十四轮报它「太小了」。
         // 它放大一档是**故意的**，所以这条判据刻意把三者的关系写反：宁可钉住"不许跟着筛选器缩回去"，
-        // 也不让它混进上面那两条的计数里（混进去过一次，然后被用户打回）。
         val chip = bodyOf(home, "internal fun PixivRemixChip(")
         assertTrue(
             "换一批必须比筛选药丸大一档（`itemTitle` + `space3`）：\n$chip",

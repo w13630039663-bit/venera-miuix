@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
 class VeneraNetworkClient private constructor(private val context: Context) {
 
     /**
-     * CookieJar 与 OkHttpClient 都推迟到首次真正使用。真机冷启实测：
      * `PersistentCookieJar()`（prefs 全表读 + 每个 host 一次 gson 解析）要 33~42ms、
      * `buildClient()` 装配五个拦截器要 14~24ms，原先这两笔全压在 Application.onCreate
      * 的主线程上；改延迟后由壳层在 IO 线程预热，首图要用时已经备好。
@@ -215,7 +214,6 @@ class VeneraNetworkClient private constructor(private val context: Context) {
  * 1. **该 host 过盾时绑定的真实 UA**（[UserAgentPolicy]）—— 它必须与 CookieJar 里的
  *    `cf_clearance` 严格配对，换掉就等于把刚过完的盾当场作废；
  * 2. **[ImageHeaderPolicy] 给该 host 钉的 UA**（`donmai.us` 那一串 `Venera/1.0 (Android)`）。
- *    ⚠️ 这一层在 2026-09-26 之前**从来没生效过**：本拦截器排在 `ImageHeaderInterceptor`
  *    外层，先把全局 Chrome 串填上，里层「只补请求里还没有的头」再看到 UA 已存在就跳过 ——
  *    于是「浏览器串打某些图站的 CDN 回 403 + `cf-mitigated: challenge`、非浏览器串回 200」
  *    这条实测结论一行都没落地，**反而正是下载必然撞盾的成因**：下载走的是裸

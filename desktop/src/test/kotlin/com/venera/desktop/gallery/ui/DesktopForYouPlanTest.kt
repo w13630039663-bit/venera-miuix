@@ -50,7 +50,7 @@ class DesktopForYouPlanTest {
         val favourites = listOf(
             fav(GallerySite.YANDERE, 1L, "mountain_river"),
             fav(GallerySite.GELBOORU, 2L, "1girl"),
-            fav(GallerySite.SAFEBOORU, 3L, "sky"),
+            fav(GallerySite.KONACHAN, 3L, "sky"),
         )
         val plan = planFor(favourites)
         assertEquals("三站都该发得出去", 3, plan.queries.size)
@@ -90,7 +90,7 @@ class DesktopForYouPlanTest {
         val favourites = listOf(
             fav(GallerySite.YANDERE, 1L, "sky"),
             fav(GallerySite.GELBOORU, 2L, "ocean"),
-            fav(GallerySite.SAFEBOORU, 3L, "forest"),
+            fav(GallerySite.KONACHAN, 3L, "forest"),
         )
         val all = setOf("sky", "ocean", "forest")
         val blocked = planFor(favourites, blocked = all)

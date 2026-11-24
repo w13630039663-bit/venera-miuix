@@ -34,7 +34,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 名言卡：设置首页与各子页**页尾**的一句短话（2026-10-02，参考图同位）。
  *
  * ── 内容 ──
  *

@@ -12,7 +12,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * 一整个解好包的 ugoira：**帧表 + 帧文件所在的那个目录**（2026-10-23，动图播放）。
  *
  * [dir] 里放的是站方 zip 原样解出来的那些帧（`000000.jpg`…），文件名与
  * [PixivUgoiraFrame.file] 逐字相等 —— 翻帧就是按表读文件，不再拼任何名字。
@@ -25,14 +24,11 @@ data class PixivUgoiraClip(
 )
 
 /**
- * ugoira 逐帧 zip 的**取回、解包与目录账**（2026-10-23）。
  *
  * ## 为什么这条腿必须存在（立案读数）
  *
- * 用户 2026-10-23：「目前 app pixiv 源的动图无法播放」。逐处查过：
  * - 作品页遇到 ugoira 只摆第一帧静图 + 一句「这一屏只画得出第一帧」（`PixivWorkScreen`）；
  * - 「去看图器放」那颗出口交的仍是站方的 `urls.original` —— 对 ugoira 那是
- *   `…_ugoira0.jpg`，**一张静帧 JPEG**（现量真号 151160372）；
  * - 全仓没有任何一处打过 `/ajax/illust/{id}/ugoira_meta`，也没有任何一处解过那个 zip。
  *
  * 所以动图不是"坏了"，是**这条腿压根没建**：Coil 那颗 [GalleryAnimationGate] 只管
@@ -42,7 +38,6 @@ data class PixivUgoiraClip(
  * ## 为什么落盘而不是只进内存
  *
  * 动图一开就是十几到几十帧的位图（小档 600×600 一帧解码后约 1.4 MB，17 帧就是 24 MB），
- * 全塞内存缓存会重演 2026-09-29 那条 OOM 读数（见 [GalleryAnimationGate] 的头注）。
  * 而 zip 的**字节**本来就已经躺在画廊那份 Coil 磁盘缓存里（`src` 也是 http 地址）——
  * 解包落盘只多占那一包解压后的量，翻回来不必重新下，代价可控。
  *

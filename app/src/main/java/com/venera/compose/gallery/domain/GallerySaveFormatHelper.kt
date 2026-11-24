@@ -3,7 +3,7 @@ package com.venera.compose.gallery.domain
 import com.venera.compose.gallery.data.GalleryPost
 
 /**
- * 图库站（Booru：yande.re / Gelbooru / Safebooru）下载保存格式解析器。
+ * 图库站（Booru：yande.re / Gelbooru / Konachan）下载保存格式解析器。
  *
  * 支持占位符：{site}、{id}、{artist}、{uploader}、{md5}、{rating}、{timestamp}。
  */

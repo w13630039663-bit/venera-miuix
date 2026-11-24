@@ -9,7 +9,6 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 卡片上那枚「几 P」的判据与接线（2026-10-18，用户「要能在图片卡片上另加看出这张有几页，
  * 而不是点进作品才显示有多少 P」）。
  *
  * 这一条立案时先量过数据面：**两腿本来就给页数**（榜腿 `illust_page_count` 是字符串、
@@ -61,7 +60,6 @@ class GalleryCardPagesBadgeTest {
 
     /**
      * pixiv 首页那一族卡（排行榜 / 推荐）与六处墙共用的那张卡走的是**两个件** ——
-     * AI 角标从前就因为只接了后者而整域零枚（2026-10-18 用户「开了 AI 角标一个都没见到」）。
      * 所以这里钉"两处各一枚"，而不是钉某一处有。
      */
     @Test
@@ -101,7 +99,7 @@ class GalleryCardPagesBadgeTest {
         listOf(
             "com/venera/compose/gallery/data/YandeReClient.kt",
             "com/venera/compose/gallery/data/GelbooruClient.kt",
-            "com/venera/compose/gallery/data/SafebooruClient.kt",
+            "com/venera/compose/gallery/data/KonachanClient.kt",
             "com/venera/compose/gallery/data/GalleryFavoritesStore.kt",
         ).forEach { rel ->
             assertEquals("$rel 不该给行模型填页数", 0, code(rel).countWith("pageCount"))

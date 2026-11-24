@@ -5,7 +5,6 @@ package com.venera.compose.gallery.domain
  *
  * 四档，**没有"跟随图片主色调"** —— 用户原话里那句"保留现在的样式（提取图片边缘颜色做渐变背景）"
  * 描述的东西从来不存在：现状是窗口 blur-behind 32dp 糊住底下那面墙 + 一层 0.45 黑压暗；
- * 而"边缘取色"这一版我们 2026-09 真做过一次，被真机否掉（"深色主题下头部变成一块边缘清晰的紫色矩形"），
  * `CoverPalette.kt` 已删、androidx.palette 依赖已回退（见 `detail-thumbnail-and-cover-tint-2026-09.md:188-192`）。
  *
  * [opaque] 是这一层唯一需要给判据的地方：非 GLASS 三档都是**不透明底**，

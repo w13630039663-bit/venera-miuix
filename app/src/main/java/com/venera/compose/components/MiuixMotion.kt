@@ -6,7 +6,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 
 /**
- * MIUIX / HyperOS 动效的**单一真相**（用户 2026-10-20 第 9 条：「加些 miuix 的预测返回动画」）。
  *
  * 三枚常量逐字取自 miuix 那份参考实现（`_probe/pixez-miuix` 的 `MiuixNavAnimation.kt` /
  * `MiuixPredictiveBackAnimation.kt`），不本地加码 —— 手感对不对，只有与原厂同一组数才算数：

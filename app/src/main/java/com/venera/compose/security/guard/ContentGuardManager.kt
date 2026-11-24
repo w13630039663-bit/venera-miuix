@@ -34,7 +34,6 @@ internal fun isAiTagValue(raw: String): Boolean =
  * 与本文件 [explicitPatterns] 同一约定）。
  *
  * 为什么需要它：e-hentai 把标记写在标题里（`[AI Generated]` / `[AI Art]`），
- * tags 里**没有** ai —— 纯标签判据会把整批漏掉（2026-09-22 实测截图）。
  *
  * 刻意只用「词组」与「括号独立词」两类，**不匹配裸 ai** —— 那会连 `openai`、
  * `AI少女`（角色名）、`waiting` 一起误杀。
@@ -52,7 +51,6 @@ private val AiTitlePatterns = listOf(
  */
 internal fun isAiTitleMarked(title: String): Boolean =
     title.isNotBlank() && AiTitlePatterns.any { it.containsMatchIn(title) }
-
 
 /**
  * 全局内容屏蔽与分级安全守卫
@@ -171,7 +169,6 @@ class ContentGuardManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             // 与改造前一致：规则读不出来就保持上一次已知的那批（首次是空表）。
             // 这里不升级成抛 —— 判定链宁可少几条规则也不该把整个探索页打死，
-            // 而"少规则"的方向是**漏屏蔽**，所以在真机回归里要点这一条（见 4b 报告）。
             // 但不许静默：logcat 必须留痕，否则"库坏了"与"就是没规则"在屏上分不开。
             android.util.Log.w("ContentGuard", "loadRules 读取失败，沿用已知规则集", e)
         }
@@ -257,7 +254,6 @@ class ContentGuardManager private constructor(private val context: Context) {
 
     /**
      * 画廊条目的黑名单判定，命中就**把那条规则交回去** —— 页面要说得出"是哪条规则挡的"，
-     * 不能只让屏上凭空少几张（2026-09-25 真机就是这样：规则 `ai` 把 Danbooru 整天清空，
      * 而页尾仍写着「Danbooru 20」，那是一条假读数）。
      *
      * 不走 [isComicBlocked] 的原因见 [GalleryBlockMatch]：图站 tag 是下划线标识符，

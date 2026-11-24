@@ -6,9 +6,7 @@ import com.venera.compose.gallery.data.GallerySite
  * 一位被关注的画师。
  *
  * 只有**名字与站点**两样事实，别的都不存：
- * - 不存 pixiv 用户 id 与头像 URL —— 那些是会变的（实测老 id `1360347` 在 pixiv 那边已经取不到，
  *   `error=true`）。存下来就会在半年后把一个过期地址当"这位的头像"摆出来。
- *   元数据永远在需要时现取一次（用户 2026-09-30 拍板「面板打开才取」）。
  * - 不存"这位有几张新图"—— 仓库里没有任何更新来源，那个数只能编。
  *
  * @param addedAt 关注那一刻的毫秒时间戳，用来定序（[GalleryArtistFollows.sorted]）。

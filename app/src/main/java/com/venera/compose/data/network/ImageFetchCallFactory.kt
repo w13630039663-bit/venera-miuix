@@ -8,7 +8,6 @@ import okhttp3.Request
  * 图片专用的 [Call.Factory]：把 [okHttpClient] 原样包一层，只多干一件事 ——
  * 给每一笔请求盖上 [ImageFetchTag]。
  *
- * 为什么需要这层包装：普通图片 2026-09-29 起改由 Coil 自带的 `OkHttpNetworkFetcherFactory`
  * 取流（流式落盘、文件源解码，理由见 [ImagePipelinePolicy.needsBytePipeline]），
  * 而 Coil 构造 `okhttp3.Request` 时只填 url/method/headers，`Options.extras` **不会**
  * 映射成 OkHttp tag。少了这个标记，[HostCircuitBreakerInterceptor] 会把图片超时算进

@@ -5,7 +5,6 @@ package com.venera.compose.data.api
  *
  * ## 为什么要这一颗
  *
- * 审计（`docs/rounds/responsibility-dependency-audit-2026-10-03.md` §二 第 8 行）记的是
  * 「UI 直连基础设施」，实测规模是 **150 处 `*.getInstance` / 51 颗文件**加 **125 行实现类 import**：
  * 屏文件抓 `ContentGuardManager`（23 处）、`VeneraPreferences`（25 处）、`ComicSourceManager`（16 处），
  * 也抓 `HistoryDao`、`DownloadManager`、七颗 booru 站方客户端，甚至 `HostCircuitBreaker` 这种
@@ -19,7 +18,6 @@ package com.venera.compose.data.api
  *
  * **本层治①**，并把②变成"能一眼列出依赖"的下一次机械替换：改完之后一颗 ViewModel 的外部
  * 依赖就是它字段声明里那几颗契约类型，不再藏在各个方法体的 `getInstance` 里。
- * 那一次替换已于 2026-10-03 排进 **D3**，走的是「主构造吃契约 + 保留 `constructor(app)` 委托」这条
  * 不动 17 处调用点的形状（方案 §九）。
  *
  * ## 三条形状上的硬约束（都是仓内已验证过的，不是偏好）

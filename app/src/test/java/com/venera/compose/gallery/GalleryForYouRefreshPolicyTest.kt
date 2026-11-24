@@ -14,7 +14,6 @@ import org.junit.Test
  * `NavBackStackEntry` 的 KDoc 明写 pop 时 "ViewModels will be cleared"，而 `saveState`
  * 只救 `rememberSaveable`，救不了 `viewModel()`。于是切回来四个 VM 全是新实例。
  *
- * 日榜那一屏 2026-09-29 就为这件事存过快照并配了同日门
  * （[com.venera.compose.gallery.domain.GalleryFeedRefreshPolicy]），
  * 但**猜你喜欢这一屏从来没接上同一套** —— 它连缓存都没有，所以每次进来必发一笔请求。
  * 本轮补的就是那一处遗漏，判据与日榜同一条。

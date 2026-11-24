@@ -5,7 +5,6 @@ package com.venera.compose.security.guard
  *
  * 图站的 tag 是一个个**下划线标识符**（`long_hair`、`hair_ornament`、`tail`），
  * 而关键字规则是**词**。拿子串去比标识符，用户的屏蔽词 `ai` 就会命中 `long_hair` 里的 `ai` ——
- * 2026-09-25 真机实测：Danbooru 当天日榜 200 条里 199 条含 `*_hair*` 类 tag，
  * **整站被这一条规则清空**，而 yande.re 同判据下 40 条挡掉 12 条。
  * 所以这里改成：整串相等 **或** 切成的词元相等（正则同理，用整词匹配而不是 find）。
  * 结果 `ai` 仍然命中 `ai` / `ai_generated` / `generated_by_ai`，不再命中 `long_hair`。

@@ -7,7 +7,6 @@ import org.junit.Test
 /**
  * `ImageHeaderPolicy.headersFor` 的 host 匹配口径。
  *
- * 为什么值得单测：2026-09-26 真机「Gelbooru 搜得出图、屏上全是灰卡」
  * 的根因就在这个函数里 —— 旧 `hostOf` 多写了一步 `substringBefore("?", "")`，
  * 而 host 在被 `substringBefore("/")` 截过之后**不可能再含 `?`**，
  * 那一步于是对所有正常 URL 都返回 `""` → null → `headersFor` 恒回空表，
@@ -60,7 +59,6 @@ class ImageHeaderPolicyTest {
 
     @Test
     fun `源 JS 发布的 Accept-Encoding 不能流进图片请求`() {
-        // 2026-09-29 真机读数：禁漫正文页每张都报 "JM 去混淆失败"，
         // 首 4 字节是 `1f8b08`（gzip 魔数）、inJustDecodeBounds 读出 -1x-1。
         // 根因不在去混淆算法：禁漫源 JS 的 getImgHeaders 照抄浏览器头，里面有
         // `Accept-Encoding: gzip`。OkHttp 只在**它自己**补这个头时才顺手透明解压；

@@ -43,6 +43,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.ImageLoader
 import com.venera.compose.R
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraCard
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
@@ -67,10 +69,7 @@ import top.yukonga.miuix.kmp.basic.Text
 /**
  * 详情面板里的「这位画师」（批次 L · L5）：头像 + 平台入口 + 关注。
  *
- * ## 形态：一位画师 = **一张卡**（2026-10-01 信息卡第二次重排）
  *
- * 用户 2026-09-30 拍板的那一档是「每位画师一行：头像 + 图标 + 关注」，落到屏上是**裸摆**的
- * 两行（上行头像+名字、下行外链+关注）。2026-10-01 用户拿图二那稿报"还是有点乱"，
  * 这一块的问题不在行数，而在**它没有边界**：上方是白色的事实卡、这一块是灰底上散着的四样东西，
  * 读起来像"卡下面还掉着些零碎"。现在整块收进一张 `VeneraCard`：
  *
@@ -95,7 +94,6 @@ import top.yukonga.miuix.kmp.basic.Text
  * 一位画师最贵要三笔请求（站方画师记录 → pixiv 用户档 → 头像图本身）。
  * 最初这一份状态归本 composable 持有，`LaunchedEffect` 在**面板打开那一刻**才开跑
  * —— 于是每次点「关于这张图」，外链与头像都要当着用户的面等一两百毫秒（首字母座先顶着）。
- * 用户 2026-10-01 第 2 条点掉的就是这一段：「画师信息提前在点击图片后加载图片的时候就加载，
  * 不要点击信息才加载」。
  *
  * 现在的分工：**大图页在打开这一张图时就取**（[com.venera.compose.gallery.ui.GalleryPostScreen]
@@ -106,15 +104,12 @@ import top.yukonga.miuix.kmp.basic.Text
  * 把加载留在组件里会更"自洽"，但那就是两处取数：面板开得比预取快时两边同时发同一笔请求
  * ——而真正要的那件事（**打开面板时它已经是现成的**）恰恰靠"只有一个取数方"保证。
  *
- * ## 平台入口已经带上品牌图标了（2026-10-01 收口）
  *
- * 用户 2026-10-01（批次 Q+R 批量 6）拍板"社交链接胶囊要带平台图标"。这一行当时**没做**，
  * 理由是"资产没落地之前这里仍是文字，不留半截实现" —— 那条前提已经作废：
  * 图标资产走 `scripts/build_platform_icons.mjs`（与两枚站标同一条管线，Simple Icons CC0-1.0）
  * 已经落地为 `res/drawable/ic_platform_*.xml` 五枚，所以这一行现在与画师介绍页
  * **共用同一枚 [PlatformBadge]**（它从介绍页那一份迁到这里，改成 `internal` 两处共用）。
  *
- * ⚠️ 这一条**与来源标识那枚不是同一条**，别互相套用（2026-09-30 L12 之后容易读混）：
  * 卡片角与首页画师行上的两枚**已经是站方真图标**（`VeneraGallerySourceMark`），因为那两站
  * 各有一枚现成原档、且只塞两个资产。平台入口这一排是 pixiv / X / FANBOX / Instagram 若干家，
  * 每家都要往 APK 里塞一份第三方品牌资产、还得跟着人家改版走 —— 体积与授权记在批次 Q+R 方案文档里。
@@ -151,7 +146,6 @@ internal class ArtistCredits(
  * 画师署名的取数入口：**站方外链 → 出处补一枚 → 头像三档**。
  *
  * 两个读者同解（都由 [GalleryArtistCreditsCache] 兜住重复）：
- * - 大图页在**打开这一张图**时就调（用户 2026-10-01 第 2 条），
  * - 面板拿到的是它取好的结果，不再自己发请求。
  */
 internal suspend fun loadArtistCredits(
@@ -164,10 +158,14 @@ internal suspend fun loadArtistCredits(
         // 三站的取法不同不是随手分的：yande.re 的 `artist.json` 匿名直接给 `urls`；
         // Gelbooru 那边没有任何匿名可读的画师端点（`s=list&name=` 那个参数实测根本不生效），
         // 只能借 danbooru —— 两家共享画师名。
-        // Safebooru 与 Gelbooru 同属 Danbooru 系，画师端点也走 danbooru。
+        // Konachan 是 Moebooru 系（与 danbooru **不共享**画师库），但它自己那枚 `artist.json`
+        // 按**站内画师档名**建，帖子作者名查不进去（实测 junmin / BattlequeenYume 都回 0 条）——
+        // 于是同样借 danbooru：为的是那张跨站的"画师名 → pixiv 账号"对照表，不是本站的画师记录。
+        // ⚠️ 与撤下的旧 Safebooru 借 danbooru 的理由**不同**：那站与 danbooru 同库（真的共享画师名），
+        // 这站只是借用同一份外部对照表，别把两句混成一句。
         GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
         GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
-        GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        GallerySite.KONACHAN -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
         // 这里按**画师名**问端点，而 pixiv 的画师身份是 `user_id` —— 两本账不同轨
         // （调研稿 §3.4 要单独拍板）。交一张空表并让调用方那句日志说话，不拿名字去撞 user_id。
         GallerySite.PIXIV -> Result.failure(
@@ -272,7 +270,6 @@ internal fun GalleryArtistCreditRows(
             // （译文为空白、或译文就是原文，都不算"有译文"）。
             val translated = translations[name]?.takeIf { it.isNotBlank() && it != name }
             /*
-             * 一位画师 = **一张卡**（2026-10-01 信息卡第二次重排，用户报"还是有点乱"）。
              *
              * 上一版这一块是"裸摆"的：头像、名字、外链、关注四样散在 sheet 面上，
              * 上一块（事实卡）是白的、这一块是灰的，读起来像"卡片下面还有一堆零碎"。
@@ -281,10 +278,8 @@ internal fun GalleryArtistCreditRows(
              *
              * 整卡可点 = 进档案，走 `VeneraCard(onClick=)` 那个官方重载，**不往外层
              * modifier 上叠 combinedClickable** —— 那样会被 squircle 的裁剪层级吞掉长按
-             * （`VeneraCard.kt` 头注记着这条真机实测）。卡里的关注胶囊自己有 onClick，
              * 子级先拿到事件，所以"点关注"不会连带跳进档案页。
              */
-            // 长按这张卡 = 「复制画师名 / 屏蔽该画师」（2026-10-04，用户第 9 条）。
             // 锚点逐位各挂一个 Box，与那面标签墙同一个理由：共用锚会让菜单永远从第一位的
             // 位置弹出来。key(name) 让开合态不随列表增减而错位（位子在、人换了，菜单就跟着
             // 错位到别人身上）。两个回调都没有时**整块不挂**长按 —— 摆一枚按出空菜单的卡比
@@ -341,7 +336,6 @@ internal fun GalleryArtistCreditRows(
                                 }
                             }
                             /*
-                             * 关注**留在这一行右端**（2026-10-01 从行1挪到行2、本版又挪回来）。
                              *
                              * 上次挪走的理由是"名字吃 weight(1f) 会把「›」顶到最右，与关注只隔 8dp，
                              * 两个不同语义的可点物误触面重叠"。那条前提今天不成立了：这一版把
@@ -380,19 +374,14 @@ internal fun GalleryArtistCreditRows(
                             }
                         }
                     }
-                    if (artistMenu) DropdownMenu(
+                    // 统一菜单（控件体系统一 · 阶段 4）；「屏蔽该画师」走 destructive 位。
+                    if (artistMenu) VeneraDropdownMenu(
                         expanded = artistMenu,
                         onDismissRequest = { artistMenu = false },
                     ) {
                         onCopyArtistName?.let { copy ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "复制画师名「$name」",
-                                        fontSize = tokens.type.caption,
-                                        color = tokens.color.textPrimary,
-                                    )
-                                },
+                            VeneraMenuItem(
+                                text = "复制画师名「$name」",
                                 onClick = {
                                     artistMenu = false
                                     copy(name)
@@ -400,10 +389,9 @@ internal fun GalleryArtistCreditRows(
                             )
                         }
                         onBlockArtist?.let { block ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text("屏蔽该画师", fontSize = tokens.type.caption, color = StatusColors.Failing)
-                                },
+                            VeneraMenuItem(
+                                text = "屏蔽该画师",
+                                destructive = true,
                                 // 落库的串必须是**站方原串**（译文会随字典更新变味），与标签那三项
                                 // 同一规矩：屏上摆译文，发出去、复制的、屏蔽的都拿原值。
                                 onClick = {
@@ -420,7 +408,6 @@ internal fun GalleryArtistCreditRows(
 }
 
 /**
- * 画师头像位 —— 全站**唯一**一处画师脸的画法（2026-10-04 统一）。
  *
  * 首页「正在关注的画师」从前自己手写了一份圆座，于是同一个人在三个页面上有两种退路字号
  * （这里 14sp、那里 22sp），改一处忘另一处。三处现在都调这颗件，且**都吃默认尺寸**：
@@ -436,7 +423,6 @@ internal fun GalleryArtistCreditRows(
  * 该不该挡的判据）—— 已知的口子，方案文档里挂着。要关它得给收藏加一档"落库时就算好"的字段，
  * 老数据默认 false 就成了静默错答，比不关更糟，所以宁可不关。
  *
- * ## 为什么带一圈发丝描边（2026-10-17 第三十轮补上）
  *
  * 第二十三轮用户那句「给页面所有的头像都加一层淡淡的描边」当时只落到了 pixiv 那几处
  * （画师排 / 排行榜卡 / 账号那颗），这颗共用件漏了。本轮图库站的关注画师行**进了白卡**
@@ -473,7 +459,6 @@ internal fun GalleryArtistAvatar(
         } else {
             Text(
                 text = name.take(1).uppercase(),
-                // 22sp 是首页那一栏在真机上定下来的字号（批次 N · N4 那轮调过），
                 // 56dp 的圆座里 14sp 的字母读起来像"没画完"。
                 fontSize = tokens.type.statNumber,
                 color = tokens.color.onSurfaceVariant,
@@ -486,7 +471,6 @@ internal fun GalleryArtistAvatar(
 /**
  * 平台入口胶囊上那枚**品牌色小方块**。
  *
- * 2026-10-01 从 `GalleryArtistProfileScreen` 迁到这里（改成 `internal`）—— 两处要摆的是
  * 同一样东西（介绍页头部那一排外链、信息卡里这一行），各留一份迟早会漂
  * （`GalleryArtistLinks.chipLabel` 那条注释记着同一件事的教训）。
  * 迁到 `gallery/ui` 而不是上提 `components/venera`：它依赖 [GalleryPlatformColors]
@@ -573,7 +557,6 @@ internal fun PlatformBadge(platform: GalleryArtistLinkPlatform) {
  * 画师介绍页（[GalleryArtistProfileScreen]）**共用这一份**：那里给的是 `profilePlan` 出来的全平台排，
  * 而头像那三档试法与"失败只在日志里留话"的口径两边完全一致，留两份迟早会漂。
  *
- * **结果落盘**（[GalleryArtistAvatarStore]，2026-10-01 改判）：这一层是三个读者
  * （详情面板 / 介绍页 / 首页那一栏）唯一的共同下游，所以"查没查过"记在这里，
  * 而不是让每个读者各自决定要不要问一遍 —— 介绍页此前正是**绕过了两份缓存**直调这一层，
  * 于是每进同一位都要重发 2~4 笔 JSON。键带出处，理由见 [GalleryArtistCreditsKey]。
@@ -634,7 +617,6 @@ internal suspend fun artistAvatarOnSite(context: Context, site: GallerySite, nam
     // 先问那份**已在内存里**的地址档（peek 非 suspend、纯查表）：它答上过（无论"有地址"还是
     // "查过、没有"）就直接交回，一次请求都不许多发。
     //
-    // 从前这里是先 await 站方外链表、才轮到 resolveArtistAvatar 里那次 peek —— 2026-10-03 真机读数
     // `首页档=有地址(https://i.pximg.net/…)` 后面仍跟着 `外链数=2 外链耗时=1032ms`：切走再回来
     // 每位画师每站各重付一笔外链请求（五位串行合计 ≈2.1~2.3s），而这段时长正是用户看见的
     // "先摆收藏图、再换成真头像"。键用空串 = 首页档那一枚，与下面 profilePlan 的 source 同一条。
@@ -642,7 +624,7 @@ internal suspend fun artistAvatarOnSite(context: Context, site: GallerySite, nam
     val links = when (site) {
         GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.artistLinks(name)
         GallerySite.GELBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
-        GallerySite.SAFEBOORU -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
+        GallerySite.KONACHAN -> GalleryPorts.of(context).artists.danbooruArtistUrls(name)
         // 这里按**画师名**问端点，而 pixiv 的画师身份是 `user_id` —— 两本账不同轨
         // （调研稿 §3.4 要单独拍板）。交一张空表并让调用方那句日志说话，不拿名字去撞 user_id。
         GallerySite.PIXIV -> Result.failure(

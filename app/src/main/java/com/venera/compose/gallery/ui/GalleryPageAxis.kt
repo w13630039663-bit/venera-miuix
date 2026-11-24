@@ -6,7 +6,6 @@ import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
 
 /**
- * **页轴**交接：这一作的这几页，交给大图播放器当"左右翻的那面墙"（2026-10-18）。
  *
  * 为什么走这种跨 Activity 的静态交接（与 [GalleryViewerQueue]、[GalleryFlyIn] 同一路数）：
  * 播放器是独立 Activity（实时 blur-behind + 跨窗口预测式返回），而"同一作的第 2、3、4 页"
@@ -34,7 +33,6 @@ object GalleryPageAxis {
         val onDownload: () -> Unit,
         val onDismiss: () -> Unit,
         /**
-         * 面板里点一枚作品标签 → 按它搜一轮（用户 2026-10-19：「作品标签目前不可以点击，
          * 点击后跳转到标签的搜索页面」）。
          *
          * 默认 `null` = **这一层没有搜索出口**：面板照旧摆标签、只是点不动（与

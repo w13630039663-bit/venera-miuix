@@ -116,7 +116,6 @@ internal object GalleryHomeSectionKey {
     const val ARTISTS = "section-artists"
     const val DAILY = "section-daily"
     const val FOR_YOU = "section-for-you"
-    // 内容域那一排**不在这里**（2026-10-17 第三轮，用户稿「看下站源切换能不能做成这样」）：
     // 它从前是 `section-domain` 自己占一行，现在住进搜索条左边那一格（见 `GalleryHomeChrome`）。
     const val PIXIV_ARTISTS = "section-pixiv-artists"
     const val PIXIV_RANKING = "section-pixiv-ranking"
@@ -126,7 +125,6 @@ internal object GalleryHomeSectionKey {
 /**
  * 三节的**次序**，就是屏上自上而下的次序。
  *
- * 2026-09-30 第二轮（用户点名）从五节收到三节：
  * - 「根据你的收藏」那一栏**整节撤下**（用户：「去掉根据你的收藏这个栏」）。
  *   推荐标签本身没消失 —— 它仍是**猜你喜欢**那面墙的取数种子，也是搜索卡空框时那一行入口；
  *   撤掉的只是首页这排展示栏。
@@ -134,11 +132,9 @@ internal object GalleryHomeSectionKey {
  *   同一份历史只该在全站出现一处，而它的常态位置是"用户已经决定要搜"的那一刻。
  *
  * ⚠️ 节的**数量与次序都不许跟着数据变**：懒列表在第 0 项之后插一个新项会让视口锚点漂到下一项，
- * 内容于是被画进 `contentPadding` 里（首页顶栏重叠那次真机缺陷的真根因，见记忆
  * 「首页顶栏重叠的真根因：锚定漂移」）。所以三节**恒在**，"这一节此刻有没有货"由项内部判。
  */
 /**
- * 节的**次序** —— 2026-10-17 起它是"内容域"的纯函数（用户口径：「不是替换，是切换到 pixiv 的话
  * 页面就换成这些排布，图库站保持不变」）。原来这里是**一颗常量**。
  *
  * ⚠️ [GalleryHomeDomain.BOORU] 那一档逐字就是从前那三节原样 ——
@@ -178,7 +174,6 @@ internal class PixivHomeState(
     /**
      * 这一张要不要糊起来。**由调用点用 buildGalleryWall 那同一把算**，这里不另立判式 ——
      * 否则会长出"预览行上没被挡、主墙上全裸"那族分叉（首页那三批卡早就为此统一过一次）。
-     * 2026-10-17 之后只剩排行榜那一排吃它：推荐那一池改走首页主墙，打码在墙里自己算。
      * 否则会长出"预览行上没被挡、主墙上全裸"那族分叉（首页那三批卡早就为此统一过一次）。
      */
     val maskedOf: (GalleryPost) -> Boolean,
@@ -191,14 +186,12 @@ internal class PixivHomeState(
     // 内容域那一排的回调**不在这一袋里了**（第三轮）：那一排住在搜索条左边，
     // 由 `GalleryHomeChrome` 自己收 `onPickDomain`，节这一层不再碰它。
     /**
-     * 顶栏那颗头像背后的同一个账号件（2026-10-17 账号系统）。
      *
      * 「关注画师」那一节要按**登录与否**念两句话，而登录态只有 [PixivCredentials.authState]
      * 这一个来源 —— 在这里另算一遍"看着像登过"就是第二把尺子。null = 这一侧没接账号件。
      */
     val credentials: PixivCredentials?,
     /**
-     * 「推荐」那一节的**来源备注**（2026-10-17 第五轮）。
      *
      * 只在"这一池不是站方推荐"时非空 —— 那时屏上必须说得出为什么（没登录 ⇒ 走的是按收藏标签
      * 那一跳）。**站方推荐正常时不摆话**：一池真推荐不需要再解释自己是谁。
@@ -207,7 +200,6 @@ internal class PixivHomeState(
     /**
      * 排行榜那三档（有货 / 在取 / 空）里**空那一档**要说的话。
      *
-     * 加它的理由（2026-10-17 第七轮，用户截图）：那一档原先写死一句「pixiv 这一档这一轮没有答上」，
      * 而取数那边把异常 `.getOrNull().orEmpty()` 吞掉了 —— 于是"站方限流了""票据过期了"
      * "这一档真的没图"三种处境在屏上是同一句话。现在由取数那一侧把站方原话交上来。
      */
@@ -215,7 +207,6 @@ internal class PixivHomeState(
     /**
      * 自己关注的画师（`/v1/user/following`）与站方推荐用户（`/v1/user/recommended`）。
      *
-     * 两栏**分开放**（2026-10-17 第八轮，用户「也加上没用关注的推荐用户，但要区分开」）：
      * 合成一排的话，屏上读不出"哪些是我真关注的"，那是这一节最容易产生的误解。
      * 空表 + 不是 loading 时才摆那句话 —— 那时"没人"是真的没人。
      */
@@ -229,7 +220,6 @@ internal class PixivHomeState(
     /** 点一位画师。 */
     val onOpenUser: (PixivUser) -> Unit = {},
     /**
-     * 「画师」那一格当前摆哪一半（2026-10-17 第九轮：关注 / 发现合并成一节两个 Tab）。
      *
      * ⚠️ 它与上面那两份数据**不是**一回事：数据是同时取的、各存各的；这个只是"摆哪一份"。
      * 状态住在 `GalleryScreen`（与其余首页状态同层），不在这里 remember ——
@@ -238,7 +228,6 @@ internal class PixivHomeState(
     val artistTab: PixivArtistTab = PixivArtistTab.FOLLOWING,
     val onPickArtistTab: (PixivArtistTab) -> Unit = {},
     /**
-     * 排行榜卡右下那颗 ♥（2026-10-17 第十八轮，用户稿）。
      *
      * 走**本地收藏档**（与收藏页、大图页那颗 ♥ 同一份数据），不是 pixiv 站方的收藏 ——
      * 站方收藏要另一条带票据的写接口，而"我在这里点一下心"在本仓的既有语义就是存进本地。
@@ -247,7 +236,6 @@ internal class PixivHomeState(
     val favoritedOf: (GalleryPost) -> Boolean = { false },
     val onToggleFavorite: ((GalleryPost) -> Unit)? = null,
     /**
-     * 「换一批」现在**能不能摆**（2026-10-17 第二十三轮，用户「推荐标题右边要多个换一批的胶囊」）。
      *
      * 默认 `false` 是有意的兜底：漏接就变成"不摆"，而不会变成"摆一枚按了没反应的"。
      * 判定只有一条 —— **登录态**。已登录走站方推荐 `/v1/illust/recommended`，那一腿回 `next_url`，
@@ -312,7 +300,6 @@ private fun GalleryRowSkeleton(
     /**
      * 封面的宽高比。`null` = 保持定高 [VeneraTokens.spacing.historyCoverHeight](170dp)。
      *
-     * 为什么这一节要能换形状（2026-10-17 第二十二轮）：骨架存在的唯一理由就是"到货那一瞬不许跳"
      * （见头注第 3 条）。排行榜那张实卡从 124×170 改成了近方图（`RANKING_COVER_ASPECT`），
      * 骨架若还停在 170dp，加载完那一帧就会**往下跳 50dp** —— 恰好是最不该跳的一瞬。
      *
@@ -324,7 +311,6 @@ private fun GalleryRowSkeleton(
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
-            // 右端渐隐 + 尾部内衬（2026-10-17 第三十轮）：三个调用点（每日热门 / pixiv 画师 /
             // pixiv 排行榜）**全都坐在白卡里**，所以渐隐底色统一取卡面色。
             //
             // 这一行加它不只是"跟实卡对齐"：骨架 → 真数据切换那一瞬，如果只有实卡带渐隐，
@@ -390,7 +376,6 @@ private fun GalleryPosterRow(
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
-            // 右端渐隐 + 尾部内衬（2026-10-17 第三十轮）：这一行随「每日热门」整节进了白卡，
             // 与 pixiv 排行榜那一排同档。只加渐隐不加尾部内衬的话，滑到底时最后一枚仍压在
             // 渐隐底下（"渐隐与尾部内衬成对"那条纪律，见 [hScrollEndFade] 头注）。
             //
@@ -414,7 +399,6 @@ private fun GalleryPosterRow(
                 onClick = {
                     // 与墙上那张卡（`GalleryPostCard`）**同一个动作**：趁卡片还在屏上把这一帧截下来，
                     // 交给大图页当飞行体的起点。这一行此前根本没截 ⇒ `canFly` 恒假 ⇒
-                    // 点预览行的图必然走"整页从屏幕下沿抬上来"那条退路（2026-10-01 查出来的）。
                     GalleryFlyIn.capture(view, coverBounds)
                     onOpen(card.post)
                 },
@@ -448,7 +432,6 @@ private fun GalleryPosterRow(
                             allowFly = !card.masked,
                         ),
                 ) {
-                    // AI 角标（2026-10-18，用户「开了之后没见到一个图片有角标」）：这一排从前**不画**，
                     // 只有墙上的卡画 ⇒ 同一张图在首页有一枚、进搜索再没有。判据与开关都吃同一颗，
                     // 不在这里另立一套（读法也与墙上同口径：按卡各读一次，不往下透传）。
                     val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
@@ -476,7 +459,6 @@ private fun GalleryPosterRow(
  * 圆座**先摆真头像**（现取，见 [artistAvatarOnSite]），取不到才退"那位名下最近一张被收藏的图"，
  * 两者都没有才是首字母圆座。
  *
- * ## 2026-10-17 第九轮：从「每位一张 88dp 方卡」改成裸摆
  *
  * 用户原话：「图库那边的关注画师列也要同步更改，不要只改 pixiv 那边的」。
  * 形状对齐 [PixivArtistRail] —— 一格 = 裸圆头像 + 一行名字，中间不再有卡面。两件事值得记下来：
@@ -493,9 +475,7 @@ private fun GalleryPosterRow(
  * 保证圆内始终填满、不留白边。
  *
  * 关注了、收藏里没有他名下的图、平台那头也没脸 —— 那位**照样摆**，圆座落回首字母
- * （用户 2026-09-30 拍板）。把他挑掉等于让"关注"这件事在没收藏他的图时凭空失效。
  *
- * ## 2026-10-17 第三十轮：这一节进了白卡，两道防抖随同搬过来
  *
  * 用户原话：「关注画师和每日热门 做成相同风格的ui」。节外壳吃到 `surface = true` 之后，
  * 这一排就与 [PixivArtistRail] 是同一种容器了，第二十/二十一轮在那一边修的两族
@@ -526,17 +506,13 @@ private fun GalleryArtistRow(
     imageLoader: ImageLoader,
     translations: Map<String, String>,
     onPick: (FollowedArtistRef) -> Unit,
-    /** 长按 = 进介绍页（批次 Q+R · 批量 4，用户 2026-09-30 拍板 2 那条不动：**单击仍直接搜**）。 */
     onOpenProfile: (FollowedArtistRef) -> Unit,
 ) {
     val tokens = VeneraTokens
     val context = LocalContext.current
-    // 圆座**先试真头像**（用户 2026-10-01 报"关注了却只有英文字母"）：一位一位串行现取，
     // 谁先回来谁先换脸 —— 有收藏图垫着的那几位在这一趟里本来就有东西可摆，不是空着等。
     // 取法与代价见 [artistAvatarOnSite]。这句从前写的是「内含进程内缓存，切走再回来不重发」，
-    // 2026-10-03 的探针把它驳掉了：档里确实有地址，但那次 peek 排在一笔外链请求之后，
     // 所以每次进栏都重发一遍（读数 `首页档=有地址` 紧跟 `外链耗时=1032ms`）—— 现在档在前面。
-    // 切走再回来时这一栏的组合是**重建**的（2026-10-03 真机读数：`faces已填=3` 下一次进栏回到 0），
     // 所以初值不能是空表 —— 空表的第一帧按 faceOf(null, previewUrl) 摆名下收藏图，等异步跑完才换脸，
     // 用户读出来就是"每次切页面头像都刷一遍"。这里直接用地址档（peek 纯内存查表）同步播种：
     // 档里答上过的那几位第一帧就是真头像，剩下的仍由下面的 effects 逐位补。
@@ -554,7 +530,6 @@ private fun GalleryArtistRow(
             if (avatar != null) faces = faces + (artist.name to avatar)
         }
     }
-    // ── 高度必须由**几何**决定，不能由"视口里正好是谁"决定（2026-10-17 第三十轮）──
     //
     // 这一节进了白卡（`surface = true`），第二十一轮在 [PixivArtistRail] 那边修的
     // "白卡上下跳 1~2px"在这里一样会犯，链条原文见那边头注（懒行交叉轴报高 = 已测项最大高
@@ -592,10 +567,8 @@ private fun GalleryArtistRow(
             // 圆座次序：真头像 > 名下最近一张收藏 > 首字母座（判据在 [GalleryFollowedArtists.faceOf]）。
             val face = GalleryFollowedArtists.faceOf(faces[artist.name], artist.previewUrl)
             // 可点面就是"头像 + 名字"这一整列（与 [PixivArtistRail] 同一形状）：
-            //  · 单击仍直接搜（2026-09-30 拍板 2 那条不动），长按仍进介绍页 ⇒ 必须 `combinedClickable`；
             //  · 卡面撤了，按压反馈就得自己挂 —— 走 `SinkFeedback`
             //    （[VeneraPressFeedback.indication]，与 miuix 卡片同一个原语）。不挂就是
-            //    "按下去没回话"，这一栏 2026-10-16 刚修过同一种病。
             Column(
                 modifier = Modifier
                     .width(tokens.spacing.artistAvatarSize)
@@ -607,7 +580,6 @@ private fun GalleryArtistRow(
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // 脸走全站唯一那颗件（2026-10-04 统一）。这里从前自己手写了一份圆座 +
                 // 首字母退路，于是同一个人在首页是 22sp 的字母、在信息卡是 14sp，
                 // 改一处忘另一处。次序仍由 faceOf 定（真头像 > 名下最近一张收藏 > 首字母）。
                 GalleryArtistAvatar(
@@ -620,7 +592,6 @@ private fun GalleryArtistRow(
                     // caption 这一档没有变（批次 N · N4 回改过）。变了的是它下面那行
                     // 「[站标] N 张收藏」—— 那行随卡面一起撤了，名字于是不必再与谁同级。
                     fontSize = tokens.type.caption,
-                    // 行高写死（2026-10-17 第三十轮随白卡一起搬过来）：不写的话行高跟着
                     // 这一行用到的字形走（拉丁 / CJK 差 1~2px），横滑时"视口里换了谁"
                     // 就成了白卡的高度 —— 链条见 [PixivArtistRail] 头注。
                     lineHeight = TEXT_LINE_HEIGHT.em,
@@ -640,7 +611,6 @@ private fun GalleryArtistRow(
 /**
  * 节头右边那一半。
  *
- * 2026-09-30 起它**只服务每日热门**：那一节的头上有「查看全部」（进二级页），
  * 「换一批」搬进了二级页（首页只做预览，换一批在那儿才是"看全量的人"的动作）。
  * 猜你喜欢那一节的头只有「换一批」—— 它本身就是下面那条墙，没有"全部"可切。
  */
@@ -658,18 +628,14 @@ private fun DailySectionActions(onShowAll: () -> Unit) {
 /**
  * 猜你喜欢节头右边那半：只有「换一批」（重抽标签并重取，走调用方那条清熔断的路径）。
  *
- * ## 2026-10-14 起这是首页唯一的「换一批」入口
  *
  * 顶栏那枚同名钮（「按收藏重抽一批」）被「浏览历史」取代了 —— 两处调的是同一条
- * `retryForYouFromUser()`，所以撤掉它不丢任何功能（下拉刷新 2026-09-30 撤下时，
  * 那条注释写的就是"这个动作现在由节头这枚承担"）。原顶栏注释里还有一条口径一并搬到这里：
  * 搜索态下屏上是搜索结果，换一批按下去用户看不见效果，所以它只管这一面墙 ——
  * 节头这枚在搜索墙那一态根本不参与渲染（墙换了，节头就不在），天然满足。
  *
- * ## 重取期间的轻指示为什么摆在这里（2026-09-30 第三轮）
  *
  * 用户这轮的原话是「换一批不要整个页面刷新，只刷新下面推荐的内容」。旧写法是
- * `refresh()` 清空 `posts` + 打回 `IDLE`，于是整屏换成一个居中波浪环、**三节跟着一起消失**。
  * 现在旧卡片留着、三节不动，那"正在换"这件事就得有个说法 —— 摆在**用户刚点的那枚旁边**
  * 是最强的位置：他一定看得见（这枚节头就在屏幕上，否则他点不到），也不需要给整屏压遮罩。
  *
@@ -699,13 +665,11 @@ private fun ForYouSectionActions(loading: Boolean, onRemix: () -> Unit) {
 }
 
 /**
- * 画廊首页那**三节**（2026-09-30 第二轮定型）—— 正在关注的画师 / 每日热门 / 猜你喜欢。
  *
  * 结构上只有一件事是新的：**节与节之间不加分割线、不加分区底色**。参考图那种"内容很满"的观感
  * 来自每节都有真数据、一屏能看见三四节，而不是来自装饰 —— 深色底、圆角卡、浅蓝选中态、
  * 低对比描边都是既有语言，尺寸全部取现成 token，一个新数字都不立。
  *
- * ⚠️ 这一条 2026-09-30 当天被批次 M · M7 **推翻过一次**（"每组卡片层次分明"→ 三节各套一块背板），
  * 又在同日被批次 N · N2 **撤回来**：背板加在"节"上把每日热门变成卡里嵌卡、把画师行留成裸图标列，
  * 两节各错一半，而参考图的抬亮本来就只发生在**条目**上。
  * 走了一来一回不是白走 —— 现在"层次该由谁承载"这件事在 [GalleryHomeSection]、[GalleryArtistRow]、
@@ -714,7 +678,6 @@ private fun ForYouSectionActions(loading: Boolean, onRemix: () -> Unit) {
  * ## 为什么每一节都是墙里一个**恒定存在**的项
  *
  * 懒列表在第 0 项之后插一个新项，视口锚点会漂到下一项，内容就画进 `contentPadding` 里
- * （首页顶栏重叠那次真机缺陷的根因，见记忆「首页顶栏重叠的真根因：锚定漂移」）。
  * 所以节的**数量恒定**（三节永远在），"这一节此刻有没有货"由**项内部**去判 ——
  * 宁可看见一节空着的标题，也不要一节突然插进来把整屏推下去。
  *
@@ -762,7 +725,6 @@ internal fun galleryHomeSections(
     /**
      * 「猜你喜欢」节头的「换一批」。
      *
-     * ⚠️ 这一节**不收卡片数据**（`forYou` / `forYouStarted` 那两个参数 2026-09-30 第二轮删了）：
      * 首页那条主墙恒为猜你喜欢，卡片就在这一节下面由 `GalleryForYouPage` 画 ——
      * 把同一批图再传进来摆一行预览，就会出现"前 8 张横着一次、网格里又一次"。
      * 所以这一节只需要那枚动作与标题。
@@ -795,7 +757,6 @@ internal fun galleryHomeSections(
             when (key) {
                 GalleryHomeSectionKey.ARTISTS -> GalleryHomeSection(
                     wallAdjacent = false,
-                    // 2026-10-17 第三十轮（用户「关注画师和每日热门 做成相同风格的ui」）：
                     // 图库站这两节对齐 pixiv 那两节（画师 / 排行榜）的白卡形态 ——
                     // `surface = true` + 节尾 `space2`，与那边逐项同值（卡底 8dp + 4dp = 12dp，
                     // 正好与「搜索条 → 画师」那一段的网格行距相等）。卡一上，行内那两族
@@ -870,7 +831,6 @@ internal fun galleryHomeSections(
                 ) {
                     MiuixSectionHeader(
                         title = GalleryWallFeed.DAILY.label,
-                        // 火焰 = 热门（2026-10-17 第三十轮补）：节头带图标是 pixiv 那两节的
                         // 既有形态（画师 = Person、排行榜 = EmojiEvents），这一节从前没有。
                         // 同一枚在统计页「连续打卡」上用过（material-icons-extended 在依赖里）。
                         icon = Icons.Outlined.LocalFireDepartment,
@@ -897,7 +857,6 @@ internal fun galleryHomeSections(
                     )
                     // ⚠️ 这一节**只有节头**，没有预览行。
                     //
-                    // 2026-09-30 第二轮：首页那条主墙**恒为猜你喜欢**（用户点名"主页下面的内容
                     // 改为猜你喜欢"），所以这一节底下紧接着的就是它自己的全部卡片。
                     // 再摆一行预览横卡就成了同一批图连着出现两遍（前 8 张横着、然后又在网格里），
                     // 那会让用户以为"上面那排是另一批"。
@@ -905,8 +864,6 @@ internal fun galleryHomeSections(
                     // 与「每日热门」那一节的区别正在这里：热门的全量在**二级页**，
                     // 所以首页需要一行预览当入口；猜你喜欢的全量就在脚下，不需要。
                 }
-
-                // ── Pixiv 域那三节（用户 2026-10-17 定的次序：关注画师 / 排行榜 / 推荐）──
 
                 GalleryHomeSectionKey.PIXIV_ARTISTS -> GalleryHomeSection(
                     wallAdjacent = false,
@@ -916,7 +873,6 @@ internal fun galleryHomeSections(
                     // （第二十四轮，用户「三处间隔太高了，调低点」）。
                     gapAfter = VeneraTokens.spacing.space2,
                 ) {
-                    // ── 2026-10-17 第九轮：两节合并成一节 + 两个 Tab（用户「推荐画师合并到发现和已关注供切换」）──
                     //
                     // 从前这里是「关注画师」与「推荐画师」两节：各自一个节头、各自一排、各一段空态，
                     // 一屏里占掉两段高度，而两排都是"人"。设计稿把它们收成一格：节头「画师」、
@@ -932,7 +888,6 @@ internal fun galleryHomeSections(
                         // 稿上这里是「全部 →」。**没有落地页就不摆**：本仓没有"全部画师"那一屏，
                         // 摆一枚点了没反应的箭头正是本仓反复修掉的那族假把手。
                         chevron = false,
-                        // 2026-10-17 第十九轮（用户「已关注和发现选择器放在画师标题的右侧」）：
                         // 从"标题下面独占一行"挪进节头行内 —— 省掉一整行高度，且"这一节是什么 +
                         // 看哪一半"合成一眼能读完的一组。切换器是紧凑档（26dp，不是 48dp 的
                         // `segmentedHeight`），塞进节头行不会把行高撑起来。
@@ -1029,7 +984,6 @@ internal fun galleryHomeSections(
                     // 这一节**就是脚下那面墙本身** ⇒ 不收口（收了节头会比墙窄、左缘对不齐），
                     // 而且它只有节头 —— 与图库站「猜你喜欢」同一形状。
                     //
-                    // 2026-10-17 第二轮（用户点名「pixiv 站的推荐应该做成和图库站猜你喜欢那种的，
                     // 不是现在的卡片状」）：从前这里是一排 PixivRankedWorkGrid 卡（六张、带标题行），
                     // 现在整池交给首页那面墙去摆。空/忙/页尾三样都不在这一节里说 ——
                     // 它们由 pixivRecommendReading 那份读数给，与墙上那批卡同源，
@@ -1041,7 +995,6 @@ internal fun galleryHomeSections(
                         icon = Icons.Outlined.AutoAwesome,
                         // 这一节**就是脚下那面墙**，所以**不在这颗外壳里**包实色卡 ——
                         // 外壳把一节当成一个 Column，而墙在它外面（是网格的后续 item）。
-                        // 2026-10-17 第二十二轮给它包的那张卡面走的是另一条路：
                         // `GallerySectionSurface` 在**网格下层**画一整层，见 `GalleryScreen.kt`。
                         // 「换一批」（第二十三轮，用户「推荐标题右边要多个换一批的胶囊」）：
                         //
@@ -1062,7 +1015,6 @@ internal fun galleryHomeSections(
                         },
                         chevron = false,
                     )
-                    // 来源备注（2026-10-17 第五轮）：未登录时这一池来自"按收藏标签那一跳"，
                     // 不说清就会被读成"站方推荐就长这样"。
                     pixiv.recommendNote?.let { note ->
                         Spacer(modifier = Modifier.height(tokens.spacing.space2))
@@ -1080,7 +1032,6 @@ internal fun galleryHomeSections(
  * ## 为什么背板撤了（批次 N · N2，推翻 M7）
  *
  * 批次 M · M7 曾给每一节套一块 `VeneraCard` 背板，当时的理由原文是：
- * 「三节原先直接铺在页面底色上，只靠 sectionGap 那点留白分组 —— 真机对照参考图之后那个"组"
  * 根本读不出来。一节一块圆角表面，是"这几样东西属于同一组"在屏上唯一的说法。」
  *
  * 那个说法**方向错了**。参考图里根本没有"节"这一层表面 —— 抬亮发生在**每一条**上
@@ -1095,7 +1046,6 @@ internal fun galleryHomeSections(
  * 本轮把表面下放到条目：撤节背板，画师行每位一张 [VeneraCard]，海报行本来就有。
  * 层次该由谁承载这件事，[GalleryArtistRow] 与 [GalleryPosterRow] 各自的注释里都写着。
  *
- * ⚠️ **2026-10-17 第九轮又动了一次上面那条结论（只动画师行）**：画师那一格从"每位一张卡"
  * 改回**裸摆**（用户「关注画师列也要同步更改」+ 设计稿里那是一排人、不是一排卡）。
  * 于是「每日热门」仍走"卡下沉到条目"，而「正在关注的画师」这一节**没有条目卡**了 ——
  * 两节的分层形状**故意不同**：海报是内容（需要有边界），人是头像（边界就是那颗圆）。
@@ -1108,13 +1058,11 @@ internal fun galleryHomeSections(
  * `surfaceContainerHigh`）。这里只负责"表面该摆在哪一层"。**两处别互相顶**：
  * 在这里加背板救不了抬亮，在那里加也救不了分层。
  *
- * ## 宽窗收口（2026-10-15，问题清单 G3）
  *
  * [wallAdjacent] 是**必填**而不是带默认值的开关：默认值会让下一节忘了收口而没人报错
  * （本仓那条"漏传不报错的参数不要用默认值"）。判据只有一条 —— **这一节自己是不是墙的一部分**：
  *  - `false`（画师行、每日热门预览行）：内容是本节自己的横滑行，与下面那面墙不成列，
  *    所以宽窗按现成的 `contentMaxWidthFor` 收口并居中（Medium 720 / Expanded 840，
- *    **Compact 恒 null ⇒ 手机档逐像素不变**，用户 2026-10-02 的硬约束）；
  *  - `true`（「猜你喜欢」那一节，只有节头）：它紧接着的就是**它自己的全部卡片**，
  *    节头就是这面墙的第一行。把节头收到 720 居中，平板上会得到"节头比墙窄、
  *    左边对不齐"这一种**新的**错位 —— 收口这一格要防的正是它（清单 §一-4 那句"墙本体不限宽"的边界）。
@@ -1122,12 +1070,10 @@ internal fun galleryHomeSections(
 @Composable
 private fun GalleryHomeSection(
     wallAdjacent: Boolean,
-    /** 这一节要不要包一张**实色卡**（2026-10-17 第十八轮，用户稿：pixiv 三节各是一张白卡）。 */
     surface: Boolean = false,
     /**
      * 这一节尾部留的间距（`null` = 用 [VeneraTokens.spacing.sectionGap]，14dp）。
      *
-     * 为什么允许单独收窄（2026-10-17 第二十二轮，用户「压缩下推荐和排行榜的间距」）：
      * 14dp 是**页面级**区块的间距，而这两节各自还带边缘内衬 ——
      * 排行榜卡底 12dp（卡内衬）+ 推荐节头 4dp + 这 14dp = 屏上 **30dp** 的连续空白，
      * 读起来像两个互不相干的区块。相邻两节都带内衬时，中段那枚得让位。
@@ -1157,7 +1103,6 @@ private fun GalleryHomeSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(contentMaxWidth?.let { Modifier.widthIn(max = it) } ?: Modifier)
-                // 节间距必须挂在卡**外**（2026-10-17 第十九轮修正）。
                 //
                 // `Modifier.background` 画的是「它之后所有 modifier 决定的尺寸」—— 所以从前的
                 // `.then(卡面段).padding(bottom = sectionGap)` 里那段 gap 其实在 `background`
@@ -1189,7 +1134,6 @@ private fun GalleryHomeSection(
                     } else if (wallAdjacent) {
                         // 贴墙那一节（「猜你喜欢」/ pixiv「推荐」）**只有节头**，包卡会把整节读成一块面，
                         // 所以它走无卡那一支 —— 但**左起点必须与有卡那两节同一档**：
-                        // 用户 2026-10-18 第四批的读数就是「推荐的文字和图标没和上面的排行榜对齐」。
                         // 有卡那两节的节头左缘 = 卡内衬 `space6`(12) + 节头自己那 4 = 16dp，
                         // 无卡这一支从前什么都不加 ⇒ 节头只吃节头那 4dp，**偏左 12dp**。
                         // 这里补的就是那 12dp：同一颗 `space6`，不另造数、也不去动节头那颗件。
@@ -1203,14 +1147,11 @@ private fun GalleryHomeSection(
     }
 }
 
-// 「最近搜索」的渲染件 2026-09-30 第二轮**搬回 `GallerySearchArea.kt`**（改回原名
 // `HistoryHeader` / `HistoryList`）：用户拍板"最近搜索放回点击搜索框后下面框框着"，
 // 同一份历史只该在全站出现一处。这里刻意不留副本、也不留空壳 ——
 // 两份实现会在"在一处删掉、另一处还在"那里分叉，而那正是本轮要收口的事。
 
-
 /**
- * 关注画师展开网格（2026-10-22）：
  * 5 列网格，限定最高 2 排（10 位画师），超出 10 位可纵向滚动。
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)

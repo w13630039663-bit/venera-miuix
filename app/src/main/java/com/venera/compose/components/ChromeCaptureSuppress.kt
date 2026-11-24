@@ -13,7 +13,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 /**
  * 截"起点那一帧"的那几帧里，**压在内容之上的自有 chrome 让不让位**。
  *
- * ## 为什么需要它（2026-10-04 真机图证）
  *
  * `GalleryFlyIn.capture` 走 `PixelCopy`，而 PixelCopy 读的是**窗口已经合成好的表面** ——
  * 它不知道"这一块的像素属于卡片还是属于压在上面的底栏"。所以一张下沿被底栏压住的卡，

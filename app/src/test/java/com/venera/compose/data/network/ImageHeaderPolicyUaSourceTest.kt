@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 2026-10-03 字面量收口带出的两条不变量。单独成文件而不是塞进 `ImageHeaderPolicyTest`：
  * 后者判的是 host 匹配口径，这里判的是**表里那两枚 UA 串的同源性与逐字值**，是两件事。
  *
  * 收口前同一条产品串在 `ImageHeaderPolicy`（`donmai.us` 与 `gelbooru.com` 两颗 host）与

@@ -11,7 +11,6 @@ import org.junit.Test
  * 为什么要有这颗文件：D3 换的是「端口从哪来」，属编译期看不出错、跑起来也大多不错的改动，
  * 而本仓的 JVM 用例不吃 Robolectric —— 也就是说**没有任何用例能证明 `viewModel()` 还建得出 VM**。
  * 加上这三条之后，形状漂移（有人把 arity=1 那行删了、或者又把 `BusinessPorts.of` 写回 VM 方法体）
- * 会在 `:app:testDebugUnitTest` 里红，而不是在真机上以「首页空白」的形式出现。
  *
  * 顺带钉住一个我**自己写错过两遍**的数字：`viewModel()` 的真调用点。第一次量成 18（把
  * `BusinessPorts.kt` 自己那句 KDoc 算成了调用点），第二次是 §一 #20 的原句。口径 =

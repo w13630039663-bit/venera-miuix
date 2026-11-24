@@ -1,7 +1,6 @@
 package com.venera.compose.data.platform
 
 /**
- * 六枚**纯声明**枚举从 `data/prefs/VeneraPreferences.kt` 搬来这里（2026-10-20）。
  *
  * ## 为什么搬
  *
@@ -44,7 +43,6 @@ enum class NavigationBarStyle {
 
 /**
  * 内容层的表面材质 —— 与 [AppearanceStyle]（色板/形状/字号）、[NavigationBarStyle]（只管底栏）
- * **正交的第三轴**（2026-09-29 拍板）。
  *
  * 为什么不塞进 `AppearanceStyle`：那一枚同时驱动色板派生、形状阶梯、字号阶梯三件事
  * （见 `feature/VeneraTheme.kt:63-98`），把材质并进去就等于强迫「开玻璃必然改色板与圆角」，

@@ -25,7 +25,6 @@ import com.venera.compose.feature.ReadTarget
 import com.venera.compose.reader.ReaderSession
 
 /**
- * 收藏页的「列表 + 详情」双栏宿主（2026-10-12，用户点名的 B 方案；2026-10-13 换成自排两栏）。
  *
  * ## 为什么单独一颗文件、而不是改 `FavoritesScreen.kt`
  *
@@ -39,7 +38,6 @@ import com.venera.compose.reader.ReaderSession
  * 收口在 [favoritesUsesSplitPane]（本包 policy 文件，有单测）。`< 600dp` 直接短路，
  * 不进任何分栏代码路径 —— 这是方案 §4 的「零回归线」。
  *
- * ## 为什么不用 `ListDetailPaneScaffold`（2026-10-13 改判）
  *
  * 上一版用的是 MD3 adaptive 的 `ListDetailPaneScaffold` + `rememberListDetailPaneScaffoldNavigator`。
  * 它有一条改不动的行为：**两栏永远各占一份宽**，右栏没内容时也是一块空白板 ——
@@ -88,7 +86,6 @@ fun SharedTransitionScope.FavoritesSplitPaneHost(
     ) -> Unit,
 ) {
     // 可保存的那一格**只装键串**：ComicItem 本体进不了 Bundle，Android 会在「点开一本再切页」
-    // 的 dispose 里当场抛 `item at index 1 can't be saved`（真机四笔同栈，逐字理由在 favoritesDetailKey 上）。
     var detailKey by rememberSaveable { mutableStateOf<String?>(null) }
     // 收栏那一瞬右栏还在往 0 长回去，内容不许先空掉 —— 所以关掉时仍按上一本画。
     var lastDetailKey by remember { mutableStateOf<String?>(null) }

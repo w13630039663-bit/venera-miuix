@@ -48,7 +48,6 @@ class YandeReClient internal constructor(private val engine: HttpEngine) {
     /**
      * 取**上一天**的热门（用户点名的 `https://yande.re/post/popular_recent?period=1d` 的 JSON 版）。
      *
-     * 实测（2026-09-25）：`period=1d` → 200 / **固定 40 条**；`limit` 与 `page` 被忽略；
      * 不认识的 `period` 值（如 `1mo`）**静默退回 `1d`**（实测 40/40 完全同一批），
      * 而 `1w` 是真生效的另一批（与 `1d` 只重叠 2 条）。另有一份 `popular_by_day.json`（32 条），
      * 与 `period=1d` **零重叠** —— 那是另一套算法，别混用。
@@ -164,7 +163,6 @@ class YandeReClient internal constructor(private val engine: HttpEngine) {
         runCatching {
             val records = requestArtistRecords("$BASE/artist.json?name=${enc(name)}")
             // 这里要的是**记录本身**，不是"带别名指针的那条"：站方给正名记录的 alias_id 恒为 null，
-            // 用 [GalleryArtistAlias.exactRecord] 会把所有正名画师都判成"没这条记录"（真机踩过）。
             GalleryArtistAlias.recordByName(records, name)?.urls.orEmpty()
         }
     }
@@ -228,7 +226,6 @@ class YandeReClient internal constructor(private val engine: HttpEngine) {
         val SITE: GallerySite = GallerySite.YANDERE
 
         /**
-         * 搜索结果每页取多少张（用户 2026-09-25 拍板"两站各按自己的天花板来"）。
          * 站方 `limit` 天花板实测 320，100 够一屏半，又不至于让一次翻页解 100 张 preview。
          *
          * （另一站是 Gelbooru，它的每页上限是 **100**（官方 wiki 写明硬上限），

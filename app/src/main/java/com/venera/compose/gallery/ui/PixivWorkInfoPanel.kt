@@ -49,7 +49,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 
 /**
- * pixiv「更多信息」那一层的**装配**与**面板入口**（2026-10-18 从 `PixivWorkScreen` 抽出来）。
  *
  * 为什么单独一颗：那一层现在有**两个宿主** —— 作品页自己（屏底摘要条点开的那一层）与大图播放器
  * （页轴时经 [GalleryPageAxis] 交进来的那一版）。装配留在作品页那颗文件里的话，播放器这一侧只有
@@ -75,7 +74,6 @@ internal fun openWorkInBrowser(context: Context, url: String) {
  * 「更多信息」那一层顶部的四枚动作（收藏 / 评论 / 下载 / 分享）。
  *
  * 从前它们常驻在屏底那一排 dock 上，而 dock 里的「详情」与顶栏那枚「更多信息」开的是**同一层** ——
- * 用户 2026-10-18 拍板收进那一层：屏上只留摘要条，图才是主角，重复入口撤掉。
  *
  * 为什么拿一颗小载体往下传而不是四枚形参（同 [PixivArtistActions] 那条理由）：详情段在**三个地方**
  * 各画一次（滚动流末尾 + 作品页的抽屉 + 播放器那一版面板），每多一枚形参就要在三处各对齐一次，
@@ -86,7 +84,6 @@ internal class PixivWorkActions(
     /** 站方 `commentOff=1` 时这一枚**整枚不摆** —— 作者关了评论还摆一枚"看评论"就是假入口。 */
     val showComments: Boolean,
     /**
-     * 两枚计数（用户 2026-10-18 第四批：「按照图三那样改」—— 图三那排是 ♥ 带数、💬 带数、
      * 下载与分享不带）。**站方没给就交 null，那一格只剩图标**，不补 0（"0 收藏"看着像读数，
      * 与本仓 `PixivWorkPage.facts` 那条同一族）。
      */
@@ -216,10 +213,8 @@ internal fun pixivArtistActions(author: String, authorId: Long? = null, initialF
 }
 
 /**
- * 画师头像按**作者用户号**现取（用户 2026-10-18 真机：「只显示占位符」）。
  *
  * 详情腿本身不带头像地址，但它带了号 —— 现成那条腿就是按号取的（`/ajax/user/{id}`，
- * 地址按 2026-10-01 那条改判落盘，键与画师卡同一份）。取不到（这一条没号 / 那一跳失败）交 null，
  * 由 `GalleryArtistAvatar` 自己退回首字母座 —— 那是**明说的降级**，不是"头像坏了"。
  */
 @Composable
@@ -248,8 +243,6 @@ internal fun pixivAvatarUrl(detail: PixivWorkDetail?): String? {
 }
 
 /**
- * 那一排四枚动作（用户 2026-10-18 第四批「优化下面的按钮和 tag 展示 ui」＋
- * 2026-10-19 那张规格照：四枚住在**同一颗圆角条**里，♥ 带收藏数、💬 带评论数、下载与分享只带图标）。
  *
  * 两条口径同时成立：
  * - **外壳是一整条**（`surfaceContainerHigh` + `shape.card` 圆角），四枚在里面均分 ——
@@ -294,7 +287,6 @@ internal fun PixivWorkActionRow(actions: PixivWorkActions) {
 /**
  * 动作行里的一枚：**自己按内容长出来的胶囊**，不是固定尺寸的图标按钮。
  *
- * 2026-10-18 真机读数（用户「按钮还是没改反而 ui 有问题」）：从前这枚套在 `VeneraIconButton` 里，
  * 那颗件把 content 钉在一个**固定方格**内 —— 带计数时那串数字挤不进方格，换行成"41 / 77"两截再被裁掉。
  * 图三要的就是"图标 + 数"平摊在一排里，所以这里不借那颗固定格子，让胶囊按内容取宽；
  * 顶栏那两枚仍然走全站同一颗玻璃座（`VeneraTopBarPill`，两件事不是一颗）。
@@ -383,7 +375,6 @@ internal fun pixivWorkInfoPanel(data: Any?, params: GalleryPageAxis.PanelParams)
             imageLoader = params.imageLoader,
             onOpenWork = { params.onDismiss() },
             aiBadgeOn = aiBadgeOn,
-            // 面板里的标签也接上搜索（用户 2026-10-19 第 3 条）。顺序是先收面板再交标签：
             // 留在原地的面板会盖住"已经跳去搜索"这件事；而 `params.onSearchTag` 为 null 时
             // 这里传 null，标签保持纯展示（不摆点了没反应的那一枚）。
             onSearchTag = params.onSearchTag,

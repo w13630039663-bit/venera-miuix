@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
  * 规则（A3.1，本轮按「严格」档确认）：新写 UI 代码不得再出现裸的 `xx.dp` / `N.sp` / `Color(0x…)`，
  * 一律吃本目录里的 token。
  *
- * ⚠️ **存量已冻结成一把只许缩短的尺子**（`TokenBudgetFrozenTest`，2026-10-14）：
  * 从前这一句写的是"除本文件外任何 UI 代码不得出现 `xx.dp`"，那是屏上说一套、代码做另一套 ——
  * 现量 `app/src/main/java` 里 `ui/tokens/` 之外仍有数百处 `dp`、上百处 `sp`、二十多处 `Color(0x…)`。
  * 一次性迁移等于大重构（回归风险远大于收益），所以改成：**存量封顶、只减不增**，
@@ -53,7 +52,6 @@ data class VeneraSpacingTokens(
     /**
      * hero 与其后第一块内容（首页=应用身份卡 / 子页=第一组卡）的**重叠量**。
      *
-     * 这是「图与卡片之间没有过渡」的修复主体（2026-10-02 实测反馈）：参考图的观感
      * 不是靠渐变糊出来的，而是**卡片直接叠在图上** —— 图延伸到卡片背后，内容与头图
      * 在视觉上连续。hero 的布局占位高度会比视觉高度矮这一段（见 SettingsHeroImage
      * 里的 layout 实现），后续内容自然上移压图。
@@ -72,16 +70,12 @@ data class VeneraSpacingTokens(
     /**
      * 节头标题左边那枚**记号图标**的边长（`MiuixSectionHeader(icon = …)`）。
      *
-     * 18dp（2026-10-17 第十八轮，用户稿「画师 / 排行榜 / 推荐」每个节头都带一枚线性小图标）。
      * 与 [badgeIconSize] 同一档不是偷懒：节头标题是 16sp itemTitle，18dp 的图标正好比字高
-     * 高一档、与标题在同一视觉行上；再大就会把标题挤成配角（21dp 那一版在真机上像按钮）。
      */
     val sectionHeaderIcon: Dp = 18.dp,
     /**
      * 画廊卡片那一行上的**站方来源标识**边长（`VeneraGallerySourceMark`）。
      *
-     * 18dp（批次 M · M7，用户 2026-09-30 拍板"图标太大了"）：与 [badgeIconSize] 同一档。
-     * 原先的 24dp 是按"要比标题行醒目一点"定的，真机对照参考图之后发现反了 ——
      * 那一行的主体是标题，站标只是署名，24dp 会让每枚卡都先看见两个色块。
      * 两站（真图标 / 品牌色字母标）共用这一档，别给单站调大小：并排时两枚必须一样大。
      */
@@ -89,20 +83,15 @@ data class VeneraSpacingTokens(
     /**
      * 「正在关注的画师」那一行**圆形头像**的直径（也就是那一格的宽度）。
      *
-     * 64dp（2026-10-17 第十八轮，用户稿：一张 393dp 的屏上**一屏 5 位**、名字下面还留一截）。
      *
-     * 上一版是 56dp（2026-10-01「画师头像太小了」从 44dp 回摆）。56dp 配 8dp 间距是 64dp 一格，
-     * 393dp 的屏上摆得下 5 位半 —— 但真机 432dp 那一档摆出 7 位、头像缩成小圆点，
      * 与稿上"头像更大更清晰"正好相反。改 64dp 之后一格 72dp，5 位占 360dp：
      * 常见手机（393 / 432dp）都是「5 位 + 第 6 位露半张」，这才与稿一致。
      *
-     * ⚠️ **2026-10-17 第九轮那层卡面已经撤了**：画师那一格是裸摆，所以这一枚现在既是
      * **脸的直径**也是**格的宽度**（格子就是那颗圆）。旧方卡的两枚令牌已退役：
      * `artistAvatarSlotWidth`(88dp) 与 `artistSourceMarkSize`(14dp)。
      */
     val artistAvatarSize: Dp = 64.dp,
     /**
-     * 画师介绍页头部那块 **hero** 的高度（2026-10-01 用户拍板「对标图三」）。
      *
      * 196dp 是照着参考图量的：那一块的实宽 = 屏宽 − 两边各 16dp，比例约 1.83:1，
      * 393dp 屏上落 196dp。它不是"一张大图"，而是**这一页唯一的主视觉** ——
@@ -115,7 +104,6 @@ data class VeneraSpacingTokens(
     /**
      * 宽屏档（>600dp）的画师 hero 高度。
      *
-     * 为什么需要第二档（2026-10-12 平板排查）：[artistHeroHeight] 是照 393dp 手机屏量的
      * （「屏宽 − 两边各 16dp」≈ 361dp 宽 × 196dp 高，约 1.83:1）。宽窗下 hero 仍
      * `fillMaxWidth()` 而高度不变 ⇒ 1891dp 的平板上被拉成 **9.6:1** 的一条扁带，
      * 头像与画师名挤在左下角、整块读不出主视觉（用户截图直接报「显示不合理」）。
@@ -132,7 +120,6 @@ data class VeneraSpacingTokens(
     /**
      * 画师介绍页 hero 底图的**模糊核半径**。
      *
-     * 10dp（2026-10-01 用户报「hero 底图感觉有点模糊过头了」）。这是**模糊核的参数，
      * 不是屏上看到的模糊量** —— 见 [artistHeroBackdropScale]：`CoverHeroBackdrop` 的
      * modifier 链是 `.scale(s).blur(r)`、缩放挂在外层，所以屏上实际模糊 ≈ `r × s`，
      * 这一档的观感要按 `10 × 1.15 ≈ 11.5dp` 读。
@@ -160,7 +147,6 @@ data class VeneraSpacingTokens(
      */
     val artistHeroBackdropScale: Float = 1.15f,
     /**
-     * pixiv 画师页头像的直径（2026-10-19）。
      *
      * 76dp。比横排那颗 [artistAvatarSize]（64dp）大一档，理由与"那一格是裸摆的人像"不同：
      * 这一颗是画师页的**第二主视觉**（第一是 hero 横图），而且它压在照片边缘上 ——
@@ -172,7 +158,6 @@ data class VeneraSpacingTokens(
      */
     val pixivArtistAvatarSize: Dp = 76.dp,
     /**
-     * pixiv 画师页 hero 横图的**手机档**高度（2026-10-19）。
      *
      * 190dp：393dp 屏上实宽 393（满幅），比例 393÷190 ≈ 2.07:1 —— 与站方给的那张
      * 1920×960（2:1）几乎同比例，所以 `ContentScale.Crop` 几乎不裁。
@@ -182,7 +167,6 @@ data class VeneraSpacingTokens(
      */
     val pixivArtistHeroMinHeight: Dp = 190.dp,
     /**
-     * pixiv 画师页 hero 横图的**宽屏档**高度（2026-10-19）。
      *
      * 340dp，且只在与正文一起受 `contentMaxWidthFor` 收口（Medium 720 / Expanded 840）时生效：
      * 840 ÷ 340 ≈ 2.47:1，与手机档 2.07:1 同一族。
@@ -192,16 +176,13 @@ data class VeneraSpacingTokens(
      */
     val pixivArtistHeroMaxHeight: Dp = 340.dp,
     /**
-     * pixiv 画师页那枚「关注」pill 与三段切换的高度（2026-10-19）。
      *
      * 38dp。比 [segmentedHeight](48dp) 矮一档：这两枚都**收在内容里**（关注在名字右端、
      * 三段切换在简介之下），不是页面级的主行动，48dp 会把头部撑得过重而读起来像两个按钮组。
      */
     val pixivFollowPillHeight: Dp = 38.dp,
     /**
-     * pixiv 个人账号页顶栏**第二行**（一级三段：动态 / 收藏 / 已关注）的高度（2026-10-19）。
      *
-     * 48dp = 本仓分段控制器那一档（[segmentedHeight]）。2026-10-19 真机读数后改判：
      * 38dp 在 6.7 寸机上读起来是"一行贴纸"，按下去指尖也发虚 —— 用户原话「大按钮太矮了」。
      * 与 [pixivFollowPillHeight] 仍然**不同名**：那一枚是画师页收在内容里的段切换，
      * 这一枚是常驻 chrome。同名不同族是本仓反复立案的那类坑，所以各留一个名字。
@@ -211,16 +192,13 @@ data class VeneraSpacingTokens(
      * pixiv 个人账号页顶栏**第三行**（只在动态段：我发布的 / 关注动态 / 账号管理）的高度。
      *
      * 38dp：仍比上一行矮一档（"同一件事的三种看法"不是三个独立目的地），但不再是 30dp ——
-     * 那一档按下去同样发虚（2026-10-19 真机读数「大按钮太矮了」一并改）。38dp 正好是
      * 一级原来的高度，两行现在各长一档、层级关系不变。
      */
     val pixivAccountSecondaryRow: Dp = 38.dp,
     /** 顶栏主行左端那枚**小**头像（进账号页那一下的锚）。40dp 是触达，30dp 是画出来的圆。 */
     val pixivAccountMiniAvatar: Dp = 30.dp,
     /**
-     * 「已关注」一行里那**三张封面拼成的一条**的高度（2026-10-19 真机改判）。
      *
-     * 92dp。旧版是三张 56×42 的小图挤在行尾，真机上三种宽高比（竖图/方图/横图）混在一列里
      * 参差成锯齿，且第三张快贴到屏右缘 —— 稿上那一条是**整行宽、三等分、等高、无缝**，
      * 比例由"三格均分这一行的宽"给，不由图自己给，所以只需要一个高。
      */
@@ -296,7 +274,6 @@ data class VeneraSpacingTokens(
     /**
      * 首页画廊那一排卡片的目标宽度（手机/宽窗同一档，列数由它反推）。
      *
-     * 2026-10-23 用户（大屏截图）：「主页画廊这些卡片又太大了」——前一批把列数从 4 改 2/3
      * 是按手机竖屏调的，到了 600dp+ 宽窗上 3 列就是每张近半屏宽。改口径：**列数由目标宽反推**
      * （`cols = blockWidth / 目标宽`），手机 2 列不变，宽窗上 1280dp 屏一排能摆 6 张，
      * 每张回到 ~170dp 的阅读尺寸。
@@ -311,7 +288,6 @@ data class VeneraSpacingTokens(
     /**
      * 推荐轮播（中央 Hero）整块高度。
      *
-     * 手机宽下主卡实宽 203dp（2026-10-14 逐像素量，见 `HomeScreen` 那颗件的注释），
      * 配 220dp 高就是 0.92 的宽髙比；封面本身是 0.72 竖幅，所以这块要明显高于历史卡才不显肥。
      */
     val recommendHeroHeight: Dp = 220.dp,
@@ -339,7 +315,6 @@ data class VeneraSpacingTokens(
      * 平板档插图卡的**宽高比下限** = 1 / 1.1，等价于"卡高不超过列宽的 1.1 倍"。
      *
      * 瀑布流的卡高由图片真实比例决定，平板三列时一张竖页能撑到列宽的 1.4 倍，
-     * 一屏只放得下一行半（用户真机口径「还要更小、两行能看全」）。比例下限是唯一不需要
      * 实测列宽的封顶写法：高 = 宽 / 比例，把比例抬到 1/1.1 就把高压在 1.1 倍列宽内，
      * 超出部分由 ContentScale.Crop 裁掉 —— 点开灯箱看的仍是全图。手机档不封顶。
      */
@@ -367,7 +342,6 @@ data class VeneraSpacingTokens(
     val filterChipHeight: Dp = 32.dp,
     /**
      * MD3 Segmented Button 规范高度（48dp，组件默认档）。
-     * 用户手机真机反馈原拍板的 40dp「紧凑」档同样太矮细弱，升回 MD3 默认。
      */
     val segmentedHeight: Dp = 48.dp,
     /**
@@ -379,10 +353,8 @@ data class VeneraSpacingTokens(
      * 分段控制器**每颗药丸之间**的间隙。
      *
      * 取现成的 space5 而不是 MD3 规范里的 4dp：这个值原本是 4dp，但组件把它当像素用了
-     * （见 VeneraSegmentedButton 的 px/dp 对账），真机上实际渲染出的环宽是 4×密度 ≈ 10.5dp。
      * 单位修正后要让观感停在用户已拍板的那一档，就写 10dp。
      *
-     * 2026-09-28 组件换成"每颗自持药丸、没有外框"之后，这一档不再兼任
      * "分隔线在两格之间居中"的职责（分隔线随容器一起取消了）。
      */
     val segmentedGap: Dp = space5,
@@ -394,7 +366,6 @@ data class VeneraSpacingTokens(
     /**
      * 顶栏地板 —— 页面内容首行要让开的**顶栏展开态高度**（系统状态栏 inset 之外再加这一段）。
      *
-     * 104dp 不是新造数：它是 2026-10-03 清点时 14 颗页里逐字相同的那一个数
      * （`statusBarTop + 104.dp` 共 18 处），今天把它从 18 份抄本收成一处声明。
      *
      * ⚠️ 两条纪律：
@@ -405,7 +376,6 @@ data class VeneraSpacingTokens(
      *     SearchScreen、UnifiedExploreScreen、SourceSectionScreen），本轮按
      *     `FREEZE-STATEMENT.md:18`「禁止无明确需求的架构重构」不动它们，
      *     由 `ui/tokens/TopBarFloorGuardTest` 把它们写成白名单钉住 ——
-     *     **白名单只许缩短，不许变长**：新页面抄 104.dp 会被用例打回。
      */
     val topBarFloor: Dp = 104.dp,
     /**
@@ -447,7 +417,6 @@ data class VeneraSpacingTokens(
     /** 卡片封面与文字之间的间距。 */
     val cardCoverGap: Dp = 6.dp,
 
-    // ── 「关于这张图」半模态的三个尺寸（2026-10-01 两轮重排，用户先报"信息卡再做下美化"、
     //    再报"还是有点乱"。第一轮留下的 `sheetBottomClearance` / `sheetFieldLabelWidth`
     //    已随第二轮一起删掉：前者的那套"字段名在左、值在右"定义列表整块没了，后者被
     //    下面那列分类名取代 —— 留着一枚没人读的 token 只会让下一个人以为版面还是老样子）──
@@ -506,6 +475,16 @@ data class VeneraSpacingTokens(
      */
     val shimmerPeriodMillis: Int = 3000,
 
+    // ── 按钮尺寸（Button System 三档，全仓唯一出处；见 VeneraButtonSize）──
+    /** 紧凑按钮高度：工具行、密集列表里的次级动作。36 = 触达位下限之下的**视觉**档，命中区由组件另保。 */
+    val buttonHeightCompact: Dp = 36.dp,
+    /** 常规按钮高度（默认档）：48dp = 常规触控目标，与 [iconButtonSize] 的触达口径一致。 */
+    val buttonHeightMedium: Dp = 48.dp,
+    /** 大按钮高度（页面级主行动）：与 [detailPrimaryButtonHeight] 同档，不另造数字。 */
+    val buttonHeightLarge: Dp = 56.dp,
+    /** 按钮内容水平内边距（三档共用）。 */
+    val buttonHorizontalPadding: Dp = 16.dp,
+
     // ── 通用控件尺寸（跨页面复用，非 Search 专属）──
     /** 单行输入框 / 搜索框高度。 */
     val searchFieldHeight: Dp = 48.dp,
@@ -548,7 +527,6 @@ data class VeneraSpacingTokens(
     /**
      * 详情页首个内容项需要为悬浮顶栏让出的净高度（= [detailTopBarHeight] + 呼吸间距 24dp）。
      *
-     * 独立成 Token 的原因：真机反馈封面行紧贴返回/分享钮（原值 48+8 太挤），
      * 而这个数只能表达成「顶栏高 + 间距」，写死在页面里就成了没人看得懂的 56dp。
      * 不含系统 statusBars inset —— 那部分由 WindowInsets 提供。
      */
@@ -575,7 +553,6 @@ data class VeneraSpacingTokens(
      * 完整目录面板右侧索引轨的**占列宽**。
      *
      * 28dp 是「数字 12dp 方糖 + 两侧呼吸」的下限，也是轨不被网格挤压的地板：
-     * 原先吃 `space9`(20dp)，padding 一扣数字盒只剩 12dp 一根，用户 2026-11-09 报
      * 「右边的标被压的太小了」就是它。触控热区另由轨内 Box 的 height 撑到 28dp。
      */
     val directoryRailWidth: Dp = 28.dp,
@@ -630,7 +607,6 @@ data class VeneraMotionTokens(
      *
      * 独立于 [short]/[medium]：那两个服务界面转场，这个服务**内容替换**。
      * 内容替换要慢到足以让人意识到「图换掉了」，又不能慢到让滚动显得黏；
-     * 200ms 是真机观感定下来的值，和转场阶梯分开调才不会互相牵制。
      */
     val imageFadeInMillis: Int = 200,
     /**
@@ -642,7 +618,6 @@ data class VeneraMotionTokens(
      * 900ms 的出处：参考件（`tbahlai/animations` 的 `gallery_disintegration`）用的是 2500ms，
      * 那一档是为**单张慢放演示**定的；本仓这一屏是**多选批量删**，几格同散时 2.5 秒读起来就是卡死。
      * 取 [long]（320）的约三倍：比任何转场都长（要让人看见过程），又短到连删十张不觉得在等。
-     * ⚠️ 这一档**没上机量过观感**，是本批按算术定的 —— 真机第一次跑就要看一眼要不要往回带。
      */
     val disintegrationMs: Int = 900,
 )

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) 数据抽取安全规则。
+    显式排除敏感漫画源凭证文件、离线数据库和配置偏好，防止通过 adb backup 或云端未加密导出。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="comic_source" />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="comic_source" />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

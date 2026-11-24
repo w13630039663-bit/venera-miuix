@@ -51,7 +51,6 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
     /**
      * 要不要**推迟**挂 blur-behind：不跟着 `onStart` 一起挂，等页面自己调 [armBlurBehind]。
      *
-     * 为什么有的页需要它（2026-10-01 12:26 录屏逐帧量出来的）：那一层糊盖住的正是**后面那屏
      * 主界面**，`onStart` 就挂等于"新窗口一出现就把后面糊掉 + 压暗"。而大图页的入场是
      * "图从卡片原位飞过来"，起飞前那一两帧屏上本该**与点击前逐像素相同**——先糊一下再飞，
      * 读起来就是用户连着报了三轮的"打开图片会闪一下"。
@@ -143,7 +142,6 @@ abstract class VeneraSubActivityBase : ComponentActivity() {
     private fun applyBlurBehind(enabled: Boolean) {
         if (!enabled || !blurBehindArmed || !blurBehindEnabled) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            // ⚠️ 新版那一半也必须归零（2026-10-19 真机读数）：Android 12 起窗口背景模糊
             // 走的是 `Window.setBackgroundBlurRadius` 这条**独立字段**，只摘 `FLAG_BLUR_BEHIND`
             // 在部分 ROM 上会留着一层糊 —— 作品页返回时读到的正是这个：探针里
             // `剩余flag=0 radius=0`，而屏上后面那面墙整段还是糊的，直到 finish 才变清。

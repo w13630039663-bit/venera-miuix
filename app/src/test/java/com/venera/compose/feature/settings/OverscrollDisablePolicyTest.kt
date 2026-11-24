@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 过度滚动（overscroll）的禁用口径（2026-10-16，用户「钳制效果，禁止在设置了头图的页面使用过度滚动，
  * 不然效果不好」）。
  *
  * ⚠️ 这一轮抓到的根因是**API 换代，而且老写法自写下那天起就一直是空转**：

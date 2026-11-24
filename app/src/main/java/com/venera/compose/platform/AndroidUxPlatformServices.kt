@@ -16,7 +16,6 @@ import kotlin.math.roundToInt
 
 /**
  * [UxPlatformServices] 的 Android 实现 —— 把 `components/` 里原先那五处平台调用
- * **逐字搬进这一颗**（2026-10-20，写法 A）。
  *
  * ## 口径：行为必须逐字不变
  *

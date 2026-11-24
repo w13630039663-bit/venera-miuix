@@ -50,10 +50,8 @@ fun galleryTagCategoryLabel(category: Int): String = when (category) {
 }
 
 /**
- * Gelbooru `s=tag&q=index&json=1` 的应答元素（2026-09-26 实测，原文）：
  *
  * ```json
- * {"id":126,"name":"touhou","count":1024947,"type":3,"ambiguous":0}
  * ```
  *
  * ⚠️ 三条与 yande.re **不**同名的坑：

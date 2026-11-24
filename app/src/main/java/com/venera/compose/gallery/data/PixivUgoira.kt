@@ -1,12 +1,10 @@
 package com.venera.compose.gallery.data
 
 /**
- * pixiv **动图（ugoira）**的一整条逐帧数据（2026-10-23，用户报「app pixiv 源的动图无法播放」）。
  *
  * ## 为什么需要这一颗，而不是复用 [GalleryPost] 的某一档地址
  *
  * pixiv 的动图**不是** GIF / 动图 WebP —— 站方给的是「一张静帧 + 一个逐帧 zip + 一份帧延时表」。
- * 三样分开看（现量真号 151160372 的 `/ajax/illust/{id}/ugoira_meta`）：
  *
  * - `src` / `originalSrc`：zip 的两个分辨率档（`…_ugoira600x600.zip` / `…_ugoira1920x1080.zip`）；
  * - `frames[]`：逐帧的 `{file: "000000.jpg", delay: 1000}`（毫秒），顺序就是播放顺序；

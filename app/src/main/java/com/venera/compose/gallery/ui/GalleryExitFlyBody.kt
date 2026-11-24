@@ -19,15 +19,12 @@ import com.venera.compose.gallery.domain.exitExpansion
 import kotlin.math.roundToInt
 
 /**
- * **离场飞行体**：把"屏上那一帧"画成"飞回卡片那一格"（2026-10-19 抽成共享件）。
  *
  * ## 为什么抽
  *
  * pixiv 作品页要接返回程，而这段绘制原本**只长在** `GalleryPostScreen` 里（那 55 行
- * `drawBehind` 埋在极深的组合里），2026-10-19 上午又被抄进了作品页进场与播放器进场 ——
  * 同一个动作"把一块位图画进一个从 A 框变到 B 框的圆角矩形"共有四份抄本。各写一遍不行：
  * 飞行体只要有一处算式不同，同一部作品从这面墙点进去和从那一面墙点进去就会**飞得不一样**，
- * 而那种错只有真机能看见。
  *
  * 所以这里留**一份渲染**，算式继续吃 [com.venera.compose.gallery.domain.exitExpansion]
  * （那颗纯判据早就有单测逐位钉着）。进场那一趟见 [GalleryEntryFlyBody] —— 两颗件同一包、
@@ -46,7 +43,6 @@ import kotlin.math.roundToInt
  *
  * ## 圆角为什么随路程换（批 B②③ 之后换了两个端点）
  *
- * 起点这一端在 2026-10-19 批 B② 之后不再是**整屏**，而是**当前那一页图块**
  * （`PixivPageImage` 是裸 Box、不裁圆角 ⇒ 起点档就是方角 0dp）；终点仍是卡里那张封面
  * （`coverCornerRadius` = `shape.medium`，见 `veneraCoverCornerRadius`）。两档之间随路程插值，
  * 两端各自精确落在该档。
@@ -60,7 +56,6 @@ import kotlin.math.roundToInt
  *
  * @param progress 0 = 还在起点，1 = 已落到卡片那一格。**传 lambda 不传值**：动画值在
  *   `drawBehind` 里每帧现取，只重绘这一块；当 `Float` 实参递就等于把动画值读回组合期，
- *   每帧重组这一层（2026-10-19 批 A 之前的形状，那一条把较好的绘制期取值降级成了较差的）。
  * @param alpha 飞行体自己的不透明度。默认 1 = 整程不透明（老口径）。调用方若要"末段化进落点"
  *   就传 `{ exitBodyAlpha(exitFly.value) }` —— 见 [com.venera.compose.gallery.domain.exitBodyAlpha] 头注。
  */

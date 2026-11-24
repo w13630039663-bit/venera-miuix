@@ -38,13 +38,11 @@ import androidx.compose.ui.platform.LocalView
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.ui.tokens.VeneraTokens
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 墙上长按一张卡弹出的动作表（2026-10-04，用户第 2 条点名的五项）。
  *
  * 参照的是 pixez-miuix 那一版（`IllustCard.kt` 长按 → 底部动作表）。**读数要如实说**：
  * pixez 表里的动作是「下载 / 复制信息 / 复制图片 / 复制链接 / 分享链接 / 以图搜图 / 屏蔽作品」，
@@ -132,17 +130,18 @@ internal fun GalleryCardActionSheet(
                     onDismiss()
                 }
             }
-            // 作者名优先提取真实画师（Safebooru/Pixiv 自身字段即是，yande.re/Gelbooru 从标签中识别，
-            // 避免误将上传者当作画师展示）。
+            // 作者名优先提取真实画师（Pixiv 自身字段即是；图库三站从标签中识别，
+            // 避免误将上传者当作画师展示 —— Moebooru 的 `author` 与 Gelbooru 的 `owner`
+            // 都是**上传者**账号名。旧 Safebooru 那站曾直取 `tag_string_artist` 画师标签，
             var artistName by remember(post.uid) {
                 mutableStateOf(
-                    if (post.site == GallerySite.SAFEBOORU || post.site == GallerySite.PIXIV) post.author.trim() else ""
+                    if (post.site == GallerySite.PIXIV) post.author.trim() else ""
                 )
             }
             LaunchedEffect(post.uid) {
-                if (post.site == GallerySite.SAFEBOORU || post.site == GallerySite.PIXIV) return@LaunchedEffect
-                val dict = runCatching { GalleryTagDictionary.getInstance(context) }.getOrNull()
-                val artists = dict?.lookupArtists(post.tagList)?.filter { it.isNotBlank() }.orEmpty()
+                if (post.site == GallerySite.PIXIV) return@LaunchedEffect
+                val artists = runCatching { GalleryPorts.of(context).lexicon.artistNames(post.tagList) }
+                    .getOrNull()?.filter { it.isNotBlank() }.orEmpty()
                 if (artists.isNotEmpty()) {
                     artistName = artists.first()
                 }

@@ -11,7 +11,6 @@ import java.io.File
  * 到 `getUriForFile()` 才抛 `IllegalArgumentException: Failed to find configured root`。
  * 这正好是最坏的一种形状：
  * - 编译期连不成一条线（一侧是 Kotlin、一侧是 XML）；
- * - 只在真机、只在点分享那一刻出现；
  * - 而历史上的两个调用点还把它 `catch (_: Exception) {}` 吞了 ——
  *   即 `file_paths.xml` 顶部记的 G-2：「导出成功」的 Toast 弹了、分享面板从没出现过。
  *

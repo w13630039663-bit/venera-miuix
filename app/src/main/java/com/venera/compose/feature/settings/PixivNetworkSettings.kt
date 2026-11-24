@@ -26,17 +26,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import com.venera.compose.data.prefs.VeneraPreferences
+import com.venera.compose.gallery.data.PixivPreferences
 import com.venera.compose.gallery.domain.PixivNetworkMode
 import com.venera.compose.ui.tokens.VeneraTokens
 
 /**
- * pixiv 专属网络设置页面（2026-10-22）。
  *
  * 包含：OAuth 网络模式、API 服务网络模式、图片源（pximg / pixiv.re / 自定义 Host）。
  */
 @Composable
-internal fun PixivNetworkSettings(prefs: VeneraPreferences, onBack: () -> Unit) {
+internal fun PixivNetworkSettings(prefs: PixivPreferences, onBack: () -> Unit) {
     val tokens = VeneraTokens
     val oauthMode by prefs.pixivOAuthNetworkMode.collectAsState()
     val apiMode by prefs.pixivApiNetworkMode.collectAsState()

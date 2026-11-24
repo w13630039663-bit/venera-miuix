@@ -6,15 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 登录那几路的接线尺子（2026-10-17 第四轮起，2026-10-19 撤掉本机 Google 那一件后收窄）。
  *
  * 用户当时的原话是「我的要求是加上个原生谷歌登录（能拉起手机的谷歌账号那种的）」。
  * 查完 pixez-miuix（它自己也没有原生 Google 登录）之后定的是 B：**A 全量**（站方 App 登录页 +
  * 深链回跳 + 粘贴兜底）+ 一枚**系统账号选择器**（只作"本机 Google 身份"，界面上写明它不等于 pixiv 登录）。
  *
- * 2026-10-19 用户拍板「本机 Google 登录撤掉，暂时用不上」⇒ 那一件连同 `LocalGoogleIdentity` /
- * `GoogleIdentityAndroid` / `GalleryPorts.googleIdentity` 一起撤了（原件在 `_trash/google-identity-2026-10-19/`，
- * 三条协议层的理由记在 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四）。
  * 它留下的那四条用例（选择器形状、不联网、独立配置、那句护栏）跟着一起撤 —— **判据不能比被判的件活得久**，
  * 留着只会在下一轮变成"量具失效"那种红。这里剩下的是浏览器那一路自己的四条。
  *
@@ -82,7 +78,6 @@ class PixivLoginPathsTest {
 
     @Test
     fun `交浏览器那一跳先试 Custom Tab 再退回裸 VIEW，顺序不许反`() {
-        // 2026-10-17 第五轮（用户「我还是要 google 这样登录 pixiv 试试」）：pixiv 的 Google 登录
         // 只能发生在站方网页里，唯一能改的是"把哪份浏览器会话交给它"。Google 的账号列表跟着
         // **浏览器自己的会话**走，系统默认浏览器未必是 Chrome、那份会话里未必有 Google。
         // ⇒ Custom Tab（固定 Chrome）必须排在裸 ACTION_VIEW 之前；反了的话，凡是有默认浏览器的

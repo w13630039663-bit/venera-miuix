@@ -8,7 +8,6 @@ package com.venera.compose.gallery.domain
  *
  * ## 别名：两站给出的不是一样东西，所以只上一半
  *
- * 2026-10-01 的只读探针（`_probe/yande_re_alias_coverage.cjs`，读数同目录 `.txt`）量的就是
  * "这一档到底摆不摆得出别名表"：
  *
  * - **Gelbooru 腿（借 danbooru）有真供体**：`artists.json` 记录里就带着 `other_names`
@@ -61,7 +60,6 @@ object GalleryArtistProfile {
     }
 
     /**
-     * 名字底下那一行。**两段不同出处的读数合成一行**（2026-10-01 用户报"感觉不太行"后改的：
      * 旧版正名一行、别名一行、溢出计数还挂在第二行尾，名字底下最多占三行）。
      *
      * 两段的措辞一个字没改 —— 它们是两种不同的读数，合并的只是排版：
@@ -87,7 +85,6 @@ object GalleryArtistProfile {
      * 介绍页那排链接：全平台、去重、按固定次序摆。
      *
      * 与 [GalleryArtistLinks.iconPlan] **刻意是两份**（那条钉着画师行的 `MAX_ICONS = 2`，
-     * 这一条不受它约束 —— 用户 2026-10-01 点名"社交链接全部展开"）。三档来源的优先次序照旧：
      * 站方登记的记录 > 这条帖子的出处 > 作品页反查出的作者主页，后两条都只在**自己那一档还空着**时才补。
      *
      * 去重按"同一个身份"而不是同一条字符串：同 handle 的 `twitter.com` 与 `x.com` 是一枚

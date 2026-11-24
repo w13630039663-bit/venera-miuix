@@ -96,7 +96,6 @@ private val STATUS_CODE_REGEX = Regex("""status code:?\s*(\d{3})""", RegexOption
  * | `Failed to login`（picacg 把非 200 一律压成这句） | 同上 | 同上，**并非账号密码错误** |
  * | `Invalid status code: 401` | `unauthorized` | 需要登录或凭证失效 |
  *
- * ⚠️ 2026-10-14 第三轮改口径：**人话在前，技术细节在后**。
  * 旧版把 `raw` 原样拼在开头（"不可用：Invalid status code: 400"），屏上第一眼就是代码 ——
  * 与「界面文案不许带实现笔记」那条硬约束冲突。现在改成：第一句是用户能读懂的动作，
  * 原始报文收在「技术细节」括号里。

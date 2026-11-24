@@ -18,12 +18,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * pixiv 账号页的**进程级会话仓**（2026-10-19，用户点名「切屏幕都要留住数据」）。
  *
  * ## 为什么不能再用 `remember(requestKey)`
  *
  * 从前三段 / 二级三档 / 两档 scope 各是一颗 `remember(requestKey)`：key 一变，数据清空、
- * 重取、滚回顶。真机上的读感就是"每按一次页签都像第一次进来"，网络一慢还先白屏。
  * 而这一页的三份数据（收藏墙 / 关注动态 / 已关注名单）本来就互不替代 —— 没有理由切走就扔。
  *
  * 这个仓活到**进程结束**：Activity 的 `finish()`、旋转、跨页往返都不会清它；
@@ -61,7 +59,6 @@ internal object PixivAccountSessionStore {
      * 退出登录时清仓。不清的话换一个账号进来，旧的收藏墙还挂在新账号的用户号下面
      * （那些 key 里带着旧 id，看着不会串，但也没有一条理由继续留着别人的数据）。
      */
-    /** 每次重新进入账号页时，将各面墙的滚动偏移置顶，避免出现半山腰恢复错位（2026-10-22）。 */
     fun resetScrollPositions() {
         walls.values.forEach {
             it.scrollIndex = 0
@@ -147,7 +144,6 @@ internal class PixivWallSession {
                 if (pages.isEmpty()) pageError = line else moreError = "这一回没刷新上，下面还是上次那批。"
             } else {
                 // 按腿覆盖，**不动没答的腿**：整体替换的话，「全部」这一档里另一趟失败
-                // 会把已经取到的那一档从屏上抹掉（2026-10-22 审计：刷新一次私密档失败，
                 // 屏上那批私密作品凭空消失，而提示说的是"少了一档"）。
                 val acc = pages.toMutableMap()
                 ok.forEach { (restrict, page) ->

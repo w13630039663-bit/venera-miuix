@@ -8,7 +8,6 @@ import org.junit.Test
 /**
  * 画师取数面的两条判据（批次 L · L2）。
  *
- * 两条都来自 2026-09-30 的取证：
  *
  * - **`-` 前缀不是脏数据，是站方的"这条已停用"标记**（danbooru 源码 `Artist` 的 `url_string`
  *   就是 `urls.map(&:to_s).join("\n")`，而 `ArtistURL.parse_prefix` 认这个前缀）。

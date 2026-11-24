@@ -15,14 +15,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * pixiv 的登录态（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四 · P2）。
  *
  * 三档而不是两档，是因为**中间那一档真会出现**：`access_token` 几十分钟就换一次，
  * 而换新的那一跳可能撞上风控、断网、站方 500。这时候"没登录"与"登过但现在刷不动"是两件事：
  * 前者该请用户去登录，后者该请他**重新登一次**（而不是把界面退回匿名档假装一切正常 ——
  * 方案 §三 第 4 步钉的就是这条：降级不许静默）。
  *
- * 2026-10-21 补一条边界：只有**站方明确判 refresh token 失效**（400 `invalid_grant` / 401）
  * 才进 [NeedsRelogin]。403 是出口/风控，408/429/5xx 与连接失败是暂时性故障；那些档
  * 只要旧 access token 还没真过期，就继续用它，不能因为换票失败而把用户踢去重登。
  */
@@ -275,7 +273,6 @@ class PixivCredentialState(
         }
 
     /**
-     * 粘贴一条东西来登录（2026-10-17 第四轮，用户点了 B 之后补的兜底路）。
      *
      * 浏览器那一路偶尔会断在半路（系统没把回跳交回来、或用户是在另一台机器上登的），
      * 这一条是所有同类客户端的公共出口，认三种形状 —— **按信息量从多到少**试：
@@ -383,7 +380,6 @@ class PixivCredentialState(
             .url(TOKEN_URL)
             .post(body)
             .header("Accept", "application/json")
-            // token 端点和 app-api 一样会按客户端身份筛请求。2026-10-21 现量：
             // 只带 Accept 时同一份 refresh 请求回 403 HTML；补上 User-Agent 后回
             // 400 `invalid_grant`（说明端点认出了请求，只是票据假）。这几枚必须和
             // PixivAppClient 保持一致，否则首登与后台刷新会同时表现成"换票 403"。
@@ -428,7 +424,6 @@ class PixivCredentialState(
          * 做成静态而不是契约方法，是因为唯一的调用点在 `MainActivity.handleEntryIntent` ——
          * 那是冷启动主线程，不该为了问一句话去实例化账号那颗件（它会读一次 SharedPreferences）。
          *
-         * 两种形态都要认（2026-10-17 第四轮）：站方登完可能直接把 `pixiv://account/login?code=…`
          * 交给系统，也可能先落到它自己的 https 回跳再由浏览器转一手 —— 少认一条的表现是
          * 「浏览器里登录成功、回到 app 毫无反应」，而屏上一句报错都没有。
          */
@@ -438,7 +433,6 @@ class PixivCredentialState(
         /**
          * 换 token 那一颗的地址。
          *
-         * ⚠️ **路径里必须有 `/auth`**（2026-10-17 实测）：`oauth.secure.pixiv.net/token` 回
          * **HTTP 404**（`{"has_error":true,…,"message":"404 Not Found"}`），而
          * `oauth.secure.pixiv.net/auth/token` 对同一份请求体回 400 `invalid_grant`
          * （`code 1508 Invalid refresh token`）—— 后者是"端点认得出这个形状、只是票据假"。
@@ -531,7 +525,6 @@ interface PixivClientCredentials {
  * 口径（方案 §三 红线一）：这一对是 pixiv 官方客户端里公开的那一类常量，**不是我们的秘密**；
  * 但"不是秘密"不等于可以外流 —— 它照样不许进日志与报错消息。
  *
- * ## 这两枚是哪来的（2026-10-17 第四轮）
  *
  * 用户点名「参考 https://github.com/137458/pixez-miuix 他是怎么做登录的」，这两枚逐字取自那边
  * `shared/src/commonMain/kotlin/com/perol/pixez/shared/network/OAuthClient.kt` 的常量组

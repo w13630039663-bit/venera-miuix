@@ -8,11 +8,8 @@ import org.junit.Test
 import java.time.LocalDate
 
 /**
- * Gelbooru 时间窗口定界的纯函数层（2026-10-13）。
  *
  * fixture 用的是**今天带凭据现量的读数**（不是编的）：
- * `id:>=14994000 sort:id:asc` ⇒ `id=14994000` / `Tue Sep 29 17:30:32 -0500 2026`，
- * 最新一条 ⇒ `id=15078216` / `Mon Oct 12 13:46:29 -0500 2026`，
  * 站脚那条 ⇒ `id=1` / `Mon Jul 16 00:19:58 -0500 2007`。
  *
  * 这台状态机**不出网**，所以这里钉的是"下一步问哪一枚 id / 什么时候收口 / 什么时候认输"，
@@ -41,7 +38,6 @@ class GelbooruWindowBoundaryTest {
     }
 
     /**
-     * **十二枚月缩写逐枚现喂**（2026-10-16 真机立案）。
      *
      * 那条真读数 `Tue Sep 29 04:45:35 -0500 2026` 在开发机上解析得过、在设备上恒判"读不出日子"：
      * 实现是拿 `Month.getDisplayName(SHORT, ROOT)` 逐枚比，而**开发机 JVM 说 `Sep`、
@@ -60,7 +56,6 @@ class GelbooruWindowBoundaryTest {
             val raw = "Tue $abbr 21 04:45:35 -0500 2026"
             assertEquals(raw, LocalDate.of(2026, month, 21), parseGelbooruStampDay(raw))
         }
-        // 真机那条原样（就是它把整条线卡住的）
         assertEquals(LocalDate.of(2026, 9, 29), parseGelbooruStampDay("Tue Sep 29 04:45:35 -0500 2026"))
         // ICU 那侧的写法也收：站方哪天换库串，不该由我们决定它哪天坏。
         assertEquals(LocalDate.of(2026, 9, 29), parseGelbooruStampDay("Tue Sept 29 04:45:35 -0500 2026"))
@@ -88,10 +83,7 @@ class GelbooruWindowBoundaryTest {
     }
 
     /**
-     * 同一套 asctime 语法**少掉时区偏移**的那一截也认（2026-10-16 放宽）。
      *
-     * ⚠️ 诚实交代：这一形**没有在站方读到过**。立案的是真机第一次带凭据跑到探针那一步就断在
-     * 「上传时间读不出日子」（`_qa/ui-verify-2026-10-15/scr-23-37-gelbooru-year-window-break.jpg`），
      * 而当时屏上读不到原文 —— 所以现在同时做了两件事：把原文带上屏（下一次截图就是读数），
      * 以及只放宽"偏移段可缺"这一枚**位置一枚都不许动**的变体。
      * 真要是别的形状，下面那笔"认不出给 null"的用例仍然守着：宁可不发，不猜日期。
@@ -116,7 +108,6 @@ class GelbooruWindowBoundaryTest {
     }
 
     /**
-     * 「没带时间」与「带了读不出」是两件事（2026-10-16 分开）。
      *
      * 从前两枝共用一句「上传时间读不出日子」，于是排查的人第一反应是去改解析器 ——
      * 而空串那一枝要去查的是请求参数与 DTO，解析器怎么改都读不出不存在的东西。
@@ -134,21 +125,18 @@ class GelbooruWindowBoundaryTest {
     // ── 估点 ──
 
     /**
-     * 估点照**标定表**插值（2026-10-16 改口径）。
      *
      * 旧写法"最新 id 往回推 (天数+1) × 7,000"只对今天那一段成立：这一站早年约 1 千条/天，
      * 拿 7,000 估 2024 年那一页会一次偏到几百天之外，二分要烧 14 笔（真站逐笔 0.9–2.0 秒）。
      * 烘表之后同一枚目标日 2–5 笔 —— 前后对照 `_qa/gb_tr4.txt`。
      */
     @Test fun estimateInterpolatesBetweenCalibrationAnchors() {
-        // 2026-10-05 落在"2026-01-01 = 13,223,080"与活锚"今天 = 最新 id"那一段里：
         //   13,223,080 + (15,078,216 − 13,223,080) × 277 / 284 = 15,032,490
         assertEquals(15_032_490L, estimateStartId(maxId, today.minusDays(7), today))
         // 表上没有"今天之后"那一段 ⇒ 目标日就是今天（「按天」那一档）时往左让开**一天的量**再开问：
         // 贴着最新一条开问会退化成"从今天一步步往回挪"（真站实测 9 笔），让开一天 5 笔收口。
         assertEquals(maxId - GelbooruWindowBoundary.IDS_PER_DAY, estimateStartId(maxId, today, today))
         assertEquals(maxId - GelbooruWindowBoundary.IDS_PER_DAY, estimateStartId(maxId, today.plusDays(9), today))
-        // 表最老一行（2008-01-01）之前：站方最老的那条（id=1，2026-10-16 现量 `Mon Jul 16 2007`）就是下界。
         assertEquals(1L, estimateStartId(maxId, LocalDate.of(2007, 1, 1), today))
     }
 
@@ -209,7 +197,6 @@ class GelbooruWindowBoundaryTest {
     }
 
     @Test fun firstCallAsksTheEstimate() {
-        // 表插值 2026-10-05 那枚（算式见 estimateInterpolatesBetweenCalibrationAnchors）
         val step = gelbooruBoundaryStep(maxId, today.minusDays(7), today, emptyList(), BoundarySide.WINDOW_START)
         assertEquals(BoundaryStep.Ask(15_032_490L), step)
     }
@@ -219,7 +206,6 @@ class GelbooruWindowBoundaryTest {
      * ⇒ 问的不是中点，而是**从最近那条仍在目标日之下的观测、按当段日速插过去**那一枚。
      *
      * 14,889,216 + 6,532 × 16 天 = 14,993,728 —— 而中点(14,941,608)落在 09-21，等于白问一笔。
-     * 2026-10-16 真站逐档量过这个次序（`_qa/gb_tr4.txt`：一年半前那一档的上界 9 笔 → 6 笔）。
      */
     @Test fun bracketsAskTheSecantFromTheNearestKnownLowerReading() {
         val step = gelbooruBoundaryStep(
@@ -277,7 +263,6 @@ class GelbooruWindowBoundaryTest {
      *
      * 起点交 `high`（已在这一期里的第一条）：最坏少摆开头几小时，少了看得出。
      * 上界交 `low + 1`（还没出这一期的最后条之后）：同样只会少，**绝不会把下一期的图摆进这一期**。
-     * 这一条是 2026-10-16 加闭环窗口时定的：上界那枚如果照起点那样交 `high`，
      * 「2024 年 3 月的高分榜」就会混进 4 月头几小时的分 —— 屏上没有任何地方读得出来。
      */
     @Test fun theTwoEndsOfTheWindowSettleOnOppositeSides() {

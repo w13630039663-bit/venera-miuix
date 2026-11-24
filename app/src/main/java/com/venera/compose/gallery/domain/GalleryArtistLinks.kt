@@ -12,7 +12,6 @@ package com.venera.compose.gallery.domain
  * 画师行那一侧**不因此变宽** —— `iconPlan` 的挑选条件与 `MAX_ICONS` 一条都没动。
  *
  * 计划里原本还有一档 `WEB`（"看着像个人网站根"的未知域名），量过现成用例后**刻意不加**：
- * `rainboy.jp/`、`yunting.artstation.com/` 这类站点根在 2026-09-30 就被判死为 OTHER
  * （"认不出的服务一律 OTHER 不猜"，`GalleryArtistLinksTest` 钉着），而它与 OTHER 在屏上
  * 长成同一个样子（标签都是域名），加一档只会把一条已经拍过的判据劈成两份。
  */
@@ -32,7 +31,6 @@ enum class GalleryArtistLinkPlatform {
  * [url] 保持站方给的原样（不规范化、不改写成 https），**作品页反查出来的那一条除外** ——
  * 那条是我们自己拼的 `users/{id}`，因为出处给的是作品页，而入口要落在"这个人"上。
  * [account] 只有反查那一条带：站方登记的外链本来就是这位自己的主页，而反查来的是
- * "这张图的作者的主页"，两者在屏上必须能分辨（用户 2026-09-30 拍板"照摆，胶囊带账号"）。
  */
 data class GalleryArtistLink(
     val platform: GalleryArtistLinkPlatform,
@@ -43,13 +41,11 @@ data class GalleryArtistLink(
 /**
  * 画师外链的平台判定（批次 L，判据层的唯一一份）。
  *
- * 全部形态来自 2026-09-30 的真读数（yande.re `artist.json` 的 `urls`、Gelbooru 原生画师记录页、
  * 以及 SauceNAO 那侧混着给的同一批脏串），三条最不显然的：
  *
  * - **老式 pixiv 图床目录不算个人主页**：站方在 `member.php?id=…` 旁边就挨着给
  *   `img42.pixiv.net/img/tehu48/` 与 `i1.pixiv.net/img25/img/xerd008ss/`，那是一台镜像上的
  *   目录列表，不是"这位本人"。按域名尾巴判 `pixiv.net` 就会把它认成 pixiv 主页。
- * - **作品页的编号不是用户编号**：`/artworks/1234567` 里那串是作品 id，拿它去要头像
  *   就是**把别人的脸挂到这位名下**，而且全程不会报错。
  * - **`fanbox` 的 host 尾巴是 `pixiv.net` 时也要先认 fanbox**（`www.pixiv.net/fanbox/creator/…`）。
  *
@@ -59,7 +55,6 @@ data class GalleryArtistLink(
  */
 object GalleryArtistLinks {
 
-    /** 画师行里最多摆几枚图标（用户 2026-09-30 定：pixiv 恒第一，第二枚推优先、无推则 fanbox）。 */
     const val MAX_ICONS = 2
 
     /** 站方给的"个人主页"形态里，这些 pixiv 子域**只托管图或目录**，不是人。 */
@@ -142,8 +137,6 @@ object GalleryArtistLinks {
     /**
      * 这条 pixiv 链接里的**用户 id**。拿不到就 null（不是 0，也不是"换个形态再猜"）。
      *
-     * 认得出的三种（今天都实测出现过）：`/users/7075448`、`/en/users/49622591`、
-     * `member.php?id=1360347`（Gelbooru 原生记录里 14/14 都是这最后一种）。
      * 明确不要的：`/artworks/N`（作品号）、`stacc`、`sketch`、`pixiv.me` 短链、图床目录。
      */
     fun pixivUserId(url: String): Long? {

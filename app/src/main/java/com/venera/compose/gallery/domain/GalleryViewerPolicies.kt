@@ -3,7 +3,6 @@ package com.venera.compose.gallery.domain
 import kotlin.math.abs
 
 /**
- * 大图页三条行为档位（批次 C1，2026-09-29）的判据。
  *
  * 三条放一个文件是因为它们是**同一屏上的三个行为**（音量键、连播、预加载），而不是一堆无关的小工具：
  * 读这一个文件就能答"这一屏会不会自己动、动之前问谁"。设置页只负责摆档位，一律不自己算。
@@ -38,7 +37,6 @@ object GalleryAutoPlay {
         if (seconds <= 0) return false
         // 弹层开着 / 正在缩放 = 人正在操作这一张，自动翻走就是抢操作。
         if (infoOpen || zoomed) return false
-        // 视频不吃连播（用户 2026-09-29 拍板）：连播不该替人决定何时起播视频、何时出声。
         if (isVideo) return false
         return currentPage < pageCount - 1
     }

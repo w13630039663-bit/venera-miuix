@@ -48,7 +48,6 @@ class GalleryViewerPoliciesC2Test {
 
     @Test
     fun `两种写法都认`() {
-        // 2026-09-29 复探针：Gelbooru `tags=ai_generated` 与 `tags=ai-generated` 第一页各 9 张卡片
         // （阴性对照 `zzz_not_a_tag` = 0 张），而条目标签串上写的是连字符那一版。
         // 上一轮这里记的"yande.re 只有 ai-generated（83 条）"复现不出来：那一站这四种写法现在全是 0 条。
         assertTrue(GalleryAi.isAiMarked(siteAiFlag = null, tags = listOf("1girl", "ai-generated")))

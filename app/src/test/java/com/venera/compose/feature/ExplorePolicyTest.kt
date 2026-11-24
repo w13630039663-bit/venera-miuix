@@ -91,7 +91,6 @@ class ExplorePolicyTest {
         assertEquals(listOf(two, three), result[1].comics)
     }
 
-    /* ── 2026-10-14 显隐判式与屏上文案 ── */
 
     private fun mode(id: String) =
         ExploreMode(id = id, label = id, kind = ExploreMode.Kind.EXPLORE_PAGE, pageIndex = 0)

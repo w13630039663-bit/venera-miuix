@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 「横滑一排的高度不许由字形决定」这条口径的判据（2026-10-17 第二十一轮）。
  *
  * ## 它拦的是什么事
  *
@@ -163,7 +162,6 @@ class GalleryHScrollRailHeightTest {
     fun `两条横滑一排都挂了双端渐隐，且共用一个出处`() {
         val artist = bodyOf("internal fun PixivArtistRail(")
         val ranking = bodyOf("internal fun PixivRankedWorkGrid(")
-        // 2026-10-17 第三十轮起它是 `internal`：图库站关注画师行进了白卡之后与
         // PixivArtistRail 同档同形，两端渐隐必须只有这一颗（两站各写一版就会漂）。
         val helper = bodyOf("internal fun Modifier.horizontalRailFades(")
 

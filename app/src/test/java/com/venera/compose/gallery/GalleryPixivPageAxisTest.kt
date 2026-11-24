@@ -18,7 +18,6 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 批 228-B：pixiv 作品页「点图进大图」那一整条路（2026-10-18）。
  *
  * 用户口径三句：
  * - 「点击图片单独显示高清点的图片（复用图库的大图播放器就行），支持左右滑动切换本作品的多张图片，
@@ -192,11 +191,9 @@ class GalleryPixivPageAxisTest {
     @Test
     fun `作品页那一支点得进播放器，页轴在起跳前写好`() {
         val body = code(screen)
-        // 2026-10-18 hero 那一轮：点击要把**这一页此刻的窗口矩形**一起交出去（去程起点重新截），
         // lambda 多了一枚 `rect`。**同日第四批**按用户那句「只留竖着连续翻页模式」撤掉横向那一档 ⇒
         // 两支成一档，条数从 2 改到 1（意图没变：屏上那几页每一页都得点得开）。
         //
-        // 2026-10-19：动图那一支也摆上了第一帧（用户「整屏上半是白的」），而那一帧复用**同一颗**
         // `PixivPageImage`、同样交 `openPages` ⇒ 点击出口成两处。意图没变（每一页都点得开），
         // 所以这里是**数出口**而不是数行：钉的是"每一支挂载点都交同一个出口"，不是"只有一支"。
         assertEquals("连读那一档的每一页都得能点开", 2, body.countWith("onClick = { rect -> openPages("))
@@ -246,7 +243,6 @@ class GalleryPixivPageAxisTest {
     @Test
     fun `默认档的下载文件名带上页位，免得四页落成同名靠括号区分`() {
         // `<site>-<id>.<ext>` 那一档四页同串，落盘要靠 `uniqueName` 补 " (1)" ——
-        // 屏上读起来像"存了四张一样的"。带页位之后第 3 页就是 `pixiv-150320368-p2.png`。
         val wall = PixivWorkPage.pageWallOf(detail(threePages))
         val naming = com.venera.compose.gallery.domain.GallerySaveNaming.SITE_ID
         assertEquals(

@@ -2,6 +2,9 @@ package com.venera.compose.feature
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.venera.compose.data.db.FavoriteItem
@@ -118,6 +121,9 @@ data class DetailUiState(
  */
 const val PREVIEW_LIMIT = 10
 
+/** 详情页「加入追更」在未开启追更时自动创建的夹名（与收藏页设置面板新建夹的默认名一致）。 */
+const val FOLLOW_FOLDER_NAME = "追更"
+
 /**
  * 一次性事件：打开阅读器。
  *
@@ -207,6 +213,22 @@ class ComicDetailViewModel(
     private val _isNetworkFav = MutableStateFlow(false)
     val isNetworkFav: StateFlow<Boolean> = _isNetworkFav.asStateFlow()
 
+    /**
+     * 追更：当前追更夹（null = 未开启追更）与「本书是否就在那个夹里」。
+     *
+     * 为什么用 Compose 状态而不是 StateFlow：这两个值只服务这一屏那颗按钮的换形，
+     * 读点是组合函数，没有第二个消费者需要 `collect`。
+     */
+    var followFolder: String? by mutableStateOf(prefs.followUpdatesFolder.value)
+        private set
+
+    var inFollowUpdates: Boolean by mutableStateOf(false)
+        private set
+
+    /** 加入 / 移出追更的一次性提示。页面只负责把它弹出来（Toast），不持有状态。 */
+    private val _followEvents = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val followEvents: SharedFlow<String> = _followEvents.asSharedFlow()
+
     val historyFlow by lazy { historyDao.historyFlow }
 
     private var loadedId: String? = null
@@ -229,6 +251,7 @@ class ComicDetailViewModel(
                 val c = currentComicItem ?: return@collect
                 val key = resolveSourceKey(c.sourceName)
                 _isLocalFav.value = favoritesManager.isExist(c.id, key)
+                inFollowUpdates = isInFollowFolder(c)
                 if (_favPanel.value.visible) {
                     _favPanel.update {
                         it.copy(
@@ -239,11 +262,22 @@ class ComicDetailViewModel(
                 }
             }
         }
+        // 追更夹在别处被切换 / 取消时，按钮要跟着换形（设置页、收藏页都能改这个值）
+        viewModelScope.launch {
+            prefs.followUpdatesFolder.collect { folder ->
+                followFolder = folder
+                val c = currentComicItem
+                inFollowUpdates = if (folder.isNullOrBlank() || c == null) false else isInFollowFolder(c)
+            }
+        }
     }
 
     /** 拉取真实详情（章节目录、分卷、推荐等） */
     fun load(comic: ComicItem) {
         currentComicItem = comic
+        followFolder = prefs.followUpdatesFolder.value
+        inFollowUpdates = false
+        viewModelScope.launch { inFollowUpdates = isInFollowFolder(comic) }
         val identity = "${resolveSourceKey(comic.sourceName)}:${comic.id}"
         if (loadedId == identity && (_uiState.value.details != null || _uiState.value.isLoading)) return
         loadedId = identity
@@ -311,7 +345,6 @@ class ComicDetailViewModel(
                 val e = res.exceptionOrNull()
                 Log.e("VeneraDebug", "getComicDetails($key) failed for id=${comic.id}", e)
                 // 取消不是错误：切作品 / 退出页面会走到这里，上一版会把内部那句
-                // "The coroutine scope left the composition" 原样写上屏（真机 2026-10-14）。
                 if (isCancellation(e)) return@launch
                 // 登录能力要问一次源（`getAccountInfo()` 会同步跑 JS，必须在 IO 上问）。
                 // 只有它能把这个 401/403 说成"要先登录"而不是"源站拦了"。
@@ -546,6 +579,90 @@ class ComicDetailViewModel(
                     _favPanel.update { it.copy(toast = "收藏没成功，再试一次") }
                 }
         }
+    }
+
+    // ── 追更：详情页那颗「加入追更」钮的数据面 ──
+
+    /**
+     * 一键加入追更。
+     *
+     * 顺序：取当前追更夹 → 没有就建「追更」→ 登记为追更夹（**不清表**）→ 把本书写进夹里。
+     *
+     * `prepareTableForFollowUpdates(clearData = false)` 是关键：默认 `true` 会把整夹的基准更新时间清空，
+     * 建完夹的首日所有条目都会被判成「有更新」。这里只要它补上三列（`last_update_time` /
+     * `has_new_update` / `last_check_time`），不动存量。
+     *
+     * `addComic(..., currentUpdateTime())` 与长按快捷收藏同一口径：写入服务端当前更新时间当基准，
+     * **不置** `has_new_update`，所以刚加入的书不会立刻冒充「有新章」。
+     */
+    fun joinFollowUpdates(comic: ComicItem) {
+        if (inFollowUpdates) return
+        _uiState.value.details?.let { cacheMetrics(it) }
+        currentComicItem = comic
+        val key = resolveSourceKey(comic.sourceName)
+        viewModelScope.launch {
+            runCatching {
+                val current = prefs.followUpdatesFolder.value?.takeIf { it.isNotBlank() }
+                val target = current ?: ensureFollowFolder()
+                favoritesManager.prepareTableForFollowUpdates(target, clearData = false)
+                prefs.setFollowUpdatesFolder(target)
+                val added = favoritesManager.addComic(
+                    target,
+                    comic.toFavoriteItem(key),
+                    null,
+                    currentUpdateTime(),
+                )
+                added to target
+            }.onSuccess { (added, target) ->
+                followFolder = target
+                inFollowUpdates = true
+                _followEvents.tryEmit(
+                    if (added) "已加入追更「$target」，每天自动检查一次"
+                    else "「$target」里已经有这本书"
+                )
+            }.onFailure { e ->
+                Log.w("VeneraDebug", "joinFollowUpdates failed", e)
+                _followEvents.tryEmit("加入追更没成功，再试一次")
+            }
+        }
+    }
+
+    /**
+     * 移出追更：只从**当前追更夹**里删掉这一条。
+     *
+     * 不动 `followUpdatesFolder` 本身 —— 用户的意思是「这本不追了」，不是「关掉追更」；
+     * 其它收藏夹里的副本也不碰（那是别的夹的资产）。
+     */
+    fun removeFromFollowUpdates(comic: ComicItem) {
+        val folder = prefs.followUpdatesFolder.value?.takeIf { it.isNotBlank() } ?: return
+        val key = resolveSourceKey(comic.sourceName)
+        viewModelScope.launch {
+            runCatching { favoritesManager.deleteComicWithId(folder, comic.id, key) }
+                .onSuccess {
+                    inFollowUpdates = false
+                    _followEvents.tryEmit("已移出追更，其它收藏夹里的这本不受影响")
+                }
+                .onFailure { e ->
+                    Log.w("VeneraDebug", "removeFromFollowUpdates($folder) failed", e)
+                    _followEvents.tryEmit("移出没成功，再试一次")
+                }
+        }
+    }
+
+    /** 当前追更夹，没有就建一个名为 [FOLLOW_FOLDER_NAME] 的。 */
+    private suspend fun ensureFollowFolder(): String {
+        favoritesManager.folders.value.firstOrNull { it == FOLLOW_FOLDER_NAME }?.let { return it }
+        return runCatching { favoritesManager.createFolder(FOLLOW_FOLDER_NAME) }
+            // 并发竞态：另一个入口刚建好同名夹时 createFolder 抛「Folder is existing」，
+            // 这时该复用它而不是让整条路径失败
+            .getOrElse { FOLLOW_FOLDER_NAME }
+    }
+
+    /** 本书是否在当前追更夹里（一次主键查询，按夹名过滤）。 */
+    private suspend fun isInFollowFolder(comic: ComicItem): Boolean {
+        val folder = prefs.followUpdatesFolder.value?.takeIf { it.isNotBlank() } ?: return false
+        val key = resolveSourceKey(comic.sourceName)
+        return runCatching { favoritesManager.find(comic.id, key).contains(folder) }.getOrDefault(false)
     }
 
     // endregion
@@ -957,7 +1074,6 @@ class ComicDetailViewModel(
                             allChapters = allChapters,
                             // 题材统计的标签来源。**必须优先用详情的 tagMap 打平结果**：列表接口
                             // 给的 tags 是裸词（picacg / jm / 拷贝漫画都是），而归一化按原口径会
-                            // 丢掉所有不带 namespace 的标签 —— 真机实测「只有 EH 记录得到标签」就是因为
                             // EH 的列表项恰好自带 "female:xxx"，其余源全军覆没。
                             // 并上 comic.tags 是为了详情还没加载完就进阅读器的场景（EH 列表串在那时是唯一数据）。
                             tags = (state.details?.plainTags.orEmpty() + comic.tags).distinct(),

@@ -1,6 +1,5 @@
 package com.venera.compose.feature
 
-// 2026-10-20：`searchVisibleTags` 搬到了 `components/`（大屏复用要调它，而 feature/
 // 带一堆 Android 绑定会把 components/ 连坐）。用例跟着改 import，断言一字未动。
 import com.venera.compose.components.searchVisibleTags
 import org.junit.Assert.assertEquals
@@ -33,7 +32,6 @@ class SearchVisibleTagsTest {
         searchVisibleTags(listOf("chinese", "translated"), emptyList()),
     )
 
-    /** 真机回归：`東方: 靈夢` 这类"前缀: 值"形态，不同前缀不得互相吞并。 */
     @Test fun differentNamespacesNeverMerge() = assertEquals(
         listOf("female:dog", "parody:dog"),
         searchVisibleTags(listOf("female:dog", "parody:dog"), emptyList()),

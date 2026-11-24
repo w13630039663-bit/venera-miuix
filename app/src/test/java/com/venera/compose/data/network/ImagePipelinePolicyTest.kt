@@ -111,7 +111,6 @@ class ImagePipelinePolicyTest {
     //
     // 这条判据决定一笔图片请求走 VeneraImageFetcher（整张吸进内存、不写 Coil 磁盘缓存）
     // 还是走 Coil 的 NetworkFetcher（流式落盘 + 文件源解码 + OkHttp 每主机并发上限）。
-    // 判错方向的代价不对称：多接管一张图 = 多两三份堆内字节（2026-09-29 画廊 gif 闪退的成因），
     // 少接管一张该去混淆的图 = 条状撕裂图。所以这里逐条钉住"不该接管的普通图"。
 
     @Test

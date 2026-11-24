@@ -22,7 +22,6 @@ import com.venera.compose.gallery.domain.GalleryChromeHidePolicy
  *
  * ## 为什么两栏各一枚开关（而不是一枚管两栏）
  *
- * 用户 2026-09-30 明确要"分别添加个下滑收起顶栏和底栏的设置选项"（这句里的"下滑"当天就被
  * 更正成"上滑"了 —— 用户要的是**浏览时收起**，判据的符号依据见 [GalleryChromeHidePolicy] 类头注）：
  * 有人只想要"看图时底栏让位、顶栏留着看标题"，有人反过来。两枚开关互不联动。
  *

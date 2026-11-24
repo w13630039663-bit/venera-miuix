@@ -3,7 +3,6 @@ package com.venera.compose.ui.tokens
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * "当前是否深色"的唯一读口 —— 从 `feature/VeneraTheme.kt:45` 搬来 `ui/tokens`（2026-10-20）。
  *
  * ## 为什么搬
  *
@@ -19,7 +18,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
  *
  * ## 为什么默认值是 `false`
  *
- * 沿用原值，不改成"跟随系统"：`VeneraTheme` 是唯一的 provider，它一定会在真机上把这个值
  * provide 出来；默认 `false` 只服务没挂 provider 的预览与离屏测试。
  * 改成跟随系统会让预览图在深色系统上突然变色 —— 那是"顺手改进"带来的观感漂移，不要。
  */

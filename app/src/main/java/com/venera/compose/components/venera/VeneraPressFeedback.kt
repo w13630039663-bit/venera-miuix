@@ -4,7 +4,6 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.SinkFeedback
 
 /**
- * 「图片面」按压反馈的**唯一出处**（2026-10-16，用户要求「给图廊所有图片都加上按压反馈」）。
  *
  * ## 为什么要有这一颗
  *

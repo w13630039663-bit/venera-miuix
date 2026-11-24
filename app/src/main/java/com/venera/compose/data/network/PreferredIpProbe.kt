@@ -18,7 +18,6 @@ import okhttp3.Request
  *
  * ## 为什么必须发业务请求，不能 ping / 不能只看"连上了"
  *
- * 本机实测（2026-10-01）两组读数把这件事钉死了：
  * - `konachan.net` 走 CF、TCP 443 **通**，HTTP 层恒 **403**（CF 挑战页）—— 只看"连上了"会把它当可用节点；
  * - 同一个 `safebooru.donmai.us`，四台 CF 节点里 `108.162.193.171` 稳定 **403**、另三台 **200**（0.41~0.66 s）。
  *
@@ -214,7 +213,6 @@ internal object PreferredIpProbe {
     /**
      * 失败形态分类 —— 屏上"连不上"与"403"是两句话，混起来用户就无从下手。
      *
-     * [PreferredIpError.RESET] 单独成档的依据（2026-10-01 真机测速读数）：同一台节点上
      * Safebooru 通（证明 TCP 443 可达、节点活着），yande.re/gelbooru/nhentai/ehentai 却
      * 失败且异常形态是连接被重置 —— TCP 握手成功、TLS ClientHello 带着明文 SNI 出去就被掐，
      * 是**按域名阻断**的典型形态。它与"这台节点不可达"（[ConnectException]，独立子类，

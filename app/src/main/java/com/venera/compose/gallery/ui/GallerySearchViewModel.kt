@@ -16,7 +16,6 @@ import com.venera.compose.gallery.data.GelbooruCredentialState
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
-import com.venera.compose.gallery.data.GalleryTagDictionary
 import com.venera.compose.gallery.data.GalleryTagSuggestion
 import com.venera.compose.gallery.data.PixivAuthState
 import com.venera.compose.gallery.data.PixivPremium
@@ -100,7 +99,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 这一轮打哪些站 —— 「全部 / Yande.re / Gelbooru」里的那一枚。
      *
-     * 默认「全部」是用户 2026-09-30 改判，推翻 09-25 那条「一次只搜一个站」。改判的依据是实测：
      * 两站头部画师标签 **22/25 同名**（`gallery-artist-alias-2026-09.md` §一.2），
      * 所以同一串词并打两站直接就能出结果，**不需要**先建一层跨站身份映射。
      *
@@ -204,7 +202,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         internal set
 
     /**
-     * 票据**这一会儿**拿不拿得到 —— 与 [pixivLoggedIn] 分开的那一格（2026-10-18，
      * 用户「人气和收藏 xxx+ 的筛选没有生效」）。
      *
      * 为什么必须分两格：`authState` 只说"有这个账号"，`bearerOrNull()` 才说"这一跳发得出去"。
@@ -218,7 +215,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         internal set
 
     /**
-     * pixiv **会员**身份（2026-10-18，用户「人气 / 收藏 xx+ 照 pixez 的做法」）。
      *
      * 与登录态是第三格：登录着 ≠ 会员。`sort=popular_desc` 在站方是付费档（pixez 非会员直接 toast
      * 并且不发），而 `bookmark_num_min` 那一枚**也是**付费档 —— 从前我们把收藏全押在它上面，
@@ -409,8 +405,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun pageSizeFor(site: GallerySite): Int = when (site) {
         GallerySite.GELBOORU -> boards.gelbooru.pageSize
         GallerySite.YANDERE -> boards.yandere.pageSize
-        GallerySite.SAFEBOORU -> boards.safebooru.pageSize
-        // pixiv 这一跳**恒给 60 条**（2026-10-17 现量：`illustManga.data` 长度就是 60，
+        GallerySite.KONACHAN -> boards.konachan.pageSize
         // 翻到最后一页才不满）。从前这里是 `notWired`，因为搜索腿没接 ——
         // 现在接了，所以这一格必须答得出来："到底"判据和页尾读数都吃它。
         GallerySite.PIXIV -> PIXIV_PAGE_SIZE
@@ -493,7 +488,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 换站。
      *
-     * **标签留着**（用户 2026-09-26 改判）：两站词表不通这条仍然成立（Gelbooru 的
      * `1girl` / yande.re 的 `1girl` 之类能共用，而 `rating:general` 这种只在 Gelbooru 有意义），
      * 但实测用户真正在做的动作是"这串标签换个站再看看"，此前一句
      * `filters = emptyList()` 把他刚选好的条件整片抹掉、还得重敲一遍。
@@ -595,8 +589,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 大图页点标签递回来时的入口：切站 + 装条件 + 立刻按新条件搜一遍。
      *
-     * 2026-09-28 起它**不再把上一轮覆盖掉**，而是走 [openContext] 把上一轮压栈
-     * （真机报的"搜了 touhou → 点图 → 点画师 → 返回掉回每日推荐、touhou 再也回不去"，
      * 病因就是这里原先的整片替换 + 返回那一格到底）。
      *
      * **不拆成两步**（先 [setSite] 再 [setFilters]）：本轮的换站改成"留条件并顺手重搜"之后，
@@ -609,7 +601,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 只有当前那一档根本不含这张图的站时（例如从收藏页那面墙进来），才落到那一个站。
      */
     fun acceptHandoff(site: GallerySite, tags: List<String>) {
-        // ── 内容域分流（2026-10-20，用户报「pixiv 作品页点标签没反应，返回后只剩一个空搜索框」）──
         //
         // 病因链在这一句：交接从前**一律**走上面那条 booru 的路 —— 把标签塞进 `filters`（胶囊），
         // 而 pixiv 那一域读的是 `pixivTerm`（一个词）。于是两个域各自都"按设计执行"：
@@ -626,10 +617,8 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             return
         }
         val next = if (site in source.sites) source else GallerySearchSource.single(site)
-        // ── 收条（2026-10-23，用户「点 Tag 直达搜索结果」）──
         //
         // 交接这一枚装完就收成 RESULTS 单行态：点标签的人要的就是"这个词的结果墙"，
-        // 不是一张摊开的输入卡 + 键盘（那正是真机上"返回后只剩一个搜索框"的另一种长相）。
         // 两个域现在同一口径 —— pixiv 那一支（[openPixivContext]）本来就收，booru 这支跟上。
         //
         // 键盘由收条顺带收起：RESULTS 态输入行不在组合里，焦点被清掉
@@ -645,7 +634,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 屏上自相矛盾，比串台更难解释。只在一站被关注的那位仍走 [acceptHandoff]：
      * 另一站的同名那位本来就没被认下，替他扩大范围就是替用户做决定。
      *
-     * 收条口径与 [acceptHandoff] 相同（2026-10-23 起）：点画师卡的人要的就是那面墙，
      * 不是一张摊开的输入卡。
      */
     fun acceptHandoffAllSites(tags: List<String>) {
@@ -659,8 +647,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 反过来写就会出现"屏上已经是新的一轮、上一轮却没存下来"—— 正是本轮要修的那条缺陷。
      *
      * @param thenCollapse 装完之后收成一条（[GallerySearchMode.RESULTS]）还是保持当前那一面。
-     *   现在**三个调用方全收条**：点历史（用户 2026-09-26 拍板"点历史直接跑并收成一条"）、
-     *   点标签交接与点画师卡（用户 2026-10-23 拍板"点 Tag 直达搜索结果"）—— 两个域同一口径。
      *   参数本身留着：空条件那一档在收条之前就退回输入态了（见下面 `filters.isEmpty()` 分支），
      *   这条分档必须写在调用方能看见的地方。
      *
@@ -682,7 +668,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             GalleryContextPlan.SKIP_EMPTY -> Unit
         }
         switchSource(nextSource, reSearch = false)
-        // ── 域回位（2026-10-20）──
         // 反向那一条同样要修：在 pixiv 内容域里点一枚 **booru** 标签时，`source` 会被换成
         // 单站 booru，而 `domain` 还停在 PIXIV ⇒ `runSearch` 按域路由到 `runPixivSearch`，
         // 读的是 `pixivTerm`（那是上一轮 pixiv 的词，或者空）⇒ 要么搜错词、要么一笔都不发。
@@ -714,7 +699,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * **pixiv 那一侧的换一轮上下文**（2026-10-20）—— 与 [openContext] 平行，不是它的一个分支。
      *
      * 为什么不能并进 [openContext]：两个域"搜什么"根本不是同一格（booru 是胶囊串、pixiv 是一个词），
      * 而上游那个入口（[acceptHandoff]）只知道"用户点了一枚哪一站的标签"。并进去就得在每个字段上
@@ -826,7 +810,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     fun canPopContext(): Boolean = contexts.isNotEmpty()
 
     /**
-     * 当前排行档的读数，如「周（2026-09-21 ~ 2026-09-28）」；默认档返回 null（没什么可念的）。
      *
      * 页尾与空态都念这一句 —— 它同时回答"按什么排的"和"窗口是哪几天"，
      * 而"本周"这种词不带日期就是说不出对错的读数。
@@ -837,7 +820,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         return if (label == null) ranking.shortLabel else "${ranking.shortLabel}（$label）"
     }
 
-    // ── 页尾 / 空态那几句读数：两个域各按各的语法念（2026-10-17）──
     //
     // 从前这几句直接写在页面里、而且逐字是 booru 的话（`tags=` 那串、排行档、预算）。
     // pixiv 那一侧没有胶囊、没有排行档、也没有预算，照念就是假读数：
@@ -922,7 +904,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 也不该把翻页游标重置掉。轮次仍然要 +1：那是给上一轮的在途响应判死刑用的。
      * [searchGeneration] 一并 +1，让墙按"结果换过一轮"那条既有通路重绘；
      * 但落点不再是顶部 —— 那一轮离开时看到第几张，回来就在第几张（[pendingScrollRestore]，
-     * 2026-09-29 真机反馈「返回会自动回到最上面，不保存之前的进度」）。
      */
     fun popContext() {
         val popped = GallerySearchContextStack.pop(contexts) ?: return
@@ -933,7 +914,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         val ctx = popped.first
         pendingScrollRestore = ctx.scrollIndex
         currentScrollIndex = ctx.scrollIndex
-        // 域与词**先**回位（2026-10-20）：上一轮若是 pixiv 那一轮，`filters` 本来就是空的，
         // 只抄 booru 那一半就会得到"一片结果 + 一个空搜索框"—— 而弹栈**不发请求**，
         // 那个词永远补不回来（用户读到的正是"返回后搜索词没了、只剩一个框"）。
         domain = ctx.domain
@@ -994,14 +974,13 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 按空格拆成多枚（`loli -rating:explicit` 这种粘贴串一次全收），逐枚过预算与去重。
      */
     fun submitTerm() {
-        // 中文词先走**本地词典反查**（2026-11-05 用户「现在都需要用英文搜索，看下能不能用翻译的 tag 搜」）：
         // booru 两站的词表没有中文，直接提交 `东方` 只会拿到 0 张；词典里 `东方 → touhou`
         // 这类反查命中时按英文标签搜，并把这一笔在屏上说清（悄悄换词比不换更难察觉）。
         // 反查没命中（或词典打不开）就原样提交 —— 有些词本来就两边同形。
         val text = term.trim()
         if (domain == GalleryHomeDomain.BOORU && text.containsCjk()) {
             viewModelScope.launch(Dispatchers.IO) {
-                val hit = runCatching { GalleryTagDictionary.getInstance(app).reverseTranslate(text) }
+                val hit = runCatching { GalleryPorts.of(app).lexicon.reverseTranslate(text) }
                     .getOrNull()?.firstOrNull()
                 if (hit == null) {
                     withContext(Dispatchers.Main) { submitTermAsTyped() }
@@ -1100,10 +1079,8 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         get() = if (domain == GalleryHomeDomain.PIXIV) pixivTerm.isNotBlank() else filters.isNotEmpty()
 
     /**
-     * 屏上这一态**搜过一轮没有**（2026-11-05）：返回键/离开收条的判据从 `hasQuery` 换成功这一颗。
      *
      * `hasQuery` 只说明"框里有东西"，分不清"词已经变成了墙"：打字没回车就返回时按它收条，
-     * 屏上残留一条带着残词的收条（点它本应回输入态，真机上焦点链断了点不动）—— 用户报的
      * 「输入框一直显示、点击没反应」就是这条残影。判"搜没搜过"用现成的分页读数：
      * 第 1 页起来（`page > 0`）或正在起（`isSearching`）才算真有一轮，与结果墙那两处同判据。
      */
@@ -1119,7 +1096,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      *
      * [GalleryRankings.supportsForApp] 判为"这一档现在摆不出来的"这里再挡一道：菜单那一侧已经不列这一档，
      * 但入口不止菜单一个（弹栈回来的快照、以后可能加的快捷入口），判据得落在状态层。
-     * 2026-10-13 起这一把是**移动端那把**（Gelbooru 的四档时间窗是 id 边界合成档，桌面未接）。
      */
     fun setRanking(next: GalleryRanking) {
         if (next == ranking && periodAnchor == null) return
@@ -1137,7 +1113,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      *
      * 一并把档定到 [target]（月或年）：弹层里选了粒度又选了日期，这两件是一件事的两半，
      * 分成两次调用就会出现"档还是周、锚点却是某个月"这种说不清的中间态。
-     * 历史期只有月/年开放（用户 2026-09-29 拍板），[GalleryRankings.supportsHistory] 不认的直接不理。
      */
     fun pickPeriod(target: GalleryRanking, anchor: LocalDate?) {
         if (!GalleryRankings.supportsHistory(target)) return
@@ -1308,7 +1283,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * - **在途作废按腿判**：换档之后旧档那条腿的响应不能落地，但同一笔里另一条腿可能仍是当前档。
      */
     fun runSearch(nextPage: Int) {
-        // ── 内容域分流（2026-10-17）──
         // 两个域的语法**不通用**（booru 吃 `tags=a+b order:score`，pixiv 吃"一个词 + s_mode/order"），
         // 所以这一格只做路由，两条腿各在自己的方法里。页面那边一个字都不用改：
         // 墙滚到底那一处调的仍是 `runSearch(page + 1)`。
@@ -1325,7 +1299,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * booru 那三站的那一笔（原 `runSearch` 的本体，2026-10-17 分流之后改名）。
      *
      * 改名而不是另起一颗：这一条链上压着两腿并发、别名重搜、Gelbooru 窗口定界、去重合并
      * 这一整套判据，复制一份出来改语法就是让两边慢慢分叉 —— 而分叉出来的差别不报错，只出假读数。
@@ -1395,7 +1368,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             // 换来快的那条立刻出图。预算与包装那份都复用日榜那头（`GalleryLegGuard`），
                             // 三处各写一遍迟早分叉 —— 而分叉出来的差别不报错，只出假读数。
                             // ⚠️ Gelbooru 合成档的**定界探测也算在这笔预算里**：它是几笔 `limit=1` 的轻请求
-                            // （2026-10-16 真站台架：本期那一枚 5–8 笔，历史期两枚合计 11 请求 ≈ 10–12 秒，
                             // 上限 18 笔，见 `GelbooruWindowBoundary` 那颗文件头），另起一台计时就会出现
                             // "这一腿既超了预算、又没人说得清它为什么缺席"。定不出来 = 这一腿缺席，
                             // **绝不发一串没有后缀的**。预算因此分两档（[legBudgetMs]）：翻历史期那一腿
@@ -1433,7 +1405,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             val retried = GalleryLegGuard.guard(legSite) {
                                 searchLeg(legSite, retryQuery, legPage)
                             }
-                            // 换过名这句话只在重搜那一笔**答上了**时才说：那一笔超时或被打回时，
                             // 「按 tokenbox 也没有图」就是把"我们没问到"念成"站里没有"——
                             // 那种原因不合并的口径与 [legFailures] 那条完全一致，缺席由缺席去说。
                             GalleryLegAttempt(
@@ -1529,7 +1500,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         when (site) {
             GallerySite.GELBOORU -> boards.gelbooru.searchPosts(query, page, pageSizeFor(site))
             GallerySite.YANDERE -> boards.yandere.searchPosts(query, page, pageSizeFor(site))
-            GallerySite.SAFEBOORU -> boards.safebooru.searchPosts(query, page, pageSizeFor(site))
+            GallerySite.KONACHAN -> boards.konachan.searchPosts(query, page, pageSizeFor(site))
             GallerySite.PIXIV -> GallerySite.notWired("搜索腿")
         }
 
@@ -1585,7 +1556,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 这一腿的时间预算：**只有一处**要放宽 —— 要探两枚边界的那一腿（Gelbooru 的历史期）。
      *
-     * 日/周/月/年**本期**那一档仍然吃日榜那头的 12 秒（真机 2026-10-15 实测在那档内出图），
      * 三处共用一份预算这条纪律不变；这里不是"给 Gelbooru 单独松绑"，是"多探一枚边界的那一腿多等一会儿" ——
      * 同一站在本期那一档照旧 12 秒。数值与量测见 [GelbooruWindowBoundary.CLOSED_WINDOW_LEG_TIMEOUT_MS]。
      */
@@ -1624,12 +1594,10 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
             GelbooruWindowBreak.ProbeRejected -> skip.detail ?: "Gelbooru 没接受定界那一笔请求"
             GelbooruWindowBreak.ProbeNoEntry -> "定界问到的位置上没有条目"
             // 站方这一笔**压根没带** `created_at`：要去查的是请求参数与 DTO，不是解析器。
-            // 从前这一档与下面那档共用一句话，2026-10-16 才分开（真机那张截图把排查带去过早了）。
             GelbooruWindowBreak.StampMissing -> "Gelbooru 这一笔没带上传时间"
             // 带了、可读不出 ⇒ 把**原文带上屏**。这一格的存在理由就是：下一次截图是一条读数，
             // 而不是又一次"看起来像格式问题"的往返。站方的串可能很长，截一段就够认格式。
             // ⚠️ 措辞不套第二层括号：这一整句本来就在「（$why）」里面，
-            // 真机 00:30 那张读成了「…读不出日子（原文「…」））」—— 三层括号糊成一团。
             GelbooruWindowBreak.StampUnparsable -> "Gelbooru 的上传时间读不出日子，站方给的是" +
                 (skip.detail?.takeIf { it.isNotBlank() }?.let { "「${it.take(48)}」" } ?: "一串空东西")
             GelbooruWindowBreak.CountInconsistent -> "Gelbooru 的编号过滤没按语义生效"
@@ -1653,13 +1621,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 与站方回了空表 / 探不够 / 计数不自洽是四种完全不同的事。
      *
      * ⚠️ 这一族给的是「去配置账号」的出口，判宽了会把"再等一分钟就好"的处境指去设置页，
-     * 判窄了就是 2026-10-15 真机那个样子：一句"窗口没探成" + 一枚按下去没用的重试。
      */
     private fun GelbooruWindowBreak?.isCredentialShaped(): Boolean =
         this == GelbooruWindowBreak.LatestIdRejected || this == GelbooruWindowBreak.ProbeRejected
 
     /**
-     * Gelbooru 合成档的定界器（2026-10-13）。
      *
      * 取数走 [GalleryPorts.gelbooruWindows] 那一颗契约，**不直连** `GelbooruClient`（UI 层直连实现类
      * 是 `BusinessApiBoundaryTest` 的 A/B 两条红线，"要开口就加契约"是它自己给出的处置）。
@@ -1670,7 +1636,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         val windows = GalleryPorts.of(app).gelbooruWindows
         GelbooruWindowFinder(
             // **不压成 null**：出网那一笔的失败原话要一路留到屏上（"没探成"三个字分不出
-            // 是没配凭据还是在等站方缓过来，2026-10-13 真机这一笔就是这么卡住的）。
             latestId = { windows?.fetchLatestPostId() },
             probeAtLeast = { atLeast ->
                 windows?.probeWindowStart(atLeast)?.map {
@@ -1719,7 +1684,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         suggestJob?.cancel()
         // **同步置位**，不放进 launch 体里：`launch` 要等一次调度才跑，
         // 中间会空出一帧"没在加载、候选又是空的" —— 那一帧画的正是
-        // 「没有以它开头的标签」那句假话（真机上表现为打字后先闪一下"没有"）。
         isSuggesting = true
         suggestJob = viewModelScope.launch(Dispatchers.IO) {
             val sourceAtRequest = source
@@ -1739,7 +1703,7 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                             leg to when (leg) {
                                 GallerySite.GELBOORU -> boards.gelbooru.searchTags(term)
                                 GallerySite.YANDERE -> boards.yandere.searchTags(term)
-                                GallerySite.SAFEBOORU -> boards.safebooru.searchTags(term)
+                                GallerySite.KONACHAN -> boards.konachan.searchTags(term)
                                 GallerySite.PIXIV -> GallerySite.notWired("标签候选")
                             }
                         }
@@ -1759,11 +1723,10 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                         }
                     }.onFailure { failedLegs++ }
                 }
-                // 中文输入：两站词表都没有中文词，候选改从**本地词典反查**（2026-11-05）。
                 // count 给 0：词典行没有张数读数，那一格由渲染件隐掉（count<=0 不画），
                 // 不许编一个数。档位带着走，颜色与站方候选同一把尺。
                 if (term.containsCjk()) {
-                    GalleryTagDictionary.getInstance(app).reverseTranslate(term)?.take(4)?.forEach { row ->
+                    GalleryPorts.of(app).lexicon.reverseTranslate(term)?.take(4)?.forEach { row ->
                         merged.putIfAbsent(
                             row.name,
                             GalleryTagSuggestion(site, row.name, count = 0, category = row.category, deprecated = false),
@@ -1787,7 +1750,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     /**
      * 历史：**按内容域各存一份键**，进 ViewModel 就读一次，成功搜索后写回键值门面。
      *
-     * ⚠️ **恢复放在 init 里**（2026-10-18，用户「搜索历史经常会自动没了」）：
      * 从前这件事挂在 [restoreHistoryIfNeeded]，而它唯一的调用点是
      * `GallerySearchArea` 的 `LaunchedEffect(Unit)` —— 那个 effect 只在**搜索卡组合时**跑一次。
      * 于是"ViewModel 重建后直接进入收起态（那一态不组合搜索卡）/ 搜索卡被回收 / 从别的入口开搜索"
@@ -1888,7 +1850,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
 
     /**
      * 点一条历史记录：切到那一轮用的站、把条件装回来，**并立刻按它搜一遍、收成一条**
-     * （用户 2026-09-26 真机反馈后改判；9-25 那条"只切源 + 填框、不直接开搜"作废）。
      *
      * 改判的直接原因是实测出来的死局：装回条件之后，**"回车"那条退路是死的** ——
      * 框里被填上 `loli`、补全首行也是 `loli`，而回车走的是"选中补全首行"，
@@ -1896,13 +1857,11 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 而搜索历史的通用语义本来就是"把那一次搜索再跑一遍"，所以这里直接跑。
      *
      * 输入框**不再回填查询串**：胶囊已经把条件摆全了，再往框里塞一份就成了同一个 `loli`
-     * 在卡里出现两次（真机截图实锤），还会白发一笔以它为前缀的补全请求。
      * 要确认/改条件，收成一条之后点卡上那一行胶囊（或顶栏那枚 🔍）就展开了。
      *
      * 搜这一笔**不绕 [applyFilters]**：它有一条 `next == filters` 的短路，
      * 连点同一条历史时条件没变，会被短路掉 —— 那正是"点了没反应"的另一种长相。
      *
-     * 2026-09-28 起它与大图页交接走**同一条路径**（[openContext]）：点历史之前那一轮先压栈，
      * 返回能回到点历史之前那面墙。三条"换一轮上下文"的入口口径必须一致，
      * 否则同屏里出现两种语义（点标签能回退、点历史不能），下一轮一定被当成缺陷再报一次。
      */
@@ -1928,7 +1887,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // pixiv 那一侧（2026-10-17 方案 C：卡内展开的筛选面板）
     //
     // 与上面那一整套**平行**，不是"塞进 filters 里换一种拼法"：
     // booru 吃 `tags=a+b order:score`，pixiv 吃"一个词 + s_mode/order/ratio/scd/ecd"。
@@ -1949,11 +1907,9 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 3. **条件各留各的** —— 用户挑好的条件不抹（换站不抹条件那条改判的同一个道理），
      *    但也**不自动重搜**：来回切两下就是四笔网络往返，而他此刻还没决定要搜什么。
      *
-     * 2026-10-23 加第四件：**主词跟着人走**（用户「双源互搜，切域不重打」）—— 见下面那段。
      */
     fun setDomain(next: GalleryHomeDomain) {
         if (next == domain) return
-        // ── 词条保持（2026-10-23，用户「图库站 ↔ Pixiv 互搜，词不用重打」）──
         //
         // 切域时把上一域的**主词**带进下一域的输入格：booru 的主词是第一枚胶囊
         //（一枚都没有时是框里那半截词），pixiv 的主词就是 `pixivTerm`。带过去之后
@@ -2044,7 +2000,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // pixiv 搜索的两个页签：作品 / 画师（2026-10-18）
     //
     // 出处：pixez 的 `result_page.dart` 就是 `TabBar(插画 / 画师)`，画师那一栏只调
     // `/v1/search/user`。同一个词、两个端点、两种答复形状 ⇒ 两条独立的取数腿，
@@ -2101,7 +2056,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         // 立刻切到画师再切回"会让第一笔的 `finally` 跑掉（`searchJob` 已指向新协程则不动
         // `isSearching`），而 `contextRound` 已 +1 使它在落地前就 return —— `exhausted` 保持
         // 进入时的 false，页尾与续页判据都认为还能翻。后果是滑到底白转一圈、第二次才到底
-        // （2026-10-22 审计）。
         searchJob?.cancel()
         // 游标一并作废：那一笔带走的 `next_url` 属于被作废的那一轮，不该留在原地
         // 让下一轮当"上一页的游标"用。
@@ -2226,14 +2180,12 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * 只有一条腿（没有 booru 那种"两腿并发 + 合并 + 缺席原因"），所以这里不套 `GalleryLegGuard`
      * 那套包装 —— 套上去会凭空长出一份"哪条腿没跑起来"的读数，而 pixiv 只有一个"跑没跑"。
      *
-     * ## 两条腿按登录态二选一（2026-10-17 深夜，按 pixez 的口径补齐）
      *
      * - **登录着**：`app-api /v1/search/illust`（带票据）。人气（`sort=popular_desc`）与
      *   收藏（`bookmark_num_min`）只有这条发得出去，翻页只认站方的 `next_url`；
      * - **没登录**：`www /ajax/search/artworks/{词}`。只发得出排序（旧序）、标签模式、比例、时间窗，
      *   翻页认页码 `p=`。
      *
-     * 2026-10-19 再分第三岔：**登录着但非会员**点「人气」时走 `popular-preview`
      * （[GalleryPixivWorks.popularPreview]）。它只在"票 + 非会员 + 人气"三样同时成立时才选上，
      * 代价是那一条**只认词、只给一页** —— 被丢掉的几枚由 [PIXIV_PREVIEW_NOTICE] 说上屏，
      * 而不是静默按其余条件发出去。
@@ -2290,7 +2242,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                 // 收藏那档的发法（会员走 `bookmark_num_min`，其余走词尾 `users入り`，两种都真生效），
                 // 以及「人气」发哪一条腿（会员走搜索腿的 `sort=popular_desc`，其余走预览腿）。
                 val premium = bearer != null && pixivPremium
-                // 非会员点「人气」不再被拒，改走**人气预览**那一跳（2026-10-19 · 批 233-4，
                 // 用户「参考原版 pixez 是怎么做无会员能用这个人气榜的」）。依据与代价都在
                 // `PixivAppClient.popularPreview` 那颗的注释里：只认词、只给一页。
                 val previewLeg = bearer != null && !premium && filterAtRequest.order.needsPremium
@@ -2335,7 +2286,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
                     }
                     // 词也进作废判据：画师腿（上面那一支）早就有 `pixivTerm.trim() != word` 这一条，
                     // 作品腿漏了。匿名腿按 `pageNo` 翻页、与词无关，于是"在途时换词"会把新词的
-                    // 第二页追加进旧词的结果墙 —— 屏上读不出对错（2026-10-22 审计）。
                     if (roundAtRequest != contextRound ||
                         domain != GalleryHomeDomain.PIXIV ||
                         pixivFilter != filterAtRequest ||
@@ -2393,7 +2343,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * 「人气」这一档这会儿点不点得动 —— **只要票据**（2026-10-19 改口径：会员那一条限制撤了）。
      *
      * 撤的依据不是猜：非会员的人气有另一条腿可走（`popular-preview`，见 `PixivAppClient.popularPreview`），
      * 而 donor 的调用点正是"toast 一句 + 紧接着发这一条"。会员与否则只决定**发哪一跳**，
@@ -2411,7 +2360,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
      * ⚠️ 判据吃的是**票据**（[pixivBearerReady] / 调用点现取的那一枚），不是 [pixivLoggedIn]：
      * 登录态与票据会不一致（token 过期而刷新失败、刚登录票据还没落地），
      * 那时匿名腿会**静默忽略**人气与收藏 —— 屏上再不说一句，用户读到的就是"点了没生效"
-     * （2026-10-18 用户原话）。宁可多念一句，不可静默。
      */
     private fun pixivAccountNotice(bearerReady: Boolean): String? =
         if (!bearerReady && pixivFilter.needsAccount) {
@@ -2494,7 +2442,6 @@ class GallerySearchViewModel(application: Application) : AndroidViewModel(applic
         const val NEEDS_GELBOORU_ACCOUNT: String = GallerySearchSource.NEEDS_ACCOUNT_REASON
 
         /**
-         * pixiv 搜索那一跳**每页恒 60 条**（2026-10-17 现量：`body.illustManga.data` 长度 60，
          * 只有最后一页不满）。这一格同时是"到底"判据：回不满一页 = 到底。
          *
          * 不放在 [GallerySite] 上：那一颗是路由与展示面（站名、地址、字母标），
@@ -2537,7 +2484,6 @@ private const val PIXIV_SEARCH_FAILED = "pixiv 这一回没答上，稍后再试
 private const val PIXIV_NEEDS_ACCOUNT: String = "人气这一档要登录 pixiv 账号才排得动"
 
 /**
- * 「这一档走的是非会员的人气预览」那一句话（2026-10-19 · 批 233-4）。
  *
  * 为什么必须占一枚常量而不许省：这一跳的调用面**只有一个词**，面板里那几枚条件一枚都没发出去
  * （会员那条腿才发得动）。不说的话，屏上就是"日期窗亮着、请求里根本没有它"——
@@ -2604,7 +2550,6 @@ private sealed interface LegQuery {
  * 串里有没有中日韩汉字（常用 4E00-9FFF + 扩展 A 3400-4DBF + 兼容 F900-FAFF）。
  *
  * booru 标签是小写拉丁下划线串；含汉字的输入永远不可能是站方标签 —— 它是"待译词"，
- * 走本地词典反查（2026-11-05「用翻译的 tag 搜」）。判据只在这一颗，提交与候选两路共读。
  */
 internal fun String.containsCjk(): Boolean =
     any { it.code in 0x4E00..0x9FFF || it.code in 0x3400..0x4DBF || it.code in 0xF900..0xFAFF }

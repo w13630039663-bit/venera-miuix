@@ -6,9 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
-/**
- * 日榜缓存的补拉判据（2026-09-29 第四轮：用户要"进来别老刷新"，但日榜按天换）。
- */
 class GalleryFeedRefreshPolicyTest {
 
     private val today = LocalDate.of(2026, 9, 29).toEpochDay()

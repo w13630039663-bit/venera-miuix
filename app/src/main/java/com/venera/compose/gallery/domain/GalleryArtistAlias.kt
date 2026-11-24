@@ -25,7 +25,6 @@ data class GalleryArtistRecord(
 /**
  * 搜索回 0 张时的**站内画师别名解析**判据（批次 J）。
  *
- * 一句话动因（用户 2026-09-30 拍板）：
  * 「在明确的 Artist 搜索场景中，某站原始查询返回 0 张时，查询该站 Artist 元数据，
  * 尝试解析 canonical name / aliases / source-specific identifier；
  * **只有获得明确站内关联时才重搜，否则保持 0 结果**」。
@@ -75,7 +74,6 @@ object GalleryArtistAlias {
      *
      * 与 [exactRecord] 的差别是有意的，别合并：那一条服务"0 张时换成正名重搜"，没有指针就没得换；
      * 这一条服务"取这位画师自己的外链/头像"，而站方给**正名记录**的 `alias_id` 恒为 null
-     * （2026-09-30 真机：`tokenbox` 三条外链都在，屏上一枚都没摆，就是因为复用了上面那条）。
      * 前缀匹配那条约束两边同样成立 —— 名字不全等就当没有。
      */
     fun recordByName(records: List<GalleryArtistRecord>, name: String): GalleryArtistRecord? =

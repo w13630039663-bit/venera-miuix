@@ -10,9 +10,6 @@ import org.junit.Test
 /**
  * pixiv 两条匿名腿的形状判据（批次 pixiv · T3）。
  *
- * 夹具**不是编的**：两份都从 2026-10-16 深夜本机直连拿回的现量答复里裁下来
- * （榜单 `ranking.php?mode=daily&format=json` 的 `contents[0]` = 真号 150822243，
- * 标签 `ajax/search/artworks/1girl` 的 `data[0]` = 真号 150926978），只删掉与判据无关的键。
  * 留全形状的理由在 [PixivFeedParse] 的类注释里：**同一种意思在两腿里类型相反**，
  * 押任何一种 `@Serializable` DTO 都会让另一腿当场失败或静默解成默认值。
  */
@@ -111,9 +108,7 @@ class PixivFeedParseTest {
     }
 
     /**
-     * ⑦ 卡片上那枚「8P」的出处（用户 2026-10-18：不用点进作品也能看出有几张图）。
      *
-     * 立案读数（2026-10-16 现量，同一份夹具）：榜腿带 `illust_page_count` 但是**字符串** `"8"`，
      * 搜索腿带 `pageCount` 是**数字** 5 —— 两腿都给，只是从前解析时丢了这一格。
      */
     @Test

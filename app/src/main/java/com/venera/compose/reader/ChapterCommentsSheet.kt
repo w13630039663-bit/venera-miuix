@@ -98,10 +98,10 @@ fun ChapterCommentsSheetContent(
                 placeholder = { Text("说点什么...", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = Color.Gray) },
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(com.venera.compose.ui.tokens.VeneraTokens.shape.medium),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MiuixTheme.colorScheme.primary,
-                    unfocusedBorderColor = Color(0xFF3A3A3A),
+                    unfocusedBorderColor = com.venera.compose.ui.tokens.VeneraTokens.color.outline,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White
                 )
@@ -150,7 +150,7 @@ fun ChapterCommentsSheetContent(
                 CircularProgressIndicator(color = MiuixTheme.colorScheme.primary, strokeWidth = 2.dp)
             }
             error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
-                Text(text = error ?: "", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = Color(0xFFEF5350))
+                Text(text = error ?: "", fontSize = com.venera.compose.ui.tokens.VeneraTokens.type.sectionTitle, color = com.venera.compose.ui.tokens.VeneraTokens.color.error)
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(onClick = { scope.launch { reload() } }) {
                     Text("再试一次", color = Color.White)

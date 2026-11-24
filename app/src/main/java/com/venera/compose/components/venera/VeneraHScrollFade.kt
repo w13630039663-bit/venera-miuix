@@ -22,7 +22,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
  *
  * ── 它修的是什么 ──
  *
- * 2026-10-14 手机档截图量到三处同一件事：源药丸行、收藏页的文件夹行、详情页的分组 tabs
  * 排到"刚好满 / 略微超出"那一档时，**最后一枚被切成一半**（收藏页那回 `nhentai` 被裁成
  * `● nl`）。横向容器在这一点上最难读 —— 屏上没有任何东西说"这一行还能往右滑"，
  * 用户只会以为自己那一枚不存在。
@@ -49,37 +48,25 @@ import com.venera.compose.ui.tokens.VeneraTokens
 fun Modifier.hScrollEndFade(
     container: Color,
     width: Dp = VeneraTokens.spacing.space8,
-): Modifier = drawWithContent {
-    drawContent()
-    val w = width.toPx().coerceAtMost(size.width)
-    if (w <= 0f) return@drawWithContent
-    // 2026-10-23 改 **DstIn 透明渐隐**：从前画的是「从透明到 container 色」的颜色渐变，
-    // 隐含假设“这一行底下是纯色 container”。但收藏 hub / 网络收藏那一屏的底是**玻璃渐变背板**
-    // （Liquid Glass 录制层），上面叠一道纯色带，色相对不上就浮成一条「奇怪的黑边」
-    // （用户 2026-10-23 图证：Picacg 胶囊右侧）。DstIn 只把内容自身的 alpha 渐到 0，
-    // 露出的永远是**真实底**，底是什么材质都对。Offscreen 层是把“内容+遮罩”先合成
-    // 成一张图再打洞的必要条件：不隔一层，DstIn 会把底下那层也一起抠掉。
-    drawRect(
-        brush = Brush.horizontalGradient(
-            0f to Color.Black,
-            1f to Color.Transparent,
-            startX = size.width - w,
-            endX = size.width,
-        ),
-        topLeft = Offset(size.width - w, 0f),
-        size = Size(w, size.height),
-        blendMode = BlendMode.DstIn,
-    )
-}.graphicsLayer {
-    compositingStrategy = CompositingStrategy.Offscreen
-}
+): Modifier = this
+/*
+ * 已停用（用户拍板：整页都别再出现这道"黑条"）。
+ *
+ * 原实现是 `drawWithContent` 里一条 `BlendMode.DstIn` 的渐变 + `CompositingStrategy.Offscreen`，
+ * 设计意图是"右缘渐隐，暗示还能往右滑"。实际在玻璃背板/暗色主题下这块离屏层没有可擦除的
+ * 底色，DstIn 擦完留下一条**纯黑矩形**（收藏页收藏夹 chips 末尾那道竖条就是这么来的），
+ * 在真机上被读成阴影/渲染错误，而不是"还有内容"。
+ *
+ * 保留函数与签名、内部不画任何东西：八个调用点不用逐个改，
+ * 修法集中在这一处；若要恢复，把原来的 drawWithContent 接回来即可。
+ * [hScrollEndContentPadding] 仍在，滑到底时末枚不会贴边。
+ */
 
 @Composable
 fun hScrollEndContentPadding(width: Dp = VeneraTokens.spacing.space8): PaddingValues =
     PaddingValues(end = width)
 
 /**
- * [hScrollEndContentPadding] 的 **`Row + horizontalScroll` 版**（2026-10-17 第三十轮）。
  *
  * `Row` 没有 `contentPadding` 参数（那是懒容器独有的）⇒ "滑到底时末枚整个退出渐隐区"
  * 这件事在裸横滑行上只能靠**末尾一枚等宽占位件**做到。画廊首页「每日热门」那一排
@@ -98,7 +85,6 @@ fun HScrollEndSpacer(width: Dp = VeneraTokens.spacing.space8) {
 }
 
 /**
- * 横向可滚动容器**左缘**那道渐隐 —— [hScrollEndFade] 的左半边（2026-10-17 第二十一轮）。
  *
  * ## 为什么左端要单独一颗，而不是把 [hScrollEndFade] 改成两端一起画
  *

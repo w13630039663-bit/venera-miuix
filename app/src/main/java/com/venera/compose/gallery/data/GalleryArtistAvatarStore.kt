@@ -15,13 +15,10 @@ import kotlinx.serialization.json.Json
 /**
  * 头像地址的**磁盘档**：一位画师在一站上解析出来的那张脸去哪儿取。
  *
- * ## 为什么这一份要落盘（2026-10-01 改判）
  *
  * 批次 L 原本拍板"刻意不落盘"，理由是"头像地址会过期，存了就等于承诺离线也能看到"。
  * 那条前提今天被实测掉了：
- * - pixiv 的头像地址是 `i.pximg.net/user-profile/img/2017-03-08/…/12240120_<md5>_170.jpg`
  *   —— 一条**不带任何过期参数**的静态路径，2017 年的头像今天仍回 200；
- * - 响应头 `Cache-Control: max-age=31536000`，画廊那份 Coil 磁盘缓存本来就存得住图字节。
  *
  * 不落盘付的代价是**每次冷启动**都要为每一位画师重发 2~4 笔 JSON（pixiv `/ajax/user` →
  * fanbox `creator.get` → Mastodon 查询），而这正是屏上"脸一张一张慢慢蹦"的成因。
@@ -84,7 +81,6 @@ internal class GalleryArtistAvatarStore private constructor(
             tmp.writeText(json.encodeToString(snapshot.map { it.toRecord() }))
             // ⚠️ 这里从前是 `tmp.renameTo(file)`，而 **Windows 上 `File.renameTo` 遇到目标已存在
             // 直接返回 false**（POSIX 的 `rename` 会替换）—— 于是这份"先写 tmp 再改名"的原子写
-            // 在 Android 侧一直是对的，在桌面**从第二笔起全丢**（2026-10-04 桌面第十批 ② 量死的：
             // 两位画师连落，盘上只剩第一条，stdout 一句「改名失败」）。
             // 三颗同形状的 store 各有一条用例钉着（`:desktop:test` 的 `SharedStoreAtomicWriteTest`）。
             //

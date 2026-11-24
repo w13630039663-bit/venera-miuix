@@ -75,7 +75,7 @@ class DesktopArtistFollowActionTest {
             targets,
         )
         assertEquals("两站都在名单里就两站都翻", 2, desktopUnfollowTargets(rowSites = listOf(GallerySite.YANDERE, GallerySite.GELBOORU), followed = setOf(GallerySite.YANDERE, GallerySite.GELBOORU)).size)
-        assertTrue("都不在名单里就一笔都不发", desktopUnfollowTargets(rowSites = listOf(GallerySite.SAFEBOORU), followed = emptySet()).isEmpty())
+        assertTrue("都不在名单里就一笔都不发", desktopUnfollowTargets(rowSites = listOf(GallerySite.KONACHAN), followed = emptySet()).isEmpty())
     }
 
     /**

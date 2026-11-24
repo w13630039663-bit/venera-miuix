@@ -12,12 +12,10 @@ import org.junit.Test
  * 画廊标签分桶。
  *
  * 两个入口各自都被真片段钉住：`parseGalleryTagCategories` 吃的是**站方 HTML 原文抄录**
- * （2026-09-28 实测，见 `gallery-tag-category-translation-and-nav-2026-09.md` §0.4/§0.7），
  * `buildGalleryTagBuckets` 锁的是"分不出来时宁可少摆不可摆错"这条降级口径。
  */
 class GalleryTagBucketsTest {
 
-    /** yande.re `/post/view/1269641` 的标签侧原文（两枚真标签，档位分别是画师与通用）。 */
     private val yandereHtml = """
         <ul id="tag-sidebar">
         <li class="tag-type-artist"><a href="/artist/show?name=gijang">?</a> <a href="/post?tags=gijang">gijang</a> <span class="post-count">136</span> </li>
@@ -26,7 +24,6 @@ class GalleryTagBucketsTest {
         </ul>
     """.trimIndent()
 
-    /** Gelbooru `s=view&id=14970719` 的形状：中间多一层 span、地址是 `&amp;` 串、名字带 `!` 且被百分号编码。 */
     private val gelbooruHtml = """
         <ul class="tag-list" id="tag-list">
         <li class="tag-type-character"><span class="sm-hidden"><a href="index.php?page=wiki&amp;s=list&amp;search=imai_lisa">?</a> </span><a href="index.php?page=post&amp;s=list&amp;tags=imai_lisa">imai lisa</a> <span style='color: #a0a0a0;'>1492</span></li>

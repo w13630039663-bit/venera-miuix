@@ -73,13 +73,11 @@ class WideScreenPolicyTest {
         assertEquals(0.dp, bottomBarClearanceFor(WideScreenLayoutMode.Expanded))
     }
 
-    // ── 导航栏样式轴（2026-10-12 用户新增第二档）────────────────────────────
     // 需求原话：横屏下也要能选「悬浮液态玻璃导航栏」，与原有 MD3 导航栏二选一。
     // 改动前 `useSideBar = layoutMode != Compact` 是几何必然 ⇒ 宽窗无条件顶掉玻璃栏。
 
     /**
      * 默认档（MD3）必须**逐值等于改动前**：`sideBarReplacesBottomBar(mode, false) == (mode != Compact)`。
-     * 这条是「手机档与既有平板档零回归」的保险 —— 用户 2026-10-02 的硬约束。
      */
     @Test fun md3StyleKeepsTheOriginalWideScreenDecision() {
         for (mode in WideScreenLayoutMode.entries) {
@@ -137,7 +135,6 @@ class WideScreenPolicyTest {
     }
 
     /**
-     * **侧栏与底栏绝不同时渲染**（2026-10-12，我自己改动里抓到的真 bug 的保险）。
      *
      * `VeneraSideBar` 的短路判据是 `mode == Compact`。引入样式轴后，
      * 「宽窗 + 液态玻璃」这一格 `sideBarActive == false` 而 `layoutMode` 仍是 Medium/Expanded ——
@@ -161,8 +158,6 @@ class WideScreenPolicyTest {
             }
         }
     }
-
-    // ── 内容宽度口径（2026-10-12）─────────────────────────────────────────
 
     /**
      * 手机档必须返回 null：与 [wideScreenChromeMaxWidth] 同一约定，
@@ -223,7 +218,6 @@ class WideScreenPolicyTest {
 
     /**
      * 图片墙列数（画廊墙 / 每日推荐 / 画廊收藏 / 图片收藏共用）。
-     * 这条用例是用户 2026-10-02 那句「我们调的都是大屏版，别动手机版」的**实现层保险**：
      * Compact 档直接 return 2，不参与 200dp 预算 —— 因为裸算 `ceil(宽/200)` 会让
      * 425dp 以上的大屏机与折叠屏合起态从 2 列变 3 列，那是偷偷改了手机版观感。
      * 逐个宽度扫到 600dp（含 600 这条边界，它按 §2.4 归 Compact）都不许出现 3。
@@ -259,7 +253,6 @@ class WideScreenPolicyTest {
     }
 
     /**
-     * 列数入参的**口径**也归这个表达式（2026-10-03 A5）。
      *
      * 这条断言看着像废话（12×2 就是 24），它要钉的是另一件事：**测试与生产必须同源**。
      * 此前测试写字面量 `24.dp`、生产写 `VeneraSpacing.screenHorizontal * 2`，两值今天恰好相等，
@@ -274,7 +267,6 @@ class WideScreenPolicyTest {
 
     /**
      * `imageWallColumnCount` 只许有一个调用者：`rememberImageWallColumnCount`。
-     * 四颗页各抄一遍「取窗口宽 → 定档 → 算列」正是 ba3e207 修了一半的那个形状
      * （它把判据收进 policy，却把判据的入参留在各页）。扫描判据见 `testsupport/RepoSources`。
      */
     @Test fun onlyOneCallerBuildsTheColumnCount() {

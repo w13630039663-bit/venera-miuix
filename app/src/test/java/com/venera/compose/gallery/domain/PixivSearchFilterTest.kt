@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 搜索那一排条件的判据（2026-10-17 方案 C；深夜按 pixez 的口径补齐五段）。
  *
  * 钉五件事：
  * 1. **默认态一枚参数都不发** —— 升级到这一版、什么都不点，与"没有这块面板"是同一串请求；
@@ -83,7 +82,6 @@ class PixivSearchFilterTest {
 
     @Test
     fun `只填起始时只发 scd，不把止补成那一天`() {
-        // 现量：`scd=2026-10-10` 单独发 ⇒ total 936（那天之后）；
         // 补一个 ecd 会静默变成"就这一天"，而屏上那一格明明是空的。
         val filter = PixivSearchFilter(from = LocalDate.of(2026, 10, 1))
         assertEquals(LocalDate.of(2026, 10, 1) to null, filter.bounds())
@@ -178,7 +176,6 @@ class PixivSearchFilterTest {
             filter.appParams(premium = true),
         )
         // 非会员**不发**这一枚：站方把它划在付费墙里，发过去只会被静默忽略 ——
-        // 那正是 2026-10-18「收藏 xxx+ 的筛选没有生效」的主因（用户当时明确说了自己是登录态，
         // 所以成因不是登录、更不是票据，而是会员档）。改判：那一档改走下面的词尾标签。
         assertTrue(filter.appParams(premium = false).none { it.first == "bookmark_num_min" })
         // 「全部」= 0 与不传同义，多发一枚只是噪音。
@@ -189,7 +186,6 @@ class PixivSearchFilterTest {
 
     /**
      * 非会员那一档的真发法 = 把门槛做成**词尾标签**。
-     * 现量（2026-10-18，词=`猫`）：不带它 60 条里只有 2 条带收藏数标签，
      * 带上 `100users入り` 之后 58 条里 **47 条**带它 ⇒ 这条路**匿名就真生效**。
      */
     @Test
@@ -203,7 +199,6 @@ class PixivSearchFilterTest {
     }
 
     /**
-     * 排除 AI 两条腿各发自己那一枚（2026-10-18 用户「一起加」）。
      * 现量（词=`猫`）：`ai_type=0` 回 21 条 `aiType=2`、`ai_type=1` 回 **0 条** ⇒ 匿名腿也是真过滤。
      */
     @Test
@@ -236,7 +231,6 @@ class PixivSearchFilterTest {
     @Test
     fun `只有人气还算需要账号，收藏已经不算了`() {
         assertTrue(PixivSearchFilter(order = PixivSearchOrder.POPULAR).needsAccount)
-        // 改判（2026-10-18）：收藏从前也算在这里，是因为它只发 `bookmark_num_min`（会员档）。
         // 现在非会员走词尾 `users入り`，**匿名也筛得动** ⇒ 再把它算成"要账号"就是屏上多拦一道没必要的门。
         assertFalse(PixivSearchFilter(bookmarks = PixivBookmark.P100).needsAccount)
         assertFalse(PixivSearchFilter(workType = PixivWorkType.NO_UGOIRA).needsAccount)

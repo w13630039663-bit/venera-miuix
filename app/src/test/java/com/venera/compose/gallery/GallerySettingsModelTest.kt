@@ -37,7 +37,6 @@ class GallerySettingsModelTest {
 
     @Test
     fun `AUTO 透传自适应列数 不再自己拍两档`() {
-        // 2026-10-02 改：AUTO 原来是这里写死的 `if (wide) 3 else 2`。侧栏落地后宽窗仍只排 3 列
         // ⇒ 一格近 480dp（用户报「图片卡片过大」）。列数改由调用点按窗口宽算好传进来
         //（判据在 WideScreenPolicy.imageWallColumnCount），domain 只管"AUTO 透传 / 手动档覆盖"。
         assertEquals(6, GallerySettingsModel.gridColumns(GalleryColumnMode.AUTO, adaptiveColumns = 6))
@@ -74,7 +73,6 @@ class GallerySettingsModelTest {
     fun `视频条目在墙上永远吃静帧 两档都不例外`() {
         // 站方对视频条目**没有**更小的转码档，而 Gelbooru 的 `sample_url` 给空串、翻译时兜底成了
         // 原片 mp4（实测 16~26 MB）。墙上按"清晰档"直取 largeUrl 就是把整片 mp4 交给 Coil：
-        // 先完整吸进 Java 堆再解码失败，一屏视频卡就是几百 MB —— 2026-09-29 真机闪退的第二条成因
         // （第一条是取流那份三份拷贝，见 ImagePipelinePolicy.needsBytePipeline）。
         val mp4 = post(
             fileExt = "mp4",
@@ -94,7 +92,6 @@ class GallerySettingsModelTest {
     @Test
     fun `站方给了 jpg 静帧的视频条目墙上保留那张静帧`() {
         // yande.re 那一路 large 档本来就是 jpg 静帧、与原片不同址 —— 比 350px 缩略图清楚得多，
-        // 不该被上一条一起打回 preview。判据与 videoPosterUrl 同一把。
         val webm = post(
             fileExt = "webm",
             largeUrl = "https://prv/animated_frame.jpg",

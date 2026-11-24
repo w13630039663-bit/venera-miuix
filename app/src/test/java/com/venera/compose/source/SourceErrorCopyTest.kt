@@ -9,12 +9,10 @@ import org.junit.Test
 /**
  * 源 / 网络异常 → 屏上文案的唯一出口。
  *
- * 2026-10-14 真机读数（手机档）驱动的三条硬判据：
  *  1. **原始 message 绝不上屏**。包子漫画那屏直接念 "Invalid status code: 403"，
  *     拷贝漫画那屏念 "The coroutine scope left the composition" —— 都是写给开发者看的，
  *     用户看不懂，只能感到"被拦住了还不知为什么"。
  *  2. **不出现代码**。状态码（210/403/429/5xx）、异常类名、`undefined`、方括号这些
- *     一律不许进屏；要说得像人话，还要给出下一步。
  *  3. **取消不是错误**。`CancellationException` 继承自 `Exception`，被
  *     `catch (e: Exception)` 收走就会变成"加载失败" —— [isCancellation] 就是那道闸。
  */

@@ -13,7 +13,6 @@ import okhttp3.Request
 /**
  * pixiv 的**匿名头像**取数（批次 L）。
  *
- * 只用一个端点：`/ajax/user/{id}`。2026-09-30 实测（走本机代理出口）：
  *
  * - **匿名可读**，且 `User-Agent`、`Referer` 两档对照下来**都不需要**（三档都 200、同一份 687 字节）；
  * - 答复里 `body.image` / `body.imageBig` 就是头像两档尺寸（同一位实测 `…_50.png` / `…_170.png`），
@@ -23,7 +22,6 @@ import okhttp3.Request
  *
  * 两条红线：
  *
- * 1. **地址会过期，所以一律不落库**。实测拿一个已经改过的旧用户编号（1360347）来要，
  *    站方直接回 `error=true`。所以这里每次面板打开现取，存下来的只有"名字 + 站别"（关注名单）。
  * 2. **只做未登录读取，不带任何凭据**。这个端点在登录后会多回一堆私人字段，
  *    我们只需要一张公开头像，也就不该让任何会话材料进这条请求。
@@ -67,18 +65,15 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
      * 按标签那一腿（批次 pixiv · T3）：`ajax/search/artworks/{词}`，每页 60 条。
      *
      * ⚠️ 词在**路径里**，不在查询串里（`?word=` 与 `web/v1/search/illust` 那些形状现量 404 ——
-     * 本鱼先前把同一个错路径名打了五遍，才在 2026-10-16 深夜被那句"关键词在路径里"推翻）。
      * 走 [HttpUrl.Builder.addPathSegment] 就是为了这件事：词是从站方读回来的标签文本，
      * 里面可能有空格、`%`、甚至 `../` —— 手工拼串等于把路径的控制权交出去。
      *
      * 这一跳**没有"全站最新"**：词一律被站方当标签名解释（`extraData.meta.canonical` = `/tags/{词}`），
      * 所以词的来处由调用方决定；默认序本身就是 `createDate` 降序。
      *
-     * ## 哪些参数真的生效（2026-10-17 晚现量复核，词=`初音ミク`、`p=1`）
      *
      * | 参数 | 结果 |
      * |---|---|
-     * | `order=date` | 首条 2007-09-13 ⇒ **生效**（旧序） |
      * | `order=popular` / `popular_d` | 与不带参数逐条一致 ⇒ **被忽略**（会员档） |
      * | `s_mode=s_tag_full` | `total` 620880 → 614352 ⇒ **生效** |
      * | `ratio=0.5` / `-0.5` | `total` → 64924 / 68280，首条宽高对得上 ⇒ **生效** |
@@ -113,7 +108,6 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
     /**
      * 单张按号（大图页与「历史」那一行按号回取都吃它）。
      *
-     * 现量：真号 200 / 26,642 字节；拿一个已经改过的旧编号（1360347）要，站方回 `error=true` ⇒ 抛。
      * 这条腿**不带任何凭据**（口径同文件头：只做未登录读取）。
      */
     suspend fun workById(illustId: Long): Result<GalleryPost?> = withContext(Dispatchers.IO) {
@@ -121,7 +115,6 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
     }
 
     /**
-     * **作品页**那一腿（2026-10-18）：同一份详情多读八格，外加多页对账。
      *
      * 两跳：`ajax/illust/{id}` 拿全貌与页数；`pageCount > 1` 时再打 `ajax/illust/{id}/pages`
      * 把剩下的原图地址逐页取齐。**第二跳失败就整条失败** —— 交回"只有第 1 页"的半份，
@@ -144,13 +137,11 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
     }
 
     /**
-     * **动图逐帧表**那一腿（2026-10-23，用户报「app pixiv 源的动图无法播放」）。
      *
      * `ajax/illust/{id}/ugoira_meta`：站方给的就是那两条 zip 地址 + 逐帧延时表 ——
      * 只有这一跳能让"这一作到底有几帧、每帧停多久"落地，[PixivWorkDetail.ugoira] 那枚旗标
      * 只回答"要不要来问这一跳"，帧表本身在这里。
      *
-     * 现量（真号 151160372）：匿名 200、无凭据；非 ugoira 的号回 `error=true` +
      * 「指定されたIDはうごイラではありません」⇒ 那一句由 [PixivUgoiraParse] 抛（取数点认错号）。
      * 这条腿**不带任何凭据**（口径同文件头：只做未登录读取），且照旧挂 [NoInteractiveBypassTag]。
      *
@@ -161,7 +152,6 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
     }
 
     /**
-     * **画师页**那三条腿（2026-10-19）。全部匿名、全部不带凭据 —— 与这一颗件的头注同一条红线
      * （「只做未登录读取」），所以它们住在这儿而不是 [PixivAppClient]。
      *
      * 三条的关系是"一跳给目录、一跳给内容"：
@@ -225,7 +215,6 @@ class PixivClient internal constructor(private val engine: HttpEngine) {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
-            // 标签译名（`tags.tags[].translation`）**只在这枚头存在时才有值**（2026-10-20）。
             // 这一格与上一行的 `Accept` 不是一回事：那枚说的是"答复给我 JSON"，
             // 这一枚说的是"里面那几段人话给我哪种语言"。不挂它，译名那一路永远是空表，
             // 而"站方没给译文"与"我们压根没问"在屏上长得一模一样。

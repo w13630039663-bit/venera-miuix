@@ -84,7 +84,6 @@ class TagNormalizer(
         /**
          * 解析一本漫画的画师：优先 `author` 字段，为空时回落到作者类标签的 value。
          *
-         * 真机反馈「画师一栏统计不到」的根因：部分源（含禁漫）不把作者写进 author 字段，
          * 只给 `Author:xxx` / `作者:xxx` 标签；只读 author 就会整本为空。
          * namespace 比对一律先 lowercase —— 各源大小写不统一（`Author:` / `artists:`）。
          */

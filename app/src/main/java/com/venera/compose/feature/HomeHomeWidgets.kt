@@ -61,7 +61,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 
 /*
- * 首页的**展示零件**（2026-10-20 从 `HomeScreen.kt` 抽出来，两端共用）。
  *
  * ## 为什么单独一颗文件
  *
@@ -73,12 +72,10 @@ import top.yukonga.miuix.kmp.basic.Text
  *
  * ## 平台调用去了哪
  *
- * 这一批原本有 4 处平台耦合，2026-10-20 全部收进 `LocalUxPlatformServices`：
  *  - 内容守卫单例 ×2 → `ux.coverMaskStateOf(…)`
  *  - 手势排除区 → `ux.setGestureExclusionRects(…)`
  * 收口之后本文件零 `import android.`、零 `LocalContext`。
  */
-
 
 /* ------------------------------------------------------------------ *
  * 局部组件（仅 HomeScreen 使用）
@@ -160,7 +157,6 @@ internal fun HistoryCardHome(
                 .background(tokens.color.surfaceVariant.copy(alpha = tokens.current.placeholderAlpha)),
         ) {
             // 内容守卫：历史记录 sourceName 是显示名，由守卫别名解析后走源级预设判定。
-            // 2026-10-20：判定链本身没动，只是"怎么拿到 ContentGuardManager"收进了
             // `LocalUxPlatformServices`（那颗是 Android 静态单例 + Context，桌面侧没有）。
             val maskState = ux.coverMaskStateOf(
                 sourceKey = record.sourceName,
@@ -251,7 +247,6 @@ internal fun RecommendModeSelector(
  * 侧卡目标宽不由我们定，库的算法是「主卡目标除以 3，再夹进 min/max」（本仓夹在 64~88dp）。
  * 库里那句原文是 "Visually balanced layouts should aim to use small items that are 1/3 the size
  * of large items" —— 主卡与侧卡 3:1 就是 MD3 中央 Hero 的平衡档，不是排版失手，也不是宽度分配失衡。
- * 现量（MuMu 1440x2560 @544dpi，`_qa/ui-audit-2026-10-14/after/b5-00-home.png` 第 1300 行逐像素扫描）：
  * 主卡 691px 合 203dp、侧卡 217px 合 64dp、间距 8dp —— 侧卡正好落在 min 那一端。
  * 夹在视口三分之一以内是硬约束：侧卡再宽，求解器就排成「两张大卡」而不是一个 Hero。
  *
@@ -459,12 +454,10 @@ internal fun RecommendSkeleton(columns: Int) {
  * 把这一条横滑区域登记成**系统手势排除区**。
  *
  * 全面屏手势下，屏幕左右边缘的横拖被系统判成「返回」，轮播贴到边缘就永远滑不动 ——
- * 真机症状是「想抽卡却退出了页面」。排除区只是给系统的提示（OEM 可忽略），
  * 且每条边最多 200dp 高，所以只挂在这一行，不是整页。
  */
 @Composable
 internal fun Modifier.systemGestureExclusionBand(): Modifier {
-    // 2026-10-20：`LocalView.systemGestureExclusionRects` 是 Android 专有面，收进了
     // `LocalUxPlatformServices`（桌面实现是空操作）。量化到 16px 那条判据原样保留 ——
     // 它挡的是「列表滚动时每像素都改排除区 = 给渲染线程挂一条持续重算」。
     val ux = com.venera.compose.components.LocalUxPlatformServices.current

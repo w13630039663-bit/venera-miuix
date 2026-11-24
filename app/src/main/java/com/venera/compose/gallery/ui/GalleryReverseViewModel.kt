@@ -153,7 +153,6 @@ class GalleryReverseViewModel(application: Application) : AndroidViewModel(appli
             return
         }
         // **没配 Key 就不发这一笔**（与 Breadboard 同一条裁决：它没 Key 时直接跳设置页）。
-        // 这不是保守，是实测：2026-09-27 真机 + 本机双路复现，匿名请求过盾能成功
         // （`onBypassSuccess`、存下 cf_clearance、重试），**重试仍然 403**，
         // 且日志显示只存下 1 枚 cookie（Cloudflare 正常同时给 cf_clearance 与 __cf_bm）。
         // 也就是这一笔注定白等 90 秒。发出去并让用户盯着转圈，比先说一句"去配 Key"更坏。

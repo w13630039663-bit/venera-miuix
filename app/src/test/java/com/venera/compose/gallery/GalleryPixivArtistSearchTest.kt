@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv 搜索「作品 / 画师」两页签的**接线判据**（2026-10-18 第二十三轮）。
  *
  * 用户原话：「搜索作者（画师）的分栏怎么没做」。这一轮钉的是"**画师那一栏真的存在、
  * 而且是一个独立的东西**"——同一批要防的事有五件：
@@ -203,7 +202,6 @@ class GalleryPixivArtistSearchTest {
     // ── 五、GalleryScreen：独立的三支 + 读数分流 ────────────────────────────
 
     /**
-     * 交了词就要**收条**（2026-10-22，用户报「pixiv 站点搜索后返回画廊，会显示这个搜索框」）。
      *
      * 立案读数：`runPixivSearch` 从头到尾不碰 `mode`，而 booru 那条路 `runSearch(thenCollapse)`
      * 会在提交时收成 RESULTS。于是 pixiv 这边交完词，屏上留着一张**展开的**输入卡 + 键盘，
@@ -284,14 +282,12 @@ class GalleryPixivArtistSearchTest {
 
     @Test
     fun `顶栏折起来那一截空白，搜索卡要跟着收上去`() {
-        // 用户 2026-10-18：「搜索栏和顶部的间距还是太高了，压下」。
         // 成因不是卡自己高，而是卡的落点取的是**展开态**地板（104dp）—— 用户点 🔍 时
         // 墙往往已滚过一段，顶栏早折成 52dp 那一行、大标题 alpha 归零，屏上就多出一段
         // 什么都没有的 52dp。这里钉的是"那一段 = 落点 − 折叠地板"。
         val define = screen.textOf("val searchOverlayFollow", 8)
         assertTrue(
             "收起的量必须从现成 token 里算出来、且跟着**落点**走（不新立数字、不另钉 topBarFloor）：\n$define",
-            // ⚠️ 2026-10-18 01:32 改判（用户「在首页搜索框的时候，头图会异常显示」连带）：
             // 被减数从 `topBarFloor` 换成 `searchOverlayTop`。有头图时落点是"状态栏 + 148 − 24"那一档，
             // 硬钉 topBarFloor 会算出与卡实际锚点不同源的一截，两枝各漂各的；
             // 无头图时两者相等（都是 statusBar + 104dp）⇒ 这一档的量仍是 104 − 52 = 52dp，逐像素不变。

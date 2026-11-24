@@ -177,24 +177,43 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-function icoToPng(ico) {
+/**
+ * `wantSize`：多条目 ICO 要挑的那一档（像素宽；0 视为 256，ICO 的老写法）。
+ *
+ * 缺省（不给）时**保持原口径**：只认恰好 1 条目，多一档就直接报错退出 ——
+ * yande.re / pixiv 那两枚都是单条目，给它们加"自动挑"等于把一条本来会**显式失败**的
+ * 防线换成猜。2026-11-11 起 konachan 的 favicon 实测是**两档**（16×16 与 32×32，都 8bpp），
+ * 所以这一颗调用点显式点名要 32 —— 24~28dp 下 16 像素会糊，与 yande.re 那枚"知情后选 16"是两回事。
+ */
+function icoToPng(ico, wantSize = null) {
   if (ico.readUInt16LE(0) !== 0 || ico.readUInt16LE(2) !== 1) {
     throw new Error('favicon 不是 ICO 头 —— 站方改了格式，需要人工复核');
   }
   const entries = ico.readUInt16LE(4);
+  let dirOffset = 6;
   if (entries !== 1) {
-    throw new Error(`期望恰好 1 条目，实得 ${entries} —— 站方给了多档图标，需要人工挑一档`);
+    if (wantSize === null) {
+      throw new Error(`期望恰好 1 条目，实得 ${entries} —— 站方给了多档图标，需要人工挑一档`);
+    }
+    let found = -1;
+    for (let i = 0; i < entries; i++) {
+      if ((ico[6 + i * 16] || 256) === wantSize) { found = 6 + i * 16; break; }
+    }
+    if (found < 0) {
+      throw new Error(`多条目 ICO 里没有 ${wantSize}px 那一档（实得 ${entries} 条）—— 需要人工复核`);
+    }
+    dirOffset = found;
   }
-  const width = ico[6] || 256;
-  const height = ico[7] || 256;
-  const offset = ico.readUInt32LE(18);
+  const width = ico[dirOffset] || 256;
+  const height = ico[dirOffset + 1] || 256;
+  const offset = ico.readUInt32LE(dirOffset + 12);
   // 现代 .ico 常直接内嵌 PNG：那种情况原样搬出去就行。
   if (ico.subarray(offset, offset + 8).toString('hex') === '89504e470d0a1a0a') {
     return ico.subarray(offset);
   }
   const bmp = ico.subarray(offset);
   const bitCount = bmp.readUInt16LE(14);
-  // 两档实测过的色深：8bpp 调色板（yande.re / safebooru 那两枚 16×16）与
+  // 实测过的色深：8bpp 调色板（yande.re 16×16、konachan 16/32 两档，历史上的 safebooru 那枚也是）与
   // 32bpp 直彩（pixiv 那枚 48×48，自带 alpha）。别的一律报错退出，不猜。
   if (bitCount !== 8 && bitCount !== 32) {
     throw new Error(`色深 ${bitCount}bpp 不在预期内（实测过 8bpp 调色板与 32bpp 直彩）—— 需要人工复核`);
@@ -210,8 +229,9 @@ function icoToPng(ico) {
   const pixelOffset = 40 + paletteSize * 4;
   const rowBytes = Math.ceil((width * bitCount) / 32) * 4;
   // AND 掩码紧跟在 XOR 位图之后，1bpp、每行 4 字节对齐；位=1 表示该像素透明。
-  // yande.re 那枚掩码全 0（256 像素全不透明，实测），safebooru 这枚**有**透明像素
-  // （16×16 里 72 个）—— 不认掩码的话透明区会被调色板第 0 项染成黑块。
+  // yande.re 那枚掩码全 0（256 像素全不透明，实测），safebooru（2026-11-11 撤下）与 konachan 这两枚
+  // **都**有透明像素（前者 72/256、后者 32 档实测 487/1024 置 1）—— 不认掩码的话透明区会被调色板
+  // 第 0 项染成黑块。
   const maskOffset = pixelOffset + rowBytes * height;
   const maskRowBytes = Math.ceil(width / 32) * 4;
   const rgba = Buffer.alloc(width * height * 4);
@@ -248,22 +268,23 @@ fs.writeFileSync(yandereTarget, png);
 console.log(`  写 ${path.relative(ROOT, yandereTarget)}（${png.length} B）`);
 
 /*
- * ── Safebooru：favicon.ico → 16×16 RGBA PNG ──────────────────────────────────────────
+ * ── Konachan：favicon.ico → 32×32 RGBA PNG（2026-11-11，顶替撤下的 Safebooru）──────────
  *
- * 与 yande.re 同一路数（单条目 ICO、8bpp 调色板、BMP 位图），实测（2026-10-01）：
- * 恰好 1 条目 16×16。**与 yande.re 的关键差别**：这枚**有透明像素**（AND 掩码里
- * 72/256 位置 1，黑底之外是 Danbooru 风格的灰棕笔触）—— 上面 icoToPng 已统一改成
- * 尊重掩码；yande.re 掩码全 0，产物逐字节不变。
- * 产物同样落 `drawable-nodpi`：16 像素就是 16 像素，不许系统按密度预缩。
- * 组件侧（VeneraGallerySourceMark）给它铺白色底板 —— 与 Gelbooru 同一条理由：
- * 站方这枚图形是为浅色浏览器标签栏设计的。
+ * 实测的形态差别（2026-11-11 本机）：站方这枚 favicon 是**两档** ICO（16×16 与 32×32，
+ * 都 8bpp 调色板 + BMP 位图 + AND 掩码有透明像素），所以这里显式点名要 32 那一档 ——
+ * 24~28dp 下 16 像素会糊（yande.re 那枚 16 是用户知情后特批的，不是通用口径）。
+ * 从前那颗是 safebooru.donmai.us 的 16×16（Danbooru 系纸箱标）；其历史实测记在
+ * git 史与 `cloudflare-ip-gallery-sources-2026-10-01.md`，这里不再重复产出。
+ * 产物落 `drawable-nodpi`：像素就是像素，不许系统按密度预缩。
+ * 组件侧（VeneraGallerySourceMark）给它铺白色底板 —— 站方这枚图形同样是给浅色浏览器
+ * 标签栏设计的（favicon 黑底之外就是那几笔深色标志）。
  */
-const SAFEBOORU_ICO = 'https://safebooru.donmai.us/favicon.ico';
-const safebooruIco = fs.readFileSync(fetch(SAFEBOORU_ICO, path.join(CACHE, 'safebooru-favicon.ico')));
-const safebooruPng = icoToPng(safebooruIco);
-const safebooruTarget = path.join(DRAWABLE_NODPI, 'ic_source_safebooru.png');
-fs.writeFileSync(safebooruTarget, safebooruPng);
-console.log(`  写 ${path.relative(ROOT, safebooruTarget)}（${safebooruPng.length} B）`);
+const KONACHAN_ICO = 'https://konachan.net/favicon.ico';
+const konachanIco = fs.readFileSync(fetch(KONACHAN_ICO, path.join(CACHE, 'konachan-favicon.ico')));
+const konachanPng = icoToPng(konachanIco, 32);
+const konachanTarget = path.join(DRAWABLE_NODPI, 'ic_source_konachan.png');
+fs.writeFileSync(konachanTarget, konachanPng);
+console.log(`  写 ${path.relative(ROOT, konachanTarget)}（${konachanPng.length} B）`);
 
 /*
  * ── pixiv：favicon.ico → 48×48 RGBA PNG（2026-10-17）────────────────────────────────

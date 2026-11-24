@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 顶栏那颗 pixiv 账号头像的**接线尺子**（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §四 · P3/P4）。
  *
  * 本仓 `app/` 没有 Robolectric，composable 的组合测不到 —— 所以判据全落在**源码文本**上。
  * 这一族的缺陷恰好都是"屏上看不出来"的那一类：外壳换成自绘的 40dp（与右侧那排差 4dp 却没人报）、
@@ -106,7 +105,6 @@ class GalleryPixivAccountWiringTest {
 
     @Test
     fun `退出登录搬进账号页之后仍排在确认那一格里，点头像只做导航`() {
-        // 2026-10-19：那颗「这是谁 + 退出」弹层整颗撤掉，退出搬进账号页的「账号管理」那一子页。
         // 两步确认这条纪律**不随搬家放松**：破坏性小把手恒要两步（既有口径）。
         val page = codeLines("com/venera/compose/gallery/ui", "PixivAccountScreen.kt")
         val signOuts = page.linesWith("account?.signOut()")
@@ -138,14 +136,12 @@ class GalleryPixivAccountWiringTest {
     /**
      * 登录**交给外部浏览器**（P6，用户「要有跳转到外部网页登录的授权登录和 google 账号登录的办法」）。
      *
-     * 2026-10-17 P4 那版判的是"自持一颗 WebView、在里面截回跳"，当时的读数否掉了复用
      * `WebLoginScreen`（它的判定只发在 `onPageFinished` 三处，自定义 scheme 交回 WebView
      * 不会有"页面加载完成"）。那条判据**方向仍然对、宿主已经换**：Google 在自己的 OAuth 页上
      * 认得出嵌入式 WebView 的 user-agent 并直接回 `disallowed_useragent`，所以"用 Google 登录"
      * 那一枚在 WebView 里按下去必然是一页报错 —— 用户点名要的那一档在旧宿主里物理不可达。
      * 于是这里的尺子改成三件事：真走 `ACTION_VIEW`、这一颗件里再没有 WebView、也没借用漫画源那颗。
      *
-     * 2026-10-17 第五轮：交出去那一跳多了 Custom Tab（先）与裸 VIEW（兜底）两档 —— 判据跟着拆成两处，
      * 只钉"地址是传进来那一条、没有再拼一份"（`Uri.parse(authorizeUrl)`）。
      */
     @Test
@@ -174,7 +170,6 @@ class GalleryPixivAccountWiringTest {
      * 于是回到 app 毫无反应，屏上一句报错都没有，用户只会以为"登录没用"。
      * 判据不抄字面量：从常量里把 scheme 与 host 取出来，再去清单里找对应那颗 intent-filter。
      *
-     * 2026-10-17 第四轮：站方 App 登录页登完可能直接跳 `pixiv://account/…`，也可能先落到它登记的
      * https 回跳（`REDIRECT_URI`，换 token 时要回填的那一条），所以**两条都得在清单里接住**。
      */
     @Test
@@ -215,7 +210,6 @@ class GalleryPixivAccountWiringTest {
         val sections = codeLines("GalleryHomeSections.kt")
         val stale = sections.linesWith("还没有 pixiv 账号系统")
         assertTrue("假话还挂在屏上：\n" + stale.joinToString("\n") { "${it.index}:${it.value}" }, stale.isEmpty())
-        // 2026-10-17 第八轮：这一栏已经真接上 `/v1/user/following` 与 `/v1/user/recommended`
         // （参数照 pixez-miuix 的 `UserRepository`），「那一条取数还没接上」当场变成假话 —— 同样收进禁令。
         val staleWiring = sections.linesWith("那一条取数还没接上")
         assertTrue(
@@ -248,7 +242,6 @@ class GalleryPixivAccountWiringTest {
     }
 
     /**
-     * 非会员点「人气」改走**人气预览**那一跳（2026-10-19 · 批 233-4，
      * 用户「参考原版 pixez 是怎么做无会员能用这个人气榜的」）。
      *
      * ## 这一族缺陷长什么样
@@ -305,7 +298,6 @@ class GalleryPixivAccountWiringTest {
     }
 
     /**
-     * 预览腿**三层各接一次**，全树没有第二个调用点（2026-10-19）。
      *
      * 为什么数出现次数而不是数符号名：上一批 notWired 那一族的形状就是"件写好了没人挂"，
      * 而"有人挂了两次"同样读不出 —— 只有逐文件计数能把"契约 1 + 适配 1 + 实现 1 + 解析 1 + 调用 1"
@@ -329,8 +321,6 @@ class GalleryPixivAccountWiringTest {
         }
         assertEquals("全树共七处（四处声明 + 两处转发 + 一处调用）", 7, total)
     }
-
-    // ── 2026-10-22 审计：账号页与画师页这五条 ─────────────────────────────
 
     /**
      * 刷新时**一腿失败不许把另一腿已经取到的内容抹掉**。
@@ -403,7 +393,6 @@ class GalleryPixivAccountWiringTest {
      * 顶栏折叠到底时，内容让位量要跟着收起。
      *
      * 从前 `contentTop` 是常量：折叠到底时两排药丸高度归零，而内容第一行仍按展开态让位，
-     * 顶上空出一条 154dp 的空白带（2026-10-22 改玻璃 + 收 chrome 之后新引入的回归）。
      */
     @Test
     fun `内容让位量跟着折叠进度收`() {

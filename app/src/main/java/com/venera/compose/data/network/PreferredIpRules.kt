@@ -10,13 +10,11 @@ import kotlin.random.Random
  * （见 `_probe/l0/run-judgment-tests.sh`），而"真的连出去一次"那半在
  * [com.venera.compose.data.network.PreferredIpProbe]。
  *
- * ## 三条来自实测的硬口径（2026-10-01，本机直连）
  *
  * 1. **绑 IP 不绑域名会改变证书校验的对象吗？不会。** `curl --resolve safebooru.donmai.us:443:104.21.91.168`
  *    回 200 且 `ssl_verify_result=0` —— 连的是那台边缘节点，SNI / Host / 证书校验全都仍按原域名走。
  *    OkHttp 侧对应"自定义 `Dns` 返回 IP"这一条官方推荐路子，不需要自造 `SocketFactory`。
  * 2. **TCP 通 ≠ 能用。** 同一个 `safebooru.donmai.us`，`108.162.193.171` 曾稳定回 **403**、
- *    另三台回 200。⚠️ 但 403 是 CF 防火墙行为，**会随时间与 UA 漂**：2026-10-01 晚间复测，
  *    同一台边缘对 `konachan.net` 已回 200（当天早些时候恒 403）。所以探活**必须发真实业务
  *    请求并看状态码**，只看"连上了"会把 403 那台当好节点用；而 verdict 对 403 的保守判法
  *    （一律不算通）不变 —— 宁可这台这轮不参与，也不把被防火墙挡的节点当健康。
@@ -51,13 +49,12 @@ internal object PreferredIpRules {
      * 已实测过真实业务路径的域名（其余适用域名用根路径）。
      *
      * ⚠️ 只列**实测回 200** 的两条：
-     * - `safebooru.donmai.us/posts.json?limit=1` → 200（JSON）
      * - `cdn-msp.jmapinodeudzn.net/`（JM 图床）→ 200，正文是节点标识串
-     * 反面例子也在：`cdn.donmai.us`（图片 CDN）根路径实测 **403** —— 图片站的根路径不是
-     * 有效业务端点，不能拿它当判据，所以它不进默认档。
+     * 反面例子也在：`cdn.donmai.us`（图片 CDN，上一代图库源 Safebooru 的图床）根路径实测 **403** ——
+     * 图片站的根路径不是有效业务端点，不能拿它当判据，所以它不进默认档。
      */
     val DEFAULT_TARGETS: List<PreferredIpTarget> = listOf(
-        PreferredIpTarget("safebooru.donmai.us", "/posts.json?limit=1"),
+        PreferredIpTarget("konachan.net", "/post.json?limit=1"),
         PreferredIpTarget("cdn-msp.jmapinodeudzn.net", "/"),
     )
 
@@ -74,7 +71,6 @@ internal object PreferredIpRules {
      *   探它问的是"这台边缘节点认不认这个 SNI"，所以非 5xx 应答（哔咔的 400 / 404 等）都算通。
      *   这与 [FALLBACK_PATH] 的哲学同源，只是把 require2xx 显式放开。
      *
-     * 已知事实（2026-10-01 直连实测）：`picaapi.picacomic.com` 在 CF 后（TLS 握手成功、
      * 未签名请求回 400）；`nhentai.net` **不在 CF 后**（边缘 RST）—— 保留它是为了让测速页
      * 如实告诉你"这条线不通"，而不是假装这个源不存在。
      */
@@ -91,11 +87,9 @@ internal object PreferredIpRules {
     /**
      * 漫画源 → 该源**图床**要一并写进「适用域名」的条目。
      *
-     * 为什么需要这张表：详情页的图走的是**另一个域名**（真机 log 实锤 2026-10-02：哔咔 API
      * `picaapi.picacomic.com` 通了、图 `storage-b.picacomic.com` 走系统 DNS 解析到死 IP 超时）。
      * 只把 API 域名写进适用域名，图床照样不受优选层管。
      *
-     * ⚠️ **只收真机实测「在 Cloudflare 后面、边缘 IP 能服务」的域名**（2026-10-02 真机
      * `--resolve` 逐个验证，TLS 证书校验通过才算）：
      * - `picacomic.com`（父域管 `storage-*`）✓、`i3/t3.nhentai.net` ✓、`static-tw.baozimh.com` ✓、
      *   `www.cdntwice.org`（jm 备用图床）✓
@@ -104,7 +98,6 @@ internal object PreferredIpRules {
      *   `www.cdnsha.org`/`www.cdnntr.cc` 同理不收。
      * - copy_manga 的图床是 API **动态下发**的全 URL，静态钉不了，不在此表。
      *
-     * 各条目的探活路径也是真机实测选的（目录路径被 WAF 403，具体文件路径 404/302 ——
      * 在 `require2xx = false` 下非 5xx 判通，403 一律失败的红线不碰）。
      */
     val COMIC_SOURCE_IMAGE_HOSTS: Map<String, List<String>> = mapOf(
@@ -137,7 +130,7 @@ internal object PreferredIpRules {
      *
      * 三站的域名/路径全部来自画廊客户端本体的 BASE 常量：
      * - `yande.re` 根路径实测 200/301（都在 2xx..3xx 判通带内）；
-     * - `safebooru.donmai.us/posts.json?limit=1` 实测 200（与 [DEFAULT_TARGETS] 同一条）；
+     *   上一代图库源 `safebooru.donmai.us` 随该站撤下从这里移除）；
      * - `gelbooru.com` 实测**不在 CF 后**（边缘 RST）—— 与 nhentai 同理，如实显示失败。
      */
     val GALLERY_SPEED_TEST_SOURCES: Map<String, PreferredIpSpeedTestSource> = mapOf(
@@ -147,9 +140,9 @@ internal object PreferredIpRules {
         "gelbooru" to PreferredIpSpeedTestSource(
             "gelbooru", "Gelbooru", PreferredIpTarget("gelbooru.com", "/"),
         ),
-        "safebooru" to PreferredIpSpeedTestSource(
-            "safebooru", "Safebooru",
-            PreferredIpTarget("safebooru.donmai.us", "/posts.json?limit=1"),
+        "konachan" to PreferredIpSpeedTestSource(
+            "konachan", "Konachan",
+            PreferredIpTarget("konachan.net", "/post.json?limit=1"),
         ),
     )
 
@@ -231,7 +224,6 @@ internal object PreferredIpRules {
     const val FALLBACK_PATH = "/"
 
     /**
-     * Cloudflare 官方公布的全部 IPv4 网段（cloudflare.com/ips-v4，2026-10-01 抄录）。
      *
      * **自动选点**的抽样池：候选节点不该让用户自己满世界找 IP 来粘 ——
      * 系统从这些网段里抽样，拿「适用域名」的真实端点逐台探活，通过的按延迟排序填入。
@@ -446,7 +438,6 @@ internal object PreferredIpRules {
      * 拿它当"通了"就是给自己造一个整站不可用的开关。
      *
      * [PreferredIpError.RESET] 与 [PreferredIpError.CONNECT] 必须分开说：
-     * RESET 是 **TCP 通了、TLS 握手带着这个域名的明文 SNI 出去就被重置** —— 2026-10-01 真机测速
      * 证实（同一台节点 Safebooru 1069 ms 通、yande.re 报"443 被拒"），这是**按域名阻断**的形态，
      * 换哪台节点都一样（优选 IP 只换 IP，换不掉明文 SNI）；把它写成"节点不可达"会引导用户
      * 以为换台节点还有救，其实解法只有开代理。
@@ -560,7 +551,6 @@ internal object PreferredIpRules {
     /**
      * 「一键测速并自动选点」的选点判据：从测速线结果里挑出**值得写回**的候选。
      *
-     * 口径是**行级**的（2026-10-02 按用户要求改回，与原探活弹窗逐行取最小延迟一致）：
      * 一台候选只要**有任一网站答上话**就入选 —— 它没答上的网站被忽略（那些网站走系统解析，
      * runtime 的探活读数会自然回退），不能因为「没全过」就把一台能用的节点整个扔掉。
      * 排序按**最快通过延迟**（这台节点在你实际能用的网站上有多快），上限 [MAX_IPS_PER_HOST]。

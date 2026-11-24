@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.Dp
  * ## 为什么需要这一层
  *
  * `LocalConfiguration` 是 AndroidX 的件，在桌面侧的 Compose Multiplatform 里**没有**
- * （2026-10-20 现量：`:desktop:compileKotlin` 报 `Unresolved reference 'LocalConfiguration'`）。
  * 于是此前 21 处 `LocalConfiguration.current.screenWidthDp.dp` 把整个大屏 UI 钉死在 Android 上：
  * 判据层（[wideScreenLayoutMode] 等）明明是纯函数、零 Android 依赖，
  * 可**取宽的那一句**在 Android 上，界面因此上不了桌面。
@@ -38,7 +37,6 @@ import androidx.compose.ui.unit.Dp
  *  3. **离屏测试里也成立** —— `runComposeUiTest` 的窗口有确定的容器尺寸。
  *
  * **③ Android 侧由 `provideLocalWindowWidth` 显式供给 `screenWidthDp`，值逐字不变。**
- * 所以手机档与平板档的现有观感一个像素都不动 —— 这是用户 2026-10-02
  * 「调的都是大屏版，别动手机版」那条硬约束的兑现方式。兜底分支在 Android 上一次都走不到。
  */
 val LocalWindowWidth = staticCompositionLocalOf<Dp?> { null }

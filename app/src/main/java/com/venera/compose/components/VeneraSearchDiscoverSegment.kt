@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
-/** 「搜索与发现」页的两个分段（2026-11-03，探索 tab 并入搜索页的落点）。 */
 enum class SearchDiscoverSegment(val label: String) {
     SEARCH("搜索"),
     EXPLORE("探索"),

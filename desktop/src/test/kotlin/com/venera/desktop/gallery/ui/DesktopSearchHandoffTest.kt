@@ -29,7 +29,7 @@ import org.junit.Test
  *
  * 画师名不是 `post.author`。实测那句在 `GalleryInfoSheet.kt:444-447`：yande.re 的 `author`
  * 与 Gelbooru 的 `owner` 都是**上传者的登录名**（真帖 1269641 的 `author=Arsy`，画师是标签 `gijang`），
- * 只有 Safebooru 的 `tag_string_artist` 才是画师档。而桌面浮层从前把 `post.author` 摆在稿的
+ * 只有 Konachan 的 `tag_string_artist` 才是画师档。而桌面浮层从前把 `post.author` 摆在稿的
  * `.artist .nm`（画师署名）那一格上 —— 那是一句**用位置说出来的假读数**。
  * 真画师走站方标好的档位（`fetchTagCategories` → `galleryArtistNames`，词典兜底那一路桌面恒空），
  * 于是"没取到 / 没有 / 没接"三档又出现一次：那一页没答上、答上了而这张没标画师档、取到了几位。
@@ -120,7 +120,7 @@ class DesktopSearchHandoffTest {
      * ②′ 三档各说一句人话，而取到的那一档不在屏上留一句废话。
      *
      * "没取到"那一句要**点是哪一站**：2026-10-05 的 stdout 上那一行写的是
-     * `取 https://safebooru.donmai.us/posts/12314547 的标签分类失败：分类页没有可识别的 tag-type 类名`
+     * `取 https://konachan.net/post/show/12314547 的标签分类失败：分类页没有可识别的 tag-type 类名`
      * —— 页面 200 而认不出类名，不是网络。那一站到底"没接"还是"偶尔没取到"还差第二张样本，
      * 所以这一句先把站名摆出来，让人自己去分，而不是替用户下一个结论。
      */
@@ -129,14 +129,14 @@ class DesktopSearchHandoffTest {
         val yande = GallerySite.YANDERE
         assertEquals("取到名字就不必再写一句'画师如下'（名字本身就是内容）", "", desktopArtistLineNotice(DesktopDetailArtists.Names(listOf("gijang"), DesktopArtistSource.SITE), yande, dictionary = null))
         assertEquals("站方答上了而这张没标画师档，要说'没标'", "这一张站方没标画师", desktopArtistLineNotice(DesktopDetailArtists.Unlabeled, yande, dictionary = null))
-        val notice = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.SAFEBOORU, dictionary = null)
+        val notice = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.KONACHAN, dictionary = null)
         assertTrue(
             "没取到那一句里不许出现'没有画师'（那是把'我们没问到'说成站方的结论）",
             notice.contains("没取到") && !notice.contains("没有画师"),
         )
         assertTrue(
             "那一句要点是哪一站 —— 三站的帖子页 markup 不是一套，'没取到'在某一站可能是永远",
-            notice.contains(GallerySite.SAFEBOORU.displayName),
+            notice.contains(GallerySite.KONACHAN.displayName),
         )
     }
 

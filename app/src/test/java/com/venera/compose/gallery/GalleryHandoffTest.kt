@@ -98,8 +98,6 @@ class GalleryHandoffTest {
         assertEquals(1f, handoffCoverage(0.875f), 1e-4f)
     }
 
-    // ── 详情内容区那条钟（2026-10-19 · 用户「飞入完成才突然几帧内加载出下面的界面」）──
-
     @Test
     fun `内容区那头 0 尾 1 单调且不越界`() {
         assertEquals("起步必须是全透明（不然页面还没成形就露字）", 0f, handoffDetailAlpha(0f), 1e-6f)
@@ -144,7 +142,6 @@ class GalleryHandoffTest {
 
     @Test
     fun `内容区必须在飞完之前起手，且不能几帧走完`() {
-        // 这两条就是用户 2026-10-19 报的那一条的时间口径：
         // 「点击图片进详情页，他是图片飞入完成才突然几帧内加载出下面的界面不好」。
         //
         // ① 起手点在飞行**进行中**：等于 1 就是"等飞完才起"，正是报的那一条。

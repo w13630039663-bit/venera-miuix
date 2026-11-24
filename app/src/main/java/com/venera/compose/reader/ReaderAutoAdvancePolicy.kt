@@ -60,7 +60,6 @@ internal fun autoCruiseSupported(mode: ReaderReadingMode): Boolean = when (mode)
 }
 
 /**
- * 自动翻页间隔的步进 —— 阅读器面板里那两枚 −/+ 用（2026-10-13 用户点名"加上时间控制 1-10s"）。
  *
  * 夹取写在**这一颗**而不是写在点击回调里：回调里各夹一遍迟早与写入钳位那份分叉，
  * 而分叉出来的屏上表现是"按到顶了还能再按"（假开关那一族）。

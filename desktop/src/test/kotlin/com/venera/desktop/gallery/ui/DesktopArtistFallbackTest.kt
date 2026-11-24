@@ -13,7 +13,7 @@ import org.junit.Test
  * ## 这一格是谁量出来的
  *
  * 批 40 起窗那一跑（2026-10-08，PID 1892）stdout 念过一句：
- * `D_日志 [GalleryTagCategories] 取 https://safebooru.donmai.us/posts/12336879 的标签分类失败，退到离线词典兜底：分类页没有可识别的 tag-type 类名`
+ * `D_日志 [GalleryTagCategories] 取 https://konachan.net/post/show/12336879 的标签分类失败，退到离线词典兜底：分类页没有可识别的 tag-type 类名`
  * —— 那句"退到离线词典兜底"是**共享面**写的，而桌面这一侧当时根本没接兜底：
  * [desktopDetailArtists] 只吃两枚参数，第三枚 `fallbackArtistNames` 走的是那颗共享件的**默认值** `emptySet()`
  * （"漏传不报错的新参数用默认值"那一族，手册 §0 与 `project-uncomposed-grid-state-noop`）。
@@ -67,7 +67,7 @@ class DesktopArtistFallbackTest {
     fun 两处都没答上时仍不说成没有画师() {
         val line = desktopDetailArtists(listOf("touhou"), categories = null, fallbackArtistNames = emptySet(), asked = true)
         assertTrue("兜底空着时该退回'没取到'那一档：$line", line is DesktopDetailArtists.NotAnswered)
-        val notice = desktopArtistLineNotice(line, GallerySite.SAFEBOORU, dictionary = null)
+        val notice = desktopArtistLineNotice(line, GallerySite.KONACHAN, dictionary = null)
         assertFalse("那句读数把我们的故障说成了用户没干活：$notice", notice.contains("没有画师"))
     }
 
@@ -75,7 +75,7 @@ class DesktopArtistFallbackTest {
     @Test
     fun 名字来自词典时那句说得出来源() {
         val fromDictionary = DesktopDetailArtists.Names(listOf("ahoym"), DesktopArtistSource.DICTIONARY)
-        val notice = desktopArtistLineNotice(fromDictionary, GallerySite.SAFEBOORU, dictionary = null)
+        val notice = desktopArtistLineNotice(fromDictionary, GallerySite.KONACHAN, dictionary = null)
         assertTrue("屏上摆着词典猜的名字而一句来源都没有：$notice", notice.contains("离线词典"))
         // 站方那一档仍然一句都不多写（名字本身就是内容，那条口径是批 2 定的）
         assertEquals(
@@ -103,7 +103,7 @@ class DesktopArtistFallbackTest {
         assertTrue("第一帧就越过 Fetching 直接给了结论：$line", line is DesktopDetailArtists.Fetching)
         assertTrue(
             "正在问那一句不许出现没取到（那是把还没等到说成问过了而失败）",
-            !desktopArtistLineNotice(line, GallerySite.SAFEBOORU, dictionary = null).contains("没取到"),
+            !desktopArtistLineNotice(line, GallerySite.KONACHAN, dictionary = null).contains("没取到"),
         )
     }
 
@@ -121,11 +121,11 @@ class DesktopArtistFallbackTest {
      */
     @Test
     fun 兜底那一句按词典那一态分三种说法() {
-        val read = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.SAFEBOORU, dictionary = null)
-        val absent = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.SAFEBOORU, DesktopDictWhy.Absent)
+        val read = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.KONACHAN, dictionary = null)
+        val absent = desktopArtistLineNotice(DesktopDetailArtists.NotAnswered, GallerySite.KONACHAN, DesktopDictWhy.Absent)
         val failed = desktopArtistLineNotice(
             DesktopDetailArtists.NotAnswered,
-            GallerySite.SAFEBOORU,
+            GallerySite.KONACHAN,
             DesktopDictWhy.Unreadable(IllegalStateException("盘上那颗读不动")),
         )
         assertTrue("真读过而没命中那一句丢了原口径：$read", read.contains("离线词典里也没有这一串标签"))
@@ -151,7 +151,7 @@ class DesktopArtistFallbackTest {
             "词典顶上那一句不再点名离线词典",
             desktopArtistLineNotice(
                 DesktopDetailArtists.Names(listOf("ahoym"), DesktopArtistSource.DICTIONARY),
-                GallerySite.SAFEBOORU,
+                GallerySite.KONACHAN,
                 DesktopDictWhy.Absent,
             ).contains("离线词典"),
         )

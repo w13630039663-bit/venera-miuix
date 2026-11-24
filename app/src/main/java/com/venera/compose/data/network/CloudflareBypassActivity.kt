@@ -66,7 +66,6 @@ class CloudflareBypassActivity : ComponentActivity() {
      *
      * ⚠️ 这是"假通关"最后一个、也是最根本的一条防线：WebView 的 CookieManager 是
      * **持久**的，上一次会话留下的 `cf_clearance` 在页面刚开始加载那一刻就在 cookie 串里
-     * （真机日志里每次 check 都带 `hasClearance=true`，且判定发生在启动后 0.002 秒 ——
      * Turnstile 要跑 JS、可能还要用户点一下，绝不可能这么快）。
      * 于是"有没有 cf_clearance"这个判据**恒为真**，等于没判。
      *
@@ -94,7 +93,7 @@ class CloudflareBypassActivity : ComponentActivity() {
             "start host=$targetHost baselineClearance=${baselineClearance?.take(12) ?: "无"}",
         )
 
-        if (targetUrl.isBlank()) {
+        if (targetUrl.isBlank() || (!targetUrl.startsWith("http://", ignoreCase = true) && !targetUrl.startsWith("https://", ignoreCase = true))) {
             CloudflareBypassManager.onBypassFailed(targetHost)
             finish()
             return
@@ -178,6 +177,8 @@ class CloudflareBypassActivity : ComponentActivity() {
                                 loadWithOverviewMode = true
                                 cacheMode = WebSettings.LOAD_DEFAULT
                                 userAgentString = UserAgentPolicy.getUserAgentForHost(targetHost)
+                                allowFileAccess = false
+                                allowContentAccess = false
                             }
 
                             webChromeClient = object : WebChromeClient() {
@@ -236,7 +237,6 @@ class CloudflareBypassActivity : ComponentActivity() {
         }
 
         // 太快也不可能是真通关：Turnstile 要跑 JS，通常还要用户点一下。
-        // 这一条是兜底（真机实测最快的真通关也要数秒），防的是"cookie 恰好变了但挑战没过"。
         val elapsed = System.currentTimeMillis() - startedAtMs
         if (elapsed < MIN_PLAUSIBLE_MS) {
             Log.d(
@@ -250,7 +250,6 @@ class CloudflareBypassActivity : ComponentActivity() {
         /*
          * 此刻已确认：cookie 是本次新下发的、且耗时合理 —— 这是最强的"挑战已通过"信号。
          *
-         * ⚠️ 此处**不能再让 title 一票否决**（2026-09-27 第四层，真机截图定案）：
          * 过盾后站方返回的是**裸 JSON**（`{"header":{"status":-1,...}}`，没有 <title>），
          * 于是 lastPageTitle 停在空串 / URL 形 —— 而旧的 title 判据对这两种都回 true，
          * 结果挑战明明通了，窗口却永远停在那个 JSON 页上（用户看到的"停在这个页面"）。
@@ -313,7 +312,6 @@ class CloudflareBypassActivity : ComponentActivity() {
     /**
      * URL 还在 Cloudflare 的挑战域上 —— **最强判据，且与语言无关**。
      *
-     * ⚠️ 这是 2026-09-27 定案的那次修法里加的：光看 title 会漏，因为挑战页 title
      * 是**本机语言**（中文设备上是"请稍候…"），而枚举英文关键词必然漏掉它。
      * `challenges.cloudflare.com` 这个域在任何语言下都一样。
      */
@@ -326,10 +324,8 @@ class CloudflareBypassActivity : ComponentActivity() {
      * title 命中已知的挑战页文案 **或"站方自己的错误页"**。
      *
      * ⚠️ **只能是兜底，不能当主判据** —— Cloudflare 的文案跟着设备语言走，
-     * 枚举永远枚举不全（2026-09-27 就是被中文"请稍候…"漏掉的）。
      * 这里把已实测到的几种都列上，但真正的防线是 [isChallengeUrl]。
      *
-     * ⚠️ **错误页同样不算通关**（2026-09-27 实测）：SauceNAO 在 CF 放行后返回的是
      * title 为 `SauceNAO Error` 的错误页 —— 它确实"离开了挑战页"，但那不是我们要的结果。
      * 判据只认"离开挑战页"就会把它当通关，于是带一枚从未激活的 cookie 去重试，
      * 表现为"验证完了、跳回去了、还是 403"。
@@ -342,7 +338,6 @@ class CloudflareBypassActivity : ComponentActivity() {
      * ⚠️ 调用时机已经变了（见 checkCookies 里那段说明）：走到这里的请求**必然**
      * 已有"新 cookie 已下发"这个硬信号，所以本函数**只拦明确特征**：
      * - 空白 / URL 形 title **不再**判"仍在挑战" —— 那正是"站方返回裸 JSON"的形态，
-     *   判了就会把真通关永远卡在验证窗口里（2026-09-27 第四层，真机截图定案）。
      * - 只认挑战文案（多语言）与站方错误页标题。
      */
     private fun isChallengeTitleText(title: String): Boolean {
@@ -358,7 +353,7 @@ class CloudflareBypassActivity : ComponentActivity() {
         "attention required",
         "checking your browser",
         "cloudflare",
-        "请稍候",   // 简体（2026-09-27 真机实测，正是漏掉这一个导致的误判）
+        "请稍候",
         "請稍候",   // 繁体
         "稍候",
         "稍等",
@@ -375,7 +370,7 @@ class CloudflareBypassActivity : ComponentActivity() {
      * 只列实测到的形态 + 中文那两个。
      */
     private val ERROR_TITLE_MARKERS = listOf(
-        "saucenao error",   // 2026-09-27 真机实测，正是误判成"通关"的那一个
+        "saucenao error",
         "错误",
         "失败",
         "出错",

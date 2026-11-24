@@ -64,7 +64,6 @@ private val downloadBarHeight = 5.dp
 private val downloadBarShape = 3.dp
 
 /**
- * 「发现新版本」弹窗 —— 设置页手动检查与启动检查共用，**三态在一颗里**（2026-10-04 改造）。
  *
  * ## 原先那句「不在应用内自装」为什么不成立了
  *

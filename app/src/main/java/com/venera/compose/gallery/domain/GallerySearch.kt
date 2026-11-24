@@ -19,7 +19,6 @@ data class GalleryTagFilter(val name: String, val excluded: Boolean = false) {
 }
 
 /**
- * 交接标签名的**清洗**（2026-10-23，用户「去掉多余前缀与非法符号」）。
  *
  * 为什么需要这一层：交接槽的写入方有三类，没有一类能保证送来的是干净词 ——
  * 1. 大图页信息面板里点的标签 chip：站方 `tags` 平铺串切出来的原串；
@@ -70,7 +69,6 @@ fun sanitizeGalleryTagName(raw: String): String {
  *
  * 为什么带站点：两站词表不通，同一串标签换个站可能就是另一个结果。
  * 为什么从"一个站"改成"一组站"：来源轴上了「全部」之后，一次搜索本来就同时打两站，
- * 按 `(站, 词)` 存会让同一个词占两行 —— 历史区立刻被自己的重复撑满（真机就是这个形状）。
  *
  * [sites] 恒按站表序归一：写盘字节要稳定，`joinToString` 与 diff 才不会跟着集合实现飘。
  */
@@ -110,9 +108,10 @@ object GallerySearch {
     /**
      * 本站允许的标签数；`null` = 不限。
      *
-     * ⚠️ **两站现在都是不限**，但这条判据本身留着 —— 它是"发请求之前先拦住"的唯一落点，
+     * ⚠️ **三站现在都是不限**，但这条判据本身留着 —— 它是"发请求之前先拦住"的唯一落点，
      * 而预算这件事是**会变的**：换回一个有限额的站、或站方哪天收紧，只要在这里返回一个数，
      * UI 就会自动在**加标签那一刻**拦住并报原因，不必再改一遍调用点。
+     * （上一代图库源 Safebooru 是这条判据唯一有活体上限的一档：Danbooru 系匿名档 2 枚、超了 422。
      *
      * Gelbooru 这一档的依据：官方 wiki `howto:api` 与 `howto:cheatsheet` 通篇
      * **没有任何标签数上限**的说明（`limit` 那一项限的是"一次取回多少条"，
@@ -122,11 +121,9 @@ object GallerySearch {
     fun tagBudget(site: GallerySite): Int? = when (site) {
         GallerySite.GELBOORU -> null
         GallerySite.YANDERE -> null
-        // Safebooru 与 Danbooru 同一内核（官方全年龄镜像，匿名访问）—— 匿名档
-        // `tags=` 上限 2 枚，超了站方直接 422。与 Danbooru 账号那套
-        // （匿名/Restricted/Member=2，见 GallerySearchViewModel 的 tagsPerSearch）同源。
-        GallerySite.SAFEBOORU -> 2
-        // pixiv 不进来源轴（2026-10-16 选型⑤：首页那一格是**内容域**切换，不是第五枚来源 chip），
+        // Konachan 与 yande.re 同一内核（Moebooru），标签数同样**不限** —— 实测 3 枚与 5 枚组合都 200、
+        // 没有 Danbooru 系那种"匿名第 3 枚 422"的形态。（上一代图库源 Safebooru 属 Danbooru 系、
+        GallerySite.KONACHAN -> null
         // 它的入口是榜单档名，不是 booru 那套 `tags=` 语法。
         // ⚠️ 别把这句读成"pixiv 匿名搜不到"：`ajax/search/artworks/{词}` 现量 200 / 每页 60 条，
         // 那是首页「最新作品」那一腿要用的，跟来源轴无关（来源轴并进去就是两套语法一张墙，假读数）。
@@ -182,7 +179,6 @@ object GallerySearch {
     const val HISTORY_SHOWN = 5
 
     /**
-     * 盘上那枚历史键名：**按内容域各一份**（2026-10-18，用户点「分域各存一份」）。
      *
      * 为什么放在这一颗而不是各端自己写：Android 与桌面**读写的是同一个文件**
      * （`PreferenceKeys.PREFS_GALLERY_SEARCH`，桌面那颗 `desktopHistoryStore` 的注释自己就这么说），

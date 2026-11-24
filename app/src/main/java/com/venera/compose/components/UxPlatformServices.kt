@@ -3,7 +3,6 @@ package com.venera.compose.components
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * 共享 UI 面上**唯一允许存在的平台服务出口**（写法 A，2026-10-20）。
  *
  * ## 为什么需要它
  *
@@ -19,7 +18,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * | `PredictiveBack.kt:53` | `PredictiveBackHandler` | 预测性返回 |
  *
  * 逐颗改写成 `expect/actual` 不成立：`:app` 是普通 Android 模块，不是 KMP，没有 `expect`。
- * 而"为这一层单独建一颗 KMP 模块"会把 `:app` 的依赖图改掉 —— 那正是主人明令不许碰的。
  *
  * 所以走注入：共享面只认这枚接口，**平台实现由集成方在入口挂上去**。
  * 这是写法 A 的形状 —— 安卓侧的实现逐字保留（`AndroidUxServices`），桌面侧另给一份
@@ -164,7 +162,6 @@ interface UxPlatformServices {
      * 给这一块区域向系统申请「手势排除区」（Android 12+ 的 `systemGestureExclusionRects`）。
      *
      * 原调用点是 `HomeScreen.kt` 的 `Modifier.systemGestureExclusionBand()`：全面屏手势下，
-     * 屏幕左右边缘的横拖被判成「返回」，轮播贴边就永远滑不动（真机症状：想抽卡却退出了页面）。
      *
      * @param left/top/right/bottom 单位是**根坐标系的 px**（与 `LayoutCoordinates.positionInRoot` 同一系）。
      *   不用 `android.graphics.Rect` 是刻意的：那是 Android 类型，进不了共享面。

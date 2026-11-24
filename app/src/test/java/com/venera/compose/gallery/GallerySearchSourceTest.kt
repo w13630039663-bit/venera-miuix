@@ -28,7 +28,7 @@ class GallerySearchSourceTest {
     @Test
     fun `全部档展开成全部站且顺序按站表定死`() {
         assertEquals(
-            listOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.SAFEBOORU),
+            listOf(GallerySite.YANDERE, GallerySite.GELBOORU, GallerySite.KONACHAN),
             GallerySearchSource.ALL.availableLegs(hasGelbooruAccount = true),
         )
     }
@@ -49,8 +49,8 @@ class GallerySearchSourceTest {
     @Test
     fun `未配账号时可用腿只剩免账号的两站 且缺席那条腿说得出原因`() {
         val legs = GallerySearchSource.ALL.availableLegs(hasGelbooruAccount = false)
-        // Safebooru 匿名可用（Danbooru 全年龄镜像），与 yande.re 一样不需要账号。
-        assertEquals(listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU), legs)
+        // Konachan 匿名可用（Danbooru 全年龄镜像），与 yande.re 一样不需要账号。
+        assertEquals(listOf(GallerySite.YANDERE, GallerySite.KONACHAN), legs)
 
         val missing = GallerySearchSource.ALL.missingLegs(hasGelbooruAccount = false)
         assertEquals(setOf(GallerySite.GELBOORU), missing.keys)
@@ -126,12 +126,12 @@ class GallerySearchSourceTest {
                 GallerySearchSource.ALL,
                 GallerySearchSource.single(GallerySite.YANDERE),
                 GallerySearchSource.single(GallerySite.GELBOORU),
-                GallerySearchSource.single(GallerySite.SAFEBOORU),
+                GallerySearchSource.single(GallerySite.KONACHAN),
             ),
             GallerySearchSource.options,
         )
         assertEquals(
-            listOf("全部", "yande.re", "Gelbooru", "Safebooru"),
+            listOf("全部", "yande.re", "Gelbooru", "Konachan"),
             GallerySearchSource.options.map { it.label },
         )
         // 各档都能被 indexOf 认回来 —— 认不回来分段器就会恒选中第一档。

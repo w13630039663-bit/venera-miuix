@@ -17,7 +17,7 @@ class GalleryArtistAvatarsTest {
     private val pixivUrl = "https://i.pximg.net/user-profile/img/2017/03/08/00/26/25/12240120_x_170.jpg"
 
     private fun entry(
-        site: GallerySite = GallerySite.SAFEBOORU,
+        site: GallerySite = GallerySite.KONACHAN,
         name: String = "qitoli",
         source: String = "",
         avatar: String = pixivUrl,
@@ -28,32 +28,32 @@ class GalleryArtistAvatarsTest {
     fun `三档语义分得开：没查过、查过没有、有地址`() {
         val empty = GalleryArtistAvatars.index(emptyList())
         // 从没查过 → null，调用方该发请求。
-        assertNull(GalleryArtistAvatars.lookup(empty, GallerySite.SAFEBOORU, "qitoli", ""))
+        assertNull(GalleryArtistAvatars.lookup(empty, GallerySite.KONACHAN, "qitoli", ""))
 
         // 查过了、站方没给脸 → 空串（不是 null）：这一档必须与上一档分得开。
         val none = GalleryArtistAvatars.index(listOf(entry(avatar = "")))
-        assertEquals("", GalleryArtistAvatars.lookup(none, GallerySite.SAFEBOORU, "qitoli", ""))
+        assertEquals("", GalleryArtistAvatars.lookup(none, GallerySite.KONACHAN, "qitoli", ""))
 
         // 有地址 → 直接拿来画。
         val known = GalleryArtistAvatars.index(listOf(entry()))
-        assertEquals(pixivUrl, GalleryArtistAvatars.lookup(known, GallerySite.SAFEBOORU, "qitoli", ""))
+        assertEquals(pixivUrl, GalleryArtistAvatars.lookup(known, GallerySite.KONACHAN, "qitoli", ""))
     }
 
     @Test
     fun `站点与出处都进键，同名不同站不算命中`() {
-        val indexed = GalleryArtistAvatars.index(listOf(entry(site = GallerySite.SAFEBOORU)))
+        val indexed = GalleryArtistAvatars.index(listOf(entry(site = GallerySite.KONACHAN)))
         // 同一名字在另一站上不保证是同一个人（键里那一条理由）。
         assertNull(GalleryArtistAvatars.lookup(indexed, GallerySite.YANDERE, "qitoli", ""))
         // 出处不同也不算：那一枚 pixiv 入口是从出处反查来的，混用会给这一位挂上另一位的脸。
         assertNull(
-            GalleryArtistAvatars.lookup(indexed, GallerySite.SAFEBOORU, "qitoli", "https://www.pixiv.net/users/1"),
+            GalleryArtistAvatars.lookup(indexed, GallerySite.KONACHAN, "qitoli", "https://www.pixiv.net/users/1"),
         )
     }
 
     @Test
     fun `画师名大小写不该把同一位拆成两份`() {
         val indexed = GalleryArtistAvatars.index(listOf(entry(name = "Qitoli")))
-        assertEquals(pixivUrl, GalleryArtistAvatars.lookup(indexed, GallerySite.SAFEBOORU, "qitoli", ""))
+        assertEquals(pixivUrl, GalleryArtistAvatars.lookup(indexed, GallerySite.KONACHAN, "qitoli", ""))
     }
 
     @Test

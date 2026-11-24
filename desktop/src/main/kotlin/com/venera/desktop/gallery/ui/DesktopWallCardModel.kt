@@ -79,7 +79,7 @@ internal fun desktopWallCardOf(
 internal fun siteLabelOf(site: GallerySite): String = when (site) {
     GallerySite.YANDERE -> "yande.re"
     GallerySite.GELBOORU -> "gelbooru"
-    GallerySite.SAFEBOORU -> "safebooru"
+    GallerySite.KONACHAN -> "konachan"
     GallerySite.PIXIV -> "pixiv"
 }
 

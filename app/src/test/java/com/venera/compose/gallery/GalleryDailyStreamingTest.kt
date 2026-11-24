@@ -21,9 +21,7 @@ import org.junit.Test
 /**
  * 「某一站先回来，就先把它交给屏上」—— `GalleryDailyFeed.loadDaily` 的 `onLeg` 那一格。
  *
- * ── 为什么要有这条判据（2026-10-17 第七轮）──
  *
- * 用户那张截图上是「每日热门」一整排骨架，而真机同一条反馈里写着「这个加载时间太长了」。
  * 成因不在并发（三站本来就是 `async` 并发的），而在**整轮要等最慢的那一站**：
  * `Triple(y.await(), g.await(), s.await())` 之后才有第一个结果，慢站一档单站预算 12s。
  * 修法是让"已经到货的那几站"先落屏（UI 侧 `GalleryViewModel.acceptPartial`）。
@@ -72,7 +70,7 @@ class GalleryDailyStreamingTest {
             }
         }
 
-        override val safebooru = object : ScoredBoard {
+        override val konachan = object : ScoredBoard {
             override val pageSize = 100
             override suspend fun searchPosts(tags: String, page: Int, limit: Int) = Result.success(emptyList<GalleryPost>())
             override suspend fun searchTags(term: String) = Result.success(emptyList<GalleryTagSuggestion>())
@@ -102,7 +100,7 @@ class GalleryDailyStreamingTest {
         boards.slowGate.complete(Unit)
         val daily = round.await().getOrThrow()
         assertEquals(3, daily.pools.size)
-        assertTrue(daily.failures.containsKey(GallerySite.SAFEBOORU))
+        assertTrue(daily.failures.containsKey(GallerySite.KONACHAN))
         assertTrue("最终那一屏要有内容", daily.merged.posts.isNotEmpty())
     }
 

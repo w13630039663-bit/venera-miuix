@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.domain
 
 /**
- * pixiv 专属画质档位（2026-10-22）。
  *
  * 分别用于：卡片预览画质、作品/漫画详情页画质、大图全屏看图器画质。
  */

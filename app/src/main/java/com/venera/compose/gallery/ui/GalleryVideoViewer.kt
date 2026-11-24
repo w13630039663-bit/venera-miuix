@@ -55,7 +55,6 @@ import top.yukonga.miuix.kmp.basic.Text
  * 三级（原图 + 缩放）那层对视频没有意义，所以本页**不进三级**：点画面是切播放/暂停，
  * 交给 [PlayerView] 自己的控制器。
  *
- * ## 全屏改由独立 Activity 承担（2026-10-19，用户「重做一遍」）
  *
  * 旧版在这里把框换成 `fillMaxSize()` 再改宿主 Activity 的 `requestedOrientation`，
  * 三件事一起坏：
@@ -99,7 +98,6 @@ fun GalleryVideoViewer(
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
-                // 打码只在**还没开播**时糊底图：开播之后那层糊会盖在画面上（真机读数），
                 // 而播放器自己已经在画了，遮不遮由 `masked` 与起播状态共同决定。
                 .then(if (masked && !started) Modifier.blur(tokens.spacing.space10) else Modifier),
         )
@@ -155,7 +153,6 @@ fun GalleryVideoViewer(
 /**
  * 就地播放器（自带建/释与"回位"）。
  *
- * 回位那一截是 2026-10-19 新增的：从全屏页返回时，位置经 [GalleryVideoHandoff] 写回来，
  * 这里在 `ON_RESUME` 取一次并 `seekTo`。取完即删，所以"下次再点进来从头播"照旧。
  */
 @OptIn(UnstableApi::class)
@@ -208,7 +205,6 @@ private fun GalleryInlinePlayer(
  * 两处各写一遍的话，"全屏能播、就地播不了"这类只在一条路上复现的裂口迟早会出现。
  *
  * @param fullscreen 只影响全屏钮的图标朝向。
- *   ⚠️ 两种形态都用 `RESIZE_MODE_FIT`：用户 2026-10-19 明确说「不应该有裁剪」，
  *   而 `ZOOM` 就是裁切铺满 —— 横屏视频在竖屏里只看得见中间一条，那正是"看着糊"的来源之一。
  */
 @OptIn(UnstableApi::class)
@@ -223,7 +219,6 @@ internal fun GalleryPlayerSurface(
     val tokens = VeneraTokens
     // 两枚读数各自独立：`buffering` 是"这一笔还在取"，`firstFrame` 是"屏上已经开始动"。
     // 快门色是透明的，所以首帧之前屏上看到的**就是底图那张静帧** —— 没有这两枚读数时，
-    // "正在缓冲"和"点了没反应"长得一模一样（用户 2026-09-27 点名的第一条）。
     var firstFrame by remember(player) { mutableStateOf(false) }
     var buffering by remember(player) { mutableStateOf(true) }
 
@@ -254,9 +249,7 @@ internal fun GalleryPlayerSurface(
         onDispose { player.removeListener(listener) }
     }
 
-    // 黑底（2026-10-23）：起播后那层糊底图仍在下层（它只是被 PlayerView 盖住，没被移除），
     // 播放器画面在 letterbox 或合成空隙间露出的任何一像素都会透出那张被放大的低清图 ——
-    // 真机上读起来就是“播着还是糊”。黑底把下层彻底扣住。
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
@@ -290,7 +283,6 @@ internal fun GalleryPlayerSurface(
             modifier = Modifier.fillMaxSize(),
         )
         // **首帧之前必须有读数**。快门是透明的，所以那段时间屏上看到的仍然是底图那张静帧，
-        // 与"点了没反应"长得一模一样（用户 2026-09-27 点名的第一条）。
         // 波浪环是全站口径；落点在这块画面的正中（起播前那儿本来就是空的，不挡内容）。
         if (buffering || !firstFrame) {
             Box(

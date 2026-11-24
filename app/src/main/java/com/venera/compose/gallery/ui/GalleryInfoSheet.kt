@@ -44,8 +44,6 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -76,6 +74,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraButton
@@ -107,7 +107,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 落定看门狗的**真机二分开关**（2026-10-05）。
  *
  * 改 `false` 就是旧行为 —— 面板点不动是**偶发**的，一颗包装上去如果不再出现，
  * 必须能一条开关切回去再验一次，否则分不清「修好了」与「这轮没撞上」。
@@ -115,7 +114,6 @@ import top.yukonga.miuix.kmp.basic.Text
 private const val SHEET_SETTLE_WATCHDOG = true
 
 /**
- * 「关于这张图」半模态（照 Breadboard 的 `InfoSheet`，用户 2026-09-25 点名复刻）。
  * 它**取代**二级页原来那两张往下滚的卡 —— 二级现在是满屏图 + 底部工具条，信息收在这里。
  *
  * 用 M3 的 `ModalBottomSheet`，不用 miuix 那个 `OverlayBottomSheet`：
@@ -129,10 +127,8 @@ private const val SHEET_SETTLE_WATCHDOG = true
  * 两站的画师端点都不给这两个读数（yande.re 的 `artist.json` 只有 `id/name/alias_id/group_id/urls`，
  * Gelbooru 侧借的 danbooru 记录同理），编一行出来就是全仓最贵的那种错。
  *
- * ## 版面：五块（2026-10-01 **第三**次重排，用户报"分区的色块不明显"）
  *
  * 前两轮都在改**分组方式**（6 张卡 → 3 张 → 按内容重排），这一轮改的是**分组有没有可见载体**。
- * 实测（真机截图逐像素，1080×2376）：整屏内容区自始至终是同一个 `rgb(245,242,249)` ——
  * 上一版靠 `VeneraCard` 的 `surfaceContainerHigh` 与半模态的 `surfaceContainerLow` 拉开的那一档，
  * 在动态取色下只剩一个色调步，乘上玻璃的容器 alpha 之后归零，**一条边界都量不出来**。
  *
@@ -175,7 +171,6 @@ private const val SHEET_SETTLE_WATCHDOG = true
  * @param fallbackArtistNames 只在 [categories] 为 null 时参与：离线词典里判为画师的那几枚。
  *   两者**不会同时生效**（页面那边只在站方没给时才查词典），所以这里不需要仲裁规则。
  * @param artistCredits 这一张的画师署名（外链 + 头像）。**页面在打开这一张图时就取好**
- *   （用户 2026-10-01 第 2 条），面板打开时它通常已经到位 —— 这一块因此不再有自己的
  *   加载态，缺哪一位就摆哪一位的首字母座。取数那一份判据在 [loadArtistCredits]。
  * @param tagTranslations 标签 → 中文译名（离线词典）。**只改显示**：菜单里那三项与
  *   [onSearchTag] 回给画廊的仍是原文 —— 译文会随词典更新而变，屏蔽词表与检索词都存原值。
@@ -188,7 +183,6 @@ internal fun GalleryInfoSheet(
     fallbackArtistNames: Set<String>,
     /**
      * 这一张的画师署名（`画师名 → 外链/头像`）—— 由大图页在**打开这一张图**时就取好
-     * （用户 2026-10-01 第 2 条），这里只渲染。表里查不到的名字 = 还没回来，摆首字母座。
      */
     artistCredits: Map<String, ArtistCredits>,
     tagTranslations: Map<String, String>,
@@ -201,7 +195,6 @@ internal fun GalleryInfoSheet(
     /** 底部那条「下载」：与底栏那枚是**同一个**动作，带它的进度与 toast（页面持有）。 */
     onDownload: () -> Unit,
     /**
-     * 「画成水彩」那一格（2026-10-14 从底栏那枚笔刷搬进这条动作条 —— 那条 dock 是 5 枚
      * **高频**钮，360dp 上排到第 6 枚只剩约 12dp 余量，而它是默认关的实验件，低频件占高频位不值）。
      *
      * 交回 null = 这一格**整格不摆**。什么时候是 null 由调用方那一头的
@@ -230,8 +223,6 @@ internal fun GalleryInfoSheet(
     /*
      * 内容区吃不完的那一份位移 —— **判据在 [GallerySheetScroll]**，那边逐条写了
      * 「为什么顶格+到底时那一下必须扣、其余两档为什么必须放」，以及返回值的方向为什么反直觉。
-     * 少了这一层，面板盖满屏之后下拉会**帧级上下跳**（用户 2026-10-01 报的第 3 条，
-     * 2026-10-05 复现并定死机理：m3 自己的连接器 `SheetDefaults.kt:656` 把位移逐帧推给面板，
      * 而面板的 `Expanded` 锚点 = 屏高 − 内容高（`BottomSheet.kt:306`）⇒ 面板一动锚点就重算 ⇒ 环）。
      */
     // 内容区的滚动状态提到这里：判据要读它「到底了没有」。
@@ -273,13 +264,11 @@ internal fun GalleryInfoSheet(
         buildGalleryTagBuckets(post.tagList, categories, fallbackArtistNames)
     }
     /*
-     * **署名那一组与标签墙分家**（用户 2026-09-29 点名）：画师不留在任何一份列表里，
      * 它换成②那块「头像 + 名字 + 平台入口 + 关注」—— 一行要摆三样，塞进定义列表三样都会挤没。
      * 角色 / 作品则**回到**标签墙（这一版改判）：它们没有任何附属动作，本来就是"标签"，
      * 与通用标签排在一起按档位分色，比夹在尺寸评分中间更好找。
      *
      * "哪几个是画师"走 domain 的 [galleryArtistNames]：大图页在**打开这一页时**就要按同一份
-     * 名字去预取外链与头像（用户 2026-10-01 第 2 条），两处各写一遍迟早会对不上。
      */
     val artistNames = remember(post.tagList, categories, fallbackArtistNames) {
         galleryArtistNames(post.tagList, categories, fallbackArtistNames)
@@ -319,7 +308,6 @@ internal fun GalleryInfoSheet(
         // 「有没有手指按在这张面板上」——只观察、不消费。落定看门狗靠它避开用户正在进行的拖动。
         val fingerDown = remember { mutableStateOf(false) }
         /*
-         * ── 档 A：落定看门狗（2026-10-05）─────────────────────────────────────────────
          *
          * 机理：`AnchoredDraggableState.dragTarget` 有一个**只在抢不到锁时被置上、却没有任何
          * `finally` 兜底**的赋值点（foundation `AnchoredDraggable.kt:1024-1027`：
@@ -373,9 +361,7 @@ internal fun GalleryInfoSheet(
                     .fillMaxWidth()
                     .weight(1f)
                     /*
-                     * ★ 2026-10-05 03:2x 修：`nestedScroll` 必须在 `verticalScroll` **之前**（= 祖先位）。
                      *
-                     * ## 上一版为什么完全没生效（`扣判` 在真机日志里 0 条）
                      *
                      * 上一版写的是 `…verticalScroll(state).nestedScroll(conn)…` —— 我们的连接器
                      * 挂在了滚动容器的**内侧**。而 `Modifier.nestedScroll` 的语义是**向祖先注册**
@@ -433,7 +419,6 @@ internal fun GalleryInfoSheet(
                         site = post.site,
                         artists = artistNames,
                         translations = tagTranslations,
-                        // 取数**不在这里**：页面在打开这一张图时就取好了（用户 2026-10-01 第 2 条），
                         // 这里只渲染传进来的那一份，表里没有的名字摆首字母座。
                         credits = artistCredits,
                         imageLoader = imageLoader,
@@ -507,7 +492,6 @@ private class FactCell(val label: String, val value: String)
  * 每一格**没有自己的底色**：块面本身就是那个"容器"，再加一层底色会变成
  * 六个小卡片钻进一张大卡片（上一版六张同形白卡的老毛病换个尺寸复现）。
  *
- * ⚠️ 2026-10-14 撤掉了每一格前面那枚图标。八个档八枚同色灰度图形**不携带任何读数**
  * （「分辨率」那三个字自己就是最短的语义），却把这一块的视觉重量抬到与内容相当；
  * 其中「MD5」配的还是一枚**指纹** —— 语义本来就是错的。去图标同时修掉了这两件事，
  * 而不是"把错的图标换成对的"（那只是把噪音刷新）。
@@ -537,7 +521,6 @@ private fun GalleryFactGrid(post: GalleryPost) {
         // 8 位（32 bit）足够分辨，而全 32 位在这三列的格子里必然折成两行。
         post.md5.takeIf { it.isNotBlank() }?.let { add(FactCell("MD5", it.take(8))) }
         // 上传者与画师**是两件事**，别互相顶替（实测：yande.re 的 `author` 与 Gelbooru 的
-        // `owner` 都是**上传者的登录名**；真帖 1269641 的 `author=Arsy`，而画师是标签 `gijang`，
         // 那一位在②那块里）。画师不在这里，所以这里没有"重复显示一个人"的问题。
         post.author.takeIf { it.isNotBlank() }?.let { add(FactCell("上传者", it)) }
         // yande.re 实测没有 `fav_count` → null 就整格不摆：摆 0 是"这张零收藏"，
@@ -613,7 +596,6 @@ private fun RowScope.GalleryFactCell(cell: FactCell) {
 /**
  * 来源链接：**一块 [SheetBlock]，两行"徽标 + 抬头 + 完整地址 + [复制][打开]"**。
  *
- * 抬头那行（`pixiv.net · 147310074`）是**从地址本身推出来的**（域名 + 作品号），
  * 不是另存的一份元数据 —— 推不出来的那一档只摆域名（`GalleryArtistLinks.hostLabel` 的现有口径），
  * 绝不硬凑一个编号。
  *
@@ -652,7 +634,6 @@ private fun GallerySourceLinks(
                             .clip(RoundedCornerShape(tokens.shape.medium))
                             .background(tokens.color.primary.copy(alpha = 0.12f))
                             .clickable {
-                                // 淡入（2026-10-23，用户「这一跳没有跳转动画」）：玻璃浮层页
                                 // 在系统默认转场上几乎不可见，显式给一档平台 fade。
                                 context.startActivity(
                                     PixivWorkActivity.intent(context, pixivArtworkId),
@@ -704,8 +685,6 @@ private fun GallerySourceLinks(
  * 别家的地址里也可能有一串数字，但那不是我们能断言的编号 —— 不摆。
  *
  * ⚠️ 编号前那枚 `#` 不是装饰：③ 那一块的两行抬头由**同一个形状**读成"同一类东西的两个值"，
- * 而下面那行本来就是 `yande.re · #1270292`（站点 + `#` + 帖子号）。少一个 `#`，
- * 第一行就退化成"只有域名"，两行读起来像两组不同的数据（2026-10-14 手机档截图的读数）。
  */
 private fun sourceHeadline(url: String): String {
     val host = GalleryArtistLinks.hostLabel(url).removePrefix("www.")
@@ -737,7 +716,6 @@ private fun GallerySourceLinkRow(
                 overflow = TextOverflow.Ellipsis,
             )
             // 完整地址还是要摆出来：复制钮给的是"能粘走"，而这一行得让人**当场读得出来**
-            // 这一串到底是哪个页面（pixiv 的作品号与 yande.re 的 #1265977 不是同一个东西）。
             Text(
                 text = url,
                 fontSize = tokens.type.caption,
@@ -778,7 +756,6 @@ private fun GallerySourceLinkRow(
  * 站方判定取不到时只兜「画师」一栏（离线词典对两站的画师档误报实测 0 例），
  * 且那一栏**不上档位色**（见 `GalleryTagBuckets` 那段注释），其它桶宁可不摆。
  *
- * chips 是**可点的**（用户 2026-09-25 点名，语义与漫画详情页那枚药丸一模一样）：
  * 点击=用这枚标签去画廊搜索，长按=「搜索 / 复制 / 屏蔽」三项菜单。
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -856,7 +833,6 @@ private fun GalleryTagWall(
  * 判据吃的是 [GalleryTagGroup.category]：**兜底那两路没有档位**（离线词典猜的、
  * 站方没判定的），一律退中性文字色，不硬安一个色相。
  *
- * ⚠️ 2026-10-14 改判：**色只留在图标上，分类名回中性文字色**。分类名自己是中文两三个字，
  * 它不需要颜色来表态；而这一屏同时还有平台品牌色、分级色、块洗底色，
  * 四色分类名再铺成一片就没有锚点了（截图读数：一屏 6+ 种高饱和色）。
  * 颜色=归属这条编码**没有丢** —— 它整份搬到了每一行最左那枚图标上，位置比文字更好扫。
@@ -924,7 +900,6 @@ private fun tagCategoryIcon(category: Int?): ImageVector = when (category) {
  * 上面一条发丝线是它与内容的唯一分界：包一层底色没必要（两者本来就在同一张 sheet 面上），
  * 但**不画线**时内容滚到底会与动作条糊在一起，分不清哪一行是内容、哪一行是行为。
  *
- * ── 2026-10-14 重排：主次倒置修掉 ──
  *
  * 从前这一条是"上面一整行只摆着「画成水彩 Beta」，下面三等分挤着 复制链接 / 下载原图 /
  * 在浏览器中打开" —— 一枚**默认关闭的实验件**拿到了比这一页真正的高频动作更高的视觉权重
@@ -937,7 +912,6 @@ private fun tagCategoryIcon(category: Int?): ImageVector = when (category) {
  * "展开/收起**这一块**"（[SheetSectionHeader] 的 `onAction` 口径），挂一个跨块动作会读成
  * "展开基本信息"。
  *
- * ⚠️ ② 那一排**恒两格**：加第 3 格会把两格各自往左挪一档（= 用户 2026-10-04 报的第 8 条
  * "按记忆去点，结果点在钮与钮之间的空隙里"在同一屏上的另一种发作）；而 360dp 上三格等分时
  * 每格只剩 83dp，「在浏览器中打开」要 104~111dp ⇒ 会截成省略号，Beta 关着的用户也跟着受害。
  * 这条口径由 `GalleryWatercolorEntryTest` ⑤ 数**发丝线的条数**钉住（等分排只剩一条）。
@@ -992,7 +966,6 @@ private fun GallerySheetActionBar(
                         contentDescription = null,
                         // 显式取色：miuix 那颗 `Button` 不像 M3 那样把内容色喂给 `LocalContentColor`，
                         // 而这里的 `Text` 是 miuix 那一颗（它默认吃 onBackground）。
-                        // 真机读数：不写这一行时浅色主按钮配的是**白字**，读不出来。
                         tint = tokens.color.onPrimary,
                         modifier = Modifier.size(tokens.spacing.chipIconSize),
                     )
@@ -1144,7 +1117,6 @@ private fun RatingBadge(rating: String) {
 /**
  * 卡片**内部**的分隔发丝线。
  *
- * 存在的理由是这一页的病根：一屏堆同形同距的 `VeneraCard`，每一块都在喊
  * "我和旁边那块一样重要"。同一张卡里要分两组信息时，应该是一条发丝线，而不是再开一张卡。
  */
 @Composable
@@ -1178,7 +1150,6 @@ internal fun tagDisplayLabel(tag: String, translations: Map<String, String>): St
  * 一枚可交互的标签药丸 —— **画法照 `feature/ComicDetailScreen.kt` 的 `DetailTagChip`**：
  * 点击直达该标签搜索，长按起菜单。按压反馈由 `VeneraChip` 统一持有，这里只给回调。
  *
- * ## 为什么是 `internal` 而不是 `private`（2026-10-20）
  *
  * 用户在同一条反馈里要了两件事：作品页标签要**接上译名**、并且「长按标签可以屏蔽 / 复制 / 搜索」。
  * 而这三项动作 + 长按菜单的形状在这颗文件里已经有一份（画廊信息卡那面标签墙用的就是它）。
@@ -1226,32 +1197,27 @@ internal fun GalleryTagChip(
                 }
             } else null,
         )
-        if (hasMenu) DropdownMenu(
+        if (hasMenu) VeneraDropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
         ) {
-            if (onClick != null) DropdownMenuItem(
-                text = {
-                    Text("搜索「$tag」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
-                },
+            if (onClick != null) VeneraMenuItem(
+                text = "搜索「$tag」",
                 onClick = {
                     menuExpanded = false
                     onClick()
                 },
             )
-            if (onCopy != null) DropdownMenuItem(
-                text = {
-                    Text("复制「$tag」", fontSize = tokens.type.caption, color = tokens.color.textPrimary)
-                },
+            if (onCopy != null) VeneraMenuItem(
+                text = "复制「$tag」",
                 onClick = {
                     menuExpanded = false
                     onCopy()
                 },
             )
-            if (onBlock != null) DropdownMenuItem(
-                text = {
-                    Text("屏蔽该标签", fontSize = tokens.type.caption, color = StatusColors.Failing)
-                },
+            if (onBlock != null) VeneraMenuItem(
+                text = "屏蔽该标签",
+                destructive = true,
                 onClick = {
                     menuExpanded = false
                     onBlock()

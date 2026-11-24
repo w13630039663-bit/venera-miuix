@@ -50,7 +50,6 @@ data class GelbooruIdentity(val userId: String)
  *
  * ## 凭据是硬门槛，不是加分项
  *
- * ⚠️ **DAPI 匿名一律 401**（2026-09-26 实测：`s=post` 与 `s=tag` 不带凭据都回 401，
  * body 为空、没有错误信封可解析）。错 `api_key` 或错 `user_id` 同样 401 —— 三种情形
  * **给的是同一个答案**，所以[客户端这边判不出"哪个字段错了"]，只能如实说"凭据没被接受"。
  * 官方 wiki `howto:api` 的原文是 *"We will occasionally require authentication"*，
@@ -67,8 +66,6 @@ data class GelbooruIdentity(val userId: String)
  * ## 响应是**信封**，不是裸数组
  *
  * ```json
- * {"@attributes":{"limit":2,"offset":0,"count":14304678},
- *  "post":[{"id":14970719, ...}]}
  * ```
  *
  * - 条目在 **`post`** 键里；tag 端点同理在 **`tag`** 键里；
@@ -99,7 +96,6 @@ data class GelbooruIdentity(val userId: String)
  * ## 日榜怎么来（这一站**没有**日榜端点）
  *
  * Danbooru 有 `explore/posts/popular.json`、yande.re 有 `popular_recent`，
- * Gelbooru **两者都没有**。所以用元标签模拟（用户 2026-09-26 拍板）：
  * `tags=sort:score:desc` —— 实测回的是全站最高分（31144 / 12482 / 10042 分），
  * 正是 yande.re 日榜想要的那种"当前热门"语义。
  * ⚠️ 用 `sort:score` 而不是 `sort:updated:desc`：后者是"最近被改过的"，
@@ -159,7 +155,6 @@ class GelbooruClient internal constructor(
      * 这里减 1 再发。不减的话第一页会取到第二页的数据，而**不会有任何报错**。
      *
      * @param tags 已经拼好的标签串（含 `-` 前缀的排除项）。本站实测**标签数不限**
-     *   （2026-09-26：7 枚一次通过、HTTP 200），所以没有 Danbooru 那种"第 3 枚 422"的形态。
      */
     suspend fun searchPosts(tags: String, page: Int, limit: Int = POOL_SIZE): Result<List<GalleryPost>> =
         withContext(Dispatchers.IO) {
@@ -197,7 +192,6 @@ class GelbooruClient internal constructor(
     /**
      * 问一次「从 [atLeastId] 起，这一档最早的一条是哪天」。
      *
-     * 拼法是 2026-10-13 现量挑出来的那一枚：`id:>=M` 生效（`count` 会缩），
      * 而 **`id:M..` 与 `id:M..N` 被静默忽略**（`count` 与全站逐字相同）——
      * 别照别的站的区间写法改这里，那不会报错，只会把"全站高分"当成"本周高分"交上去。
      * `sort:id:asc` 让第一条就是窗口里最老的那条，所以**一笔**拿到边界日期；
@@ -347,7 +341,6 @@ internal data class GelbooruPostEnvelopeDto(
 internal data class GelbooruAttributesDto(
     val limit: Int = 0,
     val offset: Int = 0,
-    /** **命中总数**（实测 `count:14304678`）。0 表示站方没给。 */
     val count: Long = 0,
 )
 
@@ -389,13 +382,9 @@ private inline fun <reified T> decodeEnvelope(element: JsonElement?): List<T> = 
 }
 
 /**
- * Gelbooru 一条 post 的**站方原始字段名**（2026-09-26 实测原文抄录）。
  *
  * ```json
- * {"id":14970719,"created_at":"Sat Sep 26 03:51:09 -0500 2026","score":0,
  *  "width":1334,"height":1002,"md5":"da56...","directory":"da/56",
- *  "image":"da56....png","rating":"general","source":"https://...","change":1790412670,
- *  "owner":"beamblue367","creator_id":1120925,"parent_id":0,"sample":1,
  *  "preview_height":262,"preview_width":349,"tags":"2girls bang_dream! ...",
  *  "title":"","has_notes":"false","has_comments":"false",
  *  "file_url":"https://img4.gelbooru.com/images/da/56/da56....png",
@@ -421,7 +410,6 @@ internal data class GelbooruDto(
     val tags: String = "",
     @SerialName("owner") val owner: String = "",
     /**
-     * 文件名（**可能带路径前缀**，实测高分池里有一条是 `6d15efdf...jpg`）。
      * ⚠️ 扩展名要以 [fileUrl] 为准 —— 实测视频那条 `image` 是 `.webm` 而 [fileUrl] 是 `.mp4`。
      */
     val image: String = "",
@@ -446,7 +434,6 @@ internal data class GelbooruDto(
     /** Unix 秒。日榜模拟用不到它（我们用 `sort:score`），留作读数。 */
     val change: Long = 0,
     /**
-     * 站方上传时刻，**Ruby asctime**：`Sat Sep 26 03:51:09 -0500 2026`（2026-10-13 带凭据现量，
      * 与 09-26 那次抄录同形）。这里**只原样交出**——日切换算在 `gallery/domain` 的
      * `parseGelbooruStampDay` 里做，那颗是定界判据的唯一出处，`data` 层不参与判读。
      */
@@ -464,7 +451,6 @@ internal data class GelbooruDto(
      *   `grabbing_another&#039;s_arm`），不解开会让标签串里出现实体、
      *   而 [GalleryPost.tagList] 是与屏蔽规则比对的输入 —— 差一个字符就漏挡；
      * - **`source` 同样要解**：实测一条视频的 `source` 是
-     *   `...page=post&amp;s=view&amp;id=7457880` —— 那是**要被当链接打开的字符串**，
      *   带着 `&amp;` 交给浏览器会打到一个不存在的地址。
      *   （旧实现只解 tags，那是因为旧站不做这种转义；这一站两处都做。）
      */

@@ -14,7 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * 为什么手写逐字段走、不给 `@Serializable` DTO：DTO 等于**押一种形态**。押错的表现是
  * "安静地什么都不显示"（键对不上就取默认值，编译与运行都不报），而这一层的形态恰恰押不了 ——
- * Danbooru 三个同库站点在 2026-09-30 本机出口全部 403 卡在过盾页，拿不到一份真样例。
  * 于是把源码里查得到的候选形态**全部吃掉**（`urls` 字符串数组 / `urls` 对象数组 / `url_string` 一整串），
  * 每种形态各有一条单测兜着（见 `GalleryArtistEndpointParseTest`）。
  *
@@ -82,7 +81,6 @@ internal object GalleryArtistEndpointParse {
     /**
      * fanbox `creator.get` 的答复里取创作者头像地址（批次 L · L9）。
      *
-     * 字段路径是 2026-09-30 14:05 的真答复（`body.user.iconUrl`，那台图床 `pixiv.pximg.net` 实测不挡防盗链）。
      * 失败那一档站方回的是 **400 + `{"error":"general_error"}`**，正常取数层在状态码上就抛了；
      * 这里再挡一次是因为**站方哪天改成 200 也带 error 串**时，把它读成"这位没头像"就是静默交错。
      */
@@ -103,7 +101,6 @@ internal object GalleryArtistEndpointParse {
     /**
      * Mastodon `accounts/lookup` 的答复里取头像地址（批次 L · L9）。
      *
-     * 两根键都给出时**先取静态档**：头像位是 `artistAvatarSize`（56dp，2026-10-04 三处统一到这一档），
      * 那是 chrome 不是内容，为一枚圆座挂动图解码器不值
      * （与"画廊墙缩略档恒 jpg"同一条口径）。
      *
@@ -126,7 +123,6 @@ internal object GalleryArtistEndpointParse {
      * pixiv `ajax/illust/{作品号}` 的答复里取**这张图的作者**。
      *
      * 为什么走这一条：出处常是作品页（`/artworks/N`），那串数字既不能当用户号也不能直接当入口，
-     * 而这个端点**匿名可读**（2026-09-30 14:26 实测，三个字段都是字符串），一跳就拿到真的用户号。
      *
      * 删帖/锁帖那一档站方回 **404 + `{"error":true}`**（15 个样本里 4 个），取数层在状态码上就抛了；
      * 这里对 `error=true`、对**没有可用 userId** 的 200 一律再抛一次 —— 交 null 会让画师行少一枚

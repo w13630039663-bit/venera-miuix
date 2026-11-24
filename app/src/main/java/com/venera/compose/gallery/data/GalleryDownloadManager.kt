@@ -44,12 +44,11 @@ data class GalleryDownloadTask(
 )
 
 /**
- * 画廊统一下载任务管理器（2026-10-22）。
  *
- * 统一管理来自 yande.re、Gelbooru、Safebooru 与 Pixiv 的所有单图与多图原图下载任务。
+ * 统一管理来自 yande.re、Gelbooru、Konachan 与 Pixiv 的所有单图与多图原图下载任务。
  * 持久化记录到 SharedPreferences，支持重试、打开文件、删除与长按批量删除。
  */
-class GalleryDownloadManager private constructor(private val context: Context) {
+class GalleryDownloadManager private constructor(private val context: Context) : GalleryDownloadQueue {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prefs = AndroidKeyValueStore(context, "venera_gallery_downloads")
@@ -86,17 +85,16 @@ class GalleryDownloadManager private constructor(private val context: Context) {
     /**
      * 提交下载任务。
      *
-     * **同一张图已下载过就不再重下**（2026-11-04 用户点名）：
      * 任务表里已有这条的 COMPLETED 记录时直接把旧结果交回 [onDone]，不发起网络请求。
      * 判据是「站 + 帖 id + 多图页序」—— 同帖第 3 页和第 5 页互不算重复。
      * 失败/进行中的任务不拦：失败的重下是「重新下载」，进行中再点由信号量与唯一 taskId 兜住。
      */
-    fun enqueue(
+    override fun enqueue(
         post: GalleryPost,
-        title: String? = null,
-        userId: Long? = null,
-        artistName: String? = null,
-        onDone: ((Result<GallerySaver.Saved>) -> Unit)? = null,
+        title: String?,
+        userId: Long?,
+        artistName: String?,
+        onDone: ((Result<GallerySaver.Saved>) -> Unit)?,
     ): GalleryDownloadTask {
         val duplicate = _tasks.value.firstOrNull {
             it.status == GalleryDownloadStatus.COMPLETED && dedupKeyOf(it.post) == dedupKeyOf(post)

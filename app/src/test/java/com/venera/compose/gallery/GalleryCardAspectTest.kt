@@ -16,23 +16,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 卡片框比例那把尺（2026-10-20，主人「限制 pixiv 站点图片卡片的显示比例，
  * 要整张卡全部显示出来而不是被裁掉一点，这样能解决很多飞行动画乱变的问题」）。
  *
  * ## 这一族防的是什么
  *
  * 封面上是 `ContentScale.Crop`：**框比例 ≠ 图比例就裁掉一条**。而裁的代价不止"少看一点" ——
  * 离场起点是作品页那一页图块（不夹、图完整），落点是墙上那张卡（夹过），两端比例不同
- * ⇒ `flightFrame` 的几何必须变形成另一个比例，读起来就是"飞行动画乱变"。主人那句
  * "这样能解决很多飞行动画乱变"说的正是这条因果。
  *
  * ## 四件事各一把尺
  *
  * 1. **竖长条不裁**：pixiv 跨页那一档（0.27）落在新区间内 ⇒ 框 = 图 = 0.27，Crop 一刀不裁；
- * 2. **横宽图不裁**：跨页大图 3.0 也落在内 ⇒ 同上（**这一格是本轮主人追问"有考虑过横图吗"
  *    之后补上的**，前一版只算了竖的）；
  * 3. **极端才夹**：<0.2 或 >4.0 的仍然夹住（不然一条 10:1 长卷会把整列撑出屏幕）；
- * 4. **三站原样**：图库三站仍是 0.4~2.5 —— 主人这次点的是 pixiv 站点，三站的口径不动。
  *
  * 另有两笔负向：**不许把 Crop 改成 Fit**（那会让飞行算式的 cover 假设崩），
  * 以及**屏上不许再就地写夹取**（第二个旋钮就是第二处真相）。
@@ -53,7 +49,6 @@ class GalleryCardAspectTest {
 
     @Test
     fun `竖向跨页那一档不再被裁`() {
-        // pixiv 真机读数：跨页 `1080×4000` ⇒ 0.27。旧区间 0.4 会把它夹成 0.4（裁左右两条），
         // 新区间 0.2~4.0 容得下 ⇒ 框 = 图，Crop 一刀不裁。
         val p = post(GallerySite.PIXIV, 1080, 4000)
         assertEquals(0.27f, p.cardRatio, 5e-3f)
@@ -63,7 +58,6 @@ class GalleryCardAspectTest {
 
     @Test
     fun `横向大图那一档也不被裁`() {
-        // 这一格是主人追问"有考虑过横图吗"之后补的：跨页大图 / 长条海报常到 2.5~3.2，
         // 旧区间 2.5 会把它夹成 2.5（裁上下两条），新区间容得下。
         val p = post(GallerySite.PIXIV, 3000, 1000)
         assertEquals(3f, p.cardRatio, 5e-3f)
@@ -94,7 +88,6 @@ class GalleryCardAspectTest {
 
     @Test
     fun `图库三站的区间原样不动`() {
-        // 主人这次点的是 pixiv 站点；三站那面墙是共用的，口径不动它一根手指。
         assertEquals(0.4f, LEGACY_CARD_RATIO_MIN, 1e-6f)
         assertEquals(2.5f, LEGACY_CARD_RATIO_MAX, 1e-6f)
         // 0.27 的竖条在三站仍被夹（这是既有行为，不是本轮要改的）。
@@ -102,8 +95,8 @@ class GalleryCardAspectTest {
         assertEquals(LEGACY_CARD_RATIO_MIN, cardBoxRatio(yandere, fallback), 1e-4f)
         assertTrue("三站那一档仍会夹（既有口径）", cardBoxRatioClamped(yandere, fallback))
         // 3.0 的横图在三站也被夹到 2.5。
-        val safebooru = post(GallerySite.SAFEBOORU, 1500, 500)
-        assertEquals(LEGACY_CARD_RATIO_MAX, cardBoxRatio(safebooru, fallback), 1e-4f)
+        val konachan = post(GallerySite.KONACHAN, 1500, 500)
+        assertEquals(LEGACY_CARD_RATIO_MAX, cardBoxRatio(konachan, fallback), 1e-4f)
     }
 
     @Test

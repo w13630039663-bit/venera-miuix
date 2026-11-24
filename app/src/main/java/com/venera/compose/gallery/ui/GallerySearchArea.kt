@@ -100,6 +100,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.venera.compose.components.venera.SegmentedBackdrop
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraChip
 import com.venera.compose.components.venera.VeneraChipVariant
 import com.venera.compose.components.venera.VeneraSegmentedButton
@@ -136,20 +138,16 @@ import java.util.Locale
  * | [GallerySearchMode.INPUT]   | 展开（列表最多 2 / 4 行，按键盘在不在，再多在列表内滚动） | 已选条件 + 搜索框 + 站点选择 + 补全 / 历史列表 |
  * | [GallerySearchMode.RESULTS] | 收成**一行胶囊**（最低 48dp） | 只有已选条件那一条横滑行（含框内 ×、点本体改排除） |
  *
- * ── 结果态为什么不摆输入框（2026-09-26 第八轮）──
  *
  * 此前两态都摆输入框，于是"收成一条"实际是 chips 行 + 输入行两条 ≈ 96dp 常驻在标题下面，
- * 用户下滑看图时那一段一直占着（真机截图反馈）。现在收成一条时输入行整行不画：
  * 屏高让出来一半，而"我在搜什么"仍然一眼可见（就是那行胶囊）。
  * 要接着加标签/改条件的出口有两个：点这一行任意位置、或顶栏那枚 🔍 —— 都回到展开态。
  *
  * 顺带解掉一个老毛病：能聚焦的输入框哪怕收着也在跟键盘打架
  * （键盘弹起 → 高度变 → 层切换 → 键盘再收），收成一条那一态现在压根没有键盘这件事。
  *
- * ── 为什么是一整张圆角悬浮卡，而不是"一块满宽底色矩形"（2026-09-26 第七轮改判）──
  *
  * 这块区此前吃过两个正好相反的亏：**有底**会在它与顶栏之间切出一条硬边（第五轮撤掉了底）；
- * **没底**之后滚动时它又直接压在锐利图片上 —— 据真机截图，描边款的站点 chip 在亮图上
  * 已经读不出来。两个都不是调色能解的，因为当时它是一块**满宽矩形**、顶边与顶栏齐平：
  * 于是有底就是硬切，没底就压图，没有第三个选项。
  *
@@ -162,7 +160,6 @@ import java.util.Locale
  * ── 怎么收起 ──
  * **只有一个触发点：系统返回**（[GalleryScreen] 那层 BackHandler；键盘起着时返回键被输入法吃掉，
  * 落到它手上的是键盘没起的那一种）。
- * 从前还有第二个"键盘一收就自动收条"，2026-10-15 按用户点名撤掉了 —— 理由写在那处注释里，
  * 一句话版：卡片会在用户还没挑完补全的时候自己跑掉，而缺席原因恰好只住在展开区。
  * 收成一条之后**点卡上任意位置**即重新展开并弹键盘，所以不需要再放一枚只干这件事的箭头。
  *
@@ -170,14 +167,12 @@ import java.util.Locale
  * `VeneraTopAppBar` 的模糊背板 alpha 挂在滚动进度上（下滑 48dp 才淡入），且从状态栏向下
  * 衰减到底部为 0 —— 也就是说搜索区所在的那一段，任何滚动位置下都没有背板。这就是它必须自带容器的原因。
  *
- * 用户 2026-09-25 定的两条交互原样保留：**选一枚补全词 = 加一枚胶囊 = 立刻重查**（无提交钮）、
  * **胶囊进框**（框内 × 删枚、点胶囊本体改成排除、输入框空时退格删末枚）。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun GallerySearchArea(
     svm: GallerySearchViewModel,
-    /** 「以图搜图」那一层。开着时**同一张卡原地形变**成反搜的输入形态（2026-09-28 改，见下）。 */
     rvm: GalleryReverseViewModel,
     /** 与那面墙同一把的分级判据，直接透传给 SauceNAO 的 `hide` 参数。 */
     allowNsfw: Boolean,
@@ -191,7 +186,6 @@ fun GallerySearchArea(
      */
     resultCount: Int?,
 ) {
-    // ── 内容域分流（2026-10-17）──
     // pixiv 吃的是**另一套语法**：一个词 + 站内参数，连"标签胶囊进框"这个概念都没有
     // （它不把词拆成多枚，也不吃 `tags=`）。所以整张卡换掉，而不是在这张卡里长分支 ——
     // 那些分支里任何一处走错都不报错，只会在屏上留下"条件写着 A、结果是 B"。
@@ -220,7 +214,6 @@ fun GallerySearchArea(
     /*
      * 排行菜单与选期弹层的开关**记在这里，不记在芯片里**。
      *
-     * 记在芯片里会出这条 bug（2026-09-29 第四轮）：展开态点「排行：默认」→ 芯片从 `FlowRow`
      * 那一支换到 `Row` 那一支（收条时就是这一换），组合位置一变就是**新实例**，`remember` 归零
      * → 菜单闪一下就没了。
      * 提到两种形态之上之后，收条照收（现在只有"系统返回"这一条路会收），
@@ -230,7 +223,6 @@ fun GallerySearchArea(
     var periodPickerOpen by remember { mutableStateOf(false) }
 
     // 历史在这一态要用（下面空框时的「最近搜索」列表），而恢复点只有一处：
-    // 2026-09-30 第二轮它从 `GalleryScreen` 搬回这里 —— 首页那节撤下之后，
     // **这里重新成为唯一消费它的地方**（`restoreHistoryIfNeeded` 自带
     // `if (history.isNotEmpty()) return`，所以重复调用是幂等的）。
     LaunchedEffect(Unit) { svm.restoreHistoryIfNeeded() }
@@ -255,13 +247,10 @@ fun GallerySearchArea(
         }
     }
 
-    // 键盘收起**不再**自动把这张卡收成一条（用户 2026-10-15 点名）。
     //
     // 从前这里挂着一道 effect：`imeVisible` 下降沿 → `collapseToResults()`。它的出发点是
-    // "手一收键盘就是想看图"，真机上的代价是**卡片自己会跑**：
     //  1. 补全列表点一枚 = 加一枚胶囊 = 立刻重查，而输入法在多数机型上会随这次重绘落一次
     //     —— 用户看到的是"我还没挑完，整块就收走了"；
-    //  2. 弹层（排行菜单 / 选期日历）抢焦点导致的下落被当成"用户要收"，2026-09-29 为此
     //     专门抽过一颗 `GallerySearchCollapse` 判据挡三种误伤 —— 挡到最后一共剩两种不挡；
     //  3. 这一档缺席原因（`GalleryNotices`）就住在展开区里，收条那一刻它整个不画，
     //     于是"这一轮哪条腿没跑起来"在用户最关心的时刻恰好看不见。
@@ -353,32 +342,25 @@ fun GallerySearchArea(
     ) {
         Surface(
             shape = cardShape,
-            // ── 结果态那张卡：**满宽** + 走材质轴（2026-10-16 第三轮，用户拍板「设成全宽吧」）──
             // 它是**浮层**（锚在入口条位置、不推内容），所以首屏那一排正好压在第一排图上；
             // 用户这一轮给的解法不是"再省一点遮挡"，而是**把这一条直接铺满**：
             //  - 满宽之后它**与身下那条常驻入口条逐像素同宽**（两处同吃 `screenHorizontal` 内缩），
             //    于是"展开时是同一块面在长高"这条契约在宽度上也成立了 —— 从前 66% 那一版
             //    长开时会**横向跳一下**（这是收窄方案一直带着的隐性代价）；
             //  - 满宽腾出来的右侧那一大块不再是空白，正好拿来摆读数槽（见下面那个分支）。
-            // 走过的弯路如实记着：第一轮收成顶栏吸附层那一档（34%）→ 真机把胶囊切了半截；
             // 第二轮取补数（66%）+ 挂右 → 不切了，但仍然横向跳、右侧仍是空白。
             // **"省遮挡"这条路到此为止**：遮挡由下面 `searchResultsInset` 那条稳定空白带负责，
             // 卡的宽度不再兼任"少挡一点"这件事（两个目标压在一个数上，两边都做不到位）。
-            //  底色：**走材质轴**（2026-10-16 修，用户点名「补回材质的问题」）——
             //       实色档不透明地铺 `surfaceContainerHigh`；玻璃档底色置透明、由
             //       `veneraGlassSurface(PANEL)` 采氛围层做真模糊（不透明底会把刚采的样全盖掉）。
             //       ⚠️ 从前这里是 `surfaceContainerHigh.copy(alpha = tagContainerAlpha)` 的**伪透**，
             //       两处都错：① 它绕过 `SurfaceMaterial` 轴 —— 用户把材质切到"实色"，这一张照旧
-            //       半透明，正是本仓明令禁止的假开关（同 `veneraGlassCardColors` 头注那一条）；
             //       ② 0.90 落在最不划算的凹谷 —— 只透 10%，读不出玻璃，却足够把卡色染成底下
-            //       那张图的颜色（真机采样卡内三点 #352A28 / #3A3230 / #403635 各不相同，
             //       同卡内底色居然不是一个值）。两态**同一个材质**：展开态下面压着键盘与补全，
             //       玻璃采的也是氛围层（不采页面内容），文字对比由容器 alpha 兜着，不会更难读。
             color = if (veneraGlassEnabled()) Color.Transparent else tokens.color.surfaceContainerHigh,
-            // ⚠️ 玻璃档归零，**不能**直接写 `tokens.elevation.attached`（2026-10-16 修）：
             // miuix Surface 把投影挂在调用方 modifier **之内**的 graphicsLayer 上，绘制层序是
             // ① 模糊 → ② 容器色 → **③ 平台投影** → ④ 子元素。卡底透明时 ③ 那层黑剪影会从卡底
-            // 透出来 —— 真机实测 `#C1B3B2` = `surfaceContainerHigh × 0.785`，且与背后亮度无关。
             // 铁证：同一张卡里胶囊是亮的、胶囊周围的卡底是灰的（③ 在 ④ 之下）。
             // 读数与判据见 `VeneraGlass.veneraSurfaceShadowElevation`。
             shadowElevation = veneraSurfaceShadowElevation(tokens.elevation.attached),
@@ -388,7 +370,6 @@ fun GallerySearchArea(
                 //  免得同类元素在各页长成两样）。实色档它是纯 no-op。
                 .veneraGlassSurface(VeneraGlassRole.PANEL, tokens.shape.extraLarge)
                 // **两态都满宽**：收起态从前那条 `widthIn(max = 屏宽 × 66%)` 已撤
-                // （用户 2026-10-16「设成全宽吧」；代价与理由写在上面那段）。
                 .fillMaxWidth()
                 // 整张卡都是"回到输入"的入口：收成一条时点它任何位置即展开并弹键盘。
                 // 放在卡上而不是另加一枚箭头 —— 展开态下这条路径同样成立（已聚焦时
@@ -429,7 +410,6 @@ fun GallerySearchArea(
                 //  - 收成一条时用**单行横滑**，条件再多也不许把卡撑高 —— 那一态的全部意义
                 //    就是"用最少的屏高把'我在搜什么'说出来"。
                 //
-                // 2026-09-28 形变改造：套 AnimatedVisibility 让它在切去反搜时**收拢**而不是消失 ——
                 // 卡高跟着平滑变化，下面那块（反搜区）同时在长开，这是"形变"的下半支。
                 AnimatedVisibility(
                     visible = !rvm.open && svm.filters.isNotEmpty(),
@@ -516,7 +496,6 @@ fun GallerySearchArea(
                     }
                 }
 
-                // ── 输入行：**两种形态共用同一条槽，原地形变**（2026-09-28 改）──
                 //
                 // 这是整个形变的锚点。标签态与反搜态都有"图标 + 文本槽 + 尾随钮"这一行，
                 // 结构相同、身份不同 —— 让它**永远在组**（只要 expanded），内部按 rvm.open
@@ -542,14 +521,12 @@ fun GallerySearchArea(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                // 2026-10-15 照参考图：输入行自己是一颗**填充**胶囊（不是描边 —— 描边那版被否）。
                                 // 底取 `surfaceVariant`，比卡底 `surfaceContainerHigh` 低一档（参考图实测
                                 // 卡底/控件底 1.055:1 与 1.115:1 两级），于是"这一行才是能敲东西的框"
                                 // 由底色表达，屏上一根线都不画。
                                 //
                                 // ⚠️ 必须是**定高**而不是 `heightIn(min = )`：这一行里有一根
                                 // `fillMaxHeight()` 的竖分隔，而 Row 的高度取"子件最大测量高" ——
-                                // 只给下限时那根分隔会把父级传下来的剩余全高一口吃满。真机读数：
                                 // 整行被撑成 ~520dp，而 `percent = 50` 的圆角半径取短边 ⇒ 屏上是一枚
                                 // **整屏高的拱门**，分段器与历史全被顶出屏幕。定高取 MD3 docked search
                                 // bar 那一档，与首页那条常驻入口条同值同形状（不立新数字）。
@@ -651,7 +628,6 @@ fun GallerySearchArea(
                                             // 否则把框里那串字当标签提交。
                                             //
                                             // 首行已经在框里时必须走后者 —— 直接 addTag 会撞上去重判断
-                                            // 静默返回，那就是真机上"点历史装回条件后按键盘搜索键没反应"
                                             // 的成因（那时框里和首行都是刚装回来的那枚标签）。
                                             val first = svm.suggestions.firstOrNull()
                                             if (first != null && svm.filters.none { it.name == first.name }) {
@@ -747,12 +723,10 @@ fun GallerySearchArea(
                 // ── 展开出来的那一半（只有输入端在）──
                 // 用 AnimatedVisibility 让它**长开**而不是跳变。
                 //
-                // ⚠️ 2026-09-30 第二轮：**网格不再跟着它避让了** —— 这张卡改成了从入口条位置
                 // 弹出的浮层（不再推内容），所以"高度由外面逐帧量走"那条通道
                 // （`onSizeChanged` 回给页面算 padding）已经整条撤掉。这里保留长开动画只是因为
                 // 卡片自己长高读起来更顺，与网格无关了。
                 //
-                // 2026-09-28 形变改造：反搜开着时这一整块收拢（站点选择 / 补全 / 历史都是
                 // 标签态专属），与下面那块反搜区的长开**同时进行** —— 卡高一收一放，
                 // 观感是"搜索框自己变成了另一副样子"。
                 AnimatedVisibility(
@@ -786,7 +760,6 @@ fun GallerySearchArea(
                             onSelect = { index ->
                                 GallerySearchSource.options.getOrNull(index)?.let { svm.setSource(it) }
                             },
-                            // 这一排住在**实色卡**上而不是玻璃顶栏：半透明底会被卡底吃掉（真机现量
                             // 未选档与卡底只差 1.021:1），而首页那一排摘掉之后这里是唯一的换源入口。
                             backdrop = SegmentedBackdrop.Opaque,
                             modifier = Modifier.fillMaxWidth(),
@@ -796,7 +769,6 @@ fun GallerySearchArea(
                             Spacer(modifier = Modifier.height(tokens.spacing.space3))
                             SearchNoticeLine(it)
                         }
-                        // ── 站点筛选栏**下方**那条提示（2026-10-12 改造）──
                         //
                         // 这一轮有条腿没跑起来 → 卡上就说出来。只写在页尾是不够的：
                         // 展开着卡的人看的是这一块，而"少了一个站的货"必须在他改条件之前就看得见。
@@ -824,7 +796,6 @@ fun GallerySearchArea(
                         // 胶囊进框之后，"点胶囊改成排除"是个不直观的交互，得在这儿说一句。
                         // 只在真有胶囊时出现 —— 空框时这两个动作都还不存在，说了也只是噪音。
                         //
-                        // ⚠️ 从前这句带着"（前面加 -）"，2026-10-15 撤：那是把**查询语法**教给用户，
                         // 而这一屏的交互本来就是即时生效的胶囊（点一下即换档、点 × 即删），
                         // 语法那一路是内部写法，屏上不欠用户一课（口径见批 2 的"常驻行不教操作语法"）。
                         if (svm.filters.isNotEmpty()) {
@@ -838,12 +809,10 @@ fun GallerySearchArea(
                         // 打字看补全；框里没字、而且屏上还**没有**一轮搜索结果时看推荐。
                         //
                         // 第三档（没字 + 已经有结果或空态）**刻意不摆列表**：用户此刻看的是结果那一片，
-                        // 而摊着的列表会把它挤到键盘底下 —— 真机实测那一档是
                         // 卡片 ~266dp + 键盘 ~340dp + 顶栏地板 ~128dp，873dp 的屏只剩 ~124dp，
                         // 连"这一串标签没有可摆的图"那句都读不全，只剩一个图标露头。
                         // 想接着加标签直接打字，补全照样出来。
                         //
-                        // ⚠️ 2026-09-30：这一档里的「最近搜索」**整块搬去了首页第 5 节**
                         // （用户拍板"上首页、并从搜索卡里撤下"）。理由有两条，都不是省事：
                         //  1. 同一份历史在卡片里与首页各画一遍，用户在任一处删掉之后另一处会显得没同步；
                         //  2. 它本来是"浏览时顺手接着搜"的入口，而卡片只在用户**已经决定要搜**之后才开着 ——
@@ -872,7 +841,6 @@ fun GallerySearchArea(
                                     )
                                 }
                             } else {
-                                // 「最近搜索」只摆**当前域**那几条（2026-10-17 用户点名「两个站源的
                                 // 搜索历史要分离」）。判据在 `visibleHistory` 里，盘上的形状没动。
                                 if (svm.visibleHistory.isNotEmpty()) {
                                     HistoryHeader(onClearAll = { svm.clearHistory() })
@@ -985,7 +953,6 @@ private const val LIST_MAX_ROWS_IDLE = 4
 /**
  * 键盘起着时的行数上限。
  *
- * 收到 2 行（而不是继续给 4 行）是**真机实测逼出来的**：4 行那一版卡片约 330dp，
  * 叠上键盘（约 340dp）与顶栏地板（约 128dp）之后，873dp 高的屏只剩约 70dp 给网格 ——
  * 内联形态唯一的好处当场落空，用户看到的是卡片下面一片空白。
  * 打了字本来就在看候选，2 行足够"挑一个"；键盘一收高度就还回来了。
@@ -998,7 +965,6 @@ private const val LIST_MAX_ROWS_TYPING = 2
  * 用 **Filter** 变体而不是 Tag：MD3 给"已选的筛选条件"的就是 filter chip，
  * 它选中时填 `secondaryContainer`（已选但不抢眼），未选中只有一层 outline 描边。
  * Tag 变体走的是 `primaryContainer` —— 框里每加一枚就多一颗主色胶囊，两三枚之后
- * 整块搜索区一片主色，视觉过响（真机截图已实锤）。
  * 顺带把"包含 / 排除"的区分从"两种实底"变成"实底 vs 描边"，更好认。
  *
  * 文字直接用 `filter.token`（排除项就带着 `-`）：那是站方语法本身，复制去网页版能搜到同一个东西。
@@ -1020,7 +986,6 @@ private fun FilterChipItem(
         onClick = onToggle,
         onRemoveClick = onRemove,
         // **显式写 null**：这一排住在"每一行都在抢卡片高度"的那一屏里（见本文件头注），
-        // 命中盒一大整排就跟着长高 —— 用户 2026-10-16 点名的正是这个连带效应
         // （「连同搜索tag一起变大了，你分开」）。所以这里退回组件的旧形状：× 的 clickable
         // 仍在图标自己身上。要改大得连着这一行一起改，那一改是有声的。
         removeTouchSize = null,
@@ -1028,7 +993,6 @@ private fun FilterChipItem(
 }
 
 /**
- * 排行档那枚胶囊 + 六行下拉（2026-09-29）。
  *
  * ## 为什么挂在胶囊行**末尾**而不是另起一行
  *
@@ -1051,17 +1015,14 @@ private fun FilterChipItem(
  *
  * ## 行**照站画**：摆不出来的档不列出
  *
- * 判据是 [GalleryRankings.supportsForApp] 那一把（2026-10-13 起移动端用它，不是原生那把）：
  * 站方自己给不给是一问（`GalleryRankings.supports`，桌面读这一把），**我们做不做得出**是另一问 ——
  * Gelbooru 的四档时间窗由 id 边界合成（`GelbooruWindowBoundary`），所以纯 Gelbooru 来源列六档。
  * 混腿来源（一条原生 + 一条合成）那四档照旧不列：半面墙按周、半面墙按历年高分，
  * 屏上读不出对错，而胶囊上那个「周」字是在骗人。
- * 更早那版"留着行但置灰 + 写'本站没有'"是 2026-09-29 第五轮被用户点名撤掉的，判据没变。
  *
  * ## 末行「选具体哪一期…」
  *
  * 月/年档可以翻历史期。yande.re 原生认 `date:A..B`，任意一期都是**一笔请求**（§十二）；
- * Gelbooru 要**两枚**边界合成（`id:>=A id:<B`，2026-10-16 带凭据在真站上量过算术），
  * 于是这一腿的等待按 [GelbooruWindowBoundary.CLOSED_WINDOW_LEG_TIMEOUT_MS] 放宽 ——
  * 第一次点某一历史期要等十来秒，同一期在同一颗 ViewModel 里问第二遍是缓存直接的。
  * 入口放在同一个下拉的末尾而不是另起一行：这一屏每一行都在抢卡片高度，同一条口径。
@@ -1092,30 +1053,20 @@ private fun RankingChip(
             variant = VeneraChipVariant.Filter,
             onClick = { onMenuOpen(true) },
         )
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
+        VeneraDropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpen(false) }) {
             // 这一档摆不摆这一行，问的是**每一条腿**（[GalleryRankings.supportsForApp]）：
             // 「全部」档里 Gelbooru 给不了时间窗，那一档就只剩「默认」与「全部排行」两行。
             // 照第一条腿列六行会出现"胶囊写着周、Gelbooru 那腿交回历年高分"—— 假开关。
-            // 本站没有的档**不列出**（2026-09-29 定的口径：原先"留着行但置灰 + 写'本站没有'"，
             // 实际观感是六行里四行点不动，比少两行更烦；变的只是不参与判据的行不再画出来）。
-            // 2026-10-13：这一把换成**移动端那把** —— Gelbooru 的纯本站来源现在多出天/周/月/年四行，
             // 那四档站方不给、由 id 边界合成（`GelbooruWindowBoundary`），混腿来源照旧不列。
             GalleryRanking.entries
                 .filter { GalleryRankings.supportsForApp(svm.source.sites, it) }
                 .forEach { ranking ->
                     val range = GalleryRankings.windowLabel(ranking, todayUtc)
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = ranking.label + if (range != null) "　$range" else "",
-                                fontSize = tokens.type.body,
-                                // 当前档给主色：菜单里几行长得一样，不点亮就读不出"现在是哪一档"。
-                                color = if (ranking == svm.ranking) tokens.color.primary else Color.Unspecified,
-                            )
-                        },
-                        trailingIcon = {
-                            if (ranking == svm.ranking) Icon(imageVector = Icons.Outlined.Check, contentDescription = null)
-                        },
+                    VeneraMenuItem(
+                        text = ranking.label + if (range != null) "　$range" else "",
+                        // 当前档点亮 + 行尾对勾：菜单里几行长得一样，不标出来就读不出"现在是哪一档"。
+                        selected = ranking == svm.ranking,
                         onClick = {
                             onMenuOpen(false)
                             // 选中即重查（这套 UI 没有"提交"那一步）。
@@ -1129,8 +1080,8 @@ private fun RankingChip(
             // 混腿来源（一条原生 + 一条合成）照旧不摆：半面墙按这一期、半面墙按别的，
             // 而胶囊上写着期次 —— 同一个假开关的入口版。
             if (GalleryRankings.supportsPeriodPickerForApp(svm.source.sites)) {
-                DropdownMenuItem(
-                    text = { Text(text = "选具体哪一期…　月 / 年", fontSize = tokens.type.body) },
+                VeneraMenuItem(
+                    text = "选具体哪一期…　月 / 年",
                     onClick = {
                         onMenuOpen(false)
                         onPickerOpen(true)
@@ -1143,7 +1094,6 @@ private fun RankingChip(
 }
 
 /**
- * 「看哪一期」的弹层（2026-09-29 第二轮，同日晚些按第四轮反馈改形状）。
  *
  * 粒度只有 月 / 年 两枚：用户拍板"天/周回看是上一天/上一周那种一步的事，
  * 为它开一层弹层不值"。
@@ -1154,11 +1104,8 @@ private fun RankingChip(
  *
  * 为什么按年不共用日历：Material3 1.5.0-alpha22 的年份选择器是 `private`（读源码确认，
  * `showModeToggle` 只切"日历 ↔ 数字输入"），拿不到 —— 于是共用日历那版的长相就是
- * "选了按年，下面还是一屏天数"，用户 2026-09-29 原话。自己列一排年份比逼日历换个形状便宜。
  *
- * 年份范围钉在 **2007..今年**：那是 yande.re 存档的实测起点（`date:..2006-06-01` 已经回 0 条），
  * 给一个翻得出空页的年份就是假入口。往后的年份不给选（窗口终点恒被今天钉住，
- * 真点出去只会得到 `date:2026-12-01..2026-09-29` 这种起在止之后的串）。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -1257,7 +1204,6 @@ private const val MILLIS_PER_DAY = 86_400_000L
 /**
  * 吸附态：结果态下拉看图时，条件胶囊"接替大标题的位置"停在顶栏左上角。
  *
- * ── 为什么要单独画一层（2026-09-26 第九轮）──
  * 结果态那张卡本来就只占一行胶囊，但它有两个副作用：一是**常驻**在标题下面那一段
  * （用户下滑看图时那一段一直占着），二是它是一块圆角面板，视觉上永远"浮"在顶栏之外。
  * 用户的口径是：下拉时胶囊并入顶栏、回到顶部时整卡再长回来。
@@ -1361,7 +1307,6 @@ internal fun GallerySearchCollapsedChips(
  *  - 展开区里的 `GalleryNotices`（哪条腿没跑起来的原因）在收成一条之后整块不画。
  *
  * 于是"我这一轮到底出货了没 / 是不是少了一个站"恰好**在最需要它的那一刻是看不见的**。
- * 这一格就是给这两件事的落点（用户 2026-10-16「可以在搜索框里加入其他信息」+ 满宽腾出的那一块）。
  *
  * ## 三态共用同一格
  *
@@ -1427,24 +1372,19 @@ private fun SearchResultReadout(
  *
  * 为什么需要：补全列表与最近搜索都住在 `heightIn(max = listMaxHeight)` 里，而那个上限是
  * `listRowMinHeight × 行数` —— 它**不是行距的整数倍**（一行实际占 `listRowMinHeight + space2`），
- * 所以最下面那一枚总是被**硬切一半**（2026-10-16 用户第三张截图上就是那一枚，用户那句「ui有问题」）。
  * 硬切读起来像"这里坏了"，渐隐读起来是"下面还有"。
  *
  * 用 `DstIn` 而不是画一块面板色的矩形：面板在玻璃档是半透明的，拿容器色去盖会盖出一道
  * 比卡底更实的带子；`DstIn` 只改 alpha，与底下是什么色无关，两档材质下都对。
  *
  * ⚠️ **`DstIn` 必须配一层离屏层**（`CompositingStrategy.Offscreen`），否则它"只改 alpha"改的
- * 不是**这一段自己**的 alpha —— 详见下面那句 `graphicsLayer` 上的注释与真机读数。
- * 这两句是一体的，拆开就出 bug（2026-10-16 已经出过一次）。
  */
 private fun Modifier.fadeBottomEdge(fadeHeight: Dp): Modifier =
-    // ⚠️ 离屏层是**前置条件**，不是优化（2026-10-16 修，用户原话「但是这下下面有黑边了」）。
     //
     // `drawWithContent { drawContent(); drawRect(..., DstIn) }` 单独用时，`DstIn` 的 dst 不是
     // "这一段自己刚画的内容"，而是**当前画布上已经画过的一切** —— 它会连卡底之下的氛围层与
     // 图墙一起乘以渐变 alpha 抹掉，抹到 alpha=0 就透到窗口背景（纯黑）。于是"渐隐"变成"黑边"。
     //
-    // 真机读数（2026-10-16 12:51，浅色玻璃）：卡内 `#F5DDDD`(L=0.763) → 渐变起点 `#E9D4D3`
     // → 单调压暗 → **`#0F0B08`(L=0.004，纯黑)** → 下一像素回到 `#F4E8E8`。
     // 横向 x=60..813（正是卡内、避开圆角）整条 `#454042` —— 那是卡自己的粉被 DstIn 乘剩的残值。
     //
@@ -1598,10 +1538,8 @@ private fun SuggestionRow(
     }
 }
 
-// 「最近搜索」的渲染件整块搬回本文件（2026-09-30 第二轮）：用户拍板
 // "最近搜索放回点击搜索框后下面框框着"，所以它重新住进这张卡的空框态。
 // 形状与搬到首页之前**逐字相同**（双列紧凑 chip、字母小徽标、`×` 删单条）——
-// 那三条都是真机反馈定的（见 `_trash/gallery-history-row-2026-09-30/README.md`）。
 
 /**
  * 「最近搜索」那一行标题 + 「清空」。
@@ -1647,7 +1585,6 @@ private fun HistoryHeader(onClearAll: () -> Unit) {
  *
  * @param showSourceMark 前置那枚字母站标画不画。booru 那侧要（同一条历史可能跨过两站，
  *   字母是它唯一还有信息量的差别）；pixiv 那一格不要 —— 那里每一条都属于同一站，
- *   摆一枚 "P" 只把那个词挤窄一截（用户 2026-10-17：「p 站搜索历史不需要显示站点」）。
  */
 @Composable
 internal fun HistoryList(
@@ -1657,7 +1594,6 @@ internal fun HistoryList(
     showSourceMark: Boolean = true,
 ) {
     val tokens = VeneraTokens
-    // ── 删除改成两步（2026-10-16 用户点名「太小很难按到而且还容易删除」）──
     // 记**下标**而不是记那一枚 entry：`GallerySearchEntry` 不是 data class，
     // 拿它当相等判据会退化成"引用相同"，而这一列表每次组合都是新实例。
     var armedIndex by remember { mutableStateOf(-1) }
@@ -1669,7 +1605,6 @@ internal fun HistoryList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            // 同屏最多约 8 条（四行 × 双列），其余在这块里下滑看（2026-11-05 用户点名
             // 「历史太多下滑看不了」）：从前只有 verticalScroll 没有高度上限，
             // 列表长过搜索卡剩余空间就被裁死在屏外 —— 滚动区量到的是内容全高，等于没滚。
             .heightIn(max = 208.dp)

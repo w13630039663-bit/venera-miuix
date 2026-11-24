@@ -21,7 +21,6 @@ enum class GallerySite(
 
     /**
      * ⚠️ Gelbooru 与 yande.re 有一个**根本差别**：它的 DAPI **匿名一律 401**
-     * （实测 2026-09-26：`s=post` 与 `s=tag` 两条端点不带凭据都是 401，
      * 官方 wiki `howto:api` 写明要 `&api_key=...&user_id=...`）。
      *
      * 所以这一站**没有账号就一张图都取不到** —— 不是"少几档权限"，是用不了。
@@ -31,25 +30,31 @@ enum class GallerySite(
     GELBOORU("Gelbooru", "https://gelbooru.com/index.php?page=post&s=view&id=", "gelbooru", "gelbooru.com"),
 
     /**
-     * Safebooru：Danbooru 官方的**全年龄镜像**，与 [GELBOORU] 同属 Danbooru 系
-     * （`/posts.json`、`tag_string_*`、`media_asset.variants` 都是同一套字形），
-     * 但它是**匿名可用**的 —— 不像 Gelbooru 那样 DAPI 匿名一律 401。
+     * Konachan：**Moebooru 系**（与 [YANDERE] 同一内核，不是 Danbooru 系），Anime/Manga 图站。
      *
-     * ⚠️ 与 [GELBOORU] 的关键差别（都实测过，见 `cloudflare-ip-gallery-sources-2026-10-01.md`）：
-     * - 它**走 Cloudflare**（解析到 `104.26.x` / `104.21.x` CF 段），国内裸连可达；
-     *   而 `danbooru.donmai.us` 本身**不走 CF**、国内不可达。
-     *   也就是说：**同一个 donmai.us，全年龄那个镜像能直连，主站不能** ——
-     *   这正是"封锁按 hostname、不按 IP"那条实测的又一个例证。
-     * - 图床 `cdn.donmai.us` 同样直连可达（实测 TCP 443 通），所以图片能真的显示出来，
-     *   不是"API 通但图加载不出来"那种半残状态。
-     * - 分级是 Danbooru 系的**单字母** `g`/`s`/`q`/`e`（同 yande.re 字形，
-     *   与 Gelbooru 的单词 `general`/`sensitive` 不同）。
-     * - 它有 `fav_count` 与 `tag_string_*` —— 现有另两站都没有，见 [GalleryPost] 的更新注释。
+     * - `konachan.net/post.json` 对 okhttp / curl / 浏览器 UA 一律 **200**，走 Cloudflare；
+     * - `konachan.com` 挂 **JS 挑战盾**（"Just a moment"，各种 UA 都 403）—— 而画廊取数全走
+     *   [com.venera.compose.data.platform.NoInteractiveBypassTag]（不弹过盾窗），对盾站等于永久失败；
+     * - .net 还是**全年龄镜像**（实测 500 条样本 rating 全 `s`，`rating:e` 回 0 条）——
+     *   与撤下的 Safebooru 同一档内容定位，顶替得干净。
+     *
+     * 与同系的 [YANDERE] 关键差别（都实测过）：
+     * - 有 `order:score` 高分池（`tags=order:score` 实测真按分数降序：1718/1570/1349…）；
+     * - ⚠️ `order:rank` 与 `order:fav_percent` **被静默忽略**（回的就是默认 id 序）——
+     *   照抄旧 Safebooru 那颗的 `order:rank` 会拿到"一屏新图假装是高分"，正是本仓最忌的静默交错；
+     * - `date:A..B order:score` 时间窗**真生效**（实测 2020 窗口回的全是 2020 的图），同 [YANDERE]；
+     * - 有 `artist.json`（带 `urls`，实测精确命中）与 `/artist/show/{id}` → wiki 302 别名链，
+     *   画师端点**本站自给**，不用借 danbooru；
+     * - 没有 `fav_count`（与 [YANDERE] 同）；分级单字母 `s`/`q`/`e`，没有 Danbooru 系的 `g`；
+     * - 端点形状同 [YANDERE]：`post.json?tags=id:N` 取单条，`/post/{id}.json` 实测 **404**。
+     *
+     * ⚠️ routeKey 由 `safebooru` 换成 `konachan`：两站 **id 池互不相干**（同号必是不同图），
+     * 老 Safebooru 的收藏/历史行在读取处按"认不出的站键"整行摘除（[GallerySite.fromRouteKey]
+     * 返回 null 那条既有口径），不迁移、不混显。
      */
-    SAFEBOORU("Safebooru", "https://safebooru.donmai.us/posts/", "safebooru", "safebooru.donmai.us"),
+    KONACHAN("Konachan", "https://konachan.net/post/show/", "konachan", "konachan.net"),
 
     /**
-     * pixiv：**只做图片，且只有榜单**（2026-10-16 选型 ⑤）。与上面三站不是同一类东西，
      * 三处结构性差别都要在调用点显式表态，别按 booru 那套的形状顺手接：
      *
      * 1. **`ranking.php` 那一腿没有 `rating` 格**（现量：`"rating" in contents[0] === false`）⇒ 不能沿用
@@ -57,7 +62,6 @@ enum class GallerySite(
      *    被判成成人档，现象是一面打码的黑墙。这一站的分级材料在 `illust_content_type`
      *    （13 枚旗标）+ `attr` + `is_masked`，且其中 `sexual` 是**计数**不是档位 ⇒ 只能当启发式。
      * 2. **不进来源轴**（选型 ⑤：首页那一格是**内容域**切换，不是第五枚来源 chip）。
-     *    ⚠️ 2026-10-16 深夜改判：**匿名搜索其实是通的** —— `www.pixiv.net/ajax/search/artworks/{词}`
      *    直连 200 / 每页 60 条 / `p=2` 真换页。先前那句"五路全灭"是同一个**错路径名**打了五遍
      *    （`ajax/search/{popular,top,newest,illust}` 与 `web/v1/search/illust` 都不存在），作废。
      *    不进来源轴的真实理由是**查询语法不同轴**：booru 那三站吃 `tags=a+b order:score`，
@@ -65,14 +69,11 @@ enum class GallerySite(
      *    并进「全部」就是"半面墙按标签、半面墙按另一套"那种假读数。
      * 3. **载荷里 `illust_type` 与 `illust_page_count` 是字符串**（`"0"` / `"8"`），
      *    声明成 `Int` 会当场反序列化失败。且 `illust_type` **分不开单图与多页**
-     *    （日榜现量：type=0 的 34 条里 12 条是多页）⇒ 用户 2026-10-16 定档「多页取第 0 页当图」。
      *
-     * 量通的三跳（同日复测，真号 150822243）：`ranking.php?mode=daily&format=json` 200 / 50 条 /
      * 分页真生效；`/ajax/illust/{id}` 200、`/pages` 200 且每页给到 `original`；
      * 图床 `i.pximg.net` 无 `Referer` 403、带则 200 —— 后者已被
      * `data/network/ImageHeaderPolicy.kt` 的 `"pximg.net"` 规则覆盖，取流层不用改。
      *
-     * 2026-10-16 深夜对 `ajax/search/artworks/{词}` 的现量（直连无代理，词=1girl / all / 猫）：
      * 载荷**自带**卡片要的一切（`url` 就是 `i.pximg.net` 缩略，**零额外请求**）、`tags[]` 是纯字符串、
      * 有 `xRestrict`（⇒ 上面坑 1 只咬 `ranking.php` 那一腿）、有 `aiType`（60 条里 12 枚 =1）、
      * 有 `pageCount`（49/60 单页）；默认序**就是** `createDate` 降序（六份样本全部单调），
@@ -94,7 +95,6 @@ enum class GallerySite(
         fun fromRouteKey(key: String?): GallerySite? = entries.firstOrNull { it.routeKey == key }
 
         /**
-         * pixiv 那道共用的门（2026-10-16 选型 ⑤ 的第一批）。
          *
          * 放在 companion 而不是顶层函数：调用点散在 `gallery/domain` 与 `gallery/ui` 两处包，
          * 而那两处都已经 import 了 [GallerySite] —— 省掉 14 行 import，也省掉 FQN 内联链。

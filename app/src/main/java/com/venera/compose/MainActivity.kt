@@ -41,9 +41,7 @@ class MainActivity : ComponentActivity() {
         val contentStarted = android.os.SystemClock.elapsedRealtime()
         setContent {
             StartupTrace.mark("Compose: VeneraTheme body enter")
-            // 大屏取宽的**平台供给口**（2026-10-20，写法 A）：
             // 供给值仍是 `LocalConfiguration.current.screenWidthDp` —— 与替换前那个表达式**逐字相同**，
-            // 所以手机档 / 平板档的现有观感一个像素都不动（用户 2026-10-02 的硬约束）。
             //
             // 为什么要在这一层供给，而不是让共享面自己读 `LocalConfiguration`：
             // 那颗件是 AndroidX 的，桌面侧的 Compose Multiplatform **没有**（已现量 Unresolved），
@@ -112,7 +110,6 @@ class MainActivity : ComponentActivity() {
                                             com.venera.compose.gallery.data.GelbooruAccount.getInstance(applicationContext).identity,
                                         // ⚠️ 三个入口必须由 **Activity 本身**发起，不能用 applicationContext：
                                         // 非 Activity 的 Context 发 startActivity 且不带 NEW_TASK 标志时
-                                        // 系统直接抛异常 —— 引导里三个可点入口闪退的根因就是它（2026-11-03 真机）。
                                         onOpenPixiv = { openPixivAccountPage() },
                                         onOpenSourceManage = {
                                             openSettingsSubScreen(com.venera.compose.feature.SettingsSubScreen.SOURCE_MANAGE)

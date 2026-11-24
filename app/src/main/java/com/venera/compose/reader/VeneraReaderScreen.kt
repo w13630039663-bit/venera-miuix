@@ -212,7 +212,6 @@ private fun ReaderSessionContent(
     // 再另存一份本地副本只会造成"设置页改完必须重开阅读器"这一个后果，没有别的好处。
     // （此前正是如此：pageGap/夜间滤镜/常亮/音量键/点击翻页全部一次性取值。）
     val modeKey by prefs.defaultReadingMode.collectAsState()
-    // 按本记忆（2026-11-05）：开关开着时这一本记过档就吃自己的档，没记过才落全局默认。
     // 阅读器里换模式 → 只写这一本；设置页换默认档 → 管所有"没记过档"的书。
     val comicModeMemory by prefs.comicModeMemoryEnabled.collectAsState()
     val comicKey = remember(session.sourceKey, session.comicId) { "${session.sourceKey}|${session.comicId}" }
@@ -251,7 +250,6 @@ private fun ReaderSessionContent(
 
     // ── Auto-Scroll 自动巡航（Kotatsu 特色，仅条漫连续流生效）──
     // 播放中按 px/s 匀速下滑；触碰屏幕/手动滑动即暂停。
-    // 速度持久化（2026-11-04）：原先 `remember { 60f }` 纯内存，调完换一本漫画就回 60 ——
     // 用户点名「速度调了也不保存」。默认全局记住；迷你控制器里有「记住速度」开关，
     // 关掉时只活在本次会话（临时快/慢一把、不动长期习惯）。
     var isAutoScrolling by remember { mutableStateOf(false) }
@@ -264,14 +262,12 @@ private fun ReaderSessionContent(
         if (speedPersist) prefs.setAutoScrollSpeedPx(next) else sessionScrollSpeed = next
     }
 
-    // ── 定时停止巡航（2026-11-05）──
     // 迷你控制器上的 ⏱ 循环 关/15/30/60 分。语义如实：**每次进入巡航从头计时** ——
     // 暂停再播等于重置，睡前挂机按一次就够，中途醒来继续读也不会被突然掐停。
     // 只影响巡航，不锁屏不睡眠系统。
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var sleepRemainSec by remember { mutableIntStateOf(0) }
 
-    // ── 书签 / 跳页（2026-11-05）──
     // 存储经端口拿（reader/ 在业务边界守卫的扫描目录里，不许直连实现类）。
     val bookmarkStore = remember {
         ComicBookmarkStore(BusinessPorts.of(context).stores.open("venera_comic_bookmarks"))
@@ -591,7 +587,6 @@ private fun ReaderSessionContent(
 
     // ==================== 沉浸式全屏与导航栏 ====================
     // 「显示状态栏」开着时只藏导航栏：时间/信号/电量那条留给系统 HUD
-    // （2026-11-07，与常驻信息角标同一批，入口都在阅读器设置面板）。
     DisposableEffect(isControlsVisible, activePanel, readerShowStatusBar) {
         val window = activity?.window
         if (window != null) {
@@ -1526,7 +1521,6 @@ private fun ReaderSessionContent(
                             )
                         }
                     } else {
-                        // 翻页档：与条漫档同一套 −/+ 把手（2026-10-13 用户点名"自动播放加上时间控制 1-10s"）。
                         // 从前这一格只**印**真实间隔（更早之前印死 "4s/页"，那是假读数），
                         // 要调只能退出阅读器去设置页 —— 现在两处改的是同一枚持久化的值。
                         val intervalSec = autoScrollIntervalSec
@@ -1588,7 +1582,6 @@ private fun ReaderSessionContent(
             }
         }
 
-        // ==================== 常驻信息角标（双角胶囊，2026-11-07）====================
         // 左角页码、右角时间+电量；控制栏/面板打开时整组让位消失，巡航时右角上移。
         // 开关在阅读器设置面板（默认开），见 ReaderHudOverlay 的注释。
         ReaderHudOverlay(
@@ -1999,7 +1992,6 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ── 翻页特效（2026-10-14 补入口）──
                     //
                     // 为什么必须也在阅读器里：这一档**翻页时才看得出效果**，而从前唯一入口在
                     // 设置页 —— 用户读到一半想看卷边，得退出阅读器、进设置、选档、再回阅读器
@@ -2214,7 +2206,6 @@ private fun ReaderSessionContent(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 开关项 6: 常驻信息角标（2026-11-07，方案「双角胶囊」）
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

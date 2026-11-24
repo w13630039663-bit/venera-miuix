@@ -15,7 +15,6 @@ import com.venera.compose.source.model.ExplorePagePart
  * 探索页的全部页面状态。
  *
  * **为什么必须是 ViewModel，而不是屏幕里的 remember**：进入详情页时，本导航条目的组合会被
- * 销毁（真机实测过同样的坑：收藏页的 mode 用普通 remember，返回就被打回默认值）。字段全
  * 重建意味着 `selectedSourceKey` 变 null、两个 LaunchedEffect 重新执行 —— 于是每次返回都
  * 自动重拉源列表与第 1 页，并跳回**第一个源的默认探索方式**（picacg 的「随机」）。
  *
@@ -81,7 +80,6 @@ class ExploreViewModel : ViewModel() {
     /**
      * 分类区里，**超预算的那些组是否也摆出来**。
      *
-     * 分类区本身是**常驻**的（2026-10-14 从「分类 · N」按钮改回来：探索 = 浏览，
      * 分类就是主干道，折进按钮等于要先点一下才看得见能逛什么）。这一枚只管区内
      * 那枚「更多分类」—— 首屏只露前 [SECTION_ENTRY_BUDGET] 个入口，预算用尽后被
      * 整组切掉的尾巴由这一枚放出。**默认 false 不变**，首屏观感沿用旧基线。
@@ -110,7 +108,6 @@ class ExploreViewModel : ViewModel() {
         const val SECTION_ENTRY_BUDGET = 8
 
         /**
-         * 折叠态下**单个分区**渲染的入口上限 —— 预算管的是"露几组"（组级，2026-09-20 已拍板），
          * 这条管"一组最长成什么样"，是 mh1234「题材」343 枚那种大组唯一的闸门。
          *
          * 20 不是造的数：它是全仓唯一一处由源自己声明的窗口尺寸

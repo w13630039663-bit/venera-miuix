@@ -27,11 +27,9 @@ import kotlinx.coroutines.withContext
  *
  * ## 落点：画廊设置里另设的目录，没设时是 `<本地漫画存储根>/图库`
  *
- * 用户 2026-09-26 的口径：跟着漫画库走，在同一层新建一个 `图库` 文件夹。
  * 默认漫画根是应用私有的 `files/downloads`，用户已把它设成
  * `/storage/emulated/0/Download/漫画`（设置 → 本地漫画存储路径），
  * 所以不设时的实际落点是 `/storage/emulated/0/Download/漫画/图库/<site>-<id>.<ext>`。
- * 2026-09-29 起这一档可以被**画廊自己的下载目录**盖掉（只盖目录，不改上面那条默认）。
  *
  * ## 文件名由「命名规则」那一档定
  *
@@ -41,12 +39,10 @@ import kotlinx.coroutines.withContext
  * ## 两条写入路径（先试 MediaStore，落点不被接受才直写文件）
  *
  * 1. **MediaStore 显式插入**。按 MIME 选 `MediaStore.Images` / `MediaStore.Video` 的
- *    collection —— **这条是 2026-09-26 修的那个 bug 的正面**：旧实现不问类型，
  *    一律 `MediaStore.Files.getContentUri("external")`（`content://media/external/file`），
  *    系统当场回 `Primary directory Pictures not allowed for content://media/external/file`，
  *    也就是用户截图里那条 toast：**图库的图一张都存不下来**。
  *    `file` 这个 collection 对顶级目录另有约束，而 Images/Video 宽松得多 ——
- *    真机 `content insert` 实测：`images/media` + `RELATIVE_PATH=Download/漫画/图库/` 直接成功。
  *    走 MediaStore 还有个附加好处：**即便父目录里有 `.nomedia`**（漫画根由
  *    [ComicStorageRoot.ensureRoot] 建过一枚，防离线漫画污染系统相册），显式插入的行
  *    仍然登记在册，系统相册收得到。
@@ -87,9 +83,9 @@ object GallerySaver {
         }
 
     internal suspend fun resolveBooruArtist(context: Context, post: GalleryPost): String {
-        if (post.site == GallerySite.SAFEBOORU) {
-            return post.author.trim()
-        }
+        // 图库三站一律走"页面分类 → 离线词典"那两档：Moebooru（yande.re / Konachan）的 `author`
+        // 与 Gelbooru 的 `owner` 都是**上传者**账号名，不是画师，直接落文件名就是把上传者当画师。
+        //  没有这种字段，捷径删掉而不是换成拿 `author` 顶 —— 那是同一种错，只是换了字段。）
         // 1. 先查缓存或从帖子页 HTML 获取的 tag-type 分类（最权威）
         val categories = runCatching {
             GalleryPorts.of(context).lexicon.fetchTagCategories(post.pageUrl)
@@ -219,7 +215,6 @@ object GallerySaver {
     /**
      * 走 MediaStore。**任何一步走不通都返回 null** 交由调用方直写文件：
      * - 落点换算不出相对路径、插入返回 null / 抛参数错 —— 老的回落条件；
-     * - 占位行建好了却写不进字节（2026-11-04 真机案例：下载目录选了 `/storage/emulated/0/图片`，
      *   `RELATIVE_PATH=图片` 的顶级目录不在 MediaProvider 认的名册里，插入即被拒；
      *   还有 ROM 对 pending 写入报 EPERM）—— 从前这条照原样抛错，结果整次保存就死在
      *   「相册不收、直写又没试」的半路上。
@@ -273,7 +268,6 @@ object GallerySaver {
     ): String {
         // MediaStore 不收的落点（用户自建顶级目录如「图片」）只能靠 File 直写，
         // 而分区存储下直写公共目录必须有「所有文件访问」。没授权时把话说清，
-        // 别扔一条裸 EPERM 让人以为 app 坏了（2026-11-04 用户截图里那条原始报错）。
         if (!Environment.isExternalStorageManager()) {
             throw IOException(
                 "没有「所有文件访问」权限，写不进 ${dir.absolutePath}；去系统设置授权，或在画廊设置里恢复默认下载目录"
@@ -364,5 +358,4 @@ internal object GallerySaveTarget {
     }
 }
 
-/** 「时间戳」那一档用的形状：`20260929-113045`（秒级、可直接按名字排序）。 */
 private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")

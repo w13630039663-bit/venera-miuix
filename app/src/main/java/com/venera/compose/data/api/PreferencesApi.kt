@@ -90,7 +90,6 @@ interface ReaderPreferences {
     /** 巡航到本话末页时接着开下一话（会**自动联网取下一话**，默认开）。 */
     val autoNextChapter: StateFlow<Boolean>
 
-    // ── 图片增强（2026-10-13）。五枚一组，默认全中性 = 不改观感。 ──
     // 收进契约的理由与别处一致：消费点有阅读器本体与设置页两处，
     // 而"哪一枚算中性"这件事必须只有一个说法（判据在 `ReaderEnhancement.readerColorMatrix`）。
 

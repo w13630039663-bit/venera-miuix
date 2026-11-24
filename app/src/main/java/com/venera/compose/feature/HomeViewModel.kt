@@ -1,6 +1,5 @@
 package com.venera.compose.feature
 
-
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySite
@@ -197,7 +196,6 @@ class HomeViewModel(
         // ⚠️ 这一坨必须放在 _dailyPosts 声明**之后**：Kotlin 属性按声明顺序初始化，
         // 从前 init 块写在声明前面，hydrateDailyFromCache() 往还没出生的
         // _dailyPosts 写值 —— 首次启动快照为空侥幸不炸（read 返回 null 直接 return），
-        // 快照落盘后的第二次启动就是必炸的 NPE（真机 crash 实锤，MuMu 17:36）。
         // 画廊那一条**先铺上次的 8 张**，再让 [loadGalleryDailyAndArtists] 去后台刷。
         // 同步读、几毫秒：异步读会抢不过首帧组合，"秒出"就白做了。
         hydrateDailyFromCache()
@@ -505,7 +503,6 @@ class HomeViewModel(
 
     /**
      * JS 源是 `ComicSourceManager` 构造里 `scope.launch { loadInstalledJsSources() }` 异步注册的，
-     * 冷启动这一发几乎总是早于注册完成 —— 直接判「未启用该源」就是真机看到的症状。
      * 给它一个有界等待窗口，等到**至少一颗**候选源可用就返回；等不到才认输。
      *
      * 刻意不逐颗等：三颗各等 10s 会把首屏拖到半分钟。漏掉的那几颗下一次刷新（回首页）会补上。

@@ -28,13 +28,11 @@ private data class BrowseEntry(
     @SerialName("id") val postId: Long,
     @SerialName("thumb") val thumbUrl: String,
     @SerialName("viewed_at") val viewedAt: Long = 0L,
-    // 2026-10-15 加的一格：那一格摆哪档比例。给默认值 0 是有意的 ——
     // 昨天写下的档里没有这个键，读进来必须是"没量到"而不是解析失败（整档留档重来代价太大）。
     @SerialName("ratio") val ratio: Float = 0f,
 )
 
 /**
- * 画廊的**浏览历史**（看过的图）。2026-10-14 新增，入口在画廊首页顶栏（取代原来那枚「换一批」）。
  *
  * 存储照 [GalleryArtistFollowsStore] 同一份规格：
  * - 构造时**同步**读一次（名单几百行封顶，收益是第一帧那面墙就是对的，不会先空一下再蹦出来）；

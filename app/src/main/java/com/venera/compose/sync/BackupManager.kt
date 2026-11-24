@@ -350,7 +350,6 @@ class BackupManager private constructor(private val context: Context) {
      *
      * **单个源读不出来只跳过它，不让整包导出失败**。账号这一栏是附属物 ——
      * 历史/收藏/统计那九栏才是主体。一个源的 `.data` 档权限坏掉、被外部进程删到一半、
-     * 或内容不是合法 JSON，都不该让用户"什么都导不出来"。（真机上就踩过一次：
      * 从没存过数据的源被判成"文件不存在"而抛 ENOENT，整个导出直接失败。）
      */
     private suspend fun exportSourceAccounts(mode: SourceAccountMode): JsonArray? {

@@ -9,7 +9,6 @@ package com.venera.compose.gallery.domain
  * `boundsInWindow()` **默认把矩形裁到窗口内**（Compose 1.12.0 `LayoutCoordinates.kt:196`：
  * "can even result in an empty rectangle … completely clipped ⇒ Rect.Zero"）。本仓现量
  * 9 处调用**零处**显式传 `clipBounds` ⇒ 登记进表里的可能是"被窗口裁剩的一条"。
- * 真机活体证据（10-19 晚 FlyProbe）：`落点首次登记 size=495x16`、`size=495x2` ——
  * 卡被裁到只剩 16px 高照样登记，之后被回收摘掉才补上正常的。
  *
  * pixez 的处置是两半：**零尺寸只忽略不注销**（我们已有，`GalleryFlyIn.noteCardBounds`）
@@ -61,7 +60,6 @@ fun anchorAcceptable(full: FlyRect, rect: FlyRect): FlyRect? =
     if (hasAnchor(full, rect)) rect else null
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 批 B⑦：无锚那一趟的**侧滑退路**（2026-10-19，计划 §5 ⑦ 的原话）
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -72,7 +70,6 @@ fun anchorAcceptable(full: FlyRect, rect: FlyRect): FlyRect? =
  *
  * 这一族与 [GalleryFlightFrame] 那条 hero 路**互斥**：有锚才飞，无锚才侧滑
  * （[hasAnchor] 是唯一的分岔判据）。两条路都画在屏上就是"既飞又滑"，
- * 而那种错只有真机能看见。
  */
 fun sideSlideTopOffset(progress: Float): Float {
     val t = progress.coerceIn(0f, 1f)

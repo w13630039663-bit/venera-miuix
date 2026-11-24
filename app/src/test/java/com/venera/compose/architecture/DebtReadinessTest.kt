@@ -119,7 +119,6 @@ class DebtReadinessTest {
     private companion object {
         /**
          * 「画廊侧契约有写成员」的判式：`fun setGalleryXxx` / `fun toggleGalleryXxx` / `var galleryXxx:` 三种形状之一。
-         * 今天三种都没有（`GalleryPreferences` 是 13 枚 `val`，2026-10-18 现量），所以这条探测器现在**不该亮**。
          */
         val GALLERY_PREFS_WRITE = Regex("""\b(?:fun\s+(?:set|toggle)Gallery[A-Z]\w*|var\s+gallery[A-Z]\w*\s*:)""")
     }

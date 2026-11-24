@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 题材分布聚合的判据（2026-10-13，本数那把尺子今天新加）。
  *
  * 归一化在这里被换成一枚**假管线**（`author:` 前缀的词全丢），为的是只钉"怎么数"这一件事；
  * 字典与繁简那条链由 `TagNormalizer` 自己的用例管，两层各一把尺子。

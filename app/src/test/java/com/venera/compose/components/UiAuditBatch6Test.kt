@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-14 UI 审查第六批的尺子：同一档值只许有一处定义。
  *
  * 两条都是"抄一份不会报错、改的时候漏改三处也不会报错"：
  * ① 玻璃补底强度 `0.16f` 从前在顶栏、药丸、详情页背板与 `VeneraGlass` 各写一遍，

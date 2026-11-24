@@ -16,22 +16,18 @@ enum class PixivWorkFact { VIEWS, BOOKMARKS, PUBLISHED }
 /** 一格的成品文本（纯数字或 `yyyy-MM-dd`，不带单位、不带 locale 月份名）。 */
 data class PixivWorkFactCell(val kind: PixivWorkFact, val text: String)
 
-/** 同作品多页之间的缝（2026-10-18 用户「最好无缝或者只留一条边」；12dp 那一档是网格口径，已撤）。 */
 enum class PixivPageSeam { NONE, HAIRLINE }
 
 /**
- * pixiv 作品页的纯判据（2026-10-18 落地）。
  *
  * 这一颗不收 Android、不收 Compose、不收网络：三格计数、占位比例、页轴墙的逐页映射、标签同屏上限
  * 都是"能拿真读数复算"的判断，摆在这里才有单测可钉（同一族的口径见 `GalleryAi`、`GalleryCardTitle`）。
  *
  * ⚠️ 从前这里还有两颗「横轴走一步」（`step` / `PixivStep`），钉的是"两轴互换"那一档滑到尽头的四种结局；
- *    2026-10-18 第四批整档撤掉横着一页一页之后它们**零调用点**，一起摘了 —— 不留"看着像判据的死表面"。
  */
 object PixivWorkPage {
 
     /**
-     * 标签同屏上限（用户 2026-10-18「tag 同屏最多可以同时有 8 个，更多才需要展开」）。
      *
      * 这是**上限不是目标**：不足 8 枚时「更多」把手一枚都不许出现 —— 没有可展开的东西却有把手，
      * 就是假开关。所以 [tagsHidden] 与 [tagsShown] 是同一把尺子的两头。
@@ -42,7 +38,6 @@ object PixivWorkPage {
      * 图回来之前那一格占位按什么比例（返回值 = 宽 / 高）。
      *
      * 站方没报宽高就交 null：屏上那一格**不预留比例**，而不是拿 1:1 顶一个 —— 替站方编一个形状，
-     * 表现是图落位那一刻整屏跳一下，用户读到的是"这屏在抽风"（用户 2026-10-18：「p站的图片加载
      * 都没骨架图」，而骨架要按真比例摆才有意义）。
      *
      * ## 为什么这里**不**夹区间（而墙上那张卡夹）
@@ -64,7 +59,6 @@ object PixivWorkPage {
     }
 
     /**
-     * 把"这一作的几页"长成一堵**页轴墙**，交给大图播放器左右翻（2026-10-18，用户
      * 「点击图片单独显示高清点的图片，复用图库的大图播放器就行，支持左右滑动切换本作品的多张图片，
      * 不能切换其他作品，HD 才显示原图」）。
      *
@@ -104,13 +98,11 @@ object PixivWorkPage {
         }
 
     /**
-     * 首帧那一格的**种子**（批 B⑥，2026-10-19）：详情腿还没到，用列表腿那条作品长出一枚
      * "只有第 0 页"的假详情，交给 [pageWallOf] 走**同一颗算式** —— 逐页键于是与真详情那一档
      * 天然相等（`uid:p0`，屏上不另拼 ":p0"，那是第二处真相），落点登记 / 交棒 / `openPages`
      * 三条都接得住同一把键。
      *
      * pixez 从不"等落点"的凭据就压在这一格上（计划 §4.3 第 1 条）：它的首帧有真比例，落点
-     * 第一帧就量得出来；而这一屏从前把"详情到手"当成起飞前置 —— 真机慢首开（详情 700ms >
      * 预算 600ms）读起来就是"点卡进去压根不飞"（§9.3 排行榜那一格的读数，`起飞` 那行压根没打）。
      *
      * **只许用来摆第 0 页那一格、量落点、报逐页键、喂 `openPages`**（点首帧那格进播放器时
@@ -125,7 +117,6 @@ object PixivWorkPage {
      *   首帧因此是"糊一点的真图"而不是骨架；详情到手换中档（regular）是**变清晰**、不是跳一下
      *   （`PixivPageImage` 头注那条"同比例 Crop 不改构图"的口径，两腿同比例故格子不跳、落点稳）。
      * - `originalUrl` 仍交真原图档：若详情永不到而用户点了首帧那格，播放器 HD 那一档是真的；
-     * - 宽高取站方报的那一对（列表腿恒有；真机现量 2400×4000），缺则 null ⇒ [placeholderAspect]
      *   照旧交"不预留比例"，不替站方编一个形状。
      */
     fun seedDetailOf(post: GalleryPost): PixivWorkDetail = PixivWorkDetail(
@@ -154,7 +145,6 @@ object PixivWorkPage {
      * 标题下面那一行：三格各自"站方给了才算一格"。
      *
      * [bookmarkCount] 传的是 `GalleryPost.favCount`（同一格 `bookmarkCount` 来的，两处不各读一遍）；
-     * [viewCount] 与 [uploadDate] 只有作品页那一腿有（2026-10-18 现量 851 / `2026-10-01T06:12:00+00:00`）。
      * 三格全空 ⇒ 交空表，那一行整行不摆。
      */
     fun facts(viewCount: Int?, bookmarkCount: Int?, uploadDate: String?): List<PixivWorkFactCell> {
@@ -169,7 +159,6 @@ object PixivWorkPage {
      * 发布日：**只到日**，且换到本机时区再截。
      *
      * 为什么要换：站方那格是 UTC 串（现量 `2026-10-01T06:12:00+00:00`），而同一张图的地址路径里
-     * 写的是 `2026-10-01/15/12/34` —— 站方自己按 +09:00 记的。直接截前 10 位会把
      * 「本机凌晨发布的那批」显示成前一天。读不懂（缺键、坏格式）⇒ 交 null，那一格不摆。
      */
     fun publishedDay(raw: String?): String? = raw?.let { text ->
@@ -188,7 +177,6 @@ object PixivWorkPage {
     fun tagsHidden(tags: List<String>): Int = (tags.size - TAGS_INLINE_MAX).coerceAtLeast(0)
 
     /**
-     * 「站方答上了、可这一条没有可看的图」到底是哪一面墙（2026-10-18 第四批第七件）。
      *
      * 从前这四种与"真被删"盖成同一句「被删或被锁」，用户读到的是"我明明登录了怎么说被删"。
      * 站方在那一份答复里把四面旗标都竖得很清楚，分开念才有下一步可做：前三面在**登录腿**下

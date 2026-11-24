@@ -14,11 +14,9 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /**
- * pixiv 登录的**纯算式**那一半（方案 `docs/rounds/gallery-pixiv-account-pkce-2026-10-17.md` §三 · P1）。
  *
  * 这一颗刻意不碰网络、不碰 `Context`、不存任何东西：换 token 与落盘在 P2 那两颗里。
  * 分开是因为这一族的缺陷都长在"算式对不对"上（challenge 编码、`state` 核不核、URL 转义），
- * 而那些**单测测得到**；网络那一半只有真机能验，混在一起就等于两半都测不了。
  *
  * PKCE 走 RFC 7636 的 `S256`：`code_challenge = BASE64URL(SHA256(code_verifier))`（**不带填充**）。
  */
@@ -27,7 +25,6 @@ internal object PixivPkce {
     /**
      * 换 token 时**必须回填**的那一条登记地址。
      *
-     * 2026-10-17 第四轮改：从 `pixiv://account` 换成站方 App 登录那条 https 回跳。
      * 依据是 pixez-miuix（`network/OAuthClient.kt` 的常量组 + `composeApp/src/androidMain/AndroidManifest.xml`
      * 里那颗 `https://app-api.pixiv.net` 的 intent-filter）：`pixiv-android` 这个 client 在站方登记的
      * 就是这一条。⚠️ 它与**回跳实际落到手机上的形态**是两件事 —— 见 [DEEP_LINK_PREFIX]。
@@ -81,11 +78,9 @@ internal object PixivPkce {
     /**
      * 登录页地址。
      *
-     * 2026-10-17 第四轮：改成站方 App 登录页那三枚参数（`code_challenge` / `code_challenge_method` /
      * `client`），与 pixez 的 `buildLoginUrl` 逐项对应。旧的 `client_id` / `response_type` /
      * `redirect_uri` / `prompt=login` 是标准 OAuth 那一套，这一页不认，带上只会被忽略。
      *
-     * `state` **仍然带着**：站方这一页今天有没有回声还没在真机核过（没回声时不拒，见 [codeFrom]），
      * 带着它不改变任何行为，哪天真回声了就直接生效。
      */
     fun authorizeUrl(codeChallenge: String, state: String): String =
@@ -103,11 +98,9 @@ internal object PixivPkce {
      * 站方在用户取消/拒绝时会带 `error=` 回来，那一支直接抛，并且把站方那句原样带上
      * （"登录失败"有三种成因，读成一种就是假读数）。
      *
-     * ## 为什么"回跳里没有 `state`"**不**拒（2026-10-17 第四轮）
      *
      * App 登录页（`client=pixiv-android`）不是标准 OAuth 端点：pixez 那一条**压根不发** `state`
      * 也能换成票据，说明它至少在某些回跳形态里不回声。若我们坚持"缺了就拒"，
-     * 表现会是"浏览器里明明登成功了、回 app 一句 state 不符" —— 而这一条在真机上没法预演。
      *
      * 少这一道并不削弱安全性：真正绑定这一枚码的是 **PKCE 的 `code_verifier`**
      * （一次性、只活在本次进程内存里）。别人塞一枚自己的授权码进来，我们拿自己的 verifier 去换，

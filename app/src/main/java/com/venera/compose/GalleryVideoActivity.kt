@@ -33,7 +33,6 @@ import com.venera.compose.gallery.ui.rememberGalleryVideoPlayer
 import com.venera.compose.gallery.ui.videoRequestHeaders
 
 /**
- * 画廊视频的**全屏播放页**（2026-10-19，用户「重做一遍」那一批）。
  *
  * ## 为什么必须是另一颗 Activity（而不是在同一页里把框放大）
  *
@@ -50,9 +49,7 @@ import com.venera.compose.gallery.ui.videoRequestHeaders
  *    中间一条 —— 那正是"模糊"的来源之一（放大裁切，不是原比例）。
  *
  * 现在这一颗 Activity：
- * - **不碰朝向**：清单不声明 `screenOrientation`，跟着宿主（竖屏）走。这是 2026-10-23
  *   第三次改这里才定下来的 —— 前两版（运行期 `requestedOrientation`、清单静态 `landscape`）
- *   都撞同一面墙，见下面「2026-10-23 真机定因」；
  * - **自己藏系统栏**（immersive sticky，边滑边现）；
  * - **黑底 + 原比例 `FIT`**（不裁切）；
  * - 退出时把播放位置写回 [GalleryVideoHandoff]，就地那页接着播。
@@ -63,9 +60,7 @@ import com.venera.compose.gallery.ui.videoRequestHeaders
  * 全屏播放页要的是**纯黑**：背后那层糊既看不见（黑底盖死），还会白烧 GPU；
  * 而 `enableEdgeToEdge` 默认那层状态栏 scrim 会在黑底上留一条灰边。
  *
- * ## 2026-10-23 真机定因：三件"看着像那么回事、其实是反效果"的事
  *
- * 1. **`android:configChanges` 在 ColorOS 上拦不住 relaunch**。真机日志：
  *    `ActivityRecordExtImpl: hookShouldRelaunchLocked, state: true,
  *    reason: adjustedChanges={CONFIG_ORIENTATION, CONFIG_SCREEN_SIZE}`
  *    —— 清单里明明 `handles=0x4dfb`（含 ORIENTATION|SCREEN_SIZE），系统仍判"要重启"。
@@ -76,7 +71,6 @@ import com.venera.compose.gallery.ui.videoRequestHeaders
  *    现在只交棒位置，每页各建各的播放器（详见 `rememberGalleryVideoPlayer` 头注）。
  * 3. **「竖屏任务里启动横屏 Activity」= 无限重启**。前两版分别用运行期
  *    `requestedOrientation` 与清单静态 `landscape`/`portrait`，两条都让 ColorOS 判
- *    relaunch，而 relaunch 出来的新实例再被 relaunch。真机日志里
  *    `START …GalleryVideoActivity → removeAppToken(f=finishing) → START …` 循环十几次，
  *    用户看到的就是"背景闪一下、按钮变一下、又回来"。
  *    ⇒ **这一页不声明朝向、不碰 `requestedOrientation`**：它继承宿主，全屏观感靠
@@ -99,10 +93,8 @@ class GalleryVideoActivity : ComponentActivity() {
         post = requireNotNull(parsePost(intent)) { "全屏播放页缺少条目参数" }
         startPositionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L)
 
-        // ── 朝向：什么都不做（2026-10-23 真机定因）────────────────────────────────
         //
         // 从前这里写 `requestedOrientation = LANDSCAPE / PORTRAIT`。本机（ColorOS）上那是
-        // **一次运行期改朝向** ⇒ 一次 Activity relaunch：真机 log 里
         // `hookShouldRelaunchLocked ... adjustedChanges={CONFIG_ORIENTATION, CONFIG_SCREEN_SIZE}`
         // 紧跟着旧实例 surface destroy，播放器那一跳正好卡在中间 —— 用户说的
         // 「旋转几次还要重新加载」，有一半就是进全屏这一下自己转出来的。
@@ -147,7 +139,6 @@ class GalleryVideoActivity : ComponentActivity() {
     }
 
     /**
-     * 焦点每回来一次就重申一遍沉浸式（2026-10-23 加固）：从边缘滑出系统栏、对话框关闭、
      * 分屏切回来……这些路径都会把系统栏**自己请回来**，画面又变回“内容区一个框”。
      * 经典坑：`onCreate` 里只藏一次是拎不住它的，官方口径就是在
      * `onWindowFocusChanged(hasFocus = true)` 里重调一遍。
@@ -209,7 +200,6 @@ class GalleryVideoActivity : ComponentActivity() {
      * 判据顺序与就地那页同一份口径：先看站方报的真宽高，再看 `cardRatio`，
      * 最后退回"当横屏处理"（视频绝大多数是横的，且横屏是最不坏的错法）。
      *
-     * ⚠️ 它现在**只用于诊断与日志**，不再决定 Activity 朝向：2026-10-23 真机读数证明
      * 按它分流到横/竖两颗 Activity 会撞上 ColorOS「竖屏任务里起横屏 Activity 强制
      * relaunch」那面墙，结果是无限重启（详见本文件头注与 `AndroidManifest.xml`）。
      */
@@ -246,7 +236,6 @@ class GalleryVideoActivity : ComponentActivity() {
          * 而模型那层不许碰平台件（那条尺子在 `DesktopSharedFaceLedgerTest` 里）。
          * 逐字段摊开只有十几行，且**加了新字段会在这里显形**，不会静默丢。
          *
-         * ⚠️ 不分流朝向（2026-10-23）：从前按 `isLandscapeVideo` 分流到横/竖两颗 Activity，
          * 撞上 ColorOS「竖屏任务里起横屏 Activity 强制 relaunch」那面墙，无限重启。
          * 现在只此一颗，朝向不碰，跟着宿主走。
          */

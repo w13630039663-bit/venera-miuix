@@ -3,7 +3,6 @@ package com.venera.compose.gallery.data
 import com.venera.compose.gallery.domain.PixivImageQuality
 
 /**
- * pixiv **作品页**那一屏的一张作品全貌（2026-10-18 落地，站源独用：图库三站仍走
  * [com.venera.compose.gallery.ui.GalleryPostScreen]，两颗互不吃对方的模型）。
  *
  * 为什么不塞进 [GalleryPost]：那颗是**三站共用**的行模型，多开一格 pixiv 才有的字段，
@@ -14,9 +13,7 @@ import com.venera.compose.gallery.domain.PixivImageQuality
  * 浏览数、发布时间、评论数在列表腿上根本不存在。给列表模型开这些格子，屏上长出来的就是
  * "永远空着的那一格"。
  *
- * 出处：每一格都来自 2026-10-18 现量的匿名腿 `/ajax/illust/{id}`（多页时再打一跳
  * `/ajax/illust/{id}/pages`）。**可空 = 站方这一条没给** ⇒ 屏上那一格随之不摆，
- * 不拿 0、不拿占位文本顶（用户 2026-10-18「虚假数据去掉」）。
  */
 data class PixivWorkDetail(
     /**
@@ -39,7 +36,6 @@ data class PixivWorkDetail(
      * 不变式：`pages.size == pageCount`（由取数那一层保证，见 [PixivClient.workDetail]）——
      * 不等就抛，绝不交"站方说 4 页而手里只有 1 页"的半份：屏上写着共 4 页却只画得出第 1 页就是假话。
      *
-     * 2026-10-18 第二轮改口径：从前这一格只有原图一档，于是**作品页一开屏就在拉原图**
      * （用户报"加载图片应该用低清点的图片"），而且没有宽高比 ⇒ 图回来之前占不了位（"没骨架"）。
      * 两档一起带才两件事都成立：中档给这一屏连读，原图档给大图播放器那一层的 HD 档。
      */
@@ -54,7 +50,6 @@ data class PixivWorkDetail(
      */
     val tags: List<String>,
     /**
-     * 站方给的**标签译名**（`标签原名 → 译文`），2026-10-20 补。
      *
      * 两条腿的字段名不同，取值口径也不同：
      * - 匿名腿 `/ajax/illust/{id}`：每枚标签是 `{"tag": "...", "translation": {"en": "..."}}` ——

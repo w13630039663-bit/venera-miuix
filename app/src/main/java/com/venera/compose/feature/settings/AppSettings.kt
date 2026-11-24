@@ -38,7 +38,6 @@ fun AppSettings(
     val context = LocalContext.current
     val cacheMaxMb by prefs.httpCacheMaxMb.collectAsState()
     var cacheBytes by remember { mutableLongStateOf(-1L) }
-    // 2026-11-03：系统「应用管理」报 1GB 而这里从前只报 HTTP 那一桶（≈99MB 封顶）。
     // 分桶读数把 cacheDir 整个扫一遍，屏上总数与系统读数对得上表，差多少一眼就能指出来。
     var breakdown by remember { mutableStateOf<com.venera.compose.data.api.CacheBreakdown?>(null) }
     val network = remember(context) { BusinessPorts.of(context).network }
@@ -296,7 +295,6 @@ fun AppSettings(
             SettingsAction("打开日志", "查看运行日志", onClick = onLogs)
         }
         SettingsGroup(title = "离线与本地漫画") {
-            // 「下载管理 / 本地漫画」两行入口已撤（2026-11-03）：底栏第五格是全项目唯一入口。
             SettingsAction("追更更新", "每天检查收藏夹里的新章节", onClick = onFollowUpdates)
         }
     }
@@ -469,5 +467,4 @@ internal fun formatMib(bytes: Long): String =
     if (bytes < 1024) "$bytes B"
     else if (bytes < 1024 * 1024) "%.1f KiB".format(bytes / 1024.0)
     else if (bytes < 1024L * 1024 * 1024) "%.1f MiB".format(bytes / (1024.0 * 1024.0))
-    // 2026-11-03 补 GiB 档：分桶总数动辄上 GiB，念「1180.4 MiB」不如「1.15 GiB」像人话。
     else "%.2f GiB".format(bytes / (1024.0 * 1024.0 * 1024.0))

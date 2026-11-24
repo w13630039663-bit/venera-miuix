@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 11 及更早版本完整备份规则。
+    显式排除漫画源凭证文件、私有数据库和偏好文件。
+-->
+<full-backup-content>
+    <exclude domain="file" path="comic_source" />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

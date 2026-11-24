@@ -66,14 +66,12 @@ object ImageHeaderPolicy {
         // ⚠️ 这条是 donmai.us **独有**的强判据，别当成"所有图站都这样"往外推。
         "donmai.us" to mapOf("User-Agent" to UserAgentPolicy.APP_USER_AGENT),
         // pixiv 的图床（画师头像、`i.pximg.net` 上的其他公开档）—— **必须带站内 Referer**。
-        // 2026-09-30 实测同一个头像 URL 两条对照：不带 `Referer` → 403（146 字节错误页），
         // 带 `Referer: https://www.pixiv.net/` → 200、5149 字节真图。
         // 注意与/ajax 端点是两回事：那个 JSON 接口匿名、不带任何头都能读（同一日实测三档对照皆 200），
         // 只有**取图**这一跳需要这条规则。
         "pximg.net" to mapOf("Referer" to "https://www.pixiv.net/"),
         // Gelbooru 的图片 CDN —— **必须带 Referer，否则一张图都取不到**。
         //
-        // 这是 2026-09-26 真机反馈「搜索出来但全是灰卡」查出来的根因，
         // 走了一段弯路，把正确结论与那段弯路都记下来：
         //
         // **症状**：搜索正常（DAPI 200、条目元数据全对、URL 拼得完全正确），
@@ -86,7 +84,6 @@ object ImageHeaderPolicy {
         // *"This content is not available in your country"* ——
         // 它读起来像地域封禁，于是很容易顺着"换网络出口"那条死路查下去。
         // ⚠️ **它不是地域问题**：加上下面这个 Referer 就 200，与本机 IP 归属地无关。
-        // （真机复测：`Referer: https://example.com/` → 302；
         // `https://gelbooru.com/` 或 `https://www.gelbooru.com/` → 200。）
         //
         // **作用范围**：三档**全部**要（`thumbnails/` / `samples/` / `images/` 实测一致），
@@ -142,8 +139,6 @@ object ImageHeaderPolicy {
      * 往 OkHttp 请求上贴头。而 OkHttp 的透明解压有个前提 —— 只有当这个头是**它自己**补的，
      * 它才会在响应侧拆掉 `Content-Encoding`；调用方（这里是源 JS 照抄的浏览器头）自己写上，
      * OkHttp 就当作"编码你自己负责"，把 **gzip 字节原样交出来**。
-     * 2026-09-29 真机读数：禁漫正文页首 4 字节 `1f8b08`、`inJustDecodeBounds` 读出 `-1x-1`，
-     * 于是每张图都倒在"去混淆失败"那一句上 —— 病根从来不在混淆算法。
      * 剔除放在这个函数而不是三个贴头点各写一遍：漏一处就复发一次（下载侧 2026 修过同类病，
      * 当时取图侧没跟着修，就是"各写一遍"的代价）。
      */
@@ -171,7 +166,6 @@ object ImageHeaderPolicy {
      * （`?` 属于 query，早被那个 `/` 一起截掉了）。于是这第三步对**所有**正常 URL
      * 都返回 `""`，`takeIf { isNotEmpty() }` 再把它变成 null ——
      * 结果 `headersFor` 恒回空表，**整张防盗链表从来没生效过**。
-     * 2026-09-26 真机「Gelbooru 搜得出图、屏上全是灰卡」就是它：
      * 图片请求没带 Referer，站方 302 到 hotlink.php 返回 HTML，Coil 解不出图。
      *
      * 现在按「`?` 或 `/` **谁先出现就截到那里**」取，两种 URL 形态都对：

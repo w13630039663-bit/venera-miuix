@@ -114,9 +114,7 @@ private fun PreferredIpEditorDialog(
     val recognized = PreferredIpRules.parseIps(ips)
     val entries = PreferredIpRules.parseHosts(hosts)
 
-    // ⚠️ 与代理那一档同样**留在 M3 AlertDialog**（2026-09-29 的裁决）：这枚弹窗里嵌的是
     // 两个输入框 + 一颗按钮，换成 VeneraDialog（miuix 后端 = WindowDialog）之后内部若再有
-    // Dialog 套 Dialog 的链路，预测式返回与焦点归属在真机上没人验过。
     AlertDialog(
         onDismissRequest = { if (!probing) onDismiss() },
         title = { Text("Cloudflare 优选 IP") },

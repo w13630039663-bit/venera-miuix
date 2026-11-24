@@ -24,10 +24,9 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 // 登记保留：Scaffold（miuix 的同名件参数面不同，换它=重做一层窗口内布局）、
-// DropdownMenu（无锚点对应物）、三颗"图标+文字"的 TextButton（miuix 文字按钮没有 slot）。
+// 三颗"图标+文字"的 TextButton（miuix 文字按钮没有 slot）。
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -129,7 +128,6 @@ fun FavoriteImagesScreen(
  * 卡片只有三样（用户拍板：统计卡整块不做）—— 图、漫画名、作者名。
  * 章节/页码不再占卡片面，仍在 [FavoriteImagePreviewScreen] 里显示。
  *
- * 列数分档（用户真机口径）：手机两列，平板三列 —— 平板上两列会把每张图撑到
  * 半屏宽，瀑布流的高低错落反而变成"一屏看不下一张半"。
  *
  * 与收藏页其余面板同一套宿主契约：[topPadding] 由顶栏让位决定、[scrollConnection] 接顶栏
@@ -254,7 +252,6 @@ fun FavoriteImagesBody(
                     items(images, key = { it.id }) { item ->
                         // 手势走 miuix Card 官方可点击重载：combinedClickable 挂在
                         // squircleSurface **里面**那一层。叠在外层会被 squircle 吞掉长按
-                        // （真机实测教训，见 VeneraCard 的分层注释与冻结声明同批记录）。
                         //
                         // 选中态与选择框交给 SelectableCardFrame（四处收藏面板同一份实现）：
                         // 长按菜单**已撤**，"从该页开始阅读 / 查看漫画详情"两个动作搬进了工具条

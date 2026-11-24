@@ -78,7 +78,7 @@ This branch (`compose-migration`) focuses on four core innovations:
 
 ### 1. Gallery & Pixiv Native Ecosystem
 
-- **Dual-Domain Multi-Source Aggregation**: Top segmented pill switch between "Booru" (yande.re + Gelbooru + Safebooru) and "Pixiv", each maintaining independent state machines and feeds.
+- **Dual-Domain Multi-Source Aggregation**: Top segmented pill switch between "Booru" (yande.re + Gelbooru + Konachan) and "Pixiv", each maintaining independent state machines and feeds.
 - **Pixiv Native Ecosystem Integration**:
   - **Live Rankings & Recommendations**: Daily, weekly, monthly, rookie, and original ranking leaderboards; logged-in accounts access official discovery feeds with shuffle support; offline mode offers tag-seed-based smart recommendations.
   - **Native Artwork Details (`PixivWorkActivity`)**: Multi-page continuous vertical reader, complete metadata panel (translated tags, artwork metrics), official one-tap bookmarking & artist following, and direct original image saving.

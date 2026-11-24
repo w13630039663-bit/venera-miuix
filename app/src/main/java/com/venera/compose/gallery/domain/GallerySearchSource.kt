@@ -68,7 +68,6 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
          * 而**整句一个字都没变** —— [NEEDS_ACCOUNT_REASON] 仍是这两半的拼接。
          *
          * ⚠️ 提示块上屏时**只摆标题 + [NEEDS_ACCOUNT_BODY]**，不再摆整句：
-         * 整句里含标题，两行一起摆就是"同一件事说两遍"（2026-10-13 真机截图上读出来的）。
          * 页面别处（空态标题、`searchError`）仍用整句，那份口径没动。
          */
         const val NEEDS_ACCOUNT_TITLE: String = "Gelbooru 需要先配置账号才能用"
@@ -103,11 +102,9 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
         /**
          * 两站都打。顺序恒为站表序。
          *
-         * ⚠️ **pixiv 被显式剥出去**（2026-10-16 选型⑤ + 那份调研稿 §八「不把 pixiv 塞进来源轴的
          * 『全部』」）：它是"一个词 + 站内那串 `s_mode/order`"的语法，与 booru 的 `tags=a+b order:score`
          * **不同轴** —— 并进「全部」就是"半面墙按标签、半面墙按另一套"那种假读数。
          * 它只从首页那一格（内容域）进，不进这一排。
-         * ⚠️ 2026-10-16 深夜改判一句：这里给出的理由**不是**"匿名搜索不通"。
          * `ajax/search/artworks/{词}` 现量 200 / 每页 60 条 / `p=2` 真换页 —— 剥出去是**选择**，不是数据墙。
          */
         val ALL = GallerySearchSource(GallerySite.entries.filter { it != GallerySite.PIXIV })
@@ -115,7 +112,6 @@ class GallerySearchSource(sites: Collection<GallerySite>) {
         fun single(site: GallerySite): GallerySearchSource = GallerySearchSource(listOf(site))
 
         /**
-         * 分段器上那三档，顺序就是它们画出来的顺序：**默认档在首**（用户 2026-09-30 拍板
          * 「『全部』作为默认选项」），两站跟在后面按站表序。
          *
          * 列表定在 domain 而不是 UI：`selectedIndex` 靠 `indexOf` 反查，UI 里各写一份
@@ -170,7 +166,6 @@ fun allLegsExhausted(dispatched: List<GallerySite>, exhaustedBySite: Set<Gallery
  * 用在**文字位**（历史 chip 的前置小字、多站合并的那一格）：那里只有两三个字符的宽度，
  * 摆图标会把关键词挤没。
  *
- * ⚠️ 2026-09-30 起"不引站方 logo"这条**只对文字位成立**：卡片角上与首页画师行那两枚来源标识
  * 已经换成**站方真图标**（`components/venera/VeneraGallerySourceMark.kt`，那里记着两站各拿到
  * 什么原档、以及 yande.re 那枚为什么只有 16×16）。两者不是一回事，别拿这条注释去否决那枚组件。
  * 反过来也成立：本函数只服务文字位，**不要**把它接到图形位上当占位。
@@ -181,13 +176,15 @@ fun allLegsExhausted(dispatched: List<GallerySite>, exhaustedBySite: Set<Gallery
 fun gallerySourceMarkText(sites: Collection<GallerySite>): String =
     GallerySite.entries.filter { it in sites }.joinToString("·") { it.sourceMarkLetter }
 
-/** 一枚站的字母标识。`when` 不留 else：加新站时必须在这里显式表态。 */
+/** 一枚站的字母标识（取**站方写法的首字母**）。`when` 不留 else：加新站时必须在这里显式表态。 */
 val GallerySite.sourceMarkLetter: String
     get() = when (this) {
         GallerySite.YANDERE -> "Y"
         GallerySite.GELBOORU -> "G"
-        GallerySite.SAFEBOORU -> "S"
+        // ⚠️ 这一枚**只活在文字位**（历史 chip 前置小字、多站合并格），没有任何落盘键吃过它，
+        // 换字母不动老数据 —— 与 routeKey 的换法是两回事。
+        GallerySite.KONACHAN -> "K"
         // 永远画不出来：pixiv 不在来源轴里（见上面 ALL 那条），留着这枚字母是为了
-        // 万一哪天它进了某一排，读起来是 "P" 而不是撞走别人的 "S"。
+        // 万一哪天它进了某一排，读起来是 "P" 而不是撞走别人的名字首字母。
         GallerySite.PIXIV -> "P"
     }

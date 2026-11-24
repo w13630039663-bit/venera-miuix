@@ -32,9 +32,10 @@ internal fun desktopDetailInfoRows(post: GalleryPost, favorite: Boolean): List<P
         if (post.width > 0 && post.height > 0) add("分辨率" to "${post.width}×${post.height}")
         if (post.fileExt.isNotBlank()) add("格式" to post.fileExt.uppercase())
         if (post.fileSize > 0) add("文件大小" to "%.1f MB".format(post.fileSize / 1024.0 / 1024.0))
-        // 「上传者」不是「画师」。实测那句在 `GalleryInfoSheet.kt:444-447`：yande.re 的 `author`
+        // 「上传者」不是「画师」。实测那句在 `GalleryInfoSheet.kt:444-447`：yande.re / Konachan 的 `author`
         // 与 Gelbooru 的 `owner` 都是**上传者的登录名**（真帖 1269641 的 `author=Arsy`，而画师是标签
-        // `gijang`），只有 Safebooru 的 `tag_string_artist` 才是画师档。桌面浮层从前把这一枚摆在稿的
+        // `gijang`；图库三站今天**没有一站**给站方标好的画师档 —— 旧 Safebooru 的 `tag_string_artist`
+        // 随该站 2026-11-11 撤下）。桌面浮层从前把这一枚摆在稿的
         // `.artist .nm`（署名）那一格上 —— 那是**用位置说出来的假读数**，判据 ③ 现在两端逐字比那颗词。
         // 真画师走下面的 [desktopDetailArtists]（站方标好的档位），两条路各说各的。
         if (post.author.isNotBlank()) add("上传者" to post.author)

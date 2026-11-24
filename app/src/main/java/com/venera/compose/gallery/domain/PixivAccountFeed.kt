@@ -3,7 +3,6 @@ package com.venera.compose.gallery.domain
 import com.venera.compose.gallery.data.PixivRestrict
 
 /**
- * 顶栏那一枚可见性下拉的三档（2026-10-19，pixiv 个人账号页）。
  *
  * ## 为什么「全部」不是一条腿，而是两趟
  *
@@ -12,7 +11,6 @@ import com.venera.compose.gallery.data.PixivRestrict
  * 这一条必须写在类型上：早先的稿子里 [All] 差点被实现成 `restrict=public` 加一句"应该也含私密的"，
  * 那正是本仓反复立案的**假开关**那一族 —— 屏上摆着一档"全部"，实际只读了公开。
  *
- * 用户 2026-10-19 拍板「留全部」，代价就是每一屏多一跳；两趟的游标各记各的（见 [PixivLegCursor]）。
  */
 enum class PixivReadScope(val screenLabel: String) {
     /** 公开 + 非公开两趟合并。 */

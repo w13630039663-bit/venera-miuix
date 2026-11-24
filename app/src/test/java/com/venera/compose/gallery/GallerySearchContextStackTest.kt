@@ -20,7 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 画廊搜索的**上下文栈**判据（2026-09-28 第 2 项）。
  *
  * 病因是两条按设计执行的语义：交接时 `acceptHandoff` 把条件**整片替换**，返回时 BackHandler
  * 一格到底 `closeSearch()` —— 于是"搜 touhou → 点进大图 → 点画师 wowoguni → 返回"落到每日推荐，

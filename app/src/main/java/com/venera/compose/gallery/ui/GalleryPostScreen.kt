@@ -107,7 +107,6 @@ import com.venera.compose.gallery.data.allowAnimatedImage
 import com.venera.compose.gallery.data.GalleryImageLoader
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
-import com.venera.compose.gallery.data.GalleryDownloadManager
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.domain.GalleryAi
 import com.venera.compose.gallery.domain.GalleryAutoPlay
@@ -151,7 +150,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import com.venera.compose.ui.tokens.LocalBottomBarClearance
 
 /**
- * 画廊的**满屏播放器**（2026-09-25 改版，照 Breadboard 的两张真机截图，
  * 方案见 `gallery-viewer-toolbar-and-infosheet-2026-09.md`）。
  *
  * 这一层**吃掉了原来的二级 + 三级**：以前二级是"large 档 + 两张往下滚的卡"、
@@ -162,11 +160,9 @@ import com.venera.compose.ui.tokens.LocalBottomBarClearance
  * [GalleryInfoSheet]，`GalleryFullViewer.kt` 删除。
  *
  * 背景**不在这里画**：这一页在独立 Activity 里，窗口透，后面那一屏由系统 blur-behind 实时糊
- * 顶栏整条去掉（用户 2026-09-25：要"图悬浮在页面上"的感觉），
  * 四个动作全收进底部一条 Dock（[GalleryViewerToolbar]）。
  * 原来顶栏上的"在站点打开"没丢，搬进了 [GalleryInfoSheet] 那一行。
  *
- * **左右翻页**（用户 2026-09-26 新增）：点开的那一面墙里有哪些条目，由 [GalleryViewerQueue]
  * 在点击那一刻交过来，屏上就是一个 [HorizontalPager] —— 横着翻页、竖着仍是下滑关闭，
  * 两条手势各占一个方向，互不干扰（放大之后 telephoto 会吃掉单指拖拽，翻页自然让位）。
  * 没有同墙上下文时（深链进来、上一轮列表已换）就是"只有一页的 pager"，
@@ -191,7 +187,6 @@ fun GalleryPostScreen(
      * 本页**开始入场动作**的那一刻（图起飞 / 整页抬起，两者之一）—— 此刻才允许摘掉"窗口是透明的"这件事。
      *
      * 宿主拿它去挂 blur-behind。为什么不能像别页那样 `onStart` 就挂：那一层糊盖着的正是
-     * 后面那屏主界面，第一帧就挂等于**新窗口一出现就把后面糊掉** —— 2026-10-01 12:26 录屏
      * 逐帧量出来的那一下"闪"就是它（详见 [backdropEntryAlpha]）。
      */
     onEnterStart: () -> Unit = {},
@@ -203,11 +198,9 @@ fun GalleryPostScreen(
     val imageLoader: ImageLoader = remember { GalleryImageLoader.get(context) }
     val guard = remember { GalleryPorts.of(context).contentGuard }
     val maskMode by guard.nsfwMaskMode.collectAsState()
-    // 浏览历史件（2026-10-14 起记「看过」）。可空：桌面那一侧不接这一颗（它有自己的历史屏），
     // 而这一屏是两端共享的源码文件 —— 空着就是不记，不是报错。
     val history = remember { GalleryPorts.of(context).history }
 
-    // ── 大图页的四条行为档位（批次 C1，2026-09-29；方案 §一）──
     // 全都在 `GalleryViewerPolicies` 里算，这里只读档 + 接线：那三条判据要能上单测。
     val prefs = remember { GalleryPorts.of(context).prefs }
     val keepScreenOn by prefs.galleryKeepScreenOn.collectAsState()
@@ -230,14 +223,12 @@ fun GalleryPostScreen(
     val focusRequester = remember { FocusRequester() }
 
     // 底栏那颗 ▶ 调的是**本次这一屏**的速度：进页时取偏好的默认值，页内改动不写回偏好
-    // （用户 2026-09-29 拍板：随手一调不该污染设置里的默认值）。所以用 remember 而不是 saveable
     // —— 退出大图页就丢，重进回到「设置 → 画廊 → 大图页」那一条。
     var autoPlaySecNow by remember(site.name, postId) { mutableIntStateOf(autoPlaySec) }
     var autoPlayLastSec by remember(site.name, postId) {
         mutableIntStateOf(if (autoPlaySec > 0) autoPlaySec else AUTOPLAY_DEFAULT_SEC)
     }
 
-    // ── 左右翻页的上下文（用户 2026-09-26；页轴那一版见 2026-10-18）──
     // 两种"墙"各归各的交接件，**页轴优先**：
     // - [GalleryPageAxis] = 这一条作品自己的几页（pixiv 作品页点图进来，用户点名"不能切换其他作品"）；
     // - [GalleryViewerQueue] = 把我送进来的那面邻居墙（点开哪张翻哪张）。
@@ -252,15 +243,12 @@ fun GalleryPostScreen(
     }
     /**
      * **整屏档**：图吃整扇窗口，不再被"顶部让开状态栏 / 左右各一枚 `screenHorizontal` / 底部让开
-     * 底栏净空"三面夹住（用户 2026-10-18：「放大的时候应该是像图三那样全屏放大」）。
      *
      * 判据是"这一屏翻的是不是同一作的几页"（页轴），**不是入口姓什么**：只有作品页那条路会写
      * [GalleryPageAxis]，而那条路上点开的正是详情页里**已经整屏宽**的那一页 —— 三面留白把它夹回
      * 一张悬浮卡，屏上就成了"点开反而小一圈、上下还挂着玻璃带"。
      *
-     * 图库三站（邻居墙、深链、单张补取）继续走留白那一档：2026-09-25 定的「图悬浮在玻璃上」不动。
      * 顺带这一档把放大的天花板顶到整屏 —— [galleryCoverZoomFactor] 吃的就是这一框的视口，
-     * 视口被夹小，`covered` 那一档就跟着够不着全屏（2026-10-15 那一轮的同一条因，只是这次在留白上）。
      */
     val fullBleed = axis != null
     // 页状态只此一份：单张模式 = "只有一页的 pager"，翻页模式 = 整面墙。
@@ -299,7 +287,6 @@ fun GalleryPostScreen(
     val zoomedIn = currentViewerKey != null && zoomedPages[currentViewerKey] == true
 
     // ── 屏幕常亮（C1.1）：口径逐字照抄阅读器那段（VeneraReaderScreen 的常亮块）。 ──
-    // 没有算式可抽，所以这一条**没有单测点**：验点只能在真机上停一张图等它灭。
     DisposableEffect(keepScreenOn) {
         val window = (view.context as? Activity)?.window
         if (keepScreenOn) {
@@ -330,7 +317,6 @@ fun GalleryPostScreen(
     )
 
     // ── 自动连播（C1.3）：key 带着当前页 = 翻一页计时器自己重来，不做"暂停后恢复"那份额外状态 ──
-    // **等待与进度线是同一条钟**（§一，2026-10-01）：老写法是 `delay()` 走一条、屏上那条线再走一条，
     // 两条钟各自积分，线走到头与真正翻页之间就会漂。大图页 hero 那一轮刚栽过一次同形的坑
     // （交叉淡入挂在弹簧的百分比上 —— 弹簧的百分比不是路程，见 gallery-hero-transition-*.md §十七），
     // 所以这里一开始就只留一条：等待本身就是这条动画，线走到头就是翻页那一刻。
@@ -373,7 +359,6 @@ fun GalleryPostScreen(
             )) return@LaunchedEffect
         // 翻页这一步**不能跑在本 effect 的协程里**：`currentPage` 与 `current?.isVideo` 都是本 effect
         // 的 key，而动画滚过 50% 那一刻它们就变 → effect 重启 → 正在跑的 animateScrollToPage 被取消
-        // → pager 冻在两页中间（2026-09-29 真机读数：卡片间一大片空白、谁都没贴边）。
         // 交给页面作用域的 scope：计时归 effect（key 变就重来），动画归 scope（跑完为止）。
         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
     }
@@ -400,7 +385,6 @@ fun GalleryPostScreen(
     /*
      * 离线那两样**不等面板**：词典在本地（SQLite 查一趟），早取早显示，一分请求都不花。
      *
-     * 为什么这一半要提前：**画师的外链与头像现在由这一页在打开时取**（用户 2026-10-01 第 2 条），
      * 而"哪几个名字算画师"是取数的输入 —— 站方分类那一笔要等面板开，词典这份不用。
      * 两套判据混用是安全的：兜底表只兜画师一栏，且"判成画师而站方不判"实测 0 例，
      * 所以先按词典取一轮，站方分类回来后再把多出来的那几位补上（下面第三个 effect）。
@@ -426,7 +410,6 @@ fun GalleryPostScreen(
     }
 
     /*
-     * ── 画师署名：**打开这一张图时就取**（用户 2026-10-01 第 2 条）──
      *
      * 取什么由 [galleryArtistNames] 决定 —— 与信息卡里那一块**同一个函数**
      * （两处各写一遍"谁算画师"迟早会对不上：那边会多出几个没取过的名字，面板一开又是当场等）。
@@ -492,7 +475,6 @@ fun GalleryPostScreen(
         }
     }
 
-    // ── 进场：卡片那一帧**飞**到大图的位置（2026-09-29 第四轮，用户点名要共享元素）──
     // 平台没有跨 activity 的共享图像 API（实测本机 android.jar 33~36 里只有启动图那套），
     // 所以这里自己把它的两样输入递过来：起点那一帧（[GalleryFlyIn.payload]）+ 起点矩形
     // （[GalleryFlyIn.origin]），落点由画面那一框回报（[GalleryViewerPage] 的 onImageBounds）。
@@ -515,7 +497,6 @@ fun GalleryPostScreen(
      *
      * ⚠️ 键不许退回 `uid`：页轴那一屏里一个作品的四页**共用同一个 uid**（uid 说的是"这一条作品"，
      * 收藏与历史按它记是对的），四页各自回报的画面框盖进同一个键，去程落点就成了邻页那一框 ——
-     * 邻页比例与这一页不同 ⇒ 飞到位还差一截（用户 2026-10-18 报的"进大图错位很严重"里的一路）。
      * 非页轴那些 `viewerKey` 逐字等于 `uid`，图库三站一个像素都不受影响。
      */
     val frameBounds = remember(site, postId) { mutableStateMapOf<String, Rect>() }
@@ -525,7 +506,6 @@ fun GalleryPostScreen(
      * ⚠️ 认不出页轴时**退回路由里那一条**（`站点键:id`，与 [GalleryViewerQueue] 认领时同一条算式），
      * 不能写成 `wall.getOrNull(initialIndex)?.uid` —— 那一串在**没交队列的入口**上是空列表，
      * 于是它成了 `null` ⇒ 落点那一路 `await` 的对象永远不存在 ⇒ 吃满超时预算、一路退回
-     * "整页抬上来"。用户 2026-10-01 第 4 条报的"收藏页点图没有飞入、返回却有"就是这一条：
      * 返回程查的是**当前这张**的键（[GalleryFlyIn.cardBoundsOf]），与有没有交队列无关，
      * 所以那一半一直是好的 —— **两半的判据不一致**才是真成因。
      *
@@ -540,7 +520,6 @@ fun GalleryPostScreen(
     /**
      * **交棒**那一档：飞行体已经落在画面框上之后，才轮到"页面铺满 + 图变清晰"。
      *
-     * 为什么它必须**独立于 [fly]**、而且要等到飞完才开始（2026-10-01 第四次报"打开还是闪"，
      * 录屏逐帧量出来的）：老写法把页面的淡入挂在**弹簧的百分比**上（`fly ≥ 0.75` 起淡），
      * 可弹簧的百分比不是路程 —— `fly=0.75` 时飞行体还在**路程的 75%**（离落点约 130px、小 13%）。
      * 于是同一张图有两份同时可见：页面那份在终点、飞行体那份还在半路，读起来是**重影**；
@@ -560,7 +539,6 @@ fun GalleryPostScreen(
      * 入场姿态：[PENDING] 站在原位但全透明（等落点）→ [FLY] 飞进来 → 或 [RISE] 整页抬上来。
      * **只在 effect 里定一次，之后不再翻**。
      *
-     * 两条真机读数各钉掉一种写法（2026-10-01，同一处连栽两次）：
      *
      * 1. 不能拿组合期派生的 `canFly` 当分支：飞行一结束就要把 payload 交还
      *    （[GalleryFlyIn.consume]），`canFly` 当场翻回 false，graphicsLayer 随即改走"抬页"那一支 ——
@@ -590,7 +568,6 @@ fun GalleryPostScreen(
      *
      * 它比 [flightDone] 晚 [HANDOFF_MS]：**起点那一帧（[GalleryFlyIn.payload]）必须活到这一刻**，
      * 因为页面铺满那半程还要靠它盖着图那一块，而它也是"糊 → 清晰"的淡出体本身。
-     * 老写法在 `flightDone` 那一刻就 `consume()`，位图一清、这一档当场塌掉（真机读数：
      * `pad=true` 只活了 10ms），观感就是图上"闪一下"。
      */
     var handoffDone by remember(site, postId) { mutableStateOf(flyOrigin == null) }
@@ -608,7 +585,6 @@ fun GalleryPostScreen(
         // ⚠️ 判据只能是 [GalleryFlyIn.origin]（点击那一刻同步写的那个矩形），**不是"入口姓什么"**：
         // 收藏页曾经被写在这一串里（它当年确实没飞），但它今天与画廊一级走同一条路 ——
         // 交队列 + 截帧都做了，只是那一格（旧名 `initialUid`，现名 [initialViewerKey]）当时取的是墙里的那一条（空 → null），
-        // 落点永远等不到（2026-10-01 第 4 条）。别再按入口名去猜这一条。
         if (GalleryFlyIn.origin == null) {
             flightDone = true
             handoffDone = true
@@ -618,7 +594,6 @@ fun GalleryPostScreen(
             entrance.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
             return@LaunchedEffect
         }
-        // ── 临时取证探针（2026-10-01 批次 R2，读数拿到后与 `GalleryFlyIn` 里那条一起撤）──
         val probeStart = android.os.SystemClock.elapsedRealtime()
         // 起点那一帧（异步）与落点（要等画面那一框量出来）**并发等**，共用同一笔预算：
         // 串着等最坏是两倍时长，而这两件事本来就没有先后关系。
@@ -677,13 +652,9 @@ fun GalleryPostScreen(
     // 占位那一帧**换到位才交还**：早交会在"页到位"与"图加载好"之间露出一块玻璃，
     // 观感就是闪一下。取不到详情时也要交 —— 不然这张位图一直攥在手里没人再消费它。
     //
-    // ⚠️ 两道门，缺一次就是一次"闪"（两轮真机读数各钉掉一道）：
     // 1. **飞完**（[flightDone]）：这一页从墙上点进来时 `contentReady` 二十来毫秒就为真
     //    （卡片那张预览档本来就在 Coil 内存里），而飞行体还要用 `payload` 与 `origin`
-    //    画完剩下的三百多毫秒。早交就是把飞行体半路抹掉 —— 真机读数停在 `fly=0.041`。
-    // 2. **交棒也播完**（[handoffDone]，2026-10-01 第四次报"打开还是闪"）：交棒那半程还要靠
     //    这张位图盖着图那一块、并充当"糊 → 清晰"的淡出体。老写法只看 `flightDone`，
-    //    于是 `consume()` 紧跟 `flightDone` 落地（真机读数：`pad=true` 只活了 10ms），
     //    一帧糊、又立刻变清晰 —— 那就是"图片本身闪一下"。
     //
     // 只认这两个 + 图到位，不再猜图什么时候好。`contentReady` 蕴含中档落位（见 `onReadyChange`），
@@ -716,7 +687,7 @@ fun GalleryPostScreen(
         val result = when (site) {
             GallerySite.YANDERE -> GalleryPorts.of(context).boards.yandere.fetchById(postId)
             GallerySite.GELBOORU -> GalleryPorts.of(context).boards.gelbooru.fetchById(postId)
-            GallerySite.SAFEBOORU -> GalleryPorts.of(context).boards.safebooru.fetchById(postId)
+            GallerySite.KONACHAN -> GalleryPorts.of(context).boards.konachan.fetchById(postId)
             // pixiv 走自己那三条腿（不是 board）：`/ajax/illust/{id}` 现量 200，五档图址齐。
             // 端口槽在桌面是 null ⇒ 那一侧交一句"桌面不接 pixiv"，而不是悄悄交回空。
             GallerySite.PIXIV -> GalleryPorts.of(context).pixiv?.fetchById(postId)
@@ -751,7 +722,6 @@ fun GalleryPostScreen(
         ) != null,
     ) == GalleryGuard.BLURRED
 
-    // ── 浏览历史：看到的那一张记一行（2026-10-14，与画廊首页顶栏那枚「浏览历史」同一轮）──
     //
     // 写在大图页而不是七处开卡点（首页墙 / 日榜二级页 / 搜索墙 / 画师页 / 收藏页 / 反搜结果 / 深链）：
     // 那七条路径全在这一页汇流，一处写完覆盖全部；键取 currentUid，左右翻页每滑一张也各记一笔 ——
@@ -768,7 +738,6 @@ fun GalleryPostScreen(
     // sheet 浮在上面时，系统返回先关 sheet，不要把本页一起弹掉。
     BackHandler(enabled = infoOpen) { infoOpen = false }
 
-    // ── 返回程 hero：把画面那一框截下来，飞回墙上那张卡（用户 2026-10-01 点名要做）──
     // 与去程是同一套机制的镜像。去程的两样输入是点击那一刻递过来的；返回程自己现取：
     // **起点** = 画面框（[imageBounds]），**落点** = 墙上那张卡此刻的封面矩形
     // （[GalleryFlyIn.cardBoundsOf]，由一级那一侧布局时回写）。
@@ -792,7 +761,6 @@ fun GalleryPostScreen(
      *
      * 与 [flyCornerRadius] 是**两件事**，不许互换：那一颗管"落到画面框时形状对得上"（画面框
      * 就是 `shape.large`），这一颗管"这块像素本身圆到哪儿"。旧写法两处都用前者 ⇒ `shape.large`
-     * 比 `shape.medium` 松一档 ⇒ 四角露白（2026-10-16 真机图证）。
      */
     val coverCornerRadius = veneraCoverCornerRadius()
     var exitFrame by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -806,7 +774,6 @@ fun GalleryPostScreen(
         if (!leaving) 1f else exitPageAlpha(exitFly.value)
 
     /**
-     * 入场时压暗那一层的透明度。**它不能第一帧就是 1** —— 这是 2026-10-01 第三次报"打开还是闪"
      * 之后，用录屏逐帧量出来的那条读数：
      *
      * ```
@@ -856,7 +823,6 @@ fun GalleryPostScreen(
         val host = view.context as? Activity
         host?.window?.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
         // 新字段也要归零：Android 12 起窗口背景模糊走 `setBackgroundBlurRadius` 这条独立字段，
-        // 只摘 flag 在部分 ROM 上会留着一层糊（2026-10-19 作品页返回那条读数同因）。
         host?.window?.setBackgroundBlurRadius(0)
         host?.window?.let { WindowCompat.getInsetsController(it, view) }
             ?.isAppearanceLightStatusBars = !isDarkTheme
@@ -1021,7 +987,6 @@ fun GalleryPostScreen(
     /**
      * 分享一条**原档**（图或视频）+ 单页链接。
      *
-     * 动作本体在 [shareGalleryPost]（墙上长按共用，2026-10-04 从这一处搬出去的），
      * 三条口径与"失败必须出声"的理由都写在那颗的头注里。这里只留本宿主的三件事：
      * 震动、防重入的 [sharing] 旗（视频原片 16~26 MB，取档要真下载一次）、以及把旗收回。
      */
@@ -1041,7 +1006,7 @@ fun GalleryPostScreen(
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         saving = true
         val artist = artistNames.firstOrNull()
-        GalleryDownloadManager.getInstance(context).enqueue(
+        GalleryPorts.of(context).downloads?.enqueue(
             post = target,
             artistName = artist,
         ) { outcome ->
@@ -1121,7 +1086,6 @@ fun GalleryPostScreen(
                             translationY = 0f
                         }
                         // 飞行全程页面**不出现**：此刻屏上那份图是飞行体，它就是不透明的起点像素。
-                        // 页面在这里露头就会被看见"两份图"（终点一份、半路一份）—— 2026-10-01 录屏
                         // 量到的重影正是它。页面等到**飞完**才开始淡入（见 [handoff] 的头注）。
                         Entrance.FLY -> {
                             // 算式在判据层（`handoffPageAlpha` / `handoffBodyAlpha` / `handoffCoverage`）：
@@ -1194,7 +1158,6 @@ fun GalleryPostScreen(
                                 // 返回程要"当前页"的起点 —— 翻过页之后这两个不是同一张。
                                 onImageBounds = { rect ->
                                     // 落点**只认有面积的那一版**。`boundsInWindow()` 报的是裁到窗口
-                                    // 可见部分之后的矩形（真机读数：`size=1016x1576` 恒定而 window 高只有 99），
                                     // 所以页面只要还站在屏幕外，落点就是 `0×0` —— 认了它，飞行体会缩向
                                     // 屏幕左上角消失。姿态已按 [Entrance] 修对（等待期间站在原位），
                                     // 这一道留着当保险：一个零面积的目的地永远不该被拿去飞。
@@ -1264,7 +1227,6 @@ fun GalleryPostScreen(
                                     total = pages.size,
                                 )
                             }
-                            // AI 位也带进大图页（2026-10-18）：同一张图在卡上带过角标、点开就没了，
                             // 会被读成"换一页就不是 AI 了"。套一层 Box 只是为了拿到 BoxScope ——
                             // 借的是卡上那颗**同一个**胶囊，不在这里另画一份形状。
                             val aiBadgeOn by GalleryPorts.of(LocalContext.current).prefs
@@ -1314,7 +1276,6 @@ fun GalleryPostScreen(
                                 }
                             },
                             onDownload = { download(target) },
-                            // 页轴那一屏（从 pixiv 作品页点图进来）**不摆信息钮**（用户 2026-10-18 点名）：
                             // 这一作的标题、计数、标签、画师在详情页本来就整屏摆着，大图里再拉一层是重复。
                             // 与上面那档 `fullBleed` 同判据但**各写一次** —— 那是"图多大"，这是"摆不摆钮"，
                             // 合成一枚旗标就会在下次只想改其中一件时把另一件带走。
@@ -1348,7 +1309,6 @@ fun GalleryPostScreen(
                 }
             }
 
-            // 顶栏**整条去掉**（用户 2026-09-25 点名：图要像悬浮在页面上面）。
             // 返回因此只剩两条路：下滑关闭 与 系统返回（预测式返回由跨 activity 的 AOSP 动画接管）。
             // 原来挂在顶栏的"在站点打开"没有丢，搬进了 GalleryInfoSheet 那一行。
         }
@@ -1357,7 +1317,6 @@ fun GalleryPostScreen(
         // 画在整页之上、sheet 之下：它只负责"卡片原位 → 大图位置"那一段。
         // `fly.value` / `handoff.value` / `frameBounds[...]` 都在 drawBehind 的 lambda 里读 = 绘制阶段读，
         // 每帧只重绘这一块，不把整页拖进重组（与上面 graphicsLayer 同一条口径）。
-        // 2026-10-19 批 A：两趟绘制并成共享件（进场 [GalleryEntryFlyBody]、离场 [GalleryExitFlyBody]），
         // 几何与圆角不再在这颗 2219 行的屏里各写一遍。
         val frame = cardFrame
         val startRect = flyOrigin
@@ -1392,7 +1351,6 @@ fun GalleryPostScreen(
         // 首程**不淡**：起点是屏上那一帧的真实像素（与它盖住的那张图逐像素相同），
         // 淡了就是"图还没飞就先虚了"。但**末段必须淡**（算式在判据层 [exitBodyAlpha]）——
         // 落点那一侧自己画着同一张图且一直全亮，飞行体不淡就是一块不透明的同一张画
-        // 压在同一张画上滑过去（2026-10-19 真机帧：返回第 12 帧两份比例不同的同一张叠着）。
         val exitFrom = exitStart
         val exitTo = exitTarget
         val exitBitmap = exitFrame
@@ -1409,7 +1367,6 @@ fun GalleryPostScreen(
         }
 
         // 信息面板那一格有**两版**：页轴时交回"把我送进来那一侧"给的那一版（pixiv 作品页的那一版，
-        // 用户 2026-10-18 点名「点信息面板用回为 p 站做的信息面板」），其余一律走本页自己的那颗。
         // 判据只有一枚布尔，两处不会同时画；这一颗播放器**不解释** `panelData` 是什么类型，
         // 所以它不需要认识任何新屏的模型（隔离那条尺子钉的就是这个）。
         val axisPanel = axis?.infoPanel
@@ -1422,7 +1379,6 @@ fun GalleryPostScreen(
                     onOpenArtist = { name, postSource -> onOpenArtist(name, postSource) },
                     onDownload = { download(current) },
                     onDismiss = { infoOpen = false },
-                    // 面板里点标签 → 收起面板、把这一枚交回画廊那面墙去搜（用户 2026-10-19 第 3 条）。
                     // 三步顺序：先 `postTag`（交接槽必须先写上，否则消费方读不到），再收面板，
                     // 最后 `onBack()` 把这一层退掉 —— 与画师介绍页那条链同一形状（`postTag` + finish），
                     // 不多造一条"跳走了但还压在栈上"的路。
@@ -1446,7 +1402,6 @@ fun GalleryPostScreen(
                 // 面板只负责显示（两处各存一个布尔，就会出现"底部条在转圈、底栏那颗还能点"）。
                 saving = saving,
                 onDownload = { download(current) },
-                // 「画成水彩」的入口（2026-10-14 从底栏那枚笔刷搬进这一条动作条）。
                 // 判据在 `watercolorEntryVisible`：Beta 关着、或这一张是视频 ⇒ 交回 null，那一格**整格不摆**。
                 // 点它先把面板收掉：浮层画完关掉，回到的是那张图，不是压在图上的面板。
                 onPaint = if (watercolorEntryVisible(betaEnabled = watercolorBeta, isVideo = current.isVideo)) {
@@ -1470,7 +1425,6 @@ fun GalleryPostScreen(
             )
         }
 
-        // ── 水彩绘制浮层（2026-10-13）──
         // 整屏盖在本页之上：它自己是不透明白底，取的像素与屏上同一张 large 档
         // （同一颗缓存键，不再下一遍）。连播在它开着时让位（autoPlayRunning 那两处判据）。
         AnimatedVisibility(
@@ -1575,7 +1529,6 @@ private const val PAGE_COUNTER_BG_ALPHA = 0.72f
  *
  * 此前这一屏没有任何可见的"出去"入口：退出走系统返回、下滑手势与左右边缘滑，
  * 而那三条都不写在屏上 —— 第一次进来的人要答的恰恰是"这屏怎么出去"
- * （2026-10-14 手机档 P2：顶部只有「4 / 180」）。
  *
  * 底色与页码读数共用那一套固定色对：压在内容完全不可控的图上，只有固定色对保证可读
  * （理由同 [GalleryViewerPageCounter] 头注）。触达位吃 [VeneraIconButtonTouchSize]，
@@ -1615,7 +1568,6 @@ private enum class Entrance { PENDING, FLY, RISE }
  * 这一档现在只是笔保险：万一那框压根量不出来（布局被别的动画压住、页面结构改了），
  * 也不能让页面永远透明地站着。超时就退回抬页，屏上不会留一块空白。
  *
- * 记一笔栽过的读法：先前它停在 400ms 时真机读数 `target=null waited=406ms`，
  * 而第一个非零落点在 651~657ms —— 那时以为是"布局慢"，放宽到 600ms 仍然不飞。
  * 真实原因是页面站在屏幕外，落点被窗口裁成 `0×0`（见 [Entrance]）。**预算不是病，姿态才是病。**
  */
@@ -1632,14 +1584,12 @@ private const val HANDOFF_MS = 160
 /**
  * 满屏的画面：按真实比例定框、圆角贴着图、缩放挂在容器上。
  *
- * **三档叠画**（用户 2026-09-26 点名改的形态）：开门档 → 中档 → 原档，谁先到谁先显形。
  * 打开一张图时先看到的是十几 KB 的那一档（yande.re 与网格卡片同址，缓存直接命中），
  * 中档（164~209 KB 的 sample）随后盖上，HD 钮再往上是站方原图。
  * 加载环只有一枚、只有一个落点（右下角），且**只在屏上已经有画面、更高的那一档还在飞时**才挂 ——
  * 一档都没有的时候仍然铺整块骨架（全站口径）。
  *
  * 不开 `placeholderMemoryCacheKey`：它会让 `onSuccess` 在底图命中缓存时就先响一次，
- * 加载态那条读数就再也准不了（真机反馈"加载的时候没有骨架图"的根因）。
  *
  * 视频走 [GalleryVideoViewer] 就地播、**不进缩放**：缩放层对 mp4 没有意义，
  * 而站方给的原片就是播放用的那一档（实测没有更小的转码档）。
@@ -1682,7 +1632,6 @@ private fun GalleryViewerMedia(
     } else {
         Modifier.onGloballyPositioned { coordinates ->
             // ── 临时取证探针（只挂在打开那一张上）──
-            // 落点报回来的时刻比预算晚（真机两次读数 651ms / 657ms，而预算 600ms），
             // 且回报的矩形是"宽恒定、高在长"—— 与定框算式对不上。这里一次量齐三样：
             // 布局给的尺寸、坐标自己算的窗口矩形、以及**不含 graphicsLayer 位移**的根相对矩形。
             // 三者一比就能分清：是页面在被平移（那就是入场动画在动落点）、还是尺寸真在长（布局在抖）。
@@ -1711,7 +1660,6 @@ private fun GalleryViewerMedia(
         if (post.isVideo) {
             // 视频没有"再高一档"可切，静帧到位即算落位（滑入不用等原片缓冲完）。
             //
-            // ── 全屏交给独立 Activity（2026-10-19）──
             //
             // 用户原话：「横屏视频点击全屏放大后并不是全屏只是个框，我要的是安卓全屏的样式，
             // 而且你这个做的要旋转几次还要重新加载，重做一遍」。
@@ -1742,13 +1690,11 @@ private fun GalleryViewerMedia(
             val largeRequest = remember(post.uid, animated) { galleryLargeRequest(context, post, animated) }
             val fileRequest = remember(post.uid, animated) { galleryFileRequest(context, post, animated) }
 
-            // 三档各自的落地读数。`onLoading` 必须把值打回 false：切 HD、翻回来重取都要
             // 重新点亮加载态，一次置位就再也不灭的读数等于没有加载态。
             // 快照档**只认成功**：它失败时该继续摆骨架（中档还在路上，别先摆一个空框）。
             var fastLoaded by remember(post.uid) { mutableStateOf(false) }
             var largeSettled by remember(post.uid) { mutableStateOf(false) }
             var hdSettled by remember(post.uid) { mutableStateOf(false) }
-            // 垫帧（= 去程那一帧）**等中档落位才交还**（2026-10-01 12:09 真机读数改的口径）。
             //
             // 老写法是"快照档或中档任一落位就算到位"，而快照档两站都是**特别小**的一档
             // （yande.re 的 `preview_url` 实测 300×212）：它铺进一屏宽的画面框里要放大三倍多，
@@ -1770,7 +1716,6 @@ private fun GalleryViewerMedia(
             }
 
             /*
-             * 缩放层吃**整屏**，不吃"图的那一框"（2026-10-15 真机读数：捏到最大也出不了那一块）。
              * 两处叠在一起才成那副观感：
              * ① `Modifier.zoomable` 默认 `clipToBounds = true` —— 裁的就是它自己那一层，
              *    挂在定框上等于放大之后再剪回原框；
@@ -1782,7 +1727,6 @@ private fun GalleryViewerMedia(
              */
             val coverToFill = galleryCoverZoomFactor(boxWidth, boxHeight, maxWidth, maxHeight)
             // 1:1 那一档吃**原图像素**：站方报的 `width` 就是原图宽（HD 关掉时画的仍是中档，
-            // 但"放大到 1:1"指的是把原图那一档的像素一个一个摆出来，用户 2026-10-18 点名的正是这一句）。
             val nativeZoom = galleryNativeZoomFactor(
                 post.width,
                 with(density) { boxWidth.toPx() }.toInt(),
@@ -1799,7 +1743,6 @@ private fun GalleryViewerMedia(
                 Modifier
                     .fillMaxSize()
                     // 双击走**原图像素 1:1**，不走"铺满整屏"那一档，也不走默认的上限（×10 那一档）：
-                    // 铺满会把屏外两头裁掉并且比 1:1 还糊（用户 2026-10-18：「放大整个图片而不是限制在
                     // 一个大小里放大」）。算不出 1:1（站方没给宽高，或小图本来就不止 1:1）时把这枚撤掉 ——
                     // 按下去什么都不变的那一枚就是假开关。
                     .zoomable(
@@ -1808,7 +1751,6 @@ private fun GalleryViewerMedia(
                         onDoubleClick = DoubleClickToZoomListener.cycle(maxOf(coverToFill, nativeZoom, 2.5f)),
                     ),
             ) {
-                // 三档叠画（用户 2026-09-26 点名）：谁先到谁先显形，后到的直接盖上去。
                 // 三档是同一构图、只是分辨率不同，所以盖上去读起来是"变清晰"，不是"跳一下"。
                 //
                 // 缩放与点击挂在**整屏那一层**，图这一框只跟着一起变换：老写法把 zoomable 放在
@@ -1818,7 +1760,6 @@ private fun GalleryViewerMedia(
                         .align(Alignment.Center)
                         .size(boxWidth, boxHeight)
                         .then(boundsReporter)
-                        // 圆角只在静止档保留（2026-10-23，用户「放大最大还是有这些边界」）：
                         // 放大中/放大后那道 clip 还在的话，图被裁在圆角框里，屏上永远看得出
                         // 框的边界。zoomFraction > 0 = 用户已离开展开态 -> 摘掉裁切，画面
                         // 自由铺满整屏；回到 1x 那一刻圆角自动回来。
@@ -1906,7 +1847,6 @@ private fun GalleryViewerMedia(
                     // 交棒到它等于先把图换糊一次（同上面 `onReadyChange` 那处头注）。
                     //
                     // ⚠️ 必须先按**封面自己那圈圆角**裁（倍率就是 Crop 的倍率）：这一帧的四角画的
-                    // 是卡片面色，不裁就是四枚白角挂在图上（2026-10-16 用户报的那条）。
                     val padCornerRadius = with(density) {
                         // 倍率按 `Crop` 的定义取两个方向的**大者**（比例一致时两个方向相等）。
                         val scale = maxOf(
@@ -1928,12 +1868,10 @@ private fun GalleryViewerMedia(
                             .then(if (masked) Modifier.blur(tokens.spacing.space10) else Modifier),
                     )
                 }
-                // 加载态分两段（用户 2026-09-26 的口径：先把图给我看，再告诉我还在取更清晰的）：
                 //  - 一档都没落位 = 全屏什么都没有 → 骨架（全站口径：整块重拉用骨架不用转圈）；
                 //  - 已经有画面在屏、只是更高的那一档还在飞 → 只挂一个波浪环，不再盖骨架，
                 //    更不盖满屏 —— 用户要看的正是那张已经出来的图。
                 //
-                // 环**只有一个落点**（用户 2026-09-26 二次反馈）：右下角。
                 // 原先中档那一枚挂在正中、HD 那一枚在右下角，同一件事（在取更清晰的档）换一档就换个
                 // 地方冒出来，读起来像两个互不相干的状态；而且居中那枚正压着用户在看的画面正中。
                 // 现在中档 / HD 共用这一枚环、同一个尺寸 —— 切 HD 时它不会挪窝、也不会缩一下。
@@ -1987,7 +1925,6 @@ internal fun galleryCoverZoomFactor(
 internal const val GALLERY_ZOOM_OVERCOVER_FACTOR = 10f
 
 /**
- * 放大到**原图像素 1:1** 要几倍（用户 2026-10-18：「双击放大图片应该是放大整个图片，
  * 而不是限制在一个大小里放大」，并点了「循环：适应屏宽 ↔ 原图像素 1:1」那一档）。
  *
  * 与 [galleryCoverZoomFactor] 的分别是真的：`covered` 是"把这一框裁到铺满视口"，
@@ -2021,7 +1958,6 @@ private const val BACKDROP_SCRIM_ALPHA = 0.45f
  *
  * 不另起一条钟：幕布与图本来就是同一件事的两面（图浮起来、后面的屏退下去）。
  *
- * 这个数字是**实测调出来的**，不是拍的（2026-10-01 12:30 修复后录屏逐帧）：
  * 取 0.35 时幕布只用 **67ms** 就落了满 —— `spring(StiffnessMediumLow)` 起步近似线性，
  * 临界阻尼 `x(t)=1-(1+ωt)e^(-ωt)`（ω=√400=20）在 t=0.067s 处已经到 0.387。
  * 67ms 的渐变仍然是"闪"，所以档位加深到 0.8：同一条曲线在 t≈0.14s 处到 0.8，
@@ -2063,7 +1999,6 @@ internal fun galleryLargeRequest(context: Context, post: GalleryPost, animated: 
     // 视频条目这一档要换成 [GalleryPost.videoPosterUrl]，并且**缓存键也要分开**：
     // 旧写法用同一个 `large` 键，而那个键下已经存过被兜底成原片的 **mp4 字节**
     // （Coil 的显式键不认地址，只认键名），换了判据还会命中那份坏数据 ——
-    // 结果是"修好了真机上依旧黑屏"。分开键就绕开它，旧条目交给那 512 MB 的 LRU 收拾。
     val kind = if (post.isVideo) "poster" else "large"
     // 动/静两种解法**只分内存键，不分磁盘键**：磁盘上存的是编码字节（与解法无关，共用不浪费），
     // 内存里存的却是解出来的 `AnimatedImage` 或位图 —— 共用一条键就会出"从'始终'改成'从不'

@@ -12,7 +12,6 @@ import okhttp3.Response
  * ## 为什么这两个件必须一起看
  *
  * 绑 IP 这件事本身只改**连接目标**：URL 里的域名不动，所以 Host 头、TLS SNI、
- * 证书校验对象全都还是原域名（2026-10-01 本机实测：`--resolve safebooru.donmai.us:443:104.21.91.168`
  * 回 200 且 `ssl_verify_result=0`；OkHttp 侧走的就是这条官方路子的自定义 `Dns`，
  * 不需要自造 `SocketFactory`）。
  *
@@ -35,7 +34,6 @@ internal class PreferredIpDns(private val delegate: Dns = Dns.SYSTEM) : Dns {
 
     override fun lookup(hostname: String): List<InetAddress> {
         // 冷启动/清读数后的死锁修复：读数空表时 plan 永远交 SystemDns，回退拦截器因此永远
-        // 不触发，refreshInBackground 也就永远没人叫 —— 优选层整段静默失效（真机实证：
         // 「旧自动选点」能用是因为它当场跑了 probeAll，「使用最优线路」写回后读数是空的）。
         // 这里在「配置了但没读数/已过期」时发起后台补探（needsProbe 判据 + refreshing 单飞），
         // 当前这一笔照旧走 delegate —— 补探不挡请求，探完后续请求自然钉上。

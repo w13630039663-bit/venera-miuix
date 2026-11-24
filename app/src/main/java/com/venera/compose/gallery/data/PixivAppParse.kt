@@ -57,7 +57,6 @@ data class PixivUserDetail(
 
 internal object PixivAppParse {
 
-
     fun ugoiraMetadata(body: String): PixivUgoira? = PixivUgoiraParse.ugoiraMetadataAppApi(body)
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -71,7 +70,6 @@ internal object PixivAppParse {
      *   / `total_bookmarks` / `meta_single_page.{original_image_url}` / `meta_pages[].image_urls.original`；
      * - 多页组图**只取第 0 页**（与本仓既有定档一致，见 `PixivFeedParse` 那条）。
      * - `next_url`：下一页的**完整地址**（已带 `offset` 与 `filter`）。没有它 = 到底了。
-     *   2026-10-17 第七轮加：用户点名「这个推荐也是要做成瀑布流的无限下拉的」。
      *   翻页只认这一枚 —— 自己拼 `offset` 等于在猜站方的分页口径。
      *
      * 图址三档的取法：
@@ -94,7 +92,6 @@ internal object PixivAppParse {
         page(body, "pixiv 榜单", withRank = true)
 
     /**
-     * `/v1/user/bookmarks/illust` 的答复（2026-10-17 第三十一轮，收藏 hub 那枚 🔖 卡）。
      *
      * 与推荐/榜单**同一个 `illusts[]` 形状**（书签这一腿不带 `rank`，`withRank = false`）——
      * 三方共用 [page] 这一颗行解析。书签页每项还多一枚 `is_bookmarked`（恒 true，因为这就是书签列表），
@@ -104,7 +101,6 @@ internal object PixivAppParse {
         page(body, "pixiv 书签", withRank = false)
 
     /**
-     * `/v2/illust/follow` 的答复（2026-10-19，账号页「动态 › 关注动态」）。
      *
      * 与推荐/榜单/书签**同一个 `illusts[]` 形状**，所以仍复用 [page] 那一颗行解析 ——
      * 这里单独立一个名字只为让调用点说清"我读的是动态不是书签"，不是为了另一套字段判据。
@@ -114,7 +110,6 @@ internal object PixivAppParse {
         page(body, "pixiv 关注动态", withRank = false)
 
     /**
-     * `/v1/search/illust` 的答复（2026-10-17 深夜，用户「这三段应该是有的，看看 pixez 怎么做的」）。
      *
      * 与推荐/榜单/书签**同一个 `illusts[]` 形状**，所以复用同一颗行解析。
      * 多出来的那一枚 `type`（`illust`/`manga`/`ugoira`）在行解析里被读成 [PixivWork.ugoira] ——
@@ -126,7 +121,6 @@ internal object PixivAppParse {
         page(body, "pixiv 搜索", withRank = false)
 
     /**
-     * **人气预览**那条的答复（`/v1/search/popular-preview/illust`，2026-10-19 · 批 233-4）。
      *
      * 键表与 [illustrationSearch] 共用同一颗 [page]：两条腿回的是**同一个 illust 对象**，
      * 抄两遍就是两把尺。单独一颗只为了那句失败读数说的是哪一条腿 ——
@@ -149,10 +143,8 @@ internal object PixivAppParse {
     }
 
     /**
-     * `/v1/user/illusts` 的答复（2026-10-19，用户报「返回的插画数量少很多」）。
      *
      * 与推荐/榜单/书签/搜索**同一个 `illusts[]` 形状**，所以复用同一颗 [page]：
-     * 键表抄第二遍的话，站方哪天改一档，只有真机能看见其中一处读空。
      *
      * 它比匿名那条 `www/ajax/user/{id}/profile/all` 多出来的东西正是这一批的立案读数 ——
      * **成人档只有带票据这一腿才回**（匿名那一腿站方按口径整批过滤掉了）。
@@ -162,7 +154,6 @@ internal object PixivAppParse {
         page(body, "pixiv 画师作品", withRank = false)
 
     /**
-     * `/v1/user/detail` 里画师页要的那几格（2026-10-19）。
      *
      * 一次拿齐三件此前各缺一块的事：
      * - `profile.total_illusts` / `total_manga` —— 屏上那两格的**真数**（站方自己的口径，
@@ -191,7 +182,6 @@ internal object PixivAppParse {
     }
 
     /**
-     * **作品评论**那一条的答复（2026-10-19 · 批 231-F）。
      *
      * 形状取自 pixivpy `aapi.py:illust_comments` 与 `models.py:Comment` / `CommentUser`：
      * ```
@@ -236,7 +226,6 @@ internal object PixivAppParse {
             PixivComment(
                 id = id,
                 // 正文：站方给的 `comment` 是纯文本。空正文**不再整条丢掉** ——
-                // 纯贴纸评论的正文本来就是空串（2026-10-19 六家字段表对齐 + 用户"要正常显示评论图"），
                 // 丢掉它就是"屏上条数比站方给的少"那一族假话。两样都没有才丢。
                 text = record["comment"].rawTextOrEmpty(),
                 date = record["date"].textOrNull(),
@@ -268,7 +257,6 @@ internal object PixivAppParse {
             val record = element as? JsonObject ?: return@mapNotNull null
             val user = record["user"]?.jsonObject
             // 键表只许有一份：列表腿与作品页那条登录腿（`/v1/illust/detail`）吃的是**同一个 illust 对象**。
-            // 两处各抄一遍就是两把尺 —— 站方哪天换键名，只有真机能看见其中一处读空。
             val post = postOf(record, requirePreview = true) ?: return@mapNotNull null
             PixivWork(
                 post = post,
@@ -371,7 +359,6 @@ internal object PixivAppParse {
     /**
      * 作品页那一腿的**登录版**：`/v1/illust/detail` 的答复 → [PixivWorkDetail]。
      *
-     * 为什么要有这一颗（2026-10-18 第四批第七件，用户「我已经登录而且站点也全无限制的，
      * 为啥有报错图片看不了」）：屏上那些 pixiv 卡的**来源**已经是登录腿（关注画师 / 推荐 /
      * 排行榜 / 书签都带票据），而详情从前**只有匿名腿** —— 站方对未登录的读者把成人向、
      * 仅登录可见、私密那几条整条撤图，于是"卡明明在墙上、点开说没有"。两腿同轨之后，
@@ -383,7 +370,6 @@ internal object PixivAppParse {
      * - 逐页宽高缺档就交 null ⇒ 骨架那一格不预留比例。
      *
      * ⚠️ **这一腿的键表尚无本机真读数**：app-api 不带票据现量回 400「Error occurred at the OAuth
-     * process」（2026-10-18），拿不到原文。键表是从本文件上面那笔已现量过的**同一个 illust 对象**
      * 抄来的（列表腿那一张表），所以写错的后果不是崩，是这一腿读不出图 —— 而调用点在
      * "答上了却读不出图"时退回匿名腿，屏上维持本轮之前的样子，不会更坏。真读数记在手册待上机那一格。
      *
@@ -445,7 +431,6 @@ internal object PixivAppParse {
             tags = (record["tags"] as? JsonArray)
                 ?.mapNotNull { (it as? JsonObject)?.get("name").textOrNull() }
                 ?: emptyList(),
-            // 标签译名（2026-10-20）：这一腿的格子是**平铺字符串** `translated_name`，
             // 与匿名腿那个 `translation` 对象不是同一条形状（两边各读各的）。
             // 它只在请求带了 `Accept-Language` 时才有值 —— 那枚头由 `PixivAppClient` 统一挂上。
             tagTranslations = (record["tags"] as? JsonArray)

@@ -11,11 +11,9 @@ import org.junit.Test
  * 写反的后果是面板又开始抖 —— 而那件事在屏上只在"内容顶到满屏 + 拉到底 + 再下拉"这个组合下才出现，
  * 平时看起来一切正常。设备掉线时这是唯一能跑的证据。
  *
- * 2026-10-05 起 `consumedFromDrag` 由「恒不扣」改成**三档条件**（相位 0/1/2 的判据见实现）：
  * 只有「面板已 Expanded **且** 内容已到底」才扣 —— 其余两档放行，保住「下拉关面板」的手势。
  * 下面三条正是照这三档写的。
  *
- * 用例里的四个数取自真机读数：面板在满屏态被甩时那一份残余位移约 120~400px/帧，
  * 残余速度在 2000~8000 px/s 一档（`GalleryPostScreen` 那次录屏的能量峰值）。
  */
 class GallerySheetScrollTest {
@@ -38,7 +36,6 @@ class GallerySheetScrollTest {
 
     @Test
     fun `面板顶格且内容已到底时整份扣住`() {
-        // 2026-10-05 鬼畜的修复点：这一份若不扣，会经 m3 的连接器（SheetDefaults.kt:656）
         // 逐帧推给面板，而面板 Expanded 锚点依赖内容高（BottomSheet.kt:306）⇒ 帧级上下跳。
         // 扣住 = 本层报「全吃了」⇒ 外层拿到 0 ⇒ 面板不动 ⇒ 锚点不重算 ⇒ 环断。
         assertEquals(120f, GallerySheetScroll.consumedFromDrag(120f, panelExpanded = true, contentAtBottom = true), 1e-4f)

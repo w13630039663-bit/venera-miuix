@@ -29,8 +29,8 @@ import org.junit.Test
 class DesktopRankingTest {
 
     private val today: LocalDate = LocalDate.of(2026, 10, 7)
-    private val threeLegs = listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU, GallerySite.GELBOORU)
-    private val twoLegs = listOf(GallerySite.YANDERE, GallerySite.SAFEBOORU)
+    private val threeLegs = listOf(GallerySite.YANDERE, GallerySite.KONACHAN, GallerySite.GELBOORU)
+    private val twoLegs = listOf(GallerySite.YANDERE, GallerySite.KONACHAN)
 
     private fun code(name: String) = DesktopSourceTree.codeText(DesktopSourceTree.desktopUiSource(name))
 
@@ -107,7 +107,7 @@ class DesktopRankingTest {
     fun `④ 查询串逐字转交共享那颗`() {
         listOf(
             GallerySite.YANDERE to GalleryRanking.DAY,
-            GallerySite.SAFEBOORU to GalleryRanking.MONTH,
+            GallerySite.KONACHAN to GalleryRanking.MONTH,
             GallerySite.GELBOORU to GalleryRanking.ALL,
             GallerySite.YANDERE to GalleryRanking.ALL,
             GallerySite.YANDERE to GalleryRanking.NEWEST,

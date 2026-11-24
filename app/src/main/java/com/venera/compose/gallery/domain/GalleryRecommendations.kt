@@ -151,7 +151,6 @@ object GalleryRecommendations {
     /**
      * 「按收藏推荐」这一轴**会去问的站** —— 这份表就是这条轴的发车名单，唯一的一份。
      *
-     * 为什么必须是一张表而不是 `GallerySite.entries`（2026-10-18 立案，真机闪退的根因）：
      * 枚举里有 pixiv（10-16 选型⑤ 那一批开的），而 pixiv 的**推荐腿取数**与**每页条数**两处
      * 都故意留在 `GallerySite.notWired(...)` 那一侧 —— 那条门是"抛错"设计的（走到就说明有东西
      * 把 pixiv 塞进了它不该进的面）。问题在于发车名单当时跟着枚举长：**收藏里一有 pixiv 的图**
@@ -169,7 +168,6 @@ object GalleryRecommendations {
      * 每站各算一份。两站用**各自的抽样流**（种子 + 站点序号），
      * 与 `GalleryMerge.mix` 同一条理由：共用一段随机数会让两站的抽法互相牵连。
      *
-     * ⚠️ 发车名单是 [RECOMMEND_LEG_SITES] 而不是枚举全体，理由与真机读数见那颗的头注。
      */
     fun recommendBySite(
         favourites: List<GalleryFavorite>,

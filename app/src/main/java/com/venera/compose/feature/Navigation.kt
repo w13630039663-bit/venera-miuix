@@ -153,7 +153,6 @@ import androidx.compose.material3.IconButton
 @Serializable data object GalleryRoute
 
 /**
- * 画廊**二级页**：每日热门全量（2026-09-30 新增）。
  *
  * 首页那一节从此只是预览（一行横卡 + 「查看全部」），全量与「换一批」都搬到了这里。
  *
@@ -165,7 +164,6 @@ import androidx.compose.material3.IconButton
 @Serializable data object GalleryDailyRoute
 
 /**
- * 画廊二级页：**浏览历史**（2026-10-14 新增，入口是画廊首页顶栏那枚 🕘，
  * 占的正是原来「换一批」那枚的位置 —— 换一批仍在猜你喜欢节头，见 `GalleryScreen` 顶栏注）。
  *
  * 做成 MainActivity 里的路由而不是新 Activity：屏防窥（`FLAG_SECURE`）是**窗口属性**，
@@ -179,7 +177,6 @@ import androidx.compose.material3.IconButton
 @Serializable data object GalleryHistoryRoute
 
 /**
- * 画廊二级页：**收藏 hub**（2026-10-17 第三十一轮，用户稿那两颗卡）。
  *
  * 入口是画廊首页顶栏那枚 🔖（在搜索与浏览历史两枚之间，见 `GalleryScreen` 的 actions）。
  * 这一页本身不摆任何图：它只有「本地收藏」与「Pixiv 书签」两颗卡 —— 两套账的分岔口，
@@ -252,7 +249,6 @@ internal fun resolveDetailComic(route: DetailRoute, selectedComic: ComicItem?): 
  * 插图预览页。
  *
  * 路由只带**行 id**（`Long` 是导航内建类型）。整条 `FavoriteImageItem` 进参数这条路走不通：
- * type-safe 导航对自定义对象要 safeargs 生成 NavType，本仓库没装，真机上直接崩在建图阶段
  * （详见 FavoriteImageItem 顶部注释）。载荷放 [VeneraShellViewModel.favoriteImagePayloads]。
  */
 @Serializable data class FavoriteImageRoute(val itemId: Long)
@@ -515,7 +511,6 @@ private fun routeFor(tab: VeneraNavTab): Any = when (tab) {
 /**
  * 这条目的地在第几个主 Tab 槽位；不是 Tab 就返回 null。
  *
- * 槽位放大 10 倍（0/10/20/30）是为探索留的：探索并入搜索页分段后（2026-11-03）它不再是
  * 主 Tab，但与搜索是"同一页的两个分段"，切换仍要整页横推 —— 给它一个紧贴搜索的
  * **虚拟槽位 15**，方向判定照旧走 compare，而枚举里不用为它留一个假格子。
  *
@@ -537,7 +532,6 @@ private fun NavDestination.tabIndex(): Int? {
         hasRoute(GalleryBookmarksHubRoute::class) -> 20
         // 探索：搜索页的"探索"分段（虚拟槽位，见函数头注）。
         hasRoute(ExploreRoute::class) -> 15
-        // 下载与本地：第五格（2026-11-03，探索退役后换上来的）。
         hasRoute(DownloadRoute::class) -> 40
         else -> return null
     }
@@ -547,7 +541,6 @@ private fun NavDestination.tabIndex(): Int? {
 /**
  * 切 Tab 的滑动方向：+1 = 往 Tab 序列后面走，-1 = 往前，null = 两端不全是 Tab。
  *
- * 用户 2026-09-29 的口径是「Tab 顺序与滑动方向一一对应」：首页→收藏新页从右滑入，
  * 收藏→首页镜像。只有**两端都是主 Tab**才这样画 —— 列表→详情、二级页仍走官方 shared axis X，
  * 那是"同一本书换个容器"的形状，封面共享元素按自己的曲线在飞，不能被整页横推盖掉。
  */
@@ -591,7 +584,6 @@ private fun NavHostController.gotoTab(tab: VeneraNavTab) {
 }
 
 /**
- * 跳到搜索页的「探索」分段（2026-11-03，探索 tab 退役后的唯一入口）。
  *
  * 与 [gotoTab] 同一个 pattern（restoreState + popUpTo saveState）：两个分段各自记着自己的
  * 滚动锚与状态，来回切不丢。区别只在目的地是 [ExploreRoute] —— 它已不在底栏，但仍是
@@ -635,7 +627,6 @@ fun VeneraComposeApp() {
     val currentTab: VeneraNavTab? = when {
         destination == null -> null
         destination.hasRoute(HomeRoute::class) -> VeneraNavTab.HOME
-        // 历史不再是主 Tab（2026-09-23 降回二级页）→ 落在这条路由上时 currentTab 为 null，
         // 底栏与壳顶栏随之隐藏，与其它二级页同一口径。
         destination.hasRoute(FavoritesRoute::class) -> VeneraNavTab.FAVORITES
         destination.hasRoute(SearchRoute::class) -> VeneraNavTab.SEARCH
@@ -647,13 +638,10 @@ fun VeneraComposeApp() {
         destination.hasRoute(GalleryHistoryRoute::class) -> VeneraNavTab.GALLERY
         // 收藏 hub 与 pixiv 书签页同样算 GALLERY（第三十一轮，同一条理由）。
         destination.hasRoute(GalleryBookmarksHubRoute::class) -> VeneraNavTab.GALLERY
-        // 标签直达搜索（2026-10-23，用户「从漫画详情页点 tag 跳过去的 tag 搜索没底栏」）：
         // 它是搜索 Tab 往下走的一层 —— 底栏不该消失，切页动画也沿用 SEARCH 的方向。
         destination.hasRoute(TagSearchRoute::class) -> VeneraNavTab.SEARCH
-        // 探索并入搜索页分段（2026-11-03）：目的地还在，但底栏点亮的是**搜索**那格
         // —— 用户读到的现在是"同一个页面的另一个分段"，不再是第五格。
         destination.hasRoute(ExploreRoute::class) -> VeneraNavTab.SEARCH
-        // 下载与本地（2026-11-03）：第五格，全项目唯一的下载/本地入口。
         destination.hasRoute(DownloadRoute::class) -> VeneraNavTab.DOWNLOADS
         // 子页一律 currentTab = null（底栏与壳顶栏隐藏）。设置主页与漫画源管理已搬进
         // SettingsActivity / SettingsSubActivity，走系统跨 activity 转场，不再是本图的目的地。
@@ -673,9 +661,7 @@ fun VeneraComposeApp() {
      * 每日热门二级页那一档同理：`currentTab` 在那儿也算 GALLERY，所以判据读的是
      * **目的地**而不是 Tab，否则从二级页进大图页点标签这一路仍然不跳。
      *
-     * ── 为什么是 navigate(GalleryRoute) + popUpTo(GalleryRoute)，不是 gotoTab（2026-10-23 修）──
      *
-     * 真机病因：从画廊**二级页**（每日热门 / 浏览历史 / 收藏 hub）点开大图再点标签，
      * 这一跳过去之后**人还停在二级页上**，槽也没人消费 —— 用户读作"点了没反应"。
      * 成因在 `gotoTab` 那一族参数上：它带着 `restoreState = true` 去 `navigate(GalleryRoute)`，
      * 而 `popUpTo(起始页) { saveState = true }` 刚刚把「GalleryRoute + 二级页」**整条**存了
@@ -753,7 +739,6 @@ fun VeneraComposeApp() {
     // 判定只在这一处发生 —— 底栏可见性、底部留白、侧栏有无三件事由同一个布尔驱动，
     // 「有底栏 ⟺ 有留白 ⟺ 无侧栏」由构造保证，不靠各页面自己记。
     //
-    // 2026-10-12（用户点名）：这个布尔不再只吃档位 —— 液态玻璃档要求**横屏也保留底部悬浮栏**，
     // 所以改由 `sideBarReplacesBottomBar(档位, 样式)` 定夺。MD3 档返回值与改动前逐值相同
     // （`layoutMode != Compact`），手机档与既有平板档零回归；只有「宽窗 + 液态玻璃」这一格
     // 从「被顶掉」变成「保留玻璃栏」，正是用户要的那一档。
@@ -870,7 +855,6 @@ fun VeneraComposeApp() {
                                     haptic()
                                     context.openSettingsSubScreen(SettingsSubScreen.SOURCE_MANAGE)
                                 },
-                                // 「每日热门 ›」：2026-10-19 用户报「点了还是没有反应」。
                                 // 根因不是手势没挂上，而是**这一格压根没接线** ——
                                 // `AndroidHomeScreen` 的 `onOpenGallery` 默认值是空 lambda，
                                 // 而装配根从来没递过实参（编译器不会报：有默认值就算"可选"）。
@@ -904,7 +888,6 @@ fun VeneraComposeApp() {
                                 animatedVisibilityScope = this,
                                 onSelect = ::openComic,
                                 consumesBottomBarClearance = true,
-                                // 探索并进本页（2026-11-03）：主搜索亮「搜索」段，胶囊拨「探索」走
                                 // gotoExploreSegment（存档口径与切主 Tab 一致，来回切不丢状态）。
                                 showSegment = true,
                                 onSwitchToExplore = {
@@ -943,7 +926,6 @@ fun VeneraComposeApp() {
                     }
                     composable<FavoritesRoute> {
                         CoverTransitionHost(animatedVisibilityScope = this) {
-                            // 2026-10-12（用户点名的 B 方案）：宽窗走「列表 + 详情」双栏，
                             // 窄窗仍走单页 + 壳 NavHost 的 DetailRoute（逐像素不变）。
                             //
                             // 档位判据收口在 feature/favorites/FavoritesSplitPanePolicy.kt（有单测），
@@ -1037,7 +1019,6 @@ fun VeneraComposeApp() {
                         val route = entry.toRoute<FavoriteImageRoute>()
                         // **每次重组都回读**，不套 remember、也不在退场时清：这条目的地下面还能压
                         // 详情页，从详情页返回时它会重新进组合 —— 旧的一次性槽位写法就是在这里读到
-                        // null，既画不出内容（整屏空）又自行 pop 一次，真机报的"返回两次 UI 消失"。
                         val item = shell.favoriteImagePayloads[route.itemId]
                         if (item == null) {
                             // 只剩进程被杀后恢复这一种可能：VM 没了、表也空了。如实退回，
@@ -1058,7 +1039,6 @@ fun VeneraComposeApp() {
                         }
                     }
                     composable<HistoryRoute> {
-                        // 二级页（2026-09-23 起）：有返回语义，从首页分区头 / 设置 / 阅读器三处进来。
                         CoverTransitionHost(animatedVisibilityScope = this) {
                             AndroidHistoryScreen(
                                 onSelect = ::openComic,
@@ -1070,7 +1050,6 @@ fun VeneraComposeApp() {
                         }
                     }
                     composable<GalleryRoute> {
-                        // 大图页**不再是本图的目的地**：2026-09-25 起它是独立 Activity
                         // （`GalleryPostActivity`）—— 只有跨过 Activity 边界，系统才会
                         // ① 实时糊掉后面这一屏（blur-behind 背景模糊）、② 施加 AOSP 跨 activity
                         // 预测式返回动画。向上滑入期间垫着的那一帧由 GalleryScreen 在点击那一刻截好。
@@ -1097,7 +1076,6 @@ fun VeneraComposeApp() {
                                     haptic()
                                     navController.navigate(GalleryHistoryRoute)
                                 },
-                                // 「收藏」hub（2026-10-17 第三十一轮）：顶栏那枚 🔖 在
                                 // 搜索与浏览历史两枚之间，点它进两颗卡那一页。
                                 onOpenBookmarks = {
                                     haptic()
@@ -1165,7 +1143,6 @@ fun VeneraComposeApp() {
                             ) { fullWidth -> fullWidth } + fadeOut(tween(120))
                         },
                     ) {
-                        // 浏览历史二级页（2026-10-14）。它**不包 CoverTransitionHost**：
                         // 那一层是给封面共享元素用的，而历史墙的瓦片没有对面那一头
                         // （大图页是独立 Activity，跨窗口没有同 key 的落地槽位 —— 挂了就是白挂）。
                         // 点一张历史瓦片 = 重新走一遍 openGalleryPost：大图页按「站 + 号」现取，
@@ -1206,7 +1183,6 @@ fun VeneraComposeApp() {
                             ) { fullWidth -> fullWidth } + fadeOut(tween(120))
                         },
                     ) {
-                        // 收藏 hub（2026-10-17 第三十一轮）：两颗卡 + 一行说明，本身不摆图。
                         // 同样**不包 CoverTransitionHost**：卡面上没有封面，没有对面那一头。
                         //
                         // 「本地收藏」那颗走 **FAVORITES 主 Tab**（收藏页里那个画廊分段，
@@ -1269,7 +1245,6 @@ fun VeneraComposeApp() {
                             )
                         }
                     }
-                    // 「下载与本地」（2026-11-03）：主 Tab 第五格，全项目唯一的下载/本地入口。
                     // 旧 DownloadScreen / LocalComicScreen 两屏的功能已并入 DownloadsLocalScreen，
                     // 两屏间的互跳入口随合并消失。
                     composable<DownloadRoute> {
@@ -1377,7 +1352,6 @@ fun VeneraComposeApp() {
         // 用 Box 承担底部对齐：VeneraAmbientBackground 的 content 是普通 lambda，
         // 不是 BoxScope，直接 .align() 不会生效（底栏会跑到左上角）。
         //
-        // ── 「画廊：下滑收起底栏」那一道闸（2026-09-30）──
         // 状态住在 `GalleryChromeAutoHide`（页内滚动写、壳层读，形状见那个对象）。
         // ⚠️ 这里**必须**再判一次"当前是不是画廊"：
         //  `hidden` 是页内写进跨层对象的快照值，而底栏是**壳层共享**的 ——
@@ -1396,7 +1370,6 @@ fun VeneraComposeApp() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // ── 起点截帧时让位（2026-10-04，用户图证：飞行体里横着一条底栏）──
                 // PixelCopy 读的是**已合成**的窗口表面，压在这块之上的自有 chrome 会被一起截进
                 // 飞行体。所以截之前把整条覆盖层收掉，截完立刻恢复。
                 // ⚠️ 只走 alpha，不走 `if` 摘掉、也不改 offset：那两种都会让内容重排、卡片挪位，

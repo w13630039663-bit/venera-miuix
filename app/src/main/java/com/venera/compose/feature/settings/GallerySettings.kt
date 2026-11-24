@@ -62,12 +62,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 画廊设置（设置首页第 8 个分区，2026-09-29 第五轮）。
  *
  * ## 为什么单独一块，而不是散在「探索 / 应用 / 网络」里
  *
  * 从前画廊的配置分在三处：账号与 SauceNAO Key 在**漫画源管理**页顶部（那页本来的主题是 JS 源脚本），
- * 图片缓存预算根本没法改（写死 512 MB），下载目录跟着漫画根走。用户 2026-09-29 的口径是
  * "做单独的画廊设置，把 api key 迁移到这个设置里，并采用分组卡片"。
  *
  * ## 分组怎么分（按"改它的人当时在解决什么问题"，不是按字段类型）
@@ -105,16 +103,13 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
     val backdrop by prefs.galleryBackdrop.collectAsState()
     val blockAi by prefs.galleryBlockAi.collectAsState()
     val aiBadge by prefs.galleryAiBadge.collectAsState()
-    // 两枚"滚动收起"（2026-09-30）：默认关，见 VeneraPreferences 那两处的说明。
     val hideTopBar by prefs.galleryHideTopBar.collectAsState()
     val hideBottomBar by prefs.galleryHideBottomBar.collectAsState()
-    // 「画成水彩」Beta 开关（2026-10-13）：默认关，见 VeneraPreferences 该条说明。
     val watercolorBeta by prefs.galleryWatercolorBeta.collectAsState()
     val pixivWorkSeam by prefs.pixivWorkSeam.collectAsState()
     val pixivWorkDetailsInFlow by prefs.pixivWorkDetailsInFlow.collectAsState()
 
     /*
-     * 浏览历史（2026-10-14）。可空读而不是 checkNotNull：这一颗在契约上就是"移动端才有"，
      * 而设置页属于漫画侧那一棵 —— 读不到就整行不摆。摆一枚永远清不出东西的钮才是假开关，
      * 少一行设置不是缺陷。
      */
@@ -160,7 +155,6 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
         Spacer(Modifier.height(VeneraTokens.spacing.space4))
 
         SettingsGroup("浏览与布局") {
-            // 画廊首页头图（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
             // 与设置页那一条**同机制、不同键不同槽位**：共用一张会让"换画廊的头"顺手改掉设置页，
             // 反之也一样。未设置 = 首页维持现在的样子（hero 整条链路不参与）。
             val heroPath by prefs.galleryHeroPath.collectAsState()
@@ -267,7 +261,6 @@ internal fun GallerySettings(prefs: VeneraPreferences, onBack: () -> Unit) {
                 summary = saveFormat,
                 onClick = { formatDialogVisible = true },
             )
-            // 「下载任务管理」入口已撤（2026-11-04）：图片下载记录住「下载与本地」的图片段，
             // 全项目唯一入口在底栏第五格。
         }
 

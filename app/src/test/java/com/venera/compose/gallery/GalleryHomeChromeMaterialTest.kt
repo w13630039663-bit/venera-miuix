@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 首页 chrome 那一行的**材质与层级**（2026-10-17 第二十五轮，方案 B，用户拍板「先按方案b」）。
  *
  * 起点是评审第四节那三版 CSS 复刻挑中的 B：「一浮一沉 + 一个焦点色块」——
  * 搜索条浮成主角、站源分段器沉成底、图搜收进一枚粉圆钮。

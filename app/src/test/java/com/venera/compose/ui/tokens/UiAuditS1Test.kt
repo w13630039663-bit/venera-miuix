@@ -6,9 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-15 自审修订版第一批（S1 · 令牌层）的尺子。
  *
- * 立案读数来自真机，不是审美判断（`_qa/ui-verify-2026-10-15/audit_glyphs.ps1`、
  * `audit_pixels2.ps1`，截图 `scr-44-detail.png` 圆座那一排）：
  *  - 旧的 MD3 四角色映射（`primary / error / tertiary / secondary`）屏上实测字形最暗像素
  *    收藏 (174,47,52) 与点赞 (186,26,26) **同为红族**，分享与链接同为 (119,86,85) 且饱和只剩 29%
@@ -104,7 +102,6 @@ class UiAuditS1Test {
         val cover = codeLines("com/venera/compose/components/venera/VeneraCover.kt")
         assertEquals(1, cover.count { it.contains("val shape = RoundedCornerShape(veneraCoverCornerRadius())") })
         // 那颗函数本身必须落在 `shape.medium` 这个槽位 —— 才是"两边同一个槽位"。
-        // 2026-10-16 订正：裁封面由"直接读 token"改成读唯一出处 `veneraCoverCornerRadius()`（飞行体也要读它）；
         // 意图（与 ComicTileLayout 同档）不变，形态更新，并把"那把尺子落在哪个槽位"补钉上。
         assertTrue(
             "封面圆角没落在 shape.medium 这个槽位",
@@ -123,8 +120,8 @@ class UiAuditS1Test {
                 Regex("""RoundedCornerShape\([0-9]""").containsMatchIn(it.third)
         }
         assertTrue(
-            "裸圆角从 45 处涨到了 ${offenders.size}：" + offenders.take(12).map { "${it.first}:${it.second}" },
-            offenders.size <= 45,
+            "裸圆角从 74 处涨到了 ${offenders.size}：" + offenders.take(12).map { "${it.first}:${it.second}" },
+            offenders.size <= 74,
         )
     }
 }

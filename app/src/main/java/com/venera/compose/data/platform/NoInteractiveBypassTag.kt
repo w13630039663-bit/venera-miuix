@@ -7,7 +7,6 @@ package com.venera.compose.data.platform
  * - [com.venera.compose.data.network.ImageFetchTag] = "图片取流"，同时关掉过盾**和**域名熔断（图片不该把 host 拉黑）；
  * - 本 tag = **只**关过盾，熔断照旧参与。
  *
- * 用途是画廊日榜那类"整屏等结果"的 API 流量（2026-09-26）：
  * 过盾是 `runBlocking { bypass() }` 等一个人机交互，而那个 `await()` 没有超时 ——
  * 用户若 Home 掉过盾窗口而不是点"取消"，取数线程会一直挂住，
  * 屏上就是永远的波浪环（OkHttp 的 callTimeout 关 socket 唤醒不了 parked 的线程）。

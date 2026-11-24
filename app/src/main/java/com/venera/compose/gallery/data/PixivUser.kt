@@ -7,7 +7,6 @@ package com.venera.compose.gallery.data
  * - 那一颗是**图库站**的关注名单，键是 `routeKey:标签名`（三站里同一名字会合并成一枚）；
  * - 这一颗是 pixiv 的 `user.id`，站方那一侧的唯一身份。
  *
- * 2026-10-17 第八轮（用户「关注画师你参考 pixez-miuix 是怎么拿到的」）落地：
  * 取数就两条 app-api 腿，两条都**必须带票据**：
  * - 关注列表 `GET /v1/user/following?filter=for_android&user_id={自己}&restrict=public`
  * - 推荐用户 `GET /v1/user/recommended?filter=for_android`

@@ -44,7 +44,6 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
 import androidx.compose.material3.darkColorScheme as materialDarkColorScheme
 import androidx.compose.material3.lightColorScheme as materialLightColorScheme
 
-// 2026-10-20：`LocalVeneraDarkTheme` 已搬到 `ui/tokens/LocalVeneraDarkTheme.kt`。
 // 理由是五颗 components 吃它，而 `components/` 要上桌面；这颗声明零依赖，
 // 住在本文件里会被 `android.app.Activity` / `WindowCompat` 那一堆绑定连坐。
 // provider 仍在下面 `VeneraTheme` 里，位置与语义一字未改。

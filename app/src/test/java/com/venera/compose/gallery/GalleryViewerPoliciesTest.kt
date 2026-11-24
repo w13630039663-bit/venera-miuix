@@ -11,11 +11,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 大图页三条行为档位的判据（批次 C1，2026-09-29）。
+ * 大图页行为档位判据的单测。
  *
  * 本项目单测没有 Robolectric，摸不到 composable，所以"该不该翻页 / 该预取哪几页"这类
  * 会算错的判断全抽进 `gallery/domain/GalleryViewerPolicies.kt`，在这里钉住。
- * 四条设置里只有"屏幕常亮"没有算式（它只是一枚 window flag），所以它不在这里 —— 验点归真机。
+ * 四条设置里只有"屏幕常亮"没有算式（只是一枚 window flag），不在本测试范围。
  */
 class GalleryViewerPoliciesTest {
 
@@ -74,8 +74,8 @@ class GalleryViewerPoliciesTest {
 
     @Test
     fun `弹层开着 视频页 缩放态 三样都不自动走`() {
-        // 弹层与缩放态是"人正在看这一张"，自动翻走就是抢操作；
-        // 视频不吃连播是用户 2026-09-29 拍板的（连播不该替人决定何时起播视频、何时出声）。
+        // 弹层与缩放态表示用户正在看这一张，自动翻走就是抢操作；
+        // 视频不吃连播：连播不该替人决定何时起播视频、何时出声。
         assertFalse(canAdvance(infoOpen = true))
         assertFalse(canAdvance(isVideo = true))
         assertFalse(canAdvance(zoomed = true))

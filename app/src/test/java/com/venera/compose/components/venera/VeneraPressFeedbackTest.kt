@@ -8,7 +8,6 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.SinkFeedback
 
 /**
- * 「图片面按压反馈」这一轮（2026-10-16 用户要求「给图廊所有图片都加上按压反馈」）的尺子。
  *
  * 为什么必须有它：这一轮的缺陷形状是**静默的**。miuix `Card` 的 `pressFeedbackType` 默认就是
  * `None`，所以"漏传一个口子"的后果不是编译错、也不是崩，而是"这一块按下去没回话" ——

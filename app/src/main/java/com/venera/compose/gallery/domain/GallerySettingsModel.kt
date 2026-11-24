@@ -2,7 +2,6 @@ package com.venera.compose.gallery.domain
 
 import com.venera.compose.gallery.data.GalleryPost
 
-/** 网格列数。AUTO = 按屏宽自己定（大屏 3 列、手机 2 列，那是 2026-09 真机定下来的口径）。 */
 enum class GalleryColumnMode {
     AUTO, TWO, THREE
 }
@@ -64,7 +63,6 @@ object GallerySettingsModel {
      * 视频条目**永远只吃静帧**（与大图页底图同一把判据 [GalleryPost.videoPosterUrl]）：
      * 站方不给更小的转码档，Gelbooru 的 `sample_url` 还是空串、翻译时兜底成了原片 mp4，
      * "清晰预览"那一档照字面去取 largeUrl 就等于让一屏卡片各下一整片 16~26 MB 的视频
-     * 再全部解码失败（2026-09-29 真机闪退的一条成因）。
      */
     fun wallUrl(post: GalleryPost, quality: GalleryPreviewQuality): String = when {
         post.isVideo -> post.videoPosterUrl

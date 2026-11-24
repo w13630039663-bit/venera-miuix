@@ -29,7 +29,7 @@ import org.junit.Test
 class DesktopWallLedgerTest {
 
     private val yandere = GallerySite.YANDERE
-    private val safebooru = GallerySite.SAFEBOORU
+    private val konachan = GallerySite.KONACHAN
 
     private fun post(site: GallerySite, id: Long) = GalleryPost(
         site = site,
@@ -87,28 +87,28 @@ class DesktopWallLedgerTest {
     @Test
     fun `② 没答上那一站下一笔从第一页补`() {
         val boards = ScriptedBoards(
-            pageSize = mapOf(yandere to 2, safebooru to 2),
+            pageSize = mapOf(yandere to 2, konachan to 2),
             pages = mapOf(
                 yandere to listOf(
                     Result.success(listOf(post(yandere, 1), post(yandere, 2))),
                     Result.success(listOf(post(yandere, 3), post(yandere, 4))),
                 ),
-                safebooru to listOf(Result.success(listOf(post(safebooru, 11), post(safebooru, 12)))),
+                konachan to listOf(Result.success(listOf(post(konachan, 11), post(konachan, 12)))),
             ),
-            failFirst = setOf(safebooru),
+            failFirst = setOf(konachan),
         )
         val ports = fakeGalleryPorts(boards)
-        val round1 = run(ports, firstRound(yandere, safebooru), legsOf(yandere, safebooru))
-        assertEquals("没答上那一站要挂着缺席原因", setOf(safebooru), round1.failures.keys)
+        val round1 = run(ports, firstRound(yandere, konachan), legsOf(yandere, konachan))
+        assertEquals("没答上那一站要挂着缺席原因", setOf(konachan), round1.failures.keys)
         assertEquals("页码账里只该有真答上那一站", setOf(yandere), round1.pageBySite.keys)
 
-        val round2 = run(ports, round1, legsOf(yandere, safebooru))
+        val round2 = run(ports, round1, legsOf(yandere, konachan))
         val bySite = boards.calls.groupBy { it.site }
         assertEquals("答上那一站第二笔该进第 2 页", listOf(1, 2), bySite.getValue(yandere).map { it.page })
         assertEquals(
             "没答上那一站第二笔仍该是第 1 页（跟着别腿跳页就是永久漏掉那一页）",
             listOf(1, 1),
-            bySite.getValue(safebooru).map { it.page },
+            bySite.getValue(konachan).map { it.page },
         )
         assertEquals("墙上该是第一笔两张 + 第二笔四张（重复零张）", 6, round2.posts.size)
         assertEquals("补上的那一站这回该答上了", emptySet<GallerySite>(), round2.failures.keys)
@@ -118,23 +118,23 @@ class DesktopWallLedgerTest {
     @Test
     fun `③ 到底的那一站不再发车`() {
         val boards = ScriptedBoards(
-            pageSize = mapOf(yandere to 4, safebooru to 2),
+            pageSize = mapOf(yandere to 4, konachan to 2),
             pages = mapOf(
                 yandere to listOf(Result.success(listOf(post(yandere, 1), post(yandere, 2)))),
-                safebooru to listOf(
-                    Result.success(listOf(post(safebooru, 11), post(safebooru, 12))),
-                    Result.success(listOf(post(safebooru, 13))),
+                konachan to listOf(
+                    Result.success(listOf(post(konachan, 11), post(konachan, 12))),
+                    Result.success(listOf(post(konachan, 13))),
                 ),
             ),
         )
         val ports = fakeGalleryPorts(boards)
-        val round1 = run(ports, firstRound(yandere, safebooru), legsOf(yandere, safebooru))
+        val round1 = run(ports, firstRound(yandere, konachan), legsOf(yandere, konachan))
         assertEquals("yande.re 两不足四张 ⇒ 该记到底", setOf(yandere), round1.sitesDone)
-        assertTrue("Safebooru 刚好给满一页，不该被记到底", safebooru !in round1.sitesDone)
+        assertTrue("Konachan 刚好给满一页，不该被记到底", konachan !in round1.sitesDone)
 
-        val round2 = run(ports, round1, legsOf(yandere, safebooru))
+        val round2 = run(ports, round1, legsOf(yandere, konachan))
         assertTrue("到底那一站被再问了一次", boards.calls.none { it.site == yandere && it.page == 2 })
-        assertEquals("第二笔只该问没到底的那一站", listOf(safebooru), boards.calls.filter { it.page == 2 }.map { it.site })
+        assertEquals("第二笔只该问没到底的那一站", listOf(konachan), boards.calls.filter { it.page == 2 }.map { it.site })
         assertEquals("墙上该是 2 + 2 + 1 张", 5, round2.posts.size)
         assertTrue("两站都到底了而 atEnd 仍为假", round2.atEnd)
     }
@@ -147,21 +147,21 @@ class DesktopWallLedgerTest {
     @Test
     fun `④ 每腿的 limit 吃这一站自己的档位`() {
         val boards = ScriptedBoards(
-            pageSize = mapOf(yandere to 32, safebooru to 18),
+            pageSize = mapOf(yandere to 32, konachan to 18),
             pages = mapOf(
                 yandere to listOf(Result.success(listOf(post(yandere, 1)))),
-                safebooru to listOf(Result.success(listOf(post(safebooru, 2)))),
+                konachan to listOf(Result.success(listOf(post(konachan, 2)))),
             ),
         )
         val ports = fakeGalleryPorts(boards)
-        run(ports, firstRound(yandere, safebooru), legsOf(yandere, safebooru))
+        run(ports, firstRound(yandere, konachan), legsOf(yandere, konachan))
         val limits = boards.calls.associate { it.site to it.limit }
         assertEquals("yande.re 的 limit 没吃它自己的 pageSize", 32, limits.getValue(yandere))
-        assertEquals("Safebooru 的 limit 没吃它自己的 pageSize", 18, limits.getValue(safebooru))
+        assertEquals("Konachan 的 limit 没吃它自己的 pageSize", 18, limits.getValue(konachan))
         // 对照：查询串逐腿各发各的（不是拿一枚全局串去问三站）。
         assertEquals(
             "发出去的查询串没逐腿各算",
-            setOf("q-YANDERE", "q-SAFEBOORU"),
+            setOf("q-YANDERE", "q-KONACHAN"),
             boards.calls.map { it.query }.toSet(),
         )
     }
@@ -174,18 +174,18 @@ class DesktopWallLedgerTest {
     @Test
     fun `⑤ 全腿没答上时空屏不叫到底`() {
         val boards = ScriptedBoards(
-            pageSize = mapOf(yandere to 2, safebooru to 2),
+            pageSize = mapOf(yandere to 2, konachan to 2),
             pages = mapOf(
                 yandere to listOf(Result.failure(IllegalStateException("这一站超时了"))),
-                safebooru to listOf(Result.failure(IllegalStateException("这一站 403"))),
+                konachan to listOf(Result.failure(IllegalStateException("这一站 403"))),
             ),
         )
         val ports = fakeGalleryPorts(boards)
-        val batch = run(ports, firstRound(yandere, safebooru), legsOf(yandere, safebooru))
+        val batch = run(ports, firstRound(yandere, konachan), legsOf(yandere, konachan))
         assertEquals("一笔都没答上而墙上有东西", 0, batch.posts.size)
-        assertEquals("缺席要逐站点名", setOf(yandere, safebooru), batch.failures.keys)
+        assertEquals("缺席要逐站点名", setOf(yandere, konachan), batch.failures.keys)
         contains(batch.failures.getValue(yandere), "超时")
-        contains(batch.failures.getValue(safebooru), "403")
+        contains(batch.failures.getValue(konachan), "403")
         assertTrue("全腿没答上被判成到底（那是空屏不是看完）", !batch.atEnd)
         assertEquals("没答上的腿不该进到底名单", emptySet<GallerySite>(), batch.sitesDone)
     }

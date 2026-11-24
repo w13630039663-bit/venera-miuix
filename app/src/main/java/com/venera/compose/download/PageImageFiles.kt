@@ -18,7 +18,6 @@ import java.io.File
 internal val pageImageExtensions: Set<String> = setOf("jpg", "jpeg", "png", "webp")
 
 /**
- * 这个文件名是不是一页图。大小写不敏感（真机见过 `0001.JPG`）。
  *
  * 只判名字，不判"存不存在、空不空" —— 那两条要碰文件系统，留在调用点上，
  * 好让这个函数能当纯函数被单测钉住。

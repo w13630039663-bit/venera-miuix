@@ -11,7 +11,6 @@ import okhttp3.Request
 /**
  * Danbooru 的**画师外链**读取（批次 L）—— Gelbooru 那一侧画师唯一有可能给出平台链接的来源。
  *
- * 为什么要绕到第三方站：Gelbooru 自己给不出。2026-09-30 实测三处结构性缺口：
  *
  * - DAPI 的 `s=artist` **匿名一律 401**（与 `s=post`/`s=tag` 同一条凭据规则）；
  * - 原生画师页 `page=artist&s=show&id=NNN` **可以**匿名读（`id=1` 实测回 8781 字节、正文里就有
@@ -20,7 +19,6 @@ import okhttp3.Request
  *   三次返回**逐字节相同**（都是 17621 字节、同样 64 条链接），只是那一屏默认列表。
  *   于是从"这张图的画师标签"到"那条画师记录的编号"之间没有匿名可走的一跳。
  *
- * Danbooru 与 Gelbooru 共享画师名，且 `artists.json?name=` 匿名语义可用（用户 2026-09-30 点名走这条）。
  *
  * ⚠️ **今天这台出口拿不到样例**：danbooru / safebooru / testbooru 三站同测**全部 403 卡过盾页**
  * （`Just a moment...`）。所以这一条：

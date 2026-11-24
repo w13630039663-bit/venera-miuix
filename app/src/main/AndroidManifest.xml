@@ -31,6 +31,8 @@
     <application
         android:name=".VeneraApp"
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:enableOnBackInvokedCallback="true"
         android:label="venera-miuix"
         android:supportsRtl="true"

@@ -37,8 +37,8 @@ android {
         // <33 上由 SurfaceMaterialPolicy.glassEnabled 整条回落，Manifest 有 override 豁免。
         minSdk = 30
         targetSdk = 37
-        versionCode = 2140
-        versionName = "2.1.4"
+        versionCode = 2160
+        versionName = "2.1.6"
     }
 
     signingConfigs {

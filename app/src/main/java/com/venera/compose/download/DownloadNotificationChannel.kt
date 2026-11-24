@@ -9,12 +9,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 /**
- * 「离线下载」这条通知渠道的唯一定义处（2026-10-04 从 `DownloadManager` 里搬出来）。
  *
  * ## 为什么要搬
  *
  * 原先渠道是在 `DownloadManager` 的 `init` 里建的 —— 也就是**第一次用到那顆下载单例时**才建。
- * 应用内自更新那条链要复用同一条渠道（不新建第二条是 2026-10-04 的拍板），
  * 但一台从没下载过漫画的设备上 `DownloadManager` 可能从未被实例化过，
  * 于是 `notify()` 打到一条不存在的渠道上会被系统**静默丢掉** ——
  * 表现正是"下载在跑、通知栏什么都没有"，而这在本仓的叫法是假开关。

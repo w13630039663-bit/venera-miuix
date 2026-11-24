@@ -11,14 +11,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * pixiv `/ajax/illust/{id}/ugoira_meta` 的形状解析（2026-10-23，动图播放）。
  *
  * 口径与 [PixivFeedParse] 逐字一致（手写逐字段、不给 `@Serializable` DTO）：
  * 1. **整份读不懂 = 抛**（缺 body、坏 JSON、`error=true`）；
  * 2. **认得出结构但没有可播的帧 = 交 null**（非 ugoira 那条站方回 `error=true`，那是失败；
  *    而真 ugoira 却回空 `frames` 是"答上了、没法播"，屏上不摆播放、退回静帧）。
  *
- * 现量（真号 151160372，匿名、无凭据）：
  * `{"error":false,"body":{"src":"…_ugoira600x600.zip","originalSrc":"…_ugoira1920x1080.zip",
  * "mime_type":"image/jpeg","frames":[{"file":"000000.jpg","delay":1000}, …]}}`。
  * `delay` 现量有 0 出现（站方偶发），[PixivUgoiraFrame] 一侧夹到地板值。
@@ -62,7 +60,6 @@ internal object PixivUgoiraParse {
             frames = rows,
         )
     }
-
 
     /**
      * 解析 App API 回传的 ugoira_metadata 格式。

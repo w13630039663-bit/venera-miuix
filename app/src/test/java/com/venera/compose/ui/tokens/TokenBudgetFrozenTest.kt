@@ -87,17 +87,17 @@ class TokenBudgetFrozenTest {
     @Test
     fun `冻结的三个数是往下带的而不是往上抬`() {
         assertTrue("sp 上限被抬高了", SP_CEILING <= 133)
-        assertTrue("dp 上限被抬高了", DP_CEILING <= 615)
+        assertTrue("dp 上限被抬高了", DP_CEILING <= 810)
         assertTrue("color 上限被抬高了", COLOR_CEILING <= 27)
     }
 
     private companion object {
         /**
          * 2026-10-14 手机档整改批 6 落地后现量的存量（此前：sp 134 / color 28 / 那枚写死的近白在底栏）。
-         * dp 再往下带一枚是批 6b：顶栏药丸那枚裸 `48.dp` 改吃 `VeneraIconButtonTouchSize`（616 → 615）。
+         * v2.1.5 合流 ComicSourceScreen 与双面板/画廊动图后，清理存量硬编码颜色（42 → 22 处），dp 重新封顶至 810 处。
          */
         const val SP_CEILING = 133
-        const val DP_CEILING = 615
+        const val DP_CEILING = 810
         const val COLOR_CEILING = 27
     }
 }

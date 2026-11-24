@@ -1,7 +1,7 @@
 package com.venera.compose.gallery.ui
 
-import com.venera.compose.data.prefs.VeneraPreferences
 import com.venera.compose.gallery.domain.PixivImageQuality
+import kotlinx.coroutines.flow.MutableStateFlow
 
 import android.content.Context
 import android.content.Intent
@@ -125,6 +125,8 @@ import com.venera.compose.components.wideScreenLayoutMode
 import com.venera.compose.components.ChromeCaptureSuppress
 import com.venera.compose.components.reportChromeBand
 import com.venera.compose.components.venera.LocalTopBarBackdrop
+import com.venera.compose.components.venera.VeneraDropdownMenu
+import com.venera.compose.components.venera.VeneraMenuItem
 import com.venera.compose.components.venera.VeneraShimmer
 import com.venera.compose.components.venera.VeneraIconButton
 import com.venera.compose.components.venera.VeneraTopBarPill
@@ -136,10 +138,8 @@ import com.venera.compose.gallery.data.GalleryConnectivity
 import com.venera.compose.gallery.data.GalleryPorts
 import com.venera.compose.gallery.data.GalleryPost
 import com.venera.compose.gallery.data.GallerySaver
-import com.venera.compose.gallery.data.GalleryDownloadManager
 import com.venera.compose.gallery.data.GallerySite
 import com.venera.compose.gallery.data.PixivAuthState
-import com.venera.compose.gallery.data.PixivAppClient
 import com.venera.compose.gallery.data.PixivComment
 import com.venera.compose.gallery.data.PixivPage
 import com.venera.compose.gallery.data.PixivWorkDetail
@@ -176,16 +176,13 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * **pixiv 作品页**（2026-10-18 落地，站源独用）。
  *
  * 与图库三站那套 [GalleryPostScreen] 完全隔离：那颗继续按"一张 = 一屏、左右翻邻居"来做，
  * 这一颗按 pixiv 自己的形状来做 ——
  *
  * - **纵轴 = 同一作品的多页自然接续**（唯一一档）：滚过最后一页，详情段接在同一条滚动流里，
  *   全程**一个滚动容器**（不是抽屉里的第二个滚动者）；流末尾才是「下一作品」那一格提醒；
- * - **横轴 = 换作品**：吃"把我送进来的那面墙"的本地顺序（2026-10-18 现量：详情腿没有
  *   `nextUrl`/`previousUrl`/`hasNext`、`seriesNavData` 恒 null ⇒ 站方给不出邻居，只能本地数）；
- * - 页间距两档（[PixivPageSeam]）。**从前还有一档"两轴互换"（横着一页一页翻），2026-10-18
  *   第四批按用户那句「还是直接删了横着一页一页那个模式切换吧，只留竖着连续翻页模式」整档撤掉** ——
  *   枚举、偏好键、设置页那一行与屏上那一支一起没，不留半套。
  *
@@ -209,7 +206,6 @@ fun PixivWorkScreen(
     /** 点「相关图片」里的一张：本屏已把那一排写进 [GalleryViewerQueue]，宿主换号重开这一屏。 */
     onOpenWork: (Long) -> Unit,
     /**
-     * 交旧看图器（那颗 GalleryPostActivity）的两条出口（2026-10-18 第二批加了第二条）：
      * 1) 动图 ugoira —— 那一颗会解逐帧动画，这一屏只画得出静帧；
      * 2) 页轴（点某一页要放大看）—— 调用方先把这一作的几页写进 GalleryPageAxis，
      *    那一层读到的墙就是这几页，左右翻翻不出别条作品。
@@ -260,7 +256,6 @@ fun PixivWorkScreen(
     val related = remember(postId) { mutableStateMapOf<Long, List<GalleryPost>>() }
     val relatedNextUrls = remember(postId) { mutableStateMapOf<Long, String?>() }
     /**
-     * 相关图片的**展示窗口**（2026-11-01 用户：「一次性最多获取 6 张，更多下滑再取」）。
      *
      * 站方 app-api 每页固定 30 条没法改小，但 [PixivWorkDetails] 的相关网格是**非懒**的
      * Column——列表里有多少条就组合多少个 `AsyncImage`，整页 30 张的图片请求瞬间齐发。
@@ -303,19 +298,16 @@ fun PixivWorkScreen(
     val artistAvatar = pixivAvatarUrl(detail)
 
     /**
-     * 点图 = 交大图播放器，而**只翻这一作的这几页**（用户 2026-10-18：
      * 「支持左右滑动切换本张图片，不能切换其他作品，HD 才显示原图」）。
      *
      * 走 [GalleryPageAxis] 而不是 [GalleryViewerQueue]：那颗装的是"把我送进来的邻居作品"，
      * 这里要的是"同一作的第 2、3、4 页"，两件事混一颗就会互相 `set` 掉。
      * 墙由 domain 那颗纯函数长出来（`PixivWorkPage.pageWallOf`：中档走 large 档、原图只住 fileUrl、
-     * 逐页宽高与页位）—— 屏上不自己拼四份 copy，那种拼法错一格只有真机能看见。
      *
      * ⚠️ [rect] 是**这一页此刻在屏上的那一块**（窗口坐标），必须就地递给 [GalleryFlyIn.capture]。
      * 那颗交接件是进程内单例，而"把我送进这一屏"的那一笔（墙上那张卡）谁都没清过它 ——
      * 只有大图播放器会在"飞完 + 交棒播完"之后 `consume()`，这一屏压根不读它。
      * 于是点图那一刻它手里还攥着**墙上那张卡的矩形与那一帧**，播放器照着它飞 = 从一块不在
-     * 这一屏的位置起飞、带的还是缩略那一档的构图（用户 2026-10-18 报的"进大图错位很严重"）。
      * 重新 capture 一次把矩形与像素一起换成本屏这一页；量不到矩形时**清掉**而不是留着 ——
      * 那一档播放器老实退回"整页抬上来"，宁可不飞也不飞错地方。
      */
@@ -345,7 +337,7 @@ fun PixivWorkScreen(
         } else {
             isSaving = true
             Toast.makeText(context, "开始下载《" + one.title + "》...", Toast.LENGTH_SHORT).show()
-            GalleryDownloadManager.getInstance(context).enqueue(
+            ports.downloads?.enqueue(
                 post = one.post,
                 title = one.title,
                 userId = one.authorId,
@@ -369,7 +361,6 @@ fun PixivWorkScreen(
         if (pixiv == null || details.containsKey(currentId)) return@LaunchedEffect
         failures.remove(currentId)
         // 票据在这一刻现取（不缓存、不进任何上屏消息）：屏上那些卡的来源是登录腿，
-        // 详情只走匿名腿就会在已登录的设备上念"这一条没有图"（2026-10-18 第四批第七件）。
         pixiv.workDetail(currentId, ports.pixivAccount?.bearerOrNull())
             .onSuccess { head ->
                 if (head == null) {
@@ -387,7 +378,6 @@ fun PixivWorkScreen(
                 Log.w(TAG, "pixiv 作品 $currentId 详情没取到：${failure.message}")
                 // 但 401 / 403 那两族**原样带上屏**：`PixivAppClient.execute` 特意把它们分开念
                 // （票据不能用了 / 设备登录态被判异常），合回一句"稍后再试"之后用户就分不清
-                // 该重登还是该换网络（2026-10-22 审计）。其余异常仍是固定文案。
                 val line = failure.message.orEmpty()
                 failures[currentId] = when {
                     line.contains("401") -> line
@@ -397,7 +387,6 @@ fun PixivWorkScreen(
             }
     }
 
-    // ── 评论（批 231-F，2026-10-19）：**只有登录腿拿得到正文** ──
     // 匿名四形状 404（见 `PixivAppClient.illustComments` 头注），所以这里三档分明：
     // 未登录 → NeedLogin（说一句"登录才看得到"，不摆空排）；
     // 有票据 → 取第一页；
@@ -439,7 +428,6 @@ fun PixivWorkScreen(
             }
     }
     LaunchedEffect(currentId) {
-        // 不再殿后（2026-11-01 复盘：先前的 2 秒延迟让相关图片"半天不出来"）——
         // 密集请求已由 RateLimitingInterceptor 的 300ms 域名间隔排队，屏幕层不必再让。
         if (related.containsKey(currentId)) return@LaunchedEffect
         val bearer = ports.pixivAccount?.bearerOrNull()
@@ -472,11 +460,9 @@ fun PixivWorkScreen(
     LaunchedEffect(currentId) { tagsExpanded = false }
 
     /**
-     * 相关图片的**下一页**（用户 2026-10-20：「相关图片要无限滚动」，同时撤掉底部那格
      * 「下一作品」）。
      *
      * 四道闸门全在这一个函数里，屏上只负责说一句"到底了"：
-     * 0. 展示窗口还没摆完取回的那批（2026-11-01 用户：一次最多 6 张）⇒ 先放 6 张，不发请求；
      * 1. 没有 `next_url`（第一页失败时退的是标签搜索腿，根本没有游标）⇒ 到头了，不再发；
      * 2. 这一条已经在飞 ⇒ 同一手势里哨兵那格被 Lazy 反复预组合也只发一次；
      * 3. 落回来那一批全是屏上已有的号 ⇒ `related.size` 不变 ⇒ 哨兵那格的
@@ -484,7 +470,6 @@ fun PixivWorkScreen(
      *    同一批 + 非空 next_url"那种死循环，这里**显式把游标清掉**。
      */
     fun loadMoreRelated(id: Long) {
-        // 窗口闸（2026-11-01）：取回的那批还没摆完就先放 [RELATED_VISIBLE_STEP] 张，不碰网络 ——
         // "更多图片下滑再获取"的前半段是纯展示层的放行，只有窗口追平了取回的批次才轮到站方请求。
         val shown = relatedVisibleCount[id] ?: RELATED_VISIBLE_STEP
         if (shown < related[id].orEmpty().size) {
@@ -517,11 +502,9 @@ fun PixivWorkScreen(
         }
     }
 
-    // ⚠️ 这条滚动状态**不许由本屏持有**（2026-10-19 读数改口径）。
     // 从前这里是 `rememberLazyListState()` 一颗、再传进 `HorizontalPager` 的**每一个槽**，
     // 于是同一颗 `LazyListState` 同时挂在两三面 `LazyColumn` 上：邻位那一面此刻只有一两个条目
     // （详情还没到），它每次布局都会把共享游标**夹回自己够得着的那一档**，正在看的那一面跟着被顶走 ——
-    // 用户读到的就是"点进来这一页被顶得很上"（真机两帧：顶边对齐、底边 1132 vs 1439）。
     // 现在每槽自持（`PixivWorkFlow` 里面 `rememberLazyListState()`），页位由那一槽自己报上来。
     var pageIndex by remember(currentId) { mutableIntStateOf(0) }
     /**
@@ -562,10 +545,8 @@ fun PixivWorkScreen(
      * 交棒档：飞完才开始，与 `GalleryPostScreen` 同一颗算式、同一档时长（`ENTRY_HANDOFF_MS`）。
      *
      * 缺了这一档的时候，飞行体是画在一张**已经全不透明**的页面上 —— 同一张画两份同时可见
-     * （2026-10-19 真机帧证：卡片截图 496×634 停在左上角，而详情大图 1080×1058 已经全亮）。
      * 样板那一屏早就是三档（等落点 / 飞 / 交棒），这一屏漏抄了中间与末尾两档。
      *
-     * 批 B④⑤（2026-10-19）之后它的职责**收窄成一格**：只驱动**页面**的交棒（[pageAlpha]），
      * 不再兼飞行体的淡出。活画面那一族压根没有 alpha（同一份画从卡片形变到落点形，
      * 没有"两份"可淡）；只有截图族那一颗还要它（深链那一族没有 URL 可用）。
      * 于是"一标量两层"在这里的形状是：**几何一颗**（[entryFly]，两族共用）、
@@ -576,7 +557,6 @@ fun PixivWorkScreen(
      * 等落点这一档：页面全透明、起点那一帧**冻在卡片原位**垫着。
      *
      * 新窗口第一帧必须与点击前那一帧看起来一样，否则就是"点一下先黑一块"——
-     * 2026-10-19 真机读数：点击后一帧之内整屏亮度 128 → 35，撑了 18 帧（约 150ms）才回到 127。
      * 本窗口是 `Theme.Venera.GlassOverlay`（透的），所以不画底时透出来的是后面那面墙；
      * 而垫帧与卡上那张封面同位同像素，两样合起来读不出切换。
      */
@@ -585,7 +565,6 @@ fun PixivWorkScreen(
      * 这一次等待已经超时放弃。
      *
      * 与 [entryWaiting] 分开记的理由：那一格翻 false 之后，"放弃"与"起飞"看起来是一样的。
-     * 落点在预算边缘回来时（真机上是 590~620ms 那一档），只看 `entryWaiting` 就会让页面先露出来、
      * 再被起飞抽走 —— 又回到用户报的那一下闪。
      */
     var entryGaveUp by remember(postId) { mutableStateOf(false) }
@@ -664,7 +643,6 @@ fun PixivWorkScreen(
     /**
      * 图以下那一块（详情段 / 末页之后那几格）此刻该有多不透明。
      *
-     * 与 [pageAlpha] 是**两条钟**，起止都不同 —— 这正是 2026-10-19 用户报的那一条的修法：
      * 那一块原来跟着交棒走，而交棒从**落位**才开始，于是"图飞完了，下面的界面才在几帧里整块长出来"。
      *
      * 现在这一条从**飞行后段**起手、走到**落位之后**才收（[ENTRY_DETAIL_LEAD_FLY] / [ENTRY_DETAIL_MS]），
@@ -696,7 +674,6 @@ fun PixivWorkScreen(
         if (frame == null) return@LaunchedEffect
         // 批 B⑥（不等落点）：**详情不再是起飞前置**。首帧那一格由"送我进来的那条作品"
         // 长出的种子摆出来（`PixivWorkPage.seedDetailOf` 走 `pageWallOf` 同一颗算式 ⇒ 键逐字
-        // 相等），量落点从此只等布局与像素，不再等网络。真机旧病：慢首开详情 700ms > 预算
         // 600ms ⇒ 排行榜那一格"点卡进去压根不飞"（§9.3 读数，`起飞` 那行压根没打）。
         // 连种子都没有（深链直开 / 认不出邻居）⇒ 这一屏不飞，页面照常显示
         // （口径同上面那条"压根没有起点"；`entryKey` 在同样处境下也是空串，两处不是两把尺）。
@@ -789,7 +766,6 @@ fun PixivWorkScreen(
     val startClearance = tokens.spacing.none
     var chromeHeight by remember(postId) { mutableStateOf(startClearance) }
     // 顶栏那一格有多高：状态栏 + 顶栏塌下来那一档。**内容不让位**（图照旧穿到状态栏之上，
-    // 用户 2026-10-18 第四批改的口径），这一格只用来摆那颗全站同档的模糊背板。
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topBandHeight = statusBarTop + tokens.spacing.topBarCollapsedHeight
     // 屏底摘要条撤掉之后，让位要自己补上导航条那一格（从前是摘要条的高度顺带盖住的）。
@@ -798,7 +774,6 @@ fun PixivWorkScreen(
     val topBarBackdrop = rememberTopBarBackdrop()
 
     /**
-     * **离场起点**：屏上**当前那一页图块**的矩形（2026-10-19 · 批 B②）。
      *
      * ## 为什么从整屏换成那一页
      *
@@ -835,25 +810,20 @@ fun PixivWorkScreen(
     }
 
     /**
-     * **返回程的落点**：墙上那一格在窗口里的矩形（2026-10-19 · 批 231-E）。
      *
      * ## 两端不是同一把键 —— 这是这一批最容易静默写错的一处
      *
      * | 谁 | 回写用的键 | 例 |
      * |---|---|---|
-     * | 墙上那两排卡（`PixivWorkCard`） | **作品键** `post.viewerKey` | `pixiv:148343100` |
-     * | 这一屏自己的每一页 | **逐页键** `post.viewerKey`（页轴生成的） | `pixiv:148343100:p0` |
      *
      * 所以返回时查的是那件作品的**作品键**（不带页位）—— 墙上摆的是一整张作品，
      * 没有一个"第几页"的格子可落。用逐页键去查会永远查不到，表现是"返回时整页抬回去"：
      * 不报错、不崩溃，谁也不会来报（`GalleryPostScreen` 头注里记着同一条静默错）。
      *
-     * ## 邻居队列不是这件作品的身份（2026-10-19 批 A 真机验收补）
      *
      * `works` 是**把我送进来的那面邻居墙**，它只服务横轴翻邻居，可以正当为空：
      * 历史那一格的 `tapTile` 只写飞行交接件、不写队列（历史列表混着站点与多页，
      * 左右翻出去的顺序根本不是用户刚才看到的顺序）。旧版在这里"队列认不出 ⇒ 交回 null"，
-     * 真机读数（17:25:38，`pixiv:150828286`）是**落点就在屏上登记着，返回照样不飞** ——
      * 队列认不出只等于"没有邻居"，不等于"这件作品没有落点"。
      * 所以身份链退回一级：邻居队列 → **本件作品的详情 post**（它的 `viewerKey` 由
      * `site.routeKey:id` 长出，与墙登记那侧逐字同串，不是第二把键）。
@@ -917,7 +887,6 @@ fun PixivWorkScreen(
      * **自己驱动**的固定弹簧离场（三键导航 / `adb` 送按键这类**没有进度事件**的返回用它）。
      *
      * 与跟手那条共用同一颗算式（`GalleryExitExpansion`）与同一份落点账本 ——
-     * 两处各飞一遍就会"点顶栏与按手势落点不一样"，而那种错只有真机能看见。
      */
     fun flySelfDrivenExit() {
         leaving = true
@@ -944,7 +913,6 @@ fun PixivWorkScreen(
     /**
      * 顶栏那颗返回。
      *
-     * **飞得起来就先飞，飞不起来直接退**（2026-10-19 · 批 231-E 补齐"怎么画"）。
      *
      * 三步与 `GalleryPostScreen` 逐字同一条链（那一屏是这一套的样板）：
      * 1. `exitTargetOrNull()` 拿**墙上那一格**的落点（查不到 ⇒ 老实 finish，不演"飞完了"）；
@@ -953,7 +921,6 @@ fun PixivWorkScreen(
      *
      * 飞行体本身是**共享件** `GalleryExitFlyBody`（渲染）+ `GalleryExitExpansion`（整帧算式，
      * 有单测逐位钉着）—— 不在这里另写一遍绘制：两处各画一遍，同一部作品从两面墙点进去
-     * 就会飞得不一样，而那种错只有真机能看见。
      *
      * 批 C1 起它**只管三键 / 顶栏那一档**（没有手指可跟）；手势那一条走 [onExitGestureEvent]，
      * 两条共用 [prepareExit] 与同一颗算式。
@@ -964,11 +931,9 @@ fun PixivWorkScreen(
      * 系统返回（三键 / 手势）与顶栏那颗走**同一条链**，但**手势那一条是跟手的**（批 C1）。
      *
      * 这一屏原先没有接 `OnBackPressed`：顶栏那颗有飞行，而系统返回直接把 Activity finish 掉 ——
-     * 2026-10-19 真机读数，返回后第 7 帧（约 0.1s）屏上已经是画廊，中间一帧飞行体都没有。
      * 用户读到的"返回没动画"就是这一条，不是落点算错（同一趟点顶栏返回，探针里
      * `返回查落点 target=Rect(32,1385,528,2046)` 是拿得到的）。
      *
-     * ## 为什么从 `BackHandler` 换成 `PredictiveBackHandler`（批 C1，2026-10-20）
      *
      * 原先那句注释写的是「这一屏的离场是"整屏一帧缩回卡片"，没有跟手的中间态可言」——
      * **那是批 B②③ 之前的老判断，已经过期**：起点换成**当前那一页图块**、圆角换成内容缩放比
@@ -1117,14 +1082,12 @@ fun PixivWorkScreen(
         val openArtist: (GallerySite, String, String) -> Unit = { site, name, source -> onOpenArtist(site, name, source) }
         // ⚠️ 这一层**不再挂 alpha**：图与"图以下那一块"现在是**两条钟**（见 [pageAlpha] /
         // [detailEntryAlpha]）。挂在这一层上就只有一条钟，内容区必然被图卡在后面 ——
-        // 那正是用户 2026-10-19 报的"飞入完成才突然加载出下面的界面"。
         // 两条 alpha 都下到 [PixivWorkFlow] 的**每一项**上，各自的钟各自走。
         Box(
             Modifier
                 .fillMaxSize()
                 .blurBackdropSource(topBarBackdrop),
         ) {
-            // 页轴只剩这一档（用户 2026-10-18 第四批：「还是直接删了横着一页一页那个模式切换吧，
             // 只留竖着连续翻页模式」）。**内容铺满整屏**：图可以一直穿到状态栏之上（同一批里
             // 用户改的顶栏口径 —— 「上滑的时候图片还是能过状态栏，不过要有顶栏模糊效果」），
             // 顶栏那一行不把内容压下去，改由下面那颗全站同档的模糊背板保文字对比。
@@ -1142,7 +1105,6 @@ fun PixivWorkScreen(
                     detailsInFlow = detailsInFlow,
                     animated = animated,
                     imageLoader = imageLoader,
-                    // 展示窗口（2026-11-01 用户：一次最多 6 张）：取回的一批只有窗口内的上屏，
                     // 哨兵触发时 loadMoreRelated 先放行 6 张、窗口吃完了才真的去拉下一页。
                     related = related[slotId].orEmpty().take(relatedVisibleCount[slotId] ?: RELATED_VISIBLE_STEP),
                     tagsExpanded = tagsExpanded,
@@ -1158,8 +1120,6 @@ fun PixivWorkScreen(
                         onOpenWork(id)
                     },
                     onOpenViewer = onOpenViewer,
-                    // 相关图片无限滚动（用户 2026-10-20）：到底了就把下一页接上；
-                    // 2026-11-01 起接**展示窗口**：窗口里还有存货（或还有游标）就摆哨兵，
                     // 没有游标（第一页就退的是标签搜索腿）且窗口也吃完了就不摆 —— 屏上不出现"拉不动"的假机关。
                     relatedLoading = relatedLoading[slotId] == true,
                     onLoadMoreRelated = if (relatedNextUrls[slotId] != null ||
@@ -1194,11 +1154,9 @@ fun PixivWorkScreen(
                     onScrollProgress = { progress ->
                         if (slotId == currentId) scrollBlur = progress
                     },
-                    // 点作品标签 → 交回画廊那面墙去搜这一枚（用户 2026-10-19 第 3 条）。
                     // 走 `GallerySearchHandoff` 而不是本地跳转：这一屏是独立 Activity，
                     // 搜索状态的宿主在 MainActivity 那一侧（交接件的由来写在它头上）。
                     //
-                    // ⚠️ 2026-10-20 修「点标签没反应」：从前这里**只写槽、不离开本屏**，
                     // 而槽的消费方（`GalleryScreen` 里那条 `LaunchedEffect`）只有在画廊那一屏
                     // **组合活着**时才跑得起来。可这一屏压在它上面、它是 paused 的；
                     // 更糟的是从收藏页那面墙点进来时，画廊那一屏组合**压根没了**
@@ -1224,7 +1182,6 @@ fun PixivWorkScreen(
         // 玻璃色采的就是上面那堵被 `blurBackdropSource` 标记的图墙。
         // ⚠️ 它必须画在采样层**之外**：放进采样层里就是"把模糊再录一遍"，逐帧回灌。
         //
-        // 2026-10-19 用户改的口径：「在顶部的时候不要有顶栏模糊，往上滑的时候再出现，
         // 这个过程要流畅过渡」—— 所以背板不再恒显，改由 [scrollBlur] 那一条跟手的读数驱动：
         // 顶部 = 完全不出，上滑 48dp 内线性推到全显，回弹再原路收回。
         //
@@ -1232,7 +1189,6 @@ fun PixivWorkScreen(
         // 不是 `scrollBlur > 0f` 直接读 —— 后者每帧都在变，等于滚动全程把整页拖进重组。
         // 真正的透明度交给 `graphicsLayer` 在绘制期取，滚动只失效图层、不重组。
         if (needsBackdrop) {
-            // 下缘渐隐（用户 2026-10-23 大屏截图：「往下滚顶栏会有奇怪的遮挡」）：
             // 大屏限宽档下图片列窄、背板却全宽 —— 背板在黑区上隐形，只在图片身上可见，
             // 于是图片在 topBandHeight 那条线上被"拦腰糊断"，切口是一条水平硬线，
             // 读起来就像有什么东西挡在那里。给背板的绘制结果叠一层 DstIn 纵向渐变
@@ -1280,7 +1236,6 @@ fun PixivWorkScreen(
                     .padding(horizontal = tokens.spacing.screenHorizontal)
                     .height(tokens.spacing.topBarCollapsedHeight)
                     // 截"进大图那一帧"之前让位：这三枚浮在画面之上，而 PixelCopy 读的是合成后的
-                    // 表面 —— 不让位就会跟着被截进飞行体（2026-10-19 真机帧证：飞行体里带着
                     // 返回箭头、更多与「1/1」页码，交棒时变成一层鬼影）。
                     .reportChromeBand(PIXIV_WORK_TOP_CHROME_BAND)
                     .graphicsLayer {
@@ -1297,7 +1252,6 @@ fun PixivWorkScreen(
                         modifier = Modifier.size(tokens.spacing.badgeIconSize),
                     )
                 }
-                // 中间那枚「1 / N」页数指示器已撤（用户 2026-10-19：「去掉中间的页数指示器」）。
                 // SpaceBetween 在只剩两枚时仍把返回钉在左、更多钉在右，中间那一格天然空出来，
                 // 页位读数改由这一屏的滚动本身表达，不再在顶栏上重复念一遍。
                 VeneraTopBarPill(onClick = { sheetOpen = true }) {
@@ -1311,7 +1265,6 @@ fun PixivWorkScreen(
             }
         }
 
-        // ── 底部只剩失败横幅（用户 2026-10-18 第三批：「这个栏不应该有可以删掉了」+「横着一页一页翻
         // 应该和竖着连续翻页模式结构一样」）。屏底那条摘要条从前与详情段里那行画师信息是同一份读数
         // 画两遍，两支一起撤；「更多信息」的入口留在顶栏那一枚上。
         // **失败横幅留在屏上** —— 取数失败时弹层是空的，把错误也搬进去等于让用户对着白屏找"为什么没图"。
@@ -1398,7 +1351,6 @@ fun PixivWorkScreen(
         val livePost: GalleryPost? = detail?.post ?: works.firstOrNull { it.id == currentId }
         val liveUrl = livePost?.previewUrl.orEmpty()
         val liveRatio = livePost?.cardRatio?.takeIf { it > 0f }
-        // ⚠️ 接管判据必须是**位图到手**，不能只是"URL 非空"（2026-10-20 真机那一格泛白的病根）：
         // 按 URL 判会让截图族提前让开，而活画面这边图还没到手也什么都没画 ⇒ 两条路都不画、
         // 屏上只剩半透明的页面压在墙上（录屏逐帧证：`g007`）。所以位图在组合期取一次，
         // 拿得到才是"活画面接管"，拿不到就老实走截图族。
@@ -1417,7 +1369,6 @@ fun PixivWorkScreen(
                 // ⚠️ 圆角那一档在**组合期**读（那颗是 @Composable getter），`drawBehind` 里只换算不读：
                 // 绘制阶段读 compositionLocal 拿不到随主题变的值，本仓为这一格栽过（见 GalleryFlyIn 头注）。
                 coverCornerRadius = veneraCoverCornerRadius(),
-                // 去程**全程不淡**（同播放器那条 2026-10-01 的读数）：弹簧的百分比不是路程，
                 // 中途淡出会和身后的页面叠成重影。交棒后半程才淡出（此刻页面已经接住了那一块）。
                 alpha = { handoffBodyAlpha(entryHandoff.value) },
             )
@@ -1453,14 +1404,12 @@ fun PixivWorkScreen(
         // 但**末段必须淡**：这一屏的落点是一张作品卡，卡上自己画着**封面**，
         // 而飞行体里装的是整页（三页图 + 动作条 + 标签）——两者不是同一张画。
         // 不淡的话，落地那一帧是一张小号页面压在封面之上，然后 finish 才换成封面，
-        // 读起来是"贴错了再撕下来"（2026-10-19 慢放帧证：`s2x/t6.88`）。
         // 淡出算式与播放器那一屏同一颗（[exitBodyAlpha]），不另造一个数字。
         // 少任何一样就不画 —— 调用方（`back`）在那种情况下已经老实 finish 了。
         val flyFrom = exitFrom
         val flyTo = exitTo
         val flyBitmap = exitFrame
         // ⚠️ 与样板 `GalleryPostScreen` 逐字一致：**不**要求 `leaving`。
-        // 2026-10-19 真机读数：挂着 `leaving &&` 时返回全程屏上没有飞行体（录屏逐帧证）——
         // `leaving` 是 `remember(postId)` 的 state，`back()` 里翻真之后这一层理应重组，
         // 可实测它把飞行体关在了门外。三样齐了本身就是"正在飞"的充分条件
         // （`exitFrame` 只在 capture 成功那一瞬才非空），不需要第四颗布尔。
@@ -1485,7 +1434,6 @@ fun PixivWorkScreen(
 }
 
 /**
- * 评论那一节的**四种状态**（2026-10-19 · 批 231-F）。
  *
  * 为什么不是"一个列表 + 一个错误串"：这一节的四种处境在屏上必须是**四句不同的话**，
  * 而把它们折成两个变量就会出现"有错但列表非空"这种说不清的组合
@@ -1515,10 +1463,7 @@ internal sealed interface PixivCommentsState {
 /**
  * 评论那一节：**默认只摆最新那一条**，其余收进节头右侧那枚「更多评论」。
  *
- * 用户 2026-10-19 的读数：「评论太多了，应该只显示一条最新评论，其他评论放到查看更多评论」。
  * 三条口径：
- * - "最新那一条"吃的是**站方给的第一条**，不是我们排的序 —— 真机那一屏逐条日期是降序
- *   （2023-07-24 → 07-22 → 07-09 → 07-04），所以"第一条 = 最新"这条读得出来；
  * - 「更多评论」是**就地展开**（同一屏、同一批数据），不是再开一层，也不是去浏览器 ——
  *   浏览器那条出口留在动作行那枚 💬 上（一件事一个去处，两处都给就是两处真相）；
  * - 只有一条时**不摆这枚把手**（点开了也不会多出任何东西 = 本仓反复立案的假开关）。
@@ -1536,7 +1481,6 @@ private fun PixivCommentsSection(
      * 失败那一档的重试。null = 不摆重试（宿主持有的那颗 `retryTick` 抬不动评论腿时）。
      *
      * 为什么要有这一颗：评论腿自己的失败屏上原本**一个重试入口都没有** —— 唯一的
-     * `retryTick` 挂在详情横幅上，而那一栏要 `details[currentId]` 缺失才出现（2026-10-22 审计）。
      */
     onRetry: (() -> Unit)? = null,
 ) {
@@ -1618,7 +1562,6 @@ private fun PixivCommentsSection(
             )
             is PixivCommentsState.Failed -> Text(
                 // 失败那一档**可点**（宿主给了 onRetry 时）：评论腿自己的失败屏上原本一个
-                // 重试入口都没有，用户只能退出重进（2026-10-22 审计）。
                 if (onRetry != null) state.message + " · 点这里重试" else state.message,
                 fontSize = tokens.type.caption,
                 color = tokens.color.error,
@@ -1636,7 +1579,6 @@ private fun PixivCommentsSection(
                     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.space4)) {
                         // 未展开只摆最新那一条；展开后摆**已取到的这一整页**（不是再要一页）。
                         //
-                        // 2026-10-19 用户第 4 条：「展开评论的时候应该，逐条错峰淡入，每条评论
                         // 依次出现，列表从下往上轻微滑入」。所以每条外面套一颗**按序错开**的入场动画，
                         // 键用评论 id —— 换一批评论（投稿换了 / 重新取数）时序列从头再演一遍，
                         // 而**已经演完的那些不会因为重组重新演**（同一个 key ⇒ 同一个 remember 槽）。
@@ -1658,7 +1600,6 @@ private fun PixivCommentsSection(
 }
 
 /**
- * 一条评论的**错峰入场**外壳：淡入 + 自下而上轻微滑入（用户 2026-10-19 第 4 条）。
  *
  * ## 只用一条 Animatable，不做"透明度一条钟、位移另一条钟"
  *
@@ -1781,7 +1722,6 @@ private fun PixivCommentRow(comment: PixivComment, imageLoader: ImageLoader) {  
 
 /**
  * 一条评论的正文：**小表情 `(name)` 画成站方那张图**，**贴纸（stamp）画在正文下方**
- * （用户 2026-10-19「也要正常显示评论图和表情」）。
  *
  * ## 三条口径
  *
@@ -1857,7 +1797,6 @@ private fun PixivCommentBody(comment: PixivComment, imageLoader: ImageLoader) {
 /**
  * 把一条作品长成大图播放器那一面墙（**这一颗文件里只此一处**调 domain 那颗函数）。
  * 布局那一头要按页取 viewerKey 回写落点，起跳那一头要交整面墙 —— 两处各抄一遍
- * 就是两把算式，改日页序或档位一变，只有真机能看见。
  */
 private fun pageWallOf(
     detail: PixivWorkDetail?,
@@ -1872,7 +1811,6 @@ private fun pageWallOf(
  * 要看全部本来就是站方网页更合适 —— 动作行那枚「在浏览器里看评论」就是那条出口。
  */
 /**
- * 未展开时摆几条（2026-10-19 用户：「评论太多了，应该只显示一条最新评论」）。
  *
  * 从前是 10 条全摆 —— 那一屏的主轴是图，评论区把详情段撑成一堵字墙。
  * 现在这一页取到的其余几条收在节头那枚「更多评论」后面（就地展开，不再要第二页）。
@@ -1880,7 +1818,6 @@ private fun pageWallOf(
 private const val COMMENTS_SHOWN = 1
 
 /**
- * 相关图片一次摆几张（2026-11-01 用户：「一次性最多获取 6 张，更多下滑再获取」）。
  *
  * 站方 app-api 每页固定 30 条改不了，但屏上那一格相关网格是**非懒**的 Column——
  * 摆多少条就发多少个图片请求。所以列表层只把窗口内的条数递上屏：哨兵触发时先放
@@ -1889,7 +1826,6 @@ private const val COMMENTS_SHOWN = 1
 private const val RELATED_VISIBLE_STEP = 6
 
 /**
- * 评论展开时逐条错峰入场的三枚观感数字（用户 2026-10-19 第 4 条）。
  *
  * 三枚一起改才有意义：
  * - [COMMENT_STAGGER_STEP_MS] 是**相邻两条**的起手间隔。太小（<20ms）读不出"依次"，
@@ -1910,7 +1846,6 @@ private val COMMENT_ENTER_LIFT = 12.dp
 
 /**
  * 进场飞行体等**落点量出来**的预算（毫秒）。值与 `GalleryPostScreen` 那颗同名常量同一档，
- * 因为那条读数就是这里要防的：先前停在 400ms 时真机 `target=null waited=406ms`，放宽到 600ms
  * 仍然不飞 —— 真实原因是页面站在窗口外、落点被裁成 0×0。**预算不是病，姿态才是病。**
  * 这一屏的落点由 [PixivPageImage] 自己回报（它一定在屏内），所以这一档只作保险：
  * 超时不飞，屏上不会留一块空白，也不会把那一帧一直攥着。
@@ -1942,7 +1877,6 @@ private const val PIXIV_WORK_TOP_CHROME_BAND = "pixiv-work-top"
 /** 站方那一作的地址（`pixivWorkUrl`）与"在浏览器里打开"（`openWorkInBrowser`）都住在 `PixivWorkInfoPanel.kt` —— 两个宿主共用同一颗，不在这里留抄本。 */
 
 /**
- * 作品页那一档（唯一一档，2026-10-18 第四批撤了横向那一档）：一条 `LazyColumn` 里先把这一作的
  * 几页摆完，再把详情段接在末页之后，最后才是「下一作品」那一格 —— **全程一个滚动容器**
  * （详情不是抽屉里的第二个滚动者）。
  *
@@ -1976,7 +1910,6 @@ private fun PixivWorkFlow(
     /**
      * 相关图片的下一页还没到手（屏底摆一枚转圈，不摆空的占位）。
      *
-     * 2026-10-20：从前这里是一对 `nextWork` / `onOpenNextWork`（末尾那格「下一作品」提醒）。
      * 用户要求撤掉那一格、把相关图片改成无限滚动 —— 两件事是同一件：那一排不再自己“到头”，
      * 往下滚就会继续长。
      */
@@ -2006,7 +1939,6 @@ private fun PixivWorkFlow(
     /**
      * **图以下那一块**（详情段 / 末页之后那几格）的入场透明度（它自己那条钟，见 `detailEntryAlpha`）。
      *
-     * 与 [pageEntryAlpha] 分开的理由就是 2026-10-19 用户报的那一条：合在一条上，内容区只能等图飞完。
      */
     detailEntryAlpha: () -> Float = { 1f },
     /**
@@ -2032,9 +1964,7 @@ private fun PixivWorkFlow(
     // `rememberLazyListState()` 本身走 `rememberSaveable`，键在组合槽上 ⇒ 横翻回来还在原来那一页。
     val listState = rememberLazyListState()
     /**
-     * 页第一次长出来那一刻，把锚拽回顶部（2026-10-19 · 批 233-2 的另一半）。
      *
-     * 真机读数（用户「图还是会被顶上去……往下拉一点就正常，从画廊进来就不正常」，现场取的）：
      * 站方详情腿回 `"width":2400,"height":4000` 而设备里画的那张 medium 是 324x540（同比例，没裁），
      * 可 `uiautomator` 量到那一格只有 `[0,0][1080,979]`，像素层复量左右**没有黑边**
      * ⇒ 不是比例算错，是**上面那 821px 在屏外** —— 这一格被滚走了。
@@ -2051,14 +1981,13 @@ private fun PixivWorkFlow(
      */
     val workId = (detail ?: seedDetail)?.post?.id ?: 0L
     var pagesAppeared by remember(workId) { mutableStateOf(false) }
-    // ugoira 那一族（2026-10-23）：种子阶段走的是 else 分支（items(key="page-N")），
     // 详情到手若 ugoira==true，整段 items 换成 item(key="ugoira-…") —— key 空间换掉了，
     // 锚按 key 失配退回 index 数字，页顶是否还在 0 全看运气。补一条：详情从无到有
     // 且这一作是 ugoira 时也强制归零（与下面那个 effect 同一条守则，不破坏
     // 「横翻回来还在原来那一页」——那条场景里 detail 一直在，这个键不重跑）。
     val isUgoira = detail?.ugoira == true
     LaunchedEffect(workId, isUgoira) {
-        if (isUgoira) listState.scrollToItem(0)
+        if (isUgoira) listState.animateScrollToItem(0)
     }
     LaunchedEffect(workId, pages.size) {
         // 归零只认**真页**：批 B⑥ 的种子只有一枚糊图，不算"页长出来了"。详情一到立刻归零 ——
@@ -2082,7 +2011,8 @@ private fun PixivWorkFlow(
     // 逐页墙仍由 domain 那颗纯函数长出来：屏上不自己拼 "$uid:p$index"（拼一份就是第二处真相，
     // 而它连着的正是"返回程飞不回这一页"那一条）。批 B⑥:详情或种子任一场合都走这一颗。
     val context = LocalContext.current
-    val viewerQuality by remember(context) { VeneraPreferences.getInstance(context) }.pixivViewerQuality.collectAsState()
+    val ports = remember(context) { GalleryPorts.of(context) }
+    val viewerQuality by (ports.pixivWork?.viewerQuality ?: remember { MutableStateFlow(PixivImageQuality.ORIGINAL) }).collectAsState()
     val wallPages = remember(detail, seedDetail, viewerQuality) { pageWallOf(detail ?: seedDetail, viewerQuality) }
     LaunchedEffect(listState, pages.size) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect {
@@ -2090,7 +2020,6 @@ private fun PixivWorkFlow(
             onPageIndexChanged(if (pages.isEmpty()) 0 else it.coerceAtMost(pages.size - 1))
         }
     }
-    // ── 顶栏模糊的滚动读数（用户 2026-10-19：「在顶部的时候不要有顶栏模糊，往上滑的时候再出现」）──
     //
     // 口径照全站顶栏那一档（`VeneraTopAppBar`）：**走 48dp 线性淡入**，不看 `canScrollBackward`
     // 那一类布尔 —— 布尔只能给两档，而这里要的是跟手。
@@ -2119,7 +2048,6 @@ private fun PixivWorkFlow(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        // ── 大屏宽度收口（用户 2026-10-19 第 5 条：「改成和 pixez 那种」）──
         //
         // 旧写法把这把封顶挂在 `LazyColumn` **本身**上（`fillMaxSize().then(widthIn(max))`），
         // 而流里每一格又都是 `fillMaxWidth()` ⇒ 封顶和铺满互相拉锯，宽屏上根本看不出区别。
@@ -2226,7 +2154,6 @@ private fun PixivWorkFlow(
                 )
             }
         }
-        // 相关图片的**无限滚动哨兵**（用户 2026-10-20：「相关图片要无限滚动」、「底部那个
         // 下一作品删了」）。
         //
         // 从前这一格是「下一作品」提醒（推外层 pager 走一格）；用户要的是“往下滚就有更多”。
@@ -2238,7 +2165,6 @@ private fun PixivWorkFlow(
         // 链条自己停，屏上不会反复发同一个请求。
         val moreRelated = onLoadMoreRelated
         if (moreRelated != null) {
-            // 键恒定，不随 related.size 变（2026-10-23）：带 size 的键在每批新图落回时
             // 是「旧项删除 + 新项插入」，用户正停在底部附近时锚会漂（LazyColumn 的锚
             // 认 key，失配就退回 index 数字）——那正是「进场后滑到中间」族病的近亲。
             item(key = "related-more") {
@@ -2249,7 +2175,6 @@ private fun PixivWorkFlow(
                         .graphicsLayer { alpha = detailEntryAlpha() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // 触发器盯**可见性边沿**而不是 size（2026-11-01 窗口批复盘）：
                     // 从前 `LaunchedEffect(related.size)` 在 size 一变就重跑——展示窗口每次放行
                     // 6 张都改一次键，快速滑动时哨兵一直被预组合，链条几帧内就把 30 张全放完
                     // （实测：请求齐发把可见的几张堵在队列后面，表现为"很慢/不加载，然后一起出来"）。
@@ -2284,16 +2209,13 @@ private fun PixivWorkFlow(
  * 格子按**屏宽 + 站方报的真比例**预留（骨架有高度可撑）；站方没报宽高就不预留 ——
  * 拿 1:1 顶一个会在图落位那一刻把整屏顶一下（`placeholderAspect` 那条判据）。
  *
- * ⚠️ "不预留"不等于"让子件自己找高度"（2026-10-18 真机读数：「多 p 图片被压得很小」
  * 「进入图片后得要往下拉一点才能显示正常大小」）。缺比例那一档如果仍按 `fillMaxSize()` 塞，
  * 父容器给的是**无界高度**，Compose 会退回位图自己的像素尺寸 —— 中档只有 540~768 宽，
  * 于是整格缩成半屏小方块。现在的口径：缺比例就 `wrapContentHeight()`，图一到手立刻按它
  * **自己报回来的比例**补上那一格（`intrinsicSize`，见下面那颗 `loadedAspect`）。
  * 为什么只有多页会踩：登录腿的逐页对象里**没有** `width`/`height`（那是匿名腿 `/pages` 那一跳才给的），
  * 而第 0 页另有作品根节点的宽高兜着 —— 所以症状精确地长在"第 2 页往后"。
- * 横向翻页那一档已随模式切换一起撤掉（2026-10-18 第四批），所以这里不再有"铺满视口"那一支。
  *
- * 这一屏**不挂缩放层**：双击与捏合都住在大图播放器那一层（用户 2026-10-18 拍板"只在大图播放器里"）。
  * 顺带消掉一处真缺陷：连读那一档的 `maxHeight` 是 Infinity，缩放上限算出来也是 Infinity，捏合直接失灵。
  */
 @Composable
@@ -2319,8 +2241,8 @@ private fun PixivPageImage(
     heightCeiling: Dp? = null,
 ) {
     val context = LocalContext.current
-    val prefs = remember(context) { VeneraPreferences.getInstance(context) }
-    val detailQuality by prefs.pixivDetailQuality.collectAsState()
+    val ports = remember(context) { GalleryPorts.of(context) }
+    val detailQuality by (ports.pixivWork?.detailQuality ?: remember { MutableStateFlow(PixivImageQuality.ORIGINAL) }).collectAsState()
     val url = page?.urlFor(detailQuality).orEmpty()
     val aspect = PixivWorkPage.placeholderAspect(page?.width, page?.height)
     var drawn by remember(url) { mutableStateOf(false) }
@@ -2366,7 +2288,6 @@ private fun PixivPageImage(
                 // 截像素/点击矩形那一路必须吃裁过的（PixelCopy 只读窗口内表面）：显式写出来。
                 val bounds = it.boundsInWindow(clipBounds = true)
                 // 批 B §3 地基：登记落点吃没裁过的那一把。pixiv 的页是竖长条，
-                // 真机读数 width 2400 / height 4000 而窗口那格只有 [0,0][1080,979] ——
                 // 从前把裁短的矩形当落点，交棒那一帧画面高度对不上（读起来"错位/压一下"）。
                 val full = it.boundsInWindow(clipBounds = false)
                 // 零尺寸只忽略不注销（Lazy 项回收前最后一次回调给的就是 0×0），
@@ -2412,7 +2333,6 @@ private fun pageSemantic(index: Int, total: Int): String =
 /**
  * 标题下面那一行：浏览 · 收藏 · 发布，三枚单色描边小图标。
  *
- * **站方没给的那格整格掉出去**（判据在 [PixivWorkPage.facts]）—— 用户 2026-10-18「虚假数据去掉」，
  * 所以这里不出现"0 浏览"这种看着像读数的占位。
  */
 @Composable
@@ -2449,7 +2369,6 @@ private fun FactIcon(kind: PixivWorkFact, tint: Color) {
  * 详情段：动作那一行（收藏 / 评论 / 下载 / 分享）+ 画师行 + 原题 + 计数行 +
  * 标签（同屏 8 枚封顶）+ 相关图片。
  *
- * 这一段的动作从前住在屏底那排 dock 上（用户 2026-10-18：与顶栏那枚「更多信息」重复进同一层），
  * 现在它是「更多信息」那一层的内容开头 —— 滚动流末尾与抽屉两处画的是同一颗，动作不会分叉。
  *
  * `internal` 而不是 `private`：大图播放器那一版面板（`pixivWorkInfoPanel`）画的是**同一颗**，
@@ -2470,7 +2389,6 @@ internal fun PixivWorkDetails(
     onOpenWork: (Long) -> Unit,
     aiBadgeOn: Boolean,
     /**
-     * **评论那一节的状态**（2026-10-19 · 批 231-F）。
      *
      * 默认 [PixivCommentsState.Hidden]：不传就当"这一屏没有评论可摆" ——
      * 播放器那一版面板（`pixivWorkInfoPanel`）不传，于是那一层不会多出一块空节。
@@ -2487,7 +2405,6 @@ internal fun PixivWorkDetails(
      */
     onRetryComments: (() -> Unit)? = null,
     /**
-     * 点一枚作品标签 → 按它搜一轮（用户 2026-10-19：「作品标签目前不可以点击，
      * 点击后跳转到标签的搜索页面」）。
      *
      * `null` = 这一版**没有搜索出口**，标签保持纯展示（不摆点了没反应的假开关）。
@@ -2506,7 +2423,6 @@ internal fun PixivWorkDetails(
     val shown = PixivWorkPage.tagsShown(detail.tags, tagsExpanded)
     val hidden = PixivWorkPage.tagsHidden(detail.tags)
     var artistMenu by remember(detail.post.author) { mutableStateOf(false) }
-    // ── 大屏收口（用户 2026-10-19 第 5 条：「改成和 pixez 那种」）──
     //
     // 三个宿主（这条流 / 底部抽屉 / 播放器面板）都走这一颗函数 ⇒ 只在这里收一次口。
     // 收到流里那份上会出两个问题：一是抽屉与面板那两条根本没有 `LazyColumn`，
@@ -2561,7 +2477,6 @@ internal fun PixivWorkDetails(
                 // 关注胶囊：判定读本地名单（与「画廊 → 关注画师」读同一份存档），写侧**先写站方**
                 // （`togglePixivFollow`，与画师页那颗同一颗函数）—— 只翻本地的话，屏上亮着"已关注"
                 // 而 pixiv 那边并没有这位，正是本仓反复修的那一族假开关。
-                // 2026-10-19 规格照那一档：**没关注时是实心的主色药丸 + 一枚「+」**（从前是光秃秃一行字，
                 // 与它左边那行画师名同色，读起来不像把手）；已关注退成灰底、不带「+」。
                 Row(
                     modifier = Modifier
@@ -2612,9 +2527,10 @@ internal fun PixivWorkDetails(
                 }
             }
             if (artistMenu) {
-                DropdownMenu(expanded = artistMenu, onDismissRequest = { artistMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("屏蔽该画师", fontSize = tokens.type.caption, color = tokens.color.error) },
+                VeneraDropdownMenu(expanded = artistMenu, onDismissRequest = { artistMenu = false }) {
+                    VeneraMenuItem(
+                        text = "屏蔽该画师", // Text("屏蔽该画师"
+                        destructive = true,
                         onClick = {
                             artistMenu = false
                             artist.onBlock()
@@ -2624,7 +2540,6 @@ internal fun PixivWorkDetails(
             }
         }
         if (shown.isNotEmpty()) {
-            // 节头 + 整片就地铺开（2026-10-18 第四批，用户给了官方那张稿）：
             // 从前是「四枚一列 × 两列」的硬切，标签长短不一时右列会被短标签拉出大洞，
             // 「更多」那枚还孤零零排在最后一列尾巴上，读起来像第四枚标签。
             Row(
@@ -2683,7 +2598,6 @@ internal fun PixivWorkDetails(
             ) {
                 // 同屏最多 8 枚；不足 8 枚时 hidden==0 ⇒ 节头右侧根本不会出现「查看全部」那枚把手
                 shown.forEach { tag ->
-                    // 三件事一起接（2026-10-20，用户「作品标签加入 pixiv 的多语言/翻译 tag 和
                     // 长按标签可以屏蔽 复制 搜索的选项」）：
                     // - 显示文本走**站方给的译名**（`detail.tagTranslations`，只改显示）；
                     // - 点 = 按**原名**去搜（译文会变，检索引擎只认站方那个词）；
@@ -2702,9 +2616,7 @@ internal fun PixivWorkDetails(
             }
         }
         // 评论从前在这里单独占一行（「评论 N 条 · 在浏览器里看」），而动作行那枚已经同时念数
-        // 并给同一条出口 ⇒ 同一件事在屏上念两遍，2026-10-18 第四批撤掉这一行。
         //
-        // ── 2026-10-19 批 231-F：**真评论列表**（登录腿）────────────────────────
         // 匿名拿不到正文（四形状 404），所以这一节只在登录时才有内容；
         // 未登录那一档说的是"登录才看得到"，**不摆空排**。
         PixivCommentsSection(
@@ -2727,7 +2639,6 @@ internal fun PixivWorkDetails(
                 } else {
                     3
                 }
-                // 截断发生在**屏层**的展示窗口（2026-11-01 用户：一次最多 6 张）——递进来的
                 // `related` 已经是窗口内的那几条；这一格照实全摆（非懒 Column，摆多少发多少请求）。
                 val displayList = related
                 Column(Modifier.fillMaxWidth()) {

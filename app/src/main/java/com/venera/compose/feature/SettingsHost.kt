@@ -52,7 +52,6 @@ sealed interface SettingsEscape {
     /**
      * 设置首页 → 阅读历史。
      *
-     * 历史 2026-09-23 从主 Tab 降回二级页后，它只挂在 MainActivity 的图上，
      * 而设置主页是另一个 Activity —— 所以这条必须走越界交接，不能在设置侧 navigate。
      */
     data object OpenHistory : SettingsEscape
@@ -217,7 +216,6 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             SettingsSubScreen.LINE_SPEEDTEST -> PreferredIpSpeedTestScreen(prefs = networkPrefs, onBack = ::back)
 
             SettingsSubScreen.SOURCE_MANAGE -> ComicSourceScreen(onNavigateBack = ::back)
-            // 「下载与本地」（2026-11-03）：旧的两条设置入口随两屏合并撤除 ——
             // 全项目唯一入口固定在底栏第五格（见 DownloadsLocalScreen 头注）。
             // 追更整页早就写完了（列表、挑夹对话框、每日排程都齐），缺的只有这一跳入口：
             // VeneraApp 的排程开关吃 followUpdatesFolder，而那值的唯一写点在这页里，
@@ -245,6 +243,7 @@ fun VeneraSettingsSubHost(screen: SettingsSubScreen, arg: String?) {
             SettingsSubScreen.LOGS -> LogViewerScreen(onBack = ::back)
             SettingsSubScreen.PIXIV_DOWNLOAD -> PixivDownloadSettings(
                 prefs = prefs,
+                defaultPath = java.io.File(networkPrefs.downloadRootPath, "Pixiv").absolutePath,
                 onBack = ::back,
                 onOpenNetworkSettings = { open(SettingsSubScreen.PIXIV_NETWORK) },
             )

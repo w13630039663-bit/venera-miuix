@@ -81,21 +81,16 @@ val LocalTopBarBackdrop = compositionLocalOf<Backdrop?> { null }
  * @param navigationIcon 左侧导航图标。
  * @param actions 右侧操作图标集合。
  * @param bottomContent 顶栏下方常驻内容（如分类 Tab 等）。
- * @param onDoubleTap 双击顶栏空白处（2026-09-30 新增，加性可选）。
  *   画廊用它"双击回到顶部"。**默认 null ⇒ 其余 12 个调用点零改动、零行为差异**。
  *
  *   ⚠️ 手势与顶栏内的动作钮是**并存**的：`detectTapGestures` 挂在顶栏这层 Box 上，
  *   而 `actions` 里那些 `VeneraTopBarPill` 各有自己的 clickable，子组件先消费点击事件，
  *   所以"点胶囊仍然生效、双击空白处才回顶"两条预期同时成立。
- *   这一条**尚未真机验证**（本轮设备未连），真机上要先确认这两件事都成立。
- * @param scrollProgressOverride 玻璃进度覆盖源（2026-10-02，设置 hero 页专用，加性可选）。
  *   hero 页调用方**不挂** scrollBehavior 的 nestedScroll 连接（原因见
  *   [SettingsHome]），折叠机制整个不参与，玻璃/分割线/小标题的进度由调用方从
  *   列表 scrollState 直接推导传入。null（默认）= 其余页面走 contentOffset 原路。
- * @param opaqueChrome 整条顶栏（含 bottomContent）铺一层不透明的页面氛围光（2026-10-19，加性可选）。
  *   默认 false = 现有 13 个调用点零变化。为真的页必须同时**不传 backdrop**，也不要把内容
  *   挂进 `blurBackdropSource` —— 玻璃采的是录制下来的内容层，不是屏幕像素；采了的话
- *   内容会绕过这层实底继续从顶栏里透出来（pixiv 账号页真机读数就是这么来的）。
  */
 @Composable
 fun VeneraTopAppBar(
@@ -130,7 +125,6 @@ fun VeneraTopAppBar(
     // 折叠态那一行的**顶部 inset**（hero 路径下有两处要用：自绘小标题的居中基准、以及把整条顶栏
     // 钉成"恒折叠态"的高度）。算一次、两处共用，不然两处各算一遍迟早会漂。
     //
-    // ⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）：这里**必须**读 miuix 自己用的那一份 ——
     // miuix 的 `TopAppBarLayout` 挂的是 `WindowInsets.systemBars.only(WindowInsetsSides.Top)`
     // （`TopAppBar.kt:806`，挂在这颗 Layout 自己身上），而不是 `WindowInsets.statusBars`。
     // 两者在多数机型数值恰好相等（本机实测也相等：胶囊行 188px = inset 49.2dp + 26dp），
@@ -138,7 +132,6 @@ fun VeneraTopAppBar(
     // 按钮行整整错开那一份差值。跟着 miuix 读同一份，才与设备无关。
     val collapsedTopInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
         .asPaddingValues().calculateTopPadding()
-    // ── 覆盖进度路径：整条顶栏必须是**恒折叠态**（2026-10-16，真机「上滑标题不居中」）──
     //
     // 这一路的折叠机制整个退场（调用方不挂 nestedScroll，见 [scrollProgressOverride]），于是
     // miuix 的 `barHeight` 会**一直停在展开态** —— miuix `TopAppBar.kt:862-879`：
@@ -156,16 +149,13 @@ fun VeneraTopAppBar(
     // 折叠态该有的位置。只在 `largeTitle` 为空时钉 —— 万一将来有人拿覆盖进度配一个非空大标题，
     // 宁可退回现状，也不能把它静默裁掉。
     //
-    // ⚠️⚠️ 2026-10-16 三修 —— 钉法**只许裁、不许挤压**，这一条是把前两轮白改的根因（真机
     // 原话：「居中标题栏还是没有居中」）：
     //
     // 这一支的 `layout{}` 里**不能**把 miuix 的 `maxHeight` 压到它自然高以下。压了之后
-    // 它整棵子树会被**居中上顶** `(自然高 − 允许高) / 2`，与真机逐像素读数完全对上：
     //   · miuix 本体自然高 = inset(49.2dp) + `layoutHeight`(≈94.4dp) ≈ 143.6dp
     //     （`layoutHeight = barHeight + LargeTitleBottomPadding`，`barHeight = 52dp + expansion`，
     //      而 `expansion` 正是那个**空大标题**占的一整行 ≈ 38dp —— 见 `TopAppBar.kt:864-890`）
     //   · 这里钉的允许高 = 49.2 + 52 ≈ 101.2dp ⇒ 上顶 (143.6 − 101.2) / 2 ≈ 21.2dp ≈ 53px
-    // 真机读数（同一台机、同一份包，逐张截图量右上两枚胶囊里图标笔画的中心 y）：
     //   · 普通页（没有这颗盒子）8 张截图**全部** 188px —— 即 miuix 的正位 = inset + 26dp
     //   · 头图页有这颗盒子时：旧包 134px、新包 132px —— 两次几乎一样，因为第二版我只换了
     //     **摆放方式**（`place(0, 0)`）而没动这条 `maxHeight` ⇒ 挤压照旧 ⇒ 白改一轮
@@ -187,7 +177,6 @@ fun VeneraTopAppBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // ── 起点截帧时让位（2026-10-04，与壳层底栏同一枚开关，成因写在那一处）──
             // 顶栏是玻璃覆盖层，滚到上面那几行的卡会被它压住；PixelCopy 读的是已合成表面，
             // 于是那一条玻璃会被截进飞行体。只走 alpha：顶栏的折叠状态与滚动锚点都不参与。
             .graphicsLayer {
@@ -259,7 +248,6 @@ fun VeneraTopAppBar(
         // 不参与（collapsedFraction 恒 0，见 `TopAppBar.kt:672-682`），它永远不会出现 ——
         // 所以这里自绘一份，alpha 与玻璃背板共用同一条 activeProgress：玻璃起、标题现，玻璃没、标题隐。
         //
-        // ⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）：居中基准改用**与 miuix 同一个
         // inset 修饰符**，不再自己读一个 Dp 再算。
         //
         // miuix 的标题行与按钮行都在 `windowInsetsPadding(WindowInsets.systemBars.only(Top))`
@@ -285,10 +273,8 @@ fun VeneraTopAppBar(
             ) {
                 Text(
                     text = title,
-                    // ⚠️ 2026-10-16 改口径（真机「滑后『画廊』…字体明显小很多」）：
                     // 原来写的是 `tokens.type.itemTitle`（MD3 16 / MIUIX 17sp），而 miuix 原生小标题
                     // 用的是 `MiuixTheme.textStyles.title3.fontSize`（`TopAppBar.kt:732`）+ Medium。
-                    // 真机实测：探索页（走原生那一份）字高 38px、画廊这枚只有 30px，差 20%。
                     // 这里直接读**同一个主题槽位**，不再自己挑一格 —— 于是
                     // ① 与原生逐像素同号；② 我们的 `miuixTextStylesOf` 把 title3 映射到
                     // `statNumber`(20sp)，仍然是表里的现成档，没有库外数字；③ 换风格档一起走。
@@ -316,7 +302,6 @@ fun VeneraTopAppBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // ⚠️⚠️ 2026-10-16 三修（真机「居中标题栏还是没有居中」）——**这一行就是
                         // 前两轮的根因**：测量 miuix 本体时**不许**把高度压到它自然高以下。
                         //
                         // 压了之后它整棵子树会被**居中上顶** `(自然高 − 允许高) / 2`：
@@ -325,7 +310,6 @@ fun VeneraTopAppBar(
                         //      `barHeight = 52dp + expansion`，而 `expansion` 正是那个**空大标题**
                         //      占的一整行 ≈ 38dp —— `TopAppBar.kt:864-890`）
                         //   · 钉的允许高 = 49.2 + 52 ≈ 101.2dp ⇒ 上顶 (143.6 − 101.2)/2 ≈ 21.2dp ≈ 53px
-                        // 真机读数（同机同包、逐张截图量右上两枚胶囊里图标笔画的中心 y）：
                         //   · 普通页（没有这颗盒子）**8 张截图全部 188px** = miuix 的正位
                         //   · 头图页有这颗盒子时：旧包 134px、新包 132px
                         //   · 188 − 134 = 54px ≈ 21.2dp × 2.5 ✓ 闭环
@@ -422,7 +406,7 @@ fun rememberTopBarBackdrop(enableBlur: Boolean = true): LayerBackdrop? {
     val isDark = LocalVeneraDarkTheme.current
     val primary = MiuixTheme.colorScheme.primary
     val secondary = MiuixTheme.colorScheme.tertiaryContainer.let {
-        if (it != Color.Unspecified) it else Color(0xFF6750A4)
+        if (it != Color.Unspecified) it else primary
     }
     val surfaceColor = MiuixTheme.colorScheme.surface
     return rememberLayerBackdrop {

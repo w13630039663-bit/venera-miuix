@@ -128,8 +128,6 @@ class SauceNaoParsingTest {
     @Test
     fun `外链里 ext_urls 在前、source 只当补充，且 source 不是链接时不进去`() {
         // 第一例：source 与 ext_urls 里同一条 → 只留一份（去重仍要）。
-        // ⚠️ 顺序语义在 2026-09-27 改过：从前是 source 在前，理由是"它才是图真正的出处"；
-        // 真机上那正是「打开来源全跳 i.pximg.net」的成因 —— pixiv 库的 `source`
         // 常常是**图片直链**，而 `ext_urls` 里才是作品页。所以现在 ext_urls 在前。
         val merged = parseSauceNao(
             body(
@@ -160,7 +158,6 @@ class SauceNaoParsingTest {
 
     @Test
     fun `打开来源要跳作品页而不是 pximg 直链`() {
-        // 2026-09-27 真机反馈的原样：pixiv 库的 source 是 i.pximg.net 直链，
         // ext_urls 里才有作品页。直接取 firstOrNull 会跳到一张裸图。
         val page = parseSauceNao(
             body(

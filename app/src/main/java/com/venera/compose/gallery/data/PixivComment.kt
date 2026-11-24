@@ -1,11 +1,9 @@
 package com.venera.compose.gallery.data
 
 /**
- * 一条 pixiv **评论**（2026-10-19 · 批 231-F）。
  *
  * ## 它只能从登录腿拿到
  *
- * 匿名那条走不通（2026-10-19 本机四形状全 404，与仓内 2026-10-18 的记录一致）：
  * `www.pixiv.net/ajax/illust/{id}` 只给得出**条数** `commentCount`，给不出正文与作者。
  * 所以这一族的唯一来处是 `app-api /v3/illust/comments`（带票据）。
  * 版本号那条是**现量定的**：`/v1/illust/comments` 无票据回 404（路由不存在），
@@ -37,7 +35,6 @@ data class PixivComment(
     /**
      * 贴纸（stamp）那张图的地址（`stamp.stamp_url`）。空串 = 这一条没贴贴纸。
      *
-     * 2026-10-19 用户要"正常显示评论图和表情" —— 先把这一格说清楚：**pixiv 评论不能附图**。
      * 六家实现（Shaft / pixiv-client / Flare / pixnya / pixez / XTA）的评论字段表里都只有
      * `stamp`，没有 `pics` / `images` / `attachment`；用户在站方看到的"评论带图"就是这一枚贴纸。
      * 地址是**完整可用的那一档**（实测只有 `generated-stamps/{id}_s.jpg`，换 `_m` / `_l` / 去后缀都 404），

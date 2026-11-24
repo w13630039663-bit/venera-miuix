@@ -14,7 +14,6 @@ import org.junit.Test
  * （`DownloadScreen` 的 `104 + 92`、`SourceSectionScreen` 的 `104 + chipsHeight` 已经是这个形状）。
  *
  * 大屏那轮先收了 11 处、把剩下 7 处钉在冻结白名单里（当时没有可指认的故障，不动架构）。
- * UI 审查整改批 6（2026-10-14）把最后 7 处也改吃 token，名单清空 —— 本文剩下的职责是**防新增**：
  * 谁再抄一遍字面量，或往名单里加一项，两条用例都会红。
  */
 class TopBarFloorGuardTest {
@@ -26,7 +25,6 @@ class TopBarFloorGuardTest {
 
     @Test
     fun `非冻结页面不许再抄地板字面量`() {
-        // 冻结白名单今天为空：UI 审查整改批 6（2026-10-14，`docs/rounds/ui-fixes-2026-10-14.md`）
         // 把最后 7 处逐页抄写的 `statusBarTop + 104.dp` 全部改吃 `tokens.spacing.topBarFloor`。
         // 这一条现在管的是**新增**：任何页面再抄一遍字面量都会红在这里。
         val frozenWhitelist = emptySet<String>()

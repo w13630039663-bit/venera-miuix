@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-15 问题清单 T1a 第一颗（统计页）的尺子。
  *
  * 立的形状跟着清单 §二-4 那条根因判据走：**一屏一个收口点**。统计页三块内容都住在同一棵
  * `LazyColumn` 里，所以只在列表那一处挂 `widthIn` 就够；四个 `item` 各套一次会得到

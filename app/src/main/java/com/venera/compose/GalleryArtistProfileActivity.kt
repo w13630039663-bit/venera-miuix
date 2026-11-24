@@ -14,7 +14,6 @@ import com.venera.compose.gallery.ui.GalleryArtistProfileScreen
 import com.venera.compose.gallery.ui.PixivArtistScreen
 
 /**
- * 画廊画师介绍页的宿主 —— **独立 Activity**，与大图页同一承载（用户 2026-10-01 拍板）。
  *
  * 为什么不是 NavHost 里的目的地：那条路要的是实时背景模糊与跨 Activity 的预测式返回，
  * 这两样在 animation 1.12 上**结构性地给不到**页内目的地（查证与"别再重开这条"记在
@@ -55,7 +54,6 @@ class GalleryArtistProfileActivity : VeneraSubActivityBase() {
 
     @Composable
     override fun SubScreen() {
-        // ── 2026-10-19：按站分派。pixiv 走自己那一屏 ──────────────────────────
         //
         // 为什么不并进下面那一颗：那一屏的骨架是 booru 的查询语言
         // （`GalleryRankings.searchQuery` 拼 `标签 order:score`），而 pixiv 一条都不吃它 ——

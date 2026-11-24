@@ -29,7 +29,7 @@ import org.junit.Test
  * `GalleryPost.isAdultMarked`（`GalleryPost.kt:189-190`）判的是**站方 `rating` 字段**：
  * `val isAdultMarked: Boolean get() = rating.lowercase() !in SAFE_RATINGS`
  * 因为三家站 rating 字形不同（yande.re 用 `s`/`q`/`e`、Gelbooru 用
- * `general`/`sensitive`/`questionable`/`explicit`、Safebooru 用 `g`/`s`/`q`/`e`），
+ * `general`/`sensitive`/`questionable`/`explicit`、Konachan 用 `g`/`s`/`q`/`e`），
  * 所以判据是"只认安全的那几档"，其余一律算成人。tags 只有用户黑名单那一关用得上。
  *
  * ## 为什么直接打 policy 而不打整个取数路

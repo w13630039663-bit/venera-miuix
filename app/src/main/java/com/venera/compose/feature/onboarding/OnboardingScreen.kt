@@ -51,7 +51,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
+import com.venera.compose.components.venera.VeneraChip
+import com.venera.compose.components.venera.VeneraChipVariant
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -120,7 +121,6 @@ data class OnboardingPorts(
 )
 
 /**
- * 首次启动引导（2026-11-03，主人点名；口径对齐 `docs` 里那份原型）。
  *
  * ## 为什么步骤切换用 AnimatedContent 而不是 HorizontalPager
  *
@@ -570,13 +570,15 @@ private fun OnbSwatch(preset: ThemeSeedPreset, selected: Boolean, onClick: () ->
 
 @Composable
 private fun OnbModeChip(label: String, icon: ImageVector?, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
+    // 统一 Chip（控件体系统一 · 阶段 3）：引导页的 M3 FilterChip 退役，
+    // 与全站条件胶囊共用 VeneraChip（Filter 变体：未选描边、选中 secondaryContainer，
+    // 与 MD3 FilterChip 的分档语义一致）。行布局、回调、选中来源一字未动。
+    VeneraChip(
+        text = label,
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = icon?.let { vector ->
-            @Composable { Icon(vector, null, Modifier.size(VeneraTokens.spacing.chipIconSize)) }
-        },
+        leadingIcon = icon,
+        variant = VeneraChipVariant.Filter,
     )
 }
 

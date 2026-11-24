@@ -29,7 +29,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
  *
  * ── 三站都是站方图形，但清晰度不对等（这不是漏做）──
  *
- * 2026-09-30 实测，前两档都由 `scripts/build_source_icons.mjs` 从站方原档转出：
  * - **Gelbooru**：站上有一枚 `layout/gelbooru-logo.svg`（360×360 单路径）⇒ **矢量**，
  *   任意密度都锐利。原档填充色是 #FFFFFF（为站方彩色页头设计的），这里改成品牌蓝 #006FFA。
  * - **yande.re**：站方**没有方形站标** —— 唯一可用的方图是 favicon 那枚 **16×16**，
@@ -37,7 +36,6 @@ import com.venera.compose.ui.tokens.VeneraTokens
  *   摆到 24dp（本机 ≈72 物理像素）必然发糊。
  *   ⇒ 用户知情后仍选它：这张脸就是 yande.re 在浏览器标签页上的标识，**与站方一致优先于好看**。
  *
- * 2026-10-17 补的 **pixiv** 是站方 favicon 原档（`www.pixiv.net/favicon.ico`，48×48 / 32bpp）：
  * 蓝底白 p 的方标本体，**彩色且自带圆角** —— 所以它不染色、不铺底板（另外三枚是单色图形，
  * 需要底板把它们从封面上托起来）。48px 对上 18dp 徽标在 2.5~3.0 密度下的物理像素，不用放大。
  *
@@ -94,29 +92,28 @@ fun VeneraGallerySourceMark(
             )
         }
 
-        GallerySite.SAFEBOORU -> Box(
+        GallerySite.KONACHAN -> Box(
             modifier = modifier
                 .size(size)
                 .clip(shape)
-                // 与 Gelbooru 同一条理由：safebooru.donmai.us 的 favicon 是 Danbooru
-                // 系的纸箱标，带透明像素（由 build_source_icons.mjs 尊重 AND 掩码转出），
-                // 站方这枚图形是为浅色浏览器标签栏设计的 —— 白底托住它，压在封面上不散。
+                // 站方 favicon 那枚 32×32 位图**有**透明像素（AND 掩码实测 487/1024 置 1，
+                // 由 build_source_icons.mjs 尊重掩码转出），压在封面上会散 ⇒ 铺一层白底托住它。
+                // 底板这一条与 Gelbooru 同形，但**图形本体不是**同一系：那是 Danbooru 的纸箱标，
                 .background(Color.White),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_source_safebooru),
+                painter = painterResource(R.drawable.ic_source_konachan),
                 contentDescription = site.displayName,
                 tint = Color.Unspecified,
                 modifier = Modifier.fillMaxSize(),
             )
         }
 
-        // pixiv：**站方那枚方标本体**（2026-10-17 用户点名「推荐下面的图片的 p 图标都换成
         // pixiv 站点图标」）。从前这里是一枚字母 "P"，理由是"这一站没有随包图形资产"——
         // 那条理由**今天不成立**：`www.pixiv.net/favicon.ico` 就是那枚蓝底白 p 的方标
         // （48×48 / 32bpp 直彩），由 `scripts/build_source_icons.mjs` 转成
-        // `drawable-nodpi/ic_source_pixiv.png`（与 yande.re / safebooru 同一路数、同一流水线）。
+        // `drawable-nodpi/ic_source_pixiv.png`（与 yande.re / konachan 同一路数、同一流水线）。
         //
         // ⚠️ 与另外三枚的差别：这是**彩色原档**，自己带底色与圆角 ⇒ **不许染色**
         // （染成主色就不是它了），也**不另铺底板**（铺一块蓝底会把它的圆角填成方角）。

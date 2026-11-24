@@ -3,7 +3,6 @@ package com.venera.compose.gallery.domain
 import com.venera.compose.security.guard.AiTagKeys
 
 /**
- * 画廊这一把的 AI 判据（批次 C2，2026-09-29 用户拍板"画廊和漫画分开"）。
  *
  * 分开的是**开关**，词表仍以漫画侧那一张 [AiTagKeys] 为底（两份表迟早漂），
  * 但画廊侧对它做**三处改动**：两处只收窄、一处定向补宽。
@@ -21,7 +20,6 @@ import com.venera.compose.security.guard.AiTagKeys
  *
  * `female:ai` 是角色+性别组合，不是"AI 生成"，与漫画侧同一条口径。
  *
- * ## 定向补宽：pixiv 那一族的写法 booru 词表里一个都没有（2026-10-18 用户「开了 AI 角标一个都没见到」）
  *
  * [AiTagKeys] 只有四枚（`ai` / `ai-generated` / `ai生成` / `ai绘图`），
  * 那是照 **booru / EH** 的写法定的。而 **pixiv 的标签是另一套语言**：
@@ -71,7 +69,6 @@ object GalleryAi {
     }
 
     /**
-     * 这一条算不算 AI：**站方硬位优先，标签词表兜底**（2026-10-18，用户「开了 AI 角标一个都没见到」）。
      *
      * 为什么写成"或"而不是"硬位 `false` 就推翻词表"：作者可以不勾那一格，
      * 而把一枚明明写着 `NovelAI` 的图读成"站方说不是 AI ⇒ 不摆"，方向是**少摆**；

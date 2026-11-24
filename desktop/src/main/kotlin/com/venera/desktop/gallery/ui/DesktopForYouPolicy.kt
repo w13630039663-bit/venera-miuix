@@ -36,7 +36,7 @@ internal class DesktopForYouPlan(
      * 反过来写会让"有收藏却被我们滤光"那一档念成"快去收藏" —— 用户照做了还是空的，
      * 而那句引导就成了错的诊断。
      *
-     * ⚠️ 那句**不许写死站点数目**：`GallerySite` 今天是三枚（yande.re / Gelbooru / Safebooru），
+     * ⚠️ 那句**不许写死站点数目**：`GallerySite` 今天是三枚（yande.re / Gelbooru / Konachan），
      * 写"两站"就是又埋一条会过期的读数（同一族教训见 §22.3 那条活了四批的说明）。
      */
     val blankScreenReason: String? get() = when {

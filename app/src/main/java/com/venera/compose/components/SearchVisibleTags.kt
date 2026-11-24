@@ -1,7 +1,6 @@
 package com.venera.compose.components
 
 /**
- * 结果卡上要显示的标签文本 —— 从 `feature/SearchScreen.kt:1843` 搬来 `components/`（2026-10-20）。
  *
  * ## 为什么搬
  *
@@ -18,7 +17,6 @@ package com.venera.compose.components
  * 严格对应方案 §4.1 的「只合并字面同义」：
  * - 大小写 / 空白差异 → 同一枚（`Full Color` 与 `full  color`）；
  * - **裸词**与其**带命名空间**写法 → 留带命名空间那个（`chinese` 让位给 `language:chinese`）；
- * - **两个不同命名空间**下的同名值 → 各留一枚。真机图里 `東方: 靈夢` 这类前缀就是这种形态；
  *   早期版本只拿「去前缀后的值」当唯一键，会把 `female:dog` 与 `parody:dog` 错误并成一枚。
  * - 语义同义（`chinese` 与 `translated`）一律不合并 —— 它们是不同检索面词，合并等于丢功能。
  *

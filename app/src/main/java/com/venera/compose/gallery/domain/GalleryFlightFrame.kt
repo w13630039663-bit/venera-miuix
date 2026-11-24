@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.domain
 
 /**
- * 批 B 的核心算式：**一条 expansion 定飞行体的形**（活画面那一路，2026-10-19 计划 §5 批 B ①②③）。
  *
  * ## 它与 [exitExpansion] 的分工（为什么不是改它，而是新长一颗）
  *

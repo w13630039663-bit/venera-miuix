@@ -171,7 +171,7 @@ internal suspend fun desktopArtistLinkUrls(
     name: String,
 ): Result<List<String>> = when (site) {
     GallerySite.YANDERE -> ports.boards.yandere.artistLinks(name)
-    GallerySite.GELBOORU, GallerySite.SAFEBOORU -> ports.artists.danbooruArtistUrls(name)
+    GallerySite.GELBOORU, GallerySite.KONACHAN -> ports.artists.danbooruArtistUrls(name)
     // 2026-10-20：`GallerySite` 在 `:app` 侧加了 `PIXIV`（那批 Pixiv 接入），
     // 于是这颗 `when` 不再穷尽 —— 编译器把缺口指出来了，这里补上那一支。
     //

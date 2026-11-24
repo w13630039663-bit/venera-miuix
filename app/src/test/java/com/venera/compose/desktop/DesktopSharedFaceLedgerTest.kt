@@ -30,7 +30,6 @@ class DesktopSharedFaceLedgerTest {
 
     @Test
     fun `禁引文件与排除清单必须双向对得上`() {
-        // 2026-10-20：两处按 [DesktopFace.isExcluded] 走 —— 排除清单现在有两种写法
         // （裸文件名 / glob），而 glob 那一档解析器原先直接丢弃，导致"gradle 真排掉了、
         // 而账本里算作没排"的假红。判据的**意图**一字未改：双向对账，一条不许少。
         val all = DesktopFace.candidateFiles
@@ -57,10 +56,8 @@ class DesktopSharedFaceLedgerTest {
      * 每颗被排出的文件都要说得出**被哪一族禁引挡住**。
      *
      * 与上面第②条看着重复，钉的是两种不同的漂：②管"禁引没了、行还挂着"，这条管
-     * "有人往禁引集合里加/减一族"—— 那会让整张清单的口径一夜之间换个意思，
      * 而 `:desktop:compileKotlin` 照样绿（少一族判据不报错，只会让该排的没排上）。
      *
-     * 2026-10-20：解析含 glob 的条目（`**` 那种点名子目录里单颗文件的写法）。
      * 那条 glob 在 [DesktopFace.candidateFiles] 里按**全路径**回查，而不是按裸文件名查表。
      */
     @Test
@@ -72,7 +69,6 @@ class DesktopSharedFaceLedgerTest {
         val fileEntries = DesktopFace.excludeEntries().filter { entry ->
             !entry.name.contains('*') || entry.name.endsWith(".kt")
         }
-        // 2026-10-20 追加**第二类成因**（目标③ 挂 gallery/ui 时发现的）：
         //
         // 原先这条只认一种成因 —— "自己踩了禁引族"。但把 `gallery/ui` 挂进来时出现了一类
         // 真实情况：某颗文件**自己一行 Android 都不沾**，却 import 了同包里被排除的兄弟
@@ -155,7 +151,6 @@ class DesktopSharedFaceLedgerTest {
         /**
          * 禁引集合：上了桌面就得重写第二份的那些绑定。
          *
-         * ## ⚠️ 2026-10-20 改判（写法 A，用户裁决「按照大屏端复用」）
          *
          * 这里原先有一条 `^import androidx\.` —— 把**整个** androidx 命名空间当作
          * "Android 运行时"禁掉。那条在"桌面要装一套 Android 运行时"的语境下是对的，
@@ -183,7 +178,6 @@ class DesktopSharedFaceLedgerTest {
             Regex("^import androidx\\.activity", RegexOption.MULTILINE),
             Regex("^import androidx\\.lifecycle", RegexOption.MULTILINE),
             Regex("^import androidx\\.core", RegexOption.MULTILINE),
-            // `coil` 族**不是**一刀切禁掉 —— 2026-10-20 收紧成逐族点名。
             //
             // 原条目是 `^import coil`，本意（见 `desktop/build.gradle.kts` 那段注释）是挡住
             // "看起来只 import 了一句 Context、真正被间接绑死"的那类文件：
@@ -201,7 +195,6 @@ class DesktopSharedFaceLedgerTest {
             Regex("^import coil3\\.(imageLoader|SingletonImageLoader)", RegexOption.MULTILINE),
             // `coil3.gif`：`AnimatedImageDecoder` 背后是 `android.graphics.Bitmap` + `ImageDecoder`，
             // 桌面侧没有那颗件。命中点是 `gallery/data/GalleryAnimationGate.kt`（动图闸门），
-            // 而那颗本来就按裸文件名排除着 —— 2026-10-20 把 `^import coil` 收窄后，
             // 这条是补回来的**那一段真正的手臂**（不是把整族再禁回去：
             // `coil3.compose.AsyncImage` 一类跨平台件必须放行）。
             Regex("^import coil3\\.gif", RegexOption.MULTILINE),
@@ -210,7 +203,6 @@ class DesktopSharedFaceLedgerTest {
             Regex("^import com\\.venera\\.compose\\.[a-z0-9_.]*\\.android\\.", RegexOption.MULTILINE),
             // AGP 生成的资源索引类（`R.drawable.*` / `R.string.*`）。桌面侧没有这套资源管线，
             // 它由 `:app` 的 `processDebugResources` 生成 ⇒ 共享面 import 它必炸。
-            // 2026-10-20 登记：`components/venera/VeneraGallerySourceMark.kt` 是唯一命中点
             // （四颗站点位图），已按 glob 排除；报错文案会指向那一行。
             Regex("^import com\\.venera\\.compose\\.R\\b", RegexOption.MULTILINE),
         )

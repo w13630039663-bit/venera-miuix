@@ -62,7 +62,6 @@ private data class SettingsCategory(
 )
 
 /**
- * 设置分区清单（2026-10-20 重排：按"多久改一次"排，常用的在上）。
  *
  * 前一轮（同为 10-20）按使用场景分组，这一轮在组内再按**改动频率**排序：
  * - 「外观与主题」从第 3 提到第 1 —— 深色/材质/头图是这一页最常动的东西；
@@ -97,7 +96,6 @@ private val groupSystem = listOf(
 )
 
 /**
- * 设置主页（2026-10-02 重设计）。
  *
  * 原先这里挂着一套自研的页面内部栈（`PredictiveBackStack` + `stack`），7 个分区在同一个
  * Activity 内换内容渲染。那带来两个后果：转场是自绘的、观感比系统那套生硬，而且窗口层面
@@ -128,12 +126,10 @@ internal fun SettingsHome(
     val heroPath by prefs.settingsHeroPath.collectAsState()
     val heroFile = remember(heroPath) { SettingsHeroImageStore.resolve(heroPath) }
 
-    // ── hero 页的滚动契约（2026-10-02 第五轮重写）──
     //
     // hero 在场时 behavior 的 nestedScroll 连接**不挂**：空 largeTitle 仍占一行字体
     // 度量，miuix 会给 behavior 留出几十 dp 的「幽灵折叠行程」——上滑先被 behavior
     // 在 pre-scroll 里吃掉这段（列表看似没反应），回顶后 onPostScroll 的展开支路
-    // 又把顶栏「拉开」（真机实测）。折叠机制整个退场后，玻璃/小标题的进度改由列表
     // scrollState 直接推导：48dp 淡满，与其他页 contentOffset 的口径一致。
     // overscroll 仍禁（CompositionLocalProvider 在内容侧），到顶下拉从此无任何消费者。
     val density = LocalDensity.current
@@ -151,7 +147,6 @@ internal fun SettingsHome(
     }
     SettingsHeroSystemBarIcons(heroPresent = heroFile != null, scrolledPastHero = heroScrolledPast)
 
-    // ⚠️ 临时调试（2026-10-01 状态栏间隔排查）：页面根 Box 顶部画蓝线。
     Box(modifier = Modifier.fillMaxSize()) {
         SettingsHomeContent(
             prefs = prefs,
@@ -190,7 +185,6 @@ internal fun SettingsHome(
 /**
  * 设置首页内容。
  *
- * 布局（2026-10-02 重设计）：
  *  - hero 在场时：头图全宽在最顶（吃掉内容列的横向 padding，见外/内双 Column 结构），
  *    其后是应用身份卡、外链快捷行、四组设置、页尾名言卡。
  *  - hero 不在场时：与旧版一致 —— 顶部留顶栏折叠区（topPadding），直接进分组。
@@ -217,9 +211,7 @@ private fun SettingsHomeContent(
     )
     // hero 在场时 scrollConnection 传 null：折叠 behavior 不参与（见 SettingsHome 注释）。
     // 禁掉 overscroll：到顶继续下拉会把 hero 图拉伸变形（Android 12+ 的 stretch 效果
-    // 恰好作用在图上），设置页宁可没有回弹反馈。用户 2026-10-02 拍板「直接禁止」。
     //
-    // ⚠️⚠️ 2026-10-16 修：这里原来是 `LocalOverscrollConfiguration provides null` ——
     // **从写下那天起就一直是空转**。现读 foundation **1.12.0** sources
     // （`androidMain/…/OverscrollConfiguration.android.kt`）：该 CompositionLocal 已
     // `@Deprecated`，弃用文案把处置写死了原话 ——
@@ -257,9 +249,7 @@ private fun SettingsHomeContent(
                     top = if (heroFile != null) tokens.spacing.space3 else topPadding,
                     bottom = LocalBottomBarClearance.current,
                 )
-                // ── 大屏内容收口（2026-10-12）──────────────────────────────────
                 // 手机档 `contentMaxWidth` 为 null ⇒ 这条 Modifier 整个不挂，逐像素不变
-                // （用户 2026-10-02 硬约束「别动手机版」）。宽窗档才居中收口：
                 // 此前 1707dp 平板上单列列表横跨 2560px、开关被拉到 2182px 宽。
                 // 注意 hero 在上面、不在这个 Column 内，所以头图仍**整屏通栏**，不被收口影响。
                 .then(
@@ -279,7 +269,6 @@ private fun SettingsHomeContent(
                     SettingsEntryRow(category) { onOpen(category.screen!!) }
                 }
                 // 阅读历史与「本地收藏」同属数据，但语义不同：它不是偏好项，而是
-                // 2026-09-23 从主 Tab 降回二级页后保留的直达入口，点下去是**跳回 MainActivity 的图**
                 // （走 SettingsEscape.OpenHistory），与分区那种在本 Activity 内换页语义不同。
                 SettingsEntryRow(
                     SettingsCategory(

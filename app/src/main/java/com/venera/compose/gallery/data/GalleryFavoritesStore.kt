@@ -167,7 +167,6 @@ class GalleryFavoritesStore internal constructor(private val paths: PathProvider
     fun consumeNotice(): String? = _notice.value?.also { _notice.value = null }
 
     /**
-     * 让平台侧的适配器也能说一句（2026-10-18 收藏同步到站方）。
      *
      * 屏上那一行读的是 [consumeNotice]，所以这里只写不用：写第二通道就会出现
      * "一句从这条读、一句从那条读"的漏读。

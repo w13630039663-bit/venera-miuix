@@ -62,9 +62,7 @@ enum class VeneraGlassRole {
  * miuix-blur 的描边高光预设在本项目侧的名字。
  *
  * [libName] 是库里那个**属性名本身**（`top.yukonga.miuix.kmp.blur.highlight.Highlight` 的伴生属性，
- * 2026-09-29 从 0.9.4-rc01 的 sources jar 逐字读过：是扁平名 `GlassStrokeMiddleLight`，
  * 不存在 `Highlight.GlassStrokeMiddle.Light` 那种点链）。把它当数据存着而不是当场拼字符串，
- * 是为了让"库升级改名"这种事在单测里红，而不是在真机上表现为"玻璃描边静默消失"。
  */
 enum class VeneraGlassHighlight(val libName: String) {
     MIDDLE_LIGHT("GlassStrokeMiddleLight"),
@@ -87,7 +85,6 @@ object SurfaceMaterialPolicy {
      * 也不看 [com.venera.compose.data.prefs.NavigationBarStyle] —— 其余轴正交是拍板过的，
      * 这里若偷偷联动，就会出现"我没开玻璃它怎么透了"或反之。
      *
-     * 2026-11-07 加版本参数：miuix-blur 库声明 minSdk 33（内部走 31+ 的 RenderEffect 图形栈），
      * 而 app 的 minSdk 已降到 30（Android 11）。`sdkInt < 33` 返回 false = 玻璃整条回落实色
      * —— 不执行库代码，Manifest 那条 `tools:overrideLibrary` 因此是安全的。这是"老系统跑
      * 不动液态玻璃"的如实降级，不是偷偷砍功能：33+ 的行为一字不变。

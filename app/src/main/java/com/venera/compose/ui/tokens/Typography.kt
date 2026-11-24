@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.sp
  * 注意：这些是**尺寸**层，与 miuix 的 TextStyles（主题级 TextStyle）互补 ——
  * 页面用 miuix 的 Text/Material3 的 Text 渲染时，从本 Token 取 size/weight。
  *
- * ── 2026-11-09 补的三个维度，以及为什么它们不改观感 ──
  *
  * [fontFamily] 恒为 [FontFamily.Default]：Android 侧这就是「跟随系统字体」的唯一正确写法 ——
  * Default 解析到平台 sans-serif，用户在系统设置里换字体、开非线性字号缩放都自动生效。
@@ -63,7 +62,6 @@ data class VeneraTypographyTokens(
     val weightSemibold: FontWeight,
     val weightBold: FontWeight,
 
-    // ── 2026-11-09：字族 / 行高 / 字距 ──
     /** 唯一合法字族来源：Android 系统字体（见文件头注）。 */
     val fontFamily: FontFamily,
     /** itemTitle 档行高（MD3 28 / MIUIX 24）。 */

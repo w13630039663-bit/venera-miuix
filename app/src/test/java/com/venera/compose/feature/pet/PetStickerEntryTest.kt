@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 首页顶栏桌宠这一整条链的接线尺子（2026-10-16 批 116）。
  *
  * 为什么全是源码扫描而不是跑起来看：Android 侧没有 Compose UI 测试宿主
  * （`app/src` 下只有 `main` 与 `test`，无 `androidTest`、无 Robolectric），

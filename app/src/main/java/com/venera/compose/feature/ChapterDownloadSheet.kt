@@ -68,7 +68,6 @@ private val DOWNLOAD_VIEWPORT_HEIGHT = 320.dp
  * （按 50 话一段整取整放，边框报全选/部分状态）、**逐话微调**（三列勾选网格，
  * 可在格子上按住拖动圈选一段）。
  *
- * ## 两条被真机打出来的红线（用户 2026-11-09：「没有下载按钮，而且很卡」）
  *
  * - **底栏必须钉住**：整段内容直接顶满时，面板量不到视口底，最后一行会被裁到屏外 ——
  *   「开始下载」就此消失。现在中段是有界滚动视口，动作行是它的**兄弟**、常驻底部，
@@ -117,9 +116,7 @@ internal fun ChapterDownloadSheet(
     val ranges = remember(chapters) { virtualBandRanges(chapters.size, 50) }
 
     // 三列格宽 = 约束宽换算（BoxWithConstraints 在组合期读约束）。
-    // 不用 onSizeChanged 回写 —— 那是 measure→compose 的跨相位回写（官方明令的反模式），
     // 而且上一版正是它：包裹列没有 fillMaxWidth，量到的是格子自己的窄宽，
-    // (20dp - 12dp)/3 ≈ 2dp，整片格子塌成只剩勾（用户 2026-11-09 截图）。
     val columns = 3
     val gap = tokens.spacing.space3
 

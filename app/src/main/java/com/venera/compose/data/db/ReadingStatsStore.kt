@@ -8,7 +8,6 @@ import com.venera.compose.data.platform.SqlDatabase
  * 为什么单独一层（调用方是 `stats/ReadingStatsManager`）：那张表的列名、聚合语句与"哪些列不许为
  * null"属于持久层，而 manager 那一侧还有 Context 才能做的事（等标签字典异步加载、繁简转换、
  * 日期格式化）。分开后这一层不碰 Android 类型，`:desktop:test` 就能拿真 `JdbcSqliteDatabase`
- * 跑「累计 → 查询」，而不是只在真机上点一次统计页。
  *
  * 列的可空性逐列对过 `SchemaSql.V1_CREATE_STATEMENTS` 里 `reading_stats` 的建表语句：
  * 十列全 `NOT NULL` ⇒ 文本一律走 [requiredString]（读出 null 就是表结构与代码不符，抛）。

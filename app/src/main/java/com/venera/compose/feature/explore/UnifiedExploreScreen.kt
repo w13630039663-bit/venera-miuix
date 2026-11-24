@@ -114,8 +114,6 @@ import com.venera.compose.components.venera.VeneraTopBarPill
  *   （辅助）通用标签     —— 折在「筛选 · N」按钮里点开（筛选是辅助动作）
  *   底部   作品列表
  *
- * 2026-10-14 两轮迭代的结论：
- *  - 折叠那一轮（筛选/分类折进按钮、副标题念源名·模式名）被真机读数否掉：
  *    分类折起来 =「要先点一下才看得见能逛什么」。分类回常驻，副标题整个删掉
  *    （源名在源下拉格里、模式名在模式行实心选中态上，两处都在屏上）。
  *  - 探测容错：源探测失败的源不再被剔除（网络抖动不该让源凭空消失），
@@ -145,7 +143,6 @@ fun UnifiedExploreScreen(
     onSelectComic: (ComicItem) -> Unit,
     onOpenNativeSection: (NativeSectionArgs) -> Unit,
     /**
-     * 探索并进搜索页的分段后（2026-11-03），探索屏不再是底栏第五格：本屏顶栏与搜索页
      * 同念「搜索与发现」，分段胶囊在此侧把当前段指到「探索」。切回搜索走上层导航
      * （gotoTab(SEARCH)，存档口径与切主 Tab 一致）。
      */
@@ -271,7 +268,6 @@ fun UnifiedExploreScreen(
             currentPage = 1
             // 筛选结果是平铺列表，永远不按分区渲染。多分区页（singlePageWithMultiPart /
             // multiPartPage）与 mixed 的第 1 页都按分区渲染 —— mixed 的第 2 页起是裸列表，
-            // 会被下面的「单分区且标题为空」判式自动打回平铺。
             showAsSections = vm.unifiedFilter == null &&
                 (mode.kind == ExploreMode.Kind.EXPLORE_MULTI_PART ||
                     mode.kind == ExploreMode.Kind.EXPLORE_MIXED) &&
@@ -284,7 +280,6 @@ fun UnifiedExploreScreen(
         } catch (e: CancellationException) {
             // 取消是控制流：切源 / 按刷新 / 离开这一页都会走到这儿。**必须原样抛回**，
             // 否则 `catch (e: Exception)` 会把它读成"加载失败"并把内部那句话念上屏
-            // （真机 2026-10-14：拷贝漫画偶发 "The coroutine scope left the composition"）。
             throw e
         } catch (e: Exception) {
             // 取消的第二种形态：类型不是 CancellationException，但 message 明说"scope 走了"
@@ -339,9 +334,7 @@ fun UnifiedExploreScreen(
     val topBarBackdrop = rememberTopBarBackdrop()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    // 顶栏**不放副标题**（2026-10-14 删）：源名在源下拉格里，模式名在模式行的实心
     // 选中态上 —— 两处都在屏上，副标题再说一遍就是「禁漫天堂 · 禁漫天堂」那种同词两遍
-    // （真机读数原话）。为兜它还要配一个 24dp 的地板补偿项，删掉副标题那笔账也一起没了。
 
     Box(Modifier.fillMaxSize()) {
         // 通用标签的可用性只依赖当前源，提前算好（LazyListScope 内不能调用 remember）。
@@ -354,7 +347,6 @@ fun UnifiedExploreScreen(
         // 第二道闸是组内上限 SECTION_ITEM_CAP：预算只决定"露几组"，管不了 mh1234 那种
         // 一组 343 枚的题材表，不截它首屏就是几百枚药丸。折叠态截下的尾部与整组未露出的
         // 部分一起进 hiddenEntryCount，由同一个「更多分类」按钮放出。
-        // ⚠️ **零入口的组整组先剔掉**（2026-10-14 手机档读数：MangaDex 那一屏连着两行光杆标题
         // 「Tags」「内容」，各自管着一枚入口都没有的组）—— 屏上多一行标题，用户读到的不是
         // "这里没有分类"，而是"这里应该还有东西没出来"。空组对预算与折叠计数都贡献 0，
         // 所以在源头剔：visibleSections 与 hiddenEntryCount 两本账一起对上。
@@ -407,7 +399,6 @@ fun UnifiedExploreScreen(
         ) {
             if (onSwitchToSearch != null) {
                 stickyHeader(key = "segment") {
-                    // 分段条钉在顶栏下（sticky）：探索是「搜索与发现」页的第二段（2026-11-03），
                     // 拨回「搜索」走上层导航（gotoTab(SEARCH)），存档口径与切主 Tab 一致。
                     SearchDiscoverSegmentBar(
                         current = SearchDiscoverSegment.EXPLORE,
@@ -456,13 +447,11 @@ fun UnifiedExploreScreen(
             val src = currentSource ?: return@LazyColumn
             val activeFilter = vm.unifiedFilter
 
-            // ══ 上方区块：模式 / 筛选 / 分类三个入口，2026-10-14 改版 ══
             //
             // 折叠态首屏只留三件事：源是谁、模式是哪个、要不要挑什么。
             // 「挑什么」收进**一枚动作行**里的两枚按钮，点开就地撑开在它下面 ——
             // 不是弹层、不是新页、也没有「确定」那一步（筛选条件即选即查）。
             //
-            // ⚠️ 这一层**不再另摆一枚总标题**（2026-10-14 手机档读数）：它管的三块各自带题，
             // 再套一层「快捷筛选」就是两行标题压一行药丸 —— 层级重复是那一屏"像没加载完"的另一半成因。
             //
             // 模式行：只有一枚模式时整行不渲染（没得选就不摆），模式名交给顶栏副标题说。
@@ -489,7 +478,6 @@ fun UnifiedExploreScreen(
             }
 
             // ── 动作行：筛选一枚开关 + 右槽念生效中的筛选 ──
-            // 分类**不再收进按钮**（2026-10-14 改回去常驻）：探索 = 浏览，分类就是主干道，
             // 折进按钮等于"先点一下才看得见能逛什么"（用户原话：需要手动点击才显示不好）。
             // 右槽把原先独占一行的 FilterActiveBar 的信息与「清除」把手一起搬过来。
             val filterCount = filterEntryCount(unifiedAvailability)
@@ -525,7 +513,6 @@ fun UnifiedExploreScreen(
 
             // ══ 分类区：常驻（榜档组 + 分类组）══
             //
-            // 2026-10-14 改回常驻：折叠那一轮把分类折进「分类 · N」按钮，用户原话
             // "需要手动点击才显示不好" —— 浏览场景里分类就是内容本身，藏起来等于没有。
             // 首屏仍按组顺序只露前 SECTION_ENTRY_BUDGET 个入口，尾巴由「更多分类」放出。
             //
@@ -593,8 +580,6 @@ fun UnifiedExploreScreen(
             }
 
             // 「内容」那枚节头只在**真有一屏内容要列**时摆：加载中 / 失败 / 空 那三档下面
-            // 各自会念一句话，再压一行标题上去就是真机量到的那行"光杆标题 + 空态"
-            // （2026-10-14 手机档：MangaDex 那一屏读完是"探索方式 / 内容 / 该探索方式暂无内容"）。
             if (!isLoadingContent && contentError == null && !content.isEmpty) {
                 item(key = "content-header-" + src.sourceKey) {
                     SectionHeader(if (activeFilter != null) "筛选结果" else "内容")
@@ -657,7 +642,6 @@ fun UnifiedExploreScreen(
                     )
                 }
                 content.isEmpty -> item {
-                    // ── 空态：只说「这一格空的」，并且**给下一步**（2026-10-14 改版）──
                     //
                     // 改版前这里只有一句「该探索方式暂无内容」—— 那是把责任推给用户的死话：
                     // 用户读完不知道该改什么，能做的只有退出这一页。出路都在手边：
@@ -887,7 +871,6 @@ private fun buildExploreContent(
  * ------------------------------------------------------------------ */
 
 /**
- * 源选择器：大卡片锚点 + 自绘下拉（2026-10-14 第二版，用户点名「改成这种比较大的显示」）。
  *
  * 为什么自绘而不是官方 `ExposedDropdownMenuBox`：那一件在深色主题下弹的是半透明
  * surface 菜单、锚点格也没有描边，与本仓其余 5 处 `DropdownMenu`（实底菜单 +
@@ -895,7 +878,6 @@ private fun buildExploreContent(
  * 工具栏，违和写在脸上。
  *
  * 锚点是一张**两行卡片**：书本图标 + 源名（大号加粗）+ 「当前漫画源 · 点击切换」+ 箭头。
- * 一行细条读不出「这里能换源」（用户 2026-10-14 报「改成比较大的显示」），
  * 副标题把这一格的用途写死在脸上，源名过长时靠 `Ellipsis` 收尾，不换行、不撑高。
  *
  * 菜单宽度 = 锚点宽度（用户点名「点击后有和这个框一样宽度的下拉框」）：锚点实测宽经
@@ -1190,7 +1172,6 @@ private fun UnifiedTagBlock(
     onTagClick: (UnifiedTag) -> Unit,
 ) {
     // ⚠️ 那行「跨源快捷筛选：点击即在下方筛当前源，再点一次取消。」提示**已删**
-    // （2026-10-14 改版）：整块改由动作行「筛选 · N」撑开，撑开即上下文，
     // 一行常驻说明文字是白占 21dp chrome。动作行右槽担起"现在筛的是什么"那句话。
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.chipSpacing),

@@ -53,7 +53,6 @@ fun PetMascot(modifier: Modifier = Modifier) {
  * 系统「移除动画」那一档（过渡动画缩放 = 0）时她停在首帧。
  *
  * 读的是 `TRANSITION_ANIMATION_SCALE` 而不是 `ANIMATION_SCALE`：后者在公开 API 里**根本不存在**
- * （2026-10-16 拿 android-37 的 android.jar `javap` 量过：`Settings.Global` 上公开的只有
  * `WINDOW_ANIMATION_SCALE` 与 `TRANSITION_ANIMATION_SCALE` 两枚，`ANIMATION_SCALE` 是 @hide）。
  * 开发者选项里那个"动画时长缩放"和无障碍里的"移除动画"写的正是这两枚，取过渡那一枚
  * —— 贴纸这种跨帧变化更接近一次过渡，而不是窗口开合。

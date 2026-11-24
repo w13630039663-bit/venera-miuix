@@ -6,14 +6,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 画廊首页头图的接线（2026-10-15，用户「图廊首页也加上和设置页面一样的可以切换的头图」）。
  *
  * 「和设置页一样」读成**同一套机制、不同一张图**：独立偏好键 + 独立落盘槽位。
  * 共用一张会让"换画廊的头"顺手改掉设置页，反之也一样 —— 那是两个开关拧到一处。
  *
  * 摆法钉死在墙的那颗 header item **内部**、chrome 之上：新插一枚 item 会撞本仓两族已量过的坑
- * （懒列表"第 0 项之后插入"的锚定漂移 = 首页顶栏重叠那次的真机根因；header 必须单根 Column
- * = 2026-10-01 错误提示压在搜索栏上）。
  */
 class GalleryHeroWiringTest {
 
@@ -72,7 +69,6 @@ class GalleryHeroWiringTest {
         val body = src("com/venera/compose/gallery/ui/GalleryForYouScreen.kt")
         val headerAt = body.indexOf("header = {")
         assertTrue("header 那一块都找不到，量具失效", headerAt >= 0)
-        // ⚠️ 2026-10-16 订正**形态**（原文：`body.indexOf("hero?.invoke()")`）。
         //
         // 用户「左右还是有空白」这一轮之后，头图外面裹了一层通栏 Box，那一行从
         // `hero?.invoke()` 变成了 `hero?.let { heroSlot -> … }`。**判据意图一个字没变** ——
@@ -98,7 +94,6 @@ class GalleryHeroWiringTest {
         assertTrue("gridTopPadding 必须仍只等于 topBarFloor", screen.contains("val gridTopPadding = topBarFloor"))
         assertTrue("gridTopPadding 必须仍只等于 topBarFloor", screen.contains("val gridTopPadding = topBarFloor"))
 
-        // ⚠️ 2026-10-16 订正这一条（原文：`searchOverlayTop` 必须仍只等于 topBarFloor）。
         //
         // 头图**出血**之后（用户「表现方式应该和图二一样才对」），入口条本身整体上移了
         // topBarFloor 那一段 —— 落点若还钉在 topBarFloor，"从入口条原地长开"就退化成
@@ -106,7 +101,6 @@ class GalleryHeroWiringTest {
         // 这条尺子的精神（不许把 hero 高度算进**顶栏避让地板**）没变，漂的只是"落点"这一半。
         assertTrue(
             "搜索卡落点必须分两支：无头图 = topBarFloor；有头图 = 头图那一段的占位高",
-            // ⚠️ 2026-10-18 01:32 改判（用户「在首页搜索框的时候，头图会异常显示」）：判据回到
             // `galleryHeroFile != null`。当天早些时候把它换成 heroActive 的前提是"搜索态那一屏
             // 没有头图" —— 那条**不成立**：主墙 `GalleryForYouPage` 在 1947 行是**无条件**组合的，
             // 搜索卡只是叠在它之上的浮层（见本文件「这两层都不许再被 if (svm.active) 包着」），
@@ -115,7 +109,6 @@ class GalleryHeroWiringTest {
             screen.contains("val searchOverlayTop = if (galleryHeroFile != null) {") &&
                 screen.contains("statusBarTop + VeneraSpacing.settingsHeroHeightSubpage - VeneraSpacing.settingsHeroOverlap"),
         )
-        // ⚠️ 2026-10-16 换档（用户「空位有点太多…1选A吧」）：头图用**设置子页那一档** 148dp。
         // 两条**必须同一个常量** —— 占位高与落点是同一条式子，只改一处，搜索卡就会停在旧落点上，
         // "从入口条原地长开"退化成"卡从上方掉下来盖住入口条"。
         assertTrue(
@@ -129,13 +122,11 @@ class GalleryHeroWiringTest {
     }
 
     /**
-     * 头图在场时的**出血契约**（2026-10-16，用户「画廊的头图有问题，表现方式应该和图二一样才对」）。
      *
      * 图二 = 画廊设置页。头图在那边摆在**内容列之外**、天然从屏幕最顶出血；画廊这边它是墙的
      * 第一行，必须靠这四件事凑出同一个观感 —— 缺任何一件都会退回"一条标题栏 + 一张图"两张皮：
      * ① 墙顶留白归零；② 顶栏大标题让位；③ 标题改由头图画成图上白字；④ 折叠连接不挂。
      *
-     * ⚠️ 2026-10-18 给这四条重新划过作用域（「搜索态会被连坐」），当天 01:32 又把它**收窄成两条**：
      * 让位类 —— 顶栏大标题让位、折叠连接不挂、玻璃进度改由墙自己喂 —— 只对画廊首页成立，
      * 判据 `heroActive`（搜索态的大标题是「搜索」，不是空串，"幽灵折叠行程"那一档根本不发生）。
      * 落点类 —— 墙顶留白、搜索卡落点 —— 问的是图与入口条**实际画在哪**，而主墙在搜索态照旧
@@ -156,7 +147,6 @@ class GalleryHeroWiringTest {
         )
         assertTrue(
             "顶栏大标题没在头图在场时让位 ⇒ 一条深色大字横压在图的上段上",
-            // 2026-10-18：让位只对首页（heroActive），搜索态那一档渲染「搜索」
             // （用户：「搜索页面的居中标题显示搜索才对」+「还是没有左边的大标题」）。
             screen.contains("largeTitle = if (heroActive) \"\" else if (svm.active) \"搜索\" else \"画廊\""),
         )
@@ -179,14 +169,12 @@ class GalleryHeroWiringTest {
     }
 
     /**
-     * 头图**让位契约**不许泄漏进搜索态（2026-10-18，用户「还是没有左边的大标题」那张截图）。
      *
      * 那条截图里搜索态顶栏左边是空的 —— 因为大标题让位那条判据问的是"设没设过头图"，
      * 没问"现在是不是搜索态"。所以这里钉两件事：
      * ① 有一枚把两者都问上的判据（`heroActive`），且它不是 `heroPresent` 的别名；
      * ② 凡是"因为头图而让位 / 而摘连接"的地方都必须吃 `heroActive`。
      *
-     * ⚠️ 2026-10-18 01:32 收窄：这一条**只管让位类**。落点类（墙顶留白、搜索卡落点、跟着折叠收的那一截）
      * 仍只问"设没设过头图"，各自钉在本类 `头图不参与避让地板与收栏阈值` / `头图在场时出血并让位`
      * 和 `GalleryPixivArtistSearchTest` 的「顶栏折起来那一截空白」那把尺子里 —— 别把它们再塞回这个名单，
      * 同一件事只许一把尺子。
@@ -221,7 +209,6 @@ class GalleryHeroWiringTest {
     }
 
     /**
-     * 有头图的那面墙**禁掉过度滚动**（2026-10-16，用户「钳制效果，禁止在设置了头图的页面使用过度滚动，
      * 不然效果不好」）。
      *
      * 机制走 `GalleryCardsGrid.disableOverscroll` → `overscrollEffect` 这条**组件参数**
@@ -246,7 +233,6 @@ class GalleryHeroWiringTest {
     }
 
     /**
-     * 头图**整屏通栏**（2026-10-16，用户「而且左右还是有空白」）。
      *
      * 设置页那头图摆在内容列**之外**（外/内双 Column），天然从屏幕最左到最右；画廊这边它是网格的
      * header item，会跟着吃到 `contentPadding` 的左右内缩（实测截图逐像素：左右各 26px ≈ 11dp，

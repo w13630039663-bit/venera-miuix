@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 图库站「正在关注的画师」与「每日热门」两节对齐 pixiv 那两节风格的判据（2026-10-17 第三十轮）。
  *
  * 用户原话：「关注画师和每日热门 做成相同风格的ui」。
  * 这是长期挂着的 U1 遗留项（「图库站 ARTISTS/DAILY 两节补 surface = true」）的正式落地。
@@ -119,7 +118,6 @@ class GalleryBooruSectionStyleTest {
 
     @Test
     fun `贴墙那一节的节头补的是卡内衬那一档，左缘与有卡那两节对齐`() {
-        // 用户 2026-10-18 第四批的读数：「画廊 pixiv 页的推荐文字和图标都还是没有对齐上面的排行榜」。
         // 有卡那两节的节头左缘 = 卡内衬 space6(12dp) + 节头自己那 4dp = 16dp；
         // 无卡（wallAdjacent）那一支从前一圈内衬都不加 ⇒ 节头只吃那 4dp，**偏左整 12dp**。
         // 补的就那 12dp：同一颗 space6，不另造数，也不去动节头那颗件（它两站共用）。

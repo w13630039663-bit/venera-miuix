@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 主 Tab 五格（2026-11-03：探索并入搜索页的分段后，第五格换成了「下载与本地」——
  * 全项目唯一的下载/本地入口，见 `DownloadsLocalScreen` 头注）。
  */
 enum class VeneraNavTab(
@@ -63,7 +62,6 @@ fun VeneraFloatingNavBar(
     // 桌面侧读窗口容器宽 —— 大屏底栏因此两端口径同源。替换前这两行是
     // `LocalConfiguration.current.screenWidthDp.dp`，那是 AndroidX 的件，桌面没有。
     val screenWidth = LocalWindowWidthDp
-    // 触觉反馈从平台服务来（2026-10-20，写法 A）：`android.view.HapticFeedbackConstants`
     // 是 Android SDK 的件，桌面没有。默认实现静默无操作，Android 侧由入口挂
     // `AndroidUxPlatformServices`，震动手感逐字不变（原 `KEYBOARD_TAP`）。
     val ux = LocalUxPlatformServices.current

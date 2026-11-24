@@ -7,7 +7,6 @@ import android.net.NetworkCapabilities
 /**
  * "现在这条网络计不计费" —— 动图「仅 Wi-Fi」那一档唯一的外部读数。
  *
- * 全仓此前没有任何 `ConnectivityManager` 用法（2026-09-29 复核过），所以这是新层，
  * 配套要在 manifest 补 `ACCESS_NETWORK_STATE`（普通权限，不弹运行时窗）。
  *
  * 判据不是"是不是 Wi-Fi 传输"而是"是不是**不计费**"：以太网/多数热点也算不计费，

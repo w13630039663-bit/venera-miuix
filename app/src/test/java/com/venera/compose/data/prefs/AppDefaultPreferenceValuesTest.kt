@@ -11,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 三枚应用默认档的化石尺子（2026-10-13 用户点名改判）：
  * 默认阅读模式 = 美漫·左至右、默认底栏 = 液态玻璃悬浮栏、默认界面风格 = MD3。
  *
  * 为什么扫源码而不是构造 prefs 来读默认值：`VeneraPreferences` 要 Android `Context`
@@ -62,7 +61,6 @@ class AppDefaultPreferenceValuesTest {
     /**
      * 设置页那两档的「（默认）」字样必须挂在真的那一档上。
      *
-     * 这条不是打磨：`cd0e1bd` 把默认档从 Miuix 换成液态玻璃时，选项标签里那句
      * 「Miuix 悬浮栏（默认）」原样留着 —— 屏上从此写着一条与磁盘默认值相反的话，
      * 而它比 `VeneraPreferences` 里那行更接近用户眼睛，编译器与运行期都管不到。
      */
@@ -131,7 +129,6 @@ class AppDefaultPreferenceValuesTest {
     }
 
     /**
-     * 「画成水彩」默认**关**（2026-10-13 用户点名）：Beta 功能的默认档也是产品要求，
      * 同本篇其余几枚扫字面量钉住。只钉从没设过这一项的安装读到的值，盘上有值照旧。
      */
     @Test

@@ -74,7 +74,7 @@ class DesktopGalleryDetailTest {
         )
         assertEquals("已收藏", yandere.value("本地状态"))
 
-        val bare = desktopDetailInfoRows(post(GallerySite.SAFEBOORU), favorite = false)
+        val bare = desktopDetailInfoRows(post(GallerySite.KONACHAN), favorite = false)
         assertEquals("站方什么都没给 ⇒ 只剩来源与本地状态两行（不许摆 0×0 与空格式）", 2, bare.size)
     }
 

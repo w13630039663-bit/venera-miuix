@@ -8,7 +8,6 @@ import org.junit.Test
 /**
  * 图片请求的 `ImageFetchTag` 盖章判据。
  *
- * 2026-09-29 把普通图片（画廊、封面）从 `VeneraImageFetcher` 挪给 Coil 自带的
  * `OkHttpNetworkFetcherFactory` 之后，这条链上**再没有别的地方**会给请求打这个标记
  * （Coil 自己构造的 `okhttp3.Request` 只带 url/method/headers，`extras` 不会映射成 tag）。
  * 而两个拦截器都只认它：

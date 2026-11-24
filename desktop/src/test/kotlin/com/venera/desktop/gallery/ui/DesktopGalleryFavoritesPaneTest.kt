@@ -35,7 +35,7 @@ class DesktopGalleryFavoritesPaneTest {
         val projection = projectFavorites(
             listOf(
                 favorite(GallerySite.YANDERE, 1L),
-                favorite(GallerySite.SAFEBOORU, 2L),
+                favorite(GallerySite.KONACHAN, 2L),
                 favorite(siteKey = "不存在的站", id = 9L),
             ),
         )

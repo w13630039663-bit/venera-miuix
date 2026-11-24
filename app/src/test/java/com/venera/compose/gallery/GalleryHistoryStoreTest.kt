@@ -145,8 +145,6 @@ class GalleryHistoryStoreTest {
 
     @Test
     fun `昨天那种没有 ratio 键的档照读，那一格算 0`() {
-        // 2026-10-15 才加的字段：加之前写下的档必须照读，不能因为缺键就整档判坏留档重来
-        // （那等于把用户攒的历史打回空名单，代价与"读不出来"同档）。
         file.writeText(
             """[{"site":"yandere","id":5,"thumb":"t5","viewed_at":70}]""",
         )
@@ -164,7 +162,7 @@ class GalleryHistoryStoreTest {
             val s = store()
             s.recordView(post(site = GallerySite.YANDERE, id = 1L), at = 10L)
             s.recordView(post(site = GallerySite.GELBOORU, id = 2L), at = 20L)
-            s.recordView(post(site = GallerySite.SAFEBOORU, id = 3L), at = 30L)
+            s.recordView(post(site = GallerySite.KONACHAN, id = 3L), at = 30L)
             s.removeAll(listOf("gelbooru:2"))
         }
 

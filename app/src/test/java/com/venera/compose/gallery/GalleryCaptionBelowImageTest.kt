@@ -5,14 +5,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * 「文字区住在封面**下方**，不住在图上」的判据（2026-10-17 第三十二轮）。
  *
  * ## 它拦的是什么事
  *
  * 用户原话：「这边我之前说的做这个浮层，改成图片能在外面预览全部显示那种不要浮层，
  * 这样飞行动画也会好很多」。
  *
- * 2026-10-17 第二十四轮起，pixiv 推荐墙的文字区曾**浮在封面下沿**（半透明毛玻璃压在图上）。
  * 那条浮层压掉封面底沿一条 ⇒ 图在网格里看不全。更麻烦的是飞行：`PixelCopy` 截的是
  * **封面那一块**，而浮层 caption 叠在这一块里 ⇒ 被一起截进位图，于是大图页要额外做
  * 「把位图切两段画 + 条子按 `1f - t` 淡出 + 垫帧把底部一绺裁掉」才接得上画面框
@@ -83,14 +81,12 @@ class GalleryCaptionBelowImageTest {
     private val forYou = codeLines("com/venera/compose/gallery/ui", "GalleryForYouScreen.kt")
     private val flyIn = codeLines("com/venera/compose/gallery/ui", "GalleryFlyIn.kt")
     private val post = codeLines("com/venera/compose/gallery/ui", "GalleryPostScreen.kt")
-    // 2026-10-19：云端书签墙那一屏收进了 **pixiv 账号页**（`PixivTwoLegWall` 是它的共用件），
     // 独立那颗文件已撤。这一族判据问的是"递没递头像表"，与住在哪一颗文件无关 ⇒ 跟着搬锚点。
     private val bookmarks = codeLines("com/venera/compose/gallery/ui", "PixivAccountScreen.kt")
 
     /**
      * 去程飞行体那一段。
      *
-     * 2026-10-19 批 A 之前它长在 `GalleryPostScreen` 里（从 `coverSourceRect` 那句到
      * `val exitFrom = exitStart` 之前）；批 A 把两趟绘制并成共享件之后，这一段住
      * `GalleryEntryFlyBody.kt`，**整份文件就是那一段** —— 所以锚点从"屏里的一段"
      * 换成那颗共享件本身。三条断言（只画一次 / 不随进度淡 / 源尺寸取整块）原样适用。
@@ -273,7 +269,6 @@ class GalleryCaptionBelowImageTest {
 
     @Test
     fun `pixiv 推荐墙与云端书签墙都递头像表`() {
-        // ⚠️ 2026-10-17 第二轮改判：这一处从 **1** 变成 **2**。
         // 用户原话「p 站搜索出来的图片卡片就不要带 p 站图标了，按照外面的头像 + 标题 + 作者名」——
         // 于是**搜索墙**在 pixiv 那一域也递头像表（`svm.pixivAvatars`），与首页推荐墙同一档形状。
         // 两处都必须是"按域递"而不是无条件递：booru 三站响应里没有头像那一格，

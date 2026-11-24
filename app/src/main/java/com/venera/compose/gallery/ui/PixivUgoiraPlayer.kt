@@ -88,7 +88,6 @@ fun rememberUgoiraPlayback(
 }
 
 /**
- * pixiv 动图（ugoira）就地播放组件（2026-10-23）。
  *
  * ## 设计纪律
  * 1. **叠在静帧之上**：底座始终是既有的 AsyncImage（第一帧或缩略图），解码就绪前或播放失败时画面不白屏；
@@ -115,7 +114,7 @@ fun PixivUgoiraPlayer(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(androidx.compose.foundation.shape.CircleShape)
                         .background(Color.Black.copy(alpha = 0.65f))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                     contentAlignment = Alignment.Center
@@ -140,7 +139,7 @@ fun PixivUgoiraPlayer(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(androidx.compose.foundation.shape.CircleShape)
                         .background(Color.Black.copy(alpha = 0.65f))
                         .clickable { retryAttempt++ }
                         .padding(horizontal = 10.dp, vertical = 5.dp),
@@ -150,14 +149,14 @@ fun PixivUgoiraPlayer(
                         Icon(
                             imageVector = Icons.Outlined.Refresh,
                             contentDescription = "重试",
-                            tint = Color(0xFFFF8B8B),
+                            tint = tokens.color.error,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text = "动图加载失败 · 点击重试",
                             fontSize = tokens.type.overline,
-                            color = Color(0xFFFF8B8B)
+                            color = tokens.color.error
                         )
                     }
                 }

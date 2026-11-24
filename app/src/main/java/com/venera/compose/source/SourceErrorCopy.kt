@@ -5,14 +5,12 @@ import kotlinx.coroutines.CancellationException
 /*
  * 源 / 网络异常 → 屏上文案的**唯一出口**。
  *
- * 为什么要有这一层（2026-10-14 真机读数）：源脚本的失败 message 是写给开发者看的
  * （"Invalid status code: 210"、"Login expired"、"未登录"），屏上直接出现它就是实现
  * 笔记漏到界面上 —— 用户看不懂 210 是什么，只知道自己被拦住了。
  *
  * 这一层的三条硬规矩：
  *  1. **绝不上屏原始 message**。翻不出来时给一句通用的，原文只进日志。
  *     认不出来的串照样能是"代码"（异常类名、URL、正则），"原样保留便于排查"那条旧口径
- *     在真机上换来的是一屏黑话，排查靠日志，不靠用户截图。
  *  2. **先说人话，再说下一步**。每条都要能回答"为什么"和"我该干什么"。
  *  3. **不甩锅**。源站的问题说成源站的问题（"源站自己出了点状况，跟你没关系"），
  *     用户设备的问题给一条能自检的动作（"看一眼连接"）。
@@ -58,7 +56,6 @@ private val CANCELLATION_HINTS = listOf(
 /**
  * 这次异常是不是**取消**（页面走了 / 切了源 / 按了刷新）。
  *
- * 取消必须原样抛回去，不能变成一句屏上文案 —— 真机上那条
  * 「The coroutine scope left the composition」就是这么漏出来的：
  * 内容 effect 的 `catch (e: Exception)` 把 `CancellationException` 一起收了
  * （它确实继承自 Exception），于是"用户自己切走了"被读成"加载失败"。
@@ -82,7 +79,6 @@ fun isCancellation(t: Throwable?): Boolean {
  * @param raw 源脚本或网络层给的原始 message（**不会被原样上屏**，只用来判类型）。
  * @param loginable 这颗源是否支持登录（`SourceAccountInfo.hasAccount`）。
  *   为 true 时 401/403 判成"要先登录" —— 这类源拒绝访问十有八九就是这个原因，
- *   说成"源站防护/网络波动"等于把用户往错误的方向指（真机读数：包子漫画）。
  */
 fun humanizeSourceError(raw: String?, loginable: Boolean = false): String {
     val msg = raw.orEmpty().lowercase()

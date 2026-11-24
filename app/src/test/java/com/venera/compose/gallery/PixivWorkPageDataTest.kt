@@ -13,10 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * pixiv **作品页**那一腿的读数与三格纯判据（2026-10-18）。
  *
- * 夹具**不是编的**：两份都从 2026-10-18 本机现量的匿名答复里裁下来
- * （真号 150320368 —— `ajax/illust/150320368` 与 `ajax/illust/150320368/pages`），
  * 只删掉与判据无关的键。留真值的理由与 `PixivFeedParseTest` 同一族：
  * 编出来的夹具只会通过编出来的解析。
  */
@@ -48,7 +45,6 @@ class PixivWorkPageDataTest {
 
     /**
      * 多页腿：`body` **本身就是数组**（四枚，各带 urls/width/height），没有 `meta_pages` 那一层。
-     * 四条地址就是 2026-10-18 现量回来的那四条（`_p0`…`_p3`，扩展名 `.png`）；
      * 第 0 枚带全 `thumb_mini` 那一档，证明"每枚元素是一张页"而不是"一页套一层键"。
      */
     private val fourPageUrls = (0..3).map {
@@ -90,7 +86,6 @@ class PixivWorkPageDataTest {
     /**
      * ① 每一页要**两档**：中档给这一屏连读，原图档只给播放器那一层的 HD。
      *
-     * 立案读数（用户 2026-10-18 真机）："加载图片应该用低清点的图片" —— 从前这一腿只取
      * `urls.original`，作品页一开屏就在拉原图。
      */
     @Test
@@ -294,8 +289,6 @@ class PixivWorkPageDataTest {
         // 恰好 8 枚：还是不许出把手
         assertEquals(0, PixivWorkPage.tagsHidden(twelve.take(8)))
     }
-
-    // ── 第四批·第七件（用户 2026-10-18「看下 pixiv 为啥有报错图片看不了」）─────
 
     /**
      * 「答上了却没有图」在站方那一份答复里其实是**四种不同的事**（现量键位：匿名详情腿 body 的

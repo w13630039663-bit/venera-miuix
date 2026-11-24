@@ -13,11 +13,9 @@ import org.junit.Test
 import java.time.LocalDate
 
 /**
- * 画廊搜索的**时间窗口排行**判据（2026-09-29，第二轮真机读数之后收口）。
  *
  * 全部数字来自实测（见 `gallery-ranking-windows-2026-09.md` §〇 与 §十一）：
  * - yande.re **原生认** `date:A..B` + `order:score`（四形式都验过，返回的 created_at 全在窗口内）→ 六档全真；
- * - Gelbooru 只认 `sort:score:desc`：时间窗口那一类它给不了（真机第二轮：天/周能出图，月/年压根定不出
  *   起点 —— 探测次数不够），用户拍板整类撤掉 → **只有默认与全部两档是真的**。
  *
  * 因此这里锁三件事：**每站哪几档能摆**、**每档用哪条串**，以及
@@ -26,10 +24,8 @@ import java.time.LocalDate
  */
 class GalleryRankingTest {
 
-    /** 2026-09-28 是周一 —— 周档的起点就应该是它自己。 */
     private val monday = LocalDate.of(2026, 9, 28)
 
-    /** 2026-09-27 是周日 —— 周档的起点要退到上周一（09-21）。 */
     private val sunday = LocalDate.of(2026, 9, 27)
 
     private val touhou = listOf(GalleryTagFilter("touhou"))
@@ -88,7 +84,6 @@ class GalleryRankingTest {
 
     @Test
     fun `Gelbooru 的排行下拉只列两行`() {
-        // 2026-09-29 第五轮：本站没有的档从"置灰 + 写'本站没有'"改成不列出。
         // 这一条锁的是**列出来的那几行**，不只是判据本身 —— 菜单照这个表达式画。
         assertEquals(
             listOf(GalleryRanking.NEWEST, GalleryRanking.ALL),
@@ -223,7 +218,6 @@ class GalleryRankingTest {
 
     @Test
     fun `历史月档取整月 不受今天是哪天影响`() {
-        // 锚点给月内任意一天（2024-03-15）都取整个 3 月 —— 日历里点的就是"那个月的某一天"。
         assertEquals(
             "date:2024-03-01..2024-03-31 order:score",
             GalleryRankings.suffix(GallerySite.YANDERE, GalleryRanking.MONTH, LocalDate.of(2024, 3, 15), monday),
@@ -250,7 +244,6 @@ class GalleryRankingTest {
 
     @Test
     fun `锚点在未来也夹回今天 不产起在止之后的串`() {
-        // 弹层的年份范围已经不给未来的年份，这里再钉一道：判据层自己不能产出 `date:2026-12-01..2026-09-29`。
         assertEquals(
             "date:2026-09-01..2026-09-28 order:score",
             GalleryRankings.suffix(GallerySite.YANDERE, GalleryRanking.MONTH, LocalDate.of(2026, 12, 5), monday),
@@ -270,7 +263,6 @@ class GalleryRankingTest {
 
     @Test
     fun `周档给历史锚点也拼得出完整那一周`() {
-        // 2026-09-23 是周三：那一周 = 09-21 ~ 09-27，且终点**不该**被今天（09-28）截断。
         assertEquals(
             "date:2026-09-21..2026-09-27 order:score",
             GalleryRankings.suffix(GallerySite.YANDERE, GalleryRanking.WEEK, LocalDate.of(2026, 9, 23), monday),
@@ -291,7 +283,6 @@ class GalleryRankingTest {
     fun `按年能挑的年份 由近及远且不越过存档起点`() {
         val years = GalleryRankings.yearChoices(LocalDate.of(2026, 9, 29))
         assertEquals(2026, years.first())
-        // 2007 是实测地板（`date:..2006-06-01` 已经回 0 条）；给一个翻得出空页的年份就是假入口。
         assertEquals(GalleryRankings.EARLIEST_PERIOD.year, years.last())
         assertEquals(2026 - 2007 + 1, years.size)
         // 今年本身也要能挑（"就看本年"= 回到本期那条路径之外，用户确实会点它）。

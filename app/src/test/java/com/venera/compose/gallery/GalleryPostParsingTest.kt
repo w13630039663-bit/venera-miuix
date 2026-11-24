@@ -10,7 +10,6 @@ import org.junit.Test
 /**
  * 按**实测响应**锁住 yande.re 的字段解析与归一翻译。
  *
- * 素材取自 2026-09-24 的探针（一条真实 post，字段名与取值原样保留，值有截短）：
  * 站方一共回三十多个字段，其中 `sample_url` / `jpeg_url` / `file_url` 三档地址
  * **没有** `large_file_url`、也**没有** `fav_count` —— 这个形状是 Danbooru 系的常见误解来源，
  * 写错就是拿不到图 / 把"不知道"当成 0。
@@ -91,7 +90,6 @@ class GalleryPostParsingTest {
         val post = decode().first()
         // 实测 44 个键里不含 `tag_string_*`（Danbooru 才有那五串），所以解析期**不硬造**
         // "通用/角色"那种假分组 —— 分不出来就是分不出来。
-        // 分桶这件事 2026-09-28 起搬到渲染期（站方判定只在那张帖的 HTML 上），
         // 这里锁住的是"解析期一个桶名都不产生"，别让它又长回来。
         assertEquals(listOf("aria_blue", "entergram", "ricol", "seifuku", "sweater", "tagme"), post.tagList)
     }

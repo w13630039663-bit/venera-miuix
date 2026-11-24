@@ -36,7 +36,6 @@ class DampedDragAnimation(
     val onDragStopped: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
     /**
-     * 帧钟来源。2026-10-20 加（写法 A：`components/` 上桌面）：
      * `release()` 里那句 `awaitFrame()` 原先直连 `Choreographer`（`android.view`），
      * 桌面没有那颗件。现在由集成方把平台服务递进来。
      *

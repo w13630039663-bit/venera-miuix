@@ -14,7 +14,6 @@ import org.junit.Test
  * ⚠️ **现在的结论是"两站都不限"**，与从前（Danbooru 匿名只有 2 枚、第 3 枚直接 422）不同。
  * 依据都是实测：
  * - Gelbooru：官方 wiki `howto:api` 与 `howto:cheatsheet` **通篇没有任何标签数上限**
- *   （`limit` 那项限的是"一次取回多少条"），2026-09-26 实测 **7 枚一次通过、HTTP 200**；
  * - yande.re：一直没有限制（`hime -kaibutsu_oujo` 两枚照样通）。
  *
  * 那为什么 `tagBudget` 这套判据还留着？因为它是"**发请求之前先拦住**"的唯一落点 ——

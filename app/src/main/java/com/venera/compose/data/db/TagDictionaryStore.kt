@@ -62,7 +62,6 @@ class TagDictionaryStore(private val dictionary: SqlDatabase) {
     }
 
     /**
-     * 按**中文译名**反查标签行（2026-11-05，画廊搜索"用翻译的 tag 搜"）。
      *
      * 判据 = 全等优先 + 前缀：`东方` 要能命中译名恰好是"东方"的，也要命中"东方Project"那类
      * 带后缀的。值走占位符绑定（外部词不许拼 SQL），`cn` 没建索引 —— 单等值/前缀一次全表扫，

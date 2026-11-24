@@ -206,7 +206,7 @@ internal class ScriptedBoards(
     // "这一站的档位没给"，而不是把缺档静默补成 0 或 32）。
     private val yandereScript by lazy { script(GallerySite.YANDERE) }
     private val gelbooruScript by lazy { script(GallerySite.GELBOORU) }
-    private val safebooruScript by lazy { script(GallerySite.SAFEBOORU) }
+    private val konachanScript by lazy { script(GallerySite.KONACHAN) }
 
     override val yandere: YandeReBoard by lazy {
         val script = yandereScript
@@ -224,7 +224,7 @@ internal class ScriptedBoards(
     }
 
     override val gelbooru: ScoredBoard by lazy { scoredBoard(gelbooruScript) }
-    override val safebooru: ScoredBoard by lazy { scoredBoard(safebooruScript) }
+    override val konachan: ScoredBoard by lazy { scoredBoard(konachanScript) }
 
     private fun scoredBoard(script: WallScript): ScoredBoard = object : ScoredBoard {
         override val pageSize: Int get() = script.pageSize

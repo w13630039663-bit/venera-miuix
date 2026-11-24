@@ -266,7 +266,6 @@ fun SourceSectionScreen(
                 val columns = comicListColumnCount(displayMode.value, listWidth)
                 val rows = remember(comics, columns) { comics.chunked(columns) }
                 /*
-                 * 大屏内容收口（2026-10-15 问题清单 T1a 第三颗）。挂在**列数那把尺子之前**是刻意的：
                  * `listWidth` 由 `listWidthModifier` 的 `onSizeChanged` 实测出来，而 `comicListColumnCount`
                  * 吃的是那个实测宽（每格预算 220dp / 详情档 360dp）—— 所以收口之后列数会自己跟着降
                  * （1267dp 上 5 列 → 696dp 上 3 列），**每格仍是那一档预算宽**，卡片不会变小。

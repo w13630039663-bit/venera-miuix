@@ -14,7 +14,6 @@ import org.junit.Test
 /**
  * 按**实测响应**锁住 Gelbooru 的字段解析与归一翻译。
  *
- * 下面每一段 JSON 都是 2026-09-26 探针拿到的**原文**（只裁掉了与解析无关的相邻条目），
  * 不是照文档编的样本。这么做的理由很直接：Gelbooru 的官方 wiki `howto:api`
  * **只讲请求参数、完全不讲响应字段**，所以字段名除了实测没有第二个可靠来源。
  *
@@ -157,7 +156,6 @@ class GalleryGelbooruParsingTest {
     fun `图片条目的底图档取中档而不是缩略档`() {
         // 画师介绍页的 hero 底图铺满整页宽（约 993 物理像素），缩略档只有 300×212 级，
         // 铺上去是放大三倍多 —— 再叠一层模糊就只剩色块、认不出画的是什么
-        // （2026-10-01 用户报「hero 底图感觉有点模糊过头了」，这是两处成因中的图源那一处）。
         val post = postsOf(imageEntry).single()
         assertEquals(post.largeUrl, post.backdropUrl)
         assertNotEquals(post.previewUrl, post.backdropUrl)
@@ -190,7 +188,6 @@ class GalleryGelbooruParsingTest {
     fun `图片条目即便中档与原件同址也用它`() {
         // Gelbooru 对小图会把中档兜底成 file_url（见上面「sample_url 为空串时…」那条）。
         // 对**图片**那不是问题：站方的语义就是"这张本来就小、不需要另给样本"，file_url 就是能用的图。
-        // 视频那条闸门拦的是 **mp4**，不能顺手把图片一起打回 350px 缩略图 —— 那才是真的糊。
         val post = postsOf(smallImageEntry).single()
         assertEquals(post.fileUrl, post.largeUrl)
         assertEquals(post.largeUrl, post.backdropUrl)

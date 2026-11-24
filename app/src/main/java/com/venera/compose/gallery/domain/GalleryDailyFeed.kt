@@ -23,20 +23,22 @@ import kotlinx.coroutines.coroutineScope
  * `getInstance(context)` 零 diff。
  *
  * 刻意**不做**缓存，也刻意**没有翻页**：热门池本身是一屏到底的固定池子
- * （实测 yande.re 固定 40 条、`page`/`limit` 被忽略；Gelbooru 与 Safebooru 各取 100 条池里抽 20）。
+ * （实测 yande.re 固定 40 条、`page`/`limit` 被忽略；Gelbooru 与 Konachan 各取 100 条池里抽 20）。
  *
  * ## 三站的"热门"口径**不是同一件事**（这一点必须知道）
  *
  * - yande.re：`popular_recent?period=1d` —— **官方日榜**，真的是"过去一天"；
  * - Gelbooru：**没有日榜端点**（官方 DAPI 只有 post / tag / user / comment 四条列表），
  *   所以用元标签 `sort:score:desc` 模拟，取的是**全站高分池**；
- * - Safebooru：同样**没有日榜端点**，用 `order:rank` 模拟高分池。
+ * - Konachan：这一腿**没有用日榜**（站方另有 `popular_recent.json?period=1d`，实测 200 / 40 条，
+ *   接它是行为敏感项、本批不接），照旧用元标签 `order:score` 取**全站高分池**模拟。
+ *   ⚠️ 不是 `order:rank` —— 那是旧 Safebooru（Danbooru 系）的写法，在 Konachan 上被**静默忽略**、
+ *   会退成一屏新图假充高分（见 [com.venera.compose.gallery.data.KonachanClient] 头注坑 1）。
  *
  * 因此 [Daily.date] 只对 yande.re 那一路有意义，页面上不能拿它去描述另两站 ——
- * 那会写成"Gelbooru/Safebooru 这一天的热门"，而站方根本不提供按天的视图。
+ * 那会写成"Gelbooru/Konachan 这一天的热门"，而站方根本不提供按天的视图。
  * 另两路的说明文案见 [GalleryMerge] 与页面页尾。
  *
- * ## 每站一笔独立的时间预算（2026-09-26）
  *
  * 旧写法把各站 `async` 之后依次 `await()`，整屏耗时 = max(各站)；
  * 而单站最坏能拖到 40s 级（readTimeout 20s → RateLimiting 失败重试一次 → 再 20s，
@@ -47,7 +49,6 @@ import kotlinx.coroutines.coroutineScope
  * 由页面挂进 `sourceNotice` 明说，**另两站照旧出图**。
  * 取舍：慢的那一站这一轮缺席（会被说出来），换来快的那站立刻画出来（空等不会说）。
  *
- * 2026-09-30 起这套"一条腿 + 一笔预算 + 原因不许吞"的包装收在 [GalleryLegGuard]（三处共用一份，
  * 从前是三处各写一遍，其中一份已经把"请求失败"记成"回了 0 条"）；
  * 预算数值留在本类，因为日榜、推荐翻页与搜索两腿念的是同一个数。
  */
@@ -56,9 +57,7 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
     /**
      * @param onLeg 某一条腿**刚回来**时回调一次，参数是"到目前为止已经到货的那些站的池子"。
      *
-     *   为什么要有它（2026-10-17 第七轮，用户「每日热门这个加载时间太长了」）：
      *   下面三笔是并发的，但整轮要等**最慢的那一站**（单站预算 12s），而那期间屏上除了一排骨架
-     *   什么都没有。真机上读起来就是"每日热门一直不出来"。
      *   有了这个回调，先回来的那一站可以在 1~3 秒内就把卡摆上屏，慢的那站到货时整屏换成
      *   这一轮的最终结果（[Daily.merged]，口径不变）。
      *
@@ -69,7 +68,6 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
      *                 否则"三站混搭"会静默退化成一两站刷屏，那是本仓最忌的静默交错。
      * @param date     实际请求的那一天（只用于 yande.re 那一路的日榜）。
      * @param pools    三站**滤之前的原始池**。日榜那面墙的「换一批」靠它做本地重排
-     *                 （只换种子、不再联网，用户 2026-09-30 拍板），所以整片原始返回要交出去 ——
      *                 合并后那 40 张已经被抽样与去重吃掉了大半，拿它重排只是把同一批图再洗一遍。
      */
     data class Daily(
@@ -91,7 +89,7 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
             landed[site] = posts
             onLeg(landed.toMap())
         }
-        val (yande, gelbooru, safebooru) = coroutineScope {
+        val (yande, gelbooru, konachan) = coroutineScope {
             val y = async {
                 GalleryLegGuard.guard(GallerySite.YANDERE) { boards.yandere.fetchDailyPopular() }
                     .also { publish(GallerySite.YANDERE, it.posts) }
@@ -101,20 +99,20 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
                     .also { publish(GallerySite.GELBOORU, it.posts) }
             }
             val s = async {
-                GalleryLegGuard.guard(GallerySite.SAFEBOORU) { boards.safebooru.fetchTopScored() }
-                    .also { publish(GallerySite.SAFEBOORU, it.posts) }
+                GalleryLegGuard.guard(GallerySite.KONACHAN) { boards.konachan.fetchTopScored() }
+                    .also { publish(GallerySite.KONACHAN, it.posts) }
             }
             Triple(y.await(), g.await(), s.await())
         }
-        val failures = listOf(yande, gelbooru, safebooru).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
+        val failures = listOf(yande, gelbooru, konachan).mapNotNull { it.reason?.let { r -> it.site to r } }.toMap()
         val pools = mapOf(
             GallerySite.YANDERE to yande.posts,
             GallerySite.GELBOORU to gelbooru.posts,
-            GallerySite.SAFEBOORU to safebooru.posts,
+            GallerySite.KONACHAN to konachan.posts,
         )
         // 三站都没给上内容时，merge 只能报一句笼统的"没有可用内容"，真正的原因（401 / 超时 /
         // 池子空 / 返回非 JSON）就死在这里了 —— 优先把原因交出去。
-        if (yande.posts.isEmpty() && gelbooru.posts.isEmpty() && safebooru.posts.isEmpty()) {
+        if (yande.posts.isEmpty() && gelbooru.posts.isEmpty() && konachan.posts.isEmpty()) {
             return Result.failure(GalleryEmptyRound(failures))
         }
         return GalleryMerge.mix(pools, seed).map {
@@ -158,7 +156,6 @@ class GalleryDailyFeed(private val boards: GalleryBoards) {
  * 一句 `站：原因 · 站：原因` 的显示串活下来。后果落在屏上：日榜那面墙的整页失败视图
  * 门在"屏上没有卡"之后，而冷启动铺的是**缓存**那一屏（有卡），于是断网时
  * 那一整排按档上屏的提示拿不到本轮事实、整页错误视图又被门挡住 —— 用户读到的是
- * "这几站没图"，实情是"没有网"（2026-10-15 真机读数，`_qa/ui-verify-2026-10-15/scr-a8-gallery.png`）。
  *
  * 结构必须由发车那一处带走：页面上那块提示要按档分色、还要给「重试」，
  * 从显示串里反解结构只能靠猜关键词（同一条理由见 `GalleryViewModel.failures` 的头注）。

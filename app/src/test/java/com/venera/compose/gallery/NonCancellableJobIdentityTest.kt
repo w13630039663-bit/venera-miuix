@@ -14,7 +14,6 @@ import org.junit.Test
 /**
  * `withContext(NonCancellable)` 会**换掉** `coroutineContext[Job]` —— 这条库事实钉住。
  *
- * 起因是画廊「猜你喜欢」那三条真机读数（2026-09-29）：下拉环转不停、同时出现两枚加载图标、
  * 墙上只摆 40 张（= 第 1 页两站各 20 张，第 2 页永远没来）。三条同一个根因：
  * 那两处在 `finally { withContext(NonCancellable) { if (loadJob === coroutineContext[Job]) ... } }`
  * 里清在途标志，而块内的 `coroutineContext[Job]` 是 `NonCancellable` 本身，

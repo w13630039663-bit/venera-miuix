@@ -39,7 +39,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 
 /**
- * 应用身份卡（原「关于区」重排后的形态，2026-10-02 设置页重设计）。
  *
  * 参考图里这块是一张「图标 + 版本 + 检查更新」的紧凑卡，原来的 AboutSection
  * 则是一整屏（大图标 96dp + 三行文字 + 五行动作）。重排时：
@@ -125,8 +124,22 @@ internal fun AppIdentityCard(prefs: ComicPreferences) {
             onCheckedChange = prefs::setCheckUpdateOnStart,
             summary = "24 小时内不重复检查",
         )
+        // 电脑版详情页：放在「启动时检查更新」正下方（用户指定位置）。
+        // 它是纯外链，不是开关也不是账本，所以用 Action 行而不是 Toggle ——
+        // 点一下出去，回来还是这一屏。
+        SettingsAction(
+            title = "查看电脑版详情页",
+            summary = "用浏览器打开网页版介绍",
+        ) {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://w13630039663-bit.github.io/Vcomic/")),
+                )
+            }.onFailure {
+                Toast.makeText(context, "没找到可用的浏览器", Toast.LENGTH_SHORT).show()
+            }
+        }
         /*
-         * 只在真有这么一版被跳过过时才摆这一行（2026-10-04 随「以后再说」记账加的）。
          * 常态是没有的，那时这一行不占位；出现就说明用户手滑过一次，而这条路的出口
          * 不该只有"等作者再发一版"。
          */

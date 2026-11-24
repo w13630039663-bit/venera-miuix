@@ -13,7 +13,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,7 +33,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -43,7 +41,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.CloudDownload
@@ -88,7 +85,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.venera.compose.components.VeneraEmptyView
 import com.venera.compose.components.rememberContentWidth
+import com.venera.compose.components.selection.MultiSelectBarAction
+import com.venera.compose.components.selection.VeneraMultiSelectBar
 import com.venera.compose.components.venera.VeneraCover
+import com.venera.compose.components.venera.VeneraSelectBox
 import com.venera.compose.components.venera.VeneraTopAppBar
 import com.venera.compose.data.api.BusinessPorts
 import com.venera.compose.data.platform.CacheDirs
@@ -113,17 +113,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 「下载与本地」（2026-11-04 定稿：底栏第五格，全项目唯一入口）。
  *
  * ## 信息架构（减法稿 + 两点修正）
  *
  * 汇总一行（任务数 · 速率 · 失败角标）下面三段胶囊 —— **队列 / 漫画 / 图片**，
  * 一屏只摆一个列表：
  *  - 队列：活动任务卡（右侧快捷 暂停/继续/重试，点卡身弹详情单）；
- *  - 漫画：按作品聚合的**紧凑行卡**（首版的大格网格被主人打回："卡片怎么那么大"）；
  *  - 图片：图廊下载记录（`GalleryDownloadManager` 的持久化任务表）。
  *
- * ## 老用户的数据一条不丢（主人 04 点名钉死的迁移线）
  *
  * 本页不新开任何存储 —— 三段读的就是旧三屏一直在用的三份持久化源：
  *  - 队列吃 `DownloadManager` 的任务表（`downloads_tasks.json`，暂停/失败/排队原样在）；
@@ -135,8 +132,12 @@ import kotlinx.coroutines.withContext
  * ## 与旧三屏的关系
  *
  * 旧 `DownloadScreen`、`LocalComicScreen`、设置里的 `GalleryDownloadScreen` 三屏的
- * 功能全部并入本页；全项目入口只剩底栏这一格（主人拍板）。多选跟着段走：
- * 漫画段勾**磁盘文件**（危险确认），图片段勾**记录**（不碰相册本体）。
+ * 队列段勾**任务**（重试 / 暂停 / 撤掉），漫画段勾**磁盘文件**（危险确认），
+ * 图片段勾**记录**（不碰相册本体）。多选条吃全项目那一条 `VeneraMultiSelectBar`
+ * （带全选与反选 —— 一百多笔任务逐格点不是批量选择）。
+ *
+ * 「清理已完成 / 清理记录」这类**对整段下手**的动作摆在顶栏，不摆在列表尾巴上：
+ * 底栏是 overlay，列表尾巴上的动作永远要滚到最底才够得着，而那一屏有 145 笔任务。
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -162,6 +163,8 @@ fun DownloadsLocalScreen(
 
     var segment by rememberSaveable { mutableStateOf(DownloadsLocalSegment.QUEUE) }
     var isMultiSelect by rememberSaveable { mutableStateOf(false) }
+    // 三段各一本选中账：键分别是 taskId / 磁盘根路径 / 记录 id，互不串味。
+    val selectedTaskIds = remember { mutableStateMapOf<String, Boolean>() }
     val selectedComicPaths = remember { mutableStateMapOf<String, Boolean>() }
     val selectedGalleryIds = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -171,6 +174,7 @@ fun DownloadsLocalScreen(
     var bookChapters by remember { mutableStateOf<List<LocalChapter>>(emptyList()) }
     var gallerySheetFor by remember { mutableStateOf<GalleryDownloadTask?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showRemoveTasksConfirm by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var exportProgress by remember { mutableFloatStateOf(0f) }
 
@@ -238,6 +242,53 @@ fun DownloadsLocalScreen(
     val activeTotal = activeTasks.size + galleryRunning
     // 漫画段按窗口宽收口（大屏不把行卡拉到全宽）。
     val (_, comicWidthModifier) = rememberContentWidth(VeneraTokens.spacing.rowHorizontal * 2)
+    // 「清理」这两枚整段动作的读数：队列段的已完成已经不在列表里（完成即落盘），
+    // 但任务表还留着它们，所以要能报出「清得掉几条」，否则那枚钮是空的。
+    val completedRecordCount = remember(tasks) { tasks.count { it.status == DownloadStatus.COMPLETED } }
+    val galleryClearableCount = remember(galleryTasks) {
+        galleryTasks.count { it.status != GalleryDownloadStatus.RUNNING }
+    }
+
+    // ── 多选账本按段分流（三段共用底部那一条多选条）──
+    // 键表单独 remember：进度跳动只换 status，键表相等 ⇒ 下面那道收敛不会白重启一轮协程。
+    val taskKeys = remember(activeTasks) { activeTasks.map { it.taskId } }
+    val comicKeys = remember(comics) { comics.map { it.rootPath } }
+    val galleryKeys = remember(galleryTasks) { galleryTasks.map { it.id } }
+    val selectionBag = when (segment) {
+        DownloadsLocalSegment.QUEUE -> selectedTaskIds
+        DownloadsLocalSegment.COMIC -> selectedComicPaths
+        DownloadsLocalSegment.IMAGE -> selectedGalleryIds
+    }
+    val selectionKeys = when (segment) {
+        DownloadsLocalSegment.QUEUE -> taskKeys
+        DownloadsLocalSegment.COMIC -> comicKeys
+        DownloadsLocalSegment.IMAGE -> galleryKeys
+    }
+
+    fun toggleSelected(key: String) {
+        if (key in selectionBag) selectionBag.remove(key) else selectionBag[key] = true
+    }
+
+    fun exitMultiSelect() {
+        isMultiSelect = false
+        selectedTaskIds.clear()
+        selectedComicPaths.clear()
+        selectedGalleryIds.clear()
+    }
+
+    // 列表自己变瘦（任务下完转已完成、记录被别处删掉）之后，账里剩下的键是屏上点不到的
+    // 幽灵条目：条会报「已选择 3 项」而勾只看得见 1 个，那两项删也删不掉东西。收敛一轮。
+    // 收敛**无条件**做：live 是空集时这一步就是把这本账清空，不留"段已空而账还满"的那一格。
+    LaunchedEffect(segment, taskKeys, comicKeys, galleryKeys) {
+        val liveTasks = taskKeys.toSet()
+        selectedTaskIds.keys.filter { it !in liveTasks }.forEach { selectedTaskIds.remove(it) }
+        val liveComics = comicKeys.toSet()
+        selectedComicPaths.keys.filter { it !in liveComics }.forEach { selectedComicPaths.remove(it) }
+        val liveGallery = galleryKeys.toSet()
+        selectedGalleryIds.keys.filter { it !in liveGallery }.forEach { selectedGalleryIds.remove(it) }
+        // 当前段已经空了、账也是空的：多选条留着就是一句"已选择 0 项"的死状态。
+        if (selectionKeys.isEmpty() && selectionBag.isEmpty()) isMultiSelect = false
+    }
 
     fun openGalleryImage(task: GalleryDownloadTask) {
         val path = task.localPath ?: return
@@ -268,20 +319,34 @@ fun DownloadsLocalScreen(
         VeneraTopAppBar(
             title = "下载与本地",
             actions = {
-                if (isMultiSelect && segment != DownloadsLocalSegment.QUEUE) {
-                    val n = if (segment == DownloadsLocalSegment.COMIC) selectedComicPaths.size else selectedGalleryIds.size
-                    if (n > 0) {
-                        TextButton(onClick = { showDeleteConfirm = true }) {
-                            Text("删除 $n", color = MaterialTheme.colorScheme.error)
+                if (isMultiSelect) {
+                    // 批量动作全收在底部那条多选条上（全项目四处收藏同款），顶栏只留一个出口。
+                    TextButton(onClick = { exitMultiSelect() }) { Text("取消") }
+                } else {
+                    // 「清理」是**对整段下手**，摆顶栏而不是摆列表尾巴：底栏是 overlay，
+                    // 尾巴那一行永远要滚到最底才够得着，而这屏动不动一百多笔任务。
+                    if (segment == DownloadsLocalSegment.QUEUE && completedRecordCount > 0) {
+                        TextButton(onClick = { downloadManager.clearCompleted() }) {
+                            Text("清理已完成 $completedRecordCount")
                         }
                     }
-                    TextButton(onClick = {
-                        isMultiSelect = false
-                        selectedComicPaths.clear()
-                        selectedGalleryIds.clear()
-                    }) { Text("取消") }
-                } else if (segment != DownloadsLocalSegment.QUEUE) {
-                    TextButton(onClick = { isMultiSelect = true }) { Text("选择") }
+                    if (segment == DownloadsLocalSegment.IMAGE && galleryClearableCount > 0) {
+                        TextButton(onClick = { galleryManager.clearFinished() }) {
+                            Text("清理记录 $galleryClearableCount")
+                        }
+                    }
+                    if (segment == DownloadsLocalSegment.COMIC) {
+                        TextButton(onClick = {
+                            importLauncher.launch(
+                                arrayOf("application/zip", "application/vnd.comicbook+zip", "application/x-zip-compressed", "application/octet-stream"),
+                            )
+                        }) {
+                            Text("导入")
+                        }
+                    }
+                    if (selectionKeys.isNotEmpty()) {
+                        TextButton(onClick = { isMultiSelect = true }) { Text("选择") }
+                    }
                 }
             },
         )
@@ -348,76 +413,152 @@ fun DownloadsLocalScreen(
         )
         Spacer(Modifier.height(tokens.spacing.space3))
 
-        AnimatedContent(
-            targetState = segment,
-            modifier = Modifier.weight(1f),
-            transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(120)) },
-            label = "downloads_local_segment",
-        ) { target ->
-            when (target) {
-                DownloadsLocalSegment.QUEUE -> QueuePane(
-                    tasks = activeTasks,
-                    onTogglePauseResume = { task ->
-                        if (task.status == DownloadStatus.DOWNLOADING) downloadManager.pause(task.taskId)
-                        else downloadManager.resume(task.taskId)
-                    },
-                    onTaskTap = { taskSheetFor = it },
-                    onClearCompleted = { downloadManager.clearCompleted() },
-                )
-                DownloadsLocalSegment.COMIC -> ComicPane(
-                    comics = comics,
-                    isLoading = isLoadingComics,
-                    bytesByPath = bytesByPath,
-                    gridWidthModifier = comicWidthModifier,
-                    multiSelect = isMultiSelect,
-                    selectedKeys = selectedComicPaths,
-                    bottomClearance = LocalBottomBarClearance.current,
-                    onOpen = { comic ->
-                        scope.launch {
-                            val chapters = localComicManager.getLocalChapters(comic)
-                            if (chapters.size == 1) {
-                                openChapterSession(comic, chapters.first(), chapters, onOpenLocalSession)
-                            } else {
+        // 一段列表 + 一条浮在底边的多选条。条只在这段有选中账时才出现，动作跟着段换。
+        Box(Modifier.weight(1f)) {
+            AnimatedContent(
+                targetState = segment,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(120)) },
+                label = "downloads_local_segment",
+            ) { target ->
+                when (target) {
+                    DownloadsLocalSegment.QUEUE -> QueuePane(
+                        tasks = activeTasks,
+                        multiSelect = isMultiSelect,
+                        selectedKeys = selectedTaskIds,
+                        bottomClearance = LocalBottomBarClearance.current,
+                        onTogglePauseResume = { task ->
+                            if (task.status == DownloadStatus.DOWNLOADING) downloadManager.pause(task.taskId)
+                            else downloadManager.resume(task.taskId)
+                        },
+                        onTaskTap = { taskSheetFor = it },
+                        onToggleSelect = { task -> toggleSelected(task.taskId) },
+                        // 长按 = 进多选并勾上这一笔（与全应用「长按进多选」那一条同语义）。
+                        onEnterSelect = { task ->
+                            isMultiSelect = true
+                            selectedTaskIds[task.taskId] = true
+                        },
+                    )
+                    DownloadsLocalSegment.COMIC -> ComicPane(
+                        comics = comics,
+                        isLoading = isLoadingComics,
+                        bytesByPath = bytesByPath,
+                        gridWidthModifier = comicWidthModifier,
+                        multiSelect = isMultiSelect,
+                        selectedKeys = selectedComicPaths,
+                        bottomClearance = LocalBottomBarClearance.current,
+                        onOpen = { comic ->
+                            scope.launch {
+                                val chapters = localComicManager.getLocalChapters(comic)
+                                if (chapters.size == 1) {
+                                    openChapterSession(comic, chapters.first(), chapters, onOpenLocalSession)
+                                } else {
+                                    bookSheetFor = comic
+                                    bookChapters = chapters
+                                }
+                            }
+                        },
+                        // 长按 = 管理单：源站详情 / 导出 CBZ / 删除整本（与点按多章弹出的同一颗）。
+                        // 单章书也走这里，不能因为"点按直接开读"就找不到删除入口。
+                        onLongPress = { comic ->
+                            scope.launch {
+                                bookChapters = localComicManager.getLocalChapters(comic)
                                 bookSheetFor = comic
-                                bookChapters = chapters
+                            }
+                        },
+                        onToggleSelect = { comic -> toggleSelected(comic.rootPath) },
+                        onImport = {
+                            importLauncher.launch(
+                                arrayOf("application/zip", "application/vnd.comicbook+zip", "application/x-zip-compressed", "application/octet-stream"),
+                            )
+                        },
+                    )
+                    DownloadsLocalSegment.IMAGE -> ImagePane(
+                        tasks = galleryTasks,
+                        multiSelect = isMultiSelect,
+                        selectedKeys = selectedGalleryIds,
+                        bottomClearance = LocalBottomBarClearance.current,
+                        onTap = { task ->
+                            if (isMultiSelect) toggleSelected(task.id)
+                            else if (task.status == GalleryDownloadStatus.COMPLETED) openGalleryImage(task)
+                            else gallerySheetFor = task
+                        },
+                        onLongPress = { task -> gallerySheetFor = task },
+                    )
+                }
+            }
+
+            if (isMultiSelect) {
+                val selectedTasks = activeTasks.filter { it.taskId in selectedTaskIds }
+                val canRetry = selectedTasks.any {
+                    it.status == DownloadStatus.FAILED || it.status == DownloadStatus.PAUSED
+                }
+                val canPause = selectedTasks.any {
+                    it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PENDING
+                }
+                VeneraMultiSelectBar(
+                    selectedCount = selectionBag.size,
+                    allSelected = selectionKeys.isNotEmpty() && selectionBag.size == selectionKeys.size,
+                    onExit = { exitMultiSelect() },
+                    onSelectAll = { selectionKeys.forEach { selectionBag[it] = true } },
+                    onInvert = { selectionKeys.forEach { toggleSelected(it) } },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            start = tokens.spacing.rowHorizontal,
+                            end = tokens.spacing.rowHorizontal,
+                            bottom = tokens.spacing.space8 + LocalBottomBarClearance.current,
+                        ),
+                ) {
+                    val picking = selectionBag.isNotEmpty()
+                    when (segment) {
+                        DownloadsLocalSegment.QUEUE -> {
+                            if (picking && canRetry) {
+                                MultiSelectBarAction(
+                                    icon = Icons.Outlined.Refresh,
+                                    label = "重试",
+                                    onClick = {
+                                        val targets = selectedTaskIds.keys.toList()
+                                        targets.forEach { downloadManager.resume(it) }
+                                        // 一百多笔一起按下去，屏上只看见前排几张变了档，
+                                        // 不留一句读数人不知道后面那批动没动。
+                                        Toast.makeText(context, "已把 ${targets.size} 笔重新排队", Toast.LENGTH_SHORT)
+                                            .show()
+                                    },
+                                )
+                            }
+                            if (picking && canPause) {
+                                MultiSelectBarAction(
+                                    icon = Icons.Filled.Pause,
+                                    label = "暂停",
+                                    onClick = {
+                                        val targets = selectedTaskIds.keys.toList()
+                                        targets.forEach { downloadManager.pause(it) }
+                                        Toast.makeText(context, "已暂停 ${targets.size} 笔", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+                            }
+                            if (picking) {
+                                MultiSelectBarAction(
+                                    icon = Icons.Outlined.Delete,
+                                    label = "撤掉",
+                                    destructive = true,
+                                    onClick = { showRemoveTasksConfirm = true },
+                                )
                             }
                         }
-                    },
-                    // 长按 = 管理单：源站详情 / 导出 CBZ / 删除整本（与点按多章弹出的同一颗）。
-                    // 单章书也走这里，不能因为"点按直接开读"就找不到删除入口。
-                    onLongPress = { comic ->
-                        scope.launch {
-                            bookChapters = localComicManager.getLocalChapters(comic)
-                            bookSheetFor = comic
-                        }
-                    },
-                    onToggleSelect = { comic ->
-                        val key = comic.rootPath
-                        if (key in selectedComicPaths) selectedComicPaths.remove(key) else selectedComicPaths[key] = true
-                    },
-                    onImport = {
-                        importLauncher.launch(
-                            arrayOf("application/zip", "application/vnd.comicbook+zip", "application/x-zip-compressed", "application/octet-stream"),
-                        )
-                    },
-                )
-                DownloadsLocalSegment.IMAGE -> ImagePane(
-                    tasks = galleryTasks,
-                    multiSelect = isMultiSelect,
-                    selectedKeys = selectedGalleryIds,
-                    bottomClearance = LocalBottomBarClearance.current,
-                    onTap = { task ->
-                        when {
-                            isMultiSelect -> {
-                                if (task.id in selectedGalleryIds) selectedGalleryIds.remove(task.id) else selectedGalleryIds[task.id] = true
+                        DownloadsLocalSegment.COMIC, DownloadsLocalSegment.IMAGE -> {
+                            if (picking) {
+                                MultiSelectBarAction(
+                                    icon = Icons.Outlined.Delete,
+                                    label = if (segment == DownloadsLocalSegment.COMIC) "删除" else "删记录",
+                                    destructive = true,
+                                    onClick = { showDeleteConfirm = true },
+                                )
                             }
-                            task.status == GalleryDownloadStatus.COMPLETED -> openGalleryImage(task)
-                            else -> gallerySheetFor = task
                         }
-                    },
-                    onLongPress = { task -> gallerySheetFor = task },
-                    onClearFinished = { galleryManager.clearFinished() },
-                )
+                    }
+                }
             }
         }
     }
@@ -425,7 +566,11 @@ fun DownloadsLocalScreen(
     // ── 批量删除确认（漫画=删文件，图片=删记录，两套语义分开说）──
     if (showDeleteConfirm) {
         val deleteComics = segment == DownloadsLocalSegment.COMIC
-        val n = if (deleteComics) selectedComicPaths.size else selectedGalleryIds.size
+        // 目标在确认框**立起来那一刻**就快照好：确认动作会清空选中账，
+        // 等到按钮里再读就只剩一个空集合（数得到 n，删不到东西）。
+        val targetBooks = if (deleteComics) comics.filter { it.rootPath in selectedComicPaths } else emptyList()
+        val targetRecords = if (deleteComics) emptySet() else selectedGalleryIds.keys.toSet()
+        val n = if (deleteComics) targetBooks.size else targetRecords.size
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text(if (deleteComics) "删除所选 $n 部漫画？" else "删除所选 $n 条记录？") },
@@ -438,23 +583,42 @@ fun DownloadsLocalScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
-                    isMultiSelect = false
                     if (deleteComics) {
-                        val targets = comics.filter { it.rootPath in selectedComicPaths }
                         scope.launch {
-                            targets.forEach { localComicManager.deleteLocalComic(it) }
-                            Toast.makeText(context, "已删除 ${targets.size} 部", Toast.LENGTH_SHORT).show()
-                            selectedComicPaths.clear()
+                            targetBooks.forEach { localComicManager.deleteLocalComic(it) }
+                            Toast.makeText(context, "已删除 ${targetBooks.size} 部", Toast.LENGTH_SHORT).show()
+                            exitMultiSelect()
                             refreshComics()
                         }
                     } else {
-                        galleryManager.deleteBatch(selectedGalleryIds.keys.toSet())
-                        selectedGalleryIds.clear()
+                        galleryManager.deleteBatch(targetRecords)
                         Toast.makeText(context, "已删除 $n 条记录", Toast.LENGTH_SHORT).show()
+                        exitMultiSelect()
                     }
                 }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } },
+        )
+    }
+
+    // ── 队列段批量撤掉确认：撤掉 = 任务出队 + 已下下来的半截页面一并清掉 ──
+    if (showRemoveTasksConfirm) {
+        val targets = selectedTaskIds.keys.toList()
+        AlertDialog(
+            onDismissRequest = { showRemoveTasksConfirm = false },
+            title = { Text("撤掉所选 ${targets.size} 笔任务？") },
+            text = {
+                Text("这些任务会从队列里移出，已经下载的那半截页面也一并清掉；之后要下得重新添加。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRemoveTasksConfirm = false
+                    targets.forEach { downloadManager.delete(it) }
+                    exitMultiSelect()
+                    Toast.makeText(context, "已撤掉 ${targets.size} 笔", Toast.LENGTH_SHORT).show()
+                }) { Text("撤掉", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showRemoveTasksConfirm = false }) { Text("取消") } },
         )
     }
 
@@ -684,13 +848,24 @@ private fun DownloadsLocalSegmentBar(
     }
 }
 
-/** 队列段：活动任务卡。右侧快捷钮直达暂停/继续/重试，点卡身弹详情单。 */
+/**
+ * 队列段：活动任务卡。右侧快捷钮直达暂停/继续/重试，点卡身弹详情单，长按进多选。
+ *
+ * 两处口径记在这里：
+ *  - 底部留白吃 `bottomClearance`。底栏是 overlay，从前这里只写了一档 `space11`（32dp），
+ *  - 「清空已完成」不摆在尾巴上，改挂顶栏：这一屏动辄一百多笔任务，
+ *    要滚到最底才够得着的动作等于没有。
+ */
 @Composable
 private fun QueuePane(
     tasks: List<DownloadTask>,
+    multiSelect: Boolean,
+    selectedKeys: Map<String, Boolean>,
+    bottomClearance: androidx.compose.ui.unit.Dp,
     onTogglePauseResume: (DownloadTask) -> Unit,
     onTaskTap: (DownloadTask) -> Unit,
-    onClearCompleted: () -> Unit,
+    onToggleSelect: (DownloadTask) -> Unit,
+    onEnterSelect: (DownloadTask) -> Unit,
 ) {
     if (tasks.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -708,33 +883,28 @@ private fun QueuePane(
             start = VeneraTokens.spacing.rowHorizontal,
             end = VeneraTokens.spacing.rowHorizontal,
             top = VeneraTokens.spacing.space2,
-            bottom = VeneraTokens.spacing.space11,
+            bottom = bottomClearance + VeneraTokens.spacing.space8,
         ),
         verticalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space3),
     ) {
         items(tasks, key = { it.taskId }) { task ->
             QueueTaskCard(
                 task = task,
-                onClick = { onTaskTap(task) },
+                multiSelect = multiSelect,
+                selected = task.taskId in selectedKeys,
+                onClick = { if (multiSelect) onToggleSelect(task) else onTaskTap(task) },
+                onLongClick = { if (!multiSelect) onEnterSelect(task) },
                 onTogglePauseResume = { onTogglePauseResume(task) },
+                onToggleSelect = { onToggleSelect(task) },
             )
         }
         item(key = "hint") {
-            Column(Modifier.padding(top = VeneraTokens.spacing.space2)) {
-                Text(
-                    "点任务卡看详情，右侧按钮直接暂停或重试。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "清空已完成记录",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable { onClearCompleted() }
-                        .padding(vertical = VeneraTokens.spacing.space2),
-                )
-            }
+            Text(
+                "点任务卡看详情，右侧按钮直接暂停或重试；长按可以多选。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = VeneraTokens.spacing.space2),
+            )
         }
     }
 }
@@ -742,8 +912,12 @@ private fun QueuePane(
 @Composable
 private fun QueueTaskCard(
     task: DownloadTask,
+    multiSelect: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onTogglePauseResume: () -> Unit,
+    onToggleSelect: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val (chipLabel, chipColor) = when (task.status) {
@@ -758,7 +932,15 @@ private fun QueueTaskCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(VeneraTokens.shape.card))
             .background(scheme.surfaceContainerHigh)
-            .clickable(onClick = onClick)
+            // 选中洗底压在内容之上（卡底不透明，铺在下面透不出来），alpha 吃收藏那四处同一档。
+            .background(
+                if (selected) {
+                    VeneraTokens.color.primary.copy(alpha = VeneraTokens.current.selectionHighlightAlpha)
+                } else {
+                    Color.Transparent
+                }
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(VeneraTokens.spacing.space4),
         horizontalArrangement = Arrangement.spacedBy(VeneraTokens.spacing.space4),
         verticalAlignment = Alignment.CenterVertically,
@@ -831,28 +1013,32 @@ private fun QueueTaskCard(
                 }
             }
         }
-        // 快捷钮：下载中→暂停；排队/暂停→继续；失败→重试。子件 clickable 先于父卡消费点击。
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(chipColor.copy(alpha = 0.12f))
-                .clickable(onClick = onTogglePauseResume),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = when (task.status) {
-                    DownloadStatus.DOWNLOADING -> Icons.Filled.Pause
-                    else -> Icons.Filled.PlayArrow
-                },
-                contentDescription = when (task.status) {
-                    DownloadStatus.DOWNLOADING -> "暂停这一笔"
-                    DownloadStatus.FAILED -> "重试这一笔"
-                    else -> "继续这一笔"
-                },
-                tint = chipColor,
-                modifier = Modifier.size(18.dp),
-            )
+        // 多选态下这一格换成选择框（与卡身同一个开关，两条落点都通）；非多选态是快捷钮。
+        if (multiSelect) {
+            VeneraSelectBox(selected = selected, onClick = onToggleSelect)
+        } else {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(chipColor.copy(alpha = 0.12f))
+                    .clickable(onClick = onTogglePauseResume),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = when (task.status) {
+                        DownloadStatus.DOWNLOADING -> Icons.Filled.Pause
+                        else -> Icons.Filled.PlayArrow
+                    },
+                    contentDescription = when (task.status) {
+                        DownloadStatus.DOWNLOADING -> "暂停这一笔"
+                        DownloadStatus.FAILED -> "重试这一笔"
+                        else -> "继续这一笔"
+                    },
+                    tint = chipColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
@@ -972,7 +1158,6 @@ private fun SheetActionRow(icon: ImageVector, label: String, onClick: () -> Unit
     }
 }
 
-/** 漫画段：按作品聚合的紧凑行卡列表（首版大格网格被主人打回，行数密度优先）。 */
 @Composable
 private fun ComicPane(
     comics: List<LocalComic>,
@@ -994,15 +1179,20 @@ private fun ComicPane(
         return
     }
     if (comics.isEmpty()) {
-        Column(Modifier.fillMaxSize().padding(horizontal = VeneraTokens.spacing.rowHorizontal)) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                VeneraEmptyView(
-                    icon = Icons.Outlined.MenuBook,
-                    title = "暂无本地离线漫画",
-                    message = "可以在漫画详情页下载章节，或导入外部 CBZ 归档",
-                )
-            }
-            ImportButton(onImport)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = VeneraTokens.spacing.rowHorizontal)
+                .padding(bottom = bottomClearance),
+            contentAlignment = Alignment.Center,
+        ) {
+            VeneraEmptyView(
+                icon = Icons.Outlined.MenuBook,
+                title = "暂无本地离线漫画",
+                message = "可以在漫画详情页下载章节，或导入外部 CBZ 归档",
+                actionText = "导入本地漫画（.zip / .cbz）",
+                onAction = onImport,
+            )
         }
         return
     }
@@ -1095,18 +1285,8 @@ private fun ComicRowCard(
             }
         }
         if (multiSelect) {
-            Box(
-                Modifier
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(if (selected) scheme.primary else Color.Transparent)
-                    .border(2.dp, if (selected) scheme.primary else scheme.outlineVariant, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (selected) {
-                    Icon(Icons.Filled.Check, contentDescription = "已选中", tint = scheme.onPrimary, modifier = Modifier.size(14.dp))
-                }
-            }
+            // 勾选框吃全项目那一枚（与收藏四处、队列段同一形状），不再本页自画一档。
+            VeneraSelectBox(selected = selected, onClick = onClick)
         } else {
             Icon(
                 Icons.AutoMirrored.Outlined.KeyboardArrowRight,
@@ -1140,7 +1320,6 @@ private fun ImagePane(
     bottomClearance: androidx.compose.ui.unit.Dp,
     onTap: (GalleryDownloadTask) -> Unit,
     onLongPress: (GalleryDownloadTask) -> Unit,
-    onClearFinished: () -> Unit,
 ) {
     if (tasks.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1208,32 +1387,16 @@ private fun ImagePane(
                     }
                 }
                 if (multiSelect) {
-                    val selected = task.id in selectedKeys
-                    Box(
-                        Modifier
+                    // 勾选框吃全项目那一枚（与收藏四处、队列段同一形状），不再本页自画一档。
+                    VeneraSelectBox(
+                        selected = task.id in selectedKeys,
+                        onClick = { onTap(task) },
+                        modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(VeneraTokens.spacing.space2)
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(if (selected) scheme.primary else Color.Black.copy(alpha = 0.3f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) {
-                            Icon(Icons.Filled.Check, contentDescription = "已选中", tint = Color.White, modifier = Modifier.size(13.dp))
-                        }
-                    }
+                            .padding(VeneraTokens.spacing.space2),
+                    )
                 }
             }
-        }
-        item(key = "clear", span = { GridItemSpan(3) }) {
-            Text(
-                "清空已完成与失败的记录",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clickable { onClearFinished() }
-                    .padding(vertical = VeneraTokens.spacing.space2),
-            )
         }
     }
 }

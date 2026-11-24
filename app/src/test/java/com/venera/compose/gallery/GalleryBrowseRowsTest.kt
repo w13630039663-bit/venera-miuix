@@ -12,7 +12,6 @@ import org.junit.Test
 /**
  * 画廊浏览历史的**纯判据**（`domain/GalleryBrowseHistory.kt` + 分组头的日期词）。
  *
- * 2026-10-14 与首页顶栏那枚「浏览历史」同一轮立起来。三件事最值得钉：
  * ① 重复看同一张**刷新时刻并置顶**（与关注名单那条「不重掷时间戳」刻意相反）；
  * ② 分组按**日历日**而不是 24 小时窗口；
  * ③ 日期词是屏上的话，改了得连屏一起看 —— 所以它是颗可直接调用的纯函数，不用 grep 源码。
@@ -80,14 +79,14 @@ class GalleryBrowseRowsTest {
     @Test
     fun `同一时刻按站键加图号定序，不靠集合迭代顺序`() {
         val rows = listOf(
-            row(site = GallerySite.SAFEBOORU, id = 1L, at = 50L),
+            row(site = GallerySite.KONACHAN, id = 1L, at = 50L),
             row(site = GallerySite.YANDERE, id = 2L, at = 50L),
             row(site = GallerySite.YANDERE, id = 1L, at = 50L),
         )
         assertEquals(
             // 同刻不比来路，只比 uid：'s' 排在 'y' 前面（判据写的是 thenBy { uid }，
             // 不是"先记的在前"—— 那种顺序读起来像 bug 又没有任何报错会指向它）。
-            listOf("safebooru:1", "yandere:1", "yandere:2"),
+            listOf("konachan:1", "yandere:1", "yandere:2"),
             GalleryBrowseRows.sorted(rows).map { it.uid },
         )
     }
@@ -108,7 +107,7 @@ class GalleryBrowseRowsTest {
         )
         assertEquals(2, GalleryBrowseRows.ofSite(rows, null).size)
         assertEquals(listOf(1L), GalleryBrowseRows.ofSite(rows, GallerySite.YANDERE).map { it.postId })
-        assertEquals(emptyList<GalleryBrowseRow>(), GalleryBrowseRows.ofSite(rows, GallerySite.SAFEBOORU))
+        assertEquals(emptyList<GalleryBrowseRow>(), GalleryBrowseRows.ofSite(rows, GallerySite.KONACHAN))
     }
 
     // ---- 分组 ----

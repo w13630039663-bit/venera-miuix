@@ -8,7 +8,6 @@ import org.junit.Test
 /**
  * 「加载更多」那枚波浪环的开关归属。
  *
- * 病（2026-10-15 用户报「一直在加载更多，但就是一直在加载」）：`loadMore()` 升起
  * `loadingMore` 之后，翻页那一笔协程被任何一轮新检索 `searchJob?.cancel()` 掐掉时走的是
  * `catch (e: CancellationException) { throw e }`，它不写状态；而「把旗放下」这件事本来
  * 只能落在发起新一轮的那几个重置块里 —— 那些块一个都没有写 `loadingMore`。

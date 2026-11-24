@@ -110,7 +110,6 @@ object ComicUrlTable {
             // wn01.link 是 wnacg.js:91 的域名刷新页，路径形状与站内一致与否未证 —— 先只声明表内已证的 wnacg.*
             appLinks = hostsWithPrefix(listOf("wnacg.com", "www.wnacg.com", "wnacg.org"), "/photos-"),
         ),
-        // 哔咔 PicaWeb 的单本路由：2026-09-23 三条依据齐了才敢写进来 ——
         // ① 它的路由表里是 `/comic/:comicId`（**单数**；`/comics/*` 那一族全是列表页）；
         // ② 点一本后地址栏是 https://manhuabika.com/comic/<24位hex>，直接打开该地址也能渲染详情；
         // ③ 我们的 `picacg.js:96` 里 `id: comic._id`，与路由参数是同一个 24 位 hex ObjectId。

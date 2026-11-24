@@ -46,7 +46,6 @@ class DesktopNoAndroidImportTest {
     fun `桌面编译面不许反向依赖任何一端的 UI`() {
         // 约束原文：「严禁两端 UI 互相耦合」。
         //
-        // ⚠️ 2026-10-20 口径改判（写法 A，用户裁决「之前做的平行线就不要了，按照大屏端复用」）：
         // 本条的**意图没变** —— 禁的是"桌面去依赖**某一端专属**的 UI"（`feature/` 与
         // `gallery/ui/` 那两棵属于 Android：38 处 `LocalContext`、18 处 `Toast`、
         // `AndroidViewModel` / `Intent` / Activity 承载，桌面侧根本没有那套宿主）。
@@ -100,7 +99,6 @@ class DesktopNoAndroidImportTest {
         )
 
         /**
-         * 端**专属**的 UI 面（2026-10-20 改判后）。
          *
          * `feature/` `gallery/ui/` `reader/` `MainActivity` 仍然禁 —— 那几棵靠 Android 宿主
          * （`LocalContext` / `Toast` / `Intent` / `AndroidViewModel` / Activity 承载）活着，
@@ -113,7 +111,6 @@ class DesktopNoAndroidImportTest {
         /**
          * 端专属 UI 的包前缀。
          *
-         * **`feature` 不再整包禁**（2026-10-20）：`feature/HomeHomeWidgets.kt` 那一批
          * 首页展示零件已经是两端编译同一份源码，整包禁就等于禁止复用本身 —— 与用户
          * 「按照大屏端复用」的裁决直接冲突。
          *

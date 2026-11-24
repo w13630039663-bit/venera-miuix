@@ -11,7 +11,6 @@ import org.junit.Test
 /**
  * 从**帖子自带的出处（source）**派生画师入口与头像探针（批次 L · L9）。
  *
- * 为什么要有这一路（用户 2026-09-30 拍板"做，从 source 派生"）：Gelbooru 侧没有任何匿名可读的
  * 画师外链端点（DAPI `s=artist` 401、原生画师页的 `name=` 实测根本不生效），唯一的第三方供体
  * Danbooru 从当天出口卡盾。而**出处那一栏实测覆盖 18/20**（pixiv 6 / baraag 7 / twitter 2 …），
  * 它是站方逐条记在帖子上的，不需要再问一次"这位是谁"。
@@ -103,10 +102,8 @@ class GalleryArtistSourceTest {
 
     @Test
     fun `fanbox 的探针要的是子域而不是数字号`() {
-        // 实测：`creatorId=setmen` 回 200 带 iconUrl；`creatorId=7075448`（pixiv 用户号）回 400。
         val hit = GalleryArtistAvatarProbe.fanboxCreator("https://setmen.fanbox.cc/posts/123")
         assertEquals("https://api.fanbox.cc/creator.get?creatorId=setmen", hit?.endpoint)
-        // **Origin 不是可选项**：2026-09-30 14:05 逐档实测，那台 api 对「不带 Origin」「只带 Referer」
         // 一律回 400 general_error，只有带 `Origin: https://<子域>.fanbox.cc`（www 那档也行）才 200。
         // 于是探针必须把这一条一起交出去 —— 只给地址的探针在取数层会稳定失败，而且失败得毫不起眼。
         assertEquals("https://setmen.fanbox.cc", hit?.origin)
@@ -168,7 +165,6 @@ class GalleryArtistSourceTest {
     /**
      * 裸图出处的文件名里本来就带着作品号（批次 M · M4）。
      *
-     * 用户 2026-09-30 报「img.pixiv.net 这类出处的画师信息有时能显示有时不能」。旧判据把裸图
      * 一律判 null，理由是"它不是一页作品页"—— 那个理由站不住：pixiv 图床的文件名是
      * `<作品号>_p<页>.<扩展名>`，而站方的 `ajax/illust/{作品号}` 匿名答得上作者。设备取到的
      * 100 条 yande.re 样本里，出处落在 www.pixiv.net 的 26 条、落在 i.pximg.net 的 8 条，
@@ -229,7 +225,6 @@ class GalleryArtistSourceTest {
     @Test
     fun `作品页反查出的作者排在站方记录与出处之后`() {
         val author = "https://www.pixiv.net/users/7075448"
-        // ① 站方与出处都没有 pixiv → 反查那枚补上，且**带账号**（用户 2026-09-30 拍板）。
         val filled = GalleryArtistLinks.iconPlan(
             urls = listOf("https://twitter.com/Setmen_uU"),
             source = "https://www.pixiv.net/artworks/113455481",

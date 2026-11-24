@@ -348,7 +348,6 @@ class ComicSourceManager private constructor(private val context: Context) {
      * ## 为什么需要它
      *
      * [bootstrapBundledSources] 只在「本机没有这颗文件」时才写，于是改了随包的那份源脚本
-     * 对**已经装过的设备永远不生效**。2026-10-15 实测到这一格：禁漫的线路回退修好、新 APK 也装上了，
      * 而运行期读的 `files/comic_source/jm.js` 还是 1.4.0 那份旧文件 —— 屏上现象一字未变，
      * 代码却已经"修过了"。那一类缺口比没修更难查。
      *
@@ -550,7 +549,6 @@ class ComicSourceManager private constructor(private val context: Context) {
      *
      * 只服务于错误文案分支：源站回 401/403 时，支持登录的源十有八九是"要先登录"，
      * 不支持的只能是源站自己拦了 —— 两种情况的下一步完全不同，合成一句话会把用户
-     * 往错误的方向指（真机读数：包子漫画被说成"源站防护或网络波动"）。
      *
      * `getAccountInfo()` 内部是**同步** `engine.evaluate()`，在主线程调用会卡满 30 秒
      * （见 JsComicSource.requireLogin 的注释），所以强制切 IO。结果按 key 缓存。
@@ -813,14 +811,12 @@ class ComicSourceManager private constructor(private val context: Context) {
         val meta = _installedMeta.value.firstOrNull { it.fileName == fileName }
             ?: return@withContext Result.failure(Exception("源不存在: $fileName"))
 
+        val declared = registeredSources[meta.key]?.url?.trim().orEmpty()
         val entry = repoIndexCache.value.firstOrNull { it.fileName == fileName }
         val url = when {
+            declared.isNotBlank() && isHttpUrl(declared) -> declared
             entry != null -> resolveSourceUrl(entry, repoUrl)
-            else -> {
-                val declared = registeredSources[meta.key]?.url?.trim().orEmpty()
-                if (declared.isNotBlank() && isHttpUrl(declared)) declared
-                else concatRepoFileName(repoUrl, fileName)
-            }
+            else -> concatRepoFileName(repoUrl, fileName)
         }
 
         try {
@@ -892,14 +888,40 @@ class ComicSourceManager private constructor(private val context: Context) {
         val byFileName = entries.associateBy { it.fileName }
         val updates = mutableMapOf<String, String>()
         for (m in _installedMeta.value) {
-            val remote = byFileName[m.fileName] ?: continue
             val current = m.version.ifBlank { registeredSources[m.key]?.version.orEmpty() }
+            val declared = registeredSources[m.key]?.url?.trim().orEmpty()
+            if (declared.isNotBlank() && isHttpUrl(declared)) {
+                // 源自身声明了独立更新地址（如 venera-next 独立维护的 copy_manga.js），优先检查独立更新
+                val remoteVer = fetchVersionFromDeclaredUrl(declared)
+                if (!remoteVer.isNullOrBlank() && compareVersion(remoteVer, current) > 0) {
+                    updates[m.fileName] = remoteVer
+                    continue
+                }
+            }
+            val remote = byFileName[m.fileName] ?: continue
             if (compareVersion(remote.version, current) > 0) {
                 updates[m.fileName] = remote.version
             }
         }
         _availableUpdates.value = updates
         updates.size
+    }
+
+    private suspend fun fetchVersionFromDeclaredUrl(url: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val client = VeneraNetworkClient.getInstance(context).okHttpClient
+            val req = Request.Builder()
+                .url(url)
+                .header("cache-time", "no")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (!resp.isSuccessful) return@withContext null
+            val body = resp.body?.string() ?: return@withContext null
+            val match = Regex("""(?:^|\n|\s)version\s*=\s*["']([^"']+)["']""").find(body)
+            match?.groupValues?.get(1)?.trim()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /* ------------------------------------------------------------------ *
@@ -1270,7 +1292,6 @@ class ComicSourceManager private constructor(private val context: Context) {
                 throw e
             } catch (e: Exception) {
                 // 探测失败 ≠ 源没有探索能力：网络一抖就剔除整颗源，屏上表现是"源凭空消失"
-                // （2026-10-14 真机读数）。降级保留，能力未知，UI 据此摆重试。
                 android.util.Log.w("VeneraDebug", "getSourceExplorations 探测失败: ${source.key}", e)
                 SourceExploration(
                     sourceKey = source.key,
@@ -1609,16 +1630,59 @@ class ComicSourceManager private constructor(private val context: Context) {
         /** 随包预装的那几颗源（也只有这几颗允许被"随包更新"覆写，见 [refreshBundledSourceUpdates]） */
         private val BUNDLED_DEFAULT_FILES = setOf("baozi.js", "copy_manga.js", "manga_dex.js", "jm.js")
 
-        /** 版本号比较：a > b 返回正数 */
+        /**
+         * 版本号比较：a > b 返回正数，a < b 返回负数，a == b 返回 0。
+         * 兼容语义化版本与带后缀的预发布版本（如 "1.4.15-debug1" vs "1.4.3"、"1.4.15"、"1.4.15-debug2"）。
+         */
         fun compareVersion(a: String, b: String): Int {
-            val pa = a.split('.').mapNotNull { it.trim().toIntOrNull() }
-            val pb = b.split('.').mapNotNull { it.trim().toIntOrNull() }
-            for (i in 0 until maxOf(pa.size, pb.size)) {
-                val x = pa.getOrElse(i) { 0 }
-                val y = pb.getOrElse(i) { 0 }
-                if (x != y) return x - y
+            if (a == b) return 0
+            val pa = a.trim().split('.')
+            val pb = b.trim().split('.')
+            val maxLen = maxOf(pa.size, pb.size)
+            for (i in 0 until maxLen) {
+                val sega = pa.getOrElse(i) { "0" }
+                val segb = pb.getOrElse(i) { "0" }
+                val (numA, sufA) = parseVersionSegment(sega)
+                val (numB, sufB) = parseVersionSegment(segb)
+                if (numA != numB) return numA - numB
+                val sufCmp = compareVersionSuffix(sufA, sufB)
+                if (sufCmp != 0) return sufCmp
             }
             return 0
+        }
+
+        private fun parseVersionSegment(seg: String): Pair<Int, String> {
+            val trimmed = seg.trim()
+            val match = Regex("""^(\d+)(.*)$""").find(trimmed)
+            return if (match != null) {
+                val num = match.groupValues[1].toIntOrNull() ?: 0
+                val suf = match.groupValues[2].trim()
+                num to suf
+            } else {
+                0 to trimmed
+            }
+        }
+
+        private fun compareVersionSuffix(sa: String, sb: String): Int {
+            if (sa.isEmpty() && sb.isEmpty()) return 0
+            if (sa.isEmpty() && sb.isNotEmpty()) return 1
+            if (sa.isNotEmpty() && sb.isEmpty()) return -1
+            val tokensA = Regex("""\d+|\D+""").findAll(sa).map { it.value }.toList()
+            val tokensB = Regex("""\d+|\D+""").findAll(sb).map { it.value }.toList()
+            val minLen = minOf(tokensA.size, tokensB.size)
+            for (i in 0 until minLen) {
+                val ta = tokensA[i]
+                val tb = tokensB[i]
+                val ia = ta.toIntOrNull()
+                val ib = tb.toIntOrNull()
+                if (ia != null && ib != null) {
+                    if (ia != ib) return ia - ib
+                } else {
+                    val cmp = ta.compareTo(tb)
+                    if (cmp != 0) return cmp
+                }
+            }
+            return tokensA.size - tokensB.size
         }
 
         @Volatile

@@ -94,7 +94,7 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
             comicSourceNames = installedMeta.associate { it.key to it.name },
             enabledGalleryRouteKeys = buildList {
                 add(GallerySite.YANDERE.routeKey)
-                add(GallerySite.SAFEBOORU.routeKey)
+                add(GallerySite.KONACHAN.routeKey)
                 if (gelbooruIdentity != null) add(GallerySite.GELBOORU.routeKey)
             },
             userHosts = PreferredIpRules.parseHosts(savedHosts),
@@ -112,7 +112,6 @@ internal fun PreferredIpSpeedTestScreen(prefs: NetworkPreferences, onBack: () ->
         savePreferredIp(prefs, enabled = true, ips = ipsText, hosts = mergedHosts, clearReadings = true)
         // ⚠️ 把刚才**实测**的读数补写回 runtime。probeIps 是只读的，savePreferredIp 又清了读数 ——
         // 不补这一步，plan() 见空表对全部条目交 SystemDns，而系统 DNS 在不少网络下是被污染的，
-        // 第一波请求当场死（真机实证：旧「自动测速选点」能用、新「使用最优线路」不能用的根因）。
         // 写回的是同一次探活的真实结果（与旧链路 probeAll 落点一致），不是伪造读数；
         // 随后 finishProbeRound 标记本轮新鲜度，避免后台补探立刻把这批读数清了重探。
         val now = System.currentTimeMillis()
@@ -402,7 +401,8 @@ private fun SpeedTestLineCard(line: PreferredIpLine, isBest: Boolean, isInUse: B
                 )
             }
             if (isBest) {
-                VeneraChip("最优", selected = true, variant = VeneraChipVariant.Selected)
+                // 原 VeneraChipVariant.Selected 档已并档（与 Assist+selected 逐位相同，见 VeneraChip KDoc）。
+                VeneraChip("最优", selected = true)
             }
             if (isInUse) {
                 VeneraChip(
@@ -416,7 +416,6 @@ private fun SpeedTestLineCard(line: PreferredIpLine, isBest: Boolean, isInUse: B
         Column(Modifier.padding(top = tokens.spacing.space4)) {
             line.entries.forEach { e ->
                 // 失败原因（尤其 RESET 那句「被按域名阻断…建议开代理」很长）不能放进无权重的
-                // 右槽：它会先量满整行，把左边的域名条目挤成一字一行的竖排（真机 2026-10-01 实锤）。
                 // 所以分两种形态：通过 = 「域名 ←→ 延迟」一行；失败 = 域名一行、原因整行铺开。
                 if (e.passed) {
                     Row(

@@ -41,11 +41,13 @@ import com.venera.compose.ui.tokens.VeneraTokens
  * @param selected 已选。
  * @param onClick 点框 = 切换这一项的选中状态。**必须自己接**：
  *   框挂在卡片之上，点它不能顺手把卡片也点了（开了详情页就回不来了）。
+ *   传 null = **只展示的选中标记**（历史页多选态那一支：切换挂在整张卡的点击上，
+ *   框本身只是状态显示，按它不动才是对的 —— 按了会把"点卡"和"点框"两个命中区叠在一起）。
  */
 @Composable
 fun VeneraSelectBox(
     selected: Boolean,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val tokens = VeneraTokens
@@ -62,7 +64,7 @@ fun VeneraSelectBox(
                         .border(tokens.spacing.hairline, StatusColors.OnBadgeSurface, CircleShape)
                 }
             )
-            .clickable(onClick = onClick),
+            .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier),
         contentAlignment = Alignment.Center,
     ) {
         if (selected) {

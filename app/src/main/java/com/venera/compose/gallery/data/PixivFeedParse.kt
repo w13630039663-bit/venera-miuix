@@ -16,7 +16,6 @@ import kotlinx.serialization.json.jsonPrimitive
  * `ajax/search/artworks/{词}`。
  *
  * 为什么手写逐字段走、不给 `@Serializable` DTO（与 [GalleryArtistEndpointParse] 同一个理由，
- * 但这里还多一条更硬的）：**同一种意思在两腿里类型相反**，2026-10-16 深夜现量 ——
  *
  * | | `ranking.php` | `ajax/search/artworks/{词}` |
  * |---|---|---|
@@ -34,7 +33,6 @@ import kotlinx.serialization.json.jsonPrimitive
  *    那与"这一页真的没有作品"必须能被区分开。只有**数组本身为空**才是合法空表
  *    （现量：一个不存在的词 ⇒ `data` 是 `[]`、`total` 是 0，站方答上了"没有"）。
  *
- * 两条都按用户 2026-10-16 的定档处理多页组图：**取第 0 页当这一张**。
  * 两腿给的 `url` 本来就是 `…_p0_…jpg`，所以这一档**零额外请求**（不必打 `/ajax/illust/{id}/pages`）。
  */
 internal object PixivFeedParse {
@@ -73,7 +71,6 @@ internal object PixivFeedParse {
                 tags = record["tags"].joinedText(separator = " "),
                 rating = if (record["is_masked"].isTrue()) RATING_MASKED else RATING_GENERAL,
             // 这一腿**没有** `aiType`（载荷那 25 枚键表里没有 AI 格，读数记在 pixivAiFlagOf 与
-            // `docs/rounds/gallery-pixiv-placement-options-2026-10-16.md`）⇒ `siteAiFlag` 留 null：
             // "站方没说"不是"站方说不是 AI"。这一节的角标于是仍走标签词表那一档兜底。
                 // `rating_count` 这格先**不喂任何字段**：名字读起来像评分数，取值（现量 2402）
                 // 又像收藏数，语义未定性 ⇒ 喂进 score 或 favCount 都是把猜测写进读数。
@@ -81,14 +78,12 @@ internal object PixivFeedParse {
                 source = record["user_id"].numberOrStringOrNull()?.let { USERS + it }.orEmpty(),
                 width = record["width"].numberOrStringOrNull()?.toIntOrNull() ?: 0,
                 height = record["height"].numberOrStringOrNull()?.toIntOrNull() ?: 0,
-                // 卡上那枚「几 P」的出处（2026-10-18）。这一腿给的是**字符串** `"8"`，
                 // 而搜索腿那格叫 `pageCount` 且是数字 —— 同一件事在两腿里类型相反，所以两侧
                 // 都走 numberOrStringOrNull 那一颗，押任一种形状都会让另一腿静默解成 null。
                 pageCount = record["illust_page_count"].numberOrStringOrNull()?.toIntOrNull(),
                 previewUrl = image,
                 fileExt = extensionOf(image),
                 // 榜单这一腿**给** `illust_type`（现量字符串 `"0"`/`"1"`/`"2"`，逐条对过）
-                // ⇒ 墙上那排卡也能认出"这作会动"（2026-10-23 动图播放）。
                 ugoira = record["illust_type"].numberOrStringOrNull() == "2",
             )
             PixivWork(
@@ -168,14 +163,11 @@ internal object PixivFeedParse {
      * 单张按号那一腿：`/ajax/illust/{id}`。列表与「历史」那一行按号回取吃它（只要共用那颗行模型），
      * 作品页吃 [workDetailPage]（同一份答复，多读只有作品页要的那几格）。
      *
-     * 现量（真号 150822243 / 150926978）：`body` 56 枚键，其中 `urls.{mini,thumb,small,regular,original}`
      * 五档齐、`illustId` 与 `userId` 是**字符串**、`pageCount`/`width`/`height`/`xRestrict` 是**数字**、
      * 标签在 `tags.tags[]` 里每枚带一个 `tag`。
      * ⚠️ `original` 的扩展名**逐张不同**（同一位实测一张 `.jpg`、另一张 `.png`）⇒ 扩展名一律从地址尾巴取，
      * 别写死 jpg。
      *
-     * **列表这一侧**仍然只取第 0 页（用户 2026-10-16 定档，卡上本来就只画一张）；
-     * 作品页要逐页连读，走 [workPages] 那一跳 —— 那句定档**不覆盖作品页**（2026-10-18 改判）。
      *
      * 交 `null` 只有一种情形：站方答上了、但这条没有可用的原图地址（被删/被锁）。
      * 整份读不懂仍然抛 —— "没有这一张"与"我们看不懂这一张"是两句话。
@@ -186,7 +178,6 @@ internal object PixivFeedParse {
      * 作品页那一腿：同一份答复多读八格（原题、作者号、账号、页数、逐枚标签、浏览数、发布时间、
      * 评论数与开关、动图旗标）。
      *
-     * 读数（2026-10-18 现量，真号 150320368）：`title` = `[CHARA] Kakkoi Elbertson`、`pageCount` = 4、
      * `viewCount` = 851、`bookmarkCount` = 32、`commentCount` = 6、`commentOff` = 0、
      * `uploadDate` = `2026-10-01T06:12:00+00:00`、`tags.tags` 7 枚（内层键叫 `tag` **不叫** `name`）、
      * `illustType` = 0、`seriesNavData` = **null**（这条腿没有"上一张/下一张"可拿）。
@@ -194,7 +185,6 @@ internal object PixivFeedParse {
      * ⚠️ 这一腿的 `urls.original` 尾巴上写着 `_p0` ⇒ **只到第 0 页**。`pageCount > 1` 时调用方
      * 必须再打 [workPages] 那一跳把剩下的取齐（[PixivClient.workDetail] 里对账）。
      *
-     * 2026-10-18 第四批第七件：这一腿**读不出图**时不再一律交 null —— 站方在那一份答复里
      * 竖了旗标的（私密 / 隐藏 / 成人向 / 仅登录）按档抛，屏上念得出是哪一面墙；
      * 一枚旗标都没竖的才交 null（≈已被删 / 号错 / 审核中）。见 [lockOrNothing]。
      */
@@ -254,10 +244,8 @@ internal object PixivFeedParse {
      * 多页那一跳 `/ajax/illust/{id}/pages`：逐页的**两档地址 + 站方报的宽高**，顺序就是答复里那一排的顺序。
      *
      * 中档（`urls.regular`）给作品页连读，原图档（`urls.original`）只给大图播放器那一层的 HD ——
-     * 从前这一腿只取原图，于是"打开作品页"= 一上来拉四张原图（用户 2026-10-18 真机报"加载图片
      * 应该用低清点的图片"）。宽高是图回来之前按比例占位的唯一依据，缺键交 null，不编 1:1。
      *
-     * ⚠️ 这一跳的 `body` 本身就是**数组**（2026-10-18 现量 150320368：4 个元素，各带
      * `urls.{thumb_mini,small,regular,original}` + `width`/`height`，尾巴 `_p0`…`_p3`，扩展名 `.png`）——
      * **没有** `meta_pages` 那一层，那是 app-api 的形状。两族的键名别互相套。
      *
@@ -337,7 +325,6 @@ internal object PixivFeedParse {
             largeUrl = urls["regular"].textOrNull().orEmpty(),
             fileUrl = original,
             fileExt = extensionOf(original),
-            // 动图旗标搬进行模型（2026-10-23）：`illustType == 2` 是这条腿的说法。
             // 不搬的话，深链直开（只有这一腿）的动图在屏上就是一张静帧，谁也不会去问 ugoira_meta。
             ugoira = detail["illustType"].numberOrStringOrNull() == "2",
         )
@@ -363,7 +350,6 @@ internal object PixivFeedParse {
         ((this as? JsonObject)?.get(key) as? JsonArray)
 
     /**
-     * 匿名腿的**标签译名**（2026-10-20）：`tags.tags[]` 每枚带一个 `translation` 对象。
      *
      * ## 形状与依据
      *
@@ -442,7 +428,6 @@ internal object PixivFeedParse {
 /**
  * pixiv 那两枚站方 AI 位的**同一条**翻译：`2` = AI 生成、`1` = 非 AI、其余（含缺键）= 不知道。
  *
- * 读数（2026-10-18 现量，匿名 `ajax/search/artworks/{词}`，都要带 `--compressed` 否则答复被截断）：
  * - 词=`AI生成画像` → 60 条里 **59 枚 =2**；词=`NovelAI` → **58 枚 =2**；
  * - 对照词=`オリジナル` → `=1` 有 37、`=2` 有 22，而那一页里**带 AI 味标签的 5 条全部 =2**。
  * 登录腿那一格叫 `illust_ai_type`，pixez 明写「本地过滤 AI 生成作品（`illust_ai_type == 2`）」

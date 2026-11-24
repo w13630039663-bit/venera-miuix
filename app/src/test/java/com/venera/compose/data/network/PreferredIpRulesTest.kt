@@ -253,9 +253,9 @@ class PreferredIpRulesTest {
 
     @Test
     fun `默认适用域名只含实测过的两条`() {
-        // 这两条的探活路径都实测回 200；konachan.net 那种"TCP 通但恒 403"的不预置。
+        // safebooru.donmai.us 随该站撤下移出默认表，见 PreferredIpRules 头注第 2 条）。
         assertEquals(
-            listOf("safebooru.donmai.us", "cdn-msp.jmapinodeudzn.net"),
+            listOf("konachan.net", "cdn-msp.jmapinodeudzn.net"),
             PreferredIpRules.DEFAULT_TARGETS.map { it.host },
         )
         assertTrue(PreferredIpRules.DEFAULT_TARGETS.all { it.path.startsWith("/") })
@@ -423,12 +423,12 @@ class PreferredIpRulesTest {
         val sources = PreferredIpRules.speedTestSources(
             installedComicSourceKeys = listOf("jm", "picacg"),
             comicSourceNames = mapOf("jm" to "禁漫天堂", "picacg" to "哔咔漫画"),
-            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            enabledGalleryRouteKeys = listOf("yandere", "konachan"),
             userHosts = emptyList(),
         )
         // 漫画源按安装顺序在前，图库站在后。
         assertEquals(
-            listOf("cdn-msp.jmapinodeudzn.net", "picaapi.picacomic.com", "yande.re", "safebooru.donmai.us"),
+            listOf("cdn-msp.jmapinodeudzn.net", "picaapi.picacomic.com", "yande.re", "konachan.net"),
             sources.map { it.target.host },
         )
         // label 用源自己声明的名字，不是裸 key。
@@ -441,7 +441,7 @@ class PreferredIpRulesTest {
         val sources = PreferredIpRules.speedTestSources(
             installedComicSourceKeys = listOf("jm"),
             comicSourceNames = mapOf("jm" to "禁漫天堂"),
-            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            enabledGalleryRouteKeys = listOf("yandere", "konachan"),
             userHosts = emptyList(),
         )
         val hosts = sources.map { it.target.host }
@@ -455,28 +455,28 @@ class PreferredIpRulesTest {
         // 哔咔 API 对未签名请求回 400（实测 TLS 通、Server: cloudflare）——
         // 根路径不是业务端点，判"节点认不认 SNI"，所以 require2xx 必须放开。
         assertEquals(false, PreferredIpRules.COMIC_SOURCE_API_TARGETS.getValue("picacg").require2xx)
-        // JM 图床与 safebooru 有实测 200 业务端点，保持业务级判据。
+        // JM 图床与 konachan 有实测 200 业务端点，保持业务级判据。
         assertEquals(true, PreferredIpRules.COMIC_SOURCE_API_TARGETS.getValue("jm").require2xx)
-        assertEquals(true, PreferredIpRules.GALLERY_SPEED_TEST_SOURCES.getValue("safebooru").target.require2xx)
+        assertEquals(true, PreferredIpRules.GALLERY_SPEED_TEST_SOURCES.getValue("konachan").target.require2xx)
     }
 
     @Test
-    fun `图库恒带yandere与safebooru_gelbooru有账号才出现`() {
+    fun `图库恒带yandere与konachan_gelbooru有账号才出现`() {
         val withoutAccount = PreferredIpRules.speedTestSources(
             installedComicSourceKeys = emptyList(),
             comicSourceNames = emptyMap(),
-            enabledGalleryRouteKeys = listOf("yandere", "safebooru"),
+            enabledGalleryRouteKeys = listOf("yandere", "konachan"),
             userHosts = emptyList(),
         )
         val hosts = withoutAccount.map { it.target.host }
         assertTrue("yande.re" in hosts)
-        assertTrue("safebooru.donmai.us" in hosts)
+        assertTrue("konachan.net" in hosts)
         assertTrue("没配账号 Gelbooru 不该出现：$hosts", "gelbooru.com" !in hosts)
 
         val withAccount = PreferredIpRules.speedTestSources(
             installedComicSourceKeys = emptyList(),
             comicSourceNames = emptyMap(),
-            enabledGalleryRouteKeys = listOf("yandere", "gelbooru", "safebooru"),
+            enabledGalleryRouteKeys = listOf("yandere", "gelbooru", "konachan"),
             userHosts = emptyList(),
         )
         assertTrue("gelbooru.com" in withAccount.map { it.target.host })
@@ -489,12 +489,12 @@ class PreferredIpRulesTest {
             // cdn-msp 又被用户手填了一遍 → 只留第一条。
             installedComicSourceKeys = listOf("jm", "jm"),
             comicSourceNames = mapOf("jm" to "禁漫天堂"),
-            enabledGalleryRouteKeys = listOf("safebooru"),
+            enabledGalleryRouteKeys = listOf("konachan"),
             // 大小写不同的同域名也要去重。
-            userHosts = listOf("SafeBooru.Donmai.us", "cdn-msp.jmapinodeudzn.net", "my.example.org"),
+            userHosts = listOf("Konachan.NET", "cdn-msp.jmapinodeudzn.net", "my.example.org"),
         )
         assertEquals(
-            listOf("cdn-msp.jmapinodeudzn.net", "safebooru.donmai.us", "my.example.org"),
+            listOf("cdn-msp.jmapinodeudzn.net", "konachan.net", "my.example.org"),
             sources.map { it.target.host },
         )
     }
@@ -518,8 +518,8 @@ class PreferredIpRulesTest {
     fun `knownTargetFor按域名查已知端点_未知返回null`() {
         // 默认表。
         assertEquals(
-            "/posts.json?limit=1",
-            PreferredIpRules.knownTargetFor("safebooru.donmai.us")?.path,
+            "/post.json?limit=1",
+            PreferredIpRules.knownTargetFor("konachan.net")?.path,
         )
         // 漫画源表（哔咔的 SNI 判据在这里也要能查到）。
         val pica = PreferredIpRules.knownTargetFor("picaapi.picacomic.com")
@@ -534,7 +534,6 @@ class PreferredIpRulesTest {
     }
 
     // ── RESET 与 CONNECT 分档：被按域名阻断 ≠ 节点不可达 ──
-    // 依据：2026-10-01 真机测速，同一台节点 Safebooru 通、yande.re 等"443 被拒"——
     // TCP 是通的，被掐的是带明文 SNI 的 TLS 握手。两句文案必须分开，否则用户以为换节点有救。
 
     @Test
@@ -565,7 +564,6 @@ class PreferredIpRulesTest {
     }
 
     // ── bestIpsFromLines：一键测速自动选点的选点判据 ──
-    // 口径是行级的（2026-10-02 按用户要求改回）：任一网站答上话就入选，没答上的网站被忽略；
     // 排序按最快通过延迟 —— 与原探活弹窗逐行取最小延迟一致。
 
     @Test
@@ -657,10 +655,10 @@ class PreferredIpRulesTest {
         val gallery = PreferredIpRules.speedTestSources(
             installedComicSourceKeys = emptyList(),
             comicSourceNames = emptyMap(),
-            enabledGalleryRouteKeys = listOf("safebooru"),
+            enabledGalleryRouteKeys = listOf("konachan"),
             userHosts = emptyList(),
         )
-        assertEquals(listOf("safebooru.donmai.us"), gallery.single().hostsToApply())
+        assertEquals(listOf("konachan.net"), gallery.single().hostsToApply())
     }
 
     @Test

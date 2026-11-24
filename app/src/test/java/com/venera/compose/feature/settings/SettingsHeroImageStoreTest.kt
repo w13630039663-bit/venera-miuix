@@ -9,7 +9,6 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * 头图落盘链的纯判据（[SettingsHeroImageStore] 的无 Android 依赖部分）。
- * 拷贝本身依赖 contentResolver，不在这里测（真机验收项）。
  */
 class SettingsHeroImageStoreTest {
 

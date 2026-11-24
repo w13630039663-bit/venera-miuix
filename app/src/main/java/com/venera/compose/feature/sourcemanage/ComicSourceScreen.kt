@@ -916,11 +916,13 @@ fun ComicSourceScreen(
                         )
                         Spacer(modifier = Modifier.height(18.dp))
 
-                        Button(
+                        // 统一按钮（控件体系统一 · 阶段 1）：登录进行中走 loading 位，
+                        // 状态来源（isLoggingIn）与校验、回调一字未动。
+                        VeneraButton(
                             onClick = {
                                 if (username.isBlank() || password.isBlank()) {
                                     Toast.makeText(context, "用户名与密码不能为空", Toast.LENGTH_SHORT).show()
-                                    return@Button
+                                    return@VeneraButton
                                 }
                                 isLoggingIn = true
                                 viewModel.login(sourceKey, username.trim(), password.trim()) { success, _ ->
@@ -931,24 +933,22 @@ fun ComicSourceScreen(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !isLoggingIn
+                            enabled = !isLoggingIn,
+                            loading = isLoggingIn,
                         ) {
-                            if (isLoggingIn) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
-                            } else {
-                                Text("继续登录")
-                            }
+                            Text("继续登录")
                         }
                     }
 
                     accountInfo?.loginWebsite?.takeIf { it.isNotBlank() }?.let { webUrl ->
                         if (accountInfo.supportsPasswordLogin) Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
+                        VeneraButton(
                             onClick = {
                                 webLoginTarget = sourceKey to webUrl
                                 loginTargetSourceKey = null
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            variant = VeneraButtonVariant.Outline,
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Language,

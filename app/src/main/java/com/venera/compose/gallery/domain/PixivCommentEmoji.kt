@@ -1,7 +1,6 @@
 package com.venera.compose.gallery.domain
 
 /**
- * pixiv 评论里的**小表情**（`(name)` 那一种）与站方图床的对应关系（2026-10-19 批 233-3）。
  *
  * ## 为什么这张表必须写死在代码里
  *
@@ -16,7 +15,6 @@ package com.venera.compose.gallery.domain
  *   （`InlineArtworkViewer.axaml.cs`，那份注释还专门说明"这些**精确的**短码才是站方渲染器认的写法"）
  *   —— 三家的 38 条逐字一致；
  * - 地址：`https://s.pximg.net/common/images/emoji/{id}.png`（多家同串）；
- * - 本鱼 2026-10-19 现量：`101.png` → **200 / 848 字节**、`503.png` → **200 / 402 字节**、
  *   `999.png` → **404** ⇒ 号段是真的、不存在的号确实回 404（未命中那一档在屏上因此不会画成破图）。
  *
  * 号段一共 38 枚：101–108、201–209、301–310、401–408、501–503。

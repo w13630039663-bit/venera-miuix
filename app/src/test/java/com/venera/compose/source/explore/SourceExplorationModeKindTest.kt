@@ -7,13 +7,11 @@ import org.junit.Test
 /**
  * explore 页的 `type` → [ExploreMode.Kind] 映射。
  *
- * 锁的是 2026-10-14 真机读数暴露的那条 bug：引擎只认 `singlePageWithMultiPart`，
  * 另外三个 `type` 全被当成「分页列表」——
  *  - `multiPartPage`（**10 颗源在用**：禁漫天堂 / 紳士漫畫 / MangaDex / 漫画柜 / 漫画人 /
  *    mh18 / 漫小肆 / 优酷漫画 / goda / h-comic）的分区对象里没有 `comic` 字段，
  *    逐条解析成 null，默认页一片空白；
  *  - `mixed`（nhentai）被当成分页列表，两个分区标题被压平；
- *  - 且 `mixed` 在取数层调的是源脚本里根本不存在的 `loadMixed`，真机直接报
  *    "exploadMixed is not a function"。
  *
  * 四个 type 收敛到三种 Kind 是这一轮的判据，任何一条退化都会在这里红。

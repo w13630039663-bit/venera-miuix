@@ -6,11 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 2026-10-14 UI 审查第一批的接线尺子：三件事都是"屏上说法与实现必须同轨"。
  *
  * 为什么扫源码而不是跑起来看：这三处的失败形态都是**静默**的 ——
  * 并发滑块改了没反应、封面取不到是一片纯黑、追更整页没有入口，
- * 没有一处会报错。等真机发现时已经发出去了。
  */
 class UiAuditBatch1Test {
 
@@ -65,7 +63,6 @@ class UiAuditBatch1Test {
     fun `封面查看器有加载与失败两态`() {
         assertTrue("没有失败回调：取不到图仍然是一片纯黑", coverViewer.any { it.contains("onError =") })
         assertTrue("没有加载中指示：慢网下与'坏了'分不清", coverViewer.any { it.contains("CircularWavyProgressIndicator(") })
-        // ⚠️ 2026-10-20 文案纪律（`CopyDisciplineTest`）之后，"出路按钮"不再统一叫「重试」——
         // 各场景按自己的话说（再来一次 / 再试一次 / 重新加载…）。所以这把尺钉**有没有出路**，
         // 而不是钉那个具体的词：VeneraTextButton 出现在失败分支里就算有出路。
         assertTrue(

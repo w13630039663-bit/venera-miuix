@@ -17,7 +17,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Shared by all lists. Writes immediately; preference callbacks keep mounted screens in sync. */
 @Composable
 fun rememberComicListDisplayMode(): MutableState<String> {
-    // 2026-10-20（写法 A）：存取从 `ComicListPreferences(context)` 换成平台服务。
     // 原实现直接 new 那颗类（吃 `android.content.Context` + `SharedPreferences`），
     // 而本文件住在 `components/` —— 那一层要上桌面，就不能有 Android import。
     // 读写的**语义与键名一字未改**：Android 实现逐字转发给 `ComicListPreferences`
@@ -93,7 +92,6 @@ fun ComicMetrics(rating: Double? = null, likesCount: Int? = null, modifier: Modi
  * 列表「单列行卡」的唯一形态：左封面 92dp（`listCoverWidth`）+ 右信息
  * （标题 2 行 / 副标题 / metadata 行 / 标签 5 个最多 2 行）。
  *
- * ⚠️ **不铺简介**（2026-10-14 手机档改判）：从前这里还带 2 行 `description`，
  * 单卡因此到 ~155dp、一屏只剩 3.5 张。列表页的首要任务是"找那一本"，
  * 简介在列表里的价值最低却占两行 —— 要看简介去详情那一屏。
  * 参数一并删掉而不是留一枚恒传的开关：留着就是"能传但没人想开"的假口子。
